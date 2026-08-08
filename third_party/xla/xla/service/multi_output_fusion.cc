@@ -88,7 +88,7 @@ absl::StatusOr<bool> MultiOutputFusion::RunImpl(
   CHECK_OK(module->RemoveUnusedComputations());
   if (changed) {
     HloDCE dce;
-    RETURN_IF_ERROR(dce.Run(module, execution_threads).status());
+    ABSL_RETURN_IF_ERROR(dce.Run(module, execution_threads).status());
   }
   return changed;
 }

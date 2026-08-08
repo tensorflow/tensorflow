@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RESOURCE_RESOURCE_BASE_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RESOURCE_RESOURCE_BASE_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -29,8 +30,17 @@ namespace resource {
 /// WARNING: Experimental interface, subject to change.
 class ResourceBase {
  public:
+  enum class ResourceType {
+    kUnknown = 0,
+    kResourceVariable = 1,
+    kHashTable = 2,
+    kInitializationStatus = 3,
+  };
+
   explicit ResourceBase() {}
   virtual ~ResourceBase() {}
+
+  virtual ResourceType GetResourceType() const = 0;
 
   // Returns true if it is initialized.
   virtual bool IsInitialized() = 0;

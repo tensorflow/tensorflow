@@ -14,7 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 # This script uploads all staged artifacts from all previous builds in the same
-# job chain to GCS and PyPI.
+# job chain to GCS, GAR, and PyPI.
 source "${BASH_SOURCE%/*}/utilities/setup.sh"
 
 # Calculate the version number for choosing the final directory name. This adds
@@ -56,5 +56,16 @@ if [[ "$TFCI_ARTIFACT_FINAL_GCS_ENABLE" == 1 ]]; then
 fi
 
 if [[ "$TFCI_ARTIFACT_FINAL_PYPI_ENABLE" == 1 ]]; then
-  twine upload $TFCI_ARTIFACT_FINAL_PYPI_ARGS "$DOWNLOADS"/*.whl
+  pip install --upgrade twine keyring keyrings.google-artifactregistry-auth
+  py_exit=0
+  gar_exit=0
+  # Using `|| var=$?` prevents `set -e` from aborting the script immediately if
+  # an upload fails. This guarantees that both PyPI and GAR uploads are attempted
+  # sequentially, while preserving their exit codes to fail the build afterwards.
+  twine upload $TFCI_ARTIFACT_FINAL_PYPI_ARGS "$DOWNLOADS"/*.whl || py_exit=$?
+  twine upload $TFCI_ARTIFACT_FINAL_GAR_ARGS "$DOWNLOADS"/*.whl || gar_exit=$?
+  if [[ $py_exit -ne 0 || $gar_exit -ne 0 ]]; then
+    echo "One or more uploads failed (PyPI exit code: $py_exit, GAR exit code: $gar_exit)." >&2
+    exit 1
+  fi
 fi

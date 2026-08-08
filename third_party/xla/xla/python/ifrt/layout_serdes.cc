@@ -14,16 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
-#include <string>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/layout_serdes.pb.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_version.h"
 
@@ -32,14 +31,13 @@ namespace ifrt {
 namespace {
 
 // Serialization/deserialization for `CompactLayout`.
-class CompactLayoutSerDes
-    : public llvm::RTTIExtends<CompactLayoutSerDes, SerDes> {
+class CompactLayoutSerDes : public RTTIExtends<CompactLayoutSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::CompactLayout";
   }
 
-  absl::StatusOr<std::string> Serialize(
+  absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
     const SerDesVersion version = GetRequestedSerDesVersion(options.get());
@@ -49,18 +47,18 @@ class CompactLayoutSerDes
                        " for CompactLayout serialization"));
     }
 
-    const auto* compact_layout = llvm::cast<CompactLayout>(&serializable);
+    const auto* compact_layout = cast<CompactLayout>(&serializable);
     const auto& major_to_minor = compact_layout->major_to_minor();
     CompactLayoutProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
     proto.mutable_major_to_minor()->Reserve(major_to_minor.size());
     proto.mutable_major_to_minor()->Add(major_to_minor.begin(),
                                         major_to_minor.end());
-    return proto.SerializeAsString();
+    return proto.SerializeAsCord();
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const std::string& serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     CompactLayoutProto proto;
     if (!proto.ParseFromString(serialized)) {

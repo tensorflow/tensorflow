@@ -745,7 +745,8 @@ std::map<int, llvm::MDNode*> MergeMetadata(
 void DumpIrIfEnabled(const HloModule& hlo_module,
                      const llvm::Module& llvm_module, bool optimized,
                      absl::string_view filename_suffix) {
-  if (!DumpingEnabledForHloModule(hlo_module)) {
+  if (!DumpingEnabledForHloModule(hlo_module) ||
+      !DumpingEnabledForEmitter("llvm", hlo_module.config().debug_options())) {
     return;
   }
   tsl::profiler::ScopedAnnotation annotation([&] {
@@ -800,7 +801,14 @@ llvm::GlobalVariable* GetOrCreateVariableForRngState(llvm::Module* module,
   llvm::GlobalVariable* state_ptr =
       module->getNamedGlobal(kRngStateVariableName);
   if (!state_ptr) {
-    llvm::Type* state_type = b->getInt128Ty();
+    // Limit the state type to 64-bit for SPIR-V, because SPIR-V supports wider
+    // integer types only through the FPGA-specific arbitrary precision integer
+    // extension, which GPU drivers do not support.
+    // TODO(intel-tf): Remove this restriction once the LLVM SPIR-V backend adds
+    // support for arbitrary precision integers on GPU targets.
+    auto bitwidth =
+        llvm::Triple(module->getTargetTriple()).isSPIROrSPIRV() ? 64 : 128;
+    llvm::Type* state_type = b->getIntNTy(bitwidth);
     // Use a non-zero initial value as zero state can cause the result of the
     // first random number generation not passing the chi-square test. The
     // values used here are arbitrarily chosen, any non-zero values should be
@@ -810,7 +818,7 @@ llvm::GlobalVariable* GetOrCreateVariableForRngState(llvm::Module* module,
         /*Ty=*/state_type,
         /*isConstant=*/false,
         /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
-        /*Initializer=*/llvm::ConstantInt::get(b->getInt128Ty(), 0x7012395ull),
+        /*Initializer=*/llvm::ConstantInt::get(state_type, 0x7012395ull),
         /*Name=*/kRngStateVariableName,
         /*InsertBefore=*/nullptr,
         /*TLMode=*/llvm::GlobalValue::NotThreadLocal,

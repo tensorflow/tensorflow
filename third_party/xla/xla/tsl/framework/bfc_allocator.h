@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/allocator_retry.h"
+#include "xla/tsl/framework/scoped_allocation_trace.h"
 #include "xla/tsl/framework/shared_counter.h"
 #include "xla/tsl/lib/core/bits.h"
 #include "xla/tsl/platform/logging.h"
@@ -327,13 +328,17 @@ class BFCAllocator : public Allocator {
     // rejoin the gap.
     ChunkTag tag = ChunkTag::kCentralGap;
 
+    // Snapshot of the thread-local allocation annotation stack captured when
+    // this chunk became in-use. Cleared when the chunk is freed.
+    std::optional<ScopedAllocationTrace::Snapshot> allocation_annotation;
+
     bool in_use() const { return allocation_id != -1; }
 
 #ifdef TENSORFLOW_MEM_DEBUG
     // optional debugging info
     const char* op_name = nullptr;
-    uint64 step_id = 0;
-    int64 action_count = 0;
+    uint64_t step_id = 0;
+    int64_t action_count = 0;
 #endif
 
     std::string DebugString(BFCAllocator* a, bool recurse)
@@ -789,9 +794,9 @@ class BFCAllocator : public Allocator {
   AllocatorStats stats_ ABSL_GUARDED_BY(mutex_);
 
 #ifdef TENSORFLOW_MEM_DEBUG
-  int64 action_counter_ ABSL_GUARDED_BY(mutex_);
+  int64_t action_counter_ ABSL_GUARDED_BY(mutex_);
 #define MEM_DEBUG_SIZE_HISTORY_SIZE 4096
-  int64 size_history_[MEM_DEBUG_SIZE_HISTORY_SIZE];
+  int64_t size_history_[MEM_DEBUG_SIZE_HISTORY_SIZE];
 #endif
 
   friend class GPUBFCAllocatorPrivateMethodsTest;

@@ -1,3 +1,18 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
 syntax = "proto3";
 
 package xla.gpu;
@@ -151,7 +166,8 @@ message CollectiveBackendConfig {
   enum CollectiveBackend {
     // Default backend is NCCL.
     DEFAULT = 0;
-    NVSHMEM = 1 [deprecated = true];
+    reserved "NVSHMEM";
+    reserved 1;
   }
   CollectiveBackend backend = 5;
   reserved 2, 4;
@@ -219,7 +235,8 @@ message CustomFusionConfig {
 }
 
 message CuDnnFusionConfig {
-  int64 plan_id = 1;
+  optional int64 plan_id = 1;
+  PrecisionConfig precision_config = 2;
 }
 
 // Output tile sizes for a fusion root.
@@ -253,6 +270,9 @@ message BlockLevelFusionConfig {
 
   // Number of waves per execution unit (0 = no restriction).
   int32 waves_per_eu = 8;
+
+  // Number of tiles per pid.
+  int32 num_tiles_per_pid = 9;
 }
 
 // A backend config for dynamic-slice and dynamic-update-slice instructions

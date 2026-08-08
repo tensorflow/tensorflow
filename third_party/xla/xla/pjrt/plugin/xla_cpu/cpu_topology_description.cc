@@ -22,11 +22,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/host_memory_spaces.h"
@@ -165,7 +165,7 @@ CpuTopologyDescription::FromProto(
   }
   CpuTopologyProto cpu_topology_proto;
   proto.platform_specific_topology().UnpackTo(&cpu_topology_proto);
-  ASSIGN_OR_RETURN(auto cpu_topology,
+  ABSL_ASSIGN_OR_RETURN(auto cpu_topology,
                    CpuTopology::FromProto(cpu_topology_proto));
   std::vector<xla::CpuTopology::CpuDevice> cpu_devices;
   return std::make_unique<CpuTopologyDescription>(

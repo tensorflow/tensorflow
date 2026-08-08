@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -450,6 +451,10 @@ class Subgraph {
       int tensor_index, const TfLiteCustomAllocation& allocation,
       int64_t flags = kTfLiteCustomAllocationFlagsNone);
 
+  // Sets the allocator used for runtime-owned CPU buffers in this subgraph.
+  // The allocator is not owned by the subgraph and must outlive it.
+  TfLiteStatus SetAllocator(TfLiteAllocator* allocator);
+
   // WARNING: This is an experimental interface that is subject to change.
   // Clears all custom memory allocations for the tensors in the subgraph.
   // User should call this before resizing input tensors.
@@ -541,6 +546,13 @@ class Subgraph {
   // is disabled, forcing single-operator delegated subsets.
   bool DisableDelegateNodeFusion() const {
     return (options_ && options_->GetDisableDelegateNodeFusion());
+  }
+
+  // WARNING: This is an experimental API and subject to change.
+  // If true, force TFLite to profile delegated nodes even if the delegate
+  // supports per-operator internal profiling.
+  bool ForceDelegateNodeProfiling() const {
+    return (options_ && options_->GetForceDelegateNodeProfiling());
   }
 
   // Retrieves the corresponding TfLiteContext of a subgraph given a subgraph
@@ -663,8 +675,11 @@ class Subgraph {
                                        int subgraph_index,
                                        int& last_inserted_execution_index);
 
+  using CompositeFilter =
+      std::function<bool(const TfLiteNode*, const TfLiteRegistration*)>;
+
   // Inlines the composite nodes that have not been taken by a delegate.
-  TfLiteStatus InlineCompositeNodes();
+  TfLiteStatus InlineCompositeNodes(CompositeFilter filter = nullptr);
 
  private:
 #ifndef DOXYGEN_SKIP
@@ -1162,6 +1177,9 @@ class Subgraph {
   std::vector<TfLiteDelegateParams> partitioning_preview_cache_;
 
   std::unique_ptr<MemoryPlanner> memory_planner_;
+
+  // Allocator used for runtime-owned CPU buffers. Not owned.
+  TfLiteAllocator* allocator_ = nullptr;
 
   // Maps tensor index to custom allocation for all applicable tensors.
   std::map<int, TfLiteCustomAllocation> custom_allocations_;

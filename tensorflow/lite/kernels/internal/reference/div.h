@@ -120,35 +120,34 @@ inline void BroadcastDivSlowQuantized(
     T* output_data) {
   DivCheckArithmeticParams<T>(params);
 
-  ForEachBroadcastedElement(
-      unextended_input1_shape, unextended_input2_shape, unextended_output_shape,
-      [&](int output_index, int input1_index, int input2_index) {
-        int32_t input1_val = params.input1_offset + input1_data[input1_index];
-        int32_t input2_val = params.input2_offset + input2_data[input2_index];
-        TFLITE_DCHECK_NE(input2_val, 0);
-        if (input2_val < 0) {
-          // Invert signs to avoid a negative input2_val as input2_inv needs to
-          // be positive to be used as multiplier of
-          // MultiplyByQuantizedMultiplier.
-          input1_val = -input1_val;
-          input2_val = -input2_val;
-        }
-        int recip_shift;
-        const int32_t input2_inv = GetReciprocal(input2_val, 31, &recip_shift);
-        const int headroom = CountLeadingSignBits(input1_val);
-        const int32_t unscaled_quotient =
-            MultiplyByQuantizedMultiplierGreaterThanOne(input1_val, input2_inv,
-                                                        headroom);
-        const int total_shift = params.output_shift - recip_shift - headroom;
-        const int32_t unclamped_result =
-            params.output_offset +
-            MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                unscaled_quotient, params.output_multiplier, total_shift);
-        const int32_t clamped_output = std::min(
-            params.quantized_activation_max,
-            std::max(params.quantized_activation_min, unclamped_result));
-        output_data[output_index] = static_cast<T>(clamped_output);
-      });
+  auto op = [&params](T a, T b) {
+    int32_t input1_val = params.input1_offset + a;
+    int32_t input2_val = params.input2_offset + b;
+    TFLITE_DCHECK_NE(input2_val, 0);
+    if (input2_val < 0) {
+      input1_val = -input1_val;
+      input2_val = -input2_val;
+    }
+    int recip_shift;
+    const int32_t input2_inv = GetReciprocal(input2_val, 31, &recip_shift);
+    const int headroom = CountLeadingSignBits(input1_val);
+    const int32_t unscaled_quotient =
+        MultiplyByQuantizedMultiplierGreaterThanOne(input1_val, input2_inv,
+                                                    headroom);
+    const int total_shift = params.output_shift - recip_shift - headroom;
+    const int32_t unclamped_result =
+        params.output_offset +
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            unscaled_quotient, params.output_multiplier, total_shift);
+    const int32_t clamped_output =
+        std::min(params.quantized_activation_max,
+                 std::max(params.quantized_activation_min, unclamped_result));
+    return static_cast<T>(clamped_output);
+  };
+
+  BroadcastBinaryOpSimple(unextended_input1_shape, input1_data,
+                          unextended_input2_shape, input2_data,
+                          unextended_output_shape, output_data, op);
 }
 
 template <int N = 5>
@@ -202,13 +201,14 @@ void BroadcastDivSlow(const ArithmeticParams& params,
   T output_activation_max;
   GetActivationParams(params, &output_activation_min, &output_activation_max);
 
-  ForEachBroadcastedElement(
-      unextended_input1_shape, unextended_input2_shape, unextended_output_shape,
-      [&](int output_index, int input1_index, int input2_index) {
-        output_data[output_index] = ActivationFunctionWithMinMax(
-            input1_data[input1_index] / input2_data[input2_index],
-            output_activation_min, output_activation_max);
-      });
+  auto op = [output_activation_min, output_activation_max](T a, T b) {
+    return ActivationFunctionWithMinMax(a / b, output_activation_min,
+                                        output_activation_max);
+  };
+
+  BroadcastBinaryOpSimple(unextended_input1_shape, input1_data,
+                          unextended_input2_shape, input2_data,
+                          unextended_output_shape, output_data, op);
 }
 
 template <typename T>

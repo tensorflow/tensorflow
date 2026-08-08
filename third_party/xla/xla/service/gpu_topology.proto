@@ -1,3 +1,18 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
 syntax = "proto3";
 
 package xla;
@@ -35,4 +50,11 @@ message GpuTopologyProto {
   xla.cpu.TargetMachineOptionsProto host_target_machine_options = 9;
 
   reserved 7;  // Was: core_count_per_chip
+
+  // The number of devices per process.
+  // It can happen that the number of devices per process is smaller than the
+  // number of devices per host. For example, when a host contains multiple
+  // processes.
+  // If not set, it defaults to num_devices_per_host.
+  optional int32 num_devices_per_process = 10;
 }

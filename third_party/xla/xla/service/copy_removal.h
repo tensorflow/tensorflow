@@ -444,8 +444,12 @@ class CopyRemover {
 
   // Delete the given ValueNode associated with a elided kCopy
   // instruction. This should be called after splicing the value lists of the
-  // source and destination buffers together.
-  void RemoveCopyValue(ValueNode* copy_value_node);
+  // source and destination buffers together.  'operand_node' is the node
+  // whose value the elided copy read; it receives the uses of
+  // 'copy_value_node'. If nullptr, the node preceding 'copy_value_node'
+  // in its list is used.
+  void RemoveCopyValue(ValueNode* copy_value_node,
+                       ValueNode* operand_node = nullptr);
 
   // Returns true if the live range of given value 'a' is before the live
   // range of 'b'.

@@ -16,13 +16,15 @@ limitations under the License.
 #ifndef XLA_TPU_TPU_API_DLSYM_SET_FN_H_
 #define XLA_TPU_TPU_API_DLSYM_SET_FN_H_
 
-#define TFTPU_SET_FN(Struct, FnName)                                       \
-  Struct->FnName##Fn =                                                     \
-      reinterpret_cast<decltype(FnName)*>(dlsym(library_handle, #FnName)); \
-  if (!(Struct->FnName##Fn)) {                                             \
-    LOG(FATAL) << #FnName " not available in this library.";               \
-    return absl::UnimplementedError(#FnName                                \
-                                    " not available in this library.");    \
-  }
+#define TFTPU_SET_FN(Struct, FnName)                                         \
+  do {                                                                       \
+    (Struct)->FnName##Fn =                                                   \
+        reinterpret_cast<decltype(FnName)*>(dlsym(library_handle, #FnName)); \
+    if (!((Struct)->FnName##Fn)) {                                           \
+      LOG(FATAL) << #FnName " not available in this library.";               \
+      return absl::UnimplementedError(#FnName                                \
+                                      " not available in this library.");    \
+    }                                                                        \
+  } while (0)
 
 #endif  // XLA_TPU_TPU_API_DLSYM_SET_FN_H_

@@ -26,17 +26,18 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/experimental/tiling_space_utils.h"
 #include "xla/codegen/tiling/symbolic_tile.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
@@ -73,7 +74,7 @@ using ::mlir::MLIRContext;
 // Extracts the TritonGemmConfig from the given fusion's backend config.
 absl::StatusOr<TritonGemmConfig> GetTritonGemmConfig(
     const HloFusionInstruction& fusion) {
-  ASSIGN_OR_RETURN(auto gpu_config, fusion.backend_config<GpuBackendConfig>());
+  ABSL_ASSIGN_OR_RETURN(auto gpu_config, fusion.backend_config<GpuBackendConfig>());
   const FusionBackendConfig& backend_config =
       gpu_config.fusion_backend_config();
   if (!backend_config.has_triton_gemm_config()) {
@@ -112,7 +113,7 @@ class ConvertTritonGemmConfigVisitor : public DfsHloRewriteVisitor {
       VLOG(2) << "Skipping fusion as it does not have a TritonGemmConfig";
       return absl::OkStatus();
     }
-    RETURN_IF_ERROR(config.status());
+    ABSL_RETURN_IF_ERROR(config.status());
     return RewriteFusion(fusion, *config);
   }
 
@@ -134,25 +135,25 @@ class ConvertTritonGemmConfigVisitor : public DfsHloRewriteVisitor {
     }
 
     // Annotate the dot with the contraction tile size.
-    ASSIGN_OR_RETURN(Tile tile_sizes, dot->backend_config<Tile>());
+    ABSL_ASSIGN_OR_RETURN(Tile tile_sizes, dot->backend_config<Tile>());
     tile_sizes.add_sizes(config.block_k);
-    RETURN_IF_ERROR(dot->set_backend_config(tile_sizes));
+    ABSL_RETURN_IF_ERROR(dot->set_backend_config(tile_sizes));
 
     // Annotate the fusion itself with the block-level parameters.
-    ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+    ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                      fusion->backend_config<GpuBackendConfig>());
     FusionBackendConfig& backend_config =
         *gpu_config.mutable_fusion_backend_config();
     backend_config.clear_triton_gemm_config();
     backend_config.set_kind(kTritonNestedGemmFusionKind);
 
-    ASSIGN_OR_RETURN(BlockLevelParameters block_level_parameters,
+    ABSL_ASSIGN_OR_RETURN(BlockLevelParameters block_level_parameters,
                      FindBlockLevelParameters(dot, config, mlir_context_,
                                               device_description_));
 
     *backend_config.mutable_block_level_fusion_config() =
         block_level_parameters.ToBlockLevelFusionConfig();
-    RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
+    ABSL_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
 
     MarkAsChanged();
     if (CodegenDecision can_codegen_computation = IsTritonSupportedComputation(
@@ -180,7 +181,7 @@ absl::StatusOr<bool> ConvertTritonGemmConfig::RunImpl(
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     ConvertTritonGemmConfigVisitor visitor(mlir_context_, device_description_);
-    RETURN_IF_ERROR(computation->Accept(&visitor));
+    ABSL_RETURN_IF_ERROR(computation->Accept(&visitor));
     changed |= visitor.changed();
   }
   return changed;
@@ -228,7 +229,7 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParametersWithTilingSpace(
   absl::c_sort(parallel_tile_sizes);
 
   do {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<experimental::TilingSpace> ts,
         experimental::TilingSpace::Create(*fusion_adaptor, mlir_context));
     llvm::SmallVector<int64_t> tile_sizes(ts->num_dimensions(), 1);
@@ -270,10 +271,11 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParametersWithTilingSpace(
     // Finds the corresponding tiled instruction for its original HLO
     // instruction.
     auto tiled_dot =
-        absl::c_find_if(tiled_computation->tiled_hlo_instructions(),
+        absl::c_find_if(tiled_computation->tiled_root_region().instructions(),
                         [&](const auto& tiled) { return tiled->hlo() == dot; });
     // That should never happen.
-    CHECK(tiled_dot != tiled_computation->tiled_hlo_instructions().end())
+    CHECK(tiled_dot !=
+          tiled_computation->tiled_root_region().instructions().end())
         << "Dot tiled instruction not found in tiled computation";
     absl::StatusOr<llvm::SmallVector<int64_t>> static_tile_sizes =
         tiled_dot->get()->tile().GetStaticTileSizes();
@@ -313,7 +315,7 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
     const HloInstruction* dot, const TritonGemmConfig& config,
     MLIRContext* mlir_context,
     const se::DeviceDescription& device_description) {
-  RETURN_IF_ERROR(IsDot(*dot));
+  ABSL_RETURN_IF_ERROR(IsDot(*dot));
   // This logic only works for a very narrow subset of fusions: dot is the only
   // instruction that have a contracting dimension and all tile sizes except
   // m, n, and k are 1.
@@ -402,13 +404,13 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
     }
 
     Tiling tiling(std::move(tile_mapping));
-    ASSIGN_OR_RETURN(bool parameters_satisfy_constraints,
+    ABSL_ASSIGN_OR_RETURN(bool parameters_satisfy_constraints,
                      analysis.ParametersSatisfyConstraints(tiling));
     if (!parameters_satisfy_constraints) {
       VLOG(4) << "Parameters don't satisfy constraints";
       continue;
     }
-    ASSIGN_OR_RETURN(FlatTiling flat_tiling_parameters,
+    ABSL_ASSIGN_OR_RETURN(FlatTiling flat_tiling_parameters,
                      tiling.Flatten(tiling_specification));
     llvm::SmallVector<int64_t> mapped_dot_tile_sizes =
         EvaluateTileSizes(tiled_dot.symbolic_tile(), flat_tiling_parameters);

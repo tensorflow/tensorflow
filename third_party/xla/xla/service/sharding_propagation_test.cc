@@ -11003,6 +11003,148 @@ ENTRY entry {
   EXPECT_FALSE(FindInstruction(module.get(), "sort.0")->has_sharding());
 }
 
+TEST_F(ShardingPropagationTest, ScanForwardManualOperand) {
+  // A manual operand sharding, as inside a shard_map region, must reach the
+  // scan as per element tuple sub shardings; the raw non tuple form trips the
+  // tupleness CHECK in IsShardingStrictlyBetter.
+  const char* const hlo_string = R"(
+HloModule module
+
+add {
+  p.0 = f32[8]{0} parameter(0)
+  p.1 = f32[8]{0} parameter(1)
+  add = f32[8]{0} add(p.0, p.1)
+  ROOT tuple = (f32[8]{0}, f32[8]{0}) tuple(add, add)
+}
+
+ENTRY entry {
+  param.0 = f32[8,1024]{1,0} parameter(0)
+  copy.p = f32[8,1024]{1,0} copy(param.0), sharding={manual}
+  param.1 = f32[8]{0} parameter(1)
+  copy.i = f32[8]{0} copy(param.1), sharding={manual}
+  scan = (f32[8,1024]{1,0}, f32[8]{0}) scan(copy.p, copy.i), dimensions={1}, to_apply=add, is_associative=true, num_carries=1
+  gte.0 = f32[8,1024]{1,0} get-tuple-element(scan), index=0, sharding={manual}
+  ROOT copy.0 = f32[8,1024]{1,0} copy(gte.0)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::ignore,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_THAT(FindInstruction(module.get(), "scan"),
+              op::Sharding("{{manual}, {manual}}"));
+}
+
+TEST_F(ShardingPropagationTest, ScanForwardTiledNonScanDim) {
+  // The scan output keeps the input tiling; the final carry drops the scan
+  // dimension from it.
+  const char* const hlo_string = R"(
+HloModule module
+
+add {
+  p.0 = f32[8]{0} parameter(0)
+  p.1 = f32[8]{0} parameter(1)
+  add = f32[8]{0} add(p.0, p.1)
+  ROOT tuple = (f32[8]{0}, f32[8]{0}) tuple(add, add)
+}
+
+ENTRY entry {
+  param.0 = f32[8,1024]{1,0} parameter(0), sharding={devices=[4,1]0,1,2,3}
+  param.1 = f32[8]{0} parameter(1)
+  scan = (f32[8,1024]{1,0}, f32[8]{0}) scan(param.0, param.1), dimensions={1}, to_apply=add, is_associative=true, num_carries=1
+  gte.0 = f32[8,1024]{1,0} get-tuple-element(scan), index=0
+  ROOT copy.0 = f32[8,1024]{1,0} copy(gte.0)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::ignore,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_THAT(FindInstruction(module.get(), "scan"),
+              op::Sharding("{{devices=[4,1]0,1,2,3}, {devices=[4]0,1,2,3}}"));
+}
+
+TEST_F(ShardingPropagationTest, ScanForwardTiledScanDim) {
+  // An input sharded along the scan dimension keeps that tiling on the
+  // output; the carry replicates it (the scan dimension no longer exists).
+  const char* const hlo_string = R"(
+HloModule module
+
+add {
+  p.0 = f32[8]{0} parameter(0)
+  p.1 = f32[8]{0} parameter(1)
+  add = f32[8]{0} add(p.0, p.1)
+  ROOT tuple = (f32[8]{0}, f32[8]{0}) tuple(add, add)
+}
+
+ENTRY entry {
+  param.0 = f32[8,1024]{1,0} parameter(0), sharding={devices=[1,4]0,1,2,3}
+  param.1 = f32[8]{0} parameter(1)
+  scan = (f32[8,1024]{1,0}, f32[8]{0}) scan(param.0, param.1), dimensions={1}, to_apply=add, is_associative=true, num_carries=1
+  gte.0 = f32[8,1024]{1,0} get-tuple-element(scan), index=0
+  ROOT copy.0 = f32[8,1024]{1,0} copy(gte.0)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::ignore,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_THAT(FindInstruction(module.get(), "scan"),
+              op::Sharding("{{devices=[1,4]0,1,2,3}, {replicated}}"));
+}
+
+TEST_F(ShardingPropagationTest, ScanForwardFromInit) {
+  // An init operand has its carry element's shape and propagates to it.
+  const char* const hlo_string = R"(
+HloModule module
+
+add {
+  p.0 = f32[512]{0} parameter(0)
+  p.1 = f32[512]{0} parameter(1)
+  add = f32[512]{0} add(p.0, p.1)
+  ROOT tuple = (f32[512]{0}, f32[512]{0}) tuple(add, add)
+}
+
+ENTRY entry {
+  param.0 = f32[512,1024]{1,0} parameter(0)
+  param.1 = f32[512]{0} parameter(1), sharding={devices=[4]0,1,2,3}
+  scan = (f32[512,1024]{1,0}, f32[512]{0}) scan(param.0, param.1), dimensions={1}, to_apply=add, is_associative=true, num_carries=1
+  gte.1 = f32[512]{0} get-tuple-element(scan), index=1
+  ROOT copy.0 = f32[512]{0} copy(gte.1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::ignore,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  const HloInstruction* scan = FindInstruction(module.get(), "scan");
+  ASSERT_NE(scan, nullptr);
+  ASSERT_TRUE(scan->has_sharding());
+  ASSERT_TRUE(scan->sharding().IsTuple());
+  EXPECT_EQ(scan->sharding().tuple_elements()[1],
+            ParseSharding("{devices=[4]0,1,2,3}").value());
+}
+
 TEST_F(ShardingPropagationTest, SortBackwardWithBarrier) {
   const char* const hlo_string = R"(
 HloModule module

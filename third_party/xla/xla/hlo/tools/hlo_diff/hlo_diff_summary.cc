@@ -402,9 +402,9 @@ std::unique_ptr<const DiffSummary> ConstructDiffSummary(
 absl::StatusOr<std::unique_ptr<const DiffSummary>> ConstructDiffSummary(
     const HloModule& left_module, const HloModule& right_module,
     const DiffResult& diff_result) {
-  ASSIGN_OR_RETURN(std::unique_ptr<const HloGumgraph> graph_l,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<const HloGumgraph> graph_l,
                    HloGumgraph::Create(&left_module));
-  ASSIGN_OR_RETURN(std::unique_ptr<const HloGumgraph> graph_r,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<const HloGumgraph> graph_r,
                    HloGumgraph::Create(&right_module));
   return ConstructDiffSummary(*graph_l, *graph_r, diff_result);
 }

@@ -19,11 +19,14 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/transforms/collectives/collective_combiner_annotator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -443,6 +446,46 @@ ENTRY entry {
     }
   }
   EXPECT_EQ(ag_count, 1);
+}
+
+TEST_F(GpuAllGatherCombinerTest, CollectiveGroupKeyConstrainsCombining) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[32] parameter(0)
+  p1 = f32[32] parameter(1)
+  p2 = f32[32] parameter(2)
+  p3 = f32[32] parameter(3)
+  p4 = f32[32] parameter(4)
+  ag0 = f32[128] all-gather(p0), dimensions={0}, replica_groups={},
+    frontend_attributes={collective_group_key="g0"}
+  ag1 = f32[128] all-gather(p1), dimensions={0}, replica_groups={},
+    frontend_attributes={collective_group_key="g0"}
+  ag2 = f32[128] all-gather(p2), dimensions={0}, replica_groups={},
+    frontend_attributes={collective_group_key="g1"}
+  ag3 = f32[128] all-gather(p3), dimensions={0}, replica_groups={}
+  ag4 = f32[128] all-gather(p4), dimensions={0}, replica_groups={},
+    frontend_attributes={collective_group_key="g0"}
+  ROOT tuple = tuple(ag0, ag1, ag2, ag3, ag4)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
+  EXPECT_THAT(
+      RunCombiner(module.get(), /*combine_threshold_bytes=*/1024 * 1024),
+      absl_testing::IsOkAndHolds(true));
+
+  const auto instrs = module->entry_computation()->instructions();
+  EXPECT_EQ(absl::c_count_if(instrs, HloPredicateIsOp<HloOpcode::kAllGather>),
+            3);
+
+  auto combined = absl::c_find_if(instrs, [](const HloInstruction* hlo) {
+    return HloPredicateIsOp<HloOpcode::kAllGather>(hlo) &&
+           hlo->operand_count() == 3;
+  });
+  ASSERT_NE(combined, instrs.end());
+  EXPECT_EQ((*combined)->get_frontend_attribute("collective_group_key"), "g0");
 }
 
 TEST_F(GpuAllGatherCombinerTest, CombinedPipelinedRetainsBackendConfig) {

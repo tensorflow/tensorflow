@@ -15,6 +15,15 @@ limitations under the License.
 
 // See docs in ../ops/candidate_sampling_ops.cc.
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <string>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #define EIGEN_USE_THREADS
 
 #include <cfloat>

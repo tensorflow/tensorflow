@@ -1003,11 +1003,12 @@ REGISTER_OP("XlaSparseGradientsStack")
             "Invalid number of gradients. Expected: %d, got: %d", num_tables,
             c->num_inputs()));
       }
-      int total_sample_count = 0;
+      shape_inference::DimensionHandle total_sample_count = c->MakeDim(0);
       std::vector<int> features(num_tables);
       for (int i = 0; i < num_tables; ++i) {
         features[i] = c->Value(c->Dim(c->input(i), 1));
-        total_sample_count += c->Value(c->Dim(c->input(i), 0));
+        TF_RETURN_IF_ERROR(c->Add(total_sample_count, c->Dim(c->input(i), 0),
+                                  &total_sample_count));
       }
       DataType input_dtype;
       TF_RETURN_IF_ERROR(c->GetAttr("input_dtype", &input_dtype));

@@ -3226,6 +3226,9 @@ def TF_XlaSparseActivationsUnstackOp : TF_Op<"XlaSparseActivationsUnstack", [Pur
   let results = (outs
     Variadic<TF_Tensor>:$unstacked_embedding_activations
   );
+
+  TF_DerivedOperandTypeAttr input_dtype = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_XlaSparseGradientsStackOp : TF_Op<"XlaSparseGradientsStack", [Pure]> {
@@ -3248,5 +3251,38 @@ def TF_XlaSparseGradientsStackOp : TF_Op<"XlaSparseGradientsStack", [Pure]> {
   let results = (outs
     TF_Tensor:$stacked_gradients
   );
+
+  TF_DerivedOperandTypeAttr input_dtype = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+// Reciprocal deliberately does not carry the TF_Involution trait: it is not
+// an exact involution. In floating point 1 / (1 / x) does not round-trip to x
+// because the inner reciprocal is already rounded, and for integer types
+// 1 / x truncates to zero for |x| > 1, so folding a Reciprocal pair would
+// change the computed result.
+def TF_ReciprocalOp : TF_Op<"Reciprocal", [Pure, TF_SameOperandsAndResultTypeResolveRef]> {
+  let summary = "Computes the reciprocal of x element-wise.";
+
+  let description = [{
+I.e., \\(y = 1 / x\\).
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$x
+  );
+
+  let results = (outs
+    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 #endif // TF_OPS
+

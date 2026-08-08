@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/rtti.h"
 
 namespace xla {
 namespace ifrt {
@@ -91,7 +91,7 @@ TSL_LIB_GTL_DEFINE_INT_TYPE(MemoryId, int32_t);
 // `Memory` represents a memory space that one or more devices can be attached
 // to. A platform may have multiple memory spaces with different backing
 // hardware or memory region types.
-class Memory : public llvm::RTTIExtends<Memory, llvm::RTTIRoot> {
+class Memory : public RTTIExtends<Memory, RTTIRoot> {
  public:
   Memory() = default;
 

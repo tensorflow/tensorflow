@@ -27,7 +27,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class TritonGemmTest : public HloPjRtInterpreterReferenceMixin<HloTestBase> {
+class TritonGemmTest : public HloInterpreterReferenceMixin<HloTestBase> {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
@@ -124,7 +124,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-using TritonNormalizationTest = HloPjRtInterpreterReferenceMixin<HloTestBase>;
+using TritonNormalizationTest = HloInterpreterReferenceMixin<HloTestBase>;
 
 TEST_F(TritonNormalizationTest,
        CanEmitDiamondWithInputNumberOfElementsLargerThanInt32Max) {

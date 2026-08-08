@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion_rewriter_v2.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -28,12 +29,13 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion.h"
+#include "xla/hlo/analysis/hlo_dfs_reachability.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -508,17 +510,48 @@ std::optional<DynamicSliceFusionPlan> BuildFusionPlan(
     }
   }
 
-  // Sink constants into the fusion body instead of capturing them as
-  // parameters. Constants have no operands so they go at the front.
-  std::vector<HloInstruction*> constants;
+  // Sink constants that are part of offset expressions into the fusion body
+  // instead of capturing them as parameters. Other constants must remain fusion
+  // parameters because the dynamic-slice fusion emitter expects hero operands
+  // and DUS targets to be backed by fusion parameters.
+  auto is_offset_use = [&](HloInstruction* instr, int64_t operand_index) {
+    if (offset_instruction_set.contains(instr)) {
+      return true;
+    }
+    return (instr->opcode() == HloOpcode::kDynamicSlice &&
+            operand_index >= 1) ||
+           (instr->opcode() == HloOpcode::kDynamicUpdateSlice &&
+            operand_index >= 2);
+  };
+
+  std::vector<HloInstruction*> offset_constants;
+  absl::flat_hash_set<HloInstruction*> offset_constant_set;
+  absl::flat_hash_set<HloInstruction*> non_offset_constant_set;
+
   for (HloInstruction* instr : clone_instructions) {
-    for (HloInstruction* operand : instr->operands()) {
-      if (HloPredicateIsOp<HloOpcode::kConstant>(operand) &&
-          clone_instruction_set.insert(operand).second) {
-        constants.push_back(operand);
+    for (int64_t i = 0; i < instr->operand_count(); ++i) {
+      HloInstruction* operand = instr->mutable_operand(i);
+      if (!HloPredicateIsOp<HloOpcode::kConstant>(operand)) {
+        continue;
+      }
+      if (is_offset_use(instr, i)) {
+        if (offset_constant_set.insert(operand).second) {
+          offset_constants.push_back(operand);
+        }
+      } else {
+        non_offset_constant_set.insert(operand);
       }
     }
   }
+
+  std::vector<HloInstruction*> constants;
+  for (HloInstruction* constant : offset_constants) {
+    if (!non_offset_constant_set.contains(constant) &&
+        clone_instruction_set.insert(constant).second) {
+      constants.push_back(constant);
+    }
+  }
+
   clone_instructions.insert(clone_instructions.begin(), constants.begin(),
                             constants.end());
 
@@ -531,10 +564,6 @@ std::optional<DynamicSliceFusionPlan> BuildFusionPlan(
   absl::flat_hash_set<HloInstruction*> visited_offset_instruction_set;
 
   auto collect_external_operand = [&](auto& self, HloInstruction* operand) {
-    // Constants have already been sunk into the fusion body.
-    if (HloPredicateIsOp<HloOpcode::kConstant>(operand)) {
-      return;
-    }
     // Any non-cloned operand is external to the fusion body and must become a
     // fusion parameter.
     if (!clone_instruction_set.contains(operand)) {
@@ -638,6 +667,122 @@ absl::Status SetDynamicSliceFusionBackendConfig(HloInstruction* fusion) {
   return fusion->set_backend_config(std::move(gpu_config));
 }
 
+// Returns an existing GetTupleElement of `fusion` at `index`, or creates one.
+HloInstruction* GetOrCreateGte(HloInstruction* fusion, int64_t index) {
+  for (HloInstruction* user : fusion->users()) {
+    auto* gte = DynCast<HloGetTupleElementInstruction>(user);
+    if (gte != nullptr && gte->tuple_index() == index) {
+      return gte;
+    }
+  }
+  return fusion->parent()->AddInstruction(
+      HloInstruction::CreateGetTupleElement(fusion, index));
+}
+
+// Returns true if some consumer of the hero's values cannot be rerouted to
+// the fusion output: raw-tuple consumers, and consumers feeding a fusion
+// operand (rerouting those would form a cycle).
+bool HasUnroutableUsers(HloInstruction* hero,
+                        absl::Span<HloInstruction* const> fusion_operands) {
+  std::vector<HloInstruction*> heads;
+  if (hero->shape().IsTuple()) {
+    for (HloInstruction* user : hero->users()) {
+      if (user->opcode() != HloOpcode::kGetTupleElement) {
+        return true;
+      }
+      heads.push_back(user);
+    }
+  } else {
+    heads.push_back(hero);
+  }
+  std::unique_ptr<HloDfsReachability> reachability =
+      HloDfsReachability::Build(hero->parent());
+  for (HloInstruction* head : heads) {
+    for (HloInstruction* user : head->users()) {
+      for (const HloInstruction* operand : fusion_operands) {
+        if (reachability->IsReachable(user, operand)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+// Reroutes hero users outside the DUS chains, leaving the original hero dead.
+absl::Status RerouteExternalUsers(
+    HloInstruction* hero, HloInstruction* fusion,
+    absl::Span<const SlicedResult> sliced_results) {
+  HloComputation* parent = fusion->parent();
+  bool tuple_hero = hero->shape().IsTuple();
+
+  if (tuple_hero) {
+    // Fold duplicate GTEs into the resolved one so each result has one head.
+    absl::flat_hash_map<int64_t, HloInstruction*> canonical;
+    for (const SlicedResult& sliced_result : sliced_results) {
+      if (!sliced_result.noops.empty()) {
+        canonical[sliced_result.result_number] = sliced_result.noops.front();
+      }
+    }
+    std::vector<HloInstruction*> users(hero->users().begin(),
+                                       hero->users().end());
+    for (HloInstruction* user : users) {
+      auto* gte = Cast<HloGetTupleElementInstruction>(user);
+      auto [it, inserted] = canonical.try_emplace(gte->tuple_index(), gte);
+      if (inserted || it->second == gte) {
+        continue;
+      }
+      ABSL_RETURN_IF_ERROR(gte->ReplaceAllUsesWith(it->second));
+      ABSL_RETURN_IF_ERROR(parent->RemoveInstruction(gte));
+    }
+  }
+
+  for (const SlicedResult& sliced_result : sliced_results) {
+    if (sliced_result.update_slice == nullptr) {
+      continue;  // RewriteHero's GTE replacement covers these.
+    }
+    // Noops are single-user, so exactly one user of head continues the chain.
+    // Tuple heroes carry their GTE as noops[0]; heads are never tuple-shaped.
+    HloInstruction* head = hero;
+    absl::Span<HloInstruction* const> tail = sliced_result.noops;
+    if (tuple_hero) {
+      head = tail.front();
+      tail.remove_prefix(1);
+    }
+    HloInstruction* chain_user =
+        tail.empty() ? sliced_result.update_slice : tail.front();
+    std::vector<HloInstruction*> external_users;
+    for (HloInstruction* user : head->users()) {
+      if (user != chain_user) {
+        external_users.push_back(user);
+      }
+    }
+    if (external_users.empty()) {
+      continue;
+    }
+
+    HloInstruction* slot =
+        fusion->shape().IsTuple()
+            ? GetOrCreateGte(fusion, sliced_result.result_number)
+            : fusion;
+    const Shape& update_shape = sliced_result.update_slice->operand(1)->shape();
+    HloInstruction* value =
+        parent->AddInstruction(HloInstruction::CreateDynamicSlice(
+            update_shape, slot,
+            Cast<HloDynamicUpdateSliceInstruction>(sliced_result.update_slice)
+                ->index_operands(),
+            update_shape.dimensions()));
+    if (!ShapeUtil::Equal(head->shape(), update_shape)) {
+      value = parent->AddInstruction(
+          HloInstruction::CreateBitcast(head->shape(), value));
+    }
+    VLOG(2) << "Rerouted " << external_users.size() << " external user(s) of "
+            << head->name() << " to " << value->name();
+    ABSL_RETURN_IF_ERROR(head->ReplaceUsesWith(external_users, value));
+  }
+  return absl::OkStatus();
+}
+
 //===----------------------------------------------------------------------===//
 // Rewrite sync hero
 //===----------------------------------------------------------------------===//
@@ -651,7 +796,13 @@ absl::StatusOr<bool> RewriteHero(
     return false;
   }
 
-  ASSIGN_OR_RETURN(HloComputation * fusion_body,
+  // Skip the rewrite entirely rather than leave a duplicated hero.
+  if (HasUnroutableUsers(hero, plan->external_operands)) {
+    VLOG(2) << "Skipping " << hero->name() << ": unroutable users";
+    return false;
+  }
+
+  ABSL_ASSIGN_OR_RETURN(HloComputation * fusion_body,
                    CreateFusionBody(module, *plan, sliced_results, hero));
 
   HloComputation* parent = hero->parent();
@@ -660,35 +811,37 @@ absl::StatusOr<bool> RewriteHero(
                                    HloInstruction::FusionKind::kCustom,
                                    plan->external_operands, fusion_body));
   module->SetAndUniquifyInstrName(fusion, "dynamic_slice_fusion");
-  RETURN_IF_ERROR(SetDynamicSliceFusionBackendConfig(fusion));
+  ABSL_RETURN_IF_ERROR(SetDynamicSliceFusionBackendConfig(fusion));
+
+  // Must run before the DUS chains are replaced below (it reads DUS operands).
+  ABSL_RETURN_IF_ERROR(RerouteExternalUsers(hero, fusion, sliced_results));
 
   if (sliced_results.size() > 1) {
     bool any_result_replaced = false;
     for (int64_t i = 0; i < sliced_results.size(); ++i) {
-      auto* gte = parent->AddInstruction(
-          HloInstruction::CreateGetTupleElement(fusion, i));
+      HloInstruction* gte = GetOrCreateGte(fusion, i);
       if (sliced_results[i].update_slice != nullptr) {
-        RETURN_IF_ERROR(
+        ABSL_RETURN_IF_ERROR(
             parent->ReplaceInstruction(sliced_results[i].update_slice, gte));
         any_result_replaced = true;
       } else if (!sliced_results[i].noops.empty()) {
         HloInstruction* original_leaf = sliced_results[i].noops.back();
-        RETURN_IF_ERROR(parent->ReplaceInstruction(original_leaf, gte));
+        ABSL_RETURN_IF_ERROR(parent->ReplaceInstruction(original_leaf, gte));
         any_result_replaced = true;
       }
     }
     if (!any_result_replaced) {
-      RETURN_IF_ERROR(parent->ReplaceInstruction(hero, fusion));
+      ABSL_RETURN_IF_ERROR(parent->ReplaceInstruction(hero, fusion));
     }
   } else if (sliced_results.size() == 1) {
     if (sliced_results[0].update_slice != nullptr) {
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           parent->ReplaceInstruction(sliced_results[0].update_slice, fusion));
     } else {
-      RETURN_IF_ERROR(parent->ReplaceInstruction(hero, fusion));
+      ABSL_RETURN_IF_ERROR(parent->ReplaceInstruction(hero, fusion));
     }
   } else {
-    RETURN_IF_ERROR(parent->ReplaceInstruction(hero, fusion));
+    ABSL_RETURN_IF_ERROR(parent->ReplaceInstruction(hero, fusion));
   }
 
   return true;
@@ -729,7 +882,7 @@ absl::StatusOr<bool> DynamicSliceFusionRewriterV2::RunImpl(
                                                    options_.capture_slice);
       auto sliced_results =
           ResolveSlicedResults(hero, options_.capture_update_slice);
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           bool hero_changed,
           RewriteHero(module, hero, sliced_params, sliced_results));
       changed |= hero_changed;

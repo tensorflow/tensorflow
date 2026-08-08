@@ -63,7 +63,7 @@ class MapInlinerVisitor : public DfsHloVisitorWithDefault {
 absl::StatusOr<bool> MapInlinerVisitor::Run(HloComputation* computation) {
   changed_ = false;
   computation_ = computation;
-  RETURN_IF_ERROR(computation->root_instruction()->Accept(this));
+  ABSL_RETURN_IF_ERROR(computation->root_instruction()->Accept(this));
   return changed_;
 }
 
@@ -82,9 +82,9 @@ absl::Status MapInlinerVisitor::HandleMap(HloInstruction* map) {
     if (root.opcode() == HloOpcode::kParameter) {
       // If the root is a parameter, then use the corresponding operand as the
       // result of the computation.
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           map->ReplaceAllUsesWith(map->operands()[root.parameter_number()]));
-      RETURN_IF_ERROR(computation_->RemoveInstruction(map));
+      ABSL_RETURN_IF_ERROR(computation_->RemoveInstruction(map));
     } else if (root.opcode() == HloOpcode::kConstant) {
       // If the input is a constant then the shape of the constant could be
       // different than the map shape. Hence, a broadcast is needed, else the
@@ -95,7 +95,7 @@ absl::Status MapInlinerVisitor::HandleMap(HloInstruction* map) {
       HloInstruction* constant = computation_->AddInstruction(root.Clone());
       HloInstruction* placed_instruction = computation_->AddInstruction(
           HloInstruction::CreateBroadcast(map->shape(), constant, {}));
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           computation_->ReplaceInstruction(map, placed_instruction));
     } else {
       std::vector<HloInstruction*> params;
@@ -105,7 +105,7 @@ absl::Status MapInlinerVisitor::HandleMap(HloInstruction* map) {
       }
       HloInstruction* placed_instruction = computation_->AddInstruction(
           root.CloneWithNewOperands(map->shape(), params));
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           computation_->ReplaceInstruction(map, placed_instruction));
     }
     changed_ = true;
@@ -121,7 +121,7 @@ absl::StatusOr<bool> MapInliner::RunImpl(
   MapInlinerVisitor visitor(/*computation=*/nullptr);
   bool changed = false;
   for (HloComputation* computation : module->computations(execution_threads)) {
-    ASSIGN_OR_RETURN(bool computation_changed, visitor.Run(computation));
+    ABSL_ASSIGN_OR_RETURN(bool computation_changed, visitor.Run(computation));
     changed |= computation_changed;
   }
   return changed;

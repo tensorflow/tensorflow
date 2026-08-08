@@ -96,7 +96,7 @@ GrpcServer::CreateFromIfrtClientFactory(
           std::shared_ptr<HostBufferStore> host_buffer_store,
           AttributeMap initialization_data) mutable
           -> absl::StatusOr<std::unique_ptr<BackendInterface>> {
-        ASSIGN_OR_RETURN(auto ifrt_client,
+        ABSL_ASSIGN_OR_RETURN(auto ifrt_client,
                          ifrt_client_factory(std::move(initialization_data)));
         return IfrtBackend::Create(version, session_id, std::move(ifrt_client),
                                    std::move(host_buffer_store));

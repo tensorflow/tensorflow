@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_LOWERING_UTIL_H_
 #define XLA_BACKENDS_GPU_CODEGEN_TRITON_LOWERING_UTIL_H_
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <utility>
@@ -31,10 +32,37 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
+#include "xla/permutation_util.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
 
 namespace xla::gpu::triton {
+
+// Checks whether 'layout' is the default HLO layout in major-to-minor order,
+// i.e. iff it's [N-1, N-2, ... 1, 0].
+bool IsMajorToMinorLayout(llvm::ArrayRef<int64_t> layout);
+
+// Returns 'values' in major-to-minor order given minor-to-major 'layout'.
+template <typename T>
+llvm::SmallVector<T> GetMajorToMinorOrder(llvm::ArrayRef<T> values,
+                                          llvm::ArrayRef<int64_t> layout) {
+  if (IsMajorToMinorLayout(layout)) {
+    return llvm::to_vector(values);
+  }
+  auto reversed_layout = llvm::to_vector(layout);
+  std::reverse(reversed_layout.begin(), reversed_layout.end());
+  std::vector<T> vector = ::xla::Permute(values, reversed_layout);
+  return llvm::SmallVector<T>(vector.begin(), vector.end());
+}
+
+// Returns 'values' in major-to-minor order given minor-to-major 'layout'.
+llvm::SmallVector<mlir::Value> GetMajorToMinorOrder(
+    mlir::ValueRange values, llvm::ArrayRef<int64_t> layout);
+
+// Given the layout of a tensor, return the inverse permutation required to
+// transpose an already major-to-minor tensor to the original tensor.
+llvm::SmallVector<int32_t> GetInverseLayoutPermutation(
+    llvm::ArrayRef<int64_t> layout);
 
 // Extracts thread dimensions from Triton module attributes.
 absl::StatusOr<stream_executor::ThreadDim> ExtractThreadDims(

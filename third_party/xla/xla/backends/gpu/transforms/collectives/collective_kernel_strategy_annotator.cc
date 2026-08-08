@@ -17,13 +17,17 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/runtime/all_gather.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
+#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -31,8 +35,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/stream_executor/device_description.h"
+#include "xla/service/gpu_topology.h"
+#include "xla/side_effect_util.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -59,37 +66,48 @@ CollectiveBackendConfig::CollectiveKernelStrategy ToProtoStrategy(
   }
 }
 
+bool HasCollectivesGroupAttribute(const HloInstruction* instruction) {
+  return instruction->frontend_attributes().map().contains(
+      kCollectiveGroupMarkerAttr);
+}
+
 // Tries to determine the Triton kernel strategy for `instr` (which must be an
 // AllReduce or AllReduceStart) and writes the result into backend_config.
 // Returns true if the annotation was written.
-absl::StatusOr<bool> TryAnnotateAllReduce(
-    HloInstruction* instr, const se::DeviceDescription& device_info,
-    bool is_multimem_enabled) {
+absl::StatusOr<bool> TryAnnotateAllReduce(HloInstruction* instr,
+                                          const GpuTopology& gpu_topology,
+                                          bool is_multimem_enabled) {
   // Both kAllReduce and kAllReduceStart are HloAllReduceInstruction.
   const auto* all_reduce = DynCast<HloAllReduceInstruction>(instr);
   if (all_reduce == nullptr) {
     return false;
   }
 
+  const DeviceAssignment* device_assignment = nullptr;
+  if (instr->GetModule()->config().has_static_device_assignment()) {
+    device_assignment =
+        &instr->GetModule()->config().static_device_assignment();
+  }
+
   absl::StatusOr<AllReduceInfo> maybe_info = BuildAllReduceInfo(
-      /*is_collective_kernel_enabled=*/true, is_multimem_enabled, device_info,
-      all_reduce);
+      /*is_collective_kernel_enabled=*/true, is_multimem_enabled, gpu_topology,
+      all_reduce, device_assignment);
   if (absl::IsUnimplemented(maybe_info.status())) {
     VLOG(3) << "[CollectiveKernelStrategyAnnotator] Collective kernel not "
                "supported for "
             << instr->name() << ": " << maybe_info.status();
     return false;
   }
-  ASSIGN_OR_RETURN(AllReduceInfo info, std::move(maybe_info));
+  ABSL_ASSIGN_OR_RETURN(AllReduceInfo info, std::move(maybe_info));
 
   CollectiveBackendConfig::CollectiveKernelStrategy proto_strategy =
       ToProtoStrategy(info.all_reduce_strategy);
 
-  ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                    instr->backend_config<GpuBackendConfig>());
   gpu_config.mutable_collective_backend_config()->set_kernel_strategy(
       proto_strategy);
-  RETURN_IF_ERROR(instr->set_backend_config(gpu_config));
+  ABSL_RETURN_IF_ERROR(instr->set_backend_config(gpu_config));
 
   VLOG(3) << "[CollectiveKernelStrategyAnnotator] Annotated " << instr->name()
           << " with kernel strategy "
@@ -98,27 +116,85 @@ absl::StatusOr<bool> TryAnnotateAllReduce(
   return true;
 }
 
+// Tries to determine if the AllGather instruction should use the Triton
+// collective kernel and annotates it accordingly.
+// AllGather is always one-shot, so when eligible it is annotated with
+// KERNEL_STRATEGY_TRITON_ONE_SHOT.  Returns true if the annotation was written.
+absl::StatusOr<bool> TryAnnotateAllGather(HloInstruction* instr,
+                                          const GpuTopology& gpu_topology) {
+  const auto* all_gather = DynCast<HloAllGatherInstruction>(instr);
+  if (all_gather == nullptr) {
+    return false;
+  }
+
+  const DeviceAssignment* device_assignment = nullptr;
+  if (instr->GetModule()->config().has_static_device_assignment()) {
+    device_assignment =
+        &instr->GetModule()->config().static_device_assignment();
+  }
+
+  absl::StatusOr<AllGatherInfo> maybe_info =
+      BuildAllGatherInfo(/*is_collective_kernel_enabled=*/true, gpu_topology,
+                         all_gather, device_assignment);
+  if (!maybe_info.ok()) {
+    VLOG(3) << "[CollectiveKernelStrategyAnnotator] Collective kernel not "
+               "supported for AllGather "
+            << instr->name() << ": " << maybe_info.status();
+    return false;
+  }
+
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                   instr->backend_config<GpuBackendConfig>());
+  gpu_config.mutable_collective_backend_config()->set_kernel_strategy(
+      CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT);
+  ABSL_RETURN_IF_ERROR(instr->set_backend_config(gpu_config));
+
+  VLOG(3) << "[CollectiveKernelStrategyAnnotator] Annotated AllGather "
+          << instr->name() << " with KERNEL_STRATEGY_TRITON_ONE_SHOT";
+  return true;
+}
+
 }  // namespace
 
 CollectiveKernelStrategyAnnotator::CollectiveKernelStrategyAnnotator(
-    const se::DeviceDescription& device_info, bool is_multimem_enabled)
-    : device_info_(device_info), is_multimem_enabled_(is_multimem_enabled) {}
+    const GpuTopology& gpu_topology, bool is_multimem_enabled)
+    : gpu_topology_(gpu_topology), is_multimem_enabled_(is_multimem_enabled) {}
 
 absl::StatusOr<bool> CollectiveKernelStrategyAnnotator::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  ABSL_ASSIGN_OR_RETURN(
+      absl::flat_hash_set<HloOpcode> instructions_to_annotate,
+      OpcodesForTritonCollectives(module->config().debug_options()));
+  if (instructions_to_annotate.empty()) {
+    return false;  // No instructions to annotate.
+  }
+  TF_RET_CHECK(gpu_topology_.has_gpu_target_config())
+      << "GpuTopology must have a target config for the strategy annotator.";
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
+    // A computation called by an operation with `_collectives_group` lowers to
+    // a CollectiveGroupThunk. We do not yet support grouping of collective
+    // kernels and always fall back on default collective implementation.
+    if (absl::c_any_of(computation->caller_instructions(),
+                       HasCollectivesGroupAttribute)) {
+      continue;
+    }
     for (HloInstruction* instr : computation->instructions()) {
-      if (instr->opcode() != HloOpcode::kAllReduce &&
-          instr->opcode() != HloOpcode::kAllReduceStart) {
+      if (!instructions_to_annotate.contains(instr->opcode())) {
         continue;
       }
-      ASSIGN_OR_RETURN(
-          bool annotated,
-          TryAnnotateAllReduce(instr, device_info_, is_multimem_enabled_));
-      changed |= annotated;
+      if (instr->opcode() == HloOpcode::kAllReduce) {
+        ABSL_ASSIGN_OR_RETURN(
+            bool annotated,
+            TryAnnotateAllReduce(instr, gpu_topology_, is_multimem_enabled_));
+        changed |= annotated;
+      } else if (instr->opcode() == HloOpcode::kAllGather) {
+        ABSL_ASSIGN_OR_RETURN(bool annotated,
+                         TryAnnotateAllGather(instr, gpu_topology_));
+        changed |= annotated;
+      }
     }
   }
   return changed;

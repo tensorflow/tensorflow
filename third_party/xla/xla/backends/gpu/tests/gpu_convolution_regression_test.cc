@@ -23,7 +23,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class GpuConvolutionRegressionTest : public HloPjRtTestBase {
+class GpuConvolutionRegressionTest : public HloTestBase {
  public:
   // CreateExecutable with run_hlo_passes=true goes through convolution
   // autotuning, which performs correctness cross-checking.

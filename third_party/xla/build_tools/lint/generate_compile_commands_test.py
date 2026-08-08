@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
+
 from absl.testing import absltest
 
 from build_tools.lint import generate_compile_commands
@@ -20,6 +21,33 @@ CompileCommand = generate_compile_commands.CompileCommand
 
 
 class CompileCommandsTest(absltest.TestCase):
+
+  def test_extract_compile_commands_prefers_non_exec_configuration(self):
+    exec_arguments = [
+        "/usr/bin/gcc",
+        "-c",
+        "xla/compiler.cc",
+        "-o",
+        "bazel-out/k8-opt-exec-ST-123/bin/xla/compiler.o",
+    ]
+    target_arguments = [
+        "/usr/bin/gcc",
+        "-c",
+        "xla/compiler.cc",
+        "-o",
+        "bazel-out/k8-opt/bin/xla/compiler.o",
+    ]
+
+    aquery_output = {
+        "actions": [
+            {"arguments": exec_arguments},
+            {"arguments": target_arguments},
+        ],
+    }
+    commands = generate_compile_commands.extract_compile_commands(aquery_output)
+
+    self.assertLen(commands, 1)
+    self.assertEqual(commands[0].arguments, target_arguments)
 
   def test_command_from_args_list(self):
     arguments = [

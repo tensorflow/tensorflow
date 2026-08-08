@@ -42,6 +42,27 @@ class SearchSorteddOpTest(xla_test.XLATestCase):
           tf_out = session.run(tf_ans)
           self.assertAllEqual(np_ans, tf_out)
 
+  def testNanValue(self):
+    for dtype in self.float_types:
+      sorted_sequence = np.array([[1, 3, 5, 7, 9]], dtype)
+      values = np.array([[np.nan]], dtype)
+
+      self._test2DExample(
+          dtype,
+          'left',
+          sorted_sequence,
+          values,
+          np.array([[0]], dtype=np.int32),
+      )
+
+      self._test2DExample(
+          dtype,
+          'right',
+          sorted_sequence,
+          values,
+          np.array([[5]], dtype=np.int32),
+      )
+
   def _test2DExample(self, dtype, side, sorted_sequence, values, correct_ans):
 
     with self.session() as session:

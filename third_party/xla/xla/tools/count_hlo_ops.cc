@@ -67,7 +67,7 @@ namespace {
 
 absl::Status CountOps(const std::string& input, const std::string& format,
                       absl::flat_hash_map<HloOpcode, int>* counts) {
-  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                    LoadModuleFromFile(input, format, {}));
   for (const HloComputation* computation : module->computations()) {
     for (const HloInstruction* hlo : computation->instructions()) {

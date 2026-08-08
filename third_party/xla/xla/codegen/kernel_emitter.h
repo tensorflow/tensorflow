@@ -65,7 +65,7 @@ class KernelEmitter : public KernelEmitterBase {
  private:
   absl::StatusOr<std::unique_ptr<KernelDefinitionBase>>
   EmitKernelDefinitionBase() final {
-    ASSIGN_OR_RETURN(auto kernel_definition, EmitKernelDefinition());
+    ABSL_ASSIGN_OR_RETURN(auto kernel_definition, EmitKernelDefinition());
     return std::make_unique<KernelDefinition>(std::move(kernel_definition));
   }
 };

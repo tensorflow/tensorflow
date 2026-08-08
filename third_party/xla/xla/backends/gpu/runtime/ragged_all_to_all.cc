@@ -22,12 +22,14 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/primitive_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
+#include "xla/stream_executor/gpu/ragged_all_to_all_device_kernel.h"
 #include "xla/stream_executor/gpu/ragged_all_to_all_kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
@@ -51,7 +53,7 @@ absl::Status LaunchTypedKernel(se::Stream* stream,
                                int64_t num_row_elements) {
   using KernelTrait = se::gpu::RaggedAllToAllKernel<kVectorSize>;
 
-  ASSIGN_OR_RETURN(auto kernel, se::gpu::GpuKernelRegistry::GetGlobalRegistry()
+  ABSL_ASSIGN_OR_RETURN(auto kernel, se::gpu::GpuKernelRegistry::GetGlobalRegistry()
                                     .LoadKernel<KernelTrait>(stream->parent()));
 
   return kernel.Launch(thread_dims, block_dims, stream, input_buffer,
@@ -72,7 +74,7 @@ absl::Status LaunchTypedKernelWithSymmetricMemory(
   using KernelTrait =
       se::gpu::RaggedAllToAllWithSymmetricMemoryKernel<kVectorSize>;
 
-  ASSIGN_OR_RETURN(auto kernel, se::gpu::GpuKernelRegistry::GetGlobalRegistry()
+  ABSL_ASSIGN_OR_RETURN(auto kernel, se::gpu::GpuKernelRegistry::GetGlobalRegistry()
                                     .LoadKernel<KernelTrait>(stream->parent()));
 
   return kernel.Launch(thread_dims, block_dims, stream, input_buffer,
@@ -92,7 +94,7 @@ absl::Status RunRaggedAllToAllKernelImpl(Fn&& launch_kernel, se::Stream* stream,
   static constexpr size_t kThreads = 128;
 
   int64_t num_vectorized_row_elements = num_row_elements;
-  int64_t vector_size_bytes = xla::primitive_util::BitWidth(element_type) / 8;
+  int64_t vector_size_bytes = xla::primitive_util::ByteWidth(element_type);
 
   while (num_vectorized_row_elements % 2 == 0 && vector_size_bytes < 8) {
     num_vectorized_row_elements /= 2;
@@ -210,4 +212,82 @@ absl::Status RunRaggedAllToAllWithSymmetricMemoryKernel(
                                      num_outputs, num_updates_per_output,
                                      num_input_rows, num_row_elements);
 }
+
+namespace {
+
+template <int64_t kVectorSize>
+absl::Status LaunchDeviceKernel(
+    se::Stream* stream, se::StreamExecutor* executor,
+    const se::ThreadDim& thread_dims, const se::BlockDim& block_dims,
+    xla::gpu::GpuDeviceCommunicator* dev_comm, xla::SymmetricMemory* send_win,
+    xla::SymmetricMemory* recv_win, se::DeviceAddressBase input_offsets_buffer,
+    se::DeviceAddressBase send_sizes_buffer,
+    se::DeviceAddressBase output_offsets_buffer,
+    int64_t num_updates_per_replica, int64_t num_row_elements,
+    int64_t input_buffer_offset_bytes, int64_t output_buffer_offset_bytes) {
+  using KernelTrait = se::gpu::RaggedAllToAllDeviceKernel<kVectorSize>;
+
+  ABSL_ASSIGN_OR_RETURN(auto kernel, se::gpu::GpuKernelRegistry::GetGlobalRegistry()
+                                    .LoadKernel<KernelTrait>(executor));
+
+  return kernel.Launch(thread_dims, block_dims, stream, dev_comm, send_win,
+                       recv_win, input_offsets_buffer, send_sizes_buffer,
+                       output_offsets_buffer, num_updates_per_replica,
+                       num_row_elements, input_buffer_offset_bytes,
+                       output_buffer_offset_bytes);
+}
+
+}  // namespace
+
+absl::Status RunDeviceRaggedAllToAllKernel(
+    se::Stream* stream, PrimitiveType element_type,
+    xla::gpu::GpuDeviceCommunicator* dev_comm, xla::SymmetricMemory* send_win,
+    xla::SymmetricMemory* recv_win, se::DeviceAddressBase input_offsets_buffer,
+    se::DeviceAddressBase send_sizes_buffer,
+    se::DeviceAddressBase output_offsets_buffer, int64_t num_ranks,
+    int64_t num_updates_per_replica, int64_t num_row_elements,
+    int64_t cta_count, int64_t input_buffer_offset_bytes,
+    int64_t output_buffer_offset_bytes) {
+  se::StreamExecutor* executor = stream->parent();
+  static constexpr size_t kThreadsPerCta = 512;
+
+  int64_t num_vectorized_row_elements = num_row_elements;
+  int64_t vector_size_bytes = xla::primitive_util::ByteWidth(element_type);
+
+  while (num_vectorized_row_elements % 2 == 0 && vector_size_bytes < 16) {
+    num_vectorized_row_elements /= 2;
+    vector_size_bytes *= 2;
+  }
+
+  se::ThreadDim thread_dims(kThreadsPerCta, 1, 1);
+  se::BlockDim block_dims(cta_count, 1, 1);
+
+  auto launch = [&](auto type) -> absl::Status {
+    return LaunchDeviceKernel<decltype(type)::value>(
+        stream, executor, thread_dims, block_dims, dev_comm, send_win, recv_win,
+        input_offsets_buffer, send_sizes_buffer, output_offsets_buffer,
+        num_updates_per_replica, num_vectorized_row_elements,
+        input_buffer_offset_bytes, output_buffer_offset_bytes);
+  };
+
+  switch (vector_size_bytes) {
+    case 1:
+      return launch(std::integral_constant<int64_t, 1>{});
+    case 2:
+      return launch(std::integral_constant<int64_t, 2>{});
+    case 4:
+      return launch(std::integral_constant<int64_t, 4>{});
+    case 8:
+      return launch(std::integral_constant<int64_t, 8>{});
+    case 16:
+      return launch(std::integral_constant<int64_t, 16>{});
+    default:
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Unsupported element type: ",
+          primitive_util::LowercasePrimitiveTypeName(element_type),
+          " (bit width ", xla::primitive_util::BitWidth(element_type),
+          ") for device RaggedAllToAll kernel."));
+  }
+}
+
 }  // namespace xla::gpu

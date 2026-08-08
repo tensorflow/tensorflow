@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_handle.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
 
 namespace xla {

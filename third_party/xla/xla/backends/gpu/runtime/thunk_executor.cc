@@ -25,12 +25,12 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/event_pool.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -63,14 +63,14 @@ ThunkExecutor::ThunkExecutor(ThunkSequence thunks)
 
 absl::Status ThunkExecutor::Prepare(const Thunk::PrepareParams& params) {
   for (const std::unique_ptr<Thunk>& thunk : thunks_) {
-    RETURN_IF_ERROR(thunk->Prepare(params));
+    ABSL_RETURN_IF_ERROR(thunk->Prepare(params));
   }
   return absl::OkStatus();
 }
 
 absl::Status ThunkExecutor::Initialize(const Thunk::InitializeParams& params) {
   for (const std::unique_ptr<Thunk>& thunk : thunks_) {
-    RETURN_IF_ERROR(thunk->Initialize(params));
+    ABSL_RETURN_IF_ERROR(thunk->Initialize(params));
   }
   return absl::OkStatus();
 }
@@ -111,13 +111,13 @@ absl::Status ThunkExecutor::ExecuteOnStream(
         thunks_.size(), thunk->profile_annotation(), thunk->kind(), loop_nest);
 
     // Execute thunk and launch "work" on the GPU stream.
-    RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
+    ABSL_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
 
     // Maybe track thunk execution to report the progress.
     if (tracker) {
       // Borrow an event from the pool and record it on the execution stream.
-      ASSIGN_OR_RETURN(auto event, tracker->event_pool->GetOrCreateEvent());
-      RETURN_IF_ERROR(params.stream->RecordEvent(event->get()));
+      ABSL_ASSIGN_OR_RETURN(auto event, tracker->event_pool->GetOrCreateEvent());
+      ABSL_RETURN_IF_ERROR(params.stream->RecordEvent(event->get()));
 
       absl::MutexLock lock(tracker->mu);
       tracker->events.emplace_back(thunk.get(), std::move(event),
@@ -245,7 +245,7 @@ absl::StatusOr<ThunkExecutor::ScopedProgressTracker> InstallProgressTracker(
   tsl::profiler::TraceMe trace("InstallProgressTracker");
 
   ThunkExecutor::ScopedProgressTracker::ThunkIndexing indexing;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       executor.thunks().WalkNested([&](Thunk* thunk) -> absl::Status {
         size_t index = indexing.size();
         indexing[thunk] = index;

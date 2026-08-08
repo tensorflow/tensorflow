@@ -52,11 +52,11 @@ absl::Status RewriteLayoutWithShardedShape(
     // different layouts which will prevent input output aliasing and
     // increase memory usage. Investigate such cases.
     xla::Shape per_device_xla_shape = sharding->TileShape(*xla_shape);
-    ASSIGN_OR_RETURN(auto layout_preference,
+    ABSL_ASSIGN_OR_RETURN(auto layout_preference,
                      layout_preference_fn
                          ? layout_preference_fn(per_device_xla_shape)
                          : XlaLayoutPreference::kNoPreference);
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         per_device_xla_shape,
         shape_representation_fn
             ? shape_representation_fn(per_device_xla_shape, use_fast_memory,
@@ -79,7 +79,7 @@ absl::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
     for (int i = 0; i < original_shape.tuple_shapes().size(); ++i) {
       auto subsharding = sharding ? sharding->tuple_shardings(i) : sharding;
       xla::XlaScopedShardingAssignment scoped_sharding(builder, subsharding);
-      ASSIGN_OR_RETURN(auto element,
+      ABSL_ASSIGN_OR_RETURN(auto element,
                        ReshapeWithCorrectRepresentationAndSharding(
                            builder, xla::GetTupleElement(original, i),
                            original_shape.tuple_shapes(i), layout_preference_fn,
@@ -90,18 +90,18 @@ absl::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
     return xla::Tuple(builder, elements);
   }
   if (!original_shape.IsArray()) return original;
-  ASSIGN_OR_RETURN(auto layout_preference,
+  ABSL_ASSIGN_OR_RETURN(auto layout_preference,
                    layout_preference_fn ? layout_preference_fn(original_shape)
                                         : XlaLayoutPreference::kNoPreference);
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto to_shape,
       shape_representation_fn
           ? shape_representation_fn(original_shape, fast_mem, layout_preference)
           : original_shape);
   if (sharding) {
-    ASSIGN_OR_RETURN(auto hlo_sharding, xla::HloSharding::FromProto(*sharding));
+    ABSL_ASSIGN_OR_RETURN(auto hlo_sharding, xla::HloSharding::FromProto(*sharding));
 
-    RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
+    ABSL_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
         hlo_sharding, fast_mem, layout_preference_fn, shape_representation_fn,
         &to_shape));
   }

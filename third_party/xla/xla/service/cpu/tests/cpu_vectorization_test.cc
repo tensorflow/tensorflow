@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
 #include "llvm-c/Target.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/hlo/ir/hlo_computation.h"

@@ -59,14 +59,15 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
          bool preserve_all_tensors, bool disable_delegate_clustering,
          int num_threads, bool default_delegate_latest_features,
          bool compress_quantization_zero_points,
-         bool disable_delegate_node_fusion = false) {
+         bool disable_delegate_node_fusion = false,
+         bool force_delegate_node_profiling = false) {
         std::string error;
         auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromFile(
             model_path.c_str(), op_resolver_id, registerers_by_name,
             registerers_by_func, &error, preserve_all_tensors,
             disable_delegate_clustering, num_threads,
             default_delegate_latest_features, compress_quantization_zero_points,
-            disable_delegate_node_fusion);
+            disable_delegate_node_fusion, force_delegate_node_profiling);
         if (!wrapper) {
           throw std::invalid_argument(error);
         }
@@ -93,14 +94,15 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
          bool preserve_all_tensors, bool disable_delegate_clustering,
          int num_threads, bool default_delegate_latest_features,
          bool compress_quantization_zero_points,
-         bool disable_delegate_node_fusion = false) {
+         bool disable_delegate_node_fusion = false,
+         bool force_delegate_node_profiling = false) {
         std::string error;
         auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromBuffer(
             data.ptr(), op_resolver_id, registerers_by_name,
             registerers_by_func, &error, preserve_all_tensors,
             disable_delegate_clustering, num_threads,
             default_delegate_latest_features, compress_quantization_zero_points,
-            disable_delegate_node_fusion);
+            disable_delegate_node_fusion, force_delegate_node_profiling);
         if (!wrapper) {
           throw std::invalid_argument(error);
         }

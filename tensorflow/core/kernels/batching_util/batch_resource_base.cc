@@ -191,6 +191,54 @@ void RecordInputStatsV2(int32_t batch_size, const std::string& model_name,
       ->IncrementBy(1);
 }
 
+// Records the per-criticality state of the priority-aware batch scheduler's
+// queue as tfstreamz metrics. This gives per-criticality visibility into queue
+// utilization (à la wiz/main models) for the TFRT priority aware scheduler.
+//
+// Exports, labeled by (model_name, op_name, criticality):
+//   - priority_queue_num_tasks: current number of enqueued tasks (Gauge).
+//   - priority_queue_size:      current summed task size enqueued (Gauge).
+// And, labeled by (model_name, op_name):
+//   - priority_queue_max_depth: configured capacity, for utilization%.
+void RecordPriorityQueueState(const PriorityQueueState& state,
+                              absl::string_view model_name,
+                              absl::string_view op_name) {
+  static auto* num_tasks_gauge = monitoring::Gauge<int64_t, 3>::New(
+      "/tensorflow/serving/batching/priority_queue_num_tasks",
+      "Current number of tasks enqueued in the priority aware batch scheduler "
+      "queue, by criticality.",
+      "model_name", "op_name", "criticality");
+  static auto* size_gauge = monitoring::Gauge<int64_t, 3>::New(
+      "/tensorflow/serving/batching/priority_queue_size",
+      "Current summed size (sum of task sizes) of tasks enqueued in the "
+      "priority aware batch scheduler queue, by criticality.",
+      "model_name", "op_name", "criticality");
+  static auto* max_depth_gauge = monitoring::Gauge<int64_t, 2>::New(
+      "/tensorflow/serving/batching/priority_queue_max_depth",
+      "The maximum depth (capacity, in summed task size) of the priority aware "
+      "batch scheduler queue.",
+      "model_name", "op_name");
+
+  // Iterate over every criticality band rather than over the maps, so that a
+  // band that is absent (i.e. has no enqueued tasks) is published as zero
+  // instead of leaving its gauge cell at the last non-zero value.
+  for (const tsl::criticality::Criticality criticality :
+       tsl::criticality::kAllCriticalitiesDescending) {
+    const std::string criticality_str = absl::StrCat(criticality);
+    const auto num_tasks_it = state.num_tasks.find(criticality);
+    const auto size_it = state.size.find(criticality);
+    num_tasks_gauge->GetCell(model_name, op_name, criticality_str)
+        ->Set(num_tasks_it == state.num_tasks.end() ? 0 : num_tasks_it->second);
+    size_gauge->GetCell(model_name, op_name, criticality_str)
+        ->Set(size_it == state.size.end()
+                  ? 0
+                  : static_cast<int64_t>(size_it->second));
+  }
+
+  max_depth_gauge->GetCell(model_name, op_name)
+      ->Set(static_cast<int64_t>(state.max_queue_depth));
+}
+
 // Record the actual batch size without padding.
 void RecordBatchSize(int32_t batch_size, const std::string& model_name,
                      const std::string& op_name) {
@@ -245,17 +293,36 @@ void RecordBatchDelayUs(int64_t batch_delay_us, const std::string& model_name,
 }
 
 void RecordBatchDelayUsV2(int64_t batch_delay_us, const std::string& model_name,
-                          const std::string& op_name, int32_t batch_size) {
-  static auto* cell = tensorflow::monitoring::Sampler<3>::New(
+                          const std::string& op_name, int32_t batch_size,
+                          absl::string_view criticality_str) {
+  static auto* cell = tensorflow::monitoring::Sampler<4>::New(
       {"/tensorflow/serving/batching/batch_delay_us_v2",
        "Tracks the batching delay (in microseconds) for inputs by model_name "
        "(if available).",
-       "model_name", "op_name", "processed_batch_size"},
+       "model_name", "op_name", "processed_batch_size", "criticality"},
       // It's 27 buckets with the last bucket being 2^26 to DBL_MAX;
       // so the limits are [1, 2, 4, 8, ..., 64 * 1024 * 1024, DBL_MAX].
       monitoring::Buckets::Exponential(1, 2, 27));
-  cell->GetCell(model_name, op_name, std::to_string(batch_size))
+  cell->GetCell(model_name, op_name, std::to_string(batch_size),
+                criticality_str)
       ->Add(static_cast<double>(batch_delay_us));
+}
+
+void RecordQueueingDelayUsV2(int64_t queueing_delay_us,
+                             absl::string_view model_name,
+                             absl::string_view op_name, int32_t batch_size,
+                             absl::string_view criticality_str) {
+  static auto* cell = tensorflow::monitoring::Sampler<4>::New(
+      {"/tensorflow/serving/batching/queueing_delay_us_v2",
+       "Tracks the queueing delay (in microseconds) for inputs by model_name "
+       "(if available).",
+       "model_name", "op_name", "processed_batch_size", "criticality"},
+      // It's 27 buckets with the last bucket being 2^26 to DBL_MAX;
+      // so the limits are [1, 2, 4, 8, ..., 64 * 1024 * 1024, DBL_MAX].
+      monitoring::Buckets::Exponential(1, 2, 27));
+  cell->GetCell(std::string(model_name), std::string(op_name),
+                std::to_string(batch_size), criticality_str)
+      ->Add(static_cast<double>(queueing_delay_us));
 }
 
 void RecordBatchTaskSizeSum(int32_t batch_task_size,
@@ -629,7 +696,25 @@ absl::Status BatchResourceBase::RegisterInput(
     num_outstanding_batched_items_ += batch_components->size();
   }
 
-  return batcher_queue->Schedule(&batch_components);
+  // Capture the metric label strings before Schedule(): once the task is
+  // scheduled, a background thread may run its done_callback and free
+  // `context`, so reading `context` afterwards would be a use-after-free.
+  const std::string model_name = GetModelName(context);
+  const std::string op_name = context->op_kernel().name();
+
+  absl::Status schedule_status = batcher_queue->Schedule(&batch_components);
+
+  // Export per-criticality queue utilization metrics for the priority aware
+  // batch scheduler. GetPriorityQueueState() returns nullopt when the priority
+  // aware scheduler is disabled, in which case nothing is recorded. This runs
+  // after Schedule() so the snapshot reflects the just-enqueued task.
+  if (std::optional<PriorityQueueState> priority_queue_state =
+          batcher_queue->GetPriorityQueueState();
+      priority_queue_state.has_value()) {
+    RecordPriorityQueueState(*priority_queue_state, model_name, op_name);
+  }
+
+  return schedule_status;
 }
 
 /*static*/ BatchResourceBase::BatcherT::QueueOptions
@@ -1551,14 +1636,6 @@ void BatchResourceBase::RecordBatchDelayMetrics(
     const absl::Time start_time = absl::FromUnixNanos(task.start_time);
     const absl::Duration total_scheduler_delay =
         batch_schedule_time - start_time;
-    RecordBatchDelayUs(absl::ToInt64Microseconds(total_scheduler_delay),
-                       model_name, op_name, processed_size);
-    RecordBatchDelayUsV2(absl::ToInt64Microseconds(total_scheduler_delay),
-                         model_name, op_name, processed_size);
-
-    RequestCost* request_cost = task.request_cost;
-    // Skip recording the cost if the request_cost is null.
-    if (!request_cost) continue;
 
     // The duration from when the task was enqueued to when the earliest task in
     // its batch has been in the queue for a duration of batch_timeout (i.e.
@@ -1573,6 +1650,20 @@ void BatchResourceBase::RecordBatchDelayMetrics(
         std::min(remaining_batch_timeout, total_scheduler_delay);
     const absl::Duration queueing_delay =
         total_scheduler_delay - batching_delay;
+
+    const std::string criticality_str = absl::StrCat(task.criticality());
+    RecordBatchDelayUs(absl::ToInt64Microseconds(total_scheduler_delay),
+                       model_name, op_name, processed_size);
+    RecordBatchDelayUsV2(absl::ToInt64Microseconds(total_scheduler_delay),
+                         model_name, op_name, processed_size, criticality_str);
+    RecordQueueingDelayUsV2(absl::ToInt64Microseconds(queueing_delay),
+                            model_name, op_name, processed_size,
+                            criticality_str);
+
+    RequestCost* request_cost = task.request_cost;
+    // Skip recording the cost if the request_cost is null.
+    if (!request_cost) continue;
+
     request_cost->RecordMetrics(
         {{"batching_delay_msecs", absl::ToDoubleMilliseconds(batching_delay)},
          {"batch_queueing_delay_msecs",

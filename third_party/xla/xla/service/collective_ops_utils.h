@@ -40,9 +40,35 @@ limitations under the License.
 #include "xla/runtime/device_id.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/source_target_pairs.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+
+// Returns the nonempty collective_group_key frontend attribute. An absent or
+// empty attribute does not opt the instruction into collective grouping.
+std::optional<absl::string_view> GetCollectiveGroupKey(
+    const HloInstruction& instruction);
+
+// Returns whether an instruction has a nonempty collective_group_key frontend
+// attribute.
+bool HasCollectiveGroupKey(const HloInstruction& instruction);
+
+// Returns whether two distinct collective payloads may be coalesced without
+// changing explicit collective groups. Nonempty collective group keys must
+// match; an absent or empty key matches only another absent or empty key.
+// This compatibility check must not gate common-subexpression elimination or
+// decomposition into an equivalent sequence of operations.
+bool HaveCompatibleCollectiveGroupKeys(const HloInstruction& lhs,
+                                       const HloInstruction& rhs);
+
+// Copies the collective_group_key from `source` to `destination`. Attribute
+// absence is copied as well, so any existing key on `destination` is cleared.
+void CopyCollectiveGroupKey(const HloInstruction& source,
+                            HloInstruction& destination);
+
+// Removes the collective_group_key attribute.
+void ClearCollectiveGroupKey(HloInstruction& instruction);
 
 absl::StatusOr<ReductionKind> StringToReductionKind(
     absl::string_view reduction_kind);
@@ -222,8 +248,8 @@ bool IsRaggedAllToAllOrAsyncStartRaggedAllToAll(
 bool IsRaggedAllToAllOrAsyncDoneRaggedAllToAll(
     const HloInstruction* instruction);
 
-// Returns true if the one-shot zero-copy RaggedAllToAll feature is enabled.
-bool IsOneShotZeroCopyRaggedAllToAllEnabled(const DebugOptions& opts);
+// Returns true if the one-shot RaggedAllToAll with NCCL feature is enabled.
+bool IsOneShotRaggedAllToAllWithNcclEnabled(const DebugOptions& opts);
 
 // Returns the collective instruction if argument is a collective op (or a
 // collective fusion) with channel_id.
@@ -328,6 +354,42 @@ inline constexpr absl::string_view kCollectiveStreamP2P = "p2p";
 
 int64_t GetSubgroupSize(const HloCollectiveInstruction* hlo,
                         CollectiveOpGroupMode group_mode);
+
+class NcclSymmetricBuffersSpec {
+ public:
+  explicit NcclSymmetricBuffersSpec(const DebugOptions& debug_options);
+
+  bool IsEnabled(const HloInstruction& inst) const;
+
+ private:
+  struct Filter {
+    DebugOptions::CollectiveOpType collective;
+    std::optional<int64_t> max_size_bytes;
+    std::optional<PrimitiveType> op_type;
+  };
+  std::vector<Filter> filters_;
+};
+
+bool IsNcclSymmetricBuffersEnabledForCollective(
+    const HloInstruction* instruction, const DebugOptions& opts);
+
+struct AsyncCollectiveConfig {
+  std::vector<ReplicaGroup> replica_groups;
+  std::optional<int64_t> channel_id;
+  bool use_global_device_ids = false;
+  std::vector<std::pair<int64_t, int64_t>> permutation;
+  std::optional<int64_t> all_gather_dimension;
+  std::optional<int64_t> scatter_dimension;
+  std::optional<bool> tiled;
+  std::optional<int64_t> split_dimension;
+  std::optional<int64_t> concat_dimension;
+  std::optional<int64_t> split_count;
+};
+
+absl::StatusOr<AsyncCollectiveConfig> ParseAsyncCollectiveConfig(
+    absl::string_view config_json_str);
+
+std::string SerializeAsyncCollectiveConfig(const AsyncCollectiveConfig& config);
 
 }  // end namespace xla
 

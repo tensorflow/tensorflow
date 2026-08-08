@@ -16,6 +16,8 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/types.h"
 #define EIGEN_USE_THREADS

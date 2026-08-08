@@ -294,11 +294,11 @@ absl::StatusOr<bool> MoveCollectivePermutes(HloComputation* computation,
         HloInstruction::CreateTernary(new_input->shape(), HloOpcode::kSelect,
                                       is_first_iter, input, new_input));
     for (HloInstruction* user : original_input_users) {
-      RETURN_IF_ERROR(input->ReplaceUseWith(user, new_input));
+      ABSL_RETURN_IF_ERROR(input->ReplaceUseWith(user, new_input));
     }
-    RETURN_IF_ERROR(root->ReplaceOperandWith(cluster->root_tuple_index,
+    ABSL_RETURN_IF_ERROR(root->ReplaceOperandWith(cluster->root_tuple_index,
                                              cp->mutable_operand(0)));
-    RETURN_IF_ERROR(body->RemoveInstructionAndUnusedOperands(
+    ABSL_RETURN_IF_ERROR(body->RemoveInstructionAndUnusedOperands(
         cluster->reverse_order_instructions[0]));
     VLOG(2) << "Moved " << loop->name() << " index " << i;
     changed = true;
@@ -314,7 +314,7 @@ absl::StatusOr<bool> CollectivePermuteMotion::RunImpl(
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instr : computation->MakeInstructionPostOrder()) {
       if (instr->opcode() == HloOpcode::kWhile) {
-        ASSIGN_OR_RETURN(bool moved,
+        ABSL_ASSIGN_OR_RETURN(bool moved,
                          MoveCollectivePermutes(computation, instr));
         changed |= moved;
       }

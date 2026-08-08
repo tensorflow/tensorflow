@@ -79,9 +79,12 @@ void createIfrtToOutlinedAtomProgramsPipeline(mlir::OpPassManager& pm) {
   // IfrtMergeCopiesAndReshardsPass after this pass because it introduces
   // non-merged CopyArrays ops.
   pm.addPass(createIfrtReshardToCopyArraysPass());
-  // Run insert CopyArrays pass before merging copies and reshards so that
-  // the inserted CopyArrays ops can be merged.
-  pm.addNestedPass<mlir::func::FuncOp>(createIfrtInsertCopyArraysReusePass());
+  // Insert CopyArrays for arrays that are returned multiple times so that the
+  // donation/reuse semantics are correctly handled. This pass must run before
+  // InsertMergeCopiesAndReshardsPass so that the newly inserted CopyArrays ops
+  // can be merged.
+  pm.addNestedPass<mlir::func::FuncOp>(
+      createIfrtInsertCopyArraysForReturnedManyTimesPass());
   // IfrtMergeCopiesAndReshardsPass doesn't handle control dependencies, so we
   // need to run it before adding the control dependencies.
   pm.addNestedPass<mlir::func::FuncOp>(createIfrtMergeCopiesAndReshardsPass());
@@ -125,7 +128,7 @@ absl::Status createOutlinedAtomProgramsToCompiledPipeline(
       std::move(bound_executable_map)));
 
   if (!ifrt_to_dot_pass_options.dot_graph_dump_to.empty()) {
-    RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(
+    ABSL_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(
         ifrt_to_dot_pass_options.dot_graph_dump_to));
     pm.addPass(createIfrtToDotPass(std::move(ifrt_to_dot_pass_options),
                                    atom_executable_future_map));

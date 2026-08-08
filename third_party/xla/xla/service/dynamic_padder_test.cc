@@ -119,14 +119,14 @@ class DynamicPadderTest : public HloTestBase {
         std::move(op_supports_dynamism_handler);
     options.custom_call_handler = std::move(custom_call_handler);
     DynamicPadder padder(std::move(options));
-    ASSIGN_OR_RETURN(bool changed, RunHloPass(&padder, module_.get()));
+    ABSL_ASSIGN_OR_RETURN(bool changed, RunHloPass(&padder, module_.get()));
     if (!changed) return false;
     // Dynamic padder can add redundant tuple/get-tuple-element and copy
     // instructions.
     TupleSimplifier tuple_simplifier;
-    RETURN_IF_ERROR(RunHloPass(&tuple_simplifier, module_.get()).status());
+    ABSL_RETURN_IF_ERROR(RunHloPass(&tuple_simplifier, module_.get()).status());
     AlgebraicSimplifier alg_simplifier(AlgebraicSimplifierOptions{});
-    RETURN_IF_ERROR(RunHloPass(&alg_simplifier, module_.get()).status());
+    ABSL_RETURN_IF_ERROR(RunHloPass(&alg_simplifier, module_.get()).status());
     return true;
   }
 
@@ -151,8 +151,7 @@ class DynamicPadderTest : public HloTestBase {
   const Shape scalar_shape_ = ShapeUtil::MakeShape(S32, {});
 };
 
-class MemoryAlignmentTest
-    : public HloPjRtInterpreterReferenceMixin<HloTestBase> {};
+class MemoryAlignmentTest : public HloInterpreterReferenceMixin<HloTestBase> {};
 
 // Test that dynamic padder will not cause memory misalignment in CUDA
 // when the read or write address is not aligned with 32 bits.

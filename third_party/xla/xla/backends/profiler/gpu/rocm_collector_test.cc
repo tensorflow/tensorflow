@@ -176,13 +176,12 @@ TEST(RocmCollectorTest, MultipleActivitiesPerCorrelationIdAllExported) {
 
   // Pre-fix (.front()-only) would emit just one event here. The fix
   // iterates the entire vector, so all three activity records must
-  // appear on the stream line.
+  // appear on the stream line. Dense stream remapping converts the raw
+  // stream_id (123) to a sequential index (0), so we look for events on
+  // any device line rather than matching a specific line ID.
   size_t total_kernel_events = 0;
   absl::flat_hash_set<std::string> seen_names;
   for (const auto& line : gpu_plane->lines()) {
-    if (line.id() != static_cast<int64_t>(kStreamId)) {
-      continue;
-    }
     total_kernel_events += line.events_size();
     for (const auto& ev : line.events()) {
       seen_names.insert(

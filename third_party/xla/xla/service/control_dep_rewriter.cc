@@ -42,12 +42,12 @@ absl::StatusOr<bool> ControlDepRewriter::RunImpl(
         CHECK_EQ(instruction->operand_count(), 2);
         HloInstruction* src = instruction->mutable_operand(0);
         HloInstruction* dst = instruction->mutable_operand(1);
-        RETURN_IF_ERROR(src->AddControlDependencyTo(dst));
+        ABSL_RETURN_IF_ERROR(src->AddControlDependencyTo(dst));
         to_remove.push_back(instruction);
       }
     }
     for (HloInstruction* instruction : to_remove) {
-      RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
+      ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
     }
   }
   return changed;

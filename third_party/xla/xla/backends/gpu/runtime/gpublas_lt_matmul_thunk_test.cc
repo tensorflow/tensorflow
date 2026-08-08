@@ -30,16 +30,17 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/backends/gpu/transforms/gemm_rewriter.h"
 #include "xla/error_spec.h"
@@ -123,14 +124,14 @@ class GpuBlasLtThunkBuilder {
 
   absl::StatusOr<std::unique_ptr<CublasLtMatmulThunk>> CreateThunk(
       HloInstruction* gemm) {
-    ASSIGN_OR_RETURN(const auto gpu_config,
+    ABSL_ASSIGN_OR_RETURN(const auto gpu_config,
                      gemm->backend_config<GpuBackendConfig>());
     const auto& backend_config = gpu_config.gemm_backend_config();
 
-    ASSIGN_OR_RETURN(bool has_vector_bias, gpublas_lt::EpilogueAddsVectorBias(
+    ABSL_ASSIGN_OR_RETURN(bool has_vector_bias, gpublas_lt::EpilogueAddsVectorBias(
                                                backend_config.epilogue()));
     bool has_matrix_bias = backend_config.beta() != 0;
-    ASSIGN_OR_RETURN(auto epilogue,
+    ABSL_ASSIGN_OR_RETURN(auto epilogue,
                      gpublas_lt::AsBlasLtEpilogue(backend_config.epilogue()));
 
     std::vector<Shape> buf_shapes;
@@ -148,7 +149,7 @@ class GpuBlasLtThunkBuilder {
     for (const Shape& shape : buf_shapes) {
       int64_t size = ShapeUtil::ByteSizeOf(shape);
       mem_buffers_.emplace_back();
-      ASSIGN_OR_RETURN(mem_buffers_.back(),
+      ABSL_ASSIGN_OR_RETURN(mem_buffers_.back(),
                        allocator_.Allocate(exec_->device_ordinal(), size));
       allocs_.emplace_back(/*index=*/idx++, size, /*color=*/0);
       slices.push_back(
@@ -158,7 +159,7 @@ class GpuBlasLtThunkBuilder {
     // we need at least 3 buffers: lhs, rhs and output
     EXPECT_EQ(slices.size(),
               3 + size_t{has_matrix_bias} + size_t{has_vector_bias});
-    ASSIGN_OR_RETURN(auto gemm_config, GemmConfig::For(gemm, gpu_comp_));
+    ABSL_ASSIGN_OR_RETURN(auto gemm_config, GemmConfig::For(gemm, gpu_comp_));
 
     std::optional<ShapedSlice> bias;
     if (has_vector_bias) {
@@ -227,11 +228,11 @@ void GpuBlasLtMatmulThunkTest::CreateExecuteThunksFromHLO(
 
     Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
     for (auto& thunk : gemm_thunks) {
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           thunk->Initialize({executor, source, allocs.get(), stream, stream}));
-      RETURN_IF_ERROR(thunk->ExecuteOnStream(thunk_params));
+      ABSL_RETURN_IF_ERROR(thunk->ExecuteOnStream(thunk_params));
     }
-    RETURN_IF_ERROR(stream->BlockHostUntilDone());
+    ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
     return absl::OkStatus();
   };
 
@@ -626,12 +627,14 @@ TEST_F(GpuBlasLtMatmulThunkTest, ThunkProtoSerializationGroupedMatmul) {
   ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(
       kCublasLtGroupedMatmulThunkProtoText, &proto));
 
+  // Allocation #4 must cover the grouped-matmul B operand (size 1302400),
+  // matching slice { size: 1302400 buffer_allocation_index: 4 } above.
   std::vector<BufferAllocation> allocations = {
       BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0),  // UNUSED
       BufferAllocation(/*index=*/1, /*size=*/4, /*color=*/0),  // UNUSED
       BufferAllocation(/*index=*/2, /*size=*/4, /*color=*/0),  // UNUSED
       BufferAllocation(/*index=*/3, /*size=*/164428, /*color=*/0),
-      BufferAllocation(/*index=*/4, /*size=*/651200, /*color=*/0),
+      BufferAllocation(/*index=*/4, /*size=*/1302400, /*color=*/0),
       BufferAllocation(/*index=*/5, /*size=*/161600, /*color=*/0),
       BufferAllocation(/*index=*/6, /*size=*/8, /*color=*/0),
   };

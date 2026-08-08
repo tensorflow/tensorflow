@@ -56,7 +56,7 @@ namespace {
 namespace m = ::xla::match;
 
 class ParameterizedFp8GemmRewriteTest
-    : public HloPjRtInterpreterReferenceMixin<ParameterizedGemmRewriteTestBase>,
+    : public HloInterpreterReferenceMixin<ParameterizedGemmRewriteTestBase>,
       public ::testing::WithParamInterface<bool> {
  public:
   ParameterizedFp8GemmRewriteTest() {

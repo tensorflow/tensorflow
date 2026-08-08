@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/MLIRContext.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
@@ -160,6 +162,47 @@ ENTRY entry {
                          mlir_context));
 }
 
+TEST_F(TritonEmitterDevicelessTest, RejectsGenericFp4FusionOutput) {
+  constexpr absl::string_view kHloText = R"(
+fusion {
+  p0 = f4e2m1fn[128,256]{1,0:E(4)} parameter(0)
+  ROOT copy = f4e2m1fn[128,256]{1,0:E(4)} copy(p0)
+}
+
+ENTRY entry {
+  p0 = f4e2m1fn[128,256]{1,0:E(4)} parameter(0)
+  ROOT triton_fusion = f4e2m1fn[128,256]{1,0:E(4)} fusion(p0),
+    kind=kCustom, calls=fusion,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "num_warps":"1",
+        "output_tiles":[{"sizes":["1","1"]}],
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  const HloFusionInstruction* triton_fusion = Cast<HloFusionInstruction>(
+      hlo_module->entry_computation()->root_instruction());
+  const se::DeviceDescription dev_info = TestGpuDeviceInfo::B200SXMDeviceInfo();
+  mlir::MLIRContext mlir_context;
+  RegisterSymbolicExprStorage(&mlir_context);
+
+  EXPECT_THAT(
+      CreateTritonModule("test_fn", *triton_fusion, dev_info,
+                         BlockLevelParameters::FromBlockLevelFusionConfig(
+                             triton_fusion->backend_config<GpuBackendConfig>()
+                                 ->fusion_backend_config()
+                                 .block_level_fusion_config()),
+                         mlir_context),
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          ::testing::HasSubstr(
+              "f4e2m1fn storage value must feed scaled-dot operand 0 or 1")));
+}
+
 TEST_F(WarpSpecializationTritonEmitterTest,
        ExtraWarpsAreRequestedForWarpSpecialization) {
   const std::string hlo_text = R"(
@@ -280,15 +323,13 @@ ENTRY main {
 // CHECK-LABEL: @test_fn
 // CHECK:         %[[INPUT:.*]] = xtile.extract %arg0[%c0] [1024] [1] : memref<1024xf32> -> tensor<1024xf32>
 // CHECK:         %[[INIT:.*]] = xtile.extract %arg1[] [] [] : memref<f32> -> tensor<f32>
-// CHECK:         %[[OUTPUT:.*]], %{{.*}} = xtile.scan(%[[INPUT]]) inits(%[[INIT]])
-// CHECK-SAME:        dimension = 0 {scan_dim_size = 1024 : i64}
-// CHECK-SAME:        : (tensor<1024xf32>), (tensor<f32>) -> (tensor<1024xf32>), (tensor<1024xf32>) {
-// CHECK:         ^bb0(%[[INPUT:.*]]: tensor<f32>, %[[CARRY:.*]]: tensor<f32>):
-// CHECK-DAG:       %[[LHS:.*]] = tensor.extract %[[INPUT]][] : tensor<f32>
-// CHECK-DAG:       %[[RHS:.*]] = tensor.extract %[[CARRY]][] : tensor<f32>
+// CHECK:         %[[SCAN:.*]] = "tt.scan"(%[[INPUT]]) <{axis = 0 : i32, reverse = false}> ({
+// CHECK:         ^bb0(%[[LHS:.*]]: f32, %[[RHS:.*]]: f32):
 // CHECK:           %[[ADD:.*]] = arith.addf %[[LHS]], %[[RHS]] : f32
-// CHECK:           %[[RESULT:.*]] = tensor.from_elements %[[ADD]] : tensor<f32>
-// CHECK:           stablehlo.return %[[RESULT]], %[[RESULT]] : tensor<f32>, tensor<f32>
+// CHECK:           tt.scan.return %[[ADD]] : f32
+// CHECK:         }) : (tensor<1024xf32>) -> tensor<1024xf32>
+// CHECK:         %[[BCAST_INIT:.*]] = stablehlo.broadcast_in_dim %[[INIT]], dims = [] : (tensor<f32>) -> tensor<1024xf32>
+// CHECK:         %[[OUTPUT:.*]] = arith.addf %[[BCAST_INIT]], %[[SCAN]] : tensor<1024xf32>
 // CHECK:         xtile.insert %[[OUTPUT]] into %arg2[%c0] [1024] [1] : tensor<1024xf32> -> memref<1024xf32>
 )";
 
@@ -296,6 +337,95 @@ ENTRY main {
               absl_testing::IsOkAndHolds(true))
       << triton_mlir;
 }
+
+class UnsignedIntegerOpsTest
+    : public TritonEmitterDevicelessTest,
+      public ::testing::WithParamInterface<PrimitiveType> {};
+
+TEST_P(UnsignedIntegerOpsTest, UnsignedIntegerOpsEmittedCorrectly) {
+  const PrimitiveType data_type = GetParam();
+  const std::string type_str =
+      primitive_util::LowercasePrimitiveTypeName(data_type);
+
+  const std::string kHloText = absl::Substitute(R"(
+fusion_computation {
+  p0 = $0[1024]{0} parameter(0)
+  p1 = $0[1024]{0} parameter(1)
+  add = $0[1024]{0} add(p0, p1)
+  mul = $0[1024]{0} multiply(add, p1)
+  div = $0[1024]{0} divide(mul, p0)
+  rem = $0[1024]{0} remainder(div, p1)
+  max = $0[1024]{0} maximum(rem, p0)
+  min = $0[1024]{0} minimum(max, p1)
+  and = $0[1024]{0} and(min, p0)
+  or  = $0[1024]{0} or(and, p1)
+  ROOT xor = $0[1024]{0} xor(or, p0)
+}
+
+ENTRY main {
+  p0 = $0[1024]{0} parameter(0)
+  p1 = $0[1024]{0} parameter(1)
+  ROOT triton_fusion = $0[1024]{0} fusion(p0, p1), kind=kCustom, calls=fusion_computation, backend_config={
+    "fusion_backend_config": {
+      "kind": "__triton_nested_gemm_fusion",
+      "block_level_fusion_config": {
+        "output_tiles": [{"sizes": ["1024"]}],
+        "num_warps": 4,
+        "num_ctas": 1,
+        "num_stages": 1
+      }
+    }
+  }
+}
+)",
+                                                type_str);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  const HloFusionInstruction* triton_fusion = Cast<HloFusionInstruction>(
+      hlo_module->entry_computation()->root_instruction());
+  const se::DeviceDescription dev_info =
+      TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  mlir::MLIRContext mlir_context;
+  RegisterSymbolicExprStorage(&mlir_context);
+  ASSERT_OK_AND_ASSIGN(auto backend_config,
+                       triton_fusion->backend_config<GpuBackendConfig>());
+
+  ASSERT_OK_AND_ASSIGN(
+      TritonKernelSource triton_source,
+      CreateTritonModule("test_fn", *triton_fusion, dev_info,
+                         BlockLevelParameters::FromBlockLevelFusionConfig(
+                             backend_config.fusion_backend_config()
+                                 .block_level_fusion_config()),
+                         mlir_context));
+
+  std::string triton_mlir = triton_source.ToString();
+
+  constexpr absl::string_view kPattern = R"(
+// CHECK-LABEL: @test_fn
+// CHECK: arith.addi
+// CHECK: arith.muli
+// CHECK: arith.divui
+// CHECK: arith.remui
+// CHECK: arith.maxui
+// CHECK: arith.minui
+// CHECK: arith.andi
+// CHECK: arith.ori
+// CHECK: arith.xori
+)";
+
+  EXPECT_THAT(RunFileCheck(triton_mlir, kPattern),
+              absl_testing::IsOkAndHolds(true))
+      << triton_mlir;
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    UnsignedIntegerOpsTests, UnsignedIntegerOpsTest,
+    ::testing::Values(U8, U16, U32, U64),
+    [](const ::testing::TestParamInfo<PrimitiveType>& info) {
+      return std::string(
+          primitive_util::LowercasePrimitiveTypeName(info.param));
+    });
 
 }  // namespace
 }  // namespace xla::gpu

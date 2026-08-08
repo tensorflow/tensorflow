@@ -142,16 +142,14 @@ llvm::Expected<void*> JitRunner::CreateVectorWrapperWithLoop(
 
     std::vector<llvm::Type*> wrapper_arg_types;
     // 1. Pointer to write the return data
-    wrapper_arg_types.push_back(ret_vec_type->getScalarType()->getPointerTo());
+    wrapper_arg_types.push_back(llvm::PointerType::get(*ctx, 0));
     // 2. Iteration count, passed by value
     wrapper_arg_types.push_back(builder.getInt32Ty());
     // 3. Data length (number of elements in source arrays), by value
     wrapper_arg_types.push_back(builder.getInt32Ty());
     // 4. Pointers for each input data array
-    for (llvm::Type* arg_vec_type : arg_vec_types) {
-      wrapper_arg_types.push_back(
-          arg_vec_type->getScalarType()->getPointerTo());
-    }
+    wrapper_arg_types.insert(wrapper_arg_types.end(), arg_vec_types.size(),
+                             llvm::PointerType::get(*ctx, 0));
 
     llvm::FunctionType* wrapper_llvm_func_type =
         llvm::FunctionType::get(builder.getVoidTy(), wrapper_arg_types, false);

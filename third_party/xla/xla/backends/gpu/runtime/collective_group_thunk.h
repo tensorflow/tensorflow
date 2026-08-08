@@ -41,7 +41,9 @@ class CollectiveGroupThunk : public Thunk {
   absl::Status ExecuteOnStream(const Thunk::ExecuteParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
 
-  absl::Status WalkNested(Walker callback) override;
+  BufferUses buffer_uses() const override { return {}; }
+
+  absl::Status WalkNested(Walker pre_order, Walker post_order) override;
   absl::Status TransformNested(Transformer callback) override;
 
   static absl::StatusOr<std::unique_ptr<CollectiveGroupThunk>> FromProto(

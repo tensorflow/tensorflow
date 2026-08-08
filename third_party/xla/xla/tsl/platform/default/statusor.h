@@ -22,7 +22,7 @@ limitations under the License.
 
 namespace tsl {
 ABSL_DEPRECATED(
-    "TF_ASSIGN_OR_RETURN is deprecated. Use ASSIGN_OR_RETURN instead")
+    "TF_ASSIGN_OR_RETURN is deprecated. Use ABSL_ASSIGN_OR_RETURN instead")
 inline void TfAssignOrReturnDeprecationMarker() {}
 }  // namespace tsl
 

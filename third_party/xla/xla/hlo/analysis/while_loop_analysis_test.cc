@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -91,7 +92,7 @@ absl::StatusOr<int64_t> WhileLoopAnalysisTest::MakeWhileLoopAndGetTripCount(
                            {"{{STEP}}", absl::StrCat(step)},
                            {"{{COMP_DIR}}", ComparisonDirectionToString(dir)}});
 
-  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                    ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* while_op = module->entry_computation()->root_instruction();
@@ -143,7 +144,7 @@ absl::StatusOr<Range> WhileLoopAnalysisTest::MakeWhileLoopAndGetRange(
                            {"{{STEP}}", absl::StrCat(step)},
                            {"{{COMP_DIR}}", ComparisonDirectionToString(dir)}});
 
-  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                    ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* while_op = module->entry_computation()->root_instruction();
@@ -1167,5 +1168,180 @@ ENTRY entry {
   EXPECT_TRUE(range->step().has_value());
   EXPECT_EQ(range->step().value().GetSignedValue(), 1);
 }
+
+TEST_F(WhileLoopAnalysisTest, GetIndvarIndexShouldWorkWithMultiOutputFusion) {
+  absl::string_view hlo = R"(
+    HloModule test
+    fused_multi_output {
+      p0 = s32[] parameter(0)
+      c1 = s32[] constant(1)
+      add = s32[] add(p0, c1)
+      sub = s32[] subtract(p0, c1)
+      ROOT root = (s32[], s32[]) tuple(add, sub)
+    }
+
+    body {
+      param.1 = (s32[], s32[]) parameter(0)
+      iter = s32[] get-tuple-element(param.1), index=0
+      fusion = (s32[], s32[]) fusion(iter), kind=kLoop, calls=fused_multi_output
+      new_iter = s32[] get-tuple-element(fusion), index=0
+      data = s32[] get-tuple-element(param.1), index=1
+      ROOT root = (s32[], s32[]) tuple(new_iter, data)
+    }
+
+    condition {
+      param.2 = (s32[], s32[]) parameter(0)
+      iter.2 = s32[] get-tuple-element(param.2), index=0
+      limit = s32[] constant(10)
+      ROOT cond = pred[] compare(iter.2, limit), direction=LT
+    }
+
+    ENTRY test_computation {
+      c0 = s32[] constant(0)
+      data = s32[] parameter(0)
+      tuple = (s32[], s32[]) tuple(c0, data)
+      ROOT while = (s32[], s32[]) while(tuple), body=body, condition=condition
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo));
+  HloInstruction* while_op = m->entry_computation()->root_instruction();
+  ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
+  EXPECT_EQ(GetLoopInductionVarTupleIdx(while_op), 0);
+}
+
+TEST_F(WhileLoopAnalysisTest, GetIndvarIndexShouldWorkWithNestedFusions) {
+  absl::string_view hlo = R"(
+    HloModule test
+    inner_computation {
+      inner_p0 = s32[] parameter(0)
+      inner_c1 = s32[] constant(1)
+      ROOT inner_add = s32[] add(inner_p0, inner_c1)
+    }
+
+    outer_fusion {
+      outer_p0 = s32[] parameter(0)
+      call_inner = s32[] fusion(outer_p0), kind=kLoop, calls=inner_computation
+      ROOT root = (s32[]) tuple(call_inner)
+    }
+
+    body {
+      param.1 = (s32[], s32[]) parameter(0)
+      iter = s32[] get-tuple-element(param.1), index=0
+      fusion = (s32[]) fusion(iter), kind=kLoop, calls=outer_fusion
+      new_iter = s32[] get-tuple-element(fusion), index=0
+      data = s32[] get-tuple-element(param.1), index=1
+      ROOT root = (s32[], s32[]) tuple(new_iter, data)
+    }
+
+    condition {
+      param.2 = (s32[], s32[]) parameter(0)
+      iter.2 = s32[] get-tuple-element(param.2), index=0
+      limit = s32[] constant(10)
+      ROOT cond = pred[] compare(iter.2, limit), direction=LT
+    }
+
+    ENTRY test_computation {
+      c0 = s32[] constant(0)
+      data = s32[] parameter(0)
+      tuple = (s32[], s32[]) tuple(c0, data)
+      ROOT while = (s32[], s32[]) while(tuple), body=body, condition=condition
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo));
+  HloInstruction* while_op = m->entry_computation()->root_instruction();
+  ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
+  EXPECT_EQ(GetLoopInductionVarTupleIdx(while_op), 0);
+}
+
+TEST_F(WhileLoopAnalysisTest,
+       GetIndvarIndexShouldFailWithNonScalarOpInMultiOutputFusion) {
+  absl::string_view hlo = R"(
+    HloModule test
+    add {
+      param.0 = s32[] parameter(0)
+      param.1 = s32[] parameter(1)
+      ROOT add = s32[] add(param.0, param.1)
+    }
+
+    fused_multi_output {
+      p0 = s32[] parameter(0)
+      c1 = s32[] constant(1)
+      add_val = s32[] add(p0, c1)
+      all_reduce = s32[] all-reduce(add_val), replica_groups={{0,1}}, to_apply=add
+      ROOT root = (s32[]) tuple(all_reduce)
+    }
+
+    body {
+      param.1 = (s32[], s32[]) parameter(0)
+      iter = s32[] get-tuple-element(param.1), index=0
+      fusion = (s32[]) fusion(iter), kind=kLoop, calls=fused_multi_output
+      new_iter = s32[] get-tuple-element(fusion), index=0
+      data = s32[] get-tuple-element(param.1), index=1
+      ROOT root = (s32[], s32[]) tuple(new_iter, data)
+    }
+
+    condition {
+      param.2 = (s32[], s32[]) parameter(0)
+      iter.2 = s32[] get-tuple-element(param.2), index=0
+      limit = s32[] constant(10)
+      ROOT cond = pred[] compare(iter.2, limit), direction=LT
+    }
+
+    ENTRY test_computation {
+      c0 = s32[] constant(0)
+      data = s32[] parameter(0)
+      tuple = (s32[], s32[]) tuple(c0, data)
+      ROOT while = (s32[], s32[]) while(tuple), body=body, condition=condition
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo));
+  HloInstruction* while_op = m->entry_computation()->root_instruction();
+  ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
+  EXPECT_EQ(GetLoopInductionVarTupleIdx(while_op), std::nullopt);
+}
+
+TEST_F(WhileLoopAnalysisTest,
+       GetIndvarIndexShouldFailWhenIntermediateTupleHasNonScalarOperand) {
+  absl::string_view hlo = R"(
+    HloModule test
+    body {
+      param.1 = (s32[], f32[10]) parameter(0)
+      iter = s32[] get-tuple-element(param.1), index=0
+      c1 = s32[] constant(1)
+      tensor = f32[10] get-tuple-element(param.1), index=1
+      intermediate_tuple = (s32[], f32[10]) tuple(iter, tensor)
+      iter_from_tuple = s32[] get-tuple-element(intermediate_tuple), index=0
+      new_iter = s32[] add(iter_from_tuple, c1)
+      ROOT root = (s32[], f32[10]) tuple(new_iter, tensor)
+    }
+
+    condition {
+      param.2 = (s32[], f32[10]) parameter(0)
+      iter.2 = s32[] get-tuple-element(param.2), index=0
+      limit = s32[] constant(10)
+      ROOT cond = pred[] compare(iter.2, limit), direction=LT
+    }
+
+    ENTRY test_computation {
+      c0 = s32[] constant(0)
+      data = f32[10] parameter(0)
+      tuple = (s32[], f32[10]) tuple(c0, data)
+      ROOT while = (s32[], f32[10]) while(tuple), body=body, condition=condition
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo));
+  HloInstruction* while_op = m->entry_computation()->root_instruction();
+  ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
+  EXPECT_EQ(GetLoopInductionVarTupleIdx(while_op), std::nullopt);
+}
+
 }  // namespace
 }  // namespace xla

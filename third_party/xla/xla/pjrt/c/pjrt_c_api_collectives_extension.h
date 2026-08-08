@@ -236,16 +236,22 @@ typedef PJRT_Error* PJRT_Collectives_Communicator_ToString(
 
 typedef struct PJRT_Collectives_Extension {
   PJRT_Extension_Base base;
-  PJRT_Collectives_Destroy* collectives_destroy;
-  PJRT_Collectives_CreateCommunicators* collectives_create_communicators;
-  PJRT_Collectives_Communicator_Destroy* communicator_destroy;
-  PJRT_Collectives_Communicator_AllReduce* communicator_all_reduce;
-  PJRT_Collectives_Communicator_ReduceScatter* communicator_reduce_scatter;
-  PJRT_Collectives_Communicator_AllGather* communicator_all_gather;
-  PJRT_Collectives_Communicator_CollectivePermute*
+  PJRT_NO_DISCARD PJRT_Collectives_Destroy* collectives_destroy;
+  PJRT_NO_DISCARD PJRT_Collectives_CreateCommunicators*
+      collectives_create_communicators;
+  PJRT_NO_DISCARD PJRT_Collectives_Communicator_Destroy* communicator_destroy;
+  PJRT_NO_DISCARD PJRT_Collectives_Communicator_AllReduce*
+      communicator_all_reduce;
+  PJRT_NO_DISCARD PJRT_Collectives_Communicator_ReduceScatter*
+      communicator_reduce_scatter;
+  PJRT_NO_DISCARD PJRT_Collectives_Communicator_AllGather*
+      communicator_all_gather;
+  PJRT_NO_DISCARD PJRT_Collectives_Communicator_CollectivePermute*
       communicator_collective_permute;
-  PJRT_Collectives_Communicator_AllToAll* communicator_all_to_all;
-  PJRT_Collectives_Communicator_ToString* communicator_to_string;
+  PJRT_NO_DISCARD PJRT_Collectives_Communicator_AllToAll*
+      communicator_all_to_all;
+  PJRT_NO_DISCARD PJRT_Collectives_Communicator_ToString*
+      communicator_to_string;
 } PJRT_Collectives_Extension;
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Collectives_Extension, communicator_to_string);
 

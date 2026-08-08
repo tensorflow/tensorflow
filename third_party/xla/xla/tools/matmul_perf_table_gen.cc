@@ -127,8 +127,8 @@ struct StaticSpec {
     const HloInstructionProto& instr = profile.instruction();
     CHECK_EQ(instr.opcode(), HloOpcodeString(HloOpcode::kDot));
     const DotDimensionNumbers& dot_dims = instr.dot_dimension_numbers();
-    ASSIGN_OR_RETURN(Shape lhs, Shape::FromProto(profile.operands(0).shape()));
-    ASSIGN_OR_RETURN(Shape rhs, Shape::FromProto(profile.operands(1).shape()));
+    ABSL_ASSIGN_OR_RETURN(Shape lhs, Shape::FromProto(profile.operands(0).shape()));
+    ABSL_ASSIGN_OR_RETURN(Shape rhs, Shape::FromProto(profile.operands(1).shape()));
     int b = 1, m = 1, n = 1, k = 1;
     for (int dim : dot_dims.lhs_batch_dimensions()) {
       b *= ShapeUtil::GetDimension(lhs, dim);
@@ -576,7 +576,7 @@ DeviceHloInstructionProfiles MatmulPerfTableGen::ComputeTable() {
     absl::btree_map<std::array<int64_t, 4>, GemmPerfTableEntry>
         gemm_perf_table_entry;
     for (const HloInstructionProfile& profile : profile_list.entries()) {
-      ASSIGN_OR_RETURN(StaticSpec spec, StaticSpec::FromDotProfile(profile));
+      ABSL_ASSIGN_OR_RETURN(StaticSpec spec, StaticSpec::FromDotProfile(profile));
 
       std::array<int64_t, 4> key = {spec.b, spec.m, spec.k, spec.n};
       if (!gemm_perf_table_entry.contains(key)) {
@@ -613,7 +613,7 @@ absl::Status MatmulPerfTableGen::Dump(
 
   DeviceHloInstructionProfiles file;
   if (tsl::Env::Default()->FileExists(config_.output).ok()) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         tsl::ReadTextOrBinaryProto(tsl::Env::Default(), config_.output, &file));
   }
 
@@ -625,12 +625,12 @@ absl::Status MatmulPerfTableGen::Dump(
     }
 
     if (absl::StrContains(config_.output, ".pbtxt")) {
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           tsl::WriteTextProto(tsl::Env::Default(), config_.output, file));
       continue;
     }
     if (absl::StrContains(config_.output, ".pb")) {
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           tsl::WriteBinaryProto(tsl::Env::Default(), config_.output, file));
       continue;
     }

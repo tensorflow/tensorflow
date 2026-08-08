@@ -27,8 +27,7 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-using BlockScalingRewriterCudnnTest =
-    HloPjRtInterpreterReferenceMixin<HloTestBase>;
+using BlockScalingRewriterCudnnTest = HloInterpreterReferenceMixin<HloTestBase>;
 
 const se::dnn::VersionInfo kCudnnDisabled;
 const se::dnn::VersionInfo kCudnnVersion(CUDNN_VERSION / 10000,

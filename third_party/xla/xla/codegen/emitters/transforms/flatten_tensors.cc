@@ -58,10 +58,11 @@ limitations under the License.
 
 namespace xla {
 namespace emitters {
-namespace {
 
 #define GEN_PASS_DEF_FLATTENTENSORSPASS
 #include "xla/codegen/emitters/transforms/passes.h.inc"
+
+namespace {
 
 using mlir::Attribute;
 using mlir::Location;
@@ -814,10 +815,6 @@ class FlattenTensorsPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateFlattenTensorsPass() {
-  return std::make_unique<FlattenTensorsPass>();
-}
 
 }  // namespace emitters
 }  // namespace xla

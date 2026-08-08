@@ -89,9 +89,9 @@ std::string FileSystem::TranslateName(absl::string_view name) const {
 
 absl::Status FileSystem::IsDirectory(const std::string& name) {
   // Check if path exists.
-  RETURN_IF_ERROR(FileExists(name));
+  ABSL_RETURN_IF_ERROR(FileExists(name));
   FileStatistics stat;
-  RETURN_IF_ERROR(Stat(name, &stat));
+  ABSL_RETURN_IF_ERROR(Stat(name, &stat));
   if (stat.is_directory) {
     return absl::OkStatus();
   }
@@ -376,7 +376,9 @@ absl::string_view FileSystem::Extension(absl::string_view path) const {
   if (pos == absl::string_view::npos) {
     return absl::string_view(path.data() + path.size(), 0);
   } else {
-    return absl::string_view(path.data() + pos + 1, path.size() - (pos + 1));
+    // pos indexes into basename, so slice basename rather than path.
+    return absl::string_view(basename.data() + pos + 1,
+                             basename.size() - (pos + 1));
   }
 }
 

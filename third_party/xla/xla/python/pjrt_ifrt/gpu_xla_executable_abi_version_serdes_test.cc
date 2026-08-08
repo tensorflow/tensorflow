@@ -61,7 +61,7 @@ GetTestExecutableAbiVersion(
 absl::StatusOr<std::unique_ptr<xla::PjRtRuntimeAbiVersion>> GetPjrtAbiVersion(
     const stream_executor::RuntimeAbiVersion& abi) {
   xla::PjRtRuntimeAbiVersionProto proto;
-  ASSIGN_OR_RETURN(auto abi_proto, abi.ToProto());
+  ABSL_ASSIGN_OR_RETURN(auto abi_proto, abi.ToProto());
   proto.set_version(abi_proto.SerializeAsString());
   proto.set_platform(xla::CudaId());
   return xla::gpu::PjRtRuntimeAbiVersionFromProto(proto);

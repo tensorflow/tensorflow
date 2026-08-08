@@ -32,8 +32,6 @@ def ConvertIndexTypePass : Pass<"xla-gpu-convert-index-type", "mlir::ModuleOp"> 
   let dependentDialects = [
     "mlir::arith::ArithDialect",
   ];
-
-  let constructor = "CreateConvertIndexTypePass()";
 }
 
 def ConvertFloatNvidiaPass : Pass<"xla-gpu-convert-float-nvidia", "mlir::ModuleOp"> {
@@ -53,7 +51,6 @@ def ConvertFloatNvidiaPass : Pass<"xla-gpu-convert-float-nvidia", "mlir::ModuleO
     Option<"ptx_version_minor_", "ptx_version_minor", "int", /*default=*/"0",
            "PTX version minor.">
   ];
-  let constructor = "CreateConvertFloatNvidiaPass()";
 }
 
 def ConvertFloatAMDPass : Pass<"xla-gpu-convert-float-amd", "mlir::ModuleOp"> {
@@ -67,7 +64,6 @@ def ConvertFloatAMDPass : Pass<"xla-gpu-convert-float-amd", "mlir::ModuleOp"> {
     Option<"gpu_device_info_", "gpu_device_info", "std::string", /*default=*/"",
            "Serialized stream_executor::GPUDeviceInfo proto.">,
   ];
-  let constructor = "CreateConvertFloatAMDPass()";
 }
 def RecoverExp2Pass : Pass<"xla-gpu-recover-exp2", "mlir::ModuleOp"> {
   let summary = "Recovers exp2(x) from exp(x*log(2))";
@@ -77,7 +73,6 @@ def RecoverExp2Pass : Pass<"xla-gpu-recover-exp2", "mlir::ModuleOp"> {
     "mlir::arith::ArithDialect",
     "mlir::math::MathDialect",
   ];
-  let constructor = "CreateRecoverExp2Pass()";
 }
 
 def PeelLoopsPass : Pass<"xla-gpu-peel-loops", "mlir::func::FuncOp"> {
@@ -88,7 +83,6 @@ def PeelLoopsPass : Pass<"xla-gpu-peel-loops", "mlir::func::FuncOp"> {
       if it removes a constraint.
   }];
   let dependentDialects = ["xla::gpu::XlaGpuDialect", "xla::XlaDialect"];
-  let constructor = "CreatePeelLoopsPass()";
 }
 
 def OptimizeLoopsPass :
@@ -110,8 +104,6 @@ def OptimizeLoopsPass :
     Option<"max_unroll_factor_", "max_unroll_factor", "int", /*default=*/"0",
            "Maximum unroll factor.">
   ];
-
-  let constructor = "CreateOptimizeLoopsPass()";
 }
 
 
@@ -128,8 +120,6 @@ def LowerXlaSharedPass :
     "mlir::gpu::GPUDialect",
     "mlir::scf::SCFDialect",
   ];
-
-  let constructor = "CreateLowerXlaSharedPass()";
 }
 
 def InsertPDLPass : Pass<"xla-gpu-insert-pdl", "mlir::ModuleOp"> {
@@ -143,7 +133,6 @@ def InsertPDLPass : Pass<"xla-gpu-insert-pdl", "mlir::ModuleOp"> {
     "mlir::scf::SCFDialect",
     "mlir::cf::ControlFlowDialect",
   ];
-  let constructor = "CreateInsertPDLPass()";
 }
 
 def PromoteShuffleToDPPPass
@@ -175,8 +164,6 @@ def PromoteShuffleToDPPPass
     "mlir::arith::ArithDialect",
     "mlir::amdgpu::AMDGPUDialect",
   ];
-
-  let constructor = "CreatePromoteShuffleToDPPPass()";
 }
 
 #endif  // XLA_SERVICE_GPU_FUSIONS_TRANSFORMS_PASSES_TD_

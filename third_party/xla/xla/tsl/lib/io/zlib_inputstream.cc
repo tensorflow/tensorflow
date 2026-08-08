@@ -90,7 +90,7 @@ absl::Status ZlibInputStream::Reset() {
   if (init_error_) {
     return absl::DataLossError("unable to reset stream, cannot decompress.");
   }
-  RETURN_IF_ERROR(input_stream_->Reset());
+  ABSL_RETURN_IF_ERROR(input_stream_->Reset());
   inflateEnd(z_stream_def_->stream.get());
   InitZlibBuffer();
   bytes_read_ = 0;
@@ -217,12 +217,12 @@ absl::Status ZlibInputStream::ReadNBytes(int64_t bytes_to_read,
     z_stream_def_->stream->avail_out = output_buffer_capacity_;
 
     // Step 2. Try to inflate some input data.
-    RETURN_IF_ERROR(Inflate());
+    ABSL_RETURN_IF_ERROR(Inflate());
 
     // Step 3. Read any data produced by inflate. If no progress was made by
     // inflate, read more compressed data from the input stream.
     if (NumUnreadBytes() == 0) {
-      RETURN_IF_ERROR(ReadFromStream());
+      ABSL_RETURN_IF_ERROR(ReadFromStream());
     } else {
       bytes_to_read -= ReadBytesFromCache(bytes_to_read, result);
     }
@@ -236,7 +236,7 @@ absl::Status ZlibInputStream::ReadNBytes(int64_t bytes_to_read,
                                          absl::Cord* result) {
   // TODO(frankchn): Optimize this instead of bouncing through the buffer.
   tstring buf;
-  RETURN_IF_ERROR(ReadNBytes(bytes_to_read, &buf));
+  ABSL_RETURN_IF_ERROR(ReadNBytes(bytes_to_read, &buf));
   result->Clear();
   result->Append(buf.data());
   return absl::OkStatus();

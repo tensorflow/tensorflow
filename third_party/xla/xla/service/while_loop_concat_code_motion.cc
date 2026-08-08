@@ -679,7 +679,7 @@ absl::Status AddCopiesToRoot(HloComputation* body,
     }
     copies[i] = body->AddInstruction(HloInstruction::CreateUnary(
         element->shape(), HloOpcode::kCopy, element));
-    RETURN_IF_ERROR(root->ReplaceOperandWith(i, copies[i]));
+    ABSL_RETURN_IF_ERROR(root->ReplaceOperandWith(i, copies[i]));
   }
   for (int64_t i = 0; i < copies.size(); ++i) {
     auto copy = copies[i];
@@ -711,7 +711,7 @@ absl::Status RemoveCopiesFromRoot(HloComputation* body) {
   for (int64_t i = 0; i < root->operand_count(); ++i) {
     auto copy = root->mutable_operand(i);
     if (copy->opcode() == HloOpcode::kCopy) {
-      RETURN_IF_ERROR(root->ReplaceOperandWith(i, copy->mutable_operand(0)));
+      ABSL_RETURN_IF_ERROR(root->ReplaceOperandWith(i, copy->mutable_operand(0)));
     }
   }
   return absl::OkStatus();
@@ -762,7 +762,7 @@ absl::Status RewriteLoopWithConcatGroups(
     init_elements[i] =
         group.CreateConcat(std::move(input_concat_elements), loop->parent());
   }
-  RETURN_IF_ERROR(loop->ReplaceOperandWithDifferentShape(
+  ABSL_RETURN_IF_ERROR(loop->ReplaceOperandWithDifferentShape(
       0, loop->parent()->AddInstruction(
              HloInstruction::CreateTuple(init_elements))));
   // Adjust loop users.
@@ -791,7 +791,7 @@ absl::Status RewriteLoopWithConcatGroups(
   auto new_output_tuple = loop->parent()->AddInstruction(
       HloInstruction::CreateTuple(output_elements));
   for (auto user : original_loop_users) {
-    RETURN_IF_ERROR(loop->ReplaceUseWithDifferentShape(user, new_output_tuple));
+    ABSL_RETURN_IF_ERROR(loop->ReplaceUseWithDifferentShape(user, new_output_tuple));
   }
   if (loop_is_root) {
     loop->parent()->set_root_instruction(new_output_tuple,
@@ -868,7 +868,7 @@ absl::Status RewriteLoopWithConcatGroups(
                                      new_dims),
                 hlo->mutable_operand(i)));
             new_reshapes.insert(reshape);
-            RETURN_IF_ERROR(hlo->ReplaceOperandWithDifferentShape(i, reshape));
+            ABSL_RETURN_IF_ERROR(hlo->ReplaceOperandWithDifferentShape(i, reshape));
           }
           continue;
         }
@@ -906,14 +906,13 @@ absl::Status RewriteLoopWithConcatGroups(
 
         if (!operand_inserted_concat_dim) {
           // Concat on existing dim. Reshape to merge the broadcast dim.
-          data_shape.set_dimensions(
-              operand_concat_dim,
-              data_shape.dimensions(operand_inserted_concat_dim) *
-                  group.elements.size());
+          data_shape.set_dimensions(operand_concat_dim,
+                                    data_shape.dimensions(operand_concat_dim) *
+                                        group.elements.size());
           broadcast = body->AddInstruction(
               HloInstruction::CreateReshape(data_shape, broadcast));
         }
-        RETURN_IF_ERROR(hlo->ReplaceOperandWithDifferentShape(i, broadcast));
+        ABSL_RETURN_IF_ERROR(hlo->ReplaceOperandWithDifferentShape(i, broadcast));
       }
     }
     VLOG(2) << "Modifying HLO to full shape " << hlo->ToString();
@@ -946,13 +945,13 @@ absl::Status RewriteLoopWithConcatGroups(
         const auto& operand_group = groups.GetGroup(operand_group_index->first);
         auto slice = operand_group.CreateSlice(
             operand_group.elements[0], operand_group_index->second, body);
-        RETURN_IF_ERROR(hlo->ReplaceOperandWithDifferentShape(i, slice));
+        ABSL_RETURN_IF_ERROR(hlo->ReplaceOperandWithDifferentShape(i, slice));
       }
     }
   }
   for (auto slice : slices_to_remove) {
-    RETURN_IF_ERROR(slice->ReplaceAllUsesWith(slice->mutable_operand(0)));
-    RETURN_IF_ERROR(body->RemoveInstruction(slice));
+    ABSL_RETURN_IF_ERROR(slice->ReplaceAllUsesWith(slice->mutable_operand(0)));
+    ABSL_RETURN_IF_ERROR(body->RemoveInstruction(slice));
   }
   return absl::OkStatus();
 }
@@ -1012,8 +1011,8 @@ absl::StatusOr<bool> RunOnLoop(HloInstruction* loop,
     return false;
   }
 
-  RETURN_IF_ERROR(AddCopiesToRoot(body, gtes, &groups));
-  RETURN_IF_ERROR(RewriteLoopWithConcatGroups(loop, gtes, groups));
+  ABSL_RETURN_IF_ERROR(AddCopiesToRoot(body, gtes, &groups));
+  ABSL_RETURN_IF_ERROR(RewriteLoopWithConcatGroups(loop, gtes, groups));
   for (auto concat : concats) {
     if (concat == nullptr) {
       continue;
@@ -1021,16 +1020,16 @@ absl::StatusOr<bool> RunOnLoop(HloInstruction* loop,
     // We have repalced the operands of the concat with slices of full data.
     auto new_slice = concat->mutable_operand(0);
     CHECK_EQ(new_slice->opcode(), HloOpcode::kSlice);
-    RETURN_IF_ERROR(concat->ReplaceAllUsesWith(new_slice->mutable_operand(0)));
-    RETURN_IF_ERROR(body->RemoveInstruction(concat));
+    ABSL_RETURN_IF_ERROR(concat->ReplaceAllUsesWith(new_slice->mutable_operand(0)));
+    ABSL_RETURN_IF_ERROR(body->RemoveInstruction(concat));
   }
-  RETURN_IF_ERROR(RemoveCopiesFromRoot(body));
+  ABSL_RETURN_IF_ERROR(RemoveCopiesFromRoot(body));
   // Finally pass-through replaced elements from parameter to root, so that
   // while loop simplifier can get rid of them.
   for (auto gte : gtes) {
     auto group_index = groups.GetGroupIndex(gte);
     if (group_index.has_value() && group_index->second > 0) {
-      RETURN_IF_ERROR(root->ReplaceOperandWith(gte->tuple_index(), gte));
+      ABSL_RETURN_IF_ERROR(root->ReplaceOperandWith(gte->tuple_index(), gte));
     }
   }
   return true;
@@ -1046,7 +1045,7 @@ absl::StatusOr<bool> WhileLoopConcatCodeMotion::RunImpl(
        module->MakeComputationPostOrder(execution_threads)) {
     for (HloInstruction* hlo : comp->MakeInstructionPostOrder()) {
       if (hlo->opcode() == HloOpcode::kWhile) {
-        ASSIGN_OR_RETURN(bool loop_changed,
+        ABSL_ASSIGN_OR_RETURN(bool loop_changed,
                          RunOnLoop(hlo, min_operand_count_to_optimize_));
         changed |= loop_changed;
       }
@@ -1059,7 +1058,7 @@ absl::StatusOr<bool> WhileLoopConcatCodeMotion::RunImpl(
     pipeline.AddPass<WhileLoopSimplifier>();
     pipeline.AddPass<TupleSimplifier>();
     pipeline.AddPass<HloDCE>();
-    RETURN_IF_ERROR(pipeline.Run(module, execution_threads).status());
+    ABSL_RETURN_IF_ERROR(pipeline.Run(module, execution_threads).status());
   }
   return changed;
 }

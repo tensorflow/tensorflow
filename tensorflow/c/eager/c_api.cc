@@ -1,3 +1,4 @@
+// Dummy comment to trigger presubmits.
 /* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,7 +16,6 @@ limitations under the License.
 
 #include "tensorflow/c/eager/c_api.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -24,47 +24,55 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/memory/memory.h"
+#include "absl/base/casts.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/c/c_api_macros.h"
+#include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/eager/immediate_execution_operation.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/eager/tfe_op_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/tensor_interface.h"
+#include "tensorflow/c/tf_attrtype.h"
+#include "tensorflow/c/tf_buffer.h"
 #include "tensorflow/c/tf_buffer_internal.h"
+#include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor_internal.h"
-#include "xla/tsl/c/tsl_status_internal.h"
-#include "tensorflow/core/common_runtime/copy_tensor.h"
-#include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/device_factory.h"
+#include "xla/tsl/platform/macros.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/custom_device.h"
 #include "tensorflow/core/common_runtime/eager/custom_device_op_handler.h"
-#include "tensorflow/core/common_runtime/eager/execute.h"
-#include "tensorflow/core/common_runtime/eager/placement_utils.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
-#include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/platform/casts.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/platform.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tensorflow/core/public/version.h"
+#include "tsl/platform/refcount.h"
+#include "tsl/profiler/lib/traceme.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
@@ -74,9 +82,6 @@ using tensorflow::string;
 
 namespace {
 
-string DeviceName(const tensorflow::Device* d) {
-  return (d == nullptr) ? "cpu:0" : d->name();
-}
 
 // Annotate eager runtime construction context to the given `function_def` as
 // an attribute.
@@ -627,12 +632,29 @@ size_t TFE_TensorHandleDeviceMemorySize(TFE_TensorHandle* h,
     status->status = absl::InvalidArgumentError("Invalid handle");
     return 0;
   }
+  tensorflow::ImmediateExecutionTensorHandle* unwrapped_handle =
+      tensorflow::unwrap(h);
+  // TODO(b/175427838): It would be nice to be able to use tensorflow::isa here.
+  if (tensorflow::CustomDeviceTensorHandle::classof(unwrapped_handle)) {
+    int64_t num_elements;
+    absl::Status s = unwrapped_handle->NumElements(&num_elements);
+    if (!s.ok()) {
+      status->status = s;
+      return 0;
+    }
+    return num_elements *
+           tensorflow::DataTypeSize(unwrapped_handle->DataType());
+  }
+  if (!tensorflow::TensorHandle::classof(unwrapped_handle)) {
+    status->status = absl::InvalidArgumentError("Invalid handle");
+    return 0;
+  }
   tensorflow::TensorHandle* handle =
-      tensorflow::TensorHandleFromInterface(tensorflow::unwrap(h));
+      tensorflow::TensorHandleFromInterface(unwrapped_handle);
   if (handle->Type() != tensorflow::TensorHandle::LOCAL) {
     status->status = absl::InvalidArgumentError(
-        absl::StrCat("TFE_TensorHandleDeviceMemorySize may not be called on a ",
-                     handle->TypeString(), " tensor handle."));
+        "TFE_TensorHandleDeviceMemorySize may not be called on a REMOTE tensor "
+        "handle.");
     return 0;
   }
   const tensorflow::Tensor* tensor;
@@ -878,9 +900,9 @@ void TFE_OpSetAttrValueProto(const TFE_Op* op, const char* attr_name,
         absl::InvalidArgumentError("Got a null or uninitialized `op` argument");
     return;
   }
-  tensorflow::EagerOperation* operation =
-      OperationFromInterface(tensorflow::unwrap(const_cast<TFE_Op*>(op)));
-  operation->MutableAttrs()->Set(attr_name, attr_value);
+  tensorflow::ImmediateExecutionOperation* unwrapped_op =
+      tensorflow::unwrap(const_cast<TFE_Op*>(op));
+  status->status = unwrapped_op->SetAttrValue(attr_name, attr_value);
 }
 
 TF_CAPI_EXPORT extern int TFE_OpGetInputLength(TFE_Op* op,

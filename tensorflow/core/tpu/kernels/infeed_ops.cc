@@ -17,12 +17,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <deque>
-#include <iterator>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -31,16 +32,13 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/tpu/tpu_transfer_manager_interface.h"
 #include "xla/tpu/c_api_conversions.h"
 #include "xla/tpu/c_api_decl.h"
 #include "xla/tpu/noncopyable_buffer.h"
 #include "xla/tpu/tpu_executor_api.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -51,11 +49,8 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_encode_decode.h"  // IWYU pragma: keep
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tpu/kernels/transfer_ops.h"
-#include "tensorflow/core/tpu/tpu_defs.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace {
@@ -104,22 +99,22 @@ absl::StatusOr<Tensor> TransposeTensor(OpKernelContext* ctx,
   if (xla::LayoutUtil::IsMonotonicWithDim0Major(
           xla::ShapeUtil::DropDegenerateDimensions(xla_shape).layout())) {
     TensorShape shape;
-    TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(transposed_shapes, &shape));
-    TF_RETURN_IF_ERROR(transposed_tensor.BitcastFrom(
-        input_tensor, input_tensor.dtype(), shape));
+    RETURN_IF_ERROR(TensorShapeUtils::MakeShape(transposed_shapes, &shape));
+    RETURN_IF_ERROR(transposed_tensor.BitcastFrom(input_tensor,
+                                                  input_tensor.dtype(), shape));
     return transposed_tensor;
   }
 
   AllocatorAttributes alloc_attr;
   alloc_attr.set_on_host(true);
-  TF_RETURN_IF_ERROR(ctx->allocate_temp(input_tensor.dtype(),
-                                        TensorShape(transposed_shapes),
-                                        &transposed_tensor, alloc_attr));
+  RETURN_IF_ERROR(ctx->allocate_temp(input_tensor.dtype(),
+                                     TensorShape(transposed_shapes),
+                                     &transposed_tensor, alloc_attr));
   // Eigen Transpose fails with SIGFPE if there is a dimension of size 0.
   if (input_tensor.NumElements() > 0) {
-    TF_RETURN_IF_ERROR(DoTranspose<CPUDevice>(ctx->eigen_device<CPUDevice>(),
-                                              input_tensor, permutation,
-                                              &transposed_tensor));
+    RETURN_IF_ERROR(DoTranspose<CPUDevice>(ctx->eigen_device<CPUDevice>(),
+                                           input_tensor, permutation,
+                                           &transposed_tensor));
   }
   return transposed_tensor;
 }
@@ -130,7 +125,7 @@ absl::StatusOr<bool> GetLayoutOverride(OpKernelConstruction* ctx,
   if (!ctx->HasAttr(attrn_name)) {
     return false;
   }
-  TF_RETURN_IF_ERROR(ctx->GetAttr(attrn_name, minor_to_major));
+  RETURN_IF_ERROR(ctx->GetAttr(attrn_name, minor_to_major));
   return !minor_to_major->empty();
 }
 
@@ -207,90 +202,6 @@ struct LinearizedBuffersWrapper {
   std::vector<tensorflow::Tensor> tensors;
 };
 
-absl::Status AutoTransposeAndLinearize(
-    OpKernelContext* ctx, const Tensor& input_tensor, const xla::Shape& shape,
-    LinearizerBufferList* linearized_buffers,
-    std::vector<Tensor>* saved_input_tensors) {
-  const Tensor* tensor = &input_tensor;
-  // If the given layout is not in dim0major layout, transposes the tensor.
-  bool has_transposed = false;
-  Tensor transposed_tensor;
-  if (!xla::LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
-    // If the given layout is not in dim0major layout, transpose the tensor.
-    TF_ASSIGN_OR_RETURN(transposed_tensor,
-                        TransposeTensor(ctx, input_tensor, shape));
-    tensor = &transposed_tensor;
-    has_transposed = true;
-  }
-
-  xla::BorrowingLiteral literal;
-  TF_RETURN_IF_ERROR(HostTensorToBorrowingLiteral(*tensor, &literal));
-
-  auto* transfer_manager =
-      xla::TpuTransferManagerInterface::GetRegisteredTpuTransferManager();
-  TF_RETURN_IF_ERROR(transfer_manager->LinearizeToBuffers(
-      literal, transfer_manager->HostShapeToDeviceShape(literal.shape()),
-      linearized_buffers));
-
-  // The input tensor is ref-counted. Save a handle on the input tensor if
-  // its underlying storage is shared with linearized buffers to prevent
-  // input tensor from getting freed.
-  for (const auto& buffer : *linearized_buffers) {
-    if (!buffer.owns_data() && !has_transposed) {
-      // `buffer` is created from zero-copy fast path from the un-transposed
-      // input tensor so its underlying data is shared with input tensor.
-      // Save a handle to input tensor to increment its ref-count and avoid
-      // it getting deallocated after PrelinearizeTupleOp completes.
-      saved_input_tensors->push_back(*tensor);
-      // A literal can be linearized to zero to two buffers. If any of the
-      // linearized buffer shares storage with input tensor. We save exactly
-      // one handle on the input tensor.
-      break;
-    }
-  }
-  return absl::OkStatus();
-}
-
-class StreamExecutorInfeedEnqueueOp : public TpuInfeedEnqueueOp {
- public:
-  explicit StreamExecutorInfeedEnqueueOp(OpKernelConstruction* ctx)
-      : TpuInfeedEnqueueOp(ctx,
-                           std::make_unique<StreamExecutorTransferOpImpl>()) {}
-
- private:
-  StreamExecutorInfeedEnqueueOp(const StreamExecutorInfeedEnqueueOp&) = delete;
-  StreamExecutorInfeedEnqueueOp& operator=(
-      const StreamExecutorInfeedEnqueueOp&) = delete;
-};
-
-class StreamExecutorInfeedEnqueueTupleOp : public TpuInfeedEnqueueTupleOp {
- public:
-  explicit StreamExecutorInfeedEnqueueTupleOp(OpKernelConstruction* ctx)
-      : TpuInfeedEnqueueTupleOp(
-            ctx, std::make_unique<StreamExecutorTransferOpImpl>()) {}
-
- private:
-  StreamExecutorInfeedEnqueueTupleOp(
-      const StreamExecutorInfeedEnqueueTupleOp&) = delete;
-  StreamExecutorInfeedEnqueueTupleOp& operator=(
-      const StreamExecutorInfeedEnqueueTupleOp&) = delete;
-};
-
-class StreamExecutorInfeedEnqueuePrelinearizedBufferOp
-    : public InfeedEnqueuePrelinearizedBufferOp {
- public:
-  explicit StreamExecutorInfeedEnqueuePrelinearizedBufferOp(
-      OpKernelConstruction* ctx)
-      : InfeedEnqueuePrelinearizedBufferOp(
-            ctx, std::make_unique<StreamExecutorTransferOpImpl>()) {}
-
- private:
-  // InfeedEnqueuePrelinearizedBufferOp is neither copyable nor movable.
-  StreamExecutorInfeedEnqueuePrelinearizedBufferOp(
-      const StreamExecutorInfeedEnqueuePrelinearizedBufferOp&) = delete;
-  StreamExecutorInfeedEnqueuePrelinearizedBufferOp& operator=(
-      const StreamExecutorInfeedEnqueuePrelinearizedBufferOp&) = delete;
-};
 }  // anonymous namespace
 
 TpuInfeedEnqueueOp::TpuInfeedEnqueueOp(
@@ -332,10 +243,10 @@ absl::Status TpuInfeedEnqueueOp::DoWork(OpKernelContext* ctx,
   }
 
   xla::BorrowingLiteral literal;
-  TF_RETURN_IF_ERROR(HostTensorToBorrowingLiteral(*tensor, &literal));
+  RETURN_IF_ERROR(HostTensorToBorrowingLiteral(*tensor, &literal));
 
   // Transfer the given literal to the Infeed interface of the device.
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       transfer_op_->TransferLiteralToInfeed(device_ordinal, literal));
   VLOG(1) << "TpuInfeedEnqueueOp completes. iter_id="
           << ctx->frame_iter().iter_id << " device_ordinal=" << device_ordinal;
@@ -371,7 +282,7 @@ absl::Status TpuInfeedEnqueueTupleOp::DoWork(OpKernelContext* ctx,
   VLOG(1) << "TpuInfeedEnqueueTupleOp::DoWork. iter_id="
           << ctx->frame_iter().iter_id << " device_ordinal=" << device_ordinal;
   OpInputList values;
-  TF_RETURN_IF_ERROR(ctx->input_list("inputs", &values));
+  RETURN_IF_ERROR(ctx->input_list("inputs", &values));
   if (values.size() != shapes_.size()) {
     return absl::InvalidArgumentError(
         "Wrong number of inputs to InfeedEnqueueTuple.");
@@ -405,12 +316,11 @@ absl::Status TpuInfeedEnqueueTupleOp::DoWork(OpKernelContext* ctx,
   }
 
   xla::BorrowingLiteral tuple;
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       HostTensorsToBorrowingLiteralTuple(maybe_transposed_tensors, &tuple));
 
   // Transfer the given literal to the Infeed interface of the device.
-  TF_RETURN_IF_ERROR(
-      transfer_op_->TransferLiteralToInfeed(device_ordinal, tuple));
+  RETURN_IF_ERROR(transfer_op_->TransferLiteralToInfeed(device_ordinal, tuple));
 
   VLOG(1) << "TpuInfeedEnqueueTupleOp completes. iter_id="
           << ctx->frame_iter().iter_id << " device_ordinal=" << device_ordinal;
@@ -429,31 +339,10 @@ absl::Status InfeedEnqueuePrelinearizedBufferOp::DoWork(OpKernelContext* ctx,
   const LinearizedBuffersWrapper* wrapper =
       input_tensor.scalar<tensorflow::Variant>()()
           .get<LinearizedBuffersWrapper>();
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       transfer_op_->TransferBuffersToInfeed(device_ordinal, wrapper->buffers));
 
   return absl::OkStatus();
 }
-
-// These ops execute on either the TPU device or the CPU device. When running on
-// CPU they must specify a non-negative value for device_ordinal to indicate
-// which TPU to send infeed to.
-REGISTER_KERNEL_BUILDER(
-    Name("InfeedEnqueue").Device(DEVICE_TPU_NODE).HostMemory("input"),
-    StreamExecutorInfeedEnqueueOp);
-REGISTER_KERNEL_BUILDER(Name("InfeedEnqueue").Device(DEVICE_CPU),
-                        StreamExecutorInfeedEnqueueOp);
-
-REGISTER_KERNEL_BUILDER(
-    Name("InfeedEnqueueTuple").Device(DEVICE_TPU_NODE).HostMemory("inputs"),
-    StreamExecutorInfeedEnqueueTupleOp);
-REGISTER_KERNEL_BUILDER(Name("InfeedEnqueueTuple").Device(DEVICE_CPU),
-                        StreamExecutorInfeedEnqueueTupleOp);
-
-// InfeedEnqueuePrelinearizedBuffer op run on CPU and takes a device_ordinal to
-// select the right device to infeed.
-REGISTER_KERNEL_BUILDER(
-    Name("InfeedEnqueuePrelinearizedBuffer").Device(DEVICE_CPU),
-    StreamExecutorInfeedEnqueuePrelinearizedBufferOp);
 
 }  // namespace tensorflow

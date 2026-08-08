@@ -501,7 +501,10 @@ class TensorArrayTest(test.TestCase):
 
       if (control_flow_util.ENABLE_CONTROL_FLOW_V2 and
           not context.executing_eagerly()):
-        error_msg = "Trying to modify element -1 in a list with 3 elements."
+        error_msg = (
+            "Trying to modify element -1 in a list, but the index "
+            "must be non-negative."
+        )
       else:
         error_msg = "index -1"
       with self.assertRaisesOpError(error_msg):

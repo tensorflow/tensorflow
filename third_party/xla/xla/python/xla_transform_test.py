@@ -31,6 +31,26 @@ class XlaTransformTest(absltest.TestCase):
         stage, "python_test_transform", trivial_transform
     )
 
+  def test_core_assignment_unimplemented_on_cpu(self):
+    module_text = """
+HloModule test_module
+ENTRY %main (p0: f32[16,256,256]) -> f32[16,256,256] {
+  %p0 = f32[16,256,256]{2,1,0} parameter(0)
+  ROOT %add = f32[16,256,256]{2,1,0} add(%p0, %p0)
+}
+"""
+    module = xla_extension.hlo_module_from_text(module_text)
+    add_inst = None
+    for comp in module.computations():
+      for inst in comp.instructions():
+        if "add" in inst.to_string():
+          add_inst = inst
+          break
+    self.assertIsNotNone(add_inst)
+    with self.assertRaises((RuntimeError, ValueError)) as ctx:
+      add_inst.set_core_assignment([1])
+    self.assertIn("not implemented", str(ctx.exception).lower())
+
 
 if __name__ == "__main__":
   absltest.main()

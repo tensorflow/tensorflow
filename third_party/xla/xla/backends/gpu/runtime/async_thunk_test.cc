@@ -23,9 +23,9 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/memset_thunk.h"
@@ -47,9 +47,9 @@ namespace xla::gpu {
 namespace {
 
 static absl::StatusOr<se::StreamExecutor*> CreateExecutor() {
-  ASSIGN_OR_RETURN(std::string platform_name,
+  ABSL_ASSIGN_OR_RETURN(std::string platform_name,
                    xla::PlatformUtil::CanonicalPlatformName("gpu"));
-  ASSIGN_OR_RETURN(se::Platform * platform,
+  ABSL_ASSIGN_OR_RETURN(se::Platform * platform,
                    se::PlatformManager::PlatformWithName(platform_name));
   return platform->ExecutorForDevice(0);
 }
@@ -93,22 +93,21 @@ TEST(AsyncThunkTest, ConcurrentMemsets) {
     BufferAllocation::Slice slice(&alloc, i * kChunkBytes, kChunkBytes);
     uint32_t value = static_cast<uint32_t>(100 + i);
 
-    ThunkSequence nested;
-    nested.push_back(std::make_unique<Memset32BitValueThunk>(Thunk::ThunkInfo(),
-                                                             value, slice));
+    ThunkSequence nested = ThunkSequence::Of<Memset32BitValueThunk>(
+        Thunk::ThunkInfo(), value, slice);
 
     Thunk::ThunkInfo start_info;
     start_info.profile_annotation = absl::StrCat("start#", i);
     start_info.thunk_id = ThunkId(i + 1);
 
-    thunks.push_back(std::make_unique<AsyncStartThunk>(
-        std::move(start_info), ComputationStreamId(i), std::move(nested)));
+    thunks.Emplace<AsyncStartThunk>(std::move(start_info),
+                                    ComputationStreamId(i), std::move(nested));
   }
 
   for (int i = 0; i < kNumChunks; ++i) {
     auto* start = static_cast<AsyncStartThunk*>(thunks[i].get());
-    thunks.push_back(std::make_unique<AsyncDoneThunk>(
-        Thunk::ThunkInfo(), start->async_execution()));
+    thunks.Emplace<AsyncDoneThunk>(Thunk::ThunkInfo(),
+                                   start->async_execution());
   }
 
   // Build a ThunkExecutor to execute all thunks.

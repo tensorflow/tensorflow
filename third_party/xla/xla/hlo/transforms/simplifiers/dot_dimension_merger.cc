@@ -130,10 +130,10 @@ class BatchDimensionMerger : public DfsHloRewriteVisitor {
           shifted_contracting_dimensions.end());
     }
 
-    ASSIGN_OR_RETURN(HloInstruction * reshaped_lhs,
+    ABSL_ASSIGN_OR_RETURN(HloInstruction * reshaped_lhs,
                      MakeReshapeHlo(new_lhs_shape, dot->mutable_operand(0)));
 
-    ASSIGN_OR_RETURN(HloInstruction * reshaped_rhs,
+    ABSL_ASSIGN_OR_RETURN(HloInstruction * reshaped_rhs,
                      MakeReshapeHlo(new_rhs_shape, dot->mutable_operand(1)));
 
     Shape new_dot_shape = merge_batch_dims(dot->shape(), /*batch_dim=*/0);

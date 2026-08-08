@@ -719,7 +719,7 @@ const absl::optional<int> GraphTypeTopologyView::GetNodeIndex(
   const auto it = node_type_name_to_index_.find(key);
   DCHECK(it != node_type_name_to_index_.end())
       << "Node doesn't exist in a graph";
-  return it == node_type_name_to_index_.end() ? absl::nullopt
+  return it == node_type_name_to_index_.end() ? std::nullopt
                                               : std::make_optional(it->second);
 }
 

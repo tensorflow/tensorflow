@@ -49,9 +49,8 @@ inline InputTensorData CreateInputTensorData(int num_elements,
   tmp.bytes = sizeof(T) * num_elements;
   T* raw = new T[num_elements];
   std::generate_n(raw, num_elements, [&]() {
-    if (std::is_same<T, std::complex<float>>::value) {
-      return static_cast<T>(distribution(*random_engine),
-                            distribution(*random_engine));
+    if constexpr (std::is_same_v<T, std::complex<float>>) {
+      return T(distribution(*random_engine), distribution(*random_engine));
     } else {
       return static_cast<T>(distribution(*random_engine));
     }

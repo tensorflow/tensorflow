@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/status/statusor.h"
 #include "grpcpp/channel.h"
@@ -33,16 +34,23 @@ constexpr bool kVerifySecureCredentials = false;
 absl::StatusOr<std::unique_ptr<DistributedRuntimeService>>
 GetDistributedRuntimeService(std::string address,
                              const CoordinationServiceImpl::Options& options) {
-  return DistributedRuntimeService::Get(
-      address, tsl::GetServerCredentials(kVerifySecureCredentials), options);
+  auto credentials = options.credentials;
+  if (credentials == nullptr) {
+    credentials = tsl::GetServerCredentials(kVerifySecureCredentials);
+  }
+  return DistributedRuntimeService::Get(address, std::move(credentials),
+                                        options);
 }
 
 std::shared_ptr<DistributedRuntimeClient> GetDistributedRuntimeClient(
     std::string address, const DistributedRuntimeClient::Options& options,
     bool use_compression) {
+  auto credentials = options.credentials;
+  if (credentials == nullptr) {
+    credentials = tsl::GetClientCredentials(kVerifySecureCredentials);
+  }
   auto channel = GetDistributedRuntimeClientChannel(
-      address, tsl::GetClientCredentials(kVerifySecureCredentials),
-      use_compression);
+      address, std::move(credentials), use_compression);
   return GetDistributedRuntimeClient(channel, options);
 }
 

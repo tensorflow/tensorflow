@@ -69,14 +69,16 @@ class IfrtModelContext {
                    xla::CompileOptions::EnvironmentOptionOverrides>
           compilation_env_or_overrides,
       H2DTransferExecutorFactory* h2d_transfer_executor_factory,
-      bool enable_propagate_static_shapes_pass = true)
+      bool enable_propagate_static_shapes_pass = true,
+      bool use_output_arena = false)
       : client_(std::move(client)),
         ifrt_serving_core_selector_(ifrt_serving_core_selector),
         thread_pool_(*thread_pool),
         compilation_env_or_overrides_(std::move(compilation_env_or_overrides)),
         h2d_transfer_executor_factory_(h2d_transfer_executor_factory),
         enable_propagate_static_shapes_pass_(
-            enable_propagate_static_shapes_pass) {}
+            enable_propagate_static_shapes_pass),
+        use_output_arena_(use_output_arena) {}
   IfrtModelContext(
       std::shared_ptr<xla::ifrt::Client> client,
       IfrtServingCoreSelector* ifrt_serving_core_selector,
@@ -88,7 +90,8 @@ class IfrtModelContext {
       std::shared_ptr<const void> topology, TfToHloCompiler* tf_to_hlo_compiler,
       H2DTransferExecutorFactory* h2d_transfer_executor_factory,
       IfrtPersistentCompilationCache* persistent_compilation_cache = nullptr,
-      bool enable_propagate_static_shapes_pass = true)
+      bool enable_propagate_static_shapes_pass = true,
+      bool use_output_arena = false)
       : client_(std::move(client)),
         topology_(topology),
         ifrt_serving_core_selector_(ifrt_serving_core_selector),
@@ -100,7 +103,8 @@ class IfrtModelContext {
         h2d_transfer_executor_factory_(h2d_transfer_executor_factory),
         persistent_compilation_cache_(persistent_compilation_cache),
         enable_propagate_static_shapes_pass_(
-            enable_propagate_static_shapes_pass) {}
+            enable_propagate_static_shapes_pass),
+        use_output_arena_(use_output_arena) {}
 
   void RegisterHandle(ServingExecutableRegistry::Handle handle) {
     handles_.push_back(std::move(handle));
@@ -172,6 +176,12 @@ class IfrtModelContext {
     enable_propagate_static_shapes_pass_ = enable_propagate_static_shapes_pass;
   }
 
+  bool use_output_arena() const { return use_output_arena_; }
+
+  void set_use_output_arena(bool use_output_arena) {
+    use_output_arena_ = use_output_arena;
+  }
+
   tsl::protobuf::Message* GetCompilationEnvironmentProto() const {
     if (std::holds_alternative<std::unique_ptr<tsl::protobuf::Message>>(
             compilation_env_or_overrides_)) {
@@ -238,6 +248,7 @@ class IfrtModelContext {
   IfrtPersistentCompilationCache* persistent_compilation_cache_ = nullptr;
   bool frozen_ = false;
   bool enable_propagate_static_shapes_pass_ = true;
+  bool use_output_arena_ = false;
 };
 
 }  // namespace ifrt_serving

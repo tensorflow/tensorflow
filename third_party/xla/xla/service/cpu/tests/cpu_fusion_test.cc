@@ -37,14 +37,14 @@ namespace xla {
 namespace cpu {
 namespace {
 
-class CpuFusionTest : public HloPjRtTestBase {
+class CpuFusionTest : public HloTestBase {
  protected:
   ErrorSpec error_spec_{0.0001, 1e-5};
   AliasInfo alias_info_;
 
  private:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.add_xla_disable_hlo_passes("layout-assignment");
     return debug_options;
   }

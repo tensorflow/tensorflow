@@ -215,7 +215,7 @@ absl::StatusOr<bool> TransposeFolding::RunImpl(
           continue;
         }
 
-        ASSIGN_OR_RETURN(bool can_fold_operand,
+        ABSL_ASSIGN_OR_RETURN(bool can_fold_operand,
                          dot_can_fold_transpose_operand_(*instruction, i));
 
         if (can_fold_operand) {
@@ -239,12 +239,12 @@ absl::StatusOr<bool> TransposeFolding::RunImpl(
   });
 
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
-    RETURN_IF_ERROR(comp->Accept(&visit_fn));
+    ABSL_RETURN_IF_ERROR(comp->Accept(&visit_fn));
   }
 
   bool changed = false;
   for (InstructionOperandsPair& pair : foldable_dots) {
-    RETURN_IF_ERROR(FoldTransposeIntoDot(pair));
+    ABSL_RETURN_IF_ERROR(FoldTransposeIntoDot(pair));
     changed = true;
   }
   for (InstructionOperandsPair& pair : foldable_convolutions) {

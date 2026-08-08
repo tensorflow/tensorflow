@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: mlir-hlo-opt --hlo-legalize-to-stablehlo --mlir-print-op-generic --split-input-file --verify-diagnostics %s | FileCheck %s
 // RUN: mlir-hlo-opt --hlo-legalize-to-stablehlo=allow-experimental-features --mlir-print-op-generic --split-input-file --verify-diagnostics %s | FileCheck %s
 
@@ -1795,6 +1809,15 @@ func.func @op_topk(%arg0: tensor<5x10xf32>) -> (tensor<5x8xf32>, tensor<5x8xi32>
   func.return %0#0, %0#1 : tensor<5x8xf32>, tensor<5x8xi32>
 }
 
+// CHECK-LABEL: "topk_unstable"
+func.func @topk_unstable(%arg0: tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<16x8xi32>) {
+  // CHECK: "stablehlo.custom_call"([[ARG:%arg[0-9]+]]) <{
+  // CHECK-SAME:   call_target_name = "mhlo.topk"}> {mhlo.attributes = {is_stable = false, k = 8 : i64, largest = true}, mhlo.version = 1 : i64}
+  // CHECK-SAME: (tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<16x8xi32>)
+  %0:2 = mhlo.topk(%arg0, k=8, largest=true, is_stable = false) : tensor<16x16xf32> -> (tensor<16x8xf32>, tensor<16x8xi32>)
+  func.return %0#0, %0#1 : tensor<16x8xf32>, tensor<16x8xi32>
+}
+
 // CHECK-LABEL: "op_torch_index_select"
 func.func @op_torch_index_select(%arg0: tensor<5x1x5xf32>, %arg1: tensor<2xi32>) ->  tensor<2x1x5xf32> {
   //      CHECK: "stablehlo.torch_index_select"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) <{
@@ -2448,4 +2471,23 @@ func.func @while_op_with_buffer_type(%arg0: tensor<i1>, %arg1: memref<2xf32>) ->
       mhlo.return %iterArg0, %1 : tensor<i1>, memref<2xf32>
     }
   func.return %0#1: memref<2xf32>
+}
+
+// CHECK-LABEL: "op_scan"
+func.func @op_scan(%arg0: tensor<10xf32>, %arg1: tensor<f32>) -> (tensor<10xf32>, tensor<f32>) {
+  // CHECK: "stablehlo.custom_call"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) <{
+  // CHECK-SAME:   call_target_name = "mhlo.scan",
+  // CHECK-SAME:   called_computations = [@scan]}>
+  // CHECK-SAME: {mhlo.attributes = {dimension = 0 : i64, is_associative = true, is_reverse = true, operandSegmentSizes = array<i32: 1, 1>, resultSegmentSizes = array<i32: 1, 1>, scan_dim_size = 10 : i64}, mhlo.version = 1 : i64}
+  // CHECK-SAME: (tensor<10xf32>, tensor<f32>) -> (tensor<10xf32>, tensor<f32>)
+  // The scan body is outlined into a private function referenced through
+  // called_computations; stablehlo-legalize-to-hlo.mlir checks the reverse
+  // direction, which round-trips it back into the op's region.
+  // CHECK: sym_name = "scan", sym_visibility = "private"
+  %0:2 = mhlo.scan (%arg0) inits (%arg1) dimension=0 attributes {scan_dim_size = 10 : i64, is_reverse = true, is_associative = true} {
+  ^bb0(%input0: tensor<f32>, %carry0: tensor<f32>):
+    %1 = mhlo.add %input0, %carry0 : tensor<f32>
+    mhlo.return %1, %1 : tensor<f32>, tensor<f32>
+  } : (tensor<10xf32>, tensor<f32>) -> (tensor<10xf32>, tensor<f32>)
+  func.return %0#0, %0#1 : tensor<10xf32>, tensor<f32>
 }

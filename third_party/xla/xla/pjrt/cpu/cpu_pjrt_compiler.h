@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <utility>
 
 #include "absl/status/statusor.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -40,6 +39,11 @@ class CpuPjRtCompiler : public PjRtCompiler {
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, MaybeOwningMlirModule module,
       const PjRtTopologyDescription& topology, PjRtClient* client) override;
+
+  // Deserializes a PjRtTopologyDescription from a string.
+  absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>>
+  DeserializePjRtTopologyDescription(
+      const std::string& serialized_topology) override;
 };
 
 }  // namespace xla::cpu

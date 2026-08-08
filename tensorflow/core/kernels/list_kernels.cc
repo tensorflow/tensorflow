@@ -476,13 +476,25 @@ class TensorListSetItem : public OpKernel {
     TensorList* output_list = nullptr;
     OP_REQUIRES_OK(c, ForwardInputOrCreateNewList(c, 0, 0, *l, &output_list));
     int32_t index = c->input(1).scalar<int32_t>()();
+    OP_REQUIRES(c, index >= 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Trying to modify element ", index,
+                    " in a list, but the index must be non-negative.")));
+    // Enforce the capacity cap, as TensorListPushBack does.
+    OP_REQUIRES(
+        c, l->max_num_elements == -1 || index < l->max_num_elements,
+        absl::InvalidArgumentError(absl::StrCat(
+            "Trying to modify element ", index,
+            " in a list with max_num_elements ", l->max_num_elements, ".")));
     if (!resize_if_index_out_of_bounds_) {
       OP_REQUIRES(c, index < l->tensors().size(),
                   absl::InvalidArgumentError(absl::StrCat(
                       "Trying to modify element ", index, " in a list with ",
                       l->tensors().size(), " elements.")));
     } else if (index >= l->tensors().size()) {
-      output_list->tensors().resize(index + 1, Tensor(DT_INVALID));
+      // size_t cast avoids signed overflow when index == INT32_MAX.
+      output_list->tensors().resize(static_cast<size_t>(index) + 1,
+                                    Tensor(DT_INVALID));
     }
     output_list->tensors()[index] = value;
   }

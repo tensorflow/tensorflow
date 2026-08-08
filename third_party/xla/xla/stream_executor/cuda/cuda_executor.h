@@ -126,15 +126,20 @@ class CudaExecutor : public GpuExecutor {
       const override {
     return CudaExecutor::CreateDeviceDescription(device_ordinal());
   }
+
+  absl::StatusOr<std::string> GetInterconnectStatus() const override;
+
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
       uint64_t size) override;
 
   bool HostMemoryRegister(void* location, uint64_t size) override;
   bool HostMemoryUnregister(void* location) override;
+  bool IsHostMemoryPinned(const void* ptr, uint64_t size) override;
 
   bool IsVmmMemory(const DeviceAddressBase& address) override;
 
   absl::StatusOr<MemorySpace> GetPointerMemorySpace(const void* ptr) override;
+  absl::StatusOr<uint64_t> GetCollectiveMemoryGranularity() const override;
 
   Stream* FindAllocatedStream(void* gpu_stream) override {
     absl::MutexLock lock(alive_gpu_streams_mu_);
@@ -230,6 +235,14 @@ class CudaExecutor : public GpuExecutor {
   bool is_fabric_supported() const {
     return device_allocator_options_.enable_fabric_handle;
   }
+
+  absl::StatusOr<DeviceAddressBase> GetAllocationRange(
+      void* ptr) const override;
+
+  absl::StatusOr<std::string> ExportFabricHandle(void* ptr) const override;
+
+  absl::StatusOr<DeviceAddressBase> ImportFabricHandle(
+      absl::string_view serialized) override;
 
  private:
   // Allocates memory using the given allocator and tracks the resulting

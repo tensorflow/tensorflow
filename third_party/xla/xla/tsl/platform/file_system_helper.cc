@@ -278,7 +278,7 @@ absl::StatusOr<bool> FileExists(Env* env, const std::string& fname) {
   if (absl::IsNotFound(status)) {
     return false;
   }
-  RETURN_IF_ERROR(status);
+  ABSL_RETURN_IF_ERROR(status);
   return true;
 }
 

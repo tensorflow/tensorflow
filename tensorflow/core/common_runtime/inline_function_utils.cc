@@ -159,15 +159,15 @@ class DefaultFunctionBodyPlacer : public InlinedFunctionBodyPlacer {
   }
   absl::optional<std::string> OutputNodeDevice(
       int output_index) const override {
-    return absl::nullopt;
+    return std::nullopt;
   }
   bool ColocateInputOutputIdentities() const override { return false; }
   absl::optional<std::string> ControlNodeDevice() const override {
-    return absl::nullopt;
+    return std::nullopt;
   }
   absl::optional<std::string> BodyNodeDevice(
       const NodeDef& ndef) const override {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
  private:
@@ -218,7 +218,7 @@ class MultiDeviceFunctionBodyPlacer : public InlinedFunctionBodyPlacer {
   }
   absl::optional<std::string> OutputNodeDevice(
       int output_index) const override {
-    return absl::nullopt;
+    return std::nullopt;
   }
   bool ColocateInputOutputIdentities() const override { return true; }
   absl::optional<std::string> ControlNodeDevice() const override {

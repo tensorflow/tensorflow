@@ -18,19 +18,20 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/layout.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
@@ -42,6 +43,28 @@ limitations under the License.
 #include "tsl/platform/numbers.h"
 
 namespace stream_executor {
+
+StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
+    StreamExecutor* executor, int64_t memory_space)
+    : executor_(executor), memory_space_(memory_space) {}
+
+std::string StreamExecutorMemoryAllocator::Name() {
+  return absl::StrCat("SE_", executor_->device_ordinal(), "_space_",
+                      memory_space_);
+}
+
+void* StreamExecutorMemoryAllocator::AllocateRaw(size_t alignment,
+                                                 size_t num_bytes) {
+  auto result = executor_->AllocateArray<char>(num_bytes, memory_space_);
+  return result.opaque();
+}
+
+void StreamExecutorMemoryAllocator::DeallocateRaw(void* ptr) {
+  if (ptr != nullptr) {
+    DeviceAddressBase dev_mem(ptr);
+    executor_->Deallocate(&dev_mem);
+  }
+}
 
 TfAllocatorAdapter::TfAllocatorAdapter(tsl::Allocator* wrapped, Stream* stream,
                                        size_t min_alignment,
@@ -75,7 +98,8 @@ absl::StatusOr<ScopedDeviceAddress<uint8_t>> TfAllocatorAdapter::Allocate(
     data = wrapped_->AllocateRaw(min_alignment_, size, attrs);
     if (data == nullptr) {
       return MemoryAllocationError(
-          size, memory_space == xla::Layout::kHostMemorySpace);
+          device_ordinal, size, wrapped_->Name(),
+          memory_space == xla::Layout::kHostMemorySpace);
     }
   }
   return ScopedDeviceAddress<uint8_t>(DeviceAddressBase(data, size),
@@ -156,9 +180,15 @@ absl::StatusOr<ScopedDeviceAddress<uint8_t>> MultiDeviceAdapter::Allocate(
     int device_ordinal, uint64_t size, bool retry_on_failure,
     int64_t memory_space) {
   auto it = memory_space_to_per_device_allocators_.find(memory_space);
-  CHECK(it != memory_space_to_per_device_allocators_.end());
-  CHECK_LT(device_ordinal, it->second.size());
-  ASSIGN_OR_RETURN(auto result,
+  if (it == memory_space_to_per_device_allocators_.end() ||
+      device_ordinal < 0 || device_ordinal >= it->second.size() ||
+      !it->second[device_ordinal]) {
+    return absl::InternalError(absl::StrCat(
+        "No allocator found in MultiDeviceAdapter for device ordinal ",
+        device_ordinal, " and memory space ", memory_space));
+  }
+
+  ABSL_ASSIGN_OR_RETURN(auto result,
                    it->second[device_ordinal]->Allocate(
                        device_ordinal, size, retry_on_failure, memory_space));
 
@@ -194,7 +224,7 @@ absl::Status MultiDeviceAdapter::Deallocate(int device_ordinal,
       // this case we are falling back to the first allocator to deallocate
       // the memory.
       // See b/325527293 for more details.
-      ASSIGN_OR_RETURN(auto allocator, GetDefaultAllocator(device_ordinal));
+      ABSL_ASSIGN_OR_RETURN(auto allocator, GetDefaultAllocator(device_ordinal));
       return allocator->Deallocate(device_ordinal, mem);
     }
     memory_space = it->second;
@@ -214,13 +244,13 @@ absl::Status MultiDeviceAdapter::Deallocate(int device_ordinal,
 }
 
 absl::StatusOr<Stream*> MultiDeviceAdapter::GetStream(int device_ordinal) {
-  ASSIGN_OR_RETURN(auto allocator, GetDefaultAllocator(device_ordinal));
+  ABSL_ASSIGN_OR_RETURN(auto allocator, GetDefaultAllocator(device_ordinal));
   return allocator->GetStream(device_ordinal);
 }
 
 absl::StatusOr<tsl::Allocator*> MultiDeviceAdapter::GetAllocator(
     int device_ordinal) {
-  ASSIGN_OR_RETURN(auto allocator, GetDefaultAllocator(device_ordinal));
+  ABSL_ASSIGN_OR_RETURN(auto allocator, GetDefaultAllocator(device_ordinal));
   return allocator->GetAllocator(device_ordinal);
 }
 
@@ -231,17 +261,20 @@ absl::StatusOr<tsl::Allocator*> MultiDeviceAdapter::GetAllocator(
 static constexpr absl::string_view kMemoryAllocationErrorPayloadKey =
     "tf-allocator-allocation-error";
 
-absl::Status MemoryAllocationError(uint64_t size, bool is_host_mem) {
+absl::Status MemoryAllocationError(int64_t device_ordinal, uint64_t size,
+                                   absl::string_view allocator_name,
+                                   bool is_host_mem) {
   constexpr absl::string_view kHostMemoryExplanation =
       " Please set the environment variable "
       "XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB to allocate larger "
       "host memory than the default 64 GB.";
 
-  absl::Status status = absl::ResourceExhaustedError(
-      absl::StrCat("Out of ", (is_host_mem ? "host " : ""),
-                   "memory while trying to allocate ",
-                   tsl::strings::HumanReadableNumBytes(size), ".",
-                   (is_host_mem ? kHostMemoryExplanation : "")));
+  absl::Status status = absl::ResourceExhaustedError(absl::StrCat(
+      "Out of ", (is_host_mem ? "host " : ""),
+      "memory while trying to allocate ",
+      tsl::strings::HumanReadableNumBytes(size), " with allocator ",
+      allocator_name, " on device ", device_ordinal, ".",
+      (is_host_mem ? kHostMemoryExplanation : "")));
   status.SetPayload(kMemoryAllocationErrorPayloadKey, absl::Cord());
   return status;
 }

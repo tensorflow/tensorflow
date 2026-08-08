@@ -29,20 +29,18 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
-#include "xla/backends/gpu/runtime/collective_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_state.h"
-#include "xla/backends/gpu/runtime/scratch_memory_requests.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/communicator.h"
@@ -164,7 +162,7 @@ static absl::StatusOr<const se::CommandBuffer::Command*> RecordNoOpCollective(
   stream_executor::DeviceAddressBase dst =
       execute_params.buffer_allocations->GetDeviceAddress(
           thunk.buffers()[0].destination_buffer.slice);
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<se::CommandBuffer> nested_cmd,
       se::TraceCommandBufferFactory::Create(
           execute_params.stream->parent(),
@@ -176,7 +174,7 @@ static absl::StatusOr<const se::CommandBuffer::Command*> RecordNoOpCollective(
                                               create->dependencies);
   }
   if (auto* update = std::get_if<Command::RecordUpdate>(&record_action)) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         command_buffer->UpdateChildCommand(update->command, *nested_cmd));
     return update->command;
   }
@@ -202,55 +200,14 @@ class NoOpAllReduceThunk : public AllReduceThunk {
   }
 };
 
-class AsyncCollectiveKernelAllReduceThunk : public AllReduceThunk {
- public:
-  AsyncCollectiveKernelAllReduceThunk(
-      Thunk::ThunkInfo thunk_info, AllReduceConfig config,
-      std::vector<CollectiveThunk::Buffer> buffers,
-      std::unique_ptr<CollectiveKernelThunk> collective_kernel_thunk)
-      : AllReduceThunk(std::move(thunk_info), std::move(config),
-                       std::move(buffers), std::move(collective_kernel_thunk)) {
-  }
-
-  absl::StatusOr<const se::CommandBuffer::Command*> Record(
-      const ExecuteParams& execute_params, const RecordParams&,
-      RecordAction record_action, se::CommandBuffer* command_buffer) override {
-    ASSIGN_OR_RETURN(
-        GpuCliqueKey clique_key,
-        GetCollectiveGpuCliqueKey(*execute_params.collective_params, config()));
-
-    FailingCommunicator comm;
-    std::unique_ptr<se::CommandBuffer> nested_cmd;
-    ASSIGN_OR_RETURN(nested_cmd, se::TraceCommandBufferFactory::Create(
-                                     execute_params.stream->parent(),
-                                     execute_params.command_buffer_trace_stream,
-                                     [&](se::Stream* stream) {
-                                       return RunCollective(execute_params,
-                                                            clique_key, *stream,
-                                                            comm);
-                                     }));
-
-    RETURN_IF_ERROR(nested_cmd->SetPriority(se::StreamPriority::Highest));
-
-    if (auto* create = std::get_if<RecordCreate>(&record_action)) {
-      return command_buffer->CreateChildCommand(*nested_cmd,
-                                                create->dependencies);
-    }
-    if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
-      RETURN_IF_ERROR(
-          command_buffer->UpdateChildCommand(update->command, *nested_cmd));
-      return update->command;
-    }
-    return absl::InternalError("Invalid record action");
-  }
-};
-
 class NoOpReduceScatterThunk : public ReduceScatterThunk {
  public:
   NoOpReduceScatterThunk(Thunk::ThunkInfo thunk_info, AllReduceConfig config,
                          std::vector<CollectiveThunk::Buffer> buffers)
       : ReduceScatterThunk(std::move(thunk_info), std::move(config),
                            std::move(buffers)) {}
+
+  using ReduceScatterThunk::CanUseSymmetricBuffer;
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override {
     return absl::OkStatus();
@@ -384,6 +341,15 @@ static NoOpReduceScatterThunk MakeNoOpReduceScatterThunk(
                                 {MakeNoOpBuffer(alloc_src, alloc_dst, length)});
 }
 
+TEST(ReduceScatterThunkTest, SupportsSymmetricBuffers) {
+  BufferAllocation alloc_src(/*index=*/0, /*size=*/16, /*color=*/0);
+  BufferAllocation alloc_dst(/*index=*/1, /*size=*/16, /*color=*/0);
+  NoOpReduceScatterThunk thunk =
+      MakeNoOpReduceScatterThunk(alloc_src, alloc_dst, /*length=*/4);
+
+  EXPECT_TRUE(thunk.CanUseSymmetricBuffer());
+}
+
 // Records AllReduceThunk into a primary command buffer (create phase) and
 // verifies that a non-null command node is returned.
 TEST(AllReduceThunkTest, RecordCommandBufferCreate) {
@@ -511,157 +477,6 @@ TEST(AllReduceThunkTest, RecordCommandBufferUpdate) {
   ASSERT_OK(command_buffer->Finalize());
   ASSERT_OK(command_buffer->Submit(stream.get()));
   ASSERT_OK(stream->BlockHostUntilDone());
-}
-
-TEST(AllReduceThunkTest, RecordCommandBufferCreateUpdateAsyncCollectiveKernel) {
-  se::StreamExecutor* executor = GpuExecutor();
-  if (!IsAtLeastCuda12900(executor)) {
-    GTEST_SKIP() << "Child command nodes require CUDA 12.9+";
-  }
-
-  if (!executor->GetDeviceDescription()
-           .cuda_compute_capability()
-           .IsAtLeastHopper() &&
-      !executor->GetDeviceDescription().gpu_compute_capability().IsRocm()) {
-    GTEST_SKIP()
-        << "Collective kernel requires Hopper or newer, or a ROCm device";
-  }
-
-  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
-  ASSERT_OK_AND_ASSIGN(auto trace_stream, executor->CreateStream());
-  ASSERT_OK_AND_ASSIGN(auto async_stream, executor->CreateStream());
-
-  constexpr int64_t kLength = 4;
-  constexpr int64_t kByteLength = sizeof(float) * kLength;
-
-  se::DeviceAddress<float> src1 = executor->AllocateArray<float>(kLength, 0);
-  se::DeviceAddress<float> dst1 = executor->AllocateArray<float>(kLength, 0);
-  se::DeviceAddress<float> src2 = executor->AllocateArray<float>(kLength, 0);
-  se::DeviceAddress<float> dst2 = executor->AllocateArray<float>(kLength, 0);
-
-  BufferAllocation alloc_src(/*index=*/0, kByteLength, /*color=*/0);
-  BufferAllocation alloc_dst(/*index=*/1, kByteLength, /*color=*/0);
-  std::vector<CollectiveThunk::Buffer> buffers = {
-      MakeNoOpBuffer(alloc_src, alloc_dst, kLength)};
-
-  static constexpr absl::string_view kDummyKernelSource = R"(
-    .version 8.7
-    .target sm_90
-    .address_size 64
-
-    .visible .entry dummy_kernel(
-    .param .u64 .ptr .align 1 input_buffer,
-    .param .u64 .ptr .align 1 output_buffer,
-    .param .u32 rank,
-    .param .u64 signal_value,
-    .param .u64 .ptr .align 1 signal_buffers,
-    .param .u64 .ptr .align 1 remote_buffers
-    ) {
-      ret;
-    }
-  )";
-
-  ReplicaGroup replica_group;
-  replica_group.add_replica_ids(0);
-  AllReduceConfig config = MakeSumConfig();
-  config.config.replica_groups = {replica_group};
-  config.config.group_mode =
-      CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA;
-
-  auto collective_kernel_thunk = std::make_unique<CollectiveKernelThunk>(
-      Thunk::ThunkInfo(), config.config, config.reduction_kind,
-      /*is_async=*/true, buffers,
-      /*is_collective_kernel_enabled=*/true, "dummy_kernel",
-      LaunchDimensions(1, 1));
-  CollectiveKernelThunk* collective_kernel_thunk_ptr =
-      collective_kernel_thunk.get();
-  AsyncCollectiveKernelAllReduceThunk thunk(Thunk::ThunkInfo(), config, buffers,
-                                            std::move(collective_kernel_thunk));
-
-  DeviceAssignment device_assignment(/*replica_count=*/1,
-                                     /*computation_count=*/1);
-  device_assignment(0, 0) = 0;
-
-  GpuExecutableRunOptions gpu_options;
-  gpu_options.set_gpu_global_device_ids(GpuExecutableRunOptions::DeviceIdMap{
-      std::make_pair(LocalDeviceId(0), GlobalDeviceId(0))});
-
-  ServiceExecutableRunOptions run_options;
-  run_options.mutable_run_options()->set_stream(stream.get());
-  run_options.mutable_run_options()->set_device_assignment(&device_assignment);
-  run_options.mutable_run_options()->set_gpu_executable_run_options(
-      &gpu_options);
-  run_options.mutable_run_options()->set_local_device_count(1);
-
-  std::vector<se::Stream*> async_streams = {async_stream.get()};
-  ASSERT_OK_AND_ASSIGN(
-      CollectiveParams collective_params,
-      CollectiveParams::Create(run_options, async_streams,
-                               LocalDeviceId(executor->device_ordinal())));
-
-  ASSERT_OK_AND_ASSIGN(
-      GpuCliqueKey clique_key,
-      GetCollectiveGpuCliqueKey(collective_params, config.config));
-  ASSERT_OK_AND_ASSIGN(bool use_collective_kernel,
-                       collective_kernel_thunk_ptr->IsSupported(
-                           clique_key, *executor, collective_params));
-  if (!use_collective_kernel) {
-    GTEST_SKIP() << "Collective kernel is not supported on this executor";
-  }
-
-  se::StreamExecutorAddressAllocator allocator(executor);
-  BufferAllocations allocations1({src1, dst1}, 0, &allocator);
-  BufferAllocations allocations2({src2, dst2}, 0, &allocator);
-
-  CollectiveCliqueRequests clique_requests;
-  CollectiveMemoryRequests memory_requests(allocations1);
-  ScratchMemoryRequests scratch_memory_requests;
-  Thunk::PrepareParams prepare_params{
-      &collective_params,       &clique_requests, &memory_requests,
-      &scratch_memory_requests, executor,         &allocations1};
-  ASSERT_OK(thunk.Prepare(prepare_params));
-
-  Thunk::InitializeParams initialize_params;
-  initialize_params.executor = executor;
-  initialize_params.stream = stream.get();
-  initialize_params.buffer_allocations = &allocations1;
-  initialize_params.collective_params = &collective_params;
-  initialize_params.src.text = kDummyKernelSource;
-  ASSERT_OK(thunk.Initialize(initialize_params));
-  ASSERT_OK(stream->BlockHostUntilDone());
-
-  Thunk::ExecuteParams params1 = Thunk::ExecuteParams::Create(
-      run_options, allocations1, stream.get(), trace_stream.get(),
-      &collective_params, /*collective_cliques=*/nullptr,
-      /*collective_memory=*/nullptr);
-
-  CommandStateManager state;
-  Command::RecordParams record_params = {state};
-  ASSERT_OK_AND_ASSIGN(
-      auto command_buffer,
-      executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
-  ASSERT_OK_AND_ASSIGN(const se::CommandBuffer::Command* cmd,
-                       thunk.Record(params1, record_params,
-                                    Command::RecordCreate{/*dependencies=*/{}},
-                                    command_buffer.get()));
-  ASSERT_NE(cmd, nullptr);
-  ASSERT_OK(command_buffer->Finalize());
-
-  Thunk::ExecuteParams params2 = Thunk::ExecuteParams::Create(
-      run_options, allocations2, stream.get(), trace_stream.get(),
-      &collective_params, /*collective_cliques=*/nullptr,
-      /*collective_memory=*/nullptr);
-
-  std::vector<BufferAllocation::Index> updated_allocs = {0, 1};
-  Command::RecordParams update_record_params = {state,
-                                                std::move(updated_allocs)};
-  ASSERT_OK(command_buffer->Update());
-  ASSERT_OK_AND_ASSIGN(
-      const se::CommandBuffer::Command* updated_cmd,
-      thunk.Record(params2, update_record_params, Command::RecordUpdate{cmd},
-                   command_buffer.get()));
-  EXPECT_EQ(updated_cmd, cmd);
-  ASSERT_OK(command_buffer->Finalize());
 }
 
 // Records ReduceScatterThunk into a primary command buffer (create phase) and

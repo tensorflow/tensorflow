@@ -88,8 +88,6 @@ class AllToAllThunk : public CollectiveThunk {
                              const GpuCliqueKey& clique_key, se::Stream& stream,
                              Communicator& comm) override;
 
-  bool is_local(int device_count) const;
-
   bool CanUseSymmetricBuffer() const override { return true; }
 
  private:

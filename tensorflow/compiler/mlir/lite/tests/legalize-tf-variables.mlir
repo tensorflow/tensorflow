@@ -1,3 +1,17 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: litert-opt %s -split-input-file -tfl-legalize-variables-tf --cse | FileCheck %s
 
 // Test for case with no session initialize op.
@@ -87,7 +101,7 @@ module attributes {tf_saved_model.semantics, tfl._legalize_tfl_variables = true}
   func.func @serving_default() ->
     () attributes {tf.entry_function = {control_outputs = "", inputs = "", outputs = ""}, tf_saved_model.exported_names = ["serving_default"]} {
     %handle_0 = "tf.VarHandleOp"() {container="c", shared_name="a"} : () -> tensor<!tf_type.resource<tensor<1x10xui64>>>
-    %cst = arith.constant dense<2> : tensor<1x10xui64>
+    %cst = "tf.Const"() {value = dense<2> : tensor<1x10xui64>} : () -> tensor<1x10xui64>
     "tf.AssignVariableOp"(%handle_0, %cst) : (tensor<!tf_type.resource<tensor<1x10xui64>>>, tensor<1x10xui64>) -> ()
     func.return
   }

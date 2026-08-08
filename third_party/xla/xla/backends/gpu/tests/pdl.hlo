@@ -1,5 +1,5 @@
-// RUN: hlo-opt %s --xla_gpu_enable_pdl --platform=gpu --stage=llvm-before-optimizations --split-input-file --xla_gpu_target_config_filename=%S/../target_config/specs/a100_pcie_80.txtpb | FileCheck %s
-// RUN: hlo-opt %s --xla_gpu_enable_pdl --platform=gpu --stage=llvm-before-optimizations --split-input-file --xla_gpu_target_config_filename=%S/../target_config/specs/h100_sxm.txtpb | FileCheck %s  --check-prefixes=CHECK-SM90
+// RUN: hlo-opt %s --xla_gpu_enable_pdl --xla_gpu_enable_pdl_launch --platform=gpu --stage=llvm-before-optimizations --split-input-file --xla_gpu_target_config_filename=%S/../target_config/specs/a100_pcie_80.txtpb | FileCheck %s
+// RUN: hlo-opt %s --xla_gpu_enable_pdl --xla_gpu_enable_pdl_launch --platform=gpu --stage=llvm-before-optimizations --split-input-file --xla_gpu_target_config_filename=%S/../target_config/specs/h100_sxm.txtpb | FileCheck %s  --check-prefixes=CHECK-SM90
 
 // CHECK-LABEL: wrapped_exponential
 // CHECK-SM90: call void @llvm.nvvm.griddepcontrol.wait
@@ -74,4 +74,54 @@ e {
   loop_add_compare_fusion =
     (s32[1,11]{1,0}, s32[1,11]{1,0}, pred[1,11]{1,0}) fusion(p0),
     kind=kLoop, calls=fused_add_compare_40
+}
+
+// -----
+
+// CHECK-LABEL: define ptx_kernel void @triton_gemm(
+// CHECK-NOT: call void @llvm.nvvm.griddepcontrol.wait
+// CHECK-NOT: call void @llvm.nvvm.griddepcontrol.launch.dependents
+// CHECK-LABEL: define ptx_kernel void @a_1(
+// CHECK: invariant.load
+
+// CHECK-SM90-LABEL: define ptx_kernel void @triton_gemm(
+// CHECK-SM90: call void @llvm.nvvm.griddepcontrol.wait
+// CHECK-SM90: call void @llvm.nvvm.wgmma.commit_group.sync.aligned()
+// CHECK-SM90: call void @llvm.nvvm.griddepcontrol.launch.dependents()
+// CHECK-SM90-LABEL: define ptx_kernel void @a_1(
+// CHECK-SM90-NOT: invariant.load
+
+HloModule m, is_scheduled=true
+
+triton_gemm {
+  lhs = f16[15,19] parameter(0)
+  rhs = f16[19,17] parameter(1)
+  dot = f16[15,17] dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[64]}
+}
+
+add {
+  a = f16[15, 17] parameter(0)
+  c = f16[15, 17] add(a, a)
+}
+
+e {
+  lhs = f16[15,19] parameter(0)
+  rhs = f16[19,17] parameter(1)
+  triton_gemm = f16[15,17] fusion(lhs, rhs), kind=kCustom,
+    calls=triton_gemm, backend_config={
+      fusion_backend_config:{
+        kind:"__triton_nested_gemm_fusion",
+        block_level_fusion_config:{
+          output_tiles:[{sizes:[64,32]}],
+          num_stages:2,
+          num_warps:8,
+          num_ctas:1
+        }
+      }
+    }
+  x = f16[15, 17] parameter(2)
+  a = f16[15, 17] fusion(triton_gemm), kind=kLoop, calls=add
+  t = tuple(triton_gemm, a)
 }

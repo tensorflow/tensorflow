@@ -533,8 +533,43 @@ def isclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False):  # pylint: disable=m
       if equal_nan:
         result = result | (math_ops.is_nan(a) & math_ops.is_nan(b))
       return result
+    elif np.issubdtype(dtype.as_numpy_dtype, np.integer):
+      # Use the operands' own arithmetic instead of casting to float, so
+      # integer tolerances stay in integer arithmetic and float tolerances
+      # require automatic type promotion to be enabled, keeping the cost of
+      # promotion opt-in. The difference is computed as max - min so that
+      # unsigned inputs cannot wrap around, and tf.abs does not support
+      # unsigned dtypes.
+      diff_val = math_ops.maximum(a, b) - math_ops.minimum(a, b)
+      if np.issubdtype(dtype.as_numpy_dtype, np.unsignedinteger):
+        abs_b = b
+        no_overflow = None
+      else:
+        abs_b = math_ops.abs(b)
+        # Signed subtraction overflow always produces a negative value, so a
+        # negative difference means the true difference is not representable
+        # in this dtype; such pairs are treated as not close rather than
+        # compared through the wrapped value. abs(b) can also overflow for
+        # the most negative value, which flips the sign of rtol-scaled
+        # tolerances and makes the comparison impossible to satisfy: values
+        # near the minimum are then reported as not close where NumPy,
+        # computing in floating point, reports them close. Identical values
+        # are protected by the equality fallback below; for the rest,
+        # enabling type promotion with float tolerances gives NumPy results.
+        no_overflow = diff_val >= 0
+      rhs = atol + rtol * abs_b
+      if rhs.dtype != diff_val.dtype:
+        # Reachable only with type promotion enabled and float tolerances,
+        # where the tolerance side has been promoted to floating point.
+        diff_val = math_ops.cast(diff_val, rhs.dtype)
+      result = diff_val <= rhs
+      # Identical values are always close, regardless of tolerance overflow.
+      result = result | math_ops.equal(a, b)
+      if no_overflow is not None:
+        result = result & no_overflow
+      return result
     else:
-      return a == b
+      return math_ops.equal(a, b)
 
   return _bin_op(f, a, b)
 

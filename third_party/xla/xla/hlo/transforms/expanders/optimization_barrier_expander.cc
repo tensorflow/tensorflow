@@ -58,12 +58,12 @@ absl::StatusOr<bool> OptimizationBarrierExpander::RunImpl(
 
   for (HloInstruction* inst : barriers) {
     HloInstruction* arg = inst->mutable_operand(0);
-    RETURN_IF_ERROR(arg->CopyAllControlDepsFrom(inst));
+    ABSL_RETURN_IF_ERROR(arg->CopyAllControlDepsFrom(inst));
 
-    RETURN_IF_ERROR(inst->ReplaceAllUsesWith(arg));
-    RETURN_IF_ERROR(inst->DropAllControlDeps());
+    ABSL_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(arg));
+    ABSL_RETURN_IF_ERROR(inst->DropAllControlDeps());
 
-    RETURN_IF_ERROR(inst->parent()->RemoveInstruction(inst));
+    ABSL_RETURN_IF_ERROR(inst->parent()->RemoveInstruction(inst));
   }
 
   return !barriers.empty();

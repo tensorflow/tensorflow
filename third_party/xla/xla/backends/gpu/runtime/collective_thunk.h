@@ -126,7 +126,7 @@ class CollectiveThunk : public Command {
   }
 
   bool IsTracedCommand() const override { return true; }
-  bool requires_initialization() const override { return true; }
+  bool requires_update_on_initialize() const override { return true; }
   bool requires_warmup() const override { return true; }
 
   absl::Status Prepare(const PrepareParams& params) override;
@@ -199,6 +199,11 @@ class CollectiveThunk : public Command {
   virtual const CollectiveConfig& config() const = 0;
 
   virtual bool CanUseSymmetricBuffer() const { return false; }
+
+  const absl::StatusOr<std::vector<std::vector<GlobalDeviceId>>>&
+  device_groups() const {
+    return device_groups_;
+  }
 
  private:
   // Rendezvous with other local participants before/after the first call to
@@ -293,6 +298,12 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
     const BufferAllocations* buffer_allocations,
     const std::vector<CollectiveThunk::Buffer>& buffers,
     const std::vector<PrimitiveType>& element_types);
+
+// Builds the buffers for the given collective instruction.
+absl::StatusOr<std::vector<CollectiveThunk::Buffer>> GetCollectiveBuffers(
+    const BufferAssignment& buffer_assignment, const HloInstruction* inst,
+    Thunk::Kind kind, bool has_dynamic_root);
+
 }  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_THUNK_H_

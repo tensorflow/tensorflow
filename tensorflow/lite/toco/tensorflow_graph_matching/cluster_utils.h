@@ -15,17 +15,19 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOCO_TENSORFLOW_GRAPH_MATCHING_CLUSTER_UTILS_H_
 #define TENSORFLOW_LITE_TOCO_TENSORFLOW_GRAPH_MATCHING_CLUSTER_UTILS_H_
 
+#include <cstdint>
 #include <string>
+
+#include "absl/strings/match.h"
 
 namespace toco {
 
-// Check if string x includes string search_pattern.
-bool StrContains(const std::string& x, const std::string& search_pattern);
+using ::absl::StrContains;
 
 // Transpose a 2D tensor of size row * col pointed by "tensor" and return the
 // results in "transposed_tensor". "transposed_tensor" must be pre-allocated
 // by the same size as "tensor".
-void Transpose2DTensor(const float* tensor, int row, int col,
+void Transpose2DTensor(const float* tensor, int64_t row, int64_t col,
                        float* transposed_tensor);
 
 }  // end namespace toco

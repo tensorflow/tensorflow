@@ -125,14 +125,8 @@ class IrEmitter2 {
   absl::StatusOr<KernelInfo> EmitSliceToDynamicHostKernel(
       const HloInstruction* instr);
 
-  // Emits a host kernel for the given dynamic-update-slice instruction.
-  absl::StatusOr<KernelInfo> EmitDynamicUpdateSliceHostKernel(
-      const HloInstruction* instr);
-
   // Emits a comparator function for the given sort instruction.
   absl::StatusOr<ComparatorInfo> EmitSortComparator(HloComputation* comparator);
-
-  bool CanUpdateDynamicSliceInPlace(const HloInstruction* update) const;
 
   bool IsSupportedByFusionEmitter(const HloFusionInstruction* fusion) const;
 

@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_stream.h"
 #include "xla/stream_executor/device_address_handle.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {

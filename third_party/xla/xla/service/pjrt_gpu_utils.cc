@@ -34,7 +34,7 @@ namespace {
 
 absl::StatusOr<stream_executor::GpuTargetConfigProto> GetTargetConfigProto(
     PjRtClient* const client) {
-  ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
+  ABSL_ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
                    client->GetTopologyDescription());
   auto it = topology->Attributes().find("target_config");
   if (it == topology->Attributes().end()) {

@@ -25,11 +25,11 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Instructions.h"
@@ -185,10 +185,10 @@ absl::StatusOr<mlir::func::FuncOp> EmitEntryFunctionApi(
   absl::string_view module_name(fusion_module.getName().value());
   mlir::OpBuilder builder(context);
   auto loc = mlir::NameLoc::get(builder.getStringAttr(module_name));
-  ASSIGN_OR_RETURN(std::vector<KernelApiIrBuilder::KernelParameter> arguments,
+  ABSL_ASSIGN_OR_RETURN(std::vector<KernelApiIrBuilder::KernelParameter> arguments,
                    KernelApiIrBuilder::GetKernelArgumentsParameters(
                        &fusion, &buffer_assignment));
-  ASSIGN_OR_RETURN(std::vector<KernelApiIrBuilder::KernelParameter> results,
+  ABSL_ASSIGN_OR_RETURN(std::vector<KernelApiIrBuilder::KernelParameter> results,
                    KernelApiIrBuilder::GetKernelResultsParameters(
                        &fusion, &buffer_assignment));
 
@@ -215,14 +215,14 @@ absl::StatusOr<mlir::func::FuncOp> EmitEntryFunctionApi(
 
   for (const auto& [index, arg] : llvm::enumerate(arguments)) {
     param_types.push_back(emitters::TensorShapeToMlirType(arg.shape, builder));
-    ASSIGN_OR_RETURN(arg_attrs.emplace_back(),
+    ABSL_ASSIGN_OR_RETURN(arg_attrs.emplace_back(),
                      get_arg_attrs(index - 1, arg.slice, /*is_result=*/false));
   }
 
   auto result_types = emitters::ShapeToMlirTypes(fusion.shape(), builder);
   param_types.append(result_types.begin(), result_types.end());
   for (const auto& [index, result] : llvm::enumerate(results)) {
-    ASSIGN_OR_RETURN(arg_attrs.emplace_back(),
+    ABSL_ASSIGN_OR_RETURN(arg_attrs.emplace_back(),
                      get_arg_attrs(index, result.slice, /*is_result=*/true));
   }
 
@@ -272,7 +272,7 @@ absl::StatusOr<emitters::CallTargetProvider> EmitCallTargets(
   for (const auto& comp : computations.partitioned_computations()) {
     for (const auto& subgraph : comp.subgraphs()) {
       if (subgraph_to_mlir_fn.contains(&subgraph)) {
-        RETURN_IF_ERROR(emitters::SubgraphToMlirFunction(
+        ABSL_RETURN_IF_ERROR(emitters::SubgraphToMlirFunction(
             comp, subgraph, subgraph_to_mlir_fn[&subgraph], call_targets,
             computations.mlir_context()));
       }
@@ -280,7 +280,7 @@ absl::StatusOr<emitters::CallTargetProvider> EmitCallTargets(
   }
   for (const auto& epilogue : computations.epilogues()) {
     if (epilogue.roots.empty()) continue;
-    RETURN_IF_ERROR(emitters::SubgraphToMlirFunction(
+    ABSL_RETURN_IF_ERROR(emitters::SubgraphToMlirFunction(
         computations.FindPartitionedComputation(
             fusion.fused_instructions_computation()),
         epilogue, subgraph_to_mlir_fn[&epilogue], call_targets,
@@ -294,7 +294,7 @@ int64_t CeilDiv(int64_t a, int64_t b) { return (a + b - 1) / b; }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateNamedMlirModuleOp(
     const HloFusionInstruction& fusion, mlir::Builder& builder) {
-  ASSIGN_OR_RETURN(std::string fusion_name, GetFusionName(fusion));
+  ABSL_ASSIGN_OR_RETURN(std::string fusion_name, GetFusionName(fusion));
   auto loc = mlir::NameLoc::get(builder.getStringAttr(fusion_name));
   return llvm_ir::CreateMlirModuleOp(loc, fusion_name);
 }
@@ -306,7 +306,7 @@ absl::StatusOr<std::string> GetFusionName(const HloFusionInstruction& fusion) {
           ->config()
           .debug_options()
           .xla_cpu_generate_unique_c_style_kernel_entry_points()) {
-    ASSIGN_OR_RETURN(fusion_name, ConvertToCName(absl::StrCat(
+    ABSL_ASSIGN_OR_RETURN(fusion_name, ConvertToCName(absl::StrCat(
                                       fusion.parent()->parent()->name(), "_",
                                       fusion.name())));
   }

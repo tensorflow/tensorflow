@@ -27,7 +27,7 @@ limitations under the License.
 namespace xla {
 
 absl::StatusOr<ShapeTree<XlaOp>> DisassembleTuple(XlaOp tuple) {
-  ASSIGN_OR_RETURN(Shape shape, tuple.builder()->GetShape(tuple));
+  ABSL_ASSIGN_OR_RETURN(Shape shape, tuple.builder()->GetShape(tuple));
   ShapeTree<XlaOp> result(shape);
   result.ForEachMutableElement([&](ShapeIndexView index, XlaOp* element) {
     if (index.empty()) {

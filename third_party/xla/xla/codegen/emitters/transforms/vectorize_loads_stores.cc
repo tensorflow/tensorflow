@@ -55,10 +55,11 @@ limitations under the License.
 
 namespace xla {
 namespace emitters {
-namespace {
 
 #define GEN_PASS_DEF_VECTORIZELOADSANDSTORESPASS
 #include "xla/codegen/emitters/transforms/passes.h.inc"
+
+namespace {
 
 using mlir::Value;
 
@@ -589,6 +590,8 @@ class VectorizeLoadsAndStoresPass
     : public impl::VectorizeLoadsAndStoresPassBase<
           VectorizeLoadsAndStoresPass> {
  public:
+  VectorizeLoadsAndStoresPass() = default;
+
   explicit VectorizeLoadsAndStoresPass(
       const VectorizeLoadsAndStoresPassOptions& options)
       : VectorizeLoadsAndStoresPassBase(options) {}
@@ -626,15 +629,7 @@ class VectorizeLoadsAndStoresPass
 
 }  // namespace
 
-std::unique_ptr<::mlir::Pass> CreateVectorizeLoadsAndStoresPass(
-    const std::string& target_type, const std::string& gpu_device_info) {
-  VectorizeLoadsAndStoresPassOptions options;
-  options.gpu_device_info_ = gpu_device_info;
-  options.target_type_ = target_type;
-  return std::make_unique<VectorizeLoadsAndStoresPass>(options);
-}
-
-std::unique_ptr<mlir::Pass> CreateVectorizeLoadsAndStoresPass(
+std::unique_ptr<mlir::Pass> createVectorizeLoadsAndStoresPass(
     const se::DeviceDescription& device_description) {
   return std::make_unique<VectorizeLoadsAndStoresPass>(device_description);
 }

@@ -47,7 +47,8 @@ absl::StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
     HloAllGatherInstruction* ag = DynCast<HloAllGatherInstruction>(hlo);
 
     // TODO(cjfj): Support all-gathers with more than one operand.
-    if (!ag || ag->operand_count() > 1) {
+    if (!ag || hlo_query::IsAsyncCollectiveStartOp(ag) ||
+        ag->operand_count() > 1) {
       continue;
     }
 
@@ -99,7 +100,7 @@ absl::StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
     ag->SetupDerivedInstruction(new_ag);
     HloInstruction* new_formatting = comp->AddInstruction(
         HloInstruction::CreateReshape(ag->shape(), new_ag));
-    RETURN_IF_ERROR(comp->ReplaceInstruction(ag, new_formatting));
+    ABSL_RETURN_IF_ERROR(comp->ReplaceInstruction(ag, new_formatting));
     changed = true;
   }
   return changed;
@@ -111,7 +112,7 @@ absl::StatusOr<bool> CanonicalizeAllGatherForCSE::RunImpl(
   bool changed = false;
   next_channel_id_ = hlo_query::NextChannelId(*module);
   for (HloComputation* comp : module->computations(execution_threads)) {
-    ASSIGN_OR_RETURN(bool comp_changed, RunOnComputation(comp));
+    ABSL_ASSIGN_OR_RETURN(bool comp_changed, RunOnComputation(comp));
     changed |= comp_changed;
   }
   return changed;

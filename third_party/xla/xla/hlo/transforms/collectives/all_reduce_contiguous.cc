@@ -70,6 +70,7 @@ absl::Status ReplaceWithContiguousAllReduce(
           all_reduce->device_list(),
           /*constrain_layout=*/false, all_reduce->channel_id(),
           all_reduce->use_global_device_ids()));
+  all_reduce->SetupDerivedInstruction(new_all_reduce);
 
   // Slice from all-reduce result and bitcast back to the original shapes.
   std::vector<HloInstruction*> outputs;
@@ -88,8 +89,12 @@ absl::Status ReplaceWithContiguousAllReduce(
     offset = end;
   }
   // Replace original all-reduce with tuple of slices from new all-reduce.
-  RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
-      all_reduce, HloInstruction::CreateTuple(outputs)));
+  ABSL_RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
+      all_reduce, HloInstruction::CreateTuple(outputs),
+      /*preserve_sharding=*/false,
+      /*relay_control_dependency=*/false,
+      /*remove_unused_operands=*/true,
+      /*preserve_frontend_attributes=*/false));
   return absl::OkStatus();
 }
 }  // namespace
@@ -118,7 +123,7 @@ absl::StatusOr<bool> AllReduceContiguous::RunImpl(
   }
 
   for (HloAllReduceInstruction* all_reduce : all_reduces) {
-    RETURN_IF_ERROR(ReplaceWithContiguousAllReduce(all_reduce));
+    ABSL_RETURN_IF_ERROR(ReplaceWithContiguousAllReduce(all_reduce));
   }
 
   return !all_reduces.empty();

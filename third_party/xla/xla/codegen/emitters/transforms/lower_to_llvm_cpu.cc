@@ -24,10 +24,11 @@ limitations under the License.
 
 namespace xla {
 namespace emitters {
-namespace {
 
 #define GEN_PASS_DEF_LOWERTOLLVMCPUPASS
 #include "xla/codegen/emitters/transforms/lower_to_llvm_cpu.h.inc"
+
+namespace {
 
 class LowerToLLVMCPUPass
     : public impl::LowerToLLVMCPUPassBase<LowerToLLVMCPUPass> {
@@ -40,10 +41,6 @@ class LowerToLLVMCPUPass
 };
 
 }  // namespace
-
-std::unique_ptr<::mlir::Pass> CreateLowerToLLVMCPUPass() {
-  return std::make_unique<LowerToLLVMCPUPass>();
-}
 
 }  // namespace emitters
 }  // namespace xla

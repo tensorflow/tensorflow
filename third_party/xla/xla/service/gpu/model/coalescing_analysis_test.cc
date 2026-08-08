@@ -637,6 +637,14 @@ class CoalescingForTiledHloTest : public CoalescingTest,
     return EffectiveBandwidthUtilizationRatePerOperandImpl(
         tiled_hlo_computation->roots()[0]);
   }
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(
+        use_experimental_tiling());
+    return debug_options;
+  }
 };
 
 INSTANTIATE_TEST_SUITE_P(CoalescingForTiledHloTest, CoalescingForTiledHloTest,

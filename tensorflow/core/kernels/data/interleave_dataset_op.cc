@@ -811,7 +811,7 @@ void InterleaveDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   }
   OP_REQUIRES(
       ctx, cycle_length > 0,
-      errors::InvalidArgument("cycle_length must be greater than zero."));
+      absl::InvalidArgumentError("cycle_length must be greater than zero."));
   OP_REQUIRES(ctx, cycle_length <= kMaxCycleOrBlockLength,
               absl::InvalidArgumentError(
                   absl::StrCat("cycle_length must be less than or equal to ",
@@ -821,7 +821,7 @@ void InterleaveDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kBlockLength, &block_length));
   OP_REQUIRES(
       ctx, block_length > 0,
-      errors::InvalidArgument("block_length must be greater than zero."));
+      absl::InvalidArgumentError("block_length must be greater than zero."));
   OP_REQUIRES(ctx, block_length <= kMaxCycleOrBlockLength,
               absl::InvalidArgumentError(
                   absl::StrCat("block_length must be less than or equal to ",

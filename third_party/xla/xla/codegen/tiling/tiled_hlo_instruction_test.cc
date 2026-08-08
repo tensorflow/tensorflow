@@ -168,7 +168,7 @@ TEST_F(TiledHloInstructionTest, ToString) {
         /*parameter_number=*/number,
         ShapeUtil::MakeShape(PrimitiveType::F32, {4}),
         absl::StrCat("p", number));
-    ASSIGN_OR_RETURN(std::unique_ptr<TiledHloInstruction> tiled_hlo,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<TiledHloInstruction> tiled_hlo,
                      TiledHloInstruction::Create(
                          hlo.get(), /*operands=*/{},
                          /*runtime_variables=*/{},
@@ -194,8 +194,9 @@ TEST_F(TiledHloInstructionTest, ToString) {
       /*range_vars=*/{},
       /*rt_vars=*/{IndexingMap::Variable{0, 3}});
 
-  TiledHloRegion region;
-  region.push_back(std::move(tiled_p2));
+  std::vector<std::unique_ptr<TiledHloInstruction>> instructions;
+  instructions.push_back(std::move(tiled_p2));
+  TiledHloRegion region(std::move(instructions));
   llvm::SmallVector<TiledHloRegion> regions;
   regions.push_back(std::move(region));
   std::unique_ptr<HloInstruction> p3_hlo = HloInstruction::CreateParameter(

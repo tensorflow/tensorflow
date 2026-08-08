@@ -212,7 +212,7 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
         }
       }
       if (!new_schedule.empty()) {
-        RETURN_IF_ERROR(module_->set_schedule(std::move(new_schedule)));
+        ABSL_RETURN_IF_ERROR(module_->set_schedule(std::move(new_schedule)));
       }
     }
 
@@ -373,7 +373,7 @@ absl::Status Inline(HloModule* module) {
                 /*operands=*/instruction->operands(),
                 /*computation=*/
                 instruction->fused_instructions_computation()));
-        RETURN_IF_ERROR(computation
+        ABSL_RETURN_IF_ERROR(computation
                             ->ReplaceInstruction(
                                 /*old_instruction=*/instruction,
                                 /*new_instruction=*/new_instruction,
@@ -384,10 +384,10 @@ absl::Status Inline(HloModule* module) {
       }
     }
   }
-  RETURN_IF_ERROR(CallInliner().Run(module).status());
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(CallInliner().Run(module).status());
+  ABSL_RETURN_IF_ERROR(
       AlgebraicSimplifier(AlgebraicSimplifierOptions{}).Run(module).status());
-  RETURN_IF_ERROR(HloDCE(true).Run(module).status());
+  ABSL_RETURN_IF_ERROR(HloDCE(true).Run(module).status());
   return absl::OkStatus();
 }
 

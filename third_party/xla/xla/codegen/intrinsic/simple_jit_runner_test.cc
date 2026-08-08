@@ -161,8 +161,8 @@ TEST(SimpleJitRunnerTest, RunJitVectorizedF32Loop) {
       builder.CreateFMul(arg1, builder.CreateSIToFP(arg2, vec_type));
 
   // Print something so we can count iterations when debugging the test.
-  llvm::FunctionType* PrintfFuncType = llvm::FunctionType::get(
-      builder.getInt32Ty(), builder.getInt8Ty()->getPointerTo(), true);
+  llvm::FunctionType* PrintfFuncType =
+      llvm::FunctionType::get(builder.getInt32Ty(), builder.getPtrTy(), true);
   llvm::Function* PrintfFunc = llvm::Function::Create(
       PrintfFuncType, llvm::Function::ExternalLinkage, "printf", *module);
   llvm::Value* format_str = builder.CreateGlobalString("Iterating\n");

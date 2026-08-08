@@ -715,10 +715,10 @@ struct ArithmeticParams {
 };
 
 struct ConcatenationParams {
-  int8_t axis;
+  int32_t axis;
   const int32_t* input_zeropoint;
   const float* input_scale;
-  uint16_t inputs_count;
+  int32_t inputs_count;
   int32_t output_zeropoint;
   float output_scale;
 };

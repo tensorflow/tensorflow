@@ -24,12 +24,12 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -115,7 +115,7 @@ absl::StatusOr<int> CompositeCompilationProvider::GetLatestPtxIsaVersion()
     const {
   std::optional<int> latest_supported_version;
   for (const auto& provider : providers_) {
-    ASSIGN_OR_RETURN(int provider_version, provider->GetLatestPtxIsaVersion());
+    ABSL_ASSIGN_OR_RETURN(int provider_version, provider->GetLatestPtxIsaVersion());
     if (!latest_supported_version.has_value()) {
       latest_supported_version = provider_version;
       continue;

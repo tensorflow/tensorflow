@@ -76,10 +76,10 @@ absl::Status VerifyAnnotation(const HloInstruction* instr,
         "Instruction has more than 2 scheduling annotation fields, inst: ",
         instr->name(), ", annotation: ", annotation));
   }
-  RETURN_IF_ERROR(verify_integer_or_empty(
+  ABSL_RETURN_IF_ERROR(verify_integer_or_empty(
       annotation_fields[0], "group id", /*verify_non_negative_integer=*/true));
   if (annotation_fields.size() == 2) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         verify_integer_or_empty(annotation_fields[1], "iteration id"));
   }
   return absl::OkStatus();
@@ -97,7 +97,7 @@ absl::StatusOr<std::optional<Annotation>> ParseAnnotation(
   if (annotation_str == kXlaNoOpSchedulingGroup) {
     return std::nullopt;
   }
-  RETURN_IF_ERROR(VerifyAnnotation(instr, annotation_str));
+  ABSL_RETURN_IF_ERROR(VerifyAnnotation(instr, annotation_str));
   std::vector<absl::string_view> annotation_fields =
       absl::StrSplit(annotation_str, delimiter);
 
@@ -134,7 +134,7 @@ absl::StatusOr<std::optional<Annotation>> GetSchedulingAnnotation(
 
 absl::Status SetSchedulingAnnotation(HloInstruction* instr,
                                      std::string annotation) {
-  RETURN_IF_ERROR(VerifyAnnotation(instr, annotation));
+  ABSL_RETURN_IF_ERROR(VerifyAnnotation(instr, annotation));
   FrontendAttributes frontend_attributes = instr->frontend_attributes();
   if (frontend_attributes.map().contains(kXlaSchedulingGroupIdAttr)) {
     frontend_attributes.mutable_map()->find(kXlaSchedulingGroupIdAttr)->second =
@@ -164,7 +164,7 @@ bool RemoveSchedulingAnnotation(HloInstruction* instr) {
 
 absl::StatusOr<std::optional<AnnotationIterationId>>
 GetSchedulingAnnotationIterationId(const HloInstruction* instr) {
-  ASSIGN_OR_RETURN(auto annotation, ParseAnnotation(instr));
+  ABSL_ASSIGN_OR_RETURN(auto annotation, ParseAnnotation(instr));
   if (!annotation.has_value()) {
     return std::nullopt;
   }
@@ -173,7 +173,7 @@ GetSchedulingAnnotationIterationId(const HloInstruction* instr) {
 
 absl::StatusOr<bool> RemoveSchedulingAnnotationIterationId(
     HloInstruction* instr) {
-  ASSIGN_OR_RETURN(std::optional<Annotation> annotation,
+  ABSL_ASSIGN_OR_RETURN(std::optional<Annotation> annotation,
                    GetSchedulingAnnotation(instr));
   if (!annotation || !annotation->iteration_id) {
     return false;
@@ -183,13 +183,13 @@ absl::StatusOr<bool> RemoveSchedulingAnnotationIterationId(
     return RemoveSchedulingAnnotation(instr);
   }
   annotation->iteration_id = std::nullopt;
-  RETURN_IF_ERROR(SetSchedulingAnnotation(instr, *annotation));
+  ABSL_RETURN_IF_ERROR(SetSchedulingAnnotation(instr, *annotation));
   return true;
 }
 
 absl::StatusOr<std::optional<int64_t>> GetSchedulingAnnotationGroupId(
     const HloInstruction* instr) {
-  ASSIGN_OR_RETURN(auto annotation, ParseAnnotation(instr));
+  ABSL_ASSIGN_OR_RETURN(auto annotation, ParseAnnotation(instr));
   if (!annotation.has_value()) {
     return std::nullopt;
   }
@@ -205,7 +205,7 @@ absl::StatusOr<AnnotationGroupId> NextSchedulingGroupId(
   int64_t next_scheduling_id = 0;
   for (const HloComputation* comp : module.computations()) {
     for (const HloInstruction* hlo : comp->instructions()) {
-      ASSIGN_OR_RETURN(std::optional<int64_t> scheduling_id,
+      ABSL_ASSIGN_OR_RETURN(std::optional<int64_t> scheduling_id,
                        GetSchedulingAnnotationGroupId(hlo));
       if (scheduling_id.has_value()) {
         next_scheduling_id =

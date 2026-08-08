@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # Description:
 #   GPU-platform specific StreamExecutor support code.
 
@@ -138,20 +153,19 @@ cc_library(
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:kernel",
+        "//xla/stream_executor:kernel_args",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -164,12 +178,14 @@ cc_library(
     hdrs = ["gpu_executor.h"],
     deps = [
         ":multicast_memory",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_common",
         "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -242,7 +258,7 @@ cc_library(
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@tsl//tsl/platform:statusor",
     ],
@@ -278,12 +294,12 @@ cc_library(
     deps = [
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:subprocess",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -325,12 +341,12 @@ cc_library(
         "//xla/tsl/framework:allocator",
         "//xla/tsl/lib/math:math_util",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
@@ -429,7 +445,6 @@ cc_library(
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/cuda:cuda_platform_id",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/algorithm:container",
@@ -438,6 +453,7 @@ cc_library(
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
@@ -523,9 +539,9 @@ cc_library(
         ":gpu_init_impl",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Object",
@@ -614,14 +630,13 @@ xla_test(
         "//xla/stream_executor:trace_command_buffer_factory",
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
@@ -689,6 +704,10 @@ xla_test(
 tf_proto_library(
     name = "tma_metadata_proto",
     srcs = ["tma_metadata.proto"],
+    visibility = internal_visibility([
+        ":friends",
+        "//third_party/py/jax/jaxlib/mosaic/gpu:__subpackages__",
+    ]),
 )
 
 cc_library(
@@ -696,12 +715,15 @@ cc_library(
     srcs = ["tma_metadata.cc"],
     hdrs = ["tma_metadata.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    visibility = internal_visibility([
+        ":friends",
+        "//third_party/py/jax/jaxlib/mosaic/gpu:__subpackages__",
+    ]),
     deps = [
         ":tma_metadata_proto_cc",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -709,6 +731,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -744,10 +767,10 @@ cc_library(
         "//xla/stream_executor:typed_kernel_factory",
         "//xla/stream_executor/platform:initialize",
         "//xla/stream_executor/platform:platform_object_registry",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
     ],
 )
@@ -780,9 +803,12 @@ cc_library(
 
 exports_files([
     "buffer_comparator_kernel_lib.cu.h",
+    "buffer_debug_float_check_kernel_lib.cu.h.inc",
+    "buffer_debug_xor_checksum_kernel_lib.cu.h.inc",
     "collective_signal.cu.h",
     "all_reduce_kernel_lib.cu.h",
     "multi_gpu_barrier_kernel.cu.h",
+    "ragged_all_to_all_device_kernel_lib.cu.h",
     "ragged_all_to_all_kernel_lib.cu.h",
     "repeat_buffer_kernel.cu.h",
     "redzone_allocator_kernel_lib.cu.h",
@@ -792,6 +818,15 @@ exports_files([
 cc_library(
     name = "make_batch_pointers_kernel",
     hdrs = ["make_batch_pointers_kernel.h"],
+    deps = [
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:kernel",
+    ],
+)
+
+cc_library(
+    name = "ragged_all_to_all_device_kernel",
+    hdrs = ["ragged_all_to_all_device_kernel.h"],
     deps = [
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:kernel",
@@ -918,9 +953,9 @@ cc_library(
         "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:stream",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
     ],
@@ -962,6 +997,40 @@ cc_library(
     ],
 )
 
+xla_test(
+    name = "buffer_debug_xor_checksum_kernel_test",
+    srcs = ["buffer_debug_xor_checksum_kernel_test.cc"],
+    backends = ["gpu"],
+    tags = ["no-oneapi"],
+    deps = [
+        ":buffer_debug_log",
+        ":buffer_debug_xor_checksum_kernel",
+        ":gpu_kernel_registry",
+        "//xla/backends/gpu/runtime:buffer_debug_log_structs",
+        "//xla/service:platform_util",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_address_allocator",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor:typed_kernel_factory",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "buffer_debug_float_check_kernel",
     hdrs = ["buffer_debug_float_check_kernel.h"],
@@ -970,6 +1039,44 @@ cc_library(
         "//xla/backends/gpu/runtime:buffer_debug_log_structs",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:kernel",
+    ],
+)
+
+xla_test(
+    name = "buffer_debug_float_check_kernel_test",
+    srcs = ["buffer_debug_float_check_kernel_test.cc"],
+    backends = ["gpu"],
+    tags = ["no-oneapi"],
+    deps = [
+        ":buffer_debug_float_check_kernel",
+        ":buffer_debug_log",
+        ":gpu_kernel_registry",
+        "//xla:types",
+        "//xla/backends/gpu/runtime:buffer_debug_log_structs",
+        "//xla/backends/gpu/runtime:buffer_debug_log_structs_test_matchers",
+        "//xla/backends/gpu/runtime:thunk_id",
+        "//xla/service:platform_util",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_address_allocator",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor:typed_kernel_factory",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

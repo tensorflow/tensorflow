@@ -321,18 +321,26 @@ void PopulateWithRandomFullRangeFloatingPointData(Literal* literal,
   // exponent of the floating point to have a uniform distribution.
   const int min_exp = std::numeric_limits<FloatT>::min_exponent;
   const int max_exp = std::numeric_limits<FloatT>::max_exponent;
-  std::uniform_real_distribution<double> generator(min_exp - 1, max_exp - 1);
+
+  using GeneratorT =
+      std::conditional_t<sizeof(FloatT) >= sizeof(double), double, float>;
+  std::uniform_real_distribution<GeneratorT> generator(min_exp - 1,
+                                                       max_exp - 1);
 
   for (FloatT& value : literal->data<FloatT>()) {
     // Each special value has a kSpecialValueProbability chance to be generated
     // instead of sampling using the normal distributions.
-    if (special_value_gen(*engine) <
-        kSpecialValueProbability * kNumSpecialValues) {
+    float random_interval = special_value_gen(*engine);
+    if (random_interval < kSpecialValueProbability * kNumSpecialValues) {
       value =
           static_cast<FloatT>(kSpecialValues[(*engine)() % kNumSpecialValues]);
     } else {
-      float sign = ((*engine)() % 2 == 0) ? 1 : -1;
-      value = static_cast<FloatT>(pow(2, generator(*engine)) * sign);
+      // Non special values range from [kSpecialValueProbability, 1]. Take the
+      // lower half of that range as a sign of -1, the upper half is +1.
+      const float kHalfInterval =
+          0.5f + (kSpecialValueProbability * kNumSpecialValues) / 2;
+      const float sign = (random_interval < kHalfInterval) ? 1 : -1;
+      value = static_cast<FloatT>(exp2(generator(*engine)) * sign);
     }
   }
 }
@@ -341,15 +349,24 @@ template <typename FloatT, typename GeneratorT>
 void PopulateWithRandomFloatingPointData(
     Literal* literal, std::minstd_rand0* engine,
     std::optional<ConstraintInterval> interval) {
-  GeneratorT min = -0.1f;
-  GeneratorT max = 0.2f;
+  GeneratorT min = static_cast<GeneratorT>(-0.1);
+  GeneratorT max = static_cast<GeneratorT>(0.2);
   if (interval.has_value() && !interval->IsUnconstrained()) {
     min = interval->min == ConstraintInterval::kMin
-              ? std::numeric_limits<GeneratorT>::lowest()
-              : interval->min;
+              ? min
+              : static_cast<GeneratorT>(interval->min);
     max = interval->max == ConstraintInterval::kMax
-              ? std::numeric_limits<GeneratorT>::max()
-              : interval->max;
+              ? max
+              : static_cast<GeneratorT>(interval->max);
+
+    // Prevent Undefined Behavior by fixing inverted ranges.
+    // If a single explicit bound crossed the opposite default bound,
+    // shift the unconstrained bound to maintain a 0.3 generation spread.
+    if (interval->max == ConstraintInterval::kMax && min > max) {
+      max = min + static_cast<GeneratorT>(0.3);
+    } else if (interval->min == ConstraintInterval::kMin && max < min) {
+      min = max - static_cast<GeneratorT>(0.3);
+    }
   }
   if (min == max) {
     for (FloatT& value : literal->data<FloatT>()) {
@@ -486,6 +503,30 @@ void PopulateWithComplexData(
   absl::Span<ComplexT> result_data = result->data<ComplexT>();
   for (int i = 0; i < real_lit.data<InnerFloatT>().size(); i++) {
     result_data[i] = ComplexT(real_data[i], imaginary_data[i]);
+  }
+}
+
+template <typename TargetT>
+TargetT SafeClampInt64(int64_t value) {
+  static_assert(std::numeric_limits<TargetT>::is_integer,
+                "TargetT must be an integral type.");
+  if constexpr (!std::numeric_limits<TargetT>::is_signed) {
+    if (value <= 0) {
+      return TargetT{0};
+    }
+    uint64_t uval = static_cast<uint64_t>(value);
+    if (uval > static_cast<uint64_t>(std::numeric_limits<TargetT>::max())) {
+      return std::numeric_limits<TargetT>::max();
+    }
+    return static_cast<TargetT>(uval);
+  } else {
+    if (value < static_cast<int64_t>(std::numeric_limits<TargetT>::lowest())) {
+      return std::numeric_limits<TargetT>::lowest();
+    }
+    if (value > static_cast<int64_t>(std::numeric_limits<TargetT>::max())) {
+      return std::numeric_limits<TargetT>::max();
+    }
+    return static_cast<TargetT>(value);
   }
 }
 
@@ -856,7 +897,7 @@ absl::StatusOr<Literal> MakeFakeLiteral(
     const auto& shape_tuple_shapes = shape.tuple_shapes();
     elements.reserve(shape_tuple_shapes.size());
     for (const Shape& element_shape : shape_tuple_shapes) {
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           Literal element,
           MakeFakeLiteral(element_shape, engine, limit, is_sorted,
                           no_duplicates, use_large_range, max_bits_of_precision,
@@ -877,7 +918,7 @@ absl::StatusOr<Literal> MakeFakeLiteral(
   new_shape.mutable_layout()->set_element_size_in_bits(0);
   Literal literal(new_shape);
 
-  RETURN_IF_ERROR(primitive_util::PrimitiveTypeSwitch<absl::Status>(
+  ABSL_RETURN_IF_ERROR(primitive_util::PrimitiveTypeSwitch<absl::Status>(
       [&](auto primitive_type_constant) -> absl::Status {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
           using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
@@ -901,8 +942,8 @@ absl::StatusOr<Literal> MakeFakeLiteral(
             NativeT max = std::numeric_limits<NativeT>::max();
             NativeT min = std::numeric_limits<NativeT>::lowest();
             if (limit.has_value()) {
-              max = static_cast<NativeT>(limit->second);
-              min = static_cast<NativeT>(limit->first);
+              min = SafeClampInt64<NativeT>(limit->first);
+              max = SafeClampInt64<NativeT>(limit->second);
             }
             if (max_bits_of_precision.has_value()) {
               max = std::min(max,

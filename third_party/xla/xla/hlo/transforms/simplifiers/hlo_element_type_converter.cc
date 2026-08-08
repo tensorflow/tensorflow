@@ -201,7 +201,7 @@ absl::StatusOr<bool> HloElementTypeConverter::RunImpl(
 
         new_hlo = computation->AddInstruction(
             hlo->CloneWithNewOperands(shape, new_operands, &context));
-        RETURN_IF_ERROR(new_hlo->CopyAllControlDepsFrom(hlo));
+        ABSL_RETURN_IF_ERROR(new_hlo->CopyAllControlDepsFrom(hlo));
 
         new_hlo = ToElementType(new_hlo, eliminate_type_);
       } else if (hlo->shape().IsTuple()) {
@@ -211,7 +211,7 @@ absl::StatusOr<bool> HloElementTypeConverter::RunImpl(
 
         new_hlo = computation->AddInstruction(
             hlo->CloneWithNewOperands(new_shape, new_operands, &context));
-        RETURN_IF_ERROR(new_hlo->CopyAllControlDepsFrom(hlo));
+        ABSL_RETURN_IF_ERROR(new_hlo->CopyAllControlDepsFrom(hlo));
 
         // Convert the elements of the result of `new_hlo` to produce a new
         // tuple with shape `old_shape`.
@@ -219,16 +219,16 @@ absl::StatusOr<bool> HloElementTypeConverter::RunImpl(
       } else {
         new_hlo = computation->AddInstruction(
             hlo->CloneWithNewOperands(hlo->shape(), new_operands, &context));
-        RETURN_IF_ERROR(new_hlo->CopyAllControlDepsFrom(hlo));
+        ABSL_RETURN_IF_ERROR(new_hlo->CopyAllControlDepsFrom(hlo));
       }
 
-      RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(new_hlo));
-      RETURN_IF_ERROR(hlo->DropAllControlDeps());
+      ABSL_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(new_hlo));
+      ABSL_RETURN_IF_ERROR(hlo->DropAllControlDeps());
 
       // NB!  We want to replace and remove side effecting instructions like Rng
       // as well so we can't rely HloComputation::ReplaceInstruction to reliably
       // remove the replaced instruction.
-      RETURN_IF_ERROR(computation->RemoveInstruction(hlo));
+      ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(hlo));
       changed = true;
     }
   }

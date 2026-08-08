@@ -15,25 +15,31 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_instruction.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/stack_frames.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/literal_util.h"
 #include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
+#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -444,6 +450,54 @@ ENTRY main {
   TF_EXPECT_OK(module->schedule().Verify());
 }
 
+TEST_F(HloInstructionTest, CreateVariadicAsyncUpdate) {
+  constexpr absl::string_view kHlo = R"(
+HloModule main
+
+ENTRY main {
+  arg.0 = s32[] parameter(0)
+  call-start.0 = ((s32[]), s32[], s32[]) call-start(arg.0), to_apply={
+    arg.0 = s32[] parameter(0)
+    ROOT abs.0 = abs(arg.0)
+  }, async_execution_thread="thread"
+  ROOT call-done.0 = s32[] call-done(call-start.0)
+})";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* async_done = entry->root_instruction();
+  HloInstruction* async_start = async_done->async_chain_start();
+
+  // Test 1 operand case
+  std::unique_ptr<HloInstruction> update1 = HloInstruction::CreateAsyncUpdate(
+      async_start->shape(), std::vector<HloInstruction*>{async_start});
+  EXPECT_EQ(update1->opcode(), HloOpcode::kAsyncUpdate);
+  EXPECT_EQ(update1->operand_count(), 1);
+
+  // Test 2 operands case
+  HloInstruction* const_op = entry->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<std::int32_t>(42)));
+
+  std::unique_ptr<HloInstruction> update2 = HloInstruction::CreateAsyncUpdate(
+      async_start->shape(),
+      std::vector<HloInstruction*>{async_start, const_op});
+  EXPECT_EQ(update2->opcode(), HloOpcode::kAsyncUpdate);
+  EXPECT_EQ(update2->operand_count(), 2);
+  EXPECT_EQ(update2->operand(1), const_op);
+
+  // Test Cloning
+  std::unique_ptr<HloInstruction> clone1 =
+      update1->CloneWithNewOperands(update1->shape(), update1->operands());
+  EXPECT_EQ(clone1->operand_count(), 1);
+
+  std::unique_ptr<HloInstruction> clone2 =
+      update2->CloneWithNewOperands(update2->shape(), update2->operands());
+  EXPECT_EQ(clone2->operand_count(), 2);
+  EXPECT_EQ(clone2->operand(1), const_op);
+}
+
 TEST_F(HloInstructionTest, CloneImplCollectivePermuteOp) {
   constexpr absl::string_view kHlo = R"(
 HloModule main
@@ -649,6 +703,36 @@ TEST_F(HloInstructionTest, MapUnaryOutputDimToOperandDimReshapeMixed) {
   EXPECT_EQ(reshape->MapUnaryOutputDimToOperandDim(2), 2);
 }
 
+TEST_F(HloInstructionTest, AddCallOperandWithoutChainPropagation) {
+  const char* const hlo = R"(
+HloModule test
+
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  abs = f32[2,3] abs(p0)
+  ROOT tuple = (f32[2,3]) tuple(abs)
+}
+
+ENTRY main {
+  p0 = f32[2,3] parameter(0)
+  start = ((f32[2,3]), f32[2,3], s32[]) async-start(p0), calls=async_computation
+  ROOT update = ((f32[2,3]), f32[2,3], s32[]) async-update(start)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  HloAsyncStartInstruction* start =
+      Cast<HloAsyncStartInstruction>(FindInstruction(module.get(), "start"));
+  HloInstruction* update = FindInstruction(module.get(), "update");
+
+  Shape old_update_shape = update->shape();
+  HloInstruction* dummy_param = module->entry_computation()->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+  start->AddCallOperand(dummy_param);
+
+  EXPECT_EQ(update->shape(), old_update_shape);
+  EXPECT_NE(update->shape(), start->shape());
+}
+
 TEST_F(HloInstructionTest, PrecisionConfigMethodConsistency) {
   // 1. Test a valid opcode (kParameter) that does not have PrecisionConfig.
   std::unique_ptr<HloInstruction> param = HloInstruction::CreateParameter(
@@ -667,6 +751,30 @@ TEST_F(HloInstructionTest, PrecisionConfigMethodConsistency) {
       HloInstruction::CreateDot(ShapeUtil::MakeShape(F32, {2, 2}), lhs.get(),
                                 rhs.get(), dnums, PrecisionConfig());
   EXPECT_TRUE(dot->SupportsPrecisionConfig());
+}
+
+TEST_F(HloInstructionTest, DetachFromOperandsWithDuplicateOperands) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder("main");
+  HloInstruction* p0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0"));
+  // Create a tuple that uses p0 twice.
+  HloInstruction* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({p0, p0}));
+  module->AddEntryComputation(builder.Build());
+
+  // DetachFromOperands should not crash when operands are duplicated.
+  tuple->DetachFromOperands();
+
+  EXPECT_EQ(tuple->operand_count(), 0);
+  EXPECT_EQ(p0->user_count(), 0);
+
+  // Clean up the module to satisfy the HloVerifier on destruction.
+  module->entry_computation()->set_root_instruction(
+      p0, /*accept_different_shape=*/true);
+  *module->mutable_entry_computation_layout()->mutable_result_layout() =
+      ShapeLayout(p0->shape());
+  EXPECT_OK(module->entry_computation()->RemoveInstruction(tuple));
 }
 
 }  // namespace

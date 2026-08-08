@@ -196,6 +196,19 @@ def reshape(tensor, shape, name=None):  # pylint: disable=redefined-outer-name
   Returns:
     A `Tensor`. Has the same type as `tensor`.
   """
+  # Reject scalar (rank-0) shape tensors for consistency between eager and
+  # tf.function modes. Use shape=[value] instead.
+  if (
+      (tensor_util.is_tf_type(shape) and shape.shape.ndims == 0)
+      or isinstance(shape, (int, np.integer))
+      or (isinstance(shape, np.ndarray) and shape.ndim == 0)
+  ):
+    raise ValueError(
+        "tf.reshape `shape` argument must be a 1-D tensor or a Python "
+        "list/tuple, but got a scalar (rank-0) tensor. If you intended to "
+        "reshape to a 1-D tensor with a single dimension, use "
+        "`shape=[value]` instead."
+    )
   result = gen_array_ops.reshape(tensor, shape, name)
   shape_util.maybe_set_static_shape(result, shape)
   return result
@@ -1277,7 +1290,7 @@ def _cast_nested_seqs_to_dtype(dtype):
   return _maybe_cast
 
 
-_NON_AUTOPACKABLE_TYPES = set((
+_NON_AUTOPACKABLE_TYPES = frozenset((
     int,
     float,
     complex,
@@ -1309,8 +1322,8 @@ _NON_AUTOPACKABLE_TYPES = set((
     np.uint64,
     np.ulonglong,
     np.void,
+    np.ndarray,
 ))
-_NON_AUTOPACKABLE_TYPES.add(np.ndarray)
 
 
 def _should_not_autopack(v):
@@ -1477,7 +1490,12 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
 
   Args:
     tensor:  N-D Tensor.
-    mask:  K-D boolean Tensor, K <= N and K must be known statically.
+    mask:  K-D boolean Tensor, K <= N and K must be known statically. For
+      backward-compatibility, non-boolean tensors are also accepted and treated
+      as boolean (zero entries are masked out, non-zero entries are kept).
+      Prefer passing a `bool`-dtype mask; passing an int / float mask will issue
+      no error but is not part of the documented contract and may be tightened
+      in a future release.
     name:  A name for this operation (optional).
     axis:  A 0-D int Tensor representing the axis in `tensor` to mask from. By
       default, axis is 0 which will mask from the first dimension. Otherwise K +
@@ -1571,7 +1589,12 @@ def boolean_mask_v2(tensor, mask, axis=None, name="boolean_mask"):
 
   Args:
     tensor:  N-D Tensor.
-    mask:  K-D boolean Tensor, K <= N and K must be known statically.
+    mask:  K-D boolean Tensor, K <= N and K must be known statically. For
+      backward-compatibility, non-boolean tensors are also accepted and treated
+      as boolean (zero entries are masked out, non-zero entries are kept).
+      Prefer passing a `bool`-dtype mask; passing an int / float mask will issue
+      no error but is not part of the documented contract and may be tightened
+      in a future release.
     axis:  A 0-D int Tensor representing the axis in `tensor` to mask from. By
       default, axis is 0 which will mask from the first dimension. Otherwise K +
       axis <= N.
@@ -3459,8 +3482,6 @@ def meshgrid(*args, **kwargs):
 
 NEW_AXIS = -1
 SHRINK_AXIS = -2
-
-
 
 
 @tf_export("edit_distance")

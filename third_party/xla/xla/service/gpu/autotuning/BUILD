@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # Description:
 #   Components that implement GPU autotuning.
 
@@ -33,8 +48,9 @@ xla_test(
         ":autotuner_pass",
         "//xla:shape_util",
         "//xla:xla_proto_cc",
-        "//xla/backends/autotuner",
+        "//xla/backends/autotuner:backends_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
+        "//xla/backends/autotuner:config_assigner",
         "//xla/backends/autotuner:profiler",
         "//xla/backends/gpu/autotuner:cublaslt",
         "//xla/backends/gpu/autotuner:cudnn",
@@ -135,13 +151,13 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -171,10 +187,10 @@ cc_library(
         "//xla/stream_executor:stream",
         "//xla/stream_executor/gpu:redzone_allocator",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/profiler/lib:traceme",
@@ -239,12 +255,12 @@ xla_cc_test(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
@@ -265,10 +281,17 @@ cc_library(
         "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner",
+        "//xla/backends/autotuner:autotune_cache_store",
         "//xla/backends/autotuner:autotuner_cache_interface",
         "//xla/backends/autotuner:backends_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
+        "//xla/backends/autotuner:codegen_orchestrator",
+        "//xla/backends/autotuner:config_assigner",
+        "//xla/backends/autotuner:directory_store",
+        "//xla/backends/autotuner:hlo_extractor",
+        "//xla/backends/autotuner:in_memory_store",
         "//xla/backends/autotuner:profiler",
+        "//xla/backends/autotuner:tiered_cache",
         "//xla/backends/gpu/autotuner:factory",
         "//xla/backends/gpu/autotuner:gpu_profiler",
         "//xla/backends/gpu/autotuner:legacy_cache",
@@ -288,13 +311,13 @@ cc_library(
         "//xla/stream_executor/platform:platform_object_registry",
         "//xla/stream_executor/sycl:sycl_platform_id",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",

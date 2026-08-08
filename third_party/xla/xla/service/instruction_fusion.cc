@@ -744,8 +744,8 @@ absl::StatusOr<bool> InstructionFusion::RunImpl(
           // Operand is now dead. Remove from queue.
           fusion_queue->RemoveInstruction(operand);
           // Remove from computation.
-          RETURN_IF_ERROR(operand->SafelyDropAllControlDependencies());
-          RETURN_IF_ERROR(computation->RemoveInstruction(operand));
+          ABSL_RETURN_IF_ERROR(operand->SafelyDropAllControlDependencies());
+          ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(operand));
         }
 
         if (dump_fusion) {
@@ -806,7 +806,11 @@ HloInstruction* InstructionFusion::AddFusionInstruction(
     // have the same value as the root of the fused computation. However, we
     // copy the value nontheless to simplify some use cases that involve
     // fusions.
-    CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
+    auto status_or_changed = computation->ReplaceInstruction(
+        consumer, fusion_instruction, /*preserve_sharding=*/false,
+        /*relay_control_dependency=*/true);
+    CHECK_OK(status_or_changed.status());
+    CHECK(status_or_changed.value());
   }
   return fusion_instruction;
 }

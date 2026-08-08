@@ -122,9 +122,5 @@ void MergePointersToSameSlicePass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> CreateMergePointersToSameSlicePass() {
-  return std::make_unique<MergePointersToSameSlicePass>();
-}
-
 }  // namespace emitters
 }  // namespace xla

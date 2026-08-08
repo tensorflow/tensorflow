@@ -49,15 +49,16 @@ bool EnableHeuristicCollectiveCombining(
     const se::DeviceDescription& device_description, int64_t nvlink_slice_size);
 
 // Merges the CollectiveBackendConfig from all combined instructions onto the
-// target instruction. Currently merges the is_pipelined field: if any source
-// instruction is pipelined, the target is marked as pipelined.
+// target instruction. The is_pipelined and is_spmd_generated fields are
+// logical ORs over the source instructions.
 absl::Status MergeCollectiveBackendConfig(
     absl::Span<HloInstruction* const> to_combine, HloInstruction* combined);
 
-// If the instruction has a "combiner_key" frontend attribute, appends it to
-// extra_args so that only collectives with matching keys are combined.
-void AppendCombinerKeyFromFrontendAttr(const HloInstruction* instruction,
-                                       std::string& extra_args);
+// Appends frontend attributes that constrain collective combining to
+// `extra_args`. Values are length-prefixed so arbitrary frontend strings cannot
+// produce colliding combiner keys.
+void AppendFrontendAttributesToCombinerKey(const HloInstruction* instruction,
+                                           std::string& extra_args);
 
 }  // namespace xla::gpu
 

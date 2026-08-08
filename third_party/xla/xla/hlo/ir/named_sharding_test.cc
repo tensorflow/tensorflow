@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/ir/named_sharding.h"
 
 #include <optional>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -265,6 +266,20 @@ TEST(NamedShardingTest, ToStringUnreduced) {
       test_utils::FromAxisNames(mesh, {{}, {}}, {}, {"b:(4)2"});
   EXPECT_EQ(sharding_unreduced.ToString(),
             "{mesh['a'=2,'b'=8], [{}, {}], unreduced={'b':(4)2}}");
+}
+
+TEST(NamedShardingTest, ToStringUnreducedEnum) {
+  Mesh mesh({2, 8, 4}, {"a", "b", "c"});
+  std::vector<AxisRef> unreduced_axes = {AxisRef(0), AxisRef(1, {4, 2})};
+  NamedSharding sharding(mesh, {}, {}, unreduced_axes, {}, {},
+                         ReductionOp::kMax);
+  EXPECT_EQ(sharding.ToString(),
+            "{mesh['a'=2,'b'=8,'c'=4], [], unreduced=max{'a', 'b':(4)2}}");
+
+  NamedShardingProto proto = sharding.ToProto();
+  NamedSharding from_proto = NamedSharding::FromProto(proto);
+  EXPECT_EQ(from_proto.ToString(),
+            "{mesh['a'=2,'b'=8,'c'=4], [], unreduced=max{'a', 'b':(4)2}}");
 }
 
 TEST(NamedShardingTest, ToStringManual) {

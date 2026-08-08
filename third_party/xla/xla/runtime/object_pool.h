@@ -68,6 +68,9 @@ class ObjectPool {
   // the builder; returns ResourceExhausted if the pool has no available object.
   absl::StatusOr<BorrowedObject> Get();
 
+  // Clears all available objects from the pool.
+  void Clear();
+
   // Borrows an available object from the pool, or creates a new object with the
   // builder if the pool is empty. Returns any error produced by the builder.
   absl::StatusOr<BorrowedObject> GetOrCreate(Args... args);
@@ -133,8 +136,16 @@ template <typename T, typename... Args>
 auto ObjectPool<T, Args...>::CreateObject(Args... args)
     -> absl::StatusOr<std::unique_ptr<T>> {
   DCHECK(builder_) << "ObjectPool builder is not initialized";
-  ASSIGN_OR_RETURN(T object, builder_(std::forward<Args>(args)...));
+  ABSL_ASSIGN_OR_RETURN(T object, builder_(std::forward<Args>(args)...));
   return std::make_unique<T>(std::move(object));
+}
+
+template <typename T, typename... Args>
+auto ObjectPool<T, Args...>::Clear() -> void {
+  absl::MutexLock lock(mu_);
+  size_t num_available = available_.size();
+  available_.clear();
+  num_created_ -= num_available;
 }
 
 template <typename T, typename... Args>
@@ -166,7 +177,7 @@ absl::Status ObjectPool<T, Args...>::Preallocate(size_t num_objects,
                                                  Args... args) {
   std::vector<std::unique_ptr<T>> objects(num_objects);
   for (size_t i = 0; i < num_objects; ++i) {
-    ASSIGN_OR_RETURN(objects[i], CreateObject(args...));
+    ABSL_ASSIGN_OR_RETURN(objects[i], CreateObject(args...));
   }
 
   absl::MutexLock lock(mu_);
@@ -192,7 +203,7 @@ auto ObjectPool<T, Args...>::GetOrCreate(Args... args)
   if (std::unique_ptr<T> object = PopObject(); ABSL_PREDICT_TRUE(object)) {
     return BorrowedObject(object.release(), ReturnToPool{this});
   }
-  ASSIGN_OR_RETURN(auto object, CreateObject(std::forward<Args>(args)...));
+  ABSL_ASSIGN_OR_RETURN(auto object, CreateObject(std::forward<Args>(args)...));
 
   absl::MutexLock lock(mu_);
   num_created_++;

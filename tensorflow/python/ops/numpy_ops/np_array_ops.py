@@ -452,14 +452,29 @@ def compress(condition, a, axis=None):  # pylint: disable=redefined-outer-name,m
 
   assert axis >= 0 and axis < a.ndim
 
-  # `tf.boolean_mask` requires the first dimensions of array and condition to
-  # match. `np.compress` pads condition with False when it is shorter.
-  condition_t = condition
-  a_t = a
-  if condition.shape[0] < a.shape[axis]:
-    padding = array_ops.fill([a.shape[axis] - condition.shape[0]], False)
-    condition_t = array_ops.concat([condition_t, padding], axis=0)
-  return array_ops.boolean_mask(tensor=a_t, mask=condition_t, axis=axis)
+  # `tf.boolean_mask` requires `a`'s size along `axis` to equal `condition`'s
+  # length. `np.compress` instead pairs `condition[k]` with `a[k]` along `axis`
+  # and drops any entries of `a` past `len(condition)`. Slice both down to their
+  # overlap so the mask always matches and the result stays bounded by
+  # `len(condition)` rather than `a.shape[axis]`: padding `condition` up to
+  # `a`'s size gives XLA a looser dynamic bound that fails to compile downstream
+  # (see #122055). Slicing to the overlap also avoids the `boolean_mask`
+  # "Dimensions must be equal" error when `condition` is longer than `a`.
+  cond_len = condition.shape[0]
+  a_len = a.shape[axis]
+  if cond_len is not None and a_len is not None:
+    # Static shapes: keep the slice lengths as Python ints so downstream shape
+    # inference (and XLA's static bound) sees the tight `len(condition)` extent.
+    overlap = builtins.min(cond_len, a_len)
+  else:
+    # Dynamic (`@tf.function` with `None` dims): `condition.shape[0]` /
+    # `a.shape[axis]` are `None`, so fall back to symbolic tensor shapes.
+    overlap = math_ops.minimum(
+        array_ops.shape(condition)[0], array_ops.shape(a)[axis]
+    )
+  condition = condition[:overlap]
+  a = a[tuple([slice(None)] * axis + [slice(0, overlap)])]
+  return array_ops.boolean_mask(tensor=a, mask=condition, axis=axis)
 
 
 @tf_export.tf_export('experimental.numpy.copy', v1=[])
@@ -918,11 +933,40 @@ def swapaxes(a, axis1, axis2):  # pylint: disable=missing-docstring
 
   def adjust_axes(axes, rank):
     def f(x):
-      if isinstance(x, int):
+      if isinstance(x, int) and isinstance(rank, int):
+        # Fully static case: both the axis and the rank are known Python
+        # ints, so bounds can be validated eagerly, at trace time.
+        # Match np.swapaxes behavior: raise a clear error for an
+        # out-of-bounds axis instead of producing a `perm` with a
+        # leftover negative entry. This is the key fix for #122054 — it
+        # prevents the situation where eager silently "succeeds" (its
+        # `Transpose` kernel re-normalizes negative perm entries) while
+        # `jit_compile=True` / tf2xla crashes with an opaque range error,
+        # since the XLA bridge does not re-normalize.
+        if not (-rank <= x < rank):
+          raise ValueError(
+              f'axis {x} is out of bounds for array of dimension {rank}'
+          )
         if x < 0:
           x = x + rank
       else:
-        x = array_ops.where_v2(x < 0, np_utils.add(x, a_rank), x)
+        # Dynamic case: `x` and/or `rank` is only known at runtime, e.g.
+        # a `Tensor` rank inside a `tf.function` traced with an
+        # unspecified input signature. Static Python-level bounds
+        # checking can't run here, so assert the same bounds at runtime
+        # before normalizing, keeping eager and graph mode consistent.
+        # Note: under `jit_compile=True`, tf2xla lowers `Assert` to a
+        # no-op (see tf2xla/kernels/assert_op.cc), so this check does
+        # not raise inside a fully dynamic-rank XLA-compiled function;
+        # that combination is a separate, pre-existing XLA limitation
+        # this PR #122544 does not attempt to solve.
+        rank_t = ops.convert_to_tensor(rank)
+        x = ops.convert_to_tensor(x)
+        control_flow_assert.Assert(
+            math_ops.reduce_all(math_ops.logical_and(x >= -rank_t, x < rank_t)),
+            ['axis', x, 'is out of bounds for array of dimension', rank_t],
+        )
+        x = array_ops.where_v2(x < 0, np_utils.add(x, rank_t), x)
       return x
 
     return nest.map_structure(f, axes)

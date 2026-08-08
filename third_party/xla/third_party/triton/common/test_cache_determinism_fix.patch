@@ -1,6 +1,6 @@
 --- a/python/test/unit/runtime/test_cache_determinism.py
 +++ b/python/test/unit/runtime/test_cache_determinism.py
-@@ -74,8 +74,9 @@
+@@ -74,8 +74,9 @@ def _subprocess_key(mode, seed, order="forward"):
      env["PYTHONHASHSEED"] = str(seed)
      env["TRITON_CACHE_KEY_TEST_ORDER"] = order
      env["TRITON_CACHE_KEY_TEST_SEED"] = str(seed)
@@ -11,7 +11,7 @@
          check=True,
          capture_output=True,
          env=env,
-@@ -117,11 +118,13 @@
+@@ -117,11 +118,13 @@ def _run_stress_case():
      print(stress_parent.cache_key)
  
  

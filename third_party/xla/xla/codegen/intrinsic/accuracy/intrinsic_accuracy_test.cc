@@ -76,7 +76,7 @@ using codegen::intrinsic::accuracy::UlpBudget;
 // Test fixture: uses PjRt test runner.
 // ---------------------------------------------------------------------------
 
-using HloIntrinsicAccuracyTest = HloPjRtTestBase;
+using HloIntrinsicAccuracyTest = HloTestBase;
 
 // ---------------------------------------------------------------------------
 // Accuracy reporting (ULP-based, independent of XLA's ErrorSpec).
@@ -269,7 +269,13 @@ std::vector<IntrinsicAccuracyTestParam> GetAccuracyTestParams() {
       {"cosine", F64, accuracy::kGoldenCos, accuracy::kCosF64Budget},
 
       {"erf", F32, accuracy::kGoldenErf, accuracy::kErfF32Budget},
-      {"erf", F64, accuracy::kGoldenErf, accuracy::kErfF64Budget}};
+      {"erf", F64, accuracy::kGoldenErf, accuracy::kErfF64Budget},
+
+      {"tan", F32, accuracy::kGoldenTan, accuracy::kTanF32Budget},
+      {"tan", F64, accuracy::kGoldenTan, accuracy::kTanF64Budget},
+
+      {"cbrt", F32, accuracy::kGoldenCbrt, accuracy::kCbrtF32Budget},
+      {"cbrt", F64, accuracy::kGoldenCbrt, accuracy::kCbrtF64Budget}};
   return params;
 }
 

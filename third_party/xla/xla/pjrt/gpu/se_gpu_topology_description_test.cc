@@ -25,7 +25,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
-#include "xla/pjrt/pjrt_stream_executor_device_description.h"
+#include "xla/pjrt/se/pjrt_stream_executor_device_description.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/tsl/platform/statusor.h"
 

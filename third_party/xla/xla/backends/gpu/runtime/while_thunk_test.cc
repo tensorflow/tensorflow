@@ -28,11 +28,11 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/command_state.h"
@@ -53,10 +53,7 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
-#include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -77,9 +74,10 @@ struct DummyThunk : public Thunk {
   absl::Status ExecuteOnStream(const ExecuteParams& params) override {
     return absl::OkStatus();
   }
+  BufferUses buffer_uses() const override { return {}; }
   static absl::StatusOr<std::unique_ptr<DummyThunk>> FromProto(
       const ThunkProto& thunk_proto, Thunk::Kind kind) {
-    ASSIGN_OR_RETURN(Thunk::ThunkInfo thunk_info,
+    ABSL_ASSIGN_OR_RETURN(Thunk::ThunkInfo thunk_info,
                      Thunk::ThunkInfo::FromProto(thunk_proto.thunk_info()));
     return std::make_unique<DummyThunk>(kind, std::move(thunk_info));
   }
@@ -200,6 +198,8 @@ class IterationLoggerThunk : public Thunk {
     return absl::OkStatus();
   }
 
+  BufferUses buffer_uses() const override { return {}; }
+
   const std::vector<std::optional<int64_t>>& logged_counters() const {
     return iteration_counters_;
   }
@@ -217,11 +217,11 @@ class IterationLoggerThunk : public Thunk {
 class KnownTripCountWhileThunkTest : public HloTestBase {
  protected:
   absl::Status ExecuteThunk(Thunk& thunk) {
-    ASSIGN_OR_RETURN(auto name, PlatformUtil::CanonicalPlatformName("gpu"));
-    ASSIGN_OR_RETURN(auto* platform,
+    ABSL_ASSIGN_OR_RETURN(auto name, PlatformUtil::CanonicalPlatformName("gpu"));
+    ABSL_ASSIGN_OR_RETURN(auto* platform,
                      se::PlatformManager::PlatformWithName(name));
-    ASSIGN_OR_RETURN(auto* executor, platform->ExecutorForDevice(0));
-    ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
+    ABSL_ASSIGN_OR_RETURN(auto* executor, platform->ExecutorForDevice(0));
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
                      executor->CreateStream());
     stream_executor::StreamExecutorAddressAllocator allocator(executor);
     Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
@@ -311,7 +311,6 @@ TEST(WhileThunkTest, PreparePropagatesToCommandBufferExecutors) {
   Thunk::PrepareParams prepare_params{/*collective_params=*/nullptr,
                                       /*collective_clique_requests=*/nullptr,
                                       /*collective_memory_requests=*/nullptr,
-                                      /*scratch_memory_requests=*/nullptr,
                                       /*executor=*/executor,
                                       /*buffer_allocations=*/&allocations};
   ASSERT_OK(thunk.Prepare(prepare_params));
@@ -388,16 +387,16 @@ TEST(WhileThunkTest, RecordCreatesAndUpdatesCommandBufferWhile) {
           }
         }
 
-        RETURN_IF_ERROR(
+        ABSL_RETURN_IF_ERROR(
             create_cond(&command_buffer, create_dependencies).status());
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             std::vector<const se::CommandBuffer::Command*> body_commands,
             create_body(body_command_buffer->command_buffer.get(),
                         /*dependencies=*/{}));
-        RETURN_IF_ERROR(create_cond(body_command_buffer->command_buffer.get(),
+        ABSL_RETURN_IF_ERROR(create_cond(body_command_buffer->command_buffer.get(),
                                     body_commands)
                             .status());
-        RETURN_IF_ERROR(body_command_buffer->command_buffer->Finalize());
+        ABSL_RETURN_IF_ERROR(body_command_buffer->command_buffer->Finalize());
         return &while_se_command;
       });
 
@@ -428,11 +427,11 @@ TEST(WhileThunkTest, RecordCreatesAndUpdatesCommandBufferWhile) {
           return absl::InternalError("unexpected while command");
         }
 
-        RETURN_IF_ERROR(update_cond(&command_buffer));
-        RETURN_IF_ERROR(body_command_buffer->command_buffer->Update());
-        RETURN_IF_ERROR(update_body(body_command_buffer->command_buffer.get()));
-        RETURN_IF_ERROR(update_cond(body_command_buffer->command_buffer.get()));
-        RETURN_IF_ERROR(body_command_buffer->command_buffer->Finalize());
+        ABSL_RETURN_IF_ERROR(update_cond(&command_buffer));
+        ABSL_RETURN_IF_ERROR(body_command_buffer->command_buffer->Update());
+        ABSL_RETURN_IF_ERROR(update_body(body_command_buffer->command_buffer.get()));
+        ABSL_RETURN_IF_ERROR(update_cond(body_command_buffer->command_buffer.get()));
+        ABSL_RETURN_IF_ERROR(body_command_buffer->command_buffer->Finalize());
         return absl::OkStatus();
       });
 
@@ -457,15 +456,12 @@ TEST(WhileThunkTest, ToProto) {
   BufferAllocation::Slice slice(&alloc, /*offset=*/0, /*size=*/256);
 
   ThunkSequence condition_thunks;
-  condition_thunks.push_back(
-      std::make_unique<DummyThunk>(Kind::kConditional, thunk_info));
-  condition_thunks.push_back(
-      std::make_unique<DummyThunk>(Kind::kConditional, thunk_info));
+  condition_thunks.Emplace<DummyThunk>(Kind::kConditional, thunk_info);
+  condition_thunks.Emplace<DummyThunk>(Kind::kConditional, thunk_info);
 
   ThunkSequence body_thunks;
-  body_thunks.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
-  body_thunks.push_back(
-      std::make_unique<DummyThunk>(Kind::kCustomCall, thunk_info));
+  body_thunks.Emplace<DummyThunk>(Kind::kGemm, thunk_info);
+  body_thunks.Emplace<DummyThunk>(Kind::kCustomCall, thunk_info);
 
   WhileThunk thunk =
       CreateWhileThunk(thunk_info, slice, std::move(condition_thunks),
@@ -536,11 +532,10 @@ TEST(WhileThunkTest, TransformNested) {
   Thunk::ThunkInfo thunk_info;
   BufferAllocation::Slice slice;
 
-  ThunkSequence condition_thunks;
-  condition_thunks.push_back(
-      std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
-  ThunkSequence body_thunks;
-  body_thunks.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
+  ThunkSequence condition_thunks =
+      ThunkSequence::Of<DummyThunk>(Kind::kGemm, thunk_info);
+  ThunkSequence body_thunks =
+      ThunkSequence::Of<DummyThunk>(Kind::kGemm, thunk_info);
 
   auto while_thunk = std::make_unique<WhileThunk>(
       Thunk::ThunkInfo(),

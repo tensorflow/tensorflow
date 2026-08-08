@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
+#include "tensorflow/core/lib/monitoring/test_utils.h"
 
 namespace {
 using ::tensorflow::metrics::IncrementPhase2XlaCompilerCounter;
@@ -112,6 +113,49 @@ TEST(Metrics, TFDataClientGetElementAction) {
   EXPECT_EQ(
       counter.Read("skip_empty_buffer", "client_1", "worker_1", "thread_1"), 1);
   EXPECT_EQ(counter.Read("skip_error", "client_2", "worker_2", "thread_0"), 1);
+}
+
+TEST(Metrics, TFDataPrefetchResidenceTime) {
+  CellReader<tensorflow::monitoring::testing::Histogram> sampler(
+      "/tensorflow/data/prefetch_residence_time_usecs");
+
+  tensorflow::metrics::RecordTFDataPrefetchResidenceTime("node_1", 1000);
+  tensorflow::metrics::RecordTFDataPrefetchResidenceTime("node_1", 2000);
+  tensorflow::metrics::RecordTFDataPrefetchResidenceTime("node_2", 3000);
+
+  EXPECT_EQ(sampler.Read("node_1").num(), 2);
+  EXPECT_EQ(sampler.Read("node_2").num(), 1);
+}
+
+TEST(Metrics, TFDataPrefetchEnqueue) {
+  CellReader<int64_t> counter("/tensorflow/data/prefetch_buffer");
+
+  tensorflow::metrics::RecordTFDataPrefetchEnqueue("node_1");
+  tensorflow::metrics::RecordTFDataPrefetchEnqueue("node_1");
+  tensorflow::metrics::RecordTFDataPrefetchEnqueue("node_2");
+
+  EXPECT_EQ(counter.Read("node_1", "enqueue"), 2);
+  EXPECT_EQ(counter.Read("node_2", "enqueue"), 1);
+}
+
+TEST(Metrics, TFDataPrefetchDequeue) {
+  CellReader<int64_t> counter("/tensorflow/data/prefetch_buffer");
+
+  tensorflow::metrics::RecordTFDataPrefetchDequeue("node_1");
+  tensorflow::metrics::RecordTFDataPrefetchDequeue("node_2");
+
+  EXPECT_EQ(counter.Read("node_1", "dequeue"), 1);
+  EXPECT_EQ(counter.Read("node_2", "dequeue"), 1);
+}
+
+TEST(Metrics, TFDataPrefetchBufferSize) {
+  CellReader<int64_t> gauge("/tensorflow/data/prefetch_buffer_size");
+
+  tensorflow::metrics::RecordTFDataPrefetchBufferSize("node_1", 5);
+  EXPECT_EQ(gauge.Read("node_1"), 5);
+
+  tensorflow::metrics::RecordTFDataPrefetchBufferSize("node_1", 3);
+  EXPECT_EQ(gauge.Read("node_1"), 3);
 }
 
 }  // namespace

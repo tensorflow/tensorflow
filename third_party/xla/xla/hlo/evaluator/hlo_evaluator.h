@@ -53,7 +53,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
@@ -484,6 +483,12 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     state_.set_evaluated(hlo, std::move(literal));
   }
 
+  absl::Status PropagateAsyncOutputs(const HloInstruction* start_async_inst,
+                                     const LiteralSlice& result_literal);
+
+  absl::StatusOr<std::vector<Literal>> ExtractAsyncInputParameters(
+      const HloInstruction* async_op, const LiteralSlice& async_literal);
+
   // EvaluationState encapsulates the state of an in-progress evaluation. Once
   // evaluation is complete the state is cleaned up.
   //
@@ -588,12 +593,12 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     bool same_layout =
         LayoutUtil::Equal(operand->shape().layout(), shape.layout());
     if (same_layout) {
-      RETURN_IF_ERROR(result.PopulateLinearParallel<ReturnT>(
+      ABSL_RETURN_IF_ERROR(result.PopulateLinearParallel<ReturnT>(
           [&](int64_t linear_index, int /*thread_id*/) {
             return unary_op(operand_literal.GetLinear<NativeT>(linear_index));
           }));
     } else {
-      RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
+      ABSL_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
           [&](absl::Span<const int64_t> multi_index, int /*thread_id*/) {
             return unary_op(operand_literal.Get<NativeT>(multi_index));
           }));

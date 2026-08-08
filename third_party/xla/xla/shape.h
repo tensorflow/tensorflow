@@ -545,7 +545,11 @@ class Shape {
       return h;
     }
     if (const auto* const state = s.if_buffer_state()) {
-      return H::combine(std::move(h), s.element_type_, state->buffer_shape);
+      h = H::combine(std::move(h), s.element_type_);
+      if (state->buffer_shape != nullptr) {
+        h = H::combine(std::move(h), *state->buffer_shape);
+      }
+      return h;
     }
     return H::combine(std::move(h), s.element_type_);
   }
@@ -840,15 +844,8 @@ inline const Shape::ArrayState& Shape::array_state_maybe_underneath_buffer()
     return *array;
   }
   const BufferState* buffer = if_buffer_state();
-  CHECK(buffer)
-      << "Expected an array or buffer shape. Got " << ToString()
-      << "\nThis is a programmer error. Please read the Shape object's "
-         "array properties only when it is an array or buffer shape.";
-  CHECK(buffer->buffer_shape->IsArrayExcludingBuffer())
-      << "Expected a fully initialized Buffer shape containing an "
-         "underlying array, but got an uninitialized/empty Buffer shape: "
-      << ToString();
-  return buffer->buffer_shape->array_state();
+  CHECK_NE(buffer, nullptr);
+  return *buffer->buffer_shape->if_array_state();
 }
 
 inline Shape::ArrayState& Shape::array_state_maybe_underneath_buffer() {
@@ -856,15 +853,8 @@ inline Shape::ArrayState& Shape::array_state_maybe_underneath_buffer() {
     return *array;
   }
   BufferState* buffer = if_buffer_state();
-  CHECK(buffer)
-      << "Expected an array or buffer shape. Got " << ToString()
-      << "\nThis is a programmer error. Please read the Shape object's "
-         "array properties only when it is an array or buffer shape.";
-  CHECK(buffer->buffer_shape->IsArrayExcludingBuffer())
-      << "Expected a fully initialized Buffer shape containing an "
-         "underlying array, but got an uninitialized/empty Buffer shape: "
-      << ToString();
-  return buffer->buffer_shape->array_state();
+  CHECK_NE(buffer, nullptr);
+  return *buffer->buffer_shape->if_array_state();
 }
 
 inline ABSL_ATTRIBUTE_ALWAYS_INLINE const Shape& Shape::tuple_shapes(

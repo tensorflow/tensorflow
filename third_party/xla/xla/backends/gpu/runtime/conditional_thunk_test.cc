@@ -27,8 +27,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/types/span.h"
 #include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
@@ -47,8 +48,6 @@ limitations under the License.
 #include "xla/stream_executor/mock_command_buffer.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
@@ -69,9 +68,10 @@ struct DummyThunk : public Thunk {
   absl::Status ExecuteOnStream(const ExecuteParams& params) override {
     return absl::OkStatus();
   }
+  BufferUses buffer_uses() const override { return {}; }
   static absl::StatusOr<std::unique_ptr<DummyThunk>> FromProto(
       const ThunkProto& thunk_proto, Thunk::Kind kind) {
-    ASSIGN_OR_RETURN(Thunk::ThunkInfo thunk_info,
+    ABSL_ASSIGN_OR_RETURN(Thunk::ThunkInfo thunk_info,
                      Thunk::ThunkInfo::FromProto(thunk_proto.thunk_info()));
     return std::make_unique<DummyThunk>(kind, std::move(thunk_info));
   }
@@ -186,12 +186,12 @@ TEST(ConditionalThunkTest, BufferUses) {
   Shape shape = ShapeUtil::MakeShape(PRED, {});
 
   ThunkSequence false_seq;
-  false_seq.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
-  false_seq.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
+  false_seq.Emplace<DummyThunk>(Kind::kGemm, thunk_info);
+  false_seq.Emplace<DummyThunk>(Kind::kGemm, thunk_info);
 
   ThunkSequence true_seq;
-  true_seq.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
-  true_seq.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
+  true_seq.Emplace<DummyThunk>(Kind::kGemm, thunk_info);
+  true_seq.Emplace<DummyThunk>(Kind::kGemm, thunk_info);
 
   std::vector<ThunkSequence> branch_thunk_sequences;
   branch_thunk_sequences.push_back(std::move(false_seq));
@@ -246,7 +246,6 @@ TEST(ConditionalThunkTest, PreparePropagatesToCommandBufferBranchExecutors) {
   Thunk::PrepareParams prepare_params{/*collective_params=*/nullptr,
                                       /*collective_clique_requests=*/nullptr,
                                       /*collective_memory_requests=*/nullptr,
-                                      /*scratch_memory_requests=*/nullptr,
                                       /*executor=*/executor,
                                       /*buffer_allocations=*/&allocations};
   ASSERT_OK(thunk.Prepare(prepare_params));
@@ -331,10 +330,10 @@ TEST(ConditionalThunkTest, RecordCreatesAndUpdatesCommandBufferCase) {
                  create_branches) {
               auto branch = std::make_unique<BranchCommandBuffer>();
               ConfigureNestedCommandBuffer(branch.get());
-              RETURN_IF_ERROR(create_branch(branch->command_buffer.get(),
+              ABSL_RETURN_IF_ERROR(create_branch(branch->command_buffer.get(),
                                             /*dependencies=*/{})
                                   .status());
-              RETURN_IF_ERROR(branch->command_buffer->Finalize());
+              ABSL_RETURN_IF_ERROR(branch->command_buffer->Finalize());
               branch_command_buffers.push_back(std::move(branch));
             }
             return &case_se_command;
@@ -370,10 +369,10 @@ TEST(ConditionalThunkTest, RecordCreatesAndUpdatesCommandBufferCase) {
           return absl::InternalError("unexpected branch count");
         }
         for (size_t i = 0; i < update_branches.size(); ++i) {
-          RETURN_IF_ERROR(branch_command_buffers[i]->command_buffer->Update());
-          RETURN_IF_ERROR(update_branches[i](
+          ABSL_RETURN_IF_ERROR(branch_command_buffers[i]->command_buffer->Update());
+          ABSL_RETURN_IF_ERROR(update_branches[i](
               branch_command_buffers[i]->command_buffer.get()));
-          RETURN_IF_ERROR(
+          ABSL_RETURN_IF_ERROR(
               branch_command_buffers[i]->command_buffer->Finalize());
         }
         return absl::OkStatus();
@@ -402,12 +401,12 @@ TEST(ConditionalThunkTest, ToProto) {
   Shape shape = ShapeUtil::MakeShape(PRED, {});
 
   ThunkSequence false_seq;
-  false_seq.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
-  false_seq.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
+  false_seq.Emplace<DummyThunk>(Kind::kGemm, thunk_info);
+  false_seq.Emplace<DummyThunk>(Kind::kGemm, thunk_info);
 
   ThunkSequence true_seq;
-  true_seq.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
-  true_seq.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
+  true_seq.Emplace<DummyThunk>(Kind::kGemm, thunk_info);
+  true_seq.Emplace<DummyThunk>(Kind::kGemm, thunk_info);
 
   std::vector<ThunkSequence> branch_thunk_seq;
   branch_thunk_seq.push_back(std::move(false_seq));
@@ -493,12 +492,12 @@ TEST(ConditionalThunkTest, ToString) {
   Shape int_shape = ShapeUtil::MakeShape(S32, {});
 
   auto create_branch_thunk_sequences = [&]() -> std::vector<ThunkSequence> {
-    ThunkSequence false_seq;
-    false_seq.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
+    ThunkSequence false_seq =
+        ThunkSequence::Of<DummyThunk>(Kind::kGemm, thunk_info);
 
     ThunkSequence true_seq;
-    true_seq.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
-    true_seq.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
+    true_seq.Emplace<DummyThunk>(Kind::kGemm, thunk_info);
+    true_seq.Emplace<DummyThunk>(Kind::kGemm, thunk_info);
 
     std::vector<ThunkSequence> branch_thunk_sequences;
     branch_thunk_sequences.push_back(std::move(false_seq));
@@ -534,10 +533,10 @@ TEST(ConditionalThunkTest, TransformNested) {
   Shape shape = ShapeUtil::MakeShape(S32, {});
   Thunk::ThunkInfo thunk_info;
 
-  ThunkSequence branch0;
-  branch0.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
-  ThunkSequence branch1;
-  branch1.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
+  ThunkSequence branch0 =
+      ThunkSequence::Of<DummyThunk>(Kind::kGemm, thunk_info);
+  ThunkSequence branch1 =
+      ThunkSequence::Of<DummyThunk>(Kind::kGemm, thunk_info);
 
   std::vector<ThunkSequence> branch_thunks;
   branch_thunks.push_back(std::move(branch0));

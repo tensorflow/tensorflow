@@ -354,11 +354,20 @@ struct BufferIntervalTreeNode {
   BufferIntervalTreeNode* right;
   // parent
   BufferIntervalTreeNode* parent;
+  // Treap heap priority. It is a deterministic hash of the node's key, ensuring
+  // that the max heap property keeps the tree balanced regardless of insertion
+  // order, and that the tree shape is strictly reproducible.
+  uint64_t priority = 0;
 
   std::string ToString() const;
 };
 
 // An interval tree that can query buffers overlapping in time.
+// The tree is implemented as a deterministic treap: it is a BST keyed by
+// (start, end, chunk.offset) and a max heap on a deterministically generated
+// priority. This guarantees O(log n) operations. The tree shape does not affect
+// query results (overlap queries return the same node set for any shape), only
+// their cost.
 class BufferIntervalTree {
  public:
   using Chunk = HeapSimulator::Chunk;
@@ -446,6 +455,14 @@ class BufferIntervalTree {
   // to be non-null.
   std::vector<const BufferIntervalTreeNode*> NodesOverlappingInTime(
       int64_t start, int64_t end) const;
+
+  // Treap rebalancing helpers. Rotations allow us to adjust the tree height
+  // (maintaining an O(log n) height) while preserving key ordering. After
+  // rotating nodes, we recompute the BufferIntervalTreeNode::subtree_end so
+  // that overlap queries remain correct.
+  static void RecomputeSubtreeEnd(BufferIntervalTreeNode* node);
+  void RotateLeft(BufferIntervalTreeNode* x);
+  void RotateRight(BufferIntervalTreeNode* x);
 
   BufferIntervalTreeNode* root_ = nullptr;
   std::list<BufferIntervalTreeNode> node_storage_;
@@ -1003,6 +1020,22 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   BufferIntervalTree interval_tree_;
 
  private:
+  // Computes the same free chunks as MakeFreeChunks, but returns a reference to
+  // the reused scratch storage `free_chunks_list_` (invalidated by the next
+  // call to MakeFreeChunks or MakeFreeChunksList) instead of materializing the
+  // FreeChunks map. Used by the unsliced fast path in FindChunkCandidates to
+  // avoid per query container construction.
+  const std::vector<std::pair<int64_t, int64_t>>& MakeFreeChunksList(
+      const BufferInterval& buffer_interval, int64_t max_colocation_size) const;
+
+  // Fast path of FindChunkCandidates for an unsliced (num_slices() == 1)
+  // interval: computes the best fit chunk directly from the merged free chunk
+  // list, skipping the SlicedAllocationFinder containers. Returns exactly what
+  // FindChunkCandidates returns; see the implementation comment.
+  std::vector<Chunk> FindUnslicedChunkCandidates(
+      const SlicedBufferInterval& sliced_buffer_interval,
+      int64_t max_colocation_size, int64_t preferred_offset) const;
+
   int64_t alignment_;
 
   // The current time represented as an integer. It increments by 1 at each

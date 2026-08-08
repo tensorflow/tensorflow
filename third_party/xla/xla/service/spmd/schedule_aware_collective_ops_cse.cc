@@ -110,7 +110,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* comp, bool for_replicas,
     auto hlo = *it;
     int64_t h = 0;
     for (auto user : hlo->users()) {
-      h = std::max(h, height[user]) + 1;
+      h = std::max(h, height[user] + 1);
     }
     max_height = std::max(max_height, h);
     height[hlo] = h;
@@ -141,23 +141,23 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* comp, bool for_replicas,
         continue;
       }
       HloInstruction* coll_operand = coll->mutable_operand(0);
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           coll->ReplaceOperandWith(0, earlier_coll->mutable_operand(0)));
       if (!earlier_coll->IdenticalIgnoringChannelIdValues(*coll)) {
-        RETURN_IF_ERROR(coll->ReplaceOperandWith(0, coll_operand));
+        ABSL_RETURN_IF_ERROR(coll->ReplaceOperandWith(0, coll_operand));
         continue;
       }
       found = true;
       if (ShouldConsiderSchedule(coll) &&
           lowest_user_height(earlier_coll) > coll_height + distance_threshold) {
-        RETURN_IF_ERROR(coll->ReplaceOperandWith(0, coll_operand));
+        ABSL_RETURN_IF_ERROR(coll->ReplaceOperandWith(0, coll_operand));
         earlier_coll = coll;
         continue;
       }
       changed = true;
       VLOG(1) << "Replacing " << coll->ToString() << " with "
               << earlier_coll->ToString();
-      RETURN_IF_ERROR(coll->ReplaceAllUsesWith(earlier_coll));
+      ABSL_RETURN_IF_ERROR(coll->ReplaceAllUsesWith(earlier_coll));
       break;
     }
     if (!found) {
@@ -174,7 +174,7 @@ absl::StatusOr<bool> ScheduleAwareCollectiveOpsCSE::RunImpl(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   for (auto comp : module->computations(execution_threads)) {
-    ASSIGN_OR_RETURN(auto comp_changed, RunOnComputation(comp, for_replicas_,
+    ABSL_ASSIGN_OR_RETURN(auto comp_changed, RunOnComputation(comp, for_replicas_,
                                                          distance_threshold_));
     changed |= comp_changed;
   }

@@ -393,7 +393,7 @@ class ExecutorState {
   ExecutorImpl::KernelStats* const kernel_stats_;
   CancellationManager* cancellation_manager_;
   tsl::CoordinationServiceAgent* coordination_service_agent_;
-  absl::optional<ManagedStackTrace> stack_trace_ = absl::nullopt;
+  absl::optional<ManagedStackTrace> stack_trace_ = std::nullopt;
   // If not null, use this device to schedule intra-op operation
   std::unique_ptr<DeviceBase> user_device_;
   Executor::Args::Runner runner_;

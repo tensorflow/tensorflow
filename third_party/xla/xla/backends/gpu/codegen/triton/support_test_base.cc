@@ -22,15 +22,16 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -109,7 +110,10 @@ std::string SupportTestDeviceToString(
 namespace {
 
 bool IsCollectiveFusion(const HloFusionInstruction& fusion) {
-  return fusion.fused_expression_root()->opcode() == HloOpcode::kAllReduceDone;
+  HloOpcode root_opcode = fusion.fused_expression_root()->opcode();
+  std::vector<HloOpcode> collective_opcodes = {HloOpcode::kAllGather,
+                                               HloOpcode::kAllReduce};
+  return absl::c_linear_search(collective_opcodes, root_opcode);
 }
 
 // This function does nothing if the input module already has an entry
@@ -124,7 +128,7 @@ absl::Status ConvertEntryToTritonFusion(HloModule* module) {
   auto builder = HloComputation::Builder("entry");
   std::vector<HloInstruction*> params;
   for (auto& param : module->entry_computation()->parameter_instructions()) {
-    ASSIGN_OR_RETURN(auto param_clone,
+    ABSL_ASSIGN_OR_RETURN(auto param_clone,
                      builder.AddParameter(HloInstruction::CreateParameter(
                          param->parameter_number(), param->shape(),
                          absl::StrCat("param_", param->parameter_number()))));
@@ -141,7 +145,7 @@ absl::Status ConvertEntryToTritonFusion(HloModule* module) {
       IsCollectiveFusion(*xla::Cast<HloFusionInstruction>(fusion))
           ? kTritonCollectiveFusionKind
           : kTritonNestedGemmFusionKind);
-  RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
+  ABSL_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
 
   auto new_entry =
       module->AddComputationAndUnifyNamesAndIds(builder.Build(),
@@ -159,9 +163,9 @@ SupportTestBase::ParseTemplateAndGetInstruction(absl::string_view hlo_template,
   const std::string hlo_text = absl::Substitute(
       hlo_template, primitive_util::LowercasePrimitiveTypeName(data_type),
       HloOpcodeString(opcode));
-  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                    parse_module_callback_(hlo_text));
-  RETURN_IF_ERROR(ConvertEntryToTritonFusion(module.get()));
+  ABSL_RETURN_IF_ERROR(ConvertEntryToTritonFusion(module.get()));
   const HloComputation* computation =
       module->GetComputationWithName("triton_computation");
   if (computation == module->entry_computation()) {

@@ -26,10 +26,8 @@ namespace stream_executor::cuda {
 std::string CompilationProviderOptions::ToString() const {
   return absl::StrFormat(
       "CompilationProviderOptions{nvjitlink_mode: %d, enable_libnvptxcompiler: "
-      "%v, enable_llvm_module_compilation_parallelism: %v, "
-      "enable_driver_compilation: %v, cuda_data_dir: %s}",
-      nvjitlink_mode_, enable_libnvptxcompiler_,
-      enable_llvm_module_compilation_parallelism_, enable_driver_compilation_,
+      "%v, enable_driver_compilation: %v, cuda_data_dir: %s}",
+      nvjitlink_mode_, enable_libnvptxcompiler_, enable_driver_compilation_,
       cuda_data_dir_);
 }
 
@@ -50,8 +48,6 @@ CompilationProviderOptions CompilationProviderOptions::FromDebugOptions(
   }();
   options.enable_libnvptxcompiler_ =
       debug_options.xla_gpu_enable_libnvptxcompiler();
-  options.enable_llvm_module_compilation_parallelism_ =
-      debug_options.xla_gpu_enable_llvm_module_compilation_parallelism();
   options.enable_driver_compilation_ =
       debug_options.xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found();
   options.cuda_data_dir_ = debug_options.xla_gpu_cuda_data_dir();

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_COMMAND_BUFFER_CONVERSION_PASS_H_
 #define XLA_BACKENDS_GPU_RUNTIME_COMMAND_BUFFER_CONVERSION_PASS_H_
 
+#include <bitset>
 #include <cstdint>
 #include <string>
 
@@ -51,9 +52,12 @@ class CommandBufferConversionPass : public ThunkPassInterface {
     // DebugOptions control which commands are enabled. Long term we want to
     // remove that flag and enable all supported commands by default.
     absl::flat_hash_set<DebugOptions::CommandBufferCmdType> enabled_commands;
+
+    constexpr static int kMaxCollectiveOps =
+        DebugOptions::CollectiveOpType_MAX + 1;
+    // Collective operations enabled to be executed in a command buffer.
+    std::bitset<kMaxCollectiveOps> enabled_collectives;
     const se::DeviceDescription& device_description;
-    DebugOptions::CommandBufferUpdateMode update_mode =
-        DebugOptions::ALWAYS_UPDATE;
     bool enable_loop_unroll = false;
     // Number of devices in a fast-interconnect domain (host/node).
     // 0 means unknown.

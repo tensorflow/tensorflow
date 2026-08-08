@@ -140,7 +140,7 @@ class HloModuleMetadata {
   absl::Status set_key_value_metric(const std::string& key, int64_t value);
 
   absl::StatusOr<int64_t> current_pass_id() {
-    ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
+    ABSL_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
                      GetCurrentHloPassMetadata());
     return pass_metadata->pass_id();
   }
@@ -188,12 +188,12 @@ class HloModuleMetadata {
   // Clears all pass metadata.
   void ClearPassMetadata() { module_metadata_.clear_pass_metadata(); }
 
- private:
   // Gets mutable metadata for the currently running pass. If passes are nested,
   // finds the deepest one still running. Returns NotFound if metadata for the
   // currently running pass cannot be found.
   absl::StatusOr<HloPassMetadata*> GetCurrentHloPassMetadata();
 
+ private:
   void CopyFrom(const HloModuleMetadata& other) {
     module_metadata_ = other.module_metadata_;
     env_ = other.env_;

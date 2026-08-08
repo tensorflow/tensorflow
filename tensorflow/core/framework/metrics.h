@@ -183,6 +183,21 @@ void RecordTFDataClientGetElementAction(const std::string& action,
                                         const std::string& worker_address,
                                         const std::string& thread_id);
 
+// Records the time (in microseconds) an element spent waiting in a prefetch
+// buffer.
+void RecordTFDataPrefetchResidenceTime(const std::string& node_name,
+                                       int64_t duration_us);
+
+// Records the event of an element being enqueued into a prefetch buffer.
+void RecordTFDataPrefetchEnqueue(const std::string& node_name);
+
+// Records the event of an element being dequeued from a prefetch buffer.
+void RecordTFDataPrefetchDequeue(const std::string& node_name);
+
+// Records the current size of a prefetch buffer.
+void RecordTFDataPrefetchBufferSize(const std::string& node_name,
+                                    int64_t buffer_size);
+
 // Records tf.data service cross-trainer cache queries.
 void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit);
 

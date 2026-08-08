@@ -15,21 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/kernels/transfer_ops.h"
 
-#include <deque>
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/jit/xla_device.h"
-#include "xla/literal.h"
-#include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/tpu/tpu_node_context.h"
-#include "xla/stream_executor/tpu/tpu_platform_interface.h"
-#include "xla/stream_executor/tpu/tpu_transfer_manager_interface.h"
-#include "xla/tpu/noncopyable_buffer.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/device_base.h"
@@ -38,15 +31,12 @@ limitations under the License.
 #include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/threadpool.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tsl/profiler/lib/connected_traceme.h"
+#include "tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/lib/traceme_encode.h"
 
 namespace tensorflow {
 
@@ -151,47 +141,6 @@ absl::Status TpuTransferAsyncDynamicOrdinalOpKernel::RunTransfer(
                      "placed on CPU."));
   }
   return RunTransferWithOrdinal(ctx, device_ordinal);
-}
-
-StreamExecutorTransferOpImpl::StreamExecutorTransferOpImpl()
-    : transfer_manager_(
-          xla::TpuTransferManagerInterface::GetRegisteredTpuTransferManager()),
-      tpu_platform_(tpu::TpuPlatformInterface::GetRegisteredPlatform(
-          /*initialize_platform=*/false)) {}
-
-void StreamExecutorTransferOpImpl::Cancel() {
-  TF_CHECK_OK(tpu::TpuNodeContext::CloseTpuHost());
-}
-
-absl::StatusOr<int> StreamExecutorTransferOpImpl::GetDeviceOrdinal(
-    OpKernelContext* ctx) {
-  const XlaDevice::Metadata* metadata;
-  TF_RETURN_IF_ERROR(XlaDevice::GetMetadata(ctx, &metadata));
-  return metadata->device_ordinal();
-}
-
-absl::Status StreamExecutorTransferOpImpl::TransferBuffersToInfeed(
-    int device_ordinal,
-    const std::deque<tensorflow::tpu::NoncopyableBuffer>& buffers) {
-  TF_ASSIGN_OR_RETURN(auto* executor, GetStreamExecutor(device_ordinal));
-  return transfer_manager_->TransferBuffersToInfeed(executor, buffers);
-}
-
-absl::Status StreamExecutorTransferOpImpl::TransferLiteralToInfeed(
-    int device_ordinal, const xla::LiteralSlice& literal) {
-  TF_ASSIGN_OR_RETURN(auto* executor, GetStreamExecutor(device_ordinal));
-  return transfer_manager_->TransferLiteralToInfeed(executor, literal);
-}
-
-absl::Status StreamExecutorTransferOpImpl::TransferLiteralFromOutfeed(
-    int device_ordinal, xla::MutableBorrowingLiteral literal) {
-  TF_ASSIGN_OR_RETURN(auto* executor, GetStreamExecutor(device_ordinal));
-  return transfer_manager_->TransferLiteralFromOutfeed(executor, literal);
-}
-
-absl::StatusOr<stream_executor::StreamExecutor*>
-StreamExecutorTransferOpImpl::GetStreamExecutor(int device_ordinal) {
-  return tpu_platform_->ExecutorForDevice(device_ordinal);
 }
 
 }  // namespace tensorflow

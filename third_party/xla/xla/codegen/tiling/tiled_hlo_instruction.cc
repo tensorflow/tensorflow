@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/shape.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -130,7 +129,7 @@ TiledHloInstruction::Create(
     llvm::SmallVector<int64_t> tile_strides,
     std::optional<IndexingMap> tile_offsets_indexing,
     llvm::SmallVector<TiledHloRegion> regions) {
-  RETURN_IF_ERROR(VerifyTiledHloInstructionConstructorPreconditions(
+  ABSL_RETURN_IF_ERROR(VerifyTiledHloInstructionConstructorPreconditions(
       hlo, tile_sizes, tile_strides, tile_offsets_indexing, runtime_variables));
 
   return absl::WrapUnique(new TiledHloInstruction(
@@ -166,11 +165,10 @@ std::string TiledHloInstruction::ToString(int64_t indent) const {
   if (!regions_.empty()) {
     ss << "\n"
        << indentation << "region sizes: ("
-       << absl::StrJoin(
-              regions_, ", ",
-              [](std::string* out,
-                 const std::vector<std::unique_ptr<TiledHloInstruction>>&
-                     region) { absl::StrAppend(out, region.size()); })
+       << absl::StrJoin(regions_, ", ",
+                        [](std::string* out, const TiledHloRegion& region) {
+                          absl::StrAppend(out, region.instructions().size());
+                        })
        << ")";
   }
   return ss.str();

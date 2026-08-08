@@ -232,11 +232,12 @@ gpu_device_info {
   device_interconnect_info {
     active_links: 18
   }
+  collective_memory_granularity: 2097152
 }
 platform_name: "CUDA"
 dnn_version_info {
-  major: 8
-  minor: 9
-  patch: 4
+  major: 9
+  minor: 10
+  patch: 0
 }
 device_description_str: "NVIDIA H200 141GB HBM3e"

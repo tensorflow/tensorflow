@@ -77,16 +77,15 @@ TEST(CudaExecutorTest, CreateDeviceDescription) {
               ::testing::Field("major", &CudaComputeCapability::major, Ge(1)));
 
   DeviceInterconnectInfo info = result->device_interconnect_info();
-  // nvmlDeviceGetGpuFabricInfoV is only available in driver r545+
   if (result->cuda_compute_capability().IsAtLeastHopper() &&
-      result->kernel_mode_driver_version().major_version() >= 545 &&
       info.active_links) {
     EXPECT_GE(info.active_links, 18);
-
-    EXPECT_THAT(info.clique_id, Not(IsEmpty()));
-    EXPECT_THAT(info.cluster_uuid, Not(IsEmpty()));
+    // nvmlDeviceGetGpuFabricInfoV is only available in driver r545+
+    if (result->kernel_mode_driver_version().major_version() >= 545) {
+      EXPECT_THAT(info.clique_id, Not(IsEmpty()));
+      EXPECT_THAT(info.cluster_uuid, Not(IsEmpty()));
+    }
   }
-
   EXPECT_THAT(DeviceDescription::FromProto(result->ToProto()),
               IsOkAndHolds(*result));
 }

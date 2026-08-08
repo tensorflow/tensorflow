@@ -43,8 +43,8 @@ namespace xla {
 
 class PjRtMemorySpace;
 class PjRtBuffer;
-class PjRtRawBuffer;
-using PjRtRawBufferRef = tsl::RCReference<PjRtRawBuffer>;
+class PjRtRawBufferInterface;
+using PjRtRawBufferRef = tsl::RCReference<PjRtRawBufferInterface>;
 
 class PjRtRawBufferInterface : public PJRT_RawBuffer {
  public:
@@ -63,9 +63,11 @@ class PjRtRawBufferInterface : public PJRT_RawBuffer {
                                int64_t transfer_size);
 
   absl::StatusOr<PjRtDeviceEventRef> CopyRawHostToDeviceAndReturnEvent(
-      const void* src, int64_t offset, int64_t transfer_size);
+      const void* src, int64_t offset, int64_t transfer_size,
+      PjRtDeviceEventRefVector dependencies = {});
   absl::StatusOr<PjRtDeviceEventRef> CopyRawDeviceToHostAndReturnEvent(
-      void* dst, int64_t offset, int64_t transfer_size);
+      void* dst, int64_t offset, int64_t transfer_size,
+      PjRtDeviceEventRefVector dependencies = {});
 
   void* OpaqueDeviceMemoryDataPointer() const;
 
@@ -88,7 +90,6 @@ class PjRtRawBufferInterface : public PJRT_RawBuffer {
               absl::AnyInvocable<void(absl::Status) &&> allocation_event);
 
   void ScheduleCopyTo(
-      AsyncWorkRunner* async_work_runner,
       PjRtDeviceEventRefVector transfer_dependency_events,
       PjRtRawBufferRef dst_raw_buffer,
       PjRtDeviceEventPromiseRef definition_event_promise,
@@ -161,7 +162,8 @@ class PjRtRawBuffer : public PjRtRawBufferInterface,
   // on the alignment of `src` and `offset` as well. Look at implementations of
   // this method for specific alignment requirements.
   virtual absl::StatusOr<PjRtDeviceEventRef> CopyRawHostToDeviceAndReturnEvent(
-      const void* src, int64_t offset, int64_t transfer_size) = 0;
+      const void* src, int64_t offset, int64_t transfer_size,
+      PjRtDeviceEventRefVector dependencies) = 0;
 
   // Transfers a sub-range of the on-device representation of the buffer.
   // offset+transfer_size must be less than GetOnDeviceSizeInBytes. The
@@ -172,7 +174,8 @@ class PjRtRawBuffer : public PjRtRawBufferInterface,
   // on the alignment of `dst` and `offset` as well. Look at implementations of
   // this method for specific alignment requirements.
   virtual absl::StatusOr<PjRtDeviceEventRef> CopyRawDeviceToHostAndReturnEvent(
-      void* dst, int64_t offset, int64_t transfer_size) = 0;
+      void* dst, int64_t offset, int64_t transfer_size,
+      PjRtDeviceEventRefVector dependencies) = 0;
 
   // A sliced buffer is a view into the offset and range of this buffer.
   //
@@ -205,12 +208,11 @@ class PjRtRawBuffer : public PjRtRawBufferInterface,
   // when dst_raw_buffer is ready, allocation_event before using dst_raw_buffer
   // and src_usage_event_promise when done using this buffer.
   virtual void ScheduleCopyTo(
-      AsyncWorkRunner* async_work_runner,
       PjRtDeviceEventRefVector transfer_dependency_events,
       PjRtRawBufferRef dst_raw_buffer,
       PjRtDeviceEventPromiseRef definition_event_promise,
       PjRtDeviceEventPromiseRef src_usage_event_promise,
-      absl::AnyInvocable<void(absl::Status) &&> allocation_event);
+      absl::AnyInvocable<void(absl::Status) &&> allocation_event) = 0;
 
   // Returns the async value associated with the buffer.
   virtual PjRtDeviceEventPtr GetRawBufferAsyncValue() = 0;
@@ -245,8 +247,6 @@ const T* PjRtRawBufferInterface::down_cast() const {
       static_cast<const PJRT_RawBuffer*>(this));
   return dynamic_cast<const T*>(cpp_buf);
 }
-
-using CommonPjRtRawBuffer = PjRtRawBuffer;
 
 tsl::AsyncValueRef<PjRtStagingBuffer> ToStagingBuffer(
     PjRtRawBufferRef raw_buffer, PjRtDeviceEventPromiseRef usage_promise,

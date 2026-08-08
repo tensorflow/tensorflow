@@ -26,8 +26,20 @@ tf_class {
     mtype: "<class \'property\'>"
   }
   member_method {
+    name: "__call__"
+    argspec: "args=[\'self\'], varargs=args, keywords=kwds, defaults=None"
+  }
+  member_method {
+    name: "__get__"
+    argspec: "args=[\'self\', \'instance\', \'owner\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'python_function\', \'name\', \'input_signature\', \'autograph\', \'jit_compile\', \'reduce_retracing\', \'experimental_implements\', \'experimental_autograph_options\', \'experimental_attributes\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\', \'False\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "__tf_tracing_type__"
+    argspec: "args=[\'self\', \'_\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "experimental_get_compiler_ir"

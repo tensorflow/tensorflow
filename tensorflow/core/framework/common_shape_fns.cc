@@ -1187,7 +1187,7 @@ absl::Status Conv2DBackpropInputShape(shape_inference::InferenceContext* c) {
   ShapeHandle input_grad_shape;
   TF_RETURN_IF_ERROR(ShapeFromDimensions(
       batch_size_dim, specified_input_grad_spatial_dims, input_grad_depth_dim,
-      data_format, /*vect_size=*/absl::nullopt, c, &input_grad_shape));
+      data_format, /*vect_size=*/std::nullopt, c, &input_grad_shape));
   c->set_output(0, input_grad_shape);
   return absl::OkStatus();
 }
@@ -2124,6 +2124,8 @@ absl::Status AvgPool3DGradShape(shape_inference::InferenceContext* c) {
   ShapeHandle s;
   TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
   TF_RETURN_IF_ERROR(c->WithRank(s, 5, &s));
+  ShapeHandle grad;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 5, &grad));
   c->set_output(0, s);
   return absl::OkStatus();
 }

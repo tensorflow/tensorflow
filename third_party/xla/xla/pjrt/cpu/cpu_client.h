@@ -42,15 +42,18 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/common_pjrt_client.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/cpu/cpu_device.h"
+#include "xla/pjrt/cpu/cpu_device_memory.h"
 #include "xla/pjrt/cpu/cpu_event.h"
-#include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/device_event.h"
+#include "xla/pjrt/dynamic_shapes.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -59,9 +62,8 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/pjrt/raw_pjrt_client.h"
 #include "xla/pjrt/thread_pool_async_work_runner.h"
-#include "xla/pjrt/transpose.h"
-#include "xla/pjrt/utils.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
@@ -73,15 +75,28 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/fingerprint.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
 class PjRtCpuExecutable;
+
+// Client-less CPU compilation for XlaComputation.
+absl::StatusOr<std::unique_ptr<PjRtCpuExecutable>> CompileCpuExecutable(
+    const XlaComputation& computation, CompileOptions options,
+    const CpuTopologyDescription& topology,
+    std::function<void(HloModuleConfig&)> customize_hlo_module_config =
+        nullptr);
+
+// Client-less CPU compilation for MLIR Module.
+absl::StatusOr<std::unique_ptr<PjRtCpuExecutable>> CompileCpuExecutable(
+    MaybeOwningMlirModule module, CompileOptions options,
+    const CpuTopologyDescription& topology,
+    std::function<void(HloModuleConfig&)> customize_hlo_module_config =
+        nullptr);
 
 class PjRtCpuClient final : public CommonPjRtClient {
  public:
@@ -177,6 +192,11 @@ class PjRtCpuClient final : public CommonPjRtClient {
   // TODO(b/237720161): make it actually optional
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
   LoadSerializedExecutable(absl::string_view serialized,
+                           std::optional<CompileOptions> options,
+                           const LoadOptions& load_options) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+  LoadSerializedExecutable(const absl::Cord& serialized,
                            std::optional<CompileOptions> options,
                            const LoadOptions& load_options) override;
 
@@ -299,6 +319,11 @@ class PjRtCpuClient final : public CommonPjRtClient {
       std::shared_ptr<PjRtCpuExecutable> cpu_executable,
       std::shared_ptr<DeviceAssignment> device_assignment);
 
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+  LoadSerializedExecutableInternal(google::protobuf::io::ZeroCopyInputStream* stream,
+                                   std::optional<CompileOptions> options,
+                                   const LoadOptions& load_options);
+
   CpuDeviceMemory::Allocator* allocator() const { return allocator_.get(); }
 
   int process_index_;
@@ -372,7 +397,6 @@ class PjRtCpuExecutable;
 class CpuPjRtRawLoadedExecutable : public PjRtRawLoadedExecutable {
  public:
   explicit CpuPjRtRawLoadedExecutable(RunId run_id) : run_id_(run_id) {}
-  PjRtDevice* device() override { return device_; }
 
   PjRtRawLoadedExecutable::RawExecuteResult Execute(
       const ExecuteOptions& options,
@@ -392,6 +416,29 @@ class CpuPjRtRawLoadedExecutable : public PjRtRawLoadedExecutable {
   PjRtCpuDevice* device_;
   PjRtCpuClient* client_;
   RunId run_id_;
+  friend class CpuExecutableLoadState;
+};
+
+class CpuExecutableLoadState : public PjRtExecutableLoadState {
+ public:
+  explicit CpuExecutableLoadState(PjRtCpuClient* client) : client_(client) {}
+
+  ~CpuExecutableLoadState() override = default;
+
+  void Delete() override { is_deleted_.store(true); }
+  bool IsDeleted() const override { return is_deleted_.load(); }
+
+  absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>> LoadRawExecutable(
+      tsl::AsyncValueRef<PjRtExecutable> executable,
+      const ExecuteOptions& options, size_t host_callback_idx,
+      xla::RunId run_id, DeviceAndAssignment device_and_assign,
+      int attempt) override;
+
+  PjRtCpuClient* client() const { return client_; }
+
+ private:
+  PjRtCpuClient* client_;
+  std::atomic<bool> is_deleted_{false};
 };
 
 class PjRtCpuExecutable final : public PjRtExecutable {
@@ -405,6 +452,8 @@ class PjRtCpuExecutable final : public PjRtExecutable {
       const CpuTopologyDescription& topology);
 
   ~PjRtCpuExecutable() override = default;
+
+  absl::Status SetUpDonation(bool tuple_inputs);
 
   absl::string_view name() const override {
     return cpu_executable_->shared_module()->name();
@@ -454,8 +503,7 @@ class PjRtCpuExecutable final : public PjRtExecutable {
   friend class PjRtCpuClient;
   friend class CpuPjRtRawLoadedExecutable;
   friend class PjRtCpuLoadedExecutable;
-
-  absl::Status SetUpDonation(bool tuple_inputs);
+  friend class CpuExecutableLoadState;
 
   int num_replicas_;
   int num_partitions_;
@@ -498,19 +546,19 @@ class PjRtCpuExecutable final : public PjRtExecutable {
 
 class PjRtCpuLoadedExecutable final : public CommonPjRtLoadedExecutable {
  public:
-  PjRtCpuLoadedExecutable(
-      std::shared_ptr<PjRtCpuExecutable> executable,
-      std::shared_ptr<DeviceAssignment> device_assignment,
-      std::vector<LogicalDeviceIds> addressable_device_logical_ids,
-      std::vector<PjRtDevice*> addressable_devices, PjRtCpuClient* client);
+  using CommonPjRtLoadedExecutable::CommonPjRtLoadedExecutable;
 
   ~PjRtCpuLoadedExecutable() override = default;
 
   PjRtCpuExecutable* GetExecutable() const override {
-    return executable_.get();
+    return absl::down_cast<PjRtCpuExecutable*>(
+        CommonPjRtLoadedExecutable::GetExecutable());
   }
 
-  PjRtCpuClient* client() const override { return client_; }
+  PjRtCpuClient* client() const override {
+    return absl::down_cast<PjRtCpuClient*>(
+        CommonPjRtLoadedExecutable::client());
+  }
 
   using PjRtLoadedExecutable::Execute;
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
@@ -530,32 +578,11 @@ class PjRtCpuLoadedExecutable final : public CommonPjRtLoadedExecutable {
       const ExecuteOptions& options, std::optional<Future<>>& returned_future,
       bool fill_future) const override;
 
-  void Delete() override;
-
-  bool IsDeleted() const override;
-
   const HloInputOutputAliasConfig& input_output_alias_config() const override {
-    return executable_->cpu_executable_->module().input_output_alias_config();
+    return GetExecutable()
+        ->cpu_executable_->module()
+        .input_output_alias_config();
   }
-
- private:
-  friend class PjRtCpuClient;
-  friend class CpuPjRtRawLoadedExecutable;
-
-  absl::Status SetUpDonation(bool tuple_inputs);
-
-  absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>> LoadRawExecutable(
-      const ExecuteOptions& options, size_t host_callback_idx,
-      xla::RunId run_id, DeviceAndAssignment device_and_assign,
-      int attempt) const override;
-
-  absl::StatusOr<Result> ExecuteHelper(
-      absl::Span<PjRtBuffer* const> argument_handles, int replica,
-      int partition, const RunId& run_id, const ExecuteOptions& options,
-      bool fill_future, PjRtCpuDevice* device = nullptr) const;
-
-  PjRtCpuClient* client_;
-  std::shared_ptr<PjRtCpuExecutable> executable_;
 };
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> ABSL_DEPRECATED(

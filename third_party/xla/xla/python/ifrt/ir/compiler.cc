@@ -20,10 +20,10 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/serialization_utils.h"
 #include "xla/python/ifrt/ir/version.h"
 #include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/env.h"
@@ -70,14 +71,14 @@ IfrtIrProgramCompiler::Compile(std::unique_ptr<Program> program,
                                std::unique_ptr<CompileOptions> options) {
   tsl::profiler::TraceMe traceme("IfrtIrProgramCompiler::Compile");
 
-  if (!llvm::isa_and_nonnull<IfrtIRProgram>(program.get())) {
+  if (!isa_and_nonnull<IfrtIRProgram>(program.get())) {
     return absl::InvalidArgumentError(
         "IFRT IR compiler requires an IFRT IR program");
   }
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<IfrtIRCompileOptions> ifrt_ir_compile_options,
       GetIfrtIRCompileOptions(std::move(options)));
-  ASSIGN_OR_RETURN(std::unique_ptr<AtomProgramCompiler> atom_program_compiler,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<AtomProgramCompiler> atom_program_compiler,
                    atom_program_compiler_factory_(*ifrt_ir_compile_options));
 
   auto [promise, future] =
@@ -129,7 +130,7 @@ tsl::Future<ExecutableRef> IfrtIrProgramCompiler::Compile(
 absl::Status IfrtIrProgramCompiler::IsExecutableVersionCompatible(
     const ExecutableVersion& version, const DeviceListRef&) const {
   const IfrtIrExecutableVersion* executable_version =
-      llvm::dyn_cast<IfrtIrExecutableVersion>(&version);
+      dyn_cast<IfrtIrExecutableVersion>(&version);
   if (!executable_version) {
     return absl::InvalidArgumentError(
         "Executable version is an unsupported type");
@@ -151,14 +152,14 @@ absl::Status IfrtIrProgramCompiler::IsExecutableVersionCompatible(
 
 tsl::Future<LoadedExecutableRef>
 IfrtIrProgramCompiler::DeserializeLoadedExecutable(
-    absl::string_view serialized,
+    const absl::Cord& serialized,
     std::unique_ptr<DeserializeExecutableOptions> options) {
   tsl::profiler::TraceMe traceme(
       "IfrtIrProgramCompiler::DeserializeLoadedExecutable");
 
   std::unique_ptr<DeserializeIfrtIRProgramOptions> deserialize_options;
   if (options != nullptr) {
-    if (llvm::isa_and_nonnull<DeserializeIfrtIRProgramOptions>(options.get())) {
+    if (isa_and_nonnull<DeserializeIfrtIRProgramOptions>(options.get())) {
       deserialize_options =
           xla::unique_ptr_down_cast<DeserializeIfrtIRProgramOptions>(
               std::move(options));
@@ -168,7 +169,7 @@ IfrtIrProgramCompiler::DeserializeLoadedExecutable(
     }
   }
 
-  ASSIGN_OR_RETURN(DeserializedIfrtIRProgram deserialized_ifrt_executable,
+  ABSL_ASSIGN_OR_RETURN(DeserializedIfrtIRProgram deserialized_ifrt_executable,
                    DeserializeIfrtIrExecutable(client_, serialized,
                                                std::move(deserialize_options)));
 

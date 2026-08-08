@@ -136,12 +136,12 @@ absl::Status HloCostAnalysis::RemoveInstruction(
 
 absl::Status HloCostAnalysis::RevisitInstruction(
     const HloInstruction* instruction) {
-  RETURN_IF_ERROR(RemoveInstruction(instruction));
+  ABSL_RETURN_IF_ERROR(RemoveInstruction(instruction));
   // Now do Preprocess() -> Visit() -> Postprocess() for the instruction same
   // way it is done during the complete analysis.
-  RETURN_IF_ERROR(Preprocess(instruction));
-  RETURN_IF_ERROR(instruction->Visit(this));
-  RETURN_IF_ERROR(Postprocess(instruction));
+  ABSL_RETURN_IF_ERROR(Preprocess(instruction));
+  ABSL_RETURN_IF_ERROR(instruction->Visit(this));
+  ABSL_RETURN_IF_ERROR(Postprocess(instruction));
   return absl::OkStatus();
 }
 
@@ -558,7 +558,7 @@ absl::Status HloCostAnalysis::HandleOutfeed(const HloInstruction* outfeed) {
 
 absl::Status HloCostAnalysis::HandleMap(const HloInstruction* map) {
   // Compute properties of the mapped function.
-  ASSIGN_OR_RETURN(const Properties sub_properties,
+  ABSL_ASSIGN_OR_RETURN(const Properties sub_properties,
                    ProcessSubcomputation(map->to_apply()));
 
   // Compute the cost of all elements for this Map operation.
@@ -574,7 +574,7 @@ absl::Status HloCostAnalysis::HandleMap(const HloInstruction* map) {
 absl::Status HloCostAnalysis::HandleReduce(const HloInstruction* reduce) {
   HloComputation* function = reduce->to_apply();
   // Compute the cost of the user function.
-  ASSIGN_OR_RETURN(const Properties sub_properties,
+  ABSL_ASSIGN_OR_RETURN(const Properties sub_properties,
                    ProcessSubcomputation(function));
 
   // Compute the cost of all elements for this Reduce operation.
@@ -598,7 +598,7 @@ absl::Status HloCostAnalysis::HandleReduce(const HloInstruction* reduce) {
 absl::Status HloCostAnalysis::HandleScan(const HloInstruction* scan) {
   HloComputation* function = scan->to_apply();
   // Compute the cost of the user function.
-  ASSIGN_OR_RETURN(const Properties sub_properties,
+  ABSL_ASSIGN_OR_RETURN(const Properties sub_properties,
                    ProcessSubcomputation(function));
 
   // Compute the cost of all elements for this Scan operation.
@@ -617,7 +617,7 @@ absl::Status HloCostAnalysis::HandleReduceWindow(
   const Window& window = reduce_window->window();
   auto function = reduce_window->to_apply();
   // Compute the properties of the reduction function.
-  ASSIGN_OR_RETURN(Properties sub_properties, ProcessSubcomputation(function));
+  ABSL_ASSIGN_OR_RETURN(Properties sub_properties, ProcessSubcomputation(function));
 
   // Compute the cost of all elements for this ReduceWindow operation. For each
   // output element there are window_size - 1 reductions to perform.
@@ -698,9 +698,9 @@ absl::Status HloCostAnalysis::HandleSelectAndScatter(
     const HloInstruction* instruction) {
   // Compute the properties of the select and scatter function.
   // Compute the properties of the reduction function.
-  ASSIGN_OR_RETURN(Properties select_properties,
+  ABSL_ASSIGN_OR_RETURN(Properties select_properties,
                    ProcessSubcomputation(instruction->select()));
-  ASSIGN_OR_RETURN(Properties scatter_properties,
+  ABSL_ASSIGN_OR_RETURN(Properties scatter_properties,
                    ProcessSubcomputation(instruction->scatter()));
 
   // Compute the cost of all elements for this operation. For each scatter
@@ -753,7 +753,7 @@ absl::Status HloCostAnalysis::HandlePad(const HloInstruction*) {
 
 absl::Status HloCostAnalysis::HandleAsyncStart(
     const HloInstruction* async_start) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       current_properties_,
       ProcessSubcomputation(async_start->called_computations()[0]));
   return absl::OkStatus();
@@ -1243,14 +1243,14 @@ absl::Status HloCostAnalysis::FusionProcessOutputBytesAccessed(
         }
         ShapeIndex subshape_index(shape_index);
         subshape_index.push_back(i);
-        ASSIGN_OR_RETURN(float sub_bytes, propagate_output_size_to_parent(
+        ABSL_ASSIGN_OR_RETURN(float sub_bytes, propagate_output_size_to_parent(
                                               subshape, subshape_index));
         bytes_accessed += sub_bytes;
       }
       return bytes_accessed;
     };
     current_properties_[GetOutputBytesAccessedKey()] = 0;
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         propagate_output_size_to_parent(fusion->shape(), {}).status());
   }
   return absl::OkStatus();
@@ -1334,21 +1334,21 @@ absl::Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
       }
     }
   }
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       current_properties_,
       ProcessSubcomputation(fusion->fused_instructions_computation()));
 
   current_properties_[kBytesAccessedKey] = 0;
-  RETURN_IF_ERROR(FusionProcessOutputBytesAccessed(fusion));
-  RETURN_IF_ERROR(FusionCalculateUtilizations(fusion));
-  RETURN_IF_ERROR(FusionCountConstantsMemoryAccess(fusion));
-  RETURN_IF_ERROR(FusionProcessOperandBytesRead(fusion));
+  ABSL_RETURN_IF_ERROR(FusionProcessOutputBytesAccessed(fusion));
+  ABSL_RETURN_IF_ERROR(FusionCalculateUtilizations(fusion));
+  ABSL_RETURN_IF_ERROR(FusionCountConstantsMemoryAccess(fusion));
+  ABSL_RETURN_IF_ERROR(FusionProcessOperandBytesRead(fusion));
 
   return absl::OkStatus();
 }
 
 absl::Status HloCostAnalysis::HandleCall(const HloInstruction* call) {
-  ASSIGN_OR_RETURN(current_properties_,
+  ABSL_ASSIGN_OR_RETURN(current_properties_,
                    ProcessSubcomputation(call->to_apply()));
   current_should_compute_bottleneck_time_ = false;
   return absl::OkStatus();
@@ -1356,18 +1356,31 @@ absl::Status HloCostAnalysis::HandleCall(const HloInstruction* call) {
 
 absl::Status HloCostAnalysis::HandleCustomCall(
     const HloInstruction* custom_call) {
+  auto set_properties = [this, custom_call](float value) {
+    current_properties_[kOptimalSecondsKey] = value;
+    current_properties_[kBytesAccessedKey] = value;
+    current_properties_.set_output_bytes_accessed(value);
+    for (int i = 0; i < custom_call->operand_count(); ++i) {
+      current_properties_.set_operand_bytes_accessed(i, value);
+    }
+    current_properties_[kFlopsKey] = value;
+    current_should_compute_bottleneck_time_ = false;
+  };
+
+  // Call markers are transient metadata instructions used by the compiler
+  // (e.g., to defer inlining during layout assignment). They have no runtime
+  // cost, memory footprint, or execution time.
+  if (custom_call->custom_call_target() == kCallMarkerBeforeTarget ||
+      custom_call->custom_call_target() == kCallMarkerAfterTarget) {
+    set_properties(0.0f);
+    return absl::OkStatus();
+  }
+
   // Mark applicable fields as "unknown", since we don't know what this
   // CustomCall does.  This is better than returning an error, which would stop
   // iteration, and therefore would prevent us from getting *any* stats for a
   // computation which contains a CustomCall.
-  current_properties_[kOptimalSecondsKey] = -1;
-  current_properties_[kBytesAccessedKey] = -1;
-  current_properties_.set_output_bytes_accessed(-1);
-  for (int i = 0; i < custom_call->operand_count(); ++i) {
-    current_properties_.set_operand_bytes_accessed(i, -1);
-  }
-  current_properties_[kFlopsKey] = -1;
-  current_should_compute_bottleneck_time_ = false;
+  set_properties(-1.0f);
   return absl::OkStatus();
 }
 
@@ -1388,10 +1401,10 @@ absl::Status HloCostAnalysis::HandleWhile(const HloInstruction* xla_while) {
   // Since the number of iterations of the while node will not always be
   // something that we can statically analyze, we cannot precisely compute the
   // cost of a while node. For now compute the cost of a single iteration.
-  ASSIGN_OR_RETURN(const Properties body_properties,
+  ABSL_ASSIGN_OR_RETURN(const Properties body_properties,
                    ProcessSubcomputation(xla_while->while_body()));
 
-  ASSIGN_OR_RETURN(const Properties condition_properties,
+  ABSL_ASSIGN_OR_RETURN(const Properties condition_properties,
                    ProcessSubcomputation(xla_while->while_condition()));
 
   current_properties_ = Properties();
@@ -1410,11 +1423,11 @@ absl::Status HloCostAnalysis::HandleConditional(
     const HloInstruction* conditional) {
   // Compute the cost of the branch computations and take the maximum from those
   // for each property.
-  ASSIGN_OR_RETURN(const Properties branch0_computation_properties,
+  ABSL_ASSIGN_OR_RETURN(const Properties branch0_computation_properties,
                    ProcessSubcomputation(conditional->branch_computation(0)));
   current_properties_ = branch0_computation_properties;
   for (int j = 1; j < conditional->branch_count(); ++j) {
-    ASSIGN_OR_RETURN(const Properties branch_computation_properties,
+    ABSL_ASSIGN_OR_RETURN(const Properties branch_computation_properties,
                      ProcessSubcomputation(conditional->branch_computation(j)));
     branch_computation_properties.ForEach(
         [&](absl::string_view key, float val) {
@@ -1464,7 +1477,7 @@ absl::Status HloCostAnalysis::HandleScatter(const HloInstruction* hlo) {
   current_properties_.set_output_bytes_accessed(total_update_size);
   const int64_t element_count =
       ShapeUtil::ElementsIn(scatter->scatter_updates()[0]->shape());
-  ASSIGN_OR_RETURN(const Properties sub_properties,
+  ABSL_ASSIGN_OR_RETURN(const Properties sub_properties,
                    ProcessSubcomputation(scatter->to_apply()));
   sub_properties.ForEach([&](absl::string_view key, float val) {
     if (KeyToCopyFromSubcomputation(key)) {
@@ -1610,7 +1623,7 @@ absl::StatusOr<HloCostAnalysis::Properties>
 HloCostAnalysis::ProcessSubcomputation(HloComputation* computation) {
   auto visitor = CreateNestedCostAnalysis();
   visitor->ReserveVisitStates(computation->instruction_count());
-  RETURN_IF_ERROR(computation->Accept(visitor.get()));
+  ABSL_RETURN_IF_ERROR(computation->Accept(visitor.get()));
   for (auto& entry : visitor->hlo_properties_) {
     hlo_properties_[entry.first] = std::move(entry.second);
   }

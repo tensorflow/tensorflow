@@ -207,6 +207,12 @@ struct DynamicSliceFusion {
   static absl::StatusOr<std::vector<Parameter>> ResolveParameters(
       const HloInstruction* hero);
 
+  // Resolves one hero operand. This is useful for analysis libraries that need
+  // to inspect a value as if it were copied by a trivial hero, without
+  // materializing a temporary HLO instruction.
+  static absl::StatusOr<Parameter> ResolveParameter(
+      const HloInstruction* operand);
+
   // Resolves results for the hero instruction. Returns an entry for all results
   // of the dynamic slice fusion (root of the hero, or for each tuple entry).
   static absl::StatusOr<std::vector<Result>> ResolveResults(

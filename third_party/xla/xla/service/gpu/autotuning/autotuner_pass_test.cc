@@ -31,8 +31,9 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/backends/autotuner/autotuner.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/autotuner/config_assigner.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/gpu/autotuner/cublaslt.h"
 #include "xla/backends/gpu/autotuner/cudnn.h"
@@ -433,6 +434,7 @@ struct AutotuneLevelParams {
   bool expected_select_first_config;
   bool expected_check_buffers;
   bool expected_should_init_buffers;
+  int expected_redzone_padding_bytes;
 };
 
 class AutotunerFlagsTest
@@ -444,25 +446,26 @@ TEST_P(AutotunerFlagsTest, AutotuneLevel) {
   DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.set_xla_gpu_autotune_level(params.autotune_level);
 
-  xla::AutotuneConfig autotune_config = GetAutotuneConfig(debug_options);
-  EXPECT_EQ(autotune_config.select_first_config,
+  xla::ConfigAssigner::Options config_assigner_options =
+      GetConfigAssignerOptions(debug_options);
+  EXPECT_EQ(config_assigner_options.select_first_config,
             params.expected_select_first_config);
-  EXPECT_EQ(autotune_config.check_buffers, params.expected_check_buffers);
 
-  ProfileOptions profile_options =
-      GetProfileOptions(debug_options, autotune_config);
+  ProfileOptions profile_options = GetProfileOptions(debug_options);
   EXPECT_EQ(profile_options.should_init_buffers,
             params.expected_should_init_buffers);
+  EXPECT_EQ(profile_options.redzone_padding_bytes,
+            params.expected_redzone_padding_bytes);
 }
 
 INSTANTIATE_TEST_SUITE_P(
     AutotuneLevelTests, AutotunerFlagsTest,
     ::testing::ValuesIn<AutotuneLevelParams>({
-        {0, true, false, false},
-        {1, false, false, false},
-        {2, false, false, false},
-        {3, false, false, false},
-        {4, false, true, true},
+        {0, true, false, false, 0},
+        {1, false, false, false, 0},
+        {2, false, false, false, 0},
+        {3, false, false, false, 0},
+        {4, false, true, true, 8 * 1024 * 1024},
     }),
     [](const ::testing::TestParamInfo<AutotunerFlagsTest::ParamType>& info) {
       return std::to_string(info.param.autotune_level);
@@ -485,9 +488,9 @@ TEST_P(AutotunerRegSpillsTest, RegSpills) {
       params.fail_on_spill_flag);
   debug_options.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(
       params.filter_kernels_flag);
-  auto config = GetAutotuneConfig(debug_options, /*is_deviceless=*/false);
+  auto config = GetCodegenOrchestratorOptions(debug_options);
   std::unique_ptr<HloInstruction> dummy = HloInstruction::CreateTuple({});
-  EXPECT_EQ(config.allow_reg_spills_fn(*dummy),
+  EXPECT_EQ(config.allow_reg_spills_fn(*dummy, autotuner::Backend::TRITON),
             params.expected_allow_reg_spills_out);
 }
 
@@ -505,20 +508,42 @@ INSTANTIATE_TEST_SUITE_P(
                           info.param.fail_on_spill_flag);
     });
 
-TEST_F(AutotunerFlagsTest, DevicelessUsesDefaultConfig) {
+TEST_F(AutotunerFlagsTest, DevicelessUsesFirstConfig) {
   DebugOptions debug_options = GetDebugOptionsForTest();
-  EXPECT_EQ(GetAutotuneConfig(debug_options, /*is_deviceless=*/true)
-                .use_default_config,
-            true);
+  EXPECT_TRUE(GetConfigAssignerOptions(debug_options, /*is_deviceless=*/true)
+                  .select_first_config);
 }
 
 TEST_F(AutotunerFlagsTest, DeterministicAutotuningSetsSelectFirstConfig) {
   DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.set_xla_gpu_deterministic_ops(true);
-  EXPECT_EQ(GetAutotuneConfig(debug_options).select_first_config, true);
+  EXPECT_EQ(GetConfigAssignerOptions(debug_options).select_first_config, true);
   debug_options.set_xla_gpu_deterministic_ops(false);
   debug_options.set_xla_gpu_exclude_nondeterministic_ops(true);
-  EXPECT_EQ(GetAutotuneConfig(debug_options).select_first_config, true);
+  EXPECT_EQ(GetConfigAssignerOptions(debug_options).select_first_config, true);
+}
+
+TEST_F(AutotunerFlagsTest, GetGpuAutotunerBackendsRespectsDeterminism) {
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_exclude_nondeterministic_ops(true);
+
+  GpuCompiler::GpuTargetConfig target_config(stream_executor_);
+  GpuAliasInfo alias_info(stream_executor_->GetDeviceDescription());
+  mlir::MLIRContext mlir_context;
+  RegisterSymbolicExprStorage(&mlir_context);
+
+  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<CodegenBackend>> backends,
+                       AutotunerPass::GetGpuAutotunerBackends(
+                           stream_executor_, allocator_.get(), &target_config,
+                           &alias_info, debug_options, &mlir_context,
+                           /*shape_size_fn=*/[](const Shape&) { return 0; },
+                           &compiler_, stream_executor_->GetPlatform()->id()));
+
+  for (const auto& backend : backends) {
+    EXPECT_NE(backend->backend(), autotuner::Backend::TRITON);
+    EXPECT_NE(backend->backend(), autotuner::Backend::NATIVE_EMITTER);
+    EXPECT_NE(backend->backend(), autotuner::Backend::BLOCK_LEVEL_EMITTER);
+  }
 }
 
 TEST_F(AutotunerPassTest, CublasLtSelectFirstConfig) {
@@ -755,6 +780,149 @@ TEST_F(AutotunerPassTest, CudnnSelectFirstConfig) {
                 .algorithm()
                 .algo_id(),
             expected_config->algorithm().algo_id());
+}
+
+TEST_F(AutotunerPassTest, CublasLtFissionAllowsSpills) {
+  auto options = GetCodegenOrchestratorOptions(GetDebugOptionsForTest());
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
+    HloModule module
+    ENTRY main {
+      ROOT tuple = () tuple()
+    }
+  )hlo"));
+  auto* instr = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(options.allow_reg_spills_fn(
+      *instr, autotuner::Backend::CUBLASLT_FISSION));
+}
+
+TEST_F(AutotunerPassTest, CublasLtGemmCustomCallForbidsSpills) {
+  auto options = GetCodegenOrchestratorOptions(GetDebugOptionsForTest());
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
+    HloModule module
+    ENTRY main {
+      arg0 = f32[100,100]{1,0} parameter(0)
+      arg1 = f32[100,100]{1,0} parameter(1)
+      ROOT custom-call = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(arg0, arg1),
+        custom_call_target="__cublas$lt$matmul",
+        backend_config="{\n  \"gemm_backend_config\": {\n    \"dot_dimension_numbers\": {\n      \"lhs_contracting_dimensions\": [\n        \"1\"\n      ],\n      \"rhs_contracting_dimensions\": [\n        \"0\"\n      ]\n    }\n  }\n}"
+    }
+  )hlo"));
+  auto* instr = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(
+      options.allow_reg_spills_fn(*instr, autotuner::Backend::CUBLASLT));
+}
+
+TEST_F(AutotunerPassTest, CudnnConvCustomCallForbidsSpills) {
+  auto options = GetCodegenOrchestratorOptions(GetDebugOptionsForTest());
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
+    HloModule module
+    ENTRY main {
+      p0 = f32[1,1,3,3]{3,2,1,0} parameter(0)
+      p1 = f32[1,1,3,3]{3,2,1,0} parameter(1)
+      ROOT custom-call = (f32[1,1,3,3]{3,2,1,0}, u8[0]{0}) custom-call(p0, p1),
+        custom_call_target="__cudnn$convForward"
+    }
+  )hlo"));
+  auto* instr = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(options.allow_reg_spills_fn(*instr, autotuner::Backend::CUDNN));
+}
+
+TEST_F(AutotunerPassTest, TritonGemmFusionForbidsSpills) {
+  auto options = GetCodegenOrchestratorOptions(GetDebugOptionsForTest());
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
+    HloModule module
+    computation {
+      p0 = bf16[128,128]{1,0} parameter(0)
+      p1 = bf16[128,128]{1,0} parameter(1)
+      ROOT dot = bf16[128,128]{1,0} dot(p0, p1),
+          lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+    ENTRY main {
+      p0 = bf16[128,128]{1,0} parameter(0)
+      p1 = bf16[128,128]{1,0} parameter(1)
+      ROOT fusion = bf16[128,128]{1,0} fusion(p0, p1),
+        kind=kCustom, calls=computation,
+        backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+    }
+  )hlo"));
+  auto* instr = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(options.allow_reg_spills_fn(*instr, autotuner::Backend::TRITON));
+}
+
+TEST_F(AutotunerPassTest, CudnnFusionForbidsSpills) {
+  auto options = GetCodegenOrchestratorOptions(GetDebugOptionsForTest());
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
+    HloModule module
+    computation {
+      p0 = f32[100,100]{1,0} parameter(0)
+      ROOT neg = f32[100,100]{1,0} negate(p0)
+    }
+    ENTRY main {
+      p0 = f32[100,100]{1,0} parameter(0)
+      ROOT fusion = f32[100,100]{1,0} fusion(p0), kind=kCustom, calls=computation,
+        backend_config={"fusion_backend_config":{"kind":"__cudnn$fusion"}}
+    }
+  )hlo"));
+  auto* instr = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(options.allow_reg_spills_fn(*instr, autotuner::Backend::CUDNN));
+}
+
+TEST_F(AutotunerPassTest, CustomFusionForbidsSpills) {
+  auto options = GetCodegenOrchestratorOptions(GetDebugOptionsForTest());
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
+    HloModule module
+    computation {
+      p0 = f32[100,100]{1,0} parameter(0)
+      ROOT neg = f32[100,100]{1,0} negate(p0)
+    }
+    ENTRY main {
+      p0 = f32[100,100]{1,0} parameter(0)
+      ROOT fusion = f32[100,100]{1,0} fusion(p0), kind=kCustom, calls=computation,
+        backend_config={"fusion_backend_config":{"kind":"__custom_fusion"}}
+    }
+  )hlo"));
+  auto* instr = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(options.allow_reg_spills_fn(*instr, autotuner::Backend::TRITON));
+}
+
+TEST_F(AutotunerPassTest, LoopFusionAllowsSpills) {
+  auto options = GetCodegenOrchestratorOptions(GetDebugOptionsForTest());
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
+    HloModule module
+    computation {
+      p0 = f32[100,100]{1,0} parameter(0)
+      ROOT neg = f32[100,100]{1,0} negate(p0)
+    }
+    ENTRY main {
+      p0 = f32[100,100]{1,0} parameter(0)
+      ROOT fusion = f32[100,100]{1,0} fusion(p0), kind=kLoop, calls=computation
+    }
+  )hlo"));
+  auto* instr = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(
+      options.allow_reg_spills_fn(*instr, autotuner::Backend::NATIVE_EMITTER));
+}
+
+TEST_F(AutotunerPassTest, OtherOpcodeAllowsSpills) {
+  auto options = GetCodegenOrchestratorOptions(GetDebugOptionsForTest());
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
+    HloModule module
+    ENTRY main {
+      p0 = f32[100,100]{1,0} parameter(0)
+      ROOT neg = f32[100,100]{1,0} negate(p0)
+    }
+  )hlo"));
+  auto* instr = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(options.allow_reg_spills_fn(
+      *instr, autotuner::Backend::BLOCK_LEVEL_EMITTER));
 }
 
 }  // namespace

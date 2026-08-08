@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -22,13 +23,12 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 #include <variant>
-#include <vector>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/traced_command.h"
@@ -105,7 +105,7 @@ absl::Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
     workspace = allocs.GetDeviceAddress(workspace_->slice);
   }
 
-  ASSIGN_OR_RETURN(auto* plan, GetCachedMatmulPlan(params));
+  ABSL_ASSIGN_OR_RETURN(auto* plan, GetCachedMatmulPlan(params));
   se::gpu::BlasLt::MemoryArgs args{allocs.GetDeviceAddress(a_.slice),
                                    allocs.GetDeviceAddress(b_.slice),
                                    allocs.GetDeviceAddress(c_.slice),
@@ -132,14 +132,14 @@ absl::Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
 
 absl::StatusOr<se::gpu::BlasLt::MatmulPlan*>
 CublasLtMatmulThunk::GetCachedMatmulPlan(const ExecuteParams& params) {
-  ASSIGN_OR_RETURN(auto* blas_lt,
+  ABSL_ASSIGN_OR_RETURN(auto* blas_lt,
                    se::gpu::BlasLt::Get(params.stream->parent()));
   auto create = [&]() -> absl::StatusOr<se::gpu::BlasLt::MatmulPlanPtr> {
     VLOG(2) << this << ": Adding new " << (is_grouped() ? "grouped" : "regular")
             << " MatmulPlan for stream: " << params.stream
             << " instr: " << canonical_hlo_;
 
-    ASSIGN_OR_RETURN(auto plan, std::visit(
+    ABSL_ASSIGN_OR_RETURN(auto plan, std::visit(
                                     [&](auto&& gemm_config) {
                                       return blas_lt->GetMatmulPlan(gemm_config,
                                                                     epilogue_);
@@ -203,13 +203,13 @@ absl::StatusOr<ThunkProto> CublasLtMatmulThunk::ToProto() const {
   CublasLtMatmulThunkProto* cublas_lt_matmul_thunk =
       proto.mutable_cublas_lt_matmul_thunk();
 
-  RETURN_IF_ERROR(std::visit(
+  ABSL_RETURN_IF_ERROR(std::visit(
       [&](auto&& gemm_config) {
         using T = std::decay_t<decltype(gemm_config)>;
         if constexpr (std::is_same_v<T, se::gpu::GroupedGemmConfig>) {
           *cublas_lt_matmul_thunk->mutable_grouped_gemm_config() =
               gemm_config.ToProto();
-          ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_group_sizes(),
+          ABSL_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_group_sizes(),
                            group_sizes_.value().ToProto());
         } else {
           *cublas_lt_matmul_thunk->mutable_gemm_config() =
@@ -224,38 +224,38 @@ absl::StatusOr<ThunkProto> CublasLtMatmulThunk::ToProto() const {
   cublas_lt_matmul_thunk->set_algorithm_idx(algorithm_idx_);
   cublas_lt_matmul_thunk->set_autotune_workspace_size(autotune_workspace_size_);
   cublas_lt_matmul_thunk->set_canonical_hlo(canonical_hlo_);
-  ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_a(), a_.ToProto());
-  ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_b(), b_.ToProto());
-  ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_c(), c_.ToProto());
-  ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_d(), d_.ToProto());
+  ABSL_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_a(), a_.ToProto());
+  ABSL_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_b(), b_.ToProto());
+  ABSL_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_c(), c_.ToProto());
+  ABSL_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_d(), d_.ToProto());
   if (bias_.has_value()) {
-    ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_bias(), bias_->ToProto());
+    ABSL_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_bias(), bias_->ToProto());
   }
   if (aux_.has_value()) {
-    ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_aux(), aux_->ToProto());
+    ABSL_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_aux(), aux_->ToProto());
   }
   if (a_scale_.has_value()) {
-    ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_a_scale(),
+    ABSL_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_a_scale(),
                      a_scale_->ToProto());
   }
   if (b_scale_.has_value()) {
-    ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_b_scale(),
+    ABSL_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_b_scale(),
                      b_scale_->ToProto());
   }
   if (c_scale_.has_value()) {
-    ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_c_scale(),
+    ABSL_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_c_scale(),
                      c_scale_->ToProto());
   }
   if (d_scale_.has_value()) {
-    ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_d_scale(),
+    ABSL_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_d_scale(),
                      d_scale_->ToProto());
   }
   if (d_amax_.has_value()) {
-    ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_d_amax(),
+    ABSL_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_d_amax(),
                      d_amax_->ToProto());
   }
   if (workspace_.has_value()) {
-    ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_workspace(),
+    ABSL_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_workspace(),
                      workspace_->ToProto());
   }
   return proto;
@@ -265,53 +265,53 @@ absl::StatusOr<ThunkProto> CublasLtMatmulThunk::ToProto() const {
 CublasLtMatmulThunk::FromProto(Thunk::ThunkInfo thunk_info,
                                const CublasLtMatmulThunkProto& proto,
                                absl::Span<const BufferAllocation> allocations) {
-  ASSIGN_OR_RETURN(se::gpu::BlasLt::Epilogue epilogue,
+  ABSL_ASSIGN_OR_RETURN(se::gpu::BlasLt::Epilogue epilogue,
                    se::gpu::BlasLt::EpilogueFromProto(proto.epilogue()));
-  ASSIGN_OR_RETURN(ShapedSlice a,
+  ABSL_ASSIGN_OR_RETURN(ShapedSlice a,
                    ShapedSlice::FromProto(proto.a(), allocations));
-  ASSIGN_OR_RETURN(ShapedSlice b,
+  ABSL_ASSIGN_OR_RETURN(ShapedSlice b,
                    ShapedSlice::FromProto(proto.b(), allocations));
-  ASSIGN_OR_RETURN(ShapedSlice c,
+  ABSL_ASSIGN_OR_RETURN(ShapedSlice c,
                    ShapedSlice::FromProto(proto.c(), allocations));
-  ASSIGN_OR_RETURN(ShapedSlice d,
+  ABSL_ASSIGN_OR_RETURN(ShapedSlice d,
                    ShapedSlice::FromProto(proto.d(), allocations));
 
   std::optional<ShapedSlice> bias;
   if (proto.has_bias()) {
-    ASSIGN_OR_RETURN(bias, ShapedSlice::FromProto(proto.bias(), allocations));
+    ABSL_ASSIGN_OR_RETURN(bias, ShapedSlice::FromProto(proto.bias(), allocations));
   }
   std::optional<ShapedSlice> aux;
   if (proto.has_aux()) {
-    ASSIGN_OR_RETURN(aux, ShapedSlice::FromProto(proto.aux(), allocations));
+    ABSL_ASSIGN_OR_RETURN(aux, ShapedSlice::FromProto(proto.aux(), allocations));
   }
   std::optional<ShapedSlice> a_scale;
   if (proto.has_a_scale()) {
-    ASSIGN_OR_RETURN(a_scale,
+    ABSL_ASSIGN_OR_RETURN(a_scale,
                      ShapedSlice::FromProto(proto.a_scale(), allocations));
   }
   std::optional<ShapedSlice> b_scale;
   if (proto.has_b_scale()) {
-    ASSIGN_OR_RETURN(b_scale,
+    ABSL_ASSIGN_OR_RETURN(b_scale,
                      ShapedSlice::FromProto(proto.b_scale(), allocations));
   }
   std::optional<ShapedSlice> c_scale;
   if (proto.has_c_scale()) {
-    ASSIGN_OR_RETURN(c_scale,
+    ABSL_ASSIGN_OR_RETURN(c_scale,
                      ShapedSlice::FromProto(proto.c_scale(), allocations));
   }
   std::optional<ShapedSlice> d_scale;
   if (proto.has_d_scale()) {
-    ASSIGN_OR_RETURN(d_scale,
+    ABSL_ASSIGN_OR_RETURN(d_scale,
                      ShapedSlice::FromProto(proto.d_scale(), allocations));
   }
   std::optional<ShapedSlice> d_amax;
   if (proto.has_d_amax()) {
-    ASSIGN_OR_RETURN(d_amax,
+    ABSL_ASSIGN_OR_RETURN(d_amax,
                      ShapedSlice::FromProto(proto.d_amax(), allocations));
   }
   std::optional<ShapedSlice> workspace;
   if (proto.has_workspace()) {
-    ASSIGN_OR_RETURN(workspace,
+    ABSL_ASSIGN_OR_RETURN(workspace,
                      ShapedSlice::FromProto(proto.workspace(), allocations));
   }
 
@@ -321,12 +321,12 @@ CublasLtMatmulThunk::FromProto(Thunk::ThunkInfo thunk_info,
   std::optional<ShapedSlice> group_sizes;
   // Check if this is grouped or regular matmul
   if (proto.has_grouped_gemm_config()) {
-    ASSIGN_OR_RETURN(group_sizes,
+    ABSL_ASSIGN_OR_RETURN(group_sizes,
                      ShapedSlice::FromProto(proto.group_sizes(), allocations));
-    ASSIGN_OR_RETURN(gemm_config, se::gpu::GroupedGemmConfig::FromProto(
+    ABSL_ASSIGN_OR_RETURN(gemm_config, se::gpu::GroupedGemmConfig::FromProto(
                                       proto.grouped_gemm_config()));
   } else {
-    ASSIGN_OR_RETURN(gemm_config,
+    ABSL_ASSIGN_OR_RETURN(gemm_config,
                      se::gpu::GemmConfig::FromProto(proto.gemm_config()));
   }
 

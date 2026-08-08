@@ -22,7 +22,6 @@ import "xla/backends/gpu/runtime/collective_kernel_thunk.proto";
 import "xla/backends/gpu/runtime/collective_thunk.proto";
 import "xla/backends/gpu/runtime/convolution_filter_thunk.proto";
 import "xla/backends/gpu/runtime/copy_thunk.proto";
-import "xla/backends/gpu/runtime/dynamic_slice_thunk.proto";
 import "xla/backends/gpu/runtime/thunk_kind.proto";
 import "xla/core/collectives/reduction_kind.proto";
 import "xla/core/host_offloading/host_offloading_executable.proto";
@@ -134,6 +133,7 @@ message CudnnThunkProto {
   repeated ShapedSliceProto args = 2;
   repeated bool output_args = 4;
   optional int64 sdpa_dropout_seed = 3;
+  bool should_memzero = 5;
 }
 
 message HostSendThunkProto {
@@ -175,18 +175,6 @@ message HostExecuteStartThunkProto {
 
 message HostExecuteDoneThunkProto {
   uint64 async_events_unique_id = 1;
-}
-
-message DynamicSliceThunkProto {
-  ThunkSequenceProto embedded_thunk = 1;
-  repeated OptionalBufferAllocationSliceProto arguments = 2;
-  repeated OptionalDynamicSliceOffsetsProto offsets = 3;
-  repeated OptionalShapeProto orig_shapes = 4;
-  repeated OptionalShapeProto sliced_shapes = 5;
-  repeated OptionalPrimitiveType offset_primitive_types = 6;
-  optional OffsetAsFunctionOfIndvarModulesMetadataProto
-      offset_as_function_of_indvar_modules_metadata = 7;
-  repeated BufferAllocationProto fake_allocations = 8;
 }
 
 message DynamicSliceFusionThunkProto {
@@ -358,6 +346,7 @@ message CustomCallThunkProto {
   // the HloModule that is used to deserialize the thunk.
   optional string called_computation = 7;
   optional xla.ffi.ExecutionStateProto execution_state = 8;
+  bool use_pdl = 9;
 }
 
 message CustomKernelThunkProto {
@@ -382,14 +371,7 @@ message AllReduceThunkProto {
   repeated CollectiveBufferProto buffers = 3;
 
   xla.ReductionKindProto reduction_kind = 4;
-  bool is_multimem_enabled = 5;
-  int32 shmem_bytes = 6;
-  string kernel_name = 7;
-  bool collective_kernel_enabled = 8;
-  bool is_async = 9;
-  LaunchDimensionsProto launch_dimensions = 10;
-  bool use_pdl = 11;
-  optional bytes cubin = 12;
+  reserved 5 to 12;  // Was collective_kernel_thunk_proto fields.
 }
 
 message ReduceScatterThunkProto {
@@ -420,8 +402,10 @@ message RaggedAllToAllThunkProto {
   reserved 8;
   bool use_multi_gpu_barrier_with_nccl_in_one_shot_kernel = 9;
   int64 fast_interconnect_slice_size_override = 10;
-  bool zero_copy_in_one_shot_kernel = 11;
+  reserved 11;
   xla.DebugOptions.CollectivesMode collectives_mode = 12;
+  bool use_device_kernel = 13;
+  bool allow_fallback_to_nccl = 14;
 }
 
 message CollectivePermuteThunkProto {
@@ -461,6 +445,9 @@ message CollectiveBroadcastThunkProto {
   reserved 1;  // Was async_events_unique_id.
   repeated CollectiveBufferProto buffers = 2;
   CollectiveConfigProto collective_config = 3;
+  // When true, the last buffer holds the runtime-selected root rank per
+  // broadcast and is not itself broadcast.
+  bool has_dynamic_root = 4;
 }
 
 message CollectiveGroupThunkProto {
@@ -496,7 +483,6 @@ message ThunkProto {
     CudnnThunkProto cudnn_thunk = 15;
     HostExecuteStartThunkProto host_execute_start_thunk = 16;
     HostExecuteDoneThunkProto host_execute_done_thunk = 17;
-    DynamicSliceThunkProto dynamic_slice_thunk = 18;
     MemzeroThunkProto memzero_thunk = 19;
     SelectKThunkProto select_k_thunk = 20;
     InfeedThunkProto infeed_thunk = 21;
@@ -530,7 +516,7 @@ message ThunkProto {
     RngSeedThunkProto rng_seed_thunk = 61;
   }
 
-  reserved 10, 37, 48, 49, 50, 51, 52, 53, 54, 55, 56;
+  reserved 10, 18, 37, 48, 49, 50, 51, 52, 53, 54, 55, 56;
   reserved "wait_for_streams_thunk";
   reserved "nvshmem_collective_done_thunk";
   reserved "nvshmem_collective_permute_done_thunk";
@@ -539,6 +525,7 @@ message ThunkProto {
   reserved "collective_done_thunk";
   reserved "copy_done_thunk";
   reserved "dynamic_memcpy_thunk";
+  reserved "dynamic_slice_thunk";
   reserved "all_gather_start_thunk";
   reserved "all_reduce_start_thunk";
   reserved "all_to_all_start_thunk";

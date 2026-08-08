@@ -72,12 +72,12 @@ GetHostTargetMachineOptions(absl::string_view platform_version) {
         "prefer-no-scatter,+prfchw,+rdpid,+rdrnd,+rdseed,+rtm,+sahf,+serialize,"
         "+sha,+sse,+sse2,+sse3,+sse4.1,+sse4.2,+ssse3,+tsxldtrk,+vaes,+"
         "vpclmulqdq,+wbnoinvd,+xsave,+xsavec,+xsaveopt,+xsaves,-amx-avx512,-"
-        "amx-complex,-amx-fp16,-amx-fp8,-amx-movrs,-amx-tf32,-avx10.1,-avx10.2,"
-        "-avx512vp2intersect,-avxifma,-avxneconvert,-avxvnniint16,-avxvnniint8,"
-        "-ccmp,-cf,-clzero,-cmpccxadd,-egpr,-enqcmd,-fma4,-hreset,-jmpabs,-kl,-"
-        "lwp,-movrs,-mwaitx,-ndd,-nf,-pconfig,-pku,-ppx,-prefetchi,-ptwrite,-"
-        "push2pop2,-raoint,-rdpru,-sgx,-sha512,-shstk,-sm3,-sm4,-sse4a,-tbm,-"
-        "uintr,-usermsr,-waitpkg,-widekl,-xop,-zu"};
+        "amx-complex,-amx-fp16,-amx-fp8,-amx-movrs,-avx10.1,-avx10.2,-"
+        "avx512bmm,-avx512vp2intersect,-avxifma,-avxneconvert,-avxvnniint16,-"
+        "avxvnniint8,-ccmp,-cf,-clzero,-cmpccxadd,-egpr,-enqcmd,-fma4,-hreset,-"
+        "jmpabs,-kl,-lwp,-movrs,-mwaitx,-ndd,-nf,-pconfig,-pku,-ppx,-prefetchi,"
+        "-ptwrite,-push2pop2,-raoint,-rdpru,-sgx,-sha512,-shstk,-sm3,-sm4,-"
+        "sse4a,-tbm,-uintr,-usermsr,-waitpkg,-widekl,-xop,-zu"};
   }
   if (platform_version == "oberon_b200" || platform_version == "oberon_b300") {
     return cpu::TargetMachineOptions{
@@ -94,23 +94,27 @@ absl::StatusOr<std::unique_ptr<const GpuTopology>> GpuTopology::FromProto(
     const GpuTopologyProto& gpu_topology_proto) {
   std::optional<gpu::GpuTargetConfig> gpu_target_config = std::nullopt;
   if (gpu_topology_proto.has_gpu_target_config()) {
-    ASSIGN_OR_RETURN(gpu_target_config,
+    ABSL_ASSIGN_OR_RETURN(gpu_target_config,
                      gpu::GpuTargetConfig::FromProto(
                          gpu_topology_proto.gpu_target_config()));
   }
   std::optional<cpu::TargetMachineOptions> host_target_machine_options =
       std::nullopt;
   if (gpu_topology_proto.has_host_target_machine_options()) {
-    ASSIGN_OR_RETURN(host_target_machine_options,
+    ABSL_ASSIGN_OR_RETURN(host_target_machine_options,
                      cpu::TargetMachineOptions::FromProto(
                          gpu_topology_proto.host_target_machine_options()));
+  }
+  std::optional<int32_t> num_devices_per_process = std::nullopt;
+  if (gpu_topology_proto.has_num_devices_per_process()) {
+    num_devices_per_process = gpu_topology_proto.num_devices_per_process();
   }
   return std::make_unique<GpuTopology>(
       gpu_topology_proto.platform_version(),
       gpu_topology_proto.num_partitions(),
       gpu_topology_proto.num_hosts_per_partition(),
       gpu_topology_proto.num_devices_per_host(), std::move(gpu_target_config),
-      std::move(host_target_machine_options));
+      std::move(host_target_machine_options), num_devices_per_process);
 }
 
 GpuTopologyProto GpuTopology::ToProto() const {
@@ -126,6 +130,9 @@ GpuTopologyProto GpuTopology::ToProto() const {
     *proto.mutable_host_target_machine_options() =
         host_target_machine_options()->ToProto();
   }
+  if (num_devices_per_process_.has_value()) {
+    proto.set_num_devices_per_process(num_devices_per_process());
+  }
   return proto;
 }
 
@@ -133,12 +140,12 @@ absl::StatusOr<GpuTopology> GetGpuTopologyForPlatform(
     absl::string_view platform_version, int32_t num_partitions,
     int32_t num_hosts_per_partition, int32_t num_devices_per_host) {
   // TODO(b/470487616): Don't use string matching to get the GpuTargetConfig.
-  ASSIGN_OR_RETURN(auto spec_name, GetGpuModel(platform_version));
-  ASSIGN_OR_RETURN(auto gpu_target_config_proto,
+  ABSL_ASSIGN_OR_RETURN(auto spec_name, GetGpuModel(platform_version));
+  ABSL_ASSIGN_OR_RETURN(auto gpu_target_config_proto,
                    gpu::GetGpuTargetConfig(spec_name));
-  ASSIGN_OR_RETURN(auto gpu_target_config,
+  ABSL_ASSIGN_OR_RETURN(auto gpu_target_config,
                    gpu::GpuTargetConfig::FromProto(gpu_target_config_proto));
-  ASSIGN_OR_RETURN(auto host_target_machine_options,
+  ABSL_ASSIGN_OR_RETURN(auto host_target_machine_options,
                    GetHostTargetMachineOptions(platform_version));
   return GpuTopology(platform_version, num_partitions, num_hosts_per_partition,
                      num_devices_per_host, std::move(gpu_target_config),

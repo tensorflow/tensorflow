@@ -235,6 +235,10 @@ class PresetAssignments {
 
   PresetAssignments() = default;
 
+  std::unique_ptr<PresetAssignments> ClonePresetAssignments() const {
+    return std::make_unique<PresetAssignments>(*this);
+  }
+
   void add_chunk(const HloPosition& position,
                  const HeapSimulator::Chunk& chunk) {
     chunks_.emplace_back(position, chunk);

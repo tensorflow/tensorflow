@@ -223,7 +223,7 @@ class HloPjRtInterpreterReferenceMixinNoAot
   template <typename... BaseArgs>
   explicit HloPjRtInterpreterReferenceMixinNoAot(BaseArgs&&... base_args)
       : HloRunnerAgnosticReferenceMixin<T>(
-            std::make_unique<HloRunnerPjRt>(std::make_unique<InterpreterClient>(
+            std::make_unique<HloRunner>(std::make_unique<InterpreterClient>(
                 []() { return std::make_unique<HloEvaluator>(); })),
             std::forward<BaseArgs>(base_args)...) {}
   ~HloPjRtInterpreterReferenceMixinNoAot() override = default;

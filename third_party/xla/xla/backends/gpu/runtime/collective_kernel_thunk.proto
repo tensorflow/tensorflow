@@ -18,20 +18,58 @@ syntax = "proto3";
 package xla.gpu;
 
 import "xla/backends/gpu/runtime/collective_thunk.proto";
-import "xla/core/collectives/reduction_kind.proto";
 import "xla/service/gpu/launch_dimensions.proto";
 
 option java_outer_classname = "CollectiveKernelThunk";
 option java_multiple_files = true;
+
+enum KernelArgTypeProto {
+  KERNEL_ARG_TYPE_UNSPECIFIED = 0;
+  KERNEL_ARG_TYPE_INPUT_BUFFER = 1;
+  KERNEL_ARG_TYPE_OUTPUT_BUFFER = 2;
+  KERNEL_ARG_TYPE_RUNTIME_RANK = 3;
+  KERNEL_ARG_TYPE_INVOCATION_COUNT = 4;
+  KERNEL_ARG_TYPE_SCRATCH_BUFFER = 5;
+}
+
+enum SymmetricMemoryTypeProto {
+  SYMMETRIC_MEMORY_TYPE_NONE = 0;
+  SYMMETRIC_MEMORY_TYPE_LOAD_STORE_ACCESSIBLE = 1;
+  SYMMETRIC_MEMORY_TYPE_XLA_RENDEZVOUS = 2;
+}
+
+message IoBufferSpecProto {
+  bool requires_multimem = 1;
+  SymmetricMemoryTypeProto symmetric_memory_type = 2;
+}
+
+message ScratchBufferSpecProto {
+  int64 size_bytes = 1;
+  bool requires_multimem = 2;
+  SymmetricMemoryTypeProto symmetric_memory_type = 3;
+  bool should_memzero = 4;
+  bool should_double_buffer = 5;
+}
+
+message KernelArgDescriptorProto {
+  KernelArgTypeProto type = 1;
+  optional int32 index = 2;
+}
+
+message CollectiveKernelSpecProto {
+  repeated IoBufferSpecProto input_buffer_specs = 1;
+  repeated IoBufferSpecProto output_buffer_specs = 2;
+  repeated ScratchBufferSpecProto scratch_buffers = 3;
+  repeated KernelArgDescriptorProto argument_descriptors = 4;
+  int32 invocation_count_increment = 5;
+}
 
 message CollectiveKernelThunkProto {
   // Configuration parameters for the collective operation, including replica
   // groups, number of participants, and participant ranks.
   CollectiveConfigProto collective_config = 1;
 
-  // The reduction operator (e.g., Sum, Product, Min, Max) to apply in the
-  // collective operation.
-  xla.ReductionKindProto reduction_kind = 2;
+  reserved 2;  // Was reduction_kind.
 
   // If true, execution runs asynchronously on a dedicated collective stream.
   bool is_async = 3;
@@ -54,9 +92,7 @@ message CollectiveKernelThunkProto {
   // collective kernel.
   int32 shmem_bytes = 8;
 
-  // Whether NVLink multi-memory (multicast address space) strategy is enabled
-  // for P2P communication.
-  bool is_multimem_enabled = 9;
+  reserved 9;  // Was is_multimem_enabled.
 
   // Precompiled GPU kernel (CUDA binary) containing the compiled collective
   // kernel.
@@ -65,4 +101,9 @@ message CollectiveKernelThunkProto {
   // If true, enables Programmatic Dependent Launch (PDL) to trigger dependent
   // kernels directly from the GPU.
   bool use_pdl = 11;
+
+  // Operation specific parameters.
+  // Used to find runtime requirements for an emitted kernel.
+  // See collective_params.h for more details.
+  CollectiveKernelSpecProto kernel_spec = 12;
 }

@@ -31,17 +31,15 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
-#include "xla/backends/gpu/runtime/scratch_memory.h"
-#include "xla/backends/gpu/runtime/scratch_memory_requests.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/backends/gpu/runtime/thunk_kind.pb.h"
@@ -116,7 +114,6 @@ class Thunk {
     kCublasLtMatmul,
     kCustomCall,
     kCustomKernel,
-    kDynamicSlice,
     kDynamicSliceFusion,
     kFft,
     kGemm,
@@ -216,8 +213,7 @@ class Thunk {
     CollectiveCliqueRequests* collective_clique_requests = nullptr;
     // Collective memory requests for preparing symmetric allocations.
     CollectiveMemoryRequests* collective_memory_requests = nullptr;
-    // Scratch memory requests for preparing scratch memory allocations.
-    ScratchMemoryRequests* scratch_memory_requests = nullptr;
+
     // Stream executor for the thunk.
     se::StreamExecutor* absl_nonnull executor = nullptr;
     // Buffer allocations for the thunk.
@@ -259,9 +255,6 @@ class Thunk {
     // Collective memory acquired based on memory requests.
     CollectiveMemory* collective_memory = nullptr;
 
-    // Scratch memory acquired based on scratch memory requests.
-    ScratchMemory* scratch_memory = nullptr;
-
     // XLA FFI execution context.
     const ffi::ExecutionContext* ffi_execution_context = nullptr;
 
@@ -270,6 +263,18 @@ class Thunk {
 
     // Execution scoped state shared between prepare, initialize and execute.
     ExecutionScopedState* execution_scoped_state = nullptr;
+
+    // Optional allocation indices whose device addresses are stable for this
+    // execution. The value is absent only while the allocation address policy
+    // is undecided (e.g. during the VA remapping profiling window); when
+    // absent, command buffer lowering is disabled for this step and
+    // CommandBufferThunk executes its fallback thunk sequence instead.
+    // Producers must pass a valid - possibly empty - span once the policy is
+    // decided. Once present, the allocation indices must remain unchanged;
+    // consumers may rely on this invariant without revalidating the vector on
+    // each step.
+    std::optional<absl::Span<const BufferAllocation::Index>>
+        persistent_alloc_indices = std::nullopt;
   };
 
   //===--------------------------------------------------------------------===//
@@ -290,7 +295,9 @@ class Thunk {
         CollectiveCliques* collective_cliques,
         CollectiveMemory* collective_memory,
         std::vector<se::Stream*> additional_compute_streams = {},
-        ExecutionScopedState* execution_scoped_state = nullptr);
+        ExecutionScopedState* execution_scoped_state = nullptr,
+        std::optional<absl::Span<const BufferAllocation::Index>>
+            persistent_alloc_indices = std::nullopt);
 
     // Constructs execute parameters from an existing parameters but with
     // different buffer allocations.
@@ -341,6 +348,18 @@ class Thunk {
 
     uint64_t rng_seed = 0;
 
+    // Optional allocation indices whose device addresses are stable for this
+    // execution. The value is absent only while the allocation address policy
+    // is undecided (e.g. during the VA remapping profiling window); when
+    // absent, command buffer lowering is disabled for this step and
+    // CommandBufferThunk executes its fallback thunk sequence instead.
+    // Producers must pass a valid - possibly empty - span once the policy is
+    // decided. Once present, the allocation indices must remain unchanged;
+    // consumers may rely on this invariant without revalidating the vector on
+    // each step.
+    std::optional<absl::Span<const BufferAllocation::Index>>
+        persistent_alloc_indices = std::nullopt;
+
    private:
     friend class CommandBufferThunk;
 
@@ -356,8 +375,10 @@ class Thunk {
                   const ffi::ExecutionContext* ffi_execution_context,
                   std::vector<se::Stream*> additional_compute_streams = {},
                   ExecutionScopedState* execution_scoped_state = nullptr,
-                  bool mock_collectives = false, RunId execution_id = RunId(0),
-                  uint64_t rng_seed = 0);
+                  bool mock_collectives = false, int64_t execution_id = 0,
+                  uint64_t rng_seed = 0,
+                  std::optional<absl::Span<const BufferAllocation::Index>>
+                      persistent_alloc_indices = std::nullopt);
   };
 
   //===--------------------------------------------------------------------===//
@@ -408,7 +429,7 @@ class Thunk {
   // Buffer uses do not include buffers that might be used by nested thunks,
   // they must be collected separately by walking the nested thunks using `Walk`
   // API.
-  virtual BufferUses buffer_uses() const { return {}; }
+  virtual BufferUses buffer_uses() const = 0;
 
   // Returns resources used by this thunk.
   //
@@ -429,19 +450,30 @@ class Thunk {
   // Returns `true` if this thunk requires inter-GPU communication.
   bool IsCollective() const;
 
-  // Type predicate for `Walk` callback.
-  template <typename F, typename Arg>
-  using WalkCallback =
-      std::enable_if_t<std::is_invocable_v<F, Arg> ||
-                       std::is_invocable_r_v<absl::Status, F, Arg>>;
+  // Return type for `Walk` callbacks. All callbacks must return `void` or all
+  // must return `absl::Status`.
+  template <typename Arg, typename... Fs>
+  using WalkResult = std::enable_if_t<
+      (std::is_void_v<std::invoke_result_t<Fs, Arg>> && ...) ||
+          (std::is_same_v<std::invoke_result_t<Fs, Arg>, absl::Status> && ...),
+      std::common_type_t<std::invoke_result_t<Fs, Arg>...>>;
 
   // Recursively walks all the thunks nested inside *this one and calls the
   // user-provided callback on every thunk. Always starts traversal with *this,
   // and traverses thunks in DFS order.
-  template <typename F, WalkCallback<F, Thunk*>* = nullptr>
-  std::invoke_result_t<F, Thunk*> Walk(F&& callback);
-  template <typename F, WalkCallback<F, const Thunk*>* = nullptr>
-  std::invoke_result_t<F, const Thunk*> Walk(F&& callback) const;
+  template <typename F>
+  WalkResult<Thunk*, F> Walk(F&& callback);
+  template <typename F>
+  WalkResult<const Thunk*, F> Walk(F&& callback) const;
+
+  // Recursively walks all thunks in DFS order. Calls `pre_order` before
+  // visiting nested thunks and `post_order` after visiting them.
+  template <typename PreOrder, typename PostOrder>
+  WalkResult<Thunk*, PreOrder, PostOrder> Walk(PreOrder&& pre_order,
+                                               PostOrder&& post_order);
+  template <typename PreOrder, typename PostOrder>
+  WalkResult<const Thunk*, PreOrder, PostOrder> Walk(
+      PreOrder&& pre_order, PostOrder&& post_order) const;
 
   // Recursively applies transformation to all nested thunks inside *this one.
   // Transformation can be applied optionally by returning the argument back to
@@ -488,9 +520,12 @@ class Thunk {
  protected:
   friend class ThunkSequence;
 
-  // Walks all nested thunks and calls `callback` for them.
+  // Walks all nested thunks and calls `pre_order` and `post_order` for them.
   using Walker = absl::FunctionRef<absl::Status(Thunk*)>;
-  virtual absl::Status WalkNested(Walker callback) { return absl::OkStatus(); }
+  using ConstWalker = absl::FunctionRef<absl::Status(const Thunk*)>;
+  virtual absl::Status WalkNested(Walker pre_order, Walker post_order);
+  virtual absl::Status WalkNested(ConstWalker pre_order,
+                                  ConstWalker post_order) const;
 
  private:
   Kind kind_;
@@ -501,26 +536,41 @@ class Thunk {
 class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {
  public:
   ThunkSequence() = default;
-  ThunkSequence(ThunkSequence&&) = default;
-  explicit ThunkSequence(std::vector<std::unique_ptr<Thunk>>&& thunks)
-      : std::vector<std::unique_ptr<Thunk>>(std::move(thunks)) {};
-  ThunkSequence(const ThunkSequence&) = delete;
+  explicit ThunkSequence(int64_t len);
+  explicit ThunkSequence(std::vector<std::unique_ptr<Thunk>> thunks);
 
-  ThunkSequence& operator=(const ThunkSequence&) = delete;
+  ThunkSequence(ThunkSequence&&) = default;
   ThunkSequence& operator=(ThunkSequence&&) = default;
 
-  explicit ThunkSequence(int64_t len)
-      : std::vector<std::unique_ptr<Thunk>>::vector(len) {}
+  // Returns an empty thunk sequence.
+  static ThunkSequence Empty() { return ThunkSequence(); }
+
+  // Appends a thunk to this sequence.
+  void Append(std::unique_ptr<Thunk> thunk);
 
   // Creates a thunks sequence from a single thunk.
-  static ThunkSequence Of(std::unique_ptr<Thunk> thunk) {
-    ThunkSequence thunks;
-    thunks.push_back(std::move(thunk));
-    return thunks;
+  static ThunkSequence Of(std::unique_ptr<Thunk> thunk);
+
+  // Creates a thunk sequence by constructing a single thunk of type `T`.
+  template <typename T, typename... Args,
+            std::enable_if_t<std::is_base_of_v<Thunk, T>>* = nullptr>
+  static ThunkSequence Of(Args&&... args) {
+    return ThunkSequence::Of(std::make_unique<T>(std::forward<Args>(args)...));
+  }
+
+  // Constructs a new thunk in place and appends it to this sequence.
+  template <typename T, typename... Args,
+            std::enable_if_t<std::is_base_of_v<Thunk, T>>* = nullptr>
+  void Emplace(Args&&... args) {
+    Append(std::make_unique<T>(std::forward<Args>(args)...));
   }
 
   // Walks/Transforms all thunks nested in *this sequence.
   absl::Status WalkNested(Thunk::Walker callback);
+  absl::Status WalkNested(Thunk::ConstWalker callback) const;
+  absl::Status WalkNested(Thunk::Walker pre_order, Thunk::Walker post_order);
+  absl::Status WalkNested(Thunk::ConstWalker pre_order,
+                          Thunk::ConstWalker post_order) const;
   absl::Status TransformNested(Thunk::Transformer callback);
 
   // Creates a human-readable representation of a thunk sequence. For each thunk
@@ -545,22 +595,60 @@ ThunkMetadataListProto GetMetadataListProtoFromThunkGraph(
 // Thunk templates implementation.
 //===----------------------------------------------------------------------===//
 
-template <typename F, Thunk::WalkCallback<F, Thunk*>*>
-std::invoke_result_t<F, Thunk*> Thunk::Walk(F&& callback) {
-  if constexpr (std::is_void_v<std::invoke_result_t<F, Thunk*>>) {
-    Walk([f = std::forward<F>(callback)](Thunk* thunk) {
-      return (f(thunk), absl::OkStatus());
+template <typename F>
+Thunk::WalkResult<Thunk*, F> Thunk::Walk(F&& callback) {
+  if constexpr (std::is_void_v<WalkResult<Thunk*, F>>) {
+    Walk([&callback](Thunk* thunk) {
+      callback(thunk);
+      return absl::OkStatus();
     }).IgnoreError();  // Error can never happen here.
   } else {
-    RETURN_IF_ERROR(callback(this));
-    return WalkNested(callback);
+    ABSL_RETURN_IF_ERROR(callback(this));
+    return WalkNested(Walker([&](Thunk* thunk) { return callback(thunk); }),
+                      Walker([](Thunk*) { return absl::OkStatus(); }));
   }
 }
 
-template <typename F, Thunk::WalkCallback<F, const Thunk*>*>
-std::invoke_result_t<F, const Thunk*> Thunk::Walk(F&& callback) const {
-  return const_cast<Thunk*>(this)->Walk(  // NOLINT
-      std::forward<F>(callback));
+template <typename F>
+Thunk::WalkResult<const Thunk*, F> Thunk::Walk(F&& callback) const {
+  Thunk* self = const_cast<Thunk*>(this);  // NOLINT
+  return self->Walk([&callback](Thunk* thunk) {
+    return callback(static_cast<const Thunk*>(thunk));
+  });
+}
+
+template <typename PreOrder, typename PostOrder>
+Thunk::WalkResult<Thunk*, PreOrder, PostOrder> Thunk::Walk(
+    PreOrder&& pre_order, PostOrder&& post_order) {
+  if constexpr (std::is_void_v<WalkResult<Thunk*, PreOrder, PostOrder>>) {
+    Walk(
+        [&pre_order](Thunk* thunk) {
+          pre_order(thunk);
+          return absl::OkStatus();
+        },
+        [&post_order](Thunk* thunk) {
+          post_order(thunk);
+          return absl::OkStatus();
+        })
+        .IgnoreError();  // Error can never happen here.
+  } else {
+    ABSL_RETURN_IF_ERROR(pre_order(this));
+    ABSL_RETURN_IF_ERROR(WalkNested(Walker(pre_order), Walker(post_order)));
+    return post_order(this);
+  }
+}
+
+template <typename PreOrder, typename PostOrder>
+Thunk::WalkResult<const Thunk*, PreOrder, PostOrder> Thunk::Walk(
+    PreOrder&& pre_order, PostOrder&& post_order) const {
+  Thunk* self = const_cast<Thunk*>(this);  // NOLINT
+  return self->Walk(
+      [&pre_order](Thunk* thunk) {
+        return pre_order(static_cast<const Thunk*>(thunk));
+      },
+      [&post_order](Thunk* thunk) {
+        return post_order(static_cast<const Thunk*>(thunk));
+      });
 }
 
 }  // namespace xla::gpu

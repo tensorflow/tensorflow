@@ -32,7 +32,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/stream_executor/tpu/tpu_platform.h"
 #include "xla/tpu/libtftpu.h"
 #include "xla/tpu/tpu_api.h"
 #include "xla/tpu/tpu_api_dlsym_set_fn.h"

@@ -440,12 +440,6 @@ class Executable {
         "ExecutableAbiVersion is not supported by this executable.");
   }
 
-  // Returns the next VA range index for the given device ordinal. Cycle wraps
-  // at num_sets. Default implementation returns 0 (used for non-GPU backends).
-  virtual int GetNextCommandBufferVaRangeIdx(int device_ordinal, int num_sets) {
-    return 0;
-  }
-
  private:
   // HloModule this was compiled from. BufferAssignment keeps pointers to
   // HloInstructions owned by the HloModule so we need to keep the HloModule

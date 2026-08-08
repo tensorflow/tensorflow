@@ -56,7 +56,7 @@ absl::Status RegisterBuiltInFiles(const char* absl_nonnull name,
     // conditionally. We're running at global-init time, before flags have been
     // parsed, so VLOG is out, and any standard log level will result in RAW_LOG
     // on stderr.
-    RETURN_IF_ERROR(global_file_system().EmbedFile(path, contents));
+    ABSL_RETURN_IF_ERROR(global_file_system().EmbedFile(path, contents));
   }
 
   return absl::OkStatus();

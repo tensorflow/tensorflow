@@ -24,13 +24,11 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
-
-namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
 namespace {
+
+namespace op = xla::testing::opcode_matchers;
 
 class AllGatherCSETest : public HloHardwareIndependentTestBase {
  protected:
@@ -49,13 +47,13 @@ TEST_F(AllGatherCSETest, ReplacesRedundantAllGather) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
   EXPECT_TRUE(changed);
   HloDCE dce;
-  TF_ASSERT_OK(dce.Run(module.get()));
+  ASSERT_OK(dce.Run(module.get()));
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::AllGather(op::Parameter(0)),
@@ -76,10 +74,10 @@ TEST_F(AllGatherCSETest, HandlesRawParameterGetTupleElement) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -99,10 +97,10 @@ TEST_F(AllGatherCSETest, HandlesRawParameterTuple) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -120,12 +118,12 @@ TEST_F(AllGatherCSETest, HandlesRawParameterOptimizationBarrierCSE) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
   HloDCE dce;
-  TF_ASSERT_OK(dce.Run(module.get()));
+  ASSERT_OK(dce.Run(module.get()));
   EXPECT_TRUE(changed);
 
   EXPECT_THAT(
@@ -147,12 +145,12 @@ TEST_F(AllGatherCSETest, HandlesRawParameterConvert) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
   HloDCE dce;
-  TF_ASSERT_OK(dce.Run(module.get()));
+  ASSERT_OK(dce.Run(module.get()));
   EXPECT_TRUE(changed);
 
   EXPECT_THAT(
@@ -170,10 +168,10 @@ TEST_F(AllGatherCSETest, HandlesNoAllGather) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -189,10 +187,10 @@ TEST_F(AllGatherCSETest, HandlesNonParameterOperand) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -208,16 +206,37 @@ TEST_F(AllGatherCSETest, RunsHloDCEAfterChanges) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
   HloDCE dce;
-  TF_ASSERT_OK(dce.Run(module.get()));
+  ASSERT_OK(dce.Run(module.get()));
   EXPECT_TRUE(changed);
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::AllGather(op::Parameter(0))));
+}
+
+TEST_F(AllGatherCSETest, DoesNotMergeDifferentReplicaGroups) {
+  // Two all-gathers of the same parameter with the same shape but different
+  // replica groups compute different data and must NOT be CSE'd.
+  absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY main {
+      param0 = s32[4] parameter(0)
+      all-gather.1 = s32[8] all-gather(param0), dimensions={0}, replica_groups={{0,1},{2,3}}
+      all-gather.2 = s32[8] all-gather(param0), dimensions={0}, replica_groups={{0,2},{1,3}}
+      ROOT tuple = (s32[8], s32[8]) tuple(all-gather.1, all-gather.2)
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
+  EXPECT_FALSE(changed);
 }
 
 }  // namespace

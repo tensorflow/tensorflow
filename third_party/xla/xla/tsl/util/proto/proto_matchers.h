@@ -92,6 +92,15 @@ inline InnerMatcher IgnoringRepeatedFieldOrdering(InnerMatcher i) {
   return i;
 }
 
+// Marks the proto matcher as treating NaNs as equal when comparing floating
+// point fields.
+template <typename InnerMatcher,
+          typename = typename InnerMatcher::is_proto_matcher>
+inline InnerMatcher TreatingNaNsAsEqual(InnerMatcher i) {
+  i.SetTreatingNaNsAsEqual();
+  return i;
+}
+
 namespace internal {
 
 // A wrapper around a unique_ptr that can implicitly convert to either a raw
@@ -131,7 +140,7 @@ class PartialIgnore final
   bool IsIgnored(const ::tsl::protobuf::Message& gold,
                  const ::tsl::protobuf::Message& test,
                  const ::tsl::protobuf::FieldDescriptor* field,
-                 const std ::vector<SpecificField>& specific_field) final {
+                 const std::vector<SpecificField>& specific_field) final {
     // Ignore any field fully absent from the gold proto.
     if (field->is_repeated()) {
       return gold.GetReflection()->FieldSize(gold, field) == 0;
@@ -142,7 +151,7 @@ class PartialIgnore final
   bool IsUnknownFieldIgnored(const ::tsl::protobuf::Message&,
                              const ::tsl::protobuf::Message&,
                              const SpecificField&,
-                             const std ::vector<SpecificField>&) final {
+                             const std::vector<SpecificField>&) final {
     return true;
   }
 };
@@ -194,6 +203,11 @@ class ProtoMatcher {
       diff.set_repeated_field_comparison(
           ::tsl::protobuf::util::MessageDifferencer::AS_SET);
     }
+    ::tsl::protobuf::util::DefaultFieldComparator field_comparator;
+    if (treating_nans_as_equal_) {
+      field_comparator.set_treat_nan_as_equal(true);
+      diff.set_field_comparator(&field_comparator);
+    }
     diff.ReportDifferencesToString(&str_report);
     bool same_message = diff.Compare(*expected_ptr, actual_proto);
     if (same_message) {
@@ -227,6 +241,7 @@ class ProtoMatcher {
 
   void SetPartial() { partial_ = true; }
   void SetUnorderedRepeatedFields() { unordered_repeated_fields_ = true; }
+  void SetTreatingNaNsAsEqual() { treating_nans_as_equal_ = true; }
 
  private:
   void DescribeRelationToExpectedProto(::std::ostream* os) const {
@@ -235,6 +250,9 @@ class ProtoMatcher {
     }
     if (unordered_repeated_fields_) {
       *os << "(ignoring repeated field order) ";
+    }
+    if (treating_nans_as_equal_) {
+      *os << "(treating NaNs as equal) ";
     }
     // StreamFormat() doesn't work with some versions of protobuf, so we need
     // to convert expected_proto_ to a string manually.
@@ -249,6 +267,7 @@ class ProtoMatcher {
   ExpectedProto expected_proto_;
   bool partial_ = false;
   bool unordered_repeated_fields_ = false;
+  bool treating_nans_as_equal_ = false;
   const ::tsl::protobuf::util::MessageDifferencer::MessageFieldComparison cmp_;
 };
 

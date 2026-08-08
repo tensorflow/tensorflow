@@ -22,11 +22,11 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Type.h"
@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
 
@@ -75,6 +76,17 @@ constexpr int64_t WarpSize(const se::DeviceDescription& gpu_device_info) {
   return gpu_device_info.threads_per_warp();
 }
 
+inline bool IsPdlEnabled(const DebugOptions& debug_options,
+                         const se::GpuComputeCapability& gpu_cc) {
+  return debug_options.xla_gpu_enable_pdl() && gpu_cc.IsCuda() &&
+         gpu_cc.cuda_compute_capability()->IsAtLeastHopper();
+}
+
+inline bool IsPdlLaunchInsertionEnabled(
+    const DebugOptions& debug_options, const se::GpuComputeCapability& gpu_cc) {
+  return IsPdlEnabled(debug_options, gpu_cc) &&
+         debug_options.xla_gpu_enable_pdl_launch();
+}
 // Fusions that implemented with pre-compiled device kernels have
 // FusionBackendConfig.kind requel to this string.
 inline constexpr absl::string_view kCustomFusionKind = "__custom_fusion";
@@ -129,9 +141,6 @@ bool IsCustomCallToTopK(const HloInstruction& hlo);
 // implementation.
 bool IsCustomCallToPtxKernel(const HloInstruction& hlo);
 
-// Returns true if `hlo` will be implemented as a call to a Mosaic GPU kernel
-// with nvshmem.
-bool IsMosaicWithNvshmem(const HloInstruction& hlo);
 
 // Returns true if `hlo` will be implemented as a call to a Mosaic GPU kernel
 // with multimem.
@@ -295,38 +304,11 @@ absl::StatusOr<std::string> GetProtoFingerprint(
 template <typename ConfigType>
 absl::StatusOr<std::string> FingerprintWithBackendConfig(
     const HloInstruction& hlo) {
-  ASSIGN_OR_RETURN(const auto config, hlo.backend_config<ConfigType>());
-  ASSIGN_OR_RETURN(const std::string fingerprint, GetProtoFingerprint(config));
+  ABSL_ASSIGN_OR_RETURN(const auto config, hlo.backend_config<ConfigType>());
+  ABSL_ASSIGN_OR_RETURN(const std::string fingerprint, GetProtoFingerprint(config));
   return absl::StrCat(hlo.ToString(HloPrintOptions::Fingerprint()),
                       ", backend_config_fingerprint=", fingerprint);
 }
-
-struct InductionVariableFunctionalDependency {
-  // The dependency may be via multiple levels of intermediate calls. At each
-  // level, we need to know which parameters to evaluate, since not all of them
-  // may be relevant. The while loop's body is not included here, since the
-  // induction variable is implicitly the only dependency that is allowed.
-  // The size of the value is always the same as the number of parameters in the
-  // computation. We request a single element of inlined space, which will
-  // automatically pick the optimum value (16, usually).
-  absl::flat_hash_map<const HloComputation*,
-                      absl::InlinedVector<bool, 1 /* chosen automatically */>>
-      required_parameters;
-
-  // The loop and its induction variable that the value depends on.
-  const HloInstruction* loop;
-  const HloInstruction* induction_var;
-};
-
-// Checks if `instr`'s value is a pure function of a while loop's induction
-// variable. This supports instructions that are inside call, async or fusion
-// instructions. The dependency can be through arbitrary non-side-effecting
-// instructions.
-// Currently, this does not support nested while loops. Only dependencies on the
-// inner-most while loop will successfully be analyzed.
-// Requires `while_loop_trip_count_annotator` to have been run on the loop.
-std::optional<InductionVariableFunctionalDependency>
-ResolveFunctionalDependencyOnInductionVariable(const HloInstruction* instr);
 
 }  // namespace gpu
 }  // namespace xla

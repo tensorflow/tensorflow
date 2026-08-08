@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: emitters_opt %s -split-input-file -xla-lower-xla-intrinsic-lib | FileCheck %s
 
 module {
@@ -204,35 +218,7 @@ func.func @rsqrt_unsupported_f16_vector(%arg0: vector<3xf16>) -> vector<3xf16> {
 // CHECK: %[[TRUNC:.*]] = arith.truncf %[[FROM]] : vector<3xf32> to vector<3xf16>
 // CHECK: return %[[TRUNC]]
 
-// -----
 
-module {
-  func.func @atan2_simplify(%arg0: f32) -> f32 {
-    %cst = arith.constant 1.0 : f32
-    %ret = math.atan2 %arg0, %cst : f32
-    return %ret : f32
-  }
-}
-
-// CHECK-LABEL: @atan2_simplify
-// CHECK-NOT: math.atan2
-// CHECK: %[[ATAN_CALL:.*]] = call @xla.atan.f32(%arg0) : (f32) -> f32
-// CHECK: return %[[ATAN_CALL]] : f32
-
-// -----
-
-module {
-  func.func @atan2_no_simplify(%arg0: f32) -> f32 {
-    %cst = arith.constant 2.0 : f32
-    %ret = math.atan2 %arg0, %cst : f32
-    return %ret : f32
-  }
-}
-
-// CHECK-LABEL: @atan2_no_simplify
-// CHECK-NOT: call @xla.atan
-// CHECK: math.atan2 %arg0, %cst : f32
-// CHECK: return
 
 // -----
 
@@ -281,17 +267,4 @@ module {
 // CHECK: %[[RESULT:.*]] = call @xla.atan.f32(%arg0) : (f32) -> f32
 // CHECK: return %[[RESULT]] : f32
 
-// -----
 
-module {
-  func.func @atan2_vector_simplify(%arg0: vector<8xf32>) -> vector<8xf32> {
-    %cst = arith.constant dense<1.000000e+00> : vector<8xf32>
-    %ret = math.atan2 %arg0, %cst : vector<8xf32>
-    return %ret : vector<8xf32>
-  }
-}
-
-// CHECK-LABEL: @atan2_vector_simplify
-// CHECK-NOT: math.atan2
-// CHECK: %[[RESULT:.*]] = call @xla.atan.v8f32(%arg0) : (vector<8xf32>) -> vector<8xf32>
-// CHECK: return %[[RESULT]] : vector<8xf32>

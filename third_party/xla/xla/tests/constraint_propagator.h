@@ -79,6 +79,10 @@ class ConstraintPropagator {
   // sqrt(x) => x >= 0
   absl::Status SeedConstraints(const HloComputation* computation);
 
+  // Seeds constraints from domain-specific high-level ML patterns and idioms
+  // (e.g. guarded division for gradient/activation threshold clipping).
+  absl::Status SeedMLPatternsConstraints(const HloComputation* computation);
+
   // Propagates constraints from the seed constraints backwards with exact
   // propagation to avoid introducing approximations.
   absl::Status PropagateSeedConstraints(const HloComputation* computation);
@@ -97,6 +101,14 @@ class ConstraintPropagator {
   // etc. These approximations can reduce the valid search space for an input
   // and also result in empty constraints.
   absl::Status PropagateConstraintsApprox(const HloInstruction* instruction);
+
+  // Attempts to apply constraint_0 to inst_0 AND constraint_1 to inst_1.
+  // Applies BOTH constraints ONLY IF neither instruction's state becomes Empty.
+  // Returns true if both constraints were applied, false otherwise.
+  bool TryAddDualConstraints(const HloInstruction* inst_0,
+                             const ConstraintInterval& constraint_0,
+                             const HloInstruction* inst_1,
+                             const ConstraintInterval& constraint_1);
 
   // Function that extracts known zeroes bitmask for the given dimension of a
   // DynamicSlice or DynamicUpdateSlice instruction.

@@ -147,7 +147,7 @@ absl::StatusOr<bool> FusionConstantSinking::RunImpl(
   }
 
   if (changed) {
-    ASSIGN_OR_RETURN(bool dce, HloDCE{}.Run(module, execution_threads));
+    ABSL_ASSIGN_OR_RETURN(bool dce, HloDCE{}.Run(module, execution_threads));
     changed |= dce;
   }
 

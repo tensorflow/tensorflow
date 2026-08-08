@@ -91,7 +91,7 @@ TEST(PjRtCApiCpuTest, CreateClientWithInvalidCreateOptions) {
   code_args.struct_size = PJRT_Error_GetCode_Args_STRUCT_SIZE;
   code_args.extension_start = nullptr;
   code_args.error = error;
-  api_->PJRT_Error_GetCode(&code_args);
+  ASSERT_EQ(api_->PJRT_Error_GetCode(&code_args), nullptr);
   EXPECT_EQ(code_args.code, PJRT_Error_Code_INVALID_ARGUMENT);
 
   PJRT_Error_Message_Args message_args;
@@ -138,7 +138,7 @@ TEST(PjRtCApiCpuTest, CreateClientWithUnexpectedCreateOptions) {
   code_args.struct_size = PJRT_Error_GetCode_Args_STRUCT_SIZE;
   code_args.extension_start = nullptr;
   code_args.error = error;
-  api_->PJRT_Error_GetCode(&code_args);
+  ASSERT_EQ(api_->PJRT_Error_GetCode(&code_args), nullptr);
   EXPECT_EQ(code_args.code, PJRT_Error_Code_INVALID_ARGUMENT);
 
   PJRT_Error_Message_Args message_args;
@@ -185,7 +185,45 @@ TEST(PjRtCApiCpuTest, CreateClientWithAsynchronousOption) {
   destroy_args.struct_size = PJRT_Client_Destroy_Args_STRUCT_SIZE;
   destroy_args.extension_start = nullptr;
   destroy_args.client = args.client;
-  api_->PJRT_Client_Destroy(&destroy_args);
+  ASSERT_EQ(api_->PJRT_Client_Destroy(&destroy_args), nullptr);
+}
+
+TEST(PjRtCApiCpuTest, CreateClientWithProcessIdOption) {
+  const PJRT_Api* api_ = GetPjrtApi();
+
+  PJRT_Client_Create_Args args;
+  args.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+
+  PJRT_NamedValue create_option;
+  create_option.struct_size = PJRT_NamedValue_STRUCT_SIZE;
+  create_option.extension_start = nullptr;
+  create_option.name = "process_id";
+  create_option.name_size = strlen("process_id");
+  create_option.type = PJRT_NamedValue_Type::PJRT_NamedValue_kInt64;
+  create_option.int64_value = 16;
+  create_option.value_size = 1;
+
+  args.create_options = &create_option;
+  args.num_options = 1;
+  args.client = nullptr;
+  PJRT_Error* error = api_->PJRT_Client_Create(&args);
+  ASSERT_EQ(error, nullptr);
+
+  PJRT_Client_ProcessIndex_Args dev_args;
+  dev_args.struct_size = PJRT_Client_ProcessIndex_Args_STRUCT_SIZE;
+  dev_args.extension_start = nullptr;
+  dev_args.client = args.client;
+  error = api_->PJRT_Client_ProcessIndex(&dev_args);
+  ASSERT_EQ(error, nullptr);
+  ASSERT_EQ(dev_args.process_index, 16);
+
+  PJRT_Client_Destroy_Args destroy_args;
+  destroy_args.struct_size = PJRT_Client_Destroy_Args_STRUCT_SIZE;
+  destroy_args.extension_start = nullptr;
+  destroy_args.client = args.client;
+  PJRT_Error* destroy_error = GetPjrtApi()->PJRT_Client_Destroy(&destroy_args);
+  ASSERT_EQ(destroy_error, nullptr);
 }
 
 }  // namespace

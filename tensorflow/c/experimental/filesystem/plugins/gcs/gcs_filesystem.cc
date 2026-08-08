@@ -159,6 +159,11 @@ static int64_t LoadBufferFromGCS(const std::string& path, size_t offset,
   TF_SetStatus(status, TF_OK, "");
   VLOG(1) << absl::StrFormat("Successful read of %s @ %u of size: %u", path,
                              offset, read);
+  if (read < 0) {
+    TF_SetStatus(status, TF_INTERNAL, "Invalid negative content-length");
+    return -1;
+  }
+  read = std::min<int64_t>(read, buffer_size);
   stream.read(buffer, read);
   read = stream.gcount();
   if (read < buffer_size) {

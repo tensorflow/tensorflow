@@ -58,8 +58,8 @@ absl::Status TestReportFile::Initialize() {
     return absl::InvalidArgumentError(absl::StrCat(
         "Cannot create TestReportFile, file exists: ", mangled_fname));
   }
-  RETURN_IF_ERROR(env->NewWritableFile(mangled_fname, &log_file_));
-  RETURN_IF_ERROR(log_file_->Flush());
+  ABSL_RETURN_IF_ERROR(env->NewWritableFile(mangled_fname, &log_file_));
+  ABSL_RETURN_IF_ERROR(log_file_->Flush());
 
   closed_ = false;
   return absl::OkStatus();
@@ -78,7 +78,7 @@ absl::Status TestReporter::Close() {
 
   tensorflow::BenchmarkEntries entries;
   *entries.add_entry() = benchmark_entry_;
-  RETURN_IF_ERROR(report_file_.Append(entries.SerializeAsString()));
+  ABSL_RETURN_IF_ERROR(report_file_.Append(entries.SerializeAsString()));
   benchmark_entry_.Clear();
 
   return report_file_.Close();

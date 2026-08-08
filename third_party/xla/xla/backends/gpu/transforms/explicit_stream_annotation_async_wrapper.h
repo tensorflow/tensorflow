@@ -25,10 +25,11 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// This pass will find the kCall instructions that
-// are annotated with explicit stream id in their frontend
-// attributes. It then wraps them using AsyncStartDone pairs to achieve
-// asynchronous executions.
+// This pass finds instructions annotated with an explicit stream id in their
+// frontend attributes (kXlaStreamAnnotationAttr). If the instruction is already
+// a kCall it is asynchronized directly; otherwise it is first wrapped in a
+// kCall (with all frontend attributes moved to the wrapper) and then
+// asynchronized, using AsyncStart/Done pairs to achieve asynchronous execution.
 class ExplicitStreamAnnotationAsyncWrapper : public HloModulePass {
  public:
   inline static constexpr char kMainExecutionThread[] = "main";

@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "google/protobuf/text_format.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -154,7 +155,7 @@ TEST(DumpHloModule, WithBufferAssignment) {
           },
           &alias_info,
           /*color_alignment=*/[](LogicalBuffer::Color) -> int64_t { return 1; },
-          /*options=*/std::move(opts))
+          /*opts=*/std::move(opts))
           .value();
   std::string dump_name = "dump";
   std::vector<std::string> paths =
@@ -178,6 +179,46 @@ TEST(DumpHloModule, WithBufferAssignment) {
   EXPECT_TRUE(absl::StrContains(data, "Total bytes:"));
   // Sixth file is the debug options.
   EXPECT_TRUE(ReadFileToString(env, paths[5], &data).ok());
+}
+
+TEST(DumpHloModule, DumpRiegeli) {
+  HloModuleConfig config;
+  DebugOptions options = config.debug_options();
+  tsl::Env* env = tsl::Env::Default();
+  std::string dump_dir;
+  EXPECT_TRUE(env->LocalTempFilename(&dump_dir));
+  options.set_xla_dump_to(dump_dir);
+  options.set_xla_dump_hlo_as_riegeli(true);
+  config.set_debug_options(options);
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = s32[11] parameter(0)
+      c = s32[11] constant({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10})
+      ROOT x = s32[11] multiply(p0, c)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
+  AliasInfo alias_info;
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
+  std::unique_ptr<BufferAssignment> buffer_assignment =
+      BufferAssigner::Run(
+          /*module=*/&*m,
+          /*hlo_ordering=*/std::make_unique<DependencyHloOrdering>(&*m),
+          /*buffer_size=*/
+          [](const BufferValue& buffer) -> int64_t {
+            return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
+          },
+          &alias_info,
+          /*color_alignment=*/[](LogicalBuffer::Color) -> int64_t { return 1; },
+          /*opts=*/std::move(opts))
+          .value();
+  std::string dump_name = "dump";
+  std::vector<std::string> paths =
+      DumpHloModuleIfEnabled(*m, *buffer_assignment, dump_name);
+  EXPECT_EQ(paths.size(), 2);
 }
 
 TEST(DumpTest, NoDumpingToFileWhenNotEnabled) {
@@ -395,6 +436,9 @@ TEST(DumpTest, GetNonDefaultDebugOptions) {
   options.clear_xla_gpu_enable_command_buffer();
   options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
   options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+  // Optional enum field explicitly set to a non-default value.
+  options.set_xla_gpu_pipeline_all_reduce(
+      DebugOptions::COLLECTIVE_PIPELINING_MODE_OFF);
   // Message field
   int gpus_per_node;
   EXPECT_TRUE(absl::SimpleAtoi(
@@ -434,6 +478,9 @@ TEST(DumpTest, GetNonDefaultDebugOptions) {
               testing::HasSubstr("xla_gpu_enable_command_buffer: CUBLAS"));
   EXPECT_THAT(non_default_options,
               testing::HasSubstr("xla_gpu_enable_command_buffer: FUSION"));
+  EXPECT_THAT(non_default_options,
+              testing::HasSubstr("xla_gpu_pipeline_all_reduce: "
+                                 "COLLECTIVE_PIPELINING_MODE_OFF"));
   EXPECT_THAT(
       non_default_options,
       testing::HasSubstr("xla_gpu_analytical_latency_estimator_options: {\n"
@@ -467,6 +514,9 @@ TEST(DumpTest, GetNonDefaultDebugOptions) {
             DebugOptions::CUBLAS);
   EXPECT_EQ(parsed_options.xla_gpu_enable_command_buffer(1),
             DebugOptions::FUSION);
+  EXPECT_TRUE(parsed_options.has_xla_gpu_pipeline_all_reduce());
+  EXPECT_EQ(parsed_options.xla_gpu_pipeline_all_reduce(),
+            DebugOptions::COLLECTIVE_PIPELINING_MODE_OFF);
   EXPECT_EQ(parsed_options.xla_gpu_analytical_latency_estimator_options().at(
                 "gpus_per_node"),
             std::to_string(gpus_per_node + 1));
@@ -667,6 +717,86 @@ TEST(DumpHloIfEnabled, CompactGte) {
   EXPECT_FALSE(absl::StrContains(data, "get-tuple-element"));
   EXPECT_TRUE(absl::StrContains(data, "%p0#0"));
   EXPECT_TRUE(absl::StrContains(data, "%p0#1"));
+}
+
+class DumpModuleFilterTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    env_ = tsl::Env::Default();
+    ASSERT_TRUE(env_->LocalTempFilename(&dump_dir_));
+    options_ = GetDebugOptionsFromFlags();
+    options_.set_xla_dump_to(dump_dir_);
+    options_.set_xla_dump_hlo_as_text(true);
+  }
+
+  bool Run(absl::string_view module_re) {
+    options_.set_xla_dump_hlo_module_re(module_re);
+    HloModuleConfig config;
+    config.set_debug_options(options_);
+    auto m_or_status = ParseAndReturnUnverifiedModule(kModuleStr, config);
+    if (!m_or_status.ok()) {
+      return false;
+    }
+    auto m = std::move(m_or_status).value();
+
+    bool hlo_dumped = !DumpHloModuleIfEnabled(*m, "dump").empty();
+
+    HloModuleProto proto;
+    proto.set_name("my_proto");
+    DumpPerModuleProtobufToFile(*m, proto, options_, "my_name");
+
+    std::vector<std::string> matches;
+    if (!env_->GetMatchingPaths(tsl::io::JoinPath(dump_dir_, "*my_name*"),
+                                &matches)
+             .ok()) {
+      return false;
+    }
+    bool proto_dumped = !matches.empty();
+
+    return hlo_dumped && proto_dumped;
+  }
+
+  tsl::Env* env_;
+  std::string dump_dir_;
+  DebugOptions options_;
+  const char* const kModuleStr = R"(
+    HloModule my_module
+    test {
+      p0 = s32[11] parameter(0)
+      ROOT x = s32[11] negate(p0)
+    }
+  )";
+};
+
+TEST_F(DumpModuleFilterTest, DisablesDumpWhenFilterDoesNotMatch) {
+  EXPECT_FALSE(Run("other_module"));
+}
+
+TEST_F(DumpModuleFilterTest, EnablesDumpWhenFilterMatches) {
+  EXPECT_TRUE(Run("my_.*"));
+}
+
+TEST(DumpEmitterFilterTest, EmitterFilterControlsDumping) {
+  DebugOptions options;
+  EXPECT_FALSE(DumpingEnabledForEmitter("llvm", options));
+  EXPECT_FALSE(DumpingEnabledForEmitter("ptx", options));
+
+  options.set_xla_dump_emitter_re("llvm");
+  EXPECT_TRUE(DumpingEnabledForEmitter("llvm", options));
+  EXPECT_FALSE(DumpingEnabledForEmitter("ptx", options));
+
+  options.set_xla_dump_emitter_re("ptx");
+  EXPECT_FALSE(DumpingEnabledForEmitter("llvm", options));
+  EXPECT_TRUE(DumpingEnabledForEmitter("ptx", options));
+
+  options.set_xla_dump_emitter_re("llvm|ptx");
+  EXPECT_TRUE(DumpingEnabledForEmitter("llvm", options));
+  EXPECT_TRUE(DumpingEnabledForEmitter("ptx", options));
+
+  options.set_xla_dump_emitter_re(".*");
+  EXPECT_TRUE(DumpingEnabledForEmitter("llvm", options));
+  EXPECT_TRUE(DumpingEnabledForEmitter("ptx", options));
+  EXPECT_TRUE(DumpingEnabledForEmitter("triton-fusion", options));
 }
 
 }  // namespace

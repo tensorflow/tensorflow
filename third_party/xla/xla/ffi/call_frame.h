@@ -129,7 +129,7 @@ class CallFrame {
 
   // Builds an XLA_FFI_CallFrame from owned arguments and attributes.
   XLA_FFI_CallFrame Build(
-      const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
+      const XLA_FFI_Api* api, XLA_FFI_InvokeContext* ctx,
       XLA_FFI_ExecutionStage stage = XLA_FFI_ExecutionStage_EXECUTE);
 
  private:

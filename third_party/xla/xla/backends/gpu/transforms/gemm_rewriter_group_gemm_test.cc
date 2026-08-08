@@ -31,7 +31,7 @@ namespace gpu {
 namespace {
 
 class GroupedGemmRewriteTest
-    : public HloPjRtInterpreterReferenceMixin<GemmRewriteTestBase> {
+    : public HloInterpreterReferenceMixin<GemmRewriteTestBase> {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GemmRewriteTestBase::GetDebugOptionsForTest();
@@ -1457,7 +1457,7 @@ ENTRY test {
 // Tests verifying that grouped GEMM rewriting is skipped when
 // xla_gpu_enable_cublaslt is disabled.
 class GroupedGemmRewriteDisabledCublasLtTest
-    : public HloPjRtInterpreterReferenceMixin<GemmRewriteTestBase> {
+    : public HloInterpreterReferenceMixin<GemmRewriteTestBase> {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GemmRewriteTestBase::GetDebugOptionsForTest();
@@ -1501,7 +1501,7 @@ ENTRY AddRaggedDotsFunc {
 // Tests verifying that grouped GEMM rewriting is skipped when
 // xla_gpu_experimental_use_ragged_dot_grouped_gemm is disabled.
 class GroupedGemmRewriteDisabledFlagTest
-    : public HloPjRtInterpreterReferenceMixin<GemmRewriteTestBase> {
+    : public HloInterpreterReferenceMixin<GemmRewriteTestBase> {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GemmRewriteTestBase::GetDebugOptionsForTest();

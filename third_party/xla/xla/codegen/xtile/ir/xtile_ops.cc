@@ -242,4 +242,71 @@ mlir::OpFoldResult MaskOp::fold(FoldAdaptor) {
   return {};
 }
 
+static bool IsSupportedScaleElementType(mlir::Type type) {
+  return mlir::isa<mlir::Float8E8M0FNUType, mlir::Float8E4M3FNType,
+                   mlir::Float8E5M2Type>(type) ||
+         (mlir::isa<mlir::IntegerType>(type) &&
+          mlir::cast<mlir::IntegerType>(type).getWidth() == 8);
+}
+
+static bool IsSupportedOperandElementType(mlir::Type type) {
+  if (mlir::isa<mlir::FloatType>(type)) {
+    return true;
+  }
+  if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(type)) {
+    return int_type.getWidth() == 8 || int_type.getWidth() == 4;
+  }
+  return false;
+}
+
+mlir::LogicalResult DotScaledOp::verify() {
+  mlir::Type lhs_storage_type =
+      mlir::cast<mlir::ShapedType>(getLhs().getType()).getElementType();
+  if (!IsSupportedOperandElementType(lhs_storage_type)) {
+    return emitOpError() << "LHS tensor element type " << lhs_storage_type
+                         << " is not supported. Supported LHS element "
+                            "types are float or int8/uint8";
+  }
+
+  mlir::Type rhs_storage_type =
+      mlir::cast<mlir::ShapedType>(getRhs().getType()).getElementType();
+  if (!IsSupportedOperandElementType(rhs_storage_type)) {
+    return emitOpError() << "RHS tensor element type " << rhs_storage_type
+                         << " is not supported. Supported RHS element "
+                            "types are float or int8/uint8";
+  }
+
+  if (!IsSupportedOperandElementType(getLhsElemType())) {
+    return emitOpError() << "LHS logical element type " << getLhsElemType()
+                         << " is not supported. Supported LHS logical "
+                            "element types are float or int8/int4";
+  }
+
+  if (!IsSupportedOperandElementType(getRhsElemType())) {
+    return emitOpError() << "RHS logical element type " << getRhsElemType()
+                         << " is not supported. Supported RHS logical "
+                            "element types are float or int8/int4";
+  }
+
+  if (mlir::Value lhs_scale = getLhsScale()) {
+    mlir::Type scale_type =
+        mlir::cast<mlir::ShapedType>(lhs_scale.getType()).getElementType();
+    if (!IsSupportedScaleElementType(scale_type)) {
+      return emitOpError() << "LHS scale element type " << scale_type
+                           << " is not supported. Supported scale element "
+                              "types are: f8E8M0FNU, f8E4M3FN, f8E5M2, i8/s8";
+    }
+  }
+  if (mlir::Value rhs_scale = getRhsScale()) {
+    mlir::Type scale_type =
+        mlir::cast<mlir::ShapedType>(rhs_scale.getType()).getElementType();
+    if (!IsSupportedScaleElementType(scale_type)) {
+      return emitOpError() << "RHS scale element type " << scale_type
+                           << " is not supported. Supported scale element "
+                              "types are: f8E8M0FNU, f8E4M3FN, f8E5M2, i8/s8";
+    }
+  }
+  return mlir::success();
+}
+
 }  // namespace xla::xtile

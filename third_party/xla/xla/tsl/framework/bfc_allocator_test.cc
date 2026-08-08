@@ -29,9 +29,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/base/log_severity.h"
 #include "absl/base/no_destructor.h"
+#include "absl/log/scoped_mock_log.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/framework/scoped_allocation_trace.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
@@ -39,6 +42,11 @@ limitations under the License.
 
 namespace tsl {
 namespace {
+
+using ::testing::_;
+using ::testing::AllOf;
+using ::testing::AtLeast;
+using ::testing::HasSubstr;
 
 static constexpr size_t kAlignment = Allocator::kAllocatorAlignment;
 
@@ -108,6 +116,39 @@ TEST(BFCAllocatorTest, DefaultAlignment) {
   void* ptr = alloc.AllocateRaw(kAlignment, 1);
   ASSERT_NE(ptr, nullptr);
   EXPECT_TRUE(IsAligned(ptr, kAlignment));
+  alloc.DeallocateRaw(ptr);
+}
+
+TEST(BFCAllocatorTest, OomLogsAllocationAnnotations) {
+  BFCAllocator::Options opts;
+  opts.allow_growth = false;
+  opts.allow_retry_on_failure = false;
+  BFCAllocator alloc(std::make_unique<FakeSubAllocator>(),
+                     /*total_memory=*/1024, /*name=*/"annotated", opts);
+
+  void* ptr = nullptr;
+  {
+    ScopedAllocationTrace exec_scope("xla.execute",
+                                     {{"executable", "module"}, {"device", 7}});
+    ScopedAllocationTrace buffer_scope(
+        "xla.buffer", {{"kind", "live_out"}, {"allocation_index", 3}});
+    ptr = alloc.AllocateRaw(kAlignment, 512);
+  }
+  ASSERT_NE(ptr, nullptr);
+
+  absl::ScopedMockLog log(absl::MockLogDefault::kIgnoreUnexpected);
+  EXPECT_CALL(
+      log,
+      Log(absl::LogSeverity::kInfo, _,
+          AllOf(HasSubstr("InUse at"), HasSubstr("allocation_annotation"),
+                HasSubstr("xla.execute{executable=module, device=7}"),
+                HasSubstr("xla.buffer{kind=live_out, allocation_index=3}"))))
+      .Times(AtLeast(1));
+  log.StartCapturingLogs();
+
+  EXPECT_EQ(alloc.AllocateRaw(kAlignment, 2048), nullptr);
+
+  log.StopCapturingLogs();
   alloc.DeallocateRaw(ptr);
 }
 

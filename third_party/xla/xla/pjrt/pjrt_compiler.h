@@ -27,16 +27,17 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_compiler_variant.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -109,6 +110,8 @@ class PjRtCompiler;
 using PjRtCompilerFactory =
     std::function<absl::StatusOr<std::unique_ptr<PjRtCompiler>>()>;
 
+using PjRtCompilerVariantPicker = std::function<absl::StatusOr<std::string>()>;
+
 // A key type for the compiler registry.
 struct PjRtCompilerType {
   std::string platform_name;
@@ -148,6 +151,15 @@ class PjRtCompilerRegistry {
                                absl::string_view variant_name,
                                PjRtCompilerFactory factory);
 
+  // Registers a compiler variant picker for a specific platform.
+  void RegisterVariantPicker(absl::string_view platform_name,
+                             PjRtCompilerVariantPicker picker,
+                             bool is_weak = false);
+
+  // Retrieves the variant picker for a platform, if any.
+  std::optional<PjRtCompilerVariantPicker> GetVariantPicker(
+      absl::string_view platform_name);
+
   // Registers a compiler instance for a specific platform and variant.
   absl::Status RegisterCompiler(absl::string_view platform_name,
                                 absl::string_view variant_name,
@@ -177,6 +189,13 @@ class PjRtCompilerRegistry {
   absl::flat_hash_map<PjRtCompilerType, std::unique_ptr<PjRtCompiler>>
       compilers_ ABSL_GUARDED_BY(compiler_mutex_);
 
+  struct VariantPickerEntry {
+    PjRtCompilerVariantPicker picker;
+    bool is_weak = false;
+  };
+  absl::flat_hash_map<std::string, VariantPickerEntry> variant_pickers_
+      ABSL_GUARDED_BY(compiler_mutex_);
+
   absl::flat_hash_map<PjRtCompilerType, PjRtCompilerFactory> factories_
       ABSL_GUARDED_BY(factory_mutex_);
 };
@@ -197,6 +216,11 @@ absl::StatusOr<PjRtCompiler*> GetPjRtCompiler(
 void PjRtRegisterCompilerFactory(absl::string_view platform_name,
                                  absl::string_view variant_name,
                                  PjRtCompilerFactory factory);
+
+// Registers a compiler variant picker for a specific platform.
+void PjRtRegisterCompilerVariantPicker(absl::string_view platform_name,
+                                       PjRtCompilerVariantPicker picker,
+                                       bool is_weak = false);
 
 // A compiler variant is a string used to distinguish between different
 // compiler implementations registered for the same platform, such as a remote
@@ -251,31 +275,31 @@ class PjRtTopologyDescription {
 
   // Returns the number of chips.
   virtual absl::StatusOr<int> ChipCount() const {
-    ASSIGN_OR_RETURN(int process_count, ProcessCount());
-    ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
+    ABSL_ASSIGN_OR_RETURN(int process_count, ProcessCount());
+    ABSL_ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
     return process_count * chips_per_process;
   }
 
   // Returns the total number of cores of the default type.
   virtual absl::StatusOr<int> CoreCountOfDefaultType() const {
-    ASSIGN_OR_RETURN(int process_count, ProcessCount());
-    ASSIGN_OR_RETURN(int cores_per_process, CoreCountOfDefaultTypePerProcess());
+    ABSL_ASSIGN_OR_RETURN(int process_count, ProcessCount());
+    ABSL_ASSIGN_OR_RETURN(int cores_per_process, CoreCountOfDefaultTypePerProcess());
     return process_count * cores_per_process;
   }
 
   // As above, but returns the number of logical devices per host.
   virtual absl::StatusOr<int> LogicalDeviceCountOfDefaultTypePerProcess()
       const {
-    ASSIGN_OR_RETURN(int logical_devices_per_chip,
+    ABSL_ASSIGN_OR_RETURN(int logical_devices_per_chip,
                      LogicalDeviceCountOfDefaultTypePerChip());
-    ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
+    ABSL_ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
     return chips_per_process * logical_devices_per_chip;
   }
 
   // Returns the total number of logical devices of the default type.
   virtual absl::StatusOr<int> LogicalDeviceCountOfDefaultType() const {
-    ASSIGN_OR_RETURN(int process_count, ProcessCount());
-    ASSIGN_OR_RETURN(int logical_devices_per_process,
+    ABSL_ASSIGN_OR_RETURN(int process_count, ProcessCount());
+    ABSL_ASSIGN_OR_RETURN(int logical_devices_per_process,
                      LogicalDeviceCountOfDefaultTypePerProcess());
     return process_count * logical_devices_per_process;
   }
@@ -288,8 +312,8 @@ class PjRtTopologyDescription {
 
   // Returns the number of cores of the default type per process.
   virtual absl::StatusOr<int> CoreCountOfDefaultTypePerProcess() const {
-    ASSIGN_OR_RETURN(int cores_per_chip, CoreCountOfDefaultTypePerChip());
-    ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
+    ABSL_ASSIGN_OR_RETURN(int cores_per_chip, CoreCountOfDefaultTypePerChip());
+    ABSL_ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
     return cores_per_chip * chips_per_process;
   }
 
@@ -502,6 +526,18 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, MaybeOwningMlirModule module,
     const PjRtTopologyDescription& topology, PjRtClient* client = nullptr);
+
+// Variant of `PjRtCompile` that accepts a compiler variant.
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
+    CompileOptions options, const XlaComputation& computation,
+    const PjRtTopologyDescription& topology, PjRtCompilerVariant variant,
+    PjRtClient* client = nullptr);
+
+// Variant of `PjRtCompile` that accepts a compiler variant.
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
+    CompileOptions options, MaybeOwningMlirModule module,
+    const PjRtTopologyDescription& topology, PjRtCompilerVariant variant,
+    PjRtClient* client = nullptr);
 
 // Stores a compilation phase's compiler and validator functions.
 // This struct bundles the essential functional components required to define

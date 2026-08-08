@@ -59,7 +59,7 @@ You can also pass in debug option flags for the HloModule.
 Usage:
 
   bazel run run_hlo_module -- \
-    --input_format=[hlo|mhlo|pb|pbtxt|stablehlo]               \
+    --input_format=[hlo|mhlo|pb|pbtxt|stablehlo|riegeli]               \
     --platform=[CPU|GPU|CUDA|Interpreter] \
     path/to/[hlo|mhlo|stablehlo]_module
 
@@ -171,6 +171,7 @@ int main(int argc, char** argv) {
                 "  mhlo : MHLO in textual or bytecode format\n"
                 "  pb : xla::HloProto in binary proto format\n"
                 "  pbtxt : xla::HloProto in text proto format\n"
+                "  riegeli : xla::HloProto in riegeli format\n"
                 "  stablehlo : StableHLO in textual or bytecode format"),
       tsl::Flag(
           "iterations", &opts.iterations,

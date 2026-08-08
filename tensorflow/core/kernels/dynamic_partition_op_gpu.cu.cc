@@ -102,7 +102,7 @@ void MoveValues(const GPUDevice& d, int32_t* keys, int32_t* values,
 }
 
 struct IdentityOp {
-  __device__ int32_t __forceinline__ operator()(const int32_t& a) const {
+  __device__ int32_t __forceinline__ operator()(const int32_t a) const {
     return a;
   }
 };

@@ -34,28 +34,28 @@ inline void BroadcastPrelu4DSlow(
     const RuntimeShape& output_shape, T* output_data) {
   const int32_t quantized_min = std::numeric_limits<T>::min();
   const int32_t quantized_max = std::numeric_limits<T>::max();
-  ForEachBroadcastedElement(
-      input_shape, alpha_shape, output_shape,
-      [&](int output_index, int input_index, int alpha_index) {
-        const int32_t input_value =
-            params.input_offset + input_data[input_index];
-        int32_t output_value;
-        if (input_value >= 0) {
-          output_value = MultiplyByQuantizedMultiplier(
-              input_value, params.output_multiplier_1, params.output_shift_1);
-        } else {
-          const int32_t alpha_value =
-              params.alpha_offset + alpha_data[alpha_index];
-          output_value = MultiplyByQuantizedMultiplier(
-              input_value * alpha_value, params.output_multiplier_2,
-              params.output_shift_2);
-        }
-        output_value += params.output_offset;
 
-        const int32_t clamped_output =
-            std::min(quantized_max, std::max(quantized_min, output_value));
-        output_data[output_index] = static_cast<T>(clamped_output);
-      });
+  auto op = [&params, quantized_min, quantized_max](T input_val, U alpha_val) {
+    const int32_t input_value = params.input_offset + input_val;
+    int32_t output_value;
+    if (input_value >= 0) {
+      output_value = MultiplyByQuantizedMultiplier(
+          input_value, params.output_multiplier_1, params.output_shift_1);
+    } else {
+      const int32_t alpha_value = params.alpha_offset + alpha_val;
+      output_value = MultiplyByQuantizedMultiplier(input_value * alpha_value,
+                                                   params.output_multiplier_2,
+                                                   params.output_shift_2);
+    }
+    output_value += params.output_offset;
+
+    const int32_t clamped_output =
+        std::min(quantized_max, std::max(quantized_min, output_value));
+    return static_cast<T>(clamped_output);
+  };
+
+  BroadcastBinaryOpSimple(input_shape, input_data, alpha_shape, alpha_data,
+                          output_shape, output_data, op);
 }
 
 template <typename T, typename U>

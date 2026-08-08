@@ -252,11 +252,9 @@ class HloAliasible {
 };
 
 class HloAsyncInstruction : public HloInstruction {
- public:
-  // Constructs async-{update,done}.
-  HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
-                      HloInstruction* operand);
+  friend class HloInstruction;
 
+ public:
   HloComputation* async_wrapped_computation() const;
   HloInstruction* async_wrapped_instruction() const;
   HloOpcode async_wrapped_opcode() const;
@@ -306,6 +304,10 @@ class HloAsyncInstruction : public HloInstruction {
   HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
                       absl::Span<HloInstruction* const> operands,
                       HloOpcode async_wrapped_opcode);
+
+  // Constructs async-{update,done}.
+  HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
+                      HloInstruction* operand);
 
  private:
   // async-{update,done} inherit all their attributes from async-start,
@@ -548,7 +550,7 @@ class HloChannelInstruction : public HloInstruction {
 class HloTopKInstruction : public HloInstruction {
  public:
   HloTopKInstruction(const Shape& shape, HloInstruction* input, int64_t k,
-                     bool largest);
+                     bool largest, bool is_stable);
 
   void ToProto(HloInstructionProto* proto) const override;
 
@@ -561,6 +563,8 @@ class HloTopKInstruction : public HloInstruction {
 
   // Returns whether the largest or smallest K values should be computed.
   bool largest() const { return largest_; }
+
+  bool is_stable() const { return is_stable_; }
 
   void PrintExtraAttributesImpl(AttributePrinter& printer,
                                 const HloPrintOptions& options) const override;
@@ -576,6 +580,7 @@ class HloTopKInstruction : public HloInstruction {
 
   int64_t k_;
   bool largest_;
+  bool is_stable_;
 };
 
 class HloSendRecvInstruction : public HloChannelInstruction {
@@ -985,26 +990,32 @@ class HloCollectiveBroadcastInstruction : public HloCollectiveInstruction {
       HloOpcode opcode, const Shape& shape,
       absl::Span<HloInstruction* const> operands,
       std::shared_ptr<CollectiveDeviceListBase> device_list,
-      bool constrain_layout, const std::optional<int64_t>& channel_id);
+      bool constrain_layout, const std::optional<int64_t>& channel_id,
+      bool has_dynamic_root = false);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   explicit HloCollectiveBroadcastInstruction(
       HloOpcode opcode, const Shape& shape,
       absl::Span<HloInstruction* const> operands,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-      const std::optional<int64_t>& channel_id);
+      const std::optional<int64_t>& channel_id, bool has_dynamic_root = false);
 
   void ToProto(HloInstructionProto* proto) const override;
 
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kCollectiveBroadcast;
   }
+  bool has_dynamic_root() const { return has_dynamic_root_; }
 
  private:
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
+  void PrintExtraAttributesImpl(AttributePrinter& printer,
+                                const HloPrintOptions& options) const override;
+
+  bool has_dynamic_root_;
 };
 
 class HloCollectivePermuteInstruction : public HloChannelInstruction {
@@ -1499,13 +1510,13 @@ class HloCallableInstruction : public HloInstruction, public HloAliasible {
                          absl::Span<HloComputation* const> called_computations);
 
   HloCallableInstruction(HloOpcode opcode, const Shape& shape,
-                         const std::string& name, const std::string& attributes,
+                         absl::string_view name, absl::string_view attributes,
                          int64_t version);
 
   HloCallableInstruction(HloOpcode opcode, const Shape& shape,
                          absl::Span<HloInstruction* const> operands,
-                         HloComputation* decomposition, const std::string& name,
-                         const std::string& attributes, int64_t version);
+                         HloComputation* decomposition, absl::string_view name,
+                         absl::string_view attributes, int64_t version);
 
   ~HloCallableInstruction() override;
 
@@ -1550,11 +1561,12 @@ class HloCallableInstruction : public HloInstruction, public HloAliasible {
   }
 
   FrontendAttributes BuildFrontendAttributesForComposite(
-      const std::string& name,
+      absl::string_view name,
       std::optional<absl::string_view> attributes = std::nullopt,
       std::optional<int64_t> version = std::nullopt) {
     FrontendAttributes frontend_attributes;
-    frontend_attributes.mutable_map()->insert({"composite.name", name});
+    frontend_attributes.mutable_map()->insert(
+        {"composite.name", std::string(name)});
     frontend_attributes.mutable_map()->insert(
         {"composite.attributes",
          attributes.has_value() ? std::string(*attributes) : "{}"});
@@ -1723,13 +1735,13 @@ class HloCallInstruction : public HloCallableInstruction {
                      HloComputation* called_computation);
 
   HloCallInstruction(const Shape& shape, HloInstruction* decomposition_root,
-                     const std::string& name, const std::string& attributes,
+                     absl::string_view name, absl::string_view attributes,
                      int64_t version);
 
   HloCallInstruction(const Shape& shape,
                      absl::Span<HloInstruction* const> operands,
-                     HloComputation* decomposition, const std::string& name,
-                     const std::string& attributes, int64_t version);
+                     HloComputation* decomposition, absl::string_view name,
+                     absl::string_view attributes, int64_t version);
 
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kCall;
@@ -1901,12 +1913,14 @@ class HloInfeedInstruction : public HloInstruction {
  public:
   explicit HloInfeedInstruction(const Shape& infeed_shape,
                                 HloInstruction* token_operand,
-                                const std::string& config);
+                                absl::string_view config);
   // Returns the infeed configuration string. The infeed configuration includes
   // any metadata needed for the backend compiler (e.g., infeed buffer address)
   // and is target-dependent.
   std::string infeed_config() const { return infeed_config_; }
-  void set_infeed_config(const std::string& config) { infeed_config_ = config; }
+  void set_infeed_config(absl::string_view config) {
+    infeed_config_ = std::string(config);
+  }
   // Returns the shape of the data received by the infeed. This is not the same
   // as the shape of the infeed instruction which produces a tuple containing
   // the infeed data shape and a TOKEN.
@@ -1948,8 +1962,8 @@ class HloOutfeedInstruction : public HloInstruction {
   Shape* mutable_outfeed_shape() { return &outfeed_shape_; }
   // Returns the config for the Outfeed instruction.
   const std::string& outfeed_config() const { return outfeed_config_; }
-  void set_outfeed_config(const std::string& config) {
-    outfeed_config_ = config;
+  void set_outfeed_config(absl::string_view config) {
+    outfeed_config_ = std::string(config);
   }
   void ToProto(HloInstructionProto* proto) const override;
 
@@ -3012,6 +3026,25 @@ inline constexpr absl::string_view kPinCustomCallTarget = "Pin";
 inline constexpr absl::string_view kUnpinCustomCallTarget = "Unpin";
 inline constexpr absl::string_view kCreateBufferCustomCallTarget =
     "CreateBuffer";
+
+// The target name of the custom call marking the beginning of an outlinable
+// block.
+inline constexpr absl::string_view kCallMarkerBeforeTarget =
+    "__xla_internal_call_marker_before";
+
+// The target name of the custom call marking the end of an outlinable block.
+inline constexpr absl::string_view kCallMarkerAfterTarget =
+    "__xla_internal_call_marker_after";
+
+// The key used in the frontend attributes of the call markers to store the name
+// of the computation that is being marked for outlining.
+inline constexpr absl::string_view kCallMarkedComputationAttribute =
+    "xla_call_marked_computation";
+
+// The key used in the frontend attributes of the call markers to store the name
+// of the call instruction that is being marked for outlining.
+inline constexpr absl::string_view kCallMarkedInstructionNameAttribute =
+    "xla_call_marked_instruction_name";
 
 }  // namespace xla
 

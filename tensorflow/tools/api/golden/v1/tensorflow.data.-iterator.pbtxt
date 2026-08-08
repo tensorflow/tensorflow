@@ -30,10 +30,12 @@ tf_class {
   member_method {
     name: "from_string_handle"
     argspec: "args=[\'string_handle\', \'output_types\', \'output_shapes\', \'output_classes\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    method_kind: STATIC
   }
   member_method {
     name: "from_structure"
     argspec: "args=[\'output_types\', \'output_shapes\', \'shared_name\', \'output_classes\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    method_kind: STATIC
   }
   member_method {
     name: "get_next"

@@ -33,7 +33,8 @@ namespace {
 // Note that this is an O(MN) algorithm: all entries in each sorted_inputs row
 // are considered, and their sorted nature is not fully exploited.
 void BuildLowerUpperBoundOp(XlaOpKernelContext* ctx, DataType out_dtype,
-                            xla::ComparisonDirection comparison_direction) {
+                            xla::ComparisonDirection comparison_direction,
+                            bool nan_values_compare_greater = false) {
   const TensorShape sorted_inputs_shape = ctx->InputShape("sorted_inputs");
   const TensorShape values_shape = ctx->InputShape("values");
   const xla::XlaOp sorted_inputs = ctx->Input("sorted_inputs");
@@ -65,7 +66,13 @@ void BuildLowerUpperBoundOp(XlaOpKernelContext* ctx, DataType out_dtype,
   // dimensions are not explicitly specified.
   auto comparison = xla::Compare(values_reshaped, sorted_inputs_reshaped, {},
                                  comparison_direction);
-
+  if (nan_values_compare_greater) {
+    // Match eager searchsorted side='right' behavior for NaN search values.
+    // A NaN search value is placed after all entries in the sorted input row.
+    auto value_is_nan = xla::Compare(values_reshaped, values_reshaped, {},
+                                     xla::ComparisonDirection::kNe);
+    comparison = xla::Or(comparison, value_is_nan);
+  }
   const DataType accumulation_type = XlaHelpers::SumAccumulationType(out_dtype);
 
   // Convert boolean comparison results to integers so we can sum them.
@@ -105,7 +112,8 @@ class UpperBoundOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    BuildLowerUpperBoundOp(ctx, out_dtype_, xla::ComparisonDirection::kGe);
+    BuildLowerUpperBoundOp(ctx, out_dtype_, xla::ComparisonDirection::kGe,
+                           /*nan_values_compare_greater=*/true);
   }
 
  private:

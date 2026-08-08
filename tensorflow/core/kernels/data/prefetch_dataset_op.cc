@@ -373,7 +373,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     // OK) a vector of tensors, representing an element of the input dataset.
     struct BufferElement {
       explicit BufferElement(IteratorContext* ctx)
-          : uid(tensorflow::EnvTime::NowNanos()),
+          : created_us(0),
+            uid(tensorflow::EnvTime::NowNanos()),
             checkpoint(MemoryCheckpoint{ctx->id_registry()}) {}
 
       // The producer sets `status` if getting the input element fails.
@@ -397,6 +398,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       for (size_t i = 0; i < buffer_size; i++) {
         buffer_.emplace_back(ctx);
         auto& buffer_element = buffer_.back();
+        buffer_element.created_us = EnvTime::NowMicros();
         TF_RETURN_IF_ERROR(ReadStatus(reader, i, &buffer_element.status));
         if (buffer_element.status.ok()) {
           size_t value_size;
@@ -459,7 +461,25 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       // (if we successfully got an element) the output values.
       absl::Status s = buffer_.front().status;
       if (s.ok()) {
-        int64_t buffer_element_id = buffer_.front().uid;
+        uint64_t buffer_element_id = buffer_.front().uid;
+
+        // 1. Calculate the exact time this element sat in the buffer
+        int64_t residence_time_us =
+            EnvTime::NowMicros() - buffer_.front().created_us;
+
+        // 2. Record it to our Histogram
+        metrics::RecordTFDataPrefetchResidenceTime(dataset()->node_name(),
+                                                   residence_time_us);
+
+        // 3. Log extreme severity outliers (e.g., > 10 seconds)
+        if (residence_time_us > 10000000) {
+          LOG_EVERY_N_SEC(WARNING, 10)
+              << "SEVERE STARVATION: Element UID " << buffer_element_id
+              << " in buffer '" << dataset()->node_name()
+              << "' sat unconsumed for " << (residence_time_us / 1000000.0)
+              << " seconds!";
+        }
+
         tsl::profiler::TraceMe traceme(
             [&] {
               return tsl::profiler::TraceMeEncode(
@@ -501,6 +521,10 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         buffer_size_->value = auto_tuner_->buffer_limit();
       }
       buffer_.pop_front();
+
+      metrics::RecordTFDataPrefetchDequeue(dataset()->node_name());
+      metrics::RecordTFDataPrefetchBufferSize(dataset()->node_name(),
+                                              buffer_.size());
       *end_of_sequence = false;
 
       // Wake the prefetch thread, in case it has been waiting for space
@@ -588,6 +612,11 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           RecordBufferEnqueue(ctx.get(), buffer_element.value);
           buffer_element.created_us = EnvTime::NowMicros();
           buffer_.push_back(std::move(buffer_element));
+
+          metrics::RecordTFDataPrefetchEnqueue(dataset()->node_name());
+          metrics::RecordTFDataPrefetchBufferSize(dataset()->node_name(),
+                                                  buffer_.size());
+
           cond_var_->notify_all();
         }
         ++num_produced;
@@ -712,9 +741,10 @@ void PrefetchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   OP_REQUIRES_OK(ctx,
                  ParseScalarArgument<int64_t>(ctx, kBufferSize, &buffer_size));
   OP_REQUIRES(ctx, buffer_size >= 0 || buffer_size == model::kAutotune,
-              errors::InvalidArgument("buffer_size must be >= 0 or set "
-                                      "buffer_size to be ",
-                                      model::kAutotune, " for auto-tuning"));
+              absl::InvalidArgumentError(
+                  absl::StrCat("buffer_size must be >= 0 or set "
+                               "buffer_size to be ",
+                               model::kAutotune, " for auto-tuning")));
 
   if (buffer_size == model::kAutotune) {
     metrics::RecordTFDataAutotune(kDatasetType);

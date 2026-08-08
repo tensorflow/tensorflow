@@ -194,6 +194,9 @@ class StridedSliceOp : public XlaOpKernel {
           begin_index = xla::Select(index_negative, wrapped_index, begin_index);
         }
       }
+      if (result_dims_are_dynamic[i]) {
+        begin_index = xla::Max(xla::Min(begin_index, dim_size), zero);
+      }
       start_indices.push_back(begin_index);
       if (end_mask) {
         end_index = dim_size;
@@ -207,6 +210,9 @@ class StridedSliceOp : public XlaOpKernel {
           auto wrapped_index = xla::Add(dim_size, end_index);
           end_index = xla::Select(index_negative, wrapped_index, end_index);
         }
+      }
+      if (result_dims_are_dynamic[i]) {
+        end_index = xla::Max(xla::Min(end_index, dim_size), zero);
       }
       // This is safe to downcast as set dimension size  makes sure that the dim
       // in the input doesn't exceed INT32 max.
@@ -292,6 +298,14 @@ class StridedSliceOp : public XlaOpKernel {
                           "shape for strided slice: ",
                           partial_final_shape.DebugString(),
                           ", output shape must be a compile-time constant"));
+
+      if (final_shape.num_elements() == 0) {
+        xla::XlaOp zero = xla::Zero(ctx->builder(), ctx->input_xla_type(0));
+        xla::XlaOp slice = xla::Broadcast(zero, final_shape.dim_sizes());
+        ctx->SetOutput(0, slice);
+        return;
+      }
+
       absl::InlinedVector<int64_t, 4> dimensions_to_reverse;
       absl::InlinedVector<int64_t, 4> slice_begin, slice_end, slice_strides;
       for (int i = 0; i < begin.size(); ++i) {

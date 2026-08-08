@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
@@ -265,7 +266,7 @@ absl::Status Allocation::UpdateUses(HloComputation* computation,
                 << " at index " << use.operand_index.ToString();
         replacement_instruction = tuple_inst;
       } else {
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             replacement_instruction,
             TupleUtil::ReplaceTupleWith(producing_instruction, tuple_inst,
                                         use.operand_index));
@@ -282,7 +283,7 @@ absl::Status Allocation::UpdateUses(HloComputation* computation,
           HloInstruction::CreateBitcast(operand_shape, producing_instruction));
       if (mutable_split_shape().has_value() &&
           producing_instruction->shape().layout().split_configs().size() != 0) {
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             int64_t split_dim,
             bitcast_split_fn(
                 replacement_instruction,
@@ -296,7 +297,7 @@ absl::Status Allocation::UpdateUses(HloComputation* computation,
             ->add_split_configs(split_config);
       }
     }
-    RETURN_IF_ERROR(use.instruction->ReplaceOperandWith(
+    ABSL_RETURN_IF_ERROR(use.instruction->ReplaceOperandWith(
         use.operand_number, replacement_instruction));
   }
   return absl::OkStatus();
@@ -464,7 +465,7 @@ CopyAllocation::CopyAllocation(
     int64_t copy_done_schedule_before_time, int64_t end_time,
     std::optional<int64_t> cross_program_prefetch_index,
     HloInstruction* sync_mem_op, HloInstruction* async_mem_op_start,
-    HloInstruction* async_mem_op_done)
+    HloInstruction* async_mem_op_done, int64_t source_operand_index)
     : Allocation(
           /*defining_position=*/{nullptr, {}}, memory_space, chunk,
           // Allocation uses an inclusive start time
@@ -475,7 +476,8 @@ CopyAllocation::CopyAllocation(
       copy_done_schedule_before_(copy_done_schedule_before_time),
       copy_start_(async_mem_op_start),
       copy_done_(async_mem_op_done),
-      sync_mem_op_(sync_mem_op) {}
+      sync_mem_op_(sync_mem_op),
+      source_operand_index_(source_operand_index) {}
 
 int64_t CopyAllocation::earliest_available_time() const {
   return copy_done_schedule_before_;
@@ -499,10 +501,12 @@ absl::Status CopyAllocation::Process(const BitcastSplitFn& bitcast_split_fn,
   Shape shape = defining_position().shape();
   HloInstruction* producing_instruction = AddGetTupleElements();
   HloComputation* computation = producing_instruction->parent();
+  VLOG(3) << "Processing copy allocation: " << ToString();
   if (sync_mem_op_ != nullptr && sync_mem_op_->opcode() != HloOpcode::kCopy) {
     if (sync_mem_op_->opcode() == HloOpcode::kSlice ||
-        sync_mem_op_->opcode() == HloOpcode::kDynamicSlice) {
-      ASSIGN_OR_RETURN(copy_done_,
+        sync_mem_op_->opcode() == HloOpcode::kDynamicSlice ||
+        sync_mem_op_->IsCustomFusion()) {
+      ABSL_ASSIGN_OR_RETURN(copy_done_,
                        computation->CreateAsyncInstructions(
                            sync_mem_op_, {ShapeUtil::MakeShape(S32, {})},
                            HloInstruction::kMainExecutionThread, false));
@@ -514,12 +518,15 @@ absl::Status CopyAllocation::Process(const BitcastSplitFn& bitcast_split_fn,
     // shape of the producing instruction, we insert a bitcast to make them
     // compatible.
     if (!ShapeUtil::CompatibleIgnoringFpPrecision(
-            producing_instruction->shape(), copy_start_->operand(0)->shape())) {
+            producing_instruction->shape(),
+            copy_start_->operand(source_operand_index_)->shape())) {
       producing_instruction =
           computation->AddInstruction(HloInstruction::CreateBitcast(
-              copy_start_->operand(0)->shape(), producing_instruction));
+              copy_start_->operand(source_operand_index_)->shape(),
+              producing_instruction));
     }
-    RETURN_IF_ERROR(copy_start_->ReplaceOperandWith(0, producing_instruction));
+    ABSL_RETURN_IF_ERROR(copy_start_->ReplaceOperandWith(source_operand_index_,
+                                                    producing_instruction));
   } else {
     Shape dest_shape = shape;
     if (memory_space() == MemorySpace::kDefault) {
@@ -694,14 +701,14 @@ absl::Status SlicedCopyAllocation::Process(
   // Sliced copy allocations need to insert asynchronous copy nodes.
   for (SliceDetail& slice_detail :
        slice_details_sorted_by_exclusive_start_time_) {
-    RETURN_IF_ERROR(slice_detail.CreateAsyncSlice(
+    ABSL_RETURN_IF_ERROR(slice_detail.CreateAsyncSlice(
         slice_shape, *producing_instruction, *computation));
     VLOG(4) << "Created " << slice_detail.copy_start->name()
             << " for sliced copy allocation: " << ToString();
     slice_dones.push_back(slice_detail.copy_done);
   }
 
-  RETURN_IF_ERROR(CreateBitcastConcat(shape, slice_dones));
+  ABSL_RETURN_IF_ERROR(CreateBitcastConcat(shape, slice_dones));
 
   // If we bitcast to an array of bytes above, the result of the concatenated
   // slices will also be an array of bytes. Thus, we need to cast the
@@ -913,7 +920,7 @@ absl::Status SlicedCopyAllocation::SliceDetail::CreateAsyncSlice(
   HloInstruction* slice = parent.AddInstruction(
       HloInstruction::CreateSlice(slice_decision.sizing.slice_shape, &producer,
                                   start_indices, limit_indices, strides));
-  ASSIGN_OR_RETURN(copy_done, parent.CreateAsyncInstructions(
+  ABSL_ASSIGN_OR_RETURN(copy_done, parent.CreateAsyncInstructions(
                                   slice, {ShapeUtil::MakeShape(S32, {})}));
   copy_start = copy_done->mutable_operand(0);
 
@@ -1028,12 +1035,12 @@ absl::Status ParentAllocation::Process(const BitcastSplitFn& bitcast_split_fn,
       original_allocation_.AddGetTupleElements();
   int new_tuple_index = calling_instruction_->shape().tuple_shapes().size();
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloInstruction * new_while_operand,
       TupleUtil::ReplaceTupleWith(producing_instruction,
                                   calling_instruction_->mutable_operand(0),
                                   {new_tuple_index}));
-  RETURN_IF_ERROR(calling_instruction_->ReplaceOperandWithDifferentShape(
+  ABSL_RETURN_IF_ERROR(calling_instruction_->ReplaceOperandWithDifferentShape(
       0, new_while_operand));
   *calling_instruction_->mutable_shape() = new_while_operand->shape();
   *calling_instruction_->while_condition()
@@ -1051,7 +1058,7 @@ absl::Status ParentAllocation::Process(const BitcastSplitFn& bitcast_split_fn,
   std::vector<HloInstruction*> while_users = calling_instruction_->users();
   HloInstruction* tuple_with_old_shape =
       TupleUtil::ExtractPrefix(calling_instruction_, new_tuple_index);
-  RETURN_IF_ERROR(calling_instruction_->ReplaceAllUsesWithDifferentShape(
+  ABSL_RETURN_IF_ERROR(calling_instruction_->ReplaceAllUsesWithDifferentShape(
       while_users, tuple_with_old_shape));
 
   HloInstruction* final_instruction = AddGetTupleElements();
@@ -1067,7 +1074,7 @@ absl::Status ParentAllocation::PostProcess() {
   // new root. Doing the post-process step later ensures the root has been
   // updated with other changes, and we can safely add the additional parameter.
   HloComputation* while_body = calling_instruction_->while_body();
-  ASSIGN_OR_RETURN(HloInstruction * new_while_body_root,
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * new_while_body_root,
                    TupleUtil::ReplaceTupleWith(
                        AddGetTupleElements(), while_body->root_instruction(),
                        original_defining_position().index));
@@ -1171,7 +1178,7 @@ absl::Status WindowPrefetchedAllocation::Process(
   HloComputation* computation = producing_instruction->parent();
   CHECK_EQ(use_instruction->opcode(), HloOpcode::kFusion);
 
-  RETURN_IF_ERROR(InsertWindowPrefetchInstruction(
+  ABSL_RETURN_IF_ERROR(InsertWindowPrefetchInstruction(
       producing_instruction, use_instruction, computation));
 
   // Notify the backend that an operand has been appended as a window prefetch

@@ -1,13 +1,29 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
 syntax = "proto3";
 
 package xla;
 
+import "xla/service/gpu_topology.proto";
 import "xla/stream_executor/device_description.proto";
 import "xla/xla.proto";
 import "xla/xla_data.proto";
 
 // A serialization of xla::ExecutableBuildOptions.
-// Next id: 27.
+// Next id: 28.
 message ExecutableBuildOptionsProto {
   // If set, this is the device to build the computation for. Valid
   // device_ordinal values are: 0 to # of devices - 1. These values are
@@ -144,8 +160,10 @@ message ExecutableBuildOptionsProto {
   int64 process_index = 22;
   int64 process_count = 23;
 
-  // The size of the slice.
-  int64 slice_size = 26;
+  GpuTopologyProto gpu_topology = 27;
+
+  reserved 26;
+  reserved "slice_size";
 }
 
 message OptionOverrideProto {

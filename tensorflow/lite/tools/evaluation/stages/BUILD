@@ -123,9 +123,8 @@ cc_library(
     deps = [
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/core:framework",
-        "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools/evaluation:evaluation_delegate_provider",
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
@@ -133,7 +132,7 @@ cc_library(
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:absl_log",
         "@xla//xla/tsl/util:stats_calculator_portable",
     ],
 )
@@ -147,11 +146,12 @@ cc_test(
     deps = [
         ":tflite_inference_stage",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/core:framework",
-        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/tools/evaluation:utils",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Fusion Explorer</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: #333;
+      background-color: #fcfcfc;
+    }
+    #app_container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+    #main_container {
+      display: flex;
+      flex-direction: column-reverse; /* Sidebar at bottom */
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+    }
+    #sidebar {
+      height: 200px;
+      width: 100%;
+      border-top: 1px solid #e0e0e0;
+      background-color: #f7f7f7;
+      display: flex;
+      flex-direction: column;
+      /* No transitions */
+      min-height: 200px;
+      overflow: hidden;
+    }
+    #app_container.collapsed #sidebar {
+      height: 40px;
+      min-height: 40px;
+    }
+    #sidebar_header {
+      height: 40px;
+      padding: 0 15px;
+      border-bottom: 1px solid #e0e0e0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background-color: #eee;
+    }
+    #sidebar_header h3 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+    }
+    #collapsed_frame_desc {
+      display: none;
+      font-size: 14px;
+      font-weight: normal;
+      color: #555;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+      margin-left: 10px;
+    }
+    #app_container.collapsed #sidebar_title {
+      display: none;
+    }
+    #app_container.collapsed #collapsed_frame_desc {
+      display: inline-block;
+    }
+    #app_container.collapsed #frames_list {
+      display: none;
+    }
+    #search-container {
+      padding: 10px 15px;
+      border-bottom: 1px solid #e0e0e0;
+      background-color: #f7f7f7;
+    }
+    #search-box {
+      width: 100%;
+      padding: 6px 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.15s ease-in-out;
+    }
+    #search-box:focus {
+      border-color: #007acc;
+      box-shadow: 0 0 0 2px rgba(0,122,204,0.2);
+    }
+    #app_container.collapsed #search-container {
+      display: none;
+    }
+    #frames_list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      overflow: auto;
+      flex: 1;
+    }
+    #frames_list li {
+      border-bottom: 1px solid #eee;
+      transition: background-color 0.1s;
+    }
+    #frames_list li a {
+      display: block;
+      padding: 10px 15px;
+      color: #555;
+      text-decoration: none;
+      font-size: 14px;
+      white-space: nowrap;
+    }
+    #frames_list li:hover {
+      background-color: #eaeaea;
+    }
+    #frames_list li.selected {
+      background-color: #007acc;
+    }
+    #frames_list li.selected a {
+      color: white;
+      font-weight: bold;
+    }
+    #rendered {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+      background-color: white;
+      position: relative;
+    }
+    #svg_container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 0;
+    }
+    #rendered svg {
+      height: 100% !important;
+      width: 100% !important;
+    }
+    #toggle_sidebar {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+      color: #555;
+      padding: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #toggle_sidebar:hover {
+      color: #333;
+    }
+    #status_bar {
+      height: 30px;
+      background-color: #3c3c3c;
+      color: #ccc;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 15px;
+      font-size: 12px;
+      border-top: 1px solid #2d2d2d;
+      flex-shrink: 0;
+    }
+    #status_bar a {
+      color: #fff;
+    }
+    #performance_note {
+      font-weight: 500;
+    }
+    #help_info b {
+      color: #fff;
+      background-color: #555;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <script src="https://www.gstatic.com/external_hosted/hpcc_js_wasm/index.min.js"
+      integrity="sha384-LigJPbR3TOfU/Xbb+PjiN1dGJYPweLk7kiGnaMgmxnUmKWaCFKbb5tH6iLlyVhPZ"
+      crossorigin="anonymous"></script>
+  <script src="https://www.gstatic.com/external_hosted/svg_pan_zoom/svg-pan-zoom.js">
+  </script>
+
+  <div id="app_container">
+    <div id="main_container">
+      <div id="sidebar">
+        <div id="sidebar_header">
+          <h3 id="sidebar_title">Fusion Explorer</h3>
+          <span id="collapsed_frame_desc"></span>
+          <button id="toggle_sidebar" title="Collapse Sidebar">▼</button>
+        </div>
+        <div id="search-container">
+          <input type="text" id="search-box" placeholder="Filter frames..." autocomplete="off" disabled>
+        </div>
+        <ul id="frames_list"></ul>
+      </div>
+      <div id="rendered">
+        <div id="svg_container"><center>Loading...</center></div>
+      </div>
+    </div>
+    <div id="status_bar">
+      <span id="performance_note">Initializing...</span>
+      <span id="help_info">Use <b>j</b>/<b>k</b> for keyboard navigation</span>
+    </div>
+  </div>
+  <script>
+  <!--
+  const renderCache = {};
+  const cssregex = new RegExp('stylesheet=<([^]*)\n>\n', 'gm');
+  const hpccWasm = window["@hpcc-js/wasm"];
+  window.currentPanZoom = null;
+  let filteredIndices = [];
+
+  const getIdFromHash = () => {
+    let hash = window.location.hash;
+    if (hash.indexOf('frame') == -1) {
+      return 0;
+    }
+    return Number(window.location.hash.substring('#frame'.length, window.location.hash.length));
+  }
+
+  window.compilationFrames = [];
+  window.graphs = {};
+  const pendingGraphRequests = new Map();
+  const getGraph = (graphId) => {
+    if (window.graphs[graphId]) {
+      return Promise.resolve(window.graphs[graphId]);
+    }
+    if (pendingGraphRequests.has(graphId)) {
+      return pendingGraphRequests.get(graphId);
+    }
+
+    const promise = fetch(`/api/graph?id=${graphId}`)
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP error! status: ${r.status}`);
+        return r.text();
+      })
+      .then(graph => {
+        window.graphs[graphId] = graph;
+        pendingGraphRequests.delete(graphId);
+        return graph;
+      })
+      .catch(err => {
+        pendingGraphRequests.delete(graphId);
+        throw err;
+      });
+
+    pendingGraphRequests.set(graphId, promise);
+    return promise;
+  };
+
+  const updateSvgAndPanZoom = (svg, cssData) => {
+    const container = document.getElementById('svg_container');
+    container.innerHTML = `${svg}<style>${cssData}</style>`;
+    if (window.currentPanZoom) {
+      window.currentPanZoom.destroy();
+    }
+    window.currentPanZoom = svgPanZoom(container.children[0], {
+        zoomEnabled: true, controlIconsEnabled: true, maxZoom: 200, });
+  };
+
+  const renderCurrentFrame = () => {
+    if (window.compilationFrames.length === 0) return;
+
+    const frames_list = document.getElementById('frames_list');
+    const currId = getIdFromHash();
+
+    for (let selected of frames_list.getElementsByClassName('selected')) {
+        selected.classList.remove('selected');
+    }
+    const activeLink = frames_list.querySelector(`a[href="#frame${currId}"]`);
+    if (activeLink) {
+      const item = activeLink.parentElement;
+      item.classList.add('selected');
+      item.scrollIntoView({ block: 'nearest' });
+    }
+
+    const frame = window.compilationFrames[currId];
+    if (!frame) {
+      document.getElementById('svg_container').innerHTML = `<center>Frame ${currId} not found</center>`;
+      return;
+    }
+    const graphId = frame.graph_id;
+
+    const setupInteractiveFeatures = () => {
+      const toHighlight = frame.to_highlight.length ?
+        document.querySelector(`${frame.to_highlight}`) : null;
+      if (toHighlight) {
+        toHighlight.style.setProperty('fill', 'red');
+      }
+      // Change cursor.
+      const text_nodes = document.getElementsByTagName("text");
+      for (const el of text_nodes) {
+        if (title_to_id.has(el.innerHTML)) {
+          const interactiveEl = el.closest('.node, a') || el;
+          interactiveEl.style.cursor = "pointer";
+        }
+      }
+    };
+
+    if (renderCache[graphId]) {
+      const cached = renderCache[graphId];
+      updateSvgAndPanZoom(cached.svg, cached.cssData);
+      setupInteractiveFeatures();
+      updateCollapsedDesc(frame);
+      document.getElementById('performance_note').textContent = "Rendered from cache";
+      return;
+    }
+
+    document.getElementById('performance_note').textContent = "Retrieving data...";
+
+    getGraph(graphId).then(graph_txt => {
+      if (getIdFromHash() !== currId) return;
+      updateCollapsedDesc(frame);
+
+      let renderStart = performance.now();
+      document.getElementById('performance_note').textContent = "Rendering...";
+
+      const results = cssregex.exec(graph_txt)
+      let cssData = ''
+      if (results !== null) {
+          cssData = results[1].replace(/\s*data:.*\s*,/,'');
+          cssData = unescape(cssData);
+          graph_txt = graph_txt.replace(cssregex, '');
+      }
+
+      hpccWasm.graphviz.layout(graph_txt, "svg", "dot").then(svg => {
+        renderCache[graphId] = { svg, cssData };
+        if (getIdFromHash() !== currId) return;
+        updateSvgAndPanZoom(svg, cssData);
+        setupInteractiveFeatures();
+        document.getElementById('performance_note').textContent =
+          `Rendering took ${(performance.now() - renderStart).toFixed(2)}ms`;
+      });
+    }).catch(err => {
+      if (getIdFromHash() === currId) {
+        document.getElementById('performance_note').textContent = `Error: ${err.message}`;
+      } else {
+        console.log("Main: ignored error for non-current frame:", graphId, "error:", err.message);
+      }
+    });
+  };
+
+  const updateCollapsedDesc = (frame) => {
+    const collapsedDesc = document.getElementById('collapsed_frame_desc');
+    if (collapsedDesc) {
+      collapsedDesc.textContent = frame?.label || "Unnamed state";
+    }
+  };
+
+  const update = (delta) => {
+    if (filteredIndices.length === 0) return;
+    const currId = getIdFromHash();
+    let filteredIdx = filteredIndices.indexOf(currId);
+    if (filteredIdx === -1) {
+      filteredIdx = delta > 0 ? 0 : filteredIndices.length - 1;
+    } else {
+      filteredIdx = (filteredIdx + delta + filteredIndices.length) % filteredIndices.length;
+    }
+    const nextOriginalIndex = filteredIndices[filteredIdx];
+    window.location.hash = `#frame${nextOriginalIndex}`;
+  };
+
+  const renderFrameList = () => {
+    const currId = getIdFromHash();
+    const frames_list = document.getElementById('frames_list');
+    const fragment = document.createDocumentFragment();
+    for (let i = 0; i < filteredIndices.length; i++) {
+      const originalIndex = filteredIndices[i];
+      const f = window.compilationFrames[originalIndex];
+      let frameDescr = f.label || "Unnamed state";
+      const rendered = document.createElement("li");
+      const link = document.createElement("a");
+      link.href = `#frame${originalIndex}`;
+      link.textContent = frameDescr;
+      rendered.appendChild(link);
+      if (originalIndex === currId) {
+        rendered.classList.add('selected');
+      }
+      fragment.appendChild(rendered);
+    }
+    frames_list.replaceChildren(fragment);
+    const selected = frames_list.querySelector('.selected');
+    if (selected) {
+      selected.scrollIntoView({ block: 'nearest' });
+    }
+  };
+
+  window.addEventListener('hashchange', () => {
+    renderCurrentFrame();
+  });
+
+  window.addEventListener("keydown", (event) => {
+    if (event.defaultPrevented) {
+      return;
+    }
+    if (event.ctrlKey || event.altKey || event.metaKey) {
+      return;
+    }
+    if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
+      return;
+    }
+    if (event.key === "j") {
+      update(1);
+    } else if (event.key === "k") {
+      update(-1);
+    } else {
+      return;
+    }
+    event.preventDefault();
+  }, true);
+
+  const init = () => {
+    document.getElementById('performance_note').textContent = "Loading metadata...";
+    fetch('/api/metadata')
+      .then(r => {
+        if (!r.ok) throw new Error(`Failed to load metadata: ${r.status}`);
+        return r.json();
+      })
+      .then(data => {
+        document.title = data.title;
+        const sidebarTitle = document.getElementById('sidebar_title');
+        if (sidebarTitle) {
+          sidebarTitle.textContent = data.title;
+          sidebarTitle.title = data.title;
+        }
+
+        window.compilationFrames = data.frames || [];
+        window.graphs = {};
+        filteredIndices = [...window.compilationFrames.keys()];
+
+        window.title_to_id = new Map();
+        for (let i = 0; i < window.compilationFrames.length; i++) {
+          title_to_id.set(window.compilationFrames[i].label, i);
+        }
+
+        renderFrameList();
+        renderCurrentFrame();
+
+        document.getElementById('performance_note').textContent = "Metadata loaded";
+        document.getElementById('search-box').disabled = false;
+      })
+      .catch(err => {
+        document.getElementById('performance_note').textContent = `Error: ${err.message}`;
+      });
+  };
+
+  document.addEventListener("DOMContentLoaded", () => {
+    init();
+
+    const toggleBtn = document.getElementById('toggle_sidebar');
+    toggleBtn.addEventListener('click', () => {
+      const app = document.getElementById('app_container');
+      app.classList.toggle('collapsed');
+      const isCollapsed = app.classList.contains('collapsed');
+      toggleBtn.innerHTML = isCollapsed ? '▲' : '▼';
+      toggleBtn.title = isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar';
+
+      requestAnimationFrame(() => {
+        if (window.currentPanZoom) {
+          window.currentPanZoom.resize();
+          window.currentPanZoom.fit();
+          window.currentPanZoom.center();
+        }
+      });
+    });
+
+    // Setup search
+    const searchBox = document.getElementById('search-box');
+    let searchTimeout = null;
+    const applyFilter = (query) => {
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+        searchTimeout = null;
+      }
+      const filterStart = performance.now();
+      query = (query || "").trim().toLowerCase();
+      if (query === "") {
+        filteredIndices = [...window.compilationFrames.keys()];
+        renderFrameList();
+        document.getElementById('performance_note').textContent = "Metadata loaded";
+        return;
+      }
+      filteredIndices = [];
+      for (let i = 0; i < window.compilationFrames.length; i++) {
+        const label = (window.compilationFrames[i].label || "").toLowerCase();
+        if (label.indexOf(query) !== -1) {
+          filteredIndices.push(i);
+        }
+      }
+      renderFrameList();
+      const filterDuration = performance.now() - filterStart;
+      document.getElementById('performance_note').textContent =
+          `Matched ${filteredIndices.length} frames in ${filterDuration.toFixed(2)}ms`;
+    };
+    // 1. Debounced filtering on typing
+    searchBox.addEventListener('input', () => {
+      document.getElementById('performance_note').textContent = 'Filtering...';
+      if (searchTimeout) clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => applyFilter(searchBox.value), 200);
+    });
+    // 2. Immediate action on Enter or Escape
+    searchBox.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        searchBox.value = '';
+        applyFilter('');
+        searchBox.blur();
+        event.preventDefault();
+      } else if (event.key === 'Enter') {
+        // Flush filter immediately in case debounce is still pending
+        applyFilter(searchBox.value);
+        searchBox.blur();
+        // If the current frame isn't in the matched results, select the first match
+        if (filteredIndices.length > 0 && !filteredIndices.includes(getIdFromHash())) {
+          window.location.hash = `#frame${filteredIndices[0]}`;
+        }
+        event.preventDefault();
+      }
+    });
+
+    // Navigate to next elements on click.
+    document.addEventListener("click", (event) => {
+      // Ignore clicks outside the SVG container (e.g. sidebar items, search box, buttons).
+      if (!event.target.closest('#rendered')) {
+        return;
+      }
+      const node = event.target.closest('.node, a');
+      if (node) {
+        const textEl = node.querySelector('text');
+        if (textEl) {
+          const txt = textEl.textContent;
+          if (title_to_id.has(txt)) {
+            const id = title_to_id.get(txt);
+            window.location.hash = `#frame${id}`;
+            return;
+          }
+        }
+      }
+      let txt = event.target.innerHTML;
+      if (title_to_id.has(txt)) {
+        let id = title_to_id.get(txt);
+        window.location.hash = `#frame${id}`;
+      }
+    });
+  });
+  //-->
+  </script>
+</body>
+</html>

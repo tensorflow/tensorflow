@@ -57,6 +57,12 @@ class CallInliner : public HloModulePass {
   static absl::StatusOr<InlinedInstructionMap> Inline(
       HloInstruction* call, bool propagate_metadata = true);
 
+  enum class FrontendInlinePolicy { kXlaEarly, kXlaLate, kAuto };
+
+  // Returns the frontend inline policy.
+  static FrontendInlinePolicy GetFrontendInlinePolicy(
+      const HloInstruction* instruction);
+
   // Returns true if the instruction is allowed to be inlined based on its
   // frontend attributes and the provided policy.
   static bool InlineInstructionAllowed(

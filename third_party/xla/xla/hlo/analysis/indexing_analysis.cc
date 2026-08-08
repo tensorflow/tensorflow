@@ -864,8 +864,13 @@ HloInstructionIndexing ComputeOutputToInputConvolutionOpIndexing(
   // Build symbolic expressions for kernel spatial and output dimensions.
   SmallVector<SymbolicExpr> kernel_exprs(rank);
   for (int i = 0; i < spatial_rank; ++i) {
-    kernel_exprs[dnums.kernel_spatial_dimensions(i)] =
-        CreateSymbolExpr(i, rank, mlir_context);
+    SymbolicExpr kernel_index = CreateSymbolExpr(i, rank, mlir_context);
+    if (convolution->window().dimensions(i).window_reversal()) {
+      kernel_index =
+          CreateSymbolicConstant(kernel_spatial_sizes[i] - 1, mlir_context) -
+          kernel_index;
+    }
+    kernel_exprs[dnums.kernel_spatial_dimensions(i)] = kernel_index;
   }
   SymbolicExpr dim_expr =
       CreateDimExpr(dnums.output_feature_dimension(), mlir_context);
@@ -1650,8 +1655,7 @@ HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
       // b/65689298.
       instr->opcode() == HloOpcode::kMap ||
       // For a single device, all-reduce is an elementwise op.
-      instr->opcode() == HloOpcode::kAllReduceStart ||
-      instr->opcode() == HloOpcode::kAllReduceDone) {
+      instr->opcode() == HloOpcode::kAllReduce) {
     return ComputeOutputToInputCwiseOpIndexing(instr, mlir_context);
   }
   if (instr->opcode() == HloOpcode::kBitcast) {
@@ -1743,8 +1747,7 @@ HloInstructionIndexing ComputeInputToOutputIndexing(const HloInstruction* instr,
       // b/65689298.
       instr->opcode() == HloOpcode::kMap ||
       // For a single device, all-reduce has 1:1 output to input mapping.
-      instr->opcode() == HloOpcode::kAllReduceStart ||
-      instr->opcode() == HloOpcode::kAllReduceDone) {
+      instr->opcode() == HloOpcode::kAllReduce) {
     return ComputeInputToOutputCwiseOpIndexing(instr, mlir_context);
   }
   if (instr->opcode() == HloOpcode::kBitcast) {

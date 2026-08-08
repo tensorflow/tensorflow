@@ -27,11 +27,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
@@ -320,6 +320,185 @@ HbmEstimates CalculateHbmTime(const DotProblemInfo& dot,
   return result;
 }
 
+absl::Duration CalculatePipelinedLoopTime(int64_t num_stages,
+                                          int64_t k_loop_iterations,
+                                          absl::Duration compute_time,
+                                          const HbmEstimates& hbm_timing) {
+  if (num_stages <= 1 || k_loop_iterations <= 1) {
+    // Serial execution: Memory and compute are not overlapped.
+    return hbm_timing.total_time() + compute_time +
+           k_loop_iterations * kLoopLatencyTax;
+  }
+  // Pipelined execution: Calculate the compute and memory per loop iteration.
+  const absl::Duration iter_compute_time = compute_time / k_loop_iterations;
+  const absl::Duration iter_raw_mem_time =
+      hbm_timing.read_time / k_loop_iterations;
+  const absl::Duration iter_mem_time = iter_raw_mem_time + kLoopLatencyTax;
+
+  // In a perfect pipeline with infinite stages, the latency tax should
+  // disappear completely.
+  const absl::Duration theoretical_iter_time =
+      std::max(iter_raw_mem_time, iter_compute_time);
+  const absl::Duration iter_time_including_latency =
+      std::max(iter_mem_time, iter_compute_time);
+  // TODO(b/529318599): Perfect overlap between compute and memory is not
+  // always possible in practice. Here we should consider a deeper formula
+  // that takes into account num_warps, num_stages and possibly other
+  // parameters. I will investigate this further in a follow-up, but this
+  // formula works well in practice and is a good starting point.
+  const absl::Duration iter_time = std::max(
+      theoretical_iter_time, iter_time_including_latency / (num_stages - 1));
+
+  // During the first num_stages-1 iterations, only memory operations are
+  // executed.
+  const int64_t prologue_loops = std::min(num_stages - 1, k_loop_iterations);
+  const absl::Duration prologue_time = prologue_loops * iter_mem_time;
+
+  // During the overlap iterations, both compute and memory operations are
+  // executed.
+  const int64_t overlap_loops = k_loop_iterations - prologue_loops;
+  const absl::Duration overlap_time = overlap_loops * iter_time;
+
+  // During the last num_stages-1 iterations, only compute operations are
+  // executed.
+  const absl::Duration epilogue_time = prologue_loops * iter_compute_time;
+
+  return prologue_time + overlap_time + epilogue_time + hbm_timing.write_time;
+}
+
+SmOccupancy CalculateSmOccupancy(int64_t shared_memory_per_block_bytes,
+                                 int64_t num_warps,
+                                 const se::DeviceDescription& device_info) {
+  const int64_t hardware_max_shmem = device_info.shared_memory_per_core();
+  const int64_t hardware_max_threads = device_info.threads_per_core_limit();
+  const int64_t max_blocks_by_shmem =
+      shared_memory_per_block_bytes > 0
+          ? hardware_max_shmem / shared_memory_per_block_bytes
+          : hardware_max_threads;
+  const int64_t max_blocks_by_threads =
+      hardware_max_threads / (num_warps * device_info.threads_per_warp());
+
+  int64_t active_blocks_per_sm = std::max<int64_t>(
+      1, std::min(max_blocks_by_shmem, max_blocks_by_threads));
+
+  // Clamp to the physical limit of blocks per SM, if the device provides it.
+  if (device_info.max_blocks_per_multiprocessor() > 0) {
+    active_blocks_per_sm = std::min(
+        active_blocks_per_sm, device_info.max_blocks_per_multiprocessor());
+  }
+
+  return SmOccupancy{active_blocks_per_sm, active_blocks_per_sm * num_warps};
+}
+
+int64_t CalculateHardwareLaunchWaves(int64_t threadblock_count,
+                                     int64_t shared_memory_per_block_bytes,
+                                     int64_t num_warps,
+                                     const se::DeviceDescription& device_info) {
+  const SmOccupancy occupancy = CalculateSmOccupancy(
+      shared_memory_per_block_bytes, num_warps, device_info);
+
+  const int64_t total_gpu_capacity =
+      occupancy.active_blocks_per_sm * device_info.core_count();
+  return CeilOfRatio<int64_t>(threadblock_count, total_gpu_capacity);
+}
+
+absl::Duration CalculatePipelinedLoopTimeWithLaunchWaves(
+    int64_t num_stages, int64_t k_loop_iterations, int64_t threadblock_count,
+    absl::Duration compute_time, const HbmEstimates& hbm_timing,
+    int64_t shared_memory_per_block_bytes, int64_t num_warps,
+    const se::DeviceDescription& device_info) {
+  if (threadblock_count == 0) {
+    return absl::ZeroDuration();
+  }
+
+  const int64_t launch_waves = CalculateHardwareLaunchWaves(
+      threadblock_count, shared_memory_per_block_bytes, num_warps, device_info);
+
+  // Evaluate the pipeline loop per-wave so the latency tax isn't diluted.
+  // The total execution time is then the cost of a single wave multiplied by
+  // the number of sequentially executed waves.
+  const absl::Duration single_wave_compute = compute_time / launch_waves;
+
+  HbmEstimates single_wave_hbm;
+  single_wave_hbm.read_time = hbm_timing.read_time / launch_waves;
+  single_wave_hbm.write_time = hbm_timing.write_time / launch_waves;
+
+  return CalculatePipelinedLoopTime(num_stages, k_loop_iterations,
+                                    single_wave_compute, single_wave_hbm) *
+         launch_waves;
+}
+
+int64_t CalculateLoopIterBytes(const DotProblemInfo& dot,
+                               const DotTileSize& dot_tile) {
+  int64_t lhs_iter_bytes = CeilOfRatio<int64_t>(
+      dot_tile.b * dot_tile.m * dot_tile.k * BitWidth(dot.lhs_element_type), 8);
+  int64_t rhs_iter_bytes = CeilOfRatio<int64_t>(
+      dot_tile.b * dot_tile.k * dot_tile.n * BitWidth(dot.rhs_element_type), 8);
+  return lhs_iter_bytes + rhs_iter_bytes;
+}
+
+int64_t CalculateSharedMemoryPerBlockBytes(const DotProblemInfo& dot_info,
+                                           const DotTileSize& dot_tile,
+                                           int64_t num_stages) {
+  const int64_t lhs_tile_bytes =
+      dot_tile.m * dot_tile.k *
+      primitive_util::BitWidth(dot_info.lhs_element_type) / 8;
+  const int64_t rhs_tile_bytes =
+      dot_tile.n * dot_tile.k *
+      primitive_util::BitWidth(dot_info.rhs_element_type) / 8;
+
+  return (lhs_tile_bytes + rhs_tile_bytes) * num_stages;
+}
+
+double CalculateComputeUtilization(const EstimateRunTimeData& estimates,
+                                   const se::DeviceDescription& device_info,
+                                   xla::PrimitiveType output_element_type) {
+  const double total_estimated_sec = absl::ToDoubleSeconds(estimates.exec_time);
+  constexpr double kNsPerSecond = 1e9;
+  const double theoretical_flops_per_sec =
+      GpuPerformanceModelBase::CalculatePeakMatrixOpsPerNs(
+          device_info, output_element_type) *
+      kNsPerSecond;
+
+  if (total_estimated_sec == 0.0 || theoretical_flops_per_sec == 0.0) {
+    VLOG(2) << "Returning 0.0 compute utilization: total_estimated_sec="
+            << total_estimated_sec
+            << ", theoretical_flops_per_sec=" << theoretical_flops_per_sec;
+    return 0.0;
+  }
+  double utilization = (static_cast<double>(estimates.flops) /
+                        (theoretical_flops_per_sec * total_estimated_sec));
+
+  if (utilization > 1.0) {
+    VLOG(2) << "Compute utilization exceeded 1.0 in dot fusion cost model: "
+            << utilization;
+  }
+  return utilization;
+}
+
+double CalculateMemoryUtilization(const EstimateRunTimeData& estimates,
+                                  const se::DeviceDescription& device_info) {
+  const double total_estimated_sec = absl::ToDoubleSeconds(estimates.exec_time);
+  const double dram_bytes =
+      static_cast<double>(estimates.bytes_read + estimates.bytes_written);
+  const double peak_memory_bandwidth = device_info.memory_bandwidth();
+
+  if (total_estimated_sec == 0.0 || peak_memory_bandwidth == 0.0) {
+    VLOG(2) << "Returning 0.0 memory utilization: total_estimated_sec="
+            << total_estimated_sec
+            << ", peak_memory_bandwidth=" << peak_memory_bandwidth;
+    return 0.0;
+  }
+  double utilization =
+      dram_bytes / (peak_memory_bandwidth * total_estimated_sec);
+
+  if (utilization > 1.0) {
+    VLOG(2) << "Memory utilization exceeded 1.0 in dot fusion cost model: "
+            << utilization;
+  }
+  return utilization;
+}
+
 }  // namespace detail
 
 absl::Status IsSupported(const HloDotInstruction* dot) {
@@ -350,7 +529,7 @@ absl::Status IsSupported(const HloDotInstruction* dot) {
         absl::StrJoin(dim_numbers.rhs_contracting_dimensions(), ","), "]"));
   }
 
-  // TODO: b/501002656 - Support downstream transposes by fixing dimension
+  // TODO(b/501002656): Support downstream transposes by fixing dimension
   // mapping.
   std::vector<const HloInstruction*> stack;
   absl::flat_hash_set<const HloInstruction*> visited;
@@ -378,7 +557,7 @@ absl::StatusOr<int64_t> ExtractBlockK(const HloDotInstruction* dot) {
     return absl::FailedPreconditionError(
         "Dot instruction must have a backend config with tiling sizes.");
   }
-  ASSIGN_OR_RETURN(auto tile_config, dot->backend_config<xla::gpu::Tile>());
+  ABSL_ASSIGN_OR_RETURN(auto tile_config, dot->backend_config<xla::gpu::Tile>());
   TF_RET_CHECK(tile_config.sizes_size() > 0)
       << "Tile backend config must have sizes.";
   return tile_config.sizes(0);
@@ -387,7 +566,7 @@ absl::StatusOr<int64_t> ExtractBlockK(const HloDotInstruction* dot) {
 absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
     const HloDotInstruction* dot, const BlockLevelParameters& block_params,
     const se::DeviceDescription& device_info, std::optional<int64_t> block_k) {
-  RETURN_IF_ERROR(IsSupported(dot));
+  ABSL_RETURN_IF_ERROR(IsSupported(dot));
   if (block_params.output_tile_sizes.size() != 1) {
     return absl::UnimplementedError(
         absl::StrCat("Only single tile size is supported, got ",
@@ -398,7 +577,7 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   if (block_k.has_value()) {
     block_k_val = *block_k;
   } else {
-    ASSIGN_OR_RETURN(block_k_val, ExtractBlockK(dot));
+    ABSL_ASSIGN_OR_RETURN(block_k_val, ExtractBlockK(dot));
   }
 
   detail::DotProblemInfo dot_info(*dot);
@@ -422,7 +601,7 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   EstimateRunTimeData estimates;
 
   // Calculate compute roofline with tile and wave quantization.
-  ASSIGN_OR_RETURN(detail::ComputeAndFlops compute_and_flops,
+  ABSL_ASSIGN_OR_RETURN(detail::ComputeAndFlops compute_and_flops,
                    detail::CalculateComputeTimeWithTileAndWaveQuantization(
                        dot_info, dot_tile, device_info));
   estimates.compute_time = compute_and_flops.compute_time;
@@ -436,21 +615,44 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   estimates.write_time = hbm_timing.write_time;
   estimates.bytes_read = hbm_timing.bytes_read;
   estimates.bytes_written = hbm_timing.bytes_written;
+  const int64_t num_stages = block_params.num_stages;
 
   int64_t threadblock_count =
       detail::CalculateNumThreadblocks(dot_info, dot_tile);
   estimates.l2_bytes_read =
       detail::CalculateL2Bytes(dot_info, dot_tile, threadblock_count);
 
+  estimates.shared_memory_per_block_bytes =
+      detail::CalculateSharedMemoryPerBlockBytes(dot_info, dot_tile,
+                                                 num_stages);
+
   // Calculate L2 time.
-  ASSIGN_OR_RETURN(absl::Duration l2_time,
+  ABSL_ASSIGN_OR_RETURN(absl::Duration l2_time,
                    detail::CalculateL2Time(dot_info.k, dot_tile.k, device_info,
                                            estimates.l2_bytes_read,
                                            block_params.is_tma_allowed));
 
-  // Assuming perfect overlap between compute and memory.
-  estimates.exec_time = std::max(
-      {compute_and_flops.compute_time, hbm_timing.total_time(), l2_time});
+  TF_RET_CHECK(block_k_val > 0)
+      << "block_k_val must be strictly positive, got " << block_k_val;
+  TF_RET_CHECK(dot_info.k > 0)
+      << "dot_info.k must be strictly positive, got " << dot_info.k;
+  const int64_t k_loop_iterations =
+      CeilOfRatio<int64_t>(dot_info.k, block_k_val);
+
+  absl::Duration pipelined_loop_time =
+      detail::CalculatePipelinedLoopTimeWithLaunchWaves(
+          num_stages, k_loop_iterations, threadblock_count,
+          compute_and_flops.compute_time, hbm_timing,
+          estimates.shared_memory_per_block_bytes, block_params.num_warps,
+          device_info);
+
+  // Assuming perfect overlap between compute and memory for the rest,
+  // but main loop is now modeled precisely.
+  estimates.exec_time = std::max({pipelined_loop_time, l2_time});
+  estimates.compute_utilization = detail::CalculateComputeUtilization(
+      estimates, device_info, dot_info.output_element_type);
+  estimates.memory_utilization =
+      detail::CalculateMemoryUtilization(estimates, device_info);
 
   return estimates;
 }

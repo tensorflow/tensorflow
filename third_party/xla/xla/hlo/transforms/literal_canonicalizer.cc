@@ -70,7 +70,7 @@ absl::StatusOr<bool> LiteralCanonicalizer::RunImpl(
   VLOG(3) << "Garbage collected " << num_erased << " expired literals";
 
   LiteralCanonicalizerVisitor visitor(literal_pool_, min_size_bytes_);
-  RETURN_IF_ERROR(module->entry_computation()->Accept(&visitor));
+  ABSL_RETURN_IF_ERROR(module->entry_computation()->Accept(&visitor));
   return visitor.changed();
 }
 

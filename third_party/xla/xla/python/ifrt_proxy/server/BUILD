@@ -176,7 +176,6 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -239,7 +238,6 @@ ifrt_proxy_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@com_google_protobuf//:protobuf",
-        "@llvm-project//llvm:Support",
         "@tsl//tsl/platform",
         "@tsl//tsl/platform:protobuf",
     ],
@@ -263,11 +261,11 @@ cc_library(
     srcs = ["ifrt_backend_user_context.cc"],
     hdrs = ["ifrt_backend_user_context.h"],
     deps = [
+        "//xla/python/ifrt:rtti",
         "//xla/python/ifrt:user_context",
         "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -328,7 +326,6 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
     ],
 )
 

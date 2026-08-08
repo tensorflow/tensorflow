@@ -46,6 +46,12 @@ limitations under the License.
   enum { sname##_STRUCT_SIZE = PJRT_STRUCT_SIZE(sname, last_field) }; \
   PJRT_CHECK_STRUCT_SIZE(sname, last_field)
 
+#if defined(__cplusplus) && defined(__clang__)
+#define PJRT_NO_DISCARD [[nodiscard]]
+#else
+#define PJRT_NO_DISCARD
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -68,7 +74,7 @@ typedef enum {
   PJRT_Extension_Type_CrossHostTransfers,
   PJRT_Extension_Type_ExecutableMetadata,
   PJRT_Extension_Type_Callback,
-  PJRT_Extension_Type_HostAllocator,  // Experimental.
+  PJRT_Extension_Type_HostAllocator,  // Deprecated.
   PJRT_Extension_Type_TpuTopology,
   PJRT_Extension_Type_TpuExecutable,
   PJRT_Extension_Type_Megascale,
@@ -112,7 +118,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 113
+#define PJRT_API_MINOR 114
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -987,6 +993,10 @@ typedef enum {
   // 1-bit integer types
   PJRT_Buffer_Type_S1,
   PJRT_Buffer_Type_U1,
+
+  // 6-bit MX floating-point formats.
+  PJRT_Buffer_Type_F6E2M3FN,
+  PJRT_Buffer_Type_F6E3M2FN,
 } PJRT_Buffer_Type;
 
 typedef enum {
@@ -3025,168 +3035,190 @@ typedef struct PJRT_Api {
 
   _PJRT_API_STRUCT_FIELD(PJRT_Error_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Error_Message);
-  _PJRT_API_STRUCT_FIELD(PJRT_Error_GetCode);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Error_GetCode);
 
-  _PJRT_API_STRUCT_FIELD(PJRT_Plugin_Initialize);
-  _PJRT_API_STRUCT_FIELD(PJRT_Plugin_Attributes);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Plugin_Initialize);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Plugin_Attributes);
 
-  _PJRT_API_STRUCT_FIELD(PJRT_Event_Destroy);
-  _PJRT_API_STRUCT_FIELD(PJRT_Event_IsReady);
-  _PJRT_API_STRUCT_FIELD(PJRT_Event_Error);
-  _PJRT_API_STRUCT_FIELD(PJRT_Event_Await);
-  _PJRT_API_STRUCT_FIELD(PJRT_Event_OnReady);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Event_Destroy);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Event_IsReady);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Event_Error);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Event_Await);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Event_OnReady);
 
-  _PJRT_API_STRUCT_FIELD(PJRT_Client_Create);
-  _PJRT_API_STRUCT_FIELD(PJRT_Client_Destroy);
-  _PJRT_API_STRUCT_FIELD(PJRT_Client_PlatformName);
-  _PJRT_API_STRUCT_FIELD(PJRT_Client_ProcessIndex);
-  _PJRT_API_STRUCT_FIELD(PJRT_Client_PlatformVersion);
-  _PJRT_API_STRUCT_FIELD(PJRT_Client_Devices);
-  _PJRT_API_STRUCT_FIELD(PJRT_Client_AddressableDevices);
-  _PJRT_API_STRUCT_FIELD(PJRT_Client_LookupDevice);
-  _PJRT_API_STRUCT_FIELD(PJRT_Client_LookupAddressableDevice);
-  _PJRT_API_STRUCT_FIELD(PJRT_Client_AddressableMemories);
-  _PJRT_API_STRUCT_FIELD(PJRT_Client_Compile);
-  _PJRT_API_STRUCT_FIELD(PJRT_Client_DefaultDeviceAssignment);
-  _PJRT_API_STRUCT_FIELD(PJRT_Client_BufferFromHostBuffer);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Client_Create);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Client_Destroy);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Client_PlatformName);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Client_ProcessIndex);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Client_PlatformVersion);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Client_Devices);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Client_AddressableDevices);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Client_LookupDevice);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Client_LookupAddressableDevice);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Client_AddressableMemories);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Client_Compile);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Client_DefaultDeviceAssignment);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Client_BufferFromHostBuffer);
 
-  _PJRT_API_STRUCT_FIELD(PJRT_DeviceDescription_Id);
-  _PJRT_API_STRUCT_FIELD(PJRT_DeviceDescription_ProcessIndex);
-  _PJRT_API_STRUCT_FIELD(PJRT_DeviceDescription_Attributes);
-  _PJRT_API_STRUCT_FIELD(PJRT_DeviceDescription_Kind);
-  _PJRT_API_STRUCT_FIELD(PJRT_DeviceDescription_DebugString);
-  _PJRT_API_STRUCT_FIELD(PJRT_DeviceDescription_ToString);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_DeviceDescription_Id);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_DeviceDescription_ProcessIndex);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_DeviceDescription_Attributes);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_DeviceDescription_Kind);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_DeviceDescription_DebugString);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_DeviceDescription_ToString);
 
-  _PJRT_API_STRUCT_FIELD(PJRT_Device_GetDescription);
-  _PJRT_API_STRUCT_FIELD(PJRT_Device_IsAddressable);
-  _PJRT_API_STRUCT_FIELD(PJRT_Device_LocalHardwareId);
-  _PJRT_API_STRUCT_FIELD(PJRT_Device_AddressableMemories);
-  _PJRT_API_STRUCT_FIELD(PJRT_Device_DefaultMemory);
-  _PJRT_API_STRUCT_FIELD(PJRT_Device_MemoryStats);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Device_GetDescription);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Device_IsAddressable);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Device_LocalHardwareId);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Device_AddressableMemories);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Device_DefaultMemory);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Device_MemoryStats);
 
-  _PJRT_API_STRUCT_FIELD(PJRT_Memory_Id);
-  _PJRT_API_STRUCT_FIELD(PJRT_Memory_Kind);
-  _PJRT_API_STRUCT_FIELD(PJRT_Memory_DebugString);
-  _PJRT_API_STRUCT_FIELD(PJRT_Memory_ToString);
-  _PJRT_API_STRUCT_FIELD(PJRT_Memory_AddressableByDevices);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Memory_Id);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Memory_Kind);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Memory_DebugString);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Memory_ToString);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Memory_AddressableByDevices);
 
-  _PJRT_API_STRUCT_FIELD(PJRT_Executable_Destroy);
-  _PJRT_API_STRUCT_FIELD(PJRT_Executable_Name);
-  _PJRT_API_STRUCT_FIELD(PJRT_Executable_NumReplicas);
-  _PJRT_API_STRUCT_FIELD(PJRT_Executable_NumPartitions);
-  _PJRT_API_STRUCT_FIELD(PJRT_Executable_NumOutputs);
-  _PJRT_API_STRUCT_FIELD(PJRT_Executable_SizeOfGeneratedCodeInBytes);
-  _PJRT_API_STRUCT_FIELD(PJRT_Executable_GetCostAnalysis);
-  _PJRT_API_STRUCT_FIELD(PJRT_Executable_OutputMemoryKinds);
-  _PJRT_API_STRUCT_FIELD(PJRT_Executable_OptimizedProgram);
-  _PJRT_API_STRUCT_FIELD(PJRT_Executable_Serialize);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Executable_Destroy);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Executable_Name);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Executable_NumReplicas);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Executable_NumPartitions);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Executable_NumOutputs);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(
+      PJRT_Executable_SizeOfGeneratedCodeInBytes);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Executable_GetCostAnalysis);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Executable_OutputMemoryKinds);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Executable_OptimizedProgram);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Executable_Serialize);
 
-  _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_Destroy);
-  _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_GetExecutable);
-  _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_AddressableDevices);
-  _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_Delete);
-  _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_IsDeleted);
-  _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_Execute);
-  _PJRT_API_STRUCT_FIELD(PJRT_Executable_DeserializeAndLoad);
-  _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_Fingerprint);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_Destroy);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_GetExecutable);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(
+      PJRT_LoadedExecutable_AddressableDevices);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_Delete);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_IsDeleted);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_Execute);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Executable_DeserializeAndLoad);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_Fingerprint);
 
-  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Destroy);
-  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ElementType);
-  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Dimensions);
-  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_UnpaddedDimensions);
-  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_DynamicDimensionIndices);
-  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_GetMemoryLayout);
-  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceSizeInBytes);
-  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Device);
-  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Memory);
-  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Delete);
-  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsDeleted);
-  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyToDevice);
-  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ToHostBuffer);
-  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsOnCpu);
-  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ReadyEvent);
-  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_UnsafePointer);
-  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IncreaseExternalReferenceCount);
-  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_DecreaseExternalReferenceCount);
-  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OpaqueDeviceMemoryDataPointer);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Destroy);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ElementType);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Dimensions);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Buffer_UnpaddedDimensions);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Buffer_DynamicDimensionIndices);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Buffer_GetMemoryLayout);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceSizeInBytes);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Device);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Memory);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Delete);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsDeleted);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyToDevice);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ToHostBuffer);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsOnCpu);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ReadyEvent);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Buffer_UnsafePointer);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(
+      PJRT_Buffer_IncreaseExternalReferenceCount);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(
+      PJRT_Buffer_DecreaseExternalReferenceCount);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(
+      PJRT_Buffer_OpaqueDeviceMemoryDataPointer);
 
-  _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_Destroy);
-  _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_AddChunk);
-  _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_TotalBytes);
-  _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_GranuleSize);
-  _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_CurrentBytes);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_Destroy);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_AddChunk);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_TotalBytes);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_GranuleSize);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_CurrentBytes);
 
-  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Create);
-  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Destroy);
-  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_PlatformName);
-  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_PlatformVersion);
-  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_GetDeviceDescriptions);
-  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Serialize);
-  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Attributes);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Create);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Destroy);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_PlatformName);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(
+      PJRT_TopologyDescription_PlatformVersion);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(
+      PJRT_TopologyDescription_GetDeviceDescriptions);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Serialize);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Attributes);
 
-  _PJRT_API_STRUCT_FIELD(PJRT_Compile);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Compile);
 
   // Always add new fields to the end of the struct. Move fields below to their
   // corresponding places after each major version bump.
-  _PJRT_API_STRUCT_FIELD(PJRT_Executable_OutputElementTypes);
-  _PJRT_API_STRUCT_FIELD(PJRT_Executable_OutputDimensions);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Executable_OutputElementTypes);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Executable_OutputDimensions);
 
-  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyToMemory);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyToMemory);
 
-  _PJRT_API_STRUCT_FIELD(PJRT_Client_CreateViewOfDeviceBuffer);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Client_CreateViewOfDeviceBuffer);
 
-  _PJRT_API_STRUCT_FIELD(PJRT_Executable_Fingerprint);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Executable_Fingerprint);
 
-  _PJRT_API_STRUCT_FIELD(PJRT_Client_TopologyDescription);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Client_TopologyDescription);
 
-  _PJRT_API_STRUCT_FIELD(PJRT_Executable_GetCompiledMemoryStats);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(
+      PJRT_Executable_GetCompiledMemoryStats);
 
-  _PJRT_API_STRUCT_FIELD(PJRT_Memory_Kind_Id);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Memory_Kind_Id);
 
-  _PJRT_API_STRUCT_FIELD(PJRT_ExecuteContext_Create);
-  _PJRT_API_STRUCT_FIELD(PJRT_ExecuteContext_Destroy);
-  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyRawToHost);
-  _PJRT_API_STRUCT_FIELD(PJRT_AsyncHostToDeviceTransferManager_Destroy);
-  _PJRT_API_STRUCT_FIELD(PJRT_AsyncHostToDeviceTransferManager_TransferData);
-  _PJRT_API_STRUCT_FIELD(PJRT_Client_CreateBuffersForAsyncHostToDevice);
-  _PJRT_API_STRUCT_FIELD(PJRT_AsyncHostToDeviceTransferManager_RetrieveBuffer);
-  _PJRT_API_STRUCT_FIELD(PJRT_AsyncHostToDeviceTransferManager_Device);
-  _PJRT_API_STRUCT_FIELD(PJRT_AsyncHostToDeviceTransferManager_BufferCount);
-  _PJRT_API_STRUCT_FIELD(PJRT_AsyncHostToDeviceTransferManager_BufferSize);
-  _PJRT_API_STRUCT_FIELD(PJRT_AsyncHostToDeviceTransferManager_SetBufferError);
-  _PJRT_API_STRUCT_FIELD(PJRT_AsyncHostToDeviceTransferManager_AddMetadata);
-  _PJRT_API_STRUCT_FIELD(PJRT_Client_DmaMap);
-  _PJRT_API_STRUCT_FIELD(PJRT_Client_DmaUnmap);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_ExecuteContext_Create);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_ExecuteContext_Destroy);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyRawToHost);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(
+      PJRT_AsyncHostToDeviceTransferManager_Destroy);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(
+      PJRT_AsyncHostToDeviceTransferManager_TransferData);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(
+      PJRT_Client_CreateBuffersForAsyncHostToDevice);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(
+      PJRT_AsyncHostToDeviceTransferManager_RetrieveBuffer);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(
+      PJRT_AsyncHostToDeviceTransferManager_Device);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(
+      PJRT_AsyncHostToDeviceTransferManager_BufferCount);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(
+      PJRT_AsyncHostToDeviceTransferManager_BufferSize);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(
+      PJRT_AsyncHostToDeviceTransferManager_SetBufferError);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(
+      PJRT_AsyncHostToDeviceTransferManager_AddMetadata);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Client_DmaMap);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Client_DmaUnmap);
 
-  _PJRT_API_STRUCT_FIELD(PJRT_Client_CreateUninitializedBuffer);
-  _PJRT_API_STRUCT_FIELD(PJRT_Client_UpdateGlobalProcessInfo);
-  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Deserialize);
-  _PJRT_API_STRUCT_FIELD(PJRT_Client_CreateAliasBuffer);
-  _PJRT_API_STRUCT_FIELD(PJRT_Client_FulfillAliasBuffer);
-  _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_GetDeviceAssignment);
-  _PJRT_API_STRUCT_FIELD(PJRT_Client_CreateErrorBuffer);
-  _PJRT_API_STRUCT_FIELD(PJRT_AsyncHostToDeviceTransferManager_TransferLiteral);
-  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyRawToHostFuture);
-  _PJRT_API_STRUCT_FIELD(PJRT_Device_PoisonExecution);
-  _PJRT_API_STRUCT_FIELD(PJRT_Device_CreateAsyncTrackingEvent);
-  _PJRT_API_STRUCT_FIELD(PJRT_AsyncTrackingEvent_Destroy);
-  _PJRT_API_STRUCT_FIELD(PJRT_Executable_GetCompileOptions);
-  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_DonateWithControlDependency);
-  _PJRT_API_STRUCT_FIELD(PJRT_Event_Create);
-  _PJRT_API_STRUCT_FIELD(PJRT_Event_Set);
-  _PJRT_API_STRUCT_FIELD(PJRT_Device_GetAttributes);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Client_CreateUninitializedBuffer);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Client_UpdateGlobalProcessInfo);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Deserialize);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Client_CreateAliasBuffer);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Client_FulfillAliasBuffer);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(
+      PJRT_LoadedExecutable_GetDeviceAssignment);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Client_CreateErrorBuffer);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(
+      PJRT_AsyncHostToDeviceTransferManager_TransferLiteral);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyRawToHostFuture);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Device_PoisonExecution);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Device_CreateAsyncTrackingEvent);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_AsyncTrackingEvent_Destroy);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Executable_GetCompileOptions);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(
+      PJRT_Buffer_DonateWithControlDependency);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Event_Create);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Event_Set);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Device_GetAttributes);
 
-  _PJRT_API_STRUCT_FIELD(PJRT_Client_Load);
-  _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_AddressableDeviceLogicalIds);
-  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Bitcast);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Client_Load);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(
+      PJRT_LoadedExecutable_AddressableDeviceLogicalIds);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Bitcast);
 
-  _PJRT_API_STRUCT_FIELD(PJRT_Error_ForEachPayload);
-  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Fingerprint);
-  _PJRT_API_STRUCT_FIELD(PJRT_Executable_ParameterMemoryKinds);
-  _PJRT_API_STRUCT_FIELD(PJRT_Device_ClearMemoryStats);
-  _PJRT_API_STRUCT_FIELD(
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Error_ForEachPayload);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Fingerprint);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Executable_ParameterMemoryKinds);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(PJRT_Device_ClearMemoryStats);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(
       PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace);
-  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_GetMemorySpaceKindIds);
+  PJRT_NO_DISCARD _PJRT_API_STRUCT_FIELD(
+      PJRT_TopologyDescription_GetMemorySpaceKindIds);
 } PJRT_Api;
 
 enum {

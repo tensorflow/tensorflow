@@ -362,9 +362,15 @@ class MMapWeightCacheProvider {
   bool StopBuildStep();
 
   // Creates the tensor map.
+  [[nodiscard]]
   bool MapTensorIdentifiers(
       const TfLiteTensor* tensors, size_t size,
       const std::unordered_map<size_t, size_t>& tensor_index_to_identifier);
+
+  // Maps a raw buffer pointer and size to a unique weight identifier.
+  [[nodiscard]]
+  bool MapBufferIdentifier(const void* buffer, size_t size,
+                           uint64_t identifier);
 
   // In case a constant buffer data needs to be moved for some reason, this will
   // map the new buffer data to its identifier.

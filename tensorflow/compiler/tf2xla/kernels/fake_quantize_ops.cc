@@ -67,10 +67,11 @@ void XlaNudge(xla::XlaBuilder* b, const DataType data_type,
   xla::XlaOp zero_point_from_min = xla::Sub(quant_min, xla::Div(min, *scale));
   xla::XlaOp quant_max =
       XlaHelpers::FloatLiteral(b, data_type, quant_max_value);
-  xla::XlaOp nudged_zero_point =
-      xla::Select(xla::Le(zero_point_from_min, quant_min), quant_min,
-                  xla::Select(xla::Ge(zero_point_from_min, quant_max),
-                              quant_max, xla::Round(zero_point_from_min)));
+  xla::XlaOp half = XlaHelpers::FloatLiteral(b, data_type, 0.5f);
+  xla::XlaOp nudged_zero_point = xla::Select(
+      xla::Le(zero_point_from_min, quant_min), quant_min,
+      xla::Select(xla::Ge(zero_point_from_min, quant_max), quant_max,
+                  xla::Floor(xla::Add(zero_point_from_min, half))));
   *nudged_min = xla::Mul(xla::Sub(quant_min, nudged_zero_point), *scale);
   *nudged_max = xla::Mul(xla::Sub(quant_max, nudged_zero_point), *scale);
 }

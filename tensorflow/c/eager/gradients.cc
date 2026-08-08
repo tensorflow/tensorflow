@@ -53,7 +53,8 @@ int64_t ToId(const AbstractTensorHandle* t) {
 }  // namespace
 
 absl::Status GradientRegistry::Register(
-    const string& op_name, GradientFunctionFactory gradient_function_factory) {
+    const std::string& op_name,
+    GradientFunctionFactory gradient_function_factory) {
   auto iter = registry_.find(op_name);
   if (iter != registry_.end()) {
     return absl::AlreadyExistsError(
@@ -145,7 +146,7 @@ class TapeVSpace
   // Calls the passed-in backward function.
   // op_type is the op's name provided in RecordOperation.
   absl::Status CallBackwardFunction(
-      const string& op_type, GradientFunction* gradient_function,
+      const std::string& op_type, GradientFunction* gradient_function,
       const std::vector<int64_t>& unneeded_gradients,
       absl::Span<AbstractTensorHandle* const> output_gradients,
       absl::Span<AbstractTensorHandle*> result) const override;
@@ -209,7 +210,7 @@ AbstractTensorHandle* TapeVSpace::AggregateGradients(
 // Calls the passed-in backward function.
 // op_type is the op's name provided in RecordOperation.
 absl::Status TapeVSpace::CallBackwardFunction(
-    const string& op_type, GradientFunction* gradient_function,
+    const std::string& op_type, GradientFunction* gradient_function,
     const std::vector<int64_t>& unneeded_gradients,
     absl::Span<AbstractTensorHandle* const> output_gradients,
     absl::Span<AbstractTensorHandle*> result) const {
@@ -262,7 +263,7 @@ void Tape::Watch(const AbstractTensorHandle* t) {
 void Tape::RecordOperation(absl::Span<AbstractTensorHandle* const> inputs,
                            absl::Span<AbstractTensorHandle* const> outputs,
                            GradientFunction* gradient_function,
-                           const string& op_name) {
+                           const std::string& op_name) {
   std::vector<int64_t> input_ids(inputs.size());
   std::vector<tensorflow::DataType> input_dtypes(inputs.size());
   for (int i = 0; i < inputs.size(); i++) {

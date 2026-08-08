@@ -21,7 +21,6 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -41,7 +40,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/tile_assignment.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -87,7 +85,7 @@ absl::Status Mesh::Validate() {
     }
   }
   std::vector<int64_t> iota(device_ids.size());
-  std::iota(iota.begin(), iota.end(), 0);
+  absl::c_iota(iota, 0);
 
   // For non-iota cases the device ids should be a non-identity permutation
   // of iota.
@@ -491,7 +489,7 @@ absl::Status ValidateSpanOfAxes(absl::Span<const AxisRef> axes,
     return absl::OkStatus();
   }
   for (const AxisRef& axis : axes) {
-    RETURN_IF_ERROR(axis.Validate(mesh));
+    ABSL_RETURN_IF_ERROR(axis.Validate(mesh));
   }
   if (!AxesCanCoexistWithoutOverlap(axes)) {
     return absl::InvalidArgumentError("Axes cannot coexist or axes overlap.");

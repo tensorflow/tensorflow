@@ -103,6 +103,12 @@ absl::Status CheckCliqueIsNotStale(const GpuCliqueKey& clique_key);
 absl::Status UpdateGlobalProcessInfo(
     absl::Span<xla::coordination::TaskInfo> infos);
 
+// Aborts local GPU collectives by driving the official AbortOnFailure path with
+// a task-failure state. Safe to call from the HangWatchdog thread; execution
+// threads unwind via CancellationToken.
+absl::Status AbortCollectivesOnTaskFailure(int failed_task_id,
+                                           const absl::Status& error);
+
 namespace internal {
 // Destroys all cliques that were acquired for the given process. This is
 // internal API that must be used carefully, primarily in test, as it might

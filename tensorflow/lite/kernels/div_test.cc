@@ -411,5 +411,29 @@ TEST(QuantizedDivOpTest, QuantizedWithBroadcastInt16) {
   QuantizedWithBroadcast<TensorType_INT16, int16_t>();
 }
 
+TEST(QuantizedDivOpTest, AsymmetricQuantizedDivisorZeroCheck) {
+  // Case 1: Divisor is real 0.0 (quantized to -128). This should FAIL.
+  {
+    QuantizedDivOpModel m({TensorType_INT8, {1, 1}, -1.0, 1.0},
+                          {TensorType_INT8, {1, 1}, 0.0, 2.0},
+                          {TensorType_INT8, {}, -1.0, 1.0},
+                          ActivationFunctionType_NONE);
+    m.QuantizeAndPopulate<int8_t>(m.input1(), {1.0});
+    m.QuantizeAndPopulate<int8_t>(m.input2(), {0.0});
+    ASSERT_NE(m.Invoke(), kTfLiteOk);
+  }
+
+  // Case 2: Divisor is real 1.0 (quantized to ~0). This should PASS.
+  {
+    QuantizedDivOpModel m({TensorType_INT8, {1, 1}, -1.0, 1.0},
+                          {TensorType_INT8, {1, 1}, 0.0, 2.0},
+                          {TensorType_INT8, {}, -1.0, 1.0},
+                          ActivationFunctionType_NONE);
+    m.QuantizeAndPopulate<int8_t>(m.input1(), {1.0});
+    m.QuantizeAndPopulate<int8_t>(m.input2(), {1.0});
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  }
+}
+
 }  // namespace
 }  // namespace tflite

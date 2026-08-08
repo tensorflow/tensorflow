@@ -22,9 +22,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -95,15 +95,20 @@ absl::StatusOr<DeviceDescription> DeviceDescription::FromProto(
   device_description.l2_cache_size_ = proto.l2_cache_size();
   device_description.memory_bandwidth_ = proto.memory_bandwidth();
   device_description.pcie_bandwidth_ = proto.pcie_bandwidth();
+  device_description.mem_clock_ghz_ = proto.mem_clock_ghz();
   device_description.ecc_enabled_ = proto.ecc_enabled();
   device_description.shared_memory_per_core_ = proto.shared_memory_per_core();
   device_description.shared_memory_per_block_ = proto.shared_memory_per_block();
   device_description.shared_memory_per_block_optin_ =
       proto.shared_memory_per_block_optin();
+  device_description.reserved_shared_memory_per_block_ =
+      proto.reserved_shared_memory_per_block();
+  device_description.max_blocks_per_multiprocessor_ =
+      proto.max_blocks_per_multiprocessor();
   device_description.clock_rate_ghz_ = proto.clock_rate_ghz();
 
   if (proto.has_cuda_compute_capability()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         device_description.gpu_compute_capability_,
         CudaComputeCapability::FromProto(proto.cuda_compute_capability()));
   }
@@ -119,45 +124,47 @@ absl::StatusOr<DeviceDescription> DeviceDescription::FromProto(
   device_description.fpus_per_core_ = proto.fpus_per_core();
 
   if (proto.has_scalar_unit_description()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         device_description.scalar_unit_description_,
         ExecutionUnitDescription::FromProto(proto.scalar_unit_description()));
   }
   if (proto.has_matrix_unit_description()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         device_description.matrix_unit_description_,
         ExecutionUnitDescription::FromProto(proto.matrix_unit_description()));
   }
   if (!proto.driver_version().empty()) {
-    ASSIGN_OR_RETURN(device_description.driver_version_,
+    ABSL_ASSIGN_OR_RETURN(device_description.driver_version_,
                      SemanticVersion::ParseFromString(proto.driver_version()));
   }
   if (!proto.kernel_mode_driver_version().empty()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         device_description.kernel_mode_driver_version_,
         SemanticVersion::ParseFromString(proto.kernel_mode_driver_version()));
   }
   if (!proto.runtime_version().empty()) {
-    ASSIGN_OR_RETURN(device_description.runtime_version_,
+    ABSL_ASSIGN_OR_RETURN(device_description.runtime_version_,
                      SemanticVersion::ParseFromString(proto.runtime_version()));
   }
   if (!proto.compile_time_toolkit_version().empty()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         device_description.compile_time_toolkit_version_,
         SemanticVersion::ParseFromString(proto.compile_time_toolkit_version()));
   }
   if (!proto.dnn_version().empty()) {
-    ASSIGN_OR_RETURN(device_description.dnn_version_,
+    ABSL_ASSIGN_OR_RETURN(device_description.dnn_version_,
                      SemanticVersion::ParseFromString(proto.dnn_version()));
   }
   if (!proto.cub_version().empty()) {
-    ASSIGN_OR_RETURN(device_description.cub_version_,
+    ABSL_ASSIGN_OR_RETURN(device_description.cub_version_,
                      SemanticVersion::ParseFromString(proto.cub_version()));
   }
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       device_description.interconnect_info_,
       DeviceInterconnectInfo::FromProto(proto.device_interconnect_info()));
 
+  device_description.collective_memory_granularity_ =
+      proto.collective_memory_granularity();
   return device_description;
 }
 
@@ -186,6 +193,8 @@ GpuDeviceInfoProto DeviceDescription::ToProto() const {
   proto.set_threads_per_warp(threads_per_warp_);
   proto.set_shared_memory_per_block(shared_memory_per_block_);
   proto.set_shared_memory_per_block_optin(shared_memory_per_block_optin_);
+  proto.set_reserved_shared_memory_per_block(reserved_shared_memory_per_block_);
+  proto.set_max_blocks_per_multiprocessor(max_blocks_per_multiprocessor_);
   proto.set_shared_memory_per_core(shared_memory_per_core_);
   proto.set_threads_per_core_limit(threads_per_core_limit_);
   proto.set_core_count(core_count_);
@@ -195,6 +204,7 @@ GpuDeviceInfoProto DeviceDescription::ToProto() const {
   proto.set_block_dim_limit_z(block_dim_limit().z);
   proto.set_memory_bandwidth(memory_bandwidth_);
   proto.set_pcie_bandwidth(pcie_bandwidth_);
+  proto.set_mem_clock_ghz(mem_clock_ghz_);
   proto.set_l2_cache_size(l2_cache_size_);
   proto.set_clock_rate_ghz(clock_rate_ghz_);
   proto.set_device_memory_size(device_memory_size_);
@@ -233,6 +243,7 @@ GpuDeviceInfoProto DeviceDescription::ToProto() const {
   if (interconnect_info_ != DeviceInterconnectInfo{}) {
     *proto.mutable_device_interconnect_info() = interconnect_info_.ToProto();
   }
+  proto.set_collective_memory_granularity(collective_memory_granularity_);
   return proto;
 }
 
@@ -314,6 +325,7 @@ bool DeviceDescription::EqualsTo(
          l2_cache_size_ == other.l2_cache_size_ &&
          memory_bandwidth_ == other.memory_bandwidth_ &&
          pcie_bandwidth_ == other.pcie_bandwidth_ &&
+         mem_clock_ghz_ == other.mem_clock_ghz_ &&
          clock_rate_ghz_ == other.clock_rate_ghz_ &&
          ecc_enabled_ == other.ecc_enabled_ &&
          gpu_compute_capability_ == other.gpu_compute_capability_ &&
@@ -403,7 +415,7 @@ GpuComputeCapabilityProto GpuComputeCapability::ToProto() const {
 absl::StatusOr<GpuComputeCapability> GpuComputeCapability::FromProto(
     const GpuComputeCapabilityProto& proto) {
   if (proto.has_cuda_compute_capability()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         CudaComputeCapability cuda_compute_capability,
         CudaComputeCapability::FromProto(proto.cuda_compute_capability()));
     return GpuComputeCapability(cuda_compute_capability);

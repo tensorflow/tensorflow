@@ -110,5 +110,13 @@ TEST(RamFileSystemTest, ReadAfterWrite) {
   }
 }
 
+TEST(RamFileSystemTest, ExtensionUsesBasenameForPathsWithDirectory) {
+  RamFileSystem fs;
+  EXPECT_EQ(fs.Extension("dir/file.txt"), "txt");
+  EXPECT_EQ(fs.Extension("a/b/c/name.tar.gz"), "gz");
+  EXPECT_EQ(fs.Extension("/tmp/foo.log"), "log");
+  EXPECT_EQ(fs.Extension("file.txt"), "txt");
+  EXPECT_EQ(fs.Extension("noext"), "");
+}
 }  // namespace
 }  // namespace tsl

@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/command_line_flags.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/path.h"
@@ -88,13 +89,14 @@ struct HloRunnerConfig {
   bool should_run = true;
   bool compile_only = false;
   bool enable_mock_nccl = false;
+  int run_single_shard_id = -1;
   std::string dump_output_literal_to = "";
   int task_id = 0;
   int num_nodes = 1;
   std::string device_type_str = "gpu";
   std::string address_str = "";
-  int32_t num_replicas = -1;
-  int32_t num_partitions = 1;
+  std::optional<int32_t> num_replicas = std::nullopt;
+  std::optional<int32_t> num_partitions = std::nullopt;
   bool log_output = false;
   bool run_xla_backend_only = false;
   bool disable_all_hlo_passes = false;
@@ -175,7 +177,7 @@ PreprocessingOptionsFromFlags(const HloRunnerConfig& opts) {
 static absl::StatusOr<FunctionalHloRunner::RunningOptions>
 RunningOptionsFromFlags(const HloRunnerConfig& opts) {
   FunctionalHloRunner::RunningOptions out;
-  ASSIGN_OR_RETURN(out.module_argument_mode,
+  ABSL_ASSIGN_OR_RETURN(out.module_argument_mode,
                    ArgumentModeFromString(opts.hlo_argument_mode));
   std::string error;
   if (!FunctionalHloRunner::AbslParseFlag(opts.output_mode_str,
@@ -193,7 +195,8 @@ RunningOptionsFromFlags(const HloRunnerConfig& opts) {
 }
 
 static absl::StatusOr<FunctionalHloRunner::RawCompileOptions>
-RawCompileOptionsFromFlags(const HloRunnerConfig& opts) {
+RawCompileOptionsFromFlags(const HloRunnerConfig& opts,
+                           const DebugOptions& debug_options) {
   FunctionalHloRunner::RawCompileOptions out;
   out.hlo_passes_mode =
       opts.run_xla_backend_only
@@ -208,16 +211,13 @@ RawCompileOptionsFromFlags(const HloRunnerConfig& opts) {
                  : FunctionalHloRunner::SpmdMode::kUseSpmdPartitioning)
           : FunctionalHloRunner::SpmdMode::kNotUseSpmdPartitioning;
   if (!opts.execution_options_path.empty()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         out.execution_options,
         FunctionalHloRunner::LoadExecutionOptions(opts.execution_options_path));
   }
-  out.num_replicas = opts.num_replicas < 0
-                         ? std::nullopt
-                         : std::optional<int>(opts.num_replicas);
-  out.num_partitions = opts.num_partitions < 0
-                           ? std::nullopt
-                           : std::optional<int>(opts.num_partitions);
+  out.debug_options = debug_options;
+  out.num_replicas = opts.num_replicas;
+  out.num_partitions = opts.num_partitions;
   out.xla_dump_to = opts.xla_dump_to;
   out.xla_text_dump_mode =
       opts.xla_dump_as_text
@@ -311,14 +311,34 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
 
   PreprocessFlags(opts);
 
-  ASSIGN_OR_RETURN(
+  if (opts.run_single_shard_id >= 0) {
+    opts.enable_mock_nccl = true;
+    opts.task_id = opts.run_single_shard_id;
+
+    std::string hlo_file = (argc > 1) ? argv[1] : "";
+    ABSL_ASSIGN_OR_RETURN(auto resolve_result,
+                     FunctionalHloRunner::ResolveTopology(
+                         opts.num_replicas, opts.num_partitions, hlo_file,
+                         opts.input_format));
+
+    opts.num_replicas = resolve_result.topology.num_replicas;
+    opts.num_partitions = resolve_result.topology.num_partitions;
+    opts.num_nodes = resolve_result.topology.num_nodes;
+  }
+
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
+  if (opts.enable_mock_nccl) {
+    debug_options.set_xla_gpu_shard_autotuning(false);
+  }
+
+  ABSL_ASSIGN_OR_RETURN(
       xla::FunctionalHloRunner::PreprocessingOptions preproc_options,
       PreprocessingOptionsFromFlags(opts));
   preproc_options.annotate_while_loop_trip_count = true;
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       xla::FunctionalHloRunner::RawCompileOptions raw_compile_options,
-      RawCompileOptionsFromFlags(opts));
-  ASSIGN_OR_RETURN(xla::FunctionalHloRunner::RunningOptions running_options,
+      RawCompileOptionsFromFlags(opts, debug_options));
+  ABSL_ASSIGN_OR_RETURN(xla::FunctionalHloRunner::RunningOptions running_options,
                    RunningOptionsFromFlags(opts));
 
   // tsl::Flags::Parse() leaves unknown flags in argv, we assume that those are
@@ -343,22 +363,22 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
     gpu_options.num_nodes = opts.num_nodes;
     gpu_options.enable_mock_nccl = opts.enable_mock_nccl;
     gpu_options.allocator_config.memory_fraction = opts.gpu_client_mem_fraction;
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         env, xla::GetPjRtEnvironmentForGpu(
                  opts.address_str, gpu_options,
                  absl::Seconds(opts.gpu_client_initialization_timeout_sec)));
     // Create a GPURunnerProfiler to profile GPU executions to save xspace data
     // to disk.
     if (env.client != nullptr && !opts.xla_gpu_dump_xspace_to.empty()) {
-      ASSIGN_OR_RETURN(hlo_runner_profiler,
+      ABSL_ASSIGN_OR_RETURN(hlo_runner_profiler,
                        HLORunnerProfiler::Create(opts.xla_gpu_dump_xspace_to,
                                                  /*keep_xspace=*/false));
       running_options.profiler = hlo_runner_profiler.get();
     }
   } else if (opts.device_type_str == "host") {
-    ASSIGN_OR_RETURN(env, xla::GetPjRtEnvironmentForHostCpu());
+    ABSL_ASSIGN_OR_RETURN(env, xla::GetPjRtEnvironmentForHostCpu());
     if (env.client != nullptr && !opts.xla_gpu_dump_xspace_to.empty()) {
-      ASSIGN_OR_RETURN(hlo_runner_profiler,
+      ABSL_ASSIGN_OR_RETURN(hlo_runner_profiler,
                        HLORunnerProfiler::Create(opts.xla_gpu_dump_xspace_to,
                                                  /*keep_xspace=*/false));
       running_options.profiler = hlo_runner_profiler.get();
@@ -385,17 +405,15 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
     execution_profiles.clear();
     if (opts.should_run && !opts.compile_only) {
       std::cout << "\n** Running " << hlo_file << " **\n";
-      RETURN_IF_ERROR(xla::FunctionalHloRunner::LoadAndRunAndDump(
-          *env.client, GetDebugOptionsFromFlags(), preproc_options,
-          raw_compile_options, running_options, hlo_file, opts.input_format,
-          opts.dump_output_literal_to, opts.task_id, opts.num_nodes,
-          env.kv_store, engine.get()));
+      ABSL_RETURN_IF_ERROR(xla::FunctionalHloRunner::LoadAndRunAndDump(
+          *env.client, preproc_options, raw_compile_options, running_options,
+          hlo_file, opts.input_format, opts.dump_output_literal_to,
+          opts.task_id, opts.num_nodes, env.kv_store, engine.get()));
     } else {
       std::cout << "\n** Compiling " << hlo_file << " **\n";
-      RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
-                          *env.client, GetDebugOptionsFromFlags(),
-                          preproc_options, raw_compile_options, argv[c],
-                          opts.input_format, opts.task_id)
+      ABSL_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
+                          *env.client, preproc_options, raw_compile_options,
+                          argv[c], opts.input_format, opts.task_id)
                           .status());
     }
 
@@ -461,14 +479,39 @@ int main(int argc, char** argv) {
       tsl::Flag(
           "enable_mock_nccl", &opts.enable_mock_nccl,
           "Should we simulate multi-hosts run with mock nccl collectives?"),
+      tsl::Flag(
+          "run_single_shard_id", &opts.run_single_shard_id,
+          "Run only a single shard of a multi-GPU workload. Specifying a "
+          "non-negative value will automatically enable mock NCCL, set the "
+          "task_id to this shard ID, and infer the total number of shards from "
+          "the HLO module config."),
       tsl::Flag("address", &opts.address_str,
                 "Coordinator address with port for when num_nodes > 1. "
                 "Example: 127.0.0.1:12345"),
-      tsl::Flag("num_replicas", &opts.num_replicas,
-                "The number of replicas; set to -1 for multihost "
-                "execution, which then uses all devices on all host."),
-      tsl::Flag("num_partitions", &opts.num_partitions,
-                "Number of partitions for SPMD."),
+      tsl::Flag(
+          "num_replicas",
+          [&opts](int32_t val) {
+            if (val >= 0) {
+              opts.num_replicas = val;
+            } else {
+              opts.num_replicas = std::nullopt;
+            }
+            return true;
+          },
+          -1,
+          "The number of replicas; set to -1 for multihost "
+          "execution, which then uses all devices on all host."),
+      tsl::Flag(
+          "num_partitions",
+          [&opts](int32_t val) {
+            if (val >= 0) {
+              opts.num_partitions = val;
+            } else {
+              opts.num_partitions = std::nullopt;
+            }
+            return true;
+          },
+          -1, "Number of partitions for SPMD."),
       tsl::Flag("log_output", &opts.log_output,
                 "Log the input and output to stderr."),
       tsl::Flag("run_xla_backend_only", &opts.run_xla_backend_only,

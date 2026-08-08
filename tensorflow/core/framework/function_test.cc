@@ -1060,6 +1060,20 @@ TEST(FunctionLibraryDefinitionTest, Contains) {
   EXPECT_TRUE(lib_def.Contains("XTimesTwo"));
 }
 
+TEST(FunctionLibraryDefinitionTest, MoveConstructor) {
+  FunctionDefLibrary lib;
+  *lib.add_function() = test::function::XTimesTwo();
+
+  ASSERT_EQ(lib.function_size(), 1);
+  ASSERT_FALSE(lib.function(0).signature().name().empty());
+
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), std::move(lib));
+
+  EXPECT_TRUE(lib_def.Contains("XTimesTwo"));
+  // The moved-from proto elements should be empty.
+  EXPECT_TRUE(lib.function(0).signature().name().empty());
+}
+
 TEST(FunctionLibraryDefinitionTest, Find) {
   FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
   TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));

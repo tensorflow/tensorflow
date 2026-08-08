@@ -159,6 +159,17 @@ class InterpreterOptions {
     return experimental_disable_delegate_node_fusion_;
   }
 
+  // If value == true, force TFLite to profile delegated nodes even if
+  // the delegate supports per-operator internal profiling.
+  // WARNING: This is an experimental API and subject to change.
+  void SetForceDelegateNodeProfiling(bool value) {
+    experimental_force_delegate_node_profiling_ = value;
+  }
+
+  bool GetForceDelegateNodeProfiling() const {
+    return experimental_force_delegate_node_profiling_;
+  }
+
  private:
   bool experimental_preserve_all_tensors_ = false;
   bool experimental_ensure_dynamic_tensors_are_released_ = false;
@@ -169,6 +180,7 @@ class InterpreterOptions {
   bool experimental_use_signature_tensor_names_ = false;
   bool experimental_compress_quantization_zero_points_ = false;
   bool experimental_disable_delegate_node_fusion_ = false;
+  bool experimental_force_delegate_node_profiling_ = false;
 };
 
 }  // namespace tflite

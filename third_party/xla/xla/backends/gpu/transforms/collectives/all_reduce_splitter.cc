@@ -27,11 +27,11 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -93,7 +93,12 @@ struct ReplicaGroups {
 
   template <typename H>
   friend H AbslHashValue(H h, const ReplicaGroups& rg) {
-    return H::combine(std::move(h), rg.replica_groups.size());
+    for (const ReplicaGroup& group : rg.replica_groups) {
+      h = H::combine(std::move(h), group.replica_ids_size());
+      h = H::combine_contiguous(std::move(h), group.replica_ids().data(),
+                                group.replica_ids_size());
+    }
+    return h;
   }
 
   friend bool operator==(const ReplicaGroups& item,
@@ -104,6 +109,10 @@ struct ReplicaGroups {
     for (int i = 0; i < item.replica_groups.size(); i++) {
       const ReplicaGroup& item_replica_group = item.replica_groups[i];
       const ReplicaGroup& other_replica_group = other.replica_groups[i];
+      if (item_replica_group.replica_ids_size() !=
+          other_replica_group.replica_ids_size()) {
+        return false;
+      }
       for (int i = 0; i < item_replica_group.replica_ids_size(); i++) {
         if (item_replica_group.replica_ids(i) !=
             other_replica_group.replica_ids(i)) {
@@ -382,6 +391,7 @@ static absl::StatusOr<bool> SplitAllReduce(const HloModuleConfig& config,
           ar.shape(), ar.operands(), ar.to_apply(),
           std::make_shared<CollectiveDeviceList>(first_ar_replica_groups),
           ar.constrain_layout(), channel_id, ar.use_global_device_ids()));
+  ar.SetupDerivedInstruction(first_ar);
 
   // Create second AR.
   channel_id = next_channel_id++;
@@ -392,11 +402,11 @@ static absl::StatusOr<bool> SplitAllReduce(const HloModuleConfig& config,
           ar.constrain_layout(), channel_id, ar.use_global_device_ids()));
 
   // Rewire.
-  RETURN_IF_ERROR(computation.ReplaceInstruction(&ar, first_ar));
+  ABSL_RETURN_IF_ERROR(computation.ReplaceInstruction(&ar, first_ar));
   if (ds.IsRoot()) {
     computation.set_root_instruction(second_ar);
   }
-  RETURN_IF_ERROR(ds.ReplaceAllUsesWith(second_ar));
+  ABSL_RETURN_IF_ERROR(ds.ReplaceAllUsesWith(second_ar));
   return true;  // changed
 }
 
@@ -426,7 +436,7 @@ absl::StatusOr<bool> AllReduceSplitter::RunImpl(
   for (auto* computation : module->computations(execution_threads)) {
     ARReplicaGroupMap replica_map = GetReplicaGroupsMap(*computation);
     for (HloInstruction* instr : computation->MakeInstructionPostOrder()) {
-      ASSIGN_OR_RETURN(bool rewritten, SplitAllReduce(*module, replica_map,
+      ABSL_ASSIGN_OR_RETURN(bool rewritten, SplitAllReduce(*module, replica_map,
                                                       *computation, *instr));
       changed |= rewritten;
     }

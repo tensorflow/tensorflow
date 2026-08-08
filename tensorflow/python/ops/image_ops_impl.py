@@ -3278,8 +3278,9 @@ def encode_png(image, compression=-1, name=None):
   Returns:
     A `Tensor` of type `string`.
   """
-  return gen_image_ops.encode_png(
-      ops.convert_to_tensor(image), compression, name)
+  image = ops.convert_to_tensor(image)
+  image = _AssertAtLeast3DImage(image)
+  return gen_image_ops.encode_png(image, compression, name)
 
 
 @tf_export(

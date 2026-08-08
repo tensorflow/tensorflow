@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/stream_executor/sycl/sycl_stream.h"
 
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/tsl/platform/logging.h"
 
 namespace stream_executor::sycl {
@@ -114,14 +114,14 @@ absl::Status LaunchSyclKernel(
 
 absl::Status SyclStream::WaitFor(Stream* other) {
   SyclStream* other_stream = static_cast<SyclStream*>(other);
-  RETURN_IF_ERROR(other_stream->RecordCompletedEvent());
+  ABSL_RETURN_IF_ERROR(other_stream->RecordCompletedEvent());
   return SyclEvent::WaitStreamOnEvent(
       executor_, stream_handle_.get(),
       other_stream->completed_event_.GetEvent());
 }
 
 absl::Status SyclStream::RecordEvent(Event* event) {
-  ASSIGN_OR_RETURN(::sycl::event recent_event,
+  ABSL_ASSIGN_OR_RETURN(::sycl::event recent_event,
                    SyclGetRecentEventFromStream(stream_handle_.get()));
   // Update the event to the most recent one on the stream.
   static_cast<SyclEvent*>(event)->SetEvent(recent_event);
@@ -147,7 +147,7 @@ absl::Status SyclStream::Memset32(DeviceAddressBase* location, uint32_t pattern,
   if (size % sizeof(uint32_t) != 0) {
     return absl::InvalidArgumentError("Size must be a multiple of 4 bytes.");
   }
-  RETURN_IF_ERROR(SyclMemfillDeviceAsync(stream_handle_.get(),
+  ABSL_RETURN_IF_ERROR(SyclMemfillDeviceAsync(stream_handle_.get(),
                                          const_cast<void*>(location->opaque()),
                                          pattern, size / sizeof(uint32_t)));
   VLOG(2) << "Successfully enqueued async memset32 of "
@@ -162,7 +162,7 @@ absl::Status SyclStream::MemZero(DeviceAddressBase* location, uint64_t size) {
       size % sizeof(uint32_t) == 0) {
     return SyclStream::Memset32(location, 0x0, size);
   }
-  RETURN_IF_ERROR(SyclMemsetDeviceAsync(
+  ABSL_RETURN_IF_ERROR(SyclMemsetDeviceAsync(
       stream_handle_.get(), const_cast<void*>(location->opaque()), 0x0, size));
   VLOG(2) << "Successfully enqueued async memset8 of " << size << " bytes at "
           << location << " with value 0x0 on stream " << stream_handle_;
@@ -171,7 +171,7 @@ absl::Status SyclStream::MemZero(DeviceAddressBase* location, uint64_t size) {
 
 absl::Status SyclStream::Memcpy(DeviceAddressBase* gpu_dst,
                                 const void* host_src, uint64_t size) {
-  RETURN_IF_ERROR(SyclMemcpyHostToDeviceAsync(
+  ABSL_RETURN_IF_ERROR(SyclMemcpyHostToDeviceAsync(
       stream_handle_.get(), const_cast<void*>(gpu_dst->opaque()), host_src,
       size));
   VLOG(2) << "Successfully enqueued async memcpy H2D of " << size << " bytes"
@@ -183,7 +183,7 @@ absl::Status SyclStream::Memcpy(DeviceAddressBase* gpu_dst,
 absl::Status SyclStream::Memcpy(void* host_dst,
                                 const DeviceAddressBase& gpu_src,
                                 uint64_t size) {
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       SyclMemcpyDeviceToHostAsync(stream_handle_.get(), host_dst,
                                   const_cast<void*>(gpu_src.opaque()), size));
   VLOG(2) << "Successfully enqueued async memcpy D2H of " << size << " bytes"
@@ -195,7 +195,7 @@ absl::Status SyclStream::Memcpy(void* host_dst,
 absl::Status SyclStream::Memcpy(DeviceAddressBase* gpu_dst,
                                 const DeviceAddressBase& gpu_src,
                                 uint64_t size) {
-  RETURN_IF_ERROR(SyclMemcpyDeviceToDeviceAsync(
+  ABSL_RETURN_IF_ERROR(SyclMemcpyDeviceToDeviceAsync(
       stream_handle_.get(), const_cast<void*>(gpu_dst->opaque()),
       const_cast<void*>(gpu_src.opaque()), size));
   VLOG(2) << "Successfully enqueued async memcpy D2D of " << size << " bytes"
@@ -263,11 +263,11 @@ absl::StatusOr<std::unique_ptr<SyclStream>> SyclStream::Create(
           << (enable_multiple_streams ? " with" : " without")
           << " multiple streams enabled";
 
-  ASSIGN_OR_RETURN(StreamPtr stream_handle,
+  ABSL_ASSIGN_OR_RETURN(StreamPtr stream_handle,
                    SyclStreamPool::GetOrCreateStream(executor->device_ordinal(),
                                                      enable_multiple_streams));
 
-  ASSIGN_OR_RETURN(SyclEvent completed_event, SyclEvent::Create(executor));
+  ABSL_ASSIGN_OR_RETURN(SyclEvent completed_event, SyclEvent::Create(executor));
 
   return std::unique_ptr<SyclStream>(new SyclStream(
       executor, std::move(completed_event), priority, stream_handle));
