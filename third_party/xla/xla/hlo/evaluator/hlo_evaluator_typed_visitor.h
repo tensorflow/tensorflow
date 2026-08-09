@@ -1436,12 +1436,15 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           DimensionVector group_index(gs_rank);
 
           // Batch dimensions will always be first in the final product.
+          const int64_t group_dim_index = gs_rank - 1;
           int64_t idx = 0;
           int64_t gs_idx = 0;
           for (int64_t i = 0; i < dot_dims.lhs_batch_dimensions_size(); ++i) {
             lhs_index[dot_dims.lhs_batch_dimensions(i)] = result_index[idx];
             rhs_index[dot_dims.rhs_batch_dimensions(i)] = result_index[idx];
-            group_index[gs_idx++] = result_index[idx];
+            if (gs_idx < group_dim_index) {
+              group_index[gs_idx++] = result_index[idx];
+            }
             idx++;
           }
 
@@ -1450,7 +1453,9 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
             // If there is a non-contracting lhs dimension that is not ragged,
             // then there will also be a dimension for this in group_sizes.
             if (lhs_ragged_dim != lhs_non_contracting[i]) {
-              group_index[gs_idx++] = result_index[idx];
+              if (gs_idx < group_dim_index) {
+                group_index[gs_idx++] = result_index[idx];
+              }
             }
             lhs_index[lhs_non_contracting[i]] = result_index[idx++];
           }
@@ -1462,7 +1467,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           int64_t lhs_ragged_index = lhs_index[lhs_ragged_dim];
           int64_t group_row_end = 0;
           for (int64_t i = 0; i < num_groups; ++i) {
-            group_index[gs_idx] = i;
+            group_index[group_dim_index] = i;
             group_row_end += gs_literal.Get<int64_t>(group_index);
             if (lhs_ragged_index < group_row_end) {
               break;
@@ -1641,13 +1646,16 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
       // The group dimension will always be first in the final product. We
       // handle it later since we need to fill in the batch dimensions first
       // to look up the relevant group sizes.
+      const int64_t group_dim_index = gs_rank - 1;
       int64_t gs_idx = 0;
       int64_t idx = 1;
       // Batch dimensions are next.
       for (int64_t i = 0; i < dot_dims.lhs_batch_dimensions_size(); ++i) {
         lhs_index[dot_dims.lhs_batch_dimensions(i)] = result_index[idx];
         rhs_index[dot_dims.rhs_batch_dimensions(i)] = result_index[idx];
-        group_index[gs_idx++] = result_index[idx];
+        if (gs_idx < group_dim_index) {
+          group_index[gs_idx++] = result_index[idx];
+        }
         ++idx;
       }
 
@@ -1656,7 +1664,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
       int64_t group_row_start = 0;  // inclusive
       int64_t group_row_end = 0;    // exclusive
       for (int i = 0; i <= result_index[0]; ++i) {
-        group_index[gs_idx] = i;
+        group_index[group_dim_index] = i;
         group_row_start = group_row_end;
         group_row_end += gs_literal.Get<int64_t>(group_index);
       }
