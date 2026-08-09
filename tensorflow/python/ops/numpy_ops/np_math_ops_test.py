@@ -490,6 +490,40 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.assertFalse(np_math_ops.isneginf(x1))
     self.assertFalse(np_math_ops.isneginf(x2))
 
+  def testIsInfFamilyNonFloatInputs(self):
+    # A non-floating input has no infinities, but the result must still be an
+    # elementwise boolean array shaped like the input, as numpy returns, and
+    # the argument must be converted before its dtype is inspected.
+    fns = [(np_math_ops.isinf, np.isinf), (np_math_ops.isposinf, np.isposinf),
+           (np_math_ops.isneginf, np.isneginf)]
+    args = [
+        [1, 2, 3],
+        np.array([1, 2, 3], dtype=np.int32),
+        np.array([1, 2, 3], dtype=np.int64),
+        np.array([[1, 2], [3, 4]], dtype=np.int32),
+        np.array([True, False]),
+        ops.convert_to_tensor([1, 2, 3]),
+    ]
+    for tf_fun, np_fun in fns:
+      for arg in args:
+        self.match(
+            tf_fun(arg),
+            np_fun(np.asarray(arg)),
+            msg='{}({})'.format(np_fun.__name__, arg))
+
+  def testIsInfFamilyFloatInputs(self):
+    fns = [(np_math_ops.isinf, np.isinf), (np_math_ops.isposinf, np.isposinf),
+           (np_math_ops.isneginf, np.isneginf)]
+    args = [
+        np.array([1.0, np.inf, -np.inf, np.nan], dtype=np.float64),
+        np.array([1.0, np.inf, -np.inf], dtype=np.float32),
+    ]
+    for tf_fun, np_fun in fns:
+      for arg in args:
+        self.match(
+            tf_fun(arg), np_fun(arg),
+            msg='{}({})'.format(np_fun.__name__, arg))
+
 if __name__ == '__main__':
   tensor.enable_tensor_equality()
   ops.enable_eager_execution()

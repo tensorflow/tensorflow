@@ -1023,25 +1023,28 @@ def isfinite(x):
 @tf_export.tf_export('experimental.numpy.isinf', v1=[])
 @np_utils.np_doc('isinf')
 def isinf(x):
+  x = np_array_ops.asarray(x)
   if x.dtype.is_floating:
     return _scalar(math_ops.is_inf, x, True)
-  return False
+  return np_array_ops.zeros_like(x, dtypes.bool)
 
 
 @tf_export.tf_export('experimental.numpy.isneginf', v1=[])
 @np_utils.np_doc('isneginf')
 def isneginf(x):
+  x = np_array_ops.asarray(x)
   if x.dtype.is_floating:
     return x == np_array_ops.full_like(x, -np.inf)
-  return False
+  return np_array_ops.zeros_like(x, dtypes.bool)
 
 
 @tf_export.tf_export('experimental.numpy.isposinf', v1=[])
 @np_utils.np_doc('isposinf')
 def isposinf(x):
+  x = np_array_ops.asarray(x)
   if x.dtype.is_floating:
     return x == np_array_ops.full_like(x, np.inf)
-  return False
+  return np_array_ops.zeros_like(x, dtypes.bool)
 
 
 @tf_export.tf_export('experimental.numpy.log2', v1=[])
