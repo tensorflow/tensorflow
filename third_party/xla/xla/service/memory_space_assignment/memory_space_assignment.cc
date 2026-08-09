@@ -1082,6 +1082,45 @@ class AsyncCopyStepForSliceConcat : public AsyncCopyStep {
   SlicedCopyAllocation* sliced_copy_allocation_ = nullptr;
 };
 
+class AsyncCopyStepForWindowPrefetch : public AsyncCopyStep {
+ public:
+  explicit AsyncCopyStepForWindowPrefetch(
+      WindowPrefetchedAllocation* window_prefetch_allocation)
+      : AsyncCopyStep(),
+        window_prefetch_allocation_(window_prefetch_allocation) {}
+
+  ~AsyncCopyStepForWindowPrefetch() override = default;
+
+  HloPosition defining_position() const override {
+    return {window_prefetch_allocation_->prefetch(), {}};
+  }
+
+  std::optional<StartPhase> start_phase() const override {
+    HloInstruction* get_buffer = window_prefetch_allocation_->prefetch();
+    HloInstruction* custom_call = get_buffer->mutable_operand(0);
+    return StartPhase{
+        window_prefetch_allocation_->prefetch_start_schedule_after(),
+        custom_call};
+  }
+
+  void set_start_phase_schedule_after_time(int64_t schedule_after) override {
+    window_prefetch_allocation_->set_prefetch_start_schedule_after(
+        schedule_after);
+  }
+
+  DonePhase done_phase() const override {
+    return {window_prefetch_allocation_->prefetch_done_schedule_before(),
+            window_prefetch_allocation_->prefetch()};
+  }
+
+  MemorySpace destination_memory_space() const override {
+    return window_prefetch_allocation_->memory_space();
+  }
+
+ private:
+  WindowPrefetchedAllocation* window_prefetch_allocation_ = nullptr;
+};
+
 }  // namespace
 
 void MemorySpaceAssignment::ScheduleAsynchronousCopies() {
@@ -1111,6 +1150,12 @@ void MemorySpaceAssignment::ScheduleAsynchronousCopies() {
         async_copy_steps.push_back(
             std::make_unique<AsyncCopyStepForSliceConcat>(
                 sliced_copy_allocation));
+      } else if (allocation->is_window_prefetched_allocation()) {
+        auto window_prefetch_allocation =
+            static_cast<WindowPrefetchedAllocation*>(allocation.get());
+        async_copy_steps.push_back(
+            std::make_unique<AsyncCopyStepForWindowPrefetch>(
+                window_prefetch_allocation));
       }
     }
 
@@ -1131,10 +1176,6 @@ void MemorySpaceAssignment::ScheduleAsynchronousCopies() {
         while (
             async_copy_step->defining_position().instruction->parent() !=
             flattened_instructions_[
-                // We can't use -1 to index into flatten_instructions_. However,
-                // if we want to place the copy as first instruction, i.e.,
-                // after the -1 scheduling position, its parent will be the same
-                // as the first instruction, i.e., the one at the 0th position.
                 std::max<int64_t>(0, copy_start_schedule_after)]
                 ->parent()) {
           VLOG(4) << "Delaying CopyStart (" << copy_start_schedule_after
