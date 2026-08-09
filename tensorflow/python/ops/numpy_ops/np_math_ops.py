@@ -1255,7 +1255,9 @@ def linspace(  # pylint: disable=missing-docstring
   # In numpy 2.x, the result type of np.linspace is based off of `start` and
   # `end`. We mimic the behavior.
   if np.lib.NumpyVersion(np.__version__) >= '2.0.0.dev0':
-    computation_dtype = np_utils.result_type([start * 1.0, stop * 1.0])
+    computation_dtype = np_utils.result_type(start, stop)
+    if not (computation_dtype.is_floating or computation_dtype.is_complex):
+      computation_dtype = np_utils.result_type(float)
   else:
     computation_dtype = np_utils.result_type(float)
   start = np_array_ops.array(start, dtype=computation_dtype)
