@@ -1404,7 +1404,7 @@ module @mjit_f {
                 .status());
 }
 
-TEST_F(IfrtIrLoadedExecutableTest, CopyArraysTpuToTpu) {
+TEST_F(IfrtIrLoadedExecutableTest, CopyArraysDeviceToDevice) {
   // Test that verifies that we can copy arrays between different devices.
   // Note that this test passes the same argument twice to CopyArrays in order
   // to verify that the array is not removed incorrectly from the IFRT IR
@@ -1462,7 +1462,7 @@ module {
   }
 }
 
-TEST_F(IfrtIrLoadedExecutableTest, CopyArraysCpuToTpu) {
+TEST_F(IfrtIrLoadedExecutableTest, CopyArraysCpuToDevice) {
   if (!PickDevices(1, "cpu").ok()) {
     GTEST_SKIP() << "Test requires at least one cpu device";
   }
@@ -1662,7 +1662,7 @@ module {
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, UsingPartiallyDonatedArgThrowsError) {
-  if (client_->platform_name() != xla::TpuName()) {
+  if (client_->platform_id() != xla::TpuId()) {
     GTEST_SKIP() << "Test CHECK fails in pjrt_stream_executor_client.h.";
   }
   // Verifies that an error is thrown if a shard of an array is first aliased
@@ -2174,7 +2174,9 @@ module @auto_layout {
   ASSERT_EQ(output_layouts.size(), 4);
   ASSERT_EQ(*default_layout, *output_layouts[0]);
   ASSERT_EQ(*default_layout, *output_layouts[1]);
-  ASSERT_EQ("{0,1:T(1,128)}", output_layouts[2]->ToString());
+  if (client_->platform_id() == xla::TpuId()) {
+    ASSERT_EQ("{0,1:T(1,128)}", output_layouts[2]->ToString());
+  }
   ASSERT_EQ(*default_layout, *output_layouts[3]);
 }
 
