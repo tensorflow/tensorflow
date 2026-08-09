@@ -312,4 +312,8 @@ tf_class {
     name: "value"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
+  member_method {
+    name: "__setitem__"
+    argspec: "args=[\'var\', \'slice_spec\', \'value\'], varargs=None, keywords=None, defaults=None"
+  }
 }
