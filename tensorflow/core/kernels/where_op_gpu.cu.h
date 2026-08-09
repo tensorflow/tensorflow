@@ -270,6 +270,18 @@ struct Where<GPUDevice, NDIM, T, TIndex> {
       return absl::OkStatus();
     }
 
+    // Validate input size to prevent GPU memory exhaustion and out-of-bounds access.
+    // Limit to 1B elements (~8GB for int64 indices) to avoid allocation failures
+    // and illegal memory access in PropagateWhereIndicesKernel.
+    constexpr int64_t kMaxSafeElements = 1000000000LL;  // 1 billion elements
+    if (input.size() > kMaxSafeElements) {
+      return errors::InvalidArgument(
+          "WhereOp: Input tensor size (", input.size(), ") exceeds maximum safe size (",
+          kMaxSafeElements, ") for GPU processing. ",
+          "This prevents potential GPU memory exhaustion and out-of-bounds memory access. ",
+          "Consider using smaller tensors or processing on CPU.");
+    }
+
     const auto& cu_stream = GetGpuStream(ctx);
 
     std::size_t temp_storage_bytes = 0;
