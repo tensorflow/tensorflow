@@ -1673,8 +1673,8 @@ REGISTER_OP("QuantizedAvgPool")
     .Output("min_output: float")
     .Output("max_output: float")
     .Attr("T: quantizedtype")
-    .Attr("ksize: list(int)")
-    .Attr("strides: list(int)")
+    .Attr("ksize: list(int) >= 4")
+    .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
     .SetShapeFn(shape_inference::QuantizedAvgPoolShape);
 
@@ -1729,8 +1729,8 @@ REGISTER_OP("QuantizedMaxPool")
     .Output("min_output: float")
     .Output("max_output: float")
     .Attr("T: quantizedtype")
-    .Attr("ksize: list(int)")
-    .Attr("strides: list(int)")
+    .Attr("ksize: list(int) >= 4")
+    .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::MaxPoolShape(c));

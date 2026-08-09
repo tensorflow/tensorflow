@@ -18,6 +18,8 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -34,6 +36,44 @@ namespace tensorflow {
 class QuantizedPoolingTest : public OpsTestBase {
  protected:
 };
+
+TEST(QuantizedPoolingOpDefTest, RejectsShortKsize) {
+  for (const char* op_type : {"QuantizedAvgPool", "QuantizedMaxPool"}) {
+    NodeDef node_def;
+    TF_ASSERT_OK(NodeDefBuilder("quantized_pool_with_short_ksize", op_type)
+                     .Input(FakeInput(DT_QUINT8))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Attr("T", DataTypeToEnum<quint8>::v())
+                     .Attr("ksize", {1})
+                     .Attr("strides", {1, 1, 1, 1})
+                     .Attr("padding", "SAME")
+                     .Finalize(&node_def));
+    const OpDef* op_def;
+    TF_ASSERT_OK(OpRegistry::Global()->LookUpOpDef(op_type, &op_def));
+    const absl::Status status = ValidateNodeDef(node_def, *op_def);
+    EXPECT_EQ(error::INVALID_ARGUMENT, status.code()) << status;
+  }
+}
+
+TEST(QuantizedPoolingOpDefTest, RejectsShortStrides) {
+  for (const char* op_type : {"QuantizedAvgPool", "QuantizedMaxPool"}) {
+    NodeDef node_def;
+    TF_ASSERT_OK(NodeDefBuilder("quantized_pool_with_short_strides", op_type)
+                     .Input(FakeInput(DT_QUINT8))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Attr("T", DataTypeToEnum<quint8>::v())
+                     .Attr("ksize", {1, 1, 1, 1})
+                     .Attr("strides", {1})
+                     .Attr("padding", "SAME")
+                     .Finalize(&node_def));
+    const OpDef* op_def;
+    TF_ASSERT_OK(OpRegistry::Global()->LookUpOpDef(op_type, &op_def));
+    const absl::Status status = ValidateNodeDef(node_def, *op_def);
+    EXPECT_EQ(error::INVALID_ARGUMENT, status.code()) << status;
+  }
+}
 
 TEST_F(QuantizedPoolingTest, SmallAveragePooling) {
   const int ksize = 2;
