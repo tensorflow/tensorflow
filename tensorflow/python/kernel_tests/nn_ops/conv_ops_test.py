@@ -3394,6 +3394,23 @@ class SeparableConv2DTest(test.TestCase):
   def testSeparableConv2D(self):
     self._testSeparableConv2D("NHWC")
 
+  def testSeparableConv2DStrideOutOfInt32Range(self):
+    input_tensor = random_ops.random_normal([2, 32, 32, 3])
+    depthwise_filter = constant_op.constant(1.0, shape=[1, 1, 3, 1])
+    pointwise_filter = random_ops.random_normal([1, 1, 3, 4])
+
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "out of range for an int32"):
+      self.evaluate(
+          nn_impl.separable_conv2d(
+              input_tensor,
+              depthwise_filter,
+              pointwise_filter,
+              strides=[1, 9223372036854775807, 1, 1],
+              padding="VALID",
+              data_format="NHWC",
+              dilations=[1, 1]))
+
   def disabledtestSeparableConv2DNCHW(self):
     if not test.is_gpu_available():
       return
