@@ -33,6 +33,28 @@ cc_library(
 )
 
 cc_library(
+    name = "sort_utils",
+    srcs = ["sort_utils.cc"],
+    hdrs = ["sort_utils.h"],
+    deps = [
+        "//xla:comparison_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:pattern_matcher",
+    ],
+)
+
+xla_cc_test(
+    name = "sort_utils_test",
+    srcs = ["sort_utils_test.cc"],
+    deps = [
+        ":sort_utils",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "hlo_longest_prefix",
     srcs = ["hlo_longest_prefix.cc"],
     hdrs = ["hlo_longest_prefix.h"],
@@ -62,6 +84,7 @@ cc_library(
         "//xla/service:hlo_value",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -90,6 +113,7 @@ xla_cc_test(
         "//xla/service:hlo_value",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
