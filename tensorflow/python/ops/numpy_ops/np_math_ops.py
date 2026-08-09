@@ -708,7 +708,10 @@ def _scalar(tf_fn, x, promote_to_float=False):
   """
   x = np_array_ops.asarray(x)
   if promote_to_float and not np.issubdtype(x.dtype.as_numpy_dtype, np.inexact):
-    x = x.astype(np_utils.result_type(float))
+    # `Tensor.astype` only exists once `enable_numpy_methods_on_tensor()` has
+    # been called, and is an alias of `math_ops.cast`; calling `cast` directly
+    # keeps these functions working without that opt-in.
+    x = math_ops.cast(x, np_utils.result_type(float))
   return tf_fn(x)
 
 

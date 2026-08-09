@@ -267,6 +267,17 @@ cuda_py_strict_test(
 )
 
 cuda_py_strict_test(
+    name = "np_math_ops_no_numpy_methods_test",
+    srcs = ["np_math_ops_no_numpy_methods_test.py"],
+    deps = [
+        ":np_math_ops",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_strict_test(
     name = "np_random_test",
     srcs = ["np_random_test.py"],
     deps = [
