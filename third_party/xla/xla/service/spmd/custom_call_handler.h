@@ -58,7 +58,7 @@ class CreateShardedScaledDotFunctor final
     HloInstruction* r = rr.operand().hlo();
     HloInstruction* l_scale = ll.scale().hlo();
     HloInstruction* r_scale = rr.scale().hlo();
-    ASSIGN_OR_RETURN(Shape sharded_scaled_dot_shape,
+    ABSL_ASSIGN_OR_RETURN(Shape sharded_scaled_dot_shape,
                      ShapeInference::InferDotOpShape(
                          l->shape(), r->shape(), dimension_numbers_,
                          /*preferred_element_type=*/

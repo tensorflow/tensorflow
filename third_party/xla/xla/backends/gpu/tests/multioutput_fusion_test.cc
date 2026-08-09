@@ -48,8 +48,7 @@ namespace {
 
 constexpr ErrorSpec kErrorSpec{0.0001, 1e-2};
 
-class MultiOutputFusionTest
-    : public HloInterpreterReferenceMixin<HloPjRtTestBase> {
+class MultiOutputFusionTest : public HloInterpreterReferenceMixin<HloTestBase> {
  protected:
   // Layout assignment assumes that there are no fusions in the input graph.
   // Since the purpose of this test is to send pre-fused graphs to XLA, we have

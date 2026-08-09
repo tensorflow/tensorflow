@@ -941,14 +941,17 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
       }
       case ml::AtomicBinOp::fadd: {
         // TODO(b/336367154): Introduce an atomic_rmw op with the binOp attr.
-        return device_spec_.IsAmdGpu()
-                   ? emitAMDAtomicFAdd(
-                         loc, modifier_arg, addr,
-                         device_spec_.gpu().rocm_compute_capability(), rewriter)
-                   : emitNVidiaAtomicFAdd(
-                         loc, modifier_arg, addr,
-                         device_spec_.gpu().cuda_compute_capability(), rewriter,
-                         op);
+        if (device_spec_.IsAmdGpu()) {
+          return emitAMDAtomicFAdd(loc, modifier_arg, addr,
+                                   device_spec_.gpu().rocm_compute_capability(),
+                                   rewriter);
+        }
+        if (device_spec_.IsIntelGpu()) {
+          return emitSPIRVAtomicFAdd(loc, modifier_arg, addr, rewriter);
+        }
+        return emitNVidiaAtomicFAdd(
+            loc, modifier_arg, addr,
+            device_spec_.gpu().cuda_compute_capability(), rewriter, op);
       }
       case ml::AtomicBinOp::fmax: {
         return rewriteAtomicFMaxAsIntAtomics(loc, modifier_arg, addr,
@@ -1106,6 +1109,23 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
     noFineMemHelper.setAttr(op, unitAttr);
     ignoreDenormalModeHelper.setAttr(op, unitAttr);
 
+    return success();
+  }
+
+  LogicalResult emitSPIRVAtomicFAdd(Location loc, Value modifier_arg,
+                                    Value addr, OpBuilder& b) const {
+    Type element_type = modifier_arg.getType();
+    if (auto vector_type = dyn_cast_or_null<mlir::VectorType>(element_type)) {
+      return failure();
+    }
+    // TODO(intel-tf): Expand support to 16 bit floating precisions on supported
+    // platforms.
+    if (!element_type.isF32() && !element_type.isF64()) {
+      return failure();
+    }
+
+    ml::AtomicRMWOp::create(b, loc, ml::AtomicBinOp::fadd, addr, modifier_arg,
+                            ml::AtomicOrdering::monotonic);
     return success();
   }
 

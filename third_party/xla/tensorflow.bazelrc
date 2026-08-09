@@ -303,6 +303,7 @@ common:rocm_ci_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
 # SYCL Configuration (non-hermetic)
 common:sycl --@rules_ml_toolchain//common:enable_sycl=True
 common:sycl --repo_env=TF_NEED_SYCL=1
+common:sycl --repo_env=ENABLE_INTEL_XPU_TRITON=1
 common:sycl --define=tensorflow_mkldnn_contraction_kernel=0
 common:sycl --cxxopt=-std=c++17
 common:sycl --host_cxxopt=-std=c++17
@@ -331,6 +332,8 @@ common:windows --host_copt=/W0
 
 # Linux ARM64 specific options
 common:linux_arm64 --copt="-mtune=generic" --copt="-march=armv8-a" --copt="-O3"
+common:linux_arm64 --define=ynn_enable_arm64_neonfp8=false
+
 
 
 # On Windows, `__cplusplus` is wrongly defined without this switch
@@ -701,6 +704,7 @@ common:cross_compile_linux_arm64 --platforms=//tools/toolchains/cross_compile/co
 common:cross_compile_linux_arm64 --cpu=aarch64
 common:cross_compile_linux_arm64 --crosstool_top=//tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
 common:cross_compile_linux_arm64 --extra_toolchains=//tools/toolchains/cross_compile/cc:linux_aarch64_toolchain
+common:cross_compile_linux_arm64 --define=ynn_enable_arm64_neonfp8=false
 
 # RBE cross-compile configs for Linux Aarch64
 common:rbe_cross_compile_linux_arm64 --config=cross_compile_linux_arm64

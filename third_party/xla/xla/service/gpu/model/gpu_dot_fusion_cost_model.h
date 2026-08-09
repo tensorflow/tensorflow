@@ -107,14 +107,26 @@ absl::Duration CalculatePipelinedLoopTime(int64_t num_stages,
 absl::Duration CalculatePipelinedLoopTimeWithLaunchWaves(
     int64_t num_stages, int64_t k_loop_iterations, int64_t threadblock_count,
     absl::Duration compute_time, const HbmEstimates& hbm_timing,
-    int64_t shared_memory_per_block_bytes, int num_warps,
+    int64_t shared_memory_per_block_bytes, int64_t num_warps,
     const se::DeviceDescription& device_info);
+
+// Represents the occupancy of a single Streaming Multiprocessor (SM) for a
+// given kernel launch configuration.
+struct SmOccupancy {
+  int64_t active_blocks_per_sm = 0;
+  int64_t active_warps_per_sm = 0;
+};
+
+// Calculates the SM occupancy based on shared memory and thread limits.
+SmOccupancy CalculateSmOccupancy(int64_t shared_memory_per_block_bytes,
+                                 int64_t num_warps,
+                                 const se::DeviceDescription& device_info);
 
 // Calculates the estimated number of hardware launch waves required to execute
 // the threadblocks.
 int64_t CalculateHardwareLaunchWaves(int64_t threadblock_count,
                                      int64_t shared_memory_per_block_bytes,
-                                     int num_warps,
+                                     int64_t num_warps,
                                      const se::DeviceDescription& device_info);
 
 // Calculates the bytes read from HBM for one inner loop iteration.
@@ -145,6 +157,17 @@ struct ComputeAndFlops {
 absl::StatusOr<ComputeAndFlops> CalculateComputeTimeWithTileAndWaveQuantization(
     const DotProblemInfo& dot, const DotTileSize& dot_tile,
     const se::DeviceDescription& device_info);
+
+// Calculates Compute Utilization. Expected to be in the range [0.0, 1.0], but
+// may exceed 1.0 if the underlying time estimates are inaccurate.
+double CalculateComputeUtilization(const EstimateRunTimeData& estimates,
+                                   const se::DeviceDescription& device_info,
+                                   PrimitiveType output_element_type);
+
+// Calculates Memory Utilization. Expected to be in the range [0.0, 1.0], but
+// may exceed 1.0 if the underlying time estimates are inaccurate.
+double CalculateMemoryUtilization(const EstimateRunTimeData& estimates,
+                                  const se::DeviceDescription& device_info);
 
 }  // namespace detail
 

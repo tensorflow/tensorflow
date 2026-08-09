@@ -40,7 +40,7 @@ XlaOp Zeros(XlaBuilder* builder, const Shape& shape) {
 XlaOp ZerosLike(XlaOp prototype) {
   XlaBuilder* builder = prototype.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    ASSIGN_OR_RETURN(Shape shape, builder->GetShape(prototype));
+    ABSL_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(prototype));
     return Zeros(builder, shape);
   });
 }

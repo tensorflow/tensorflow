@@ -49,7 +49,7 @@ namespace memory_space_assignment {
     OpCostManager& op_cost_manager, const CostAnalysisOptions& options,
     const AliasInfo* alias_info, const HloModule& module,
     HloAliasAnalysis* alias_analysis) {
-  ASSIGN_OR_RETURN(auto hlo_live_range,
+  ABSL_ASSIGN_OR_RETURN(auto hlo_live_range,
                    HloLiveRange::Run(module.schedule(), *alias_analysis,
                                      module.entry_computation()));
   auto call_graph = CallGraph::Build(&module);

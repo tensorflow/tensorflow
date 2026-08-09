@@ -304,21 +304,24 @@ TEST_F(DeviceAddressVmmAllocatorTest,
 }
 
 TEST_F(DeviceAddressVmmAllocatorTest,
-       DestructorWithPendingDeallocationsDoesNotCrash) {
-  TF_ASSERT_OK_AND_ASSIGN(
+       DestructorWithDestroyedStreamAndPendingDeallocationsDoesNotCrash) {
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::RocmDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
   const int ordinal = executor_->device_ordinal();
 
   for (int i = 0; i < 4; ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto addr,
         allocator->Allocate(ordinal, 1024, /*retry_on_failure=*/true,
                             static_cast<int64_t>(MemorySpace::kCollective)));
     ASSERT_THAT(allocator->Deallocate(ordinal, addr.Release()), IsOk());
   }
 
+  // The stream may be destroyed before the allocator. Destruction must
+  // synchronize through the executor and retire pending state directly.
+  stream_.reset();
   allocator.reset();
 }
 

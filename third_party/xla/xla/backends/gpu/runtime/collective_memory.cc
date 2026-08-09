@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
@@ -262,7 +262,7 @@ AcquireSymmetricMemory(
     //
     // Currently it's very simple proof of concept.
 
-    ASSIGN_OR_RETURN(GpuCommunicator * comm, cliques.GetComm(r.clique, *rank));
+    ABSL_ASSIGN_OR_RETURN(GpuCommunicator * comm, cliques.GetComm(r.clique, *rank));
     for (BufferAllocation::Index i : r.allocations) {
       se::DeviceAddressBase addr = buffers.GetDeviceAddress(i);
       CollectiveMemory::Key mem_key = std::make_pair(r.clique, i);
@@ -271,9 +271,9 @@ AcquireSymmetricMemory(
         sym_memories[mem_key] = std::move(cached);
         continue;
       }
-      ASSIGN_OR_RETURN(std::unique_ptr<SymmetricMemory> symm,
+      ABSL_ASSIGN_OR_RETURN(std::unique_ptr<SymmetricMemory> symm,
                        comm->CreateSymmetricMemory(addr));
-      ASSIGN_OR_RETURN(tsl::TiedRef<SymmetricMemory> tied_symm,
+      ABSL_ASSIGN_OR_RETURN(tsl::TiedRef<SymmetricMemory> tied_symm,
                        cliques.Tie(r.clique, std::move(symm)));
       sym_memories[mem_key] =
           memory_cache.AddSymmetricMemory(r.clique, addr, std::move(tied_symm));
@@ -378,20 +378,20 @@ absl::StatusOr<MulticastMemoryMap> AcquireMulticastMemory(
         size_t multicast_size;
 
         multicast_size = params[0]->buffers.GetDeviceAddress(i).size();
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             std::unique_ptr<se::gpu::MulticastMemory> multicast_memory,
             gpu_executor->CreateMulticastMemory(multicast_size, params.size()));
 
         // For all participating devices, subscribe to the multicast object.
         for (const auto* param : params) {
-          RETURN_IF_ERROR(multicast_memory->SubscribeDevice(
+          ABSL_RETURN_IF_ERROR(multicast_memory->SubscribeDevice(
               param->executor->device_ordinal()));
         }
 
         // For all participating devices, map to the multicast memory.
         absl::btree_map<RankId, void*> mapped_ptrs;
         for (const auto* param : params) {
-          ASSIGN_OR_RETURN(
+          ABSL_ASSIGN_OR_RETURN(
               mapped_ptrs[param->rank],
               multicast_memory->MapMemory(
                   param->buffers.GetDeviceAddress(i),
@@ -407,7 +407,7 @@ absl::StatusOr<MulticastMemoryMap> AcquireMulticastMemory(
             absl::StrJoin(mapped_ptrs, ", ", MappedPtrFormatter{}));
 
         // Tie the lifetime of constructed multicast memory to the clique.
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             tsl::TiedRef<se::gpu::MulticastMemory> tied_multicast_memory,
             cliques.Tie(r.clique, std::move(multicast_memory)));
 
@@ -432,7 +432,7 @@ absl::StatusOr<MulticastMemoryMap> AcquireMulticastMemory(
     RendezvousParams allocate_params = {*rank, params.executor, buffers};
 
     int64_t num_participants = r.clique.num_local_participants();
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::shared_ptr<MappedMulticastMemoryMap> clique_mcast_memories,
         Rendezvous<MappedMulticastMemoryMap>(rendezvous_name, rendezvous_key,
                                              allocate_params, num_participants,
@@ -519,7 +519,7 @@ absl::StatusOr<PeerMemoryMap> AcquirePeerMemory(
     RendezvousParams allocate_params = {*rank, params.executor, buffers};
 
     int64_t num_participants = r.clique.num_local_participants();
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::shared_ptr<PeerMemoryMap> clique_mcast_memories,
         Rendezvous<PeerMemoryMap>(rendezvous_name, rendezvous_key,
                                   allocate_params, num_participants, exchange));
@@ -598,15 +598,15 @@ absl::StatusOr<CollectiveMemory> AcquireCollectiveMemory(
                                          {"peer_allocs", peer_allocs.size()}});
   });
 
-  ASSIGN_OR_RETURN(auto sym_memories,
+  ABSL_ASSIGN_OR_RETURN(auto sym_memories,
                    AcquireSymmetricMemory(params, cliques, requests.buffers(),
                                           sym_allocs, memory_cache));
 
-  ASSIGN_OR_RETURN(MulticastMemoryMap mcast_memories,
+  ABSL_ASSIGN_OR_RETURN(MulticastMemoryMap mcast_memories,
                    AcquireMulticastMemory(params, cliques, requests.buffers(),
                                           mcast_allocs, memory_cache));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto peer_memories,
       AcquirePeerMemory(params, cliques, requests.buffers(), peer_allocs));
 

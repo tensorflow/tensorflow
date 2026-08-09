@@ -876,6 +876,22 @@ class IgammaGradTest(test.TestCase):
           np.array([-np.inf, -1.0, 0.0, 0.0], dtype=dtype.as_numpy_dtype), xgrad
       )
 
+  @test_util.run_in_graph_and_eager_modes
+  def testIgammaGradNumericalJacobian(self):
+    # d/dx igamma(1, x) tends to e^-x near the singular boundary x=0. Compare
+    # the analytic x-gradient against a numerical Jacobian at a small positive
+    # x. The step must stay below x: the central difference evaluates igamma at
+    # x - delta, and igamma is NaN for negative x, so a larger step would leave
+    # the valid domain.
+    for dtype in [dtypes.float32, dtypes.float64]:
+      a = constant_op.constant(1.0, dtype=dtype)
+      x = constant_op.constant([1e-6], dtype=dtype)
+      grad = gradient_checker_v2.compute_gradient(
+          lambda x: math_ops.igamma(a, x), [x], delta=1e-7
+      )  # pylint: disable=cell-var-from-loop
+      err = gradient_checker_v2.max_error(*grad)
+      self.assertLess(err, 1e-3)
+
 
 if __name__ == "__main__":
   test.main()

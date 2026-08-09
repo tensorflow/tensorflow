@@ -258,15 +258,15 @@ std::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
       supported = false;
       break;
     }
-    if (absl::c_any_of(slice->slice_starts(), [](int x) { return x != 0; }) ||
-        absl::c_any_of(slice->slice_strides(), [](int x) { return x != 1; })) {
-      // Strided slice or slicing at the beginning isn't supported.
-      supported = false;
-      break;
-    }
-    for (int64_t i = 0; i < slice->slice_limits().size(); ++i) {
-      if (i != sort_dim &&
-          slice->slice_limits(i) != slice->operand(0)->shape().dimensions(i)) {
+    for (int64_t i = 0; i < slice->slice_starts().size(); ++i) {
+      if (slice->slice_strides(i) != 1) {
+        // Strided slicing isn't supported.
+        supported = false;
+        break;
+      }
+      if (i != sort_dim && (slice->slice_starts(i) != 0 ||
+                            slice->slice_limits(i) !=
+                                slice->operand(0)->shape().dimensions(i))) {
         // Slicing along a non-sort dimension isn't supported.
         supported = false;
         break;
@@ -404,14 +404,26 @@ absl::StatusOr<HloInstruction*> TopkRewriter::TransformPatternToCustomCall(
 
   TopKCustomCall topkcc = CreateTopKCustomCall(sort, k.value());
 
-  for (HloInstruction* user : sort->users()) {
+  // If the slice starts at 0, its output matches topk_gte, so elide the slice.
+  // Else, retarget the slice to take [start:k] directly from topk_gte.
+  auto replace_slice = [](HloInstruction* slice,
+                          HloInstruction* topk_gte) -> absl::Status {
+    if (ShapeUtil::SameDimensions(slice->shape(), topk_gte->shape())) {
+      return slice->ReplaceAllUsesWith(topk_gte);
+    }
+    return slice->ReplaceOperandWithDifferentShape(0, topk_gte);
+  };
+
+  std::vector<HloInstruction*> sort_users = sort->users();
+  for (HloInstruction* user : sort_users) {
     if (sort->operand_count() == 2) {
       HloInstruction* gte = user;
-      for (HloInstruction* slice : gte->users()) {
+      std::vector<HloInstruction*> gte_users = gte->users();
+      for (HloInstruction* slice : gte_users) {
         if (gte->tuple_index() == 0) {
-          RETURN_IF_ERROR(slice->ReplaceAllUsesWith(topkcc.value_gte));
+          ABSL_RETURN_IF_ERROR(replace_slice(slice, topkcc.value_gte));
         } else if (gte->tuple_index() == 1) {
-          RETURN_IF_ERROR(slice->ReplaceAllUsesWith(topkcc.index_gte));
+          ABSL_RETURN_IF_ERROR(replace_slice(slice, topkcc.index_gte));
         } else {
           // The line below should be unreachable. SortIsInTopK() already checks
           // that sort has either 1 or 2 operands. Reaching this line indicates
@@ -421,7 +433,7 @@ absl::StatusOr<HloInstruction*> TopkRewriter::TransformPatternToCustomCall(
         }
       }
     } else {
-      RETURN_IF_ERROR(user->ReplaceAllUsesWith(topkcc.value_gte));
+      ABSL_RETURN_IF_ERROR(replace_slice(user, topkcc.value_gte));
     }
   }
 
@@ -434,7 +446,7 @@ absl::StatusOr<bool> TopkRewriter::TransformToCustomCall(
   bool changed = false;
   for (HloComputation* comp : module->computations(execution_threads)) {
     for (HloInstruction* inst : comp->MakeInstructionPostOrder()) {
-      ASSIGN_OR_RETURN(HloInstruction * topkcc,
+      ABSL_ASSIGN_OR_RETURN(HloInstruction * topkcc,
                        TransformPatternToCustomCall(inst));
       if (topkcc != nullptr) {
         VLOG(2) << "Rewritten Topk: " << topkcc->ToString();
@@ -449,7 +461,7 @@ absl::StatusOr<bool> TopkRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  ASSIGN_OR_RETURN(auto transform_to_customcall_changed,
+  ABSL_ASSIGN_OR_RETURN(auto transform_to_customcall_changed,
                    TransformToCustomCall(module, execution_threads));
   changed |= transform_to_customcall_changed;
   return changed;
@@ -484,12 +496,11 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
     // fits in 16 bits so indices can be packed.
     constexpr int32_t kLow16BitsLimit = int32_t{1} << 16;
     if (topk->largest() && topk->operand(0)->shape().element_type() == BF16 &&
-        !HasSingleUserReadingOnlyTheValueOutput(topk) &&
         topk->operand(0)->shape().dimensions().back() < kLow16BitsLimit) {
       return DecomposeTopKWithSorting(topk);
     }
 
-    ASSIGN_OR_RETURN(HloComputation * comparator,
+    ABSL_ASSIGN_OR_RETURN(HloComputation * comparator,
                      CreateVariadicComparator(topk));
     return DecomposeTopKFallback(topk, comparator);
   }
@@ -513,7 +524,7 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
     XlaComputation comparison = topk->largest()
                                     ? CreateScalarGtComputation(ptypes, &b)
                                     : CreateScalarLtComputation(ptypes, &b);
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         HloComputation * comparator,
         XlaComputationToHloComputation(comparison, topk->parent()->parent()));
     return comparator;
@@ -596,9 +607,14 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
             s32_shape, HloOpcode::kXor, input_with_low_bits, iota));
 
     // Step 6: Sort in descending order (GT comparator on S32, unstable).
+    // Note: Even though we set is_stable=false on the HLO sort instruction,
+    // the sort is inherently stable. Because the lower 16 bits embed the
+    // unique iota index of each element, no two packed S32 keys can ever be
+    // equal. Any tie in the upper 16 bits (BF16 values) is deterministically
+    // broken by the original index order.
     XlaBuilder b(absl::StrCat("packed_comparator_", call->name()));
     XlaComputation gt_comp = CreateScalarGtComputation({S32}, &b);
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         HloComputation * comparator,
         XlaComputationToHloComputation(gt_comp, parent_comp->parent()));
 
@@ -646,7 +662,7 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
             broadcast_s32(kLow16BitsMask, sliced_s32_shape)));
 
     // Step 10: Create tuple of (values, indices) and replace.
-    RETURN_IF_ERROR(ReplaceInstruction(
+    ABSL_RETURN_IF_ERROR(ReplaceInstruction(
         call, parent_comp->AddInstruction(
                   HloInstruction::CreateTuple({values, indices}))));
     return absl::OkStatus();
@@ -675,7 +691,7 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
       HloInstruction* sort = call->AddInstruction(
           HloInstruction::CreateSort(input->shape(), sort_dimension, {input},
                                      variadic_comparator, is_stable));
-      RETURN_IF_ERROR(ReplaceInstruction(
+      ABSL_RETURN_IF_ERROR(ReplaceInstruction(
           call->users().front(),
           call->AddInstruction(HloInstruction::CreateSlice(
               call->shape().tuple_shapes(0), sort, zeroes,
@@ -694,7 +710,7 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
                 sort->shape().tuple_shapes(index), sort, index)),
             zeroes, call->shape().tuple_shapes(index).dimensions(), ones));
       };
-      RETURN_IF_ERROR(ReplaceInstruction(
+      ABSL_RETURN_IF_ERROR(ReplaceInstruction(
           call, call->AddInstruction(HloInstruction::CreateTuple(
                     {slice_tuple(0), slice_tuple(1)}))));
     }

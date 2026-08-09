@@ -15,10 +15,7 @@ limitations under the License.
 
 #include "xla/service/sharding_remover.h"
 
-#include <memory>
-#include <optional>
-#include <string>
-#include <utility>
+#include <algorithm>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -69,11 +66,11 @@ absl::StatusOr<bool> ShardingRemover::RunImpl(
       // ShardingGroupOp is dangling so we just remove it.
       if (instruction->custom_call_target() ==
           sdy::kShardingGroupCustomCallTargetName) {
-        RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
+        ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
         continue;
       }
 
-      RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(
+      ABSL_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(
           instruction->mutable_operand(0), name()));
       changed = true;
 
@@ -89,7 +86,7 @@ absl::StatusOr<bool> ShardingRemover::RunImpl(
         auto copy = computation->AddInstruction(
             HloInstruction::CreateUnary(instruction->shape(), HloOpcode::kCopy,
                                         instruction->mutable_operand(0)));
-        RETURN_IF_ERROR(computation->ReplaceInstruction(instruction, copy));
+        ABSL_RETURN_IF_ERROR(computation->ReplaceInstruction(instruction, copy));
         instruction = copy;
       }
     }

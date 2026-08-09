@@ -44,7 +44,7 @@ absl::StatusOr<bool> ReduceWindowResizer::RunImpl(
       if (reduce_window->inputs().front()->shape().dimensions().size() != 1) {
         continue;
       }
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           reduce_window_util::Replace1DReduceWindowWithReshape(reduce_window));
 
       changed = true;

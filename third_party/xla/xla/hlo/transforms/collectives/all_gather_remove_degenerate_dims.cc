@@ -118,7 +118,7 @@ absl::StatusOr<HloInstruction*> CreateNewAllGather(
 
   int64_t new_all_gather_dim = all_gather_dim - major_dims_to_delete.size();
   int64_t shard_count = GetShardCount(all_gather);
-  ASSIGN_OR_RETURN(Shape new_all_gather_shape,
+  ABSL_ASSIGN_OR_RETURN(Shape new_all_gather_shape,
                    ShapeInference::InferAllGatherShape(
                        reshaped_shapes, new_all_gather_dim, shard_count));
   auto* new_all_gather = Cast<HloAllGatherInstruction>(
@@ -171,10 +171,10 @@ absl::StatusOr<bool> AllGatherRemoveDegenerateDims::RunImpl(
         continue;
       }
 
-      ASSIGN_OR_RETURN(HloInstruction * new_all_gather,
+      ABSL_ASSIGN_OR_RETURN(HloInstruction * new_all_gather,
                        CreateNewAllGather(all_gather));
       if (new_all_gather != all_gather) {
-        RETURN_IF_ERROR(ReshapeAndReplaceResults(all_gather, new_all_gather));
+        ABSL_RETURN_IF_ERROR(ReshapeAndReplaceResults(all_gather, new_all_gather));
         changed = true;
       }
     }

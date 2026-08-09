@@ -172,7 +172,7 @@ absl::StatusOr<bool> WhileLoopPipelineUnroller::RunImpl(
     unrolled_while_instruction->set_while_body(unrolled_body);
 
     if (status.ok()) {
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           while_instruction->ReplaceOperandWith(0, unrolled_while_instruction));
     } else {
       VLOG(1) << "Failed to unroll: " << while_instruction->name();
@@ -185,9 +185,9 @@ absl::StatusOr<bool> WhileLoopPipelineUnroller::RunImpl(
     // recursively clone all the nested computations. FCG will take care of this
     // for us.
     FlattenCallGraph fcg;
-    RETURN_IF_ERROR(fcg.Run(module).status());
+    ABSL_RETURN_IF_ERROR(fcg.Run(module).status());
     HloDCE dce;
-    RETURN_IF_ERROR(dce.Run(module).status());
+    ABSL_RETURN_IF_ERROR(dce.Run(module).status());
   }
 
   return changed;

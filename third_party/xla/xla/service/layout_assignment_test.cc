@@ -538,7 +538,7 @@ class OperandsMustBeTheSameLayoutAssignment : public LayoutAssignment {
           operand->shape().dimensions().size()) {
         continue;
       }
-      RETURN_IF_ERROR(SetArrayOperandLayout(buffer_constraint.layout(),
+      ABSL_RETURN_IF_ERROR(SetArrayOperandLayout(buffer_constraint.layout(),
                                             instruction, operand_no,
                                             /*mandatory=*/true));
     }
@@ -2231,6 +2231,84 @@ ENTRY main {
       ParseAndReturnUnverifiedModule(
           module_str, {}, HloParserOptions().set_fill_missing_layouts(false)));
   EXPECT_OK(RunLayoutAssignmentPass(m.get()));
+}
+
+TEST_F(LayoutAssignmentTest, RespectsDisableWhileLoopCopies) {
+  const char* module_str = R"(
+HloModule t
+
+while_condition {
+  tuple = (f32[5,16]{1,0}, u32[]) parameter(0)
+  i = u32[] get-tuple-element(tuple), index=1
+  n = u32[] constant(8)
+  ROOT predicate = pred[] compare(i, n), direction=LT
+}
+
+while_body {
+  tuple = (f32[5,16]{1,0}, u32[]) parameter(0)
+  input = f32[5,16]{0,1} get-tuple-element(tuple), index=0
+  i = u32[] get-tuple-element(tuple), index=1
+  c1 = u32[] constant(1)
+  i_ = add(i, c1)
+  ROOT tuple1 = (f32[5,16]{0,1}, u32[]) tuple(input, i_)
+}
+
+ENTRY main {
+  input = f32[5,16]{1,0} parameter(0)
+  c0 = u32[] constant(0)
+  tuple = (f32[5,16]{1,0}, u32[]) tuple(input, c0)
+  tuple_ = (f32[5,16]{1,0}, u32[]) while(tuple), condition=while_condition, body=while_body, frontend_attributes={xla_disable_while_loop_copies="true"}
+  ROOT output_ = f32[5,16]{1,0} get-tuple-element(tuple_), index=0
+})";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  EXPECT_OK(RunLayoutAssignmentPass(m.get()));
+  HloComputation* body = m->GetComputationWithName("while_body");
+  ASSERT_NE(body, nullptr);
+  EXPECT_NE(body->root_instruction()->opcode(), HloOpcode::kCopy);
+}
+
+TEST_F(LayoutAssignmentTest, RespectsDisableWhileLoopCopiesOperandConstraint) {
+  const char* module_str = R"(
+HloModule t
+
+while_condition {
+  tuple = (s32[2,8]{1,0}, u32[]) parameter(0)
+  i = u32[] get-tuple-element(tuple), index=1
+  n = u32[] constant(8)
+  ROOT predicate = pred[] compare(i, n), direction=LT
+}
+
+while_body {
+  tuple = (s32[2,8]{1,0}, u32[]) parameter(0)
+  input = s32[2,8]{1,0} get-tuple-element(tuple), index=0
+  i = u32[] get-tuple-element(tuple), index=1
+  c1 = u32[] constant(1)
+  i_ = add(i, c1)
+  custom = s32[2,8]{0,1} custom-call(input), custom_call_target="baz",
+    operand_layout_constraints={s32[2,8]{0,1}}
+  ROOT tuple1 = (s32[2,8]{0,1}, u32[]) tuple(custom, i_)
+}
+
+ENTRY main {
+  input = s32[2,8]{1,0} parameter(0)
+  c0 = u32[] constant(0)
+  tuple = (s32[2,8]{1,0}, u32[]) tuple(input, c0)
+  tuple_ = (s32[2,8]{1,0}, u32[]) while(tuple), condition=while_condition, body=while_body, frontend_attributes={xla_disable_while_loop_copies="true"}
+  ROOT output_ = s32[2,8]{1,0} get-tuple-element(tuple_), index=0
+})";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  EXPECT_OK(RunLayoutAssignmentPass(m.get()));
+  HloComputation* body = m->GetComputationWithName("while_body");
+  ASSERT_NE(body, nullptr);
+  for (HloInstruction* inst : body->instructions()) {
+    EXPECT_NE(inst->opcode(), HloOpcode::kCopy);
+  }
+  const Shape& body_param_shape = body->parameter_instruction(0)->shape();
+  ExpectLayoutIs(ShapeUtil::GetSubshape(body_param_shape, {0}), {0, 1});
 }
 
 TEST_F(LayoutAssignmentTest, HloBufferLayoutUnconstrained) {

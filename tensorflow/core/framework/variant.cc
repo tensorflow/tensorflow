@@ -96,9 +96,10 @@ bool DecodeVariantList(std::unique_ptr<port::StringListDecoder> d,
     // zero-copy operation that keeps a reference to the data in d?
     std::string str(d->Data(sizes[i]), sizes[i]);
     if (!variant_array[i].Decode(std::move(str))) return false;
+    const std::string variant_type_name = variant_array[i].TypeName();
     if (!DecodeUnaryVariant(&variant_array[i])) {
       LOG(ERROR) << "Could not decode variant with type_name: \""
-                 << variant_array[i].TypeName()
+                 << variant_type_name
                  << "\".  Perhaps you forgot to register a "
                     "decoder via REGISTER_UNARY_VARIANT_DECODE_FUNCTION?";
       return false;

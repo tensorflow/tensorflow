@@ -74,12 +74,12 @@ _tf_uses_legacy_keras = (
     _os.environ.get("TF_USE_LEGACY_KERAS", None) in ("true", "True", "1"))
 setattr(_current_module, "keras", _KerasLazyLoader(globals()))
 _module_dir = _module_util.get_parent_dir_for_name("keras._tf_keras.keras")
-_current_module.__path__ = [_module_dir] + _current_module.__path__
+_current_module.__path__ = [_module_dir] + list(_current_module.__path__)
 if _tf_uses_legacy_keras:
   _module_dir = _module_util.get_parent_dir_for_name("tf_keras.api._v2.keras")
 else:
   _module_dir = _module_util.get_parent_dir_for_name("keras.api._v2.keras")
-_current_module.__path__ = [_module_dir] + _current_module.__path__
+_current_module.__path__ = [_module_dir] + list(_current_module.__path__)
 
 
 # Enable TF2 behaviors
@@ -104,7 +104,9 @@ if "getsitepackages" in dir(_site):
 
 for _scheme in _sysconfig.get_scheme_names():
   for _name in ["purelib", "platlib"]:
-    _site_packages_dirs += [_sysconfig.get_path(_name, _scheme)]
+    _path = _sysconfig.get_path(_name, _scheme)
+    if _path is not None:
+      _site_packages_dirs.append(_path)
 
 _site_packages_dirs = list(set(_site_packages_dirs))
 

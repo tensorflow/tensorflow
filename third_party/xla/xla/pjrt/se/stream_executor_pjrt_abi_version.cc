@@ -19,8 +19,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/proto/pjrt_abi_version.pb.h"
 #include "xla/stream_executor/abi/executable_abi_version.h"
@@ -52,7 +52,7 @@ StreamExecutorPjRtExecutableAbiVersion::FromProto(
     return absl::InternalError(
         "Failed to parse ExecutableAbiVersionProto from string.");
   }
-  ASSIGN_OR_RETURN(stream_executor::ExecutableAbiVersion executable_abi_version,
+  ABSL_ASSIGN_OR_RETURN(stream_executor::ExecutableAbiVersion executable_abi_version,
                    stream_executor::ExecutableAbiVersion::FromProto(
                        executable_abi_version_proto));
   return std::make_unique<StreamExecutorPjRtExecutableAbiVersion>(

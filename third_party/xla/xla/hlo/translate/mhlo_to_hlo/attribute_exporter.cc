@@ -359,10 +359,10 @@ absl::StatusOr<std::vector<xla::AxisRef>> BuildAxisRefs(
 absl::StatusOr<std::unique_ptr<xla::CollectiveDeviceListBase>>
 ConvertMhloMeshAxes(mlir::mhlo::ReplicaGroupMeshAxesAttr attr,
                     mlir::Operation* op) {
-  ASSIGN_OR_RETURN(auto mesh_attr, FindSdyMeshAttribute(attr, op));
+  ABSL_ASSIGN_OR_RETURN(auto mesh_attr, FindSdyMeshAttribute(attr, op));
   auto info = ExtractSdyMeshInfo(mesh_attr);
   auto xla_mesh = BuildXlaMesh(info);
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto group_axes,
       (BuildAxisRefs<mlir::mhlo::ReplicaGroupMeshAxesAttr,
                      mlir::mhlo::AxisRefAttr>(attr, info.axes_names)));
@@ -373,10 +373,10 @@ ConvertMhloMeshAxes(mlir::mhlo::ReplicaGroupMeshAxesAttr attr,
 absl::StatusOr<std::unique_ptr<xla::CollectiveDeviceListBase>>
 ConvertStablehloMeshAxes(mlir::stablehlo::ReplicaGroupMeshAxesAttr attr,
                          mlir::Operation* op) {
-  ASSIGN_OR_RETURN(auto mesh_attr, FindStablehloMeshAttribute(attr, op));
+  ABSL_ASSIGN_OR_RETURN(auto mesh_attr, FindStablehloMeshAttribute(attr, op));
   auto info = ExtractStablehloMeshInfo(mesh_attr);
   auto xla_mesh = BuildXlaMesh(info);
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto group_axes,
       (BuildAxisRefs<mlir::stablehlo::ReplicaGroupMeshAxesAttr,
                      mlir::stablehlo::AxisRefAttr>(attr, info.axes_names)));
@@ -541,7 +541,7 @@ ConvertReplicaGroups(mlir::Attribute replica_groups, mlir::Operation* op) {
 
   if (auto dense_attr =
           mlir::dyn_cast<mlir::DenseIntElementsAttr>(replica_groups)) {
-    ASSIGN_OR_RETURN(std::vector<ReplicaGroup> groups,
+    ABSL_ASSIGN_OR_RETURN(std::vector<ReplicaGroup> groups,
                      ConvertReplicaGroups(dense_attr));
     return std::make_unique<xla::CollectiveDeviceList>(std::move(groups));
   }
@@ -591,7 +591,7 @@ absl::StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroupsToV1(
           mlir::dyn_cast_or_null<mlir::DenseIntElementsAttr>(replica_groups)) {
     return ConvertReplicaGroups(dense_attr);
   }
-  ASSIGN_OR_RETURN(auto device_list, ConvertReplicaGroups(replica_groups, op));
+  ABSL_ASSIGN_OR_RETURN(auto device_list, ConvertReplicaGroups(replica_groups, op));
   return device_list->replica_groups();
 }
 

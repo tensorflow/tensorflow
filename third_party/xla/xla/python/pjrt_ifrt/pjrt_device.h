@@ -23,25 +23,24 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 
 namespace xla {
 namespace ifrt {
 
-class PjRtCompatibleDevice : public llvm::RTTIExtends<PjRtDevice, Device> {
+class PjRtCompatibleDevice : public RTTIExtends<PjRtDevice, Device> {
  public:
   virtual xla::PjRtDevice* pjrt_device() const = 0;
 
   static char ID;  // NOLINT
 };
 
-class PjRtDevice final
-    : public llvm::RTTIExtends<PjRtDevice, PjRtCompatibleDevice> {
+class PjRtDevice final : public RTTIExtends<PjRtDevice, PjRtCompatibleDevice> {
  public:
   PjRtDevice(PjRtClient* client, DeviceId id, std::string platform_name,
              std::string kind, std::string to_string, std::string debug_string,

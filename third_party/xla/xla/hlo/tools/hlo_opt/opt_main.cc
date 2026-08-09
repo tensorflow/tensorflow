@@ -103,13 +103,13 @@ absl::StatusOr<std::string> GetHloContents(const HloOptConfig& opts, int argc,
   }
 
   std::string data;
-  RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), hlo_path, &data));
+  ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), hlo_path, &data));
   return data;
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<HloModule>>> GetModules(
     const HloOptConfig& opts, int argc, char** argv) {
-  ASSIGN_OR_RETURN(std::string module_data, GetHloContents(opts, argc, argv));
+  ABSL_ASSIGN_OR_RETURN(std::string module_data, GetHloContents(opts, argc, argv));
 
   std::vector<std::string> hlos;
   if (opts.split_input_file) {
@@ -138,7 +138,7 @@ absl::StatusOr<std::vector<std::unique_ptr<HloModule>>> GetModules(
             "specified");
       }
     }
-    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                      LoadModuleFromData(hlo, format));
     out.push_back(std::move(module));
   }
@@ -158,7 +158,7 @@ std::unique_ptr<HloModule> GetDummyModule() {
 
 absl::StatusOr<std::string> TranslateToStage(int argc, char** argv,
                                              const HloOptConfig& opts) {
-  ASSIGN_OR_RETURN(OptProvider * provider,
+  ABSL_ASSIGN_OR_RETURN(OptProvider * provider,
                    OptProvider::GetProviderForPlatform(opts.platform));
 
   if (opts.list_stages) {
@@ -172,7 +172,7 @@ absl::StatusOr<std::string> TranslateToStage(int argc, char** argv,
     return provider->GetRegisteredPassNames();
   }
 
-  ASSIGN_OR_RETURN(std::vector<std::unique_ptr<HloModule>> modules,
+  ABSL_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<HloModule>> modules,
                    GetModules(opts, argc, argv));
   if (opts.emit_proto) {
     std::string proto_str_combined;
@@ -193,10 +193,10 @@ absl::StatusOr<std::string> TranslateToStage(int argc, char** argv,
   for (std::unique_ptr<HloModule>& m : modules) {
     std::optional<std::string> out;
     if (!opts.passes.empty()) {
-      ASSIGN_OR_RETURN(out, provider->BuildAndRunTransformPipeline(
+      ABSL_ASSIGN_OR_RETURN(out, provider->BuildAndRunTransformPipeline(
                                 std::move(m), opts.passes));
     } else {
-      ASSIGN_OR_RETURN(out, provider->GenerateStage(std::move(m), opts.stage));
+      ABSL_ASSIGN_OR_RETURN(out, provider->GenerateStage(std::move(m), opts.stage));
     }
     if (!out.has_value()) {
       return absl::UnimplementedError("Stage not supported");
@@ -208,11 +208,11 @@ absl::StatusOr<std::string> TranslateToStage(int argc, char** argv,
 }
 
 absl::Status RunOpt(int argc, char** argv, const HloOptConfig& opts) {
-  ASSIGN_OR_RETURN(std::string output, TranslateToStage(argc, argv, opts));
+  ABSL_ASSIGN_OR_RETURN(std::string output, TranslateToStage(argc, argv, opts));
   if (opts.output_file == "-") {
     std::cout << output << std::endl;
   } else {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         tsl::WriteStringToFile(tsl::Env::Default(), opts.output_file, output));
   }
   return absl::OkStatus();

@@ -40,7 +40,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -87,6 +86,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/framework/serving_device_selector.h"
+#include "xla/tsl/lib/monitoring/counter.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -116,6 +116,10 @@ limitations under the License.
 namespace tensorflow {
 namespace ifrt_serving {
 namespace {
+
+auto* ifrt_execution_counter = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/tfrt/ifrt/execution_count",
+    "Count of IfrtServingExecutable::ExecuteCore executions.", "model_name");
 
 using StaticShapeMap =
     absl::flat_hash_map<size_t /*original_arg_idx*/,
@@ -1036,6 +1040,7 @@ bool IfrtServingExecutable::UsePortableExecution() {
 absl::StatusOr<IfrtServingExecutable::ExecutionInfo>
 IfrtServingExecutable::ExecuteCore(absl::Span<const tensorflow::Tensor> inputs,
                                    absl::Span<const int> variable_arg_indices) {
+  ifrt_execution_counter->GetCell(model_name_)->IncrementBy(1);
   tsl::profiler::TraceMe traceme("IfrtServingExecutable::Execute");
   for (int i = 1; i < variable_arg_indices.size(); i++) {
     if (variable_arg_indices[i] <= variable_arg_indices[i - 1]) {

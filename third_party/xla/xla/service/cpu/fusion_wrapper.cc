@@ -44,6 +44,8 @@ bool FusionWrapper::MustWrapInstruction(const HloInstruction& instruction) {
     case HloOpcode::kCos:
     case HloOpcode::kDivide:
     case HloOpcode::kDynamicSlice:
+    case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kTranspose:
     case HloOpcode::kErf:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
@@ -104,8 +106,6 @@ bool FusionWrapper::MustWrapInstruction(const HloInstruction& instruction) {
     // non-fusion path.
     // TODO(willfroom): Remove this once the performance is improved.
     case HloOpcode::kConcatenate:
-    case HloOpcode::kDynamicUpdateSlice:
-    case HloOpcode::kTranspose:
     case HloOpcode::kDot:
       return false;
     default:

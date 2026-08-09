@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include <gmock/gmock.h>
@@ -47,7 +48,7 @@ class AllReduceSimplifierTest : public HloHardwareIndependentTestBase {
   absl::StatusOr<std::unique_ptr<HloModule>> RunPass(
       absl::string_view hlo_module, bool expect_change,
       bool reassociate_converted_ar = false) {
-    ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_module));
+    ABSL_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_module));
     auto changed =
         AllReduceReassociate(reassociate_converted_ar).Run(module.get());
     if (!changed.ok()) {
@@ -85,6 +86,8 @@ ENTRY main {
                           RunPass(hlo_string, /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               m::AllReduce(m::Add(m::Parameter(0), m::Parameter(1))));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->channel_id(),
+            std::nullopt);
   EXPECT_EQ(AllReduceCount(module), 1);
 }
 
@@ -110,6 +113,7 @@ ENTRY main {
                           RunPass(hlo_string, /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               m::AllReduce(m::Add(m::Parameter(0), m::Parameter(1))));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->channel_id(), 1);
   EXPECT_EQ(AllReduceCount(module), 1);
 }
 
@@ -742,6 +746,86 @@ ENTRY main {
       m::Add(m::DynamicSlice(),
              m::DynamicSlice(m::AllReduce(), m::Constant(), m::Parameter(3))));
   XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_EQ(AllReduceCount(module), 2);
+}
+
+TEST_F(AllReduceSimplifierTest, ReassociatesMatchingCollectiveGroupKeys) {
+  constexpr absl::string_view kHloModule = R"(
+HloModule m
+
+sum {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT add = f32[] add(x, y)
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  ar0 = f32[8] all-reduce(p0), replica_groups={}, to_apply=sum,
+    frontend_attributes={collective_group_key="g0"}
+  ar1 = f32[8] all-reduce(p1), replica_groups={}, to_apply=sum,
+    frontend_attributes={collective_group_key="g0"}
+  ROOT add = f32[8] add(ar0, ar1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(kHloModule, /*expect_change=*/true));
+  EXPECT_EQ(AllReduceCount(module), 1);
+  HloInstruction* all_reduce = module->entry_computation()->root_instruction();
+  EXPECT_EQ(all_reduce->get_frontend_attribute("collective_group_key"), "g0");
+}
+
+TEST_F(AllReduceSimplifierTest,
+       DoesNotReassociateDifferentCollectiveGroupKeys) {
+  constexpr absl::string_view kHloModule = R"(
+HloModule m
+
+sum {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT add = f32[] add(x, y)
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  ar0 = f32[8] all-reduce(p0), replica_groups={}, to_apply=sum,
+    frontend_attributes={collective_group_key="g0"}
+  ar1 = f32[8] all-reduce(p1), replica_groups={}, to_apply=sum,
+    frontend_attributes={collective_group_key="g1"}
+  ROOT add = f32[8] add(ar0, ar1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(kHloModule, /*expect_change=*/false));
+  EXPECT_EQ(AllReduceCount(module), 2);
+}
+
+TEST_F(AllReduceSimplifierTest, DoesNotReassociateKeyedAndUnkeyedCollectives) {
+  constexpr absl::string_view kHloModule = R"(
+HloModule m
+
+sum {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT add = f32[] add(x, y)
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  ar0 = f32[8] all-reduce(p0), replica_groups={}, to_apply=sum,
+    frontend_attributes={collective_group_key="g0"}
+  ar1 = f32[8] all-reduce(p1), replica_groups={}, to_apply=sum
+  ROOT add = f32[8] add(ar0, ar1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(kHloModule, /*expect_change=*/false));
   EXPECT_EQ(AllReduceCount(module), 2);
 }
 

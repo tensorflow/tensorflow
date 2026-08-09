@@ -77,7 +77,7 @@ absl::StatusOr<std::unique_ptr<HloComputation>> CreateCalleeStub(
 
   std::vector<HloInstruction*> operands;
   for (const HloInstruction* parameter : callee->parameter_instructions()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         HloInstruction * cloned_parameter,
         comp_builder.AddParameter(parameter->Clone(/*suffix=*/"")));
     operands.push_back(cloned_parameter);
@@ -237,7 +237,7 @@ absl::StatusOr<std::unique_ptr<HloModuleSplit>> CreateHloModuleSplit(
       callee_replacements[caller] = callee;
       continue;
     }
-    ASSIGN_OR_RETURN(std::unique_ptr<HloComputation> stub,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloComputation> stub,
                      CreateCalleeStub(callee, callee_index));
     VLOG(4) << "Stubbing " << stub->name() << " --> " << callee->name() << " "
             << stub->ToString();
@@ -289,20 +289,20 @@ absl::StatusOr<std::unique_ptr<HloModuleSplitGroup>> CreateHloModuleSplitGroup(
   absl::flat_hash_map<const HloComputation*, const HloComputation*>
       global_computation_map;
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<absl::flat_hash_set<const HloComputation*>> splits,
       GroupComputationsForSplitting(module));
 
   for (const auto& split : splits) {
-    ASSIGN_OR_RETURN(auto module_split, CreateHloModuleSplit(module, split));
+    ABSL_ASSIGN_OR_RETURN(auto module_split, CreateHloModuleSplit(module, split));
     module_splits.push_back(std::move(module_split));
     for (const auto* original_comp : split) {
       computation_address_book.insert(
           {original_comp, module_splits.back().get()});
     }
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         MergeMapInto(global_stub_map, module_splits.back()->stub_map));
-    RETURN_IF_ERROR(MergeMapInto(global_computation_map,
+    ABSL_RETURN_IF_ERROR(MergeMapInto(global_computation_map,
                                  module_splits.back()->computation_map));
   }
 
@@ -322,7 +322,7 @@ absl::StatusOr<std::unique_ptr<HloModuleSplitGroup>> CreateHloModuleSplitGroup(
   }
   // Compose at the end once all planned cloning operations are finished and
   // we know where each original computation ended up.
-  ASSIGN_OR_RETURN(auto stub_links,
+  ABSL_ASSIGN_OR_RETURN(auto stub_links,
                    ComposeMaps(global_stub_map, global_computation_map));
 
   HloLinkingManifest linking_manifest{

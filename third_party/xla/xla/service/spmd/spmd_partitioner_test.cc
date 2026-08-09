@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -30,6 +31,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -90,10 +92,10 @@ void VerifyNoShardingOnCollectives(HloModule* module) {
   for (const HloComputation* c : module->computations()) {
     for (const HloInstruction* inst : c->instructions()) {
       bool is_collective = absl::c_linear_search(
-          std::vector<HloOpcode>{HloOpcode::kAllToAll, HloOpcode::kAllReduce,
-                                 HloOpcode::kAllGather,
-                                 HloOpcode::kCollectivePermute,
-                                 HloOpcode::kReduceScatter},
+          std::vector<HloOpcode>{
+              HloOpcode::kAllToAll, HloOpcode::kAllReduce,
+              HloOpcode::kAllGather, HloOpcode::kCollectiveBroadcast,
+              HloOpcode::kCollectivePermute, HloOpcode::kReduceScatter},
           inst->opcode());
       if (is_collective) {
         EXPECT_FALSE(inst->has_sharding());
@@ -118,12 +120,14 @@ void VerifyNoCollectives(const HloModule* module) {
 
 class SpmdPartitioningTest
     : public HloHardwareIndependentTestBase,
-      public ::testing::WithParamInterface<ShardingFormatPicker::ShardingType> {
+      public ::testing::WithParamInterface<
+          std::tuple<ShardingFormatPicker::ShardingType, bool>> {
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
       absl::string_view hlo_module, int64_t num_devices,
       SpmdPartitionerOptions options = SpmdPartitionerOptions(),
       bool enable_enzyme_opt = false) {
+    const auto& [sharding_type, enable_rgv3] = GetParam();
     options.allow_module_signature_change = true;
     auto collective_ops_creator =
         GetDefaultCollectiveOpsCreator(num_devices, /*num_replicas=*/1);
@@ -133,16 +137,17 @@ class SpmdPartitioningTest
     config.set_num_partitions(num_devices);
     config.set_use_shardy_partitioner(true);
     config.mutable_debug_options().set_xla_enable_hlo_sharding_v3(
-        GetParam() == ShardingFormatPicker::ShardingType::kNamed);
-    config.mutable_debug_options().set_xla_enable_rgv3_materialization(true);
+        sharding_type == ShardingFormatPicker::ShardingType::kNamed);
+    config.mutable_debug_options().set_xla_enable_rgv3_materialization(
+        enable_rgv3);
     if (enable_enzyme_opt) {
       config.mutable_debug_options().set_xla_enable_enzyme_comms_opt(true);
     }
-    ASSIGN_OR_RETURN(auto module,
+    ABSL_ASSIGN_OR_RETURN(auto module,
                      ParseAndReturnVerifiedModule(hlo_module, config));
 
-    ShardingFormatPicker format_picker(GetParam());
-    ASSIGN_OR_RETURN(bool changed, format_picker.Run(module.get()));
+    ShardingFormatPicker format_picker(sharding_type);
+    ABSL_ASSIGN_OR_RETURN(bool changed, format_picker.Run(module.get()));
     if (changed) {
       VLOG(1) << "Sharding format changed: "
               << module->ToString(HloPrintOptions()
@@ -158,7 +163,7 @@ class SpmdPartitioningTest
                                   collective_ops_creator);
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
-    RETURN_IF_ERROR(pass.Run(module.get()).status());
+    ABSL_RETURN_IF_ERROR(pass.Run(module.get()).status());
 
     VerifyNoShardingOnCollectives(module.get());
     return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));
@@ -174,25 +179,42 @@ class SpmdPartitioningTest
     }
     return count;
   }
+
+  int64_t NumOfInstructions(const HloModule* module, HloOpcode opcode) {
+    int64_t count = 0;
+    for (const HloComputation* computation : module->computations()) {
+      count += NumOfInstructions(computation, opcode);
+    }
+    return count;
+  }
 };
 
 std::string TestParamToString(
-    const ::testing::TestParamInfo<ShardingFormatPicker::ShardingType>& data) {
-  switch (data.param) {
+    const ::testing::TestParamInfo<
+        std::tuple<ShardingFormatPicker::ShardingType, bool>>& data) {
+  std::string sharding_type;
+  switch (std::get<0>(data.param)) {
     case ShardingFormatPicker::ShardingType::kV1:
-      return "V1";
+      sharding_type = "V1";
+      break;
     case ShardingFormatPicker::ShardingType::kBestEffortV2:
-      return "BestEffortV2";
+      sharding_type = "BestEffortV2";
+      break;
     case ShardingFormatPicker::ShardingType::kNamed:
-      return "Named";
+      sharding_type = "Named";
+      break;
   }
+  std::string rgv3 = std::get<1>(data.param) ? "RGV3Enabled" : "RGV3Disabled";
+  return absl::StrCat(sharding_type, "_", rgv3);
 }
 
 INSTANTIATE_TEST_SUITE_P(
     All, SpmdPartitioningTest,
-    ::testing::Values(ShardingFormatPicker::ShardingType::kV1,
-                      ShardingFormatPicker::ShardingType::kBestEffortV2,
-                      ShardingFormatPicker::ShardingType::kNamed),
+    ::testing::Combine(
+        ::testing::Values(ShardingFormatPicker::ShardingType::kV1,
+                          ShardingFormatPicker::ShardingType::kBestEffortV2,
+                          ShardingFormatPicker::ShardingType::kNamed),
+        ::testing::Bool()),
     TestParamToString);
 
 TEST_P(SpmdPartitioningTest, SingleDeviceToReplicated) {
@@ -288,7 +310,8 @@ ENTRY entry {
 }
 
 TEST_P(SpmdPartitioningTest, LayoutConstraintCustomCallUnreducedMax) {
-  if (GetParam() != ShardingFormatPicker::ShardingType::kNamed) {
+  auto sharding_type = std::get<0>(GetParam());
+  if (sharding_type != ShardingFormatPicker::ShardingType::kNamed) {
     GTEST_SKIP();
   }
   absl::string_view hlo_string = R"(
@@ -628,8 +651,9 @@ ENTRY entry {
 
 TEST_P(SpmdPartitioningTest,
        TiledToReplicatedWhenV2ShardingGeneratesReplicaGroupV2) {
+  const auto& [sharding_type, enable_rgv3] = GetParam();
   // Skip when input sharding is not V2.
-  if (GetParam() != ShardingFormatPicker::ShardingType::kBestEffortV2) {
+  if (sharding_type != ShardingFormatPicker::ShardingType::kBestEffortV2) {
     GTEST_SKIP() << "This test only runs when input sharding is in V2 format.";
   }
   absl::string_view hlo_string = R"(
@@ -652,7 +676,8 @@ ENTRY entry {
   // With RGV3 integration, this uses MeshAxesReplicaGroupList. It should be
   // equivalent to a v2 device list.
   EXPECT_EQ(all_gather->device_list()->version(),
-            CollectiveDeviceListVersion::kMeshAxes);
+            enable_rgv3 ? CollectiveDeviceListVersion::kMeshAxes
+                        : CollectiveDeviceListVersion::kIota);
   EXPECT_EQ(all_gather->device_list()->flattened_replica_groups(),
             IotaReplicaGroupList(
                 /*num_replica_groups=*/1, /*num_devices_per_group=*/4)
@@ -698,6 +723,7 @@ ENTRY entry {
 }
 
 TEST_P(SpmdPartitioningTest, MultipleSourceTargetDimsInOneAllToAll1) {
+  const auto& [sharding_type, enable_rgv3] = GetParam();
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -715,11 +741,12 @@ ENTRY entry {
   EXPECT_THAT(all_to_all, op::Shape("s32[8,32,16,32,16]"));
   EXPECT_EQ(all_to_all->replica_groups().size(), 1);
   EXPECT_EQ(all_to_all->replica_groups()[0].replica_ids_size(), 8);
-  if (GetParam() == ShardingFormatPicker::ShardingType::kBestEffortV2) {
+  if (sharding_type == ShardingFormatPicker::ShardingType::kBestEffortV2) {
     // With RGV3 integration, this uses MeshAxesReplicaGroupList. It should be
     // equivalent to a v2 device list.
     EXPECT_EQ(all_to_all->device_list()->version(),
-              CollectiveDeviceListVersion::kMeshAxes);
+              enable_rgv3 ? CollectiveDeviceListVersion::kMeshAxes
+                          : CollectiveDeviceListVersion::kIota);
     EXPECT_EQ(all_to_all->device_list()->flattened_replica_groups(),
               IotaReplicaGroupList(
                   /*num_replica_groups=*/1, /*num_devices_per_group=*/8,
@@ -2104,8 +2131,9 @@ ENTRY entry {
 
 TEST_P(SpmdPartitioningTest,
        ConvolutionLhsTiledRhsTiledWhenV2ShardingGeneratesReplicaGroupV2) {
+  const auto& [sharding_type, enable_rgv3] = GetParam();
   // Skip when input sharding is not V2.
-  if (GetParam() != ShardingFormatPicker::ShardingType::kBestEffortV2) {
+  if (sharding_type != ShardingFormatPicker::ShardingType::kBestEffortV2) {
     GTEST_SKIP() << "This test only runs when input sharding is in V2 format.";
   }
   absl::string_view hlo_string = R"(
@@ -2133,7 +2161,8 @@ ENTRY entry {
 
   // Verify all-reduce instruction contains ReplicaGroupV2.
   EXPECT_EQ((*all_reduce_instruction)->device_list()->version(),
-            CollectiveDeviceListVersion::kMeshAxes);
+            enable_rgv3 ? CollectiveDeviceListVersion::kMeshAxes
+                        : CollectiveDeviceListVersion::kIota);
   EXPECT_EQ(
       (*all_reduce_instruction)->device_list()->flattened_replica_groups(),
       IotaReplicaGroupList(
@@ -2725,6 +2754,119 @@ ENTRY entry {
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       AllOf(op::DynamicSlice(root_replicated, _), op::Shape("f32[64]")));
+}
+
+constexpr absl::string_view kReplicatedDynamicSliceHlo = R"(
+HloModule module
+
+ENTRY entry {
+  %param = f32[4,8,16] parameter(0), sharding={devices=[4,1,1]<=[4]}
+  %index = s32[] parameter(1), sharding={replicated}
+  %zero.0 = s32[] constant(0)
+  %zero.1 = s32[] constant(0)
+  ROOT %dynamic-slice = f32[1,8,16] dynamic-slice(%param, %index, %zero.0, %zero.1),
+    dynamic_slice_sizes={1,8,16}, sharding={replicated}
+})";
+
+TEST_P(SpmdPartitioningTest,
+       DynamicSliceReplicatedResultUsesCollectiveBroadcast) {
+  SpmdPartitionerOptions options;
+  EXPECT_FALSE(options.enable_dynamic_slice_collective_broadcast);
+  EXPECT_EQ(options.max_dynamic_slice_collective_broadcast_partitions, 32);
+  options.enable_dynamic_slice_collective_broadcast = true;
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(kReplicatedDynamicSliceHlo,
+                                            /*num_devices=*/4, options));
+
+  EXPECT_EQ(NumOfInstructions(module.get(), HloOpcode::kAllGather), 0);
+  EXPECT_EQ(NumOfInstructions(module.get(), HloOpcode::kCollectiveBroadcast),
+            4);
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_EQ(root->opcode(), HloOpcode::kConditional);
+  ASSERT_EQ(root->branch_count(), 4);
+
+  std::vector<int64_t> broadcast_roots;
+  for (int64_t branch = 0; branch < root->branch_count(); ++branch) {
+    const HloInstruction* broadcast =
+        root->branch_computation(branch)->root_instruction();
+    ASSERT_EQ(broadcast->opcode(), HloOpcode::kCollectiveBroadcast);
+    const std::vector<std::vector<int64_t>> replica_groups =
+        ReplicaGroupsToVecOfVec(broadcast->replica_groups());
+    ASSERT_EQ(replica_groups.size(), 1);
+    ASSERT_EQ(replica_groups[0].size(), 4);
+    broadcast_roots.push_back(replica_groups[0][0]);
+    EXPECT_THAT(replica_groups[0], UnorderedElementsAre(0, 1, 2, 3));
+  }
+  EXPECT_THAT(broadcast_roots, UnorderedElementsAre(0, 1, 2, 3));
+}
+
+TEST_P(SpmdPartitioningTest, DynamicSliceCollectiveBroadcastCanBeDisabled) {
+  SpmdPartitionerOptions options;
+  options.enable_dynamic_slice_collective_broadcast = false;
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(kReplicatedDynamicSliceHlo,
+                                            /*num_devices=*/4, options));
+
+  EXPECT_EQ(NumOfInstructions(module.get(), HloOpcode::kAllGather), 1);
+  EXPECT_EQ(NumOfInstructions(module.get(), HloOpcode::kCollectiveBroadcast),
+            0);
+  EXPECT_EQ(NumOfInstructions(module.get(), HloOpcode::kConditional), 0);
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      AllOf(op::DynamicSlice(op::AllGather(op::Parameter(0)), op::Parameter(1),
+                             op::Constant(), op::Constant()),
+            op::Shape("f32[1,8,16]")));
+}
+
+TEST_P(SpmdPartitioningTest,
+       DynamicSliceCollectiveBroadcastRespectsPartitionLimit) {
+  SpmdPartitionerOptions options;
+  options.enable_dynamic_slice_collective_broadcast = true;
+  options.max_dynamic_slice_collective_broadcast_partitions = 2;
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(kReplicatedDynamicSliceHlo,
+                                            /*num_devices=*/4, options));
+
+  EXPECT_EQ(NumOfInstructions(module.get(), HloOpcode::kAllGather), 1);
+  EXPECT_EQ(NumOfInstructions(module.get(), HloOpcode::kCollectiveBroadcast),
+            0);
+  EXPECT_EQ(NumOfInstructions(module.get(), HloOpcode::kConditional), 0);
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      AllOf(op::DynamicSlice(op::AllGather(op::Parameter(0)), op::Parameter(1),
+                             op::Constant(), op::Constant()),
+            op::Shape("f32[1,8,16]")));
+}
+
+TEST_P(SpmdPartitioningTest, DynamicSliceWithPackedIndicesUsesGenericFallback) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param = f32[8,4] parameter(0), sharding={devices=[1,4]<=[4]}
+  %indices = s32[2] parameter(1), sharding={replicated}
+  ROOT %dynamic-slice = f32[8,1] dynamic-slice(%param, %indices),
+    dynamic_slice_sizes={8,1}, sharding={replicated}
+})";
+
+  SpmdPartitionerOptions options;
+  options.enable_dynamic_slice_collective_broadcast = true;
+
+  ASSERT_OK_AND_ASSIGN(
+      auto module,
+      PartitionComputation(hlo_string, /*num_devices=*/4, options));
+
+  EXPECT_EQ(NumOfInstructions(module.get(), HloOpcode::kAllGather), 1);
+  EXPECT_EQ(NumOfInstructions(module.get(), HloOpcode::kCollectiveBroadcast),
+            0);
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      AllOf(op::DynamicSlice(op::AllGather(op::Parameter(0)), op::Parameter(1)),
+            op::Shape("f32[8,1]")));
 }
 
 TEST_P(SpmdPartitioningTest, PadAlongNonPartitionedDimension) {
@@ -3470,6 +3612,59 @@ ENTRY entry {
   auto concat = op::Concatenate(left_halo, local_data);
 
   EXPECT_THAT(root, op::Tuple(op::Slice(concat), op::Slice(concat)));
+}
+
+TEST_P(SpmdPartitioningTest, CustomCallXladebugLog) {
+  class DummyDebugLogPartitioner : public CustomCallPartitioner {
+   public:
+    absl::Status Partition(spmd::SpmdPartitioningVisitor* visitor,
+                           HloInstruction* hlo) const override {
+      std::vector<HloInstruction*> new_operands;
+      new_operands.reserve(hlo->operand_count());
+      for (const HloInstruction* operand : hlo->operands()) {
+        new_operands.push_back(visitor->GetPartitionedHlo(operand).hlo());
+      }
+      HloInstruction* clone = visitor->builder()->AddInstruction(
+          hlo->CloneWithNewOperands(hlo->shape(), new_operands));
+      if (hlo->has_sharding()) {
+        clone->set_sharding(hlo->sharding());
+      }
+      visitor->SetPartitionedHlo(
+          hlo, spmd::PartitionedHlo(clone, hlo->shape(),
+                                    visitor->MakePartitioningState()));
+      return absl::OkStatus();
+    }
+    bool CanSideEffectingHaveReplicatedSharding() const override {
+      return true;
+    }
+  };
+  RegisterCustomCallPartitioner("xla.debug.Log",
+                                std::make_unique<DummyDebugLogPartitioner>());
+
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[12] parameter(0), sharding={devices=[4]<=[4]}
+  ROOT %custom-call = () custom-call(%param0),
+    custom_call_target="xla.debug.Log",
+    custom_call_has_side_effect=true,
+    sharding={replicated}
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  // Verify that the parameter got the attribute.
+  auto param0 = module->entry_computation()->parameter_instruction(0);
+  ASSERT_NE(param0, nullptr);
+  EXPECT_TRUE(
+      param0->frontend_attributes().map().contains("original_sharding"));
+  EXPECT_THAT(param0->frontend_attributes().map().at("original_sharding"),
+              ::testing::AnyOf(::testing::HasSubstr("devices=[4]<=[4]"),
+                               ::testing::HasSubstr("axis_0"),
+                               ::testing::HasSubstr("devices=[4]0,1,2,3")));
 }
 
 TEST_P(SpmdPartitioningTest, CustomCallMultiSliceRealWorldPaddingBug) {
@@ -11461,6 +11656,7 @@ ENTRY entry {
 }
 
 TEST_P(SpmdPartitioningTest, TileToPartialReplicateReshardUnevenPartition) {
+  bool enable_rgv3 = std::get<1>(GetParam());
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -11487,7 +11683,8 @@ ENTRY entry {
   // With RGV3 integration, this uses MeshAxesReplicaGroupList. It should be
   // equivalent to a v2 device list.
   EXPECT_EQ(all_gather->device_list()->version(),
-            CollectiveDeviceListVersion::kMeshAxes);
+            enable_rgv3 ? CollectiveDeviceListVersion::kMeshAxes
+                        : CollectiveDeviceListVersion::kIota);
   EXPECT_EQ(all_gather->device_list()->flattened_replica_groups(),
             IotaReplicaGroupList(
                 /*num_replica_groups=*/2, /*num_devices_per_group=*/3)
@@ -12493,7 +12690,7 @@ ENTRY entry {
 }
 
 TEST_P(SpmdPartitioningTest, NoReshardOnBroadcastDims) {
-  if (GetParam() == ShardingFormatPicker::ShardingType::kNamed) {
+  if (std::get<0>(GetParam()) == ShardingFormatPicker::ShardingType::kNamed) {
     GTEST_SKIP()
         << "Skipping for V3/Named Sharding as the format picker generates "
            "shardings that would be deduped and have size 1 axes removed "
@@ -12691,6 +12888,25 @@ ENTRY entry {
   EXPECT_THAT(root, AllOf(op::GetTupleElement(op::While(op::Tuple(
                               _, op::Multiply(local_fft, op::Exp()), _, _, _))),
                           op::Shape("c64[1,1,3]")));
+}
+
+TEST_P(SpmdPartitioningTest, Fft3DC128) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  input = c128[1,1,6] parameter(0),
+    sharding={devices=[1,1,2]<=[2]}
+  ROOT fft = c128[1,1,6] fft(input), fft_type=FFT, fft_length={6},
+    sharding={devices=[1,1,2]<=[2]}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      AllOf(op::GetTupleElement(op::While()), op::Shape("c128[1,1,3]")));
 }
 
 TEST_P(SpmdPartitioningTest, Fft3DSmallShardFallsBack) {
@@ -13319,6 +13535,7 @@ ENTRY %module {
 }
 
 TEST_P(SpmdPartitioningTest, GatherMergedIndexParallelAndOperandPassthrough) {
+  const auto& [sharding_type, enable_rgv3] = GetParam();
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -13348,12 +13565,13 @@ ENTRY %module {
   EXPECT_THAT(root, op::AllGather(op::AllGather(gather)));
   auto* all_to_all = FindInstruction(module.get(), "all-to-all");
   EXPECT_TRUE(all_to_all != nullptr);
-  if (GetParam() ==
+  if (sharding_type ==
       test_only::ShardingFormatPicker::ShardingType::kBestEffortV2) {
     // With RGV3 integration, this uses MeshAxesReplicaGroupList. It should be
     // equivalent to a v2 device list.
     EXPECT_EQ(all_to_all->device_list()->version(),
-              CollectiveDeviceListVersion::kMeshAxes);
+              enable_rgv3 ? CollectiveDeviceListVersion::kMeshAxes
+                          : CollectiveDeviceListVersion::kIota);
     EXPECT_EQ(all_to_all->device_list()->flattened_replica_groups(),
               IotaReplicaGroupList(
                   /*num_replica_groups=*/4, /*num_devices_per_group=*/2,
@@ -14196,6 +14414,10 @@ ENTRY entry {
   EXPECT_THAT(root, op::Tuple(op::AllGather(scatter), _, _, _));
 }
 
+// Verifies that when falling back due to false positive parallel dim conflicts
+// (e.g. b/532891798), we correctly use Reshard(updates) for partial replication
+// and don't bail out or bypass the check. This proves the logic stays within
+// the index passthrough algorithm rather than falling back to full replication.
 TEST_P(SpmdPartitioningTest, ScatterParallelDimAndNonParallelDimPartitioned) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -18000,6 +18222,30 @@ ENTRY entry {
       R"("a)" + std::string(kOriginalValuePlaceholderDelimiter) + R"(0")");
 }
 
+TEST_P(SpmdPartitioningTest, OriginalValueWithManualSubgroupSharding) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param.1 = f32[8,1024,1024] parameter(0), sharding={devices=[2,1,1,2,2]<=[8] last_tile_dims={manual, replicated}}
+  %param.2 = f32[8,1024,1024] parameter(1), sharding={devices=[2,1,1,2,2]<=[8] last_tile_dims={manual, replicated}}
+  ROOT %add = f32[8,1024,1024]{2,1,0} add(%param.1, %param.2), sharding={devices=[2,1,1,2,2]<=[8] last_tile_dims={manual, replicated}}, origin={{"broadcast.443"}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  EXPECT_EQ(module->original_value_recovery_table().size(), 1);
+  const HloComputation* recovery_computation =
+      module->original_value_recovery_table()
+          .begin()
+          ->second.second->entry_computation();
+  const HloInstruction* param_instruction =
+      recovery_computation->parameter_instruction(0);
+  EXPECT_TRUE(param_instruction->has_sharding());
+  EXPECT_TRUE(param_instruction->sharding().IsManualSubgroup());
+  std::cerr << "module: " << module->ToString() << "\n";
+}
+
 TEST_P(SpmdPartitioningTest, ShardingPreprocessOrderWhile) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -18106,6 +18352,7 @@ ENTRY entry {
 }
 
 TEST_P(SpmdPartitioningTest, V2ShardingGeneratesRGV3) {
+  const auto& [sharding_type, enable_rgv3] = GetParam();
   constexpr absl::string_view hlo_string = R"(
 HloModule module
 
@@ -18122,10 +18369,13 @@ ENTRY entry {
       FindInstruction(module.get(), HloOpcode::kAllGather);
   EXPECT_NE(all_gather, nullptr);
 
-  CollectiveDeviceListVersion expected_version =
-      GetParam() == ShardingFormatPicker::ShardingType::kV1
-          ? CollectiveDeviceListVersion::kListOfLists
-          : CollectiveDeviceListVersion::kMeshAxes;
+  CollectiveDeviceListVersion expected_version;
+  if (sharding_type == ShardingFormatPicker::ShardingType::kV1) {
+    expected_version = CollectiveDeviceListVersion::kListOfLists;
+  } else {
+    expected_version = enable_rgv3 ? CollectiveDeviceListVersion::kMeshAxes
+                                   : CollectiveDeviceListVersion::kIota;
+  }
 
   EXPECT_EQ(all_gather->device_list()->version(), expected_version);
 }
@@ -18163,7 +18413,8 @@ ENTRY %module {
 }
 
 TEST_P(SpmdPartitioningTest, V3ShardingGeneratesRGV3NamedAxisConflict) {
-  if (GetParam() != ShardingFormatPicker::ShardingType::kNamed) {
+  auto sharding_type = std::get<0>(GetParam());
+  if (sharding_type != ShardingFormatPicker::ShardingType::kNamed) {
     GTEST_SKIP() << "This test only runs for V3 shardings.";
   }
   HloModuleConfig config = GetModuleConfigForTest();
@@ -18181,7 +18432,8 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string, config));
 
-  TF_ASSERT_OK(ShardingFormatPicker(GetParam()).Run(module.get()).status());
+  TF_ASSERT_OK(
+      ShardingFormatPicker(std::get<0>(GetParam())).Run(module.get()).status());
   TF_ASSERT_OK(SpmdPrepare().Run(module.get()).status());
 
   module->mutable_config().set_num_partitions(8);
@@ -18345,7 +18597,7 @@ class SpmdPartitioningV3Test : public HloHardwareIndependentTestBase {
     config.set_num_partitions(num_devices);
     config.set_use_shardy_partitioner(true);
     config.mutable_debug_options().set_xla_enable_hlo_sharding_v3(true);
-    ASSIGN_OR_RETURN(auto module,
+    ABSL_ASSIGN_OR_RETURN(auto module,
                      ParseAndReturnVerifiedModule(hlo_module, config));
 
     HloPassPipeline pass("spmd-partitioning");
@@ -18356,7 +18608,7 @@ class SpmdPartitioningV3Test : public HloHardwareIndependentTestBase {
                                   collective_ops_creator);
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
-    RETURN_IF_ERROR(pass.Run(module.get()).status());
+    ABSL_RETURN_IF_ERROR(pass.Run(module.get()).status());
     VerifyNoShardingOnCollectives(module.get());
     return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
@@ -18514,6 +18766,27 @@ ENTRY entry {
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Copy(op::Reshape(op::Reshape(op::Transpose(op::AllToAll(
                         op::Reshape(op::Reshape(op::Parameter(0)))))))));
+}
+
+TEST_F(SpmdPartitioningV3Test,
+       ReshardPartialReplicateToFullReplicateNamedSharding) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param = f32[1] parameter(0), sharding={mesh['x'=2,'y'=2] [{'x'}]}
+  ROOT %copy = f32[1] copy(%param), sharding={mesh['x'=2,'y'=2] replicated}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+
+  const HloInstruction* all_reduce =
+      FindInstruction(module.get(), HloOpcode::kAllReduce);
+  ASSERT_NE(all_reduce, nullptr);
+  EXPECT_EQ(all_reduce->replica_groups().size(), 2);
+  EXPECT_THAT(all_reduce->replica_groups()[0].replica_ids(), ElementsAre(0, 2));
+  EXPECT_THAT(all_reduce->replica_groups()[1].replica_ids(), ElementsAre(1, 3));
 }
 
 TEST_F(SpmdPartitioningV3Test, ReshardPartialReplicateWithAllToAllMultiAxis) {
@@ -18702,6 +18975,81 @@ ENTRY entry {
   EXPECT_THAT(
       module->entry_computation()->parameter_instructions(),
       Each(op::Sharding("{mesh['a'=2,'b'=2], [], unreduced=max{'a','b'}}")));
+}
+
+// Verifies that a true 1D scatter-conflict on a reduction dimension (e.g.,
+// b/512585186) successfully avoids full replication by falling back to
+// Reshard(updates) instead of failing outright and returning a nullptr.
+TEST_P(SpmdPartitioningTest, IndexPassthroughScatterConflictFallback) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+add (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  %operand = f32[256,128] parameter(0), sharding={devices=[2,1]<=[2]}
+  %indices = s32[128,1] parameter(1), sharding={devices=[2,1]<=[2]}
+  %updates = f32[128,128] parameter(2), sharding={devices=[2,1]<=[2]}
+  ROOT %scatter = f32[256,128] scatter(%operand, %indices, %updates),
+      to_apply=add,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1, sharding={devices=[2,1]<=[2]}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root, AllOf(op::Shape("f32[128,128]"),
+                  op::Scatter(op::Parameter(0),
+                              op::Subtract(op::AllGather(op::Parameter(1)), _),
+                              op::AllGather(op::Parameter(2)))));
+}
+
+// Verifies that a true 2D mesh scatter conflict (e.g., b/541557389) avoids the
+// fatal 122GB OOM resulting from fully replicating the operand (embedding
+// tables) across the entire mesh. Instead, it partially replicates the much
+// smaller updates tensor.
+TEST_P(SpmdPartitioningTest, ScatterConflictWithReplicatedIndicesFallback) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+add (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  %input = f32[256,128] parameter(0), sharding={devices=[2,2]<=[4]}
+  %indices = s32[32,16,1] parameter(1), sharding={devices=[2,2,1]<=[4]}
+  %updates = f32[32,16,128] parameter(2), sharding={devices=[2,2,1]<=[4]}
+  ROOT %scatter = f32[256,128] scatter(%input, %indices, %updates),
+      to_apply=add,
+      update_window_dims={2},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=2, sharding={devices=[2,2]<=[4]}
+})";
+  SpmdPartitionerOptions options;
+  options.need_resolve_conflicts = true;
+  ASSERT_OK_AND_ASSIGN(
+      auto module,
+      PartitionComputation(hlo_string, /*num_devices=*/4, options));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::DynamicSlice(::testing::_, ::testing::_, ::testing::_));
+  bool has_scatter = false;
+  for (auto* inst : module->entry_computation()->instructions()) {
+    if (inst->opcode() == HloOpcode::kScatter) has_scatter = true;
+  }
+  EXPECT_TRUE(has_scatter);
 }
 
 }  // namespace

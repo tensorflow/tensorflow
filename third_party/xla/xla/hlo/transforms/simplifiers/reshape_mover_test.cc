@@ -45,7 +45,7 @@ class ReshapeMoverTest : public HloHardwareIndependentTestBase {
   absl::Status RunPass(HloModule* module, bool change_expected,
                        ReshapeMoverOptions options = ReshapeMoverOptions{},
                        bool run_algsimp = false) {
-    ASSIGN_OR_RETURN(bool changed, RunHloPass(ReshapeMover(options), module));
+    ABSL_ASSIGN_OR_RETURN(bool changed, RunHloPass(ReshapeMover(options), module));
     SCOPED_TRACE(module->ToString());
     EXPECT_EQ(changed, change_expected);
     TF_EXPECT_OK(RunHloPass(HloVerifier(HloVerifierOpts()), module).status());

@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "google/protobuf/text_format.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -154,7 +155,7 @@ TEST(DumpHloModule, WithBufferAssignment) {
           },
           &alias_info,
           /*color_alignment=*/[](LogicalBuffer::Color) -> int64_t { return 1; },
-          /*options=*/std::move(opts))
+          /*opts=*/std::move(opts))
           .value();
   std::string dump_name = "dump";
   std::vector<std::string> paths =
@@ -212,7 +213,7 @@ TEST(DumpHloModule, DumpRiegeli) {
           },
           &alias_info,
           /*color_alignment=*/[](LogicalBuffer::Color) -> int64_t { return 1; },
-          /*options=*/std::move(opts))
+          /*opts=*/std::move(opts))
           .value();
   std::string dump_name = "dump";
   std::vector<std::string> paths =
@@ -716,6 +717,86 @@ TEST(DumpHloIfEnabled, CompactGte) {
   EXPECT_FALSE(absl::StrContains(data, "get-tuple-element"));
   EXPECT_TRUE(absl::StrContains(data, "%p0#0"));
   EXPECT_TRUE(absl::StrContains(data, "%p0#1"));
+}
+
+class DumpModuleFilterTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    env_ = tsl::Env::Default();
+    ASSERT_TRUE(env_->LocalTempFilename(&dump_dir_));
+    options_ = GetDebugOptionsFromFlags();
+    options_.set_xla_dump_to(dump_dir_);
+    options_.set_xla_dump_hlo_as_text(true);
+  }
+
+  bool Run(absl::string_view module_re) {
+    options_.set_xla_dump_hlo_module_re(module_re);
+    HloModuleConfig config;
+    config.set_debug_options(options_);
+    auto m_or_status = ParseAndReturnUnverifiedModule(kModuleStr, config);
+    if (!m_or_status.ok()) {
+      return false;
+    }
+    auto m = std::move(m_or_status).value();
+
+    bool hlo_dumped = !DumpHloModuleIfEnabled(*m, "dump").empty();
+
+    HloModuleProto proto;
+    proto.set_name("my_proto");
+    DumpPerModuleProtobufToFile(*m, proto, options_, "my_name");
+
+    std::vector<std::string> matches;
+    if (!env_->GetMatchingPaths(tsl::io::JoinPath(dump_dir_, "*my_name*"),
+                                &matches)
+             .ok()) {
+      return false;
+    }
+    bool proto_dumped = !matches.empty();
+
+    return hlo_dumped && proto_dumped;
+  }
+
+  tsl::Env* env_;
+  std::string dump_dir_;
+  DebugOptions options_;
+  const char* const kModuleStr = R"(
+    HloModule my_module
+    test {
+      p0 = s32[11] parameter(0)
+      ROOT x = s32[11] negate(p0)
+    }
+  )";
+};
+
+TEST_F(DumpModuleFilterTest, DisablesDumpWhenFilterDoesNotMatch) {
+  EXPECT_FALSE(Run("other_module"));
+}
+
+TEST_F(DumpModuleFilterTest, EnablesDumpWhenFilterMatches) {
+  EXPECT_TRUE(Run("my_.*"));
+}
+
+TEST(DumpEmitterFilterTest, EmitterFilterControlsDumping) {
+  DebugOptions options;
+  EXPECT_FALSE(DumpingEnabledForEmitter("llvm", options));
+  EXPECT_FALSE(DumpingEnabledForEmitter("ptx", options));
+
+  options.set_xla_dump_emitter_re("llvm");
+  EXPECT_TRUE(DumpingEnabledForEmitter("llvm", options));
+  EXPECT_FALSE(DumpingEnabledForEmitter("ptx", options));
+
+  options.set_xla_dump_emitter_re("ptx");
+  EXPECT_FALSE(DumpingEnabledForEmitter("llvm", options));
+  EXPECT_TRUE(DumpingEnabledForEmitter("ptx", options));
+
+  options.set_xla_dump_emitter_re("llvm|ptx");
+  EXPECT_TRUE(DumpingEnabledForEmitter("llvm", options));
+  EXPECT_TRUE(DumpingEnabledForEmitter("ptx", options));
+
+  options.set_xla_dump_emitter_re(".*");
+  EXPECT_TRUE(DumpingEnabledForEmitter("llvm", options));
+  EXPECT_TRUE(DumpingEnabledForEmitter("ptx", options));
+  EXPECT_TRUE(DumpingEnabledForEmitter("triton-fusion", options));
 }
 
 }  // namespace

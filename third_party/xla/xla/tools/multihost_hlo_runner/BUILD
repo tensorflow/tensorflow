@@ -207,6 +207,7 @@ cc_library(
         "//xla/hlo/translate/hlo_to_mhlo:translate",
         "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:maybe_owning_mlir_module",
+        "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
@@ -239,6 +240,7 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:FuncExtensions",
+        "@llvm-project//mlir:IR",
         "@tsl//tsl/profiler/lib:profiler_factory_impl",
         "@tsl//tsl/profiler/lib:profiler_session",
         "@tsl//tsl/profiler/lib:profiler_session_impl",
@@ -248,7 +250,7 @@ cc_library(
 )
 
 filegroup(
-    name = "hlo_file",
+    name = "hlo_files",
     srcs = glob(["data/**"]),
 )
 
@@ -275,7 +277,7 @@ xla_test(
         "cpu",
         "gpu",
     ],
-    data = [":hlo_file"],
+    data = [":hlo_files"],
     shard_count = 4,
     tags = ["no_mac"],
     deps = [
@@ -401,7 +403,7 @@ xla_py_test(
     # ],
     # copybara:uncomment_end
     data = [
-        ":hlo_file",
+        ":hlo_files",
     ],
     tags = [
         "gpu",

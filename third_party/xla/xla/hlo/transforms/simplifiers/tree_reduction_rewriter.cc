@@ -97,11 +97,11 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
         MakePadding(input_shape.dimensions(), window_dimensions, window_strides,
                     Padding::kSame);
 
-    ASSIGN_OR_RETURN(Window window,
+    ABSL_ASSIGN_OR_RETURN(Window window,
                      ShapeInference::InferWindowFromDimensions(
                          window_dimensions, window_strides, padding, {}, {}));
 
-    ASSIGN_OR_RETURN(Shape intermediate_shape,
+    ABSL_ASSIGN_OR_RETURN(Shape intermediate_shape,
                      ShapeInference::InferReduceWindowShape(
                          input_shape, initial_value->shape(), window));
 
@@ -129,7 +129,7 @@ absl::StatusOr<bool> TreeReductionRewriter::RunImpl(
   bool changed = false;
   for (const auto &computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    RETURN_IF_ERROR(computation->Accept(&visitor));
+    ABSL_RETURN_IF_ERROR(computation->Accept(&visitor));
     changed |= visitor.changed();
   }
 

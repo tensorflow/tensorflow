@@ -236,6 +236,14 @@ class CudaExecutor : public GpuExecutor {
     return device_allocator_options_.enable_fabric_handle;
   }
 
+  absl::StatusOr<DeviceAddressBase> GetAllocationRange(
+      void* ptr) const override;
+
+  absl::StatusOr<std::string> ExportFabricHandle(void* ptr) const override;
+
+  absl::StatusOr<DeviceAddressBase> ImportFabricHandle(
+      absl::string_view serialized) override;
+
  private:
   // Allocates memory using the given allocator and tracks the resulting
   // allocation. Returns an empty DeviceAddressBase on failure.

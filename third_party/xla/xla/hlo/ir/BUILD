@@ -184,6 +184,7 @@ xla_cc_test(
         ":hlo",
         "//xla:literal_util",
         "//xla:printer",
+        "//xla:shape_layout",
         "//xla:shape_util",
         "//xla:side_effect_util",
         "//xla:xla_data_proto_cc",

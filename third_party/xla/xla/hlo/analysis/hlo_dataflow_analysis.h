@@ -70,10 +70,15 @@ class HloDataflowAnalysis {
   //   bitcast_defines_value : If true then the Bitcast HLO instruction defines
   //     a new HLO value in the analysis. If false then Bitcast forwards the
   //     value of its operand.
+  //
+  //   propagate_through_calls : If false, kCall instructions are treated as
+  //     opaque instructions that define their own output values, and dataflow
+  //     across kCall boundaries is ignored.
   static absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> Run(
       const HloModule& module, bool ssa_form = false,
       bool bitcast_defines_value = false,
-      absl::flat_hash_set<absl::string_view> execution_threads = {});
+      absl::flat_hash_set<absl::string_view> execution_threads = {},
+      bool propagate_through_calls = true);
 
   // Returns true if 'instruction' defines an HLO value at the given shape index
   // of its output.
@@ -109,11 +114,25 @@ class HloDataflowAnalysis {
   // shape index. CHECKs if the value set does not contain a exactly one value.
   const HloValue& GetUniqueValueAt(const HloInstruction* instruction,
                                    const ShapeIndex& index = {}) const {
-    return GetValueSet(instruction, index).GetUniqueValue();
+    const HloValueSet& value_set = GetValueSet(instruction, index);
+    if (value_set.values().size() != 1) {
+      LOG(FATAL) << "GetUniqueValueAt failed on instruction: "
+                 << instruction->name() << " at index " << index
+                 << " with value set size " << value_set.values().size() << ": "
+                 << value_set;
+    }
+    return value_set.GetUniqueValue();
   }
   HloValue& GetUniqueValueAt(const HloInstruction* instruction,
                              const ShapeIndex& index = {}) {
-    return GetValue(GetValueSet(instruction, index).GetUniqueValue().id());
+    const HloValueSet& value_set = GetValueSet(instruction, index);
+    if (value_set.values().size() != 1) {
+      LOG(FATAL) << "GetUniqueValueAt failed on instruction: "
+                 << instruction->name() << " at index " << index
+                 << " with value set size " << value_set.values().size() << ": "
+                 << value_set;
+    }
+    return GetValue(value_set.GetUniqueValue().id());
   }
 
   // Returns the HloValue with the given Id.
@@ -189,7 +208,8 @@ class HloDataflowAnalysis {
 
   HloDataflowAnalysis(const HloModule& module, bool ssa_form,
                       bool bitcast_defines_value,
-                      absl::flat_hash_set<absl::string_view> execution_threads);
+                      absl::flat_hash_set<absl::string_view> execution_threads,
+                      bool propagate_through_calls = true);
 
   // Runs dataflow analysis on the module attached to this HloDataflowAnalysis.
   absl::Status RunImpl();
@@ -304,6 +324,7 @@ class HloDataflowAnalysis {
   const absl::flat_hash_set<absl::string_view> execution_threads_;
   const bool ssa_form_;
   const bool bitcast_defines_value_;
+  bool propagate_through_calls_ = true;
 
   std::unique_ptr<CallGraph> call_graph_;
 

@@ -369,9 +369,30 @@ void PerDeviceCollector::Export(uint64_t start_walltime_ns,
   absl::flat_hash_map<int64_t, absl::flat_hash_set<RocmTracerEventType> >
       events_types_per_line;
 
+  // Build dense stream remapping: raw HIP stream handles (64-bit pointer
+  // values) are converted to sequential indices (0, 1, 2, ...) for clean
+  // timeline lane numbering.
+  absl::flat_hash_map<uint64_t, int64_t> stream_remap;
+  int64_t next_stream_idx = 0;
+  for (const auto& event : events_) {
+    if (event.source == RocmTracerEventSource::Activity &&
+        event.stream_id != RocmTracerEvent::kInvalidStreamId &&
+        !stream_remap.contains(event.stream_id)) {
+      stream_remap[event.stream_id] = next_stream_idx++;
+    }
+  }
+
   for (const RocmTracerEvent& event : events_) {
     int64_t line_id = RocmTracerEvent::kInvalidThreadId;
     bool is_host_event = IsHostEvent(event, &line_id);
+
+    // Apply dense stream remapping for device events.
+    if (!is_host_event) {
+      auto it = stream_remap.find(static_cast<uint64_t>(line_id));
+      if (it != stream_remap.end()) {
+        line_id = it->second;
+      }
+    }
 
     if (is_host_event) {
       host_ev_cnt++;

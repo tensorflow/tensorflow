@@ -79,13 +79,13 @@ jobs:
         shell: bash
     steps:
       - name: Checking out openxla/xla
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: openxla/xla
           persist-credentials: false
 
       - name: Checkout JAX
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: jax-ml/jax
           path: jax
@@ -130,7 +130,7 @@ jobs:
         shell: bash
     steps:
       - name: Checking out openxla/xla
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: openxla/xla
           persist-credentials: false
@@ -161,7 +161,7 @@ jobs:
             --bes_keywords=xla \
             --bes_keywords=upstream \
             --bes_keywords=gpu \
-            --bes_keywords=pull_request
+            --bes_keywords=pull_request \
       - name: Test XLA [rocm_cpu]
         timeout-minutes: 80
         run: |

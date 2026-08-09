@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_stack_trace.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 
 namespace xla {
@@ -52,7 +53,7 @@ absl::StatusOr<std::unique_ptr<HloLiveRange>> HloLiveRange::Run(
     const HloComputation* computation, bool module_scoped_analysis) {
   std::unique_ptr<HloLiveRange> hlo_live_range(
       new HloLiveRange(schedule, alias_analysis, module_scoped_analysis));
-  RETURN_IF_ERROR(hlo_live_range->FlattenSchedule(*computation));
+  ABSL_RETURN_IF_ERROR(hlo_live_range->FlattenSchedule(*computation));
   hlo_live_range->CalculateBufferStartEndMap();
   hlo_live_range->NormalizeAliasedBuffers();
   return hlo_live_range;
@@ -118,27 +119,27 @@ absl::Status HloLiveRange::FlattenSchedule(
           instruction->opcode() == HloOpcode::kConditional) {
         for (const HloComputation* called_computation :
              instruction->called_computations()) {
-          RETURN_IF_ERROR(FlattenSchedule(*called_computation, async_context));
+          ABSL_RETURN_IF_ERROR(FlattenSchedule(*called_computation, async_context));
         }
       } else if (instruction->IsAsynchronous()) {
         // For async operations, the async wrapped computation is flattened
         // before the first async instruction that has its operands and output
         // fully bound.
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             const bool is_first_fully_bound,
             hlo_instruction_utils::async::IsFirstFullyBound(instruction));
         if (is_first_fully_bound) {
           const HloComputation* called_computation =
               instruction->async_wrapped_computation();
-          RETURN_IF_ERROR(
+          ABSL_RETURN_IF_ERROR(
               FlattenSchedule(*called_computation, called_computation));
         }
       } else if (instruction->opcode() == HloOpcode::kWhile) {
         // Order of flattening matters here: for while loops, the condition
         // must be flattened first, then the body.
-        RETURN_IF_ERROR(
+        ABSL_RETURN_IF_ERROR(
             FlattenSchedule(*instruction->while_condition(), async_context));
-        RETURN_IF_ERROR(
+        ABSL_RETURN_IF_ERROR(
             FlattenSchedule(*instruction->while_body(), async_context));
       }
     }
@@ -310,7 +311,11 @@ int64_t HloLiveRange::ComputePeakMemoryMoment() const {
     bool is_end;
     const HloValue* value;
     std::tie(time, is_end, value) = event;
-    auto buffer_size = ShapeUtil::ByteSizeOf(value->instruction()->shape(), 8);
+    const Shape& shape = value->instruction()->shape();
+    if (shape.is_unbounded_dynamic()) {
+      return -1;
+    }
+    auto buffer_size = ShapeUtil::ByteSizeOf(shape, 8);
     if (is_end) {
       memory_usage -= buffer_size;
     } else {
@@ -346,6 +351,13 @@ std::string HloLiveRange::ToString() const {
   }
 
   int64_t peak_moment = ComputePeakMemoryMoment();
+
+  if (peak_moment < 0) {
+    absl::StrAppend(&output,
+                    "  Peak memory could not be determined due to unbounded "
+                    "dynamic shape.\n");
+    return output;
+  }
 
   absl::StrAppendFormat(&output, "  Live ranges at %lld (peak):\n",
                         peak_moment);

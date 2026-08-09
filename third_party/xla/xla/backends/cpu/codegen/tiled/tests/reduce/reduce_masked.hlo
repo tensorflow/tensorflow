@@ -1,0 +1,38 @@
+// RUN: fusion_to_xtile %s --xla_cpu_use_new_xtile_lowering  | FileCheck %s
+
+// RUN: fusion_to_xtile %s --xla_cpu_use_new_xtile_lowering | fusion_compiler_opt \
+// RUN:   --xtile-cpu-new-xtile-to-vector --xla-simplify-arith \
+// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
+// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering --abs_error_bound=1e-5
+
+add {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT add = f32[] add(x, y)
+}
+
+fusion {
+  p0 = f32[128,250] parameter(0)
+  c0 = f32[] constant(0)
+  ROOT reduce = f32[128] reduce(p0, c0), dimensions={1}, to_apply=add
+}
+
+// CHECK: xtile.mask %{{.*}} bounds [1, 250]
+
+// NEW-VECTOR: func.func @wrapped_fusion_impl
+
+// NEW-VECTOR: %[[MASK:.*]] = vector.constant_mask [1, 250] : vector<1x256xi1>
+// NEW-VECTOR: arith.select %[[MASK]]
+
+ENTRY main {
+  p0 = f32[128,250] parameter(0)
+  ROOT fusion = f32[128] fusion(p0), kind=kLoop, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["1"]}],
+          "num_ctas":"1"
+        }
+      }
+    }
+}

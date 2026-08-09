@@ -1,11 +1,26 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# =============================================================================
+
 """Provides the repository macro to import LLVM."""
 
 load("//third_party:repo.bzl", "tf_http_archive")
 
 def repo(name):
     """Imports LLVM."""
-    LLVM_COMMIT = "8ae7803bede98cca73e6fd6a8fabbf95da9d0b46"
-    LLVM_SHA256 = "3cf31c21c283f92548f424ba660f2b807f11f3e4283aebddc25e489738b932cb"
+    LLVM_COMMIT = "a6b0af7536ef0ae8383ec729c5fbf23c73243776"
+    LLVM_SHA256 = "dfd250ff52da324d2e93dcded5e00676653e319982fff4f3789c1df3db88316c"
 
     tf_http_archive(
         name = name,

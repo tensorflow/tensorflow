@@ -1,5 +1,5 @@
-// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation=false %s 2>&1 | FileCheck %s
-// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation %s 2>&1 | FileCheck %s
+// RUN: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation=false %s 2>&1 | FileCheck %s
+// RUN: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation %s 2>&1 | FileCheck %s
 
 // CHECK:      xtile.entry_func @triton_fn
 // CHECK:      %[[CST:.*]] = arith.constant dense<4.000000e+00> : tensor<2xf32>

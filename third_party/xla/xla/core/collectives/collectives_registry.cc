@@ -68,7 +68,7 @@ static Registry& GetCollectivesRegistry() {
 absl::Status CollectivesRegistry::Register(
     absl::string_view platform_name, absl::string_view name, int32_t priority,
     std::unique_ptr<Collectives> collectives) {
-  ASSIGN_OR_RETURN(std::string canonical_platform_name,
+  ABSL_ASSIGN_OR_RETURN(std::string canonical_platform_name,
                    PlatformUtil::CanonicalPlatformName(platform_name));
 
   auto& registry = GetCollectivesRegistry();
@@ -85,7 +85,7 @@ absl::Status CollectivesRegistry::Register(
 
 absl::StatusOr<Collectives*> CollectivesRegistry::Default(
     absl::string_view platform_name) {
-  ASSIGN_OR_RETURN(std::string canonical_platform_name,
+  ABSL_ASSIGN_OR_RETURN(std::string canonical_platform_name,
                    PlatformUtil::CanonicalPlatformName(platform_name));
 
   auto& registry = GetCollectivesRegistry();
@@ -102,7 +102,7 @@ absl::StatusOr<Collectives*> CollectivesRegistry::Default(
 
 absl::StatusOr<Collectives*> CollectivesRegistry::Get(
     absl::string_view platform_name, absl::string_view implementation_name) {
-  ASSIGN_OR_RETURN(std::string canonical_platform_name,
+  ABSL_ASSIGN_OR_RETURN(std::string canonical_platform_name,
                    PlatformUtil::CanonicalPlatformName(platform_name));
 
   auto& registry = GetCollectivesRegistry();

@@ -36,7 +36,7 @@ namespace xla {
 SignAndLogDet SLogDet(XlaOp a) {
   absl::StatusOr<SignAndLogDet> result =
       [&]() -> absl::StatusOr<SignAndLogDet> {
-    ASSIGN_OR_RETURN(Shape a_shape, a.builder()->GetShape(a));
+    ABSL_ASSIGN_OR_RETURN(Shape a_shape, a.builder()->GetShape(a));
     auto qr = Qr(a);
 
     int64_t m = ShapeUtil::GetDimension(a_shape, -2);

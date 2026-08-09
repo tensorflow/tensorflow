@@ -25,12 +25,12 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/runtime/collective_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -70,12 +70,12 @@ CollectivePermuteThunk::CollectivePermuteThunk(
 
 tsl::AsyncValueRef<CollectivePermuteThunk::ExecuteEvent>
 CollectivePermuteThunk::Execute(const ExecuteParams& params) {
-  ASSIGN_OR_RETURN(OpDeviceMemory data, GetOpDeviceMemory(params));
+  ABSL_ASSIGN_OR_RETURN(OpDeviceMemory data, GetOpDeviceMemory(params));
 
   Thunk::CollectiveExecuteParams* collective_params = params.collective_params;
   TF_RET_CHECK(collective_params) << "Collectives parameters are not set";
 
-  ASSIGN_OR_RETURN(DeviceAssignment::LogicalID logical_id,
+  ABSL_ASSIGN_OR_RETURN(DeviceAssignment::LogicalID logical_id,
                    collective_params->device_assignment->LogicalIdForDevice(
                        collective_params->global_device_id));
 

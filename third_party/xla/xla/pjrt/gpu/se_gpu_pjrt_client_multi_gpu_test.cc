@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/debug_options_flags.h"
@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/distributed/client.h"
+#include "xla/pjrt/distributed/coordination/coordination_service_agent.h"
 #include "xla/pjrt/distributed/distributed.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/distributed/service.h"
@@ -262,6 +263,172 @@ TEST(StreamExecutorGpuClientTest, DistributedInit) {
       EXPECT_EQ(client->device_count(), 4);
     });
   }
+}
+
+TEST(StreamExecutorGpuClientTest,
+     DistributedInitWithAbortCollectivesOnFailure) {
+  const int num_nodes = 2;
+  const char* kServiceAddress = "127.0.0.1:12351";
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<xla::DistributedRuntimeService> service,
+      xla::GetDistributedRuntimeService(
+          kServiceAddress, xla::CoordinationServiceImpl::Options{num_nodes}));
+
+  std::vector<absl::Status> statuses(num_nodes);
+  {
+    tsl::thread::ThreadPool thread_pool(
+        tsl::Env::Default(), "DistributedInitAbortCollectives", num_nodes);
+    for (int i = 0; i < num_nodes; ++i) {
+      thread_pool.Schedule([i, num_nodes, kServiceAddress, &statuses]() {
+        DistributedRuntimeClient::Options distributed_options;
+        distributed_options.node_id = i;
+        distributed_options.init_timeout = absl::Seconds(120);
+        auto distributed_client =
+            GetDistributedRuntimeClient(kServiceAddress, distributed_options);
+        statuses[i] = distributed_client->Connect();
+        if (!statuses[i].ok()) {
+          return;
+        }
+
+        GpuClientOptions options = GetTestGpuClientOptions(2);
+        options.node_id = i;
+        options.num_nodes = num_nodes;
+        options.enable_mock_nccl = true;
+        options.abort_collectives_on_failure = true;
+        options.distributed_client = distributed_client;
+        options.kv_store =
+            GetDistributedKeyValueStore(distributed_client, "abort:");
+
+        absl::StatusOr<std::unique_ptr<PjRtClient>> client_status =
+            GetStreamExecutorGpuClient(options);
+        if (!client_status.ok()) {
+          statuses[i] = client_status.status();
+          return;
+        }
+        std::unique_ptr<PjRtClient>& client = *client_status;
+        auto* gpu_client =
+            tsl::down_cast<StreamExecutorGpuClient*>(client.get());
+        const gpu::GpuExecutableRunOptions* run_options =
+            gpu_client->gpu_run_options();
+        if (run_options == nullptr ||
+            !run_options->execution_timeout_handler()) {
+          statuses[i] = absl::InternalError(
+              "execution_timeout_handler not configured when "
+              "abort_collectives_on_failure is enabled");
+          return;
+        }
+
+        EXPECT_TRUE(client->platform_name() == xla::CudaName() ||
+                    client->platform_name() == xla::RocmName() ||
+                    client->platform_name() == xla::OneapiName());
+        EXPECT_EQ(client->addressable_device_count(), 2);
+        EXPECT_EQ(client->device_count(), 4);
+        statuses[i] = absl::OkStatus();
+      });
+    }
+  }  // Join all worker threads before reading statuses.
+
+  for (const absl::Status& status : statuses) {
+    EXPECT_OK(status);
+  }
+}
+
+TEST(StreamExecutorGpuClientTest,
+     AbortCollectivesOnFailureWithoutDistributedClient) {
+  GpuClientOptions options = GetTestGpuClientOptions(2);
+  options.abort_collectives_on_failure = true;
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+
+  auto* gpu_client = tsl::down_cast<StreamExecutorGpuClient*>(client.get());
+  const gpu::GpuExecutableRunOptions* run_options =
+      gpu_client->gpu_run_options();
+  ASSERT_NE(run_options, nullptr);
+  ASSERT_TRUE(run_options->execution_timeout_handler());
+
+  // Should not crash when coordination service client is unavailable.
+  run_options->execution_timeout_handler()("test execution timeout",
+                                           absl::Seconds(1));
+}
+
+TEST(StreamExecutorGpuClientTest,
+     ExecutionTimeoutHandlerReportsErrorToCoordinationService) {
+  const int num_nodes = 2;
+  const char* kServiceAddress = "127.0.0.1:12352";
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<xla::DistributedRuntimeService> service,
+      xla::GetDistributedRuntimeService(
+          kServiceAddress, xla::CoordinationServiceImpl::Options{num_nodes}));
+
+  std::vector<std::shared_ptr<DistributedRuntimeClient>> distributed_clients(
+      num_nodes);
+  std::vector<std::unique_ptr<PjRtClient>> pjrt_clients(num_nodes);
+  std::vector<absl::Status> statuses(num_nodes);
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(),
+                                        "TimeoutHandlerInit", num_nodes);
+    for (int i = 0; i < num_nodes; ++i) {
+      thread_pool.Schedule([i, num_nodes, kServiceAddress, &distributed_clients,
+                            &pjrt_clients, &statuses]() {
+        DistributedRuntimeClient::Options distributed_options;
+        distributed_options.node_id = i;
+        distributed_options.init_timeout = absl::Seconds(120);
+        distributed_options.missed_heartbeat_callback =
+            [](const absl::Status& status) {
+              LOG(INFO) << "Coordination error callback: " << status;
+            };
+        distributed_clients[i] =
+            GetDistributedRuntimeClient(kServiceAddress, distributed_options);
+        statuses[i] = distributed_clients[i]->Connect();
+        if (!statuses[i].ok()) {
+          return;
+        }
+
+        GpuClientOptions options = GetTestGpuClientOptions(2);
+        options.node_id = i;
+        options.num_nodes = num_nodes;
+        options.enable_mock_nccl = true;
+        options.abort_collectives_on_failure = true;
+        options.distributed_client = distributed_clients[i];
+        options.kv_store =
+            GetDistributedKeyValueStore(distributed_clients[i], "timeout:");
+
+        absl::StatusOr<std::unique_ptr<PjRtClient>> client_status =
+            GetStreamExecutorGpuClient(options);
+        if (!client_status.ok()) {
+          statuses[i] = client_status.status();
+          return;
+        }
+        pjrt_clients[i] = *std::move(client_status);
+        statuses[i] = absl::OkStatus();
+      });
+    }
+  }  // Join all worker threads before reading statuses / clients.
+
+  for (const absl::Status& status : statuses) {
+    ASSERT_OK(status);
+  }
+
+  auto* gpu_client0 =
+      tsl::down_cast<StreamExecutorGpuClient*>(pjrt_clients[0].get());
+  const gpu::GpuExecutableRunOptions* run_options =
+      gpu_client0->gpu_run_options();
+  ASSERT_NE(run_options, nullptr);
+  ASSERT_TRUE(run_options->execution_timeout_handler());
+
+  run_options->execution_timeout_handler()("test execution timeout",
+                                           absl::Seconds(30));
+
+  ASSERT_OK_AND_ASSIGN(CoordinationServiceAgent * reporting_agent,
+                       distributed_clients[0]->GetCoordinationServiceAgent());
+  ASSERT_OK_AND_ASSIGN(CoordinationServiceAgent * peer_agent,
+                       distributed_clients[1]->GetCoordinationServiceAgent());
+  EXPECT_TRUE(reporting_agent->IsError());
+
+  absl::Time deadline = absl::Now() + absl::Seconds(30);
+  while (!peer_agent->IsError() && absl::Now() < deadline) {
+    absl::SleepFor(absl::Milliseconds(100));
+  }
+  EXPECT_TRUE(peer_agent->IsError());
 }
 
 TEST(StreamExecutorGpuClientTest, GetAllocatorStatsTest) {
@@ -1083,7 +1250,7 @@ absl::StatusOr<PreparedCrossHostTransferTest> PrepareCrossHostTransferTest(
   // other via the distributed runtime (port chosen arbitrarily).
   if (rank_id == 0) {
     LOG(INFO) << log_prefix << ": creating coordination service";
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         prepared_test.service,
         xla::GetDistributedRuntimeService(
             "127.0.0.1:12347",
@@ -1108,10 +1275,11 @@ absl::StatusOr<PreparedCrossHostTransferTest> PrepareCrossHostTransferTest(
   options.num_nodes = 2;
   options.kv_store =
       GetDistributedKeyValueStore(distributed_client, /*key_prefix=*/"cross:");
+  options.distributed_client = distributed_client;
   options.allowed_devices = {rank_id};
 
   LOG(INFO) << log_prefix << ": creating PjRtClient";
-  ASSIGN_OR_RETURN(prepared_test.client, GetStreamExecutorGpuClient(options));
+  ABSL_ASSIGN_OR_RETURN(prepared_test.client, GetStreamExecutorGpuClient(options));
   LOG(INFO) << log_prefix << ": PjRtClient created";
 
   return prepared_test;
@@ -1121,7 +1289,7 @@ absl::Status SuccessfulCrossHostSendReceiveTestBody(bool is_sender,
                                                     int num_arrays) {
   std::string log_prefix = is_sender ? "sender" : "receiver";
 
-  ASSIGN_OR_RETURN(PreparedCrossHostTransferTest prepared_test,
+  ABSL_ASSIGN_OR_RETURN(PreparedCrossHostTransferTest prepared_test,
                    PrepareCrossHostTransferTest(is_sender ? 0 : 1, log_prefix));
 
   std::unique_ptr<PjRtClient> client = std::move(prepared_test.client);
@@ -1137,10 +1305,10 @@ absl::Status SuccessfulCrossHostSendReceiveTestBody(bool is_sender,
       std::vector<int32_t> data(256);
       absl::c_iota(data, 1000 * i);
 
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           auto* memory_space,
           client->addressable_devices()[0]->default_memory_space());
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           std::unique_ptr<PjRtBuffer> buffer,
           client->BufferFromHostBuffer(
               data.data(), shape.element_type(), shape.dimensions(),
@@ -1148,7 +1316,7 @@ absl::Status SuccessfulCrossHostSendReceiveTestBody(bool is_sender,
               PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
               nullptr, memory_space,
               /*device_layout=*/nullptr));
-      RETURN_IF_ERROR(buffer->GetReadyFuture().Await());
+      ABSL_RETURN_IF_ERROR(buffer->GetReadyFuture().Await());
       buffers.push_back(std::move(buffer));
     }
 
@@ -1164,14 +1332,14 @@ absl::Status SuccessfulCrossHostSendReceiveTestBody(bool is_sender,
       transfer_keys.push_back(CrossHostTransferKey(i));
     };
 
-    ASSIGN_OR_RETURN(std::vector<Future<>> send_futures,
+    ABSL_ASSIGN_OR_RETURN(std::vector<Future<>> send_futures,
                      client->CrossHostSendBuffers(raw_buffers, dst_device_ids,
                                                   std::move(transfer_keys)));
 
     EXPECT_EQ(send_futures.size(), num_arrays);
     for (int i = 0; i < num_arrays; ++i) {
       LOG(INFO) << log_prefix << ": waiting for send " << i << " to complete";
-      RETURN_IF_ERROR(send_futures[i].Await());
+      ABSL_RETURN_IF_ERROR(send_futures[i].Await());
       LOG(INFO) << log_prefix << ": send " << i << " completed";
     }
   } else {
@@ -1186,7 +1354,7 @@ absl::Status SuccessfulCrossHostSendReceiveTestBody(bool is_sender,
     }
 
     LOG(INFO) << log_prefix << ": calling CrossHostReceiveBuffers";
-    ASSIGN_OR_RETURN(std::vector<std::unique_ptr<PjRtBuffer>> receive_buffers,
+    ABSL_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<PjRtBuffer>> receive_buffers,
                      client->CrossHostReceiveBuffers(
                          client->addressable_devices()[0], shapes,
                          src_device_ids, std::move(transfer_keys)));
@@ -1203,10 +1371,10 @@ absl::Status SuccessfulCrossHostSendReceiveTestBody(bool is_sender,
 
       LOG(INFO) << log_prefix << ": waiting for receive " << i
                 << " to complete";
-      RETURN_IF_ERROR(receive_buffers[i]->GetReadyFuture().Await());
+      ABSL_RETURN_IF_ERROR(receive_buffers[i]->GetReadyFuture().Await());
       LOG(INFO) << log_prefix << ": receive " << i << " completed";
 
-      ASSIGN_OR_RETURN(std::shared_ptr<xla::Literal> recv_literal,
+      ABSL_ASSIGN_OR_RETURN(std::shared_ptr<xla::Literal> recv_literal,
                        receive_buffers[i]->ToLiteral().Await());
 
       EXPECT_TRUE(LiteralTestUtil::Equal(expected_literal, *recv_literal));
@@ -1332,7 +1500,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
   std::string log_prefix = rank_id == 0 ? "rank_0" : "rank_1";
   const int num_transfers = num_rank_0_to_rank_1 + num_rank_1_to_rank_0;
 
-  ASSIGN_OR_RETURN(PreparedCrossHostTransferTest prepared_test,
+  ABSL_ASSIGN_OR_RETURN(PreparedCrossHostTransferTest prepared_test,
                    PrepareCrossHostTransferTest(rank_id, log_prefix));
   std::unique_ptr<PjRtClient> client = std::move(prepared_test.client);
 
@@ -1360,7 +1528,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
     transferred_data.push_back(std::move(curr_data));
   }
   Shape shape = ShapeUtil::MakeShape(S32, {256});
-  ASSIGN_OR_RETURN(PjRtMemorySpace * default_memory_space,
+  ABSL_ASSIGN_OR_RETURN(PjRtMemorySpace * default_memory_space,
                    client->addressable_devices()[0]->default_memory_space());
 
   // Initial values that will be populated in receive buffers (all zeros).
@@ -1390,7 +1558,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
     bool is_sender = rank_id == src_global_device_id;
 
     // Initialize a send / receive buffer.
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<PjRtBuffer> buffer,
         client->BufferFromHostBuffer(
             /*data=*/is_sender ? transferred_data[i].data()
@@ -1403,7 +1571,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
     // Create a usage event for the transfer of this buffer.
     PjRtDeviceEventPromiseRef usage_event_promise;
     PjRtDeviceEventRef usage_event;
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::tie(usage_event_promise, usage_event),
         absl::down_cast<CommonPjRtClient*>(client.get())
             ->CreateLinkedEventPromise(default_memory_space,
@@ -1412,7 +1580,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
 
     // Get a raw buffer.
     PjRtRawBufferRef raw_buffer;
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         absl::down_cast<CommonPjRtBufferImpl*>(buffer.get())
             ->AcquireScopedRawBuffer(
                 [&](PjRtRawBufferRef buf_raw_buffer,
@@ -1440,7 +1608,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
 
   // Perform transfers.
   LOG(INFO) << log_prefix << ": enqueuing transfers";
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       PjRtDeviceEventRefVector usage_events,
       absl::down_cast<CommonPjRtClient*>(client.get())
           ->CrossHostTransferBuffers(std::move(transfer_dependencies),
@@ -1462,7 +1630,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
   // Verify we received the correct data, and that the data we sent is
   // uncorrupted.
   for (int i = 0; i < num_transfers; ++i) {
-    ASSIGN_OR_RETURN(std::shared_ptr<xla::Literal> buffer_literal,
+    ABSL_ASSIGN_OR_RETURN(std::shared_ptr<xla::Literal> buffer_literal,
                      owned_buffers[i]->ToLiteral().Await());
     auto expected_literal = LiteralUtil::CreateR1<int32_t>(transferred_data[i]);
     EXPECT_TRUE(LiteralTestUtil::Equal(expected_literal, *buffer_literal));
@@ -1569,7 +1737,7 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id,
                                             absl::string_view cache_dir) {
   std::unique_ptr<xla::DistributedRuntimeService> service;
   if (node_id == 0) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         service,
         xla::GetDistributedRuntimeService(
             "[::]:12345", xla::CoordinationServiceImpl::Options{
@@ -1588,14 +1756,14 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id,
   options.num_nodes = ShardedAutotuningTest::kNumNodes;
   options.kv_store = GetDistributedKeyValueStore(distributed_client,
                                                  /*key_prefix=*/"gpu:");
-  ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                    GetStreamExecutorGpuClient(options));
   TF_RET_CHECK(client->platform_name() == xla::CudaName() ||
                client->platform_name() == xla::RocmName() ||
                client->platform_name() == xla::OneapiName());
   if (client->platform_name() == xla::CudaName()) {
 #if GOOGLE_CUDA
-    ASSIGN_OR_RETURN(se::CudaComputeCapability cc,
+    ABSL_ASSIGN_OR_RETURN(se::CudaComputeCapability cc,
                      se::CudaComputeCapability::FromString(
                          std::get<std::string>(client->addressable_devices()
                                                    .front()
@@ -1636,14 +1804,14 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id,
     }
   )";
 
-  ASSIGN_OR_RETURN(auto hlo_module, ParseAndReturnUnverifiedModule(kHlo, {}));
+  ABSL_ASSIGN_OR_RETURN(auto hlo_module, ParseAndReturnUnverifiedModule(kHlo, {}));
   xla::XlaComputation computation(hlo_module->ToProto());
 
   std::unique_ptr<PjRtLoadedExecutable> executable;
-  ASSIGN_OR_RETURN(executable,
+  ABSL_ASSIGN_OR_RETURN(executable,
                    client->CompileAndLoad(computation, compile_options));
 
-  ASSIGN_OR_RETURN(auto hlo_modules,
+  ABSL_ASSIGN_OR_RETURN(auto hlo_modules,
                    executable->GetExecutable()->GetHloModules());
   const std::string optimized_hlo = hlo_modules.front()->ToString();
   TF_RET_CHECK(absl::StrContains(optimized_hlo, "triton_gemm") ||

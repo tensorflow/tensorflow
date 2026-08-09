@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/frontend_attributes.h"
 
-#include <cstdlib>
-
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
@@ -36,13 +34,25 @@ bool IsTrueVal(absl::string_view val) {
 }  // namespace
 
 void SetDisjointReadWriteRegionsAttr(HloInstruction* instruction) {
-  instruction->set_frontend_attribute(xla::kXlaDisjointReadWriteRegions,
-                                      "true");
+  if (instruction != nullptr) {
+    instruction->set_frontend_attribute(xla::kXlaDisjointReadWriteRegions,
+                                        "true");
+  }
 }
 
-bool HasDisjointReadWriteRegionsAttr(HloInstruction* instruction) {
-  return instruction->frontend_attributes().map().contains(
-      xla::kXlaDisjointReadWriteRegions);
+bool HasDisjointReadWriteRegionsAttr(const HloInstruction* instruction) {
+  if (instruction == nullptr || !instruction->has_frontend_attributes()) {
+    return false;
+  }
+  const auto& map = instruction->frontend_attributes().map();
+  for (absl::string_view key :
+       {kXlaDisjointReadWriteRegions, "xla.disjoint_read_write_regions"}) {
+    auto it = map.find(key);
+    if (it != map.end() && IsTrueVal(it->second)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool HasDisableWhileLoopCopiesAttr(const HloInstruction* instruction) {
@@ -52,8 +62,7 @@ bool HasDisableWhileLoopCopiesAttr(const HloInstruction* instruction) {
   if (instruction->has_frontend_attributes()) {
     const auto& map = instruction->frontend_attributes().map();
     for (absl::string_view key :
-         {kXlaDisableWhileLoopCopies, kXlaDisableWhileLoopCopiesNoUnderscore,
-          "xla.disable_while_loop_copies"}) {
+         {kXlaDisableWhileLoopCopies, "xla.disable_while_loop_copies"}) {
       auto it = map.find(key);
       if (it != map.end() && IsTrueVal(it->second)) {
         return true;
@@ -66,8 +75,39 @@ bool HasDisableWhileLoopCopiesAttr(const HloInstruction* instruction) {
                                     .debug_options()
                                     .xla_backend_extra_options();
     for (const char* key :
-         {kXlaDisableWhileLoopCopies, kXlaDisableWhileLoopCopiesNoUnderscore,
-          "xla.disable_while_loop_copies"}) {
+         {kXlaDisableWhileLoopCopies, "xla.disable_while_loop_copies"}) {
+      auto it = extra_options.find(key);
+      if (it != extra_options.end() && IsTrueVal(it->second)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool HasDisableWhileLoopDceAttr(const HloInstruction* instruction) {
+  if (instruction == nullptr) {
+    return false;
+  }
+  if (instruction->has_frontend_attributes()) {
+    const auto& map = instruction->frontend_attributes().map();
+    for (absl::string_view key :
+         {kXlaDisableWhileLoopDce, "xla.disable_while_loop_dce",
+          kXlaPreserveTupleIndices, "xla.preserve_tuple_indices"}) {
+      auto it = map.find(key);
+      if (it != map.end() && IsTrueVal(it->second)) {
+        return true;
+      }
+    }
+  }
+  if (instruction->GetModule() != nullptr) {
+    const auto& extra_options = instruction->GetModule()
+                                    ->config()
+                                    .debug_options()
+                                    .xla_backend_extra_options();
+    for (const char* key :
+         {kXlaDisableWhileLoopDce, "xla.disable_while_loop_dce",
+          kXlaPreserveTupleIndices, "xla.preserve_tuple_indices"}) {
       auto it = extra_options.find(key);
       if (it != extra_options.end() && IsTrueVal(it->second)) {
         return true;

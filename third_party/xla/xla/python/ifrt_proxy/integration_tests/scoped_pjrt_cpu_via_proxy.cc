@@ -49,7 +49,7 @@ absl::StatusOr<std::unique_ptr<xla::ifrt::Client>> CreateIfrtBackendClient(
   xla::CpuClientOptions options;
   options.asynchronous = true;
   options.cpu_device_count = 4;
-  ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> pjrt_cpu_client,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> pjrt_cpu_client,
                    xla::GetXlaPjrtCpuClient(options));
   return xla::ifrt::PjRtClient::Create(std::move(pjrt_cpu_client));
 }

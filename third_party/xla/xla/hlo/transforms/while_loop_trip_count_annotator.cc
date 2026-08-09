@@ -223,7 +223,7 @@ absl::StatusOr<bool> WhileLoopTripCountAnnotator::RunImpl(
         continue;
       }
 
-      ASSIGN_OR_RETURN(WhileLoopBackendConfig existing_config,
+      ABSL_ASSIGN_OR_RETURN(WhileLoopBackendConfig existing_config,
                        instr->backend_config<WhileLoopBackendConfig>());
       if (existing_config.ByteSizeLong() != 0) {
         LOG(WARNING) << absl::StrFormat(
@@ -284,7 +284,7 @@ absl::StatusOr<bool> WhileLoopTripCountAnnotator::RunImpl(
         dv.set_step(resolved->second);
       }
 
-      RETURN_IF_ERROR(instr->set_backend_config(config));
+      ABSL_RETURN_IF_ERROR(instr->set_backend_config(config));
       changed = true;
     }
   }

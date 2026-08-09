@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
@@ -47,7 +48,6 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
@@ -103,7 +103,7 @@ class AlgorithmTest : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {
   absl::Status CreateTritonIrFromHloTextAndFileCheckForDot(
       absl::string_view hlo_text, absl::string_view triton_fusion_name,
       absl::string_view filecheck_pattern) {
-    ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                      ParseAndReturnVerifiedModule(hlo_text));
     return CreateTritonIrAndFileCheckForDot(module.get(), triton_fusion_name,
                                             filecheck_pattern);
@@ -902,7 +902,7 @@ TEST_F(TritonAlgorithmTest, UnsetAlgorithmToBF16) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   module->mutable_config()
       .mutable_debug_options()
-      .set_xla_gpu_match_tpu_precision(true);
+      .set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
   EXPECT_OK(
       CreateTritonIrAndFileCheckForDot(module.get(), "triton_fusion_dot", R"(
       CHECK: tt.dot{{.*}}tensor<256x16xbf16> * tensor<16x16xbf16> -> tensor<256x16xf32>
@@ -1587,10 +1587,10 @@ TEST_P(TritonAndBlasSupportForDifferentTensorSizes,
       break;
     case PC::ALG_DOT_BF16_BF16_F32_X6:
     case PC::ALG_DOT_BF16_BF16_F32_X9:
-      ASSERT_TRUE(result_or_status.status().ok())
-          << "failed to compile " << algorithm_;
-      EXPECT_TRUE(result_or_status.value())
-          << "wrong result for " << algorithm_;
+        ASSERT_TRUE(result_or_status.status().ok())
+            << "failed to compile " << algorithm_;
+        EXPECT_TRUE(result_or_status.value())
+            << "wrong result for " << algorithm_;
       break;
     case PC::ALG_DOT_F64_F64_F64:
       EXPECT_EQ(result_or_status.status().code(),
@@ -1844,7 +1844,7 @@ class PrecisionTests
 
   absl::Status CheckGemmPattern(const HloModule& module,
                                 absl::string_view pattern) {
-    ASSIGN_OR_RETURN(bool ok, RunFileCheck(module.ToString(), pattern));
+    ABSL_ASSIGN_OR_RETURN(bool ok, RunFileCheck(module.ToString(), pattern));
     if (!ok) {
       return absl::InternalError(
           absl::StrCat("The module does not contain the pattern: ", pattern));
@@ -1866,7 +1866,7 @@ class PrecisionTests
     if (algorithm == PC::ALG_UNSET) {
       // Here we test that the default algorithm for f32 dots is
       // ALG_DOT_BF16_BF16_F32 if the flag is set.
-      debug_options.set_xla_gpu_match_tpu_precision(true);
+      debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
     }
     if (backend == Backend::kTriton) {
       debug_options.set_xla_gpu_enable_triton_gemm(true);
@@ -1878,13 +1878,13 @@ class PrecisionTests
       return absl::InvalidArgumentError("Invalid backend");
     }
     config.set_debug_options(debug_options);
-    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                      GetOptimizedModule(hlo_text, config));
     if (backend == Backend::kTriton) {
-      RETURN_IF_ERROR(CheckGemmPattern(
+      ABSL_RETURN_IF_ERROR(CheckGemmPattern(
           *module, "CHECK: {{__triton_gemm|__triton_nested_gemm_fusion}}"));
     } else if (backend == Backend::kBlas) {
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           CheckGemmPattern(*module, "CHECK: __cublas${{gemm|lt\\$matmul}}"));
     } else {
       return absl::InvalidArgumentError("Invalid backend");

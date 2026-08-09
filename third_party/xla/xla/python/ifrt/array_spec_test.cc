@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/hash/hash_testing.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "llvm/Support/Casting.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array_spec.pb.h"
@@ -30,6 +29,7 @@ limitations under the License.
 #include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
@@ -94,7 +94,7 @@ TEST_P(ArraySpecTest, ToFromProto) {
   EXPECT_EQ(array_spec_copy.shape, shape);
 
   const auto* sharding =
-      llvm::dyn_cast<ConcreteEvenSharding>(array_spec_copy.sharding.get());
+      dyn_cast<ConcreteEvenSharding>(array_spec_copy.sharding.get());
   ASSERT_NE(sharding, nullptr);
   EXPECT_EQ(*sharding->devices(), *spec.sharding->devices());
   EXPECT_EQ(sharding->memory_kind(), spec.sharding->memory_kind());

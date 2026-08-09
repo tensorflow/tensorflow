@@ -22,10 +22,15 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/autotuner/autotuning.pb.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/util/sorted_range.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -90,6 +95,14 @@ bool IsSameCacheSlot(const autotuner::AutotuneKey& a,
              b.environment().codegen_options_fingerprint();
 }
 
+bool IsTextProtoPath(absl::string_view file_path) {
+  return absl::EndsWith(file_path, ".txt") ||
+         absl::EndsWith(file_path, ".txtpb") ||
+         absl::EndsWith(file_path, ".textproto") ||
+         absl::EndsWith(file_path, ".prototxt") ||
+         absl::EndsWith(file_path, ".pbtxt");
+}
+
 }  // namespace
 
 absl::StatusOr<std::vector<autotuner::AutotuneEntry>> InMemoryStore::Read(
@@ -132,6 +145,70 @@ void InMemoryStore::Clear() {
   auto& state = GetGlobalState();
   absl::MutexLock lock(state.mutex);
   state.entries.clear();
+}
+
+absl::Status InMemoryStore::LoadFromFile(absl::string_view file_path) {
+  std::string autotune_results_str;
+  tsl::Env* env = tsl::Env::Default();
+  ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(env, std::string(file_path),
+                                        &autotune_results_str));
+
+  autotuner::AutotuneCache cache;
+  bool parsed = false;
+  if (IsTextProtoPath(file_path)) {
+    parsed = tsl::protobuf::TextFormat::ParseFromString(autotune_results_str,
+                                                        &cache);
+    if (!parsed) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Failed to parse AutotuneCache proto as textproto: ", file_path));
+    }
+  } else {
+    parsed = cache.ParseFromString(autotune_results_str);
+    if (!parsed) {
+      // Fallback to textproto
+      parsed = tsl::protobuf::TextFormat::ParseFromString(autotune_results_str,
+                                                          &cache);
+      if (!parsed) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Failed to parse AutotuneCache proto as binary: ", file_path));
+      }
+    }
+  }
+
+  InMemoryStore store;
+  for (const autotuner::AutotuneEntry& entry : cache.entries()) {
+    ABSL_RETURN_IF_ERROR(store.Write(entry));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status InMemoryStore::DumpToFile(absl::string_view file_path) {
+  InMemoryStore store;
+  auto entries_or = store.ReadAll();
+  if (!entries_or.ok()) {
+    return entries_or.status();
+  }
+
+  autotuner::AutotuneCache cache;
+  for (const auto& entry : *entries_or) {
+    *cache.add_entries() = entry;
+  }
+
+  std::string serialized;
+  if (IsTextProtoPath(file_path)) {
+    if (!tsl::protobuf::TextFormat::PrintToString(cache, &serialized)) {
+      return absl::InternalError(absl::StrCat(
+          "Failed to serialize AutotuneCache proto as textproto: ", file_path));
+    }
+  } else {
+    if (!cache.SerializeToString(&serialized)) {
+      return absl::InternalError(absl::StrCat(
+          "Failed to serialize AutotuneCache proto as binary: ", file_path));
+    }
+  }
+
+  tsl::Env* env = tsl::Env::Default();
+  return tsl::WriteStringToFile(env, std::string(file_path), serialized);
 }
 
 }  // namespace xla

@@ -91,7 +91,7 @@ absl::StatusOr<bool> ChangeOpDataType::RunImpl(
       if (new_instr->shape().element_type() != instr->shape().element_type()) {
         new_instr = MakeConvertToHlo(new_instr, instr->shape().element_type());
       }
-      RETURN_IF_ERROR(comp->ReplaceInstruction(instr, new_instr));
+      ABSL_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, new_instr));
       changed = true;
     }
   }

@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/repacking.h"
 #include "xla/service/memory_space_assignment/slice.h"
 #include "xla/shape.h"
-#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 
@@ -65,13 +64,15 @@ using WindowPrefetchNotifyOperandAppendedFunction =
     std::function<void(HloInstruction*, int64_t, int64_t)>;
 using IsAsyncSliceImplementedFunction =
     std::function<bool(const HloInstruction*)>;
-using InitSplitTreeFn = std::function<ShapeTree<int64_t>(
+using InitSplitTreeFn = std::function<absl::flat_hash_map<ShapeIndex, int64_t>(
     const HloInstruction*,
-    absl::flat_hash_map<const HloInstruction*, ShapeTree<int64_t>>*)>;
+    absl::flat_hash_map<const HloInstruction*,
+                        absl::flat_hash_map<ShapeIndex, int64_t>>*)>;
 using DetermineSplitDimensionFunction =
     std::function<std::optional<SplitConfig>(
         const HloValue&,
-        absl::flat_hash_map<const HloInstruction*, ShapeTree<int64_t>>*)>;
+        absl::flat_hash_map<const HloInstruction*,
+                            absl::flat_hash_map<ShapeIndex, int64_t>>*)>;
 using BitcastSplitFn = std::function<absl::StatusOr<int64_t>(
     const HloInstruction* instruction, int64_t split_dim)>;
 using ShapeSizeFn = std::function<int64_t(const Shape&)>;
@@ -367,6 +368,10 @@ struct Options {
   // ones. If it fails to replace the slice, it keeps the sync version.
   bool enable_sync_slice_replacement = false;
 
+  // Used in block prefetching mode. If true, try to asyncify DMA like custom
+  // fusion instructions, like cross-buffer slice fusions.
+  bool enable_sync_custom_fusion_replacement = false;
+
   // If non-zero, this is the number of extra outstanding async copies that we
   // allow for each sync mem op that is converted to an async mem op.
   int extend_async_copies_limit_for_sync_mem_op_conversion = 0;
@@ -474,6 +479,14 @@ struct Options {
   // assignment algorithm.
   absl::flat_hash_map<HloPosition, std::vector<CustomCallPrefetchDetails>>
       hlo_position_to_custom_call_prefetch_details;
+
+  // Used in block prefetching mode. Returns the operand index of the source
+  // buffer (source of a DMA) for a custom fusion instruction that can be
+  // asyncified. Currently this matches cross-buffer slice fusions which can
+  // be lowered to asynchronous DMAs.
+  std::function<std::optional<int64_t>(const HloInstruction*)>
+      custom_fusion_block_prefetch_operand_index_fn =
+          [](const HloInstruction*) { return std::nullopt; };
 
   std::string ToString() const;
 };

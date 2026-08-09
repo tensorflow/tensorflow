@@ -3084,7 +3084,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> ParseAndReturnVerifiedModule(
       /*verifier_layout_sensitive=*/false,
       /*allow_mixed_precision_in_hlo_verifier=*/true,
       ShapeUtil::ByteSizeOfElements);
-  RETURN_IF_ERROR(verified_module->ParseHloStringAndVerifyModule(hlo_text));
+  ABSL_RETURN_IF_ERROR(verified_module->ParseHloStringAndVerifyModule(hlo_text));
   return verified_module;
 }
 
@@ -3511,6 +3511,44 @@ ENTRY e {
 })";
   auto result = ParseAndReturnUnverifiedModule(original);
   EXPECT_FALSE(result.ok());
+}
+
+TEST_F(HloParserTest, ShardingDeviceCountExceedsTileAssignment) {
+  const std::string original = R"(HloModule m
+ENTRY e {
+  p = f32[4,4] parameter(0)
+  ROOT c = f32[4,4] copy(p), sharding={devices=[2,2]0,1,2,3,4,5,6,7,8,9}
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(),
+              HasSubstr("does not match the tile assignment size"));
+}
+
+TEST_F(HloParserTest, WindowRhsReversalWrongSize) {
+  const std::string original = R"(HloModule m
+ENTRY e {
+  input = f32[1,2,2,1] parameter(0)
+  filter = f32[1,1,1,1] parameter(1)
+  ROOT conv = f32[1,2,2,1] convolution(input, filter),
+      window={size=1x1 rhs_reversal=1}, dim_labels=b01f_01io->b01f
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(), HasSubstr("rhs_reversal"));
+}
+
+TEST_F(HloParserTest, ConvDimLabelDigitExceedsSpatialDims) {
+  const std::string original = R"(HloModule m
+ENTRY e {
+  input = f32[1,2,1] parameter(0)
+  filter = f32[1,1,1] parameter(1)
+  ROOT conv = f32[1,2,1] convolution(input, filter),
+      window={size=1}, dim_labels=9?????????_io->bf
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(), HasSubstr("dimension numbers"));
 }
 
 TEST_F(HloParserTest, CompactGteRoundTrip) {
@@ -5247,6 +5285,18 @@ TEST(HloParserSingleOpTest, ConvolutionWithKind) {
   auto* convolution =
       Cast<HloConvolutionInstruction>(computation->root_instruction());
   EXPECT_EQ(convolution->convolution_kind(), CONVOLUTION_KIND_FPROP);
+}
+
+TEST(HloParserSingleOpTest, ConvolutionWithAlgorithm) {
+  const std::string text =
+      R"(%convolution = f32[1,2,1]{2,0,1} convolution(f32[1,2,1]{2,0,1} %copy, f32[1,1,1]{2,1,0} %filter), window={size=1}, dim_labels=b0f_0io->b0f, algorithm=dot_bf16_bf16_f32)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(text));
+  const HloComputation* computation = module->entry_computation();
+  ASSERT_NE(computation, nullptr);
+  auto* convolution =
+      Cast<HloConvolutionInstruction>(computation->root_instruction());
+  EXPECT_EQ(convolution->precision_config().algorithm(),
+            PrecisionConfig::ALG_DOT_BF16_BF16_F32);
 }
 
 TEST(HloParserSingleOpTest, MultipleOpsProducesError) {

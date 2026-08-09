@@ -24,11 +24,11 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -210,7 +210,7 @@ StreamExecutorGpuTopologyDescription::MakeCanonicalShapeForMemorySpace(
   if (layout != nullptr) {
     *shape.mutable_layout() = *layout;
     if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           Layout default_layout,
           GetDefaultLayout(shape.element_type(), shape.dimensions()));
       if (default_layout.element_size_in_bits() !=
@@ -224,7 +224,7 @@ StreamExecutorGpuTopologyDescription::MakeCanonicalShapeForMemorySpace(
       }
     }
   } else {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         *shape.mutable_layout(),
         GetDefaultLayout(shape.element_type(), shape.dimensions()));
   }
@@ -299,7 +299,7 @@ StreamExecutorGpuTopologyDescription::FromProto(
   }
   GpuTopologyProto gpu_topology_proto;
   proto.platform_specific_topology().UnpackTo(&gpu_topology_proto);
-  ASSIGN_OR_RETURN(std::shared_ptr<const GpuTopology> gpu_topology,
+  ABSL_ASSIGN_OR_RETURN(std::shared_ptr<const GpuTopology> gpu_topology,
                    GpuTopology::FromProto(gpu_topology_proto));
   absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes;
   std::optional<stream_executor::GpuTargetConfigProto> target_config;

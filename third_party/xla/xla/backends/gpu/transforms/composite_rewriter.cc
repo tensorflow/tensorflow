@@ -20,9 +20,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -127,7 +127,7 @@ absl::StatusOr<bool> CompositeRewriter::RewriteComputation(
       return absl::InvalidArgumentError(
           "composite.attributes is not set for xla.scaled_dot");
     }
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         DotDimensionNumbers dot_dimension_numbers,
         ParseDimensionNumbers(frontend_attrs.at("composite.attributes")));
 
@@ -199,8 +199,8 @@ absl::StatusOr<bool> CompositeRewriter::RewriteComputation(
             call->shape(), call->mutable_operand(0), call->mutable_operand(1),
             call->mutable_operand(2), call->mutable_operand(3),
             dot_dimension_numbers, precision));
-    RETURN_IF_ERROR(call->ReplaceAllUsesWith(scaled_dot));
-    RETURN_IF_ERROR(computation->RemoveInstruction(call));
+    ABSL_RETURN_IF_ERROR(call->ReplaceAllUsesWith(scaled_dot));
+    ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(call));
     changed = true;
   }
   return changed;
@@ -210,7 +210,7 @@ absl::StatusOr<bool> CompositeRewriter::RunImpl(
     HloModule* module, const absl::flat_hash_set<absl::string_view>&) {
   bool changed = false;
   for (HloComputation* computation : module->computations()) {
-    ASSIGN_OR_RETURN(bool result, RewriteComputation(computation));
+    ABSL_ASSIGN_OR_RETURN(bool result, RewriteComputation(computation));
     changed |= result;
   }
   return changed;

@@ -93,7 +93,7 @@ absl::Status BFloat16ConversionFoldingVisitor::FoldOutputConversions(
   bfloat16_conversion_folding_->UpdateLayout(hlo->mutable_shape());
   for (auto user : materialized_users) {
     CHECK_EQ(user->opcode(), HloOpcode::kConvert);
-    RETURN_IF_ERROR(user->ReplaceAllUsesWith(hlo));
+    ABSL_RETURN_IF_ERROR(user->ReplaceAllUsesWith(hlo));
     changed_ = true;
   }
   return absl::OkStatus();
@@ -104,7 +104,7 @@ absl::Status BFloat16ConversionFoldingVisitor::FoldOperandConversion(
   // The operand is a convert from BF16 to F32.
   auto operand = hlo->mutable_operand(operand_index);
   CHECK_EQ(operand->opcode(), HloOpcode::kConvert);
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       hlo->ReplaceOperandWith(operand_index, operand->mutable_operand(0)));
   changed_ = true;
   return absl::OkStatus();
@@ -163,11 +163,11 @@ absl::Status BFloat16ConversionFoldingVisitor::TryFoldBF16Conversions(
   }
 
   if (fold_output_conversion) {
-    RETURN_IF_ERROR(FoldOutputConversions(hlo));
+    ABSL_RETURN_IF_ERROR(FoldOutputConversions(hlo));
   }
 
   for (int64_t i : bf16_to_f32_operands) {
-    RETURN_IF_ERROR(FoldOperandConversion(hlo, i));
+    ABSL_RETURN_IF_ERROR(FoldOperandConversion(hlo, i));
   }
   return absl::OkStatus();
 }
@@ -214,7 +214,7 @@ absl::Status BFloat16ConversionFoldingVisitor::HandleAllReduce(
   }
   // First use DefaultAction() to handle the operands. It can't handle
   // tuple-shaped output.
-  RETURN_IF_ERROR(DefaultAction(crs));
+  ABSL_RETURN_IF_ERROR(DefaultAction(crs));
 
   if (!bfloat16_support_->SupportsMixedPrecisions(*crs)) {
     return absl::OkStatus();
@@ -266,7 +266,7 @@ absl::Status BFloat16ConversionFoldingVisitor::HandleAllReduce(
     bfloat16_conversion_folding_->UpdateLayout(
         ShapeUtil::GetMutableSubshape(crs->mutable_shape(), {i}));
     for (auto gte : per_tuple_element_gtes[i]) {
-      RETURN_IF_ERROR(FoldOutputConversions(gte));
+      ABSL_RETURN_IF_ERROR(FoldOutputConversions(gte));
     }
   }
 

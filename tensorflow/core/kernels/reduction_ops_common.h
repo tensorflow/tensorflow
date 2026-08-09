@@ -147,9 +147,9 @@ class ReductionOp : public OpKernel {
     ReductionHelper helper;
     OP_REQUIRES_OK(ctx, helper.Simplify(data, axes, keep_dims_));
     OP_REQUIRES(ctx, helper.ndims() >= 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Reduction helper returned negative ndims. Input shape: ",
-                    data.shape().DebugString()));
+                    data.shape().DebugString())));
 
     bool is_scalar_identity = functor::ReducerTraits<Reducer>::IsScalarIdentity;
     bool is_trivial = helper.ndims() == 0 ||

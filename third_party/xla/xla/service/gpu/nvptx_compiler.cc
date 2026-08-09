@@ -31,19 +31,20 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/transforms/algebraic_simplifier.h"
 #include "xla/backends/gpu/transforms/block_scaling_rewriter.h"
+#include "xla/backends/gpu/transforms/conv_fp8_fallback.h"
 #include "xla/backends/gpu/transforms/conv_kind_assignment.h"
 #include "xla/backends/gpu/transforms/conv_padding_legalization.h"
 #include "xla/backends/gpu/transforms/conv_rewriter.h"
@@ -55,6 +56,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/cudnn_pad_for_convolutions.h"
 #include "xla/backends/gpu/transforms/cudnn_simplify_padding.h"
 #include "xla/backends/gpu/transforms/triangular_solve_rewriter.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -69,6 +71,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
 #include "xla/hlo/transforms/simplifiers/reshape_mover.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/compilation_stats.h"
 #include "xla/service/compiler.h"
@@ -84,6 +87,8 @@ limitations under the License.
 #include "xla/service/gpu/nvptx_alias_info.h"
 #include "xla/service/gpu/ptx_compile_options_from_debug_options.h"
 #include "xla/service/gpu/target_constants.h"
+#include "xla/service/gpu_topology.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -274,7 +279,7 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   // CudnnConvPadForTensorCores may add instructions which can be simplified
   // by constant folding.
   pipeline.AddPass<HloConstantFolding>();
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
           .status());
 
@@ -295,11 +300,12 @@ bool NVPTXCompiler::IsScaledDotSupportedByBackend(
 
 absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
-    const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
+    const CompileOptions& options, const GpuTopology& gpu_topology,
     const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool,
     CompilationStats* compilation_stats, mlir::MLIRContext* mlir_context) {
   // This needs to run before GemmRewriter, which is part of
   // OptimizeHloPostLayoutAssignment().
+  const GpuTargetConfig& gpu_target_config = gpu_topology.gpu_target_config();
   auto* cuda_compute_capability =
       gpu_target_config.device_description.gpu_compute_capability()
           .cuda_compute_capability();
@@ -320,13 +326,13 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
           : se::dnn::VersionInfo{});
   pre_pipeline.AddPass<DotDimensionMerger>();
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       pre_pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
           .status());
 
-  RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
-      hlo_module, stream_exec, options, gpu_target_config, alias_info,
-      thread_pool, compilation_stats, mlir_context));
+  ABSL_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
+      hlo_module, stream_exec, options, gpu_topology, alias_info, thread_pool,
+      compilation_stats, mlir_context));
 
   HloPassPipeline post_pipeline("nvptx post-layout_assignment part 2",
                                 compilation_stats);
@@ -334,11 +340,30 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   // Transform TriangularSolve ops into custom-calls, so we can add temp
   // memory.
   post_pipeline.AddPass<TriangularSolveRewriter>();
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       post_pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
           .status());
 
   return absl::OkStatus();
+}
+
+absl::Status NVPTXCompiler::AddAutotunerPass(
+    HloPassPipeline* pipeline, HloModule* hlo_module,
+    const se::GpuComputeCapability& gpu_version, const CompileOptions& options,
+    tsl::thread::ThreadPool* thread_pool,
+    stream_executor::StreamExecutor* stream_executor,
+    const GpuTargetConfig* target_config, const AliasInfo* alias_info,
+    mlir::MLIRContext* mlir_context,
+    HloCostAnalysis::ShapeSizeFunction shape_size_fn,
+    const MultiProcessKeyValueStore& key_value_store) {
+  // Rewrite FP8 cuDNN conv fusions to BF16 when cuDNN has no FP8 plans for
+  // them on the target GPU; without this the autotuner fails hard when it
+  // enumerates their plans. Runs after ConvFusionRewriter (which created the
+  // fusions) and probes devicelessly, so it also covers AOT compilation.
+  pipeline->AddPass<ConvFp8Fallback>(target_config->device_description);
+  return GpuCompiler::AddAutotunerPass(
+      pipeline, hlo_module, gpu_version, options, thread_pool, stream_executor,
+      target_config, alias_info, mlir_context, shape_size_fn, key_value_store);
 }
 
 absl::Status NVPTXCompiler::RunCudnnCompilerPasses(
@@ -389,7 +414,7 @@ absl::Status NVPTXCompiler::RunCudnnCompilerPasses(
       gpu_target_config.device_description;
   CuDnnFusionCompiler fusion_compiler(dnn_support, gpu_device_info,
                                       *dnn_compiled_graphs);
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       fusion_compiler.Run(module, {HloInstruction::kMainExecutionThread})
           .status());
   CuDnnCustomCallCompiler call_compiler(dnn_support, gpu_device_info,
@@ -527,7 +552,7 @@ NVPTXCompiler::GetCompilationProvider(const DebugOptions& debug_options,
       compilation_providers_[se::cuda::CompilationProviderOptions::
                                  FromDebugOptions(debug_options)];
   if (compilation_provider == nullptr) {
-    ASSIGN_OR_RETURN(compilation_provider,
+    ABSL_ASSIGN_OR_RETURN(compilation_provider,
                      se::cuda::AssembleCompilationProvider(
                          se::cuda::CompilationProviderOptions::FromDebugOptions(
                              debug_options, stream_exec)));
@@ -571,7 +596,7 @@ NVPTXCompiler::CompileTargetBinary(
         debug_options.xla_enable_scoped_logging_timers());
     uint64_t start_usecs = tsl::Env::Default()->NowMicros();
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         ptx, nvptx::CompileToPtx(selected_module,
                                  device_description.gpu_compute_capability(),
                                  debug_options));
@@ -582,7 +607,8 @@ NVPTXCompiler::CompileTargetBinary(
     RecordLlvmPassesAndLlvmToPtxDuration(end_usecs - start_usecs);
 
     if (DumpingEnabledForHloModule(debug_module ? debug_module->name() : "",
-                                   debug_options)) {
+                                   debug_options) &&
+        DumpingEnabledForEmitter("ptx", debug_options)) {
       if (debug_module) {
         DumpToFileInDirOrStdout(*debug_module, "",
                                 shard_number.has_value()
@@ -602,7 +628,7 @@ NVPTXCompiler::CompileTargetBinary(
     return BackendCompileResult{};
   }
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       const se::cuda::CompilationProvider* compilation_provider,
       GetCompilationProvider(module_config.debug_options(), nullptr));
 
@@ -636,7 +662,7 @@ NVPTXCompiler::CompileTargetBinary(
   };
 
   if (relocatable) {
-    ASSIGN_OR_RETURN(se::cuda::RelocatableModule relocatable_module,
+    ABSL_ASSIGN_OR_RETURN(se::cuda::RelocatableModule relocatable_module,
                      compilation_provider->CompileToRelocatableModule(
                          cc, ptx, compilation_options));
     record_ptx_to_cubin_metric();
@@ -645,7 +671,7 @@ NVPTXCompiler::CompileTargetBinary(
                                 std::move(relocatable_module.module_stats)};
   }
 
-  ASSIGN_OR_RETURN(se::cuda::Assembly assembly,
+  ABSL_ASSIGN_OR_RETURN(se::cuda::Assembly assembly,
                    compilation_provider->Compile(cc, ptx, compilation_options));
   record_ptx_to_cubin_metric();
   return BackendCompileResult{std::move(ptx), std::move(assembly.cubin),
@@ -656,7 +682,7 @@ absl::StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
     const HloModuleConfig& hlo_module_config,
     const stream_executor::DeviceDescription& device_description,
     se::StreamExecutor* stream_exec) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       const se::cuda::CompilationProvider* compilation_provider,
       GetCompilationProvider(hlo_module_config.debug_options(), stream_exec));
   return compilation_provider->SupportsCompileAndLink() &&
@@ -674,7 +700,7 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
   se::CudaComputeCapability cc = nvptx::ResolveSupportedComputeCapability(
       *device_description.gpu_compute_capability().cuda_compute_capability());
 
-  ASSIGN_OR_RETURN(const se::cuda::CompilationProvider* compilation_provider,
+  ABSL_ASSIGN_OR_RETURN(const se::cuda::CompilationProvider* compilation_provider,
                    GetCompilationProvider(debug_options, stream_exec));
 
   std::vector<se::cuda::CompilationProvider::RelocatableModuleOrPtx> inputs;
@@ -689,7 +715,7 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
   VLOG(1) << "Linking " << modules.size()
           << " modules with compilation provider "
           << compilation_provider->name();
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       se::cuda::Assembly assembly,
       compilation_provider->CompileAndLink(cc, inputs, compilation_options));
 

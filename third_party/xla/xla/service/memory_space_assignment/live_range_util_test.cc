@@ -43,7 +43,7 @@ class LiveRangeCalculatorTest : public HloHardwareIndependentTestBase {
   absl::StatusOr<absl::flat_hash_map<const HloInstruction*, int64_t>>
   GetInstToIndex(const HloModule* module,
                  const HloAliasAnalysis& alias_analysis) {
-    ASSIGN_OR_RETURN(auto live_range,
+    ABSL_ASSIGN_OR_RETURN(auto live_range,
                      HloLiveRange::Run(module->schedule(), alias_analysis,
                                        module->entry_computation()));
     return live_range->instruction_schedule();

@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -40,12 +41,12 @@ class CollectiveOpsCseTest : public HloHardwareIndependentTestBase {
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> RunPass(
       absl::string_view hlo_module, int64_t distance_threshold = 100) {
-    ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(
+    ABSL_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(
                                       hlo_module, GetModuleConfigForTest()));
     HloPassPipeline pipeline("all-gather-cse");
     pipeline.AddPass<ScheduleAwareCollectiveOpsCSE>(distance_threshold,
                                                     /*for_replicas=*/false);
-    RETURN_IF_ERROR(pipeline.Run(module.get()).status());
+    ABSL_RETURN_IF_ERROR(pipeline.Run(module.get()).status());
     return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
 };
@@ -245,6 +246,83 @@ ENTRY entry {
   EXPECT_EQ(tuple->opcode(), HloOpcode::kTuple);
   EXPECT_EQ(tuple->operand_count(), 2);
   EXPECT_NE(tuple->operand(0), tuple->operand(1));
+}
+
+TEST_F(CollectiveOpsCseTest, StrictlyIntraComputation) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+// CHECK-LABEL: sub_comp
+sub_comp {
+  param_sub = s32[1,8]{1,0} parameter(0)
+  // CHECK: %[[ag_inner:.*]] = s32[2,8]{1,0} all-gather(
+  ag_inner = s32[2,8]{1,0} all-gather(param_sub), replica_groups={{0,1}}, dimensions={0},
+    channel_id=0, use_global_device_ids=true
+  // CHECK: ROOT {{.*}} copy(%[[ag_inner]])
+  ROOT root_sub = s32[2,8]{1,0} copy(ag_inner)
+}
+
+// CHECK-LABEL: ENTRY %entry
+ENTRY entry {
+  param0 = s32[1,8]{1,0} parameter(0)
+  // CHECK: %[[ag_outer:.*]] = s32[2,8]{1,0} all-gather(
+  ag_outer = s32[2,8]{1,0} all-gather(param0), replica_groups={{0,1}}, dimensions={0},
+    channel_id=0, use_global_device_ids=true
+  // CHECK: %[[call_res:.*]] = s32[2,8]{1,0} call(
+  call_res = s32[2,8]{1,0} call(param0), to_apply=sub_comp
+  // CHECK: ROOT {{.*}} tuple(%[[ag_outer]], %[[call_res]])
+  ROOT tuple = (s32[2,8]{1,0}, s32[2,8]{1,0}) tuple(ag_outer, call_res)
+})";
+  auto module_status = RunPass(hlo_string);
+  EXPECT_TRUE(module_status.status().ok());
+  auto module = std::move(module_status).value();
+  EXPECT_TRUE(RunFileCheck(module->ToString(), hlo_string).value());
+}
+
+TEST_F(CollectiveOpsCseTest, StrictlyCollectiveOpsNoCallCse) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+sub_comp {
+  param_sub = s32[1,8]{1,0} parameter(0)
+  ROOT res = s32[2,8]{1,0} all-gather(param_sub), replica_groups={{0,1}}, dimensions={0},
+    channel_id=0, use_global_device_ids=true
+}
+
+// CHECK-LABEL: ENTRY %entry
+ENTRY entry {
+  param0 = s32[1,8]{1,0} parameter(0)
+  // CHECK: %[[call1:.*]] = s32[2,8]{1,0} call(
+  call1 = s32[2,8]{1,0} call(param0), to_apply=sub_comp
+  // CHECK: %[[call2:.*]] = s32[2,8]{1,0} call(
+  call2 = s32[2,8]{1,0} call(param0), to_apply=sub_comp
+  // CHECK: ROOT {{.*}} tuple(%[[call1]], %[[call2]])
+  ROOT tuple = (s32[2,8]{1,0}, s32[2,8]{1,0}) tuple(call1, call2)
+})";
+  auto module_status = RunPass(hlo_string);
+  EXPECT_TRUE(module_status.status().ok());
+  auto module = std::move(module_status).value();
+  EXPECT_TRUE(RunFileCheck(module->ToString(), hlo_string).value());
+}
+
+TEST_F(CollectiveOpsCseTest, NoCseNonCollectiveOps) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+// CHECK-LABEL: ENTRY %entry
+ENTRY entry {
+  param0 = s32[1,8]{1,0} parameter(0)
+  // CHECK: %[[add1:.*]] = s32[1,8]{1,0} add(
+  add1 = s32[1,8]{1,0} add(param0, param0)
+  // CHECK: %[[add2:.*]] = s32[1,8]{1,0} add(
+  add2 = s32[1,8]{1,0} add(param0, param0)
+  // CHECK: ROOT {{.*}} tuple(%[[add1]], %[[add2]])
+  ROOT tuple = (s32[1,8]{1,0}, s32[1,8]{1,0}) tuple(add1, add2)
+})";
+  auto module_status = RunPass(hlo_string);
+  EXPECT_TRUE(module_status.status().ok());
+  auto module = std::move(module_status).value();
+  EXPECT_TRUE(RunFileCheck(module->ToString(), hlo_string).value());
 }
 
 }  // namespace

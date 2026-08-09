@@ -97,12 +97,12 @@ absl::Status GetError() {
 }
 
 absl::Status PropagateError() {
-  RETURN_IF_ERROR(GetError());
+  ABSL_RETURN_IF_ERROR(GetError());
   return absl::OkStatus();
 }
 
 absl::Status PropagateError2() {
-  RETURN_IF_ERROR(PropagateError());
+  ABSL_RETURN_IF_ERROR(PropagateError());
   return absl::OkStatus();
 }
 

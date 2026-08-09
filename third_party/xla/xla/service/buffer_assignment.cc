@@ -155,7 +155,7 @@ class DefaultBufferAllocationsManagerForComputationsWithoutOrdering
          allocation_index >= 0; --allocation_index) {
       BufferAllocation* allocation = assignment_->GetMutableAllocation(
           allocation_indices_.at(allocation_index));
-      ASSIGN_OR_RETURN(bool success, assigner_->MaybeAssignBuffer(
+      ABSL_ASSIGN_OR_RETURN(bool success, assigner_->MaybeAssignBuffer(
                                          allocation, *hlo_buffer, assignment_));
       if (success) {
         VLOG(3) << "Reusing allocation #" << allocation->index()
@@ -219,7 +219,7 @@ class FastMergeBufferAllocationsManagerForComputationsWithoutOrdering
     BufferLiveRange live_range = GetBufferLiveRange(hlo_buffer);
     UpdateLiveness(live_range.min_start);
 
-    ASSIGN_OR_RETURN(auto buffer_color, hlo_buffer->color());
+    ABSL_ASSIGN_OR_RETURN(auto buffer_color, hlo_buffer->color());
     auto& pool = free_pool_[buffer_color];
     // Finds the smallest buffer in the free pool that is at least
     // `required_size`.
@@ -235,7 +235,7 @@ class FastMergeBufferAllocationsManagerForComputationsWithoutOrdering
       // 3. Must-not-live-out restrictions.
       //
       // If a collision occurs, we move to the next best-fit allocation.
-      ASSIGN_OR_RETURN(bool success, assigner_->MaybeAssignBuffer(
+      ABSL_ASSIGN_OR_RETURN(bool success, assigner_->MaybeAssignBuffer(
                                          allocation, *hlo_buffer, assignment_));
       if (success) {
         active_allocations_.emplace(
@@ -614,9 +614,18 @@ absl::Status BufferAllocation::AddAssignment(const HloValue& buffer,
   CHECK(!assigned_buffers_.contains(&buffer))
       << "LogicalBuffer " << buffer << " already assigned to allocation "
       << index_;
-  CHECK_LE(offset, size_) << "LogicalBuffer " << buffer
-                          << " offset out of range";
-  CHECK_LE(offset + size, size_)
+  // TF_RET_CHECK (rather than CHECK_LE) so that a malformed offset/size --
+  // e.g. deserialized from an untrusted BufferAssignmentProto -- returns an
+  // error instead of crashing the process. Negative values are checked
+  // explicitly: a bare `offset <= size_` check does not catch a negative
+  // offset, since -1 <= size_ is true for any non-negative allocation size.
+  TF_RET_CHECK(offset >= 0)
+      << "LogicalBuffer " << buffer << " has a negative offset: " << offset;
+  TF_RET_CHECK(size >= 0) << "LogicalBuffer " << buffer
+                          << " has a negative size: " << size;
+  TF_RET_CHECK(offset <= size_)
+      << "LogicalBuffer " << buffer << " offset out of range";
+  TF_RET_CHECK(offset + size <= size_)
       << "LogicalBuffer " << buffer
       << " size out of range at offset: " << offset << " with size: " << size;
   if (IsInputOrOutput()) {
@@ -832,8 +841,9 @@ bool BufferAssignment::HasAllocation(const HloBuffer& buffer) const {
 
 const BufferAllocation& BufferAssignment::GetAssignedAllocation(
     const HloValue& value) const {
-  CHECK(HasAllocation(value));
-  return GetAllocation(allocation_index_for_value_.at(&value));
+  auto it = allocation_index_for_value_.find(&value);
+  CHECK(it != allocation_index_for_value_.end());
+  return GetAllocation(it->second);
 }
 
 const BufferAllocation& BufferAssignment::GetAssignedAllocation(
@@ -1022,9 +1032,9 @@ BufferAllocation* BufferAssignment::NewEmptyAllocation(
 
 absl::StatusOr<BufferAllocation*> BufferAssignment::NewAllocation(
     const HloBuffer& buffer, int64_t size) {
-  ASSIGN_OR_RETURN(auto color, buffer.color());
+  ABSL_ASSIGN_OR_RETURN(auto color, buffer.color());
   BufferAllocation* allocation = NewEmptyAllocation(size, color);
-  RETURN_IF_ERROR(AddAssignment(allocation, buffer, /*offset=*/0, size));
+  ABSL_RETURN_IF_ERROR(AddAssignment(allocation, buffer, /*offset=*/0, size));
   allocation->peak_buffers_.push_back(buffer.values()[0]);
   return allocation;
 }
@@ -1039,7 +1049,7 @@ absl::Status BufferAssignment::AddAssignment(BufferAllocation* allocation,
   for (const HloValue* buffer_value : buffer.values()) {
     CHECK(!allocation_index_for_value_.contains(buffer_value))
         << "BufferValue " << buffer_value << " already has an allocation.";
-    RETURN_IF_ERROR(allocation->AddAssignment(*buffer_value, offset, size));
+    ABSL_RETURN_IF_ERROR(allocation->AddAssignment(*buffer_value, offset, size));
     allocation_index_for_value_[buffer_value] = allocation->index();
   }
 
@@ -1054,7 +1064,7 @@ absl::Status BufferAssignment::AddAssignment(BufferAllocation* allocation,
 absl::Status BufferAssignment::AddAssignment(BufferAllocation* allocation,
                                              const HloValue& value,
                                              int64_t offset, int64_t size) {
-  RETURN_IF_ERROR(allocation->AddAssignment(value, offset, size));
+  ABSL_RETURN_IF_ERROR(allocation->AddAssignment(value, offset, size));
   allocation_index_for_value_[&value] = allocation->index();
   const HloValue& hlo_value =
       *CHECK_NOTNULL(dynamic_cast<const HloValue*>(&value));
@@ -1143,7 +1153,7 @@ absl::Status BufferAssignment::CombineTempAllocations(
       const HloValue* value = buffer_offset_size.first;
       const int64_t offset = buffer_offset_size.second.offset;
       const int64_t size = buffer_offset_size.second.size;
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           combined_allocation->AddAssignment(*value, base + offset, size));
     }
     if (!temp_allocation.HeapTraces().empty()) {
@@ -1243,8 +1253,8 @@ absl::StatusOr<int64_t> BufferAssignment::ComputeTotalFragmentationBytes(
     }
   }
   if (schedule_complete) {
-    RETURN_IF_ERROR(schedule.Verify());
-    ASSIGN_OR_RETURN(
+    ABSL_RETURN_IF_ERROR(schedule.Verify());
+    ABSL_ASSIGN_OR_RETURN(
         const int64_t min_size,
         HeapSimulator::MinimumMemoryForModule(schedule, alias_analysis(),
                                               alias_info, &buffer_size_));
@@ -1711,7 +1721,7 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
     const BufferAssignmentProto& proto, const HloModule* module,
     BufferValue::SizeFunction buffer_size, const AliasInfo* alias_info) {
   // Create alias and dataflow analysis.
-  ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                    HloAliasAnalysis::Run(module, alias_info));
 
   // Build a map from a unique_id to corresponding HloInstruction in the module.
@@ -1720,7 +1730,7 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
   // Build a map from logical buffer id in the proto to hlo value in the
   // existing dataflow analysis.
   absl::flat_hash_map<int64_t, const HloValue*> id_to_logical_buffer;
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       id_to_logical_buffer,
       BuildIdToLogicalBufferMap(proto, id_to_hlo_instruction,
                                 alias_analysis->dataflow_analysis()));
@@ -1766,7 +1776,7 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
     for (const auto& assignee : alloc_proto.assigned()) {
       HloValue::Id logical_buffer_id = assignee.logical_buffer_id();
       const auto& buffer_val = id_to_logical_buffer[logical_buffer_id];
-      RETURN_IF_ERROR(buffer_assignment->AddAssignment(
+      ABSL_RETURN_IF_ERROR(buffer_assignment->AddAssignment(
           allocation, *buffer_val, assignee.offset(), assignee.size()));
     }
 
@@ -1839,21 +1849,31 @@ bool BufferAssigner::LiveRangeInterferes(
     BufferAssignment* assignment) {
   CHECK((assignment->hlo_live_range().total_order_scheduled()));
 
-  // Check if a user value can share the same buffer as its operand.
+  // An HloValue can hold multiple instruction positions during its lifetime
+  // (e.g. when passed into a while loop tuple or bitcast view).
+  // operand_live_range.end_position points to the last instruction in
+  // schedule order (which may be a tuple instruction inside a loop body).
+  // However, a downstream user instruction might directly consume a
+  // different position of the value (such as the definition instruction
+  // before the loop). Therefore, we must check all positions of the
+  // HloValue to see if any instruction can share its buffer with the user.
   auto can_share_as_operand =
       [&assignment, this](
           const HloValue* user_value, const HloValue* operand_value,
           const HloLiveRange::LiveRangeBounds& operand_live_range) {
-        // An hlo value can hold multiple instructions during its life time. We
-        // only look at the last instruction and check if it can be shared with
-        // the operand.
-        HloPosition operand_end_position = operand_live_range.end_position;
-        return user_value->instruction()->opcode() != HloOpcode::kCopy &&
-               user_value->instruction()->IsUserOf(
-                   operand_end_position.instruction) &&
-               assignment->dataflow_analysis().CanShareOperandBufferWithUser(
-                   operand_end_position.instruction, operand_end_position.index,
-                   user_value->instruction(), user_value->index(), alias_info_);
+        if (user_value->instruction()->opcode() == HloOpcode::kCopy) {
+          return false;
+        }
+        for (const HloPosition& operand_pos : operand_value->positions()) {
+          if (user_value->instruction()->IsUserOf(operand_pos.instruction) &&
+              assignment->dataflow_analysis().CanShareOperandBufferWithUser(
+                  operand_pos.instruction, operand_pos.index,
+                  user_value->instruction(), user_value->index(),
+                  alias_info_)) {
+            return true;
+          }
+        }
+        return false;
       };
 
   if (!(live_range1.start > live_range2.end ||
@@ -1899,7 +1919,7 @@ absl::StatusOr<bool> BufferAssigner::MaybeAssignBuffer(
           << assignment->HloBufferSize(hlo_buffer)
           << " to allocation: " << *allocation;
 
-  ASSIGN_OR_RETURN(auto buffer_color, hlo_buffer.color());
+  ABSL_ASSIGN_OR_RETURN(auto buffer_color, hlo_buffer.color());
 
   // Input/output allocations are backed by caller-provided or live-out storage,
   // so buffer assignment cannot strengthen their runtime allocation
@@ -2051,7 +2071,7 @@ absl::StatusOr<bool> BufferAssigner::MaybeAssignBuffer(
     return false;
   }
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       assignment->AddAssignment(allocation, hlo_buffer, /*offset=*/0,
                                 assignment->HloBufferSize(hlo_buffer)));
   return true;
@@ -2064,7 +2084,7 @@ absl::StatusOr<bool> BufferAssigner::AssignSpecialHloBuffer(
   // "View" buffers are pointer stand-ins that alias into another allocation, so
   // they get no allocation of their own.
   if (opts_.dus_view_color.has_value()) {
-    ASSIGN_OR_RETURN(BufferValue::Color buffer_color, hlo_buffer->color());
+    ABSL_ASSIGN_OR_RETURN(BufferValue::Color buffer_color, hlo_buffer->color());
     if (buffer_color == *opts_.dus_view_color) {
       VLOG(3) << "Not allocating buffer for view buffer: " << *hlo_buffer;
       return true;
@@ -2075,7 +2095,7 @@ absl::StatusOr<bool> BufferAssigner::AssignSpecialHloBuffer(
   for (const HloValue* value : hlo_buffer->values()) {
     if (value->instruction()->opcode() == HloOpcode::kConstant) {
       if (opts_.allocate_buffers_for_constants) {
-        ASSIGN_OR_RETURN(BufferAllocation * allocation,
+        ABSL_ASSIGN_OR_RETURN(BufferAllocation * allocation,
                          assignment->NewAllocation(*hlo_buffer, buffer_size));
         allocation->set_constant(true);
         VLOG(3) << "New allocation #" << allocation->index() << " for constant "
@@ -2098,7 +2118,7 @@ absl::StatusOr<bool> BufferAssigner::AssignSpecialHloBuffer(
       // allocation and sets its parameter number. Parameters of non-entry
       // computations do not need special allocations because they live inside
       // callers.
-      ASSIGN_OR_RETURN(BufferAllocation * allocation,
+      ABSL_ASSIGN_OR_RETURN(BufferAllocation * allocation,
                        assignment->NewAllocation(*hlo_buffer, buffer_size));
 
       allocation->set_entry_computation_parameter(
@@ -2114,7 +2134,7 @@ absl::StatusOr<bool> BufferAssigner::AssignSpecialHloBuffer(
   }
 
   if (is_thread_local) {
-    ASSIGN_OR_RETURN(BufferAllocation * allocation,
+    ABSL_ASSIGN_OR_RETURN(BufferAllocation * allocation,
                      assignment->NewAllocation(*hlo_buffer, buffer_size));
     allocation->set_is_thread_local(true);
     VLOG(3) << "New allocation #" << allocation->index()
@@ -2124,7 +2144,7 @@ absl::StatusOr<bool> BufferAssigner::AssignSpecialHloBuffer(
 
   for (const HloValue* value : hlo_buffer->values()) {
     if (value->shape().IsTuple()) {
-      ASSIGN_OR_RETURN(BufferAllocation * allocation,
+      ABSL_ASSIGN_OR_RETURN(BufferAllocation * allocation,
                        assignment->NewAllocation(*hlo_buffer, buffer_size));
       allocation->set_is_tuple(true);
       VLOG(3) << "New allocation #" << allocation->index()
@@ -2193,7 +2213,7 @@ absl::Status BufferAssigner::AssignSingleHloBuffer(
              assignment->GetAllSlices(operand, /*index=*/{})) {
           BufferAllocation* allocation =
               assignment->GetMutableAllocation(operand_slice.index());
-          ASSIGN_OR_RETURN(
+          ABSL_ASSIGN_OR_RETURN(
               bool buffer_assigned,
               MaybeAssignBuffer(allocation, *hlo_buffer, assignment));
           if (buffer_assigned) {
@@ -2207,7 +2227,7 @@ absl::Status BufferAssigner::AssignSingleHloBuffer(
   }
 
   // Attempt to reuse existing buffer according to the chosen algorithm.
-  ASSIGN_OR_RETURN(bool success,
+  ABSL_ASSIGN_OR_RETURN(bool success,
                    allocation_manager->TryAssignToExistingAllocation(
                        hlo_buffer, buffer_size));
   if (success) {
@@ -2220,7 +2240,7 @@ absl::Status BufferAssigner::AssignSingleHloBuffer(
   }
 
   if (!assignment->HasAllocation(*hlo_buffer)) {
-    ASSIGN_OR_RETURN(BufferAllocation * allocation,
+    ABSL_ASSIGN_OR_RETURN(BufferAllocation * allocation,
                      assignment->NewAllocation(*hlo_buffer, buffer_size));
     allocation_manager->RegisterNewAllocation(hlo_buffer, allocation->index());
     VLOG(3) << "New allocation #" << allocation->index()
@@ -2248,7 +2268,7 @@ absl::Status BufferAssigner::AssignBuffersForComputations(
   // First assign the preset allocations.
   absl::flat_hash_set<const HloBuffer*> preset_assigned_buffers;
 
-  RETURN_IF_ERROR(AssignPresetBuffers(&preset_assigned_buffers, assignment));
+  ABSL_RETURN_IF_ERROR(AssignPresetBuffers(&preset_assigned_buffers, assignment));
 
   const HloAliasAnalysis& alias_analysis = assignment->alias_analysis();
 
@@ -2275,7 +2295,7 @@ absl::Status BufferAssigner::AssignBuffersForComputations(
   std::vector<const HloComputation*> reverse_post_order_computations;
   std::unique_ptr<CallGraph> call_graph =
       CallGraph::Build(computations[0]->parent());
-  RETURN_IF_ERROR(call_graph->VisitNodes([&](const CallGraphNode& node) {
+  ABSL_RETURN_IF_ERROR(call_graph->VisitNodes([&](const CallGraphNode& node) {
     if (computations_set.contains(node.computation())) {
       reverse_post_order_computations.push_back(node.computation());
     }
@@ -2372,15 +2392,15 @@ absl::Status BufferAssigner::AssignBuffersForComputations(
   for (const HloBuffer* buffer : sorted_buffers) {
     VLOG(3) << "=================================================";
     VLOG(3) << "Assigning buffer for " << *buffer;
-    ASSIGN_OR_RETURN(auto color, buffer->color());
+    ABSL_ASSIGN_OR_RETURN(auto color, buffer->color());
     BufferAllocationsManagerForComputationsWithoutOrdering* allocation_manager =
         get_manager(color);
 
-    ASSIGN_OR_RETURN(bool special,
+    ABSL_ASSIGN_OR_RETURN(bool special,
                      AssignSpecialHloBuffer(buffer, is_thread_local,
                                             allocation_manager, assignment));
     if (!special) {
-      RETURN_IF_ERROR(AssignSingleHloBuffer(buffer, is_thread_local,
+      ABSL_RETURN_IF_ERROR(AssignSingleHloBuffer(buffer, is_thread_local,
                                             buffers_to_assign_sequentially,
                                             allocation_manager, assignment));
     }
@@ -2581,12 +2601,17 @@ absl::StatusOr<int64_t> BufferAssigner::ReuseCompatibleTempHeaps(
   // `other_value`. If so, they cannot occupy overlapping storage.
   auto candidate_interferes_with = [&](const ReuseCandidate& candidate,
                                        const HloValue* other_value) {
-    auto& other_range = live_ranges.at(other_value);
-    return absl::c_any_of(
-        candidate.hlo_buffer->values(), [&](const HloValue* value) {
-          return LiveRangeInterferes(value, live_ranges.at(value), other_value,
-                                     other_range, assignment);
-        });
+    const auto& other_range = live_ranges.at(other_value);
+    return absl::c_any_of(candidate.hlo_buffer->values(),
+                          [&](const HloValue* value) {
+                            const auto& candidate_range = live_ranges.at(value);
+                            // LiveRangeInterferes allows touching operand/user
+                            // ranges for exact in-place sharing. This best-fit
+                            // placer does not preserve the operand's exact
+                            // chunk, so touching ranges must block placement.
+                            return !(candidate_range.start > other_range.end ||
+                                     other_range.start > candidate_range.end);
+                          });
   };
 
   // Finds the best-fit free gap into which `candidate` fits inside
@@ -2622,7 +2647,7 @@ absl::StatusOr<int64_t> BufferAssigner::ReuseCompatibleTempHeaps(
       // Commit: assign the whole buffer at the chosen offset and drop its
       // values from `values` so the caller does not allocate a separate heap
       // for them. The buffer keeps its own color; only the storage is shared.
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           assignment->AddAssignment(allocation, *candidate.hlo_buffer,
                                     placement->offset, candidate.size));
       for (const HloValue* value : candidate.hlo_buffer->values()) {
@@ -2678,7 +2703,7 @@ absl::Status BufferAssigner::AssignPresetBuffers(
       CHECK(preset_allocations_iter != preset_allocations.end())
           << "No preset value allocation for color " << value->color()
           << " for " << value->ToShortString() << " found.";
-      RETURN_IF_ERROR(preset_allocations_iter->second->AddAssignment(
+      ABSL_RETURN_IF_ERROR(preset_allocations_iter->second->AddAssignment(
           *value, chunk.offset, chunk.size));
     }
 
@@ -2823,7 +2848,7 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       // First try to place this color's buffers into the free space of already-
       // materialized compatible allocations (earlier colors). Whatever fits is
       // removed from color_map[color] and will not get its own allocation.
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           int64_t reused_buffers,
           ReuseCompatibleTempHeaps(&color_map[color], color, assignment));
       VLOG(2) << "Placed " << reused_buffers << " buffers of color " << color
@@ -2862,24 +2887,24 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
           const HloInstructionSequence* instruction_sequence =
               hlo_ordering.SequentialOrder(*private_stack_computation);
           HeapSimulator::Result<HloValue> result;
-          ASSIGN_OR_RETURN(
+          ABSL_ASSIGN_OR_RETURN(
               result, HeapSimulator::Run(
                           get_heap_algorithm(alignment, color),
                           *private_stack_computation, *instruction_sequence,
                           assignment->alias_analysis(), alias_info_,
                           &assignment->buffer_size_, &schedule, options));
-          RETURN_IF_ERROR(AssignBuffersFromHeapSimulator(
+          ABSL_RETURN_IF_ERROR(AssignBuffersFromHeapSimulator(
               result, assignment, color, isolation_options));
         }
       } else {
         options.buffers_to_assign = &color_map[color];
         HeapSimulator::Result<HloValue> result;
-        ASSIGN_OR_RETURN(result, HeapSimulator::Run(
+        ABSL_ASSIGN_OR_RETURN(result, HeapSimulator::Run(
                                      get_heap_algorithm(alignment, color),
                                      assignment->module(), schedule,
                                      assignment->alias_analysis(), alias_info_,
                                      &assignment->buffer_size_, options));
-        RETURN_IF_ERROR(AssignBuffersFromHeapSimulator(
+        ABSL_RETURN_IF_ERROR(AssignBuffersFromHeapSimulator(
             result, assignment, color, isolation_options));
       }
     }
@@ -2903,12 +2928,12 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
         HeapSimulator::Options options;
         options.buffers_to_assign = &color_map[color];
         HeapSimulator::Result<HloValue> result;
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             result, HeapSimulator::Run(
                         get_heap_algorithm(alignment, color), *computation,
                         *instruction_sequence, assignment->alias_analysis(),
                         alias_info_, &assignment->buffer_size_, options));
-        RETURN_IF_ERROR(AssignBuffersFromHeapSimulator(
+        ABSL_RETURN_IF_ERROR(AssignBuffersFromHeapSimulator(
             result, assignment, color, isolation_options));
       }
     }
@@ -3132,7 +3157,7 @@ absl::Status BufferAssigner::AssignBuffersFromHeapSimulator(
           opts_.can_use_allocation(value->color(), allocation->color()))
           << "Buffer color " << value->color() << " for buffer " << *value
           << " cannot use temp allocation color " << allocation->color() << ".";
-      RETURN_IF_ERROR(assignment->AddAssignment(allocation, *value,
+      ABSL_RETURN_IF_ERROR(assignment->AddAssignment(allocation, *value,
                                                 chunk.offset, chunk.size));
     }
     allocation->peak_buffers_ =
@@ -3150,7 +3175,7 @@ BufferAssigner::CreateAssignment(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
     BufferValue::SizeFunction buffer_size,
     LogicalBuffer::AlignmentFunction color_alignment) {
-  ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                    HloAliasAnalysis::Run(module, alias_info_));
 
   // Set up a schedule for each computation.
@@ -3164,7 +3189,7 @@ BufferAssigner::CreateAssignment(
     }
   }
 
-  ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
                    HloLiveRange::Run(schedule, *alias_analysis,
                                      module->entry_computation(), true));
 
@@ -3182,7 +3207,7 @@ BufferAssigner::CreateAssignment(
       std::move(color_alignment), std::move(alias_analysis),
       std::move(hlo_live_range)));
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       opts_.colorer(&assignment->alias_analysis(), assignment->hlo_ordering()));
   VLOG(3) << "After coloring:";
   XLA_VLOG_LINES(3,
@@ -3190,7 +3215,7 @@ BufferAssigner::CreateAssignment(
 
   std::vector<const HloComputation*> thread_local_computations;
   std::vector<const HloComputation*> global_computations;
-  RETURN_IF_ERROR(GatherComputationsByAllocationType(
+  ABSL_RETURN_IF_ERROR(GatherComputationsByAllocationType(
       module, &thread_local_computations, &global_computations));
 
   bool is_fallback_enabled = opts_.enable_fallback;
@@ -3203,12 +3228,12 @@ BufferAssigner::CreateAssignment(
   }
 
   if (!is_fallback_enabled) {
-    RETURN_IF_ERROR(RunAssignBuffers(
+    ABSL_RETURN_IF_ERROR(RunAssignBuffers(
         module, global_computations, thread_local_computations,
         assignment.get(), opts_.buffer_assignment_algorithm,
         opts_.assignment_algorithm_for_computations_without_ordering));
   } else {
-    RETURN_IF_ERROR(RunAssignBuffersWithFallback(module, global_computations,
+    ABSL_RETURN_IF_ERROR(RunAssignBuffersWithFallback(module, global_computations,
                                                  thread_local_computations,
                                                  assignment.get()));
   }
@@ -3296,6 +3321,10 @@ absl::Status BufferAssigner::RunAssignBuffersWithFallback(
                   << " bytes). Triggering in-place fallback to DEFAULT.";
           break;
         }
+        VLOG(1)
+            << "Primary BufferAssignment did not exceed memory limit for color "
+            << color << " (" << total_allocated_bytes << " bytes vs limit of "
+            << adjusted_limit << " bytes).";
       }
     }
   }
@@ -3309,7 +3338,7 @@ absl::Status BufferAssigner::RunAssignBuffersWithFallback(
     if (backup_presets) {
       opts_.preset_assignments = backup_presets->ClonePresetAssignments();
     }
-    RETURN_IF_ERROR(RunAssignBuffers(
+    ABSL_RETURN_IF_ERROR(RunAssignBuffers(
         module, global_computations, thread_local_computations, assignment,
         opts_.fallback_algorithm,
         opts_.fallback_algorithm_for_computations_without_ordering));
@@ -3331,7 +3360,7 @@ absl::Status BufferAssigner::RunAssignBuffers(
   // 'buffers_to_assign_sequentially'.
   flat_hash_map<const HloComputation*, flat_hash_set<const HloValue*>>
       buffers_to_assign_sequentially;
-  RETURN_IF_ERROR(AssignBuffersForComputations(
+  ABSL_RETURN_IF_ERROR(AssignBuffersForComputations(
       global_computations, /*is_thread_local=*/false,
       &buffers_to_assign_sequentially, assignment, non_sequential_algorithm));
   // Assign buffers with sequential ordering, if any. If all global
@@ -3346,7 +3375,7 @@ absl::Status BufferAssigner::RunAssignBuffers(
   VLOG(2) << "Multiheap per heap size limit: "
           << multiheap_size_constraint_per_heap;
   const PrivateStacks private_stacks;
-  RETURN_IF_ERROR(AssignBuffersWithSequentialOrdering(
+  ABSL_RETURN_IF_ERROR(AssignBuffersWithSequentialOrdering(
       buffers_to_assign_sequentially, run_whole_module_heap_simulation,
       assignment, sequential_algorithm,
       opts_.private_stacks ? *opts_.private_stacks : private_stacks,
@@ -3364,7 +3393,7 @@ absl::Status BufferAssigner::RunAssignBuffers(
     thread_local_computations_no_fusion.push_back(computation);
   }
 
-  RETURN_IF_ERROR(AssignBuffersForComputations(
+  ABSL_RETURN_IF_ERROR(AssignBuffersForComputations(
       thread_local_computations_no_fusion, /*is_thread_local=*/true,
       /*buffers_to_assign_sequentially=*/nullptr, assignment,
       non_sequential_algorithm));
@@ -3395,7 +3424,7 @@ absl::Status BufferAssigner::RunAssignBuffers(
     }
   }
 
-  RETURN_IF_ERROR(assignment->CombineTempAllocations(private_stack_colors,
+  ABSL_RETURN_IF_ERROR(assignment->CombineTempAllocations(private_stack_colors,
                                                      opts_.temp_buffer_color));
   return absl::OkStatus();
 }
@@ -3490,7 +3519,7 @@ ComputeLogicalBufferUnpaddedSizes(
       }
     }
 
-    ASSIGN_OR_RETURN(Shape subshape, Shape::FromProto(*subshape_proto));
+    ABSL_ASSIGN_OR_RETURN(Shape subshape, Shape::FromProto(*subshape_proto));
 
     // Same logic as tensorflow::profiler::ShapeUnpaddedSize.
     LayoutUtil::SetToDefaultLayout(&subshape);
@@ -3585,7 +3614,7 @@ absl::StatusOr<PeakMemorySizes> ComputePeakMemoryImpl(
 
 absl::StatusOr<PeakMemorySizes> ComputePeakMemorySizes(
     const BufferAssignmentProto& proto, const HloModuleProto& hlo) {
-  ASSIGN_OR_RETURN(auto logical_buffer_unpadded_sizes,
+  ABSL_ASSIGN_OR_RETURN(auto logical_buffer_unpadded_sizes,
                    ComputeLogicalBufferUnpaddedSizes(hlo, proto));
   return ComputePeakMemoryImpl(proto, logical_buffer_unpadded_sizes);
 }

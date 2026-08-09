@@ -138,7 +138,7 @@ class WindowsRandomAccessFile : public RandomAccessFile {
     return absl::OkStatus();
   }
 
-  absl::Status Read(uint64 offset, size_t n, absl::string_view* result,
+  absl::Status Read(uint64_t offset, size_t n, absl::string_view* result,
                     char* scratch) const override {
     absl::Status s;
     char* dst = scratch;
@@ -168,7 +168,8 @@ class WindowsRandomAccessFile : public RandomAccessFile {
   }
 
 #if defined(TF_CORD_SUPPORT)
-  absl::Status Read(uint64 offset, size_t n, absl::Cord* cord) const override {
+  absl::Status Read(uint64_t offset, size_t n,
+                    absl::Cord* cord) const override {
     if (n == 0) {
       return absl::OkStatus();
     }
@@ -242,7 +243,7 @@ class WindowsWritableFile : public WritableFile {
   }
 #endif
 
-  absl::Status Tell(int64* position) override {
+  absl::Status Tell(int64_t* position) override {
     absl::Status result = Flush();
     if (!result.ok()) {
       return result;
@@ -297,11 +298,11 @@ class WinReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
   HANDLE hmap_;
 
   const void* const address_;
-  const uint64 length_;
+  const uint64_t length_;
 
  public:
   WinReadOnlyMemoryRegion(const std::string& filename, HANDLE hfile,
-                          HANDLE hmap, const void* address, uint64 length)
+                          HANDLE hmap, const void* address, uint64_t length)
       : filename_(filename),
         hfile_(hfile),
         hmap_(hmap),
@@ -320,7 +321,7 @@ class WinReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
   }
 
   const void* data() override { return address_; }
-  uint64 length() override { return length_; }
+  uint64_t length() override { return length_; }
 };
 
 }  // namespace
@@ -636,7 +637,7 @@ absl::Status WindowsFileSystem::DeleteRecursively(const std::string& dirname,
 }
 
 absl::Status WindowsFileSystem::GetFileSize(const std::string& fname,
-                                            uint64* size) {
+                                            uint64_t* size) {
   std::string translated_fname = TranslateName(fname);
   std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
   std::wstring ws_final_fname = GetSymbolicLinkTarget(ws_translated_fname);
@@ -658,7 +659,7 @@ absl::Status WindowsFileSystem::GetFileSize(const std::string& fname,
 absl::Status WindowsFileSystem::IsDirectory(const std::string& fname) {
   std::wstring ws_final_fname = GetUncPathName(TranslateName(fname));
   std::string str_final_fname(ws_final_fname.begin(), ws_final_fname.end());
-  RETURN_IF_ERROR(FileExists(str_final_fname));
+  ABSL_RETURN_IF_ERROR(FileExists(str_final_fname));
   if (PathIsDirectoryW(ws_final_fname.c_str())) {
     return absl::OkStatus();
   }
@@ -684,7 +685,7 @@ absl::Status WindowsFileSystem::RenameFile(const std::string& src,
     if (!::DeleteFileW(ws_translated_target.c_str())) {
       ::FindClose(target_file_handle);
       return IOErrorFromWindowsError(
-          strings::StrCat("Failed to rename: ", src, " to: ", target));
+          absl::StrCat("Failed to rename: ", src, " to: ", target));
     }
     ::FindClose(target_file_handle);
   }
@@ -692,7 +693,7 @@ absl::Status WindowsFileSystem::RenameFile(const std::string& src,
   if (!::MoveFileExW(ws_translated_src.c_str(), ws_translated_target.c_str(),
                      0)) {
     return IOErrorFromWindowsError(
-        strings::StrCat("Failed to rename: ", src, " to: ", target));
+        absl::StrCat("Failed to rename: ", src, " to: ", target));
   }
 
   return absl::OkStatus();
@@ -708,7 +709,7 @@ absl::Status WindowsFileSystem::GetMatchingPaths(
   // but no code appears to rely on this behavior.
   std::string converted_pattern(pattern);
   std::replace(converted_pattern.begin(), converted_pattern.end(), '\\', '/');
-  RETURN_IF_ERROR(internal::GetMatchingPaths(this, Env::Default(),
+  ABSL_RETURN_IF_ERROR(internal::GetMatchingPaths(this, Env::Default(),
                                              converted_pattern, results));
   for (std::string& result : *results) {
     std::replace(result.begin(), result.end(), '/', '\\');

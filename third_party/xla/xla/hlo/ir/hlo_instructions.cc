@@ -1076,11 +1076,10 @@ void HloCollectiveInstruction::PrintExtraAttributesImpl(
     AttributePrinter& printer, const HloPrintOptions& options) const {
   HloChannelInstruction::PrintExtraAttributesImpl(printer, options);
   printer.Next([this, &options](Printer* printer) {
-    VLOG(4) << name() << " replica_groups="
-            << device_list_->ToString(options.print_full_replica_group_list());
+    VLOG(4) << name() << " replica_groups=" << device_list_->ToString(options);
 
     printer->Append("replica_groups=");
-    device_list_->Print(printer, options.print_full_replica_group_list());
+    device_list_->Print(printer, options);
   });
   if (constrain_layout_) {
     printer.Next(
@@ -2138,8 +2137,8 @@ HloCallableInstruction::HloCallableInstruction(
 
 HloCallableInstruction::HloCallableInstruction(HloOpcode opcode,
                                                const Shape& shape,
-                                               const std::string& name,
-                                               const std::string& attributes,
+                                               absl::string_view name,
+                                               absl::string_view attributes,
                                                int64_t version)
     : HloInstruction(opcode, shape) {
   auto frontend_attributes =
@@ -2151,7 +2150,7 @@ HloCallableInstruction::HloCallableInstruction(HloOpcode opcode,
 HloCallableInstruction::HloCallableInstruction(
     HloOpcode opcode, const Shape& shape,
     absl::Span<HloInstruction* const> operands, HloComputation* decomposition,
-    const std::string& name, const std::string& attributes, int64_t version)
+    absl::string_view name, absl::string_view attributes, int64_t version)
     : HloInstruction(opcode, shape) {
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -2793,7 +2792,7 @@ absl::Status HloFusionInstruction::DeduplicateFusionOperands() {
   for (int i = 0; i < count; ++i) {
     auto emplace_result = operand_indices.emplace(operand(i), i);
     if (!emplace_result.second) {
-      RETURN_IF_ERROR(fused_parameter(i)->ReplaceAllUsesWith(
+      ABSL_RETURN_IF_ERROR(fused_parameter(i)->ReplaceAllUsesWith(
           fused_parameter(emplace_result.first->second)));
       operands_to_remove.push_back(i);
     }
@@ -2801,7 +2800,7 @@ absl::Status HloFusionInstruction::DeduplicateFusionOperands() {
   if (operands_to_remove.empty()) {
     return absl::OkStatus();
   }
-  RETURN_IF_ERROR(fused_instructions_computation()
+  ABSL_RETURN_IF_ERROR(fused_instructions_computation()
                       ->RemoveUnusedParametersFromFusedComputation());
   RemoveOperandsAtAscendingIndices(operands_to_remove);
   return absl::OkStatus();
@@ -2823,7 +2822,7 @@ absl::Status HloFusionInstruction::PermuteFusionOperands(
     seen[permutation[i]] = true;
   }
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       fused_instructions_computation()->PermuteParameters(permutation));
   InstructionVector new_operands(operand_count());
   for (int64_t i = 0; i < operand_count(); ++i) {
@@ -2851,8 +2850,8 @@ HloCallInstruction::HloCallInstruction(
 
 HloCallInstruction::HloCallInstruction(const Shape& shape,
                                        HloInstruction* decomposition_root,
-                                       const std::string& name,
-                                       const std::string& attributes,
+                                       absl::string_view name,
+                                       absl::string_view attributes,
                                        int64_t version)
     : HloCallableInstruction(HloOpcode::kCall, shape, name, attributes,
                              version) {
@@ -2860,9 +2859,10 @@ HloCallInstruction::HloCallInstruction(const Shape& shape,
   SetAndSanitizeName(HloOpcodeString(opcode()));
 
   FrontendAttributes frontend_attributes;
-  frontend_attributes.mutable_map()->insert({"composite.name", name});
   frontend_attributes.mutable_map()->insert(
-      {"composite.attributes", attributes});
+      {"composite.name", std::string(name)});
+  frontend_attributes.mutable_map()->insert(
+      {"composite.attributes", std::string(attributes)});
   frontend_attributes.mutable_map()->insert(
       {"composite.version", std::to_string(version)});
 
@@ -2874,14 +2874,15 @@ HloCallInstruction::HloCallInstruction(const Shape& shape,
 
 HloCallInstruction::HloCallInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    HloComputation* decomposition, const std::string& name,
-    const std::string& attributes, int64_t version)
+    HloComputation* decomposition, absl::string_view name,
+    absl::string_view attributes, int64_t version)
     : HloCallableInstruction(HloOpcode::kCall, shape, operands, decomposition,
                              name, attributes, version) {
   FrontendAttributes frontend_attributes;
-  frontend_attributes.mutable_map()->insert({"composite.name", name});
   frontend_attributes.mutable_map()->insert(
-      {"composite.attributes", attributes});
+      {"composite.name", std::string(name)});
+  frontend_attributes.mutable_map()->insert(
+      {"composite.attributes", std::string(attributes)});
   frontend_attributes.mutable_map()->insert(
       {"composite.version", std::to_string(version)});
 
@@ -3078,7 +3079,7 @@ HloReducePrecisionInstruction::CloneWithNewOperandsImpl(
 
 HloInfeedInstruction::HloInfeedInstruction(const Shape& infeed_shape,
                                            HloInstruction* token_operand,
-                                           const std::string& config)
+                                           absl::string_view config)
     : HloInstruction(HloOpcode::kInfeed,
                      ShapeUtil::MakeTupleShape(
                          {infeed_shape, ShapeUtil::MakeTokenShape()})),

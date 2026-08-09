@@ -80,7 +80,7 @@ GpuCompilationEnvironment CreateGpuCompEnvWithDefaultValues() {
 
 absl::Status InitializeMissingFieldsFromXLAFlags(
     GpuCompilationEnvironment& env) {
-  ASSIGN_OR_RETURN(GpuCompilationEnvironment from_env,
+  ABSL_ASSIGN_OR_RETURN(GpuCompilationEnvironment from_env,
                    CreateGpuCompEnvFromEnvVar());
 
   auto default_env = CreateGpuCompEnvWithDefaultValues();

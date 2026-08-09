@@ -22,16 +22,18 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/hlo/ir/tile_assignment.h"
+#include "xla/python/ifrt/device_list.h"
+#include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding_spec.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -43,7 +45,19 @@ using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
 using ::testing::SizeIs;
 
-class HloShardingSpecTest : public testing::Test {};
+class HloShardingSpecTest : public testing::Test {
+ public:
+  HloShardingSpecTest()
+      : fixture_(test_util::DeviceTestParam{/*num_devices=*/6,
+                                            /*num_addressable_devices=*/4}) {}
+
+  DeviceListRef GetDevices(absl::Span<const int> device_indices) {
+    return fixture_.GetDevices(device_indices);
+  }
+
+ private:
+  test_util::DeviceTestFixture fixture_;
+};
 
 TEST_F(HloShardingSpecTest, CreateWithNumShardsMismatch) {
   auto xla_hlo_sharding = xla::HloSharding::IotaTile({2, 3});
@@ -182,7 +196,7 @@ TEST_F(HloShardingSpecTest, IndexDomainsWithReplication) {
       HloShardingSpec::Create(num_shards, xla_hlo_sharding);
 
   Shape shape({10, 20});
-  TF_ASSERT_OK_AND_ASSIGN(auto index_domains, spec->IndexDomains(shape));
+  ASSERT_OK_AND_ASSIGN(auto index_domains, spec->IndexDomains(shape));
   EXPECT_THAT(
       index_domains,
       ElementsAre(IndexDomain(shape), IndexDomain(shape), IndexDomain(shape),
@@ -200,7 +214,7 @@ TEST_F(HloShardingSpecTest, DisassembleWithReplication) {
       HloShardingSpec::Create(num_shards, xla_hlo_sharding);
 
   Shape shape({10, 20});
-  TF_ASSERT_OK_AND_ASSIGN(auto disassembled, spec->Disassemble(shape));
+  ASSERT_OK_AND_ASSIGN(auto disassembled, spec->Disassemble(shape));
   ASSERT_THAT(disassembled, SizeIs(6));
   for (int i = 0; i < 6; ++i) {
     const auto& [shape, sharding] = disassembled[i];
@@ -217,7 +231,7 @@ TEST_F(HloShardingSpecTest, IndexDomainsWithTile) {
       HloShardingSpec::Create(num_shards, xla_hlo_sharding);
 
   Shape shape({12, 20});
-  TF_ASSERT_OK_AND_ASSIGN(auto index_domains, spec->IndexDomains(shape));
+  ASSERT_OK_AND_ASSIGN(auto index_domains, spec->IndexDomains(shape));
   EXPECT_THAT(index_domains,
               ElementsAre(IndexDomain(Index({0, 0}), Shape({2, 20})),
                           IndexDomain(Index({2, 0}), Shape({2, 20})),
@@ -238,7 +252,7 @@ TEST_F(HloShardingSpecTest, DisassembleWithTile) {
       HloShardingSpec::Create(num_shards, xla_hlo_sharding);
 
   Shape shape({12, 20});
-  TF_ASSERT_OK_AND_ASSIGN(auto disassembled, spec->Disassemble(shape));
+  ASSERT_OK_AND_ASSIGN(auto disassembled, spec->Disassemble(shape));
   ASSERT_THAT(disassembled, SizeIs(6));
   for (int i = 0; i < 6; ++i) {
     const auto& [shape, sharding] = disassembled[i];
@@ -255,7 +269,7 @@ TEST_F(HloShardingSpecTest, IndexDomainsWithUnevenTile) {
       HloShardingSpec::Create(num_shards, xla_hlo_sharding);
 
   Shape shape({11, 20});
-  TF_ASSERT_OK_AND_ASSIGN(auto index_domains, spec->IndexDomains(shape));
+  ASSERT_OK_AND_ASSIGN(auto index_domains, spec->IndexDomains(shape));
   EXPECT_THAT(index_domains,
               ElementsAre(IndexDomain(Index({0, 0}), Shape({2, 20})),
                           IndexDomain(Index({2, 0}), Shape({2, 20})),
@@ -276,7 +290,7 @@ TEST_F(HloShardingSpecTest, DisassembleWithUnevenTile) {
       HloShardingSpec::Create(num_shards, xla_hlo_sharding);
 
   Shape shape({11, 20});
-  TF_ASSERT_OK_AND_ASSIGN(auto disassembled, spec->Disassemble(shape));
+  ASSERT_OK_AND_ASSIGN(auto disassembled, spec->Disassemble(shape));
   ASSERT_THAT(disassembled, SizeIs(6));
   for (int i = 0; i < 6; ++i) {
     const auto& [shape, sharding] = disassembled[i];
@@ -299,7 +313,7 @@ TEST_F(HloShardingSpecTest, IndexDomainsWithPartialTile) {
       HloShardingSpec::Create(num_shards, xla_hlo_sharding);
 
   Shape shape({10, 20});
-  TF_ASSERT_OK_AND_ASSIGN(auto index_domains, spec->IndexDomains(shape));
+  ASSERT_OK_AND_ASSIGN(auto index_domains, spec->IndexDomains(shape));
   EXPECT_THAT(index_domains,
               ElementsAre(IndexDomain(Index({0, 0}), Shape({5, 20})),
                           IndexDomain(Index({0, 0}), Shape({5, 20})),
@@ -322,7 +336,7 @@ TEST_F(HloShardingSpecTest, DisassembleWithPartialTile) {
       HloShardingSpec::Create(num_shards, xla_hlo_sharding);
 
   Shape shape({10, 20});
-  TF_ASSERT_OK_AND_ASSIGN(auto disassembled, spec->Disassemble(shape));
+  ASSERT_OK_AND_ASSIGN(auto disassembled, spec->Disassemble(shape));
   ASSERT_THAT(disassembled, SizeIs(6));
   for (int i = 0; i < 6; ++i) {
     const auto& [shape, sharding] = disassembled[i];
@@ -341,7 +355,7 @@ TEST_F(HloShardingSpecTest, IndexDomainsWithSubgroupReplicated) {
       HloShardingSpec::Create(num_shards, xla_hlo_sharding);
 
   Shape shape({10, 20});
-  TF_ASSERT_OK_AND_ASSIGN(auto index_domains, spec->IndexDomains(shape));
+  ASSERT_OK_AND_ASSIGN(auto index_domains, spec->IndexDomains(shape));
   EXPECT_THAT(index_domains,
               ElementsAre(IndexDomain(Index({0, 0}), Shape({5, 20})),
                           IndexDomain(Index({0, 0}), Shape({5, 20})),
@@ -364,7 +378,7 @@ TEST_F(HloShardingSpecTest, DisassembleWithSubgroupReplicated) {
       HloShardingSpec::Create(num_shards, xla_hlo_sharding);
 
   Shape shape({10, 20});
-  TF_ASSERT_OK_AND_ASSIGN(auto disassembled, spec->Disassemble(shape));
+  ASSERT_OK_AND_ASSIGN(auto disassembled, spec->Disassemble(shape));
   ASSERT_THAT(disassembled, SizeIs(6));
   for (int i = 0; i < 6; ++i) {
     const auto& [shape, sharding] = disassembled[i];
@@ -383,7 +397,7 @@ TEST_F(HloShardingSpecTest, IndexDomainsWithSubgroupMaximalSlowPath) {
       HloShardingSpec::Create(num_shards, xla_hlo_sharding);
 
   Shape shape({10, 20});
-  TF_ASSERT_OK_AND_ASSIGN(auto index_domains, spec->IndexDomains(shape));
+  ASSERT_OK_AND_ASSIGN(auto index_domains, spec->IndexDomains(shape));
   EXPECT_THAT(index_domains,
               ElementsAre(IndexDomain(Index({0, 0}), Shape({5, 20})),
                           IndexDomain(Index({0, 0}), Shape({5, 20})),
@@ -406,7 +420,7 @@ TEST_F(HloShardingSpecTest, DisassembleWithSubgroupMaximalSlowPath) {
       HloShardingSpec::Create(num_shards, xla_hlo_sharding);
 
   Shape shape({10, 20});
-  TF_ASSERT_OK_AND_ASSIGN(auto disassembled, spec->Disassemble(shape));
+  ASSERT_OK_AND_ASSIGN(auto disassembled, spec->Disassemble(shape));
   ASSERT_THAT(disassembled, SizeIs(6));
   for (int i = 0; i < 6; ++i) {
     const auto& [shape, sharding] = disassembled[i];
@@ -424,7 +438,7 @@ TEST_F(HloShardingSpecTest, IndexDomainsWithTileTranspose) {
   std::shared_ptr<const HloShardingSpec> spec =
       HloShardingSpec::Create(num_shards, xla_hlo_sharding);
   Shape shape({4, 4});
-  TF_ASSERT_OK_AND_ASSIGN(auto index_domains, spec->IndexDomains(shape));
+  ASSERT_OK_AND_ASSIGN(auto index_domains, spec->IndexDomains(shape));
   EXPECT_THAT(
       index_domains,
       ElementsAreArray(TEST_HloShardingSpecIndexDomainsSlowPath(*spec, shape)));
@@ -464,7 +478,7 @@ TEST_F(HloShardingSpecTest, DisassembleWithManual) {
       HloShardingSpec::Create(num_shards, xla_hlo_sharding);
 
   Shape shape({10, 20});
-  TF_ASSERT_OK_AND_ASSIGN(auto disassembled, spec->Disassemble(shape));
+  ASSERT_OK_AND_ASSIGN(auto disassembled, spec->Disassemble(shape));
   ASSERT_THAT(disassembled, SizeIs(6));
   for (int i = 0; i < 6; ++i) {
     const auto& [shape, sharding] = disassembled[i];
@@ -495,7 +509,7 @@ TEST_F(HloShardingSpecTest, DisassembleFailsWithDynamicShape) {
   std::shared_ptr<const HloShardingSpec> spec =
       HloShardingSpec::Create(num_shards, xla_hlo_sharding);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       DynamicShape dynamic_shape,
       DynamicShape::Create(Shape({10}), BoundedDynamicShapeTag({true})));
   EXPECT_THAT(
@@ -514,6 +528,18 @@ TEST_F(HloShardingSpecTest, Hash) {
           6, xla::HloSharding::PartialTile(
                  xla::TileAssignment(xla::IotaTileAssignment::Create({2, 3})))),
   }));
+}
+
+TEST_F(HloShardingSpecTest, ToSharding) {
+  auto xla_hlo_sharding = xla::HloSharding::Tile(xla::TileAssignment({2, 1}));
+  ShardingSpecRef spec = HloShardingSpec::Create(2, xla_hlo_sharding);
+
+  ASSERT_OK_AND_ASSIGN(ShardingRef sharding,
+                       spec->ToSharding(GetDevices({0, 1}), MemoryKind()));
+  EXPECT_EQ(*sharding->sharding_spec(), *spec);
+
+  EXPECT_THAT(spec->ToSharding(GetDevices({0}), MemoryKind()),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

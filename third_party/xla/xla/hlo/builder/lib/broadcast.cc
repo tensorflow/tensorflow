@@ -35,7 +35,7 @@ namespace xla {
 absl::StatusOr<XlaOp> BroadcastTo(XlaOp input,
                                   absl::Span<int64_t const> output_dims) {
   XlaBuilder* builder = input.builder();
-  ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
+  ABSL_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
   absl::Span<int64_t const> input_dims = input_shape.dimensions();
 
   if (input_dims == output_dims) {

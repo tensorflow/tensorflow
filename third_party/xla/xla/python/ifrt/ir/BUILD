@@ -190,7 +190,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Support",
     ],
 )
@@ -268,6 +267,7 @@ cc_library(
         ":version",
         "//xla:status_macros",
         "//xla/mlir/utils:error_util",
+        "//xla/python/ifrt:rtti",
         "//xla/python/ifrt:serdes",
         "//xla/python/ifrt:serdes_version",
         "//xla/python/ifrt:serdes_week_4_old_version_accessor",
@@ -623,7 +623,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//llvm:Support",
         "@tsl//tsl/profiler/lib:traceme",
     ],
 )
@@ -759,6 +758,7 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/python/ifrt:attribute_map",
         "//xla/python/ifrt:remap_plan_proto_cc",
+        "//xla/python/ifrt:user_context",
         "//xla/python/ifrt/ir/transforms:utils",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",

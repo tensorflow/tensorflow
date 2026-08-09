@@ -269,6 +269,30 @@ cc_library(
     ],
 )
 
+xla_test(
+    name = "cupti_tracer_test",
+    size = "small",
+    srcs = ["cupti_tracer_test.cc"],
+    backends = ["gpu"],
+    tags = [
+        "cuda-only",
+        "no_mac",
+    ],
+    deps = [
+        ":cuda_test",
+        ":cupti_collector",
+        ":cupti_error_manager",
+        ":cupti_interface",
+        ":cupti_tracer",
+        ":cupti_wrapper",
+        ":mock_cupti",
+        "//xla/tsl/profiler/utils:time_utils",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@local_config_cuda//cuda:cupti_headers",
+    ],
+)
+
 cc_library(
     name = "cupti_tracer_options_utils",
     srcs = ["cupti_tracer_options_utils.cc"],
@@ -553,6 +577,7 @@ cc_library(
         "//xla/tsl/profiler/backends/cpu:annotation_stack",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -739,6 +764,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cupti_headers",
         "@tsl//tsl/platform:errors",
         "@tsl//tsl/platform:platform_port",
         "@tsl//tsl/platform:thread_annotations",

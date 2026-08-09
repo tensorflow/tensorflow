@@ -26,9 +26,9 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log.pb.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
@@ -247,9 +247,9 @@ TEST_F(BuffersDebugChecksumThunkTest,
     BufferAllocations allocations;
   };
   auto setup_device = [this](int device_ordinal) -> absl::StatusOr<TestDevice> {
-    ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+    ABSL_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                      platform_->ExecutorForDevice(device_ordinal));
-    ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
                      executor->CreateStream());
     auto allocator =
         std::make_unique<stream_executor::StreamExecutorAddressAllocator>(

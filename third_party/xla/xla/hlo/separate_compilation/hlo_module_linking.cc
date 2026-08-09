@@ -79,7 +79,7 @@ class HloLinker {
 
       } else if (!current.entered) {
         VLOG(6) << "First visit to link: " << current.principal->name();
-        RETURN_IF_ERROR(HandleFirstVisit(current));
+        ABSL_RETURN_IF_ERROR(HandleFirstVisit(current));
 
       } else {
         VLOG(6) << "Second visit to link: " << current.principal->name();
@@ -201,13 +201,13 @@ absl::StatusOr<std::unique_ptr<HloModule>> LinkComputation(
           *linking_manifest.compilation_environment));
 
   HloLinker linker(linked_module.get(), linking_manifest, root_computation);
-  ASSIGN_OR_RETURN(HloComputation * linked_clone_ptr, linker.Link());
+  ABSL_ASSIGN_OR_RETURN(HloComputation * linked_clone_ptr, linker.Link());
 
   linked_module->ReplaceEntryComputation(linked_clone_ptr);
   linked_module->mutable_config().SetComputationLayoutIfExists(
       linked_clone_ptr->ComputeProgramShape());
   xla::HloDCE dce_pass;
-  RETURN_IF_ERROR(dce_pass.Run(linked_module.get()).status());
+  ABSL_RETURN_IF_ERROR(dce_pass.Run(linked_module.get()).status());
 
   if (VLOG_IS_ON(6)) {
     for (const HloComputation* comp : linked_module->computations()) {

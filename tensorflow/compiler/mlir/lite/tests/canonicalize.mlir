@@ -1,17 +1,3 @@
-// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// ==============================================================================
 // RUN: litert-opt -canonicalize=test-convergence -tfl-runtime-verify -split-input-file -verify-diagnostics %s | FileCheck %s
 
 // CHECK-LABEL: @squeeze_folder
@@ -346,8 +332,31 @@ func.func @broadcast_to_to_reshape_i64_const(%arg0: tensor<4x4x4xf32>) -> tensor
 // CHECK-LABEL: @trivial_dynamic_update_slice
 func.func @trivial_dynamic_update_slice(%arg0: tensor<2x7x14xf32>, %arg1: tensor<2x7x14xf32>) -> tensor<2x7x14xf32> {
   %0 = arith.constant dense<0> : tensor<3xi32>
-  %1 = "tfl.dynamic_update_slice"(%arg0, %arg1, %0) : (tensor<2x7x14xf32>, tensor<2x7x14xf32>, tensor<3xi32>) -> tensor<2x7x14xf32>
+  %1 = tfl.add %arg0, %arg0 {fused_activation_function = "NONE"} : tensor<2x7x14xf32>
+  %2 = "tfl.dynamic_update_slice"(%1, %arg1, %0) : (tensor<2x7x14xf32>, tensor<2x7x14xf32>, tensor<3xi32>) -> tensor<2x7x14xf32>
   // CHECK: return %arg1
+  func.return %2 : tensor<2x7x14xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @trivial_dynamic_update_slice_not_to_output
+func.func @trivial_dynamic_update_slice_not_to_output(%arg0: tensor<2x7x14xf32>, %arg1: tensor<2x7x14xf32>) -> tensor<2x7x14xf32> {
+  %0 = arith.constant dense<0> : tensor<3xi32>
+  %1 = "tfl.dynamic_update_slice"(%arg0, %arg1, %0) : (tensor<2x7x14xf32>, tensor<2x7x14xf32>, tensor<3xi32>) -> tensor<2x7x14xf32>
+  %2 = tfl.add %1, %1 {fused_activation_function = "NONE"} : tensor<2x7x14xf32>
+  // CHECK: %[[ADD:.*]] = tfl.add %arg1, %arg1
+  // CHECK: return %[[ADD]]
+  func.return %2 : tensor<2x7x14xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @trivial_dynamic_update_slice_from_input_to_output
+func.func @trivial_dynamic_update_slice_from_input_to_output(%arg0: tensor<2x7x14xf32>, %arg1: tensor<2x7x14xf32>) -> tensor<2x7x14xf32> {
+  %0 = arith.constant dense<0> : tensor<3xi32>
+  %1 = "tfl.dynamic_update_slice"(%arg0, %arg1, %0) : (tensor<2x7x14xf32>, tensor<2x7x14xf32>, tensor<3xi32>) -> tensor<2x7x14xf32>
+  // CHECK: "tfl.dynamic_update_slice"
   func.return %1 : tensor<2x7x14xf32>
 }
 

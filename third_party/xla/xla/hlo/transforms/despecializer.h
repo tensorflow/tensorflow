@@ -96,7 +96,7 @@ class ControlDepRemover : public HloModulePass {
     for (HloComputation* computation : module->computations()) {
       for (HloInstruction* instruction : computation->instructions()) {
         changed |= !instruction->control_predecessors().empty();
-        RETURN_IF_ERROR(instruction->DropAllControlDeps());
+        ABSL_RETURN_IF_ERROR(instruction->DropAllControlDeps());
       }
     }
     return changed;

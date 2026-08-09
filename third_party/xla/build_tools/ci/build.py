@@ -120,9 +120,6 @@ class BuildType(enum.Enum):
   JAX_WINDOWS_X86_CPU_GITHUB_ACTIONS = enum.auto()
   JAX_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
 
-  TENSORFLOW_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
-  TENSORFLOW_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
-
   @classmethod
   def from_str(cls, s):
     try:
@@ -406,9 +403,6 @@ Build(
         "-//xla/backends/profiler/subprocess:subprocess_profiling_session_test",
         "-//xla/backends/profiler/subprocess:subprocess_registry",
         "-//xla/backends/profiler/subprocess:subprocess_registry_test",
-        "-//xla/tools/benchmarks/utils:generate_benchmark_matrices_cc",
-        "-//xla/tools/benchmarks/utils:generate_benchmark_matrices_main",
-        "-//xla/tools/benchmarks/utils:generate_benchmark_matrices_test",
         # xnnpack is not windows compatible
         "-//xla/backends/cpu/runtime/ynnpack:ynn_fusion_thunk",
         "-//xla/backends/cpu/runtime/ynnpack:ynn_interop",
@@ -885,90 +879,6 @@ Build(
         "@local_config_cuda//cuda:override_include_cuda_libs": True,
     },
     repo_env={"HERMETIC_PYTHON_VERSION": "3.12"},
-    extra_setup_commands=(["nvidia-smi"],),
-)
-
-tensorflow_tag_filters = (
-    "-no_oss",
-    "-tf_tosa",
-    "-oss_excluded",
-    "-oss_serial",
-    "-tpu",
-    "-benchmark-test",
-    "-v1only",
-)
-
-tensorflow_cpu_tag_filters = tensorflow_tag_filters + ("-gpu",)
-tensorflow_gpu_tag_filters = tensorflow_tag_filters + (
-    "-no_gpu",
-    "-no_gpu_presubmit",
-    "-no_cuda11",
-    "+gpu",
-)
-
-Build(
-    type_=BuildType.TENSORFLOW_LINUX_X86_CPU_GITHUB_ACTIONS,
-    repo="tensorflow/tensorflow",
-    configs=(
-        "release_cpu_linux",
-        "rbe_linux_cpu",
-    ),
-    target_patterns=(
-        "//tensorflow/compiler/...",
-        "-//tensorflow/compiler/tf2tensorrt/...",
-        "//tensorflow/python/...",
-        "-//tensorflow/python/distribute/...",
-        "-//tensorflow/python/kernel_tests/...",
-        "-//tensorflow/python/data/...",
-        "-//tensorflow/python/compiler/tensorrt/...",
-    ),
-    build_tag_filters=tensorflow_cpu_tag_filters,
-    test_tag_filters=tensorflow_cpu_tag_filters,
-    options=dict(
-        verbose_failures=True,
-        test_output="errors",
-        profile="profile.json.gz",
-        test_lang_filters="cc,py",
-        color="yes",
-    ),
-    override_repository=dict(
-        xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
-    ),
-    override_module=dict(
-        xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
-    ),
-    repo_env={"USE_PYWRAP_RULES": "True"},
-)
-
-Build(
-    type_=BuildType.TENSORFLOW_LINUX_X86_GPU_L4_GITHUB_ACTIONS,
-    repo="tensorflow/tensorflow",
-    configs=("release_gpu_linux", "rbe_linux_cuda", "hermetic_cuda_umd"),
-    target_patterns=(
-        "//tensorflow/compiler/...",
-        "-//tensorflow/compiler/tf2tensorrt/...",
-        "//tensorflow/python/...",
-        "-//tensorflow/python/distribute/...",
-        "-//tensorflow/python/kernel_tests/...",
-        "-//tensorflow/python/data/...",
-        "-//tensorflow/python/compiler/tensorrt/...",
-    ),
-    build_tag_filters=tensorflow_gpu_tag_filters,
-    test_tag_filters=tensorflow_gpu_tag_filters,
-    override_repository=dict(
-        xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
-    ),
-    override_module=dict(
-        xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
-    ),
-    options=dict(
-        verbose_failures=True,
-        test_output="errors",
-        profile="profile.json.gz",
-        test_lang_filters="cc,py",
-        color="yes",
-    ),
-    repo_env={"USE_PYWRAP_RULES": "True"},
     extra_setup_commands=(["nvidia-smi"],),
 )
 

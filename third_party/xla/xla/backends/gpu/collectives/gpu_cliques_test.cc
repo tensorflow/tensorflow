@@ -26,9 +26,9 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_clique.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
@@ -65,7 +65,7 @@ using DeviceGroups = std::vector<std::vector<GlobalDeviceId>>;
 static GpuCollectives::CliqueIdCallback DefaultCliqueId() {
   return [&](const CliqueKey&) -> absl::StatusOr<CliqueIds> {
     GpuCollectives* collectives = GpuCollectives::Default("GPU");
-    ASSIGN_OR_RETURN(auto id, collectives->CreateUniqueCliqueId());
+    ABSL_ASSIGN_OR_RETURN(auto id, collectives->CreateUniqueCliqueId());
     return CliqueIds(id);
   };
 }
@@ -74,7 +74,7 @@ static absl::StatusOr<std::vector<se::StreamExecutor*>> CreateExecutors(
     se::Platform* platform, size_t n) {
   std::vector<se::StreamExecutor*> executors(n);
   for (size_t d = 0; d < n; ++d) {
-    ASSIGN_OR_RETURN(executors[d], platform->ExecutorForDevice(d));
+    ABSL_ASSIGN_OR_RETURN(executors[d], platform->ExecutorForDevice(d));
   }
   return executors;
 }
@@ -120,7 +120,7 @@ static absl::StatusOr<std::vector<std::shared_ptr<LockableGpuClique::Lock>>>
 WaitCliques(std::vector<Future<std::shared_ptr<LockableGpuClique::Lock>>> fs) {
   std::vector<std::shared_ptr<LockableGpuClique::Lock>> cliques(fs.size());
   for (size_t i = 0; i < fs.size(); ++i) {
-    ASSIGN_OR_RETURN(cliques[i], fs[i].Await());
+    ABSL_ASSIGN_OR_RETURN(cliques[i], fs[i].Await());
   }
   return cliques;
 }
@@ -252,7 +252,7 @@ TEST(GpuCliquesTest, SplitCliquesKeepsReorderedRanksOnCorrectExecutors) {
   auto cleanup = absl::MakeCleanup([] { internal::DestroyAcquiredCliques(); });
 
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       PlatformUtil::GetPlatform("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";

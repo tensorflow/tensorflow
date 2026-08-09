@@ -730,6 +730,9 @@ TEST_F(MatmulTest, BiasAndExactGELUTestF32) {
 }
 
 TEST_F(MatmulTest, BiasAndExactGELUTestBF16) {
+  if (!IsSupportedType(PrimitiveType::BF16)) {
+    GTEST_SKIP() << "CPU does not support BF16.";
+  }
   const char* matmul_module_str = R"(
   HloModule matmul.test.f32
   ENTRY matmul.test.f32 {
@@ -1967,6 +1970,9 @@ TEST_F(MatmulTest, BiasAndLegalizedErfcGELUTestF32) {
 }
 
 TEST_F(MatmulTest, BiasAndLegalizedErfcGELUTestF16) {
+  if (!IsSupportedType(PrimitiveType::F16)) {
+    GTEST_SKIP() << "CPU does not support F16.";
+  }
   // FP16 uses erfc-legalized GELU because FP16's narrow exponent range (5 bits)
   // causes underflow in erfc for moderate inputs. JAX/StableHLO legalizes erfc
   // into a piecewise polynomial computed in F32, with f16<->f32 converts at the

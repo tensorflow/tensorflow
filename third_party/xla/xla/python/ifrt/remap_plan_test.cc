@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "llvm/Support/Casting.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
@@ -40,6 +39,7 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.pb.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
@@ -808,6 +808,63 @@ TEST_P(RemapPlanTest, Hash) {
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(plans));
 }
 
+TEST_P(RemapPlanTest, CreateOptimizedIntervalEndExceedsNumShards) {
+  ArraySpec spec{
+      /*dtype=*/DType(DType::kS32),
+      /*shape=*/Shape({4, 6}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0, 1, 2, 3}), MemoryKind(),
+                                   /*shape=*/Shape({4, 6}),
+                                   /*shard_shape=*/Shape({2, 3}))};
+
+  std::vector<ArraySpec> input_specs;
+  input_specs.push_back(spec);
+  std::vector<ArraySpec> output_specs;
+  output_specs.push_back(spec);
+
+  std::vector<RemapPlan::Mapping> mappings;
+  mappings.push_back(RemapPlan::Mapping{/*in_array=*/0,
+                                        /*out_array=*/0,
+                                        /*from=*/{RemapPlan::Interval{0, 5, 2}},
+                                        /*to=*/{RemapPlan::Interval{0, 2, 1}}});
+
+  EXPECT_THAT(
+      RemapPlan::CreateOptimized(client(), std::move(input_specs),
+                                 std::move(output_specs), std::move(mappings)),
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr("interval addresses shard 4, which is out of "
+                    "range [0, 4)")));
+}
+
+TEST_P(RemapPlanTest, CreateOptimizedNegativeStartNoCrash) {
+  ArraySpec spec{
+      /*dtype=*/DType(DType::kS32),
+      /*shape=*/Shape({4, 6}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0, 1, 2, 3}), MemoryKind(),
+                                   /*shape=*/Shape({4, 6}),
+                                   /*shard_shape=*/Shape({2, 3}))};
+
+  std::vector<ArraySpec> input_specs;
+  input_specs.push_back(spec);
+  std::vector<ArraySpec> output_specs;
+  output_specs.push_back(spec);
+
+  std::vector<RemapPlan::Mapping> mappings;
+  mappings.push_back(
+      RemapPlan::Mapping{/*in_array=*/0,
+                         /*out_array=*/0,
+                         /*from=*/{RemapPlan::Interval{-1, 0, 1}},
+                         /*to=*/{RemapPlan::Interval{0, 1, 1}}});
+
+  EXPECT_THAT(
+      RemapPlan::CreateOptimized(client(), std::move(input_specs),
+                                 std::move(output_specs), std::move(mappings)),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("start must be in [0, 3], but is -1")));
+}
+
 INSTANTIATE_TEST_SUITE_P(NumDevices, RemapPlanTest,
                          testing::Values(test_util::DeviceTestParam{
                              /*num_devices=*/4,
@@ -901,7 +958,7 @@ TEST_P(RemapPlanSerDesTest, ToFromProto) {
     EXPECT_EQ(spec.dtype, DType(DType::kF32));
     EXPECT_EQ(spec.shape, shape);
     const auto* sharding_copy =
-        llvm::dyn_cast<ConcreteEvenSharding>(spec.sharding.get());
+        dyn_cast<ConcreteEvenSharding>(spec.sharding.get());
     ASSERT_NE(sharding_copy, nullptr);
     EXPECT_EQ(*sharding_copy->devices(), *devices);
     EXPECT_EQ(sharding_copy->shape(), shape);
@@ -911,7 +968,7 @@ TEST_P(RemapPlanSerDesTest, ToFromProto) {
     EXPECT_EQ(spec.dtype, DType(DType::kF32));
     EXPECT_EQ(spec.shape, shape);
     const auto* sharding_copy =
-        llvm::dyn_cast<ConcreteEvenSharding>(spec.sharding.get());
+        dyn_cast<ConcreteEvenSharding>(spec.sharding.get());
     ASSERT_NE(sharding_copy, nullptr);
     EXPECT_EQ(*sharding_copy->devices(), *devices);
     EXPECT_EQ(sharding_copy->shape(), shape);

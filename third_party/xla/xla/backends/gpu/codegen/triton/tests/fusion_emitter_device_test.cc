@@ -27,6 +27,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "Eigen/Core"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -129,7 +129,7 @@ class TritonEmitterTest
   CreateXTileIrAndFileCheck(absl::string_view hlo_text,
                             absl::string_view triton_fusion_name,
                             absl::string_view filecheck_pattern) {
-    ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                      ParseAndReturnVerifiedModule(hlo_text));
     return XTileTestBase::CreateXTileIrAndFileCheck(
         std::move(module), triton_fusion_name, filecheck_pattern);
@@ -137,7 +137,7 @@ class TritonEmitterTest
   absl::Status CreateTritonIrFromHloTextAndFileCheck(
       absl::string_view hlo_text, absl::string_view triton_fusion_name,
       absl::string_view filecheck_pattern) {
-    ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                      ParseAndReturnVerifiedModule(hlo_text));
     return CreateTritonIrAndFileCheck(module.get(), triton_fusion_name,
                                       filecheck_pattern);
@@ -145,7 +145,7 @@ class TritonEmitterTest
   absl::Status CreateTritonIrFromHloTextAndFileCheckForDot(
       absl::string_view hlo_text, absl::string_view triton_fusion_name,
       absl::string_view filecheck_pattern) {
-    ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                      ParseAndReturnVerifiedModule(hlo_text));
     return CreateTritonIrAndFileCheckForDot(module.get(), triton_fusion_name,
                                             filecheck_pattern);
@@ -2751,12 +2751,45 @@ ENTRY e {
       std::move(optimized_module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-// TODO(b/522845225): After fixing random fp4 generation (before it was only 0s,
-// after it's generating uniformly from all fp4 values), we get a small amount
-// of mismatches in the output of this test (~0.2%). It is not clear if this is
-// an actual lowering bug or just a numerical stability issue. For now, we
-// disable the test.
-TEST_P(TritonScaledDotTest, DISABLED_Fp4Succeeds) {
+TEST_P(TritonScaledDotTest, Mxfp8ScaledDotSmallBlockKAndNExecutes) {
+  if (!GetCudaComputeCapability().IsAtLeastHopper()) {
+    GTEST_SKIP() << "Requires Hopper+.";
+  }
+  constexpr absl::string_view kHloText = R"hlo(
+HloModule m
+
+fusion__ {
+  parameter_0 = f8e4m3fn[128,256]{1,0} parameter(0)
+  parameter_1 = f8e4m3fn[256,128]{1,0} parameter(1)
+  parameter_2 = f8e8m0fnu[128,8]{1,0} parameter(2)
+  parameter_3 = f8e8m0fnu[8,128]{1,0} parameter(3)
+  ROOT _.1 = bf16[128,128]{1,0} scaled-dot(
+      parameter_0, parameter_1, parameter_2, parameter_3),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={"sizes":["64"]}
+}
+
+ENTRY e {
+  lhs = f8e4m3fn[128,256]{1,0} parameter(0)
+  rhs = f8e4m3fn[256,128]{1,0} parameter(1)
+  lhs_scale = f8e8m0fnu[128,8]{1,0} parameter(2)
+  rhs_scale = f8e8m0fnu[8,128]{1,0} parameter(3)
+  ROOT fusion = bf16[128,128]{1,0} fusion(
+      lhs, rhs, lhs_scale, rhs_scale),
+    kind=kCustom, calls=fusion__,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["128","16"]}],
+        "num_warps":"4","num_ctas":"1","num_stages":"1"}}}
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_P(TritonScaledDotTest, Fp4Succeeds) {
   if (!GetCudaComputeCapability().IsAtLeastBlackwell()) {
     GTEST_SKIP() << "Scaled dot with FP4 isn't supported by Triton for "
                     "pre-Blackwell GPUs.";
@@ -2780,15 +2813,29 @@ TEST_P(TritonScaledDotTest, DISABLED_Fp4Succeeds) {
                        GetOptimizedModule(kHloTextTemplate));
   HloComputation* scaled_dot_computation = GetFirstComputationWithInstruction(
       *optimized_module, HloOpcode::kScaledDot);
-  constexpr absl::string_view kExpectedTritonIr = R"(
+  ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                       scaled_dot_computation->FusionInstruction()
+                           ->backend_config<GpuBackendConfig>());
+  const BlockLevelFusionConfig& block_level_fusion_config =
+      gpu_config.fusion_backend_config().block_level_fusion_config();
+  ASSERT_EQ(block_level_fusion_config.output_tiles_size(), 1);
+  const auto& output_tile_sizes =
+      block_level_fusion_config.output_tiles(0).sizes();
+  ASSERT_EQ(output_tile_sizes.size(), 3);
+  const int64_t output_m = output_tile_sizes.Get(1);
+  const int64_t output_n = output_tile_sizes.Get(2);
+  ASSERT_EQ(output_n % 2, 0);
+  const std::string expected_triton_ir =
+      absl::Substitute(R"(
       CHECK: tt.dot_scaled
-      CHECK: tensor<128x64xi8>, tensor<128x4xi8>
-      CHECK: tensor<128x16xi8>, tensor<32x4xi8>
-      CHECK: -> tensor<128x32xf32>
-  )";
+      CHECK: tensor<$0x64xi8>, tensor<$0x4xi8>
+      CHECK: tensor<128x$1xi8>, tensor<$2x4xi8>
+      CHECK: -> tensor<$0x$2xf32>
+  )",
+                       output_m, output_n / 2, output_n);
 
   EXPECT_THAT(CreateTritonIrAndFileCheckForDot(*scaled_dot_computation,
-                                               kExpectedTritonIr),
+                                               expected_triton_ir),
               IsOk());
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(

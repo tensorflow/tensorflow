@@ -82,7 +82,7 @@ absl::StatusOr<bool> RunWhileDCE(
         // Replace while.body.root Tuple operand at 'tuple_index' with
         // 'pass_thru_gte', making prior operand a dead root (to be cleaned
         // up with a subsequent DCE pass).
-        RETURN_IF_ERROR(while_body_root->ReplaceOperandWith(i, pass_thru_gte));
+        ABSL_RETURN_IF_ERROR(while_body_root->ReplaceOperandWith(i, pass_thru_gte));
         changed = true;
         modified_while_body_comp = true;
       }
@@ -94,7 +94,7 @@ absl::StatusOr<bool> RunWhileDCE(
 
   // Run DCE on while body computations that we modified.
   for (auto* while_body_comp : while_body_comps_to_dce) {
-    ASSIGN_OR_RETURN(bool changed_for_computation,
+    ABSL_ASSIGN_OR_RETURN(bool changed_for_computation,
                      HloDCE::RunOnComputation(
                          while_body_comp,
                          /*remove_cross_partition_collective_ops=*/false));
@@ -112,26 +112,26 @@ absl::StatusOr<bool> HloModuleDCE::RunImpl(
   XLA_VLOG_LINES(3, module->ToString());
 
   std::unique_ptr<HloLivenessAnalysis> liveness;
-  ASSIGN_OR_RETURN(liveness, HloLivenessAnalysis::Run(*module));
+  ABSL_ASSIGN_OR_RETURN(liveness, HloLivenessAnalysis::Run(*module));
 
   // Sweep through while instructions, transforming dead while tuple element
   // computations to pass through tuple values (creating dead roots in while
   // body computation in the process).
-  ASSIGN_OR_RETURN(bool hlo_module_dce_changed,
+  ABSL_ASSIGN_OR_RETURN(bool hlo_module_dce_changed,
                    RunWhileDCE(module, liveness.get(), execution_threads));
 
   // Run the while loop simplifier to remove dead tuple elements.
   WhileLoopSimplifier while_loop_simplifier;
-  ASSIGN_OR_RETURN(bool while_loop_simplifier_changed,
+  ABSL_ASSIGN_OR_RETURN(bool while_loop_simplifier_changed,
                    while_loop_simplifier.Run(module, execution_threads));
 
   TupleSimplifier tuple_simplifier;
-  ASSIGN_OR_RETURN(bool tuple_simplifier_changed,
+  ABSL_ASSIGN_OR_RETURN(bool tuple_simplifier_changed,
                    tuple_simplifier.Run(module, execution_threads));
 
   // Run HloDCE to clean up any dead code created during HloModuleDCE.
   HloDCE hlo_dce;
-  ASSIGN_OR_RETURN(bool hlo_dce_changed,
+  ABSL_ASSIGN_OR_RETURN(bool hlo_dce_changed,
                    hlo_dce.Run(module, execution_threads));
 
   VLOG(2) << "After HloModuleDCE:";

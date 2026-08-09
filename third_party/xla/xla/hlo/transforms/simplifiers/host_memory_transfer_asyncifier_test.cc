@@ -42,8 +42,8 @@ namespace m = ::xla::match;
 class HostMemoryTransferAsyncifierTest : public HloHardwareIndependentTestBase {
  protected:
   absl::StatusOr<bool> RunAsyncifier(absl::string_view hlo_string) {
-    ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-    ASSIGN_OR_RETURN(bool changed, RunAsyncifier(module.get()));
+    ABSL_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+    ABSL_ASSIGN_OR_RETURN(bool changed, RunAsyncifier(module.get()));
     return changed;
   }
 

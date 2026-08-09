@@ -111,9 +111,43 @@ extern const char kMaximalFuseAttr[];
 extern const char kFuseLimitAttr[];
 extern const char kXlaCseSafeZeroOperandAttr[];
 
-// XLA frontend attribute for specifying groups of collectives that should be
-// launched together.
-extern const char kCollectivesGroupAttr[];
+// Frontend attribute asking XLA to launch and schedule independent collectives
+// with the same nonempty value as one group. Groups may mix operation types;
+// for example, they can prefetch the next layer's weights together.
+//
+// The key constrains only transformations that combine distinct collective
+// operations. For example, combining collectives from separate FSDP layers
+// would couple their scheduling and extend buffer lifetimes. Thus a keyed
+// collective must not be combined with an unannotated collective or one
+// carrying a different key.
+//
+// It does not freeze a collective: XLA may CSE, replace, decompose, split, or
+// move it. CSE may eliminate equivalent collectives across keys. A rewrite that
+// reduces communication in a serial chain may retain its sole or common key,
+// or clear conflicting keys. Other rewrites forward the key.
+//
+// Grouping is a best-effort performance hint. Moved members may land in
+// different computations and no longer group. Frontends must use a module-wide
+// unique key per logical group to avoid collisions after such moves.
+extern const char kCollectiveGroupKeyAttr[];
+
+// Internal marker on an outlined call or async-start operation whose called
+// computation contains collective operations that must be launched together.
+// During compilation, XLA outlines collectives with the same nonempty
+// kCollectiveGroupKeyAttr value into such calls.
+extern const char kCollectiveGroupMarkerAttr[];
+
+// Frontend attribute key that partitions ordinary same-type collective
+// combining.
+//
+// Unlike kCollectiveGroupKeyAttr, it does not request a runtime launch group;
+// it only controls which otherwise-compatible collectives a combiner may merge.
+//
+// For example, otherwise-compatible all-reduces with the same key can be
+// combined into one tuple-shaped all-reduce that operates on multiple buffers.
+// Combining composes with collective grouping: a combined all-gather and a
+// combined all-reduce can then share one collective group.
+extern const char kCombinerKeyAttr[];
 
 extern const char kNumSlotVariables[];
 extern const char kNumHyperparameters[];
@@ -127,10 +161,6 @@ extern const char kXlaTableNameAttr[];
 extern const char kXlaVocabSizeAttr[];
 extern const char kXlaFeatureWidthAttr[];
 extern const char kXlaSampleCountAttr[];
-
-// Frontend attribute key used to control which collectives can be combined.
-// Collectives with different combiner_key values will not be combined together.
-extern const char kCombinerKeyAttr[];
 
 // Frontend attribute key marking collectives selected for explicit pipelining.
 extern const char kIsPipelineableAttr[];

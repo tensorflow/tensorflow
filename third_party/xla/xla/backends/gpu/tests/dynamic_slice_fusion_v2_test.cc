@@ -15,21 +15,27 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/backends/gpu/runtime/while_loop.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/ffi/ffi.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tests/literal_test_util.h"
@@ -62,9 +68,9 @@ static absl::Status ScaledMemset(se::Stream* stream, ffi::RemainingArgs inputs,
 
   float iter = static_cast<float>(state->loop_iteration);
   for (size_t j = 0; j < outputs.size(); ++j) {
-    ASSIGN_OR_RETURN(auto out, outputs.get<ffi::AnyBuffer>(j));
+    ABSL_ASSIGN_OR_RETURN(auto out, outputs.get<ffi::AnyBuffer>(j));
     se::DeviceAddressBase dst = out->device_memory();
-    RETURN_IF_ERROR(stream->Memset32(
+    ABSL_RETURN_IF_ERROR(stream->Memset32(
         &dst, absl::bit_cast<uint32_t>(iter * scales[j]), dst.size()));
   }
 
@@ -102,6 +108,7 @@ class DynamicSliceFusionV2Test : public HloPjRtGpuTestBase {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloPjRtGpuTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_dynamic_slice_fusion(true);
     debug_options.set_xla_gpu_experimental_dynamic_slice_fusion_verify_offsets(
         true);
     return debug_options;
@@ -169,6 +176,69 @@ TEST_F(DynamicSliceFusionV2Test, SingleOutputOneDUS) {
       Literal result, Execute(std::move(*ParseAndReturnVerifiedModule(hlo)), {},
                               /*run_hlo_passes=*/false));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(DynamicSliceFusionV2Test, HeroWithExternalUserRunsOncePerIteration) {
+  // A surviving duplicate computes identical values -- a pure performance
+  // defect, visible as a second custom-call in the optimized HLO.
+  const char* hlo = R"(
+    HloModule test
+
+    body {
+      param = (s32[], f32[64], f32[4,64]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      res = f32[64] get-tuple-element(param), index=1
+      buf = f32[4,64] get-tuple-element(param), index=2
+      hero = f32[64] custom-call(res),
+        custom_call_target="__xla_test$$memset_const",
+        api_version=API_VERSION_TYPED_FFI,
+        backend_config="{value = 7.0 : f32}"
+      hero_2d = f32[1,64] reshape(hero)
+      zero = s32[] constant(0)
+      updated = f32[4,64] dynamic-update-slice(buf, hero_2d, i, zero)
+      new_res = f32[64] add(res, hero)
+      one = s32[] constant(1)
+      next_i = s32[] add(i, one)
+      ROOT tuple = (s32[], f32[64], f32[4,64]) tuple(next_i, new_res, updated)
+    }
+
+    cond {
+      param = (s32[], f32[64], f32[4,64]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      limit = s32[] constant(4)
+      ROOT cmp = pred[] compare(i, limit), direction=LT
+    }
+
+    ENTRY main {
+      zero = s32[] constant(0)
+      init_res = f32[64] broadcast(f32[] constant(0)), dimensions={}
+      init_buf = f32[4,64] broadcast(f32[] constant(0)), dimensions={}
+      init = (s32[], f32[64], f32[4,64]) tuple(zero, init_res, init_buf)
+      ROOT while = (s32[], f32[64], f32[4,64])
+        while(init), condition=cond, body=body
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(
+      Literal result, Execute(std::move(*ParseAndReturnVerifiedModule(hlo)), {},
+                              /*run_hlo_passes=*/true));
+
+  Literal expected = LiteralUtil::MakeTupleOwned(
+      LiteralUtil::CreateR0<int32_t>(4),
+      LiteralUtil::CreateFullWithDescendingLayout<float>({64}, 28.0f),
+      LiteralUtil::CreateFullWithDescendingLayout<float>({4, 64}, 7.0f));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized,
+                       GetOptimizedModule(hlo));
+  int64_t hero_count = 0;
+  for (const HloComputation* computation : optimized->computations()) {
+    for (const HloInstruction* instr : computation->instructions()) {
+      hero_count += instr->opcode() == HloOpcode::kCustomCall &&
+                    instr->custom_call_target() == "__xla_test$$memset_const";
+    }
+  }
+  EXPECT_EQ(hero_count, 1);
 }
 
 TEST_F(DynamicSliceFusionV2Test, SingleOutputOneDUSWithOffsetExpression) {
@@ -521,6 +591,81 @@ TEST_F(DynamicSliceFusionV2Test, AsyncSingleOutputOneDUS) {
   ASSERT_OK_AND_ASSIGN(
       Literal result, Execute(std::move(*ParseAndReturnVerifiedModule(hlo)), {},
                               /*run_hlo_passes=*/false));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(DynamicSliceFusionV2Test,
+       AsyncSingleOutputOneDUSWithCallerOffsetExpression) {
+  const char* hlo = R"(
+    HloModule test, is_scheduled=true
+
+    %dsf_computation {
+      %p_input = f32[4,8,8] parameter(0)
+      %p_index = s32[] parameter(1)
+      %p_zero = s32[] parameter(2)
+      %fill = f32[8,8] custom-call(%p_input),
+        custom_call_target="__xla_test$$scaled_memset",
+        api_version=API_VERSION_TYPED_FFI,
+        backend_config="{scales = array<f32: 1.0>}"
+      %fill_3d = f32[1,8,8] bitcast(%fill)
+      ROOT %dus = f32[4,8,8] dynamic-update-slice(
+        %p_input, %fill_3d, %p_index, %p_zero, %p_zero),
+        backend_config={"dynamic_slice_config":
+          {"loop_index":0,"byte_offset":768,"byte_stride":-256}}
+    }
+
+    %async_computation {
+      %p_input = f32[4,8,8] parameter(0)
+      %p_index = s32[] parameter(1)
+      %p_zero = s32[] parameter(2)
+      ROOT %fusion = f32[4,8,8] fusion(%p_input, %p_index, %p_zero),
+        kind=kCustom, calls=%dsf_computation,
+        backend_config={"fusion_backend_config":{
+          "kind":"__custom_fusion",
+          "custom_fusion_config":
+            {"name":"dynamic_slice_fusion"}}}
+    }
+
+    body {
+      param = (s32[], f32[4,8,8]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      buf = f32[4,8,8] get-tuple-element(param), index=1
+      zero = s32[] constant(0)
+      three = s32[] constant(3)
+      reversed = s32[] subtract(three, i)
+      start = ((f32[4,8,8], s32[], s32[]), f32[4,8,8], u32[])
+        async-start(buf, reversed, zero), calls=%async_computation
+      updated = f32[4,8,8] async-done(start)
+      one = s32[] constant(1)
+      next_i = s32[] add(i, one)
+      ROOT tuple = (s32[], f32[4,8,8]) tuple(next_i, updated)
+    }
+
+    cond {
+      param = (s32[], f32[4,8,8]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      limit = s32[] constant(4)
+      ROOT cmp = pred[] compare(i, limit), direction=LT
+    }
+
+    ENTRY main {
+      zero = s32[] constant(0)
+      init_buf = f32[4,8,8] broadcast(f32[] constant(-1)), dimensions={}
+      init = (s32[], f32[4,8,8]) tuple(zero, init_buf)
+      while = (s32[], f32[4,8,8])
+        while(init), condition=cond, body=body
+      ROOT result = f32[4,8,8] get-tuple-element(while), index=1
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(
+      Literal expected,
+      LiteralUtil::CreateR1<float>({3.0f, 2.0f, 1.0f, 0.0f})
+          .Broadcast(ShapeUtil::MakeShape(F32, {4, 8, 8}), {0}));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(
+      Literal result, Execute(std::move(module), {}, /*run_hlo_passes=*/false));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 

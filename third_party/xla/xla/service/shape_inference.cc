@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/overflow_util.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -343,7 +344,7 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
     return shape;
   }
 
-  RETURN_IF_ERROR(ExpectArray(shape, "operand of unary operation"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(shape, "operand of unary operation"));
 
   DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
   switch (opcode) {
@@ -475,7 +476,7 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
 
 /* static */ absl::StatusOr<Shape> ShapeInference::InferTopKShape(
     const Shape& operand_shape, int64_t k) {
-  RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of top-k operation"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of top-k operation"));
   int64_t last_dim =
       static_cast<int64_t>(operand_shape.dimensions().size()) - 1;
   std::vector<bool> is_dynamic(operand_shape.dimensions().size());
@@ -508,7 +509,7 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
   const Shape* arg_shape = nullptr;
   PrimitiveType element_type = PRIMITIVE_TYPE_INVALID;
   for (const Shape* shape : arg_shapes) {
-    RETURN_IF_ERROR(ExpectArray(*shape, "operand of concatenation"));
+    ABSL_RETURN_IF_ERROR(ExpectArray(*shape, "operand of concatenation"));
     if (!arg_shape) {
       arg_shape = shape;
       element_type = arg_shape->element_type();
@@ -570,7 +571,7 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
         inferred_dim_and_bound = InferConcatenatedDimAndBound(
             leftSize, rightSize, leftBound, rightBound);
       } else {
-        ASSIGN_OR_RETURN(inferred_dim_and_bound,
+        ABSL_ASSIGN_OR_RETURN(inferred_dim_and_bound,
                          InferMostSpecificDimAndBound(dim, leftSize, rightSize,
                                                       leftBound, rightBound));
       }
@@ -666,9 +667,9 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
   DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(operand_shape));
   DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(random_shape));
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ExpectArray(operand_shape, "lhs of stochastic convert operation"));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ExpectArray(random_shape, "rhs of stochastic convert operation"));
 
   if (!primitive_util::IsUnsignedIntegralType(random_shape.element_type())) {
@@ -954,14 +955,14 @@ void GenerateDotResultDimensions(
     const Shape& lhs, const Shape& rhs,
     const DotDimensionNumbers& dimension_numbers,
     std::optional<PrimitiveType> preferred_element_type) {
-  RETURN_IF_ERROR(ExpectArray(lhs, "lhs of dot"));
-  RETURN_IF_ERROR(ExpectArray(rhs, "rhs of dot"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of dot"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of dot"));
 
   // Validate basic properties of dot dimension numbers.
-  RETURN_IF_ERROR(ValidateDotDimensionNumbers(lhs, rhs, dimension_numbers));
+  ABSL_RETURN_IF_ERROR(ValidateDotDimensionNumbers(lhs, rhs, dimension_numbers));
 
   // Check the number and sizes of batch and contracting dimensions.
-  RETURN_IF_ERROR(CheckDotDimensionConstraints(lhs, rhs, dimension_numbers));
+  ABSL_RETURN_IF_ERROR(CheckDotDimensionConstraints(lhs, rhs, dimension_numbers));
 
   std::vector<int64_t> dimensions;
   std::vector<bool> is_dynamic;
@@ -999,9 +1000,9 @@ void GenerateDotResultDimensions(
     const Shape& lhs, const Shape& rhs, const Shape& group_sizes,
     const RaggedDotDimensionNumbers& ragged_dot_dim_nums,
     std::optional<PrimitiveType> preferred_element_type) {
-  RETURN_IF_ERROR(ExpectArray(lhs, "lhs of ragged dot"));
-  RETURN_IF_ERROR(ExpectArray(rhs, "rhs of ragged dot"));
-  RETURN_IF_ERROR(ExpectArray(group_sizes, "group_sizes of ragged dot"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of ragged dot"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of ragged dot"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(group_sizes, "group_sizes of ragged dot"));
 
   auto fail = [lhs, rhs](const std::string& addendum) -> absl::Status {
     std::string message = StrFormat(
@@ -1017,9 +1018,9 @@ void GenerateDotResultDimensions(
       ragged_dot_dim_nums.dot_dimension_numbers();
 
   // Validate basic properties of dot dimension numbers.
-  RETURN_IF_ERROR(ValidateDotDimensionNumbers(lhs, rhs, dimension_numbers));
+  ABSL_RETURN_IF_ERROR(ValidateDotDimensionNumbers(lhs, rhs, dimension_numbers));
   // Check the number and sizes of batch and contracting dimensions.
-  RETURN_IF_ERROR(CheckDotDimensionConstraints(lhs, rhs, dimension_numbers));
+  ABSL_RETURN_IF_ERROR(CheckDotDimensionConstraints(lhs, rhs, dimension_numbers));
 
   // Check that there is exactly one lhs ragged dimension.
   if (ragged_dot_dim_nums.lhs_ragged_dimensions_size() != 1) {
@@ -1373,8 +1374,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
 ShapeInference::InferElementwiseBinaryOpShape(
     HloOpcode operation, const Shape& lhs, const Shape& rhs,
     absl::Span<const int64_t> broadcast_dimensions) {
-  RETURN_IF_ERROR(ExpectArray(lhs, "lhs of elementwise binary operation"));
-  RETURN_IF_ERROR(ExpectArray(rhs, "rhs of elementwise binary operation"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of elementwise binary operation"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of elementwise binary operation"));
 
   if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(lhs, rhs)) {
     return InvalidArgument(
@@ -1426,7 +1427,7 @@ ShapeInference::InferElementwiseBinaryOpShape(
       lhs.dimensions().size() > rhs.dimensions().size() ? rhs : lhs;
 
   // After InDim broadcasting, perform degenerate dimensions broadcasting.
-  ASSIGN_OR_RETURN(Shape indim_broadcast_shape,
+  ABSL_ASSIGN_OR_RETURN(Shape indim_broadcast_shape,
                    InferInDimBroadcastShape(smaller_shape, larger_shape,
                                             broadcast_dimensions));
   return InferDegenerateDimensionBroadcastShape(indim_broadcast_shape,
@@ -1473,9 +1474,9 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
   DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(lhs));
   DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(rhs));
 
-  RETURN_IF_ERROR(ExpectArray(
+  ABSL_RETURN_IF_ERROR(ExpectArray(
       lhs, absl::StrCat("lhs of binary operation ", HloOpcodeString(opcode))));
-  RETURN_IF_ERROR(ExpectArray(
+  ABSL_RETURN_IF_ERROR(ExpectArray(
       rhs, absl::StrCat("rhs of binary operation ", HloOpcodeString(opcode))));
   switch (opcode) {
     case HloOpcode::kAdd:
@@ -1510,7 +1511,7 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
             "operation; got %s.",
             PrimitiveType_Name(lhs.element_type()));
       }
-      ASSIGN_OR_RETURN(const Shape& shape,
+      ABSL_ASSIGN_OR_RETURN(const Shape& shape,
                        InferElementwiseBinaryOpShape(opcode, lhs, rhs,
                                                      broadcast_dimensions));
       if (lhs.element_type() == F32 && rhs.element_type() == F32) {
@@ -1534,7 +1535,7 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
       return InferElementwiseBinaryOpShape(opcode, lhs, rhs,
                                            broadcast_dimensions);
     case HloOpcode::kCompare: {
-      ASSIGN_OR_RETURN(const Shape& shape,
+      ABSL_ASSIGN_OR_RETURN(const Shape& shape,
                        InferElementwiseBinaryOpShape(opcode, lhs, rhs,
                                                      broadcast_dimensions));
       return ShapeUtil::ChangeElementType(shape, PRED);
@@ -1624,7 +1625,7 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
   // All arguments must have the same shape ignoring the element types.
   const Shape* arg_shape = arg_shapes[0];
   for (size_t i = 1; i < arg_shapes.size(); ++i) {
-    RETURN_IF_ERROR(ExpectArray(*arg_shapes[i], "operand of map"));
+    ABSL_RETURN_IF_ERROR(ExpectArray(*arg_shapes[i], "operand of map"));
 
     if (ShapeUtil::CompatibleIgnoringElementType(*arg_shapes[i], *arg_shape)) {
       continue;
@@ -1712,10 +1713,10 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
 /* static */ absl::StatusOr<Shape> ShapeInference::InferBatchNormTrainingShape(
     const Shape& operand_shape, const Shape& scale_shape,
     const Shape& offset_shape, int64_t feature_index) {
-  RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of batch norm training"));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of batch norm training"));
+  ABSL_RETURN_IF_ERROR(
       ExpectArray(offset_shape, "offset input of batch norm training"));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ExpectArray(scale_shape, "scale input of batch norm training"));
 
   TF_RET_CHECK(ShapeUtil::ValidateShapeWithOptionalLayout(operand_shape) ==
@@ -1821,18 +1822,18 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
     const Shape& operand_shape, const Shape& scale_shape,
     const Shape& offset_shape, const Shape& mean_shape,
     const Shape& variance_shape, int64_t feature_index) {
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ExpectArray(operand_shape, "operand of batch norm inference"));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ExpectArray(offset_shape, "offset input of batch norm inference"));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ExpectArray(scale_shape, "scale input of batch norm inference"));
 
-  RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(operand_shape));
-  RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(offset_shape));
-  RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(scale_shape));
-  RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(mean_shape));
-  RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(variance_shape));
+  ABSL_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(operand_shape));
+  ABSL_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(offset_shape));
+  ABSL_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(scale_shape));
+  ABSL_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(mean_shape));
+  ABSL_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(variance_shape));
 
   if (feature_index >=
       static_cast<int64_t>(operand_shape.dimensions().size())) {
@@ -1967,18 +1968,18 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
     const Shape& operand_shape, const Shape& scale_shape,
     const Shape& mean_shape, const Shape& var_shape,
     const Shape& output_grad_shape, int64_t feature_index) {
-  RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of batch norm grad"));
-  RETURN_IF_ERROR(ExpectArray(scale_shape, "scale input of batch norm grad"));
-  RETURN_IF_ERROR(ExpectArray(mean_shape, "mean input of batch norm grad"));
-  RETURN_IF_ERROR(ExpectArray(var_shape, "var input of batch norm grad"));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of batch norm grad"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(scale_shape, "scale input of batch norm grad"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(mean_shape, "mean input of batch norm grad"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(var_shape, "var input of batch norm grad"));
+  ABSL_RETURN_IF_ERROR(
       ExpectArray(output_grad_shape, "output_grad input of batch norm grad"));
 
-  RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(operand_shape));
-  RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(mean_shape));
-  RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(scale_shape));
-  RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(var_shape));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(operand_shape));
+  ABSL_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(mean_shape));
+  ABSL_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(scale_shape));
+  ABSL_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(var_shape));
+  ABSL_RETURN_IF_ERROR(
       ShapeUtil::ValidateShapeWithOptionalLayout(output_grad_shape));
 
   if (feature_index >=
@@ -2174,7 +2175,7 @@ absl::StatusOr<Shape> InferFpropConvolveShape(
   }
   Shape base_shape = ShapeUtil::MakeShape(
       lhs.element_type(), input_spatial_dims, dynamic_dimensions);
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       Shape window_output_shape,
       InferWindowOutputShape(base_shape, window, lhs.element_type()));
 
@@ -2389,8 +2390,8 @@ absl::StatusOr<Shape> InferWgradConvolveShape(
   }
   const Shape& rhs = *rhs_ptr;
 
-  RETURN_IF_ERROR(ExpectArray(lhs, "lhs of convolution"));
-  RETURN_IF_ERROR(ExpectArray(rhs, "rhs of convolution"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of convolution"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of convolution"));
 
   if (feature_group_count <= 0) {
     return InvalidArgument(
@@ -2771,7 +2772,7 @@ absl::StatusOr<Shape> InferWgradConvolveShape(
   for (const Shape* operand_shape : operand_shapes) {
     TF_RET_CHECK(all_gather_dimension <
                  static_cast<int64_t>(operand_shape->dimensions().size()));
-    RETURN_IF_ERROR(ExpectArray(*operand_shape, "operand of all-gather"));
+    ABSL_RETURN_IF_ERROR(ExpectArray(*operand_shape, "operand of all-gather"));
 
     Shape output_shape = *operand_shape;
     int64_t output_shape_dimension =
@@ -2800,7 +2801,7 @@ absl::StatusOr<Shape> InferWgradConvolveShape(
 /* static */ absl::StatusOr<Shape> ShapeInference::InferAllGatherStartShape(
     absl::Span<const Shape* const> operand_shapes, int64_t all_gather_dimension,
     int64_t shard_count) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       Shape ag_shape,
       InferAllGatherShape(operand_shapes, all_gather_dimension, shard_count));
   Shape input_shape;
@@ -2820,7 +2821,7 @@ absl::StatusOr<Shape> InferWgradConvolveShape(
 /* static */ absl::StatusOr<Shape> ShapeInference::InferAllReduceShape(
     absl::Span<const Shape* const> operand_shapes) {
   for (const Shape* operand_shape : operand_shapes) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         ExpectArray(*operand_shape, "operand of cross replica sum"));
   }
   if (operand_shapes.size() == 1) {
@@ -2840,7 +2841,7 @@ absl::StatusOr<Shape> InferWgradConvolveShape(
   for (const Shape* operand_shape : operand_shapes) {
     TF_RET_CHECK(scatter_dimension <
                  static_cast<int64_t>(operand_shape->dimensions().size()));
-    RETURN_IF_ERROR(ExpectArray(*operand_shape, "operand of reduce-scatter"));
+    ABSL_RETURN_IF_ERROR(ExpectArray(*operand_shape, "operand of reduce-scatter"));
 
     int64_t scatter_dim_input_size =
         operand_shape->dimensions(scatter_dimension);
@@ -2950,7 +2951,7 @@ absl::StatusOr<Shape> InferWgradConvolveShape(
 
 /* static */ absl::StatusOr<Shape> ShapeInference::InferRaggedAllToAllShape(
     absl::Span<const Shape* const> operand_shapes) {
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ExpectArray(*(operand_shapes[1]), "operand 1 of ragged-all-to-all"));
   return *(operand_shapes[1]);
 }
@@ -2961,7 +2962,7 @@ ShapeInference::InferCollectiveBroadcastShape(
   if (has_dynamic_root) {
     TF_RET_CHECK(operand_shapes.size() > 1);
     const Shape& dynamic_root = *operand_shapes.back();
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         ExpectArray(dynamic_root,
                     "last operand of collective-broadcast with dynamic root"));
 
@@ -2981,7 +2982,7 @@ ShapeInference::InferCollectiveBroadcastShape(
     }
     return ShapeUtil::MakeTupleShapeWithPtrs(data_operand_shapes);
   }
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ExpectArray(*(operand_shapes[0]), "operand of collective-broadcast"));
   return *(operand_shapes[0]);
 }
@@ -2990,7 +2991,7 @@ ShapeInference::InferCollectiveBroadcastShape(
     absl::Span<const Shape* const> operand_shapes, bool inplace) {
   if (!inplace) {
     for (const Shape* operand_shape : operand_shapes) {
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           ExpectArray(*operand_shape, "operand of collective-permute"));
     }
     if (operand_shapes.size() == 1) {
@@ -3010,7 +3011,7 @@ ShapeInference::InferCollectivePermuteStartShape(
   absl::InlinedVector<Shape, 4> shapes;
   if (!inplace) {
     if (operand_shapes.size() == 1) {
-      RETURN_IF_ERROR(ExpectArray(*(operand_shapes[0]),
+      ABSL_RETURN_IF_ERROR(ExpectArray(*(operand_shapes[0]),
                                   "operand of collective-permute-start"));
       shapes = {*operand_shapes[0], *operand_shapes[0]};
     } else {
@@ -3074,7 +3075,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
   for (const Shape* arg : reduced_args) {
     element_types.push_back(arg->element_type());
   }
-  RETURN_IF_ERROR(VerifyReducerShape(to_apply, init_values, element_types,
+  ABSL_RETURN_IF_ERROR(VerifyReducerShape(to_apply, init_values, element_types,
                                      num_reduced_args));
 
   absl::flat_hash_set<int64_t> dimensions_to_reduce_set;
@@ -3112,7 +3113,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
 /* static */ absl::StatusOr<Shape> ShapeInference::InferReduceWindowShape(
     const Shape& operand_shape, const Shape& init_value_shape,
     const Window& window, const ProgramShape& to_apply_shape) {
-  RETURN_IF_ERROR(VerifyReducerShape(to_apply_shape, {&init_value_shape},
+  ABSL_RETURN_IF_ERROR(VerifyReducerShape(to_apply_shape, {&init_value_shape},
                                      {operand_shape.element_type()},
                                      /*inputs=*/1));
   return InferReduceWindowShape(operand_shape, init_value_shape, window);
@@ -3139,14 +3140,14 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
   for (const Shape* s : operands) {
     operand_element_type_vec.push_back(s->element_type());
   }
-  RETURN_IF_ERROR(VerifyReducerShape(to_apply_shape, init_values,
+  ABSL_RETURN_IF_ERROR(VerifyReducerShape(to_apply_shape, init_values,
                                      operand_element_type_vec,
                                      /*inputs=*/number_of_input));
   std::vector<Shape> output_shape_vec;
   const size_t n = operands.size();
   output_shape_vec.reserve(n);
   for (size_t i = 0; i < operands.size(); ++i) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto cur_output_shape,
         InferReduceWindowShape(*operands[i], *init_values[i], window));
     output_shape_vec.push_back(cur_output_shape);
@@ -3162,7 +3163,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
 /* static */ absl::StatusOr<Shape> ShapeInference::InferReduceWindowShape(
     const Shape& operand_shape, const Shape& init_value_shape,
     const Window& window) {
-  RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of reduce-window"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of reduce-window"));
   return InferWindowOutputShape(operand_shape, window,
                                 init_value_shape.element_type());
 }
@@ -3171,7 +3172,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
     const Shape& operand_shape, const ProgramShape& select_shape,
     const Window& window, const Shape& source_shape,
     const Shape& init_value_shape, const ProgramShape& scatter_shape) {
-  RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of select-and-scatter"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of select-and-scatter"));
 
   // Check if the select function has a proper shape of (T,T) -> PRED.
   if (select_shape.parameters_size() != 2) {
@@ -3205,12 +3206,12 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
   }
 
   // Check if the scatter function has a proper shape as a reduction.
-  RETURN_IF_ERROR(VerifyReducerShape(scatter_shape, {&init_value_shape},
+  ABSL_RETURN_IF_ERROR(VerifyReducerShape(scatter_shape, {&init_value_shape},
                                      {source_shape.element_type()},
                                      /*inputs=*/1));
 
   // Check if the result shape of window operation matches the source shape.
-  ASSIGN_OR_RETURN(const Shape& window_result_shape,
+  ABSL_ASSIGN_OR_RETURN(const Shape& window_result_shape,
                    InferWindowOutputShape(operand_shape, window,
                                           operand_shape.element_type()));
   if (!ShapeUtil::CompatibleIgnoringFpPrecision(source_shape,
@@ -3290,12 +3291,12 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
                     "\nNumber of ", x_name, ": ", x, "\n"));
     }
   };
-  RETURN_IF_ERROR(verify_size(window_strides.size(), "window strides"));
-  RETURN_IF_ERROR(verify_size(padding.size(), "padding entries"));
-  RETURN_IF_ERROR(verify_size(lhs_dilation.size(), "lhs dilation factors"));
-  RETURN_IF_ERROR(verify_size(rhs_dilation.size(), "rhs dilation factors"));
+  ABSL_RETURN_IF_ERROR(verify_size(window_strides.size(), "window strides"));
+  ABSL_RETURN_IF_ERROR(verify_size(padding.size(), "padding entries"));
+  ABSL_RETURN_IF_ERROR(verify_size(lhs_dilation.size(), "lhs dilation factors"));
+  ABSL_RETURN_IF_ERROR(verify_size(rhs_dilation.size(), "rhs dilation factors"));
   if (window_reversal.has_value()) {
-    RETURN_IF_ERROR(verify_size(window_reversal->size(), "window reversal"));
+    ABSL_RETURN_IF_ERROR(verify_size(window_reversal->size(), "window reversal"));
   }
 
   Window window;
@@ -3343,7 +3344,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
         message, ShapeUtil::HumanString(arg), StrJoin(starts, ","),
         StrJoin(limits, ","), StrJoin(strides, ","));
   };
-  RETURN_IF_ERROR(ExpectArray(arg, "operand of slice"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(arg, "operand of slice"));
   VLOG(2) << StrFormat("slicing shape %s starts={%s} limits={%s}",
                        ShapeUtil::HumanString(arg), StrJoin(starts, ", "),
                        StrJoin(limits, ", "));
@@ -3411,7 +3412,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
 /* static */ absl::StatusOr<Shape> ShapeInference::InferDynamicSliceShape(
     const Shape& operand_shape, absl::Span<const Shape> start_index_shapes,
     absl::Span<const int64_t> slice_sizes, bool allow_scalar_indices) {
-  RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of dynamic slice"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of dynamic slice"));
   auto number_of_indices = start_index_shapes.size();
   // TODO(b/118437727): Remove this path.
   if (!allow_scalar_indices ||
@@ -3430,7 +3431,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
         ShapeUtil::HumanString(start_indices_shape),
         StrJoin(slice_sizes, ", "));
 
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         ExpectArray(start_indices_shape, "start indices of dynamic slice"));
 
     if (start_indices_shape.dimensions().size() != 1) {
@@ -3535,7 +3536,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
         "but got %s.",
         ShapeUtil::HumanString(operand_shape));
   }
-  RETURN_IF_ERROR(ExpectArray(update_shape, "update of dynamic update slice"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(update_shape, "update of dynamic update slice"));
 
   auto number_of_indices = start_index_shapes.size();
   // TODO(b/118437727): Remove this path.
@@ -3548,7 +3549,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
           number_of_indices);
     }
     const Shape& start_indices_shape = start_index_shapes[0];
-    RETURN_IF_ERROR(ExpectArray(start_indices_shape,
+    ABSL_RETURN_IF_ERROR(ExpectArray(start_indices_shape,
                                 "start indices of dynamic update slice"));
 
     VLOG(2) << StrFormat(
@@ -3671,7 +3672,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
 
 /*static */ absl::StatusOr<Shape> ShapeInference::InferReverseShape(
     const Shape& operand_shape, absl::Span<const int64_t> dimensions) {
-  RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of reverse"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of reverse"));
   if (!AllUnique(dimensions)) {
     return InvalidArgument("a dimension number is duplicated in reverse");
   }
@@ -3818,7 +3819,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
 /* static */ absl::StatusOr<Shape> ShapeInference::InferBroadcastShape(
     const Shape& operand, absl::Span<const int64_t> broadcast_sizes) {
   // This method is used to infer shape for xla::BroadcastInDim.
-  RETURN_IF_ERROR(ExpectArray(operand, "operand of broadcast"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(operand, "operand of broadcast"));
   TF_RET_CHECK(!operand.is_unbounded_dynamic());
   for (int64_t size : broadcast_sizes) {
     if (size == Shape::kUnboundedSize) {
@@ -3836,7 +3837,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
   absl::c_copy(operand.dimensions(),
                dimensions.begin() + broadcast_sizes.size());
 
-  ASSIGN_OR_RETURN(Shape result, ShapeUtil::MakeValidatedShape(
+  ABSL_ASSIGN_OR_RETURN(Shape result, ShapeUtil::MakeValidatedShape(
                                      operand.element_type(), dimensions));
   for (int64_t i = 0; i < operand.dimensions().size(); ++i) {
     result.set_dynamic_dimension(broadcast_sizes.size() + i,
@@ -3849,8 +3850,8 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
     const Shape& operand_shape, const Shape& output_shape,
     absl::Span<const int64_t> broadcast_dimensions) {
   // This method is used to infer shape for xla::BroadcastInDim.
-  RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of broadcast"));
-  RETURN_IF_ERROR(ExpectArray(output_shape, "operand of broadcast"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of broadcast"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(output_shape, "operand of broadcast"));
   TF_RET_CHECK(!output_shape.is_unbounded_dynamic());
   const int64_t operand_rank = operand_shape.dimensions().size();
   const int64_t output_rank = output_shape.dimensions().size();
@@ -3938,7 +3939,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
 /* static */ absl::StatusOr<Shape> ShapeInference::InferReshapeShape(
     const Shape& operand, absl::Span<const int64_t> dimensions,
     int64_t inferred_dimension) {
-  RETURN_IF_ERROR(ExpectArray(operand, "reshape"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(operand, "reshape"));
   Shape inferred_shape =
       ShapeUtil::MakeShape(operand.element_type(), dimensions);
   VLOG(3) << "Reshape inferred shape: "
@@ -4078,7 +4079,12 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
           output_non_degenerated.push_back(i);
         }
       }
-      if (output_non_degenerated.size() == 1) {
+      if (!output_non_degenerated.empty()) {
+        // Mark the most-major non-degenerate dimension as dynamic, matching
+        // how DynamicDimensionInference decomposes a split dynamic dimension
+        // (the runtime size is assumed to be a multiple of the static minor
+        // factors of the group). Dropping the dynamism here would silently
+        // bake the bound into consumers such as GetDimensionSize.
         inferred_shape.set_dynamic_dimension(output_non_degenerated[0], true);
       }
     }
@@ -4089,7 +4095,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
 
 /* static */ absl::StatusOr<Shape> ShapeInference::InferTransposeShape(
     const Shape& operand, absl::Span<const int64_t> dimensions) {
-  RETURN_IF_ERROR(ExpectArray(operand, "transpose"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(operand, "transpose"));
 
   if (dimensions.size() != operand.dimensions().size() ||
       !IsPermutation(dimensions)) {
@@ -4104,9 +4110,9 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
 
 /* static */ absl::StatusOr<Shape> ShapeInference::InferClampShape(
     const Shape& min, const Shape& operand, const Shape& max) {
-  RETURN_IF_ERROR(ExpectArray(min, "clamp min"));
-  RETURN_IF_ERROR(ExpectArray(operand, "clamp operand"));
-  RETURN_IF_ERROR(ExpectArray(max, "clamp max"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(min, "clamp min"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(operand, "clamp operand"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(max, "clamp max"));
 
   // min, operand, and max must have compatible element types.
   if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(min, operand) ||
@@ -4134,9 +4140,9 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
 
 /* static */ absl::StatusOr<Shape> ShapeInference::InferSelectShape(
     const Shape& pred, const Shape& on_true, const Shape& on_false) {
-  RETURN_IF_ERROR(ExpectArray(pred, "select pred"));
-  RETURN_IF_ERROR(ExpectArray(on_true, "select on-true"));
-  RETURN_IF_ERROR(ExpectArray(on_false, "select on-false"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(pred, "select pred"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(on_true, "select on-true"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(on_false, "select on-false"));
 
   if (!ShapeUtil::CompatibleIgnoringFpPrecision(on_true, on_false)) {
     return InvalidArgument(
@@ -4388,9 +4394,9 @@ static absl::Status ValidateGatherDimensionNumbers(
     const Shape& input_shape, const Shape& start_indices_shape,
     const GatherDimensionNumbers& gather_dim_numbers,
     absl::Span<const int64_t> slice_sizes) {
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ExpectArray(input_shape, "input tensor operand of gather op"));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ExpectArray(start_indices_shape, "gather indices operand of gather op"));
 
   if (!ShapeUtil::ElementIsIntegral(start_indices_shape)) {
@@ -4431,7 +4437,7 @@ static absl::Status ValidateGatherDimensionNumbers(
     expanded_start_indices_shape_dynamic_dimensions.push_back(false);
   }
 
-  RETURN_IF_ERROR(ValidateGatherDimensionNumbers(
+  ABSL_RETURN_IF_ERROR(ValidateGatherDimensionNumbers(
       input_shape, expanded_start_indices_shape, gather_dim_numbers));
 
   if (slice_sizes.size() != input_shape.dimensions().size()) {
@@ -4705,7 +4711,7 @@ absl::Status ValidateScatterDimensionNumbers(
   }
 
   const Shape& scatter_indices_shape = *arg_shapes[operand_count];
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ExpectArray(scatter_indices_shape, "scatter indices of scatter op"));
   if (!ShapeUtil::ElementIsIntegral(scatter_indices_shape)) {
     return InvalidArgument(
@@ -4735,9 +4741,9 @@ absl::Status ValidateScatterDimensionNumbers(
   for (int64_t operand_i = 0; operand_i < operand_count; ++operand_i) {
     const Shape& operand_shape = *operand_shapes[operand_i];
     const Shape& updates_shape = *updates_shapes[operand_i];
-    RETURN_IF_ERROR(ExpectArray(
+    ABSL_RETURN_IF_ERROR(ExpectArray(
         operand_shape, absl::StrCat("operand ", operand_i, " of scatter op")));
-    RETURN_IF_ERROR(ExpectArray(
+    ABSL_RETURN_IF_ERROR(ExpectArray(
         updates_shape, absl::StrCat("updates ", operand_i, " of scatter op")));
 
     int64_t inserted_dims_seen = 0, input_batching_dims_seen = 0;
@@ -4767,7 +4773,7 @@ absl::Status ValidateScatterDimensionNumbers(
                              updates_shape.dimensions().size());
     }
 
-    RETURN_IF_ERROR(ValidateScatterDimensionNumbers(
+    ABSL_RETURN_IF_ERROR(ValidateScatterDimensionNumbers(
         operand_shape, expanded_scatter_indices_shape, updates_shape,
         scatter_dim_numbers));
 
@@ -4822,7 +4828,7 @@ absl::Status ValidateScatterDimensionNumbers(
     init_element_shape_ptrs.push_back(&init_element_shapes.back());
     updates_element_types.push_back(updates_shapes[i]->element_type());
   }
-  RETURN_IF_ERROR(VerifyReducerShape(to_apply_shape, init_element_shape_ptrs,
+  ABSL_RETURN_IF_ERROR(VerifyReducerShape(to_apply_shape, init_element_shape_ptrs,
                                      updates_element_types, operand_count));
 
   return operand_count == 1 ? *operand_shapes[0]

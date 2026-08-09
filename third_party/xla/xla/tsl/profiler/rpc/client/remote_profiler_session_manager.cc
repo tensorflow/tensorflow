@@ -118,7 +118,7 @@ absl::Status RemoteProfilerSessionManager::Init() {
   clients_.reserve(options_.service_addresses().size());
 
   ProfileRequest request_template = request_;
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<std::string> override_hostnames_list,
       ParseAndValidateOverrideHostnames(options_, request_template));
 

@@ -16,7 +16,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "llvm/Support/raw_ostream.h"
 #include "xla/backends/gpu/codegen/tools/test_lib.h"
 #include "xla/codegen/tools/test_lib.h"
@@ -30,9 +30,9 @@ absl::Status Run(const std::string& filename) {
   auto mlir_context = GetMlirContextForTest();
   mlir_context.loadAllAvailableDialects();
   RegisterSymbolicExprStorage(&mlir_context);
-  ASSIGN_OR_RETURN(auto module, LoadTestModule(filename));
-  ASSIGN_OR_RETURN(auto emitter_data, GetEmitter(*module));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(auto module, LoadTestModule(filename));
+  ABSL_ASSIGN_OR_RETURN(auto emitter_data, GetEmitter(*module));
+  ABSL_ASSIGN_OR_RETURN(
       auto mlir_module,
       emitter_data->emitter->mlir_kernel_emitter()->CreateMLIRModule(
           mlir_context, *emitter_data->fusion, "main",

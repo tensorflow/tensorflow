@@ -39,7 +39,7 @@ cc_library(
     tags = ["no_oss"],
     deps = [
         "//xla/ffi",
-    ] + if_google(["//third_party/py/cutlass/runtime"]),
+    ] + if_google(["//third_party/py/cutlass:runtime"]),
     alwayslink = 1,
 )
 

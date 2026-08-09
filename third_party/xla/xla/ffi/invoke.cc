@@ -41,21 +41,21 @@ namespace xla::ffi {
 //===----------------------------------------------------------------------===//
 
 namespace {
-// Converts InvokeContext to corresponding XLA_FFI_ExecutionContext context.
+// Converts InvokeContext to corresponding XLA_FFI_InvokeContext context.
 struct BackendVisitor {
-  XLA_FFI_ExecutionContext::BackendContext operator()(
+  XLA_FFI_InvokeContext::BackendContext operator()(
       const std::monostate&) const {
     return std::monostate{};
   }
 
-  XLA_FFI_ExecutionContext::BackendContext operator()(
+  XLA_FFI_InvokeContext::BackendContext operator()(
       const InvokeContext::CpuContext& cpu) const {
-    return XLA_FFI_ExecutionContext::CpuContext{cpu.intra_op_thread_pool};
+    return XLA_FFI_InvokeContext::CpuContext{cpu.intra_op_thread_pool};
   }
 
-  XLA_FFI_ExecutionContext::BackendContext operator()(
+  XLA_FFI_InvokeContext::BackendContext operator()(
       const InvokeContext::GpuContext& gpu) const {
-    return XLA_FFI_ExecutionContext::GpuContext{
+    return XLA_FFI_InvokeContext::GpuContext{
         gpu.stream,
         gpu.allocator,
         gpu.collective_params,
@@ -72,17 +72,18 @@ struct BackendVisitor {
 };
 }  // namespace
 
-static XLA_FFI_ExecutionContext CreateExecutionContext(
+static XLA_FFI_InvokeContext CreateExecutionContext(
     const InvokeContext& context) {
-  return XLA_FFI_ExecutionContext{
+  return XLA_FFI_InvokeContext{
       context.run_id,
       context.device_ordinal,
       std::visit(BackendVisitor{}, context.backend_context),
-      XLA_FFI_ExecutionContext::StateContext{context.state_context.instantiate,
-                                             context.state_context.prepare,
-                                             context.state_context.initialize},
+      XLA_FFI_InvokeContext::StateContext{context.state_context.instantiate,
+                                          context.state_context.prepare,
+                                          context.state_context.initialize},
       context.called_computation,
-      internal::ScopedExecutionContext::GetCallExecutionContext(context)};
+      internal::ScopedExecutionContext::GetCallExecutionContext(context),
+      context.extension_start};
 }
 
 template <typename Handler>
@@ -91,7 +92,7 @@ static absl::StatusOr<XLA_FFI_Future*> Invoke(const XLA_FFI_Api* api,
                                               CallFrame& call_frame,
                                               const InvokeContext& context,
                                               ExecutionStage stage) {
-  XLA_FFI_ExecutionContext ctx = CreateExecutionContext(context);
+  XLA_FFI_InvokeContext ctx = CreateExecutionContext(context);
   XLA_FFI_CallFrame ffi_call_frame =
       call_frame.Build(api, &ctx, static_cast<XLA_FFI_ExecutionStage>(stage));
 
@@ -134,7 +135,7 @@ static absl::Status BlockUntilReady(XLA_FFI_Future* future) {
 
 absl::Status Invoke(const XLA_FFI_Api* api, Ffi& handler, CallFrame& call_frame,
                     const InvokeContext& context, ExecutionStage stage) {
-  ASSIGN_OR_RETURN(XLA_FFI_Future * future,
+  ABSL_ASSIGN_OR_RETURN(XLA_FFI_Future * future,
                    Invoke<Ffi>(api, handler, call_frame, context, stage));
   return BlockUntilReady(future);
 }
@@ -142,7 +143,7 @@ absl::Status Invoke(const XLA_FFI_Api* api, Ffi& handler, CallFrame& call_frame,
 absl::Status Invoke(const XLA_FFI_Api* api, XLA_FFI_Handler* handler,
                     CallFrame& call_frame, const InvokeContext& context,
                     XLA_FFI_ExecutionStage stage) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       XLA_FFI_Future * future,
       Invoke<XLA_FFI_Handler*>(api, handler, call_frame, context,
                                static_cast<ExecutionStage>(stage)));
@@ -153,7 +154,7 @@ tsl::AsyncValueRef<tsl::Chain> InvokeAsync(const XLA_FFI_Api* api, Ffi& handler,
                                            CallFrame& call_frame,
                                            const InvokeContext& context,
                                            ExecutionStage stage) {
-  ASSIGN_OR_RETURN(XLA_FFI_Future * future,
+  ABSL_ASSIGN_OR_RETURN(XLA_FFI_Future * future,
                    Invoke<Ffi>(api, handler, call_frame, context, stage));
   return TakeFuture(future);
 }
@@ -163,7 +164,7 @@ tsl::AsyncValueRef<tsl::Chain> InvokeAsync(const XLA_FFI_Api* api,
                                            CallFrame& call_frame,
                                            const InvokeContext& context,
                                            XLA_FFI_ExecutionStage stage) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       XLA_FFI_Future * future,
       Invoke<XLA_FFI_Handler*>(api, handler, call_frame, context,
                                static_cast<ExecutionStage>(stage)));
@@ -178,8 +179,8 @@ static XLA_FFI_Metadata PrepareMetadata() {
 static XLA_FFI_Metadata_Extension PrepareMetadataExtension(
     XLA_FFI_Metadata* metadata) {
   return XLA_FFI_Metadata_Extension{
-      XLA_FFI_Extension_Base{XLA_FFI_Metadata_Extension_STRUCT_SIZE,
-                             XLA_FFI_Extension_Metadata},
+      XLA_FFI_InternalExtension{XLA_FFI_Metadata_Extension_STRUCT_SIZE,
+                                XLA_FFI_Extension_Metadata},
       metadata};
 }
 

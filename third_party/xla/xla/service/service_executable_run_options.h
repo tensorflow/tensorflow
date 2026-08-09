@@ -72,7 +72,7 @@ class ServiceExecutableRunOptions {
                           "No stream borrower");
     }
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::vector<StreamPool::Ptr> streams,
         stream_borrower_(device_ordinal, /*num_streams=*/1, priority));
     StreamPool::Ptr stream = std::move(streams.back());

@@ -136,7 +136,7 @@ absl::Status ValidateConfig(const Shape& from_shape, const Shape& to_shape,
   stats.total_tested++;
   int64_t rank = from_shape.dimensions().size();
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<TilingSpace> tiling_space,
       TilingSpace::Create(*HloFusionAdaptor::ForInstruction(reshape),
                           mlir_context));
@@ -157,14 +157,14 @@ absl::Status ValidateConfig(const Shape& from_shape, const Shape& to_shape,
         CreateSymbolicConstant(config.upper_bounds[i], mlir_context)});
   }
   Tile output_tile(*tiling_space, std::move(output_tiles));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       Tiles input_tiles,
       PropagateTileToInput(*tiling_space, *reshape, output_tile, 0));
   CHECK_EQ(input_tiles.size(), 1);
   Tile input_tile = input_tiles[0];
   llvm::DenseMap<SymbolicExpr, SymbolicExpr> replacement_map =
       GetTileSizeReplacementMap(*tiling_space, config.sizes);
-  RETURN_IF_ERROR(tiling_space->AssignTileSizes(config.sizes));
+  ABSL_RETURN_IF_ERROR(tiling_space->AssignTileSizes(config.sizes));
 
   input_tile.Replace(replacement_map);
   input_tile.Simplify();
@@ -292,10 +292,10 @@ void ProcessReshape(const Shape& from_shape, const Shape& to_shape,
 
   std::cout << absl::StrCat(
       "Total configs tested: ", stats.total_tested, "\n",
-      "Supported: ", stats.true_positives, " (",
+      "Supported (True Positives): ", stats.true_positives, " (",
       (stats.total_tested ? (stats.true_positives * 100 / stats.total_tested)
                           : 0),
-      "%)\n", "Unsupported: ", stats.true_negatives, " (",
+      "%)\n", "Unsupported (True Negatives): ", stats.true_negatives, " (",
       (stats.total_tested ? (stats.true_negatives * 100 / stats.total_tested)
                           : 0),
       "%)\n", "False Positives: ", stats.false_positives, " (",

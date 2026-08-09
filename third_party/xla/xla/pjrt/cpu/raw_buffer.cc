@@ -32,10 +32,10 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/future.h"
 #include "xla/layout.h"
@@ -101,7 +101,7 @@ tsl::AsyncValueRef<CpuEvent> AfterAllCpuEvents(
 /*static*/ absl::StatusOr<tsl::RCReference<CpuRawBuffer>>
 CpuRawBuffer::Allocate(PjRtMemorySpace* memory_space, size_t size_bytes,
                        const CpuDeviceMemory::Allocator& allocator) {
-  ASSIGN_OR_RETURN(auto memory,
+  ABSL_ASSIGN_OR_RETURN(auto memory,
                    CpuDeviceMemory::Allocate(size_bytes, allocator));
   return tsl::MakeRef<CpuRawBuffer>(memory_space, std::move(memory), size_bytes,
                                     /*is_mutable=*/true);
@@ -142,7 +142,7 @@ absl::Status CpuRawBuffer::ValidateSlice(int64_t offset, int64_t slice_size) {
 
 absl::StatusOr<PjRtRawBufferRef> CpuRawBuffer::Slice(int64_t offset,
                                                      int64_t slice_size) {
-  RETURN_IF_ERROR(ValidateSlice(offset, slice_size));
+  ABSL_RETURN_IF_ERROR(ValidateSlice(offset, slice_size));
   auto sliced_memory =
       CpuDeviceMemory::CreateSlicedMemory(buffer_, offset, slice_size);
   return tsl::MakeRef<CpuRawBuffer>(memory_space_, std::move(sliced_memory),
@@ -153,7 +153,7 @@ absl::StatusOr<PjRtDeviceEventRef>
 CpuRawBuffer::CopyRawHostToDeviceAndReturnEvent(
     const void* src, int64_t offset, int64_t transfer_size,
     PjRtDeviceEventRefVector dependencies) {
-  RETURN_IF_ERROR(ValidateSlice(offset, transfer_size));
+  ABSL_RETURN_IF_ERROR(ValidateSlice(offset, transfer_size));
 
   if (dependencies.empty()) {
     std::memcpy(static_cast<uint8_t*>(GetHostPointer()) + offset, src,
@@ -186,7 +186,7 @@ absl::StatusOr<PjRtDeviceEventRef>
 CpuRawBuffer::CopyRawDeviceToHostAndReturnEvent(
     void* dst, int64_t offset, int64_t transfer_size,
     PjRtDeviceEventRefVector dependencies) {
-  RETURN_IF_ERROR(ValidateSlice(offset, transfer_size));
+  ABSL_RETURN_IF_ERROR(ValidateSlice(offset, transfer_size));
 
   if (dependencies.empty()) {
     std::memcpy(dst, static_cast<uint8_t*>(GetHostPointer()) + offset,
@@ -289,7 +289,7 @@ absl::StatusOr<PjRtDeviceEventRef> CpuRawBuffer::CopyFromHostBuffer(
         options.num_threads =
             std::min(thread_pool->NumThreads(), max_transpose_threads);
       }
-      ASSIGN_OR_RETURN(transpose, client->GetTransposePlan(options));
+      ABSL_ASSIGN_OR_RETURN(transpose, client->GetTransposePlan(options));
     }
     std::optional<std::function<void(std::function<void(void)>)>> schedule_work;
     if (thread_pool && max_transpose_threads > 1) {

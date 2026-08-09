@@ -73,7 +73,7 @@ absl::StatusOr<mlir::Attribute> ConvertNonFuncAttributeValue(
         attrs.push_back(attr);
       }
       if (!value.list().func().empty()) {
-        return tensorflow::errors::Unimplemented(
+        return absl::UnimplementedError(
             absl::StrCat("Attribute ", value.DebugString()));
       }
       return builder->getArrayAttr(llvm::ArrayRef(attrs.begin(), attrs.end()));
@@ -85,7 +85,7 @@ absl::StatusOr<mlir::Attribute> ConvertNonFuncAttributeValue(
       return mlir::TF::PlaceholderAttr::get(builder->getContext(),
                                             value.placeholder());
     default:
-      return tensorflow::errors::Unimplemented(
+      return absl::UnimplementedError(
           absl::StrCat("Attribute ", value.DebugString()));
   }
 }

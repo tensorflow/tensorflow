@@ -316,7 +316,7 @@ MemorySpaceAssignmentUtils::GetPrefetchTimeAfterInstruction(
     const HloPositionMatcher& after_instruction,
     const absl::flat_hash_map<const xla::HloInstruction*,
                               xla::HloLiveRange::LogicalTime>& schedule) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto reference_instruction_time,
       GetScheduleTimeFromInstructionMatcher(after_instruction, schedule));
   return static_cast<std::optional<int64_t>>(reference_instruction_time);
@@ -327,7 +327,7 @@ MemorySpaceAssignmentUtils::GetPrefetchTimeBeforeInstruction(
     const HloPositionMatcher& before_instruction,
     const absl::flat_hash_map<const xla::HloInstruction*,
                               xla::HloLiveRange::LogicalTime>& schedule) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto reference_instruction_time,
       GetScheduleTimeFromInstructionMatcher(before_instruction, schedule));
   return static_cast<std::optional<int64_t>>(reference_instruction_time - 1);
@@ -372,7 +372,7 @@ MemorySpaceAssignmentUtils::GetOverriddenPreferredPrefetchTime(
             << hlo_use.operand_index.ToString() << " size " << operand_size
             << " live range (" << earliest_prefetch_time << ", "
             << latest_prefetch_time << ")";
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto prefetch_time,
         GetPrefetchTime(override.override_options(), earliest_prefetch_time,
                         latest_prefetch_time, instruction_schedule));

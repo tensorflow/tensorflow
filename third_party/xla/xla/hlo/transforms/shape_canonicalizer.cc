@@ -60,7 +60,7 @@ absl::StatusOr<bool> ShapeCanonicalizer::RunImpl(
   VLOG(3) << "Garbage collected " << num_erased << " expired shapes";
 
   ShapeCanonicalizerVisitor visitor(shape_pool_);
-  RETURN_IF_ERROR(module->entry_computation()->Accept(&visitor));
+  ABSL_RETURN_IF_ERROR(module->entry_computation()->Accept(&visitor));
   return visitor.changed();
 }
 

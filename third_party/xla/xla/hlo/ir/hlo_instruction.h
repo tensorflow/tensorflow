@@ -854,7 +854,7 @@ class HloInstruction {
   // is a tuple containing the infeed_shape and the TOKEN.
   static std::unique_ptr<HloInstruction> CreateInfeed(
       const Shape& infeed_shape, HloInstruction* token_operand,
-      const std::string& config);
+      absl::string_view config);
 
   // Creates an outfeed instruction, which outputs data. outfeed_shape is the
   // shape of the data being outfed *not* the shape of the outfeed instruction
@@ -1132,12 +1132,12 @@ class HloInstruction {
   // the given operands. "shape" is the resultant shape.
   static std::unique_ptr<HloInstruction> CreateCompositeCall(
       const Shape& shape, HloInstruction* decomposition_root,
-      const std::string& name, const std::string& attributes, int64_t version);
+      absl::string_view name, absl::string_view attributes, int64_t version);
 
   static std::unique_ptr<HloInstruction> CreateCompositeCall(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      HloComputation* decomposition, const std::string& name,
-      const std::string& attributes, int64_t version);
+      HloComputation* decomposition, absl::string_view name,
+      absl::string_view attributes, int64_t version);
 
   // Creates a custom call instruction that applies the given custom call target
   // to the given operands. "opaque" can be an arbitrary string with a
@@ -2086,7 +2086,7 @@ class HloInstruction {
   template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
   absl::StatusOr<ConfigProto> backend_config() const {
     ConfigProto proto;
-    RETURN_IF_ERROR(backend_config_->GetProto(&proto));
+    ABSL_RETURN_IF_ERROR(backend_config_->GetProto(&proto));
     return proto;
   }
 
@@ -2386,13 +2386,13 @@ class HloInstruction {
   std::string infeed_config() const;
 
   // Delegates to HloInfeedInstruction::set_infeed_config.
-  void set_infeed_config(const std::string& config);
+  void set_infeed_config(absl::string_view config);
 
   // Returns the config for the Outfeed instruction.
   const std::string& outfeed_config() const;
 
   // Delegates to HloOutfeedInstruction::set_outfeed_config.
-  void set_outfeed_config(const std::string& config);
+  void set_outfeed_config(absl::string_view config);
 
   // Returns the shape for the Outfeed instruction.
   const Shape& outfeed_shape() const;
@@ -2581,7 +2581,7 @@ class HloInstruction {
 
   // TODO(phui): reimplement this method
   void DetachFromOperands() {
-    for (HloInstruction* operand : operands_) {
+    for (HloInstruction* operand : unique_operands()) {
       operand->RemoveUser(this);
     }
     RemoveAllOperands();
@@ -2905,14 +2905,13 @@ std::string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums);
 std::string SparsityConfigToString(const SparsityConfig& sparsity_config);
 
-absl::StatusOr<RandomAlgorithm> StringToRandomAlgorithm(
-    const std::string& name);
+absl::StatusOr<RandomAlgorithm> StringToRandomAlgorithm(absl::string_view name);
 absl::StatusOr<RandomDistribution> StringToRandomDistribution(
-    const std::string& name);
+    absl::string_view name);
 absl::StatusOr<PrecisionConfig::Precision> StringToPrecision(
-    const std::string& name);
+    absl::string_view name);
 absl::StatusOr<PrecisionConfig::Algorithm> StringToAlgorithm(
-    const std::string& name);
+    absl::string_view name);
 absl::StatusOr<ResultAccuracy::Mode> StringToResultAccuracy(
     absl::string_view name);
 absl::StatusOr<CustomCallSchedule> StringToCustomCallSchedule(

@@ -23,9 +23,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/TargetParser/Triple.h"
@@ -117,7 +117,7 @@ class IrEmitterContext {
 
   absl::StatusOr<InlinedModule*> get_inlined_module() {
     if (inlined_module_ == nullptr) {
-      ASSIGN_OR_RETURN(InlinedModule inlined_module,
+      ABSL_ASSIGN_OR_RETURN(InlinedModule inlined_module,
                        GetInlinedModule(hlo_module_));
       inlined_module_ =
           std::make_unique<InlinedModule>(std::move(inlined_module));

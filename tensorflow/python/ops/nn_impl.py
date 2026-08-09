@@ -20,6 +20,7 @@ import warnings
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
@@ -863,17 +864,17 @@ def depthwise_conv2d_v2(input,
 
   Args:
     input: 4-D with shape according to `data_format`.
-    filter: 4-D with shape
-      `[filter_height, filter_width, in_channels, channel_multiplier]`.
-    strides: 1-D of size 4.  The stride of the sliding window for each
-      dimension of `input`.
+    filter: 4-D with shape `[filter_height, filter_width, in_channels,
+      channel_multiplier]`.
+    strides: 1-D of size 4.  The stride of the sliding window for each dimension
+      of `input`.
     padding: Controls how to pad the image before applying the convolution. Can
       be the string `"SAME"` or `"VALID"` indicating the type of padding
       algorithm to use, or a list indicating the explicit paddings at the start
       and end of each dimension. See
-      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
-      for more information. When explicit padding is used and data_format
-      is `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
+      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding)
+      for more information. When explicit padding is used and data_format is
+      `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
       [pad_left, pad_right], [0, 0]]`. When explicit padding used and
       data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
       [pad_top, pad_bottom], [pad_left, pad_right]]`.
@@ -1262,6 +1263,15 @@ def moments(
       "keepdims", keepdims, "keep_dims", keep_dims)
   if keep_dims is None:
     keep_dims = False
+  if isinstance(axes, (tensor.Tensor, variables.Variable)):
+    from tensorflow.python.eager import context
+
+    if context.executing_eagerly():
+      axes = axes.numpy().tolist()
+    else:
+      axes_const = tensor_util.constant_value(axes)
+      if axes_const is not None:
+        axes = axes_const.tolist()
   with ops.name_scope(name, "moments", [x, axes]):
     # The dynamic range of fp16 is too limited to support the collection of
     # sufficient statistics. As a workaround we simply perform the operations
@@ -1348,6 +1358,15 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=None,
       "keepdims", keepdims, "keep_dims", keep_dims)
   if keep_dims is None:
     keep_dims = False
+  if isinstance(axes, (tensor.Tensor, variables.Variable)):
+    from tensorflow.python.eager import context
+
+    if context.executing_eagerly():
+      axes = axes.numpy().tolist()
+    else:
+      axes_const = tensor_util.constant_value(axes)
+      if axes_const is not None:
+        axes = axes_const.tolist()
   with ops.name_scope(name, "weighted_moments", [x, frequency_weights, axes]):
     x = ops.convert_to_tensor(x, name="x")
     frequency_weights = ops.convert_to_tensor(

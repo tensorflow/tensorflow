@@ -111,7 +111,7 @@ class GemvRewriterVisitor : public DfsHloRewriteVisitor {
                                               lhs_dimensions.end());
       new_lhs_dimensions.push_back(1);
       Shape new_lhs_shape(lhs_shape.element_type(), new_lhs_dimensions);
-      ASSIGN_OR_RETURN(*new_lhs_shape.mutable_layout(),
+      ABSL_ASSIGN_OR_RETURN(*new_lhs_shape.mutable_layout(),
                        GetLayoutWithNewMinorMostDimension(lhs_shape.layout()));
       new_lhs = computation->AddInstruction(
           is_layout_sensitive_
@@ -127,7 +127,7 @@ class GemvRewriterVisitor : public DfsHloRewriteVisitor {
                                               rhs_dimensions.end());
       new_rhs_dimensions.push_back(1);
       Shape new_rhs_shape(rhs_shape.element_type(), new_rhs_dimensions);
-      ASSIGN_OR_RETURN(*new_rhs_shape.mutable_layout(),
+      ABSL_ASSIGN_OR_RETURN(*new_rhs_shape.mutable_layout(),
                        GetLayoutWithNewMinorMostDimension(rhs_shape.layout()));
       new_rhs = computation->AddInstruction(
           is_layout_sensitive_
@@ -151,7 +151,7 @@ class GemvRewriterVisitor : public DfsHloRewriteVisitor {
     }
 
     Shape new_out_shape(dot->shape().element_type(), new_out_dimensions);
-    ASSIGN_OR_RETURN(*new_out_shape.mutable_layout(),
+    ABSL_ASSIGN_OR_RETURN(*new_out_shape.mutable_layout(),
                      GetLayoutWithNewMinorMostDimension(dot->shape().layout()));
 
     HloInstruction* new_dot =
@@ -180,7 +180,7 @@ absl::StatusOr<bool> GemvRewriter::RunImpl(
   GemvRewriterVisitor gemv_rewriter(is_layout_sensitive_);
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    RETURN_IF_ERROR(computation->Accept(&gemv_rewriter));
+    ABSL_RETURN_IF_ERROR(computation->Accept(&gemv_rewriter));
   }
   return gemv_rewriter.changed();
 }

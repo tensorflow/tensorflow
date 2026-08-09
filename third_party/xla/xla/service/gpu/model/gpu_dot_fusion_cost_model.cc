@@ -27,11 +27,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
@@ -366,10 +366,9 @@ absl::Duration CalculatePipelinedLoopTime(int64_t num_stages,
   return prologue_time + overlap_time + epilogue_time + hbm_timing.write_time;
 }
 
-int64_t CalculateHardwareLaunchWaves(int64_t threadblock_count,
-                                     int64_t shared_memory_per_block_bytes,
-                                     int num_warps,
-                                     const se::DeviceDescription& device_info) {
+SmOccupancy CalculateSmOccupancy(int64_t shared_memory_per_block_bytes,
+                                 int64_t num_warps,
+                                 const se::DeviceDescription& device_info) {
   const int64_t hardware_max_shmem = device_info.shared_memory_per_core();
   const int64_t hardware_max_threads = device_info.threads_per_core_limit();
   const int64_t max_blocks_by_shmem =
@@ -379,17 +378,34 @@ int64_t CalculateHardwareLaunchWaves(int64_t threadblock_count,
   const int64_t max_blocks_by_threads =
       hardware_max_threads / (num_warps * device_info.threads_per_warp());
 
-  const int64_t active_blocks_per_sm = std::max<int64_t>(
+  int64_t active_blocks_per_sm = std::max<int64_t>(
       1, std::min(max_blocks_by_shmem, max_blocks_by_threads));
+
+  // Clamp to the physical limit of blocks per SM, if the device provides it.
+  if (device_info.max_blocks_per_multiprocessor() > 0) {
+    active_blocks_per_sm = std::min(
+        active_blocks_per_sm, device_info.max_blocks_per_multiprocessor());
+  }
+
+  return SmOccupancy{active_blocks_per_sm, active_blocks_per_sm * num_warps};
+}
+
+int64_t CalculateHardwareLaunchWaves(int64_t threadblock_count,
+                                     int64_t shared_memory_per_block_bytes,
+                                     int64_t num_warps,
+                                     const se::DeviceDescription& device_info) {
+  const SmOccupancy occupancy = CalculateSmOccupancy(
+      shared_memory_per_block_bytes, num_warps, device_info);
+
   const int64_t total_gpu_capacity =
-      active_blocks_per_sm * device_info.core_count();
+      occupancy.active_blocks_per_sm * device_info.core_count();
   return CeilOfRatio<int64_t>(threadblock_count, total_gpu_capacity);
 }
 
 absl::Duration CalculatePipelinedLoopTimeWithLaunchWaves(
     int64_t num_stages, int64_t k_loop_iterations, int64_t threadblock_count,
     absl::Duration compute_time, const HbmEstimates& hbm_timing,
-    int64_t shared_memory_per_block_bytes, int num_warps,
+    int64_t shared_memory_per_block_bytes, int64_t num_warps,
     const se::DeviceDescription& device_info) {
   if (threadblock_count == 0) {
     return absl::ZeroDuration();
@@ -432,6 +448,55 @@ int64_t CalculateSharedMemoryPerBlockBytes(const DotProblemInfo& dot_info,
       primitive_util::BitWidth(dot_info.rhs_element_type) / 8;
 
   return (lhs_tile_bytes + rhs_tile_bytes) * num_stages;
+}
+
+double CalculateComputeUtilization(const EstimateRunTimeData& estimates,
+                                   const se::DeviceDescription& device_info,
+                                   xla::PrimitiveType output_element_type) {
+  const double total_estimated_sec = absl::ToDoubleSeconds(estimates.exec_time);
+  constexpr double kNsPerSecond = 1e9;
+  const double theoretical_flops_per_sec =
+      GpuPerformanceModelBase::CalculatePeakMatrixOpsPerNs(
+          device_info, output_element_type) *
+      kNsPerSecond;
+
+  if (total_estimated_sec == 0.0 || theoretical_flops_per_sec == 0.0) {
+    VLOG(2) << "Returning 0.0 compute utilization: total_estimated_sec="
+            << total_estimated_sec
+            << ", theoretical_flops_per_sec=" << theoretical_flops_per_sec;
+    return 0.0;
+  }
+  double utilization = (static_cast<double>(estimates.flops) /
+                        (theoretical_flops_per_sec * total_estimated_sec));
+
+  if (utilization > 1.0) {
+    VLOG(2) << "Compute utilization exceeded 1.0 in dot fusion cost model: "
+            << utilization;
+  }
+  return utilization;
+}
+
+double CalculateMemoryUtilization(const EstimateRunTimeData& estimates,
+                                  const se::DeviceDescription& device_info) {
+  const double total_estimated_sec = absl::ToDoubleSeconds(estimates.exec_time);
+  const double dram_bytes =
+      static_cast<double>(estimates.bytes_read + estimates.bytes_written);
+  const double peak_memory_bandwidth = device_info.memory_bandwidth();
+
+  if (total_estimated_sec == 0.0 || peak_memory_bandwidth == 0.0) {
+    VLOG(2) << "Returning 0.0 memory utilization: total_estimated_sec="
+            << total_estimated_sec
+            << ", peak_memory_bandwidth=" << peak_memory_bandwidth;
+    return 0.0;
+  }
+  double utilization =
+      dram_bytes / (peak_memory_bandwidth * total_estimated_sec);
+
+  if (utilization > 1.0) {
+    VLOG(2) << "Memory utilization exceeded 1.0 in dot fusion cost model: "
+            << utilization;
+  }
+  return utilization;
 }
 
 }  // namespace detail
@@ -492,7 +557,7 @@ absl::StatusOr<int64_t> ExtractBlockK(const HloDotInstruction* dot) {
     return absl::FailedPreconditionError(
         "Dot instruction must have a backend config with tiling sizes.");
   }
-  ASSIGN_OR_RETURN(auto tile_config, dot->backend_config<xla::gpu::Tile>());
+  ABSL_ASSIGN_OR_RETURN(auto tile_config, dot->backend_config<xla::gpu::Tile>());
   TF_RET_CHECK(tile_config.sizes_size() > 0)
       << "Tile backend config must have sizes.";
   return tile_config.sizes(0);
@@ -501,7 +566,7 @@ absl::StatusOr<int64_t> ExtractBlockK(const HloDotInstruction* dot) {
 absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
     const HloDotInstruction* dot, const BlockLevelParameters& block_params,
     const se::DeviceDescription& device_info, std::optional<int64_t> block_k) {
-  RETURN_IF_ERROR(IsSupported(dot));
+  ABSL_RETURN_IF_ERROR(IsSupported(dot));
   if (block_params.output_tile_sizes.size() != 1) {
     return absl::UnimplementedError(
         absl::StrCat("Only single tile size is supported, got ",
@@ -512,7 +577,7 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   if (block_k.has_value()) {
     block_k_val = *block_k;
   } else {
-    ASSIGN_OR_RETURN(block_k_val, ExtractBlockK(dot));
+    ABSL_ASSIGN_OR_RETURN(block_k_val, ExtractBlockK(dot));
   }
 
   detail::DotProblemInfo dot_info(*dot);
@@ -536,7 +601,7 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   EstimateRunTimeData estimates;
 
   // Calculate compute roofline with tile and wave quantization.
-  ASSIGN_OR_RETURN(detail::ComputeAndFlops compute_and_flops,
+  ABSL_ASSIGN_OR_RETURN(detail::ComputeAndFlops compute_and_flops,
                    detail::CalculateComputeTimeWithTileAndWaveQuantization(
                        dot_info, dot_tile, device_info));
   estimates.compute_time = compute_and_flops.compute_time;
@@ -562,7 +627,7 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
                                                  num_stages);
 
   // Calculate L2 time.
-  ASSIGN_OR_RETURN(absl::Duration l2_time,
+  ABSL_ASSIGN_OR_RETURN(absl::Duration l2_time,
                    detail::CalculateL2Time(dot_info.k, dot_tile.k, device_info,
                                            estimates.l2_bytes_read,
                                            block_params.is_tma_allowed));
@@ -584,6 +649,10 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   // Assuming perfect overlap between compute and memory for the rest,
   // but main loop is now modeled precisely.
   estimates.exec_time = std::max({pipelined_loop_time, l2_time});
+  estimates.compute_utilization = detail::CalculateComputeUtilization(
+      estimates, device_info, dot_info.output_element_type);
+  estimates.memory_utilization =
+      detail::CalculateMemoryUtilization(estimates, device_info);
 
   return estimates;
 }

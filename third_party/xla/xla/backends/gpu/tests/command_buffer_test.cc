@@ -79,7 +79,7 @@ bool IsAtLeastCuda12900(const se::StreamExecutor* stream_executor) {
   return false;
 }
 
-class CommandBufferTest : public HloInterpreterReferenceMixin<HloPjRtTestBase>,
+class CommandBufferTest : public HloInterpreterReferenceMixin<HloTestBase>,
                           public ::testing::WithParamInterface<
                               DebugOptions::CommandBufferSchedulingMode> {
  protected:

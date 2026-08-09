@@ -63,7 +63,7 @@ absl::StatusOr<bool> BroadcastCanonicalizer::RunImpl(
             original_dims.begin(), absl::c_find(original_dims, new_dims[i]));
       }
 
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           HloInstruction * transposed_operand,
           MakeTransposeHlo(hlo->mutable_operand(0), operand_transpose_dims));
       // MakeTransposeHlo uses shape inference to derive the transpose shape
@@ -75,7 +75,7 @@ absl::StatusOr<bool> BroadcastCanonicalizer::RunImpl(
       auto new_broadcast =
           MakeBroadcastHlo(transposed_operand, new_dims, hlo->shape());
 
-      RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, new_broadcast));
+      ABSL_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, new_broadcast));
       changed = true;
     }
   }

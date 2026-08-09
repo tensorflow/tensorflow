@@ -31,10 +31,11 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "json/json.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -52,12 +53,47 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/source_target_pairs.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 using CycleType = collective_permute_cycle::CycleType;
+
+std::optional<absl::string_view> GetCollectiveGroupKey(
+    const HloInstruction& instruction) {
+  const auto& attributes = instruction.frontend_attributes().map();
+  auto it = attributes.find(kCollectiveGroupKeyAttr);
+  if (it == attributes.end() || it->second.empty()) {
+    return std::nullopt;
+  }
+  return it->second;
+}
+
+bool HasCollectiveGroupKey(const HloInstruction& instruction) {
+  return GetCollectiveGroupKey(instruction).has_value();
+}
+
+bool HaveCompatibleCollectiveGroupKeys(const HloInstruction& lhs,
+                                       const HloInstruction& rhs) {
+  return GetCollectiveGroupKey(lhs) == GetCollectiveGroupKey(rhs);
+}
+
+void CopyCollectiveGroupKey(const HloInstruction& source,
+                            HloInstruction& destination) {
+  std::optional<std::string> value =
+      source.get_frontend_attribute(kCollectiveGroupKeyAttr);
+  if (value.has_value()) {
+    destination.set_frontend_attribute(kCollectiveGroupKeyAttr, *value);
+  } else {
+    destination.erase_frontend_attribute(kCollectiveGroupKeyAttr);
+  }
+}
+
+void ClearCollectiveGroupKey(HloInstruction& instruction) {
+  instruction.erase_frontend_attribute(kCollectiveGroupKeyAttr);
+}
 
 std::optional<ReductionKind> OpcodeToReductionKind(HloOpcode hlo_opcode,
                                                    PrimitiveType type) {
@@ -365,7 +401,7 @@ GetParticipatingDevicesGroups(const HloInstruction* collective) {
   CHECK(collective->GetModule()->config().has_static_device_assignment());
   const DeviceAssignment& device_assignment =
       collective->GetModule()->config().static_device_assignment();
-  ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
+  ABSL_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
                    GetCollectiveOpGroupMode(collective));
   return GetParticipatingDevicesGroups(device_assignment,
                                        collective->replica_groups(), mode);
@@ -460,8 +496,8 @@ GetParticipatingFlattenedIdGroups(
 absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
 GetParticipatingFlattenedIdGroups(const HloInstruction* hlo,
                                   const DeviceAssignment& device_assignment) {
-  ASSIGN_OR_RETURN(CollectiveOpGroupMode mode, GetCollectiveOpGroupMode(hlo));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode, GetCollectiveOpGroupMode(hlo));
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<CollectiveDeviceListBase> collective_device_list,
       GetParticipatingFlattenedIdGroups(device_assignment, *hlo->device_list(),
                                         mode));
@@ -475,7 +511,7 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
   int replica_count = device_assignment.replica_count();
   int partition_count = device_assignment.computation_count();
 
-  ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID logical_id,
+  ABSL_ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID logical_id,
                    device_assignment.LogicalIdForDevice(device_id));
   int current_replica_id = logical_id.replica_id;
   int current_partition_id = logical_id.computation_id;
@@ -491,7 +527,7 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
       // This is a cross replica operation. replica group contains replica id.
       // use current replica id to find the set of participating replicas. If
       // replica groups are empty, assume a group with all replicas.
-      ASSIGN_OR_RETURN(std::vector<int> participating_replicas,
+      ABSL_ASSIGN_OR_RETURN(std::vector<int> participating_replicas,
                        GetParticipatingIDs(group_mode, current_replica_id,
                                            replica_count, replica_groups));
 
@@ -510,7 +546,7 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
     case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION: {
       // replica_groups contain partition_id, group contains all partitions for
       // the current replica.
-      ASSIGN_OR_RETURN(std::vector<int> participating_partitions,
+      ABSL_ASSIGN_OR_RETURN(std::vector<int> participating_partitions,
                        GetParticipatingIDs(group_mode, current_partition_id,
                                            partition_count, replica_groups));
       participants.reserve(participating_partitions.size());
@@ -527,7 +563,7 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
         COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION: {
       // replica_groups contain replica_ids. Group contains replicas for all
       // partitions.
-      ASSIGN_OR_RETURN(std::vector<int> participating_replicas,
+      ABSL_ASSIGN_OR_RETURN(std::vector<int> participating_replicas,
                        GetParticipatingIDs(group_mode, current_replica_id,
                                            replica_count, replica_groups));
       participants.reserve(participating_replicas.size() * partition_count);
@@ -553,7 +589,7 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
 
       // Find participants based on flattened id. replica_groups cannot be empty
       // so no need to pass in total_participant_count.
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           std::vector<int> participating_flattened_ids,
           GetParticipatingIDs(group_mode, current_flattened_id,
                               /*total_participant_count=*/std::nullopt,
@@ -657,9 +693,9 @@ GetReplicaGroupCountAndSize(const HloInstruction* hlo) {
     return std::make_pair(device_list->num_replica_groups(),
                           device_list->num_devices_per_group());
   }
-  ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+  ABSL_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
                    GetCollectiveOpGroupMode(hlo));
-  ASSIGN_OR_RETURN(std::vector<int64_t> participant_counts,
+  ABSL_ASSIGN_OR_RETURN(std::vector<int64_t> participant_counts,
                    GetPariticipantCountsForReplicaGroups(
                        config.replica_count(), config.num_partitions(),
                        device_list->replica_groups(), group_mode));
@@ -1015,8 +1051,16 @@ bool NcclSymmetricBuffersSpec::IsEnabled(const HloInstruction& inst) const {
   }
   DebugOptions::CollectiveOpType op_type = *op_type_opt;
 
+  Shape collective_shape = collective->shape();
+  if (collective->opcode() == HloOpcode::kAllGatherStart ||
+      collective->opcode() == HloOpcode::kCollectivePermuteStart) {
+    if (collective_shape.IsTuple() &&
+        collective_shape.tuple_shapes().size() == 2) {
+      collective_shape = collective_shape.tuple_shapes(1);
+    }
+  }
   const size_t size_in_bytes =
-      ShapeUtil::ByteSizeOfElementsRecursive(collective->shape());
+      ShapeUtil::ByteSizeOfElementsRecursive(collective_shape);
 
   std::optional<PrimitiveType> operand_type;
   if (collective->operand_count() > 0) {
@@ -1068,6 +1112,128 @@ bool IsNcclSymmetricBuffersEnabledForCollective(
   }
   NcclSymmetricBuffersSpec spec(opts);
   return spec.IsEnabled(*instruction);
+}
+
+absl::StatusOr<AsyncCollectiveConfig> ParseAsyncCollectiveConfig(
+    absl::string_view config_json_str) {
+  AsyncCollectiveConfig config;
+  if (config_json_str.empty()) {
+    return config;
+  }
+  Json::Value json;
+  Json::CharReaderBuilder builder;
+  std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+  std::string errors;
+  if (!reader->parse(config_json_str.data(),
+                     config_json_str.data() + config_json_str.size(), &json,
+                     &errors)) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Failed to parse collective op config JSON: ", errors,
+                     ". JSON string: ", config_json_str));
+  }
+  if (json.isMember("replica_groups")) {
+    const Json::Value& replica_groups = json["replica_groups"];
+    TF_RET_CHECK(replica_groups.isArray());
+    for (const auto& group : replica_groups) {
+      TF_RET_CHECK(group.isArray());
+      ReplicaGroup rg;
+      for (const auto& id_json : group) {
+        rg.add_replica_ids(id_json.asInt64());
+      }
+      config.replica_groups.push_back(rg);
+    }
+  }
+  if (json.isMember("channel_id")) {
+    config.channel_id = json["channel_id"].asInt64();
+  }
+  if (json.isMember("use_global_device_ids")) {
+    config.use_global_device_ids = json["use_global_device_ids"].asBool();
+  }
+  if (json.isMember("permutation")) {
+    const Json::Value& permutation = json["permutation"];
+    TF_RET_CHECK(permutation.isArray());
+    for (const auto& pair : permutation) {
+      TF_RET_CHECK(pair.isArray() && pair.size() == 2);
+      config.permutation.push_back({pair[0].asInt64(), pair[1].asInt64()});
+    }
+  }
+  if (json.isMember("all_gather_dimension")) {
+    config.all_gather_dimension = json["all_gather_dimension"].asInt64();
+  }
+  if (json.isMember("scatter_dimension")) {
+    config.scatter_dimension = json["scatter_dimension"].asInt64();
+  }
+  if (json.isMember("tiled")) {
+    config.tiled = json["tiled"].asBool();
+  }
+  if (json.isMember("split_dimension")) {
+    config.split_dimension = json["split_dimension"].asInt64();
+  }
+  if (json.isMember("concat_dimension")) {
+    config.concat_dimension = json["concat_dimension"].asInt64();
+  }
+  if (json.isMember("split_count")) {
+    config.split_count = json["split_count"].asInt64();
+  }
+  return config;
+}
+
+std::string SerializeAsyncCollectiveConfig(
+    const AsyncCollectiveConfig& config) {
+  Json::Value json(Json::objectValue);
+  if (!config.replica_groups.empty()) {
+    Json::Value rg_json(Json::arrayValue);
+    for (const auto& rg : config.replica_groups) {
+      Json::Value group(Json::arrayValue);
+      for (int64_t id : rg.replica_ids()) {
+        group.append(static_cast<Json::Value::Int64>(id));
+      }
+      rg_json.append(group);
+    }
+    json["replica_groups"] = rg_json;
+  }
+  if (config.channel_id.has_value()) {
+    json["channel_id"] = static_cast<Json::Value::Int64>(*config.channel_id);
+  }
+  if (config.use_global_device_ids) {
+    json["use_global_device_ids"] = config.use_global_device_ids;
+  }
+  if (!config.permutation.empty()) {
+    Json::Value perm_json(Json::arrayValue);
+    for (const auto& pair : config.permutation) {
+      Json::Value pair_json(Json::arrayValue);
+      pair_json.append(static_cast<Json::Value::Int64>(pair.first));
+      pair_json.append(static_cast<Json::Value::Int64>(pair.second));
+      perm_json.append(pair_json);
+    }
+    json["permutation"] = perm_json;
+  }
+  if (config.all_gather_dimension.has_value()) {
+    json["all_gather_dimension"] =
+        static_cast<Json::Value::Int64>(*config.all_gather_dimension);
+  }
+  if (config.scatter_dimension.has_value()) {
+    json["scatter_dimension"] =
+        static_cast<Json::Value::Int64>(*config.scatter_dimension);
+  }
+  if (config.tiled.has_value()) {
+    json["tiled"] = *config.tiled;
+  }
+  if (config.split_dimension.has_value()) {
+    json["split_dimension"] =
+        static_cast<Json::Value::Int64>(*config.split_dimension);
+  }
+  if (config.concat_dimension.has_value()) {
+    json["concat_dimension"] =
+        static_cast<Json::Value::Int64>(*config.concat_dimension);
+  }
+  if (config.split_count.has_value()) {
+    json["split_count"] = static_cast<Json::Value::Int64>(*config.split_count);
+  }
+
+  Json::StreamWriterBuilder builder;
+  builder["indentation"] = "";
+  return Json::writeString(builder, json);
 }
 
 }  // end namespace xla

@@ -155,7 +155,7 @@ absl::Status GrpcClientSession::Enqueue(std::unique_ptr<IfrtRequest> req,
         "GrpcClientSession: writes no longer allowed.");
   }
 
-  RETURN_IF_ERROR(response_callbacks_->Add(op_id, std::move(callback)));
+  ABSL_RETURN_IF_ERROR(response_callbacks_->Add(op_id, std::move(callback)));
 
   CHECK_EQ(req->mutable_request_metadata()->op_id(), 0);
   req->mutable_request_metadata()->set_op_id(op_id);

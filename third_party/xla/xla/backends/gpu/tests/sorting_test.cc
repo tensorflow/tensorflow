@@ -49,7 +49,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class TypeSupportTest : public HloInterpreterReferenceMixin<HloPjRtTestBase>,
+class TypeSupportTest : public HloInterpreterReferenceMixin<HloTestBase>,
                         public ::testing::WithParamInterface<PrimitiveType> {};
 
 TEST_P(TypeSupportTest, SortSupportsType) {
@@ -95,7 +95,7 @@ INSTANTIATE_TEST_SUITE_P(
       return primitive_util::LowercasePrimitiveTypeName(info.param);
     });
 
-class SortingTest : public HloInterpreterReferenceMixin<HloPjRtTestBase> {
+class SortingTest : public HloInterpreterReferenceMixin<HloTestBase> {
  protected:
   SortingTest() {}
 };
