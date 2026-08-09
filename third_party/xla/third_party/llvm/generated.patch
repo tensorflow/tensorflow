@@ -1,32 +1,24 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/llvm/lib/IR/Verifier.cpp b/llvm/lib/IR/Verifier.cpp
---- a/llvm/lib/IR/Verifier.cpp
-+++ b/llvm/lib/IR/Verifier.cpp
-@@ -3925,10 +3925,8 @@
-   Check(!Attrs.hasFnAttr(Attribute::DenormalFPEnv),
-         "denormal_fpenv attribute may not apply to call sites", Call);
+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/Rematerializer.cpp b/llvm/lib/CodeGen/Rematerializer.cpp
+--- a/llvm/lib/CodeGen/Rematerializer.cpp
++++ b/llvm/lib/CodeGen/Rematerializer.cpp
+@@ -240,6 +240,8 @@
+     return true;
+   const LiveInterval &LI = LIS.getInterval(Reg);
+   const VNInfo *DefVN = LI.getVNInfoAt(RefSlot);
++  if (!DefVN)
++    return false;
+   for (SlotIndex Use : Uses) {
+     if (!isIdenticalAtUse(*DefVN, Mask, Use, LI))
+       return false;
+diff -ruN --strip-trailing-cr a/mlir/lib/ExecutionEngine/CRunnerUtils.cpp b/mlir/lib/ExecutionEngine/CRunnerUtils.cpp
+--- a/mlir/lib/ExecutionEngine/CRunnerUtils.cpp
++++ b/mlir/lib/ExecutionEngine/CRunnerUtils.cpp
+@@ -29,6 +29,7 @@
  
--  Check(!Attrs.hasFnAttr(Attribute::StrictFP) ||
--            Call.getFunction()->isStrictFP(),
--        "call site marked strictfp without caller function marked strictfp",
--        Call);
-+  // FIXME: Missing verifier check to forbid a call site marked strictfp without
-+  // caller function marked strictfp.
- 
-   // Verify call attributes.
-   verifyFunctionAttrs(FTy, Attrs, &Call, IsIntrinsic, Call.isInlineAsm());
-diff -ruN --strip-trailing-cr a/llvm/unittests/IR/VerifierTest.cpp b/llvm/unittests/IR/VerifierTest.cpp
---- a/llvm/unittests/IR/VerifierTest.cpp
-+++ b/llvm/unittests/IR/VerifierTest.cpp
-@@ -817,9 +817,7 @@
- 
-   std::string Error;
-   raw_string_ostream ErrorOS(Error);
--  EXPECT_TRUE(verifyModule(M, &ErrorOS));
--  EXPECT_TRUE(StringRef(Error).starts_with(
--      "call site marked strictfp without caller function marked strictfp"))
--      << Error;
-+  // FIXME: Missing verifier check for strictfp.
-+  EXPECT_FALSE(verifyModule(M, &ErrorOS));
- }
- } // end anonymous namespace
+ #include <algorithm>
+ #include <cinttypes>
++#include <cmath>
+ #include <cstdio>
+ #include <cstdlib>
+ #include <numeric>
