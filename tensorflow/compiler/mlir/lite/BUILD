@@ -487,6 +487,8 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
+        ":common",
+        ":converter_flags_proto_cc",
         ":converter_pass_options_setter",
         ":optimize_broadcast_like_pass_options",
         ":optimize_pass_options",
