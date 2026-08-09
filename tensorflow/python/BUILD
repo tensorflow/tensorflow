@@ -872,7 +872,13 @@ pywrap_tensorflow_macro(
         "@xla//xla/tsl/profiler/rpc:profiler_server_impl",
         "@xla//xla/tsl/profiler/rpc/client:profiler_client_impl",
         "@xla//xla/tsl/python/lib/core:numpy",
-    ] + select({
+    ] + if_windows([
+        # Force-link the ConverterPassOptionsSetter symbols into the Windows
+        # DLL. On Linux/macOS the objects are already retained by the final
+        # link, so this dependency is intentionally Windows-only to avoid
+        # changing the link closure on other platforms.
+        "//tensorflow/compiler/mlir/lite:converter_pass_options_setter_provider",
+    ]) + select({
         "//tensorflow/compiler/mlir/python:disable_mlir_config": [],
         "//conditions:default": [
             "//tensorflow/compiler/mlir/python:mlir",
