@@ -1720,6 +1720,10 @@ message DebugOptions {
     // Sets readonly access to the cache for the per fusion autotuner. Same as
     // above, but doesn't dump anything.
     AUTOTUNE_CACHE_MODE_READ = 2;
+
+    // Write only mode. Does not read the cache, useful for generating new cache
+    // and avoiding lookup overheads.
+    AUTOTUNE_CACHE_MODE_WRITE_ONLY = 3;
   }
 
   optional bool xla_pjrt_allow_auto_layout_in_hlo = 344;

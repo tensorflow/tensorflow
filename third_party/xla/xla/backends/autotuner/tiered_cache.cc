@@ -162,6 +162,7 @@ absl::Status TieredCache::MaybeWriteToStore(
       return store.Write(entry);
     }
     case CacheMode::kReadWrite:
+    case CacheMode::kWriteOnly:
       return store.Write(entry);
   }
   return absl::OkStatus();
@@ -191,7 +192,8 @@ std::optional<AutotunerCacheInterface::Config> TieredCache::Lookup(
                  << primary_entries.status();
   }
 
-  if (secondary_ == nullptr || !primary_entries.ok()) {
+  if (secondary_ == nullptr || !primary_entries.ok() ||
+      secondary_->GetMode() == CacheMode::kWriteOnly) {
     absl::MutexLock lock(stats_mutex_);
     stats_.misses++;
     return std::nullopt;

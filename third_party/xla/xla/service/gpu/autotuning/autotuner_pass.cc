@@ -232,6 +232,8 @@ CacheMode GetCacheMode(DebugOptions::AutotuneCacheMode mode) {
   switch (mode) {
     case DebugOptions::AUTOTUNE_CACHE_MODE_READ:
       return CacheMode::kReadOnly;
+    case DebugOptions::AUTOTUNE_CACHE_MODE_WRITE_ONLY:
+      return CacheMode::kWriteOnly;
     case DebugOptions::AUTOTUNE_CACHE_MODE_UPDATE:
     case DebugOptions::AUTOTUNE_CACHE_MODE_UNSPECIFIED:
     default:

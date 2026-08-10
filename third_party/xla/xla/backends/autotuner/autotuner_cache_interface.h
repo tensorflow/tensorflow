@@ -56,6 +56,8 @@ enum class CacheMode {
   kReadOnly,    // Lookup only (e.g., immutable cache formats)
   kReadAppend,  // Lookup and Append (does not update existing entries)
   kReadWrite,   // Lookup, Insert, and update existing entries.
+  kWriteOnly,   // Insert only, useful to avoid lookup overheads when creating a
+                // new cache.
 };
 
 // AutotuneCacheContext defines the compilation and hardware context used for
