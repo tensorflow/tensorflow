@@ -462,6 +462,7 @@ class AotCompilationOptions {
   enum class EarlyExitPoint {
     kNone,
     kAfterLayoutAssignment,
+    kAfterAutotuning,
     kAfterBufferAssignment,
   };
 

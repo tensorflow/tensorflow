@@ -217,6 +217,7 @@ cc_library(
         "@tsl//tsl/platform:fingerprint",
         "@tsl//tsl/platform:platform_port",
         "@tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:random",
         "@tsl//tsl/platform:status",
         "@tsl//tsl/platform:statusor",
         "@tsl//tsl/profiler/lib:connected_traceme",
