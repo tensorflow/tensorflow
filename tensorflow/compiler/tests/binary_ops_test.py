@@ -31,7 +31,6 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import googletest
-from tensorflow.python.platform import test as test_lib
 
 
 class BinaryOpsTest(xla_test.XLATestCase):
