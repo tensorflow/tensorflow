@@ -22,8 +22,10 @@ limitations under the License.
 #include <string>
 
 #include "absl/base/nullability.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "xla/runtime/hang_watchdog.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
@@ -63,6 +65,11 @@ class ExecutionWatchdogScope {
   bool IsArmed() const { return armed_; }
 
  private:
+  struct GuardHolder {
+    absl::Mutex mu;
+    std::shared_ptr<HangWatchdog::Guard> guard ABSL_GUARDED_BY(mu);
+  };
+
   ExecutionWatchdogScope(absl::Duration watchdog_timeout,
                          std::string watchdog_name,
                          const GpuExecutableRunOptions* gpu_run_options,
@@ -75,7 +82,7 @@ class ExecutionWatchdogScope {
   bool block_host_until_done_ = false;
   bool armed_ = false;
 
-  std::shared_ptr<std::shared_ptr<HangWatchdog::Guard>> guard_holder_;
+  std::shared_ptr<GuardHolder> guard_holder_;
 };
 
 }  // namespace xla::gpu
