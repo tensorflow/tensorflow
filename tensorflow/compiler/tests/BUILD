@@ -421,7 +421,6 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:math_ops_gen",
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/ops:nn_ops_gen",
-        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
