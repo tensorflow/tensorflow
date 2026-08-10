@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
-#include "xla/pjrt/pjrt_topology_description_registry.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
 #include "xla/pjrt/se/pjrt_stream_executor_device_description.h"
 #include "xla/primitive_util.h"
@@ -49,17 +48,6 @@ limitations under the License.
 #include "tsl/platform/fingerprint.h"
 
 namespace xla {
-
-REGISTER_PJRT_TOPOLOGY_DESERIALIZER(
-    Cuda, xla::CudaId(), xla::CudaName(),
-    [](const xla::PjRtTopologyDescriptionProto& proto) {
-      return StreamExecutorGpuTopologyDescription::FromProto(proto);
-    });
-REGISTER_PJRT_TOPOLOGY_DESERIALIZER(
-    Rocm, xla::RocmId(), xla::RocmName(),
-    [](const xla::PjRtTopologyDescriptionProto& proto) {
-      return StreamExecutorGpuTopologyDescription::FromProto(proto);
-    });
 
 /*static*/ void StreamExecutorGpuTopologyDescription::SetupDeviceDescription(
     PjRtStreamExecutorDeviceDescription& description,
@@ -299,25 +287,18 @@ StreamExecutorGpuTopologyDescription::ToProto() const {
 absl::StatusOr<std::unique_ptr<StreamExecutorGpuTopologyDescription>>
 StreamExecutorGpuTopologyDescription::FromProto(
     const xla::PjRtTopologyDescriptionProto& proto) {
-  const bool is_cuda = proto.platform_id() == xla::CudaId() ||
-                       proto.platform_name() == xla::CudaName();
-  const bool is_rocm = proto.platform_id() == xla::RocmId() ||
-                       proto.platform_name() == xla::RocmName();
-  if (!is_cuda && !is_rocm) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "The platform is not a GPU platform. platform_id: ",
-        proto.platform_id(), ", platform_name: '", proto.platform_name(), "'"));
+  if (proto.platform_id() != xla::CudaId() &&
+      proto.platform_id() != xla::RocmId()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("The platform_id is not a GPU platform. platform_id: ",
+                     proto.platform_id()));
   }
   if (!proto.platform_specific_topology().Is<GpuTopologyProto>()) {
     return absl::InvalidArgumentError(
         "The platform_specific_topology is not a GpuTopologyProto.");
   }
   GpuTopologyProto gpu_topology_proto;
-  if (!proto.platform_specific_topology().UnpackTo(&gpu_topology_proto)) {
-    return absl::InvalidArgumentError(
-        "Failed to unpack GpuTopologyProto from platform_specific_topology "
-        "Any.");
-  }
+  proto.platform_specific_topology().UnpackTo(&gpu_topology_proto);
   ABSL_ASSIGN_OR_RETURN(std::shared_ptr<const GpuTopology> gpu_topology,
                    GpuTopology::FromProto(gpu_topology_proto));
   absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes;

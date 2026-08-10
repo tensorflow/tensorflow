@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
-#include "xla/pjrt/pjrt_topology_description_registry.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_device_description.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
 #include "xla/primitive_util.h"
@@ -46,12 +45,6 @@ limitations under the License.
 #include "tsl/platform/fingerprint.h"
 
 namespace xla {
-
-REGISTER_PJRT_TOPOLOGY_DESERIALIZER(
-    Cpu, xla::CpuId(), xla::CpuName(),
-    [](const xla::PjRtTopologyDescriptionProto& proto) {
-      return CpuTopologyDescription::FromProto(proto);
-    });
 
 /*static*/ PjRtPlatformId CpuPlatformId() { return xla::CpuId(); }
 
@@ -160,11 +153,10 @@ CpuTopologyDescription::ToProto() const {
 absl::StatusOr<std::unique_ptr<CpuTopologyDescription>>
 CpuTopologyDescription::FromProto(
     const xla::PjRtTopologyDescriptionProto& proto) {
-  if (proto.platform_id() != xla::CpuId() &&
-      proto.platform_name() != xla::CpuName()) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "The platform is not a CPU platform. platform_id: ",
-        proto.platform_id(), ", platform_name: ", proto.platform_name()));
+  if (proto.platform_id() != xla::CpuId()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("The platform_id is not a CPU platform. platform_id: ",
+                     proto.platform_id()));
   }
 
   if (!proto.platform_specific_topology().Is<CpuTopologyProto>()) {
@@ -172,13 +164,10 @@ CpuTopologyDescription::FromProto(
         "The platform_specific_topology is not a CpuTopologyProto.");
   }
   CpuTopologyProto cpu_topology_proto;
-  if (!proto.platform_specific_topology().UnpackTo(&cpu_topology_proto)) {
-    return absl::InvalidArgumentError(
-        "Failed to unpack CpuTopologyProto from platform_specific_topology "
-        "Any.");
-  }
+  proto.platform_specific_topology().UnpackTo(&cpu_topology_proto);
   ABSL_ASSIGN_OR_RETURN(auto cpu_topology,
                    CpuTopology::FromProto(cpu_topology_proto));
+  std::vector<xla::CpuTopology::CpuDevice> cpu_devices;
   return std::make_unique<CpuTopologyDescription>(
       proto.platform_id(), proto.platform_name(), proto.platform_version(),
       *cpu_topology);
