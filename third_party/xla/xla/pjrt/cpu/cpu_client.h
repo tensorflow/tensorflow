@@ -262,6 +262,9 @@ class PjRtCpuClient final : public CommonPjRtClient {
   CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
                            absl::string_view debug_info) override;
 
+  absl::StatusOr<PjRtDeviceEventRef> CreateDeviceEvent(
+      PjRtMemorySpace* memory_space, Future<> dependency) override;
+
   using CommonPjRtClient::GetOnDeviceBytesCount;
   absl::StatusOr<int64_t> GetOnDeviceBytesCount(
       int memory_space_kind, const xla::Shape& shape) const override;

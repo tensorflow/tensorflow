@@ -289,6 +289,7 @@ xla_cc_test(
     srcs = ["cpu_client_test.cc"],
     deps = [
         ":cpu_client",
+        "//xla:future",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",

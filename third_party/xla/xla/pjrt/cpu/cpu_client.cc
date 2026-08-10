@@ -1262,6 +1262,19 @@ PjRtCpuClient::CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
       std::move(definition_event));
 }
 
+absl::StatusOr<PjRtDeviceEventRef> PjRtCpuClient::CreateDeviceEvent(
+    PjRtMemorySpace* memory_space, Future<> dependency) {
+  auto event = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
+  dependency.OnReady([event](absl::Status status) {
+    if (!status.ok()) {
+      event.SetError(std::move(status));
+    } else {
+      event.SetStateConcrete();
+    }
+  });
+  return PjRtDeviceEventRef(std::move(event));
+}
+
 absl::StatusOr<PjRtRawBufferRef> PjRtCpuClient::AllocateRawBuffer(
     PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
     bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after) {

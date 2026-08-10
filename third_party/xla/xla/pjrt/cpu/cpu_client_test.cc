@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/Parser/Parser.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
@@ -1414,6 +1415,75 @@ TEST(PjRtCpuClientTest, MultiDevicePrepareFailurePropagatesError) {
   // going vacuous if a future top-level validation rejects the arguments
   // before the per-device Prepare runs.
   EXPECT_THAT(result.status().message(), HasSubstr("incompatible size"));
+}
+
+TEST(PjRtCpuClientTest, DonateWithControlDependency) {
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  auto literal = LiteralUtil::CreateR2<float>({{1, 2, 3}, {4, 5, 6}});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostLiteral(literal, client->memory_spaces()[0],
+                                    /*device_layout=*/nullptr));
+
+  auto [promise, future] = MakePromise<>();
+  ASSERT_OK_AND_ASSIGN(auto blocked_buffer,
+                       buffer->DonateWithControlDependency(future));
+  EXPECT_TRUE(buffer->IsDeleted());
+
+  buffer.reset();
+  auto result_literal = std::make_shared<Literal>(
+      ShapeUtil::DeviceShapeToHostShape(blocked_buffer->on_device_shape()));
+  absl::Notification done;
+  blocked_buffer->ToLiteral(result_literal.get()).OnReady([&](absl::Status s) {
+    TF_ASSERT_OK(s);
+    done.Notify();
+  });
+  blocked_buffer.reset();
+
+  EXPECT_FALSE(done.HasBeenNotified());
+
+  promise.Set();
+  EXPECT_TRUE(future.IsReady());
+
+  done.WaitForNotification();
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(literal, *result_literal));
+}
+
+TEST(PjRtCpuClientTest, DonateWithControlDependencyError) {
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  auto literal = LiteralUtil::CreateR2<float>({{1, 2, 3}, {4, 5, 6}});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostLiteral(literal, client->memory_spaces()[0],
+                                    /*device_layout=*/nullptr));
+
+  auto [promise, future] = MakePromise<>();
+  ASSERT_OK_AND_ASSIGN(auto blocked_buffer,
+                       buffer->DonateWithControlDependency(future));
+  EXPECT_TRUE(buffer->IsDeleted());
+
+  buffer.reset();
+  auto result_literal = std::make_shared<Literal>(
+      ShapeUtil::DeviceShapeToHostShape(blocked_buffer->on_device_shape()));
+  absl::Notification done;
+  absl::Status to_literal_status;
+  blocked_buffer->ToLiteral(result_literal.get()).OnReady([&](absl::Status s) {
+    to_literal_status = s;
+    done.Notify();
+  });
+  blocked_buffer.reset();
+
+  EXPECT_FALSE(done.HasBeenNotified());
+
+  promise.Set(absl::InternalError("control dependency failed"));
+  EXPECT_TRUE(future.IsReady());
+
+  done.WaitForNotification();
+
+  EXPECT_THAT(to_literal_status,
+              StatusIs(absl::StatusCode::kInternal,
+                       HasSubstr("control dependency failed")));
 }
 
 }  // namespace
