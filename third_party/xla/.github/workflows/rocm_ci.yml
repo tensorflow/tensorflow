@@ -164,7 +164,16 @@ jobs:
             --bes_keywords=jax \
             --bes_keywords=upstream \
             --bes_keywords=gpu \
-            --bes_keywords=pull_request
+            --bes_keywords=pull_request \
+            --build_event_json_file=/work/jax_build_events.json
+
+      - name: Upload JAX BEP File
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: jax-bep
+          path: jax_build_events.json
+          if-no-files-found: warn
 
       - &cleanup_container
         name: Cleanup container
@@ -222,6 +231,7 @@ jobs:
             --bes_keywords=upstream \
             --bes_keywords=gpu \
             --bes_keywords=pull_request \
+            --build_event_json_file=/work/xla_single_gpu_build_events.json \
 
       - name: Test XLA [rocm_cpu]
         timeout-minutes: 80
@@ -239,6 +249,17 @@ jobs:
             --bes_keywords=xla \
             --bes_keywords=upstream \
             --bes_keywords=cpu \
-            --bes_keywords=pull_request
+            --bes_keywords=pull_request \
+            --build_event_json_file=/work/xla_rocm_cpu_build_events.json
+
+      - name: Upload XLA BEP Files
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: xla-bep
+          path: |
+            xla_single_gpu_build_events.json
+            xla_rocm_cpu_build_events.json
+          if-no-files-found: warn
 
       - *cleanup_container
