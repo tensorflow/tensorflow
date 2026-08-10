@@ -72,5 +72,32 @@ TEST(AsyncValueTensorTest, SetAndGetBuffer) {
   ASSERT_EQ(ret_buffer, buffer);
 }
 
+class FakeOpaqueTensorBuffer : public TensorBuffer {
+ public:
+  explicit FakeOpaqueTensorBuffer(void* ptr) : TensorBuffer(ptr) {}
+  size_t size() const override { return 100; }
+  TensorBuffer* root_buffer() override { return this; }
+  void FillAllocationDescription(AllocationDescription* proto) const override {}
+  bool AllocatesOpaqueHandle() const override { return true; }
+};
+
+TEST(AsyncValueTensorTest, SlicedTensorReturnsNull) {
+  tensorflow::Tensor tensor(tensorflow::DT_UINT8, tensorflow::TensorShape({10}));
+  tensorflow::Tensor sliced_tensor = tensor.Slice(1, 5);
+
+  AsyncValueTensor* avt = AsyncValueTensor::FromTensor(&sliced_tensor);
+  EXPECT_EQ(avt, nullptr);
+}
+
+TEST(AsyncValueTensorTest, SlicedOpaqueTensorBufferReturnsNull) {
+  auto* fake_buf = new FakeOpaqueTensorBuffer(reinterpret_cast<void*>(0x1000));
+  tensorflow::Tensor parent_tensor(DT_UINT8, TensorShape({100}), fake_buf);
+  fake_buf->Unref();
+  tensorflow::Tensor sliced_tensor = parent_tensor.Slice(1, 10);
+
+  AsyncValueTensor* avt = AsyncValueTensor::FromTensor(&sliced_tensor);
+  EXPECT_EQ(avt, nullptr);
+}
+
 }  // namespace
 }  // namespace tensorflow
