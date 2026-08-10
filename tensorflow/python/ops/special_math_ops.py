@@ -594,8 +594,22 @@ def _resolve_xla_einsum_ellipsis(equation, input0_shape, input1_shape):
   (standard NumPy broadcasting rules). Strips whitespace from the equation
   before processing to avoid incorrect label counts.
 
-  Returns the equation with '...' replaced by concrete labels, or the original
-  equation unchanged if no ellipsis is present or shapes are not static.
+  Args:
+    equation: A string representing the einsum equation, possibly containing
+      '...' to denote one or more batch dimensions. Whitespace in the string
+      is stripped before processing when an ellipsis is present.
+    input0_shape: A list of ints giving the shape of the first operand, or
+      None if the rank is not statically known.
+    input1_shape: A list of ints giving the shape of the second operand, or
+      None if the rank is not statically known.
+
+  Returns:
+    The equation string with every '...' replaced by concrete single-character
+    labels chosen from unused letters. Broadcasting is handled by
+    right-aligning the batch labels across operands. Returns the original
+    equation unchanged when no ellipsis is present, when either rank is
+    unknown, when the inputs appear malformed, or when there are not enough
+    unused letters to cover all batch dimensions.
   """
   if '...' not in equation:
     return equation
