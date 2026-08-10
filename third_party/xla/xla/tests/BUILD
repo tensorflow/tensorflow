@@ -3010,6 +3010,7 @@ xla_test(
     ],
     shard_count = 30,
     tags = [
+        "cuda-only",
         "optonly",
     ],
     use_legacy_runtime = True,
