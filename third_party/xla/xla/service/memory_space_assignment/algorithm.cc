@@ -2242,7 +2242,9 @@ MsaAlgorithm::GetAltMemoryColoredIntervalsForBuffer(
 
   auto disallow_async_conversion_if_conversion_candidate =
       [&](const HloInstruction* inst) {
-        if (IsAsyncConversionCandidate(inst)) {
+        if (IsAsyncConversionCandidate(inst) &&
+            !options_.custom_fusion_block_prefetch_operand_index_fn(inst)
+                 .has_value()) {
           failed_async_conversions_[inst] =
               AsyncConversionResult::kAsyncConversionNotAllowedForColoredBuffer;
         }
@@ -2392,9 +2394,12 @@ absl::Status MsaAlgorithm::ProcessColoredBuffers() {
 
     // Mark the instruction as ineligible for async conversion if it is a
     // candidate for async conversion.
-    if (IsAsyncConversionCandidate(
-            first_value->defining_position().instruction)) {
-      failed_async_conversions_[first_value->defining_position().instruction] =
+    const HloInstruction* instruction =
+        first_value->defining_position().instruction;
+    if (IsAsyncConversionCandidate(instruction) &&
+        !options_.custom_fusion_block_prefetch_operand_index_fn(instruction)
+             .has_value()) {
+      failed_async_conversions_[instruction] =
           AsyncConversionResult::kAsyncConversionNotAllowedForColoredBuffer;
     }
 
@@ -3756,8 +3761,8 @@ absl::StatusOr<Decision> MsaAlgorithm::BlockPrefetchBuffer(
 
   // For asynchronous conversion candidates, identify the source operand index.
   int64_t source_operand_index = 0;
-  if (sync_mem_op && sync_mem_op->IsCustomFusion()) {
-    auto custom_fusion_index =
+  if (sync_mem_op != nullptr && sync_mem_op->IsCustomFusion()) {
+    std::optional<int64_t> custom_fusion_index =
         options_.custom_fusion_block_prefetch_operand_index_fn(sync_mem_op);
     CHECK(custom_fusion_index.has_value());
     source_operand_index = *custom_fusion_index;
