@@ -824,6 +824,7 @@ xla_test(
         "//xla/ffi:execution_context",
         "//xla/ffi:ffi_api",
         "//xla/ffi:type_registry",
+        "//xla/ffi/api:c_api",
         "//xla/ffi/api:ffi",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",

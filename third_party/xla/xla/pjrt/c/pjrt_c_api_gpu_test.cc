@@ -42,6 +42,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/client/client_library.h"
+#include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/ffi.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/ffi_api.h"
@@ -1262,6 +1263,7 @@ TEST(PjrtCApiGpuExtensionTest, CustomCallUntyped) {
   args.handler_prepare = nullptr;
   args.handler_initialize = nullptr;
   args.handler_execute = reinterpret_cast<void*>(&TestCustomCallV2);
+  args.traits = 0;
   auto api = GetPjrtApi();
   const PJRT_Extension_Base* next = api->extension_start;
   while (next != nullptr &&
@@ -1294,6 +1296,7 @@ TEST(PjrtCApiGpuExtensionTest, CustomCallTyped) {
   args.handler_prepare = nullptr;
   args.handler_initialize = nullptr;
   args.handler_execute = reinterpret_cast<void*>(kNoop);
+  args.traits = 0;
   auto api = GetPjrtApi();
   const PJRT_Extension_Base* next = api->extension_start;
   while (next != nullptr &&
@@ -1311,6 +1314,111 @@ TEST(PjrtCApiGpuExtensionTest, CustomCallTyped) {
       xla::ffi::FindHandler(function_name, stream_executor::GpuPlatformName())
           .value();
   EXPECT_EQ(reinterpret_cast<void*>(registration.bundle.execute), kNoop);
+}
+
+const PJRT_Gpu_Custom_Call* FindGpuCustomCallExtension(const PJRT_Api* api) {
+  const PJRT_Extension_Base* next = api->extension_start;
+  while (next != nullptr &&
+         next->type !=
+             PJRT_Extension_Type::PJRT_Extension_Type_Gpu_Custom_Call) {
+    next = next->next;
+  }
+  return reinterpret_cast<const PJRT_Gpu_Custom_Call*>(next);
+}
+
+TEST(PjrtCApiGpuExtensionTest, CustomCallTypedWithTraits) {
+  static constexpr auto* noop = +[] { return xla::ffi::Error::Success(); };
+  XLA_FFI_DEFINE_HANDLER(kNoop, noop, xla::ffi::Ffi::Bind());
+
+  PJRT_Gpu_Register_Custom_Call_Args args;
+  args.struct_size = PJRT_Gpu_Register_Custom_Call_Args_STRUCT_SIZE;
+  std::string function_name = "typed_function_name_with_traits";
+  args.function_name = function_name.c_str();
+  args.function_name_size = function_name.size();
+  args.api_version = 1;
+  args.handler_instantiate = nullptr;
+  args.handler_prepare = nullptr;
+  args.handler_initialize = nullptr;
+  args.handler_execute = reinterpret_cast<void*>(kNoop);
+  args.traits = XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE;
+  const PJRT_Gpu_Custom_Call* ext = FindGpuCustomCallExtension(GetPjrtApi());
+  ASSERT_NE(ext, nullptr);
+  ASSERT_GE(ext->base.struct_size,
+            PJRT_STRUCT_SIZE(PJRT_Gpu_Custom_Call, custom_call_handles_traits));
+  ASSERT_TRUE(ext->custom_call_handles_traits);
+
+  PJRT_Error* error = ext->custom_call(&args);
+
+  CHECK_EQ(error, nullptr);
+  auto registration =
+      xla::ffi::FindHandler(function_name, stream_executor::GpuPlatformName())
+          .value();
+  EXPECT_EQ(reinterpret_cast<void*>(registration.bundle.execute), kNoop);
+  EXPECT_EQ(registration.metadata.traits &
+                XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE,
+            XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
+}
+
+TEST(PjrtCApiGpuExtensionTest, CustomCallPreV3StructSizeIgnoresTraits) {
+  static constexpr auto* noop = +[] { return xla::ffi::Error::Success(); };
+  XLA_FFI_DEFINE_HANDLER(kNoop, noop, xla::ffi::Ffi::Bind());
+
+  PJRT_Gpu_Register_Custom_Call_Args args;
+  // Pre-v3 args struct size: `traits` is not part of the struct the caller
+  // passed, so custom_call must not read it (treats it as 0) even though the
+  // field happens to be set in memory below.
+  args.struct_size =
+      PJRT_STRUCT_SIZE(PJRT_Gpu_Register_Custom_Call_Args, handler_execute);
+  std::string function_name = "typed_function_name_pre_v3_traits";
+  args.function_name = function_name.c_str();
+  args.function_name_size = function_name.size();
+  args.api_version = 1;
+  args.handler_instantiate = nullptr;
+  args.handler_prepare = nullptr;
+  args.handler_initialize = nullptr;
+  args.handler_execute = reinterpret_cast<void*>(kNoop);
+  args.traits = XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE;
+  const PJRT_Gpu_Custom_Call* ext = FindGpuCustomCallExtension(GetPjrtApi());
+  ASSERT_NE(ext, nullptr);
+
+  PJRT_Error* error = ext->custom_call(&args);
+
+  CHECK_EQ(error, nullptr);
+  auto registration =
+      xla::ffi::FindHandler(function_name, stream_executor::GpuPlatformName())
+          .value();
+  EXPECT_EQ(reinterpret_cast<void*>(registration.bundle.execute), kNoop);
+  EXPECT_EQ(registration.metadata.traits &
+                XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE,
+            0);
+}
+
+// The legacy (api_version 0) registry cannot carry traits, so a non-zero
+// traits value is ignored rather than rejected -- real callers (e.g. the JAX
+// CUDA plugin) register untyped handlers with traits set, and erroring would
+// break their plugin initialization.
+TEST(PjrtCApiGpuExtensionTest, CustomCallUntypedIgnoresTraits) {
+  PJRT_Gpu_Register_Custom_Call_Args args;
+  args.struct_size = PJRT_Gpu_Register_Custom_Call_Args_STRUCT_SIZE;
+  std::string function_name = "untyped_function_name_with_traits";
+  args.function_name = function_name.c_str();
+  args.function_name_size = function_name.size();
+  args.api_version = 0;
+  args.handler_instantiate = nullptr;
+  args.handler_prepare = nullptr;
+  args.handler_initialize = nullptr;
+  args.handler_execute = reinterpret_cast<void*>(&TestCustomCallV2);
+  args.traits = XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE;
+  auto api = GetPjrtApi();
+  const PJRT_Gpu_Custom_Call* ext = FindGpuCustomCallExtension(api);
+  ASSERT_NE(ext, nullptr);
+
+  PJRT_Error* error = ext->custom_call(&args);
+
+  CHECK_EQ(error, nullptr);
+  void* custom_call = xla::CustomCallTargetRegistry::Global()->Lookup(
+      function_name, stream_executor::GpuPlatformName());
+  EXPECT_EQ(custom_call, reinterpret_cast<void*>(&TestCustomCallV2));
 }
 
 constexpr absl::string_view kAddOneTTIR = R"(

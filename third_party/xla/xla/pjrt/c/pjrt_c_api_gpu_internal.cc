@@ -549,14 +549,14 @@ PJRT_Stream_Extension stream{
     /*wait_stream=*/PJRT_Wait_Until_Buffer_Ready_On_Stream,
 };
 
-PJRT_Error* PJRT_Gpu_Register_Custom_Call(
-    PJRT_Gpu_Register_Custom_Call_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
-      "PJRT_Gpu_Register_Custom_Call_Args",
-      PJRT_Gpu_Register_Custom_Call_Args_STRUCT_SIZE, args->struct_size));
+static PJRT_Error* RegisterCustomCall(PJRT_Gpu_Register_Custom_Call_Args* args,
+                                      XLA_FFI_Handler_Traits traits) {
   std::string function_name(args->function_name, args->function_name_size);
   switch (args->api_version) {
     case 0:
+      // The legacy custom call registry cannot carry traits, so they are
+      // ignored here (as they were before the field existed); only the
+      // api_version 1 FFI path below honors traits.
       xla::CustomCallTargetRegistry::Global()->Register(
           function_name, args->handler_execute, PJRT_GPU_PLUGIN_PLATFORM_NAME);
       return nullptr;
@@ -568,7 +568,8 @@ PJRT_Error* PJRT_Gpu_Register_Custom_Call(
               reinterpret_cast<XLA_FFI_Handler*>(args->handler_instantiate),
               reinterpret_cast<XLA_FFI_Handler*>(args->handler_prepare),
               reinterpret_cast<XLA_FFI_Handler*>(args->handler_initialize),
-              reinterpret_cast<XLA_FFI_Handler*>(args->handler_execute)});
+              reinterpret_cast<XLA_FFI_Handler*>(args->handler_execute)},
+          traits);
       return nullptr;
     default:
       return StatusToPjRtError(absl::UnimplementedError(
@@ -576,6 +577,22 @@ PJRT_Error* PJRT_Gpu_Register_Custom_Call(
                           "Supported versions are 0 and 1.",
                           args->api_version)));
   }
+}
+
+PJRT_Error* PJRT_Gpu_Register_Custom_Call(
+    PJRT_Gpu_Register_Custom_Call_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Gpu_Register_Custom_Call_Args",
+      PJRT_STRUCT_SIZE(PJRT_Gpu_Register_Custom_Call_Args, handler_execute),
+      args->struct_size));
+  // `traits` was appended in extension v3; honor it when the caller's struct
+  // covers it, otherwise default to 0 (pre-v3 callers omit the field).
+  XLA_FFI_Handler_Traits traits = 0;
+  if (args->struct_size >=
+      PJRT_STRUCT_SIZE(PJRT_Gpu_Register_Custom_Call_Args, traits)) {
+    traits = args->traits;
+  }
+  return RegisterCustomCall(args, traits);
 }
 
 const PJRT_Api* GetGpuPjrtApi() {
@@ -586,6 +603,7 @@ const PJRT_Api* GetGpuPjrtApi() {
           /*next=*/&stream.base,
       },
       /*custom_call=*/PJRT_Gpu_Register_Custom_Call,
+      /*custom_call_handles_traits=*/true,
   };
 
   static PJRT_Layouts_Extension layouts_extension =
