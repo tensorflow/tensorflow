@@ -943,6 +943,7 @@ cc_library(
         "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/acceleration/configuration/c:delegate_plugin",
         "//tensorflow/lite/core/acceleration/configuration:delegate_registry",
+        "//tensorflow/lite/core/c:common",
         "@com_google_absl//absl/memory",
         "@flatbuffers",
     ],
@@ -960,20 +961,28 @@ cc_binary(
     ],
 )
 
+embedded_binary(
+    name = "embedded_mock_gpu_delegate_plugin",
+    testonly = 1,
+    array_variable_name = "g_mock_gpu_delegate_plugin",
+    binary = ":mock_gpu_delegate_plugin.so",
+)
+
 cc_test(
     name = "gpu_module_plugin_test",
     srcs = ["gpu_module_plugin_test.cc"],
-    data = [
-        ":mock_gpu_delegate_plugin.so",
-    ],
     tags = [
         "no_windows",
     ],
     deps = [
+        ":embedded_mock_gpu_delegate_plugin",
         ":gpu_module_plugin",
+        ":mini_benchmark_test_helper",
         "//tensorflow/lite/acceleration/configuration:configuration_cc_proto",
         "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/acceleration/configuration:proto_to_flatbuffer",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/acceleration/configuration:delegate_registry",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
@@ -1018,6 +1027,7 @@ cc_test(
     deps = [
         ":embedded_mobilenet_model",
         ":embedded_mobilenet_validation_model",
+        ":gpu_module_plugin",
         ":mini_benchmark_test_helper",
         ":status_codes",
         ":validator",
