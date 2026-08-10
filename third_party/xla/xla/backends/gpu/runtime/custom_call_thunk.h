@@ -90,6 +90,8 @@ class CustomCallThunk : public TracedCommand {
   struct PrepareAndInitState {
     ffi::ExecutionState prepare;
     ffi::ExecutionState init;
+    bool prepared = false;
+    bool initialized = false;
   };
 
   // Creates a serializable custom call thunk. The callback is resolved using
