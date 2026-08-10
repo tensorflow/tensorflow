@@ -24,9 +24,9 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
@@ -205,13 +205,13 @@ class GetTileTilingSpaceConcreteSizesTest
   absl::StatusOr<llvm::SmallVector<int64_t>> ComputeConcreteTileSizesOfFusion(
       const HloInstruction* fusion) {
     TF_RET_CHECK(fusion->opcode() == HloOpcode::kFusion) << fusion->ToString();
-    ASSIGN_OR_RETURN(auto backend_config,
+    ABSL_ASSIGN_OR_RETURN(auto backend_config,
                      fusion->backend_config<GpuBackendConfig>());
     BlockLevelParameters block_level_parameters =
         BlockLevelParameters::FromBlockLevelFusionConfig(
             backend_config.fusion_backend_config().block_level_fusion_config());
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
-    ASSIGN_OR_RETURN(auto tiling_space, experimental::TilingSpace::Create(
+    ABSL_ASSIGN_OR_RETURN(auto tiling_space, experimental::TilingSpace::Create(
                                             *fusion_adaptor, &mlir_context_));
     return GetTilingSpaceConcreteSizes(
         *tiling_space, block_level_parameters,

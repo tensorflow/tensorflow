@@ -113,7 +113,7 @@ absl::StatusOr<RemapPlan::InputDeviceRange> InputDeviceRangeFromProto(
     Client* client, const RemapPlanProto::InputDevices& proto) {
   RemapPlan::InputDeviceRange range;
   range.in_array = proto.in_array();
-  ASSIGN_OR_RETURN(range.input_devices,
+  ABSL_ASSIGN_OR_RETURN(range.input_devices,
                    DeviceList::FromProto(client, proto.device_list()));
   return range;
 }
@@ -274,8 +274,8 @@ ComputeInputDevicesForOutputMap(Client* client,
     IntervalsAndCount& intervals =
         output_to_inputs_and_intervals[mapping.out_array][mapping.in_array];
     for (int s = 0; s < mapping.from.size(); ++s) {
-      RETURN_IF_ERROR(CheckRange(in_shards_count, mapping.from[s]));
-      RETURN_IF_ERROR(CheckRange(out_shards_count, mapping.to[s]));
+      ABSL_RETURN_IF_ERROR(CheckRange(in_shards_count, mapping.from[s]));
+      ABSL_RETURN_IF_ERROR(CheckRange(out_shards_count, mapping.to[s]));
       intervals.intervals.push_back(mapping.from[s]);
       intervals.count += GetNumberOfSteps(mapping.from[s]);
     }
@@ -304,7 +304,7 @@ ComputeInputDevicesForOutputMap(Client* client,
       } else if (intervals.count == out_devices->size()) {
         interval_device_list = out_devices;
       } else {
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             interval_device_list,
             ComputeDeviceListFromIntervals(client, in_devices, intervals.count,
                                            intervals.intervals));
@@ -320,12 +320,12 @@ ComputeInputDevicesForOutputMap(Client* client,
 absl::StatusOr<RemapPlan> RemapPlan::CreateOptimized(
     Client* client, std::vector<ArraySpec> input_specs,
     std::vector<ArraySpec> output_specs, std::vector<Mapping> mappings) {
-  ASSIGN_OR_RETURN(auto input_devices_for_output_map,
+  ABSL_ASSIGN_OR_RETURN(auto input_devices_for_output_map,
                    ComputeInputDevicesForOutputMap(client, input_specs,
                                                    output_specs, mappings));
   RemapPlan plan(std::move(input_specs), std::move(output_specs),
                  std::move(mappings), std::move(input_devices_for_output_map));
-  RETURN_IF_ERROR(plan.Validate());
+  ABSL_RETURN_IF_ERROR(plan.Validate());
   return plan;
 }
 
@@ -341,7 +341,7 @@ class ShardShapeVector {
       return ShardShapeVector(*std::move(s));
     }
 
-    ASSIGN_OR_RETURN(auto shards,
+    ABSL_ASSIGN_OR_RETURN(auto shards,
                      spec.sharding->Disassemble(
                          spec.shape, SingleDeviceShardSemantics::kAllShards));
     std::vector<Shape> shapes;
@@ -458,9 +458,9 @@ absl::Status RemapPlan::Validate() const {
           mapping.out_array);
     }
 
-    ASSIGN_OR_RETURN(const auto input_shard_shapes,
+    ABSL_ASSIGN_OR_RETURN(const auto input_shard_shapes,
                      ShardShapeVector::Create(input_spec));
-    ASSIGN_OR_RETURN(const auto output_shard_shapes,
+    ABSL_ASSIGN_OR_RETURN(const auto output_shard_shapes,
                      ShardShapeVector::Create(output_spec));
 
     std::vector<bool>& in_used_buffers = in_used_buffers_list[mapping.in_array];
@@ -477,8 +477,8 @@ absl::Status RemapPlan::Validate() const {
       const RemapPlan::Interval& in_interval = mapping.from[s];
       const RemapPlan::Interval& out_interval = mapping.to[s];
 
-      RETURN_IF_ERROR(CheckRange(in_shards_count, in_interval));
-      RETURN_IF_ERROR(CheckRange(out_shards_count, out_interval));
+      ABSL_RETURN_IF_ERROR(CheckRange(in_shards_count, in_interval));
+      ABSL_RETURN_IF_ERROR(CheckRange(out_shards_count, out_interval));
       if (GetNumberOfSteps(in_interval) != GetNumberOfSteps(out_interval)) {
         return InvalidArgument(
             "mappings[%d].from[%d] and mappings[%d].to[%d] must have the same "
@@ -610,7 +610,7 @@ absl::StatusOr<RemapPlan> RemapPlan::FromProto(Client* client,
   std::vector<ArraySpec> input_specs;
   input_specs.reserve(proto.input_specs_size());
   for (const auto& input_spec_proto : proto.input_specs()) {
-    ASSIGN_OR_RETURN(ArraySpec input_spec,
+    ABSL_ASSIGN_OR_RETURN(ArraySpec input_spec,
                      ArraySpec::FromProto(client, input_spec_proto));
     input_specs.push_back(std::move(input_spec));
   }
@@ -618,7 +618,7 @@ absl::StatusOr<RemapPlan> RemapPlan::FromProto(Client* client,
   std::vector<ArraySpec> output_specs;
   output_specs.reserve(proto.output_specs_size());
   for (const auto& output_spec_proto : proto.output_specs()) {
-    ASSIGN_OR_RETURN(ArraySpec output_spec,
+    ABSL_ASSIGN_OR_RETURN(ArraySpec output_spec,
                      ArraySpec::FromProto(client, output_spec_proto));
     output_specs.push_back(std::move(output_spec));
   }
@@ -626,7 +626,7 @@ absl::StatusOr<RemapPlan> RemapPlan::FromProto(Client* client,
   std::vector<Mapping> mappings;
   mappings.reserve(proto.mappings_size());
   for (const auto& mapping_proto : proto.mappings()) {
-    ASSIGN_OR_RETURN(auto mapping, MappingFromProto(mapping_proto));
+    ABSL_ASSIGN_OR_RETURN(auto mapping, MappingFromProto(mapping_proto));
     mappings.push_back(std::move(mapping));
   }
 
@@ -638,7 +638,7 @@ absl::StatusOr<RemapPlan> RemapPlan::FromProto(Client* client,
         input_devices_for_output_map[inputs_for_output_proto.out_array()];
     for (const auto& inputs_range_proto :
          inputs_for_output_proto.input_devices()) {
-      ASSIGN_OR_RETURN(auto devices,
+      ABSL_ASSIGN_OR_RETURN(auto devices,
                        InputDeviceRangeFromProto(client, inputs_range_proto));
       input_ranges.push_back(std::move(devices));
     }
@@ -662,16 +662,16 @@ absl::Status RemapPlan::ToProto(RemapPlanProto& proto,
 
   proto.mutable_input_specs()->Reserve(rep_->input_specs.size());
   for (const auto& input_spec : rep_->input_specs) {
-    RETURN_IF_ERROR(input_spec.ToProto(*proto.add_input_specs(), version));
+    ABSL_RETURN_IF_ERROR(input_spec.ToProto(*proto.add_input_specs(), version));
   }
   proto.mutable_output_specs()->Reserve(rep_->output_specs.size());
   for (const auto& output_spec : rep_->output_specs) {
-    RETURN_IF_ERROR(output_spec.ToProto(*proto.add_output_specs(), version));
+    ABSL_RETURN_IF_ERROR(output_spec.ToProto(*proto.add_output_specs(), version));
   }
 
   proto.mutable_mappings()->Reserve(rep_->mappings.size());
   for (const auto& mapping : rep_->mappings) {
-    RETURN_IF_ERROR(MappingToProto(mapping, *proto.add_mappings()));
+    ABSL_RETURN_IF_ERROR(MappingToProto(mapping, *proto.add_mappings()));
   }
 
   proto.mutable_input_devices_for_output()->Reserve(

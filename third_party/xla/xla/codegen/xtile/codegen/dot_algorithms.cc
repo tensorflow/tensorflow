@@ -127,9 +127,9 @@ absl::StatusOr<Value> ScaledDot(mlir::ImplicitLocOpBuilder& b,
     rhs_k_pack = dot.operand(1)->shape().layout().minor_to_major(0) == rhs_c;
   }
 
-  ASSIGN_OR_RETURN(Type lhs_elem_type,
+  ABSL_ASSIGN_OR_RETURN(Type lhs_elem_type,
                    PrimitiveTypeToMlirType(b, lhs_primitive_type));
-  ASSIGN_OR_RETURN(Type rhs_elem_type,
+  ABSL_ASSIGN_OR_RETURN(Type rhs_elem_type,
                    PrimitiveTypeToMlirType(b, rhs_primitive_type));
 
   auto dot_scaled_op = xtile::DotScaledOp::create(
@@ -170,7 +170,7 @@ Value EmitStableHloDotAndAdd(mlir::ImplicitLocOpBuilder& b, Value lhs,
 
 absl::StatusOr<Type> GetAlgUnsetAccumulatorType(mlir::ImplicitLocOpBuilder& b,
                                                 const HloDotInstruction& dot) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       PrimitiveType accumulator_type,
       algorithm_util::GetDefaultGemmAlgorithmAccumulatorType(&dot));
   return PrimitiveTypeToMlirType(b, accumulator_type);
@@ -178,10 +178,10 @@ absl::StatusOr<Type> GetAlgUnsetAccumulatorType(mlir::ImplicitLocOpBuilder& b,
 
 absl::StatusOr<std::optional<Type>> DotDefaultOperandsType(
     mlir::ImplicitLocOpBuilder& b, const HloDotInstruction& dot) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       Type lhs_type,
       PrimitiveTypeToMlirType(b, dot.operand(0)->shape().element_type()));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       Type rhs_type,
       PrimitiveTypeToMlirType(b, dot.operand(1)->shape().element_type()));
 
@@ -215,7 +215,7 @@ absl::StatusOr<std::optional<Type>> GetForceOperandsType(
     return DotDefaultOperandsType(b, dot);
   }
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<PrimitiveType> allowed_operands_primitive_types,
       algorithm_util::GetAllowedOperandsTypeForAlgorithm(algorithm));
   CHECK(!allowed_operands_primitive_types.empty());
@@ -223,7 +223,7 @@ absl::StatusOr<std::optional<Type>> GetForceOperandsType(
   std::vector<Type> allowed_operands_types;
   allowed_operands_types.reserve(allowed_operands_primitive_types.size());
   for (PrimitiveType primitive_type : allowed_operands_primitive_types) {
-    ASSIGN_OR_RETURN(Type type, PrimitiveTypeToMlirType(b, primitive_type));
+    ABSL_ASSIGN_OR_RETURN(Type type, PrimitiveTypeToMlirType(b, primitive_type));
     allowed_operands_types.push_back(type);
   }
 
@@ -263,7 +263,7 @@ absl::StatusOr<Type> GetDotAccumulatorType(mlir::ImplicitLocOpBuilder& b,
     return GetAlgUnsetAccumulatorType(b, dot);
   }
 
-  ASSIGN_OR_RETURN(PrimitiveType accumulator_type,
+  ABSL_ASSIGN_OR_RETURN(PrimitiveType accumulator_type,
                    algorithm_util::GetDotAccumulatorType(algorithm));
   return PrimitiveTypeToMlirType(b, accumulator_type);
 }
@@ -279,10 +279,10 @@ absl::StatusOr<Value> EmitSingleTileDot(mlir::ImplicitLocOpBuilder& b,
       XlaPrecisionToStableHloPrecision(
           dot.precision_config().operand_precision(1))};
 
-  ASSIGN_OR_RETURN(std::optional<Type> force_operands_type,
+  ABSL_ASSIGN_OR_RETURN(std::optional<Type> force_operands_type,
                    GetForceOperandsType(b, dot, dot_operands));
 
-  ASSIGN_OR_RETURN(Type force_accumulator_type, GetDotAccumulatorType(b, dot));
+  ABSL_ASSIGN_OR_RETURN(Type force_accumulator_type, GetDotAccumulatorType(b, dot));
 
   if (force_operands_type.has_value()) {
     if (ElementType(dot_operands.lhs) != *force_operands_type) {

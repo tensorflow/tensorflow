@@ -990,4 +990,53 @@ absl::StatusOr<tsl::Env*> CoordinationServiceAgent::GetEnv() {
   return env_;
 }
 
+absl::Status CoordinationServiceAgent::ReportError(const absl::Status& error) {
+  {
+    absl::MutexLock l(state_mu_);
+    if (state_ == xla::coordination::TaskState::UNINITIALIZED) {
+      return MakeCoordinationError(FailedPrecondition(
+          "Coordination service agent must be initialized first before "
+          "reporting error."));
+    }
+    if (state_ == xla::coordination::TaskState::ERROR) {
+      return MakeCoordinationError(FailedPrecondition(
+          "Coordination service agent is already in error state."));
+    }
+  }
+  SetError(MakeCoordinationError(error, task_id_, /*is_reported_error=*/true));
+  VLOG(5) << "Reporting error to coordination service: " << error;
+
+  ReportErrorToServiceRequest request;
+  request.set_error_code(error.raw_code());
+  request.set_error_message(std::string(error.message()));
+  request.set_source_task_id(task_id_);
+  xla::coordination::Incarnations* incarnations =
+      request.mutable_incarnations();
+  incarnations->set_task_id(task_id_);
+  incarnations->set_task_incarnation(incarnation_id_.value());
+  incarnations->set_service_incarnation(service_incarnation_.value());
+  VLOG(5) << "ReportErrorToServiceRequest: " << request.DebugString();
+  ReportErrorToServiceResponse response;
+
+  absl::Notification n;
+  leader_client_->ReportErrorToServiceAsync(
+      &request, &response, [&](const absl::Status& s) {
+        VLOG(5) << "ReportErrorToServiceResponse: " << s;
+        if (!s.ok()) {
+          LOG(ERROR)
+              << "Encountered another error when reporting error to "
+                 "coordination service: "
+              << s
+              << "\nThis is usually caused by an earlier error during "
+                 "execution. Check the logs of (a) this task, (b) the "
+                 "leader (usually slice 0 task 0) and (c) the scheduler "
+                 "(e.g. preemption, eviction) for an earlier error to debug "
+                 "further.";
+        }
+        n.Notify();
+      });
+  n.WaitForNotification();
+  return absl::OkStatus();
+}
+
 }  // namespace xla

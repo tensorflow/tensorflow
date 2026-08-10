@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/ifrt_ir_executable_version.pb.h"
 #include "xla/python/ifrt/ir/version.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/tsl/lib/gtl/int_type.h"
 
@@ -37,8 +38,8 @@ namespace ifrt {
 TSL_LIB_GTL_DEFINE_INT_TYPE(IfrtIrLogicalDeviceId, int32_t);
 
 struct IfrtIrExecutableVersionDeserializeOptions
-    : llvm::RTTIExtends<IfrtIrExecutableVersionDeserializeOptions,
-                        DeserializeOptions> {
+    : RTTIExtends<IfrtIrExecutableVersionDeserializeOptions,
+                  DeserializeOptions> {
   explicit IfrtIrExecutableVersionDeserializeOptions(
       Client* client, absl::Span<const DeviceId> device_assignments)
       : client(client),
@@ -52,7 +53,7 @@ struct IfrtIrExecutableVersionDeserializeOptions
 };
 
 struct IfrtIrExecutableVersion
-    : llvm::RTTIExtends<IfrtIrExecutableVersion, ExecutableVersion> {
+    : RTTIExtends<IfrtIrExecutableVersion, ExecutableVersion> {
   // Tracking the runtime ABI version of an atom executable and the devices that
   // it is to be used on.
   struct AtomExecutableVersion {

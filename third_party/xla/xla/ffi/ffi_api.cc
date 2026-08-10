@@ -152,16 +152,44 @@ static XLA_FFI_Error* XLA_FFI_Error_Create(XLA_FFI_Error_Create_Args* args) {
       absl::Status(ToStatusCode(args->errc), args->message)};
 }
 
-static void XLA_FFI_Error_GetMessage(XLA_FFI_Error_GetMessage_Args* args) {
+namespace {
+
+// This is the argument layout for XLA_FFI_Error_GetDetails (called
+// XLA_FFI_Error_GetMessage at the time) in XLA:FFI version 0.3. We use it to
+// support older FFI modules. This can be removed 5 Aug 2027.
+struct XLA_FFI_Error_GetDetails_Args_V03 {
+  size_t struct_size;
+  XLA_FFI_InternalExtension* extension_start;
+  XLA_FFI_Error* error;
+  const char* message;
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Error_GetDetails_Args_V03, message);
+
+}  // namespace
+
+static void XLA_FFI_Error_GetDetails(XLA_FFI_Error_GetDetails_Args* args) {
+  if (args->struct_size == XLA_FFI_Error_GetDetails_Args_V03_STRUCT_SIZE) {
+    // memcpy to safely avoid U.B.
+    XLA_FFI_Error_GetDetails_Args_V03 v03{};
+    std::memcpy(&v03, args, XLA_FFI_Error_GetDetails_Args_V03_STRUCT_SIZE);
+    v03.message = v03.error->status.message().data();
+    std::memcpy(args, &v03, XLA_FFI_Error_GetDetails_Args_V03_STRUCT_SIZE);
+    return;
+  }
+
   absl::Status struct_size_check = ActualStructSizeIsGreaterOrEqual(
-      "XLA_FFI_Error_GetMessage", XLA_FFI_Error_GetMessage_Args_STRUCT_SIZE,
+      "XLA_FFI_Error_GetDetails", XLA_FFI_Error_GetDetails_Args_STRUCT_SIZE,
       args->struct_size);
   if (!struct_size_check.ok()) {
     LOG(ERROR) << struct_size_check.message();
+    return;
   }
+
   // absl::Status owns error message in a std::string which guarantees that
   // we'll get a null terminated string.
   args->message = args->error->status.message().data();
+  args->errc = static_cast<XLA_FFI_Error_Code>(args->error->status.code());
 }
 
 static void XLA_FFI_Error_Destroy(XLA_FFI_Error_Destroy_Args* args) {
@@ -208,16 +236,61 @@ static XLA_FFI_Error* XLA_FFI_Future_SetError(
   return nullptr;
 }
 
+namespace {
+// This is a struct declaration for `XLA_FFI_Handler_Register_Args` in XLA:FFI
+// before the addition of `record` handler. We use this struct to detect older
+// XLA:FFI clients for backward compatibility reasons.
+// This can be removed in August 2027.
+struct XLA_FFI_Handler_Bundle_V0 {
+  XLA_FFI_Handler* instantiate;
+  XLA_FFI_Handler* prepare;
+  XLA_FFI_Handler* initialize;
+  XLA_FFI_Handler* execute;
+};
+
+struct XLA_FFI_Handler_Register_Args_V0 {
+  size_t struct_size;
+  XLA_FFI_InternalExtension* extension_start;
+  XLA_FFI_ByteSpan name;
+  XLA_FFI_ByteSpan platform;
+  XLA_FFI_Handler_Bundle_V0 bundle;
+  XLA_FFI_Handler_Traits traits;
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Handler_Register_Args_V0, traits);
+}  // namespace
+
 static XLA_FFI_Error* XLA_FFI_Handler_Register(
     XLA_FFI_Handler_Register_Args* args) {
   XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
-      "XLA_FFI_Handler_Register", XLA_FFI_Handler_Register_Args_STRUCT_SIZE,
+      "XLA_FFI_Handler_Register", XLA_FFI_Handler_Register_Args_V0_STRUCT_SIZE,
       args->struct_size));
-
+  XLA_FFI_Handler_Bundle bundle = {nullptr, nullptr, nullptr, nullptr, nullptr};
+  XLA_FFI_Handler_Traits traits = 0;
+  if (args->struct_size == XLA_FFI_Handler_Register_Args_V0_STRUCT_SIZE) {
+    XLA_FFI_Handler_Register_Args_V0 v0{};
+    std::memcpy(&v0, args, XLA_FFI_Handler_Register_Args_V0_STRUCT_SIZE);
+    bundle.instantiate = v0.bundle.instantiate;
+    bundle.prepare = v0.bundle.prepare;
+    bundle.initialize = v0.bundle.initialize;
+    bundle.execute = v0.bundle.execute;
+    traits = v0.traits;
+    args->struct_size = XLA_FFI_Handler_Register_Args_STRUCT_SIZE;
+  } else {
+    XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+        "XLA_FFI_Handler_Register", XLA_FFI_Handler_Register_Args_STRUCT_SIZE,
+        args->struct_size));
+    bundle.instantiate = args->bundle.instantiate;
+    bundle.prepare = args->bundle.prepare;
+    bundle.initialize = args->bundle.initialize;
+    bundle.execute = args->bundle.execute;
+    bundle.record = args->bundle.record;
+    traits = args->traits;
+  }
   if (auto status = RegisterHandler(
           GetXlaFfiApi(), absl::string_view(args->name.ptr, args->name.len),
-          absl::string_view(args->platform.ptr, args->platform.len),
-          args->bundle, args->traits);
+          absl::string_view(args->platform.ptr, args->platform.len), bundle,
+          traits);
       !status.ok()) {
     return new XLA_FFI_Error{std::move(status)};
   }
@@ -342,6 +415,7 @@ static ExecutionState* GetExecutionState(XLA_FFI_InvokeContext* ctx,
       return ctx->state_context.prepare;
     case XLA_FFI_ExecutionStage_INITIALIZE:
       return ctx->state_context.initialize;
+    case XLA_FFI_ExecutionStage_RECORD:
     case XLA_FFI_ExecutionStage_EXECUTE:
       DCHECK(false) << "Execution stage doesn't have a state";
       return nullptr;
@@ -362,11 +436,12 @@ struct XLA_FFI_State_Args_V02 {
 };
 
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_State_Args_V02, state);
+
 }  // namespace
 
 static XLA_FFI_Error* XLA_FFI_State_Set(XLA_FFI_State_Set_Args* args) {
-  // If struct size matches the legacy struct layout, always assume that we set
-  // the state for instantiation stage.
+  // If struct size matches the legacy struct layout, always assume that we
+  // set the state for instantiation stage.
   if (args->struct_size == XLA_FFI_State_Args_V02_STRUCT_SIZE) {
     // memcpy to safely avoid U.B.
     XLA_FFI_State_Args_V02 v02{};
@@ -404,8 +479,8 @@ static XLA_FFI_Error* XLA_FFI_State_Set(XLA_FFI_State_Set_Args* args) {
 }
 
 static XLA_FFI_Error* XLA_FFI_State_Get(XLA_FFI_State_Get_Args* args) {
-  // If struct size matches the legacy struct layout, always assume that we get
-  // the state for instantiation stage.
+  // If struct size matches the legacy struct layout, always assume that we
+  // get the state for instantiation stage.
   if (args->struct_size == XLA_FFI_State_Args_V02_STRUCT_SIZE) {
     // memcpy to safely avoid U.B.
     XLA_FFI_State_Args_V02 v02{};
@@ -588,7 +663,7 @@ const XLA_FFI_Api* GetXlaFfiApi() {
       internal::GetInternalApi(),
 
       XLA_FFI_Error_Create,
-      XLA_FFI_Error_GetMessage,
+      XLA_FFI_Error_GetDetails,
       XLA_FFI_Error_Destroy,
       XLA_FFI_Handler_Register,
       XLA_FFI_Stream_Get,

@@ -24,11 +24,11 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/dump.h"
 #include "xla/status_macros.h"
@@ -59,11 +59,11 @@ absl::Status AttemptRecordPassEndMetadata(HloModule& module,
                                           bool module_changed) {
   // Module id is set here instead of RecordPassStartMetadata because it may
   // change in the middle of the pass, and we want the final id.
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       module.metadata()->set_current_pass_module_id(module.unique_id()));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       module.metadata()->set_current_pass_module_changed(module_changed));
-  RETURN_IF_ERROR(module.metadata()->RecordPassEnd());
+  ABSL_RETURN_IF_ERROR(module.metadata()->RecordPassEnd());
   return absl::OkStatus();
 }
 
@@ -154,7 +154,7 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
                            pipeline_name, hlo->name(), UniqueId(*hlo));
   }};
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       RunInvariantCheckers<HloT>(hlo, kPipelineStart, execution_threads));
 
   RecordPassStartMetadata(*hlo, std::string(kPipelineStart), pipeline_name);
@@ -195,7 +195,7 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
       compilation_stats_->RecordPassError(
           pass_name, absl::StatusCodeToString(status.code()));
     }
-    ASSIGN_OR_RETURN(bool pass_changed, status_or_changed);
+    ABSL_ASSIGN_OR_RETURN(bool pass_changed, status_or_changed);
     if (verify_pass_changed_report) {
       VerifyPassChangedReport<HloT>(hlo, pass_changed, debug_options, pass_name,
                                     pipeline_name, hash_before.value());
@@ -217,7 +217,7 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
         compilation_stats_->RecordPassError(
             pass_name, absl::StatusCodeToString(status.code()));
       }
-      RETURN_IF_ERROR(status);
+      ABSL_RETURN_IF_ERROR(status);
     }
     if (!pass->IsPassPipeline()) {
       compilation_stats_->EndPass(pass_name);

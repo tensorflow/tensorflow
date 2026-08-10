@@ -31,10 +31,10 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_memory.h"
@@ -114,7 +114,6 @@ class Thunk {
     kCublasLtMatmul,
     kCustomCall,
     kCustomKernel,
-    kDynamicSlice,
     kDynamicSliceFusion,
     kFft,
     kGemm,
@@ -451,19 +450,30 @@ class Thunk {
   // Returns `true` if this thunk requires inter-GPU communication.
   bool IsCollective() const;
 
-  // Type predicate for `Walk` callback.
-  template <typename F, typename Arg>
-  using WalkCallback =
-      std::enable_if_t<std::is_invocable_v<F, Arg> ||
-                       std::is_invocable_r_v<absl::Status, F, Arg>>;
+  // Return type for `Walk` callbacks. All callbacks must return `void` or all
+  // must return `absl::Status`.
+  template <typename Arg, typename... Fs>
+  using WalkResult = std::enable_if_t<
+      (std::is_void_v<std::invoke_result_t<Fs, Arg>> && ...) ||
+          (std::is_same_v<std::invoke_result_t<Fs, Arg>, absl::Status> && ...),
+      std::common_type_t<std::invoke_result_t<Fs, Arg>...>>;
 
   // Recursively walks all the thunks nested inside *this one and calls the
   // user-provided callback on every thunk. Always starts traversal with *this,
   // and traverses thunks in DFS order.
-  template <typename F, WalkCallback<F, Thunk*>* = nullptr>
-  std::invoke_result_t<F, Thunk*> Walk(F&& callback);
-  template <typename F, WalkCallback<F, const Thunk*>* = nullptr>
-  std::invoke_result_t<F, const Thunk*> Walk(F&& callback) const;
+  template <typename F>
+  WalkResult<Thunk*, F> Walk(F&& callback);
+  template <typename F>
+  WalkResult<const Thunk*, F> Walk(F&& callback) const;
+
+  // Recursively walks all thunks in DFS order. Calls `pre_order` before
+  // visiting nested thunks and `post_order` after visiting them.
+  template <typename PreOrder, typename PostOrder>
+  WalkResult<Thunk*, PreOrder, PostOrder> Walk(PreOrder&& pre_order,
+                                               PostOrder&& post_order);
+  template <typename PreOrder, typename PostOrder>
+  WalkResult<const Thunk*, PreOrder, PostOrder> Walk(
+      PreOrder&& pre_order, PostOrder&& post_order) const;
 
   // Recursively applies transformation to all nested thunks inside *this one.
   // Transformation can be applied optionally by returning the argument back to
@@ -510,13 +520,12 @@ class Thunk {
  protected:
   friend class ThunkSequence;
 
-  // Walks all nested thunks and calls `callback` for them.
+  // Walks all nested thunks and calls `pre_order` and `post_order` for them.
   using Walker = absl::FunctionRef<absl::Status(Thunk*)>;
   using ConstWalker = absl::FunctionRef<absl::Status(const Thunk*)>;
-  virtual absl::Status WalkNested(Walker callback) { return absl::OkStatus(); }
-  virtual absl::Status WalkNested(ConstWalker callback) const {
-    return absl::OkStatus();
-  }
+  virtual absl::Status WalkNested(Walker pre_order, Walker post_order);
+  virtual absl::Status WalkNested(ConstWalker pre_order,
+                                  ConstWalker post_order) const;
 
  private:
   Kind kind_;
@@ -559,6 +568,9 @@ class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {
   // Walks/Transforms all thunks nested in *this sequence.
   absl::Status WalkNested(Thunk::Walker callback);
   absl::Status WalkNested(Thunk::ConstWalker callback) const;
+  absl::Status WalkNested(Thunk::Walker pre_order, Thunk::Walker post_order);
+  absl::Status WalkNested(Thunk::ConstWalker pre_order,
+                          Thunk::ConstWalker post_order) const;
   absl::Status TransformNested(Thunk::Transformer callback);
 
   // Creates a human-readable representation of a thunk sequence. For each thunk
@@ -583,28 +595,60 @@ ThunkMetadataListProto GetMetadataListProtoFromThunkGraph(
 // Thunk templates implementation.
 //===----------------------------------------------------------------------===//
 
-template <typename F, Thunk::WalkCallback<F, Thunk*>*>
-std::invoke_result_t<F, Thunk*> Thunk::Walk(F&& callback) {
-  if constexpr (std::is_void_v<std::invoke_result_t<F, Thunk*>>) {
-    Walk([f = std::forward<F>(callback)](Thunk* thunk) {
-      return (f(thunk), absl::OkStatus());
+template <typename F>
+Thunk::WalkResult<Thunk*, F> Thunk::Walk(F&& callback) {
+  if constexpr (std::is_void_v<WalkResult<Thunk*, F>>) {
+    Walk([&callback](Thunk* thunk) {
+      callback(thunk);
+      return absl::OkStatus();
     }).IgnoreError();  // Error can never happen here.
   } else {
-    RETURN_IF_ERROR(callback(this));
-    return WalkNested(Walker([&](Thunk* thunk) { return callback(thunk); }));
+    ABSL_RETURN_IF_ERROR(callback(this));
+    return WalkNested(Walker([&](Thunk* thunk) { return callback(thunk); }),
+                      Walker([](Thunk*) { return absl::OkStatus(); }));
   }
 }
 
-template <typename F, Thunk::WalkCallback<F, const Thunk*>*>
-std::invoke_result_t<F, const Thunk*> Thunk::Walk(F&& callback) const {
-  Thunk* non_const_this = const_cast<Thunk*>(this);
-  if constexpr (std::is_void_v<std::invoke_result_t<F, const Thunk*>>) {
-    non_const_this->Walk(
-        [f = std::forward<F>(callback)](Thunk* thunk) { f(thunk); });
+template <typename F>
+Thunk::WalkResult<const Thunk*, F> Thunk::Walk(F&& callback) const {
+  Thunk* self = const_cast<Thunk*>(this);  // NOLINT
+  return self->Walk([&callback](Thunk* thunk) {
+    return callback(static_cast<const Thunk*>(thunk));
+  });
+}
+
+template <typename PreOrder, typename PostOrder>
+Thunk::WalkResult<Thunk*, PreOrder, PostOrder> Thunk::Walk(
+    PreOrder&& pre_order, PostOrder&& post_order) {
+  if constexpr (std::is_void_v<WalkResult<Thunk*, PreOrder, PostOrder>>) {
+    Walk(
+        [&pre_order](Thunk* thunk) {
+          pre_order(thunk);
+          return absl::OkStatus();
+        },
+        [&post_order](Thunk* thunk) {
+          post_order(thunk);
+          return absl::OkStatus();
+        })
+        .IgnoreError();  // Error can never happen here.
   } else {
-    return non_const_this->Walk(
-        [f = std::forward<F>(callback)](Thunk* thunk) { return f(thunk); });
+    ABSL_RETURN_IF_ERROR(pre_order(this));
+    ABSL_RETURN_IF_ERROR(WalkNested(Walker(pre_order), Walker(post_order)));
+    return post_order(this);
   }
+}
+
+template <typename PreOrder, typename PostOrder>
+Thunk::WalkResult<const Thunk*, PreOrder, PostOrder> Thunk::Walk(
+    PreOrder&& pre_order, PostOrder&& post_order) const {
+  Thunk* self = const_cast<Thunk*>(this);  // NOLINT
+  return self->Walk(
+      [&pre_order](Thunk* thunk) {
+        return pre_order(static_cast<const Thunk*>(thunk));
+      },
+      [&post_order](Thunk* thunk) {
+        return post_order(static_cast<const Thunk*>(thunk));
+      });
 }
 
 }  // namespace xla::gpu

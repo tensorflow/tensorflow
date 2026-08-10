@@ -27,6 +27,7 @@ package_group(
     packages = [
         "//xla/backends/cpu",
         "//xla/backends/gpu",
+        "//xla/backends/gpu/runtime",
     ],
 )
 
@@ -159,6 +160,7 @@ cc_library(
         ":api",
         ":execution_context",
         ":execution_state",
+        ":ffi_interop",
         ":type_registry",
         "//xla:executable_run_options",
         "//xla:shape_util",
@@ -243,6 +245,16 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@eigen_archive//:eigen3",
+    ],
+)
+
+cc_library(
+    name = "record_ffi",
+    hdrs = ["record_ffi.h"],
+    deps = [
+        ":api",
+        ":ffi",
+        "//xla/ffi/api:c_api",
     ],
 )
 
@@ -448,5 +460,23 @@ xla_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "record_ffi_test",
+    srcs = ["record_ffi_test.cc"],
+    deps = [
+        ":api",
+        ":call_frame",
+        ":ffi",
+        ":ffi_api",  # buildcleaner: keep
+        ":invoke",
+        ":record_ffi",
+        "//xla/ffi/api:c_api",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest",
     ],
 )

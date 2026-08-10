@@ -35,9 +35,9 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/backends/gpu/transforms/conv_fusion_rewriter.h"
 #include "xla/backends/gpu/transforms/conv_kind_assignment.h"
@@ -72,7 +72,7 @@ class ConvFp8FallbackTestBase : public HloHardwareIndependentTestBase {
   // checked-in target-config spec (no StreamExecutor / GPU required).
   static absl::StatusOr<GpuTargetConfig> DevicelessTargetConfig(
       GpuModel model) {
-    ASSIGN_OR_RETURN(stream_executor::GpuTargetConfigProto proto,
+    ABSL_ASSIGN_OR_RETURN(stream_executor::GpuTargetConfigProto proto,
                      GetGpuTargetConfig(model));
     return GpuTargetConfig::FromProto(proto);
   }
@@ -82,13 +82,13 @@ class ConvFp8FallbackTestBase : public HloHardwareIndependentTestBase {
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>> BuildConvFusionModule(
       absl::string_view hlo_text, const GpuTargetConfig& target_config) {
     const se::DeviceDescription& device_info = target_config.device_description;
-    ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                      ParseAndReturnVerifiedModule(hlo_text));
     ConvKindAssignment kind_assignment(device_info.gpu_compute_capability(),
                                        target_config.dnn_version_info);
-    RETURN_IF_ERROR(RunHloPass(&kind_assignment, module.get()).status());
+    ABSL_RETURN_IF_ERROR(RunHloPass(&kind_assignment, module.get()).status());
     ConvFusionRewriter rewriter(device_info);
-    RETURN_IF_ERROR(RunHloPass(&rewriter, module.get()).status());
+    ABSL_RETURN_IF_ERROR(RunHloPass(&rewriter, module.get()).status());
     if (FindCudnnFusion(*module) == nullptr) {
       return absl::InternalError("No __cudnn$fusion produced.");
     }

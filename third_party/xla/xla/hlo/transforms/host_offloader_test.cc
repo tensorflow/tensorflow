@@ -25,10 +25,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -62,10 +62,10 @@ class HostOffloaderTest : public HloHardwareIndependentTestBase {
     }
     bool changed = false;
     HostOffloadLegalize host_offload_legalize;
-    ASSIGN_OR_RETURN(bool legal_changed, host_offload_legalize.Run(module));
+    ABSL_ASSIGN_OR_RETURN(bool legal_changed, host_offload_legalize.Run(module));
     changed |= legal_changed;
     HostOffloader host_offloader(&alias_info_);
-    ASSIGN_OR_RETURN(bool offload_changed, host_offloader.Run(module));
+    ABSL_ASSIGN_OR_RETURN(bool offload_changed, host_offloader.Run(module));
     changed |= offload_changed;
     return changed;
   }

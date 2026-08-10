@@ -13,12 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 
@@ -2640,4 +2643,215 @@ TEST_F(QuantOpsTest, WithVarsPerChannelDim4GradientNudgedUp_4Bits_NarrowRange) {
   ExpectClose(expected_bprop_wrt_max, *output_bprop_wrt_max);
 }
 
+TEST_F(QuantOpsTest, FakeQuantWithMinMaxVarsPerChannel_InvalidRank) {
+  TF_EXPECT_OK(NodeDefBuilder("op", "FakeQuantWithMinMaxVarsPerChannel")
+                   .Input(FakeInput(DT_FLOAT))  // inputs
+                   .Input(FakeInput(DT_FLOAT))  // min
+                   .Input(FakeInput(DT_FLOAT))  // max
+                   .Attr("num_bits", 8)
+                   .Attr("narrow_range", false)
+                   .Finalize(node_def()));
+  TF_EXPECT_OK(InitOp());
+  // Downstream inputs (Scalar input, rank 0, which should fail).
+  AddInputFromArray<float>(TensorShape({}), {0.0f});
+  // Min.
+  AddInputFromArray<float>(TensorShape({1}), {-10.0f});
+  // Max.
+  AddInputFromArray<float>(TensorShape({1}), {10.0f});
+
+  absl::Status s = RunOpKernel();
+  EXPECT_EQ(s.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_TRUE(absl::StrContains(s.message(), "must be at least rank 1"));
+}
+
+TEST_F(QuantOpsTest, FakeQuantWithMinMaxVarsPerChannelGradient_InvalidRank) {
+  TF_EXPECT_OK(NodeDefBuilder("op", "FakeQuantWithMinMaxVarsPerChannelGradient")
+                   .Input(FakeInput(DT_FLOAT))  // gradients
+                   .Input(FakeInput(DT_FLOAT))  // inputs
+                   .Input(FakeInput(DT_FLOAT))  // min
+                   .Input(FakeInput(DT_FLOAT))  // max
+                   .Attr("num_bits", 8)
+                   .Attr("narrow_range", false)
+                   .Finalize(node_def()));
+  TF_EXPECT_OK(InitOp());
+  // Gradients (Scalar input, rank 0).
+  AddInputFromArray<float>(TensorShape({}), {0.0f});
+  // Inputs (Scalar input, rank 0).
+  AddInputFromArray<float>(TensorShape({}), {0.0f});
+  // Min.
+  AddInputFromArray<float>(TensorShape({1}), {-10.0f});
+  // Max.
+  AddInputFromArray<float>(TensorShape({1}), {10.0f});
+
+  absl::Status s = RunOpKernel();
+  EXPECT_EQ(s.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_TRUE(absl::StrContains(s.message(), "must be at least rank 1"));
+}
+
+TEST_F(QuantOpsTest, FakeQuantWithMinMaxVarsPerChannel_InvalidMinRank) {
+  TF_EXPECT_OK(NodeDefBuilder("op", "FakeQuantWithMinMaxVarsPerChannel")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("num_bits", 8)
+                   .Attr("narrow_range", false)
+                   .Finalize(node_def()));
+  TF_EXPECT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({1}), {0.0f});
+  AddInputFromArray<float>(TensorShape({}), {-10.0f});
+  AddInputFromArray<float>(TensorShape({1}), {10.0f});
+  absl::Status s = RunOpKernel();
+  EXPECT_EQ(s.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_TRUE(absl::StrContains(s.message(), "`min` must be rank 1"));
+}
+
+TEST_F(QuantOpsTest, FakeQuantWithMinMaxVarsPerChannel_InvalidMinSize) {
+  TF_EXPECT_OK(NodeDefBuilder("op", "FakeQuantWithMinMaxVarsPerChannel")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("num_bits", 8)
+                   .Attr("narrow_range", false)
+                   .Finalize(node_def()));
+  TF_EXPECT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({1}), {0.0f});
+  AddInputFromArray<float>(TensorShape({2}), {-10.0f, -10.0f});
+  AddInputFromArray<float>(TensorShape({1}), {10.0f});
+  absl::Status s = RunOpKernel();
+  EXPECT_EQ(s.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_TRUE(absl::StrContains(s.message(), "min has incorrect size"));
+}
+
+TEST_F(QuantOpsTest, FakeQuantWithMinMaxVarsPerChannel_InvalidMaxRank) {
+  TF_EXPECT_OK(NodeDefBuilder("op", "FakeQuantWithMinMaxVarsPerChannel")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("num_bits", 8)
+                   .Attr("narrow_range", false)
+                   .Finalize(node_def()));
+  TF_EXPECT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({1}), {0.0f});
+  AddInputFromArray<float>(TensorShape({1}), {-10.0f});
+  AddInputFromArray<float>(TensorShape({}), {10.0f});
+  absl::Status s = RunOpKernel();
+  EXPECT_EQ(s.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_TRUE(absl::StrContains(s.message(), "`max` must be rank 1"));
+}
+
+TEST_F(QuantOpsTest, FakeQuantWithMinMaxVarsPerChannel_InvalidMaxSize) {
+  TF_EXPECT_OK(NodeDefBuilder("op", "FakeQuantWithMinMaxVarsPerChannel")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("num_bits", 8)
+                   .Attr("narrow_range", false)
+                   .Finalize(node_def()));
+  TF_EXPECT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({1}), {0.0f});
+  AddInputFromArray<float>(TensorShape({1}), {-10.0f});
+  AddInputFromArray<float>(TensorShape({2}), {10.0f, 10.0f});
+  absl::Status s = RunOpKernel();
+  EXPECT_EQ(s.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_TRUE(absl::StrContains(s.message(), "max has incorrect size"));
+}
+
+TEST_F(QuantOpsTest,
+       FakeQuantWithMinMaxVarsPerChannelGradient_InvalidGradientSize) {
+  TF_EXPECT_OK(NodeDefBuilder("op", "FakeQuantWithMinMaxVarsPerChannelGradient")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("num_bits", 8)
+                   .Attr("narrow_range", false)
+                   .Finalize(node_def()));
+  TF_EXPECT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({2}), {0.0f, 0.0f});
+  AddInputFromArray<float>(TensorShape({1}), {0.0f});
+  AddInputFromArray<float>(TensorShape({1}), {-10.0f});
+  AddInputFromArray<float>(TensorShape({1}), {10.0f});
+  absl::Status s = RunOpKernel();
+  EXPECT_EQ(s.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_TRUE(absl::StrContains(s.message(),
+                                "gradient and input must be the same size"));
+}
+
+TEST_F(QuantOpsTest, FakeQuantWithMinMaxVarsPerChannelGradient_InvalidMinRank) {
+  TF_EXPECT_OK(NodeDefBuilder("op", "FakeQuantWithMinMaxVarsPerChannelGradient")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("num_bits", 8)
+                   .Attr("narrow_range", false)
+                   .Finalize(node_def()));
+  TF_EXPECT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({1}), {0.0f});
+  AddInputFromArray<float>(TensorShape({1}), {0.0f});
+  AddInputFromArray<float>(TensorShape({}), {-10.0f});
+  AddInputFromArray<float>(TensorShape({1}), {10.0f});
+  absl::Status s = RunOpKernel();
+  EXPECT_EQ(s.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_TRUE(absl::StrContains(s.message(), "`min` must be rank 1"));
+}
+
+TEST_F(QuantOpsTest, FakeQuantWithMinMaxVarsPerChannelGradient_InvalidMinSize) {
+  TF_EXPECT_OK(NodeDefBuilder("op", "FakeQuantWithMinMaxVarsPerChannelGradient")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("num_bits", 8)
+                   .Attr("narrow_range", false)
+                   .Finalize(node_def()));
+  TF_EXPECT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({1}), {0.0f});
+  AddInputFromArray<float>(TensorShape({1}), {0.0f});
+  AddInputFromArray<float>(TensorShape({2}), {-10.0f, -10.0f});
+  AddInputFromArray<float>(TensorShape({1}), {10.0f});
+  absl::Status s = RunOpKernel();
+  EXPECT_EQ(s.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_TRUE(absl::StrContains(s.message(), "min has incorrect size"));
+}
+
+TEST_F(QuantOpsTest, FakeQuantWithMinMaxVarsPerChannelGradient_InvalidMaxRank) {
+  TF_EXPECT_OK(NodeDefBuilder("op", "FakeQuantWithMinMaxVarsPerChannelGradient")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("num_bits", 8)
+                   .Attr("narrow_range", false)
+                   .Finalize(node_def()));
+  TF_EXPECT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({1}), {0.0f});
+  AddInputFromArray<float>(TensorShape({1}), {0.0f});
+  AddInputFromArray<float>(TensorShape({1}), {-10.0f});
+  AddInputFromArray<float>(TensorShape({}), {10.0f});
+  absl::Status s = RunOpKernel();
+  EXPECT_EQ(s.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_TRUE(absl::StrContains(s.message(), "`max` must be rank 1"));
+}
+
+TEST_F(QuantOpsTest, FakeQuantWithMinMaxVarsPerChannelGradient_InvalidMaxSize) {
+  TF_EXPECT_OK(NodeDefBuilder("op", "FakeQuantWithMinMaxVarsPerChannelGradient")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("num_bits", 8)
+                   .Attr("narrow_range", false)
+                   .Finalize(node_def()));
+  TF_EXPECT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({1}), {0.0f});
+  AddInputFromArray<float>(TensorShape({1}), {0.0f});
+  AddInputFromArray<float>(TensorShape({1}), {-10.0f});
+  AddInputFromArray<float>(TensorShape({2}), {10.0f, 10.0f});
+  absl::Status s = RunOpKernel();
+  EXPECT_EQ(s.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_TRUE(absl::StrContains(s.message(), "max has incorrect size"));
+}
+
 }  // namespace tensorflow
+// Trigger CI rerun

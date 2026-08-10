@@ -60,14 +60,14 @@ absl::Status RunMain(
   }
 
   // 1. Create Runners
-  ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> test_client,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> test_client,
                    GetPjRtClientForPlatform(test_platform_name));
   HloRunner test_runner(std::move(test_client));
 
   std::unique_ptr<HloRunner> reference_runner_ptr;
   HloRunnerInterface* reference_runner_ptr_raw = nullptr;
   if (!reference_platform_name.empty()) {
-    ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> ref_client,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> ref_client,
                      GetPjRtClientForPlatform(reference_platform_name));
     reference_runner_ptr = std::make_unique<HloRunner>(std::move(ref_client));
     reference_runner_ptr_raw = reference_runner_ptr.get();
@@ -85,7 +85,7 @@ absl::Status RunMain(
   options.filter_by_opcode = std::string(filter_by_opcode);
   options.skip_by_opcode = std::string(skip_by_opcode);
 
-  ASSIGN_OR_RETURN(std::vector<HloIsolationTestResult> results,
+  ABSL_ASSIGN_OR_RETURN(std::vector<HloIsolationTestResult> results,
                    RunIsolationPipeline(std::string(hlo_path), &test_runner,
                                         reference_runner_ptr_raw, options));
 

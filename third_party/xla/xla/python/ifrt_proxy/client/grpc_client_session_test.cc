@@ -238,7 +238,7 @@ class ClientAndServer {
     Queue* q = owned_queues_.back().get();
 
     auto req = std::make_unique<IfrtRequest>();
-    RETURN_IF_ERROR(client_session_->Enqueue(
+    ABSL_RETURN_IF_ERROR(client_session_->Enqueue(
         std::move(req), [q](absl::StatusOr<GrpcClientSession::Response> resp) {
           q->Push(resp.status());
         }));

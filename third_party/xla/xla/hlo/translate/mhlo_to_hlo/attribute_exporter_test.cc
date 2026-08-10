@@ -21,9 +21,9 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -71,7 +71,7 @@ class AttributeExporterTest : public ::testing::Test {
     mlir::BaseScopedDiagnosticHandler diagnostic_handler(context_.get());
     auto module =
         mlir::parseSourceString<mlir::ModuleOp>(mlir_source, context_.get());
-    RETURN_IF_ERROR(diagnostic_handler.ConsumeStatus());
+    ABSL_RETURN_IF_ERROR(diagnostic_handler.ConsumeStatus());
     return module;
   }
 

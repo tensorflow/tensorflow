@@ -26,12 +26,12 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "riegeli/bytes/cfile_reader.h"
 #include "riegeli/bytes/string_reader.h"
 #include "xla/backends/cpu/target_machine_options.h"
@@ -322,7 +322,7 @@ TEST_F(GpuExecutableTest, CommandBufferAllocationPolicy) {
         GpuExecutableBufferAllocator::Create("test", allocation_ptrs, shape,
                                              &debug_options, &thunk_executor);
     ServiceExecutableRunOptions run_options;
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<GpuExecutableBufferAllocator::ExecutionScope>
             allocation_scope,
         buffer_allocator->CreateExecutionScope(
@@ -332,7 +332,7 @@ TEST_F(GpuExecutableTest, CommandBufferAllocationPolicy) {
     BufferAllocations buffer_allocations(buffers, /*device_ordinal=*/0,
                                          /*memory_allocator=*/nullptr);
     std::optional<std::vector<BufferAllocation::Index>> persistent_indices;
-    RETURN_IF_ERROR(allocation_scope->ExecuteWithBufferAllocations(
+    ABSL_RETURN_IF_ERROR(allocation_scope->ExecuteWithBufferAllocations(
         buffer_allocations, /*device_ordinal=*/0,
         [&](const BufferAllocations&,
             std::optional<absl::Span<const BufferAllocation::Index>> indices) {
@@ -440,10 +440,10 @@ absl::StatusOr<ScopedBufferAssignment> MakeNonEmptyBufferAssignment() {
       b = f32[128] parameter(1)
       ROOT c = f32[128] add(a, b)
     })";
-  ASSIGN_OR_RETURN(holder.hlo_module, ParseAndReturnUnverifiedModule(hlo_text));
+  ABSL_ASSIGN_OR_RETURN(holder.hlo_module, ParseAndReturnUnverifiedModule(hlo_text));
 
   AliasInfo alias_info;
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       holder.buffer_assignment,
       BufferAssigner::Run(
           holder.hlo_module.get(),

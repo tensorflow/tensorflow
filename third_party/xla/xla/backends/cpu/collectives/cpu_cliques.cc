@@ -24,9 +24,9 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/collectives/cpu_clique.h"
 #include "xla/backends/cpu/collectives/cpu_clique_key.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
@@ -100,7 +100,7 @@ absl::StatusOr<std::unique_ptr<Communicator>> CreateCommunicator(
 
   CpuCollectives::DeviceRank device_rank(/*device=*/nullptr, rank);
   CpuCollectives::Config config;
-  ASSIGN_OR_RETURN(std::vector<std::unique_ptr<Communicator>> communicators,
+  ABSL_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<Communicator>> communicators,
                    collectives->CreateCommunicators(clique_key, std::nullopt,
                                                     {device_rank}, config));
 
@@ -169,7 +169,7 @@ absl::StatusOr<Communicator*> AcquireCommunicator(
   });
 
   absl::MutexLock lock(thread_safe_clique.mu);
-  RETURN_IF_ERROR(thread_safe_clique.create_comm_status[rank]);
+  ABSL_RETURN_IF_ERROR(thread_safe_clique.create_comm_status[rank]);
   return *thread_safe_clique.clique.comm(rank);
 }
 

@@ -40,10 +40,10 @@ absl::StatusOr<std::string> AotCompileCpuExecutable(
     compile_options.cpu_target_config =
         Compiler::CpuTargetConfig(*target_config);
   }
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<Executable>> executables,
       cpu_compiler.Compile(std::move(hlo_module), {nullptr}, compile_options));
-  ASSIGN_OR_RETURN(std::unique_ptr<CompiledModule> aot_result,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<CompiledModule> aot_result,
                    cpu_compiler.Export(executables[0].get()));
   return aot_result->SerializeAsString();
 }

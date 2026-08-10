@@ -64,7 +64,7 @@ ConfigRunner::ProfileAll(
 
   absl::MutexLock lock(profiler_m_);
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<InputBuffers> input_buffers,
       profiler_->CreateInputBuffers(candidates[0].executable.get(), instr));
 

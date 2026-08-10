@@ -659,7 +659,7 @@ absl::Status WindowsFileSystem::GetFileSize(const std::string& fname,
 absl::Status WindowsFileSystem::IsDirectory(const std::string& fname) {
   std::wstring ws_final_fname = GetUncPathName(TranslateName(fname));
   std::string str_final_fname(ws_final_fname.begin(), ws_final_fname.end());
-  RETURN_IF_ERROR(FileExists(str_final_fname));
+  ABSL_RETURN_IF_ERROR(FileExists(str_final_fname));
   if (PathIsDirectoryW(ws_final_fname.c_str())) {
     return absl::OkStatus();
   }
@@ -709,7 +709,7 @@ absl::Status WindowsFileSystem::GetMatchingPaths(
   // but no code appears to rely on this behavior.
   std::string converted_pattern(pattern);
   std::replace(converted_pattern.begin(), converted_pattern.end(), '\\', '/');
-  RETURN_IF_ERROR(internal::GetMatchingPaths(this, Env::Default(),
+  ABSL_RETURN_IF_ERROR(internal::GetMatchingPaths(this, Env::Default(),
                                              converted_pattern, results));
   for (std::string& result : *results) {
     std::replace(result.begin(), result.end(), '/', '\\');

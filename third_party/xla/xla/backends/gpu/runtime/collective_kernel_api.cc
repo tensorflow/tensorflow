@@ -26,9 +26,9 @@ limitations under the License.
 #include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_clique_rendezvous.h"
 #include "xla/core/collectives/rank_id.h"
@@ -59,7 +59,7 @@ absl::StatusOr<typename Kernel::KernelType*> GetCachedKernel(
   absl::MutexLock lock(*kernel_mutex);
   auto it = kernel_per_executor->find(executor);
   if (it == kernel_per_executor->end()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto new_kernel,
         (stream_executor::gpu::GpuKernelRegistry::GetGlobalRegistry()
              .LoadKernel<Kernel>(executor)));
@@ -103,7 +103,7 @@ absl::Status LaunchMultiGpuBarrier(
     signal_buffers[peer] = barrier_addresses[peer].opaque();
   }
 
-  ASSIGN_OR_RETURN(MultiGpuBarrierKernel::KernelType * kernel,
+  ABSL_ASSIGN_OR_RETURN(MultiGpuBarrierKernel::KernelType * kernel,
                    GetCachedKernel<MultiGpuBarrierKernel>(stream->parent()));
 
   stream_executor::DeviceAddress<uint32_t> typed_sync_counter(
@@ -126,7 +126,7 @@ absl::Status LaunchMultiGpuBarrierWithNccl(
 
   TF_RET_CHECK(symmetric_memory != nullptr) << "Symmetric memory is required";
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       MultiGpuBarrierWithNcclKernel::KernelType * kernel,
       GetCachedKernel<MultiGpuBarrierWithNcclKernel>(stream->parent()));
 
@@ -156,7 +156,7 @@ absl::StatusOr<std::vector<void*>> CollectParamToPeers(
 
   size_t num_parameters = parameters.size();
   // Exchange device parameters with all ranks in the clique.
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto device_parameters,
       GpuCliqueRendezvous::Join(clique_key, rank, std::move(parameters)));
 
@@ -169,7 +169,7 @@ absl::StatusOr<std::vector<void*>> CollectParamToPeers(
   using DeviceParameters = std::vector<stream_executor::DeviceAddressBase>;
 
   for (auto peer = RankId(0); peer < RankId(clique_key.num_devices()); ++peer) {
-    ASSIGN_OR_RETURN(const DeviceParameters& peer_parameters,
+    ABSL_ASSIGN_OR_RETURN(const DeviceParameters& peer_parameters,
                      device_parameters->at<DeviceParameters>(peer));
     peer_to_parameters[peer.value()] = std::move(peer_parameters);
   }

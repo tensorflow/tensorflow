@@ -29,12 +29,12 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/message.h"
 #include "google/protobuf/unknown_field_set.h"
@@ -163,7 +163,7 @@ CompilationEnvironments::CreateFromProto(
           "'"));
     }
 
-    RETURN_IF_ERROR(envs->AddEnv(std::move(env)));
+    ABSL_RETURN_IF_ERROR(envs->AddEnv(std::move(env)));
   }
 
   return envs;
@@ -212,7 +212,7 @@ absl::Status CompilationEnvironments::InitializeAllKnownEnvs() {
   for (const auto& descriptor : descriptors) {
     auto it = environments_.find(descriptor);
     if (it == environments_.end()) {
-      RETURN_IF_ERROR(AddEnvImpl(*descriptor, nullptr));
+      ABSL_RETURN_IF_ERROR(AddEnvImpl(*descriptor, nullptr));
       DefaultEnvCreatedByCompilationEnvironments(descriptor->full_name());
     }
   }
@@ -289,7 +289,7 @@ absl::Status CompilationEnvironments::AddEnvImpl(
     return absl::InvalidArgumentError(absl::StrCat(
         "Unknown CompilationEnvironment type ", descriptor.full_name()));
   }
-  ASSIGN_OR_RETURN(std::unique_ptr<google::protobuf::Message> processed_env,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<google::protobuf::Message> processed_env,
                    process_new_env(std::move(env)));
 
   // Check for unknown fields

@@ -28,9 +28,9 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
@@ -39,7 +39,7 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-class PjRtTuple final : public llvm::RTTIExtends<PjRtTuple, Tuple> {
+class PjRtTuple final : public RTTIExtends<PjRtTuple, Tuple> {
  public:
   static absl::StatusOr<tsl::RCReference<PjRtTuple>> Create(
       PjRtCompatibleClient* client, absl::Span<ValueRef> values);

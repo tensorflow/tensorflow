@@ -256,7 +256,7 @@ TEST(FfiTest, RunId) {
   auto handler = Ffi::Bind().Ctx<RunId>().Ctx().To(
       [&](RunId run_id, Context context) -> absl::Status {
         EXPECT_EQ(run_id.ToInt(), 42);
-        ASSIGN_OR_RETURN(RunId run_id_from_context, context.get<RunId>());
+        ABSL_ASSIGN_OR_RETURN(RunId run_id_from_context, context.get<RunId>());
         EXPECT_EQ(run_id_from_context.ToInt(), 42);
         return absl::OkStatus();
       });
@@ -281,14 +281,18 @@ struct MyContext {
 struct MyExtension {
   using Type = MyContext;
   using CExtension = MyCExtension;
+
   static constexpr auto kName = "MyExtension";
   static constexpr int64_t kExtensionType = 1234;
   static constexpr int32_t kMajorVersion = 1;
   static constexpr int32_t kMinorVersion = 2;
 
-  static Type Create(const CExtension* ext) { return Type{ext}; }
   static bool Support(int32_t major_version, int32_t minor_version) {
     return major_version == kMajorVersion && minor_version <= kMinorVersion;
+  }
+
+  static Type Create(const XLA_FFI_Api*, const CExtension* ext) {
+    return Type{ext};
   }
 };
 

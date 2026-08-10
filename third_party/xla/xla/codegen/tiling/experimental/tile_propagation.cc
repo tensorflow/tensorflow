@@ -299,7 +299,7 @@ absl::Status VerifyConcatenateAlignment(
 absl::StatusOr<Tiles> PropagateTileToInputForConcatenateOp(
     TilingSpace& tiling_space, const HloConcatenateInstruction& concatenate,
     const Tile& output_tile) {
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       VerifyConcatenateAlignment(tiling_space, concatenate, output_tile));
   int64_t num_operands = concatenate.operand_count();
   Tiles tiles;
@@ -1144,7 +1144,7 @@ absl::StatusOr<Tile> PropagateTileThroughReshape(const Tile& tile,
 
   std::vector<MinimalReshape> reshapes = GetMinimalReshapes(src, reshape_shape);
   VLOG(2) << "reshapes: " << absl::StrJoin(reshapes, ", ");
-  RETURN_IF_ERROR(IsSupportedReshape(reshapes));
+  ABSL_RETURN_IF_ERROR(IsSupportedReshape(reshapes));
   SmallVector<DimTile> target_dim_tiles;
   target_dim_tiles.reserve(reshape_dims.size());
   const TilingSpace& tiling_space = tile.tiling_space();
@@ -1153,7 +1153,7 @@ absl::StatusOr<Tile> PropagateTileThroughReshape(const Tile& tile,
     target_dim_tiles.push_back(GetFullDimTile(dim_size, mlir_context));
   }
   for (const auto& minimal_reshape : reshapes) {
-    RETURN_IF_ERROR(PropagateTileThroughMinimalReshape(
+    ABSL_RETURN_IF_ERROR(PropagateTileThroughMinimalReshape(
         mlir_context, minimal_reshape, src, reshape_shape, tile,
         target_dim_tiles));
   }
@@ -1166,7 +1166,7 @@ absl::StatusOr<Tiles> PropagateTileToInputForReshapeOp(
     const HloInstruction& hlo, const Tile& output_tile) {
   const Shape& input_shape = hlo.operand(0)->shape();
   const Shape& output_shape = hlo.shape();
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto input_tile,
       PropagateTileThroughReshape(output_tile, output_shape, input_shape));
   return Tiles{std::move(input_tile)};
@@ -1176,7 +1176,7 @@ absl::StatusOr<Tiles> PropagateTileToOutputForReshapeOp(
     const HloInstruction& hlo, const Tile& input_tile) {
   const Shape& input_shape = hlo.operand(0)->shape();
   const Shape& output_shape = hlo.shape();
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto output_tile,
       PropagateTileThroughReshape(input_tile, input_shape, output_shape));
   return Tiles{std::move(output_tile)};
@@ -1208,7 +1208,7 @@ absl::StatusOr<Tile> PropagateTileForBitcastOp(const Tile& tile,
   const ShapeUtil::BitcastDecompositionTrt& trt = maybe_trt.value();
   Tile transpose1_tile = PropagateTileThroughTransposeOp(
       tile, InversePermutation(trt.transpose1_dims));
-  ASSIGN_OR_RETURN(auto reshape_tile, PropagateTileThroughReshape(
+  ABSL_ASSIGN_OR_RETURN(auto reshape_tile, PropagateTileThroughReshape(
                                           transpose1_tile, trt.transpose1_shape,
                                           trt.reshape_shape));
   return PropagateTileThroughTransposeOp(
@@ -1219,7 +1219,7 @@ absl::StatusOr<Tiles> PropagateTileToInputForBitcastOp(
     const HloInstruction& hlo, const Tile& output_tile) {
   const Shape& input_shape = hlo.operand(0)->shape();
   const Shape& output_shape = hlo.shape();
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto input_tile,
       PropagateTileForBitcastOp(output_tile, output_shape, input_shape));
   return Tiles{std::move(input_tile)};
@@ -1229,7 +1229,7 @@ absl::StatusOr<Tiles> PropagateTileToOutputForBitcastOp(
     const HloInstruction& hlo, const Tile& input_tile) {
   const Shape& input_shape = hlo.operand(0)->shape();
   const Shape& output_shape = hlo.shape();
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto output_tile,
       PropagateTileForBitcastOp(input_tile, input_shape, output_shape));
   return Tiles{std::move(output_tile)};

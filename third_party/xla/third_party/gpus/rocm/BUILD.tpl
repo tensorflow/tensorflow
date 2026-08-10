@@ -394,7 +394,10 @@ rocm_lib_import(
 
 rocm_lib_import(
     name = "rocprofiler_sdk",
-    data = glob(["%{rocm_root}/lib/librocprofiler-sdk*.so*"]),
+    data = glob([
+        "%{rocm_root}/lib/librocprofiler-sdk*.so*",
+        "%{rocm_root}/lib/libhsa-amd-aqlprofile64.so*",
+    ]),
     interface_library = "%{rocm_root}/lib/librocprofiler-sdk.so",
     deps = [
         ":amd_comgr_libs",

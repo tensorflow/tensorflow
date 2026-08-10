@@ -25,10 +25,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -241,9 +241,9 @@ absl::StatusOr<bool> AllReduceFolder::RunImpl(
         ClearCollectiveGroupKey(*new_ar);
       }
 
-      RETURN_IF_ERROR(ar1->ReplaceAllUsesWith(new_ar));
-      RETURN_IF_ERROR(computation->RemoveInstruction(ar1));
-      RETURN_IF_ERROR(computation->RemoveInstruction(ar0));
+      ABSL_RETURN_IF_ERROR(ar1->ReplaceAllUsesWith(new_ar));
+      ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(ar1));
+      ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(ar0));
       changed = true;
     }
   }

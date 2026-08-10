@@ -17,12 +17,13 @@ syntax = "proto3";
 
 package xla;
 
+import "xla/service/gpu_topology.proto";
 import "xla/stream_executor/device_description.proto";
 import "xla/xla.proto";
 import "xla/xla_data.proto";
 
 // A serialization of xla::ExecutableBuildOptions.
-// Next id: 27.
+// Next id: 28.
 message ExecutableBuildOptionsProto {
   // If set, this is the device to build the computation for. Valid
   // device_ordinal values are: 0 to # of devices - 1. These values are
@@ -159,6 +160,8 @@ message ExecutableBuildOptionsProto {
   int64 process_index = 22;
   int64 process_count = 23;
 
+  GpuTopologyProto gpu_topology = 27;
+
   reserved 26;
   reserved "slice_size";
 }
@@ -184,7 +187,7 @@ message CompileOptionsProto {
   stream_executor.GpuTargetConfigProto target_config = 8;
   bool allow_in_place_mlir_modification = 9;
   PrecisionConfig.Precision matrix_unit_operand_precision = 10;
-  optional string compiler_variant = 11;
+  optional string compiler_variant = 11 [deprecated = true];
 }
 
 // Helper for serializing opaque executables alongside CompileOptions.

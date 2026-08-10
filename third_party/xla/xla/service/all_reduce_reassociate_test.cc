@@ -23,9 +23,9 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -48,7 +48,7 @@ class AllReduceSimplifierTest : public HloHardwareIndependentTestBase {
   absl::StatusOr<std::unique_ptr<HloModule>> RunPass(
       absl::string_view hlo_module, bool expect_change,
       bool reassociate_converted_ar = false) {
-    ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_module));
+    ABSL_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_module));
     auto changed =
         AllReduceReassociate(reassociate_converted_ar).Run(module.get());
     if (!changed.ok()) {

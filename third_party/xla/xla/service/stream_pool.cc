@@ -20,10 +20,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 
@@ -58,7 +58,7 @@ absl::StatusOr<StreamPool::Ptr> StreamPool::BorrowStream(
 
   if (!stream) {
     // Create a new stream.
-    ASSIGN_OR_RETURN(stream, executor_->CreateStream(priority));
+    ABSL_ASSIGN_OR_RETURN(stream, executor_->CreateStream(priority));
     stream->SetName(absl::StrFormat("%s pool stream",
                                     se::StreamPriorityToString(priority)));
     VLOG(1) << absl::StrFormat("Created new stream (%p) with priority = %s",

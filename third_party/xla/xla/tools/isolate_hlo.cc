@@ -104,7 +104,7 @@ absl::Status RealMain(const std::string& input, const std::string& output,
   QCHECK(!instruction_name.empty()) << "Must pass --instruction_name flag.";
 
   std::string input_contents;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       tsl::ReadFileToString(tsl::Env::Default(), input, &input_contents));
 
   std::unique_ptr<HloModule> module;
@@ -114,7 +114,7 @@ absl::Status RealMain(const std::string& input, const std::string& output,
       return absl::InvalidArgumentError(
           "Failed to parse input as HloSnapshot proto.");
     }
-    ASSIGN_OR_RETURN(module,
+    ABSL_ASSIGN_OR_RETURN(module,
                      HloModule::CreateFromProto(snapshot.hlo().hlo_module(),
                                                 HloModuleConfig{}));
   } else {
@@ -122,7 +122,7 @@ absl::Status RealMain(const std::string& input, const std::string& output,
     if (load_format == "module.pbtxt") {
       load_format = "pbtxt";
     }
-    ASSIGN_OR_RETURN(module, LoadModuleFromData(input_contents, load_format));
+    ABSL_ASSIGN_OR_RETURN(module, LoadModuleFromData(input_contents, load_format));
   }
 
   std::string instr_name = instruction_name;
@@ -166,19 +166,19 @@ absl::Status RealMain(const std::string& input, const std::string& output,
       }
     }
   } else if (output_format == "url") {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         output_contents,
         xla::RenderGraph(*extracted->entry_computation(), /*label=*/"",
                          extracted->config().debug_options(),
                          RenderedGraphFormat::kUrl));
   } else if (output_format == "html") {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         output_contents,
         xla::RenderGraph(*extracted->entry_computation(), /*label=*/"",
                          extracted->config().debug_options(),
                          RenderedGraphFormat::kHtml));
   } else if (output_format == "dot") {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         output_contents,
         xla::RenderGraph(*extracted->entry_computation(), /*label=*/"",
                          extracted->config().debug_options(),
@@ -188,7 +188,7 @@ absl::Status RealMain(const std::string& input, const std::string& output,
         absl::StrCat("Unknown output format: ", output_format));
   }
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       tsl::WriteStringToFile(tsl::Env::Default(), output, output_contents));
 
   return absl::OkStatus();

@@ -174,6 +174,8 @@ class BatchResourceBaseWithPriorityTest
         "/tensorflow/serving/batching/padding_size_v2");
     mixed_priority_policy_reader_ = std::make_unique<CellReader<std::string>>(
         "/tensorflow/serving/batching/mixed_priority_batching_policy");
+    priority_queue_max_depth_reader_ = std::make_unique<CellReader<int64_t>>(
+        "/tensorflow/serving/batching/priority_queue_max_depth");
     // Create device_.
     device_ = DeviceFactory::NewDevice("CPU", SessionOptions{},
                                        "/job:a/replica:0/task:0");
@@ -229,6 +231,7 @@ class BatchResourceBaseWithPriorityTest
   std::unique_ptr<CellReader<int64_t>> processed_batch_size_v2_reader_;
   std::unique_ptr<CellReader<Histogram>> padding_size_v2_reader_;
   std::unique_ptr<CellReader<std::string>> mixed_priority_policy_reader_;
+  std::unique_ptr<CellReader<int64_t>> priority_queue_max_depth_reader_;
   std::unique_ptr<Device> device_;
   std::unique_ptr<OpKernel> batch_kernel_;
   Tensor input_tensor_;
@@ -368,6 +371,64 @@ TEST_P(BatchResourceBaseWithPriorityTest, BatchingWithMixedPriorityPolicy) {
             .sum(),
         expected_padding_sum);
   }
+}
+
+TEST_F(BatchResourceBaseWithPriorityTest,
+       PriorityAwareSchedulerExportsQueueStateMetrics) {
+  std::shared_ptr<SharedBatchScheduler<BatchResourceBase::BatchTask>> batcher;
+  TF_ASSERT_OK(SharedBatchScheduler<BatchResourceBase::BatchTask>::Create(
+      SharedBatchScheduler<BatchResourceBase::BatchTask>::Options(), &batcher));
+  std::vector<int32_t> allowed_batch_sizes = {4, 8, 12, 16};
+  int max_batch_size = 16;
+  int64_t batch_timeout = absl::ToInt64Microseconds(absl::Seconds(3));
+  int num_requests = 6;
+  BatchResourceBase::BatcherT::QueueOptions queue_options =
+      TestBatchResourceBase::GetBatcherQueueOptions(
+          /*num_batch_threads=*/num_requests, /*max_batch_size=*/max_batch_size,
+          /*batch_timeout_micros=*/batch_timeout,
+          /*max_enqueued_batches=*/num_requests, allowed_batch_sizes,
+          /*enable_large_batch_splitting=*/true,
+          /*disable_padding=*/false, kPadUpPolicy,
+          /*low_priority_max_batch_size=*/max_batch_size,
+          /*low_priority_batch_timeout_micros=*/batch_timeout * 3,
+          /*low_priority_max_enqueued_batches=*/num_requests,
+          /*low_priority_allowed_batch_sizes=*/allowed_batch_sizes,
+          /*mixed_priority_batching_policy=*/
+          MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize,
+          /*enable_priority_aware_batch_scheduler=*/true,
+          /*enable_priority_aware_batch_scheduler_resplit=*/false,
+          /*enable_batching_task_lazy_cancellation=*/false);
+  tsl::core::RefCountPtr<BatchResourceBase> batch_resource(
+      new TestBatchResourceBase(true, batcher, queue_options,
+                                allowed_batch_sizes));
+
+  std::vector<std::unique_ptr<OpKernelContext>> contexts;
+  for (int i = 0; i < num_requests; ++i) {
+    contexts.push_back(std::make_unique<OpKernelContext>(&params_));
+  }
+
+  absl::BlockingCounter blocking_counter(num_requests);
+  for (int i = 0; i < num_requests; ++i) {
+    auto create_batch_task_fn =
+        []() -> absl::StatusOr<std::unique_ptr<BatchResourceBase::BatchTask>> {
+      return std::make_unique<BatchResourceBase::BatchTask>();
+    };
+    auto done_callback = [&]() { blocking_counter.DecrementCount(); };
+    TF_ASSERT_OK(batch_resource->RegisterInput(
+        /*guid=*/i, contexts[i].get(),
+        /*batcher_queue_name=*/"batcher_queue_name",
+        /*create_batch_task_fn=*/create_batch_task_fn,
+        /*done_callback=*/done_callback,
+        /*forced_warmup_batch_size=*/0));
+  }
+  blocking_counter.Wait();
+
+  // The priority aware scheduler should have exported the max_queue_depth
+  // gauge, which is deterministic (does not depend on batch draining timing).
+  // max_queue_depth = max_enqueued_batches * max_execution_batch_size.
+  EXPECT_GT(
+      priority_queue_max_depth_reader_->Read("my_model_name", "my_batch_node"),
+      0);
 }
 
 INSTANTIATE_TEST_SUITE_P(

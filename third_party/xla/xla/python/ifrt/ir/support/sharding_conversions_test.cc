@@ -60,7 +60,7 @@ using ::xla::HloSharding;
 
 absl::StatusOr<HloSharding> ToHloShardingViaOpSharding(
     const ShardingParam& sharding_param) {
-  ASSIGN_OR_RETURN(xla::OpSharding op_sharding, ToOpSharding(sharding_param));
+  ABSL_ASSIGN_OR_RETURN(xla::OpSharding op_sharding, ToOpSharding(sharding_param));
   return HloSharding::FromProto(op_sharding);
 }
 

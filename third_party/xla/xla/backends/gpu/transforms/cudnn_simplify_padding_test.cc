@@ -23,10 +23,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
@@ -49,12 +49,12 @@ namespace m = ::xla::match;
 class CudnnSimplifyPaddingTest : public HloHardwareIndependentTestBase {
  protected:
   absl::StatusOr<bool> RunJustThisPass(HloModule* module) {
-    ASSIGN_OR_RETURN(bool changed, RunHloPass(CudnnSimplifyPadding(), module));
+    ABSL_ASSIGN_OR_RETURN(bool changed, RunHloPass(CudnnSimplifyPadding(), module));
     VLOG(1) << "after simplify_padding:\n" << module->ToString();
 
     // I know the name says "just this pass", but you really want algsimp too,
     // otherwise the resulting patterns are ugly/hard to match.
-    RETURN_IF_ERROR(RunHloPass(HloPassFix<AlgebraicSimplifier>(
+    ABSL_RETURN_IF_ERROR(RunHloPass(HloPassFix<AlgebraicSimplifier>(
                                    AlgebraicSimplifierOptions()),
                                module)
                         .status());

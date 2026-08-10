@@ -17,6 +17,10 @@
 
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
+    "@xla//xla/tsl:tsl.bzl",
+    "internal_visibility",
+)
+load(
     "//tensorflow:tensorflow.bzl",
     "if_google",
     "if_oss",
@@ -48,7 +52,7 @@ load(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [":friends"],
+    default_visibility = internal_visibility([":friends"]),
     licenses = ["notice"],
 )
 

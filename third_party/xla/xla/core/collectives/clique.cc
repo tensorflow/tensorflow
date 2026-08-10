@@ -50,7 +50,7 @@ void Clique::ForEachComm(
 absl::Status Clique::ForEachCommWithStatus(
     absl::FunctionRef<absl::Status(RankId, Communicator*)> fn) const {
   for (auto& [rank, comm] : communicators_) {
-    RETURN_IF_ERROR(fn(rank, comm.get()));
+    ABSL_RETURN_IF_ERROR(fn(rank, comm.get()));
   }
   return absl::OkStatus();
 }

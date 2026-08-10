@@ -20,10 +20,10 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -146,7 +146,7 @@ absl::StatusOr<bool> ScanRewriter::RunOnComputation(
     options.set_column_length(column_length);
     options.set_kind(kind);
     options.set_is_reverse(scan->is_reverse());
-    RETURN_IF_ERROR(custom_call->set_backend_config(options));
+    ABSL_RETURN_IF_ERROR(custom_call->set_backend_config(options));
 
     HloInstruction* out = computation->AddInstruction(
         HloInstruction::CreateGetTupleElement(shape, custom_call, 0));
@@ -198,9 +198,9 @@ absl::StatusOr<bool> ScanRewriter::RunOnComputation(
         continue;
       }
       if (user->tuple_index() == 0) {
-        RETURN_IF_ERROR(computation->ReplaceInstruction(user, out));
+        ABSL_RETURN_IF_ERROR(computation->ReplaceInstruction(user, out));
       } else if (carry != nullptr) {
-        RETURN_IF_ERROR(computation->ReplaceInstruction(user, carry));
+        ABSL_RETURN_IF_ERROR(computation->ReplaceInstruction(user, carry));
       }
     }
     changed = true;
@@ -214,7 +214,7 @@ absl::StatusOr<bool> ScanRewriter::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
+    ABSL_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
     changed |= result;
   }
   return changed;

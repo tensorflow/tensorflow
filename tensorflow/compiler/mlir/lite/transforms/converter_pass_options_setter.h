@@ -20,13 +20,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass_options_setter.h"
 
-namespace mlir {
-namespace TFL {
+namespace mlir::TFL {
 
-class OptimizePassOptions;
-class VariableFreezingPipelineOptions;
-class EmptyPassOptions;
-class OptimizeBroadcastLikePassOptions;
+struct OptimizePassOptions;
+struct VariableFreezingPipelineOptions;
+struct EmptyPassOptions;
+struct OptimizeBroadcastLikePassOptions;
+struct LargeConstantFoldPassOptions;
 
 // PassOptionsSetter to set TFLite Converter Pass/Pipeline Options based on
 // ConverterFlags and TFL::PassConfig values.
@@ -42,12 +42,12 @@ class ConverterPassOptionsSetter : public PassOptionsSetter {
   void SetOptions(VariableFreezingPipelineOptions& options) const override;
   void SetOptions(EmptyPassOptions& options) const override;
   void SetOptions(OptimizeBroadcastLikePassOptions& options) const override;
+  void SetOptions(LargeConstantFoldPassOptions& options) const override;
 
  private:
   tflite::ConverterFlags converter_flags_;
   mlir::TFL::PassConfig pass_config_;
 };
-}  // namespace TFL
-}  // namespace mlir
+}  // namespace mlir::TFL
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_CONVERTER_PASS_OPTIONS_SETTER_H_

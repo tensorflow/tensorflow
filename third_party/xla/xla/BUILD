@@ -743,6 +743,7 @@ xla_cc_test(
         ":util",
         ":xla_data_proto_cc",
         "//xla/hlo/testlib:test",
+        "//xla/tests:constraint_state",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
@@ -1594,7 +1595,6 @@ bzl_library(
         "@bazel_skylib//lib:paths",
         "//xla/tsl:package_groups_bzl",
         "//xla/tsl:tsl_bzl",
-        "//xla/tsl:tsl_default_bzl",
         "//xla/tsl/platform/default:cuda_build_defs_bzl",
     ],
 )

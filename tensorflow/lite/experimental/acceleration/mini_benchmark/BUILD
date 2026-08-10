@@ -949,6 +949,36 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_binary(
+    name = "mock_gpu_delegate_plugin.so",
+    testonly = 1,
+    srcs = ["mock_gpu_delegate_plugin.cc"],
+    linkshared = True,
+    deps = [
+        "//tensorflow/lite/core/acceleration/configuration/c:delegate_plugin",
+        "//tensorflow/lite/core/c:common",
+    ],
+)
+
+cc_test(
+    name = "gpu_module_plugin_test",
+    srcs = ["gpu_module_plugin_test.cc"],
+    data = [
+        ":mock_gpu_delegate_plugin.so",
+    ],
+    tags = [
+        "no_windows",
+    ],
+    deps = [
+        ":gpu_module_plugin",
+        "//tensorflow/lite/acceleration/configuration:configuration_cc_proto",
+        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/acceleration/configuration:proto_to_flatbuffer",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers",
+    ],
+)
+
 embedded_binary(
     name = "embedded_nnapi_sl_fake_impl",
     testonly = 1,
@@ -998,7 +1028,9 @@ cc_test(
         "//tensorflow/lite/acceleration/configuration:flatbuffer_to_proto",
         "//tensorflow/lite/acceleration/configuration:proto_to_flatbuffer",
         "//tensorflow/lite/core:model_builder",
+        "//tensorflow/lite/core/acceleration/configuration:delegate_registry",
         "//tensorflow/lite/core/acceleration/configuration:nnapi_plugin",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier:custom_validation_embedder",
         "//tensorflow/lite/tools:model_loader",
         "@com_google_googletest//:gtest_main",

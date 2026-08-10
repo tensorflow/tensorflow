@@ -28,10 +28,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -131,7 +131,7 @@ absl::Status RecursivelyRemoveDeadInstructionAndDeadOperands(
     auto operands = dead_instruction->operands();
 
     // First remove the instruction itself.
-    RETURN_IF_ERROR(computation.RemoveInstruction(dead_instruction));
+    ABSL_RETURN_IF_ERROR(computation.RemoveInstruction(dead_instruction));
 
     // Now check if some of its operands are dead as a result of the removal.
     for (auto operand : operands) {
@@ -281,7 +281,7 @@ absl::StatusOr<bool> PropagateIdenticalConstantArguments(
                      });
       }
       const HloInstruction* constant = caller_instructions[0]->operand(i);
-      RETURN_IF_ERROR(parameter->ReplaceAllUsesWith(
+      ABSL_RETURN_IF_ERROR(parameter->ReplaceAllUsesWith(
           computation->AddInstruction(constant->Clone())));
       changed = true;
     }
@@ -324,7 +324,7 @@ absl::StatusOr<bool> HloConstantFolding::RunImpl(
                        [](HloInstruction* instruction) {
                          return instruction->opcode() == HloOpcode::kCall;
                        })) {
-      ASSIGN_OR_RETURN(bool did_change,
+      ABSL_ASSIGN_OR_RETURN(bool did_change,
                        PropagateIdenticalConstantArguments(computation));
       changed |= did_change;
     }
@@ -433,8 +433,8 @@ absl::StatusOr<bool> HloConstantFolding::RunImpl(
             ->set_element_size_in_bits(
                 instruction->shape().layout().element_size_in_bits());
       }
-      RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(new_constant));
-      RETURN_IF_ERROR(RecursivelyRemoveDeadInstructionAndDeadOperands(
+      ABSL_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(new_constant));
+      ABSL_RETURN_IF_ERROR(RecursivelyRemoveDeadInstructionAndDeadOperands(
           *computation, instruction));
     }
   }

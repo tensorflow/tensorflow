@@ -25,11 +25,13 @@ limitations under the License.
 
 #include "absl/hash/hash.h"
 #include "absl/status/statusor.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/sharding_spec.h"
 
 namespace xla {
@@ -37,9 +39,9 @@ namespace ifrt {
 
 // XLA-compatible sharding spec types.
 class XlaCompatibleShardingSpec
-    : public llvm::RTTIExtends<XlaCompatibleShardingSpec, ShardingSpec> {
+    : public RTTIExtends<XlaCompatibleShardingSpec, ShardingSpec> {
  public:
-  using llvm::RTTIExtends<XlaCompatibleShardingSpec, ShardingSpec>::RTTIExtends;
+  using RTTIExtends<XlaCompatibleShardingSpec, ShardingSpec>::RTTIExtends;
 
   static char ID;  // NOLINT
 };
@@ -48,7 +50,7 @@ class XlaCompatibleShardingSpec
 // in XLA. This class holds an `HloSharding` to be used with IFRT as a
 // `ShardingSpec`.
 class HloShardingSpec final
-    : public llvm::RTTIExtends<HloShardingSpec, XlaCompatibleShardingSpec> {
+    : public RTTIExtends<HloShardingSpec, XlaCompatibleShardingSpec> {
  public:
   // Creates an `HloShardingSpec` wrapper.
   static std::unique_ptr<HloShardingSpec> Create(
@@ -60,6 +62,9 @@ class HloShardingSpec final
   // ShardingSpec implementation.
 
   ~HloShardingSpec() override = default;
+
+  absl::StatusOr<ShardingRef> ToSharding(DeviceListRef devices,
+                                         MemoryKind memory_kind) const override;
 
   absl::StatusOr<Shape> GetShardShape(const Shape& shape) const override;
 

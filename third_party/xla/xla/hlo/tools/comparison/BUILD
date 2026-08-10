@@ -283,6 +283,7 @@ cc_library(
     name = "offline_main_lib",
     srcs = ["offline_main.cc"],
     # copybara:uncomment compatible_with = ["//buildenv/target:libtpu"],
+    tags = ["no_windows"],
     visibility = ["//visibility:public"],
     deps = [
         ":comparison_hlo_dumper",
@@ -336,6 +337,7 @@ cc_library(
     srcs = ["offline_utils.cc"],
     hdrs = ["offline_utils.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:libtpu"],
+    tags = ["no_windows"],
     visibility = ["//visibility:public"],
     deps = [
         ":comparison_result_proto_cc",
@@ -364,6 +366,7 @@ cc_library(
 xla_cc_test(
     name = "offline_utils_test",
     srcs = ["offline_utils_test.cc"],
+    tags = ["no_windows"],
     deps = [
         ":comparison_result_proto_cc",
         ":launch_info_compat_proto_cc",

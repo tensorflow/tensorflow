@@ -190,7 +190,7 @@ TEST(FutureTest, ValueImplicitConversion) {
 
 TEST(FutureTest, StatusMacro) {
   auto f = [&](absl::StatusOr<int> value) -> tsl::Future<int> {
-    ASSIGN_OR_RETURN(const int x, value);
+    ABSL_ASSIGN_OR_RETURN(const int x, value);
     return x;
   };
 

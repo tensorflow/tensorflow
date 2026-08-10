@@ -1243,6 +1243,20 @@ ConvertToListOfSparseCoreCooTensorsOp::ConvertToListOfSparseCoreCooTensorsOp(
       absl::InvalidArgumentError(absl::StrCat("num_sc_shards ", num_sc_shards_,
                                               " is not a power of two.")));
 
+  OP_REQUIRES(ctx, num_sc_per_chip_ > 0,
+              absl::InvalidArgumentError(absl::StrCat(
+                  "num_sc_per_chip must be > 0, got ", num_sc_per_chip_)));
+  OP_REQUIRES(ctx, sample_count_ >= num_sc_per_chip_,
+              absl::InvalidArgumentError(absl::StrCat(
+                  "sample_count ", sample_count_,
+                  " must be >= the number of sparsecores per chip ",
+                  num_sc_per_chip_)));
+  OP_REQUIRES(ctx, sample_count_ % num_sc_per_chip_ == 0,
+              absl::InvalidArgumentError(absl::StrCat(
+                  "sample_count ", sample_count_,
+                  " is not divisible by the number of sparsecores per chip ",
+                  num_sc_per_chip_)));
+
   int32_t num_sc_shards_bit = std::log2(num_sc_shards_);
   num_sc_shards_bit_mod_ = (1 << num_sc_shards_bit) - 1;
   num_sc_shards_bit_mod_inv_ = ~num_sc_shards_bit_mod_;

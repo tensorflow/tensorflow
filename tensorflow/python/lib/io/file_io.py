@@ -255,6 +255,8 @@ class FileIO(object):
     loss as last write might not have been replicated.
     """
     self._read_buf = None
+    if not self._closed and ("w" in self.__mode or "a" in self.__mode):
+      self._prewrite_check()
     if self._writable_file:
       self._writable_file.close()
       self._writable_file = None

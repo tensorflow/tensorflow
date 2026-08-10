@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "absl/strings/strip.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
-#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/descriptor.h"
 #include "xla/array.h"
 #include "xla/comparison_util.h"
@@ -8740,13 +8740,13 @@ absl::StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
     const HloParserOptions& options) {
   auto module = std::make_unique<HloModule>(/*name=*/"_", config);
   HloParserImpl parser(str, options);
-  RETURN_IF_ERROR(parser.Run(module.get()));
+  ABSL_RETURN_IF_ERROR(parser.Run(module.get()));
   return module;
 }
 
 absl::StatusOr<HloSharding> ParseSharding(absl::string_view str) {
   HloParserImpl parser(str);
-  ASSIGN_OR_RETURN(HloSharding sharding, parser.ParseShardingOnly());
+  ABSL_ASSIGN_OR_RETURN(HloSharding sharding, parser.ParseShardingOnly());
   sharding.ExtractReductionOpFromMetadata();
   return sharding;
 }

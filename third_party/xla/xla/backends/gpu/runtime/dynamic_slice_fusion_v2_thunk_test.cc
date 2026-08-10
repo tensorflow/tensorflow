@@ -26,10 +26,10 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
@@ -72,9 +72,9 @@ using Result = DynamicSliceFusion::Result;
 using Offset = DynamicSliceFusion::Offset;
 
 static absl::StatusOr<se::StreamExecutor*> CreateExecutor() {
-  ASSIGN_OR_RETURN(std::string platform_name,
+  ABSL_ASSIGN_OR_RETURN(std::string platform_name,
                    PlatformUtil::CanonicalPlatformName("gpu"));
-  ASSIGN_OR_RETURN(se::Platform * platform,
+  ABSL_ASSIGN_OR_RETURN(se::Platform * platform,
                    se::PlatformManager::PlatformWithName(platform_name));
   return platform->ExecutorForDevice(0);
 }

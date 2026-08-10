@@ -377,12 +377,12 @@ class TupleTree {
   absl::Status CopyCompatibleSubtreeFrom(const TupleTree<T>& other,
                                          const ShapeIndex& src_index,
                                          const ShapeIndex& dst_index) {
-    ASSIGN_OR_RETURN(const internal::IndexTable::Entry* src_entry,
+    ABSL_ASSIGN_OR_RETURN(const internal::IndexTable::Entry* src_entry,
                      other.index_table_.GetEntry(src_index));
-    ASSIGN_OR_RETURN(const internal::IndexTable::Entry* dst_entry,
+    ABSL_ASSIGN_OR_RETURN(const internal::IndexTable::Entry* dst_entry,
                      this->index_table_.GetEntry(dst_index));
 
-    RETURN_IF_ERROR(internal::IndexTable::IsSubtreeCompatible(
+    ABSL_RETURN_IF_ERROR(internal::IndexTable::IsSubtreeCompatible(
         other.index_table_, src_entry, this->index_table_, dst_entry));
 
     size_t num_subtree_nodes =
@@ -420,11 +420,11 @@ class TupleTree {
   }
 
   absl::StatusOr<TupleTree<T>> Subtree(const ShapeIndex& index) const {
-    ASSIGN_OR_RETURN(const internal::IndexTable::Entry* root_entry,
+    ABSL_ASSIGN_OR_RETURN(const internal::IndexTable::Entry* root_entry,
                      index_table_.GetEntry(index));
     size_t root_node_id = root_entry->node_id;
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         internal::IndexTable subtree_index_table,
         internal::IndexTable::CreateFromSubtree(index_table_, index));
 
@@ -542,7 +542,7 @@ class TupleTree {
   absl::Status ForEachElementWithStatus(
       absl::FunctionRef<absl::Status(const ShapeIndex&, const T&)> func) const {
     for (const NodePair& node : nodes_) {
-      RETURN_IF_ERROR(func(node.first, node.second));
+      ABSL_RETURN_IF_ERROR(func(node.first, node.second));
     }
     return absl::OkStatus();
   }
@@ -550,7 +550,7 @@ class TupleTree {
   absl::Status ForEachMutableElementWithStatus(
       absl::FunctionRef<absl::Status(const ShapeIndex&, T*)> func) {
     for (NodePair& node : nodes_) {
-      RETURN_IF_ERROR(func(node.first, &node.second));
+      ABSL_RETURN_IF_ERROR(func(node.first, &node.second));
     }
     return absl::OkStatus();
   }
@@ -595,7 +595,7 @@ class TupleTree {
     typename TupleTree<U>::NodePairs result_nodes;
     result_nodes.reserve(nodes_.size());
     for (const NodePair& node : nodes_) {
-      ASSIGN_OR_RETURN(U result, func(node.second));
+      ABSL_ASSIGN_OR_RETURN(U result, func(node.second));
       result_nodes.emplace_back(node.first, std::move(result));
     }
 
@@ -681,7 +681,7 @@ class TupleTree {
   }
 
   absl::StatusOr<Node> ToNodeImpl(const ShapeIndex& index) const {
-    ASSIGN_OR_RETURN(const internal::IndexTable::Entry* entry,
+    ABSL_ASSIGN_OR_RETURN(const internal::IndexTable::Entry* entry,
                      index_table_.GetEntry(index));
 
     const T& value = nodes_[entry->node_id].second;
@@ -697,7 +697,7 @@ class TupleTree {
     child_index.push_back(0);
     for (size_t i = 0; i < entry->num_children; ++i) {
       child_index.back() = i;
-      ASSIGN_OR_RETURN(Node child_node, ToNodeImpl(child_index));
+      ABSL_ASSIGN_OR_RETURN(Node child_node, ToNodeImpl(child_index));
       children.push_back(std::move(child_node));
     }
     return Node::Tuple(value, std::move(children));

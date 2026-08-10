@@ -19,8 +19,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
@@ -39,7 +39,7 @@ namespace gpu {
 absl::StatusOr<bool> CudnnSupportsOptimizedIntegerConvolution(
     const se::CudaComputeCapability& compute_capability,
     HloCustomCallInstruction& conv, int vector_size) {
-  ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(&conv));
+  ABSL_ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(&conv));
   const Shape& input_shape = conv.operand(0)->shape();
   const Shape& kernel_shape = conv.operand(1)->shape();
   const Shape& result_shape = conv.shape().tuple_shapes(0);

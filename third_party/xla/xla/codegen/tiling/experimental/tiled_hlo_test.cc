@@ -173,10 +173,10 @@ class TileAnalysisTestBase : public HloHardwareIndependentTestBase {
       absl::string_view hlo_string, absl::Span<const int64_t> tile_sizes) {
     HloInstruction* root = ParseAndGetRoot(hlo_string);
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
-    ASSIGN_OR_RETURN(auto tiling_space,
+    ABSL_ASSIGN_OR_RETURN(auto tiling_space,
                      TilingSpace::Create(*fusion_adaptor, &mlir_context_));
-    RETURN_IF_ERROR(tiling_space->AssignTileSizes(tile_sizes));
-    ASSIGN_OR_RETURN(
+    ABSL_RETURN_IF_ERROR(tiling_space->AssignTileSizes(tile_sizes));
+    ABSL_ASSIGN_OR_RETURN(
         TiledHloComputation tiled_computation,
         TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
     tiled_computation.Simplify();
@@ -810,9 +810,9 @@ TEST_P(TileAnalysisTest, ExplicitSimplify) {
   ASSERT_OK_AND_ASSIGN(
       TiledHloComputation tiled_computation,
       TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
-  EXPECT_THAT(tiled_computation.ToString(), ::testing::HasSubstr("+ 32 - 256"));
+  EXPECT_THAT(tiled_computation.ToString(), ::testing::HasSubstr("+ 64 - 256"));
   tiled_computation.Simplify();
-  EXPECT_THAT(tiled_computation.ToString(), ::testing::HasSubstr("- 224"));
+  EXPECT_THAT(tiled_computation.ToString(), ::testing::HasSubstr("- 192"));
 }
 
 TEST_F(TileAnalysisTest, StrayInstructionsInFusionAreStripped) {

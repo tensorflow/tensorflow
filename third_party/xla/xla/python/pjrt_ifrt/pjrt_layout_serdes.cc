@@ -23,10 +23,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
@@ -39,7 +38,7 @@ namespace ifrt {
 namespace {
 
 // Serialization/deserialization for `PjRtLayout`.
-class PjRtLayoutSerDes : public llvm::RTTIExtends<PjRtLayoutSerDes, SerDes> {
+class PjRtLayoutSerDes : public RTTIExtends<PjRtLayoutSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::PjRtLayout";
@@ -54,7 +53,7 @@ class PjRtLayoutSerDes : public llvm::RTTIExtends<PjRtLayoutSerDes, SerDes> {
           absl::StrCat("Unsupported ", version.version_number(),
                        " for PjRtLayout serialization"));
     }
-    const auto* pjrt_layout = llvm::cast<PjRtLayout>(&serializable);
+    const auto* pjrt_layout = cast<PjRtLayout>(&serializable);
     PjRtLayoutProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
     // Use `xla::Layout` proto serialization, which is currently faster than
@@ -78,7 +77,7 @@ class PjRtLayoutSerDes : public llvm::RTTIExtends<PjRtLayoutSerDes, SerDes> {
       return absl::FailedPreconditionError(absl::StrCat(
           "Unsupported ", version_number, " for PjRtLayout deserialization"));
     }
-    ASSIGN_OR_RETURN(auto xla_layout,
+    ABSL_ASSIGN_OR_RETURN(auto xla_layout,
                      xla::Layout::FromProto(proto.xla_layout()));
     return PjRtLayout::Create(
         std::make_unique<xla::PjRtLayout>(std::move(xla_layout)));

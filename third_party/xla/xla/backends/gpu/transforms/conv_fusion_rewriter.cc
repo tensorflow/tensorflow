@@ -27,11 +27,11 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/transforms/cudnn_fusion_utils.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -261,17 +261,20 @@ absl::StatusOr<bool> RunOnInstruction(
   FusionBackendConfig* fusion_config =
       gpu_backend_config.mutable_fusion_backend_config();
   fusion_config->set_kind(kCuDnnFusionKind);
-  RETURN_IF_ERROR(conv_fusion->set_backend_config(gpu_backend_config));
+  const auto* conv_instr = DynCast<HloConvolutionInstruction>(conv);
+  *fusion_config->mutable_cudnn_fusion_config()->mutable_precision_config() =
+      conv_instr->precision_config();
+  ABSL_RETURN_IF_ERROR(conv_fusion->set_backend_config(gpu_backend_config));
 
   VLOG(1) << "Replacing convolution " << conv->ToString() << " with "
           << conv_fusion->ToString();
   if (fusion_outputs.size() == 1) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         conv->parent()->ReplaceInstruction(fusion_outputs[0], conv_fusion));
   } else {
     for (int idx = 0; idx < fusion_outputs.size(); ++idx) {
       HloInstruction* output = fusion_outputs[idx];
-      RETURN_IF_ERROR(conv->parent()->ReplaceInstruction(
+      ABSL_RETURN_IF_ERROR(conv->parent()->ReplaceInstruction(
           output,
           conv->parent()->AddInstruction(
               HloInstruction::CreateGetTupleElement(conv_fusion, idx))));
@@ -291,7 +294,7 @@ absl::StatusOr<bool> RunOnComputation(
 
   bool changed = false;
   for (HloInstruction* conv : convs) {
-    ASSIGN_OR_RETURN(bool result, RunOnInstruction(conv, device_info));
+    ABSL_ASSIGN_OR_RETURN(bool result, RunOnInstruction(conv, device_info));
     changed |= result;
   }
   return changed;
@@ -306,7 +309,7 @@ absl::StatusOr<bool> ConvFusionRewriter::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    ASSIGN_OR_RETURN(bool result, RunOnComputation(computation, device_info_));
+    ABSL_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation, device_info_));
     changed |= result;
   }
   XLA_VLOG_LINES(2, "ConvFusionRewriter::Run(), after:\n" + module->ToString());

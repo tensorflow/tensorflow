@@ -25,6 +25,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/array.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -3084,7 +3084,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> ParseAndReturnVerifiedModule(
       /*verifier_layout_sensitive=*/false,
       /*allow_mixed_precision_in_hlo_verifier=*/true,
       ShapeUtil::ByteSizeOfElements);
-  RETURN_IF_ERROR(verified_module->ParseHloStringAndVerifyModule(hlo_text));
+  ABSL_RETURN_IF_ERROR(verified_module->ParseHloStringAndVerifyModule(hlo_text));
   return verified_module;
 }
 

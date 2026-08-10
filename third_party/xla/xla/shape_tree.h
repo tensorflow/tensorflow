@@ -240,7 +240,7 @@ class ShapeTree {
   absl::Status ForEachElementPostOrderWithStatus(
       absl::FunctionRef<absl::Status(const ShapeIndex&, const T&)> func) const {
     for (auto node = tuple_tree_.rbegin(); node != tuple_tree_.rend(); ++node) {
-      RETURN_IF_ERROR(func(node->first, node->second));
+      ABSL_RETURN_IF_ERROR(func(node->first, node->second));
     }
     return absl::OkStatus();
   }
@@ -248,7 +248,7 @@ class ShapeTree {
   absl::Status ForEachMutableElementPostOrderWithStatus(
       absl::FunctionRef<absl::Status(const ShapeIndex&, T*)> func) {
     for (auto node = tuple_tree_.rbegin(); node != tuple_tree_.rend(); ++node) {
-      RETURN_IF_ERROR(func(node->first, &node->second));
+      ABSL_RETURN_IF_ERROR(func(node->first, &node->second));
     }
     return absl::OkStatus();
   }
@@ -264,7 +264,7 @@ class ShapeTree {
   template <typename U>
   absl::StatusOr<ShapeTree<U>> MapWithStatus(
       absl::FunctionRef<absl::StatusOr<U>(const T&)> func) const {
-    ASSIGN_OR_RETURN(TupleTree<U> new_tuple_tree,
+    ABSL_ASSIGN_OR_RETURN(TupleTree<U> new_tuple_tree,
                      tuple_tree_.MapWithStatus(func));
     return ShapeTree<U>(shape_, std::move(new_tuple_tree), shape_storage_);
   }
@@ -289,9 +289,9 @@ class ShapeTree {
   }
 
   absl::StatusOr<ShapeTree<T>> SubShapeTree(const ShapeIndex& index) const {
-    ASSIGN_OR_RETURN(const Shape* sub_shape,
+    ABSL_ASSIGN_OR_RETURN(const Shape* sub_shape,
                      ShapeUtil::TryGetSubshape(shape(), index));
-    ASSIGN_OR_RETURN(TupleTree<T> sub_tuple_tree, tuple_tree_.Subtree(index));
+    ABSL_ASSIGN_OR_RETURN(TupleTree<T> sub_tuple_tree, tuple_tree_.Subtree(index));
     return ShapeTree<T>(sub_shape, std::move(sub_tuple_tree), shape_storage_);
   }
 

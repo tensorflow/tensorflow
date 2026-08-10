@@ -342,7 +342,46 @@ template <typename T>
 class ErrorOr : public Expected<T, Error> {
  public:
   using Expected<T, Error>::Expected;
+
+  // Match the construction protocol of status-or types: an error status can
+  // be used directly to construct an error result.
+  ErrorOr(Error error)  // NOLINT
+      : Expected<T, Error>(Unexpected<Error>(std::move(error))) {
+    assert(this->error().failure() &&
+           "ErrorOr cannot be constructed from a successful Error");
+  }
 };
+
+//===----------------------------------------------------------------------===//
+// Error policy
+//===----------------------------------------------------------------------===//
+
+namespace internal {
+
+// Error policy for external, header-only FFI handlers.
+struct ErrorPolicy {
+  using Status = xla::ffi::Error;
+
+  template <typename T>
+  using StatusOr = xla::ffi::ErrorOr<T>;
+
+  static Status Ok() { return Status::Success(); }
+
+  static Status FromErrorCode(XLA_FFI_Error_Code errc,
+                              std::string_view message) {
+    return Status(errc, std::string(message));
+  }
+
+  static Status TakeError(const XLA_FFI_Api* api, XLA_FFI_Error* error) {
+    assert(error != nullptr);
+    ErrorDetails details = GetErrorDetails(api, error);
+    std::string message = details.message;
+    DestroyError(api, error);
+    return Status(details.errc, std::move(message));
+  }
+};
+
+}  // namespace internal
 
 //===----------------------------------------------------------------------===//
 // Future
@@ -611,7 +650,7 @@ class AnyBuffer {
   }
 
  private:
-  friend struct match::internal::BufferCast;
+  friend struct internal::BufferCast;
 
   const XLA_FFI_Buffer* buf_;
 };
@@ -745,7 +784,7 @@ class Buffer {
   }
 
  private:
-  friend struct match::internal::BufferCast;
+  friend struct internal::BufferCast;
 
   const XLA_FFI_Buffer* buf_;
 };
@@ -804,7 +843,6 @@ template <DataType dtype> using ResultBufferR4 = ResultBuffer<dtype, 4>;
 // Buffer Matching
 //===----------------------------------------------------------------------===//
 
-namespace match {
 namespace internal {
 
 struct BufferCast {
@@ -815,6 +853,8 @@ struct BufferCast {
 };
 
 }  // namespace internal
+
+namespace match {
 
 // A buffer-matching pattern specialized to the external `DataType` enum.
 template <typename DTypes = DTypeSet<DataType>, typename Ranks = RankSet<>>
@@ -836,10 +876,7 @@ inline BufferPattern<> Buffer() { return {}; }
 template <typename BufferType, typename DTypes, typename Ranks>
 Error Verify(std::string_view name, BufferType buffer,
              const match::BufferPattern<DTypes, Ranks>& pattern) {
-  if (auto error = internal::MatchBuffer(name, buffer, pattern)) {
-    return Error::InvalidArgument(std::move(*error));
-  }
-  return Error::Success();
+  return internal::VerifyBuffer<internal::ErrorPolicy>(name, buffer, pattern);
 }
 
 // Matches an AnyBuffer and returns the concrete buffer type specified by a
@@ -849,20 +886,18 @@ ErrorOr<Buffer<dtype, rank>> Match(
     std::string_view name, AnyBuffer buffer,
     const match::BufferPattern<match::DTypeSet<DataType, dtype>,
                                match::RankSet<rank>>& pattern) {
-  if (auto error = internal::MatchBuffer(name, buffer, pattern)) {
-    return Unexpected(Error::InvalidArgument(std::move(*error)));
-  }
-  return match::internal::BufferCast::Cast<Buffer<dtype, rank>>(buffer);
+  return internal::MatchBuffer<internal::ErrorPolicy, Buffer<dtype, rank>>(
+      name, buffer, pattern, [](AnyBuffer buffer) {
+        return internal::BufferCast::Cast<Buffer<dtype, rank>>(buffer);
+      });
 }
 
 template <DataType dtype, size_t rank, typename DTypes, typename Ranks>
 ErrorOr<Buffer<dtype, rank>> Match(
     std::string_view name, Buffer<dtype, rank> buffer,
     const match::BufferPattern<DTypes, Ranks>& pattern) {
-  if (Error error = Verify(name, buffer, pattern); error.failure()) {
-    return Unexpected(std::move(error));
-  }
-  return buffer;
+  return internal::MatchBuffer<internal::ErrorPolicy, Buffer<dtype, rank>>(
+      name, buffer, pattern, [](Buffer<dtype, rank> buffer) { return buffer; });
 }
 
 namespace internal {

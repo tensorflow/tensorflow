@@ -24,10 +24,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -130,10 +130,10 @@ class BatchDimensionMerger : public DfsHloRewriteVisitor {
           shifted_contracting_dimensions.end());
     }
 
-    ASSIGN_OR_RETURN(HloInstruction * reshaped_lhs,
+    ABSL_ASSIGN_OR_RETURN(HloInstruction * reshaped_lhs,
                      MakeReshapeHlo(new_lhs_shape, dot->mutable_operand(0)));
 
-    ASSIGN_OR_RETURN(HloInstruction * reshaped_rhs,
+    ABSL_ASSIGN_OR_RETURN(HloInstruction * reshaped_rhs,
                      MakeReshapeHlo(new_rhs_shape, dot->mutable_operand(1)));
 
     Shape new_dot_shape = merge_batch_dims(dot->shape(), /*batch_dim=*/0);

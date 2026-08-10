@@ -1,0 +1,24 @@
+Backport of https://github.com/triton-lang/triton/pull/11151.
+
+--- a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
++++ b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
+@@ -872,10 +872,17 @@ public:
+       else if (isBFP4)
+         IsBMixedPrecFp4 = true;
+     }
++
++    bool isFp4MMA = isAFP4 && isBFP4;
++    // mxf4/mxf4nvf4 do not support MN-major operands, so FP4 x FP4 uses
++    // mxf8f6f4 if either operand is not K-packed. The mxf8f6f4 shared-memory
++    // packing format requires padding for every FP4 operand.
++    bool isFp4MMAUsingMxf8f6f4 =
++        isFp4MMA && (!dotOp.getLhsKPack() || !dotOp.getRhsKPack());
+     // If we use txgen05.mma.kind.mxf864 we need to padd the fp4 operands:
+     // https://docs.nvidia.com/cuda/parallel-thread-execution/#tcgen05-packing-formats-mxf8f6f4-smem
+-    bool isMMAv5Fp4PaddedLhs = IsAMixedPrecFp4 || !dotOp.getLhsKPack();
+-    bool isMMAv5Fp4PaddedRhs = IsBMixedPrecFp4 || !dotOp.getRhsKPack();
++    bool isMMAv5Fp4PaddedLhs = IsAMixedPrecFp4 || isFp4MMAUsingMxf8f6f4;
++    bool isMMAv5Fp4PaddedRhs = IsBMixedPrecFp4 || isFp4MMAUsingMxf8f6f4;
+     // For mixed-precision fp4 operands, set allowTranspose = false, to force
+     // the packed axis, K, to be contiguous in SMEM
+     a = getSharedMemoryMMAOperand(a, rewriter, 0,

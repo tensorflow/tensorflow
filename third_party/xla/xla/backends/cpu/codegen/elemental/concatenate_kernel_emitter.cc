@@ -23,9 +23,9 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/IR/Analysis.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
@@ -95,7 +95,7 @@ ConcatenateKernelEmitter::EmitKernelDefinition() {
   std::unique_ptr<llvm::Module> llvm_module = KernelApiIrBuilder::CreateModule(
       absl::StrCat(instr_->name(), "_elemental_kernel_module"), *ctx);
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       KernelApiIrBuilder::KernelPrototype kernel_prototype,
       kernel_api_ir_builder.EmitKernelPrototype(
           *llvm_module, instr_, buffer_assignment_, name(), "_kernel"));
@@ -105,7 +105,7 @@ ConcatenateKernelEmitter::EmitKernelDefinition() {
       kernel_prototype.function->getEntryBlock().getTerminator());
 
   llvm_ir::IrArray output_array = kernel_prototype.results[0];
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       bool is_parallel,
       EmitFastConcatenate(instr_, kernel_prototype.arguments, output_array,
                           llvm_module.get(), ir_builder,

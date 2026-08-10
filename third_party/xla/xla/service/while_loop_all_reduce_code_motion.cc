@@ -30,10 +30,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/analysis/hlo_replication_analysis.h"
 #include "xla/hlo/analysis/while_loop_analysis.h"
@@ -1112,7 +1112,7 @@ absl::Status ChangeAccumulatorShapesInLoopBodies(
           HloInstruction* pred =
               body->AddInstruction(HloInstruction::CreateBroadcast(
                   pred_shape, scalar_predicate, {}));
-          RETURN_IF_ERROR(user->ReplaceOperandWithDifferentShape(0, pred));
+          ABSL_RETURN_IF_ERROR(user->ReplaceOperandWithDifferentShape(0, pred));
           HloInstruction *new_operand_1, *new_operand_2;
           if (user->operand_index(loop_reduce_scatter) == 1) {
             new_operand_1 = loop_reduce_scatter->mutable_operand(0);
@@ -1121,9 +1121,9 @@ absl::Status ChangeAccumulatorShapesInLoopBodies(
             new_operand_1 = zero;
             new_operand_2 = loop_reduce_scatter->mutable_operand(0);
           }
-          RETURN_IF_ERROR(
+          ABSL_RETURN_IF_ERROR(
               user->ReplaceOperandWithDifferentShape(1, new_operand_1));
-          RETURN_IF_ERROR(
+          ABSL_RETURN_IF_ERROR(
               user->ReplaceOperandWithDifferentShape(2, new_operand_2));
           *user->mutable_shape() = accumulation_shape;
         } else {
@@ -1257,7 +1257,7 @@ absl::Status InsertNewWhileResult(
   }
   HloInstruction* new_while_result = while_parent->AddInstruction(
       HloInstruction::CreateTuple(new_while_result_elements));
-  RETURN_IF_ERROR(while_parent->ReplaceInstruction(old_while_instruction,
+  ABSL_RETURN_IF_ERROR(while_parent->ReplaceInstruction(old_while_instruction,
                                                    new_while_result));
 
   // Forward GTE(tuple, i) to the corresponding tuple operand so nested while
@@ -1271,7 +1271,7 @@ absl::Status InsertNewWhileResult(
         Cast<HloGetTupleElementInstruction>(user)->tuple_index();
     // This will also automatically clean up `new_while_result` if `user` was
     // the last user.
-    RETURN_IF_ERROR(while_parent->ReplaceInstruction(
+    ABSL_RETURN_IF_ERROR(while_parent->ReplaceInstruction(
         user, new_while_result_elements[index]));
   }
 
@@ -1297,7 +1297,7 @@ absl::Status AddSinkedAllReducesAndReplaceWhile(
 
   // For reduce-scatter, we need to adjust all the accumulator shapes to use
   // the pre-scatter shape.
-  RETURN_IF_ERROR(ChangeAccumulatorShapesInLoopBodies(
+  ABSL_RETURN_IF_ERROR(ChangeAccumulatorShapesInLoopBodies(
       while_instruction, all_reduce_to_accumulations));
 
   // Step 2) create the new while instruction.
@@ -1313,7 +1313,7 @@ absl::Status AddSinkedAllReducesAndReplaceWhile(
                              new_while_init_context.tuple_index_to_old_buffer);
   // Step 4) create the tuple, replace the old while instruction for all of
   // its uses, and forward GTE users of the reconstructed tuple.
-  RETURN_IF_ERROR(InsertNewWhileResult(while_instruction, new_while_instruction,
+  ABSL_RETURN_IF_ERROR(InsertNewWhileResult(while_instruction, new_while_instruction,
                                        tuple_index_to_new_buffer));
   return absl::OkStatus();
 }
@@ -1407,7 +1407,7 @@ absl::StatusOr<HloInstruction*> AddSinkedAllReducesAndReplaceWhile(
 
   // Replace the old while instruction with the reconstructed result and
   // forward GTE users of the reconstructed tuple.
-  RETURN_IF_ERROR(InsertNewWhileResult(while_instruction, new_while_instruction,
+  ABSL_RETURN_IF_ERROR(InsertNewWhileResult(while_instruction, new_while_instruction,
                                        tuple_index_to_new_buffer));
   return new_while_instruction;
 }
@@ -1432,7 +1432,7 @@ absl::StatusOr<bool> WhileLoopAllReduceCodeMotion::RunImpl(
   if (module->config().replica_count() > 1) {
     VLOG(5) << "num_replicas: " << module->config().replica_count()
             << " run HloReplicationAnalysis across replicas";
-    ASSIGN_OR_RETURN(cross_replica_replication_analysis,
+    ABSL_ASSIGN_OR_RETURN(cross_replica_replication_analysis,
                      HloReplicationAnalysis::RunWithPartialReplication(
                          module, /*cross_partition_spmd=*/false));
   }
@@ -1441,7 +1441,7 @@ absl::StatusOr<bool> WhileLoopAllReduceCodeMotion::RunImpl(
       module->config().num_partitions() > 1) {
     VLOG(5) << "num_partitions: " << module->config().num_partitions()
             << " run HloReplicationAnalysis across partitions";
-    ASSIGN_OR_RETURN(cross_partition_replication_analysis,
+    ABSL_ASSIGN_OR_RETURN(cross_partition_replication_analysis,
                      HloReplicationAnalysis::RunWithPartialReplication(
                          module, /*cross_partition_spmd=*/true));
   }
@@ -1455,7 +1455,7 @@ absl::StatusOr<bool> WhileLoopAllReduceCodeMotion::RunImpl(
     }
     pipeline.AddPass<ReorderConvertReduceAdd>(
         /*enable_reduce_scatter=*/enable_reduce_scatter_);
-    RETURN_IF_ERROR(pipeline.Run(module, execution_threads).status());
+    ABSL_RETURN_IF_ERROR(pipeline.Run(module, execution_threads).status());
   }
 
   // The while instruction's parent could be a while body for another while
@@ -1534,14 +1534,14 @@ absl::StatusOr<bool> WhileLoopAllReduceCodeMotion::RunImpl(
       // For each while instruction calling this computation, create the
       // corresponding all-reduces after the while loop.
       for (auto& while_instruction : while_caller_instructions) {
-        ASSIGN_OR_RETURN(while_instruction,
+        ABSL_ASSIGN_OR_RETURN(while_instruction,
                          AddSinkedAllReducesAndReplaceWhile(
                              while_instruction, all_reduce_to_update_slices));
       }
       // Remove all-reduce instructions in the loop body.
       for (const auto& [all_reduce, _] : all_reduce_to_update_slices) {
         ++count_all_reduce;
-        RETURN_IF_ERROR(computation->ReplaceInstruction(
+        ABSL_RETURN_IF_ERROR(computation->ReplaceInstruction(
             all_reduce, all_reduce->mutable_operand(0)));
       }
       is_changed = true;
@@ -1550,7 +1550,7 @@ absl::StatusOr<bool> WhileLoopAllReduceCodeMotion::RunImpl(
       // For each while instruction calling this computation, create the
       // corresponding all-reduces after the while loop.
       for (HloInstruction* while_instruction : while_caller_instructions) {
-        RETURN_IF_ERROR(AddSinkedAllReducesAndReplaceWhile(
+        ABSL_RETURN_IF_ERROR(AddSinkedAllReducesAndReplaceWhile(
             while_instruction, all_reduce_to_accumulations));
       }
       // At last, remove the old all-reduce instructions in the while body.
@@ -1562,7 +1562,7 @@ absl::StatusOr<bool> WhileLoopAllReduceCodeMotion::RunImpl(
         } else {
           ++count_reduce_scatter;
         }
-        RETURN_IF_ERROR(computation->ReplaceInstructionWithDifferentShape(
+        ABSL_RETURN_IF_ERROR(computation->ReplaceInstructionWithDifferentShape(
             all_reduce, all_reduce->mutable_operand(0)));
       }
       is_changed = true;

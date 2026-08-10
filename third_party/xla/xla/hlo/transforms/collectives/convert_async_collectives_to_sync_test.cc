@@ -22,8 +22,8 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -50,7 +50,7 @@ class ConvertAsyncCollectivesToSyncTest
  public:
   absl::Status RunPass(HloModule *module, bool expect_change,
                        HloPredicate is_nop = {}) {
-    ASSIGN_OR_RETURN(bool changed,
+    ABSL_ASSIGN_OR_RETURN(bool changed,
                      ConvertAsyncCollectivesToSync{is_nop}.Run(module));
     EXPECT_EQ(changed, expect_change);
     return absl::OkStatus();

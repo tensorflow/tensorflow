@@ -592,6 +592,63 @@ ENTRY main {
   EXPECT_TRUE(found_add1);
 }
 
+TEST(HloDumpUtilsTest, PopulateMismatchGraphData_NestedFusionHierarchy) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule nested_fusion_module
+
+fused_comp_0 {
+  p0.2 = f32[10] parameter(0)
+  ROOT add.1 = f32[10] add(p0.2, p0.2)
+}
+
+fused_comp_1 {
+  p0.1 = f32[10] parameter(0)
+  ROOT inner_fusion = f32[10] fusion(p0.1), kind=kLoop, calls=fused_comp_0
+}
+
+ENTRY main {
+  p0 = f32[10] parameter(0)
+  ROOT outer_fusion = f32[10] fusion(p0), kind=kLoop, calls=fused_comp_1
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+
+  MismatchDetails details;
+  details.target_instruction_name = "outer_fusion";
+  details.actual = 1.0;
+  details.expected = 2.0;
+  details.rel_error = 0.25;
+  details.percentage_of_elems_exceeding_abs_error = 50.0;
+  details.percentage_of_elems_exceeding_rel_error = 50.0;
+
+  auto annotations = PopulateMismatchAnnotations(*module, {details});
+  auto graph_data = PopulateMismatchGraphData(*module, {details});
+
+  auto outer_key = TensorKey::Create("outer_fusion", ShapeIndex{});
+  auto inner_key = TensorKey::Create("add.1", ShapeIndex{});
+  ASSERT_TRUE(annotations.contains(outer_key));
+  ASSERT_TRUE(annotations.contains(inner_key));
+  EXPECT_EQ(annotations[outer_key].background_color, "pink");
+  EXPECT_EQ(annotations[inner_key].background_color, "pink");
+  EXPECT_EQ(annotations[outer_key].tooltip_data,
+            annotations[inner_key].tooltip_data);
+
+  bool found_outer = false;
+  bool found_add1 = false;
+  for (const auto& node : graph_data.nodes) {
+    if (node.key == "outer_fusion") {
+      found_outer = true;
+      EXPECT_EQ(node.diff_score, 25.0);
+    } else if (node.key == "outer_fusion/inner_fusion/add.1") {
+      found_add1 = true;
+      EXPECT_EQ(node.diff_score, 25.0);
+    }
+  }
+  EXPECT_TRUE(found_outer);
+  EXPECT_TRUE(found_add1);
+}
+
 TEST(HloDumpUtilsTest, PopulateMismatchGraphData_ZeroRelError) {
   const absl::string_view hlo_string = R"hlo(
 HloModule test_module

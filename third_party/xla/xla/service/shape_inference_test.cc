@@ -18,12 +18,14 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status_matchers.h"
@@ -37,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -1752,6 +1755,53 @@ TEST_F(ShapeInferenceTest, InferReshapeSplit) {
       ShapeInference::InferReshapeShape(operand, {1, 10},
                                         /*inferred_dimension=*/0);
   ASSERT_EQ(ShapeUtil::MakeShape(F32, {1, 10}, {true, false}), *status);
+}
+
+TEST_F(ShapeInferenceTest, InferReshapeSplitSingleNonDegenerate) {
+  // [<=5]
+  //   | reshape
+  // [1, <=5]
+  //
+  // Only one non-degenerate output dimension; it gets the dynamism without an
+  // inferred_dimension tie-break.
+  const Shape operand = ShapeUtil::MakeShape(F32, {5}, {true});
+  const auto status =
+      ShapeInference::InferReshapeShape(operand, {1, 5},
+                                        /*inferred_dimension=*/-1);
+  ASSERT_EQ(ShapeUtil::MakeShape(F32, {1, 5}, {false, true}), *status);
+}
+
+TEST_F(ShapeInferenceTest, InferReshapeSplitMultipleNonDegenerate) {
+  // [<=6]
+  //   | reshape
+  // [<=3, 2]
+  //
+  // A dynamic dimension split into multiple non-degenerate dimensions without
+  // an inferred_dimension tie-break: the most-major non-degenerate output
+  // dimension becomes dynamic. Regression test for
+  // https://github.com/openxla/xla/issues/44945 (the dynamism used to be
+  // silently dropped, so consumers saw the bound instead of the runtime size).
+  const Shape operand = ShapeUtil::MakeShape(F32, {6}, {true});
+  const auto status =
+      ShapeInference::InferReshapeShape(operand, {3, 2},
+                                        /*inferred_dimension=*/-1);
+  ASSERT_EQ(ShapeUtil::MakeShape(F32, {3, 2}, {true, false}), *status);
+}
+
+TEST_F(ShapeInferenceTest, InferReshapeSplitMultipleNonDegenerateWithMajor) {
+  // [128, <=128]
+  //   | reshape
+  // [64, 2, <=64, 2]
+  //
+  // Same as above with a static major group in front, mirroring the Diag
+  // lowering from https://github.com/openxla/xla/issues/44945.
+  const Shape operand = ShapeUtil::MakeShape(S64, {128, 128}, {false, true});
+  const auto status =
+      ShapeInference::InferReshapeShape(operand, {64, 2, 64, 2},
+                                        /*inferred_dimension=*/-1);
+  ASSERT_EQ(
+      ShapeUtil::MakeShape(S64, {64, 2, 64, 2}, {false, false, true, false}),
+      *status);
 }
 
 TEST_F(ShapeInferenceTest, InferReshapeCombine) {

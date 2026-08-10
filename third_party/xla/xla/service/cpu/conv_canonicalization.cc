@@ -19,9 +19,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -146,7 +146,7 @@ absl::StatusOr<bool> ConvCanonicalization::RunImpl(
               hlo->precision_config()));
 
       // Reshape the output back to the shape of the original convolution.
-      RETURN_IF_ERROR(module->entry_computation()->ReplaceWithNewInstruction(
+      ABSL_RETURN_IF_ERROR(module->entry_computation()->ReplaceWithNewInstruction(
           hlo, HloInstruction::CreateTranspose(
                    hlo->shape(), new_conv,
                    InversePermutation(new_output_dim_order))));

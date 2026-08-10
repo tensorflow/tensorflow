@@ -493,7 +493,7 @@ CreateMatMulPrimDescFromGemmConfig(
 
   // Set up post-ops based on epilogue
   dnnl::post_ops post_ops;
-  ASSIGN_OR_RETURN(sycl_gemm::GemmBackendEpilogue sycl_epilogue,
+  ABSL_ASSIGN_OR_RETURN(sycl_gemm::GemmBackendEpilogue sycl_epilogue,
                    sycl_gemm::AsSYCLEpilogue(epilogue));
 
   switch (sycl_epilogue) {
@@ -607,7 +607,7 @@ absl::Status DoOnednnGemm(int64_t batch_size, const MatrixDescriptor& lhs,
   void* workspace_addr = workspace.opaque();
   if (scratchpad_size > 0) {
     if (scratch_allocator != nullptr) {
-      ASSIGN_OR_RETURN(stream_executor::DeviceMemory<uint8_t> alloc,
+      ABSL_ASSIGN_OR_RETURN(stream_executor::DeviceMemory<uint8_t> alloc,
                        scratch_allocator->AllocateBytes(scratchpad_size));
       workspace_addr = alloc.opaque();
     } else {

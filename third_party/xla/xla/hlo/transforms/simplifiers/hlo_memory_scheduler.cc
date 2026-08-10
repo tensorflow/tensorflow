@@ -33,18 +33,21 @@ limitations under the License.
 #include "absl/log/die_if_null.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/tuple_points_to_analysis.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/transforms/simplifiers/memory_scheduler.pb.h"
+#include "xla/hlo/transforms/simplifiers/memory_scheduler_metrics.pb.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_value.h"
@@ -96,10 +99,9 @@ class ListScheduler {
   // Construct and return a memory-minimizing sequence of HLO instructions
   // containing the given HLO computation.
   static absl::StatusOr<HloInstructionSequence> Run(
-      HloComputation* computation,
-      const TuplePointsToAnalysis& points_to_analysis,
+      HloComputation* computation, const HloAliasAnalysis& alias_analysis,
       const BufferValue::SizeFunction* absl_nonnull size_function) {
-    ListScheduler scheduler(computation, points_to_analysis, size_function);
+    ListScheduler scheduler(computation, alias_analysis, size_function);
     return scheduler.CreateSchedule();
   }
 
@@ -119,55 +121,93 @@ class ListScheduler {
   using Priority = std::pair<int64_t, int64_t>;
 
   ListScheduler(HloComputation* computation,
-                const TuplePointsToAnalysis& points_to_analysis,
+                const HloAliasAnalysis& alias_analysis,
                 const BufferValue::SizeFunction* absl_nonnull size_function)
       : computation_(computation),
-        points_to_analysis_(points_to_analysis),
         size_function_(ABSL_DIE_IF_NULL(size_function)) {
-    // Create a map containing the LogicalBuffer uses for each HLO
-    // instruction. An HLO instruction "uses" a LogicalBuffer if the
-    // LogicalBuffer is in an operand of the instruction as indicated by
-    // points-to analysis.
-    for (auto* instruction : computation->instructions()) {
-      absl::flat_hash_set<const LogicalBuffer*> instr_uses;
-      for (auto* operand : instruction->operands()) {
-        points_to_analysis.GetPointsToSet(operand).ForEachElement(
-            [&](const ShapeIndex& /*index*/,
-                const PointsToSet::BufferList& buffers) {
-              instr_uses.insert(buffers.begin(), buffers.end());
-            });
-      }
-      buffer_uses_[instruction] = std::vector<const LogicalBuffer*>(
-          instr_uses.begin(), instr_uses.end());
+    const HloDataflowAnalysis& dataflow_analysis =
+        alias_analysis.dataflow_analysis();
+
+    // Precompute flattened value sets once per instruction in the computation.
+    absl::flat_hash_map<const HloInstruction*, HloValueSet>
+        flattened_value_sets;
+    flattened_value_sets.reserve(computation->instruction_count());
+    for (const HloInstruction* instruction : computation->instructions()) {
+      flattened_value_sets.emplace(
+          instruction, dataflow_analysis.GetFlattenedValueSet(instruction));
     }
 
-    // Create map containing the number of unscheduled uses (hlo instructions)
-    // of each logical buffer.
-    unscheduled_use_count_.reserve(computation->instruction_count());
+    auto get_flattened_value_set =
+        [&](const HloInstruction* inst) -> const HloValueSet& {
+      auto it = flattened_value_sets.find(inst);
+      if (it != flattened_value_sets.end()) {
+        return it->second;
+      }
+      return flattened_value_sets
+          .emplace(inst, dataflow_analysis.GetFlattenedValueSet(inst))
+          .first->second;
+    };
+
+    // Create a map containing the HloValue uses for each HLO instruction.
+    buffer_uses_.reserve(computation->instruction_count());
     for (auto* instruction : computation->instructions()) {
-      for (auto* buffer :
-           points_to_analysis.GetBuffersDefinedByInstruction(instruction)) {
-        unscheduled_use_count_[buffer] = 0;
+      if (instruction->operands().empty()) {
+        buffer_uses_[instruction] = {};
+      } else if (instruction->unique_operands().size() == 1) {
+        const HloValueSet& vs =
+            get_flattened_value_set(instruction->operand(0));
+        buffer_uses_[instruction] = vs.values();
+      } else {
+        absl::flat_hash_set<const HloValue*> instr_uses;
+        for (auto* operand : instruction->unique_operands()) {
+          const HloValueSet& vs = get_flattened_value_set(operand);
+          instr_uses.insert(vs.values().begin(), vs.values().end());
+        }
+        buffer_uses_[instruction] =
+            std::vector<const HloValue*>(instr_uses.begin(), instr_uses.end());
       }
     }
+
+    // Initialize unscheduled use counts and precompute bytes defined for each
+    // instruction.
+    unscheduled_use_count_.reserve(computation->instruction_count());
+    bytes_defined_.reserve(computation->instruction_count());
     for (auto* instruction : computation->instructions()) {
-      for (const LogicalBuffer* buffer : buffer_uses_.at(instruction)) {
+      int64_t bytes_defined = 0;
+      bool ignore = IgnoreInstruction(*instruction);
+      dataflow_analysis.GetInstructionValueSet(instruction)
+          .ForEachElement(
+              [&](const ShapeIndex& index, const HloValueSet& value_set) {
+                if (dataflow_analysis.ValueIsDefinedAt(instruction, index)) {
+                  const HloValue* value =
+                      &dataflow_analysis.GetValueDefinedAt(instruction, index);
+                  unscheduled_use_count_[value] = 0;
+                  if (!ignore) {
+                    bytes_defined += (*size_function_)(*value);
+                  }
+                }
+              });
+      bytes_defined_[instruction] = bytes_defined;
+    }
+
+    for (auto* instruction : computation->instructions()) {
+      for (const HloValue* buffer : buffer_uses_.at(instruction)) {
         ++unscheduled_use_count_[buffer];
       }
     }
 
     // Buffers live out of the computation have an implicit use at the end of
     // the computation.
-    for (const LogicalBuffer* live_out_buffer :
-         points_to_analysis.GetPointsToSet(computation->root_instruction())
-             .CreateFlattenedSet()) {
+    const HloValueSet& root_value_set =
+        get_flattened_value_set(computation->root_instruction());
+    for (const HloValue* live_out_buffer : root_value_set.values()) {
       ++unscheduled_use_count_[live_out_buffer];
     }
   }
 
   // Returns whether the memory used by the given buffer should be ignored by
   // the scheduling heuristic.
-  static bool IgnoreBuffer(const LogicalBuffer& buffer) {
+  static bool IgnoreBuffer(const HloValue& buffer) {
     return IgnoreInstruction(*buffer.instruction());
   }
 
@@ -184,7 +224,7 @@ class ListScheduler {
     // U is the number of uses of B that have not yet been scheduled. This pair
     // is a pointer into the unscheduled_use_count_ map, so it gets updated for
     // free when we update counts in the map.
-    std::vector<const std::pair<const LogicalBuffer* const, int64_t>*>
+    std::vector<const std::pair<const HloValue* const, int64_t>*>
         used_buffer_unscheduled_use_counts;
   };
 
@@ -192,16 +232,11 @@ class ListScheduler {
   ReadyListEntry MakeReadyListEntry(HloInstruction* instruction) {
     ReadyListEntry entry;
     entry.instruction = instruction;
+    entry.bytes_defined = bytes_defined_.at(instruction);
 
-    entry.bytes_defined = 0;
-    for (auto* buffer :
-         points_to_analysis_.GetBuffersDefinedByInstruction(instruction)) {
-      if (!IgnoreBuffer(*buffer)) {
-        entry.bytes_defined += (*size_function_)(*buffer);
-      }
-    }
-
-    for (auto* buffer : buffer_uses_.at(instruction)) {
+    const auto& uses = buffer_uses_.at(instruction);
+    entry.used_buffer_unscheduled_use_counts.reserve(uses.size());
+    for (const HloValue* buffer : uses) {
       if (IgnoreBuffer(*buffer)) {
         continue;
       }
@@ -312,7 +347,7 @@ class ListScheduler {
 
       bool adjust_ready_queue = false;
       // Update the unscheduled uses of the logical buffers.
-      for (const LogicalBuffer* buffer : buffer_uses_.at(best)) {
+      for (const HloValue* buffer : buffer_uses_.at(best)) {
         int64_t& count = unscheduled_use_count_[buffer];
         CHECK_GT(count, 0);
         --count;
@@ -370,16 +405,18 @@ class ListScheduler {
   }
 
   HloComputation* computation_;
-  const TuplePointsToAnalysis& points_to_analysis_;
   const BufferValue::SizeFunction* absl_nonnull size_function_;
 
-  // A map containing the LogicalBuffers that each instruction uses.
-  absl::flat_hash_map<const HloInstruction*, std::vector<const LogicalBuffer*>>
+  // A map containing the HloValues that each instruction uses.
+  absl::flat_hash_map<const HloInstruction*, std::vector<const HloValue*>>
       buffer_uses_;
 
   // A map containing the count of unscheduled HLOs which using a particular
-  // LogicalBuffer.
-  absl::flat_hash_map<const LogicalBuffer*, int64_t> unscheduled_use_count_;
+  // HloValue.
+  absl::flat_hash_map<const HloValue*, int64_t> unscheduled_use_count_;
+
+  // A map containing the total bytes defined by each instruction.
+  absl::flat_hash_map<const HloInstruction*, int64_t> bytes_defined_;
 
   // Set of instructions which have been scheduled.
   absl::flat_hash_set<const HloInstruction*> scheduled_instructions_;
@@ -407,7 +444,7 @@ absl::StatusOr<HloSchedule> ComputationSchedulerAlgorithm::Run(
   for (HloComputation* computation :
        module->MakeComputationPostOrder(execution_threads)) {
     if (!computation->IsFusionComputation()) {
-      ASSIGN_OR_RETURN(HloInstructionSequence computation_sequence,
+      ABSL_ASSIGN_OR_RETURN(HloInstructionSequence computation_sequence,
                        Run(computation, points_to_analysis, alias_analysis));
       if (postprocessor_) {
         computation_sequence = postprocessor_(computation_sequence);
@@ -416,7 +453,7 @@ absl::StatusOr<HloSchedule> ComputationSchedulerAlgorithm::Run(
     }
   }
   if (peak_memory) {
-    ASSIGN_OR_RETURN(*peak_memory, HeapSimulator::MinimumMemoryForModule(
+    ABSL_ASSIGN_OR_RETURN(*peak_memory, HeapSimulator::MinimumMemoryForModule(
                                        schedule, alias_analysis, alias_info_,
                                        size_function_));
   }
@@ -486,7 +523,7 @@ absl::StatusOr<HloInstructionSequence> DFSMemoryScheduler::Run(
     return absl::OkStatus();
   });
   visitor.ReserveVisitStates(computation->instruction_count());
-  RETURN_IF_ERROR(computation->AcceptWithOperandOrder(
+  ABSL_RETURN_IF_ERROR(computation->AcceptWithOperandOrder(
       &visitor, [&stats_map](const HloInstruction* a, const HloInstruction* b) {
         auto& stats_a = stats_map.at(a);
         auto& stats_b = stats_map.at(b);
@@ -560,7 +597,7 @@ absl::StatusOr<HloInstructionSequence> ListMemoryScheduler::Run(
     HloComputation* computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis) const {
-  return ListScheduler::Run(computation, points_to_analysis, size_function_);
+  return ListScheduler::Run(computation, alias_analysis, size_function_);
 }
 
 absl::StatusOr<HloInstructionSequence> PostOrderScheduler::Run(
@@ -583,28 +620,45 @@ absl::StatusOr<HloSchedule> DefaultMemoryScheduler::Run(
   // - Postorder does not use any heuristics.
   // List wins for most of our benchmarks; postorder-based schedulers win for
   // some RNNs.
+  MemorySchedulerMetrics memory_scheduler_metrics;
   int64_t list_memory;
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloSchedule list_sequence,
       list_scheduler_.Run(module, points_to_analysis, alias_analysis,
                           execution_threads, &list_memory));
+  MetricsForSingleMemoryScheduler* list_metrics =
+      memory_scheduler_metrics.add_schedulers();
+  list_metrics->set_type(MemorySchedulerProto::LIST);
+  list_metrics->set_peak_memory(list_memory);
+  list_metrics->set_valid_schedule(true);
   VLOG(2) << "Min-memory list sequence: " << HumanReadableNumBytes(list_memory);
 
   int64_t dfs_memory;
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloSchedule dfs_sequence,
       dfs_scheduler_.Run(module, points_to_analysis, alias_analysis,
                          execution_threads, &dfs_memory));
+  MetricsForSingleMemoryScheduler* dfs_metrics =
+      memory_scheduler_metrics.add_schedulers();
+  dfs_metrics->set_type(MemorySchedulerProto::DFS);
+  dfs_metrics->set_peak_memory(dfs_memory);
+  dfs_metrics->set_valid_schedule(true);
   VLOG(2) << "Min-memory dfs sequence: " << HumanReadableNumBytes(dfs_memory);
 
   int64_t post_order_memory;
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloSchedule post_order_sequence,
       post_order_scheduler_.Run(module, points_to_analysis, alias_analysis,
                                 execution_threads, &post_order_memory));
+  MetricsForSingleMemoryScheduler* post_order_metrics =
+      memory_scheduler_metrics.add_schedulers();
+  post_order_metrics->set_type(MemorySchedulerProto::POST_ORDER);
+  post_order_metrics->set_peak_memory(post_order_memory);
+  post_order_metrics->set_valid_schedule(true);
   VLOG(2) << "Min-memory post order sequence: "
           << HumanReadableNumBytes(post_order_memory);
 
+  HloSchedule* selected_sequence;
   auto min_memory = std::min({dfs_memory, post_order_memory, list_memory});
   if (peak_memory) {
     *peak_memory = min_memory;
@@ -613,16 +667,27 @@ absl::StatusOr<HloSchedule> DefaultMemoryScheduler::Run(
   if (min_memory == list_memory) {
     VLOG(2) << "Chose min-memory list sequence: "
             << HumanReadableNumBytes(list_memory);
-    return list_sequence;
-  }
-  if (min_memory == dfs_memory) {
+    selected_sequence = &list_sequence;
+    memory_scheduler_metrics.set_selected_scheduler_idx(0);
+  } else if (min_memory == dfs_memory) {
     VLOG(2) << "Chose min-memory dfs sequence: "
             << HumanReadableNumBytes(dfs_memory);
-    return dfs_sequence;
+    selected_sequence = &dfs_sequence;
+    memory_scheduler_metrics.set_selected_scheduler_idx(1);
+  } else {
+    VLOG(2) << "Chose min-memory post_order sequence: "
+            << HumanReadableNumBytes(post_order_memory);
+    selected_sequence = &post_order_sequence;
+    memory_scheduler_metrics.set_selected_scheduler_idx(2);
   }
-  VLOG(2) << "Chose min-memory post_order sequence: "
-          << HumanReadableNumBytes(post_order_memory);
-  return post_order_sequence;
+
+  if (auto status =
+          module->metadata()->set_custom_metadata(memory_scheduler_metrics);
+      !status.ok()) {
+    LOG(WARNING) << "failed to set custom metadata: " << status;
+  }
+
+  return *selected_sequence;
 }
 
 absl::StatusOr<HloSchedule> ScheduleModule(
@@ -633,16 +698,16 @@ absl::StatusOr<HloSchedule> ScheduleModule(
     return absl::StrFormat("XlaMemoryScheduler:#module=%s,program_id=%d#",
                            module->name(), module->unique_id());
   });
-  ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                    TuplePointsToAnalysis::Run(module));
-  ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                    HloAliasAnalysis::Run(module, algorithm.alias_info()));
 
-  ASSIGN_OR_RETURN(HloSchedule schedule,
+  ABSL_ASSIGN_OR_RETURN(HloSchedule schedule,
                    algorithm.Run(module, *points_to_analysis, *alias_analysis,
                                  execution_threads, peak_memory));
 
-  RETURN_IF_ERROR(schedule.Verify());
+  ABSL_RETURN_IF_ERROR(schedule.Verify());
 
   return schedule;
 }
@@ -660,9 +725,9 @@ absl::StatusOr<HloSchedule> ScheduleModule(
 absl::StatusOr<bool> HloMemoryScheduler::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  ASSIGN_OR_RETURN(HloSchedule schedule,
+  ABSL_ASSIGN_OR_RETURN(HloSchedule schedule,
                    ScheduleModule(module, *algorithm_, execution_threads));
-  RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
+  ABSL_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
   return true;
 }
 
@@ -681,10 +746,10 @@ absl::StatusOr<bool> HloTrivialScheduler::RunImpl(
             return absl::OkStatus();
           });
       visitor.ReserveVisitStates(computation->instruction_count());
-      RETURN_IF_ERROR(computation->Accept(&visitor));
+      ABSL_RETURN_IF_ERROR(computation->Accept(&visitor));
     }
   }
-  RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
+  ABSL_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
   return true;
 }
 

@@ -127,7 +127,7 @@ tsl::Future<std::vector<uint64_t>> HashPjRtBuffers(
     // original on-device layout and avoid the delinearization cost.
     xla::Shape descending_shape = xla::ShapeUtil::MakeShapeWithDescendingLayout(
         device_shape.element_type(), device_shape.dimensions());
-    ASSIGN_OR_RETURN(std::unique_ptr<xla::Literal> literal,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<xla::Literal> literal,
                      xla::Literal::MakeUnique(descending_shape));
 
     xla::Literal* literal_ptr = literal.get();

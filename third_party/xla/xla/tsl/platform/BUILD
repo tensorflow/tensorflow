@@ -807,7 +807,6 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([]),  # The header should be used only in OSS.
     deps = [
-        ":statusor",
         "@com_google_absl//absl/status:status_macros",
     ],
 )

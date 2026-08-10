@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/compilation_environments.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/test_compilation_environment.pb.h"
 #include "xla/shape.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -92,6 +93,10 @@ TEST(ExecutableBuildOptionsTest, ProtoRoundTripWorks) {
   p.set_use_shardy_partitioner(true);
   p.set_process_index(13);
   p.set_process_count(14);
+  *p.mutable_gpu_topology() = GpuTopology("nvidia_h100", /*num_partitions=*/2,
+                                          /*num_hosts_per_partition=*/1,
+                                          /*num_devices_per_host=*/8)
+                                  .ToProto();
 
   TF_ASSERT_OK_AND_ASSIGN(const ExecutableBuildOptions options,
                           ExecutableBuildOptionsFromProto(p));
@@ -119,6 +124,27 @@ TEST(ExecutableBuildOptionsTest, SerializationFailsOnNonSerializableFields) {
     EXPECT_THAT(options.ToProto(),
                 absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
   }
+}
+
+TEST(ExecutableBuildOptionsTest, GpuTopologyOption) {
+  ExecutableBuildOptions options;
+  EXPECT_FALSE(options.gpu_topology().has_value());
+  GpuTopology topology("nvidia_h100", /*num_partitions=*/2,
+                       /*num_hosts_per_partition=*/1,
+                       /*num_devices_per_host=*/8);
+  options.set_gpu_topology(topology);
+  ASSERT_TRUE(options.gpu_topology().has_value());
+  EXPECT_EQ(options.gpu_topology()->platform_version(), "nvidia_h100");
+  EXPECT_EQ(options.gpu_topology()->num_partitions(), 2);
+  EXPECT_EQ(options.gpu_topology()->num_hosts_per_partition(), 1);
+  EXPECT_EQ(options.gpu_topology()->num_devices_per_host(), 8);
+
+  ASSERT_OK_AND_ASSIGN(ExecutableBuildOptionsProto proto, options.ToProto());
+  ASSERT_TRUE(proto.has_gpu_topology());
+  ASSERT_OK_AND_ASSIGN(ExecutableBuildOptions options_from_proto,
+                       ExecutableBuildOptionsFromProto(proto));
+  ASSERT_TRUE(options_from_proto.gpu_topology().has_value());
+  EXPECT_EQ(*options_from_proto.gpu_topology(), topology);
 }
 
 }  // namespace

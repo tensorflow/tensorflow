@@ -85,29 +85,29 @@ absl::Status TestMultipleWritesWriteFile(size_t compress_input_buf_size,
   data = GenTestString(num_copies);
   std::unique_ptr<WritableFile> file_writer;
 
-  RETURN_IF_ERROR(env->NewWritableFile(fname, &file_writer));
+  ABSL_RETURN_IF_ERROR(env->NewWritableFile(fname, &file_writer));
   io::SnappyOutputBuffer out(file_writer.get(), compress_input_buf_size,
                              compress_output_buf_size);
 
   for (int i = 0; i < num_writes; i++) {
-    RETURN_IF_ERROR(out.Write(absl::string_view(data)));
+    ABSL_RETURN_IF_ERROR(out.Write(absl::string_view(data)));
     if (with_flush) {
-      RETURN_IF_ERROR(out.Flush());
+      ABSL_RETURN_IF_ERROR(out.Flush());
     }
     absl::StrAppend(&expected_result, data);
   }
-  RETURN_IF_ERROR(out.Flush());
-  RETURN_IF_ERROR(file_writer->Flush());
-  RETURN_IF_ERROR(file_writer->Close());
+  ABSL_RETURN_IF_ERROR(out.Flush());
+  ABSL_RETURN_IF_ERROR(file_writer->Flush());
+  ABSL_RETURN_IF_ERROR(file_writer->Close());
 
   if (corrupt_compressed_file) {
     std::string corrupt_fname =
         testing::TmpDir() + "/snappy_buffers_test_corrupt";
     std::unique_ptr<WritableFile> corrupt_file_writer;
-    RETURN_IF_ERROR(env->NewWritableFile(corrupt_fname, &corrupt_file_writer));
+    ABSL_RETURN_IF_ERROR(env->NewWritableFile(corrupt_fname, &corrupt_file_writer));
 
     std::unique_ptr<RandomAccessFile> file_reader;
-    RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file_reader));
+    ABSL_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file_reader));
 
     absl::string_view data;
     size_t file_pos = 0;
@@ -152,12 +152,12 @@ absl::Status TestMultipleWrites(size_t compress_input_buf_size,
   std::string fname;
   std::string data;
 
-  RETURN_IF_ERROR(TestMultipleWritesWriteFile(
+  ABSL_RETURN_IF_ERROR(TestMultipleWritesWriteFile(
       compress_input_buf_size, compress_output_buf_size, num_writes, with_flush,
       num_copies, corrupt_compressed_file, fname, data, expected_result));
 
   std::unique_ptr<RandomAccessFile> file_reader;
-  RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file_reader));
+  ABSL_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file_reader));
   io::SnappyInputBuffer in(file_reader.get(), uncompress_input_buf_size,
                            uncompress_output_buf_size);
 
@@ -166,14 +166,14 @@ absl::Status TestMultipleWrites(size_t compress_input_buf_size,
     std::string actual_result;
     for (int i = 0; i < num_writes; i++) {
       tstring decompressed_output;
-      RETURN_IF_ERROR(in.ReadNBytes(data.size(), &decompressed_output));
+      ABSL_RETURN_IF_ERROR(in.ReadNBytes(data.size(), &decompressed_output));
       absl::StrAppend(&actual_result, decompressed_output);
     }
 
     if (actual_result != expected_result) {
       return absl::DataLossError("Actual and expected results don't match.");
     }
-    RETURN_IF_ERROR(in.Reset());
+    ABSL_RETURN_IF_ERROR(in.Reset());
   }
 
   return absl::OkStatus();
@@ -190,12 +190,12 @@ absl::Status TestMultipleWritesInputStream(
   std::string fname;
   std::string data;
 
-  RETURN_IF_ERROR(TestMultipleWritesWriteFile(
+  ABSL_RETURN_IF_ERROR(TestMultipleWritesWriteFile(
       compress_input_buf_size, compress_output_buf_size, num_writes, with_flush,
       num_copies, corrupt_compressed_file, fname, data, expected_result));
 
   std::unique_ptr<RandomAccessFile> file_reader;
-  RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file_reader));
+  ABSL_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file_reader));
   io::RandomAccessInputStream random_input_stream(file_reader.get(), false);
   io::SnappyInputStream snappy_input_stream(&random_input_stream,
                                             uncompress_output_buf_size);
@@ -204,7 +204,7 @@ absl::Status TestMultipleWritesInputStream(
     std::string actual_result;
     for (int i = 0; i < num_writes; ++i) {
       tstring decompressed_output;
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           snappy_input_stream.ReadNBytes(data.size(), &decompressed_output));
       absl::StrAppend(&actual_result, decompressed_output);
     }
@@ -212,7 +212,7 @@ absl::Status TestMultipleWritesInputStream(
     if (actual_result != expected_result) {
       return absl::DataLossError("Actual and expected results don't match.");
     }
-    RETURN_IF_ERROR(snappy_input_stream.Reset());
+    ABSL_RETURN_IF_ERROR(snappy_input_stream.Reset());
   }
   return absl::OkStatus();
 }

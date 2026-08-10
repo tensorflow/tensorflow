@@ -92,6 +92,7 @@ static void* XLA_FFI_INTERNAL_ExecutionState_Get(XLA_FFI_InvokeContext* ctx,
       return ctx->state_context.prepare;
     case XLA_FFI_ExecutionStage_INITIALIZE:
       return ctx->state_context.initialize;
+    case XLA_FFI_ExecutionStage_RECORD:
     case XLA_FFI_ExecutionStage_EXECUTE:
       DCHECK(false) << "Execution stage doesn't have a state";
       return nullptr;

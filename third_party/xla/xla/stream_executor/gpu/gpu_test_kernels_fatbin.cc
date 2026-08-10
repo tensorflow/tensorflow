@@ -21,11 +21,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/Archive.h"
 #include "llvm/Object/ELFObjectFile.h"
@@ -54,7 +54,7 @@ absl::StatusOr<std::vector<uint8_t>> GetFatbinFromArchive(
   tsl::Env* env = tsl::Env::Default();
 
   std::string file_contents;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       tsl::ReadFileToString(env, std::string(archive_path), &file_contents));
 
   const auto buffer = llvm::MemoryBuffer::getMemBuffer(

@@ -29,9 +29,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/array2d.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -705,10 +705,10 @@ class GetCollectOpGroupModeTestForInstruction
 absl::StatusOr<std::unique_ptr<HloComputation>> CreateMaxComputation() {
   Shape scalar = ShapeUtil::MakeScalarShape(F32);
   auto builder_max = HloComputation::Builder("max");
-  ASSIGN_OR_RETURN(HloInstruction * a,
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * a,
                    builder_max.AddParameter(
                        HloInstruction::CreateParameter(0, scalar, "a")));
-  ASSIGN_OR_RETURN(HloInstruction * b,
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * b,
                    builder_max.AddParameter(
                        HloInstruction::CreateParameter(1, scalar, "b")));
   HloInstruction* max = builder_max.AddInstruction(

@@ -401,7 +401,7 @@ GetParticipatingDevicesGroups(const HloInstruction* collective) {
   CHECK(collective->GetModule()->config().has_static_device_assignment());
   const DeviceAssignment& device_assignment =
       collective->GetModule()->config().static_device_assignment();
-  ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
+  ABSL_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
                    GetCollectiveOpGroupMode(collective));
   return GetParticipatingDevicesGroups(device_assignment,
                                        collective->replica_groups(), mode);
@@ -496,8 +496,8 @@ GetParticipatingFlattenedIdGroups(
 absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
 GetParticipatingFlattenedIdGroups(const HloInstruction* hlo,
                                   const DeviceAssignment& device_assignment) {
-  ASSIGN_OR_RETURN(CollectiveOpGroupMode mode, GetCollectiveOpGroupMode(hlo));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode, GetCollectiveOpGroupMode(hlo));
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<CollectiveDeviceListBase> collective_device_list,
       GetParticipatingFlattenedIdGroups(device_assignment, *hlo->device_list(),
                                         mode));
@@ -511,7 +511,7 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
   int replica_count = device_assignment.replica_count();
   int partition_count = device_assignment.computation_count();
 
-  ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID logical_id,
+  ABSL_ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID logical_id,
                    device_assignment.LogicalIdForDevice(device_id));
   int current_replica_id = logical_id.replica_id;
   int current_partition_id = logical_id.computation_id;
@@ -527,7 +527,7 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
       // This is a cross replica operation. replica group contains replica id.
       // use current replica id to find the set of participating replicas. If
       // replica groups are empty, assume a group with all replicas.
-      ASSIGN_OR_RETURN(std::vector<int> participating_replicas,
+      ABSL_ASSIGN_OR_RETURN(std::vector<int> participating_replicas,
                        GetParticipatingIDs(group_mode, current_replica_id,
                                            replica_count, replica_groups));
 
@@ -546,7 +546,7 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
     case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION: {
       // replica_groups contain partition_id, group contains all partitions for
       // the current replica.
-      ASSIGN_OR_RETURN(std::vector<int> participating_partitions,
+      ABSL_ASSIGN_OR_RETURN(std::vector<int> participating_partitions,
                        GetParticipatingIDs(group_mode, current_partition_id,
                                            partition_count, replica_groups));
       participants.reserve(participating_partitions.size());
@@ -563,7 +563,7 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
         COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION: {
       // replica_groups contain replica_ids. Group contains replicas for all
       // partitions.
-      ASSIGN_OR_RETURN(std::vector<int> participating_replicas,
+      ABSL_ASSIGN_OR_RETURN(std::vector<int> participating_replicas,
                        GetParticipatingIDs(group_mode, current_replica_id,
                                            replica_count, replica_groups));
       participants.reserve(participating_replicas.size() * partition_count);
@@ -589,7 +589,7 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
 
       // Find participants based on flattened id. replica_groups cannot be empty
       // so no need to pass in total_participant_count.
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           std::vector<int> participating_flattened_ids,
           GetParticipatingIDs(group_mode, current_flattened_id,
                               /*total_participant_count=*/std::nullopt,
@@ -693,9 +693,9 @@ GetReplicaGroupCountAndSize(const HloInstruction* hlo) {
     return std::make_pair(device_list->num_replica_groups(),
                           device_list->num_devices_per_group());
   }
-  ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+  ABSL_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
                    GetCollectiveOpGroupMode(hlo));
-  ASSIGN_OR_RETURN(std::vector<int64_t> participant_counts,
+  ABSL_ASSIGN_OR_RETURN(std::vector<int64_t> participant_counts,
                    GetPariticipantCountsForReplicaGroups(
                        config.replica_count(), config.num_partitions(),
                        device_list->replica_groups(), group_mode));
@@ -1051,8 +1051,16 @@ bool NcclSymmetricBuffersSpec::IsEnabled(const HloInstruction& inst) const {
   }
   DebugOptions::CollectiveOpType op_type = *op_type_opt;
 
+  Shape collective_shape = collective->shape();
+  if (collective->opcode() == HloOpcode::kAllGatherStart ||
+      collective->opcode() == HloOpcode::kCollectivePermuteStart) {
+    if (collective_shape.IsTuple() &&
+        collective_shape.tuple_shapes().size() == 2) {
+      collective_shape = collective_shape.tuple_shapes(1);
+    }
+  }
   const size_t size_in_bytes =
-      ShapeUtil::ByteSizeOfElementsRecursive(collective->shape());
+      ShapeUtil::ByteSizeOfElementsRecursive(collective_shape);
 
   std::optional<PrimitiveType> operand_type;
   if (collective->operand_count() > 0) {

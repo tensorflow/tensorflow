@@ -76,8 +76,12 @@ class GpuIndexingPerformanceModelTest
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
   HloFusionAnalysisCache fusion_analysis_cache_{device_info_};
   GpuPerformanceModelWithIndexingAnalysis indexing_cost_model_{
-      &device_info_, &fusion_analysis_cache_, HloCostAnalysis::DefaultShapeSize,
-      &mlir_context_, use_experimental_tiling()};
+      &device_info_,
+      &fusion_analysis_cache_,
+      HloCostAnalysis::DefaultShapeSize,
+      &mlir_context_,
+      use_experimental_tiling(),
+      /*enable_same_shape_multi_output_fusion=*/false};
 
   size_t WarpSize() const { return ::xla::gpu::WarpSize(device_info_); }
 

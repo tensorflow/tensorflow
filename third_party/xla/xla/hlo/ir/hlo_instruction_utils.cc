@@ -122,10 +122,10 @@ absl::StatusOr<bool> AreOperandsAndOutputFullyBoundImpl(
     const HloInstruction* async_op, const Shape& expected_shape,
     const Shape& async_tuple_shape, const ShapeIndex& index) {
   if (index.empty()) {
-    ASSIGN_OR_RETURN(bool operands_bound,
+    ABSL_ASSIGN_OR_RETURN(bool operands_bound,
                      AreOperandsAndOutputFullyBoundImpl(
                          async_op, expected_shape, async_tuple_shape, {0}));
-    ASSIGN_OR_RETURN(bool output_bound,
+    ABSL_ASSIGN_OR_RETURN(bool output_bound,
                      AreOperandsAndOutputFullyBoundImpl(
                          async_op, expected_shape, async_tuple_shape, {1}));
     return operands_bound && output_bound;
@@ -252,7 +252,7 @@ std::vector<const HloInstruction*> GetAsyncBoundOperands(
 }
 
 absl::StatusOr<bool> IsFirstFullyBound(const HloInstruction* async_inst) {
-  ASSIGN_OR_RETURN(bool fully_bound,
+  ABSL_ASSIGN_OR_RETURN(bool fully_bound,
                    AreOperandsAndOutputFullyBound(async_inst));
   if (!fully_bound) {
     return false;
@@ -261,7 +261,7 @@ absl::StatusOr<bool> IsFirstFullyBound(const HloInstruction* async_inst) {
     return true;
   }
 
-  ASSIGN_OR_RETURN(bool prev_fully_bound,
+  ABSL_ASSIGN_OR_RETURN(bool prev_fully_bound,
                    AreOperandsAndOutputFullyBound(async_inst->operand(0)));
   return !prev_fully_bound;
 }

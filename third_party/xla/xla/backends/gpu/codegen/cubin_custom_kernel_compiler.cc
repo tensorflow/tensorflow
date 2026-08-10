@@ -21,9 +21,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/IR/Module.h"
 #include "llvm/TargetParser/Triple.h"
@@ -110,7 +110,7 @@ CubinCustomKernelCompiler::CompileToCubinImpl(LlvmKernelSource kernel_source) {
     pre_optimization_hook()(*llvm_module);
   }
 
-  ASSIGN_OR_RETURN(std::vector<uint8_t> cubin,
+  ABSL_ASSIGN_OR_RETURN(std::vector<uint8_t> cubin,
                    compiler_(*llvm_module, device_info_, debug_options_));
   return cubin;
 }
@@ -120,10 +120,10 @@ absl::StatusOr<std::unique_ptr<Thunk>> CubinCustomKernelCompiler::CompileImpl(
     const std::string& sanitized_kernel_name,
     const emitters::KernelArguments& kernel_arguments,
     const LaunchDimensions& launch_dimensions) {
-  ASSIGN_OR_RETURN(std::vector<uint8_t> cubin,
+  ABSL_ASSIGN_OR_RETURN(std::vector<uint8_t> cubin,
                    CompileToCubinImpl(std::move(kernel_source)));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       CustomKernel custom_kernel,
       kernel::CreateOwnedCubinCustomKernel(
           sanitized_kernel_name, std::move(cubin),

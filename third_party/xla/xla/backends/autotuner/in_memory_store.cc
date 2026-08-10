@@ -150,7 +150,7 @@ void InMemoryStore::Clear() {
 absl::Status InMemoryStore::LoadFromFile(absl::string_view file_path) {
   std::string autotune_results_str;
   tsl::Env* env = tsl::Env::Default();
-  RETURN_IF_ERROR(tsl::ReadFileToString(env, std::string(file_path),
+  ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(env, std::string(file_path),
                                         &autotune_results_str));
 
   autotuner::AutotuneCache cache;
@@ -177,7 +177,7 @@ absl::Status InMemoryStore::LoadFromFile(absl::string_view file_path) {
 
   InMemoryStore store;
   for (const autotuner::AutotuneEntry& entry : cache.entries()) {
-    RETURN_IF_ERROR(store.Write(entry));
+    ABSL_RETURN_IF_ERROR(store.Write(entry));
   }
   return absl::OkStatus();
 }

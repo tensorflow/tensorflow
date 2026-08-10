@@ -27,11 +27,11 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -402,11 +402,11 @@ static absl::StatusOr<bool> SplitAllReduce(const HloModuleConfig& config,
           ar.constrain_layout(), channel_id, ar.use_global_device_ids()));
 
   // Rewire.
-  RETURN_IF_ERROR(computation.ReplaceInstruction(&ar, first_ar));
+  ABSL_RETURN_IF_ERROR(computation.ReplaceInstruction(&ar, first_ar));
   if (ds.IsRoot()) {
     computation.set_root_instruction(second_ar);
   }
-  RETURN_IF_ERROR(ds.ReplaceAllUsesWith(second_ar));
+  ABSL_RETURN_IF_ERROR(ds.ReplaceAllUsesWith(second_ar));
   return true;  // changed
 }
 
@@ -436,7 +436,7 @@ absl::StatusOr<bool> AllReduceSplitter::RunImpl(
   for (auto* computation : module->computations(execution_threads)) {
     ARReplicaGroupMap replica_map = GetReplicaGroupsMap(*computation);
     for (HloInstruction* instr : computation->MakeInstructionPostOrder()) {
-      ASSIGN_OR_RETURN(bool rewritten, SplitAllReduce(*module, replica_map,
+      ABSL_ASSIGN_OR_RETURN(bool rewritten, SplitAllReduce(*module, replica_map,
                                                       *computation, *instr));
       changed |= rewritten;
     }

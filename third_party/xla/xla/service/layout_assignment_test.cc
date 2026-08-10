@@ -23,9 +23,9 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -538,7 +538,7 @@ class OperandsMustBeTheSameLayoutAssignment : public LayoutAssignment {
           operand->shape().dimensions().size()) {
         continue;
       }
-      RETURN_IF_ERROR(SetArrayOperandLayout(buffer_constraint.layout(),
+      ABSL_RETURN_IF_ERROR(SetArrayOperandLayout(buffer_constraint.layout(),
                                             instruction, operand_no,
                                             /*mandatory=*/true));
     }

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/tests/constraint_propagator.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <functional>
 #include <limits>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -35,7 +37,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/constraint_state.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/types.h"
 #include "xla/util.h"
 
@@ -85,6 +86,83 @@ void SetConstraint(
       /*exclude_zero=*/!contains_zero});
 }
 
+// Seeds root constraints exclusively for 16-bit floating-point types (F16 and
+// BF16). Non-16-bit floating-point types (such as F32 or F64) are intentionally
+// not seeded.
+void Seed16BitFloatingInstruction(
+    const HloInstruction* inst,
+    absl::flat_hash_map<const HloInstruction*, ConstraintState>& states) {
+  PrimitiveType type = inst->shape().element_type();
+  if (type == BF16 || type == F16) {
+    // 65504.0 is the maximum finite value of FP16. We deliberately use 65504.0
+    // for both FP16 and BF16 (rather than BF16's theoretical max of ~3.39e38)
+    // because BF16 has only 7 mantissa bits of precision. Using values up to
+    // 1e38 causes matrix operations and reductions to accumulate massive
+    // rounding errors and precision loss, causing reference evaluation checks
+    // against FP32/FP64 to fail.
+    states[inst].AddConstraint(ConstraintInterval{-65504.0, 65504.0, false});
+  } else if (inst->opcode() == HloOpcode::kTuple) {
+    for (const HloInstruction* operand : inst->operands()) {
+      Seed16BitFloatingInstruction(operand, states);
+    }
+  }
+}
+
+// Finds the maximum magnitude M such that the symmetric interval [-M, M]
+// is contained inside output interval [-L, R] (where L, R > 0).
+//
+// Proof:
+//   To guarantee [-M, M] <= [-L, R]:
+//     1. Lower bound: -M >= -L  =>  M <= L  =>  M <= |-L|
+//     2. Upper bound: +M <= +R  =>  M <= R  =>  M <= |R|
+//   Thus M = min(|-L|, |R|).
+//
+// Returns std::nullopt if no such symmetric bound exists.
+std::optional<double> GetSymmetricMagnitudeBound(
+    const ConstraintInterval& interval) {
+  if ((interval.min == ConstraintInterval::kMin &&
+       interval.max == ConstraintInterval::kMax) ||
+      interval.min > 0.0 || interval.max < 0.0) {
+    return std::nullopt;
+  }
+  double m = std::min(std::abs(interval.min), std::abs(interval.max));
+  if (m >= ConstraintInterval::kMax) {
+    return std::nullopt;
+  }
+  return m;
+}
+
+// Returns the opcode of the reduction sub-computation if it is a canonical
+// 2-operand reduction (where both operands of root are directly parameters).
+std::optional<HloOpcode> GetCanonicalReductionOpcode(
+    const HloComputation& computation) {
+  const HloInstruction* const root = computation.root_instruction();
+  if (root->opcode() == HloOpcode::kTuple && root->operand_count() >= 1) {
+    if (computation.num_parameters() != 2 * root->operand_count()) {
+      return std::nullopt;
+    }
+    HloOpcode first_op = root->operand(0)->opcode();
+    for (const HloInstruction* elem : root->operands()) {
+      // Each tuple element must be a 2-operand reduction operating on distinct
+      // parameters
+      if (elem->opcode() != first_op || elem->operand_count() != 2 ||
+          elem->operand(0)->opcode() != HloOpcode::kParameter ||
+          elem->operand(1)->opcode() != HloOpcode::kParameter ||
+          elem->operand(0) == elem->operand(1)) {
+        return std::nullopt;
+      }
+    }
+    return first_op;
+  }
+  if (computation.num_parameters() != 2 || root->operand_count() != 2 ||
+      root->operand(0)->opcode() != HloOpcode::kParameter ||
+      root->operand(1)->opcode() != HloOpcode::kParameter ||
+      root->operand(0) == root->operand(1)) {
+    return std::nullopt;
+  }
+  return root->opcode();
+}
+
 }  // namespace
 
 absl::StatusOr<absl::flat_hash_map<const HloInstruction*, ConstraintState>>
@@ -95,7 +173,7 @@ ConstraintPropagator::Run(
   ConstraintPropagator propagator(get_index_known_zeroes);
   auto computations = module.MakeComputationPostOrder();
   for (HloComputation* computation : computations) {
-    RETURN_IF_ERROR(propagator.Propagate(computation));
+    ABSL_RETURN_IF_ERROR(propagator.Propagate(computation));
   }
 
   // Extract only the parameters
@@ -107,14 +185,21 @@ ConstraintPropagator::Run(
   return result;
 }
 
+// Accurately modeling full relational semantics across multi-branch graphs
+// would require a general SMT/SAT constraint solver (e.g. Z3), which introduces
+// high latency, potential timeouts, and complex dependencies. Since we only
+// need a sound subset of valid inputs rather than the complete solution space,
+// we use fast, lightweight interval propagation and pattern-matching heuristics
+// with linear O(N) overhead.
 absl::Status ConstraintPropagator::Propagate(
     const HloComputation* computation) {
-  RETURN_IF_ERROR(SeedConstraints(computation));
-  RETURN_IF_ERROR(PropagateSeedConstraints(computation));
+  ABSL_RETURN_IF_ERROR(SeedConstraints(computation));
+  ABSL_RETURN_IF_ERROR(SeedMLPatternsConstraints(computation));
+  ABSL_RETURN_IF_ERROR(PropagateSeedConstraints(computation));
   absl::flat_hash_map<const HloInstruction*, ConstraintState> before;
   do {
     before = states_;
-    RETURN_IF_ERROR(PropagateConstraints(computation));
+    ABSL_RETURN_IF_ERROR(PropagateConstraints(computation));
   } while (before != states_);
   return absl::OkStatus();
 }
@@ -125,6 +210,10 @@ absl::Status ConstraintPropagator::SeedConstraints(
   // Reverse topological (Use before Definition)
   for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
     const HloInstruction* inst = *it;
+
+    if (inst == computation->root_instruction()) {
+      Seed16BitFloatingInstruction(inst, states_);
+    }
 
     // Seed Hard Constraints depending on opcode
     switch (inst->opcode()) {
@@ -339,6 +428,81 @@ absl::Status ConstraintPropagator::SeedConstraints(
   return absl::OkStatus();
 }
 
+// ============================================================================
+// Domain-Specific & ML Pattern Seeding
+// ============================================================================
+//
+// Why this function exists:
+// Opcode-level passes (PropagateConstraintsExact and
+// PropagateConstraintsApprox) cannot infer relational invariants spanning
+// multiple instructions. High-level ML idioms frequently combine comparisons,
+// masks, and arithmetic into coordinated subgraphs. This pass bridges that gap
+// by recognizing known ML patterns and seeding their constraints directly.
+//
+// Tradeoffs:
+// - Pros:
+//   * Isolates multi-op ML heuristics from single-opcode transfer functions.
+//   * Solves complex multi-instruction cases that would otherwise require an
+//     expensive constraint solver.
+// - Cons:
+//   * Encodes specific subgraph patterns rather than general relational
+//   solving.
+//   * Assumes ML domain conventions (e.g. positive clipping thresholds).
+//
+// ML Patterns Handled:
+// 1. Guarded Division / Gradient & Activation Threshold Clipping:
+//    In deep learning models (e.g. GemFuse, diffusion models, transformers),
+//    gradients or activations are scaled down by a threshold tau > 0 when their
+//    norm/magnitude exceeds tau:
+//      scale(x) = where(x > tau, tau / x, 1.0)
+//    When combined with sequence/padding masks (x_masked = where(mask, x,
+//    0.0)):
+//      scale = where(x_masked > tau, tau / x_masked, 1.0)
+//    On masked/padding tokens (mask = false), x_masked is 0.0. Since tau > 0 in
+//    ML, the guard condition (0.0 > tau) evaluates to false, safely
+//    choosing 1.0 and avoiding division by zero. If tau is left unconstrained
+//    and generated as <= 0, (0.0 > tau) evaluates to true on masked lanes,
+//    producing division by zero (-inf). This pattern seeds tau > 0 on the
+//    threshold operand.
+// ============================================================================
+absl::Status ConstraintPropagator::SeedMLPatternsConstraints(
+    const HloComputation* computation) {
+  for (const HloInstruction* inst : computation->instructions()) {
+    // Pattern 1: Guarded Division / Threshold-based Gradient/Activation
+    // Clipping
+    //   select(compare(x, tau, GT/GE), divide(..., x), ...)
+    // or
+    //   select(compare(tau, x, LT/LE), divide(..., x), ...)
+    if (inst->opcode() == HloOpcode::kSelect) {
+      const HloInstruction* pred = inst->operand(0);
+      if (pred->opcode() == HloOpcode::kCompare) {
+        auto* cmp = Cast<HloCompareInstruction>(pred);
+        const HloInstruction* lhs = cmp->operand(0);
+        const HloInstruction* rhs = cmp->operand(1);
+        const HloInstruction* on_true = inst->operand(1);
+
+        if (on_true->opcode() == HloOpcode::kDivide) {
+          const HloInstruction* divisor = on_true->operand(1);
+          // Case 1: compare(x, tau, GT/GE) where divisor is x (lhs) -> tau is
+          // rhs
+          if ((cmp->direction() == ComparisonDirection::kGt ||
+               cmp->direction() == ComparisonDirection::kGe) &&
+              divisor == lhs) {
+            states_[rhs].AddConstraint(ConstraintInterval::StrictPositive());
+          } else if ((cmp->direction() == ComparisonDirection::kLt ||
+                      cmp->direction() == ComparisonDirection::kLe) &&
+                     divisor == rhs) {
+            // Case 2: compare(tau, x, LT/LE) where divisor is x (rhs) -> tau is
+            // lhs
+            states_[lhs].AddConstraint(ConstraintInterval::StrictPositive());
+          }
+        }
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::Status ConstraintPropagator::PropagateConstraintsExact(
     const HloInstruction* instruction) {
   ConstraintState output_state = states_[instruction];
@@ -382,6 +546,7 @@ absl::Status ConstraintPropagator::PropagateConstraintsExact(
     }
     case HloOpcode::kBitcast:
     case HloOpcode::kBitcastConvert:
+    case HloOpcode::kConvert:
     case HloOpcode::kCopy:
     case HloOpcode::kDynamicReshape:
     case HloOpcode::kReshape:
@@ -403,6 +568,27 @@ absl::Status ConstraintPropagator::PropagateConstraintsExact(
       states_[instruction->operand(0)].MergeStructural(sc);
       break;
     }
+    case HloOpcode::kPad: {
+      states_[instruction->operand(0)].AddConstraint(output_interval);
+      states_[instruction->operand(1)].AddConstraint(output_interval);
+      StructuralConstraints sc = output_structural;
+      sc.no_duplicates = false;
+      sc.needs_sorted_indices = false;
+      states_[instruction->operand(0)].MergeStructural(sc);
+      break;
+    }
+    case HloOpcode::kSelect: {
+      states_[instruction->operand(1)].AddConstraint(output_interval);
+      states_[instruction->operand(2)].AddConstraint(output_interval);
+      // Combining elements from two different branches breaks uniqueness
+      // and sorting order across the resulting tensor.
+      StructuralConstraints sc = output_structural;
+      sc.no_duplicates = false;
+      sc.needs_sorted_indices = false;
+      states_[instruction->operand(1)].MergeStructural(sc);
+      states_[instruction->operand(2)].MergeStructural(sc);
+      break;
+    }
     case HloOpcode::kBroadcast:
     case HloOpcode::kGather:
     case HloOpcode::kScatter:
@@ -420,7 +606,8 @@ absl::Status ConstraintPropagator::PropagateConstraintsApprox(
     const HloInstruction* instruction) {
   ConstraintInterval output_interval =
       states_[instruction].GetConstraintInterval();
-  if (output_interval.IsEmpty() || output_interval.IsUnconstrained()) {
+  if ((output_interval.IsEmpty() || output_interval.IsUnconstrained()) &&
+      instruction->opcode() != HloOpcode::kReduce) {
     return absl::OkStatus();
   }
   switch (instruction->opcode()) {
@@ -522,6 +709,131 @@ absl::Status ConstraintPropagator::PropagateConstraintsApprox(
         states_[instruction->operand(1)].AddConstraint(
             ConstraintInterval::NonZero());
       }
+      std::optional<double> max_out =
+          GetSymmetricMagnitudeBound(output_interval);
+      if (max_out.has_value()) {
+        double max_in = std::sqrt(*max_out);
+        ConstraintInterval target_bound{-max_in, max_in,
+                                        output_interval.exclude_zero};
+        TryAddDualConstraints(instruction->operand(0), target_bound,
+                              instruction->operand(1), target_bound);
+      }
+      break;
+    }
+
+    case HloOpcode::kReduce: {
+      if (instruction->operand_count() >= 2 &&
+          instruction->to_apply() != nullptr) {
+        int64_t num_inputs = instruction->operand_count() / 2;
+        int64_t num_elements = 1;
+        const Shape& operand_shape = instruction->operand(0)->shape();
+        for (int64_t dim : instruction->dimensions()) {
+          num_elements *= operand_shape.dimensions(dim);
+        }
+        if (num_elements > 1) {
+          std::optional<HloOpcode> root_op =
+              GetCanonicalReductionOpcode(*instruction->to_apply());
+          for (int64_t i = 0; i < num_inputs; ++i) {
+            ConstraintInterval out_interval_i = output_interval;
+            if (instruction->shape().IsTuple()) {
+              out_interval_i = ConstraintInterval::Unconstrained();
+              for (const HloInstruction* user : instruction->users()) {
+                if (user->opcode() == HloOpcode::kGetTupleElement &&
+                    user->tuple_index() == i) {
+                  out_interval_i = out_interval_i.Intersect(
+                      states_[user].GetConstraintInterval());
+                }
+              }
+            }
+            if (out_interval_i.IsEmpty() || out_interval_i.IsUnconstrained()) {
+              continue;
+            }
+            if (root_op == HloOpcode::kAdd) {
+              // Addition is linear: Sum(x_i) in [min, max] => x_i in [min/N,
+              // max/N].
+              double in_min =
+                  out_interval_i.min > ConstraintInterval::kMin
+                      ? out_interval_i.min / static_cast<double>(num_elements)
+                      : ConstraintInterval::kMin;
+              double in_max =
+                  out_interval_i.max < ConstraintInterval::kMax
+                      ? out_interval_i.max / static_cast<double>(num_elements)
+                      : ConstraintInterval::kMax;
+              states_[instruction->operand(i)].AddConstraint(
+                  ConstraintInterval{in_min, in_max, false});
+            } else if (root_op == HloOpcode::kMultiply) {
+              std::optional<double> max_out =
+                  GetSymmetricMagnitudeBound(out_interval_i);
+              if (max_out.has_value()) {
+                double max_in =
+                    std::pow(*max_out, 1.0 / static_cast<double>(num_elements));
+                states_[instruction->operand(i)].AddConstraint(
+                    ConstraintInterval{-max_in, max_in,
+                                       out_interval_i.exclude_zero});
+              }
+            } else if (root_op == HloOpcode::kMaximum ||
+                       root_op == HloOpcode::kMinimum) {
+              // Max/Min reductions pass through output interval directly
+              // without scaling by N.
+              states_[instruction->operand(i)].AddConstraint(out_interval_i);
+            }
+          }
+        }
+      }
+      break;
+    }
+
+    case HloOpcode::kConvolution: {
+      std::optional<double> max_out =
+          GetSymmetricMagnitudeBound(output_interval);
+      if (max_out.has_value()) {
+        // Calculate the number of multiplication terms summed into each output
+        // cell (contracting size = input_channels * spatial_window_size).
+        int64_t num_terms_to_sum = 1;
+        const Shape& operand_shape = instruction->operand(0)->shape();
+        const auto& dimension_numbers =
+            instruction->convolution_dimension_numbers();
+        if (dimension_numbers.input_feature_dimension() <
+            operand_shape.dimensions().size()) {
+          num_terms_to_sum *= operand_shape.dimensions(
+              dimension_numbers.input_feature_dimension());
+        }
+        for (const auto& size : instruction->window().dimensions()) {
+          num_terms_to_sum *= size.size();
+        }
+        if (num_terms_to_sum > 0) {
+          double max_in =
+              std::sqrt(*max_out / static_cast<double>(num_terms_to_sum));
+          ConstraintInterval target_bound{-max_in, max_in,
+                                          output_interval.exclude_zero};
+          TryAddDualConstraints(instruction->operand(0), target_bound,
+                                instruction->operand(1), target_bound);
+        }
+      }
+      break;
+    }
+
+    case HloOpcode::kDot: {
+      std::optional<double> max_out =
+          GetSymmetricMagnitudeBound(output_interval);
+      if (max_out.has_value()) {
+        // Calculate the number of multiplication terms summed into each output
+        // cell (contracting size = product of contracting dimension sizes).
+        int64_t num_terms_to_sum = 1;
+        const Shape& operand_shape = instruction->operand(0)->shape();
+        const auto& dimension_numbers = instruction->dot_dimension_numbers();
+        for (int64_t dim : dimension_numbers.lhs_contracting_dimensions()) {
+          num_terms_to_sum *= operand_shape.dimensions(dim);
+        }
+        if (num_terms_to_sum > 0) {
+          double max_in =
+              std::sqrt(*max_out / static_cast<double>(num_terms_to_sum));
+          ConstraintInterval target_bound{-max_in, max_in,
+                                          output_interval.exclude_zero};
+          TryAddDualConstraints(instruction->operand(0), target_bound,
+                                instruction->operand(1), target_bound);
+        }
+      }
       break;
     }
 
@@ -589,7 +901,7 @@ absl::Status ConstraintPropagator::PropagateSeedConstraints(
   auto instructions = computation->MakeInstructionPostOrder();
   for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
     const HloInstruction* inst = *it;
-    RETURN_IF_ERROR(PropagateConstraintsExact(inst));
+    ABSL_RETURN_IF_ERROR(PropagateConstraintsExact(inst));
   }
   return absl::OkStatus();
 }
@@ -599,10 +911,22 @@ absl::Status ConstraintPropagator::PropagateConstraints(
   auto instructions = computation->MakeInstructionPostOrder();
   for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
     const HloInstruction* inst = *it;
-    RETURN_IF_ERROR(PropagateConstraintsExact(inst));
-    RETURN_IF_ERROR(PropagateConstraintsApprox(inst));
+    ABSL_RETURN_IF_ERROR(PropagateConstraintsExact(inst));
+    ABSL_RETURN_IF_ERROR(PropagateConstraintsApprox(inst));
   }
   return absl::OkStatus();
+}
+
+bool ConstraintPropagator::TryAddDualConstraints(
+    const HloInstruction* inst_0, const ConstraintInterval& constraint_0,
+    const HloInstruction* inst_1, const ConstraintInterval& constraint_1) {
+  if (!states_[inst_0].CanAddConstraint(constraint_0) ||
+      !states_[inst_1].CanAddConstraint(constraint_1)) {
+    return false;
+  }
+  states_[inst_0].AddConstraint(constraint_0);
+  states_[inst_1].AddConstraint(constraint_1);
+  return true;
 }
 
 }  // namespace xla

@@ -94,7 +94,7 @@ absl::Status ParseVisibleDeviceList(
         tsl::str_util::Split(visible_device_list, ',');  // non-absl ok
     for (const std::string& platform_device_id_str : order_str) {
       int32_t platform_device_id;
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           platform_device_id,
           ParsePlatformDeviceIdString(platform_device_id_str, device_type));
       if (platform_device_id == -1) {
@@ -137,7 +137,7 @@ absl::StatusOr<size_t> GetNumberTfDevicesAndConfigurePlatformDeviceId(
     return 0;
   }
   std::vector<PlatformDeviceId> visible_device_order;
-  RETURN_IF_ERROR(ParseVisibleDeviceList(std::string(visible_device_list),
+  ABSL_RETURN_IF_ERROR(ParseVisibleDeviceList(std::string(visible_device_list),
                                          visible_device_count,
                                          &visible_device_order, device_type));
   if (num_tf_devices > visible_device_order.size()) {
@@ -146,7 +146,7 @@ absl::StatusOr<size_t> GetNumberTfDevicesAndConfigurePlatformDeviceId(
   for (int i = 0; i < num_tf_devices; ++i) {
     const PlatformDeviceId platform_device_id = visible_device_order[i];
     const TfDeviceId tf_device_id(i);
-    RETURN_IF_ERROR(tsl::DeviceIdManager::InsertTfPlatformDeviceIdPair(
+    ABSL_RETURN_IF_ERROR(tsl::DeviceIdManager::InsertTfPlatformDeviceIdPair(
         DeviceType(device_type), tf_device_id, platform_device_id));
   }
   return num_tf_devices;

@@ -20,10 +20,10 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/kernel_spec.h"
 
 namespace stream_executor::cuda {
@@ -47,7 +47,7 @@ absl::StatusOr<CudaRuntimeKernel> FindCudaRuntimeKernel(const void* host_fun);
 template <typename ReturnT, typename... Args>
 absl::StatusOr<KernelLoaderSpec> FindCudaRuntimeKernel(
     ReturnT (*host_fun)(Args...)) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       CudaRuntimeKernel kernel,
       FindCudaRuntimeKernel(absl::bit_cast<const void*>(host_fun)));
   return KernelLoaderSpec::CreateCudaCubinInMemorySpec(

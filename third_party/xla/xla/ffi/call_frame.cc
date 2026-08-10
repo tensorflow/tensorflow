@@ -591,7 +591,7 @@ absl::StatusOr<CallFrame> CallFrame::CopyWithBuffers(
     absl::Span<const se::DeviceAddressBase> args,
     absl::Span<const se::DeviceAddressBase> rets) const {
   CallFrame clone(CopyArgs(*arguments_), CopyRets(*results_), attributes_);
-  RETURN_IF_ERROR(clone.UpdateWithBuffers(args, rets));
+  ABSL_RETURN_IF_ERROR(clone.UpdateWithBuffers(args, rets));
   return clone;
 }
 

@@ -492,7 +492,7 @@ class WritableFile {
   // \brief Append 'data' to the file.
   virtual absl::Status Append(const absl::Cord& cord) {
     for (absl::string_view chunk : cord.Chunks()) {
-      RETURN_IF_ERROR(Append(chunk));
+      ABSL_RETURN_IF_ERROR(Append(chunk));
     }
     return absl::OkStatus();
   }

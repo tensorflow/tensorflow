@@ -16,7 +16,7 @@
 #ifndef TENSORFLOW_COMPILER_XLA_TPU_TPU_LIBRARY_INIT_FNS_INC_
 #define TENSORFLOW_COMPILER_XLA_TPU_TPU_LIBRARY_INIT_FNS_INC_
 
-#include "third_party/absl/status/status.h"
+#include "absl/status/status.h"
 #include "xla/tpu/tpu_api.h"
 #include "xla/tpu/tpu_executor_init_fns.inc"
 #include "xla/tpu/tpu_ops_c_api.h"

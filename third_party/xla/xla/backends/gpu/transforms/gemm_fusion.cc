@@ -33,10 +33,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
@@ -564,7 +564,7 @@ absl::StatusOr<HlosAndRequirements> FuseDotOperand(
     std::vector<HloInstruction*>& fusion_params  // append
 ) {
   // Direct dot inputs have well defined dimension orders.
-  ASSIGN_OR_RETURN(const FusionContext context,
+  ABSL_ASSIGN_OR_RETURN(const FusionContext context,
                    FusionContext::FromDotOperand(dot, operand_index));
   HloInstruction& operand = *dot.mutable_operand(operand_index);
   return FuseTowardOperands(operand, context.dim_orders().at(&operand),
@@ -882,9 +882,9 @@ absl::Status FusionSearchSpace::ShepherdBitcastsAwayFromDot(
         continue;
       }
       if (descendants.find(instr) == descendants.end()) {
-        ASSIGN_OR_RETURN(changed, HoistBitcast(instr));
+        ABSL_ASSIGN_OR_RETURN(changed, HoistBitcast(instr));
       } else {
-        ASSIGN_OR_RETURN(changed, SinkBitcast(instr));
+        ABSL_ASSIGN_OR_RETURN(changed, SinkBitcast(instr));
       }
       if (changed) {
         break;
@@ -929,8 +929,8 @@ absl::StatusOr<bool> FusionSearchSpace::HoistBitcast(HloInstruction* instr) {
       std::vector<HloInstruction*> users(operand->users().begin(),
                                          operand->users().end());
       for (HloInstruction* user : users) {
-        RETURN_IF_ERROR(user->ReplaceAllUsesWith(operand));
-        RETURN_IF_ERROR(
+        ABSL_RETURN_IF_ERROR(user->ReplaceAllUsesWith(operand));
+        ABSL_RETURN_IF_ERROR(
             user->parent()->RemoveInstructionAndUnusedOperands(user));
       }
       return true;
@@ -940,7 +940,7 @@ absl::StatusOr<bool> FusionSearchSpace::HoistBitcast(HloInstruction* instr) {
       if (!ShapeUtil::IsEffectiveScalar(constant->shape())) {
         return false;
       }
-      ASSIGN_OR_RETURN(Literal new_literal, constant->literal().Reshape(
+      ABSL_ASSIGN_OR_RETURN(Literal new_literal, constant->literal().Reshape(
                                                 instr->shape().dimensions()));
       new_instr = instr->parent()->AddInstruction(
           HloInstruction::CreateConstant(std::move(new_literal)));
@@ -1001,8 +1001,8 @@ absl::StatusOr<bool> FusionSearchSpace::HoistBitcast(HloInstruction* instr) {
     original_to_fused_[original_op] = new_instr;
   }
 
-  RETURN_IF_ERROR(instr->ReplaceAllUsesWith(new_instr));
-  RETURN_IF_ERROR(instr->parent()->RemoveInstructionAndUnusedOperands(instr));
+  ABSL_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(new_instr));
+  ABSL_RETURN_IF_ERROR(instr->parent()->RemoveInstructionAndUnusedOperands(instr));
   return true;
 }
 
@@ -1013,7 +1013,7 @@ absl::StatusOr<bool> FusionSearchSpace::SinkBitcast(HloInstruction* instr) {
   if (instr->IsRoot()) {
     instr->parent()->set_root_instruction(operand,
                                           /*accept_different_shape=*/true);
-    RETURN_IF_ERROR(instr->parent()->RemoveInstructionAndUnusedOperands(instr));
+    ABSL_RETURN_IF_ERROR(instr->parent()->RemoveInstructionAndUnusedOperands(instr));
     return true;
   }
   // We only build fusions where epilogues have single users. This could be
@@ -1086,8 +1086,8 @@ absl::StatusOr<bool> FusionSearchSpace::SinkBitcast(HloInstruction* instr) {
     fused_to_original_[new_bitcast] = original_op;
     original_to_fused_[original_op] = new_instr;
   }
-  RETURN_IF_ERROR(user->ReplaceAllUsesWith(new_bitcast));
-  RETURN_IF_ERROR(instr->parent()->RemoveInstructionAndUnusedOperands(user));
+  ABSL_RETURN_IF_ERROR(user->ReplaceAllUsesWith(new_bitcast));
+  ABSL_RETURN_IF_ERROR(instr->parent()->RemoveInstructionAndUnusedOperands(user));
   return true;
 }
 
@@ -1222,10 +1222,10 @@ absl::StatusOr<HloInstruction*> FuseUserAndOperands(
   HloInstruction* new_fusion =
       fusion->parent()->AddInstruction(HloInstruction::CreateFusion(
           user->shape(), HloInstruction::FusionKind::kCustom, user));
-  RETURN_IF_ERROR(fusion->parent()->ReplaceInstruction(user, new_fusion));
+  ABSL_RETURN_IF_ERROR(fusion->parent()->ReplaceInstruction(user, new_fusion));
   new_fusion->MergeFusionInstruction(fusion);
   CHECK_EQ(0, fusion->users().size());
-  RETURN_IF_ERROR(fusion->parent()->RemoveInstruction(fusion));
+  ABSL_RETURN_IF_ERROR(fusion->parent()->RemoveInstruction(fusion));
   if (new_fusion->operand_count() > operand_count) {
     FuseOperandsBFS(mlir_context, new_fusion->operands(), new_fusion,
                     fused_to_original);
@@ -1251,7 +1251,7 @@ FusionSearchSpace::GetOrCreateOriginalInstruction(
   // corresponding original instruction. Find their parent and add the bitcast
   // to the original module.
   if (fusion_operand->opcode() == HloOpcode::kBitcast) {
-    ASSIGN_OR_RETURN(HloInstruction * original_operand,
+    ABSL_ASSIGN_OR_RETURN(HloInstruction * original_operand,
                      GetOrCreateOriginalInstruction(
                          fusion_operand->mutable_operand(0), fusion_param));
     HloInstruction* bitcast = original_operand->parent()->AddInstruction(
@@ -1283,7 +1283,7 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateTileableFusion(
   auto entry = fusion_search_space.entry();
   auto fusion = entry->AddInstruction(HloInstruction::CreateFusion(
       dot->shape(), HloInstruction::FusionKind::kCustom, dot));
-  RETURN_IF_ERROR(entry->ReplaceInstruction(dot, fusion));
+  ABSL_RETURN_IF_ERROR(entry->ReplaceInstruction(dot, fusion));
 
   // Keep track of the original HLO the fusion is replacing.
   HloInstruction* original_output = original_dot;
@@ -1306,7 +1306,7 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateTileableFusion(
       break;
     }
     VLOG(5) << "Fusing user into epilogue: " << user->ToString();
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         fusion, FuseUserAndOperands(mlir_context, fusion, user,
                                     fusion_search_space.fused_to_original()));
     original_output = original_user;
@@ -1316,7 +1316,7 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateTileableFusion(
   // boundary.
   auto fusion_computation =
       Cast<HloFusionInstruction>(fusion)->fused_instructions_computation();
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       fusion_search_space.ShepherdBitcastsAwayFromDot(fusion_computation));
 
   // Find inputs to the fusion from the original module.
@@ -1324,7 +1324,7 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateTileableFusion(
   for (auto [index, operand] : llvm::enumerate(fusion->operands())) {
     HloInstruction* fusion_param =
         fusion_computation->parameter_instruction(index);
-    ASSIGN_OR_RETURN(HloInstruction * original_instruction,
+    ABSL_ASSIGN_OR_RETURN(HloInstruction * original_instruction,
                      fusion_search_space.GetOrCreateOriginalInstruction(
                          operand, fusion_param));
     fusion_inputs.push_back(original_instruction);
@@ -1342,7 +1342,7 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateDotFusionV2(
   VLOG(3) << "Found fusion search space: \n"
           << fusion_search_space.entry()->ToString();
 
-  RETURN_IF_ERROR(fusion_search_space.ShepherdBitcastsAwayFromDot(
+  ABSL_RETURN_IF_ERROR(fusion_search_space.ShepherdBitcastsAwayFromDot(
       fusion_search_space.entry()));
 
   return CreateTileableFusion(fusion_search_space, gpu_version, name);
@@ -1374,11 +1374,11 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateDotFusion(
 
   std::vector<HlosAndRequirements> hlos_and_reqs;
   hlos_and_reqs.reserve(dot.operand_count());
-  ASSIGN_OR_RETURN(HlosAndRequirements lhs_hlos_and_reqs,
+  ABSL_ASSIGN_OR_RETURN(HlosAndRequirements lhs_hlos_and_reqs,
                    FuseDotOperand(dot, /*operand_index=*/0, gpu_version,
                                   builder, fusion_inputs));
   hlos_and_reqs.push_back(lhs_hlos_and_reqs);
-  ASSIGN_OR_RETURN(HlosAndRequirements rhs_hlos_and_reqs,
+  ABSL_ASSIGN_OR_RETURN(HlosAndRequirements rhs_hlos_and_reqs,
                    FuseDotOperand(dot, /*operand_index=*/1, gpu_version,
                                   builder, fusion_inputs));
   hlos_and_reqs.push_back(rhs_hlos_and_reqs);
@@ -1463,7 +1463,7 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
             ->config()
             .debug_options()
             .xla_gpu_gemm_rewrite_size_threshold();
-    ASSIGN_OR_RETURN(bool is_matmul_tiny,
+    ABSL_ASSIGN_OR_RETURN(bool is_matmul_tiny,
                      IsMatrixMultiplicationTooSmallForRewriting(
                          *dot, gemm_rewrite_size_threshold));
     if (is_matmul_tiny && IsDotSupportedByClassicalEmitters(*dot)) {
@@ -1471,7 +1471,7 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
     }
 
     std::string fusion_name = absl::StrCat("gemm_fusion_", dot->name());
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto fusion_or_decision,
         CreateDotFusion(*Cast<HloDotInstruction>(dot), gpu_version_,
                         absl::StrCat(fusion_name, "_computation")));
@@ -1497,12 +1497,12 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
     dot_fusion->set_metadata(dot->metadata());
     dot_fusion->GetModule()->SetAndUniquifyInstrName(dot_fusion, fusion_name);
 
-    ASSIGN_OR_RETURN(auto gpu_config,
+    ABSL_ASSIGN_OR_RETURN(auto gpu_config,
                      dot_fusion->backend_config<GpuBackendConfig>());
     FusionBackendConfig& backend_config =
         *gpu_config.mutable_fusion_backend_config();
     backend_config.set_kind(kTritonGemmFusionKind);
-    RETURN_IF_ERROR(dot_fusion->set_backend_config(gpu_config));
+    ABSL_RETURN_IF_ERROR(dot_fusion->set_backend_config(gpu_config));
 
     HloInstruction* replacement = dot_fusion;
     if (fusion.output->shape() != dot_fusion->shape()) {
@@ -1512,12 +1512,12 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
 
     if (fusion.output->IsRoot()) {
       fusion.output->parent()->set_root_instruction(replacement);
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           fusion.output->parent()->RemoveInstructionAndUnusedOperands(
               fusion.output));
       MarkAsChanged();
     } else {
-      RETURN_IF_ERROR(ReplaceInstruction(fusion.output, replacement));
+      ABSL_RETURN_IF_ERROR(ReplaceInstruction(fusion.output, replacement));
     }
     XLA_VLOG_LINES(5, computation->ToString(HloPrintOptions::ShortParsable()));
     return absl::OkStatus();
@@ -1532,19 +1532,19 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
 
     std::vector<HlosAndRequirements> hlos_and_reqs;
     hlos_and_reqs.reserve(scaled_dot->operand_count());
-    ASSIGN_OR_RETURN(HlosAndRequirements lhs_hlos_and_reqs,
+    ABSL_ASSIGN_OR_RETURN(HlosAndRequirements lhs_hlos_and_reqs,
                      FuseDotOperand(*scaled_dot, /*operand_index=*/0,
                                     gpu_version_, builder, fusion_inputs));
     hlos_and_reqs.push_back(lhs_hlos_and_reqs);
-    ASSIGN_OR_RETURN(HlosAndRequirements rhs_hlos_and_reqs,
+    ABSL_ASSIGN_OR_RETURN(HlosAndRequirements rhs_hlos_and_reqs,
                      FuseDotOperand(*scaled_dot, /*operand_index=*/1,
                                     gpu_version_, builder, fusion_inputs));
     hlos_and_reqs.push_back(rhs_hlos_and_reqs);
-    ASSIGN_OR_RETURN(HlosAndRequirements lhs_scale_hlos_and_reqs,
+    ABSL_ASSIGN_OR_RETURN(HlosAndRequirements lhs_scale_hlos_and_reqs,
                      FuseDotOperand(*scaled_dot, /*operand_index=*/2,
                                     gpu_version_, builder, fusion_inputs));
     hlos_and_reqs.push_back(lhs_scale_hlos_and_reqs);
-    ASSIGN_OR_RETURN(HlosAndRequirements rhs_scale_hlos_and_reqs,
+    ABSL_ASSIGN_OR_RETURN(HlosAndRequirements rhs_scale_hlos_and_reqs,
                      FuseDotOperand(*scaled_dot, /*operand_index=*/3,
                                     gpu_version_, builder, fusion_inputs));
     hlos_and_reqs.push_back(rhs_scale_hlos_and_reqs);
@@ -1564,14 +1564,14 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
             computation->root_instruction()->shape(),
             HloInstruction::FusionKind::kCustom, fusion_inputs, computation));
 
-    ASSIGN_OR_RETURN(auto gpu_config,
+    ABSL_ASSIGN_OR_RETURN(auto gpu_config,
                      fusion->backend_config<GpuBackendConfig>());
     FusionBackendConfig& backend_config =
         *gpu_config.mutable_fusion_backend_config();
     backend_config.set_kind(kTritonGemmFusionKind);
-    RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
+    ABSL_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
     HloInstruction* fusion_output = fused_output_and_reqs.original_hlo;
-    RETURN_IF_ERROR(ReplaceInstruction(fusion_output, fusion));
+    ABSL_RETURN_IF_ERROR(ReplaceInstruction(fusion_output, fusion));
     MarkAsChanged();
     return absl::OkStatus();
   }
@@ -1583,7 +1583,7 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
 absl::StatusOr<bool> RunOnComputation(
     HloComputation* computation, const se::GpuComputeCapability& gpu_version) {
   GemmFusionVisitor visitor(gpu_version);
-  RETURN_IF_ERROR(computation->Accept(&visitor));
+  ABSL_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.changed();
 }
 
@@ -1592,12 +1592,12 @@ absl::StatusOr<bool> RunOnComputation(
 absl::StatusOr<bool> GemmFusion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  RETURN_IF_ERROR(EnsureTritonSupportsComputeCapability(compute_capability_));
+  ABSL_RETURN_IF_ERROR(EnsureTritonSupportsComputeCapability(compute_capability_));
 
   bool changed = false;
   for (HloComputation* computation :
        GetFusibleComputations(*module, execution_threads)) {
-    ASSIGN_OR_RETURN(bool result,
+    ABSL_ASSIGN_OR_RETURN(bool result,
                      RunOnComputation(computation, compute_capability_));
     changed |= result;
   }

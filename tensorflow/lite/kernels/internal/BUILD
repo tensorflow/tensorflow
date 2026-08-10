@@ -1372,6 +1372,7 @@ cc_test(
     deps = [
         ":avx2_quantization_utils",
         ":common",
+        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
 )

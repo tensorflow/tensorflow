@@ -22,9 +22,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -79,16 +79,16 @@ absl::Status HloDomainVerifier::RunContext::PopulateDomainKinds(
 absl::Status HloDomainVerifier::RunContext::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(4) << "Running HLO Domain Verifier";
-  RETURN_IF_ERROR(PopulateDomainKinds(execution_threads));
+  ABSL_RETURN_IF_ERROR(PopulateDomainKinds(execution_threads));
   for (HloComputation* computation : module_->computations(execution_threads)) {
     for (auto& kind : verifier_->kinds_) {
       // First create the domain instruction sets. A domain instruction set is
       // the set of instructions whose edges never cross a kDomain instruction.
-      ASSIGN_OR_RETURN(std::unique_ptr<HloDomainMap> domain_map,
+      ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloDomainMap> domain_map,
                        HloDomainMap::Create(computation, kind));
       // Verify every domain populated within the map.
       for (auto& domain : domain_map->GetDomains()) {
-        RETURN_IF_ERROR(VerifyDomain(*domain).status());
+        ABSL_RETURN_IF_ERROR(VerifyDomain(*domain).status());
       }
     }
   }
@@ -99,7 +99,7 @@ absl::StatusOr<bool> HloDomainVerifier::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   RunContext run_context(module, this);
-  RETURN_IF_ERROR(run_context.Run(execution_threads));
+  ABSL_RETURN_IF_ERROR(run_context.Run(execution_threads));
   return false;
 }
 

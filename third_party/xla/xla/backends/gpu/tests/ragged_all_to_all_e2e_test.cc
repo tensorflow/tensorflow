@@ -24,12 +24,12 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/array.h"
 #include "xla/backends/gpu/tests/collective_ops_e2e_test_base.h"
 #include "xla/backends/gpu/tests/ragged_all_to_all_test_utils.h"
@@ -54,7 +54,7 @@ namespace {
 using ::testing::NotNull;
 
 enum class RaggedAllToAllImplType {
-  kNccl,
+  kNcclFallback,
   kDecomposer,
   kOneShotWithMultiGpuBarrier,
   kOneShotWithMultiGpuBarrierWithNccl,
@@ -79,7 +79,13 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
         collectives_mode_(collectives_mode) {}
 
   bool IsSymmetricNcclPath() const {
-    return impl_type_ == RaggedAllToAllImplType::kNccl &&
+    return impl_type_ == RaggedAllToAllImplType::kNcclFallback &&
+           collectives_mode_ == DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY;
+  }
+
+  bool RequiresSymmetricMemory() const {
+    return IsSymmetricNcclPath() ||
+           impl_type_ == RaggedAllToAllImplType::kDeviceKernel ||
            collectives_mode_ == DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY;
   }
 
@@ -156,12 +162,12 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
             {i, 0, 0});
       }
 
-      RETURN_IF_ERROR(CreateRandomTestDataForReplicaGroup(
+      ABSL_RETURN_IF_ERROR(CreateRandomTestDataForReplicaGroup(
           module, input_sizes_per_replica_group, output_init_data,
           replica_group));
     }
 
-    ASSIGN_OR_RETURN(output_init_,
+    ABSL_ASSIGN_OR_RETURN(output_init_,
                      LiteralUtil::CreateFromArrayWithLayout(
                          output_init_data, output_param->shape().layout())
                          .Convert(output_param->shape().element_type()));
@@ -196,28 +202,28 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
     // Create literals from array data.
     for (int64_t i = 0; i < num_replicas; ++i) {
       int64_t replica_id = replica_group.replica_ids(i);
-      ASSIGN_OR_RETURN(inputs_[replica_id],
+      ABSL_ASSIGN_OR_RETURN(inputs_[replica_id],
                        LiteralUtil::CreateFromArrayWithLayout(
                            input_data[i], input_param->shape().layout())
                            .Convert(input_param->shape().element_type()));
 
-      ASSIGN_OR_RETURN(expected_outputs_[replica_id],
+      ABSL_ASSIGN_OR_RETURN(expected_outputs_[replica_id],
                        LiteralUtil::CreateFromArrayWithLayout(
                            output_data[i], output_param->shape().layout())
                            .Convert(output_param->shape().element_type()));
 
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           input_offsets_[replica_id],
           GetParameterLiteral(module, /*parameter_index=*/2, i, input_offsets));
 
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           input_sizes_[replica_id],
           GetParameterLiteral(module, /*parameter_index=*/3, i, input_sizes));
 
-      ASSIGN_OR_RETURN(output_offsets_[replica_id],
+      ABSL_ASSIGN_OR_RETURN(output_offsets_[replica_id],
                        GetParameterLiteral(module, /*parameter_index=*/4, i,
                                            output_offsets));
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           output_sizes_[replica_id],
           GetParameterLiteral(module, /*parameter_index=*/5, i, output_sizes));
     }
@@ -242,10 +248,9 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
     if (device_count() < 2) {
       GTEST_SKIP() << "Test requires at least 2 devices.";
     }
-    if (IsSymmetricNcclPath() &&
-        !Capability().cuda_compute_capability()->IsAtLeastHopper()) {
-      GTEST_SKIP() << "NCCL backend is only supported on Hopper architecture "
-                      "and above.";
+    if (RequiresSymmetricMemory() && !IsHopperAndHigher()) {
+      GTEST_SKIP() << "Symmetric memory is only supported on Hopper "
+                      "architecture and above.";
     }
   }
 
@@ -257,6 +262,9 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
     // Requires symmetric memory.
     opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(
         false);
+    if (impl_type_ == RaggedAllToAllImplType::kNcclFallback) {
+      opts.set_xla_gpu_allow_ragged_all_to_all_nccl_send_recv_fallback(true);
+    }
     if (IsSymmetricNcclPath()) {
       opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(false);
     }
@@ -1018,8 +1026,8 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs_4ReplicasPerGroups) {
 std::string RaggedAllToAllImplTypeName(
     RaggedAllToAllImplType ragged_all_to_all_impl_type) {
   switch (ragged_all_to_all_impl_type) {
-    case RaggedAllToAllImplType::kNccl:
-      return "nccl";
+    case RaggedAllToAllImplType::kNcclFallback:
+      return "nccl_fallback";
     case RaggedAllToAllImplType::kDecomposer:
       return "decomposer";
     case RaggedAllToAllImplType::kOneShotWithMultiGpuBarrier:
@@ -1060,7 +1068,8 @@ BuildRaggedAllToAllTestParams() {
          {DebugOptions::COLLECTIVES_PRIVATE_MEMORY,
           DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY,
           DebugOptions::COLLECTIVES_PEER_MEMORY}) {
-      params.emplace_back(enable_async, RaggedAllToAllImplType::kNccl, mode);
+      params.emplace_back(enable_async, RaggedAllToAllImplType::kNcclFallback,
+                          mode);
     }
     for (RaggedAllToAllImplType impl_type :
          {RaggedAllToAllImplType::kDecomposer,
@@ -1331,6 +1340,58 @@ INSTANTIATE_TEST_SUITE_P(
       return absl::StrCat("dispatch_", std::get<0>(info.param), "_",
                           std::get<1>(info.param));
     });
+
+class RaggedAllToAllFallbackTest : public RaggedAllToAllTestBase {
+ public:
+  RaggedAllToAllFallbackTest()
+      : RaggedAllToAllTestBase(
+            /*enable_async=*/false,
+            /*impl_type=*/RaggedAllToAllImplType::kNcclFallback,
+            /*collectives_mode=*/DebugOptions::COLLECTIVES_PRIVATE_MEMORY) {}
+
+ protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions opts = RaggedAllToAllTestBase::GetDebugOptionsForTest();
+    opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(false);
+    opts.set_xla_gpu_allow_ragged_all_to_all_nccl_send_recv_fallback(false);
+    return opts;
+  }
+};
+
+TEST_F(RaggedAllToAllFallbackTest, FailsWhenFallbackIsDisabled) {
+  absl::string_view kModuleReplicatedStr = R"(
+  HloModule module, num_partitions=1
+
+  ENTRY entry {
+    input = f32[4] parameter(0)
+    output = f32[4] parameter(1)
+    input_offsets = s32[2] parameter(2)
+    send_sizes = s32[2] parameter(3)
+    output_offsets = s32[2] parameter(4)
+    recv_sizes = s32[2] parameter(5)
+    ROOT ra2a = f32[4] ragged-all-to-all(input, output, input_offsets,
+    send_sizes, output_offsets, recv_sizes), replica_groups={{0,1}}
+  })";
+
+  const int64_t kNumReplicas = 2;
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        kModuleReplicatedStr, kNumReplicas));
+
+  ASSERT_OK(CreateRandomTestData(module.get(),
+                                 /*input_sizes=*/{/*replica_0=*/{1, 1},
+                                                  /*replica_1=*/{3, 1}}));
+
+  absl::StatusOr<ExecutionResult> execution_result =
+      ExecuteReplicated(std::move(module), GetInputLiteralPtrs());
+  EXPECT_FALSE(execution_result.ok());
+  EXPECT_THAT(
+      execution_result.status().message(),
+      ::testing::HasSubstr("RaggedAllToAll fallback to NCCL is not allowed"));
+}
 
 }  // namespace
 }  // namespace xla

@@ -24,10 +24,10 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/profiler/plugin/plugin_tracer_impl.h"
@@ -303,7 +303,7 @@ absl::StatusOr<TargetConfigAndDevices> GetTargetConfigFromOptions(
   if (target_config_proto.has_value()) {
     return {{*target_config_proto, *host_target_machine_options, {}}};
   }
-  ASSIGN_OR_RETURN(xla::LocalClient * xla_client,
+  ABSL_ASSIGN_OR_RETURN(xla::LocalClient * xla_client,
                    xla::GetGpuXlaClient(/*platform_name=*/std::nullopt,
                                         /*allowed_devices=*/std::nullopt));
   stream_executor::StreamExecutor* executor =

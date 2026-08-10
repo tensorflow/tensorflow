@@ -35,11 +35,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -223,14 +223,14 @@ absl::StatusOr<bool> RunScheduler(
       /*convert_collective_permute=*/HloPredicateTrue};
   bool value = false;
   if (!skip_async_collective_creator) {
-    ASSIGN_OR_RETURN(value,
+    ABSL_ASSIGN_OR_RETURN(value,
                      AsyncCollectiveCreator(std::move(config)).Run(module));
   }
   if (!legalizer_config) {
     legalizer_config =
         std::make_unique<LegalizeSchedulingAnnotations::Config>();
   }
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       value,
       LegalizeSchedulingAnnotations(std::move(*legalizer_config)).Run(module));
   HloCostAnalysis::ShapeSizeFunction shape_size_bytes =
@@ -257,7 +257,7 @@ absl::StatusOr<bool> RunScheduler(
           &alias_info, shape_size_bytes);
   auto scheduler_core =
       std::make_unique<DefaultSchedulerCore>(scheduling_context, sched_config);
-  ASSIGN_OR_RETURN(value, LatencyHidingScheduler(scheduling_context,
+  ABSL_ASSIGN_OR_RETURN(value, LatencyHidingScheduler(scheduling_context,
                                                  std::move(scheduler_core))
                               .Run(module));
 
@@ -300,9 +300,9 @@ class LatencyHidingSchedulerTest : public HloHardwareIndependentTestBase {
         /*convert_all_gather=*/HloPredicateTrue,
         /*convert_collective_broadcast=*/HloPredicateTrue,
         /*convert_collective_permute=*/HloPredicateTrue};
-    ASSIGN_OR_RETURN(bool value,
+    ABSL_ASSIGN_OR_RETURN(bool value,
                      AsyncCollectiveCreator(std::move(config)).Run(module));
-    ASSIGN_OR_RETURN(value, LegalizeSchedulingAnnotations(
+    ABSL_ASSIGN_OR_RETURN(value, LegalizeSchedulingAnnotations(
                                 LegalizeSchedulingAnnotations::Config())
                                 .Run(module));
 

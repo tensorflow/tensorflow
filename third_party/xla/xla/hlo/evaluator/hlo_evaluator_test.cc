@@ -6850,6 +6850,24 @@ TEST_F(HloEvaluatorTest, SortC64) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
+// Ordered comparisons are not defined for complex numbers. The evaluator
+// should return an error instead of crashing (see issue #44936).
+TEST_F(HloEvaluatorTest, OrderedCompareOnComplexReturnsError) {
+  const absl::string_view hlo_text = R"(
+  HloModule m
+
+  ENTRY main {
+    a = c128[2] constant({(1, 2), (3, 4)})
+    b = c128[2] constant({(5, 6), (7, 8)})
+    ROOT lt = pred[2] compare(a, b), direction=LT
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  absl::Status status = HloEvaluator().Evaluate(*m_, {}).status();
+  EXPECT_EQ(status.code(), ::tsl::error::UNIMPLEMENTED);
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("Unsupported comparison"));
+}
+
 TEST_F(HloEvaluatorTest, ConvertC128ToC64) {
   const absl::string_view hlo_text = R"(
   HloModule m

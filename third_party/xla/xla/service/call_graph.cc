@@ -28,11 +28,11 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -337,7 +337,7 @@ absl::Status CallGraph::VisitNodesInternal(
   }
 
   for (const HloComputation* computation : node.callees()) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         VisitNodesInternal(visitor_func, GetNode(computation), visited));
   }
 
@@ -355,13 +355,13 @@ absl::StatusOr<bool> CallGraph::VisitNodesInternal(
 
   bool changed = false;
   for (const HloComputation* computation : node.callees()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         bool node_changed,
         VisitNodesInternal(visitor_func, GetNode(computation), visited));
     changed |= node_changed;
   }
 
-  ASSIGN_OR_RETURN(bool node_changed, visitor_func(node));
+  ABSL_ASSIGN_OR_RETURN(bool node_changed, visitor_func(node));
   changed |= node_changed;
   return changed;
 }
@@ -373,12 +373,12 @@ absl::Status CallGraph::VisitNodes(VisitorFunction visitor_func,
     // Traverse from all roots in the call graph.
     for (const CallGraphNode& node : nodes()) {
       if (node.callers().empty()) {
-        RETURN_IF_ERROR(VisitNodesInternal(visitor_func, node, &visited));
+        ABSL_RETURN_IF_ERROR(VisitNodesInternal(visitor_func, node, &visited));
       }
     }
   } else {
     // Traverse only from the entry computation.
-    RETURN_IF_ERROR(VisitNodesInternal(
+    ABSL_RETURN_IF_ERROR(VisitNodesInternal(
         visitor_func, GetNode(module_->entry_computation()), &visited));
   }
 
@@ -393,14 +393,14 @@ absl::StatusOr<bool> CallGraph::VisitNodesWithReturn(
     // Traverse from all roots in the call graph.
     for (const CallGraphNode& node : nodes()) {
       if (node.callers().empty()) {
-        ASSIGN_OR_RETURN(bool node_changed,
+        ABSL_ASSIGN_OR_RETURN(bool node_changed,
                          VisitNodesInternal(visitor_func, node, &visited));
         changed |= node_changed;
       }
     }
   } else {
     // Traverse only from the entry computation.
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         changed,
         VisitNodesInternal(visitor_func, GetNode(module_->entry_computation()),
                            &visited));

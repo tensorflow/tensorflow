@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/log/vlog_is_on.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -48,7 +49,6 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Bitcode/BitcodeReader.h"
@@ -395,7 +395,7 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
     absl::flat_hash_map<const HloInstruction*, int64_t> hlo_to_profile_idx;
     CollectProfileCandidates profile_candidates_for_computation(
         &hlo_to_profile_idx, assigned_indices);
-    RETURN_IF_ERROR(computation.Accept(&profile_candidates_for_computation));
+    ABSL_RETURN_IF_ERROR(computation.Accept(&profile_candidates_for_computation));
     return hlo_to_profile_idx;
   }
 
@@ -414,20 +414,20 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
   }
 
   absl::Status HandleCall(HloInstruction* call) override {
-    RETURN_IF_ERROR(DefaultAction(call));
+    ABSL_RETURN_IF_ERROR(DefaultAction(call));
     CollectProfileCandidates candidates_for_call(hlo_to_profile_idx_,
                                                  assigned_indices_);
-    RETURN_IF_ERROR(call->to_apply()->Accept(&candidates_for_call));
+    ABSL_RETURN_IF_ERROR(call->to_apply()->Accept(&candidates_for_call));
     return absl::OkStatus();
   }
   // Recurse into "conditional" so we can profile inside of it.
   absl::Status HandleConditional(HloInstruction* conditional) override {
-    RETURN_IF_ERROR(DefaultAction(conditional));
+    ABSL_RETURN_IF_ERROR(DefaultAction(conditional));
 
     for (HloComputation* branch : conditional->branch_computations()) {
       CollectProfileCandidates candidates_for_branch(hlo_to_profile_idx_,
                                                      assigned_indices_);
-      RETURN_IF_ERROR(branch->Accept(&candidates_for_branch));
+      ABSL_RETURN_IF_ERROR(branch->Accept(&candidates_for_branch));
     }
 
     return absl::OkStatus();
@@ -444,16 +444,16 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
   // It is important to recurse for "while" or else we risk overly coarse
   // profiling information.
   absl::Status HandleWhile(HloInstruction* xla_while) override {
-    RETURN_IF_ERROR(DefaultAction(xla_while));
+    ABSL_RETURN_IF_ERROR(DefaultAction(xla_while));
 
     CollectProfileCandidates candidates_for_condition(hlo_to_profile_idx_,
                                                       assigned_indices_);
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         xla_while->while_condition()->Accept(&candidates_for_condition));
 
     CollectProfileCandidates candidates_for_body(hlo_to_profile_idx_,
                                                  assigned_indices_);
-    RETURN_IF_ERROR(xla_while->while_body()->Accept(&candidates_for_body));
+    ABSL_RETURN_IF_ERROR(xla_while->while_body()->Accept(&candidates_for_body));
 
     return absl::OkStatus();
   }
@@ -475,6 +475,13 @@ void AddHloVerifier(HloPassPipeline* pipeline, HloVerifierOpts&& opts = {},
     pipeline->AddInvariantChecker<HloVerifier>(std::move(verifier_metadata),
                                                "hlo verifier");
   }
+}
+
+bool IsHostOffload(const HloModule* module) {
+  const auto& extra_options =
+      module->config().debug_options().xla_backend_extra_options();
+  auto it = extra_options.find("xla_is_host_offload");
+  return it != extra_options.end() && it->second == "true";
 }
 
 std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
@@ -509,7 +516,8 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
   // Conversion to MLIR only works with simplified gathers.
   pipeline->AddPass<GatherSimplifier>();
 
-  if (absl::c_contains(module->config()
+  if (!IsHostOffload(module) &&
+      absl::c_contains(module->config()
                            .debug_options()
                            .xla_cpu_experimental_ynn_fusion_type(),
                        DebugOptions::LIBRARY_FUSION_TYPE_REDUCE)) {
@@ -551,9 +559,13 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
 
 auto LibrarySupportsConvolution(
     HloModule* module, TargetMachineFeatures* target_machine_features) {
-  const bool ynnpack_convolution_enabled = absl::c_linear_search(
-      module->config().debug_options().xla_cpu_experimental_ynn_fusion_type(),
-      DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_CONVOLUTION);
+  const bool ynnpack_convolution_enabled =
+      !IsHostOffload(module) &&
+      absl::c_linear_search(
+          module->config()
+              .debug_options()
+              .xla_cpu_experimental_ynn_fusion_type(),
+          DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_CONVOLUTION);
   return [=](const HloInstruction& instr) {
     return ynnpack_convolution_enabled && IsInstructionPreferredByYnn(&instr) &&
            IsConvolutionOpSupportedByYnn(&instr);
@@ -562,9 +574,12 @@ auto LibrarySupportsConvolution(
 
 auto LibrarySupportsDot(HloModule* module,
                         TargetMachineFeatures* target_machine_features) {
-  const bool ynnpack_dot_enabled = absl::c_linear_search(
-      module->config().debug_options().xla_cpu_experimental_ynn_fusion_type(),
-      DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
+  const bool ynnpack_dot_enabled =
+      !IsHostOffload(module) &&
+      absl::c_linear_search(module->config()
+                                .debug_options()
+                                .xla_cpu_experimental_ynn_fusion_type(),
+                            DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
   return [=](const HloInstruction& instr) {
     if (ynnpack_dot_enabled && IsInstructionPreferredByYnn(&instr) &&
         IsDotSupportedByYnn(&instr).value_or(false)) {
@@ -587,6 +602,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       xla::DebugOptions::CPU_OPT_PRESET_FAST_COMPILE;
   const bool flatten_before_fusion =
       !options::FlattenAfterFusion(module->config()) && !fast_compile;
+  const bool is_host_offload = IsHostOffload(module);
 
   // Replace asynchronous collectives with synchronous ones.
   HloPassPipeline async_collective_pipeline("async-collective");
@@ -594,13 +610,13 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       /*use_legacy_collectives=*/false);
   AsyncCollectiveReplacer::Config acr_config(HloPredicateTrue);
   async_collective_pipeline.AddPass<AsyncCollectiveReplacer>(acr_config);
-  RETURN_IF_ERROR(async_collective_pipeline.Run(module).status());
+  ABSL_RETURN_IF_ERROR(async_collective_pipeline.Run(module).status());
 
   // Strip memory placement annotations early before SPMD partitioner runs.
   {
     HloPassPipeline pre_spmd_pipeline("pre-spmd-partitioner");
     pre_spmd_pipeline.AddPass<StripMemoryPlacementAnnotations>();
-    RETURN_IF_ERROR(pre_spmd_pipeline.Run(module).status());
+    ABSL_RETURN_IF_ERROR(pre_spmd_pipeline.Run(module).status());
   }
 
   if (num_partitions > 1) {
@@ -645,7 +661,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
           }
           return CallInliner::InlineOverridePolicy::kProhibitInline;
         });
-    RETURN_IF_ERROR(spmd_pipeline.Run(module).status());
+    ABSL_RETURN_IF_ERROR(spmd_pipeline.Run(module).status());
   } else {
     HloPassPipeline sharding_removal_pipeline("sharding-removal");
     AddHloVerifier(&sharding_removal_pipeline);
@@ -661,7 +677,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     }
     sharding_removal_pipeline.AddPass<ControlDepRewriter>();
     sharding_removal_pipeline.AddPass<HloDCE>();
-    RETURN_IF_ERROR(sharding_removal_pipeline.Run(module).status());
+    ABSL_RETURN_IF_ERROR(sharding_removal_pipeline.Run(module).status());
   }
 
   {
@@ -671,7 +687,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     HloPassPipeline subbyte_packer_pipeline("SubbytePacker pipeline");
     subbyte_packer_pipeline.AddPass<SubByteNormalization>(
         SubByteNormalization::SET_ELEMENT_SIZE);
-    RETURN_IF_ERROR(subbyte_packer_pipeline.Run(module).status());
+    ABSL_RETURN_IF_ERROR(subbyte_packer_pipeline.Run(module).status());
   }
 
   HloPassPipeline pipeline("HLO passes through layout assignment");
@@ -686,6 +702,9 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       LibrarySupportsConvolution(module, target_machine_features);
 
   auto call_library_for_instruction = [&](const HloInstruction& instr) {
+    if (is_host_offload) {
+      return false;
+    }
     switch (instr.opcode()) {
       case HloOpcode::kDot: {
         auto dot_strategy = GetDotImplementationStrategy(
@@ -754,6 +773,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
   // Rewrite to custom calls with target as oneDNN library calls.
   bool use_onednn_custom_call =
+      !is_host_offload &&
       module->config()
           .debug_options()
           .xla_cpu_experimental_onednn_custom_call() &&
@@ -779,6 +799,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   CpuFloatSupport bf16_support(BF16, call_library_for_instruction);
 #ifdef XLA_ONEDNN
   bool use_onednn_graph =
+      !is_host_offload &&
       module->config().debug_options().xla_cpu_use_onednn() &&
       IsOneDnnCompatible(is_aot_compile);
   OneDnnFloatSupport onednn_bf16_support(BF16, call_library_for_instruction);
@@ -977,6 +998,8 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     TargetMachineFeatures* target_machine_features,
     const CompileOptions& compile_options) {
   const auto& debug_options = module->config().debug_options();
+  const bool is_host_offload = IsHostOffload(module);
+
   bool flatten_after_fusion = options::FlattenAfterFusion(module->config());
   if (debug_options.xla_cpu_opt_preset() ==
       xla::DebugOptions::CPU_OPT_PRESET_FAST_COMPILE) {
@@ -989,7 +1012,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     normalization_pipeline.AddPass<ReshapeDecomposer>();
     normalization_pipeline.AddPass<ReduceDecomposer>();
     normalization_pipeline.AddPass<BroadcastCanonicalizer>();
-    RETURN_IF_ERROR(normalization_pipeline.Run(module).status());
+    ABSL_RETURN_IF_ERROR(normalization_pipeline.Run(module).status());
   }
 
   // After layout assignment, use a layout-sensitive verifier.
@@ -1005,6 +1028,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
           : tsl::port::NumSchedulableCPUs();
 
   bool use_onednn_custom_call =
+      !is_host_offload &&
       debug_options.xla_cpu_experimental_onednn_custom_call() &&
       IsOneDnnCompatible(is_aot_compile);
 
@@ -1017,7 +1041,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
       pipeline.AddPass<SimplifyFPConversions>();
     }
     bool use_onednn_graph =
-        debug_options.xla_cpu_use_onednn() &&
+        !is_host_offload && debug_options.xla_cpu_use_onednn() &&
         (!debug_options.xla_cpu_experimental_onednn_fusion_type().empty());
     pipeline.AddPass<OneDnnContractionRewriter>(
         max_parallelism, compile_options.thread_pool, use_onednn_graph);
@@ -1036,9 +1060,12 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   // so until another solution is developed the passes creating XNNPACK fusions
   // have to run after layout assignment.
   const bool use_ynnpack =
+      !is_host_offload &&
       !debug_options.xla_cpu_experimental_ynn_fusion_type().empty();
+  const bool use_onednn =
+      !is_host_offload && debug_options.xla_cpu_use_onednn();
   LibraryRewriterOptions options = {
-      /*use_onednn=*/debug_options.xla_cpu_use_onednn(),
+      /*use_onednn=*/use_onednn,
       /*use_ynnpack=*/use_ynnpack,
       /*onednn_fusion_types=*/
       &debug_options.xla_cpu_experimental_onednn_fusion_type(),
@@ -1048,7 +1075,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     HloPassPipeline lib_pipeline("dot-library-passes");
     lib_pipeline.AddPass<DotDecomposer>();
     lib_pipeline.AddPass<LibraryRewriter>(target_machine_features, options);
-    RETURN_IF_ERROR(lib_pipeline.Run(module).status());
+    ABSL_RETURN_IF_ERROR(lib_pipeline.Run(module).status());
   }
 
   AliasInfo alias_info;
@@ -1138,7 +1165,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   // The hoisting of small while loops is only useful in the context of the
   // thunk runtime.
   {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         int64_t byte_threshold,
         xla::cpu::options::SmallWhileLoopByteThreshold(module->config()));
     pipeline.AddPass<SmallWhileLoopHoistingPass>(byte_threshold);
@@ -1181,10 +1208,10 @@ absl::Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
         MaybeUploadUnoptimizedCpuSymbols(module, target_machine_options_proto);
   }
 
-  RETURN_IF_ERROR(RunHloPassesThroughLayoutAssn(module, is_aot_compile,
+  ABSL_RETURN_IF_ERROR(RunHloPassesThroughLayoutAssn(module, is_aot_compile,
                                                 &target_machine_features));
 
-  RETURN_IF_ERROR(RunHloPassesAfterLayoutAssn(
+  ABSL_RETURN_IF_ERROR(RunHloPassesAfterLayoutAssn(
       module, is_aot_compile, &target_machine_features, compile_options));
 
   if (has_uploader) {
@@ -1266,7 +1293,7 @@ absl::Status CreateHloProfilingArtifacts(
   *hlo_profile_index_map = std::make_unique<HloProfileIndexMap>(module);
   const HloComputation& entry_computation = *module.entry_computation();
 
-  ASSIGN_OR_RETURN(*instruction_to_profile_idx,
+  ABSL_ASSIGN_OR_RETURN(*instruction_to_profile_idx,
                    CollectProfileCandidates::GetCandidatesForComputation(
                        entry_computation,
                        (*hlo_profile_index_map)->instruction_to_profile_idx()));
@@ -1280,7 +1307,7 @@ absl::Status CreateHloProfilingArtifacts(
   };
 
   HloCostAnalysis cost_analysis(shape_size_bytes);
-  RETURN_IF_ERROR(entry_computation.Accept(&cost_analysis));
+  ABSL_RETURN_IF_ERROR(entry_computation.Accept(&cost_analysis));
   *hlo_profile_printer_data = CreateHloProfilePrinterData(
       **hlo_profile_index_map, cost_analysis, entry_computation.name());
   *computation_to_profile_idx =
@@ -1300,7 +1327,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
     VLOG(1) << "Triggering HLO module splitting for module: " << module->name();
     {
       HloComputationDeduplicator deduplicator;
-      RETURN_IF_ERROR(deduplicator.Run(module.get()).status());
+      ABSL_RETURN_IF_ERROR(deduplicator.Run(module.get()).status());
     }
     MultiModuleDriver driver(
         [this, stream_exec](std::unique_ptr<HloModule> m,
@@ -1328,14 +1355,14 @@ absl::StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
           options.cpu_target_config->cpu_target_machine_options.value();
     }
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         jit_target_machine,
         IrCompiler::InferTargetMachine(CompilerTargetOptions(config),
                                        IrCompiler::GetCodeGenOptLevel(config),
                                        target_machine_options));
   }
 
-  RETURN_IF_ERROR(RunHloPasses(module.get(), /*is_aot_compile=*/false,
+  ABSL_RETURN_IF_ERROR(RunHloPasses(module.get(), /*is_aot_compile=*/false,
                                jit_target_machine.get(),
                                /*compile_options=*/options));
   return std::move(module);
@@ -1653,14 +1680,14 @@ class AotLlvmMultipleModuleCompiler : public LlvmMultipleModuleCompiler {
     // are currently linking.
     if (llvm_module_ == nullptr) {
       // We assume the first module is the main module to link into.
-      ASSIGN_OR_RETURN(llvm_module_,
+      ABSL_ASSIGN_OR_RETURN(llvm_module_,
                        CopyLlvmModuleToLocalContext(*llvm_context_,
                                                     *tsm.getModuleUnlocked()));
       linker_ = std::make_unique<llvm::Linker>(*llvm_module_);
       return absl::OkStatus();
     }
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto cloned_module,
         CopyLlvmModuleToLocalContext(*llvm_context_, *tsm.getModuleUnlocked()));
 
@@ -1716,7 +1743,7 @@ CpuCompiler::CompileCpuExecutable(
   auto llvm_context = std::make_unique<llvm::LLVMContext>();
   auto llvm_module =
       std::make_unique<llvm::Module>(kXlaModuleIdentifier, *llvm_context);
-  ASSIGN_OR_RETURN(std::unique_ptr<llvm::TargetMachine> target_machine,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<llvm::TargetMachine> target_machine,
                    ir_compiler->build_target_machine());
 
   llvm_module->setTargetTriple(target_machine->getTargetTriple());
@@ -1765,7 +1792,7 @@ CpuCompiler::CompileCpuExecutable(
         /*num_dylibs=*/parallel_codegen_split_count,
         /*definition_generator=*/std::move(definition_generator),
     };
-    ASSIGN_OR_RETURN(auto jit_compiler,
+    ABSL_ASSIGN_OR_RETURN(auto jit_compiler,
                      JitCompiler::Create(std::move(jit_compiler_options),
                                          std::move(ir_compiler),
                                          GetCompilationTaskRunner()));
@@ -1783,7 +1810,7 @@ CpuCompiler::CompileCpuExecutable(
   std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map;
   std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data;
   if (module->config().hlo_profiling_enabled()) {
-    RETURN_IF_ERROR(CreateHloProfilingArtifacts(
+    ABSL_RETURN_IF_ERROR(CreateHloProfilingArtifacts(
         *module, &instruction_to_profile_idx, &computation_to_profile_idx,
         &hlo_profile_index_map, &hlo_profile_printer_data));
   }
@@ -1793,17 +1820,17 @@ CpuCompiler::CompileCpuExecutable(
   const bool embed_ir_in_executable =
       debug_options.xla_embed_ir_in_executable();
 
-  ASSIGN_OR_RETURN(HloSchedule schedule, CreateHloSchedule(*module));
-  RETURN_IF_ERROR(module->set_schedule(schedule));
+  ABSL_ASSIGN_OR_RETURN(HloSchedule schedule, CreateHloSchedule(*module));
+  ABSL_RETURN_IF_ERROR(module->set_schedule(schedule));
 
   {
     HloPassPipeline post_scheduler_pipeline("HLO passes after scheduling");
     post_scheduler_pipeline.AddPass<ApplyXlaTransforms>(
         HloXlaTransform::PipelineStage::kPostScheduler);
-    RETURN_IF_ERROR(post_scheduler_pipeline.Run(module.get()).status());
+    ABSL_RETURN_IF_ERROR(post_scheduler_pipeline.Run(module.get()).status());
   }
 
-  ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> assignment,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> assignment,
                    CreateBufferAssignment(*module));
   DumpHloModuleIfEnabled(*module, *assignment,
                          absl::StrCat("cpu_", kAfterOptimizationsDumpName));
@@ -1838,17 +1865,11 @@ CpuCompiler::CompileCpuExecutable(
       std::move(instruction_to_profile_idx),
       std::move(computation_to_profile_idx),
       ModuleComputationsTransitivelyContainCustomCall(*module),
-      &target_machine_features,
-#ifdef MEMORY_SANITIZER
-      /*emit_code_for_msan=*/true
-#else
-      /*emit_code_for_msan=*/false
-#endif
-  );
+      &target_machine_features, options::IsMsanEnabled(module->config()));
 
   // The thunk runtime manages large constants, therefore we only emit
   // small ones.
-  RETURN_IF_ERROR(nested_ir_emitter.EmitSmallConstantGlobals());
+  ABSL_RETURN_IF_ERROR(nested_ir_emitter.EmitSmallConstantGlobals());
 
   // IR emitter is responsible for building LLVM module with host kernels for
   // corresponding HLO instructions (fusions, elemental instructions, etc.).
@@ -1860,10 +1881,10 @@ CpuCompiler::CompileCpuExecutable(
   ThunkEmitter thunk_emitter(ir_emitter2, *GetCompilationThreadPool(),
                              *assignment, target_machine_features, *module,
                              thunk_emitter_options);
-  ASSIGN_OR_RETURN(ThunkSequence thunks,
+  ABSL_ASSIGN_OR_RETURN(ThunkSequence thunks,
                    thunk_emitter.EmitEntryComputation(*module));
 
-  ASSIGN_OR_RETURN(std::vector<ThunkEmitter::EmittedKernel> kernels,
+  ABSL_ASSIGN_OR_RETURN(std::vector<ThunkEmitter::EmittedKernel> kernels,
                    thunk_emitter.ConsumeKernels());
 
   std::string ir_module_string;
@@ -1880,9 +1901,9 @@ CpuCompiler::CompileCpuExecutable(
     ir_module_string = absl::StrCat(emitter2_ir, "\n", thunks_ir);
   }
 
-  RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
+  ABSL_RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
   for (const auto& [name, module] : kernels) {
-    RETURN_IF_ERROR(VerifyLlvmModule(*module.getModuleUnlocked()));
+    ABSL_RETURN_IF_ERROR(VerifyLlvmModule(*module.getModuleUnlocked()));
   }
 
   // Some kernels have to be compiled separately because they have
@@ -1955,7 +1976,7 @@ CpuCompiler::CompileCpuExecutable(
     auto tsm =
         CloneAsThreadSafeModule(dylib_index, std::move(llvm_module_part));
 
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         llvm_module_compiler->AddModule(std::move(tsm), dylib_index++));
 
     return absl::OkStatus();
@@ -1970,11 +1991,11 @@ CpuCompiler::CompileCpuExecutable(
     });
     for (const auto& [backend_extra_options, kernels] :
          tsl::KeySortedRange(backend_extra_options_to_kernels)) {
-      ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> new_module,
+      ABSL_ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> new_module,
                        ExtractKernelsFromModule(llvm_module.get(), kernels));
       AddXlaBackendExtraOptionsAsModuleFlag(new_module.get(),
                                             backend_extra_options);
-      RETURN_IF_ERROR(add_module_for_compilation(std::move(new_module)));
+      ABSL_RETURN_IF_ERROR(add_module_for_compilation(std::move(new_module)));
     }
   }
 
@@ -2011,7 +2032,7 @@ CpuCompiler::CompileCpuExecutable(
             << parallel_codegen_split_count << ")";
     compiled_parts.push_back(
         CollectCompiledSymbolsPart(ir_emitter2, *llvm_module));
-    RETURN_IF_ERROR(llvm_module_compiler->AddModule(
+    ABSL_RETURN_IF_ERROR(llvm_module_compiler->AddModule(
         llvm::orc::ThreadSafeModule(std::move(llvm_module),
                                     std::move(llvm_context)),
         /*dylib_index=*/0));
@@ -2033,7 +2054,7 @@ CpuCompiler::CompileCpuExecutable(
         FunctionLibrary::Sym<FunctionLibrary::Kernel>(name));
     symbol_type_id_to_function_type_id.emplace(compiled_symbols.back().type_id,
                                                SymbolProto::KERNEL);
-    RETURN_IF_ERROR(llvm_module_compiler->AddModule(
+    ABSL_RETURN_IF_ERROR(llvm_module_compiler->AddModule(
         std::move(module), num_extra_parts + kernel_dylib_index));
     // Simply roundrobin the default kernel dylibs
     kernel_dylib_index = (kernel_dylib_index + 1) % num_default_parts;
@@ -2056,7 +2077,7 @@ CpuCompiler::CompileCpuExecutable(
 
   VLOG(3) << "Collected " << compiled_symbols.size() << " compiled symbols";
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<FunctionLibrary> function_library, std::invoke([&] {
         TraceMe trace_codegen([&] {
           return TraceMeEncode(
@@ -2068,7 +2089,7 @@ CpuCompiler::CompileCpuExecutable(
       }));
 
   // Create constant allocations from the buffer assignment.
-  ASSIGN_OR_RETURN(std::vector<ConstantAllocation> constants,
+  ABSL_ASSIGN_OR_RETURN(std::vector<ConstantAllocation> constants,
                    CreateConstantAllocations(*assignment));
 
   // We don't use the target machine options from the
@@ -2082,7 +2103,7 @@ CpuCompiler::CompileCpuExecutable(
   std::string data_layout =
       target_machine->createDataLayout().getStringRepresentation();
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto cpu_executable,
       CpuExecutable::Create(
           std::move(function_library), std::move(assignment), std::move(module),
@@ -2175,7 +2196,7 @@ absl::StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
 
   // Since we are JIT compiling, we don't need a triple or target machine
   // features as those will be inferred.s
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<CpuExecutable> cpu_executable,
       CompileCpuExecutable(std::move(module), thunk_emitter_options,
                            std::move(ir_compiler)));
@@ -2256,11 +2277,11 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
     return results;
   }
 
-  RETURN_IF_ERROR(RunHloPasses(hlo_module.get(), /*is_aot_compile=*/true,
+  ABSL_RETURN_IF_ERROR(RunHloPasses(hlo_module.get(), /*is_aot_compile=*/true,
                                target_machine.get(),
                                /*dummy*/ CompileOptions{}));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       results.emplace_back(),
       CompileAheadOfTimeThunks(std::move(hlo_module), target_machine_builder,
                                options, triple, pic_level, pie_level));
@@ -2281,7 +2302,7 @@ CpuCompiler::CompileAheadOfTimeThunks(
                          {{"name", module->name()}});
   });
 
-  ASSIGN_OR_RETURN(std::unique_ptr<llvm::TargetMachine> target_machine,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<llvm::TargetMachine> target_machine,
                    target_machine_builder());
 
   ThunkEmitter::Options thunk_emitter_options = {
@@ -2325,7 +2346,7 @@ CpuCompiler::CompileAheadOfTimeThunks(
       std::move(target_machine_builder), ir_compiler_options,
       IrCompiler::CompilationHooks{});
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto cpu_executable,
       CompileCpuExecutable(std::move(module), thunk_emitter_options,
                            std::move(ir_compiler), pic_level, pie_level));
@@ -2384,10 +2405,10 @@ absl::StatusOr<std::unique_ptr<CompiledModule>> CpuCompiler::Export(
   std::vector<SymbolProto> compiled_symbols_proto =
       cpu_executable->get_compiled_symbols_proto();
 
-  ASSIGN_OR_RETURN(auto compiled_symbols,
+  ABSL_ASSIGN_OR_RETURN(auto compiled_symbols,
                    GetCompiledSymbolsFromProto(compiled_symbols_proto));
 
-  ASSIGN_OR_RETURN(auto function_library,
+  ABSL_ASSIGN_OR_RETURN(auto function_library,
                    LoadFunctionLibrary(compiled_symbols, obj_files,
                                        &cpu_executable->module(),
                                        cpu_executable->target_machine_options(),

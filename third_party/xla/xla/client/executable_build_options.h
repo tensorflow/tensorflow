@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/compilation_environments.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla.pb.h"
@@ -300,6 +301,13 @@ class ExecutableBuildOptions {
     key_value_store_ = kv_store;
   }
 
+  const std::optional<GpuTopology>& gpu_topology() const {
+    return gpu_topology_;
+  }
+  void set_gpu_topology(const GpuTopology& gpu_topology) {
+    gpu_topology_ = gpu_topology;
+  }
+
  private:
   int device_ordinal_ = -1;
   Shape result_layout_;
@@ -336,6 +344,7 @@ class ExecutableBuildOptions {
   int process_index_ = 0;
   int process_count_ = 1;
   std::shared_ptr<KeyValueStoreInterface> key_value_store_;
+  std::optional<GpuTopology> gpu_topology_;
 };
 
 absl::StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(

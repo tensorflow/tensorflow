@@ -57,7 +57,7 @@ absl::StatusOr<ArrayRef> MakeShardedArray(Client* client,
                                           MemoryKind memory_kind,
                                           int64_t per_device_bytes) {
   const int64_t num_devices = static_cast<int64_t>(devices.size());
-  ASSIGN_OR_RETURN(DeviceListRef device_list, client->MakeDeviceList(devices));
+  ABSL_ASSIGN_OR_RETURN(DeviceListRef device_list, client->MakeDeviceList(devices));
 
   DType dtype(DType::kF32);
   const int64_t bytes_per_element = *dtype.byte_size();
@@ -70,7 +70,7 @@ absl::StatusOr<ArrayRef> MakeShardedArray(Client* client,
   ShardingRef sharding = xla::ifrt::HloSharding::Create(
       device_list, memory_kind, xla::HloSharding::IotaTile({num_devices}));
 
-  ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
+  ABSL_ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
   const Literal literal =
       LiteralUtil::CreateFromDimensions(element_type, shard_shape.dims());
 
@@ -98,7 +98,7 @@ absl::StatusOr<ArrayRef> MakeShardedArray(Client* client,
       /*array_spec=*/std::move(array_spec),
   };
 
-  ASSIGN_OR_RETURN(std::vector<ArrayRef> arrays,
+  ABSL_ASSIGN_OR_RETURN(std::vector<ArrayRef> arrays,
                    client->MakeArraysFromHostBufferShards(
                        absl::MakeSpan(&spec, 1),
                        Client::HostBufferSemantics::kImmutableOnlyDuringCall));

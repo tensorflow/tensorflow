@@ -65,6 +65,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/support/module_parsing.h"
 #include "xla/python/ifrt/ir/support/sharding_conversions.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
@@ -353,8 +354,8 @@ absl::StatusOr<std::optional<xla::CompileOptions>> GetModuleXlaCompileOverrides(
     if (auto option_override =
             compile_options_overrides->find(compile_options_key.str());
         option_override != compile_options_overrides->end()) {
-      if (auto xla_options = llvm::dyn_cast<XlaCompileOptions>(
-              option_override->second.get())) {
+      if (auto xla_options =
+              dyn_cast<XlaCompileOptions>(option_override->second.get())) {
         compile_options = xla_options->compile_options;
       } else {
         return absl::InvalidArgumentError(absl::StrCat(
@@ -381,13 +382,13 @@ absl::StatusOr<ShardingRef> ShardingFromIfrtArrayType(
       TF_RET_CHECK(devices[logical_id] != nullptr);
       array_devices.push_back(devices[logical_id]);
     }
-    ASSIGN_OR_RETURN(array_device_list,
+    ABSL_ASSIGN_OR_RETURN(array_device_list,
                      client->MakeDeviceList(std::move(array_devices)));
   }
 
   IfrtShardingParamAttr sharding_attr = GetShardingParamAttr(array_type);
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       xla::HloSharding hlo_sharding,
       xla::ifrt::support::ToHloSharding(sharding_attr.getSharding()));
   return xla::ifrt::HloSharding::Create(std::move(array_device_list),
@@ -399,10 +400,10 @@ absl::StatusOr<ArraySpec> ArraySpecFromMlirType(
     mlir::Type array_type, Client* client, const DeviceListRef& device_list) {
   IfrtArrayType ifrt_array_type = GetArrayType(array_type);
 
-  ASSIGN_OR_RETURN(DType dtype,
+  ABSL_ASSIGN_OR_RETURN(DType dtype,
                    ToIfrtDType(ifrt_array_type.getShape().getElementType()));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       ShardingRef sharding,
       ShardingFromIfrtArrayType(ifrt_array_type, client, device_list));
   return ArraySpec{

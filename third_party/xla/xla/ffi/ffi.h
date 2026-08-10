@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
+#include "xla/ffi/ffi_interop.h"
 #include "xla/ffi/type_registry.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/primitive_util.h"
@@ -76,6 +77,33 @@ struct CalledComputation {};  // binds `HloComputation*`
 // must be linked into the target process exactly once, or it is possible to
 // have multiple global static registries of FFI handlers and types.
 const XLA_FFI_Api* GetXlaFfiApi();
+
+//===----------------------------------------------------------------------===//
+// Error policy
+//===----------------------------------------------------------------------===//
+
+namespace internal {
+
+// Error policy for internal FFI handlers statically linked into XLA.
+struct ErrorPolicy {
+  using Status = absl::Status;
+
+  template <typename T>
+  using StatusOr = absl::StatusOr<T>;
+
+  static Status Ok() { return absl::OkStatus(); }
+
+  static Status FromErrorCode(XLA_FFI_Error_Code errc,
+                              absl::string_view message) {
+    return Status(static_cast<absl::StatusCode>(errc), message);
+  }
+
+  static Status TakeError(const XLA_FFI_Api*, XLA_FFI_Error* error) {
+    return xla::ffi::TakeError(error);
+  }
+};
+
+}  // namespace internal
 
 //===----------------------------------------------------------------------===//
 // Arguments
@@ -154,7 +182,7 @@ class AnyBuffer {
   }
 
  private:
-  friend struct match::internal::BufferCast;
+  friend struct internal::BufferCast;
 
   const XLA_FFI_Buffer* buf_;
 };
@@ -201,7 +229,7 @@ class Buffer {
   }
 
  private:
-  friend struct match::internal::BufferCast;
+  friend struct internal::BufferCast;
 
   const XLA_FFI_Buffer* buf_;
 };
@@ -273,7 +301,6 @@ TypeRegistry::TypeId GetTypeId(const XLA_FFI_Api* api) {
 // Buffer Matching
 //===----------------------------------------------------------------------===//
 
-namespace match {
 namespace internal {
 
 struct BufferCast {
@@ -296,6 +323,8 @@ struct ValuePrinter<PrimitiveType> {
 
 }  // namespace internal
 
+namespace match {
+
 // A buffer-matching pattern specialized to the internal `PrimitiveType` enum.
 template <typename DTypes = DTypeSet<PrimitiveType>, typename Ranks = RankSet<>>
 using BufferPattern = internal::BufferPatternBase<DTypes, Ranks>;
@@ -317,10 +346,7 @@ inline BufferPattern<> Buffer() { return {}; }
 template <typename BufferType, typename DTypes, typename Ranks>
 absl::Status Verify(absl::string_view name, BufferType buffer,
                     const match::BufferPattern<DTypes, Ranks>& pattern) {
-  if (auto error = internal::MatchBuffer(name, buffer, pattern)) {
-    return absl::InvalidArgumentError(std::move(*error));
-  }
-  return absl::OkStatus();
+  return internal::VerifyBuffer<internal::ErrorPolicy>(name, buffer, pattern);
 }
 
 // Matches an AnyBuffer and returns the concrete buffer type specified by a
@@ -330,23 +356,25 @@ absl::StatusOr<Buffer<dtype, rank>> Match(
     absl::string_view name, AnyBuffer buffer,
     const match::BufferPattern<match::DTypeSet<PrimitiveType, dtype>,
                                match::RankSet<rank>>& pattern) {
-  RETURN_IF_ERROR(Verify(name, buffer, pattern));
-  return match::internal::BufferCast::Cast<Buffer<dtype, rank>>(buffer);
+  return internal::MatchBuffer<internal::ErrorPolicy, Buffer<dtype, rank>>(
+      name, buffer, pattern, [](AnyBuffer buffer) {
+        return internal::BufferCast::Cast<Buffer<dtype, rank>>(buffer);
+      });
 }
 
 template <PrimitiveType dtype, size_t rank, typename DTypes, typename Ranks>
 absl::StatusOr<Buffer<dtype, rank>> Match(
     absl::string_view name, Buffer<dtype, rank> buffer,
     const match::BufferPattern<DTypes, Ranks>& pattern) {
-  RETURN_IF_ERROR(Verify(name, buffer, pattern));
-  return buffer;
+  return internal::MatchBuffer<internal::ErrorPolicy, Buffer<dtype, rank>>(
+      name, buffer, pattern, [](Buffer<dtype, rank> buffer) { return buffer; });
 }
 
 namespace internal {
 
 template <typename Buffer>
 absl::StatusOr<Result<Buffer>> WrapResult(absl::StatusOr<Buffer> buffer) {
-  ASSIGN_OR_RETURN(Buffer matched, std::move(buffer));
+  ABSL_ASSIGN_OR_RETURN(Buffer matched, std::move(buffer));
   return Result<Buffer>(std::move(matched));
 }
 

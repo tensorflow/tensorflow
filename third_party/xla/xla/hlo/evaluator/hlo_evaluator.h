@@ -17,7 +17,7 @@ limitations under the License.
 #define XLA_HLO_EVALUATOR_HLO_EVALUATOR_H_
 
 #include "absl/log/log.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #define _USE_MATH_DEFINES
 
 #include <complex>
@@ -593,12 +593,12 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     bool same_layout =
         LayoutUtil::Equal(operand->shape().layout(), shape.layout());
     if (same_layout) {
-      RETURN_IF_ERROR(result.PopulateLinearParallel<ReturnT>(
+      ABSL_RETURN_IF_ERROR(result.PopulateLinearParallel<ReturnT>(
           [&](int64_t linear_index, int /*thread_id*/) {
             return unary_op(operand_literal.GetLinear<NativeT>(linear_index));
           }));
     } else {
-      RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
+      ABSL_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
           [&](absl::Span<const int64_t> multi_index, int /*thread_id*/) {
             return unary_op(operand_literal.Get<NativeT>(multi_index));
           }));

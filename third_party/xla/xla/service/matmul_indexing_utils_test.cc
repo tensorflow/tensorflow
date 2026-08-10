@@ -73,6 +73,42 @@ TEST(DotOperandDimsTest, Categories) {
                           ));
 }
 
+TEST(DotOperandDimsTest, CategoryEnumValues) {
+  EXPECT_EQ(static_cast<int8_t>(DotOperandDims::kInvalid), -1);
+  EXPECT_EQ(static_cast<int8_t>(DotOperandDims::kBatch), 0);
+  EXPECT_EQ(static_cast<int8_t>(DotOperandDims::kNonContracting), 1);
+  EXPECT_EQ(static_cast<int8_t>(DotOperandDims::kContracting), 2);
+}
+
+TEST(DotOperandDimsTest, CategoriesWithInvalid) {
+  {
+    ASSERT_OK_AND_ASSIGN(Shape shape, ParseShape("f32[10,20,30,40]"));
+    DotOperandDims dims(shape, /*batch_dims=*/{0},
+                        /*non_contracting_dims=*/{1},
+                        /*contracting_dims=*/{2});
+    EXPECT_THAT(dims.Categories(),
+                ElementsAre(DotOperandDims::kBatch,           // 0
+                            DotOperandDims::kNonContracting,  // 1
+                            DotOperandDims::kContracting,     // 2
+                            DotOperandDims::kInvalid          // 3
+                            ));
+  }
+  {
+    ASSERT_OK_AND_ASSIGN(Shape shape, ParseShape("f32[10,20,30,40,50,60]"));
+    DotOperandDims dims(shape, /*batch_dims=*/{0, 5},
+                        /*non_contracting_dims=*/{1},
+                        /*contracting_dims=*/{2, 4});
+    EXPECT_THAT(dims.Categories(),
+                ElementsAre(DotOperandDims::kBatch,           // 0
+                            DotOperandDims::kNonContracting,  // 1
+                            DotOperandDims::kContracting,     // 2
+                            DotOperandDims::kInvalid,         // 3
+                            DotOperandDims::kContracting,     // 4
+                            DotOperandDims::kBatch            // 5
+                            ));
+  }
+}
+
 TEST(DotOperandDimsTest, IntoDotDimensionNumbers) {
   ASSERT_OK_AND_ASSIGN(Shape lhs_shape, ParseShape("f32[10,20,30,40,50,60]"));
   DotOperandDims lhs_dims(lhs_shape, /*batch_dims=*/{0, 5},

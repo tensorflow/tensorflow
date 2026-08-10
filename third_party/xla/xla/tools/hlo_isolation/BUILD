@@ -128,6 +128,22 @@ xla_cc_test(
     ],
 )
 
+xla_cc_test(
+    name = "hlo_isolation_api_test",
+    srcs = ["hlo_isolation_api_test.cc"],
+    deps = [
+        ":hlo_isolation_api",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 sh_test(
     name = "hlo_isolation_cli_test",
     srcs = ["hlo_isolation_cli_test.sh"],
