@@ -19,6 +19,7 @@ import functools
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -115,6 +116,78 @@ class RNNGradTest(test.TestCase):
         grads.append(grad)
     self.assertAllClose(outputs[0], outputs[1])
     self.assertAllClose(grads[0], grads[1])
+
+  def testBlockLSTMSeqLenMaxTooLarge(self):
+    w, b, x, cs_prev, h_prev, w_peephole = self._block_lstm_inputs()
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "seq_len_max must be <= timelen"):
+      self._block_lstm(w, b, x, cs_prev, h_prev, w_peephole, seq_len_max=10)
+
+  def testBlockLSTMSeqLenMaxNegative(self):
+    w, b, x, cs_prev, h_prev, w_peephole = self._block_lstm_inputs()
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "seq_len_max must be >= 0"):
+      self._block_lstm(w, b, x, cs_prev, h_prev, w_peephole, seq_len_max=-1)
+
+  def testBlockLSTMGradSeqLenMaxTooLarge(self):
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "seq_len_max must be <= timelen"):
+      self._block_lstm_grad(seq_len_max=10)
+
+  def testBlockLSTMGradSeqLenMaxNegative(self):
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "seq_len_max must be >= 0"):
+      self._block_lstm_grad(seq_len_max=-1)
+
+  def _block_lstm_inputs(self, num_steps=2, batch_size=1, input_size=1,
+                         hidden_size=4):
+    """Returns a valid BlockLSTM input set whose x has num_steps timesteps."""
+    w = deterministic_random_uniform(
+        [input_size + hidden_size, 4 * hidden_size])
+    b = deterministic_random_uniform([4 * hidden_size])
+    x = deterministic_random_uniform([num_steps, batch_size, input_size])
+    cs_prev = h_prev = deterministic_random_uniform([batch_size, hidden_size])
+    w_peephole = array_ops.zeros(cs_prev.shape[1:], dtype=w.dtype)
+    return w, b, x, cs_prev, h_prev, w_peephole
+
+  def _block_lstm(self, w, b, x, cs_prev, h_prev, w_peephole, seq_len_max):
+    return gen_rnn_ops.BlockLSTM(
+        seq_len_max=math_ops.cast(seq_len_max, dtypes.int64),
+        x=x,
+        cs_prev=cs_prev,
+        h_prev=h_prev,
+        w=w,
+        wci=w_peephole,
+        wcf=w_peephole,
+        wco=w_peephole,
+        b=b,
+        use_peephole=False)
+
+  def _block_lstm_grad(self, seq_len_max):
+    """Runs a valid forward pass, then BlockLSTMGrad with seq_len_max."""
+    w, b, x, cs_prev, h_prev, w_peephole = self._block_lstm_inputs()
+    i, cs, f, o, ci, co, h = self._block_lstm(
+        w, b, x, cs_prev, h_prev, w_peephole, seq_len_max=x.shape[0])
+    return gen_rnn_ops.BlockLSTMGrad(
+        seq_len_max=math_ops.cast(seq_len_max, dtypes.int64),
+        x=x,
+        cs_prev=cs_prev,
+        h_prev=h_prev,
+        w=w,
+        wci=w_peephole,
+        wcf=w_peephole,
+        wco=w_peephole,
+        b=b,
+        i=i,
+        cs=cs,
+        f=f,
+        o=o,
+        ci=ci,
+        co=co,
+        h=h,
+        cs_grad=deterministic_random_uniform(cs.shape.as_list()),
+        h_grad=deterministic_random_uniform(h.shape.as_list()),
+        use_peephole=False)
 
   def _lstm_block(self, op, w, b, x, cs_prev, h_prev):
     w_peephole = array_ops.zeros(cs_prev.shape[1:], dtype=w.dtype)

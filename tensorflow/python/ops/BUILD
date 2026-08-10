@@ -2811,6 +2811,7 @@ cuda_py_strict_test(
         ":rnn_grad",
         ":rnn_ops_gen",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
