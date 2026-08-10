@@ -1826,8 +1826,10 @@ LogicalResult LogBufferOp::verify() {
 }
 
 LogicalResult ReciprocalOp::verify() {
-  if (!getType().getElementType().isF32()) {
-    return emitOpError("Not implemented: Reciprocal op for non-f32 dtypes");
+  auto elem_ty = getType().getElementType();
+  if (!(elem_ty.isF32() || elem_ty.isBF16())) {
+    return emitOpError(
+        "Not implemented: Reciprocal op for non-f32/bf16 dtypes");
   }
   return success();
 }
