@@ -477,7 +477,7 @@ func.func @while_with_sharding(
   // CHECK: %[[C0:.*]] = stablehlo.constant dense<0>
   // CHECK: stablehlo.while(%iterArg = %arg0, %iterArg_1 = %[[C0]])
   // CHECK-V2-SAME{LITERAL}: attributes {mhlo.sharding = "{{devices=[8,1,4]<=[32] last_tile_dim_replicate}, {replicated}}"}
-  // CHECK-V3-SAME{LITERAL}: attributes {mhlo.sharding = "{{mesh['x'=8,'y'=4], [{'x'}, {}]}, {mesh['x'=8,'y'=4], replicated}}"}
+  // CHECK-V3-SAME{LITERAL}: attributes {mhlo.sharding = "{{mesh['x'=8,'y'=4], [{'x'}, {}]}, {replicated}}"}
   %0 = stablehlo.constant dense<0> : tensor<i32>
   %1 = stablehlo.constant dense<32> : tensor<i32>
   %3:2 = stablehlo.while(%iterArg = %arg0, %iterArg_1 = %0) : tensor<32x96xf32>, tensor<i32> attributes {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"x"}, {}]>, <@mesh_2, []>]>}
@@ -497,7 +497,7 @@ func.func @while_with_no_sharding(
   // CHECK: %[[C0:.*]] = stablehlo.constant dense<0>
   // CHECK: stablehlo.while(%iterArg = %arg0, %iterArg_1 = %[[C0]])
   // CHECK-V2-SAME: attributes {mhlo.sharding = "{replicated}"}
-  // CHECK-V3-SAME: attributes {mhlo.sharding = "{mesh[], replicated}"}
+  // CHECK-V3-SAME: attributes {mhlo.sharding = "{replicated}"}
   %0 = stablehlo.constant dense<0> : tensor<i32>
   %1 = stablehlo.constant dense<32> : tensor<i32>
   %3:2 = stablehlo.while(%iterArg = %arg0, %iterArg_1 = %0) : tensor<32x96xf32>, tensor<i32>

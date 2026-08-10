@@ -4658,7 +4658,7 @@ TEST_F(HloParserTest, ParseNamedShardingScalarUnreducedMax) {
   const std::string original = "{mesh['x'=2,'y'=2], unreduced=max{'x', 'y'}}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_TRUE(sharding.UseNamedShardingLeaf());
-  EXPECT_EQ(sharding.ToString(), "{mesh['x'=2,'y'=2], unreduced=max}");
+  EXPECT_EQ(sharding.ToString(), "{unreduced=max}");
 }
 
 TEST_F(HloParserTest, ParseShardingPartialReplication) {
@@ -4747,13 +4747,13 @@ TEST_F(HloParserTest, ParseNamedShardingNonIotaMeshDeviceList) {
 TEST_F(HloParserTest, ParseNamedShardingEmptyMeshReplicated) {
   const std::string original = "{mesh[], replicated}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
-  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
+  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), "{replicated}");
 }
 
 TEST_F(HloParserTest, ParseNamedShardingFullyReplicated) {
   const std::string original = "{mesh['a'=2,'b'=4], replicated}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
-  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
+  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), "{replicated}");
 }
 
 TEST_F(HloParserTest, ParseNamedShardingReplicatedAxes) {
@@ -4779,7 +4779,7 @@ TEST_F(HloParserTest, ParseNamedShardingWithSpecialCharacters) {
 TEST_F(HloParserTest, ParseNamedShardingFullyUnreduced) {
   const std::string original = "{mesh['a'=2,'b'=4], unreduced}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
-  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
+  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), "{unreduced}");
 }
 
 TEST_F(HloParserTest, ParseNamedShardingUnreducedAxes) {
@@ -4816,7 +4816,8 @@ TEST_F(HloParserTest, ParseNamedShardingFullyReplicatedWithMetadata) {
   const std::string original =
       "{mesh['a'=2,'b'=4], replicated, metadata={{op_name=\"foo\"}}}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
-  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
+  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true),
+            "{replicated, metadata={{op_name=\"foo\"}}}");
 }
 
 TEST_F(HloParserTest, ParseNamedShardingTuple) {
@@ -4828,7 +4829,14 @@ TEST_F(HloParserTest, ParseNamedShardingTuple) {
       "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{'d', 'c'}, {'a', 'b'}], "
       "metadata={{op_name=\"foo\"}, {op_name=\"bar\"}}}}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
-  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
+  const std::string expected =
+      "{{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{'d', 'c'}, {'a', 'b'}]}, "
+      "{replicated}, "
+      "{mesh['a'=2,'b'=4,'c'=3,'d'=8], "
+      "[{'d':(2)2, 'b'}, {'a', ?}], unreduced={'c'}}, "
+      "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{'d', 'c'}, {'a', 'b'}], "
+      "metadata={{op_name=\"foo\"}, {op_name=\"bar\"}}}}";
+  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), expected);
 }
 
 TEST_F(HloParserTest, ParseMixedShardingTuple1) {
@@ -4837,7 +4845,10 @@ TEST_F(HloParserTest, ParseMixedShardingTuple1) {
       "{maximal_mesh[device_id=5]}}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
 
-  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
+  const std::string expected =
+      "{{replicated}, {replicated}, {maximal device=5}, "
+      "{maximal_mesh[device_id=5]}}";
+  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), expected);
   EXPECT_TRUE(sharding.IsTuple());
   EXPECT_EQ(sharding.tuple_elements().size(), 4);
   EXPECT_FALSE(sharding.tuple_elements()[0].UseNamedShardingLeaf());
