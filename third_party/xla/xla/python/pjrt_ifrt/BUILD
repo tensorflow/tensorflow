@@ -259,6 +259,7 @@ cc_library(
     deps = [
         ":pjrt_layout",
         "//xla:shape_util",
+        "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",
         "//xla/python/ifrt:test_util",
@@ -869,8 +870,6 @@ xla_cc_test(
     deps = [
         ":pjrt_cpu_client_multi_process_test_lib",
         ":xla_array_impl_test_lib",
-        "//xla/python/ifrt:test_util",
-        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
     ],
 )

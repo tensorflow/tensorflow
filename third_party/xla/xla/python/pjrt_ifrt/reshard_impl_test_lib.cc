@@ -424,6 +424,10 @@ TEST_P(ReshardTest, PoisonedInput) {
 }
 
 TEST_P(ReshardTest, DifferentDestinationLayout) {
+  if (client_->platform_id() == xla::CpuId()) {
+    GTEST_SKIP() << "PjRt CPU does not support custom layouts";
+  }
+
   const ReshardMethod method = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(const xla::Literal literal,
                           CreateIotaLiteral(xla::PrimitiveType::S32, {4, 8}));
