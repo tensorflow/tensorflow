@@ -1051,16 +1051,8 @@ bool NcclSymmetricBuffersSpec::IsEnabled(const HloInstruction& inst) const {
   }
   DebugOptions::CollectiveOpType op_type = *op_type_opt;
 
-  Shape collective_shape = collective->shape();
-  if (collective->opcode() == HloOpcode::kAllGatherStart ||
-      collective->opcode() == HloOpcode::kCollectivePermuteStart) {
-    if (collective_shape.IsTuple() &&
-        collective_shape.tuple_shapes().size() == 2) {
-      collective_shape = collective_shape.tuple_shapes(1);
-    }
-  }
   const size_t size_in_bytes =
-      ShapeUtil::ByteSizeOfElementsRecursive(collective_shape);
+      ShapeUtil::ByteSizeOfElementsRecursive(collective->shape());
 
   std::optional<PrimitiveType> operand_type;
   if (collective->operand_count() > 0) {

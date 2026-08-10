@@ -87,18 +87,6 @@ const HloInstruction* FindCollectiveStart(const HloModule* module,
           instr->async_wrapped_instruction()->opcode() == collective_opcode) {
         return instr;
       }
-      if (collective_opcode == HloOpcode::kAllReduce &&
-          instr->opcode() == HloOpcode::kAllReduceStart) {
-        return instr;
-      }
-      if (collective_opcode == HloOpcode::kAllGather &&
-          instr->opcode() == HloOpcode::kAllGatherStart) {
-        return instr;
-      }
-      if (collective_opcode == HloOpcode::kCollectivePermute &&
-          instr->opcode() == HloOpcode::kCollectivePermuteStart) {
-        return instr;
-      }
     }
   }
   return nullptr;
@@ -114,18 +102,6 @@ const HloInstruction* FindCollectiveDone(const HloModule* module,
     if (user->opcode() == HloOpcode::kAsyncDone) {
       return user;
     }
-    if (collective_opcode == HloOpcode::kAllReduce &&
-        user->opcode() == HloOpcode::kAllReduceDone) {
-      return user;
-    }
-    if (collective_opcode == HloOpcode::kAllGather &&
-        user->opcode() == HloOpcode::kAllGatherDone) {
-      return user;
-    }
-    if (collective_opcode == HloOpcode::kCollectivePermute &&
-        user->opcode() == HloOpcode::kCollectivePermuteDone) {
-      return user;
-    }
   }
   return nullptr;
 }
@@ -137,15 +113,6 @@ std::vector<const HloInstruction*> FindCollectiveStarts(
     for (const HloInstruction* instr : computation->instructions()) {
       if (instr->opcode() == HloOpcode::kAsyncStart &&
           instr->async_wrapped_instruction()->opcode() == collective_opcode) {
-        result.push_back(instr);
-      } else if (collective_opcode == HloOpcode::kAllReduce &&
-                 instr->opcode() == HloOpcode::kAllReduceStart) {
-        result.push_back(instr);
-      } else if (collective_opcode == HloOpcode::kAllGather &&
-                 instr->opcode() == HloOpcode::kAllGatherStart) {
-        result.push_back(instr);
-      } else if (collective_opcode == HloOpcode::kCollectivePermute &&
-                 instr->opcode() == HloOpcode::kCollectivePermuteStart) {
         result.push_back(instr);
       }
     }
@@ -3352,7 +3319,7 @@ TEST_F(CollectiveOpsTestE2E, OptimizedSubByteAllGatherOnDim0OutputIsCorrect) {
 
   const HloModule* module = execution_result.optimized_module;
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Bitcast(m::AllGatherDone().WithShape(S8, {4, 2}))));
+              GmockMatch(m::Bitcast(m::AsyncDone().WithShape(S8, {4, 2}))));
 
   const Literal expected_result =
       LiteralUtil::CreateR2<s4>({{s4(0), s4(1), s4(2), s4(3)},
@@ -3389,8 +3356,9 @@ TEST_F(CollectiveOpsTestE2E, OptimizedSubByteAllGatherOnDim1OutputIsCorrect) {
 
   const HloModule* module = execution_result.optimized_module;
   const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, GmockMatch(m::Fusion(
-                        m::Bitcast(m::AllGatherDone().WithShape(S8, {2, 4})))));
+  EXPECT_THAT(
+      root,
+      GmockMatch(m::Fusion(m::Bitcast(m::AsyncDone().WithShape(S8, {2, 4})))));
   EXPECT_THAT(root->fused_expression_root(),
               GmockMatch(m::Transpose(m::Parameter())));
 
@@ -3428,8 +3396,8 @@ TEST_F(CollectiveOpsTestE2E, AllGatherOnChangedDimensionIsCorrect) {
                           test_runner().HloModuleFromWrapped(executable.get()));
   const HloInstruction* root = module->entry_computation()->root_instruction();
 
-  EXPECT_THAT(root, GmockMatch(m::Fusion(m::AllGatherDone(
-                        m::AllGatherStart(m::Bitcast(m::Constant()))))));
+  EXPECT_THAT(root, GmockMatch(m::Fusion(m::AsyncDone(
+                        m::AsyncStart(m::Bitcast(m::Constant()))))));
   EXPECT_THAT(root->fused_expression_root(),
               GmockMatch(m::Transpose(m::Bitcast(m::Parameter()))));
 
