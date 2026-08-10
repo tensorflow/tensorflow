@@ -189,6 +189,10 @@ tf_class {
     argspec: "args=[\'y\', \'x\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "__setitem__"
+    argspec: "args=[\'var\', \'slice_spec\', \'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__sub__"
     argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
   }
@@ -312,9 +316,5 @@ tf_class {
   member_method {
     name: "value"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "__setitem__"
-    argspec: "args=[\'var\', \'slice_spec\', \'value\'], varargs=None, keywords=None, defaults=None"
   }
 }
