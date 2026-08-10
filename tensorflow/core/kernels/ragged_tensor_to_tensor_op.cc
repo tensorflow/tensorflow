@@ -405,6 +405,14 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
                    TensorShapeUtils::MakeShape(output_size, &output_shape));
     Tensor* output_tensor = nullptr;
 
+        for (int i = 0; i < output_shape.dims(); ++i) {
+      OP_REQUIRES(
+          context, output_shape.dim_size(i) >= 0,
+          errors::InvalidArgument(
+              "Output shape dimensions must be non-negative, got ",
+              output_shape.dim_size(i), " for dimension ", i));
+    }
+
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, output_shape, &output_tensor));
     const INDEX_TYPE full_size = multiplier[0] * output_size[0];
