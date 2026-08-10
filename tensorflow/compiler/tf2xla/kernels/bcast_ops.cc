@@ -120,6 +120,12 @@ class BCastGradArgsOp : public XlaOpKernel {
       std::vector<bool> dynamic;
       OP_REQUIRES_OK(ctx,
                       ctx->ResolveInputDynamismIntoPredVector(i, &dynamic));
+      OP_REQUIRES(
+          ctx, dynamic.size() == vec.size(),
+          absl::InternalError(absl::StrCat(
+              "Size mismatch between input shape vector size (", vec.size(),
+              ") and dynamism vector size (", dynamic.size(), ") for input ",
+              i)));
 
       shapes.push_back(BCast::Vec(vec.begin(), vec.end()));
       dynamic_dims.push_back(std::move(dynamic));
