@@ -723,21 +723,20 @@ absl::Status RunSPMDPasses(
                   spmd_pipeline, std::nullopt, max_windowed_einsum_iteration);
     return spmd_pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
         .status();
-  } else {
-    HloPassPipeline sharding_removal_pipeline("sharding-removal",
-                                              compilation_stats);
-    // Remove redundant sharding ops when partition_count == 1.
-    sharding_removal_pipeline.AddPass<ShardingRemover>();
-    // Run ShardyXLA without propagation, which enforces use-tuple-args.
-    if (hlo_module->config().use_shardy_partitioner()) {
-      sharding_removal_pipeline.AddPass<sdy::ShardyXLA>(
-          /*runSdyShardingPropagation=*/false);
-    }
-    sharding_removal_pipeline.AddPass<HloDCE>();
-    return sharding_removal_pipeline
-        .Run(hlo_module, {HloInstruction::kMainExecutionThread})
-        .status();
   }
+  HloPassPipeline sharding_removal_pipeline("sharding-removal",
+                                            compilation_stats);
+  // Remove redundant sharding ops when partition_count == 1.
+  sharding_removal_pipeline.AddPass<ShardingRemover>();
+  // Run ShardyXLA without propagation, which enforces use-tuple-args.
+  if (hlo_module->config().use_shardy_partitioner()) {
+    sharding_removal_pipeline.AddPass<sdy::ShardyXLA>(
+        /*runSdyShardingPropagation=*/false);
+  }
+  sharding_removal_pipeline.AddPass<HloDCE>();
+  return sharding_removal_pipeline
+      .Run(hlo_module, {HloInstruction::kMainExecutionThread})
+      .status();
 }
 
 absl::Status SetHostDeviceType(HloInstruction* instr) {
@@ -990,7 +989,11 @@ absl::Status RunOptimizationPasses(
   // Do not merge dots when they are assigned different stream ids.
   std::function<int64_t(const HloInstruction* dot)> queue_id =
       [&](const HloInstruction* dot) -> int64_t {
-    return dot->backend_config<GpuBackendConfig>()->operation_queue_id();
+    auto config = dot->backend_config<GpuBackendConfig>();
+    if (!config.ok()) {
+      return 0;
+    }
+    return config->operation_queue_id();
   };
   // Only merge "smallish" dots. This threshold defaults to 32MB today, with
   // a flag to override.
@@ -1054,6 +1057,7 @@ absl::Status RunCollectiveOptimizationPasses(
 
   HloPassPipeline collectives_pipeline("collective-optimizations",
                                        compilation_stats);
+  collectives_pipeline.AddPass<FlattenCallGraph>();
   collectives_pipeline.AddPass<RaggedAllToAllCanonicalizer>();
 
   if (debug_options.xla_gpu_unsupported_enable_ragged_all_to_all_decomposer()) {
