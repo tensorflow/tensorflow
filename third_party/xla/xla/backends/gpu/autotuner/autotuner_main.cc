@@ -30,6 +30,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/autotuner.h"
@@ -262,10 +264,12 @@ absl::Status RunAutotuning(const std::vector<std::string>& hlo_files,
 
   for (const auto& hlo_file : hlo_files) {
     LOG(INFO) << "Autotuning " << hlo_file;
+    absl::Time start_time = absl::Now();
     ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                      LoadModuleFromFile(hlo_file));
     ABSL_ASSIGN_OR_RETURN(std::vector<Autotuner::TuningResult> results,
                      env.autotuner->TuneConfigs(*module, should_autotune));
+    absl::Duration autotune_duration = absl::Now() - start_time;
     for (const auto& result : results) {
       AutotunerCacheInterface::Config cached_config;
       cached_config.codegen_backend = result.config.codegen_backend->backend();
@@ -274,6 +278,11 @@ absl::Status RunAutotuning(const std::vector<std::string>& hlo_files,
           autotuner_cache->Insert(result.instruction, cached_config));
     }
     env.compiler->ClearMlirContextPool();
+    absl::Duration duration_with_cache_update = absl::Now() - start_time;
+    LOG(INFO) << "Autotuning " << module->name() << " took "
+              << autotune_duration
+              << " (with cache update: " << duration_with_cache_update
+              << " total)";
   }
   return absl::OkStatus();
 }
