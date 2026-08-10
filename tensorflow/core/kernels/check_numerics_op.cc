@@ -289,8 +289,14 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
     const int is_nan = abnormality_indicators(0);
     const int is_inf = abnormality_indicators(1);
     if (is_nan || is_inf) {
-      LOG(ERROR) << "abnormal_detected_host @" << abnormality_indicators.data()
-                 << " = {" << is_nan << ", " << is_inf << "} " << message_;
+      // Logged at VLOG level rather than LOG(ERROR): the InvalidArgumentError
+      // set below already reports the anomaly to the caller in readable form,
+      // so emitting an error line per detection only duplicates it, and the
+      // host buffer address is useful for debugging this kernel alone. The
+      // CPU kernel and CheckNumericsV2 report the same condition without any
+      // logging.
+      VLOG(1) << "abnormal_detected_host @" << abnormality_indicators.data()
+              << " = {" << is_nan << ", " << is_inf << "} " << message_;
 
       std::string anomalies;
       if (is_nan && is_inf) {
