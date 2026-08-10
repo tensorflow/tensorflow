@@ -42,7 +42,6 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/hlo/analysis/shape_tracker.h"
 #include "xla/hlo/ir/hlo_computation.h"

@@ -21,7 +21,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/algorithm/container.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
