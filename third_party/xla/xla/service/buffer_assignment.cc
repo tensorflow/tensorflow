@@ -755,6 +755,9 @@ std::string BufferAllocation::ToShortString(bool human_readable_size) const {
   if (color() != 0) {
     StrAppend(&output, ", color ", color());
   }
+  if (page_id() != -1) {
+    StrAppend(&output, ", page ", page_id());
+  }
   if (is_entry_computation_parameter()) {
     const HloInstruction* param = GetEntryParameterInstruction(*this);
     StrAppend(&output, ", parameter ", parameter_number(), ", shape |",
