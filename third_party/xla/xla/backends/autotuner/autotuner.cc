@@ -166,8 +166,8 @@ tsl::Future<Autotuner::Config> Autotuner::GetTunedConfig(
   }
 
   tsl::Future<std::vector<CodegenOrchestrator::MaybeExecutableCandidate>>
-      maybe_candidates =
-          orchestrator_->CompileAll(*instr, std::move(supported_configs));
+      maybe_candidates = orchestrator_->CompileAll(
+          *instr, std::move(supported_configs), thread_pool_);
 
   return std::move(maybe_candidates)
       .Map([instr, runner_index,

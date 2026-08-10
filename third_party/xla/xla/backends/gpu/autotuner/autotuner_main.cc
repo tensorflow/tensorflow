@@ -212,10 +212,9 @@ absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
   AutotuneCacheContext ctx = AutotuneCacheContext::Create(
       target_config->device_description, autotuner_backends);
 
-  ABSL_ASSIGN_OR_RETURN(
-      auto autotuner_orchestrator,
-      CodegenOrchestrator::Create(std::move(autotuner_backends),
-                                  orchestrator_options, thread_pool.get()));
+  ABSL_ASSIGN_OR_RETURN(auto autotuner_orchestrator,
+                   CodegenOrchestrator::Create(std::move(autotuner_backends),
+                                               orchestrator_options));
 
   Autotuner::Options autotuner_options = GetAutotunerOptions(debug_options);
   ABSL_ASSIGN_OR_RETURN(auto autotuner,
