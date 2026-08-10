@@ -607,5 +607,28 @@ ENTRY inline {
 )";
   EXPECT_EQ(module->ToString(HloPrintOptions::ShortParsable()), inlined);
 }
+
+TEST_F(CallMarkerTest, DoNotMarkCallWithUnusedParameters) {
+  const absl::string_view hlo_string = R"(
+  HloModule inline_module
+
+  a {
+    p = f32[] parameter(0)
+    ROOT c = f32[] constant(0)
+  }
+
+  ENTRY inline {
+    c = f32[] constant(1)
+    a = f32[] call(c), to_apply=a
+    ROOT tuple = (f32[], f32[]) tuple(a, c)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  CallInliner inliner;
+  CallMarker call_marker(inliner);
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_marker.Run(module.get()));
+  EXPECT_FALSE(mutated);
+}
+
 }  // namespace
 }  // namespace xla
