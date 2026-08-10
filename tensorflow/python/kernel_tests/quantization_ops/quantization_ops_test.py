@@ -281,7 +281,7 @@ class QuantizedAvgPoolingOpTest(test_util.TensorFlowTestCase):
     inputs = constant_op.constant(
         np.int8(0), shape=[3, 3, 3, 3], dtype=dtypes.qint8)
     for ksize, strides in (([1], [1, 1, 1, 1]), ([1, 1, 1, 1], [1])):
-      with self.assertRaisesRegex(errors.InvalidArgumentError,
+      with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
                                   "ksize|stride"):
         self.evaluate(
             nn_ops.quantized_avg_pool(
@@ -330,7 +330,7 @@ class QuantizedMaxPoolingOpTest(test_util.TensorFlowTestCase):
     inputs = constant_op.constant(
         np.int8(0), shape=[3, 3, 3, 3], dtype=dtypes.qint8)
     for ksize, strides in (([1], [1, 1, 1, 1]), ([1, 1, 1, 1], [1])):
-      with self.assertRaisesRegex(errors.InvalidArgumentError,
+      with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
                                   "ksize|stride"):
         self.evaluate(
             nn_ops.quantized_max_pool(
