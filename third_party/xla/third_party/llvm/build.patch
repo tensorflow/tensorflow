@@ -1,8 +1,8 @@
 diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-index 0102a20b28..0102a295f2 100644
+index a7e652c..5b8ac5e 100644
 --- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-@@ -232,19 +232,19 @@
+@@ -234,19 +234,19 @@ write_file(
  config_setting(
      name = "is_windows_clang_mingw",
      constraint_values = ["@platforms//os:windows"],
@@ -25,7 +25,7 @@ index 0102a20b28..0102a295f2 100644
  )
  
  config_setting(
-@@ -253,7 +253,7 @@
+@@ -255,7 +255,7 @@ config_setting(
          "@platforms//cpu:x86_64",
          "@platforms//os:windows",
      ],
@@ -34,7 +34,7 @@ index 0102a20b28..0102a295f2 100644
  )
  
  BLAKE3_x86_64_ASM_SOURCE_PATTERNS = [
-@@ -305,7 +305,8 @@
+@@ -308,7 +308,8 @@ cc_library(
          "@platforms//cpu:aarch64": [
              "lib/Support/BLAKE3/blake3_neon.c",
          ],
@@ -44,7 +44,7 @@ index 0102a20b28..0102a295f2 100644
          "//conditions:default": [
          ],
      }),
-@@ -334,8 +335,9 @@
+@@ -337,8 +338,9 @@ cc_library(
          ],
          "//conditions:default": ["BLAKE3_USE_NEON=0"],
      }) + select({

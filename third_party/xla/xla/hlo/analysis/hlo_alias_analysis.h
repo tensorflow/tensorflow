@@ -32,6 +32,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_buffer.h"
+#include "xla/service/hlo_value.h"
+#include "xla/shape_util.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
@@ -61,6 +63,10 @@ class HloAliasAnalysis {
   // set at that position does not contain exactly one buffer.
   const HloBuffer& GetUniqueBufferAt(const HloInstruction* instruction,
                                      const ShapeIndex& index = {}) const;
+
+  // Returns the unique buffer at the given position. CHECK fails if the buffer
+  // set at that position does not contain exactly one buffer.
+  const HloBuffer& GetUniqueBufferAt(const HloPosition& position) const;
 
   // Compute the set of buffers at the given instruction and index and return as
   // a vector. This set is exactly the union of the buffers containing the

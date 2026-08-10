@@ -61,15 +61,17 @@ namespace tensorflow {
 absl::Status EagerKernelArgs::GetLocalArg(const FunctionArgIndex& index,
                                           Tensor* val) const {
   if (index.sub_index >= 0) {
-    return errors::InvalidArgument("Got unexpected sub_index ", index.sub_index,
-                                   " for argument ", index.index);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Got unexpected sub_index ", index.sub_index,
+                     " for argument ", index.index));
   }
   Tensor* arg = tensor_args_.at(index.index).tensor;
   if (arg) {
     *val = *arg;
     return absl::OkStatus();
   } else {
-    return errors::NotFound("Argument ", index.index, " has no local tensor.");
+    return absl::NotFoundError(
+        absl::StrCat("Argument ", index.index, " has no local tensor."));
   }
 }
 
@@ -115,7 +117,7 @@ absl::Status KernelAndDeviceOp::Init(
   }
   OpKernel* k = nullptr;
   if (flr_ == nullptr) {
-    return errors::Internal(
+    return absl::InternalError(
         "A valid FunctionLibraryRuntime must be provided when running ops "
         "based on OpKernel.");
   }
@@ -190,7 +192,8 @@ absl::Status KernelAndDeviceFunc::InstantiateFunc(
   options.input_resource_dtypes_and_shapes = input_resource_dtypes_and_shapes_;
   if (outputs_on_op_device_) {
     if (function_def == nullptr) {
-      return errors::InvalidArgument("Failed to find function ", ndef.op());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Failed to find function ", ndef.op()));
     }
     for (int i = 0; i < function_def->signature().output_arg_size(); ++i) {
       options.output_devices.push_back(options.target);
@@ -210,7 +213,7 @@ absl::Status KernelAndDeviceFunc::InstantiateFunc(
   const auto& config_it = ndef.attr().find("config_proto");
   if (config_it != ndef.attr().end()) {
     if (!options.config_proto.ParseFromString(config_it->second.s())) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Failed to parse config_proto attribute as tensorflow::ConfigProto "
           "proto.");
     }

@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -137,8 +138,8 @@ absl::StatusOr<bool> ProcessDynamicUpdateSlice(HloInstruction* dus,
       });
   VLOG(2) << "  is_dus_update_unused: " << is_dus_update_unused;
   if (is_dus_update_unused) {
-    TF_RETURN_IF_ERROR(dus->ReplaceAllUsesWith(dus->mutable_operand(0)));
-    TF_RETURN_IF_ERROR(comp->RemoveInstruction(dus));
+    ABSL_RETURN_IF_ERROR(dus->ReplaceAllUsesWith(dus->mutable_operand(0)));
+    ABSL_RETURN_IF_ERROR(comp->RemoveInstruction(dus));
     return true;  // Changed
   }
   return false;  // Not changed
@@ -163,8 +164,8 @@ absl::StatusOr<bool> DeadDynamicUpdateSliceElimination::RunImpl(
         continue;
       }
       VLOG(2) << "Processing DUS: " << instruction->ToString();
-      TF_ASSIGN_OR_RETURN(bool dus_changed,
-                          ProcessDynamicUpdateSlice(instruction, computation));
+      ABSL_ASSIGN_OR_RETURN(bool dus_changed,
+                       ProcessDynamicUpdateSlice(instruction, computation));
       if (dus_changed) {
         changed = true;
       }

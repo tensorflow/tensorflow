@@ -30,7 +30,7 @@ limitations under the License.
 namespace xla::cpu {
 
 // Tests that verify IR emitted by the CPU backend is as expected.
-class CpuPjRtCodegenTest : public HloPjRtTestBase {
+class CpuPjRtCodegenTest : public HloTestBase {
  public:
   CpuPjRtCodegenTest();
 

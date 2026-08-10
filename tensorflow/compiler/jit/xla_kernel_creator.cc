@@ -54,7 +54,8 @@ static absl::Status CreateXlaKernel(FunctionLibraryRuntime* flr,
                                     const NodeDef& node_def,
                                     std::unique_ptr<OpKernel>* kernel) {
   if (!CanCreateXlaKernel(node_def)) {
-    return errors::Internal("Invalid node: ", node_def.ShortDebugString());
+    return absl::InternalError(
+        absl::StrCat("Invalid node: ", node_def.ShortDebugString()));
   }
 
   VLOG(3) << "Attempting to create XlaLaunchOp for " << node_def.DebugString();

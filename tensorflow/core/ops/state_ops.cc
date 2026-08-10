@@ -344,15 +344,16 @@ REGISTER_OP("ResourceCountUpTo")
     .SetShapeFn([](InferenceContext* c) {
       auto* handle_data = c->input_handle_shapes_and_types(0);
       if (handle_data == nullptr || handle_data->empty()) {
-        return errors::InvalidArgument("Handle has no shape/type information.");
+        return absl::InvalidArgumentError(
+            "Handle has no shape/type information.");
       }
       shape_inference::ShapeAndType shape_and_type = (*handle_data)[0];
       DataType value_dtype;
       TF_RETURN_IF_ERROR(c->GetAttr("T", &value_dtype));
       if (value_dtype != shape_and_type.dtype) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Data types do not match: ", DataTypeString(value_dtype), " and ",
-            DataTypeString(shape_and_type.dtype));
+            DataTypeString(shape_and_type.dtype)));
       }
       ShapeHandle output;
       TF_RETURN_IF_ERROR(c->WithRank(shape_and_type.shape, 0, &output));

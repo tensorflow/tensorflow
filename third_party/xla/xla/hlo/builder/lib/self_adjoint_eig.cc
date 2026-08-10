@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "xla/hlo/builder/lib/slicing.h"
@@ -36,7 +37,7 @@ SelfAdjointEigResult SelfAdjointEig(XlaOp a, bool lower, int64_t max_iter,
                                     float tol, bool sort_eigenvalues) {
   XlaBuilder* builder = a.builder();
   XlaOp result = builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+    ABSL_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
     const int64_t num_dims = a_shape.dimensions().size();
     if (num_dims < 2) {
       return InvalidArgument(

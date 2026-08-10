@@ -18,13 +18,13 @@ limitations under the License.
 #include <algorithm>
 #include <atomic>
 #include <cstddef>
-#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/no_destructor.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -35,6 +35,17 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 
 namespace xla {
+
+HangWatchdog& HangWatchdog::Global() {
+  // Global XLA execution hang watchdog with 2 threads. We don't need many
+  // threads as hang watchdog callbacks must be cheap, so we keep the minimum
+  // number of threads that will print useful diagnostic on Abort: first thread
+  // will pre-wait before the termination, and second thread will process all
+  // expired watchdog callbacks.
+  static absl::NoDestructor<HangWatchdog> watchdog(tsl::Env::Default(), "xla",
+                                                   /*num_threads=*/2);
+  return *watchdog;
+}
 
 struct HangWatchdog::Guard {
   Guard(absl::string_view action, absl::Duration duration,

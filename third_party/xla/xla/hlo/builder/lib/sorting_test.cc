@@ -39,8 +39,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using SortingTest = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using SortingTest =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(SortingTest, TopK3From8Values) {
   XlaBuilder builder(TestName());

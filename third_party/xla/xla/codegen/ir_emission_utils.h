@@ -18,11 +18,16 @@ limitations under the License.
 
 #include <functional>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Types.h"
+#include "mlir/IR/Value.h"
 #include "xla/codegen/hlo_fusion_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -35,7 +40,7 @@ namespace xla {
 // Checks if the instruction is elementwise.
 bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1);
 
-// Find the first gero that statises the given predicate.
+// Find the first hero that satisfies the given predicate.
 std::optional<HloInstructionAdaptor> FindHero(
     const HloInstructionAdaptor& root,
     absl::AnyInvocable<bool(const HloInstruction&)> predicate);
@@ -71,5 +76,37 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlace(
     const BufferAssignment* buffer_assignment, const HloInstruction* fusion);
 
 }  // namespace xla
+
+namespace mlir {
+namespace detail {
+
+// Returns a string representation of the given MLIR entity.
+template <typename T>
+std::string MlirToString(const T& value) {
+  std::string result;
+  llvm::raw_string_ostream os(result);
+  value.print(os);
+  return result;
+}
+
+}  // namespace detail
+
+// ADL for mlir types for absl::StrFormat and friends.
+template <typename Sink>
+void AbslStringify(Sink& sink, const mlir::Value& value) {
+  sink.Append(detail::MlirToString(value));
+}
+
+template <typename Sink>
+void AbslStringify(Sink& sink, const mlir::Type& value) {
+  sink.Append(detail::MlirToString(value));
+}
+
+template <typename Sink>
+void AbslStringify(Sink& sink, const mlir::Attribute& value) {
+  sink.Append(detail::MlirToString(value));
+}
+
+}  // namespace mlir
 
 #endif  // XLA_CODEGEN_IR_EMISSION_UTILS_H_

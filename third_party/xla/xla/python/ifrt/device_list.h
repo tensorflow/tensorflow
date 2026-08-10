@@ -23,10 +23,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device.pb.h"
 #include "xla/python/ifrt/ref_wrapper.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -36,7 +36,7 @@ namespace ifrt {
 
 // Ordered immutable list of devices.
 class DeviceList : public tsl::ReferenceCounted<DeviceList>,
-                   public llvm::RTTIExtends<DeviceList, llvm::RTTIRoot> {
+                   public RTTIExtends<DeviceList, RTTIRoot> {
  public:
   // Not copyable or movable. `DeviceList` is a runtime object that may contain
   // runtime-specific state that cannot be trivially copied or moved.
@@ -119,6 +119,15 @@ using DeviceListRef = ::xla::ifrt::RCReferenceWrapper<DeviceList>;
 
 // Returns the id of each device in `device_list`.
 std::vector<DeviceId> GetDeviceIds(const DeviceListRef& device_list);
+
+// Returns a compact string describing the differences between two device lists.
+// Reports size mismatches and up to `max_differences` per-position device ID
+// mismatches.
+// Note: This function has O(max(a.size(), b.size())) time complexity, so it
+// should only be called if a != b is known (e.g., for error reporting).
+std::string DeviceListDifferencesString(const DeviceList& a,
+                                        const DeviceList& b,
+                                        int max_differences = 5);
 
 }  // namespace ifrt
 }  // namespace xla

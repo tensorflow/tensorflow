@@ -138,8 +138,10 @@ TEST_P(StatusPropagationTest, PartialRunDoneFirst) {
 
 // Instantiate tests for all error orderings, for both call orders of
 // ExecutorDone and PartialRunDone.
-absl::Status ExecutorError() { return errors::Internal("executor error"); }
-absl::Status PartialRunError() { return errors::Internal("partial run error"); }
+absl::Status ExecutorError() { return absl::InternalError("executor error"); }
+absl::Status PartialRunError() {
+  return absl::InternalError("partial run error");
+}
 INSTANTIATE_TEST_SUITE_P(
     PartialRunMgr, StatusPropagationTest,
     ::testing::Values(

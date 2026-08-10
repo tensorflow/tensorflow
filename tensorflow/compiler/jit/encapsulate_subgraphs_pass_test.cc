@@ -551,7 +551,7 @@ absl::Status Encapsulate(
       }
     }
     if (!xla_computation_node) {
-      return errors::Internal("Cannot find node ", func);
+      return absl::InternalError(absl::StrCat("Cannot find node ", func));
     }
     NameAttrList func_name_attrs;
     func_name_attrs.set_name(func);

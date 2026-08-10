@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -55,7 +56,7 @@ class PluggableDeviceFactory : public DeviceFactory {
   absl::Status CreatePluggableDevice(
       const SessionOptions& options, const std::string& name_prefix,
       TfDeviceId tf_device_id, int64_t memory_limit,
-      const DeviceLocality& dev_locality,
+      std::optional<int> priority, const DeviceLocality& dev_locality,
       std::vector<std::unique_ptr<Device>>* devices);
 
   const std::string device_type_;

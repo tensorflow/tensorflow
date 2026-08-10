@@ -47,20 +47,20 @@ class RequantizeOp : public OpKernel {
     const Tensor& requested_output_max = ctx->input(4);
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsScalar(input_min.shape()),
-        errors::InvalidArgument("`input_min` must be rank 0 but is rank ",
-                                input_min.dims()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "`input_min` must be rank 0 but is rank ", input_min.dims())));
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsScalar(input_max.shape()),
-        errors::InvalidArgument("`input_max` must be rank 0 but is rank ",
-                                input_max.dims()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "`input_max` must be rank 0 but is rank ", input_max.dims())));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(requested_output_min.shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "`requested_output_min` must be rank 0 but is rank ",
-                    requested_output_min.dims()));
+                    requested_output_min.dims())));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(requested_output_max.shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "`requested_output_max` must be rank 0 but is rank ",
-                    requested_output_max.dims()));
+                    requested_output_max.dims())));
 
     const float input_min_float = input_min.flat<float>()(0);
     const float input_max_float = input_max.flat<float>()(0);
@@ -76,15 +76,15 @@ class RequantizeOp : public OpKernel {
     Tensor* output_max = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(2, TensorShape({}), &output_max));
 
-    OP_REQUIRES(
-        ctx, requested_output_min_float <= 0.0f,
-        errors::InvalidArgument("requested_output_min must be <= 0, but got ",
-                                requested_output_min_float));
+    OP_REQUIRES(ctx, requested_output_min_float <= 0.0f,
+                absl::InvalidArgumentError(
+                    absl::StrCat("requested_output_min must be <= 0, but got ",
+                                 requested_output_min_float)));
     OP_REQUIRES(
         ctx, requested_output_max_float >= requested_output_min_float,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "requested_output_max must be >= requested_output_min, but got ",
-            requested_output_max_float, " and ", requested_output_min_float));
+            requested_output_max_float, " and ", requested_output_min_float)));
 
     auto input_array = input.flat<T1>();
 

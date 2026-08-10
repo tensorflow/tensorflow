@@ -132,11 +132,11 @@ absl::Status RewriteInputsAsPlaceholders(const TransformFuncContext& context,
       node.set_op("Placeholder");
       node.clear_input();
     } else if (node.op() != "Placeholder") {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Input '", node.name(),
           "' was expected to be a Placeholder or PlaceholderWithDefault op, "
           "but was ",
-          node.op());
+          node.op()));
     }
   }
   return absl::OkStatus();
@@ -167,8 +167,9 @@ absl::Status RemoveUnusedNodes(const GraphDef& input_graph_def,
       if (node_map.count(node_name) == 0) {
         LOG(ERROR) << "Bad graph structure, no node named '" << node_name
                    << "' found for input lookup";
-        return errors::InvalidArgument("Bad graph structure, no node named '",
-                                       node_name, "' found for input lookup");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Bad graph structure, no node named '", node_name,
+                         "' found for input lookup"));
       }
       const NodeDef& node = *(node_map[node_name]);
       for (const std::string& input : node.input()) {

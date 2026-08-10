@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/stream_executor/sycl/sycl_device_description.h"
 
+#include <memory>
+
 #include <gtest/gtest.h>
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/logging.h"
@@ -38,6 +40,9 @@ TEST(SyclDeviceDescriptionTest, CreateOneApiDeviceDescription) {
   EXPECT_GT(device_desc->shared_memory_per_block(), 0);
   EXPECT_GT(device_desc->shared_memory_per_core(), 0);
   EXPECT_GT(device_desc->fpus_per_core(), 0);
+  EXPECT_GT(device_desc->dnn_version().major_version(), 0);
+  EXPECT_GT(device_desc->dnn_version().minor_version(), 0);
+  EXPECT_GE(device_desc->dnn_version().patch_version(), 0);
 }
 
 }  // namespace

@@ -27,21 +27,22 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/execute_options.pb.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/tsl/concurrency/future.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -51,10 +52,12 @@ class Client;
 struct CompileOptions;
 struct DeserializeExecutableOptions;
 
-struct ExecutableVersion : llvm::RTTIExtends<ExecutableVersion, Serializable> {
-  // Returns OK iff this version is compatible with `other`. The logic for
-  // checking the version compatibility is an implementation detail of
-  // `ExecutableVersion` subclasses.
+struct ExecutableVersion : RTTIExtends<ExecutableVersion, Serializable> {
+  // Returns OK if this version is not incompatible with `other` when checking
+  // the compatibility in a runtime- and device-agnostic manner.
+  // Note that this is not a guarantee of executable compatibility, which
+  // ultimately depends on the specific runtime and devices, and must be checked
+  // via `Compiler::IsExecutableVersionCompatible`.
   virtual absl::Status IsCompatibleWith(
       const ExecutableVersion& other) const = 0;
 
@@ -62,7 +65,7 @@ struct ExecutableVersion : llvm::RTTIExtends<ExecutableVersion, Serializable> {
 };
 
 // Wraps a computation that has been partially compiled and can be loaded.
-class Executable : public llvm::RTTIExtends<Executable, llvm::RTTIRoot> {
+class Executable : public RTTIExtends<Executable, RTTIRoot> {
  public:
   using DeserializeOptions = DeserializeExecutableOptions;
 
@@ -156,7 +159,7 @@ struct ExecuteOptions {
   absl::StatusOr<ExecuteOptionsProto> ToProto(
       SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
     ExecuteOptionsProto proto;
-    TF_RETURN_IF_ERROR(ToProto(proto, version));
+    ABSL_RETURN_IF_ERROR(ToProto(proto, version));
     return proto;
   }
 
@@ -165,8 +168,7 @@ struct ExecuteOptions {
 };
 
 // Wraps a computation that has been fully compiled and loaded for execution.
-class LoadedExecutable
-    : public llvm::RTTIExtends<LoadedExecutable, llvm::RTTIRoot> {
+class LoadedExecutable : public RTTIExtends<LoadedExecutable, RTTIRoot> {
  public:
   virtual Client* client() const = 0;
 
@@ -279,6 +281,22 @@ class LoadedExecutable
     CancellationHandle cancellation_handle;
   };
 
+  // Result from an execution using Bundle.
+  struct ExecuteBundleResult {
+    // Output bundles. If `CompileOptions::outputs_bundle_slices` is unset, all
+    // outputs will be in a single bundle. Otherwise, the output bundles will be
+    // sliced accordingly.
+    std::vector<BundleRef> outputs;
+
+    // Resulting status of the execution. Filled only if
+    // `ExecuteOptions::fill_status` is true.
+    tsl::Future<> status;
+
+    // Handle that can be passed to `CancelExecution` to perform best-effort
+    // cancellation of the enqueued execution. May be `nullptr` in which case
+    // cancellation will be ignored.
+    CancellationHandle cancellation_handle;
+  };
   // Executes the executable on devices.
   //
   // The runtime expects input arrays to be present on the execution devices.
@@ -299,6 +317,10 @@ class LoadedExecutable
   virtual absl::StatusOr<ExecuteResult> Execute(
       absl::Span<ArrayRef> args, const ExecuteOptions& options,
       std::optional<DeviceListRef> devices) = 0;
+
+  // Executes the executable on devices using `Bundle`s.
+  virtual absl::StatusOr<ExecuteBundleResult> ExecuteBundle(
+      absl::Span<BundleRef> args, const ExecuteOptions& options) = 0;
 
   // Returns the list of devices where the executable has been compiled and
   // loaded onto. Returns `std::nullopt` if the executable is not bound to a

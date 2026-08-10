@@ -27,9 +27,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/layout.pb.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
@@ -65,7 +66,7 @@ using CustomLayoutRef = absl_nonnull std::shared_ptr<const Layout>;
 //
 // Note that within-element layouts such as big/little endian are not expressed
 // through `Layout`. They may be expressed through `DType`.
-class Layout : public llvm::RTTIExtends<Layout, Serializable> {
+class Layout : public RTTIExtends<Layout, Serializable> {
  public:
   Layout(const Layout&) = delete;
   Layout& operator=(const Layout&) = delete;
@@ -77,6 +78,18 @@ class Layout : public llvm::RTTIExtends<Layout, Serializable> {
   // opaque (`kOpaque`) data, returns `std::nullopt`.
   virtual absl::StatusOr<std::optional<int64_t>> ByteSize(
       DType dtype, const Shape& shard_shape) const = 0;
+
+  // Computes the byte size of a shard shape using a layout. If `dtype`
+  // represents non-fixed-size (e.g., `kString`), size-less (e.g., `kToken`), or
+  // opaque (`kOpaque`) data, or there is no single fixed size across shards,
+  // returns `std::nullopt`.
+  //
+  // `layout` may be `nullptr`, which represents a default layout. Default
+  // layouts will be automatically resolved to concrete layouts to compute the
+  // byte size.
+  static absl::StatusOr<std::optional<int64_t>> ByteSize(
+      DType dtype, const Shape& shape, const ShardingRef& sharding,
+      const LayoutRef& layout);
 
   // Constructs `Layout` from `LayoutProto`.
   static absl::StatusOr<CustomLayoutRef> FromProto(const LayoutProto& proto);
@@ -90,7 +103,7 @@ class Layout : public llvm::RTTIExtends<Layout, Serializable> {
   absl::StatusOr<LayoutProto> ToProto(
       SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
     LayoutProto proto;
-    TF_RETURN_IF_ERROR(ToProto(proto, version));
+    ABSL_RETURN_IF_ERROR(ToProto(proto, version));
     return proto;
   }
 
@@ -119,7 +132,7 @@ class Layout : public llvm::RTTIExtends<Layout, Serializable> {
 // Concrete layout that expresses a compact layout using major-to-minor order of
 // dimensions. There is no padding or gaps between elements. Sub-byte `DType`s
 // such as `DType::kS4` use a packed layout.
-class CompactLayout final : public llvm::RTTIExtends<CompactLayout, Layout> {
+class CompactLayout final : public RTTIExtends<CompactLayout, Layout> {
  public:
   static absl::StatusOr<absl_nonnull std::unique_ptr<CompactLayout>> Create(
       absl::Span<const int> major_to_minor);

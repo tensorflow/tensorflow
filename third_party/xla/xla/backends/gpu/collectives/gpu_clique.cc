@@ -142,8 +142,11 @@ absl::Status LockableGpuClique::Abort() { return mutable_value().Abort(); }
 
 void LockableGpuClique::Cancel() { mutable_value().Cancel(); }
 
-bool LockableGpuClique::HasParent(const GpuClique* parent) const {
-  return this->value().parent() == parent;
+bool LockableGpuClique::IsParentSupersetOf(
+    const GpuCliqueKey& clique_key) const {
+  const GpuClique* p = this->value().parent();
+  if (p == nullptr) return false;
+  return clique_key.IsSubsetOf(p->key());
 }
 
 std::string LockableGpuClique::DebugString() const {

@@ -73,13 +73,13 @@ void ForLoop::Emit(llvm::IRBuilderBase* b) {
   if (insert_point == preheader_bb_->end()) {
     // We're emitting the loop at the end of a basic block. Verify there is no
     // terminator (eg, branch) in the basic block.
-    CHECK_EQ(nullptr, preheader_bb_->getTerminator());
+    CHECK(!preheader_bb_->hasTerminator());
 
     exit_bb_ = CreateLoopBB("loop_exit", b);
   } else {
     // We're emitting the loop into the middle of a basic block. splitBasicBlock
     // requires that this basic block be well-formed (have a terminator).
-    CHECK_NE(nullptr, preheader_bb_->getTerminator());
+    CHECK(preheader_bb_->hasTerminator());
 
     // Split the preheader to create an exit basic block. The exit basic block
     // will contain all instructions at or after insert_point.
@@ -115,7 +115,7 @@ void ForLoop::Emit(llvm::IRBuilderBase* b) {
   b->SetInsertPoint(preheader_bb_);
   b->CreateStore(start_index_, indvar_address);
   // The preheader should not have a branch yet.
-  CHECK_EQ(preheader_bb_->getTerminator(), nullptr);
+  CHECK(!preheader_bb_->hasTerminator());
   b->CreateBr(header_bb_);
 
   // Header basic block.
@@ -137,7 +137,7 @@ void ForLoop::Emit(llvm::IRBuilderBase* b) {
   llvm::Value* indvar_inc = b->CreateAdd(indvar, step, "invar.inc",
                                          /*HasNUW=*/true, /*HasNSW=*/true);
   b->CreateStore(indvar_inc, indvar_address);
-  llvm::BranchInst* back_branch = b->CreateBr(header_bb_);
+  llvm::UncondBrInst* back_branch = b->CreateBr(header_bb_);
 
   std::vector<llvm::Metadata*> loop_metadata = GetLoopMetadata(b);
   if (!loop_metadata.empty()) {
@@ -156,7 +156,7 @@ void ForLoop::Emit(llvm::IRBuilderBase* b) {
 std::vector<llvm::Metadata*> ForLoop::GetLoopMetadata(llvm::IRBuilderBase* b) {
   const char* const kLlvmLoopUnrollDisableMDName = "llvm.loop.unroll.disable";
   const char* const kLlvmLoopUnrollFullMDName = "llvm.loop.unroll.full";
-  const char* const kLlvmLoopVectorizeMDName = "llvm.loop.vectorize.enable";
+  const char* const kLlvmLoopVectorizeMDName = "llvm.loop.vectorize.disable";
   llvm::LLVMContext* ctx = &start_index_->getContext();
 
   std::vector<llvm::Metadata*> result;
@@ -167,8 +167,7 @@ std::vector<llvm::Metadata*> ForLoop::GetLoopMetadata(llvm::IRBuilderBase* b) {
 
   if (prevent_vectorization_) {
     result.push_back(llvm::MDNode::get(
-        *ctx, {llvm::MDString::get(*ctx, kLlvmLoopVectorizeMDName),
-               llvm::ConstantAsMetadata::get(b->getFalse())}));
+        *ctx, {llvm::MDString::get(*ctx, kLlvmLoopVectorizeMDName)}));
   }
 
   if (unroll_mode_ == xla::llvm_ir::UnrollMode::kFullyUnroll) {
@@ -289,6 +288,7 @@ std::vector<llvm::Value*> ForLoopNest::EmitOperandArrayLoopNest(
       AddLoopsForShapeOnDimensions(shape, dimensions, name_suffix);
   // Verify every dimension except the 'dimension_to_skip' dimension was set in
   // the index.
+#ifndef NDEBUG
   for (size_t dimension = 0; dimension < multi_index.size(); ++dimension) {
     if (dimension == dimension_to_skip) {
       DCHECK_EQ(nullptr, multi_index[dimension]);
@@ -296,6 +296,7 @@ std::vector<llvm::Value*> ForLoopNest::EmitOperandArrayLoopNest(
       DCHECK_NE(nullptr, multi_index[dimension]);
     }
   }
+#endif  // NDEBUG
   return multi_index;
 }
 

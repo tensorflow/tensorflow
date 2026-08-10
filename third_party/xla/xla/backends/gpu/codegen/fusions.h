@@ -95,7 +95,7 @@ class PreBufferAssignmentFusionInfo : public FusionInfo {
 
 // Returns the emitter for the given fusion.
 std::unique_ptr<FusionInterface> GetFusionEmitter(
-    const FusionInfo& fusion_info, mlir::MLIRContext* mlir_context);
+    const FusionInfo& fusion_info);
 
 }  // namespace gpu
 }  // namespace xla

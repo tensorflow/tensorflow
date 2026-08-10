@@ -71,7 +71,7 @@ void SoftplusGradOp<Device, T>::OperateNoTemplate(OpKernelContext* context,
                                                   const Tensor& a,
                                                   Tensor* output) {
   OP_REQUIRES(context, a.IsSameSize(g),
-              errors::InvalidArgument("g and a must be the same size"));
+              absl::InvalidArgumentError("g and a must be the same size"));
   functor::SoftplusGrad<Device, T> functor;
   functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(),
           output->flat<T>());

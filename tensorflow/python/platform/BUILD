@@ -1,6 +1,21 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # platform package
 
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_oss",
@@ -29,17 +44,17 @@ tf_py_build_info_genrule(
     out = "build_info.py",
 )
 
-py_strict_library(
+py_library(
     name = "build_info",
     srcs = ["build_info.py"],
 )
 
-py_strict_library(
+py_library(
     name = "windows_lib_diagnostics",
     srcs = ["windows_lib_diagnostics.py"],
 )
 
-py_strict_library(
+py_library(
     name = "self_check",
     srcs = ["self_check.py"],
     deps = if_oss(
@@ -50,7 +65,7 @@ py_strict_library(
     ),
 )
 
-py_strict_library(
+py_library(
     name = "benchmark",
     srcs = ["benchmark.py"],
     visibility = visibility + ["//tensorflow:internal"],
@@ -66,12 +81,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "analytics",
     srcs = ["analytics.py"],
 )
 
-py_strict_library(
+py_library(
     name = "device_context",
     srcs = ["device_context.py"],
     deps = [
@@ -80,7 +95,7 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "test",
     srcs = ["googletest.py"],
     # copybara:uncomment_begin(google-only)
@@ -218,7 +233,7 @@ tf_python_pybind_extension(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "client_testlib",
     srcs = ["test.py"],
     # copybara:uncomment_begin(google-only)
@@ -241,7 +256,7 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "app",
     srcs = ["app.py"],
     deps = [
@@ -252,7 +267,7 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "sysconfig",
     srcs = ["sysconfig.py"],
     deps = [
@@ -263,33 +278,33 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "__init__",
     srcs = ["__init__.py"],
     deps = [
     ],
 )
 
-py_strict_library(
+py_library(
     name = "control_imports",
     srcs = ["control_imports.py"],
     deps = [
     ],
 )
 
-py_strict_library(
+py_library(
     name = "parameterized",
     srcs = ["parameterized.py"],
 )
 
-py_strict_library(
+py_library(
     name = "remote_utils",
     srcs = ["remote_utils.py"],
     deps = [
     ],
 )
 
-py_strict_library(
+py_library(
     name = "gfile",
     srcs = ["gfile.py"],
     # copybara:uncomment_begin(google-only)
@@ -306,13 +321,18 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tf_logging",
     srcs = ["tf_logging.py"],
     # copybara:uncomment_begin(google-only)
     # visibility = visibility + [
     # "//learning/brain/contrib/learn:__pkg__",
     # "//learning/brain/mobile/lite/lstm:__pkg__",
+    # "//third_party/py/tf_keras/distribute:__pkg__",
+    # "//third_party/py/tf_keras/layers/preprocessing:__pkg__",
+    # "//third_party/py/tf_keras/models:__pkg__",
+    # "//third_party/py/tf_keras/optimizers:__pkg__",
+    # "//third_party/py/tf_keras/tests:__pkg__",
     # "//third_party/py/tf_slim/training:__pkg__",
     # ],
     # copybara:uncomment_end_and_comment_begin
@@ -326,7 +346,7 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "flags",
     srcs = ["flags.py"],
     visibility = ["//visibility:public"],
@@ -336,7 +356,7 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "resource_loader",
     srcs = ["resource_loader.py"],
     visibility = ["//visibility:public"],
@@ -395,4 +415,3 @@ pybind_extension(
         "@pybind11",
     ],
 )
-####

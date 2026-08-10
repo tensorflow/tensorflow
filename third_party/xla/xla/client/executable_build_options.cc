@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "xla/debug_options_flags.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/compilation_environments.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -202,7 +204,9 @@ absl::StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto()
   output.set_use_shardy_partitioner(use_shardy_partitioner());
   output.set_process_index(process_index());
   output.set_process_count(process_count());
-  output.set_slice_size(slice_size());
+  if (gpu_topology().has_value()) {
+    *output.mutable_gpu_topology() = gpu_topology()->ToProto();
+  }
   return output;
 }
 
@@ -213,12 +217,12 @@ absl::StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
     output.set_device_ordinal(input.device_ordinal());
   }
   if (input.has_result_layout()) {
-    TF_ASSIGN_OR_RETURN(Shape result_layout,
-                        Shape::FromProto(input.result_layout()));
+    ABSL_ASSIGN_OR_RETURN(Shape result_layout,
+                     Shape::FromProto(input.result_layout()));
     output.set_result_layout(result_layout);
   }
   if (input.has_comp_envs()) {
-    TF_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto comp_envs,
         xla::CompilationEnvironments::CreateFromProto(input.comp_envs()));
     *output.mutable_comp_envs() = std::move(*comp_envs);
@@ -237,7 +241,7 @@ absl::StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
   output.set_memory_fitting_level(input.memory_fitting_level());
   output.set_deduplicate_hlo(input.deduplicate_hlo());
   if (input.has_device_assignment()) {
-    TF_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<xla::DeviceAssignment> assignment,
         xla::DeviceAssignment::Deserialize(input.device_assignment()));
     output.set_device_assignment(*assignment);
@@ -259,7 +263,11 @@ absl::StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
   output.set_use_shardy_partitioner(input.use_shardy_partitioner());
   output.set_process_index(input.process_index());
   output.set_process_count(input.process_count());
-  output.set_slice_size(input.slice_size());
+  if (input.has_gpu_topology()) {
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<const GpuTopology> gpu_topology,
+                     GpuTopology::FromProto(input.gpu_topology()));
+    output.set_gpu_topology(*gpu_topology);
+  }
   return output;
 }
 

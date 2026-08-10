@@ -68,6 +68,14 @@ struct SimpleAlloc {
     }
     reset();
   }
+
+  // Free allocated heap memory but preserve size and node information.
+  void release() {
+    if (ptr) {
+      ::free(ptr);
+      ptr = nullptr;
+    }
+  }
 };
 
 // A memory planner that makes all the allocations using malloc()/free().

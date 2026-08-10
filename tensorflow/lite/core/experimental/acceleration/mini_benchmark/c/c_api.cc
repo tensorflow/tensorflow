@@ -157,8 +157,10 @@ void TfLiteBlockingValidatorRunnerTriggerValidationImpl(
   }
 
   std::vector<const tflite::TFLiteSettings*> tflite_settings;
-  for (auto tflite_setting : *minibenchmark_settings->settings_to_test()) {
-    tflite_settings.push_back(tflite_setting);
+  if (minibenchmark_settings->settings_to_test()) {
+    for (auto tflite_setting : *minibenchmark_settings->settings_to_test()) {
+      tflite_settings.push_back(tflite_setting);
+    }
   }
 
   CreateData(runner.TriggerValidation(tflite_settings), result);

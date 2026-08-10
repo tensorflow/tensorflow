@@ -112,10 +112,10 @@ absl::Status AsymmetricQuantize(const ConstTensorTin& input_tensor,
                                 TensorTout quantized_tensor) {
   if (quantization_min_val >= quantization_max_val) {
     // NOLINTNEXTLINE
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "quantization_min_val must be smaller than quantization_max_val. "
         "Given ",
-        quantization_min_val, ", ", quantization_max_val);
+        quantization_min_val, ", ", quantization_max_val));
   }
 
   Eigen::Tensor<float, 0, Eigen::RowMajor> input_tensor_min =

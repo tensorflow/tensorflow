@@ -22,11 +22,13 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/ffi.h"
 #include "xla/backends/cpu/nanort/nanort_client.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
@@ -59,7 +61,7 @@ absl::StatusOr<std::unique_ptr<HostOffloadingExecutable>> CompileFromString(
     absl::string_view str,
     HostOffloadingExecutableProto::ExecutableType executable_type) {
   HloModuleConfig config;
-  TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnUnverifiedModule(str));
+  ABSL_ASSIGN_OR_RETURN(auto module, ParseAndReturnUnverifiedModule(str));
 
   HostOffloadingExecutableProto executable_proto;
   *executable_proto.mutable_hlo_module() = module->ToProto();
@@ -67,14 +69,14 @@ absl::StatusOr<std::unique_ptr<HostOffloadingExecutable>> CompileFromString(
 
   switch (executable_type) {
     case HostOffloadingExecutableProto::EXECUTABLE_TYPE_NANORT: {
-      xla::cpu::NanoRtClient client;
+      xla::cpu::NanoRtClient client(SetHostOffloadingHloModuleConfig);
       XlaComputation computation(module->ToProto());
-      TF_ASSIGN_OR_RETURN(auto executable, client.Compile(computation));
-      TF_ASSIGN_OR_RETURN(auto aot_compilation_result,
-                          client.Export(executable.get()));
+      ABSL_ASSIGN_OR_RETURN(auto executable, client.Compile(computation));
+      ABSL_ASSIGN_OR_RETURN(auto aot_compilation_result,
+                       client.Export(executable.get()));
 
       xla::cpu::CpuAotCompilationResult* cpu_aot_compilation_result =
-          tsl::down_cast<xla::cpu::CpuAotCompilationResult*>(
+          absl::down_cast<cpu::CpuAotCompilationResult*>(
               aot_compilation_result.get());
 
       *executable_proto.mutable_aot_compilation_result() =
@@ -485,6 +487,56 @@ TEST_P(HostOffloadingRuntimeExecutableTest, Int4) {
               ElementsAreArray({(2 << 4) | 2, (2 << 4) | 2}));
 }
 
+TEST_P(HostOffloadingRuntimeExecutableTest, GetHloModuleConfigs) {
+  std::string str = R"(
+    HloModule add
+
+    ENTRY %main {
+      %p0 = f32[4] parameter(0)
+      ROOT %add = f32[4] add(%p0, %p0)
+    }
+  )";
+
+  HostOffloadingExecutableProto::ExecutableType
+      host_offloading_executable_type = GetParam();
+
+  ASSERT_OK_AND_ASSIGN(auto computation,
+                       CompileFromString(str, host_offloading_executable_type));
+
+  ASSERT_OK_AND_ASSIGN(std::vector<HloModuleConfig> module_configs,
+                       computation->GetHloModuleConfigs());
+  ASSERT_EQ(module_configs.size(), 1);
+  EXPECT_EQ(module_configs[0].entry_computation_layout().result_shape(),
+            ShapeUtil::MakeShape(xla::PrimitiveType::F32, {4}));
+}
+
+TEST_P(HostOffloadingRuntimeExecutableTest, IsHostOffloadSet) {
+  std::string str = R"(
+    HloModule add
+
+    ENTRY %main {
+      %p0 = f32[4] parameter(0)
+      ROOT %add = f32[4] add(%p0, %p0)
+    }
+  )";
+  HostOffloadingExecutableProto::ExecutableType
+      host_offloading_executable_type = GetParam();
+
+  ASSERT_OK_AND_ASSIGN(auto computation,
+                       CompileFromString(str, host_offloading_executable_type));
+
+  HostOffloadingExecutable* executable = computation.get();
+  ASSERT_NE(executable, nullptr);
+  ASSERT_OK_AND_ASSIGN(std::vector<HloModuleConfig> module_configs,
+                       executable->GetHloModuleConfigs());
+  ASSERT_EQ(module_configs.size(), 1);
+  const auto& extra_options =
+      module_configs[0].debug_options().xla_backend_extra_options();
+  auto it = extra_options.find("xla_is_host_offload");
+  ASSERT_NE(it, extra_options.end());
+  EXPECT_EQ(it->second, "true");
+}
+
 INSTANTIATE_TEST_SUITE_P(
     HostOffloadingRuntimeExecutableParameters,
     HostOffloadingRuntimeExecutableTest,
@@ -511,7 +563,7 @@ TEST(HostOffloadingNanortTest, DeviceAssignment) {
                         HostOffloadingExecutableProto::EXECUTABLE_TYPE_NANORT));
 
   auto host_offloading_nanort_executable =
-      tsl::down_cast<HostOffloadingNanoRtExecutable*>(computation.get());
+      absl::down_cast<HostOffloadingNanoRtExecutable*>(computation.get());
   ASSERT_NE(host_offloading_nanort_executable, nullptr);
   ASSERT_NE(host_offloading_nanort_executable->device_assignment(), nullptr);
 

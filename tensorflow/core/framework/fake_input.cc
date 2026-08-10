@@ -104,9 +104,9 @@ absl::Status FakeInputImpl::AddInputToBuilder() {
       absl::Status status =
           GetNodeAttr(*node_def_, arg_->type_list_attr(), &dts);
       if (!status.ok()) {
-        return errors::InvalidArgument(
-            "Could not infer list of types for input '", arg_->name(),
-            "': ", status.message());
+        return absl::InvalidArgumentError(
+            absl::StrCat("Could not infer list of types for input '",
+                         arg_->name(), "': ", status.message()));
       }
       SourceList(dts);
       return absl::OkStatus();
@@ -131,8 +131,9 @@ absl::Status FakeInputImpl::GetN(int* n) const {
   } else {
     absl::Status status = GetNodeAttr(*node_def_, arg_->number_attr(), n);
     if (!status.ok()) {
-      return errors::InvalidArgument("Could not infer length of input '",
-                                     arg_->name(), "': ", status.message());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Could not infer length of input '", arg_->name(),
+                       "': ", status.message()));
     }
   }
   return absl::OkStatus();
@@ -152,13 +153,14 @@ absl::Status FakeInputImpl::GetDataType(DataType* dt) const {
       if (attr && attr->has_default_value()) {
         *dt = attr->default_value().type();
       } else {
-        return errors::InvalidArgument("Could not infer type for input '",
-                                       arg_->name(), "': ", status.message());
+        return absl::InvalidArgumentError(
+            absl::StrCat("Could not infer type for input '", arg_->name(),
+                         "': ", status.message()));
       }
     }
   } else {
-    return errors::InvalidArgument("No type or type_attr field in arg '",
-                                   arg_->name(), "'");
+    return absl::InvalidArgumentError(
+        absl::StrCat("No type or type_attr field in arg '", arg_->name(), "'"));
   }
   if (arg_->is_ref()) {
     *dt = MakeRefType(*dt);

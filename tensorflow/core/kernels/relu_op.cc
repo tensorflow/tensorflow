@@ -226,9 +226,9 @@ class ReluOp<Device, qint8>
   void Operate(OpKernelContext* context, const Tensor& input, Tensor* output) {
     auto flat_input = input.flat<qint8>();
     OP_REQUIRES(context, (flat_input.size() % 4) == 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Tensor size must be a multiple of 4 for Relu<qint8>. Got ",
-                    flat_input.size()));
+                    flat_input.size())));
     functor::Relu<Device, qint8> func;
     func(context->eigen_device<Device>(), flat_input, output->flat<qint8>());
   }

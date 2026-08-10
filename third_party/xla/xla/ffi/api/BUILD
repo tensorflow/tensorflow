@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
@@ -36,29 +51,40 @@ filegroup(
         "api.h",
         "c_api.h",
         "ffi.h",
+        "record_api.h",
+        "record_c_api.h",
+        "record_ffi.h",
     ],
 )
 
 filegroup(
     name = "api_headers",
-    srcs = ["api.h"],
+    srcs = [
+        "api.h",
+        "record_api.h",
+    ],
 )
 
 filegroup(
     name = "c_api_headers",
-    srcs = ["c_api.h"],
+    srcs = [
+        "c_api.h",
+        "record_c_api.h",
+    ],
 )
 
 cc_library(
     name = "api",
     hdrs = [":api_headers"],
     visibility = ["//visibility:private"],
-    deps = [":c_api"],
+    deps = [
+        ":c_api",
+    ],
 )
 
 cc_library(
     name = "c_api",
-    hdrs = ["c_api.h"],
+    hdrs = [":c_api_headers"],
 )
 
 cc_library(
@@ -73,6 +99,26 @@ cc_library(
     deps = [
         ":api",
         ":c_api",
+    ],
+)
+
+cc_library(
+    name = "record_api",
+    hdrs = ["record_api.h"],
+    deps = [
+        ":api",
+        ":c_api",
+    ],
+)
+
+cc_library(
+    name = "record_ffi",
+    hdrs = ["record_ffi.h"],
+    deps = [
+        ":api",
+        ":c_api",
+        ":ffi",
+        ":record_api",
     ],
 )
 
@@ -107,7 +153,24 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
+    ],
+)
+
+xla_cc_test(
+    name = "record_ffi_test",
+    srcs = ["record_ffi_test.cc"],
+    deps = [
+        ":c_api",
+        ":ffi",
+        ":record_api",
+        ":record_ffi",
+        "//xla/ffi:call_frame",
+        "//xla/ffi:ffi_api",  # buildcleaner: keep
+        "//xla/ffi:invoke",
+        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest",
     ],
 )

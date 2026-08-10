@@ -1,3 +1,18 @@
+# Copyright 2026 The Bazel Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """Toolchain configs for cross-compiling TensorFlow"""
 
 load(":cc_toolchain_config.bzl", "cc_toolchain_config")
@@ -9,9 +24,9 @@ licenses(["restricted"])
 cc_toolchain_suite(
     name = "cross_compile_toolchain_suite",
     toolchains = {
-        "aarch64": ":linux_aarch64_toolchain",
-        "k8": ":linux_x86_toolchain",
-        "darwin": ":macos_x86_toolchain",
+        "aarch64": ":linux_aarch64_cc_toolchain",
+        "k8": ":linux_x86_cc_toolchain",
+        "darwin": ":macos_x86_cc_toolchain",
     },
 )
 
@@ -27,7 +42,7 @@ filegroup(
 )
 
 cc_toolchain(
-    name = "linux_x86_toolchain",
+    name = "linux_x86_cc_toolchain",
     all_files = ":empty",
     compiler_files = ":empty",
     dwp_files = ":empty",
@@ -112,7 +127,7 @@ cc_toolchain_config(
 )
 
 cc_toolchain(
-    name = "linux_aarch64_toolchain",
+    name = "linux_aarch64_cc_toolchain",
     all_files = ":empty",
     compiler_files = ":empty",
     dwp_files = ":empty",
@@ -198,7 +213,7 @@ cc_toolchain_config(
 )
 
 cc_toolchain(
-    name = "macos_x86_toolchain",
+    name = "macos_x86_cc_toolchain",
     all_files = ":cc_wrapper_and_macos_sysroot",
     compiler_files = ":cc_wrapper_and_macos_sysroot",
     dwp_files = ":empty",
@@ -292,4 +307,32 @@ cc_toolchain_config(
         "-Wno-unused-command-line-argument",
         "-Wno-gnu-offsetof-extensions",
     ],
+)
+
+toolchain(
+    name = "linux_x86_toolchain",
+    exec_compatible_with = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+    toolchain = ":linux_x86_cc_toolchain",
+    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+)
+
+toolchain(
+    name = "linux_aarch64_toolchain",
+    exec_compatible_with = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+        "@platforms//cpu:aarch64",
+    ],
+    toolchain = ":linux_aarch64_cc_toolchain",
+    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
 )

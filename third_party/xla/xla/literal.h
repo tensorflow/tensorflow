@@ -34,11 +34,13 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/base/casts.h"
+#include "absl/base/nullability.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/array.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
@@ -46,7 +48,6 @@ limitations under the License.
 #include "xla/index_util.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
-#include "xla/maybe_owning.h"
 #include "xla/primitive_util.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
@@ -58,6 +59,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/maybe_owning.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/types.h"
 #include "xla/util.h"
@@ -798,8 +800,8 @@ class LiteralBase {
       if (!proto.ParseFromString(shape_bytes)) {
         return InvalidArgument("Failed to parse shape protobuf");
       }
-      TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto));
-      TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
+      ABSL_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto));
+      ABSL_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
       return std::move(shape);
     }
 
@@ -1187,12 +1189,11 @@ class LiteralBase {
     template <typename Fn>
     absl::Status ForEachHelper(const Fn& func, const Piece& piece,
                                ShapeIndex* index) const {
-      TF_RETURN_IF_ERROR(func(*index, piece));
+      ABSL_RETURN_IF_ERROR(func(*index, piece));
       if (auto* tuple_rep = piece.storage_.GetTupleRep()) {
         for (int64_t i = 0; i < tuple_rep->children.size(); ++i) {
           index->push_back(i);
-          TF_RETURN_IF_ERROR(
-              ForEachHelper(func, tuple_rep->children[i], index));
+          ABSL_RETURN_IF_ERROR(ForEachHelper(func, tuple_rep->children[i], index));
           index->pop_back();
         }
       }
@@ -1218,11 +1219,11 @@ class LiteralBase {
     template <typename Fn>
     absl::Status ForEachMutableHelper(const Fn& func, Piece* piece,
                                       ShapeIndex* index) {
-      TF_RETURN_IF_ERROR(func(*index, piece));
+      ABSL_RETURN_IF_ERROR(func(*index, piece));
       if (auto* tuple_rep = piece->storage_.GetTupleRep()) {
         for (int64_t i = 0; i < tuple_rep->children.size(); ++i) {
           index->push_back(i);
-          TF_RETURN_IF_ERROR(
+          ABSL_RETURN_IF_ERROR(
               ForEachMutableHelper(func, &tuple_rep->children[i], index));
           index->pop_back();
         }
@@ -1496,11 +1497,8 @@ class MutableLiteralBase : public LiteralBase {
 
   // The literal may or may not own the storage of the shape. Creating/copying a
   // shape can incur significant overhead which in many case we'd like to avoid,
-  // esp. for small literals.
-  using MaybeOwningShapePtr = MaybeOwning<Shape>;
-
-  // The parent class borrows this shape.
-  MaybeOwningShapePtr shape_;
+  // esp. for small literals. The parent class borrows this shape.
+  tsl::MaybeOwning<Shape> shape_;
 
   // We do not add static type checking for internal generators as these
   // functions are not part of the public API and we construct generators from
@@ -1553,6 +1551,11 @@ class Literal : public MutableLiteralBase {
   // the shape. If false, buffer pointers inside of the Literal::Pieces are set
   // to nullptr.
   static absl::StatusOr<Literal> Make(
+      const Shape& shape, bool allocate_arrays = true,
+      ArrayValueState leaf_array_value_state = ArrayValueState::kKnown);
+
+  // Similar to Make, but returns a unique_ptr to Literal.
+  static absl::StatusOr<absl_nonnull std::unique_ptr<Literal>> MakeUnique(
       const Shape& shape, bool allocate_arrays = true,
       ArrayValueState leaf_array_value_state = ArrayValueState::kKnown);
 
@@ -1761,7 +1764,7 @@ template <typename OutputIterator>
 absl::Status LiteralBase::SerializeWithShapeProto(const ShapeProto& shape_proto,
                                                   OutputIterator output) const {
   SerializeState<OutputIterator> state(shape_proto, output);
-  TF_RETURN_IF_ERROR(root_piece().ForEachSubpieceWithStatus(
+  ABSL_RETURN_IF_ERROR(root_piece().ForEachSubpieceWithStatus(
       [&](const ShapeIndex& shape_index, const Piece& piece) -> absl::Status {
         const Shape& subshape = piece.subshape();
         if (subshape.IsTuple()) {
@@ -1792,9 +1795,9 @@ absl::StatusOr<Literal> Literal::Deserialize(InputIterator begin,
   if (!state.ReadElement(shape_size)) {
     return InvalidArgument("Failed to read shape size");
   }
-  TF_ASSIGN_OR_RETURN(Shape shape, state.ReadShape(shape_size));
+  ABSL_ASSIGN_OR_RETURN(Shape shape, state.ReadShape(shape_size));
   Literal literal(shape);
-  TF_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       literal.mutable_root_piece().ForEachMutableSubpieceWithStatus(
           [&](const ShapeIndex& shape_index, Piece* piece) -> absl::Status {
             const Shape& subshape = piece->subshape();

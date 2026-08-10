@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: sdy_opt %s --split-input-file -xla-sdy-round-trip-import-pipeline 2>&1 | FileCheck %s
 // RUN: sdy_opt %s --split-input-file -xla-sdy-round-trip-import-pipeline='enable-hlo-sharding-v3=true' 2>&1 | FileCheck %s
 
@@ -98,45 +112,42 @@ module @send_with_sdy_sharding_module {
 // -----
 // CHECK-LABEL: func @non_flat_call_graph_all_inlineable
 func.func @non_flat_call_graph_all_inlineable(%arg0: tensor<8xf32>) -> tensor<8xf32> {
-  // CHECK: %0 = sdy.named_computation<"foo">(%arg0)
+  // CHECK: %0 = call @foo(%arg0)
   // CHECK: %1 = stablehlo.negate %0
-  // CHECK: %2 = sdy.named_computation<"baz">(%1)
+  // CHECK: %2 = call @bar(%1)
   // CHECK: return %2 : tensor<8xf32>
   %0 = call @foo(%arg0) {mhlo.frontend_attributes = {inlineable = "true"}} : (tensor<8xf32>) -> tensor<8xf32>
   %1 = stablehlo.negate %0 : tensor<8xf32>
-  %2 = call @baz(%1) {mhlo.frontend_attributes = {inlineable = "true"}} : (tensor<8xf32>) -> tensor<8xf32>
+  %2 = call @bar(%1) {mhlo.frontend_attributes = {inlineable = "true"}} : (tensor<8xf32>) -> tensor<8xf32>
   return %2 : tensor<8xf32>
 }
 
-// CHECK-NOT: func private @foo
+// CHECK-LABEL: func private @foo
 func.func private @foo(%arg0: tensor<8xf32>) -> tensor<8xf32> {
   %0 = stablehlo.add %arg0, %arg0 : tensor<8xf32>
+  // CHECK: call @bar(
   %1 = call @bar(%0) {mhlo.frontend_attributes = {inlineable = "true"}} : (tensor<8xf32>) -> tensor<8xf32>
   return %1 : tensor<8xf32>
 }
 
-// CHECK-NOT: func private @bar
+// CHECK-LABEL: func private @bar
 func.func private @bar(%arg0: tensor<8xf32>) -> tensor<8xf32> {
   %0 = stablehlo.abs %arg0 : tensor<8xf32>
   return %0 : tensor<8xf32>
 }
 
-// CHECK-NOT: func private @baz
-func.func private @baz(%arg0: tensor<8xf32>) -> tensor<8xf32> {
-  %0 = stablehlo.abs %arg0 : tensor<8xf32>
-  return %0 : tensor<8xf32>
-}
+// CHECK-NOT: func private @bar_0
 
 // -----
 // CHECK-LABEL: func @uninlineable_call
 func.func @uninlineable_call(%arg0: tensor<8xf32>) -> tensor<8xf32> {
-  // CHECK: %0 = sdy.named_computation<"foo">(%arg0)
-  // CHECK: return %0 : tensor<8xf32>
+  // CHECK-NEXT: %0 = call @foo(%arg0)
+  // CHECK-NEXT: return %0 : tensor<8xf32>
   %0 = call @foo(%arg0) {mhlo.frontend_attributes = {inlineable = "false"}} : (tensor<8xf32>) -> tensor<8xf32>
   return %0 : tensor<8xf32>
 }
 
-// CHECK-NOT: func private @foo
+// CHECK-LABEL: func private @foo
 func.func private @foo(%arg0: tensor<8xf32>) -> tensor<8xf32> {
   %0 = stablehlo.add %arg0, %arg0 : tensor<8xf32>
   return %0 : tensor<8xf32>

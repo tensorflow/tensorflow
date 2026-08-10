@@ -78,10 +78,10 @@ StatusCallback AllToAll::CheckCounterAndCallDone() {
 absl::Status AllToAll::InitializeCollectiveContext(
     std::shared_ptr<CollectiveContext> col_ctx) {
   if (col_ctx->input->dim_size(0) != col_ctx->col_params->group.group_size) {
-    return errors::InvalidArgument("input to all-to-all first dimension size (",
-                                   col_ctx->input->dim_size(0),
-                                   ") must be the same as the group size (",
-                                   col_ctx->col_params->group.group_size, ")");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "input to all-to-all first dimension size (",
+        col_ctx->input->dim_size(0), ") must be the same as the group size (",
+        col_ctx->col_params->group.group_size, ")"));
   }
   DCHECK(col_ctx->dev_mgr);
   col_ctx_ = col_ctx;

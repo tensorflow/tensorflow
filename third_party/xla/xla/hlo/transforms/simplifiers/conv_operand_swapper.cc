@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -139,14 +140,10 @@ absl::StatusOr<bool> SwapConvolutionOperandsIfBeneficial(
       convolution->precision_config().operand_precision(0));
 
   if (!reverse_dimensions.empty()) {
-    HloInstruction* old_kernel = kernel;
-    TF_ASSIGN_OR_RETURN(kernel, MakeReverseHlo(kernel, reverse_dimensions));
-    if (old_kernel->has_sharding()) {
-      kernel->set_sharding(old_kernel->sharding());
-    }
+    ABSL_ASSIGN_OR_RETURN(kernel, MakeReverseHlo(kernel, reverse_dimensions));
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloInstruction * new_convolution,
       MakeConvolveHlo(
           kernel, input, /*feature_group_count=*/1,
@@ -157,7 +154,7 @@ absl::StatusOr<bool> SwapConvolutionOperandsIfBeneficial(
 
   if (conv_is_lowerable_callback &&
       !conv_is_lowerable_callback(new_convolution)) {
-    TF_RETURN_IF_ERROR(kernel->parent()->RemoveInstruction(new_convolution));
+    ABSL_RETURN_IF_ERROR(kernel->parent()->RemoveInstruction(new_convolution));
     return false;
   }
 
@@ -175,9 +172,9 @@ absl::StatusOr<bool> ConvOperandSwapper::RunImpl(
   for (auto comp : module->computations(execution_threads)) {
     for (HloInstruction* hlo : comp->MakeInstructionPostOrder()) {
       if (auto* convolution = DynCast<HloConvolutionInstruction>(hlo)) {
-        TF_ASSIGN_OR_RETURN(bool convolution_changed,
-                            SwapConvolutionOperandsIfBeneficial(
-                                convolution, conv_is_lowerable_callback_));
+        ABSL_ASSIGN_OR_RETURN(bool convolution_changed,
+                         SwapConvolutionOperandsIfBeneficial(
+                             convolution, conv_is_lowerable_callback_));
         changed |= convolution_changed;
       }
     }

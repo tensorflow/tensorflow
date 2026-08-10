@@ -35,19 +35,17 @@ namespace gpu {
 
 // Analysis of tensor iteration orders within tiled fusions.
 class TritonFusionAnalysis {
-  absl::Status ExecuteForDotFusion(const HloInstruction& dot, int split_k);
+  absl::Status ExecuteForDotFusion(const HloInstruction& dot);
 
  public:
   // Execute the analysis of a fusion computation.
-  // `split_k` indicates whether this operation was converted to the split-K
-  // form and tells the analysis how to interpret the batch dimensions.
   static absl::StatusOr<TritonFusionAnalysis> Execute(
-      const HloComputation& computation, int split_k = 1);
+      const HloComputation& computation);
 
   // Execute the analysis of a dot instruction until it reaches the computation
   // boundaries.
-  static absl::StatusOr<TritonFusionAnalysis> Execute(const HloInstruction& dot,
-                                                      int split_k = 1);
+  static absl::StatusOr<TritonFusionAnalysis> Execute(
+      const HloInstruction& dot);
 
   // A scope is an HLO graph that can be tiled efficiently using same or
   // compatible tile shapes on all operations. GEMM dot fusion has 3 scopes
@@ -128,11 +126,10 @@ class FusionContext {
   // Create fusion context from a dot operand according to
   // the currently supported configurations.
   static absl::StatusOr<FusionContext> FromDotOperand(const HloInstruction& dot,
-                                                      int operand_number,
-                                                      int split_k = 1);
+                                                      int operand_number);
 
   // Create fusion context from dot's output.
-  static FusionContext FromDotOutput(const HloInstruction& dot, int split_k,
+  static FusionContext FromDotOutput(const HloInstruction& dot,
                                      DotRequirements requirements);
 
   // Add dimension orders from `update` to `dim_orders_` and update

@@ -42,39 +42,39 @@ absl::Status RaggedComponentsFromVariant(
     const RaggedTensorVariant* decoded =
         flat_variant.get<RaggedTensorVariant>();
     if (decoded == nullptr) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Input Variant element at index ", i,
-          " doesn't hold a RaggedTensorVariant: ", flat_variant.DebugString());
+          " doesn't hold a RaggedTensorVariant: ", flat_variant.DebugString()));
     }
     decoded_ragged->push_back(*decoded);
     decoded = &decoded_ragged->back();
     // Check ragged rank & types
     if (decoded->ragged_rank() != input_ragged_rank) {
-      return errors::InvalidArgument(
-          "Encoded input RaggedTensorVariant has ragged_rank=",
-          decoded->ragged_rank(), ".  Expected ragged_rank=", input_ragged_rank,
-          ".");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Encoded input RaggedTensorVariant has ragged_rank=",
+                       decoded->ragged_rank(),
+                       ".  Expected ragged_rank=", input_ragged_rank, "."));
     }
     if (decoded->values().dtype() != value_dtype) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Expected values Tensor dtype: ", DataTypeString(value_dtype),
-          ", found: ", DataTypeString(decoded->values().dtype()));
+          ", found: ", DataTypeString(decoded->values().dtype())));
     }
     if (decoded->values().dims() < 1 && output_ragged_rank != 0) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Ragged values must have rank >= 1; encoded scalar element at index ",
-          i, " has values Tensor: ", decoded->values().DebugString());
+          i, " has values Tensor: ", decoded->values().DebugString()));
     }
     for (const auto& splits : decoded->nested_splits()) {
       if (splits.dtype() != split_dtype) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Expected row_splits Tensor dtype: ", DataTypeString(split_dtype),
-            ", found: ", DataTypeString(splits.dtype()));
+            ", found: ", DataTypeString(splits.dtype())));
       }
       if (splits.dims() != 1) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Ragged splits must have rank 1; encoded scalar element at index ",
-            i, " has splits Tensor ", splits.DebugString());
+            i, " has splits Tensor ", splits.DebugString()));
       }
     }
   }
@@ -134,10 +134,10 @@ absl::Status NestedStackRaggedTensors(
 
   if (output_ragged_rank == 0) {
     if (input_ragged_rank > 0) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Expected input_ragged_rank=0 if output_ragged_rank==0.  "
           "Got input_ragged_rank=",
-          input_ragged_rank);
+          input_ragged_rank));
     }
     return StackNonRaggedTensors<VALUE_TYPE>(ragged_components, output_ragged);
   }
@@ -218,11 +218,11 @@ absl::Status NestedStackRaggedTensors(
   int values_size = component_values_shape.dim_size(0);
   for (int i = 1; i < ragged_components.size(); i++) {
     if (ragged_components[i].values().dims() != component_values_shape.dims()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Rank of values must match for all "
           "components; values shape at index 0: ",
           component_values_shape.DebugString(), ", values shape at index ", i,
-          ": ", ragged_components[i].values().shape().DebugString());
+          ": ", ragged_components[i].values().shape().DebugString()));
     }
     values_size += ragged_components[i].values().shape().dim_size(0);
   }
@@ -288,24 +288,24 @@ class RaggedTensorFromVariantOp : public OpKernel {
         input_ragged_rank_ = 0;
       }
       OP_REQUIRES(context, input_ragged_rank_ >= 0,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "Inferred input_ragged_rank (output_ragged_rank - "
                       "encoded_variant.dims()) must be >= 0, found "
                       "output_ragged_rank: ",
                       output_ragged_rank_,
                       ", encoded_variant.dims(): ", encoded_variant.dims(),
-                      ", inferred input_ragged_rank: ", input_ragged_rank_));
+                      ", inferred input_ragged_rank: ", input_ragged_rank_)));
     }
     OP_REQUIRES(
         context,
         (output_ragged_rank_ == 0 && input_ragged_rank_ == 0) ||
             (output_ragged_rank_ ==
              encoded_variant.dims() + input_ragged_rank_),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "output_ragged_rank must be equal to input_ragged_rank + "
             "encoded_ragged.dims(); output_ragged_rank: ",
             output_ragged_rank_, ", input_ragged_rank: ", input_ragged_rank_,
-            ", encoded_variant.dims(): ", encoded_variant.dims(), "."));
+            ", encoded_variant.dims(): ", encoded_variant.dims(), ".")));
 
     // Decode all variants.
     const auto value_dtype = DataTypeToEnum<VALUE_TYPE>::v();

@@ -87,7 +87,7 @@ PythonTensorConverter MakePythonTensorConverter(py::handle py_eager_context) {
     }
     device_name = TFE_GetPythonString(py_device_name.get());
     ctx = reinterpret_cast<TFE_Context*>(
-        PyCapsule_GetPointer(context_handle.get(), nullptr));
+        PyCapsule_GetPointer(context_handle.get(), "TFE_Context"));
   }
 
   return PythonTensorConverter(py_eager_context.ptr(), ctx, device_name);

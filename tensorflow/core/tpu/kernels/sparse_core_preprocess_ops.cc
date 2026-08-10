@@ -36,8 +36,8 @@ limitations under the License.
 #include "hwy/base.h"  // from @com_google_highway
 #include "hwy/contrib/sort/order.h"  // from @com_google_highway
 #include "hwy/contrib/sort/vqsort.h"  // from @com_google_highway
-#include "xla/stream_executor/tpu/tpu_api.h"
-#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "xla/tpu/tpu_api.h"
+#include "xla/tpu/tpu_ops_c_api.h"
 #include "xla/util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -1243,6 +1243,20 @@ ConvertToListOfSparseCoreCooTensorsOp::ConvertToListOfSparseCoreCooTensorsOp(
       absl::InvalidArgumentError(absl::StrCat("num_sc_shards ", num_sc_shards_,
                                               " is not a power of two.")));
 
+  OP_REQUIRES(ctx, num_sc_per_chip_ > 0,
+              absl::InvalidArgumentError(absl::StrCat(
+                  "num_sc_per_chip must be > 0, got ", num_sc_per_chip_)));
+  OP_REQUIRES(ctx, sample_count_ >= num_sc_per_chip_,
+              absl::InvalidArgumentError(absl::StrCat(
+                  "sample_count ", sample_count_,
+                  " must be >= the number of sparsecores per chip ",
+                  num_sc_per_chip_)));
+  OP_REQUIRES(ctx, sample_count_ % num_sc_per_chip_ == 0,
+              absl::InvalidArgumentError(absl::StrCat(
+                  "sample_count ", sample_count_,
+                  " is not divisible by the number of sparsecores per chip ",
+                  num_sc_per_chip_)));
+
   int32_t num_sc_shards_bit = std::log2(num_sc_shards_);
   num_sc_shards_bit_mod_ = (1 << num_sc_shards_bit) - 1;
   num_sc_shards_bit_mod_inv_ = ~num_sc_shards_bit_mod_;
@@ -1680,8 +1694,16 @@ void ConvertToSparseCoreCsrWrappedCooTensorOp::Compute(OpKernelContext* ctx) {
             " elements when there are multiple minibatches for each "
             "sparsecore. But instead got ",
             id_counts_list[sc_id].NumElements(), " elements.")));
-    total_id_count += *(id_counts_list[sc_id].flat<int32_t>().data() +
-                        id_counts_list[sc_id].NumElements() - 1);
+    int64_t source_tensor_size = sorted_row_ids_list[sc_id].NumElements();
+    int32_t last_id_count = *(id_counts_list[sc_id].flat<int32_t>().data() +
+                              id_counts_list[sc_id].NumElements() - 1);
+    OP_REQUIRES(
+        ctx, last_id_count <= source_tensor_size,
+        absl::InvalidArgumentError(absl::StrCat(
+            "The last element of id counts ", last_id_count,
+            " should not exceed the size of the corresponding sorted tensors ",
+            source_tensor_size, " for sparsecore ", sc_id)));
+    total_id_count += last_id_count;
   }
 
   // We use the number of elements in the id_counts_list to determine whether

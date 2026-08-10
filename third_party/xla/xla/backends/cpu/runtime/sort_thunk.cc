@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -123,7 +124,7 @@ absl::StatusOr<std::unique_ptr<SortThunk>> SortThunk::Create(
     Info info, absl::Span<const Input> inputs, int64_t dimension,
     bool is_stable, LessThan less_than,
     std::optional<SortDirection> direction) {
-  TF_ASSIGN_OR_RETURN(auto sort_dims, VerifySortInputs(inputs, dimension));
+  ABSL_ASSIGN_OR_RETURN(auto sort_dims, VerifySortInputs(inputs, dimension));
   return absl::WrapUnique(new SortThunk(std::move(info), inputs, dimension,
                                         is_stable, std::move(less_than),
                                         sort_dims, direction));
@@ -133,7 +134,7 @@ absl::StatusOr<std::unique_ptr<SortThunk>> SortThunk::Create(
     Info info, absl::Span<const Input> inputs, int64_t dimension,
     bool is_stable, std::string comparator_name,
     std::optional<SortDirection> direction) {
-  TF_ASSIGN_OR_RETURN(auto sort_dims, VerifySortInputs(inputs, dimension));
+  ABSL_ASSIGN_OR_RETURN(auto sort_dims, VerifySortInputs(inputs, dimension));
   return absl::WrapUnique(new SortThunk(std::move(info), inputs, dimension,
                                         is_stable, std::move(comparator_name),
                                         sort_dims, direction));
@@ -218,9 +219,8 @@ tsl::AsyncValueRef<SortThunk::ExecuteEvent> SortThunk::Execute(
 
   for (const Input& input : inputs_) {
     size_t idx = data.size();
-    TF_ASSIGN_OR_RETURN(
-        data.emplace_back(),
-        params.buffer_allocations->GetDeviceAddress(input.slice));
+    ABSL_ASSIGN_OR_RETURN(data.emplace_back(),
+                     params.buffer_allocations->GetDeviceAddress(input.slice));
     shapes.push_back(input.shape);
 
     VLOG(3) << absl::StreamFormat("  sort input #%d: %s in slice %s (%p)", idx,
@@ -252,7 +252,7 @@ tsl::AsyncValueRef<SortThunk::ExecuteEvent> SortThunk::Execute(
     }
   });
 
-  TF_RETURN_IF_ERROR(less_than_.status());
+  ABSL_RETURN_IF_ERROR(less_than_.status());
   LessThan* less_than = &less_than_.value();
 
   SortInplace(sort_dims_, absl::MakeSpan(data), shapes, is_stable_, less_than,

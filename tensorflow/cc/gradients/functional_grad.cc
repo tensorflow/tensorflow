@@ -50,6 +50,7 @@ absl::Status PartitionedCallGrad(const Scope& scope, const Operation& op,
                      std::end(grad_inputs));
 
   auto grad = SymbolicGradient(scope, func_inputs, input_dtypes, f);
+  if (!scope.ok()) return scope.status();
   for (int i = 0; i < num_inputs; i++) {
     grad_outputs->push_back(grad[i]);
   }

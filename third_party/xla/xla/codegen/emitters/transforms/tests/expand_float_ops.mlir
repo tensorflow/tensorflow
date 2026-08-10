@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: emitters_opt %s -split-input-file -xla-expand-float-ops -canonicalize | FileCheck %s
 // RUN: emitters_opt %s -split-input-file -xla-expand-float-ops="approximate_tanh=false" -canonicalize
 // RUN | FileCheck %s -check-prefixes=CHECK-NO-APPROX-TANH
@@ -28,6 +42,13 @@ module {
 
 // CHECK-LABEL: @erf
 // CHECK-NOT: erf
+// The lowering must include a saturation select so that erf(x) returns
+// exactly ±1 for |x| >= kErfInvOneMinusHalfULP, instead of evaluating the
+// polynomial on the clamped input (which gives ~0.9999998 for large x).
+// CHECK: math.absf
+// CHECK: arith.cmpf oge
+// CHECK: math.copysign
+// CHECK: arith.select
 
 // -----
 

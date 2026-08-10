@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/strings/string_view.h"
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
@@ -26,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
-#include "xla/python/ifrt/test_util.h"
 #include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable.h"
+#include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -53,6 +54,11 @@ class IfrtServingExecutableTestHelper {
   // IfrtServingExecutable.
   std::unique_ptr<IfrtServingExecutable> MakeExecutable(
       int64_t program_id, std::string mlir_module_path);
+
+  void SetH2DTransferExecutorFactory(
+      std::unique_ptr<H2DTransferExecutorFactory> factory) {
+    h2d_transfer_executor_factory_ = std::move(factory);
+  }
 
   IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry() {
     return &ifrt_restore_tensor_registry_;

@@ -30,6 +30,11 @@ namespace tflite {
 namespace delegates {
 namespace coreml {
 
+GraphBuilder::GraphBuilder(int coreml_version)
+    : coreml_version_(coreml_version) {}
+
+GraphBuilder::~GraphBuilder() = default;
+
 std::string TensorID::ToString() const {
   return std::to_string(node_) + "_" + std::to_string(output_id_);
 }

@@ -41,6 +41,15 @@ class ConvertAsyncCollectivesToSync : public HloModulePass {
     return "convert-async-collectives-to-sync";
   }
 
+  // Replaces an asynchronous collective with its synchronous variant, and
+  // returns the synchronous instruction.
+  //
+  // For example, calling ReplaceWithSyncVariant with an all-gather-start
+  // instruction and an all-gather-done instruction will replace the
+  // instructions with an all-gather instruction.
+  static absl::StatusOr<HloInstruction*> ReplaceWithSyncVariant(
+      HloInstruction* async_start, HloInstruction* async_done);
+
   virtual absl::Status ConvertAsyncInstructionsToSync(
       HloComputation* computation,
       absl::Span<const std::pair<HloInstruction*, HloInstruction*>> async_pairs)

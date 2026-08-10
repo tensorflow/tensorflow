@@ -15,8 +15,12 @@ limitations under the License.
 #include "tsl/platform/retrying_utils.h"
 
 #include <cmath>
-#include <fstream>
+#include <cstdint>
+#include <functional>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/time/time.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
@@ -33,7 +37,7 @@ TEST(RetryingUtilsTest, CallWithRetries_RetryDelays) {
     requested_delays.emplace_back(delay / 1000000.0);
   };
   std::function<absl::Status()> f = []() {
-    return errors::Unavailable("Failed.");
+    return absl::UnavailableError("Failed.");
   };
 
   const auto& status = RetryingUtils::CallWithRetries(
@@ -61,7 +65,7 @@ TEST(RetryingUtilsTest, CallWithRetries_RetryDelays) {
 
 TEST(RetryingUtilsTest, CallWithRetries_NotFoundIsNotRetried) {
   std::vector<absl::Status> results(
-      {errors::Unavailable("Failed."), errors::NotFound("Not found.")});
+      {absl::UnavailableError("Failed."), absl::NotFoundError("Not found.")});
   std::function<absl::Status()> f = [&results]() {
     auto result = results[0];
     results.erase(results.begin());
@@ -86,8 +90,8 @@ TEST(RetryingUtilsTest, CallWithRetries_ImmediateSuccess) {
 }
 
 TEST(RetryingUtilsTest, CallWithRetries_EventualSuccess) {
-  std::vector<absl::Status> results({errors::Unavailable("Failed."),
-                                     errors::Unavailable("Failed again."),
+  std::vector<absl::Status> results({absl::UnavailableError("Failed."),
+                                     absl::UnavailableError("Failed again."),
                                      absl::OkStatus()});
   std::function<absl::Status()> f = [&results]() {
     auto result = results[0];
@@ -111,7 +115,7 @@ TEST(RetryingUtilsTest, DeleteWithRetries_ImmediateSuccess) {
 
 TEST(RetryingUtilsTest, DeleteWithRetries_EventualSuccess) {
   std::vector<absl::Status> delete_results(
-      {errors::Unavailable(""), absl::OkStatus()});
+      {absl::UnavailableError(""), absl::OkStatus()});
   const auto delete_func = [&delete_results]() {
     auto result = delete_results[0];
     delete_results.erase(delete_results.begin());
@@ -123,7 +127,7 @@ TEST(RetryingUtilsTest, DeleteWithRetries_EventualSuccess) {
 
 TEST(RetryingUtilsTest, DeleteWithRetries_PermissionDeniedNotRetried) {
   std::vector<absl::Status> delete_results(
-      {errors::Unavailable(""), errors::PermissionDenied("")});
+      {absl::UnavailableError(""), absl::PermissionDeniedError("")});
   const auto delete_func = [&delete_results]() {
     auto result = delete_results[0];
     delete_results.erase(delete_results.begin());
@@ -135,7 +139,7 @@ TEST(RetryingUtilsTest, DeleteWithRetries_PermissionDeniedNotRetried) {
 
 TEST(RetryingUtilsTest, DeleteWithRetries_SuccessThroughFileNotFound) {
   std::vector<absl::Status> delete_results(
-      {errors::Unavailable(""), errors::NotFound("")});
+      {absl::UnavailableError(""), absl::NotFoundError("")});
   const auto delete_func = [&delete_results]() {
     auto result = delete_results[0];
     delete_results.erase(delete_results.begin());
@@ -146,7 +150,7 @@ TEST(RetryingUtilsTest, DeleteWithRetries_SuccessThroughFileNotFound) {
 }
 
 TEST(RetryingUtilsTest, DeleteWithRetries_FirstNotFoundReturnedAsIs) {
-  std::vector<absl::Status> delete_results({errors::NotFound("")});
+  std::vector<absl::Status> delete_results({absl::NotFoundError("")});
   const auto delete_func = [&delete_results]() {
     auto result = delete_results[0];
     delete_results.erase(delete_results.begin());

@@ -37,7 +37,7 @@ absl::Status ParseTextProto(absl::string_view text_proto,
 inline absl::Status ParseTextProto(
     absl::string_view /* text_proto */, absl::string_view /* prefix_to_strip */,
     tensorflow::protobuf::MessageLite* /* parsed_proto */) {
-  return tensorflow::errors::Unavailable("Cannot parse text protos on mobile.");
+  return absl::UnavailableError("Cannot parse text protos on mobile.");
 }
 
 }  // namespace tfg

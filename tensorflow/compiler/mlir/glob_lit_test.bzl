@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # Test definitions for Lit, the LLVM test runner.
 #
 # This is reusing the LLVM Lit test runner in the interim until the new build
@@ -8,10 +23,6 @@
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load("@rules_python//python:py_test.bzl", "py_test")
-load(
-    "@xla//xla:lit.bzl",
-    "lit_script_with_xla_gpu_cuda_data_dir",
-)
 
 # Default values used by the test runner.
 _default_test_file_exts = ["mlir", ".pbtxt", ".td"]
@@ -93,8 +104,7 @@ def glob_lit_tests(
         driver = _default_driver,
         features = [],
         exec_properties = {},
-        use_lit_test_suite = None,  # @unused
-        hermetic_cuda_data_dir = None):
+        use_lit_test_suite = None):  # @unused
     """Creates all plausible Lit tests (and their inputs) under this directory.
 
     Args:
@@ -112,8 +122,6 @@ def glob_lit_tests(
               and specifying a default driver will abort the tests.
       features: [str], list of extra features to enable.
       exec_properties: a dictionary of properties to pass on.
-      hermetic_cuda_data_dir: string. If set, the tests will be run with a
-        `--xla_gpu_cuda_data_dir` flag set to the hermetic CUDA data directory.
       use_lit_test_suite: unused. For compatibility.
     """
 
@@ -129,23 +137,12 @@ def glob_lit_tests(
     # failure.
     all_tests = []
     for curr_test in tests:
-        final_test_name = curr_test
-        if hermetic_cuda_data_dir:
-            output_file = "with_xla_gpu_cuda_data_dir_{}".format(curr_test)
-            rule_name = "script_{}".format(output_file)
-            lit_script_with_xla_gpu_cuda_data_dir(
-                rule_name,
-                curr_test,
-                output_file,
-                hermetic_cuda_data_dir,
-            )
-            final_test_name = output_file
-        all_tests.append(final_test_name + ".test")
+        all_tests.append(curr_test + ".test")
 
         # Instantiate this test with updated parameters.
         _run_lit_test(
-            name = final_test_name + ".test",
-            data = data + [final_test_name] +
+            name = curr_test + ".test",
+            data = data + [curr_test] +
                    per_test_extra_data.get(curr_test, []),
             size = size_override.get(curr_test, default_size),
             tags = default_tags + tags_override.get(curr_test, []),

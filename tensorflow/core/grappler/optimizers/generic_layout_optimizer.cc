@@ -464,7 +464,7 @@ absl::Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
   if (cluster == nullptr) {
     LOG(WARNING)
         << "generic layout optimizer was called with cluster == nullptr";
-    return errors::Aborted("cluster == nullptr.");
+    return absl::AbortedError("cluster == nullptr.");
   }
   if (!enforced_layout_.empty() && enforced_layout_ != "NHWC" &&
       enforced_layout_ != "NCHW") {
@@ -497,7 +497,7 @@ absl::Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
       // TODO(intel-tf): Add functionality for NHWC_TO_NCHW layout conversion on
       // CPU.
       case RewriterConfig::NHWC_TO_NCHW:
-        return errors::Aborted(
+        return absl::AbortedError(
             "Conversion from NHWC to NCHW is currently not  available for "
             "CPU.");
       default:

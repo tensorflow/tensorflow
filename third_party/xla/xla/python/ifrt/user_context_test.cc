@@ -30,6 +30,11 @@ namespace ifrt {
 
 namespace {
 
+TEST(BasicUserContextTest, DebugString) {
+  UserContextRef context = BasicUserContext::Create("test message");
+  EXPECT_EQ(context->DebugString(), "test message");
+}
+
 TEST(AnnotatedUserContextTest, Id) {
   const UserContextId kUserContextId(100);
   UserContextRef context = TestUserContext::Create(kUserContextId);

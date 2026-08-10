@@ -92,7 +92,7 @@ class AsyncEagerNode : public EagerNode {
   AsyncEagerNode* AsAsync() final { return this; }
 
   absl::Status Run() final {
-    return errors::Unimplemented("Don't call AsyncEagerNode::Run().");
+    return absl::UnimplementedError("Don't call AsyncEagerNode::Run().");
   }
 };
 

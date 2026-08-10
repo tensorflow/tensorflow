@@ -20,17 +20,36 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/util.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/host_info.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/regexp.h"
 
 namespace xla {
 
+DumpOptions DumpOptions::Build(const DebugOptions& opts,
+                               absl::string_view module_name) {
+  DumpOptions dump_options(opts);
+  if (dump_options.dump_hlo_to_subfolder && !dump_options.dump_to.empty() &&
+      !dump_options.dumping_to_stdout() && !module_name.empty()) {
+    std::string pid_hostname_dir = absl::StrFormat(
+        "%s_%d", tsl::port::Hostname(), tsl::Env::Default()->GetProcessId());
+    dump_options.dump_to = tsl::io::JoinPath(
+        dump_options.dump_to, SanitizeFileName(std::string(module_name)),
+        SanitizeFileName(pid_hostname_dir));
+  }
+  return dump_options;
+}
+
 DumpOptions::DumpOptions(const DebugOptions& opts)
     : dump_to(opts.xla_dump_to()),
       dump_as_text(opts.xla_dump_hlo_as_text()),
       dump_as_proto(opts.xla_dump_hlo_as_proto()),
+      dump_as_riegeli(opts.xla_dump_hlo_as_riegeli()),
       dump_as_dot(opts.xla_dump_hlo_as_dot()),
       dump_as_html(opts.xla_dump_hlo_as_html()),
       dump_as_url(opts.xla_dump_hlo_as_url()),
@@ -38,6 +57,7 @@ DumpOptions::DumpOptions(const DebugOptions& opts)
       dump_snapshots(opts.xla_dump_hlo_snapshots()),
       dump_unoptimized_snapshots(opts.xla_dump_hlo_unoptimized_snapshots()),
       dump_include_timestamp(opts.xla_dump_include_timestamp()),
+      dump_hlo_to_subfolder(opts.xla_dump_hlo_to_subfolder()),
       dump_max_hlo_modules(opts.xla_dump_max_hlo_modules()),
       dump_compress_protos(opts.xla_dump_compress_protos()),
       dump_fdo_profiles(opts.xla_gpu_experimental_dump_fdo_profiles()),
@@ -51,8 +71,8 @@ DumpOptions::DumpOptions(const DebugOptions& opts)
   // Did the user specify an explicit format for dumping?
   bool output_format_other_than_url_specified =
       opts.xla_dump_hlo_as_text() || opts.xla_dump_hlo_as_proto() ||
-      opts.xla_dump_hlo_as_dot() || opts.xla_dump_hlo_as_html() ||
-      opts.xla_dump_hlo_snapshots() ||
+      opts.xla_dump_hlo_as_riegeli() || opts.xla_dump_hlo_as_dot() ||
+      opts.xla_dump_hlo_as_html() || opts.xla_dump_hlo_snapshots() ||
       opts.xla_dump_hlo_unoptimized_snapshots();
   bool output_format_specified =
       output_format_other_than_url_specified || opts.xla_dump_hlo_as_url();

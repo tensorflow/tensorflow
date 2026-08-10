@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -95,7 +96,7 @@ class CachingHloEvaluatorTest : public ::testing::Test {
 
   absl::StatusOr<int64_t> ChildCount() const {
     std::vector<std::string> children;
-    TF_RETURN_IF_ERROR(tsl::Env::Default()->GetChildren(cache_dir_, &children));
+    ABSL_RETURN_IF_ERROR(tsl::Env::Default()->GetChildren(cache_dir_, &children));
     return children.size();
   }
 

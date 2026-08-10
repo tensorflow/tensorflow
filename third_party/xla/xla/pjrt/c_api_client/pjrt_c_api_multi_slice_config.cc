@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
-#include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_multi_slice_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 
 namespace pjrt {
 

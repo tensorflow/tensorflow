@@ -27,7 +27,6 @@ enum class MemorySpace : uint8_t {
   kDevice = 0,
   kUnified,
   kCollective,
-  kP2P,
   kHost = 5,
 };
 

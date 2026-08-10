@@ -57,7 +57,7 @@ TestCluster::~TestCluster() {
 
 absl::Status TestCluster::Initialize() {
   if (initialized_) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Test cluster has already been initialized.");
   }
   initialized_ = true;

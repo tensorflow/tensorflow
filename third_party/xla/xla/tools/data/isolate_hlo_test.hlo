@@ -1,0 +1,16 @@
+HloModule complex_conv
+
+ENTRY complex_conv {
+  %input = f32[1,224,224,3] parameter(0)
+  %filter = f32[7,7,3,64] parameter(1)
+  %bias = f32[64] parameter(2)
+  
+  // A fairly complex convolution with padding and stride
+  %conv = f32[1,112,112,64] convolution(f32[1,224,224,3] %input, f32[7,7,3,64] %filter), window={size=7x7 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f
+  
+  // Another operation to broadcast
+  %broadcasted_bias = f32[1,112,112,64] broadcast(f32[64] %bias), dimensions={3}
+  
+  // And finally an add, but we will target extracting the conv instruction
+  ROOT %add = f32[1,112,112,64] add(f32[1,112,112,64] %conv, f32[1,112,112,64] %broadcasted_bias)
+}

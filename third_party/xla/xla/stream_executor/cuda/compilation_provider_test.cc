@@ -24,6 +24,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/compilation_provider_test.h"
 #include "xla/stream_executor/cuda/composite_compilation_provider.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/driver_compilation_provider.h"
 #include "xla/stream_executor/cuda/nvjitlink_compilation_provider.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
@@ -39,6 +41,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/cuda/subprocess_compilation.h"
 #include "xla/stream_executor/cuda/subprocess_compilation_provider.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -85,10 +88,10 @@ void CompilationProviderTest::SetUp() {
 absl::StatusOr<std::unique_ptr<CompilationProvider>>
 CompilationProviderTest::CreateCompilationProvider(absl::string_view name) {
   if (name == kSubprocessCompilationProviderName) {
-    TF_ASSIGN_OR_RETURN(auto ptxas,
-                        FindCudaExecutable("ptxas", "/does/not/exist"));
-    TF_ASSIGN_OR_RETURN(auto nvlink,
-                        FindCudaExecutable("nvlink", "/does/not/exist"));
+    ABSL_ASSIGN_OR_RETURN(auto ptxas,
+                     FindCudaExecutable("ptxas", "/does/not/exist"));
+    ABSL_ASSIGN_OR_RETURN(auto nvlink,
+                     FindCudaExecutable("nvlink", "/does/not/exist"));
     return std::make_unique<SubprocessCompilationProvider>(ptxas, nvlink);
   }
 
@@ -101,7 +104,11 @@ CompilationProviderTest::CreateCompilationProvider(absl::string_view name) {
   }
 
   if (name == kDriverCompilationProviderName) {
-    return std::make_unique<DriverCompilationProvider>();
+    ABSL_ASSIGN_OR_RETURN(stream_executor::Platform * platform,
+                     PlatformManager::PlatformWithId(kCudaPlatformId));
+    ABSL_ASSIGN_OR_RETURN(stream_executor::StreamExecutor * executor,
+                     platform->ExecutorForDevice(0));
+    return std::make_unique<DriverCompilationProvider>(executor);
   }
 
   if (name == kCompositeNvptxCompilerAndNvJitLinkCompilationProviderName) {
@@ -723,6 +730,21 @@ TEST_P(CompilationProviderTest, CancelsOnRegSpill) {
       compilation_provider()->CompileAndLink(
           kDefaultComputeCapability, {Ptx{kSpillingKernelPrefix}}, options),
       absl_testing::IsOk());
+}
+
+TEST_P(CompilationProviderTest, PropagatesAdditionalPtxasFlags) {
+  if (GetParam() == kDriverCompilationProviderName) {
+    GTEST_SKIP() << "Driver compilation provider does not use ptxas flags";
+  }
+
+  CompilationOptions options;
+  options.additional_ptxas_flags = {"--this-is-an-invalid-ptxas-flag"};
+
+  EXPECT_THAT(
+      compilation_provider()->Compile(kDefaultComputeCapability, kStandalonePtx,
+                                      options),
+      absl_testing::StatusIs(_, HasSubstr("ptxas fatal   : Unknown option "
+                                          "'-this-is-an-invalid-ptxas-flag'")));
 }
 
 TEST_P(CompilationProviderTest,

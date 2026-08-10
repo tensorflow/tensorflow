@@ -19,7 +19,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
-#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -38,6 +38,8 @@ class GemmRewriteTestBase : public HloPjRtGpuTestBase {
 
   bool IsRocm() const;
 
+  bool IsSycl() const;
+
   bool IsBlackwell() const;
 
   stream_executor::GpuComputeCapability CudaHopperOrRocmCapability();
@@ -45,6 +47,8 @@ class GemmRewriteTestBase : public HloPjRtGpuTestBase {
   DebugOptions GetDebugOptionsForTest() const override;
 
   bool SkipGpuBlasLtTest();
+
+  bool SkipGroupedGemmTest();
 
   bool HasFp8Support() const;
 
@@ -54,9 +58,7 @@ class GemmRewriteTestBase : public HloPjRtGpuTestBase {
 
 // A test fixture class for tests which should have similar results with legacy
 // cublas and cublasLt
-class ParameterizedGemmRewriteTestBase
-    : public GemmRewriteTestBase,
-      public ::testing::WithParamInterface<bool> {
+class ParameterizedGemmRewriteTestBase : public GemmRewriteTestBase {
  public:
   ParameterizedGemmRewriteTestBase();
 

@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "tsl/platform/random.h"
 
+#include <cstdint>
 #include <memory>
 #include <random>
 
+#include "absl/base/attributes.h"
+#include "absl/base/const_init.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/mutex.h"
 
 namespace tsl {
 namespace random {
@@ -35,8 +38,8 @@ std::mt19937_64 InitRngWithDefaultSeed() { return std::mt19937_64(); }
 
 uint64_t New64() {
   static std::mt19937_64* rng = InitRngWithRandomSeed();
-  static mutex mu(LINKER_INITIALIZED);
-  mutex_lock l(mu);
+  ABSL_CONST_INIT static absl::Mutex mu(absl::kConstInit);
+  absl::MutexLock l(mu);
   return (*rng)();
 }
 
@@ -48,8 +51,8 @@ uint64_t ThreadLocalNew64() {
 
 uint64_t New64DefaultSeed() {
   static std::mt19937_64 rng = InitRngWithDefaultSeed();
-  static mutex mu(LINKER_INITIALIZED);
-  mutex_lock l(mu);
+  ABSL_CONST_INIT static absl::Mutex mu(absl::kConstInit);
+  absl::MutexLock l(mu);
   return rng();
 }
 

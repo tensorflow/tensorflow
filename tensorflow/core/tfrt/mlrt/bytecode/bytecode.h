@@ -140,7 +140,7 @@ class Allocator {
 
   template <typename T>
   BcAddr_t Allocate() {
-    static_assert(std::is_trivial<T>::value, "T must be trivial.");
+    static_assert(std::is_trivial_v<T>, "T must be trivial.");
     return Allocate(sizeof(T), alignof(T));
   }
 
@@ -159,8 +159,7 @@ class Allocator {
 template <typename T, typename Enable = void>
 struct AccessTraits {
   using StorageType = T;
-  static_assert(std::is_trivial<StorageType>::value,
-                "StorageType must be trivial.");
+  static_assert(std::is_trivial_v<StorageType>, "StorageType must be trivial.");
 
   using ConstructorType = void;
 
@@ -199,8 +198,7 @@ struct AccessTraits<T, std::void_t<typename T::NonTrivialConstructorType>> {
   // Non-trivial types should provide a member struct `StorageType` to
   // specify the storage layout.
   using StorageType = typename T::StorageType;
-  static_assert(std::is_trivial<StorageType>::value,
-                "StorageType must be trivial.");
+  static_assert(std::is_trivial_v<StorageType>, "StorageType must be trivial.");
 
   // Non-trivial types should provide a member type `NonTrivialConstructorType`
   // for constructing storages.
@@ -365,8 +363,8 @@ class Vector {
     DEFINE_BYTECODE_FIELD(SizeType, size);
     DEFINE_BYTECODE_FIELD(SizeType, offset);
   };
-  static_assert(std::is_trivial<Storage>::value, "StorageType is trivial");
-  static_assert(std::is_standard_layout<Storage>::value,
+  static_assert(std::is_trivial_v<Storage>, "StorageType is trivial");
+  static_assert(std::is_standard_layout_v<Storage>,
                 "StorageType has standard layout");
   static_assert(sizeof(Storage) == 2 * sizeof(SizeType));
   static_assert(alignof(Storage) == alignof(SizeType));
@@ -433,9 +431,9 @@ class Vector {
     // this vector directly instead of constructing the elements one by one.
     template <
         typename U = T,
-        typename std::enable_if<
+        std::enable_if_t<
             std::is_same_v<typename AccessTraits<U>::ConstructorType, void>,
-            int>::type = 0>
+            int> = 0>
     void Place(const char* data, size_t size) {
       AccessTraits<U>::Place(allocator_, address_ + storage_.offset, data, size,
                              storage_.size);

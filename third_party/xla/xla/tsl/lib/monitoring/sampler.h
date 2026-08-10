@@ -18,8 +18,7 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
-#include "absl/status/status.h"
-#include "tsl/platform/platform.h"
+#include "tsl/platform/platform.h"  // IWYU pragma: keep
 // clang-format on
 
 // We replace this implementation with a null implementation for mobile
@@ -28,10 +27,9 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/base/no_destructor.h"
+#include "absl/status/status.h"
 #include "xla/tsl/lib/monitoring/metric_def.h"
-#include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/protobuf/histogram.pb.h"
 
 namespace tsl {
@@ -92,14 +90,24 @@ class Sampler {
     return new Sampler<NumLabels>(std::move(buckets));
   }
 
+  template <typename... MetricDefArgs>
+  static absl::NoDestructor<Sampler> NoDestructor(
+      const MetricDef<MetricKind::kCumulative, HistogramProto, NumLabels>&
+          metric_def,
+      std::unique_ptr<Buckets> buckets) {
+    return absl::NoDestructor<Sampler<NumLabels>>(std::move(buckets));
+  }
+
   template <typename... Labels>
   SamplerCell* GetCell(const Labels&... labels) {
     return &default_sampler_cell_;
   }
 
-  Status GetStatus() { return OkStatus(); }
+  absl::Status GetStatus() { return absl::OkStatus(); }
 
  private:
+  friend class absl::NoDestructor<Sampler<NumLabels>>;
+
   Sampler(std::unique_ptr<Buckets> buckets) : buckets_(std::move(buckets)) {}
 
   SamplerCell default_sampler_cell_;
@@ -118,7 +126,6 @@ class Sampler {
 #include <cstdint>
 #include <initializer_list>
 #include <limits>
-#include <map>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -126,14 +133,16 @@ class Sampler {
 #include <utility>
 #include <vector>
 
+#include "absl/base/no_destructor.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/lib/histogram/histogram.h"
 #include "xla/tsl/lib/monitoring/collection_registry.h"
+#include "xla/tsl/lib/monitoring/label_array_utils.h"
 #include "xla/tsl/lib/monitoring/metric_def.h"
-#include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/histogram.pb.h"
-#include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
 namespace monitoring {
@@ -246,8 +255,8 @@ class Buckets {
   //   [scale * growth_factor^(N-1), scale * growth_factor^N),
   //   [scale * growth_factor^N, +DBL_MAX]
   // }
-  // where N is the largest integer such that
-  //   scale * growth_factor^N < DBL_MAX
+  // where N is the smallest integer such that
+  //   scale * growth_factor^N > UINT32_MAX
   static std::unique_ptr<Buckets> Exponential(double scale,
                                               double growth_factor) {
     return Exponential(scale, growth_factor, /*domain_max=*/{});
@@ -295,21 +304,34 @@ class Sampler {
 
   // Creates the metric based on the metric-definition arguments and buckets.
   //
-  // Example;
-  // auto* sampler_with_label = Sampler<1>::New({"/tensorflow/sampler",
-  //   "Tensorflow sampler", "MyLabelName"}, {10.0, 20.0, 30.0});
+  // Example:
+  // auto* sampler_with_label = Sampler<1>::New(
+  //     {"/tensorflow/sampler", "Tensorflow sampler", "MyLabelName"},
+  //     {10.0, 20.0, 30.0});
   static Sampler* New(const MetricDef<MetricKind::kCumulative, HistogramProto,
                                       NumLabels>& metric_def,
                       std::unique_ptr<Buckets> buckets);
 
+  // Creates the metric based on the metric-definition arguments and buckets.
+  //
+  // Example:
+  // auto sampler_with_label = Sampler<1>::NoDestructor(
+  //     {"/tensorflow/sampler", "Tensorflow sampler", "MyLabelName"},
+  //     {10.0, 20.0, 30.0});
+  static absl::NoDestructor<Sampler> NoDestructor(
+      const MetricDef<MetricKind::kCumulative, HistogramProto, NumLabels>&
+          metric_def,
+      std::unique_ptr<Buckets> buckets);
+
   // Retrieves the cell for the specified labels, creating it on demand if
   // not already present.
   template <typename... Labels>
-  SamplerCell* GetCell(const Labels&... labels) TF_LOCKS_EXCLUDED(mu_);
+  SamplerCell* GetCell(const Labels&... labels) ABSL_LOCKS_EXCLUDED(mu_);
 
   absl::Status GetStatus() { return status_; }
 
  private:
+  friend class absl::NoDestructor<Sampler<NumLabels>>;
   friend class SamplerCell;
 
   Sampler(const MetricDef<MetricKind::kCumulative, HistogramProto, NumLabels>&
@@ -323,7 +345,7 @@ class Sampler {
 
               absl::ReaderMutexLock l(mu_);
               for (const auto& cell : cells_) {
-                metric_collector.CollectValue(cell.first, cell.second.value());
+                metric_collector.CollectValue(cell.first, cell.second->value());
               }
             })) {
     if (registration_handle_) {
@@ -340,10 +362,9 @@ class Sampler {
   absl::Status status_;
 
   using LabelArray = std::array<std::string, NumLabels>;
-  // we need a container here that guarantees pointer stability of the value,
-  // namely, the pointer of the value should remain valid even after more cells
-  // are inserted.
-  std::map<LabelArray, SamplerCell> cells_ TF_GUARDED_BY(mu_);
+  using LabelViewArray = std::array<absl::string_view, NumLabels>;
+
+  LabelArrayMap<SamplerCell, NumLabels> cells_ ABSL_GUARDED_BY(mu_);
 
   // The metric definition. This will be used to identify the metric when we
   // register it for collection.
@@ -381,29 +402,35 @@ Sampler<NumLabels>* Sampler<NumLabels>::New(
 }
 
 template <int NumLabels>
+absl::NoDestructor<Sampler<NumLabels>> Sampler<NumLabels>::NoDestructor(
+    const MetricDef<MetricKind::kCumulative, HistogramProto, NumLabels>&
+        metric_def,
+    std::unique_ptr<Buckets> buckets) {
+  return absl::NoDestructor<Sampler<NumLabels>>(metric_def, std::move(buckets));
+}
+
+template <int NumLabels>
 template <typename... Labels>
 SamplerCell* Sampler<NumLabels>::GetCell(const Labels&... labels)
-    TF_LOCKS_EXCLUDED(mu_) {
+    ABSL_LOCKS_EXCLUDED(mu_) {
   // Provides a more informative error message than the one during array
   // construction below.
   static_assert(sizeof...(Labels) == NumLabels,
                 "Mismatch between Sampler<NumLabels> and number of labels "
                 "provided in GetCell(...).");
 
-  const LabelArray& label_array = {{labels...}};
-  {
-    absl::ReaderMutexLock l(mu_);
-    const auto found_it = cells_.find(label_array);
-    if (found_it != cells_.end()) {
-      return &(found_it->second);
-    }
-  }
+  LabelViewArray label_view_array = {{labels...}};
   absl::MutexLock l(mu_);
-  return &(cells_
-               .emplace(std::piecewise_construct,
-                        std::forward_as_tuple(label_array),
-                        std::forward_as_tuple(buckets_->explicit_bounds()))
-               .first->second);
+  const auto found_it = cells_.find(label_view_array);
+  if (found_it != cells_.end()) {
+    return found_it->second.get();
+  }
+  return cells_
+      .emplace(std::piecewise_construct,
+               std::forward_as_tuple(LabelArray{std::string(labels)...}),
+               std::forward_as_tuple(
+                   std::make_unique<SamplerCell>(buckets_->explicit_bounds())))
+      .first->second.get();
 }
 
 }  // namespace monitoring

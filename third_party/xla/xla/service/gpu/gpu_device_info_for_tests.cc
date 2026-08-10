@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 
+#include <utility>
+
 #include "xla/stream_executor/cuda/cuda_core_info_table.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
@@ -70,11 +72,14 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::H100SXMDeviceInfo(
   b.set_device_memory_size(84'978'434'048);
   b.set_registers_per_core_limit(65536);
   b.set_registers_per_block_limit(65536);
-  b.set_runtime_version(stream_executor::SemanticVersion{12, 4, 0});
-  b.set_driver_version(stream_executor::SemanticVersion{12, 4, 0});
+  b.set_runtime_version(stream_executor::SemanticVersion{12, 8, 0});
+  b.set_driver_version(stream_executor::SemanticVersion{12, 8, 0});
 
   b.set_fpus_per_core(
       stream_executor::gpu::GetFpusPerCore(*cc.cuda_compute_capability()));
+  stream_executor::DeviceInterconnectInfo interconnect_info;
+  interconnect_info.active_links = 18;
+  b.set_device_interconnect_info(std::move(interconnect_info));
   stream_executor::gpu::FillExecutionUnitDesc(*cc.cuda_compute_capability(),
                                               b.clock_rate_ghz(), b);
   return b;
@@ -101,11 +106,14 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::B200SXMDeviceInfo(
   b.set_device_memory_size(193'273'528'320);
   b.set_registers_per_core_limit(65536);
   b.set_registers_per_block_limit(65536);
-  b.set_runtime_version(stream_executor::SemanticVersion{12, 4, 0});
-  b.set_driver_version(stream_executor::SemanticVersion{12, 4, 0});
+  b.set_runtime_version(stream_executor::SemanticVersion{13, 2, 0});
+  b.set_driver_version(stream_executor::SemanticVersion{13, 2, 0});
 
   b.set_fpus_per_core(
       stream_executor::gpu::GetFpusPerCore(*cc.cuda_compute_capability()));
+  stream_executor::DeviceInterconnectInfo interconnect_info;
+  interconnect_info.active_links = 18;
+  b.set_device_interconnect_info(std::move(interconnect_info));
   stream_executor::gpu::FillExecutionUnitDesc(*cc.cuda_compute_capability(),
                                               b.clock_rate_ghz(), b);
   return b;
@@ -139,6 +147,23 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::AMDRX7900DeviceInfo() {
   stream_executor::DeviceDescription b;
   b.set_gpu_compute_capability(stream_executor::GpuComputeCapability(
       stream_executor::RocmComputeCapability("gfx1100")));
+  b.set_threads_per_block_limit(1024);
+  b.set_threads_per_warp(32);
+  b.set_shared_memory_per_block(64 * 1024);
+  b.set_shared_memory_per_block_optin(64 * 1024);
+  b.set_shared_memory_per_core(64 * 1024);
+  b.set_threads_per_core_limit(2048);
+  b.set_core_count(96);
+  b.set_fpus_per_core(128);
+  b.set_block_dim_limit_x(2'147'483'647);
+  b.set_block_dim_limit_y(2'147'483'647);
+  b.set_block_dim_limit_z(2'147'483'647);
+  b.set_memory_bandwidth(960'000'000'000);
+  b.set_l2_cache_size(6 * 1024 * 1024);
+  b.set_clock_rate_ghz(2.5);
+  b.set_device_memory_size(24'000'000'000);
+  b.set_runtime_version(stream_executor::SemanticVersion{6, 0, 0});
+  b.set_driver_version(stream_executor::SemanticVersion{6, 0, 0});
   return b;
 }
 

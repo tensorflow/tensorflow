@@ -50,6 +50,8 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.U32: np.dtype('uint32'),
     PrimitiveType.U64: np.dtype('uint64'),
     PrimitiveType.F4E2M1FN: np.dtype(ml_dtypes.float4_e2m1fn),
+    PrimitiveType.F6E2M3FN: np.dtype(ml_dtypes.float6_e2m3fn),
+    PrimitiveType.F6E3M2FN: np.dtype(ml_dtypes.float6_e3m2fn),
     PrimitiveType.F8E3M4: np.dtype(ml_dtypes.float8_e3m4),
     PrimitiveType.F8E4M3: np.dtype(ml_dtypes.float8_e4m3),
     PrimitiveType.F8E4M3FN: np.dtype(ml_dtypes.float8_e4m3fn),
@@ -447,3 +449,50 @@ def make_replica_groups(replica_groups):
         _make_replica_group_proto(group) for group in replica_groups
     ]
   return replica_groups_protos
+
+
+def get_backend_config_string(instruction_proto, module_proto=None) -> str:
+  """Extracts the backend_config string from an HloInstructionProto.
+
+  If the payload is stored externally, module_proto must be provided to look up
+  the string using the stored ID.
+
+  Args:
+    instruction_proto: An HloInstructionProto.
+    module_proto: An optional HloModuleProto.
+
+  Returns:
+    The backend config string.
+  """
+  if instruction_proto.HasField('backend_config_payload'):
+    payload = instruction_proto.backend_config_payload
+    if payload.HasField('id'):
+      if module_proto is not None and 0 <= payload.id < len(
+          module_proto.payloads
+      ):
+        return (
+            module_proto.payloads[payload.id].decode('utf-8')
+            if isinstance(module_proto.payloads[payload.id], bytes)
+            else module_proto.payloads[payload.id]
+        )
+      raise ValueError(
+          f'Payload requested ID {payload.id} but payloads array has size'
+          f' {len(module_proto.payloads) if module_proto else 0}'
+      )
+    return (
+        payload.value.decode('utf-8')
+        if isinstance(payload.value, bytes)
+        else payload.value
+    )
+  return (
+      instruction_proto.backend_config.decode('utf-8')
+      if isinstance(instruction_proto.backend_config, bytes)
+      else instruction_proto.backend_config
+  )
+
+
+# Expose hlo submodule.
+if hasattr(_xla, 'hlo_module_from_text'):
+  hlo = _xla
+else:
+  from . import _hlo as hlo  # pylint: disable=g-import-not-at-top

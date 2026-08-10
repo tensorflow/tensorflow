@@ -484,7 +484,7 @@ REGISTER_OP("DecodeCSV")
         ShapeHandle v;
         TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(i), 1, &v));
         if (c->Rank(c->input(i)) == 1 && c->Value(c->Dim(v, 0)) > 1) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(
               "Shape of a default must be a length-0 or length-1 vector, or a "
               "scalar.");
         }

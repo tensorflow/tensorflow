@@ -18,7 +18,9 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/kernels/conv_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -189,12 +191,13 @@ class ConvBackpropInputOp : public XlaOpKernel {
                                        xla::ValueInferenceMode::kUpperBound));
     xla::Shape input_shape =
         TensorShapeToXLAShape(ctx->input_xla_type(1), input_tensor_shape);
-    OP_REQUIRES(
-        ctx, input_shape.dimensions().size() == attrs_.num_spatial_dims + 2,
-        errors::InvalidArgument("The rank of the specified input shape must be "
-                                "num_spatial_dims + 2. Expected ",
-                                attrs_.num_spatial_dims + 2, " got ",
-                                input_shape.dimensions().size()));
+    OP_REQUIRES(ctx,
+                input_shape.dimensions().size() == attrs_.num_spatial_dims + 2,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "The rank of the specified input shape must be "
+                    "num_spatial_dims + 2. Expected ",
+                    attrs_.num_spatial_dims + 2, " got ",
+                    input_shape.dimensions().size())));
     xla::XlaOp input_sizes = ctx->Input(0);
     absl::StatusOr<xla::XlaOp> in_backprop = MakeXlaBackpropInputConvOp(
         ctx->op_kernel().type_string(), input_shape, ctx->Input(1),

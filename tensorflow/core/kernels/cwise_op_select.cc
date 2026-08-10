@@ -64,38 +64,38 @@ class SelectOp : public OpKernel {
   void ComputeBroadcasting(OpKernelContext* ctx, const Tensor* cond,
                            const Tensor* then, const Tensor* else_) {
     // Preliminary validation of sizes.
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsVector(cond->shape()),
-        errors::InvalidArgument("'cond' must be a vector, but saw shape: ",
-                                cond->shape().DebugString()));
-    OP_REQUIRES(
-        ctx,
-        FastBoundsCheck(cond->NumElements(),
-                        std::numeric_limits<Eigen::DenseIndex>::max()),
-        errors::InvalidArgument("cond vector larger than ",
-                                std::numeric_limits<Eigen::DenseIndex>::max()));
-    OP_REQUIRES(
-        ctx,
-        FastBoundsCheck(then->flat_outer_dims<T>().dimension(1),
-                        std::numeric_limits<Eigen::DenseIndex>::max()),
-        errors::InvalidArgument("flat outer dims dim 1 size >= ",
-                                std::numeric_limits<Eigen::DenseIndex>::max()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(cond->shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("'cond' must be a vector, but saw shape: ",
+                                 cond->shape().DebugString())));
+    OP_REQUIRES(ctx,
+                FastBoundsCheck(cond->NumElements(),
+                                std::numeric_limits<Eigen::DenseIndex>::max()),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "cond vector larger than ",
+                    std::numeric_limits<Eigen::DenseIndex>::max())));
+    OP_REQUIRES(ctx,
+                FastBoundsCheck(then->flat_outer_dims<T>().dimension(1),
+                                std::numeric_limits<Eigen::DenseIndex>::max()),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "flat outer dims dim 1 size >= ",
+                    std::numeric_limits<Eigen::DenseIndex>::max())));
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsVectorOrHigher(then->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "'then' must be at least a vector, but saw shape: ",
-                    then->shape().DebugString()));
+                    then->shape().DebugString())));
     OP_REQUIRES(
         ctx, then->shape().dim_size(0) == cond->NumElements(),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Number of batches of 'then' must match size of 'cond', but saw: ",
-            then->shape().dim_size(0), " vs. ", cond->NumElements()));
+            then->shape().dim_size(0), " vs. ", cond->NumElements())));
     OP_REQUIRES(
         ctx, then->shape().IsSameSize(else_->shape()),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "'then' and 'else' must have the same size.  but received: ",
             then->shape().DebugString(), " vs. ",
-            else_->shape().DebugString()));
+            else_->shape().DebugString())));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
@@ -125,10 +125,10 @@ class SelectOp : public OpKernel {
                      const Tensor* then, const Tensor* else_) {
     OP_REQUIRES(
         ctx, then->shape().IsSameSize(else_->shape()),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "'then' and 'else' must have the same size.  but received: ",
             then->shape().DebugString(), " vs. ",
-            else_->shape().DebugString()));
+            else_->shape().DebugString())));
 
     functor::SelectScalarHandler<Device, T> handler;
     handler(ctx, cond, then, else_);
@@ -154,10 +154,10 @@ class SelectV2Op : public OpKernel {
                         else_->shape().dim_sizes()},
                        false);
     OP_REQUIRES(ctx, bcast.IsValid(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "condition ", cond->shape().DebugString(), ", then ",
                     then->shape().DebugString(), ", and else ",
-                    else_->shape().DebugString(), " must be broadcastable"));
+                    else_->shape().DebugString(), " must be broadcastable")));
 
     // Broadcast `cond`, `then` and `else` to combined shape,
     // in order to obtain the reshape.
@@ -167,21 +167,21 @@ class SelectV2Op : public OpKernel {
     OP_REQUIRES(
         ctx,
         cond_bcast.IsValid() && then_bcast.IsValid() && else_bcast.IsValid(),
-        errors::InvalidArgument("condition ", cond->shape().DebugString(),
-                                ", then ", then->shape().DebugString(),
-                                ", and else ", else_->shape().DebugString(),
-                                " must be broadcastable"));
+        absl::InvalidArgumentError(absl::StrCat(
+            "condition ", cond->shape().DebugString(), ", then ",
+            then->shape().DebugString(), ", and else ",
+            else_->shape().DebugString(), " must be broadcastable")));
 
     // Combined shape should be the final shape.
-    OP_REQUIRES(
-        ctx,
-        cond_bcast.output_shape() == bcast.output_shape() &&
-            then_bcast.output_shape() == bcast.output_shape() &&
-            else_bcast.output_shape() == bcast.output_shape(),
-        errors::InvalidArgument("condition ", cond->shape().DebugString(),
-                                ", then ", then->shape().DebugString(),
-                                ", and else ", else_->shape().DebugString(),
-                                " must be broadcastable to the same shape"));
+    OP_REQUIRES(ctx,
+                cond_bcast.output_shape() == bcast.output_shape() &&
+                    then_bcast.output_shape() == bcast.output_shape() &&
+                    else_bcast.output_shape() == bcast.output_shape(),
+                absl::InvalidArgumentError(
+                    absl::StrCat("condition ", cond->shape().DebugString(),
+                                 ", then ", then->shape().DebugString(),
+                                 ", and else ", else_->shape().DebugString(),
+                                 " must be broadcastable to the same shape")));
 
     Tensor* output = nullptr;
     const TensorShape output_shape = BCast::ToShape(bcast.output_shape());
@@ -232,9 +232,9 @@ class SelectV2Op : public OpKernel {
         HANDLE_DIM(8);
         break;
       default:
-        ctx->SetStatus(errors::Unimplemented(
+        ctx->SetStatus(absl::UnimplementedError(absl::StrCat(
             "Broadcast between ", ctx->input(0).shape().DebugString(), " and ",
-            ctx->input(1).shape().DebugString(), " is not supported yet."));
+            ctx->input(1).shape().DebugString(), " is not supported yet.")));
         break;
     }
   }

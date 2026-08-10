@@ -84,10 +84,10 @@ struct EinsumHelper {
     // We know that label_to_dim_sizes has the size to accommodate named labels.
     if (label_to_dim_sizes->at(label) != 0 &&
         label_to_dim_sizes->at(label) != input_dim) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Expected dimension ", label_to_dim_sizes->at(label), " at axis ",
           axis, " of the input shaped ", input.shape().DebugString(),
-          " but got dimension ", input_dim);
+          " but got dimension ", input_dim));
     }
     (*label_to_dim_sizes)[label] = input_dim;
     return absl::OkStatus();
@@ -103,8 +103,9 @@ struct EinsumHelper {
       OperandLabelCounts* input_label_counts, LabelCounts* output_label_counts,
       LabelToDimSizes* label_to_dim_sizes) {
     if (inputs.size() != input_labels->size()) {
-      return errors::InvalidArgument("Expected ", input_labels->size(),
-                                     " inputs but got: ", inputs.size());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Expected ", input_labels->size(),
+                       " inputs but got: ", inputs.size()));
     }
     const int num_inputs = inputs.size();
 
@@ -118,9 +119,9 @@ struct EinsumHelper {
 
       if (!input_has_ellipsis[i]) {
         if (inputs[i].dims() != labels->size()) {
-          return errors::InvalidArgument("Expected input ", i, " to have rank ",
-                                         labels->size(),
-                                         " but got: ", inputs[i].dims());
+          return absl::InvalidArgumentError(
+              absl::StrCat("Expected input ", i, " to have rank ",
+                           labels->size(), " but got: ", inputs[i].dims()));
         }
         for (int label_idx = 0; label_idx < labels->size(); ++label_idx) {
           const int label = (*labels)[label_idx];
@@ -132,9 +133,9 @@ struct EinsumHelper {
 
       // Input has an ellipsis.
       if (inputs[i].dims() + 1 < labels->size()) {
-        return errors::InvalidArgument(
-            "Expected input ", i, " to have rank at least ", labels->size() - 1,
-            " but got: ", inputs[i].dims());
+        return absl::InvalidArgumentError(
+            absl::StrCat("Expected input ", i, " to have rank at least ",
+                         labels->size() - 1, " but got: ", inputs[i].dims()));
       }
       int ellipsis_axis = -1;
       const int num_bcast_dims = inputs[i].dims() - labels->size() + 1;
@@ -170,10 +171,10 @@ struct EinsumHelper {
       InsertBroadcastLabels(max_bcast_dims, num_named_labels, ellipsis_axis,
                             output_labels, output_label_counts);
     } else if (max_bcast_dims > 0) {
-      return errors::InvalidArgument(
-          "Output contains ", max_bcast_dims,
-          " broadcasting dimension(s) but no ellipsis "
-          "(...) was found in the output subscripts.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Output contains ", max_bcast_dims,
+                       " broadcasting dimension(s) but no ellipsis "
+                       "(...) was found in the output subscripts."));
     }
     // Populate EinsumDimensionType for the new broadcasting labels.
     label_types->resize(num_named_labels + max_bcast_dims,
@@ -195,9 +196,9 @@ struct EinsumHelper {
   static absl::Status CopyFrom(const Tensor& input, const TensorShape& shape,
                                Tensor* output) {
     if (output->CopyFrom(input, shape)) return absl::OkStatus();
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "Encountered error while reshaping a Tensor of shape ",
-        input.shape().DebugString(), " to shape ", shape.DebugString());
+        input.shape().DebugString(), " to shape ", shape.DebugString()));
   }
 
   // Returns whether transposing would be a no-op; whether input has rank < 2 or
@@ -307,9 +308,9 @@ struct EinsumHelper {
       NDIMS_CASE(5);
       NDIMS_CASE(6);
       default:
-        return errors::Unimplemented(
+        return absl::UnimplementedError(absl::StrCat(
             "Unsupported rank: ", reshape.size(),
-            " while handling repeated indices. Up to rank 6 is supported.");
+            " while handling repeated indices. Up to rank 6 is supported."));
 #undef NDIMS_CASE
     }
     return absl::OkStatus();
@@ -443,9 +444,9 @@ struct EinsumHelper {
     MatMulBCast bcast(inputs[0].shape().dim_sizes(),
                       inputs[1].shape().dim_sizes());
     if (!bcast.IsValid()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Invalid broadcasting dimensions: ", inputs[0].shape().DebugString(),
-          " vs. ", inputs[1].shape().DebugString());
+          " vs. ", inputs[1].shape().DebugString()));
     }
     Tensor lhs;
     TF_RETURN_IF_ERROR(ReshapeToRank3(inputs[0], bcast.x_batch_size(), &lhs));

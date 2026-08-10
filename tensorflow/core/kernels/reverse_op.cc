@@ -119,9 +119,9 @@ DoHandleReverseCase(OpKernelContext* context, const Tensor& input,
     static_assert(sizeof(complex128) == 16, "complex128 must be 16 bytes");
     ReverseRows<complex128, NUM_CHANNELS>(context, input, result);
   } else {
-    context->CtxFailure(errors::InvalidArgument(DataTypeString(input.dtype()),
-                                                " has unexpected size of ",
-                                                sizeof(T), " bytes"));
+    context->CtxFailure(absl::InvalidArgumentError(
+        absl::StrCat(DataTypeString(input.dtype()), " has unexpected size of ",
+                     sizeof(T), " bytes")));
   }
 }
 
@@ -166,9 +166,9 @@ class ReverseOp : public OpKernel {
     const Tensor& input = context->input(0);
     // If input is provided, check to make sure the first dimension is valid.
     if (input.dims() > 0) {
-      OP_REQUIRES(
-          context, input.dim_size(0) != 0,
-          errors::InvalidArgument("Invalid input first dimension. Found 0."));
+      OP_REQUIRES(context, input.dim_size(0) != 0,
+                  absl::InvalidArgumentError(
+                      "Invalid input first dimension. Found 0."));
     }
     const Tensor& dims = context->input(1);
 
@@ -177,17 +177,17 @@ class ReverseOp : public OpKernel {
     } else {
       const int input_dims = input.dims();
       OP_REQUIRES(context, TensorShapeUtils::IsVector(dims.shape()),
-                  errors::InvalidArgument("'dims' must be 1-dimension, not ",
-                                          dims.dims()));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "'dims' must be 1-dimension, not ", dims.dims())));
 
       OP_REQUIRES(
           context, input_dims == dims.dim_size(0),
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "'dims' must have the same number of values as 'input' has "
               "dimensions. 'input' has ",
-              input_dims, "'dims' has ", dims.dim_size(0), " values"));
+              input_dims, "'dims' has ", dims.dim_size(0), " values")));
       OP_REQUIRES(context, input_dims <= 8,
-                  errors::Unimplemented(
+                  absl::UnimplementedError(
                       "reverse is not implemented for tensors of rank > 8."));
 
       Tensor* output = nullptr;
@@ -257,8 +257,8 @@ class ReverseV2Op : public OpKernel {
       const auto& axes_sparse_flat = sparse_dims.flat<Tidx>();
 
       OP_REQUIRES(context, TensorShapeUtils::IsVector(sparse_dims_shape),
-                  errors::InvalidArgument("'dims' must be 1-dimension, not ",
-                                          sparse_dims.dims()));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "'dims' must be 1-dimension, not ", sparse_dims.dims())));
       absl::InlinedVector<bool, 8> axes_dense(input_dims, false);
       for (int dummy = 0; dummy < axes_sparse_flat.size(); dummy++) {
         Tidx axis = internal::SubtleMustCopy<Tidx>(axes_sparse_flat(dummy));
@@ -274,7 +274,7 @@ class ReverseV2Op : public OpKernel {
       }
 
       OP_REQUIRES(context, input_dims <= 8,
-                  errors::Unimplemented(
+                  absl::UnimplementedError(
                       "reverse is not implemented for tensors of rank > 8."));
 
       Tensor* output = nullptr;

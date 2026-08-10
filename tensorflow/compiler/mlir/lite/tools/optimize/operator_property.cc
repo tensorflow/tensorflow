@@ -85,6 +85,11 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant, int number_of_bits) {
       property.outputs = {{0, tensor_property_default}};
       property.version = 2;
       break;
+    case BuiltinOperator_SQRT:
+      property.inputs = {{0, tensor_property_default}};
+      property.outputs = {{0, tensor_property_default}};
+      property.version = 2;
+      break;
     case BuiltinOperator_ADD:
       property.inputs = {{0, tensor_property_default},
                          {1, tensor_property_default}};

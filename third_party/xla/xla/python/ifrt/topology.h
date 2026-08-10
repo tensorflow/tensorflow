@@ -18,22 +18,21 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <string>
 #include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::ifrt {
 
-class Topology : public llvm::RTTIExtends<Topology, llvm::RTTIRoot> {
+class Topology : public RTTIExtends<Topology, RTTIRoot> {
  public:
   // Returns a string that identifies the platform (CPU/GPU/TPU).
   virtual absl::string_view platform_name() const = 0;
@@ -66,9 +65,9 @@ class Topology : public llvm::RTTIExtends<Topology, llvm::RTTIRoot> {
   virtual absl::StatusOr<xla::Layout> GetDefaultLayout(
       PrimitiveType element_type, absl::Span<const int64_t> dims) const = 0;
 
-  // Serializes the topology for use in cache keys. (No guarantees on
-  // stability).
-  virtual absl::StatusOr<std::string> Serialize() const = 0;
+  // Returns a fingerprint of the topology for use in cache keys. (No guarantees
+  // on stability).
+  virtual absl::StatusOr<uint64_t> Fingerprint() const = 0;
 
   // Returns vendor specific attributes about the topology.
   virtual const AttributeMap& Attributes() const = 0;

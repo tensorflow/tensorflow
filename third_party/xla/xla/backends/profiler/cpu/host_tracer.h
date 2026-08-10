@@ -19,10 +19,16 @@ limitations under the License.
 #include <limits>
 #include <memory>
 
+#include "xla/tsl/profiler/backends/cpu/traceme_recorder.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 
 namespace xla {
 namespace profiler {
+
+struct HostTracerChunk {
+  uint64_t start_timestamp_ns;
+  tsl::profiler::TraceMeRecorder::Events events;
+};
 
 struct HostTracerOptions {
   // Levels of host tracing:
@@ -34,6 +40,7 @@ struct HostTracerOptions {
   // - Level 3 enables tracing of all level 2 TraceMe(s) and more verbose
   //           (low-level) program execution details (cheap TF ops, etc).
   int trace_level = 2;
+  bool enable_source_location = true;
   uint64_t filter_mask = std::numeric_limits<uint64_t>::max();
 };
 

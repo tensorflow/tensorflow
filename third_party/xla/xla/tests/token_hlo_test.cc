@@ -30,12 +30,12 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace {
 
-class TokenHloTest : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
-};
+class TokenHloTest : public HloPjRtInterpreterReferenceMixin<HloTestBase> {};
 
 TEST_F(TokenHloTest, SingleTokenInstruction) {
   std::unique_ptr<HloModule> module = CreateNewVerifiedModule();

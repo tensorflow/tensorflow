@@ -86,6 +86,17 @@ TEST(FloorDivModel, BroadcastFloorDiv) {
   EXPECT_THAT(model.GetOutput(), ElementsAre(-4, 3, 3, -3));
 }
 
+TEST(FloorDivModel, BroadcastFloorDivRankFive) {
+  FloorDivModel<int32_t> model({TensorType_INT32, {1, 2, 1, 2, 2}},
+                               {TensorType_INT32, {1, 1, 2}},
+                               {TensorType_INT32, {}});
+  model.PopulateTensor<int32_t>(model.input1(), {10, -9, -11, 7, 8, -5, -4, 3});
+  model.PopulateTensor<int32_t>(model.input2(), {-3, 2});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 1, 2, 2));
+  EXPECT_THAT(model.GetOutput(), ElementsAre(-4, -5, 3, 3, -3, -3, 1, 1));
+}
+
 template <typename T>
 class FloatFloorDivTest : public ::testing::Test {};
 

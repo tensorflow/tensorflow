@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/core/c/common.h"
 
+#include <cstdarg>
 #include <cstddef>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
@@ -149,6 +151,35 @@ TEST(Quantization, TestQuantizationFree) {
   TfLiteTensorFree(&t);
 }
 
+TEST(Quantization, TestMultiAxisQuantizationCloneAndFree) {
+  auto* params = reinterpret_cast<TfLiteMultiAxisQuantization*>(
+      malloc(sizeof(TfLiteMultiAxisQuantization)));
+  params->scales = 1;
+  params->zero_points = -1;
+  params->blocksize = 32;
+  params->quantized_dimensions = BuildTfLiteArray<int>({0, 2}).release();
+  TfLiteQuantization quantization = {
+      /*type=*/kTfLiteMultiAxisQuantization,
+      /*params=*/params,
+  };
+
+  TfLiteQuantization clone = TfLiteQuantizationClone(quantization);
+
+  EXPECT_THAT(clone.type, Eq(kTfLiteMultiAxisQuantization));
+  ASSERT_THAT(clone.params, Not(AnyOf(nullptr, quantization.params)));
+  auto* clone_params =
+      reinterpret_cast<TfLiteMultiAxisQuantization*>(clone.params);
+  EXPECT_THAT(clone_params->scales, Eq(params->scales));
+  EXPECT_THAT(clone_params->zero_points, Eq(params->zero_points));
+  EXPECT_THAT(clone_params->blocksize, Eq(params->blocksize));
+  EXPECT_THAT(clone_params->quantized_dimensions,
+              TfLiteArrayIs(params->quantized_dimensions));
+  EXPECT_NE(clone_params->quantized_dimensions, params->quantized_dimensions);
+
+  TfLiteQuantizationFree(&clone);
+  TfLiteQuantizationFree(&quantization);
+}
+
 TEST(Sparsity, TestSparsityFree) {
   TfLiteTensor t = {};
   // Set these values, otherwise TfLiteTensorFree has uninitialized values.
@@ -231,6 +262,107 @@ TEST(TensorCopy, TensorCopy_INVALID) {
   src.bytes = 10;
   dst.bytes = 12;
   EXPECT_EQ(kTfLiteError, TfLiteTensorCopy(&src, &dst));
+}
+
+class RecordingTfLiteAllocator {
+ public:
+  RecordingTfLiteAllocator()
+      : allocator_{this, &RecordingTfLiteAllocator::AllocateCallback,
+                   &RecordingTfLiteAllocator::ReallocateCallback,
+                   &RecordingTfLiteAllocator::DeallocateCallback} {}
+
+  ~RecordingTfLiteAllocator() { std::free(pointer_); }
+
+  TfLiteAllocator* allocator() { return &allocator_; }
+  size_t allocation_bytes() const { return allocation_bytes_; }
+  int reallocation_count() const { return reallocation_count_; }
+  bool callback_arguments_match() const { return callback_arguments_match_; }
+
+ private:
+  static void* AllocateCallback(void* data, size_t bytes, size_t alignment) {
+    return static_cast<RecordingTfLiteAllocator*>(data)->Allocate(bytes,
+                                                                  alignment);
+  }
+
+  static void* ReallocateCallback(void* data, void* ptr, size_t old_bytes,
+                                  size_t new_bytes, size_t alignment) {
+    return static_cast<RecordingTfLiteAllocator*>(data)->Reallocate(
+        ptr, old_bytes, new_bytes, alignment);
+  }
+
+  static void DeallocateCallback(void* data, void* ptr, size_t bytes,
+                                 size_t alignment) {
+    static_cast<RecordingTfLiteAllocator*>(data)->Deallocate(ptr, bytes,
+                                                             alignment);
+  }
+
+  void* Allocate(size_t bytes, size_t alignment) {
+    if (pointer_ != nullptr || alignment > alignof(std::max_align_t)) {
+      callback_arguments_match_ = false;
+      return nullptr;
+    }
+    pointer_ = std::malloc(bytes);
+    if (pointer_ != nullptr) {
+      allocation_bytes_ = bytes;
+      alignment_ = alignment;
+    }
+    return pointer_;
+  }
+
+  void* Reallocate(void* ptr, size_t old_bytes, size_t new_bytes,
+                   size_t alignment) {
+    callback_arguments_match_ &= ptr == pointer_ &&
+                                 old_bytes == allocation_bytes_ &&
+                                 alignment == alignment_;
+    void* new_pointer = std::realloc(ptr, new_bytes);
+    if (new_pointer != nullptr) {
+      pointer_ = new_pointer;
+      allocation_bytes_ = new_bytes;
+      alignment_ = alignment;
+      ++reallocation_count_;
+    }
+    return new_pointer;
+  }
+
+  void Deallocate(void* ptr, size_t bytes, size_t alignment) {
+    callback_arguments_match_ &= ptr == pointer_ &&
+                                 bytes == allocation_bytes_ &&
+                                 alignment == alignment_;
+    std::free(ptr);
+    pointer_ = nullptr;
+    allocation_bytes_ = 0;
+  }
+
+  TfLiteAllocator allocator_;
+  void* pointer_ = nullptr;
+  size_t allocation_bytes_ = 0;
+  size_t alignment_ = 0;
+  int reallocation_count_ = 0;
+  bool callback_arguments_match_ = true;
+};
+
+TEST(TestTensorRealloc, CustomAllocatorShrinkKeepsAllocationSizeInSync) {
+  RecordingTfLiteAllocator allocator;
+  TfLiteTensor tensor{};
+  tensor.allocation_type = kTfLiteDynamic;
+
+  ASSERT_EQ(TfLiteTensorResizeMaybeCopyWithAllocator(
+                /*num_bytes=*/100, &tensor, /*preserve_data=*/true,
+                allocator.allocator()),
+            kTfLiteOk);
+  EXPECT_EQ(allocator.allocation_bytes(), 116);
+
+  ASSERT_EQ(TfLiteTensorResizeMaybeCopyWithAllocator(
+                /*num_bytes=*/50, &tensor, /*preserve_data=*/true,
+                allocator.allocator()),
+            kTfLiteOk);
+  EXPECT_EQ(tensor.bytes, 50);
+  EXPECT_EQ(allocator.allocation_bytes(), 66);
+  EXPECT_EQ(allocator.reallocation_count(), 1);
+
+  TfLiteTensorDataFreeWithAllocator(&tensor, allocator.allocator());
+  EXPECT_TRUE(allocator.callback_arguments_match());
+  EXPECT_EQ(allocator.allocation_bytes(), 0);
 }
 
 TEST(TestTensorRealloc, TensorReallocMoreBytesSucceeds) {
@@ -374,9 +506,9 @@ TEST(TestTensorRealloc, TensorReallocLargeBytesFails) {
   const size_t large_bytes = std::numeric_limits<size_t>::max() - 16;
   // Subtract 16 to account for adding 16 for XNN_EXTRA_BYTES
   EXPECT_EQ(TfLiteTensorRealloc(large_bytes, tensor), kTfLiteError);
+  EXPECT_EQ(tensor->data.data, data);
 
   TfLiteTensorFree(tensor);
-  free(data);
   free(tensor);
 }
 
@@ -1008,6 +1140,66 @@ TEST(TensorCloneTest, CloneATensorAttributes) {
   TfLiteTensorFree(&model);
 
   // model.sparsity;
+}
+
+static char last_error[1024];
+static void MockReportError(struct TfLiteContext* context, const char* format,
+                            ...) {
+  va_list args;
+  va_start(args, format);
+  vsnprintf(last_error, sizeof(last_error), format, args);
+  va_end(args);
+}
+
+TEST(EnsureOk, NoMessage) {
+  TfLiteContext context;
+  context.ReportError = MockReportError;
+  last_error[0] = '\0';
+
+  auto test_fn = [](TfLiteContext* ctx) -> TfLiteStatus {
+    TF_LITE_ENSURE_OK(ctx, kTfLiteError);
+    return kTfLiteOk;
+  };
+
+  EXPECT_EQ(test_fn(&context), kTfLiteError);
+  EXPECT_STREQ(last_error, "");
+}
+
+TEST(EnsureOk, WithMessage) {
+  TfLiteContext context;
+  context.ReportError = MockReportError;
+  last_error[0] = '\0';
+
+  auto test_fn = [](TfLiteContext* ctx) -> TfLiteStatus {
+    TF_LITE_ENSURE_OK(ctx, kTfLiteError, "Error code: %d", 42);
+    return kTfLiteOk;
+  };
+
+  EXPECT_EQ(test_fn(&context), kTfLiteError);
+  EXPECT_THAT(last_error, ::testing::HasSubstr("Error code: 42"));
+  EXPECT_THAT(last_error, ::testing::HasSubstr("common_test.cc"));
+}
+
+TEST(TensorFree, NullTensor_DoesNotCrash) { TfLiteTensorFree(nullptr); }
+
+// Regression tests for TfLiteTensorResizeMaybeCopy safety checks (#115068).
+
+TEST(TfLiteTensorResizeMaybeCopyTest, NullTensorReturnsError) {
+  EXPECT_EQ(TfLiteTensorResizeMaybeCopy(16, /*tensor=*/nullptr,
+                                        /*preserve_data=*/false),
+            kTfLiteError);
+}
+
+TEST(TfLiteTensorResizeMaybeCopyTest, IntegerOverflowReturnsError) {
+  TfLiteTensor tensor;
+  memset(&tensor, 0, sizeof(tensor));
+  tensor.allocation_type = kTfLiteDynamic;
+  // num_bytes close to SIZE_MAX — addition of 16 would overflow.
+  size_t huge = std::numeric_limits<size_t>::max() - 7;
+  EXPECT_EQ(TfLiteTensorResizeMaybeCopy(huge, &tensor,
+                                        /*preserve_data=*/false),
+            kTfLiteError);
+  // Clean up (no allocation should have happened).
 }
 
 }  // namespace tflite

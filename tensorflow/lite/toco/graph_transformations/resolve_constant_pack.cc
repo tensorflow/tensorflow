@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstddef>
+#include <cstring>
 #include <vector>
 
+#include "absl/log/absl_check.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
@@ -29,9 +30,9 @@ namespace toco {
 namespace {
 
 template <ArrayDataType Type>
-void Pack(Model* model, PackOperator const& op) {
+void Pack(Model* model, const PackOperator& op) {
   auto& output_array = model->GetArray(op.outputs[0]);
-  CHECK(output_array.data_type == Type);
+  ABSL_CHECK(output_array.data_type == Type);
 
   // Create a buffer for the output array
   std::vector<DataType<Type>>& output_data =
@@ -39,17 +40,19 @@ void Pack(Model* model, PackOperator const& op) {
   output_data.resize(RequiredBufferSizeForShape(output_array.shape()));
 
   // Pack inputs into buffer
-  CHECK_EQ(op.axis, 0) << "Packing only supported along first axis";
-  int dst_offset = 0;
-  for (size_t i = 0; i < op.inputs.size(); i++) {
+  size_t dst_offset = 0;
+  for (const auto& input : op.inputs) {
     // Append array data to output for each input array
-    const auto& input_array = model->GetArray(op.inputs[i]);
-    int input_size = RequiredBufferSizeForShape(input_array.shape());
-    memcpy(&output_data[dst_offset], &input_array.GetBuffer<Type>().data[0],
+    const auto& input_array = model->GetArray(input);
+    size_t input_size = RequiredBufferSizeForShape(input_array.shape());
+    ABSL_CHECK_GE(input_array.GetBuffer<Type>().data.size(), input_size);
+    ABSL_CHECK_LE(dst_offset + input_size, output_data.size());
+    memcpy(output_data.data() + dst_offset,
+           input_array.GetBuffer<Type>().data.data(),
            input_size * ElementSize(Type));
     dst_offset += input_size;
   }
-  CHECK_EQ(dst_offset, output_data.size());
+  ABSL_CHECK_EQ(dst_offset, output_data.size());
 }
 
 }  // namespace
@@ -64,8 +67,8 @@ absl::Status ResolveConstantPack::Run(Model* model, std::size_t op_index,
   }
   const auto* op = static_cast<const PackOperator*>(base_op);
 
-  CHECK_GE(op->inputs.size(), 1);
-  CHECK_EQ(op->outputs.size(), 1);
+  ABSL_CHECK_GE(op->inputs.size(), 1);
+  ABSL_CHECK_EQ(op->outputs.size(), 1);
   auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.data_type == ArrayDataType::kNone) {
     // Yield until the output type has been set by PropagateArrayDataTypes
@@ -78,8 +81,9 @@ absl::Status ResolveConstantPack::Run(Model* model, std::size_t op_index,
   }
 
   for (const auto& input : op->inputs) {
-    if (!IsConstantParameterArray(*model, input)) {
-      // Yield if any input is mutable
+    if (!IsConstantParameterArray(*model, input) ||
+        !model->GetArray(input).has_shape()) {
+      // Yield if any input is mutable or lacks a shape
       return absl::OkStatus();
     }
   }
@@ -87,11 +91,11 @@ absl::Status ResolveConstantPack::Run(Model* model, std::size_t op_index,
   int axis = op->axis;
   if (axis < 0) {
     // Handle negative axis
-    axis += model->GetArray(op->inputs[0]).shape().dims().size();
+    axis += model->GetArray(op->inputs[0]).shape().dims().size() + 1;
   }
-  CHECK_EQ(axis, 0) << "Packing only supported along 0th axis";
+  ABSL_CHECK_EQ(axis, 0) << "Packing only supported along 0th axis";
 
-  CHECK(!output_array.buffer);
+  ABSL_CHECK(!output_array.buffer);
   switch (output_array.data_type) {
     case ArrayDataType::kFloat:
       Pack<ArrayDataType::kFloat>(model, *op);

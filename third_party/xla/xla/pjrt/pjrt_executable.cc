@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/proto/executable_metadata.pb.h"
 #include "xla/pjrt/proto/execute_options.pb.h"
+#include "xla/pjrt/utils.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_layout.h"
@@ -87,8 +89,8 @@ absl::StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
   output.set_allow_in_place_mlir_modification(allow_in_place_mlir_modification);
   output.set_matrix_unit_operand_precision(matrix_unit_operand_precision);
   output.set_parameter_is_tupled_arguments(parameter_is_tupled_arguments);
-  TF_ASSIGN_OR_RETURN(*output.mutable_executable_build_options(),
-                      executable_build_options.ToProto());
+  ABSL_ASSIGN_OR_RETURN(*output.mutable_executable_build_options(),
+                   executable_build_options.ToProto());
   output.set_compile_portable_executable(compile_portable_executable);
   output.set_profile_version(profile_version);
   if (!serialized_multi_slice_config.empty()) {
@@ -106,9 +108,6 @@ absl::StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
   if (gpu_target_config.has_value()) {
     *output.mutable_target_config() = gpu_target_config->ToProto();
   }
-  if (compiler_variant.has_value()) {
-    output.set_compiler_variant(*compiler_variant);
-  }
   return output;
 }
 
@@ -125,7 +124,7 @@ absl::StatusOr<CompileOptions> CompileOptions::FromProto(
     std::vector<Shape> output_argument_layouts;
     output_argument_layouts.reserve(proto.argument_layouts_size());
     for (const auto& argument_layout : proto.argument_layouts()) {
-      TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(argument_layout));
+      ABSL_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(argument_layout));
       output_argument_layouts.emplace_back(std::move(shape));
     }
     output.argument_layouts = std::move(output_argument_layouts);
@@ -134,22 +133,19 @@ absl::StatusOr<CompileOptions> CompileOptions::FromProto(
       proto.allow_in_place_mlir_modification();
   output.matrix_unit_operand_precision = proto.matrix_unit_operand_precision();
   output.parameter_is_tupled_arguments = proto.parameter_is_tupled_arguments();
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       ExecutableBuildOptions executable_build_options,
       ExecutableBuildOptionsFromProto(proto.executable_build_options()));
   output.executable_build_options = executable_build_options;
   output.compile_portable_executable = proto.compile_portable_executable();
   output.profile_version = proto.profile_version();
-  TF_ASSIGN_OR_RETURN(output.env_option_overrides,
-                      LoadEnvOptionOverrides(proto.env_option_overrides()));
+  ABSL_ASSIGN_OR_RETURN(output.env_option_overrides,
+                   LoadEnvOptionOverrides(proto.env_option_overrides()));
 
   if (proto.has_target_config()) {
-    TF_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         output.gpu_target_config,
         Compiler::GpuTargetConfig::FromProto(proto.target_config()));
-  }
-  if (proto.has_compiler_variant()) {
-    output.compiler_variant = proto.compiler_variant();
   }
   return output;
 }
@@ -213,6 +209,9 @@ absl::StatusOr<ExecuteOptionsProto> ExecuteOptions::ToProto() const {
         "serializable");
   }
 
+  proto.set_seed(seed);
+  proto.set_use_output_arena(use_output_arena);
+
   return proto;
 }
 
@@ -243,6 +242,8 @@ absl::StatusOr<ExecuteOptions> ExecuteOptions::FromProto(
   options.non_donatable_input_indices.insert(
       proto.non_donatable_input_indices().begin(),
       proto.non_donatable_input_indices().end());
+  options.seed = proto.seed();
+  options.use_output_arena = proto.use_output_arena();
 
   return options;
 }
@@ -263,6 +264,9 @@ CompiledMemoryStatsProto CompiledMemoryStats::ToProto() const {
   proto.set_host_temp_size_in_bytes(host_temp_size_in_bytes);
   proto.set_peak_memory_in_bytes(peak_memory_in_bytes);
   proto.set_total_size_in_bytes(total_size_in_bytes);
+  proto.set_total_allocation_bytes(total_allocation_bytes);
+  proto.set_indefinite_allocations(indefinite_allocations);
+  proto.set_peak_unpadded_heap_bytes(peak_unpadded_heap_bytes);
   return proto;
 }
 
@@ -283,6 +287,9 @@ CompiledMemoryStats CompiledMemoryStats::FromProto(
   stats.host_temp_size_in_bytes = proto.host_temp_size_in_bytes();
   stats.peak_memory_in_bytes = proto.peak_memory_in_bytes();
   stats.total_size_in_bytes = proto.total_size_in_bytes();
+  stats.total_allocation_bytes = proto.total_allocation_bytes();
+  stats.indefinite_allocations = proto.indefinite_allocations();
+  stats.peak_unpadded_heap_bytes = proto.peak_unpadded_heap_bytes();
   return stats;
 }
 
@@ -325,7 +332,7 @@ std::optional<std::vector<OpSharding>> PjRtExecutable::GetParameterShardings()
 }
 
 absl::StatusOr<std::vector<Shape>> PjRtExecutable::GetOutputShapes() const {
-  TF_ASSIGN_OR_RETURN(auto modules, GetHloModules());
+  ABSL_ASSIGN_OR_RETURN(auto modules, GetHloModules());
   std::vector<Shape> output_shapes;
   output_shapes.reserve(modules.size());
   for (const auto& module : modules) {
@@ -336,7 +343,7 @@ absl::StatusOr<std::vector<Shape>> PjRtExecutable::GetOutputShapes() const {
 
 absl::StatusOr<std::vector<std::vector<PrimitiveType>>>
 PjRtExecutable::GetOutputElementTypes() const {
-  TF_ASSIGN_OR_RETURN(auto output_shapes, GetOutputShapes());
+  ABSL_ASSIGN_OR_RETURN(auto output_shapes, GetOutputShapes());
   std::vector<std::vector<PrimitiveType>> output_element_types;
   output_element_types.reserve(output_shapes.size());
   for (int i = 0; i < output_shapes.size(); ++i) {
@@ -364,7 +371,7 @@ PjRtExecutable::GetOutputElementTypes() const {
 
 absl::StatusOr<std::vector<std::vector<DimensionVector>>>
 PjRtExecutable::GetOutputDimensions() const {
-  TF_ASSIGN_OR_RETURN(auto output_shapes, GetOutputShapes());
+  ABSL_ASSIGN_OR_RETURN(auto output_shapes, GetOutputShapes());
   std::vector<std::vector<DimensionVector>> output_dimensions;
   output_dimensions.reserve(output_shapes.size());
   for (int i = 0; i < output_shapes.size(); ++i) {
@@ -394,8 +401,8 @@ PjRtExecutable::GetOutputDimensions() const {
 
 absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
 PjRtExecutable::GetParameterLayouts() const {
-  TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
-                      GetHloModules());
+  ABSL_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
+                   GetHloModules());
   if (hlo_modules.size() > 1) {
     return Unimplemented(
         "PjRtExecutable::GetParameterLayouts doesn't support MPMD "
@@ -407,8 +414,8 @@ PjRtExecutable::GetParameterLayouts() const {
         "from executable.");
   }
   ComputationLayout comp_layout = hlo_modules[0]->entry_computation_layout();
-  TF_ASSIGN_OR_RETURN(std::vector<Layout> layouts,
-                      comp_layout.FlattenedParameterLayouts());
+  ABSL_ASSIGN_OR_RETURN(std::vector<Layout> layouts,
+                   xla::FlattenedParameterLayouts(comp_layout));
   std::vector<std::shared_ptr<const PjRtLayout>> result;
   result.reserve(layouts.size());
   for (const Layout& layout : layouts) {
@@ -419,8 +426,8 @@ PjRtExecutable::GetParameterLayouts() const {
 
 absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
 PjRtExecutable::GetOutputLayouts() const {
-  TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
-                      GetHloModules());
+  ABSL_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
+                   GetHloModules());
   if (hlo_modules.size() > 1) {
     return Unimplemented(
         "PjRtExecutable::GetOutputLayouts doesn't support MPMD "
@@ -432,8 +439,8 @@ PjRtExecutable::GetOutputLayouts() const {
         "from executable.");
   }
   ComputationLayout comp_layout = hlo_modules[0]->entry_computation_layout();
-  TF_ASSIGN_OR_RETURN(std::vector<Layout> layouts,
-                      comp_layout.FlattenedResultLayouts());
+  ABSL_ASSIGN_OR_RETURN(std::vector<Layout> layouts,
+                   xla::FlattenedResultLayouts(comp_layout));
   std::vector<std::shared_ptr<const PjRtLayout>> result;
   result.reserve(layouts.size());
   for (const Layout& layout : layouts) {
@@ -445,8 +452,8 @@ PjRtExecutable::GetOutputLayouts() const {
 absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
 PjRtExecutableUtil::RunHloCostAnalysis(const PjRtExecutable& executable,
                                        HloCostAnalysis* hlo_cost_analysis) {
-  TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> modules,
-                      executable.GetHloModules());
+  ABSL_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> modules,
+                   executable.GetHloModules());
   if (modules.empty()) {
     return NotFound(
         "Executable '%s' did not have an HloModule to generate "
@@ -473,7 +480,7 @@ PjRtExecutableUtil::RunHloCostAnalysis(
         "multiple data executables.");
   }
 
-  TF_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       hlo_modules[0]->entry_computation()->Accept(hlo_cost_analysis));
 
   // Return cost properties
@@ -682,7 +689,7 @@ absl::Status CompileOptions::ApplyOption(const std::string& key,
 
 absl::Status CompileOptions::ApplyAllOptionOverrides() {
   for (auto& option : env_option_overrides) {
-    TF_RETURN_IF_ERROR(ApplyOption(option.first, option.second));
+    ABSL_RETURN_IF_ERROR(ApplyOption(option.first, option.second));
   }
   return absl::OkStatus();
 }
@@ -756,7 +763,7 @@ absl::Status CompileOptions::ApplyOptionFromString(
     return absl::OkStatus();
   }
   for (const auto& v : absl::StrSplit(value, ',')) {
-    TF_RETURN_IF_ERROR(ApplyOptionFromSingleString(
+    ABSL_RETURN_IF_ERROR(ApplyOptionFromSingleString(
         field, std::string(v),
         *executable_build_options.mutable_debug_options()));
   }

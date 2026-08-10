@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/permutation_util.h"
 
+#include <algorithm>
 #include <cstdint>
 
 #include "absl/container/inlined_vector.h"
@@ -31,6 +32,17 @@ bool IsPermutation(absl::Span<const int64_t> permutation) {
     seen[p] = true;
   }
   return true;
+}
+
+void MoveSingleElement(absl::Span<int64_t> permutation, int64_t from,
+                       int64_t to) {
+  if (from < to) {
+    std::rotate(permutation.begin() + from, permutation.begin() + from + 1,
+                permutation.begin() + to + 1);
+  } else if (from > to) {
+    std::rotate(permutation.begin() + to, permutation.begin() + from,
+                permutation.begin() + from + 1);
+  }
 }
 
 }  // namespace xla

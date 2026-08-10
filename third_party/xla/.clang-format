@@ -18,6 +18,10 @@ IncludeCategories:
   - Regex:    '^"absl/.*"$'
     Priority: 2
     SortPriority: 3
+  # xla/tsl/platform/status_macros.h — internally third_party/gloop, sorts after absl/
+  - Regex:    '^"xla/tsl/platform/status_macros\.h"$'
+    Priority: 2
+    SortPriority: 3
   # llvm headers
   - Regex:    '^"llvm/.*"$'
     Priority: 2

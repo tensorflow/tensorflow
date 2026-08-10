@@ -45,8 +45,8 @@ absl::Status TestScalarShape(AbstractContext* ctx,
   PartialTensorShape shape;
   TF_RETURN_IF_ERROR(inputs[0]->Shape(&shape));
   if (shape.dims() != 0) {
-    return errors::InvalidArgument(
-        "Tensor expected to have scalar shape found rank: ", shape.dims());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Tensor expected to have scalar shape found rank: ", shape.dims()));
   }
   return absl::OkStatus();
 }
@@ -88,15 +88,15 @@ absl::Status TestTensorShape2x4(AbstractContext* ctx,
   PartialTensorShape shape;
   TF_RETURN_IF_ERROR(inputs[0]->Shape(&shape));
   if (shape.dims() != 2) {
-    return errors::InvalidArgument(
-        "Tensor expected to have rank 2 found rank: ", shape.dims());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Tensor expected to have rank 2 found rank: ", shape.dims()));
   }
   int64_t dim_sizes[] = {2, 4};
   for (int i = 0; i < shape.dims(); i++) {
     if (shape.dim_size(i) != dim_sizes[i]) {
-      return errors::InvalidArgument("Dim ", i, " expected to be of size ",
-                                     dim_sizes[i],
-                                     " found: ", shape.dim_size(i));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Dim ", i, " expected to be of size ", dim_sizes[i],
+                       " found: ", shape.dim_size(i)));
     }
   }
   return absl::OkStatus();

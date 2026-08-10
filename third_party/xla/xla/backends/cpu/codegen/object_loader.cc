@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -35,8 +36,10 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/CoreContainers.h"
+#include "llvm/ExecutionEngine/Orc/DylibManager.h"
 #include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
 #include "llvm/ExecutionEngine/Orc/InProcessMemoryAccess.h"
+#include "llvm/ExecutionEngine/Orc/MemoryAccess.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorAddress.h"
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
@@ -57,30 +60,17 @@ namespace xla::cpu {
 namespace {
 // TODO: move to ExecutorProcessControl-based APIs.
 class UnsupportedExecutorProcessControl
-    : public llvm::orc::ExecutorProcessControl,
-      private llvm::orc::InProcessMemoryAccess {
+    : public llvm::orc::ExecutorProcessControl {
  public:
   UnsupportedExecutorProcessControl()
       : ExecutorProcessControl(
             std::make_shared<llvm::orc::SymbolStringPool>(),
-            std::make_unique<llvm::orc::InPlaceTaskDispatcher>()),
-        InProcessMemoryAccess(llvm::Triple("").isArch64Bit()) {
+            std::make_unique<llvm::orc::InPlaceTaskDispatcher>()) {
     this->TargetTriple = llvm::Triple("");
-    this->MemAccess = this;
   }
 
   llvm::Expected<int32_t> runAsMain(llvm::orc::ExecutorAddr MainFnAddr,
                                     llvm::ArrayRef<std::string> Args) override {
-    llvm_unreachable("Unsupported");
-  }
-
-  llvm::Expected<int32_t> runAsVoidFunction(
-      llvm::orc::ExecutorAddr VoidFnAddr) override {
-    llvm_unreachable("Unsupported");
-  }
-
-  llvm::Expected<int32_t> runAsIntFunction(llvm::orc::ExecutorAddr IntFnAddr,
-                                           int Arg) override {
     llvm_unreachable("Unsupported");
   }
 
@@ -91,6 +81,22 @@ class UnsupportedExecutorProcessControl
   }
 
   llvm::Error disconnect() override { return llvm::Error::success(); }
+
+  llvm::Expected<std::unique_ptr<llvm::orc::DylibManager>>
+  createDefaultDylibMgr() override {
+    llvm_unreachable("Unsupported");
+  }
+
+  llvm::Expected<std::unique_ptr<llvm::jitlink::JITLinkMemoryManager>>
+  createDefaultMemoryManager() override {
+    llvm_unreachable("Unsupported");
+  }
+
+  llvm::Expected<std::unique_ptr<llvm::orc::MemoryAccess>>
+  createDefaultMemoryAccess() override {
+    return std::make_unique<llvm::orc::InProcessMemoryAccess>(
+        this->TargetTriple.isArch64Bit());
+  }
 };
 }  // namespace
 
@@ -139,8 +145,8 @@ absl::Status ObjectLoader::AddObjFile(
                         "Failed to create memory buffer");
   }
 
-  TF_ASSIGN_OR_RETURN(llvm::orc::JITDylib * dylib,
-                      execution_engine_->dylib(dylib_index));
+  ABSL_ASSIGN_OR_RETURN(llvm::orc::JITDylib * dylib,
+                   execution_engine_->dylib(dylib_index));
   if (auto err =
           execution_engine_->object_layer()->add(*dylib, std::move(obj_file))) {
     return absl::Status(
@@ -179,8 +185,7 @@ absl::StatusOr<llvm::orc::SymbolMap> ObjectLoader::LookupSymbols(
   // Build a search order for the dynamic libraries.
   llvm::orc::JITDylibSearchOrder search_order(num_dylibs());
   for (size_t i = 0; i < num_dylibs(); ++i) {
-    TF_ASSIGN_OR_RETURN(llvm::orc::JITDylib * dylib,
-                        execution_engine_->dylib(i));
+    ABSL_ASSIGN_OR_RETURN(llvm::orc::JITDylib * dylib, execution_engine_->dylib(i));
     search_order[i] = std::make_pair(
         dylib, llvm::orc::JITDylibLookupFlags::MatchExportedSymbolsOnly);
   }
@@ -220,7 +225,7 @@ ObjectLoader::CreateFunctionLibrary(absl::Span<const Symbol> symbols,
 
 absl::StatusOr<std::unique_ptr<FunctionLibrary>> ObjectLoader::Load(
     absl::Span<const Symbol> symbols) && {
-  TF_ASSIGN_OR_RETURN(auto symbol_map, LookupSymbols(symbols));
+  ABSL_ASSIGN_OR_RETURN(auto symbol_map, LookupSymbols(symbols));
   return std::move(*this).CreateFunctionLibrary(symbols, symbol_map);
 }
 

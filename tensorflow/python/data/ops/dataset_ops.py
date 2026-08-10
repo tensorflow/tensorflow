@@ -697,7 +697,7 @@ class DatasetV2(
   def _type_spec(self):
     return DatasetSpec(self.element_spec)
 
-  @staticmethod
+  @staticmethod  # pylint: disable=staticmethod-use
   def from_tensors(tensors, name=None) -> "DatasetV2":
     """Creates a `Dataset` with a single element, comprising the given tensors.
 
@@ -741,7 +741,7 @@ class DatasetV2(
     return from_tensors_op._from_tensors(tensors, name)
     # pylint: enable=g-import-not-at-top,protected-access
 
-  @staticmethod
+  @staticmethod  # pylint: disable=staticmethod-use
   def from_tensor_slices(tensors, name=None) -> "DatasetV2":
     """Creates a `Dataset` whose elements are slices of the given tensors.
 
@@ -871,9 +871,10 @@ class DatasetV2(
     def iterator_completed(self, iterator_id):
       del self._iterators[self._normalize_id(iterator_id)]
 
-  @staticmethod
-  @deprecation.deprecated_args(None, "Use output_signature instead",
-                               "output_types", "output_shapes")
+  @staticmethod  # pylint: disable=staticmethod-use
+  @deprecation.deprecated_args(
+      None, "Use output_signature instead", "output_types", "output_shapes"
+  )
   def from_generator(
       generator,
       output_types=None,
@@ -971,7 +972,7 @@ class DatasetV2(
                                              output_signature, name)
     # pylint: enable=g-import-not-at-top,protected-access
 
-  @staticmethod
+  @staticmethod  # pylint: disable=staticmethod-use
   def range(*args, **kwargs) -> "DatasetV2":
     """Creates a `Dataset` of a step-separated range of values.
 
@@ -1022,7 +1023,7 @@ class DatasetV2(
     return range_op._range(*args, **kwargs)
     # pylint: enable=g-import-not-at-top,protected-access
 
-  @staticmethod
+  @staticmethod  # pylint: disable=staticmethod-use
   def zip(*args, datasets=None, name=None) -> "DatasetV2":
     """Creates a `Dataset` by zipping together the given datasets.
 
@@ -1123,7 +1124,7 @@ class DatasetV2(
     return concatenate_op._concatenate(self, dataset, name)
     # pylint: enable=g-import-not-at-top,protected-access
 
-  @staticmethod
+  @staticmethod  # pylint: disable=staticmethod-use
   def counter(start=0, step=1, dtype=dtypes.int64, name=None) -> "DatasetV2":
     """Creates a `Dataset` that counts from `start` in steps of size `step`.
 
@@ -1268,7 +1269,7 @@ class DatasetV2(
     return prefetch_op._prefetch(  # pylint: disable=protected-access
         self, buffer_size, name=name)
 
-  @staticmethod
+  @staticmethod  # pylint: disable=staticmethod-use
   def list_files(
       file_pattern, shuffle=None, seed=None, name=None
   ) -> "DatasetV2":
@@ -1774,7 +1775,7 @@ class DatasetV2(
     return save_op._save(self, path, compression, shard_func, checkpoint_args)
     # pylint: enable=g-import-not-at-top,protected-access
 
-  @staticmethod
+  @staticmethod  # pylint: disable=staticmethod-use
   def load(
       path, element_spec=None, compression=None, reader_func=None, wait=False,
   ) -> "DatasetV2":
@@ -3251,7 +3252,7 @@ name=None))
         window_size_func=window_size_fn,
         name=name)
 
-  @staticmethod
+  @staticmethod  # pylint: disable=staticmethod-use
   def random(
       seed=None, rerandomize_each_iteration=None, name=None
   ) -> "DatasetV2":
@@ -3427,7 +3428,8 @@ name=None))
     # scan_op -> dataset_ops).
     # pylint: disable=g-import-not-at-top,protected-access
     from tensorflow.python.data.ops import scan_op
-    return scan_op._scan(self, initial_state, scan_func, name=name)
+
+    return scan_op.scan(self, initial_state, scan_func, name=name)
     # pylint: enable=g-import-not-at-top,protected-access
 
   def take_while(self, predicate, name=None) -> "DatasetV2":
@@ -3576,7 +3578,7 @@ name=None))
           seed=seed,
           stop_on_empty_dataset=True)
 
-  @staticmethod
+  @staticmethod  # pylint: disable=staticmethod-use
   def sample_from_datasets(
       datasets,
       weights=None,
@@ -3654,7 +3656,7 @@ name=None))
     )
     # pylint: enable=g-import-not-at-top,protected-access
 
-  @staticmethod
+  @staticmethod  # pylint: disable=staticmethod-use
   def choose_from_datasets(
       datasets, choice_dataset, stop_on_empty_dataset=True
   ) -> "DatasetV2":
@@ -3963,17 +3965,17 @@ class DatasetV1(DatasetV2, data_types.DatasetV1):
     return structure.convert_legacy_structure(
         self.output_types, self.output_shapes, self.output_classes)
 
-  @staticmethod
+  @staticmethod  # pylint: disable=staticmethod-use
   @functools.wraps(DatasetV2.from_tensors)
   def from_tensors(tensors, name=None):
     return DatasetV1Adapter(DatasetV2.from_tensors(tensors, name=name))
 
-  @staticmethod
+  @staticmethod  # pylint: disable=staticmethod-use
   @functools.wraps(DatasetV2.from_tensor_slices)
   def from_tensor_slices(tensors, name=None):
     return DatasetV1Adapter(DatasetV2.from_tensor_slices(tensors, name=name))
 
-  @staticmethod
+  @staticmethod  # pylint: disable=staticmethod-use
   @deprecation.deprecated(None, "Use `tf.data.Dataset.from_tensor_slices()`.")
   def from_sparse_tensor_slices(sparse_tensor):
     """Splits each rank-N `tf.sparse.SparseTensor` in this dataset row-wise.
@@ -3992,10 +3994,11 @@ class DatasetV1(DatasetV2, data_types.DatasetV1):
         sparse_tensor)
     # pylint: enable=g-import-not-at-top,protected-access
 
-  @staticmethod
+  @staticmethod  # pylint: disable=staticmethod-use
   @functools.wraps(DatasetV2.from_generator)
-  @deprecation.deprecated_args(None, "Use output_signature instead",
-                               "output_types", "output_shapes")
+  @deprecation.deprecated_args(
+      None, "Use output_signature instead", "output_types", "output_shapes"
+  )
   def from_generator(generator,
                      output_types=None,
                      output_shapes=None,
@@ -4014,12 +4017,12 @@ class DatasetV1(DatasetV2, data_types.DatasetV1):
               output_signature,
               name=name))
 
-  @staticmethod
+  @staticmethod  # pylint: disable=staticmethod-use
   @functools.wraps(DatasetV2.range)
   def range(*args, **kwargs):
     return DatasetV1Adapter(DatasetV2.range(*args, **kwargs))
 
-  @staticmethod
+  @staticmethod  # pylint: disable=staticmethod-use
   @functools.wraps(DatasetV2.zip)
   def zip(*args, datasets=None, name=None):
     return DatasetV1Adapter(DatasetV2.zip(*args, datasets=datasets, name=name))
@@ -4034,7 +4037,7 @@ class DatasetV1(DatasetV2, data_types.DatasetV1):
     return DatasetV1Adapter(
         super(DatasetV1, self).prefetch(buffer_size, name=name))
 
-  @staticmethod
+  @staticmethod  # pylint: disable=staticmethod-use
   @functools.wraps(DatasetV2.list_files)
   def list_files(file_pattern, shuffle=None, seed=None, name=None):
     return DatasetV1Adapter(
@@ -4710,7 +4713,7 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
             tf_nest.map_structure(lambda x: x._variant_tensor, value))  # pylint: disable=protected-access
     ]
 
-  @staticmethod
+  @staticmethod  # pylint: disable=staticmethod-use
   def from_value(value):
     """Creates a `DatasetSpec` for the given `tf.data.Dataset` value."""
     return DatasetSpec(value.element_spec)  # pylint: disable=protected-access

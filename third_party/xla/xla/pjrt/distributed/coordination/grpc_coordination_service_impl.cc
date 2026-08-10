@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/synchronization/mutex.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.grpc.pb.h"
 #include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
@@ -33,23 +34,23 @@ GrpcCoordinationServiceImpl::GrpcCoordinationServiceImpl(
 void GrpcCoordinationServiceImpl::HandleRPCsLoop() {
 #define ENQUEUE_REQUEST(method)                                               \
   do {                                                                        \
-    absl::ReaderMutexLock l(&shutdown_mu_);                                   \
+    absl::ReaderMutexLock l(shutdown_mu_);                                    \
     if (shutdown_) {                                                          \
       continue;                                                               \
     }                                                                         \
     tsl::Call<GrpcCoordinationServiceImpl,                                    \
-              tensorflow::grpc::CoordinationService::AsyncService,            \
-              tensorflow::method##Request, tensorflow::method##Response>::    \
+              xla::coordination::grpc::CoordinationService::AsyncService,     \
+              xla::coordination::method##Request,                             \
+              xla::coordination::method##Response>::                          \
         EnqueueRequest(&service_, cq_.get(),                                  \
-                       &tensorflow::grpc::CoordinationService::AsyncService:: \
-                           Request##method,                                   \
+                       &xla::coordination::grpc::CoordinationService::        \
+                           AsyncService::Request##method,                     \
                        &GrpcCoordinationServiceImpl::method##Handler, false); \
   } while (0)
   ENQUEUE_REQUEST(RegisterTask);
   ENQUEUE_REQUEST(ShutdownTask);
-  ENQUEUE_REQUEST(ResetTask);
   ENQUEUE_REQUEST(Heartbeat);
-  ENQUEUE_REQUEST(WatchJobState);
+  ENQUEUE_REQUEST(WatchTasks);
   ENQUEUE_REQUEST(InsertKeyValue);
   ENQUEUE_REQUEST(GetKeyValue);
   ENQUEUE_REQUEST(TryGetKeyValue);
@@ -60,6 +61,7 @@ void GrpcCoordinationServiceImpl::HandleRPCsLoop() {
   ENQUEUE_REQUEST(CancelBarrier);
   ENQUEUE_REQUEST(GetAliveTasks);
   ENQUEUE_REQUEST(PollForError);
+  ENQUEUE_REQUEST(ReportErrorToService);
 #undef ENQUEUE_REQUEST
 
   void* tag;  // Matches the operation started against this cq_.

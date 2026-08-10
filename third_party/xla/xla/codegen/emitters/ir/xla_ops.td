@@ -195,15 +195,15 @@ def ApplyIndexingOp : XLA_Op<"apply_indexing", [Pure]> {
                    "const IndexingMap&":$indexing_map)>,
     OpBuilder<(ins "mlir::ValueRange":$operands,
                    "const IndexingMap&":$indexing_map)>,
-    OpBuilder<(ins "mlir::ValueRange":$operands, "mlir::AffineMap":$affine_map,
+    OpBuilder<(ins "mlir::ValueRange":$operands, "xla::SymbolicMap":$symbolic_map,
                "llvm::ArrayRef<IndexingMap::Variable>":$dim_vars,
                "llvm::ArrayRef<IndexingMap::Variable>":$range_vars)>,
   ];
   let extraClassDeclaration = [{
     // Returns the indexing map constructed from IndexingMapAttr.
     xla::IndexingMap getIndexingMap();
-    // Extracts the affine map from the attribute.
-    mlir::AffineMap getAffineMap() { return getIndexingMapAttr().getMap(); }
+    // Extracts the symbolic map from the attribute.
+    xla::SymbolicMap getSymbolicMap() { return getIndexingMapAttr().getMap(); }
   }];
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;

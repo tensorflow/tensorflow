@@ -178,7 +178,9 @@ class tstring {
   // Comparison
   int compare(const char* str, size_t len) const;
   bool operator<(const tstring& o) const;
+  bool operator<=(const tstring& o) const;
   bool operator>(const tstring& o) const;
+  bool operator>=(const tstring& o) const;
   bool operator==(const char* str) const;
   bool operator==(const tstring& o) const;
   bool operator!=(const char* str) const;
@@ -449,8 +451,16 @@ inline bool tstring::operator<(const tstring& o) const {
   return compare(o.data(), o.size()) < 0;
 }
 
+inline bool tstring::operator<=(const tstring& o) const {
+  return compare(o.data(), o.size()) <= 0;
+}
+
 inline bool tstring::operator>(const tstring& o) const {
   return compare(o.data(), o.size()) > 0;
+}
+
+inline bool tstring::operator>=(const tstring& o) const {
+  return compare(o.data(), o.size()) >= 0;
 }
 
 inline bool tstring::operator==(const char* str) const {

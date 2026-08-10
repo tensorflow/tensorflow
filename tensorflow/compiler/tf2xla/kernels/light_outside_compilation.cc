@@ -222,7 +222,7 @@ absl::StatusOr<KernelInstantiation*> GetInstantiation(
 static absl::StatusOr<Tensor> TensorFromProto(const TensorProto& proto) {
   Tensor out;
   if (!out.FromProto(proto)) {
-    return tsl::errors::Internal("Failed deserializing a TensorProto");
+    return absl::InternalError("Failed deserializing a TensorProto");
   }
   return out;
 }
@@ -257,7 +257,7 @@ absl::Status LightOutsideCompilationOp::CompileToCustomCallCallingTfKernel(
     if (absl::c_any_of(xla_shape.dynamic_dimensions(),
                        [](const bool is_dynamic) { return is_dynamic; })) {
       // TODO(cheshire): Support input dynamic dimensions.
-      return tsl::errors::Internal(
+      return absl::InternalError(
           "Input dynamic dimensions are not supported for light outside "
           "compilation");
     }
@@ -306,7 +306,8 @@ absl::Status LightOutsideCompilationOp::CompileToCustomCallCallingTfKernel(
     TensorShapeProto output_tensor_shape_proto =
         ic.ShapeHandleToProto(ic.output(i));
     if (output_tensor_shape_proto.unknown_rank()) {
-      return tsl::errors::Internal("Output ", i, " has unknown rank");
+      return absl::InternalError(
+          absl::StrCat("Output ", i, " has unknown rank"));
     }
 
     int rank = output_tensor_shape_proto.dim_size();
@@ -320,8 +321,8 @@ absl::Status LightOutsideCompilationOp::CompileToCustomCallCallingTfKernel(
 
       if (dim->size() < 0) {
         if (it == dimension_bounds.end()) {
-          return tsl::errors::Internal(
-              "Bound for unknown dimension not found for dimension ", d);
+          return absl::InternalError(absl::StrCat(
+              "Bound for unknown dimension not found for dimension ", d));
         }
         dim->set_size(it->second);
         dynamic_dimensions[d] = true;

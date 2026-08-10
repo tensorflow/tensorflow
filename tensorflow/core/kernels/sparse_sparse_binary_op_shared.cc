@@ -65,8 +65,8 @@ void UnionSparseIndicesAndValues(
     typename TTypes<T>::ConstFlat a_values, int64_t a_nnz,
     typename TTypes<int64_t>::ConstMatrix b_indices_mat,
     typename TTypes<T>::ConstFlat b_values, int64_t b_nnz, int num_dims,
-    std::vector<T> *a_augmented_values, std::vector<T> *b_augmented_values,
-    std::vector<std::pair<bool, int64>> *entries_to_copy) {
+    std::vector<T>* a_augmented_values, std::vector<T>* b_augmented_values,
+    std::vector<std::pair<bool, int64_t>>* entries_to_copy) {
   entries_to_copy->reserve(a_nnz + b_nnz);
   a_augmented_values->reserve(a_nnz);
   b_augmented_values->reserve(b_nnz);
@@ -147,19 +147,19 @@ class SparseSparseBinaryOpShared : public OpKernel {
 
     const int num_dims = a_indices_t->dim_size(1);
     OP_REQUIRES(ctx, num_dims > 0,
-                errors::InvalidArgument("Tensors must not be empty"));
+                absl::InvalidArgumentError("Tensors must not be empty"));
     OP_REQUIRES(ctx, a_shape_t->IsSameSize(*b_shape_t),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Operands do not have the same ranks; got shapes: ",
                     a_shape_t->SummarizeValue(10), " and ",
-                    b_shape_t->SummarizeValue(10)));
+                    b_shape_t->SummarizeValue(10))));
     const auto a_shape = a_shape_t->flat<int64_t>();
     const auto b_shape = b_shape_t->flat<int64_t>();
     for (int i = 0; i < a_shape_t->NumElements(); ++i) {
       OP_REQUIRES(ctx, a_shape(i) == b_shape(i),
-                  errors::InvalidArgument("Operands' shapes do not match: got ",
-                                          a_shape(i), " and ", b_shape(i),
-                                          " for dimension ", i));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Operands' shapes do not match: got ", a_shape(i),
+                      " and ", b_shape(i), " for dimension ", i)));
     }
 
     const auto a_indices_mat = a_indices_t->matrix<int64_t>();

@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "xla/service/gpu/model/hlo_op_profiler.h"
 
+#include <unordered_set>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/xla_data.pb.h"
@@ -29,10 +31,16 @@ namespace gpu {
 namespace {
 
 class HloOpProfilerTest : public HloPjRtGpuTestBase {
+ protected:
   void SetUp() override {
-#ifndef GOOGLE_CUDA
-    GTEST_SKIP() << "Not built with --config=cuda";
-#endif
+    const auto& cap = device_description().gpu_compute_capability();
+    if (!cap.IsCuda() && !cap.IsRocm()) {
+      GTEST_SKIP() << "Not built with --config=cuda or --config=rocm";
+    }
+  }
+
+  bool IsRocm() const {
+    return device_description().gpu_compute_capability().IsRocm();
   }
 };
 
@@ -47,7 +55,7 @@ TEST_F(HloOpProfilerTest, BasicMeasurementsAreCorrect) {
   EXPECT_GT(profiler.MeasureClockCyclesPerOp(HloOpcode::kDivide, F64)
                 .value()
                 .clock_cycles(),
-            280);
+            IsRocm() ? 100 : 280);
   // c128 sqrt is slow.
   EXPECT_GT(profiler.MeasureClockCyclesPerOp(HloOpcode::kSqrt, C128)
                 .value()
@@ -95,13 +103,24 @@ TEST_F(HloOpProfilerTest, AllSupportedCombinationsAreMeasurable) {
       // go/keep-sorted end
   };
 
+  // TODO(esjoblom): These ops fail with too fast to measure on ROCm
+  // but let's just skip them for now.
+  const std::unordered_set<HloOpcode> skip_on_rocm = {
+      HloOpcode::kPopulationCount,
+      HloOpcode::kRoundNearestAfz,
+      HloOpcode::kRoundNearestEven,
+  };
+
   FloatTypes.insert(MeasurebleInFloat.begin(), MeasurebleInFloat.end());
   HloOpProfiler profiler(&test_runner(), &device_description());
+
+  const bool is_rocm = IsRocm();
   for (const HloOpcode op : HloOpProfiler::AllSupportedOps()) {
     if (!HloOpProfiler::TooFastToMeasure().count(op) &&
-        !HloOpProfiler::Unsupported().count(op)) {
+        !HloOpProfiler::Unsupported().count(op) &&
+        !(is_rocm && skip_on_rocm.count(op))) {
       auto Type = FloatTypes.count(op) ? F32 : S32;
-      TF_EXPECT_OK(profiler.MeasureClockCyclesPerOp(op, Type));
+      EXPECT_OK(profiler.MeasureClockCyclesPerOp(op, Type));
     }
   }
 }

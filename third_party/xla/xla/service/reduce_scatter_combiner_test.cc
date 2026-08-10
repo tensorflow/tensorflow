@@ -21,6 +21,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -43,7 +44,7 @@ class ReduceScatterCombinerTest : public HloHardwareIndependentTestBase {
       int64_t byte_threshold = kMaxByteCount,
       int64_t count_threshold = kMaxCombineCount, bool combine_by_dim = true,
       bool combine_while_loops = true) {
-    TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_module));
+    ABSL_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_module));
 
     VLOG(1) << "Before running ReduceScatterCombiner: "
             << ReduceScatterCount(module.get()) << " reduce-scatter ops";
@@ -375,7 +376,7 @@ TEST_F(ReduceScatterCombinerTest, PreservesMetadata) {
                           RunPass(hlo_string, /*expect_change=*/true));
   OpMetadata metadata;
   metadata.set_op_type("test_type0");
-  metadata.set_op_name("test_name0");
+  metadata.set_op_name("(test_name0:test_name1)");
   auto combined_reduce_scatter = op::Metadata(metadata);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::GetTupleElement(combined_reduce_scatter, 0),

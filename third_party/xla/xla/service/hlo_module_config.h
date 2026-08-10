@@ -427,6 +427,7 @@ class HloModuleConfig {
   void SetAnalysisAllowance(absl::string_view pass_name, int64_t allowance) {
     analysis_allowance_map_[pass_name] = allowance;
   }
+  void clear_analysis_allowance_map() { analysis_allowance_map_.clear(); }
 
   PrecisionConfig::Precision matrix_unit_operand_precision() const {
     return matrix_unit_operand_precision_;
@@ -462,6 +463,17 @@ class HloModuleConfig {
     // TODO(b/430952564): Base this on num_partitions / num_replicas instead
     // of use_spmd_partitioning.
     return !use_spmd_partitioning_;
+  }
+
+  // Page size in kibibytes for usage in multi-page buffer assignment and/or
+  // lowering.
+  int64_t page_size_kib() const { return page_size_kib_; }
+
+  // Sets the page size in kibibytes for usage in multi-page buffer
+  // assignment and/or lowering. A value of 0 means no multi-page buffer
+  // assignment and/or lowering will take place.
+  void set_page_size_kib(int64_t page_size_kib) {
+    page_size_kib_ = page_size_kib;
   }
 
  private:
@@ -641,6 +653,12 @@ class HloModuleConfig {
   // Schedule configuration, where schedule_config_.sequence is the sequence of
   // instructions to be scheduled.
   ScheduleConfig schedule_config_;
+
+  // Page size in kibibytes for usage in multi-page buffer assignment. A value
+  // of 0 means no multi-page buffer assignment and/or lowering will take place.
+  // Pages are subdivisions of the shared memory space, with the constraint that
+  // a buffer will never cross a page boundary.
+  int64_t page_size_kib_ = 0;
 
   // LINT.ThenChange(//tensorflow/compiler/xla/xla.proto)
 };

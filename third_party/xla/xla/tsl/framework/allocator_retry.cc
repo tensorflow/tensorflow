@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/tsl/framework/allocator_retry.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <optional>
 
@@ -23,7 +24,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/tsl/framework/metrics.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/types.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace tsl {
 
@@ -66,6 +67,7 @@ void* AllocatorRetry::AllocateRaw(
     return nullptr;
   }
   ScopedTimeTracker tracker(env_);
+  tsl::profiler::TraceMe traceme("AllocatorRetry::AllocateRaw");
   absl::Time deadline;
   bool first = true;
   while (true) {

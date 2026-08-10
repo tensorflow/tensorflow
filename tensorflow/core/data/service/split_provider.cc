@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/split_provider.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/grpc_util.h"
@@ -37,27 +39,40 @@ namespace data {
 absl::Status DataServiceSplitProvider::GetNext(Tensor* split,
                                                bool* end_of_splits)
     TF_LOCKS_EXCLUDED(mu_) {
-  mutex_lock l(mu_);
-  if (!dispatcher_) {
-    dispatcher_ =
-        std::make_unique<DataServiceDispatcherClient>(address_, protocol_);
+  int64_t repetition;
+  DataServiceDispatcherClient* dispatcher = nullptr;
+  {
+    mutex_lock l(mu_);
+    if (cancelled_) {
+      return absl::CancelledError("DataServiceSplitProvider is cancelled");
+    }
+    if (!dispatcher_) {
+      dispatcher_ =
+          std::make_unique<DataServiceDispatcherClient>(address_, protocol_);
+    }
+    dispatcher = dispatcher_.get();
+    repetition = repetition_;
   }
   TF_RETURN_IF_ERROR(grpc_util::Retry(
-      [this, split, end_of_splits]() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        return dispatcher_->GetSplit(iteration_id_, repetition_,
-                                     split_provider_index_, *split,
-                                     *end_of_splits);
+      [this, dispatcher, repetition, split, end_of_splits]() {
+        return dispatcher->GetSplit(iteration_id_, repetition,
+                                    split_provider_index_, *split,
+                                    *end_of_splits);
+      },
+      [this]() {
+        mutex_lock l(mu_);
+        return !cancelled_;
       },
       "get next split",
       /*deadline_micros=*/Env::Default()->NowMicros() +
           (timeout_ms_ * EnvTime::kMillisToMicros)));
   if (*end_of_splits) {
     VLOG(1) << "Reached end of splits for iteration_id=" << iteration_id_
-            << ", repetition=" << repetition_;
+            << ", repetition=" << repetition;
   } else {
     VLOG(1) << "Requested split: " << split->DebugString()
             << "; with iteration_id=" << iteration_id_
-            << ", repetition=" << repetition_;
+            << ", repetition=" << repetition;
   }
   return absl::OkStatus();
 }
@@ -71,15 +86,20 @@ absl::Status DataServiceSplitProvider::Reset() TF_LOCKS_EXCLUDED(mu_) {
 absl::Status DataServiceSplitProvider::Save(
     std::function<std::string(std::string)> full_name,
     IteratorStateWriter* writer) {
-  return errors::Unimplemented(
+  return absl::UnimplementedError(
       "Save is not implemented for DataServiceSplitProvider");
 }
 
 absl::Status DataServiceSplitProvider::Restore(
     std::function<std::string(std::string)> full_name,
     IteratorStateReader* reader) {
-  return errors::Unimplemented(
+  return absl::UnimplementedError(
       "Restore is not implemented for DataServiceSplitProvider");
+}
+
+void DataServiceSplitProvider::Cancel() {
+  mutex_lock l(mu_);
+  cancelled_ = true;
 }
 
 absl::Status CreateSplitProviders(

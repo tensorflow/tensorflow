@@ -33,8 +33,8 @@ absl::Status GetInputNode(const GraphOptimizerContext& ctx,
   std::string node_name = NodeName(input);
   NodeDef* node_by_name = ctx.node_map->GetNode(node_name);
   if (node_by_name == nullptr) {
-    return errors::FailedPrecondition("Node ", node_name,
-                                      " doesn't exists in a node map");
+    return absl::FailedPreconditionError(
+        absl::StrCat("Node ", node_name, " doesn't exists in a node map"));
   }
   *node = node_by_name;
   return absl::OkStatus();
@@ -44,7 +44,7 @@ absl::Status GetTensorProperties(const GraphOptimizerContext& ctx,
                                  const std::string& tensor,
                                  const OpInfo::TensorProperties** properties) {
   if (ctx.graph_properties == nullptr) {
-    return errors::InvalidArgument("Graph properties are unknown.");
+    return absl::InvalidArgumentError("Graph properties are unknown.");
   }
 
   // TODO(ezhulenev): Make it TensorId when graph properties will support
@@ -52,8 +52,8 @@ absl::Status GetTensorProperties(const GraphOptimizerContext& ctx,
   SafeTensorId tensor_id = ParseTensorName(tensor);
 
   if (tensor_id.index() < 0) {
-    return errors::InvalidArgument(
-        "Can't get tensor properties of control dependency ", tensor);
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Can't get tensor properties of control dependency ", tensor));
   }
 
   const auto& output_properties =
@@ -61,10 +61,10 @@ absl::Status GetTensorProperties(const GraphOptimizerContext& ctx,
   int num_outputs = output_properties.size();
 
   if (num_outputs == 0 || tensor_id.index() > num_outputs - 1) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Node ", tensor_id.node(),
         " is missing output properties at position :", tensor_id.index(),
-        " (num_outputs=", num_outputs, ")");
+        " (num_outputs=", num_outputs, ")"));
   }
 
   *properties = &output_properties[tensor_id.index()];

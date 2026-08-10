@@ -43,13 +43,13 @@ class EncodePngOp : public OpKernel {
   explicit EncodePngOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("compression", &compression_));
     OP_REQUIRES(context, -1 <= compression_ && compression_ <= 9,
-                errors::InvalidArgument("compression should be in [-1,9], got ",
-                                        compression_));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "compression should be in [-1,9], got ", compression_)));
 
     DataType dt = context->input_type(0);
     OP_REQUIRES(context, dt == DataType::DT_UINT8 || dt == DataType::DT_UINT16,
-                errors::InvalidArgument(
-                    "image must have type uint8 or uint16, got ", dt));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "image must have type uint8 or uint16, got ", dt)));
 
     if (dt == DataType::DT_UINT8) {
       desired_channel_bits_ = 8;
@@ -60,16 +60,17 @@ class EncodePngOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& image = context->input(0);
-    OP_REQUIRES(context, image.dims() >= 3,
-                errors::InvalidArgument("images must be at least rank 3",
-                                        image.shape().DebugString()));
+    OP_REQUIRES(
+        context, image.dims() >= 3,
+        absl::InvalidArgumentError(absl::StrCat(
+            "images must be at least rank 3", image.shape().DebugString())));
     OP_REQUIRES(context, image.NumElements() >= 0,
-                errors::Internal("Invalid image provided."));
+                absl::InternalError("Invalid image provided."));
     OP_REQUIRES(
         context,
         FastBoundsCheck(image.NumElements(),
                         std::numeric_limits<int32_t>::max()),
-        errors::InvalidArgument("image cannot have >= int32 max elements"));
+        absl::InvalidArgumentError("image cannot have >= int32 max elements"));
 
     const int batch_dims = image.dims() - 3;
     const int32_t height = static_cast<int32_t>(image.dim_size(batch_dims));
@@ -81,11 +82,11 @@ class EncodePngOp : public OpKernel {
     const int32_t max_row_width = std::numeric_limits<int32_t>::max() / 2;
 
     OP_REQUIRES(context, FastBoundsCheck(width * channels, max_row_width),
-                errors::InvalidArgument("image too wide to encode"));
+                absl::InvalidArgumentError("image too wide to encode"));
 
     OP_REQUIRES(context, channels >= 1 && channels <= 4,
-                errors::InvalidArgument(
-                    "image must have 1, 2, 3, or 4 channels, got ", channels));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "image must have 1, 2, 3, or 4 channels, got ", channels)));
 
     // Encode image to png string
     Tensor* output = nullptr;
@@ -96,9 +97,9 @@ class EncodePngOp : public OpKernel {
       num_batches = MultiplyWithoutOverflow(num_batches, image.dim_size(i));
     }
     OP_REQUIRES(context, num_batches >= 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Invalid number of batches: ", num_batches,
-                    ", input image shape: ", image.shape().DebugString()));
+                    ", input image shape: ", image.shape().DebugString())));
 
     OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
 
@@ -137,9 +138,9 @@ class EncodePngOp : public OpKernel {
 
     OP_REQUIRES(
         context, bad_image_indices.empty(),
-        errors::Internal(
+        absl::InternalError(absl::StrCat(
             "PNG encoding failed at the following flattened batch indices: ",
-            absl::StrJoin(bad_image_indices, ", ")));
+            absl::StrJoin(bad_image_indices, ", "))));
   }
 
  private:

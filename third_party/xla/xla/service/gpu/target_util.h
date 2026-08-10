@@ -16,11 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_TARGET_UTIL_H_
 #define XLA_SERVICE_GPU_TARGET_UTIL_H_
 
-#include <optional>
 #include <string>
 
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/IRBuilder.h"
@@ -29,7 +26,6 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "llvm/TargetParser/Triple.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -53,6 +49,7 @@ enum class TargetIntrinsicID {
 // Enumeration to get target specific device math function.
 enum class TargetDeviceFunctionID {
   kAtan2 = 0,
+  kAtan,
   kCbrt,
   kCos,
   kExp,
@@ -75,19 +72,8 @@ enum class TargetDeviceFunctionID {
   kAsinh,
   kCosh,
   kAtanh,
+  kRint,
 };
-
-// HLO opcode -> TargetDeviceFunctionID mapping. Returns std::nullopt if there
-// is no TargetDeviceFunctionID for the given HloOpcode.
-std::optional<TargetDeviceFunctionID> GetTargetDeviceFunctionID(HloOpcode op);
-
-// Emits IR to call a device function named "callee_name" on the given
-// operand. Returns the IR value that represents the return value.
-llvm::CallInst* EmitDeviceFunctionCall(
-    const std::string& callee_name, absl::Span<llvm::Value* const> operands,
-    absl::Span<const PrimitiveType> input_type, PrimitiveType output_type,
-    const llvm::AttrBuilder& attributes, llvm::IRBuilderBase* b,
-    absl::string_view name = "");
 
 // Emits a call to the specified target intrinsic with the given operands.
 // Overloaded intrinsics (for example, "minnum") must include a type

@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
@@ -28,6 +43,7 @@ package_group(
         "//research/language_modeling/sentence_explorer/ondevice/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/lite/...",
+        "//third_party/ai_lab/...",
         "//third_party/iree/...",
         "//third_party/odml/infra/...",
         "//third_party/odml/litert/...",
@@ -436,9 +452,6 @@ cc_library(
     hdrs = ["transforms/pass_options_setter.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
-    deps = [
-        "@llvm-project//llvm:Support",
-    ],
 )
 
 cc_library(
@@ -455,7 +468,6 @@ cc_library(
         ":pass_options",
         ":pass_options_setter",
         ":variable_freezing_pipeline_options",
-        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -568,7 +580,9 @@ cc_library(
     hdrs = [
         "ir/tfl_ops.h",
         "transforms/canonicalize_boundary_value_pass.h",
+        "transforms/cast_bf16_ops_to_f32_pass.h",
         "transforms/cleanup_optimization_barrier_pass.h",
+        "transforms/large_constant_fold_pass.h",
         "transforms/optimize_batch_matmul_pass.h",
         "transforms/optimize_broadcast_like_pass.h",
         "transforms/optimize_pass.h",
@@ -587,11 +601,13 @@ cc_library(
     deps = [
         ":attribute_utils",
         ":canonicalize_boundary_value",
+        ":cast_bf16_ops_to_f32",
         ":cleanup_optimization_barrier",
         ":converter_inc",
         ":cost_estimators",
         ":downcast_x64",
         ":elements_attr_roundtrip_pass",
+        ":large_constant_fold",
         ":optimize_broadcast_like_pass",
         ":optimize_broadcast_like_pass_options",
         ":optimize_pass_options",
@@ -1040,6 +1056,58 @@ cc_library(
 )
 
 cc_library(
+    name = "cast_bf16_ops_to_f32",
+    srcs = [
+        "transforms/cast_bf16_ops_to_f32_pass.cc",
+    ],
+    hdrs = [
+        "transforms/cast_bf16_ops_to_f32_pass.h",
+    ],
+    deps = [
+        ":pass",
+        ":pass_options",
+        ":tensorflow_lite_ops",
+        ":utils",
+        "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ControlFlowInterfaces",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
+    name = "large_constant_fold",
+    srcs = [
+        "transforms/large_constant_fold_pass.cc",
+    ],
+    hdrs = [
+        "transforms/large_constant_fold_pass.h",
+    ],
+    deps = [
+        ":attribute_utils",
+        ":pass",
+        ":tensorflow_lite_ops",
+        ":utils",
+        "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@eigen_archive//:eigen3",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
     name = "tensorflow_lite_legalize_tf_analyze_variables",
     srcs = [
         "transforms/tf_legalizations/analyze_variables_pass.cc",
@@ -1157,6 +1225,7 @@ cc_library(
         "transforms/generated_lower_static_tensor_list.inc",
         "transforms/generated_prepare_tf.inc",
         "transforms/get_arithmetic_count.cc",
+        "transforms/gpu_compatibility.cc",
         "transforms/if_outline.cc",
         "transforms/insert_call_once_op.cc",
         "transforms/legalize_hashtables.cc",
@@ -1171,6 +1240,7 @@ cc_library(
         "transforms/prepare_composite_functions_tf.cc",
         "transforms/prepare_tf.cc",
         "transforms/raise_custom_ops.cc",
+        "transforms/rank_reduction.cc",
         "transforms/reduce_type_precision.cc",
         "transforms/reduce_while_operands.cc",
         "transforms/runtime_verify.cc",
@@ -1951,7 +2021,7 @@ cc_library(
         "common/tfl_pass_config.h",
     ],
     deps = [
-        "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc",
+        ":converter_flags_proto_cc",
         "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib:quantization_config",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
@@ -1987,6 +2057,7 @@ tf_cc_binary(
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -2015,7 +2086,6 @@ cc_library(
         ":converter_flags_proto_cc",
         ":converter_pass_options_setter",
         ":downcast_x64",
-        ":elements_attr_roundtrip_pass",
         ":fake_quant_utils",
         ":optimize_broadcast_like_pass",
         ":pass",
@@ -2175,7 +2245,7 @@ cc_library(
     srcs = [
         "allocation.cc",
     ] + select({
-        ":tflite_mmap_disabled": [
+        ":tflite_file_mmap_disabled": [
             "mmap_allocation_disabled.cc",
         ],
         "//conditions:default": [
@@ -2188,7 +2258,10 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow/compiler/mlir/lite/core/api:error_reporter"],
+    deps = [
+        "//tensorflow/compiler/mlir/lite/core/api:error_reporter",
+        "//tensorflow/lite:util",
+    ],
 )
 
 exports_files(srcs = ["utils/control_edges.h"])
@@ -2267,6 +2340,19 @@ selects.config_setting_group(
     ],
 )
 # LINT.ThenChange(//tensorflow/lite/BUILD)
+
+# Governs selection of the file-backed mmap allocation implementation only.
+# Unlike ":tflite_mmap_disabled" (which also drives the -DTFLITE_MMAP_DISABLED
+# define used for anonymous scratch mmap in e.g. fully_connected_4bit.h), this
+# group intentionally excludes Windows, which now supports file-backed mmap via
+# CreateFileMapping/MapViewOfFile in mmap_allocation.cc.
+selects.config_setting_group(
+    name = "tflite_file_mmap_disabled",
+    match_any = [
+        ":fuchsia_mmap_disabled",
+        ":tflite_mmap_disabled_true",
+    ],
+)
 
 # LINT.IfChange(version)
 cc_library(

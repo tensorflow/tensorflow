@@ -113,14 +113,12 @@ TEST(MeshAndAxisTest, MeshToProtoIotaTilingWithReshapeDims) {
   expected.mutable_axes(0)->set_size(4);
   expected.mutable_axes(1)->set_size(4);
   expected.mutable_axes(2)->set_size(1);
-  // When dims=[4,4,1] reshape_dims=[4,2,2], transpose_perm=[1,0,2] (swap dim 0
-  // and dim 1) corresponds to [4,4,1]<=[4,2,2]T(1,0,2) which in full array V1
-  // format is [0,1,4,5,8,9,12,13,2,3,6,7,10,11,14,15].
-  std::vector<int> expected_device_ids = {0, 1, 4, 5, 8,  9,  12, 13,
-                                          2, 3, 6, 7, 10, 11, 14, 15};
-  for (int i = 0; i < expected_device_ids.size(); ++i) {
-    expected.add_device_ids(expected_device_ids[i]);
-  }
+  expected.mutable_iota_transform()->add_reshape_dims(4);
+  expected.mutable_iota_transform()->add_reshape_dims(2);
+  expected.mutable_iota_transform()->add_reshape_dims(2);
+  expected.mutable_iota_transform()->add_transpose_perm(1);
+  expected.mutable_iota_transform()->add_transpose_perm(0);
+  expected.mutable_iota_transform()->add_transpose_perm(2);
 
   std::vector<absl::string_view> axes_names = {"axis1", "axis2", "axis3"};
   EXPECT_THAT(
@@ -164,9 +162,15 @@ TEST(MeshAndAxisTest, MeshFromProtoNonIotaTiling) {
 }
 
 TEST(MeshAndAxisTest, MeshRoundtripProto) {
-  // Iota tiling.
+  // Simple iota tiling.
   std::vector<absl::string_view> axes_xy = {"data", "model"};
-  Mesh mesh_iota({5, 3}, axes_xy);
+  Mesh mesh_simple_iota({5, 3}, axes_xy);
+  EXPECT_THAT(mesh_simple_iota, Mesh::FromProto(mesh_simple_iota.ToProto()));
+
+  // Transformed iota tiling.
+  Mesh mesh_iota(
+      TileAssignment(IotaTileAssignment::Create({5, 3}, {5, 3}, {1, 0})),
+      axes_xy);
   EXPECT_THAT(mesh_iota, Mesh::FromProto(mesh_iota.ToProto()));
 
   // Non-iota tiling.
@@ -210,11 +214,6 @@ TEST(MeshAndAxisTest, ValidatesMesh) {
         Mesh mesh_with_duplicate_axis_names({1, 2, 3, 4}, {"x", "y", "z", "x"});
       },
       "Mesh has duplicate axis names. Duplicate axis name: x");
-
-  EXPECT_DEATH(
-      { Mesh mesh_with_integer_axis_name({1, 2}, {"x", "1"}); },
-      "Mesh axis name cannot be an integer to avoid confusion with axis "
-      "indices: 1");
 }
 
 TEST(MeshAndAxisTest, FromProtoValidation) {
@@ -514,6 +513,24 @@ TEST(MeshAndAxisTest, SortAndMergeAxesFull) {
   SortAndMergeAxes(axes, mesh);
 
   EXPECT_THAT(axes, testing::ElementsAre(AxisRef(0)));
+}
+
+TEST(MeshAndAxisTest, MergeAxesMergeContiguous) {
+  Mesh mesh({16, 16}, {"x", "y"});
+  std::vector<AxisRef> axes = {AxisRef(1, {1, 2}), AxisRef(1, {2, 2}),
+                               AxisRef(0, {1, 2}), AxisRef(0, {4, 2})};
+  MergeAxes(axes, mesh);
+
+  EXPECT_THAT(axes, testing::ElementsAre(AxisRef(1, {1, 4}), AxisRef(0, {1, 2}),
+                                         AxisRef(0, {4, 2})));
+}
+
+TEST(MeshAndAxisTest, MergeAxesDoesNotSort) {
+  Mesh mesh({4, 4}, {"x", "y"});
+  std::vector<AxisRef> axes = {AxisRef(1), AxisRef(0)};
+  MergeAxes(axes, mesh);
+
+  EXPECT_THAT(axes, testing::ElementsAre(AxisRef(1), AxisRef(0)));
 }
 
 TEST(MeshAndAxisTest, TruncateAxesByRemovingOverlaps_PartialOverlap) {

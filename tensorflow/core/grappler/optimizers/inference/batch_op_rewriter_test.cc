@@ -56,13 +56,16 @@ void AddBatchOp(
     int low_priority_max_batch_size = -1,
     int low_priority_batch_timeout_micros = -1,
     const std::vector<int32_t>& low_priority_allowed_batch_sizes = {},
-    int low_priority_max_enqueued_batches = -1) {
+    int low_priority_max_enqueued_batches = -1,
+    int num_warmup_batch_threads = 0) {
   auto set_batch_node_attribute = [&](const int32_t num_batch_threads,
                                       NodeDef* batch_op) {
     batch_op->set_name("cond/batch/BatchFunction");
     batch_op->set_op("BatchFunction");
     ::tensorflow::graph_transforms::SetNodeAttr("num_batch_threads",
                                                 num_batch_threads, batch_op);
+    ::tensorflow::graph_transforms::SetNodeAttr(
+        "num_warmup_batch_threads", num_warmup_batch_threads, batch_op);
     ::tensorflow::graph_transforms::SetNodeAttr("max_batch_size",
                                                 max_batch_size, batch_op);
     ::tensorflow::graph_transforms::SetNodeAttr("batch_timeout_micros",
@@ -296,6 +299,8 @@ TEST_F(BatchOpRewriterTest, UpdateBatchOptions) {
       .set_max_enqueued_batches(500);
   (*config.mutable_batch_options())["model_with_override"]
       .set_disable_large_batch_splitting(true);
+  (*config.mutable_batch_options())["model_with_override"]
+      .set_num_warmup_batch_threads(5);
 
   RewriterConfig_CustomGraphOptimizer rewriter_config = MakeConfig(config);
   ConfigProto config_proto;
@@ -317,13 +322,73 @@ TEST_F(BatchOpRewriterTest, UpdateBatchOptions) {
   // overridden to zero regardless of
   // `enable_adaptive_shared_batching_thread_pool`, since `model_with_override`
   // override its scheduler options in `model_scheduler_options`.
-  AddBatchOp(&expected_graph, 2 /* num_batch_threads */,
-             {} /* reserved_int_attrs */, 128 /* max_batch_size */,
-             5000 /* batch_timeout_micros */, allowed_batch_sizes,
-             500 /* max_enqueued_batches */,
-             true /* disable_large_batch_splitting */);
+  AddBatchOp(&expected_graph, /* num_batch_threads = */ 2,
+             /* reserved_int_attrs = */ {},
+             /* max_batch_size = */ 128,
+             /* batch_timeout_micros = */ 5000,
+             /* allowed_batch_sizes = */ allowed_batch_sizes,
+             /* max_enqueued_batches = */ 500,
+             /* disable_large_batch_splitting = */ true,
+             /* mixed_priority_policy = */ "",
+             /* low_priority_max_batch_size = */ -1,
+             /* low_priority_batch_timeout_micros = */ -1,
+             /* low_priority_allowed_batch_sizes = */ {},
+             /* low_priority_max_enqueued_batches = */ -1,
+             /* num_warmup_batch_threads = */ 5);
 
   EXPECT_EQ(optimized_graph.DebugString(), expected_graph.DebugString());
+}
+
+TEST_F(BatchOpRewriterTest, UpdateGlobalBatchOptions) {
+  BatchOpRewriteConfig config;
+  config.mutable_global_batch_options()->set_num_batch_threads(4);
+  config.mutable_global_batch_options()->set_max_batch_size(64);
+
+  // Specific model override.
+  (*config.mutable_batch_options())["model_with_override"]
+      .set_num_batch_threads(2);
+
+  RewriterConfig_CustomGraphOptimizer rewriter_config = MakeConfig(config);
+  ConfigProto config_proto;
+  config_proto.mutable_experimental()->mutable_session_metadata()->set_version(
+      123);
+
+  // Test model WITH override.
+  config_proto.mutable_experimental()->mutable_session_metadata()->set_name(
+      "model_with_override");
+  BatchOpRewriter optimizer_with_override;
+  TF_ASSERT_OK(
+      optimizer_with_override.InitWithConfig(config_proto, &rewriter_config));
+
+  GraphDef optimized_graph_override;
+  GrapplerItem item_override;
+  AddBatchOp(&item_override.graph, /* num_batch_threads = */ 16);
+  TF_ASSERT_OK(optimizer_with_override.Optimize(nullptr, item_override,
+                                                &optimized_graph_override));
+
+  GraphDef expected_graph_override;
+  AddBatchOp(&expected_graph_override, /* num_batch_threads = */ 2);
+  EXPECT_EQ(optimized_graph_override.DebugString(),
+            expected_graph_override.DebugString());
+
+  // Test model WITHOUT override (uses global).
+  config_proto.mutable_experimental()->mutable_session_metadata()->set_name(
+      "another_model");
+  BatchOpRewriter optimizer_without_override;
+  TF_ASSERT_OK(optimizer_without_override.InitWithConfig(config_proto,
+                                                         &rewriter_config));
+
+  GraphDef optimized_graph_global;
+  GrapplerItem item_global;
+  AddBatchOp(&item_global.graph);
+  TF_ASSERT_OK(optimizer_without_override.Optimize(nullptr, item_global,
+                                                   &optimized_graph_global));
+
+  GraphDef expected_graph_global;
+  AddBatchOp(&expected_graph_global, /* num_batch_threads = */ 4,
+             /* reserved_int_attrs = */ {}, /* max_batch_size = */ 64);
+  EXPECT_EQ(optimized_graph_global.DebugString(),
+            expected_graph_global.DebugString());
 }
 
 TEST_F(BatchOpRewriterTest,
@@ -384,7 +449,8 @@ TEST_F(BatchOpRewriterTest, UpdateToUseGlobalPrioritization) {
              /* low_priority_max_batch_size = */ 16,
              /* low_priority_batch_timeout_micros = */ 20000,
              /* low_priority_allowed_batch_sizes = */ {8, 16},
-             /* low_priority_max_enqueued_batches = */ 1000);
+             /* low_priority_max_enqueued_batches = */ 1000,
+             /* num_warmup_batch_threads = */ 0);
 
   EXPECT_EQ(optimized_graph.DebugString(), expected_graph.DebugString());
 }

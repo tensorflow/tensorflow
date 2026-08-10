@@ -316,10 +316,13 @@ PYBIND11_MODULE(_tf_stack, m) {
                   frames.subspan(start, slicelength));
             }
             std::vector<StackFrame> out;
-            out.reserve(slicelength);
+            if (slicelength > 0) {
+              out.reserve(slicelength);
+            }
             // Python slices allow negative indexing.
-            for (int i = start; i != stop; i += step) {
-              out.push_back(frames[i]);
+            for (py::ssize_t i = start, count = 0; count < slicelength;
+                 i += step, ++count) {
+              out.push_back(frames[static_cast<size_t>(i)]);
             }
             return std::make_shared<FrozenStackTrace>(out);
           },

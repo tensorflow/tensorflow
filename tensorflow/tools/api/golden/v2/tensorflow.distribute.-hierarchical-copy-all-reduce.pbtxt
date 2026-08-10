@@ -3,7 +3,7 @@ tf_class {
   is_instance: "<class \'tensorflow.python.distribute.cross_device_ops.HierarchicalCopyAllReduce\'>"
   is_instance: "<class \'tensorflow.python.distribute.cross_device_ops.AllReduceCrossDeviceOps\'>"
   is_instance: "<class \'tensorflow.python.distribute.cross_device_ops.CrossDeviceOps\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'num_packs\'], varargs=None, keywords=None, defaults=[\'1\'], "

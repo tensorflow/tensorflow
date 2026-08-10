@@ -71,10 +71,10 @@ StatusOr<std::optional<Layout>> ExtractSingleLayoutFromOp(
     TF_ASSIGN_OR_RETURN(auto layouts, ExtractLayoutFromOp(op, attr_name));
     if (layouts.empty()) return out;
     if (layouts.size() != 1) {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "Extracting single layout on Op that has multiple layout attached is "
           "ambiguous. op : ",
-          op->getName().getStringRef().str());
+          op->getName().getStringRef().str()));
     }
     out.swap(layouts[0]);
   }
@@ -88,7 +88,7 @@ StatusOr<std::optional<Layout>> ExtractSingleLayoutFromOp(mlir::Operation* op) {
 StatusOr<Layout> ExtractRequiredSingleLayoutFromOp(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(std::optional<Layout> layout,
                       ExtractSingleLayoutFromOp(op));
-  if (!layout) return errors::Internal("expected layout missing");
+  if (!layout) return absl::InternalError("expected layout missing");
 
   return *layout;
 }
@@ -133,7 +133,7 @@ StatusOr<std::vector<Layout>> ExtractRequiredLayoutFromOp(mlir::Operation* op) {
                       ExtractLayoutFromOp(op));
   std::vector<Layout> layouts;
   for (const absl::optional<Layout>& layout : optional_layouts) {
-    if (!layout) return errors::Internal("expected layout missing");
+    if (!layout) return absl::InternalError("expected layout missing");
     layouts.emplace_back(*layout);
   }
 
@@ -143,11 +143,12 @@ StatusOr<std::vector<Layout>> ExtractRequiredLayoutFromOp(mlir::Operation* op) {
 StatusOr<Mesh> ExtractDeviceMeshEnclosingCluster(mlir::Operation* op) {
   auto enclosing_cluster = op->getParentOfType<mlir::tf_device::ClusterOp>();
   if (!enclosing_cluster)
-    return errors::InvalidArgument("op is not inside a device mesh cluster.");
+    return absl::InvalidArgumentError(
+        "op is not inside a device mesh cluster.");
 
   TF_ASSIGN_OR_RETURN(auto mesh, ExtractDeviceMeshFromOp(enclosing_cluster));
   if (!mesh)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "op's enclosing device cluster does not have mesh defined.");
 
   return *mesh;
@@ -180,11 +181,11 @@ StatusOr<std::optional<Layout>> ExtractLayoutFromOperand(mlir::Value operand) {
       if (layouts.empty()) return out;
 
       if (result_number >= layouts.size()) {
-        return errors::Internal(
+        return absl::InternalError(absl::StrCat(
             "Expect to extract the ", result_number,
             "-th output's layout, but "
             "only see ",
-            layouts.size(), " outputs: ", op->getName().getStringRef().str());
+            layouts.size(), " outputs: ", op->getName().getStringRef().str()));
       }
       out.swap(layouts[result_number]);
     }
@@ -193,13 +194,13 @@ StatusOr<std::optional<Layout>> ExtractLayoutFromOperand(mlir::Value operand) {
 
   auto block_arg = mlir::dyn_cast<mlir::BlockArgument>(operand);
   if (!block_arg)
-    return errors::Internal(
+    return absl::InternalError(
         "Operand is not either a OpResult or a BlockArgument. This should not "
         "happen.");
   auto func_op = mlir::dyn_cast_or_null<mlir::func::FuncOp>(
       block_arg.getOwner()->getParentOp());
   if (!func_op) {
-    return errors::InvalidArgument("op must be enclosed by a function");
+    return absl::InvalidArgumentError("op must be enclosed by a function");
   }
 
   std::optional<Layout> extracted_layout;
@@ -216,7 +217,7 @@ StatusOr<std::optional<Layout>> ExtractLayoutFromOperand(mlir::Value operand) {
 StatusOr<Layout> ExtractRequiredLayoutFromOperand(mlir::Value operand) {
   TF_ASSIGN_OR_RETURN(std::optional<Layout> layout,
                       ExtractLayoutFromOperand(operand));
-  if (!layout) return errors::Internal("expected layout missing");
+  if (!layout) return absl::InternalError("expected layout missing");
 
   return *layout;
 }
@@ -268,7 +269,7 @@ StatusOr<std::optional<Layout>> ExtractLayoutFromFunctionReturnAttr(
       layout_attr_from_func_result.getValue().str();
   auto result_layout_or_status = Layout::FromString(layout_string);
   if (!result_layout_or_status.ok())
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         llvm::formatv("Malformed default return layout received. {0} Received "
                       "layout : {1}",
                       result_layout_or_status.status().message(), layout_string)
@@ -294,7 +295,7 @@ StatusOr<llvm::SmallVector<Layout, 4>> ExtractElementLayoutsFromOperand(
   mlir::Operation* op = input_value.getOwner();
   auto enclosing_function = op->getParentOfType<mlir::func::FuncOp>();
   if (!enclosing_function)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         llvm::formatv("Could not find iterator at {0}-th input to op: {1}",
                       operand_index, op->getName())
             .str());
@@ -303,7 +304,7 @@ StatusOr<llvm::SmallVector<Layout, 4>> ExtractElementLayoutsFromOperand(
   auto array_attr = enclosing_function.getArgAttrOfType<mlir::ArrayAttr>(
       block_arg.getArgNumber(), kIteratorElementLayouts);
   if (!array_attr)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         llvm::formatv(
             "Could not find `{0}` attribute of {1}-th input to op: {2}",
             kIteratorElementLayouts, operand_index, op->getName())

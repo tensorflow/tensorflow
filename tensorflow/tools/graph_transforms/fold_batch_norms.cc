@@ -82,9 +82,9 @@ absl::Status FoldBatchNorms(const GraphDef& input_graph_def,
         }
         if ((mul_values.shape().dims() != 1) ||
             (mul_values.shape().dim_size(0) != weights_cols)) {
-          return errors::InvalidArgument(
-              "Mul constant input to batch norm has bad shape: ",
-              mul_values.shape().DebugString());
+          return absl::InvalidArgumentError(
+              absl::StrCat("Mul constant input to batch norm has bad shape: ",
+                           mul_values.shape().DebugString()));
         }
 
         // Multiply the original weights by the scale vector.

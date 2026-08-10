@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -144,7 +145,7 @@ class HloPassPipeline : public HloPassInterface {
   static absl::StatusOr<bool> RunHelper(
       HloPassInterface* pass, HloT module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) {
-    TF_ASSIGN_OR_RETURN(bool changed, pass->Run(module, execution_threads));
+    ABSL_ASSIGN_OR_RETURN(bool changed, pass->Run(module, execution_threads));
     module->Cleanup();
     return changed;
   }

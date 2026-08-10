@@ -16,6 +16,8 @@
 """Starlark implementation of cc_embed_data."""
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
+load("@bazel_skylib//lib:sets.bzl", "sets")
+load("@rules_cc//cc:action_names.bzl", "ACTION_NAMES")
 load("@rules_cc//cc:find_cc_toolchain.bzl", "find_cc_toolchain", "use_cc_toolchain")
 load("@rules_cc//cc/common:cc_common.bzl", "cc_common")
 load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
@@ -49,22 +51,27 @@ def _build_command_line_common(ctx, strip):
         # one artifact root.
         # We grab them off the src files to handle non-standard paths such as those
         # caused by transitions
-        command_line.add_all(
-            ctx.files.srcs,
-            map_each = _root_mapper,
-            uniquify = True,
-            before_each = "--strip",
-        )
+
+        root_prefixes = sets.make()
+        for f in ctx.files.srcs:
+            root = _root_mapper(f)
+            if root:
+                sets.insert(root_prefixes, root)
+
+        prefixes = sets.to_list(root_prefixes)
 
         # Second, strip the actual prefix w.r.t. the cc_embed_data's BUILD package.
         prefix = ctx.label.package
+
         if len(ctx.attr.strip) != 0:
             if paths.is_absolute(ctx.attr.strip):
                 prefix = ctx.attr.strip.lstrip("/")
             else:
                 prefix = paths.join(ctx.label.package, ctx.attr.strip)
         prefix = paths.normalize(prefix)
-        command_line.add("--strip", prefix)
+        if prefix:
+            prefixes.append(prefix)
+        command_line.add("--strip", ",".join(prefixes))
 
     command_line.add("--include_path", ctx.label.package)
 
@@ -88,6 +95,7 @@ def _cc_skylark_embed_data_impl(ctx):
     base_name = paths.split_extension(h_file_artifact.basename)[0]
 
     header_command_line, header_env = _build_command_line_common(ctx, strip = False)
+
     header_command_line.add("--nocreate_impl")
     header_command_line.add("--out_h", h_file_artifact)
     header_command_line.add(base_name)
@@ -153,7 +161,12 @@ def _cc_skylark_embed_data_impl(ctx):
         cc_toolchain = cc_toolchain,
         compilation_outputs = compilation_outputs,
         alwayslink = ctx.attr.alwayslink,
-        disallow_dynamic_library = ctx.attr.linkstatic,
+        # The local Mac toolchain seemingly doesn't support this type of dynamic
+        # linking, so we have to feature-detect.
+        disallow_dynamic_library = not cc_common.action_is_enabled(
+            feature_configuration = feature_configuration,
+            action_name = ACTION_NAMES.cpp_link_nodeps_dynamic_library,
+        ),
     )
 
     return [

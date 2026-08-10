@@ -81,24 +81,24 @@ void SparseSplitOpImpl(OpKernelContext* context, int num_split,
   const Tensor& input_shape = context->input(3);
 
   OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsScalar(input_axis.shape()),
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "Input axis should be a scalar but received shape ",
-                        input_axis.shape().DebugString()),
+                        input_axis.shape().DebugString())),
                     done);
   OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsMatrix(input_indices.shape()),
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "Input indices should be a matrix but received shape ",
-                        input_indices.shape().DebugString()),
+                        input_indices.shape().DebugString())),
                     done);
   OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsVector(input_values.shape()),
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "Input values should be a vector but received shape ",
-                        input_indices.shape().DebugString()),
+                        input_indices.shape().DebugString())),
                     done);
   OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsVector(input_shape.shape()),
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "Input shape should be a vector but received shape ",
-                        input_shape.shape().DebugString()),
+                        input_shape.shape().DebugString())),
                     done);
   OP_REQUIRES_OK_ASYNC(context,
                        sparse_utils::ValidateSparseTensor<int64_t>(
@@ -112,18 +112,18 @@ void SparseSplitOpImpl(OpKernelContext* context, int num_split,
   const int64_t input_rank = input_shape.vec<int64_t>().size();
   const int64_t axis = (axis_input < 0) ? input_rank + axis_input : axis_input;
 
-  OP_REQUIRES_ASYNC(
-      context, axis >= 0 && axis < input_rank,
-      errors::InvalidArgument("Input axis should be in range [", -input_rank,
-                              ", ", input_rank, "), got ", axis_input),
-      done);
+  OP_REQUIRES_ASYNC(context, axis >= 0 && axis < input_rank,
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Input axis should be in range [", -input_rank, ", ",
+                        input_rank, "), got ", axis_input)),
+                    done);
 
   OP_REQUIRES_ASYNC(
       context, num_split >= 1 && num_split <= input_shape.vec<int64_t>()(axis),
-      errors::InvalidArgument("Input num_split should be between 1 "
-                              "and the splitting dimension size (",
-                              input_shape.vec<int64_t>()(axis), "), got ",
-                              num_split),
+      absl::InvalidArgumentError(
+          absl::StrCat("Input num_split should be between 1 "
+                       "and the splitting dimension size (",
+                       input_shape.vec<int64_t>()(axis), "), got ", num_split)),
       done);
 
   // Prevent overflow by constructing the dense shape separately

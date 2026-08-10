@@ -62,7 +62,7 @@ StatusOr<mlir::Operation*> ElementwiseSPMDExpander::ExpandOp(
     TF_ASSIGN_OR_RETURN(auto operand_layout,
                         ExtractLayoutFromOperand(operand.get()));
     if (!operand_layout)
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "input layout of elementwise op must be known before SPMD "
           "expansion.");
 
@@ -130,7 +130,7 @@ ElementwiseSPMDExpander::ComputeLayoutForward(
   if (merged_operand_layout) {
     const int output_rank = ValueRank(op->getOpResult(0));
     if (output_rank == -1)
-      return errors::InvalidArgument("Output has unknown rank");
+      return absl::InvalidArgumentError("Output has unknown rank");
 
     // We assume that all elementwise operations output a single tensor.
     return llvm::DenseMap<int, Layout>(
@@ -163,7 +163,7 @@ ElementwiseSPMDExpander::ComputeLayoutBackward(
         output_layout_truncated.sharding_spec_strs();
 
     if (inferred_operand_layout_strs.size() != operand_shape.size())
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           "Mismatch of operand shape size and layout size.");
     for (const auto& dim_shape_and_index : llvm::enumerate(operand_shape)) {
       const int dim_index = dim_shape_and_index.index();

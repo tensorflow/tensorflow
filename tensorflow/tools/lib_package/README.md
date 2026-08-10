@@ -24,30 +24,6 @@ distributed and installed using something like:
 tar -C /usr/local -xzf libtensorflow.tar.gz
 ```
 
-## Java library
-
-The TensorFlow [Java
-API](https://www.tensorflow.org/code/tensorflow/java/README.md)
-consists of a native library (`libtensorflow_jni.so`) and a Java archive (JAR).
-The following commands:
-
-```sh
-bazel test --config opt //tensorflow/tools/lib_package:libtensorflow_test
-bazel build --config opt \
-  //tensorflow/tools/lib_package:libtensorflow_jni.tar.gz \
-  //tensorflow/java:libtensorflow.jar \
-  //tensorflow/java:libtensorflow-src.jar
-```
-
-test and produce the following:
-
--   The native library (`libtensorflow_jni.so`) packaged in an archive at:
-    `bazel-bin/tensorflow/tools/lib_package/libtensorflow_jni.tar.gz`
--   The Java archive at:
-    `bazel-bin/tensorflow/java/libtensorflow.jar`
--   The Java archive for Java sources at:
-    `bazel-bin/tensorflow/java/libtensorflow-src.jar`
-
 ## Release
 
 Scripts to build these archives for TensorFlow releases are in

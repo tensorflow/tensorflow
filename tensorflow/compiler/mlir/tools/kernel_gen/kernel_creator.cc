@@ -41,10 +41,10 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Transforms/Passes.h"  // from @llvm-project
-#include "mlir/Dialect/LLVMIR/Transforms/OptimizeForNVVM.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/NVVM/Transforms/OptimizeForNVVM.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
@@ -362,14 +362,13 @@ absl::Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
   kernelPm.addPass(mlir::createGpuKernelToRocdlPass(architecture));
 #elif GOOGLE_CUDA
   kernelPm.addPass(mlir::createGpuKernelToNvvmPass());
-  kernelPm.addPass(mlir::LLVM::createNVVMOptimizeForTargetPass());
+  kernelPm.addPass(mlir::NVVM::createNVVMOptimizeForTargetPass());
 #endif
   // Remove all location information to prevent a debug build.
   pm.addPass(::mlir::createStripDebugInfoPass());
 
   if (failed(pm.run(module))) {
-    return tensorflow::errors::Internal(
-        "Lowering to low-level device IR failed.");
+    return absl::InternalError("Lowering to low-level device IR failed.");
   }
 
   return absl::OkStatus();
@@ -386,7 +385,7 @@ absl::Status AmendKernelLLVMIRWithStaticKnowledge(mlir::ModuleOp module,
       mlir::kernel_gen::transforms::CreatePropagateTfAbiKnowledgeToKernels());
 
   return failed(pm.run(module))
-             ? tensorflow::errors::Internal(
+             ? absl::InternalError(
                    "Amending LLVMIR with static knowledge failed.")
              : absl::OkStatus();
 }
@@ -408,7 +407,7 @@ absl::Status GenerateDeviceCode(mlir::ModuleOp module,
       enable_ftz));
 
   return failed(pm.run(module))
-             ? tensorflow::errors::Internal("Generating device code failed.")
+             ? absl::InternalError("Generating device code failed.")
              : absl::OkStatus();
 }
 
@@ -423,9 +422,9 @@ absl::Status LowerHostSideToFinalForm(mlir::ModuleOp module,
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 
-  return failed(pm.run(module)) ? tensorflow::errors::Internal(
-                                      "Final lowering of host side failed.")
-                                : absl::OkStatus();
+  return failed(pm.run(module))
+             ? absl::InternalError("Final lowering of host side failed.")
+             : absl::OkStatus();
 }
 
 }  // namespace

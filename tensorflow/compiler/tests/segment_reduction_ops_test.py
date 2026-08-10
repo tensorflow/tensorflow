@@ -305,6 +305,34 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
               np.array([0, 1, 2, 3, 4, 5, 6], dtype=dtype),
               np.array([3, -1, 0, 1, 0, -1, 3], dtype=np.int32), 4))
 
+  def testNaNHandling(self):
+    for dtype in self.float_types:
+      hi = dtypes.as_dtype(dtype).max
+      lo = dtypes.as_dtype(dtype).min
+      if self.device == "TPU" and dtype == np.float64:
+        hi = np.inf
+        lo = -np.inf
+      self.assertAllClose(
+          np.array([1.0], dtype=dtype),
+          self._unsortedSegmentMin(
+              np.array([1.0, np.nan, 3.0], dtype=dtype),
+              np.array([0, 0, 0], dtype=np.int32), 1))
+      self.assertAllClose(
+          np.array([3.0], dtype=dtype),
+          self._unsortedSegmentMax(
+              np.array([np.nan, 1.0, 3.0], dtype=dtype),
+              np.array([0, 0, 0], dtype=np.int32), 1))
+      self.assertAllClose(
+          np.array([hi], dtype=dtype),
+          self._unsortedSegmentMin(
+              np.array([np.nan, np.nan], dtype=dtype),
+              np.array([0, 0], dtype=np.int32), 1))
+      self.assertAllClose(
+          np.array([lo], dtype=dtype),
+          self._unsortedSegmentMax(
+              np.array([np.nan, np.nan], dtype=dtype),
+              np.array([0, 0], dtype=np.int32), 1))
+
 
 if __name__ == "__main__":
   googletest.main()

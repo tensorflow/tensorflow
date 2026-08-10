@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -102,12 +103,12 @@ namespace xla {
       sequence.push_back(instr_it->second);
     }
   }
-  TF_RETURN_IF_ERROR(schedule.Verify());
+  ABSL_RETURN_IF_ERROR(schedule.Verify());
   return schedule;
 }
 
 absl::StatusOr<HloScheduleProto> HloSchedule::ToProto() const {
-  TF_RETURN_IF_ERROR(Verify());
+  ABSL_RETURN_IF_ERROR(Verify());
   HloScheduleProto proto;
   for (const auto& id_sequence : sequences_) {
     int64_t computation_id = id_sequence.first;
@@ -166,20 +167,20 @@ absl::Status HloSchedule::UpdateComputationSchedule(
   // dependencies.
   auto sched_sequence = sequence(computation).instructions();
   absl::flat_hash_set<HloInstruction*> invalid_instructions;
+  absl::flat_hash_set<HloInstruction*> seen_instructions;
   for (HloInstruction* inst : sched_sequence) {
-    auto inst_it = absl::c_find(sched_sequence, inst);
     for (HloInstruction* pred : inst->control_predecessors()) {
       // Found a pair of instructions whose schedule order is inconsistent with
       // their control dependencies.
       if (pred == inst) {
-        TF_RETURN_IF_ERROR(pred->RemoveControlDependencyTo(inst));
+        ABSL_RETURN_IF_ERROR(pred->RemoveControlDependencyTo(inst));
       }
-      auto pred_it = absl::c_find(sched_sequence, pred);
-      if (pred_it != sched_sequence.end() && pred_it >= inst_it) {
+      if (pred->parent() == computation && !seen_instructions.contains(pred)) {
         invalid_instructions.insert(inst);
         invalid_instructions.insert(pred);
       }
     }
+    seen_instructions.insert(inst);
   }
   for (HloInstruction* inst : invalid_instructions) {
     sequences_.at(computation->unique_id()).remove_instruction(inst);
@@ -294,7 +295,7 @@ absl::Status HloSchedule::Update(
   for (const HloComputation* computation : nonfusion_computations) {
     if (!is_computation_scheduled(computation)) {
       GetOrCreateSequence(computation);
-      TF_RETURN_IF_ERROR(UpdateComputationSchedule(computation));
+      ABSL_RETURN_IF_ERROR(UpdateComputationSchedule(computation));
     }
   }
   auto sum_of_sequences_for_threads = [&]() -> int64_t {
@@ -336,10 +337,10 @@ absl::Status HloSchedule::Update(
   CHECK_EQ(sequence_sum, nonfusion_computations.size());
 
   for (const HloComputation* computation : nonfusion_computations) {
-    TF_RETURN_IF_ERROR(UpdateComputationSchedule(computation));
+    ABSL_RETURN_IF_ERROR(UpdateComputationSchedule(computation));
   }
 
-  TF_RETURN_IF_ERROR(Verify());
+  ABSL_RETURN_IF_ERROR(Verify());
   return absl::OkStatus();
 }
 
@@ -397,7 +398,7 @@ absl::Status HloSchedule::Verify() const {
     // For each computation verify the set of instructions is the same and
     // that each dependency and control edge is honored.
     for (const HloComputation* computation : nonfusion_computations) {
-      TF_RETURN_IF_ERROR(Verify(computation));
+      ABSL_RETURN_IF_ERROR(Verify(computation));
     }
   }
 
@@ -479,7 +480,9 @@ std::string HloSchedule::ToString() const {
         pieces.push_back(absl::StrCat("  ", id));
       }
     } else {
-      pieces.push_back(absl::StrFormat("computation %s:", computation->name()));
+      pieces.push_back(
+          absl::StrFormat("computation %s (thread %s):", computation->name(),
+                          computation->execution_thread()));
       for (const HloInstruction* instruction : sequence.instructions()) {
         pieces.push_back(absl::StrCat("  ", instruction->name()));
       }

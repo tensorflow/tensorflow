@@ -423,6 +423,18 @@ INSTANTIATE_TEST_CASE_P(SparseTensorSliceDatasetOpTest,
                         ParameterizedIteratorSaveAndRestoreTest,
                         ::testing::ValuesIn(IteratorSaveAndRestoreTestCases()));
 
+TEST_F(SparseTensorSliceDatasetOpTest, InvalidIndicesRepro) {
+  auto dataset_params = SparseTensorSliceDatasetParams(
+      /*indices=*/CreateTensor<int64_t>({2, 2}, {0, 5, 1, 5}),
+      /*values=*/CreateTensor<int32_t>({2}, {888, 999}),
+      /*dense_shape=*/CreateTensor<int64_t>({2}, {2, 2}),
+      /*tvalues=*/DT_INT32,
+      /*node_name=*/kNodeName);
+  absl::Status status = Initialize(dataset_params);
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_TRUE(absl::StrContains(status.message(), "[0,5] is out of bounds"));
+}
+
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

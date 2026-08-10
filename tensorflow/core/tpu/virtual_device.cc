@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/virtual_device.h"
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -85,8 +86,8 @@ absl::Status VirtualDevice::MakeTensorFromProto(
   Tensor parsed(tensor_proto.dtype());
   Allocator* allocator = cpu_allocator();
   if (!parsed.FromProto(allocator, tensor_proto)) {
-    return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                   tensor_proto.DebugString());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Cannot parse tensor from proto: ", tensor_proto.DebugString()));
   }
   *tensor = parsed;
   return absl::OkStatus();

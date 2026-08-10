@@ -35,8 +35,8 @@ class TapeOperation : public AbstractOperation {
   explicit TapeOperation(AbstractOperation*, Tape*, const GradientRegistry&);
   void Release() override;
   absl::Status Reset(const char* op, const char* raw_device_name) override;
-  const string& Name() const override;
-  const string& DeviceName() const override;
+  const std::string& Name() const override;
+  const std::string& DeviceName() const override;
   absl::Status SetDeviceName(const char* name) override;
   absl::Status AddInput(AbstractTensorHandle* input) override;
   absl::Status AddInputList(

@@ -35,8 +35,7 @@ class GpuPerformanceModel : public GpuPerformanceModelBase {
   // Lifetime to all references to this constructor must live at least as long
   GpuPerformanceModel(const se::DeviceDescription& device_info,
                       HloFusionAnalysisCache& fusion_analysis_cache,
-                      GpuPerformanceModelCache& gpu_performance_model_cache,
-                      mlir::MLIRContext* mlir_context);
+                      GpuPerformanceModelCache& gpu_performance_model_cache);
 
   EstimateRunTimeData EstimateRunTimeForInstruction(
       const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis);
@@ -78,7 +77,6 @@ class GpuPerformanceModel : public GpuPerformanceModelBase {
   // this is not possible because the cache is used directly by
   // xla::gpu::PriorityFusionQueue
   GpuPerformanceModelCache& gpu_performance_model_cache_;
-  mlir::MLIRContext* mlir_context_;
 };
 
 // An owning wrapper around GpuPerformanceModel that also owns the caches.
@@ -88,12 +86,11 @@ class GpuPerformanceModel : public GpuPerformanceModelBase {
 // owning model should be used.
 class GpuPerformanceModelOwning {
  public:
-  GpuPerformanceModelOwning(const se::DeviceDescription& device_info,
-                            mlir::MLIRContext* mlir_context)
+  explicit GpuPerformanceModelOwning(const se::DeviceDescription& device_info)
       : fusion_analysis_cache_(device_info),
         gpu_performance_model_(std::make_unique<GpuPerformanceModel>(
-            device_info, fusion_analysis_cache_, gpu_performance_model_cache_,
-            mlir_context)) {};
+            device_info, fusion_analysis_cache_,
+            gpu_performance_model_cache_)) {};
 
   GpuPerformanceModel& Get() const { return *gpu_performance_model_; }
 

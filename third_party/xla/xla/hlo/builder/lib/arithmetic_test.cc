@@ -32,7 +32,7 @@ namespace xla {
 namespace {
 
 class ArithmeticTest : public ClientLibraryTestRunnerMixin<
-                           HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+                           HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  public:
   template <typename NativeT>
   void TestArgMin(std::initializer_list<std::initializer_list<NativeT>> input,

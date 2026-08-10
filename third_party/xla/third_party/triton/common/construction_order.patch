@@ -1,7 +1,7 @@
 
 --- a/third_party/nvidia/lib/Dialect/NVWS/Transforms/InsertTmemAref.cpp
 +++ b/third_party/nvidia/lib/Dialect/NVWS/Transforms/InsertTmemAref.cpp
-@@ -65,8 +65,8 @@ struct TmemAccessDag {
+@@ -66,8 +66,8 @@ struct TmemAccessDag {
      SmallVector<std::unique_ptr<Node>> subDags;
      Node(Operation *op, OpOperand *tokOperand,
           std::optional<PartitionId> partitionId, Node *parent)
@@ -12,7 +12,7 @@
  
      // ------------------------------------------------------------------------
  
-@@ -390,7 +390,7 @@ struct TMEMAref {
+@@ -391,7 +391,7 @@ struct TMEMAref {
    enum Kind { PUT, GET };
  
    TMEMAref(Value aref, Value origBuffer, Value replToken)

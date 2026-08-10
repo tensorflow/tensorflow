@@ -1,4 +1,20 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("//xla:xla.default.bzl", "xla_cc_test")
+load("//xla/tsl:tsl.bzl", "if_oss")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_binary", "cc_library")
 load(
     "//xla/tsl/platform/default:build_config_root.bzl",
@@ -21,6 +37,11 @@ package_group(
     includes = [
         "//xla:friends",
     ],
+)
+
+config_setting(
+    name = "x86_64",
+    constraint_values = ["@platforms//cpu:x86_64"],
 )
 
 # This empty target provides the C++ compilation context for the C++ source file.
@@ -123,8 +144,39 @@ cc_library(
 )
 
 cc_ir_header(
-    name = "eigen_unary_ll",
+    name = "eigen_unary_32_ll",
     src = "eigen_unary.cc",
+    copts = if_oss(
+        [
+            "-DEIGEN_GENERIC_VECTOR_SIZE_BYTES=64",
+            "-mprefer-vector-width=512",
+        ],
+        [
+            "-DEIGEN_GENERIC_VECTOR_SIZE_BYTES=32",
+            "-mprefer-vector-width=256",
+        ],
+    ),
+    deps = [
+        ":cpp_context_provider",
+        ":eigen_unary_lib",
+        ":vector_ops",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
+cc_ir_header(
+    name = "eigen_unary_64_ll",
+    src = "eigen_unary.cc",
+    copts = [
+        "-DEIGEN_GENERIC_VECTOR_SIZE_BYTES=64",
+        "-mprefer-vector-width=512",
+    ] + if_oss(
+        [],
+        select({
+            ":x86_64": ["-mavx512f"],
+            "//conditions:default": [],
+        }),
+    ),
     deps = [
         ":cpp_context_provider",
         ":eigen_unary_lib",
@@ -141,13 +193,15 @@ xla_cc_test(
     ],
     deps = [
         ":_cpp_gen_intrinsics",
+        ":eigen_unary_32_ll",
+        ":eigen_unary_64_ll",
         ":eigen_unary_lib",
-        ":eigen_unary_ll",
         ":vector_ops",
+        "//xla/codegen/intrinsic",
         "//xla/codegen/intrinsic:test_matchers",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:IRReader",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -157,7 +211,7 @@ cc_binary(
     srcs = ["dump_llvm_ir.cc"],
     deps = [
         ":_cpp_gen_intrinsics",
-        ":eigen_unary_ll",
+        "//xla/codegen/intrinsic",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:IRReader",
         "@llvm-project//llvm:Support",
@@ -169,7 +223,8 @@ cc_library(
     srcs = ["cpp_gen_intrinsics.cc"],
     hdrs = ["cpp_gen_intrinsics.h"],
     deps = [
-        ":eigen_unary_ll",
+        ":eigen_unary_32_ll",
+        ":eigen_unary_64_ll",
         "//xla/codegen/intrinsic",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/log",
@@ -193,6 +248,8 @@ cc_library(
         "//xla/codegen/intrinsic",
         "//xla/codegen/intrinsic:type",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:ir_headers",
     ],

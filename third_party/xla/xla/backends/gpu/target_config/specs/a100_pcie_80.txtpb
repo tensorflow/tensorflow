@@ -34,6 +34,10 @@ gpu_device_info {
   }
   registers_per_core_limit: 65536
   registers_per_block_limit: 65536
+  dnn_version: "8.9.4"
+  thread_dim_limit_x: 1024
+  thread_dim_limit_y: 1024
+  thread_dim_limit_z: 64
 }
 platform_name: "CUDA"
 dnn_version_info {
@@ -41,4 +45,4 @@ dnn_version_info {
   minor: 9
   patch: 4
 }
-device_description_str: "A100 80GB"
+device_description_str: "NVIDIA A100 80GB PCIe"

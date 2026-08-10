@@ -703,6 +703,7 @@ class DelegateKernel {
         temporary_tensors.push_back(index);
       }
     }
+    TfLiteIntArrayFree(*temporaries_array_ptr);
     *temporaries_array_ptr = TfLiteIntArrayCreate(temporary_tensors.size());
     for (int i = 0; i < temporary_tensors.size(); ++i) {
       (*temporaries_array_ptr)->data[i] = temporary_tensors[i];

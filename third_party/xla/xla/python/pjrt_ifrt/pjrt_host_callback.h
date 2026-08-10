@@ -21,10 +21,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/statusor.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/host_callback.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/host_callback.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
@@ -40,8 +41,8 @@ namespace ifrt {
 // TODO(hyeontaek): Update the comment (compiler to client) after splitting
 // compilation and loading.
 class PjRtHostSendAndRecvLoadedHostCallback
-    : public llvm::RTTIExtends<PjRtHostSendAndRecvLoadedHostCallback,
-                               LoadedHostCallback> {
+    : public RTTIExtends<PjRtHostSendAndRecvLoadedHostCallback,
+                         LoadedHostCallback> {
  public:
   PjRtHostSendAndRecvLoadedHostCallback(
       Client* client, std::unique_ptr<xla::HostCallback> host_callback)
@@ -70,7 +71,7 @@ class PjRtHostSendAndRecvLoadedHostCallback
 // Wrapper of an opaque callable that is loaded into FFI's ExecutionContext
 // during execution.
 class PjRtFfiLoadedHostCallback
-    : public llvm::RTTIExtends<PjRtFfiLoadedHostCallback, LoadedHostCallback> {
+    : public RTTIExtends<PjRtFfiLoadedHostCallback, LoadedHostCallback> {
  public:
   explicit PjRtFfiLoadedHostCallback(Client* client, void* callable)
       : client_(client), callable_(callable) {}
@@ -88,6 +89,38 @@ class PjRtFfiLoadedHostCallback
  private:
   Client* client_;
   void* callable_;
+};
+
+// Wrapper of an XLA HLO output callback. This object is expected to be passed
+// to the `xla::ifrt::PjRtLoadedExecutable`.
+class PjRtHloOutputLoadedHostCallback
+    : public RTTIExtends<PjRtHloOutputLoadedHostCallback, LoadedHostCallback> {
+ public:
+  PjRtHloOutputLoadedHostCallback(
+      Client* client,
+      std::unique_ptr<xla::HloOutputCallback> hlo_output_callback)
+      : client_(client), hlo_output_callback_(std::move(hlo_output_callback)) {}
+
+  const xla::HloOutputCallback& hlo_output_callback() const {
+    return *hlo_output_callback_;
+  }
+
+  // LoadedHostCallback implementation.
+
+  ~PjRtHloOutputLoadedHostCallback() override = default;
+
+  Client* client() const override { return client_; }
+
+  absl::StatusOr<std::string> Serialize() const override;
+
+  static char ID;  // NOLINT
+
+ private:
+  template <typename T, typename... Args>
+  friend tsl::RCReference<T> tsl::MakeRef(Args&&... args);
+
+  Client* client_;
+  std::unique_ptr<xla::HloOutputCallback> hlo_output_callback_;
 };
 
 }  // namespace ifrt

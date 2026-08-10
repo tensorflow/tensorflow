@@ -190,8 +190,8 @@ absl::Status AttrSlice::CheckFind(absl::string_view attr_name,
   if (attr_value != nullptr) {
     return absl::OkStatus();
   }
-  absl::Status s =
-      errors::NotFound("No attr named '", attr_name, "' in NodeDef:");
+  absl::Status s = absl::NotFoundError(
+      absl::StrCat("No attr named '", attr_name, "' in NodeDef:"));
   // Skip AttachDef for internal attrs since it is a little bit
   // expensive and it is common for them to correctly not be included
   // in a NodeDef.
@@ -297,8 +297,8 @@ DEFINE_TRY_GET_ATTR(int64_t, i, "int", emplace_back, v, ;)
 DEFINE_GET_ATTR(
     int32_t, i, "int", emplace_back, static_cast<int32_t>(v),
     if (static_cast<int64_t>(static_cast<int32_t>(v)) != v) {
-      return errors::InvalidArgument("Attr ", attr_name, " has value ", v,
-                                     " out of range for an int32");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Attr ", attr_name, " has value ", v, " out of range for an int32"));
     })
 DEFINE_TRY_GET_ATTR(
     int32_t, i, "int", emplace_back, static_cast<int32_t>(v),
@@ -339,9 +339,9 @@ DEFINE_GET_ATTR(PartialTensorShape, shape, "shape", emplace_back,
                 TF_RETURN_IF_ERROR(PartialTensorShape::IsValidShape(v));)
 DEFINE_GET_ATTR(
     Tensor, tensor, "tensor", emplace_back, t, Tensor t; if (!t.FromProto(v)) {
-      return errors::InvalidArgument("Attr ", attr_name, " has value ",
-                                     v.ShortDebugString(),
-                                     " that can't be converted to a Tensor");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Attr ", attr_name, " has value ", v.ShortDebugString(),
+                       " that can't be converted to a Tensor"));
     })
 DEFINE_GET_ATTR(NameAttrList, func, "func", emplace_back, v, ;);
 #undef DEFINE_GET_ATTR
@@ -476,11 +476,12 @@ absl::Status AddArgToSig(const NodeDefOrAttrSlice& node_or_attrs,
         GetNodeAttr(node_or_attrs, arg_def.number_attr(), &repeats));
     // We can't handle outputs that are larger than int32 sizes.
     if (static_cast<int64_t>(static_cast<int32_t>(repeats)) != repeats) {
-      return errors::InvalidArgument("Number of outputs is too big: ", repeats);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Number of outputs is too big: ", repeats));
     }
     if (repeats < 0) {
-      return errors::InvalidArgument("Value for number_attr() ", repeats,
-                                     " < 0");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Value for number_attr() ", repeats, " < 0"));
     }
 
     if (!arg_def.type_attr().empty()) {
@@ -495,8 +496,8 @@ absl::Status AddArgToSig(const NodeDefOrAttrSlice& node_or_attrs,
         sig->push_back(arg_def.type());
       }
     } else {
-      return errors::InvalidArgument("Missing type or type_attr field in ",
-                                     arg_def.ShortDebugString());
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Missing type or type_attr field in ", arg_def.ShortDebugString()));
     }
   } else if (!arg_def.type_attr().empty()) {
     const AttrValue* attr_value;
@@ -514,16 +515,16 @@ absl::Status AddArgToSig(const NodeDefOrAttrSlice& node_or_attrs,
   } else if (arg_def.type() != DT_INVALID) {
     sig->push_back(arg_def.type());
   } else {
-    return errors::InvalidArgument("No type fields in ",
-                                   arg_def.ShortDebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("No type fields in ", arg_def.ShortDebugString()));
   }
   if (arg_def.is_ref()) {
     // For all types that were added by this function call, make them refs.
     for (size_t i = original_size; i < sig->size(); ++i) {
       if (IsRefType((*sig)[i])) {
-        return errors::InvalidArgument(
-            "Requested reference to a reference type: ",
-            arg_def.ShortDebugString());
+        return absl::InvalidArgumentError(
+            absl::StrCat("Requested reference to a reference type: ",
+                         arg_def.ShortDebugString()));
       }
       (*sig)[i] = MakeRefType((*sig)[i]);
     }
@@ -545,8 +546,8 @@ absl::Status InputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
       return absl::OkStatus();
     }
   }
-  return errors::InvalidArgument("Input ", input_port, " not found for node ",
-                                 node_def.name());
+  return absl::InvalidArgumentError(absl::StrCat(
+      "Input ", input_port, " not found for node ", node_def.name()));
 }
 
 absl::Status InputTypesForNode(const NodeDef& node_def, const OpDef& op_def,
@@ -569,8 +570,8 @@ absl::Status OutputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
       return absl::OkStatus();
     }
   }
-  return errors::InvalidArgument("Output ", output_port, " not found for node ",
-                                 node_def.name());
+  return absl::InvalidArgumentError(absl::StrCat(
+      "Output ", output_port, " not found for node ", node_def.name()));
 }
 
 absl::Status OutputTypesForNode(const NodeDef& node_def, const OpDef& op_def,
@@ -639,9 +640,10 @@ int OpPortIdToArgId(const NodeDef& node,
 
 absl::Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
   if (node_def.op() != op_def.name()) {
-    return errors::InvalidArgument(
-        "NodeDef op '", node_def.op(), "' does not match ",
-        SummarizeOpDef(op_def), "; NodeDef: ", FormatNodeDefForError(node_def));
+    return absl::InvalidArgumentError(
+        absl::StrCat("NodeDef op '", node_def.op(), "' does not match ",
+                     SummarizeOpDef(op_def),
+                     "; NodeDef: ", FormatNodeDefForError(node_def)));
   }
 
   bool seen_control = false;
@@ -651,14 +653,14 @@ absl::Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
     if (absl::StartsWith(input, "^")) {
       seen_control = true;
       if (input.find(':') != std::string::npos) {
-        return errors::InvalidArgument("Control input '", input,
-                                       "' must not have ':' in NodeDef: ",
-                                       FormatNodeDefForError(node_def));
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Control input '", input, "' must not have ':' in NodeDef: ",
+            FormatNodeDefForError(node_def)));
       }
     } else if (seen_control) {
-      return errors::InvalidArgument("Non-control input '", input,
-                                     "' after control input in NodeDef: ",
-                                     FormatNodeDefForError(node_def));
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Non-control input '", input, "' after control input in NodeDef: ",
+          FormatNodeDefForError(node_def)));
     } else {
       ++num_inputs;
     }
@@ -667,9 +669,9 @@ absl::Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
   std::unordered_map<std::string, const OpDef::AttrDef*> op_attrs;
   for (const auto& attr : op_def.attr()) {
     if (!gtl::InsertIfNotPresent(&op_attrs, attr.name(), &attr)) {
-      return errors::InvalidArgument("OpDef has duplicate attr name '",
-                                     attr.name(),
-                                     "': ", SummarizeOpDef(op_def));
+      return absl::InvalidArgumentError(
+          absl::StrCat("OpDef has duplicate attr name '", attr.name(),
+                       "': ", SummarizeOpDef(op_def)));
     }
   }
   for (const auto& attr : node_def.attr()) {
@@ -707,10 +709,10 @@ absl::Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
       if (!attrs.empty()) absl::StrAppend(&attrs, "', '");
       absl::StrAppend(&attrs, attr_pair.first);
     }
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "NodeDef missing attr", op_attrs.size() == 1 ? " '" : "s '", attrs,
         "' from ", SummarizeOpDef(op_def),
-        "; NodeDef: ", FormatNodeDefForError(node_def));
+        "; NodeDef: ", FormatNodeDefForError(node_def)));
   }
 
   // Validate the number of inputs.
@@ -718,10 +720,11 @@ absl::Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
   TF_RETURN_IF_ERROR(InOutTypesForNode(node_def, op_def, &inputs, &outputs));
 
   if (num_inputs != inputs.size()) {
-    return errors::InvalidArgument(
-        "NodeDef expected inputs '", DataTypeVectorString(inputs),
-        "' do not match ", num_inputs, " inputs specified; ",
-        SummarizeOpDef(op_def), "; NodeDef: ", FormatNodeDefForError(node_def));
+    return absl::InvalidArgumentError(
+        absl::StrCat("NodeDef expected inputs '", DataTypeVectorString(inputs),
+                     "' do not match ", num_inputs, " inputs specified; ",
+                     SummarizeOpDef(op_def),
+                     "; NodeDef: ", FormatNodeDefForError(node_def)));
   }
 
   return absl::OkStatus();
@@ -742,9 +745,9 @@ absl::Status ComputeArgRange(const AttrSlice& attrs,
   } else if (!arg_def.type_attr().empty() || arg_def.type() != DT_INVALID) {
     *num = 1;
   } else {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Argument '", arg_def.name(),
-        "' incorrectly specified in op definition: ", SummarizeOpDef(op_def));
+        "' incorrectly specified in op definition: ", SummarizeOpDef(op_def)));
   }
   return absl::OkStatus();
 }
@@ -881,7 +884,8 @@ absl::Status ValidateOpInput(const std::string& input_name,
     *is_control_input = true;
     return absl::OkStatus();
   } else {
-    return errors::InvalidArgument("Illegal op input name '", input_name, "'");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Illegal op input name '", input_name, "'"));
   }
 }
 
@@ -889,7 +893,8 @@ absl::Status ValidateNodeName(const std::string& node_name) {
   if (IsValidNodeName(node_name)) {
     return absl::OkStatus();
   } else {
-    return errors::InvalidArgument("Illegal op name '", node_name, "'");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Illegal op name '", node_name, "'"));
   }
 }
 
@@ -907,7 +912,7 @@ absl::Status ValidateExternalNodeDefSyntax(const NodeDef& node_def) {
     }
 
     if (in_control_inputs && !is_control_input) {
-      return AttachDef(errors::InvalidArgument(
+      return AttachDef(absl::InvalidArgumentError(
                            "All control inputs must follow all data inputs"),
                        node_def);
     }

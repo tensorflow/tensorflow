@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
@@ -54,8 +55,15 @@ absl::StatusOr<xla::PrecisionConfig::Algorithm> ConvertDotAlgorithm(
 absl::StatusOr<xla::PrecisionConfig::Algorithm> ConvertDotAlgorithm(
     mlir::stablehlo::DotAlgorithmAttr attr);
 
+absl::StatusOr<std::unique_ptr<xla::CollectiveDeviceListBase>>
+ConvertReplicaGroups(mlir::Attribute replica_groups, mlir::Operation* op);
+
+// TODO(b/477928179): remove this once all callers are migrated to the new API.
 absl::StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
     mlir::DenseIntElementsAttr input);
+
+absl::StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroupsToV1(
+    mlir::Attribute replica_groups, mlir::Operation* op);
 
 // Convert a (N, 2) dense attribute to a list of tuples. This is the way padding
 // and source-target pairs are defined in HLO.
@@ -104,7 +112,28 @@ mlir::FailureOr<xla::Shape> ExtractXlaShape(mlir::Operation* op);
 // Returns an OriginalValueProto that represents a value in the unoptimized HLO
 // graph.
 std::optional<xla::OriginalValueProto> ConvertOriginalValue(
-    llvm::StringRef original_value);
+    const mlir::mhlo::OriginalValueAttr& original_value_attr);
+
+// Projects `original_value_proto` to extract the original value for the
+// result at `index` of an operation with `num_results` total results.
+//
+// Returns `std::nullopt` if `original_value_proto` is `std::nullopt` or if the
+// `index` is out of bounds (`index >= num_results`).
+// If `num_results` <= 1, returns the input proto unchanged.
+std::optional<xla::OriginalValueProto> ProjectOriginalValueProto(
+    const std::optional<xla::OriginalValueProto>& original_value_proto,
+    unsigned index, unsigned num_results);
+
+// Combines the given `protos` into a single OriginalValueProto.
+//
+// The resulting proto will have a new top-level shape index corresponding to
+// the index of each proto in the input `protos` array.
+std::optional<xla::OriginalValueProto> ComposeOriginalValueProto(
+    llvm::ArrayRef<std::optional<xla::OriginalValueProto>> protos);
+
+// Returns a placeholder OriginalValueProto matching the structure of the given
+// shape, with empty original arrays.
+xla::OriginalValueProto CreateEmptyOriginalValueProto(const xla::Shape& shape);
 
 std::optional<xla::HloInputOutputAliasProto> ConvertInputOutputAlias(
     llvm::ArrayRef<mlir::Attribute> aliasing);

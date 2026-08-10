@@ -26,7 +26,7 @@ class TestRandomAccessFile : public RandomAccessFile {
     for (int i = 0; i < n; ++i) {
       if (offset + i >= 10) {
         n = i;
-        s = errors::OutOfRange("EOF");
+        s = absl::OutOfRangeError("EOF");
         break;
       }
       scratch[i] = 'A';
@@ -39,13 +39,13 @@ class TestRandomAccessFile : public RandomAccessFile {
 class TestFileSystem : public NullFileSystem {
  public:
   absl::Status NewRandomAccessFile(
-      const std::string& fname, TransactionToken* token,
+      const std::string& fname,
       std::unique_ptr<RandomAccessFile>* result) override {
     result->reset(new TestRandomAccessFile);
     return absl::OkStatus();
   }
   // Always return size of 10
-  absl::Status GetFileSize(const std::string& fname, TransactionToken* token,
+  absl::Status GetFileSize(const std::string& fname,
                            uint64_t* file_size) override {
     *file_size = 10;
     return absl::OkStatus();

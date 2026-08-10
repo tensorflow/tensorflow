@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/core/async/c/async_signature_runner.h"
 
+#include <cstddef>
+#include <cstdlib>
 #include <memory>
 #include <utility>
 

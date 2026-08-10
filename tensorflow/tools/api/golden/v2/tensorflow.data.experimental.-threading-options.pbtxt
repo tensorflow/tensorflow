@@ -2,17 +2,25 @@ path: "tensorflow.data.experimental.ThreadingOptions"
 tf_class {
   is_instance: "<class \'tensorflow.python.data.ops.options.ThreadingOptions\'>"
   is_instance: "<class \'tensorflow.python.data.util.options.OptionsBase\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "max_intra_op_parallelism"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "private_threadpool_size"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
+  }
+  member_method {
+    name: "__eq__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__ne__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
   }
 }

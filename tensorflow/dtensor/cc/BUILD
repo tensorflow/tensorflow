@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 #include "third_party/absl/strings/str_cat.h"
 #DTensor C++ runtime and libraries.
 
@@ -44,6 +59,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
+        "@xla//xla/tsl/platform:status",
         "@xla//xla/tsl/util:env_var",
     ],
 )
@@ -229,29 +245,19 @@ tf_kernel_library(
         "tpu",
     ],  # Disable building of TPU kernels on non-TPU platforms.
     deps = [
-        ":dstatus",
         ":tpu_system_interface",
-        "//tensorflow/c:tf_status_headers",
-        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/tpu:tpu_configuration",
-        "//tensorflow/core/tpu/kernels:tpu_compilation_cache_interface",
-        "//tensorflow/core/tpu/kernels:tpu_compilation_cache_local_lookup",
-        "//tensorflow/core/tpu/kernels:tpu_compilation_cache_lookup",
         "//tensorflow/core/tpu/kernels:tpu_configuration_ops",
-        "//tensorflow/core/tpu/kernels:tpu_embedding_engine_state_interface",
-        "//tensorflow/core/tpu/kernels:tpu_mesh_state_interface",
-        "//tensorflow/core/tpu/kernels:tpu_op_consts",
-        "//tensorflow/core/tpu/kernels:tpu_pod_state",
-        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:vlog_is_on",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
-        "@xla//xla/stream_executor/tpu:c_api_decl",
-        "@xla//xla/stream_executor/tpu:status_helper",
-        "@xla//xla/stream_executor/tpu:tpu_api",
-        "@xla//xla/stream_executor/tpu:tpu_executor_base",
-        "@xla//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
-        "@xla//xla/stream_executor/tpu:tpu_topology_external",
+        "@xla//xla/tpu:status_helper",
+        "@xla//xla/tpu:tpu_api",
+        "@xla//xla/tpu:tpu_ops_c_api_hdrs",
     ],
     alwayslink = 1,
 )
@@ -335,18 +341,22 @@ cc_library(
         ":parallel_executor_interface",
         ":small_constant_optimization",
         ":tensor_layout",
+        ":tensor_with_layout",
         ":tpu_system_interface",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/c/eager:abstract_tensor_handle",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
         "//tensorflow/c/eager:tfe_context_internal",
         "//tensorflow/c/eager:tfe_op_attrs_internal",
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/c/eager/parallel_device:parallel_device_lib",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tf2xla/api/v2:tf_executor_to_graph",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -354,24 +364,34 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:device_set",
         "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/common_runtime/eager:eager_executor",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "//tensorflow/core/platform:refcount",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/dtensor/mlir:layout_parsing",
         "//tensorflow/dtensor/mlir:op_utils",
         "//tensorflow/dtensor/mlir:spmd_expander",
         "//tensorflow/dtensor/proto:layout_proto_cc",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:vlog_is_on",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@tsl//tsl/platform:refcount",
+        "@tsl//tsl/profiler/lib:traceme",
         "@xla//xla:status_macros",
-        "@xla//xla/stream_executor/tpu:c_api_decl",
-        "@xla//xla/stream_executor/tpu:tpu_platform_interface",
-        "@xla//xla/stream_executor/tpu:tpu_topology_external",
+        "@xla//xla/tpu:c_api_decl",
+        "@xla//xla/tpu:tpu_topology_external",
         "@xla//xla/tsl/platform:status",
         "@xla//xla/tsl/util:env_var",
     ] + tf_dtensor_tpu_dependencies(),

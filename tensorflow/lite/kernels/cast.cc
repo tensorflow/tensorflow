@@ -25,7 +25,12 @@ limitations under the License.
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/interpreter_options.h"
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+#include "tensorflow/lite/core/macros.h"
+#include "tensorflow/lite/kernels/internal/float8.h"
+#endif
 #include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
+#include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
@@ -46,50 +51,53 @@ namespace {
 constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
 
-void copyCast(const float* in, int32_t* out, int num_elements) {
-  const float min_int_float =
-      static_cast<float>(std::numeric_limits<int32_t>::min());
-  const float max_int_float = std::nextafterf(
-      static_cast<float>(std::numeric_limits<int32_t>::max()), 0);
-
-  std::transform(in, in + num_elements, out, [=](float a) {
-    return a <= max_int_float ? static_cast<int32_t>(std::max(a, min_int_float))
-                              : std::numeric_limits<int32_t>::max();
-  });
+constexpr int32_t SignExtendInt4(uint8_t nibble) {
+  const int32_t value = nibble & 0x0f;
+  return value < 8 ? value : value - 16;
 }
 
-void copyCast(const float* in, int16_t* out, int num_elements) {
-  const float min_int_float =
-      static_cast<float>(std::numeric_limits<int16_t>::min());
-  const float max_int_float =
-      static_cast<float>(std::numeric_limits<int16_t>::max());
-  std::transform(in, in + num_elements, out, [=](float a) {
-    return static_cast<int16_t>(
-        std::max(std::min(a, max_int_float), min_int_float));
-  });
+template <typename ToT, typename FloatT>
+ToT SaturatingCastFloatingToInteger(FloatT value) {
+  static_assert(std::is_floating_point_v<FloatT>);
+  static_assert(std::is_integral_v<ToT>);
+  static_assert(!std::is_same_v<ToT, bool>);
+
+  // Preserve CAST's existing NaN behavior while sharing the checked
+  // floating-point-to-integer conversion with other kernels.
+  return SafeCast<ToT>(value, std::numeric_limits<ToT>::max());
 }
 
-void copyCast(const float* in, uint8_t* out, int num_elements) {
-  const float min_int_float =
-      static_cast<float>(std::numeric_limits<uint8_t>::min());
-  const float max_int_float =
-      static_cast<float>(std::numeric_limits<uint8_t>::max());
-  std::transform(in, in + num_elements, out, [=](float a) {
-    return static_cast<uint8_t>(
-        std::max(std::min(a, max_int_float), min_int_float));
-  });
+template <typename ToT, typename FromT>
+ToT CastValue(FromT value) {
+  if constexpr (std::is_floating_point_v<FromT> && std::is_integral_v<ToT> &&
+                !std::is_same_v<ToT, bool>) {
+    return SaturatingCastFloatingToInteger<ToT>(value);
+  } else if constexpr (std::is_same_v<FromT, Eigen::bfloat16> &&
+                       std::is_integral_v<ToT> && !std::is_same_v<ToT, bool>) {
+    return SaturatingCastFloatingToInteger<ToT>(
+        Eigen::bfloat16_impl::bfloat16_to_float(value));
+  } else if constexpr (std::is_same_v<FromT, Eigen::half> &&
+                       std::is_integral_v<ToT> && !std::is_same_v<ToT, bool>) {
+    return SaturatingCastFloatingToInteger<ToT>(
+        Eigen::half_impl::half_to_float(value));
+  } else if constexpr (std::is_same_v<FromT, half> && std::is_integral_v<ToT> &&
+                       !std::is_same_v<ToT, bool>) {
+    return SaturatingCastFloatingToInteger<ToT>(static_cast<float>(value));
+  } else {
+    return static_cast<ToT>(value);
+  }
 }
 
 template <typename FromT, typename ToT>
 void copyCast(const FromT* in, ToT* out, int num_elements) {
   std::transform(in, in + num_elements, out,
-                 [](FromT a) { return static_cast<ToT>(a); });
+                 [](FromT a) { return CastValue<ToT>(a); });
 }
 
 template <typename ToT>
 void copyCast(const std::complex<float>* in, ToT* out, int num_elements) {
   std::transform(in, in + num_elements, out, [](std::complex<float> a) {
-    return static_cast<ToT>(std::real(a));
+    return CastValue<ToT>(std::real(a));
   });
 }
 
@@ -102,9 +110,8 @@ void copyCast(const std::complex<float>* in, std::complex<float>* out,
 
 template <typename ToT>
 void copyCast(const half* in, ToT* out, int num_elements) {
-  std::transform(in, in + num_elements, out, [](half a) {
-    return static_cast<ToT>(fp16_ieee_to_fp32_value(a));
-  });
+  std::transform(in, in + num_elements, out,
+                 [](half a) { return CastValue<ToT>(a); });
 }
 
 template <>
@@ -173,6 +180,51 @@ void copyCastToBFloat16(const Eigen::half* in, Eigen::bfloat16* out,
   });
 }
 
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+template <typename Float8T>
+TFLITE_NOINLINE uint8_t castFloatToFloat8Rep(float value) {
+  return Float8T::ConvertFrom(value).rep();
+}
+
+template <typename Float8T, typename FromT>
+uint8_t castToFloat8Rep(FromT value) {
+  return castFloatToFloat8Rep<Float8T>(static_cast<float>(value));
+}
+
+template <typename Float8T>
+uint8_t castToFloat8Rep(std::complex<float> value) {
+  return castFloatToFloat8Rep<Float8T>(std::real(value));
+}
+
+template <typename Float8T, typename FromT>
+void copyCastToFloat8(const FromT* in, uint8_t* out, int num_elements) {
+  std::transform(in, in + num_elements, out,
+                 [](FromT value) { return castToFloat8Rep<Float8T>(value); });
+}
+
+template <typename FromT>
+TfLiteStatus copyToTensor(TfLiteContext* context, const FromT* in,
+                          TfLiteTensor* out, int num_elements);
+
+template <typename Float8T>
+TfLiteStatus copyFloat8ToTensor(TfLiteContext* context, const uint8_t* in,
+                                TfLiteTensor* out, int num_elements) {
+  if ((std::is_same_v<Float8T, float8_internal::Float8E4M3FN> &&
+       out->type == kTfLiteFloat8E4M3FN) ||
+      (std::is_same_v<Float8T, float8_internal::Float8E5M2> &&
+       out->type == kTfLiteFloat8E5M2)) {
+    std::copy(in, in + num_elements, GetTensorData<uint8_t>(out));
+    return kTfLiteOk;
+  }
+
+  std::vector<float> unpacked(num_elements);
+  std::transform(in, in + num_elements, unpacked.begin(), [](uint8_t value) {
+    return static_cast<float>(Float8T::FromRep(value));
+  });
+  return copyToTensor(context, unpacked.data(), out, num_elements);
+}
+#endif  // TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS
+
 TfLiteStatus castInt2ToFloat(TfLiteContext* context, const TfLiteTensor* in,
                              TfLiteTensor* out, int num_elements) {
   const int8_t* in_data = (const int8_t*)in->data.data;
@@ -232,13 +284,17 @@ TfLiteStatus castInt4ToFloat(TfLiteContext* context, const TfLiteTensor* in,
   }
 #endif
 
-  for (; i < (num_elements + 1) / 2; ++i) {
-    int8_t byte = in_data[i];
-    // Shift left first so that sign is properly extended when shifted right
-    int32_t lower = static_cast<int8_t>(byte << 4) >> 4;
-    int32_t higher = byte >> 4;
-    out_data[2 * i] = (float)lower;
-    out_data[2 * i + 1] = (float)higher;
+  const int complete_bytes = num_elements / 2;
+  for (; i < complete_bytes; ++i) {
+    const uint8_t byte = static_cast<uint8_t>(in_data[i]);
+    const int output_index = 2 * i;
+    out_data[output_index] = static_cast<float>(SignExtendInt4(byte & 0x0f));
+    out_data[output_index + 1] = static_cast<float>(SignExtendInt4(byte >> 4));
+  }
+  if (num_elements % 2 != 0) {
+    const uint8_t byte = static_cast<uint8_t>(in_data[complete_bytes]);
+    out_data[num_elements - 1] =
+        static_cast<float>(SignExtendInt4(byte & 0x0f));
   }
   return kTfLiteOk;
 }
@@ -247,15 +303,32 @@ TfLiteStatus castUInt4ToFloat(TfLiteContext* context, const TfLiteTensor* in,
                               TfLiteTensor* out, int num_elements) {
   const int8_t* in_data = (const int8_t*)in->data.data;
   float* out_data = (float*)out->data.data;
-  for (int i = 0; i < (num_elements + 1) / 2; ++i) {
-    uint8_t byte = static_cast<uint8_t>(in_data[i]);
-    out_data[2 * i] = static_cast<float>(byte & 0x0F);
-    if (2 * i + 1 < num_elements) {
-      out_data[2 * i + 1] = static_cast<float>(byte >> 4);
-    }
+  const int complete_bytes = num_elements / 2;
+  for (int i = 0; i < complete_bytes; ++i) {
+    const uint8_t byte = static_cast<uint8_t>(in_data[i]);
+    const int output_index = 2 * i;
+    out_data[output_index] = static_cast<float>(byte & 0x0f);
+    out_data[output_index + 1] = static_cast<float>(byte >> 4);
+  }
+  if (num_elements % 2 != 0) {
+    const uint8_t byte = static_cast<uint8_t>(in_data[complete_bytes]);
+    out_data[num_elements - 1] = static_cast<float>(byte & 0x0f);
   }
   return kTfLiteOk;
 }
+
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+TfLiteStatus castPackedIntToTensor(TfLiteContext* context,
+                                   const TfLiteTensor* in, TfLiteTensor* out,
+                                   int num_elements, int bit_width,
+                                   bool unpack_unsigned = false) {
+  std::vector<int8_t> unpacked(num_elements);
+  tensor_utils::UnpackPackedIntToInt8(
+      reinterpret_cast<const int8_t*>(in->data.data), num_elements, bit_width,
+      unpacked.data(), unpack_unsigned);
+  return copyToTensor(context, unpacked.data(), out, num_elements);
+}
+#endif  // TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS
 
 TfLiteStatus castFloatToInt4(const float* in, TfLiteTensor* out,
                              int num_elements) {
@@ -332,6 +405,16 @@ TfLiteStatus copyToTensor(TfLiteContext* context, const FromT* in,
       copyCastToBFloat16(in, reinterpret_cast<Eigen::bfloat16*>(out->data.bf16),
                          num_elements);
       break;
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+    case kTfLiteFloat8E4M3FN:
+      copyCastToFloat8<float8_internal::Float8E4M3FN>(
+          in, GetTensorData<uint8_t>(out), num_elements);
+      break;
+    case kTfLiteFloat8E5M2:
+      copyCastToFloat8<float8_internal::Float8E5M2>(
+          in, GetTensorData<uint8_t>(out), num_elements);
+      break;
+#endif
     case kTfLiteFloat32:
       copyCast(in, GetTensorData<float>(out), num_elements);
       break;
@@ -398,6 +481,14 @@ TfLiteStatus EvalImpl(TfLiteContext* context, const TfLiteTensor* input,
       return copyToTensor(context,
                           reinterpret_cast<Eigen::bfloat16*>(input->data.bf16),
                           output, num_elements);
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+    case kTfLiteFloat8E4M3FN:
+      return copyFloat8ToTensor<float8_internal::Float8E4M3FN>(
+          context, GetTensorData<uint8_t>(input), output, num_elements);
+    case kTfLiteFloat8E5M2:
+      return copyFloat8ToTensor<float8_internal::Float8E5M2>(
+          context, GetTensorData<uint8_t>(input), output, num_elements);
+#endif
     case kTfLiteFloat32:
       return copyToTensor(context, GetTensorData<float>(input), output,
                           num_elements);
@@ -410,20 +501,42 @@ TfLiteStatus EvalImpl(TfLiteContext* context, const TfLiteTensor* input,
           context, reinterpret_cast<std::complex<float>*>(input->data.c64),
           output, num_elements);
     case kTfLiteInt4:
-      if (output->type != kTfLiteFloat32) {
-        TF_LITE_UNSUPPORTED_TYPE(context, output->type, "Cast");
+      if (output->type == kTfLiteFloat32) {
+        return castInt4ToFloat(context, input, output, num_elements);
       }
-      return castInt4ToFloat(context, input, output, num_elements);
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+      if (output->type == kTfLiteFloat8E4M3FN ||
+          output->type == kTfLiteFloat8E5M2) {
+        return castPackedIntToTensor(context, input, output, num_elements,
+                                     /*bit_width=*/4);
+      }
+#endif
+      TF_LITE_UNSUPPORTED_TYPE(context, output->type, "Cast");
     case kTfLiteInt2:
-      if (output->type != kTfLiteFloat32) {
-        TF_LITE_UNSUPPORTED_TYPE(context, output->type, "Cast");
+      if (output->type == kTfLiteFloat32) {
+        return castInt2ToFloat(context, input, output, num_elements);
       }
-      return castInt2ToFloat(context, input, output, num_elements);
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+      if (output->type == kTfLiteFloat8E4M3FN ||
+          output->type == kTfLiteFloat8E5M2) {
+        return castPackedIntToTensor(context, input, output, num_elements,
+                                     /*bit_width=*/2);
+      }
+#endif
+      TF_LITE_UNSUPPORTED_TYPE(context, output->type, "Cast");
     case kTfLiteUInt4:
-      if (output->type != kTfLiteFloat32) {
-        TF_LITE_UNSUPPORTED_TYPE(context, output->type, "Cast");
+      if (output->type == kTfLiteFloat32) {
+        return castUInt4ToFloat(context, input, output, num_elements);
       }
-      return castUInt4ToFloat(context, input, output, num_elements);
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+      if (output->type == kTfLiteFloat8E4M3FN ||
+          output->type == kTfLiteFloat8E5M2) {
+        return castPackedIntToTensor(context, input, output, num_elements,
+                                     /*bit_width=*/4,
+                                     /*unpack_unsigned=*/true);
+      }
+#endif
+      TF_LITE_UNSUPPORTED_TYPE(context, output->type, "Cast");
     default:
       // Unsupported type.
       TF_LITE_UNSUPPORTED_TYPE(context, input->type, "Cast");

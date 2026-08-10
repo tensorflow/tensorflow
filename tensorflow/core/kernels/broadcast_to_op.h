@@ -77,9 +77,9 @@ struct BroadcastTo {
         ReshapeAndBCast<5>(device, output_tensor, input_tensor, bcast);
         break;
       default:
-        ctx->SetStatus(errors::Unimplemented(
+        ctx->SetStatus(absl::UnimplementedError(absl::StrCat(
             "Broadcast between ", input_shape.DebugString(), " and ",
-            output_shape.DebugString(), " is not supported yet."));
+            output_shape.DebugString(), " is not supported yet.")));
         break;
     }
   }

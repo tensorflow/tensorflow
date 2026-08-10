@@ -256,10 +256,10 @@ absl::Status GraphView::Initialize(const Graph* g) {
   size_t total_bytes = 0;
   for (const Node* n : g->nodes()) {
     if (n->out_edges().size() > std::numeric_limits<int32_t>::max()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "The executor cannot handle nodes with more than ",
           std::numeric_limits<int32_t>::max(), " output edges. Node ",
-          n->name(), " had ", n->out_edges().size(), " output edges.");
+          n->name(), " had ", n->out_edges().size(), " output edges."));
     }
     total_bytes += NodeItemBytes(n);
   }
@@ -368,8 +368,8 @@ absl::Status InferAllocAttr(const Node* n, const Node* dst,
     if (!s.ok()) return s;
     DeviceNameUtils::ParsedName parsed_src_name;
     if (!DeviceNameUtils::ParseFullName(src_name, &parsed_src_name)) {
-      s = errors::Internal("Bad send_device attr '", src_name, "' in node ",
-                           n->name());
+      s = absl::InternalError(absl::StrCat("Bad send_device attr '", src_name,
+                                           "' in node ", n->name()));
       return s;
     }
     if (!DeviceNameUtils::IsSameAddressSpace(parsed_src_name, local_dev_name)) {
@@ -393,8 +393,8 @@ absl::Status InferAllocAttr(const Node* n, const Node* dst,
     if (!s.ok()) return s;
     DeviceNameUtils::ParsedName parsed_dst_name;
     if (!DeviceNameUtils::ParseFullName(dst_name, &parsed_dst_name)) {
-      s = errors::Internal("Bad recv_device attr '", dst_name, "' in node ",
-                           n->name());
+      s = absl::InternalError(absl::StrCat("Bad recv_device attr '", dst_name,
+                                           "' in node ", n->name()));
       return s;
     }
     if (!DeviceNameUtils::IsSameAddressSpace(parsed_dst_name, local_dev_name)) {

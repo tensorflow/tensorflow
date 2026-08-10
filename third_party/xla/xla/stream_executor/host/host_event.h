@@ -18,10 +18,13 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "xla/stream_executor/event.h"
 
 namespace stream_executor {
+namespace host {
 
 // This class is a host-side implementation of the Event interface. It is
 // intended to be used with the HostStream implementation.
@@ -29,19 +32,32 @@ class HostEvent : public Event {
  public:
   HostEvent() : notification_(std::make_shared<absl::Notification>()) {}
 
-  std::shared_ptr<absl::Notification>& notification() { return notification_; }
+  std::shared_ptr<absl::Notification> notification() {
+    absl::MutexLock lock(mu_);
+    return notification_;
+  }
 
-  Status PollForStatus() override {
-    return notification_->HasBeenNotified() ? Event::Status::kComplete
-                                            : Event::Status::kPending;
+  void Record() {
+    absl::MutexLock lock(mu_);
+    if (notification_->HasBeenNotified()) {
+      notification_ = std::make_shared<absl::Notification>();
+    }
+    notification_->Notify();
+  }
+
+  Event::Status PollForStatus() override {
+    return notification()->HasBeenNotified() ? Event::Status::kComplete
+                                             : Event::Status::kPending;
   }
 
  private:
+  absl::Mutex mu_;
   // We use a std::shared_ptr here because the client may delete the HostEvent
   // object while there are still RecordEvent and WaitForEvent callbacks pending
   // on a stream.
-  std::shared_ptr<absl::Notification> notification_;
+  std::shared_ptr<absl::Notification> notification_ ABSL_GUARDED_BY(mu_);
 };
+}  // namespace host
 }  // namespace stream_executor
 
 #endif  // XLA_STREAM_EXECUTOR_HOST_HOST_EVENT_H_

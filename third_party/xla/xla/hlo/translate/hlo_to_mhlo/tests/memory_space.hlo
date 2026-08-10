@@ -1,0 +1,74 @@
+// RUN: hlo-translate -hlo-to-mlir -split-input-file %s | FileCheck %s
+
+// Non-default memory spaces (e.g. S(1)/VMEM) on custom-call operand and result
+// layout constraints are preserved across the HLO -> StableHLO translation.
+// The operand_layouts / result_layouts index tensors cannot encode memory
+// spaces, so they are carried by the parallel mhlo.operand_memory_spaces /
+// mhlo.result_memory_spaces attributes.
+
+// A VMEM (S(1)) operand layout constraint.
+// CHECK: module @OperandVmem
+// CHECK: stablehlo.custom_call @some_target
+// CHECK-SAME: mhlo.operand_memory_spaces = array<i64: 1>
+HloModule OperandVmem
+
+ENTRY main {
+  %param = f32[2,2]{0,1} parameter(0)
+  %copy = f32[2,2]{0,1:S(1)} copy(%param)
+  ROOT %custom-call = f32[2,2]{0,1} custom-call(%copy), custom_call_target="some_target", operand_layout_constraints={f32[2,2]{0,1:S(1)}}
+}
+
+// -----
+
+// A VMEM (S(1)) result layout.
+// CHECK: module @ResultVmem
+// CHECK: stablehlo.custom_call @some_target
+// CHECK-SAME: mhlo.result_memory_spaces = array<i64: 1>
+HloModule ResultVmem
+
+ENTRY main {
+  %param = f32[2,2] parameter(0)
+  ROOT %custom-call = f32[2,2]{1,0:S(1)} custom-call(%param), custom_call_target="some_target", operand_layout_constraints={f32[2,2]{1,0}}
+}
+
+// -----
+
+// A tuple result with one VMEM element and one HBM element, yielding one memory
+// space entry per tuple element.
+// CHECK: module @TupleResultVmem
+// CHECK: stablehlo.custom_call @some_target
+// CHECK-SAME: mhlo.result_memory_spaces = array<i64: 1, 0>
+HloModule TupleResultVmem
+
+ENTRY main {
+  %param = f32[2,2] parameter(0)
+  ROOT %custom-call = (f32[2,2]{1,0:S(1)}, f32[2,2]{1,0}) custom-call(%param), custom_call_target="some_target", operand_layout_constraints={f32[2,2]{1,0}}
+}
+
+// -----
+
+// Multiple operands with mixed memory spaces yield one entry per operand.
+// CHECK: module @MultiOperand
+// CHECK: stablehlo.custom_call @some_target
+// CHECK-SAME: mhlo.operand_memory_spaces = array<i64: 1, 0>
+HloModule MultiOperand
+
+ENTRY main {
+  %p0 = f32[2,2] parameter(0)
+  %p1 = f32[2,2] parameter(1)
+  ROOT %custom-call = f32[2,2]{1,0} custom-call(%p0, %p1), custom_call_target="some_target", operand_layout_constraints={f32[2,2]{1,0:S(1)}, f32[2,2]{1,0}}
+}
+
+// -----
+
+// Default (HBM, memory space 0) layouts must not emit the memory-space
+// attributes, leaving the common case unchanged.
+// CHECK: module @AllDefault
+// CHECK: stablehlo.custom_call @some_target
+// CHECK-NOT: memory_spaces
+HloModule AllDefault
+
+ENTRY main {
+  %param = f32[2,2] parameter(0)
+  ROOT %custom-call = f32[2,2]{1,0} custom-call(%param), custom_call_target="some_target", operand_layout_constraints={f32[2,2]{1,0}}
+}

@@ -19,5 +19,5 @@ limitations under the License.
 
 #include "xla/core/collectives/collectives_registry.h"
 
-XLA_COLLECTIVES_REGISTER("gpu", "stub", 0,
+XLA_COLLECTIVES_REGISTER("gpu", "stub", 1,
                          std::make_unique<xla::gpu::GpuCollectivesStub>());

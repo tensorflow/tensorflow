@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/comparison_util.h"
@@ -39,7 +40,7 @@ namespace {
 
 absl::StatusOr<HloComputation*> BuildConditionComputation(
     HloScanInstruction* scan, const Shape& loop_state_shape) {
-  TF_ASSIGN_OR_RETURN(int64_t scan_dim_size, scan->GetScanDimSize());
+  ABSL_ASSIGN_OR_RETURN(int64_t scan_dim_size, scan->GetScanDimSize());
 
   HloComputation::Builder builder(absl::StrCat(scan->name(), "_condition"));
   auto* param = builder.AddInstruction(
@@ -135,6 +136,77 @@ std::vector<HloInstruction*> UpdateOutputArrays(
   return updated_output_arrays;
 }
 
+// A scan whose scan dimension has size 1 is a single combiner application:
+// out_k = combine(inputs[..., 0, ...], inits)[k] reshaped back to the size 1
+// scan dim, and each final carry is the corresponding combine result.
+// Reverse and associativity are irrelevant at length 1.
+absl::StatusOr<HloInstruction*> ExpandLengthOneScan(HloScanInstruction* scan) {
+  HloComputation* parent = scan->parent();
+  int64_t scan_dim = scan->scan_dimension();
+  auto inputs = scan->inputs();
+  auto inits = scan->inits();
+  int64_t num_carries = scan->num_carries();
+  int64_t num_outputs;
+  if (scan->shape().IsTuple()) {
+    num_outputs = scan->shape().tuple_shapes().size() - num_carries;
+  } else {
+    num_outputs = 1 - num_carries;
+  }
+
+  // Combiner arguments: the (statically) squeezed per-step input slices,
+  // then the carries seeded with the inits.
+  std::vector<HloInstruction*> call_args;
+  call_args.reserve(inputs.size() + inits.size());
+  for (HloInstruction* input : inputs) {
+    Shape squeezed = ShapeUtil::DeleteDimension(scan_dim, input->shape());
+    call_args.push_back(
+        parent->AddInstruction(HloInstruction::CreateReshape(squeezed, input)));
+  }
+  for (HloInstruction* init : inits) {
+    call_args.push_back(init);
+  }
+  HloInstruction* call = parent->AddInstruction(
+      HloInstruction::CreateCall(scan->to_apply()->root_instruction()->shape(),
+                                 call_args, scan->to_apply()));
+
+  // Combiner result convention: (outputs..., new_carries...).
+  std::vector<HloInstruction*> final_results;
+  final_results.reserve(num_outputs + num_carries);
+  for (int64_t i = 0; i < num_outputs; ++i) {
+    HloInstruction* elem =
+        call->shape().IsTuple()
+            ? parent->AddInstruction(
+                  HloInstruction::CreateGetTupleElement(call, i))
+            : call;
+    const Shape& out_shape =
+        scan->shape().IsTuple()
+            ? ShapeUtil::GetTupleElementShape(scan->shape(), i)
+            : scan->shape();
+    final_results.push_back(
+        parent->AddInstruction(HloInstruction::CreateReshape(out_shape, elem)));
+  }
+  for (int64_t i = 0; i < num_carries; ++i) {
+    HloInstruction* elem =
+        call->shape().IsTuple()
+            ? parent->AddInstruction(
+                  HloInstruction::CreateGetTupleElement(call, num_outputs + i))
+            : call;
+    final_results.push_back(elem);
+  }
+
+  HloInstruction* result = nullptr;
+  if (scan->shape().IsTuple()) {
+    result = parent->AddInstruction(HloInstruction::CreateTuple(final_results));
+  } else {
+    result = final_results[0];
+  }
+
+  // Inline the combiner application like the loop expansion does, so the
+  // expansion never depends on a later CallInliner run.
+  ABSL_RETURN_IF_ERROR(CallInliner::Inline(call).status());
+  return result;
+}
+
 absl::StatusOr<HloComputation*> BuildBodyComputation(
     HloScanInstruction* scan, const Shape& loop_state_shape) {
   int64_t scan_dim = scan->scan_dimension();
@@ -147,7 +219,7 @@ absl::StatusOr<HloComputation*> BuildBodyComputation(
   } else {
     num_outputs = 1 - num_carries;
   }
-  TF_ASSIGN_OR_RETURN(int64_t scan_dim_size, scan->GetScanDimSize());
+  ABSL_ASSIGN_OR_RETURN(int64_t scan_dim_size, scan->GetScanDimSize());
   Shape scalar_shape = ShapeUtil::MakeShape(S64, {});
 
   HloComputation::Builder builder(absl::StrCat(scan->name(), "_body"));
@@ -230,19 +302,40 @@ absl::StatusOr<HloComputation*> BuildBodyComputation(
       scan->parent()->parent()->AddEmbeddedComputation(builder.Build());
 
   // Inline the call instruction within body_computation
-  TF_RETURN_IF_ERROR(CallInliner::Inline(call).status());
+  ABSL_RETURN_IF_ERROR(CallInliner::Inline(call).status());
   return body_computation;
 }
 
 }  // namespace
 
 bool ScanExpander::InstructionMatchesPattern(HloInstruction* instruction) {
-  return instruction->opcode() == HloOpcode::kScan;
+  if (instruction->opcode() != HloOpcode::kScan) {
+    return false;
+  }
+  auto scan = Cast<HloScanInstruction>(instruction);
+  // Length-1 scans are folded to a single combiner application regardless
+  // of associativity handling: every downstream lowering (loop, tree
+  // rewrite, or a backend's native scan) is strictly worse than the one
+  // elementwise application.
+  absl::StatusOr<int64_t> scan_dim_size = scan->GetScanDimSize();
+  if (scan_dim_size.ok() && *scan_dim_size == 1) {
+    return true;
+  }
+  if (!expand_associative_scans_) {
+    if (scan->is_associative() == TRI_STATE_TRUE) {
+      return false;
+    }
+  }
+  return true;
 }
 
 absl::StatusOr<HloInstruction*> ScanExpander::ExpandInstruction(
     HloInstruction* instruction) {
   auto* scan = Cast<HloScanInstruction>(instruction);
+  ABSL_ASSIGN_OR_RETURN(int64_t scan_dim_size, scan->GetScanDimSize());
+  if (scan_dim_size == 1) {
+    return ExpandLengthOneScan(scan);
+  }
   auto inputs = scan->inputs();
   auto inits = scan->inits();
   int64_t num_carries = scan->num_carries();
@@ -276,11 +369,11 @@ absl::StatusOr<HloInstruction*> ScanExpander::ExpandInstruction(
   }
   Shape loop_state_shape = ShapeUtil::MakeTupleShape(loop_state_shapes);
 
-  TF_ASSIGN_OR_RETURN(HloComputation * condition_computation,
-                      BuildConditionComputation(scan, loop_state_shape));
+  ABSL_ASSIGN_OR_RETURN(HloComputation * condition_computation,
+                   BuildConditionComputation(scan, loop_state_shape));
 
-  TF_ASSIGN_OR_RETURN(HloComputation * body_computation,
-                      BuildBodyComputation(scan, loop_state_shape));
+  ABSL_ASSIGN_OR_RETURN(HloComputation * body_computation,
+                   BuildBodyComputation(scan, loop_state_shape));
 
   // 3. Build Init Loop State
   std::vector<HloInstruction*> init_values;

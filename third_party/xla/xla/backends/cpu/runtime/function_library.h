@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
@@ -69,7 +70,7 @@ class FunctionLibrary {
 
   template <typename F, std::enable_if_t<std::is_function_v<F>>* = nullptr>
   absl::StatusOr<F*> ResolveFunction(absl::string_view name) {
-    TF_ASSIGN_OR_RETURN(void* ptr, ResolveFunction(GetTypeId<F>(), name));
+    ABSL_ASSIGN_OR_RETURN(void* ptr, ResolveFunction(GetTypeId<F>(), name));
     return reinterpret_cast<F*>(ptr);  // NOLINT
   }
 

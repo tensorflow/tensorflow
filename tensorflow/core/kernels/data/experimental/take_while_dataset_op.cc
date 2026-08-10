@@ -45,7 +45,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, FunctionMetadata::Create(
                             ctx, "predicate", /*params=*/{}, &func_metadata_));
     OP_REQUIRES(ctx, func_metadata_->short_circuit_info().indices.size() <= 1,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "predicate function has more than one return value."));
   }
 
@@ -168,7 +168,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
 
         if (result.size() != 1 || result[0].dtype() != DT_BOOL ||
             result[0].NumElements() != 1) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(
               "`predicate` must returns a scalar bool tensor.");
         }
         *end_of_sequence = !result[0].scalar<bool>()();

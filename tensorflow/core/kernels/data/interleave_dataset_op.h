@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_INTERLEAVE_DATASET_OP_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_INTERLEAVE_DATASET_OP_H_
 
+#include <cstdint>
+
 #include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/framework/dataset.h"
 
@@ -32,6 +34,11 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
   static constexpr const char* const kTarguments = "Targuments";
   static constexpr const char* const kOutputTypes = "output_types";
   static constexpr const char* const kOutputShapes = "output_shapes";
+  // The maximum cycle length or block length supported by the interleave
+  // dataset. This limit prevents uncontrolled resource consumption (OOM or DoS)
+  // when allocating and sizing internal vector buffers (e.g. current_elements_
+  // which is sized to `cycle_length_`).
+  static constexpr int64_t kMaxCycleOrBlockLength = 1'048'576;
 
   explicit InterleaveDatasetOp(OpKernelConstruction* ctx);
 

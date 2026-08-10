@@ -17,6 +17,7 @@ limitations under the License.
 #include <atomic>
 #include <cstdint>
 #include <deque>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <string>
@@ -25,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
@@ -357,6 +359,11 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
         int64_t temp;
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(this->prefix(), kSlicesSize, &temp));
+        if (temp < 0 || temp > std::numeric_limits<size_t>::max()) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Invalid checkpoint for tf.data shuffle dataset: ", kSlicesSize,
+              " = ", temp, " is not a valid value."));
+        }
         slices_size = static_cast<size_t>(temp);
       }
       buffer_ = std::make_unique<std::vector<std::vector<Tensor>>>();
@@ -385,6 +392,11 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
         TF_RETURN_IF_ERROR(reader->ReadScalar(
             this->prefix(), absl::StrJoin(std::make_tuple(kSlicesEnd, i), "_"),
             &end));
+        if (start > end) {
+          return absl::InvalidArgumentError(
+              absl::StrCat("Slice start (", start,
+                           ") cannot be greater than slice end (", end, ")."));
+        }
         int64_t reached_end_of_sequence;
         TF_RETURN_IF_ERROR(reader->ReadScalar(
             prefix(),
@@ -797,7 +809,7 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                  ParseScalarArgument<int64_t>(ctx, kBufferSize, &buffer_size));
   OP_REQUIRES(
       ctx, buffer_size > 0 || buffer_size == kUnknownCardinality,
-      errors::InvalidArgument(
+      absl::InvalidArgumentError(
           "buffer_size must be greater than zero or UNKNOWN_CARDINALITY"));
 
   int64_t count = 1;
@@ -806,7 +818,8 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   auto name = strings::StrCat(ctx->op_kernel().name(), "/", kSeedGenerator, "_",
                               resource_id_counter.fetch_add(1));
   if (op_version_ == 3) {
-    auto handle = HandleFromInput(ctx, 4);
+    ResourceHandle handle;
+    OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 4, &handle));
     SeedGeneratorManager* manager = nullptr;
     absl::Status s = ctx->resource_manager()->Lookup<SeedGeneratorManager>(
         handle.container(), handle.name(), &manager);
@@ -843,7 +856,8 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                               std::move(seeds), manager,
                                               std::move(handle), owns_resource);
   } else if (op_version_ == 2) {
-    auto handle = HandleFromInput(ctx, 2);
+    ResourceHandle handle;
+    OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 2, &handle));
     SeedGeneratorManager* manager = nullptr;
     absl::Status s = ctx->resource_manager()->Lookup<SeedGeneratorManager>(
         handle.container(), handle.name(), &manager);
@@ -1048,7 +1062,7 @@ void ShuffleAndRepeatDatasetOp::MakeDataset(OpKernelContext* ctx,
                  ParseScalarArgument<int64_t>(ctx, kBufferSize, &buffer_size));
   OP_REQUIRES(
       ctx, buffer_size > 0 || buffer_size == kUnknownCardinality,
-      errors::InvalidArgument(
+      absl::InvalidArgumentError(
           "buffer_size must be greater than zero or UNKNOWN_CARDINALITY"));
 
   int64_t seed;
@@ -1061,7 +1075,7 @@ void ShuffleAndRepeatDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kCount, &count));
 
   OP_REQUIRES(ctx, count > 0 || count == -1,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(
                   "count must be greater than zero or equal to -1."));
 
   RandomSeeds seeds(seed, seed2);
@@ -1071,7 +1085,8 @@ void ShuffleAndRepeatDatasetOp::MakeDataset(OpKernelContext* ctx,
   auto name = strings::StrCat(ctx->op_kernel().name(), "/", kSeedGenerator, "_",
                               resource_id_counter.fetch_add(1));
   if (op_version_ == 2) {
-    auto handle = HandleFromInput(ctx, 5);
+    ResourceHandle handle;
+    OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 5, &handle));
     SeedGeneratorManager* manager = nullptr;
     absl::Status s = ctx->resource_manager()->Lookup<SeedGeneratorManager>(
         handle.container(), handle.name(), &manager);

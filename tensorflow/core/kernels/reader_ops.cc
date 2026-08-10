@@ -126,11 +126,13 @@ class ReaderReadUpToOp : public ReaderVerbAsyncOpKernel {
     int64_t num_actually_read =
         reader->ReadUpTo(num_records, queue, &keys_vec, &values_vec, context);
 
-    OP_REQUIRES(context, num_actually_read == keys_vec.size(),
-                errors::InvalidArgument("num_actually_read != len(keys_vec"));
+    OP_REQUIRES(
+        context, num_actually_read == keys_vec.size(),
+        absl::InvalidArgumentError("num_actually_read != len(keys_vec"));
 
-    OP_REQUIRES(context, num_actually_read == values_vec.size(),
-                errors::InvalidArgument("num_actually_read != len(values_vec"));
+    OP_REQUIRES(
+        context, num_actually_read == values_vec.size(),
+        absl::InvalidArgumentError("num_actually_read != len(values_vec"));
 
     Tensor* keys = nullptr;
     OP_REQUIRES_OK(context,
@@ -220,10 +222,10 @@ class ReaderRestoreStateOp : public ReaderVerbSyncOpKernel {
                          ReaderInterface* reader) override {
     const Tensor* tensor;
     OP_REQUIRES_OK(context, context->input("state", &tensor));
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(tensor->shape()),
-        errors::InvalidArgument("Reader state must be scalar, but had shape: ",
-                                tensor->shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(tensor->shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Reader state must be scalar, but had shape: ",
+                                 tensor->shape().DebugString())));
     OP_REQUIRES_OK(context, reader->RestoreState(tensor->scalar<tstring>()()));
   }
 };

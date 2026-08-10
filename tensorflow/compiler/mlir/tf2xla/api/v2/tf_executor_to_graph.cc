@@ -593,9 +593,9 @@ absl::StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
     auto arg = it.value();
     mlir::Type type = arg.getType();
     if (!mlir::isa<mlir::TensorType>(type)) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "FuncOps arguments must have tensor types. Found ",
-          mlir::debugString(type), " in function ", function.getName().str());
+          mlir::debugString(type), " in function ", function.getName().str()));
     }
 
     TF_RETURN_IF_ERROR(exporter.AddArgumentNode(
@@ -619,10 +619,10 @@ absl::StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
     for (auto type : inst.getResultTypes())
       if (!mlir::isa<mlir::TensorType, mlir::tf_executor::ControlType,
                      mlir::tf_executor::TokenType>(type))
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Values must be of tensor type, TensorFlow control type, or "
             "TensorFlow token type. Found ",
-            mlir::debugString(type));
+            mlir::debugString(type)));
 
     if (llvm::isa<mlir::tf_executor::NextIterationSourceOp>(inst)) {
       // Skip tf_executor.NextIteration.Source as associated
@@ -758,7 +758,7 @@ absl::Status Exporter::Convert(mlir::ModuleOp module,
   SymbolTable symbol_table(module);
   for (auto function : module.getOps<FuncOp>()) {
     if (function.isExternal())
-      return errors::FailedPrecondition("External functions not supported");
+      return absl::FailedPreconditionError("External functions not supported");
 
     if (function.getName() == entry_func_id &&
         !configs.export_entry_func_to_flib) {
@@ -776,7 +776,7 @@ absl::Status Exporter::Convert(mlir::ModuleOp module,
 
   if (!configs.export_entry_func_to_flib) {
     if (!entry_func.has_value())
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           "entry function `main` must be present");
 
     // Updates the graph and the function library definition.

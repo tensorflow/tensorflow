@@ -16,14 +16,22 @@
 
 from tensorflow.python.util.tf_export import tf_export
 
+try:
+  from tensorboard.summary.v2 import scalar as scalar_v2_lib  # pylint: disable=g-import-not-at-top
+  TENSORBOARD_AVAILABLE = True
+  del scalar_v2_lib
+except ImportError:
+  TENSORBOARD_AVAILABLE = False
+
 _TENSORBOARD_NOT_INSTALLED_ERROR = (
-    "TensorBoard is not installed, missing implementation for"
+    "TensorBoard is not installed, missing implementation for {}. "
+    "Please install TensorBoard via `pip install tensorboard`."
 )
 
 
-class TBNotInstalledError(Exception):
+class TBNotInstalledError(ImportError):
   def __init__(self, summary_api):
-    self.error_message = f"{_TENSORBOARD_NOT_INSTALLED_ERROR} {summary_api}"
+    self.error_message = _TENSORBOARD_NOT_INSTALLED_ERROR.format(summary_api)
     super().__init__(self.error_message)
 
 

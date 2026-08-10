@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/host_memory_spaces.h"
@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/basic_device_list.h"
+#include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
@@ -48,6 +49,7 @@ limitations under the License.
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
@@ -68,7 +70,7 @@ limitations under the License.
 namespace xla {
 
 class CompileOnlyMemory
-    : public llvm::RTTIExtends<CompileOnlyMemory, ifrt::Memory> {
+    : public xla::ifrt::RTTIExtends<CompileOnlyMemory, ifrt::Memory> {
  public:
   explicit CompileOnlyMemory(
       int id, const PjRtMemorySpaceDescription* memory_description,
@@ -100,7 +102,7 @@ class CompileOnlyMemory
 };
 
 class CompileOnlyDevice
-    : public llvm::RTTIExtends<CompileOnlyDevice, ifrt::Device> {
+    : public xla::ifrt::RTTIExtends<CompileOnlyDevice, ifrt::Device> {
  public:
   explicit CompileOnlyDevice(const PjRtDeviceDescription* description,
                              absl::string_view platform_name)
@@ -163,7 +165,7 @@ class CompileOnlyDevice
 };
 
 class CompileOnlyIfRtClient final
-    : public llvm::RTTIExtends<CompileOnlyIfRtClient, ifrt::Client> {
+    : public xla::ifrt::RTTIExtends<CompileOnlyIfRtClient, ifrt::Client> {
  public:
   explicit CompileOnlyIfRtClient(std::shared_ptr<ifrt::PjRtTopology> topology)
       : topology_(std::move(topology)),
@@ -249,6 +251,12 @@ class CompileOnlyIfRtClient final
         "BitcastArrays not available with compile-only client.");
   }
 
+  tsl::Future<std::vector<uint64_t>> HashValues(
+      absl::Span<const ifrt::ValueRef> values, HashMode mode) override {
+    return absl::UnimplementedError(
+        "HashValues is not available with compile-only client.");
+  }
+
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> ReshardArrays(
       absl::Span<xla::ifrt::ArrayRef> arrays,
       absl::Span<const xla::ifrt::ArraySpec> specs,
@@ -263,9 +271,27 @@ class CompileOnlyIfRtClient final
         "GetReadyFuture not available with compile-only client."));
   }
 
+  tsl::Future<> DeleteValues(absl::Span<ifrt::ValueRef> values) override {
+    return tsl::Future<>(
+        Unimplemented("DeleteValues not available with compile-only client."));
+  }
+
   absl::StatusOr<tsl::RCReference<ifrt::Tuple>> MakeTuple(
       absl::Span<ifrt::ValueRef> values) override {
     return Unimplemented("MakeTuple not available with compile-only client.");
+  }
+
+  absl::StatusOr<ifrt::BundleRef> Bundle(
+      absl::Span<ifrt::ValueRef> values,
+      ifrt::ArrayCopySemantics semantics) override {
+    return Unimplemented("Bundle not available with compile-only client.");
+  }
+
+  absl::StatusOr<ifrt::BundleRef> ConcatBundles(
+      absl::Span<ifrt::BundleRef> bundles,
+      ifrt::ArrayCopySemantics semantics) override {
+    return Unimplemented(
+        "ConcatBundles not available with compile-only client.");
   }
 
   void CancelExecution(
@@ -337,17 +363,17 @@ class CompileOnlyIfRtClient final
       return std::make_shared<PjRtLayout>(
           LayoutUtil::MakeDescendingLayout(dims.size()));
     }
-    TF_ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
-    TF_ASSIGN_OR_RETURN(xla::Layout layout,
-                        topology_->GetDefaultLayout(element_type, dims));
+    ABSL_ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
+    ABSL_ASSIGN_OR_RETURN(xla::Layout layout,
+                     topology_->GetDefaultLayout(element_type, dims));
     return std::make_shared<PjRtLayout>(std::move(layout));
   }
   absl::StatusOr<ifrt::CustomLayoutRef> GetDefaultLayout(
       ifrt::DType dtype, const ifrt::Shape& shape,
       const ifrt::ShardingRef& sharding) const override {
-    TF_ASSIGN_OR_RETURN(const ifrt::Shape shard_shape,
-                        sharding->GetShardShape(shape));
-    TF_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(const ifrt::Shape shard_shape,
+                     sharding->GetShardShape(shape));
+    ABSL_ASSIGN_OR_RETURN(
         std::shared_ptr<const xla::PjRtLayout> layout,
         GetDefaultPjRtLayout(dtype, shard_shape.dims(),
                              sharding->devices()->devices().front(),
@@ -366,10 +392,7 @@ class CompileOnlyIfRtClient final
   }
 
  private:
-  xla::ifrt::PjRtCompiler default_compiler_{
-      /*client=*/nullptr,
-      /*num_threads=*/0,
-  };
+  xla::ifrt::PjRtCompiler default_compiler_{/*client=*/nullptr};
   std::shared_ptr<ifrt::PjRtTopology> topology_;
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> descriptions_;
   ifrt::AttributeMap attributes_;

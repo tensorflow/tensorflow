@@ -16,7 +16,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <iterator>
-#include <memory>
 #include <optional>
 #include <utility>
 
@@ -132,7 +131,8 @@ RankedTensorType SqueezeTensorType(RankedTensorType type,
         cast<DialectInferLayoutInterface>(&encoding.getDialect());
     [[maybe_unused]] LogicalResult result =
         inferLayoutInterface->inferReshapeOpEncoding(
-            type.getShape(), encoding, shape, encoding, std::nullopt);
+            type.getShape(), encoding, shape, encoding, /*allowReorder=*/false,
+            /*loc=*/std::nullopt);
     CHECK(succeeded(result));
   }
   return RankedTensorType::get(shape, type.getElementType(), encoding);
@@ -559,9 +559,5 @@ class TritonXLASqueezeDimsPass
 };
 
 }  // namespace
-
-std::unique_ptr<Pass> CreateTritonXLASqueezeDimsPass() {
-  return std::make_unique<TritonXLASqueezeDimsPass>();
-}
 
 }  // namespace mlir::triton::xla

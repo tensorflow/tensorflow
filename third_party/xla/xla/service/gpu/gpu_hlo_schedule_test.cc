@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -35,6 +36,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "mlir/IR/MLIRContext.h"
 #include "google/protobuf/text_format.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -50,25 +52,30 @@ limitations under the License.
 #include "xla/service/backend.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_compiler.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 
 namespace xla {
 namespace gpu {
 
 using ::testing::_;
+using ::testing::Contains;
 using ::testing::ElementsAre;
 using ::testing::EndsWith;
+using ::testing::Not;
 
-class GpuHloScheduleTest : public HloTestBase {
+class GpuHloScheduleTest : public HloTestBaseLegacy {
  protected:
   using HloVec = std::vector<HloInstruction*>;
 
@@ -82,9 +89,9 @@ class GpuHloScheduleTest : public HloTestBase {
     std::unique_ptr<GpuAliasInfo> alias_info =
         gpu_compiler->GetAliasInfo(gpu_device_info);
     int64_t pointer_size = gpu_compiler->GetPointerSize();
+    mlir::MLIRContext mlir_context;
     return xla::gpu::ScheduleGpuModule(module, pointer_size, gpu_device_info,
-                                       gpu_compiler->mlir_context(),
-                                       alias_info.get());
+                                       &mlir_context, alias_info.get());
   }
 
   SequentialHloOrdering BuildHloOrdering(HloModule* module) {
@@ -143,6 +150,99 @@ class GpuHloScheduleTest : public HloTestBase {
 class GpuHloScheduleParameterizedTest
     : public GpuHloScheduleTest,
       public ::testing::WithParamInterface<std::tuple<bool, bool>> {};
+
+// A large buffer (`big`) whose last user (`wg`) is independent of the
+// collective-permute chain, so the latency-hiding scheduler is free to defer
+// the `wg` chain past the collective windows unless memory fencing pins it.
+constexpr absl::string_view kFencingHloText = R"(
+HloModule m
+
+ENTRY entry {
+  p0 = f32[1024,1024]{1,0} parameter(0)
+  p1 = f32[16]{0} parameter(1)
+  big = f32[1024,1024]{1,0} add(p0, p0)
+  wg = f32[1024,1024]{1,0} multiply(big, big)
+  wg_slice = f32[16,1]{1,0} slice(wg), slice={[0:16], [0:1]}
+  wg_small = f32[16]{0} reshape(wg_slice)
+  cp1s = (f32[16]{0}, f32[16]{0}) collective-permute-start(p1), source_target_pairs={{0,1},{1,0}}
+  cp1d = f32[16]{0} collective-permute-done(cp1s)
+  cp2s = (f32[16]{0}, f32[16]{0}) collective-permute-start(cp1d), source_target_pairs={{0,1},{1,0}}
+  cp2d = f32[16]{0} collective-permute-done(cp2s)
+  ROOT r = f32[16]{0} add(cp2d, wg_small)
+})";
+
+class GpuHloScheduleFencingTest : public GpuHloScheduleTest {
+ protected:
+  HloModuleConfig GetFencingModuleConfig(int64_t fencing_threshold_bytes) {
+    TestConfig test_config;
+    test_config.enable_latency_hiding_scheduler = true;
+    HloModuleConfig config = GetModuleConfig(test_config);
+    DebugOptions options = config.debug_options();
+    options.set_xla_gpu_experimental_scheduler_memory_fencing_threshold_bytes(
+        fencing_threshold_bytes);
+    config.set_debug_options(options);
+    config.set_replica_count(2);
+    return config;
+  }
+};
+
+TEST(GpuHloScheduleFencingThresholdTest, ResolvesConfiguredThreshold) {
+  constexpr uint64_t kMemoryLimit = 10'000;
+
+  EXPECT_EQ(GetSchedulerMemoryFencingThresholdBytes(
+                /*configured_threshold_bytes=*/-1, kMemoryLimit),
+            std::nullopt);
+  EXPECT_EQ(GetSchedulerMemoryFencingThresholdBytes(
+                /*configured_threshold_bytes=*/0, kMemoryLimit),
+            100);
+  EXPECT_EQ(GetSchedulerMemoryFencingThresholdBytes(
+                /*configured_threshold_bytes=*/123, kMemoryLimit),
+            123);
+  EXPECT_EQ(GetSchedulerMemoryFencingThresholdBytes(
+                /*configured_threshold_bytes=*/20'000, kMemoryLimit),
+            kMemoryLimit);
+}
+
+TEST_F(GpuHloScheduleFencingTest, MemoryFencingAddsScheduleRespectedFences) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(
+          kFencingHloText, GetFencingModuleConfig(
+                               /*fencing_threshold_bytes=*/1024 * 1024)));
+  ASSERT_OK(ScheduleGpuModule(module.get()).status());
+
+  HloComputation* entry = module->entry_computation();
+  const std::vector<HloInstruction*>& sequence =
+      module->schedule().sequence(entry).instructions();
+  auto position = [&](const HloInstruction* instruction) {
+    return std::distance(
+        sequence.begin(),
+        std::find(sequence.begin(), sequence.end(), instruction));
+  };
+
+  const HloInstruction* wg = entry->GetInstructionWithName("wg");
+  const HloInstruction* cp2s = entry->GetInstructionWithName("cp2s");
+  ASSERT_NE(wg, nullptr);
+  ASSERT_NE(cp2s, nullptr);
+  EXPECT_THAT(wg->control_successors(), Contains(cp2s));
+  EXPECT_LT(position(wg), position(cp2s));
+}
+
+TEST_F(GpuHloScheduleFencingTest, MemoryFencingDisabledOmitsFence) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(kFencingHloText,
+                                   GetFencingModuleConfig(
+                                       /*fencing_threshold_bytes=*/-1)));
+  ASSERT_OK(ScheduleGpuModule(module.get()).status());
+
+  HloComputation* entry = module->entry_computation();
+  const HloInstruction* wg = entry->GetInstructionWithName("wg");
+  const HloInstruction* cp2s = entry->GetInstructionWithName("cp2s");
+  ASSERT_NE(wg, nullptr);
+  ASSERT_NE(cp2s, nullptr);
+  EXPECT_THAT(wg->control_successors(), Not(Contains(cp2s)));
+}
 
 // Test of a single stream, where data dependencies fully determine the
 // execution order.
@@ -1702,7 +1802,7 @@ TEST_P(GpuHloScheduleParameterizedTest, LHSResourceModel) {
   EXPECT_TRUE(HasValidFingerprint(module.get()));
 }
 
-using GpuHloSchedulePostProcessTest = HloTestBase;
+using GpuHloSchedulePostProcessTest = HloTestBaseLegacy;
 
 TEST_F(GpuHloSchedulePostProcessTest, PostProcessAsyncCollectives) {
   const char* hlo_text = R"(

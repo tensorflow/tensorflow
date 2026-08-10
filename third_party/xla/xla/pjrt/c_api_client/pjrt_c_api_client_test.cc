@@ -148,6 +148,7 @@ TEST(PjRtCApiClientTest, CreateErrorBuffer) {
                           GetCApiClient("cpu"));
 
   absl::Status error = absl::InternalError("Test Error");
+  error.SetPayload("test_key", absl::Cord("test_payload_value"));
   Shape shape = ShapeUtil::MakeShape(S32, {2, 3});
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -157,6 +158,8 @@ TEST(PjRtCApiClientTest, CreateErrorBuffer) {
   absl::Status awaited_status = error_buffer->GetReadyFuture().Await();
   EXPECT_TRUE(absl::IsInternal(awaited_status));
   EXPECT_THAT(awaited_status.message(), HasSubstr("Test Error"));
+  EXPECT_EQ(awaited_status.GetPayload("test_key"),
+            absl::Cord("test_payload_value"));
 }
 
 TEST(PjRtCApiClientTest, ConcurrentGetReadyFuture) {
@@ -282,6 +285,69 @@ TEST(PjRtCApiClientTest, IsDynamicDimension) {
             ShapeUtil::MakeShape(S32, {2, 2}, {false, true}));
 }
 
+TEST(PjRtCApiClientTest, DynamicShapesPipeline) {
+  SetUpCpuPjRtApi();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
+
+  // Computation 1: static F32[15] -> dynamic F32[<=15] (runtime size = input1)
+  Shape shape0 = ShapeUtil::MakeShape(F32, {15});
+  Shape shape1 = ShapeUtil::MakeShape(S32, {});
+
+  XlaBuilder builder1("Module1");
+  auto inp_0 = Parameter(&builder1, 0, shape0, "input0");
+  auto inp_1 = Parameter(&builder1, 1, shape1, "input1");
+  std::vector<bool> dims_are_dynamic1 = {true};
+  auto reshaped = DynamicReshape(inp_0, {inp_1}, {15}, dims_are_dynamic1);
+  ASSERT_OK_AND_ASSIGN(auto computation1, builder1.Build(reshaped));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable1,
+                       client->CompileAndLoad(computation1, CompileOptions()));
+
+  // Computation 2: dynamic F32[<=10] -> dynamic F32[<=10] (Identity)
+  Shape shape_expected = ShapeUtil::MakeShape(F32, {10}, {true});
+  XlaBuilder builder2("Module2");
+  auto inp_m2 = Parameter(&builder2, 0, shape_expected, "input");
+  ASSERT_OK_AND_ASSIGN(auto computation2, builder2.Build(inp_m2));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable2,
+                       client->CompileAndLoad(computation2, CompileOptions()));
+
+  // 1. Prepare input buffer (static F32[15], all 1.0f)
+  std::vector<float> input_data(15, 1.0f);
+  ASSERT_OK_AND_ASSIGN(
+      auto param0,
+      client->BufferFromHostBuffer(
+          input_data.data(), shape0.element_type(), shape0.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+
+  // 2. Prepare dynamic size (we want the runtime size to be 4)
+  int32_t dynamic_size = 4;
+  ASSERT_OK_AND_ASSIGN(
+      auto param1,
+      client->BufferFromHostBuffer(
+          &dynamic_size, shape1.element_type(), shape1.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+
+  // 3. Run Computation 1 -> returns dynamic buffer (runtime size 4, bound 15)
+  ASSERT_OK_AND_ASSIGN(
+      auto results1,
+      executable1->Execute({{param0.get(), param1.get()}}, ExecuteOptions()));
+  ASSERT_EQ(results1[0].size(), 1);
+  auto* dynamic_buffer = results1[0][0].get();
+
+  // Since we are on CPU (kSuffix), this must be REJECTED by
+  // CheckBufferCompatibilities.
+  auto status2 = executable2->Execute({{dynamic_buffer}}, ExecuteOptions());
+  EXPECT_THAT(status2.status(),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("E0102: RuntimeProgramInputMismatch")));
+}
+
 TEST(PjRtCApiClientTest, OnDeviceShape) {
   SetUpCpuPjRtApi();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
@@ -338,6 +404,19 @@ TEST(PjRtCApiClientTest, TopologyGetDefaultLayout) {
 
   Layout expected_layout = LayoutUtil::MakeDescendingLayout(dims.size());
   EXPECT_EQ(layout, expected_layout);
+}
+
+TEST(PjRtCApiClientTest, TopologyFingerprint) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+
+  TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                          client->GetTopologyDescription());
+
+  ASSERT_NE(topology, nullptr);
+  TF_ASSERT_OK_AND_ASSIGN(uint64_t fingerprint, topology->Fingerprint());
+  EXPECT_NE(fingerprint, 0);
 }
 
 TEST(PjRtCApiClientTest, NonEmptyExecutableFingerprint) {
@@ -929,15 +1008,20 @@ ENTRY Identity() -> f32[2, 2] {
 
   // Poisoning the execution should succeed because the execution has not
   // started with the input buffer not defined yet.
+  absl::Status poison_status = absl::InternalError("foobar1");
+  poison_status.SetPayload("test_key", absl::Cord("test_payload_value"));
+
   auto poison_result = client->addressable_devices().front()->PoisonExecution(
-      kLaunchId, Internal("foobar1"));
+      kLaunchId, poison_status);
   ASSERT_THAT(poison_result, IsOkAndHolds(true));
 
   // The buffer is expected to be poisoned with the error.
   ASSERT_EQ(result->size(), 1);
   ASSERT_EQ(result->at(0).size(), 1);
-  EXPECT_THAT(result->at(0).at(0)->ToLiteral().Await(),
-              StatusIs(tsl::error::INTERNAL, HasSubstr("foobar1")));
+  absl::Status status = result->at(0).at(0)->ToLiteral().Await().status();
+  EXPECT_THAT(status,
+              StatusIs(absl::StatusCode::kInternal, HasSubstr("foobar1")));
+  EXPECT_EQ(status.GetPayload("test_key"), absl::Cord("test_payload_value"));
 
   // A later error (propagated from the input buffer) would not affect the
   // already poisoned output buffer.
@@ -1016,6 +1100,32 @@ TEST(PjRtCApiClientTest, Bitcast) {
   TF_ASSERT_OK_AND_ASSIGN(auto shared_literal, future.Await());
   std::vector<int32_t> expected = {3};
   EXPECT_EQ(shared_literal->data<int32_t>(), expected);
+}
+
+TEST(PjRtCApiClientTest, MakeCanonicalShapeForMemorySpace) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+
+  TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                          client->GetTopologyDescription());
+  ASSERT_NE(topology, nullptr);
+
+  Shape input_shape = ShapeUtil::MakeShape(F32, {10, 20});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape canonical_shape,
+      topology->MakeCanonicalShapeForMemorySpace(
+          /*memory_space_kind_id=*/0, input_shape, /*layout=*/nullptr));
+  EXPECT_TRUE(canonical_shape.has_layout());
+
+  Layout specific_layout = LayoutUtil::MakeLayout({0, 1});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape canonical_shape_specific,
+      topology->MakeCanonicalShapeForMemorySpace(
+          /*memory_space_kind_id=*/0, input_shape, &specific_layout));
+  EXPECT_TRUE(canonical_shape_specific.has_layout());
+  EXPECT_EQ(canonical_shape_specific.layout().minor_to_major(),
+            specific_layout.minor_to_major());
 }
 
 }  // namespace

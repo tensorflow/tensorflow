@@ -42,16 +42,16 @@ class ScopedAllocatorOp : public OpKernel {
     size_t num_bytes = fields_.back().offset + fields_.back().bytes_allocated;
     num_elements_ = num_bytes / DataTypeSize(dtype_);
     OP_REQUIRES(context, num_bytes % DataTypeSize(dtype_) == 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Number of bytes ", num_bytes,
-                    " must be divisible by size of datatype ", dtype_));
+                    " must be divisible by size of datatype ", dtype_)));
   }
 
   void Compute(OpKernelContext* context) override {
     ScopedAllocatorMgr* sam = device_->GetScopedAllocatorMgr();
     if (!sam) {
-      context->SetStatus(errors::Internal(
-          "ScopedAllocatorMgr not supported on device ", device_->name()));
+      context->SetStatus(absl::InternalError(absl::StrCat(
+          "ScopedAllocatorMgr not supported on device ", device_->name())));
       return;
     }
     Tensor* backing_tensor = nullptr;
@@ -108,18 +108,18 @@ class ScopedAllocatorConcatOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& backing_tensor = context->input(0);
     // Check that type matches.
-    OP_REQUIRES(context, backing_tensor.dtype() == dtype_,
-                errors::InvalidArgument("Backing tensor type ",
-                                        DataTypeString(backing_tensor.dtype()),
-                                        " does not match expected type ",
-                                        DataTypeString(dtype_)));
+    OP_REQUIRES(
+        context, backing_tensor.dtype() == dtype_,
+        absl::InvalidArgumentError(absl::StrCat(
+            "Backing tensor type ", DataTypeString(backing_tensor.dtype()),
+            " does not match expected type ", DataTypeString(dtype_))));
     // Check that backing tensor is at least as large as the shape of the
     // output.
-    OP_REQUIRES(context, backing_tensor.NumElements() >= shape_.num_elements(),
-                errors::InvalidArgument("Backing tensor num elements ",
-                                        backing_tensor.NumElements(),
-                                        " is not >= to expected ",
-                                        shape_.num_elements()));
+    OP_REQUIRES(
+        context, backing_tensor.NumElements() >= shape_.num_elements(),
+        absl::InvalidArgumentError(absl::StrCat(
+            "Backing tensor num elements ", backing_tensor.NumElements(),
+            " is not >= to expected ", shape_.num_elements())));
     Tensor output(dtype_);
     if (reshape_) {
       CHECK(output.CopyFrom(backing_tensor, shape_));
@@ -190,11 +190,11 @@ class ScopedAllocatorSplitOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     Tensor backing_copy(context->input(0));
     // Check that type matches.
-    OP_REQUIRES(context, backing_copy.dtype() == dtype_,
-                errors::InvalidArgument("Backing tensor type ",
-                                        DataTypeString(backing_copy.dtype()),
-                                        " does not match expected type ",
-                                        DataTypeString(dtype_)));
+    OP_REQUIRES(
+        context, backing_copy.dtype() == dtype_,
+        absl::InvalidArgumentError(absl::StrCat(
+            "Backing tensor type ", DataTypeString(backing_copy.dtype()),
+            " does not match expected type ", DataTypeString(dtype_))));
     const TensorBuffer* backing_buf = DMAHelper::buffer(&backing_copy);
     const void* backing_tensor_lb = backing_buf->data();
     const void* backing_tensor_ub = static_cast<const void*>(
@@ -204,24 +204,24 @@ class ScopedAllocatorSplitOp : public OpKernel {
               << " to output " << i - 1 << " buf addr "
               << DMAHelper::base(&context->input(i));
       Tensor copy(context->input(i));
-      OP_REQUIRES(context, copy.dtype() == dtype_,
-                  errors::InvalidArgument("Input ", i, " tensor type ",
-                                          DataTypeString(copy.dtype()),
-                                          " does not match expected type ",
-                                          DataTypeString(dtype_)));
+      OP_REQUIRES(
+          context, copy.dtype() == dtype_,
+          absl::InvalidArgumentError(absl::StrCat(
+              "Input ", i, " tensor type ", DataTypeString(copy.dtype()),
+              " does not match expected type ", DataTypeString(dtype_))));
       context->set_output(i - 1, copy);
       const TensorBuffer* input_buf = DMAHelper::buffer(&copy);
       const void* input_lb = input_buf->data();
-      OP_REQUIRES(
-          context, input_lb >= backing_tensor_lb,
-          errors::InvalidArgument("Lower bound check fail for input ", i,
-                                  " to node ", context->op_kernel().name()));
+      OP_REQUIRES(context, input_lb >= backing_tensor_lb,
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Lower bound check fail for input ", i,
+                                   " to node ", context->op_kernel().name())));
       const void* input_ub = static_cast<const void*>(
           static_cast<const char*>(input_lb) + input_buf->size());
-      OP_REQUIRES(
-          context, input_ub <= backing_tensor_ub,
-          errors::InvalidArgument("Upper bound check fail for input ", i,
-                                  " to node ", context->op_kernel().name()));
+      OP_REQUIRES(context, input_ub <= backing_tensor_ub,
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Upper bound check fail for input ", i,
+                                   " to node ", context->op_kernel().name())));
     }
   }
 

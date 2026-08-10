@@ -324,7 +324,7 @@ void BM_FreeChunksManagerStress(::testing::benchmark::State& state) {
   }
 }
 
-BENCHMARK(BM_FreeChunksManagerStress)->Range(1'000, 1'000'000);
+BENCHMARK(BM_FreeChunksManagerStress)->Range(1'000, 10'000'000);
 
 }  // namespace
 }  // namespace xla

@@ -120,7 +120,7 @@ class GrpcDataTransferClient : public DataTransferClient {
     {
       mutex_lock l(mu_);
       if (cancelled_) {
-        return errors::Cancelled("Client was cancelled.");
+        return absl::CancelledError("Client was cancelled.");
       }
     }
     grpc::ClientContext ctx;
@@ -159,7 +159,7 @@ class GrpcDataTransferClient : public DataTransferClient {
                   ? result.components.back().FromProto(allocator_, component)
                   : result.components.back().FromProto(component);
           if (!success) {
-            return errors::Internal("Failed to parse tensor.");
+            return absl::InternalError("Failed to parse tensor.");
           }
         }
         break;
@@ -245,7 +245,7 @@ class LocalDataTransferClient : public DataTransferClient {
   absl::Status VerifyClientIsNotCancelled() TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     if (cancelled_) {
-      return errors::Cancelled(absl::Substitute(
+      return absl::CancelledError(absl::Substitute(
           "Client for worker $0 has been cancelled.", worker_address_));
     }
     return absl::OkStatus();
@@ -256,7 +256,7 @@ class LocalDataTransferClient : public DataTransferClient {
     std::shared_ptr<DataServiceWorkerImpl> worker =
         LocalWorkers::Get(worker_address_);
     if (!worker) {
-      return errors::Cancelled(absl::Substitute(
+      return absl::CancelledError(absl::Substitute(
           "Local worker at address $0 is no longer available; cancel request "
           "for task $1.",
           worker_address_, req.task_id()));

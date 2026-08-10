@@ -21,6 +21,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -41,8 +42,8 @@ namespace m = ::xla::match;
 class HostMemoryTransferAsyncifierTest : public HloHardwareIndependentTestBase {
  protected:
   absl::StatusOr<bool> RunAsyncifier(absl::string_view hlo_string) {
-    TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-    TF_ASSIGN_OR_RETURN(bool changed, RunAsyncifier(module.get()));
+    ABSL_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+    ABSL_ASSIGN_OR_RETURN(bool changed, RunAsyncifier(module.get()));
     return changed;
   }
 

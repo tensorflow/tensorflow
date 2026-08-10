@@ -19,7 +19,9 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
+#include "absl/types/span.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
+#include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -82,24 +84,83 @@ bool CanBeOutputFusedIntoSomeOperand(const HloInstruction* consumer) {
           CanBeOutputFused(consumer->operand(1), consumer));
 }
 
+bool IsMaxReduction(const HloInstruction* reduce) {
+  if (reduce->opcode() != HloOpcode::kReduce) {
+    return false;
+  }
+  const HloInstruction* root = reduce->to_apply()->root_instruction();
+  return root->opcode() == HloOpcode::kMaximum;
+}
+
+// Matches subtract(shift_value, broadcast(reduce)) or the reversed operand
+// order subtract(broadcast(reduce), shift_value), used by exponential, i.e.
+// the numerically sensitive stable-softmax shift pattern.
+bool IsExpShiftCoupledSubtract(const HloInstruction& subtract,
+                               const HloInstruction& shift_value,
+                               const HloInstruction& reduce) {
+  if (subtract.opcode() != HloOpcode::kSubtract) {
+    return false;
+  }
+  const HloInstruction* op0 = subtract.operand(0);
+  const HloInstruction* op1 = subtract.operand(1);
+  const bool uses_shift_value = op0 == &shift_value || op1 == &shift_value ||
+                                (op0->opcode() == HloOpcode::kBroadcast &&
+                                 op0->operand(0) == &shift_value) ||
+                                (op1->opcode() == HloOpcode::kBroadcast &&
+                                 op1->operand(0) == &shift_value);
+  const bool uses_reduce_broadcast =
+      (op0->opcode() == HloOpcode::kBroadcast && op0->operand(0) == &reduce) ||
+      (op1->opcode() == HloOpcode::kBroadcast && op1->operand(0) == &reduce);
+  if (!uses_shift_value || !uses_reduce_broadcast) {
+    return false;
+  }
+  return absl::c_any_of(subtract.users(), [](const HloInstruction* user) {
+    return user->opcode() == HloOpcode::kExp;
+  });
+}
+
+const HloInstruction* FindMaxReduceForShiftValue(
+    const HloInstruction& shift_value) {
+  for (const HloInstruction* user : shift_value.users()) {
+    if (user->opcode() == HloOpcode::kReduce &&
+        user->operand(0) == &shift_value && IsMaxReduction(user)) {
+      return user;
+    }
+  }
+  return nullptr;
+}
+
+// An elementwise op that feeds both row-max reduction and exp-shift
+// subtraction. Matching any elementwise producer (not just multiply) covers
+// numerically coupled shapes like add(dot, bias) as well as multiply(dot,
+// scale), while staying within the reduce-max / exp-shift coupled structure.
+bool IsCoupledReductionShiftExpProducer(const HloInstruction* instr) {
+  if (instr->opcode() == HloOpcode::kFusion || !instr->IsElementwise()) {
+    return false;
+  }
+  const HloInstruction* reduce = FindMaxReduceForShiftValue(*instr);
+  if (reduce == nullptr) {
+    return false;
+  }
+  return absl::c_any_of(instr->users(), [&](const HloInstruction* user) {
+    return IsExpShiftCoupledSubtract(*user, *instr, *reduce);
+  });
+}
+
 // Should we block the fusion of the subcomputation of the passed instruction?
 bool BlockSubcomputationFusion(const HloInstruction* instruction,
                                const HloModuleConfig& config) {
   HloOpcode opcode = instruction->opcode();
-  const bool is_fusion_emitters =
-      config.debug_options().xla_cpu_use_fusion_emitters();
-
-  if (is_fusion_emitters && opcode == HloOpcode::kScatter) {
+  if (opcode == HloOpcode::kScatter) {
     return true;
   }
-
-  const bool use_experemental_fusion_emitters =
+  const bool use_experimental_fusion_emitters =
       options::UseExperimentalLoopFusion(config);
 
   // If the instruction itself can be fused then the subcomputation should be
   // blocked as the fusion emitter can't emit fusion ops inside another
   // fusion.
-  if (is_fusion_emitters && use_experemental_fusion_emitters &&
+  if (use_experimental_fusion_emitters &&
       emitters::IsSupportedElementalOp(opcode)) {
     return true;
   }
@@ -140,6 +201,7 @@ bool CpuInstructionFusion::IsExpensive(const HloInstruction& instruction) {
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
+    case HloOpcode::kMulhi:
     case HloOpcode::kNegate:
     case HloOpcode::kNot:
     case HloOpcode::kOptimizationBarrier:
@@ -280,6 +342,26 @@ bool CpuInstructionFusion::IsExpensive(const HloInstruction& instruction) {
   }
 
   return false;
+}
+
+InstructionFusion::HloInstructionSet
+CpuInstructionFusion::ComputeGloballyUnfusible(
+    absl::Span<HloInstruction* const> post_order,
+    const HloReachabilityMap& reachability) {
+  HloInstructionSet do_not_duplicate =
+      InstructionFusion::ComputeGloballyUnfusible(post_order, reachability);
+  for (HloInstruction* producer : post_order) {
+    if (IsCoupledReductionShiftExpProducer(producer)) {
+      // The base implementation treats effectively-unary elementwise ops as
+      // free to duplicate. For producers feeding both a max-reduce and its
+      // exp-shift subtract, duplication is unsound: FMA contraction can make
+      // the recomputed copy differ from the copy the max was taken over by up
+      // to one ulp, which exp() turns into inf/nan. Force such producers to be
+      // materialized once.
+      do_not_duplicate.insert(producer);
+    }
+  }
+  return do_not_duplicate;
 }
 
 void CpuInstructionFusion::ComputeInstructionsToSkip(

@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -44,15 +45,13 @@ absl::StatusOr<bool> OpExpanderPass::RunImpl(
   }
 
   for (HloInstruction* inst : matching_instructions) {
-    TF_ASSIGN_OR_RETURN(HloInstruction * expanded_root,
-                        ExpandInstruction(inst));
+    ABSL_ASSIGN_OR_RETURN(HloInstruction * expanded_root, ExpandInstruction(inst));
     if (expanded_root == nullptr) {
       continue;
     }
-    TF_ASSIGN_OR_RETURN(bool changed,
-                        inst->parent()->ReplaceInstruction(
-                            inst, expanded_root, preserve_sharding_,
-                            relay_control_dependency_));
+    ABSL_ASSIGN_OR_RETURN(bool changed, inst->parent()->ReplaceInstruction(
+                                       inst, expanded_root, preserve_sharding_,
+                                       relay_control_dependency_));
     DCHECK(changed);
   }
 

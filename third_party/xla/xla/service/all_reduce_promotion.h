@@ -31,8 +31,11 @@ namespace xla {
 
 class AllReducePromotion : public HloModulePass {
  public:
+  // If `promote_all_reduce_only` is true, kReduceScatter is skipped and
+  // only kAllReduce instructions are promoted.
   explicit AllReducePromotion(
-      absl::Span<std::pair<PrimitiveType, PrimitiveType> const> from_to_types);
+      absl::Span<std::pair<PrimitiveType, PrimitiveType> const> from_to_types,
+      bool promote_all_reduce_only = false);
   absl::string_view name() const override { return "all-reduce-promotion"; }
 
  protected:

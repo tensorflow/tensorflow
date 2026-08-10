@@ -28,7 +28,7 @@ namespace grappler {
 // Contains plugin's configurations for each Grappler optimizer (on/off).
 // See tensorflow/core/protobuf/rewriter_config.proto for optimizer description.
 struct ConfigList {
-  ConfigList() {}
+  ConfigList() = default;
   ConfigList(bool disable_model_pruning,
              std::unordered_map<std::string, RewriterConfig_Toggle> config)
       : disable_model_pruning(disable_model_pruning),

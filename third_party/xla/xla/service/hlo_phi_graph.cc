@@ -216,11 +216,10 @@ void PhiGraph::Optimize() {
       while (!worklist.empty()) {
         Node* todo = worklist.front();
         worklist.pop();
-        if (workset.contains(todo)) {
+        if (!workset.insert(todo).second) {
           continue;
         }
         checked_for_closure.insert(todo);
-        workset.insert(todo);
         for (Node* operand : todo->operands) {
           worklist.push(operand);
         }

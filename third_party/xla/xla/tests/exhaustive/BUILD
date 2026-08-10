@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # Description:
 #   Computationally expensive, exhaustive tests for XLA
 
@@ -66,6 +81,7 @@ cc_library(
         "//xla/tests:xla_test_backend_predicates",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/util:command_line_flags",
@@ -179,6 +195,8 @@ xla_test(
         "gpu": [
             "notsan",
         ],
+        "gb200": ["broken"],  # TODO(b/505945608): re-enable when fixed.
+        "gb300": ["broken"],  # TODO(b/505944727): re-enable when fixed.
     },
     backends = ["cpu"] + [
         gpu

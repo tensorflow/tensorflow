@@ -16,6 +16,7 @@ limitations under the License.
 // See docs in ../ops/state_ops.cc.
 
 #include <limits>
+#include <type_traits>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"

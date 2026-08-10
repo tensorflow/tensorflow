@@ -64,9 +64,7 @@ absl::Status TensorValueAt(Tensor t, int64_t i, T* out) {
     TF_CALL_complex64(COMPLEX_CASE)
     TF_CALL_complex128(COMPLEX_CASE)
     default:
-        return errors::Unimplemented("SummaryFileWriter ",
-                                     DataTypeString(t.dtype()),
-                                     " not supported.");
+        return absl::UnimplementedError(absl::StrCat("SummaryFileWriter ", DataTypeString(t.dtype()), " not supported."));
   }
   // clang-format on
   return absl::OkStatus();
@@ -111,7 +109,7 @@ absl::Status AddImages(const std::string& tag, int max_images, int batch_size,
     if (!png::WriteImageToBuffer(image.data(), w, h, w * depth, depth,
                                  channel_bits, compression,
                                  si->mutable_encoded_image_string(), nullptr)) {
-      return errors::Internal("PNG encoding failed");
+      return absl::InternalError("PNG encoding failed");
     }
   }
   return absl::OkStatus();
@@ -195,9 +193,9 @@ absl::Status NormalizeAndAddImages(const Tensor& tensor, int max_images, int h,
                                    Tensor bad_color_tensor, Summary* s) {
   // For float and half images, nans and infs are replaced with bad_color.
   if (bad_color_tensor.dim_size(0) < depth) {
-    return errors::InvalidArgument(
-        "expected depth <= bad_color.size, got depth = ", depth,
-        ", bad_color.size = ", bad_color_tensor.dim_size(0));
+    return absl::InvalidArgumentError(
+        absl::StrCat("expected depth <= bad_color.size, got depth = ", depth,
+                     ", bad_color.size = ", bad_color_tensor.dim_size(0)));
   }
   auto bad_color_full = bad_color_tensor.vec<uint8_t>();
   typename TTypes<uint8_t>::ConstVec bad_color(bad_color_full.data(), depth);
@@ -235,10 +233,11 @@ absl::Status AddTensorAsHistogramToSummary(const Tensor& t,
     double double_val;
     TF_RETURN_IF_ERROR(TensorValueAt<double>(t, i, &double_val));
     if (Eigen::numext::isnan(double_val)) {
-      return errors::InvalidArgument("Nan in summary histogram for: ", tag);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Nan in summary histogram for: ", tag));
     } else if (Eigen::numext::isinf(double_val)) {
-      return errors::InvalidArgument("Infinity in summary histogram for: ",
-                                     tag);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Infinity in summary histogram for: ", tag));
     }
     histo.Add(double_val);
   }
@@ -252,15 +251,15 @@ absl::Status AddTensorAsImageToSummary(const Tensor& tensor,
   if (!(tensor.dims() == 4 &&
         (tensor.dim_size(3) == 1 || tensor.dim_size(3) == 3 ||
          tensor.dim_size(3) == 4))) {
-    return errors::InvalidArgument(
-        "Tensor must be 4-D with last dim 1, 3, or 4, not ",
-        tensor.shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Tensor must be 4-D with last dim 1, 3, or 4, not ",
+                     tensor.shape().DebugString()));
   }
   if (!(tensor.dim_size(0) < (1LL << 31) && tensor.dim_size(1) < (1LL << 31) &&
         tensor.dim_size(2) < (1LL << 31) &&
         (tensor.dim_size(1) * tensor.dim_size(2)) < (1LL << 29))) {
-    return errors::InvalidArgument("Tensor too large for summary ",
-                                   tensor.shape().DebugString());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Tensor too large for summary ", tensor.shape().DebugString()));
   }
   // The casts and h * w cannot overflow because of the limits above.
   const int batch_size = static_cast<int>(tensor.dim_size(0));
@@ -287,10 +286,10 @@ absl::Status AddTensorAsImageToSummary(const Tensor& tensor,
     TF_RETURN_IF_ERROR(NormalizeAndAddImages<double>(
         tensor, max_images, h, w, hw, depth, batch_size, tag, bad_color, s));
   } else {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Only DT_INT8, DT_HALF, DT_DOUBLE, and DT_FLOAT images are supported. "
         "Got ",
-        DataTypeString(tensor.dtype()));
+        DataTypeString(tensor.dtype())));
   }
   return absl::OkStatus();
 }
@@ -299,7 +298,7 @@ absl::Status AddTensorAsAudioToSummary(const Tensor& tensor,
                                        const std::string& tag, int max_outputs,
                                        float sample_rate, Summary* s) {
   if (sample_rate <= 0.0f) {
-    return errors::InvalidArgument("sample_rate must be > 0");
+    return absl::InvalidArgumentError("sample_rate must be > 0");
   }
   const int batch_size = tensor.dim_size(0);
   const int64_t length_frames = tensor.dim_size(1);

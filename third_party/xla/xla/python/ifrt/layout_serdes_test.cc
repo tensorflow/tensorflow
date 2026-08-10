@@ -17,8 +17,9 @@ limitations under the License.
 #include <utility>
 
 #include <gtest/gtest.h>
-#include "llvm/Support/Casting.h"
+#include "absl/strings/str_cat.h"
 #include "xla/python/ifrt/layout.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
@@ -49,14 +50,17 @@ TEST_P(LayoutSerDesTest, CompactLayoutRoundTrip) {
       auto deserialized,
       Deserialize<CompactLayout>(serialized, /*options=*/nullptr));
 
-  const auto* out_layout = llvm::dyn_cast<CompactLayout>(deserialized.get());
+  const auto* out_layout = dyn_cast<CompactLayout>(deserialized.get());
   ASSERT_NE(out_layout, nullptr);
   EXPECT_EQ(out_layout->major_to_minor(), layout->major_to_minor());
 }
 
 INSTANTIATE_TEST_SUITE_P(
     SerDesVersion, LayoutSerDesTest,
-    testing::ValuesIn(test_util::AllSupportedSerDesVersions()));
+    testing::ValuesIn(test_util::AllSupportedSerDesVersions()),
+    [](const testing::TestParamInfo<SerDesVersion>& info) {
+      return absl::StrCat(info.param.version_number().value());
+    });
 
 }  // namespace
 }  // namespace ifrt

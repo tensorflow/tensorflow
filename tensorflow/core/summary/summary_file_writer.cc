@@ -79,7 +79,8 @@ class SummaryFileWriter : public SummaryWriterInterface {
   absl::Status Flush() override {
     mutex_lock ml(mu_);
     if (!is_initialized_) {
-      return errors::FailedPrecondition("Class was not properly initialized.");
+      return absl::FailedPreconditionError(
+          "Class was not properly initialized.");
     }
     return InternalFlush();
   }

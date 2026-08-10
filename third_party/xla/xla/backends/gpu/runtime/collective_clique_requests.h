@@ -18,12 +18,14 @@ limitations under the License.
 
 #include <cstddef>
 #include <optional>
+#include <tuple>
 #include <vector>
 
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/runtime/device_id.h"
@@ -40,30 +42,30 @@ class CollectiveCliqueRequests {
   struct BarrierRequirements {
     template <typename Sink>
     friend void AbslStringify(Sink& sink, const BarrierRequirements& reqs) {
-      absl::Format(&sink, "{module_execution_barrier: %d}",
-                   reqs.module_execution_barrier);
+      absl::Format(&sink, "{use_cross_device_barrier: %d}",
+                   reqs.use_cross_device_barrier);
     }
 
     bool operator==(const BarrierRequirements& other) const {
-      return other.module_execution_barrier == module_execution_barrier;
+      return other.use_cross_device_barrier == use_cross_device_barrier;
     }
 
     bool operator<(const BarrierRequirements& other) const {
-      return other.module_execution_barrier < module_execution_barrier;
+      return use_cross_device_barrier < other.use_cross_device_barrier;
     }
 
-    bool module_execution_barrier = false;
+    bool use_cross_device_barrier = false;
   };
 
   // For each requested clique key, we also assign a monotonically increasing
   // id, that allows us to deterministically order clique requests.
   //
-  // Example: 8 ranks splitted in different groups of communicators
+  // Example: 8 ranks split in different groups of communicators
   //
   // Group #0: [0,1], [2,3], [4,5], [6,7]
   // Group #1: [0,4], [1,5], [2,6], [3,7]
   //
-  // Both groups #0 and #1 can be acqured by splitting [0...7] clique. To avoid
+  // Both groups #0 and #1 can be acquired by splitting [0...7] clique. To avoid
   // deadlocks all participants should acquire all cliques in a group #0 before
   // acquiring any cliques in a group #1.
   //
@@ -106,7 +108,7 @@ class CollectiveCliqueRequests {
     absl::btree_set<GpuDeviceCommunicator::Requirements> dev_comms;
 
     // Requirements for barriers.
-    bool barrier_after_module_execution_requested = false;
+    bool use_cross_device_barrier_requested = false;
   };
 
   // An extra set of requirements for the collective clique. When XLA runtime
@@ -133,11 +135,15 @@ class CollectiveCliqueRequests {
     std::optional<BarrierRequirements> barrier_reqs;
   };
 
-  // Adds a clique key to the list of requested cliques.
+  // Adds a clique key to the list of requested cliques. Callers must pass
+  // device_groups pre-sorted: each inner group sorted in ascending device id
+  // order, and the outer vector sorted by the first device id of each group.
+  //
+  // WARNING: This invariant is verified in debug builds only, if it doesn't
+  // hold, XLA will acquire duplicate communicators for same set of devices.
   absl::Status RequestClique(
       const GpuCliqueKey& clique_key,
-      // TODO(ezhulenev): Remove default once JAX is fixed.
-      std::vector<std::vector<GlobalDeviceId>> device_groups = {},
+      absl::Span<const std::vector<GlobalDeviceId>> device_groups,
       const CliqueRequirements& requirements = {});
 
   // Returns all requested cliques in undefined order.
@@ -149,8 +155,6 @@ class CollectiveCliqueRequests {
 
   size_t size() const { return cliques_.size(); }
 
-  // Returns devices which requested a barrier after module execution.
-  absl::flat_hash_set<GlobalDeviceId> GetDevicesRequiringBarrier() const;
 
  private:
   absl::flat_hash_map<GpuCliqueKey, CliqueRequest> cliques_;

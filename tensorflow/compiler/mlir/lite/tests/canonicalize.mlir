@@ -332,8 +332,31 @@ func.func @broadcast_to_to_reshape_i64_const(%arg0: tensor<4x4x4xf32>) -> tensor
 // CHECK-LABEL: @trivial_dynamic_update_slice
 func.func @trivial_dynamic_update_slice(%arg0: tensor<2x7x14xf32>, %arg1: tensor<2x7x14xf32>) -> tensor<2x7x14xf32> {
   %0 = arith.constant dense<0> : tensor<3xi32>
-  %1 = "tfl.dynamic_update_slice"(%arg0, %arg1, %0) : (tensor<2x7x14xf32>, tensor<2x7x14xf32>, tensor<3xi32>) -> tensor<2x7x14xf32>
+  %1 = tfl.add %arg0, %arg0 {fused_activation_function = "NONE"} : tensor<2x7x14xf32>
+  %2 = "tfl.dynamic_update_slice"(%1, %arg1, %0) : (tensor<2x7x14xf32>, tensor<2x7x14xf32>, tensor<3xi32>) -> tensor<2x7x14xf32>
   // CHECK: return %arg1
+  func.return %2 : tensor<2x7x14xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @trivial_dynamic_update_slice_not_to_output
+func.func @trivial_dynamic_update_slice_not_to_output(%arg0: tensor<2x7x14xf32>, %arg1: tensor<2x7x14xf32>) -> tensor<2x7x14xf32> {
+  %0 = arith.constant dense<0> : tensor<3xi32>
+  %1 = "tfl.dynamic_update_slice"(%arg0, %arg1, %0) : (tensor<2x7x14xf32>, tensor<2x7x14xf32>, tensor<3xi32>) -> tensor<2x7x14xf32>
+  %2 = tfl.add %1, %1 {fused_activation_function = "NONE"} : tensor<2x7x14xf32>
+  // CHECK: %[[ADD:.*]] = tfl.add %arg1, %arg1
+  // CHECK: return %[[ADD]]
+  func.return %2 : tensor<2x7x14xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @trivial_dynamic_update_slice_from_input_to_output
+func.func @trivial_dynamic_update_slice_from_input_to_output(%arg0: tensor<2x7x14xf32>, %arg1: tensor<2x7x14xf32>) -> tensor<2x7x14xf32> {
+  %0 = arith.constant dense<0> : tensor<3xi32>
+  %1 = "tfl.dynamic_update_slice"(%arg0, %arg1, %0) : (tensor<2x7x14xf32>, tensor<2x7x14xf32>, tensor<3xi32>) -> tensor<2x7x14xf32>
+  // CHECK: "tfl.dynamic_update_slice"
   func.return %1 : tensor<2x7x14xf32>
 }
 

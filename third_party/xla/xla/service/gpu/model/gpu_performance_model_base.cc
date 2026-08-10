@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "mlir/IR/MLIRContext.h"
@@ -43,8 +44,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 namespace {
 
@@ -77,6 +77,7 @@ float AdjustBandwidth(const se::DeviceDescription& gpu_device_info,
 
 std::optional<EstimateRunTimeData> GpuPerformanceModelCache::Get(
     const HloInstruction& instruction) {
+  absl::MutexLock lock(mutex_);
   auto it = instruction_runtime_data_.find(&instruction);
   if (it != instruction_runtime_data_.end()) {
     return it->second;
@@ -98,18 +99,25 @@ std::optional<absl::Duration> GpuPerformanceModelCache::Get(
   return std::nullopt;
 }
 
-const absl::flat_hash_map<const HloInstruction*, absl::Duration>&
+absl::flat_hash_map<const HloInstruction*, absl::Duration>
 GpuPerformanceModelCache::GetAllConsumers(const HloInstruction& producer) {
-  return fusion_runtime_data_[&producer];
+  absl::MutexLock lock(mutex_);
+  auto it = fusion_runtime_data_.find(&producer);
+  if (it != fusion_runtime_data_.end()) {
+    return it->second;
+  }
+  return {};
 }
 
 bool GpuPerformanceModelCache::ContainsConsumers(
     const HloInstruction& producer) {
+  absl::MutexLock lock(mutex_);
   return fusion_runtime_data_.contains(&producer);
 }
 
 void GpuPerformanceModelCache::Set(const HloInstruction& instruction,
                                    const EstimateRunTimeData& runtime_data) {
+  absl::MutexLock lock(mutex_);
   instruction_runtime_data_[&instruction] = runtime_data;
 }
 
@@ -121,6 +129,8 @@ void GpuPerformanceModelCache::Set(const HloInstruction& producer,
 }
 
 void GpuPerformanceModelCache::Invalidate(const HloInstruction& instruction) {
+  absl::MutexLock lock(mutex_);
+
   // Remove runtime data for the instruction.
   instruction_runtime_data_.erase(&instruction);
 
@@ -143,9 +153,9 @@ void GpuPerformanceModelCache::Invalidate(const HloInstruction& instruction) {
 
 /*static*/
 LaunchDimensions GpuPerformanceModelBase::EstimateFusionLaunchDimensions(
-    const HloFusionAnalysis& fusion_analysis, mlir::MLIRContext* mlir_context) {
-  auto emitter = GetFusionEmitter(
-      PreBufferAssignmentFusionInfo{fusion_analysis}, mlir_context);
+    const HloFusionAnalysis& fusion_analysis) {
+  auto emitter =
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{fusion_analysis});
   if (const auto* kernel_emitter =
           dynamic_cast<const KernelFusionInterface*>(emitter.get())) {
     return kernel_emitter->launch_dimensions();
@@ -155,7 +165,8 @@ LaunchDimensions GpuPerformanceModelBase::EstimateFusionLaunchDimensions(
   // launch dimensions only for SoftMax fusions.
   if (const auto* triton_emitter =
           dynamic_cast<const TritonFusion*>(emitter.get())) {
-    if (auto launch_config = triton_emitter->GetLaunchConfig()) {
+    if (std::optional<TritonFusion::LaunchConfig> launch_config =
+            TritonFusion::GetLaunchConfig(&fusion_analysis)) {
       return launch_config->launch_dimensions;
     }
   }
@@ -253,7 +264,8 @@ float GpuPerformanceModelBase::GetCommonUtilization(
             consumer->fused_parameter(consumer_idx_of_producer));
       }
       return res;
-    } else if (consumer->IsElementwise()) {
+    }
+    if (consumer->IsElementwise()) {
       return 1.f;
     }
   }
@@ -402,6 +414,27 @@ void GpuPerformanceModelBase::VLogOperandRead(const HloInstruction* operand,
           << ", n_bytes_net: " << n_bytes_net << ", coalesced: " << coalesced;
 }
 
+/*static*/
+ReificationCost GpuPerformanceModelBase::MakeReificationCostFromRuntime(
+    const EstimateRunTimeData& data, const se::DeviceDescription& device_info,
+    std::optional<absl::string_view> name) {
+  ReificationCost reification_cost;
+  double cycles =
+      absl::ToDoubleNanoseconds(data.exec_time) * device_info.clock_rate_ghz();
+
+  if (name.has_value()) {
+    reification_cost.set_name(*name);
+  }
+  reification_cost.set_end_to_end_cycles(cycles);
+  reification_cost.set_compute_time_us(
+      absl::ToDoubleMicroseconds(data.compute_time));
+  reification_cost.set_memory_access_time_us(
+      absl::ToDoubleMicroseconds(data.read_time + data.write_time));
+  reification_cost.set_exec_time_us(absl::ToDoubleMicroseconds(data.exec_time));
+
+  return reification_cost;
+}
+
 double GetCoalescingUtilizationRate(
     PrimitiveType element_type, const se::DeviceDescription& gpu_device_info,
     bool coalesced) {
@@ -418,5 +451,4 @@ double GetCoalescingUtilizationRate(
                          gpu_device_info.dram_to_l2_transaction_size_bytes();
 }
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

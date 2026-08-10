@@ -16,9 +16,12 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/CallingConv.h"
@@ -51,9 +54,13 @@ limitations under the License.
 #include "xla/service/gpu/target_constants.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
+#include "tsl/platform/path.h"
+#include "tsl/platform/random.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 
@@ -110,10 +117,26 @@ absl::StatusOr<std::string> LLVMToHSACO(mlir::ModuleOp module,
   }
 
   xla::DebugOptions debug_opts = xla::DefaultDebugOptionsIgnoringFlags();
-  TF_ASSIGN_OR_RETURN(auto hsaco_file_result,
-                      xla::gpu::amdgpu::CompileToHsacoAndReturnFilePath(
-                          llvm_module.get(), gpu_version, debug_opts, false));
-  return hsaco_file_result.hsaco_path;
+  ABSL_ASSIGN_OR_RETURN(auto compile_result,
+                   gpu::amdgpu::CompileToHsaco(llvm_module.get(), gpu_version,
+                                               debug_opts, ""));
+
+  std::vector<std::string> tempdir_vector;
+  tsl::Env::Default()->GetLocalTempDirectories(&tempdir_vector);
+  if (tempdir_vector.empty()) {
+    return absl::InternalError(
+        "Unable to locate a temporary directory for triton hsaco file!");
+  }
+  uint64_t rand_num = tsl::random::New64();
+  std::string temp_file_path = tsl::io::JoinPath(
+      tempdir_vector[0], absl::StrCat("xla_triton_", rand_num, ".hsaco"));
+
+  ABSL_RETURN_IF_ERROR(tsl::WriteStringToFile(
+      tsl::Env::Default(), temp_file_path,
+      absl::string_view(
+          reinterpret_cast<const char*>(compile_result.hsaco.data()),
+          compile_result.hsaco.size())));
+  return temp_file_path;
 }
 
 }  // namespace
@@ -146,14 +169,14 @@ absl::StatusOr<CompilationResult> Compile(absl::string_view module,
     return absl::InvalidArgumentError("Failed to canonicalize Triton module");
   }
 
-  TF_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       TritonToLLVM(*module_op, arch_name, num_warps, num_ctas, num_stages));
 
   int64_t shared_mem_bytes =
       (*module_op)->getAttrOfType<mlir::IntegerAttr>("ttg.shared").getInt();
 
-  TF_ASSIGN_OR_RETURN(std::string hsaco_path,
-                      LLVMToHSACO(*module_op, arch_name, num_warps));
+  ABSL_ASSIGN_OR_RETURN(std::string hsaco_path,
+                   LLVMToHSACO(*module_op, arch_name, num_warps));
 
   // There is no clusters in ROCm for now.
   return CompilationResult{

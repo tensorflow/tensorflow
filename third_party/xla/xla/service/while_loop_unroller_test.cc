@@ -47,7 +47,7 @@ namespace op = xla::testing::opcode_matchers;
 namespace xla {
 namespace {
 
-class WhileLoopUnrollerTest : public HloPjRtTestBase {
+class WhileLoopUnrollerTest : public HloTestBase {
  protected:
   [[nodiscard]] std::unique_ptr<VerifiedHloModule> MakeModuleWithSimpleLoop(
       int num_iters);

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -25,7 +26,9 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/multicast_memory.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -73,6 +76,28 @@ class GpuExecutor : public StreamExecutorCommon {
   };
 
   virtual bool is_multicast_supported() const { return false; }
+
+  // Returns the allocation range that contains the given pointer.
+  virtual absl::StatusOr<DeviceAddressBase> GetAllocationRange(
+      void* ptr) const {
+    return absl::UnimplementedError("GetAllocationRange is not implemented.");
+  }
+
+  // Exports the given memory as a fabric handle that can be imported by another
+  // host via `ImportFabricHandle`. `ptr` must have been allocated with VMM API.
+  //
+  // Note: The returned handle represents the entire allocation containing
+  // `ptr`, rather than starting at `ptr`.
+  virtual absl::StatusOr<std::string> ExportFabricHandle(void* ptr) const {
+    return absl::UnimplementedError("ExportFabricHandle is not implemented.");
+  }
+
+  // Imports a fabric handle that had been exported by another host via
+  // `ExportFabricHandle`. The returned memory can be free'd with `Deallocate`.
+  virtual absl::StatusOr<DeviceAddressBase> ImportFabricHandle(
+      absl::string_view serialized) {
+    return absl::UnimplementedError("ImportFabricHandle is not implemented.");
+  }
 
  private:
   // The device ordinal value that this executor was initialized with; recorded

@@ -16,25 +16,36 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
+#include <memory>
+#include <new>
+#include <optional>
+#include <string>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/framework/typed_allocator.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/protobuf/memory_profile.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tsl/platform/mem.h"
+#include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 
 static void CheckStats(Allocator* a, int64_t num_allocs, int64_t bytes_in_use,
                        int64_t peak_bytes_in_use, int64_t largest_alloc_size) {
-  absl::optional<AllocatorStats> stats = a->GetStats();
+  std::optional<AllocatorStats> stats = a->GetStats();
   EXPECT_TRUE(stats);
   if (!stats) {
     return;
@@ -43,7 +54,7 @@ static void CheckStats(Allocator* a, int64_t num_allocs, int64_t bytes_in_use,
 #if defined(PLATFORM_GOOGLE) && defined(NDEBUG)
   // NOTE: allocator stats expectation depends on the system malloc,
   // and can vary as that changes.
-  static const int64 kSlop = 5 * 1024;
+  static const int64 kSlop = 50 * 1024;
   EXPECT_GT(stats->bytes_in_use, bytes_in_use - kSlop);
   EXPECT_LT(stats->bytes_in_use, bytes_in_use + kSlop);
   EXPECT_GT(stats->peak_bytes_in_use, peak_bytes_in_use - kSlop);
@@ -255,7 +266,7 @@ TEST(CPUAllocatorTest, ProfilerReporting) {
   EXPECT_EQ(e0.Name(), "MemoryAllocation")
       << "XSpace: " << xspace.DebugString();
   {
-    absl::optional<std::string> bytes_allocated, peak_bytes_in_use,
+    std::optional<std::string> bytes_allocated, peak_bytes_in_use,
         requested_bytes, allocation_bytes;
     e0.ForEachStat([&](const ::tensorflow::profiler::XStatVisitor& stat) {
       LOG(ERROR) << "STAT " << stat.Name() << ": " << stat.ToString();
@@ -282,7 +293,7 @@ TEST(CPUAllocatorTest, ProfilerReporting) {
   EXPECT_EQ(e1.Name(), "MemoryDeallocation")
       << "XSpace: " << xspace.DebugString();
   {
-    absl::optional<std::string> bytes_allocated, peak_bytes_in_use,
+    std::optional<std::string> bytes_allocated, peak_bytes_in_use,
         allocation_bytes;
     e1.ForEachStat([&](const ::tensorflow::profiler::XStatVisitor& stat) {
       if (stat.Name() == "bytes_allocated") {

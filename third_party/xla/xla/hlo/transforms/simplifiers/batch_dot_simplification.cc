@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -80,10 +81,10 @@ BatchDotSimplification::ElideDegenerateBatchDimensionFromBatchDot(
     return false;
   }
 
-  TF_ASSIGN_OR_RETURN(HloInstruction * new_lhs,
-                      ElideDegenerateDims(lhs, degenerate_dims));
-  TF_ASSIGN_OR_RETURN(HloInstruction * new_rhs,
-                      ElideDegenerateDims(rhs, degenerate_dims));
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * new_lhs,
+                   ElideDegenerateDims(lhs, degenerate_dims));
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * new_rhs,
+                   ElideDegenerateDims(rhs, degenerate_dims));
 
   DotDimensionNumbers new_dim_numbers = dim_numbers;
   new_dim_numbers.clear_lhs_batch_dimensions();
@@ -103,19 +104,19 @@ BatchDotSimplification::ElideDegenerateBatchDimensionFromBatchDot(
       0,
       new_dim_numbers.rhs_contracting_dimensions(0) - degenerate_dims.size());
 
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloInstruction * new_dot,
       MakeDotHlo(new_lhs, new_rhs, new_dim_numbers,
                  batch_dot->precision_config(),
                  /*preferred_element_type=*/batch_dot->shape().element_type()));
 
-  TF_ASSIGN_OR_RETURN(HloInstruction * new_dot_reshaped,
-                      MakeReshapeHlo(batch_dot->shape(), new_dot));
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * new_dot_reshaped,
+                   MakeReshapeHlo(batch_dot->shape(), new_dot));
 
   VLOG(2) << "Replaced " << batch_dot->ToString() << " with "
           << new_dot->ToString();
 
-  TF_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       batch_dot->parent()->ReplaceInstruction(batch_dot, new_dot_reshaped));
 
   return true;
@@ -134,8 +135,8 @@ absl::StatusOr<bool> BatchDotSimplification::RunImpl(
                     });
   }
   for (HloInstruction* dot_instr : dot_instrs) {
-    TF_ASSIGN_OR_RETURN(bool elided_batch_dim_from_one,
-                        ElideDegenerateBatchDimensionFromBatchDot(dot_instr));
+    ABSL_ASSIGN_OR_RETURN(bool elided_batch_dim_from_one,
+                     ElideDegenerateBatchDimensionFromBatchDot(dot_instr));
     changed |= elided_batch_dim_from_one;
   }
   return changed;

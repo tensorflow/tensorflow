@@ -131,7 +131,7 @@ class RawBufferEntry : public PullTable::Entry {
     // TODO(parkers): Technically this should be a use-ref instead of a
     // ready_future + buffer, but there is no PJRT api for this.
     tsl::Future<> ready_future;
-    tsl::RCReference<xla::PjRtRawBuffer> buffer;
+    xla::PjRtRawBufferRef buffer;
     size_t buf_size;
   };
 
@@ -182,8 +182,8 @@ tsl::RCReference<ChunkDestination> MakeDmaDestination(
 // Creates a ChunkDestination for a sliced offset into
 // a PjRtRawBuffer.
 absl::StatusOr<std::pair<tsl::RCReference<ChunkDestination>, tsl::Future<>>>
-CreateSlicedRawBufferDest(tsl::RCReference<xla::PjRtRawBuffer> raw_buffer,
-                          size_t offset, size_t size);
+CreateSlicedRawBufferDest(xla::PjRtRawBufferRef raw_buffer, size_t offset,
+                          size_t size);
 
 namespace internal {
 

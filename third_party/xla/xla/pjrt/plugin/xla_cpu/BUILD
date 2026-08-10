@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
@@ -81,22 +96,25 @@ cc_library(
         ":cpu_device_description",
         ":cpu_topology",
         "//xla:shape_util",
-        "//xla/backends/cpu:target_machine_options",
-        "//xla/pjrt:pjrt_client",
+        "//xla:util",
+        "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_device_dimensions",
+        "//xla/pjrt:pjrt_topology_description_registry",
         "//xla/runtime:device_id",
         "//xla/tsl/lib/strings:proto_serialization",
-        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:fingerprint",
     ],
+    alwayslink = True,
 )
 
 tf_proto_library(
@@ -113,7 +131,7 @@ cc_library(
         ":cpu_topology_proto_cc",
         "//xla/backends/cpu:target_machine_options",
         "//xla/pjrt:pjrt_common",
-        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
     ],
@@ -126,6 +144,7 @@ xla_cc_test(
         ":cpu_topology",
         ":cpu_topology_description",
         "//xla/backends/cpu:target_machine_options",
+        "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_dimensions",

@@ -54,16 +54,16 @@ struct MultinomialFunctor {
 };
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-extern template struct MultinomialFunctor<GPUDevice, Eigen::half, int32>;
-extern template struct MultinomialFunctor<GPUDevice, float, int32>;
-extern template struct MultinomialFunctor<GPUDevice, double, int32>;
-extern template struct MultinomialFunctor<GPUDevice, int32, int32>;
-extern template struct MultinomialFunctor<GPUDevice, int64_t, int32>;
+extern template struct MultinomialFunctor<GPUDevice, Eigen::half, int32_t>;
+extern template struct MultinomialFunctor<GPUDevice, float, int32_t>;
+extern template struct MultinomialFunctor<GPUDevice, double, int32_t>;
+extern template struct MultinomialFunctor<GPUDevice, int32_t, int32_t>;
+extern template struct MultinomialFunctor<GPUDevice, int64_t, int32_t>;
 
 extern template struct MultinomialFunctor<GPUDevice, Eigen::half, int64_t>;
 extern template struct MultinomialFunctor<GPUDevice, float, int64_t>;
 extern template struct MultinomialFunctor<GPUDevice, double, int64_t>;
-extern template struct MultinomialFunctor<GPUDevice, int32, int64_t>;
+extern template struct MultinomialFunctor<GPUDevice, int32_t, int64_t>;
 extern template struct MultinomialFunctor<GPUDevice, int64_t, int64_t>;
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

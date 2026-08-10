@@ -196,8 +196,14 @@ def _broadcast_grad(op, accumulated_grad):
   Returns:
     Gradients with respect to the input of `broadcast`.
   """
+  if (
+      accumulated_grad.op.type not in ('AddN', 'Add', 'AddV2')
+      or not accumulated_grad.op.inputs
+  ):
+    return accumulated_grad
+
   # Grab inputs of accumulated_grad and replace accumulation with reduce_sum.
-  grads = [t for t in accumulated_grad.op.inputs]
+  grads = list(accumulated_grad.op.inputs)
   for t in grads:
     _check_device(t)
 
@@ -244,8 +250,10 @@ def _apply_reduce(reduction, tensors):
   result = gen_nccl_ops.nccl_reduce(input=tensors, reduction=reduction)
   try:
     next(t for t in tensors if t.device == result.device)
-  except StopIteration:
-    raise ValueError('One input tensor must be assigned to current device')
+  except StopIteration as exc:
+    raise ValueError(
+        'One input tensor must be assigned to current device'
+    ) from exc
   return result
 
 

@@ -87,11 +87,11 @@ class ResourceHandle {
   }
 
   void set_definition_stack_trace(
-      const absl::optional<ManagedStackTrace>& definition_stack_trace) {
+      const std::optional<ManagedStackTrace>& definition_stack_trace) {
     definition_stack_trace_ = definition_stack_trace;
   }
 
-  const absl::optional<ManagedStackTrace>& definition_stack_trace() const {
+  const std::optional<ManagedStackTrace>& definition_stack_trace() const {
     return definition_stack_trace_;
   }
 
@@ -137,7 +137,7 @@ class ResourceHandle {
   static ResourceHandle MakeRefCountingHandle(
       T* resource, const std::string& device_name,
       const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {},
-      const absl::optional<ManagedStackTrace>& definition_stack_trace = {}) {
+      const std::optional<ManagedStackTrace>& definition_stack_trace = {}) {
     return MakeRefCountingHandle(resource, device_name, TypeIndex::Make<T>(),
                                  dtypes_and_shapes, definition_stack_trace);
   }
@@ -146,7 +146,7 @@ class ResourceHandle {
       ResourceBase* resource, const std::string& device_name,
       const TypeIndex& type_index,
       const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {},
-      const absl::optional<ManagedStackTrace>& definition_stack_trace = {});
+      const std::optional<ManagedStackTrace>& definition_stack_trace = {});
 
   // Pointer to the resource.
   const core::IntrusivePtr<ResourceBase>& resource() const { return resource_; }

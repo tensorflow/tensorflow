@@ -103,12 +103,6 @@ class PythonAPIDispatcher {
 
   // Parameter canonicalizer.
   FunctionParameterCanonicalizer canonicalizer_;
-
-  // Target storage for canonicalization.  (Note: for efficiency, `Dispatch`
-  // writes to this pre-allocated storage, rather than allocating new storage
-  // each time it is called.)
-  std::vector<PyObject*> canonicalized_args_storage_;
-  absl::Span<PyObject*> canonicalized_args_span_;
 };
 
 // Registers a type for use with dispatch.  Dispatch will only occur if at least

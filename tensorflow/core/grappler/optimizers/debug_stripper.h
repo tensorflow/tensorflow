@@ -25,8 +25,8 @@ namespace grappler {
 // Assert, CheckNumerics, Print) from the graph.
 class DebugStripper : public GraphOptimizer {
  public:
-  DebugStripper() {}
-  ~DebugStripper() override {}
+  DebugStripper() = default;
+  ~DebugStripper() override = default;
 
   std::string name() const override { return "debug_stripper"; };
 

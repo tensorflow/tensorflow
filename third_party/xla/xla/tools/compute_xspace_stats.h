@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 // A library for computing GPU statistics from an XSpace protobuf.
 #include <cstdint>
+#include <optional>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -31,6 +32,7 @@ struct GpuDeviceStats {
   double device_time_us = 0.0;
   double device_memcpy_time_us = 0.0;
   double wall_time_us = 0.0;
+  double gpu_wall_time_us = 0.0;
   int64_t peak_memory_usage_bytes = 0;
 };
 
@@ -41,8 +43,10 @@ struct CpuStats {
 
 // Structure to hold the calculated statistics for XEvent.
 struct LineStats {
-  int64_t total_time_ps = 0;
+  int64_t device_time_ps = 0;
   int64_t memcpy_time_ps = 0;
+  int64_t min_start_ps = 0;
+  int64_t max_end_ps = 0;
 };
 
 // Checks if an XEvent is a memcpy operation.
@@ -51,10 +55,8 @@ bool IsMemcpy(const tensorflow::profiler::XEvent& event,
 
 // Processes an XLine and calculates the total time and memcpy time.
 absl::StatusOr<LineStats> ProcessLineEvents(
-    const tensorflow::profiler::XLine& line, int64_t memcpy_details_id);
-
-absl::StatusOr<LineStats> ProcessLineEvents(
-    const tensorflow::profiler::XLine& line);
+    const tensorflow::profiler::XLine& line,
+    std::optional<int64_t> memcpy_details_id = std::nullopt);
 
 // Calculates GPU device and memcpy times from an XSpace.
 absl::StatusOr<GpuDeviceStats> CalculateGpuDeviceStats(

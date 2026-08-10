@@ -49,7 +49,7 @@ class DiagOp : public OpKernel {
     const int num_dims = diagonal.dims();
     OP_REQUIRES(
         context, 0 != num_dims,
-        errors::InvalidArgument("Input must be at least rank 1, got 0"));
+        absl::InvalidArgumentError("Input must be at least rank 1, got 0"));
     TensorShape out_shape;
     for (int i = 0; i < num_dims; ++i) {
       OP_REQUIRES_OK(context, out_shape.AddDimWithStatus(diagonal.dim_size(i)));
@@ -79,15 +79,16 @@ class DiagPartOp : public OpKernel {
     const int num_dims = tensor.dims();
     const int out_dims = num_dims / 2;
     OP_REQUIRES(context, 0 == num_dims % 2,
-                errors::InvalidArgument("The rank of the tensor should be \
+                absl::InvalidArgumentError(
+                    absl::StrCat("The rank of the tensor should be \
                                          even and positive, got shape ",
-                                        tensor.shape().DebugString()));
+                                 tensor.shape().DebugString())));
     for (int i = 0; i < out_dims; i++) {
       OP_REQUIRES(
           context, tensor.dim_size(i) == tensor.dim_size(i + out_dims),
-          errors::InvalidArgument("Invalid shape ",
-                                  tensor.shape().DebugString(), ": dimensions ",
-                                  i, " and ", i + out_dims, " do not match."));
+          absl::InvalidArgumentError(absl::StrCat(
+              "Invalid shape ", tensor.shape().DebugString(), ": dimensions ",
+              i, " and ", i + out_dims, " do not match.")));
     }
 
     TensorShape out_shape;
@@ -203,7 +204,7 @@ TF_CALL_half(REGISTER_DIAGPARTOP);
 namespace functor {
 extern template struct DiagFunctor<GPUDevice, double>;
 extern template struct DiagFunctor<GPUDevice, float>;
-extern template struct DiagFunctor<GPUDevice, int32>;
+extern template struct DiagFunctor<GPUDevice, int32_t>;
 extern template struct DiagFunctor<GPUDevice, int64_t>;
 extern template struct DiagFunctor<GPUDevice, complex64>;
 extern template struct DiagFunctor<GPUDevice, complex128>;
@@ -226,7 +227,7 @@ TF_CALL_half(REGISTER_DIAGOP_GPU);
 namespace functor {
 extern template struct DiagPartFunctor<GPUDevice, double>;
 extern template struct DiagPartFunctor<GPUDevice, float>;
-extern template struct DiagPartFunctor<GPUDevice, int32>;
+extern template struct DiagPartFunctor<GPUDevice, int32_t>;
 extern template struct DiagPartFunctor<GPUDevice, int64_t>;
 extern template struct DiagPartFunctor<GPUDevice, complex64>;
 extern template struct DiagPartFunctor<GPUDevice, complex128>;

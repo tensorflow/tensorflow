@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-#include <string>
 #include <utility>
 
 #include "absl/status/statusor.h"
@@ -29,10 +27,10 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
-#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/Pass.h"  // IWYU pragma: keep
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "xla/backends/gpu/codegen/triton/transforms/passes.h"
+#include "xla/backends/gpu/codegen/triton/transforms/passes.h"  // IWYU pragma: keep
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/xla_data.pb.h"
@@ -68,6 +66,11 @@ struct OpInfo<mlir::math::AsinOp> {
 template <>
 struct OpInfo<mlir::math::AsinhOp> {
   static constexpr auto kFunctionID = TargetDeviceFunctionID::kAsinh;
+};
+
+template <>
+struct OpInfo<mlir::math::AtanOp> {
+  static constexpr auto kFunctionID = TargetDeviceFunctionID::kAtan;
 };
 
 template <>
@@ -156,6 +159,11 @@ struct OpInfo<mlir::math::TanhOp> {
 };
 
 template <>
+struct OpInfo<mlir::math::RoundEvenOp> {
+  static constexpr auto kFunctionID = TargetDeviceFunctionID::kRint;
+};
+
+template <>
 struct OpInfo<mlir::math::CbrtOp> {
   static constexpr auto kFunctionID = TargetDeviceFunctionID::kCbrt;
 };
@@ -194,7 +202,8 @@ class ConvertToLibdevice : public mlir::OpRewritePattern<OpTy> {
 
     llvm::SmallVector<Value, 2> casted_inputs;
     if (output_type_is_16bit_float &&
-        !::xla::gpu::HasF16Implementation(OpInfo<OpTy>::kFunctionID, triple_)) {
+        !(output_type.isF16() && ::xla::gpu::HasF16Implementation(
+                                     OpInfo<OpTy>::kFunctionID, triple_))) {
       // Upcast the inputs to F32.
       for (auto operand : op->getOperands()) {
         Type f32_type = rewriter.getF32Type();
@@ -221,8 +230,7 @@ class ConvertToLibdevice : public mlir::OpRewritePattern<OpTy> {
       original_output_type = shaped_type.clone(output_type);
     }
 
-    if (res.getType() != original_output_type &&
-        !::xla::gpu::HasF16Implementation(OpInfo<OpTy>::kFunctionID, triple_)) {
+    if (res.getType() != original_output_type) {
       // Downcast back to the original output type.
       res = arith::TruncFOp::create(builder, op.getLoc(), original_output_type,
                                     res);
@@ -263,10 +271,11 @@ class TritonXLAMathToLibdevicePass
     llvm::Triple triple(triple_string_);
 
     AddPattens<mlir::math::AcosOp, mlir::math::AcoshOp, mlir::math::AsinOp,
-               mlir::math::AsinhOp, mlir::math::Atan2Op, mlir::math::AtanhOp,
-               mlir::math::CosOp, mlir::math::CoshOp, mlir::math::ExpOp,
-               mlir::math::ErfOp, mlir::math::ExpM1Op, mlir::math::LogOp,
-               mlir::math::Log1pOp, mlir::math::PowFOp, mlir::arith::RemFOp,
+               mlir::math::AsinhOp, mlir::math::AtanOp, mlir::math::Atan2Op,
+               mlir::math::AtanhOp, mlir::math::CosOp, mlir::math::CoshOp,
+               mlir::math::ExpOp, mlir::math::ErfOp, mlir::math::ExpM1Op,
+               mlir::math::LogOp, mlir::math::Log1pOp, mlir::math::PowFOp,
+               mlir::arith::RemFOp, mlir::math::RoundEvenOp,
                mlir::math::RsqrtOp, mlir::math::SinOp, mlir::math::SinhOp,
                mlir::math::SqrtOp, mlir::math::TanOp, mlir::math::TanhOp,
                mlir::math::CbrtOp>(patterns, libdevice_path_, triple);
@@ -280,14 +289,5 @@ class TritonXLAMathToLibdevicePass
 };
 
 }  // namespace
-
-std::unique_ptr<Pass> CreateTritonXLAMathToLibdevicePass(
-    absl::string_view libdevice_path, absl::string_view triple) {
-  TritonXLAMathToLibdevicePassOptions options;
-  options.libdevice_path_ = libdevice_path;
-  options.triple_string_ = triple;
-
-  return std::make_unique<TritonXLAMathToLibdevicePass>(options);
-}
 
 }  // namespace mlir::triton::xla

@@ -153,8 +153,7 @@ namespace triton_fusion {
 // instructions between source and target.
 class DimensionOrder {
  public:
-  static DimensionOrder FromDotOperandOrOutput(
-      const HloInstruction& hlo, int split_k_dimension_index = -1);
+  static DimensionOrder FromDotOperandOrOutput(const HloInstruction& hlo);
 
   // Description of a continuous fragment of one dimension of a tensor.
   class Fragment {
@@ -304,6 +303,12 @@ GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
     const DimensionOrder& src_dim_order,
     const se::GpuComputeCapability& gpu_version,
     const DotProperties& properties);
+
+// Returns true whether the given instruction is worth fusing as an input.
+bool IsInputWorthFusing(const HloInstruction& hlo);
+
+// Returns true whether the given instruction is worth fusing as an output.
+bool IsOutputWorthFusing(const HloInstruction& hlo);
 
 }  // namespace triton_fusion
 }  // namespace gpu

@@ -47,16 +47,17 @@ absl::Status AtomicallyWrite(
     absl::FunctionRef<absl::Status(const std::string&)> nonatomically_write) {
   std::string uncommitted_filename = absl::StrCat(filename, "__");
   if (!env->CreateUniqueFileName(&uncommitted_filename, kTempFileSuffix)) {
-    return tsl::errors::Internal("Failed to write file ", filename,
-                                 ": Unable to create temporary files.");
+    return absl::InternalError(
+        absl::StrCat("Failed to write file ", filename,
+                     ": Unable to create temporary files."));
   }
   TF_RETURN_IF_ERROR(nonatomically_write(uncommitted_filename));
   absl::Status status =
       env->RenameFile(uncommitted_filename, std::string(filename));
   if (!status.ok()) {
-    return tsl::errors::Internal("Failed to rename file: ", status.ToString(),
-                                 ". Source: ", uncommitted_filename,
-                                 ", destination: ", filename);
+    return absl::InternalError(absl::StrCat(
+        "Failed to rename file: ", status.ToString(),
+        ". Source: ", uncommitted_filename, ", destination: ", filename));
   }
   return status;
 }

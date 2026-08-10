@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: ifrt-opt %s -ifrt-verify-sharding-specified -split-input-file -verify-diagnostics | FileCheck %s
 
 // CHECK-LABEL: @good_arrays
@@ -32,13 +46,30 @@ module @main_arg_sharding_unspecified {
 
 #sharding = #ifrt.sharding_param<2 to [0] on 2>
 module @main_result_sharding_unspecified {
+  // expected-error @+1 {{'func.func' op result 0 has unspecified sharding.}}
   func.func @main()
       -> !ifrt.array<tensor<2xi32>, #ifrt.sharding_unspecified, [0,1]>
       attributes {ifrt.function} {
-    // expected-error @+1 {{'ifrt.Call' op result 0 has unspecified sharding.}}
     %0, %ctrl_1 = ifrt.Call @create_array() on devices [0,1]
         : () -> !ifrt.array<tensor<2xi32>, #ifrt.sharding_unspecified, [0,1]>
     return %0 : !ifrt.array<tensor<2xi32>, #ifrt.sharding_unspecified, [0,1]>
+  }
+
+  func.func private @create_array() -> tensor<2xi32> {
+    %0 = mhlo.constant dense<1> : tensor<2xi32>
+    return %0 : tensor<2xi32>
+  }
+}
+
+// -----
+
+#sharding = #ifrt.sharding_param<2 to [0] on 2>
+module @call_op_result_sharding_unspecified {
+  func.func @main() -> () attributes {ifrt.function} {
+    // expected-error @+1 {{'ifrt.Call' op result 0 has unspecified sharding.}}
+    %0, %ctrl_1 = ifrt.Call @create_array() on devices [0,1]
+        : () -> !ifrt.array<tensor<2xi32>, #ifrt.sharding_unspecified, [0,1]>
+    return
   }
 
   func.func private @create_array() -> tensor<2xi32> {

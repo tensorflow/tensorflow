@@ -28,8 +28,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using AxpySimpleTest = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using AxpySimpleTest =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(AxpySimpleTest, AxTenValues) {
   XlaBuilder builder("ax_10");

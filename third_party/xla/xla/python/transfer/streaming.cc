@@ -23,7 +23,9 @@ limitations under the License.
 #include <cerrno>
 #include <cstdlib>
 #include <deque>
+#include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -34,13 +36,97 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/python/transfer/transfer_socket.pb.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace aux {
+
+bool PullTable::CompareNodes(const HeapNodeBase* a, const HeapNodeBase* b) {
+  return a->timeout.value() < b->timeout.value();
+}
+
+void PullTable::BubbleUp(std::vector<HeapNodeBase*>& heap, size_t idx) {
+  while (idx > 0) {
+    size_t parent = (idx - 1) / 2;
+    if (CompareNodes(heap[idx], heap[parent])) {
+      std::swap(heap[idx], heap[parent]);
+      heap[idx]->heap_index = idx;
+      heap[parent]->heap_index = parent;
+      idx = parent;
+    } else {
+      break;
+    }
+  }
+}
+
+void PullTable::BubbleDown(std::vector<HeapNodeBase*>& heap, size_t idx) {
+  size_t size = heap.size();
+  while (2 * idx + 1 < size) {
+    size_t left = 2 * idx + 1;
+    size_t right = left + 1;
+    size_t smallest = left;
+    if (right < size && CompareNodes(heap[right], heap[left])) {
+      smallest = right;
+    }
+    if (CompareNodes(heap[smallest], heap[idx])) {
+      std::swap(heap[idx], heap[smallest]);
+      heap[idx]->heap_index = idx;
+      heap[smallest]->heap_index = smallest;
+      idx = smallest;
+    } else {
+      break;
+    }
+  }
+}
+
+void PullTable::PushIntrusive(std::vector<HeapNodeBase*>& heap,
+                              HeapNodeBase* item) {
+  item->heap_index = heap.size();
+  heap.push_back(item);
+  BubbleUp(heap, heap.size() - 1);
+}
+
+void PullTable::RemoveIntrusive(std::vector<HeapNodeBase*>& heap,
+                                HeapNodeBase* item) {
+  size_t idx = item->heap_index;
+  if (idx == static_cast<size_t>(-1)) {
+    return;
+  }
+  if (idx == heap.size() - 1) {
+    heap.pop_back();
+    item->heap_index = -1;
+    return;
+  }
+  auto* back = heap.back();
+  heap[idx] = back;
+  back->heap_index = idx;
+  heap.pop_back();
+  item->heap_index = -1;
+
+  if (idx > 0) {
+    size_t parent = (idx - 1) / 2;
+    if (CompareNodes(heap[idx], heap[parent])) {
+      BubbleUp(heap, idx);
+      return;
+    }
+  }
+  BubbleDown(heap, idx);
+}
+
+PullTable::HeapNodeBase* PullTable::PopIntrusive(
+    std::vector<HeapNodeBase*>& heap) {
+  if (heap.empty()) {
+    return nullptr;
+  }
+  auto* top = heap.front();
+  RemoveIntrusive(heap, top);
+  return top;
+}
 
 class StringFutureChunkDestination : public aux::ChunkDestination {
  public:
@@ -180,17 +266,23 @@ class LocalBulkTransportFactory : public BulkTransportFactory {
                                       remote_bulk_transport_info) {};
     return out;
   }
-  BulkTransportRecvResult RecvBulkTransport(
+  absl::StatusOr<BulkTransportRecvResult> RecvBulkTransport(
       const SocketTransferEstablishBulkTransport& remote_bulk_transport_info)
       override {
     BulkTransportRecvResult out;
     absl::MutexLock l(mu_);
-    CHECK_EQ(remote_bulk_transport_info.bulk_transport_impl_kind(),
-             SocketTransferEstablishBulkTransport::LOCAL);
-    CHECK_EQ(remote_bulk_transport_info.bulk_transport_uuid_size(), 1);
+    if (remote_bulk_transport_info.bulk_transport_impl_kind() !=
+            SocketTransferEstablishBulkTransport::LOCAL ||
+        remote_bulk_transport_info.bulk_transport_uuid_size() != 1) {
+      return absl::InternalError("Invalid bulk transport info");
+    }
     auto it = local_bulk_transports_.find(
         remote_bulk_transport_info.bulk_transport_uuid(0));
-    CHECK(it != local_bulk_transports_.end());
+    if (it == local_bulk_transports_.end()) {
+      return absl::InternalError(
+          absl::StrCat("Invalid bulk transport uuid: ",
+                       remote_bulk_transport_info.bulk_transport_uuid(0)));
+    }
     auto bulk_transport_out = std::move(it->second);
     local_bulk_transports_.erase(it);
     out.bulk_transport = std::move(bulk_transport_out);
@@ -256,11 +348,11 @@ AllocateNetworkPinnedMemory(size_t size) {
   auto out = std::make_shared<pinned_mem_state>();
   int sfd = socket(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC, 0);
   out->buffer = mmap(nullptr, size, PROT_READ, MAP_SHARED, sfd, 0);
+  close(sfd);
   if (out->buffer == MAP_FAILED) {
     return absl::ErrnoToStatus(errno, "tcp-zero-copy-mmap");
   }
   out->size = size;
-  close(sfd);
   out->data =
       absl::Span<uint8_t>(reinterpret_cast<uint8_t*>(out->buffer), size);
   return std::shared_ptr<absl::Span<uint8_t>>(out, &out->data);
@@ -286,44 +378,126 @@ absl::StatusOr<std::shared_ptr<absl::Span<uint8_t>>> AllocateAlignedMemory(
   return std::shared_ptr<absl::Span<uint8_t>>(owner, &owner->data);
 }
 
-void PullTable::AwaitPull(uint64_t uuid, tsl::RCReference<Entry> entry) {
-  std::vector<PausedFetch> paused_fetches;
+void PullTable::AwaitPull(uint64_t uuid, tsl::RCReference<Entry> entry,
+                          std::optional<absl::Time> timeout) {
+  FetchList local_fetches;
   {
     absl::MutexLock l(mu_);
     auto it = paused_fetches_.find(uuid);
     if (it != paused_fetches_.end()) {
-      paused_fetches = std::move(it->second);
+      local_fetches.splice(local_fetches.end(), it->second);
+      for (auto& v : local_fetches) {
+        if (v.timeout.has_value()) {
+          RemoveIntrusive(fetch_heap_, &v);
+        }
+      }
       paused_fetches_.erase(it);
     }
-    entries_[uuid] = std::move(entry);
+
+    auto it_entry = entries_.find(uuid);
+    if (it_entry != entries_.end()) {
+      if (it_entry->second->timeout.has_value()) {
+        RemoveIntrusive(entry_heap_, it_entry->second.get());
+      }
+    }
+
+    auto new_entry = std::make_unique<EntryWithTimeout>();
+    new_entry->entry = std::move(entry);
+    new_entry->timeout = timeout;
+    new_entry->uuid = uuid;
+    if (timeout.has_value()) {
+      PushIntrusive(entry_heap_, new_entry.get());
+    }
+    entries_[uuid] = std::move(new_entry);
   }
-  for (auto& v : paused_fetches) {
-    Handle(v.state, v.req, v.base_req_id);
+  for (auto& v : local_fetches) {
+    Handle(v.state, v.req, v.base_req_id, v.timeout);
   }
 }
 
 void PullTable::Handle(tsl::RCReference<ConnectionState> state,
-                       const SocketTransferPullRequest& req,
-                       size_t base_req_id) {
+                       const SocketTransferPullRequest& req, size_t base_req_id,
+                       std::optional<absl::Time> timeout) {
   tsl::RCReference<Entry> entry;
+  EntryWithTimeout* entry_ptr = nullptr;
   {
     absl::MutexLock l(mu_);
     auto it = entries_.find(req.uuid());
     if (it == entries_.end()) {
-      PausedFetch fetch;
-      fetch.state = std::move(state);
-      fetch.req = req;
-      fetch.base_req_id = base_req_id;
-      paused_fetches_[req.uuid()].push_back(std::move(fetch));
+      auto& list = paused_fetches_[req.uuid()];
+      list.emplace_back();
+      PausedFetch& fetch_ref = list.back();
+      fetch_ref.state = std::move(state);
+      fetch_ref.req = req;
+      fetch_ref.base_req_id = base_req_id;
+      fetch_ref.timeout = timeout;
+      fetch_ref.list_it = std::prev(list.end());
+      if (timeout.has_value()) {
+        PushIntrusive(fetch_heap_, &fetch_ref);
+      }
       return;
     }
-    entry = it->second;
+    entry_ptr = it->second.get();
+    entry = entry_ptr->entry;
   }
   if (entry->Handle(std::move(state), req, base_req_id)) {
     absl::MutexLock l(mu_);
     auto it = entries_.find(req.uuid());
-    if (it != entries_.end()) {
+    if (it != entries_.end() && it->second->entry == entry) {
+      if (it->second->timeout.has_value()) {
+        RemoveIntrusive(entry_heap_, it->second.get());
+      }
       entries_.erase(it);
+    }
+  }
+}
+
+void PullTable::DropExpiredPulls(absl::Time t) {
+  std::vector<std::unique_ptr<EntryWithTimeout>> expired_entries;
+  FetchList expired_fetches;
+  {
+    absl::MutexLock l(mu_);
+    while (!entry_heap_.empty()) {
+      auto* top = entry_heap_.front();
+      if (top->timeout.value() < t) {
+        PopIntrusive(entry_heap_);
+        auto* entry_ptr = static_cast<EntryWithTimeout*>(top);
+        auto it = entries_.find(entry_ptr->uuid);
+        if (it != entries_.end() && it->second.get() == entry_ptr) {
+          expired_entries.push_back(std::move(it->second));
+          entries_.erase(it);
+        }
+      } else {
+        break;
+      }
+    }
+
+    while (!fetch_heap_.empty()) {
+      auto* top = fetch_heap_.front();
+      if (top->timeout.value() < t) {
+        PopIntrusive(fetch_heap_);
+        auto* fetch_ptr = static_cast<PausedFetch*>(top);
+        auto it = paused_fetches_.find(fetch_ptr->req.uuid());
+        if (it != paused_fetches_.end()) {
+          expired_fetches.splice(expired_fetches.end(), it->second,
+                                 fetch_ptr->list_it);
+          if (it->second.empty()) {
+            paused_fetches_.erase(it);
+          }
+        }
+      } else {
+        break;
+      }
+    }
+  }
+
+  for (const auto& fetch : expired_fetches) {
+    size_t req_id = fetch.base_req_id;
+    for (uint64_t bid : fetch.req.buffer_ids()) {
+      (void)bid;
+      fetch.state->SendError(req_id, 0, 0, true,
+                             absl::DeadlineExceededError("Pull expired"));
+      ++req_id;
     }
   }
 }
@@ -332,10 +506,16 @@ void PullTable::Reset() {
   mu_.lock();
   auto entries = std::move(entries_);
   auto paused_fetches_by_uuid = std::move(paused_fetches_);
+  entry_heap_.clear();
+  fetch_heap_.clear();
   mu_.unlock();
   // Drop entries without the lock held.
-  for (const auto& paused_fetches : paused_fetches_by_uuid) {
-    for (const auto& paused_fetch : paused_fetches.second) {
+  std::vector<std::pair<uint64_t, FetchList>> sorted_fetches(
+      paused_fetches_by_uuid.begin(), paused_fetches_by_uuid.end());
+  std::sort(sorted_fetches.begin(), sorted_fetches.end(),
+            [](const auto& a, const auto& b) { return a.first < b.first; });
+  for (const auto& pair : sorted_fetches) {
+    for (const auto& paused_fetch : pair.second) {
       size_t req_id = paused_fetch.base_req_id;
       for (uint64_t bid : paused_fetch.req.buffer_ids()) {
         (void)bid;
@@ -356,9 +536,15 @@ class StringVectorPullTableEntry : public PullTable::Entry {
               const SocketTransferPullRequest& req,
               size_t base_req_id) override {
     for (uint64_t bid : req.buffer_ids()) {
-      auto data_copy = std::make_unique<std::string>(buffers_[bid]);
       auto req_id = base_req_id;
       ++base_req_id;
+      if (bid >= buffers_.size()) {
+        state->SendError(
+            req_id, 0, 0, false,
+            absl::InvalidArgumentError("StringVectorPullTableEntry::Handle"));
+        continue;
+      }
+      auto data_copy = std::make_unique<std::string>(buffers_[bid]);
       auto& data = *data_copy;
       state->Send(req_id, data.data(), 0, data.size(), true,
                   [data = std::move(data_copy)]() {});

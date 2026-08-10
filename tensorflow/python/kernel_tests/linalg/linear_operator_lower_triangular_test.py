@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
+from absl.testing import parameterized
 from tensorflow.python.framework import config
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -86,30 +87,6 @@ class LinearOperatorLowerTriangularTest(
     with self.assertRaisesRegex(ValueError, "at least 2 dimensions"):
       linalg.LinearOperatorLowerTriangular([1.])
 
-  def test_triangular_diag_matmul(self):
-    operator1 = linalg_lib.LinearOperatorLowerTriangular(
-        [[1., 0., 0.], [2., 1., 0.], [2., 3., 3.]])
-    operator2 = linalg_lib.LinearOperatorDiag([2., 2., 3.])
-    operator_matmul = operator1.matmul(operator2)
-    self.assertTrue(isinstance(
-        operator_matmul,
-        linalg_lib.LinearOperatorLowerTriangular))
-    self.assertAllClose(
-        math_ops.matmul(
-            operator1.to_dense(),
-            operator2.to_dense()),
-        self.evaluate(operator_matmul.to_dense()))
-
-    operator_matmul = operator2.matmul(operator1)
-    self.assertTrue(isinstance(
-        operator_matmul,
-        linalg_lib.LinearOperatorLowerTriangular))
-    self.assertAllClose(
-        math_ops.matmul(
-            operator2.to_dense(),
-            operator1.to_dense()),
-        self.evaluate(operator_matmul.to_dense()))
-
   def test_tape_safe(self):
     tril = variables_module.Variable([[1., 0.], [0., 1.]])
     operator = linalg_lib.LinearOperatorLowerTriangular(
@@ -158,6 +135,59 @@ class LinearOperatorLowerTriangularTest(
     self.assertAllClose(
         self.evaluate(llt.to_dense()), self.evaluate(
             (chol @ chol.H).to_dense()))
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class LinearOperatorLowerTriangularMatmulTest(
+    test.TestCase, parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      ("unbatched",
+       [[1., 0., 0.], [2., 1., 0.], [2., 3., 3.]],
+       [2., 2., 3.]),
+      ("batched",
+       [[[1., 0.], [2., 1.]], [[3., 0.], [4., 5.]]],
+       [[2., 3.], [4., 5.]]),
+  )
+  def test_matmul_triangular_and_diag_returns_lower_triangular(
+      self, tril_data, diag_data):
+    operator1 = linalg.LinearOperatorLowerTriangular(tril_data)
+    operator2 = linalg.LinearOperatorDiag(diag_data)
+
+    operator_matmul = operator1.matmul(operator2)
+
+    self.assertIsInstance(
+        operator_matmul,
+        linalg.LinearOperatorLowerTriangular)
+    self.assertAllClose(
+        self.evaluate(math_ops.matmul(
+            operator1.to_dense(),
+            operator2.to_dense())),
+        self.evaluate(operator_matmul.to_dense()))
+
+  @parameterized.named_parameters(
+      ("unbatched",
+       [[1., 0., 0.], [2., 1., 0.], [2., 3., 3.]],
+       [2., 2., 3.]),
+      ("batched",
+       [[[1., 0.], [2., 1.]], [[3., 0.], [4., 5.]]],
+       [[2., 3.], [4., 5.]]),
+  )
+  def test_matmul_diag_and_triangular_returns_lower_triangular(
+      self, tril_data, diag_data):
+    operator1 = linalg.LinearOperatorLowerTriangular(tril_data)
+    operator2 = linalg.LinearOperatorDiag(diag_data)
+
+    operator_matmul = operator2.matmul(operator1)
+
+    self.assertIsInstance(
+        operator_matmul,
+        linalg.LinearOperatorLowerTriangular)
+    self.assertAllClose(
+        self.evaluate(math_ops.matmul(
+            operator2.to_dense(),
+            operator1.to_dense())),
+        self.evaluate(operator_matmul.to_dense()))
 
 
 if __name__ == "__main__":

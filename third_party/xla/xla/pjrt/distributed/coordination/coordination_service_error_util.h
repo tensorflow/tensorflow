@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/protobuf/coordination_service.pb.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 
 namespace xla {
 
@@ -32,6 +32,10 @@ constexpr absl::string_view CoordinationErrorPayloadKey() {
 
 constexpr absl::string_view BarrierErrorPayloadKey() {
   return "type.googleapis.com/tensorflow.BarrierError";
+}
+
+constexpr absl::string_view ServiceMismatchErrorPayloadKey() {
+  return "type.googleapis.com/tensorflow.ServiceMismatchError";
 }
 
 // Mark error as a coordination service error (as opposed to RPC
@@ -44,7 +48,7 @@ inline absl::Status MakeCoordinationError(absl::Status s) {
 inline absl::Status MakeBarrierError(absl::Status s,
                                      absl::string_view barrier_id,
                                      int64_t counter) {
-  tensorflow::BarrierError error;
+  xla::coordination::BarrierError error;
   error.set_barrier_id(std::string(barrier_id));
   error.set_counter(counter);
   s.SetPayload(BarrierErrorPayloadKey(), absl::Cord(error.SerializeAsString()));
@@ -55,7 +59,7 @@ inline int64_t GetBarrierCounterFromError(const absl::Status& s) {
   if (s.GetPayload(BarrierErrorPayloadKey()) == std::nullopt) {
     return -1;
   }
-  tensorflow::BarrierError error;
+  xla::coordination::BarrierError error;
   error.ParseFromString(
       std::string(s.GetPayload(BarrierErrorPayloadKey()).value()));
   return error.counter();
@@ -67,8 +71,8 @@ inline int64_t GetBarrierCounterFromError(const absl::Status& s) {
 // to true.
 inline absl::Status MakeCoordinationError(absl::Status s, int task_id,
                                           bool is_reported_error = false) {
-  tensorflow::CoordinationServiceError error;
-  error.mutable_source_task()->set_task_id(task_id);
+  xla::coordination::CoordinationServiceError error;
+  error.set_source_task_id(task_id);
   error.set_is_reported_error(is_reported_error);
   s.SetPayload(CoordinationErrorPayloadKey(),
                absl::Cord(error.SerializeAsString()));
@@ -77,10 +81,30 @@ inline absl::Status MakeCoordinationError(absl::Status s, int task_id,
 
 // Mark error as a coordination service error with payload.
 inline absl::Status MakeCoordinationError(
-    absl::Status s, const tensorflow::CoordinationServiceError& payload) {
+    absl::Status s,
+    const xla::coordination::CoordinationServiceError& payload) {
   s.SetPayload(CoordinationErrorPayloadKey(),
                absl::Cord(payload.SerializeAsString()));
   return s;
+}
+
+inline absl::Status& WithServiceMismatchError(
+    absl::Status& s, const xla::coordination::ServiceMismatchError& err) {
+  s.SetPayload(ServiceMismatchErrorPayloadKey(),
+               absl::Cord(err.SerializeAsString()));
+  return s;
+}
+
+inline std::optional<xla::coordination::ServiceMismatchError>
+GetServiceMismatchError(const absl::Status& s) {
+  std::optional<absl::Cord> payload =
+      s.GetPayload(ServiceMismatchErrorPayloadKey());
+  if (!payload.has_value()) {
+    return std::nullopt;
+  }
+  xla::coordination::ServiceMismatchError err;
+  err.ParseFromString(*payload);
+  return err;
 }
 
 // Trims the error message by replacing the `Additional GRPC error` part.

@@ -36,11 +36,40 @@ limitations under the License.
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_compiler_variant.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/fingerprint.h"
 
 namespace xla {
+
+absl::StatusOr<PjRtCompilerVariant> PickTpuCompilerVariant() {
+  static const PjRtCompilerVariant kFactoryVariantId =
+      tsl::Fingerprint64("factory_variant");
+  return kFactoryVariantId;
+}
+
+std::string CompilerVariantToString(PjRtCompilerVariant variant) {
+  if (variant == LinkedCompilerVariantId()) {
+    return std::string(kLinkedVariant);
+  }
+  if (variant == tsl::Fingerprint64("factory_variant")) {
+    return "factory_variant";
+  }
+  return std::string(kUnknownVariant);
+}
+
+namespace {
+bool RegisterTestVariantPicker() {
+  PjRtRegisterCompilerVariantPicker("tpu", []() -> absl::StatusOr<std::string> {
+    ABSL_ASSIGN_OR_RETURN(PjRtCompilerVariant variant, PickTpuCompilerVariant());
+    return CompilerVariantToString(variant);
+  });
+  return true;
+}
+bool test_variant_picker_registered = RegisterTestVariantPicker();
+}  // namespace
 
 namespace {
 using ::absl_testing::StatusIs;
@@ -55,7 +84,7 @@ class PjRtTestTopology : public PjRtTopologyDescription {
       const override {
     LOG(FATAL) << "Unused";
   }
-  absl::StatusOr<std::string> Serialize() const override { return "test_topo"; }
+  absl::StatusOr<uint64_t> Fingerprint() const override { return 123; }
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
       const override {
     LOG(FATAL) << "Unused";
@@ -67,6 +96,18 @@ class PjRtTestTopology : public PjRtTopologyDescription {
         "TestTopology does not support GetDefaultLayout");
   }
 };
+
+// Registers a compiler to compile programs for 'platform_name' with
+// 'compiler_variant'. Takes ownership of 'compiler'.
+//
+// REQUIRES: No compiler has been registered for the platform and compiler
+// variant yet.
+void PjRtRegisterCompiler(absl::string_view platform_name,
+                          absl::string_view compiler_variant,
+                          std::unique_ptr<PjRtCompiler> compiler) {
+  CHECK_OK(PjRtCompilerRegistry::Global().RegisterCompiler(
+      platform_name, compiler_variant, std::move(compiler)));
+}
 
 TEST(PjRtCompilerTest, CompilerNotRegistered) {
   PjRtTestTopology topology;
@@ -88,9 +129,7 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
     DeviceDescriptions() const override {
       LOG(FATAL) << "Unused";
     }
-    absl::StatusOr<std::string> Serialize() const override {
-      return "test_topo";
-    }
+    absl::StatusOr<uint64_t> Fingerprint() const override { return 123; }
     const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
         const override {
       LOG(FATAL) << "Unused";
@@ -124,9 +163,7 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
   };
   CompileOptions options;
   std::unique_ptr<PjRtCompiler> compiler = std::make_unique<PjRtTestCompiler>();
-  PjRtRegisterCompiler(topology.platform_name(),
-                       options.compiler_variant.value_or(""),
-                       std::move(compiler));
+  PjRtRegisterCompiler(topology.platform_name(), "", std::move(compiler));
 
   XlaComputation computation;
   auto res = PjRtCompile(options, computation, topology);
@@ -145,9 +182,7 @@ class PjRtDeserializeTopology : public PjRtTopologyDescription {
       const override {
     LOG(FATAL) << "Unused";
   }
-  absl::StatusOr<std::string> Serialize() const override {
-    return "serialized_topology";
-  }
+  absl::StatusOr<uint64_t> Fingerprint() const override { return 123; }
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
       const override {
     LOG(FATAL) << "Unused";
@@ -243,8 +278,14 @@ TEST(PjRtCompilerTest, VariantRegistryLookup) {
   EXPECT_TRUE(absl::IsNotFound(status.status()));
 }
 
+TEST(PjRtTopologyDescriptionTest, DefaultMemorySpaceKindIds) {
+  PjRtTestTopology topology;
+  EXPECT_THAT(topology.GetMemorySpaceKindIds(), ::testing::ElementsAre(-1));
+  EXPECT_EQ(topology.GetDefaultMemorySpaceKindId(), -1);
+}
+
 TEST(PjRtCompilerTest, CompilerFactoryRegistered) {
-  const std::string platform = "factory_test_platform";
+  const std::string platform = "tpu";
   const std::string variant = "factory_variant";
   auto factory_called = std::make_shared<bool>(false);
 
@@ -257,13 +298,11 @@ TEST(PjRtCompilerTest, CompilerFactoryRegistered) {
 
   class PjRtResetPlatformNameTopology : public PjRtTestTopology {
    public:
-    absl::string_view platform_name() const override {
-      return "factory_test_platform";
-    }
+    PjRtPlatformId platform_id() const override { return xla::TpuId(); }
+    absl::string_view platform_name() const override { return "tpu"; }
   };
   PjRtResetPlatformNameTopology topology;
   CompileOptions options;
-  options.compiler_variant = variant;
   XlaComputation computation;
 
   // Factory should not be called yet.

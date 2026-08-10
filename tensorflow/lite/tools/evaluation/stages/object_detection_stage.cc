@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/evaluation/stages/object_detection_stage.h"
 
+#include <cstddef>
 #include <fstream>
 #include <iterator>
 #include <memory>
@@ -109,11 +110,19 @@ TfLiteStatus ObjectDetectionStage::Run() {
   // Preprocessing.
   preprocessing_stage_->SetImagePath(&image_path_);
   TF_LITE_ENSURE_STATUS(preprocessing_stage_->Run());
+  if (preprocessing_stage_->GetPreprocessedImageBytes() <
+      inference_stage_->GetModelInfo()->inputs[0]->bytes) {
+    LOG(ERROR)
+        << "Preprocessed image buffer is smaller than model input tensor size";
+    return kTfLiteError;
+  }
 
   // Inference.
   std::vector<void*> data_ptrs = {};
   data_ptrs.push_back(preprocessing_stage_->GetPreprocessedImageData());
-  inference_stage_->SetInputs(data_ptrs);
+  std::vector<size_t> data_sizes = {
+      preprocessing_stage_->GetPreprocessedImageBytes()};
+  inference_stage_->SetInputs(data_ptrs, data_sizes);
   TF_LITE_ENSURE_STATUS(inference_stage_->Run());
 
   // Convert model output to ObjectsSet.

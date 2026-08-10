@@ -57,9 +57,9 @@ absl::Status ReductionOp(const std::string& merge_op,
     *reduction_op = ncclMin;
     return absl::OkStatus();
   } else {
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "Expected merge_op to be in [Add, Mul, Maximum, Minimum], found ",
-        merge_op);
+        merge_op));
   }
 }
 
@@ -76,7 +76,7 @@ std::unique_ptr<NcclCommunicatorInterface> MaybeCreateNcclCommunicator(
   if (item != device_count.end() && item->second == 0) {
     return nullptr;
   }
-  return absl::make_unique<NcclCommunicator>();
+  return std::make_unique<NcclCommunicator>();
 }
 
 void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
@@ -90,7 +90,7 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
   auto* compute_stream = col_ctx->op_ctx->op_device_context()->stream();
   auto* gpu_info =
       col_ctx->op_ctx->device()->tensorflow_accelerator_device_info();
-  auto participant = absl::make_unique<NcclManager::Participant>(
+  auto participant = std::make_unique<NcclManager::Participant>(
       compute_stream->parent(), compute_stream, gpu_info, col_ctx->input,
       col_ctx->output, col_ctx->col_params->default_rank,
       /*done_callback=*/nullptr);
@@ -101,11 +101,11 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
     CancellationToken cancel_token = cancel_mgr->get_cancellation_token();
     bool already_cancelled =
         !cancel_mgr->RegisterCallback(cancel_token, [this]() {
-          nccl_manager_.StartAbort(errors::Cancelled("op cancelled"));
+          nccl_manager_.StartAbort(absl::CancelledError("op cancelled"));
           nccl_manager_.Reset();
         });
     if (already_cancelled) {
-      done(errors::Cancelled("op cancelled"));
+      done(absl::CancelledError("op cancelled"));
       return;
     }
     participant->done_callback = [cancel_mgr, cancel_token,
@@ -179,8 +179,8 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
       break;
     }
     default: {
-      participant->done_callback(errors::Internal("Unexpected CollectiveType ",
-                                                  col_params->instance.type));
+      participant->done_callback(absl::InternalError(absl::StrCat(
+          "Unexpected CollectiveType ", col_params->instance.type)));
       return;
     }
   }

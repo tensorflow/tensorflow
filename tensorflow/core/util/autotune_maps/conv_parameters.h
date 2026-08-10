@@ -69,15 +69,18 @@ class ConvParameters {
   // directory.  The two fused convolutions ultimately correspond to the same
   // cudnn calls, but have slightly different semantics (e.g. they interpret
   // padding differently).
-  ConvParameters(
-      se::StreamExecutor* stream_exec, int64_t batch, int64_t in_depths,
-      absl::Span<const int64_t> in, int data_format, int64_t out_depths,
-      absl::Span<const int64_t> filter, absl::Span<const int64_t> dilation,
-      absl::Span<const int64_t> stride, absl::Span<const int64_t> padding,
-      DataType dtype, int group_count,
-      absl::optional<FusionInfo> fusion_info = absl::optional<FusionInfo>(),
-      // This argument should be set only for test use.
-      int version = kVersion);
+  ConvParameters(se::StreamExecutor* stream_exec, int64_t batch,
+                 int64_t in_depths, absl::Span<const int64_t> in,
+                 int data_format, int64_t out_depths,
+                 absl::Span<const int64_t> filter,
+                 absl::Span<const int64_t> dilation,
+                 absl::Span<const int64_t> stride,
+                 absl::Span<const int64_t> padding, DataType dtype,
+                 int group_count,
+                 std::optional<ConvParameters::FusionInfo> fusion_info =
+                     std::optional<ConvParameters::FusionInfo>(),
+                 // This argument should be set only for test use.
+                 int version = kVersion);
 
   ConvParameters(int device_id, const ConvParametersProto& proto);
 

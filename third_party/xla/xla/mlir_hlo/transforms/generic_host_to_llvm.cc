@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <memory>
 #include <utility>
 
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
@@ -132,13 +131,4 @@ class GenericHostToLLVMPass
 };
 
 }  // namespace
-
-namespace hlo {
-
-std::unique_ptr<OperationPass<ModuleOp>> createGenericHostToLLVMPass(
-    const GenericHostToLLVMPassOptions& options) {
-  return std::make_unique<GenericHostToLLVMPass>(options);
-}
-
-}  // namespace hlo
 }  // namespace mlir

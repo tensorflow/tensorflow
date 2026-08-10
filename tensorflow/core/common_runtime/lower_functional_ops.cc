@@ -101,7 +101,7 @@ bool IsPropagatableDevice(absl::string_view device_string) {
 absl::Status LowerFunctionalOpsPass::Run(
     const GraphOptimizationPassOptions& options) {
   if (options.partition_graphs != nullptr) {
-    return errors::Internal(
+    return absl::InternalError(
         "Lowering If/While ops should happen before partitioning.");
   }
   if (options.graph == nullptr) {
@@ -110,13 +110,13 @@ absl::Status LowerFunctionalOpsPass::Run(
 
   Graph* g = options.graph->get();
   if (g == nullptr) {
-    return errors::Internal(
+    return absl::InternalError(
         "Lowering While op requires a graph to be available.");
   }
 
   FunctionLibraryDefinition* flib_def = options.flib_def;
   if (flib_def == nullptr) {
-    return errors::Internal(
+    return absl::InternalError(
         "Lowering If op requires a FunctionLibraryDefinition to be available.");
   }
 

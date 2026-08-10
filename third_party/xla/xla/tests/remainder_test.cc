@@ -25,8 +25,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using NumericTest = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using NumericTest =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(NumericTest, Remainder) {
   XlaBuilder builder("remainder");

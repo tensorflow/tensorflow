@@ -77,14 +77,14 @@ TEST(RendezvousTest, TwoParticipantsWithValues) {
   absl::BlockingCounter counter(2);
   std::vector<std::shared_ptr<int32_t>> results(2);
 
-  auto accumulate = [](absl::Span<const int32_t* const> values) {
+  auto accumulate = [](absl::Span<int32_t*> values) {
     int32_t result = 0;
     for (const int32_t* value : values) result += *value;
     return result;
   };
 
   auto task = [&](int32_t id) {
-    return [&, id] {
+    return [&, id]() mutable {
       TF_ASSERT_OK_AND_ASSIGN(
           results[id],
           Rendezvous<int32_t>("rendezvous_test", 0, id, 2, accumulate));

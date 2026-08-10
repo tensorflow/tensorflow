@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
@@ -68,7 +69,7 @@ std::string CanonicalPlatformName(absl::string_view platform_name) {
   }
   // When configured on CUDA, "gpu" and "cuda" mean the same thing.
   // When configured on ROCm, "gpu" and "rocm" mean the same thing.
-  // When configured on SYCL, "gpu" and "sycl" mean the same thing.
+  // When configured on SYCL, "gpu", "sycl", and "oneapi" mean the same thing.
   if (lowercase_platform_name == "gpu") {
 #if TENSORFLOW_USE_ROCM
     return "rocm";
@@ -77,6 +78,14 @@ std::string CanonicalPlatformName(absl::string_view platform_name) {
 #else
     return "cuda";
 #endif
+  }
+  // TODO(intel-tf): name sycl will be removed when SE uses oneapi
+  // "oneapi" is the PJRT plugin platform name; "sycl" is the stream executor
+  // platform name. Both must resolve to the same canonical name so FFI handler
+  // registration (via PJRT, uses "ONEAPI") matches lookup (via SE, uses
+  // "SYCL").
+  if (lowercase_platform_name == "oneapi") {
+    return "sycl";
   }
   return lowercase_platform_name;
 }
@@ -116,9 +125,9 @@ absl::Status IsDeviceSupported(se::StreamExecutor* executor) {
 
 absl::StatusOr<se::StreamExecutor*> ExecutorForDevice(se::Platform* platform,
                                                       int device_ordinal) {
-  TF_ASSIGN_OR_RETURN(se::StreamExecutor * exec,
-                      platform->ExecutorForDevice(device_ordinal));
-  TF_RETURN_IF_ERROR(IsDeviceSupported(exec));
+  ABSL_ASSIGN_OR_RETURN(se::StreamExecutor * exec,
+                   platform->ExecutorForDevice(device_ordinal));
+  ABSL_RETURN_IF_ERROR(IsDeviceSupported(exec));
   return exec;
 }
 
@@ -197,7 +206,7 @@ absl::StatusOr<se::Platform*> PlatformUtil::GetDefaultPlatform() {
         "double-check that you are using a PJRT-compatible test class.",
         allow_default);
   }
-  TF_ASSIGN_OR_RETURN(auto platforms, GetSupportedPlatforms());
+  ABSL_ASSIGN_OR_RETURN(auto platforms, GetSupportedPlatforms());
   TF_RET_CHECK(!platforms.empty()) << "No platforms found";
 
   if (platforms.size() == 1) {
@@ -227,10 +236,10 @@ absl::StatusOr<se::Platform*> PlatformUtil::GetDefaultPlatform() {
 
 /*static*/ absl::StatusOr<se::Platform*> PlatformUtil::GetPlatform(
     absl::string_view platform_name) {
-  TF_ASSIGN_OR_RETURN(se::Platform * platform,
-                      se::PlatformManager::PlatformWithName(
-                          xla::CanonicalPlatformName(platform_name)));
-  TF_RETURN_IF_ERROR(Compiler::GetForPlatform(platform->id()).status());
+  ABSL_ASSIGN_OR_RETURN(se::Platform * platform,
+                   se::PlatformManager::PlatformWithName(
+                       xla::CanonicalPlatformName(platform_name)));
+  ABSL_RETURN_IF_ERROR(Compiler::GetForPlatform(platform->id()).status());
   return platform;
 }
 
@@ -238,8 +247,8 @@ absl::StatusOr<std::vector<se::StreamExecutor*>>
 PlatformUtil::GetStreamExecutors(
     se::Platform* platform,
     const std::optional<std::set<int>>& allowed_devices) {
-  TF_ASSIGN_OR_RETURN(std::vector<int> device_ordinals,
-                      GetDeviceOrdinals(platform, allowed_devices));
+  ABSL_ASSIGN_OR_RETURN(std::vector<int> device_ordinals,
+                   GetDeviceOrdinals(platform, allowed_devices));
 
   std::vector<absl::StatusOr<se::StreamExecutor*>> executors(
       device_ordinals.size(),

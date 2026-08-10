@@ -15,9 +15,7 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_ENV_TIME_H_
 #define XLA_TSL_PLATFORM_ENV_TIME_H_
 
-#include <stdint.h>
-
-#include "xla/tsl/platform/types.h"
+#include <cstdint>
 
 namespace tsl {
 

@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <variant>
 #include <vector>
 
 #include "absl/base/attributes.h"
@@ -28,18 +27,20 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/user_context.h"
+#include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
 #include "xla/tsl/concurrency/future.h"
@@ -52,8 +53,7 @@ namespace ifrt {
 MemoryKind MakeMemoryKindFromPjRtBuffer(PjRtBuffer* pjrt_buffer);
 
 // PjRt-compatible `Array` interface that wraps a list of `xla::PjRtBuffer`s.
-class PjRtCompatibleArray
-    : public llvm::RTTIExtends<PjRtCompatibleArray, Array> {
+class PjRtCompatibleArray : public RTTIExtends<PjRtCompatibleArray, Array> {
  public:
   // APIs that allow direct access to `PjRtBuffer` for PjRt-only operations.
   virtual absl::Span<const std::shared_ptr<PjRtBuffer>> pjrt_buffers() = 0;
@@ -64,8 +64,7 @@ class PjRtCompatibleArray
 };
 
 // `Array` implementation that wraps a list of `xla::PjRtBuffer`s.
-class PjRtArray final
-    : public llvm::RTTIExtends<PjRtArray, PjRtCompatibleArray> {
+class PjRtArray final : public RTTIExtends<PjRtArray, PjRtCompatibleArray> {
  public:
   static constexpr int kPjRtBufferInlineSize = 1;
   using PjRtBuffers =
@@ -77,6 +76,12 @@ class PjRtArray final
       PjRtCompatibleClient* client, DType dtype, Shape shape,
       ShardingRef sharding, PjRtBuffers pjrt_buffers,
       std::shared_ptr<const xla::PjRtLayout> layout);
+
+  // Same as above, but takes an IFRT layout.
+  static absl::StatusOr<tsl::RCReference<PjRtArray>> Create(
+      PjRtCompatibleClient* client, DType dtype, Shape shape,
+      ShardingRef sharding, PjRtBuffers pjrt_buffers,
+      std::shared_ptr<const xla::ifrt::PjRtLayout> layout);
 
   // General array construction (with dynamic shape). `pjrt_buffers` may be
   // empty. `layout == nullptr` indicates a default layout.
@@ -134,38 +139,43 @@ class PjRtArray final
     return client_;
   }
 
+  const ArraySpec& array_spec() const override {
+    CHECK(dynamic_shape_ == std::nullopt);
+    return array_spec_;
+  }
+
   DType dtype() const override {
     DCHECK(this);
-    return dtype_;
+    return array_spec_.dtype;
   }
 
   bool has_dynamic_shape() const {
     DCHECK(this);
-    return std::holds_alternative<DynamicShape>(shape_);
+    return dynamic_shape_ != std::nullopt;
   }
 
   bool has_static_shape() const {
     DCHECK(this);
-    return std::holds_alternative<Shape>(shape_);
+    return dynamic_shape_ == std::nullopt;
   }
 
   const Shape& shape() const override {
     DCHECK(has_static_shape());
-    return std::get<Shape>(shape_);
+    return array_spec_.shape;
   }
 
   const DynamicShape& dynamic_shape() const {
     DCHECK(has_dynamic_shape());
-    return std::get<DynamicShape>(shape_);
+    return *dynamic_shape_;
   }
 
   const Sharding& sharding() const override {
     DCHECK(this);
-    return *sharding_;
+    return *array_spec_.sharding;
   }
   ShardingRef shared_ptr_sharding() const override {
     DCHECK(this);
-    return sharding_;
+    return array_spec_.sharding;
   }
 
   absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> pjrt_layout()
@@ -173,6 +183,8 @@ class PjRtArray final
   LayoutRef layout() const override;
 
   UserContextRef user_context() const override { return user_context_; }
+
+  absl::StatusOr<std::optional<int64_t>> ByteSize() const override;
 
   absl::StatusOr<std::vector<ArrayRef>> DisassembleIntoSingleDeviceArrays(
       ArrayCopySemantics array_copy_semantics,
@@ -211,6 +223,10 @@ class PjRtArray final
             ShardingRef sharding, PjRtBuffers pjrt_buffers,
             std::shared_ptr<const xla::PjRtLayout> layout);
 
+  PjRtArray(PjRtCompatibleClient* client, DType dtype, Shape shape,
+            ShardingRef sharding, PjRtBuffers pjrt_buffers,
+            std::shared_ptr<const xla::ifrt::PjRtLayout> layout);
+
   PjRtArray(PjRtCompatibleClient* client, DType dtype,
             DynamicShape dynamic_shape, ShardingRef sharding,
             PjRtBuffers pjrt_buffers,
@@ -220,9 +236,8 @@ class PjRtArray final
   friend tsl::RCReference<T> tsl::MakeRef(Args&&... args);
 
   PjRtCompatibleClient* client_;
-  DType dtype_;
-  std::variant<Shape, DynamicShape> shape_;
-  ShardingRef sharding_;
+  ArraySpec array_spec_;
+  std::optional<DynamicShape> dynamic_shape_;
   PjRtBuffers pjrt_buffers_;
   std::shared_ptr<const xla::ifrt::PjRtLayout> layout_;
   const xla::ifrt::UserContextRef user_context_;

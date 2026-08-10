@@ -16,9 +16,12 @@ limitations under the License.
 #include "xla/service/conditional_code_motion.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include "absl/log/check.h"
@@ -2503,6 +2506,139 @@ ENTRY %xla_computation  {
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Conditional(op::Or(), op::Tuple(), op::Or()));
 }
+
+TEST_F(ConditionalCodeMotionTest, DoNotHoistBroadcastIfProducerNotHoisted) {
+  absl::string_view hlo_string =
+      R"(
+HloModule DoNotHoistBroadcast
+
+on_true {
+  arg_true = f32[10] parameter(0)
+  add1 = f32[10] add(arg_true, arg_true)
+  ROOT broadcast1 = f32[10,10] broadcast(add1), dimensions={0}
+}
+
+on_false {
+  arg_false = f32[10] parameter(0)
+  mul1 = f32[10] multiply(arg_false, arg_false)
+  ROOT broadcast2 = f32[10,10] broadcast(mul1), dimensions={0}
+}
+
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  param.1 = f32[10] parameter(1)
+  param.2 = f32[10] parameter(2)
+  conditional = f32[10,10]
+    conditional(pred.1, param.1, param.2), true_computation=on_true,
+    false_computation=on_false
+    
+  abs1 = f32[10,10] abs(conditional)
+  abs2 = f32[10,10] abs(conditional)
+  ROOT tuple = (f32[10,10], f32[10,10]) tuple(abs1, abs2)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  ConditionalCodeMotion pass(true, true);
+  EXPECT_FALSE(pass.Run(&*module).value());
+}
+
+TEST_F(ConditionalCodeMotionTest, DoNotMoveBroadcastInAsUser) {
+  absl::string_view hlo_string =
+      R"(
+HloModule DoNotMoveBroadcastIn
+
+on_true {
+  arg_true = f32[10] parameter(0)
+  ROOT add1 = f32[10] add(arg_true, arg_true)
+}
+
+on_false {
+  arg_false = f32[10] parameter(0)
+  ROOT mul1 = f32[10] multiply(arg_false, arg_false)
+}
+
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  param.1 = f32[10] parameter(1)
+  param.2 = f32[10] parameter(2)
+  conditional = f32[10]
+    conditional(pred.1, param.1, param.2), true_computation=on_true,
+    false_computation=on_false
+    
+  ROOT broadcast = f32[10, 10] broadcast(conditional), dimensions={0}
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  ConditionalCodeMotion pass(true, true);
+  EXPECT_FALSE(pass.Run(&*module).value());
+}
+
+TEST_F(ConditionalCodeMotionTest, DeterministicHoistingOrder) {
+  absl::string_view hlo_string =
+      R"(
+HloModule DeterministicHoisting
+
+on_true {
+  %arg_tuple.1 = (f32[2]{0}, f32[2]{0}) parameter(0)
+  %gte.1 = f32[2]{0} get-tuple-element(%arg_tuple.1), index=0
+  %gte.2 = f32[2]{0} get-tuple-element(%arg_tuple.1), index=1
+  %add.1 = f32[2]{0} add(%gte.1, %gte.1)
+  %add.2 = f32[2]{0} add(%gte.2, %gte.2)
+  %convert.1 = bf16[2]{0} convert(%add.1)
+  %convert.2 = bf16[2]{0} convert(%add.2)
+  ROOT %tuple.1 = (bf16[2]{0}, bf16[2]{0}) tuple(%convert.1, %convert.2)
+}
+
+on_false {
+  %arg_tuple.2 = (f32[2]{0}, f32[2]{0}) parameter(0)
+  %gte.3 = f32[2]{0} get-tuple-element(%arg_tuple.2), index=0
+  %gte.4 = f32[2]{0} get-tuple-element(%arg_tuple.2), index=1
+  %sub.1 = f32[2]{0} subtract(%gte.3, %gte.3)
+  %sub.2 = f32[2]{0} subtract(%gte.4, %gte.4)
+  %convert.3 = bf16[2]{0} convert(%sub.1)
+  %convert.4 = bf16[2]{0} convert(%sub.2)
+  ROOT %tuple.2 = (bf16[2]{0}, bf16[2]{0}) tuple(%convert.3, %convert.4)
+}
+
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  arg_tuple.11 = (f32[2]{0}, f32[2]{0}) parameter(1)
+  arg_tuple.22 = (f32[2]{0}, f32[2]{0}) parameter(2)
+  conditional = (bf16[2]{0}, bf16[2]{0}) conditional(pred.1, arg_tuple.11, arg_tuple.22), true_computation=on_true, false_computation=on_false
+  get-first-index = bf16[2]{0} get-tuple-element(conditional), index=0
+  get-second-index = bf16[2]{0} get-tuple-element(conditional), index=1
+  add.3 = bf16[2]{0} add(get-first-index, get-first-index)
+  add.4 = bf16[2]{0} add(get-second-index, get-second-index)
+  ROOT result = (bf16[2]{0}, bf16[2]{0}) tuple(add.3, add.4)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  ConditionalCodeMotion pass(true, true);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  ASSERT_TRUE(changed);
+  std::string baseline_str = module->ToString();
+
+  // Parse all 10 modules first and store them concurrently in memory to force
+  // distinct virtual heap memory layouts and prevent TCMalloc address reuse.
+  std::vector<std::unique_ptr<HloModule>> other_modules;
+  other_modules.reserve(10);
+  for (int i = 0; i < 10; ++i) {
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> other_module,
+                            ParseAndReturnVerifiedModule(hlo_string));
+    other_modules.push_back(std::move(other_module));
+  }
+
+  for (int i = 0; i < 10; ++i) {
+    ConditionalCodeMotion other_pass(true, true);
+    TF_ASSERT_OK_AND_ASSIGN(bool other_changed,
+                            other_pass.Run(other_modules[i].get()));
+    ASSERT_TRUE(other_changed);
+    EXPECT_EQ(baseline_str, other_modules[i]->ToString());
+  }
+}
+
 }  // namespace conditional_opt
 
 }  // namespace xla

@@ -14,13 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/io_ops.cc
-#include "tensorflow/core/kernels/save_restore_tensor.h"
-
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/save_restore_tensor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/tensor_slice_writer.h"
 
@@ -53,17 +54,21 @@ class ShardedFilenameOp : public OpKernel {
   explicit ShardedFilenameOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    static const char* input_names[3] = {"basename", "shard", "num_shards"};
+    OP_REQUIRES(ctx, ctx->num_inputs() == 3,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Expected 3 inputs, got ", ctx->num_inputs())));
+    static constexpr absl::string_view kInputNames[3] = {"basename", "shard",
+                                                         "num_shards"};
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ctx->input(i).shape()),
-                  errors::InvalidArgument(input_names[i],
-                                          " must be a scalar, got shape ",
-                                          ctx->input(i).shape().DebugString()));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      kInputNames[i], " must be a scalar, got shape ",
+                      ctx->input(i).shape().DebugString())));
     }
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &out));
     out->scalar<tstring>()() = absl::StrFormat(
-        "%s-%05d-of-%05d", ctx->input(0).scalar<tstring>()().c_str(),
+        "%s-%05d-of-%05d", absl::string_view(ctx->input(0).scalar<tstring>()()),
         ctx->input(1).scalar<int32_t>()(), ctx->input(2).scalar<int32_t>()());
   }
 };
@@ -76,18 +81,23 @@ class ShardedFilespecOp : public OpKernel {
   explicit ShardedFilespecOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    static const char* input_names[2] = {"basename", "num_shards"};
+    OP_REQUIRES(ctx, ctx->num_inputs() == 2,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Expected 2 inputs, got ", ctx->num_inputs())));
+    static constexpr absl::string_view kInputNames[2] = {"basename",
+                                                         "num_shards"};
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ctx->input(i).shape()),
-                  errors::InvalidArgument(input_names[i],
-                                          " must be a scalar, got shape ",
-                                          ctx->input(i).shape().DebugString()));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      kInputNames[i], " must be a scalar, got shape ",
+                      ctx->input(i).shape().DebugString())));
     }
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &out));
-    out->scalar<tstring>()() = absl::StrFormat(
-        "%s-\?\?\?\?\?-of-%05d", ctx->input(0).scalar<tstring>()().c_str(),
-        ctx->input(1).scalar<int32_t>()());
+    out->scalar<tstring>()() =
+        absl::StrFormat("%s-\?\?\?\?\?-of-%05d",
+                        absl::string_view(ctx->input(0).scalar<tstring>()()),
+                        ctx->input(1).scalar<int32_t>()());
   }
 };
 REGISTER_KERNEL_BUILDER(Name("ShardedFilespec").Device(DEVICE_CPU),

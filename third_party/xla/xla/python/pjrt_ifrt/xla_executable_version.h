@@ -21,19 +21,18 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/serdes_default_version_accessor.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/pjrt_ifrt/executable_metadata.pb.h"
 #include "xla/python/pjrt_ifrt/xla_executable_abi_version.h"
-#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace ifrt {
 
 struct XlaExecutableVersion
-    : llvm::RTTIExtends<XlaExecutableVersion, ExecutableVersion> {
+    : RTTIExtends<XlaExecutableVersion, ExecutableVersion> {
   XlaExecutableVersion() = default;
   XlaExecutableVersion(uint64_t platform_id,
                        std::unique_ptr<XlaExecutableAbiVersion> abi_version);
@@ -51,7 +50,7 @@ struct XlaExecutableVersion
   absl::StatusOr<SerializedXlaExecutableVersion> ToProto(
       SerDesVersion version = SerDesVersion::current()) const {
     SerializedXlaExecutableVersion proto;
-    TF_RETURN_IF_ERROR(ToProto(proto, version));
+    ABSL_RETURN_IF_ERROR(ToProto(proto, version));
     return proto;
   }
 

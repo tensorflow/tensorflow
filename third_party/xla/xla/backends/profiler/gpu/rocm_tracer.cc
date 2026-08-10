@@ -19,8 +19,6 @@ limitations under the License.
 
 #include "xla/backends/profiler/gpu/rocm_tracer.h"
 
-#include <unistd.h>
-
 #include <atomic>
 #include <cassert>
 #include <cstdint>
@@ -29,9 +27,15 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/optimization.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "rocm/include/rocprofiler-sdk/agent.h"
 #include "rocm/include/rocprofiler-sdk/buffer.h"
 #include "rocm/include/rocprofiler-sdk/buffer_tracing.h"
@@ -45,12 +49,31 @@ limitations under the License.
 #include "rocm/include/rocprofiler-sdk/rocprofiler.h"
 #include "xla/backends/profiler/gpu/rocm_collector.h"
 #include "xla/backends/profiler/gpu/rocm_tracer_utils.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/profiler/backends/cpu/annotation_stack.h"
 #include "tsl/platform/abi.h"
 
-// for rocprofiler-sdk
 namespace xla {
 namespace profiler {
+namespace {
+
+absl::Status RocprofilerStatusToAbslStatus(rocprofiler_status_t status) {
+  if (ABSL_PREDICT_TRUE(status == ROCPROFILER_STATUS_SUCCESS)) {
+    return absl::OkStatus();
+  }
+  const char* errstr = rocprofiler_get_status_string(status);
+  return absl::InternalError(
+      absl::StrCat("rocprofiler error: ", errstr ? errstr : "unknown"));
+}
+
+// Thread-local HIP stream stack. The rocprofiler-SDK fires
+// ROCPROFILER_HIP_STREAM_SET callbacks around every HIP API call that uses a
+// stream: PHASE_ENTER pushes the stream, PHASE_EXIT pops it. Between enter
+// and exit, the external correlation callback snapshots the current stream.
+// Initialized with 0 (the default HIP stream).
+thread_local absl::InlinedVector<uint64_t, 4> tls_stream_stack = {0};
+
+}  // namespace
 
 using tsl::profiler::AnnotationStack;
 
@@ -125,20 +148,28 @@ bool RocmTracer::IsAvailable() const {
   return ts;
 }
 
-void RocmTracer::Enable(const RocmTracerOptions& options,
-                        RocmTraceCollector* collector) {
+absl::Status RocmTracer::Enable(const RocmTracerOptions& options,
+                                RocmTraceCollector* collector) {
   absl::MutexLock lock(collector_mutex_);
   if (collector_ != nullptr) {
-    LOG(WARNING) << "ROCM tracer is already running!";
-    return;
+    return absl::AlreadyExistsError("ROCM tracer is already running");
   }
   options_ = options;
   collector_ = collector;
+
+  rocprofiler_status_t rc = rocprofiler_start_context(context_);
+  if (rc != ROCPROFILER_STATUS_SUCCESS) {
+    const char* errstr = rocprofiler_get_status_string(rc);
+    options_ = {};
+    collector_ = nullptr;
+    return absl::InternalError(
+        absl::StrCat("rocprofiler_start_context failed: ", errstr));
+  }
   annotation_map_.Clear();
   api_tracing_enabled_ = true;
   activity_tracing_enabled_ = true;
-  rocprofiler_start_context(context_);
   VLOG(1) << "GpuTracer started with number of GPUs = " << NumGpus();
+  return absl::OkStatus();
 }
 
 void RocmTracer::HipApiEvent(const rocprofiler_record_header_t* hdr,
@@ -157,6 +188,8 @@ void RocmTracer::HipApiEvent(const rocprofiler_record_header_t* hdr,
   trace_event->correlation_id = rec.correlation_id.internal;
   trace_event->annotation =
       annotation_map()->LookUp(trace_event->correlation_id);
+  trace_event->scope_range_id =
+      annotation_map()->LookUpScopeRangeId(trace_event->correlation_id);
   trace_event->thread_id = rec.thread_id;
   trace_event->stream_id = RocmTracerEvent::kInvalidStreamId;
   trace_event->kernel_info = KernelDetails{};
@@ -251,10 +284,11 @@ void RocmTracer::MemcpyEvent(const rocprofiler_record_header_t* hdr,
   trace_event->correlation_id = rec.correlation_id.internal;
   trace_event->annotation =
       annotation_map()->LookUp(trace_event->correlation_id);
+  trace_event->scope_range_id =
+      annotation_map()->LookUpScopeRangeId(trace_event->correlation_id);
   trace_event->thread_id = rec.thread_id;
-  // we do not know valid stream ID for memcpy
-  // rec.stream_id.handle;
-  trace_event->stream_id = RocmTracerEvent::kInvalidStreamId;
+  // HIP stream handle set by stream_external_correlation_callback().
+  trace_event->stream_id = rec.correlation_id.external.value;
   trace_event->memcpy_info = MemcpyDetails{
       .num_bytes = rec.bytes,
       .destination = static_cast<uint32_t>(dst_gpu.id.handle),
@@ -284,8 +318,12 @@ void RocmTracer::KernelEvent(const rocprofiler_record_header_t* hdr,
   trace_event->correlation_id = rec.correlation_id.internal;
   trace_event->annotation =
       annotation_map()->LookUp(trace_event->correlation_id);
+  trace_event->scope_range_id =
+      annotation_map()->LookUpScopeRangeId(trace_event->correlation_id);
   trace_event->thread_id = rec.thread_id;
-  trace_event->stream_id = kinfo.queue_id.handle;
+  // HIP stream handle set by stream_external_correlation_callback().
+  trace_event->stream_id = rec.correlation_id.external.value;
+  trace_event->queue_id = kinfo.queue_id.handle;
   trace_event->kernel_info = KernelDetails{
       .private_segment_size = kinfo.private_segment_size,
       .group_segment_size = kinfo.group_segment_size,
@@ -394,93 +432,191 @@ static void tool_tracing_callback(rocprofiler_context_id_t context,
       context, buffer_id, headers, num_headers, drop_count);
 }
 
-int RocmTracer::toolInit(rocprofiler_client_finalize_t fini_func,
-                         void* tool_data) {
-  // Gather API names
+// Callback for ROCPROFILER_CALLBACK_TRACING_HIP_STREAM events.
+// Maintains the thread-local stream stack so the external correlation callback
+// can snapshot the current HIP stream for each GPU operation.
+static void hip_stream_callback(rocprofiler_callback_tracing_record_t record,
+                                rocprofiler_user_data_t* /*user_data*/,
+                                void* /*callback_data*/) {
+  if (record.kind != ROCPROFILER_CALLBACK_TRACING_HIP_STREAM) return;
+
+  switch (record.operation) {
+    case ROCPROFILER_HIP_STREAM_SET:
+      if (record.phase == ROCPROFILER_CALLBACK_PHASE_ENTER) {
+        const auto* data =
+            static_cast<const rocprofiler_callback_tracing_hip_stream_data_t*>(
+                record.payload);
+        tls_stream_stack.push_back(data->stream_id.handle);
+      } else if (record.phase == ROCPROFILER_CALLBACK_PHASE_EXIT) {
+        if (tls_stream_stack.size() > 1) {
+          tls_stream_stack.pop_back();
+        }
+      }
+      break;
+    case ROCPROFILER_HIP_STREAM_CREATE:
+    case ROCPROFILER_HIP_STREAM_DESTROY:
+      break;
+    default:
+      VLOG(2) << "Unexpected HIP stream operation: " << record.operation;
+      break;
+  }
+}
+
+// External correlation ID request callback. Invoked by rocprofiler-SDK for
+// every kernel dispatch and memory copy to attach the current HIP stream_id.
+static int stream_external_correlation_callback(
+    rocprofiler_thread_id_t /*thread_id*/,
+    rocprofiler_context_id_t /*context_id*/,
+    rocprofiler_external_correlation_id_request_kind_t /*kind*/,
+    rocprofiler_tracing_operation_t /*operation*/,
+    uint64_t /*internal_corr_id_value*/,
+    rocprofiler_user_data_t* external_corr_id_value, void* /*data*/) {
+  external_corr_id_value->value =
+      tls_stream_stack.empty() ? 0 : tls_stream_stack.back();
+  return 0;
+}
+
+absl::Status RocmTracer::InitProfiling(void* tool_data) {
   name_info_ = GetCallbackTracingNames();
 
-  // Gather agent info
+  // Build an ordered list of GPU agents for use by the profiler collector
+  // (e.g. GetDeviceCapabilities).
   num_gpus_ = 0;
+  gpu_agents_.clear();
   for (const auto& agent : GetGpuDeviceAgents()) {
     VLOG(1) << "agent id = " << agent.id.handle << ", dev = " << agent.device_id
             << ", name = " << (agent.name ? agent.name : "null");
     agents_[agent.id.handle] = agent;
     if (agent.type == ROCPROFILER_AGENT_TYPE_GPU) {
+      gpu_agents_.push_back(agent);
       num_gpus_++;
     }
   }
 
-  // Utility context to gather code‑object info
-  rocprofiler_create_context(&utility_context_);
+  ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+      rocprofiler_create_context(&utility_context_)));
 
-  // buffered tracing
   auto code_object_ops = std::vector<rocprofiler_tracing_operation_t>{
       ROCPROFILER_CODE_OBJECT_DEVICE_KERNEL_SYMBOL_REGISTER};
 
-  rocprofiler_configure_callback_tracing_service(
-      utility_context_, ROCPROFILER_CALLBACK_TRACING_CODE_OBJECT,
-      code_object_ops.data(), code_object_ops.size(), code_object_callback,
-      nullptr);
+  ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+      rocprofiler_configure_callback_tracing_service(
+          utility_context_, ROCPROFILER_CALLBACK_TRACING_CODE_OBJECT,
+          code_object_ops.data(), code_object_ops.size(), code_object_callback,
+          nullptr)));
 
-  rocprofiler_start_context(utility_context_);
+  ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+      rocprofiler_start_context(utility_context_)));
   VLOG(1) << "rocprofiler start utilityContext";
 
-  // a multiple of the page size, and the gap allows the buffer to absorb bursts
-  // of GPU events
   constexpr auto buffer_size_bytes = 100 * 4096;
   constexpr auto buffer_watermark_bytes = 40 * 4096;
 
-  // Utility context to gather code‑object info
-  rocprofiler_create_context(&context_);
+  ABSL_RETURN_IF_ERROR(
+      RocprofilerStatusToAbslStatus(rocprofiler_create_context(&context_)));
 
-  rocprofiler_create_buffer(context_, buffer_size_bytes, buffer_watermark_bytes,
-                            ROCPROFILER_BUFFER_POLICY_LOSSLESS,
-                            tool_tracing_callback, tool_data, &buffer_);
+  ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(rocprofiler_create_buffer(
+      context_, buffer_size_bytes, buffer_watermark_bytes,
+      ROCPROFILER_BUFFER_POLICY_LOSSLESS, tool_tracing_callback, tool_data,
+      &buffer_)));
 
-  rocprofiler_configure_buffer_tracing_service(
-      context_, ROCPROFILER_BUFFER_TRACING_HIP_RUNTIME_API, nullptr, 0,
-      buffer_);
+  ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+      rocprofiler_configure_buffer_tracing_service(
+          context_, ROCPROFILER_BUFFER_TRACING_HIP_RUNTIME_API, nullptr, 0,
+          buffer_)));
 
-  rocprofiler_configure_buffer_tracing_service(
-      context_, ROCPROFILER_BUFFER_TRACING_KERNEL_DISPATCH, nullptr, 0,
-      buffer_);
+  ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+      rocprofiler_configure_buffer_tracing_service(
+          context_, ROCPROFILER_BUFFER_TRACING_KERNEL_DISPATCH, nullptr, 0,
+          buffer_)));
 
-  rocprofiler_configure_buffer_tracing_service(
-      context_, ROCPROFILER_BUFFER_TRACING_MEMORY_COPY, nullptr, 0, buffer_);
+  ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+      rocprofiler_configure_buffer_tracing_service(
+          context_, ROCPROFILER_BUFFER_TRACING_MEMORY_COPY, nullptr, 0,
+          buffer_)));
+
+  // Configure external correlation ID request service on the main context.
+  // This attaches the current HIP stream_id (from tls_stream_stack) to every
+  // kernel dispatch and memory copy record via correlation_id.external.value.
+  {
+    rocprofiler_external_correlation_id_request_kind_t kinds[] = {
+        ROCPROFILER_EXTERNAL_CORRELATION_REQUEST_KERNEL_DISPATCH,
+        ROCPROFILER_EXTERNAL_CORRELATION_REQUEST_MEMORY_COPY,
+    };
+    ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+        rocprofiler_configure_external_correlation_id_request_service(
+            context_, kinds, std::size(kinds),
+            stream_external_correlation_callback, nullptr)));
+  }
+
+  // Create a dedicated context for HIP stream tracking callbacks.
+  // This fires ROCPROFILER_HIP_STREAM_SET around every HIP API call that
+  // uses a stream, maintaining the thread-local stream stack.
+  // Intentionally process-lifetime (like utility_context_), not toggled by
+  // Enable()/Disable(): the TLS stack must stay warm so that stream IDs are
+  // correct from the very first dispatch after Enable(). The overhead when
+  // profiling is off is negligible (push/pop on a small TLS vector).
+  ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+      rocprofiler_create_context(&hip_stream_ctx_)));
+
+  ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+      rocprofiler_configure_callback_tracing_service(
+          hip_stream_ctx_, ROCPROFILER_CALLBACK_TRACING_HIP_STREAM, nullptr, 0,
+          hip_stream_callback, nullptr)));
+
+  ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+      rocprofiler_start_context(hip_stream_ctx_)));
+  VLOG(1) << "rocprofiler start hip_stream_ctx";
 
   {
-    // for annotations
     const rocprofiler_tracing_operation_t* hip_ops = nullptr;
     size_t hip_ops_count = 0;
 
-    rocprofiler_configure_callback_tracing_service(
-        context_, ROCPROFILER_CALLBACK_TRACING_HIP_RUNTIME_API, hip_ops,
-        hip_ops_count,
-        [](rocprofiler_callback_tracing_record_t record,
-           rocprofiler_user_data_t*, void*) {
-          if (record.phase == ROCPROFILER_CALLBACK_PHASE_ENTER) {
-            const std::string& annotation =
-                tsl::profiler::AnnotationStack::Get();
-            if (!annotation.empty()) {
-              RocmTracer::GetRocmTracerSingleton().annotation_map()->Add(
-                  record.correlation_id.internal, annotation);
-            }
-          }
-        },
-        nullptr);
+    ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+        rocprofiler_configure_callback_tracing_service(
+            context_, ROCPROFILER_CALLBACK_TRACING_HIP_RUNTIME_API, hip_ops,
+            hip_ops_count,
+            [](rocprofiler_callback_tracing_record_t record,
+               rocprofiler_user_data_t*, void*) {
+              if (record.phase == ROCPROFILER_CALLBACK_PHASE_ENTER) {
+                const std::string& annotation =
+                    tsl::profiler::AnnotationStack::Get();
+                if (!annotation.empty()) {
+                  absl::Span<const int64_t> range_ids =
+                      tsl::profiler::AnnotationStack::GetScopeRangeIds();
+                  RocmTracer::GetRocmTracerSingleton().annotation_map()->Add(
+                      record.correlation_id.internal, annotation, range_ids);
+                }
+              }
+            },
+            nullptr)));
   }
 
   auto client_thread = rocprofiler_callback_thread_t{};
-  rocprofiler_create_callback_thread(&client_thread);
-  rocprofiler_assign_callback_thread(buffer_, client_thread);
+  ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+      rocprofiler_create_callback_thread(&client_thread)));
+  ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+      rocprofiler_assign_callback_thread(buffer_, client_thread)));
 
   int isValid = 0;
-  rocprofiler_context_is_valid(context_, &isValid);
+  ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+      rocprofiler_context_is_valid(context_, &isValid)));
   if (isValid == 0) {
-    context_.handle = 0;  // Leak on failure.
-    return -1;
+    context_.handle = 0;
+    return absl::InternalError(
+        "rocprofiler context is not valid after initialization");
   }
 
+  return absl::OkStatus();
+}
+
+int RocmTracer::toolInit(rocprofiler_client_finalize_t fini_func,
+                         void* tool_data) {
+  absl::Status status = InitProfiling(tool_data);
+  if (!status.ok()) {
+    LOG(ERROR) << "RocmTracer initialization failed: " << status.message();
+    return -1;
+  }
   return 0;
 }
 
@@ -489,13 +625,21 @@ void RocmTracer::toolFinalize(void* tool_data) {
   VLOG(1) << "Calling toolFinalize!";
   rocprofiler_stop_context(obj.utility_context_);
   obj.utility_context_.handle = 0;
+  rocprofiler_stop_context(obj.hip_stream_ctx_);
+  obj.hip_stream_ctx_.handle = 0;
   rocprofiler_stop_context(obj.context_);
-  // flush buffer here or in disable?
   obj.context_.handle = 0;
 }
 
 void RocmTracer::Disable() {
-  rocprofiler_status_t status = rocprofiler_flush_buffer(buffer_);
+  // Stop first so no new records enter the rocprofiler buffer; this pairs
+  // with the rocprofiler_start_context() in Enable().
+  rocprofiler_status_t status = rocprofiler_stop_context(context_);
+  if (status != ROCPROFILER_STATUS_SUCCESS) {
+    LOG(WARNING) << "rocprofiler_stop_context failed with error " << status;
+  }
+
+  status = rocprofiler_flush_buffer(buffer_);
   if (status != ROCPROFILER_STATUS_SUCCESS) {
     LOG(WARNING) << "rocprofiler_flush_buffer failed with error " << status;
   }

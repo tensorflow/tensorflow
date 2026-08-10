@@ -1,18 +1,18 @@
 path: "tensorflow.distribute.InputContext"
 tf_class {
   is_instance: "<class \'tensorflow.python.distribute.distribute_lib.InputContext\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "input_pipeline_id"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "num_input_pipelines"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "num_replicas_in_sync"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

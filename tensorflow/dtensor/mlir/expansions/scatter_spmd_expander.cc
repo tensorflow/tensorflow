@@ -102,7 +102,7 @@ StatusOr<mlir::Operation*> TensorScatterOpExpand(mlir::Operation* op) {
   const int updates_rank = ValueRank(scatter_op.getUpdates());
 
   if (tensor_rank == -1 || updates_rank == -1)
-    return errors::InvalidArgument("all inputs must have valid rank.");
+    return absl::InvalidArgumentError("all inputs must have valid rank.");
 
   // Get the global shape of all inputs as we need them for the Relayout
   // operations.
@@ -175,7 +175,7 @@ StatusOr<llvm::DenseMap<int, Layout>> TensorScatterOpComputeLayoutForward(
   const int tensor_rank = ValueRank(scatter_op.getTensor());
   const int updates_rank = ValueRank(scatter_op.getUpdates());
   if (tensor_rank == -1 || updates_rank == -1)
-    return errors::InvalidArgument("all inputs must have valid rank.");
+    return absl::InvalidArgumentError("all inputs must have valid rank.");
 
   std::optional<Layout> tensor_layout;
   if (input_layouts.find(0) != input_layouts.end())
@@ -204,7 +204,7 @@ StatusOr<llvm::DenseMap<int, Layout>> TensorScatterOpComputeLayoutBackward(
   const int indices_rank = ValueRank(scatter_op.getIndices());
   const int updates_rank = ValueRank(scatter_op.getUpdates());
   if (tensor_rank == -1 || indices_rank == -1 || updates_rank == -1)
-    return errors::InvalidArgument("all inputs must have valid rank.");
+    return absl::InvalidArgumentError("all inputs must have valid rank.");
 
   // The number of dimensions at the start of the tensor input that are used
   // for the index, also the size of the second dimension of the indices tensor.
@@ -253,7 +253,7 @@ StatusOr<mlir::Operation*> TensorScatterOpSPMDExpander::ExpandOp(
   if (llvm::isa<mlir::TF::TensorScatterAddOp>(op)) {
     return TensorScatterOpExpand<mlir::TF::TensorScatterAddOp>(op);
   }
-  return errors::Unimplemented(absl::StrCat(
+  return absl::UnimplementedError(absl::StrCat(
       "SPMD expansion for op : ", OpName(op), " is not implemented"));
 }
 
@@ -268,7 +268,7 @@ TensorScatterOpSPMDExpander::ComputeLayoutForward(
     return TensorScatterOpComputeLayoutForward<mlir::TF::TensorScatterAddOp>(
         op, input_layouts);
   }
-  return errors::Unimplemented(absl::StrCat(
+  return absl::UnimplementedError(absl::StrCat(
       "Layout propagation for op : ", OpName(op), " is not implemented"));
 }
 
@@ -283,7 +283,7 @@ TensorScatterOpSPMDExpander::ComputeLayoutBackward(
     return TensorScatterOpComputeLayoutBackward<mlir::TF::TensorScatterAddOp>(
         op, output_layouts);
   }
-  return errors::Unimplemented(absl::StrCat(
+  return absl::UnimplementedError(absl::StrCat(
       "Layout propagation for op : ", OpName(op), " is not implemented"));
 }
 
@@ -305,14 +305,14 @@ StatusOr<mlir::Operation*> ScatterNdOpSPMDExpander::ExpandOp(
   const int indices_rank = ValueRank(scatter_op.getIndices());
 
   if (output_rank == -1 || updates_rank == -1) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Dynamic shaped inputs are not supported. Please file a feature "
         "request to TF DTensor: component id: 8333864");
   }
 
   llvm::SmallVector<int64_t, 4> global_shape;
   if (!ExtractConstVectorFromValue(scatter_op.getShape(), &global_shape).ok()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Failed in extracting constant vector from shape tensor. Please file "
         "a bug to TF DTensor: component id: 833864");
   }
@@ -346,9 +346,9 @@ StatusOr<mlir::Operation*> ScatterNdOpSPMDExpander::ExpandOp(
 
   std::vector<std::string> updates_specs(updates_rank);
   if (updates_rank == 0) {
-    return errors::InvalidArgument(
-        "Expected updates_rank to be greater than zero, but got: ",
-        updates_rank);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected updates_rank to be greater than zero, but got: ",
+                     updates_rank));
   }
   updates_specs[0] = Layout::kUnshardedDim;
 
@@ -394,7 +394,7 @@ ScatterNdOpSPMDExpander::ComputeLayoutForward(
   const int output_rank = ValueRank(scatter_op.getResult());
   const int updates_rank = ValueRank(scatter_op.getUpdates());
   if (output_rank == -1 || updates_rank == -1)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Dynamic shaped inputs are not supported. Please file a feature "
         "request to TF DTensor: component id: 8333864");
 
@@ -420,7 +420,7 @@ ScatterNdOpSPMDExpander::ComputeLayoutBackward(
   const int updates_rank = ValueRank(scatter_op.getUpdates());
 
   if (output_rank == -1 || indices_rank == -1 || updates_rank == -1)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Dynamic shaped inputs are not supported. Please file a feature "
         "request to TF DTensor: component id: 8333864");
 

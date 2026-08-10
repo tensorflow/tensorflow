@@ -448,6 +448,7 @@ def build_conversion_flags(
     canonicalizing_inf_as_min_max_float=True,
     serialize_debug_metadata=False,
     unsafe_fuse_dynamic_shaped_broadcast=False,
+    unsafe_single_batch_rank_reduction=False,
     **_,
 ):
   """Builds protocol buffer describing a conversion of a model.
@@ -586,6 +587,8 @@ def build_conversion_flags(
       when output shape has dynamic dimensions, but it may cause incorrect
       results when broadcasting ops are introduced by explicit broadcasting in
       the source model.
+    unsafe_single_batch_rank_reduction: When set to true, enable the unsafe
+      single batch rank reduction.
 
   Returns:
     conversion_flags: protocol buffer describing the conversion process.
@@ -718,6 +721,9 @@ def build_conversion_flags(
   conversion_flags.serialize_debug_metadata = serialize_debug_metadata
   conversion_flags.unsafe_fuse_dynamic_shaped_broadcast = (
       unsafe_fuse_dynamic_shaped_broadcast
+  )
+  conversion_flags.unsafe_single_batch_rank_reduction = (
+      unsafe_single_batch_rank_reduction
   )
 
   return conversion_flags

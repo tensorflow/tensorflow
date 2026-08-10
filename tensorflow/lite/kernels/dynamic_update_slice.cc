@@ -14,23 +14,23 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
-#include <cmath>
+#include <cstddef>
 #include <cstdint>
-#include <vector>
+#include <cstring>
 
-#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
 namespace ops {
 namespace builtin {
 namespace dynamic_update_slice {
+
+// Max rank of tensors in this implementation.
+constexpr int kMaxRank = 8;
 
 constexpr int kOperandTensor = 0;
 constexpr int kUpdateTensor = 1;
@@ -94,61 +94,116 @@ int TensorIndexToFlat(const int* index, const int dims,
 
 // A helper function to compute the clamped start indices to ensure they are
 // not out of bounds.
-std::vector<int> ClampStartIndices(int input_dims, const int64_t* indices_data,
-                                   const RuntimeShape& input_shape,
-                                   const RuntimeShape& update_shape) {
-  std::vector<int> clamped_start_indices(input_dims, 0);
+RuntimeShape ClampStartIndices(int input_dims, const int64_t* indices_data,
+                               const RuntimeShape& input_shape,
+                               const RuntimeShape& update_shape) {
+  RuntimeShape clamped_start_indices(input_dims);
   for (int i = 0; i < input_dims; i++) {
-    clamped_start_indices[i] = static_cast<int32_t>(
-        std::min<int64_t>(std::max<int64_t>(0, indices_data[i]),
-                          input_shape.Dims(i) - update_shape.Dims(i)));
+    clamped_start_indices.SetDim(
+        i, static_cast<int32_t>(
+               std::min<int64_t>(std::max<int64_t>(0, indices_data[i]),
+                                 input_shape.Dims(i) - update_shape.Dims(i))));
   }
   return clamped_start_indices;
 }
 
-template <typename T>
+template <int FixedSize>
+void copy_slice(char* output, const char* update, size_t size) {
+  memcpy(output, update, FixedSize ? FixedSize : size);
+}
+
+template <int FixedSize>
+void copy_slice_loop(char* output_ptr, const char* update, size_t size,
+                     int32_t count, int32_t output_stride,
+                     int32_t update_stride) {
+  for (int i = 0; i < count; ++i) {
+    copy_slice<FixedSize>(output_ptr, update, size);
+    output_ptr += output_stride;
+    update += update_stride;
+  }
+}
+
+inline void dispatch_copy(char* output, const char* update, size_t size) {
+  if (size == 4) {
+    copy_slice<4>(output, update, size);
+  } else if (size == 2) {
+    copy_slice<2>(output, update, size);
+  } else if (size == 1) {
+    copy_slice<1>(output, update, size);
+  } else {
+    copy_slice<0>(output, update, size);
+  }
+}
+
+inline void dispatch_copy_loop(char* output_ptr, const char* update,
+                               size_t size, int32_t count,
+                               int32_t output_stride, int32_t update_stride) {
+  if (size == 4) {
+    copy_slice_loop<4>(output_ptr, update, size, count, output_stride,
+                       update_stride);
+  } else if (size == 2) {
+    copy_slice_loop<2>(output_ptr, update, size, count, output_stride,
+                       update_stride);
+  } else if (size == 1) {
+    copy_slice_loop<1>(output_ptr, update, size, count, output_stride,
+                       update_stride);
+  } else {
+    copy_slice_loop<0>(output_ptr, update, size, count, output_stride,
+                       update_stride);
+  }
+}
+
 void update_slice(int current_dim, int max_dim, const int32_t* output_stride,
                   const int32_t* update_stride, const int32_t* update_shape,
-                  const T* update, const int32_t* indices_data, T* output) {
+                  const char* update, const int32_t* indices_data,
+                  size_t element_size, char* output) {
   if (current_dim == max_dim) return;
+  output +=
+      indices_data[current_dim] * output_stride[current_dim] * element_size;
   if (current_dim == max_dim - 1) {
-    output += indices_data[current_dim] * output_stride[current_dim];
-    memcpy(output, update, update_shape[max_dim - 1] * sizeof(T));
+    dispatch_copy(output, update, update_shape[max_dim - 1] * element_size);
+  } else if (current_dim == max_dim - 2) {
+    char* output_ptr = output + indices_data[max_dim - 1] *
+                                    output_stride[max_dim - 1] * element_size;
+    size_t size = update_shape[max_dim - 1] * element_size;
+    dispatch_copy_loop(output_ptr, update, size, update_shape[current_dim],
+                       output_stride[current_dim] * element_size,
+                       update_stride[current_dim] * element_size);
   } else {
-    output += indices_data[current_dim] * output_stride[current_dim];
     for (int i = 0; i < update_shape[current_dim]; ++i) {
       update_slice(current_dim + 1, max_dim, output_stride, update_stride,
-                   update_shape, update, indices_data, output);
-      output += output_stride[current_dim];
-      update += update_stride[current_dim];
+                   update_shape, update, indices_data, element_size, output);
+      output += output_stride[current_dim] * element_size;
+      update += update_stride[current_dim] * element_size;
     }
   }
 }
 
-template <typename T>
 void DynamicUpdateSlice(const TfLiteTensor* input, const TfLiteTensor* update,
-                        const int64_t* indices_data, TfLiteTensor* output) {
+                        const int64_t* indices_data, size_t element_size,
+                        TfLiteTensor* output) {
   const auto& input_shape = GetTensorShape(input);
   const auto& update_shape = GetTensorShape(update);
-  const T* update_data = GetTensorData<T>(update);
-  T* output_data = GetTensorData<T>(output);
+  const char* update_data = reinterpret_cast<const char*>(update->data.data);
+  char* output_data = reinterpret_cast<char*>(output->data.data);
 
   const int input_dims = input_shape.DimensionsCount();
   // If the update is the entirety of the output, then simply copy it and
   // return.
   if (input_shape.FlatSize() == update_shape.FlatSize()) {
-    memcpy(output_data, update_data, input_shape.FlatSize() * sizeof(T));
+    memcpy(output_data, update_data, input_shape.FlatSize() * element_size);
     return;
   }
   // Computes the effective slice indices.
-  // The clamped indices are gauranteed to >= 0 since update is less than or
+  // The clamped indices are guaranteed to >= 0 since update is less than or
   // equal to the operand size for each dimension.
-  std::vector<int> clamped_start_indices =
+  RuntimeShape clamped_start_indices =
       ClampStartIndices(input_dims, indices_data, input_shape, update_shape);
 
   // If the operation is not done in-place, copy the input data to the output.
+  size_t bytes = std::min(input->bytes, output->bytes);
   if (input->data.data != output->data.data) {
-    memcpy(output->data.data, input->data.data, input->bytes);
+    memcpy(output->data.data, input->data.data, bytes);
   }
 
   // Update tensor has no elements. Skip.
@@ -156,8 +211,8 @@ void DynamicUpdateSlice(const TfLiteTensor* input, const TfLiteTensor* update,
     return;
   }
 
-  std::vector<int> output_stride(input_dims);
-  std::vector<int> update_stride(input_dims);
+  int output_stride[kMaxRank];
+  int update_stride[kMaxRank];
   output_stride[input_dims - 1] = 1;
   update_stride[input_dims - 1] = 1;
   const int32_t* input_shape_data = input_shape.DimsData();
@@ -166,9 +221,9 @@ void DynamicUpdateSlice(const TfLiteTensor* input, const TfLiteTensor* update,
     output_stride[i] = output_stride[i + 1] * input_shape_data[i + 1];
     update_stride[i] = update_stride[i + 1] * update_shape_data[i + 1];
   }
-  update_slice(0, input_dims, output_stride.data(), update_stride.data(),
+  update_slice(0, input_dims, output_stride, update_stride,
                update_shape.DimsData(), update_data,
-               clamped_start_indices.data(), output_data);
+               clamped_start_indices.DimsData(), element_size, output_data);
 }
 
 void update_slice_int4(int current_dim, int max_dim,
@@ -226,7 +281,7 @@ void DynamicUpdateSliceInt4(const TfLiteTensor* input,
     memcpy(output_data, update_data, input->bytes);
     return;
   }
-  std::vector<int> clamped_start_indices =
+  RuntimeShape clamped_start_indices =
       ClampStartIndices(input_dims, indices_data, input_shape, update_shape);
 
   // If the operation is not done in-place, copy the input data to the output.
@@ -239,8 +294,8 @@ void DynamicUpdateSliceInt4(const TfLiteTensor* input,
     return;
   }
 
-  std::vector<int> output_stride(input_dims);
-  std::vector<int> update_stride(input_dims);
+  int output_stride[kMaxRank];
+  int update_stride[kMaxRank];
   output_stride[input_dims - 1] = 1;
   update_stride[input_dims - 1] = 1;
   const int32_t* input_shape_data = input_shape.DimsData();
@@ -249,9 +304,9 @@ void DynamicUpdateSliceInt4(const TfLiteTensor* input,
     output_stride[i] = output_stride[i + 1] * input_shape_data[i + 1];
     update_stride[i] = update_stride[i + 1] * update_shape_data[i + 1];
   }
-  update_slice_int4(0, input_dims, output_stride.data(), update_stride.data(),
+  update_slice_int4(0, input_dims, output_stride, update_stride,
                     update_shape.DimsData(), update_data, 0,
-                    clamped_start_indices.data(), output_data, 0);
+                    clamped_start_indices.DimsData(), output_data, 0);
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
@@ -270,13 +325,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   const auto& input_shape = GetTensorShape(operand);
   const int input_dims = input_shape.DimensionsCount();
-  std::vector<int64_t> indices_data_i64;
+  TF_LITE_ENSURE(context, input_dims <= kMaxRank);
+  int64_t indices_data_i64[kMaxRank];
   if (indice->type == kTfLiteInt32) {
     for (int i = 0; i < input_dims; i++)
-      indices_data_i64.push_back(static_cast<int64_t>(indice->data.i32[i]));
+      indices_data_i64[i] = static_cast<int64_t>(indice->data.i32[i]);
   } else if (indice->type == kTfLiteInt64) {
     for (int i = 0; i < input_dims; i++)
-      indices_data_i64.push_back(indice->data.i64[i]);
+      indices_data_i64[i] = indice->data.i64[i];
   } else {
     TF_LITE_KERNEL_LOG(context,
                        "DynamicUpdateSlice only currently supports "
@@ -285,45 +341,19 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
 
-  switch (operand->type) {
-    case kTfLiteFloat16:
-      DynamicUpdateSlice<Eigen::half>(operand, update, indices_data_i64.data(),
-                                      output);
-      break;
-    case kTfLiteFloat32:
-      DynamicUpdateSlice<float>(operand, update, indices_data_i64.data(),
-                                output);
-      break;
-    case kTfLiteBool:
-      DynamicUpdateSlice<bool>(operand, update, indices_data_i64.data(),
-                               output);
-      break;
-    case kTfLiteInt4:
-      DynamicUpdateSliceInt4(operand, update, indices_data_i64.data(), output);
-      break;
-    case kTfLiteInt8:
-      DynamicUpdateSlice<int8_t>(operand, update, indices_data_i64.data(),
-                                 output);
-      break;
-    case kTfLiteInt16:
-      DynamicUpdateSlice<int16_t>(operand, update, indices_data_i64.data(),
-                                  output);
-      break;
-    case kTfLiteInt32:
-      DynamicUpdateSlice<int32_t>(operand, update, indices_data_i64.data(),
-                                  output);
-      break;
-    case kTfLiteInt64:
-      DynamicUpdateSlice<int64_t>(operand, update, indices_data_i64.data(),
-                                  output);
-      break;
-    default:
+  if (operand->type == kTfLiteInt4) {
+    DynamicUpdateSliceInt4(operand, update, indices_data_i64, output);
+  } else {
+    size_t element_size = TfLiteTypeGetSize(operand->type);
+    if (element_size == 0) {
       TF_LITE_KERNEL_LOG(context,
                          "DynamicUpdateSlice only currently supports "
-                         "1-bit/8-bit/32-bit/64-bit integer or "
+                         "1-bit/8-bit/16-bit/32-bit/64-bit integer or "
                          "float type, got %d.",
                          operand->type);
       return kTfLiteError;
+    }
+    DynamicUpdateSlice(operand, update, indices_data_i64, element_size, output);
   }
 
   return kTfLiteOk;

@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -163,6 +164,7 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
       }
       break;
     }
+    VLOG(2) << "Tf take dataset finished after taking " << i_ << " elements.";
     *end_of_sequence = true;
     input_impl_.reset();
     return absl::OkStatus();
@@ -191,6 +193,11 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
                                IteratorStateReader* reader) override {
     mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kCurIndex, &i_));
+    if (i_ < 0 || (dataset()->count_ >= 0 && i_ > dataset()->count_)) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Restored tf.data.Dataset.take index ", i_,
+                       " is out of range [0, ", dataset()->count_, "]."));
+    }
     int64_t input_empty;
     TF_RETURN_IF_ERROR(
         reader->ReadScalar(prefix(), kInputImplEmpty, &input_empty));

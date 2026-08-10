@@ -80,11 +80,14 @@ class HloPrintOptions {
         canonicalize_computations_(false),
         print_extra_attributes_(true),
         syntax_sugar_async_ops_(true),
+        print_frontend_attributes_(true),
         print_name_after_closing_brace_(false),
         print_full_replica_group_list_(false),
+        print_replica_groups_without_subaxes_(false),
         print_parameter_number_(true),
         print_channel_id_(true),
-        print_inline_stack_frames_(false) {}
+        print_inline_stack_frames_(false),
+        compact_gte_(false) {}
   // Static reference to a default construction HloPrintOptions, to avoid
   // constructing a new one each time default is needed.
   static const HloPrintOptions& Default() {
@@ -278,6 +281,11 @@ class HloPrintOptions {
     return *this;
   }
 
+  HloPrintOptions& set_print_replica_groups_without_subaxes(bool value) {
+    print_replica_groups_without_subaxes_ = value;
+    return *this;
+  }
+
   // If true, uses the async operation syntax sugar to print async-start,
   // async-update, and async-done HLOs. If the syntax sugar is enabled and the
   // async computation is trivial (i.e. only a single instruction taking
@@ -322,6 +330,11 @@ class HloPrintOptions {
   // }
   HloPrintOptions& set_syntax_sugar_async_ops(bool value) {
     syntax_sugar_async_ops_ = value;
+    return *this;
+  }
+
+  HloPrintOptions& set_print_frontend_attributes(bool value) {
+    print_frontend_attributes_ = value;
     return *this;
   }
 
@@ -389,6 +402,12 @@ class HloPrintOptions {
     return *this;
   }
 
+  // If true, GTE (get-tuple-element) instructions will be compacted.
+  HloPrintOptions& set_compact_gte(bool value) {
+    compact_gte_ = value;
+    return *this;
+  }
+
   bool print_large_constants() const { return print_large_constants_; }
   bool print_only_essential_constants() const {
     return print_only_essential_constants_;
@@ -425,6 +444,7 @@ class HloPrintOptions {
   }
   bool print_extra_attributes() const { return print_extra_attributes_; }
   bool syntax_sugar_async_ops() const { return syntax_sugar_async_ops_; }
+  bool print_frontend_attributes() const { return print_frontend_attributes_; }
   bool canonicalize_instruction_names() const {
     return canonicalize_instruction_names_;
   }
@@ -437,9 +457,13 @@ class HloPrintOptions {
   bool print_full_replica_group_list() const {
     return print_full_replica_group_list_;
   }
+  bool print_replica_groups_without_subaxes() const {
+    return print_replica_groups_without_subaxes_;
+  }
   bool print_parameter_number() const { return print_parameter_number_; }
   bool print_channel_id() const { return print_channel_id_; }
   bool print_inline_stack_frames() const { return print_inline_stack_frames_; }
+  bool compact_gte() const { return compact_gte_; }
 
  private:
   // The interval between the /*index=*/ annotated operands. 0 means never print
@@ -470,11 +494,14 @@ class HloPrintOptions {
   bool canonicalize_computations_;
   bool print_extra_attributes_;
   bool syntax_sugar_async_ops_;
+  bool print_frontend_attributes_;
   bool print_name_after_closing_brace_;
   bool print_full_replica_group_list_;
+  bool print_replica_groups_without_subaxes_;
   bool print_parameter_number_;
   bool print_channel_id_;
   bool print_inline_stack_frames_;
+  bool compact_gte_;
 };
 
 // For canonical string output, we need to have a canonical way to rename

@@ -79,7 +79,8 @@ absl::StatusOr<bool> AssumeGatherIndicesInBoundRewriteToCopy::RunImpl(
   std::vector<HloInstruction*> candidates;
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* instruction : computation->instructions()) {
-      if (instruction->IsCustomCall("AssumeGatherIndicesInBound")) {
+      if (instruction->IsCustomCall("AssumeGatherIndicesInBound") ||
+          instruction->IsCustomCall("GatherScatterIndicesBitpacked")) {
         candidates.push_back(instruction);
       }
     }

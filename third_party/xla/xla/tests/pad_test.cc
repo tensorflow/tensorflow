@@ -49,7 +49,7 @@ constexpr std::array<PrimitiveType, 4> test_type_params{F32, BF16, F8E5M2,
 constexpr ErrorSpec kErrorSpec(1e-5, 1e-5);
 
 class PadTest : public ClientLibraryTestRunnerMixin<
-                    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+                    HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  protected:
   PadTest() {
     // Initializes the padding configuration used for R4 tests.

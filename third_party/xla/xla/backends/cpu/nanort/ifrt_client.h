@@ -27,12 +27,12 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/backends/cpu/nanort/nanort_client.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
@@ -80,7 +81,8 @@ struct NanoIfrtOptions {
 // buffers directly in the future, this would allow the "load path" that
 // initializes programs and variables to be reused while still getting the
 // performance wins of NanoRt at execution time.
-class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
+class NanoIfrtClient
+    : public xla::ifrt::RTTIExtends<NanoIfrtClient, ifrt::Client> {
  public:
   ~NanoIfrtClient() override;
 
@@ -157,6 +159,10 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
       absl::Span<const xla::ifrt::ArraySpec> specs,
       xla::ifrt::ArrayCopySemantics semantics) override;
 
+  tsl::Future<std::vector<uint64_t>> HashValues(
+      absl::Span<const ifrt::ValueRef> values,
+      ifrt::Client::HashMode mode) override;
+
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> ReshardArrays(
       absl::Span<xla::ifrt::ArrayRef> arrays,
       absl::Span<const xla::ifrt::ArraySpec> specs,
@@ -165,8 +171,18 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
   tsl::Future<> GetReadyFuture(
       absl::Span<const ifrt::ValueRef> values) override;
 
+  tsl::Future<> DeleteValues(absl::Span<ifrt::ValueRef> values) override;
+
   absl::StatusOr<tsl::RCReference<ifrt::Tuple>> MakeTuple(
       absl::Span<ifrt::ValueRef> values) override;
+
+  absl::StatusOr<ifrt::BundleRef> Bundle(
+      absl::Span<ifrt::ValueRef> values,
+      ifrt::ArrayCopySemantics semantics) override;
+
+  absl::StatusOr<ifrt::BundleRef> ConcatBundles(
+      absl::Span<ifrt::BundleRef> bundles,
+      ifrt::ArrayCopySemantics semantics) override;
 
   void CancelExecution(
       xla::ifrt::LoadedExecutable::CancellationHandle cancellation_handle,

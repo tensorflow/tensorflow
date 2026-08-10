@@ -43,7 +43,8 @@ absl::Status OpSegment::FindOrCreate(const std::string& session_handle,
     mutex_lock l(mu_);
     auto item = gtl::FindPtrOrNull(sessions_, session_handle);
     if (item == nullptr) {
-      return errors::NotFound("Session ", session_handle, " is not found.");
+      return absl::NotFoundError(
+          absl::StrCat("Session ", session_handle, " is not found."));
     }
     *kernel = gtl::FindPtrOrNull(item->name_kernel, node_name);
     if (*kernel != nullptr) {
@@ -59,7 +60,8 @@ absl::Status OpSegment::FindOrCreate(const std::string& session_handle,
     mutex_lock l(mu_);
     auto item = gtl::FindPtrOrNull(sessions_, session_handle);
     if (item == nullptr) {
-      return errors::NotFound("Session ", session_handle, " is not found.");
+      return absl::NotFoundError(
+          absl::StrCat("Session ", session_handle, " is not found."));
     }
     OpKernel** p_kernel = &(item->name_kernel[node_name]);
     if (*p_kernel == nullptr) {

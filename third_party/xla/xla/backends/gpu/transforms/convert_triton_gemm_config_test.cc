@@ -41,13 +41,22 @@ using ::absl_testing::IsOkAndHolds;
 namespace xla::gpu {
 namespace {
 
-class ConvertTritonGemmConfigTest : public HloHardwareIndependentTestBase {
+class ConvertTritonGemmConfigTest : public HloHardwareIndependentTestBase,
+                                    public ::testing::WithParamInterface<bool> {
  protected:
   ConvertTritonGemmConfigTest() { RegisterSymbolicExprStorage(&mlir_context_); }
   const se::DeviceDescription device_description_{
       TestGpuDeviceInfo::RTXA6000DeviceInfo(
           se::GpuComputeCapability{se::CudaComputeCapability::Ampere()})};
   mlir::MLIRContext mlir_context_;
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(
+        GetParam());
+    return debug_options;
+  }
 
   std::unique_ptr<VerifiedHloModule> RunConvertTritonGemmConfig(
       absl::string_view hlo, const bool expect_change = true) {
@@ -59,16 +68,9 @@ class ConvertTritonGemmConfigTest : public HloHardwareIndependentTestBase {
     EXPECT_OK(verifier().Run(module.get()).status());
     return module;
   }
-
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options =
-        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_unsupported_disable_nested_gemm_fusions(true);
-    return debug_options;
-  }
 };
 
-TEST_F(ConvertTritonGemmConfigTest, BasicTest) {
+TEST_P(ConvertTritonGemmConfigTest, BasicDot) {
   absl::string_view hlo = R"(
 dot {
   lhs = f32[8192,512] parameter(0)
@@ -85,7 +87,7 @@ ENTRY entry {
       "fusion_backend_config": {
         "kind":"__triton_gemm",  "triton_gemm_config": {
           "block_m":"64", "block_n":"256", "block_k":"32",
-          "split_k":"1", "num_stages":"5", "num_warps":"4", "num_ctas":"3"
+          "num_stages":"5", "num_warps":"4", "num_ctas":"3"
         }
       }
     }
@@ -114,7 +116,7 @@ ENTRY entry {
                    .has_triton_gemm_config());
 }
 
-TEST_F(ConvertTritonGemmConfigTest, ScaledDot) {
+TEST_P(ConvertTritonGemmConfigTest, ScaledDot) {
   absl::string_view hlo = R"(
 scaled_dot {
   lhs = bf16[4,4] parameter(0)
@@ -136,7 +138,7 @@ ENTRY entry {
         "kind":"__triton_gemm",
         "triton_gemm_config": {
           "block_m":"16", "block_n":"32", "block_k":"64",
-          "split_k":"1", "num_stages":"1", "num_warps":"4", "num_ctas":"1"
+          "num_stages":"1", "num_warps":"4", "num_ctas":"1"
         }
       }
     }
@@ -159,6 +161,107 @@ ENTRY entry {
     CHECK-SAME: "output_tiles":[{"sizes":["16","32"]}]
 )"));
 }
+
+TEST_P(ConvertTritonGemmConfigTest, WavesPerEuPassthrough) {
+  absl::string_view hlo = R"(
+dot {
+  lhs = f32[8192,512] parameter(0)
+  rhs = f32[512,512] parameter(1)
+  ROOT  dot = f32[8192,512] dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY entry {
+  p0 = f32[8192,512] parameter(0)
+  p1 = f32[512,512] parameter(1)
+  ROOT fusion = f32[8192,512] fusion(p0, p1),
+    kind=kCustom, calls=dot, backend_config={
+      "fusion_backend_config": {
+        "kind":"__triton_gemm",  "triton_gemm_config": {
+          "block_m":"64", "block_n":"256", "block_k":"32",
+          "num_stages":"5", "num_warps":"4", "num_ctas":"1",
+          "waves_per_eu":"4"
+        }
+      }
+    }
+})";
+
+  std::unique_ptr<VerifiedHloModule> module = RunConvertTritonGemmConfig(hlo);
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+    CHECK: ROOT{{.*}}fusion(
+    CHECK-SAME: "block_level_fusion_config"
+    CHECK-SAME: "waves_per_eu":4
+)"));
+  const HloInstruction* fusion = nullptr;
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(match::Fusion(&fusion)));
+  EXPECT_FALSE(fusion->backend_config<GpuBackendConfig>()
+                   ->fusion_backend_config()
+                   .has_triton_gemm_config());
+}
+
+TEST_P(ConvertTritonGemmConfigTest, TransposeDot) {
+  absl::string_view hlo = R"(
+dot {
+  lhs = f32[8192,512] parameter(0)
+  rhs = f32[512,512] parameter(1)
+  dot = f32[8192,512] dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT transpose = f32[512,8192] transpose(dot), dimensions={1,0}
+}
+
+ENTRY entry {
+  p0 = f32[8192,512] parameter(0)
+  p1 = f32[512,512] parameter(1)
+  ROOT fusion = f32[512,8192] fusion(p0, p1),
+    kind=kCustom, calls=dot, backend_config={
+      "fusion_backend_config": {
+        "kind":"__triton_gemm",  "triton_gemm_config": {
+          "block_m":"64", "block_n":"256", "block_k":"32",
+          "num_stages":"5", "num_warps":"4", "num_ctas":"3"
+        }
+      }
+    }
+})";
+
+  std::unique_ptr<VerifiedHloModule> module = RunConvertTritonGemmConfig(hlo);
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+    CHECK: "output_tiles":[{"sizes":["256","64"]}]
+)"));
+}
+
+TEST_P(ConvertTritonGemmConfigTest, BatchGemm) {
+  absl::string_view hlo = R"(
+dot {
+  lhs = f32[2,8192,512] parameter(0)
+  rhs = f32[2,512,512] parameter(1)
+  ROOT dot = f32[2,8192,512] dot(lhs, rhs),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={1}
+}
+
+ENTRY entry {
+  p0 = f32[2,8192,512] parameter(0)
+  p1 = f32[2,512,512] parameter(1)
+  ROOT fusion = f32[2,8192,512] fusion(p0, p1),
+    kind=kCustom, calls=dot, backend_config={
+      "fusion_backend_config": {
+        "kind":"__triton_gemm", "triton_gemm_config": {
+          "block_m":"64", "block_n":"256", "block_k":"32",
+          "num_stages":"5", "num_warps":"4", "num_ctas":"3"
+        }
+      }
+    }
+})";
+
+  std::unique_ptr<VerifiedHloModule> module = RunConvertTritonGemmConfig(hlo);
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+    CHECK: "output_tiles":[{"sizes":["1","64","256"]}]
+)"));
+}
+
+INSTANTIATE_TEST_SUITE_P(ConvertTritonGemmConfigTestSuite,
+                         ConvertTritonGemmConfigTest, ::testing::Bool());
 
 }  // namespace
 }  // namespace xla::gpu

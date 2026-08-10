@@ -98,6 +98,9 @@ class ShardingConstraintPattern
         op, op.getType(), adaptor.getInput());
 
     customCallOp.setCallTargetName(kShardingCustomCallTargetName);
+    if (sharding && !sharding.getUnreducedAxes().empty()) {
+      customCallOp.setHasSideEffect(true);
+    }
     // Copy over any existing attrs other than the sharding.
     for (mlir::NamedAttribute attr : op->getDiscardableAttrs()) {
       customCallOp->setAttr(attr.getName(), attr.getValue());

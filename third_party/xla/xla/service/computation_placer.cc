@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -67,15 +68,13 @@ DeviceAssignment::LogicalIdForDevice(GlobalDeviceId device_id) const {
 
 absl::StatusOr<int> DeviceAssignment::ReplicaIdForDevice(
     GlobalDeviceId device_id) const {
-  TF_ASSIGN_OR_RETURN(const LogicalID logical_id,
-                      LogicalIdForDevice(device_id));
+  ABSL_ASSIGN_OR_RETURN(const LogicalID logical_id, LogicalIdForDevice(device_id));
   return logical_id.replica_id;
 }
 
 absl::StatusOr<int> DeviceAssignment::PartitionIdForDevice(
     GlobalDeviceId device_id) const {
-  TF_ASSIGN_OR_RETURN(const LogicalID logical_id,
-                      LogicalIdForDevice(device_id));
+  ABSL_ASSIGN_OR_RETURN(const LogicalID logical_id, LogicalIdForDevice(device_id));
   return logical_id.computation_id;
 }
 

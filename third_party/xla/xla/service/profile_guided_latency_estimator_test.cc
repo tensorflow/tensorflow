@@ -26,6 +26,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -81,10 +82,9 @@ absl::StatusOr<bool> RunScheduler(
           &alias_info, shape_size_bytes);
   auto scheduler_core =
       std::make_unique<DefaultSchedulerCore>(scheduling_context, sched_config);
-  TF_ASSIGN_OR_RETURN(
-      bool value,
-      LatencyHidingScheduler(scheduling_context, std::move(scheduler_core))
-          .Run(module));
+  ABSL_ASSIGN_OR_RETURN(bool value, LatencyHidingScheduler(scheduling_context,
+                                                      std::move(scheduler_core))
+                                   .Run(module));
 
   return value;
 }

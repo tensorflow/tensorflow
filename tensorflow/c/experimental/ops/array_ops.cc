@@ -23,9 +23,9 @@ limitations under the License.
 #include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/tracing_utils.h"
-#include "xla/tsl/platform/errors.h"
+#include "tensorflow/core/framework/types.h"  // NOLINT
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/errors.h"  // NOLINT
 
 using tensorflow::tracing::MaybeSetOpName;
 
@@ -45,7 +45,11 @@ absl::Status Identity(AbstractContext* ctx, AbstractTensorHandle* const input,
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(input));
   int num_retvals = 1;
-  return op_ptr->Execute(absl::MakeSpan(output, 1), &num_retvals);
+  TF_RETURN_IF_ERROR(op_ptr->Execute(absl::MakeSpan(output, 1), &num_retvals));
+  if (num_retvals != 1) {
+    return absl::InternalError("Identity: unexpected number of outputs");
+  }
+  return absl::OkStatus();
 }
 
 // Op: IdentityN()
@@ -77,7 +81,11 @@ absl::Status IdentityN(AbstractContext* ctx,
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInputList(input));
   int num_retvals = output.size();
-  return op_ptr->Execute(output, &num_retvals);
+  TF_RETURN_IF_ERROR(op_ptr->Execute(output, &num_retvals));
+  if (num_retvals != output.size()) {
+    return absl::InternalError("IdentityN: unexpected number of outputs");
+  }
+  return absl::OkStatus();
 }
 
 // Op: ZerosLike()
@@ -92,7 +100,11 @@ absl::Status ZerosLike(AbstractContext* ctx, AbstractTensorHandle* const x,
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(x));
   int num_retvals = 1;
-  return op_ptr->Execute(absl::MakeSpan(y, 1), &num_retvals);
+  TF_RETURN_IF_ERROR(op_ptr->Execute(absl::MakeSpan(y, 1), &num_retvals));
+  if (num_retvals != 1) {
+    return absl::InternalError("ZerosLike: unexpected number of outputs");
+  }
+  return absl::OkStatus();
 }
 
 // Op: Shape()
@@ -117,7 +129,11 @@ absl::Status Shape(AbstractContext* ctx, AbstractTensorHandle* const input,
   TF_RETURN_IF_ERROR(op_ptr->AddInput(input));
   TF_RETURN_IF_ERROR(op_ptr->SetAttrType("out_type", out_type));
   int num_retvals = 1;
-  return op_ptr->Execute(absl::MakeSpan(output, 1), &num_retvals);
+  TF_RETURN_IF_ERROR(op_ptr->Execute(absl::MakeSpan(output, 1), &num_retvals));
+  if (num_retvals != 1) {
+    return absl::InternalError("Shape: unexpected number of outputs");
+  }
+  return absl::OkStatus();
 }
 
 // Op: ExpandDims()
@@ -164,7 +180,11 @@ absl::Status ExpandDims(AbstractContext* ctx, AbstractTensorHandle* const input,
   TF_RETURN_IF_ERROR(op_ptr->AddInput(input));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(dim));
   int num_retvals = 1;
-  return op_ptr->Execute(absl::MakeSpan(output, 1), &num_retvals);
+  TF_RETURN_IF_ERROR(op_ptr->Execute(absl::MakeSpan(output, 1), &num_retvals));
+  if (num_retvals != 1) {
+    return absl::InternalError("ExpandDims: unexpected number of outputs");
+  }
+  return absl::OkStatus();
 }
 
 // Op: OnesLike()
@@ -179,7 +199,11 @@ absl::Status OnesLike(AbstractContext* ctx, AbstractTensorHandle* const x,
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(x));
   int num_retvals = 1;
-  return op_ptr->Execute(absl::MakeSpan(y, 1), &num_retvals);
+  TF_RETURN_IF_ERROR(op_ptr->Execute(absl::MakeSpan(y, 1), &num_retvals));
+  if (num_retvals != 1) {
+    return absl::InternalError("OnesLike: unexpected number of outputs");
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace ops

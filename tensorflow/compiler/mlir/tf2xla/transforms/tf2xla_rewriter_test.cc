@@ -139,7 +139,7 @@ class Tf2XlaRewriterTest : public ::testing::Test {
         Tf2XlaRewriter::RewriteOp(&op, pattern_rewriter,
                                   /*device_type=*/"XLA_CPU_JIT");
     if (!result.succeeded()) {
-      return tsl::errors::Internal("Failed to rewrite op");
+      return absl::InternalError("Failed to rewrite op");
     }
 
     return absl::OkStatus();
@@ -149,7 +149,7 @@ class Tf2XlaRewriterTest : public ::testing::Test {
     TF_EXPECT_OK(CreateMlirModule(module_string));
     FuncOp main = module_->lookupSymbol<mlir::func::FuncOp>("main");
     if (!main) {
-      return tsl::errors::InvalidArgument("Could not find a main function");
+      return absl::InvalidArgumentError("Could not find a main function");
     }
 
     WalkResult walk_result = main.walk([&](Operation* op) {
@@ -166,7 +166,7 @@ class Tf2XlaRewriterTest : public ::testing::Test {
     });
 
     if (walk_result.wasInterrupted()) {
-      return tsl::errors::Internal("Could not legalize all ops");
+      return absl::InternalError("Could not legalize all ops");
     }
 
     return absl::OkStatus();

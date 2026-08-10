@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
+#include "xla/future.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device_list.h"
@@ -55,14 +56,20 @@ absl::StatusOr<xla::ifrt::ArrayRef> LoadIfrtVariable(
     const tensorflow::Tensor& variable,
     const VariableDeviceShardingConfig& sharding_config,
     const xla::ifrt::LayoutRef& xla_input_layout,
-    const xla::ifrt::DeviceListRef& device_list) {
+    const xla::ifrt::DeviceListRef& device_list,
+    const LoadedVariableArrayFn& array_post_processor) {
   TF_ASSIGN_OR_RETURN(
       auto sharding,
       tensorflow::ifrt_serving::ToIfrtSharding(
           *ifrt_client, sharding_config.hlo_sharding, device_list));
-  return tensorflow::ifrt_serving::MakeArrayFromTensor(
-      *ifrt_client, variable, device_list, std::move(sharding), thread_pool,
-      xla_input_layout);
+  TF_ASSIGN_OR_RETURN(xla::ifrt::ArrayRef variable_array,
+                      tensorflow::ifrt_serving::MakeArrayFromTensor(
+                          *ifrt_client, variable, device_list,
+                          std::move(sharding), thread_pool, xla_input_layout));
+  if (array_post_processor != nullptr) {
+    TF_RETURN_IF_ERROR(array_post_processor(variable_array.get()));
+  }
+  return variable_array;
 }
 
 }  // namespace
@@ -101,16 +108,14 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
     tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
     const VariableDeviceShardingConfig& sharding_config,
     const xla::ifrt::LayoutRef& xla_input_layout,
-    std::shared_ptr<xla::Shape> shape_on_device,
-    const xla::ifrt::DeviceListRef& device_list) {
-  IfrtLoadedVariableRegistry::Key key{
-      .device_ids = sharding_config.device_ids,
-      .input_name = std::string(tensor_name),
-      .hlo_sharding = sharding_config.hlo_sharding,
-      .shape_on_device = std::move(shape_on_device),
-  };
-
-  if (loaded_variable_registry.GetLoadedVariable(key).ok()) {
+    std::shared_ptr<const xla::Shape> shape_on_device,
+    const xla::ifrt::DeviceListRef& device_list,
+    LoadedVariableArrayFn array_post_processor) {
+  if (loaded_variable_registry
+          .GetLoadedVariable(IfrtLoadedVariableRegistry::KeyView(
+              sharding_config.device_ids, tensor_name,
+              sharding_config.hlo_sharding, shape_on_device))
+          .ok()) {
     VLOG(1) << "Found alread registered variable for " << tensor_name;
     return absl::OkStatus();
   }
@@ -131,6 +136,12 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
   }
   auto [loaded_variable_promise, loaded_variable_future] =
       tsl::MakePromise<xla::ifrt::ArrayRef>();
+  IfrtLoadedVariableRegistry::Key key{
+      .device_ids = sharding_config.device_ids,
+      .input_name = std::string(tensor_name),
+      .hlo_sharding = sharding_config.hlo_sharding,
+      .shape_on_device = std::move(shape_on_device),
+  };
   absl::Status status = loaded_variable_registry.TryRegisterLoadedVariable(
       key,
       [&]() -> absl::StatusOr<
@@ -153,7 +164,8 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
        sharding_config = sharding_config,
        loaded_variable_promise = std::move(loaded_variable_promise),
        bg_context = std::move(bg_context), xla_input_layout = xla_input_layout,
-       device_list = device_list](
+       device_list = device_list,
+       array_post_processor = std::move(array_post_processor)](
           absl::StatusOr<tensorflow::Tensor> restored_tensor) mutable {
         if (!restored_tensor.ok()) {
           loaded_variable_promise.Set(restored_tensor.status());
@@ -168,12 +180,13 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
              loaded_variable_promise = std::move(loaded_variable_promise),
              bg_context = std::move(bg_context),
              xla_input_layout = std::move(xla_input_layout),
-             device_list = std::move(device_list)]() mutable {
+             device_list = std::move(device_list),
+             array_post_processor = std::move(array_post_processor)]() mutable {
               tensorflow::WithContext wc(bg_context);
               absl::StatusOr<xla::ifrt::ArrayRef> variable_array =
                   LoadIfrtVariable(ifrt_client, thread_pool, restored_tensor,
                                    sharding_config, xla_input_layout,
-                                   device_list);
+                                   device_list, array_post_processor);
               loaded_variable_promise.Set(std::move(variable_array));
             });
       });

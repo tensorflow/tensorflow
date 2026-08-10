@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -58,7 +59,6 @@ limitations under the License.
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -66,6 +66,8 @@ namespace {
 namespace m = ::xla::match;
 
 using ::testing::ElementsAre;
+using ::testing::HasSubstr;
+using ::testing::Not;
 using ::testing::UnorderedElementsAre;
 using ::tsl::proto_testing::EqualsProto;
 
@@ -1008,7 +1010,7 @@ TEST_F(HloInstructionTest, PreserveTupleShapeThroughClone) {
 }
 
 TEST_F(HloInstructionTest, PreserveShardingThroughCompatibleClone) {
-  HloSharding sharding = HloSharding::AssignDevice(5);
+  HloSharding sharding = HloSharding::SingleDevice(5);
   HloComputation::Builder builder(TestName());
   auto* constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR2<float>({
@@ -1030,7 +1032,7 @@ TEST_F(HloInstructionTest, PreserveShardingThroughCompatibleClone) {
 
 TEST_F(HloInstructionTest,
        DoNotPreserveShardingThroughTupleTreeIncompatibleClone) {
-  HloSharding sharding = HloSharding::AssignDevice(5);
+  HloSharding sharding = HloSharding::SingleDevice(5);
   HloComputation::Builder builder(TestName());
   auto* constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR2<float>({
@@ -1050,7 +1052,7 @@ TEST_F(HloInstructionTest,
 
 TEST_F(HloInstructionTest,
        DoNotPreserveShardingThroughLeafRankIncompatibleClone) {
-  HloSharding sharding = HloSharding::AssignDevice(5);
+  HloSharding sharding = HloSharding::SingleDevice(5);
   HloComputation::Builder builder(TestName());
   auto* constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR2<float>({
@@ -2076,6 +2078,92 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
 )";
   auto options = HloPrintOptions().set_syntax_sugar_async_ops(false);
   EXPECT_EQ(module->ToString(options), expected_without_syntax_sugar);
+}
+
+TEST_F(HloInstructionTest, StringifyAsyncOps_PreserveWrappedAttributes) {
+  const Shape s1 = ShapeUtil::MakeShape(F32, {10});
+  const Shape s2 = ShapeUtil::MakeShape(F32, {20});
+  const Shape s_tuple = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeTupleShape({s1}), s2, ShapeUtil::MakeShape(S32, {})});
+
+  HloComputation::Builder async_builder("AsyncOp");
+  HloInstruction* param = async_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, s1, "p0"));
+  HloInstruction* custom_call = async_builder.AddInstruction(
+      HloInstruction::CreateCustomCall(s2, {param},
+                                       /*custom_call_target=*/"foo"));
+  FrontendAttributes attrs;
+  attrs.mutable_map()->insert({"key1", "value1"});
+  custom_call->set_frontend_attributes(attrs);
+  std::unique_ptr<HloComputation> async_computation = async_builder.Build();
+
+  HloComputation::Builder entry_builder("Entry");
+  HloInstruction* entry_param = entry_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, s1, "p0"));
+  HloInstruction* async_start =
+      entry_builder.AddInstruction(HloInstruction::CreateAsyncStart(
+          s_tuple, {entry_param}, async_computation.get(),
+          /*async_execution_thread=*/"parallel_thread"));
+  HloInstruction* async_update = entry_builder.AddInstruction(
+      HloInstruction::CreateAsyncUpdate(s_tuple, async_start));
+  entry_builder.AddInstruction(
+      HloInstruction::CreateAsyncDone(s2, async_update));
+
+  std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
+  module->AddEntryComputation(entry_builder.Build());
+  module->AddEmbeddedComputation(std::move(async_computation));
+
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_syntax_sugar_async_ops(true);
+
+  EXPECT_THAT(module->ToString(),
+              HasSubstr("frontend_attributes={key1=\"value1\"}"));
+}
+
+TEST_F(HloInstructionTest, StringifyAsyncOps_DeduplicateAttributes) {
+  const Shape s1 = ShapeUtil::MakeShape(F32, {10});
+  const Shape s2 = ShapeUtil::MakeShape(F32, {20});
+  const Shape s_tuple = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeTupleShape({s1}), s2, ShapeUtil::MakeShape(S32, {})});
+
+  HloComputation::Builder async_builder("AsyncOp");
+  HloInstruction* param = async_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, s1, "p0"));
+  HloInstruction* custom_call = async_builder.AddInstruction(
+      HloInstruction::CreateCustomCall(s2, {param},
+                                       /*custom_call_target=*/"foo"));
+  FrontendAttributes attrs1;
+  attrs1.mutable_map()->insert({"key1", "value1"});
+  custom_call->set_frontend_attributes(attrs1);
+  std::unique_ptr<HloComputation> async_computation = async_builder.Build();
+
+  HloComputation::Builder entry_builder("Entry");
+  HloInstruction* entry_param = entry_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, s1, "p0"));
+  HloInstruction* async_start =
+      entry_builder.AddInstruction(HloInstruction::CreateAsyncStart(
+          s_tuple, {entry_param}, async_computation.get(),
+          /*async_execution_thread=*/"parallel_thread"));
+  FrontendAttributes attrs2;
+  attrs2.mutable_map()->insert({"key2", "value2"});
+  async_start->set_frontend_attributes(attrs2);
+  HloInstruction* async_update = entry_builder.AddInstruction(
+      HloInstruction::CreateAsyncUpdate(s_tuple, async_start));
+  entry_builder.AddInstruction(
+      HloInstruction::CreateAsyncDone(s2, async_update));
+
+  std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
+  module->AddEntryComputation(entry_builder.Build());
+  module->AddEmbeddedComputation(std::move(async_computation));
+
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_syntax_sugar_async_ops(true);
+
+  EXPECT_THAT(module->ToString(),
+              HasSubstr("frontend_attributes={key2=\"value2\"}"));
+  EXPECT_THAT(module->ToString(), Not(HasSubstr("key1=\"value1\"")));
 }
 
 TEST_F(HloInstructionTest, StringifyAsyncOpsWithReduceScatter) {
@@ -3309,6 +3397,38 @@ TEST_F(HloInstructionTest, CreateFromProtoExp) {
               ::testing::HasSubstr("Negative tolerance"));
 }
 
+TEST_F(HloInstructionTest, CreateFromProtoAsyncUpdateLateBinding) {
+  HloComputation::Builder async_builder("async_comp");
+  async_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32_, "async_p0"));
+  auto async_computation = async_builder.Build();
+
+  auto param = HloInstruction::CreateParameter(0, r0f32_, "p0");
+  auto async_start = HloInstruction::CreateAsyncStart(
+      r0f32_, {param.get()}, async_computation.get(), "parallel_thread");
+
+  auto param2 = HloInstruction::CreateParameter(1, r0f32_, "p1");
+
+  HloInstructionProto proto;
+  proto.set_opcode("async-update");
+  proto.set_name("async_update");
+  proto.mutable_shape()->set_element_type(PrimitiveType::F32);
+  proto.add_operand_ids(10);
+  proto.add_operand_ids(11);
+
+  absl::flat_hash_map<int64_t, HloInstruction*> instruction_map;
+  instruction_map[10] = async_start.get();
+  instruction_map[11] = param2.get();
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloInstruction> hlo,
+                       HloInstruction::CreateFromProto(proto, instruction_map));
+
+  EXPECT_EQ(hlo->opcode(), HloOpcode::kAsyncUpdate);
+  ASSERT_EQ(hlo->operands().size(), 2);
+  EXPECT_EQ(hlo->operand(0), async_start.get());
+  EXPECT_EQ(hlo->operand(1), param2.get());
+}
+
 TEST_F(HloInstructionTest, ExpInvalidResultAccuracy) {
   const char* const hlo_string = R"(
   HloModule exponential_hw
@@ -3449,6 +3569,49 @@ TEST_F(HloInstructionTest, FusionPermuteOperandsTest) {
               GmockMatch(m::Add(m::Subtract(m::Broadcast(m::Parameter(1)),
                                             m::Broadcast(m::Parameter(2))),
                                 m::Parameter(0))));
+}
+
+TEST_F(HloInstructionTest, SetupDerivedInstructionResultAccuracy) {
+  ResultAccuracy result_accuracy_highest;
+  result_accuracy_highest.set_mode(ResultAccuracy::HIGHEST);
+
+  HloComputation::Builder builder("Tanh");
+  HloInstruction* x =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "x"));
+  HloInstruction* tanh = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kTanh, x));
+  tanh->set_result_accuracy(result_accuracy_highest);
+
+  std::unique_ptr<HloInstruction> derived_exp =
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, x);
+  tanh->SetupDerivedInstruction(derived_exp.get());
+  EXPECT_TRUE(derived_exp->has_result_accuracy());
+  EXPECT_EQ(derived_exp->result_accuracy().mode(), ResultAccuracy::HIGHEST);
+
+  std::unique_ptr<HloInstruction> derived_convert =
+      HloInstruction::CreateConvert(r0f32_, x);
+  tanh->SetupDerivedInstruction(derived_convert.get());
+  EXPECT_FALSE(derived_convert->has_result_accuracy());
+
+  HloInstruction* plain_tanh = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kTanh, x));
+  plain_tanh->SetupDerivedInstruction(derived_exp.get());
+  EXPECT_FALSE(derived_exp->has_result_accuracy());
+
+  derived_exp->set_result_accuracy(result_accuracy_highest);
+  EXPECT_TRUE(derived_exp->has_result_accuracy());
+
+  HloInstruction* attr_tanh = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kTanh, x));
+  FrontendAttributes attributes;
+  (*attributes.mutable_map())["key"] = "val";
+  attr_tanh->set_frontend_attributes(attributes);
+  EXPECT_FALSE(attr_tanh->frontend_attributes().map().empty());
+  EXPECT_FALSE(attr_tanh->has_result_accuracy());
+
+  attr_tanh->SetupDerivedInstruction(derived_exp.get());
+  EXPECT_FALSE(derived_exp->has_result_accuracy());
+  EXPECT_EQ(derived_exp->frontend_attributes().map().at("key"), "val");
 }
 
 }  // namespace

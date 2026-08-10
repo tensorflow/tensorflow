@@ -34,16 +34,16 @@ absl::Status ValidateEinsumEquation(
   absl::InlinedVector<std::string, 2UL> inputs_and_output_subscripts =
       absl::StrSplit(equation, "->");
   if (inputs_and_output_subscripts.size() != 2) {
-    return errors::InvalidArgument(
-        "Expecting exactly one '->' in einsum equation: ", equation);
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Expecting exactly one '->' in einsum equation: ", equation));
   }
   *output_subscript = std::move(inputs_and_output_subscripts[1]);
   *input_subscripts =
       absl::StrSplit(std::move(inputs_and_output_subscripts[0]), ',');
   if (input_subscripts->size() != 1 && input_subscripts->size() != 2) {
-    return errors::InvalidArgument(
-        "Expecting 1 or 2 input subscripts in equation '", equation,
-        "' but got: ", input_subscripts->size());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expecting 1 or 2 input subscripts in equation '",
+                     equation, "' but got: ", input_subscripts->size()));
   }
   return absl::OkStatus();
 }

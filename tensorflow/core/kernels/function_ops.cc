@@ -46,16 +46,16 @@ ArgOp::ArgOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
 
 void ArgOp::Compute(OpKernelContext* ctx) {
   auto frame = ctx->call_frame();
-  OP_REQUIRES(ctx, frame != nullptr, errors::Internal("no call frame"));
+  OP_REQUIRES(ctx, frame != nullptr, absl::InternalError("no call frame"));
   const Tensor* val;
 
   auto validate_type = [this](const Tensor& val) {
     if (val.dtype() == dtype_) {
       return absl::OkStatus();
     } else {
-      return errors::InvalidArgument("Type mismatch: actual ",
-                                     DataTypeString(val.dtype()),
-                                     " vs. expect ", DataTypeString(dtype_));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Type mismatch: actual ", DataTypeString(val.dtype()),
+                       " vs. expect ", DataTypeString(dtype_)));
     }
   };
 
@@ -79,11 +79,11 @@ RetvalOp::RetvalOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
 void RetvalOp::Compute(OpKernelContext* ctx) {
   const Tensor& val = ctx->input(0);
   OP_REQUIRES(ctx, val.dtype() == dtype_,
-              errors::InvalidArgument("Type mismatch: actual ",
-                                      DataTypeString(val.dtype()),
-                                      " vs. expect ", DataTypeString(dtype_)));
+              absl::InvalidArgumentError(absl::StrCat(
+                  "Type mismatch: actual ", DataTypeString(val.dtype()),
+                  " vs. expect ", DataTypeString(dtype_))));
   auto frame = ctx->call_frame();
-  OP_REQUIRES(ctx, frame != nullptr, errors::Internal("no call frame"));
+  OP_REQUIRES(ctx, frame != nullptr, absl::InternalError("no call frame"));
   OP_REQUIRES_OK(ctx, frame->SetRetval(index_, val));
 }
 
@@ -177,14 +177,15 @@ class PassOn : public OpKernel {
  public:
   explicit PassOn(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES(ctx, ctx->num_inputs() == ctx->num_outputs(),
-                errors::Internal("#inputs != #outputs : ", ctx->num_inputs(),
-                                 " vs. ", ctx->num_outputs()));
+                absl::InternalError(
+                    absl::StrCat("#inputs != #outputs : ", ctx->num_inputs(),
+                                 " vs. ", ctx->num_outputs())));
     for (int i = 0; i < ctx->num_inputs(); ++i) {
-      OP_REQUIRES(
-          ctx, input_type(i) == output_type(i),
-          errors::Internal("Input and output types for position ", i,
-                           " do not match: ", DataTypeString(input_type(i)),
-                           " vs. ", DataTypeString(output_type(i))));
+      OP_REQUIRES(ctx, input_type(i) == output_type(i),
+                  absl::InternalError(absl::StrCat(
+                      "Input and output types for position ", i,
+                      " do not match: ", DataTypeString(input_type(i)), " vs. ",
+                      DataTypeString(output_type(i)))));
     }
   }
 
@@ -234,7 +235,7 @@ class SymbolicGradientOp : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     FunctionLibraryRuntime* lib = ctx->function_library();
     OP_REQUIRES_ASYNC(ctx, lib != nullptr,
-                      errors::Internal("No function library is provided."),
+                      absl::InternalError("No function library is provided."),
                       done);
 
     FunctionLibraryRuntime::Handle handle;
@@ -262,9 +263,9 @@ class SymbolicGradientOp : public AsyncOpKernel {
           if (!status.ok()) {
             ctx->SetStatus(status);
           } else if (rets->size() != ctx->num_outputs()) {
-            ctx->SetStatus(errors::InvalidArgument(
+            ctx->SetStatus(absl::InvalidArgumentError(absl::StrCat(
                 "SymGrad expects to return ", ctx->num_outputs(),
-                " tensor(s), but get ", rets->size(), " tensor(s) instead."));
+                " tensor(s), but get ", rets->size(), " tensor(s) instead.")));
           } else {
             for (size_t i = 0; i < rets->size(); ++i) {
               ctx->set_output(i, std::move((*rets)[i]));
@@ -296,7 +297,8 @@ RemoteCallOp::RemoteCallOp(OpKernelConstruction* ctx)
 void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   FunctionLibraryRuntime* lib = ctx->function_library();
   OP_REQUIRES_ASYNC(ctx, lib != nullptr,
-                    errors::Internal("No function library is provided."), done);
+                    absl::InternalError("No function library is provided."),
+                    done);
 
   const std::string& source_device = lib->device()->name();
   const Tensor* target;

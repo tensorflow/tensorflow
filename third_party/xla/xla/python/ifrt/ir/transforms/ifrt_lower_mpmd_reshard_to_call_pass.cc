@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
-#include <tuple>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -84,22 +83,8 @@ class IfrtLowerMpmdReshardToCallPass
       bool does_reshard = false;
       for (const auto& [idx, pair] : llvm::enumerate(
                llvm::zip(reshard_op.getInputs(), reshard_op.getOutputs()))) {
-        auto in_array_type =
-            mlir::cast<IfrtArrayType>(std::get<0>(pair).getType());
-        if (in_array_type == nullptr) {
-          reshard_op.emitOpError()
-              << "requires all inputs to be `IfrtArrayType`. Input #" << idx
-              << ": " << std::get<0>(pair).getType();
-          return mlir::WalkResult::interrupt();
-        }
-        auto out_array_type =
-            mlir::cast<IfrtArrayType>(std::get<1>(pair).getType());
-        if (out_array_type == nullptr) {
-          reshard_op.emitOpError()
-              << "requires all outputs to be `IfrtArrayType`. Output #" << idx
-              << ": " << std::get<1>(pair).getType();
-          return mlir::WalkResult::interrupt();
-        }
+        IfrtArrayType in_array_type = GetArrayType(std::get<0>(pair));
+        IfrtArrayType out_array_type = GetArrayType(std::get<1>(pair));
         if (IsReshard(in_array_type, out_array_type)) {
           does_reshard = true;
         }

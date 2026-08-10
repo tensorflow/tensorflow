@@ -26,7 +26,7 @@ limitations under the License.
 
 namespace xla::ffi {
 
-absl::Status TakeStatus(XLA_FFI_Error* error) {
+absl::Status TakeError(XLA_FFI_Error* error) {
   if (ABSL_PREDICT_TRUE(error == nullptr)) {
     return absl::OkStatus();
   }
@@ -60,6 +60,13 @@ tsl::AsyncValueRef<tsl::Chain> TakeFuture(XLA_FFI_Future* future) {
   tsl::AsyncValueRef<tsl::Chain> async_value = future->async_value;
   async_value.AndThen([future] { delete future; });
   return async_value;
+}
+
+XLA_FFI_Error* CreateError(absl::Status status) {
+  if (status.ok()) {
+    return nullptr;
+  }
+  return new XLA_FFI_Error{std::move(status)};
 }
 
 }  // namespace xla::ffi

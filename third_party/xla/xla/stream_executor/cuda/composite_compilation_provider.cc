@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -114,8 +115,7 @@ absl::StatusOr<int> CompositeCompilationProvider::GetLatestPtxIsaVersion()
     const {
   std::optional<int> latest_supported_version;
   for (const auto& provider : providers_) {
-    TF_ASSIGN_OR_RETURN(int provider_version,
-                        provider->GetLatestPtxIsaVersion());
+    ABSL_ASSIGN_OR_RETURN(int provider_version, provider->GetLatestPtxIsaVersion());
     if (!latest_supported_version.has_value()) {
       latest_supported_version = provider_version;
       continue;

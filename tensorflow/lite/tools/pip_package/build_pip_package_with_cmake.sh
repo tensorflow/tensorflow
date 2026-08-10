@@ -65,8 +65,8 @@ cp "${TENSORFLOW_LITE_DIR}/python/interpreter.py" \
    "${TENSORFLOW_LITE_DIR}/python/metrics/metrics_interface.py" \
    "${TENSORFLOW_LITE_DIR}/python/metrics/metrics_portable.py" \
    "${BUILD_DIR}/tflite_runtime"
-echo "__version__ = '${PACKAGE_VERSION}'" >> "${BUILD_DIR}/tflite_runtime/__init__.py"
-echo "__git_version__ = '$(git -C "${TENSORFLOW_DIR}" describe)'" >> "${BUILD_DIR}/tflite_runtime/__init__.py"
+${PYTHON} -c "import sys, json; print('__version__ = ' + json.dumps(sys.argv[1]))" "${PACKAGE_VERSION}" >> "${BUILD_DIR}/tflite_runtime/__init__.py"
+${PYTHON} -c "import sys, json; print('__git_version__ = ' + json.dumps(sys.argv[1]))" "$(git -C "${TENSORFLOW_DIR}" describe)" >> "${BUILD_DIR}/tflite_runtime/__init__.py"
 
 # Build host tools
 if [[ "${TENSORFLOW_TARGET}" != "native" ]]; then

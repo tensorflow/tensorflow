@@ -34,6 +34,7 @@ namespace ifrt {
 
 // For llvm::RTTI
 [[maybe_unused]] char UserContext::ID = 0;
+[[maybe_unused]] char BasicUserContext::ID = 0;
 [[maybe_unused]] char AnnotatedUserContext::ID = 0;
 [[maybe_unused]] char ChainedUserContext::ID = 0;
 [[maybe_unused]] char FusedUserContext::ID = 0;
@@ -46,6 +47,13 @@ ABSL_CONST_INIT thread_local
     absl_nullable const UserContextRef* current_context = nullptr;
 
 }  // namespace
+
+absl_nonnull UserContextRef BasicUserContext::Create(std::string msg) {
+  return tsl::MakeRef<BasicUserContext>(std::move(msg));
+}
+
+BasicUserContext::BasicUserContext(std::string msg)
+    : id_(tsl::random::ThreadLocalNew64()), msg_(std::move(msg)) {}
 
 absl_nonnull UserContextRef
 AnnotatedUserContext::Create(UserContextRef user_context, std::string msg) {

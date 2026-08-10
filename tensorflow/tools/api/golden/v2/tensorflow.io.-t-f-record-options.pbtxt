@@ -1,10 +1,10 @@
 path: "tensorflow.io.TFRecordOptions"
 tf_class {
   is_instance: "<class \'tensorflow.python.lib.io.tf_record.TFRecordOptions\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "compression_type_map"
-    mtype: "<type \'dict\'>"
+    mtype: "<class \'dict\'>"
   }
   member_method {
     name: "__init__"
@@ -13,5 +13,6 @@ tf_class {
   member_method {
     name: "get_compression_type_string"
     argspec: "args=[\'cls\', \'options\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
 }

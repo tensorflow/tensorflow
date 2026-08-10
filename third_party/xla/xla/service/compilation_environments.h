@@ -101,7 +101,7 @@ class CompilationEnvironments {
   template <typename T>
   const T& GetEnv();
   template <typename T>
-  bool HasEnv();
+  bool HasEnv() const;
 
   // Deletes the environment corresponding to T. Does nothing if no such
   // environment has been added.
@@ -172,7 +172,7 @@ const T& CompilationEnvironments::GetEnv() {
 }
 
 template <typename T>
-bool CompilationEnvironments::HasEnv() {
+bool CompilationEnvironments::HasEnv() const {
   auto descriptor = T::descriptor();
   return environments_.find(descriptor) != environments_.end();
 }

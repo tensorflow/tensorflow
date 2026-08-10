@@ -1,0 +1,48 @@
+diff --git a/include/nccl_device/gin/proxy/gin_proxy.h b/include/nccl_device/gin/proxy/gin_proxy.h
+--- a/include/nccl_device/gin/proxy/gin_proxy.h
++++ b/include/nccl_device/gin/proxy/gin_proxy.h
+@@ -55,7 +55,7 @@ NCCL_DEVICE_INLINE void postGfd(Coop coop, ncclGinProxyGpuCtx_t* proxyCtx, ncclG
+-// 4x16 byte store with the write-through cache hint
++// 16x4 byte store with the write-through cache hint
+ #pragma unroll
+-    for (uint8_t i = 0; i < 4; i++) {
+-      __stwt((uint4*)&q[idx] + i, ((uint4*)gfd)[i]);
++    for (uint8_t i = 0; i < 16; i++) {
++      __stwt((__half2*)&q[idx] + i, ((__half2*)gfd)[i]);
+     }
+   }
+ }
+diff --git a/include/nccl_device/utility.h b/include/nccl_device/utility.h
+--- a/include/nccl_device/utility.h
++++ b/include/nccl_device/utility.h
+@@ -17,7 +17,7 @@
+             #define NCCL_CHECK_CUDACC 0
+         #endif
+     #else
+-        #if __CUDACC__
++        #ifdef __CUDACC__
+             #define NCCL_CHECK_CUDACC 1
+         #else
+             #define NCCL_CHECK_CUDACC 0
+        #endif
+diff --git a/include/nccl_device/gin/gdaki/doca_gpunetio/common/doca_gpunetio_verbs_def.h b/include/nccl_device/gin/gdaki/doca_gpunetio/common/doca_gpunetio_verbs_def.h
+--- a/include/nccl_device/gin/gdaki/doca_gpunetio/common/doca_gpunetio_verbs_def.h
++++ b/include/nccl_device/gin/gdaki/doca_gpunetio/common/doca_gpunetio_verbs_def.h
+@@ -49,7 +49,7 @@ extern "C" {
+ /**
+  * Macro to temporarily cast a variable to volatile.
+  */
+-#define DOCA_GPUNETIO_VOLATILE(x) (*(volatile typeof(x) *)&(x))
++#define DOCA_GPUNETIO_VOLATILE(x) (*(volatile __typeof__(x) *)&(x))
+ 
+ /**
+  * Default warp size value of 32 threads
+@@ -123,7 +123,7 @@ extern "C" {
+     (1ULL << DOCA_GPUNETIO_VERBS_MAX_TRANSFER_SIZE_SHIFT)  // 1GiB
+ 
+ #ifndef ACCESS_ONCE
+-#define ACCESS_ONCE(x) (*(volatile typeof(x) *)&(x))
++#define ACCESS_ONCE(x) (*(volatile __typeof__(x) *)&(x))
+ #endif
+ 
+ #ifndef READ_ONCE

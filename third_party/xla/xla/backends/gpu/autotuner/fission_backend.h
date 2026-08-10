@@ -52,11 +52,10 @@ inline autotuner::Backend GetFissionBackend(autotuner::Backend backend) {
 // A proxy backend that wraps an actual codegen backend. The `rewriter_pipeline`
 // is used to transform unfused instructions to retarget them for the underlying
 // codegen backend.
-// For the get/apply config operations, the proxy backend only operates on the
-// *first* supported instruction by the underlying backend, found in the unfused
-// and transmormed HLO.
-// The assumption is that there is only one operation of interest in the fusion
-// (e.g., a 'dot' in a gemm fusion).
+// If multiple supported instructions are found, the first one is profiled, then
+// we use its config for the rest of the supported instructions, provided they
+// are identical. E.g. three 'dots' resulting from "_X3" or "_X6" algorithms are
+// identical.
 class FissionBackend : public GpuCodegenBackend {
  public:
   FissionBackend(const DebugOptions* debug_options, Compiler* compiler,
@@ -87,12 +86,16 @@ class FissionBackend : public GpuCodegenBackend {
                            const BackendConfig& config) override;
 
   bool IsSupported(const HloInstruction& instr) override;
+  std::string version() const override { return codegen_backend_->version(); }
 
  private:
   absl::StatusOr<std::unique_ptr<HloModule>> GetFissionedAndRewrittenModule(
       const HloInstruction& fusion_instr);
-  absl::StatusOr<HloInstruction*> FindFirstSupportedInstruction(
+  absl::StatusOr<std::vector<HloInstruction*>> FindSupportedInstructions(
       const HloModule* module);
+  // Runs priority fusion to fuse prologues and epilogue after the fissioned
+  // module has been generated.
+  absl::Status RunPriorityFusion(HloModule* module);
 
   std::unique_ptr<HloPassPipeline> rewriter_pipeline_;
   std::unique_ptr<GpuCodegenBackend> codegen_backend_;

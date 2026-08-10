@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -27,16 +26,18 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/layout.h"
-#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
+#include "xla/runtime/device_id.h"
+#include "xla/shape.h"
 
 namespace xla {
+
+class Shape;
 
 class CpuTopologyDescription : public PjRtTopologyDescription {
  public:
@@ -92,7 +93,7 @@ class CpuTopologyDescription : public PjRtTopologyDescription {
     return 1;
   }
 
-  absl::StatusOr<std::string> Serialize() const override;
+  absl::StatusOr<uint64_t> Fingerprint() const override;
 
   absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
   ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
@@ -104,9 +105,19 @@ class CpuTopologyDescription : public PjRtTopologyDescription {
     return attributes_;
   }
 
+  absl::StatusOr<int> GetMemorySpaceKindForShape(const Shape& shape) const;
+
+  absl::StatusOr<absl::string_view> KindIdToKind(int kind) const;
+
+  absl::Span<const int> GetMemorySpaceKindIds() const override;
+
   absl::StatusOr<Layout> GetDefaultLayout(
       PrimitiveType element_type,
       absl::Span<const int64_t> dims) const override;
+
+  absl::StatusOr<xla::Shape> MakeCanonicalShapeForMemorySpace(
+      int memory_space_kind_id, xla::Shape shape,
+      const xla::Layout* layout) const override;
 
   absl::StatusOr<xla::PjRtTopologyDescriptionProto> ToProto() const override;
 
@@ -120,6 +131,9 @@ class CpuTopologyDescription : public PjRtTopologyDescription {
   const CpuTopology cpu_topology_;
   absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
 };
+
+absl::StatusOr<xla::Shape> MakeDefaultCpuBufferShape(xla::Shape shape,
+                                                     const xla::Layout* layout);
 
 PjRtPlatformId CpuPlatformId();
 absl::string_view CpuPlatformName();

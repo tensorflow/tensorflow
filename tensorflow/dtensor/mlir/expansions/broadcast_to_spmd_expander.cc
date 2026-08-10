@@ -48,7 +48,7 @@ StatusOr<mlir::Operation*> BroadcastToSPMDExpander::ExpandOp(
       const Layout shape_layout,
       ExtractRequiredLayoutFromOperand(broadcast_op.getShape()));
   if (!shape_layout.IsFullyReplicated()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Error during BroadcastOp SPMD Expansion. Shape input of broadcast op "
         "must be fully replicated.");
   }
@@ -153,7 +153,8 @@ BroadcastToSPMDExpander::ComputeLayoutForward(
   const int broadcasted_dimensions = output_shape_rank - input_shape_rank;
 
   if (broadcasted_dimensions < 0)
-    return errors::FailedPrecondition("Broadcasted dimension was less than 0.");
+    return absl::FailedPreconditionError(
+        "Broadcasted dimension was less than 0.");
 
   Layout input_layout = input_layouts.lookup(0);
 

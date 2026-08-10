@@ -1,4 +1,4 @@
-/* Copyright 2024 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,18 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include <cstdint>
 #include <memory>
-#include <numeric>
 #include <vector>
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -54,7 +53,7 @@ TEST_F(HloHardwareIndependentTestBase, SlowReduceWindow) {
       Literal actual_literal,
       evaluator.Evaluate(*hlo_module->entry_computation(), {&input}));
   std::vector<int32_t> expected(4096);
-  std::iota(expected.begin(), expected.end(), 1);
+  absl::c_iota(expected, 1);
   EXPECT_THAT(actual_literal.data<int32_t>(),
               ::testing::ElementsAreArray(expected));
 }

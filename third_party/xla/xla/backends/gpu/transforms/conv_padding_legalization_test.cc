@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/conv_padding_legalization.h"
 
+#include <memory>
+
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -153,6 +155,30 @@ ENTRY %convolution (input f32[1,3,5,5]{3,2,1,0}, kernel f32[3,3,3,3]{3,2,1,0}) -
               GmockMatch(m::CustomCall({kCudnnConvForwardCallTarget},
                                        m::Pad(m::Parameter(0), m::Op()),
                                        m::Pad(m::Parameter(1), m::Op()))));
+  for (int i = 0; i < 2; ++i) {
+    const WindowDimension& dim = root->window().dimensions(i);
+    EXPECT_EQ(1, dim.window_dilation());
+  }
+}
+
+TEST_F(ConvPaddingLegalizationTest,
+       ForwardHloConvolveWithWindowDilationAndBaseDilation) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+  HloModule convolution_module
+  ENTRY %convolution (input f32[1,3,5,5]{3,2,1,0}, kernel f32[3,3,3,3]{3,2,1,0}) -> f32[1,3,9,9]{3,2,1,0} {
+    %input = f32[1,3,5,5]{3,2,1,0} parameter(0)
+    %kernel = f32[3,3,3,3]{3,2,1,0} parameter(1)
+    ROOT %conv = f32[1,3,9,9]{3,2,1,0} convolution(%input, %kernel), window={size=3x3 pad=2_2x2_2 rhs_dilate=2x2 lhs_dilate=2x2}, dim_labels=bf01_01io->bf01, convolution_kind=fprop
+  }
+                                                 )"));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ConvPaddingLegalization().Run(module.get()));
+  ASSERT_TRUE(changed);
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              GmockMatch(m::Convolution(m::Pad(m::Parameter(0), m::Op()),
+                                        m::Pad(m::Parameter(1), m::Op()))));
   for (int i = 0; i < 2; ++i) {
     const WindowDimension& dim = root->window().dimensions(i);
     EXPECT_EQ(1, dim.window_dilation());

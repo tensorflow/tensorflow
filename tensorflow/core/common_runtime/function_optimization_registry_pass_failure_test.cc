@@ -37,7 +37,7 @@ class FailingFunctionPass : public FunctionOptimizationPass {
                    std::vector<std::string>* control_ret_node_names,
                    bool* control_rets_updated) override {
     ran_ = true;
-    return errors::Unknown("");
+    return absl::UnknownError("");
   }
 };
 

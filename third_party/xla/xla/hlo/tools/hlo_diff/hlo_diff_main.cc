@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/debug_options_flags.h"
@@ -109,9 +110,9 @@ absl::Status CheckGroupFlags(const Options::HloPath& hlo_path) {
 // Builds a HloModule from the HloModuleProto.
 absl::StatusOr<std::unique_ptr<HloModule>> BuildHloModule(
     const HloModuleProto& hlo_module_proto) {
-  TF_ASSIGN_OR_RETURN(HloModuleConfig config,
-                      HloModule::CreateModuleConfigFromProto(
-                          hlo_module_proto, xla::GetDebugOptionsFromFlags()));
+  ABSL_ASSIGN_OR_RETURN(HloModuleConfig config,
+                   HloModule::CreateModuleConfigFromProto(
+                       hlo_module_proto, xla::GetDebugOptionsFromFlags()));
   return HloModule::CreateFromProto(hlo_module_proto, config);
 }
 
@@ -162,12 +163,11 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadHLOModule(
 // Runs Gumgraph algorithm based diff and renders the diff results.
 absl::Status RunGumgraphDiff(HloModule& first_module, HloModule& second_module,
                              const Options& opts) {
-  TF_RETURN_IF_ERROR(first_module.RemoveUnusedComputations());
-  TF_RETURN_IF_ERROR(second_module.RemoveUnusedComputations());
+  ABSL_RETURN_IF_ERROR(first_module.RemoveUnusedComputations());
+  ABSL_RETURN_IF_ERROR(second_module.RemoveUnusedComputations());
 
-  TF_ASSIGN_OR_RETURN(
-      auto hlo_gumgraph_diff,
-      ComputeDiff(first_module, second_module, opts.diff_options));
+  ABSL_ASSIGN_OR_RETURN(auto hlo_gumgraph_diff,
+                   ComputeDiff(first_module, second_module, opts.diff_options));
   std::cout << "Diffing finished" << '\n';
 
   const DiffResult& diff = *hlo_gumgraph_diff.diff_result;
@@ -181,7 +181,7 @@ absl::Status RunGumgraphDiff(HloModule& first_module, HloModule& second_module,
   if (!text_output.empty()) {
     std::ostringstream text;
     RenderText(diff, text);
-    TF_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         tsl::WriteStringToFile(tsl::Env::Default(), text_output, text.str()));
   }
 
@@ -189,7 +189,7 @@ absl::Status RunGumgraphDiff(HloModule& first_module, HloModule& second_module,
   if (!html_output.empty()) {
     std::ostringstream html;
     RenderHtml(diff, diff_summary, html);
-    TF_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         tsl::WriteStringToFile(tsl::Env::Default(), html_output, html.str()));
 
     std::cout << "The diff summary is saved to: " << html_output << '\n';

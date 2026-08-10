@@ -83,8 +83,8 @@ class NonSerializableDatasetOp : public UnaryDatasetOpKernel {
     absl::Status AsGraphDefInternal(SerializationContext* ctx,
                                     DatasetGraphDefBuilder* b,
                                     Node** output) const override {
-      return errors::Unimplemented(DebugString(),
-                                   " does not support serialization.");
+      return absl::UnimplementedError(
+          absl::StrCat(DebugString(), " does not support serialization."));
     }
 
     int64_t CardinalityInternal(CardinalityOptions options) const override {

@@ -25,7 +25,7 @@ const NnApi* NnApiImplementation() {
 
 std::unique_ptr<const NnApi> CreateNnApiFromSupportLibrary(
     const NnApiSLDriverImplFL5* /*nnapi_support_library_driver*/) {
-  std::unique_ptr<NnApi> nnapi(new NnApi);
+  std::unique_ptr<NnApi> nnapi = std::make_unique<NnApi>();
   *nnapi = *NnApiImplementation();
   return nnapi;
 }

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array2d.h"
@@ -602,6 +603,8 @@ TEST_F(HloCreationUtilsTest, NewModuleWithFusion) {
   EXPECT_EQ(to_apply->name(), "apply_op");
   EXPECT_EQ(to_apply->num_parameters(), 2);
   EXPECT_EQ(to_apply->root_instruction()->opcode(), HloOpcode::kAdd);
+  EXPECT_EQ(fusion_module->entry_computation()->root_instruction()->name(),
+            absl::StrCat(all_reduce_start->name(), "-", "fusion"));
 }
 }  // namespace
 }  // namespace xla

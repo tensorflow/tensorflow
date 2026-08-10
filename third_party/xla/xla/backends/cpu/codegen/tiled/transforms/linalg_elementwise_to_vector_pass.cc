@@ -15,8 +15,6 @@ limitations under the License.
 
 #include <cassert>
 #include <cstdint>
-#include <memory>
-#include <optional>
 #include <utility>
 
 #include "absl/algorithm/container.h"
@@ -195,9 +193,4 @@ struct LinalgElementwiseToVectorPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateLinalgElementwiseToVectorPass() {
-  return std::make_unique<LinalgElementwiseToVectorPass>();
-}
-
 }  // namespace xla::cpu

@@ -30,17 +30,19 @@ limitations under the License.
 #include "absl/strings/cord.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/user_context.h"
+#include "xla/python/ifrt/value.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
@@ -52,8 +54,7 @@ namespace ifrt {
 // and thus is not specific to any particular backend. However, it is currently
 // located in the pjrt_ifrt directory because we expect the main use of this
 // class is to implement IO Callable support in pjrt_ifrt.
-class BasicStringArray final
-    : public llvm::RTTIExtends<BasicStringArray, Array> {
+class BasicStringArray final : public RTTIExtends<BasicStringArray, Array> {
  public:
   // Must be in dense major to minor order.
   using Buffer = absl::Span<const absl::Cord>;
@@ -86,24 +87,23 @@ class BasicStringArray final
     return client_;
   }
 
-  DType dtype() const override {
-    DCHECK(this);
-    return DType(DType::kString);
-  }
+  const ArraySpec& array_spec() const override { return array_spec_; }
+
+  DType dtype() const override { return array_spec_.dtype; }
 
   const Shape& shape() const override {
     DCHECK(this);
-    return shape_;
+    return array_spec_.shape;
   }
 
   const Sharding& sharding() const override {
     DCHECK(this);
-    return *sharding_;
+    return *array_spec_.sharding;
   }
 
   ShardingRef shared_ptr_sharding() const override {
     DCHECK(this);
-    return sharding_;
+    return array_spec_.sharding;
   }
 
   absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> pjrt_layout()
@@ -111,6 +111,8 @@ class BasicStringArray final
   LayoutRef layout() const override;
 
   UserContextRef user_context() const override { return user_context_; }
+
+  absl::StatusOr<std::optional<int64_t>> ByteSize() const override;
 
   absl::StatusOr<std::vector<ArrayRef>> DisassembleIntoSingleDeviceArrays(
       ArrayCopySemantics array_copy_semantics,
@@ -155,8 +157,7 @@ class BasicStringArray final
   void DeleteInternal() ABSL_LOCKS_EXCLUDED(mu_);
 
   Client* client_;
-  Shape shape_;
-  ShardingRef sharding_;
+  ArraySpec array_spec_;
   const UserContextRef user_context_;
   tsl::Future<Buffers> buffers_;
   tsl::Future<> ready_future_;

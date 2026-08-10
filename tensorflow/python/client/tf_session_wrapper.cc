@@ -1178,7 +1178,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
   m.def(
       "TF_GraphToFunction_wrapper",
       [](PyGraph* fn_body, const char* fn_name, bool append_hash_to_fn_name,
-         absl::optional<std::vector<TF_Operation*>> opers_opt,
+         std::optional<std::vector<TF_Operation*>> opers_opt,
          const std::vector<TF_Output>& inputs,
          const std::vector<TF_Output>& outputs,
          const std::vector<py::bytes> output_names,
@@ -1211,7 +1211,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
 
   m.def("TF_GraphSetOutputHandleShapesAndTypes_wrapper",
         [](PyGraph* graph, TF_Output output,
-           const std::vector<absl::optional<std::vector<int64_t>>>& shapes,
+           const std::vector<std::optional<std::vector<int64_t>>>& shapes,
            const std::vector<int>& ranks, py::handle& types) {
           tensorflow::Safe_TF_StatusPtr status =
               tensorflow::make_safe(TF_NewStatus());
@@ -1620,6 +1620,10 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
   // file.
   m.def("TF_NewBuffer", TF_NewBuffer, py::return_value_policy::reference);
   m.def("TF_GetBuffer", [](TF_Buffer* buf) {
+    if (buf == nullptr) {
+      PyErr_SetString(PyExc_ValueError, "TF_Buffer is null.");
+      throw py::error_already_set();
+    }
     TF_Buffer buffer = TF_GetBuffer(buf);
     return tensorflow::PyoOrThrow(PyBytes_FromStringAndSize(
         reinterpret_cast<const char*>(buffer.data), buffer.length));

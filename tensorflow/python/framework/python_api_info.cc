@@ -186,8 +186,9 @@ absl::Status PythonAPIInfo::CheckParamNames() const {
       continue;
     }
     if (!param_found[i]) {
-      return errors::InvalidArgument(
-          api_name_, ": missing specification for parameter ", param_names_[i]);
+      return absl::InvalidArgumentError(
+          absl::StrCat(api_name_, ": missing specification for parameter ",
+                       param_names_[i]));
     }
   }
   return absl::OkStatus();
@@ -231,8 +232,8 @@ absl::Status PythonAPIInfo::InitializeAttribute(
     const OpDef::AttrDef& attr_def,
     const std::map<std::string, int>& param_name_to_index) {
   if (attr_def.name() == "name") {
-    return errors::InvalidArgument(
-        api_name_, ": Reserved parameter `name` was used as an attribute.");
+    return absl::InvalidArgumentError(absl::StrCat(
+        api_name_, ": Reserved parameter `name` was used as an attribute."));
   }
   const char* name = InternPyString(attr_def.name());
 
@@ -243,9 +244,9 @@ absl::Status PythonAPIInfo::InitializeAttribute(
   attributes_.push_back({param_index, dtype, name, inferred_index});
   Attribute& attr = attributes_.back();
   if (attr.type == AttributeType::UNKNOWN) {
-    return errors::InvalidArgument(api_name_, ": Bad attribute type for ",
-                                   attr_def.name(), ": '", attr_def.type(),
-                                   "'");
+    return absl::InvalidArgumentError(
+        absl::StrCat(api_name_, ": Bad attribute type for ", attr_def.name(),
+                     ": '", attr_def.type(), "'"));
   }
   std::vector<DataType>* ok_dtypes = nullptr;
 
@@ -286,8 +287,9 @@ absl::Status PythonAPIInfo::InitializeAttribute(
         : attr.type == AttributeType::INT        ? &inferred_length_attrs_
                                                  : nullptr;
     if (inferred_attr_names == nullptr) {
-      return errors::InvalidArgument(
-          api_name_, ": Missing specification for parameter ", attr_def.name());
+      return absl::InvalidArgumentError(
+          absl::StrCat(api_name_, ": Missing specification for parameter ",
+                       attr_def.name()));
     } else {
       attr.inferred_index = inferred_attr_names->size();
       inferred_attr_names->push_back(attr.name);
@@ -301,22 +303,23 @@ absl::Status PythonAPIInfo::InitializeInput(
     const OpDef::ArgDef& arg_def,
     const std::map<std::string, ParamIndex>& param_name_to_index) {
   if (arg_def.name() == "name") {
-    return errors::InvalidArgument(
-        api_name_, ": Reserved parameter `name` was used as a tensor input.");
+    return absl::InvalidArgumentError(absl::StrCat(
+        api_name_, ": Reserved parameter `name` was used as a tensor input."));
   }
   const ParamIndex param_index =
       gtl::FindWithDefault(param_name_to_index, arg_def.name(), -1);
   if (param_index == -1) {
-    return errors::InvalidArgument(
-        api_name_, ": Missing specification for parameter ", arg_def.name());
+    return absl::InvalidArgumentError(absl::StrCat(
+        api_name_, ": Missing specification for parameter ", arg_def.name()));
   }
   if (arg_def.is_ref()) {
     // TODO(b/164980194): Support reference parameters.
     //   - Pass as_ref to convert_to_tensor
     //   - Check that values for ref inputs have ref types.
-    return errors::InvalidArgument(api_name_,
-                                   ": PythonAPIInfo doesn't support reference "
-                                   "parameters yet.");
+    return absl::InvalidArgumentError(
+        absl::StrCat(api_name_,
+                     ": PythonAPIInfo doesn't support reference "
+                     "parameters yet."));
   }
   bool is_list =
       !arg_def.number_attr().empty() || !arg_def.type_list_attr().empty();
@@ -327,18 +330,18 @@ absl::Status PythonAPIInfo::InitializeInput(
     InputsWithTypeListAttr* input =
         FindInputsWithTypeListAttr(arg_def.type_list_attr());
     if (!input) {
-      return errors::InvalidArgument(
-          api_name_, ": Type attribute ", arg_def.type_list_attr(),
-          " for parameter ", arg_def.name(), " not found.");
+      return absl::InvalidArgumentError(
+          absl::StrCat(api_name_, ": Type attribute ", arg_def.type_list_attr(),
+                       " for parameter ", arg_def.name(), " not found."));
     }
     input->tensor_list_params.push_back(param_index);
   } else if (!arg_def.type_attr().empty()) {
     InputsWithTypeAttr* input = FindInputsWithTypeAttr(arg_def.type_attr());
     // input or list(input) with dtype specified by a `type` attribute.
     if (!input) {
-      return errors::InvalidArgument(api_name_, ": Type attribute ",
-                                     arg_def.type_attr(), " for parameter ",
-                                     arg_def.name(), " not found.");
+      return absl::InvalidArgumentError(
+          absl::StrCat(api_name_, ": Type attribute ", arg_def.type_attr(),
+                       " for parameter ", arg_def.name(), " not found."));
     }
     if (arg_def.number_attr().empty()) {
       input->tensor_params.push_back(param_index);
@@ -354,9 +357,9 @@ absl::Status PythonAPIInfo::InitializeInput(
     InputsWithNumberAttr* input =
         FindInputsWithNumberAttr(arg_def.number_attr());
     if (!input) {
-      return errors::InvalidArgument(api_name_, ": Length attribute ",
-                                     arg_def.number_attr(), " for parameter ",
-                                     arg_def.name(), " not found.");
+      return absl::InvalidArgumentError(
+          absl::StrCat(api_name_, ": Length attribute ", arg_def.number_attr(),
+                       " for parameter ", arg_def.name(), " not found."));
     }
     input->tensor_list_params.push_back(param_index);
   }

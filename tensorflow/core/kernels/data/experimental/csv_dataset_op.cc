@@ -38,9 +38,9 @@ class CSVDatasetOp : public DatasetOpKernel {
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
     const Tensor* filenames_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("filenames", &filenames_tensor));
-    OP_REQUIRES(
-        ctx, filenames_tensor->dims() <= 1,
-        errors::InvalidArgument("`filenames` must be a scalar or a vector."));
+    OP_REQUIRES(ctx, filenames_tensor->dims() <= 1,
+                absl::InvalidArgumentError(
+                    "`filenames` must be a scalar or a vector."));
 
     tstring compression_type;
     OP_REQUIRES_OK(ctx, ParseScalarArgument<tstring>(ctx, "compression_type",
@@ -51,25 +51,26 @@ class CSVDatasetOp : public DatasetOpKernel {
                    ctx->input_list("record_defaults", &record_defaults_list));
     for (int i = 0; i < record_defaults_list.size(); ++i) {
       OP_REQUIRES(ctx, record_defaults_list[i].dims() <= 1,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "Each record default should be at most rank 1"));
       OP_REQUIRES(ctx, record_defaults_list[i].NumElements() < 2,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "There should only be 1 default per field but field ", i,
-                      " has ", record_defaults_list[i].NumElements()));
+                      " has ", record_defaults_list[i].NumElements())));
     }
 
     const Tensor* select_cols_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("select_cols", &select_cols_tensor));
     OP_REQUIRES(ctx, select_cols_tensor->dims() == 1,
-                errors::InvalidArgument("`select_cols` must be a vector."));
+                absl::InvalidArgumentError("`select_cols` must be a vector."));
 
     std::vector<int64_t> exclude_cols;
     if (op_version_ > 1) {
       const Tensor* exclude_cols_tensor;
       OP_REQUIRES_OK(ctx, ctx->input("exclude_cols", &exclude_cols_tensor));
-      OP_REQUIRES(ctx, exclude_cols_tensor->dims() == 1,
-                  errors::InvalidArgument("`exclude_cols` must be a vector"));
+      OP_REQUIRES(
+          ctx, exclude_cols_tensor->dims() == 1,
+          absl::InvalidArgumentError("`exclude_cols` must be a vector"));
       exclude_cols.reserve(exclude_cols_tensor->NumElements());
       for (int i = 0; i < exclude_cols_tensor->NumElements(); ++i) {
         exclude_cols.push_back(exclude_cols_tensor->flat<int64_t>()(i));
@@ -80,13 +81,14 @@ class CSVDatasetOp : public DatasetOpKernel {
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument<int64_t>(ctx, "buffer_size", &buffer_size));
     OP_REQUIRES(ctx, buffer_size > 0,
-                errors::InvalidArgument("buffer_size should be positive"));
+                absl::InvalidArgumentError("buffer_size should be positive"));
 
     tstring delim;
     OP_REQUIRES_OK(ctx,
                    ParseScalarArgument<tstring>(ctx, "field_delim", &delim));
-    OP_REQUIRES(ctx, delim.size() == 1,
-                errors::InvalidArgument("field_delim should be only 1 char"));
+    OP_REQUIRES(
+        ctx, delim.size() == 1,
+        absl::InvalidArgumentError("field_delim should be only 1 char"));
 
     bool header;
     OP_REQUIRES_OK(ctx, ParseScalarArgument<bool>(ctx, "header", &header));
@@ -117,9 +119,10 @@ class CSVDatasetOp : public DatasetOpKernel {
     } else if (compression_type == "GZIP") {
       zlib_compression_options = io::ZlibCompressionOptions::GZIP();
     } else {
-      OP_REQUIRES(ctx, compression_type.empty(),
-                  errors::InvalidArgument(
-                      "Unsupported compression_type: ", compression_type, "."));
+      OP_REQUIRES(
+          ctx, compression_type.empty(),
+          absl::InvalidArgumentError(absl::StrCat(
+              "Unsupported compression_type: ", compression_type, ".")));
     }
     zlib_compression_options.input_buffer_size = buffer_size;
 
@@ -130,27 +133,27 @@ class CSVDatasetOp : public DatasetOpKernel {
     }
     OP_REQUIRES(
         ctx, output_types_.size() == select_cols.size() || select_cols.empty(),
-        errors::InvalidArgument("select_cols should match output size"));
+        absl::InvalidArgumentError("select_cols should match output size"));
     for (int i = 1; i < select_cols.size(); i++) {
       OP_REQUIRES(ctx, select_cols[i - 1] < select_cols[i],
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "select_cols should be strictly increasing indices"));
     }
-    OP_REQUIRES(
-        ctx, select_cols.empty() || select_cols.front() >= 0,
-        errors::InvalidArgument("select_cols should be non-negative indices"));
+    OP_REQUIRES(ctx, select_cols.empty() || select_cols.front() >= 0,
+                absl::InvalidArgumentError(
+                    "select_cols should be non-negative indices"));
 
     OP_REQUIRES(ctx, select_cols.empty() || exclude_cols.empty(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Either select_cols or exclude_cols should be empty"));
     for (int i = 1; i < exclude_cols.size(); i++) {
       OP_REQUIRES(ctx, exclude_cols[i - 1] < exclude_cols[i],
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "exclude_cols should be strictly increasing indices"));
     }
-    OP_REQUIRES(
-        ctx, exclude_cols.empty() || exclude_cols.front() >= 0,
-        errors::InvalidArgument("exclude_cols should be non-negative indices"));
+    OP_REQUIRES(ctx, exclude_cols.empty() || exclude_cols.front() >= 0,
+                absl::InvalidArgumentError(
+                    "exclude_cols should be non-negative indices"));
 
     *output = new Dataset(ctx, std::move(filenames), header,
                           std::move(compression_type), zlib_compression_options,
@@ -297,9 +300,9 @@ class CSVDatasetOp : public DatasetOpKernel {
             if (s.ok()) {
               // Validate output
               if (out_tensors->size() != dataset()->out_type_.size()) {
-                return errors::InvalidArgument(
+                return absl::InvalidArgumentError(absl::StrCat(
                     "Expect ", dataset()->out_type_.size(), " fields but have ",
-                    out_tensors->size(), " in record");
+                    out_tensors->size(), " in record"));
               }
 
               *end_of_sequence = false;
@@ -518,7 +521,7 @@ class CSVDatasetOp : public DatasetOpKernel {
             absl::Status s =
                 SaveAndFillBuffer(&earlier_pieces, &start, include);
             if (absl::IsOutOfRange(s)) {
-              return errors::InvalidArgument(
+              return absl::InvalidArgumentError(
                   "Reached end of file without closing quoted field in "
                   "record");
             } else if (!s.ok()) {
@@ -565,7 +568,7 @@ class CSVDatasetOp : public DatasetOpKernel {
               // Take note of the error, but keep going to end of field.
               include = false;  // So we don't get funky errors when trying to
                                 // unescape the quotes.
-              parse_result.Update(errors::InvalidArgument(
+              parse_result.Update(absl::InvalidArgumentError(
                   "Quote inside a string has to be escaped by another quote"));
             }
 
@@ -690,7 +693,7 @@ class CSVDatasetOp : public DatasetOpKernel {
           }
           if (dataset()->use_quote_delim_ && ch == '"') {
             // Take note of the error, but keep going to end of field.
-            parse_result.Update(errors::InvalidArgument(
+            parse_result.Update(absl::InvalidArgumentError(
                 "Unquoted fields cannot have quotes inside"));
           }
           // Otherwise, go to next character
@@ -719,8 +722,9 @@ class CSVDatasetOp : public DatasetOpKernel {
         if (output_idx >= dataset()->out_type_.size()) {
           // We can get here if we're selecting all columns, but the number of
           // fields exceeds the number of defaults provided
-          return errors::InvalidArgument("Expect ", dataset()->out_type_.size(),
-                                         " fields but have more in record");
+          return absl::InvalidArgumentError(
+              absl::StrCat("Expect ", dataset()->out_type_.size(),
+                           " fields but have more in record"));
         }
         const DataType& dtype = dataset()->out_type_[output_idx];
         out_tensors->emplace_back(ctx->allocator({}), dtype, TensorShape({}));
@@ -729,8 +733,8 @@ class CSVDatasetOp : public DatasetOpKernel {
             dataset()->record_defaults_[output_idx].NumElements() != 1) {
           // If the field is empty or NA value, and default is not given,
           // report error.
-          return errors::InvalidArgument("Field ", output_idx,
-                                         " is required but missing in record!");
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Field ", output_idx, " is required but missing in record!"));
         }
 
         switch (dtype) {
@@ -743,9 +747,9 @@ class CSVDatasetOp : public DatasetOpKernel {
             } else {
               int32_t value;
               if (!absl::SimpleAtoi(field, &value)) {
-                return errors::InvalidArgument(
-                    "Field ", output_idx,
-                    " in record is not a valid int32: ", field);
+                return absl::InvalidArgumentError(
+                    absl::StrCat("Field ", output_idx,
+                                 " in record is not a valid int32: ", field));
               }
               component.scalar<int32_t>()() = value;
             }
@@ -758,9 +762,9 @@ class CSVDatasetOp : public DatasetOpKernel {
             } else {
               int64_t value;
               if (!absl::SimpleAtoi(field, &value)) {
-                return errors::InvalidArgument(
-                    "Field ", output_idx,
-                    " in record is not a valid int64: ", field);
+                return absl::InvalidArgumentError(
+                    absl::StrCat("Field ", output_idx,
+                                 " in record is not a valid int64: ", field));
               }
               component.scalar<int64_t>()() = value;
             }
@@ -773,9 +777,9 @@ class CSVDatasetOp : public DatasetOpKernel {
             } else {
               float value;
               if (!absl::SimpleAtof(field, &value)) {
-                return errors::InvalidArgument(
-                    "Field ", output_idx,
-                    " in record is not a valid float: ", field);
+                return absl::InvalidArgumentError(
+                    absl::StrCat("Field ", output_idx,
+                                 " in record is not a valid float: ", field));
               }
               component.scalar<float>()() = value;
             }
@@ -788,9 +792,9 @@ class CSVDatasetOp : public DatasetOpKernel {
             } else {
               double value;
               if (!absl::SimpleAtod(field, &value)) {
-                return errors::InvalidArgument(
-                    "Field ", output_idx,
-                    " in record is not a valid double: ", field);
+                return absl::InvalidArgumentError(
+                    absl::StrCat("Field ", output_idx,
+                                 " in record is not a valid double: ", field));
               }
               component.scalar<double>()() = value;
             }
@@ -806,9 +810,9 @@ class CSVDatasetOp : public DatasetOpKernel {
             break;
           }
           default:
-            return errors::InvalidArgument("csv: data type ", dtype,
-                                           " not supported in field ",
-                                           output_idx);
+            return absl::InvalidArgumentError(
+                absl::StrCat("csv: data type ", dtype,
+                             " not supported in field ", output_idx));
         }
         return absl::OkStatus();
       }
@@ -862,9 +866,9 @@ class CSVDatasetOp : public DatasetOpKernel {
       absl::Status SetupStreamsLocked(Env* env)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         if (current_file_index_ >= dataset()->filenames_.size()) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "current_file_index_:", current_file_index_,
-              " >= filenames_.size():", dataset()->filenames_.size());
+              " >= filenames_.size():", dataset()->filenames_.size()));
         }
 
         // Actually move on to next file.
@@ -893,7 +897,7 @@ class CSVDatasetOp : public DatasetOpKernel {
           std::vector<int64_t> empty;
           absl::Status s = ReadRecord(nullptr, nullptr, false, empty, empty);
           if (!s.ok()) {
-            return errors::InvalidArgument("Can't read header of file");
+            return absl::InvalidArgumentError("Can't read header of file");
           }
         }
         return absl::OkStatus();

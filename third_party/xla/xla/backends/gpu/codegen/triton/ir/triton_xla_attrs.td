@@ -74,7 +74,10 @@ def TTXLA_ComparatorEnum : I32Enum<"Comparator",
     "A comparison operator for instructions.",
     [
       I32EnumCase<"EQ", 0, "equal_to">,
-      I32EnumCase<"LT", 1, "less_than">
+      I32EnumCase<"LT", 1, "less_than">,
+      I32EnumCase<"LE", 2, "less_than_or_equal_to">,
+      I32EnumCase<"GT", 3, "greater_than">,
+      I32EnumCase<"GE", 4, "greater_than_or_equal_to">,
       // Extend if required.
     ]> {
   let cppNamespace = "::mlir::triton::xla";

@@ -31,11 +31,11 @@
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
@@ -45,6 +45,7 @@
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
@@ -63,7 +64,7 @@ namespace ifrt {
 namespace proxy {
 
 // Implementation of the xla::ifrt::Client interface.
-class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
+class Client final : public RTTIExtends<Client, xla::ifrt::Client> {
  public:
   static absl::StatusOr<std::unique_ptr<Client>> Create(
       std::shared_ptr<RpcHelper> rpc_helper, InitResponse init_response);
@@ -103,16 +104,33 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
       absl::Span<const xla::ifrt::ArraySpec> specs,
       xla::ifrt::ArrayCopySemantics semantics) override;
 
+  tsl::Future<std::vector<uint64_t>> HashValues(
+      absl::Span<const ValueRef> values, HashMode mode) override;
+
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> ReshardArrays(
       absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
       ArrayCopySemantics semantics) override;
 
   tsl::Future<> GetReadyFuture(absl::Span<const ValueRef> values) override;
 
+  tsl::Future<> DeleteValues(absl::Span<xla::ifrt::ValueRef> values) override;
+
   absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
       absl::Span<ValueRef> values) override {
     return absl::UnimplementedError(
         "MakeTuple is not supported for the IFRT proxy client.");
+  }
+
+  absl::StatusOr<BundleRef> Bundle(absl::Span<ValueRef> values,
+                                   ArrayCopySemantics semantics) override {
+    return absl::UnimplementedError(
+        "Bundle is not supported for the IFRT proxy client.");
+  }
+
+  absl::StatusOr<BundleRef> ConcatBundles(
+      absl::Span<BundleRef> bundles, ArrayCopySemantics semantics) override {
+    return absl::UnimplementedError(
+        "ConcatBundles is not supported for the IFRT proxy client.");
   }
 
   // TODO(b/474143687) add cancellation to proxy.
@@ -176,7 +194,7 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
         "client.");
   }
 
-  // For llvm::RTTIExtends.
+  // For RTTIExtends.
   static char ID;  // NOLINT
 
  private:

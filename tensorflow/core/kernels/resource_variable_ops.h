@@ -81,8 +81,9 @@ class VariableShapeOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     core::RefCountPtr<Var> variable;
-    OP_REQUIRES_OK(ctx,
-                   LookupResource(ctx, HandleFromInput(ctx, 0), &variable));
+    ResourceHandle handle;
+    OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 0, &handle));
+    OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &variable));
     variable->mu()->lock_shared();
     TensorShape shape = variable->tensor()->shape();
     variable->mu()->unlock_shared();

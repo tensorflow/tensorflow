@@ -48,18 +48,18 @@ absl::Status RecognizeCommands::ProcessLatestResults(
     const Tensor& latest_results, const int64_t current_time_ms,
     std::string* found_command, float* score, bool* is_new_command) {
   if (latest_results.NumElements() != labels_count_) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "The results for recognition should contain ", labels_count_,
-        " elements, but there are ", latest_results.NumElements());
+        " elements, but there are ", latest_results.NumElements()));
   }
 
   if ((!previous_results_.empty()) &&
       (current_time_ms < previous_results_.front().first)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Results must be fed in increasing time order, but received a "
         "timestamp of ",
         current_time_ms, " that was earlier than the previous one of ",
-        previous_results_.front().first);
+        previous_results_.front().first));
   }
 
   // Add the latest results to the head of the queue.

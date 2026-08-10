@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -48,8 +49,8 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
         (Match(instr, m::CustomCall(&existing_gemm, {kGemmCallTarget,
                                                      kCublasLtMatmulCallTarget})
                           .WithOperand(1, m::Broadcast(&bcast, m::Op()))))) {
-      TF_ASSIGN_OR_RETURN(auto gpu_config,
-                          existing_gemm->backend_config<GpuBackendConfig>());
+      ABSL_ASSIGN_OR_RETURN(auto gpu_config,
+                       existing_gemm->backend_config<GpuBackendConfig>());
       GemmBackendConfig &config = *gpu_config.mutable_gemm_backend_config();
       DotDimensionNumbers *dim_nums = config.mutable_dot_dimension_numbers();
       int bcast_operand_index = instr->operand_index(bcast);
@@ -93,9 +94,9 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
             0, dim_nums->lhs_contracting_dimensions(0) - num_batch_dims);
         dim_nums->clear_lhs_batch_dimensions();
       }
-      TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWithDifferentShape(
+      ABSL_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWithDifferentShape(
           bcast_operand_index, bcast->mutable_operand(0)));
-      TF_RETURN_IF_ERROR(existing_gemm->set_backend_config(gpu_config));
+      ABSL_RETURN_IF_ERROR(existing_gemm->set_backend_config(gpu_config));
       MarkAsChanged();
     }
     return absl::OkStatus();
@@ -104,7 +105,7 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
 
 static absl::StatusOr<bool> RunOnComputation(HloComputation *computation) {
   GemmBroadcastFoldingVisitor visitor;
-  TF_RETURN_IF_ERROR(computation->Accept(&visitor));
+  ABSL_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.changed();
 }
 
@@ -114,7 +115,7 @@ absl::StatusOr<bool> GemmBroadcastFoldingRewriter::RunImpl(
   bool changed = false;
   for (HloComputation *computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
+    ABSL_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
     changed |= result;
   }
   return changed;

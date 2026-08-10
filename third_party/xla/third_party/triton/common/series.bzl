@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# =============================================================================
+
 """
 Provides a list of patches that are applied internally and in oss.
 
@@ -19,18 +34,26 @@ common_patch_list = [
     "//third_party/triton:common/f8e5m2_conversion.patch",
     "//third_party/triton:common/no_accelerate_through_broadcast.patch",
     "//third_party/triton:common/speed_up_int4_unpacking.patch",
-    "//third_party/triton:common/convert_layout_heuristic.patch",
     "//third_party/triton:common/verify_nvmma_encoding.patch",
     "//third_party/triton:common/construction_order.patch",
     "//third_party/triton:common/include_functional.patch",
     "//third_party/triton:common/launcher.patch",
     "//third_party/triton:common/disable_amd_test.patch",
-    "//third_party/triton:common/avoid-0fc-mid-ptwas-128.patch",
     "//third_party/triton:common/wgmma_pipeline_fix.patch",
     "//third_party/triton:common/nvdisasm_bin_path.patch",
-    "//third_party/triton:common/llvm_cl880654778.patch",
-    "//third_party/triton:common/llvm_cl881791206.patch",
-    "//third_party/triton:common/triton_namespace.patch",
-    "//third_party/triton:common/llvm_cl882584777.patch",
+    "//third_party/triton:common/assert_fail.patch",
+    "//third_party/triton:common/silence_matchAndRewrite_failures.patch",
+    "//third_party/triton:common/check_null_encoding.patch",
+    "//third_party/triton:common/test_cache_determinism_fix.patch",
+    "//third_party/triton:common/mig_limits_pytests.patch",
+    "//third_party/triton:common/allocator.patch",
+    "//third_party/triton:common/llvm_cl943393061.patch",
+    "//third_party/triton:common/convert_layout_heuristic.patch",
+    "//third_party/triton:common/llvm_cl947230825.patch",
+    "//third_party/triton:common/llvm_cl948082775.patch",
+    "//third_party/triton:common/tmemfix.patch",
+    "//third_party/triton:common/tmem_scale_padding_second_half.patch",
+    "//third_party/triton:common/llvm_cl959585509.patch",
+    "//third_party/triton:common/old_ptxas.patch",
     # Add new patches just above this line
 ]

@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/distributed.h"
 #include "xla/pjrt/distributed/service.h"
@@ -59,8 +60,8 @@ absl::Status InitDistributedRuntimeInEnv(absl::string_view address, int node_id,
         "[::]:" + std::string(address).substr(address.rfind(':') + 1);
     xla::CoordinationServiceImpl::Options options;
     options.num_nodes = num_nodes;
-    TF_ASSIGN_OR_RETURN(env.service, xla::GetDistributedRuntimeService(
-                                         coordinator_bind_address, options));
+    ABSL_ASSIGN_OR_RETURN(env.service, xla::GetDistributedRuntimeService(
+                                      coordinator_bind_address, options));
   }
   xla::DistributedRuntimeClient::Options options;
   options.node_id = node_id;
@@ -77,7 +78,7 @@ absl::Status InitDistributedRuntimeInEnv(absl::string_view address, int node_id,
 
 absl::StatusOr<PjRtEnvironment> GetPjRtEnvironmentForHostCpu() {
   PjRtEnvironment env;
-  TF_ASSIGN_OR_RETURN(env.client, CreateHostClient());
+  ABSL_ASSIGN_OR_RETURN(env.client, CreateHostClient());
   return env;
 }
 
@@ -92,13 +93,14 @@ absl::StatusOr<PjRtEnvironment> GetPjRtEnvironmentForGpu(
                                              gpu_options.num_nodes,
                                              init_timeout, env));
     gpu_options.kv_store = env.kv_store;
+    gpu_options.distributed_client = env.distributed_client;
   }
 
   if (gpu_options.enable_mock_nccl) {
     CHECK_GT(gpu_options.num_nodes, 1);
   }
 
-  TF_ASSIGN_OR_RETURN(env.client, CreateGpuClient(gpu_options));
+  ABSL_ASSIGN_OR_RETURN(env.client, CreateGpuClient(gpu_options));
   return env;
 }
 

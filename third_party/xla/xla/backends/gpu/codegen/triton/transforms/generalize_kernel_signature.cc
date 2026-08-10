@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSet.h"
@@ -78,8 +76,10 @@ void StripParameterAddressSpaces(RewriterBase& rewriter,
   auto generic_func = LLVM::LLVMFuncOp::create(
       rewriter, func.getLoc(), func.getSymName(), generic_func_ty,
       func.getLinkage(), func.getDsoLocal(), func.getCConv(),
-      /*comdat=*/nullptr, GetExtraAttrs(func), arg_attrs,
-      func.getFunctionEntryCount());
+      /*comdat=*/nullptr, GetExtraAttrs(func), arg_attrs);
+  if (auto entry_count = func.getFunctionEntryCountAttr()) {
+    generic_func.setFunctionEntryCountAttr(entry_count);
+  }
 
   // Convert generic address spaces back to original ones within the function
   // body.
@@ -102,10 +102,12 @@ void StripParameterAddressSpaces(RewriterBase& rewriter,
   rewriter.eraseOp(func);
   rewriter.mergeBlocks(entry->getNextNode(), entry, converted_args);
 }
+}  // namespace
 
 #define GEN_PASS_DEF_GENERALIZEKERNELSIGNATUREPASS
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h.inc"
 
+namespace {
 // Rewrite signatures of kernel functions to use generic data pointers and
 // cast them to global ones within the kernel.
 struct GeneralizeKernelSignaturePass
@@ -124,9 +126,5 @@ struct GeneralizeKernelSignaturePass
 };
 
 }  // namespace
-
-std::unique_ptr<Pass> CreateGeneralizeKernelSignaturePass() {
-  return std::make_unique<GeneralizeKernelSignaturePass>();
-}
 
 }  // namespace mlir::triton::xla

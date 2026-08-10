@@ -15,10 +15,13 @@ limitations under the License.
 #include "tensorflow/core/data/metric_utils.h"
 
 #include <cstdint>
+#include <vector>
 
 #include "absl/memory/memory.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/lib/monitoring/test_utils.h"
@@ -146,6 +149,20 @@ TEST(MetricUtilsTest, OverlappingThreads) {
             absl::ToInt64Microseconds(absl::Seconds(2.5)));
   EXPECT_LT(iterator_busy.Delta(),
             absl::ToInt64Microseconds(absl::Seconds(2.9)));
+}
+
+TEST(MetricUtilsTest, RecordBytesFetched) {
+  CellReader<int64_t> bytes_fetched("/tensorflow/data/bytes_fetched");
+  IteratorMetricsCollector metrics_collector(DEVICE_CPU, *Env::Default());
+  absl::Time start_time = metrics_collector.RecordStart();
+
+  std::vector<Tensor> output;
+  output.push_back(Tensor(DT_FLOAT, TensorShape({10})));
+  output.push_back(Tensor(DT_INT32, TensorShape({5, 2})));
+
+  metrics_collector.RecordStop(start_time, output);
+
+  EXPECT_EQ(bytes_fetched.Delta(), 80);
 }
 
 }  // namespace

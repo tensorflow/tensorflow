@@ -21,13 +21,13 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 namespace {
@@ -63,7 +63,7 @@ class SortIotaFusionGroupVisitor : public DfsHloRewriteVisitor {
 absl::StatusOr<bool> SortIotaFusion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  ASSIGN_OR_RETURN(bool changed, SortIotaFusionGroupVisitor().RunOnModule(
+  ABSL_ASSIGN_OR_RETURN(bool changed, SortIotaFusionGroupVisitor().RunOnModule(
                                      module, execution_threads));
   return changed;
 }

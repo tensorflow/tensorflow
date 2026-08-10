@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
@@ -51,7 +52,7 @@ namespace xla {
 LocalService::NewService(const ServiceOptions& options) {
   se::Platform* platform = options.platform();
   if (platform == nullptr) {
-    TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
+    ABSL_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
   }
 
   BackendOptions backend_options;
@@ -59,8 +60,8 @@ LocalService::NewService(const ServiceOptions& options) {
       .set_intra_op_parallelism_threads(options.intra_op_parallelism_threads())
       .set_allowed_devices(options.allowed_devices());
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> backend,
-                      Backend::CreateBackend(backend_options));
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<Backend> backend,
+                   Backend::CreateBackend(backend_options));
 
   std::unique_ptr<LocalService> service(
       new LocalService(options, std::move(backend)));
@@ -76,7 +77,7 @@ LocalService::CompileExecutables(
     const XlaComputation& computation,
     const absl::Span<const Shape* const> argument_layouts,
     const ExecutableBuildOptions& build_options) {
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
       GetHloModuleConfig(computation, argument_layouts, build_options,
                          &options_, execute_backend_.get()));
@@ -84,7 +85,7 @@ LocalService::CompileExecutables(
   VLOG(3) << "Computation Layout: "
           << module_config->entry_computation_layout().ToString();
 
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       se::StreamExecutor * executor,
       execute_backend_->stream_executor(build_options.device_ordinal()));
 
@@ -95,14 +96,13 @@ LocalService::CompileExecutables(
       build_options.device_allocator(),
       build_options.compile_thread_pool(),
       build_options.layout_canonicalization_callback(),
-      /*gpu_target_config=*/{},
+      /*gpu_topology=*/build_options.gpu_topology(),
       /*cpu_target_config=*/{},
       /*key_value_store=*/
       {build_options.key_value_store(), build_options.process_index(),
-       build_options.process_count()},
-      build_options.slice_size()};
+       build_options.process_count()}};
   if (build_options.num_partitions() == 1) {
-    TF_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<Executable> executable,
         BuildExecutable(computation.proto(), std::move(module_config),
                         execute_backend_.get(), executor, compile_options,
@@ -127,12 +127,12 @@ LocalService::CompileAotResults(
     const XlaComputation& computation,
     const absl::Span<const Shape* const> argument_layouts,
     const ExecutableBuildOptions& build_options) {
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
       GetHloModuleConfig(computation, argument_layouts, build_options,
                          &options_, execute_backend_.get()));
 
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       se::StreamExecutor * executor,
       execute_backend_->stream_executor(build_options.device_ordinal()));
 
@@ -145,22 +145,23 @@ LocalService::CompileAotResults(
       &computation.proto(), std::move(module_config), execute_backend_.get(),
       {executors},
       Compiler::CompileOptions{build_options.device_allocator(),
-                               build_options.compile_thread_pool()},
+                               build_options.compile_thread_pool(),
+                               build_options.layout_canonicalization_callback(),
+                               build_options.gpu_topology()},
       build_options.run_backend_only());
 }
 
 absl::StatusOr<int> LocalService::ReplicaNumberToDeviceOrdinal(
     int replica_number) {
-  TF_ASSIGN_OR_RETURN(
-      DeviceAssignment da,
-      backend().computation_placer()->AssignDevices(
-          options_.number_of_replicas(), /*computation_count=*/1));
+  ABSL_ASSIGN_OR_RETURN(DeviceAssignment da,
+                   backend().computation_placer()->AssignDevices(
+                       options_.number_of_replicas(), /*computation_count=*/1));
   return da.DeviceId(replica_number, /*computation=*/0);
 }
 
 absl::StatusOr<const ShapedBuffer*> LocalService::GlobalDataToShapedBuffer(
     const GlobalDataHandle& data, int replica_number) {
-  TF_ASSIGN_OR_RETURN(auto buffers, allocation_tracker_.Resolve(data));
+  ABSL_ASSIGN_OR_RETURN(auto buffers, allocation_tracker_.Resolve(data));
   if (replica_number >= buffers.size()) {
     return InvalidArgument(
         "replica_number %d out of range; must be less than num_replicas = %u.",

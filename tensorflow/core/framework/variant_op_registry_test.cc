@@ -43,7 +43,7 @@ struct VariantValue {
                                      const VariantValue& v,
                                      VariantValue* v_out) {
     if (v.early_exit) {
-      return errors::InvalidArgument("early exit zeros_like!");
+      return absl::InvalidArgumentError("early exit zeros_like!");
     }
     v_out->value = 1;  // CPU
     return absl::OkStatus();
@@ -52,7 +52,7 @@ struct VariantValue {
                                      const VariantValue& v,
                                      VariantValue* v_out) {
     if (v.early_exit) {
-      return errors::InvalidArgument("early exit zeros_like!");
+      return absl::InvalidArgumentError("early exit zeros_like!");
     }
     v_out->value = 2;  // GPU
     return absl::OkStatus();
@@ -60,7 +60,7 @@ struct VariantValue {
   static absl::Status CPUAddFn(OpKernelContext* ctx, const VariantValue& a,
                                const VariantValue& b, VariantValue* out) {
     if (a.early_exit) {
-      return errors::InvalidArgument("early exit add!");
+      return absl::InvalidArgumentError("early exit add!");
     }
     out->value = a.value + b.value;  // CPU
     return absl::OkStatus();
@@ -68,7 +68,7 @@ struct VariantValue {
   static absl::Status GPUAddFn(OpKernelContext* ctx, const VariantValue& a,
                                const VariantValue& b, VariantValue* out) {
     if (a.early_exit) {
-      return errors::InvalidArgument("early exit add!");
+      return absl::InvalidArgumentError("early exit add!");
     }
     out->value = -(a.value + b.value);  // GPU
     return absl::OkStatus();
@@ -142,6 +142,31 @@ TEST(VariantOpDecodeRegistryTest, TestEmpty) {
   Variant encoded = std::move(proto);
   // Failure when type name is empty but there's data in the proto.
   EXPECT_FALSE(DecodeUnaryVariant(&encoded));
+}
+
+TEST(VariantOpDecodeRegistryTest, TestRecursionLimit) {
+  auto* registry = UnaryVariantOpRegistry::Global();
+  const std::string kTypeName = "RecursiveTest_Unique";
+
+  if (registry->GetDecodeFn(kTypeName) == nullptr) {
+    registry->RegisterDecodeFn(kTypeName, [kTypeName](Variant* v) {
+      Variant nested;
+      VariantTensorDataProto proto;
+      proto.set_type_name(kTypeName);
+      proto.set_metadata("payload");
+      nested = std::move(proto);
+      return DecodeUnaryVariant(&nested);
+    });
+  }
+
+  Variant v;
+  VariantTensorDataProto proto;
+  proto.set_type_name(kTypeName);
+  proto.set_metadata("start");
+  v = std::move(proto);
+
+  // Only assert that the recursive decode fails at the limit.
+  EXPECT_FALSE(DecodeUnaryVariant(&v));
 }
 
 TEST(VariantOpDecodeRegistryTest, TestDuplicate) {

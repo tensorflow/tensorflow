@@ -19,16 +19,19 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace stream_executor {
 namespace {
-using absl_testing::IsOkAndHolds;
-using testing::Eq;
-using testing::Pointee;
+using ::absl_testing::IsOkAndHolds;
+using ::testing::Eq;
+using ::testing::IsEmpty;
+using ::testing::Pointee;
 
 TEST(DeviceDescription, DefaultConstruction) {
   DeviceDescription desc;
@@ -67,9 +70,11 @@ TEST(RocmComputeCapability, GfxVersion) {
 }
 
 TEST(RocmComputeCapability, IsSupportedGfxVersion) {
-  ASSERT_TRUE(RocmComputeCapability{"gfx900"}.is_supported_gfx_version());
+  ASSERT_FALSE(RocmComputeCapability{"gfx900"}.is_supported_gfx_version());
+  ASSERT_FALSE(RocmComputeCapability{"gfx906"}.is_supported_gfx_version());
   ASSERT_TRUE(RocmComputeCapability{"gfx1201"}.is_supported_gfx_version());
   ASSERT_TRUE(RocmComputeCapability{"gfx942"}.is_supported_gfx_version());
+  ASSERT_TRUE(RocmComputeCapability{"gfx1250"}.is_supported_gfx_version());
   ASSERT_FALSE(RocmComputeCapability{"some_string"}.is_supported_gfx_version());
 }
 
@@ -113,17 +118,26 @@ TEST(RocmComputeCapability, Accessors) {
   EXPECT_TRUE(RocmComputeCapability{"gfx12xx"}.gfx12());
   EXPECT_TRUE(RocmComputeCapability{"gfx12xxblabla"}.gfx12());
 
-  EXPECT_TRUE(RocmComputeCapability{"gfx12"}.fence_before_barrier());
-  EXPECT_TRUE(RocmComputeCapability{"anything"}.fence_before_barrier());
-  EXPECT_FALSE(RocmComputeCapability{"gfx900"}.fence_before_barrier());
-  EXPECT_FALSE(RocmComputeCapability{"gfx906"}.fence_before_barrier());
-
-  EXPECT_FALSE(RocmComputeCapability{"gfx900"}.has_hipblaslt());
   EXPECT_TRUE(RocmComputeCapability{"gfx942"}.has_hipblaslt());
   EXPECT_TRUE(RocmComputeCapability{"gfx90a"}.has_hipblaslt());
   EXPECT_TRUE(RocmComputeCapability{"gfx1200"}.has_hipblaslt());
   EXPECT_TRUE(RocmComputeCapability{"gfx1100"}.has_hipblaslt());
   EXPECT_TRUE(RocmComputeCapability{"gfx1103"}.has_hipblaslt());
+  EXPECT_TRUE(RocmComputeCapability{"gfx1250"}.has_hipblaslt());
+
+  EXPECT_FALSE(RocmComputeCapability{"gfx1250"}.has_nhwc_layout_support());
+  EXPECT_TRUE(RocmComputeCapability{"gfx1250"}.has_fast_fp16_support());
+  EXPECT_FALSE(RocmComputeCapability{"gfx1250"}.has_mfma_instr_support());
+  EXPECT_TRUE(
+      RocmComputeCapability{"gfx1250"}.has_packed_fp16_atomics_support());
+  EXPECT_TRUE(
+      RocmComputeCapability{"gfx1250"}.has_packed_bf16_atomics_support());
+  EXPECT_TRUE(RocmComputeCapability{"gfx1250"}.has_ocp_fp8_support());
+  EXPECT_TRUE(RocmComputeCapability{"gfx1250"}.has_mx_type_support());
+
+  EXPECT_TRUE(RocmComputeCapability{"gfx1250"}.has_tdm_support());
+  EXPECT_FALSE(RocmComputeCapability{"gfx942"}.has_tdm_support());
+  EXPECT_FALSE(RocmComputeCapability{"gfx1201"}.has_tdm_support());
 }
 
 TEST(GpuComputeCapability, ProtoConversion) {
@@ -133,8 +147,8 @@ TEST(GpuComputeCapability, ProtoConversion) {
       IsOkAndHolds(GpuComputeCapability(CudaComputeCapability::Volta())));
   EXPECT_THAT(
       GpuComputeCapability::FromProto(
-          GpuComputeCapability(RocmComputeCapability("gfx900")).ToProto()),
-      IsOkAndHolds(GpuComputeCapability(RocmComputeCapability("gfx900"))));
+          GpuComputeCapability(RocmComputeCapability("gfx908")).ToProto()),
+      IsOkAndHolds(GpuComputeCapability(RocmComputeCapability("gfx908"))));
 }
 
 TEST(ExecutionUnitDescription, ProtoConversion) {
@@ -146,7 +160,7 @@ TEST(ExecutionUnitDescription, ProtoConversion) {
               IsOkAndHolds(desc));
 }
 
-TEST(DeviceDescription, ProtoConversion) {
+TEST(DeviceDescription, ExecutionUnitDescriptionProtoConversion) {
   DeviceDescription desc;
   ExecutionUnitDescription scalar_unit_desc;
   scalar_unit_desc.SetRateInfo(xla::F32,
@@ -158,13 +172,104 @@ TEST(DeviceDescription, ProtoConversion) {
       xla::F16, ExecutionUnitDescription::RateInfo{128, 1.2f, 8});
   desc.set_matrix_unit_description(matrix_unit_desc);
 
-  TF_ASSERT_OK_AND_ASSIGN(DeviceDescription from_proto,
-                          DeviceDescription::FromProto(desc.ToGpuProto()));
+  ASSERT_OK_AND_ASSIGN(DeviceDescription from_proto,
+                       DeviceDescription::FromProto(desc.ToProto()));
 
   EXPECT_THAT(from_proto.scalar_unit_description(),
               Pointee(Eq(*desc.scalar_unit_description())));
   EXPECT_THAT(from_proto.matrix_unit_description(),
               Pointee(Eq(*desc.matrix_unit_description())));
+}
+
+TEST(DeviceDescription, ProtoConversion) {
+  ASSERT_OK_AND_ASSIGN(
+      stream_executor::GpuTargetConfigProto gpu_target_config_proto,
+      xla::gpu::GetGpuTargetConfig(xla::gpu::GpuModel::H100_SXM));
+  ASSERT_OK_AND_ASSIGN(
+      DeviceDescription device_description,
+      DeviceDescription::FromProto(gpu_target_config_proto.gpu_device_info()));
+  ASSERT_OK_AND_ASSIGN(
+      DeviceDescription from_proto,
+      DeviceDescription::FromProto(device_description.ToProto()));
+  EXPECT_THAT(from_proto, Eq(device_description));
+}
+
+TEST(DeviceDescription, EqualsToIgnoringVersionNumbers) {
+  ASSERT_OK_AND_ASSIGN(
+      stream_executor::GpuTargetConfigProto gpu_target_config_proto,
+      xla::gpu::GetGpuTargetConfig(xla::gpu::GpuModel::H100_SXM));
+  ASSERT_OK_AND_ASSIGN(
+      DeviceDescription device_description,
+      DeviceDescription::FromProto(gpu_target_config_proto.gpu_device_info()));
+  DeviceDescription other = device_description;
+  other.set_runtime_version({1, 2, 3});
+  other.set_driver_version({4, 5, 6});
+  other.set_compile_time_toolkit_version({7, 8, 9});
+  other.set_dnn_version({10, 11, 12});
+  other.set_cub_version({13, 14, 15});
+  EXPECT_FALSE(device_description.EqualsTo(other, {}));
+  EXPECT_FALSE(device_description.EqualsTo(
+      other, {DeviceDescription::CompareOptions::kPortable}));
+  EXPECT_TRUE(device_description.EqualsTo(
+      other, {DeviceDescription::CompareOptions::kIgnoreVersionNumbers}));
+  EXPECT_NE(device_description, other);
+}
+
+TEST(DeviceDescription, EqualsToPortable) {
+  ASSERT_OK_AND_ASSIGN(
+      stream_executor::GpuTargetConfigProto gpu_target_config_proto,
+      xla::gpu::GetGpuTargetConfig(xla::gpu::GpuModel::H100_SXM));
+  ASSERT_OK_AND_ASSIGN(
+      DeviceDescription device_description,
+      DeviceDescription::FromProto(gpu_target_config_proto.gpu_device_info()));
+  DeviceDescription other = device_description;
+  other.set_pci_bus_id("1234:03:08.0");
+  other.set_numa_node(32);
+  other.set_device_interconnect_info(DeviceInterconnectInfo{
+      /*active_links=*/4, /*cluster_uuid=*/"cluster_uuid",
+      /*clique_id=*/"clique_id"});
+
+  EXPECT_FALSE(device_description.EqualsTo(other, {}));
+
+  // The number of active links is not ignored in kPortable.
+  EXPECT_FALSE(device_description.EqualsTo(
+      other, {DeviceDescription::CompareOptions::kPortable}));
+  EXPECT_FALSE(device_description.EqualsTo(
+      other, {DeviceDescription::CompareOptions::kIgnoreVersionNumbers}));
+  EXPECT_NE(device_description, other);
+
+  other.set_device_interconnect_info(DeviceInterconnectInfo{
+      /*active_links=*/18, /*cluster_uuid=*/"cluster_uuid",
+      /*clique_id=*/"clique_id"});
+  EXPECT_TRUE(device_description.EqualsTo(
+      other, {DeviceDescription::CompareOptions::kPortable}));
+}
+
+TEST(DeviceInterconnectInfo, ProtoConversion) {
+  DeviceInterconnectInfo info;
+  info.active_links = 4;
+  info.cluster_uuid = "cluster_uuid";
+  info.clique_id = "clique_id";
+
+  EXPECT_THAT(DeviceInterconnectInfo::FromProto(info.ToProto()),
+              IsOkAndHolds(Eq(info)));
+}
+
+TEST(DeviceDescription, DeviceSpecificFieldsCleared) {
+  ASSERT_OK_AND_ASSIGN(
+      stream_executor::GpuTargetConfigProto gpu_target_config_proto,
+      xla::gpu::GetGpuTargetConfig(xla::gpu::GpuModel::H100_SXM));
+  ASSERT_OK_AND_ASSIGN(
+      DeviceDescription device_description,
+      DeviceDescription::FromProto(gpu_target_config_proto.gpu_device_info()));
+  DeviceDescription cleared = device_description.DeviceSpecificFieldsCleared();
+  EXPECT_NE(cleared, device_description);
+  EXPECT_TRUE(cleared.EqualsTo(device_description,
+                               {DeviceDescription::CompareOptions::kPortable}));
+  EXPECT_EQ(cleared.pci_bus_id(), "<undefined>");
+  EXPECT_EQ(cleared.numa_node(), -1);
+  EXPECT_THAT(cleared.device_interconnect_info().cluster_uuid, IsEmpty());
+  EXPECT_THAT(cleared.device_interconnect_info().clique_id, IsEmpty());
 }
 
 }  // namespace

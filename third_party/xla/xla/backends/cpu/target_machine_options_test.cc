@@ -18,6 +18,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/TargetParser/Host.h"
 #include "xla/debug_options_flags.h"
@@ -162,6 +163,29 @@ TEST(TargetMachineOptionsTest, TargetMachineOptionsDefaultConstructor) {
   EXPECT_EQ(options.triple(), llvm::sys::getDefaultTargetTriple());
   EXPECT_EQ(options.cpu(), llvm::sys::getHostCPUName());
   EXPECT_EQ(options.GetTargetMachineFeatures(), "");
+}
+
+TEST(TargetMachineOptionsTest, NativeMatchesLLVMBehaviour) {
+  TargetMachineOptions options = TargetMachineOptions::Native();
+  EXPECT_EQ(options.triple(), llvm::sys::getDefaultTargetTriple());
+  EXPECT_EQ(options.cpu(), llvm::sys::getHostCPUName());
+
+  llvm::StringMap<bool> expected_features = llvm::sys::getHostCPUFeatures();
+  EXPECT_EQ(expected_features.size(), options.enabled_features().size() +
+                                          options.disabled_features().size());
+
+  for (const auto& feature : options.enabled_features()) {
+    EXPECT_TRUE(expected_features.count(feature))
+        << "Feature " << feature << " not found in expected features";
+    EXPECT_TRUE(expected_features[feature])
+        << "Feature " << feature << " is not enabled";
+  }
+  for (const auto& feature : options.disabled_features()) {
+    EXPECT_TRUE(expected_features.count(feature))
+        << "Feature " << feature << " not found in expected features";
+    EXPECT_FALSE(expected_features[feature])
+        << "Feature " << feature << " is not disabled";
+  }
 }
 
 }  // namespace

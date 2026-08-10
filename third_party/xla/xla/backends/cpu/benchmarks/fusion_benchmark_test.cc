@@ -255,6 +255,75 @@ static void BM_ChainOfAddF32(benchmark::State& state,
                            options));
 }
 
+static void BM_TransposeSpillRepro(benchmark::State& state,
+                                   HloBenchmarkOptions options) {
+  int64_t d0 = state.range(0);
+
+  absl::string_view hlo = R"(
+    HloModule transpose_spill_repro_$d0
+
+    ENTRY main {
+      %arg0 = f32[$d0,$d0] parameter(0)
+      %transpose = f32[$d0,$d0] transpose(%arg0), dimensions={1,0}
+      ROOT %copy = f32[$d0,$d0] copy(%transpose)
+    }
+  )";
+
+  std::minstd_rand0 engine;
+
+  auto shape = ShapeUtil::MakeShape(F32, {d0, d0});
+  auto p0_status =
+      LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
+  CHECK_OK(p0_status.status());
+  auto p0 = std::move(*p0_status);
+
+  std::vector<const Literal*> args = {&p0};
+  CHECK_OK(
+      RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
+}
+
+static void BM_PiApproxF32(benchmark::State& state,
+                           HloBenchmarkOptions options) {
+  int64_t d0 = state.range(0);
+
+  absl::string_view hlo = R"(
+    HloModule pi_approx_f32
+
+    %reduce_comp (lhs: f32[], rhs: f32[]) -> f32[] {
+      %lhs = f32[] parameter(0)
+      %rhs = f32[] parameter(1)
+      ROOT %reduce_sum = f32[] add(%lhs, %rhs)
+    }
+
+    ENTRY %main (a.1: f32[], b.1: f32[], c.1: f32[]) -> f32[] {
+      %a.1 = f32[] parameter(0)
+      %div.2 = f32[$d0] broadcast(%a.1), dimensions={}
+      %iota.1 = f32[$d0] iota(), iota_dimension=0
+      %constant.2 = f32[] constant(1)
+      %add.2 = f32[$d0] broadcast(%constant.2), dimensions={}
+      %add.3 = f32[$d0] add(%iota.1, %add.2)
+      %b.1 = f32[] parameter(1)
+      %sub.4 = f32[$d0] broadcast(%b.1), dimensions={}
+      %sub.5 = f32[$d0] subtract(%add.3, %sub.4)
+      %c.1 = f32[] parameter(2)
+      %sub.6 = f32[$d0] broadcast(%c.1), dimensions={}
+      %sub.7 = f32[$d0] subtract(%add.3, %sub.6)
+      %mul.1 = f32[$d0] multiply(%sub.5, %sub.7)
+      %div.3 = f32[$d0] divide(%div.2, %mul.1)
+      %constant.3 = f32[] constant(0)
+      ROOT %reduce_sum.7 = f32[] reduce(%div.3, %constant.3),
+                                    dimensions={0}, to_apply=%reduce_comp
+    }
+  )";
+
+  Literal a = LiteralUtil::CreateR0<float>(0.5f);
+  Literal b = LiteralUtil::CreateR0<float>(0.75f);
+  Literal c = LiteralUtil::CreateR0<float>(0.25f);
+  std::vector<const Literal*> args = {&a, &b, &c};
+  CHECK_OK(
+      RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
+}
+
 XLA_CPU_BENCHMARK(BM_FusionF32)
     ->MeasureProcessCPUTime()
     ->Arg(128)
@@ -296,5 +365,9 @@ XLA_CPU_BENCHMARK(BM_ChainOfAddF32)
     ->Arg(256)
     ->Arg(512)
     ->Arg(1024);
+
+XLA_CPU_BENCHMARK(BM_TransposeSpillRepro)->MeasureProcessCPUTime()->Arg(2048);
+
+XLA_CPU_BENCHMARK(BM_PiApproxF32)->MeasureProcessCPUTime()->Arg(100000000);
 
 }  // namespace xla::cpu

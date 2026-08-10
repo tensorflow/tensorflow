@@ -91,7 +91,7 @@ absl::Status ReplaceReduce(Graph* graph, Node* node) {
     }
   }
   if (!recv_input_set) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "No input tensor uses the same device as the NcclReduce op");
   }
   Node* recv_node = nullptr;
@@ -255,7 +255,7 @@ class NcclReplacePass : public GraphOptimizationPass {
     }
     Graph* graph = options.graph->get();
     if (graph == nullptr) {
-      return errors::Internal(
+      return absl::InternalError(
           "NCCL replacement should happen before partitioning and a "
           "graph should be available.");
     }

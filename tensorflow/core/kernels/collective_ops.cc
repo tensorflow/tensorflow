@@ -12,9 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <atomic>
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/activity_watcher/activity.h"
@@ -63,8 +70,8 @@ static std::unique_ptr<OpKernel> BuildOpKernel(OpKernelConstruction* c,
                      c->device()->GetAllocator(AllocatorAttributes()),
                      *sub_node, c->graph_def_version(), &status);
   if (!status.ok()) {
-    c->CtxFailureWithWarning(errors::Internal("Failed to build OpKernel for ",
-                                              name, " : ", status.message()));
+    c->CtxFailureWithWarning(absl::InternalError(absl::StrCat(
+        "Failed to build OpKernel for ", name, " : ", status.message())));
   }
   return k;
 }
@@ -80,9 +87,9 @@ class CollectiveOpV1Kernel : public AsyncOpKernel {
     CollectiveExecutor* col_exec = c->collective_executor();
     OP_REQUIRES_ASYNC(
         c, col_exec,
-        errors::Internal(
+        absl::InternalError(absl::StrCat(
             "Failed to get CollectiveExecutor from OpKernelContext for Op ",
-            name_),
+            name_)),
         done);
     const CancellationToken token =
         c->cancellation_manager()->get_cancellation_token();
@@ -91,10 +98,11 @@ class CollectiveOpV1Kernel : public AsyncOpKernel {
           // We must call StartAbort() within the callback. StartAbort() relies
           // on resources that may be deallocated if all execution of a graph is
           // finished.
-          col_exec->StartAbort(errors::Cancelled("op cancelled"));
+          col_exec->StartAbort(absl::CancelledError("op cancelled"));
         });
-    OP_REQUIRES_ASYNC(c, !already_cancelled,
-                      errors::Cancelled("op cancelled ", name_), done);
+    OP_REQUIRES_ASYNC(
+        c, !already_cancelled,
+        absl::CancelledError(absl::StrCat("op cancelled ", name_)), done);
 
     auto deregister_and_done = [c, token, done = std::move(done)]() {
       // Once done() is called, StartAbort() won't have any effect, so we
@@ -159,10 +167,10 @@ class CollectiveGatherOpKernel : public CollectiveOpV1Kernel {
       : CollectiveOpV1Kernel(c) {
     col_params_->instance.type = GATHER_COLLECTIVE;
     OP_REQUIRES_OK(c, c->GetAttr("group_size", &col_params_->group.group_size));
-    OP_REQUIRES(
-        c, col_params_->group.group_size > 0,
-        errors::InvalidArgument("group_size must be positive integer but got ",
-                                col_params_->group.group_size));
+    OP_REQUIRES(c, col_params_->group.group_size > 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("group_size must be positive integer but got ",
+                                 col_params_->group.group_size)));
     OP_REQUIRES_OK(c, c->GetAttr("group_key", &col_params_->group.group_key));
     OP_REQUIRES_OK(
         c, c->GetAttr("instance_key", &col_params_->instance.instance_key));
@@ -182,10 +190,11 @@ class CollectiveGatherOpKernel : public CollectiveOpV1Kernel {
   void ComputeAsyncImpl(OpKernelContext* c, CollectiveExecutor* col_exec,
                         DoneCallback done) override {
     auto output_shape = c->input(0).shape();
-    OP_REQUIRES_ASYNC(c, output_shape.dims() > 0,
-                      errors::InvalidArgument("input should have rank > 0, ",
-                                              "received ", output_shape.dims()),
-                      done);
+    OP_REQUIRES_ASYNC(
+        c, output_shape.dims() > 0,
+        absl::InvalidArgumentError(absl::StrCat(
+            "input should have rank > 0, ", "received ", output_shape.dims())),
+        done);
     output_shape.set_dim(
         0, output_shape.dim_size(0) * col_params_->group.group_size);
     col_params_->instance.shape = output_shape;
@@ -236,10 +245,10 @@ class CollectiveReduceOpKernel : public CollectiveOpV1Kernel {
       : CollectiveOpV1Kernel(c) {
     col_params_->instance.type = REDUCTION_COLLECTIVE;
     OP_REQUIRES_OK(c, c->GetAttr("group_size", &col_params_->group.group_size));
-    OP_REQUIRES(
-        c, col_params_->group.group_size > 0,
-        errors::InvalidArgument("group_size must be positive integer but got ",
-                                col_params_->group.group_size));
+    OP_REQUIRES(c, col_params_->group.group_size > 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("group_size must be positive integer but got ",
+                                 col_params_->group.group_size)));
     OP_REQUIRES_OK(c, c->GetAttr("group_key", &col_params_->group.group_key));
     OP_REQUIRES_OK(
         c, c->GetAttr("instance_key", &col_params_->instance.instance_key));
@@ -256,9 +265,9 @@ class CollectiveReduceOpKernel : public CollectiveOpV1Kernel {
     std::string final_op_name;
     OP_REQUIRES_OK(c, c->GetAttr("final_op", &final_op_name));
     OP_REQUIRES(c, final_op_name == "Id" || final_op_name == "Div",
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "final_op must be one of {\"Id\", \"Div\"} but got ",
-                    final_op_name));
+                    final_op_name)));
     OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_->instance.data_type));
     OP_REQUIRES_OK(c, c->GetAttr("wait_for", &dependencies_));
     OP_REQUIRES_OK(
@@ -348,10 +357,10 @@ class CollectiveBcastSendOpKernel : public CollectiveOpV1Kernel {
       : CollectiveOpV1Kernel(c) {
     col_params_->instance.type = BROADCAST_COLLECTIVE;
     OP_REQUIRES_OK(c, c->GetAttr("group_size", &col_params_->group.group_size));
-    OP_REQUIRES(
-        c, col_params_->group.group_size > 0,
-        errors::InvalidArgument("group_size must be positive integer but got ",
-                                col_params_->group.group_size));
+    OP_REQUIRES(c, col_params_->group.group_size > 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("group_size must be positive integer but got ",
+                                 col_params_->group.group_size)));
     OP_REQUIRES_OK(c, c->GetAttr("group_key", &col_params_->group.group_key));
     OP_REQUIRES_OK(
         c, c->GetAttr("instance_key", &col_params_->instance.instance_key));
@@ -389,8 +398,9 @@ class CollectiveBcastSendOpKernel : public CollectiveOpV1Kernel {
     if (!CanProceedWithCompute(c, col_exec, done)) return;
     OP_REQUIRES_ASYNC(
         c, col_params_->instance.shape.IsSameSize(c->input(0).shape()),
-        errors::Internal("Declared shape of op ", col_params_->name,
-                         " does not match shape of input"),
+        absl::InternalError(absl::StrCat("Declared shape of op ",
+                                         col_params_->name,
+                                         " does not match shape of input")),
         done);
 
     auto actual_done = [c, col_params = col_params_,
@@ -427,10 +437,10 @@ class CollectiveBcastRecvOpKernel : public CollectiveOpV1Kernel {
       : CollectiveOpV1Kernel(c) {
     col_params_->instance.type = BROADCAST_COLLECTIVE;
     OP_REQUIRES_OK(c, c->GetAttr("group_size", &col_params_->group.group_size));
-    OP_REQUIRES(
-        c, col_params_->group.group_size > 0,
-        errors::InvalidArgument("group_size must be positive integer but got ",
-                                col_params_->group.group_size));
+    OP_REQUIRES(c, col_params_->group.group_size > 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("group_size must be positive integer but got ",
+                                 col_params_->group.group_size)));
     OP_REQUIRES_OK(c, c->GetAttr("group_key", &col_params_->group.group_key));
     OP_REQUIRES_OK(
         c, c->GetAttr("instance_key", &col_params_->instance.instance_key));
@@ -505,19 +515,19 @@ class CollectiveAssignGroupV2OpKernel : public OpKernel {
 
     OP_REQUIRES(
         context, TensorShapeUtils::IsScalar(device_index.shape()),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "device_index must be a scalar, but received tensor of shape: ",
-            device_index.shape().DebugString()));
+            device_index.shape().DebugString())));
 
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsMatrix(group_assignment.shape()),
-        errors::InvalidArgument("group_assignment must be a 2-d Tensor, but "
-                                "received tensor of shape: ",
-                                group_assignment.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsMatrix(group_assignment.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("group_assignment must be a 2-d Tensor, but "
+                                 "received tensor of shape: ",
+                                 group_assignment.shape().DebugString())));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(base_key.shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "base_key must be a scalar, but received tensor of shape: ",
-                    base_key.shape().DebugString()));
+                    base_key.shape().DebugString())));
 
     Tensor* group_key = nullptr;
     Tensor* group_size = nullptr;
@@ -547,16 +557,17 @@ class CollectiveAssignGroupV2OpKernel : public OpKernel {
       int32_t key = static_cast<int32_t>(static_cast<uint32_t>(base_key) +
                                          static_cast<uint32_t>(group_id));
       if (key == 0) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Using the reserved group_key = 0 is not allowed: group_id = ",
-            group_id, ", base_key = ", base_key);
+            group_id, ", base_key = ", base_key));
       }
       for (int color = 0; color < group_assignment.dim_size(1); color++) {
         const auto index = group_assignment.matrix<int32_t>()(group_id, color);
         if (index < 0 || index >= group_assignment.shape().num_elements()) {
-          return errors::InvalidArgument("Not all items in group_assignment ",
-                                         group_assignment.DebugString(),
-                                         " is within [0, number of devices)");
+          return absl::InvalidArgumentError(
+              absl::StrCat("Not all items in group_assignment ",
+                           group_assignment.DebugString(),
+                           " is within [0, number of devices)"));
         }
         if (index == device_index) {
           group_key->flat<int32_t>()(0) = key;
@@ -568,9 +579,9 @@ class CollectiveAssignGroupV2OpKernel : public OpKernel {
         }
       }
     }
-    return errors::InvalidArgument("device_index ", device_index,
-                                   " is not found in group_assignment ",
-                                   group_assignment.DebugString());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "device_index ", device_index, " is not found in group_assignment ",
+        group_assignment.DebugString()));
   }
 };
 
@@ -606,27 +617,27 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
                                     const Tensor& group_key,
                                     const Tensor& instance_key) {
     if (group_size.dims() > 0) {
-      return errors::InvalidArgument(
-          "Unexpected dimensions on input group_size, got ",
-          group_size.shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unexpected dimensions on input group_size, got ",
+                       group_size.shape().DebugString()));
     }
     if (group_key.dims() > 0) {
-      return errors::InvalidArgument(
-          "Unexpected dimensions on input group_key, got ",
-          group_key.shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unexpected dimensions on input group_key, got ",
+                       group_key.shape().DebugString()));
     }
     if (instance_key.dims() > 0) {
-      return errors::InvalidArgument(
-          "Unexpected dimensions on input instance_key, got ",
-          instance_key.shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unexpected dimensions on input instance_key, got ",
+                       instance_key.shape().DebugString()));
     }
     col_params->name = name_;
     col_params->group.device_type = device_type_;
     col_params->group.group_size = group_size.unaligned_flat<int32_t>()(0);
     if (col_params->group.group_size <= 0) {
-      return errors::InvalidArgument(
-          "group_size must be positive integer but got ",
-          col_params->group.group_size);
+      return absl::InvalidArgumentError(
+          absl::StrCat("group_size must be positive integer but got ",
+                       col_params->group.group_size));
     }
     col_params->group.group_key = group_key.unaligned_flat<int32_t>()(0);
     // FIXME(b/270426314): TFRT hostruntime doesn't forward node names.
@@ -664,18 +675,18 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
     CollectiveExecutor* col_exec = c->collective_executor();
     OP_REQUIRES_ASYNC(
         c, col_exec,
-        errors::Internal(
+        absl::InternalError(absl::StrCat(
             "Failed to get CollectiveExecutor from OpKernelContext for Op ",
-            name_),
+            name_)),
         done);
     std::string device_type = c->device()->attributes().device_type();
     OP_REQUIRES_ASYNC(
         c,
         !(col_params->is_stateless &&
           device_type == DeviceType(DEVICE_GPU).type()),
-        errors::Internal(
+        absl::InternalError(absl::StrCat(
             "is_stateless is not supported with device type GPU for Op ",
-            name_),
+            name_)),
         done);
 
     auto activity_id = activity_watcher::ActivityStart([&]() {
@@ -870,6 +881,11 @@ class CollectiveGatherV2OpKernel : public CollectiveOpV2Kernel {
                                               c->input(3)),
                          done_with_cleanup);
     auto output_shape = c->input(0).shape();
+    OP_REQUIRES_ASYNC(
+        c, output_shape.dims() > 0,
+        absl::InvalidArgumentError(absl::StrCat(
+            "input should have rank > 0, received ", output_shape.dims())),
+        done_with_cleanup);
     output_shape.set_dim(
         0, output_shape.dim_size(0) * col_params->group.group_size);
     col_params->instance.shape = output_shape;
@@ -1049,38 +1065,38 @@ class CollectiveInitializeCommunicatorOpKernel : public AsyncOpKernel {
   absl::Status CheckInputs(Tensor group_size_t, Tensor group_key_t,
                            Tensor rank_t) {
     if (group_size_t.dims() > 0) {
-      return errors::InvalidArgument(
-          "Unexpected dimensions on input group_size. "
-          "It shoulbe a scalar, got tensor with shape ",
-          group_size_t.shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unexpected dimensions on input group_size. "
+                       "It shoulbe a scalar, got tensor with shape ",
+                       group_size_t.shape().DebugString()));
     }
     if (group_key_t.dims() > 0) {
-      return errors::InvalidArgument(
-          "Unexpected dimensions on input group_key. ",
-          "It shoulbe a scalar, got tensor with shape ",
-          group_key_t.shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unexpected dimensions on input group_key. ",
+                       "It shoulbe a scalar, got tensor with shape ",
+                       group_key_t.shape().DebugString()));
     }
     if (rank_t.dims() > 0) {
-      return errors::InvalidArgument(
-          "Unexpected dimensions on input rank. ",
-          "It shoulbe a scalar, got tensor with shape ",
-          rank_t.shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unexpected dimensions on input rank. ",
+                       "It shoulbe a scalar, got tensor with shape ",
+                       rank_t.shape().DebugString()));
     }
 
     auto group_size = group_size_t.unaligned_flat<int32_t>()(0);
     if (group_size <= 0) {
-      return errors::InvalidArgument(
-          "group_size must be positive integer but got ", group_size);
+      return absl::InvalidArgumentError(absl::StrCat(
+          "group_size must be positive integer but got ", group_size));
     }
     auto rank = rank_t.unaligned_flat<int32_t>()(0);
     if (rank < 0) {
-      return errors::InvalidArgument(
-          "rank must be non-negative integer but got ", rank);
+      return absl::InvalidArgumentError(
+          absl::StrCat("rank must be non-negative integer but got ", rank));
     }
     if (rank >= group_size) {
-      return errors::InvalidArgument(
-          "rank must be less than group size but got ", rank,
-          " >= ", group_size);
+      return absl::InvalidArgumentError(
+          absl::StrCat("rank must be less than group size but got ", rank,
+                       " >= ", group_size));
     }
     return absl::OkStatus();
   }
@@ -1187,7 +1203,8 @@ class CollectiveOpV3Kernel : public AsyncOpKernel {
       group_id = 0;
       group_size = resource->group_size();
     } else {
-      return errors::Unimplemented("Group assignments are not supported yet.");
+      return absl::UnimplementedError(
+          "Group assignments are not supported yet.");
     }
 
     // Construct instance key with format:
@@ -1216,9 +1233,9 @@ class CollectiveOpV3Kernel : public AsyncOpKernel {
     CollectiveExecutor* col_exec = c->collective_executor();
     OP_REQUIRES_ASYNC(
         c, col_exec,
-        errors::Internal(
+        absl::InternalError(absl::StrCat(
             "Failed to get CollectiveExecutor from OpKernelContext for Op ",
-            name_),
+            name_)),
         done);
     // Resolve the collective params.
     // Schedule the `CompleteParamsAsync` call on a work queue that can handle
@@ -1301,7 +1318,9 @@ class CollectiveReduceV3OpKernel : public CollectiveOpV3Kernel {
       col_params->Unref();
     };
     core::RefCountPtr<CollectiveGroupResource> resource;
-    OP_REQUIRES_OK_ASYNC(c, LookupResource(c, HandleFromInput(c, 1), &resource),
+    ResourceHandle handle;
+    OP_REQUIRES_OK_ASYNC(c, HandleFromInput(c, 1, &handle), done_with_cleanup);
+    OP_REQUIRES_OK_ASYNC(c, LookupResource(c, handle, &resource),
                          done_with_cleanup);
 
     Tensor group_assignment = c->input(2);
@@ -1399,7 +1418,9 @@ class CollectiveAllToAllV3OpKernel : public CollectiveOpV3Kernel {
       col_params->Unref();
     };
     core::RefCountPtr<CollectiveGroupResource> resource;
-    OP_REQUIRES_OK_ASYNC(c, LookupResource(c, HandleFromInput(c, 1), &resource),
+    ResourceHandle handle;
+    OP_REQUIRES_OK_ASYNC(c, HandleFromInput(c, 1, &handle), done_with_cleanup);
+    OP_REQUIRES_OK_ASYNC(c, LookupResource(c, handle, &resource),
                          done_with_cleanup);
 
     Tensor group_assignment = c->input(2);
@@ -1474,6 +1495,11 @@ class CollectiveReduceScatterV2OpKernel : public CollectiveOpV2Kernel {
     col_params->instance.impl_details.max_subdivs_per_device =
         max_subdivs_per_device_;
     auto output_shape = c->input(0).shape();
+    OP_REQUIRES_ASYNC(
+        c, output_shape.dims() > 0,
+        absl::InvalidArgumentError(absl::StrCat(
+            "input should have rank > 0, received ", output_shape.dims())),
+        done_with_cleanup);
     output_shape.set_dim(
         0, output_shape.dim_size(0) / col_params->group.group_size);
     col_params->instance.shape = output_shape;

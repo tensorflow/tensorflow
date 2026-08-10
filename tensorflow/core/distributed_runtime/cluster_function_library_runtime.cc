@@ -44,8 +44,8 @@ absl::Status ClusterFunctionLibraryRuntime::ConstructFunctionGraph(
   const std::string& func_name = sig.name();
   const FunctionDef* func_def = flib_def.Find(sig.name());
   if (func_def == nullptr) {
-    return errors::InvalidArgument("Function ", func_name,
-                                   " not found in flib_def.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Function ", func_name, " not found in flib_def."));
   }
 
   // Build a smaller flib_def containing only the functions used by the given
@@ -68,9 +68,10 @@ absl::Status ClusterFunctionLibraryRuntime::ConstructFunctionGraph(
     TF_RETURN_IF_ERROR(ArgNumType(attrs, in, &is_type_list, &dtypes));
     // TODO(rohanj): Handle list and variadic number of attrs. Here and below.
     if (is_type_list || dtypes.size() > 1) {
-      return errors::Unimplemented("Input arg: ", in.name(),
-                                   " has a list type or variadic number of "
-                                   "attrs. Currently unsupported.");
+      return absl::UnimplementedError(
+          absl::StrCat("Input arg: ", in.name(),
+                       " has a list type or variadic number of "
+                       "attrs. Currently unsupported."));
     }
 
     auto input_node_builder =
@@ -119,9 +120,10 @@ absl::Status ClusterFunctionLibraryRuntime::ConstructFunctionGraph(
     TF_RETURN_IF_ERROR(ArgNumType(attrs, out, &is_type_list, &dtypes));
     // TODO(rohanj): Handle list and variadic number of attrs. Here and below.
     if (is_type_list || dtypes.size() > 1) {
-      return errors::Unimplemented("Output arg: ", out.name(),
-                                   " has a list type or variadic number of "
-                                   "attrs. Currently unsupported.");
+      return absl::UnimplementedError(
+          absl::StrCat("Output arg: ", out.name(),
+                       " has a list type or variadic number of "
+                       "attrs. Currently unsupported."));
     }
 
     auto output_node_builder =
@@ -194,9 +196,9 @@ void ClusterFunctionLibraryRuntime::Instantiate(
   if (wi == nullptr) {
     std::vector<std::string> workers;
     worker_session_->worker_cache()->ListWorkers(&workers);
-    done(errors::InvalidArgument(
-        "Could not find worker with target: ", target,
-        " Available workers: ", absl::StrJoin(workers, ", ")));
+    done(absl::InvalidArgumentError(
+        absl::StrCat("Could not find worker with target: ", target,
+                     " Available workers: ", absl::StrJoin(workers, ", "))));
     return;
   }
 
@@ -269,7 +271,7 @@ void ClusterFunctionLibraryRuntime::Run(
   WorkerInterface* wi = function_data->wi;
 
   if (wi == nullptr) {
-    done(errors::Internal("Could not find worker"));
+    done(absl::InternalError("Could not find worker"));
     return;
   }
 
@@ -316,16 +318,16 @@ void ClusterFunctionLibraryRuntime::Run(
         for (const auto& recv_key : recv_keys) {
           TensorProto* tp = mapped_recvs[recv_key];
           if (tp == nullptr) {
-            local_status->Update(
-                errors::Internal("Could not find key: ", recv_key));
+            local_status->Update(absl::InternalError(
+                absl::StrCat("Could not find key: ", recv_key)));
             return;
           }
           Tensor t;
           if (t.FromProto(*tp)) {
             rets->push_back(t);
           } else {
-            local_status->Update(errors::Internal(
-                "Could not convert tensor proto: ", tp->DebugString()));
+            local_status->Update(absl::InternalError(absl::StrCat(
+                "Could not convert tensor proto: ", tp->DebugString())));
             return;
           }
         }
@@ -343,8 +345,8 @@ void ClusterFunctionLibraryRuntime::Run(
       tensors.push_back(std::get<Tensor>(arg));
     } else {
       done(
-          errors::Internal("ClusterFunctionLibraryRuntime doesn't support "
-                           "eager::RemoteTensorHandle."));
+          absl::InternalError("ClusterFunctionLibraryRuntime doesn't support "
+                              "eager::RemoteTensorHandle."));
       return;
     }
   }
@@ -375,7 +377,7 @@ void ClusterFunctionLibraryRuntime::CleanUp(
   WorkerInterface* wi = function_data->wi;
 
   if (wi == nullptr) {
-    done(errors::Internal("Could not find worker"));
+    done(absl::InternalError("Could not find worker"));
     return;
   }
   CleanupGraphRequest* cleanup_req = new CleanupGraphRequest;

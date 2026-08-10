@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
+#include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/analysis/symbolic_map_serialization.h"
@@ -59,7 +60,6 @@ mlir::Attribute SymbolicMapAttr::parse(mlir::AsmParser& parser, mlir::Type) {
   if (parser.parseLess()) {
     return {};
   }
-  RegisterSymbolicExprStorage(parser.getContext());
   std::string serialized_map;
   if (parser.parseString(&serialized_map)) {
     return {};
@@ -86,7 +86,6 @@ mlir::Attribute IndexingMapAttr::parse(mlir::AsmParser& parser, mlir::Type) {
   if (parser.parseLess()) {
     return {};
   }
-  RegisterSymbolicExprStorage(parser.getContext());
   auto indexing_map = parseChainOfStringsAsIndexingMap(parser);
   if (!indexing_map.has_value() || parser.parseGreater()) {
     return {};
@@ -100,19 +99,19 @@ void IndexingMapAttr::print(mlir::AsmPrinter& printer) const {
 
 IndexingMapAttr IndexingMapAttr::get(mlir::MLIRContext* context,
                                      const IndexingMap& indexing_map) {
-  llvm::SmallVector<std::pair<AffineExpr, Interval>> constraints;
-  for (auto& constraint : indexing_map.GetConstraints()) {
+  llvm::SmallVector<std::pair<SymbolicExpr, Interval>> constraints;
+  for (auto& constraint : indexing_map.GetSymbolicConstraints()) {
     constraints.push_back({constraint.first, constraint.second});
   }
-  return get(context, indexing_map.GetAffineMap(), indexing_map.GetDimVars(),
+  return get(context, indexing_map.GetSymbolicMap(), indexing_map.GetDimVars(),
              indexing_map.GetRangeVars(), constraints);
 }
 
 mlir::LogicalResult IndexingMapAttr::verify(
-    mlir::function_ref<mlir::InFlightDiagnostic()> emitError,
-    mlir::AffineMap map, ArrayRef<IndexingMap::Variable> dim_vars,
+    mlir::function_ref<mlir::InFlightDiagnostic()> emitError, SymbolicMap map,
+    ArrayRef<IndexingMap::Variable> dim_vars,
     ArrayRef<IndexingMap::Variable> range_vars,
-    ArrayRef<std::pair<AffineExpr, Interval>> constraints) {
+    ArrayRef<std::pair<SymbolicExpr, Interval>> constraints) {
   auto indexing_map =
       IndexingMap(map, dim_vars, range_vars, /*rt_vars=*/{}, constraints);
   std::stringstream ss;
@@ -128,7 +127,7 @@ IndexingMap IndexingMapAttr::getIndexingMap() const {
 }
 
 int64_t IndexingMapAttr::getNumResults() const {
-  return getMap().getNumResults();
+  return getMap().GetNumResults();
 }
 
 }  // namespace xla

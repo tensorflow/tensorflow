@@ -60,6 +60,7 @@ void* StreamExecutorAllocator::Alloc(size_t alignment, size_t num_bytes,
   tsl::profiler::TraceMe traceme("StreamExecutorAllocator::Alloc");
 
   void* ptr = nullptr;
+  *bytes_received = num_bytes;
 
   if (num_bytes > 0) {
     auto allocation = memory_allocator_->Allocate(num_bytes);
@@ -72,13 +73,12 @@ void* StreamExecutorAllocator::Alloc(size_t alignment, size_t num_bytes,
     }
 
     ptr = (*allocation)->address().opaque();
-    VisitAlloc(ptr, index_, num_bytes);
+    *bytes_received = (*allocation)->address().size();
+    VisitAlloc(ptr, index_, *bytes_received);
 
     absl::MutexLock lock(mutex_);
     allocations_[ptr] = std::move(*allocation);
   }
-
-  *bytes_received = num_bytes;
 
   return ptr;
 }

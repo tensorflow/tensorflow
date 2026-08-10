@@ -44,7 +44,11 @@ TfLiteStatus CreateNewTensorWithDifferentType(TfLiteContext* context,
   (*new_tensor)->type = new_type;
   (*new_tensor)->allocation_type = kTfLiteArenaRw;
   const auto* original_dims = original_tensor.dims;
+#if defined(_WIN32)
+  TfLiteIntArray* dims = context->TfLiteIntArrayCreate(original_dims->size);
+#else
   TfLiteIntArray* dims = TfLiteIntArrayCreate(original_dims->size);
+#endif
   for (int i = 0; i < original_dims->size; ++i) {
     dims->data[i] = original_dims->data[i];
   }
@@ -232,7 +236,8 @@ FP16GraphPartitionHelper::GetNodesOfFirstNLargestPartitionsImpl(
 bool FP16GraphPartitionHelper::IsNodeSupported(
     TfLiteContext* context, TfLiteNode* node, TfLiteRegistration* registration,
     int node_id, std::string* unsupported_details) {
-  if (registration->builtin_code == kTfLiteBuiltinDequantize) {
+  if (registration->builtin_code == kTfLiteBuiltinDequantize &&
+      node->inputs->size > 0) {
     auto& dequantize_input = context_->tensors[node->inputs->data[0]];
     if (dequantize_input.type == kTfLiteFloat16 &&
         IsConstantTensor(&dequantize_input)) {
