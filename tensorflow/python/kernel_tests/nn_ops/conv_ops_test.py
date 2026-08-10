@@ -3399,8 +3399,9 @@ class SeparableConv2DTest(test.TestCase):
     depthwise_filter = constant_op.constant(1.0, shape=[1, 1, 3, 1])
     pointwise_filter = random_ops.random_normal([1, 1, 3, 4])
 
-    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
-                                "out of range for an int32"):
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError),
+        "out of range for an int32"):
       self.evaluate(
           nn_impl.separable_conv2d(
               input_tensor,
