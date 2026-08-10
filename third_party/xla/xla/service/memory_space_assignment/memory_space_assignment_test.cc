@@ -16361,6 +16361,52 @@ ENTRY entry {
   EXPECT_EQ(num_prefetches, 6);
 }
 
+TEST_F(SlicedPrefetchTest,
+       TestBlockPrefetchingCustomFusionWithSyncReplacement) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+cross_buffer_slice_fusion {
+  p0 = f32[4,3]{1,0} parameter(0)
+  ROOT slice0 = f32[2,3]{1,0} slice(p0), slice={[0:2], [0:3]}
+}
+
+ENTRY entry {
+  p0 = f32[4,3]{1,0} parameter(0)
+  fusion0 = f32[2,3]{1,0} fusion(p0), kind=kCustom, calls=cross_buffer_slice_fusion
+  ROOT negate0 = f32[2,3]{1,0} negate(fusion0)
+})hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 48;
+  memory_space_options.reserved_bytes_for_block_prefetches = 24;
+  memory_space_options.max_outstanding_block_prefetches = 10;
+  memory_space_options.max_outstanding_prefetches = 0;
+  memory_space_options.enable_sync_custom_fusion_replacement = true;
+  memory_space_options.enable_sync_copy_replacement = true;
+  memory_space_options.enable_sync_slice_replacement = true;
+  memory_space_options.custom_fusion_block_prefetch_operand_index_fn =
+      [](const HloInstruction* instruction) -> std::optional<int64_t> {
+    if (instruction->IsCustomFusion()) {
+      return 0;
+    }
+    return std::nullopt;
+  };
+  memory_space_options.block_prefetched_positions =
+      GetHloPositions(module.get(), {"p0", "fusion0"});
+
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
+
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(),
+      /*instruction_names=*/{"negate0"},
+      /*operand_number=*/0,
+      /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kAsyncDone);
+}
+
 TEST_F(SlicedPrefetchTest, TestBlockPrefetchingAsyncSliceWithMultipleUses) {
   // Same as above, but slice 1 has multiple uses and p0 has multiple uses apart
   // from the slice.

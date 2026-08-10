@@ -277,6 +277,7 @@ cc_library(
     deps = [
         ":memory_space_assignment_proto_cc",
         ":slice",
+        ":utils",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
@@ -353,6 +354,7 @@ cc_library(
         ":prefetch_interval_picker",
         ":repacking",
         ":slice",
+        ":utils",
         "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",

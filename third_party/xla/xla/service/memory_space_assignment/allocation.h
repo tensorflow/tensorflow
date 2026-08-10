@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
 #include "xla/service/memory_space_assignment/slice.h"
+#include "xla/service/memory_space_assignment/utils.h"
 #include "xla/shape.h"
 
 namespace xla::memory_space_assignment {
@@ -330,7 +331,9 @@ class CopyAllocation final : public Allocation {
       HloInstruction* sync_mem_op = nullptr,
       HloInstruction* async_mem_op_start = nullptr,
       HloInstruction* async_mem_op_done = nullptr,
-      int64_t source_operand_index = 0);
+      int64_t source_operand_index = 0,
+      int64_t reserved_bytes_for_block_prefetches = 0,
+      CustomFusionChunkSizingFn custom_fusion_chunk_sizing_fn = nullptr);
 
   // Overridden methods
   //
@@ -387,6 +390,8 @@ class CopyAllocation final : public Allocation {
   // The index of the operand in the async start instruction that should be
   // replaced with the producing instruction.
   int64_t source_operand_index_ = 0;
+  int64_t reserved_bytes_for_block_prefetches_ = 0;
+  CustomFusionChunkSizingFn custom_fusion_chunk_sizing_fn_ = nullptr;
 };
 
 // This class represents an allocation resulting from a collection of
