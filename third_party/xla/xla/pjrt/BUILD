@@ -90,55 +90,6 @@ cc_library(
 )
 
 cc_library(
-    name = "pjrt_topology_description_registry",
-    srcs = ["pjrt_topology_description_registry.cc"],
-    hdrs = ["pjrt_topology_description_registry.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":pjrt_common",
-        ":pjrt_compiler",
-        "//xla/pjrt/c_api_client:pjrt_c_api_client",
-        "//xla/pjrt/proto:topology_description_proto_cc",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/synchronization",
-    ],
-)
-
-xla_cc_test(
-    name = "pjrt_topology_description_registry_test",
-    srcs = ["pjrt_topology_description_registry_test.cc"],
-    deps = [
-        ":pjrt_common",
-        ":pjrt_compiler",
-        ":pjrt_device_description",
-        ":pjrt_topology_description_registry",
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/backends/cpu:target_machine_options",
-        "//xla/pjrt/plugin/xla_cpu:cpu_topology",
-        "//xla/pjrt/plugin/xla_cpu:cpu_topology_description",
-        "//xla/pjrt/proto:topology_description_proto_cc",
-        "//xla/tsl/platform:env",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
     name = "semaphore",
     srcs = ["semaphore.cc"],
     hdrs = ["semaphore.h"],

@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -26,13 +27,15 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/layout.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
-#include "xla/runtime/device_id.h"
+#include "xla/pjrt/utils.h"
 #include "xla/shape.h"
 
 namespace xla {
