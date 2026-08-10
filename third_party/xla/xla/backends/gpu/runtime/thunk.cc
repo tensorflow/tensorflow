@@ -515,14 +515,16 @@ ThunkSequence::ThunkSequence(int64_t len)
 ThunkSequence::ThunkSequence(std::vector<std::unique_ptr<Thunk>> thunks)
     : std::vector<std::unique_ptr<Thunk>>(std::move(thunks)) {}
 
-void ThunkSequence::Append(std::unique_ptr<Thunk> thunk) {
-  push_back(std::move(thunk));
-}
+ThunkSequence ThunkSequence::Empty() { return ThunkSequence(); }
 
 ThunkSequence ThunkSequence::Of(std::unique_ptr<Thunk> thunk) {
   ThunkSequence thunks;
   thunks.Append(std::move(thunk));
   return thunks;
+}
+
+Thunk* ThunkSequence::Append(std::unique_ptr<Thunk> thunk) {
+  return emplace_back(std::move(thunk)).get();
 }
 
 absl::Status ThunkSequence::WalkNested(Thunk::Walker callback) {
