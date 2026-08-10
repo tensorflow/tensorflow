@@ -1081,7 +1081,8 @@ absl::Status RunCollectiveOptimizationPasses(
 
   collectives_pipeline.AddPass<AllReduceSimplifier>();
   collectives_pipeline.AddPass<AllReduceFolder>();
-  collectives_pipeline.AddPass<AllReduceSplitter>();
+  collectives_pipeline.AddPass<AllReduceSplitter>(
+      debug_options.xla_gpu_all_reduce_splitter_ignore_profitability_check());
   if (debug_options.xla_gpu_unsupported_enable_all_reduce_decomposer()) {
     collectives_pipeline.AddPass<AllReduceDecomposer>();
   }
