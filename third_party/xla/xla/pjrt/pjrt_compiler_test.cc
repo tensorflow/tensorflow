@@ -163,9 +163,7 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
   };
   CompileOptions options;
   std::unique_ptr<PjRtCompiler> compiler = std::make_unique<PjRtTestCompiler>();
-  PjRtRegisterCompiler(topology.platform_name(),
-                       options.compiler_variant.value_or(""),
-                       std::move(compiler));
+  PjRtRegisterCompiler(topology.platform_name(), "", std::move(compiler));
 
   XlaComputation computation;
   auto res = PjRtCompile(options, computation, topology);
@@ -305,8 +303,6 @@ TEST(PjRtCompilerTest, CompilerFactoryRegistered) {
   };
   PjRtResetPlatformNameTopology topology;
   CompileOptions options;
-  // The test specifically requires setting a variant option
-  options.compiler_variant = variant;
   XlaComputation computation;
 
   // Factory should not be called yet.
