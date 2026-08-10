@@ -1120,5 +1120,92 @@ ENTRY main {
   EXPECT_TRUE(p1_int.IsPositive());
 }
 
+TEST_F(ConstraintPropagatorTest, MaskedAttentionSoftmax) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = pred[8,128] parameter(0)
+  param_1 = f32[8,128] parameter(1)
+  c_neg_inf = f32[] constant(-1e+30)
+  b_neg_inf = f32[8,128] broadcast(c_neg_inf), dimensions={}
+  select = f32[8,128] select(param_0, param_1, b_neg_inf)
+  param_2 = f32[8,128] parameter(2)
+  sub = f32[8,128] subtract(select, param_2)
+  ROOT exp = f32[8,128] exponential(sub)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto logits_int =
+      states[module->entry_computation()->parameter_instruction(1)]
+          .GetConstraintInterval();
+  EXPECT_TRUE(logits_int.IsNegative());
+
+  auto row_max_int =
+      states[module->entry_computation()->parameter_instruction(2)]
+          .GetConstraintInterval();
+  EXPECT_TRUE(row_max_int.IsPositive());
+}
+
+TEST_F(ConstraintPropagatorTest, GaussianDistanceSquaredExponential) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = s32[8,128] parameter(0)
+  iota = s32[8,128] iota(), iota_dimension=1
+  sub = s32[8,128] subtract(iota, param_0)
+  square = s32[8,128] multiply(sub, sub)
+  neg = s32[8,128] negate(square)
+  conv = f32[8,128] convert(neg)
+  c_scale = f32[] constant(0.8888)
+  b_scale = f32[8,128] broadcast(c_scale), dimensions={}
+  mul = f32[8,128] multiply(conv, b_scale)
+  ROOT exp = f32[8,128] exponential(mul)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsUnconstrained());
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_GE(p0_int.min, -20.0);
+  EXPECT_LE(p0_int.max, 150.0);
+}
+
+TEST_F(ConstraintPropagatorTest, GuardedOffsetLog) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = pred[8,128] parameter(0)
+  param_1 = s32[8,128] parameter(1)
+  param_2 = s32[8,128] parameter(2)
+  add_s32 = s32[8,128] add(param_1, param_2)
+  c_zero_s32 = s32[] constant(0)
+  b_zero_s32 = s32[8,128] broadcast(c_zero_s32), dimensions={}
+  select = s32[8,128] select(param_0, add_s32, b_zero_s32)
+  c_neg_one = s32[] constant(-1)
+  b_neg_one = s32[8,128] broadcast(c_neg_one), dimensions={}
+  sub = s32[8,128] add(select, b_neg_one)
+  conv = f32[8,128] convert(sub)
+  c_offset = f32[] constant(1024)
+  b_offset = f32[8,128] broadcast(c_offset), dimensions={}
+  add_f32 = f32[8,128] add(b_offset, conv)
+  ROOT log = f32[8,128] log(add_f32)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p1_int = states[module->entry_computation()->parameter_instruction(1)]
+                    .GetConstraintInterval();
+  auto p2_int = states[module->entry_computation()->parameter_instruction(2)]
+                    .GetConstraintInterval();
+  EXPECT_TRUE(p1_int.IsPositive());
+  EXPECT_TRUE(p2_int.IsPositive());
+}
+
 }  // namespace
 }  // namespace xla

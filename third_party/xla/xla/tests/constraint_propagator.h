@@ -102,6 +102,27 @@ class ConstraintPropagator {
   // and also result in empty constraints.
   absl::Status PropagateConstraintsApprox(const HloInstruction* instruction);
 
+  // Opcode-specific approximate constraint propagation helpers.
+  void PropagateAddApprox(const HloInstruction* instruction,
+                          const ConstraintInterval& output_interval);
+  void PropagateSubtractApprox(const HloInstruction* instruction,
+                               const ConstraintInterval& output_interval);
+  void PropagateMultiplyApprox(const HloInstruction* instruction,
+                               const ConstraintInterval& output_interval);
+  void PropagateReduceApprox(const HloInstruction* instruction,
+                             const ConstraintInterval& output_interval);
+  void PropagateContractingProductApprox(
+      const HloInstruction* instruction,
+      const ConstraintInterval& output_interval);
+  void PropagateDivideApprox(const HloInstruction* instruction,
+                             const ConstraintInterval& output_interval);
+  void PropagateMinMaxApprox(const HloInstruction* instruction,
+                             const ConstraintInterval& output_interval);
+  void PropagateExpApprox(const HloInstruction* instruction,
+                          const ConstraintInterval& output_interval);
+  void PropagatePowerApprox(const HloInstruction* instruction,
+                            const ConstraintInterval& output_interval);
+
   // Attempts to apply constraint_0 to inst_0 AND constraint_1 to inst_1.
   // Applies BOTH constraints ONLY IF neither instruction's state becomes Empty.
   // Returns true if both constraints were applied, false otherwise.
