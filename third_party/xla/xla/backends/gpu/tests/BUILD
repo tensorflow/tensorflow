@@ -1529,7 +1529,11 @@ xla_test(
     name = "ragged_all_to_all_e2e_test",
     srcs = ["ragged_all_to_all_e2e_test.cc"],
     backend_tags = {
-        "gpu": ["multi_gpu"],
+        "gpu": [
+            "multi_gpu",
+            # Run the test on Ampere or newer.
+            "requires-gpu-sm80",
+        ],
     },
     backends = [
         "gpu",
