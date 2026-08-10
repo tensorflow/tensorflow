@@ -1607,6 +1607,48 @@ def TPU_WaitIndirectDMAOp : TPU_Op<"wait_indirect_dma">, IndirectDMAOp {
   let extraClassDeclaration = extraBaseClassDeclaration;
 }
 
+// tpu.enqueue_strided_dma enqueues a strided DMA operation for data transfers
+// between HBM and VMEM.
+//
+// Unlike tpu.enqueue_dma, this op supports different source and target shapes
+// by carrying reshaping information. Currently supports local-only
+// DMAs; remote/cross-core DMA support may be added later.
+//
+// source          : Memref to copy from.
+// target          : Memref to copy to.
+// semaphore       : Memref of TPU_DMASemaphoreType tracking completion.
+// src_dim_mapping : Required. Array of length src_rank. Each element is the
+//                   logical group index for that source dimension. Consecutive
+//                   same-valued entries form a reshape group.
+// tgt_dim_mapping : Required. Array of length tgt_rank. Each element is the
+//                   logical group index for that target dimension. Consecutive
+//                   same-valued entries form a reshape group. Non-incremental
+//                   ordering of group indices encodes transposition.
+//                   The set of group indices must match between src and tgt.
+// source_is_strided : Required. When true, source side uses strided access pattern.
+//                     When false, target side uses strided access pattern.
+def TPU_EnqueueStridedDMAOp : TPU_Op<"enqueue_strided_dma"> {
+  let arguments = (ins
+    AnyMemRef:$source,
+    AnyMemRef:$target,
+    MemRefOf<[TPU_DMASemaphoreType]>:$semaphore,
+    DenseI64ArrayAttr:$src_dim_mapping,
+    DenseI64ArrayAttr:$tgt_dim_mapping,
+    BoolAttr:$source_is_strided
+  );
+  let assemblyFormat = [{
+    `source` `(` $source `:` type($source) `)`
+    `target` `(` $target `:` type($target) `)`
+    `semaphore` `(` $semaphore `:` type($semaphore) `)`
+    attr-dict
+  }];
+  let hasVerifier = 1;
+  let extraClassDeclaration = [{
+    ::mlir::FailureOr<::llvm::SmallVector<int64_t>> getSrcBlockDims();
+    ::mlir::FailureOr<::llvm::SmallVector<int64_t>> getTgtBlockDims();
+  }];
+}
+
 def TPU_RegionOp : TPU_Op<"region", [RecursiveMemoryEffects, SingleBlockImplicitTerminator<"tpu::YieldOp">]> {
   let arguments = (ins);
   let results = (outs Variadic<AnyType>:$results);

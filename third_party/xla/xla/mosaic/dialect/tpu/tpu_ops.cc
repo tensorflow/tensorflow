@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -1924,6 +1925,180 @@ LogicalResult WaitIndirectDMAOp::verify() {
     return emitOpError("Indirect DMA wait semaphore must be rank 0");
   }
   return isGather();
+}
+
+namespace {
+FailureOr<SmallVector<int64_t>> getBlockDims(MemRefType memref_ty) {
+  ArrayRef<int64_t> shape = memref_ty.getShape();
+  const int64_t rank = shape.size();
+  SmallVector<int64_t> block_dims(rank);
+
+  auto tiled_layout = dyn_cast_or_null<TiledLayoutAttr>(memref_ty.getLayout());
+  // Dynamic dims require tile strides to derive block dims.
+  if (!tiled_layout) {
+    for (int64_t dim = 0; dim < rank; ++dim) {
+      if (ShapedType::isDynamic(shape[dim])) {
+        return failure();
+      }
+    }
+  }
+
+  ArrayRef<xla::Tile> tiles =
+      tiled_layout ? tiled_layout.getTiles() : ArrayRef<xla::Tile>();
+  ArrayRef<int64_t> tile_strides =
+      tiled_layout ? tiled_layout.getTileStrides() : ArrayRef<int64_t>();
+
+  int64_t lane_count = 128;
+  int64_t s_tile = 8;
+  if (!tiles.empty()) {
+    ArrayRef<int64_t> tile_dims = tiles.front().dimensions();
+    if (!tile_dims.empty()) {
+      lane_count = tile_dims.back();
+      if (tile_dims.size() >= 2) {
+        s_tile = tile_dims[tile_dims.size() - 2];
+      }
+    }
+  }
+
+  auto get_stride = [&](int64_t idx) -> int64_t {
+    if (idx >= 0 && idx < static_cast<int64_t>(tile_strides.size())) {
+      return tile_strides[idx];
+    }
+    return 1;
+  };
+
+  for (int64_t dim = 0; dim < rank; ++dim) {
+    if (!ShapedType::isDynamic(shape[dim])) {
+      block_dims[dim] = shape[dim];
+      continue;
+    }
+    if (dim == rank - 1) {
+      block_dims[dim] = get_stride(rank - 2) * lane_count;
+    } else if (dim == rank - 2) {
+      int64_t tiles_count =
+          (rank >= 3) ? (get_stride(rank - 3) / get_stride(rank - 2)) : 1;
+      block_dims[dim] = std::max<int64_t>(1, tiles_count * s_tile);
+    } else if (dim > 0) {
+      block_dims[dim] =
+          std::max<int64_t>(1, get_stride(dim - 1) / get_stride(dim));
+    } else {
+      block_dims[dim] = 1;
+    }
+  }
+  return block_dims;
+}
+}  // namespace
+
+FailureOr<SmallVector<int64_t>> EnqueueStridedDMAOp::getSrcBlockDims() {
+  return getBlockDims(getMemRefType(getSource()));
+}
+
+FailureOr<SmallVector<int64_t>> EnqueueStridedDMAOp::getTgtBlockDims() {
+  return getBlockDims(getMemRefType(getTarget()));
+}
+
+LogicalResult EnqueueStridedDMAOp::verify() {
+  auto source_ty = getMemRefType(getSource());
+  auto target_ty = getMemRefType(getTarget());
+
+  if (source_ty.getElementType() != target_ty.getElementType()) {
+    return emitOpError("Source and target element types must match.");
+  }
+
+  if (getElementTypeBitwidth(source_ty.getElementType()) != 32) {
+    return emitOpError()
+           << "Strided DMA only supports 32-bit element types, got "
+           << source_ty.getElementType() << ".";
+  }
+
+  MemRefType sem_type = getMemRefType(getSemaphore());
+  if (sem_type.getRank() != 0) {
+    return emitOpError("Strided DMA semaphore must be rank 0.");
+  }
+  if (source_ty.getRank() < 2) {
+    return emitOpError() << "Source rank must be >= 2, got "
+                         << source_ty.getRank();
+  }
+  if (target_ty.getRank() < 2) {
+    return emitOpError() << "Target rank must be >= 2, got "
+                         << target_ty.getRank();
+  }
+
+  ArrayRef<int64_t> src_mapping = getSrcDimMapping();
+  ArrayRef<int64_t> tgt_mapping = getTgtDimMapping();
+  if (src_mapping.size() != static_cast<size_t>(source_ty.getRank())) {
+    return emitOpError()
+           << "src_dim_mapping length must equal source rank, got "
+           << src_mapping.size() << " vs " << source_ty.getRank();
+  }
+  if (tgt_mapping.size() != static_cast<size_t>(target_ty.getRank())) {
+    return emitOpError()
+           << "tgt_dim_mapping length must equal target rank, got "
+           << tgt_mapping.size() << " vs " << target_ty.getRank();
+  }
+
+  auto check_contiguity = [&](ArrayRef<int64_t> mapping,
+                              StringRef name) -> LogicalResult {
+    DenseSet<int64_t> seen;
+    for (size_t i = 0; i < mapping.size(); ++i) {
+      if (i == 0 || mapping[i] != mapping[i - 1]) {
+        if (!seen.insert(mapping[i]).second) {
+          return emitOpError()
+                 << name << ": group " << mapping[i] << " is not contiguous";
+        }
+      }
+    }
+    return success();
+  };
+
+  if (failed(check_contiguity(src_mapping, "src_dim_mapping")) ||
+      failed(check_contiguity(tgt_mapping, "tgt_dim_mapping"))) {
+    return failure();
+  }
+
+  DenseSet<int64_t> src_groups_set(src_mapping.begin(), src_mapping.end());
+  DenseSet<int64_t> tgt_groups_set(tgt_mapping.begin(), tgt_mapping.end());
+  if (src_groups_set != tgt_groups_set) {
+    return emitOpError()
+           << "src_dim_mapping and tgt_dim_mapping must contain the same set "
+              "of group indices";
+  }
+
+  // Check dimension group size consistency when block dims are available.
+  auto src_block_dims = getSrcBlockDims();
+  auto tgt_block_dims = getTgtBlockDims();
+  if (succeeded(src_block_dims) && succeeded(tgt_block_dims)) {
+    for (int64_t g : src_groups_set) {
+      int64_t src_prod = 1;
+      for (size_t i = 0; i < src_mapping.size(); ++i) {
+        if (src_mapping[i] == g) {
+          src_prod *= (*src_block_dims)[i];
+        }
+      }
+      int64_t tgt_prod = 1;
+      for (size_t i = 0; i < tgt_mapping.size(); ++i) {
+        if (tgt_mapping[i] == g) {
+          tgt_prod *= (*tgt_block_dims)[i];
+        }
+      }
+      if (src_prod != tgt_prod) {
+        return emitOpError() << "Dimension group " << g
+                             << " total size mismatch between source ("
+                             << src_prod << ") and target (" << tgt_prod << ")";
+      }
+    }
+  }
+
+  // Lane group constraint: minormost dimension must map to the same group.
+  if (!src_mapping.empty() && !tgt_mapping.empty() &&
+      src_mapping.back() != tgt_mapping.back()) {
+    return emitOpError()
+           << "Minormost dimension on source (group " << src_mapping.back()
+           << ") and target (group " << tgt_mapping.back()
+           << ") must belong to the same logical group (lane constraint)";
+  }
+
+  return success();
 }
 
 LogicalResult RegionOp::verify() {
