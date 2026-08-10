@@ -2628,6 +2628,27 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::Bool()),
     ScaledDotTestName);
 
+TEST_F(HloHardwareIndependentTestBase, ScaledDotPreAmpereIsRejected) {
+  const std::string kHlo = R"(
+HloModule ScaledDotPreAmpere
+
+ENTRY triton_computation {
+  lhs = f8e4m3fn[16, 32] parameter(0)
+  lhs_scale = f8e8m0fnu[16, 1] parameter(1)
+  rhs = f8e4m3fn[32, 16] parameter(2)
+  rhs_scale = f8e8m0fnu[1, 16] parameter(3)
+  ROOT dot = f32[16, 16] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+      lhs_contracting_dims={1},
+      rhs_contracting_dims={0},
+      backend_config={sizes:[16]}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  const HloInstruction* dot = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(IsTritonSupportedInstruction(
+      *dot, se::GpuComputeCapability(se::CudaComputeCapability::Volta())));
+}
+
 TEST_P(SupportTestWithTilingParam, NestedFusionsAreRejected) {
   // Nested fusions are not supported by xtile emitter.
   absl::string_view hlo_text = R"(

@@ -676,6 +676,16 @@ CodegenDecision IsTritonSupportedDot(
 CodegenDecision IsTritonSupportedScaledDot(
     const HloScaledDotInstruction& dot,
     const se::GpuComputeCapability& gpu_version) {
+  if (gpu_version.IsCuda()) {
+    auto cc = gpu_version.cuda_compute_capability();
+    if (!cc || !cc->IsAtLeastAmpere()) {
+      return CodegenDecision::Forbid(
+          "Scaled dot is not supported by Triton for pre-Ampere GPUs.");
+    }
+  } else if (!gpu_version.IsRocm()) {
+    return CodegenDecision::Forbid(
+        "Scaled dot is only supported on CUDA and ROCm.");
+  }
   CHECK_GE(dot.operand_count(), 4);
   PrimitiveType lhs_type = dot.operand(0)->shape().element_type();
   PrimitiveType rhs_type = dot.operand(1)->shape().element_type();
