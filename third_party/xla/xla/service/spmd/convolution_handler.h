@@ -19,8 +19,8 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/functional/function_ref.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_sharding.h"

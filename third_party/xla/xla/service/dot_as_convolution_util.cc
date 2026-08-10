@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <optional>
 
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/shape_inference.h"
