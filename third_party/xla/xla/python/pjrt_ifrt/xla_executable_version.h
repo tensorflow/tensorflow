@@ -24,11 +24,9 @@ limitations under the License.
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/rtti.h"
-#include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/pjrt_ifrt/executable_metadata.pb.h"
 #include "xla/python/pjrt_ifrt/xla_executable_abi_version.h"
-#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace ifrt {
