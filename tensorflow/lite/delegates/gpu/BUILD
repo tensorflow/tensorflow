@@ -96,7 +96,6 @@ config_setting(
 config_setting(
     name = "tflite_gpu_extra_gles_deps",
     constraint_values = [
-        "@platforms//cpu:x86_64",
         "@platforms//os:linux",
     ],
     values = {
