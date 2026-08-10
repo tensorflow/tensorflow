@@ -41,6 +41,7 @@ xla_cc_test(
         "//xla/tests:aot_interception_pjrt_client",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
+        "@tsl//tsl/platform:path",
     ],
 )
 
