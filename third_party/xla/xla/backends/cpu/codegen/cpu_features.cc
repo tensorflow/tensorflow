@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// Dummy comment to force rebuild on stack
+
 #include "xla/backends/cpu/codegen/cpu_features.h"
 
 #include <optional>
@@ -206,8 +208,10 @@ DetectedMachineAttributes DetectMachineAttributes(
       !(tsl::port::IsX86CPU() || tsl::port::IsAarch64CPU());
   for (const auto& [feature, enabled] : llvm::sys::getHostCPUFeatures()) {
     bool should_enable =
-        enabled && (no_feature_constraint ||
-                    ShouldEnableCpuFeature(feature, *max_feature));
+        enabled &&
+        (no_feature_constraint ||
+         ShouldEnableCpuFeature(
+             absl::string_view(feature.data(), feature.size()), *max_feature));
     result.features.push_back(
         absl::StrCat(should_enable ? "+" : "-", std::string(feature)));
     result.num_filtered_features += (should_enable != enabled);
