@@ -62,15 +62,9 @@ HloInstruction* InsertCallMarkerBefore(HloInstruction* instruction) {
 }
 
 HloInstruction* InsertCallMarkerAfter(HloInstruction* instruction) {
-  HloModule* module = instruction->GetModule();
-  Shape shape = instruction->shape();
-  if (instruction->parent() == module->entry_computation() &&
-      instruction->parent()->root_instruction() == instruction) {
-    shape = module->entry_computation_layout().result_layout().shape();
-  }
   std::unique_ptr<HloInstruction> call_after_ptr =
       HloInstruction::CreateCustomCall(
-          shape, {instruction}, kCallMarkerAfterTarget, "",
+          instruction->shape(), {instruction}, kCallMarkerAfterTarget, "",
           CustomCallApiVersion::API_VERSION_ORIGINAL);
   Cast<HloCustomCallInstruction>(call_after_ptr.get())
       ->set_custom_call_has_side_effect(true);

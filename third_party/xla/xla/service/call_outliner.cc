@@ -42,32 +42,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-// Recursively casts `inst` to `target_shape`. If `inst` is a tuple, it
-// recursively applies the cast to each element.
-HloInstruction* CastToShape(HloComputation* computation, HloInstruction* inst,
-                            const Shape& target_shape) {
-  if (inst->shape().IsToken()) {
-    return inst;
-  }
-  if (inst->shape().IsArray()) {
-    if (ShapeUtil::Compatible(inst->shape(), target_shape)) {
-      return computation->AddInstruction(
-          HloInstruction::CreateUnary(target_shape, HloOpcode::kCopy, inst));
-    }
-    return computation->AddInstruction(
-        HloInstruction::CreateBitcast(target_shape, inst));
-  }
-  CHECK(inst->shape().IsTuple());
-  std::vector<HloInstruction*> elements;
-  elements.reserve(target_shape.tuple_shapes_size());
-  for (int i = 0; i < target_shape.tuple_shapes_size(); ++i) {
-    HloInstruction* gte = computation->AddInstruction(
-        HloInstruction::CreateGetTupleElement(inst, i));
-    elements.push_back(
-        CastToShape(computation, gte, target_shape.tuple_shapes(i)));
-  }
-  return computation->AddInstruction(HloInstruction::CreateTuple(elements));
-}
 
 // Extracts the original computation name from the frontend attributes.
 std::string GetMarkedComputationName(const HloInstruction* instruction) {
@@ -307,14 +281,8 @@ absl::StatusOr<HloInstruction*> CallOutliner::OutlineAndReplaceBlock(
   ABSL_RETURN_IF_ERROR(RestoreMetadataAndDependencies(
       call_instruction, innermost_before, innermost_after));
 
-  HloInstruction* replacement = call_instruction;
-  if (!ShapeUtil::Equal(innermost_after->shape(), call_instruction->shape())) {
-    replacement =
-        CastToShape(computation, call_instruction, innermost_after->shape());
-  }
-
   // Replace _after marker uses with the new call result.
-  ABSL_RETURN_IF_ERROR(innermost_after->ReplaceAllUsesWith(replacement));
+  ABSL_RETURN_IF_ERROR(innermost_after->ReplaceAllUsesWith(call_instruction));
 
   // Replace _before marker uses.
   if (innermost_before->shape().IsTuple()) {
