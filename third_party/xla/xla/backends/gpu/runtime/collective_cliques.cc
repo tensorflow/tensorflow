@@ -200,6 +200,8 @@ absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
       return CliqueIds(clique_id);
     };
 
+    // TODO(ezhulenev): Add a mechanism to assign channel limits explicitly
+    // instead of interpreting every non-default communication ID as P2P.
     int64_t max_channels = r.key.communication_id() != CommunicationId(0)
                                ? params.p2p_max_nchannels
                                : params.collective_max_nchannels;

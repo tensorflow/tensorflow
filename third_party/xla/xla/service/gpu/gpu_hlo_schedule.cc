@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/transforms/collectives/async_collective_annotator.h"
+#include "xla/backends/gpu/transforms/collectives/collective_domain.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/backends/gpu/transforms/pgle_accuracy_checker.h"
 #include "xla/backends/gpu/transforms/scheduling_instruction_annotator.h"
@@ -91,6 +92,24 @@ namespace gpu {
 using tensorflow::profiler::ProfiledInstructionsProto;
 
 namespace {
+
+absl::StatusOr<bool> UsesMultipleCollectiveDomains(const HloModule& module) {
+  std::optional<CollectiveCommunicationDomain> first_domain;
+  for (const HloComputation* computation : module.computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (!SupportsCollectiveCommunicationDomain(*instruction)) {
+        continue;
+      }
+      ABSL_ASSIGN_OR_RETURN(CollectiveCommunicationDomain domain,
+                       GetCollectiveCommunicationDomain(*instruction));
+      if (first_domain.has_value() && *first_domain != domain) {
+        return true;
+      }
+      first_domain = domain;
+    }
+  }
+  return false;
+}
 
 bool ShouldScheduleAsEarlyAsPossible(const HloInstruction& instr) {
   switch (instr.opcode()) {
@@ -657,6 +676,9 @@ absl::Status RunLatencyHidingSchedulerPasses(
   tsl::profiler::TraceMe traceme("RunLatencyHidingSchedulerPasses");
   HloPassPipeline pipeline("latency-hiding-scheduler");
   const DebugOptions& options = module->config().debug_options();
+  ABSL_ASSIGN_OR_RETURN(bool uses_multiple_collective_domains,
+                   UsesMultipleCollectiveDomains(*module));
+
   pipeline.AddPass<LegalizeSchedulingAnnotations>(
       SchedulingAnnotationsConfig());
 
@@ -758,7 +780,8 @@ absl::Status RunLatencyHidingSchedulerPasses(
       /*early_target_scheduling_rule=*/gpu_early_scheduling_rule,
       /*post_processing_fn=*/nullptr,
       /*scheduling_instruction_crosses_overlap_limit=*/
-      options.xla_gpu_experimental_enable_collective_multi_streaming()
+      (options.xla_gpu_experimental_enable_collective_multi_streaming() ||
+       uses_multiple_collective_domains)
           ? GpuScheduleCrossesOverlapLimit
           : nullptr);
 

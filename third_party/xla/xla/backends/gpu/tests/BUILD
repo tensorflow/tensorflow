@@ -1308,6 +1308,7 @@ xla_test(
         "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu/transforms/collectives:collective_domain",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:pattern_matcher_gmock",

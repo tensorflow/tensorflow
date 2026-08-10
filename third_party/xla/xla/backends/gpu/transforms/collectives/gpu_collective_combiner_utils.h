@@ -50,7 +50,8 @@ bool EnableHeuristicCollectiveCombining(
 
 // Merges the CollectiveBackendConfig from all combined instructions onto the
 // target instruction. The is_pipelined and is_spmd_generated fields are
-// logical ORs over the source instructions.
+// logical ORs over the source instructions. An explicitly known communication
+// domain propagates over UNSPECIFIED; conflicting known domains are rejected.
 absl::Status MergeCollectiveBackendConfig(
     absl::Span<HloInstruction* const> to_combine, HloInstruction* combined);
 

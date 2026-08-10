@@ -243,7 +243,8 @@ static GpuExecutable::NumAdditionalStreams GetNumAdditionalStreams(
   compute = std::max(0, compute);
   comm = std::max(0, comm);
 
-  // Then traverse all thunks to see if anyone requested more streams.
+  // Then traverse all thunks to see if anyone requested more streams. This
+  // also sizes sparse collective-domain stream pools from their assigned IDs.
   for (const auto& thunk : executor.thunks()) {
     thunk->Walk([&](Thunk* nested) {
       if (auto* async_start = dynamic_cast<AsyncStartThunk*>(nested)) {

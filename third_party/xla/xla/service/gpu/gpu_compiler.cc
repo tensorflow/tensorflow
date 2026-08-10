@@ -94,6 +94,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/collectives/collective_pipelining_analyzer.h"
 #include "xla/backends/gpu/transforms/collectives/convert_async_collectives_to_sync.h"
 #include "xla/backends/gpu/transforms/collectives/gpu_collective_combiner_utils.h"
+#include "xla/backends/gpu/transforms/collectives/legalize_collective_domain.h"
 #include "xla/backends/gpu/transforms/collectives/reduce_scatter_combiner.h"
 #include "xla/backends/gpu/transforms/composite_rewriter.h"
 #include "xla/backends/gpu/transforms/conv_rewriter.h"
@@ -1054,6 +1055,7 @@ absl::Status RunCollectiveOptimizationPasses(
 
   HloPassPipeline collectives_pipeline("collective-optimizations",
                                        compilation_stats);
+  collectives_pipeline.AddPass<LegalizeCollectiveDomain>();
   collectives_pipeline.AddPass<RaggedAllToAllCanonicalizer>();
 
   if (debug_options.xla_gpu_unsupported_enable_ragged_all_to_all_decomposer()) {
