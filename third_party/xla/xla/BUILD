@@ -311,6 +311,18 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "packing",
+    srcs = ["packing.cc"],
+    hdrs = ["packing.h"],
+    deps = [
+        "//xla/tsl/lib/math:math_util",
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/types:span",
+        "@com_google_highway//:hwy",
+    ],
+)
+
+cc_library(
     name = "util",
     srcs = [
         "error_util.cc",
@@ -325,6 +337,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":packing",
         ":status_macros",
         ":types",
         ":xla_data_proto_cc",
