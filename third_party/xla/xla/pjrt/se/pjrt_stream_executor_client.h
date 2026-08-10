@@ -431,16 +431,8 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 
   std::optional<PjRtPluginAttributes> plugin_attributes() const override;
 
-  // Most platforms expect device-to-device transfers to be enqueued on the
-  // source d2d stream, but some platforms use the destination d2d stream. This
-  // function specifies which one the platform expects.
-  virtual bool EnqueueD2DTransfersOnSrcStream() const { return true; }
-
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
-
-  absl::StatusOr<Layout> GetDefaultLayout(
-      PrimitiveType element_type, absl::Span<const int64_t> dims) override;
 
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) override;
@@ -484,9 +476,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   absl::StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
       const override;
 
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
-      absl::Status error, const Shape& shape, PjRtMemorySpace* memory) override;
-
   // Caller is responsible to ensure that `data` has allocated enough memory
   // for `buffer_size` to do DMA mapping.
   absl::Status DmaMap(void* data, size_t buffer_size) override;
@@ -528,14 +517,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
       int memory_space_kind_id) const override {
     return PjRtDynamicShapeKind::kSuffix;
   }
-
-  using CommonPjRtClient::GetOnDeviceBytesCount;
-  absl::StatusOr<int64_t> GetOnDeviceBytesCount(
-      int memory_space_kind, const xla::Shape& shape) const override;
-
-  absl::StatusOr<xla::Shape> MakeDefaultShapeForMemorySpace(
-      PjRtMemorySpace* memory_space, xla::Shape shape,
-      const xla::Layout* layout) const override;
 
   absl::StatusOr<PjRtRawBufferRef> AllocateRawBufferForExecute(
       PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
