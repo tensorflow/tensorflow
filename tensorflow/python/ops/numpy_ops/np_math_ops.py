@@ -453,8 +453,7 @@ def hypot(x1, x2):  # pylint: disable=missing-function-docstring
     )
     return array_ops.where_v2(
         either_inf,
-        array_ops.ones_like(result)
-        * constant_op.constant(np.inf, dtype=result.dtype),
+        constant_op.constant(np.inf, dtype=result.dtype),
         result,
     )
 
