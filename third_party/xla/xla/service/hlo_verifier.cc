@@ -1720,8 +1720,7 @@ absl::Status ShapeVerifier::HandleCustomCall(HloInstruction* instruction) {
     const Shape& operand_subshape = ShapeUtil::GetSubshape(
         custom_call->operand(pair.second.first)->shape(), pair.second.second);
     if (opts_.layout_sensitive) {
-      bool operand_is_scalar = operand_subshape.IsArray() &&
-                               ShapeUtil::ElementsIn(operand_subshape) == 1;
+      bool operand_is_scalar = ShapeUtil::IsEffectiveScalar(operand_subshape);
       auto shape_equal_checker = Shape::Equal().IgnoreBuffer(ignore_buffer);
       if (operand_is_scalar) {
         shape_equal_checker.IgnoreMemorySpaceInLayout();

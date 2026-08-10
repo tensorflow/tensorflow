@@ -4114,6 +4114,26 @@ TEST_F(HloVerifierTest, UnboundedDynamismRejectsUnsupportedOp) {
                HasSubstr("Unbounded dynamism is disabled")));
 }
 
+TEST_F(HloVerifierTest, UnboundedDynamismSupportsAliasingCustomCall) {
+  const char* const hlo = R"hlo(
+  HloModule Module
+
+  ENTRY entry {
+    param0 = f32[?] parameter(0)
+    ROOT add = f32[?] custom-call(param0), custom_call_target="dynamic",
+      output_to_operand_aliasing={{}:(0, {})}
+  }
+  )hlo";
+
+  auto verifier =
+      HloVerifier(HloVerifierOpts{}
+                      .WithSupportedUnboundedDynamicOp(
+                          [](const HloInstruction* hlo) { return true; })
+                      .WithLayoutSensitive(true));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  EXPECT_OK(verifier.Run(module.get()));
+}
+
 TEST_F(HloVerifierTestLayoutSensitive,
        HostOffloadingDUSAndDSAreVerifiedWhenChangingLayout) {
   const char* const hlo_string = R"(
