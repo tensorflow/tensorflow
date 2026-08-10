@@ -174,6 +174,7 @@ td_library(
         "dialect/tpu/tpu_types.td",
     ],
     compatible_with = get_compatible_with_libtpu_portable(),
+    includes = ["/"],
     deps = [
         "@llvm-project//mlir:BuiltinDialectTdFiles",
         "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
