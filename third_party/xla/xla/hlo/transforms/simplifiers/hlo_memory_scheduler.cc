@@ -675,7 +675,14 @@ absl::StatusOr<HloSchedule> DefaultMemoryScheduler::Run(
   if (auto status =
           module->metadata()->set_custom_metadata(memory_scheduler_metrics);
       !status.ok()) {
-    LOG(WARNING) << "failed to set custom metadata: " << status;
+    if (absl::IsNotFound(status)) {
+      // There is no currently running pass to attach the metrics to. This is
+      // expected: ScheduleModule is also invoked outside of an HloPassPipeline,
+      // e.g. by GpuCompiler::CompileToBackendResult via ScheduleGpuModule.
+      VLOG(2) << "not recording memory scheduler metrics: " << status;
+    } else {
+      LOG(WARNING) << "failed to set custom metadata: " << status;
+    }
   }
 
   return *selected_sequence;
