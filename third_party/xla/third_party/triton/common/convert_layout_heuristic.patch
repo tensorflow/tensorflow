@@ -10,7 +10,7 @@ See also b/422133176
 
 --- a/lib/Dialect/TritonGPU/Transforms/RemoveLayoutConversions.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/RemoveLayoutConversions.cpp
-@@ -342,6 +342,15 @@
+@@ -343,6 +343,15 @@ SmallVector<Value> LayoutPropagation::propagateToUsers(Value value,
      if (auto reshapeOp = dyn_cast<ReshapeOp>(user);
          reshapeOp && reshapeOp.getEfficientLayout())
        continue;

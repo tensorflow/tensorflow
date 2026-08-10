@@ -1587,10 +1587,10 @@ TEST_P(TritonAndBlasSupportForDifferentTensorSizes,
       break;
     case PC::ALG_DOT_BF16_BF16_F32_X6:
     case PC::ALG_DOT_BF16_BF16_F32_X9:
-        ASSERT_TRUE(result_or_status.status().ok())
-            << "failed to compile " << algorithm_;
-        EXPECT_TRUE(result_or_status.value())
-            << "wrong result for " << algorithm_;
+      ASSERT_TRUE(result_or_status.status().ok())
+          << "failed to compile " << algorithm_;
+      EXPECT_TRUE(result_or_status.value())
+          << "wrong result for " << algorithm_;
       break;
     case PC::ALG_DOT_F64_F64_F64:
       EXPECT_EQ(result_or_status.status().code(),

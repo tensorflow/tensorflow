@@ -1,6 +1,6 @@
 --- a/bin/RegisterTritonDialects.h
 +++ b/bin/RegisterTritonDialects.h
-@@ -95,7 +95,6 @@
+@@ -95,7 +95,6 @@ inline void registerTritonDialects(mlir::DialectRegistry &registry) {
    mlir::triton::registerAllocateSharedMemoryNvPass();
    mlir::registerLLVMDIScope();
    mlir::LLVM::registerInlinerInterface(registry);
