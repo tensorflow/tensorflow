@@ -1186,14 +1186,14 @@ def separable_conv2d_transpose(
       dynamic_value_shape = array_ops.shape(value)
       dynamic_pointwise_filter_shape = array_ops.shape(pointwise_filter)
       
-      batch_size = batch_size or dynamic_value_shape[0]
+      batch_size = batch_size if batch_size is not None else dynamic_value_shape[0]
       if data_format.startswith("NC"):
-        h_out = h_out or dynamic_value_shape[2]
-        w_out = w_out or dynamic_value_shape[3]
+        h_out = h_out if h_out is not None else dynamic_value_shape[2]
+        w_out = w_out if w_out is not None else dynamic_value_shape[3]
       else:
-        h_out = h_out or dynamic_value_shape[1]
-        w_out = w_out or dynamic_value_shape[2]
-      in_channels_forward = in_channels_forward or dynamic_pointwise_filter_shape[2]
+        h_out = h_out if h_out is not None else dynamic_value_shape[1]
+        w_out = w_out if w_out is not None else dynamic_value_shape[2]
+      in_channels_forward = in_channels_forward if in_channels_forward is not None else dynamic_pointwise_filter_shape[2]
       
       if data_format.startswith("NC"):
         pointwise_output_shape = array_ops.stack([batch_size, in_channels_forward, h_out, w_out])
