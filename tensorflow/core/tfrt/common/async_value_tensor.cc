@@ -36,7 +36,8 @@ constexpr uintptr_t kTag = 0x1ULL;
     const Tensor* tensor) {
   if (tensor == nullptr) return nullptr;
   const TensorBuffer* buf = DMAHelper::buffer(tensor);
-  if (buf == nullptr || !buf->AllocatesOpaqueHandle()) {
+  if (buf == nullptr || const_cast<TensorBuffer*>(buf)->root_buffer() != buf ||
+      !buf->AllocatesOpaqueHandle()) {
     return nullptr;
   }
   AsyncValueTensor* av_tensor = FromOpaquePointer(buf->data());
@@ -62,7 +63,11 @@ void AsyncValueTensor::SetBuffer(std::shared_ptr<xla::PjRtBuffer> buffer) {
 /*static*/ AsyncValueTensor* AsyncValueTensor::FromOpaquePointer(void* ptr) {
   uintptr_t value = reinterpret_cast<uintptr_t>(ptr);
   if (value & kTag) {
-    return reinterpret_cast<AsyncValueTensor*>(value & ~kTag);
+    uintptr_t untagged = value & ~kTag;
+    if (untagged % alignof(AsyncValueTensor) != 0) {
+      return nullptr;
+    }
+    return reinterpret_cast<AsyncValueTensor*>(untagged);
   } else {
     return nullptr;
   }

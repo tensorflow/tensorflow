@@ -202,5 +202,21 @@ TEST(TensorPjRtBufferUtilTest, GetPjRtCApiClientSuccess) {
   EXPECT_THAT(pjrt_client_get, NotNull());
 }
 
+TEST(TensorPjRtBufferUtilTest, SetPjRtCBufferToSlicedTensorSuccess) {
+  auto allocator = std::make_unique<AsyncValueAllocator>();
+  tensorflow::Tensor tensor(allocator.get(), DT_UINT8, {10});
+  tensorflow::Tensor sliced_tensor = tensor.Slice(2, 9);
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, xla::GetCApiClient(DEVICE_CPU));
+  PJRT_Buffer* c_buffer = CreateCBuffer();
+
+  TF_EXPECT_OK(SetPjRtCBufferToTensor(
+      c_buffer, absl::down_cast<xla::PjRtCApiClient*>(pjrt_client.get()),
+      &sliced_tensor));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto retrieved_buffer,
+                          GetPjRtCBufferFromTensor(&sliced_tensor));
+  EXPECT_THAT(retrieved_buffer, NotNull());
+}
+
 }  // namespace
 }  // namespace tensorflow
