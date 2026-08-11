@@ -246,13 +246,32 @@ void HloLiveRange::CalculateBufferStartEndMap() {
     auto async_context_it = computations_in_async_context_.find(computation);
     if (async_context_it != computations_in_async_context_.end()) {
       const HloComputation* async_context = async_context_it->second;
-      auto async_start = async_context->GetUniqueCaller(HloOpcode::kAsyncStart);
-      CHECK(async_start) << "Async computations should have a unique caller.";
-      auto async_done = (*async_start)->async_chain_done();
-      auto async_done_it = instruction_schedule_.find(async_done);
-      CHECK(async_done_it != instruction_schedule_.end());
-      definition_end_time =
-          std::max(definition_end_time, async_done_it->second);
+      for (const HloInstruction* caller :
+           async_context->caller_instructions()) {
+        if (caller->IsAsynchronous()) {
+          const HloInstruction* async_done = nullptr;
+          if (caller->opcode() == HloOpcode::kAsyncStart ||
+              caller->opcode() == HloOpcode::kAsyncUpdate) {
+            async_done = caller->async_chain_done();
+          } else if (caller->opcode() == HloOpcode::kAsyncDone) {
+            async_done = caller;
+          }
+          if (async_done != nullptr) {
+            auto async_done_it = instruction_schedule_.find(async_done);
+            if (async_done_it != instruction_schedule_.end()) {
+              definition_end_time =
+                  std::max(definition_end_time, async_done_it->second);
+            } else {
+              definition_end_time =
+                  std::max(definition_end_time,
+                           computation_span_times_[computation].end);
+            }
+          } else {
+            definition_end_time = std::max(
+                definition_end_time, computation_span_times_[computation].end);
+          }
+        }
+      }
       VLOG(2) << "Setting the definition end time for op in async context: "
               << definition_end_time;
     }
