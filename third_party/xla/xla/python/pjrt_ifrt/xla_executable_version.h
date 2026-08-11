@@ -20,8 +20,8 @@ limitations under the License.
 #include <memory>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes_version.h"

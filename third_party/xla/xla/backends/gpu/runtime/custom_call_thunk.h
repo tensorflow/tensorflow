@@ -86,14 +86,6 @@ class CustomCallThunk : public TracedCommand {
     std::unique_ptr<xla::ffi::Ffi> record;
   };
 
-  // A per-execution state that holds state for prepare and initialize stages.
-  struct PrepareAndInitState {
-    ffi::ExecutionState prepare;
-    ffi::ExecutionState init;
-    bool prepared = false;
-    bool initialized = false;
-  };
-
   // Creates a serializable custom call thunk. The callback is resolved using
   // XLA FFI.
   static absl::StatusOr<std::unique_ptr<CustomCallThunk>> Create(
