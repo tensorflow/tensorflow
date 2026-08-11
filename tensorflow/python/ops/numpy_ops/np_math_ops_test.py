@@ -469,6 +469,66 @@ class MathTest(test.TestCase, parameterized.TestCase):
     run_test(0, -5, endpoint=False)
     run_test(0, -5, base=2.0)
 
+  def testLinSpaceDtype(self):
+    # An explicitly requested `dtype` must be honored, and must not be used as
+    # the type the samples are computed in: numpy computes the samples in a
+    # floating point type derived from `start` and `stop`, and only casts them
+    # to `dtype` as a final step.
+    dtypes = [
+        np.int32,
+        np.int64,
+        np.float16,
+        np.float32,
+        np.float64,
+        np.complex64,
+        np.complex128,
+    ]
+
+    def run_test(start, stop, **kwargs):
+      for dtype in dtypes:
+        self.match(
+            np_math_ops.linspace(start, stop, dtype=dtype, **kwargs),
+            np.linspace(start, stop, dtype=dtype, **kwargs),
+            msg='linspace({}, {}, dtype={})'.format(start, stop, dtype),
+        )
+
+    run_test(0, 10)
+    run_test(0, 10, num=0)
+    run_test(0, 10, num=1)
+    run_test(0, 10, num=5)
+    run_test(0, 10, num=5, endpoint=False)
+    run_test(0, -10, num=5)
+    run_test(0, -10, num=5, endpoint=False)
+    run_test(-5, 5, num=4)
+
+  def testLogSpaceDtype(self):
+    # As for `linspace`, `dtype` only determines the type of the result; the
+    # exponents are computed in a floating point type derived from `start` and
+    # `stop`.
+    dtypes = [
+        np.int32,
+        np.int64,
+        np.float16,
+        np.float32,
+        np.float64,
+        np.complex64,
+        np.complex128,
+    ]
+
+    def run_test(start, stop, **kwargs):
+      for dtype in dtypes:
+        self.match(
+            np_math_ops.logspace(start, stop, dtype=dtype, **kwargs),
+            np.logspace(start, stop, dtype=dtype, **kwargs),
+            msg='logspace({}, {}, dtype={})'.format(start, stop, dtype),
+        )
+
+    run_test(0, 3, num=4)
+    run_test(0, 3, num=4, endpoint=False)
+    run_test(0, 3, num=4, base=2.0)
+    run_test(0, -3, num=4)
+    run_test(1, 3, num=5)
+
   def testGeomSpace(self):
 
     def run_test(start, stop, **kwargs):
