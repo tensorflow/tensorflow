@@ -844,6 +844,38 @@ struct functor_traits<scalar_erfinv_op<float>> {
   };
 };
 
+// Specialization of Eigen's scalar_erf_op for double.
+//
+// Eigen's generic_fast_erf for double (as of the Eigen pin used by TensorFlow)
+// does not clamp large inputs the way generic_fast_erfc does.  For |x| large
+// enough that intermediate x*x overflows, the result is NaN instead of +/-1.
+// Upstream Eigen fixed this in 3e5a2f9 ("Fix vectorized erf returning NaN at
+// +/-inf instead of +/-1"); specialize here until TensorFlow's Eigen pin
+// includes that fix.  See tensorflow/tensorflow#124773.
+//
+// Clamp domain matches Eigen erfc: beyond |x| >= 28, |erf(x)| is 1 within
+// double precision (erfc underflows).
+template <>
+struct scalar_erf_op<double> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const double operator()(
+      const double& a) const {
+    // Saturate outside the safe domain.  Comparisons with NaN are false, so
+    // NaN falls through to numext::erf and stays NaN.  +/-inf saturate to +/-1.
+    constexpr double kClamp = 28.0;
+    if (a >= kClamp) return 1.0;
+    if (a <= -kClamp) return -1.0;
+    return numext::erf(a);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a) const {
+    // Match Eigen erfc / upstream erf clamp for the vectorized path.
+    constexpr double kClamp = 28.0;
+    const Packet x =
+        pmin(pmax(a, pset1<Packet>(-kClamp)), pset1<Packet>(kClamp));
+    return pselect(pcmp_eq(a, a), perf(x), a);
+  }
+};
+
 }  // end namespace internal
 }  // end namespace Eigen
 
