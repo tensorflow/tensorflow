@@ -255,6 +255,15 @@ class MatrixDiagOp : public OpKernel {
         context, num_cols == -1 || num_cols >= min_num_cols,
         absl::InvalidArgumentError("The number of columns is too small."));
 
+    OP_REQUIRES(
+        context, num_rows >= -1,
+        absl::InvalidArgumentError(
+            absl::StrCat("num_rows must be >= -1, received: ", num_rows)));
+    OP_REQUIRES(
+        context, num_cols >= -1,
+        absl::InvalidArgumentError(
+            absl::StrCat("num_cols must be >= -1, received: ", num_cols)));
+
     // If both num_rows and num_cols are unknown, assume that output is square.
     // Otherwise, use smallest possible values.
     if (num_rows == -1 && num_cols == -1) {
@@ -278,6 +287,12 @@ class MatrixDiagOp : public OpKernel {
       output_shape.set_dim(diag_rank - 2, num_rows);
       output_shape.set_dim(diag_rank - 1, num_cols);
     }
+
+    OP_REQUIRES(
+        context, output_shape.num_elements() >= 0,
+        absl::InvalidArgumentError(
+            absl::StrCat("Invalid or overflowed output shape: ",
+                         output_shape.DebugString())));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
