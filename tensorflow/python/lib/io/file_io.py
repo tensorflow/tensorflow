@@ -14,6 +14,7 @@
 # ==============================================================================
 """File IO methods that wrap the C++ FileSystem API."""
 import binascii
+import fnmatch
 import io
 import os
 from posixpath import join as urljoin
@@ -403,8 +404,97 @@ def get_matching_files(filename):
   return get_matching_files_v2(filename)
 
 
+def _translate_glob_to_regex(pattern):
+  """Translates a glob pattern to a regular expression."""
+  res = ""
+  i, n = 0, len(pattern)
+  while i < n:
+    c = pattern[i]
+    i = i + 1
+    if c == "*":
+      if i < n and pattern[i] == "*":
+        i = i + 1
+        if i < n and pattern[i] == "/":
+          i = i + 1
+          res += "(?:.*/)?"
+        else:
+          res += ".*"
+      else:
+        res += "[^/]*"
+    elif c == "?":
+      res += "[^/]"
+    elif c == "[":
+      j = i
+      if j < n and pattern[j] == "!":
+        j = j + 1
+      if j < n and pattern[j] == "]":
+        j = j + 1
+      while j < n and pattern[j] != "]":
+        j = j + 1
+      if j >= n:
+        res += "\\["
+      else:
+        stuff = pattern[i:j].replace("\\", "\\\\")
+        i = j + 1
+        if stuff[0] == "!":
+          stuff = "^" + stuff[1:]
+        elif stuff[0] == "^":
+          stuff = "\\" + stuff
+        res = "%s[%s]" % (res, stuff)
+    else:
+      import re
+      res += re.escape(c)
+  return res + r"\Z"
+
+
+def _get_matching_files_recursive(pattern):
+  """Returns a list of files matching the given pattern using tf.io.gfile.walk."""
+  # Find the longest static prefix before the first glob wildcard.
+  first_wildcard = len(pattern)
+  for wildcard in ["*", "?", "["]:
+    idx = pattern.find(wildcard)
+    if idx != -1 and idx < first_wildcard:
+      first_wildcard = idx
+  
+  prefix = pattern[:first_wildcard]
+  # Find the last directory separator in the static prefix
+  last_sep = prefix.rfind("/")
+  if last_sep != -1:
+    root = prefix[:last_sep + 1]
+  else:
+    root = "."
+
+  import re
+  pattern_re = re.compile(_translate_glob_to_regex(pattern))
+  
+  matching_files = []
+  for dirname, subdirs, files in walk_v2(root):
+    # Normalize dirname
+    if dirname.startswith("./") and not pattern.startswith("./"):
+      dirname = dirname[2:]
+    elif dirname == ".":
+      dirname = ""
+    else:
+      if not dirname.endswith("/"):
+        dirname += "/"
+    
+    # Check directories (in case the pattern matches a directory)
+    for subdir in subdirs:
+      full_path = dirname + subdir
+      if pattern_re.match(full_path):
+        matching_files.append(full_path)
+    
+    # Check files
+    for filename in files:
+      full_path = dirname + filename
+      if pattern_re.match(full_path):
+        matching_files.append(full_path)
+        
+  return matching_files
+
+
 @tf_export("io.gfile.glob")
-def get_matching_files_v2(pattern):
+def get_matching_files_v2(pattern, recursive=False):
   r"""Returns a list of files that match the given pattern(s).
 
   The patterns are defined as strings. Supported patterns are defined
@@ -447,6 +537,8 @@ def get_matching_files_v2(pattern):
 
   Args:
     pattern: string or iterable of strings. The glob pattern(s).
+    recursive: If true, the pattern `**` will match any files and zero or more
+      directories and subdirectories.
 
   Returns:
     A list of strings containing filenames that match the given pattern(s).
@@ -456,6 +548,8 @@ def get_matching_files_v2(pattern):
     errors.NotFoundError: If pattern to be matched is an invalid directory.
   """
   if isinstance(pattern, six.string_types):
+    if recursive and "**" in pattern:
+      return _get_matching_files_recursive(pattern)
     return [
         # Convert the filenames to string from bytes.
         compat.as_str_any(matching_filename)
@@ -463,13 +557,17 @@ def get_matching_files_v2(pattern):
             compat.as_bytes(pattern))
     ]
   else:
-    return [
-        # Convert the filenames to string from bytes.
-        compat.as_str_any(matching_filename)  # pylint: disable=g-complex-comprehension
-        for single_filename in pattern
-        for matching_filename in _pywrap_file_io.GetMatchingFiles(
-            compat.as_bytes(single_filename))
-    ]
+    results = []
+    for single_filename in pattern:
+      if recursive and "**" in single_filename:
+        results.extend(_get_matching_files_recursive(single_filename))
+      else:
+        results.extend([
+            compat.as_str_any(matching_filename)
+            for matching_filename in _pywrap_file_io.GetMatchingFiles(
+                compat.as_bytes(single_filename))
+        ])
+    return results
 
 
 @tf_export(v1=["gfile.MkDir"])

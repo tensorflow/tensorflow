@@ -252,6 +252,46 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
     file_io.delete_recursively(dir_path)
     self.assertFalse(file_io.file_exists(file_io.join(dir_path, "file3.txt")))
 
+  def testGetMatchingFilesRecursive(self):
+    dir_path = file_io.join(self._base_dir, "temp_dir_recursive")
+    file_io.create_dir(dir_path)
+    # Create a nested structure:
+    # temp_dir_recursive/
+    #   file1.txt
+    #   sub_dir1/
+    #     file2.txt
+    #   sub_dir2/
+    #     sub_sub_dir1/
+    #       file3.txt
+    file_io.FileIO(file_io.join(dir_path, "file1.txt"), mode="w").write("testing")
+    
+    sub_dir1 = file_io.join(dir_path, "sub_dir1")
+    file_io.create_dir(sub_dir1)
+    file_io.FileIO(file_io.join(sub_dir1, "file2.txt"), mode="w").write("testing")
+    
+    sub_sub_dir1 = file_io.join(dir_path, "sub_dir2", "sub_sub_dir1")
+    file_io.recursive_create_dir(sub_sub_dir1)
+    file_io.FileIO(file_io.join(sub_sub_dir1, "file3.txt"), mode="w").write("testing")
+    
+    expected_match = [
+        file_io.join(dir_path, "file1.txt"),
+        file_io.join(sub_dir1, "file2.txt"),
+        file_io.join(sub_sub_dir1, "file3.txt"),
+    ]
+    
+    # Test recursive=True
+    self.assertItemsEqual(
+        file_io.get_matching_files_v2(file_io.join(dir_path, "**", "*.txt"), recursive=True),
+        expected_match)
+        
+    # Test recursive=True with multiple wildcards
+    self.assertItemsEqual(
+        file_io.get_matching_files_v2(file_io.join(dir_path, "**", "file?.txt"), recursive=True),
+        expected_match)
+        
+    file_io.delete_recursively(dir_path)
+
+
   def testGetMatchingFilesWhenParentDirContainsParantheses(self):
     dir_path = file_io.join(self._base_dir, "dir_(special)")
     file_io.create_dir(dir_path)
