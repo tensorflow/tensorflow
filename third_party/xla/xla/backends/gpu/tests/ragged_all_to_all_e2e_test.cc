@@ -1228,20 +1228,22 @@ GetRaggedAllToAllMultiHostDecomposerTestConfigs() {
                        /*slice_size=*/1,
                        {{0, 1}}});
 
-    configs.push_back({num_input_rows,
-                       num_output_rows,
-                       /*slice_size=*/4,
-                       {{0, 1, 2, 3, 4, 5, 6, 7}}});
+    for (int64_t slice_size : {1, 2, 4}) {
+      configs.push_back({num_input_rows,
+                         num_output_rows,
+                         slice_size,
+                         {{0, 1, 2, 3, 4, 5, 6, 7}}});
 
-    configs.push_back({num_input_rows,
-                       num_output_rows,
-                       /*slice_size=*/4,
-                       {{0, 2, 4, 6, 1, 3, 5, 7}}});
+      configs.push_back({num_input_rows,
+                         num_output_rows,
+                         slice_size,
+                         {{0, 2, 4, 6, 1, 3, 5, 7}}});
 
-    configs.push_back({num_input_rows,
-                       num_output_rows,
-                       /*slice_size=*/4,
-                       {{0, 2, 4, 6}, {1, 3, 5, 7}}});
+      configs.push_back({num_input_rows,
+                         num_output_rows,
+                         slice_size,
+                         {{0, 2, 4, 6}, {1, 3, 5, 7}}});
+    }
   };
 
   add_configs_for_input_sizes(512, 4096);
