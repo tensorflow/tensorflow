@@ -5399,9 +5399,6 @@ xla_test(
     name = "record_ffi_test",
     srcs = ["record_ffi_test.cc"],
     backends = ["gpu"],
-    tags = [
-        "cuda-only",
-    ],
     deps = [
         ":record_ffi",
         "//xla:status_macros",
