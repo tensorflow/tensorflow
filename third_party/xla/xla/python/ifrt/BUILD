@@ -1,3 +1,4 @@
+# copybara:uncomment load("//devtools/c/portability/clang_verify:cc_clang_verify_test.bzl", "cc_clang_verify_test")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/python/ifrt:ifrt.bzl", "ifrt_package_groups")
@@ -55,6 +56,9 @@ cc_library(
         "client.h",
         "compiler.h",
         "remap_plan.h",
+        # TODO(hyeontaek): Remove from `ifrt` target and explicitly use the
+        # `rtti` target once all users are migrated to use the new `xla::ifrt`
+        # namespace.
         "rtti.h",
         "device.h",
         "device_list.h",
@@ -589,6 +593,7 @@ cc_library(
 
 cc_library(
     name = "rtti",
+    srcs = ["rtti.cc"],
     hdrs = ["rtti.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([
@@ -597,9 +602,35 @@ cc_library(
         ":users",
     ]),
     deps = [
-        "@llvm-project//llvm:Support",
+        ":ref_wrapper",
+        "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/log:check",
     ],
 )
+
+xla_cc_test(
+    name = "rtti_test",
+    size = "small",
+    srcs = ["rtti_test.cc"],
+    deps = [
+        ":ref_wrapper",
+        ":rtti",
+        "//xla/tsl/concurrency:ref_count",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+# copybara:uncomment_begin
+# cc_clang_verify_test(
+#     name = "rtti_nc_test",
+#     srcs = ["rtti_nc_test.cc"],
+#     deps = [
+#         ":rtti",
+#         "@com_google_googletest//:gtest_main",
+#     ],
+# )
+# copybara:uncomment_end
 
 cc_library(
     name = "user_context_test_util",
