@@ -19,6 +19,7 @@ limitations under the License.
 #define _USE_MATH_DEFINES
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <type_traits>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
@@ -685,7 +686,7 @@ struct bessel_i0_stable_op {
       return exp(ax) * i0e;
     }
     if (i0e == Scalar(0)) {
-      return NumTraits<Scalar>::infinity();
+      return std::numeric_limits<Scalar>::infinity();
     }
     return exp(ax + log(i0e));
   }
