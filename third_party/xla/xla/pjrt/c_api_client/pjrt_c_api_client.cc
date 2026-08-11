@@ -87,6 +87,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/pjrt/pjrt_topology_description_registry.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/proto/pjrt_abi_version.pb.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
@@ -5056,6 +5057,14 @@ absl::StatusOr<std::unique_ptr<PjRtCompiler>> GetCApiCompiler() {
   }
   return GetCApiCompiler(device_types[0]);
 }
+
+[[maybe_unused]] static bool register_capi_compiler_lookup = []() {
+  PjRtTopologyDescriptionRegistry::Global().RegisterDynamicCompilerLookup(
+      [](absl::string_view platform_name) {
+        return GetCApiCompiler(platform_name);
+      });
+  return true;
+}();
 
 absl::StatusOr<std::unique_ptr<PjRtPhaseCompiler>> GetCApiPhaseCompiler(
     absl::string_view device_type) {

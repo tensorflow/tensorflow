@@ -181,5 +181,35 @@ TEST(PjRtTopologyDescriptionRegistryTest,
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
+TEST(PjRtTopologyDescriptionRegistryTest,
+     DynamicCompilerLookupRegistrationAndFallback) {
+  // Register dynamic compiler lookup using a direct lambda.
+  PjRtTopologyDescriptionRegistry::Global().RegisterDynamicCompilerLookup(
+      [](absl::string_view platform_name)
+          -> absl::StatusOr<std::unique_ptr<PjRtCompiler>> {
+        if (platform_name == "custom_dynamic_platform") {
+          return absl::UnimplementedError("Compiler for custom platform");
+        }
+        return absl::NotFoundError(
+            absl::StrCat("Unknown dynamic platform '", platform_name, "'."));
+      });
+
+  // Verify lookup returns expected Status for registered platform.
+  EXPECT_THAT(PjRtTopologyDescriptionRegistry::Global().GetDynamicCompiler(
+                  "custom_dynamic_platform"),
+              StatusIs(absl::StatusCode::kUnimplemented));
+
+  // Verify unmapped dynamic platform returns kNotFound.
+  EXPECT_THAT(PjRtTopologyDescriptionRegistry::Global().GetDynamicCompiler(
+                  "unknown_dyn_platform"),
+              StatusIs(absl::StatusCode::kNotFound));
+
+  // Verify FromProto fallback propagates the dynamic compiler status.
+  PjRtTopologyDescriptionProto proto;
+  proto.set_platform_name("custom_dynamic_platform");
+  EXPECT_THAT(PjRtTopologyDescriptionFromProto(proto),
+              StatusIs(absl::StatusCode::kUnimplemented));
+}
+
 }  // namespace
 }  // namespace xla

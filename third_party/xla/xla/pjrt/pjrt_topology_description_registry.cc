@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
@@ -44,6 +43,24 @@ absl::Status PjRtTopologyDescriptionRegistry::RegisterDeserializer(
   id_deserializers_[platform_id] = deserializer;
   name_deserializers_[platform_name] = deserializer;
   return absl::OkStatus();
+}
+
+void PjRtTopologyDescriptionRegistry::RegisterDynamicCompilerLookup(
+    DynamicCompilerLookup lookup) {
+  absl::MutexLock lock(mu_);
+  dynamic_compiler_lookup_ = std::move(lookup);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtCompiler>>
+PjRtTopologyDescriptionRegistry::GetDynamicCompiler(
+    absl::string_view platform_name) const {
+  absl::MutexLock lock(mu_);
+  if (!dynamic_compiler_lookup_) {
+    return absl::NotFoundError(
+        absl::StrCat("No dynamic compiler lookup registered for platform '",
+                     platform_name, "'."));
+  }
+  return dynamic_compiler_lookup_(platform_name);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>>
@@ -110,7 +127,8 @@ PjRtTopologyDescriptionFromProto(const PjRtTopologyDescriptionProto& proto) {
   }
 
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtCompiler> compiler,
-                   GetCApiCompiler(platform_name));
+                   PjRtTopologyDescriptionRegistry::Global().GetDynamicCompiler(
+                       platform_name));
   return compiler->DeserializePjRtTopologyDescription(
       proto.SerializeAsString());
 }

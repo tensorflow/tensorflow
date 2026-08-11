@@ -37,6 +37,10 @@ using PjRtTopologyDescriptionDeserializer =
     std::function<absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>>(
         const PjRtTopologyDescriptionProto&)>;
 
+using DynamicCompilerLookup =
+    std::function<absl::StatusOr<std::unique_ptr<PjRtCompiler>>(
+        absl::string_view platform_name)>;
+
 class PjRtTopologyDescriptionRegistry {
  public:
   static PjRtTopologyDescriptionRegistry& Global();
@@ -45,8 +49,13 @@ class PjRtTopologyDescriptionRegistry {
       PjRtPlatformId platform_id, absl::string_view platform_name,
       PjRtTopologyDescriptionDeserializer deserializer);
 
+  void RegisterDynamicCompilerLookup(DynamicCompilerLookup lookup);
+
   absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>> Deserialize(
       const PjRtTopologyDescriptionProto& proto) const;
+
+  absl::StatusOr<std::unique_ptr<PjRtCompiler>> GetDynamicCompiler(
+      absl::string_view platform_name) const;
 
  private:
   PjRtTopologyDescriptionRegistry() = default;
@@ -56,6 +65,7 @@ class PjRtTopologyDescriptionRegistry {
       id_deserializers_ ABSL_GUARDED_BY(mu_);
   absl::flat_hash_map<std::string, PjRtTopologyDescriptionDeserializer>
       name_deserializers_ ABSL_GUARDED_BY(mu_);
+  DynamicCompilerLookup dynamic_compiler_lookup_ ABSL_GUARDED_BY(mu_);
 };
 
 absl::StatusOr<PjRtTopologyDescriptionProto> PjRtTopologyDescriptionToProto(

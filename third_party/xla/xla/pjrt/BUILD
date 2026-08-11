@@ -97,7 +97,6 @@ cc_library(
     deps = [
         ":pjrt_common",
         ":pjrt_compiler",
-        "//xla/pjrt/c_api_client:pjrt_c_api_client",
         "//xla/pjrt/proto:topology_description_proto_cc",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
