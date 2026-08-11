@@ -1421,6 +1421,40 @@ TEST(PjrtCApiGpuExtensionTest, CustomCallUntypedIgnoresTraits) {
   EXPECT_EQ(custom_call, reinterpret_cast<void*>(&TestCustomCallV2));
 }
 
+TEST(PjrtCApiGpuExtensionTest,
+     CustomCallDuplicateRegistrationWithDifferentTraitsReturnsError) {
+  static constexpr auto* noop = +[] { return xla::ffi::Error::Success(); };
+  XLA_FFI_DEFINE_HANDLER(kNoop, noop, xla::ffi::Ffi::Bind());
+
+  PJRT_Gpu_Register_Custom_Call_Args args;
+  args.struct_size = PJRT_Gpu_Register_Custom_Call_Args_STRUCT_SIZE;
+  std::string function_name = "duplicate_fn_with_conflicting_traits";
+  args.function_name = function_name.c_str();
+  args.function_name_size = function_name.size();
+  args.api_version = 1;
+  args.handler_instantiate = nullptr;
+  args.handler_prepare = nullptr;
+  args.handler_initialize = nullptr;
+  args.handler_execute = reinterpret_cast<void*>(kNoop);
+  args.traits = 0;
+  const PJRT_Gpu_Custom_Call* ext = FindGpuCustomCallExtension(GetPjrtApi());
+  ASSERT_NE(ext, nullptr);
+
+  PJRT_Error* error = ext->custom_call(&args);
+  ASSERT_EQ(error, nullptr);
+
+  // Register again with different traits; must return a non-null error.
+  args.traits = XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE;
+  PJRT_Error* duplicate_error = ext->custom_call(&args);
+  EXPECT_NE(duplicate_error, nullptr);
+
+  PJRT_Error_Destroy_Args error_destroy_args;
+  error_destroy_args.struct_size = PJRT_Error_Destroy_Args_STRUCT_SIZE;
+  error_destroy_args.extension_start = nullptr;
+  error_destroy_args.error = duplicate_error;
+  GetPjrtApi()->PJRT_Error_Destroy(&error_destroy_args);
+}
+
 constexpr absl::string_view kAddOneTTIR = R"(
 module {
   tt.func public @add_one(%arg0: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg1: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg2: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg3: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}) {
