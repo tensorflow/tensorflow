@@ -429,8 +429,33 @@ def heaviside(x1, x2):  # pylint: disable=missing-function-docstring
 
 @tf_export.tf_export('experimental.numpy.hypot', v1=[])
 @np_utils.np_doc('hypot')
-def hypot(x1, x2):
-  return sqrt(square(x1) + square(x2))
+def hypot(x1, x2):  # pylint: disable=missing-function-docstring
+  def f(x1, x2):
+    # Promote non-floating inputs so scaling and sqrt stay accurate (matches
+    # the previous sqrt(square(x)+square(y)) float promotion via sqrt).
+    if not np.issubdtype(x1.dtype.as_numpy_dtype, np.inexact):
+      dtype = np_utils.result_type(float)
+      x1 = math_ops.cast(x1, dtype)
+      x2 = math_ops.cast(x2, dtype)
+    x1 = math_ops.abs(x1)
+    x2 = math_ops.abs(x2)
+    # C99/IEEE: hypot(±inf, y) == +inf even when y is NaN.
+    either_inf = math_ops.logical_or(math_ops.is_inf(x1), math_ops.is_inf(x2))
+    max_abs = math_ops.maximum(x1, x2)
+    min_abs = math_ops.minimum(x1, x2)
+    zero = constant_op.constant(0, dtype=max_abs.dtype)
+    one = constant_op.constant(1, dtype=max_abs.dtype)
+    # Scale by the larger magnitude to avoid intermediate overflow/underflow
+    # from square(x) + square(y) (e.g. hypot(1e200, 1e200) must stay finite).
+    safe_max = array_ops.where_v2(math_ops.equal(max_abs, zero), one, max_abs)
+    result = max_abs * math_ops.sqrt(one + math_ops.square(min_abs / safe_max))
+    return array_ops.where_v2(
+        either_inf,
+        constant_op.constant(np.inf, dtype=result.dtype),
+        result,
+    )
+
+  return _bin_op(f, x1, x2)
 
 
 @tf_export.tf_export('experimental.numpy.kron', v1=[])
