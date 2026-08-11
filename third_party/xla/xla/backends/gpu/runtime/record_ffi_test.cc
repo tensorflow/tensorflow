@@ -69,8 +69,8 @@ absl::StatusOr<KernelBinary> GetKernelSpec() {
                              stream_executor::GpuPlatformName()));
         return fatbin;
       }());
-  ABSL_ASSIGN_OR_RETURN(auto const& fatbin, *kFatbin);
-  return KernelBinary{/*.bytes=*/fatbin,
+  ABSL_RETURN_IF_ERROR(kFatbin->status());
+  return KernelBinary{/*.bytes=*/kFatbin->value(),
                       /*.format=*/ffi::SourceFormat::kCubin};
 }
 
