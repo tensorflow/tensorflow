@@ -80,6 +80,25 @@ def _compare_output_to_expected(tester, actual, expected):
 @test_util.run_all_in_graph_and_eager_modes
 class ParseExampleTest(test.TestCase):
 
+  def testRawParseExampleRejectsZeroVariableDenseDimension(self):
+    serialized = [example().SerializeToString()]
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r"dense_shapes\[0\].*greater than 0"):
+      outputs = gen_parsing_ops.parse_example_v2(
+          serialized=serialized,
+          names=[],
+          sparse_keys=[],
+          dense_keys=["k"],
+          ragged_keys=[],
+          dense_defaults=[constant_op.constant([], dtype=dtypes.float32)],
+          num_sparse=0,
+          sparse_types=[],
+          ragged_value_types=[],
+          ragged_split_types=[],
+          dense_shapes=[[-1, 0]])
+      self.evaluate(outputs)
+
   def _test(self, kwargs, expected_values=None, expected_err=None):
     if expected_err:
       if not context.executing_eagerly():
@@ -1193,6 +1212,21 @@ class ParseExampleTest(test.TestCase):
 
 @test_util.run_all_in_graph_and_eager_modes
 class ParseSingleExampleTest(test.TestCase):
+
+  def testRawParseSingleExampleRejectsZeroVariableDenseDimension(self):
+    serialized = example().SerializeToString()
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r"dense_shapes\[0\].*greater than 0"):
+      outputs = gen_parsing_ops.parse_single_example(
+          serialized=serialized,
+          dense_defaults=[constant_op.constant([], dtype=dtypes.float32)],
+          num_sparse=0,
+          sparse_keys=[],
+          dense_keys=["k"],
+          sparse_types=[],
+          dense_shapes=[[-1, 0]])
+      self.evaluate(outputs)
 
   def _test(self, kwargs, expected_values=None, expected_err=None):
     if expected_err:
