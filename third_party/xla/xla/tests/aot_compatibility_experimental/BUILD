@@ -38,9 +38,12 @@ xla_cc_test(
     ],
     deps = [
         ":test_lib",
+        "//xla:xla_proto_cc",
+        "//xla/service/gpu:gpu_executable_proto_cc",
         "//xla/tests:aot_interception_pjrt_client",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
+        "@tsl//tsl/platform:path",
     ],
 )
 
