@@ -887,5 +887,35 @@ ENTRY main {
   EXPECT_LE(p1_int.max, 0.0);
 }
 
+TEST_F(ConstraintPropagatorTest, LogSubExpMaxPropagatesStrictNegative) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[8,128] parameter(0)
+  param_1 = f32[8,128] parameter(1)
+  sub = f32[8,128] subtract(param_0, param_1)
+  exp = f32[8,128] exponential(sub)
+  c_one = f32[] constant(1)
+  b_one = f32[8,128] broadcast(c_one), dimensions={}
+  sub_exp = f32[8,128] subtract(b_one, exp)
+  c_zero = f32[] constant(0)
+  b_zero = f32[8,128] broadcast(c_zero), dimensions={}
+  max = f32[8,128] maximum(sub_exp, b_zero)
+  ROOT log = f32[8,128] log(max)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  auto p1_int = states[module->entry_computation()->parameter_instruction(1)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_LE(p0_int.max, 0.0);
+  EXPECT_FALSE(p1_int.IsEmpty());
+  EXPECT_GE(p1_int.min, 0.0);
+}
+
 }  // namespace
 }  // namespace xla

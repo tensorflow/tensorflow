@@ -1060,6 +1060,27 @@ absl::Status ConstraintPropagator::PropagateConstraintsApprox(
       }
       break;
     }
+
+    case HloOpcode::kExp: {
+      // For Y = exp(X) with Y in [y_min, y_max]:
+      // Since exp(X) is monotonically strictly increasing on real numbers:
+      //   y_min <= exp(X) <= y_max <=> ln(y_min) <= X <= ln(y_max).
+      //
+      // If y_min > 0, x_min = ln(y_min). Otherwise, since exp(X) > 0 for all
+      // real X, y_min <= 0 imposes no lower bound on X (x_min = -inf).
+      //
+      // If y_max < +inf and y_max > 0, x_max = ln(y_max).
+      // If y_max <= 0, exp(X) <= y_max is impossible for real numbers.
+      double x_min = output_interval.min > 0.0 ? std::log(output_interval.min)
+                                               : ConstraintInterval::kMin;
+      double x_max = output_interval.max < ConstraintInterval::kMax &&
+                             output_interval.max > 0.0
+                         ? std::log(output_interval.max)
+                         : ConstraintInterval::kMax;
+      states_[instruction->operand(0)].AddConstraint(
+          ConstraintInterval{x_min, x_max, /*exclude_zero=*/false});
+      break;
+    }
     default:
       break;
   }
