@@ -218,6 +218,7 @@ class FlatBufferModelBase {
 
   static void ByteSwapBuffer(int8_t tensor_type, size_t buffer_size,
                              uint8_t* buffer, bool from_big_endian) {
+    if (buffer == nullptr) return;
     switch (tensor_type) {
       case tflite::TensorType_STRING: {
         // A string buffer starts with an int32 count followed by (count + 1)

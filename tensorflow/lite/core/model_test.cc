@@ -994,6 +994,18 @@ TEST(BasicFlatBufferModel, ByteSwapStringBufferHandlesNegativeCount) {
   EXPECT_EQ(storage[2], 0x23456789);
   EXPECT_EQ(storage[3], 0x3456789a);
 }
+
+// A buffer smaller than a single int32 word cannot even hold the string count.
+// ByteSwapBuffer must break out before dereferencing bp[0] and leave it as is.
+TEST(BasicFlatBufferModel, ByteSwapStringBufferTooSmall) {
+  std::vector<uint8_t> storage = {0x01, 0x02};
+  const size_t buffer_size = storage.size();
+  FlatBufferModel::ByteSwapBuffer(
+      static_cast<int8_t>(TensorType_STRING), buffer_size, storage.data(),
+      /*from_big_endian=*/true);
+  EXPECT_EQ(storage[0], 0x01);
+  EXPECT_EQ(storage[1], 0x02);
+}
 #endif
 
 }  // namespace tflite
