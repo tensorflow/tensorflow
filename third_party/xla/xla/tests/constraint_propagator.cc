@@ -966,19 +966,98 @@ absl::Status ConstraintPropagator::PropagateConstraintsApprox(
     }
 
     case HloOpcode::kMaximum: {
-      ConstraintInterval input_interval = {ConstraintInterval::kMin,
-                                           output_interval.max,
-                                           output_interval.exclude_zero};
-      states_[instruction->operand(0)].AddConstraint(input_interval);
-      states_[instruction->operand(1)].AddConstraint(input_interval);
+      // For Z = max(X, Y) with Z in [z_min, z_max]:
+      //
+      // 1. Upper bound (sound and exact for both operands):
+      //    max(X, Y) <= z_max <=> X <= z_max AND Y <= z_max.
+      //    If either operand exceeds z_max, the maximum would exceed z_max.
+      //
+      // 2. Lower bound:
+      //    max(X, Y) >= z_min <=> X >= z_min OR Y >= z_min.
+      //    - If one operand is a constant C (e.g. max(V, C)):
+      //      If C < z_min (or C == z_min and exclude_zero is true), constant C
+      //      cannot satisfy the lower bound on its own. Therefore, the variable
+      //      operand V MUST satisfy V >= z_min (and inherit exclude_zero).
+      //      If C >= z_min (and not excluded), C already satisfies the lower
+      //      bound, so V requires no lower bound from this op (v_min = -inf).
+      //    - If neither operand is constant:
+      //      To soundly ensure max(X, Y) >= z_min without relational tracking,
+      //      both operands are constrained to >= z_min.
+      std::optional<double> c0 = GetConstantValue(instruction->operand(0));
+      std::optional<double> c1 = GetConstantValue(instruction->operand(1));
+
+      if (c0.has_value() || c1.has_value()) {
+        double c = c0.has_value() ? *c0 : *c1;
+        const HloInstruction* var_op =
+            c0.has_value() ? instruction->operand(1) : instruction->operand(0);
+
+        double v_min = ConstraintInterval::kMin;
+        bool exclude_zero = false;
+        if (output_interval.min > ConstraintInterval::kMin) {
+          if (c < output_interval.min ||
+              (c == output_interval.min && output_interval.exclude_zero)) {
+            v_min = output_interval.min;
+            exclude_zero = output_interval.exclude_zero;
+          }
+        }
+        double v_max = output_interval.max;
+        states_[var_op].AddConstraint(
+            ConstraintInterval{v_min, v_max, exclude_zero});
+      } else {
+        ConstraintInterval input_interval = {output_interval.min,
+                                             output_interval.max,
+                                             output_interval.exclude_zero};
+        states_[instruction->operand(0)].AddConstraint(input_interval);
+        states_[instruction->operand(1)].AddConstraint(input_interval);
+      }
       break;
     }
+
     case HloOpcode::kMinimum: {
-      ConstraintInterval input_interval = {output_interval.min,
-                                           ConstraintInterval::kMax,
-                                           output_interval.exclude_zero};
-      states_[instruction->operand(0)].AddConstraint(input_interval);
-      states_[instruction->operand(1)].AddConstraint(input_interval);
+      // For Z = min(X, Y) with Z in [z_min, z_max]:
+      //
+      // 1. Lower bound (sound and exact for both operands):
+      //    min(X, Y) >= z_min <=> X >= z_min AND Y >= z_min.
+      //    If either operand falls below z_min, the minimum falls below z_min.
+      //
+      // 2. Upper bound:
+      //    min(X, Y) <= z_max <=> X <= z_max OR Y <= z_max.
+      //    - If one operand is a constant C (e.g. min(V, C)):
+      //      If C > z_max (or C == z_max and exclude_zero is true), constant C
+      //      cannot satisfy the upper bound on its own. Therefore, the variable
+      //      operand V MUST satisfy V <= z_max (and inherit exclude_zero).
+      //      If C <= z_max (and not excluded), C already satisfies the upper
+      //      bound, so V requires no upper bound from this op (v_max = +inf).
+      //    - If neither operand is constant:
+      //      To soundly ensure min(X, Y) <= z_max without relational tracking,
+      //      both operands are constrained to <= z_max.
+      std::optional<double> c0 = GetConstantValue(instruction->operand(0));
+      std::optional<double> c1 = GetConstantValue(instruction->operand(1));
+
+      if (c0.has_value() || c1.has_value()) {
+        double c = c0.has_value() ? *c0 : *c1;
+        const HloInstruction* var_op =
+            c0.has_value() ? instruction->operand(1) : instruction->operand(0);
+
+        double v_max = ConstraintInterval::kMax;
+        bool exclude_zero = false;
+        if (output_interval.max < ConstraintInterval::kMax) {
+          if (c > output_interval.max ||
+              (c == output_interval.max && output_interval.exclude_zero)) {
+            v_max = output_interval.max;
+            exclude_zero = output_interval.exclude_zero;
+          }
+        }
+        double v_min = output_interval.min;
+        states_[var_op].AddConstraint(
+            ConstraintInterval{v_min, v_max, exclude_zero});
+      } else {
+        ConstraintInterval input_interval = {output_interval.min,
+                                             output_interval.max,
+                                             output_interval.exclude_zero};
+        states_[instruction->operand(0)].AddConstraint(input_interval);
+        states_[instruction->operand(1)].AddConstraint(input_interval);
+      }
       break;
     }
     default:

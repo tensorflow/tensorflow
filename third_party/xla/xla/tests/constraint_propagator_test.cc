@@ -796,5 +796,96 @@ ENTRY main {
   EXPECT_LE(p0_int.max, 0.0);
 }
 
+TEST_F(ConstraintPropagatorTest, MaximumConstantZeroStrictPositive) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[8,128] parameter(0)
+  c_zero = f32[] constant(0)
+  b_zero = f32[8,128] broadcast(c_zero), dimensions={}
+  max = f32[8,128] maximum(param_0, b_zero)
+  ROOT log = f32[8,128] log(max)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_GE(p0_int.min, 0.0);
+  EXPECT_TRUE(p0_int.exclude_zero);
+}
+
+TEST_F(ConstraintPropagatorTest, MaximumNonConstantsStrictPositive) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[8,128] parameter(0)
+  param_1 = f32[8,128] parameter(1)
+  max = f32[8,128] maximum(param_0, param_1)
+  ROOT log = f32[8,128] log(max)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  auto p1_int = states[module->entry_computation()->parameter_instruction(1)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_GE(p0_int.min, 0.0);
+  EXPECT_TRUE(p0_int.exclude_zero);
+  EXPECT_FALSE(p1_int.IsEmpty());
+  EXPECT_GE(p1_int.min, 0.0);
+  EXPECT_TRUE(p1_int.exclude_zero);
+}
+
+TEST_F(ConstraintPropagatorTest, MinimumConstantNegativeUpperBound) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[8,128] parameter(0)
+  c_five = f32[] constant(5)
+  b_five = f32[8,128] broadcast(c_five), dimensions={}
+  min = f32[8,128] minimum(param_0, b_five)
+  neg = f32[8,128] negate(min)
+  ROOT sqrt = f32[8,128] sqrt(neg)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_LE(p0_int.max, 0.0);
+}
+
+TEST_F(ConstraintPropagatorTest, MinimumNonConstantsNegativeUpperBound) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[8,128] parameter(0)
+  param_1 = f32[8,128] parameter(1)
+  min = f32[8,128] minimum(param_0, param_1)
+  neg = f32[8,128] negate(min)
+  ROOT sqrt = f32[8,128] sqrt(neg)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  auto p1_int = states[module->entry_computation()->parameter_instruction(1)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_LE(p0_int.max, 0.0);
+  EXPECT_FALSE(p1_int.IsEmpty());
+  EXPECT_LE(p1_int.max, 0.0);
+}
+
 }  // namespace
 }  // namespace xla
