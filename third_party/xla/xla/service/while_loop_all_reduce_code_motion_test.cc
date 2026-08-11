@@ -801,6 +801,70 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleLoopCalls) {
               Each(Not(op::AllReduce())));
 }
 
+TEST_F(WhileLoopAllReduceCodeMotionTest, RequireFlatWhileCallGraphFailure) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule accumulated_all_reduce
+
+    %reduction {
+      %x = bf16[] parameter(0)
+      %y = bf16[] parameter(1)
+      ROOT %add = bf16[] add(bf16[] %x, bf16[] %y)
+    }
+
+    %while_condition {
+      %param = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      ROOT result = pred[] compare(%gte.0, %gte.1), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      %gte.2 = f32[1024, 1024] get-tuple-element(%param), index=2
+      %gte.3 = f32[1024, 1024] get-tuple-element(%param), index=3
+      %convert.0 = bf16[1024, 1024] convert(f32[1024, 1024] %gte.2)
+      %all-reduce = bf16[1024, 1024] all-reduce(bf16[1024, 1024] %convert.0), channel_id=1, replica_groups={{0,1,2,3}}, use_global_device_ids=true, to_apply=%reduction
+      %convert.1 = f32[1024, 1024] convert(bf16[1024, 1024] %all-reduce)
+      %accumulation = f32[1024, 1024] add(f32[1024, 1024] %convert.1, f32[1024, 1024] %gte.3)
+      %constant = s32[] constant(1)
+      %increment_iteration = s32[] add(s32[] %gte.0, s32[] %constant)
+      ROOT %loop_result = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) tuple(%increment_iteration, %gte.1, %gte.2, %accumulation)
+    }
+
+    ENTRY accumulated_all_reduce {
+      %param.0 = s32[] parameter(0)
+      %param.1 = f32[1024, 1024] parameter(1)
+      %constant.0 = s32[] constant(1)
+      %accumulation_buffer_init = f32[] constant(0)
+      %accumulation_buffer = f32[1024, 1024] broadcast(f32[] %accumulation_buffer_init), dimensions={}
+      %while_init.0 = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) tuple(s32[] %constant.0, s32[] %param.0, f32[1024, 1024] %param.1, f32[1024, 1024] %accumulation_buffer)
+      %while.0 = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) while(%while_init.0), condition=%while_condition, body=%while_body
+      %gte.3 = f32[1024, 1024] get-tuple-element(%while.0), index=3
+      %while_init.1 = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) tuple(s32[] %constant.0, s32[] %param.0, f32[1024, 1024] %param.1, f32[1024, 1024] %gte.3)
+      %while.1 = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) while(%while_init.0), condition=%while_condition, body=%while_body
+      ROOT %gte.4 = f32[1024, 1024] get-tuple-element((s32[], s32[], f32[1024, 1024], f32[1024, 1024])%while.1), index=3
+    }
+  )";
+  {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(kHloModule));
+    WhileLoopAllReduceCodeMotion pass(/*enable_reduce_scatter=*/false,
+                                      /*run_setup_passes=*/false,
+                                      /*require_flat_control_flow=*/false);
+    EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(true));
+  }
+  {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(kHloModule));
+    WhileLoopAllReduceCodeMotion pass(/*enable_reduce_scatter=*/false,
+                                      /*run_setup_passes=*/false,
+                                      /*require_flat_control_flow=*/true);
+    EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(false));
+  }
+}
+
 TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleAllReduceAccumulate) {
   constexpr absl::string_view kHloModule = R"(
     HloModule accumulated_all_reduce
@@ -1802,13 +1866,33 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleWhileOps) {
       ROOT %max = f32[] maximum(f32[] parameter(0), f32[] parameter(1))
     }
 
-    %while_condition {
+    %while_condition.0 {
       %param = (s32[], f32[256,256], f32[16]) parameter(0)
       %indvar = s32[] get-tuple-element(%param), index=0
       ROOT %result = pred[] compare(%indvar, s32[] constant(16)), direction=LT
     }
 
-    %while_body {
+    %while_body.0 {
+      %param = (s32[], f32[256,256], f32[16]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = f32[256,256] get-tuple-element(%param), index=1
+      %gte.2 = f32[16] get-tuple-element(%param), index=2
+      %next = s32[] add(%gte.0, s32[] constant(1))
+      %dot = f32[256,256] dot(%gte.1, %gte.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      %max.local = f32[] reduce(%dot, f32[] constant(0)), dimensions={0,1}, to_apply=%reduction
+      %max.global = f32[] all-reduce(%max.local), channel_id=1, replica_groups=[1,4]<=[4], use_global_device_ids=true, to_apply=%reduction
+      %update = f32[1] reshape(%max.global)
+      %dus = f32[16] dynamic-update-slice(%gte.2, %update, %gte.0)
+      ROOT %loop_result = (s32[], f32[256,256], f32[16]) tuple(%next, %dot, %dus)
+    }
+
+    %while_condition.1 {
+      %param = (s32[], f32[256,256], f32[16]) parameter(0)
+      %indvar = s32[] get-tuple-element(%param), index=0
+      ROOT %result = pred[] compare(%indvar, s32[] constant(16)), direction=LT
+    }
+
+    %while_body.1 {
       %param = (s32[], f32[256,256], f32[16]) parameter(0)
       %gte.0 = s32[] get-tuple-element(%param), index=0
       %gte.1 = f32[256,256] get-tuple-element(%param), index=1
@@ -1824,13 +1908,14 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleWhileOps) {
 
     ENTRY %main {
       %while_init = (s32[], f32[256,256], f32[16]) tuple(s32[] constant(0), f32[256,256] parameter(0), f32[16] parameter(1))
-      %while.0 = (s32[], f32[256,256], f32[16]) while(%while_init), condition=%while_condition, body=%while_body
+      %while.0 = (s32[], f32[256,256], f32[16]) while(%while_init), condition=%while_condition.0, body=%while_body.0
       %res.0 = f32[16] get-tuple-element(%while.0), index=2
-      %while.1 = (s32[], f32[256,256], f32[16]) while(%while_init), condition=%while_condition, body=%while_body
+      %while.1 = (s32[], f32[256,256], f32[16]) while(%while_init), condition=%while_condition.1, body=%while_body.1
       %res.1 = f32[16] get-tuple-element(%while.1), index=2
       ROOT %out = (f32[16], f32[16]) tuple(%res.0, %res.1)
     }
   )";
+
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(kHloModule));
   WhileLoopAllReduceCodeMotion pass;

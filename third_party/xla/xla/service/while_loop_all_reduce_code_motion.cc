@@ -1421,6 +1421,11 @@ absl::StatusOr<bool> WhileLoopAllReduceCodeMotion::RunImpl(
   std::unique_ptr<CallGraph> call_graph =
       CallGraph::Build(module, execution_threads);
 
+  // Bail out early if the call graph is non-flat on control-flow.
+  if (require_flat_control_flow_ && !call_graph->IsFlatOnControlFlow()) {
+    return false;
+  }
+
   // In case of MPMD, all-reduces might be cross-module and should preserve
   // their channel ID. Do not move all-reduces in this case since the channel
   // ID might be changed.
