@@ -893,6 +893,13 @@ class TensorListScatterIntoExistingList : public OpKernel {
     TensorList* output_list = nullptr;
     OP_REQUIRES_OK(c, ForwardInputOrCreateNewList(c, 0, 0, *l, &output_list));
     const auto indices_vec = indices.vec<int32_t>();
+    for (int index = 0; index < indices.NumElements(); ++index) {
+      OP_REQUIRES(
+          c, indices_vec(index) >= 0,
+          absl::InvalidArgumentError(
+              "Indices in TensorListScatterIntoExistingList must all be "
+              "non-negative."));
+    }
     int32_t max_index =
         (indices.NumElements() == 0)
             ? -1
