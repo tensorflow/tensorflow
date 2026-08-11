@@ -104,7 +104,7 @@ PjRtDeviceEventRef ToCpuEvent(tsl::Future<void> future) {
     if (!status.ok()) {
       async_value_ref.SetError(std::move(status));
     } else {
-      async_value_ref.emplace();
+      async_value_ref.SetStateConcrete();
     }
   });
 
