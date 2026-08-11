@@ -783,6 +783,22 @@ class ScatterNdTest(test.TestCase, parameterized.TestCase):
     shape = [3, 4, 5, 6, 7, 8, 9]
     self.evaluate(self.scatter_nd(indices, values, shape))
 
+  def testUpdatesRankTooSmallForTensorScatterMinMax(self):
+    """Regression test for #94132 and #94134."""
+    input_tensor = np.random.random((1, 10, 4)).astype(np.float64)
+    indices = np.array([[[0]]], dtype=np.int64)  # shape (1,1,1), outer_dims=2
+    updates = np.array([0.0], dtype=np.float64)  # rank 1, too small
+
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      self.evaluate(
+          array_ops.tensor_scatter_min(
+              tensor=input_tensor, indices=indices, updates=updates))
+
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      self.evaluate(
+          array_ops.tensor_scatter_max(
+              tensor=input_tensor, indices=indices, updates=updates))
+
 
 class ScatterNdNonAliasingAddTest(ScatterNdTest):
   non_aliasing_add_test = True
