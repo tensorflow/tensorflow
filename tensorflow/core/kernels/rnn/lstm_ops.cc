@@ -1200,6 +1200,11 @@ class BlockLSTMGradOp : public OpKernel {
     OP_REQUIRES(ctx, w_tensor->dims() == 2,
                 absl::InvalidArgumentError(absl::StrCat(
                     "w must be rank 2 but is rank ", w_tensor->dims())));
+    OP_REQUIRES(
+        ctx, w_tensor->dim_size(1) % 4 == 0 && w_tensor->dim_size(1) > 0,
+        absl::InvalidArgumentError(absl::StrCat(
+            "w matrix columns must be a positive multiple of 4, but got ",
+            w_tensor->dim_size(1))));
     const int64_t cell_size = w_tensor->dim_size(1) / 4;
     OP_REQUIRES(ctx, input_size + cell_size == w_tensor->dim_size(0),
                 absl::InvalidArgumentError(absl::StrCat(
