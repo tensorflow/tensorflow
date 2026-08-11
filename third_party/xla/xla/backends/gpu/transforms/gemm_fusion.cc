@@ -911,6 +911,10 @@ bool CanReplaceParameterShape(HloInstruction* parameter,
 }
 
 absl::StatusOr<bool> FusionSearchSpace::HoistBitcast(HloInstruction* instr) {
+  if (instr->shape().element_type() !=
+      instr->operand(0)->shape().element_type()) {
+    return false;
+  }
   HloInstruction* operand = instr->mutable_operand(0);
   HloInstruction* new_instr = nullptr;
 
@@ -1007,6 +1011,10 @@ absl::StatusOr<bool> FusionSearchSpace::HoistBitcast(HloInstruction* instr) {
 }
 
 absl::StatusOr<bool> FusionSearchSpace::SinkBitcast(HloInstruction* instr) {
+  if (instr->shape().element_type() !=
+      instr->operand(0)->shape().element_type()) {
+    return false;
+  }
   HloInstruction* operand = instr->mutable_operand(0);
 
   // If bitcast is root, strip it to push it out of the fusion.
