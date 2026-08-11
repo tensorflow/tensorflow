@@ -2496,6 +2496,45 @@ LogicalResult ExportXlaOp(CollectiveBroadcastOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(CollectiveReduceOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  // Unlike CollectiveBroadcast, CollectiveReduce carries a reduction region.
+  xla::XlaComputationId computation;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.getComputation(),
+                                                     computation))) {
+    return failure();
+  }
+
+  SmallVector<xla::XlaOp> operands;
+  if (failed(GetTuple(op.getOperation(), op.getOperands(), ctx, operands))) {
+    return failure();
+  }
+
+  auto replica_groups = Convert_replica_groups(op.getReplicaGroups(), op);
+  if (!replica_groups.ok()) {
+    return op.emitOpError(replica_groups.status().ToString());
+  }
+
+  auto result = xla::CollectiveReduceWithDeviceList(
+      operands, computation, **replica_groups,
+      Convert_channel_handle(op.getChannelHandle()),
+      Convert_use_global_device_ids(op.getUseGlobalDeviceIds()),
+      op.getHasDynamicRoot());
+
+  // A collective_reduce with more than one data operand produces a tuple.
+  mlir::FailureOr<xla::Shape> shape_or =
+      xla::ExtractXlaShape(op.getOperation());
+  if (failed(shape_or)) {
+    return failure();
+  }
+  if (shape_or->IsTuple()) {
+    BuildGetTupleElementsForTupleResults(op, result, ctx);
+  } else {
+    value_map[op->getResult(0)] = result;
+  }
+  return success();
+}
+
 // Specialize CompareOp export to set broadcast_dimensions argument.
 mlir::LogicalResult ExportXlaOp(mlir::stablehlo::CompareOp op,
                                 OpLoweringContext ctx) {

@@ -5080,6 +5080,74 @@ TEST_F(ShapeInferenceTest,
               HasSubstr("operand_shapes.size() > 1"));
 }
 
+TEST_F(ShapeInferenceTest, UnboundedCollectiveReduce) {
+  ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
+  ASSERT_OK_AND_ASSIGN(const Shape inferred_shape,
+                       ShapeInference::InferCollectiveReduceShape(
+                           /*operand_shapes=*/{&operand}));
+  EXPECT_TRUE(ShapeUtil::Equal(inferred_shape, expected))
+      << "inferred: " << ShapeUtil::HumanString(inferred_shape)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+TEST_F(ShapeInferenceTest, CollectiveReduceMultiOperand) {
+  ASSERT_OK_AND_ASSIGN(const Shape operand0, ParseShape("f32[8, 4]"));
+  ASSERT_OK_AND_ASSIGN(const Shape operand1, ParseShape("f32[16]"));
+  ASSERT_OK_AND_ASSIGN(const Shape inferred_shape,
+                       ShapeInference::InferCollectiveReduceShape(
+                           /*operand_shapes=*/{&operand0, &operand1}));
+  EXPECT_TRUE(inferred_shape.IsTuple());
+  EXPECT_EQ(inferred_shape.tuple_shapes().size(), 2);
+  EXPECT_TRUE(ShapeUtil::Equal(inferred_shape.tuple_shapes(0), operand0));
+  EXPECT_TRUE(ShapeUtil::Equal(inferred_shape.tuple_shapes(1), operand1));
+}
+
+TEST_F(ShapeInferenceTest, CollectiveReduceWithDynamicRootSingleOperand) {
+  ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[8]"));
+  ASSERT_OK_AND_ASSIGN(const Shape roots, ParseShape("s32[1]"));
+  ASSERT_OK_AND_ASSIGN(const Shape inferred_shape,
+                       ShapeInference::InferCollectiveReduceShape(
+                           /*operand_shapes=*/{&operand, &roots},
+                           /*has_dynamic_root=*/true));
+  EXPECT_TRUE(ShapeUtil::Equal(inferred_shape, operand));
+}
+
+TEST_F(ShapeInferenceTest, CollectiveReduceWithDynamicRootMultipleOperands) {
+  ASSERT_OK_AND_ASSIGN(const Shape operand0, ParseShape("f32[8]"));
+  ASSERT_OK_AND_ASSIGN(const Shape operand1, ParseShape("f32[16]"));
+  ASSERT_OK_AND_ASSIGN(const Shape roots, ParseShape("s32[2]"));
+  ASSERT_OK_AND_ASSIGN(const Shape inferred_shape,
+                       ShapeInference::InferCollectiveReduceShape(
+                           /*operand_shapes=*/{&operand0, &operand1, &roots},
+                           /*has_dynamic_root=*/true));
+  EXPECT_TRUE(inferred_shape.IsTuple());
+  EXPECT_EQ(inferred_shape.tuple_shapes().size(), 2);
+  EXPECT_TRUE(ShapeUtil::Equal(inferred_shape.tuple_shapes(0), operand0));
+  EXPECT_TRUE(ShapeUtil::Equal(inferred_shape.tuple_shapes(1), operand1));
+}
+
+TEST_F(ShapeInferenceTest, CollectiveReduceDynamicRootMissingRootOperand) {
+  ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[8]"));
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferCollectiveReduceShape(
+          /*operand_shapes=*/{&operand}, /*has_dynamic_root=*/true);
+  EXPECT_THAT(inferred_shape.status().message(),
+              HasSubstr("operand_shapes.size() > 1"));
+}
+
+TEST_F(ShapeInferenceTest, CollectiveReduceDynamicRootCountMismatch) {
+  ASSERT_OK_AND_ASSIGN(const Shape operand0, ParseShape("f32[8]"));
+  ASSERT_OK_AND_ASSIGN(const Shape operand1, ParseShape("f32[16]"));
+  // Root array has 3 elements but there are only 2 data operands.
+  ASSERT_OK_AND_ASSIGN(const Shape bad_roots, ParseShape("s32[3]"));
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferCollectiveReduceShape(
+          /*operand_shapes=*/{&operand0, &operand1, &bad_roots},
+          /*has_dynamic_root=*/true);
+  EXPECT_FALSE(inferred_shape.ok());
+}
+
 TEST_F(ShapeInferenceTest, CollectivePermute) {
   TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[8, 8]"));
   TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[8, 8]"));
