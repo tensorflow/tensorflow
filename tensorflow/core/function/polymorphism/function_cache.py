@@ -41,6 +41,11 @@ class FunctionCache:
     self._dispatch_dict = {}
     self._max_capacity = max_capacity
 
+  def clear(self):
+    '''Clears the function cache.'''
+    self._primary.clear()
+    self._dispatch_dict.clear()
+
   def lookup(self, function_type: function_type_lib.FunctionType,
              context: Optional[FunctionContext] = None) -> Optional[Any]:
     """Looks up a function based on the context and type."""
