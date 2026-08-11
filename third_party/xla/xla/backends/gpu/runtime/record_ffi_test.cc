@@ -83,7 +83,8 @@ absl::Status RecordFfiHandler(ffi::RecordContext record_ctx,
 
   const auto action = record_ctx.action();
   if (action == ffi::RecordAction::kCreate) {
-    ABSL_RETURN_IF_ERROR(record_ctx.CreateMemcpyD2D(scratch, in0, size).status());
+    ABSL_ASSIGN_OR_RETURN(const XLA_FFI_Command* memcpy_d2d,
+                     record_ctx.CreateMemcpyD2D(scratch, in0, size));
 
     auto kernel_bytes = GetKernelBytesAsString(fmt);
     ABSL_RETURN_IF_ERROR(
@@ -93,7 +94,8 @@ absl::Status RecordFfiHandler(ffi::RecordContext record_ctx,
                 /*launch_dims=*/{{1, 1, 1}, {8, 1, 1}}, /*shared_mem_bytes=*/0,
                 std::vector<ffi::KernelArg>{ffi::DevicePointer{scratch},
                                             ffi::DevicePointer{in1},
-                                            ffi::DevicePointer{res}})
+                                            ffi::DevicePointer{res}},
+                /*dependencies=*/{memcpy_d2d})
             .status());
   } else if (action == ffi::RecordAction::kUpdate) {
     auto cmds = record_ctx.commands();
