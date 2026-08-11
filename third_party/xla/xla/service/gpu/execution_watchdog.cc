@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "xla/runtime/hang_watchdog.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
@@ -76,15 +77,14 @@ void ExecutionWatchdogScope::Arm(HangWatchdog::CancelCallback pre_abort) {
     return;
   }
   armed_ = true;
-  guard_holder_ = std::make_shared<std::shared_ptr<HangWatchdog::Guard>>();
+  guard_holder_ = std::make_shared<GuardHolder>();
 
   HangWatchdog::CancelCallback on_timeout;
   if (gpu_run_options_ && gpu_run_options_->execution_timeout_handler()) {
     // Capture a weak_ptr so the timeout callback does not keep the Guard alive
     // after this scope is destroyed (otherwise scope.reset() cannot cancel the
     // watchdog due to a shared_ptr cycle through the callback).
-    std::weak_ptr<std::shared_ptr<HangWatchdog::Guard>> weak_guard_holder =
-        guard_holder_;
+    std::weak_ptr<GuardHolder> weak_guard_holder = guard_holder_;
     auto watchdog_name = watchdog_name_;
     auto watchdog_timeout = watchdog_timeout_;
     auto* gpu_run_options = gpu_run_options_;
@@ -95,11 +95,13 @@ void ExecutionWatchdogScope::Arm(HangWatchdog::CancelCallback pre_abort) {
         std::move(pre_abort)();
       }
 
-      if (std::shared_ptr<std::shared_ptr<HangWatchdog::Guard>> guard_holder =
+      if (std::shared_ptr<GuardHolder> guard_holder =
               weak_guard_holder.lock()) {
-        *guard_holder = HangWatchdog::Global().Watch(
+        auto fallback_guard = HangWatchdog::Global().Watch(
             "post-abort ...", absl::Minutes(1),
             HangWatchdog::Abort("post-abort ...", absl::Minutes(1)));
+        absl::MutexLock lock(&guard_holder->mu);
+        guard_holder->guard = std::move(fallback_guard);
       }
 
       gpu_run_options->execution_timeout_handler()(watchdog_name,
@@ -110,8 +112,10 @@ void ExecutionWatchdogScope::Arm(HangWatchdog::CancelCallback pre_abort) {
                                      std::move(pre_abort));
   }
 
-  *guard_holder_ = HangWatchdog::Global().Watch(
-      watchdog_name_, watchdog_timeout_, std::move(on_timeout));
+  auto guard = HangWatchdog::Global().Watch(watchdog_name_, watchdog_timeout_,
+                                            std::move(on_timeout));
+  absl::MutexLock lock(&guard_holder_->mu);
+  guard_holder_->guard = std::move(guard);
 }
 
 ExecutionWatchdogScope::~ExecutionWatchdogScope() {
@@ -132,7 +136,8 @@ ExecutionWatchdogScope::~ExecutionWatchdogScope() {
 
   // Drop the HangWatchdog guard now that execution is done (or abandoned).
   if (guard_holder_ != nullptr) {
-    *guard_holder_ = nullptr;
+    absl::MutexLock lock(&guard_holder_->mu);
+    guard_holder_->guard = nullptr;
   }
 }
 
