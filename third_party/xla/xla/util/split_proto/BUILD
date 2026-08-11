@@ -19,6 +19,10 @@ load(
     "xla_cc_test",
 )
 load(
+    "//xla/tsl:tsl.bzl",
+    "internal_visibility",
+)
+load(
     "//xla/tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
@@ -32,11 +36,12 @@ package(
 tf_proto_library(
     name = "split_proto",
     srcs = ["split_proto.proto"],
-    visibility = [
+    visibility = internal_visibility([
         # This proto is an implementation detail of the split proto format,
         # it shouldn't be used outside of this package, and the split_proto_cli.
+        "//learning/brain/research/pjrt:__subpackages__",
         "//xla/tools/split_proto:__subpackages__",
-    ],
+    ]),
 )
 
 tf_proto_library(
@@ -44,6 +49,7 @@ tf_proto_library(
     srcs = ["human_readable_aot_executable.proto"],
     deps = [
         "//xla/pjrt/proto:compile_options_proto",
+        "//xla/service/cpu:executable_proto",
         "//xla/service/gpu:gpu_executable_proto",
     ],
 )
@@ -53,9 +59,12 @@ cc_library(
     srcs = ["split_proto_reader.cc"],
     hdrs = ["split_proto_reader.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    visibility = internal_visibility([
+        "//learning/brain/research/pjrt:__subpackages__",
+        "//xla:__subpackages__",
+    ]),
     deps = [
         ":split_proto_cc",
-        "//xla/service/gpu:gpu_executable_proto_cc",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -64,6 +73,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_protobuf//:protobuf",
+        "@riegeli//riegeli/base:any",
         "@riegeli//riegeli/bytes:reader",
         "@riegeli//riegeli/records:record_position",
         "@riegeli//riegeli/records:record_reader",
@@ -208,9 +218,10 @@ cc_library(
     srcs = ["split_proto_write_record.cc"],
     hdrs = ["split_proto_write_record.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
-    visibility = [
+    visibility = internal_visibility([
+        "//learning/brain/research/pjrt:__subpackages__",
         "//visibility:private",
-    ],
+    ]),
     deps = [
         ":proto_field_size_utils",
         "@com_google_absl//absl/status",
@@ -240,9 +251,10 @@ cc_library(
     name = "split_proto_riegeli_options",
     hdrs = ["split_proto_riegeli_options.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
-    visibility = [
+    visibility = internal_visibility([
+        "//learning/brain/research/pjrt:__subpackages__",
         "//visibility:private",
-    ],
+    ]),
     deps = ["@riegeli//riegeli/records:record_writer"],
 )
 
