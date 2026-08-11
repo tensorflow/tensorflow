@@ -26,7 +26,7 @@ bazel_dep(name = "re2", version = "2025-11-05.bcr.1", repo_name = "com_googlesou
 bazel_dep(name = "rules_cc", version = "0.2.17")
 bazel_dep(name = "rules_java", version = "8.16.1")
 bazel_dep(name = "rules_license", version = "1.0.0")
-bazel_dep(name = "rules_python", version = "1.8.5")
+bazel_dep(name = "rules_python", version = "2.2.0")
 bazel_dep(name = "rules_shell", version = "0.6.1")
 bazel_dep(name = "snappy", version = "1.2.1")
 bazel_dep(name = "zlib", version = "1.3.2")
@@ -154,12 +154,10 @@ single_version_override(
     module_name = "rules_python",
     patch_strip = 1,
     patches = [
-        "//third_party/py:rules_python_pip_version.patch",
         "//third_party/py:rules_python_freethreaded.patch",
-        "//third_party/py:rules_python_versions.patch",
         "//third_party/py:rules_python_scope.patch",
     ],
-    version = "1.8.5",
+    version = "2.2.0",
 )
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
