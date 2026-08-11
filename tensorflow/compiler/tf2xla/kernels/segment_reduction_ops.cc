@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/builder/value_inference.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/primitive_util.h"
+#include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -81,6 +82,54 @@ class SegmentReduce : public XlaOpKernel {
                 errors::InvalidArgument(type_string(),
                                         " requires that indices' rank be"
                                         " less than or equal to data's rank."));
+
+    // InputShape() reports a bounded-dynamic dimension as its upper bound, so
+    // two prefix dimensions that are equal at run time can still disagree
+    // here. Reconcile the operands first: their run-time sizes are equal, so
+    // both fit within the smaller of the two bounds. Slice the larger side
+    // down to that bound and re-apply its run-time size. Only a dimension
+    // that is actually dynamic is sliced, so a genuine static mismatch still
+    // fails the check below. This has to reach the operands rather than just
+    // the check, because xla::Scatter compares the same bounds again during
+    // shape inference and tolerates only unbounded dynamic sizes. Where
+    // cwise_ops.cc pads the smaller side up when both sides are dynamic,
+    // slicing is safe here: segment reduction does not broadcast, so there is
+    // no size-1 dimension to preserve. If the run-time sizes are not in fact
+    // equal the program was already invalid; XLA cannot detect that at compile
+    // time here, same as cwise_ops.cc.
+    OP_REQUIRES_VALUE(xla::Shape data_xla_shape, ctx, ctx->InputXlaShape(0));
+    OP_REQUIRES_VALUE(xla::Shape indices_xla_shape, ctx, ctx->InputXlaShape(1));
+    OP_REQUIRES(
+        ctx,
+        data_xla_shape.dimensions().size() == data_shape.dims() &&
+            indices_xla_shape.dimensions().size() == indices_shape.dims(),
+        errors::Internal(type_string(), " got mismatched ranks for data (",
+                         data_xla_shape.dimensions().size(), " vs. ",
+                         data_shape.dims(), ") or indices (",
+                         indices_xla_shape.dimensions().size(), " vs. ",
+                         indices_shape.dims(), ")"));
+    for (int d = 0; d < indices_shape.dims(); ++d) {
+      const int64_t data_bound = data_shape.dim_size(d);
+      const int64_t indices_bound = indices_shape.dim_size(d);
+      if (data_bound > indices_bound &&
+          data_xla_shape.is_dynamic_dimension(d)) {
+        xla::XlaOp size = xla::GetDimensionSize(data, d);
+        data = xla::SliceInDim(data, /*start_index=*/0,
+                               /*limit_index=*/indices_bound, /*stride=*/1,
+                               /*dimno=*/d);
+        data = xla::SetDimensionSize(data, size, d);
+        data_shape.set_dim(d, indices_bound);
+      } else if (indices_bound > data_bound &&
+                 indices_xla_shape.is_dynamic_dimension(d)) {
+        xla::XlaOp size = xla::GetDimensionSize(indices, d);
+        indices = xla::SliceInDim(indices, /*start_index=*/0,
+                                  /*limit_index=*/data_bound, /*stride=*/1,
+                                  /*dimno=*/d);
+        indices = xla::SetDimensionSize(indices, size, d);
+        indices_shape.set_dim(d, data_bound);
+      }
+    }
+
     // Validate that indices.shape is a prefix of data.shape.
     for (int d = 0; d < indices_shape.dims(); ++d) {
       OP_REQUIRES(
