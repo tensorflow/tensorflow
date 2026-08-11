@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/python/ifrt/array_spec.pb.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -78,8 +79,10 @@ absl::Status ArraySpec::ToProto(ArraySpecProto& proto,
 }
 
 absl::StatusOr<AbstractArraySpec> ArraySpec::ToAbstractArraySpec() const {
+  MemoryKind memory_kind = CanonicalizeMemoryKind(
+      sharding->memory_kind(), sharding->devices()->devices().front());
   return AbstractArraySpec::Create(dtype, shape, sharding->sharding_spec(),
-                                   sharding->memory_kind(), layout);
+                                   std::move(memory_kind), layout);
 }
 
 }  // namespace ifrt
