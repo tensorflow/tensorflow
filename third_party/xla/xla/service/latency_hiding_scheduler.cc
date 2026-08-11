@@ -3710,7 +3710,20 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
   // Activate the log filter for this computation.
   ScopedVlogFilter filter_guard(computation->name(),
                                 config_.log_computation_re);
-  return ScheduleComputation(computation, sched_state);
+  ABSL_ASSIGN_OR_RETURN(auto new_schedule,
+                   ScheduleComputation(computation, sched_state));
+  auto default_sched_state =
+      std::dynamic_pointer_cast<DefaultSchedulerCore::SchedulingState>(
+          sched_state);
+  CHECK_NE(default_sched_state, nullptr);
+  // We update module pressure state metadata out of the ScheduleComputation
+  // loop. The module-level pressure tracker is initialized once (capturing all
+  // buffers), and the reachability map only acts as an execution constraint
+  // without requiring continuous pressure recalculation during scheduling.
+  module_pressure_state_->UpdatePressureStateForComputation(
+      computation,
+      default_sched_state->memory_pressure_tracker.pressure_state());
+  return new_schedule;
 }
 
 std::shared_ptr<SchedulerCore::SchedulingState>
@@ -3877,8 +3890,6 @@ DefaultSchedulerCore::ScheduleComputation(
     }
   }
 
-  module_pressure_state_->UpdatePressureStateForComputation(
-      computation, memory_pressure_tracker.pressure_state());
   if (!top_down_scheduling_) {
     absl::c_reverse(sched_state->new_sequence_reversed);
   }
@@ -3913,7 +3924,7 @@ DefaultSchedulerCore::ComputationScheduleToProto(
   proto.set_computation_id(computation->unique_id());
   proto.set_cycles_per_microsecond(estimator.CyclesPerMicrosecond());
   *proto.mutable_scheduler_statistics() =
-      LatencyHidingScheduler::LatencyHidingStatistics(computation,
+      LatencyHidingScheduler::LatencyHidingStatistics(computation, instructions,
                                                       scheduling_context_)
           .ToProto();
 
@@ -3942,6 +3953,7 @@ DefaultSchedulerCore::ComputationScheduleToProto(
 LatencyHidingScheduler::SchedulerStatistics
 LatencyHidingScheduler::LatencyHidingStatistics(
     const HloComputation* computation,
+    absl::Span<const HloInstruction* const> candidate_sequence,
     std::shared_ptr<const SchedulingContext> scheduling_context,
     const ModulePressureState* module_pressure_state,
     MemoryPressureTracker* memory_pressure_tracker,
@@ -4034,8 +4046,7 @@ LatencyHidingScheduler::LatencyHidingStatistics(
     schedule_graph = default_sched_state->sched_graph.get();
   }
   int64_t curr_pos = 0;
-  for (const HloInstruction* instr :
-       module->schedule().sequence(computation).instructions()) {
+  for (const HloInstruction* instr : candidate_sequence) {
     const HloGraphNode& instr_node = schedule_graph->GetNode(instr);
     current_time += instr_node.GetCost();
     if (instr_node.IsSupportedAsyncStart()) {
@@ -4123,10 +4134,13 @@ LatencyHidingScheduler::LatencyHidingStatistics(
       /*call_wasted_cycles=*/wasted_time_per_collective[AsyncKind::kCall],
       /*total_cycles=*/current_time,
       /*memory_pressure_peak=*/
-      memory_pressure_state
+      (memory_pressure_tracker && memory_pressure_tracker_ptr == nullptr)
           ? memory_pressure_tracker->initial_memory_pressure() +
-                memory_pressure_state->memory_peak
-          : 0};
+                memory_pressure_tracker->pressure_state().memory_peak
+          : (memory_pressure_state
+                 ? memory_pressure_tracker->initial_memory_pressure() +
+                       memory_pressure_state->memory_peak
+                 : 0)};
 }
 
 // Prints a SchedulerStatistics object.
@@ -4187,57 +4201,16 @@ LatencyHidingScheduler::SchedulerStatistics::ToProto() const {
 
 void LatencyHidingScheduler::LogScheduleStatistics(
     const HloComputation* computation) {
-  XLA_VLOG_LINES(
-      1, LatencyHidingStatistics(computation, scheduling_context_).ToString());
+  XLA_VLOG_LINES(1, LatencyHidingStatistics(computation,
+                                            computation->parent()
+                                                ->schedule()
+                                                .sequence(computation)
+                                                .instructions(),
+                                            scheduling_context_)
+                        .ToString());
 }
 
-absl::StatusOr<std::pair<std::vector<HloInstruction*>, ComputationScheduleInfo>>
-LatencyHidingScheduler::ScheduleWithPreferences(
-    HloModule* module, const std::vector<double>& preferences,
-    const HloComputation* computation,
-    std::shared_ptr<SchedulerCore::SchedulingState> sched_state) {
-  auto set_preferences = [&](HloScheduleGraph* graph) -> absl::Status {
-    VLOG(3) << "Setting scheduling preferences.";
-    graph->SetPreferences(preferences);
-    return absl::OkStatus();
-  };
-  sched_state->graph_processing_hook = set_preferences;
-  ABSL_ASSIGN_OR_RETURN(auto new_schedule, scheduler_core_->ScheduleComputation(
-                                          computation, sched_state));
 
-  // Save the old schedule.
-  auto old_schedule = std::vector<HloInstruction*>(
-      module->schedule().sequence(computation).instructions());
-  // Temporarily use the new schedule to capture stats.
-  module->schedule().set_sequence(computation,
-                                  absl::MakeConstSpan(new_schedule));
-
-  DefaultSchedulerCore::SchedulingState* default_sched_state =
-      dynamic_cast<DefaultSchedulerCore::SchedulingState*>(sched_state.get());
-  DefaultSchedulerCore* default_scheduler_core =
-      dynamic_cast<DefaultSchedulerCore*>(scheduler_core_.get());
-
-  LatencyHidingScheduler::SchedulerStatistics stats = LatencyHidingStatistics(
-      computation, scheduling_context_,
-      default_scheduler_core ? default_scheduler_core->GetModulePressureState()
-                             : nullptr,
-      default_sched_state ? &default_sched_state->memory_pressure_tracker
-                          : nullptr,
-      sched_state);
-
-  // Restore the old schedule.
-  module->schedule().set_sequence(computation,
-                                  absl::MakeConstSpan(old_schedule));
-
-  ComputationScheduleInfo schedule_info;
-  schedule_info.total_wasted_cycles = stats.GetTotalWastedCycles();
-
-  // Return the peak memory of this computation instead of the whole module
-  // to allow heuristic to optimize this functions memory usage.
-  schedule_info.peak_memory = stats.memory_pressure_peak;
-
-  return std::make_pair(new_schedule, schedule_info);
-}
 
 absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
     HloModule* module,
@@ -4290,9 +4263,12 @@ absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
     pressure_state.InitializePressureStates();
     for (HloComputation* computation : computations_to_schedule_) {
       VLOG(1) << "[" << name() << "] Statistics before scheduling:";
-      XLA_VLOG_LINES(1, LatencyHidingStatistics(
-                            computation, scheduling_context_, &pressure_state)
-                            .ToString());
+      XLA_VLOG_LINES(
+          1, LatencyHidingStatistics(
+                 computation,
+                 module->schedule().sequence(computation).instructions(),
+                 scheduling_context_, &pressure_state)
+                 .ToString());
     }
   }
   for (HloComputation* computation : computations_to_schedule_) {
@@ -4361,10 +4337,12 @@ absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
     post_scheduling_pressure_state.InitializePressureStates();
     for (HloComputation* computation : computations_to_schedule_) {
       VLOG(1) << "[" << name() << "] Statistics after scheduling:";
-      XLA_VLOG_LINES(1,
-                     LatencyHidingStatistics(computation, scheduling_context_,
-                                             &post_scheduling_pressure_state)
-                         .ToString());
+      XLA_VLOG_LINES(
+          1, LatencyHidingStatistics(
+                 computation,
+                 module->schedule().sequence(computation).instructions(),
+                 scheduling_context_, &post_scheduling_pressure_state)
+                 .ToString());
     }
   }
   if (debug_options.xla_dump_latency_hiding_schedule()) {

@@ -2166,6 +2166,10 @@ class LatencyHidingScheduler : public HloModulePass {
   constexpr static absl::string_view kName = "latency-hiding-scheduler";
   absl::string_view name() const override { return kName; }
 
+  std::shared_ptr<const SchedulingContext> scheduling_context() const {
+    return scheduling_context_;
+  }
+
   // Returns some printable statistics about the latency hiding for
   // operations that can run in parallel to help evaluating the performance of
   // the scheduler and improve it.
@@ -2175,19 +2179,11 @@ class LatencyHidingScheduler : public HloModulePass {
   // same module.
   static SchedulerStatistics LatencyHidingStatistics(
       const HloComputation* computation,
+      absl::Span<const HloInstruction* const> candidate_sequence,
       std::shared_ptr<const SchedulingContext> scheduling_context,
       const ModulePressureState* pressure_state = nullptr,
       MemoryPressureTracker* memory_pressure_tracker = nullptr,
       std::shared_ptr<SchedulerCore::SchedulingState> sched_state = nullptr);
-
-  // Even with random preferences this function will always return a schedule
-  // that obeys overlap constraints.
-  absl::StatusOr<
-      std::pair<std::vector<HloInstruction*>, ComputationScheduleInfo>>
-  ScheduleWithPreferences(
-      HloModule* module, const std::vector<double>& preferences,
-      const HloComputation* computation,
-      std::shared_ptr<SchedulerCore::SchedulingState> sched_state);
 
   virtual void LogScheduleStatistics(const HloComputation* computation);
 
