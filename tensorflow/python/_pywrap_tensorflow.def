@@ -33,6 +33,7 @@ EXPORTS
  ??$GrowSooTableToNextCapacityAndPrepareInsert@$07$00@container_internal@lts_20260526@absl@@YA_KAEAVCommonFields@012@AEBUPolicyFunctions@012@V?$FunctionRef@$$A6A_K_K@Z@12@_N@Z
  ??$GrowSooTableToNextCapacityAndPrepareInsert@$0A@$0A@@container_internal@lts_20260526@absl@@YA_KAEAVCommonFields@012@AEBUPolicyFunctions@012@V?$FunctionRef@$$A6A_K_K@Z@12@_N@Z
  ??$GrowSooTableToNextCapacityAndPrepareInsert@$0BA@$00@container_internal@lts_20260526@absl@@YA_KAEAVCommonFields@012@AEBUPolicyFunctions@012@V?$FunctionRef@$$A6A_K_K@Z@12@_N@Z
+ ??$MakeCheckOpString@_J_J@log_internal@lts_20260526@absl@@YAPEBD_J0PEBD@Z
  ??$MakeErrorImpl@$02@status_internal@lts_20260526@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@VSourceLocation@12@@Z
  ??$MakeErrorImpl@$04@status_internal@lts_20260526@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@VSourceLocation@12@@Z
  ??$MakeErrorImpl@$05@status_internal@lts_20260526@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@VSourceLocation@12@@Z

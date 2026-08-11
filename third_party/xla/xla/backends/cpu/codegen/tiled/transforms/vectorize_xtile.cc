@@ -587,6 +587,93 @@ struct VectorizeTransposeOp
   }
 };
 
+struct VectorizeSliceOp : public mlir::OpConversionPattern<shlo::SliceOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      shlo::SliceOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    mlir::Type new_type = this->getTypeConverter()->convertType(op.getType());
+    if (!new_type) {
+      return mlir::failure();
+    }
+    auto res_vec_ty = mlir::cast<mlir::VectorType>(new_type);
+    llvm::ArrayRef<int64_t> shape = res_vec_ty.getShape();
+    int64_t rank = res_vec_ty.getRank();
+
+    bool all_unit_strides =
+        llvm::all_of(op.getStrides(), [](int64_t s) { return s == 1; });
+    if (all_unit_strides) {
+      llvm::SmallVector<int64_t> offsets(op.getStartIndices().begin(),
+                                         op.getStartIndices().end());
+      llvm::SmallVector<int64_t> strides(rank, 1);
+      llvm::SmallVector<int64_t> sizes(shape.begin(), shape.end());
+      rewriter.replaceOpWithNewOp<mv::ExtractStridedSliceOp>(
+          op, adaptor.getOperand(), offsets, sizes, strides);
+      return mlir::success();
+    }
+
+    mlir::Value res = ma::ConstantOp::create(rewriter, op.getLoc(), res_vec_ty,
+                                             rewriter.getZeroAttr(res_vec_ty));
+    llvm::SmallVector<int64_t> start_indices(op.getStartIndices().begin(),
+                                             op.getStartIndices().end());
+    llvm::SmallVector<int64_t> strides(op.getStrides().begin(),
+                                       op.getStrides().end());
+
+    llvm::SmallVector<int64_t> curr_dst(rank, 0);
+    llvm::SmallVector<int64_t> curr_src(rank, 0);
+
+    auto emit_elements = [&](auto& self, int64_t dim) -> void {
+      if (dim == rank) {
+        mlir::Value elem = mv::ExtractOp::create(
+            rewriter, op.getLoc(), adaptor.getOperand(), curr_src);
+        res = mv::InsertOp::create(rewriter, op.getLoc(), elem, res, curr_dst);
+        return;
+      }
+      for (int64_t i = 0; i < shape[dim]; ++i) {
+        curr_dst[dim] = i;
+        curr_src[dim] = start_indices[dim] + i * strides[dim];
+        self(self, dim + 1);
+      }
+    };
+    emit_elements(emit_elements, 0);
+
+    rewriter.replaceOp(op, res);
+    return mlir::success();
+  }
+};
+
+struct VectorizeConcatenateOp
+    : public mlir::OpConversionPattern<shlo::ConcatenateOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      shlo::ConcatenateOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    mlir::Type new_type = this->getTypeConverter()->convertType(op.getType());
+    if (!new_type) {
+      return mlir::failure();
+    }
+    auto res_vec_ty = mlir::cast<mlir::VectorType>(new_type);
+    mlir::Value res = ma::ConstantOp::create(rewriter, op.getLoc(), res_vec_ty,
+                                             rewriter.getZeroAttr(res_vec_ty));
+    int64_t current_offset = 0;
+    uint64_t dim = op.getDimension();
+    for (mlir::Value input : adaptor.getInputs()) {
+      auto in_vec_ty = mlir::cast<mlir::VectorType>(input.getType());
+      llvm::SmallVector<int64_t> offsets(res_vec_ty.getRank(), 0);
+      offsets[dim] = current_offset;
+      llvm::SmallVector<int64_t> strides(in_vec_ty.getRank(), 1);
+      res = mv::InsertStridedSliceOp::create(rewriter, op.getLoc(), input, res,
+                                             rewriter.getI64ArrayAttr(offsets),
+                                             rewriter.getI64ArrayAttr(strides));
+      current_offset += in_vec_ty.getDimSize(dim);
+    }
+    rewriter.replaceOp(op, res);
+    return mlir::success();
+  }
+};
+
 struct VectorizeReshapeOp : public mlir::OpConversionPattern<shlo::ReshapeOp> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -741,11 +828,12 @@ class VectorizeXTilePass
         ma::ArithDialect, mlir::memref::MemRefDialect, mm::MathDialect,
         ms::SCFDialect, mlir::tensor::TensorDialect, mv::VectorDialect,
         shlo::StablehloDialect, xla::XlaDialect, xtile::XTileDialect>();
-    target.addIllegalOp<shlo::BroadcastInDimOp, shlo::DotGeneralOp,
-                        shlo::IotaOp, shlo::ReduceOp, shlo::ReshapeOp,
-                        shlo::TransposeOp, mlir::tensor::ExtractOp,
-                        mlir::tensor::FromElementsOp, xtile::ExtractTileOp,
-                        xtile::InsertTileOp, xtile::MaskOp>();
+    target.addIllegalOp<shlo::BroadcastInDimOp, shlo::ConcatenateOp,
+                        shlo::DotGeneralOp, shlo::IotaOp, shlo::ReduceOp,
+                        shlo::ReshapeOp, shlo::SliceOp, shlo::TransposeOp,
+                        mlir::tensor::ExtractOp, mlir::tensor::FromElementsOp,
+                        xtile::ExtractTileOp, xtile::InsertTileOp,
+                        xtile::MaskOp>();
     target.addLegalOp<mlir::UnrealizedConversionCastOp>();
     target.addDynamicallyLegalDialect<ma::ArithDialect, mm::MathDialect>(
         [&](mlir::Operation* op) { return type_converter.isLegal(op); });
@@ -753,10 +841,10 @@ class VectorizeXTilePass
     mlir::RewritePatternSet patterns(context);
     patterns
         .add<ConvertExtractTile, ConvertInsertTile, VectorizeBroadcastInDimOp,
-             VectorizeConstantOp, VectorizeDotGeneralOp, VectorizeExtractOp,
-             VectorizeFromElementsOp, VectorizeIotaOp, VectorizeMaskOp,
-             VectorizeReduceOp, VectorizeReshapeOp, VectorizeTransposeOp>(
-            type_converter, context);
+             VectorizeConcatenateOp, VectorizeConstantOp, VectorizeDotGeneralOp,
+             VectorizeExtractOp, VectorizeFromElementsOp, VectorizeIotaOp,
+             VectorizeMaskOp, VectorizeReduceOp, VectorizeReshapeOp,
+             VectorizeSliceOp, VectorizeTransposeOp>(type_converter, context);
     populateVectorizePatterns<
         ma::AddFOp, ma::AddIOp, ma::SubFOp, ma::SubIOp, ma::MulFOp, ma::MulIOp,
         ma::DivFOp, ma::DivSIOp, ma::DivUIOp, ma::RemFOp, ma::RemSIOp,
