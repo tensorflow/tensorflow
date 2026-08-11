@@ -16,10 +16,7 @@
 # TPU Kernel Implementations
 
 load("@rules_python//python:proto.bzl", "py_proto_library")
-load(
-    "@xla//xla/tsl:tsl.bzl",
-    "internal_visibility",
-)
+load("@xla//xla/tsl:tsl.bzl", "internal_visibility")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_google",
@@ -337,10 +334,10 @@ cc_library(
     name = "tpu_compile_op_support",
     srcs = ["tpu_compile_op_support.cc"],
     hdrs = ["tpu_compile_op_support.h"],
-    visibility = [
+    visibility = internal_visibility([
         ":friends",
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",
-    ],
+    ]),
     deps = [
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:framework",
