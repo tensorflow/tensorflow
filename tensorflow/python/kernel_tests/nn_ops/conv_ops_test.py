@@ -3437,25 +3437,41 @@ class SeparableConv2DTest(test.TestCase):
       return
     self._testSeparableConv2DEqualInputOutputDepth("NCHW")
 
-  def testSeparableConv2dTranspose(self):
+  def _testSeparableConv2dTranspose(self, data_format):
     with self.cached_session():
       # [batch, height, width, in_channels]
-      x = constant_op.constant(1.0, shape=[1, 4, 4, 6])
+      x_shape = [1, 4, 4, 6]
+      if data_format == "NCHW":
+        x_shape = [1, 6, 4, 4]
+      x = constant_op.constant(1.0, shape=x_shape)
       # [filter_height, filter_width, out_channels, channel_multiplier]
       depthwise_filter = constant_op.constant(1.0, shape=[2, 2, 2, 3])
-      # [1, 1, channel_multiplier * out_channels, in_channels] => [1, 1, 6, 6]
+      # [1, 1, channel_multiplier * out_channels, in_channels] -> [1, 1, 6, 6]
       pointwise_filter = constant_op.constant(1.0, shape=[1, 1, 6, 6])
       
+      output_shape = [1, 5, 5, 2]
+      if data_format == "NCHW":
+        output_shape = [1, 2, 5, 5]
+        
       output = nn_impl.separable_conv2d_transpose(
           value=x,
           depthwise_filter=depthwise_filter,
           pointwise_filter=pointwise_filter,
-          output_shape=[1, 5, 5, 2],
-          strides=[1, 1, 1, 1],
-          padding="VALID")
-      
+          output_shape=output_shape,
+          strides=1,
+          padding="VALID",
+          data_format=data_format)
+          
       value = self.evaluate(output)
-      self.assertEqual(value.shape, (1, 5, 5, 2))
+      self.assertEqual(value.shape, tuple(output_shape))
+
+  def testSeparableConv2dTransposeNHWC(self):
+    self._testSeparableConv2dTranspose("NHWC")
+
+  def testSeparableConv2dTransposeNCHW(self):
+    if not test.is_gpu_available():
+      return
+    self._testSeparableConv2dTranspose("NCHW")
 
   def _testSeparableConv2dExplicitPadding(self, data_format):
     tensor_in_sizes = [1, 4, 4, 2]

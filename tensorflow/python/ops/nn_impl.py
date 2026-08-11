@@ -1142,7 +1142,35 @@ def separable_conv2d_transpose(
     if data_format is None:
       data_format = "NHWC"
 
-    value_shape = array_ops.shape(value)
+    if strides is None:
+      raise ValueError("strides must be specified")
+    if isinstance(strides, int):
+      strides = [strides, strides]
+    if isinstance(strides, (list, tuple)):
+      if len(strides) == 2:
+        if data_format.startswith("NC"):
+          strides = [1, 1, strides[0], strides[1]]
+        else:
+          strides = [1, strides[0], strides[1], 1]
+      elif len(strides) != 4:
+        raise ValueError("strides must be of length 1, 2, or 4.")
+        
+    if dilations is None:
+      dilations = [1, 1, 1, 1]
+    if isinstance(dilations, int):
+      dilations = [dilations, dilations]
+    if isinstance(dilations, (list, tuple)):
+      if len(dilations) == 2:
+        if data_format.startswith("NC"):
+          dilations = [1, 1, dilations[0], dilations[1]]
+        else:
+          dilations = [1, dilations[0], dilations[1], 1]
+      elif len(dilations) != 4:
+        raise ValueError("dilations must be of length 1, 2, or 4.")
+
+    value_shape = value.get_shape().as_list() if value.get_shape().dims is not None else [None] * 4
+    pointwise_filter_shape = pointwise_filter.get_shape().as_list() if pointwise_filter.get_shape().dims is not None else [None] * 4
+
     if data_format.startswith("NC"):
       batch_size = value_shape[0]
       h_out = value_shape[2]
@@ -1152,15 +1180,30 @@ def separable_conv2d_transpose(
       h_out = value_shape[1]
       w_out = value_shape[2]
 
-    pointwise_filter_shape = array_ops.shape(pointwise_filter)
     in_channels_forward = pointwise_filter_shape[2]
 
-    if data_format.startswith("NC"):
-      pointwise_output_shape = array_ops.stack(
-          [batch_size, in_channels_forward, h_out, w_out])
+    if batch_size is None or h_out is None or w_out is None or in_channels_forward is None:
+      dynamic_value_shape = array_ops.shape(value)
+      dynamic_pointwise_filter_shape = array_ops.shape(pointwise_filter)
+      
+      batch_size = batch_size or dynamic_value_shape[0]
+      if data_format.startswith("NC"):
+        h_out = h_out or dynamic_value_shape[2]
+        w_out = w_out or dynamic_value_shape[3]
+      else:
+        h_out = h_out or dynamic_value_shape[1]
+        w_out = w_out or dynamic_value_shape[2]
+      in_channels_forward = in_channels_forward or dynamic_pointwise_filter_shape[2]
+      
+      if data_format.startswith("NC"):
+        pointwise_output_shape = array_ops.stack([batch_size, in_channels_forward, h_out, w_out])
+      else:
+        pointwise_output_shape = array_ops.stack([batch_size, h_out, w_out, in_channels_forward])
     else:
-      pointwise_output_shape = array_ops.stack(
-          [batch_size, h_out, w_out, in_channels_forward])
+      if data_format.startswith("NC"):
+        pointwise_output_shape = [batch_size, in_channels_forward, h_out, w_out]
+      else:
+        pointwise_output_shape = [batch_size, h_out, w_out, in_channels_forward]
 
     pointwise = nn_ops.conv2d_transpose_v2(
         value,
