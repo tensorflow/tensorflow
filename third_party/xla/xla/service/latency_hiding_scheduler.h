@@ -419,20 +419,17 @@ class AsyncTracker {
 // Base class for the core scheduling algorithm.
 class SchedulerCore {
  public:
+  // Hook function to modify scheduling graph before scheduler runs.
+  using GraphProcessingHook = std::function<absl::Status(HloScheduleGraph*)>;
+
   // Abstract base class for scheduling state.
   struct SchedulingState {
     virtual ~SchedulingState() = default;
     virtual void Reset() {}
+    GraphProcessingHook graph_processing_hook;
   };
 
-  // Hook function to modify scheduling graph before scheduler runs.
-  using GraphProcessingHook = std::function<absl::Status(HloScheduleGraph*)>;
-
   virtual absl::Status InitializeScheduler(const HloModule* module) = 0;
-
-  virtual absl::Status ResetScheduler(const HloModule* module) {
-    return InitializeScheduler(module);
-  }
 
   virtual absl::Status CaptureScheduleProto() = 0;
 
@@ -1746,7 +1743,7 @@ class DefaultSchedulerCore : public SchedulerCore {
 
   absl::Status SetGraphProcessingHook(
       const SchedulerCore::GraphProcessingHook& hook) override {
-    graph_processing_hook_ = hook;
+    default_graph_processing_hook_ = hook;
     return absl::OkStatus();
   }
 
@@ -1886,10 +1883,6 @@ class DefaultSchedulerCore : public SchedulerCore {
   virtual std::unique_ptr<ReadySetLt> CreateReadySetComparator(
       SchedulingState& sched_state) const;
 
-  absl::Status ResetScheduler(const HloModule* module) override {
-    module_pressure_state_->ResetPressureStates();
-    return absl::OkStatus();
-  }
   absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
       const HloComputation* computation) override;
   absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
@@ -1995,7 +1988,7 @@ class DefaultSchedulerCore : public SchedulerCore {
   std::unique_ptr<AnnotationTracker> annotation_tracker_;
   std::optional<ScheduleProto> schedule_proto_;
   const HloModule* module_ = nullptr;
-  SchedulerCore::GraphProcessingHook graph_processing_hook_;
+  SchedulerCore::GraphProcessingHook default_graph_processing_hook_;
   std::shared_ptr<const SchedulingContext> scheduling_context_;
   bool top_down_scheduling_ = false;
 };

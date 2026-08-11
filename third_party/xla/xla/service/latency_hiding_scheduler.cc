@@ -3699,6 +3699,7 @@ DefaultSchedulerCore::MakeSchedulingState(const HloComputation* computation) {
                                         scheduling_context_, it->second.get(),
                                         config_, std::move(graph));
   sched_state->sched_graph->InitializeGraphAnalysis();
+  sched_state->graph_processing_hook = default_graph_processing_hook_;
   return sched_state;
 }
 
@@ -3759,8 +3760,9 @@ DefaultSchedulerCore::ScheduleComputation(
       module_pressure_state_->GetPressureStateForComputation(computation)
           .live_ids_at_bottom);
 
-  if (graph_processing_hook_) {
-    ABSL_RETURN_IF_ERROR(graph_processing_hook_(sched_state->sched_graph.get()));
+  if (sched_state->graph_processing_hook) {
+    ABSL_RETURN_IF_ERROR(
+        sched_state->graph_processing_hook(sched_state->sched_graph.get()));
   }
 
   VLOG(5) << "Just built graph:";
@@ -4186,16 +4188,12 @@ LatencyHidingScheduler::ScheduleWithPreferences(
     HloModule* module, const std::vector<double>& preferences,
     const HloComputation* computation,
     std::shared_ptr<SchedulerCore::SchedulingState> sched_state) {
-  ABSL_RETURN_IF_ERROR(scheduler_core_->ResetScheduler(module));
   auto set_preferences = [&](HloScheduleGraph* graph) -> absl::Status {
     VLOG(3) << "Setting scheduling preferences.";
     graph->SetPreferences(preferences);
     return absl::OkStatus();
   };
-  ABSL_RETURN_IF_ERROR(scheduler_core_->SetGraphProcessingHook(set_preferences));
-  absl::Cleanup clear_hook = [&] {
-    scheduler_core_->SetGraphProcessingHook(nullptr).IgnoreError();
-  };
+  sched_state->graph_processing_hook = set_preferences;
   ABSL_ASSIGN_OR_RETURN(auto new_schedule, scheduler_core_->ScheduleComputation(
                                           computation, sched_state));
 
