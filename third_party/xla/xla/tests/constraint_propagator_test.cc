@@ -1120,5 +1120,33 @@ ENTRY main {
   EXPECT_TRUE(p1_int.IsPositive());
 }
 
+TEST_F(ConstraintPropagatorTest, MaskedAttentionSoftmax) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = pred[8,128] parameter(0)
+  param_1 = f32[8,128] parameter(1)
+  c_neg_inf = f32[] constant(-1e+30)
+  b_neg_inf = f32[8,128] broadcast(c_neg_inf), dimensions={}
+  select = f32[8,128] select(param_0, param_1, b_neg_inf)
+  param_2 = f32[8,128] parameter(2)
+  sub = f32[8,128] subtract(select, param_2)
+  ROOT exp = f32[8,128] exponential(sub)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto logits_int =
+      states[module->entry_computation()->parameter_instruction(1)]
+          .GetConstraintInterval();
+  EXPECT_TRUE(logits_int.IsNegative());
+
+  auto row_max_int =
+      states[module->entry_computation()->parameter_instruction(2)]
+          .GetConstraintInterval();
+  EXPECT_TRUE(row_max_int.IsPositive());
+}
+
 }  // namespace
 }  // namespace xla
