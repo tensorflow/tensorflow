@@ -30,7 +30,7 @@
 
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp
-@@ -28,15 +28,20 @@ struct Fp8ConversionDesc {
+@@ -30,15 +30,20 @@ struct Fp8ConversionDesc {
  static const Fp8ConversionDesc Fp16_to_Fp8E5M2_RTNE(bool hasNativeFP) {
    Fp8ConversionDesc ret;
    if (!hasNativeFP) {

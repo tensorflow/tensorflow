@@ -1,6 +1,6 @@
 --- a/python/test/conftest.py
 +++ b/python/test/conftest.py
-@@ -3,6 +3,18 @@ import tempfile
+@@ -2,6 +2,18 @@ import pytest
  
  
  def pytest_configure(config):
@@ -22,7 +22,7 @@
 
 --- a/python/test/unit/language/test_core.py
 +++ b/python/test/unit/language/test_core.py
-@@ -1912,11 +1912,12 @@ def test_atomic_cas(sem, num_ctas, dtype_str, device):
+@@ -1949,11 +1949,12 @@ def test_atomic_cas(sem, num_ctas, dtype_str, device):
      if not is_cuda():
          return
      assert f"atom.global.{sem_str}" in h.asm["ptx"]
@@ -39,7 +39,7 @@
  def test_scalar_atomic_cas_multicta_result(device):
  
      @triton.jit
-@@ -1932,8 +1933,8 @@ def test_scalar_atomic_cas_multicta_result(device):
+@@ -1969,8 +1970,8 @@ def test_scalar_atomic_cas_multicta_result(device):
      torch.testing.assert_close(output, torch.full_like(output, 7))
  
  
@@ -50,7 +50,7 @@
  @pytest.mark.parametrize("size", [1, 4, 16, 128, 512])
  def test_tensor_atomic_cas_multicta_result(size, device):
  
-@@ -1984,8 +1985,8 @@ def test_tensor_atomic_cas(sem, size, dtype_str, num_ctas, device):
+@@ -2021,8 +2022,8 @@ def test_tensor_atomic_cas(sem, size, dtype_str, num_ctas, device):
  
  
  @pytest.mark.interpreter

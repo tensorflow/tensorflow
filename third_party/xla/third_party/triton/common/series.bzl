@@ -47,14 +47,11 @@ common_patch_list = [
     "//third_party/triton:common/test_cache_determinism_fix.patch",
     "//third_party/triton:common/mig_limits_pytests.patch",
     "//third_party/triton:common/allocator.patch",
-    "//third_party/triton:common/llvm_cl943393061.patch",
     "//third_party/triton:common/convert_layout_heuristic.patch",
-    "//third_party/triton:common/llvm_cl947230825.patch",
-    "//third_party/triton:common/llvm_cl948082775.patch",
     "//third_party/triton:common/tmemfix.patch",
     "//third_party/triton:common/tmem_scale_padding_second_half.patch",
-    "//third_party/triton:common/llvm_cl959585509.patch",
     "//third_party/triton:common/old_ptxas.patch",
+    "//third_party/triton:common/rewrite_tensor_descriptor_to_pointer_uaf.patch",
     "//third_party/triton:common/blackwell_nvfp4_mn_major_fallback.patch",
     # Add new patches just above this line
 ]
