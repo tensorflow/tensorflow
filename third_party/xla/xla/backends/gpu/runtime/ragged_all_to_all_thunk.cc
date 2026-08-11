@@ -572,10 +572,12 @@ RaggedAllToAllThunk::RaggedAllToAllThunk(
 }
 
 CollectiveCliqueRequests::CliqueRequirements
-RaggedAllToAllThunk::GetCliqueRequirements(const GpuCliqueKey& clique_key) {
+RaggedAllToAllThunk::GetCliqueRequirements(const GpuCliqueKey& clique_key,
+                                           const PrepareParams& params) {
   CollectiveCliqueRequests::CliqueRequirements clique_reqs;
   if (UsesDeviceKernel()) {
-    clique_reqs.dev_comm = DeviceKernelLsaDevCommRequirements();
+    const int core_count = params.executor->GetDeviceDescription().core_count();
+    clique_reqs.dev_comm = DeviceKernelLsaDevCommRequirements(core_count);
   }
   return clique_reqs;
 }
@@ -952,6 +954,8 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
 
     if (input_sym != nullptr && output_sym != nullptr) {
       ABSL_ASSIGN_OR_RETURN(int32_t num_ranks, comm.NumRanks());
+      const int core_count =
+          stream.parent()->GetDeviceDescription().core_count();
 
       const int64_t lsa_size = state->lsa_size.value();
       const bool has_remote_peers = state->lsa_size.value() < num_ranks;
@@ -965,17 +969,17 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
             GpuDeviceCommunicator * dev_comm,
             params.collective_cliques->GetDeviceComm(
                 clique_key, state->rank,
-                has_remote_peers ? DeviceKernelDevCommRequirements()
-                                 : DeviceKernelLsaDevCommRequirements()));
+                has_remote_peers
+                    ? DeviceKernelDevCommRequirements(core_count)
+                    : DeviceKernelLsaDevCommRequirements(core_count)));
 
         const int64_t num_updates_per_replica =
             config_.num_total_updates / num_ranks;
         // Remote peers are reached via GIN puts; local peers via LSA copies.
         const int64_t num_active_updates =
             (gin ? num_ranks : lsa_size) * num_updates_per_replica;
-        const int32_t cta_count = DeviceKernelLaunchCtaCount(
-            stream.parent()->GetDeviceDescription().core_count(),
-            num_active_updates);
+        const int32_t cta_count =
+            DeviceKernelLaunchCtaCount(core_count, num_active_updates);
         const PrimitiveType element_type = device_buffers[0].element_type;
 
         XLA_VLOG_DEVICE(3, state->device_ordinal)
@@ -1142,7 +1146,8 @@ absl::Status RaggedAllToAllThunk::PrepareCollective(
 
     ABSL_RETURN_IF_ERROR(device_groups().status());
     CollectiveCliqueRequests::CliqueRequirements gin_reqs;
-    gin_reqs.dev_comm = DeviceKernelDevCommRequirements();
+    gin_reqs.dev_comm = DeviceKernelDevCommRequirements(
+        params.executor->GetDeviceDescription().core_count());
     ABSL_RETURN_IF_ERROR(params.collective_clique_requests->RequestClique(
         clique_key, *device_groups(), gin_reqs));
   }
