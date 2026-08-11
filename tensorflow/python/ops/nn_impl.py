@@ -1082,6 +1082,106 @@ def separable_conv2d_v2(
       name=name,
       data_format=data_format)
 
+@tf_export("nn.separable_conv2d_transpose")
+@dispatch.add_dispatch_support
+def separable_conv2d_transpose(
+    value=None,
+    depthwise_filter=None,
+    pointwise_filter=None,
+    output_shape=None,
+    strides=None,
+    padding="SAME",
+    data_format=None,
+    dilations=None,
+    name=None,
+    input=None,  # pylint: disable=redefined-builtin
+):
+  """2-D convolution transpose with separable filters.
+
+  Performs a pointwise transposed convolution that mixes channels, followed by a
+  depthwise transposed convolution that acts separately on channels.
+
+  Args:
+    value: 4-D `Tensor` with shape according to `data_format`.
+    depthwise_filter: 4-D `Tensor` with shape `[filter_height, filter_width,
+      out_channels, channel_multiplier]`. Contains `out_channels` convolutional
+      filters of depth 1.
+    pointwise_filter: 4-D `Tensor` with shape `[1, 1, channel_multiplier *
+      out_channels, in_channels]`. Pointwise filter to mix channels before
+      `depthwise_filter` is applied.
+    output_shape: A 1-D `Tensor` representing the output shape of the
+      transposed separable convolution.
+    strides: 1-D of size 4. The strides for the depthwise convolution for each
+      dimension of `value`.
+    padding: Controls how to pad the image before applying the depthwise
+      convolution. Can be the string `"SAME"` or `"VALID"` indicating the type
+      of padding algorithm to use, or a Python list indicating the explicit
+      paddings at the start and end of each dimension.
+    data_format: The data format for value. Either "NHWC" (default) or "NCHW".
+    dilations: 1-D of size 2. The dilation rate in which we sample input values
+      across the `height` and `width` dimensions in atrous convolution. If it is
+      greater than 1, then all values of strides must be 1.
+    name: A name for this operation (optional).
+    input: Alias for value.
+
+  Returns:
+    A 4-D `Tensor` with shape according to `data_format`. For
+      example, with data_format="NHWC", shape is [batch, out_height,
+      out_width, out_channels].
+  """
+  value = deprecated_argument_lookup("input", input, "value", value)
+  with ops.name_scope(name, "separable_conv2d_transpose",
+                      [value, depthwise_filter, pointwise_filter, output_shape]) as name:
+    value = ops.convert_to_tensor(value, name="tensor_in")
+    depthwise_filter = ops.convert_to_tensor(
+        depthwise_filter, name="depthwise_filter")
+    pointwise_filter = ops.convert_to_tensor(
+        pointwise_filter, name="pointwise_filter")
+    output_shape = ops.convert_to_tensor(output_shape, name="output_shape")
+
+    if data_format is None:
+      data_format = "NHWC"
+
+    value_shape = array_ops.shape(value)
+    if data_format.startswith("NC"):
+      batch_size = value_shape[0]
+      h_out = value_shape[2]
+      w_out = value_shape[3]
+    else:
+      batch_size = value_shape[0]
+      h_out = value_shape[1]
+      w_out = value_shape[2]
+
+    pointwise_filter_shape = array_ops.shape(pointwise_filter)
+    in_channels_forward = pointwise_filter_shape[2]
+
+    if data_format.startswith("NC"):
+      pointwise_output_shape = array_ops.stack(
+          [batch_size, in_channels_forward, h_out, w_out])
+    else:
+      pointwise_output_shape = array_ops.stack(
+          [batch_size, h_out, w_out, in_channels_forward])
+
+    pointwise = nn_ops.conv2d_transpose_v2(
+        value,
+        pointwise_filter,
+        pointwise_output_shape,
+        strides=[1, 1, 1, 1],
+        padding="VALID",
+        data_format=data_format,
+        name="pointwise")
+
+    return nn_ops.depthwise_conv2d_native_backprop_input(
+        input_sizes=output_shape,
+        filter=depthwise_filter,
+        out_backprop=pointwise,
+        strides=strides,
+        padding=padding,
+        data_format=data_format,
+        dilations=dilations,
+        name=name)
+
+
 # pylint: enable=redefined-builtin,line-too-long
 
 

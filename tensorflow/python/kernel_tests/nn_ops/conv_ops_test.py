@@ -3437,6 +3437,26 @@ class SeparableConv2DTest(test.TestCase):
       return
     self._testSeparableConv2DEqualInputOutputDepth("NCHW")
 
+  def testSeparableConv2dTranspose(self):
+    with self.cached_session():
+      # [batch, height, width, in_channels]
+      x = constant_op.constant(1.0, shape=[1, 4, 4, 6])
+      # [filter_height, filter_width, out_channels, channel_multiplier]
+      depthwise_filter = constant_op.constant(1.0, shape=[2, 2, 2, 3])
+      # [1, 1, channel_multiplier * out_channels, in_channels] => [1, 1, 6, 6]
+      pointwise_filter = constant_op.constant(1.0, shape=[1, 1, 6, 6])
+      
+      output = nn_impl.separable_conv2d_transpose(
+          value=x,
+          depthwise_filter=depthwise_filter,
+          pointwise_filter=pointwise_filter,
+          output_shape=[1, 5, 5, 2],
+          strides=[1, 1, 1, 1],
+          padding="VALID")
+      
+      value = self.evaluate(output)
+      self.assertEqual(value.shape, (1, 5, 5, 2))
+
   def _testSeparableConv2dExplicitPadding(self, data_format):
     tensor_in_sizes = [1, 4, 4, 2]
     depthwise_filter_in_sizes = [2, 2, 2, 3]
