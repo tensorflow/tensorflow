@@ -962,9 +962,6 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       TransposeFolding::NeverFoldTranspose);
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
 
-  pipeline.AddPass<OptimizationBarrierExpander>();
-  pipeline.AddPass<TupleSimplifier>();
-
   // Annotate while loops with statically known trip counts, so that at run time
   // we can avoid running the loop condition computations.
   pipeline.AddPass<WhileLoopTripCountAnnotator>();
@@ -1827,6 +1824,8 @@ CpuCompiler::CompileCpuExecutable(
     HloPassPipeline post_scheduler_pipeline("HLO passes after scheduling");
     post_scheduler_pipeline.AddPass<ApplyXlaTransforms>(
         HloXlaTransform::PipelineStage::kPostScheduler);
+    post_scheduler_pipeline.AddPass<OptimizationBarrierExpander>();
+    post_scheduler_pipeline.AddPass<TupleSimplifier>();
     ABSL_RETURN_IF_ERROR(post_scheduler_pipeline.Run(module.get()).status());
   }
 
