@@ -26,11 +26,11 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/ndarray.h"  // IWYU pragma: keep
 #include "nanobind/stl/shared_ptr.h"  // IWYU pragma: keep

@@ -35,11 +35,11 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/error_spec.h"
 #include "xla/fp_util.h"
 #include "xla/index_util.h"
