@@ -30,7 +30,12 @@ class FunctionContext(NamedTuple):
 class FunctionCache:
   """A container for managing functions."""
 
-  __slots__ = ["_primary", "_dispatch_dict", "_garbage_collectors", "_max_capacity"]
+  __slots__ = [
+      "_primary",
+      "_dispatch_dict",
+      "_garbage_collectors",
+      "_max_capacity",
+  ]
 
   def __init__(self, max_capacity: Optional[int] = None):
     # Maps (FunctionContext, FunctionType) to a function.
@@ -88,7 +93,10 @@ class FunctionCache:
 
     self._dispatch_dict[context].add_target(fn.function_type)
 
-    if self._max_capacity is not None and len(self._primary) > self._max_capacity:
+    if (
+        self._max_capacity is not None
+        and len(self._primary) > self._max_capacity
+    ):
       evicted_key, _ = self._primary.popitem(last=False)
       evicted_context, evicted_type = evicted_key
       if evicted_context in self._dispatch_dict:
