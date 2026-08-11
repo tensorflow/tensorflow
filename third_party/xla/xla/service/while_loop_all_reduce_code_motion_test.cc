@@ -341,12 +341,11 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, AllReduceSliceAccumulate) {
   ASSERT_THAT(
       hoisted_all_reduces,
       Each(Pointee(Property(&HloInstruction::channel_id, Ne(std::nullopt)))));
-  // Check if added all-reduces have distinct channel IDs.
-  absl::flat_hash_set<int> unique_channel_ids = {
-      hoisted_all_reduces[0]->channel_id().value(),
-      hoisted_all_reduces[1]->channel_id().value(),
-      hoisted_all_reduces[2]->channel_id().value()};
-  EXPECT_THAT(unique_channel_ids, SizeIs(3));
+  // Check that hoisted all-reduces preserve the channel ID of the original
+  // all-reduce.
+  for (HloInstruction* all_reduce : hoisted_all_reduces) {
+    EXPECT_EQ(all_reduce->channel_id().value(), 1);
+  }
 }
 
 TEST_F(WhileLoopAllReduceCodeMotionTest, AllReduceAccumulateUse) {

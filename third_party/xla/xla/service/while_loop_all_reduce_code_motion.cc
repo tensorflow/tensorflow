@@ -1180,6 +1180,8 @@ absl::flat_hash_map<int, HloInstruction*> CreateSinkedAllReduces(
             while_parent->AddInstruction(HloInstruction::CreateConvert(
                 all_reduce_shape, accumulation_buffer));
       }
+      int64_t channel_id = loop_all_reduce->channel_id().value_or(
+          HloCollectiveInstruction::GetDefaultChannelId());
       HloInstruction* all_reduced_delta;
       if (loop_all_reduce->opcode() == HloOpcode::kAllReduce) {
         auto* old_all_reduce = Cast<HloAllReduceInstruction>(loop_all_reduce);
@@ -1189,8 +1191,7 @@ absl::flat_hash_map<int, HloInstruction*> CreateSinkedAllReduces(
                 all_reduce_operand->shape(), {all_reduce_operand},
                 old_all_reduce->called_computations()[0],
                 old_all_reduce->device_list(),
-                old_all_reduce->constrain_layout(),
-                hlo_query::NextChannelId(*(while_parent->parent())),
+                old_all_reduce->constrain_layout(), channel_id,
                 old_all_reduce->use_global_device_ids()));
       } else {
         auto* old_reduce_scatter =
@@ -1200,14 +1201,13 @@ absl::flat_hash_map<int, HloInstruction*> CreateSinkedAllReduces(
                 old_reduce_scatter->shape(), {all_reduce_operand},
                 old_reduce_scatter->called_computations()[0],
                 old_reduce_scatter->device_list(),
-                old_reduce_scatter->constrain_layout(),
-                hlo_query::NextChannelId(*(while_parent->parent())),
+                old_reduce_scatter->constrain_layout(), channel_id,
                 old_reduce_scatter->use_global_device_ids(),
                 old_reduce_scatter->scatter_dimension()));
       }
       // The recreated collective has the same opcode, so preserve its metadata,
       // sharding, frontend attributes, and backend config. Channel IDs are not
-      // derived state, so the newly allocated channel ID remains intact.
+      // derived state, so the channel ID remains intact.
       loop_all_reduce->SetupDerivedInstruction(all_reduced_delta);
 
       if (!ShapeUtil::SameElementType(all_reduced_delta->shape(),
