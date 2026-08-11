@@ -785,7 +785,7 @@ class ScatterNdTest(test.TestCase, parameterized.TestCase):
 
   def testUpdatesRankTooSmallForTensorScatterMinMax(self):
     """Regression test for #94132 and #94134."""
-    input_tensor = np.random.random((1, 10, 4)).astype(np.float64)
+    input_tensor = np.zeros((1, 10, 4), dtype=np.float64)
     indices = np.array([[[0]]], dtype=np.int64)  # shape (1,1,1), outer_dims=2
     updates = np.array([0.0], dtype=np.float64)  # rank 1, too small
 
