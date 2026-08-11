@@ -19,14 +19,15 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/base/no_destructor.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/ffi/api/record_api.h"
 #include "xla/ffi/api/record_c_api.h"
 #include "xla/ffi/call_frame.h"
@@ -37,44 +38,46 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
-#include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels_fatbin.h"
+#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/test.h"
 
-XLA_FFI_REGISTER_ENUM_ATTR_DECODING(::xla::ffi::SourceFormat);
-
 namespace xla::gpu {
 namespace {
 
-// Select the kernel bytes based on the requested source format: PTX for
-// CUDA, or a device binary (CUBIN on CUDA, HSACO on ROCm) via the fatbin.
+struct KernelBinary {
+  absl::Span<const uint8_t> bytes;
+  ffi::SourceFormat format;
+
+  const void* data() const { return bytes.data(); }
+  size_t size() const { return bytes.size(); }
+};
+
+// Select the kernel bytes based on the platform.
+// Selects the device binary (CUBIN on CUDA, HSACO on ROCm) via the fatbin.
 // The bytes must outlive the handler, so the fatbin is kept in a static
-// with a stable address that is also used as the kernel cache key.
-absl::string_view GetKernelBytesAsString(ffi::SourceFormat fmt) {
-  if (fmt == ffi::SourceFormat::kCubin) {
-    static const std::vector<uint8_t>* const kFatbin = [] {
-      auto fatbin = stream_executor::gpu::GetGpuTestKernelsFatbin(
-          stream_executor::GpuPlatformName());
-      CHECK_OK(fatbin.status());
-      return new std::vector<uint8_t>(std::move(fatbin).value());
-    }();
-    return absl::string_view(reinterpret_cast<const char*>(kFatbin->data()),
-                             kFatbin->size());
-  }
-  return stream_executor::gpu::GetAddI32PtxKernelSpec()
-      .cuda_ptx_in_memory()
-      .value()
-      .ptx;
+// variable with a stable address that is also used as the kernel cache key.
+absl::StatusOr<KernelBinary> GetKernelSpec() {
+  static const absl::NoDestructor<absl::StatusOr<std::vector<uint8_t>>> kFatbin(
+      []() -> absl::StatusOr<std::vector<uint8_t>> {
+        ABSL_ASSIGN_OR_RETURN(auto fatbin,
+                         stream_executor::gpu::GetGpuTestKernelsFatbin(
+                             stream_executor::GpuPlatformName()));
+        return fatbin;
+      }());
+  ABSL_ASSIGN_OR_RETURN(auto const& fatbin, *kFatbin);
+  return KernelBinary{/*.bytes=*/fatbin,
+                      /*.format=*/ffi::SourceFormat::kCubin};
 }
 
 absl::Status RecordFfiHandler(ffi::RecordContext record_ctx,
                               ffi::AnyBuffer input_0, ffi::AnyBuffer input_1,
                               ffi::AnyBuffer buffer_scratch,
-                              ffi::AnyBuffer result, ffi::SourceFormat fmt) {
+                              ffi::AnyBuffer result) {
   void* in0 = input_0.untyped_data();
   void* in1 = input_1.untyped_data();
   void* scratch = buffer_scratch.untyped_data();
@@ -85,12 +88,11 @@ absl::Status RecordFfiHandler(ffi::RecordContext record_ctx,
   if (action == ffi::RecordAction::kCreate) {
     ABSL_ASSIGN_OR_RETURN(const XLA_FFI_Command* memcpy_d2d,
                      record_ctx.CreateMemcpyD2D(scratch, in0, size));
-
-    auto kernel_bytes = GetKernelBytesAsString(fmt);
+    ABSL_ASSIGN_OR_RETURN(KernelBinary binary, GetKernelSpec());
     ABSL_RETURN_IF_ERROR(
         record_ctx
             .CreateLaunch(
-                "AddI32", kernel_bytes.data(), kernel_bytes.size(), fmt,
+                "AddI32", binary.data(), binary.size(), binary.format,
                 /*launch_dims=*/{{1, 1, 1}, {8, 1, 1}}, /*shared_mem_bytes=*/0,
                 std::vector<ffi::KernelArg>{ffi::DevicePointer{scratch},
                                             ffi::DevicePointer{in1},
@@ -171,15 +173,8 @@ TEST(RecordFfiTest, KernelLaunchBoundFfi) {
   ffi::InvokeContext invoke_context = {};
   invoke_context.extension_start = &record_extension.extension_base;
 
-  // PTX is CUDA-specific; on ROCm use a device binary (HSACO) via the fatbin.
-  const auto source_format =
-      cuda_cc ? ffi::SourceFormat::kPtx : ffi::SourceFormat::kCubin;
-
   ffi::CallFrameBuilder builder(/*num_args=*/4, /*num_rets=*/0);
   initial_memory.AddAsBuffers(builder);
-  ffi::CallFrameBuilder::AttributesBuilder attrs;
-  attrs.Insert("source_format", static_cast<int32_t>(source_format));
-  builder.AddAttributes(attrs.Build());
 
   ffi::CallFrame call_frame = builder.Build();
 
@@ -190,7 +185,6 @@ TEST(RecordFfiTest, KernelLaunchBoundFfi) {
           .Arg<ffi::AnyBuffer>()
           .Arg<ffi::AnyBuffer>()
           .Arg<ffi::AnyBuffer>()
-          .Attr<ffi::SourceFormat>("source_format")
           .To(RecordFfiHandler);
   ASSERT_OK(ffi::Invoke(ffi::GetXlaFfiApi(), *handler, call_frame,
                         invoke_context, ffi::ExecutionStage::kRecord));
