@@ -19,6 +19,7 @@ import itertools
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -26,10 +27,10 @@ from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import googletest
-from tensorflow.python.platform import test as test_lib
 
 
 class BinaryOpsTest(xla_test.XLATestCase):
@@ -1686,6 +1687,32 @@ class BinaryOpsTest(xla_test.XLATestCase):
           x,
           np.array((3, 7, 8, 9), dtype=np.int32),
           expected=np.tile(x, (1, 7, 8, 9)))
+
+  def testMulGradientOnBoundedDynamicDimension(self):
+    # tf.slice(x, [0], [n]), where n is itself only known at runtime, has an
+    # output size that's bounded by x's static shape but not statically
+    # known. Multiplying that result against a differently-shaped static
+    # tensor and differentiating used to fail XLA compilation in
+    # BroadcastGradientArgs, which resolved the dynamic dimension to its
+    # upper bound and rejected it as incompatible with the static side even
+    # though the two are equal at runtime (see GitHub issue #119382).
+    with self.session() as sess:
+      with self.test_scope():
+        x = array_ops.placeholder(dtypes.float32, shape=[5])
+        mask = array_ops.placeholder(dtypes.bool, shape=[3])
+        weights = constant_op.constant([1.0, -2.0], dtype=dtypes.float32)
+        n = math_ops.reduce_sum(math_ops.cast(mask, dtypes.int32))
+        sliced = array_ops.slice(x, [0], [n])
+        out = math_ops.reduce_sum(sliced * weights)
+        grad = gradients_impl.gradients(out, x)[0]
+      result = sess.run(
+          grad,
+          feed_dict={
+              x: [-2.0, -1.0, 0.0, 1.0, 2.0],
+              mask: [True, False, True],
+          },
+      )
+    self.assertAllClose(result, [1.0, -2.0, 0.0, 0.0, 0.0])
 
 
 if __name__ == "__main__":
