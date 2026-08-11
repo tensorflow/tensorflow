@@ -28,7 +28,7 @@ CreateAsyncHostToDeviceTransferManager(
     absl::Span<const PjRtClient::ShapeSpec> shape_specs,
     std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
     PjRtMemorySpace* memory_space,
-    std::optional<absl::Span<PjRtRawBufferRef>> donated_buffer_refs =
+    std::optional<absl::Span<const PjRtRawBufferRef>> donated_buffer_refs =
         std::nullopt);
 
 }  // namespace xla
