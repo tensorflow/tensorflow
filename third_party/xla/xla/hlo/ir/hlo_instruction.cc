@@ -2023,7 +2023,7 @@ HloInstruction::CreateCollectivePermuteStart(
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateInfeed(
     const Shape& infeed_shape, HloInstruction* token_operand,
-    absl::string_view config) {
+    const std::string& config) {
   return std::make_unique<HloInfeedInstruction>(infeed_shape, token_operand,
                                                 config);
 }
@@ -2569,8 +2569,8 @@ bool HloInstruction::HasSideEffect() const {
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateCompositeCall(const Shape& shape,
                                     HloInstruction* decomposition_root,
-                                    absl::string_view name,
-                                    absl::string_view attributes,
+                                    const std::string& name,
+                                    const std::string& attributes,
                                     int64_t version) {
   return std::make_unique<HloCallInstruction>(shape, decomposition_root, name,
                                               attributes, version);
@@ -2580,8 +2580,8 @@ HloInstruction::CreateCompositeCall(const Shape& shape,
 HloInstruction::CreateCompositeCall(const Shape& shape,
                                     absl::Span<HloInstruction* const> operands,
                                     HloComputation* decomposition,
-                                    absl::string_view name,
-                                    absl::string_view attributes,
+                                    const std::string& name,
+                                    const std::string& attributes,
                                     int64_t version) {
   return std::make_unique<HloCallInstruction>(shape, operands, decomposition,
                                               name, attributes, version);
@@ -5679,19 +5679,19 @@ absl::StatusOr<T> StringToEnum(absl::string_view value_name, F enum_to_string,
 }  // namespace
 
 absl::StatusOr<RandomAlgorithm> StringToRandomAlgorithm(
-    absl::string_view name) {
+    const std::string& name) {
   return StringToEnum<RandomAlgorithm>(name, RandomAlgorithmToString,
                                        "algorithm");
 }
 
 absl::StatusOr<RandomDistribution> StringToRandomDistribution(
-    absl::string_view name) {
+    const std::string& name) {
   return StringToEnum<RandomDistribution>(name, RandomDistributionToString,
                                           "distribution");
 }
 
 absl::StatusOr<PrecisionConfig::Precision> StringToPrecision(
-    absl::string_view name) {
+    const std::string& name) {
   return StringToEnum<PrecisionConfig::Precision>(name, PrecisionToString,
                                                   "precision");
 }
@@ -5703,7 +5703,7 @@ absl::StatusOr<ResultAccuracy::Mode> StringToResultAccuracy(
 }
 
 absl::StatusOr<PrecisionConfig::Algorithm> StringToAlgorithm(
-    absl::string_view name) {
+    const std::string& name) {
   return StringToEnum<PrecisionConfig::Algorithm>(name, AlgorithmToString,
                                                   "algorithm");
 }
@@ -6079,7 +6079,7 @@ std::string HloInstruction::infeed_config() const {
   return Cast<HloInfeedInstruction>(this)->infeed_config();
 }
 
-void HloInstruction::set_infeed_config(absl::string_view config) {
+void HloInstruction::set_infeed_config(const std::string& config) {
   return Cast<HloInfeedInstruction>(this)->set_infeed_config(config);
 }
 
@@ -6095,7 +6095,7 @@ const std::string& HloInstruction::outfeed_config() const {
   return Cast<HloOutfeedInstruction>(this)->outfeed_config();
 }
 
-void HloInstruction::set_outfeed_config(absl::string_view config) {
+void HloInstruction::set_outfeed_config(const std::string& config) {
   return Cast<HloOutfeedInstruction>(this)->set_outfeed_config(config);
 }
 
