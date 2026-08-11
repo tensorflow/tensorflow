@@ -75,7 +75,9 @@ class ExecutionWatchdogScope {
   bool block_host_until_done_ = false;
   bool armed_ = false;
 
-  std::shared_ptr<std::shared_ptr<HangWatchdog::Guard>> guard_holder_;
+  struct GuardHolder;
+
+  std::shared_ptr<GuardHolder> guard_holder_;
 };
 
 }  // namespace xla::gpu
