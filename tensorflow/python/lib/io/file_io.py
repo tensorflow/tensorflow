@@ -14,7 +14,7 @@
 # ==============================================================================
 """File IO methods that wrap the C++ FileSystem API."""
 import binascii
-import fnmatch
+import re
 import io
 import os
 from posixpath import join as urljoin
@@ -442,7 +442,6 @@ def _translate_glob_to_regex(pattern):
           stuff = "\\" + stuff
         res = "%s[%s]" % (res, stuff)
     else:
-      import re
       res += re.escape(c)
   return res + r"\Z"
 
@@ -464,7 +463,6 @@ def _get_matching_files_recursive(pattern):
   else:
     root = "."
 
-  import re
   pattern_re = re.compile(_translate_glob_to_regex(pattern))
   
   matching_files = []
@@ -474,9 +472,9 @@ def _get_matching_files_recursive(pattern):
       dirname = dirname[2:]
     elif dirname == ".":
       dirname = ""
-    else:
-      if not dirname.endswith("/"):
-        dirname += "/"
+      
+    if dirname and not dirname.endswith("/"):
+      dirname += "/"
     
     # Check directories (in case the pattern matches a directory)
     for subdir in subdirs:
