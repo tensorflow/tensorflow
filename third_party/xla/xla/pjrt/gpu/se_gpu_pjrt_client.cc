@@ -123,6 +123,7 @@ limitations under the License.
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
@@ -241,6 +242,41 @@ static se::StreamExecutor* GetFirstExecutor(
   return nullptr;
 }
 
+namespace {
+
+// Derives the platform version string (e.g. "cuda 12080") from the runtime
+// device description, independent of compile-time macros.
+static std::string GpuPlatformVersionFromDevices(
+    absl::Span<PjRtDevice* const> devices) {
+  for (PjRtDevice* device : devices) {
+    auto* se_device = absl::down_cast<PjRtStreamExecutorDevice*>(device);
+    LocalDeviceState* local_device_state = se_device->local_device_state();
+    if (local_device_state == nullptr) {
+      continue;
+    }
+    const se::DeviceDescription& desc =
+        local_device_state->executor()->GetDeviceDescription();
+    const se::SemanticVersion v = desc.runtime_version();
+    const int encoded_version =
+        v.major_version() * 1000 + v.minor_version() * 10 + v.patch_version();
+    const se::GpuComputeCapability& cc = desc.gpu_compute_capability();
+    if (cc.rocm_compute_capability() != nullptr) {
+      return absl::StrCat("rocm ", encoded_version);
+    }
+    if (cc.cuda_compute_capability() != nullptr) {
+      return absl::StrCat("cuda ", encoded_version);
+    }
+    if (cc.oneapi_compute_capability() != nullptr) {
+      // TODO(intel-tf): Oneapi multiple platform version support
+      // will be added in future, for now, oneapi 2026.0 is supported
+      return absl::StrCat("oneapi ", v.IsValid() ? v.ToString() : "2026.0");
+    }
+  }
+  return "<unknown>";
+}
+
+}  // namespace
+
 StreamExecutorGpuClient::StreamExecutorGpuClient(
     std::string platform_name, LocalClient* client,
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
@@ -259,6 +295,7 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
   VLOG(1) << absl::StreamFormat(
       "Constructed StreamExecutor GPU client: #devices=%d #num_nodes=%d",
       devices_.size(), num_nodes.value_or(1));
+  platform_version_ = GpuPlatformVersionFromDevices(addressable_devices());
   const int basePinnedId = device_count();
   for (auto* device : addressable_devices()) {
     // Use the device id to construct a globally unique memory space id. We do
@@ -289,21 +326,7 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
 }
 
 absl::string_view StreamExecutorGpuClient::platform_version() const {
-#define STRINGIFY2(X) #X
-#define STRINGIFY(X) STRINGIFY2(X)
-#if TENSORFLOW_USE_ROCM && defined(TF_ROCM_VERSION)  // rocm
-  // TF_ROCM_VERSION format may change in future. Use it
-  // cautiously
-  return "rocm " STRINGIFY(TF_ROCM_VERSION);
-#elif GOOGLE_CUDA && defined(CUDART_VERSION)  // cuda
-  return "cuda " STRINGIFY(CUDART_VERSION);
-// TODO(intel-tf): Oneapi multiple platform version support
-// will be added in future, for now, oneapi 2026.0 is supported
-#elif TENSORFLOW_USE_SYCL                     // oneapi
-  return "oneapi 2026.0";
-#else
-  return "<unknown>";
-#endif  // TENSORFLOW_USE_ROCM && defined(TF_ROCM_VERSION)
+  return platform_version_;
 }
 
 std::optional<PjRtPluginAttributes> StreamExecutorGpuClient::plugin_attributes()
