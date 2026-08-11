@@ -3866,10 +3866,13 @@ absl::Status MsaAlgorithm::CreateNewBlockPrefetches(
       options_.reserved_bytes_for_block_prefetches;
 
   if (block_prefetching_limit_bytes > options_.max_size_in_bytes) {
+    int64_t corrected_reserved_bytes =
+        options_.max_size_in_bytes - block_prefetching_starting_offset;
     return absl::InvalidArgumentError(absl::StrCat(
         "Block prefetched values bytes limit: ", block_prefetching_limit_bytes,
         " is greater than options_.max_size_in_bytes ",
-        options_.max_size_in_bytes));
+        options_.max_size_in_bytes, ". Try setting it to ",
+        (corrected_reserved_bytes / 1024), " KiB."));
   }
   VLOG(3) << "Block prefetched values bytes limit: "
           << block_prefetching_limit_bytes;
