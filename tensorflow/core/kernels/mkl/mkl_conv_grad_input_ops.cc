@@ -449,10 +449,7 @@ class MklConvCustomBackpropInputOp
       conv_util.GetInputSizeInMklOrder(diff_dst_tf_shape, &diff_dst_dims);
       if (!context->status().ok()) return;
 
-      TensorShape expected_out_bprop_shape;
-      for (int i = 0; i < fwd_output_dims_tf_order.size(); ++i) {
-        expected_out_bprop_shape.AddDim(fwd_output_dims_tf_order[i]);
-      }
+      TensorShape expected_out_bprop_shape(fwd_output_dims_tf_order);
       OP_REQUIRES(context, diff_dst_tf_shape == expected_out_bprop_shape,
                   absl::InvalidArgumentError(absl::StrCat(
                       "ConvBackpropInput: Size of out_backprop doesn't "
