@@ -3224,5 +3224,281 @@ ENTRY main {
                       HloPredicateIsOp<HloOpcode::kAllReduce>));
 }
 
+TEST_F(WhileLoopAllReduceCodeMotionTest,
+       AllReduceOutsideCalledComputationHoisted) {
+  const std::string hlo_string = R"(
+    HloModule hlo
+
+    %reduction {
+      %x = f32[] parameter(0)
+      %y = f32[] parameter(1)
+      ROOT %add = f32[] add(%x, %y)
+    }
+
+    %foo {
+      %callee_param = f32[4] parameter(0)
+      ROOT %neg = f32[4] negate(%callee_param)
+    }
+
+    %while_condition {
+      %cond_param = (s32[], f32[4], f32[4]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%cond_param), index=0
+      ROOT %result = pred[] compare(%gte.0, s32[] constant(10)), direction=LT
+    }
+
+    // CHECK-LABEL: %while_body
+    // CHECK-NEXT:    %body_param = (s32[], f32[4]{0}, f32[4]{0}) parameter(0)
+    // CHECK-NEXT:    %constant.anon.1 = s32[] constant(1)
+    // CHECK-NEXT:    %next_iter = s32[] add(%body_param#0, %constant.anon.1)
+    // CHECK-NEXT:    %call = f32[4]{0} call(%body_param#1), to_apply=%foo
+    // CHECK-NEXT:    %accumulation = f32[4]{0} add(%call, %body_param#2)
+    // CHECK-NEXT:    ROOT %loop_result = (s32[], f32[4]{0}, f32[4]{0}) tuple(%next_iter, %body_param#1, %accumulation)
+    // CHECK-NEXT:  }
+    %while_body {
+      %body_param = (s32[], f32[4], f32[4]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%body_param), index=0
+      %gte.1 = f32[4] get-tuple-element(%body_param), index=1
+      %gte.2 = f32[4] get-tuple-element(%body_param), index=2
+      %call = f32[4] call(%gte.1), to_apply=%foo
+      %all-reduce = f32[4] all-reduce(%call), replica_groups={{0,1,2,3}}, to_apply=%reduction
+      %accumulation = f32[4] add(%all-reduce, %gte.2)
+      %next_iter = s32[] add(%gte.0, s32[] constant(1))
+      ROOT %loop_result = (s32[], f32[4], f32[4]) tuple(%next_iter, %gte.1, %accumulation)
+    }
+
+    // CHECK-LABEL: ENTRY %entry
+    // CHECK-NEXT:    %cst_0 = s32[] constant(0)
+    // CHECK-NEXT:    %param_0 = f32[4]{0} parameter(0)
+    // CHECK-NEXT:    %constant = f32[4]{0} constant({0, 0, 0, 0})
+    // CHECK-NEXT:    %tuple = (s32[], f32[4]{0}, f32[4]{0}) tuple(%cst_0, %param_0, %constant)
+    // CHECK-NEXT:    %while.1 = (s32[], f32[4]{0}, f32[4]{0}) while(%tuple), condition=%while_condition, body=%while_body
+    // CHECK-NEXT:    %param_1 = f32[4]{0} parameter(1)
+    // CHECK-NEXT:    %all-reduce.1 = f32[4]{0} all-reduce(%while.1#2), channel_id=1, replica_groups={{[{][{]}}0,1,2,3{{[}][}]}}, to_apply=%reduction
+    // CHECK-NEXT:    %add.1 = f32[4]{0} add(%param_1, %all-reduce.1)
+    // CHECK-NEXT:    ROOT %tuple.1 = (s32[], f32[4]{0}, f32[4]{0}) tuple(%while.1#0, %while.1#1, %add.1)
+    // CHECK-NEXT:  }
+    ENTRY entry {
+      %cst_0 = s32[] constant(0)
+      %param_0 = f32[4] parameter(0)
+      %param_1 = f32[4] parameter(1)
+      %init = (s32[], f32[4], f32[4]) tuple(%cst_0, %param_0, %param_1)
+      ROOT %while = (s32[], f32[4], f32[4]) while(%init), condition=%while_condition, body=%while_body
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(WhileLoopAllReduceCodeMotionTest,
+       AllReduceInsideTwiceCalledComputationHoisted) {
+  const std::string hlo_string = R"(
+    HloModule hlo
+
+    %reduction {
+      %x = f32[] parameter(0)
+      %y = f32[] parameter(1)
+      ROOT %add = f32[] add(%x, %y)
+    }
+
+    %foo {
+      %callee_param = f32[4] parameter(0)
+      ROOT %neg = f32[4] negate(%callee_param)
+    }
+
+    %while_condition {
+      %cond_param = (s32[], f32[4], f32[4]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%cond_param), index=0
+      ROOT %result = pred[] compare(%gte.0, s32[] constant(10)), direction=LT
+    }
+
+    // CHECK-LABEL: %while_body
+    // CHECK-NOT: %all-reduce
+    %while_body {
+      %body_param = (s32[], f32[4], f32[4]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%body_param), index=0
+      %gte.1 = f32[4] get-tuple-element(%body_param), index=1
+      %gte.2 = f32[4] get-tuple-element(%body_param), index=2
+      %call = f32[4] call(%gte.1), to_apply=%foo
+      %all-reduce = f32[4] all-reduce(%call), replica_groups={{0,1,2,3}}, to_apply=%reduction
+      %accumulation = f32[4] add(%all-reduce, %gte.2)
+      %next_iter = s32[] add(%gte.0, s32[] constant(1))
+      ROOT %loop_result = (s32[], f32[4], f32[4]) tuple(%next_iter, %gte.1, %accumulation)
+    }
+
+    // CHECK-LABEL: %bar
+    // CHECK: %all-reduce
+    %bar {
+      %cst_0 = s32[] constant(0)
+      %param_0 = f32[4] parameter(0)
+      %param_1 = f32[4] parameter(1)
+      %init = (s32[], f32[4], f32[4]) tuple(%cst_0, %param_0, %param_1)
+      %while = (s32[], f32[4], f32[4]) while(%init), condition=%while_condition, body=%while_body
+      ROOT %gte = f32[4] get-tuple-element(%while), index=2
+    }
+
+    // CHECK-LABEL: ENTRY %entry
+    // CHECK-NOT: %all-reduce
+    ENTRY entry {
+      %p0 = f32[4] parameter(0)
+      %p1 = f32[4] parameter(1)
+      %call.0 = f32[4] call(%p0, %p1), to_apply=%bar
+      %call.1 = f32[4] call(%p0, %p1), to_apply=%bar
+      ROOT %add = f32[4] add(%call.0, %call.1)
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(WhileLoopAllReduceCodeMotionTest,
+       AllReduceInsideCalledComputationNotHoisted) {
+  const std::string hlo_string = R"(
+    HloModule hlo
+
+    %reduction {
+      %x = f32[] parameter(0)
+      %y = f32[] parameter(1)
+      ROOT %add = f32[] add(%x, %y)
+    }
+
+    %foo {
+      %param = f32[4] parameter(0)
+      ROOT %all-reduce = f32[4] all-reduce(%param), replica_groups={{0,1,2,3}}, to_apply=%reduction
+    }
+
+    %while_condition {
+      %cond_param = (s32[], f32[4], f32[4]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%cond_param), index=0
+      ROOT %result = pred[] compare(%gte.0, s32[] constant(10)), direction=LT
+    }
+
+    %while_body {
+      %body_param = (s32[], f32[4], f32[4]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%body_param), index=0
+      %gte.1 = f32[4] get-tuple-element(%body_param), index=1
+      %gte.2 = f32[4] get-tuple-element(%body_param), index=2
+      %call = f32[4] call(%gte.1), to_apply=%foo
+      %accumulation = f32[4] add(%call, %gte.2)
+      %next_iter = s32[] add(%gte.0, s32[] constant(1))
+      ROOT %loop_result = (s32[], f32[4], f32[4]) tuple(%next_iter, %gte.1, %accumulation)
+    }
+
+    ENTRY entry {
+      %cst_0 = s32[] constant(0)
+      %param_0 = f32[4] parameter(0)
+      %param_1 = f32[4] parameter(1)
+      %init = (s32[], f32[4], f32[4]) tuple(%cst_0, %param_0, %param_1)
+      ROOT %while = (s32[], f32[4], f32[4]) while(%init), condition=%while_condition, body=%while_body
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(WhileLoopAllReduceCodeMotionTest,
+       AccumulationBufferOriginThroughCallNotHoisted) {
+  const std::string hlo_string = R"(
+    HloModule hlo
+
+    %reduction {
+      %x = f32[] parameter(0)
+      %y = f32[] parameter(1)
+      ROOT %add = f32[] add(%x, %y)
+    }
+
+    %foo {
+      %param = f32[4] parameter(0)
+      ROOT %param_copy = f32[4] bitcast(%param)
+    }
+
+    %while_condition {
+      %param = (s32[], f32[4], f32[4]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      ROOT result = pred[] compare(%gte.0, s32[] constant(10)), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], f32[4], f32[4]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = f32[4] get-tuple-element(%param), index=1
+      %gte.2 = f32[4] get-tuple-element(%param), index=2
+      %all-reduce = f32[4] all-reduce(%gte.1), replica_groups={{0,1,2,3}}, to_apply=%reduction
+      %buffer_via_call = f32[4] call(%gte.2), to_apply=%foo
+      %accumulation = f32[4] add(%all-reduce, %buffer_via_call)
+      %next_iter = s32[] add(%gte.0, s32[] constant(1))
+      ROOT %loop_result = (s32[], f32[4], f32[4]) tuple(%next_iter, %gte.1, %accumulation)
+    }
+
+    ENTRY entry {
+      %init = (s32[], f32[4], f32[4]) tuple(s32[] constant(0), f32[4] parameter(0), f32[4] parameter(1))
+      ROOT %while = (s32[], f32[4], f32[4]) while(%init), condition=%while_condition, body=%while_body
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(WhileLoopAllReduceCodeMotionTest,
+       AccumulationBufferConsumedByCallNotHoisted) {
+  const std::string hlo_string = R"(
+    HloModule hlo
+
+    %reduction {
+      %x = f32[] parameter(0)
+      %y = f32[] parameter(1)
+      ROOT %add = f32[] add(%x, %y)
+    }
+
+    %foo {
+      %param = f32[4] parameter(0)
+      ROOT %neg = f32[4] negate(%param)
+    }
+
+    %while_condition {
+      %param = (s32[], f32[4], f32[4]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      ROOT result = pred[] compare(%gte.0, s32[] constant(10)), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], f32[4], f32[4]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = f32[4] get-tuple-element(%param), index=1
+      %gte.2 = f32[4] get-tuple-element(%param), index=2
+      %all-reduce = f32[4] all-reduce(%gte.1), replica_groups={{0,1,2,3}}, to_apply=%reduction
+      %accumulation = f32[4] add(%all-reduce, %gte.2)
+      %next_iter = s32[] add(%gte.0, s32[] constant(1))
+      %call_user = f32[4] call(%gte.2), to_apply=%foo
+      ROOT %loop_result = (s32[], f32[4], f32[4]) tuple(%next_iter, %call_user, %accumulation)
+    }
+
+    ENTRY entry {
+      %init = (s32[], f32[4], f32[4]) tuple(s32[] constant(0), f32[4] parameter(0), f32[4] parameter(1))
+      ROOT %while = (s32[], f32[4], f32[4]) while(%init), condition=%while_condition, body=%while_body
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
 }  // namespace
 }  // namespace xla
