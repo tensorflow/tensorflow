@@ -30,15 +30,16 @@ class FunctionContext(NamedTuple):
 class FunctionCache:
   """A container for managing functions."""
 
-  __slots__ = ["_primary", "_dispatch_dict", "_garbage_collectors"]
+  __slots__ = ["_primary", "_dispatch_dict", "_garbage_collectors", "_max_capacity"]
 
-  def __init__(self):
+  def __init__(self, max_capacity: Optional[int] = None):
     # Maps (FunctionContext, FunctionType) to a function.
     self._primary = collections.OrderedDict()
 
     # Maps FunctionContext to a TypeDispatchTable containing FunctionTypes of
     # that particular context.
     self._dispatch_dict = {}
+    self._max_capacity = max_capacity
 
   def lookup(self, function_type: function_type_lib.FunctionType,
              context: Optional[FunctionContext] = None) -> Optional[Any]:
@@ -72,11 +73,21 @@ class FunctionCache:
       context: A FunctionContext representing the current context.
     """
     context = context or FunctionContext()
-    self._primary[(context, fn.function_type)] = fn
+    key = (context, fn.function_type)
+    if key in self._primary:
+      self._primary.move_to_end(key)
+
+    self._primary[key] = fn
     if context not in self._dispatch_dict:
       self._dispatch_dict[context] = type_dispatch.TypeDispatchTable()
 
     self._dispatch_dict[context].add_target(fn.function_type)
+
+    if self._max_capacity is not None and len(self._primary) > self._max_capacity:
+      evicted_key, _ = self._primary.popitem(last=False)
+      evicted_context, evicted_type = evicted_key
+      if evicted_context in self._dispatch_dict:
+        self._dispatch_dict[evicted_context].delete(evicted_type)
 
   def generalize(
       self, context: FunctionContext,
