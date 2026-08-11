@@ -90,6 +90,14 @@ struct CustomCallRecordState : public CommandState {
   std::vector<const XLA_FFI_Command*> commands;
 };
 
+// A per-execution state that holds state for prepare and initialize stages.
+struct PrepareAndInitState {
+  ffi::ExecutionState prepare;
+  ffi::ExecutionState init;
+  bool prepared = false;
+  bool initialized = false;
+};
+
 }  // namespace
 
 using xla::ffi::CallFrame;
@@ -355,10 +363,8 @@ InvokeContext CustomCallThunk::BuildInvokeContext(
   ffi::ExecutionState* initialize_state = nullptr;
 
   if (execution_scoped_state) {
-    auto [it, _] = execution_scoped_state->try_emplace(
-        this->thunk_info().thunk_id, std::in_place_type<PrepareAndInitState>);
-    PrepareAndInitState& prepare_and_init =
-        tsl::any_cast<PrepareAndInitState>(it->second);
+    PrepareAndInitState& prepare_and_init = tsl::any_cast<PrepareAndInitState>(
+        execution_scoped_state->at(this->thunk_info().thunk_id));
     prepare_state = &prepare_and_init.prepare;
     initialize_state = &prepare_and_init.init;
   }
