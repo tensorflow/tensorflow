@@ -46,11 +46,6 @@ class FunctionCache:
     self._dispatch_dict = {}
     self._max_capacity = max_capacity
 
-  def clear(self):
-    '''Clears the function cache.'''
-    self._primary.clear()
-    self._dispatch_dict.clear()
-
   def lookup(self, function_type: function_type_lib.FunctionType,
              context: Optional[FunctionContext] = None) -> Optional[Any]:
     """Looks up a function based on the context and type."""
@@ -86,12 +81,12 @@ class FunctionCache:
     key = (context, fn.function_type)
     if key in self._primary:
       self._primary.move_to_end(key)
+    else:
+      if context not in self._dispatch_dict:
+        self._dispatch_dict[context] = type_dispatch.TypeDispatchTable()
+      self._dispatch_dict[context].add_target(fn.function_type)
 
     self._primary[key] = fn
-    if context not in self._dispatch_dict:
-      self._dispatch_dict[context] = type_dispatch.TypeDispatchTable()
-
-    self._dispatch_dict[context].add_target(fn.function_type)
 
     if (
         self._max_capacity is not None
