@@ -714,6 +714,11 @@ struct CropAndResizeBackpropBoxes<CPUDevice, T> {
         continue;
       }
 
+      if (!std::isfinite(y1) || !std::isfinite(x1) ||
+          !std::isfinite(y2) || !std::isfinite(x2)) {
+        continue;
+      }
+
       const float height_ratio =
           (crop_height > 1)
               ? static_cast<float>(image_height - 1) / (crop_height - 1)
