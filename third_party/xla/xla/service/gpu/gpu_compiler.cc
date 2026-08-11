@@ -2935,8 +2935,8 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   if (module->config().has_static_device_assignment()) {
     const DeviceAssignment& da = module->config().static_device_assignment();
     if (!da.IsIota() && !da.IsAll(0)) {
-      LOG(WARNING) << "XLA:GPU only supports IOTA device assignment. Got: "
-                   << da.ToString();
+      LOG(ERROR) << "XLA:GPU only supports IOTA device assignment. Got: "
+                 << da.ToString();
     }
   }
 

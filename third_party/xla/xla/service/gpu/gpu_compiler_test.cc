@@ -28,8 +28,10 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
+#include "absl/base/log_severity.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/scoped_mock_log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
@@ -2809,8 +2811,56 @@ TEST_F(GpuCompilerTest, NonIotaStaticDeviceAssignment) {
   compile_options.gpu_topology =
       GpuTopology(/*platform_version=*/"", 2, 1, 1, gpu_target_config());
 
+  absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
+  EXPECT_CALL(
+      mock_log,
+      Log(absl::LogSeverity::kError, ::testing::_,
+          ::testing::HasSubstr("XLA:GPU only supports IOTA device assignment")))
+      .Times(1);
+  mock_log.StartCapturingLogs();
+
   auto executable_or_status =
       compiler()->RunBackend(std::move(module), nullptr, compile_options);
+  mock_log.StopCapturingLogs();
+
+  EXPECT_OK(executable_or_status);
+}
+
+TEST_F(GpuCompilerTest, AllZerosStaticDeviceAssignmentDoesNotLogError) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule test
+    ENTRY main {
+      p = f32[2] parameter(0)
+      ROOT res = f32[2] copy(p)
+    }
+  )";
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.set_replica_count(1);
+  config.set_num_partitions(2);
+
+  DeviceAssignment device_assignment(/*replica_count=*/1,
+                                     /*computation_count=*/2);
+  device_assignment(0, 0) = 0;
+  device_assignment(0, 1) = 0;
+  config.set_static_device_assignment(device_assignment);
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo, config));
+
+  Compiler::CompileOptions compile_options;
+  compile_options.gpu_topology =
+      GpuTopology(/*platform_version=*/"", 2, 1, 1, gpu_target_config());
+
+  absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
+  EXPECT_CALL(
+      mock_log,
+      Log(absl::LogSeverity::kError, ::testing::_,
+          ::testing::HasSubstr("XLA:GPU only supports IOTA device assignment")))
+      .Times(0);
+  mock_log.StartCapturingLogs();
+
+  auto executable_or_status =
+      compiler()->RunBackend(std::move(module), nullptr, compile_options);
+  mock_log.StopCapturingLogs();
 
   EXPECT_OK(executable_or_status);
 }

@@ -940,9 +940,9 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     const DeviceAssignment& static_device_assignment =
         module_config().static_device_assignment();
     if (!static_device_assignment.IsIota()) {
-      LOG(WARNING) << "XLA:GPU only supports iota device assignment. Got: "
-                   << static_device_assignment.ToString()
-                   << ". This may lead to incorrect results.";
+      LOG(ERROR) << "XLA:GPU only supports iota device assignment. Got: "
+                 << static_device_assignment.ToString()
+                 << ". This may lead to incorrect results.";
     }
   }
 
@@ -950,9 +950,9 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     const DeviceAssignment& runtime_device_assignment =
         *run_options->run_options().device_assignment();
     if (!runtime_device_assignment.IsIota()) {
-      LOG(WARNING) << "XLA:GPU only supports iota device assignment. Got: "
-                   << runtime_device_assignment.ToString()
-                   << ". This may lead to incorrect results.";
+      LOG(ERROR) << "XLA:GPU only supports iota device assignment. Got: "
+                 << runtime_device_assignment.ToString()
+                 << ". This may lead to incorrect results.";
     }
   }
 
