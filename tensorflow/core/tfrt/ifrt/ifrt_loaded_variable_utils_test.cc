@@ -106,7 +106,14 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableNotFoundWrongName) {
       absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
-TEST(LoadedVariableUtilsTest, AsyncLoadRestoredTensorAsIfrtLoadedVariable) {
+TEST(LoadedVariableUtilsTest, ArrayPostProcessorIsCalled) {
+  bool post_processor_called = false;
+  const LoadedVariableArrayFn array_post_processor =
+      [&post_processor_called](xla::ifrt::Array* array) -> absl::Status {
+    post_processor_called = true;
+    return absl::OkStatus();
+  };
+
   auto input_tensor =
       test::AsTensor<int32_t>({1, 2, 3, 4}, TensorShape({2, 2}));
 
@@ -150,7 +157,8 @@ TEST(LoadedVariableUtilsTest, AsyncLoadRestoredTensorAsIfrtLoadedVariable) {
   TF_ASSERT_OK(AsyncLoadRestoredTensorAsIfrtLoadedVariable(
       "var_x", client, thread_pool, restored_tensor_registry,
       loaded_variable_registry, restore_work_queue.get(), sharding_config,
-      /*xla_input_layout=*/nullptr, /*shape_on_device=*/nullptr, device_list));
+      /*xla_input_layout=*/nullptr, /*shape_on_device=*/nullptr, device_list,
+      array_post_processor));
   promise.Set(input_tensor);
   IfrtLoadedVariableRegistry::Key key{
       .device_ids = {0},
@@ -160,6 +168,8 @@ TEST(LoadedVariableUtilsTest, AsyncLoadRestoredTensorAsIfrtLoadedVariable) {
   TF_ASSERT_OK_AND_ASSIGN(auto v,
                           loaded_variable_registry.GetLoadedVariable(key));
   TF_ASSERT_OK_AND_ASSIGN(auto assembled_array, v.array.Await());
+
+  EXPECT_TRUE(post_processor_called);
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto disassembled_arrays,
@@ -175,79 +185,6 @@ TEST(LoadedVariableUtilsTest, AsyncLoadRestoredTensorAsIfrtLoadedVariable) {
                                xla::ifrt::ArrayCopySemantics::kAlwaysCopy)
             .Await());
     EXPECT_THAT(host_tensor, TensorEq(input_tensor));
-  }
-}
-
-TEST(LoadedVariableUtilsTest, AsyncLoadWithUndonatableBufferConverter) {
-  auto input_tensor =
-      test::AsTensor<int32_t>({1, 2, 3, 4}, TensorShape({2, 2}));
-
-  Tensor variable_handle(DT_RESOURCE, TensorShape({}));
-  ResourceHandle resource_handle;
-  resource_handle.set_name("var_x");
-  resource_handle.set_dtypes_and_shapes({{
-      DT_INT32,
-      TensorShape({2, 2}),
-  }});
-  variable_handle.flat<ResourceHandle>()(0) = std::move(resource_handle);
-
-  IfrtRestoreTensorRegistry restored_tensor_registry;
-  ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
-                       xla::ifrt::test_util::GetClient());
-  constexpr int kMaxParallelism = 16;
-  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), tsl::ThreadOptions(),
-                                      "Resharding", kMaxParallelism);
-  IfrtLoadedVariableRegistry loaded_variable_registry;
-  auto restore_work_queue = tfrt::CreateMultiThreadedWorkQueue(
-      /*num_threads=*/4, /*num_blocking_threads=*/4);
-
-  VariableDeviceShardingConfig sharding_config{
-      .device_ids = {0},
-      .hlo_sharding = xla::HloSharding::Replicate(),
-  };
-
-  auto [promise, future] = tsl::MakePromise<tensorflow::Tensor>();
-
-  ASSERT_OK_AND_ASSIGN(
-      DtypeAndShape dtype_and_shape,
-      GetDtypeAndShape(variable_handle.scalar<ResourceHandle>()()));
-
-  IfrtRestoreTensorRegistry::RestoredTensorInfo restored_tensor_info = {
-      false, tsl::Future<DtypeAndShape>(dtype_and_shape), future};
-
-  ASSERT_OK(
-      restored_tensor_registry.TryRegister("var_x", restored_tensor_info));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::Device * device,
-                       client->LookupDevice(xla::ifrt::DeviceId(0)));
-  ASSERT_OK_AND_ASSIGN(auto device_list, client->MakeDeviceList({device}));
-  ASSERT_OK(AsyncLoadRestoredTensorAsIfrtLoadedVariable(
-      "var_x", client, thread_pool, restored_tensor_registry,
-      loaded_variable_registry, restore_work_queue.get(), sharding_config,
-      /*xla_input_layout=*/nullptr, /*shape_on_device=*/nullptr, device_list,
-      /*use_undonatable_buffer_converter=*/true));
-  promise.Set(input_tensor);
-  IfrtLoadedVariableRegistry::Key key{
-      .device_ids = {0},
-      .input_name = "var_x",
-      .hlo_sharding = sharding_config.hlo_sharding,
-  };
-  ASSERT_OK_AND_ASSIGN(auto v, loaded_variable_registry.GetLoadedVariable(key));
-  ASSERT_OK_AND_ASSIGN(auto assembled_array, v.array.Await());
-
-  ASSERT_OK_AND_ASSIGN(
-      auto disassembled_arrays,
-      assembled_array->DisassembleIntoSingleDeviceArrays(
-          xla::ifrt::ArrayCopySemantics::kAlwaysCopy,
-          xla::ifrt::SingleDeviceShardSemantics::kAddressableShards));
-  ASSERT_EQ(disassembled_arrays.size(), 1);
-  for (int i = 0; i < disassembled_arrays.size(); ++i) {
-    tensorflow::Tensor host_tensor(input_tensor.dtype(), input_tensor.shape());
-    EXPECT_THAT(
-        disassembled_arrays[i]
-            ->CopyToHostBuffer(host_tensor.data(), /*byte_strides=*/{},
-                               xla::ifrt::ArrayCopySemantics::kAlwaysCopy)
-            .Await(),
-        absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
   }
 }
 

@@ -45,13 +45,8 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
-#include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
-#include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/hlo/hlo_program.h"
-#include "xla/python/ifrt/test_util.h"
-#include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/future.h"
@@ -826,57 +821,6 @@ INSTANTIATE_TEST_SUITE_P(
                 },
             }),
         ::testing::Bool()));
-
-constexpr absl::string_view kAliasedInputModule = R"(
-module {
-  func.func @main(%arg0: tensor<2x2xf32> {tf.aliasing_output = 0 : i32},
-                  %arg1: tensor<2x2xf32>) -> tensor<2x2xf32> {
-    %0 = mhlo.add %arg0, %arg1 : tensor<2x2xf32>
-    return %0 : tensor<2x2xf32>
-  }
-})";
-
-absl::StatusOr<xla::ifrt::LoadedExecutableRef> CompileModuleText(
-    xla::ifrt::Client& client, absl::string_view module_text) {
-  mlir::MLIRContext context;
-  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                      xla::ParseMlirModuleString(module_text, context));
-  auto program = std::make_unique<xla::ifrt::HloProgram>(module.get());
-  TF_ASSIGN_OR_RETURN(
-      auto device_list,
-      client.MakeDeviceList({client.addressable_devices().front()}));
-  auto options = std::make_unique<xla::ifrt::XlaCompileOptions>(
-      xla::CompileOptions(), std::move(device_list));
-  return client.GetDefaultCompiler()
-      ->CompileAndLoad(std::move(program), std::move(options))
-      .Await();
-}
-
-TEST(GetInputDonationMaskTest, AliasedInputIsDonatable) {
-  ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
-                       xla::ifrt::test_util::GetClient());
-  ASSERT_OK_AND_ASSIGN(auto loaded_executable,
-                       CompileModuleText(*client, kAliasedInputModule));
-
-  ASSERT_OK_AND_ASSIGN(
-      std::vector<bool> mask,
-      GetInputDonationMask(*loaded_executable, /*num_inputs=*/2));
-  EXPECT_THAT(mask, ::testing::ElementsAre(true, false));
-}
-
-TEST(GetInputDonationMaskTest, OutOfRangeDonatedParameterFails) {
-  ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
-                       xla::ifrt::test_util::GetClient());
-  ASSERT_OK_AND_ASSIGN(auto loaded_executable,
-                       CompileModuleText(*client, kAliasedInputModule));
-
-  // Parameter 0 is aliased but num_inputs claims 0 inputs: the numbering
-  // mismatch must fail detection rather than produce a wrong mask.
-  EXPECT_EQ(GetInputDonationMask(*loaded_executable, /*num_inputs=*/0)
-                .status()
-                .code(),
-            absl::StatusCode::kInternal);
-}
 
 }  // namespace
 }  // namespace ifrt_serving

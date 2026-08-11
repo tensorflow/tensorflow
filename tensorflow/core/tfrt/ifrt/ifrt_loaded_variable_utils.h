@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_IFRT_IFRT_LOADED_VARIABLE_UTILS_H_
 #define TENSORFLOW_CORE_TFRT_IFRT_IFRT_LOADED_VARIABLE_UTILS_H_
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -49,6 +50,12 @@ struct VariableDeviceShardingConfig {
   xla::HloSharding hlo_sharding;
 };
 
+// Post-processes a freshly created loaded-variable array before it is made
+// available through the loaded-variable registry (e.g. converts its buffers
+// to undonatable buffers; see undonatable_buffer_converter.h). Must be
+// thread-safe: it is invoked from the checkpoint loader queue.
+using LoadedVariableArrayFn = std::function<absl::Status(xla::ifrt::Array*)>;
+
 absl::StatusOr<ifrt_serving::DtypeAndShape> GetDtypeAndShape(
     const ResourceHandle& resource_handle);
 
@@ -73,7 +80,7 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
     const xla::ifrt::LayoutRef& xla_input_layout,
     std::shared_ptr<const xla::Shape> shape_on_device,
     const xla::ifrt::DeviceListRef& device_list,
-    bool use_undonatable_buffer_converter = false);
+    LoadedVariableArrayFn array_post_processor = nullptr);
 
 }  // namespace ifrt_serving
 }  // namespace tensorflow
