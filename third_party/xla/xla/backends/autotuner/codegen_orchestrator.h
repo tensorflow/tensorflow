@@ -18,12 +18,14 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/time/time.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/executable.h"
@@ -55,6 +57,11 @@ class CodegenOrchestrator {
     std::string ToString() const;
   };
 
+  struct EstimatedConfig {
+    Config config;
+    std::optional<absl::Duration> estimated_runtime;
+  };
+
   struct MaybeExecutableCandidate {
     Config config;
     absl::StatusOr<std::unique_ptr<Executable>> executable;
@@ -66,6 +73,11 @@ class CodegenOrchestrator {
 
   // Returns all supported configs across all registered backends.
   absl::StatusOr<std::vector<Config>> GetSupportedConfigs(
+      const HloInstruction& instr) const;
+
+  // Returns all supported configs with runtime estimates across all registered
+  // backends.
+  absl::StatusOr<std::vector<EstimatedConfig>> GetSupportedConfigsWithEstimates(
       const HloInstruction& instr) const;
 
   // Returns the default config from the first backend that supports it.

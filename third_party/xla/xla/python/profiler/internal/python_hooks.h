@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef XLA_PYTHON_PROFILER_INTERNAL_PYTHON_HOOKS_H_
 #define XLA_PYTHON_PROFILER_INTERNAL_PYTHON_HOOKS_H_
 
+#include <Python.h>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -28,9 +30,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
-#include "pybind11/cast.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/macros.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -40,8 +40,6 @@ limitations under the License.
 
 namespace xla {
 namespace profiler {
-
-namespace py = ::pybind11;
 
 struct PythonHooksOptions {
   bool enable_trace_python_function = false;
@@ -150,8 +148,12 @@ class PythonHookContext {
   void ProfileFast(PyFrameObject* frame, int what, PyObject* arg);
   void CollectData(tensorflow::profiler::XPlane* raw_plane);
 
-  static void SetProfilerInAllThreads();
-  static void ClearProfilerInAllThreads();
+  static bool SetProfilerInAllThreads();
+  static bool ClearProfilerInAllThreads();
+  static bool RegisterAtexitCallback();
+  static PyObject* PyProfileCallback(PyObject* self, PyObject* const* args,
+                                     Py_ssize_t nargs);
+  static PyObject* PyAtexitCallback(PyObject* self, PyObject* args);
 
   void operator=(const PythonHookContext&) = delete;
   void operator=(PythonHookContext&&) = delete;
@@ -223,8 +225,8 @@ class PythonHooks {
   friend class ::xla::profiler::PythonHookContext;
 
  private:
-  void ProfileSlow(const py::object& frame, const std::string& event,
-                   const py::object& arg);
+  void ProfileSlow(PyFrameObject* frame, absl::string_view event,
+                   PyObject* arg);
 
   void ProfileFast(PyFrameObject* frame, int what, PyObject* arg) {
     if (TF_PREDICT_TRUE(active_context_)) {
