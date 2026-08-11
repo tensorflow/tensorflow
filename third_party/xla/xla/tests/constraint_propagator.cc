@@ -549,6 +549,7 @@ absl::Status ConstraintPropagator::PropagateConstraintsExact(
     case HloOpcode::kConvert:
     case HloOpcode::kCopy:
     case HloOpcode::kDynamicReshape:
+    case HloOpcode::kReducePrecision:
     case HloOpcode::kReshape:
     case HloOpcode::kTranspose:
       states_[instruction->operand(0)].Merge(output_state);

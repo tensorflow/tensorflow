@@ -692,5 +692,25 @@ ENTRY main {
   EXPECT_NEAR(p0_int.min, -expected_max_in, 1e-3);
 }
 
+TEST_F(ConstraintPropagatorTest, ReducePrecisionRsqrtPropagatesStrictPositive) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = bf16[8,128] parameter(0)
+  reduce_precision = bf16[8,128] reduce-precision(param_0), exponent_bits=8, mantissa_bits=7
+  convert = f32[8,128] convert(reduce_precision)
+  ROOT rsqrt = f32[8,128] rsqrt(convert)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_TRUE(p0_int.IsPositiveStrict());
+  EXPECT_TRUE(p0_int.exclude_zero);
+  EXPECT_GE(p0_int.min, 0.0);
+}
+
 }  // namespace
 }  // namespace xla
