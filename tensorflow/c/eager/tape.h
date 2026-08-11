@@ -25,8 +25,10 @@ limitations under the License.
 #include <stack>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
@@ -812,6 +814,14 @@ GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
         trace.backward_function_deleter(trace.backward_function);
       }
       if (!s.ok()) {
+        absl::flat_hash_set<Gradient*> deleted_gradients;
+        for (const auto& pair : gradients) {
+          for (Gradient* g : pair.second) {
+            if (g != nullptr && deleted_gradients.insert(g).second) {
+              vspace.DeleteGradient(g);
+            }
+          }
+        }
         return s;
       }
     } else {
@@ -892,7 +902,7 @@ GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
                             source_tensor_ids.size(), " found ", result.size(),
                             " in call to Tape::ComputeGradient.");
   }
-  std::unordered_set<int64_t> used_gradient_ids(source_tensor_ids.size());
+  absl::flat_hash_set<int64_t> used_gradient_ids(source_tensor_ids.size());
   for (int i = 0; i < source_tensor_ids.size(); i++) {
     int64_t tensor_id = source_tensor_ids[i];
     auto grad_it = gradients.find(tensor_id);
@@ -967,7 +977,7 @@ ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::ForwardpropFromTape(
       gtl::MakeCleanup([&call_state] { call_state.backward_tape = nullptr; });
   std::vector<Gradient*> forwardprop_aids;
   std::vector<int64_t> sources;
-  std::unordered_set<int64_t> sources_set;
+  absl::flat_hash_set<int64_t> sources_set;
   sources.reserve(output_tensors.size());
   for (const TapeTensor& output_tensor : output_tensors) {
     // Ownership of `aid` transferred to CallBackwardFunction below.
