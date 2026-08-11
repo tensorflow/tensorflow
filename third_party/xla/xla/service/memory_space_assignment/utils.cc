@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace memory_space_assignment {
@@ -138,7 +137,7 @@ bool MemorySpaceAssignmentUtils::IsIntervalAllowedInAlternateMemory(
                         });
 }
 
-bool MemorySpaceAssignmentUtils::DoesUseMatchFilter(
+bool MemorySpaceAssignmentUtils::DoesUseMatchOperandFilter(
     const HloOperandFilter& filter, const HloUse& hlo_use,
     int64_t operand_size) {
   // The order of checks is such that the most expensive checks are done last.
@@ -264,6 +263,49 @@ bool MemorySpaceAssignmentUtils::DoesPositionMatchFilter(
          DoesInstructionMatchRandomFilter(filter, *instruction);
 }
 
+bool MemorySpaceAssignmentUtils::DoesPositionMatchPositionFilter(
+    const HloPositionMatcher& filter, const HloPosition& position,
+    int64_t size) {
+  if (filter.has_size_gte() && filter.size_gte() > size) {
+    return false;
+  }
+  if (filter.has_size_lte() && filter.size_lte() < size) {
+    return false;
+  }
+  if (filter.has_tuple_index() &&
+      position.index != ShapeIndex(filter.tuple_index().index().begin(),
+                                   filter.tuple_index().index().end())) {
+    return false;
+  }
+  return DoesInstructionMatchFilter(filter, *position.instruction) &&
+         DoesInstructionMatchRandomFilter(filter, *position.instruction);
+}
+
+bool MemorySpaceAssignmentUtils::DoesPositionMatchOperandFilter(
+    const HloOperandFilter& filter, const HloPosition& position, int64_t size) {
+  if (filter.has_size_gte() && filter.size_gte() > size) {
+    return false;
+  }
+  if (filter.has_size_lte() && filter.size_lte() < size) {
+    return false;
+  }
+  if (filter.has_tuple_index() &&
+      position.index != ShapeIndex(filter.tuple_index().index().begin(),
+                                   filter.tuple_index().index().end())) {
+    return false;
+  }
+  if (filter.has_instruction_name_regex() &&
+      !RE2::FullMatch(position.instruction->name(),
+                      filter.instruction_name_regex())) {
+    return false;
+  }
+  if (filter.has_instruction_regex() &&
+      !RE2::FullMatch(position.instruction->ToString(),
+                      filter.instruction_regex())) {
+    return false;
+  }
+  return true;
+}
 bool MemorySpaceAssignmentUtils::DoesInstructionMatchFilter(
     const HloPositionMatcher& filter, const HloInstruction& instruction) {
   if (filter.has_instruction_name_regex() &&
@@ -284,8 +326,8 @@ bool MemorySpaceAssignmentUtils::DoesBufferIntervalMatchHloUseFilter(
     return true;
   }
   for (const HloUse& use : buffer_interval.buffer->GetUses()) {
-    if (DoesUseMatchFilter(filter.hlo_use_filter(), use,
-                           buffer_interval.size)) {
+    if (DoesUseMatchOperandFilter(filter.hlo_use_filter(), use,
+                                  buffer_interval.size)) {
       return true;
     }
   }
@@ -358,6 +400,9 @@ MemorySpaceAssignmentUtils::GetPrefetchTime(
     case PreferredPrefetchOverrideOptions::kBeforeInstruction:
       return GetPrefetchTimeBeforeInstruction(
           override_options.before_instruction(), instruction_schedule);
+    case PreferredPrefetchOverrideOptions::kLogicalTime:
+      return static_cast<std::optional<int64_t>>(
+          override_options.logical_time());
     case PreferredPrefetchOverrideOptions::OPTIONS_NOT_SET:
       break;
   }
@@ -372,7 +417,7 @@ MemorySpaceAssignmentUtils::GetOverriddenPreferredPrefetchTime(
         instruction_schedule,
     int64_t earliest_prefetch_time, int64_t latest_prefetch_time) {
   for (const auto& override : preferred_prefetch_overrides.overrides()) {
-    if (!MemorySpaceAssignmentUtils::DoesUseMatchFilter(
+    if (!MemorySpaceAssignmentUtils::DoesUseMatchOperandFilter(
             override.hlo_operand_filter(), hlo_use, operand_size)) {
       continue;
     }
@@ -392,6 +437,133 @@ MemorySpaceAssignmentUtils::GetOverriddenPreferredPrefetchTime(
     }
   }
   return static_cast<absl::StatusOr<std::optional<int64_t>>>(std::nullopt);
+}
+
+absl::StatusOr<std::optional<PrefetchOverrideInfo>>
+MemorySpaceAssignmentUtils::GetPrefetchOverrideInfo(
+    const MsaTensorOverrides& msa_tensor_overrides,
+    const PreferredPrefetchOverrides& preferred_prefetch_overrides,
+    int64_t operand_size, const HloUse& hlo_use,
+    const absl::flat_hash_map<const HloInstruction*, HloLiveRange::LogicalTime>&
+        instruction_schedule,
+    int64_t earliest_prefetch_time, int64_t latest_prefetch_time,
+    const std::optional<HloPosition>& position) {
+  // First check msa_tensor_overrides.
+  for (const auto& override : msa_tensor_overrides.overrides()) {
+    if (!override.has_prefetch()) {
+      continue;
+    }
+    bool matches = false;
+    if (override.has_hlo_operand_filter() &&
+        DoesUseMatchOperandFilter(override.hlo_operand_filter(), hlo_use,
+                                  operand_size)) {
+      matches = true;
+    } else if (override.has_hlo_position_matcher() && position.has_value() &&
+               DoesPositionMatchPositionFilter(override.hlo_position_matcher(),
+                                               *position, operand_size)) {
+      matches = true;
+    }
+    if (!matches) {
+      continue;
+    }
+    const auto& prefetch_options = override.prefetch();
+    ABSL_ASSIGN_OR_RETURN(
+        auto prefetch_time,
+        GetPrefetchTime(prefetch_options, earliest_prefetch_time,
+                        latest_prefetch_time, instruction_schedule));
+    bool strict_timing = prefetch_options.has_strict_timing() &&
+                         prefetch_options.strict_timing();
+    bool fail_on_unsatisfied =
+        override.fail_on_unsatisfied_override() ||
+        msa_tensor_overrides.fail_on_unsatisfied_override() || strict_timing;
+    PrefetchOverrideInfo info;
+    info.prefetch_time = prefetch_time;
+    info.strict_timing = strict_timing;
+    info.fail_on_unsatisfied_override = fail_on_unsatisfied;
+    return info;
+  }
+
+  // Next check preferred_prefetch_overrides.
+  for (const auto& override : preferred_prefetch_overrides.overrides()) {
+    if (!DoesUseMatchOperandFilter(override.hlo_operand_filter(), hlo_use,
+                                   operand_size)) {
+      continue;
+    }
+    ABSL_ASSIGN_OR_RETURN(
+        auto prefetch_time,
+        GetPrefetchTime(override.override_options(), earliest_prefetch_time,
+                        latest_prefetch_time, instruction_schedule));
+    bool strict_timing = override.override_options().has_strict_timing() &&
+                         override.override_options().strict_timing();
+    bool fail_on_unsatisfied =
+        override.fail_on_unsatisfied_override() ||
+        preferred_prefetch_overrides.fail_on_unsatisfied_override() ||
+        strict_timing;
+    PrefetchOverrideInfo info;
+    info.prefetch_time = prefetch_time;
+    info.strict_timing = strict_timing;
+    info.fail_on_unsatisfied_override = fail_on_unsatisfied;
+    return info;
+  }
+  return std::nullopt;
+}
+
+bool MemorySpaceAssignmentUtils::ShouldPinInAlternateMemory(
+    const MsaTensorOverrides& msa_tensor_overrides, const HloPosition& position,
+    int64_t size) {
+  for (const auto& override : msa_tensor_overrides.overrides()) {
+    if (!override.has_pin_in_alternate_memory()) {
+      continue;
+    }
+    if (override.has_hlo_position_matcher() &&
+        DoesPositionMatchPositionFilter(override.hlo_position_matcher(),
+                                        position, size)) {
+      return true;
+    }
+    if (override.has_hlo_operand_filter() &&
+        DoesPositionMatchOperandFilter(override.hlo_operand_filter(), position,
+                                       size)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool MemorySpaceAssignmentUtils::ShouldKeepInDefaultMemory(
+    const MsaTensorOverrides& msa_tensor_overrides, const HloPosition& position,
+    int64_t size) {
+  for (const auto& override : msa_tensor_overrides.overrides()) {
+    if (!override.has_keep_in_default_memory()) {
+      continue;
+    }
+    if (override.has_hlo_position_matcher() &&
+        DoesPositionMatchPositionFilter(override.hlo_position_matcher(),
+                                        position, size)) {
+      return true;
+    }
+    if (override.has_hlo_operand_filter() &&
+        DoesPositionMatchOperandFilter(override.hlo_operand_filter(), position,
+                                       size)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool MemorySpaceAssignmentUtils::ShouldKeepInDefaultMemory(
+    const MsaTensorOverrides& msa_tensor_overrides, const HloUse& hlo_use,
+    int64_t operand_size) {
+  for (const auto& override : msa_tensor_overrides.overrides()) {
+    if (!override.has_keep_in_default_memory()) {
+      continue;
+    }
+    if (override.has_hlo_operand_filter() &&
+        DoesUseMatchOperandFilter(override.hlo_operand_filter(), hlo_use,
+                                  operand_size)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool MemorySpaceAssignmentUtils::DoesCrossProgramPrefetchBufferMatchAnyFilter(
