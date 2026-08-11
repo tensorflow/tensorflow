@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/logging.h"
@@ -107,12 +108,12 @@ using absl::StrCat;
 HloDataflowAnalysis::HloDataflowAnalysis(
     const HloModule& module, bool ssa_form, bool bitcast_defines_value,
     absl::flat_hash_set<absl::string_view> execution_threads,
-    bool propagate_through_calls)
+    bool propagate_across_call_boundaries)
     : module_(module),
       execution_threads_(std::move(execution_threads)),
       ssa_form_(ssa_form),
       bitcast_defines_value_(bitcast_defines_value),
-      propagate_through_calls_(propagate_through_calls),
+      propagate_across_call_boundaries_(propagate_across_call_boundaries),
       call_graph_(CallGraph::Build(&module)) {}
 
 bool HloDataflowAnalysis::AreTransitiveUsesElementwiseOrTuple(
@@ -724,15 +725,124 @@ bool HloDataflowAnalysis::UpdateRecvDoneValueSet(HloInstruction* recv_done) {
   return changed;
 }
 
-bool HloDataflowAnalysis::UpdateCallValueSet(HloInstruction* call) {
-  if (!propagate_through_calls_) {
-    return false;
+namespace {
+
+HloDataflowAnalysis::ComputationDataflow ComputeComputationDataflowForIndex(
+    const HloComputation* computation, const ShapeIndex& index,
+    const HloDataflowAnalysis& analysis, const PhiGraph& phi_graph) {
+  HloDataflowAnalysis::ComputationDataflow dataflow;
+  const HloInstruction* root = computation->root_instruction();
+  const HloValueSet& root_value_set = analysis.GetValueSet(root, index);
+
+  std::vector<const HloValue*> worklist(root_value_set.values().begin(),
+                                        root_value_set.values().end());
+  absl::flat_hash_set<const HloValue*> visited(worklist.begin(),
+                                               worklist.end());
+
+  while (!worklist.empty()) {
+    const HloValue* value = worklist.back();
+    worklist.pop_back();
+
+    if (value->is_phi()) {
+      for (HloValue::Id input_id : phi_graph.GetInputs(*value)) {
+        const HloValue& input_val = analysis.GetValue(input_id);
+        if (visited.insert(&input_val).second) {
+          worklist.push_back(&input_val);
+        }
+      }
+    } else if (value->defining_instruction()->opcode() ==
+                   HloOpcode::kParameter &&
+               value->defining_instruction()->parent() == computation) {
+      dataflow.reaching_parameters.push_back(HloDataflowAnalysis::ParameterLeaf{
+          value->defining_instruction()->parameter_number(),
+          value->defining_index()});
+    } else {
+      dataflow.has_internal_definition = true;
+    }
   }
+
+  return dataflow;
+}
+
+ShapeTree<HloDataflowAnalysis::ComputationDataflow> ComputeComputationDataflow(
+    const HloComputation* computation, const HloDataflowAnalysis& analysis,
+    const PhiGraph& phi_graph) {
+  const HloInstruction* root = computation->root_instruction();
+  ShapeTree<HloDataflowAnalysis::ComputationDataflow> dataflow_tree(
+      &root->shape());
+  for (auto& [index, dataflow] : dataflow_tree) {
+    dataflow = ComputeComputationDataflowForIndex(computation, index, analysis,
+                                                  phi_graph);
+  }
+  return dataflow_tree;
+}
+
+}  // namespace
+
+const ShapeTree<HloDataflowAnalysis::ComputationDataflow>&
+HloDataflowAnalysis::GetOrCreateComputationDataflow(
+    const HloComputation* computation) {
+  auto it = computation_dataflows_.find(computation);
+  if (it != computation_dataflows_.end()) {
+    return it->second;
+  }
+  return computation_dataflows_
+      .emplace(computation,
+               ComputeComputationDataflow(computation, *this, phi_graph_))
+      .first->second;
+}
+
+const HloValue* HloDataflowAnalysis::GetOrCreateCallValue(
+    HloInstruction* call, const ShapeIndex& index,
+    const HloValueSet& current_value_set) {
+  for (const HloValue* val : current_value_set.values()) {
+    if (val->defining_instruction() == call && val->defining_index() == index) {
+      return val;
+    }
+  }
+  return NewHloValue(call, index, /*is_phi=*/false);
+}
+
+bool HloDataflowAnalysis::UpdateCallValueSet(HloInstruction* call) {
   CHECK_EQ(call->opcode(), HloOpcode::kCall);
   if (!HloInstruction::IsThreadIncluded(call->to_apply()->execution_thread(),
                                         execution_threads_)) {
     return false;
   }
+
+  // Propagate through call instructions but do not propagate between caller and
+  // callee. Define a new value for a call result if and only if the callee
+  // defines an hlo value that reaches to the corresponding root index.
+  if (!propagate_across_call_boundaries_) {
+    bool changed = false;
+    const ShapeTree<ComputationDataflow>& dataflow_tree =
+        GetOrCreateComputationDataflow(call->to_apply());
+
+    for (auto& [index, current_value_set] : GetInstructionValueSet(call)) {
+      const ComputationDataflow& dataflow = dataflow_tree.element(index);
+      HloValueSet new_value_set;
+
+      for (const ParameterLeaf& leaf : dataflow.reaching_parameters) {
+        const HloValueSet& operand_value_set = GetValueSet(
+            call->operand(leaf.parameter_number), leaf.parameter_index);
+        for (const HloValue* operand_val : operand_value_set.values()) {
+          new_value_set.AddValue(operand_val);
+        }
+      }
+
+      if (dataflow.has_internal_definition) {
+        new_value_set.AddValue(
+            GetOrCreateCallValue(call, index, current_value_set));
+      }
+
+      if (current_value_set != new_value_set) {
+        current_value_set = new_value_set;
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
   InstructionValueSet& value_set = GetInstructionValueSet(call);
   InstructionValueSet& root_value_set =
       GetInstructionValueSet(call->to_apply()->root_instruction());
@@ -879,7 +989,7 @@ bool HloDataflowAnalysis::UpdateParameterValueSet(HloInstruction* parameter) {
     if (opcode == HloOpcode::kCall) {
       // The operand values of a call instruction are forwarded to the
       // respective parameter instruction of the subcomputation.
-      if (propagate_through_calls_) {
+      if (propagate_across_call_boundaries_) {
         inputs.push_back(&GetInstructionValueSet(
             callsite.instruction()->operand(parameter->parameter_number())));
       }
@@ -1336,7 +1446,7 @@ void HloDataflowAnalysis::Propagate() {
       const CallGraphNode& call_graph_node =
           call_graph_->GetNode(instruction->parent());
       for (const CallSite& callsite : call_graph_node.caller_callsites()) {
-        if (!propagate_through_calls_ &&
+        if (!propagate_across_call_boundaries_ &&
             callsite.instruction()->opcode() == HloOpcode::kCall) {
           continue;
         }
@@ -1432,10 +1542,6 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           }
           break;
         case HloOpcode::kCall:
-          if (!propagate_through_calls_) {
-            define_all_values();
-          }
-          break;
         case HloOpcode::kAddDependency:
         case HloOpcode::kWhile:
         case HloOpcode::kConditional:
@@ -1459,7 +1565,8 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           }
           if (call_graph_node.caller_callsites().empty() ||
               call_graph_node.context() == CallContext::kEmbedded ||
-              (!propagate_through_calls_ && is_regular_call_computation)) {
+              (!propagate_across_call_boundaries_ &&
+               is_regular_call_computation)) {
             // Parameters of computations called in a parallel context (eg, map
             // and reduce) as well as parameters of dead computations define all
             // values in their output. Otherwise the values of the parameter
@@ -1654,13 +1761,13 @@ void HloDataflowAnalysis::OptimizePhiValues() {
 absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
     const HloModule& module, bool ssa_form, bool bitcast_defines_value,
     absl::flat_hash_set<absl::string_view> execution_threads,
-    bool propagate_through_calls) {
+    bool propagate_across_call_boundaries) {
   VLOG(1) << "HloDataflowAnalysis::Run on module " << module.name();
   XLA_VLOG_LINES(2, module.ToString());
 
-  auto dataflow_analysis = absl::WrapUnique(
-      new HloDataflowAnalysis(module, ssa_form, bitcast_defines_value,
-                              execution_threads, propagate_through_calls));
+  auto dataflow_analysis = absl::WrapUnique(new HloDataflowAnalysis(
+      module, ssa_form, bitcast_defines_value, execution_threads,
+      propagate_across_call_boundaries));
   ABSL_RETURN_IF_ERROR(dataflow_analysis->RunImpl());
   return dataflow_analysis;
 }
