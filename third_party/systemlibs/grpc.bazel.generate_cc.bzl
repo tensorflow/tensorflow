@@ -20,7 +20,7 @@ directly.
 """
 
 load(
-    "@com_github_grpc_grpc//bazel:protobuf.bzl",
+    "@grpc//bazel:protobuf.bzl",
     "get_include_directory",
     "get_plugin_args",
     "get_proto_root",

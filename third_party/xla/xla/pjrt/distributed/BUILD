@@ -41,13 +41,13 @@ cc_library(
         "//xla/pjrt/distributed/coordination:grpc_coordination_service_impl",
         "//xla/tsl/distributed_runtime/rpc:async_service_interface",
         "//xla/tsl/protobuf:coordination_config_proto_cc",
-        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@grpc//:grpc++",
         "@tsl//tsl/platform:env",
     ],
 )
@@ -95,7 +95,6 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/protobuf:coordination_config_proto_cc",
         "//xla/tsl/protobuf:coordination_service_proto_cc",
-        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
@@ -105,6 +104,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
+        "@grpc//:grpc++",
     ],
 )
 
@@ -112,8 +112,8 @@ cc_library(
     name = "util",
     hdrs = ["util.h"],
     deps = [
-        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/status",
+        "@grpc//:grpc++",
     ],
 )
 
@@ -125,8 +125,8 @@ cc_library(
         ":client",
         ":service",
         "//xla/tsl/platform:grpc_credentials",
-        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/status:statusor",
+        "@grpc//:grpc++",
     ],
 )
 
@@ -183,7 +183,6 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/util/proto:proto_matchers",
-        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -194,6 +193,7 @@ xla_cc_test(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
+        "@grpc//:grpc++",
     ],
 )
 

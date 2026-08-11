@@ -105,12 +105,12 @@ tsl_cc_test(
         "//xla/tsl/platform:env_impl",  # build_cleaner: keep
         "//xla/tsl/platform:test",
         "//xla/tsl/protobuf:coordination_config_proto_cc_impl",
-        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+        "@grpc//:grpc++",
     ],
 )

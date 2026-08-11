@@ -318,7 +318,7 @@ cc_library(
         "//xla/tsl/lib/math:math_util",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/types:span",
-        "@com_google_highway//:hwy",
+        "@highway//:hwy",
     ],
 )
 
@@ -733,8 +733,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@com_google_highway//:hwy",
         "@eigen_archive//:eigen3",
+        "@highway//:hwy",
         "@tsl//tsl/platform:ml_dtypes",
         "@tsl//tsl/platform:platform_port",
     ],

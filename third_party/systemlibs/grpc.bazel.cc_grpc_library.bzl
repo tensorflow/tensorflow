@@ -15,8 +15,8 @@
 
 """Generates and compiles C++ grpc stubs from proto_library rules."""
 
-load("@com_github_grpc_grpc//bazel:generate_cc.bzl", "generate_cc")
-load("@com_github_grpc_grpc//bazel:protobuf.bzl", "well_known_proto_libs")
+load("@grpc//bazel:generate_cc.bzl", "generate_cc")
+load("@grpc//bazel:protobuf.bzl", "well_known_proto_libs")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 def cc_grpc_library(
@@ -104,7 +104,7 @@ def cc_grpc_library(
         generate_cc(
             name = codegen_grpc_target,
             srcs = proto_targets,
-            plugin = "@com_github_grpc_grpc//src/compiler:grpc_cpp_plugin",
+            plugin = "@grpc//src/compiler:grpc_cpp_plugin",
             well_known_protos = well_known_protos,
             generate_mocks = generate_mocks,
             **kwargs
@@ -115,6 +115,6 @@ def cc_grpc_library(
             hdrs = [":" + codegen_grpc_target],
             deps = deps +
                    extra_deps +
-                   ["@com_github_grpc_grpc//:grpc++_codegen_proto"],
+                   ["@grpc//:grpc++_codegen_proto"],
             **kwargs
         )

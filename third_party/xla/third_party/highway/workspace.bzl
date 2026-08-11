@@ -24,8 +24,11 @@ def repo():
     HIGHWAY_SHA256 = "07b3c1ba2c1096878a85a31a5b9b3757427af963b1141ca904db2f9f4afe0bc2"
 
     tf_http_archive(
-        name = "com_google_highway",
+        name = "highway",
         strip_prefix = "highway-{version}".format(version = HIGHWAY_VERSION),
         sha256 = HIGHWAY_SHA256,
+        repo_mapping = {
+            "@com_google_highway": "@highway",
+        },
         urls = tf_mirror_urls("https://github.com/google/highway/archive/refs/tags/{version}.tar.gz".format(version = HIGHWAY_VERSION)),
     )

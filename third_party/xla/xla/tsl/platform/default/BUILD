@@ -290,8 +290,8 @@ cc_library(
     ],
     deps = [
         "//xla/tsl/platform:logging",
-        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log:check",
+        "@grpc//:grpc++",
     ],
 )
 

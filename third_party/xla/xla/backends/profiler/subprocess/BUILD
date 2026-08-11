@@ -32,8 +32,6 @@ cc_library(
     ]),
     deps = [
         "//xla/tsl/platform:env",
-        "@com_github_grpc_grpc//:gpr",
-        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -44,6 +42,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@grpc//:gpr",
+        "@grpc//:grpc++",
         "@tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
     ],
 )
@@ -84,7 +84,6 @@ cc_library(
         "//xla/tsl/profiler/utils:timestamp_utils",
         "//xla/tsl/profiler/utils:xplane_schema",
         "//xla/tsl/profiler/utils:xplane_utils",
-        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
@@ -92,6 +91,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
+        "@grpc//:grpc++",
         "@tsl//tsl/profiler/lib:profiler_interface",
         "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
         "@tsl//tsl/profiler/protobuf:profiler_service_proto_cc",
