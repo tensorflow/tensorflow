@@ -69,6 +69,7 @@ single_version_override(
         "//third_party/absl:btree.patch",
         "//third_party/absl:build_dll.patch",
         "//third_party/absl:endian.patch",
+        "//third_party/absl:raw_hash_set.patch",
     ],
 )
 
