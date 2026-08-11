@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "llvm/Support/Casting.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -44,6 +44,7 @@ namespace tensorflow {
 namespace ifrt_serving {
 namespace {
 
+using ::absl_testing::IsOk;
 using tensorflow::test::TensorEq;
 
 absl::StatusOr<xla::ifrt::ArrayRef> MakeTestArray(
@@ -72,14 +73,15 @@ void VerifyUndonatableAndContentsMatch(xla::ifrt::Array* array,
     // ToLiteral/CopyToHostBuffer are Unimplemented on the undonatable buffer;
     // verify contents through the raw-buffer path. The raw buffer reference
     // must stay alive until the copy completes.
-    TF_ASSERT_OK(undonatable_buffer->GetReadyFuture().Await());
+    ASSERT_THAT(undonatable_buffer->GetReadyFuture().Await(), IsOk());
     tensorflow::Tensor host_tensor(expected.dtype(), expected.shape());
     auto raw_buffer = undonatable_buffer->AcquireRawBufferRef("ConverterTest");
-    TF_ASSERT_OK(
+    ASSERT_THAT(
         raw_buffer
             ->CopyRawDeviceToHost(host_tensor.data(), /*offset=*/0,
                                   /*transfer_size=*/host_tensor.TotalBytes())
-            .Await());
+            .Await(),
+        IsOk());
     EXPECT_THAT(host_tensor, TensorEq(expected));
   }
 }
@@ -87,30 +89,30 @@ void VerifyUndonatableAndContentsMatch(xla::ifrt::Array* array,
 TEST(UndonatableBufferConverterTest, ConvertsBuffersAndPreservesContents) {
   auto input_tensor =
       test::AsTensor<int32_t>({1, 2, 3, 4}, TensorShape({2, 2}));
-  ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
-                       xla::ifrt::test_util::GetClient());
+  auto client = xla::ifrt::test_util::GetClient();
+  ASSERT_THAT(client, IsOk());
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), tsl::ThreadOptions(),
                                       "Converter", /*num_threads=*/4);
-  ASSERT_OK_AND_ASSIGN(auto array,
-                       MakeTestArray(*client, input_tensor, thread_pool));
+  auto array = MakeTestArray(**client, input_tensor, thread_pool);
+  ASSERT_THAT(array, IsOk());
 
-  TF_ASSERT_OK(MakeArrayBuffersUndonatable(array.get()));
-  VerifyUndonatableAndContentsMatch(array.get(), input_tensor);
+  ASSERT_THAT(MakeArrayBuffersUndonatable(array->get()), IsOk());
+  VerifyUndonatableAndContentsMatch(array->get(), input_tensor);
 }
 
 TEST(UndonatableBufferConverterTest, SecondConversionIsANoOp) {
   auto input_tensor =
       test::AsTensor<int32_t>({1, 2, 3, 4}, TensorShape({2, 2}));
-  ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
-                       xla::ifrt::test_util::GetClient());
+  auto client = xla::ifrt::test_util::GetClient();
+  ASSERT_THAT(client, IsOk());
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), tsl::ThreadOptions(),
                                       "Converter", /*num_threads=*/4);
-  ASSERT_OK_AND_ASSIGN(auto array,
-                       MakeTestArray(*client, input_tensor, thread_pool));
+  auto array = MakeTestArray(**client, input_tensor, thread_pool);
+  ASSERT_THAT(array, IsOk());
 
-  TF_ASSERT_OK(MakeArrayBuffersUndonatable(array.get()));
-  TF_ASSERT_OK(MakeArrayBuffersUndonatable(array.get()));
-  VerifyUndonatableAndContentsMatch(array.get(), input_tensor);
+  ASSERT_THAT(MakeArrayBuffersUndonatable(array->get()), IsOk());
+  ASSERT_THAT(MakeArrayBuffersUndonatable(array->get()), IsOk());
+  VerifyUndonatableAndContentsMatch(array->get(), input_tensor);
 }
 
 TEST(UndonatableBufferConverterTest, NullArrayIsAnError) {
