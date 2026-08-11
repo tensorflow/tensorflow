@@ -2725,7 +2725,8 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
   // successors.
   scheduling_context_->GetAsyncTracker()->UpdateTargetDefinedStates(
       n->GetInstr(), sched_state->sched_graph.get(),
-      scheduling_context_->GetLatencyEstimator().get(), current_time);
+      scheduling_context_->GetLatencyEstimator().get(), current_time,
+      sched_state);
 
   auto ready_time_cmp = [](const HloGraphNode* a, const HloGraphNode* b) {
     return a->GetReadyTime() > b->GetReadyTime();
@@ -3712,11 +3713,17 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
   return ScheduleComputation(computation, sched_state);
 }
 
+std::shared_ptr<SchedulerCore::SchedulingState>
+DefaultSchedulerCore::GetSchedulingState() {
+  return latest_sched_state_;
+}
+
 // Reset the scheduling state to its initial state.
 // This is an optimization for algorithms that require multiple scheduling
 // attempts to reuse the state, avoiding the overhead of re-allocation and
 // graph construction.
 void DefaultSchedulerCore::SchedulingState::Reset() {
+  SchedulerCore::SchedulingState::Reset();
   sched_graph->ResetScheduling();
   ready_set.clear();
   nop_set.clear();
@@ -3741,6 +3748,7 @@ absl::StatusOr<std::vector<HloInstruction*>>
 DefaultSchedulerCore::ScheduleComputation(
     const HloComputation* computation,
     std::shared_ptr<SchedulerCore::SchedulingState> _sched_state) {
+  latest_sched_state_ = _sched_state;
   // Up-cast the scheduling state DefaultSchedulerCore::SchedulingState.
   std::shared_ptr<DefaultSchedulerCore::SchedulingState> sched_state =
       std::dynamic_pointer_cast<DefaultSchedulerCore::SchedulingState>(
@@ -4293,10 +4301,11 @@ absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
     // Update target specific states that may include altering the
     // computation.
     scheduling_context_->GetAsyncTracker()->UpdateTargetDefinedStates(
-        computation);
+        computation, scheduler_core_->GetSchedulingState().get());
     module->schedule().set_sequence(computation,
                                     absl::MakeConstSpan(new_schedule));
-    scheduling_context_->GetAsyncTracker()->ResetTargetDefinedStates();
+    scheduling_context_->GetAsyncTracker()->ResetTargetDefinedStates(
+        scheduler_core_->GetSchedulingState().get());
     scheduling_context_->GetAsyncTracker()->InvalidateCache(computation);
   }
   int64_t fragmentation_size =
@@ -4323,10 +4332,11 @@ absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
       ABSL_ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
                        scheduler_core_->ScheduleComputation(computation));
       scheduling_context_->GetAsyncTracker()->UpdateTargetDefinedStates(
-          computation);
+          computation, scheduler_core_->GetSchedulingState().get());
       module->schedule().set_sequence(computation,
                                       absl::MakeConstSpan(new_schedule));
-      scheduling_context_->GetAsyncTracker()->ResetTargetDefinedStates();
+      scheduling_context_->GetAsyncTracker()->ResetTargetDefinedStates(
+          scheduler_core_->GetSchedulingState().get());
       scheduling_context_->GetAsyncTracker()->InvalidateCache(computation);
     }
     fragmentation_size =

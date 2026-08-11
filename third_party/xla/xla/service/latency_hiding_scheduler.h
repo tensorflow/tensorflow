@@ -253,6 +253,67 @@ class ApproximateLatencyEstimator : public LatencyEstimator {
   static constexpr TimeCost kHighLatency = 5000.0;
 };
 
+// Base class for the core scheduling algorithm.
+class SchedulerCore {
+ public:
+  // Hook function to modify scheduling graph before scheduler runs.
+  using GraphProcessingHook = std::function<absl::Status(HloScheduleGraph*)>;
+
+  // Abstract base class for target defined state.
+  struct TargetDefinedState {
+    virtual ~TargetDefinedState() = default;
+    virtual void Reset() {}
+  };
+
+  // Abstract base class for scheduling state.
+  struct SchedulingState {
+    virtual ~SchedulingState() = default;
+    virtual void Reset() {
+      if (target_defined_state) {
+        target_defined_state->Reset();
+      }
+    }
+    GraphProcessingHook graph_processing_hook;
+    std::unique_ptr<TargetDefinedState> target_defined_state;
+  };
+
+  virtual absl::Status InitializeScheduler(const HloModule* module) = 0;
+
+  virtual absl::Status CaptureScheduleProto() = 0;
+
+  virtual absl::StatusOr<ScheduleProto> GetCapturedScheduleProto() = 0;
+
+  virtual absl::StatusOr<std::shared_ptr<SchedulerCore::SchedulingState>>
+  MakeSchedulingState(const HloComputation* computation) {
+    return absl::UnimplementedError("Not implemented.");
+  }
+  virtual absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
+      const HloComputation* computation) {
+    return absl::UnimplementedError("Not implemented.");
+  }
+  virtual absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
+      const HloComputation* computation,
+      std::shared_ptr<SchedulingState> sched_state) {
+    return absl::UnimplementedError("Not implemented.");
+  }
+  virtual std::shared_ptr<SchedulingState> GetSchedulingState() {
+    return nullptr;
+  }
+
+  virtual ~SchedulerCore() = default;
+  virtual int64_t GetMemoryPeak() = 0;
+  virtual void SetMemoryLimit(uint64_t new_limit) = 0;
+  virtual uint64_t GetMemoryLimit() = 0;
+  virtual int64_t GetRerunTimes() = 0;
+
+  // Set a graph processing hook that will run before scheduling a computation.
+  // Heuristics can use this to set scheduling preferences to the scheduling
+  // graph nodes.
+  virtual absl::Status SetGraphProcessingHook(const GraphProcessingHook& hook) {
+    return absl::OkStatus();
+  }
+};
+
 // Helper class to keep track of which instructions are to be supported and
 // how many supported instructions per-type are contained in computations
 // recursively.
@@ -360,13 +421,17 @@ class AsyncTracker {
   virtual void UpdateTargetDefinedStates(
       const HloInstruction& hlo, const HloScheduleGraph* schedule_graph,
       const LatencyEstimator* latency_estimator,
-      LatencyEstimator::TimeCost current_time) {}
+      LatencyEstimator::TimeCost current_time,
+      SchedulerCore::SchedulingState* sched_state) {}
 
   // Updates target defined states after scheduling a computation.
-  virtual void UpdateTargetDefinedStates(HloComputation* computation) {}
+  virtual void UpdateTargetDefinedStates(
+      HloComputation* computation,
+      SchedulerCore::SchedulingState* sched_state) {}
 
   // Resets target defined states after scheduling a computation.
-  virtual void ResetTargetDefinedStates() {}
+  virtual void ResetTargetDefinedStates(
+      SchedulerCore::SchedulingState* sched_state) {}
 
   const SchedulerConfig& GetConfig() const { return config_; }
 
@@ -414,53 +479,6 @@ class AsyncTracker {
   const SchedulerConfig config_;
   mutable absl::flat_hash_map<const HloInstruction*, ResourcesVector>
       resources_cache_;
-};
-
-// Base class for the core scheduling algorithm.
-class SchedulerCore {
- public:
-  // Hook function to modify scheduling graph before scheduler runs.
-  using GraphProcessingHook = std::function<absl::Status(HloScheduleGraph*)>;
-
-  // Abstract base class for scheduling state.
-  struct SchedulingState {
-    virtual ~SchedulingState() = default;
-    virtual void Reset() {}
-    GraphProcessingHook graph_processing_hook;
-  };
-
-  virtual absl::Status InitializeScheduler(const HloModule* module) = 0;
-
-  virtual absl::Status CaptureScheduleProto() = 0;
-
-  virtual absl::StatusOr<ScheduleProto> GetCapturedScheduleProto() = 0;
-
-  virtual absl::StatusOr<std::shared_ptr<SchedulerCore::SchedulingState>>
-  MakeSchedulingState(const HloComputation* computation) {
-    return absl::UnimplementedError("Not implemented.");
-  }
-  virtual absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
-      const HloComputation* computation) {
-    return absl::UnimplementedError("Not implemented.");
-  }
-  virtual absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
-      const HloComputation* computation,
-      std::shared_ptr<SchedulingState> sched_state) {
-    return absl::UnimplementedError("Not implemented.");
-  }
-
-  virtual ~SchedulerCore() = default;
-  virtual int64_t GetMemoryPeak() = 0;
-  virtual void SetMemoryLimit(uint64_t new_limit) = 0;
-  virtual uint64_t GetMemoryLimit() = 0;
-  virtual int64_t GetRerunTimes() = 0;
-
-  // Set a graph processing hook that will run before scheduling a computation.
-  // Heuristics can use this to set scheduling preferences to the scheduling
-  // graph nodes.
-  virtual absl::Status SetGraphProcessingHook(const GraphProcessingHook& hook) {
-    return absl::UnimplementedError("Unimplemented. ");
-  }
 };
 
 class SchedulingContext {
@@ -1888,6 +1906,7 @@ class DefaultSchedulerCore : public SchedulerCore {
   absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
       const HloComputation* computation,
       std::shared_ptr<SchedulerCore::SchedulingState> sched_state) override;
+  std::shared_ptr<SchedulerCore::SchedulingState> GetSchedulingState() override;
   static bool AddOccupierToResource(
       HloGraphNode::TimeCost current_time, HloEdge& new_edge,
       std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>>& occupiers,
@@ -1990,6 +2009,7 @@ class DefaultSchedulerCore : public SchedulerCore {
   const HloModule* module_ = nullptr;
   SchedulerCore::GraphProcessingHook default_graph_processing_hook_;
   std::shared_ptr<const SchedulingContext> scheduling_context_;
+  std::shared_ptr<SchedulerCore::SchedulingState> latest_sched_state_;
   bool top_down_scheduling_ = false;
 };
 
