@@ -94,9 +94,10 @@ class SegmentReduce : public XlaOpKernel {
     // shape inference and tolerates only unbounded dynamic sizes. Where
     // cwise_ops.cc pads the smaller side up when both sides are dynamic,
     // slicing is safe here: segment reduction does not broadcast, so there is
-    // no size-1 dimension to preserve. If the run-time sizes are not in fact
-    // equal the program was already invalid; XLA cannot detect that at compile
-    // time here, same as cwise_ops.cc.
+    // no size-1 dimension to preserve. The run-time size is clamped to the
+    // reduced bound, which XLA requires of a dynamic dimension; an input that
+    // trips the clamp had unequal prefix dimensions at run time and was
+    // already invalid for this op.
     OP_REQUIRES_VALUE(xla::Shape data_xla_shape, ctx, ctx->InputXlaShape(0));
     OP_REQUIRES_VALUE(xla::Shape indices_xla_shape, ctx, ctx->InputXlaShape(1));
     OP_REQUIRES(
@@ -113,7 +114,10 @@ class SegmentReduce : public XlaOpKernel {
       const int64_t indices_bound = indices_shape.dim_size(d);
       if (data_bound > indices_bound &&
           data_xla_shape.is_dynamic_dimension(d)) {
-        xla::XlaOp size = xla::GetDimensionSize(data, d);
+        xla::XlaOp size = xla::Min(
+            xla::GetDimensionSize(data, d),
+            xla::ConstantR0<int32_t>(ctx->builder(),
+                                     static_cast<int32_t>(indices_bound)));
         data = xla::SliceInDim(data, /*start_index=*/0,
                                /*limit_index=*/indices_bound, /*stride=*/1,
                                /*dimno=*/d);
@@ -121,7 +125,10 @@ class SegmentReduce : public XlaOpKernel {
         data_shape.set_dim(d, indices_bound);
       } else if (indices_bound > data_bound &&
                  indices_xla_shape.is_dynamic_dimension(d)) {
-        xla::XlaOp size = xla::GetDimensionSize(indices, d);
+        xla::XlaOp size = xla::Min(
+            xla::GetDimensionSize(indices, d),
+            xla::ConstantR0<int32_t>(ctx->builder(),
+                                     static_cast<int32_t>(data_bound)));
         indices = xla::SliceInDim(indices, /*start_index=*/0,
                                   /*limit_index=*/data_bound, /*stride=*/1,
                                   /*dimno=*/d);
