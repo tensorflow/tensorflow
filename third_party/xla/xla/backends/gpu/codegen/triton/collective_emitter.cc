@@ -94,6 +94,7 @@ namespace xla::gpu {
 namespace {
 
 using ::xla::se::gpu::AllReduceStrategy;
+using ::xla::xtile::BlockLevelFusionConfig;
 
 namespace ttir = ::mlir::triton;
 namespace mtx = ::mlir::triton::xla;

@@ -208,7 +208,7 @@ inline constexpr dnnl::memory::data_type
     OneDnnType<::sycl::ext::oneapi::bfloat16> = dnnl::memory::data_type::bf16;
 
 MatrixDescriptor GetMatrixDesc(const se::gpu::MatrixLayout& layout,
-                               se::DeviceMemoryBase data) {
+                               se::DeviceAddressBase data) {
   bool transpose = layout.order == se::gpu::MatrixLayout::Order::kColumnMajor;
   return MatrixDescriptor{
       data,
@@ -382,10 +382,10 @@ CreateMatMulPrimDescFromGemmConfig(
   int64_t batch_size = output_layout.batch_size;
 
   // Create matrix descriptors (without memory buffers)
-  MatrixDescriptor lhs = GetMatrixDesc(lhs_layout, se::DeviceMemoryBase());
-  MatrixDescriptor rhs = GetMatrixDesc(rhs_layout, se::DeviceMemoryBase());
+  MatrixDescriptor lhs = GetMatrixDesc(lhs_layout, se::DeviceAddressBase());
+  MatrixDescriptor rhs = GetMatrixDesc(rhs_layout, se::DeviceAddressBase());
   MatrixDescriptor output =
-      GetMatrixDesc(output_layout, se::DeviceMemoryBase());
+      GetMatrixDesc(output_layout, se::DeviceAddressBase());
 
   // Make BLAS GEMM compatible (handles output transpose)
   MakeBlasGemmCompatible(lhs, rhs, output);
@@ -524,11 +524,11 @@ CreateMatMulPrimDescFromGemmConfig(
 
 template <typename InputT, typename OutputT>
 absl::Status DoOnednnGemm(int64_t batch_size, const MatrixDescriptor& lhs,
-                          const MatrixDescriptor& rhs, se::DeviceMemoryBase c,
+                          const MatrixDescriptor& rhs, se::DeviceAddressBase c,
                           const MatrixDescriptor& output,
-                          se::DeviceMemoryBase bias, float alpha, float beta,
+                          se::DeviceAddressBase bias, float alpha, float beta,
                           sycl_gemm::GemmBackendEpilogue epilogue,
-                          se::Stream* stream, se::DeviceMemoryBase workspace,
+                          se::Stream* stream, se::DeviceAddressBase workspace,
                           se::ScratchAllocator* scratch_allocator) {
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
   ::sycl::queue* stream_handle =
@@ -645,7 +645,7 @@ absl::Status DoOnednnGemm(int64_t batch_size, const MatrixDescriptor& lhs,
       // Buffers are different - need to copy c_data into destination
       size_t output_size =
           batch_size * output.num_rows * output.num_cols * sizeof(OutputT);
-      se::DeviceMemoryBase dst_mem(out_data, output_size);
+      se::DeviceAddressBase dst_mem(out_data, output_size);
       if (absl::Status status = stream->MemcpyD2D(&dst_mem, c, output_size);
           !status.ok()) {
         return status;
@@ -661,9 +661,9 @@ absl::Status DoOnednnGemm(int64_t batch_size, const MatrixDescriptor& lhs,
 
 template <typename InputT, typename OutputT>
 absl::Status DoGemm(int64_t batch_size, const MatrixDescriptor& lhs,
-                    const MatrixDescriptor& rhs, se::DeviceMemoryBase c,
-                    const MatrixDescriptor& output, se::DeviceMemoryBase bias,
-                    se::DeviceMemoryBase workspace, float alpha, float beta,
+                    const MatrixDescriptor& rhs, se::DeviceAddressBase c,
+                    const MatrixDescriptor& output, se::DeviceAddressBase bias,
+                    se::DeviceAddressBase workspace, float alpha, float beta,
                     sycl_gemm::GemmBackendEpilogue epilogue, se::Stream* stream,
                     se::blas::AlgorithmType algorithm,
                     se::ScratchAllocator* scratch_allocator) {
@@ -678,12 +678,12 @@ absl::Status DoGemm(int64_t batch_size, const MatrixDescriptor& lhs,
 }
 
 absl::Status RunGemm(const gpu::GemmConfig& config,
-                     se::DeviceMemoryBase lhs_buffer,
-                     se::DeviceMemoryBase rhs_buffer,
-                     se::DeviceMemoryBase c_buffer,
-                     se::DeviceMemoryBase output_buffer,
-                     se::DeviceMemoryBase bias_buffer,
-                     se::DeviceMemoryBase workspace, se::Stream* stream,
+                     se::DeviceAddressBase lhs_buffer,
+                     se::DeviceAddressBase rhs_buffer,
+                     se::DeviceAddressBase c_buffer,
+                     se::DeviceAddressBase output_buffer,
+                     se::DeviceAddressBase bias_buffer,
+                     se::DeviceAddressBase workspace, se::Stream* stream,
                      sycl_gemm::GemmBackendEpilogue epilogue, int64_t algorithm,
                      se::ScratchAllocator* scratch_allocator) {
   auto lhs_layout = se::gpu::MatrixLayout{config.lhs_layout};

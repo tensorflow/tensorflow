@@ -65,11 +65,15 @@ DebugOptions GemmRewriteTestBase::GetDebugOptionsForTest() const {
   // cuBLAS for them.
   debug_options.set_xla_gpu_enable_triton_gemm(false);
   debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
+  // SYCL does not support cuBLAS. Running the tests with cuBLASlt.
+  if (IsSycl()) {
+    debug_options.set_xla_gpu_enable_cublaslt(true);
+  }
   return debug_options;
 }
 
 bool GemmRewriteTestBase::SkipGpuBlasLtTest() {
-  return !IsCuda() &&
+  return !IsCuda() && !IsSycl() &&
          !Capability().rocm_compute_capability()->has_hipblaslt() &&
          GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
 }

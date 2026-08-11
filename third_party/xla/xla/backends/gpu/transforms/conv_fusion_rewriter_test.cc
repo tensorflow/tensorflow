@@ -262,6 +262,98 @@ TEST_F(ConvFusionRewriterUnitTest, ConvertPrologueNotFusedOnVolta) {
       /*run_algebraic_simplifier=*/false, volta_device);
 }
 
+TEST_F(ConvFusionRewriterUnitTest, ConvertF32ToF64PrologueNotFused) {
+  // Conversions from f32 to f64 before an f64 convolution should not be fused
+  // into the cuDNN prologue because cuDNN does not support f32 inputs for
+  // double-precision convolutions.
+  RunAndMatch(
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+      input_f32 = f32[4,48,96,64] parameter(0)
+      input_f64 = f64[4,48,96,64] convert(input_f32)
+      filter_f32 = f32[128,3,3,64] parameter(1)
+      filter_f64 = f64[128,3,3,64] convert(filter_f32)
+      ROOT conv = f64[4,24,48,128] convolution(input_f64, filter_f64),
+                    window={size=3x3 stride=2x2 pad=0_1x0_1},
+                    dim_labels=b01f_o01i->b01f
+    })",
+      m::Fusion(m::Convert(m::Parameter(0)), m::Convert(m::Parameter(1)))
+          .WithFusionKind(HloInstruction::FusionKind::kCustom)
+          .WithShape(F64, {4, 24, 48, 128}),
+      /*run_algebraic_simplifier=*/false);
+}
+
+TEST_F(ConvFusionRewriterUnitTest, ConvertS32ToF32PrologueNotFused) {
+  // Conversions from s32 to f32 before an f32 convolution should not be fused
+  // into the cuDNN prologue because cuDNN does not support s32 inputs for
+  // single-precision convolutions.
+  RunAndMatch(
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+      input_s32 = s32[4,48,96,64] parameter(0)
+      input_f32 = f32[4,48,96,64] convert(input_s32)
+      filter_s32 = s32[128,3,3,64] parameter(1)
+      filter_f32 = f32[128,3,3,64] convert(filter_s32)
+      ROOT conv = f32[4,24,48,128] convolution(input_f32, filter_f32),
+                    window={size=3x3 stride=2x2 pad=0_1x0_1},
+                    dim_labels=b01f_o01i->b01f
+    })",
+      m::Fusion(m::Convert(m::Parameter(0)), m::Convert(m::Parameter(1)))
+          .WithFusionKind(HloInstruction::FusionKind::kCustom)
+          .WithShape(F32, {4, 24, 48, 128}),
+      /*run_algebraic_simplifier=*/false);
+}
+
+TEST_F(ConvFusionRewriterUnitTest, ConvertS8ToF32PrologueNotFused) {
+  // Conversions from s8 to f32 before an f32 convolution should not be fused
+  // into the cuDNN prologue because cuDNN only supports s8 inputs with s32
+  // convolution compute.
+  RunAndMatch(
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+      input_s8 = s8[4,48,96,64] parameter(0)
+      input_f32 = f32[4,48,96,64] convert(input_s8)
+      filter_s8 = s8[128,3,3,64] parameter(1)
+      filter_f32 = f32[128,3,3,64] convert(filter_s8)
+      ROOT conv = f32[4,24,48,128] convolution(input_f32, filter_f32),
+                    window={size=3x3 stride=2x2 pad=0_1x0_1},
+                    dim_labels=b01f_o01i->b01f
+    })",
+      m::Fusion(m::Convert(m::Parameter(0)), m::Convert(m::Parameter(1)))
+          .WithFusionKind(HloInstruction::FusionKind::kCustom)
+          .WithShape(F32, {4, 24, 48, 128}),
+      /*run_algebraic_simplifier=*/false);
+}
+
+TEST_F(ConvFusionRewriterUnitTest,
+       ConvertF16ToF32WithoutDowncastPrologueNotFused) {
+  // Conversions from f16 to f32 before an f32 convolution should not be fused
+  // into the cuDNN prologue if the conv output remains f32 (no downcast).
+  RunAndMatch(
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+      input_f16 = f16[4,48,96,64] parameter(0)
+      input_f32 = f32[4,48,96,64] convert(input_f16)
+      filter_f16 = f16[128,3,3,64] parameter(1)
+      filter_f32 = f32[128,3,3,64] convert(filter_f16)
+      ROOT conv = f32[4,24,48,128] convolution(input_f32, filter_f32),
+                    window={size=3x3 stride=2x2 pad=0_1x0_1},
+                    dim_labels=b01f_o01i->b01f
+    })",
+      m::Fusion(m::Convert(m::Parameter(0)), m::Convert(m::Parameter(1)))
+          .WithFusionKind(HloInstruction::FusionKind::kCustom)
+          .WithShape(F32, {4, 24, 48, 128}),
+      /*run_algebraic_simplifier=*/false);
+}
+
 TEST_F(ConvFusionRewriterUnitTest, TestConvInt8ToInt8BiasSideInput) {
   MAYBE_SKIP_TEST("I8");
   RunAndMatch(R"(
