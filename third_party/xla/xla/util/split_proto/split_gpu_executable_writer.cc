@@ -136,7 +136,7 @@ absl::Status NormalizeBackendConfig(gpu::GpuExecutableProto& executable) {
 absl::Status WriteSplitGpuExecutable(gpu::GpuExecutableProto executable,
                                      std::unique_ptr<riegeli::Writer> writer) {
   riegeli::RecordWriter record_writer(std::move(writer),
-                                      GetSplitProtoRiegeliOptions());
+                                      GetGpuSplitProtoOptions());
   SplitProtoManifest manifest = BuildManifest(executable.constants_size());
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       WriteRecord(record_writer, manifest),

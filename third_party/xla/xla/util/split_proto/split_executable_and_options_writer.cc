@@ -79,7 +79,7 @@ absl::Status WriteSplitExecutableAndOptions(
     const ExecutableAndOptionsProto& executable_and_options,
     std::unique_ptr<riegeli::Writer> writer) {
   riegeli::RecordWriter record_writer(std::move(writer),
-                                      GetSplitProtoRiegeliOptions());
+                                      GetGpuSplitProtoOptions());
   SplitProtoManifest manifest = BuildManifest();
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       WriteRecord(record_writer, manifest),
