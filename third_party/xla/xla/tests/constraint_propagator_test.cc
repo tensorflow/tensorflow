@@ -712,5 +712,89 @@ ENTRY main {
   EXPECT_GE(p0_int.min, 0.0);
 }
 
+TEST_F(ConstraintPropagatorTest, InverseSigmoidLogitPropagatesConstraint) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[8,128] parameter(0)
+  c_one = f32[] constant(1)
+  b_one = f32[8,128] broadcast(c_one), dimensions={}
+  sub = f32[8,128] subtract(b_one, param_0)
+  div = f32[8,128] divide(sub, param_0)
+  ROOT log = f32[8,128] log(div)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_TRUE(p0_int.IsPositiveStrict());
+  EXPECT_TRUE(p0_int.exclude_zero);
+  EXPECT_GE(p0_int.min, 0.0);
+  EXPECT_LE(p0_int.max, 1.0);
+}
+
+TEST_F(ConstraintPropagatorTest, AddConstantPropagatesInterval) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[8,128] parameter(0)
+  c_offset = f32[] constant(-1024)
+  b_offset = f32[8,128] broadcast(c_offset), dimensions={}
+  add = f32[8,128] add(param_0, b_offset)
+  ROOT log = f32[8,128] log(add)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_GE(p0_int.min, 1024.0);
+}
+
+TEST_F(ConstraintPropagatorTest, MultiplyPositiveConstantPropagatesInterval) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[8,128] parameter(0)
+  c_scale = f32[] constant(0.25)
+  b_scale = f32[8,128] broadcast(c_scale), dimensions={}
+  mul = f32[8,128] multiply(param_0, b_scale)
+  ROOT sqrt = f32[8,128] sqrt(mul)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_GE(p0_int.min, 0.0);
+}
+
+TEST_F(ConstraintPropagatorTest, MultiplyNegativeConstantPropagatesInterval) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[8,128] parameter(0)
+  c_scale = f32[] constant(-2.0)
+  b_scale = f32[8,128] broadcast(c_scale), dimensions={}
+  mul = f32[8,128] multiply(param_0, b_scale)
+  ROOT sqrt = f32[8,128] sqrt(mul)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_LE(p0_int.max, 0.0);
+}
+
 }  // namespace
 }  // namespace xla
