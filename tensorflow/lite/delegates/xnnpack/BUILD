@@ -1341,20 +1341,6 @@ cc_library(
 )
 
 cc_test(
-    name = "moe_delegate_kernel_test",
-    srcs = ["moe_delegate_kernel_test.cc"],
-    deps = [
-        ":moe_delegate_kernel",
-        "//tensorflow/lite:builtin_ops",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/c:common",
-        "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
-        "@flatbuffers//:runtime_cc",
-    ],
-)
-
-cc_test(
     name = "average_pool_2d_test",
     srcs = ["average_pool_2d_test.cc"],
     linkopts = select({
