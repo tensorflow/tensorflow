@@ -92,6 +92,40 @@ class FakeSubAllocator : public SubAllocator {
   uintptr_t next_ = kBase;
 };
 
+// SubAllocator that always fails. A fuse guards against the pre-fix behavior
+// of BFCAllocator::Extend retrying the same size forever: after kFuse calls
+// it reports a test failure and starts succeeding, so a stalled loop
+// terminates and the test fails immediately instead of hanging.
+class AlwaysFailingSubAllocator : public SubAllocator {
+ public:
+  static constexpr int kFuse = 1000;
+
+  AlwaysFailingSubAllocator() : SubAllocator({}, {}) {}
+
+  void* Alloc(size_t alignment, size_t num_bytes,
+              size_t* bytes_received) override {
+    if (++calls_ > kFuse) {
+      ADD_FAILURE() << "Extend retried " << kFuse
+                    << " times; the backpedal loop is making no progress";
+      uintptr_t aligned = (next_ + (alignment - 1)) & ~(alignment - 1);
+      next_ = aligned + num_bytes;
+      *bytes_received = num_bytes;
+      return absl::bit_cast<void*>(aligned);
+    }
+    return nullptr;
+  }
+
+  void Free(void* ptr, size_t num_bytes) override {}
+
+  bool SupportsCoalescing() const override { return false; }
+
+  int calls() const { return calls_; }
+
+ private:
+  int calls_ = 0;
+  uintptr_t next_ = FakeSubAllocator::kBase;
+};
+
 // Helper to check pointer alignment.
 bool IsAligned(const void* ptr, size_t alignment) {
   return (absl::bit_cast<uintptr_t>(ptr) & (alignment - 1)) == 0;
@@ -150,6 +184,29 @@ TEST(BFCAllocatorTest, OomLogsAllocationAnnotations) {
 
   log.StopCapturingLogs();
   alloc.DeallocateRaw(ptr);
+}
+
+// Regression test for the backpedal loop in BFCAllocator::Extend. The loop
+// shrinks the attempt by kBackpedalFactor (0.9) and re-rounds it with
+// RoundedBytes, which rounds up to a multiple of kMinAllocationSize; for
+// attempts below 10 * kMinAllocationSize the rounding undid the shrink, so a
+// persistently failing sub-allocator used to spin the loop forever on the
+// same size. The fuse in the sub-allocator converts such a stall into an
+// immediate test failure instead of a hang.
+TEST(BFCAllocatorTest, ExtendTerminatesWhenSubAllocatorAlwaysFails) {
+  // A pool of 8 * kMinAllocationSize (2048 bytes) makes the first backpedal
+  // attempt land in the formerly-stalling zone:
+  // RoundedBytes(0.9 * 2048) == 2048.
+  constexpr size_t kPool = 8 * BFCAllocator::kMinAllocationSize;
+  BFCAllocator::Options opts;
+  opts.allow_growth = false;
+  opts.allow_retry_on_failure = false;
+  auto sub_owner = std::make_unique<AlwaysFailingSubAllocator>();
+  AlwaysFailingSubAllocator* sub = sub_owner.get();
+  BFCAllocator alloc(std::move(sub_owner), kPool, /*name=*/"backpedal", opts);
+
+  EXPECT_EQ(alloc.AllocateRaw(kAlignment, 100), nullptr);
+  EXPECT_LE(sub->calls(), AlwaysFailingSubAllocator::kFuse);
 }
 
 // Parameterized test that verifies alignment is respected for various
