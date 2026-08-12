@@ -25,6 +25,7 @@ def repo():
             "//third_party/compute_library:exclude_omp_scheduler.patch",
             "//third_party/compute_library:include_string.patch",
             "//third_party/compute_library:rules_python.patch",
+            "//third_party/compute_library:rules_python.patch",
         ],
         sha256 = "1bceef23aa5b3cc7321cf80e0729e87482f12544b107cdabffb88a6a52aa4adc",
         strip_prefix = "ComputeLibrary-52.8.0",
