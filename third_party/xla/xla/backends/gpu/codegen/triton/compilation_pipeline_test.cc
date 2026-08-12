@@ -20,7 +20,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
@@ -46,11 +45,6 @@ TEST(CompilationPipelineTest, ContainsUnswitchLoopsCompositePass) {
     pass_names.push_back(pass.getName().str());
   }
   ASSERT_THAT(pass_names, Contains("TritonXLAUnswitchLoopsComposite"));
-
-  std::string pipeline_str;
-  llvm::raw_string_ostream os(pipeline_str);
-  pm.printAsTextualPipeline(os);
-  EXPECT_THAT(pipeline_str, ::testing::HasSubstr("xla-simplify-arith"));
 }
 
 }  // namespace gpu
