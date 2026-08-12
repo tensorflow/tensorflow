@@ -49,6 +49,7 @@ struct MoeExpertsAttributes {
   enum class WeightType {
     kFp32,
     kInt8,
+    kInt4,
   };
   enum class Activation {
     kGelu,
@@ -99,9 +100,10 @@ class MoeExpertsDelegateKernel::Impl {
                          kMoeCustomOp, node_index);
       return kTfLiteError;
     }
-    const bool is_int8 =
-        attr.weight_type == MoeExpertsAttributes::WeightType::kInt8;
-    const int expected_inputs = is_int8 ? 10 : 7;
+    const bool is_quantized =
+        attr.weight_type == MoeExpertsAttributes::WeightType::kInt8 ||
+        attr.weight_type == MoeExpertsAttributes::WeightType::kInt4;
+    const int expected_inputs = is_quantized ? 10 : 7;
     if (node->inputs->size != expected_inputs || node->outputs->size != 1) {
       TF_LITE_KERNEL_LOG(context, "%s node #%d expects %d inputs and 1 output",
                          kMoeCustomOp, node_index, expected_inputs);
@@ -121,16 +123,28 @@ class MoeExpertsDelegateKernel::Impl {
       return kTfLiteError;
     }
 
-    auto check_tensor = [&](int idx, TfLiteType expected_type,
-                            size_t expected_elements,
-                            const char* name) -> bool {
+    auto check_weight_tensor = [&](int idx, size_t expected_elements,
+                                   const char* name) -> bool {
       const TfLiteTensor* t = &context->tensors[node->inputs->data[idx]];
-      if (t->type != expected_type) {
-        TF_LITE_KERNEL_LOG(context,
-                           "%s node #%d %s (input #%d) requires %s data type",
-                           kMoeCustomOp, node_index, name, idx,
-                           TfLiteTypeGetName(expected_type));
-        return false;
+      if (attr.weight_type == MoeExpertsAttributes::WeightType::kFp32) {
+        if (t->type != kTfLiteFloat32) {
+          TF_LITE_KERNEL_LOG(context, "%s node #%d %s requires fp32 type",
+                             kMoeCustomOp, node_index, name);
+          return false;
+        }
+      } else if (attr.weight_type == MoeExpertsAttributes::WeightType::kInt8) {
+        if (t->type != kTfLiteInt8) {
+          TF_LITE_KERNEL_LOG(context, "%s node #%d %s requires int8 type",
+                             kMoeCustomOp, node_index, name);
+          return false;
+        }
+      } else if (attr.weight_type == MoeExpertsAttributes::WeightType::kInt4) {
+        if (t->type != kTfLiteInt4 && t->type != kTfLiteInt8) {
+          TF_LITE_KERNEL_LOG(context,
+                             "%s node #%d %s requires int4 or int8 type",
+                             kMoeCustomOp, node_index, name);
+          return false;
+        }
       }
       if (t->allocation_type != kTfLiteMmapRo) {
         TF_LITE_KERNEL_LOG(
@@ -144,13 +158,62 @@ class MoeExpertsDelegateKernel::Impl {
                            kMoeCustomOp, node_index, name, idx);
         return false;
       }
-      if (NumElements(t) != static_cast<int>(expected_elements)) {
+      const int count = NumElements(t);
+      const int expected_count =
+          (t->type == kTfLiteInt8 &&
+           attr.weight_type == MoeExpertsAttributes::WeightType::kInt4)
+              ? static_cast<int>((expected_elements + 1) / 2)
+              : static_cast<int>(expected_elements);
+      if (count != expected_count) {
         TF_LITE_KERNEL_LOG(
             context,
-            "%s node #%d %s (input #%d) element count %d does not match "
-            "expected %zu",
-            kMoeCustomOp, node_index, name, idx, NumElements(t),
-            expected_elements);
+            "%s node #%d %s element count %d does not match expected %d",
+            kMoeCustomOp, node_index, name, count, expected_count);
+        return false;
+      }
+      return true;
+    };
+
+    auto check_scale_tensor = [&](int idx, size_t num_rows,
+                                  const char* name) -> bool {
+      const TfLiteTensor* t = &context->tensors[node->inputs->data[idx]];
+      if (t->type != kTfLiteFloat32 || t->allocation_type != kTfLiteMmapRo ||
+          t->dims == nullptr) {
+        TF_LITE_KERNEL_LOG(context,
+                           "%s node #%d %s must be a constant fp32 tensor",
+                           kMoeCustomOp, node_index, name);
+        return false;
+      }
+      const int count = NumElements(t);
+      if (attr.weight_type == MoeExpertsAttributes::WeightType::kInt8) {
+        if (count != static_cast<int>(num_rows)) {
+          TF_LITE_KERNEL_LOG(
+              context,
+              "%s node #%d %s element count %d does not match rows %zu",
+              kMoeCustomOp, node_index, name, count, num_rows);
+          return false;
+        }
+      } else if (attr.weight_type == MoeExpertsAttributes::WeightType::kInt4) {
+        if (count <= 0 || (static_cast<size_t>(count) % num_rows != 0)) {
+          TF_LITE_KERNEL_LOG(
+              context,
+              "%s node #%d %s element count %d is not a multiple of rows %zu",
+              kMoeCustomOp, node_index, name, count, num_rows);
+          return false;
+        }
+      }
+      return true;
+    };
+
+    auto check_per_expert_scale = [&](int idx, size_t expected_elements,
+                                      const char* name) -> bool {
+      const TfLiteTensor* t = &context->tensors[node->inputs->data[idx]];
+      if (t->type != kTfLiteFloat32 || t->allocation_type != kTfLiteMmapRo ||
+          t->dims == nullptr ||
+          NumElements(t) != static_cast<int>(expected_elements)) {
+        TF_LITE_KERNEL_LOG(context,
+                           "%s node #%d %s invalid per_expert_scale tensor",
+                           kMoeCustomOp, node_index, name);
         return false;
       }
       return true;
@@ -162,30 +225,35 @@ class MoeExpertsDelegateKernel::Impl {
 
     const size_t gate_ff1_elements = hidden_dim * num_experts * model_dim;
     const size_t linear_elements = model_dim * num_experts * hidden_dim;
-    const size_t gate_ff1_scales = hidden_dim * num_experts;
-    const size_t linear_scales = model_dim * num_experts;
+    const size_t gate_ff1_rows = hidden_dim * num_experts;
+    const size_t linear_rows = model_dim * num_experts;
     const size_t per_expert_scales = num_experts;
 
-    const TfLiteType weight_type = is_int8 ? kTfLiteInt8 : kTfLiteFloat32;
     int idx = 3;
-    if (!check_tensor(idx++, weight_type, gate_ff1_elements, "gate_weight"))
+    if (!check_weight_tensor(idx++, gate_ff1_elements, "gate_weight")) {
       return kTfLiteError;
-    if (is_int8 &&
-        !check_tensor(idx++, kTfLiteFloat32, gate_ff1_scales, "gate_scale"))
+    }
+    if (is_quantized &&
+        !check_scale_tensor(idx++, gate_ff1_rows, "gate_scale")) {
       return kTfLiteError;
-    if (!check_tensor(idx++, weight_type, gate_ff1_elements, "ff1_weight"))
+    }
+    if (!check_weight_tensor(idx++, gate_ff1_elements, "ff1_weight")) {
       return kTfLiteError;
-    if (is_int8 &&
-        !check_tensor(idx++, kTfLiteFloat32, gate_ff1_scales, "ff1_scale"))
+    }
+    if (is_quantized &&
+        !check_scale_tensor(idx++, gate_ff1_rows, "ff1_scale")) {
       return kTfLiteError;
-    if (!check_tensor(idx++, weight_type, linear_elements, "linear_weight"))
+    }
+    if (!check_weight_tensor(idx++, linear_elements, "linear_weight")) {
       return kTfLiteError;
-    if (is_int8 &&
-        !check_tensor(idx++, kTfLiteFloat32, linear_scales, "linear_scale"))
+    }
+    if (is_quantized &&
+        !check_scale_tensor(idx++, linear_rows, "linear_scale")) {
       return kTfLiteError;
-    if (!check_tensor(idx++, kTfLiteFloat32, per_expert_scales,
-                      "per_expert_scale"))
+    }
+    if (!check_per_expert_scale(idx++, per_expert_scales, "per_expert_scale")) {
       return kTfLiteError;
+    }
     return kTfLiteOk;
   }
 
@@ -227,7 +295,8 @@ class MoeExpertsDelegateKernel::Impl {
     int linear_weight_id = kInvalidTensorId;
     int linear_scale_id = kInvalidTensorId;
     int per_expert_scale_id = kInvalidTensorId;
-    if (attr.weight_type == MoeExpertsAttributes::WeightType::kInt8) {
+    if (attr.weight_type == MoeExpertsAttributes::WeightType::kInt8 ||
+        attr.weight_type == MoeExpertsAttributes::WeightType::kInt4) {
       gate_weight_id = node->inputs->data[3];
       gate_scale_id = node->inputs->data[4];
       ff1_weight_id = node->inputs->data[5];
@@ -297,16 +366,30 @@ class MoeExpertsDelegateKernel::Impl {
         gate_scale_id_ != kInvalidTensorId
             ? GetTensorData<float>(&context->tensors[gate_scale_id_])
             : nullptr;
+    const size_t gate_scale_elements =
+        gate_scale_id_ != kInvalidTensorId
+            ? static_cast<size_t>(
+                  NumElements(&context->tensors[gate_scale_id_]))
+            : 0;
     const void* ff1_weight = ff1_weight_tensor.data.raw;
     const float* ff1_scale =
         ff1_scale_id_ != kInvalidTensorId
             ? GetTensorData<float>(&context->tensors[ff1_scale_id_])
             : nullptr;
+    const size_t ff1_scale_elements =
+        ff1_scale_id_ != kInvalidTensorId
+            ? static_cast<size_t>(NumElements(&context->tensors[ff1_scale_id_]))
+            : 0;
     const void* linear_weight = linear_weight_tensor.data.raw;
     const float* linear_scale =
         linear_scale_id_ != kInvalidTensorId
             ? GetTensorData<float>(&context->tensors[linear_scale_id_])
             : nullptr;
+    const size_t linear_scale_elements =
+        linear_scale_id_ != kInvalidTensorId
+            ? static_cast<size_t>(
+                  NumElements(&context->tensors[linear_scale_id_]))
+            : 0;
     const float* per_expert_scale =
         GetTensorData<float>(&per_expert_scale_tensor);
     float* output = GetTensorData<float>(&output_tensor);
@@ -318,10 +401,12 @@ class MoeExpertsDelegateKernel::Impl {
                          kMoeCustomOp);
       return kTfLiteError;
     }
-    if (attr_.weight_type == MoeExpertsAttributes::WeightType::kInt8 &&
+    if ((attr_.weight_type == MoeExpertsAttributes::WeightType::kInt8 ||
+         attr_.weight_type == MoeExpertsAttributes::WeightType::kInt4) &&
         (gate_scale == nullptr || ff1_scale == nullptr ||
          linear_scale == nullptr)) {
-      TF_LITE_KERNEL_LOG(context, "%s int8 mode received null scale pointers",
+      TF_LITE_KERNEL_LOG(context,
+                         "%s quantized mode received null scale pointers",
                          kMoeCustomOp);
       return kTfLiteError;
     }
@@ -341,8 +426,9 @@ class MoeExpertsDelegateKernel::Impl {
       }
       if (!RunExpert(context, expert, assignments_.data() + begin,
                      routed_tokens, src, top_weights, gate_weight, gate_scale,
-                     ff1_weight, ff1_scale, linear_weight, linear_scale,
-                     per_expert_scale, output)) {
+                     gate_scale_elements, ff1_weight, ff1_scale,
+                     ff1_scale_elements, linear_weight, linear_scale,
+                     linear_scale_elements, per_expert_scale, output)) {
         return kTfLiteError;
       }
     }
@@ -411,6 +497,8 @@ class MoeExpertsDelegateKernel::Impl {
       attr->weight_type = MoeExpertsAttributes::WeightType::kFp32;
     } else if (weight_type == "int8") {
       attr->weight_type = MoeExpertsAttributes::WeightType::kInt8;
+    } else if (weight_type == "int4") {
+      attr->weight_type = MoeExpertsAttributes::WeightType::kInt4;
     } else {
       TF_LITE_KERNEL_LOG(context,
                          "%s node #%d has unsupported weight_type '%s'",
@@ -573,16 +661,59 @@ class MoeExpertsDelegateKernel::Impl {
     }
   }
 
+  static void CopyAndDequantizeExpertWeightRowsInt4(
+      const int8_t* weight_i4_packed, const float* scale, size_t scale_elements,
+      size_t num_experts, size_t expert, size_t output_channels,
+      size_t input_channels, float* dst) {
+    const size_t num_rows = output_channels * num_experts;
+    const size_t groups_per_row = scale_elements / num_rows;
+    const size_t group_size =
+        (groups_per_row > 0 && groups_per_row <= input_channels)
+            ? (input_channels / groups_per_row)
+            : 1;
+
+    for (size_t out = 0; out < output_channels; ++out) {
+      const size_t row_idx = out * num_experts + expert;
+      const int8_t* src_row_packed =
+          weight_i4_packed + (row_idx * input_channels) / 2;
+      float* dst_row = dst + out * input_channels;
+      const float* row_scales = scale + row_idx * groups_per_row;
+
+      for (size_t in = 0; in < input_channels; ++in) {
+        const size_t byte_idx = in / 2;
+        const int8_t byte_val = src_row_packed[byte_idx];
+        const int8_t nibble = (in % 2 == 0)
+                                  ? static_cast<int8_t>(byte_val << 4) >> 4
+                                  : static_cast<int8_t>(byte_val >> 4);
+        const size_t group_idx =
+            (groups_per_row > 1 && group_size > 0)
+                ? std::min(in / group_size, groups_per_row - 1)
+                : 0;
+        const float scale_val = row_scales[group_idx];
+        dst_row[in] = static_cast<float>(nibble) * scale_val;
+      }
+    }
+  }
+
   void CopyGateUpExpertWeight(const void* gate_weight, const float* gate_scale,
+                              size_t gate_scale_elements,
                               const void* ff1_weight, const float* ff1_scale,
-                              size_t expert) {
+                              size_t ff1_scale_elements, size_t expert) {
     const size_t hidden_dim = static_cast<size_t>(attr_.hidden_dim);
     const size_t model_dim = static_cast<size_t>(attr_.model_dim);
     const size_t num_experts = static_cast<size_t>(attr_.num_experts);
     const size_t rows = 2 * hidden_dim;
     EnsureSize(&kernel_buffer_, rows * model_dim);
     float* dst = kernel_buffer_.data();
-    if (attr_.weight_type == MoeExpertsAttributes::WeightType::kInt8) {
+    if (attr_.weight_type == MoeExpertsAttributes::WeightType::kInt4) {
+      CopyAndDequantizeExpertWeightRowsInt4(
+          static_cast<const int8_t*>(gate_weight), gate_scale,
+          gate_scale_elements, num_experts, expert, hidden_dim, model_dim, dst);
+      CopyAndDequantizeExpertWeightRowsInt4(
+          static_cast<const int8_t*>(ff1_weight), ff1_scale, ff1_scale_elements,
+          num_experts, expert, hidden_dim, model_dim,
+          dst + hidden_dim * model_dim);
+    } else if (attr_.weight_type == MoeExpertsAttributes::WeightType::kInt8) {
       CopyAndDequantizeExpertWeightRowsInt8(
           static_cast<const int8_t*>(gate_weight), gate_scale, num_experts,
           expert, hidden_dim, model_dim, dst);
@@ -598,11 +729,17 @@ class MoeExpertsDelegateKernel::Impl {
     }
   }
 
-  void CopyExpertWeight(const void* weight, const float* scale, size_t expert,
+  void CopyExpertWeight(const void* weight, const float* scale,
+                        size_t scale_elements, size_t expert,
                         size_t output_channels, size_t input_channels) {
     const size_t num_experts = static_cast<size_t>(attr_.num_experts);
     EnsureSize(&kernel_buffer_, output_channels * input_channels);
-    if (attr_.weight_type == MoeExpertsAttributes::WeightType::kInt8) {
+    if (attr_.weight_type == MoeExpertsAttributes::WeightType::kInt4) {
+      CopyAndDequantizeExpertWeightRowsInt4(
+          static_cast<const int8_t*>(weight), scale, scale_elements,
+          num_experts, expert, output_channels, input_channels,
+          kernel_buffer_.data());
+    } else if (attr_.weight_type == MoeExpertsAttributes::WeightType::kInt8) {
       CopyAndDequantizeExpertWeightRowsInt8(
           static_cast<const int8_t*>(weight), scale, num_experts, expert,
           output_channels, input_channels, kernel_buffer_.data());
@@ -652,9 +789,11 @@ class MoeExpertsDelegateKernel::Impl {
                  const MoeExpertsAssignment* expert_assignments,
                  int routed_tokens, const float* src, const float* top_weights,
                  const void* gate_weight, const float* gate_scale,
-                 const void* ff1_weight, const float* ff1_scale,
+                 size_t gate_scale_elements, const void* ff1_weight,
+                 const float* ff1_scale, size_t ff1_scale_elements,
                  const void* linear_weight, const float* linear_scale,
-                 const float* per_expert_scale, float* output) {
+                 size_t linear_scale_elements, const float* per_expert_scale,
+                 float* output) {
     const size_t model_dim = static_cast<size_t>(attr_.model_dim);
     const size_t hidden_dim = static_cast<size_t>(attr_.hidden_dim);
     const size_t num_active_experts =
@@ -674,8 +813,8 @@ class MoeExpertsDelegateKernel::Impl {
                   model_dim * sizeof(float));
     }
 
-    CopyGateUpExpertWeight(gate_weight, gate_scale, ff1_weight, ff1_scale,
-                           expert);
+    CopyGateUpExpertWeight(gate_weight, gate_scale, gate_scale_elements,
+                           ff1_weight, ff1_scale, ff1_scale_elements, expert);
     if (!RunDynamicFullyConnected(context, gate_up_fc_.get(), routed_tokens,
                                   attr_.model_dim, 2 * attr_.hidden_dim,
                                   routed_src_.data(), kernel_buffer_.data(),
@@ -696,8 +835,8 @@ class MoeExpertsDelegateKernel::Impl {
       }
     }
 
-    CopyExpertWeight(linear_weight, linear_scale, expert, model_dim,
-                     hidden_dim);
+    CopyExpertWeight(linear_weight, linear_scale, linear_scale_elements, expert,
+                     model_dim, hidden_dim);
     if (!RunDynamicFullyConnected(context, linear_fc_.get(), routed_tokens,
                                   attr_.hidden_dim, attr_.model_dim,
                                   hidden_.data(), kernel_buffer_.data(),
