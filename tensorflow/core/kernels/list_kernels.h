@@ -889,17 +889,18 @@ class TensorListScatterIntoExistingList : public OpKernel {
             "Expected len(indices) == tensor.shape[0], but saw: ",
             indices.NumElements(), " vs. ", input_tensor.shape().dim_size(0))));
 
-    // Resize the list if needed to accommodate all indices.
-    TensorList* output_list = nullptr;
-    OP_REQUIRES_OK(c, ForwardInputOrCreateNewList(c, 0, 0, *l, &output_list));
     const auto indices_vec = indices.vec<int32_t>();
-    for (int index = 0; index < indices.NumElements(); ++index) {
+    for (int64_t index = 0; index < indices.NumElements(); ++index) {
       OP_REQUIRES(
           c, indices_vec(index) >= 0,
           absl::InvalidArgumentError(
               "Indices in TensorListScatterIntoExistingList must all be "
               "non-negative."));
     }
+
+    // Resize the list if needed to accommodate all indices.
+    TensorList* output_list = nullptr;
+    OP_REQUIRES_OK(c, ForwardInputOrCreateNewList(c, 0, 0, *l, &output_list));
     int32_t max_index =
         (indices.NumElements() == 0)
             ? -1
