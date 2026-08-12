@@ -64,6 +64,75 @@ diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialec
  
  #endif  // STABLEHLO_DIALECT_CHLO_OPS
 -
+diff --ruN a/stablehlo/stablehlo/dialect/Serialization.cpp b/stablehlo/stablehlo/dialect/Serialization.cpp
+--- stablehlo/stablehlo/dialect/Serialization.cpp
++++ stablehlo/stablehlo/dialect/Serialization.cpp
+@@ -24,6 +24,7 @@
+ #include "mlir/IR/Location.h"
+ #include "mlir/IR/MLIRContext.h"
+ #include "mlir/IR/OwningOpRef.h"
++#include "mlir/IR/Verifier.h"
+ #include "mlir/Parser/Parser.h"
+ #include "mlir/Pass/PassManager.h"
+ #include "mlir/Support/LLVM.h"
+@@ -43,11 +44,18 @@
+                                         bool allowOtherDialects) {
+   MLIRContext* context = module.getContext();
+ 
++  // Only enable verifier in debug builds.
++  bool enableVerifier = false;
++#ifndef NDEBUG
++  enableVerifier = true;
++#endif
++
+   // Convert StableHLO --> VHLO.
+   // If allowOtherDialects is true, we will allow other dialects to be present
+   // in the module, otherwise will fail if there are any other dialects present.
+   {
+     PassManager pm(context);
++    pm.enableVerifier(enableVerifier);
+     StablehloLegalizeToVhloPassOptions options;
+     options.allowOtherDialects = allowOtherDialects;
+     pm.addPass(stablehlo::createStablehloLegalizeToVhloPass(options));
+@@ -61,6 +69,7 @@
+   // target version failures.
+   {
+     PassManager pm(context);
++    pm.enableVerifier(enableVerifier);
+     pm.addPass(stablehlo::createVhloToVersionPass({targetVersion.str()}));
+     if (!succeeded(pm.run(module))) {
+       return failure();
+@@ -81,7 +90,15 @@
+ OwningOpRef<ModuleOp> deserializePortableArtifact(StringRef sourceStr,
+                                                   MLIRContext* context) {
+   context->loadDialect<vhlo::VhloDialect>();
+-  auto module = parseSourceString<ModuleOp>(sourceStr, context);
++
++  // Only enable verifier in debug builds.
++  bool enableVerifier = false;
++#ifndef NDEBUG
++  enableVerifier = true;
++#endif
++
++  ParserConfig config(context, /*verifyAfterParse=*/enableVerifier);
++  auto module = parseSourceString<ModuleOp>(sourceStr, config);
+   if (!module) {
+     emitError(UnknownLoc::get(context))
+         << "failed to deserialize portable artifact using StableHLO_v"
+@@ -91,8 +108,13 @@
+ 
+   // Convert VHLO --> VHLO(current) --> StableHLO
+   PassManager pm(context);
++  pm.enableVerifier(enableVerifier);
+   createStablehloDeserializePipeline(pm);
+   if (!succeeded(pm.run(*module))) {
++    return nullptr;
++  }
++
++  if (failed(verify(*module))) {
+     return nullptr;
+   }
+ 
 diff --ruN a/stablehlo/stablehlo/dialect/Version.cpp b/stablehlo/stablehlo/dialect/Version.cpp
 --- stablehlo/stablehlo/dialect/Version.cpp
 +++ stablehlo/stablehlo/dialect/Version.cpp
