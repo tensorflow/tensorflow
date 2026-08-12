@@ -896,11 +896,15 @@ class CommonPjRtBufferImpl : public CommonPjRtBuffer {
       PjRtMemorySpace* dst_memory_space) override;
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
       PjRtBuffer* donated_dst) override;
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
+      PjRtMemorySpace* dst_memory_space,
+      std::optional<PjRtRawBufferRef> donated_dst);
 
   // This behaves like CopyToMemorySpace for memory space pairs which
   // require no layout changes.
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> DirectCopyToMemorySpace(
-      PjRtMemorySpace* dst_memory_space);
+      PjRtMemorySpace* dst_memory_space,
+      std::optional<PjRtRawBufferRef> donated_dst = std::nullopt);
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> DirectCopyToMemorySpace(
       PjRtBuffer* donated_dst);
 

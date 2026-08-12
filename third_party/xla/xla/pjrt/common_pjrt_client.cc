@@ -2832,11 +2832,33 @@ CommonPjRtBufferImpl::CopyToMemorySpace(PjRtMemorySpace* dst_memory_space) {
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
+CommonPjRtBufferImpl::CopyToMemorySpace(
+    PjRtMemorySpace* dst_memory_space,
+    std::optional<PjRtRawBufferRef> donated_dst) {
+  if (!donated_dst.has_value()) {
+    return CopyToMemorySpace(dst_memory_space);
+  }
+  // Copying across PjRtClients involves a copy through the host.
+  if (dst_memory_space->client() == client()) {
+    ABSL_ASSIGN_OR_RETURN(xla::Shape dest_shape,
+                     client()->GetCopyDestinationShape(
+                         on_device_shape(), memory_space(), dst_memory_space));
+    if (xla::Shape::Equal().IgnoreMemorySpaceInLayout()(dest_shape,
+                                                        on_device_shape())) {
+      return DirectCopyToMemorySpace(dst_memory_space, std::move(donated_dst));
+    }
+  }
+  return absl::InvalidArgumentError(
+      "CopyToMemorySpace with donated_dst is only supported for direct D2D "
+      "copies on CommonPjRtClient without layout changes");
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 CommonPjRtBufferImpl::CopyToMemorySpace(PjRtBuffer* donated_dst) {
   PjRtMemorySpace* dst_memory_space = donated_dst->memory_space();
   // Copying across PjRtClients involves a copy through the host.
   if (dst_memory_space->client() == client()) {
-    ABSL_ASSIGN_OR_RETURN(auto dest_shape,
+    ABSL_ASSIGN_OR_RETURN(xla::Shape dest_shape,
                      client()->GetCopyDestinationShape(
                          on_device_shape(), memory_space(), dst_memory_space));
     if (xla::Shape::Equal().IgnoreMemorySpaceInLayout()(dest_shape,
@@ -2929,8 +2951,11 @@ CommonPjRtBufferImpl::CopyToMemorySpaceFallbackThroughLiteral(
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 CommonPjRtBufferImpl::DirectCopyToMemorySpace(
-    PjRtMemorySpace* dst_memory_space) {
-  tsl::profiler::TraceMe traceme("CopyToMemorySpace_Direct");
+    PjRtMemorySpace* dst_memory_space,
+    std::optional<PjRtRawBufferRef> donated_dst) {
+  tsl::profiler::TraceMe traceme(donated_dst.has_value()
+                                     ? "CopyToMemorySpace_Donated"
+                                     : "CopyToMemorySpace_Direct");
   if (!dynamic_cast<CommonPjRtClient*>(dst_memory_space->client())) {
     return absl::InvalidArgumentError(
         "DirectCopyToMemorySpace only supported across CommonPjRtClient "
@@ -2940,6 +2965,9 @@ CommonPjRtBufferImpl::DirectCopyToMemorySpace(
   PjRtDeviceEventPromiseRef src_usage_event_promise;
   PjRtRawBufferRef src_raw_buffer;
   PjRtRawBufferRef dst_raw_buffer;
+  if (donated_dst.has_value()) {
+    dst_raw_buffer = *std::move(donated_dst);
+  }
   std::unique_ptr<PjRtBuffer> dst_buffer;
   PjRtDeviceEventRefVector definition_events;
   ::tsl::AsyncValueRef<bool> allocation_event;
