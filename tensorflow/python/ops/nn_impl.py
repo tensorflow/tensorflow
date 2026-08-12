@@ -467,9 +467,9 @@ def swish(features, beta=1.0):
     sigmoid_underflow = math_ops.logical_and(
         math_ops.equal(sigmoid_logits, 0.0), math_ops.is_finite(logits))
     safe_multiplier = array_ops.where_v2(
-        sigmoid_underflow, multiplier, array_ops.ones_like(multiplier))
+        sigmoid_underflow, multiplier, math_ops.cast(1.0, multiplier.dtype))
     safe_logits = array_ops.where_v2(
-        sigmoid_underflow, logits, array_ops.zeros_like(logits))
+        sigmoid_underflow, logits, math_ops.cast(0.0, logits.dtype))
     underflow_result = math_ops.sign(safe_multiplier) * math_ops.exp(
         safe_logits + math_ops.log(math_ops.abs(safe_multiplier)))
     return array_ops.where_v2(
