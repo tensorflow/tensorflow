@@ -96,7 +96,7 @@ class ParseExampleTest(test.TestCase):
           sparse_types=[],
           ragged_value_types=[],
           ragged_split_types=[],
-          dense_shapes=[tensor_shape.TensorShape([None, 0])])
+          dense_shapes=[[0]])
       self.evaluate(outputs)
 
   def _test(self, kwargs, expected_values=None, expected_err=None):
@@ -1225,7 +1225,7 @@ class ParseSingleExampleTest(test.TestCase):
           sparse_keys=[],
           dense_keys=["k"],
           sparse_types=[],
-          dense_shapes=[tensor_shape.TensorShape([None, 0])])
+          dense_shapes=[[0]])
       self.evaluate(outputs)
 
   def _test(self, kwargs, expected_values=None, expected_err=None):
