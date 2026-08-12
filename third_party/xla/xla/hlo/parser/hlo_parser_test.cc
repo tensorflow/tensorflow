@@ -3524,6 +3524,33 @@ ENTRY e {
               HasSubstr("does not match the tile assignment size"));
 }
 
+TEST_F(HloParserTest, ShardingIotaSizeMismatchesTileAssignment) {
+  const std::string original = R"(HloModule m
+ENTRY e {
+  p = f32[4,4] parameter(0)
+  ROOT c = f32[4,4] copy(p), sharding={devices=[2,2]<=[16]}
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(),
+              HasSubstr("does not match the tile assignment dimensions "
+                        "product"));
+}
+
+TEST_F(HloParserTest, CollectiveDeviceListIotaSizeMismatch) {
+  const std::string original = R"(HloModule m
+ENTRY e {
+  p = f32[8] parameter(0)
+  ROOT ag = f32[16] all-gather(p), dimensions={0},
+      replica_groups=[2,2]<=[16]
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(),
+              HasSubstr("does not match the tile assignment dimensions "
+                        "product"));
+}
+
 TEST_F(HloParserTest, WindowRhsReversalWrongSize) {
   const std::string original = R"(HloModule m
 ENTRY e {

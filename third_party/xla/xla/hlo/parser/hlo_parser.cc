@@ -4030,6 +4030,13 @@ bool HloParserImpl::ParseCollectiveDeviceListBase(
     return false;
   }
 
+  if (Product(tile_assignment_dimensions) != Product(iota_reshape_dims)) {
+    return TokenError(absl::StrCat(
+        "collective device list iota size ", Product(iota_reshape_dims),
+        " does not match the tile assignment dimensions product ",
+        Product(tile_assignment_dimensions)));
+  }
+
   *device_list = std::make_unique<IotaReplicaGroupList>(
       tile_assignment_dimensions[0], tile_assignment_dimensions[1],
       iota_reshape_dims, iota_transpose_perm);
@@ -4265,6 +4272,12 @@ bool HloParserImpl::ParseMesh(std::optional<Mesh>& mesh) {
                                         iota_transpose_perm) ||
           !ParseToken(TokKind::kRparen, "expected ')' to end device_ids")) {
         return false;
+      }
+      if (Product(axis_sizes) != Product(iota_reshape_dims)) {
+        return TokenError(absl::StrCat(
+            "mesh device_ids iota size ", Product(iota_reshape_dims),
+            " does not match the product of the mesh axis sizes ",
+            Product(axis_sizes)));
       }
       mesh.emplace(
           TileAssignment(axis_sizes, iota_reshape_dims, iota_transpose_perm),
@@ -4866,6 +4879,14 @@ bool HloParserImpl::ParseSingleSharding(std::optional<HloSharding>& sharding,
     }
     if (!iota_reshape_dims.empty()) {
       CHECK(devices.empty());
+      if (Product(tile_assignment_dimensions) != Product(iota_reshape_dims)) {
+        return Error(
+            loc, absl::StrCat("iota tile assignment size ",
+                              Product(iota_reshape_dims),
+                              " does not match the tile assignment dimensions "
+                              "product ",
+                              Product(tile_assignment_dimensions)));
+      }
       sharding =
           subgroup_types.empty()
               ? HloSharding::IotaTile(tile_assignment_dimensions,
