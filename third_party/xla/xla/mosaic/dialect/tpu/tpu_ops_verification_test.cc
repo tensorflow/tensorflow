@@ -1487,6 +1487,8 @@ TEST_F(TpuOpsVerificationTest, ConvOpVerificationWorks) {
       /*lhs_dilation=*/builder().getDenseI64ArrayAttr({1}),
       /*rhs_dilation=*/builder().getDenseI64ArrayAttr({1}),
       /*window_reversal=*/builder().getDenseBoolArrayAttr({false}),
+      /*feature_group_count=*/builder().getI64IntegerAttr(1),
+      /*batch_group_count=*/builder().getI64IntegerAttr(1),
       /*precision=*/nullptr);
   ASSERT_OK(VerifyOp(conv));
 }
@@ -1513,6 +1515,8 @@ TEST_F(TpuOpsVerificationTest, ConvOpRankMismatch) {
       /*lhs_dilation=*/builder().getDenseI64ArrayAttr({1}),
       /*rhs_dilation=*/builder().getDenseI64ArrayAttr({1}),
       /*window_reversal=*/builder().getDenseBoolArrayAttr({false}),
+      /*feature_group_count=*/builder().getI64IntegerAttr(1),
+      /*batch_group_count=*/builder().getI64IntegerAttr(1),
       /*precision=*/nullptr);
   ASSERT_THAT(VerifyOp(conv),
               StatusIs(_, HasSubstr("Expected rhs rank to be 3")));
@@ -1540,11 +1544,16 @@ TEST_F(TpuOpsVerificationTest, ConvOpFeatureSizeMismatch) {
       /*lhs_dilation=*/builder().getDenseI64ArrayAttr({1}),
       /*rhs_dilation=*/builder().getDenseI64ArrayAttr({1}),
       /*window_reversal=*/builder().getDenseBoolArrayAttr({false}),
+      /*feature_group_count=*/builder().getI64IntegerAttr(1),
+      /*batch_group_count=*/builder().getI64IntegerAttr(1),
       /*precision=*/nullptr);
   ASSERT_THAT(
       VerifyOp(conv),
-      StatusIs(_, HasSubstr("LHS feature dimension size (64) must match "
-                            "kernel input feature dimension size (128)")));
+      StatusIs(
+          _,
+          HasSubstr("LHS feature dimension size divided by feature_group_count "
+                    "(64 / 1 = 64) must match kernel input feature dimension "
+                    "size (128)")));
 }
 
 TEST_F(TpuOpsVerificationTest, ConvOpSpatialOutputMismatch) {
@@ -1569,10 +1578,115 @@ TEST_F(TpuOpsVerificationTest, ConvOpSpatialOutputMismatch) {
       /*lhs_dilation=*/builder().getDenseI64ArrayAttr({1}),
       /*rhs_dilation=*/builder().getDenseI64ArrayAttr({1}),
       /*window_reversal=*/builder().getDenseBoolArrayAttr({false}),
+      /*feature_group_count=*/builder().getI64IntegerAttr(1),
+      /*batch_group_count=*/builder().getI64IntegerAttr(1),
       /*precision=*/nullptr);
   ASSERT_THAT(VerifyOp(conv),
               StatusIs(_, HasSubstr("Output spatial dimension 1 size mismatch: "
                                     "expected 6, got 5")));
+}
+
+TEST_F(TpuOpsVerificationTest, ConvOpInvalidGroupCounts) {
+  Value lhs = ConstantF32Vector({1, 8, 128}, {1.0f});
+  Value rhs = ConstantF32Vector({3, 128, 128}, {1.0f});
+  Value acc = ConstantF32Vector({1, 6, 128}, {1.0f});
+  auto dnums = ConvDimensionNumbersAttr::get(
+      builder().getContext(),
+      /*input_batch_dimension=*/0, /*input_feature_dimension=*/2,
+      /*input_spatial_dimensions=*/{1},
+      /*kernel_input_feature_dimension=*/1,
+      /*kernel_output_feature_dimension=*/2,
+      /*kernel_spatial_dimensions=*/{0},
+      /*output_batch_dimension=*/0, /*output_feature_dimension=*/2,
+      /*output_spatial_dimensions=*/{1});
+
+  auto conv_invalid_fg = Create<ConvOp>(
+      /*result=*/VectorType::get({1, 6, 128}, builder().getF32Type()),
+      /*lhs=*/lhs, /*rhs=*/rhs, /*acc=*/acc,
+      /*dimension_numbers=*/dnums,
+      /*window_strides=*/builder().getDenseI64ArrayAttr({1}),
+      /*padding=*/builder().getDenseI64ArrayAttr({0, 0}),
+      /*lhs_dilation=*/builder().getDenseI64ArrayAttr({1}),
+      /*rhs_dilation=*/builder().getDenseI64ArrayAttr({1}),
+      /*window_reversal=*/builder().getDenseBoolArrayAttr({false}),
+      /*feature_group_count=*/builder().getI64IntegerAttr(0),
+      /*batch_group_count=*/builder().getI64IntegerAttr(1),
+      /*precision=*/nullptr);
+  ASSERT_THAT(
+      VerifyOp(conv_invalid_fg),
+      StatusIs(_, HasSubstr("Expected feature_group_count to be positive")));
+
+  auto conv_invalid_both = Create<ConvOp>(
+      /*result=*/VectorType::get({1, 6, 128}, builder().getF32Type()),
+      /*lhs=*/lhs, /*rhs=*/rhs, /*acc=*/acc,
+      /*dimension_numbers=*/dnums,
+      /*window_strides=*/builder().getDenseI64ArrayAttr({1}),
+      /*padding=*/builder().getDenseI64ArrayAttr({0, 0}),
+      /*lhs_dilation=*/builder().getDenseI64ArrayAttr({1}),
+      /*rhs_dilation=*/builder().getDenseI64ArrayAttr({1}),
+      /*window_reversal=*/builder().getDenseBoolArrayAttr({false}),
+      /*feature_group_count=*/builder().getI64IntegerAttr(2),
+      /*batch_group_count=*/builder().getI64IntegerAttr(2),
+      /*precision=*/nullptr);
+  ASSERT_THAT(VerifyOp(conv_invalid_both),
+              StatusIs(_, HasSubstr("At most one of batch_group_count and "
+                                    "feature_group_count may be > 1")));
+}
+
+TEST_F(TpuOpsVerificationTest, ConvOpFeatureGroupCountValid) {
+  Value lhs = ConstantF32Vector({1, 8, 128}, {1.0f});
+  Value rhs = ConstantF32Vector({3, 64, 128}, {1.0f});
+  Value acc = ConstantF32Vector({1, 6, 128}, {1.0f});
+  auto dnums = ConvDimensionNumbersAttr::get(
+      builder().getContext(),
+      /*input_batch_dimension=*/0, /*input_feature_dimension=*/2,
+      /*input_spatial_dimensions=*/{1},
+      /*kernel_input_feature_dimension=*/1,
+      /*kernel_output_feature_dimension=*/2,
+      /*kernel_spatial_dimensions=*/{0},
+      /*output_batch_dimension=*/0, /*output_feature_dimension=*/2,
+      /*output_spatial_dimensions=*/{1});
+  auto conv = Create<ConvOp>(
+      /*result=*/VectorType::get({1, 6, 128}, builder().getF32Type()),
+      /*lhs=*/lhs, /*rhs=*/rhs, /*acc=*/acc,
+      /*dimension_numbers=*/dnums,
+      /*window_strides=*/builder().getDenseI64ArrayAttr({1}),
+      /*padding=*/builder().getDenseI64ArrayAttr({0, 0}),
+      /*lhs_dilation=*/builder().getDenseI64ArrayAttr({1}),
+      /*rhs_dilation=*/builder().getDenseI64ArrayAttr({1}),
+      /*window_reversal=*/builder().getDenseBoolArrayAttr({false}),
+      /*feature_group_count=*/builder().getI64IntegerAttr(2),
+      /*batch_group_count=*/builder().getI64IntegerAttr(1),
+      /*precision=*/nullptr);
+  ASSERT_OK(VerifyOp(conv));
+}
+
+TEST_F(TpuOpsVerificationTest, ConvOpBatchGroupCountValid) {
+  Value lhs = ConstantF32Vector({4, 8, 128}, {1.0f});
+  Value rhs = ConstantF32Vector({3, 128, 64}, {1.0f});
+  Value acc = ConstantF32Vector({2, 6, 64}, {1.0f});
+  auto dnums = ConvDimensionNumbersAttr::get(
+      builder().getContext(),
+      /*input_batch_dimension=*/0, /*input_feature_dimension=*/2,
+      /*input_spatial_dimensions=*/{1},
+      /*kernel_input_feature_dimension=*/1,
+      /*kernel_output_feature_dimension=*/2,
+      /*kernel_spatial_dimensions=*/{0},
+      /*output_batch_dimension=*/0, /*output_feature_dimension=*/2,
+      /*output_spatial_dimensions=*/{1});
+  auto conv = Create<ConvOp>(
+      /*result=*/VectorType::get({2, 6, 64}, builder().getF32Type()),
+      /*lhs=*/lhs, /*rhs=*/rhs, /*acc=*/acc,
+      /*dimension_numbers=*/dnums,
+      /*window_strides=*/builder().getDenseI64ArrayAttr({1}),
+      /*padding=*/builder().getDenseI64ArrayAttr({0, 0}),
+      /*lhs_dilation=*/builder().getDenseI64ArrayAttr({1}),
+      /*rhs_dilation=*/builder().getDenseI64ArrayAttr({1}),
+      /*window_reversal=*/builder().getDenseBoolArrayAttr({false}),
+      /*feature_group_count=*/builder().getI64IntegerAttr(1),
+      /*batch_group_count=*/builder().getI64IntegerAttr(2),
+      /*precision=*/nullptr);
+  ASSERT_OK(VerifyOp(conv));
 }
 }  // namespace
 }  // namespace mlir::tpu
