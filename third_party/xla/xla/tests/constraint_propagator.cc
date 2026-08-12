@@ -86,6 +86,131 @@ void SetConstraint(
       /*exclude_zero=*/!contains_zero});
 }
 
+void SeedConstantInstruction(
+    const HloInstruction* inst,
+    absl::flat_hash_map<const HloInstruction*, ConstraintState>& states) {
+  const Literal& literal = inst->literal();
+  if (literal.shape().IsArray() && literal.element_count() > 0) {
+    switch (literal.shape().element_type()) {
+      case PRED:
+        SetConstraint<bool>(inst, states);
+        break;
+      case S8:
+        SetConstraint<int8_t>(inst, states);
+        break;
+      case S16:
+        SetConstraint<int16_t>(inst, states);
+        break;
+      case S32:
+        SetConstraint<int32_t>(inst, states);
+        break;
+      case S64:
+        SetConstraint<int64_t>(inst, states);
+        break;
+      case U8:
+        SetConstraint<uint8_t>(inst, states);
+        break;
+      case U16:
+        SetConstraint<uint16_t>(inst, states);
+        break;
+      case U32:
+        SetConstraint<uint32_t>(inst, states);
+        break;
+      case U64:
+        SetConstraint<uint64_t>(inst, states);
+        break;
+      case F16:
+        SetConstraint<half>(inst, states);
+        break;
+      case F32:
+        SetConstraint<float>(inst, states);
+        break;
+      case F64:
+        SetConstraint<double>(inst, states);
+        break;
+      case BF16:
+        SetConstraint<bfloat16>(inst, states);
+        break;
+      default:
+        break;
+    }
+  }
+}
+
+// Returns a safe upper bound on ln(max_finite_val) for the given PrimitiveType
+// to prevent exponential (exp) and power (b^x) operations from overflowing
+// the maximum finite representable value of that type.
+//
+// For any base b > 0 and exponent x:
+//   b^x = exp(x * ln(b)) <= max_val <=> x * ln(b) <= ln(max_val).
+// Therefore, x <= ln(max_val) / ln(b).
+double GetMaxLogForType(PrimitiveType type) {
+  switch (type) {
+    // 64-bit IEEE 754 Floating Point (F64):
+    //   max_val = 2^1024 * (1 - 2^-53) ≈ 1.7977e+308
+    //   ln(max_val) ≈ 1024 * ln(2) ≈ 1024 * 0.693147 ≈ 709.78
+    //   Safe bound: 700.0 (exp(700.0) ≈ 1.014e+304 < max_val).
+    case F64:
+      return 700.0;
+
+    // 32-bit IEEE 754 Floating Point (F32):
+    //   max_val = 2^128 * (1 - 2^-24) ≈ 3.4028e+38
+    //   ln(max_val) ≈ 128 * ln(2) ≈ 128 * 0.693147 ≈ 88.72
+    //   Safe bound: 85.0 (exp(85.0) ≈ 8.223e+36 < max_val).
+    case F32:
+      return 85.0;
+
+    // 16-bit Floating Point (F16 and BF16):
+    //   F16 max_val = 65504.0
+    //     ln(65504) ≈ 11.09
+    //   BF16 has 8 exponent bits but only 7 mantissa bits; using values above
+    //   65504 accumulates massive rounding errors and precision loss on TPU
+    //   matrix units and reductions. We bound BF16 to 65504 to match F16.
+    //   Safe bound: 11.0 (exp(11.0) ≈ 59874.14 < 65504).
+    case F16:
+    case BF16:
+      return 11.0;
+
+    // 64-bit Signed/Unsigned Integer (S64, U64):
+    //   S64 max_val = 2^63 - 1 ≈ 9.2233e+18
+    //   ln(2^63) ≈ 63 * ln(2) ≈ 63 * 0.693147 ≈ 43.67
+    //   Safe bound: 43.0 (exp(43.0) ≈ 4.727e+18 < 2^63 - 1).
+    case S64:
+    case U64:
+      return 43.0;
+
+    // 32-bit Signed/Unsigned Integer (S32, U32):
+    //   S32 max_val = 2^31 - 1 = 2147483647
+    //   ln(2^31) ≈ 31 * ln(2) ≈ 31 * 0.693147 ≈ 21.49
+    //   Safe bound: 21.0 (exp(21.0) ≈ 1.3188e+9 < 2^31 - 1).
+    case S32:
+    case U32:
+      return 21.0;
+
+    // 16-bit Signed/Unsigned Integer (S16, U16):
+    //   S16 max_val = 2^15 - 1 = 32767
+    //   ln(2^15) ≈ 15 * ln(2) ≈ 15 * 0.693147 ≈ 10.40
+    //   Safe bound: 10.0 (exp(10.0) ≈ 22026.46 < 32767).
+    case S16:
+    case U16:
+      return 10.0;
+
+    // 8-bit Signed/Unsigned Integer (S8, U8):
+    //   S8 max_val = 127, U8 max_val = 255
+    //   ln(127) ≈ 4.84
+    //   Safe bound: 4.5 (exp(4.5) ≈ 90.017 < 127).
+    case S8:
+    case U8:
+      return 4.5;
+
+    // Conservative default fallback:
+    //   11.0 matches the 16-bit float/integer threshold (exp(11) ≈ 5.98e+4),
+    //   safely preventing overflow for any unexpected or unlisted type.
+    default:
+      return 11.0;
+  }
+}
+
 // Seeds root constraints exclusively for 16-bit floating-point types (F16 and
 // BF16). Non-16-bit floating-point types (such as F32 or F64) are intentionally
 // not seeded.
@@ -207,7 +332,16 @@ absl::Status ConstraintPropagator::Propagate(
 absl::Status ConstraintPropagator::SeedConstraints(
     const HloComputation* computation) {
   auto instructions = computation->MakeInstructionPostOrder();
-  // Reverse topological (Use before Definition)
+
+  // First pass: Seed all constants so they are available in states_ when
+  // inspecting constant operands during the second pass.
+  for (const HloInstruction* inst : instructions) {
+    if (inst->opcode() == HloOpcode::kConstant) {
+      SeedConstantInstruction(inst, states_);
+    }
+  }
+
+  // Second pass: Reverse topological (Use before Definition)
   for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
     const HloInstruction* inst = *it;
 
@@ -221,55 +355,6 @@ absl::Status ConstraintPropagator::SeedConstraints(
         // Output is guaranteed to be non-negative.
         states_[inst].AddConstraint(ConstraintInterval::Positive());
         break;
-      case HloOpcode::kConstant: {
-        const Literal& literal = inst->literal();
-        if (literal.shape().IsArray() && literal.element_count() > 0) {
-          switch (literal.shape().element_type()) {
-            case PRED:
-              SetConstraint<bool>(inst, states_);
-              break;
-            case S8:
-              SetConstraint<int8_t>(inst, states_);
-              break;
-            case S16:
-              SetConstraint<int16_t>(inst, states_);
-              break;
-            case S32:
-              SetConstraint<int32_t>(inst, states_);
-              break;
-            case S64:
-              SetConstraint<int64_t>(inst, states_);
-              break;
-            case U8:
-              SetConstraint<uint8_t>(inst, states_);
-              break;
-            case U16:
-              SetConstraint<uint16_t>(inst, states_);
-              break;
-            case U32:
-              SetConstraint<uint32_t>(inst, states_);
-              break;
-            case U64:
-              SetConstraint<uint64_t>(inst, states_);
-              break;
-            case F16:
-              SetConstraint<half>(inst, states_);
-              break;
-            case F32:
-              SetConstraint<float>(inst, states_);
-              break;
-            case F64:
-              SetConstraint<double>(inst, states_);
-              break;
-            case BF16:
-              SetConstraint<bfloat16>(inst, states_);
-              break;
-            default:
-              break;
-          }
-        }
-        break;
-      }
       case HloOpcode::kLog:
         // Log(x) => x > 0
         states_[inst->operand(0)].AddConstraint(
@@ -290,13 +375,32 @@ absl::Status ConstraintPropagator::SeedConstraints(
         // Div(x, y) => y != 0
         states_[inst->operand(1)].AddConstraint(ConstraintInterval::NonZero());
         break;
-      case HloOpcode::kPower:
-        // Power(x, y) => x > 0
-        // We heuristically force base to > 0 because:
-        // - if exponent is negative, zero base would result in a NaN.
-        // - if exponent is non-integer, zero base would result in a NaN.
-        states_[inst->operand(0)].AddConstraint(ConstraintInterval::Positive());
+      case HloOpcode::kPower: {
+        std::optional<double> base_c = GetConstantValue(inst->operand(0));
+        if (base_c.has_value()) {
+          // Base is constant: prevent exponential overflow on the exponent.
+          if (*base_c > 0.0 && *base_c < 1.0) {
+            // Base in (0, 1): Negative exponents blow up to +inf (e.g.
+            // 0.95^-10000 = inf). Enforce exponent >= 0.
+            states_[inst->operand(1)].AddConstraint(
+                ConstraintInterval::Positive());
+          } else if (*base_c > 1.0) {
+            // Base > 1: Large positive exponents blow up to +inf.
+            double max_log = GetMaxLogForType(inst->shape().element_type());
+            double max_exp = max_log / std::log(*base_c);
+            states_[inst->operand(1)].AddConstraint(
+                ConstraintInterval{ConstraintInterval::kMin, max_exp, false});
+          }
+        } else {
+          // Power(x, y) => x > 0
+          // We heuristically force base to > 0 because:
+          // - if exponent is negative, zero base would result in a NaN.
+          // - if exponent is non-integer, zero base would result in a NaN.
+          states_[inst->operand(0)].AddConstraint(
+              ConstraintInterval::Positive());
+        }
         break;
+      }
 
       case HloOpcode::kDynamicSlice:
       case HloOpcode::kDynamicUpdateSlice: {
@@ -1079,6 +1183,46 @@ absl::Status ConstraintPropagator::PropagateConstraintsApprox(
                          : ConstraintInterval::kMax;
       states_[instruction->operand(0)].AddConstraint(
           ConstraintInterval{x_min, x_max, /*exclude_zero=*/false});
+      break;
+    }
+
+    case HloOpcode::kPower: {
+      // For Z = Power(base, exp) with Z in [z_min, z_max]:
+      // If base is a constant b > 0:
+      //   Z = b^Y <=> Y = ln(Z) / ln(b).
+      //
+      // If 0 < b < 1 (ln(b) < 0, reverses inequality):
+      //   y_min = ln(z_max) / ln(b)  (for z_max > 0)
+      //   y_max = ln(z_min) / ln(b)  (for z_min > 0)
+      //
+      // If b > 1 (ln(b) > 0, preserves inequality):
+      //   y_min = ln(z_min) / ln(b)  (for z_min > 0)
+      //   y_max = ln(z_max) / ln(b)  (for z_max > 0)
+      std::optional<double> base_c = GetConstantValue(instruction->operand(0));
+      if (base_c.has_value() && *base_c > 0.0 && *base_c != 1.0) {
+        double ln_b = std::log(*base_c);
+        if (ln_b < 0.0) {
+          double y_min = (output_interval.max < ConstraintInterval::kMax &&
+                          output_interval.max > 0.0)
+                             ? std::log(output_interval.max) / ln_b
+                             : ConstraintInterval::kMin;
+          double y_max = output_interval.min > 0.0
+                             ? std::log(output_interval.min) / ln_b
+                             : ConstraintInterval::kMax;
+          states_[instruction->operand(1)].AddConstraint(
+              ConstraintInterval{y_min, y_max, false});
+        } else {
+          double y_min = output_interval.min > 0.0
+                             ? std::log(output_interval.min) / ln_b
+                             : ConstraintInterval::kMin;
+          double y_max = (output_interval.max < ConstraintInterval::kMax &&
+                          output_interval.max > 0.0)
+                             ? std::log(output_interval.max) / ln_b
+                             : ConstraintInterval::kMax;
+          states_[instruction->operand(1)].AddConstraint(
+              ConstraintInterval{y_min, y_max, false});
+        }
+      }
       break;
     }
     default:

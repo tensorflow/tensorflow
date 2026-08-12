@@ -917,5 +917,55 @@ ENTRY main {
   EXPECT_GE(p1_int.min, 0.0);
 }
 
+// Tests that for Power(base, exp) with base in (0, 1) (decay schedule, e.g.
+// 0.95^t), the exponent is seeded with [0, +inf) to prevent negative exponents
+// from blowing up exponentially to +inf (e.g. 0.95^-10000 = +inf), which causes
+// float overflow and NaNs in downstream operations (like 1.0 - 0.95^t).
+TEST_F(ConstraintPropagatorTest, PowerDecaySeedConstrainsNonNegativeExponent) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = s32[8,128] parameter(0)
+  conv = f32[8,128] convert(param_0)
+  c_decay = f32[] constant(0.95)
+  b_decay = f32[8,128] broadcast(c_decay), dimensions={}
+  power = f32[8,128] power(b_decay, conv)
+  c_one = f32[] constant(1)
+  b_one = f32[8,128] broadcast(c_one), dimensions={}
+  ROOT sub = f32[8,128] subtract(b_one, power)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_GE(p0_int.min, 0.0);
+}
+
+// Tests that for Power(base, exp) with base > 1 (e.g. 2.0^x), the exponent is
+// seeded with exp <= max_log / ln(base) to prevent large positive exponents
+// from blowing up to +inf (e.g. 2.0^1000 = +inf), avoiding floating-point
+// overflow.
+TEST_F(ConstraintPropagatorTest, PowerGreaterThanOneConstrainsUpperBound) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[8,128] parameter(0)
+  c_two = f32[] constant(2.0)
+  b_two = f32[8,128] broadcast(c_two), dimensions={}
+  ROOT power = f32[8,128] power(b_two, param_0)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_LE(p0_int.max, 85.0 / std::log(2.0) + 1.0);
+}
+
 }  // namespace
 }  // namespace xla
