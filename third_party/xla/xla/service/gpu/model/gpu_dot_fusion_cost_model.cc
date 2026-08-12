@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -61,44 +62,62 @@ struct BandwidthEntry {
 
 struct MemoryBandwidthSpec {
   double l2_cache_bandwidth_bytes_per_sec;
-  absl::Span<const BandwidthEntry> hbm_bandwidth_table_gbps;
+  absl::InlinedVector<BandwidthEntry, 32> hbm_bandwidth_table_gbps;
 };
 
 MemoryBandwidthSpec GetMemoryBandwidthSpec(
-    const se::DeviceDescription& /*device_info*/) {
-  // Reference H100 SXM empirical HBM bandwidth table (dma_size -> GB/s),
-  // microbenchmarked on H100 SXM.
-  static constexpr std::array<BandwidthEntry, 18> kH100HbmBandwidthTable = {
-      {{8192, 1.42f},
-       {16384, 3.03f},
-       {32768, 6.02f},
-       {65536, 11.77f},
-       {131072, 23.68f},
-       {262144, 47.35f},
-       {524288, 92.56f},
-       {1048576, 179.06f},
-       {2097152, 346.75f},
-       {4194304, 639.38f},
-       {8388608, 1069.98f},
-       {16777216, 1583.95f},
-       {33554432, 1974.72f},
-       {67108864, 2343.19f},
-       {134217728, 2632.96f},
-       {268435456, 2766.69f},
-       {536870912, 2968.89f},
-       {1073741824, 3126.0f}}};
+    const se::DeviceDescription& device_info) {
+  // Empirical HBM bandwidth scaling table (dma_size_bytes -> fraction of peak
+  // memory bandwidth), obtained from microbenchmarks on H100 SXM (peak
+  // bandwidth: 3352.32 GB/s).
+  // TODO(karupayun): Add explicit microbenchmarked tables for Blackwell
+  // (B200/GB200) and other architectures here as they are measured.
+  static constexpr std::array<BandwidthEntry, 18> kScaledHbmBandwidthTable = {
+      {{8192, 0.00042359f},
+       {16384, 0.00090385f},
+       {32768, 0.00179577f},
+       {65536, 0.00351100f},
+       {131072, 0.00706376f},
+       {262144, 0.01412455f},
+       {524288, 0.02761073f},
+       {1048576, 0.05341375f},
+       {2097152, 0.10343583f},
+       {4194304, 0.19072761f},
+       {8388608, 0.31917596f},
+       {16777216, 0.47249365f},
+       {33554432, 0.58906066f},
+       {67108864, 0.69897562f},
+       {134217728, 0.78541428f},
+       {268435456, 0.82530600f},
+       {536870912, 0.88562244f},
+       {1073741824, 0.93248850f}}};
 
-  // Default L2 cache bandwidth (measured at 6.65 TB/s on H100 SXM).
+  constexpr double kBytesPerGigabyte = 1 << 30;
+  double device_memory_bandwidth_gbps =
+      static_cast<double>(device_info.memory_bandwidth()) / kBytesPerGigabyte;
+
+  absl::InlinedVector<BandwidthEntry, 32> device_hbm_bandwidth_table(
+      kScaledHbmBandwidthTable.begin(), kScaledHbmBandwidthTable.end());
+  for (auto& entry : device_hbm_bandwidth_table) {
+    entry.bandwidth_gbps *= device_memory_bandwidth_gbps;
+  }
+
+  // L2 cache bandwidth scales proportionally to memory bandwidth relative to
+  // H100 SXM (measured at 6.65 TB/s on H100 SXM).
   // TODO(maniananth): L2 bandwidth has been hardcoded for H100 based on
   // microbenchmarking L2 bandwidth within a partition, but we should add this
   // to the device info and extend for more GPUs.
   constexpr double kH100L2CacheBandwidthBytesPerSec = 6.65 * 1e12;
+  // Peak memory bandwidth of H100 SXM in GB/s (3352.32 GB/s) from
+  // xla/backends/gpu/target_config/specs/h100_sxm.txtpb:L26.
+  constexpr double kH100SxmPeakMemoryBandwidthGBps = 3352.32;
+  double bandwidth_scale =
+      device_memory_bandwidth_gbps / kH100SxmPeakMemoryBandwidthGBps;
 
-  // TODO(karupayun): Add explicit microbenchmarked tables for Blackwell
-  // (B200/GB200) and other architectures here as they are measured.
   return MemoryBandwidthSpec{
-      /*l2_cache_bandwidth_bytes_per_sec=*/kH100L2CacheBandwidthBytesPerSec,
-      /*hbm_bandwidth_table_gbps=*/absl::MakeSpan(kH100HbmBandwidthTable),
+      /*l2_cache_bandwidth_bytes_per_sec=*/kH100L2CacheBandwidthBytesPerSec *
+          bandwidth_scale,
+      /*hbm_bandwidth_table_gbps=*/device_hbm_bandwidth_table,
   };
 }
 
@@ -286,8 +305,9 @@ absl::StatusOr<absl::Duration> CalculateL2Time(
 float GetEffectiveHbmBandwidth(int64_t dma_size,
                                const se::DeviceDescription& device_info) {
   constexpr float kBytesPerGigabyte = 1 << 30;
-  absl::Span<const BandwidthEntry> hbm_bandwidth_table_gbps =
-      GetMemoryBandwidthSpec(device_info).hbm_bandwidth_table_gbps;
+  MemoryBandwidthSpec spec = GetMemoryBandwidthSpec(device_info);
+  const absl::InlinedVector<BandwidthEntry, 32>& hbm_bandwidth_table_gbps =
+      spec.hbm_bandwidth_table_gbps;
 
   if (dma_size <= hbm_bandwidth_table_gbps.front().dma_size_bytes) {
     return hbm_bandwidth_table_gbps.front().bandwidth_gbps * kBytesPerGigabyte;
