@@ -433,27 +433,49 @@ absl::Status TuplePointsToAnalysis::HandleAsyncUpdate(
     explicitly_aliased_outputs.insert(pair.first);
   }
 
+  // Get the list of aliased contexts.
+  absl::flat_hash_map<ShapeIndex, ShapeIndex> aliased_contexts;
+  for (const auto& [output_index, operand_info] :
+       Cast<HloAsyncUpdateInstruction>(async_update)
+           ->output_to_operand_aliasing()) {
+    const auto& [_, operand_index] = operand_info;
+    aliased_contexts.emplace(output_index, operand_index);
+  }
+
   ABSL_RETURN_IF_ERROR(points_to_set.ForEachMutableElementWithStatus(
       [&](const ShapeIndex& index,
           PointsToSet::BufferList* buffers) -> absl::Status {
         const Shape& new_subshape =
             ShapeUtil::GetSubshape(async_update_shape, index);
 
-        // 1. Try to forward from operand(0) (prev chain) if the index is valid
-        // and shape is compatible.
-        if (ShapeUtil::IndexIsValid(prev_async_op_shape, index)) {
-          const Shape& orig_subshape =
-              ShapeUtil::GetSubshape(prev_async_op_shape, index);
-          if (ShapeUtil::Compatible(orig_subshape, new_subshape)) {
-            const PointsToSet& operand_points_to_set =
-                GetPointsToSet(async_update->operand(0));
-            *buffers = operand_points_to_set.element(index);
-            for (HloInstruction* tuple :
-                 operand_points_to_set.tuple_sources(index)) {
-              points_to_set.add_tuple_source(index, tuple);
-            }
-            return absl::OkStatus();
+        // 1. Handle values which are forwarded from previous async instruction.
+        bool forwarded_operand_or_output =
+            !index.empty() && index.front() < 2 &&
+            ShapeUtil::IndexIsValid(prev_async_op_shape, index) &&
+            ShapeUtil::Compatible(
+                ShapeUtil::GetSubshape(prev_async_op_shape, index),
+                new_subshape);
+        if (forwarded_operand_or_output) {
+          const PointsToSet& operand_points_to_set =
+              GetPointsToSet(prev_async_op);
+          *buffers = operand_points_to_set.element(index);
+          for (HloInstruction* tuple :
+               operand_points_to_set.tuple_sources(index)) {
+            points_to_set.add_tuple_source(index, tuple);
           }
+          return absl::OkStatus();
+        }
+        if (auto aliased_context_it = aliased_contexts.find(index);
+            aliased_context_it != aliased_contexts.end()) {
+          const auto& [_, prev_async_op_index] = *aliased_context_it;
+          const PointsToSet& operand_points_to_set =
+              GetPointsToSet(prev_async_op);
+          *buffers = operand_points_to_set.element(prev_async_op_index);
+          for (HloInstruction* tuple :
+               operand_points_to_set.tuple_sources(prev_async_op_index)) {
+            points_to_set.add_tuple_source(index, tuple);
+          }
+          return absl::OkStatus();
         }
 
         // 2. If not forwarded, it is a new element.

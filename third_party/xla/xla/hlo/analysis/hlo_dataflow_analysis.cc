@@ -614,28 +614,7 @@ bool HloDataflowAnalysis::UpdateAsyncUpdateValueSet(
        async_update->async_wrapped_opcode() == HloOpcode::kDynamicSlice);
 
   if (!is_slice_or_copy) {
-    // 2. Forward other indices from operand(0)
-    const HloInstruction* prev_chain = async_update->operand(0);
-    ShapeUtil::ForEachSubshape(
-        async_update->shape(),
-        [&](const Shape& subshape, const ShapeIndex& index) {
-          if (!subshape.IsArray() && !subshape.IsToken()) {
-            return;
-          }
-          if (index.empty() || index.front() <= 1) {
-            // Skip the bound operands and the output of the previous async
-            // instruction in the chain.
-            return;
-          }
-          const HloValueSet& operand_value_set = GetValueSet(prev_chain, index);
-          HloValueSet& value_set = GetMutableValueSet(async_update, index);
-          if (value_set != operand_value_set) {
-            value_set = operand_value_set;
-            changed = true;
-          }
-        });
-
-    // 3. Update the output values from wrapped computation (index 1)
+    // 2. Update the output values from wrapped computation (index 1)
     changed |= UpdateAsyncChainOutputValueSet(async_update);
     return changed;
   }
@@ -1499,6 +1478,7 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           // AsyncStart produces a tuple of {{aliased operands}, {destination},
           // contexts}. It defines all of the tuple-shaped values and the
           // contexts.
+          //
           // If the thread is excluded, then we don't track the contained
           // dataflow, and define the destination values too.
           bool thread_included = HloInstruction::IsThreadIncluded(
@@ -1511,15 +1491,17 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           });
           break;
         }
-        case HloOpcode::kAsyncUpdate:
+        case HloOpcode::kAsyncUpdate: {
           // AsyncUpdate produces a tuple of {{aliased operands}, {destination},
-          // contexts} where all of the array-typed values alias with the
-          // operand. So, only tuple-shaped values are defined by AsyncUpdate.
+          // contexts}. It defines all of the tuple-shaped values and the
+          // contexts.
           define_all_values([&](const ShapeIndex& index) {
             return ShapeUtil::GetSubshape(instruction->shape(), index)
-                .IsTuple();
+                       .IsTuple() ||
+                   index.front() > 1;
           });
           break;
+        }
         case HloOpcode::kAsyncDone:
           // AsyncDone's output aliases its output. It defines all remaining
           // tuple-shaped values.

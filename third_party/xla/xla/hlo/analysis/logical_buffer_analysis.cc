@@ -292,6 +292,13 @@ absl::Status LogicalBufferAnalysis::HandleAsyncUpdate(
     explicitly_aliased_outputs.insert(pair.first);
   }
 
+  absl::flat_hash_set<ShapeIndex> aliased_contexts;
+  for (const auto& [output_index, _] :
+       Cast<HloAsyncUpdateInstruction>(async_update)
+           ->output_to_operand_aliasing()) {
+    aliased_contexts.insert(output_index);
+  }
+
   ShapeUtil::ForEachSubshape(async_update_shape, [&](const Shape& subshape,
                                                      const ShapeIndex& index) {
     // Operands, ignore.
@@ -299,17 +306,17 @@ absl::Status LogicalBufferAnalysis::HandleAsyncUpdate(
       return;
     }
 
-    // if explicitly aliased, and not an empty tuple, ignore (we want to avoid
-    // creating values for buffer not bound yet).
+    // If explicitly aliased output, and not an empty tuple, ignore (we want to
+    // avoid creating values for buffer not bound yet).
     bool has_explicit_alias = explicitly_aliased_outputs.contains(index);
     if (has_explicit_alias &&
         !IsEmptyOutputSubshapeInAsync(async_update_shape, index)) {
       return;
     }
 
-    // If compatible with a subshape of the previous async op, ignore, because
-    // it is forwarded from the previous async op.
-    if (!index.empty() && ShapeUtil::IndexIsValid(prev_async_op_shape, index)) {
+    // Forwarded operand/output from the previous async op.
+    if (!index.empty() && index.front() < 2 &&
+        ShapeUtil::IndexIsValid(prev_async_op_shape, index)) {
       const Shape& prev_subshape =
           ShapeUtil::GetSubshape(prev_async_op_shape, index);
       if (ShapeUtil::Compatible(prev_subshape, subshape)) {
@@ -317,7 +324,12 @@ absl::Status LogicalBufferAnalysis::HandleAsyncUpdate(
       }
     }
 
-    // Otherwise, new output or new tuple container
+    // Aliased context.
+    if (aliased_contexts.contains(index)) {
+      return;
+    }
+
+    // Otherwise, new output or new context or new tuple container
     NewLogicalBuffer(async_update, index);
   });
 

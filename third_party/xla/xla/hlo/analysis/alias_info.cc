@@ -315,6 +315,19 @@ AliasInfo::GetInPlaceInputOutputPairs(const HloInstruction* user) const {
 
     CHECK_GE(user->operand_count(), 1);
 
+    // Add the aliasing pairs on the async-update.
+    const auto& update_aliasing_pairs =
+        Cast<HloAsyncUpdateInstruction>(user)->output_to_operand_aliasing();
+    in_place_pairs.reserve(update_aliasing_pairs.size());
+    for (const auto& pair : update_aliasing_pairs) {
+      ShapeIndex output_shape_index = pair.first;
+      int64_t operand_index = pair.second.first;
+      ShapeIndex operand_shape_index = pair.second.second;
+      in_place_pairs.push_back(
+          {HloOperandIndex{operand_index, {operand_shape_index}},
+           output_shape_index});
+    }
+
     // When an async-update crosses a while loop boundary, async_chain_start()
     // may be null or outside the current scope. Safely return if unavailable.
     const HloInstruction* start = user->async_chain_start();
@@ -326,9 +339,10 @@ AliasInfo::GetInPlaceInputOutputPairs(const HloInstruction* user) const {
     if (async_start_inst == nullptr) {
       return in_place_pairs;
     }
-    const auto& aliasing_pairs = async_start_inst->output_to_operand_aliasing();
+    const auto& start_aliasing_pairs =
+        Cast<HloAsyncStartInstruction>(start)->output_to_operand_aliasing();
 
-    if (user->operand_count() == 1 || aliasing_pairs.empty()) {
+    if (user->operand_count() == 1 || start_aliasing_pairs.empty()) {
       return in_place_pairs;
     }
 
@@ -342,10 +356,12 @@ AliasInfo::GetInPlaceInputOutputPairs(const HloInstruction* user) const {
             nullptr) {
       return in_place_pairs;
     }
+
+    // Retrieve the aliasing pairs from the async-start.
     std::vector<const HloInstruction*> prev_bound_operands =
         hlo_instruction_utils::async::GetAsyncBoundOperands(prev_async);
 
-    for (const auto& pair : aliasing_pairs) {
+    for (const auto& pair : start_aliasing_pairs) {
       ShapeIndex output_shape_index = pair.first;
       int64_t logical_operand_index = pair.second.first;
       ShapeIndex operand_shape_index = pair.second.second;

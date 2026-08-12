@@ -1087,15 +1087,12 @@ TEST_P(HloDataflowAnalysisTest, AsyncOps) {
   EXPECT_TRUE(analysis.ValueIsDefinedAt(async_update, /*index=*/{}));
   EXPECT_FALSE(analysis.ValueIsDefinedAt(async_update, /*index=*/{0, 0}));
   EXPECT_FALSE(analysis.ValueIsDefinedAt(async_update, /*index=*/{1}));
-  EXPECT_FALSE(analysis.ValueIsDefinedAt(async_update, /*index=*/{2}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_update, /*index=*/{2}));
   EXPECT_THAT(HloValuesAt(async_update, /*index=*/{0, 0}),
               UnorderedElementsAre(&analysis.GetValueDefinedAt(param, {})));
   EXPECT_THAT(HloValuesAt(async_update, /*index=*/{1}),
               UnorderedElementsAre(
                   &analysis.GetValueDefinedAt(async_wrapped_instruction, {})));
-  EXPECT_THAT(
-      HloValuesAt(async_update, /*index=*/{2}),
-      UnorderedElementsAre(&analysis.GetValueDefinedAt(async_start, {2})));
 
   EXPECT_FALSE(analysis.ValueIsDefinedAt(async_done, /*index=*/{}));
   EXPECT_THAT(HloValuesAt(async_done, /*index=*/{}),
@@ -1271,9 +1268,7 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
               UnorderedElementsAre(&analysis.GetValueDefinedAt(a)));
   EXPECT_THAT(HloValuesAt(async_update, {0, 1}),
               UnorderedElementsAre(&analysis.GetValueDefinedAt(b)));
-  EXPECT_THAT(
-      HloValuesAt(async_update, {2}),
-      UnorderedElementsAre(&analysis.GetValueDefinedAt(async_start, {2})));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_update, {2}));
 }
 
 TEST_P(HloDataflowAnalysisTest, AsyncCallExcludedThread) {
@@ -1439,9 +1434,7 @@ TEST_P(HloDataflowAnalysisTest, TupleShapedAsyncOp) {
 
   EXPECT_THAT(HloValuesAt(async_update, {0, 0}),
               UnorderedElementsAre(&analysis.GetValueDefinedAt(p0)));
-  EXPECT_THAT(
-      HloValuesAt(async_update, {2}),
-      UnorderedElementsAre(&analysis.GetValueDefinedAt(async_start, {2})));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_update, {2}));
 }
 
 TEST_P(HloDataflowAnalysisTest, SendAndSendDone) {
@@ -3477,7 +3470,7 @@ TEST_P(HloDataflowAnalysisTest, b409756077) {
   EXPECT_THAT(defining_instructions, UnorderedElementsAre(param2, add0));
 }
 
-TEST_P(HloDataflowAnalysisTest, AsyncUpdateMismatchedContextShape) {
+TEST_P(HloDataflowAnalysisTest, AsyncUpdateDropsContext) {
   std::string hlo_str = R"(
   HloModule module
 
@@ -3503,7 +3496,33 @@ TEST_P(HloDataflowAnalysisTest, AsyncUpdateMismatchedContextShape) {
   EXPECT_FALSE(ShapeUtil::IndexIsValid(async_update->shape(), {2}));
 }
 
-TEST_P(HloDataflowAnalysisTest, AsyncUpdateIncompatibleContextSubshape) {
+TEST_P(HloDataflowAnalysisTest, AsyncUpdateAddsContext) {
+  std::string hlo_str = R"(
+  HloModule module
+
+  ENTRY entry {
+    p0 = f32[2,3] parameter(0)
+    async-start = ((f32[2,3]), f32[2,3]) custom-call-start(p0), custom_call_target="foo"
+    async-update = ((f32[2,3]), f32[2,3], u32[]) custom-call-update(async-start)
+    ROOT async-done = f32[2,3] custom-call-done(async-update)
+  }
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+
+  bool ssa_form = GetParam();
+  const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
+
+  const HloInstruction* async_start =
+      FindInstruction(module_.get(), "async-start");
+  const HloInstruction* async_update =
+      FindInstruction(module_.get(), "async-update");
+
+  EXPECT_FALSE(ShapeUtil::IndexIsValid(async_start->shape(), {2}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_update, /*index=*/{2}));
+}
+
+TEST_P(HloDataflowAnalysisTest, AsyncUpdateChangesContext) {
   std::string hlo_str = R"(
   HloModule module
 
@@ -3526,7 +3545,7 @@ TEST_P(HloDataflowAnalysisTest, AsyncUpdateIncompatibleContextSubshape) {
       FindInstruction(module_.get(), "async-update");
 
   EXPECT_TRUE(analysis.ValueIsDefinedAt(async_start, /*index=*/{2}));
-  EXPECT_FALSE(analysis.ValueIsDefinedAt(async_update, /*index=*/{2}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_update, /*index=*/{2}));
 }
 
 TEST_P(HloDataflowAnalysisTest, LateBoundOperandDataflow) {
