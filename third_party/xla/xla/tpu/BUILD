@@ -205,8 +205,8 @@ cc_library(
         ":tpu_api",
         ":tpu_executor_init_fns",
         ":tpu_ops_c_api_hdrs",
-        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
     ],
 )
 
