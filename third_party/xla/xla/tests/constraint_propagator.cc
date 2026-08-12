@@ -568,9 +568,52 @@ absl::Status ConstraintPropagator::SeedConstraints(
 //    and generated as <= 0, (0.0 > tau) evaluates to true on masked lanes,
 //    producing division by zero (-inf). This pattern seeds tau > 0 on the
 //    threshold operand.
+//
+// 2. Masked Attention Softmax (Large Negative Constant Masking):
+//
+//    Pattern:
+//      exp(subtract(select(mask, logits, C_mask), row_max))
+//    where C_mask <= -10000.0 (e.g. -1e30, -1e9, -1e4) masks invalid tokens.
+//
+//    The Problem:
+//    In isolated tests, logits, row_max, and mask are independent inputs:
+//    - If row_max <= C_mask (e.g. -1e35), masked lanes compute C_mask - m,
+//      overflowing exp to +inf => +inf / +inf = NaN in downstream division.
+//    - If |logits - row_max| > 88, unmasked lanes either overflow to +inf or
+//      underflow to 0.0 on all lanes => sum(exp) = 0.0 => 0.0 / 0.0 = NaN.
+//
+//    Natural Constraints (Full Model):
+//    In full models, row_max = max(masked_logits). Thus, logits - m <= 0,
+//    the max token gives exp(0) = 1.0, and masked lanes give exp -> 0.0.
+//    The sum sum(exp) >= 1.0 is never zero, and exp never overflows.
+//
+//    Solution:
+//    Constrain logits in [-5.0, 0.0] and row_max in [0.0, 5.0].
+//
+//    Why Bound 5.0 Specifically (Alternative Bounds Comparison):
+//    - B = inf (Unbounded): sub < -88 causes all unmasked lanes to underflow
+//      to 0.0 => sum(exp) = 0.0 => 0.0 / 0.0 = NaN.
+//    - B = 10.0: sub_min = -20.0 => exp(-20) ~= 2e-9 underflows to 0.0 in
+//      Float16 (min subnormal is 5.96e-8).
+//    - B = 5.0 (Chosen): sub in [-10.0, 0.0] => exp in [4.54e-5, 1.0]. Safely
+//      non-zero across Float32, Float16, and Bfloat16 without overflow or
+//      underflow.
+//    - B = 1.0: Safe, but unnecessarily restricts input diversity.
 // ============================================================================
 absl::Status ConstraintPropagator::SeedMLPatternsConstraints(
     const HloComputation* computation) {
+  auto unwrap_transparent_ops =
+      [](const HloInstruction* op) -> const HloInstruction* {
+    while (op->opcode() == HloOpcode::kBitcast ||
+           op->opcode() == HloOpcode::kBitcastConvert ||
+           op->opcode() == HloOpcode::kConvert ||
+           op->opcode() == HloOpcode::kReshape ||
+           op->opcode() == HloOpcode::kCopy) {
+      op = op->operand(0);
+    }
+    return op;
+  };
+
   for (const HloInstruction* inst : computation->instructions()) {
     // Pattern 1: Guarded Division / Threshold-based Gradient/Activation
     // Clipping
@@ -599,6 +642,39 @@ absl::Status ConstraintPropagator::SeedMLPatternsConstraints(
             // Case 2: compare(tau, x, LT/LE) where divisor is x (rhs) -> tau is
             // lhs
             states_[lhs].AddConstraint(ConstraintInterval::StrictPositive());
+          }
+        }
+      }
+    }
+
+    // Pattern 2: Masked Attention Softmax
+    //   exp(subtract(select(mask, logits, C_mask), row_max))
+    // where C_mask <= -1e4 (e.g. -1e30, -1e9, -1e4).
+    if (inst->opcode() == HloOpcode::kExp) {
+      const HloInstruction* exp_operand =
+          unwrap_transparent_ops(inst->operand(0));
+
+      if (exp_operand->opcode() == HloOpcode::kSubtract) {
+        const HloInstruction* lhs =
+            unwrap_transparent_ops(exp_operand->operand(0));
+        const HloInstruction* rhs = exp_operand->operand(1);
+
+        if (lhs->opcode() == HloOpcode::kSelect) {
+          std::optional<double> c1 = GetConstantValue(lhs->operand(1));
+          std::optional<double> c2 = GetConstantValue(lhs->operand(2));
+
+          if (c2.has_value() && *c2 <= -1e4) {
+            // Case 2a: select(mask, logits, C_mask) where C_mask is on_false
+            const HloInstruction* logits = lhs->operand(1);
+            const HloInstruction* row_max = rhs;
+            states_[row_max].AddConstraint(ConstraintInterval{0.0, 5.0, false});
+            states_[logits].AddConstraint(ConstraintInterval{-5.0, 0.0, false});
+          } else if (c1.has_value() && *c1 <= -1e4) {
+            // Case 2b: select(mask, C_mask, logits) where C_mask is on_true
+            const HloInstruction* logits = lhs->operand(2);
+            const HloInstruction* row_max = rhs;
+            states_[row_max].AddConstraint(ConstraintInterval{0.0, 5.0, false});
+            states_[logits].AddConstraint(ConstraintInterval{-5.0, 0.0, false});
           }
         }
       }
