@@ -251,9 +251,9 @@ ENTRY main {
   EXPECT_EQ(CountCopies(*module), 3);
   while_op = hlo_query::GetFirstInstructionWithOpcode(
       *module->entry_computation(), HloOpcode::kWhile);
-  // Make sure that the copy of AllGatherDone has been removed.
+  // Make sure that the copy of the all-gather has been removed.
   EXPECT_EQ(while_op->while_body()->root_instruction()->operand(1)->opcode(),
-            HloOpcode::kAllGatherDone);
+            HloOpcode::kAllGather);
 }
 
 }  // namespace

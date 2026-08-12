@@ -136,12 +136,6 @@ ConvertAsyncCollectivesToSync::ReplaceWithSyncVariant(
   ABSL_RETURN_IF_ERROR(async_start->DropAllControlDeps());
   ABSL_RETURN_IF_ERROR(async_done->DropAllControlDeps());
 
-  // Remember name of async instruction for profile usability.
-  FrontendAttributes attributes;
-  auto& map = *attributes.mutable_map();
-  map[kAsyncCollectiveNameAttributeName] = async_start->name();
-  sync_instruction->add_frontend_attributes(std::move(attributes));
-
   // When we remove the async-done (and its unused operands), in most cases,
   // the async-start may not be deleted if its considered as having side effects
   // but in some cases it will be (e.g., the generic HLO kAsyncStart). Track its
