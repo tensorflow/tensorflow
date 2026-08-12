@@ -25,11 +25,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/Bitcode/BitcodeReader.h"
@@ -141,7 +141,7 @@ absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
   }
   if (tsl::Env::Default()->FileExists(resolved_path).ok()) {
     CompilationCacheProto proto;
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         tsl::ReadBinaryProto(tsl::Env::Default(), resolved_path, &proto));
     // Register all cached kernel names with the name uniquer to avoid
     // naming conflicts.
@@ -149,7 +149,7 @@ absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
       TF_RET_CHECK(ir_emitter_context.GetSanitizedUniqueName(name) == name)
           << "Failed registering " << name << "in NameUniquer.";
     }
-    RETURN_IF_ERROR(ir_emitter_context.kernel_cache().Load(proto));
+    ABSL_RETURN_IF_ERROR(ir_emitter_context.kernel_cache().Load(proto));
   } else {
     VLOG(1) << "Compilation cache file does not exist: " << resolved_path;
   }
@@ -195,7 +195,7 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
       hlo_ordering =
           std::make_unique<SequentialHloOrdering>(module->schedule());
   }
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(
           module, std::move(hlo_ordering),
@@ -226,10 +226,10 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
 
   CompileModuleResults results = InitializeResults(hlo_module);
 
-  ASSIGN_OR_RETURN(results.buffer_assignment,
+  ABSL_ASSIGN_OR_RETURN(results.buffer_assignment,
                    RunBufferAssignment(hlo_module, alias_info,
                                        std::move(buffer_size_bytes_function)));
-  ASSIGN_OR_RETURN(results.output_info,
+  ABSL_ASSIGN_OR_RETURN(results.output_info,
                    GetOutputInfo(*hlo_module, *results.buffer_assignment));
 
   // capture the output shape after buffer assignment because it may change
@@ -241,7 +241,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   VLOG(1) << "After optimization module fingerprint for " << hlo_module->name()
           << ": " << hlo_module->GetFingerprint128();
 
-  ASSIGN_OR_RETURN(BorrowedMlirContext borrowed_context,
+  ABSL_ASSIGN_OR_RETURN(BorrowedMlirContext borrowed_context,
                    mlir_context_pool->GetOrCreate());
   IrEmitterContext ir_emitter_context(
       hlo_module, results.buffer_assignment.get(),
@@ -256,7 +256,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   uint64_t start_usecs = tsl::Env::Default()->NowMicros();
 
   if (use_cache) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         LoadCache(ir_emitter_context, options.xla_gpu_kernel_cache_file()));
   }
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
@@ -269,7 +269,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   const bool has_constants_module =
       !constants_module->empty() || !constants_module->global_empty();
   if (has_constants_module) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         results.constants_binary,
         compiler->CompileToTargetBinary(thunk_emitter.ConsumeConstantsModule())
             .Await());
@@ -277,7 +277,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     VLOG(2) << "Constants LLVM module is empty; skipping target compilation.";
   }
 
-  ASSIGN_OR_RETURN(ThunkSequence thunks, std::move(future_thunks).Await());
+  ABSL_ASSIGN_OR_RETURN(ThunkSequence thunks, std::move(future_thunks).Await());
   results.executable =
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo{}, std::move(thunks));
 

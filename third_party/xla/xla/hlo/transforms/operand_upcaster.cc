@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <optional>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -86,7 +86,7 @@ absl::StatusOr<HloInstruction*> OperandUpcaster::ExpandInstruction(
     upcast_shape.set_element_type(type);
     auto* convert_inst = instruction->AddInstruction(
         HloInstruction::CreateConvert(upcast_shape, operand));
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         instruction->ReplaceOperandWithDifferentShape(i, convert_inst));
   }
   return nullptr;

@@ -136,7 +136,7 @@ absl::Status HloOriginalValueReconstructor::ProcessShardTensor(
 
   bool all_completed = true;
   for (const auto& original_info : original_infos) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         AbsoluteScopedTensorKey original_tensor_key,
         ConstructOriginalTensorKey(optimized_tensor_position.scope_instructions,
                                    original_info.original_scoped_tensor_key));
@@ -224,7 +224,7 @@ absl::Status HloOriginalValueReconstructor::ProcessShardTensor(
             continue;
           }
           HloEvaluator evaluator;
-          ASSIGN_OR_RETURN(current_shard_data,
+          ABSL_ASSIGN_OR_RETURN(current_shard_data,
                            evaluator.Evaluate(*module, {&current_shard_data}));
         }
 
@@ -268,7 +268,7 @@ absl::Status HloOriginalValueReconstructor::ProcessShardTensor(
         continue;
       }
 
-      RETURN_IF_ERROR(ProcessCompletedShards(optimized_tensor_position,
+      ABSL_RETURN_IF_ERROR(ProcessCompletedShards(optimized_tensor_position,
                                              original_tensor_key, original_info,
                                              shards));
       completed_tensor_keys_.insert(original_tensor_key);
@@ -310,7 +310,7 @@ absl::Status HloOriginalValueReconstructor::ProcessCompletedShards(
 
   if (sharding_it != analysis_->optimized_tensor_sharding().end()) {
     CHECK(!shards.empty());
-    ASSIGN_OR_RETURN(ManualShardingInfo manual_info,
+    ABSL_ASSIGN_OR_RETURN(ManualShardingInfo manual_info,
                      FactorManualSharding(shards, sharding_it->second));
 
     // Path 1: partitioned = false
@@ -351,7 +351,7 @@ absl::Status HloOriginalValueReconstructor::ProcessCompletedShards(
             }
           }
 
-          ASSIGN_OR_RETURN(
+          ABSL_ASSIGN_OR_RETURN(
               Literal combined,
               UnshardLiteral(current_shards, manual_info.unshard_sharding,
                              manual_shard_shape));
@@ -370,13 +370,13 @@ absl::Status HloOriginalValueReconstructor::ProcessCompletedShards(
               continue;
             }
 
-            RETURN_IF_ERROR(unshard_current_shards(
+            ABSL_RETURN_IF_ERROR(unshard_current_shards(
                 module->entry_computation()->root_instruction()->shape()));
             already_unsharded = true;
           } else {
             for (auto& shard : current_shards) {
               HloEvaluator evaluator;
-              ASSIGN_OR_RETURN(*shard.data,
+              ABSL_ASSIGN_OR_RETURN(*shard.data,
                                evaluator.Evaluate(*module, {shard.data.get()}));
             }
           }
@@ -385,7 +385,7 @@ absl::Status HloOriginalValueReconstructor::ProcessCompletedShards(
         if (!already_unsharded) {
           Shape base_shape = ShapeUtil::MakeShape(
               current_shards[0].data->shape().element_type(), dims_it->second);
-          RETURN_IF_ERROR(unshard_current_shards(base_shape));
+          ABSL_RETURN_IF_ERROR(unshard_current_shards(base_shape));
           already_unsharded = true;
         }
 
@@ -410,7 +410,7 @@ absl::Status HloOriginalValueReconstructor::ProcessCompletedShards(
         continue;
       }
       HloEvaluator evaluator;
-      ASSIGN_OR_RETURN(recovered_literal,
+      ABSL_ASSIGN_OR_RETURN(recovered_literal,
                        evaluator.Evaluate(*module, {&recovered_literal}));
     }
 

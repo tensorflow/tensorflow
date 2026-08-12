@@ -29,12 +29,12 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
@@ -1221,7 +1221,7 @@ class ConvertToHloModule {
     // This is an invariant check as Run returns failure if there is no main
     // function and so the main proto shouldn't be consumed in that case.
     TF_RET_CHECK(main) << "requires module to have main function";
-    ASSIGN_OR_RETURN(xla::XlaComputation computation,
+    ABSL_ASSIGN_OR_RETURN(xla::XlaComputation computation,
                      module_builder_.Build(lowered_computation_[main]));
     return std::move(*computation.mutable_proto());
   }
@@ -2998,67 +2998,71 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   }
 
   xla::XlaOp custom_call;
-  if (call_target_name == kControlDep) {
-    custom_call = xla::CustomCall(
-        ctx.builder, call_target_name, args, result_shape, backend_config,
-        op.getHasSideEffect(), output_operand_aliasing, literal_ptr,
-        custom_call_schedule, *xla_api_version);
-  } else if (op.getCalledComputations().size() == 1 && op.getOperandLayouts() &&
-             op.getResultLayouts()) {
-    mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
-        mlir::cast<FlatSymbolRefAttr>(op.getCalledComputations()[0]));
-    if (failed(ctx.converter->RunOnFunction(callee))) {
-      return failure();
-    }
-    xla::XlaComputationId computation =
-        ctx.converter->GetLoweredComputation(callee);
-    auto operand_shapes_with_layout = ConvertTypesToShapesWithLayout(
-        op.getOperandTypes(), op.getOperandLayouts().value(),
-        /*tilings=*/std::nullopt,
-        op->getAttrOfType<mlir::DenseI64ArrayAttr>(
-            xla::kMhloOperandMemorySpaces));
-    SetLayout(result_shape, op.getResultLayouts().value());
-    SetMemorySpaces(result_shape, op->getAttrOfType<mlir::DenseI64ArrayAttr>(
-                                      xla::kMhloResultMemorySpaces));
+  {
+    xla::XlaScopedFrontendAttributesAssignment frontend_attributes_scope(
+        ctx.builder, CreateXlaFrontendAttributesFromOp(op));
+    if (call_target_name == kControlDep) {
+      custom_call = xla::CustomCall(
+          ctx.builder, call_target_name, args, result_shape, backend_config,
+          op.getHasSideEffect(), output_operand_aliasing, literal_ptr,
+          custom_call_schedule, *xla_api_version);
+    } else if (op.getCalledComputations().size() == 1 &&
+               op.getOperandLayouts() && op.getResultLayouts()) {
+      mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
+          mlir::cast<FlatSymbolRefAttr>(op.getCalledComputations()[0]));
+      if (failed(ctx.converter->RunOnFunction(callee))) {
+        return failure();
+      }
+      xla::XlaComputationId computation =
+          ctx.converter->GetLoweredComputation(callee);
+      auto operand_shapes_with_layout = ConvertTypesToShapesWithLayout(
+          op.getOperandTypes(), op.getOperandLayouts().value(),
+          /*tilings=*/std::nullopt,
+          op->getAttrOfType<mlir::DenseI64ArrayAttr>(
+              xla::kMhloOperandMemorySpaces));
+      SetLayout(result_shape, op.getResultLayouts().value());
+      SetMemorySpaces(result_shape, op->getAttrOfType<mlir::DenseI64ArrayAttr>(
+                                        xla::kMhloResultMemorySpaces));
 
-    custom_call = xla::CustomCallWithComputationAndLayouts(
-        ctx.builder, call_target_name, args, computation, result_shape,
-        operand_shapes_with_layout, backend_config, op.getHasSideEffect(),
-        output_operand_aliasing, literal_ptr, custom_call_schedule,
-        *xla_api_version);
-  } else if (op.getCalledComputations().size() == 1) {
-    mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
-        mlir::cast<FlatSymbolRefAttr>(op.getCalledComputations()[0]));
-    if (failed(ctx.converter->RunOnFunction(callee))) {
-      return failure();
-    }
-    xla::XlaComputationId computation =
-        ctx.converter->GetLoweredComputation(callee);
-    custom_call = xla::CustomCallWithComputation(
-        ctx.builder, call_target_name, args, computation, result_shape,
-        backend_config, op.getHasSideEffect(), output_operand_aliasing,
-        literal_ptr, custom_call_schedule, *xla_api_version);
-  } else if (op.getOperandLayouts() && op.getResultLayouts()) {
-    auto operand_shapes_with_layout = ConvertTypesToShapesWithLayout(
-        op.getOperandTypes(), op.getOperandLayouts().value(),
-        /*tilings=*/std::nullopt,
-        op->getAttrOfType<mlir::DenseI64ArrayAttr>(
-            xla::kMhloOperandMemorySpaces));
-    SetLayout(result_shape, op.getResultLayouts().value(),
-              op.getResultTilings());
-    SetMemorySpaces(result_shape, op->getAttrOfType<mlir::DenseI64ArrayAttr>(
-                                      xla::kMhloResultMemorySpaces));
+      custom_call = xla::CustomCallWithComputationAndLayouts(
+          ctx.builder, call_target_name, args, computation, result_shape,
+          operand_shapes_with_layout, backend_config, op.getHasSideEffect(),
+          output_operand_aliasing, literal_ptr, custom_call_schedule,
+          *xla_api_version);
+    } else if (op.getCalledComputations().size() == 1) {
+      mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
+          mlir::cast<FlatSymbolRefAttr>(op.getCalledComputations()[0]));
+      if (failed(ctx.converter->RunOnFunction(callee))) {
+        return failure();
+      }
+      xla::XlaComputationId computation =
+          ctx.converter->GetLoweredComputation(callee);
+      custom_call = xla::CustomCallWithComputation(
+          ctx.builder, call_target_name, args, computation, result_shape,
+          backend_config, op.getHasSideEffect(), output_operand_aliasing,
+          literal_ptr, custom_call_schedule, *xla_api_version);
+    } else if (op.getOperandLayouts() && op.getResultLayouts()) {
+      auto operand_shapes_with_layout = ConvertTypesToShapesWithLayout(
+          op.getOperandTypes(), op.getOperandLayouts().value(),
+          /*tilings=*/std::nullopt,
+          op->getAttrOfType<mlir::DenseI64ArrayAttr>(
+              xla::kMhloOperandMemorySpaces));
+      SetLayout(result_shape, op.getResultLayouts().value(),
+                op.getResultTilings());
+      SetMemorySpaces(result_shape, op->getAttrOfType<mlir::DenseI64ArrayAttr>(
+                                        xla::kMhloResultMemorySpaces));
 
-    custom_call = xla::CustomCallWithLayout(
-        ctx.builder, call_target_name, args, result_shape,
-        operand_shapes_with_layout, backend_config, op.getHasSideEffect(),
-        output_operand_aliasing, literal_ptr, custom_call_schedule,
-        *xla_api_version);
-  } else {
-    custom_call = xla::CustomCall(
-        ctx.builder, call_target_name, args, result_shape, backend_config,
-        op.getHasSideEffect(), output_operand_aliasing, literal_ptr,
-        custom_call_schedule, *xla_api_version);
+      custom_call = xla::CustomCallWithLayout(
+          ctx.builder, call_target_name, args, result_shape,
+          operand_shapes_with_layout, backend_config, op.getHasSideEffect(),
+          output_operand_aliasing, literal_ptr, custom_call_schedule,
+          *xla_api_version);
+    } else {
+      custom_call = xla::CustomCall(
+          ctx.builder, call_target_name, args, result_shape, backend_config,
+          op.getHasSideEffect(), output_operand_aliasing, literal_ptr,
+          custom_call_schedule, *xla_api_version);
+    }
   }
 
   if (op->getNumResults() == 1 && !return_tuple) {
@@ -4562,61 +4566,65 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   }
 
   xla::XlaOp custom_call;
-  if (op.getCalledComputations().size() == 1 && op.getOperandLayouts() &&
-      op.getResultLayouts()) {
-    mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
-        mlir::cast<FlatSymbolRefAttr>(op.getCalledComputations()[0]));
-    if (failed(ctx.converter->RunOnFunction(callee))) {
-      return failure();
-    }
-    xla::XlaComputationId computation =
-        ctx.converter->GetLoweredComputation(callee);
-    auto operand_shapes_with_layout = ConvertTypesToShapesWithLayout(
-        op.getOperandTypes(), op.getOperandLayouts().value(),
-        /*tilings=*/std::nullopt,
-        op->getAttrOfType<mlir::DenseI64ArrayAttr>(
-            xla::kMhloOperandMemorySpaces));
-    SetLayout(result_shape, op.getResultLayouts().value());
-    SetMemorySpaces(result_shape, op->getAttrOfType<mlir::DenseI64ArrayAttr>(
-                                      xla::kMhloResultMemorySpaces));
+  {
+    xla::XlaScopedFrontendAttributesAssignment frontend_attributes_scope(
+        ctx.builder, CreateXlaFrontendAttributesFromOp(op));
+    if (op.getCalledComputations().size() == 1 && op.getOperandLayouts() &&
+        op.getResultLayouts()) {
+      mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
+          mlir::cast<FlatSymbolRefAttr>(op.getCalledComputations()[0]));
+      if (failed(ctx.converter->RunOnFunction(callee))) {
+        return failure();
+      }
+      xla::XlaComputationId computation =
+          ctx.converter->GetLoweredComputation(callee);
+      auto operand_shapes_with_layout = ConvertTypesToShapesWithLayout(
+          op.getOperandTypes(), op.getOperandLayouts().value(),
+          /*tilings=*/std::nullopt,
+          op->getAttrOfType<mlir::DenseI64ArrayAttr>(
+              xla::kMhloOperandMemorySpaces));
+      SetLayout(result_shape, op.getResultLayouts().value());
+      SetMemorySpaces(result_shape, op->getAttrOfType<mlir::DenseI64ArrayAttr>(
+                                        xla::kMhloResultMemorySpaces));
 
-    custom_call = xla::CustomCallWithComputationAndLayouts(
-        ctx.builder, call_target_name, args, computation, result_shape,
-        operand_shapes_with_layout, backend_config, op.getHasSideEffect(),
-        output_operand_aliasing, literal_ptr, *custom_call_schedule,
-        *xla_api_version);
-  } else if (op.getCalledComputations().size() == 1) {
-    mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
-        mlir::cast<FlatSymbolRefAttr>(op.getCalledComputations()[0]));
-    if (failed(ctx.converter->RunOnFunction(callee))) {
-      return failure();
-    }
-    xla::XlaComputationId computation =
-        ctx.converter->GetLoweredComputation(callee);
-    custom_call = xla::CustomCallWithComputation(
-        ctx.builder, call_target_name, args, computation, result_shape,
-        backend_config, op.getHasSideEffect(), output_operand_aliasing,
-        literal_ptr, *custom_call_schedule, *xla_api_version);
-  } else if (op.getOperandLayouts() && op.getResultLayouts()) {
-    auto operand_shapes_with_layout = ConvertTypesToShapesWithLayout(
-        op.getOperandTypes(), op.getOperandLayouts().value(),
-        /*tilings=*/std::nullopt,
-        op->getAttrOfType<mlir::DenseI64ArrayAttr>(
-            xla::kMhloOperandMemorySpaces));
-    SetLayout(result_shape, op.getResultLayouts().value());
-    SetMemorySpaces(result_shape, op->getAttrOfType<mlir::DenseI64ArrayAttr>(
-                                      xla::kMhloResultMemorySpaces));
+      custom_call = xla::CustomCallWithComputationAndLayouts(
+          ctx.builder, call_target_name, args, computation, result_shape,
+          operand_shapes_with_layout, backend_config, op.getHasSideEffect(),
+          output_operand_aliasing, literal_ptr, *custom_call_schedule,
+          *xla_api_version);
+    } else if (op.getCalledComputations().size() == 1) {
+      mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
+          mlir::cast<FlatSymbolRefAttr>(op.getCalledComputations()[0]));
+      if (failed(ctx.converter->RunOnFunction(callee))) {
+        return failure();
+      }
+      xla::XlaComputationId computation =
+          ctx.converter->GetLoweredComputation(callee);
+      custom_call = xla::CustomCallWithComputation(
+          ctx.builder, call_target_name, args, computation, result_shape,
+          backend_config, op.getHasSideEffect(), output_operand_aliasing,
+          literal_ptr, *custom_call_schedule, *xla_api_version);
+    } else if (op.getOperandLayouts() && op.getResultLayouts()) {
+      auto operand_shapes_with_layout = ConvertTypesToShapesWithLayout(
+          op.getOperandTypes(), op.getOperandLayouts().value(),
+          /*tilings=*/std::nullopt,
+          op->getAttrOfType<mlir::DenseI64ArrayAttr>(
+              xla::kMhloOperandMemorySpaces));
+      SetLayout(result_shape, op.getResultLayouts().value());
+      SetMemorySpaces(result_shape, op->getAttrOfType<mlir::DenseI64ArrayAttr>(
+                                        xla::kMhloResultMemorySpaces));
 
-    custom_call = xla::CustomCallWithLayout(
-        ctx.builder, call_target_name, args, result_shape,
-        operand_shapes_with_layout, backend_config, op.getHasSideEffect(),
-        output_operand_aliasing, literal_ptr, *custom_call_schedule,
-        *xla_api_version);
-  } else {
-    custom_call = xla::CustomCall(
-        ctx.builder, call_target_name, args, result_shape, backend_config,
-        op.getHasSideEffect(), output_operand_aliasing, literal_ptr,
-        *custom_call_schedule, *xla_api_version);
+      custom_call = xla::CustomCallWithLayout(
+          ctx.builder, call_target_name, args, result_shape,
+          operand_shapes_with_layout, backend_config, op.getHasSideEffect(),
+          output_operand_aliasing, literal_ptr, *custom_call_schedule,
+          *xla_api_version);
+    } else {
+      custom_call = xla::CustomCall(
+          ctx.builder, call_target_name, args, result_shape, backend_config,
+          op.getHasSideEffect(), output_operand_aliasing, literal_ptr,
+          *custom_call_schedule, *xla_api_version);
+    }
   }
 
   if (op->getNumResults() == 1 && !return_tuple) {
@@ -6120,7 +6128,7 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
     return absl::InternalError("Unable to convert MHLO to StableHLO");
   }
 
-  RETURN_IF_ERROR(PrepareForExport(module));
+  ABSL_RETURN_IF_ERROR(PrepareForExport(module));
 
   mlir::BaseScopedDiagnosticHandler diag_handler(module.getContext());
   xla::XlaBuilder module_builder(kMain);
@@ -6128,7 +6136,7 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
   if (failed(converter.Run())) {
     return diag_handler.ConsumeStatus();
   }
-  ASSIGN_OR_RETURN(xla::HloModuleProto hlo_module,
+  ABSL_ASSIGN_OR_RETURN(xla::HloModuleProto hlo_module,
                    converter.ConsumeMainProto());
   StringRef module_name = module.getName() ? *module.getName() : kMain;
   hlo_module.set_name(module_name.str());
@@ -6219,11 +6227,11 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
 absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertMlirHloToHloModule(
     mlir::ModuleOp module, MlirToHloConversionOptions options) {
   xla::HloProto hlo_proto;
-  RETURN_IF_ERROR(ConvertMlirHloToHlo(module, &hlo_proto, options));
+  ABSL_RETURN_IF_ERROR(ConvertMlirHloToHlo(module, &hlo_proto, options));
 
   // Create default config.
   const xla::HloModuleProto& module_proto = hlo_proto.hlo_module();
-  ASSIGN_OR_RETURN(xla::HloModuleConfig config,
+  ABSL_ASSIGN_OR_RETURN(xla::HloModuleConfig config,
                    xla::HloModule::CreateModuleConfigFromProto(
                        module_proto, xla::GetDebugOptionsFromFlags()));
 
@@ -6238,7 +6246,7 @@ absl::Status BuildHloFromMlirHlo(mlir::ModuleOp& module,
                                  llvm::ArrayRef<xla::XlaOp> xla_params,
                                  std::vector<xla::XlaOp>& returns,
                                  MlirToHloConversionOptions options) {
-  RETURN_IF_ERROR(PrepareForExport(module));
+  ABSL_RETURN_IF_ERROR(PrepareForExport(module));
   mlir::func::FuncOp main = module.lookupSymbol<mlir::func::FuncOp>("main");
   mlir::Block& block = main.getRegion().front();
   // No tuple support in Builder converter API.

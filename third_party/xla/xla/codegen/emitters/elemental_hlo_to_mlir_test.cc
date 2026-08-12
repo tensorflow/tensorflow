@@ -22,8 +22,8 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -112,13 +112,13 @@ class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
     auto& entry_pc =
         partitioned_computations.FindPartitionedComputation(entry_computation);
     auto call_targets = partitioned_computations.CreateCallTargetProvider(fns);
-    RETURN_IF_ERROR(SubgraphToMlirFunction(entry_pc, entry_pc.GetRootSubgraph(),
+    ABSL_RETURN_IF_ERROR(SubgraphToMlirFunction(entry_pc, entry_pc.GetRootSubgraph(),
                                            entry_func, call_targets,
                                            &mlir_context_));
 
     if (!partitioned_computations.epilogues().empty()) {
       const auto& epilogue = partitioned_computations.epilogues().front();
-      RETURN_IF_ERROR(SubgraphToMlirFunction(entry_pc, epilogue, fns[&epilogue],
+      ABSL_RETURN_IF_ERROR(SubgraphToMlirFunction(entry_pc, epilogue, fns[&epilogue],
                                              call_targets, &mlir_context_));
     }
 
@@ -132,7 +132,7 @@ class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
     llvm::raw_string_ostream stream(out);
     stream << module.get();
 
-    ASSIGN_OR_RETURN(auto filecheck_result, RunFileCheck(out, filecheck_str));
+    ABSL_ASSIGN_OR_RETURN(auto filecheck_result, RunFileCheck(out, filecheck_str));
     TF_RET_CHECK(filecheck_result);
     return absl::OkStatus();
   }

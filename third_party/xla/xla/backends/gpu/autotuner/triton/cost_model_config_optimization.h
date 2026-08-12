@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -33,7 +34,7 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// Optimizes a given set of configs using the gpu cost model controlled by
+// Optimizes a given set of configs using the GPU cost model controlled by
 // `debug_options`.
 // Assumes `optimized_configs` is a subset of `all_configs` optimized by other
 // means (e.g. via the default set).
@@ -41,6 +42,15 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
     const HloDotInstruction* dot,
     const std::vector<TritonGemmConfig>& all_configs,
     const std::vector<TritonGemmConfig>& optimized_configs,
+    const se::DeviceDescription& device_description,
+    const DebugOptions& debug_options, mlir::MLIRContext* mlir_context);
+
+// Sorts a given set of configs using the GPU cost model based on estimated
+// runtime (fastest to slowest). Configurations that cannot be estimated by
+// the model are preserved at the end of the returned list in their original
+// order.
+absl::StatusOr<std::vector<TritonGemmConfig>> SortConfigsWithCostModel(
+    const HloDotInstruction* dot, absl::Span<const TritonGemmConfig> configs,
     const se::DeviceDescription& device_description,
     const DebugOptions& debug_options, mlir::MLIRContext* mlir_context);
 

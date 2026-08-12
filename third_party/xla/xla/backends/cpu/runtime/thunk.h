@@ -29,9 +29,9 @@ limitations under the License.
 #include "absl/base/no_destructor.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/function_library.h"
@@ -380,7 +380,7 @@ class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {
   static absl::StatusOr<ThunkSequence> Of(Args&&... args) {
     static_assert(std::is_base_of_v<Thunk, T>,
                   "ThunkSequence::Of() requires `T` to be a `Thunk` subclass.");
-    ASSIGN_OR_RETURN(auto thunk, T::Create(std::forward<Args>(args)...));
+    ABSL_ASSIGN_OR_RETURN(auto thunk, T::Create(std::forward<Args>(args)...));
     return ThunkSequence(std::move(thunk));
   }
 

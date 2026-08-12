@@ -27,10 +27,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/literal.h"
 #include "xla/service/compiler.h"
 #include "xla/service/maybe_owning_device_address.h"
@@ -63,7 +63,7 @@ absl::StatusOr<Literal> TransferManager::TransferLiteralFromDevice(
     se::Stream* stream, const ShapedBuffer& device_buffer,
     const TransferMetadata* transfer_metadata) {
   Literal literal(device_buffer.on_host_shape());
-  RETURN_IF_ERROR(TransferLiteralFromDevice(stream, device_buffer, &literal,
+  ABSL_RETURN_IF_ERROR(TransferLiteralFromDevice(stream, device_buffer, &literal,
                                             transfer_metadata));
   return std::move(literal);
 }
@@ -72,8 +72,8 @@ absl::Status TransferManager::TransferLiteralFromDevice(
     se::Stream* stream, const ShapedBuffer& device_buffer,
     const MutableBorrowingLiteral& literal,
     const TransferMetadata* transfer_metadata) {
-  ASSIGN_OR_RETURN(se::Stream * substream, stream->GetOrCreateSubStream());
-  RETURN_IF_ERROR(substream->WaitFor(stream));
+  ABSL_ASSIGN_OR_RETURN(se::Stream * substream, stream->GetOrCreateSubStream());
+  ABSL_RETURN_IF_ERROR(substream->WaitFor(stream));
   absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
 
   absl::Status ret;
@@ -96,10 +96,10 @@ absl::Status TransferManager::TransferLiteralToDevice(
   // Implement the synchronous version by waiting on the asynchronous version.
   // Use a substream so that if we are called from a HostCallback we don't
   // deadlock.
-  ASSIGN_OR_RETURN(se::Stream * substream, stream->GetOrCreateSubStream());
-  RETURN_IF_ERROR(substream->WaitFor(stream));
+  ABSL_ASSIGN_OR_RETURN(se::Stream * substream, stream->GetOrCreateSubStream());
+  ABSL_RETURN_IF_ERROR(substream->WaitFor(stream));
   absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
-  RETURN_IF_ERROR(TransferLiteralToDeviceAsync(
+  ABSL_RETURN_IF_ERROR(TransferLiteralToDeviceAsync(
       substream, literal, device_buffer, transfer_metadata));
   return substream->BlockHostUntilDone();
 }
@@ -113,7 +113,7 @@ absl::StatusOr<Literal> TransferManager::TransferArrayFromDevice(
   Literal literal(shape);
   ShapedBuffer shaped_buffer(shape, stream->parent()->device_ordinal());
   shaped_buffer.set_buffer(source, /*index=*/{});
-  RETURN_IF_ERROR(TransferLiteralFromDevice(stream, shaped_buffer, &literal,
+  ABSL_RETURN_IF_ERROR(TransferLiteralFromDevice(stream, shaped_buffer, &literal,
                                             transfer_metadata));
   return std::move(literal);
 }
@@ -125,10 +125,10 @@ absl::Status TransferManager::TransferArrayToDevice(
   // Implement the synchronous version by waiting on the asynchronous version.
   // Use a substream so that if we are called from a HostCallback we don't
   // deadlock.
-  ASSIGN_OR_RETURN(se::Stream * substream, stream->GetOrCreateSubStream());
-  RETURN_IF_ERROR(substream->WaitFor(stream));
+  ABSL_ASSIGN_OR_RETURN(se::Stream * substream, stream->GetOrCreateSubStream());
+  ABSL_RETURN_IF_ERROR(substream->WaitFor(stream));
   absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       TransferArrayToDeviceAsync(substream, literal, dest, transfer_metadata));
   return substream->BlockHostUntilDone();
 }
@@ -150,11 +150,11 @@ absl::Status TransferManager::ReadDynamicShapes(
     Shape* device_shape) {
   DCHECK(device_shape->is_dynamic());
   Shape original_device_shape = *device_shape;
-  RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
-  ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(
+  ABSL_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(
                                       stream->parent()->GetPlatform()->id()));
-  RETURN_IF_ERROR(device_buffer->buffers().ForEachElementWithStatus(
+  ABSL_RETURN_IF_ERROR(device_buffer->buffers().ForEachElementWithStatus(
       [&](const ShapeIndex& index,
           const se::DeviceAddressBase& buffer) -> absl::Status {
         const Shape& buffer_shape =
@@ -179,7 +179,7 @@ absl::Status TransferManager::ReadDynamicShapes(
         }
         auto buffer_8 = se::DeviceAddress<uint8_t>(buffer);
         auto metadata_buffer = buffer_8.GetSlice(offset, metadata_size);
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             auto metadata,
             TransferArrayFromDevice(
                 stream,
@@ -233,7 +233,7 @@ absl::Status TransferManager::ReadDynamicShapes(
 
 absl::Status TransferManager::WriteTupleIndexTables(
     se::Stream* stream, const ShapedBuffer& device_buffer) {
-  RETURN_IF_ERROR(WriteTupleIndexTablesAsync(stream, device_buffer));
+  ABSL_RETURN_IF_ERROR(WriteTupleIndexTablesAsync(stream, device_buffer));
   return stream->BlockHostUntilDone();
 }
 
@@ -318,7 +318,7 @@ absl::StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
     return InvalidArgument("Shape must have a layout: %s",
                            ShapeUtil::HumanStringWithLayout(on_host_shape));
   }
-  RETURN_IF_ERROR(ShapeUtil::ValidateShape(on_host_shape));
+  ABSL_RETURN_IF_ERROR(ShapeUtil::ValidateShape(on_host_shape));
   Shape on_device_shape = (shape_representation_fn == nullptr)
                               ? HostShapeToDeviceShape(on_host_shape)
                               : shape_representation_fn(on_host_shape);
@@ -334,7 +334,7 @@ absl::StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
     se::DeviceAddressBase& memory_base = pair.second;
     const Shape& subshape =
         ShapeUtil::GetSubshape(shaped_buffer.on_device_shape(), index);
-    ASSIGN_OR_RETURN(auto memory,
+    ABSL_ASSIGN_OR_RETURN(auto memory,
                      allocator->Allocate(shaped_buffer.device_ordinal(),
                                          GetByteSizeRequirement(subshape),
                                          /*retry_on_failure=*/true,

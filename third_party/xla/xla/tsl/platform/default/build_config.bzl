@@ -18,11 +18,11 @@
 # This file is used in OSS only. It is not transformed by copybara. Therefore all paths in this
 # file are OSS paths.
 
-load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
-load("@com_github_grpc_grpc//bazel:python_rules.bzl", "py_grpc_library")
 load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
 load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
 load("@com_google_protobuf//bazel:py_proto_library.bzl", "py_proto_library")
+load("@grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
+load("@grpc//bazel:python_rules.bzl", "py_grpc_library")
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_test.bzl", _cc_test = "cc_test")
 load("@rules_python//python:py_library.bzl", "py_library")
@@ -330,7 +330,7 @@ def tf_proto_library(
             generate_mocks = True,
             visibility = visibility,
             compatible_with = compatible_with,
-            deps = [":{}".format(cc_proto_name), "@com_github_grpc_grpc//:grpc++"],
+            deps = [":{}".format(cc_proto_name), "@grpc//:grpc++"],
             plugin_flags = ["services_namespace=grpc"],
             grpc_only = True,
         )

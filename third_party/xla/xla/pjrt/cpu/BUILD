@@ -23,6 +23,23 @@ xla_cc_test(
 )
 
 xla_cc_test(
+    name = "pjrt_copy_to_memory_space_test",
+    srcs = ["pjrt_copy_to_memory_space_test.cc"],
+    deps = [
+        ":cpu_client",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla/pjrt:common_pjrt_client",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:raw_buffer",
+        "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
+        "//xla/tests:literal_test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
     name = "cpu_device_memory_test",
     srcs = ["cpu_device_memory_test.cc"],
     deps = [
@@ -46,6 +63,33 @@ xla_cc_test(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "abstract_tracked_device_buffer_cpu_test",
+    srcs = ["abstract_tracked_device_buffer_cpu_test.cc"],
+    deps = [
+        ":abstract_cpu_buffer",
+        ":cpu_client",
+        ":cpu_event",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla:util",
+        "//xla/pjrt:common_pjrt_client",
+        "//xla/pjrt:device_event",
+        "//xla/pjrt:pjrt_client",
+        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
     ],
 )
 
@@ -91,7 +135,6 @@ cc_library(
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
@@ -102,6 +145,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -196,6 +240,7 @@ cc_library(
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:raw_buffer",
+        "//xla/pjrt:raw_pjrt_client",
         "//xla/pjrt:semaphore",
         "//xla/pjrt:thread_pool_async_work_runner",
         "//xla/pjrt:utils",
@@ -230,7 +275,6 @@ cc_library(
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/lib/strings:proto_serialization",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
@@ -242,6 +286,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -261,6 +306,7 @@ xla_cc_test(
     srcs = ["cpu_client_test.cc"],
     deps = [
         ":cpu_client",
+        "//xla:future",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -272,6 +318,7 @@ xla_cc_test(
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/parser:hlo_parser",
         "//xla/mlir_hlo",
+        "//xla/pjrt:common_pjrt_client",
         "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:pjrt_client",
@@ -343,10 +390,10 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/plugin/xla_cpu:cpu_topology_description",
         "//xla/stream_executor/platform:initialize",
-        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],

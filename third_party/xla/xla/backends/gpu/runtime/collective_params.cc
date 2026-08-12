@@ -22,10 +22,10 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
@@ -91,7 +91,7 @@ absl::StatusOr<CollectiveParams> CollectiveParams::Create(
                            ? &*gpu_options->incarnations()
                            : nullptr;
 
-  ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
+  ABSL_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
                    GetGlobalDeviceId(device_id_map, local_device_id));
 
   return CollectiveParams(

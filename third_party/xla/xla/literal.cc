@@ -37,12 +37,12 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
-#include "xla/tsl/platform/status_macros.h"
 #include "hwy//highway.h"
 #include "xla/index_util.h"
 #include "xla/layout.h"
@@ -282,7 +282,7 @@ absl::Status Literal::SetPiece(const Shape& shape, Piece* piece,
     for (const Shape& subshape : shape.tuple_shapes()) {
       Piece child_piece;
       child_piece.set_subshape(&subshape);
-      RETURN_IF_ERROR(SetPiece(subshape, &child_piece, allocate_arrays,
+      ABSL_RETURN_IF_ERROR(SetPiece(subshape, &child_piece, allocate_arrays,
                                leaf_array_value_state));
       piece->emplace_back(std::move(child_piece));
     }
@@ -294,7 +294,7 @@ absl::Status Literal::SetPiece(const Shape& shape, Piece* piece,
     piece->set_array_value_state(leaf_array_value_state);
     if (leaf_array_value_state == LiteralBase::ArrayValueState::kKnown &&
         allocate_arrays) {
-      RETURN_IF_ERROR(piece->AllocateBuffers());
+      ABSL_RETURN_IF_ERROR(piece->AllocateBuffers());
     }
   }
   return absl::OkStatus();
@@ -312,7 +312,7 @@ absl::StatusOr<Literal> Literal::Make(
   literal.root_piece_.set_subshape(literal.shape_.get());
   CHECK(&literal.root_piece_.subshape() == literal.shape_.get());
 
-  RETURN_IF_ERROR(literal.SetPiece(*literal.shape_, &literal.root_piece_,
+  ABSL_RETURN_IF_ERROR(literal.SetPiece(*literal.shape_, &literal.root_piece_,
                                    allocate_arrays, leaf_array_value_state));
   return literal;
 }
@@ -320,7 +320,7 @@ absl::StatusOr<Literal> Literal::Make(
 absl::StatusOr<absl_nonnull std::unique_ptr<Literal>> Literal::MakeUnique(
     const Shape& shape, const bool allocate_arrays,
     const ArrayValueState leaf_array_value_state) {
-  ASSIGN_OR_RETURN(Literal literal, Literal::Make(shape, allocate_arrays,
+  ABSL_ASSIGN_OR_RETURN(Literal literal, Literal::Make(shape, allocate_arrays,
                                                   leaf_array_value_state));
   return std::make_unique<Literal>(std::move(literal));
 }
@@ -420,7 +420,7 @@ void LiteralBase::BuildPieceSubtree(const Shape& shape, Piece* piece) {
 
 absl::Status LiteralBase::SerializeToString(std::string* output) const {
   ShapeProto shape_proto = shape().ToProto();
-  ASSIGN_OR_RETURN(int64_t size,
+  ABSL_ASSIGN_OR_RETURN(int64_t size,
                    ShapeUtil::SerializedSizeWithProto(shape(), shape_proto));
   output->resize(size);
   return SerializeWithShapeProto(shape_proto, output->data());
@@ -428,7 +428,7 @@ absl::Status LiteralBase::SerializeToString(std::string* output) const {
 
 absl::StatusOr<std::string> LiteralBase::SerializeAsString() const {
   std::string result;
-  RETURN_IF_ERROR(SerializeToString(&result));
+  ABSL_RETURN_IF_ERROR(SerializeToString(&result));
   return result;
 }
 
@@ -518,7 +518,7 @@ void MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
   if (!proto.has_shape()) {
     return InvalidArgument("LiteralProto has no shape");
   }
-  ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
+  ABSL_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
   if (ShapeUtil::HasPrimitiveType(shape, OPAQUE_TYPE)) {
     return InvalidArgument(
         "Literal shape cannot include OPAQUE_TYPE sub-shape");
@@ -527,11 +527,11 @@ void MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
     return InvalidArgument("LiteralProto has no layout");
   }
 
-  RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
+  ABSL_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
 
   Literal literal(shape);
 
-  RETURN_IF_ERROR(literal.root_piece_.ForEachMutableSubpieceWithStatus(
+  ABSL_RETURN_IF_ERROR(literal.root_piece_.ForEachMutableSubpieceWithStatus(
       [&](const ShapeIndex& index, Piece* piece) -> absl::Status {
         const LiteralProto* proto_element = &proto;
         for (int64_t i : index) {
@@ -559,7 +559,7 @@ void MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
         // values), only copy from proto if the literal proto has values. This
         // mode is used for a learned cost model.
         if (prohibit_empty_literal || LiteralProtoHasValues(*proto_element)) {
-          RETURN_IF_ERROR(piece->CopyFromProto(*proto_element));
+          ABSL_RETURN_IF_ERROR(piece->CopyFromProto(*proto_element));
         }
 
         return absl::OkStatus();
@@ -726,7 +726,7 @@ absl::Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
     CHECK(src.array_value_state_ == ArrayValueState::kKnown);
     if (array_value_state_ == ArrayValueState::kUndetermined ||
         array_value_state_ == ArrayValueState::kUnknown) {
-      RETURN_IF_ERROR(AllocateBuffers());
+      ABSL_RETURN_IF_ERROR(AllocateBuffers());
     }
     array_value_state_ = src.array_value_state_;
   }
@@ -822,7 +822,7 @@ absl::Status MutableLiteralBase::CopyFrom(const LiteralSlice& src_literal,
              ++i) {
           src_piece_index.push_back(index[i]);
         }
-        RETURN_IF_ERROR(
+        ABSL_RETURN_IF_ERROR(
             piece->CopyFrom(src_literal.piece(src_piece_index),
                             /*only_dynamic_bound=*/only_dynamic_bound));
         return absl::OkStatus();
@@ -1843,7 +1843,7 @@ absl::StatusOr<Literal> ConvertSwitch(const LiteralBase& literal,
   // duplicating it N^2 times in the conversion implementation.
   Literal result(
       ShapeUtil::ChangeElementType(literal.shape(), primitive_dest_type));
-  RETURN_IF_ERROR(primitive_util::ArrayTypeSwitch(
+  ABSL_RETURN_IF_ERROR(primitive_util::ArrayTypeSwitch(
       [&](auto primitive_type_constant) -> absl::Status {
         return ConvertIfDestTypeMatches<primitive_type_constant>(literal,
                                                                  result);
@@ -1886,13 +1886,13 @@ absl::StatusOr<Literal> LiteralBase::BitcastConvert(
     // Swap byte ordering as per the input data type.
     size_t input_elem_size =
         ShapeUtil::ByteSizeOfPrimitiveType(shape().element_type());
-    RETURN_IF_ERROR(tsl::ByteSwapArray(
+    ABSL_RETURN_IF_ERROR(tsl::ByteSwapArray(
         const_cast<char*>(out.root_piece().buffer()), input_elem_size,
         out.root_piece().size_bytes_dense() / input_elem_size));
     // Swap byte ordering as per the output data type.
     size_t output_elem_size =
         ShapeUtil::ByteSizeOfPrimitiveType(dest_shape.element_type());
-    RETURN_IF_ERROR(tsl::ByteSwapArray(
+    ABSL_RETURN_IF_ERROR(tsl::ByteSwapArray(
         const_cast<char*>(out.root_piece().buffer()), output_elem_size,
         out.root_piece().size_bytes_dense() / output_elem_size));
   }
@@ -1910,7 +1910,7 @@ absl::StatusOr<Literal> LiteralBase::ConvertToShape(
   elements.reserve(tuple_element_count);
   for (int i = 0; i < tuple_element_count; ++i) {
     auto element = LiteralSlice(*this, {i});
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto new_element,
         element.ConvertToShape(ShapeUtil::GetSubshape(dest_shape, {i})));
     elements.push_back(std::move(new_element));
@@ -2639,7 +2639,7 @@ absl::Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
   // These conditions should have been checked in
   // MutableLiteralBase::CreateFromProto.
   TF_RET_CHECK(proto.has_shape());
-  ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
+  ABSL_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
   TF_RET_CHECK(LayoutUtil::HasLayout(shape));
   TF_RET_CHECK(ShapeUtil::Equal(shape, subshape()));
 
@@ -2661,7 +2661,7 @@ absl::Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
 
   switch (subshape().element_type()) {
     case PRED:
-      RETURN_IF_ERROR(CopyFromRepeatedField(data<bool>(), proto.preds()));
+      ABSL_RETURN_IF_ERROR(CopyFromRepeatedField(data<bool>(), proto.preds()));
       break;
     case S2: {
       const std::string& s(proto.s2s());
@@ -2692,10 +2692,10 @@ absl::Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       break;
     }
     case S32:
-      RETURN_IF_ERROR(CopyFromRepeatedField(data<int32_t>(), proto.s32s()));
+      ABSL_RETURN_IF_ERROR(CopyFromRepeatedField(data<int32_t>(), proto.s32s()));
       break;
     case S64:
-      RETURN_IF_ERROR(CopyFromRepeatedField(data<int64_t>(), proto.s64s()));
+      ABSL_RETURN_IF_ERROR(CopyFromRepeatedField(data<int64_t>(), proto.s64s()));
       break;
     case U2: {
       const std::string& s(proto.u2s());
@@ -2726,10 +2726,10 @@ absl::Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       break;
     }
     case U32:
-      RETURN_IF_ERROR(CopyFromRepeatedField(data<uint32_t>(), proto.u32s()));
+      ABSL_RETURN_IF_ERROR(CopyFromRepeatedField(data<uint32_t>(), proto.u32s()));
       break;
     case U64:
-      RETURN_IF_ERROR(CopyFromRepeatedField(data<uint64_t>(), proto.u64s()));
+      ABSL_RETURN_IF_ERROR(CopyFromRepeatedField(data<uint64_t>(), proto.u64s()));
       break;
     case F4E2M1FN: {
       const std::string& s(proto.f4e2m1fns());
@@ -2821,10 +2821,10 @@ absl::Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       break;
     }
     case F32:
-      RETURN_IF_ERROR(CopyFromRepeatedField(data<float>(), proto.f32s()));
+      ABSL_RETURN_IF_ERROR(CopyFromRepeatedField(data<float>(), proto.f32s()));
       break;
     case F64:
-      RETURN_IF_ERROR(CopyFromRepeatedField(data<double>(), proto.f64s()));
+      ABSL_RETURN_IF_ERROR(CopyFromRepeatedField(data<double>(), proto.f64s()));
       break;
     case C64: {
       auto complex_data = data<complex64>();

@@ -25,10 +25,10 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
@@ -126,7 +126,7 @@ absl::Status NVPTXTargetModuleLinker(llvm::Module* module,
                                      const std::string& device_bitcode_path) {
   // Link the input module with libdevice, to pull in implementations of some
   // builtins.
-  RETURN_IF_ERROR(LinkLibdeviceIfNecessary(module, device_bitcode_path));
+  ABSL_RETURN_IF_ERROR(LinkLibdeviceIfNecessary(module, device_bitcode_path));
 
   // Set the flush-denormals-to-zero flag on the module so the NVVM reflect pass
   // can access it.
@@ -239,9 +239,9 @@ std::vector<std::string> GetNVPTXBackendOptions(
 }
 
 constexpr se::CudaComputeCapability kSupportedVersions[] = {
-    {12, 1}, {12, 0}, {11, 0}, {10, 3}, {10, 0}, {9, 0}, {8, 9}, {8, 7},
-    {8, 6},  {8, 0},  {7, 5},  {7, 2},  {7, 0},  {6, 2}, {6, 1}, {6, 0},
-    {5, 3},  {5, 2},  {5, 0},  {3, 7},  {3, 5},  {3, 2}, {3, 0}};
+    {12, 1}, {12, 0}, {11, 0}, {10, 7}, {10, 3}, {10, 0}, {9, 0}, {8, 9},
+    {8, 7},  {8, 6},  {8, 0},  {7, 5},  {7, 2},  {7, 0},  {6, 2}, {6, 1},
+    {6, 0},  {5, 3},  {5, 2},  {5, 0},  {3, 7},  {3, 5},  {3, 2}, {3, 0}};
 
 se::CudaComputeCapability ResolveSupportedComputeCapability(
     se::CudaComputeCapability compute_capability) {
@@ -352,7 +352,7 @@ absl::StatusOr<std::string> CompileToPtx(
     uint64_t start_usecs = tsl::Env::Default()->NowMicros();
 
     // Link with libdevice, and optimize the LLVM module.
-    RETURN_IF_ERROR(LinkAndOptimizeModule(
+    ABSL_RETURN_IF_ERROR(LinkAndOptimizeModule(
         module, gpu_version, debug_options,
         LibDevicePath(debug_options.xla_gpu_cuda_data_dir()),
         NVPTXTargetModuleLinker, default_target_triple, target_machine.get(),

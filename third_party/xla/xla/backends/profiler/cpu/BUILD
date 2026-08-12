@@ -53,6 +53,8 @@ cc_library(
 cc_library(
     name = "python_tracer",
     srcs = ["python_tracer_factory.cc"],
+    copts = tf_profiler_copts() + ["-fexceptions"],
+    features = ["-use_header_modules"],
     visibility = internal_visibility([
         "//xla/python:__pkg__",
         # copybara:uncomment "//tensorflow/core/profiler:internal",
@@ -78,11 +80,16 @@ cc_library(
         # copybara:uncomment "//tensorflow/core/profiler:internal",
     ]),
     deps = [
+        "//xla:status_macros",
         "//xla/backends/profiler/util:metadata_registry",
         "//xla/python/profiler/internal:python_hooks",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/profiler/utils:xplane_builder",
+        "//xla/tsl/profiler/utils:xplane_schema",
+        "//xla/tsl/profiler/utils:xplane_utils",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@tsl//tsl/profiler/lib:profiler_interface",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],

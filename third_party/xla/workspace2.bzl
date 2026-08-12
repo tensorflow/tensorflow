@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# =============================================================================
+
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
 load("@bazel_features//:deps.bzl", "bazel_features_deps")
@@ -33,6 +48,7 @@ load("//third_party/highway:workspace.bzl", highway = "repo")
 load("//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
 load("//third_party/hwloc:workspace.bzl", hwloc = "repo")
 load("//third_party/implib_so:workspace.bzl", implib_so = "repo")
+load("//third_party/kleidiai:workspace.bzl", kleidiai = "repo")
 load("//third_party/libdrm:workspace.bzl", libdrm = "repo")
 load("//third_party/llvm:workspace.bzl", llvm = "repo")
 load("//third_party/llvm_openmp:workspace.bzl", llvm_openmp = "repo")
@@ -97,6 +113,7 @@ def _initialize_third_party():
     highwayhash()
     hwloc()
     implib_so()
+    kleidiai()
     libdrm()
     llvm_openmp()
     ml_dtypes()
@@ -189,13 +206,6 @@ def _tf_repositories():
     # b) get the sha256 hash of the commit by running:
     #    curl -L <url> | sha256sum
     # and update the sha256 with the result.
-
-    tf_http_archive(
-        name = "KleidiAI",
-        sha256 = "cbdacbcc10c79056105c8a2aee0c7737cabb8ad1f56fda4acd38cd728bcaa248",
-        strip_prefix = "kleidiai-b87ef9c94f45f11c81a6b1fdaed1b2b45ea58c0c",
-        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/b87ef9c94f45f11c81a6b1fdaed1b2b45ea58c0c.zip"),
-    )
 
     compute_library()
 
@@ -348,10 +358,13 @@ def _tf_repositories():
     )
 
     tf_http_archive(
-        name = "com_github_grpc_grpc",
+        name = "grpc",
         sha256 = "41b695614b26652ff9e97ce50cfd4a6c7a3d45a9fe598d1454407746499bbf2c",
         strip_prefix = "grpc-1.81.0",
         patch_file = ["//third_party/grpc:grpc.patch"],
+        repo_mapping = {
+            "@com_github_grpc_grpc": "@grpc",
+        },
         urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.81.0.tar.gz"),
     )
 

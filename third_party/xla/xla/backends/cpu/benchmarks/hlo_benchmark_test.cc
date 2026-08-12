@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/base/nullability.h"
 #include "absl/flags/flag.h"
+#include "absl/flags/parse.h"
 #include "absl/log/check.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -45,8 +46,11 @@ ABSL_FLAG(std::vector<std::string>, hlo_paths, std::vector<std::string>({}),
 
 ABSL_FLAG(
     bool, hlo_paths_absolute, false,
-    "If true the HLO paths are absolute, otherwise they are relative to the "
-    "test directory and must be in the data dependencies of the test.");
+    "If true the HLO paths are absolute. Otherwise the paths are relative and "
+    "the corresponding files must be in the data dependencies of the test. "
+    "A relative path is interpreted first as relative to the test workspace "
+    "directory; if the resulting path does not exist, the given path is "
+    "interpreted as relative to the test source directory.");
 
 ABSL_FLAG(int32_t, num_executions, 1,
           "Number of times to execute the HLO within a single benchmark "
@@ -72,13 +76,13 @@ void Set_XLA_FLAGS() {
 
 std::string GetHloAbsolutePath(absl::string_view hlo_path) {
   if (absl::GetFlag(FLAGS_hlo_paths_absolute)) {
-    return absl::StrCat(hlo_path);
+    return std::string(hlo_path);
   }
-  const char* workspace = std::getenv("TEST_WORKSPACE");
-  if (workspace && *workspace) {
-    const std::string workspace_prefix = absl::StrCat(workspace, "/");
-    if (!absl::StartsWith(hlo_path, workspace_prefix)) {
-      return tsl::io::JoinPath(::testing::SrcDir(), workspace, hlo_path);
+  std::string workspace_dir;
+  if (tsl::io::GetTestWorkspaceDir(&workspace_dir)) {
+    std::string path = tsl::io::JoinPath(workspace_dir, hlo_path);
+    if (tsl::Env::Default()->FileExists(path).ok()) {
+      return path;
     }
   }
   return tsl::io::JoinPath(::testing::SrcDir(), hlo_path);
@@ -94,7 +98,7 @@ absl::Status RunBenchmark(benchmark::State* absl_nullable state,
                                       ? GetAotCompilationOptions()
                                       : nullptr;
 
-  ASSIGN_OR_RETURN(auto module_and_iteration_literals,
+  ABSL_ASSIGN_OR_RETURN(auto module_and_iteration_literals,
                    LoadHloModuleAndMaybeIterationLiterals(hlo_abs_path));
 
   std::unique_ptr<HloModule> hlo_module =
@@ -103,7 +107,7 @@ absl::Status RunBenchmark(benchmark::State* absl_nullable state,
   std::vector<Literal> args;
   args.reserve(module_and_iteration_literals.second->arguments_size());
   for (const auto& arg : module_and_iteration_literals.second->arguments()) {
-    ASSIGN_OR_RETURN(args.emplace_back(), Literal::CreateFromProto(arg));
+    ABSL_ASSIGN_OR_RETURN(args.emplace_back(), Literal::CreateFromProto(arg));
   }
 
   std::vector<Literal*> arg_ptrs;
@@ -175,6 +179,7 @@ GTEST_API_ int main(int argc, char** argv) {
   tsl::testing::InstallStacktraceHandler();
   ::benchmark::Initialize(&argc, argv);
   testing::InitGoogleTest(&argc, argv);
+  absl::ParseCommandLine(argc, argv);
   xla::cpu::Set_XLA_FLAGS();
   xla::cpu::RegisterBenchmarks();
   if (::benchmark::GetBenchmarkFilter().empty()) {

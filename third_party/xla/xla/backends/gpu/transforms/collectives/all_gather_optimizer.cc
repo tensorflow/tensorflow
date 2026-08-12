@@ -21,9 +21,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/transforms/collectives/gpu_collective_combiner_utils.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -50,9 +50,10 @@ bool NormalizeBackendConfigCopyForComparison(GpuBackendConfig& config) {
 
   CollectiveBackendConfig* collective_config =
       config.mutable_collective_backend_config();
-  // These fields are OR-merged when building the replacement.
+  // Clear fields that have a well-defined join when building the replacement.
   collective_config->clear_is_pipelined();
   collective_config->clear_is_spmd_generated();
+  collective_config->clear_communication_domain();
   return true;
 }
 
@@ -167,10 +168,10 @@ absl::StatusOr<bool> AllGatherOptimizer::RunImpl(
 
       std::array<HloInstruction*, 2> all_gathers = {left_all_gather,
                                                     right_all_gather};
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           MergeCollectiveBackendConfig(all_gathers, combined.get()));
 
-      RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
+      ABSL_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
           instruction, std::move(combined),
           /*preserve_sharding=*/false,
           /*relay_control_dependency=*/false,

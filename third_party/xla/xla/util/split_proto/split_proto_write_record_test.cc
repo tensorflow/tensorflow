@@ -20,17 +20,23 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "riegeli/bytes/string_writer.h"
 #include "riegeli/records/record_writer.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
+#include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 
 namespace xla {
 namespace {
 
-using tsl::proto_testing::ParseTextProtoOrDie;
+using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
+using ::testing::Not;
+using ::tsl::proto_testing::ParseTextProtoOrDie;
 
-TEST(SplitProtoWriteRecordTest, MapSerializationIsDeterministic) {
+TEST(SplitProtoWriteRecordTest, WriteRecord_MapSerialization_IsDeterministic) {
   auto proto1 = ParseTextProtoOrDie<ExecutableAndOptionsProto>(R"pb(
     compile_options {
       env_option_overrides {
@@ -76,6 +82,41 @@ TEST(SplitProtoWriteRecordTest, MapSerializationIsDeterministic) {
   ASSERT_OK(WriteRecord(record_writer2, proto2));
 
   EXPECT_EQ(serialized1, serialized2);
+}
+
+TEST(SplitProtoWriteRecordTest,
+     WriteRecord_ResourceExhaustedProto_AnnotatesError) {
+  gpu::GpuExecutableProto proto;
+  proto.set_module_name("test_module");
+  proto.set_binary(std::string(200, 'x'));
+
+  std::string serialized;
+  riegeli::RecordWriter record_writer(
+      std::make_unique<riegeli::StringWriter<>>(&serialized));
+  record_writer.Fail(absl::ResourceExhaustedError("message too large"));
+
+  absl::Status status = WriteRecord(record_writer, proto);
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kResourceExhausted,
+                               HasSubstr("message too large")));
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("Top 2 largest fields in proto [xla.gpu.GpuExecutableProto]"));
+  EXPECT_THAT(status.message(), HasSubstr("1. binary (tag 4, type BYTES):"));
+}
+
+TEST(SplitProtoWriteRecordTest, WriteRecord_OtherError_DoesNotAnnotateError) {
+  gpu::GpuExecutableProto proto;
+  proto.set_module_name("test_module");
+
+  std::string serialized;
+  riegeli::RecordWriter record_writer(
+      std::make_unique<riegeli::StringWriter<>>(&serialized));
+  record_writer.Fail(absl::InternalError("internal I/O error"));
+
+  absl::Status status = WriteRecord(record_writer, proto);
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInternal,
+                               HasSubstr("internal I/O error")));
+  EXPECT_THAT(status.message(), Not(HasSubstr("largest fields in proto")));
 }
 
 }  // namespace

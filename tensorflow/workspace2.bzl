@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# =============================================================================
+
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
 load("@bazel_features//:deps.bzl", "bazel_features_deps")
@@ -244,9 +259,9 @@ def _tf_repositories():
     # XNNPack dependency.
     tf_http_archive(
         name = "KleidiAI",
-        sha256 = "cbdacbcc10c79056105c8a2aee0c7737cabb8ad1f56fda4acd38cd728bcaa248",
-        strip_prefix = "kleidiai-b87ef9c94f45f11c81a6b1fdaed1b2b45ea58c0c",
-        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/b87ef9c94f45f11c81a6b1fdaed1b2b45ea58c0c.zip"),
+        sha256 = "b30044217e8e6f131aea4906e87a9908e78828822576d280af7ce68eda4578fd",
+        strip_prefix = "kleidiai-13cd35993d8439143aff1e756a862d366acded0d",
+        urls = tf_mirror_urls("https://gitlab.arm.com/kleidi/kleidiai/-/archive/13cd35993d8439143aff1e756a862d366acded0d/kleidiai-13cd35993d8439143aff1e756a862d366acded0d.zip"),
     )
 
     FXdiv()
@@ -404,13 +419,16 @@ def _tf_repositories():
     )
 
     tf_http_archive(
-        name = "com_github_grpc_grpc",
+        name = "grpc",
         sha256 = "41b695614b26652ff9e97ce50cfd4a6c7a3d45a9fe598d1454407746499bbf2c",
         strip_prefix = "grpc-1.81.0",
         system_build_file = "//third_party/systemlibs:grpc.BUILD",
         patch_file = [
             "@xla//third_party/grpc:grpc.patch",
         ],
+        repo_mapping = {
+            "@com_github_grpc_grpc": "@grpc",
+        },
         urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.81.0.tar.gz"),
     )
 

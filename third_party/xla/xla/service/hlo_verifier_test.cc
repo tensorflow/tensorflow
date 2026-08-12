@@ -75,6 +75,14 @@ std::unique_ptr<HloModule> CreateUnverifiedModule() {
   return std::make_unique<HloModule>("module", HloModuleConfig());
 }
 
+// Create a verifier that supports unbounded dynamic shapes for parameter ops.
+HloVerifier CreateVerifierSupportsUnboundedDynamicParameter() {
+  return HloVerifier(HloVerifierOpts{}.WithSupportedUnboundedDynamicOp(
+      [](const HloInstruction* hlo) {
+        return hlo->opcode() == HloOpcode::kParameter;
+      }));
+}
+
 class HloVerifierTest : public HloHardwareIndependentTestBase {
  public:
   HloVerifierTest()
@@ -187,48 +195,28 @@ TEST_F(HloVerifierTest, ResetsShapeVerifierState) {
 }
 
 TEST_F(HloVerifierTest, IsShapePrefix) {
-  HloVerifierOpts opts;
-  ShapeVerifier verifier(opts);
+  Shape shape_layout1 =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {4, 8}, {0, 1});
+  Shape shape_layout2 =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {4, 8}, {1, 0});
 
-  Shape f32_scalar = ShapeUtil::MakeShape(F32, {});
-  Shape s32_scalar = ShapeUtil::MakeShape(S32, {});
-  Shape f32_vector = ShapeUtil::MakeShape(F32, {4});
+  Shape tuple1 = ShapeUtil::MakeTupleShape({shape_layout1});
+  Shape tuple2 = ShapeUtil::MakeTupleShape({shape_layout2, shape_layout2});
 
-  // Same shapes
-  EXPECT_TRUE(
-      HloVerifierTestHelper::IsShapePrefix(verifier, f32_scalar, f32_scalar));
+  // When layout_sensitive is false, shapes with different layouts are
+  // prefix-compatible.
+  HloVerifierOpts opts_insensitive;
+  opts_insensitive.layout_sensitive = false;
+  ShapeVerifier verifier_insensitive(opts_insensitive);
+  EXPECT_TRUE(HloVerifierTestHelper::IsShapePrefix(verifier_insensitive, tuple1,
+                                                   tuple2));
 
-  // Different non-tuple shapes
+  // When layout_sensitive is true, layout mismatches prevent prefix matching.
+  HloVerifierOpts opts_sensitive;
+  opts_sensitive.layout_sensitive = true;
+  ShapeVerifier verifier_sensitive(opts_sensitive);
   EXPECT_FALSE(
-      HloVerifierTestHelper::IsShapePrefix(verifier, f32_scalar, s32_scalar));
-  EXPECT_FALSE(
-      HloVerifierTestHelper::IsShapePrefix(verifier, f32_scalar, f32_vector));
-
-  // Tuples
-  Shape tuple_f32_scalar = ShapeUtil::MakeTupleShape({f32_scalar});
-  Shape tuple_f32_scalar_f32_vector =
-      ShapeUtil::MakeTupleShape({f32_scalar, f32_vector});
-
-  // Prefix match
-  EXPECT_TRUE(HloVerifierTestHelper::IsShapePrefix(
-      verifier, tuple_f32_scalar, tuple_f32_scalar_f32_vector));
-
-  // Not prefix (larger)
-  EXPECT_FALSE(HloVerifierTestHelper::IsShapePrefix(
-      verifier, tuple_f32_scalar_f32_vector, tuple_f32_scalar));
-
-  // Mismatched element in tuple
-  Shape tuple_s32_scalar = ShapeUtil::MakeTupleShape({s32_scalar});
-  EXPECT_FALSE(HloVerifierTestHelper::IsShapePrefix(
-      verifier, tuple_s32_scalar, tuple_f32_scalar_f32_vector));
-
-  // Nested tuples
-  Shape nested_tuple1 = ShapeUtil::MakeTupleShape({tuple_f32_scalar});
-  Shape nested_tuple2 =
-      ShapeUtil::MakeTupleShape({tuple_f32_scalar_f32_vector});
-
-  EXPECT_TRUE(HloVerifierTestHelper::IsShapePrefix(verifier, nested_tuple1,
-                                                   nested_tuple2));
+      HloVerifierTestHelper::IsShapePrefix(verifier_sensitive, tuple1, tuple2));
 }
 
 TEST_F(HloVerifierTest, LateBindingWithCallStart_StartFromZeroOperand) {
@@ -1319,7 +1307,8 @@ TEST_F(HloVerifierTest, AsyncStartMultipleAsyncDone) {
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
       status.message(),
-      HasSubstr("async-start instruction requires one consumer, found 2"));
+      HasSubstr("is matched by multiple async done instructions: async-done.1 "
+                "and async-done.2"));
 }
 
 TEST_F(HloVerifierTest, AsyncStartWithZeroOperands_Fail) {
@@ -1585,9 +1574,8 @@ TEST_F(HloVerifierTest, AsyncStartNoAsyncDone) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(
-      status.message(),
-      HasSubstr("async-start instruction requires one consumer, found 0"));
+  EXPECT_THAT(status.message(),
+              HasSubstr("Async start async-start has no matching async done"));
 }
 
 TEST_F(HloVerifierTest, AsyncStartAndAsyncUpdateNoAsyncDone) {
@@ -1604,9 +1592,97 @@ TEST_F(HloVerifierTest, AsyncStartAndAsyncUpdateNoAsyncDone) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(
-      status.message(),
-      HasSubstr("async-update instruction requires one consumer, found 0"));
+  EXPECT_THAT(status.message(),
+              HasSubstr("Async start async-start has no matching async done"));
+}
+
+TEST_F(HloVerifierTest, AsyncStartCarriedAcrossWhileLoopPermitted) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  while_cond {
+    p = ((f32[2,3]), f32[2,3], u32[]) parameter(0)
+    ROOT cond = pred[] constant(true)
+  }
+
+  while_body {
+    p = ((f32[2,3]), f32[2,3], u32[]) parameter(0)
+    p0 = f32[2,3] get-tuple-element(p), index=1
+    ROOT async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
+  }
+
+  ENTRY Main {
+    p0 = f32[2,3] parameter(0)
+    init = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
+    ROOT loop = ((f32[2,3]), f32[2,3], u32[]) while(init), condition=while_cond, body=while_body
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_OK(status);
+}
+
+TEST_F(HloVerifierTest, AsyncUpdateCarriedAcrossWhileLoopPermitted) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  while_cond {
+    p = ((f32[2,3]), f32[2,3], u32[]) parameter(0)
+    ROOT cond = pred[] constant(true)
+  }
+
+  while_body {
+    p = ((f32[2,3]), f32[2,3], u32[]) parameter(0)
+    p0 = f32[2,3] get-tuple-element(p), index=1
+    async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
+    ROOT async-update = ((f32[2,3]), f32[2,3], u32[]) custom-call-update(async-start)
+  }
+
+  ENTRY Main {
+    p0 = f32[2,3] parameter(0)
+    start0 = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
+    init = ((f32[2,3]), f32[2,3], u32[]) custom-call-update(start0)
+    ROOT loop = ((f32[2,3]), f32[2,3], u32[]) while(init), condition=while_cond, body=while_body
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_OK(status);
+}
+
+TEST_F(HloVerifierTest,
+       AsyncStartAndAsyncUpdateCarriedAcrossWhileLoopPermitted) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  while_cond {
+    p = (((f32[2,3]), f32[2,3], u32[]), ((f32[2,3]), f32[2,3], u32[])) parameter(0)
+    ROOT cond = pred[] constant(true)
+  }
+
+  while_body {
+    p = (((f32[2,3]), f32[2,3], u32[]), ((f32[2,3]), f32[2,3], u32[])) parameter(0)
+    start_tuple = ((f32[2,3]), f32[2,3], u32[]) get-tuple-element(p), index=0
+    p0 = f32[2,3] get-tuple-element(start_tuple), index=1
+    async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
+    async-update = ((f32[2,3]), f32[2,3], u32[]) custom-call-update(async-start)
+    ROOT out = (((f32[2,3]), f32[2,3], u32[]), ((f32[2,3]), f32[2,3], u32[])) tuple(async-start, async-update)
+  }
+
+  ENTRY Main {
+    p0 = f32[2,3] parameter(0)
+    start0 = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
+    update0 = ((f32[2,3]), f32[2,3], u32[]) custom-call-update(start0)
+    init = (((f32[2,3]), f32[2,3], u32[]), ((f32[2,3]), f32[2,3], u32[])) tuple(start0, update0)
+    ROOT loop = (((f32[2,3]), f32[2,3], u32[]), ((f32[2,3]), f32[2,3], u32[])) while(init), condition=while_cond, body=while_body
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_OK(status);
 }
 
 TEST_F(HloVerifierTest, AsyncDoneNoAsyncStart) {
@@ -1617,27 +1693,16 @@ TEST_F(HloVerifierTest, AsyncDoneNoAsyncStart) {
     p0 = f32[2,3] parameter(0)
     p1 = u32[] parameter(1)
     tuple = ((f32[2,3]), f32[2,3], u32[]) tuple(p0, p0, p1)
-    async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
-    ROOT async-done = f32[2,3] custom-call-done(async-start)
+    ROOT async-done = f32[2,3] custom-call-done(tuple)
   }
   )";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
-  // The parser checks that the async-{update,done} operand is an async op,
-  // so we need to invalidate it in the C++ representation.
-  HloInstruction* tuple = FindInstruction(module.get(), "tuple");
-  HloInstruction* async_done = FindInstruction(module.get(), "async-done");
-  ASSERT_OK(async_done->ReplaceOperandWith(0, tuple));
-  HloInstruction* async_start = FindInstruction(module.get(), "async-start");
-  HloComputation* computation =
-      FindComputation(module.get(), "AsyncDoneNoAsyncStart");
-  ASSERT_OK(computation->RemoveInstruction(async_start));
-
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.message(),
-              HasSubstr("The operand of a async-done instruction needs to be "
-                        "async-start or async-update, found tuple"));
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("Async done async-done does not trace back to an async start"));
 }
 
 TEST_F(HloVerifierTest, AsyncOps_StartBindNone_UpdateBindOneByOne_Ok) {
@@ -1850,8 +1915,7 @@ TEST_F(HloVerifierTest, AsyncUpdateAndAsyncDoneNoAsyncStart) {
     p0 = f32[2,3] parameter(0)
     p1 = u32[] parameter(1)
     tuple = ((f32[2,3]), f32[2,3], u32[]) tuple(p0, p0, p1)
-    async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
-    async-update = ((f32[2,3]), f32[2,3], u32[]) custom-call-update(async-start)
+    async-update = ((f32[2,3]), f32[2,3], u32[]) custom-call-update(tuple)
     ROOT async-done = f32[2,3] custom-call-done(async-update)
   }
   )";
@@ -1864,16 +1928,12 @@ TEST_F(HloVerifierTest, AsyncUpdateAndAsyncDoneNoAsyncStart) {
   ASSERT_OK(async_update->ReplaceOperandWith(0, tuple));
   HloInstruction* async_done = FindInstruction(module.get(), "async-done");
   ASSERT_OK(async_done->ReplaceOperandWith(0, tuple));
-  HloInstruction* async_start = FindInstruction(module.get(), "async-start");
-  HloComputation* computation =
-      FindComputation(module.get(), "AsyncUpdateAndAsyncDoneNoAsyncStart");
-  ASSERT_OK(computation->RemoveInstruction(async_start));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.message(),
-              HasSubstr("The first operand of a async-update instruction needs "
-                        "to be AsyncStart or AsyncUpdate"));
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("Async done async-done does not trace back to an async start"));
 }
 
 TEST_F(HloVerifierTest, AsyncOpComputationParamWrongType) {
@@ -4082,32 +4142,68 @@ ENTRY entry {
   ASSERT_OK(status);
 }
 
-TEST_F(HloVerifierTest, UnboundedDynamism) {
-  const char* const hlo = R"(
+TEST_F(HloVerifierTest, UnboundedDynamismDefaultRejected) {
+  const char* const hlo = R"hlo(
   HloModule Module
 
   ENTRY entry {
     ROOT param0 = f32[?,784] parameter(0)
   }
-  )";
+  )hlo";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
-  auto status = verifier().Run(module.get()).status();
-  ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.message(), HasSubstr("Unbounded dynamism is disabled"));
+  EXPECT_THAT(verifier().Run(module.get()),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Unbounded dynamism is disabled")));
 }
 
 TEST_F(HloVerifierTest, EnableUnboundedDynamism) {
-  const char* const hlo = R"(
+  const char* const hlo = R"hlo(
   HloModule Module
 
   ENTRY entry {
     ROOT param0 = f32[?,784] parameter(0)
   }
-  )";
+  )hlo";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
-  HloVerifier verifier{HloVerifierOpts{}.WithAllowUnboundedDynamism(true)};
-  auto status = verifier.Run(module.get()).status();
-  ASSERT_TRUE(status.ok());
+  ASSERT_OK(
+      CreateVerifierSupportsUnboundedDynamicParameter().Run(module.get()));
+}
+
+TEST_F(HloVerifierTest, UnboundedDynamismRejectsUnsupportedOp) {
+  const char* const hlo = R"hlo(
+  HloModule Module
+
+  ENTRY entry {
+    param0 = f32[?,784] parameter(0)
+    param1 = f32[?,784] parameter(1)
+    ROOT add = f32[?,784] add(param0, param1)
+  }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  EXPECT_THAT(
+      CreateVerifierSupportsUnboundedDynamicParameter().Run(module.get()),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Unbounded dynamism is disabled")));
+}
+
+TEST_F(HloVerifierTest, UnboundedDynamismSupportsAliasingCustomCall) {
+  const char* const hlo = R"hlo(
+  HloModule Module
+
+  ENTRY entry {
+    param0 = f32[?] parameter(0)
+    ROOT add = f32[?] custom-call(param0), custom_call_target="dynamic",
+      output_to_operand_aliasing={{}:(0, {})}
+  }
+  )hlo";
+
+  auto verifier =
+      HloVerifier(HloVerifierOpts{}
+                      .WithSupportedUnboundedDynamicOp(
+                          [](const HloInstruction* hlo) { return true; })
+                      .WithLayoutSensitive(true));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  EXPECT_OK(verifier.Run(module.get()));
 }
 
 TEST_F(HloVerifierTestLayoutSensitive,
@@ -6348,6 +6444,318 @@ TEST_F(HloVerifierTest,
   auto status = verifier().Run(module.get()).status();
   EXPECT_FALSE(status.ok());
   EXPECT_THAT(status.message(), HasSubstr("Different aliasing shapes"));
+}
+
+TEST_F(HloVerifierTest, LoopCrossingAsync) {
+  const char* const hlo_string = R"(
+HloModule LoopCrossing
+
+async_wrapped (p: f32[10]) -> f32[10] {
+  ROOT p = f32[10]{0} parameter(0)
+}
+
+while_cond (state: (f32[10], ((f32[10]), f32[10], s32[]))) -> pred[] {
+  state = (f32[10], ((f32[10]), f32[10], s32[])) parameter(0)
+  ROOT cond = pred[] constant(true)
+}
+
+while_body (state: (f32[10], ((f32[10]), f32[10], s32[]))) -> (f32[10], ((f32[10]), f32[10], s32[])) {
+  state = (f32[10], ((f32[10]), f32[10], s32[])) parameter(0)
+  val = f32[10]{0} get-tuple-element(state), index=0
+  async_state = ((f32[10]), f32[10], s32[]) get-tuple-element(state), index=1
+
+  async-update = ((f32[10]), f32[10], s32[]) async-update(async_state), calls=async_wrapped
+  done = f32[10]{0} async-done(async-update), calls=async_wrapped
+  
+  next-start = ((f32[10]), f32[10], s32[]) async-start(done), calls=async_wrapped
+  ROOT next_state = (f32[10], ((f32[10]), f32[10], s32[])) tuple(done, next-start)
+}
+
+ENTRY Entry (p0: f32[10]) -> f32[10] {
+  p0 = f32[10]{0} parameter(0)
+  async-start = ((f32[10]), f32[10], s32[]) async-start(p0), calls=async_wrapped
+  init = (f32[10], ((f32[10]), f32[10], s32[])) tuple(p0, async-start)
+  loop = (f32[10], ((f32[10]), f32[10], s32[])) while(init), condition=while_cond, body=while_body
+  post_loop_async = ((f32[10]), f32[10], s32[]) get-tuple-element(loop), index=1
+  ROOT post_loop_done = f32[10]{0} async-done(post_loop_async), calls=async_wrapped
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, LoopCrossingAsync2) {
+  const char* const hlo_string = R"(
+HloModule LoopCrossingAsync2
+
+async_computation {
+  p = f32[1024] parameter(0)
+  ROOT custom-call = f32[1024] custom-call(p), custom_call_target="foo"
+}
+
+while_cond {
+  param = (s32[], ((f32[1024]), f32[1024], s32[])) parameter(0)
+  count = s32[] get-tuple-element(param), index=0
+  limit = s32[] constant(10)
+  ROOT cmp = pred[] compare(count, limit), direction=LT
+}
+
+while_body {
+  param = (s32[], ((f32[1024]), f32[1024], s32[])) parameter(0)
+  count = s32[] get-tuple-element(param), index=0
+  one = s32[] constant(1)
+  new_count = s32[] add(count, one)
+  
+  async_state = ((f32[1024]), f32[1024], s32[]) get-tuple-element(param), index=1
+  
+  async_update = ((f32[1024]), f32[1024], s32[]) async-update(async_state), calls=async_computation
+  
+  ROOT body_root = (s32[], ((f32[1024]), f32[1024], s32[])) tuple(new_count, async_update)
+}
+
+ENTRY main {
+  p0 = f32[1024] parameter(0)
+  async-start = ((f32[1024]), f32[1024], s32[]) async-start(p0), calls=async_computation
+  
+  start_count = s32[] constant(0)
+  iter_init = (s32[], ((f32[1024]), f32[1024], s32[])) tuple(start_count, async-start)
+  
+  while_loop = (s32[], ((f32[1024]), f32[1024], s32[])) while(iter_init), condition=while_cond, body=while_body
+  
+  final_async_state = ((f32[1024]), f32[1024], s32[]) get-tuple-element(while_loop), index=1
+  
+  ROOT async-done = f32[1024] async-done(final_async_state), calls=async_computation
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, LoopCrossingAsyncOrphanUpdate) {
+  const char* const hlo_string = R"(
+HloModule LoopCrossingAsyncOrphanUpdate
+
+async_computation {
+  p = f32[1024] parameter(0)
+  ROOT custom-call = f32[1024] custom-call(p), custom_call_target="foo"
+}
+
+while_cond {
+  param = (s32[], ((f32[1024]), f32[1024], s32[])) parameter(0)
+  count = s32[] get-tuple-element(param), index=0
+  limit = s32[] constant(10)
+  ROOT cmp = pred[] compare(count, limit), direction=LT
+}
+
+while_body {
+  param = (s32[], ((f32[1024]), f32[1024], s32[])) parameter(0)
+  count = s32[] get-tuple-element(param), index=0
+  one = s32[] constant(1)
+  new_count = s32[] add(count, one)
+  
+  async_state = ((f32[1024]), f32[1024], s32[]) get-tuple-element(param), index=1
+  
+  async_update = ((f32[1024]), f32[1024], s32[]) async-update(async_state), calls=async_computation
+  
+  ROOT body_root = (s32[], ((f32[1024]), f32[1024], s32[])) tuple(new_count, async_state)
+}
+
+ENTRY main {
+  p0 = f32[1024] parameter(0)
+  async-start = ((f32[1024]), f32[1024], s32[]) async-start(p0), calls=async_computation
+  
+  start_count = s32[] constant(0)
+  iter_init = (s32[], ((f32[1024]), f32[1024], s32[])) tuple(start_count, async-start)
+  
+  while_loop = (s32[], ((f32[1024]), f32[1024], s32[])) while(iter_init), condition=while_cond, body=while_body
+  
+  final_async_state = ((f32[1024]), f32[1024], s32[]) get-tuple-element(while_loop), index=1
+  
+  ROOT async-done = f32[1024] async-done(final_async_state), calls=async_computation
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("Orphan async update"));
+}
+
+TEST_F(HloVerifierTest, LoopCrossingAsyncEquivalentComputations) {
+  const char* const hlo_string = R"(
+HloModule LoopCrossingEquivalent
+
+async_wrapped_1 (p: f32[10]) -> f32[10] {
+  ROOT p = f32[10]{0} parameter(0)
+}
+
+async_wrapped_2 (p: f32[10]) -> f32[10] {
+  ROOT p = f32[10]{0} parameter(0)
+}
+
+while_cond (state: (f32[10], ((f32[10]), f32[10], s32[]))) -> pred[] {
+  state = (f32[10], ((f32[10]), f32[10], s32[])) parameter(0)
+  ROOT cond = pred[] constant(true)
+}
+
+while_body (state: (f32[10], ((f32[10]), f32[10], s32[]))) -> (f32[10], ((f32[10]), f32[10], s32[])) {
+  state = (f32[10], ((f32[10]), f32[10], s32[])) parameter(0)
+  val = f32[10]{0} get-tuple-element(state), index=0
+  async_state = ((f32[10]), f32[10], s32[]) get-tuple-element(state), index=1
+
+  async-update = ((f32[10]), f32[10], s32[]) async-update(async_state), calls=async_wrapped_2
+  done = f32[10]{0} async-done(async-update), calls=async_wrapped_2
+  
+  next-start = ((f32[10]), f32[10], s32[]) async-start(done), calls=async_wrapped_2
+  ROOT next_state = (f32[10], ((f32[10]), f32[10], s32[])) tuple(done, next-start)
+}
+
+ENTRY Entry (p0: f32[10]) -> f32[10] {
+  p0 = f32[10]{0} parameter(0)
+  async-start = ((f32[10]), f32[10], s32[]) async-start(p0), calls=async_wrapped_1
+  init = (f32[10], ((f32[10]), f32[10], s32[])) tuple(p0, async-start)
+  loop = (f32[10], ((f32[10]), f32[10], s32[])) while(init), condition=while_cond, body=while_body
+  post_loop_async = ((f32[10]), f32[10], s32[]) get-tuple-element(loop), index=1
+  ROOT post_loop_done = f32[10]{0} async-done(post_loop_async), calls=async_wrapped_2
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, LoopCrossingAsyncDifferentComputations) {
+  const char* const hlo_string = R"(
+HloModule LoopCrossingDifferent
+
+async_wrapped_1 (p: f32[10]) -> f32[10] {
+  ROOT p = f32[10]{0} parameter(0)
+}
+
+async_wrapped_2 (p: f32[10]) -> f32[10] {
+  p = f32[10]{0} parameter(0)
+  ROOT neg = f32[10]{0} negate(p)
+}
+
+while_cond (state: (f32[10], ((f32[10]), f32[10], s32[]))) -> pred[] {
+  state = (f32[10], ((f32[10]), f32[10], s32[])) parameter(0)
+  ROOT cond = pred[] constant(true)
+}
+
+while_body (state: (f32[10], ((f32[10]), f32[10], s32[]))) -> (f32[10], ((f32[10]), f32[10], s32[])) {
+  state = (f32[10], ((f32[10]), f32[10], s32[])) parameter(0)
+  val = f32[10]{0} get-tuple-element(state), index=0
+  async_state = ((f32[10]), f32[10], s32[]) get-tuple-element(state), index=1
+
+  async-update = ((f32[10]), f32[10], s32[]) async-update(async_state), calls=async_wrapped_2
+  done = f32[10]{0} async-done(async-update), calls=async_wrapped_2
+  
+  next-start = ((f32[10]), f32[10], s32[]) async-start(done), calls=async_wrapped_2
+  ROOT next_state = (f32[10], ((f32[10]), f32[10], s32[])) tuple(done, next-start)
+}
+
+ENTRY Entry (p0: f32[10]) -> f32[10] {
+  p0 = f32[10]{0} parameter(0)
+  async-start = ((f32[10]), f32[10], s32[]) async-start(p0), calls=async_wrapped_1
+  init = (f32[10], ((f32[10]), f32[10], s32[])) tuple(p0, async-start)
+  loop = (f32[10], ((f32[10]), f32[10], s32[])) while(init), condition=while_cond, body=while_body
+  post_loop_async = ((f32[10]), f32[10], s32[]) get-tuple-element(loop), index=1
+  ROOT post_loop_done = f32[10]{0} async-done(post_loop_async), calls=async_wrapped_2
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("expects its wrapped async computation to be identical"));
+}
+
+TEST_F(HloVerifierTest, LoopCrossingAsyncDynamicUpdateSliceSyntaxSugar) {
+  const char* const hlo_string = R"(
+HloModule LoopCrossingAsyncDynamicUpdateSliceSyntaxSugar
+
+while_cond (state: (f32[10,10], ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[]))) -> pred[] {
+  state = (f32[10,10], ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[])) parameter(0)
+  ROOT cond = pred[] constant(true)
+}
+
+while_body (state: (f32[10,10], ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[]))) -> (f32[10,10], ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[])) {
+  state = (f32[10,10], ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[])) parameter(0)
+  val = f32[10,10]{1,0} get-tuple-element(state), index=0
+  async_state = ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[]) get-tuple-element(state), index=1
+
+  async_update = ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[]) dynamic-update-slice-update(async_state)
+  done = f32[10,10]{1,0} dynamic-update-slice-done(async_update)
+  
+  slice = f32[2,2]{1,0} constant({ {1.0, 2.0}, {3.0, 4.0} })
+  zero = s32[] constant(0)
+  next_start = ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[]) dynamic-update-slice-start(done, slice, zero, zero)
+  ROOT next_state = (f32[10,10], ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[])) tuple(done, next_start)
+}
+
+ENTRY Entry (p0: f32[10,10], p1: f32[2,2], idx0: s32[], idx1: s32[]) -> f32[10,10] {
+  p0 = f32[10,10]{1,0} parameter(0)
+  p1 = f32[2,2]{1,0} parameter(1)
+  idx0 = s32[] parameter(2)
+  idx1 = s32[] parameter(3)
+  async_start = ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[]) dynamic-update-slice-start(p0, p1, idx0, idx1)
+  init = (f32[10,10], ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[])) tuple(p0, async_start)
+  loop = (f32[10,10], ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[])) while(init), condition=while_cond, body=while_body
+  post_loop_async = ((f32[10,10], f32[2,2], s32[], s32[]), f32[10,10], s32[]) get-tuple-element(loop), index=1
+  ROOT post_loop_done = f32[10,10]{1,0} dynamic-update-slice-done(post_loop_async)
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, LoopCrossingAsyncDynamicUpdateSliceExplicit) {
+  const char* const hlo_string = R"(
+HloModule LoopCrossingAsyncDynamicUpdateSliceExplicit
+
+async_dus (base: f32[100], update: f32[10], idx: s32[]) -> f32[100] {
+  base = f32[100]{0} parameter(0)
+  update = f32[10]{0} parameter(1)
+  idx = s32[] parameter(2)
+  ROOT dynamic-update-slice = f32[100]{0} dynamic-update-slice(base, update, idx)
+}
+
+while_cond (state: (s32[], ((f32[100], f32[10], s32[]), f32[100], s32[]))) -> pred[] {
+  state = (s32[], ((f32[100], f32[10], s32[]), f32[100], s32[])) parameter(0)
+  count = s32[] get-tuple-element(state), index=0
+  limit = s32[] constant(5)
+  ROOT cond = pred[] compare(count, limit), direction=LT
+}
+
+while_body (state: (s32[], ((f32[100], f32[10], s32[]), f32[100], s32[]))) -> (s32[], ((f32[100], f32[10], s32[]), f32[100], s32[])) {
+  state = (s32[], ((f32[100], f32[10], s32[]), f32[100], s32[])) parameter(0)
+  count = s32[] get-tuple-element(state), index=0
+  one = s32[] constant(1)
+  next_count = s32[] add(count, one)
+
+  async_state = ((f32[100], f32[10], s32[]), f32[100], s32[]) get-tuple-element(state), index=1
+
+  async-update = ((f32[100], f32[10], s32[]), f32[100], s32[]) async-update(async_state), calls=async_dus
+  done = f32[100]{0} async-done(async-update), calls=async_dus
+
+  update = f32[10]{0} constant({1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0})
+  next_start = ((f32[100], f32[10], s32[]), f32[100], s32[]) async-start(done, update, next_count), calls=async_dus
+  ROOT next_state = (s32[], ((f32[100], f32[10], s32[]), f32[100], s32[])) tuple(next_count, next_start)
+}
+
+ENTRY Entry (p0: f32[100], update: f32[10], idx: s32[]) -> f32[100] {
+  p0 = f32[100]{0} parameter(0)
+  update = f32[10]{0} parameter(1)
+  idx = s32[] parameter(2)
+  async-start = ((f32[100], f32[10], s32[]), f32[100], s32[]) async-start(p0, update, idx), calls=async_dus
+  init_count = s32[] constant(0)
+  init = (s32[], ((f32[100], f32[10], s32[]), f32[100], s32[])) tuple(init_count, async-start)
+  loop = (s32[], ((f32[100], f32[10], s32[]), f32[100], s32[])) while(init), condition=while_cond, body=while_body
+  post_loop_async = ((f32[100], f32[10], s32[]), f32[100], s32[]) get-tuple-element(loop), index=1
+  ROOT post_loop_done = f32[100]{0} async-done(post_loop_async), calls=async_dus
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_OK(verifier().Run(module.get()).status());
 }
 
 }  // namespace

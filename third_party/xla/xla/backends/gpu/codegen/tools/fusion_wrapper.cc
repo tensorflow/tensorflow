@@ -16,7 +16,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "llvm/Support/raw_ostream.h"
 #include "xla/codegen/tools/test_lib.h"
 #include "xla/tsl/platform/statusor.h"
@@ -26,7 +26,7 @@ namespace xla {
 namespace gpu {
 
 absl::Status Run(const std::string& filename) {
-  ASSIGN_OR_RETURN(auto module, LoadTestModule(filename));
+  ABSL_ASSIGN_OR_RETURN(auto module, LoadTestModule(filename));
   llvm::outs() << module->ToString();
   return absl::OkStatus();
 }

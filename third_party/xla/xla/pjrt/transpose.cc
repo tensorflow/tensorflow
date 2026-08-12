@@ -91,13 +91,13 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/absl_check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/ef57.h"
 #include "xla/permutation_util.h"
 #include "xla/pjrt/transpose_kernels.h"
@@ -937,7 +937,7 @@ absl::StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
   bool input_contiguity =
       o.chunk_contiguity == TransposePlan::ChunkContiguity::kInput;
 
-  RETURN_IF_ERROR(ParseTilingSpecification(
+  ABSL_RETURN_IF_ERROR(ParseTilingSpecification(
       ndim, o.output_tiling,
       /*nonstandard_layout=*/output_contiguity, plan->b_tiling_));
 
@@ -945,7 +945,7 @@ absl::StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
   absl::InlinedVector<int64_t, 4> temp_lda, temp_lda_tile, temp_a_tiling;
 
   // Parse the tile and stride specifications.
-  RETURN_IF_ERROR(ParseTilingSpecification(
+  ABSL_RETURN_IF_ERROR(ParseTilingSpecification(
       ndim, o.input_tiling,
       /*nonstandard_layout=*/o.input_striding.has_value() || input_contiguity,
       temp_a_tiling));
@@ -1090,7 +1090,7 @@ absl::StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
   }
   plan->chunk_contiguity_ = o.chunk_contiguity;
 
-  RETURN_IF_ERROR(plan->Initialize());
+  ABSL_RETURN_IF_ERROR(plan->Initialize());
   return plan;
 }
 
@@ -1779,7 +1779,7 @@ absl::StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
       key,
       [&](const TransposePlanCacheKey& key)
           -> absl::StatusOr<std::shared_ptr<TransposePlan>> {
-        ASSIGN_OR_RETURN(std::unique_ptr<TransposePlan> plan,
+        ABSL_ASSIGN_OR_RETURN(std::unique_ptr<TransposePlan> plan,
                          TransposePlan::Create(o));
         return std::shared_ptr<TransposePlan>(std::move(plan));
       });

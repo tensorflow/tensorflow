@@ -27,11 +27,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -355,7 +355,7 @@ absl::Status TilingSpace::InitializeDimensionsForSameShapeMultiOutputFusion(
   const HloInstructionAdaptor& first_root = roots[0];
   absl::Span<const HloInstructionAdaptor> rest_roots = roots.subspan(1);
 
-  RETURN_IF_ERROR(InitializeDimensions({first_root}));
+  ABSL_RETURN_IF_ERROR(InitializeDimensions({first_root}));
 
   // Propagate the dimensions from the first root to the rest of the roots.
   // We can reuse first roots' `dims` because all roots have the same shape.
@@ -390,18 +390,18 @@ absl::StatusOr<std::unique_ptr<TilingSpace>> TilingSpace::Create(
   const DebugOptions& debug_options = module->config().debug_options();
 
   if (roots.size() == 1) {
-    RETURN_IF_ERROR(tiling_space->InitializeDimensions(roots));
+    ABSL_RETURN_IF_ERROR(tiling_space->InitializeDimensions(roots));
   } else if (
       IsSameShapeMultiOutputFusion(roots, Shape::Equal().IgnoreElementType()) &&
       debug_options
           .xla_gpu_experimental_enable_same_shape_multi_output_fusion()) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         tiling_space->InitializeDimensionsForSameShapeMultiOutputFusion(roots));
   } else if (debug_options
                  .xla_gpu_unsupported_enable_triton_multi_output_fusion()) {
     // xla_gpu_unsupported_enable_triton_multi_output_fusion flag name is
     // misleading, it is not GPU specific.
-    RETURN_IF_ERROR(tiling_space->InitializeDimensions(roots));
+    ABSL_RETURN_IF_ERROR(tiling_space->InitializeDimensions(roots));
   } else {
     // TODO(b/502910372): Support arbitrary multi-output fusions.
     return absl::UnimplementedError(
@@ -502,7 +502,7 @@ TilingSpace::GetValidTilings() {
     }
   }
 
-  ASSIGN_OR_RETURN(auto flat_tilings, GetFlatTilingsForInputSpace(input_space));
+  ABSL_ASSIGN_OR_RETURN(auto flat_tilings, GetFlatTilingsForInputSpace(input_space));
 
   for (auto& flat_tiling : flat_tilings) {
     for (const auto& [idx, dim] : llvm::enumerate(dimensions_)) {

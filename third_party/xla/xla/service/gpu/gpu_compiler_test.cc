@@ -28,9 +28,12 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
+#include "absl/base/log_severity.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/scoped_mock_log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
@@ -39,7 +42,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/backends/autotuner/autotuning.pb.h"
@@ -47,6 +49,7 @@ limitations under the License.
 #include "xla/backends/autotuner/in_memory_store.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/backends/gpu/runtime/async_thunk.h"
+#include "xla/backends/gpu/runtime/host_execute_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
@@ -68,6 +71,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/autotuner_cache.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -78,7 +82,6 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
-#include "xla/service/multi_module_driver.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/xla_debug_info_manager.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -87,7 +90,7 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/lib/gtl/value_or_die.h"
@@ -133,7 +136,7 @@ class GpuCompilerTest
 absl::StatusOr<std::string> ReadNonEmptyFile(absl::string_view file_path) {
   std::string str;
   tsl::Env* env = tsl::Env::Default();
-  RETURN_IF_ERROR(tsl::ReadFileToString(env, std::string(file_path), &str));
+  ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(env, std::string(file_path), &str));
   if (str.empty()) {
     return absl::InvalidArgumentError(
         absl::StrCat("File is empty: ", file_path));
@@ -591,6 +594,59 @@ TEST_F(GpuCompilerTest, CollectivePipeliningModes) {
               test_case.expect_pipelined)
         << optimized_hlo;
   }
+}
+
+TEST_F(GpuCompilerTest, GroupCollectivesByKey) {
+  const absl::string_view hlo_string = R"(
+    HloModule group_collectives
+
+    add {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT sum = f32[] add(a, b)
+    }
+
+    ENTRY main {
+      p0 = f32[8,8] parameter(0)
+      p1 = f32[32,8] parameter(1)
+      ag = f32[32,8] all-gather(p0), dimensions={0},
+          replica_groups={{0,1,2,3}},
+          frontend_attributes={collective_group_key="g0"}
+      rs = f32[8,8] reduce-scatter(p1), dimensions={0},
+          replica_groups={{0,1,2,3}}, to_apply=add,
+          frontend_attributes={collective_group_key="g0"}
+      ROOT result = (f32[32,8], f32[8,8]) tuple(ag, rs)
+    }
+  )";
+
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/4);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
+
+  // Run only the HLO optimization passes (no executable). This avoids
+  // requiring `replica_count` physical devices, which a real executable build
+  // would demand.
+  Compiler::CompileOptions compile_options;
+  compile_options.gpu_topology =
+      GetSingleDeviceGpuTopology(/*platform_version=*/"", gpu_target_config());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler()->RunHloPasses(std::move(module), /*executor=*/nullptr,
+                               compile_options));
+
+  // The all-gather and reduce-scatter must land in one shared group computation
+  // (proving they were grouped as a unit, not converted to async individually).
+  constexpr absl::string_view kExpected = R"(
+    // CHECK: %[[GROUP:collectives_group[a-zA-Z0-9_.-]*]] ({{.*}}) -> {{.*}} {
+    // CHECK-DAG: all-gather(
+    // CHECK-DAG: reduce-scatter(
+    // CHECK: async-start(
+    // CHECK-SAME: calls=%[[GROUP]]
+    // CHECK-SAME: _collectives_group
+  )";
+
+  EXPECT_THAT(RunFileCheck(optimized_module->ToString(), kExpected),
+              absl_testing::IsOkAndHolds(true));
 }
 
 TEST_F(GpuCompilerTest, RemovesUnnecessaryCopyAfterScheduling) {
@@ -1695,15 +1751,14 @@ HloModule m
 
 ENTRY main {
   p = f32[8,$0]{1,0} parameter(0)
-  ROOT t = (f32[8,$1]{1,0}, s32[8,$1]{1,0}) topk(p), k=$1, largest=true
+  ROOT t = (f32[8,$1]{1,0}, s32[8,$1]{1,0}) topk(p), k=$1, largest=true, is_stable=false
 }
 )",
                                           n, k);
 
-  // Configure module with debug options for experimental raft select_k.
+  // Configure module with debug options.
   HloModuleConfig config;
   DebugOptions debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_experimental_use_raft_select_k(true);
   config.set_debug_options(debug_options);
 
   ASSERT_OK_AND_ASSIGN(auto module,
@@ -1948,6 +2003,10 @@ TEST_P(OneShotRaggedAllToAllMemSpaceTest, DirectUsage) {
   HloModuleConfig config = GetModuleConfigForTest();
   DebugOptions& opts = config.mutable_debug_options();
   opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(true);
+
+  // This test will run on a system with 1 GPU, so we need to disable the
+  // decomposer pass.
+  opts.add_xla_disable_hlo_passes("ragged-all-to-all-multi-host-decomposer");
 
   std::pair<const HloModule*, std::unique_ptr<OpaqueExecutable>>
       optimized_module_and_executable;
@@ -2589,70 +2648,6 @@ TEST_F(GpuCompilerTest, WhileLoopUnrollingFlagScalarConstantSinkerNoCrash) {
   ASSERT_OK(GetOptimizedModuleForExecutable(kHloString, config).status());
 }
 
-TEST_F(GpuCompilerTest, VerifyMultiModuleSplittingAndCompilation) {
-  const char* hlo_string = R"(
-HloModule module
-callee {
-  p0 = f32[] parameter(0)
-  p1 = f32[] parameter(1)
-  ROOT add = f32[] add(p0, p1)
-}
-ENTRY entry {
-  p0 = f32[] parameter(0)
-  p1 = f32[] parameter(1)
-  ROOT call = f32[] call(p0, p1), to_apply=callee, frontend_attributes={compilation_unit="callee", inlineable="false"}
-}
-)";
-
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                       ParseAndReturnVerifiedModule(hlo_string));
-
-  auto options = Compiler::CompileOptions();
-  options.gpu_topology =
-      GetSingleDeviceGpuTopology(/*platform_version=*/"", gpu_target_config());
-  MultiModuleDriver::ResetCompileCount();
-
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> optimized_module,
-      compiler()->RunHloPasses(std::move(module), nullptr, options));
-
-  EXPECT_GT(MultiModuleDriver::GetCompileCount(), 0);
-}
-
-TEST_F(GpuCompilerTest, VerifySharedCompilationUnitCompilesOnGpu) {
-  const char* hlo_string = R"(
-HloModule module
-callee {
-  p0 = f32[] parameter(0)
-  ROOT neg = f32[] negate(p0)
-}
-ENTRY entry {
-  p0 = f32[] parameter(0)
-  p1 = f32[] parameter(1)
-  call1 = f32[] call(p0), to_apply=callee,
-    frontend_attributes={compilation_unit="callee"}
-  call2 = f32[] call(p1), to_apply=callee,
-    frontend_attributes={compilation_unit="callee"}
-  ROOT add = f32[] add(call1, call2)
-}
-)";
-
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                       ParseAndReturnVerifiedModule(hlo_string));
-
-  auto options = Compiler::CompileOptions();
-  options.gpu_topology =
-      GetSingleDeviceGpuTopology(/*platform_version=*/"", gpu_target_config());
-
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> optimized_module,
-      compiler()->RunHloPasses(std::move(module), nullptr, options));
-
-  ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      compiler()->RunBackend(std::move(optimized_module), nullptr, options));
-}
-
 static absl::Status MockCustomCallExecuteF32(
     ffi::BufferR1<F32> src, ffi::Result<ffi::BufferR1<F32>> dst) {
   return absl::OkStatus();
@@ -2790,6 +2785,84 @@ TEST_P(FrontendAttributesMemorySpaceTest, LoopUsage) {
                                                  .set_print_metadata(false)),
                   expected_check),
               absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(GpuCompilerTest, NonIotaStaticDeviceAssignment) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule test
+    ENTRY main {
+      p = f32[2] parameter(0)
+      ROOT res = f32[2] copy(p)
+    }
+  )";
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.set_replica_count(1);
+  config.set_num_partitions(2);
+
+  DeviceAssignment device_assignment(/*replica_count=*/1,
+                                     /*computation_count=*/2);
+  device_assignment(0, 0) = 1;
+  device_assignment(0, 1) = 0;
+  config.set_static_device_assignment(device_assignment);
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo, config));
+
+  Compiler::CompileOptions compile_options;
+  compile_options.gpu_topology =
+      GpuTopology(/*platform_version=*/"", 2, 1, 1, gpu_target_config());
+
+  absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
+  EXPECT_CALL(
+      mock_log,
+      Log(absl::LogSeverity::kError, ::testing::_,
+          ::testing::HasSubstr("XLA:GPU only supports IOTA device assignment")))
+      .Times(1);
+  mock_log.StartCapturingLogs();
+
+  auto executable_or_status =
+      compiler()->RunBackend(std::move(module), nullptr, compile_options);
+  mock_log.StopCapturingLogs();
+
+  EXPECT_OK(executable_or_status);
+}
+
+TEST_F(GpuCompilerTest, AllZerosStaticDeviceAssignmentDoesNotLogError) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule test
+    ENTRY main {
+      p = f32[2] parameter(0)
+      ROOT res = f32[2] copy(p)
+    }
+  )";
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.set_replica_count(1);
+  config.set_num_partitions(2);
+
+  DeviceAssignment device_assignment(/*replica_count=*/1,
+                                     /*computation_count=*/2);
+  device_assignment(0, 0) = 0;
+  device_assignment(0, 1) = 0;
+  config.set_static_device_assignment(device_assignment);
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo, config));
+
+  Compiler::CompileOptions compile_options;
+  compile_options.gpu_topology =
+      GpuTopology(/*platform_version=*/"", 2, 1, 1, gpu_target_config());
+
+  absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
+  EXPECT_CALL(
+      mock_log,
+      Log(absl::LogSeverity::kError, ::testing::_,
+          ::testing::HasSubstr("XLA:GPU only supports IOTA device assignment")))
+      .Times(0);
+  mock_log.StartCapturingLogs();
+
+  auto executable_or_status =
+      compiler()->RunBackend(std::move(module), nullptr, compile_options);
+  mock_log.StopCapturingLogs();
+
+  EXPECT_OK(executable_or_status);
 }
 
 INSTANTIATE_TEST_SUITE_P(FrontendAttributesMemorySpace,
@@ -3111,6 +3184,109 @@ ENTRY source_dots_computation {
 
   EXPECT_THAT(RunFileCheck(optimized_module->ToString(), expected_check),
               absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(GpuCompilerTest, TritonGemmDisabledSoftmaxStillUsesTriton) {
+  if (device_description().gpu_compute_capability().IsRocm()) {
+    GTEST_SKIP() << "ROCm does not have Ampere compute capability concept.";
+  }
+  if (!get_cuda_cc().IsAtLeast(se::CudaComputeCapability::kAmpere)) {
+    GTEST_SKIP() << "Test requires Ampere GPU compute capability.";
+  }
+
+  const char* hlo_text = R"(
+HloModule softmax
+
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+
+add_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(arg_0, arg_1)
+}
+
+ENTRY main {
+  param_0 = f32[127,125]{1,0} parameter(0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
+}
+  )";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options().set_xla_gpu_enable_triton_gemm(false);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                       GetOptimizedModule(hlo_text, config));
+
+  constexpr absl::string_view expected_check = R"(
+    // CHECK: kind=kCustom, calls=%triton_softmax_computation
+  )";
+
+  EXPECT_THAT(RunFileCheck(optimized_module->ToString(), expected_check),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(GpuCompilerTest, HostExecuteIsHostOffloadSet) {
+  const char* hlo_text = R"(
+HloModule test
+
+%host_fn (p0: f32[4]) -> f32[4] {
+  %p0 = f32[4] parameter(0)
+  ROOT %add = f32[4] add(%p0, %p0)
+}
+
+ENTRY main {
+  %p0 = f32[4]{0} parameter(0)
+  %custom-call-start = ((f32[4]{0}), f32[4]{0}, token[]) custom-call-start(%p0),
+    custom_call_target="HostExecute",
+    called_computations={%host_fn},
+    async_execution_thread="host"
+  ROOT %custom-call-done = f32[4]{0} custom-call-done(%custom-call-start)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+
+  Compiler::CompileOptions compile_options;
+  compile_options.gpu_topology =
+      GetSingleDeviceGpuTopology(/*platform_version=*/"", gpu_target_config());
+  compile_options.early_exit_with_layouts = false;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      compiler()->RunBackend(std::move(module), /*executor=*/nullptr,
+                             compile_options));
+  std::unique_ptr<GpuExecutable> gpu_exec(
+      static_cast<GpuExecutable*>(executable.release()));
+
+  // Find HostExecuteStartThunk
+  const HostExecuteStartThunk* host_execute_start_thunk = nullptr;
+  for (const auto& thunk : gpu_exec->thunk_executor().thunks()) {
+    if (thunk->kind() == Thunk::Kind::kHostExecuteStart) {
+      host_execute_start_thunk =
+          static_cast<const HostExecuteStartThunk*>(thunk.get());
+      break;
+    }
+  }
+  ASSERT_NE(host_execute_start_thunk, nullptr);
+
+  const auto& proto = host_execute_start_thunk->executable_proto();
+  ASSERT_TRUE(proto.has_aot_compilation_result());
+  const auto& aot_result = proto.aot_compilation_result();
+  ASSERT_TRUE(aot_result.has_hlo_module());
+  const auto& config = aot_result.hlo_module().config();
+  ASSERT_TRUE(config.has_debug_options());
+  const auto& debug_options = config.debug_options();
+
+  const auto& extra_options = debug_options.xla_backend_extra_options();
+  auto it = extra_options.find("xla_is_host_offload");
+  ASSERT_NE(it, extra_options.end());
+  EXPECT_EQ(it->second, "true");
 }
 
 }  // namespace gpu

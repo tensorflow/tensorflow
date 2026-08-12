@@ -30,16 +30,16 @@
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
@@ -51,6 +51,7 @@
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/value.h"
@@ -116,7 +117,7 @@ absl::StatusOr<std::unique_ptr<Client>> Client::Create(
   for (const auto& d : init_response.all_devices()) {
     absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>
         pjrt_device_attributes;
-    ASSIGN_OR_RETURN(auto attributes, AttributeMap::FromProto(d.attributes()));
+    ABSL_ASSIGN_OR_RETURN(auto attributes, AttributeMap::FromProto(d.attributes()));
     pjrt_device_attributes = ToPjRtAttributeMap(std::move(attributes));
 
     DeviceDescription desc(d.id(), init_response.process_index(),
@@ -176,7 +177,7 @@ absl::StatusOr<std::unique_ptr<Client>> Client::Create(
 
   AttributeMap client_attributes({});
   if (init_response.has_client_attributes()) {
-    ASSIGN_OR_RETURN(client_attributes, AttributeMap::FromProto(
+    ABSL_ASSIGN_OR_RETURN(client_attributes, AttributeMap::FromProto(
                                             init_response.client_attributes()));
   }
 
@@ -281,7 +282,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
   }
 
   for (const auto& array : arrays) {
-    if (!llvm::isa<xla::ifrt::proxy::Array>(array.get())) {
+    if (!isa<xla::ifrt::proxy::Array>(array.get())) {
       return absl::InvalidArgumentError(
           "CopyArrays only supports source arrays "
           "that are instances of xla::ifrt::proxy::Array");
@@ -289,7 +290,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
   }
 
   if (devices.has_value() && !(*devices)->empty()) {
-    if (!llvm::isa<xla::ifrt::proxy::Device>((*devices)->devices().front())) {
+    if (!isa<xla::ifrt::proxy::Device>((*devices)->devices().front())) {
       return absl::InvalidArgumentError(
           "CopyArrays only supports devices that are instances of "
           "xla::ifrt::proxy::Device");
@@ -307,7 +308,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
   }
 
   auto req = std::make_unique<CopyArraysRequest>();
-  ASSIGN_OR_RETURN(*req->mutable_array_handles(),
+  ABSL_ASSIGN_OR_RETURN(*req->mutable_array_handles(),
                    Array::GetHandles(arrays, semantics));
   if (devices.has_value()) {
     for (auto* const device : (*devices)->devices()) {
@@ -325,16 +326,25 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
   std::vector<xla::ifrt::ArrayRef> new_arrays;
   new_arrays.reserve(arrays.size());
   for (int i = 0; i < arrays.size(); ++i) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto new_sharding,
         arrays[i]->sharding().WithDeviceAssignment(devices, memory_kind));
-    auto* proxy_array = llvm::cast<xla::ifrt::proxy::Array>(arrays[i].get());
+    auto* proxy_array = cast<xla::ifrt::proxy::Array>(arrays[i].get());
     CHECK(proxy_array != nullptr);
     std::shared_ptr<const xla::PjRtLayout> layout;
-    // "Unpinned_host" memory only supports the default layout.
-    if (!memory_kind.has_value() ||
-        memory_kind->memory_kind() != xla::UnpinnedHostMemorySpace::kKind) {
-      ASSIGN_OR_RETURN(layout, proxy_array->pjrt_layout());
+    bool force_default_layout = false;
+    if (memory_kind.has_value() &&
+        memory_kind->memory_kind() == xla::UnpinnedHostMemorySpace::kKind) {
+      // "unpinned_host" memory only supports the default layout.
+      force_default_layout = true;
+    } else if (devices.has_value() &&
+               (*devices)->devices().front()->PlatformName() ==
+                   xla::CpuPlatformName()) {
+      // "cpu" device only supports the default layout.
+      force_default_layout = true;
+    }
+    if (!force_default_layout) {
+      ABSL_ASSIGN_OR_RETURN(layout, proxy_array->pjrt_layout());
     }
     uint64_t result_handle = rpc_helper_->NextHandle();
     new_arrays.push_back(
@@ -378,10 +388,10 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::ReshardArrays(
   }
 
   auto req = std::make_unique<ReshardArraysRequest>();
-  ASSIGN_OR_RETURN(*req->mutable_array_handles(),
+  ABSL_ASSIGN_OR_RETURN(*req->mutable_array_handles(),
                    Array::GetHandles(arrays, semantics));
   for (const auto& spec : specs) {
-    RETURN_IF_ERROR(spec.ToProto(*req->add_array_specs(),
+    ABSL_RETURN_IF_ERROR(spec.ToProto(*req->add_array_specs(),
                                  rpc_helper_->ifrt_serdes_version()));
   }
   req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
@@ -413,8 +423,7 @@ tsl::Future<> Client::GetReadyFuture(
   for (const auto& value : values) {
     // TODO(b/261991179): IFRT Proxy currently supports Arrays as the only value
     // type, but this may be extended later to other types such as Tuples.
-    if (auto proxy_array =
-            llvm::dyn_cast<xla::ifrt::proxy::Array>(value.get())) {
+    if (auto proxy_array = dyn_cast<xla::ifrt::proxy::Array>(value.get())) {
       absl::StatusOr<ArrayHandle> handle =
           proxy_array->GetHandle(ArrayCopySemantics::kAlwaysCopy);
       if (!handle.ok()) {
@@ -458,9 +467,9 @@ absl::StatusOr<DeviceAssignment> Client::GetDefaultDeviceAssignment(
   req->set_num_partitions(num_partitions);
 
   auto future = rpc_helper_->GetDefaultDeviceAssignment(std::move(req));
-  ASSIGN_OR_RETURN(auto response, future.Await());
+  ABSL_ASSIGN_OR_RETURN(auto response, future.Await());
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto assignment_to_return,
       DeviceAssignment::Deserialize(response->device_assignment()));
 
@@ -481,11 +490,10 @@ Client::GetDefaultPjRtLayout(xla::ifrt::DType dtype,
       "IfrtProxyEntrypointGetDefaultLayout");
   auto req = std::make_unique<GetDefaultLayoutRequest>();
 
-  LayoutKey key{
-      /*dtype=*/dtype,
-      /*dims=*/std::vector<int64_t>(dims.begin(), dims.end()),
-      /*memory_kind=*/memory_kind,
-      /*device_summary=*/device_summary(llvm::dyn_cast<Device>(device))};
+  LayoutKey key{/*dtype=*/dtype,
+                /*dims=*/std::vector<int64_t>(dims.begin(), dims.end()),
+                /*memory_kind=*/memory_kind,
+                /*device_summary=*/device_summary(dyn_cast<Device>(device))};
 
   {
     absl::MutexLock l(mu_);
@@ -505,9 +513,9 @@ Client::GetDefaultPjRtLayout(xla::ifrt::DType dtype,
   req->set_memory_kind(std::string(memory_kind.memory_kind().value_or("")));
 
   auto future = rpc_helper_->GetDefaultLayout(std::move(req));
-  ASSIGN_OR_RETURN(auto response, future.Await());
+  ABSL_ASSIGN_OR_RETURN(auto response, future.Await());
 
-  ASSIGN_OR_RETURN(auto layout, xla::PjRtLayout::Deserialize(
+  ABSL_ASSIGN_OR_RETURN(auto layout, xla::PjRtLayout::Deserialize(
                                     response->serialized_pjrt_layout()));
   {
     absl::MutexLock l(mu_);
@@ -519,9 +527,9 @@ Client::GetDefaultPjRtLayout(xla::ifrt::DType dtype,
 absl::StatusOr<xla::ifrt::CustomLayoutRef> Client::GetDefaultLayout(
     xla::ifrt::DType dtype, const xla::ifrt::Shape& shape,
     const xla::ifrt::ShardingRef& sharding) const {
-  ASSIGN_OR_RETURN(xla::ifrt::Shape shard_shape,
+  ABSL_ASSIGN_OR_RETURN(xla::ifrt::Shape shard_shape,
                    sharding->GetShardShape(shape));
-  ASSIGN_OR_RETURN(std::shared_ptr<const xla::PjRtLayout> pjrt_layout,
+  ABSL_ASSIGN_OR_RETURN(std::shared_ptr<const xla::PjRtLayout> pjrt_layout,
                    GetDefaultPjRtLayout(dtype, shard_shape.dims(),
                                         sharding->devices()->devices().front(),
                                         sharding->memory_kind()));

@@ -505,6 +505,30 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   void ExtendScopedAlternateMemoryAllocations();
 
  private:
+  // Pins all scalar buffers in alternate memory. If a buffer has DMA like
+  // uses that can be asyncified, we need to make sure the buffer is live until
+  // the DMA done instruction. If the buffer is the source buffer of the DMA,
+  // MSA handles it. If the buffer is not the source buffer of the DMA,
+  // currently, it requires special handling. Scalars are the only buffers that
+  // have asyncifiable DMA uses in which they are not the source buffer of the
+  // DMA. In this case, we extend the live range of the scalar buffers to the
+  // end of the program as a temporary hack to make sure the buffer outlives any
+  // newly created async done instruction.
+  absl::Status PinScalarBuffersInAlternateMemory(
+      absl::flat_hash_set<const HloBuffer*>& scalar_buffers_to_pin_in_alt_mem);
+
+  // Returns the set of scalar buffers that are pinned to the alternate
+  // memory.
+  absl::flat_hash_set<const HloBuffer*> GetScalarBuffersPinnedToAltMemory(
+      absl::Span<const MsaBufferInterval> sorted_buffer_intervals) const;
+
+  // Helper method for PinScalarBuffersInAlternateMemory to pin a single scalar
+  // buffer's positions in the alternate memory.
+  absl::Status PinScalarBufferInAlternateMemory(
+      const HloBuffer* buffer, int64_t program_end_time,
+      const absl::flat_hash_map<const HloInstruction*, int64_t>&
+          instruction_schedule);
+
   // We inherit AllocationBlock struct to attach the Allocation information to
   // make importing repacked offsets easier.
   struct RepackAllocationBlock : AllocationBlock {
@@ -614,6 +638,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   struct BlockPrefetchCandidateUseAnalysis {
     int64_t first_use_time = std::numeric_limits<int64_t>::max();
     bool all_uses_allowed_in_alternate_memory = true;
+    bool all_uses_are_synchronous = true;
   };
 
   // Encapsulates the block prefetch scheduling state that is maintained across
@@ -717,8 +742,9 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       BlockPrefetchSchedulingState& scheduling_state,
       AllocationSequence& allocations);
 
-  // Helper method for BlockPrefetchBuffer() to create pinned allocations in
-  // alternate memory for HloPositions.
+  // Helper method to create pinned allocations in alternate memory for
+  // HloPositions. Used by BlockPrefetchBuffer() and
+  // PinScalarBufferInAlternateMemory().
   void CreatePinnedAllocationsInAltMemoryForPositions(
       absl::Span<const HloPosition> positions, const Chunk& chunk_candidate,
       const absl::flat_hash_map<HloPosition, LiveRange>& position_to_live_range,
@@ -727,11 +753,18 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       const absl::flat_hash_set<const HloInstruction*>&
           async_conv_candidate_instructions,
       AllocationSequence& allocations,
-      std::vector<AllocationBlock*>& colocations);
+      std::vector<AllocationBlock*>& colocations,
+      // If set, overrides the end_time of the final position's pinned
+      // allocation. (Used to extend a scalar buffer's last allocation to the
+      // end of the program, as a temporary hack to make sure the buffer
+      // outlives any newly created async done instruction). If nullopt, the
+      // position's own live range end time is used.
+      std::optional<int64_t> last_position_end_time = std::nullopt);
 
-  // Helper method for BlockPrefetchBuffer() to create mirrored allocations in
-  // alternate memory for HloPositions.
-  void CreateMirroredAllocationsInAlternateMemory(
+  // Helper method to create mirrored allocations in alternate memory for
+  // HloPositions. Used by BlockPrefetchBuffer() and
+  // PinScalarBufferInAlternateMemory().
+  absl::Status CreateMirroredAllocationsInAlternateMemory(
       absl::Span<const HloPosition> positions,
       const LiveRangeCalculator& calculator,
       const absl::flat_hash_map<const HloInstruction*, int64_t>&
@@ -1004,8 +1037,12 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       const AllocationValue::Use& use, AliasedOffset* preferred_offset) const;
 
   // Propagate the allocation at the use time to any aliases that this use might
-  // have had.
-  void UpdateAllocationRequirementForUseAliases(
+  // have had. Returns false without recording anything when the propagated
+  // requirement contradicts an already recorded required assignment (or a
+  // buffer coloring) at an aliased position: the caller should treat the
+  // use's allocation as failed and uncommit/retry rather than proceed into a
+  // CHECK failure inside AddRequiredAssignment.
+  [[nodiscard]] bool TryUpdateAllocationRequirementForUseAliases(
       const AllocationValue& allocation_value, const AllocationValue::Use& use,
       int64_t use_time);
 
@@ -1024,6 +1061,43 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       int64_t use_time, absl::Span<AllocationValue> allocation_values,
       absl::flat_hash_map<const HloComputation*, AliasedOffset*>&
           preferred_offset_for_computation);
+
+  // Returns true if a buffer is allocated in the alternate memory space
+  // throughout the live range of a conditional and used in the conditional.
+  // The uses inside the conditional read the buffer from mirrored
+  // allocation.
+  bool NeedsMirroredAllocation(
+      const AllocationValue& allocation_value,
+      const AllocationValue::Use& current_use,
+      // We check if the previous use is a conditional operand.
+      const AllocationValue::Use* previous_use) const;
+
+  // If a buffer is allocated in the alternate memory space throughout the live
+  // range of a conditional, the uses of the buffer inside the conditional
+  // should read the buffer from a mirrored allocation.
+  void CreateMirroredAllocations(
+      AllocationValue& allocation_value,
+      const AllocationValue::Use& current_use,
+      // We check if the previous use is a conditional operand.
+      const AllocationValue::Use* previous_use,
+      absl::Span<AllocationValue> allocation_values,
+      // A set of allocation values inside the conditional, that may get a
+      // mirrored allocation that points to a real allocation outside the
+      // conditional, that is live throughout the conditional. We maintain
+      // this set to avoid re-processing these allocation values.
+      absl::flat_hash_set<AllocationValue*>&
+          already_processed_allocation_values_inside_a_conditional);
+
+  // Returns true, if the previous use is a conditional operand in the alternate
+  // memory, and, an eviction is required before the conditional. We check if
+  // all the buffer positions and uses inside the conditional are allowed in
+  // alternate memory and if the jointly processed allocation values can be
+  // processed without imposing infeasible constraints. We require an eviction
+  // if these conditions are not met.
+  bool IsEvictionRequiredForPreviousUseAtConditional(
+      AllocationValue& allocation_value, const AllocationValue::Use& use,
+      const AllocationValue::Use* previous_use,
+      absl::Span<AllocationValue> allocation_values);
 
   // Creates a detailed memory allocation request for a given use of an
   // allocation value. Analyzes the usage pattern of the use to determine if it
@@ -1050,6 +1124,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       const std::vector<int64_t>& all_use_times,
       bool only_extend_existing_allocation,
       absl::Span<AllocationValue> processed_allocation_values,
+      absl::Span<AllocationValue> all_allocation_values,
       std::optional<Shape> shape_override);
 
   // Returns true, if the allocation value requires a pinned allocation in the
@@ -1213,6 +1288,16 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // Returns the required assignment at a particular time, if available.
   std::optional<RequiredMemoryAssignment> RequiredMemoryAssignmentAt(
       const HloValue* buffer, int64_t time) const;
+
+  // Returns true if requiring `sites` in default memory would record at least
+  // one requirement that is not already in effect. Pending requirements do not
+  // count: UncommitPendingWork rolls them back before the retry. Returns false
+  // when every site already carries a committed (non-pending) required
+  // assignment, in which case the retry would be a no-op: it would run against
+  // exactly the same state, produce the same allocations, and flag the same
+  // sites again.
+  bool InefficientSiteRetryCanProgress(
+      absl::Span<const HloPositionOrUse> sites) const;
 
   // Searches for aliases in the use for a required assignment, and returns it
   // if found.
@@ -1517,6 +1602,15 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
                               ShapeIndex producer_shape_index,
                               absl::string_view consumer_name) const;
 
+  // Finds the matching AllocationValue for a given HloUse. Returns nullptr if
+  // no matching AllocationValue is found.
+  // REQUIRES: candidate_allocation_values must be sorted by the definition time
+  // of their defining instruction.
+  AllocationValue* FindAllocationValueForUse(
+      const HloUse& use,
+      absl::Span<AllocationValue> candidate_allocation_values,
+      int64_t use_time) const;
+
   // Takes a group of allocation values and splits them if they can be split on
   // the same dimension.
   void MaybeSplitAllocationValues(
@@ -1708,7 +1802,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   absl::flat_hash_set<const HloInstruction*> successful_async_conversion_set_;
   std::vector<const HloInstruction*> not_finalized_async_conversions_;
   // Maps from an HloValue to the dimension it is split on.
-  absl::flat_hash_map<const HloInstruction*, ShapeTree<int64_t>>
+  absl::flat_hash_map<const HloInstruction*,
+                      absl::flat_hash_map<ShapeIndex, int64_t>>
       instruction_to_split_dims_;
   // Debug strings.
   std::string buffer_info_str_;

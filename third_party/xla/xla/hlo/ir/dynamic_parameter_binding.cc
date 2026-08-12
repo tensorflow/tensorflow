@@ -21,9 +21,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/shape_util.h"
@@ -70,7 +70,7 @@ std::string DynamicParameterBinding::ToString() const {
 
 absl::Status DynamicParameterBinding::ForEachBinding(BindingFn fn) const {
   for (const auto& binding : bindings_) {
-    RETURN_IF_ERROR(fn(binding.second, binding.first));
+    ABSL_RETURN_IF_ERROR(fn(binding.second, binding.first));
   }
   return absl::OkStatus();
 }

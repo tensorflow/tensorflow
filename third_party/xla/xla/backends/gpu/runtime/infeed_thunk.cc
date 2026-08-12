@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
@@ -73,7 +73,7 @@ absl::Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
         << ShapeUtil::HumanStringWithLayout(dest_slices_[index].shape);
     se::DeviceAddressBase dest_address =
         buffer_allocations.GetDeviceAddress(dest_slices_[index++].slice);
-    RETURN_IF_ERROR(stream.Memcpy(&dest_address, buffer.address(),
+    ABSL_RETURN_IF_ERROR(stream.Memcpy(&dest_address, buffer.address(),
                                   buffer.address().size()));
   }
 
@@ -97,7 +97,7 @@ absl::StatusOr<std::unique_ptr<InfeedThunk>> InfeedThunk::FromProto(
   std::vector<ShapedSlice> dest_slices(thunk_proto.dest_slices_size());
 
   for (int i = 0; i < dest_slices.size(); i++) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         dest_slices[i],
         ShapedSlice::FromProto(thunk_proto.dest_slices(i), buffer_allocations));
   }
@@ -112,7 +112,7 @@ absl::StatusOr<ThunkProto> InfeedThunk::ToProto() const {
 
   InfeedThunkProto* thunk_proto = proto.mutable_infeed_thunk();
   for (int i = 0; i < dest_slices_.size(); i++) {
-    ASSIGN_OR_RETURN(*thunk_proto->add_dest_slices(),
+    ABSL_ASSIGN_OR_RETURN(*thunk_proto->add_dest_slices(),
                      dest_slices_[i].ToProto());
   }
   return proto;

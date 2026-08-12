@@ -173,18 +173,19 @@ HloInstruction* GetCorrectionFactor(HloInstruction* hlo, int64_t num_partitions,
                                     SpmdBuilder* b) {
   /* n = size_per_replica
      m = num_partitions
-  factor = tf.exp(-2.0j * np.pi * tf.cast(position_index, tf.complex64) *
-                    * tf.cast(tf.range(n), dtype=tf.complex64) /
+  factor = tf.exp(-2.0j * np.pi * tf.cast(position_index, dtype) *
+                    * tf.cast(tf.range(n), dtype=dtype) /
                     (n * m))
+  where dtype matches the FFT element type.
 
   */
   auto add_hlo = [&](std::unique_ptr<HloInstruction> to_add) {
     return b->AddInstruction(std::move(to_add));
   };
   int64_t per_replica_size = hlo->shape().dimensions().back();
-  auto constant_factor =
-      add_hlo(HloInstruction::CreateConstant(LiteralUtil::CreateR0(
-          complex64(0, -2.0 * M_PI / (num_partitions * per_replica_size)))));
+  auto constant_factor = CreateR0WithType(
+      hlo->shape().element_type(),
+      complex128(0, -2.0 * M_PI / (num_partitions * per_replica_size)), b);
   constant_factor = add_hlo(HloInstruction::CreateBroadcast(
       hlo->shape(), constant_factor, /*broadcast_dimensions=*/{}));
   auto converted_partition_id = add_hlo(HloInstruction::CreateConvert(
@@ -256,12 +257,14 @@ HloInstruction* GetFinalFftUsingCollectivePermute(
       HloInstruction::CreateGetTupleElement(iteration->shape(), param, 4));
   /*
     factor = tf.exp(-2.0j * np.pi  *
-                      tf.cast(dest_partiton_id, tf.complex64) *
-                      tf.cast(source_partition_id, tf.complex64) /
+                      tf.cast(dest_partition_id, dtype) *
+                      tf.cast(source_partition_id, dtype) /
     num_partitions) dest_transform += factor * source_transform
+    where dtype matches the FFT element type.
   */
-  auto constant_factor = body_b.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR0(complex64(0, -2.0 * M_PI / num_partitions))));
+  auto constant_factor =
+      CreateR0WithType(hlo->shape().element_type(),
+                       complex128(0, -2.0 * M_PI / num_partitions), &body_b);
 
   constant_factor = body_b.AddInstruction(HloInstruction::CreateBinary(
       constant_factor->shape(), HloOpcode::kMultiply, constant_factor,

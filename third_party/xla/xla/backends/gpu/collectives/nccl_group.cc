@@ -19,8 +19,8 @@ limitations under the License.
 
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "third_party/nccl/nccl.h"
 #include "xla/backends/gpu/collectives/nccl_errors.h"
 #include "xla/tsl/platform/logging.h"
@@ -63,7 +63,7 @@ absl::StatusOr<bool> NcclGroupEnd() {
 bool IsInsideNcclGroupLaunch() { return nccl_group_nesting > 0; }
 
 absl::StatusOr<bool> NcclGroupLaunch(absl::FunctionRef<absl::Status()> group) {
-  RETURN_IF_ERROR(NcclGroupStart());
+  ABSL_RETURN_IF_ERROR(NcclGroupStart());
   absl::Status group_status = group();
   absl::StatusOr<bool> launched = NcclGroupEnd();
   if (!group_status.ok()) {

@@ -864,17 +864,17 @@ def depthwise_conv2d_v2(input,
 
   Args:
     input: 4-D with shape according to `data_format`.
-    filter: 4-D with shape
-      `[filter_height, filter_width, in_channels, channel_multiplier]`.
-    strides: 1-D of size 4.  The stride of the sliding window for each
-      dimension of `input`.
+    filter: 4-D with shape `[filter_height, filter_width, in_channels,
+      channel_multiplier]`.
+    strides: 1-D of size 4.  The stride of the sliding window for each dimension
+      of `input`.
     padding: Controls how to pad the image before applying the convolution. Can
       be the string `"SAME"` or `"VALID"` indicating the type of padding
       algorithm to use, or a list indicating the explicit paddings at the start
       and end of each dimension. See
-      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
-      for more information. When explicit padding is used and data_format
-      is `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
+      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding)
+      for more information. When explicit padding is used and data_format is
+      `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
       [pad_left, pad_right], [0, 0]]`. When explicit padding used and
       data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
       [pad_top, pad_bottom], [pad_left, pad_right]]`.

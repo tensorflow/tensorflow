@@ -212,24 +212,15 @@ class Promise {
     DCHECK(shared_state_);
 
     auto shared_state = std::move(shared_state_);
-    auto* shared_state_ptr = shared_state.get();
-
-    // Since each waiter will hold a reference to the shared state, we can drop
-    // the reference in mlrt::Promise::Set() in order to trigger passing by move
-    // for the last waiter.
-    if (!shared_state->IsUnique()) {
-      shared_state.reset();
-    }
-
-    shared_state_ptr->emplace<T>(std::forward<Args>(args)...);
+    shared_state->emplace<T>(std::forward<Args>(args)...);
   }
 
   void SetError(absl::Status status) && {
     DCHECK(shared_state_);
-
     DCHECK(!status.ok());
-    shared_state_->SetError(std::move(status));
-    shared_state_.reset();
+
+    auto shared_state = std::move(shared_state_);
+    shared_state->SetError(std::move(status));
   }
 
   void HandleError(Value* arg) && {

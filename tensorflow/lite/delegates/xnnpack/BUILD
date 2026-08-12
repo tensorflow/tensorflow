@@ -1341,6 +1341,20 @@ cc_library(
 )
 
 cc_test(
+    name = "moe_delegate_kernel_test",
+    srcs = ["moe_delegate_kernel_test.cc"],
+    deps = [
+        ":moe_delegate_kernel",
+        "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
+    ],
+)
+
+cc_test(
     name = "average_pool_2d_test",
     srcs = ["average_pool_2d_test.cc"],
     linkopts = select({
@@ -1368,8 +1382,15 @@ cc_test(
         ":batch_matrix_multiply_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite:framework_stable",
+        "//tensorflow/lite:version",
         "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core:cc_api_stable",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 

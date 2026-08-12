@@ -730,6 +730,9 @@ TEST_F(MatmulTest, BiasAndExactGELUTestF32) {
 }
 
 TEST_F(MatmulTest, BiasAndExactGELUTestBF16) {
+  if (!IsSupportedType(PrimitiveType::BF16)) {
+    GTEST_SKIP() << "CPU does not support BF16.";
+  }
   const char* matmul_module_str = R"(
   HloModule matmul.test.f32
   ENTRY matmul.test.f32 {
@@ -1967,6 +1970,9 @@ TEST_F(MatmulTest, BiasAndLegalizedErfcGELUTestF32) {
 }
 
 TEST_F(MatmulTest, BiasAndLegalizedErfcGELUTestF16) {
+  if (!IsSupportedType(PrimitiveType::F16)) {
+    GTEST_SKIP() << "CPU does not support F16.";
+  }
   // FP16 uses erfc-legalized GELU because FP16's narrow exponent range (5 bits)
   // causes underflow in erfc for moderate inputs. JAX/StableHLO legalizes erfc
   // into a piecewise polynomial computed in F32, with f16<->f32 converts at the
@@ -2046,6 +2052,31 @@ TEST_F(MatmulTest, BiasAlongNonLastDimShouldNotFuseAsBias) {
     dot.0 = f32[4,300,300] dot(arg0.1, arg0.2), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
     broad.0 = f32[4,300,300] broadcast(arg0.3), dimensions={1}
     ROOT add.0 = f32[4,300,300] add(dot.0, broad.0)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_binary_add_);
+}
+
+// Exercises the BINARY_ADD operand rank reconciliation in the rewriter.
+// The dot output is rank 4 ([4,8,128,128]), but it is reshaped to rank 3
+// ([32,128,128]) before the add, whose addend broadcasts a [128,128] constant.
+// After shape adjustment the fused addend stays rank 3 ([1,128,128]) while the
+// custom-call output is the rank-4 dot shape, so the rewriter must prepend a
+// leading size-1 dimension to the addend (yielding rank 4) before oneDNN sees
+// it. Without that, oneDNN aborts with a dst/bin_po src1 dimension mismatch.
+TEST_F(MatmulTest, BinaryAddAddendLowerRankThanOutput) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.binary_add.rank.test.f32
+
+  ENTRY matmul.binary_add.rank.test.f32 {
+    arg0.1 = f32[4,8,128,64] parameter(0)
+    arg0.2 = f32[4,8,64,128] parameter(1)
+    dot.0 = f32[4,8,128,128] dot(arg0.1, arg0.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+    reshape.0 = f32[32,128,128] reshape(dot.0)
+    const.0 = f32[128,128] constant({...})
+    broadcast.0 = f32[32,128,128] broadcast(const.0), dimensions={1,2}
+    ROOT add.0 = f32[32,128,128] add(reshape.0, broadcast.0)
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));

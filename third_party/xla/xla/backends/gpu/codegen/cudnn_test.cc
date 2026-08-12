@@ -22,13 +22,13 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/backends/gpu/transforms/cudnn_fusion_compiler.h"
@@ -130,7 +130,7 @@ class CuDnnFusionFileCheckTest : public CuDnnFusionTest {
 
   absl::StatusOr<bool> RunCuDnnFileCheck(absl::string_view hlo,
                                          absl::string_view pattern) {
-    ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                      ParseAndReturnVerifiedModule(hlo));
     const std::string root_name(
         module->entry_computation()->root_instruction()->name());
@@ -141,7 +141,7 @@ class CuDnnFusionFileCheckTest : public CuDnnFusionTest {
     // Run filecheck even if CuDnnFusionCompiler failed.
     cudnn_compiler.Run(module.get()).IgnoreError();
     std::string dump;
-    RETURN_IF_ERROR(tsl::ReadFileToString(
+    ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(
         tsl::Env::Default(),
         tsl::io::JoinPath(
             output_directory_,
@@ -1141,7 +1141,7 @@ ENTRY main {
   dout = f32[2,9,9,32] parameter(0)
   filter = f32[32,3,3,17] parameter(1)
   reverse = f32[32,3,3,17] reverse(filter), dimensions={1,2}
-  conv = f32[2,9,9,17] convolution(dout, reverse), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_i01o->b01f, feature_group_count=1, convolution_kind=dgrad
+  conv = f32[2,9,9,17] convolution(dout, reverse), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_i01o->b01f, feature_group_count=1
   ROOT relu = f32[2,9,9,17] maximum(zeros, conv)
 })";
 

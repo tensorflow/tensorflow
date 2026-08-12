@@ -24,9 +24,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/message.h"
 #include "riegeli/bytes/writer.h"
 #include "riegeli/records/record_writer.h"
@@ -95,7 +95,7 @@ absl::Status NormalizeBackendConfig(gpu::GpuExecutableProto& executable) {
   for (HloComputationProto& computation : *module->mutable_computations()) {
     for (HloInstructionProto& instruction :
          *computation.mutable_instructions()) {
-      ASSIGN_OR_RETURN(std::string backend_config_str,
+      ABSL_ASSIGN_OR_RETURN(std::string backend_config_str,
                        GetBackendConfigString(instruction, module));
 
       absl::StatusOr<std::string> normalized_or = SortJson(backend_config_str);

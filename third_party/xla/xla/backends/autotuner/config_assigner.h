@@ -25,13 +25,10 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/types/span.h"
-#include "xla/autotune_results.pb.h"
+#include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/codegen_orchestrator.h"
-#include "xla/backends/autotuner/config_runner.h"
 #include "xla/backends/autotuner/hlo_extractor.h"
-#include "xla/backends/autotuner/profiler.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
@@ -47,21 +44,11 @@ class ConfigAssigner {
   // TODO(b/519057668): Consolidate cache fallback options for better
   // readability.
   struct Options {
-    bool use_default_config = false;
     bool select_first_config = false;
     bool expect_all_instructions_in_cache = false;
+    // If true, the config-assigner will dump HLO modules before and after
+    // applying the best config.
     bool dump_hlos = false;
-    std::string dump_logs_to = "";
-
-    // TODO(b/519057668): Remove below option and accept Autotuner instance in
-    // ConfigAssigner.
-    // Correctness check options
-    bool check_buffers = true;
-    float relative_tolerance = 1e-6;
-    bool crash_on_check_failure = false;
-
-    // Optimal config selection options
-    int scratch_bytes_window_size_us = 2;
 
     std::string ToString() const;
   };
@@ -70,10 +57,10 @@ class ConfigAssigner {
 
   static absl::StatusOr<std::unique_ptr<ConfigAssigner>> Create(
       Options options,
-      std::unique_ptr<AutotunerCacheInterface> absl_nonnull
-      optimal_config_cache,
-      std::unique_ptr<CodegenOrchestrator> absl_nonnull orchestrator,
-      std::unique_ptr<Profiler> absl_nullable profiler);
+      absl_nonnull std::unique_ptr<AutotunerCacheInterface>
+          optimal_config_cache,
+      absl_nonnull std::unique_ptr<CodegenOrchestrator> orchestrator,
+      absl_nullable std::unique_ptr<Autotuner> autotuner);
 
   // Online module-level entry point.
   absl::Status AssignConfigs(HloModule* module,
@@ -91,13 +78,13 @@ class ConfigAssigner {
 
  private:
   ConfigAssigner(Options options,
-                 std::unique_ptr<AutotunerCacheInterface> absl_nonnull cache,
-                 std::unique_ptr<CodegenOrchestrator> absl_nonnull orchestrator,
-                 std::unique_ptr<ConfigRunner> absl_nullable config_runner)
+                 absl_nonnull std::unique_ptr<AutotunerCacheInterface> cache,
+                 absl_nonnull std::unique_ptr<CodegenOrchestrator> orchestrator,
+                 absl_nullable std::unique_ptr<Autotuner> autotuner)
       : options_(options),
         optimal_config_cache_(std::move(cache)),
         orchestrator_(std::move(orchestrator)),
-        config_runner_(std::move(config_runner)) {}
+        autotuner_(std::move(autotuner)) {}
 
   using InstructionGroup = std::vector<HloInstruction*>;
 
@@ -116,9 +103,6 @@ class ConfigAssigner {
   // Tuned config is updated in the cache if it is provided.
   tsl::Future<Config> GetConfig(const HloInstruction* instr);
 
-  // Tunes and returns the best config. Thread-safe and returns a future that
-  // will contain the best config.
-  tsl::Future<Config> GetTunedConfig(const HloInstruction* instr);
 
   // Returns the cached config for the given HLO instruction, if any.
   // Otherwise, returns std::nullopt.
@@ -129,19 +113,10 @@ class ConfigAssigner {
   // Dumps HLO before and after applying the config.
   absl::Status DumpHlo(const HloInstruction& instr, const Config& config);
 
-  void LogConfigProfiles(
-      const HloInstruction& instr,
-      absl::Span<const ConfigRunner::ConfigProfile> profiles,
-      absl::Span<const ConfigRunner::ConfigProfile> failed_configs);
-
-  // Dumps the autotuning logs to the specified file path, vlogs if requested.
-  absl::Status DumpTuningLogs();
-
   Options options_;
-  std::unique_ptr<AutotunerCacheInterface> absl_nonnull optimal_config_cache_;
-  std::unique_ptr<CodegenOrchestrator> absl_nonnull orchestrator_;
-  std::unique_ptr<ConfigRunner> absl_nullable config_runner_;
-  AutotuningLogs logs_;
+  absl_nonnull std::unique_ptr<AutotunerCacheInterface> optimal_config_cache_;
+  absl_nonnull std::unique_ptr<CodegenOrchestrator> orchestrator_;
+  absl_nullable std::unique_ptr<Autotuner> autotuner_;
   int dump_counter_ = 0;
 };
 

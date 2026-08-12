@@ -38,11 +38,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/hlo_op_metadata.h"
 #include "xla/hlo/ir/mesh_and_axis.h"
@@ -784,7 +784,7 @@ absl::StatusOr<ShapeTree<HloSharding>> HloSharding::AsShapeTree(
     const Shape& shape) const {
   if (IsTuple()) {
     ShapeTree<HloSharding> result(shape, HloSharding::Replicate());
-    RETURN_IF_ERROR(CheckLeafCount(shape));
+    ABSL_RETURN_IF_ERROR(CheckLeafCount(shape));
     auto it = tuple_elements_.begin();
     for (auto& index_to_sharding : result.leaves()) {
       index_to_sharding.second = *it++;
@@ -797,7 +797,7 @@ absl::StatusOr<ShapeTree<HloSharding>> HloSharding::AsShapeTree(
 absl::StatusOr<HloSharding> HloSharding::GetTupleSharding(
     const Shape& shape) const {
   if (IsTuple()) {
-    RETURN_IF_ERROR(CheckLeafCount(shape));
+    ABSL_RETURN_IF_ERROR(CheckLeafCount(shape));
     return *this;
   }
   return SingleTuple(shape, *this);
@@ -845,7 +845,7 @@ absl::Status HloSharding::ValidateTuple(
     return absl::InvalidArgumentError(
         "Sharding is tuple-shaped but validation shape is not.");
   }
-  RETURN_IF_ERROR(CheckLeafCount(shape));
+  ABSL_RETURN_IF_ERROR(CheckLeafCount(shape));
   if (ShapeUtil::GetLeafCount(shape) == 0 && tuple_elements_.empty()) {
     // Empty tuples are allowed to not have sharding
     return absl::OkStatus();
@@ -957,14 +957,14 @@ absl::Status HloSharding::ValidateNonTuple(
   absl::Status status = tile_assignment_.array().EachStatus(
       [&num_devices, &seen_devices](absl::Span<const int64_t> indices,
                                     int64_t device) -> absl::Status {
-        RETURN_IF_ERROR(DeviceInRange(device, num_devices));
+        ABSL_RETURN_IF_ERROR(DeviceInRange(device, num_devices));
         if (!seen_devices.insert(device).second) {
           return absl::InvalidArgumentError(absl::StrCat(
               "device ", device, " is not unique in tile assignment"));
         }
         return absl::OkStatus();
       });
-  RETURN_IF_ERROR(status);
+  ABSL_RETURN_IF_ERROR(status);
   if (num_devices.has_value() && seen_devices.size() != *num_devices) {
     return absl::InvalidArgumentError(
         absl::StrFormat("tile_assignment should have %d devices but has %d",
@@ -1029,7 +1029,7 @@ const TileAssignment& HloSharding::TileAgnosticDeviceAssignment() const {
     *proto_clone.add_metadata() = md;
   }
 
-  ASSIGN_OR_RETURN(HloSharding sharding, FromProtoInternal(proto_clone));
+  ABSL_ASSIGN_OR_RETURN(HloSharding sharding, FromProtoInternal(proto_clone));
   sharding.set_reduction_op(reduction_op);
   return sharding;
 }
@@ -1054,7 +1054,7 @@ const TileAssignment& HloSharding::TileAgnosticDeviceAssignment() const {
     std::vector<HloSharding> tuple_shardings;
     tuple_shardings.reserve(proto.tuple_shardings().size());
     for (const OpSharding& tuple_sharding_proto : proto.tuple_shardings()) {
-      ASSIGN_OR_RETURN(HloSharding sharding,
+      ABSL_ASSIGN_OR_RETURN(HloSharding sharding,
                        HloSharding::FromProto(tuple_sharding_proto));
       tuple_shardings.push_back(std::move(sharding));
     }
@@ -1121,10 +1121,10 @@ const TileAssignment& HloSharding::TileAgnosticDeviceAssignment() const {
 
   // RE: the product of tile assignment tensor dimensions must be
   // equal to tile_assignment_devices.size() or the product of iota_dimensions.
-  ASSIGN_OR_RETURN(int64_t product_of_dimensions,
+  ABSL_ASSIGN_OR_RETURN(int64_t product_of_dimensions,
                    product_no_overflow(proto.tile_assignment_dimensions()));
   if (use_iota_tile_assignments) {
-    ASSIGN_OR_RETURN(int64_t product_of_iota_dimensions,
+    ABSL_ASSIGN_OR_RETURN(int64_t product_of_iota_dimensions,
                      product_no_overflow(proto.iota_reshape_dims()));
     TF_RET_CHECK(product_of_dimensions == product_of_iota_dimensions);
   } else {

@@ -22,10 +22,10 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -168,7 +168,7 @@ TEST_F(TiledHloInstructionTest, ToString) {
         /*parameter_number=*/number,
         ShapeUtil::MakeShape(PrimitiveType::F32, {4}),
         absl::StrCat("p", number));
-    ASSIGN_OR_RETURN(std::unique_ptr<TiledHloInstruction> tiled_hlo,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<TiledHloInstruction> tiled_hlo,
                      TiledHloInstruction::Create(
                          hlo.get(), /*operands=*/{},
                          /*runtime_variables=*/{},

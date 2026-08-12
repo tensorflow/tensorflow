@@ -1020,6 +1020,22 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   BufferIntervalTree interval_tree_;
 
  private:
+  // Computes the same free chunks as MakeFreeChunks, but returns a reference to
+  // the reused scratch storage `free_chunks_list_` (invalidated by the next
+  // call to MakeFreeChunks or MakeFreeChunksList) instead of materializing the
+  // FreeChunks map. Used by the unsliced fast path in FindChunkCandidates to
+  // avoid per query container construction.
+  const std::vector<std::pair<int64_t, int64_t>>& MakeFreeChunksList(
+      const BufferInterval& buffer_interval, int64_t max_colocation_size) const;
+
+  // Fast path of FindChunkCandidates for an unsliced (num_slices() == 1)
+  // interval: computes the best fit chunk directly from the merged free chunk
+  // list, skipping the SlicedAllocationFinder containers. Returns exactly what
+  // FindChunkCandidates returns; see the implementation comment.
+  std::vector<Chunk> FindUnslicedChunkCandidates(
+      const SlicedBufferInterval& sliced_buffer_interval,
+      int64_t max_colocation_size, int64_t preferred_offset) const;
+
   int64_t alignment_;
 
   // The current time represented as an integer. It increments by 1 at each

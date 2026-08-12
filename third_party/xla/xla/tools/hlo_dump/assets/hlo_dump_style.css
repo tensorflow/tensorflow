@@ -60,6 +60,10 @@ body {
   overflow: auto;
   padding: 10px;
 }
+.hlo-block {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 60em;
+}
 pre {
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -84,6 +88,7 @@ pre {
   outline-offset: 0;
   background-color: rgba(51, 153, 255, 0.2) !important;
   border-radius: 2px;
+  position: relative;
   z-index: 10;
 }
 .tooltip-table {
@@ -150,4 +155,27 @@ pre {
   z-index: 10000;
   font-family: monospace;
   font-size: 12px;
+}
+
+#loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(255, 255, 255, 0.8);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 99999;
+}
+.loading-message {
+  font-size: 24px;
+  font-weight: bold;
+  font-family: sans-serif;
+  padding: 20px;
+  background: white;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
 }

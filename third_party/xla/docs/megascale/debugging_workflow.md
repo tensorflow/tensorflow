@@ -369,3 +369,11 @@ metric.
 ![this](./images/outlier_dcn_inbound_transfer_latencies.png)
 
 In this example, `test2-slice-job-1-0` is the outlier.
+
+#### Host Compute Latencies
+
+The figure shows an example of an outlier in the compute latency metric.
+
+![this](./images/outlier_host_compute_latencies.png)
+
+In this example, `slice-job-1-0` is the outlier.

@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/convert_operand_folder.h"
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
@@ -105,7 +105,7 @@ absl::StatusOr<HloInstruction*> ConvertOperandFolding::ExpandInstruction(
   for (int i = 0; i < instruction->operand_count(); ++i) {
     auto* operand = instruction->mutable_operand(i);
     if (IsUpcastConvert(operand)) {
-      RETURN_IF_ERROR(instruction->ReplaceOperandWithDifferentShape(
+      ABSL_RETURN_IF_ERROR(instruction->ReplaceOperandWithDifferentShape(
           i, EffectiveOperand(operand)));
     }
   }

@@ -17,8 +17,8 @@ limitations under the License.
 #include <optional>
 
 #include <gtest/gtest.h>
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
@@ -29,7 +29,7 @@ namespace gpu {
 namespace {
 
 absl::StatusOr<stream_executor::DeviceDescription> MakeDeviceDescription() {
-  ASSIGN_OR_RETURN(stream_executor::DeviceDescription device_description,
+  ABSL_ASSIGN_OR_RETURN(stream_executor::DeviceDescription device_description,
                    stream_executor::DeviceDescription::FromProto(
                        stream_executor::GpuDeviceInfoProto{}));
   device_description.set_threads_per_warp(32);

@@ -19,9 +19,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/literal.h"
 #include "xla/runtime/large_hlo_snapshot_serialization/coded_stream_iterators.h"
 #include "xla/service/hlo.pb.h"
@@ -47,8 +47,8 @@ absl::Status SerializeHloUnoptimizedSnapshot(
   for (const auto& partition : snapshot.partitions()) {
     HloInputs* partition_metadata = metadata_proto.add_partitions();
     for (const auto& argument : partition.arguments()) {
-      ASSIGN_OR_RETURN(auto shape, Shape::FromProto(argument.shape()));
-      ASSIGN_OR_RETURN(int64_t serialized_size,
+      ABSL_ASSIGN_OR_RETURN(auto shape, Shape::FromProto(argument.shape()));
+      ABSL_ASSIGN_OR_RETURN(int64_t serialized_size,
                        ShapeUtil::SerializedSize(shape));
       partition_metadata->add_arguments_descriptors()->set_argument_size_bytes(
           serialized_size);
@@ -64,9 +64,9 @@ absl::Status SerializeHloUnoptimizedSnapshot(
   // Serialize literals
   for (const auto& hlo_input : snapshot.partitions()) {
     for (const auto& literal_proto : hlo_input.arguments()) {
-      ASSIGN_OR_RETURN(Literal literal,
+      ABSL_ASSIGN_OR_RETURN(Literal literal,
                        xla::Literal::CreateFromProto(literal_proto));
-      RETURN_IF_ERROR(literal.Serialize(output_it));
+      ABSL_RETURN_IF_ERROR(literal.Serialize(output_it));
     }
   }
   return absl::OkStatus();

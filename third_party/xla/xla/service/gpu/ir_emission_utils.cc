@@ -26,13 +26,13 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/Constants.h"
@@ -94,7 +94,7 @@ absl::StatusOr<bool> IsCublasSupportedMatMul(
   // Number of operands that have non-trivial non-contracting dimension.
   int num_matrix_operands = 0;
   for (int operand : {0, 1}) {
-    ASSIGN_OR_RETURN(DotOperandDims dims,
+    ABSL_ASSIGN_OR_RETURN(DotOperandDims dims,
                      DotOperandDims::FromDotOperand(&dot, operand));
     // cuBLAS only supports single contracting dimension.
     if (dims.Rank(DotOperandDims::kContracting) != 1) {

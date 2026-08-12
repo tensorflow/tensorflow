@@ -25,10 +25,36 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_query.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
+
+PrecisionConfig GetPrecisionConfig(const HloInstruction& hlo) {
+  if (auto gpu_config = hlo.backend_config<GpuBackendConfig>();
+      gpu_config.ok()) {
+    const auto& fusion_config = gpu_config->fusion_backend_config();
+    if (fusion_config.has_cudnn_fusion_config() &&
+        fusion_config.cudnn_fusion_config().has_precision_config()) {
+      return fusion_config.cudnn_fusion_config().precision_config();
+    }
+  }
+
+  if (hlo.opcode() == HloOpcode::kFusion) {
+    const HloComputation* comp = hlo.fused_instructions_computation();
+    const HloInstruction* hero = hlo_query::GetFirstInstructionWithOpcode(
+        *comp, {HloOpcode::kDot, HloOpcode::kConvolution, HloOpcode::kScaledDot,
+                HloOpcode::kRaggedDot});
+    if (hero != nullptr) {
+      return hero->precision_config();
+    }
+  }
+
+  return PrecisionConfig();
+}
 
 namespace {
 
@@ -38,6 +64,13 @@ bool IsEpilogueOpSupportedByCuDNN(const HloInstruction& hlo,
     return false;
   }
   const HloOpcode opcode = hlo.opcode();
+  // Do not fuse chained converts (a convert whose operand is already a
+  // convert). Note: Fusing chained converts could steal a convert from an
+  // convolution requiring it to compile.
+  if (opcode == HloOpcode::kConvert &&
+      hlo.operand(0)->opcode() == HloOpcode::kConvert) {
+    return false;
+  }
   switch (opcode) {
     case HloOpcode::kAbs:
     case HloOpcode::kAdd:
@@ -56,7 +89,6 @@ bool IsEpilogueOpSupportedByCuDNN(const HloInstruction& hlo,
     case HloOpcode::kNegate:
     case HloOpcode::kPower:
     case HloOpcode::kRsqrt:
-    case HloOpcode::kSelect:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
     case HloOpcode::kSubtract:
@@ -72,7 +104,8 @@ bool IsEpilogueOpSupportedByCuDNN(const HloInstruction& hlo,
              IsEpilogueOpSupportedByCuDNN(*hlo.users()[0], can_fuse_reduce,
                                           is_nchw);
     case HloOpcode::kBroadcast:
-      return ShapeUtil::IsScalar(hlo.operand(0)->shape());
+      return ShapeUtil::IsScalar(hlo.operand(0)->shape()) ||
+             hlo.operand(0)->shape().dimensions().size() == 1;
     case HloOpcode::kConstant:
       return ShapeUtil::IsScalar(hlo.shape());
     case HloOpcode::kReduce:

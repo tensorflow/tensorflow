@@ -99,7 +99,6 @@ cc_library(
         "//xla/tools:run_hlo_module_proto_cc",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_benchmark",
         "@com_google_absl//absl/base",
@@ -107,6 +106,7 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
@@ -334,6 +334,7 @@ cc_library(
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/flags:parse",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
@@ -836,7 +837,9 @@ hlo_test_suite(
 hlo_test_suite(
     name = "memory_intensive_hlo_tests",
     hlo_files = MEMORY_INTENSIVE_HLO_FILES,
-    tags = if_google([
+    tags = [
+        "no_oss",
+    ] + if_google([
         "requires-mem:24g",
     ]),
 )
@@ -845,7 +848,9 @@ hlo_test_suite(
     name = "huge_hlo_tests",
     hlo_files = HUGE_HLO_FILES,
     pkg = "//xla/backends/cpu/benchmarks/huge_hlo",
-    tags = if_google([
+    tags = [
+        "no_oss",
+    ] + if_google([
         "notap",
         "requires-mem:32g",
     ]),

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -28,6 +29,8 @@ limitations under the License.
 
 namespace xla::gpu {
 namespace {
+
+using ::testing::ElementsAre;
 using ::tsl::proto_testing::EqualsProto;
 
 class TestThunk : public Thunk {
@@ -41,6 +44,51 @@ class TestThunk : public Thunk {
     return absl::UnimplementedError("TestThunk::ToProto is not implemented");
   }
 };
+
+class TestNestedThunk : public TestThunk {
+ public:
+  TestNestedThunk(ThunkInfo thunk_info, ThunkSequence nested)
+      : TestThunk(thunk_info), nested_(std::move(nested)) {}
+
+ protected:
+  absl::Status WalkNested(Walker pre_order, Walker post_order) override {
+    return nested_.WalkNested(pre_order, post_order);
+  }
+
+ private:
+  ThunkSequence nested_;
+};
+
+TEST(ThunkTest, WalksInPreAndPostOrder) {
+  auto make_info = [](std::string annotation) {
+    Thunk::ThunkInfo info;
+    info.profile_annotation = std::move(annotation);
+    return info;
+  };
+
+  ThunkSequence nested;
+  nested.push_back(std::make_unique<TestThunk>(make_info("grandchild")));
+
+  ThunkSequence children;
+  children.push_back(std::make_unique<TestThunk>(make_info("child")));
+  children.push_back(std::make_unique<TestNestedThunk>(make_info("nested"),
+                                                       std::move(nested)));
+
+  TestNestedThunk root(make_info("root"), std::move(children));
+  std::vector<std::string> visited;
+  root.Walk(
+      [&](const Thunk* thunk) {
+        visited.push_back("pre " + std::string(thunk->profile_annotation()));
+      },
+      [&](const Thunk* thunk) {
+        visited.push_back("post " + std::string(thunk->profile_annotation()));
+      });
+
+  EXPECT_THAT(visited,
+              ElementsAre("pre root", "pre child", "post child", "pre nested",
+                          "pre grandchild", "post grandchild", "post nested",
+                          "post root"));
+}
 
 TEST(ThunkTest, GetMetadataProto) {
   Thunk::ThunkInfo thunk_info;

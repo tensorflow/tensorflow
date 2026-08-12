@@ -25,11 +25,11 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/BasicBlock.h"
@@ -287,7 +287,7 @@ static void AddScalarLoweringPasses(mlir::OpPassManager& pm,
   AddGenericLoweringPasses(pm, fast_min_max);
 }
 
-void AddBufferizationPasses(mlir::OpPassManager& pm) {
+void AddBufferizationPasses(mlir::OpPassManager& pm, bool msan_enabled) {
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::bufferization::createEmptyTensorEliminationPass());
   pm.addPass(mlir::bufferization::createOneShotBufferizePass());
@@ -297,12 +297,9 @@ void AddBufferizationPasses(mlir::OpPassManager& pm) {
       mlir::bufferization::createBufferHoistingPass());
   pm.addPass(mlir::memref::createFoldMemRefAliasOpsPass());
 
-#ifdef ABSL_HAVE_MEMORY_SANITIZER
-  // We must initialize allocs to ensure that we don't get false positives from
-  // msan due to inconsistent instrumentation: memcpy will be instrumented
-  // but all other instructions will not.
-  pm.addPass(cpu::createInitializeAllocsPass());
-#endif  // ABSL_HAVE_MEMORY_SANITIZER
+  if (msan_enabled) {
+    pm.addPass(cpu::createInitializeAllocsPass());
+  }
 
   mlir::bufferization::PromoteBuffersToStackPassOptions
       buffer_promotion_options;
@@ -351,7 +348,7 @@ class ModuleCallbackPass
 // Optimizations passes for the tiled emitter.
 // This is currently very simple but will grow to include tiled optimizations
 // such as transpose hoisting and dimension reduction.
-void AddXtileToVectorPasses(mlir::OpPassManager& pm) {
+void AddXtileToVectorPasses(mlir::OpPassManager& pm, bool msan_enabled) {
   pm.addPass(xtile::createVerifyLegalXTileOpsPass());
 
   emitters::RegisterOptimizationPasses(pm);
@@ -362,11 +359,6 @@ void AddXtileToVectorPasses(mlir::OpPassManager& pm) {
       mlir::stablehlo::createStablehloTargetIndependentOptimizationPass());
 
   pm.addPass(xtile::createStablehloLowerToArithPass());
-  // Has to run before legalize-to-linalg for specialized implementations of
-  // SHLO ops for XTile. It also has to run before
-  // legalize-unsigned-integers-as-signless, as we need to choose the right
-  // lowering for Convert based on unsigned type.
-  pm.addPass(xtile::createStablehloLowerToXtilePass());
   // This pass and the Canonicalizer pass need to run before ShloToVectorPass,
   // otherwise the LowerReduce pattern does not work due to
   // UnrealizedConversionCast in the reducer body.
@@ -388,7 +380,7 @@ void AddXtileToVectorPasses(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createConvertElementwiseToLinalgPass());
   pm.addPass(cpu::createFuseElementwisePass());
 
-  AddBufferizationPasses(pm);
+  AddBufferizationPasses(pm, msan_enabled);
 
   pm.addPass(cpu::createLinalgElementwiseToVectorPass());
 
@@ -397,6 +389,31 @@ void AddXtileToVectorPasses(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createConvertComplexToStandardPass());
 
   pm.addPass(mlir::memref::createFoldMemRefAliasOpsPass());
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
+}
+
+// Optimizations passes for the tiled emitter.
+void AddNewXtileToVectorPasses(mlir::OpPassManager& pm) {
+  pm.addPass(xtile::createVerifyLegalXTileOpsPass());
+
+  emitters::RegisterOptimizationPasses(pm);
+
+  pm.addPass(xtile::createStablehloLowerToArithPass());
+  pm.addPass(cpu::createVectorizeXTilePass());
+
+  pm.addPass(cpu::createLowerXTileEntryPass());
+
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::stablehlo::createStablehloTargetIndependentOptimizationPass());
+
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::vector::createLowerVectorMultiReductionPass(
+          mlir::vector::VectorMultiReductionLowering::InnerParallel));
+
+  pm.addPass(xtile::createConvertElementwise0DTensorToScalarPass());
+
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 }
@@ -410,6 +427,7 @@ void AddVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max) {
   pm.addPass(cpu::createLowerToLLVMPass());
   pm.addPass(mlir::createConvertVectorToSCFPass(
       mlir::VectorTransferToSCFOptions().enableFullUnroll(false)));
+  pm.addNestedPass<mlir::func::FuncOp>(cpu::createHoistAllocaPass());
   pm.addPass(cpu::createUnpackSubByteVectorWritePass());
 
   mlir::ConvertVectorToLLVMPassOptions options;
@@ -454,7 +472,12 @@ FusionCompiler::FusionCompiler(mlir::MLIRContext* context, Options options,
       std::make_unique<TraceInstrumentation>());
 
   // Tiled passes.
-  AddXtileToVectorPasses(tiled_pass_manager_);
+
+  if (options_.use_new_xtile_lowering) {
+    AddNewXtileToVectorPasses(tiled_pass_manager_);
+  } else {
+    AddXtileToVectorPasses(tiled_pass_manager_, options_.msan_enabled);
+  }
   if (should_dump_mlir_passes) {
     tiled_pass_manager_.addPass(
         std::make_unique<ModuleCallbackPass>(hlo_module_, "post-optimization"));
@@ -511,7 +534,7 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
     pm.printAsTextualPipeline(log_stream);
     log_stream.write("\n\n", 2);
   }
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       RunPassPipeline(mlir_module, pm, nullptr, options_.verification_level));
 
   if (should_dump_mlir_passes) {
@@ -574,7 +597,7 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
 absl::StatusOr<LlvmKernelSource> FusionCompiler::Compile(
     MlirKernelSource mlir_kernel_source) {
   auto llvm_context = std::make_unique<llvm::LLVMContext>();
-  ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> llvm_module,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> llvm_module,
                    Compile(*llvm_context, mlir_kernel_source.module()));
   return LlvmKernelSource(std::move(llvm_context), std::move(llvm_module));
 }

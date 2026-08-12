@@ -23,11 +23,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/bundle.h"
@@ -35,6 +34,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/layout.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/value.h"
@@ -130,9 +130,9 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
       // Fast-path for fully replicated arrays. Assumes that
       // `MakeArrayFromHostBuffer` can handle fully replicated array creation.
       auto& [addressable_shard_indices, host_buffer] = spec.buffers.front();
-      RETURN_IF_ERROR(CheckHostBuffer(spec, host_buffer, shard_shape));
+      ABSL_RETURN_IF_ERROR(CheckHostBuffer(spec, host_buffer, shard_shape));
 
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           ArrayRef array,
           client->MakeArrayFromHostBuffer(
               host_buffer.data, host_buffer.dtype, std::move(host_buffer.shape),
@@ -153,7 +153,7 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
     // from it because the same instance may be used multiple times if the same
     // index domain shows up in `addressable_index_domains` multiple times.
     for (const auto& [addressable_shard_indices, host_buffer] : spec.buffers) {
-      RETURN_IF_ERROR(CheckHostBuffer(spec, host_buffer, shard_shape));
+      ABSL_RETURN_IF_ERROR(CheckHostBuffer(spec, host_buffer, shard_shape));
 
       std::function<void()> on_done_with_host_buffer_per_device;
       if (host_buffer.on_done != nullptr) {
@@ -185,7 +185,7 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
         if (spec.array_spec.layout != nullptr) {
           layout = PjRtLayout::Create(spec.array_spec.layout);  // NOLINT
         }
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             shard, client->MakeArrayFromHostBuffer(
                        host_buffer.data, host_buffer.dtype, host_buffer.shape,
                        host_buffer.byte_strides, std::move(sharding),
@@ -201,7 +201,7 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
           num_processed_shards, " vs. ", addressable_devices.size()));
     }
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         ArrayRef array,
         client->AssembleArrayFromSingleDeviceArrays(
             spec.array_spec.dtype, std::move(spec.array_spec.shape),
@@ -230,10 +230,10 @@ LoadedExecutableExecuteBundle(
     if (bundle->IsDeleted()) {
       return absl::FailedPreconditionError("Bundle is deleted or donated.");
     }
-    ASSIGN_OR_RETURN(std::vector<ValueRef> values,
+    ABSL_ASSIGN_OR_RETURN(std::vector<ValueRef> values,
                      bundle->GetValues(ArrayCopySemantics::kReuseInput));
     for (const ValueRef& value : values) {
-      if (auto* array = llvm::dyn_cast<Array>(value.get())) {
+      if (auto* array = dyn_cast<Array>(value.get())) {
         arg_arrays.push_back(tsl::FormRef(array));
       } else {
         return absl::InvalidArgumentError(
@@ -243,7 +243,7 @@ LoadedExecutableExecuteBundle(
     }
   }
 
-  ASSIGN_OR_RETURN(LoadedExecutable::ExecuteResult result,
+  ABSL_ASSIGN_OR_RETURN(LoadedExecutable::ExecuteResult result,
                    executable->Execute(absl::MakeSpan(arg_arrays), options,
                                        /*devices=*/std::nullopt));
 
@@ -272,7 +272,7 @@ LoadedExecutableExecuteBundle(
         ++offset;
       }
 
-      ASSIGN_OR_RETURN(BundleRef bundle,
+      ABSL_ASSIGN_OR_RETURN(BundleRef bundle,
                        client->Bundle(absl::MakeSpan(values),
                                       ArrayCopySemantics::kDonateInput));
       output_bundles.push_back(std::move(bundle));
@@ -280,7 +280,7 @@ LoadedExecutableExecuteBundle(
   } else {
     std::vector<ValueRef> output_values =
         ToValues(absl::MakeSpan(result.outputs));
-    ASSIGN_OR_RETURN(BundleRef output_bundle,
+    ABSL_ASSIGN_OR_RETURN(BundleRef output_bundle,
                      client->Bundle(absl::MakeSpan(output_values),
                                     ArrayCopySemantics::kDonateInput));
     output_bundles.push_back(std::move(output_bundle));

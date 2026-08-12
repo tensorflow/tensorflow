@@ -27,11 +27,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Module.h"
 #include "llvm/TargetParser/Triple.h"
@@ -125,13 +125,13 @@ class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
 
   absl::StatusOr<ModuleWithFusion> BuildModuleWithFusion(
       std::string module_str) const {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModule> module,
         ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2,
                                      /*num_partitions=*/1));
     CollectiveKernelStrategyAnnotator annotator(*gpu_topology_,
                                                 /*is_multimem_enabled=*/false);
-    RETURN_IF_ERROR(annotator.Run(module.get()).status());
+    ABSL_RETURN_IF_ERROR(annotator.Run(module.get()).status());
     const HloInstruction* instr = nullptr;
     for (const HloComputation* comp : module->computations()) {
       instr = hlo_query::GetFirstInstructionWithOpcode(*comp,
@@ -189,17 +189,10 @@ class CollectiveEmitterTest : public CollectiveBlockLevelConfigTest {
  public:
   absl::StatusOr<std::unique_ptr<ModuleWithEmitter>> BuildModuleWithEmitter(
       std::string module_str, const GpuTopology& gpu_topology) const {
-    ASSIGN_OR_RETURN(ModuleWithFusion module_with_fusion,
+    ABSL_ASSIGN_OR_RETURN(ModuleWithFusion module_with_fusion,
                      BuildModuleWithFusion(std::move(module_str)));
-    ASSIGN_OR_RETURN(
-        bool collective_fusion_config_set,
-        TrySetGpuBackendConfigForCollective(
-            gpu_topology, module_with_fusion.MutableFusionInstr()));
-    if (!collective_fusion_config_set) {
-      return absl::InternalError(
-          "Failed to set collective fusion config. "
-          "TrySetGpuBackendConfigForCollective returned false.");
-    }
+    ABSL_RETURN_IF_ERROR(TrySetGpuBackendConfigForCollective(
+        gpu_topology, module_with_fusion.MutableFusionInstr()));
     auto result = std::make_unique<ModuleWithEmitter>(
         std::move(module_with_fusion.module));
     const se::DeviceDescription& device_info =

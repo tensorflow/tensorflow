@@ -22,12 +22,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/Target/TargetOptions.h"
@@ -108,7 +108,7 @@ absl::StatusOr<std::unique_ptr<FunctionLibrary>> LoadFunctionLibrary(
   for (auto& obj_file : obj_files) {
     llvm::StringRef data(obj_file.contents().data(),
                          obj_file.contents().size());
-    RETURN_IF_ERROR(object_loader.AddObjFile(
+    ABSL_RETURN_IF_ERROR(object_loader.AddObjFile(
         llvm::MemoryBuffer::getMemBuffer(data, obj_file.name())));
   }
 
@@ -126,7 +126,7 @@ absl::StatusOr<std::unique_ptr<Executable>> CpuAotLoader::LoadExecutable(
 
 absl::StatusOr<std::unique_ptr<Executable>> CpuAotLoader::LoadExecutable(
     const xla::cpu::CompilationResultProto& aot_result_proto) {
-  ASSIGN_OR_RETURN(auto aot_result, LoadAotCompilationResult(aot_result_proto));
+  ABSL_ASSIGN_OR_RETURN(auto aot_result, LoadAotCompilationResult(aot_result_proto));
   return LoadExecutable(std::move(*aot_result));
 }
 
@@ -151,11 +151,11 @@ CpuAotLoader::LoadAotCompilationResult(
   VLOG(3) << "AOT result target machine options: "
           << aot_result_proto.target_machine_options().DebugString();
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,
       HloModule::CreateFromProtoWithConfig(aot_result_proto.hlo_module()));
 
-  ASSIGN_OR_RETURN(TargetMachineOptions target_machine_options,
+  ABSL_ASSIGN_OR_RETURN(TargetMachineOptions target_machine_options,
                    TargetMachineOptions::FromProto(
                        aot_result_proto.target_machine_options()));
   llvm::Triple host_triple(llvm::sys::getDefaultTargetTriple());
@@ -218,7 +218,7 @@ CpuAotLoader::LoadAotCompilationResult(
     compiled_symbols_proto.push_back(symbol_proto);
   }
 
-  ASSIGN_OR_RETURN(auto compiled_symbols,
+  ABSL_ASSIGN_OR_RETURN(auto compiled_symbols,
                    GetCompiledSymbolsFromProto(compiled_symbols_proto));
 
   std::vector<ObjFileProto> obj_files;
@@ -226,7 +226,7 @@ CpuAotLoader::LoadAotCompilationResult(
     obj_files.push_back(obj_file);
   }
 
-  ASSIGN_OR_RETURN(auto function_library,
+  ABSL_ASSIGN_OR_RETURN(auto function_library,
                    LoadFunctionLibrary(compiled_symbols, obj_files,
                                        hlo_module.get(), target_machine_options,
                                        aot_result_proto.data_layout()));

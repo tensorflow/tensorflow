@@ -428,6 +428,8 @@ common:linux --copt="-Werror=switch"
 
 # Linux ARM64 specific options
 common:linux_arm64 --copt="-mtune=generic" --copt="-march=armv8-a" --copt="-O3"
+common:linux_arm64 --define=ynn_enable_arm64_neonfp8=false
+
 
 
 # On Windows, `__cplusplus` is wrongly defined without this switch
@@ -1056,6 +1058,7 @@ common:cross_compile_linux_arm64 --cpu=aarch64
 common:cross_compile_linux_arm64 --crosstool_top=//tensorflow/tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
 common:cross_compile_linux_arm64 --extra_toolchains=//tensorflow/tools/toolchains/cross_compile/cc:linux_aarch64_toolchain
 common:cross_compile_linux_arm64 --define=linux_arm64_cross_compile=true
+common:cross_compile_linux_arm64 --define=ynn_enable_arm64_neonfp8=false
 
 # RBE cross-compile configs for Linux Aarch64
 common:rbe_cross_compile_linux_arm64 --config=cross_compile_linux_arm64

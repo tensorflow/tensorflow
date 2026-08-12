@@ -45,4 +45,4 @@ dnn_version_info {
   minor: 9
   patch: 4
 }
-device_description_str: "A100 80GB"
+device_description_str: "NVIDIA A100 80GB PCIe"

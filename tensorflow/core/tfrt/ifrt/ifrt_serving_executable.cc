@@ -40,7 +40,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -60,6 +59,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/translate/stablehlo.h"
 #include "xla/layout.h"
@@ -84,9 +85,11 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/dump.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/framework/serving_device_selector.h"
+#include "xla/tsl/lib/monitoring/counter.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -116,6 +119,10 @@ limitations under the License.
 namespace tensorflow {
 namespace ifrt_serving {
 namespace {
+
+auto* ifrt_execution_counter = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/tfrt/ifrt/execution_count",
+    "Count of IfrtServingExecutable::ExecuteCore executions.", "model_name");
 
 using StaticShapeMap =
     absl::flat_hash_map<size_t /*original_arg_idx*/,
@@ -365,7 +372,7 @@ IfrtServingExecutable::Create(
     TfToHloCompiler* tf_to_hlo_compiler,
     IfrtPersistentCompilationCache* persistent_compilation_cache,
     H2DTransferExecutorFactory* h2d_transfer_executor_factory,
-    bool use_output_arena) {
+    bool use_output_arena, bool use_undonatable_buffer_converter) {
   if (h2d_transfer_executor_factory == nullptr) {
     return absl::InvalidArgumentError("H2DTransferExecutorFactory is null.");
   }
@@ -392,7 +399,7 @@ IfrtServingExecutable::Create(
       std::move(device_list), std::move(static_shape_arg_map),
       compilation_env_or_overrides, tf_to_hlo_compiler,
       persistent_compilation_cache, h2d_transfer_executor_factory,
-      use_output_arena));
+      use_output_arena, use_undonatable_buffer_converter));
 
   return executable;
 }
@@ -628,6 +635,20 @@ absl::Status IfrtServingExecutable::PopulateInvariantMetadata(
         xla::ifrt::PjRtLayout::Create(parameter_layouts[i]));
   }
 
+  if (use_undonatable_buffer_converter_ && ifrt_executable != nullptr) {
+    absl::StatusOr<std::vector<bool>> input_may_be_donated =
+        GetInputDonationMask(*ifrt_executable,
+                             executable_bundle.xla_input_layouts.size());
+    if (input_may_be_donated.ok()) {
+      executable_bundle.input_may_be_donated = *std::move(input_may_be_donated);
+    } else {
+      // Missing donation info must disable the undonatable-buffer conversion,
+      // never enable it: leave the mask empty so all buffers stay donatable.
+      LOG(WARNING) << "Failed to determine donatable inputs for program "
+                   << program_id_ << "; loaded variables keep donatable "
+                   << "buffers: " << input_may_be_donated.status();
+    }
+  }
   executable_bundle.ifrt_executable = std::move(ifrt_executable);
   executable_bundle.compile_metadata =
       std::move(tf2hlo_result.compile_metadata);
@@ -1036,6 +1057,7 @@ bool IfrtServingExecutable::UsePortableExecution() {
 absl::StatusOr<IfrtServingExecutable::ExecutionInfo>
 IfrtServingExecutable::ExecuteCore(absl::Span<const tensorflow::Tensor> inputs,
                                    absl::Span<const int> variable_arg_indices) {
+  ifrt_execution_counter->GetCell(model_name_)->IncrementBy(1);
   tsl::profiler::TraceMe traceme("IfrtServingExecutable::Execute");
   for (int i = 1; i < variable_arg_indices.size(); i++) {
     if (variable_arg_indices[i] <= variable_arg_indices[i - 1]) {
@@ -1352,14 +1374,57 @@ absl::Status IfrtServingExecutable::AsyncLoadIfrtArray(
     std::shared_ptr<const xla::Shape> shape_on_device =
         executable_bundle.xla_input_shapes[i];
 
+    const std::vector<bool>& may_be_donated =
+        executable_bundle.input_may_be_donated;
+    // Convert only on positive evidence that the compiled program never
+    // donates this input. An empty/short mask means donation info is missing:
+    // assume the input may be donated and keep its buffers donatable.
+    bool use_undonatable_buffer_converter =
+        use_undonatable_buffer_converter_ &&
+        static_cast<size_t>(i) < may_be_donated.size() && !may_be_donated[i];
+
     TF_RETURN_IF_ERROR(
         ifrt_serving::AsyncLoadRestoredTensorAsIfrtLoadedVariable(
             tensor_name, ifrt_client_, thread_pool_,
             ifrt_restore_tensor_registry_, ifrt_loaded_variable_registry_,
             checkpoint_loader_queue_, sharding_config, std::move(layout_ref),
-            std::move(shape_on_device), devices));
+            std::move(shape_on_device), devices,
+            use_undonatable_buffer_converter));
   }
   return absl::OkStatus();
 }
+
+absl::StatusOr<std::vector<bool>> GetInputDonationMask(
+    const xla::ifrt::LoadedExecutable& ifrt_executable, int num_inputs) {
+  TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<xla::HloModule>> hlo_modules,
+                      ifrt_executable.GetHloModules());
+  std::vector<bool> input_may_be_donated(num_inputs, false);
+  absl::Status status = absl::OkStatus();
+  auto mark_donated = [&](int64_t parameter_number) {
+    // An out-of-range parameter means our input numbering does not match the
+    // program's; the mask cannot be trusted, so fail instead of guessing.
+    if (parameter_number < 0 || parameter_number >= num_inputs) {
+      status.Update(absl::InternalError(absl::StrCat(
+          "Donated parameter ", parameter_number,
+          " is out of range for an executable with ", num_inputs, " inputs")));
+      return;
+    }
+    input_may_be_donated[parameter_number] = true;
+  };
+  for (const std::shared_ptr<xla::HloModule>& hlo_module : hlo_modules) {
+    // Both kMayAlias and kMustAlias permit the runtime to donate the input.
+    hlo_module->input_output_alias_config().ForEachAlias(
+        [&](const xla::ShapeIndex& output_index,
+            const xla::HloInputOutputAliasConfig::Alias& alias) {
+          mark_donated(alias.parameter_number);
+        });
+    for (const auto& donor : hlo_module->buffer_donor_config().buffer_donor()) {
+      mark_donated(donor.param_number);
+    }
+  }
+  TF_RETURN_IF_ERROR(status);
+  return input_may_be_donated;
+}
+
 }  // namespace ifrt_serving
 }  // namespace tensorflow

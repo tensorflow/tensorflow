@@ -30,12 +30,12 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -98,12 +98,12 @@ absl::StatusOr<std::vector<ArrayRef>> ReshardArrays(
       return client->ReshardArrays(src_arrays, array_specs, semantics);
     case ReshardMethod::kBundle: {
       std::vector<ValueRef> src_values = ToValues(src_arrays);
-      ASSIGN_OR_RETURN(BundleRef bundle,
+      ABSL_ASSIGN_OR_RETURN(BundleRef bundle,
                        client->Bundle(absl::MakeSpan(src_values),
                                       ArrayCopySemantics::kReuseInput));
-      ASSIGN_OR_RETURN(BundleRef resharded_bundle,
+      ABSL_ASSIGN_OR_RETURN(BundleRef resharded_bundle,
                        bundle->ReshardArrays(array_specs, semantics));
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           std::vector<ValueRef> retrieved_values,
           resharded_bundle->GetValues(ArrayCopySemantics::kReuseInput));
       return ToArrays(absl::MakeSpan(retrieved_values));
@@ -114,10 +114,10 @@ absl::StatusOr<std::vector<ArrayRef>> ReshardArrays(
 absl::StatusOr<ArrayRef> MakeArrayFromLiteral(Client* absl_nonnull client,
                                               const xla::LiteralBase& literal,
                                               const ShardingRef& sharding) {
-  ASSIGN_OR_RETURN(const DType dtype, ToDType(literal.shape().element_type()));
+  ABSL_ASSIGN_OR_RETURN(const DType dtype, ToDType(literal.shape().element_type()));
   const Shape shape(literal.shape().dimensions());
 
-  ASSIGN_OR_RETURN(const std::vector<IndexDomain> index_domains,
+  ABSL_ASSIGN_OR_RETURN(const std::vector<IndexDomain> index_domains,
                    sharding->IndexDomains(
                        shape, SingleDeviceShardSemantics::kAddressableShards));
 
@@ -150,7 +150,7 @@ absl::StatusOr<ArrayRef> MakeArrayFromLiteral(Client* absl_nonnull client,
     spec.buffers.push_back({{i}, std::move(host_buffer)});
   }
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<ArrayRef> arrays,
       client->MakeArraysFromHostBufferShards(
           absl::MakeSpan(&spec, 1),
@@ -159,38 +159,38 @@ absl::StatusOr<ArrayRef> MakeArrayFromLiteral(Client* absl_nonnull client,
 }
 
 absl::StatusOr<xla::Literal> CopyArrayToLiteral(ArrayRef array) {
-  ASSIGN_OR_RETURN(const xla::PrimitiveType element_type,
+  ABSL_ASSIGN_OR_RETURN(const xla::PrimitiveType element_type,
                    ToPrimitiveType(array->dtype()));
   const auto xla_shape =
       xla::ShapeUtil::MakeShape(element_type, array->shape().dims());
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       const std::vector<IndexDomain> index_domains,
       array->sharding().IndexDomains(
           array->shape(), SingleDeviceShardSemantics::kAddressableShards));
-  ASSIGN_OR_RETURN(std::vector<ArrayRef> shards,
+  ABSL_ASSIGN_OR_RETURN(std::vector<ArrayRef> shards,
                    array->DisassembleIntoSingleDeviceArrays(
                        ArrayCopySemantics::kReuseInput,
                        SingleDeviceShardSemantics::kAddressableShards));
 
-  ASSIGN_OR_RETURN(xla::Literal literal, xla::Literal::Make(xla_shape));
+  ABSL_ASSIGN_OR_RETURN(xla::Literal literal, xla::Literal::Make(xla_shape));
   absl::flat_hash_set<IndexDomain> seen;
 
   for (int i = 0; i < shards.size(); ++i) {
     const Index& offset = index_domains[i].origin();
     const Shape& shard_shape = index_domains[i].shape();
 
-    ASSIGN_OR_RETURN(xla::Literal slice,
+    ABSL_ASSIGN_OR_RETURN(xla::Literal slice,
                      xla::Literal::Make(xla::ShapeUtil::MakeShape(
                          element_type, shard_shape.dims())));
     tsl::Future<> future = shards[i]->CopyToHostBuffer(
         slice.untyped_data(), std::nullopt, ArrayCopySemantics::kAlwaysCopy);
-    RETURN_IF_ERROR(future.Await());
+    ABSL_RETURN_IF_ERROR(future.Await());
     VLOG(2) << "Slice #" << i << " (" << index_domains[i]
             << "): " << slice.ToString();
 
     if (seen.insert(index_domains[i]).second) {
-      RETURN_IF_ERROR(literal.CopySliceFrom(
+      ABSL_RETURN_IF_ERROR(literal.CopySliceFrom(
           slice, Index::Zeros(shard_shape.dims().size()).elements(),
           offset.elements(), shard_shape.dims()));
     } else {
@@ -209,10 +209,10 @@ absl::StatusOr<xla::Literal> CopyArrayToLiteral(ArrayRef array) {
 
 absl::StatusOr<xla::Literal> CreateIotaLiteral(xla::PrimitiveType element_type,
                                                absl::Span<const int64_t> dims) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       xla::Literal literal,
       xla::Literal::Make(xla::ShapeUtil::MakeShape(element_type, dims)));
-  RETURN_IF_ERROR(xla::primitive_util::IntegralTypeSwitch(
+  ABSL_RETURN_IF_ERROR(xla::primitive_util::IntegralTypeSwitch(
       [&](auto primitive_type_constant) -> absl::Status {
         using T = xla::primitive_util::NativeTypeOf<primitive_type_constant>;
         T value(0);
@@ -424,6 +424,10 @@ TEST_P(ReshardTest, PoisonedInput) {
 }
 
 TEST_P(ReshardTest, DifferentDestinationLayout) {
+  if (client_->platform_id() == xla::CpuId()) {
+    GTEST_SKIP() << "PjRt CPU does not support custom layouts";
+  }
+
   const ReshardMethod method = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(const xla::Literal literal,
                           CreateIotaLiteral(xla::PrimitiveType::S32, {4, 8}));

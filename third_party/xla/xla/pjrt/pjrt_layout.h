@@ -22,10 +22,10 @@ limitations under the License.
 #include <utility>
 
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/layout.h"
 #include "tsl/platform/statusor.h"
@@ -46,7 +46,7 @@ class PjRtLayout {
 
   static absl::StatusOr<std::shared_ptr<const PjRtLayout>> Deserialize(
       absl::string_view serialized) {
-    ASSIGN_OR_RETURN(Layout xla_layout, ParseLayout(serialized));
+    ABSL_ASSIGN_OR_RETURN(Layout xla_layout, ParseLayout(serialized));
     return std::make_shared<PjRtLayout>(std::move(xla_layout));
   }
 

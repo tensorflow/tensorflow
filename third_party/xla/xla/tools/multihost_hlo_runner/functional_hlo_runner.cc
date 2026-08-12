@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/random/random.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -194,7 +194,7 @@ absl::StatusOr<Literal> MakeFakeLiteralWithSameValue(const Shape& shape,
   } else if (shape.IsTuple()) {
     std::vector<Literal> subliterals;
     for (const Shape& subshape : shape.tuple_shapes()) {
-      ASSIGN_OR_RETURN(Literal subliteral,
+      ABSL_ASSIGN_OR_RETURN(Literal subliteral,
                        MakeFakeLiteralWithSameValue(subshape, value));
       subliterals.push_back(std::move(subliteral));
     }
@@ -208,15 +208,15 @@ absl::StatusOr<HloModuleAndArguments> ReadModuleFromSnapshotBinaryProtoFile(
     absl::string_view hlo_file) {
   HloSnapshot proto;
   HloModuleAndArguments hlo_module_and_arguments;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       tsl::ReadBinaryProto(tsl::Env::Default(), std::string(hlo_file), &proto));
   hlo_module_and_arguments.arguments.emplace_back();
   hlo_module_and_arguments.arguments.front().resize(proto.arguments_size());
   for (int i = 0; i < proto.arguments_size(); i++) {
-    ASSIGN_OR_RETURN(hlo_module_and_arguments.arguments.front()[i],
+    ABSL_ASSIGN_OR_RETURN(hlo_module_and_arguments.arguments.front()[i],
                      Literal::CreateFromProto(proto.arguments()[i]));
   }
-  ASSIGN_OR_RETURN(hlo_module_and_arguments.hlo_module,
+  ABSL_ASSIGN_OR_RETURN(hlo_module_and_arguments.hlo_module,
                    CreateModuleFromProto(proto.hlo().hlo_module()));
   return hlo_module_and_arguments;
 }
@@ -231,7 +231,7 @@ absl::StatusOr<HloUnoptimizedSnapshot> ReadHloUnoptimizedSnapshot(
     absl::string_view hlo_file) {
   tsl::Env* env = tsl::Env::Default();
   std::unique_ptr<tsl::RandomAccessFile> file;
-  RETURN_IF_ERROR(env->NewRandomAccessFile(std::string(hlo_file), &file));
+  ABSL_RETURN_IF_ERROR(env->NewRandomAccessFile(std::string(hlo_file), &file));
 
   tsl::RandomAccessFileCopyingInputStream custom_deserialization_input_stream(
       file.get());
@@ -273,10 +273,10 @@ absl::StatusOr<HloModuleAndArguments>
 ReadModuleFromUnoptimizedSnapshotBinaryProtoFile(absl::string_view hlo_file) {
   HloModuleAndArguments hlo_module_and_arguments;
 
-  ASSIGN_OR_RETURN(HloUnoptimizedSnapshot proto,
+  ABSL_ASSIGN_OR_RETURN(HloUnoptimizedSnapshot proto,
                    ReadHloUnoptimizedSnapshot(hlo_file));
 
-  ASSIGN_OR_RETURN(hlo_module_and_arguments.hlo_module,
+  ABSL_ASSIGN_OR_RETURN(hlo_module_and_arguments.hlo_module,
                    CreateModuleFromProto(proto.hlo_module()));
 
   for (const auto& arguments : proto.partitions()) {
@@ -284,7 +284,7 @@ ReadModuleFromUnoptimizedSnapshotBinaryProtoFile(absl::string_view hlo_file) {
     hlo_module_and_arguments.arguments.back().reserve(
         arguments.arguments_size());
     for (const auto& argument : arguments.arguments()) {
-      ASSIGN_OR_RETURN(hlo_module_and_arguments.arguments.back().emplace_back(),
+      ABSL_ASSIGN_OR_RETURN(hlo_module_and_arguments.arguments.back().emplace_back(),
                        Literal::CreateFromProto(argument));
     }
   }
@@ -295,9 +295,9 @@ absl::StatusOr<HloModuleAndArguments>
 ReadModuleFromUnoptimizedSnapshotTextProtoFile(absl::string_view hlo_file) {
   HloUnoptimizedSnapshot proto;
   HloModuleAndArguments hlo_module_and_arguments;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       tsl::ReadTextProto(tsl::Env::Default(), std::string(hlo_file), &proto));
-  ASSIGN_OR_RETURN(hlo_module_and_arguments.hlo_module,
+  ABSL_ASSIGN_OR_RETURN(hlo_module_and_arguments.hlo_module,
                    CreateModuleFromProto(proto.hlo_module()));
 
   for (const auto& arguments : proto.partitions()) {
@@ -305,7 +305,7 @@ ReadModuleFromUnoptimizedSnapshotTextProtoFile(absl::string_view hlo_file) {
     hlo_module_and_arguments.arguments.back().reserve(
         arguments.arguments_size());
     for (const auto& argument : arguments.arguments()) {
-      ASSIGN_OR_RETURN(hlo_module_and_arguments.arguments.back().emplace_back(),
+      ABSL_ASSIGN_OR_RETURN(hlo_module_and_arguments.arguments.back().emplace_back(),
                        Literal::CreateFromProto(argument));
     }
   }
@@ -315,11 +315,11 @@ ReadModuleFromUnoptimizedSnapshotTextProtoFile(absl::string_view hlo_file) {
 absl::StatusOr<std::unique_ptr<HloModule>> ReadStableHloModule(
     absl::string_view stablehlo_file) {
   std::string contents;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       tsl::ReadFileToString(tsl::Env::Default(), stablehlo_file, &contents));
 
   mlir::MLIRContext ctx;
-  ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+  ABSL_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                    ParseMlirModuleString(contents, ctx));
   return ConvertStablehloToHlo(*std::move(module));
 }
@@ -406,7 +406,7 @@ absl::StatusOr<PerDeviceLiteralVecType> FetchAndLogOutput(
         TF_RET_CHECK(buffer->device() == output_buffers[i][0]->device())
             << "All outputs from a given vector of outputs should be for the "
                "same device";
-        ASSIGN_OR_RETURN(auto logical_shape, buffer->logical_on_device_shape());
+        ABSL_ASSIGN_OR_RETURN(auto logical_shape, buffer->logical_on_device_shape());
         output_slice.emplace_back(
             ShapeUtil::DeviceShapeToHostShape(logical_shape));
         buffer->ToLiteral(&output_slice.back()).OnReady([&](absl::Status s) {
@@ -420,7 +420,7 @@ absl::StatusOr<PerDeviceLiteralVecType> FetchAndLogOutput(
         TF_RET_CHECK(buffer->device() == output_buffers[i][0]->device())
             << "All outputs from a given vector of outputs should be for the "
                "same device";
-        RETURN_IF_ERROR(buffer->GetReadyFuture().Await());
+        ABSL_RETURN_IF_ERROR(buffer->GetReadyFuture().Await());
       }
     }
   }
@@ -430,7 +430,7 @@ absl::StatusOr<PerDeviceLiteralVecType> FetchAndLogOutput(
     auto cond = [&]() { return !status.ok() || num_pending_transfers == 0; };
     absl::MutexLock lock(mu);
     mu.Await(absl::Condition(&cond));
-    RETURN_IF_ERROR(status);
+    ABSL_RETURN_IF_ERROR(status);
     if (log_output) {
       for (const PjRtDevice* device : GetLocalDevices(client)) {
         int device_id = device->id();
@@ -538,7 +538,7 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
   if (running_options.multi_slice_config != nullptr) {
     execute_options.multi_slice_config = running_options.multi_slice_config;
   }
-  ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
+  ABSL_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
                    executable->GetHloModules());
   CHECK_EQ(hlo_modules.size(), 1);
   const HloModule& module = *(hlo_modules.front());
@@ -600,7 +600,7 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
         VLOG(1) << "Creating argument buffers. repeat = " << repeat;
         device_buffers.clear();
         argument_ptrs.clear();
-        ASSIGN_OR_RETURN(device_buffers,
+        ABSL_ASSIGN_OR_RETURN(device_buffers,
                          create_argument_buffers_on_device(flatten_arguments));
         argument_ptrs = CreateArgumentPointersFromDeviceBuffers(device_buffers);
       }
@@ -616,11 +616,11 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
         has_active_profiler_session = true;
       }
       futures->clear();
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           output_buffers,
           executable->Execute(argument_ptrs, execute_options, futures));
       for (auto& future : *futures) {
-        RETURN_IF_ERROR(future.Await());
+        ABSL_RETURN_IF_ERROR(future.Await());
       }
 
       const bool upload_active_profiler_session =
@@ -654,7 +654,7 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
     }
   }
 
-  ASSIGN_OR_RETURN(PerDeviceLiteralVecType results,
+  ABSL_ASSIGN_OR_RETURN(PerDeviceLiteralVecType results,
                    FetchAndLogOutput(client, output_buffers,
                                      running_options.module_output_mode,
                                      running_options.log_input_output()));
@@ -711,7 +711,7 @@ CopyArgumentsToDevice(PjRtClient& client,
     TF_RET_CHECK(!shape.IsTuple()) << "Param tuple without flattened_arguments";
     return non_tuple_memory_space(shape);
   };
-  ASSIGN_OR_RETURN(const std::vector<std::shared_ptr<const PjRtLayout>>&
+  ABSL_ASSIGN_OR_RETURN(const std::vector<std::shared_ptr<const PjRtLayout>>&
                        executable_parameter_pjrt_layouts,
                    executable->GetParameterLayouts());
   std::vector<Layout> executable_parameter_layouts;
@@ -730,7 +730,7 @@ CopyArgumentsToDevice(PjRtClient& client,
     // the host-side literal, as the former is the authoritative layout the
     // executable expects.
     const Layout* layout = &executable_parameter_layouts[arg_i];
-    ASSIGN_OR_RETURN(PjRtMemorySpace * memory_space,
+    ABSL_ASSIGN_OR_RETURN(PjRtMemorySpace * memory_space,
                      argument_memory_space(module, device, arg_i));
     auto device_buffers =
         client.BufferFromHostLiteral(literal, memory_space, layout);
@@ -746,7 +746,7 @@ CopyArgumentsToDevice(PjRtClient& client,
   absl::Span<const PjRtLoadedExecutable::LogicalDeviceIds>
       addressable_device_logical_ids =
           executable->addressable_device_logical_ids();
-  ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
+  ABSL_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
                    executable->GetHloModules());
 
   for (int i = 0; i < num_addressable_devices; ++i) {
@@ -778,7 +778,7 @@ CopyArgumentsToDevice(PjRtClient& client,
         LOG(INFO) << "device_id=" << curr_device_id
                   << ", input = " << literal.ToString();
       }
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           std::unique_ptr<PjRtBuffer> argument_buffer,
           buffer_from_host_literal(module, curr_device, arg_i, literal));
       argument_buffers[i].push_back(std::move(argument_buffer));
@@ -786,7 +786,7 @@ CopyArgumentsToDevice(PjRtClient& client,
   }
   for (const auto& device_argument_buffers : argument_buffers) {
     for (const auto& device_buffer : device_argument_buffers) {
-      RETURN_IF_ERROR(device_buffer->GetReadyFuture().Await());
+      ABSL_RETURN_IF_ERROR(device_buffer->GetReadyFuture().Await());
     }
   }
   return argument_buffers;
@@ -803,7 +803,7 @@ CreateUninitializedArgumentsOnDevice(PjRtClient& client,
   absl::Span<const PjRtLoadedExecutable::LogicalDeviceIds>
       addressable_device_logical_ids =
           executable->addressable_device_logical_ids();
-  ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
+  ABSL_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
                    executable->GetHloModules());
   VLOG(1) << "FunctionalHloRunner: local_executable count = "
           << hlo_modules.size();
@@ -823,7 +823,7 @@ CreateUninitializedArgumentsOnDevice(PjRtClient& client,
 
     std::vector<Shape> argument_shapes;
     if (flatten_arguments) {
-      RETURN_IF_ERROR(EnsureSingleTupleForFlattening(hlo_module));
+      ABSL_RETURN_IF_ERROR(EnsureSingleTupleForFlattening(hlo_module));
 
       std::vector<Shape> original_argument_shapes =
           GetArgumentShapes(hlo_module);
@@ -845,7 +845,7 @@ CreateUninitializedArgumentsOnDevice(PjRtClient& client,
   for (int i = 0; i < static_cast<int>(addressable_devices.size()); ++i) {
     VLOG(3) << "Allocating fake arguments for device " << i;
     PjRtDevice* device = addressable_devices[i];
-    ASSIGN_OR_RETURN(PjRtMemorySpace * memory_space,
+    ABSL_ASSIGN_OR_RETURN(PjRtMemorySpace * memory_space,
                      device->default_memory_space());
 
     CHECK(argument_shapes_per_device.contains(device->id()));
@@ -860,7 +860,7 @@ CreateUninitializedArgumentsOnDevice(PjRtClient& client,
                   << ", input = " << shape.ToString();
       }
 
-      ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> argument_buffer,
+      ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> argument_buffer,
                        client.CreateUninitializedBuffer(shape, memory_space));
       argument_buffers.push_back(std::move(argument_buffer));
       buffer_count += 1;
@@ -872,7 +872,7 @@ CreateUninitializedArgumentsOnDevice(PjRtClient& client,
 
   for (const auto& argument_buffers : argument_buffers_per_device) {
     for (const auto& buffer : argument_buffers) {
-      RETURN_IF_ERROR(buffer->GetReadyFuture().Await());
+      ABSL_RETURN_IF_ERROR(buffer->GetReadyFuture().Await());
     }
   }
   LOG(INFO) << "Argument buffers are ready.";
@@ -906,7 +906,7 @@ CreateArgumentsOnDevice(PjRtClient& client,
   absl::Span<const PjRtLoadedExecutable::LogicalDeviceIds>
       addressable_device_logical_ids =
           executable->addressable_device_logical_ids();
-  ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
+  ABSL_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
                    executable->GetHloModules());
   VLOG(1) << "FunctionalHloRunner: local_executable count = "
           << hlo_modules.size();
@@ -941,7 +941,7 @@ CreateArgumentsOnDevice(PjRtClient& client,
                              : addressable_device_logical_ids[i].partition;
     HloModule* my_hlo_module = hlo_modules[executable_idx].get();
     if (flatten_arguments) {
-      RETURN_IF_ERROR(EnsureSingleTupleForFlattening(*my_hlo_module));
+      ABSL_RETURN_IF_ERROR(EnsureSingleTupleForFlattening(*my_hlo_module));
     }
     if (running_options.module_argument_mode ==
             ModuleArgumentMode::kUseRandomNormalInputs ||
@@ -966,7 +966,7 @@ CreateArgumentsOnDevice(PjRtClient& client,
           // hardware/OS)
           std::minstd_rand0 minstd(rd());
 
-          ASSIGN_OR_RETURN(
+          ABSL_ASSIGN_OR_RETURN(
               argument_literal_j,
               xla::MakeFakeLiteral(
                   params[j]->shape(), &minstd, std::nullopt,
@@ -976,7 +976,7 @@ CreateArgumentsOnDevice(PjRtClient& client,
                   /*index_alignment=*/std::nullopt,
                   /*index_known_zeroes=*/std::nullopt, float_generator));
         } else {
-          ASSIGN_OR_RETURN(
+          ABSL_ASSIGN_OR_RETURN(
               argument_literal_j,
               MakeFakeLiteralWithSameValue(params[j]->shape(),
                                            addressable_devices[i]->id()));
@@ -1004,7 +1004,7 @@ CreateArgumentsOnDevice(PjRtClient& client,
       }
     } else {
       if (flatten_arguments) {
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             LiteralVec tupled_argument_literals,
             MakeFakeArguments(my_hlo_module, kUseRandomInputs,
                               /*use_large_range=*/false,
@@ -1014,7 +1014,7 @@ CreateArgumentsOnDevice(PjRtClient& client,
         CHECK(tupled_argument_literals.front().shape().IsTuple());
         argument_literals = tupled_argument_literals.front().DecomposeTuple();
       } else {
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             argument_literals,
             MakeFakeArguments(my_hlo_module, kUseRandomInputs,
                               /*use_large_range=*/false,
@@ -1078,7 +1078,7 @@ ExecutableBuildOptions CreateExecutableBuildOptionsFromExecutionOptions(
 
 absl::StatusOr<ExecutionOptions> LoadExecutionOptions(absl::string_view path) {
   ExecutionOptions execution_options;
-  RETURN_IF_ERROR(tsl::ReadTextOrBinaryProto(
+  ABSL_RETURN_IF_ERROR(tsl::ReadTextOrBinaryProto(
       tsl::Env::Default(), std::string(path), &execution_options));
   return execution_options;
 }
@@ -1180,7 +1180,7 @@ absl::StatusOr<CompileOptions> CreateCompileOptions(
   }
   if (!build_options.has_device_assignment() &&
       !raw_options.num_slices.has_value()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         DeviceAssignment device_assignment,
         client.GetDefaultDeviceAssignment(replicas_and_partitions.replicas,
                                           replicas_and_partitions.partitions));
@@ -1247,14 +1247,14 @@ absl::Status DumpOutput(
         }
         case OutputFormat::kProtoBinary: {
           CHECK_EQ(suffix, std::string("pb"));
-          RETURN_IF_ERROR(
+          ABSL_RETURN_IF_ERROR(
               tsl::WriteBinaryProto(tsl::Env::Default(), literal_path,
                                     literal_vec[literal_id].ToProto()));
           break;
         }
         case OutputFormat::kProtoText: {
           CHECK(suffix == "pbtxt" || suffix == "textproto");
-          RETURN_IF_ERROR(
+          ABSL_RETURN_IF_ERROR(
               tsl::WriteTextProto(tsl::Env::Default(), literal_path,
                                   literal_vec[literal_id].ToProto()));
           break;
@@ -1270,7 +1270,7 @@ absl::StatusOr<HloModuleAndArguments> LoadHloModuleAndArguments(
   HloModuleAndArguments hlo_module_and_arguments;
   switch (input_format) {
     case InputFormat::kText: {
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           hlo_module_and_arguments.hlo_module,
           ReadModuleFromHloTextFile(
               hlo_file, DebugOptions::default_instance(),
@@ -1278,28 +1278,28 @@ absl::StatusOr<HloModuleAndArguments> LoadHloModuleAndArguments(
       break;
     }
     case InputFormat::kProtoText: {
-      ASSIGN_OR_RETURN(hlo_module_and_arguments.hlo_module,
+      ABSL_ASSIGN_OR_RETURN(hlo_module_and_arguments.hlo_module,
                        ReadModuleFromTextProtoFile(hlo_file));
       break;
     }
     case InputFormat::kProtoBinary: {
-      ASSIGN_OR_RETURN(hlo_module_and_arguments.hlo_module,
+      ABSL_ASSIGN_OR_RETURN(hlo_module_and_arguments.hlo_module,
                        ReadModuleFromBinaryProtoFile(hlo_file));
       break;
     }
     case InputFormat::kSnapshotProtoBinary: {
-      ASSIGN_OR_RETURN(hlo_module_and_arguments,
+      ABSL_ASSIGN_OR_RETURN(hlo_module_and_arguments,
                        ReadModuleFromSnapshotBinaryProtoFile(hlo_file));
       break;
     }
     case InputFormat::kUnoptimizedSnapshotProtoBinary: {
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           hlo_module_and_arguments,
           ReadModuleFromUnoptimizedSnapshotBinaryProtoFile(hlo_file));
       break;
     }
     case InputFormat::kUnoptimizedSnapshotProtoText: {
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           hlo_module_and_arguments,
           ReadModuleFromUnoptimizedSnapshotTextProtoFile(hlo_file));
       break;
@@ -1311,7 +1311,7 @@ absl::StatusOr<HloModuleAndArguments> LoadHloModuleAndArguments(
       break;
     }
     case InputFormat::kStableHlo: {
-      ASSIGN_OR_RETURN(hlo_module_and_arguments.hlo_module,
+      ABSL_ASSIGN_OR_RETURN(hlo_module_and_arguments.hlo_module,
                        ReadStableHloModule(hlo_file));
       break;
     }
@@ -1331,11 +1331,11 @@ absl::Status LoadAndRunAndDump(
     std::string dump_output_to, int task_id, int num_nodes,
     std::shared_ptr<xla::KeyValueStoreInterface> kv_store,
     std::minstd_rand0* engine) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       CompileOptions compile_options,
       FunctionalHloRunner::CreateCompileOptions(client, raw_compile_options,
                                                 task_id, num_nodes, kv_store));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       FunctionalHloRunner::PerDeviceLiteralVecType output,
       FunctionalHloRunner::LoadAndRun(client, preproc_options, compile_options,
                                       running_options, hlo_file, input_format,
@@ -1353,7 +1353,7 @@ absl::Status LoadAndCompileAndDump(
     std::string dump_executable_to, int task_id, int num_nodes,
     std::shared_ptr<xla::KeyValueStoreInterface> kv_store,
     bool use_gpu_count_workaround) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtLoadedExecutable> executable,
       FunctionalHloRunner::LoadAndCompile(
           client, preproc_options, raw_compile_options, hlo_file, input_format,
@@ -1361,7 +1361,7 @@ absl::Status LoadAndCompileAndDump(
 
   if (!dump_executable_to.empty()) {
     absl::StrAppend(&dump_executable_to, ".task_", task_id);
-    ASSIGN_OR_RETURN(std::string serialized, executable->SerializeExecutable());
+    ABSL_ASSIGN_OR_RETURN(std::string serialized, executable->SerializeExecutable());
     return tsl::WriteStringToFile(tsl::Env::Default(), dump_executable_to,
                                   serialized);
   }
@@ -1386,7 +1386,7 @@ absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> LoadAndRun(
   if (!arguments.empty()) {
     final_arguments = &arguments;
   } else {
-    ASSIGN_OR_RETURN(HloModuleAndArguments hlo_module_and_arguments,
+    ABSL_ASSIGN_OR_RETURN(HloModuleAndArguments hlo_module_and_arguments,
                      LoadHloModuleAndArguments(hlo_file, input_format));
 
     // Check that the number of shards is not greater than the number of
@@ -1407,9 +1407,9 @@ absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> LoadAndRun(
 
   if (input_format == InputFormat::kSerializedPjRtExecutable) {
     std::string serialized_executable;
-    RETURN_IF_ERROR(tsl::ReadFileToString(
+    ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(
         tsl::Env::Default(), std::string(hlo_file), &serialized_executable));
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<PjRtLoadedExecutable> executable,
         client.LoadSerializedExecutable(serialized_executable, compile_options,
                                         LoadOptions()));
@@ -1418,7 +1418,7 @@ absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> LoadAndRun(
   }
   if (!hlo_module) {
     // Load hlo module.
-    ASSIGN_OR_RETURN(HloModuleAndArguments hlo_module_and_arguments,
+    ABSL_ASSIGN_OR_RETURN(HloModuleAndArguments hlo_module_and_arguments,
                      LoadHloModuleAndArguments(hlo_file, input_format));
     hlo_module = std::move(hlo_module_and_arguments.hlo_module);
   }
@@ -1434,7 +1434,7 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadAndCompile(
     InputFormat input_format, int task_id, int num_nodes,
     std::shared_ptr<xla::KeyValueStoreInterface> kv_store,
     bool use_gpu_count_workaround) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       CompileOptions compile_options,
       FunctionalHloRunner::CreateCompileOptions(client, raw_compile_options,
                                                 task_id, num_nodes, kv_store));
@@ -1452,7 +1452,7 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadAndCompile(
     compile_options.executable_build_options.set_device_assignment(assignment);
   }
 
-  ASSIGN_OR_RETURN(HloModuleAndArguments hlo_module_and_arguments,
+  ABSL_ASSIGN_OR_RETURN(HloModuleAndArguments hlo_module_and_arguments,
                    LoadHloModuleAndArguments(hlo_file, input_format));
 
   return FunctionalHloRunner::Compile(client,
@@ -1465,7 +1465,7 @@ absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> CompileAndRun(
     const CompileOptions& compile_options,
     const RunningOptions& running_options, HloModule* hlo_module,
     const PerDeviceLiteralVecType& arguments, std::minstd_rand0* engine) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtLoadedExecutable> executable,
       Compile(client, hlo_module, preproc_options, compile_options));
 
@@ -1477,7 +1477,7 @@ absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> CompileAndRun(
     const CompileOptions& compile_options,
     const RunningOptions& running_options, MaybeOwningMlirModule module,
     const PerDeviceLiteralVecType& arguments, std::minstd_rand0* engine) {
-  ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
                    client.CompileAndLoad(std::move(module), compile_options));
 
   return Run(client, executable.get(), arguments, running_options, engine);
@@ -1521,7 +1521,7 @@ absl::Status PrepareHloModuleForCompilation(
     if (preproc_options.annotate_while_loop_trip_count) {
       pipeline.AddPass<WhileLoopTripCountAnnotator>();
     }
-    RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+    ABSL_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
   return absl::OkStatus();
 }
@@ -1534,7 +1534,7 @@ absl::StatusOr<CompileOptions> CompleteCompileOptions(
       (parameter_type == ParameterType::kOneTupleOfArrays);
   if (preproc_options.force_auto_layout) {
     XlaComputation computation(hlo_module.ToProto());
-    ASSIGN_OR_RETURN(ProgramShape program_shape, computation.GetProgramShape());
+    ABSL_ASSIGN_OR_RETURN(ProgramShape program_shape, computation.GetProgramShape());
     LayoutUtil::ClearLayout(&program_shape);
     compile_options.argument_layouts = program_shape.parameters();
     compile_options.executable_build_options.set_result_layout(
@@ -1568,7 +1568,7 @@ absl::StatusOr<std::unique_ptr<R>> ConvertAndCallCompiler(
   auto compile_and_log =
       [&](auto&& module) -> absl::StatusOr<std::unique_ptr<R>> {
     VLOG(1) << "FunctionalHloRunner: compilation started.";
-    ASSIGN_OR_RETURN(auto result,
+    ABSL_ASSIGN_OR_RETURN(auto result,
                      compile_function(std::forward<decltype(module)>(module)));
     VLOG(1) << "FunctionalHloRunner: compile succeeded.";
     return result;
@@ -1578,7 +1578,7 @@ absl::StatusOr<std::unique_ptr<R>> ConvertAndCallCompiler(
     mlir::DialectRegistry registry;
     mlir::func::registerAllExtensions(registry);
     auto context = std::make_unique<mlir::MLIRContext>(registry);
-    ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> stablehlo_module,
+    ABSL_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> stablehlo_module,
                      ConvertHloToStablehlo(*context, hlo_module));
     return compile_and_log(
         MaybeOwningMlirModule(std::move(context), std::move(stablehlo_module)));
@@ -1597,9 +1597,9 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       << "debug_options must be set in compile_options";
   const DebugOptions& debug_options =
       compile_options.executable_build_options.debug_options();
-  RETURN_IF_ERROR(PrepareHloModuleForCompilation(hlo_module, debug_options,
+  ABSL_RETURN_IF_ERROR(PrepareHloModuleForCompilation(hlo_module, debug_options,
                                                  preproc_options));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       CompileOptions modified_compile_options,
       CompleteCompileOptions(*hlo_module, compile_options, preproc_options));
 
@@ -1619,9 +1619,9 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       << "debug_options must be set in compile_options";
   const DebugOptions& debug_options =
       compile_options.executable_build_options.debug_options();
-  RETURN_IF_ERROR(PrepareHloModuleForCompilation(hlo_module, debug_options,
+  ABSL_RETURN_IF_ERROR(PrepareHloModuleForCompilation(hlo_module, debug_options,
                                                  preproc_options));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       CompileOptions modified_compile_options,
       CompleteCompileOptions(*hlo_module, compile_options, preproc_options));
 
@@ -1720,7 +1720,7 @@ absl::StatusOr<ResolveTopologyResult> ResolveTopology(
   ResolveTopologyResult result;
   const HloModule* module = already_loaded_module;
   if (module == nullptr && !hlo_file.empty()) {
-    ASSIGN_OR_RETURN(result.loaded_module,
+    ABSL_ASSIGN_OR_RETURN(result.loaded_module,
                      LoadHloModuleAndArguments(hlo_file, input_format));
     module = result.loaded_module->hlo_module.get();
   }

@@ -21,8 +21,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -68,9 +68,9 @@ class MemorySpaceAssignmentCostAnalysisTest
             "HloCostAnalysis",
             CreateHloCostAnalysisCalculator(*hlo_cost_analysis_wrapper_),
             /*enable_cache=*/false));
-    ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                      HloAliasAnalysis::Run(module, &alias_info_));
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         cost_analysis_,
         CostAnalysis::Create(*op_cost_manager_, options_, &alias_info_, *module,
                              alias_analysis.get()));

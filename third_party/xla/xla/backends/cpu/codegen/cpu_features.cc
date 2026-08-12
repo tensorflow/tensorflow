@@ -205,11 +205,12 @@ DetectedMachineAttributes DetectMachineAttributes(
       !max_feature.has_value() ||
       !(tsl::port::IsX86CPU() || tsl::port::IsAarch64CPU());
   for (const auto& [feature, enabled] : llvm::sys::getHostCPUFeatures()) {
+    absl::string_view feature_view(feature.data(), feature.size());
     bool should_enable =
         enabled && (no_feature_constraint ||
-                    ShouldEnableCpuFeature(feature, *max_feature));
+                    ShouldEnableCpuFeature(feature_view, *max_feature));
     result.features.push_back(
-        absl::StrCat(should_enable ? "+" : "-", std::string(feature)));
+        absl::StrCat(should_enable ? "+" : "-", feature_view));
     result.num_filtered_features += (should_enable != enabled);
   }
   absl::c_sort(result.features);

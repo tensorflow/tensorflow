@@ -26,9 +26,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/frontend_attributes.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -129,7 +129,7 @@ absl::StatusOr<ReplacedAsync> CreateAsyncCollectivePermute(
 absl::StatusOr<ReplacedAsync> CreateAsyncStartDone(
     HloInstruction* instruction, absl::Span<const Shape> context_shapes) {
   HloComputation* computation = instruction->parent();
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloInstruction * done,
       computation->CreateAsyncInstructions(instruction, context_shapes,
                                            HloInstruction::kMainExecutionThread,
@@ -196,20 +196,23 @@ std::vector<HloInstruction*> AsyncCollectiveCreator::MatchCollectives(
     VLOG(2) << "Found collective op: " << instruction->ToString();
 
     bool matched = false;
+    bool ignore_size_check = config_.should_ignore_size_check(instruction);
     if (op == HloOpcode::kAllReduce) {
       bool convert = config_.convert_all_reduce(instruction);
       int64_t size = GetShapeSize(instruction->shape());
       int64_t threshold = config_.all_reduce_min_threshold_in_bytes;
       VLOG(2) << "kAllReduce: convert=" << convert << ", size=" << size
-              << ", threshold=" << threshold;
-      matched = convert && size >= threshold;
+              << ", threshold=" << threshold
+              << ", ignore_size_check=" << ignore_size_check;
+      matched = convert && (ignore_size_check || size >= threshold);
     } else if (op == HloOpcode::kAllGather) {
       bool convert = config_.convert_all_gather(instruction);
       int64_t size = GetShapeSize(instruction->shape());
       int64_t threshold = config_.all_gather_min_threshold_in_bytes;
       VLOG(2) << "kAllGather: convert=" << convert << ", size=" << size
-              << ", threshold=" << threshold;
-      matched = convert && size >= threshold;
+              << ", threshold=" << threshold
+              << ", ignore_size_check=" << ignore_size_check;
+      matched = convert && (ignore_size_check || size >= threshold);
     } else if (op == HloOpcode::kCollectiveBroadcast) {
       bool convert = config_.convert_collective_broadcast(instruction);
       VLOG(2) << "kCollectiveBroadcast: convert=" << convert;
@@ -227,8 +230,9 @@ std::vector<HloInstruction*> AsyncCollectiveCreator::MatchCollectives(
       int64_t size = GetShapeSize(instruction->shape());
       int64_t threshold = config_.reduce_scatter_min_threshold_in_bytes;
       VLOG(2) << "kReduceScatter: convert=" << convert << ", size=" << size
-              << ", threshold=" << threshold;
-      matched = convert && size >= threshold;
+              << ", threshold=" << threshold
+              << ", ignore_size_check=" << ignore_size_check;
+      matched = convert && (ignore_size_check || size >= threshold);
     } else if (op == HloOpcode::kRaggedAllToAll) {
       bool convert = config_.convert_ragged_all_to_all(instruction);
       VLOG(2) << "kRaggedAllToAll: convert=" << convert;
@@ -274,13 +278,13 @@ absl::StatusOr<bool> AsyncCollectiveCreator::ReplaceCollectives(
     }
   };
   for (HloInstruction* instruction : supported_collectives) {
-    ASSIGN_OR_RETURN(auto maybe_async_pair,
+    ABSL_ASSIGN_OR_RETURN(auto maybe_async_pair,
                      handle_legacy_async_conversion(instruction));
     ReplacedAsync async_pair;
     if (maybe_async_pair.has_value()) {
       async_pair = *maybe_async_pair;
     } else {
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           async_pair,
           CreateAsyncStartDone(instruction,
                                config_.get_context_shapes(instruction)));
@@ -294,9 +298,9 @@ absl::StatusOr<bool> AsyncCollectiveCreator::ReplaceCollectives(
     }
 
     // Update control dependencies if present.
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         instruction->CopyAllControlDepsTo(async_pair.start, async_pair.done));
-    RETURN_IF_ERROR(instruction->DropAllControlDeps());
+    ABSL_RETURN_IF_ERROR(instruction->DropAllControlDeps());
 
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         computation->ReplaceInstruction(instruction, async_pair.done),
@@ -346,7 +350,7 @@ absl::StatusOr<bool> AsyncCollectiveCreator::RunImpl(
     if (supported_collectives.empty()) {
       continue;
     }
-    ASSIGN_OR_RETURN(bool comp_changed,
+    ABSL_ASSIGN_OR_RETURN(bool comp_changed,
                      ReplaceCollectives(computation, supported_collectives));
     collectives_replaced += supported_collectives.size();
     changed |= comp_changed;

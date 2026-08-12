@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/gpu_topology.pb.h"
 
@@ -73,9 +73,9 @@ absl::StatusOr<bool> IsCompatibleWithTargetTopology(
 absl::StatusOr<bool> IsCompatibleWithTargetTopology(
     const xla::GpuTopologyProto& compiler_topology_proto,
     const xla::GpuTopologyProto& target_topology_proto) {
-  ASSIGN_OR_RETURN(std::unique_ptr<const GpuTopology> compiler_topology,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<const GpuTopology> compiler_topology,
                    GpuTopology::FromProto(compiler_topology_proto));
-  ASSIGN_OR_RETURN(std::unique_ptr<const GpuTopology> target_topology,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<const GpuTopology> target_topology,
                    GpuTopology::FromProto(target_topology_proto));
   return IsCompatibleWithTargetTopology(*compiler_topology, *target_topology);
 }

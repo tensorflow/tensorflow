@@ -2262,6 +2262,25 @@ ENTRY e {
                   m::Convert(m::Fusion(m::Parameter(), m::Parameter())))));
 }
 
+// Regression test for a crash/verifier failure when hoisting type-changing
+// bitcasts.
+TEST_P(GemmFusionTestV2, TypeChangingBitcastIsNotHoisted) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[1024,1024] parameter(0)
+  p1 = u32[1024,1024] parameter(1)
+  c1 = u32[] constant(1)
+  broadcast = u32[1024,1024] broadcast(c1), dimensions={}
+  or1 = u32[1024,1024] or(p1, broadcast)
+  b1 = f32[1024,1024] bitcast(or1)
+  ROOT d = f32[1024,1024] dot(p0, b1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  EXPECT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

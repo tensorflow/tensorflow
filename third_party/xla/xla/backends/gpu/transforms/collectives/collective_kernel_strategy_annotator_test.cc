@@ -21,10 +21,10 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -90,7 +90,7 @@ class CollectiveKernelStrategyAnnotatorTest
         ->mutable_device_interconnect_info()
         ->set_active_links(1);
     target_config_proto.set_platform_name("CUDA");
-    ASSIGN_OR_RETURN(gpu::GpuTargetConfig target_config,
+    ABSL_ASSIGN_OR_RETURN(gpu::GpuTargetConfig target_config,
                      gpu::GpuTargetConfig::FromProto(target_config_proto));
     return std::make_unique<GpuTopology>(
         "platform_version", /*num_partitions=*/1,
@@ -103,7 +103,7 @@ class CollectiveKernelStrategyAnnotatorTest
     for (HloComputation* comp : module->computations()) {
       for (HloInstruction* instr : comp->instructions()) {
         if (instr->opcode() == opcode) {
-          ASSIGN_OR_RETURN(GpuBackendConfig cfg,
+          ABSL_ASSIGN_OR_RETURN(GpuBackendConfig cfg,
                            instr->backend_config<GpuBackendConfig>());
           return cfg.collective_backend_config().kernel_strategy();
         }

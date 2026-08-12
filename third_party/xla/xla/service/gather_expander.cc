@@ -21,9 +21,9 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
@@ -76,7 +76,7 @@ absl::StatusOr<HloInstruction*> TransposeIndexVectorDimToLast(
 absl::StatusOr<HloInstruction*> CanonicalizeGatherIndices(
     HloInstruction* start_indices, int64_t index_vector_dim) {
   // Transpose the non-index-vector dimensions to the front.
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloInstruction * transposed_start_indices,
       TransposeIndexVectorDimToLast(start_indices, index_vector_dim));
   bool indices_are_scalar =
@@ -165,28 +165,28 @@ absl::StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
   if (has_scalar_indices) {
     // In this case start_indices has rank 1 and induction_var_as_vector (of
     // shape {1}) is an index into this rank 1 tensor.
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         index_vector,
         MakeDynamicSliceHlo(start_indices, induction_var_as_vector, {1}));
   } else {
     // In this case start_indices has rank 2 and induction_var_as_vector (of
     // shape {1}) is an index into just the first dimension of this rank 2
     // tensor.
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         HloInstruction * index_into_start_indices,
         PadVectorWithZeros(induction_var_as_vector,
                            /*zeros_to_prepend=*/0, /*zeros_to_append=*/1));
 
     int64_t index_vector_size = start_indices->shape().dimensions(1);
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         HloInstruction * index_vector_2d,
         MakeDynamicSliceHlo(start_indices, index_into_start_indices,
                             {1, index_vector_size}));
 
-    ASSIGN_OR_RETURN(index_vector, ElideDegenerateDims(index_vector_2d, {0}));
+    ABSL_ASSIGN_OR_RETURN(index_vector, ElideDegenerateDims(index_vector_2d, {0}));
   }
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloInstruction * gathered_slice_start,
       ExpandIndexVectorIntoOperandSpace(
           orig_start_indices_shape, operand->shape().dimensions().size(),
@@ -194,26 +194,26 @@ absl::StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
           dim_numbers.start_indices_batching_dims(),
           dim_numbers.operand_batching_dims(), index_vector, induction_var));
 
-  ASSIGN_OR_RETURN(HloInstruction * gathered_slice,
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * gathered_slice,
                    MakeDynamicSliceHlo(operand, gathered_slice_start,
                                        gather.gather_slice_sizes()));
 
-  ASSIGN_OR_RETURN(HloInstruction* const gathered_slice_with_dims_collapsed,
+  ABSL_ASSIGN_OR_RETURN(HloInstruction* const gathered_slice_with_dims_collapsed,
                    ElideDegenerateDims(gathered_slice,
                                        GetDegeneratedSliceDims(dim_numbers)));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloInstruction* const gathered_slice_for_update,
       PrependDegenerateDims(gathered_slice_with_dims_collapsed, 1));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloInstruction* const index_vector_into_accumulator,
       PadVectorWithZeros(
           induction_var_as_vector, /*zeros_to_prepend=*/0,
           /*zeros_to_append=*/
           gathered_slice_with_dims_collapsed->shape().dimensions().size()));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloInstruction* const updated_accumulator,
       MakeDynamicUpdateSliceHlo(output_accumulator, gathered_slice_for_update,
                                 index_vector_into_accumulator));
@@ -334,7 +334,7 @@ absl::StatusOr<HloInstruction*> GatherExpander::ExpandInstruction(
     Shape broadcast_operand_shape = ShapeUtil::DeleteDimensions(
         GetDegeneratedSliceDims(gather_instr->gather_dimension_numbers()),
         gather_instr->operand(0)->shape());
-    ASSIGN_OR_RETURN(HloInstruction * broadcast_operand,
+    ABSL_ASSIGN_OR_RETURN(HloInstruction * broadcast_operand,
                      MakeReshapeHlo(broadcast_operand_shape,
                                     gather_instr->mutable_operand(0)));
     gather_instr->SetupDerivedInstruction(broadcast_operand);
@@ -363,7 +363,7 @@ absl::StatusOr<HloInstruction*> GatherExpander::ExpandInstruction(
         gather_instr->ToString());
   }
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloInstruction * canonical_start_indices,
       CanonicalizeGatherIndices(start_indices, dim_numbers.index_vector_dim()));
 
@@ -385,12 +385,12 @@ absl::StatusOr<HloInstruction*> GatherExpander::ExpandInstruction(
           },
           gather_instr->metadata());
 
-  ASSIGN_OR_RETURN(std::vector<HloInstruction*> gather_loop_result,
+  ABSL_ASSIGN_OR_RETURN(std::vector<HloInstruction*> gather_loop_result,
                    gather_loop_result_or_error);
 
   HloInstruction* accumulator_result = gather_loop_result.back();
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloInstruction* const accumulator_with_batch_dims_decanonicalized,
       AdjustBatchDimsInAccumulator(start_indices->shape(), accumulator_result,
                                    dim_numbers.index_vector_dim()));

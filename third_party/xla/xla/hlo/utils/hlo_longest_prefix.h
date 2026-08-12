@@ -17,8 +17,8 @@ limitations under the License.
 #define XLA_HLO_UTILS_HLO_LONGEST_PREFIX_H_
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/tsl/platform/errors.h"
@@ -30,10 +30,10 @@ template <typename Visitor>
 absl::Status VisitInstAndCalledButNotOperands(Visitor& visitor,
                                               const HloInstruction& inst) {
   // Visit the given instruction, and the things it calls, but not its operands.
-  RETURN_IF_ERROR(visitor.DefaultAction(&inst));
+  ABSL_RETURN_IF_ERROR(visitor.DefaultAction(&inst));
   for (const HloComputation* called : inst.called_computations()) {
     const HloInstruction* const root = called->root_instruction();
-    RETURN_IF_ERROR(root->Accept(&visitor, /*call_finish_visit=*/false,
+    ABSL_RETURN_IF_ERROR(root->Accept(&visitor, /*call_finish_visit=*/false,
                                  /*ignore_control_predecessors=*/true,
                                  /*cross_computation=*/true));
   }

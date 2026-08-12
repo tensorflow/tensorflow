@@ -28,10 +28,10 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -318,7 +318,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     }
 
     // Inner reduce that reduces [k1, k2] to [k1].
-    ASSIGN_OR_RETURN(auto tuple_shape, ShapeUtil::MakeValidatedMaybeTupleShape(
+    ABSL_ASSIGN_OR_RETURN(auto tuple_shape, ShapeUtil::MakeValidatedMaybeTupleShape(
                                            inner_reduce_shapes));
     HloInstruction *inner_reduce = reduce->parent()->AddInstruction(
         HloInstruction::CreateReduce(tuple_shape, reshaped_padded_inputs,
@@ -353,7 +353,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
           ShapeUtil::DeleteDimension(minor_reduction_dim, input->shape()));
     }
 
-    ASSIGN_OR_RETURN(auto tuple_shape,
+    ABSL_ASSIGN_OR_RETURN(auto tuple_shape,
                      ShapeUtil::MakeValidatedMaybeTupleShape(tuple_shapes));
     HloInstruction *inner_reduce =
         hlo->parent()->AddInstruction(HloInstruction::CreateReduce(
@@ -374,7 +374,7 @@ absl::StatusOr<bool> TreeReductionRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(5) << "Rewriter input: " << module->ToString();
-  ASSIGN_OR_RETURN(bool changed, ReductionRewriterVisitor(device_description_)
+  ABSL_ASSIGN_OR_RETURN(bool changed, ReductionRewriterVisitor(device_description_)
                                      .RunOnModule(module, execution_threads));
   VLOG(5) << "Rewriter output: " << module->ToString();
   return changed;

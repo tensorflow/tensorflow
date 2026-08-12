@@ -80,6 +80,9 @@ extern const char kXlaBufferPlacementParam[];
 extern const char kXlaStreamAnnotationAttr[];
 extern const char kXlaCollectiveStreamAnnotation[];
 
+// XLA frontend attribute for selecting a collective communication domain.
+extern const char kCollectiveCommunicationDomainAttr[];
+
 // XLA frontend attribute for collective matmul control.
 extern const char kXlaCollectiveMatmulAttr[];
 

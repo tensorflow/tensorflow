@@ -22,7 +22,7 @@
 
 --- a/python/test/unit/language/test_core.py
 +++ b/python/test/unit/language/test_core.py
-@@ -1840,10 +1840,12 @@ def test_atomic_cas(sem, num_ctas, dtype_str, device):
+@@ -1912,11 +1912,12 @@ def test_atomic_cas(sem, num_ctas, dtype_str, device):
      if not is_cuda():
          return
      assert f"atom.global.{sem_str}" in h.asm["ptx"]
@@ -33,12 +33,13 @@
 -
 -@pytest.mark.skipif(not is_cuda() or torch.cuda.get_device_capability()[0] < 9,
 -                    reason="num_ctas > 1 requires NVIDIA SM90+ (Hopper)")
+-@pytest.mark.skipif(is_sm12x(), reason="scalar multi-CTA atomic_cas is not supported on sm120 (consumer Blackwell)")
 +@pytest.mark.skipif(True,
 +                    reason="num_ctas > 1 (Cluster Multi-CTA) is not supported internally on H100/B200 MIG slices")
  def test_scalar_atomic_cas_multicta_result(device):
  
      @triton.jit
-@@ -1859,8 +1861,8 @@ def test_scalar_atomic_cas_multicta_result(device):
+@@ -1932,8 +1933,8 @@ def test_scalar_atomic_cas_multicta_result(device):
      torch.testing.assert_close(output, torch.full_like(output, 7))
  
  
@@ -49,7 +50,7 @@
  @pytest.mark.parametrize("size", [1, 4, 16, 128, 512])
  def test_tensor_atomic_cas_multicta_result(size, device):
  
-@@ -1911,8 +1913,8 @@ def test_tensor_atomic_cas(sem, size, dtype_str, num_ctas, device):
+@@ -1984,8 +1985,8 @@ def test_tensor_atomic_cas(sem, size, dtype_str, num_ctas, device):
  
  
  @pytest.mark.interpreter

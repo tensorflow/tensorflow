@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
@@ -154,13 +155,18 @@ class WhileUtil {
   // Requires loop body to be incrementing the induction variable by exactly 1.
   static absl::Status IncrementWhileLoopTripCount(
       const HloInstruction& while_instruction, int32_t increment);
-
   // Ensure that the output of an in-place update operation (like a DUS) is not
   // read before being returned from its computation. It must only feed the
   // computation root or another valid in-place update operation. This is used
   // to verify that state updates are strictly write-only.
   // TODO(b/533496522): Use AliasAnalysis to handle complex aliasing chains.
   static bool IsUpdatedBufferWriteOnly(const HloInstruction* instr);
+
+  // Returns the set of computations that are part of a while loop (body,
+  // condition, or called sub-computations) where copy insertion is disabled via
+  // frontend attributes.
+  static absl::flat_hash_set<const HloComputation*>
+  GetCopyDisabledWhileLoopComputations(const HloModule* module);
 };
 
 // This is a helper function to update the original value after some
