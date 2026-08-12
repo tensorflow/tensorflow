@@ -263,15 +263,18 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
     #   sub_dir2/
     #     sub_sub_dir1/
     #       file3.txt
-    file_io.FileIO(file_io.join(dir_path, "file1.txt"), mode="w").write("testing")
+    file_io.FileIO(
+        file_io.join(dir_path, "file1.txt"), mode="w").write("testing")
     
     sub_dir1 = file_io.join(dir_path, "sub_dir1")
     file_io.create_dir(sub_dir1)
-    file_io.FileIO(file_io.join(sub_dir1, "file2.txt"), mode="w").write("testing")
+    file_io.FileIO(
+        file_io.join(sub_dir1, "file2.txt"), mode="w").write("testing")
     
     sub_sub_dir1 = file_io.join(dir_path, "sub_dir2", "sub_sub_dir1")
     file_io.recursive_create_dir(sub_sub_dir1)
-    file_io.FileIO(file_io.join(sub_sub_dir1, "file3.txt"), mode="w").write("testing")
+    file_io.FileIO(
+        file_io.join(sub_sub_dir1, "file3.txt"), mode="w").write("testing")
     
     expected_match = [
         file_io.join(dir_path, "file1.txt"),
@@ -281,12 +284,14 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
     
     # Test recursive=True
     self.assertItemsEqual(
-        file_io.get_matching_files_v2(file_io.join(dir_path, "**", "*.txt"), recursive=True),
+        file_io.get_matching_files_v2(
+            file_io.join(dir_path, "**", "*.txt"), recursive=True),
         expected_match)
         
     # Test recursive=True with multiple wildcards
     self.assertItemsEqual(
-        file_io.get_matching_files_v2(file_io.join(dir_path, "**", "file?.txt"), recursive=True),
+        file_io.get_matching_files_v2(
+            file_io.join(dir_path, "**", "file?.txt"), recursive=True),
         expected_match)
         
     file_io.delete_recursively(dir_path)
