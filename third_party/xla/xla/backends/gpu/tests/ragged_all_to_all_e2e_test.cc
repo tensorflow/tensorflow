@@ -254,6 +254,10 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
       GTEST_SKIP() << "Symmetric memory is only supported on Hopper "
                       "architecture and above.";
     }
+    if (impl_type_ == RaggedAllToAllImplType::kDeviceKernel &&
+        Capability().IsRocm()) {
+      GTEST_SKIP() << "Device initiated communication not supported on ROCm.";
+    }
   }
 
   DebugOptions GetDebugOptionsForTest() const override {
@@ -279,6 +283,7 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
         // devices are actually connected via fast interconnect.
         // TODO: b/493935137 - Enable for all architectures once we get
         // NCCL 2.29 integrated with host API to check LSA connectivity.
+        Capability().IsCuda() &&
         Capability().cuda_compute_capability()->IsAtLeastHopper()) {
       opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(true);
       opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(
