@@ -479,5 +479,36 @@ class FunctionCacheBenchmark(test.Benchmark):
     )
 
 
+
+  def testClearCache(self):
+    cache = function_cache.FunctionCache()
+    f_type = function_type_lib.FunctionType([])
+    ctx = function_cache.FunctionContext()
+    cache.add(f_type, "target_func", ctx)
+
+    self.assertIsNotNone(cache.lookup(f_type, ctx))
+    cache.clear_cache()
+    self.assertIsNone(cache.lookup(f_type, ctx))
+
+  def testMaxCapacityEvictionAndLRU(self):
+    cache = function_cache.FunctionCache(max_capacity=2)
+    f_type1 = function_type_lib.FunctionType([])
+    f_type2 = function_type_lib.FunctionType([function_type_lib.Parameter("x", function_type_lib.Parameter.POSITIONAL_OR_KEYWORD, False, None)])
+    f_type3 = function_type_lib.FunctionType([function_type_lib.Parameter("y", function_type_lib.Parameter.POSITIONAL_OR_KEYWORD, False, None)])
+
+    ctx = function_cache.FunctionContext()
+    cache.add(f_type1, "func1", ctx)
+    cache.add(f_type2, "func2", ctx)
+
+    # Access f_type1 so f_type2 becomes the LRU entry
+    cache.lookup(f_type1, ctx)
+
+    # Add f_type3, which should evict f_type2 (the LRU entry)
+    cache.add(f_type3, "func3", ctx)
+
+    self.assertIsNotNone(cache.lookup(f_type1, ctx))
+    self.assertIsNone(cache.lookup(f_type2, ctx))
+    self.assertIsNotNone(cache.lookup(f_type3, ctx))
+
 if __name__ == "__main__":
   test.main()
