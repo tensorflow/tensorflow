@@ -1548,10 +1548,26 @@ absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 CommonPjRtClient::MakeCrossHostReceiveBuffers(
     absl::Span<const Shape> shapes, PjRtDevice* absl_nonnull pjrt_device,
     PjRtCrossHostRecvNotifier notifier) {
+  return MakeCrossHostReceiveBuffers(shapes, pjrt_device, std::move(notifier),
+                                     /*donated_buffer_refs=*/std::nullopt);
+}
+
+absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+CommonPjRtClient::MakeCrossHostReceiveBuffers(
+    absl::Span<const Shape> shapes, PjRtDevice* absl_nonnull pjrt_device,
+    PjRtCrossHostRecvNotifier notifier,
+    std::optional<absl::Span<const PjRtRawBufferRef>> donated_buffer_refs) {
   VLOG(2) << "Making " << shapes.size() << " cross host receive buffers";
   if (shapes.empty()) {
     return InvalidArgument(
         "shapes parameter empty in MakeCrossHostReceiveBuffers");
+  }
+  if (donated_buffer_refs.has_value() &&
+      donated_buffer_refs->size() != shapes.size()) {
+    return InvalidArgument(
+        "donated_buffer_refs size (%d) must match shapes size (%d) in "
+        "MakeCrossHostReceiveBuffers",
+        donated_buffer_refs->size(), shapes.size());
   }
 
   ABSL_ASSIGN_OR_RETURN(auto memory_space, pjrt_device->default_memory_space());
@@ -1563,7 +1579,8 @@ CommonPjRtClient::MakeCrossHostReceiveBuffers(
   // Reserve one extra for internal use.
   transfer_dependency_events.reserve(shapes.size() + 1);
   dst_shapes.reserve(shapes.size());
-  for (const Shape& shape : shapes) {
+  for (int i = 0; i < shapes.size(); ++i) {
+    const Shape& shape = shapes[i];
     if (shape.IsTuple()) {
       return InvalidArgument(
           "Tuple shape %s not supported in MakeCrossHostReceiveBuffers",
@@ -1573,13 +1590,25 @@ CommonPjRtClient::MakeCrossHostReceiveBuffers(
                      MakeDefaultShapeForMemorySpace(
                          memory_space, shape,
                          shape.has_layout() ? &shape.layout() : nullptr));
-    ABSL_ASSIGN_OR_RETURN(int64_t on_device_bytes_count,
-                     GetOnDeviceBytesCount(memory_space, dst_shape));
     dst_shapes.push_back(std::move(dst_shape));
-    ABSL_ASSIGN_OR_RETURN(PjRtRawBufferRef raw_buffer,
-                     AllocateRawBuffer(memory_space, on_device_bytes_count,
-                                       /*retry_on_oom=*/true,
-                                       /*allocate_after=*/{}));
+
+    ABSL_ASSIGN_OR_RETURN(int64_t on_device_bytes_count,
+                     GetOnDeviceBytesCount(memory_space, dst_shapes.back()));
+    PjRtRawBufferRef raw_buffer;
+    if (donated_buffer_refs.has_value()) {
+      raw_buffer = (*donated_buffer_refs)[i];
+      if (raw_buffer->GetOnDeviceSizeInBytes() != on_device_bytes_count) {
+        return InvalidArgument(
+            "Donated buffer size %d does not match target buffer size %d",
+            raw_buffer->GetOnDeviceSizeInBytes(), on_device_bytes_count);
+      }
+    }
+    if (!raw_buffer) {
+      ABSL_ASSIGN_OR_RETURN(raw_buffer,
+                       AllocateRawBuffer(memory_space, on_device_bytes_count,
+                                         /*retry_on_oom=*/true,
+                                         /*allocate_after=*/{}));
+    }
 
     PjRtDeviceEventPtr buffer_av = raw_buffer->GetRawBufferAsyncValue();
     transfer_dependency_events.push_back(buffer_av.CopyRef());
