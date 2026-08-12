@@ -8205,5 +8205,31 @@ ENTRY Entry (p0: f32[100], update: f32[10], idx: s32[]) -> f32[100] {
             module->ToString(fp_options));
 }
 
+TEST_F(HloParserTest, AsyncUpdateWithAliasing) {
+  const char* const hlo_string = R"(
+HloModule module
+
+async_computation {
+  p0 = f32[32,32] parameter(0)
+  ROOT custom-call = (f32[32,32]) custom-call(p0), custom_call_target="foo"
+}
+
+ENTRY main {
+  p = f32[32,32] parameter(0)
+  async-start = ((f32[32,32]), (f32[32,32]), s32[]) async-start(p), calls=async_computation
+  async-update = ((f32[32,32]), (f32[32,32]), s32[]) async-update(async-start), output_to_operand_aliasing={{2}: (0, {2})}
+  ROOT async-done = (f32[32,32]) async-done(async-update)
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto root = module->entry_computation()->root_instruction();
+  auto async_update = Cast<HloAsyncUpdateInstruction>(root->operand(0));
+  EXPECT_EQ(async_update->opcode(), HloOpcode::kAsyncUpdate);
+  EXPECT_FALSE(async_update->output_to_operand_aliasing().empty());
+  const auto& aliasing = async_update->output_to_operand_aliasing();
+  EXPECT_EQ(aliasing.size(), 1);
+  EXPECT_EQ(aliasing[0].first, ShapeIndex({2}));
+  EXPECT_EQ(aliasing[0].second.first, 0);                 // operand 0
+  EXPECT_EQ(aliasing[0].second.second, ShapeIndex({2}));  // index 2
+}
 }  // namespace
 }  // namespace xla

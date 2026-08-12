@@ -283,7 +283,8 @@ std::unique_ptr<HloInstruction> HloFftInstruction::CloneWithNewOperandsImpl(
 
 HloAsyncInstruction::HloAsyncInstruction(
     HloOpcode opcode, const Shape& shape,
-    absl::Span<HloInstruction* const> operands, HloOpcode async_wrapped_opcode)
+    absl::Span<HloInstruction* const> operands,
+    std::optional<HloOpcode> async_wrapped_opcode)
     : HloInstruction(opcode, shape) {
   CHECK(opcode == HloOpcode::kAsyncStart || opcode == HloOpcode::kAsyncUpdate ||
         opcode == HloOpcode::kAsyncDone);
@@ -295,16 +296,17 @@ HloAsyncInstruction::HloAsyncInstruction(
     AppendOperand(operand);
   }
 
+  HloAsyncInstruction* prev = nullptr;
   if (opcode == HloOpcode::kAsyncUpdate || opcode == HloOpcode::kAsyncDone) {
     if (!operands.empty() && operands[0] != nullptr) {
       if (HloAsyncInstruction::ClassOf(operands[0])) {
-        HloAsyncInstruction* prev = Cast<HloAsyncInstruction>(operands[0]);
+        prev = Cast<HloAsyncInstruction>(operands[0]);
         prev->async_chain_next_ = this;
       } else {
         HloInstruction* producer =
             HloInstruction::FindAsyncProducer(operands[0]);
         if (producer != nullptr && HloAsyncInstruction::ClassOf(producer)) {
-          HloAsyncInstruction* prev = Cast<HloAsyncInstruction>(producer);
+          prev = Cast<HloAsyncInstruction>(producer);
           prev->async_chain_next_ = this;
         }
       }
@@ -312,32 +314,21 @@ HloAsyncInstruction::HloAsyncInstruction(
   }
 
   // Drop 'async' from async-{start/update/done} to get the suffix.
+  if (!async_wrapped_opcode.has_value()) {
+    if (prev != nullptr) {
+      async_wrapped_opcode = prev->async_wrapped_opcode();
+    } else {
+      async_wrapped_opcode = opcode;
+    }
+  }
   absl::string_view suffix = HloOpcodeString(opcode).substr(5);
-  absl::string_view wrapped_name = HloOpcodeString(async_wrapped_opcode);
+  absl::string_view wrapped_name = HloOpcodeString(*async_wrapped_opcode);
   if (async_wrapped_opcode == opcode) {
     SetAndSanitizeName(wrapped_name);
   } else {
     SetAndSanitizeName(absl::StrCat(wrapped_name, suffix));
   }
 }
-
-HloAsyncInstruction::HloAsyncInstruction(
-    HloOpcode opcode, const Shape& shape, HloInstruction* operand,
-    std::optional<HloOpcode> async_wrapped_opcode)
-    : HloAsyncInstruction(
-          opcode, shape, absl::MakeConstSpan(&operand, 1),
-          async_wrapped_opcode.has_value() ? *async_wrapped_opcode : [&]() {
-            if (operand != nullptr && HloAsyncInstruction::ClassOf(operand)) {
-              return Cast<HloAsyncInstruction>(operand)->async_wrapped_opcode();
-            }
-            HloInstruction* producer =
-                HloInstruction::FindAsyncProducer(operand);
-            if (producer != nullptr && HloAsyncInstruction::ClassOf(producer)) {
-              return Cast<HloAsyncInstruction>(producer)
-                  ->async_wrapped_opcode();
-            }
-            return opcode;
-          }()) {}
 
 HloComputation* HloAsyncInstruction::async_wrapped_computation() const {
   if (!called_computations().empty()) {
@@ -658,6 +649,64 @@ HloAsyncStartInstruction::CloneWithNewOperandsAndComputation(
     HloComputation* new_computation, HloCloneContext* context) const {
   return CloneWithNewOperandsImpl(shape, new_operands, new_computation,
                                   context);
+}
+
+HloAsyncUpdateInstruction::HloAsyncUpdateInstruction(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    std::optional<HloOpcode> async_wrapped_opcode)
+    : HloAsyncInstruction(HloOpcode::kAsyncUpdate, shape, operands,
+                          async_wrapped_opcode) {}
+
+void HloAsyncUpdateInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  for (const auto& pair : output_to_operand_aliasing()) {
+    auto aliasing = proto->add_output_operand_aliasing();
+    aliasing->set_operand_index(pair.second.first);
+    for (int64_t index : pair.first) {
+      aliasing->add_output_shape_index(index);
+    }
+    for (int64_t index : pair.second.second) {
+      aliasing->add_operand_shape_index(index);
+    }
+  }
+}
+
+void HloAsyncUpdateInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  if (!output_to_operand_aliasing().empty()) {
+    printer.Next([this](Printer* printer) {
+      printer->Append("output_to_operand_aliasing={");
+      AppendJoin(printer, output_to_operand_aliasing(), ", ",
+                 [](Printer* printer, auto& pair) {
+                   AppendCat(printer, pair.first.ToString(), ": (",
+                             pair.second.first, ", ");
+                   AppendCat(printer, pair.second.second.ToString(), ")");
+                 });
+      printer->Append("}");
+    });
+  }
+}
+
+bool HloAsyncUpdateInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
+        eq_computations) const {
+  const auto& casted_other =
+      static_cast<const HloAsyncUpdateInstruction&>(other);
+  return HloAsyncInstruction::opcode() == other.opcode() &&
+         output_to_operand_aliasing() ==
+             casted_other.output_to_operand_aliasing();
+}
+
+std::unique_ptr<HloInstruction>
+HloAsyncUpdateInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  auto cloned =
+      std::make_unique<HloAsyncUpdateInstruction>(shape, new_operands);
+  cloned->HloAliasible::set_output_to_operand_aliasing(
+      output_to_operand_aliasing());
+  return cloned;
 }
 
 HloCopyStartInstruction::HloCopyStartInstruction(

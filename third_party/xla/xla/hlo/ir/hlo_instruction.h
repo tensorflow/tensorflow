@@ -2523,6 +2523,9 @@ class HloInstruction {
   static HloInstruction* FindAsyncProducer(HloInstruction* instr);
   static const HloInstruction* FindAsyncProducer(const HloInstruction* instr);
 
+  // Delagates to HloAsyncInstruction::async_chain_next().
+  HloInstruction* async_chain_next() const;
+
   // Delagates to HloAsyncInstruction::async_done().
   HloInstruction* async_chain_done() const;
 

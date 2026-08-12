@@ -2202,7 +2202,8 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       optional<
           std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
           output_to_operand_aliasing;
-      if (opcode == HloOpcode::kAsyncStart) {
+      if (opcode == HloOpcode::kAsyncStart ||
+          opcode == HloOpcode::kAsyncUpdate) {
         attrs["output_to_operand_aliasing"] = {/*required=*/false,
                                                AttrTy::kInstructionAliasing,
                                                &output_to_operand_aliasing};
@@ -2327,6 +2328,12 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
               async_update->async_wrapped_computation(),
               /*result_shape=*/shape->tuple_shapes(1),
               /*operand_shapes=*/shape->tuple_shapes(0).tuple_shapes());
+        }
+
+        if (output_to_operand_aliasing.has_value()) {
+          Cast<HloAsyncUpdateInstruction>(async_update)
+              ->set_output_to_operand_aliasing(
+                  std::move(*output_to_operand_aliasing));
         }
         return async_update;
       }

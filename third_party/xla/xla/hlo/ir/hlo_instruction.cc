@@ -1688,12 +1688,8 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     const Shape& shape, HloInstruction* operand,
     std::optional<HloOpcode> async_wrapped_opcode,
     HloComputation* async_computation) {
-  auto instruction = std::make_unique<HloAsyncInstruction>(
-      HloOpcode::kAsyncUpdate, shape, operand, async_wrapped_opcode);
-  if (async_computation != nullptr) {
-    instruction->AppendComputation(async_computation);
-  }
-  return instruction;
+  return CreateAsyncUpdate(shape, absl::Span<HloInstruction* const>({operand}),
+                           async_wrapped_opcode, async_computation);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncUpdate(
@@ -1701,22 +1697,20 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     std::optional<HloOpcode> async_wrapped_opcode,
     HloComputation* async_computation) {
   CHECK_GE(operands.size(), 1);
-  HloInstruction* prev_async = operands[0];
-  HloOpcode wrapped_op = async_wrapped_opcode.value_or(HloOpcode::kAsyncUpdate);
+  auto instruction = std::make_unique<HloAsyncUpdateInstruction>(
+      shape, operands, async_wrapped_opcode);
+
   HloComputation* upstream_comp = nullptr;
+  HloInstruction* prev_async = operands[0];
   if (HloInstruction* producer = FindAsyncProducer(prev_async)) {
     if (auto* async_inst = DynCast<HloAsyncInstruction>(producer)) {
-      if (!async_wrapped_opcode.has_value()) {
-        wrapped_op = async_inst->async_wrapped_opcode();
-      }
       upstream_comp = async_inst->async_wrapped_computation();
     }
   }
-  auto instruction = absl::WrapUnique(new HloAsyncInstruction(
-      HloOpcode::kAsyncUpdate, shape, operands, wrapped_op));
   if (async_computation != nullptr && async_computation != upstream_comp) {
     instruction->AppendComputation(async_computation);
   }
+
   return instruction;
 }
 
@@ -1730,8 +1724,9 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
       upstream_comp = async_inst->async_wrapped_computation();
     }
   }
-  auto instruction = std::make_unique<HloAsyncInstruction>(
-      HloOpcode::kAsyncDone, shape, operand, async_wrapped_opcode);
+  auto instruction = absl::WrapUnique(new HloAsyncInstruction(
+      HloOpcode::kAsyncDone, shape,
+      absl::Span<HloInstruction* const>({operand}), async_wrapped_opcode));
   if (async_computation != nullptr && async_computation != upstream_comp) {
     instruction->AppendComputation(async_computation);
   }
@@ -6432,6 +6427,13 @@ InstT* FindAsyncProducerImpl(InstT* instr, ShapeIndex& index,
 HloInstruction* HloInstruction::async_chain_start() const {
   if (auto* async_inst = DynCast<HloAsyncInstruction>(this)) {
     return async_inst->async_chain_start();
+  }
+  return nullptr;
+}
+
+HloInstruction* HloInstruction::async_chain_next() const {
+  if (auto* async_inst = DynCast<HloAsyncInstruction>(this)) {
+    return async_inst->async_chain_next();
   }
   return nullptr;
 }
