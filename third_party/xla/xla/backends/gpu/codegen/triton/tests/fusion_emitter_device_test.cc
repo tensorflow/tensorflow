@@ -2459,8 +2459,8 @@ ENTRY e {
           *module->GetComputationWithName("triton_dot"), expected_triton_ir),
       IsOk());
   if (GetCudaComputeCapability().IsAtLeastBlackwell()) {
-    CompileAndOptionallyVerifyPtx(std::move(module),
-                                  R"(CHECK: mxf8f6f4.block_scale.block32)");
+    CompileAndOptionallyVerifyPtx(
+        std::move(module), R"(CHECK: mxf8f6f4.block_scale.scale_vec::1X)");
   }
 }
 
