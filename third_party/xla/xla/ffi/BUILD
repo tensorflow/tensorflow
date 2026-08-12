@@ -260,6 +260,15 @@ cc_library(
 )
 
 cc_library(
+    name = "collectives_ffi",
+    hdrs = ["collectives_ffi.h"],
+    deps = [
+        ":ffi",
+        "//xla/ffi/api:collectives_api",
+    ],
+)
+
+cc_library(
     name = "ffi_internal_api",
     srcs = ["ffi_internal_api.cc"],
     hdrs = ["ffi_internal_api.h"],
@@ -478,6 +487,24 @@ xla_cc_test(
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_cc_test(
+    name = "collectives_ffi_test",
+    srcs = ["collectives_ffi_test.cc"],
+    deps = [
+        ":call_frame",
+        ":collectives_ffi",
+        ":ffi",
+        ":ffi_api",  # buildcleaner: keep
+        ":invoke",
+        "//xla/ffi/api:c_api",
+        "//xla/ffi/api:collectives_api",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest",
     ],
 )
