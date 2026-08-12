@@ -605,7 +605,7 @@ absl::StatusOr<int64_t> ExtractBlockK(const HloDotInstruction* dot) {
     return absl::FailedPreconditionError(
         "Dot instruction must have a backend config with tiling sizes.");
   }
-  ABSL_ASSIGN_OR_RETURN(auto tile_config, dot->backend_config<xla::gpu::Tile>());
+  ABSL_ASSIGN_OR_RETURN(auto tile_config, dot->backend_config<xla::xtile::Tile>());
   TF_RET_CHECK(tile_config.sizes_size() > 0)
       << "Tile backend config must have sizes.";
   return tile_config.sizes(0);

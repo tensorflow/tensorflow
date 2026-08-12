@@ -649,7 +649,10 @@ cc_library(
         "block_level_parameters.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    deps = ["//xla/service/gpu:backend_configs_cc"],
+    deps = [
+        "//xla/codegen/xtile:xtile_config_proto_cc",
+        "//xla/service/gpu:backend_configs_cc",
+    ],
 )
 
 xla_cc_test(
@@ -677,6 +680,7 @@ cc_library(
         "//xla/codegen/tiling:tiling_specification",
         "//xla/codegen/tiling/experimental:tile",
         "//xla/codegen/tiling/experimental:tiling_space_utils",
+        "//xla/codegen/xtile:xtile_config_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:backend_configs_cc",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -700,6 +704,7 @@ xla_cc_test(
         "//xla/codegen/tiling:symbolic_tile_analysis",
         "//xla/codegen/tiling:tiling_specification",
         "//xla/codegen/tiling/experimental:tile",
+        "//xla/codegen/xtile:xtile_config_proto_cc",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",

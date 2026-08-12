@@ -719,6 +719,7 @@ cc_library(
     hdrs = ["tma_utils.h"],
     deps = [
         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
+        "//xla/codegen/xtile:xtile_config_proto_cc",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:matmul_utils",
         "//xla/stream_executor/gpu:tma_metadata",
@@ -748,6 +749,7 @@ cc_library(
         "//xla/backends/gpu/runtime:collective_params",
         "//xla/backends/gpu/transforms/collectives:collective_ops_utils",
         "//xla/codegen/emitters/ir:xla",
+        "//xla/codegen/xtile:xtile_config_proto_cc",
         "//xla/codegen/xtile/codegen:emitter_helpers",
         "//xla/codegen/xtile/ir:xtile",
         "//xla/hlo/ir:hlo",

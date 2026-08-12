@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_ops.h"  // IWYU pragma: keep
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -252,7 +253,7 @@ GetBlockLevelFusionConfigForAllReduce(
       WarpSize(device_info)));
   block_level_config.set_num_ctas(1);    // No block-level clustering.
   block_level_config.set_num_stages(1);  // No pipelining of loops.
-  Tile* output_tile = block_level_config.add_output_tiles();
+  xla::xtile::Tile* output_tile = block_level_config.add_output_tiles();
   const llvm::SmallVector<int64_t> tile_sizes =
       GreedyPowerOfTwoTiles(output_shape, launch_dims.num_blocks());
   output_tile->mutable_sizes()->Assign(tile_sizes.begin(), tile_sizes.end());

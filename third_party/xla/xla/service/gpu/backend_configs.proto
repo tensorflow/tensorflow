@@ -11,13 +11,14 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-// ==============================================================================
+// =============================================================================
 
 syntax = "proto3";
 
 package xla.gpu;
 
 import "xla/autotuning.proto";
+import "xla/codegen/xtile/xtile_config.proto";
 import "xla/tsl/protobuf/dnn.proto";
 import "xla/xla.proto";
 import "xla/xla_data.proto";
@@ -231,27 +232,9 @@ message ReificationCost {
   string name = 5;
 }
 
-// Backend config for a custom fusion (pre-compiled device kernel implementing a
-// fusion computation).
-message CustomFusionConfig {
-  string name = 1;
-
-  // When a custom fusion has multiple kernels, this field specifies which
-  // kernel to use. Default value is to select the first kernel, i.e.
-  // kernel_index = 0.
-  int32 kernel_index = 2;
-}
-
 message CuDnnFusionConfig {
   optional int64 plan_id = 1;
   PrecisionConfig precision_config = 2;
-}
-
-// Output tile sizes for a fusion root.
-message Tile {
-  // The output tile sizes of the associated fusion root. The length of this
-  // field is expected to be the rank of the root shape.
-  repeated int64 sizes = 1;
 }
 
 // Block-level parameters for a fusion.
@@ -259,7 +242,7 @@ message BlockLevelFusionConfig {
   reserved 1;  // Was output_tile_sizes
 
   // The output tile sizes for each fusion root.
-  repeated Tile output_tiles = 3;
+  repeated xla.xtile.Tile output_tiles = 3;
 
   // The number of warps to use for the kernel.
   int64 num_warps = 2;
@@ -330,7 +313,7 @@ message FusionBackendConfig {
   BlockLevelFusionConfig block_level_fusion_config = 6;
 
   // Only valid when kind == "__custom_fusion".
-  CustomFusionConfig custom_fusion_config = 4;
+  xla.xtile.CustomFusionConfig custom_fusion_config = 4;
 
   // Cost model prediction.
 

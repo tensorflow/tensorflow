@@ -294,6 +294,7 @@ cc_library(
     deps = [
         ":dynamic_slice_fusion",
         "//xla:shape_util",
+        "//xla/codegen/xtile:xtile_config_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:backend_configs_cc",
         "@com_google_absl//absl/status:statusor",
@@ -1698,6 +1699,7 @@ cc_library(
     deps = [
         ":dynamic_slice_fusion",
         "//xla:shape_util",
+        "//xla/codegen/xtile:xtile_config_proto_cc",
         "//xla/hlo/analysis:hlo_dfs_reachability",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
@@ -2473,6 +2475,7 @@ xla_cc_test(
     deps = [
         ":hoist_fused_bitcasts",
         "//xla:xla_proto_cc",
+        "//xla/codegen/xtile:xtile_config_proto_cc",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
@@ -2550,6 +2553,7 @@ xla_cc_test(
     deps = [
         ":priority_fusion",
         "//xla:xla_proto_cc",
+        "//xla/codegen/xtile:xtile_config_proto_cc",
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
@@ -4126,6 +4130,7 @@ cc_library(
         "//xla/codegen/tiling/experimental:tile",
         "//xla/codegen/tiling/experimental:tiled_hlo",
         "//xla/codegen/tiling/experimental:tiling_space_utils",
+        "//xla/codegen/xtile:xtile_config_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/utils:hlo_query",
