@@ -24,6 +24,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
@@ -704,9 +705,82 @@ def _SquareGrad(op: ops.Operation, grad):
     return math_ops.multiply(grad, math_ops.multiply(x, y))
 
 
+@custom_gradient.custom_gradient
+def _SqrtGradWithSubnormalFallback(x, y, grad):
+  """Computes a sqrt gradient that is stable for float64 subnormals."""
+  # A positive subnormal has no exponent bits and represents
+  # mantissa * 2**-1074. Therefore, 1 / (2 * sqrt(x)) is
+  # 2**536 / sqrt(mantissa).
+  x_bits = array_ops.bitcast(x, dtypes.int64)
+  min_normal_bits = constant_op.constant(1 << 52, dtype=dtypes.int64)
+  is_positive_subnormal = math_ops.logical_and(
+      math_ops.greater(x_bits, 0), math_ops.less(x_bits, min_normal_bits)
+  )
+  safe_mantissa_bits = array_ops.where_v2(
+      is_positive_subnormal, x_bits, array_ops.ones_like(x_bits)
+  )
+  mantissa = math_ops.cast(safe_mantissa_bits, dtypes.float64)
+  subnormal_derivative = (
+      constant_op.constant(2.0**536, dtype=dtypes.float64)
+      / math_ops.sqrt(mantissa)
+  )
+  ordinary_result = gen_math_ops.sqrt_grad(y, grad)
+  result = array_ops.where_v2(
+      is_positive_subnormal,
+      grad * subnormal_derivative,
+      ordinary_result,
+  )
+
+  def grad_fn(output_grad):
+    # Express the subnormal second derivative in terms of the first so it
+    # overflows with the correct sign. Returning it for x directly avoids
+    # differentiating through the discrete bit representation.
+    subnormal_x_derivative = -0.5 * result / x
+    subnormal_x_derivative = array_ops.where_v2(
+        math_ops.equal(grad, 0.0),
+        array_ops.zeros_like(subnormal_x_derivative),
+        subnormal_x_derivative,
+    )
+    x_derivative = array_ops.where_v2(
+        is_positive_subnormal,
+        subnormal_x_derivative,
+        array_ops.zeros_like(x),
+    )
+    safe_y = array_ops.where_v2(
+        is_positive_subnormal, array_ops.ones_like(y), y
+    )
+    y_derivative = array_ops.where_v2(
+        is_positive_subnormal,
+        array_ops.zeros_like(y),
+        -gen_math_ops.sqrt_grad(safe_y, grad) / safe_y,
+    )
+    ordinary_derivative = gen_math_ops.sqrt_grad(
+        y, array_ops.ones_like(grad)
+    )
+    grad_derivative = array_ops.where_v2(
+        is_positive_subnormal,
+        subnormal_derivative,
+        ordinary_derivative,
+    )
+    return (
+        output_grad * x_derivative,
+        output_grad * y_derivative,
+        output_grad * grad_derivative,
+    )
+
+  return result, grad_fn
+
+
 @ops.RegisterGradient("Sqrt")
 def _SqrtGrad(op: ops.Operation, grad):
+  x = op.inputs[0]
   y = op.outputs[0]  # y = x^(1/2)
+
+  if x.dtype == dtypes.float64:
+    # Eigen flushes positive float64 subnormal inputs to zero on some CPUs, so
+    # `y` cannot be used to recover their finite gradients.
+    return _SqrtGradWithSubnormalFallback(x, y, grad)
+
   return gen_math_ops.sqrt_grad(y, grad)
 
 

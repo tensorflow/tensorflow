@@ -834,6 +834,95 @@ class NextAfterTest(test.TestCase):
         self.assertLess(err, 1e-3)
 
 
+class SqrtGradTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFloat64PositiveSubnormalGradient(self):
+    tiny = np.finfo(np.float64).tiny
+    values = np.array(
+        [
+            np.nextafter(0.0, 1.0),
+            tiny / 2.0,
+            np.nextafter(tiny, 0.0),
+            tiny,
+            1.0,
+            0.0,
+            -1.0,
+            np.inf,
+            np.nan,
+        ],
+        dtype=np.float64,
+    )
+    upstream = np.array(
+        [1.0, 2.0, -0.5, 3.0, -4.0, 1.0, 2.0, 5.0, 6.0],
+        dtype=np.float64,
+    )
+
+    with ops.device("/CPU:0"):
+      x = constant_op.constant(values, dtype=dtypes.float64)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = math_ops.sqrt(x)
+      actual = self.evaluate(tape.gradient(y, x, output_gradients=upstream))
+
+    bits = values.view(np.int64)
+    expected = np.empty_like(values)
+    is_positive_subnormal = np.logical_and(bits > 0, bits < 1 << 52)
+    expected[is_positive_subnormal] = (
+        float(2**536) / np.sqrt(bits[is_positive_subnormal].astype(np.float64))
+    )
+    with np.errstate(divide="ignore", invalid="ignore"):
+      expected[~is_positive_subnormal] = (
+          0.5 / np.sqrt(values[~is_positive_subnormal])
+      )
+    expected *= upstream
+
+    not_nan = ~np.isnan(expected)
+    self.assertAllEqual(~not_nan, np.isnan(actual))
+    self.assertAllClose(
+        expected[not_nan],
+        actual[not_nan],
+        rtol=1e-14,
+    )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFloat64PositiveSubnormalHigherOrderGradients(self):
+    expected_derivative = 2.2494568972715982e161
+    with ops.device("/CPU:0"):
+      x = constant_op.constant(
+          [np.nextafter(0.0, 1.0), np.nextafter(0.0, 1.0), 4.0],
+          dtype=dtypes.float64,
+      )
+      upstream = constant_op.constant(
+          [-2.0, 0.0, -2.0], dtype=dtypes.float64
+      )
+      with backprop.GradientTape() as outer_tape:
+        outer_tape.watch((x, upstream))
+        with backprop.GradientTape() as inner_tape:
+          inner_tape.watch(x)
+          y = math_ops.sqrt(x)
+        first_derivative = inner_tape.gradient(
+            y, x, output_gradients=upstream
+        )
+      second_derivative, upstream_derivative = outer_tape.gradient(
+          first_derivative, (x, upstream)
+      )
+
+    self.assertAllClose(
+        [-2.0 * expected_derivative, 0.0, -0.5],
+        self.evaluate(first_derivative),
+        rtol=1e-14,
+    )
+    self.assertAllEqual(
+        [np.inf, 0.0, 0.0625], self.evaluate(second_derivative)
+    )
+    self.assertAllClose(
+        [expected_derivative, expected_derivative, 0.25],
+        self.evaluate(upstream_derivative),
+        rtol=1e-14,
+    )
+
+
 class IgammaGradTest(test.TestCase):
 
   def _x_grad(self, op, a, x):

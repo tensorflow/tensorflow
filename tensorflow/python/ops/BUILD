@@ -2038,6 +2038,7 @@ py_library(
     deps = [
         ":array_ops",
         ":array_ops_gen",
+        ":custom_gradient",
         ":math_ops",
         ":math_ops_gen",
         ":special_math_ops",

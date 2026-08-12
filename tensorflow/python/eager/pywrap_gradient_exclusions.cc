@@ -50,7 +50,7 @@ auto OpGradientInfoInit(const T &a) {
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
     const tensorflow::string &op_name) {
-  static std::array<OpIndexInfo, 367> a = {{
+  static std::array<OpIndexInfo, 366> a = {{
       {"Acosh"},
       {"AllToAll", 1, {0}},
       {"ApproximateEqual"},
@@ -328,7 +328,6 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
       {"SparseTensorToCSRSparseMatrix"},
       {"SparseToSparseSetOperation"},
       {"Split", 1, {1}},
-      {"Sqrt"},
       {"SqrtGrad", 1, {1}},
       {"Stack"},
       {"StackClose"},
