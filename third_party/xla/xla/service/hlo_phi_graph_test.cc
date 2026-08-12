@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/hlo_phi_graph.h"
 
+#include <gmock/gmock.h>
 #include "xla/literal_util.h"
 #include "tsl/platform/test.h"
 
@@ -105,6 +106,16 @@ TEST_F(PhiGraphTest, NestedPhiReduction) {
   EXPECT_EQ(D.id(), phi_graph.FindOptimizedValue(B.id()));
   EXPECT_EQ(D.id(), phi_graph.FindOptimizedValue(C.id()));
   EXPECT_EQ(D.id(), phi_graph.FindOptimizedValue(E.id()));
+}
+
+TEST_F(PhiGraphTest, GetInputs) {
+  PhiGraph phi_graph;
+  HloValue A = NewHloValue(false);
+  HloValue B = NewHloValue(false);
+  HloValue C = NewHloValue(true);
+  phi_graph.RegisterPhi(C, {&A, &B});
+  EXPECT_THAT(phi_graph.GetInputs(C), ::testing::ElementsAre(A.id(), B.id()));
+  EXPECT_THAT(phi_graph.GetInputs(A), ::testing::IsEmpty());
 }
 
 }  // namespace
