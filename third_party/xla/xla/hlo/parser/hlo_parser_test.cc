@@ -5041,6 +5041,68 @@ ENTRY %test_entry () -> f32[10,20] {
               HasSubstr("DynamicReshape requires at least one operand."));
 }
 
+TEST_F(HloParserTest, ParseReshapeElementCountMismatch) {
+  // Regression test for https://github.com/openxla/xla/issues/46955: this
+  // used to crash on a fatal CHECK instead of returning a parse error.
+  const std::string original = R"(
+HloModule test_module
+ENTRY %test_entry {
+  %a = f32[4,8] parameter(0)
+  ROOT %result = f32[31] reshape(%a)
+}
+)";
+  auto status = ParseAndReturnUnverifiedModule(original).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("expects the same number of elements in result shape "
+                        "f32[31] and operand shape f32[4,8]"));
+}
+
+TEST_F(HloParserTest, ParseDynamicReshapeElementCountMismatch) {
+  const std::string original = R"(
+HloModule test_module
+ENTRY %test_entry {
+  %a = f32[4,<=8] parameter(0)
+  %size = s32[] parameter(1)
+  ROOT %result = f32[4,<=7] dynamic-reshape(%a, %size, %size)
+}
+)";
+  auto status = ParseAndReturnUnverifiedModule(original).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("expects the same number of elements in result shape "
+                        "f32[4,<=7] and operand shape f32[4,<=8]"));
+}
+
+TEST_F(HloParserTest, ParseDynamicReshapeDimSizeOperandCountMismatch) {
+  const std::string original = R"(
+HloModule test_module
+ENTRY %test_entry {
+  %a = f32[4,<=8] parameter(0)
+  %size = s32[] parameter(1)
+  ROOT %result = f32[4,<=8] dynamic-reshape(%a, %size)
+}
+)";
+  auto status = ParseAndReturnUnverifiedModule(original).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("expects one dim size operand per result dimension; "
+                        "got 1 for 2 result dimensions"));
+}
+
+TEST_F(HloParserTest, ParseReshapeUnboundedDynamicOperandStillParses) {
+  // An unbounded dynamic operand exempts the element-count check, matching
+  // HloInstruction::CreateReshape and CreateFromProto.
+  const std::string original = R"(
+HloModule test_module
+ENTRY %test_entry {
+  %a = f32[?] parameter(0)
+  ROOT %result = f32[3] reshape(%a)
+}
+)";
+  EXPECT_OK(ParseAndReturnUnverifiedModule(original).status());
+}
+
 TEST_F(HloParserTest, ParseCollectiveDeviceListV1) {
   const std::string original = "{{0,1},{2,3}}";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<CollectiveDeviceListBase> device_list,

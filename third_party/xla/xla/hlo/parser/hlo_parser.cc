@@ -2400,6 +2400,22 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         TokenError("DynamicReshape requires at least one operand.");
         return nullptr;
       }
+      if (!shape->IsArray() || !operands[0]->shape().IsArray() ||
+          ShapeUtil::StaticExtentProduct(*shape) !=
+              ShapeUtil::StaticExtentProduct(operands[0]->shape())) {
+        TokenError(
+            StrCat("expects the same number of elements in result shape ",
+                   ShapeUtil::HumanString(*shape), " and operand shape ",
+                   ShapeUtil::HumanString(operands[0]->shape())));
+        return nullptr;
+      }
+      if (operands.size() - 1 != shape->dimensions().size()) {
+        TokenError(
+            StrCat("expects one dim size operand per result dimension; got ",
+                   operands.size() - 1, " for ", shape->dimensions().size(),
+                   " result dimensions"));
+        return nullptr;
+      }
       return builder->AddInstruction(HloInstruction::CreateDynamicReshape(
           *shape, operands[0],
           absl::Span<HloInstruction* const>(operands).subspan(1)));
@@ -2411,6 +2427,16 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       if ((!preset_operands &&
            !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
           !ParseAttributes(attrs, allow_attributes, shape)) {
+        return nullptr;
+      }
+      if (!shape->IsArray() || !operands[0]->shape().IsArray() ||
+          (!operands[0]->shape().is_unbounded_dynamic() &&
+           ShapeUtil::StaticExtentProduct(*shape) !=
+               ShapeUtil::StaticExtentProduct(operands[0]->shape()))) {
+        TokenError(
+            StrCat("expects the same number of elements in result shape ",
+                   ShapeUtil::HumanString(*shape), " and operand shape ",
+                   ShapeUtil::HumanString(operands[0]->shape())));
         return nullptr;
       }
       return builder->AddInstruction(HloInstruction::CreateReshape(
