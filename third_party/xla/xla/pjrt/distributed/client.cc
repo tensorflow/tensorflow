@@ -105,6 +105,7 @@ DistributedRuntimeCoordinationServiceClient::
   }
   config.heartbeat_timeout = options.heartbeat_timeout;
   config.shutdown_barrier_timeout = options.shutdown_timeout;
+  config.extra_error_propagation_time = options.extra_error_propagation_time;
   config.agent_destruction_without_shutdown = !options.shutdown_on_destruction;
   config.poll_for_error_from_service_at_startup =
       options.poll_for_error_from_service_at_startup;
