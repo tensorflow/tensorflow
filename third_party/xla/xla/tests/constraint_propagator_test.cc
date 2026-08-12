@@ -967,5 +967,110 @@ ENTRY main {
   EXPECT_LE(p0_int.max, 85.0 / std::log(2.0) + 1.0);
 }
 
+// Tests that for C / Y with constant C > 0 and output interval <= max_val,
+// the denominator Y is constrained to Y >= C / max_val.
+TEST_F(ConstraintPropagatorTest, DivideConstantNumeratorPropagatesInterval) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[8,128] parameter(0)
+  c_two = f32[] constant(2.0)
+  b_two = f32[8,128] broadcast(c_two), dimensions={}
+  div = f32[8,128] divide(b_two, param_0)
+  c_four = f32[] constant(4.0)
+  b_four = f32[8,128] broadcast(c_four), dimensions={}
+  sub = f32[8,128] subtract(b_four, div)
+  ROOT sqrt = f32[8,128] sqrt(sub)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  // 4.0 - div >= 0 => div <= 4.0. With 2.0 / param_0 <= 4.0 => param_0 >= 0.5.
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_GE(p0_int.min, 0.5);
+}
+
+// Tests that for X / C with constant C > 0 and output interval [min_val,
+// max_val], the numerator X is scaled by C.
+TEST_F(ConstraintPropagatorTest, DivideConstantDenominatorPropagatesInterval) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[8,128] parameter(0)
+  c_two = f32[] constant(2.0)
+  b_two = f32[8,128] broadcast(c_two), dimensions={}
+  div = f32[8,128] divide(param_0, b_two)
+  c_ten = f32[] constant(10.0)
+  b_ten = f32[8,128] broadcast(c_ten), dimensions={}
+  sub = f32[8,128] subtract(b_ten, div)
+  ROOT sqrt = f32[8,128] sqrt(sub)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  // 10.0 - div >= 0 => div <= 10.0. With param_0 / 2.0 <= 10.0 => param_0
+  // <= 20.0.
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_LE(p0_int.max, 20.0);
+}
+
+// Tests that the gated residual sqrt pattern: sqrt(1.0 - (1.0 / (1.0 + x))^2)
+// constrains x >= 0.0 to guarantee (1 / (1 + x))^2 <= 1.0, preventing negative
+// square root radicands and NaNs.
+TEST_F(ConstraintPropagatorTest, GatedResidualSqrtSubPropagatesNonNegative) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[8,128] parameter(0)
+  c_one = f32[] constant(1.0)
+  b_one = f32[8,128] broadcast(c_one), dimensions={}
+  add = f32[8,128] add(b_one, param_0)
+  div = f32[8,128] divide(b_one, add)
+  mul = f32[8,128] multiply(div, div)
+  sub = f32[8,128] subtract(b_one, mul)
+  ROOT sqrt = f32[8,128] sqrt(sub)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_GE(p0_int.min, 0.0);
+}
+
+// Tests that for C / Y with constant C > 0 where output is strictly negative
+// (div <= -1.0), Y is constrained to [-1.0, 0.0).
+TEST_F(ConstraintPropagatorTest, DivideConstantNumeratorStrictNegativeOutput) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[8,128] parameter(0)
+  c_one = f32[] constant(1.0)
+  b_one = f32[8,128] broadcast(c_one), dimensions={}
+  div = f32[8,128] divide(b_one, param_0)
+  c_neg_one = f32[] constant(-1.0)
+  b_neg_one = f32[8,128] broadcast(c_neg_one), dimensions={}
+  sub = f32[8,128] subtract(b_neg_one, div)
+  ROOT sqrt = f32[8,128] sqrt(sub)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_LE(p0_int.max, 0.0);
+  EXPECT_GE(p0_int.min, -1.0);
+}
+
 }  // namespace
 }  // namespace xla

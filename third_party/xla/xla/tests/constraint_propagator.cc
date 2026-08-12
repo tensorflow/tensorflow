@@ -1033,38 +1033,128 @@ absl::Status ConstraintPropagator::PropagateConstraintsApprox(
     }
 
     case HloOpcode::kDivide: {
-      ConstraintInterval x_interval =
-          states_[instruction->operand(0)].GetConstraintInterval();
-      ConstraintInterval y_interval =
-          states_[instruction->operand(1)].GetConstraintInterval();
-      if (output_interval.IsPositive()) {
-        // if x/y >= 0, then bias to positive, x and y > 0.
-        states_[instruction->operand(0)].AddConstraint(
-            ConstraintInterval::Positive());
-        states_[instruction->operand(1)].AddConstraint(
-            ConstraintInterval::StrictPositive());
-      } else if (output_interval.IsNegative()) {
-        // if x/y < 0,
-        //  if x < 0, y > 0 OR
-        //  if y < 0, x > 0 OR
-        //  bias towards x < 0, y > 0.
-        if (x_interval.IsNegative()) {
-          states_[instruction->operand(1)].AddConstraint(
-              ConstraintInterval::StrictPositive());
-        } else if (y_interval.IsNegative()) {
-          states_[instruction->operand(0)].AddConstraint(
-              ConstraintInterval::StrictPositive());
-        } else {
-          // Heuristic: For no specific reason, bias towards x < 0, y > 0.
-          states_[instruction->operand(0)].AddConstraint(
-              ConstraintInterval::StrictNegative());
-          states_[instruction->operand(1)].AddConstraint(
-              ConstraintInterval::StrictPositive());
+      std::optional<double> c0 = GetConstantValue(instruction->operand(0));
+      std::optional<double> c1 = GetConstantValue(instruction->operand(1));
+
+      if (c0.has_value()) {
+        // Z = C / Y with constant numerator C.
+        double c = *c0;
+        const HloInstruction* y_op = instruction->operand(1);
+        ConstraintInterval y_interval = states_[y_op].GetConstraintInterval();
+
+        if (c > 0.0) {
+          if (output_interval.max < 0.0 ||
+              (output_interval.min < 0.0 && y_interval.IsNegative())) {
+            // Negative branch (Y < 0 => Z < 0):
+            // Z >= z_min (with z_min < 0) => Y <= C / z_min
+            // Z <= z_max (with z_max < 0) => Y >= C / z_max
+            double y_min = (output_interval.max < 0.0)
+                               ? c / output_interval.max
+                               : ConstraintInterval::kMin;
+            double y_max = (output_interval.min > ConstraintInterval::kMin &&
+                            output_interval.min < 0.0)
+                               ? c / output_interval.min
+                               : 0.0;
+            states_[y_op].AddConstraint(
+                ConstraintInterval{y_min, y_max, /*exclude_zero=*/true});
+          } else {
+            // Default / Positive branch (Y > 0 => Z > 0):
+            // Z <= z_max (with z_max > 0) => Y >= C / z_max
+            // Z >= z_min (with z_min > 0) => Y <= C / z_min
+            double y_min = (output_interval.max < ConstraintInterval::kMax &&
+                            output_interval.max > 0.0)
+                               ? c / output_interval.max
+                               : 0.0;
+            double y_max = output_interval.min > 0.0 ? c / output_interval.min
+                                                     : ConstraintInterval::kMax;
+            states_[y_op].AddConstraint(
+                ConstraintInterval{y_min, y_max, /*exclude_zero=*/true});
+          }
+        } else if (c < 0.0) {
+          if (output_interval.min > 0.0 ||
+              (output_interval.max > 0.0 && y_interval.IsNegative())) {
+            // Negative branch (Y < 0 => Z > 0):
+            // Z <= z_max (with z_max > 0) => Y <= C / z_max
+            // Z >= z_min (with z_min > 0) => Y >= C / z_min
+            double y_min = output_interval.min > 0.0 ? c / output_interval.min
+                                                     : ConstraintInterval::kMin;
+            double y_max = (output_interval.max < ConstraintInterval::kMax &&
+                            output_interval.max > 0.0)
+                               ? c / output_interval.max
+                               : 0.0;
+            states_[y_op].AddConstraint(
+                ConstraintInterval{y_min, y_max, /*exclude_zero=*/true});
+          } else {
+            // Default / Positive branch (Y > 0 => Z < 0):
+            // Z >= z_min (with z_min < 0) => Y >= C / z_min
+            // Z <= z_max (with z_max < 0) => Y <= C / z_max
+            double y_min = (output_interval.min > ConstraintInterval::kMin &&
+                            output_interval.min < 0.0)
+                               ? c / output_interval.min
+                               : 0.0;
+            double y_max = output_interval.max < 0.0 ? c / output_interval.max
+                                                     : ConstraintInterval::kMax;
+            states_[y_op].AddConstraint(
+                ConstraintInterval{y_min, y_max, /*exclude_zero=*/true});
+          }
         }
-      }
-      if (output_interval.exclude_zero) {
-        states_[instruction->operand(0)].AddConstraint(
-            ConstraintInterval::NonZero());
+      } else if (c1.has_value()) {
+        // Z = X / C with constant denominator C. Equivalent to X = C * Z.
+        double c = *c1;
+        const HloInstruction* x_op = instruction->operand(0);
+        if (c > 0.0) {
+          double x_min = output_interval.min > ConstraintInterval::kMin
+                             ? output_interval.min * c
+                             : ConstraintInterval::kMin;
+          double x_max = output_interval.max < ConstraintInterval::kMax
+                             ? output_interval.max * c
+                             : ConstraintInterval::kMax;
+          states_[x_op].AddConstraint(
+              ConstraintInterval{x_min, x_max, output_interval.exclude_zero});
+        } else if (c < 0.0) {
+          double x_min = output_interval.max < ConstraintInterval::kMax
+                             ? output_interval.max * c
+                             : ConstraintInterval::kMin;
+          double x_max = output_interval.min > ConstraintInterval::kMin
+                             ? output_interval.min * c
+                             : ConstraintInterval::kMax;
+          states_[x_op].AddConstraint(
+              ConstraintInterval{x_min, x_max, output_interval.exclude_zero});
+        }
+      } else {
+        ConstraintInterval x_interval =
+            states_[instruction->operand(0)].GetConstraintInterval();
+        ConstraintInterval y_interval =
+            states_[instruction->operand(1)].GetConstraintInterval();
+        if (output_interval.IsPositive()) {
+          // if x/y >= 0, then bias to positive, x and y > 0.
+          states_[instruction->operand(0)].AddConstraint(
+              ConstraintInterval::Positive());
+          states_[instruction->operand(1)].AddConstraint(
+              ConstraintInterval::StrictPositive());
+        } else if (output_interval.IsNegative()) {
+          // if x/y < 0,
+          //  if x < 0, y > 0 OR
+          //  if y < 0, x > 0 OR
+          //  bias towards x < 0, y > 0.
+          if (x_interval.IsNegative()) {
+            states_[instruction->operand(1)].AddConstraint(
+                ConstraintInterval::StrictPositive());
+          } else if (y_interval.IsNegative()) {
+            states_[instruction->operand(0)].AddConstraint(
+                ConstraintInterval::StrictPositive());
+          } else {
+            // Heuristic: For no specific reason, bias towards x < 0, y > 0.
+            states_[instruction->operand(0)].AddConstraint(
+                ConstraintInterval::StrictNegative());
+            states_[instruction->operand(1)].AddConstraint(
+                ConstraintInterval::StrictPositive());
+          }
+        }
+        if (output_interval.exclude_zero) {
+          states_[instruction->operand(0)].AddConstraint(
+              ConstraintInterval::NonZero());
+        }
       }
       break;
     }
