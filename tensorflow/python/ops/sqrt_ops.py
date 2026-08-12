@@ -32,14 +32,18 @@ def _sqrt_grad_with_subnormal_fallback(x, grad):
   # A positive subnormal has no exponent bits and represents
   # mantissa * 2**-1074. Therefore, 1 / (2 * sqrt(x)) is
   # 2**536 / sqrt(mantissa).
+  zero_i64 = constant_op.constant(0, dtype=dtypes.int64)
+  one_i64 = constant_op.constant(1, dtype=dtypes.int64)
+  zero_f64 = constant_op.constant(0.0, dtype=dtypes.float64)
+  one_f64 = constant_op.constant(1.0, dtype=dtypes.float64)
   x_bits = array_ops.bitcast(x, dtypes.int64)
   min_normal_bits = constant_op.constant(1 << 52, dtype=dtypes.int64)
   is_positive_subnormal = gen_math_ops.logical_and(
-      gen_math_ops.greater(x_bits, 0),
+      gen_math_ops.greater(x_bits, zero_i64),
       gen_math_ops.less(x_bits, min_normal_bits),
   )
   safe_mantissa_bits = array_ops.where_v2(
-      is_positive_subnormal, x_bits, 1
+      is_positive_subnormal, x_bits, one_i64
   )
 
   @custom_gradient.custom_gradient
@@ -53,10 +57,10 @@ def _sqrt_grad_with_subnormal_fallback(x, grad):
     def grad_fn(output_grad):
       has_gradient = gen_math_ops.logical_and(
           is_positive_subnormal,
-          gen_math_ops.not_equal(output_grad, 0.0),
+          gen_math_ops.not_equal(output_grad, zero_f64),
       )
-      safe_x = array_ops.where_v2(has_gradient, x_in, 1.0)
-      safe_value = array_ops.where_v2(has_gradient, value, 0.0)
+      safe_x = array_ops.where_v2(has_gradient, x_in, one_f64)
+      safe_value = array_ops.where_v2(has_gradient, value, zero_f64)
       return output_grad * (-0.5 * safe_value / safe_x), None
 
     return value, grad_fn
@@ -65,7 +69,9 @@ def _sqrt_grad_with_subnormal_fallback(x, grad):
   is_not_positive_subnormal = gen_math_ops.logical_not(
       is_positive_subnormal
   )
-  safe_ordinary_x = array_ops.where_v2(is_not_positive_subnormal, x, 1.0)
+  safe_ordinary_x = array_ops.where_v2(
+      is_not_positive_subnormal, x, one_f64
+  )
   ordinary_y = gen_math_ops.sqrt(safe_ordinary_x)
   ordinary_result = gen_math_ops.sqrt_grad(ordinary_y, grad)
   result = array_ops.where_v2(
@@ -79,19 +85,19 @@ def _sqrt_grad_with_subnormal_fallback(x, grad):
     # overflows with the correct sign. Returning it for x directly avoids
     # differentiating through the discrete bit representation.
     use_x_gradient = gen_math_ops.logical_or(
-        is_not_positive_subnormal, gen_math_ops.not_equal(grad, 0.0)
+        is_not_positive_subnormal, gen_math_ops.not_equal(grad, zero_f64)
     )
-    safe_x = array_ops.where_v2(use_x_gradient, x, 1.0)
-    safe_result = array_ops.where_v2(use_x_gradient, result, 0.0)
+    safe_x = array_ops.where_v2(use_x_gradient, x, one_f64)
+    safe_result = array_ops.where_v2(use_x_gradient, result, zero_f64)
 
     @custom_gradient.custom_gradient
     def _stable_x_derivative(x_in, result_in):
       value = -0.5 * result_in / x_in
 
       def grad_fn(grad):
-        has_gradient = gen_math_ops.not_equal(grad, 0.0)
-        safe_x = array_ops.where_v2(has_gradient, x_in, 1.0)
-        safe_value = array_ops.where_v2(has_gradient, value, 0.0)
+        has_gradient = gen_math_ops.not_equal(grad, zero_f64)
+        safe_x = array_ops.where_v2(has_gradient, x_in, one_f64)
+        safe_value = array_ops.where_v2(has_gradient, value, zero_f64)
         return grad * (-safe_value / safe_x), grad * (-0.5 / safe_x)
 
       return value, grad_fn
