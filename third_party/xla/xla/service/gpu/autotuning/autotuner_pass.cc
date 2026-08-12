@@ -277,10 +277,16 @@ ConfigAssigner::Options GetConfigAssignerOptions(
       debug_options.xla_gpu_exclude_nondeterministic_ops() ||
       debug_options.xla_gpu_autotune_level() == 0 || is_deviceless;
 
+  options.prefer_estimated_configs =
+      debug_options.xla_gpu_experimental_cost_model_gemm_tiling_default() &&
+      !debug_options.xla_gpu_exhaustive_tiling_search();
+
   options.expect_all_instructions_in_cache =
       debug_options.xla_gpu_require_complete_aot_autotune_results();
   options.dump_hlos = debug_options.xla_gpu_dump_autotuned_gemm_fusions() ||
                       debug_options.xla_gpu_dump_autotuned_instructions();
+  options.use_new_cache_format =
+      debug_options.xla_gpu_use_new_autotune_cache_format();
 
   return options;
 }
@@ -334,6 +340,8 @@ Autotuner::Options GetAutotunerOptions(const DebugOptions& debug_options,
       debug_options.xla_gpu_crash_on_verification_failures();
   autotuner_options.dump_logs_to =
       debug_options.xla_gpu_dump_autotune_logs_to();
+  autotuner_options.use_new_logging_format =
+      debug_options.xla_gpu_use_new_autotune_cache_format();
   return autotuner_options;
 }
 
@@ -462,6 +470,8 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
           allocator);
       Autotuner::Options autotuner_options =
           GetAutotunerOptions(debug_options, is_buffer_check_supported);
+      autotuner_options.cache_context = AutotuneCacheContext::Create(
+          target_config->device_description, orchestrator->codegen_backends());
 
       std::vector<std::unique_ptr<Profiler>> profilers;
       profilers.push_back(std::move(profiler));

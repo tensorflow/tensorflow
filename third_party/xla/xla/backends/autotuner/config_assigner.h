@@ -45,10 +45,14 @@ class ConfigAssigner {
   // readability.
   struct Options {
     bool select_first_config = false;
+    bool prefer_estimated_configs = false;
     bool expect_all_instructions_in_cache = false;
     // If true, the config-assigner will dump HLO modules before and after
     // applying the best config.
     bool dump_hlos = false;
+    // TODO(b/545120488): Remove when xla_gpu_use_new_autotune_cache_format flag
+    // is removed.
+    bool use_new_cache_format = false;
 
     std::string ToString() const;
   };
@@ -97,12 +101,12 @@ class ConfigAssigner {
   // instruction. The config could be one of the following depending on the
   // options:
   // 1. Check the cache.
-  // 2. Check the default config.
-  // 3. Check the first supported config.
+  // 2. Check the first compilable estimated config (if cost model is enabled).
+  // 3. Check the first compilable config or the default config (if
+  //    select_first_config is enabled).
   // 4. Tune the instruction.
   // Tuned config is updated in the cache if it is provided.
   tsl::Future<Config> GetConfig(const HloInstruction* instr);
-
 
   // Returns the cached config for the given HLO instruction, if any.
   // Otherwise, returns std::nullopt.
