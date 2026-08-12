@@ -459,6 +459,23 @@ def swish(features, beta=1.0):
   beta = ops.convert_to_tensor(beta, name="beta")
   beta = math_ops.cast(beta, features.dtype)
 
+  def multiply_with_sigmoid(multiplier, logits, sigmoid_logits):
+    """Computes `multiplier * sigmoid(logits)` without early underflow."""
+    # sigmoid(logits) may underflow even when the scaled result is representable.
+    # In that range sigmoid(logits) and exp(logits) differ by less than the
+    # dtype's precision, so evaluate the product in the log domain.
+    sigmoid_underflow = math_ops.logical_and(
+        math_ops.equal(sigmoid_logits, 0.0), math_ops.is_finite(logits))
+    safe_multiplier = array_ops.where_v2(
+        sigmoid_underflow, multiplier, array_ops.ones_like(multiplier))
+    safe_logits = array_ops.where_v2(
+        sigmoid_underflow, logits, array_ops.zeros_like(logits))
+    underflow_result = math_ops.sign(safe_multiplier) * math_ops.exp(
+        safe_logits + math_ops.log(math_ops.abs(safe_multiplier)))
+    return array_ops.where_v2(
+        sigmoid_underflow, underflow_result,
+        multiplier * sigmoid_logits)
+
   @custom_gradient.custom_gradient
   def swish_impl(features, beta):
 
@@ -471,17 +488,22 @@ def swish(features, beta=1.0):
       # de-duped with the forward pass) and we can free the sigmoid(features)
       # expression immediately after use during the forward pass.
       with ops.control_dependencies([dy]):
-        sigmoid_features = math_ops.sigmoid(beta * features)
+        logits = beta * features
+        sigmoid_features = math_ops.sigmoid(logits)
 
-      activation_grad = (
-          sigmoid_features * (1.0 + (beta * features) *
-                              (1.0 - sigmoid_features)))
+      activation_multiplier = 1.0 + logits * (1.0 - sigmoid_features)
+      activation_grad = multiply_with_sigmoid(
+          activation_multiplier, logits, sigmoid_features)
       beta_grad = math_ops.reduce_sum(
-          dy * math_ops.square(features) * sigmoid_features *
-          (1.0 - sigmoid_features))
+          dy * multiply_with_sigmoid(
+              math_ops.square(features) * (1.0 - sigmoid_features), logits,
+              sigmoid_features))
       return (dy * activation_grad, beta_grad)
 
-    return features * math_ops.sigmoid(beta * features), grad
+    logits = beta * features
+    sigmoid_features = math_ops.sigmoid(logits)
+    return multiply_with_sigmoid(
+        features, logits, sigmoid_features), grad
 
   return swish_impl(features, beta)
 
