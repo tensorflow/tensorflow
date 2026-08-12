@@ -498,6 +498,12 @@ class CommonPjRtClient : public PjRtClient {
                                      const Shape& shape,
                                      MutableLiteralBase* literal);
 
+  // Does the provided shape require runtime shape metadata when being
+  // linearized into the provided memory space?
+  bool RequiresRuntimeShapeMetadata(
+      const xla::Shape& shape,
+      const PjRtMemorySpace* absl_nonnull memory_space) const;
+
  private:
   mutable absl::Mutex gang_scheduler_mu_;
   absl::Mutex transpose_mu_;
