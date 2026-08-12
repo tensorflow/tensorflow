@@ -66,7 +66,7 @@ static RaggedAllToAllConfig MakeConfig() {
   config.num_input_rows = kNumInputRows;
   config.num_row_elements = kNumRowElements;
   config.one_shot_kernel_enabled = true;
-  config.allow_fallback_to_nccl = false;
+  config.allow_fallback_to_nccl = true;
   return config;
 }
 
