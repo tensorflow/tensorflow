@@ -1126,8 +1126,6 @@ message DebugOptions {
   // Enable flush-to-zero semantics in the GPU backend.
   optional bool xla_gpu_ftz = 62;
 
-  optional bool xla_gpu_fused_attention_use_cudnn_rng = 235;
-
   // Maximum number of candidate configs considered during autotuning non-gemm
   // fusions.
   optional int32 xla_gpu_fusion_autotune_top_k_configs = 476;
@@ -1883,6 +1881,7 @@ message DebugOptions {
   reserved "xla_gpu_experimental_ragged_all_to_all_use_barrier";
   reserved "xla_gpu_experimental_use_autotuner_pass";
   reserved "xla_gpu_experimental_use_raft_select_k";
+  reserved "xla_gpu_fused_attention_use_cudnn_rng";
   reserved "xla_gpu_graph_eviction_timeout_seconds";
   reserved "xla_gpu_graph_level";
   reserved "xla_gpu_graph_num_runs_to_instantiate";
@@ -1926,11 +1925,11 @@ message DebugOptions {
       158, 160, 161, 162, 165, 167, 168, 169, 171, 172, 173, 176, 177, 178, 179,
       180, 183, 184, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202,
       204, 206, 207, 211, 214, 217, 218, 220, 221, 226, 227, 229, 230, 231, 233,
-      234, 238, 239, 241, 242, 243, 249, 263, 264, 266, 270, 271, 275, 276, 278,
-      279, 281, 282, 286, 298, 299, 300, 302, 303, 309, 313, 314, 319, 320, 325,
-      326, 332, 346, 352, 354, 355, 358, 361, 367, 369, 371, 376, 385, 388, 389,
-      394, 396, 398, 402, 413, 420, 423, 430, 435, 443, 446, 450, 458, 464, 477,
-      480;
+      234, 235, 238, 239, 241, 242, 243, 249, 263, 264, 266, 270, 271, 275, 276,
+      278, 279, 281, 282, 286, 298, 299, 300, 302, 303, 309, 313, 314, 319, 320,
+      325, 326, 332, 346, 352, 354, 355, 358, 361, 367, 369, 371, 376, 385, 388,
+      389, 394, 396, 398, 402, 413, 420, 423, 430, 435, 443, 446, 450, 458, 464,
+      477, 480;
 }
 
 // Contains flags which affects the GPU compilation result.

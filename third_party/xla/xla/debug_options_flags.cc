@@ -293,8 +293,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // Default to true for backwards compatibility (always flush denormals).
   opts.set_xla_cpu_ftz(true);
 
-  opts.set_xla_gpu_fused_attention_use_cudnn_rng(false);
-
   // By default, copy TF's Eigen style min_max behavior with nans.
   opts.set_xla_cpu_enable_fast_min_max(true);
 
@@ -2127,11 +2125,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
   flag_list->push_back(tsl::Flag("xla_gpu_enable_cudnn_fmha",
                                  noop_flag_setter<bool>, false,
                                  "[Deprecated, do not use]"));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_fused_attention_use_cudnn_rng",
-      bool_setter_for(&DebugOptions::set_xla_gpu_fused_attention_use_cudnn_rng),
-      debug_options->xla_gpu_fused_attention_use_cudnn_rng(),
-      "Use cudnn random number generator for fused attention kernel."));
+
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_cudnn_layer_norm",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_cudnn_layer_norm),
