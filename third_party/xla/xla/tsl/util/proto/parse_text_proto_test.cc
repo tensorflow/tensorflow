@@ -22,7 +22,7 @@ namespace tsl::proto_testing {
 namespace {
 
 TEST(ParseTextProtoOrDieTest, ParsesValidTextProto) {
-  Foo foo = ParseTextProtoOrDie<Foo>(R"pb(
+  Foo foo = ParseTextProtoOrDie(R"pb(
     s1: "hello" i2: 42 r3: "a" r3: "b"
   )pb");
   EXPECT_EQ(foo.s1(), "hello");
