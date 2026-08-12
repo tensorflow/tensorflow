@@ -49,16 +49,6 @@ package(
 )
 
 cc_library(
-    name = "casts",
-    hdrs = ["casts.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-)
-
-cc_library(
     name = "context",
     hdrs = ["@tsl//tsl/platform:context.h"],
     tags = [
@@ -641,7 +631,6 @@ filegroup(
 filegroup(
     name = "mobile_hdrs_no_runtime",
     srcs = [
-        "casts.h",
         "context.h",
         "posix_file_system.h",
         "stacktrace.h",
@@ -669,7 +658,6 @@ filegroup(
 filegroup(
     name = "mobile_hdrs_only_runtime",
     srcs = [
-        "casts.h",
         "unbounded_work_queue.h",
     ] + if_not_fuchsia([
         "subprocess.h",
