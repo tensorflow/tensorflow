@@ -47,6 +47,7 @@ package_group(
         "//third_party/iree/...",
         "//third_party/odml/infra/...",
         "//third_party/odml/litert/...",
+        "//third_party/odml/model_explorer/...",
         "//waymo/accelerator/alpine/tools/...",
         "//waymo/ml/compiler/mlir/...",
     ],
