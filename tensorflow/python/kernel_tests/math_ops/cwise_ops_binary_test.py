@@ -1099,5 +1099,17 @@ class ComparisonOpTest(test.TestCase):
           values)
 
 
+
+  def testLargeBroadcastGPU(self):
+    # Regression test for #124949
+    if not test_lib.is_gpu_available():
+      self.skipTest("GPU not available")
+    with self.session(use_gpu=True):
+      # Broadcast vector of size (2^31 / 1024 + 1, 1024) with scalar
+      a = array_ops.zeros((2097153, 1024), dtype=dtypes.float32)
+      b = array_ops.ones((1, 1024), dtype=dtypes.float32)
+      c = a + b
+      self.assertEqual(c.shape, (2097153, 1024))
+
 if __name__ == "__main__":
   test.main()
