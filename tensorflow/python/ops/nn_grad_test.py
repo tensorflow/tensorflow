@@ -218,6 +218,26 @@ class EluGradOpTest(test.TestCase):
 
 class SeluGradOpTest(test.TestCase):
 
+  @test_util.run_in_graph_and_eager_modes
+  def testSeluGradPreservesSmallNegativeGradients(self):
+    scale_alpha = 1.7580993408473768599402175208123
+    test_cases = (
+        (dtypes.float32, -20.0, 1e-6),
+        (dtypes.float64, -700.0, 1e-14),
+    )
+    for dtype, value, rtol in test_cases:
+      with self.subTest(dtype=dtype.name):
+        inputs = constant_op.constant(value, dtype=dtype)
+        with backprop.GradientTape() as tape:
+          tape.watch(inputs)
+          selu = gen_nn_ops.selu(inputs)
+
+        selu_grad = tape.gradient(selu, inputs)
+        np_dtype = dtype.as_numpy_dtype
+        expected = np_dtype(scale_alpha) * np.exp(np_dtype(value))
+        self.assertAllClose(
+            expected, self.evaluate(selu_grad), rtol=rtol, atol=0)
+
   @test_util.run_deprecated_v1
   def testSeluGradGradWRTgrad_ys(self):
     inputs = constant_op.constant(
