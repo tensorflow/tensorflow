@@ -1348,6 +1348,7 @@ cc_test(
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
+        "@XNNPACK",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers//:runtime_cc",
