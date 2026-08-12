@@ -434,7 +434,6 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@llvm-project//llvm:Support",
         "@xla//xla:shape_util",
         "@xla//xla/pjrt:common_pjrt_client",
         "@xla//xla/pjrt:device_event",
@@ -586,7 +585,6 @@ tf_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
-        "@llvm-project//llvm:Support",
         "@xla//xla/hlo/ir:hlo",
         "@xla//xla/pjrt:common_pjrt_client",
         "@xla//xla/pjrt:pjrt_client",
@@ -595,7 +593,6 @@ tf_cc_test(
         "@xla//xla/python/pjrt_ifrt",
         "@xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
         "@xla//xla/tsl/platform:env",
-        "@xla//xla/tsl/platform:status_matchers",
         "@xla//xla/tsl/platform:statusor",
     ],
 )

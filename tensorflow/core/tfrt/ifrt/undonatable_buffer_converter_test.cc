@@ -23,13 +23,13 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
-#include "llvm/Support/Casting.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/undonatable_common_pjrt_buffer.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/tsl/platform/env.h"
@@ -62,7 +62,7 @@ absl::StatusOr<xla::ifrt::ArrayRef> MakeTestArray(
 
 void VerifyUndonatableAndContentsMatch(xla::ifrt::Array* array,
                                        const tensorflow::Tensor& expected) {
-  auto* pjrt_array = llvm::dyn_cast<xla::ifrt::PjRtCompatibleArray>(array);
+  auto* pjrt_array = xla::ifrt::dyn_cast<xla::ifrt::PjRtCompatibleArray>(array);
   ASSERT_NE(pjrt_array, nullptr);
   ASSERT_EQ(pjrt_array->pjrt_buffers().size(), 1);
   for (const std::shared_ptr<xla::PjRtBuffer>& buffer :
