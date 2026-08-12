@@ -30,6 +30,7 @@ from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_grad
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import sqrt_ops
 from tensorflow.python.platform import test
 
 
@@ -836,6 +837,22 @@ class NextAfterTest(test.TestCase):
 
 class SqrtGradTest(test.TestCase):
 
+  def testCustomGradientWrapperIsFloat64Only(self):
+    with ops.Graph().as_default():
+      float32_result = sqrt_ops.sqrt(
+          constant_op.constant(4.0, dtype=dtypes.float32)
+      )
+      float64_result = sqrt_ops.sqrt(
+          constant_op.constant(4.0, dtype=dtypes.float64)
+      )
+      raw_float64_result = math_ops.sqrt(
+          constant_op.constant(4.0, dtype=dtypes.float64)
+      )
+
+    self.assertEqual(float32_result.op.type, "Sqrt")
+    self.assertEqual(float64_result.op.type, "IdentityN")
+    self.assertEqual(raw_float64_result.op.type, "Sqrt")
+
   @test_util.run_in_graph_and_eager_modes
   def testFloat64PositiveSubnormalGradient(self):
     tiny = np.finfo(np.float64).tiny
@@ -862,7 +879,7 @@ class SqrtGradTest(test.TestCase):
       x = constant_op.constant(values, dtype=dtypes.float64)
       with backprop.GradientTape() as tape:
         tape.watch(x)
-        y = math_ops.sqrt(x)
+        y = sqrt_ops.sqrt(x)
       actual = self.evaluate(tape.gradient(y, x, output_gradients=upstream))
 
     bits = values.view(np.int64)
@@ -900,7 +917,7 @@ class SqrtGradTest(test.TestCase):
         outer_tape.watch((x, upstream))
         with backprop.GradientTape() as inner_tape:
           inner_tape.watch(x)
-          y = math_ops.sqrt(x)
+          y = sqrt_ops.sqrt(x)
         first_derivative = inner_tape.gradient(
             y, x, output_gradients=upstream
         )

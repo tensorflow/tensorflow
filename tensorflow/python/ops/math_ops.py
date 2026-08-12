@@ -5771,7 +5771,6 @@ def ceil(x, name=None):
   return gen_math_ops.ceil(x, name)
 
 
-@tf_export("math.sqrt", "sqrt")
 @dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def sqrt(x, name=None):  # pylint: disable=redefined-builtin

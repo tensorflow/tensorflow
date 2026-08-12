@@ -2038,7 +2038,6 @@ py_library(
     deps = [
         ":array_ops",
         ":array_ops_gen",
-        ":custom_gradient",
         ":math_ops",
         ":math_ops_gen",
         ":special_math_ops",
@@ -2104,6 +2103,24 @@ py_library(
         "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "sqrt_ops",
+    srcs = ["sqrt_ops.py"],
+    strict_deps = True,
+    deps = [
+        ":array_ops",
+        ":custom_gradient",
+        ":math_ops",
+        ":math_ops_gen",
+        "//tensorflow/python/framework:composite_tensor",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -3606,6 +3623,7 @@ cuda_py_strict_test(
         ":gradients",
         ":math_grad",
         ":math_ops",
+        ":sqrt_ops",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
@@ -4558,6 +4576,7 @@ py_library(
         ":nn_impl",
         ":nn_ops",
         ":resource_variable_ops",
+        ":sqrt_ops",
         ":special_math_ops",
         "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:constant_op",
