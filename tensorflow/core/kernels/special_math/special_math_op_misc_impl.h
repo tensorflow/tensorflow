@@ -19,7 +19,6 @@ limitations under the License.
 #define _USE_MATH_DEFINES
 #include <cmath>
 #include <functional>
-#include <limits>
 #include <type_traits>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
@@ -686,7 +685,10 @@ struct bessel_i0_stable_op {
       return exp(ax) * i0e;
     }
     if (i0e == Scalar(0)) {
-      return std::numeric_limits<Scalar>::infinity();
+      // NumTraits::infinity() / numeric_limits::infinity() are host-only
+      // and fail CUDA. highest()*highest() overflows to +inf on device.
+      const Scalar hi = NumTraits<Scalar>::highest();
+      return hi * hi;
     }
     return exp(ax + log(i0e));
   }
