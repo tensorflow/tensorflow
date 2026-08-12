@@ -39,7 +39,7 @@ def _sqrt_grad_with_subnormal_fallback(x, y, grad):
       gen_math_ops.less(x_bits, min_normal_bits),
   )
   safe_mantissa_bits = array_ops.where_v2(
-      is_positive_subnormal, x_bits, array_ops.ones_like(x_bits)
+      is_positive_subnormal, x_bits, 1
   )
   mantissa = gen_math_ops.cast(safe_mantissa_bits, dtypes.float64)
   subnormal_derivative = (
@@ -61,23 +61,19 @@ def _sqrt_grad_with_subnormal_fallback(x, y, grad):
         is_positive_subnormal, gen_math_ops.not_equal(grad, 0.0)
     )
     safe_x = array_ops.where_v2(
-        has_subnormal_gradient, x, array_ops.ones_like(x)
+        has_subnormal_gradient, x, 1.0
     )
     safe_result = array_ops.where_v2(
-        has_subnormal_gradient, result, array_ops.zeros_like(result)
+        has_subnormal_gradient, result, 0.0
     )
     x_derivative = -0.5 * safe_result / safe_x
-    safe_y = array_ops.where_v2(
-        is_positive_subnormal, array_ops.ones_like(y), y
-    )
+    safe_y = array_ops.where_v2(is_positive_subnormal, 1.0, y)
     y_derivative = array_ops.where_v2(
         is_positive_subnormal,
-        array_ops.zeros_like(y),
+        0.0,
         -gen_math_ops.sqrt_grad(safe_y, grad) / safe_y,
     )
-    ordinary_derivative = gen_math_ops.sqrt_grad(
-        y, array_ops.ones_like(grad)
-    )
+    ordinary_derivative = 0.5 / y
     grad_derivative = array_ops.where_v2(
         is_positive_subnormal,
         subnormal_derivative,
