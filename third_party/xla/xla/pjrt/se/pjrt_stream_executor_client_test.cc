@@ -147,6 +147,7 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>>
 MakeTestPjRtStreamExecutorClient(
     std::string platform_name, LocalClient* client,
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
+    std::vector<std::unique_ptr<LocalDeviceState>> local_device_states,
     int process_index,
     std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces,
     std::shared_ptr<const xla::PjRtTopologyDescription> topology,
@@ -164,15 +165,23 @@ MakeTestPjRtStreamExecutorClient(
     }
   }
   auto raw_client = std::make_unique<PjRtStreamExecutorRawClient>(
-      std::move(allocator), client, std::move(host_memory_allocator),
-      should_stage_host_to_device_transfers,
+      std::move(local_device_states), std::move(allocator), client,
+      std::move(host_memory_allocator), should_stage_host_to_device_transfers,
       MakeUnboundedAsyncWorkRunner("pjrt_async_work_runner",
                                    {/*stack_size=*/512 * 1024}),
       first_executor, std::move(gpu_run_options));
-  return std::make_unique<PjRtStreamExecutorClient>(
-      std::move(platform_name), std::move(devices), process_index,
-      std::move(memory_spaces), std::move(topology), std::move(raw_client),
-      std::move(kv_store));
+  auto platform_id = tsl::Fingerprint64(platform_name);
+  auto result = std::make_unique<PjRtStreamExecutorClient>(
+      platform_id, std::move(platform_name), "<unknown>", process_index,
+      std::move(topology), std::move(raw_client), std::move(kv_store));
+  std::vector<std::unique_ptr<PjRtDevice>> devices_copy;
+  devices_copy.reserve(devices.size());
+  for (auto& device : devices) {
+    device->SetClient(result.get());
+    devices_copy.push_back(std::move(device));
+  }
+  result->AttachDevices(std::move(devices_copy), std::move(memory_spaces));
+  return result;
 }
 
 absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
@@ -180,14 +189,15 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
   ABSL_ASSIGN_OR_RETURN(se::Platform * platform, PlatformUtil::GetPlatform("Host"));
   ABSL_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                    platform->ExecutorForDevice(0));
-  auto device_state = std::make_unique<LocalDeviceState>(
+  std::vector<std::unique_ptr<LocalDeviceState>> local_device_states;
+  local_device_states.emplace_back(std::make_unique<LocalDeviceState>(
       executor, local_client, LocalDeviceState::kSynchronous,
       /*max_inflight_computations=*/32,
-      /*allow_event_reuse=*/false, /*use_callback_stream=*/false);
-  int local_device_id = device_state->local_device_id().value();
+      /*allow_event_reuse=*/false, /*use_callback_stream=*/false));
+  int local_device_id = local_device_states.back()->local_device_id().value();
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
   devices.emplace_back(std::make_unique<PjRtStreamExecutorDevice>(
-      0, std::move(device_state), local_device_id, /*process_index=*/0,
+      0, local_device_states.back().get(), local_device_id, /*process_index=*/0,
       /*process_index_in_partition=*/0, /*partition_index=*/0, "cpu"));
   std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces;
   memory_spaces.emplace_back(std::make_unique<PjRtStreamExecutorMemorySpace>(
@@ -196,7 +206,7 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
                                     /*is_default=*/true);
   auto topology = CreateCpuTopologyDescription(devices.size());
   return MakeTestPjRtStreamExecutorClient(
-      "cpu", local_client, std::move(devices),
+      "cpu", local_client, std::move(devices), std::move(local_device_states),
       /*process_index=*/0, std::move(memory_spaces),
       /*topology=*/std::move(topology), /*allocator=*/nullptr,
       /*host_memory_allocator=*/nullptr,
@@ -224,6 +234,8 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClientWithDevices(
                         num_addressable_devices));
   }
   int total_devices = num_addressable_devices + num_non_addressable_devices;
+  std::vector<std::unique_ptr<LocalDeviceState>> local_device_states;
+  local_device_states.reserve(num_addressable_devices);
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
   devices.reserve(total_devices);
   std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces;
@@ -231,13 +243,14 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClientWithDevices(
   for (int i = 0; i < num_addressable_devices; ++i) {
     ABSL_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                      platform->ExecutorForDevice(i));
-    auto device_state = std::make_unique<LocalDeviceState>(
+    local_device_states.emplace_back(std::make_unique<LocalDeviceState>(
         executor, local_client, LocalDeviceState::kSynchronous,
         /*max_inflight_computations=*/32,
-        /*allow_event_reuse=*/false, /*use_callback_stream=*/false);
-    int local_device_id = device_state->local_device_id().value();
+        /*allow_event_reuse=*/false, /*use_callback_stream=*/false));
+    int local_device_id = local_device_states.back()->local_device_id().value();
     devices.emplace_back(std::make_unique<PjRtStreamExecutorDevice>(
-        i, std::move(device_state), local_device_id, /*process_index=*/0,
+        i, local_device_states.back().get(), local_device_id,
+        /*process_index=*/0,
         /*process_index_in_partition=*/0, /*partition_index=*/0, "cpu"));
     memory_spaces.emplace_back(std::make_unique<PjRtStreamExecutorMemorySpace>(
         i, devices.back().get(), "cpu", 0));
@@ -252,8 +265,8 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClientWithDevices(
   }
   auto topology = CreateCpuTopologyDescription(devices.size());
   return MakeTestPjRtStreamExecutorClient(
-      "cpu", local_client, std::move(devices), /*process_index=*/0,
-      std::move(memory_spaces),
+      "cpu", local_client, std::move(devices), std::move(local_device_states),
+      /*process_index=*/0, std::move(memory_spaces),
       /*topology=*/std::move(topology), /*allocator=*/nullptr,
       /*host_memory_allocator=*/nullptr,
       /*should_stage_host_to_device_transfers=*/false,
