@@ -97,14 +97,12 @@ cc_library(
         ":cpu_topology",
         "//xla:shape_util",
         "//xla:util",
-        "//xla/backends/cpu:target_machine_options",
         "//xla/pjrt:host_memory_spaces",
-        "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_device_dimensions",
-        "//xla/pjrt:utils",
+        "//xla/pjrt:pjrt_topology_description_registry",
         "//xla/runtime:device_id",
         "//xla/tsl/lib/strings:proto_serialization",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -116,6 +114,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:fingerprint",
     ],
+    alwayslink = True,
 )
 
 tf_proto_library(

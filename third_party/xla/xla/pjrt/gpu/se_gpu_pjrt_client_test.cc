@@ -159,6 +159,22 @@ TEST(StreamExecutorGpuClientTest, MemorySpace) {
   }
 }
 
+TEST(StreamExecutorGpuClientTest, PlatformVersionIsDerivedAtRuntime) {
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  ASSERT_GE(client->devices().size(), 1);
+
+  // The version is derived from the runtime device description rather than
+  // compile-time macros, so it must be a real value (never "<unknown>") on an
+  // actual GPU and must keep the "<kind> <int>" contract that Python callers
+  // parse.
+  const absl::string_view version = client->platform_version();
+  EXPECT_NE(version, "<unknown>");
+  EXPECT_TRUE(absl::StartsWith(version, "cuda ") ||
+              absl::StartsWith(version, "rocm "))
+      << "unexpected platform version: " << version;
+}
+
 TEST(StreamExecutorGpuClientTest, MemorySpacesUniqueIds) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto client, GetStreamExecutorGpuClient(GetTestGpuClientOptions()));

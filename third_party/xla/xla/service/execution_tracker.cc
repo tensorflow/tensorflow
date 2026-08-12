@@ -18,7 +18,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"

@@ -91,7 +91,7 @@ PACKAGE_STATIC_DEPS = [
     "@boringssl//:__subpackages__",
     "@com_github_cares_cares//:__subpackages__",
     "@com_github_googlecloudplatform_tensorflow_gcp_tools//:__subpackages__",
-    "@com_github_grpc_grpc//:__subpackages__",
+    "@grpc//:__subpackages__",
     "@com_google_absl//:__subpackages__",
     "@com_google_googleapis//:__subpackages__",
     "@com_google_protobuf//:__subpackages__",
@@ -1126,7 +1126,7 @@ cc_library(
     name = "grpc",
     visibility = ["//visibility:public"],
     deps = select({
-        "//conditions:default": ["@com_github_grpc_grpc//:grpc"],
+        "//conditions:default": ["@grpc"],
     }),
 )
 
@@ -1134,7 +1134,7 @@ cc_library(
     name = "grpc++",
     visibility = ["//visibility:public"],
     deps = select({
-        "//conditions:default": ["@com_github_grpc_grpc//:grpc++"],
+        "//conditions:default": ["@grpc//:grpc++"],
     }),
 )
 # copybara:comment_end

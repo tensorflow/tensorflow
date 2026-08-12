@@ -46,13 +46,13 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
@@ -3866,10 +3866,13 @@ absl::Status MsaAlgorithm::CreateNewBlockPrefetches(
       options_.reserved_bytes_for_block_prefetches;
 
   if (block_prefetching_limit_bytes > options_.max_size_in_bytes) {
+    int64_t corrected_reserved_bytes =
+        options_.max_size_in_bytes - block_prefetching_starting_offset;
     return absl::InvalidArgumentError(absl::StrCat(
         "Block prefetched values bytes limit: ", block_prefetching_limit_bytes,
         " is greater than options_.max_size_in_bytes ",
-        options_.max_size_in_bytes));
+        options_.max_size_in_bytes, ". Try setting it to ",
+        (corrected_reserved_bytes / 1024), " KiB."));
   }
   VLOG(3) << "Block prefetched values bytes limit: "
           << block_prefetching_limit_bytes;

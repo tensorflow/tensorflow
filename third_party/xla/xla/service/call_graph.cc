@@ -28,11 +28,11 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -418,6 +418,34 @@ bool CallGraph::IsFlattened() const {
         !node.computation()->IsAsyncComputation() &&
         node.caller_callsites().size() > 1) {
       return false;
+    }
+  }
+  return true;
+}
+
+bool CallGraph::IsFlatOnControlFlow() const {
+  for (const CallGraphNode& node : nodes_) {
+    for (const CallSite& callsite : node.callsites()) {
+      if (callsite.instruction()->opcode() == HloOpcode::kWhile) {
+        HloComputation* body = callsite.instruction()->while_body();
+        HloComputation* cond = callsite.instruction()->while_condition();
+        if (body == cond || GetNode(body).caller_callsites().size() > 1 ||
+            GetNode(cond).caller_callsites().size() > 1) {
+          return false;
+        }
+        continue;
+      }
+      if (callsite.instruction()->opcode() == HloOpcode::kConditional) {
+        absl::flat_hash_set<const HloComputation*> seen_branches;
+        for (HloComputation* branch :
+             callsite.instruction()->called_computations()) {
+          if (!seen_branches.insert(branch).second ||
+              GetNode(branch).caller_callsites().size() > 1) {
+            return false;
+          }
+        }
+        continue;
+      }
     }
   }
   return true;

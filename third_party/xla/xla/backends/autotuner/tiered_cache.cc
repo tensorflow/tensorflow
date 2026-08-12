@@ -25,12 +25,12 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/autotuner/autotune_cache_store.h"
 #include "xla/backends/autotuner/autotune_fingerprint.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
@@ -162,6 +162,7 @@ absl::Status TieredCache::MaybeWriteToStore(
       return store.Write(entry);
     }
     case CacheMode::kReadWrite:
+    case CacheMode::kWriteOnly:
       return store.Write(entry);
   }
   return absl::OkStatus();
@@ -191,7 +192,8 @@ std::optional<AutotunerCacheInterface::Config> TieredCache::Lookup(
                  << primary_entries.status();
   }
 
-  if (secondary_ == nullptr || !primary_entries.ok()) {
+  if (secondary_ == nullptr || !primary_entries.ok() ||
+      secondary_->GetMode() == CacheMode::kWriteOnly) {
     absl::MutexLock lock(stats_mutex_);
     stats_.misses++;
     return std::nullopt;

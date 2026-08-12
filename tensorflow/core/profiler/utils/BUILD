@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
+load("@xla//xla/tsl:tsl.bzl", "internal_visibility")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
@@ -238,7 +239,9 @@ cc_library(
 cc_library(
     name = "hlo_module_utils",
     hdrs = ["hlo_module_utils.h"],
-    visibility = ["//tensorflow/compiler/mlir/lite/experimental/google/tooling/hlo_adapter:__pkg__"],
+    visibility = internal_visibility([
+        "//tensorflow/compiler/mlir/lite/experimental/google/tooling/hlo_adapter:__pkg__",
+    ]),
     deps = [
         "@org_xprof//xprof/utils:hlo_module_utils",
     ],

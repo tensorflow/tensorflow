@@ -94,6 +94,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/collectives/collective_pipelining_analyzer.h"
 #include "xla/backends/gpu/transforms/collectives/convert_async_collectives_to_sync.h"
 #include "xla/backends/gpu/transforms/collectives/gpu_collective_combiner_utils.h"
+#include "xla/backends/gpu/transforms/collectives/legalize_collective_domain.h"
 #include "xla/backends/gpu/transforms/collectives/reduce_scatter_combiner.h"
 #include "xla/backends/gpu/transforms/composite_rewriter.h"
 #include "xla/backends/gpu/transforms/conv_rewriter.h"
@@ -250,6 +251,7 @@ limitations under the License.
 #include "xla/service/compilation_stats.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/conditional_simplifier.h"
 #include "xla/service/copy_insertion.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
@@ -1054,6 +1056,7 @@ absl::Status RunCollectiveOptimizationPasses(
 
   HloPassPipeline collectives_pipeline("collective-optimizations",
                                        compilation_stats);
+  collectives_pipeline.AddPass<LegalizeCollectiveDomain>();
   collectives_pipeline.AddPass<RaggedAllToAllCanonicalizer>();
 
   if (debug_options.xla_gpu_unsupported_enable_ragged_all_to_all_decomposer()) {
@@ -1081,7 +1084,8 @@ absl::Status RunCollectiveOptimizationPasses(
 
   collectives_pipeline.AddPass<AllReduceSimplifier>();
   collectives_pipeline.AddPass<AllReduceFolder>();
-  collectives_pipeline.AddPass<AllReduceSplitter>();
+  collectives_pipeline.AddPass<AllReduceSplitter>(
+      debug_options.xla_gpu_all_reduce_splitter_ignore_profitability_check());
   if (debug_options.xla_gpu_unsupported_enable_all_reduce_decomposer()) {
     collectives_pipeline.AddPass<AllReduceDecomposer>();
   }
@@ -2928,6 +2932,13 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   }};
 
   RecordGpuCompilerStacktrace();
+  if (module->config().has_static_device_assignment()) {
+    const DeviceAssignment& da = module->config().static_device_assignment();
+    if (!da.IsIota() && !da.IsAll(0)) {
+      LOG(ERROR) << "XLA:GPU only supports IOTA device assignment. Got: "
+                 << da.ToString();
+    }
+  }
 
   const DebugOptions& debug_opts = module->config().debug_options();
   XLA_SCOPED_LOGGING_TIMER_IF(

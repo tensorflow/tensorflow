@@ -98,6 +98,19 @@ tsl::AsyncValueRef<CpuEvent> AfterAllCpuEvents(
   return std::move(after_all).AsRef();
 }
 
+PjRtDeviceEventRef ToCpuEvent(tsl::Future<void> future) {
+  auto async_value_ref = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
+  future.OnReady([async_value_ref](absl::Status status) mutable {
+    if (!status.ok()) {
+      async_value_ref.SetError(std::move(status));
+    } else {
+      async_value_ref.SetStateConcrete();
+    }
+  });
+
+  return PjRtDeviceEventRef(async_value_ref);
+}
+
 /*static*/ absl::StatusOr<tsl::RCReference<CpuRawBuffer>>
 CpuRawBuffer::Allocate(PjRtMemorySpace* memory_space, size_t size_bytes,
                        const CpuDeviceMemory::Allocator& allocator) {

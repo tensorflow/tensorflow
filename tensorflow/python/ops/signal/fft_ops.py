@@ -99,6 +99,21 @@ def _validate_nonnegative_fft_length(fft_length):
           f'`fft_length` must be non-negative, got {fft_length_i}.'
       )
   return fft_length_static
+def _validate_static_irfft_fft_length(fft_length_static, fft_rank):
+  if fft_length_static is None:
+    return
+  fft_length_static = np.asarray(fft_length_static)
+  if fft_length_static.ndim != 1:
+    raise ValueError("Shape %s must have rank 1" % (fft_length_static.shape,))
+  if fft_length_static.size != fft_rank:
+    raise ValueError(
+        "Dimension must be %d but is %d" % (fft_rank, fft_length_static.size)
+    )
+  if fft_length_static.size == 0:
+    return
+  fft_length_last = fft_length_static[-1]
+  if fft_length_last <= 0:
+    raise ValueError("fft_length[-1] must be > 0, got %d" % fft_length_last)
 
 
 def _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length, is_reverse=False):
@@ -205,6 +220,10 @@ def _irfft_wrapper(ifft_fn, fft_rank, default_name):
       else:
         fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
       fft_length_static = _validate_nonnegative_fft_length(fft_length)
+      fft_length_static = _tensor_util.constant_value(fft_length)
+      is_empty = input_tensor.shape.num_elements() == 0
+      if not is_empty:
+        _validate_static_irfft_fft_length(fft_length_static, fft_rank)
       input_tensor = _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length,
                                          is_reverse=True)
       if fft_length_static is not None:
@@ -383,6 +402,9 @@ def _irfftn_wrapper(irfft_n, default_name):
       else:
         fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
       fft_length_static = _validate_nonnegative_fft_length(fft_length)
+      fft_length_static = _tensor_util.constant_value(fft_length)
+      if input_tensor.shape.num_elements() != 0:
+        _validate_static_irfft_fft_length(fft_length_static, fft_rank)
       input_tensor = _maybe_pad_for_rfft(
           input_tensor, fft_rank, fft_length, is_reverse=True
       )

@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/transforms/collectives/collective_domain.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -462,8 +463,7 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   EXPECT_LT(compute_idx, a2a_done_idx);
 }
 
-TEST_F(GpuLatencyHidingSchedulerBaseTest,
-       OverlappingRanksPreventOverlappingCollectives) {
+TEST_F(GpuLatencyHidingSchedulerBaseTest, CollectiveDomainsPreventRankOverlap) {
   absl::string_view kFdoProfile = R"pb(
     costs { name: "add_0" cost_us: 100000.0 }
     costs { name: "ar_0" cost_us: 10.0 }
@@ -496,9 +496,12 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   HloModuleConfig config = GetModuleConfig(kFdoProfile);
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(kHloModule, config));
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_experimental_enable_collective_multi_streaming(true);
+  HloInstruction* all_reduce_start = FindInstruction(module.get(), "ar_0");
+  ASSERT_OK_AND_ASSIGN(GpuBackendConfig backend_config,
+                       all_reduce_start->backend_config<GpuBackendConfig>());
+  backend_config.mutable_collective_backend_config()->set_communication_domain(
+      kScaleUpFabricCollectiveDomain);
+  ASSERT_OK(all_reduce_start->set_backend_config(backend_config));
 
   EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
   const HloSchedule& schedule = module->schedule();
@@ -1153,6 +1156,20 @@ ENTRY main {
   ASSERT_EQ(done_resources.size(), 1);
   EXPECT_EQ(done_resources[0].first, collective_resource);
   EXPECT_EQ(done_resources[0].second, ResourceUsageType::kResourceOccupy);
+
+  // A scale-up domain changes stream placement, not LHS accounting.
+  for (HloInstruction* instruction : {group_start, group_done}) {
+    ASSERT_OK_AND_ASSIGN(GpuBackendConfig backend_config,
+                         instruction->backend_config<GpuBackendConfig>());
+    backend_config.mutable_collective_backend_config()
+        ->set_communication_domain(kScaleUpFabricCollectiveDomain);
+    ASSERT_OK(instruction->set_backend_config(backend_config));
+  }
+
+  EXPECT_EQ(async_tracker.GetResourcesFromInstruction(*group_start),
+            start_resources);
+  EXPECT_EQ(async_tracker.GetResourcesFromInstruction(*group_done),
+            done_resources);
   EXPECT_EQ(async_tracker.GetNumResourcesPerInstruction(collective_resource,
                                                         *group_start),
             0);

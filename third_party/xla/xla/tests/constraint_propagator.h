@@ -110,6 +110,10 @@ class ConstraintPropagator {
                              const HloInstruction* inst_1,
                              const ConstraintInterval& constraint_1);
 
+  // Returns the constant scalar value (or broadcast of constant scalar) if
+  // available in states_, or std::nullopt otherwise.
+  std::optional<double> GetConstantValue(const HloInstruction* inst) const;
+
   // Function that extracts known zeroes bitmask for the given dimension of a
   // DynamicSlice or DynamicUpdateSlice instruction.
   std::function<std::optional<uint64_t>(const HloInstruction*, int64_t)>

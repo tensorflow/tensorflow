@@ -24,12 +24,12 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -205,7 +205,37 @@ absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
 }
 
 class LoadedExecutableImplTest
-    : public testing::TestWithParam</*serialize=*/bool> {};
+    : public testing::TestWithParam</*serialize=*/bool> {
+ protected:
+  static void SetUpTestSuite() {
+    // Compile a simple program and check if serialization is supported. This
+    // assumes that the client either support serialization for all modules or
+    // for none, which is generally true.
+    ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+    ASSERT_OK_AND_ASSIGN(
+        auto loaded_executable,
+        CompileOnDevices(client.get(), client->GetDefaultCompiler(),
+                         module_add_one, {client->addressable_devices().at(0)},
+                         /*replicated=*/false, /*serialize=*/false));
+    const absl::Status status = loaded_executable->Serialize().status();
+    if (absl::IsUnimplemented(status)) {
+      supports_serialization_ = false;
+    } else {
+      ASSERT_OK(status);
+      supports_serialization_ = true;
+    }
+  }
+
+  void SetUp() override {
+    if (GetParam() && !supports_serialization_) {
+      GTEST_SKIP() << "Serialization is not supported on this platform";
+    }
+  }
+
+  static bool supports_serialization_;
+};
+
+bool LoadedExecutableImplTest::supports_serialization_ = true;
 
 TEST_P(LoadedExecutableImplTest, Properties) {
   bool serialize = GetParam();

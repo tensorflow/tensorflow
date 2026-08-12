@@ -232,6 +232,8 @@ CacheMode GetCacheMode(DebugOptions::AutotuneCacheMode mode) {
   switch (mode) {
     case DebugOptions::AUTOTUNE_CACHE_MODE_READ:
       return CacheMode::kReadOnly;
+    case DebugOptions::AUTOTUNE_CACHE_MODE_WRITE_ONLY:
+      return CacheMode::kWriteOnly;
     case DebugOptions::AUTOTUNE_CACHE_MODE_UPDATE:
     case DebugOptions::AUTOTUNE_CACHE_MODE_UNSPECIFIED:
     default:
@@ -443,9 +445,9 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
   std::unique_ptr<AutotunerCacheInterface> cache =
       CreateAutotunerCache(debug_options, *target_config, backends);
 
-  ABSL_ASSIGN_OR_RETURN(auto orchestrator,
-                   CodegenOrchestrator::Create(
-                       std::move(backends), orchestrator_options, thread_pool));
+  ABSL_ASSIGN_OR_RETURN(
+      auto orchestrator,
+      CodegenOrchestrator::Create(std::move(backends), orchestrator_options));
 
   std::unique_ptr<Autotuner> autotuner = nullptr;
   if (!is_deviceless) {
@@ -466,7 +468,7 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
 
       ABSL_ASSIGN_OR_RETURN(autotuner,
                        Autotuner::Create(*orchestrator, std::move(profilers),
-                                         autotuner_options));
+                                         autotuner_options, thread_pool));
   }
 
   VLOG(1) << "ConfigAssigner options: " << assigner_options.ToString();

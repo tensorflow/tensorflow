@@ -144,5 +144,21 @@ TEST(RedzoneAllocatorTest, VeryLargeRedzone) {
   EXPECT_REDZONE_OK(allocator.CheckRedzones());
 }
 
+TEST(RedzoneAllocatorTest, CheckRedzonesWithoutAllocationsIsOk) {
+  // Regression test for https://github.com/openxla/xla/issues/46093: with no
+  // allocated buffers, CheckRedzones used to enqueue an async memset of a
+  // pinned host buffer and free it without synchronizing the stream.
+  Platform* platform =
+      PlatformManager::PlatformWithName(GpuPlatformName()).value();
+  StreamExecutor* stream_exec = platform->ExecutorForDevice(0).value();
+  StreamExecutorAddressAllocator se_allocator(platform, {stream_exec});
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_exec->CreateStream());
+  RedzoneAllocator allocator(stream.get(), &se_allocator,
+                             /*memory_limit=*/(1LL << 32),
+                             /*redzone_size=*/1 << 23,
+                             /*redzone_pattern=*/0x7e);
+  EXPECT_REDZONE_OK(allocator.CheckRedzones());
+}
+
 }  // namespace gpu
 }  // namespace stream_executor

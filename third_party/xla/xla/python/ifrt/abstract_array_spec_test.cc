@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/sharding_spec.h"
 
 namespace xla {
@@ -178,6 +179,26 @@ TEST_P(AbstractArraySpecTest, ToArraySpecAndRoundTrip) {
                        array_spec.ToAbstractArraySpec());
 
   EXPECT_EQ(abstract_array_spec, roundtrip_abstract_array_spec);
+}
+
+TEST_P(AbstractArraySpecTest, ToCanonicalizedAbstractArraySpec) {
+  DeviceListRef device_list = GetDevices({0, 1});
+  DType dtype(DType::kS32);
+  Shape shape({4, 2});
+  Shape shard_shape({2, 2});
+  MemoryKind memory_kind;
+  ShardingRef sharding = ConcreteEvenSharding::Create(
+      device_list, memory_kind, /*shape=*/shape, /*shard_shape=*/shard_shape);
+
+  ArraySpec array_spec = {dtype, shape, sharding};
+  ASSERT_OK_AND_ASSIGN(AbstractArraySpec abstract_array_spec,
+                       array_spec.ToAbstractArraySpec());
+
+  EXPECT_EQ(abstract_array_spec.dtype(), dtype);
+  EXPECT_EQ(abstract_array_spec.shape(), shape);
+  EXPECT_TRUE(abstract_array_spec.sharding_spec()->HasSamePartitioning(
+      *sharding->sharding_spec()));
+  EXPECT_EQ(abstract_array_spec.memory_kind(), MemoryKind("host"));
 }
 
 TEST_P(AbstractArraySpecTest, ToFromProto) {

@@ -144,9 +144,6 @@ class PjRtCpuClient final : public CommonPjRtClient {
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
-  absl::StatusOr<Layout> GetDefaultLayout(
-      PrimitiveType element_type, absl::Span<const int64_t> dims) override;
-
   PjRtDynamicShapeKind GetDynamicShapeKind(
       int memory_space_kind_id) const override {
     return PjRtDynamicShapeKind::kSuffix;
@@ -199,9 +196,6 @@ class PjRtCpuClient final : public CommonPjRtClient {
   LoadSerializedExecutable(const absl::Cord& serialized,
                            std::optional<CompileOptions> options,
                            const LoadOptions& load_options) override;
-
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
-      absl::Status error, const Shape& shape, PjRtMemorySpace* memory) override;
 
   absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(
@@ -262,9 +256,8 @@ class PjRtCpuClient final : public CommonPjRtClient {
   CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
                            absl::string_view debug_info) override;
 
-  using CommonPjRtClient::GetOnDeviceBytesCount;
-  absl::StatusOr<int64_t> GetOnDeviceBytesCount(
-      int memory_space_kind, const xla::Shape& shape) const override;
+  absl::StatusOr<PjRtDeviceEventRef> CreateDeviceEvent(
+      PjRtMemorySpace* memory_space, Future<> dependency) override;
 
   absl::StatusOr<int> GetMemorySpaceKindForShape(
       const Shape& shape) const override;
@@ -280,10 +273,6 @@ class PjRtCpuClient final : public CommonPjRtClient {
       const LiteralSlice& literal, const xla::Shape& device_shape,
       HostBufferSemantics host_buffer_semantics,
       PjRtRawBufferRef raw_buffer) override;
-
-  absl::StatusOr<xla::Shape> MakeDefaultShapeForMemorySpace(
-      PjRtMemorySpace* memory_space, xla::Shape shape,
-      const xla::Layout* layout) const override;
 
   bool BufferFromHostBufferSupportsZeroCopy(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,

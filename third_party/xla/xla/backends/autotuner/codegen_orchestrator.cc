@@ -44,14 +44,14 @@ namespace xla {
 absl::StatusOr<std::unique_ptr<CodegenOrchestrator>>
 CodegenOrchestrator::Create(
     std::vector<std::unique_ptr<CodegenBackend>> codegen_backends,
-    Options options, tsl::thread::ThreadPool* thread_pool) {
+    Options options) {
   if (codegen_backends.empty()) {
     return absl::InvalidArgumentError(
         "CodegenOrchestrator initialization failed. No codegen backends "
         "provided.");
   }
-  return absl::WrapUnique(new CodegenOrchestrator(
-      std::move(codegen_backends), std::move(options), thread_pool));
+  return absl::WrapUnique(
+      new CodegenOrchestrator(std::move(codegen_backends), std::move(options)));
 }
 
 absl::StatusOr<std::vector<CodegenOrchestrator::Config>>
@@ -125,9 +125,10 @@ absl::StatusOr<std::unique_ptr<Executable>> CodegenOrchestrator::Compile(
 
 tsl::Future<std::vector<CodegenOrchestrator::MaybeExecutableCandidate>>
 CodegenOrchestrator::CompileAll(const HloInstruction& instr,
-                                std::vector<Config> configs) const {
-  tsl::Executor* executor = thread_pool_ != nullptr
-                                ? thread_pool_->AsExecutor()
+                                std::vector<Config> configs,
+                                tsl::thread::ThreadPool* thread_pool) const {
+  tsl::Executor* executor = thread_pool != nullptr
+                                ? thread_pool->AsExecutor()
                                 : &tsl::InlineExecutor::Instance();
 
   std::vector<tsl::Future<MaybeExecutableCandidate>> futures;

@@ -401,11 +401,6 @@ PjRtStreamExecutorClient::GetDefaultDeviceAssignment(int num_replicas,
                                                                 num_partitions);
 }
 
-absl::StatusOr<Layout> PjRtStreamExecutorClient::GetDefaultLayout(
-    PrimitiveType element_type, absl::Span<const int64_t> dims) {
-  return topology_->GetDefaultLayout(element_type, dims);
-}
-
 absl::StatusOr<std::unique_ptr<HloCostAnalysis>>
 PjRtStreamExecutorClient::GetHloCostAnalysis() const {
   return std::make_unique<HloCostAnalysis>(
@@ -482,40 +477,6 @@ void MaybeWaitForEventOnStream(const BufferSequencingEventRef& event,
 }
 
 }  // namespace
-
-absl::StatusOr<int64_t> PjRtStreamExecutorClient::GetOnDeviceBytesCount(
-    int memory_space_kind, const xla::Shape& shape) const {
-  int64_t transfer_manager_size =
-      client()->backend().transfer_manager()->GetByteSizeRequirement(shape);
-
-  auto kind = GetDynamicShapeKind(memory_space_kind);
-  // PjRtShapeAndMetadataTransferRequirements::Get->ShapeUtil::ArraySize
-  // requires a layout.
-  if (!shape.IsToken() && !shape.has_layout()) {
-    return absl::FailedPreconditionError(
-        "Buffer's on-device shape has no layout. Cannot determine on-device "
-        "bytes count.");
-  }
-  auto requirements =
-      PjRtShapeAndMetadataTransferRequirements::Get(shape, kind);
-
-  if (static_cast<int64_t>(requirements.size) != transfer_manager_size) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "%s mismatch between transfer_manager requirements (%ld) and "
-        "PjRtTransferRequirements (%zu)",
-        shape.ToString(true), transfer_manager_size, requirements.size));
-  }
-
-  return static_cast<int64_t>(requirements.size);
-}
-
-absl::StatusOr<xla::Shape>
-PjRtStreamExecutorClient::MakeDefaultShapeForMemorySpace(
-    PjRtMemorySpace* memory_space, xla::Shape shape,
-    const xla::Layout* layout) const {
-  return topology_->MakeCanonicalShapeForMemorySpace(memory_space->kind_id(),
-                                                     std::move(shape), layout);
-}
 
 absl::StatusOr<PjRtRawBufferRef> PjRtStreamExecutorRawClient::AllocateRawBuffer(
     PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
@@ -726,29 +687,6 @@ PjRtDeviceEventRef PjRtStreamExecutorRawClient::CreateErrorDeviceEvent(
       BufferSequencingEvent::Create(this->async_work_runner());
   SetEventAsError(definition_event, std::move(error));
   return PjRtDeviceEventRef(std::move(definition_event));
-}
-
-absl::StatusOr<std::unique_ptr<PjRtBuffer>>
-PjRtStreamExecutorClient::CreateErrorBuffer(absl::Status error,
-                                            const Shape& shape,
-                                            PjRtMemorySpace* memory) {
-  if (memory->client() != this) {
-    return absl::InvalidArgumentError(
-        "Memory space is not attached to this client");
-  }
-  auto* device = memory->devices()[0];
-  VLOG(1) << "PjRtStreamExecutorClient::CreateErrorBuffer: shape: "
-          << shape.ToString() << " device: " << device->DebugString()
-          << " error: " << error;
-
-  auto definition_event =
-      BufferSequencingEvent::Create(this->async_work_runner());
-  raw_client_->SetEventAsError(definition_event, error);
-
-  absl::InlinedVector<PjRtDeviceEventRef, 2> definition_events;
-  definition_events.emplace_back(std::move(definition_event));
-  return DefineBuffer(std::make_shared<const Shape>(shape), memory,
-                      PjRtRawBufferRef(), std::move(definition_events));
 }
 
 absl::StatusOr<PjRtDeviceEventRef>

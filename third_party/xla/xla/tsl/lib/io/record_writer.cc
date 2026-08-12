@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/tsl/lib/io/record_writer.h"
 
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/tsl/lib/hash/crc32c.h"
 #include "xla/tsl/lib/io/compression.h"
 #include "xla/tsl/platform/env.h"

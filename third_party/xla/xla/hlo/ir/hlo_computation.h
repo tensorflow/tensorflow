@@ -37,11 +37,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
@@ -862,7 +862,9 @@ class HloComputation {
 
   // Returns if this computation is an async computation.
   bool IsAsyncComputation() const {
-    return !caller_instructions(HloOpcode::kAsyncStart).empty();
+    return !caller_instructions(HloOpcode::kAsyncStart).empty() ||
+           !caller_instructions(HloOpcode::kAsyncDone).empty() ||
+           !caller_instructions(HloOpcode::kAsyncUpdate).empty();
   }
 
   // Returns true if this computation only contains send/recv instructions.

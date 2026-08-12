@@ -543,26 +543,27 @@ class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {
   ThunkSequence& operator=(ThunkSequence&&) = default;
 
   // Returns an empty thunk sequence.
-  static ThunkSequence Empty() { return ThunkSequence(); }
-
-  // Appends a thunk to this sequence.
-  void Append(std::unique_ptr<Thunk> thunk);
+  static ThunkSequence Empty();
 
   // Creates a thunks sequence from a single thunk.
   static ThunkSequence Of(std::unique_ptr<Thunk> thunk);
+
+  // Appends a thunk to this sequence and returns a pointer to it.
+  Thunk* Append(std::unique_ptr<Thunk> thunk);
+
+  // Constructs a new thunk in place, appends it to this sequence and returns a
+  // pointer to it.
+  template <typename T, typename... Args,
+            std::enable_if_t<std::is_base_of_v<Thunk, T>>* = nullptr>
+  Thunk* Emplace(Args&&... args) {
+    return Append(std::make_unique<T>(std::forward<Args>(args)...));
+  }
 
   // Creates a thunk sequence by constructing a single thunk of type `T`.
   template <typename T, typename... Args,
             std::enable_if_t<std::is_base_of_v<Thunk, T>>* = nullptr>
   static ThunkSequence Of(Args&&... args) {
     return ThunkSequence::Of(std::make_unique<T>(std::forward<Args>(args)...));
-  }
-
-  // Constructs a new thunk in place and appends it to this sequence.
-  template <typename T, typename... Args,
-            std::enable_if_t<std::is_base_of_v<Thunk, T>>* = nullptr>
-  void Emplace(Args&&... args) {
-    Append(std::make_unique<T>(std::forward<Args>(args)...));
   }
 
   // Walks/Transforms all thunks nested in *this sequence.

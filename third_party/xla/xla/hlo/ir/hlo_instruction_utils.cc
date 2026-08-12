@@ -104,18 +104,10 @@ namespace async {
 namespace {
 
 const HloInstruction* GetAsyncChainStart(const HloInstruction* async_op) {
-  const HloInstruction* current = async_op;
-  while (current != nullptr && current->opcode() != HloOpcode::kAsyncStart) {
-    if (current->opcode() != HloOpcode::kAsyncUpdate &&
-        current->opcode() != HloOpcode::kAsyncDone) {
-      return nullptr;
-    }
-    if (current->operand_count() == 0 || current->operand(0) == nullptr) {
-      return nullptr;
-    }
-    current = current->operand(0);
+  if (async_op == nullptr || !async_op->IsAsynchronous()) {
+    return nullptr;
   }
-  return current;
+  return async_op->async_chain_start();
 }
 
 absl::StatusOr<bool> AreOperandsAndOutputFullyBoundImpl(
@@ -235,9 +227,15 @@ absl::StatusOr<bool> AreOperandsAndOutputFullyBound(
 std::vector<const HloInstruction*> GetAsyncBoundOperands(
     const HloAsyncInstruction* async_op) {
   std::vector<const HloInstruction*> bound_operands;
-  for (const HloInstruction* instr :
-       Cast<HloAsyncStartInstruction>(async_op->async_chain_start())
-           ->GetAsyncChain()) {
+  if (async_op == nullptr || async_op->async_chain_start() == nullptr) {
+    return bound_operands;
+  }
+  const HloAsyncStartInstruction* async_start =
+      DynCast<HloAsyncStartInstruction>(async_op->async_chain_start());
+  if (async_start == nullptr) {
+    return bound_operands;
+  }
+  for (const HloInstruction* instr : async_start->GetAsyncChain()) {
     int start_idx = (instr->opcode() == HloOpcode::kAsyncStart) ? 0 : 1;
 
     for (int i = start_idx; i < instr->operand_count(); ++i) {
@@ -258,6 +256,10 @@ absl::StatusOr<bool> IsFirstFullyBound(const HloInstruction* async_inst) {
     return false;
   }
   if (async_inst->opcode() == HloOpcode::kAsyncStart) {
+    return true;
+  }
+
+  if (!async_inst->operand(0)->IsAsynchronous()) {
     return true;
   }
 

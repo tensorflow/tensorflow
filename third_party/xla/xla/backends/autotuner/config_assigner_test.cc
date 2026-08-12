@@ -218,9 +218,9 @@ absl::StatusOr<std::unique_ptr<ConfigAssigner>> CreateConfigAssigner(
     std::optional<Autotuner::Options> autotuner_options = std::nullopt,
     tsl::thread::ThreadPool* thread_pool = nullptr,
     CodegenOrchestrator::Options orchestrator_options = {}) {
-  ABSL_ASSIGN_OR_RETURN(auto orchestrator, CodegenOrchestrator::Create(
-                                          std::move(codegen_backends),
-                                          orchestrator_options, thread_pool));
+  ABSL_ASSIGN_OR_RETURN(auto orchestrator,
+                   CodegenOrchestrator::Create(std::move(codegen_backends),
+                                               orchestrator_options));
 
   if (cache == nullptr) {
     cache = std::make_unique<NoOpAutotunerCache>();
@@ -237,8 +237,9 @@ absl::StatusOr<std::unique_ptr<ConfigAssigner>> CreateConfigAssigner(
 
     std::vector<std::unique_ptr<Profiler>> profilers;
     profilers.push_back(std::move(profiler));
-    ABSL_ASSIGN_OR_RETURN(autotuner, Autotuner::Create(*orchestrator,
-                                                  std::move(profilers), opts));
+    ABSL_ASSIGN_OR_RETURN(
+        autotuner, Autotuner::Create(*orchestrator, std::move(profilers), opts,
+                                     thread_pool));
   }
 
   return ConfigAssigner::Create(assigner_options, std::move(cache),

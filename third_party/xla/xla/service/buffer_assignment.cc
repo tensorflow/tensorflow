@@ -46,11 +46,11 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
@@ -755,6 +755,9 @@ std::string BufferAllocation::ToShortString(bool human_readable_size) const {
   if (color() != 0) {
     StrAppend(&output, ", color ", color());
   }
+  if (page_id() != -1) {
+    StrAppend(&output, ", page ", page_id());
+  }
   if (is_entry_computation_parameter()) {
     const HloInstruction* param = GetEntryParameterInstruction(*this);
     StrAppend(&output, ", parameter ", parameter_number(), ", shape |",
@@ -1196,17 +1199,13 @@ absl::Status BufferAssignment::CombineTempAllocations(
   // Update allocation indices to their new positions.
   allocation_index_for_value_.erase(allocation_index_for_value_.begin(),
                                     allocation_index_for_value_.end());
-  for (size_t index = 0; index < allocations_.size(); ++index) {
-    BufferAllocation* allocation = &allocations_[index];
-    allocation->set_index(index);
-    std::vector<const HloValue*> sorted_values;
-    sorted_values.reserve(allocation->assigned_buffers_.size());
-    for (const auto& buffer_offset_size : allocation->assigned_buffers_) {
+  for (BufferAllocation::Index index = 0; index < allocations_.size();
+       ++index) {
+    BufferAllocation& allocation = allocations_[index];
+    allocation.set_index(index);
+    // NOLINTNEXTLINE : the order of the loop is not important.
+    for (const auto& buffer_offset_size : allocation.assigned_buffers_) {
       const HloValue* value = buffer_offset_size.first;
-      sorted_values.emplace(sorted_values.end(), value);
-    }
-    absl::c_sort(sorted_values, &CompareHloValuesById);
-    for (const HloValue* value : sorted_values) {
       allocation_index_for_value_[value] = index;
     }
   }

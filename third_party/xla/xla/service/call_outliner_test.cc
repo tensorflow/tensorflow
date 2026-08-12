@@ -23,10 +23,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -1033,14 +1033,11 @@ TEST_F(CallOutlinerTest, OutlineRootCallPreservesEntryResultLayout) {
   TF_ASSERT_OK_AND_ASSIGN(bool outlined, call_outliner.Run(module.get()));
   EXPECT_TRUE(outlined);
 
-  EXPECT_EQ(
-      module->entry_computation()->root_instruction()->shape().layout(),
-      module->entry_computation_layout().result_layout().shape().layout());
+  EXPECT_EQ(module->entry_computation()->root_instruction()->shape().layout(),
+            LayoutUtil::MakeLayout({1, 0}));
 
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_EQ(root->opcode(), HloOpcode::kCopy);
-  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kCall);
-  EXPECT_EQ(root->operand(0)->shape().layout(), LayoutUtil::MakeLayout({1, 0}));
+  EXPECT_EQ(root->opcode(), HloOpcode::kCall);
 }
 
 }  // namespace

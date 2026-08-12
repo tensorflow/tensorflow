@@ -26,11 +26,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -1207,8 +1207,12 @@ module {
               std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
           .Await());
 
-  ASSERT_OK_AND_ASSIGN(std::string serialized_executable,
-                       ifrt_ir_executable->Serialize());
+  absl::StatusOr<std::string> serialized_executable =
+      ifrt_ir_executable->Serialize();
+  if (absl::IsUnimplemented(serialized_executable.status())) {
+    GTEST_SKIP() << "Serialization is not supported on this platform.";
+  }
+  ASSERT_OK(serialized_executable);
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<DeserializeIfrtIRProgramOptions> options,
                        GetDeserializeOptions(devices));
@@ -1216,7 +1220,7 @@ module {
       std::shared_ptr<LoadedExecutable> deserialized_executable,
       client_->GetDefaultCompiler()
           ->DeserializeLoadedExecutable(
-              absl::Cord(std::move(serialized_executable)), std::move(options))
+              absl::Cord(*std::move(serialized_executable)), std::move(options))
           .Await());
 }
 
@@ -1264,12 +1268,16 @@ module {
               std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
           .Await());
 
-  ASSERT_OK_AND_ASSIGN(
-      std::shared_ptr<const ExecutableVersion> executable_version,
-      ifrt_ir_executable->executable_version());
+  absl::StatusOr<std::shared_ptr<const ExecutableVersion>> executable_version =
+      ifrt_ir_executable->executable_version();
+  if (absl::IsUnimplemented(executable_version.status())) {
+    GTEST_SKIP() << "Serialization is not supported on this platform.";
+  }
+  ASSERT_OK(executable_version);
+
   ASSERT_OK_AND_ASSIGN(
       Serialized serialized_executable_version,
-      Serialize(*executable_version, std::make_unique<SerializeOptions>()));
+      Serialize(**executable_version, std::make_unique<SerializeOptions>()));
   std::string serialized_executable_version_str =
       serialized_executable_version.SerializeAsString();
 
@@ -1278,7 +1286,7 @@ module {
       DeserializeExecutableVersion(serialized_executable_version_str, devices));
 
   ASSERT_OK(deserialized_executable_version->IsCompatibleWith(
-      *client_, *executable_version));
+      *client_, **executable_version));
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, CallXlaWithDifferentDevices) {
@@ -1404,7 +1412,7 @@ module @mjit_f {
                 .status());
 }
 
-TEST_F(IfrtIrLoadedExecutableTest, CopyArraysTpuToTpu) {
+TEST_F(IfrtIrLoadedExecutableTest, CopyArraysDeviceToDevice) {
   // Test that verifies that we can copy arrays between different devices.
   // Note that this test passes the same argument twice to CopyArrays in order
   // to verify that the array is not removed incorrectly from the IFRT IR
@@ -1462,7 +1470,7 @@ module {
   }
 }
 
-TEST_F(IfrtIrLoadedExecutableTest, CopyArraysCpuToTpu) {
+TEST_F(IfrtIrLoadedExecutableTest, CopyArraysCpuToDevice) {
   if (!PickDevices(1, "cpu").ok()) {
     GTEST_SKIP() << "Test requires at least one cpu device";
   }
@@ -1662,7 +1670,7 @@ module {
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, UsingPartiallyDonatedArgThrowsError) {
-  if (client_->platform_name() != xla::TpuName()) {
+  if (client_->platform_id() != xla::TpuId()) {
     GTEST_SKIP() << "Test CHECK fails in pjrt_stream_executor_client.h.";
   }
   // Verifies that an error is thrown if a shard of an array is first aliased
@@ -2174,7 +2182,9 @@ module @auto_layout {
   ASSERT_EQ(output_layouts.size(), 4);
   ASSERT_EQ(*default_layout, *output_layouts[0]);
   ASSERT_EQ(*default_layout, *output_layouts[1]);
-  ASSERT_EQ("{0,1:T(1,128)}", output_layouts[2]->ToString());
+  if (client_->platform_id() == xla::TpuId()) {
+    ASSERT_EQ("{0,1:T(1,128)}", output_layouts[2]->ToString());
+  }
   ASSERT_EQ(*default_layout, *output_layouts[3]);
 }
 
@@ -2796,9 +2806,9 @@ module {
 
   // Test the execution after serialization and deserialization to verify that
   // `outputs_bundle_slice_sizes` is correctly applied across the roundtrip.
-  {
-    ASSERT_OK_AND_ASSIGN(std::string serialized_executable,
-                         loaded_exec->Serialize());
+  absl::StatusOr<std::string> serialized_executable = loaded_exec->Serialize();
+  if (!absl::IsUnimplemented(serialized_executable.status())) {
+    ASSERT_OK(serialized_executable);
 
     ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<DeserializeIfrtIRProgramOptions> options,
@@ -2806,7 +2816,7 @@ module {
     ASSERT_OK_AND_ASSIGN(std::shared_ptr<LoadedExecutable> deserialized_exec,
                          client_->GetDefaultCompiler()
                              ->DeserializeLoadedExecutable(
-                                 absl::Cord(std::move(serialized_executable)),
+                                 absl::Cord(*std::move(serialized_executable)),
                                  std::move(options))
                              .Await());
 

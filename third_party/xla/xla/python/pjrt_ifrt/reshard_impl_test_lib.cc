@@ -30,12 +30,12 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -424,6 +424,10 @@ TEST_P(ReshardTest, PoisonedInput) {
 }
 
 TEST_P(ReshardTest, DifferentDestinationLayout) {
+  if (client_->platform_id() == xla::CpuId()) {
+    GTEST_SKIP() << "PjRt CPU does not support custom layouts";
+  }
+
   const ReshardMethod method = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(const xla::Literal literal,
                           CreateIotaLiteral(xla::PrimitiveType::S32, {4, 8}));

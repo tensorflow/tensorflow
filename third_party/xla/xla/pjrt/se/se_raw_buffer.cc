@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace {
 static absl::StatusOr<xla::BufferSequencingEventRef>
@@ -148,6 +149,7 @@ PjRtStreamExecutorRawBuffer::CopyRawHostToDeviceAndReturnEvent(
               transfer_size, alloc_opts);
           auto copy_to_staging_buffer = [src, transfer_size,
                                          staging_buffer]() mutable {
+            tsl::profiler::TraceMe trace("H2D Copy To Staging Buffer");
             std::memcpy(staging_buffer.get(), src, transfer_size);
           };
           ABSL_RETURN_IF_ERROR(stream->DoHostCallback(copy_to_staging_buffer));
@@ -220,6 +222,7 @@ PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
               stream->Memcpy(staging_buffer.get(), sub_buffer, transfer_size));
           auto copy_from_staging_buffer = [dst, transfer_size,
                                            staging_buffer]() mutable {
+            tsl::profiler::TraceMe trace("D2H Copy From Staging Buffer");
             std::memcpy(dst, staging_buffer.get(), transfer_size);
           };
           // TODO(parkers): This failing maybe consitutes a race.

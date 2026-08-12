@@ -518,16 +518,6 @@ absl::StatusOr<DeviceAssignment> PjRtCpuClient::GetDefaultDeviceAssignment(
                                        num_partitions);
 }
 
-absl::StatusOr<Layout> PjRtCpuClient::GetDefaultLayout(
-    PrimitiveType element_type, absl::Span<const int64_t> dims) {
-  if (!primitive_util::IsArrayType(element_type)) {
-    return InvalidArgument("Element type %s does not support layout",
-                           PrimitiveType_Name(element_type));
-  }
-  Shape shape = ShapeUtil::MakeShape(element_type, dims);
-  return LayoutUtil::GetWithDefaultLayout(shape).layout();
-}
-
 absl::StatusOr<std::unique_ptr<HloCostAnalysis>>
 PjRtCpuClient::GetHloCostAnalysis() const {
   return std::make_unique<HloCostAnalysis>(cpu::CpuExecutable::ShapeSizeBytes);
@@ -1153,23 +1143,9 @@ absl::StatusOr<PjRtRawBufferRef> PjRtCpuClient::ImportForeignMemory(
       memory_space, is_mutable);
 }
 
-absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuClient::CreateErrorBuffer(
-    absl::Status error, const Shape& shape, PjRtMemorySpace* memory_space) {
-  CHECK_EQ(memory_space->devices().size(), 1);
-  PjRtDevice* device = memory_space->devices().front();
-  if (device->client() != this) {
-    return absl::InvalidArgumentError("Device is not attached to this client");
-  }
-  ABSL_ASSIGN_OR_RETURN(int64_t size, GetOnDeviceBytesCount(memory_space, shape));
-  ABSL_ASSIGN_OR_RETURN(auto raw_buffer,
-                   CpuRawBuffer::Allocate(memory_space, size, *allocator_));
-  absl::InlinedVector<PjRtDeviceEventRef, 2> definition_device_events;
-  definition_device_events.push_back(
-      PjRtDeviceEventRef(tsl::AsyncValueRef<CpuEvent>(
-          tsl::MakeErrorAsyncValueRef(std::move(error)))));
-  return DefineBuffer(std::make_shared<const Shape>(shape), memory_space,
-                      std::move(raw_buffer),
-                      std::move(definition_device_events));
+absl::StatusOr<PjRtDeviceEventRef> PjRtCpuClient::CreateDeviceEvent(
+    PjRtMemorySpace* memory_space, Future<void> dependency) {
+  return ToCpuEvent(std::move(dependency));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
@@ -1317,34 +1293,9 @@ PjRtCpuClient::CreateRawBufferChannel(PjRtMemorySpace* memory_space,
   return std::make_pair(std::move(raw_buffer), std::move(buffer_promise_cb));
 }
 
-absl::StatusOr<int64_t> PjRtCpuClient::GetOnDeviceBytesCount(
-    int memory_space_kind, const xla::Shape& shape) const {
-  int64_t original_size = xla::ShapeUtil::ByteSizeOf(shape);
-  auto kind = GetDynamicShapeKind(memory_space_kind);
-  auto requirements =
-      PjRtShapeAndMetadataTransferRequirements::Get(shape, kind);
-  if (shape.has_layout()) {
-    return static_cast<int64_t>(requirements.size);
-  }
-  if (static_cast<int64_t>(requirements.size) != original_size) {
-    return absl::InternalError(absl::StrFormat(
-        "%s mismatch between transfer_manager requirements (%ld) and "
-        "PjRtTransferRequirements (%zu)",
-        shape.ToString(true), original_size, requirements.size));
-  }
-
-  return static_cast<int64_t>(requirements.size);
-}
-
 absl::StatusOr<int> PjRtCpuClient::GetMemorySpaceKindForShape(
     const Shape& shape) const {
   return topology_->GetMemorySpaceKindForShape(shape);
-}
-
-absl::StatusOr<xla::Shape> PjRtCpuClient::MakeDefaultShapeForMemorySpace(
-    PjRtMemorySpace* memory_space, xla::Shape shape,
-    const xla::Layout* layout) const {
-  return MakeDefaultCpuBufferShape(std::move(shape), layout);
 }
 
 static std::vector<Shape> GetParameterShapes(const ComputationLayout& layout) {

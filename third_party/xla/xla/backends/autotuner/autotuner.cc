@@ -26,11 +26,11 @@ limitations under the License.
 #include "absl/log/vlog_is_on.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
 #include "xla/backends/autotuner/codegen_orchestrator.h"
 #include "xla/backends/autotuner/config_runner.h"
@@ -166,8 +166,8 @@ tsl::Future<Autotuner::Config> Autotuner::GetTunedConfig(
   }
 
   tsl::Future<std::vector<CodegenOrchestrator::MaybeExecutableCandidate>>
-      maybe_candidates =
-          orchestrator_->CompileAll(*instr, std::move(supported_configs));
+      maybe_candidates = orchestrator_->CompileAll(
+          *instr, std::move(supported_configs), thread_pool_);
 
   return std::move(maybe_candidates)
       .Map([instr, runner_index,

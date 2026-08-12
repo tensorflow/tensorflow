@@ -24,9 +24,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -84,6 +84,131 @@ void SetConstraint(
   states[inst].AddConstraint(ConstraintInterval{
       static_cast<double>(min_val), static_cast<double>(max_val),
       /*exclude_zero=*/!contains_zero});
+}
+
+void SeedConstantInstruction(
+    const HloInstruction* inst,
+    absl::flat_hash_map<const HloInstruction*, ConstraintState>& states) {
+  const Literal& literal = inst->literal();
+  if (literal.shape().IsArray() && literal.element_count() > 0) {
+    switch (literal.shape().element_type()) {
+      case PRED:
+        SetConstraint<bool>(inst, states);
+        break;
+      case S8:
+        SetConstraint<int8_t>(inst, states);
+        break;
+      case S16:
+        SetConstraint<int16_t>(inst, states);
+        break;
+      case S32:
+        SetConstraint<int32_t>(inst, states);
+        break;
+      case S64:
+        SetConstraint<int64_t>(inst, states);
+        break;
+      case U8:
+        SetConstraint<uint8_t>(inst, states);
+        break;
+      case U16:
+        SetConstraint<uint16_t>(inst, states);
+        break;
+      case U32:
+        SetConstraint<uint32_t>(inst, states);
+        break;
+      case U64:
+        SetConstraint<uint64_t>(inst, states);
+        break;
+      case F16:
+        SetConstraint<half>(inst, states);
+        break;
+      case F32:
+        SetConstraint<float>(inst, states);
+        break;
+      case F64:
+        SetConstraint<double>(inst, states);
+        break;
+      case BF16:
+        SetConstraint<bfloat16>(inst, states);
+        break;
+      default:
+        break;
+    }
+  }
+}
+
+// Returns a safe upper bound on ln(max_finite_val) for the given PrimitiveType
+// to prevent exponential (exp) and power (b^x) operations from overflowing
+// the maximum finite representable value of that type.
+//
+// For any base b > 0 and exponent x:
+//   b^x = exp(x * ln(b)) <= max_val <=> x * ln(b) <= ln(max_val).
+// Therefore, x <= ln(max_val) / ln(b).
+double GetMaxLogForType(PrimitiveType type) {
+  switch (type) {
+    // 64-bit IEEE 754 Floating Point (F64):
+    //   max_val = 2^1024 * (1 - 2^-53) ≈ 1.7977e+308
+    //   ln(max_val) ≈ 1024 * ln(2) ≈ 1024 * 0.693147 ≈ 709.78
+    //   Safe bound: 700.0 (exp(700.0) ≈ 1.014e+304 < max_val).
+    case F64:
+      return 700.0;
+
+    // 32-bit IEEE 754 Floating Point (F32):
+    //   max_val = 2^128 * (1 - 2^-24) ≈ 3.4028e+38
+    //   ln(max_val) ≈ 128 * ln(2) ≈ 128 * 0.693147 ≈ 88.72
+    //   Safe bound: 85.0 (exp(85.0) ≈ 8.223e+36 < max_val).
+    case F32:
+      return 85.0;
+
+    // 16-bit Floating Point (F16 and BF16):
+    //   F16 max_val = 65504.0
+    //     ln(65504) ≈ 11.09
+    //   BF16 has 8 exponent bits but only 7 mantissa bits; using values above
+    //   65504 accumulates massive rounding errors and precision loss on TPU
+    //   matrix units and reductions. We bound BF16 to 65504 to match F16.
+    //   Safe bound: 11.0 (exp(11.0) ≈ 59874.14 < 65504).
+    case F16:
+    case BF16:
+      return 11.0;
+
+    // 64-bit Signed/Unsigned Integer (S64, U64):
+    //   S64 max_val = 2^63 - 1 ≈ 9.2233e+18
+    //   ln(2^63) ≈ 63 * ln(2) ≈ 63 * 0.693147 ≈ 43.67
+    //   Safe bound: 43.0 (exp(43.0) ≈ 4.727e+18 < 2^63 - 1).
+    case S64:
+    case U64:
+      return 43.0;
+
+    // 32-bit Signed/Unsigned Integer (S32, U32):
+    //   S32 max_val = 2^31 - 1 = 2147483647
+    //   ln(2^31) ≈ 31 * ln(2) ≈ 31 * 0.693147 ≈ 21.49
+    //   Safe bound: 21.0 (exp(21.0) ≈ 1.3188e+9 < 2^31 - 1).
+    case S32:
+    case U32:
+      return 21.0;
+
+    // 16-bit Signed/Unsigned Integer (S16, U16):
+    //   S16 max_val = 2^15 - 1 = 32767
+    //   ln(2^15) ≈ 15 * ln(2) ≈ 15 * 0.693147 ≈ 10.40
+    //   Safe bound: 10.0 (exp(10.0) ≈ 22026.46 < 32767).
+    case S16:
+    case U16:
+      return 10.0;
+
+    // 8-bit Signed/Unsigned Integer (S8, U8):
+    //   S8 max_val = 127, U8 max_val = 255
+    //   ln(127) ≈ 4.84
+    //   Safe bound: 4.5 (exp(4.5) ≈ 90.017 < 127).
+    case S8:
+    case U8:
+      return 4.5;
+
+    // Conservative default fallback:
+    //   11.0 matches the 16-bit float/integer threshold (exp(11) ≈ 5.98e+4),
+    //   safely preventing overflow for any unexpected or unlisted type.
+    default:
+      return 11.0;
+  }
 }
 
 // Seeds root constraints exclusively for 16-bit floating-point types (F16 and
@@ -207,7 +332,16 @@ absl::Status ConstraintPropagator::Propagate(
 absl::Status ConstraintPropagator::SeedConstraints(
     const HloComputation* computation) {
   auto instructions = computation->MakeInstructionPostOrder();
-  // Reverse topological (Use before Definition)
+
+  // First pass: Seed all constants so they are available in states_ when
+  // inspecting constant operands during the second pass.
+  for (const HloInstruction* inst : instructions) {
+    if (inst->opcode() == HloOpcode::kConstant) {
+      SeedConstantInstruction(inst, states_);
+    }
+  }
+
+  // Second pass: Reverse topological (Use before Definition)
   for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
     const HloInstruction* inst = *it;
 
@@ -221,55 +355,6 @@ absl::Status ConstraintPropagator::SeedConstraints(
         // Output is guaranteed to be non-negative.
         states_[inst].AddConstraint(ConstraintInterval::Positive());
         break;
-      case HloOpcode::kConstant: {
-        const Literal& literal = inst->literal();
-        if (literal.shape().IsArray() && literal.element_count() > 0) {
-          switch (literal.shape().element_type()) {
-            case PRED:
-              SetConstraint<bool>(inst, states_);
-              break;
-            case S8:
-              SetConstraint<int8_t>(inst, states_);
-              break;
-            case S16:
-              SetConstraint<int16_t>(inst, states_);
-              break;
-            case S32:
-              SetConstraint<int32_t>(inst, states_);
-              break;
-            case S64:
-              SetConstraint<int64_t>(inst, states_);
-              break;
-            case U8:
-              SetConstraint<uint8_t>(inst, states_);
-              break;
-            case U16:
-              SetConstraint<uint16_t>(inst, states_);
-              break;
-            case U32:
-              SetConstraint<uint32_t>(inst, states_);
-              break;
-            case U64:
-              SetConstraint<uint64_t>(inst, states_);
-              break;
-            case F16:
-              SetConstraint<half>(inst, states_);
-              break;
-            case F32:
-              SetConstraint<float>(inst, states_);
-              break;
-            case F64:
-              SetConstraint<double>(inst, states_);
-              break;
-            case BF16:
-              SetConstraint<bfloat16>(inst, states_);
-              break;
-            default:
-              break;
-          }
-        }
-        break;
-      }
       case HloOpcode::kLog:
         // Log(x) => x > 0
         states_[inst->operand(0)].AddConstraint(
@@ -290,13 +375,32 @@ absl::Status ConstraintPropagator::SeedConstraints(
         // Div(x, y) => y != 0
         states_[inst->operand(1)].AddConstraint(ConstraintInterval::NonZero());
         break;
-      case HloOpcode::kPower:
-        // Power(x, y) => x > 0
-        // We heuristically force base to > 0 because:
-        // - if exponent is negative, zero base would result in a NaN.
-        // - if exponent is non-integer, zero base would result in a NaN.
-        states_[inst->operand(0)].AddConstraint(ConstraintInterval::Positive());
+      case HloOpcode::kPower: {
+        std::optional<double> base_c = GetConstantValue(inst->operand(0));
+        if (base_c.has_value()) {
+          // Base is constant: prevent exponential overflow on the exponent.
+          if (*base_c > 0.0 && *base_c < 1.0) {
+            // Base in (0, 1): Negative exponents blow up to +inf (e.g.
+            // 0.95^-10000 = inf). Enforce exponent >= 0.
+            states_[inst->operand(1)].AddConstraint(
+                ConstraintInterval::Positive());
+          } else if (*base_c > 1.0) {
+            // Base > 1: Large positive exponents blow up to +inf.
+            double max_log = GetMaxLogForType(inst->shape().element_type());
+            double max_exp = max_log / std::log(*base_c);
+            states_[inst->operand(1)].AddConstraint(
+                ConstraintInterval{ConstraintInterval::kMin, max_exp, false});
+          }
+        } else {
+          // Power(x, y) => x > 0
+          // We heuristically force base to > 0 because:
+          // - if exponent is negative, zero base would result in a NaN.
+          // - if exponent is non-integer, zero base would result in a NaN.
+          states_[inst->operand(0)].AddConstraint(
+              ConstraintInterval::Positive());
+        }
         break;
+      }
 
       case HloOpcode::kDynamicSlice:
       case HloOpcode::kDynamicUpdateSlice: {
@@ -549,6 +653,7 @@ absl::Status ConstraintPropagator::PropagateConstraintsExact(
     case HloOpcode::kConvert:
     case HloOpcode::kCopy:
     case HloOpcode::kDynamicReshape:
+    case HloOpcode::kReducePrecision:
     case HloOpcode::kReshape:
     case HloOpcode::kTranspose:
       states_[instruction->operand(0)].Merge(output_state);
@@ -560,12 +665,23 @@ absl::Status ConstraintPropagator::PropagateConstraintsExact(
       states_[instruction->operand(0)].MergeStructural(sc);
       break;
     }
-    case HloOpcode::kSlice: {
+    case HloOpcode::kSlice:
+    case HloOpcode::kDynamicSlice: {
       states_[instruction->operand(0)].AddConstraint(output_interval);
       StructuralConstraints sc = output_structural;
       sc.no_duplicates = false;
       sc.needs_sorted_indices = false;
       states_[instruction->operand(0)].MergeStructural(sc);
+      break;
+    }
+    case HloOpcode::kDynamicUpdateSlice: {
+      states_[instruction->operand(0)].AddConstraint(output_interval);
+      states_[instruction->operand(1)].AddConstraint(output_interval);
+      StructuralConstraints sc = output_structural;
+      sc.no_duplicates = false;
+      sc.needs_sorted_indices = false;
+      states_[instruction->operand(0)].MergeStructural(sc);
+      states_[instruction->operand(1)].MergeStructural(sc);
       break;
     }
     case HloOpcode::kPad: {
@@ -612,53 +728,114 @@ absl::Status ConstraintPropagator::PropagateConstraintsApprox(
   }
   switch (instruction->opcode()) {
     case HloOpcode::kAdd: {
-      if (output_interval.IsNegative()) {
-        // Handle constraint Add(x, y) < 0
-        // Heuristic: both should be negative
-        states_[instruction->operand(0)].AddConstraint(
-            ConstraintInterval::Negative());
-        states_[instruction->operand(1)].AddConstraint(
-            ConstraintInterval::Negative());
-      } else if (output_interval.IsPositive()) {
-        // Handle constraint Add(x, y) > 0
-        // Heuristic: both should be positive
-        states_[instruction->operand(0)].AddConstraint(
-            ConstraintInterval::Positive());
-        states_[instruction->operand(1)].AddConstraint(
-            ConstraintInterval::Positive());
-      }
-      if (output_interval.exclude_zero) {
-        // We have Add(y, z) != 0
-        // Since both have the same sign, forcing both to be non-zero is
-        // sufficient.
-        states_[instruction->operand(0)].AddConstraint(
-            ConstraintInterval::NonZero());
-        states_[instruction->operand(1)].AddConstraint(
-            ConstraintInterval::NonZero());
-        if (output_interval.CrossesZero()) {
+      std::optional<double> c0 = GetConstantValue(instruction->operand(0));
+      std::optional<double> c1 = GetConstantValue(instruction->operand(1));
+
+      if (c0.has_value() || c1.has_value()) {
+        double c = c0.has_value() ? *c0 : *c1;
+        const HloInstruction* var_op =
+            c0.has_value() ? instruction->operand(1) : instruction->operand(0);
+
+        if (output_interval.IsPositive()) {
+          // Z = V + c >= 0. If c < 0, V >= -c > 0. If c >= 0, bias V >= 0.
+          double v_min = c < 0.0 ? -c : 0.0;
+          double v_max = output_interval.max < ConstraintInterval::kMax
+                             ? output_interval.max - c
+                             : ConstraintInterval::kMax;
+          states_[var_op].AddConstraint(
+              ConstraintInterval{v_min, v_max, output_interval.exclude_zero});
+        } else if (output_interval.IsNegative()) {
+          // Z = V + c <= 0. If c > 0, V <= -c < 0. If c <= 0, bias V <= 0.
+          double v_min = output_interval.min > ConstraintInterval::kMin
+                             ? output_interval.min - c
+                             : ConstraintInterval::kMin;
+          double v_max = c > 0.0 ? -c : 0.0;
+          states_[var_op].AddConstraint(
+              ConstraintInterval{v_min, v_max, output_interval.exclude_zero});
+        } else {
+          double v_min = output_interval.min > ConstraintInterval::kMin
+                             ? output_interval.min - c
+                             : ConstraintInterval::kMin;
+          double v_max = output_interval.max < ConstraintInterval::kMax
+                             ? output_interval.max - c
+                             : ConstraintInterval::kMax;
+          states_[var_op].AddConstraint(
+              ConstraintInterval{v_min, v_max, output_interval.exclude_zero});
+        }
+      } else {
+        if (output_interval.IsNegative()) {
+          // Handle constraint Add(x, y) < 0
+          // Heuristic: both should be negative
+          states_[instruction->operand(0)].AddConstraint(
+              ConstraintInterval::Negative());
+          states_[instruction->operand(1)].AddConstraint(
+              ConstraintInterval::Negative());
+        } else if (output_interval.IsPositive()) {
+          // Handle constraint Add(x, y) > 0
+          // Heuristic: both should be positive
           states_[instruction->operand(0)].AddConstraint(
               ConstraintInterval::Positive());
           states_[instruction->operand(1)].AddConstraint(
               ConstraintInterval::Positive());
+        }
+        if (output_interval.exclude_zero) {
+          // We have Add(y, z) != 0
+          // Since both have the same sign, forcing both to be non-zero is
+          // sufficient.
+          states_[instruction->operand(0)].AddConstraint(
+              ConstraintInterval::NonZero());
+          states_[instruction->operand(1)].AddConstraint(
+              ConstraintInterval::NonZero());
+          if (output_interval.CrossesZero()) {
+            states_[instruction->operand(0)].AddConstraint(
+                ConstraintInterval::Positive());
+            states_[instruction->operand(1)].AddConstraint(
+                ConstraintInterval::Positive());
+          }
         }
       }
       break;
     }
 
     case HloOpcode::kSubtract: {
-      if (output_interval.IsPositive()) {
-        // x - y >= 0 => x>=0, y<=0 .
-        states_[instruction->operand(0)].AddConstraint(
-            ConstraintInterval::Positive());
+      std::optional<double> c0 = GetConstantValue(instruction->operand(0));
+      std::optional<double> c1 = GetConstantValue(instruction->operand(1));
+
+      if (c0.has_value()) {
+        // Z = C0 - Y => Y = C0 - Z.
+        double y_min = output_interval.max < ConstraintInterval::kMax
+                           ? *c0 - output_interval.max
+                           : ConstraintInterval::kMin;
+        double y_max = output_interval.min > ConstraintInterval::kMin
+                           ? *c0 - output_interval.min
+                           : ConstraintInterval::kMax;
         states_[instruction->operand(1)].AddConstraint(
-            ConstraintInterval::Negative());
-      }
-      if (output_interval.IsNegative()) {
-        // x - y < 0 => x<0, y>0 .
+            ConstraintInterval{y_min, y_max, /*exclude_zero=*/false});
+      } else if (c1.has_value()) {
+        // Z = X - C1 => X = Z + C1.
+        double x_min = output_interval.min > ConstraintInterval::kMin
+                           ? *c1 + output_interval.min
+                           : ConstraintInterval::kMin;
+        double x_max = output_interval.max < ConstraintInterval::kMax
+                           ? *c1 + output_interval.max
+                           : ConstraintInterval::kMax;
         states_[instruction->operand(0)].AddConstraint(
-            ConstraintInterval::Negative());
-        states_[instruction->operand(1)].AddConstraint(
-            ConstraintInterval::Positive());
+            ConstraintInterval{x_min, x_max, /*exclude_zero=*/false});
+      } else {
+        if (output_interval.IsPositive()) {
+          // x - y >= 0 => x>=0, y<=0 .
+          states_[instruction->operand(0)].AddConstraint(
+              ConstraintInterval::Positive());
+          states_[instruction->operand(1)].AddConstraint(
+              ConstraintInterval::Negative());
+        }
+        if (output_interval.IsNegative()) {
+          // x - y < 0 => x<0, y>0 .
+          states_[instruction->operand(0)].AddConstraint(
+              ConstraintInterval::Negative());
+          states_[instruction->operand(1)].AddConstraint(
+              ConstraintInterval::Positive());
+        }
       }
       if (output_interval.exclude_zero) {
         states_[instruction->operand(0)].AddConstraint(
@@ -670,53 +847,82 @@ absl::Status ConstraintPropagator::PropagateConstraintsApprox(
     }
 
     case HloOpcode::kMultiply: {
-      ConstraintInterval x_interval =
-          states_[instruction->operand(0)].GetConstraintInterval();
-      ConstraintInterval y_interval =
-          states_[instruction->operand(1)].GetConstraintInterval();
-      if (output_interval.IsPositive()) {
-        // Mul(x, y) > 0
-        if (x_interval.IsNegative()) {
-          states_[instruction->operand(1)].AddConstraint(
-              ConstraintInterval::Negative());
-        } else if (y_interval.IsNegative()) {
-          states_[instruction->operand(0)].AddConstraint(
-              ConstraintInterval::Negative());
-        } else {
-          states_[instruction->operand(0)].AddConstraint(
-              ConstraintInterval::Positive());
-          states_[instruction->operand(1)].AddConstraint(
-              ConstraintInterval::Positive());
+      std::optional<double> c0 = GetConstantValue(instruction->operand(0));
+      std::optional<double> c1 = GetConstantValue(instruction->operand(1));
+
+      if (c0.has_value() || c1.has_value()) {
+        double c = c0.has_value() ? *c0 : *c1;
+        const HloInstruction* var_op =
+            c0.has_value() ? instruction->operand(1) : instruction->operand(0);
+
+        if (c > 0.0) {
+          double v_min = output_interval.min > ConstraintInterval::kMin
+                             ? output_interval.min / c
+                             : ConstraintInterval::kMin;
+          double v_max = output_interval.max < ConstraintInterval::kMax
+                             ? output_interval.max / c
+                             : ConstraintInterval::kMax;
+          states_[var_op].AddConstraint(
+              ConstraintInterval{v_min, v_max, output_interval.exclude_zero});
+        } else if (c < 0.0) {
+          double v_min = output_interval.max < ConstraintInterval::kMax
+                             ? output_interval.max / c
+                             : ConstraintInterval::kMin;
+          double v_max = output_interval.min > ConstraintInterval::kMin
+                             ? output_interval.min / c
+                             : ConstraintInterval::kMax;
+          states_[var_op].AddConstraint(
+              ConstraintInterval{v_min, v_max, output_interval.exclude_zero});
         }
-      } else if (output_interval.IsNegative()) {
-        // Mul(x, y) < 0
-        if (x_interval.IsNegative()) {
-          states_[instruction->operand(1)].AddConstraint(
-              ConstraintInterval::Positive());
-        } else if (y_interval.IsNegative()) {
-          states_[instruction->operand(0)].AddConstraint(
-              ConstraintInterval::Positive());
-        } else {
-          states_[instruction->operand(0)].AddConstraint(
-              ConstraintInterval::Positive());
-          states_[instruction->operand(1)].AddConstraint(
-              ConstraintInterval::Negative());
+      } else {
+        ConstraintInterval x_interval =
+            states_[instruction->operand(0)].GetConstraintInterval();
+        ConstraintInterval y_interval =
+            states_[instruction->operand(1)].GetConstraintInterval();
+        if (output_interval.IsPositive()) {
+          // Mul(x, y) > 0
+          if (x_interval.IsNegative()) {
+            states_[instruction->operand(1)].AddConstraint(
+                ConstraintInterval::Negative());
+          } else if (y_interval.IsNegative()) {
+            states_[instruction->operand(0)].AddConstraint(
+                ConstraintInterval::Negative());
+          } else {
+            states_[instruction->operand(0)].AddConstraint(
+                ConstraintInterval::Positive());
+            states_[instruction->operand(1)].AddConstraint(
+                ConstraintInterval::Positive());
+          }
+        } else if (output_interval.IsNegative()) {
+          // Mul(x, y) < 0
+          if (x_interval.IsNegative()) {
+            states_[instruction->operand(1)].AddConstraint(
+                ConstraintInterval::Positive());
+          } else if (y_interval.IsNegative()) {
+            states_[instruction->operand(0)].AddConstraint(
+                ConstraintInterval::Positive());
+          } else {
+            states_[instruction->operand(0)].AddConstraint(
+                ConstraintInterval::Positive());
+            states_[instruction->operand(1)].AddConstraint(
+                ConstraintInterval::Negative());
+          }
         }
-      }
-      if (output_interval.exclude_zero) {
-        states_[instruction->operand(0)].AddConstraint(
-            ConstraintInterval::NonZero());
-        states_[instruction->operand(1)].AddConstraint(
-            ConstraintInterval::NonZero());
-      }
-      std::optional<double> max_out =
-          GetSymmetricMagnitudeBound(output_interval);
-      if (max_out.has_value()) {
-        double max_in = std::sqrt(*max_out);
-        ConstraintInterval target_bound{-max_in, max_in,
-                                        output_interval.exclude_zero};
-        TryAddDualConstraints(instruction->operand(0), target_bound,
-                              instruction->operand(1), target_bound);
+        if (output_interval.exclude_zero) {
+          states_[instruction->operand(0)].AddConstraint(
+              ConstraintInterval::NonZero());
+          states_[instruction->operand(1)].AddConstraint(
+              ConstraintInterval::NonZero());
+        }
+        std::optional<double> max_out =
+            GetSymmetricMagnitudeBound(output_interval);
+        if (max_out.has_value()) {
+          double max_in = std::sqrt(*max_out);
+          ConstraintInterval target_bound{-max_in, max_in,
+                                          output_interval.exclude_zero};
+          TryAddDualConstraints(instruction->operand(0), target_bound,
+                                instruction->operand(1), target_bound);
+        }
       }
       break;
     }
@@ -838,56 +1044,286 @@ absl::Status ConstraintPropagator::PropagateConstraintsApprox(
     }
 
     case HloOpcode::kDivide: {
-      ConstraintInterval x_interval =
-          states_[instruction->operand(0)].GetConstraintInterval();
-      ConstraintInterval y_interval =
-          states_[instruction->operand(1)].GetConstraintInterval();
-      if (output_interval.IsPositive()) {
-        // if x/y >= 0, then bias to positive, x and y > 0.
-        states_[instruction->operand(0)].AddConstraint(
-            ConstraintInterval::Positive());
-        states_[instruction->operand(1)].AddConstraint(
-            ConstraintInterval::StrictPositive());
-      } else if (output_interval.IsNegative()) {
-        // if x/y < 0,
-        //  if x < 0, y > 0 OR
-        //  if y < 0, x > 0 OR
-        //  bias towards x < 0, y > 0.
-        if (x_interval.IsNegative()) {
-          states_[instruction->operand(1)].AddConstraint(
-              ConstraintInterval::StrictPositive());
-        } else if (y_interval.IsNegative()) {
-          states_[instruction->operand(0)].AddConstraint(
-              ConstraintInterval::StrictPositive());
-        } else {
-          // Heuristic: For no specific reason, bias towards x < 0, y > 0.
-          states_[instruction->operand(0)].AddConstraint(
-              ConstraintInterval::StrictNegative());
-          states_[instruction->operand(1)].AddConstraint(
-              ConstraintInterval::StrictPositive());
+      std::optional<double> c0 = GetConstantValue(instruction->operand(0));
+      std::optional<double> c1 = GetConstantValue(instruction->operand(1));
+
+      if (c0.has_value()) {
+        // Z = C / Y with constant numerator C.
+        double c = *c0;
+        const HloInstruction* y_op = instruction->operand(1);
+        ConstraintInterval y_interval = states_[y_op].GetConstraintInterval();
+
+        if (c > 0.0) {
+          if (output_interval.max < 0.0 ||
+              (output_interval.min < 0.0 && y_interval.IsNegative())) {
+            // Negative branch (Y < 0 => Z < 0):
+            // Z >= z_min (with z_min < 0) => Y <= C / z_min
+            // Z <= z_max (with z_max < 0) => Y >= C / z_max
+            double y_min = (output_interval.max < 0.0)
+                               ? c / output_interval.max
+                               : ConstraintInterval::kMin;
+            double y_max = (output_interval.min > ConstraintInterval::kMin &&
+                            output_interval.min < 0.0)
+                               ? c / output_interval.min
+                               : 0.0;
+            states_[y_op].AddConstraint(
+                ConstraintInterval{y_min, y_max, /*exclude_zero=*/true});
+          } else {
+            // Default / Positive branch (Y > 0 => Z > 0):
+            // Z <= z_max (with z_max > 0) => Y >= C / z_max
+            // Z >= z_min (with z_min > 0) => Y <= C / z_min
+            double y_min = (output_interval.max < ConstraintInterval::kMax &&
+                            output_interval.max > 0.0)
+                               ? c / output_interval.max
+                               : 0.0;
+            double y_max = output_interval.min > 0.0 ? c / output_interval.min
+                                                     : ConstraintInterval::kMax;
+            states_[y_op].AddConstraint(
+                ConstraintInterval{y_min, y_max, /*exclude_zero=*/true});
+          }
+        } else if (c < 0.0) {
+          if (output_interval.min > 0.0 ||
+              (output_interval.max > 0.0 && y_interval.IsNegative())) {
+            // Negative branch (Y < 0 => Z > 0):
+            // Z <= z_max (with z_max > 0) => Y <= C / z_max
+            // Z >= z_min (with z_min > 0) => Y >= C / z_min
+            double y_min = output_interval.min > 0.0 ? c / output_interval.min
+                                                     : ConstraintInterval::kMin;
+            double y_max = (output_interval.max < ConstraintInterval::kMax &&
+                            output_interval.max > 0.0)
+                               ? c / output_interval.max
+                               : 0.0;
+            states_[y_op].AddConstraint(
+                ConstraintInterval{y_min, y_max, /*exclude_zero=*/true});
+          } else {
+            // Default / Positive branch (Y > 0 => Z < 0):
+            // Z >= z_min (with z_min < 0) => Y >= C / z_min
+            // Z <= z_max (with z_max < 0) => Y <= C / z_max
+            double y_min = (output_interval.min > ConstraintInterval::kMin &&
+                            output_interval.min < 0.0)
+                               ? c / output_interval.min
+                               : 0.0;
+            double y_max = output_interval.max < 0.0 ? c / output_interval.max
+                                                     : ConstraintInterval::kMax;
+            states_[y_op].AddConstraint(
+                ConstraintInterval{y_min, y_max, /*exclude_zero=*/true});
+          }
         }
-      }
-      if (output_interval.exclude_zero) {
-        states_[instruction->operand(0)].AddConstraint(
-            ConstraintInterval::NonZero());
+      } else if (c1.has_value()) {
+        // Z = X / C with constant denominator C. Equivalent to X = C * Z.
+        double c = *c1;
+        const HloInstruction* x_op = instruction->operand(0);
+        if (c > 0.0) {
+          double x_min = output_interval.min > ConstraintInterval::kMin
+                             ? output_interval.min * c
+                             : ConstraintInterval::kMin;
+          double x_max = output_interval.max < ConstraintInterval::kMax
+                             ? output_interval.max * c
+                             : ConstraintInterval::kMax;
+          states_[x_op].AddConstraint(
+              ConstraintInterval{x_min, x_max, output_interval.exclude_zero});
+        } else if (c < 0.0) {
+          double x_min = output_interval.max < ConstraintInterval::kMax
+                             ? output_interval.max * c
+                             : ConstraintInterval::kMin;
+          double x_max = output_interval.min > ConstraintInterval::kMin
+                             ? output_interval.min * c
+                             : ConstraintInterval::kMax;
+          states_[x_op].AddConstraint(
+              ConstraintInterval{x_min, x_max, output_interval.exclude_zero});
+        }
+      } else {
+        ConstraintInterval x_interval =
+            states_[instruction->operand(0)].GetConstraintInterval();
+        ConstraintInterval y_interval =
+            states_[instruction->operand(1)].GetConstraintInterval();
+        if (output_interval.IsPositive()) {
+          // if x/y >= 0, then bias to positive, x and y > 0.
+          states_[instruction->operand(0)].AddConstraint(
+              ConstraintInterval::Positive());
+          states_[instruction->operand(1)].AddConstraint(
+              ConstraintInterval::StrictPositive());
+        } else if (output_interval.IsNegative()) {
+          // if x/y < 0,
+          //  if x < 0, y > 0 OR
+          //  if y < 0, x > 0 OR
+          //  bias towards x < 0, y > 0.
+          if (x_interval.IsNegative()) {
+            states_[instruction->operand(1)].AddConstraint(
+                ConstraintInterval::StrictPositive());
+          } else if (y_interval.IsNegative()) {
+            states_[instruction->operand(0)].AddConstraint(
+                ConstraintInterval::StrictPositive());
+          } else {
+            // Heuristic: For no specific reason, bias towards x < 0, y > 0.
+            states_[instruction->operand(0)].AddConstraint(
+                ConstraintInterval::StrictNegative());
+            states_[instruction->operand(1)].AddConstraint(
+                ConstraintInterval::StrictPositive());
+          }
+        }
+        if (output_interval.exclude_zero) {
+          states_[instruction->operand(0)].AddConstraint(
+              ConstraintInterval::NonZero());
+        }
       }
       break;
     }
 
     case HloOpcode::kMaximum: {
-      ConstraintInterval input_interval = {ConstraintInterval::kMin,
-                                           output_interval.max,
-                                           output_interval.exclude_zero};
-      states_[instruction->operand(0)].AddConstraint(input_interval);
-      states_[instruction->operand(1)].AddConstraint(input_interval);
+      // For Z = max(X, Y) with Z in [z_min, z_max]:
+      //
+      // 1. Upper bound (sound and exact for both operands):
+      //    max(X, Y) <= z_max <=> X <= z_max AND Y <= z_max.
+      //    If either operand exceeds z_max, the maximum would exceed z_max.
+      //
+      // 2. Lower bound:
+      //    max(X, Y) >= z_min <=> X >= z_min OR Y >= z_min.
+      //    - If one operand is a constant C (e.g. max(V, C)):
+      //      If C < z_min (or C == z_min and exclude_zero is true), constant C
+      //      cannot satisfy the lower bound on its own. Therefore, the variable
+      //      operand V MUST satisfy V >= z_min (and inherit exclude_zero).
+      //      If C >= z_min (and not excluded), C already satisfies the lower
+      //      bound, so V requires no lower bound from this op (v_min = -inf).
+      //    - If neither operand is constant:
+      //      To soundly ensure max(X, Y) >= z_min without relational tracking,
+      //      both operands are constrained to >= z_min.
+      std::optional<double> c0 = GetConstantValue(instruction->operand(0));
+      std::optional<double> c1 = GetConstantValue(instruction->operand(1));
+
+      if (c0.has_value() || c1.has_value()) {
+        double c = c0.has_value() ? *c0 : *c1;
+        const HloInstruction* var_op =
+            c0.has_value() ? instruction->operand(1) : instruction->operand(0);
+
+        double v_min = ConstraintInterval::kMin;
+        bool exclude_zero = false;
+        if (output_interval.min > ConstraintInterval::kMin) {
+          if (c < output_interval.min ||
+              (c == output_interval.min && output_interval.exclude_zero)) {
+            v_min = output_interval.min;
+            exclude_zero = output_interval.exclude_zero;
+          }
+        }
+        double v_max = output_interval.max;
+        states_[var_op].AddConstraint(
+            ConstraintInterval{v_min, v_max, exclude_zero});
+      } else {
+        ConstraintInterval input_interval = {output_interval.min,
+                                             output_interval.max,
+                                             output_interval.exclude_zero};
+        states_[instruction->operand(0)].AddConstraint(input_interval);
+        states_[instruction->operand(1)].AddConstraint(input_interval);
+      }
       break;
     }
+
     case HloOpcode::kMinimum: {
-      ConstraintInterval input_interval = {output_interval.min,
-                                           ConstraintInterval::kMax,
-                                           output_interval.exclude_zero};
-      states_[instruction->operand(0)].AddConstraint(input_interval);
-      states_[instruction->operand(1)].AddConstraint(input_interval);
+      // For Z = min(X, Y) with Z in [z_min, z_max]:
+      //
+      // 1. Lower bound (sound and exact for both operands):
+      //    min(X, Y) >= z_min <=> X >= z_min AND Y >= z_min.
+      //    If either operand falls below z_min, the minimum falls below z_min.
+      //
+      // 2. Upper bound:
+      //    min(X, Y) <= z_max <=> X <= z_max OR Y <= z_max.
+      //    - If one operand is a constant C (e.g. min(V, C)):
+      //      If C > z_max (or C == z_max and exclude_zero is true), constant C
+      //      cannot satisfy the upper bound on its own. Therefore, the variable
+      //      operand V MUST satisfy V <= z_max (and inherit exclude_zero).
+      //      If C <= z_max (and not excluded), C already satisfies the upper
+      //      bound, so V requires no upper bound from this op (v_max = +inf).
+      //    - If neither operand is constant:
+      //      To soundly ensure min(X, Y) <= z_max without relational tracking,
+      //      both operands are constrained to <= z_max.
+      std::optional<double> c0 = GetConstantValue(instruction->operand(0));
+      std::optional<double> c1 = GetConstantValue(instruction->operand(1));
+
+      if (c0.has_value() || c1.has_value()) {
+        double c = c0.has_value() ? *c0 : *c1;
+        const HloInstruction* var_op =
+            c0.has_value() ? instruction->operand(1) : instruction->operand(0);
+
+        double v_max = ConstraintInterval::kMax;
+        bool exclude_zero = false;
+        if (output_interval.max < ConstraintInterval::kMax) {
+          if (c > output_interval.max ||
+              (c == output_interval.max && output_interval.exclude_zero)) {
+            v_max = output_interval.max;
+            exclude_zero = output_interval.exclude_zero;
+          }
+        }
+        double v_min = output_interval.min;
+        states_[var_op].AddConstraint(
+            ConstraintInterval{v_min, v_max, exclude_zero});
+      } else {
+        ConstraintInterval input_interval = {output_interval.min,
+                                             output_interval.max,
+                                             output_interval.exclude_zero};
+        states_[instruction->operand(0)].AddConstraint(input_interval);
+        states_[instruction->operand(1)].AddConstraint(input_interval);
+      }
+      break;
+    }
+
+    case HloOpcode::kExp: {
+      // For Y = exp(X) with Y in [y_min, y_max]:
+      // Since exp(X) is monotonically strictly increasing on real numbers:
+      //   y_min <= exp(X) <= y_max <=> ln(y_min) <= X <= ln(y_max).
+      //
+      // If y_min > 0, x_min = ln(y_min). Otherwise, since exp(X) > 0 for all
+      // real X, y_min <= 0 imposes no lower bound on X (x_min = -inf).
+      //
+      // If y_max < +inf and y_max > 0, x_max = ln(y_max).
+      // If y_max <= 0, exp(X) <= y_max is impossible for real numbers.
+      double x_min = output_interval.min > 0.0 ? std::log(output_interval.min)
+                                               : ConstraintInterval::kMin;
+      double x_max = output_interval.max < ConstraintInterval::kMax &&
+                             output_interval.max > 0.0
+                         ? std::log(output_interval.max)
+                         : ConstraintInterval::kMax;
+      states_[instruction->operand(0)].AddConstraint(
+          ConstraintInterval{x_min, x_max, /*exclude_zero=*/false});
+      break;
+    }
+
+    case HloOpcode::kPower: {
+      // For Z = Power(base, exp) with Z in [z_min, z_max]:
+      // If base is a constant b > 0:
+      //   Z = b^Y <=> Y = ln(Z) / ln(b).
+      //
+      // If 0 < b < 1 (ln(b) < 0, reverses inequality):
+      //   y_min = ln(z_max) / ln(b)  (for z_max > 0)
+      //   y_max = ln(z_min) / ln(b)  (for z_min > 0)
+      //
+      // If b > 1 (ln(b) > 0, preserves inequality):
+      //   y_min = ln(z_min) / ln(b)  (for z_min > 0)
+      //   y_max = ln(z_max) / ln(b)  (for z_max > 0)
+      std::optional<double> base_c = GetConstantValue(instruction->operand(0));
+      if (base_c.has_value() && *base_c > 0.0 && *base_c != 1.0) {
+        double ln_b = std::log(*base_c);
+        if (ln_b < 0.0) {
+          double y_min = (output_interval.max < ConstraintInterval::kMax &&
+                          output_interval.max > 0.0)
+                             ? std::log(output_interval.max) / ln_b
+                             : ConstraintInterval::kMin;
+          double y_max = output_interval.min > 0.0
+                             ? std::log(output_interval.min) / ln_b
+                             : ConstraintInterval::kMax;
+          states_[instruction->operand(1)].AddConstraint(
+              ConstraintInterval{y_min, y_max, false});
+        } else {
+          double y_min = output_interval.min > 0.0
+                             ? std::log(output_interval.min) / ln_b
+                             : ConstraintInterval::kMin;
+          double y_max = (output_interval.max < ConstraintInterval::kMax &&
+                          output_interval.max > 0.0)
+                             ? std::log(output_interval.max) / ln_b
+                             : ConstraintInterval::kMax;
+          states_[instruction->operand(1)].AddConstraint(
+              ConstraintInterval{y_min, y_max, false});
+        }
+      }
       break;
     }
     default:
@@ -927,6 +1363,24 @@ bool ConstraintPropagator::TryAddDualConstraints(
   states_[inst_0].AddConstraint(constraint_0);
   states_[inst_1].AddConstraint(constraint_1);
   return true;
+}
+
+std::optional<double> ConstraintPropagator::GetConstantValue(
+    const HloInstruction* inst) const {
+  const HloInstruction* c = inst;
+  if (c->opcode() == HloOpcode::kBroadcast) {
+    c = c->operand(0);
+  }
+  if (c->opcode() == HloOpcode::kConstant) {
+    auto it = states_.find(c);
+    if (it != states_.end()) {
+      ConstraintInterval interval = it->second.GetConstraintInterval();
+      if (!interval.IsEmpty() && interval.min == interval.max) {
+        return interval.min;
+      }
+    }
+  }
+  return std::nullopt;
 }
 
 }  // namespace xla

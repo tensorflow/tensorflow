@@ -48,6 +48,7 @@ load("//third_party/highway:workspace.bzl", highway = "repo")
 load("//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
 load("//third_party/hwloc:workspace.bzl", hwloc = "repo")
 load("//third_party/implib_so:workspace.bzl", implib_so = "repo")
+load("//third_party/kleidiai:workspace.bzl", kleidiai = "repo")
 load("//third_party/libdrm:workspace.bzl", libdrm = "repo")
 load("//third_party/llvm:workspace.bzl", llvm = "repo")
 load("//third_party/llvm_openmp:workspace.bzl", llvm_openmp = "repo")
@@ -112,6 +113,7 @@ def _initialize_third_party():
     highwayhash()
     hwloc()
     implib_so()
+    kleidiai()
     libdrm()
     llvm_openmp()
     ml_dtypes()
@@ -204,13 +206,6 @@ def _tf_repositories():
     # b) get the sha256 hash of the commit by running:
     #    curl -L <url> | sha256sum
     # and update the sha256 with the result.
-
-    tf_http_archive(
-        name = "KleidiAI",
-        sha256 = "6b3e6630be314a28f6ea28fed14f7109b0b7c472f1e06d2dba17ffccda3b9466",
-        strip_prefix = "kleidiai-dce86647385ab2638aa5abebcb652f3e4271970d",
-        urls = tf_mirror_urls("https://gitlab.arm.com/kleidi/kleidiai/-/archive/dce86647385ab2638aa5abebcb652f3e4271970d/kleidiai-dce86647385ab2638aa5abebcb652f3e4271970d.zip"),
-    )
 
     compute_library()
 
@@ -363,10 +358,13 @@ def _tf_repositories():
     )
 
     tf_http_archive(
-        name = "com_github_grpc_grpc",
+        name = "grpc",
         sha256 = "41b695614b26652ff9e97ce50cfd4a6c7a3d45a9fe598d1454407746499bbf2c",
         strip_prefix = "grpc-1.81.0",
         patch_file = ["//third_party/grpc:grpc.patch"],
+        repo_mapping = {
+            "@com_github_grpc_grpc": "@grpc",
+        },
         urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.81.0.tar.gz"),
     )
 

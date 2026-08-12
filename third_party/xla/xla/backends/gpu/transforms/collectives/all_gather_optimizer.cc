@@ -50,9 +50,10 @@ bool NormalizeBackendConfigCopyForComparison(GpuBackendConfig& config) {
 
   CollectiveBackendConfig* collective_config =
       config.mutable_collective_backend_config();
-  // These fields are OR-merged when building the replacement.
+  // Clear fields that have a well-defined join when building the replacement.
   collective_config->clear_is_pipelined();
   collective_config->clear_is_spmd_generated();
+  collective_config->clear_communication_domain();
   return true;
 }
 

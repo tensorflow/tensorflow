@@ -94,6 +94,65 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "collective_domain",
+    srcs = ["collective_domain.cc"],
+    hdrs = ["collective_domain.h"],
+    deps = [
+        "//xla:side_effect_util",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/service/gpu:backend_configs_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "legalize_collective_domain",
+    srcs = ["legalize_collective_domain.cc"],
+    hdrs = ["legalize_collective_domain.h"],
+    deps = [
+        ":collective_domain",
+        "//xla:side_effect_util",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/service/gpu:backend_configs_cc",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "legalize_collective_domain_test",
+    srcs = ["legalize_collective_domain_test.cc"],
+    deps = [
+        ":collective_domain",
+        ":legalize_collective_domain",
+        "//xla:side_effect_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "collective_ops_utils",
     srcs = ["collective_ops_utils.cc"],
     hdrs = ["collective_ops_utils.h"],
@@ -146,6 +205,7 @@ cc_library(
     srcs = ["gpu_collective_combiner_utils.cc"],
     hdrs = ["gpu_collective_combiner_utils.h"],
     deps = [
+        ":collective_domain",
         ":collective_ops_utils",
         "//xla:side_effect_util",
         "//xla:util",
@@ -169,6 +229,7 @@ xla_cc_test(
     name = "gpu_collective_combiner_utils_test",
     srcs = ["gpu_collective_combiner_utils_test.cc"],
     deps = [
+        ":collective_domain",
         ":gpu_collective_combiner_utils",
         "//xla:util",
         "//xla/hlo/ir:hlo",
@@ -307,7 +368,9 @@ xla_cc_test(
     srcs = ["all_reduce_combiner_test.cc"],
     deps = [
         ":collective_combiner_annotator",
+        ":collective_domain",
         ":gpu_all_reduce_combiner",
+        ":legalize_collective_domain",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",

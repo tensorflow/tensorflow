@@ -54,8 +54,7 @@ absl::StatusOr<bool> LlvmKernelAutotuner::RunImpl(
 
   ABSL_ASSIGN_OR_RETURN(auto orchestrator,
                    CodegenOrchestrator::Create(std::move(codegen_backends),
-                                               CodegenOrchestrator::Options(),
-                                               /*thread_pool=*/nullptr));
+                                               CodegenOrchestrator::Options()));
 
   auto cache = std::make_unique<NoOpAutotunerCache>();
 

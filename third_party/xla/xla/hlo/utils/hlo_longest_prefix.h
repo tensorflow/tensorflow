@@ -17,8 +17,8 @@ limitations under the License.
 #define XLA_HLO_UTILS_HLO_LONGEST_PREFIX_H_
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/tsl/platform/errors.h"

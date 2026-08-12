@@ -25,10 +25,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_operand_index.h"
@@ -312,13 +312,18 @@ void BFloat16Propagation::DetermineAsyncComputationsPrecision(
     HloInstruction* async_start) {
   CHECK_EQ(async_start->opcode(), HloOpcode::kAsyncStart);
 
-  auto root = async_start->async_wrapped_instruction();
+  HloComputation* wrapped_comp = async_start->async_wrapped_computation();
+  HloInstruction* root = async_start->async_wrapped_instruction();
+  HloInstruction* done = async_start->async_chain_done();
+  if (wrapped_comp == nullptr || root == nullptr || done == nullptr) {
+    return;
+  }
   ShapeUtil::ForEachSubshape(root->shape(), [&](const Shape& subshape,
                                                 const ShapeIndex& index) {
     if (subshape.element_type() != F32) {
       return;
     }
-    if (OutputTypeAfterChange(async_start->async_chain_done(), index) == BF16) {
+    if (OutputTypeAfterChange(done, index) == BF16) {
       AddToOrRemoveFromBF16ChangeSet(root, index, BF16);
       VLOG(2) << "Async wrapped computation root " << root->ToString()
               << " at shape index " << index
@@ -326,13 +331,11 @@ void BFloat16Propagation::DetermineAsyncComputationsPrecision(
               << async_start->ToString();
     }
   });
-  auto insts =
-      async_start->async_wrapped_computation()->MakeInstructionPostOrder();
+  auto insts = wrapped_comp->MakeInstructionPostOrder();
   for (auto inst_it = insts.rbegin(); inst_it != insts.rend(); ++inst_it) {
     DetermineInstructionPrecision(*inst_it, /*skip_parameters=*/false);
   }
-  computations_visited_in_backward_pass_.insert(
-      async_start->async_wrapped_computation());
+  computations_visited_in_backward_pass_.insert(wrapped_comp);
 }
 
 void BFloat16Propagation::DetermineCalledComputationsPrecision(
@@ -433,9 +436,13 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
                  HloInstruction::IsThreadIncluded(
                      use.instruction->async_execution_thread(),
                      execution_threads_)) {
+        HloComputation* wrapped_comp =
+            use.instruction->async_wrapped_computation();
+        if (wrapped_comp == nullptr) {
+          return false;
+        }
         auto* async_parameter =
-            use.instruction->async_wrapped_computation()->parameter_instruction(
-                use.operand_number);
+            wrapped_comp->parameter_instruction(use.operand_number);
         if (OutputTypeAfterChange(async_parameter, use.operand_index) != BF16) {
           return false;
         }
@@ -601,7 +608,8 @@ void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
   if (hlo->opcode() == HloOpcode::kAsyncStart &&
       HloInstruction::IsThreadIncluded(hlo->async_execution_thread(),
                                        execution_threads_) &&
-      caller_counts_[hlo->async_wrapped_computation()] > 1) {
+      (hlo->async_wrapped_computation() == nullptr ||
+       caller_counts_[hlo->async_wrapped_computation()] > 1)) {
     postpone_processing_called_computations = true;
     return;
   }
@@ -741,7 +749,8 @@ void BFloat16Propagation::AdjustCalledComputationParameters(
       break;
     case HloOpcode::kAsyncStart:
       if (HloInstruction::IsThreadIncluded(hlo->async_execution_thread(),
-                                           execution_threads_)) {
+                                           execution_threads_) &&
+          hlo->async_wrapped_computation() != nullptr) {
         adjust_computation(hlo->async_wrapped_computation(), hlo->operands());
       }
       break;
@@ -815,7 +824,8 @@ void BFloat16Propagation::AdjustCalledComputationRoot(HloInstruction* hlo) {
       break;
     case HloOpcode::kAsyncStart:
       if (HloInstruction::IsThreadIncluded(hlo->async_execution_thread(),
-                                           execution_threads_)) {
+                                           execution_threads_) &&
+          hlo->async_wrapped_computation() != nullptr) {
         adjust_computation(hlo->async_wrapped_computation(), hlo);
       }
       break;
@@ -1068,7 +1078,8 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
         }
       } else if (hlo->opcode() == HloOpcode::kAsyncStart &&
                  HloInstruction::IsThreadIncluded(hlo->async_execution_thread(),
-                                                  execution_threads_)) {
+                                                  execution_threads_) &&
+                 hlo->async_wrapped_computation() != nullptr) {
         ResolveInconsistencyOfAliasingBuffersHelper(
             hlo->async_wrapped_computation(), visited_computations);
       } else if (hlo->opcode() == HloOpcode::kCall) {

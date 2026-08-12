@@ -220,6 +220,7 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
  private:
   const bool abort_collectives_on_failure_ = false;
   std::shared_ptr<gpu::AllocatorMemoryRegistration> memory_registration_;
+  std::string platform_version_;
 };
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(

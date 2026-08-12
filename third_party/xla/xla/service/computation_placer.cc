@@ -28,11 +28,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/runtime/device_id.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/host/host_platform_id.h"
@@ -89,6 +89,29 @@ DeviceAssignment::GetDeviceToLogicalIdMap() const {
     }
   }
   return device_to_logical_id;
+}
+
+bool DeviceAssignment::IsIota() const {
+  if (num_elements() == 0) {
+    return true;
+  }
+
+  int64_t offset = data()[0];
+  for (int i = 0; i < num_elements(); ++i) {
+    if (data()[i] != i + offset) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool DeviceAssignment::IsAll(int64_t val) const {
+  for (int i = 0; i < num_elements(); ++i) {
+    if (data()[i] != val) {
+      return false;
+    }
+  }
+  return true;
 }
 
 void DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {

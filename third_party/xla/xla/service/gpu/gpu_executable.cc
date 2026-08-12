@@ -73,6 +73,7 @@ limitations under the License.
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/alias_info.h"
@@ -243,7 +244,8 @@ static GpuExecutable::NumAdditionalStreams GetNumAdditionalStreams(
   compute = std::max(0, compute);
   comm = std::max(0, comm);
 
-  // Then traverse all thunks to see if anyone requested more streams.
+  // Then traverse all thunks to see if anyone requested more streams. This
+  // also sizes sparse collective-domain stream pools from their assigned IDs.
   for (const auto& thunk : executor.thunks()) {
     thunk->Walk([&](Thunk* nested) {
       if (auto* async_start = dynamic_cast<AsyncStartThunk*>(nested)) {
@@ -934,6 +936,26 @@ absl::StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
 absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     const ServiceExecutableRunOptions* run_options,
     VariantArguments arguments) {
+  if (has_module() && module_config().has_static_device_assignment()) {
+    const DeviceAssignment& static_device_assignment =
+        module_config().static_device_assignment();
+    if (!static_device_assignment.IsIota()) {
+      LOG(ERROR) << "XLA:GPU only supports iota device assignment. Got: "
+                 << static_device_assignment.ToString()
+                 << ". This may lead to incorrect results.";
+    }
+  }
+
+  if (run_options->run_options().device_assignment() != nullptr) {
+    const DeviceAssignment& runtime_device_assignment =
+        *run_options->run_options().device_assignment();
+    if (!runtime_device_assignment.IsIota()) {
+      LOG(ERROR) << "XLA:GPU only supports iota device assignment. Got: "
+                 << runtime_device_assignment.ToString()
+                 << ". This may lead to incorrect results.";
+    }
+  }
+
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
       "GpuExecutable::ExecuteAsyncOnStreamImpl(", module_name_, ")"));
   se::DeviceAddressAllocator* const memory_allocator = run_options->allocator();

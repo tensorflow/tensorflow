@@ -528,6 +528,98 @@ TEST_F(LiveRangeCalculatorTest, WhileLoop) {
   EXPECT_EQ(ranges[2].end_time, 15);
 }
 
+// Tests live range calculation for a pass-through HLO value in a while loop,
+// where the while instruction is the last use of the pass-through value.
+TEST_F(LiveRangeCalculatorTest, WhileLoopPassThrough) {
+  const char* hlo_text = R"(
+    HloModule While, is_scheduled=true
+    cond_comp (p0: (f32[2,3], f32[2,3], s32[])) -> pred[] {
+      p0 = (f32[2,3], f32[2,3], s32[]) parameter(0)
+      limit = s32[] constant(10)
+      iteration = s32[] get-tuple-element(p0), index=2
+      ROOT cond = pred[] compare(iteration, limit), direction=LT
+    }
+    body_comp (p1: (f32[2,3], f32[2,3], s32[])) -> (f32[2,3], f32[2,3], s32[]) {
+      p1 = (f32[2,3], f32[2,3], s32[]) parameter(0)
+      val0 = f32[2,3] get-tuple-element(p1), index=0
+      val1 = f32[2,3] get-tuple-element(p1), index=1
+      iteration = s32[] get-tuple-element(p1), index=2
+      new_val1 = f32[2,3] negate(val1)
+      one = s32[] constant(1)
+      new_iteration = s32[] add(iteration, one)
+      ROOT tuple2 = (f32[2,3], f32[2,3], s32[]) tuple(val0, new_val1, new_iteration)
+    }
+    ENTRY entry (p2: f32[2,3], p3: f32[2,3], p4: s32[]) -> f32[2,3] {
+      p2 = f32[2,3] parameter(0)
+      p3 = f32[2,3] parameter(1)
+      p4 = s32[] parameter(2)
+      tanh0 = f32[2,3] tanh(p2)
+      tanh1 = f32[2,3] tanh(p3)
+      init_tuple = (f32[2,3], f32[2,3], s32[]) tuple(tanh0, tanh1, p4)
+      while_loop = (f32[2,3], f32[2,3], s32[]) while(init_tuple), condition=cond_comp, body=body_comp
+      gte_updated = f32[2,3] get-tuple-element(while_loop), index=1
+      ROOT root_neg = f32[2,3] negate(gte_updated)
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_TRUE(module->has_schedule());
+
+  AliasInfo alias_info;
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
+  ASSERT_OK_AND_ASSIGN(auto inst_to_index,
+                       GetInstToIndex(module.get(), *alias_analysis));
+
+  const HloInstruction* tanh0_inst = FindInstruction(module.get(), "tanh0");
+  ASSERT_NE(tanh0_inst, nullptr);
+  const HloBuffer* tanh0_buffer =
+      GetBufferForInstruction(*alias_analysis, tanh0_inst);
+  ASSERT_NE(tanh0_buffer, nullptr);
+
+  const HloInstruction* while_inst =
+      FindInstruction(module.get(), "while_loop");
+  ASSERT_NE(while_inst, nullptr);
+
+  LiveRangeCalculator calculator(*tanh0_buffer, inst_to_index);
+  auto ranges = calculator.CalculateBufferLiveRange().ranges;
+
+  // Expected flattened schedule:
+  // 0: p2
+  // 1: p3
+  // 2: p4
+  // 3: tanh0
+  // 4: tanh1
+  // 5: init_tuple
+  // -- cond_comp --
+  // 6: p0
+  // 7: limit
+  // 8: iteration
+  // 9: cond
+  // -- body_comp --
+  // 10: p1
+  // 11: val0
+  // 12: val1
+  // 13: iteration
+  // 14: new_val1
+  // 15: one
+  // 16: new_iteration
+  // 17: tuple2
+  // -- entry --
+  // 18: while_loop
+  // 19: gte_updated
+  // 20: root_neg
+
+  // Because tanh0 is pass-through in the while loop and while_loop is its last
+  // use, its live range extends continuously from its definition (tanh0) until
+  // the while_loop instruction.
+  ASSERT_EQ(ranges.size(), 1);
+  EXPECT_EQ(ranges[0].start_time, inst_to_index.at(tanh0_inst));
+  EXPECT_EQ(ranges[0].end_time, inst_to_index.at(while_inst));
+  EXPECT_EQ(ranges[0].start_time, 3);
+  EXPECT_EQ(ranges[0].end_time, 18);
+}
+
 // Tests live range calculation for async instructions, ensuring the input
 // buffer remains live from async-start until async-done.
 TEST_F(LiveRangeCalculatorTest, AsyncInstruction) {

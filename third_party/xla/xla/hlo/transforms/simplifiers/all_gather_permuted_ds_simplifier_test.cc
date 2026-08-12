@@ -21,9 +21,9 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -126,9 +126,14 @@ TEST_F(AllGatherPermutedDsSimplifierTest,
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::CollectivePermute(op::Parameter(0)));
-  EXPECT_THAT(root->source_target_pairs(),
-              (UnorderedElementsAreArray<std::pair<int64_t, int64_t>>(
-                  {{1, 2}, {2, 1}})));
+  // Self-pairs (e.g. {0, 0}) must be kept: a partition that reads its own
+  // all-gather offset keeps its own data. A collective-permute zeroes any
+  // partition that is not a target of some pair, so dropping the self-pairs
+  // would silently zero those partitions.
+  EXPECT_THAT(
+      root->source_target_pairs(),
+      (UnorderedElementsAreArray<std::pair<int64_t, int64_t>>(
+          {{0, 0}, {1, 2}, {2, 1}, {3, 3}, {4, 4}, {5, 5}, {6, 6}, {7, 7}})));
 }
 
 TEST_F(AllGatherPermutedDsSimplifierTest,
@@ -158,9 +163,12 @@ TEST_F(AllGatherPermutedDsSimplifierTest,
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::CollectivePermute(op::Parameter(0)));
-  EXPECT_THAT(root->source_target_pairs(),
-              (UnorderedElementsAreArray<std::pair<int64_t, int64_t>>(
-                  {{0, 3}, {1, 2}, {2, 1}, {3, 0}, {4, 7}, {6, 4}, {7, 6}})));
+  // {5, 5} is a self-pair and must be kept so partition 5 (which reads its own
+  // shard) is not zeroed by the collective-permute.
+  EXPECT_THAT(
+      root->source_target_pairs(),
+      (UnorderedElementsAreArray<std::pair<int64_t, int64_t>>(
+          {{0, 3}, {1, 2}, {2, 1}, {3, 0}, {4, 7}, {5, 5}, {6, 4}, {7, 6}})));
 }
 
 TEST_F(AllGatherPermutedDsSimplifierTest,
@@ -196,6 +204,42 @@ TEST_F(AllGatherPermutedDsSimplifierTest,
       root->source_target_pairs(),
       (UnorderedElementsAreArray<std::pair<int64_t, int64_t>>(
           {{0, 3}, {1, 2}, {2, 1}, {3, 0}, {4, 7}, {5, 6}, {6, 5}, {7, 4}})));
+}
+
+TEST_F(AllGatherPermutedDsSimplifierTest, KeepsSelfPairsForIdentityPartitions) {
+  // Only partitions 0 and 1 swap shards; partitions 2-7 read their own shard.
+  // The resulting self-pairs {2,2}..{7,7} must be preserved in the
+  // collective-permute -- otherwise those partitions, being the target of no
+  // pair, would be zeroed instead of keeping their own data.
+  absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY entry {
+      p = f32[32,8,128] parameter(0)
+      ag = f32[256,8,128] all-gather(p), replica_groups={{0,1,2,3,4,5,6,7}},
+        dimensions={0}, channel_id=1, use_global_device_ids=true
+      pid = u32[] partition-id()
+      permuteed_idx_list = s32[8]{0} constant({32,0,64,96,128,160,192,224})
+      offset = s32[1] dynamic-slice(permuteed_idx_list, pid),
+        dynamic_slice_sizes={1}
+      offset_reshape = s32[] reshape(offset)
+      zero = s32[] constant(0)
+      ROOT ds = f32[32,8,128] dynamic-slice(ag, offset_reshape, zero, zero),
+        dynamic_slice_sizes={32,8,128}
+    }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          RunPass(hlo_string,
+                                  /*num_replicas=*/1,
+                                  /*num_partitions=*/8,
+                                  /*expect_change=*/true));
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::CollectivePermute(op::Parameter(0)));
+  EXPECT_THAT(
+      root->source_target_pairs(),
+      (UnorderedElementsAreArray<std::pair<int64_t, int64_t>>(
+          {{0, 1}, {1, 0}, {2, 2}, {3, 3}, {4, 4}, {5, 5}, {6, 6}, {7, 7}})));
 }
 
 TEST_F(AllGatherPermutedDsSimplifierTest,

@@ -33,14 +33,13 @@ limitations under the License.
 #include "absl/log/die_if_null.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
-#include "xla/hlo/analysis/tuple_points_to_analysis.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -436,8 +435,7 @@ int64_t SumBufferSizes(const HloInstruction* hlo, const HloValueSet& value_set,
 }  // namespace
 
 absl::StatusOr<HloSchedule> ComputationSchedulerAlgorithm::Run(
-    HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
-    const HloAliasAnalysis& alias_analysis,
+    HloModule* module, const HloAliasAnalysis& alias_analysis,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     int64_t* peak_memory) const {
   HloSchedule schedule(module);
@@ -445,7 +443,7 @@ absl::StatusOr<HloSchedule> ComputationSchedulerAlgorithm::Run(
        module->MakeComputationPostOrder(execution_threads)) {
     if (!computation->IsFusionComputation()) {
       ABSL_ASSIGN_OR_RETURN(HloInstructionSequence computation_sequence,
-                       Run(computation, points_to_analysis, alias_analysis));
+                       Run(computation, alias_analysis));
       if (postprocessor_) {
         computation_sequence = postprocessor_(computation_sequence);
       }
@@ -462,7 +460,6 @@ absl::StatusOr<HloSchedule> ComputationSchedulerAlgorithm::Run(
 
 absl::StatusOr<HloInstructionSequence> DFSMemoryScheduler::Run(
     HloComputation* computation,
-    const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis) const {
   // These variables are a hack to prevent overflows.
   int64_t cumulative_total_size = 0;
@@ -541,7 +538,6 @@ absl::StatusOr<HloInstructionSequence> DFSMemoryScheduler::Run(
 
 absl::StatusOr<HloInstructionSequence> BFScheduler::Run(
     HloComputation* computation,
-    const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis) const {
   // Index of HloInstruction in the `computation`.
   absl::flat_hash_map<const HloInstruction*, int64_t> inst_index;
@@ -595,21 +591,18 @@ absl::StatusOr<HloInstructionSequence> BFScheduler::Run(
 
 absl::StatusOr<HloInstructionSequence> ListMemoryScheduler::Run(
     HloComputation* computation,
-    const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis) const {
   return ListScheduler::Run(computation, alias_analysis, size_function_);
 }
 
 absl::StatusOr<HloInstructionSequence> PostOrderScheduler::Run(
     HloComputation* computation,
-    const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis) const {
   return HloInstructionSequence(computation->MakeInstructionPostOrder());
 }
 
 absl::StatusOr<HloSchedule> DefaultMemoryScheduler::Run(
-    HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
-    const HloAliasAnalysis& alias_analysis,
+    HloModule* module, const HloAliasAnalysis& alias_analysis,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     int64_t* peak_memory) const {
   // We try a few schedulers and choose whichever returns a lower min-memory,
@@ -622,10 +615,9 @@ absl::StatusOr<HloSchedule> DefaultMemoryScheduler::Run(
   // some RNNs.
   MemorySchedulerMetrics memory_scheduler_metrics;
   int64_t list_memory;
-  ABSL_ASSIGN_OR_RETURN(
-      HloSchedule list_sequence,
-      list_scheduler_.Run(module, points_to_analysis, alias_analysis,
-                          execution_threads, &list_memory));
+  ABSL_ASSIGN_OR_RETURN(HloSchedule list_sequence,
+                   list_scheduler_.Run(module, alias_analysis,
+                                       execution_threads, &list_memory));
   MetricsForSingleMemoryScheduler* list_metrics =
       memory_scheduler_metrics.add_schedulers();
   list_metrics->set_type(MemorySchedulerProto::LIST);
@@ -634,10 +626,9 @@ absl::StatusOr<HloSchedule> DefaultMemoryScheduler::Run(
   VLOG(2) << "Min-memory list sequence: " << HumanReadableNumBytes(list_memory);
 
   int64_t dfs_memory;
-  ABSL_ASSIGN_OR_RETURN(
-      HloSchedule dfs_sequence,
-      dfs_scheduler_.Run(module, points_to_analysis, alias_analysis,
-                         execution_threads, &dfs_memory));
+  ABSL_ASSIGN_OR_RETURN(HloSchedule dfs_sequence,
+                   dfs_scheduler_.Run(module, alias_analysis, execution_threads,
+                                      &dfs_memory));
   MetricsForSingleMemoryScheduler* dfs_metrics =
       memory_scheduler_metrics.add_schedulers();
   dfs_metrics->set_type(MemorySchedulerProto::DFS);
@@ -648,8 +639,8 @@ absl::StatusOr<HloSchedule> DefaultMemoryScheduler::Run(
   int64_t post_order_memory;
   ABSL_ASSIGN_OR_RETURN(
       HloSchedule post_order_sequence,
-      post_order_scheduler_.Run(module, points_to_analysis, alias_analysis,
-                                execution_threads, &post_order_memory));
+      post_order_scheduler_.Run(module, alias_analysis, execution_threads,
+                                &post_order_memory));
   MetricsForSingleMemoryScheduler* post_order_metrics =
       memory_scheduler_metrics.add_schedulers();
   post_order_metrics->set_type(MemorySchedulerProto::POST_ORDER);
@@ -684,7 +675,14 @@ absl::StatusOr<HloSchedule> DefaultMemoryScheduler::Run(
   if (auto status =
           module->metadata()->set_custom_metadata(memory_scheduler_metrics);
       !status.ok()) {
-    LOG(WARNING) << "failed to set custom metadata: " << status;
+    if (absl::IsNotFound(status)) {
+      // There is no currently running pass to attach the metrics to. This is
+      // expected: ScheduleModule is also invoked outside of an HloPassPipeline,
+      // e.g. by GpuCompiler::CompileToBackendResult via ScheduleGpuModule.
+      VLOG(2) << "not recording memory scheduler metrics: " << status;
+    } else {
+      LOG(WARNING) << "failed to set custom metadata: " << status;
+    }
   }
 
   return *selected_sequence;
@@ -698,14 +696,12 @@ absl::StatusOr<HloSchedule> ScheduleModule(
     return absl::StrFormat("XlaMemoryScheduler:#module=%s,program_id=%d#",
                            module->name(), module->unique_id());
   });
-  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
-                   TuplePointsToAnalysis::Run(module));
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                    HloAliasAnalysis::Run(module, algorithm.alias_info()));
 
-  ABSL_ASSIGN_OR_RETURN(HloSchedule schedule,
-                   algorithm.Run(module, *points_to_analysis, *alias_analysis,
-                                 execution_threads, peak_memory));
+  ABSL_ASSIGN_OR_RETURN(
+      HloSchedule schedule,
+      algorithm.Run(module, *alias_analysis, execution_threads, peak_memory));
 
   ABSL_RETURN_IF_ERROR(schedule.Verify());
 

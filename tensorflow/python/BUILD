@@ -715,7 +715,7 @@ pywrap_tensorflow_macro(
         "@clog//:__subpackages__",
         "@com_github_cares_cares//:__subpackages__",
         "@com_github_googlecloudplatform_tensorflow_gcp_tools//:__subpackages__",
-        "@com_github_grpc_grpc//:__subpackages__",
+        "@grpc//:__subpackages__",
         "@com_google_absl//:__subpackages__",
         "@com_google_googleapis//:__subpackages__",
         "@com_google_protobuf//:__subpackages__",

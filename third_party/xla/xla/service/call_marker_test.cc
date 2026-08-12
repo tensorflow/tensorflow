@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/layout_util.h"
 #include "xla/service/call_inliner.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -150,9 +151,8 @@ TEST_F(CallMarkerTest, MarkRootCallPreservesEntryResultLayout) {
   TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_marker.Run(module.get()));
   EXPECT_TRUE(mutated);
 
-  EXPECT_EQ(
-      module->entry_computation()->root_instruction()->shape().layout(),
-      module->entry_computation_layout().result_layout().shape().layout());
+  EXPECT_EQ(module->entry_computation()->root_instruction()->shape().layout(),
+            LayoutUtil::MakeLayout({1, 0}));
 }
 
 TEST_F(CallMarkerTest, MarkNestedCalls) {
@@ -607,5 +607,28 @@ ENTRY inline {
 )";
   EXPECT_EQ(module->ToString(HloPrintOptions::ShortParsable()), inlined);
 }
+
+TEST_F(CallMarkerTest, DoNotMarkCallWithUnusedParameters) {
+  const absl::string_view hlo_string = R"(
+  HloModule inline_module
+
+  a {
+    p = f32[] parameter(0)
+    ROOT c = f32[] constant(0)
+  }
+
+  ENTRY inline {
+    c = f32[] constant(1)
+    a = f32[] call(c), to_apply=a
+    ROOT tuple = (f32[], f32[]) tuple(a, c)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  CallInliner inliner;
+  CallMarker call_marker(inliner);
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_marker.Run(module.get()));
+  EXPECT_FALSE(mutated);
+}
+
 }  // namespace
 }  // namespace xla

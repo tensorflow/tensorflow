@@ -195,6 +195,14 @@ message CollectiveBackendConfig {
     KERNEL_STRATEGY_TRITON_TWO_SHOT = 2;
   }
   CollectiveKernelStrategy kernel_strategy = 7;
+
+  // Identifies the communication domain selected for this collective. The
+  // domain is independent of the collective backend and execution mechanism.
+  enum CollectiveCommunicationDomain {
+    COLLECTIVE_COMMUNICATION_DOMAIN_UNSPECIFIED = 0;
+    COLLECTIVE_COMMUNICATION_DOMAIN_SCALE_UP_FABRIC = 1;
+  }
+  CollectiveCommunicationDomain communication_domain = 9;
 }
 
 // Backend config for collective metadata operation.

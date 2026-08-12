@@ -28,19 +28,25 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/primitive_util.h"
 #include "xla/service/slow_operation_alarm.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
@@ -116,14 +122,19 @@ bool AllOperandsConstantOrBroadcastConstant(const HloInstruction* instr) {
 
 /*static*/ std::atomic<int64_t> HloConstantFolding::slow_op_counter_{0};
 
+// Removes a dead instruction and any operands that die as a result,
+// transitively. Every removed instruction is recorded in
+// `removed_instructions` so that callers iterating over an instruction list
+// taken before the removal can recognize removed entries by pointer identity
+// instead of dereferencing them.
 absl::Status RecursivelyRemoveDeadInstructionAndDeadOperands(
-    HloComputation& computation, HloInstruction* instruction) {
-  absl::flat_hash_set<HloInstruction*> already_removed;
+    HloComputation& computation, HloInstruction* instruction,
+    absl::flat_hash_set<const HloInstruction*>& removed_instructions) {
   std::vector<HloInstruction*> dead_instructions = {instruction};
   while (!dead_instructions.empty()) {
-    auto dead_instruction = dead_instructions.back();
+    HloInstruction* dead_instruction = dead_instructions.back();
     dead_instructions.pop_back();
-    if (already_removed.insert(dead_instruction).second == false) {
+    if (!removed_instructions.insert(dead_instruction).second) {
       continue;
     }
 
@@ -145,9 +156,64 @@ absl::Status RecursivelyRemoveDeadInstructionAndDeadOperands(
 
 namespace {
 
+// Ops that move, select, or reinterpret bytes without arithmetic; folding
+// them cannot change numerics for any element type. (Pad copies the padding
+// value verbatim, dynamic-slice start indices are clamped per spec, and
+// select passes one operand's bits through.)
+bool IsPureDataMovement(HloOpcode opcode) {
+  switch (opcode) {
+    case HloOpcode::kBitcast:
+    case HloOpcode::kBitcastConvert:
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kCopy:
+    case HloOpcode::kDynamicSlice:
+    case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kPad:
+    case HloOpcode::kReshape:
+    case HloOpcode::kReverse:
+    case HloOpcode::kSelect:
+    case HloOpcode::kSlice:
+    case HloOpcode::kTranspose:
+      return true;
+    default:
+      return false;
+  }
+}
+
+// True if every array leaf of `shape` is integer or pred typed.
+bool ShapeIsIntegralOrPred(const Shape& shape) {
+  bool ok = true;
+  ShapeUtil::ForEachSubshape(
+      shape, [&ok](const Shape& subshape, const ShapeIndex& /*index*/) {
+        if (subshape.IsArray() &&
+            !primitive_util::IsIntegralType(subshape.element_type()) &&
+            subshape.element_type() != PRED) {
+          ok = false;
+        }
+      });
+  return ok;
+}
+
+// Structural ops that are exempt from per-instruction options policies: they
+// read or regroup existing values and are only reachable through the fold of
+// an enclosing instruction.
+bool IsStructural(HloOpcode opcode) {
+  switch (opcode) {
+    case HloOpcode::kConstant:
+    case HloOpcode::kGetTupleElement:
+    case HloOpcode::kParameter:
+    case HloOpcode::kTuple:
+      return true;
+    default:
+      return false;
+  }
+}
+
 bool IsFoldable(
-    const HloInstruction* instruction, HloConstantFolding::Level level,
+    const HloInstruction* instruction,
+    const HloConstantFolding::Options& options,
     absl::flat_hash_map<HloComputation*, bool>& is_foldable_computation) {
+  const HloConstantFolding::Level level = options.level;
   // Broadcasts dramatically increase the size of constants, which is often
   // detrimental to performance and memory capacity, so do not fold
   // broadcasts.
@@ -161,10 +227,69 @@ bool IsFoldable(
     return false;
   }
 
+  switch (instruction->opcode()) {
+    // Opaque, runtime-dependent, or cross-device: never fold, not even inside
+    // called computations. Most of these are unimplemented in the evaluator
+    // today; the explicit list keeps the policy sound on its own.
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllToAll:
+    case HloOpcode::kCollectivePermute:
+    case HloOpcode::kCopyDone:
+    case HloOpcode::kCopyStart:
+    case HloOpcode::kCustomCall:
+    case HloOpcode::kDomain:
+    case HloOpcode::kGetDimensionSize:
+    case HloOpcode::kOptimizationBarrier:
+    case HloOpcode::kPartitionId:
+    case HloOpcode::kRaggedAllToAll:
+    case HloOpcode::kRaggedDot:
+    case HloOpcode::kReplicaId:
+    case HloOpcode::kRngBitGenerator:
+    case HloOpcode::kRngGetAndUpdateState:
+      return false;
+    // Sub-byte types are stored unpacked in literals, so evaluating a
+    // width-changing bitcast of a packed type reinterprets unpacked host
+    // bytes and produces a constant that differs from the backend result.
+    case HloOpcode::kBitcast:
+    case HloOpcode::kBitcastConvert: {
+      const PrimitiveType from =
+          instruction->operand(0)->shape().element_type();
+      const PrimitiveType to = instruction->shape().element_type();
+      if (primitive_util::BitWidth(from) != primitive_util::BitWidth(to) &&
+          (primitive_util::IsSubByteNonPredType(from) ||
+           primitive_util::IsSubByteNonPredType(to))) {
+        return false;
+      }
+      break;
+    }
+    default:
+      break;
+  }
+
   // Skip while loops as they can significantly increase compile times.
   if (level == HloConstantFolding::Level::kDefault &&
       instruction->opcode() == HloOpcode::kWhile) {
     return false;
+  }
+
+  if (options.can_fold_shape != nullptr &&
+      !IsStructural(instruction->opcode()) &&
+      !options.can_fold_shape(instruction->shape())) {
+    return false;
+  }
+
+  if (!options.fold_float_arithmetic && !IsStructural(instruction->opcode()) &&
+      // Ops with called computations are judged by the recursion below.
+      instruction->called_computations().empty() &&
+      !IsPureDataMovement(instruction->opcode())) {
+    if (!ShapeIsIntegralOrPred(instruction->shape())) {
+      return false;
+    }
+    for (const HloInstruction* operand : instruction->operands()) {
+      if (!ShapeIsIntegralOrPred(operand->shape())) {
+        return false;
+      }
+    }
   }
 
   // Don't fold across async execution thread if it's not supposed to be
@@ -181,7 +306,7 @@ bool IsFoldable(
     auto iter = is_foldable_computation.find(subcomputation);
     if (iter == is_foldable_computation.end()) {
       for (auto* sub_instruction : subcomputation->MakeInstructionPostOrder()) {
-        if (!IsFoldable(sub_instruction, level, is_foldable_computation)) {
+        if (!IsFoldable(sub_instruction, options, is_foldable_computation)) {
           is_foldable_computation[subcomputation] = false;
           return false;
         }
@@ -236,6 +361,38 @@ bool IsFoldable(
       VLOG(2) << "Ignore constant folding: result shape size is "
               << elements_in_constant << " total size of arguments is "
               << elements_in_operands;
+      return false;
+    }
+  }
+  return true;
+}
+
+// Makes a constant declared with the exact shape of the instruction it
+// replaces: literals normalize away layout decorations (tiles,
+// element_size_in_bits, tail padding). The evaluator only guarantees the
+// minor_to_major of array results, so relayout the literal first when it
+// disagrees with `shape` (e.g. tuple leaves come back in default layouts).
+std::unique_ptr<HloInstruction> MakeFoldedConstant(Literal literal,
+                                                   const Shape& shape) {
+  if (!LayoutUtil::HasLayout(shape)) {
+    return HloInstruction::CreateConstant(std::move(literal));
+  }
+  if (!LayoutUtil::LayoutsInShapesEqual(literal.shape(), shape,
+                                        Layout::Equal().MinorToMajorOnly())) {
+    literal = literal.Relayout(shape);
+  }
+  return std::make_unique<HloConstantInstruction>(std::move(literal), shape);
+}
+
+// In layout sensitive mode, a producer with a tuple shape can only be folded
+// by rewriting each of its get-tuple-element users to a leaf constant.
+bool CanRewriteTupleUsers(const HloInstruction* instruction) {
+  if (instruction == instruction->parent()->root_instruction()) {
+    return false;
+  }
+  for (const HloInstruction* user : instruction->users()) {
+    if (user->opcode() != HloOpcode::kGetTupleElement ||
+        !user->shape().IsArray() || user->HasControlDependencies()) {
       return false;
     }
   }
@@ -299,7 +456,7 @@ absl::StatusOr<bool> HloConstantFolding::RunImpl(
   // default case. This retains the behavior from before while loop support in
   // HloEvaluator and may be revised.
   auto evaluator = std::make_unique<HloEvaluator>(
-      /*max_loop_iterations=*/level_ == Level::kAggressive ? -1 : 0);
+      /*max_loop_iterations=*/options_.level == Level::kAggressive ? -1 : 0);
   // fast-path lets us e.g. use Eigen for matmuls.
   evaluator->set_use_fast_path(true);
 
@@ -328,7 +485,16 @@ absl::StatusOr<bool> HloConstantFolding::RunImpl(
                        PropagateIdenticalConstantArguments(computation));
       changed |= did_change;
     }
+    // Instructions removed while folding earlier entries of the snapshot
+    // iterated below. Removed entries (e.g. the get-tuple-element users of a
+    // folded tuple shaped producer, which appear after the producer in post
+    // order) are recognized by pointer identity and skipped without being
+    // dereferenced.
+    absl::flat_hash_set<const HloInstruction*> removed_instructions;
     for (auto* instruction : computation->MakeInstructionPostOrder()) {
+      if (removed_instructions.contains(instruction)) {
+        continue;
+      }
       // Skip dead code.
       if (instruction->IsDead()) {
         continue;
@@ -353,7 +519,7 @@ absl::StatusOr<bool> HloConstantFolding::RunImpl(
       //  - So the only remaining case is where some but not all operands are
       //    broadcasts of constants, e.g. op(constant, broadcast(constant)).
       //
-      if (level_ == HloConstantFolding::Level::kDefault &&
+      if (options_.level == HloConstantFolding::Level::kDefault &&
           !AnyOperandsConstant(instruction)) {
         continue;
       }
@@ -373,7 +539,16 @@ absl::StatusOr<bool> HloConstantFolding::RunImpl(
         continue;
       }
 
-      if (!IsFoldable(instruction, level_, is_foldable_computation)) {
+      if (!IsFoldable(instruction, options_, is_foldable_computation)) {
+        continue;
+      }
+
+      // In layout sensitive mode a tuple shaped constant may never be
+      // materialized: fold a tuple shaped producer by rewriting each of its
+      // get-tuple-element users to a leaf constant instead.
+      const bool rewrite_tuple_users =
+          options_.is_layout_sensitive && instruction->shape().IsTuple();
+      if (rewrite_tuple_users && !CanRewriteTupleUsers(instruction)) {
         continue;
       }
       VLOG(5) << "Constant folding: " << instruction->ToString();
@@ -421,21 +596,27 @@ absl::StatusOr<bool> HloConstantFolding::RunImpl(
 
       VLOG(4) << "Constant folded: " << instruction->ToString();
       changed = true;
-      HloInstruction* new_constant = instruction->AddInstruction(
-          HloInstruction::CreateConstant(std::move(result)));
-      if (new_constant->shape().has_layout()) {
-        // Update element_size_in_bits on the new instruction's layout. Literals
-        // always have element_size_in_bits set to 0, and CreateConstant copies
-        // the shape/layout from the Literal, so we need to set
-        // element_size_in_bits here.
-        new_constant->mutable_shape()
-            ->mutable_layout()
-            ->set_element_size_in_bits(
-                instruction->shape().layout().element_size_in_bits());
+      if (rewrite_tuple_users) {
+        std::vector<Literal> leaves = result.DecomposeTuple();
+        std::vector<HloInstruction*> users(instruction->users().begin(),
+                                           instruction->users().end());
+        for (HloInstruction* user : users) {
+          if (!user->IsDead()) {
+            HloInstruction* leaf_constant =
+                user->AddInstruction(MakeFoldedConstant(
+                    leaves[user->tuple_index()].Clone(), user->shape()));
+            ABSL_RETURN_IF_ERROR(user->ReplaceAllUsesWith(leaf_constant));
+          }
+          ABSL_RETURN_IF_ERROR(RecursivelyRemoveDeadInstructionAndDeadOperands(
+              *computation, user, removed_instructions));
+        }
+      } else {
+        HloInstruction* new_constant = instruction->AddInstruction(
+            MakeFoldedConstant(std::move(result), instruction->shape()));
+        ABSL_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(new_constant));
+        ABSL_RETURN_IF_ERROR(RecursivelyRemoveDeadInstructionAndDeadOperands(
+            *computation, instruction, removed_instructions));
       }
-      ABSL_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(new_constant));
-      ABSL_RETURN_IF_ERROR(RecursivelyRemoveDeadInstructionAndDeadOperands(
-          *computation, instruction));
     }
   }
   return changed;

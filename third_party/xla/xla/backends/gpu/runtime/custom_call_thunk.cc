@@ -90,6 +90,14 @@ struct CustomCallRecordState : public CommandState {
   std::vector<const XLA_FFI_Command*> commands;
 };
 
+// A per-execution state that holds state for prepare and initialize stages.
+struct PrepareAndInitState {
+  ffi::ExecutionState prepare;
+  ffi::ExecutionState init;
+  bool prepared = false;
+  bool initialized = false;
+};
+
 }  // namespace
 
 using xla::ffi::CallFrame;
@@ -355,10 +363,8 @@ InvokeContext CustomCallThunk::BuildInvokeContext(
   ffi::ExecutionState* initialize_state = nullptr;
 
   if (execution_scoped_state) {
-    auto [it, _] = execution_scoped_state->try_emplace(
-        this->thunk_info().thunk_id, std::in_place_type<PrepareAndInitState>);
-    PrepareAndInitState& prepare_and_init =
-        tsl::any_cast<PrepareAndInitState>(it->second);
+    PrepareAndInitState& prepare_and_init = tsl::any_cast<PrepareAndInitState>(
+        execution_scoped_state->at(this->thunk_info().thunk_id));
     prepare_state = &prepare_and_init.prepare;
     initialize_state = &prepare_and_init.init;
   }
@@ -443,6 +449,19 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
 }
 
 absl::Status CustomCallThunk::Prepare(const PrepareParams& params) {
+  // Run the prepare stage at most once per execution. When lowered into a
+  // command buffer, CommandBufferThunk drives this same object via both its
+  // command sequence and its fallback thunk sequence; see PrepareAndInitState.
+  if (params.execution_scoped_state != nullptr) {
+    auto [it, _] = params.execution_scoped_state->try_emplace(
+        thunk_info().thunk_id, std::in_place_type<PrepareAndInitState>);
+    PrepareAndInitState& state = tsl::any_cast<PrepareAndInitState>(it->second);
+    if (state.prepared) {
+      return absl::OkStatus();
+    }
+    state.prepared = true;
+  }
+
   const RunId run_id =
       params.collective_params ? params.collective_params->run_id : RunId{-1};
 
@@ -481,6 +500,19 @@ absl::Status CustomCallThunk::Prepare(const PrepareParams& params) {
 }
 
 absl::Status CustomCallThunk::Initialize(const InitializeParams& params) {
+  // Run the initialize stage at most once per execution. When lowered into a
+  // command buffer, CommandBufferThunk drives this same object via both its
+  // command sequence and its fallback thunk sequence; see PrepareAndInitState.
+  if (params.execution_scoped_state != nullptr) {
+    auto [it, _] = params.execution_scoped_state->try_emplace(
+        thunk_info().thunk_id, std::in_place_type<PrepareAndInitState>);
+    PrepareAndInitState& state = tsl::any_cast<PrepareAndInitState>(it->second);
+    if (state.initialized) {
+      return absl::OkStatus();
+    }
+    state.initialized = true;
+  }
+
   const RunId run_id =
       params.collective_params ? params.collective_params->run_id : RunId{-1};
 

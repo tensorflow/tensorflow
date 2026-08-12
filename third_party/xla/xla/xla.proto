@@ -591,6 +591,12 @@ message DebugOptions {
   // Size threshold (in bytes) for the GPU all-reduce combiner.
   optional int64 xla_gpu_all_reduce_combine_threshold_bytes = 157;
 
+  // If true, AllReduceSplitter rewrites AR+DS patterns even when the
+  // profitability heuristic does not find an existing all-reduce that shares
+  // either of the post-split replica group topologies (so the combiner can
+  // fuse them). Default: false.
+  optional bool xla_gpu_all_reduce_splitter_ignore_profitability_check = 533;
+
   // Extra platform-specific options to improve analytical latency
   // estimator precision; comma-separated list of 'key=val' strings (=val may be
   // omitted); no whitespace around commas. Available options:
@@ -1714,6 +1720,10 @@ message DebugOptions {
     // Sets readonly access to the cache for the per fusion autotuner. Same as
     // above, but doesn't dump anything.
     AUTOTUNE_CACHE_MODE_READ = 2;
+
+    // Write only mode. Does not read the cache, useful for generating new cache
+    // and avoiding lookup overheads.
+    AUTOTUNE_CACHE_MODE_WRITE_ONLY = 3;
   }
 
   optional bool xla_pjrt_allow_auto_layout_in_hlo = 344;
@@ -1732,9 +1742,6 @@ message DebugOptions {
   // If true, the triton fusion emitter will ignore IsTritonSupportedInstruction
   // We need this to enable triton scaled dot emitter for testing.
   optional bool xla_gpu_experimental_scaled_dot_with_triton = 410;
-
-  // If true, use MultiGpuBarrierKernel in one-shot RaggedAllToAll thunk.
-  optional bool xla_gpu_experimental_ragged_all_to_all_use_barrier = 450;
 
   // If true, use MultiGpuBarrierWithNcclKernel in one-shot RaggedAllToAll
   // thunk.
@@ -1787,7 +1794,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 533
+  // Next id: 534
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -1873,6 +1880,7 @@ message DebugOptions {
   reserved "xla_gpu_experimental_enable_triton_softmax_priority_fusion";
   reserved "xla_gpu_experimental_enable_triton_tma";
   reserved "xla_gpu_experimental_ragged_all_to_all_zero_copy";
+  reserved "xla_gpu_experimental_ragged_all_to_all_use_barrier";
   reserved "xla_gpu_experimental_use_autotuner_pass";
   reserved "xla_gpu_experimental_use_raft_select_k";
   reserved "xla_gpu_graph_eviction_timeout_seconds";
@@ -1921,7 +1929,8 @@ message DebugOptions {
       234, 238, 239, 241, 242, 243, 249, 263, 264, 266, 270, 271, 275, 276, 278,
       279, 281, 282, 286, 298, 299, 300, 302, 303, 309, 313, 314, 319, 320, 325,
       326, 332, 346, 352, 354, 355, 358, 361, 367, 369, 371, 376, 385, 388, 389,
-      394, 396, 398, 402, 413, 420, 423, 430, 435, 443, 446, 458, 464, 477, 480;
+      394, 396, 398, 402, 413, 420, 423, 430, 435, 443, 446, 450, 458, 464, 477,
+      480;
 }
 
 // Contains flags which affects the GPU compilation result.

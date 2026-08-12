@@ -494,6 +494,40 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> CommonPjRtClient::DefineBuffer(
       memory_space);
 }
 
+absl::StatusOr<std::unique_ptr<PjRtBuffer>> CommonPjRtClient::CreateErrorBuffer(
+    absl::Status error, const Shape& shape, PjRtMemorySpace* memory) {
+  if (memory->client() != this) {
+    return absl::InvalidArgumentError(
+        "Memory space is not attached to this client");
+  }
+  auto* device = memory->devices()[0];
+  VLOG(1) << "CommonPjRtBufferImpl::CreateErrorBuffer: shape: "
+          << shape.ToString() << " device: " << device->DebugString()
+          << " error: " << error;
+
+  ABSL_ASSIGN_OR_RETURN(Shape device_shape, MakeDefaultShapeForMemorySpace(
+                                           memory, shape, /*layout=*/nullptr));
+
+  ABSL_ASSIGN_OR_RETURN(auto definition_event,
+                   CreateDeviceEvent(memory, tsl::Future<>(std::move(error))));
+
+  PjRtRawBufferRef raw_buffer;
+  if (!SupportsPredeterminedError(memory)) {
+    ABSL_ASSIGN_OR_RETURN(int64_t on_device_bytes_count,
+                     GetOnDeviceBytesCount(memory, device_shape));
+    ABSL_ASSIGN_OR_RETURN(raw_buffer,
+                     AllocateRawBuffer(memory, on_device_bytes_count,
+                                       /*retry_on_oom=*/true,
+                                       /*allocate_after=*/{}));
+  }
+
+  absl::InlinedVector<PjRtDeviceEventRef, 2> definition_events;
+  definition_events.emplace_back(std::move(definition_event));
+  return DefineBuffer(std::make_shared<const Shape>(std::move(device_shape)),
+                      memory, std::move(raw_buffer),
+                      std::move(definition_events));
+}
+
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> CommonPjRtClient::MakeUndonatable(
     std::unique_ptr<PjRtBuffer> buffer) {
   if (!buffer) {
@@ -864,6 +898,21 @@ CommonPjRtClient::BufferFromHostBuffer(
   return output_buffer;
 }
 
+absl::StatusOr<int64_t> CommonPjRtClient::GetOnDeviceBytesCount(
+    int memory_space_kind, const xla::Shape& shape) const {
+  auto kind = GetDynamicShapeKind(memory_space_kind);
+  // PjRtShapeAndMetadataTransferRequirements::Get->ShapeUtil::ArraySize
+  // requires a layout.
+  if (!shape.IsToken() && !shape.has_layout()) {
+    return absl::FailedPreconditionError(
+        "Buffer's on-device shape has no layout. Cannot determine on-device "
+        "bytes count.");
+  }
+  auto requirements =
+      PjRtShapeAndMetadataTransferRequirements::Get(shape, kind);
+  return static_cast<int64_t>(requirements.size);
+}
+
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 CommonPjRtClient::CreateViewOfDeviceBuffer(
     void* device_ptr, const Shape& shape, PjRtMemorySpace* memory_space,
@@ -904,32 +953,14 @@ CommonPjRtClient::CreateViewOfDeviceBuffer(
 absl::StatusOr<xla::Shape> CommonPjRtClient::MakeDefaultShapeForMemorySpace(
     PjRtMemorySpace* memory_space, xla::Shape shape,
     const xla::Layout* layout) const {
-  if (!shape.IsToken()) {
-    if (layout) {
-      *shape.mutable_layout() = *layout;
-      if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
-        ABSL_ASSIGN_OR_RETURN(
-            xla::Layout default_layout,
-            (*GetTopologyDescription())
-                ->GetDefaultLayout(shape.element_type(), shape.dimensions()));
-        if (default_layout.element_size_in_bits() !=
-            shape.layout().element_size_in_bits()) {
-          return InvalidArgument(
-              "Device buffers require %d bits per element for an element type "
-              "%s, but got layout %s for shape %s",
-              default_layout.element_size_in_bits(),
-              PrimitiveType_Name(shape.element_type()), layout->ToString(),
-              shape.ToString());
-        }
-      }
-    } else {
-      ABSL_ASSIGN_OR_RETURN(
-          *shape.mutable_layout(),
-          (*GetTopologyDescription())
-              ->GetDefaultLayout(shape.element_type(), shape.dimensions()));
-    }
-  }
-  return shape;
+  ABSL_ASSIGN_OR_RETURN(auto* topology, GetTopologyDescription());
+  return topology->MakeCanonicalShapeForMemorySpace(memory_space->kind_id(),
+                                                    std::move(shape), layout);
+}
+absl::StatusOr<Layout> CommonPjRtClient::GetDefaultLayout(
+    PrimitiveType element_type, absl::Span<const int64_t> dims) {
+  ABSL_ASSIGN_OR_RETURN(auto* topology, GetTopologyDescription());
+  return topology->GetDefaultLayout(element_type, dims);
 }
 
 tsl::Future<> CommonPjRtClient::MakeTrackedReadyFuture(
@@ -2801,11 +2832,33 @@ CommonPjRtBufferImpl::CopyToMemorySpace(PjRtMemorySpace* dst_memory_space) {
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
+CommonPjRtBufferImpl::CopyToMemorySpace(
+    PjRtMemorySpace* dst_memory_space,
+    std::optional<PjRtRawBufferRef> donated_dst) {
+  if (!donated_dst.has_value()) {
+    return CopyToMemorySpace(dst_memory_space);
+  }
+  // Copying across PjRtClients involves a copy through the host.
+  if (dst_memory_space->client() == client()) {
+    ABSL_ASSIGN_OR_RETURN(xla::Shape dest_shape,
+                     client()->GetCopyDestinationShape(
+                         on_device_shape(), memory_space(), dst_memory_space));
+    if (xla::Shape::Equal().IgnoreMemorySpaceInLayout()(dest_shape,
+                                                        on_device_shape())) {
+      return DirectCopyToMemorySpace(dst_memory_space, std::move(donated_dst));
+    }
+  }
+  return absl::InvalidArgumentError(
+      "CopyToMemorySpace with donated_dst is only supported for direct D2D "
+      "copies on CommonPjRtClient without layout changes");
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 CommonPjRtBufferImpl::CopyToMemorySpace(PjRtBuffer* donated_dst) {
   PjRtMemorySpace* dst_memory_space = donated_dst->memory_space();
   // Copying across PjRtClients involves a copy through the host.
   if (dst_memory_space->client() == client()) {
-    ABSL_ASSIGN_OR_RETURN(auto dest_shape,
+    ABSL_ASSIGN_OR_RETURN(xla::Shape dest_shape,
                      client()->GetCopyDestinationShape(
                          on_device_shape(), memory_space(), dst_memory_space));
     if (xla::Shape::Equal().IgnoreMemorySpaceInLayout()(dest_shape,
@@ -2898,8 +2951,11 @@ CommonPjRtBufferImpl::CopyToMemorySpaceFallbackThroughLiteral(
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 CommonPjRtBufferImpl::DirectCopyToMemorySpace(
-    PjRtMemorySpace* dst_memory_space) {
-  tsl::profiler::TraceMe traceme("CopyToMemorySpace_Direct");
+    PjRtMemorySpace* dst_memory_space,
+    std::optional<PjRtRawBufferRef> donated_dst) {
+  tsl::profiler::TraceMe traceme(donated_dst.has_value()
+                                     ? "CopyToMemorySpace_Donated"
+                                     : "CopyToMemorySpace_Direct");
   if (!dynamic_cast<CommonPjRtClient*>(dst_memory_space->client())) {
     return absl::InvalidArgumentError(
         "DirectCopyToMemorySpace only supported across CommonPjRtClient "
@@ -2909,6 +2965,9 @@ CommonPjRtBufferImpl::DirectCopyToMemorySpace(
   PjRtDeviceEventPromiseRef src_usage_event_promise;
   PjRtRawBufferRef src_raw_buffer;
   PjRtRawBufferRef dst_raw_buffer;
+  if (donated_dst.has_value()) {
+    dst_raw_buffer = *std::move(donated_dst);
+  }
   std::unique_ptr<PjRtBuffer> dst_buffer;
   PjRtDeviceEventRefVector definition_events;
   ::tsl::AsyncValueRef<bool> allocation_event;

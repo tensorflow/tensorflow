@@ -186,20 +186,20 @@ xla_test(
         "//xla/backends/gpu/runtime:collective_params",
         "//xla/ffi",
         "//xla/hlo/ir:hlo",
+        "//xla/pjrt:pjrt_client",
         "//xla/service:hlo_module_config",
+        "//xla/service:hlo_runner",
         "//xla/service:hlo_runner_interface",
-        "//xla/service:hlo_runner_pjrt",
         "//xla/service:platform_util",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
-        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tests:hlo_interpreter_reference_mixin",
+        "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tests:test_utils",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log:check",
@@ -316,9 +316,8 @@ xla_test(
         "//xla/hlo/parser:hlo_parser",
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/platform:statusor",
-        "@tsl//tsl/platform:test",
     ],
 )
 
@@ -374,10 +373,9 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/platform:statusor",
-        "@tsl//tsl/platform:test",
     ],
 )
 
@@ -393,7 +391,6 @@ xla_test(
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/platform:statusor",
     ],
 )
 
@@ -518,8 +515,8 @@ xla_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/testlib:test_helpers",
         "//xla/tests:client_library_test_base",
+        "//xla/tsl/platform:env",
         "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/platform:env",
     ],
 )
 
@@ -569,10 +566,10 @@ xla_test(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/platform:test",
     ],
 )
 
@@ -598,9 +595,9 @@ xla_test(
     backends = ["gpu"],
     deps = [
         ":gpu_pjrt_codegen_test",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/platform:test",
     ],
 )
 
@@ -734,6 +731,7 @@ lit_test_suite_for_gpus(
             "calling_convention.hlo",
             "dot_bf16.hlo",
             "kernel_reuse.hlo",
+            "memory_bandwidth_fusion.hlo",
             "offload_scan_output.hlo",
             "pad_to_static.hlo",
             "reduce_fold_zero_add.hlo",
@@ -784,7 +782,15 @@ lit_test_suite_for_gpus(
             "vectorization.hlo",
             "pdl.hlo",
         ],
+        "mi350": [
+            "dot_bf16.hlo",
+            "single_instruction.hlo",
+            "vectorization.hlo",
+            "pdl.hlo",
+        ],
         "gfx1250": [
+            # TODO: re-enable once gfx1250 memory_bandwidth is finalized.
+            "memory_bandwidth_fusion.hlo",
             "single_instruction.hlo",
             "vectorization.hlo",
             "pdl.hlo",
@@ -797,6 +803,7 @@ lit_test_suite_for_gpus(
         "gfx1250",
         "h100_sxm",
         "mi200",
+        "mi350",
         "p100",
         "v100",
     ],
@@ -1104,10 +1111,10 @@ xla_test(
     deps = [
         ":gpu_pjrt_codegen_test",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/platform:test",
     ],
 )
 
@@ -1253,11 +1260,11 @@ xla_test(
         "//xla/tests:test_utils",
         "//xla/tests:xla_internal_test_main",
         "//xla/tests/restricted:hlo_test_base_legacy",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
-        "@tsl//tsl/platform:statusor",
     ],
 )
 
@@ -1308,6 +1315,7 @@ xla_test(
         "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu/transforms/collectives:collective_domain",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:pattern_matcher_gmock",
@@ -1529,7 +1537,11 @@ xla_test(
     name = "ragged_all_to_all_e2e_test",
     srcs = ["ragged_all_to_all_e2e_test.cc"],
     backend_tags = {
-        "gpu": ["multi_gpu"],
+        "gpu": [
+            "multi_gpu",
+            # Run the test on Ampere or newer.
+            "requires-gpu-sm80",
+        ],
     },
     backends = [
         "gpu",
@@ -1543,6 +1555,7 @@ xla_test(
         "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu/transforms/collectives:collective_ops_utils",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_module_config",
         "//xla/tests:literal_test_util",

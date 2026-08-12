@@ -233,7 +233,7 @@ TEST(NamedShardingTest, ToStringReplicated) {
   Mesh mesh({2, 8}, {"a", "b"});
 
   NamedSharding sharding_fully_replicated = NamedSharding::Replicate();
-  EXPECT_EQ(sharding_fully_replicated.ToString(), "{mesh[], replicated}");
+  EXPECT_EQ(sharding_fully_replicated.ToString(), "{replicated}");
 
   NamedSharding sharding_fully_replicated_with_dims =
       test_utils::FromAxisNames(mesh, {{}, {}});
@@ -241,8 +241,7 @@ TEST(NamedShardingTest, ToStringReplicated) {
             "{mesh['a'=2,'b'=8], [{}, {}]}");
 
   NamedSharding sharding_fully_replicated_with_mesh(mesh);
-  EXPECT_EQ(sharding_fully_replicated_with_mesh.ToString(),
-            "{mesh['a'=2,'b'=8], replicated}");
+  EXPECT_EQ(sharding_fully_replicated_with_mesh.ToString(), "{replicated}");
 
   NamedSharding sharding_replicated =
       test_utils::FromAxisNames(mesh, {}, {"b"});
@@ -254,8 +253,7 @@ TEST(NamedShardingTest, ToStringUnreduced) {
   Mesh mesh({2, 8}, {"a", "b"});
 
   NamedSharding sharding_fully_unreduced = NamedSharding::Unreduced(mesh);
-  EXPECT_EQ(sharding_fully_unreduced.ToString(),
-            "{mesh['a'=2,'b'=8], unreduced}");
+  EXPECT_EQ(sharding_fully_unreduced.ToString(), "{unreduced}");
 
   NamedSharding sharding_fully_unreduced_with_dims = test_utils::FromAxisNames(
       mesh, {{}, {}}, {}, /*unreduced_axes=*/{"a", "b"});

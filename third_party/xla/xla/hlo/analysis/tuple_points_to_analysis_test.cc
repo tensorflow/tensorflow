@@ -439,6 +439,34 @@ TEST_F(TuplePointsToAnalysisTest, AsyncOps) {
                          {{async_start, {2}}, {async_update, {2}}});
 }
 
+TEST_F(TuplePointsToAnalysisTest, AsyncUpdate_LoopCrossing) {
+  const char* const kHlo = R"(
+HloModule test
+
+while_body {
+  state = ((f32[2,3]), f32[2,3], s32[]) parameter(0)
+  ROOT update = ((f32[2,3]), f32[2,3], s32[]) custom-call-update(state)
+}
+
+while_condition {
+  state = ((f32[2,3]), f32[2,3], s32[]) parameter(0)
+  ROOT predicate = pred[] constant(true)
+}
+
+ENTRY main {
+  p0 = f32[2,3] constant(0)
+  start = ((f32[2,3]), f32[2,3], s32[]) custom-call-start(p0),
+    custom_call_target="baz"
+  ROOT while_op = ((f32[2,3]), f32[2,3], s32[]) while(start), condition=while_condition, body=while_body
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(kHlo, GetModuleConfigForTest()));
+  RunAnalysis();
+  HloInstruction* update = FindInstruction(module_.get(), "update");
+  EXPECT_FALSE(points_to_analysis_->GetPointsToSet(update).IsAmbiguous());
+}
+
 TEST_F(TuplePointsToAnalysisTest, SendAndSendDone) {
   // Send forwards its operand to the output tuple at {0}.
   std::string hlo_str = R"(

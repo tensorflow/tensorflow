@@ -2040,11 +2040,13 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // We require the bias vector to have been broadcast in the most major
     // dimensions; i.e. its most minor physical dimensions align with most minor
     // physical dimensions of the gemm output.
-    const Shape& out_gemm_shape = slice ? slice->shape() : gemm->shape();
+    const Shape& out_shape =
+        bitcast ? bitcast->shape() : (slice ? slice->shape() : gemm->shape());
     if (num_col_dims == 1 &&
-        bias->shape().dimensions(0) !=
-            out_gemm_shape.dimensions(
-                out_gemm_shape.layout().minor_to_major(0))) {
+        (broadcast->dimensions().size() != 1 ||
+         broadcast->dimensions(0) != out_shape.layout().minor_to_major(0) ||
+         bias->shape().dimensions(0) !=
+             out_shape.dimensions(out_shape.layout().minor_to_major(0)))) {
       return false;
     }
 
