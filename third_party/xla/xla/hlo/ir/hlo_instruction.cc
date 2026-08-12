@@ -791,7 +791,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     }
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart:
-    case HloOpcode::kReduceScatter: {
+    case HloOpcode::kReduceScatter:
+    case HloOpcode::kCollectiveReduce: {
       TF_RET_CHECK(proto.called_computation_ids_size() == 1)
           << "AllReduce should have 1 called computation but sees "
           << proto.called_computation_ids_size();
@@ -818,6 +819,11 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             shape, all_operands(), computations(0), std::move(device_list),
             proto.constrain_layout(), channel_id, proto.use_global_device_ids(),
             scatter_dimension);
+      } else if (opcode == HloOpcode::kCollectiveReduce) {
+        instruction = CreateCollectiveReduce(
+            shape, all_operands(), computations(0), std::move(device_list),
+            proto.constrain_layout(), channel_id, proto.use_global_device_ids(),
+            proto.has_dynamic_root());
       } else {
         instruction = CreateAllReduceStart(
             shape, all_operands(), computations(0), std::move(device_list),
@@ -1959,6 +1965,18 @@ HloInstruction::CreateRaggedAllToAll(
 }
 
 /* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateCollectiveReduce(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    HloComputation* reduce_computation,
+    std::shared_ptr<CollectiveDeviceListBase> device_list,
+    bool constrain_layout, const std::optional<int64_t>& channel_id,
+    bool use_global_device_ids, bool has_dynamic_root) {
+  return std::make_unique<HloCollectiveReduceInstruction>(
+      shape, operands, reduce_computation, std::move(device_list),
+      constrain_layout, channel_id, use_global_device_ids, has_dynamic_root);
+}
+
+/* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateCollectiveBroadcast(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     std::shared_ptr<CollectiveDeviceListBase> device_list,
@@ -2566,6 +2584,7 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
     case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
     case HloOpcode::kReduceScatter:
+    case HloOpcode::kCollectiveReduce:
       if (Cast<HloCollectiveInstruction>(this)->constrain_layout()) {
         return true;
       }
@@ -2828,6 +2847,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kAllGatherStart:
     case HloOpcode::kAllReduce:
     case HloOpcode::kReduceScatter:
+    case HloOpcode::kCollectiveReduce:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllToAll:
     case HloOpcode::kRaggedAllToAll:
@@ -3498,6 +3518,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kAllGatherStart:
     case HloOpcode::kAllReduce:
     case HloOpcode::kReduceScatter:
+    case HloOpcode::kCollectiveReduce:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectiveBroadcast:
@@ -3841,6 +3862,7 @@ bool HloInstruction::has_to_apply() const {
     case HloOpcode::kMap:
     case HloOpcode::kReduce:
     case HloOpcode::kReduceScatter:
+    case HloOpcode::kCollectiveReduce:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kScatter:
     case HloOpcode::kSort:
@@ -4407,6 +4429,7 @@ void HloInstruction::PrintExtraAttributes(
                opcode() == HloOpcode::kReduce ||
                opcode() == HloOpcode::kAllReduce ||
                opcode() == HloOpcode::kReduceScatter ||
+               opcode() == HloOpcode::kCollectiveReduce ||
                opcode() == HloOpcode::kAllReduceStart ||
                opcode() == HloOpcode::kScatter ||
                opcode() == HloOpcode::kSort || opcode() == HloOpcode::kScan) {
@@ -4507,6 +4530,7 @@ void HloInstruction::PrintExtraAttributes(
       case HloOpcode::kReduce:
       case HloOpcode::kAllReduce:
       case HloOpcode::kAllReduceStart:
+      case HloOpcode::kCollectiveReduce:
       case HloOpcode::kScatter:
       case HloOpcode::kSort:
         if (!called_computations().empty()) {
@@ -4931,6 +4955,8 @@ absl::Status HloInstruction::Visit(
         return visitor->HandleAllToAll(this);
       case HloOpcode::kRaggedAllToAll:
         return visitor->HandleRaggedAllToAll(this);
+      case HloOpcode::kCollectiveReduce:
+        return visitor->HandleCollectiveReduce(this);
       case HloOpcode::kCollectiveBroadcast:
         return visitor->HandleCollectiveBroadcast(this);
       case HloOpcode::kCollectivePermute:
