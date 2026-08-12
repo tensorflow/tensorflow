@@ -567,17 +567,6 @@ cc_library(
 )
 
 cc_library(
-    name = "status",
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-    textual_hdrs = ["status.h"],
-    visibility = internal_visibility(["//tensorflow:__subpackages__"]),
-)
-
-cc_library(
     name = "statusor",
     tags = [
         "manual",
@@ -673,7 +662,6 @@ filegroup(
         "context.h",
         "posix_file_system.h",
         "stacktrace.h",
-        "status.h",
         "statusor.h",
         "tracing_impl.h",
         "//xla/tsl/platform/profile_utils:cpu_utils.h",
