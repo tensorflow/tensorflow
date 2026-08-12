@@ -35,7 +35,7 @@ def if_mkl(if_true, if_false = []):
       may need it. It may be deleted in future with refactoring.
     """
     return select({
-        Label("//xla/tsl:windows_arm64"): if_true,
+        Label("//xla/tsl:windows_aarch64"): if_true,
         Label("//xla/tsl/mkl:build_with_mkl_aarch64"): if_true,
         Label("//xla/tsl:linux_x86_64"): if_true,
         Label("//xla/tsl:windows"): if_true,
@@ -110,7 +110,7 @@ def mkl_deps():
     """
     return select({
         # Windows ARM64 and Linux AArch64: use ACL-compatible oneDNN v3.7
-        Label("//xla/tsl:windows_arm64"): ["@mkl_dnn_acl_compatible//:mkl_dnn_acl"],
+        Label("//xla/tsl:windows_aarch64"): ["@mkl_dnn_acl_compatible//:mkl_dnn_acl"],
         Label("//xla/tsl/mkl:build_with_mkl_aarch64"): ["@mkl_dnn_acl_compatible//:mkl_dnn_acl"],
         Label("//xla/tsl:linux_x86_64"): ["@onednn_async//:mkl_dnn"],
         Label("//xla/tsl:windows"): ["@onednn_async//:mkl_dnn"],
@@ -130,7 +130,7 @@ def mkl_dep():
     """
     return select({
         # Windows ARM64 and Linux AArch64: use ACL-compatible oneDNN v3.7
-        Label("//xla/tsl:windows_arm64"): "@mkl_dnn_acl_compatible//:mkl_dnn_acl",
+        Label("//xla/tsl:windows_aarch64"): "@mkl_dnn_acl_compatible//:mkl_dnn_acl",
         Label("//xla/tsl/mkl:build_with_mkl_aarch64"): "@mkl_dnn_acl_compatible//:mkl_dnn_acl",
         Label("//xla/tsl:linux_x86_64"): "@onednn_async//:mkl_dnn",
         Label("//xla/tsl:windows"): "@onednn_async//:mkl_dnn",
@@ -147,7 +147,7 @@ def if_onednn_async(if_true, if_false = []):
     """
     return select({
         # Windows ARM64 uses @mkl_dnn_acl_compatible, not onednn_async.
-        Label("//xla/tsl:windows_arm64"): if_false,
+        Label("//xla/tsl:windows_aarch64"): if_false,
         Label("//xla/tsl:linux_x86_64"): if_true,
         Label("//xla/tsl:windows"): if_true,
         "//conditions:default": if_false,
@@ -185,7 +185,7 @@ def if_mkldnn_openmp(if_true, if_false = []):
 
 def if_mkldnn_aarch64_acl(if_true, if_false = []):
     return select({
-        Label("//xla/tsl:windows_arm64"): if_true,
+        Label("//xla/tsl:windows_aarch64"): if_true,
         Label("//xla/tsl/mkl:build_with_mkl_aarch64"): if_true,
         "//conditions:default": if_false,
     })

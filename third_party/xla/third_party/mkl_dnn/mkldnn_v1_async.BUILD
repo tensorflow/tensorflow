@@ -243,7 +243,7 @@ _TEXTUAL_HDRS_LIST = glob([
 cc_library(
     name = "onednn_autogen",
     srcs = select({
-        "@xla//xla/tsl:windows_arm64": [],
+        "@xla//xla/tsl:windows_aarch64": [],
         "//conditions:default": glob(["src/cpu/x64/gemm/**/*_kern_autogen*.cpp"]),
     }),
     copts = [

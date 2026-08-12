@@ -429,7 +429,7 @@ config_setting(
 )
 
 config_setting(
-    name = "windows_arm64",
+    name = "windows_aarch64",
     constraint_values = [
         "@platforms//cpu:aarch64",
         "@platforms//os:windows",
