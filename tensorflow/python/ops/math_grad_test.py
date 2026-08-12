@@ -918,16 +918,21 @@ class SqrtGradTest(test.TestCase):
       upstream = constant_op.constant(
           [-2.0, 0.0, 2.0, -2.0], dtype=dtypes.float64
       )
-      with backprop.GradientTape() as outer_tape:
-        outer_tape.watch((x, upstream))
-        with backprop.GradientTape() as inner_tape:
-          inner_tape.watch(x)
-          y = sqrt_ops.sqrt(x)
-        first_derivative = inner_tape.gradient(
-            y, x, output_gradients=upstream
+      with backprop.GradientTape() as third_order_tape:
+        third_order_tape.watch(x)
+        with backprop.GradientTape() as outer_tape:
+          outer_tape.watch((x, upstream))
+          with backprop.GradientTape() as inner_tape:
+            inner_tape.watch(x)
+            y = sqrt_ops.sqrt(x)
+          first_derivative = inner_tape.gradient(
+              y, x, output_gradients=upstream
+          )
+        second_derivative, upstream_derivative = outer_tape.gradient(
+            first_derivative, (x, upstream)
         )
-      second_derivative, upstream_derivative = outer_tape.gradient(
-          first_derivative, (x, upstream)
+      third_derivative = third_order_tape.gradient(
+          second_derivative, x
       )
 
     self.assertAllClose(
@@ -937,6 +942,10 @@ class SqrtGradTest(test.TestCase):
     )
     self.assertAllEqual(
         [np.inf, 0.0, -np.inf, 0.0625], self.evaluate(second_derivative)
+    )
+    self.assertAllEqual(
+        [-np.inf, 0.0, np.inf, -0.0234375],
+        self.evaluate(third_derivative),
     )
     self.assertAllClose(
         [expected_derivative, expected_derivative, np.inf, 0.25],

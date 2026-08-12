@@ -27,7 +27,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 @custom_gradient.custom_gradient
-def _sqrt_grad_with_subnormal_fallback(x, y, grad):
+def _sqrt_grad_with_subnormal_fallback(x, grad):
   """Computes a sqrt gradient that is stable for float64 subnormals."""
   # A positive subnormal has no exponent bits and represents
   # mantissa * 2**-1074. Therefore, 1 / (2 * sqrt(x)) is
@@ -41,12 +41,33 @@ def _sqrt_grad_with_subnormal_fallback(x, y, grad):
   safe_mantissa_bits = array_ops.where_v2(
       is_positive_subnormal, x_bits, 1
   )
-  mantissa = gen_math_ops.cast(safe_mantissa_bits, dtypes.float64)
-  subnormal_derivative = (
-      constant_op.constant(2.0**536, dtype=dtypes.float64)
-      / gen_math_ops.sqrt(mantissa)
+
+  @custom_gradient.custom_gradient
+  def _safe_subnormal_derivative(x_in, safe_mantissa_bits_in):
+    mantissa = gen_math_ops.cast(safe_mantissa_bits_in, dtypes.float64)
+    value = (
+        constant_op.constant(2.0**536, dtype=dtypes.float64)
+        / gen_math_ops.sqrt(mantissa)
+    )
+
+    def grad_fn(output_grad):
+      has_gradient = gen_math_ops.logical_and(
+          is_positive_subnormal,
+          gen_math_ops.not_equal(output_grad, 0.0),
+      )
+      safe_x = array_ops.where_v2(has_gradient, x_in, 1.0)
+      safe_value = array_ops.where_v2(has_gradient, value, 0.0)
+      return output_grad * (-0.5 * safe_value / safe_x), None
+
+    return value, grad_fn
+
+  subnormal_derivative = _safe_subnormal_derivative(x, safe_mantissa_bits)
+  is_not_positive_subnormal = gen_math_ops.logical_not(
+      is_positive_subnormal
   )
-  ordinary_result = gen_math_ops.sqrt_grad(y, grad)
+  safe_ordinary_x = array_ops.where_v2(is_not_positive_subnormal, x, 1.0)
+  ordinary_y = gen_math_ops.sqrt(safe_ordinary_x)
+  ordinary_result = gen_math_ops.sqrt_grad(ordinary_y, grad)
   result = array_ops.where_v2(
       is_positive_subnormal,
       grad * subnormal_derivative,
@@ -57,23 +78,26 @@ def _sqrt_grad_with_subnormal_fallback(x, y, grad):
     # Express the subnormal second derivative in terms of the first so it
     # overflows with the correct sign. Returning it for x directly avoids
     # differentiating through the discrete bit representation.
-    has_subnormal_gradient = gen_math_ops.logical_and(
-        is_positive_subnormal, gen_math_ops.not_equal(grad, 0.0)
+    use_x_gradient = gen_math_ops.logical_or(
+        is_not_positive_subnormal, gen_math_ops.not_equal(grad, 0.0)
     )
-    safe_x = array_ops.where_v2(
-        has_subnormal_gradient, x, 1.0
-    )
-    safe_result = array_ops.where_v2(
-        has_subnormal_gradient, result, 0.0
-    )
-    x_derivative = -0.5 * safe_result / safe_x
-    safe_y = array_ops.where_v2(is_positive_subnormal, 1.0, y)
-    y_derivative = array_ops.where_v2(
-        is_positive_subnormal,
-        0.0,
-        -gen_math_ops.sqrt_grad(safe_y, grad) / safe_y,
-    )
-    ordinary_derivative = 0.5 / y
+    safe_x = array_ops.where_v2(use_x_gradient, x, 1.0)
+    safe_result = array_ops.where_v2(use_x_gradient, result, 0.0)
+
+    @custom_gradient.custom_gradient
+    def _stable_x_derivative(x_in, result_in):
+      value = -0.5 * result_in / x_in
+
+      def grad_fn(grad):
+        has_gradient = gen_math_ops.not_equal(grad, 0.0)
+        safe_x = array_ops.where_v2(has_gradient, x_in, 1.0)
+        safe_value = array_ops.where_v2(has_gradient, value, 0.0)
+        return grad * (-safe_value / safe_x), grad * (-0.5 / safe_x)
+
+      return value, grad_fn
+
+    x_derivative = _stable_x_derivative(safe_x, safe_result)
+    ordinary_derivative = 0.5 / ordinary_y
     grad_derivative = array_ops.where_v2(
         is_positive_subnormal,
         subnormal_derivative,
@@ -81,7 +105,6 @@ def _sqrt_grad_with_subnormal_fallback(x, y, grad):
     )
     return (
         output_grad * x_derivative,
-        output_grad * y_derivative,
         output_grad * grad_derivative,
     )
 
@@ -94,7 +117,7 @@ def _sqrt_float64(x):
   y = gen_math_ops.sqrt(x)
 
   def grad_fn(grad):
-    return _sqrt_grad_with_subnormal_fallback(x, y, grad)
+    return _sqrt_grad_with_subnormal_fallback(x, grad)
 
   return y, grad_fn
 
