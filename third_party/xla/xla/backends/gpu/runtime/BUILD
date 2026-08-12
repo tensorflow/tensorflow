@@ -2411,7 +2411,11 @@ xla_test(
     name = "ragged_all_to_all_thunk_multigpu_test",
     srcs = ["ragged_all_to_all_thunk_multigpu_test.cc"],
     backend_tags = {
-        "gpu": ["multi_gpu"],
+        "gpu": [
+            "multi_gpu",
+            # peer-to-peer access is unreliable/flaky before ampere.
+            "requires-gpu-sm80",
+        ],
     },
     backends = ["gpu"],
     deps = [
