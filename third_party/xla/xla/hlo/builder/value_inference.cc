@@ -1504,12 +1504,13 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
       } else if (root->custom_call_target() == "Sharding") {
         return result.AddVisit([](Literal operand) { return operand; });
       } else {
-        return InvalidArgument(
-            "Dynamic inferencing on custom call %s is not supported",
-            root->DebugString());
+        // An opaque custom call cannot be analyzed; conservatively assume
+        // the whole result is dynamic. AnalyzeConstant relies on this to
+        // mask out the garbage literal it returns for custom calls.
+        ABSL_ASSIGN_OR_RETURN(Shape root_shape, Shape::FromProto(root->shape()));
+        return CreateAllDynamicResult(
+            ShapeUtil::GetSubshape(root_shape, context.shape_index), type);
       }
-
-      break;
     }
 
     case HloOpcode::kRecv:
