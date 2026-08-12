@@ -1565,7 +1565,8 @@ def batch_normalization(x,
           ' Consider using a small positive value instead.',
           stacklevel=2,
       )
-  with ops.name_scope(name, "batchnorm", [x, mean, variance, scale, offset]):
+  with ops.name_scope(name, "batchnorm",
+                      [x, mean, variance, scale, offset, variance_epsilon]):
     if tensor_util.is_tf_type(variance_epsilon):
       with ops.control_dependencies(
           [check_ops.assert_non_negative(

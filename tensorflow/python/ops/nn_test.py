@@ -875,7 +875,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
       stable_exp_logits = np.exp(logits -
                                  np.amax(logits, axis=1, keepdims=True))
       pred = stable_exp_logits / np.sum(stable_exp_logits, 1, keepdims=True)
-      return -np.sum(targets * np.log(pred + 1.0e-20), axis=1)
+      return -np.sum(targets * np.log(pred + 1.0e-20), axis=1)  # pylint: disable=invalid-unary-operand-type
 
     np.random.seed(0)
     num_classes = 5
@@ -932,7 +932,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
       stable_exp_logits = np.exp(logits -
                                  np.amax(logits, axis=1, keepdims=True))
       pred = stable_exp_logits / np.sum(stable_exp_logits, 1, keepdims=True)
-      return -np.sum(targets * np.log(pred + 1.0e-20), axis=1)
+      return -np.sum(targets * np.log(pred + 1.0e-20), axis=1)  # pylint: disable=invalid-unary-operand-type
 
     np.random.seed(0)
     num_classes = 5
@@ -2112,7 +2112,7 @@ class BatchNormalizationTest(test_lib.TestCase):
       self.evaluate(out)
 
   def testTensorZeroEpsilonSucceeds(self):
-    """Graph construction and runtime execution succeed with tf.Tensor epsilon == 0.0."""
+    """Graph execution succeeds with tf.Tensor epsilon == 0.0."""
     x = array_ops.ones([2, 3])
     mean = array_ops.zeros([3])
     variance = array_ops.ones([3])
