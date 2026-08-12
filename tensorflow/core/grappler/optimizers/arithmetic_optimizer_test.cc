@@ -1483,14 +1483,9 @@ TEST_F(ArithmeticOptimizerTest,
 
   GrapplerItem item;
   item.fetch = {"outputs"};
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
-
-  GraphDef output;
-  ArithmeticOptimizer optimizer;
-  EnableOnlyRemoveRedundantReshape(&optimizer);
-  OptimizeTwiceAndPrune(&optimizer, &item, &output);
-
-  EXPECT_EQ(CountOpNodes(output, "Reshape"), 1);
+  Status s2 = s.ToGraphDef(&item.graph);
+  EXPECT_FALSE(s2.ok());
+  EXPECT_EQ(s2.code(), absl::StatusCode::kInvalidArgument);
 }
 
 TEST_F(ArithmeticOptimizerTest, RemoveRedundantReshapeCombineReshapes) {
