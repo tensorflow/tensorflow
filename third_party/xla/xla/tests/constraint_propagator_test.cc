@@ -1072,5 +1072,53 @@ ENTRY main {
   EXPECT_GE(p0_int.min, -1.0);
 }
 
+TEST_F(ConstraintPropagatorTest, DynamicSliceLog) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[16,128] parameter(0)
+  param_1 = s32[] parameter(1)
+  c_zero = s32[] constant(0)
+  dynamic-slice = f32[8,128] dynamic-slice(param_0, param_1, c_zero), dynamic_slice_sizes={8,128}
+  ROOT log = f32[8,128] log(dynamic-slice)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_TRUE(p0_int.IsPositiveStrict());
+
+  auto p1_int = states[module->entry_computation()->parameter_instruction(1)]
+                    .GetConstraintInterval();
+  EXPECT_GE(p1_int.min, 0.0);
+  EXPECT_LE(p1_int.max, 8.0);
+}
+
+TEST_F(ConstraintPropagatorTest, DynamicUpdateSliceSqrt) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = f32[16,128] parameter(0)
+  param_1 = f32[8,128] parameter(1)
+  param_2 = s32[] parameter(2)
+  c_zero = s32[] constant(0)
+  dus = f32[16,128] dynamic-update-slice(param_0, param_1, param_2, c_zero)
+  ROOT sqrt = f32[16,128] sqrt(dus)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_TRUE(p0_int.IsPositive());
+
+  auto p1_int = states[module->entry_computation()->parameter_instruction(1)]
+                    .GetConstraintInterval();
+  EXPECT_TRUE(p1_int.IsPositive());
+}
+
 }  // namespace
 }  // namespace xla

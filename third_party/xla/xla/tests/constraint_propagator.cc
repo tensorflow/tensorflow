@@ -665,12 +665,23 @@ absl::Status ConstraintPropagator::PropagateConstraintsExact(
       states_[instruction->operand(0)].MergeStructural(sc);
       break;
     }
-    case HloOpcode::kSlice: {
+    case HloOpcode::kSlice:
+    case HloOpcode::kDynamicSlice: {
       states_[instruction->operand(0)].AddConstraint(output_interval);
       StructuralConstraints sc = output_structural;
       sc.no_duplicates = false;
       sc.needs_sorted_indices = false;
       states_[instruction->operand(0)].MergeStructural(sc);
+      break;
+    }
+    case HloOpcode::kDynamicUpdateSlice: {
+      states_[instruction->operand(0)].AddConstraint(output_interval);
+      states_[instruction->operand(1)].AddConstraint(output_interval);
+      StructuralConstraints sc = output_structural;
+      sc.no_duplicates = false;
+      sc.needs_sorted_indices = false;
+      states_[instruction->operand(0)].MergeStructural(sc);
+      states_[instruction->operand(1)].MergeStructural(sc);
       break;
     }
     case HloOpcode::kPad: {
