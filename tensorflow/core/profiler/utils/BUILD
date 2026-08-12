@@ -223,6 +223,7 @@ cc_library(
 cc_library(
     name = "hlo_proto_to_module",
     hdrs = ["hlo_proto_to_module.h"],
+    visibility = internal_visibility([]),
     deps = [
         "@org_xprof//xprof/utils:hlo_proto_to_module",
     ],
@@ -231,6 +232,7 @@ cc_library(
 cc_library(
     name = "hlo_module_map",
     hdrs = ["hlo_module_map.h"],
+    visibility = internal_visibility([]),
     deps = [
         "@org_xprof//xprof/utils:hlo_module_map",
     ],

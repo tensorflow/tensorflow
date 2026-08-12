@@ -58,7 +58,7 @@ cc_library(
     hdrs = [
         "global_state.h",
     ],
-    visibility = [":friends"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "//tensorflow/core:framework",
         "@tf_runtime//:hostcontext",
@@ -74,7 +74,7 @@ cc_library(
     hdrs = [
         "async_value_tensor.h",
     ],
-    visibility = [":friends"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:portable_gif_internal",
@@ -140,7 +140,7 @@ cc_library(
     hdrs = [
         "pjrt_util.h",
     ],
-    visibility = [":friends"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":global_state",
         ":pjrt_state",
