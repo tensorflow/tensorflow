@@ -735,17 +735,16 @@ def _SqrtGradWithSubnormalFallback(x, y, grad):
     # Express the subnormal second derivative in terms of the first so it
     # overflows with the correct sign. Returning it for x directly avoids
     # differentiating through the discrete bit representation.
-    subnormal_x_derivative = -0.5 * result / x
-    subnormal_x_derivative = array_ops.where_v2(
-        math_ops.equal(grad, 0.0),
-        array_ops.zeros_like(subnormal_x_derivative),
-        subnormal_x_derivative,
+    has_subnormal_gradient = math_ops.logical_and(
+        is_positive_subnormal, math_ops.not_equal(grad, 0.0)
     )
-    x_derivative = array_ops.where_v2(
-        is_positive_subnormal,
-        subnormal_x_derivative,
-        array_ops.zeros_like(x),
+    safe_x = array_ops.where_v2(
+        has_subnormal_gradient, x, array_ops.ones_like(x)
     )
+    safe_result = array_ops.where_v2(
+        has_subnormal_gradient, result, array_ops.zeros_like(result)
+    )
+    x_derivative = -0.5 * safe_result / safe_x
     safe_y = array_ops.where_v2(
         is_positive_subnormal, array_ops.ones_like(y), y
     )

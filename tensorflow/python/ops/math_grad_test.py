@@ -890,11 +890,11 @@ class SqrtGradTest(test.TestCase):
     expected_derivative = 2.2494568972715982e161
     with ops.device("/CPU:0"):
       x = constant_op.constant(
-          [np.nextafter(0.0, 1.0), np.nextafter(0.0, 1.0), 4.0],
+          [np.nextafter(0.0, 1.0), np.nextafter(0.0, 1.0), 0.0, 4.0],
           dtype=dtypes.float64,
       )
       upstream = constant_op.constant(
-          [-2.0, 0.0, -2.0], dtype=dtypes.float64
+          [-2.0, 0.0, 2.0, -2.0], dtype=dtypes.float64
       )
       with backprop.GradientTape() as outer_tape:
         outer_tape.watch((x, upstream))
@@ -909,15 +909,15 @@ class SqrtGradTest(test.TestCase):
       )
 
     self.assertAllClose(
-        [-2.0 * expected_derivative, 0.0, -0.5],
+        [-2.0 * expected_derivative, 0.0, np.inf, -0.5],
         self.evaluate(first_derivative),
         rtol=1e-14,
     )
     self.assertAllEqual(
-        [np.inf, 0.0, 0.0625], self.evaluate(second_derivative)
+        [np.inf, 0.0, -np.inf, 0.0625], self.evaluate(second_derivative)
     )
     self.assertAllClose(
-        [expected_derivative, expected_derivative, 0.25],
+        [expected_derivative, expected_derivative, np.inf, 0.25],
         self.evaluate(upstream_derivative),
         rtol=1e-14,
     )
