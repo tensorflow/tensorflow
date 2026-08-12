@@ -65,6 +65,23 @@ TEST(CompressionUtilsTest, ZeroElementNonMemcpyableComponent) {
                                      HasSubstr("Zero-element component")));
 }
 
+TEST(CompressionUtilsTest, MalformedTensorShape) {
+  // A malformed shape proto (negative dimension) must be rejected with a
+  // status instead of aborting the direct `TensorShape` constructor.
+  std::vector<Tensor> empty_element;
+  CompressedElement compressed;
+  TF_ASSERT_OK(CompressElement(empty_element, &compressed));
+
+  CompressedComponentMetadata* metadata =
+      compressed.mutable_component_metadata()->Add();
+  metadata->set_dtype(DT_INT64);
+  metadata->mutable_tensor_shape()->add_dim()->set_size(-1);
+
+  std::vector<Tensor> element;
+  EXPECT_THAT(UncompressElement(compressed, &element),
+              absl_testing::StatusIs(error::INVALID_ARGUMENT));
+}
+
 std::vector<std::vector<Tensor>> TestCases() {
   return {
       // Single int64.
