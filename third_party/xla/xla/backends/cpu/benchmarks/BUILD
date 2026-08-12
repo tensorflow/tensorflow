@@ -846,12 +846,14 @@ hlo_test_suite(
 
 hlo_test_suite(
     name = "huge_hlo_tests",
+    timeout = "long",
     hlo_files = HUGE_HLO_FILES,
     pkg = "//xla/backends/cpu/benchmarks/huge_hlo",
     tags = [
         "no_oss",
     ] + if_google([
         "notap",
-        "requires-mem:32g",
+        "local",
+        "requires-mem:28g",
     ]),
 )
