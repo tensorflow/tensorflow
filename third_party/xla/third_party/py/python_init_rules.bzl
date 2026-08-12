@@ -35,7 +35,6 @@ def python_init_rules(extra_patches = []):
         patch_file = [
             "@xla//third_party/py:rules_python_scope.patch",
             "@xla//third_party/py:rules_python_freethreaded.patch",
-            "@xla//third_party/py:rules_python_versions.patch",
             "@xla//third_party/py:rules_python_windows_aarch64.patch",
         ] + [p for p in extra_patches if "site_init_retry" not in str(p)],
     )
