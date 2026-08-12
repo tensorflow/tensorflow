@@ -1717,10 +1717,10 @@ bool GpuCompiler::IsScaledDotSupportedByBackend(
     const GpuTargetConfig& gpu_target_config) const {
   const DebugOptions& debug_options =
       instr->GetModule()->config().debug_options();
-  const se::GpuComputeCapability& gpu_version =
-      gpu_target_config.device_description.gpu_compute_capability();
   return debug_options.xla_gpu_experimental_scaled_dot_with_triton() &&
-         IsTritonSupportedInstruction(*instr, gpu_version).IsAllowed();
+         IsTritonSupportedInstruction(*instr,
+                                      gpu_target_config.device_description)
+             .IsAllowed();
 }
 
 AlgebraicSimplifierOptions GpuCompiler::GetAlgebraicSimplifierOptions(
@@ -2108,7 +2108,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
               .xla_gpu_experimental_gemm_fusion_v2());
       pipeline.AddPass<GemvRewriter>();
       pipeline.AddPass<SplitkRewriter>(gpu_target_config.device_description);
-      pipeline.AddPass<GemmFusion>(gpu_version);
+      pipeline.AddPass<GemmFusion>(gpu_target_config.device_description);
       pipeline.AddPass<HoistFusedBitcasts>();
       pipeline.AddPass<GemmFusionSwapOperands>();
     }

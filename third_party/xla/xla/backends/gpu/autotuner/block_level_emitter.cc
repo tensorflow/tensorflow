@@ -233,9 +233,8 @@ bool BlockLevelEmitterBackend::IsSupported(const HloInstruction& instr) {
   }
   const HloComputation* fusion_computation =
       fusion->fused_instructions_computation();
-  return IsTritonSupportedComputation(
-             *fusion_computation,
-             target_config().device_description.gpu_compute_capability())
+  return IsTritonSupportedComputation(*fusion_computation,
+                                      target_config().device_description)
       .IsAllowed();
 }
 

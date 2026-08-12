@@ -915,9 +915,22 @@ absl::Status EnsureTritonSupportsComputeCapability(
 }
 
 CodegenDecision IsTritonSupportedInstruction(
-    const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
-  CodegenDecision decision =
-      IsTritonSupportedInstructionImpl(instr, gpu_version);
+    const HloInstruction& instr, const se::DeviceDescription& device_info) {
+  if (device_info.gpu_compute_capability().IsCuda()) {
+    const auto* cuda_cc =
+        device_info.gpu_compute_capability().cuda_compute_capability();
+    if (cuda_cc != nullptr && cuda_cc->major >= 9 &&
+        device_info.runtime_version().major_version() < 13) {
+      // Log an error to propagate this message to the user.
+      LOG(ERROR)
+          << "Triton lowering requires CUDA 13+ on Hopper and newer GPUs.";
+      return CodegenDecision::Forbid(
+          "Triton lowering requires CUDA 13+ on Hopper and newer GPUs.");
+    }
+  }
+
+  CodegenDecision decision = IsTritonSupportedInstructionImpl(
+      instr, device_info.gpu_compute_capability());
   VLOG(2) << absl::StrCat("IsTritonSupportedInstruction: ", instr.ToString(),
                           " ",
                           (decision.IsAllowed() ? "yes" : decision.Explain()));
@@ -926,7 +939,7 @@ CodegenDecision IsTritonSupportedInstruction(
 
 CodegenDecision IsTritonSupportedComputation(
     const HloComputation& computation,
-    const se::GpuComputeCapability& gpu_compute_capability) {
+    const se::DeviceDescription& device_info) {
   VLOG(3) << "IsTritonSupportedComputation: " << computation.ToString();
   for (const auto* instruction : computation.instructions()) {
     // TODO(b/452478982): This check can be removed if we support Tuple ops
@@ -938,7 +951,7 @@ CodegenDecision IsTritonSupportedComputation(
       continue;
     }
     if (CodegenDecision can_codegen =
-            IsTritonSupportedInstruction(*instruction, gpu_compute_capability);
+            IsTritonSupportedInstruction(*instruction, device_info);
         !can_codegen) {
       return can_codegen;
     }

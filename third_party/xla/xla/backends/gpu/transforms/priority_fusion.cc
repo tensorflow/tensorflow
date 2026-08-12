@@ -683,14 +683,13 @@ class PriorityFusionQueue {
     }
 
     if (instruction.opcode() != HloOpcode::kFusion) {
-      return IsTritonSupportedInstruction(
-          instruction, device_info_->gpu_compute_capability());
+      return IsTritonSupportedInstruction(instruction, *device_info_);
     }
 
     for (const HloInstruction* instruction :
          instruction.fused_instructions_computation()->instructions()) {
-      if (auto codegen_decision = IsTritonSupportedInstruction(
-              *instruction, device_info_->gpu_compute_capability());
+      if (auto codegen_decision =
+              IsTritonSupportedInstruction(*instruction, *device_info_);
           !codegen_decision) {
         return codegen_decision;
       }
@@ -1171,8 +1170,7 @@ FusionDecision PriorityFusion::CanFuseConstant(const HloInstruction* constant,
   // We can always fuse a producer into Triton fusions if the producer is
   // supported by Triton, so it's enough to check if the constant is supported.
   if (IsGenericTritonFusion(*user)) {
-    return IsTritonSupportedInstruction(*constant,
-                                        device_info_.gpu_compute_capability());
+    return IsTritonSupportedInstruction(*constant, device_info_);
   }
 
   // Verify that the user is fusible.

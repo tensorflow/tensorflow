@@ -157,8 +157,7 @@ class ConvertTritonGemmConfigVisitor : public DfsHloRewriteVisitor {
 
     MarkAsChanged();
     if (CodegenDecision can_codegen_computation = IsTritonSupportedComputation(
-            *fusion->called_computation(),
-            device_description_.gpu_compute_capability());
+            *fusion->called_computation(), device_description_);
         !scaled_dot_enabled && !can_codegen_computation) {
       return absl::InternalError(absl::StrCat(
           "Computation of fusion ", fusion->ToString(),

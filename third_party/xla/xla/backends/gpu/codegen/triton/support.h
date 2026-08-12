@@ -48,7 +48,7 @@ absl::Status EnsureTritonSupportsComputeCapability(
 // probably shouldn't), use `legacy_triton::IsTritonSupportedInstruction`
 // instead.
 CodegenDecision IsTritonSupportedInstruction(
-    const HloInstruction& instr, const se::GpuComputeCapability& gpu_version);
+    const HloInstruction& instr, const se::DeviceDescription& device_info);
 
 // Returns `CodegenDecision`'s equivalent of `true` if all the instructions in
 // the parameter computation are supported by the Triton emitters for the given
@@ -58,7 +58,7 @@ CodegenDecision IsTritonSupportedInstruction(
 // defined in the present namespace.
 CodegenDecision IsTritonSupportedComputation(
     const HloComputation& computation,
-    const se::GpuComputeCapability& gpu_compute_capability);
+    const se::DeviceDescription& device_info);
 
 // Returns `true` if the parameter computation is a Triton fused computation,
 // i.e. the calling fusion instruction has `FusionKind::kCustom` and

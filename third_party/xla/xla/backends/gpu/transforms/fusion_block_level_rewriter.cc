@@ -213,8 +213,8 @@ absl::StatusOr<bool> ProcessFusionInstruction(
 
   const HloComputation* fusion_computation =
       fusion_instruction->fused_instructions_computation();
-  if (CodegenDecision can_codegen = IsTritonSupportedComputation(
-          *fusion_computation, device_info.gpu_compute_capability());
+  if (CodegenDecision can_codegen =
+          IsTritonSupportedComputation(*fusion_computation, device_info);
       !can_codegen) {
     VLOG(2) << "Can't rewrite fusion " << fusion_instruction->ToString()
             << " because one or more instructions is not supported by Triton: "

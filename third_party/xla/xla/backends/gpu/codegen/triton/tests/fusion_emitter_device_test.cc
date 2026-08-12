@@ -2152,7 +2152,7 @@ TEST_P(DotUnsetAlgorithmEmitterTest, UnsetAlgorithmIsEmittedCorrectly) {
       GetDotAlgorithmHlo(input_type, result_type, PrecisionConfig::ALG_UNSET);
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   if (!IsTritonSupportedComputation(*module->entry_computation(),
-                                    GpuComputeCapability())) {
+                                    device_description())) {
     GTEST_SKIP() << "Not supported on this platform.";
   }
 
