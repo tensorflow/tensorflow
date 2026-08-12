@@ -2253,6 +2253,699 @@ TEST_P(ConvolutionOpTest, SimplePerChannel16x8Bias64) {
               ElementsAreArray({15872, 32767, -29184, -23552}));
 }
 
+TEST_P(ConvolutionOpTest, SimplePerChannel16x8AsymmetricBias32) {
+  PerChannelQuantizedConvolutionOpModel m(
+      GetRegistration(), {TensorType_INT16, {1, 2, 3, 2}, 0, 0, 0.5, -1},
+      {TensorType_INT8,
+       // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
+       {2, 2, 2, 2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{1, 2},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/0},
+      {TensorType_INT16, {}, 0, 0, 0.5, 0},
+      /*stride_width=*/1, /*stride_height=*/1,
+      /*padding=*/Padding_VALID,
+      /*activation=*/ActivationFunctionType_NONE,
+      /*dilation_width_factor=*/1,
+      /*dilation_height_factor=*/1,
+      /*num_threads=*/-1,
+      /*filter_data=*/{},
+      /*bias_type=*/TensorType_INT32);
+
+  m.SetInput<int16_t>({
+      // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
+      3,
+      2,  // batch = 0, y = 0, x = 0
+      1,
+      -1,  // batch = 0, y = 0, x = 1
+      -2,
+      -3,  // batch = 0, y = 0, x = 2
+      4,
+      3,  // batch = 0, y = 1, x = 0
+      2,
+      -2,  // batch = 0, y = 1, x = 1
+      -3,
+      -4,  // batch = 0, y = 1, x = 2
+  });
+  m.SetFilter(
+      // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
+      {
+          1,
+          2,  // out channel = 0, y = 0, x = 0
+          3,
+          4,  // out channel = 0, y = 0, x = 1
+          3,
+          4,  // out channel = 0, y = 1, x = 0
+          5,
+          6,  // out channel = 0, y = 1, x = 1
+          7,
+          8,  // out channel = 1, y = 0, x = 0
+          5,
+          6,  // out channel = 1, y = 0, x = 1
+          3,
+          4,  // out channel = 1, y = 1, x = 0
+          1,
+          2,  // out channel = 1, y = 1, x = 1
+      });
+  m.SetBias({3, -2});
+
+  // Invoke and verify output.
+  // output has dimension [1 * 1 * 2 * 2] as [batch, y, x, output_channel]
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear({31, 66, -57, -46})));
+  EXPECT_THAT(m.GetOutput<int16_t>(), ElementsAreArray({62, 132, -114, -92}));
+}
+
+TEST_P(ConvolutionOpTest, SimplePerChannel16x8AsymmetricBias64) {
+  PerChannelQuantizedConvolutionOpModel m(
+      GetRegistration(), {TensorType_INT16, {1, 2, 3, 2}, 0, 0, 0.5, -1},
+      {TensorType_INT8,
+       // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
+       {2, 2, 2, 2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{1, 2},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/0},
+      {TensorType_INT16, {}, 0, 0, 0.5, 0},
+      /*stride_width=*/1, /*stride_height=*/1,
+      /*padding=*/Padding_VALID,
+      /*activation=*/ActivationFunctionType_NONE,
+      /*dilation_width_factor=*/1,
+      /*dilation_height_factor=*/1,
+      /*num_threads=*/-1,
+      /*filter_data=*/{},
+      /*bias_type=*/TensorType_INT64);
+
+  m.SetInput<int16_t>({
+      // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
+      3,
+      2,  // batch = 0, y = 0, x = 0
+      1,
+      -1,  // batch = 0, y = 0, x = 1
+      -2,
+      -3,  // batch = 0, y = 0, x = 2
+      4,
+      3,  // batch = 0, y = 1, x = 0
+      2,
+      -2,  // batch = 0, y = 1, x = 1
+      -3,
+      -4,  // batch = 0, y = 1, x = 2
+  });
+  m.SetFilter(
+      // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
+      {
+          1,
+          2,  // out channel = 0, y = 0, x = 0
+          3,
+          4,  // out channel = 0, y = 0, x = 1
+          3,
+          4,  // out channel = 0, y = 1, x = 0
+          5,
+          6,  // out channel = 0, y = 1, x = 1
+          7,
+          8,  // out channel = 1, y = 0, x = 0
+          5,
+          6,  // out channel = 1, y = 0, x = 1
+          3,
+          4,  // out channel = 1, y = 1, x = 0
+          1,
+          2,  // out channel = 1, y = 1, x = 1
+      });
+  m.SetBias({3, -2});
+
+  // Invoke and verify output.
+  // output has dimension [1 * 1 * 2 * 2] as [batch, y, x, output_channel]
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear({31, 66, -57, -46})));
+  EXPECT_THAT(m.GetOutput<int16_t>(), ElementsAreArray({62, 132, -114, -92}));
+}
+
+TEST_P(ConvolutionOpTest, SimplePerChannel16x8AsymmetricWithOutputZeroPoint) {
+  PerChannelQuantizedConvolutionOpModel m(
+      GetRegistration(), {TensorType_INT16, {1, 2, 3, 2}, 0, 0, 0.5, -1},
+      {TensorType_INT8,
+       {2, 2, 2, 2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{1, 2},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/0},
+      {TensorType_INT16, {}, 0, 0, 0.5, 10},
+      /*stride_width=*/1, /*stride_height=*/1,
+      /*padding=*/Padding_VALID,
+      /*activation=*/ActivationFunctionType_NONE,
+      /*dilation_width_factor=*/1,
+      /*dilation_height_factor=*/1,
+      /*num_threads=*/-1,
+      /*filter_data=*/{},
+      /*bias_type=*/TensorType_INT32);
+
+  m.SetInput<int16_t>({
+      3,
+      2,
+      1,
+      -1,
+      -2,
+      -3,
+      4,
+      3,
+      2,
+      -2,
+      -3,
+      -4,
+  });
+  m.SetFilter({
+      1,
+      2,
+      3,
+      4,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      5,
+      6,
+      3,
+      4,
+      1,
+      2,
+  });
+  m.SetBias({3, -2});
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  // output_zero_point = 10, so output values are {62+10, 132+10, -114+10,
+  // -92+10} = {72, 142, -104, -82}
+  EXPECT_THAT(m.GetOutput<int16_t>(), ElementsAreArray({72, 142, -104, -82}));
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear({31, 66, -57, -46})));
+}
+
+TEST_P(ConvolutionOpTest, SimplePerChannel8x16AsymmetricBias32) {
+  PerChannelQuantizedConvolutionOpModel m(
+      GetRegistration(), {TensorType_INT8, {1, 2, 3, 2}, -63.5, 64, 0.5, -1},
+      {TensorType_INT8,
+       // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
+       {2, 2, 2, 2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{1, 2},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/0},
+      {TensorType_INT16, {}, 0, 0, 0.5, 0},
+      /*stride_width=*/1, /*stride_height=*/1,
+      /*padding=*/Padding_VALID,
+      /*activation=*/ActivationFunctionType_NONE,
+      /*dilation_width_factor=*/1,
+      /*dilation_height_factor=*/1,
+      /*num_threads=*/-1,
+      /*filter_data=*/{},
+      /*bias_type=*/TensorType_INT32);
+
+  m.SetInput<int8_t>({
+      // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
+      3,
+      2,  // batch = 0, y = 0, x = 0
+      1,
+      -1,  // batch = 0, y = 0, x = 1
+      -2,
+      -3,  // batch = 0, y = 0, x = 2
+      4,
+      3,  // batch = 0, y = 1, x = 0
+      2,
+      -2,  // batch = 0, y = 1, x = 1
+      -3,
+      -4,  // batch = 0, y = 1, x = 2
+  });
+  m.SetFilter(
+      // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
+      {
+          1,
+          2,  // out channel = 0, y = 0, x = 0
+          3,
+          4,  // out channel = 0, y = 0, x = 1
+          3,
+          4,  // out channel = 0, y = 1, x = 0
+          5,
+          6,  // out channel = 0, y = 1, x = 1
+          7,
+          8,  // out channel = 1, y = 0, x = 0
+          5,
+          6,  // out channel = 1, y = 0, x = 1
+          3,
+          4,  // out channel = 1, y = 1, x = 0
+          1,
+          2,  // out channel = 1, y = 1, x = 1
+      });
+  m.SetBias({3, -2});
+
+  // Invoke and verify output.
+  // output has dimension [1 * 1 * 2 * 2] as [batch, y, x, output_channel]
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear({31, 66, -57, -46})));
+  EXPECT_THAT(m.GetOutput<int16_t>(), ElementsAreArray({62, 132, -114, -92}));
+}
+
+TEST_P(ConvolutionOpTest, SimplePerChannel8x16AsymmetricBias64) {
+  PerChannelQuantizedConvolutionOpModel m(
+      GetRegistration(), {TensorType_INT8, {1, 2, 3, 2}, -63.5, 64, 0.5, -1},
+      {TensorType_INT8,
+       // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
+       {2, 2, 2, 2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{1, 2},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/0},
+      {TensorType_INT16, {}, 0, 0, 0.5, 0},
+      /*stride_width=*/1, /*stride_height=*/1,
+      /*padding=*/Padding_VALID,
+      /*activation=*/ActivationFunctionType_NONE,
+      /*dilation_width_factor=*/1,
+      /*dilation_height_factor=*/1,
+      /*num_threads=*/-1,
+      /*filter_data=*/{},
+      /*bias_type=*/TensorType_INT64);
+
+  m.SetInput<int8_t>({
+      // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
+      3,
+      2,  // batch = 0, y = 0, x = 0
+      1,
+      -1,  // batch = 0, y = 0, x = 1
+      -2,
+      -3,  // batch = 0, y = 0, x = 2
+      4,
+      3,  // batch = 0, y = 1, x = 0
+      2,
+      -2,  // batch = 0, y = 1, x = 1
+      -3,
+      -4,  // batch = 0, y = 1, x = 2
+  });
+  m.SetFilter(
+      // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
+      {
+          1,
+          2,  // out channel = 0, y = 0, x = 0
+          3,
+          4,  // out channel = 0, y = 0, x = 1
+          3,
+          4,  // out channel = 0, y = 1, x = 0
+          5,
+          6,  // out channel = 0, y = 1, x = 1
+          7,
+          8,  // out channel = 1, y = 0, x = 0
+          5,
+          6,  // out channel = 1, y = 0, x = 1
+          3,
+          4,  // out channel = 1, y = 1, x = 0
+          1,
+          2,  // out channel = 1, y = 1, x = 1
+      });
+  m.SetBias({3, -2});
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear({31, 66, -57, -46})));
+  EXPECT_THAT(m.GetOutput<int16_t>(), ElementsAreArray({62, 132, -114, -92}));
+}
+
+TEST_P(ConvolutionOpTest, SimplePerChannel8x16AsymmetricRelu6) {
+  PerChannelQuantizedConvolutionOpModel m(
+      GetRegistration(), {TensorType_INT8, {1, 2, 3, 2}, -63.5, 64, 0.5, -1},
+      {TensorType_INT8,
+       // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
+       {2, 2, 2, 2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{1, 2},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/0},
+      {TensorType_INT16, {}, 0, 0, 0.5, 0},
+      /*stride_width=*/1, /*stride_height=*/1,
+      /*padding=*/Padding_VALID,
+      /*activation=*/ActivationFunctionType_RELU6,
+      /*dilation_width_factor=*/1,
+      /*dilation_height_factor=*/1,
+      /*num_threads=*/-1,
+      /*filter_data=*/{},
+      /*bias_type=*/TensorType_INT32);
+
+  m.SetInput<int8_t>({
+      3,
+      2,
+      1,
+      -1,
+      -2,
+      -3,
+      4,
+      3,
+      2,
+      -2,
+      -3,
+      -4,
+  });
+  m.SetFilter({
+      1,
+      2,
+      3,
+      4,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      5,
+      6,
+      3,
+      4,
+      1,
+      2,
+  });
+  m.SetBias({3, -2});
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  // RELU6 limits output to [0, 6.0], which with scale 0.5 is [0, 12].
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear({6, 6, 0, 0})));
+  EXPECT_THAT(m.GetOutput<int16_t>(), ElementsAreArray({12, 12, 0, 0}));
+}
+
+TEST_P(ConvolutionOpTest, SimplePerChannel8x16AsymmetricWithOutputZeroPoint) {
+  PerChannelQuantizedConvolutionOpModel m(
+      GetRegistration(), {TensorType_INT8, {1, 2, 3, 2}, -63.5, 64, 0.5, -1},
+      {TensorType_INT8,
+       {2, 2, 2, 2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{1, 2},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/0},
+      {TensorType_INT16, {}, 0, 0, 0.5, 10},
+      /*stride_width=*/1, /*stride_height=*/1,
+      /*padding=*/Padding_VALID,
+      /*activation=*/ActivationFunctionType_NONE,
+      /*dilation_width_factor=*/1,
+      /*dilation_height_factor=*/1,
+      /*num_threads=*/-1,
+      /*filter_data=*/{},
+      /*bias_type=*/TensorType_INT32);
+
+  m.SetInput<int8_t>({
+      3,
+      2,
+      1,
+      -1,
+      -2,
+      -3,
+      4,
+      3,
+      2,
+      -2,
+      -3,
+      -4,
+  });
+  m.SetFilter({
+      1,
+      2,
+      3,
+      4,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      5,
+      6,
+      3,
+      4,
+      1,
+      2,
+  });
+  m.SetBias({3, -2});
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  // output_zero_point = 10, so output values are {62+10, 132+10, -114+10,
+  // -92+10} = {72, 142, -104, -82}
+  EXPECT_THAT(m.GetOutput<int16_t>(), ElementsAreArray({72, 142, -104, -82}));
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear({31, 66, -57, -46})));
+}
+
+TEST_P(ConvolutionOpTest, SimplePerChannel8x16AsymmetricGroupedConv) {
+  PerChannelQuantizedConvolutionOpModel m(
+      GetRegistration(), {TensorType_INT8, {1, 2, 2, 4}, -63.5, 64, 0.5, -1},
+      {TensorType_INT8,
+       // [2 * 2 * 2 * 2] as [output_channel, y, x, filter_input_channel]
+       // groups = input_channels(4) / filter_input_channels(2) = 2
+       {2, 2, 2, 2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{1, 2},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/0},
+      {TensorType_INT16, {}, 0, 0, 0.5, 0},
+      /*stride_width=*/1, /*stride_height=*/1,
+      /*padding=*/Padding_VALID,
+      /*activation=*/ActivationFunctionType_NONE,
+      /*dilation_width_factor=*/1,
+      /*dilation_height_factor=*/1,
+      /*num_threads=*/-1,
+      /*filter_data=*/{},
+      /*bias_type=*/TensorType_INT32);
+
+  m.SetInput<int8_t>({
+      // [1 * 2 * 2 * 4] as [batch, y, x, input_channel]
+      1,
+      2,
+      3,
+      4,  // y = 0, x = 0
+      2,
+      3,
+      4,
+      5,  // y = 0, x = 1
+      3,
+      4,
+      5,
+      6,  // y = 1, x = 0
+      4,
+      5,
+      6,
+      7,  // y = 1, x = 1
+  });
+  m.SetFilter({
+      // Group 0: out_channel = 0, filter_input_channels = 2 (in_channel 0..1)
+      1,
+      2,  // y = 0, x = 0
+      1,
+      1,  // y = 0, x = 1
+      2,
+      1,  // y = 1, x = 0
+      1,
+      2,  // y = 1, x = 1
+      // Group 1: out_channel = 1, filter_input_channels = 2 (in_channel 2..3)
+      2,
+      1,  // y = 0, x = 0
+      1,
+      2,  // y = 0, x = 1
+      1,
+      1,  // y = 1, x = 0
+      2,
+      2,  // y = 1, x = 1
+  });
+  m.SetBias({1, 2});
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<int16_t>(), ElementsAreArray({70, 164}));
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear({35, 82})));
+}
+
+TEST_P(ConvolutionOpTest, SimplePerChannel8x16AsymmetricStridedAndDilated) {
+  PerChannelQuantizedConvolutionOpModel m(
+      GetRegistration(), {TensorType_INT8, {1, 5, 5, 1}, -63.5, 64, 0.5, -1},
+      {TensorType_INT8,
+       {1, 2, 2, 1},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{1},
+       /*per_channel_quantization_offsets=*/{0},
+       /*channel_index=*/0},
+      {TensorType_INT16, {}, 0, 0, 0.5, 0},
+      /*stride_width=*/2, /*stride_height=*/2,
+      /*padding=*/Padding_VALID,
+      /*activation=*/ActivationFunctionType_NONE,
+      /*dilation_width_factor=*/2,
+      /*dilation_height_factor=*/2,
+      /*num_threads=*/-1,
+      /*filter_data=*/{},
+      /*bias_type=*/TensorType_INT32);
+
+  m.SetInput<int8_t>({
+      1, 0, 2, 0, 3,  // y = 0
+      0, 0, 0, 0, 0,  // y = 1
+      4, 0, 5, 0, 6,  // y = 2
+      0, 0, 0, 0, 0,  // y = 3
+      7, 0, 8, 0, 9,  // y = 4
+  });
+  m.SetFilter({
+      1,
+      2,  //
+      3,
+      4,  //
+  });
+  m.SetBias({0});
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<int16_t>(), ElementsAreArray({74, 94, 134, 154}));
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear({37, 47, 67, 77})));
+}
+
+TEST_P(ConvolutionOpTest, SimplePerChannel8x16AsymmetricSamePadding) {
+  PerChannelQuantizedConvolutionOpModel m(
+      GetRegistration(), {TensorType_INT8, {1, 2, 2, 1}, -63.5, 64, 0.5, -1},
+      {TensorType_INT8,
+       {1, 2, 2, 1},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{1},
+       /*per_channel_quantization_offsets=*/{0},
+       /*channel_index=*/0},
+      {TensorType_INT16, {}, 0, 0, 0.5, 0},
+      /*stride_width=*/1, /*stride_height=*/1,
+      /*padding=*/Padding_SAME,
+      /*activation=*/ActivationFunctionType_NONE,
+      /*dilation_width_factor=*/1,
+      /*dilation_height_factor=*/1,
+      /*num_threads=*/-1,
+      /*filter_data=*/{},
+      /*bias_type=*/TensorType_INT32);
+
+  m.SetInput<int8_t>({
+      1,
+      2,  //
+      3,
+      4,  //
+  });
+  m.SetFilter({
+      1,
+      2,  //
+      3,
+      4,  //
+  });
+  m.SetBias({1});
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<int16_t>(), ElementsAreArray({62, 30, 24, 10}));
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear({31, 15, 12, 5})));
+}
+
+TEST_P(ConvolutionOpTest, SimplePerChannel8x16AsymmetricInt4Filter) {
+  PerChannelQuantizedConvolutionOpModel m(
+      GetRegistration(), {TensorType_INT8, {1, 2, 3, 2}, -63.5, 64, 0.5, -1},
+      {TensorType_INT4,
+       // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
+       {2, 2, 2, 2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{1, 2},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/0},
+      {TensorType_INT16, {}, 0, 0, 0.5, 0},
+      /*stride_width=*/1, /*stride_height=*/1,
+      /*padding=*/Padding_VALID,
+      /*activation=*/ActivationFunctionType_NONE,
+      /*dilation_width_factor=*/1,
+      /*dilation_height_factor=*/1,
+      /*num_threads=*/-1,
+      /*filter_data=*/{},
+      /*bias_type=*/TensorType_INT32);
+
+  m.SetInput<int8_t>({
+      // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
+      3,
+      2,  // batch = 0, y = 0, x = 0
+      1,
+      -1,  // batch = 0, y = 0, x = 1
+      -2,
+      -3,  // batch = 0, y = 0, x = 2
+      4,
+      3,  // batch = 0, y = 1, x = 0
+      2,
+      -2,  // batch = 0, y = 1, x = 1
+      -3,
+      -4,  // batch = 0, y = 1, x = 2
+  });
+  m.SetFilter({
+      1,
+      2,  // out channel = 0, y = 0, x = 0
+      3,
+      4,  // out channel = 0, y = 0, x = 1
+      3,
+      4,  // out channel = 0, y = 1, x = 0
+      5,
+      6,  // out channel = 0, y = 1, x = 1
+      7,
+      8,  // out channel = 1, y = 0, x = 0
+      5,
+      6,  // out channel = 1, y = 0, x = 1
+      3,
+      4,  // out channel = 1, y = 1, x = 0
+      1,
+      2,  // out channel = 1, y = 1, x = 1
+  });
+  m.SetBias({3, -2});
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<int16_t>(), ElementsAreArray({62, 132, -114, -92}));
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear({31, 66, -57, -46})));
+}
+
 TEST_P(ConvolutionOpTest, Simple4bitPerChannelTest) {
   PerChannelQuantizedConvolutionOpModel m(
       GetRegistration(), {TensorType_INT8, {1, 2, 3, 2}, -63.5, 64, 0.5, -1},

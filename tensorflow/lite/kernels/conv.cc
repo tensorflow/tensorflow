@@ -376,7 +376,9 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
   TF_LITE_ENSURE(context,
                  input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
                      input_type == kTfLiteInt8 || input_type == kTfLiteInt16);
-  TF_LITE_ENSURE_TYPES_EQ(context, output->type, input_type);
+  TF_LITE_ENSURE(
+      context, output->type == input_type ||
+                   (input_type == kTfLiteInt8 && output->type == kTfLiteInt16));
 
   // Filter must have zero zero-points in per-channel quantization.
   if (input_type == kTfLiteInt16 || input_type == kTfLiteInt8) {
@@ -408,10 +410,12 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
 
   if (has_bias) {
     TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 2, &bias));
-    if (input_type == kTfLiteUInt8 || input_type == kTfLiteInt8) {
+    if (input_type == kTfLiteUInt8 ||
+        (input_type == kTfLiteInt8 && output->type == kTfLiteInt8)) {
       TF_LITE_ENSURE_TYPES_EQ(context, bias->type, kTfLiteInt32);
       TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
-    } else if (input_type == kTfLiteInt16) {
+    } else if (input_type == kTfLiteInt16 ||
+               (input_type == kTfLiteInt8 && output->type == kTfLiteInt16)) {
       TF_LITE_ENSURE(context, (bias->type == kTfLiteInt32) ||
                                   (bias->type == kTfLiteInt64));
       TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
@@ -421,18 +425,19 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
     TF_LITE_ENSURE_EQ(context, NumElements(bias), SizeOfDimension(filter, 0));
   }
 
-  if (input_type == kTfLiteInt16) {
-    // Quantization should be symmetric.
-    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
-    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
-
-    // Check quantized_bias_type is either kTfLiteInt64 or kTfLiteInt32.
-    if (params->quantized_bias_type != kTfLiteFloat32) {
+  if (input_type == kTfLiteInt16 ||
+      (input_type == kTfLiteInt8 && output->type == kTfLiteInt16)) {
+    if (params->quantized_bias_type != kTfLiteFloat32 &&
+        params->quantized_bias_type != kTfLiteNoType) {
       TF_LITE_ENSURE(context, params->quantized_bias_type == kTfLiteInt32 ||
                                   params->quantized_bias_type == kTfLiteInt64);
       TF_LITE_ENSURE(context, (bias == nullptr) ||
                                   bias->type == params->quantized_bias_type);
       data->quantized_bias_type = params->quantized_bias_type;
+    } else if (bias != nullptr) {
+      data->quantized_bias_type = bias->type;
+    } else {
+      data->quantized_bias_type = kTfLiteInt32;
     }
   }
 
@@ -922,9 +927,9 @@ TfLiteStatus EvalQuantizedPerChannel(
           reference_integer_ops::ConvPerChannel(
               op_params, data->per_channel_output_multiplier.data(),
               data->per_channel_output_shift.data(), GetTensorShape(input),
-              GetTensorData<int8>(input), GetTensorShape(filter), filter_data,
-              GetTensorShape(bias), GetTensorData<int32>(bias),
-              GetTensorShape(output), GetTensorData<int8>(output));
+              GetTensorData<int8_t>(input), GetTensorShape(filter), filter_data,
+              GetTensorShape(bias), GetTensorData<int32_t>(bias),
+              GetTensorShape(output), GetTensorData<int8_t>(output));
           break;
         }
 
@@ -950,10 +955,10 @@ TfLiteStatus EvalQuantizedPerChannel(
           optimized_integer_ops::ConvPerChannel(
               op_params, data->per_channel_output_multiplier.data(),
               data->per_channel_output_shift.data(), GetTensorShape(input),
-              GetTensorData<int8>(input), GetTensorShape(filter), filter_data,
-              GetTensorShape(bias), GetTensorData<int32>(bias),
-              GetTensorShape(output), GetTensorData<int8>(output),
-              GetTensorShape(im2col), GetTensorData<int8>(im2col),
+              GetTensorData<int8_t>(input), GetTensorShape(filter), filter_data,
+              GetTensorShape(bias), GetTensorData<int32_t>(bias),
+              GetTensorShape(output), GetTensorData<int8_t>(output),
+              GetTensorShape(im2col), GetTensorData<int8_t>(im2col),
               CpuBackendContext::GetFromContext(context));
           break;
         }
@@ -1000,9 +1005,9 @@ TfLiteStatus EvalQuantizedPerChannel16x8(
 
   // To prevent 32bit accum overflow for 16x8 quantization, it enables the
   // optimized path only when zero_point is 0.
-  bool has_non_zero_point = input->params.zero_point ||
-                            filter->params.zero_point ||
-                            output->params.zero_point;
+  const bool has_non_zero_point = input->params.zero_point != 0 ||
+                                  filter->params.zero_point != 0 ||
+                                  output->params.zero_point != 0;
 
   const int8_t* filter_data = nullptr;
   std::unique_ptr<int8_t[]> unpacked_filter_data = nullptr;
@@ -1022,9 +1027,9 @@ TfLiteStatus EvalQuantizedPerChannel16x8(
       reference_integer_ops::ConvPerChannel(
           op_params, data->per_channel_output_multiplier.data(),
           data->per_channel_output_shift.data(), GetTensorShape(input),
-          GetTensorData<int16>(input), GetTensorShape(filter), filter_data,
+          GetTensorData<int16_t>(input), GetTensorShape(filter), filter_data,
           GetTensorShape(bias), GetTensorData<int32_t>(bias),
-          GetTensorShape(output), GetTensorData<int16>(output));
+          GetTensorShape(output), GetTensorData<int16_t>(output));
     } else {
       if (data->need_im2col && im2col->data.raw == nullptr) {
         TF_LITE_KERNEL_LOG(context, "Conv im2col buffer not allocated.");
@@ -1040,15 +1045,73 @@ TfLiteStatus EvalQuantizedPerChannel16x8(
           CpuBackendContext::GetFromContext(context));
     }
   } else {
-    TFLITE_DCHECK(!has_non_zero_point);
     // Fallback to reference kernel when bias_type is int64 as
     // there is no optimized kernel for int64 bias yet.
     reference_integer_ops::ConvPerChannel(
         op_params, data->per_channel_output_multiplier.data(),
         data->per_channel_output_shift.data(), GetTensorShape(input),
-        GetTensorData<int16>(input), GetTensorShape(filter), filter_data,
+        GetTensorData<int16_t>(input), GetTensorShape(filter), filter_data,
         GetTensorShape(bias), GetTensorData<int64_t>(bias),
-        GetTensorShape(output), GetTensorData<int16>(output));
+        GetTensorShape(output), GetTensorData<int16_t>(output));
+  }
+  return kTfLiteOk;
+}
+
+template <KernelType kernel_type>
+TfLiteStatus EvalQuantizedPerChannel8x16(
+    TfLiteContext* context, TfLiteNode* node, TfLiteConvParams* params,
+    OpData* data, const TfLiteTensor* input, const TfLiteTensor* filter,
+    const TfLiteTensor* bias, TfLiteTensor* output, TfLiteTensor* im2col) {
+  ConvParams op_params;
+  op_params.input_offset = -input->params.zero_point;
+  op_params.output_offset = output->params.zero_point;
+  op_params.stride_height = params->stride_height;
+  op_params.stride_width = params->stride_width;
+  op_params.dilation_height_factor = params->dilation_height_factor;
+  op_params.dilation_width_factor = params->dilation_width_factor;
+  op_params.padding_values.height = data->padding.height;
+  op_params.padding_values.width = data->padding.width;
+  op_params.quantized_activation_min = data->output_activation_min;
+  op_params.quantized_activation_max = data->output_activation_max;
+
+  const int8_t* filter_data = nullptr;
+  std::unique_ptr<int8_t[]> unpacked_filter_data = nullptr;
+  if (filter->type == kTfLiteInt4) {
+    const size_t bytes_unpacked = filter->bytes * 2;
+    unpacked_filter_data = std::make_unique<int8_t[]>(bytes_unpacked);
+    tflite::tensor_utils::UnpackPackedIntToInt8(
+        GetTensorData<int8_t>(filter), GetTensorShape(filter).FlatSize(),
+        /*bit_width=*/4, unpacked_filter_data.get());
+    filter_data = unpacked_filter_data.get();
+  } else if (filter->type == kTfLiteInt8) {
+    filter_data = GetTensorData<int8_t>(filter);
+  } else {
+    TF_LITE_KERNEL_LOG(context, "Weight type %s (%d) not supported for filter.",
+                       TfLiteTypeGetName(filter->type), filter->type);
+    return kTfLiteError;
+  }
+
+  const RuntimeShape bias_shape =
+      bias != nullptr ? GetTensorShape(bias) : RuntimeShape();
+
+  if (data->quantized_bias_type == kTfLiteInt64) {
+    const int64_t* bias_data =
+        bias != nullptr ? GetTensorData<int64_t>(bias) : nullptr;
+    reference_integer_ops::ConvPerChannel(
+        op_params, data->per_channel_output_multiplier.data(),
+        data->per_channel_output_shift.data(), GetTensorShape(input),
+        GetTensorData<int8_t>(input), GetTensorShape(filter), filter_data,
+        bias_shape, bias_data, GetTensorShape(output),
+        GetTensorData<int16_t>(output));
+  } else {
+    const int32_t* bias_data =
+        bias != nullptr ? GetTensorData<int32_t>(bias) : nullptr;
+    reference_integer_ops::ConvPerChannel(
+        op_params, data->per_channel_output_multiplier.data(),
+        data->per_channel_output_shift.data(), GetTensorShape(input),
+        GetTensorData<int8_t>(input), GetTensorShape(filter), filter_data,
+        bias_shape, bias_data, GetTensorShape(output),
+        GetTensorData<int16_t>(output));
   }
   return kTfLiteOk;
 }
@@ -1267,7 +1330,7 @@ TfLiteStatus EvalHybridPerChannel(TfLiteContext* context, TfLiteNode* node,
           GetTensorShape(output), GetTensorData<float>(output),
           GetTensorShape(im2col), im2col_ptr, affine_quantization->scale->data,
           input_offset_ptr, GetTensorShape(scratch),
-          GetTensorData<int32>(scratch), GetTensorData<int32_t>(row_sums),
+          GetTensorData<int32_t>(scratch), GetTensorData<int32_t>(row_sums),
           &data->compute_hybrid_row_sums,
           CpuBackendContext::GetFromContext(context));
       data->compute_hybrid_row_sums = false;
@@ -1446,9 +1509,15 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
                                      bias, im2col, output));
       break;
     case kTfLiteInt8:
-      TF_LITE_ENSURE_OK(context, EvalQuantizedPerChannel<kernel_type>(
-                                     context, node, params, data, input, filter,
-                                     bias, output, im2col));
+      if (output->type == kTfLiteInt16) {
+        TF_LITE_ENSURE_OK(context, EvalQuantizedPerChannel8x16<kernel_type>(
+                                       context, node, params, data, input,
+                                       filter, bias, output, im2col));
+      } else {
+        TF_LITE_ENSURE_OK(context, EvalQuantizedPerChannel<kernel_type>(
+                                       context, node, params, data, input,
+                                       filter, bias, output, im2col));
+      }
       break;
     case kTfLiteInt16:
       TF_LITE_ENSURE_OK(context, EvalQuantizedPerChannel16x8<kernel_type>(
