@@ -100,7 +100,7 @@ class CompileCommand:
       for s in arg.split(" "):
         filtered_args.append(s)
 
-    return cls(cc_file, filtered_args)
+    return cls(cc_file, filtered_args)  # pyrefly: ignore[bad-argument-type]
 
   def to_dumpable_json(self, directory: str) -> _JSONDict:
     return {

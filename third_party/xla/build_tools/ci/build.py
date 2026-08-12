@@ -327,7 +327,7 @@ def nvidia_gpu_build_with_compute_capability(
         nvidia_only_multi_gpu_filters
         + _tag_filters_only_for_compute_capability(compute_capability)
     )
-    repo_env["REMOTE_GPU_TESTING"] = 0
+    repo_env["REMOTE_GPU_TESTING"] = 0  # pyrefly: ignore[bad-assignment]
   else:
     options = {
         "run_under": "//build_tools/ci:parallel_gpu_execute",
