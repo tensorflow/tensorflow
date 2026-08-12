@@ -71,13 +71,6 @@ namespace xla {
 namespace gpu {
 
 namespace {
-bool IsGPUSyncCollective(const HloInstruction& instr) {
-  auto backend_config = instr.backend_config<GpuBackendConfig>();
-  if (!backend_config.ok()) {
-    return false;
-  }
-  return backend_config->collective_backend_config().is_sync();
-}
 
 struct EmitArgs {
   TritonFusion::EmitThunk emit_thunk;
@@ -105,11 +98,10 @@ absl::StatusOr<EmitArgs> EmitCollectiveFusion(
                                 ir_emitter_context.buffer_assignment(),
                                 fusion_instr, Thunk::Kind::kCollectiveKernel,
                                 /*has_dynamic_root=*/false));
-  const bool is_async = !IsGPUSyncCollective(*fusion_instr);
 
   TritonFusion::EmitThunk make_thunk =
       [info = std::move(info), buffers = std::move(buffers), config,
-       fusion_instr, is_async](TritonFusion::EmitResult result) mutable
+       fusion_instr](TritonFusion::EmitResult result) mutable
       -> absl::StatusOr<ThunkSequence> {
     ABSL_ASSIGN_OR_RETURN(CollectiveKernelSpec kernel_spec,
                      CreateCollectiveKernelSpec(
@@ -118,10 +110,10 @@ absl::StatusOr<EmitArgs> EmitCollectiveFusion(
                      ? std::nullopt
                      : std::make_optional(std::move(result.entry.binary));
     return ThunkSequence::Of<CollectiveKernelThunk>(
-        std::move(info), config, std::move(kernel_spec), is_async,
-        std::move(buffers), /*is_collective_kernel_enabled=*/true,
-        result.entry.kernel_name, result.entry.launch_dimensions,
-        result.entry.shmem_bytes, std::move(cubin), result.entry.use_pdl);
+        std::move(info), config, std::move(kernel_spec), std::move(buffers),
+        /*is_collective_kernel_enabled=*/true, result.entry.kernel_name,
+        result.entry.launch_dimensions, result.entry.shmem_bytes,
+        std::move(cubin), result.entry.use_pdl);
   };
   ABSL_ASSIGN_OR_RETURN(std::vector<Shape> unmanaged_arguments,
                    GetCollectiveUnmanagedKernelArguments(fusion_instr));

@@ -136,25 +136,6 @@ ConvertAsyncCollectivesToSync::ReplaceWithSyncVariant(
   ABSL_RETURN_IF_ERROR(async_start->DropAllControlDeps());
   ABSL_RETURN_IF_ERROR(async_done->DropAllControlDeps());
 
-  // Remember name of async instruction for profile usability.
-  FrontendAttributes attributes;
-  auto& map = *attributes.mutable_map();
-  map[kAsyncCollectiveNameAttributeName] = async_start->name();
-  sync_instruction->add_frontend_attributes(std::move(attributes));
-
-  // When we remove the async-done (and its unused operands), in most cases,
-  // the async-start may not be deleted if its considered as having side effects
-  // but in some cases it will be (e.g., the generic HLO kAsyncStart). Track its
-  // removal and remove it if it was not removed when async-done is removed.
-  bool is_async_start_removed = false;
-  auto track_async_start_removed = [&](const HloInstruction* instr) {
-    is_async_start_removed |= instr == async_start;
-  };
-  ABSL_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(
-      async_done, track_async_start_removed));
-  if (!is_async_start_removed) {
-    ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(async_start));
-  }
   return sync_instruction;
 }
 
@@ -164,10 +145,10 @@ ConvertAsyncCollectivesToSync::ReplaceAsyncInstructionsWithSync(
     absl::Span<const std::pair<HloInstruction*, HloInstruction*>> async_pairs) {
   absl::flat_hash_map<HloInstruction*, HloInstruction*> replaced_ops;
   for (auto& [async_start, async_done] : async_pairs) {
-    ABSL_ASSIGN_OR_RETURN(HloInstruction * sync,
-                     ReplaceWithSyncVariant(async_start, async_done));
     ABSL_ASSIGN_OR_RETURN(std::optional<int64_t> group_id,
                      GetSchedulingAnnotationGroupId(async_done));
+    ABSL_ASSIGN_OR_RETURN(HloInstruction * sync,
+                     ReplaceWithSyncVariant(async_start, async_done));
     if (group_id) {
       LOG(WARNING) << "Async collective pair (" << async_start->name() << ", "
                    << async_done->name() << ") with scheduling group id "
@@ -183,24 +164,40 @@ ConvertAsyncCollectivesToSync::ReplaceAsyncInstructionsWithSync(
 
   // Update schedule, if there is one.
   HloModule* module = computation->parent();
-  if (!module->has_schedule()) {
-    return absl::OkStatus();
-  }
-  const HloInstructionSequence& sequence =
-      module->schedule().sequence(computation);
-  std::vector<HloInstruction*> new_sequence;
-  new_sequence.reserve(sequence.size());
-  for (HloInstruction* instr : sequence.instructions()) {
-    auto it = replaced_ops.find(instr);
-    if (it != replaced_ops.end()) {
-      if (it->second != nullptr) {
-        new_sequence.push_back(it->second);
+  if (module->has_schedule() &&
+      module->schedule().is_computation_scheduled(computation)) {
+    const HloInstructionSequence& sequence =
+        module->schedule().sequence(computation);
+    std::vector<HloInstruction*> new_sequence;
+    new_sequence.reserve(sequence.size());
+    for (HloInstruction* instr : sequence.instructions()) {
+      auto it = replaced_ops.find(instr);
+      if (it != replaced_ops.end()) {
+        if (it->second != nullptr) {
+          new_sequence.push_back(it->second);
+        }
+      } else {
+        new_sequence.push_back(instr);
       }
-    } else {
-      new_sequence.push_back(instr);
+    }
+    module->schedule().set_sequence(computation, new_sequence);
+  }
+
+  // Remove the replaced async instructions and their unused operands.
+  for (const auto& pair : async_pairs) {
+    HloInstruction* async_start = pair.first;
+    HloInstruction* async_done = pair.second;
+    bool is_async_start_removed = false;
+    auto track_async_start_removed = [&](const HloInstruction* instr) {
+      is_async_start_removed |= instr == async_start;
+    };
+    ABSL_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(
+        async_done, track_async_start_removed));
+    if (!is_async_start_removed) {
+      ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(async_start));
     }
   }
-  module->schedule().set_sequence(computation, new_sequence);
+
   return absl::OkStatus();
 }
 
