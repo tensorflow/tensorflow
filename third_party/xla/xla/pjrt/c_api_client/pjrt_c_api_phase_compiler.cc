@@ -138,7 +138,7 @@ PjRtCApiPhaseCompiler::GetPhaseNames() {
 absl::StatusOr<std::vector<xla::PjRtPartialProgramProto>>
 PjRtCApiPhaseCompiler::RunPhases(
     xla::CompileOptions options,
-    const std::vector<xla::PjRtPartialProgramProto>& partial_programs_in,
+    std::vector<xla::PjRtPartialProgramProto>&& partial_programs_in,
     const xla::PjRtTopologyDescription& topology,
     const std::vector<std::string>& phases_to_run) {
   // Plugin-agnostic validation of the input programs and phases.
@@ -153,6 +153,10 @@ PjRtCApiPhaseCompiler::RunPhases(
                    xla::ConvertPjRtPartialProgramProtosToCharBuffers(
                        partial_programs_in, programs_in_buffer_sizes));
   size_t num_programs_in = partial_programs_in.size();
+
+  // We no longer need this form of the input, so free it to save memory.
+  partial_programs_in = std::vector<xla::PjRtPartialProgramProto>();
+
   absl::Cleanup cleanup_programs_in_buffers =
       [programs_in_buffers, programs_in_buffer_sizes, num_programs_in] {
         CleanUpCallerDefinedCBuffers(
