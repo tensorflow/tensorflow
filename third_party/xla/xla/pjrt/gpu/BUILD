@@ -71,13 +71,12 @@ cc_library(
 )
 
 cc_library(
-    name = "se_gpu_pjrt_client",
+    name = "se_gpu_pjrt_client_impl",
     srcs = ["se_gpu_pjrt_client.cc"],
     hdrs = ["se_gpu_pjrt_client.h"],
     defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm(["TENSORFLOW_USE_ROCM=1"]) + if_sycl([
         "TENSORFLOW_USE_SYCL=1",
     ]),
-    visibility = internal_visibility(["//xla/pjrt/gpu:legacy_gpu_client_users"]),
     deps = [
         ":gpu_helpers",
         ":gpu_metrics",
@@ -246,6 +245,65 @@ cc_library(
         "//xla/service/gpu:gpu_executable_buffer_allocator",
         "//xla/service/gpu:stream_executor_util",
         "@local_config_sycl//sycl:sycl_headers",
+    ]),
+)
+
+cc_library(
+    name = "se_gpu_pjrt_client",
+    hdrs = ["se_gpu_pjrt_client.h"],
+    visibility = internal_visibility(["//xla/pjrt/gpu:legacy_gpu_client_users"]),
+    deps = [
+        ":se_gpu_pjrt_client_impl",
+        ":se_gpu_pjrt_compiler_cuda_registration",
+        ":se_gpu_topology_description",
+        "//xla:executable_run_options",
+        "//xla:future",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/collectives:allocator_memory_registration",
+        "//xla/backends/gpu/collectives:gpu_clique_key",
+        "//xla/backends/gpu/collectives:gpu_cliques",
+        "//xla/client:local_client",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/pjrt:device_event",
+        "//xla/pjrt:host_memory_allocator",
+        "//xla/pjrt:maybe_owning_mlir_module",
+        "//xla/pjrt:pjrt_abi_version",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt:raw_buffer",
+        "//xla/pjrt/distributed:key_value_store_interface",
+        "//xla/pjrt/distributed/coordination:coordination_service_proto_cc",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_allocator_config",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+        "//xla/pjrt/se:local_device_state",
+        "//xla/pjrt/se:pjrt_stream_executor_client",
+        "//xla/runtime:device_id",
+        "//xla/service:computation_placer_hdr",
+        "//xla/service:gpu_topology",
+        "//xla/service:gpu_topology_proto_cc",
+        "//xla/service/gpu:gpu_executable_run_options",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_address_allocator",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/framework:allocator",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:platform_port",
+    ] + if_rocm([
+        ":se_gpu_pjrt_compiler_rocm_registration",
+    ]) + if_sycl([
+        ":se_gpu_pjrt_compiler_sycl_registration",
     ]),
 )
 
@@ -662,7 +720,7 @@ cc_library(
     srcs = ["se_gpu_pjrt_compiler.cc"],
     hdrs = ["se_gpu_pjrt_compiler.h"],
     deps = [
-        ":se_gpu_pjrt_client",
+        ":se_gpu_pjrt_client_impl",
         ":se_gpu_pjrt_runtime_abi_version",
         ":se_gpu_topology_description",
         "//xla:shape_util",
@@ -712,20 +770,16 @@ cc_library(
 cc_library(
     name = "se_gpu_pjrt_compiler_cuda_registration",
     srcs = ["se_gpu_pjrt_compiler_cuda_registration.cc"],
-    compatible_with = [],
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
     deps = [
         ":se_gpu_pjrt_compiler_impl",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt/se:stream_executor_platform_id_mapping",
-        "//xla/service/gpu:nvptx_compiler",  # buildcleaner: keep
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/platform:initialize",
         "@com_google_absl//absl/log:check",
-    ],
+    ] + if_cuda([
+        "//xla/service/gpu:nvptx_compiler",  # buildcleaner: keep
+    ]),
     alwayslink = 1,
 )
 
@@ -780,6 +834,7 @@ cc_library(
     # TODO(b/382070262): Migrate users off this target - They should go though the PjRt ABI compatibility layer.
     visibility = internal_visibility(["//xla/pjrt/gpu:legacy_se_gpu_pjrt_compiler_users"]),
     deps = [
+        ":se_gpu_pjrt_compiler_cuda_registration",
         ":se_gpu_pjrt_compiler_impl",
         "//xla:shape_util",
         "//xla/hlo/builder:xla_computation",
@@ -797,9 +852,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@llvm-project//mlir:IR",
-    ] + if_cuda([
-        ":se_gpu_pjrt_compiler_cuda_registration",
-    ]) + if_rocm([
+    ] + if_rocm([
         ":se_gpu_pjrt_compiler_rocm_registration",
     ]) + if_sycl([
         ":se_gpu_pjrt_compiler_sycl_registration",
@@ -824,7 +877,7 @@ xla_test(
     backends = ["gpu"],
     deps = [
         ":se_gpu_pjrt_client",
-        ":se_gpu_pjrt_compiler_impl",
+        ":se_gpu_pjrt_compiler",
         ":se_gpu_topology_description",
         "//xla:literal",
         "//xla:literal_util",
@@ -873,7 +926,7 @@ xla_test(
     backends = ["gpu"],
     deps = [
         ":se_gpu_pjrt_client",
-        ":se_gpu_pjrt_compiler_impl",
+        ":se_gpu_pjrt_compiler",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -888,6 +941,7 @@ xla_test(
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+        "//xla/pjrt/se:stream_executor_executable",
         "//xla/service:compiler",
         "//xla/tests:literal_test_util",
         "//xla/tsl/platform:statusor",
@@ -902,6 +956,7 @@ xla_test(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
+        "@riegeli//riegeli/bytes:string_reader",
         "@tsl//tsl/platform:casts",
     ],
 )

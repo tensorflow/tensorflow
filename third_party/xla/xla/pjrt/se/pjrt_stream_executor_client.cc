@@ -2249,35 +2249,12 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>>
 PjRtStreamExecutorClient::DeserializeExecutable(
     std::unique_ptr<riegeli::Reader> reader,
     std::optional<CompileOptions> options) {
-  ABSL_ASSIGN_OR_RETURN(ExecutableAndOptionsProto proto,
-                   SerializedGpuExecutableFromReader(std::move(reader)));
-  if (!proto.pjrt_client_name().empty() &&
-      proto.pjrt_client_name() != kPjRtClientName) {
-    return Internal(
-        "Serialized executable is from an incompatible PjRt client type. "
-        "PjRt client type expected by the serialized executable: %s",
-        proto.pjrt_client_name());
-  }
-
-  CompileOptions compile_options;
-  if (options.has_value()) {
-    compile_options = *std::move(options);
-  } else {
-    ABSL_ASSIGN_OR_RETURN(compile_options,
-                     CompileOptions::FromProto(proto.compile_options()));
-  }
-  ABSL_RETURN_IF_ERROR(compile_options.ApplyAllOptionOverrides());
-
   tsl::profiler::TraceMe traceme(
       "PjRtStreamExecutorClient::DeserializeExecutable");
   VLOG(1) << "PjRtStreamExecutorClient::DeserializeExecutable";
 
-  std::string str = std::move(*proto.mutable_serialized_executable());
-  ABSL_ASSIGN_OR_RETURN(
-      std::unique_ptr<LocalExecutable> loaded,
-      client()->Load(str, compile_options.executable_build_options));
-
-  return BuildPjRtExecutable(std::nullopt, std::move(loaded), compile_options);
+  return StreamExecutorExecutable::Deserialize(std::move(reader), *topology_,
+                                               std::move(options));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
