@@ -94,11 +94,14 @@ def _sqrt_grad_with_subnormal_fallback(x, grad):
     def _stable_x_derivative(x_in, result_in):
       value = -0.5 * result_in / x_in
 
-      def grad_fn(grad):
-        has_gradient = gen_math_ops.not_equal(grad, zero_f64)
+      def grad_fn(output_grad):
+        has_gradient = gen_math_ops.not_equal(output_grad, zero_f64)
         safe_x = array_ops.where_v2(has_gradient, x_in, one_f64)
         safe_value = array_ops.where_v2(has_gradient, value, zero_f64)
-        return grad * (-safe_value / safe_x), grad * (-0.5 / safe_x)
+        return (
+            output_grad * (-safe_value / safe_x),
+            output_grad * (-0.5 / safe_x),
+        )
 
       return value, grad_fn
 
@@ -163,6 +166,8 @@ def sqrt(x, name=None):  # pylint: disable=redefined-builtin
   Returns:
     A `tf.Tensor` of same size, type and sparsity as `x`.
   """
+  # SparseTensor's unary dispatcher is registered on math_ops.sqrt, so route
+  # composite inputs there before attempting dense tensor conversion.
   if isinstance(x, composite_tensor.CompositeTensor):
     return math_ops.sqrt(x, name=name)
   with ops.name_scope(name, "Sqrt", [x]) as name:
