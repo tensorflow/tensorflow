@@ -107,7 +107,7 @@ cc_library(
     hdrs = [
         "pjrt_state.h",
     ],
-    visibility = [":friends"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":pjrt_client_factory_options",
         ":pjrt_client_factory_registry",
@@ -166,7 +166,7 @@ cc_library(
     hdrs = [
         "create_pjrt_client_util.h",
     ],
-    visibility = [":friends"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":global_state",
         ":pjrt_state",
@@ -246,7 +246,7 @@ tf_cuda_cc_test(
 cc_library(
     name = "pjrt_client_factory_options",
     hdrs = ["pjrt_client_factory_options.h"],
-    visibility = [":friends"],
+    visibility = internal_visibility([":friends"]),
 )
 
 cc_library(
