@@ -1,5 +1,6 @@
 # Tools and utilities that aid in XLA development and usage.
 
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm", "if_rocm_is_configured")
@@ -1504,5 +1505,27 @@ cc_binary(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@tsl//tsl/platform:platform_port",
+    ],
+)
+
+xla_cc_binary(
+    name = "source_hash_hasher",
+    srcs = ["source_hash_hasher.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/status",
+        "@llvm-project//llvm:Support",
+        "@tsl//tsl/platform:platform_port",
+    ],
+)
+
+bzl_library(
+    name = "source_hash_bzl",
+    srcs = ["source_hash.bzl"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla:xla_bzl",
+        "@rules_cc//cc/common",
     ],
 )
