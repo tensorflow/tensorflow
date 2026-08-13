@@ -121,23 +121,27 @@ class RNNGradTest(test.TestCase):
     w, b, x, cs_prev, h_prev, w_peephole = self._block_lstm_inputs()
     with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
                                 "seq_len_max must be <= timelen"):
-      self._block_lstm(w, b, x, cs_prev, h_prev, w_peephole, seq_len_max=10)
+      self.evaluate(
+          self._block_lstm(w, b, x, cs_prev, h_prev, w_peephole, seq_len_max=10)
+      )
 
   def testBlockLSTMSeqLenMaxNegative(self):
     w, b, x, cs_prev, h_prev, w_peephole = self._block_lstm_inputs()
     with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
                                 "seq_len_max must be >= 0"):
-      self._block_lstm(w, b, x, cs_prev, h_prev, w_peephole, seq_len_max=-1)
+      self.evaluate(
+          self._block_lstm(w, b, x, cs_prev, h_prev, w_peephole, seq_len_max=-1)
+      )
 
   def testBlockLSTMGradSeqLenMaxTooLarge(self):
     with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
                                 "seq_len_max must be <= timelen"):
-      self._block_lstm_grad(seq_len_max=10)
+      self.evaluate(self._block_lstm_grad(seq_len_max=10))
 
   def testBlockLSTMGradSeqLenMaxNegative(self):
     with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
                                 "seq_len_max must be >= 0"):
-      self._block_lstm_grad(seq_len_max=-1)
+      self.evaluate(self._block_lstm_grad(seq_len_max=-1))
 
   def _block_lstm_inputs(self, num_steps=2, batch_size=1, input_size=1,
                          hidden_size=4):
