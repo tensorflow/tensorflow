@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include <gtest/gtest.h>
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -108,6 +109,88 @@ TEST_F(FusionWrapperTest, DynamicUpdateSliceWrappedWithNewFusionEmitters) {
   EXPECT_TRUE(changed);
   EXPECT_EQ(m->entry_computation()->root_instruction()->opcode(),
             HloOpcode::kFusion);
+}
+
+TEST_F(FusionWrapperTest, MissingElementalOpcodesWrappedWithNewFusionEmitters) {
+  static constexpr absl::string_view kUnaryOpcodes[] = {
+      "acos", "acosh", "asin", "asinh", "atanh", "cosh", "sinh"};
+  for (absl::string_view op : kUnaryOpcodes) {
+    std::string hlo_string = absl::StrFormat(R"(
+    HloModule m
+      ENTRY e {
+        p0 = f32[64,32] parameter(0)
+        ROOT r = f32[64,32] %s(p0)
+      }
+    )",
+                                             op);
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                         ParseAndReturnVerifiedModule(hlo_string));
+    FusionWrapper wrapper(/*using_new_fusion_emitter=*/true,
+                          /*use_tiled_emitter=*/false);
+    ASSERT_OK_AND_ASSIGN(bool changed, wrapper.Run(m.get()));
+    EXPECT_TRUE(changed) << "Failed for opcode: " << op;
+    EXPECT_EQ(m->entry_computation()->root_instruction()->opcode(),
+              HloOpcode::kFusion)
+        << "Failed for opcode: " << op;
+  }
+
+  {
+    static constexpr absl::string_view hlo_string = R"(
+    HloModule m
+      ENTRY e {
+        p0 = s32[64,32] parameter(0)
+        p1 = s32[64,32] parameter(1)
+        ROOT r = s32[64,32] mulhi(p0, p1)
+      }
+    )";
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                         ParseAndReturnVerifiedModule(hlo_string));
+    FusionWrapper wrapper(/*using_new_fusion_emitter=*/true,
+                          /*use_tiled_emitter=*/false);
+    ASSERT_OK_AND_ASSIGN(bool changed, wrapper.Run(m.get()));
+    EXPECT_TRUE(changed) << "Failed for opcode: mulhi";
+    EXPECT_EQ(m->entry_computation()->root_instruction()->opcode(),
+              HloOpcode::kFusion);
+  }
+}
+
+TEST_F(FusionWrapperTest,
+       MissingElementalOpcodesNotWrappedWithoutNewFusionEmitters) {
+  static constexpr absl::string_view kUnaryOpcodes[] = {
+      "acos", "acosh", "asin", "asinh", "atanh", "cosh", "sinh"};
+  for (absl::string_view op : kUnaryOpcodes) {
+    std::string hlo_string = absl::StrFormat(R"(
+    HloModule m
+      ENTRY e {
+        p0 = f32[64,32] parameter(0)
+        ROOT r = f32[64,32] %s(p0)
+      }
+    )",
+                                             op);
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                         ParseAndReturnVerifiedModule(hlo_string));
+    FusionWrapper wrapper(/*using_new_fusion_emitter=*/false,
+                          /*use_tiled_emitter=*/false);
+    ASSERT_OK_AND_ASSIGN(bool changed, wrapper.Run(m.get()));
+    EXPECT_FALSE(changed) << "Failed for opcode: " << op;
+  }
+
+  {
+    static constexpr absl::string_view hlo_string = R"(
+    HloModule m
+      ENTRY e {
+        p0 = s32[64,32] parameter(0)
+        p1 = s32[64,32] parameter(1)
+        ROOT r = s32[64,32] mulhi(p0, p1)
+      }
+    )";
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                         ParseAndReturnVerifiedModule(hlo_string));
+    FusionWrapper wrapper(/*using_new_fusion_emitter=*/false,
+                          /*use_tiled_emitter=*/false);
+    ASSERT_OK_AND_ASSIGN(bool changed, wrapper.Run(m.get()));
+    EXPECT_FALSE(changed) << "Failed for opcode: mulhi";
+  }
 }
 
 }  // namespace
