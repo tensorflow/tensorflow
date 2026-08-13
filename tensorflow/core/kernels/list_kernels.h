@@ -894,10 +894,10 @@ class TensorListScatterIntoExistingList : public OpKernel {
     // Validate indices before forwarding the input list. Scatter assumes every
     // index is valid and would otherwise access the list with a negative
     // subscript.
-    const auto indices_vec = indices.vec<int32_t>();
+    const int32_t* const indices_data = indices.flat<int32_t>().data();
     int32_t max_index = -1;
     for (int64_t index = 0; index < indices.NumElements(); ++index) {
-      const int32_t list_index = indices_vec(index);
+      const int32_t list_index = indices_data[index];
       OP_REQUIRES(
           c, list_index >= 0,
           absl::InvalidArgumentError(
@@ -914,8 +914,11 @@ class TensorListScatterIntoExistingList : public OpKernel {
     // Resize the list if needed to accommodate all indices.
     TensorList* output_list = nullptr;
     OP_REQUIRES_OK(c, ForwardInputOrCreateNewList(c, 0, 0, *l, &output_list));
-    if (max_index + 1 > output_list->tensors().size()) {
-      output_list->tensors().resize(max_index + 1);
+    if (max_index >= 0) {
+      const size_t required_size = static_cast<size_t>(max_index) + 1;
+      if (required_size > output_list->tensors().size()) {
+        output_list->tensors().resize(required_size);
+      }
     }
 
     // Scatter the values.
