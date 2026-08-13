@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "absl/base/casts.h"
 #include "llvm/ADT/StringRef.h"
 #include "tensorflow/core/framework/logging.h"
@@ -62,7 +63,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfd {
-const char kOpKernelRunnerCacheResourceName[] =
+ABSL_CONST_INIT const char kOpKernelRunnerCacheResourceName[] =
     "OpKernelRunnerCacheResourceName";
 
 namespace {

@@ -739,6 +739,7 @@ cc_library(
         "//tensorflow/core/kernels/batching_util:periodic_function_dynamic",
         "//tensorflow/core/kernels/batching_util:warmup",
         "//tensorflow/core/platform:numbers",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
