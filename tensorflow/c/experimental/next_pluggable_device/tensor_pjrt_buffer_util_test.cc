@@ -53,6 +53,20 @@ using ::testing::HasSubstr;
 using ::testing::NotNull;
 using ::tsl::testing::StatusIs;
 
+class FakeOpaqueAllocator : public Allocator {
+ public:
+  explicit FakeOpaqueAllocator(void* ptr) : ptr_(ptr) {}
+  void* AllocateRaw(size_t alignment, size_t num_bytes) override {
+    return ptr_;
+  }
+  void DeallocateRaw(void* ptr) override {}
+  bool AllocatesOpaqueHandle() const override { return true; }
+  std::string Name() override { return "fake-opaque"; }
+
+ private:
+  void* ptr_;
+};
+
 PJRT_Buffer* CreateCBuffer() {
   auto status = pjrt::PjrtApi(DEVICE_CPU);
   if (!status.ok()) {
@@ -81,6 +95,18 @@ TEST(TensorPjRtBufferUtilTest, GetPjRtCBufferFromTensorNoBuffer) {
 
   EXPECT_THAT(
       GetPjRtCBufferFromTensor(&tensor),
+      absl_testing::StatusIs(
+          error::INTERNAL,
+          HasSubstr(absl::StrCat("Input tensor does not have PjRtBuffer"))));
+}
+
+TEST(TensorPjRtBufferUtilTest, GetPjRtCBufferFromSlicedTensor) {
+  FakeOpaqueAllocator allocator(reinterpret_cast<void*>(0x1000));
+  tensorflow::Tensor tensor(&allocator, DT_UINT8, {16});
+  tensorflow::Tensor sliced_tensor = tensor.Slice(1, 16);
+
+  EXPECT_THAT(
+      GetPjRtCBufferFromTensor(&sliced_tensor),
       absl_testing::StatusIs(
           error::INTERNAL,
           HasSubstr(absl::StrCat("Input tensor does not have PjRtBuffer"))));
