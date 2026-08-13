@@ -994,8 +994,6 @@ absl::Status RunOptimizationPasses(
       [&](const HloInstruction* dot) -> int64_t {
     return dot->backend_config<GpuBackendConfig>()->operation_queue_id();
   };
-  // Only merge "smallish" dots. This threshold defaults to 32MB today, with
-  // a flag to override.
   pipeline.AddPass<DotMerger>(
       /*max_size_to_merge=*/int64_t{debug_options
                                         .xla_gpu_dot_merger_threshold_mb()}
