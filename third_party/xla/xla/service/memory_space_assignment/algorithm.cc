@@ -531,7 +531,9 @@ MsaAlgorithm::MsaAlgorithm(HloModule* module, AllocationSequence* allocations,
             farthest_bandwidth_limiting_async_done_found,
             hlo_live_range.instruction_schedule().at(inst->users()[0]));
       }
-      if (inst->opcode() == HloOpcode::kWhile ||
+      if (!MemorySpaceAssignmentUtils::IsInstructionOnConfiguredExecThread(
+              *inst, options.execution_threads) ||
+          inst->opcode() == HloOpcode::kWhile ||
           inst->opcode() == HloOpcode::kConditional) {
         initial_resources[i] = 0;
       } else {

@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -46,6 +47,13 @@ class MemorySpaceAssignmentUtils {
   // Returns true if the HloValue is allowed to be placed in alternate memory.
   static bool IsValueAllowedInAlternateMemory(const HloValue* value,
                                               int64_t alternate_memory_space);
+
+  // Returns true if the instruction runs on one of the configured execution
+  // threads. Returns true if the set of execution threads is empty or the
+  // instruction has no parent computation.
+  static bool IsInstructionOnConfiguredExecThread(
+      const HloInstruction& instruction,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   static bool DoesUseMatchFilter(const HloOperandFilter& filter,
                                  const HloUse& hlo_use, int64_t operand_size);

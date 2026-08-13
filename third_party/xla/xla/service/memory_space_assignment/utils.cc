@@ -23,10 +23,12 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "highwayhash/arch_specific.h"
 #include "highwayhash/hh_types.h"
 #include "highwayhash/highwayhash.h"
@@ -52,6 +54,13 @@ namespace {
 const int64_t kRandomFilterDefaultSeed = 1234;
 
 }  // namespace
+
+bool MemorySpaceAssignmentUtils::IsInstructionOnConfiguredExecThread(
+    const HloInstruction& instruction,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  return instruction.parent() == nullptr || execution_threads.empty() ||
+         execution_threads.contains(instruction.parent()->execution_thread());
+}
 
 bool MemorySpaceAssignmentUtils::IsValueAllowedInAlternateMemory(
     const HloValue* value, int64_t alternate_memory_space) {
