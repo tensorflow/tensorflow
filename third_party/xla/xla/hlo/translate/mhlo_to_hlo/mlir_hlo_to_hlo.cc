@@ -2496,6 +2496,11 @@ LogicalResult ExportXlaOp(CollectiveBroadcastOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(CollectiveReduceOp op, OpLoweringContext ctx) {
+  // TODO(cl/958226692): Map CollectiveReduceOp to the corresponding HLO op.
+  return failure();
+}
+
 // Specialize CompareOp export to set broadcast_dimensions argument.
 mlir::LogicalResult ExportXlaOp(mlir::stablehlo::CompareOp op,
                                 OpLoweringContext ctx) {
