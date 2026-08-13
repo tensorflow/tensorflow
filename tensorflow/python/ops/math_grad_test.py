@@ -952,6 +952,56 @@ class SqrtGradTest(test.TestCase):
         rtol=1e-14,
     )
 
+  @test_util.run_in_graph_and_eager_modes
+  def testFloat64SubnormalHigherOrderGradientsWithSmallUpstream(self):
+    with ops.device("/CPU:0"):
+      x = constant_op.constant(
+          np.nextafter(0.0, 1.0), dtype=dtypes.float64
+      )
+      upstream = constant_op.constant(np.ldexp(1.0, -600), dtypes.float64)
+      with backprop.GradientTape() as outer_tape:
+        outer_tape.watch(x)
+        with backprop.GradientTape() as inner_tape:
+          inner_tape.watch(x)
+          y = sqrt_ops.sqrt(x)
+        first_derivative = inner_tape.gradient(
+            y, x, output_gradients=upstream
+        )
+      second_derivative = outer_tape.gradient(first_derivative, x)
+
+    self.assertAllEqual(np.ldexp(1.0, -64), self.evaluate(first_derivative))
+    self.assertAllEqual(-np.ldexp(1.0, 1009), self.evaluate(second_derivative))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFloat64SubnormalMixedGradientWithSmallUpstream(self):
+    with ops.device("/CPU:0"):
+      x = constant_op.constant(
+          np.nextafter(0.0, 1.0), dtype=dtypes.float64
+      )
+      upstream = constant_op.constant(1.0, dtype=dtypes.float64)
+      with backprop.GradientTape() as derivative_tape:
+        derivative_tape.watch(x)
+        with backprop.GradientTape() as outer_tape:
+          outer_tape.watch((x, upstream))
+          with backprop.GradientTape() as inner_tape:
+            inner_tape.watch(x)
+            y = sqrt_ops.sqrt(x)
+          first_derivative = inner_tape.gradient(
+              y, x, output_gradients=upstream
+          )
+        _, upstream_derivative = outer_tape.gradient(
+            first_derivative, (x, upstream)
+        )
+      mixed_derivative = derivative_tape.gradient(
+          upstream_derivative,
+          x,
+          output_gradients=constant_op.constant(
+              np.ldexp(1.0, -600), dtype=dtypes.float64
+          ),
+      )
+
+    self.assertAllEqual(-np.ldexp(1.0, 1009), self.evaluate(mixed_derivative))
+
 
 class IgammaGradTest(test.TestCase):
 

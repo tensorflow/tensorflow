@@ -26,14 +26,18 @@ from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
+def _divide_by_positive_subnormal(numerator, mantissa):
+  """Divides by `mantissa * 2**-1074` without using a subnormal."""
+  scale = constant_op.constant(2.0**537, dtype=dtypes.float64)
+  # Dividing between the two scaling steps limits intermediate overflow.
+  return (numerator * scale / mantissa) * scale
+
+
 @custom_gradient.custom_gradient
-def _safe_subnormal_derivative(
-    x, safe_mantissa_bits, is_positive_subnormal
-):
+def _safe_subnormal_derivative(x, mantissa, is_positive_subnormal):
   """Computes a subnormal sqrt derivative with stable higher gradients."""
   zero_f64 = constant_op.constant(0.0, dtype=dtypes.float64)
   one_f64 = constant_op.constant(1.0, dtype=dtypes.float64)
-  mantissa = gen_math_ops.cast(safe_mantissa_bits, dtypes.float64)
   value = (
       constant_op.constant(2.0**536, dtype=dtypes.float64)
       / gen_math_ops.sqrt(mantissa)
@@ -44,27 +48,86 @@ def _safe_subnormal_derivative(
         is_positive_subnormal,
         gen_math_ops.not_equal(output_grad, zero_f64),
     )
-    safe_x = array_ops.where_v2(has_gradient, x, one_f64)
+    safe_output_grad = array_ops.where_v2(
+        has_gradient, output_grad, zero_f64
+    )
+    safe_mantissa = array_ops.where_v2(has_gradient, mantissa, one_f64)
     safe_value = array_ops.where_v2(has_gradient, value, zero_f64)
-    return output_grad * (-0.5 * safe_value / safe_x), None, None
+    scaled_grad = _divide_by_positive_subnormal(
+        safe_output_grad, safe_mantissa
+    )
+    return scaled_grad * (-0.5 * safe_value), None, None
 
   return value, grad_fn
 
 
 @custom_gradient.custom_gradient
-def _stable_x_derivative(x, result):
+def _stable_x_derivative(x, result, is_positive_subnormal, mantissa):
   """Computes the sqrt input derivative with stable higher gradients."""
   zero_f64 = constant_op.constant(0.0, dtype=dtypes.float64)
   one_f64 = constant_op.constant(1.0, dtype=dtypes.float64)
-  value = -0.5 * result / x
+  is_not_positive_subnormal = gen_math_ops.logical_not(
+      is_positive_subnormal
+  )
+  safe_normal_x = array_ops.where_v2(
+      is_not_positive_subnormal, x, one_f64
+  )
+  safe_subnormal_result = array_ops.where_v2(
+      is_positive_subnormal, result, zero_f64
+  )
+  safe_mantissa = array_ops.where_v2(
+      is_positive_subnormal, mantissa, one_f64
+  )
+  normal_value = -0.5 * result / safe_normal_x
+  subnormal_value = -0.5 * _divide_by_positive_subnormal(
+      safe_subnormal_result, safe_mantissa
+  )
+  value = array_ops.where_v2(
+      is_positive_subnormal, subnormal_value, normal_value
+  )
 
   def grad_fn(output_grad):
     has_gradient = gen_math_ops.not_equal(output_grad, zero_f64)
-    safe_x = array_ops.where_v2(has_gradient, x, one_f64)
-    safe_value = array_ops.where_v2(has_gradient, value, zero_f64)
+    use_subnormal_gradient = gen_math_ops.logical_and(
+        is_positive_subnormal, has_gradient
+    )
+    use_normal_gradient = gen_math_ops.logical_and(
+        is_not_positive_subnormal, has_gradient
+    )
+    safe_normal_output_grad = array_ops.where_v2(
+        use_normal_gradient, output_grad, zero_f64
+    )
+    safe_normal_x = array_ops.where_v2(use_normal_gradient, x, one_f64)
+    safe_normal_value = array_ops.where_v2(
+        use_normal_gradient, value, zero_f64
+    )
+    safe_subnormal_output_grad = array_ops.where_v2(
+        use_subnormal_gradient, output_grad, zero_f64
+    )
+    safe_subnormal_mantissa = array_ops.where_v2(
+        use_subnormal_gradient, mantissa, one_f64
+    )
+    safe_subnormal_value = array_ops.where_v2(
+        use_subnormal_gradient, value, zero_f64
+    )
+    scaled_subnormal_grad = _divide_by_positive_subnormal(
+        safe_subnormal_output_grad, safe_subnormal_mantissa
+    )
+    x_gradient = array_ops.where_v2(
+        is_positive_subnormal,
+        scaled_subnormal_grad * -safe_subnormal_value,
+        safe_normal_output_grad * (-safe_normal_value / safe_normal_x),
+    )
+    result_gradient = array_ops.where_v2(
+        is_positive_subnormal,
+        scaled_subnormal_grad * -0.5,
+        safe_normal_output_grad * (-0.5 / safe_normal_x),
+    )
     return (
-        output_grad * (-safe_value / safe_x),
-        output_grad * (-0.5 / safe_x),
+        x_gradient,
+        result_gradient,
+        None,
+        None,
     )
 
   return value, grad_fn
@@ -89,8 +152,9 @@ def _sqrt_grad_with_subnormal_fallback(x, grad):
   safe_mantissa_bits = array_ops.where_v2(
       is_positive_subnormal, x_bits, one_i64
   )
+  mantissa = gen_math_ops.cast(safe_mantissa_bits, dtypes.float64)
   subnormal_derivative = _safe_subnormal_derivative(
-      x, safe_mantissa_bits, is_positive_subnormal
+      x, mantissa, is_positive_subnormal
   )
   is_not_positive_subnormal = gen_math_ops.logical_not(
       is_positive_subnormal
@@ -115,7 +179,9 @@ def _sqrt_grad_with_subnormal_fallback(x, grad):
     )
     safe_x = array_ops.where_v2(use_x_gradient, x, one_f64)
     safe_result = array_ops.where_v2(use_x_gradient, result, zero_f64)
-    x_derivative = _stable_x_derivative(safe_x, safe_result)
+    x_derivative = _stable_x_derivative(
+        safe_x, safe_result, is_positive_subnormal, mantissa
+    )
     ordinary_derivative = 0.5 / ordinary_y
     grad_derivative = array_ops.where_v2(
         is_positive_subnormal,
