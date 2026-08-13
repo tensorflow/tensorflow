@@ -13,9 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for array_ops."""
+import concurrent.futures
 import re
+import threading
 import time
 import unittest
+from unittest import mock
 
 from absl.testing import parameterized
 import numpy as np
@@ -208,6 +211,48 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
     for arr_shape in [(1, 1, 1), (1, 2, 2), (2, 2, 1)]:
       with self.subTest(arr_shape=arr_shape):
         self.CheckVersusNumpy(ndims_mask, arr_shape)
+
+  def testFullyDefinedShapeDoesNotReadShapeAtRuntime(self):
+    with context.eager_mode():
+      tensor_value = np.arange(24).reshape((2, 3, 4))
+      tensor = constant_op.constant(tensor_value)
+      mask = constant_op.constant(tensor_value % 2 == 0)
+      with mock.patch.object(
+          array_ops,
+          "shape",
+          side_effect=AssertionError("unexpected runtime Shape op"),
+      ):
+        result = array_ops.boolean_mask(tensor, mask)
+
+      self.assertAllEqual(tensor_value[tensor_value % 2 == 0], result)
+
+  @test_util.run_gpu_only
+  def testConcurrentEagerBooleanMaskOnGpu(self):
+    thread_count = 8
+    barrier = threading.Barrier(thread_count)
+    input_shape = (64, 64, 64, 4)
+    tensor_value = np.arange(np.prod(input_shape), dtype=np.float32).reshape(
+        input_shape
+    )
+    expected = tensor_value[tensor_value >= tensor_value.size // 2]
+
+    def apply_mask(_):
+      with context.eager_mode(), test_util.force_gpu():
+        tensor = constant_op.constant(tensor_value)
+        barrier.wait(timeout=60)
+        for _ in range(5):
+          result = array_ops.boolean_mask(
+              tensor, tensor >= tensor_value.size // 2
+          )
+        return result.numpy()
+
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=thread_count
+    ) as executor:
+      results = list(executor.map(apply_mask, range(thread_count)))
+
+    for result in results:
+      self.assertAllEqual(expected, result)
 
   def testEmptyInput2D(self):
     mask = np.array([True, False])
