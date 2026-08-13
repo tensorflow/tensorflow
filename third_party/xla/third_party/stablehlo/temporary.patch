@@ -67,6 +67,68 @@ diff --ruN a/stablehlo/stablehlo/dialect/Serialization.cpp b/stablehlo/stablehlo
      return nullptr;
    }
  
+diff --ruN a/stablehlo/stablehlo/reference/InterpreterOps.cpp b/stablehlo/stablehlo/reference/InterpreterOps.cpp
+--- stablehlo/stablehlo/reference/InterpreterOps.cpp
++++ stablehlo/stablehlo/reference/InterpreterOps.cpp
+@@ -22,6 +22,7 @@
+ #include <mutex>
+ #include <queue>
+ #include <string>
++#include <utility>
+ 
+ #include "llvm/Support/Casting.h"
+ #include "llvm/Support/Errc.h"
+@@ -175,11 +176,14 @@
+     SmallVector<SmallVector<StringAttr>> programs, SymbolTable& symbolTable,
+     InterpreterFallback* fallback) {
+   llvm::DefaultThreadPool threadPool;
+-  SmallVector<std::shared_future<SmallVector<InterpreterValue>>> futures;
++  llvm::ThreadPoolTaskGroup taskGroup(threadPool);
+ 
+   uint32_t numReplicas = programs.size();
+   uint32_t numPartitions = programs[0].size();
+   ProcessGrid processGrid(numReplicas, numPartitions, infeed);
++
++  SmallVector<SmallVector<InterpreterValue>> taskOutputs(numReplicas *
++                                                         numPartitions);
+ 
+   auto inputsIt = inputs.begin();
+ 
+@@ -187,24 +191,24 @@
+     for (uint32_t j = 0; j < numPartitions; ++j) {
+       auto funcName = programs[i][j];
+       auto func = llvm::cast<func::FuncOp>(symbolTable.lookup(funcName));
+-      auto evalWrapper = [&](Region& region, ArrayRef<InterpreterValue> args,
+-                             ProcessId processId) {
+-        Process process{processId, &processGrid};
+-        return eval(region, args, fallback, &process,
+-                    /*parent=*/nullptr);
+-      };
+-
+       auto numArgs = func.getBody().front().getArguments().size();
+       SmallVector<InterpreterValue> args(inputsIt, inputsIt + numArgs);
+       inputsIt += numArgs;
+ 
+-      futures.emplace_back(threadPool.async(
+-          evalWrapper, std::ref(func.getBody()), args, ProcessId{i, j}));
++      uint32_t flatIndex = i * numPartitions + j;
++      taskGroup.async([&, flatIndex, func, args = std::move(args),
++                       processId = ProcessId{i, j}]() mutable {
++        Process process{processId, &processGrid};
++        taskOutputs[flatIndex] = eval(func.getBody(), args, fallback, &process,
++                                      /*parent=*/nullptr);
++      });
+     }
+   }
+ 
++  taskGroup.wait();
++
+   SmallVector<InterpreterValue> results;
+-  for (auto& future : futures) results.append(future.get());
++  for (auto& output : taskOutputs) results.append(output);
+   // TODO(#1725): Figure out how to test the outfeed queue.
+   return results;
+ }
 diff --ruN a/stablehlo/stablehlo/tests/TestUtils.cpp b/stablehlo/stablehlo/tests/TestUtils.cpp
 --- stablehlo/stablehlo/tests/TestUtils.cpp
 +++ stablehlo/stablehlo/tests/TestUtils.cpp
