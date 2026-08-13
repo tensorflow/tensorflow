@@ -336,4 +336,24 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloBroadcastLowering.h b/stabl
  }  // namespace stablehlo
  }  // namespace mlir
  
-
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
+--- stablehlo/stablehlo/dialect/StablehloOps.cpp
++++ stablehlo/stablehlo/dialect/StablehloOps.cpp
+@@ -4362,12 +4362,10 @@
+   // Use TOTALORDER comparison type instead of the default comparison if the
+-  // element type is of type float.
++  // sort key (first element type) is a float. The comparison is performed on
++  // the first element type only (block arguments 0 and 1), so we must only
++  // examine the first element type.
+   std::optional<StringRef> compareType = std::nullopt;
+-  for (const auto& elementType : elementTypes) {
+-    if (isa<FloatType>(elementType)) {
+-      compareType.emplace("TOTALORDER");
+-      break;
+-    }
+-  }
++  if (!elementTypes.empty() && isa<FloatType>(elementTypes[0]))
++    compareType.emplace("TOTALORDER");
+   buildSortComparisonBody(elementTypes, direction, compareType,
+                           &sortOp.getComparator(), rewriter);
+   return sortOp;
