@@ -28,7 +28,7 @@ cc_library(
 
 cc_library(
     name = "ssl",
-    linkopts = ["-lssl"],
+    linkopts = ["-lssl", "-lcrypto"],
     visibility = ["//visibility:public"],
     deps = [
         ":crypto",
