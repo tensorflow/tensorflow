@@ -26,7 +26,6 @@ limitations under the License.
 #include <deque>
 #include <functional>
 #include <list>
-#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -41,6 +40,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
@@ -351,7 +351,8 @@ class SharedBatchScheduler
 
  private:
   void GetNextWorkItem_Locked(internal::Queue<TaskType>** queue_for_batch_out,
-                              BatchTaskUniquePtr* batch_to_process_out)
+                              BatchTaskUniquePtr* batch_to_process_out,
+                              std::optional<absl::Time>* next_deadline_out)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // The code executed in 'batch_threads_'. Obtains a batch to process from the
@@ -373,9 +374,13 @@ class SharedBatchScheduler
 
   static bool BatchExists(const BatchTaskUniquePtr& batch_to_process);
 
+  bool QueuesEmpty() const TF_SHARED_LOCKS_REQUIRED(mu_) {
+    return queues_.empty();
+  }
+
   const Options options_;
 
-  mutex mu_;
+  absl::Mutex mu_;
 
   // A list of queues. (We use std::list instead of std::vector to ensure that
   // iterators are not invalidated by adding/removing elements. It also offers
@@ -391,13 +396,13 @@ class SharedBatchScheduler
   // available batch thread should grab work.
   typename QueueList::iterator next_queue_to_schedule_ TF_GUARDED_BY(mu_);
 
-  // Used by idle batch threads to wait for work to enter the system. Notified
+  // Used by idle batch threads to wait for work to enter the system. Signaled
   // whenever a batch becomes schedulable.
-  condition_variable schedulable_batch_cv_;
+  absl::CondVar schedulable_batch_cv_;
 
-  // Used by idle warmup threads to wait for work to enter the system. Notified
+  // Used by idle warmup threads to wait for work to enter the system. Signaled
   // whenever a warmup batch becomes schedulable.
-  condition_variable warmup_scheduler_cv_;
+  absl::CondVar warmup_scheduler_cv_;
 
   // Threads that process batches obtained from the queues.
   std::vector<std::unique_ptr<PeriodicFunction>> batch_threads_;
@@ -604,6 +609,11 @@ class PriorityTaskQueue {
 
   size_t max_queue_depth() const { return max_queue_depth_; }
 
+  std::optional<absl::Time> EarliestTimeoutDeadline() const {
+    if (empty()) return std::nullopt;
+    return start_times_.EarliestTimeoutDeadline();
+  }
+
   std::optional<tsl::criticality::Criticality> HighestCriticality() const {
     if (tasks_.empty()) {
       return std::nullopt;
@@ -702,6 +712,23 @@ class PriorityTaskQueue {
         }
       }
       return false;
+    }
+
+    std::optional<absl::Time> EarliestTimeoutDeadline() const {
+      std::optional<absl::Time> earliest_deadline;
+      for (const auto& [criticality, start_times] :
+           start_times_by_criticality_) {
+        if (start_times.empty()) continue;
+        uint64_t earliest_start_time = *start_times.begin();
+        int64_t effective_timeout = gtl::FindWithDefault(
+            criticality_batch_timeouts_, criticality, default_batch_timeout_);
+        absl::Time deadline =
+            absl::FromUnixMicros(earliest_start_time + effective_timeout);
+        if (!earliest_deadline.has_value() || deadline < *earliest_deadline) {
+          earliest_deadline = deadline;
+        }
+      }
+      return earliest_deadline;
     }
 
    private:
@@ -885,6 +912,10 @@ class Queue {
   // Determines whether the queue is empty, i.e. has no tasks waiting or being
   // processed.
   bool IsEmpty() const;
+
+  // Returns the earliest upcoming batch timeout deadline,
+  // or std::nullopt if the queue has no pending tasks.
+  std::optional<absl::Time> EarliestTimeoutDeadline() const;
 
   // Marks the queue closed, and waits until it is empty.
   void CloseAndWaitUntilEmpty();
@@ -1133,22 +1164,21 @@ template <typename TaskType>
 SharedBatchScheduler<TaskType>::~SharedBatchScheduler() {
   // Wait until the batch threads finish clearing out and deleting the closed
   // queues.
-  for (;;) {
-    {
-      mutex_lock l(mu_);
-      if (queues_.empty()) {
-        break;
-      }
-    }
-    const int64_t kSleepTimeMicros = 100;
-    options_.env->SleepForMicroseconds(kSleepTimeMicros);
+  {
+    absl::MutexLock l(mu_);
+    // The workers need to wake up and erase all closed queues in
+    // GetNextWorkItem_Locked() in order for queues_ to become empty.
+    schedulable_batch_cv_.SignalAll();
+    mu_.Await(
+        absl::Condition(this, &SharedBatchScheduler<TaskType>::QueuesEmpty));
   }
+
   // Delete the batch threads before allowing state the threads may access (e.g.
   // 'mu_') to be deleted.
   batch_threads_.clear();
-  // Warmup threads sleep for a long time, so we need to notify them to
+  // Warmup threads sleep for a long time, so we need to signal them to
   // wake up and exit.
-  warmup_scheduler_cv_.notify_all();
+  warmup_scheduler_cv_.SignalAll();
   warmup_threads_.clear();
 }
 
@@ -1251,12 +1281,12 @@ absl::Status SharedBatchScheduler<TaskType>::AddQueueAfterRewritingOptions(
   }
 
   auto schedulable_batch_callback = [this] {
-    mutex_lock l(mu_);
-    schedulable_batch_cv_.notify_one();
+    absl::MutexLock l(mu_);
+    schedulable_batch_cv_.Signal();
   };
   auto schedulable_warmup_batch_callback = [this] {
-    mutex_lock l(mu_);
-    warmup_scheduler_cv_.notify_one();
+    absl::MutexLock l(mu_);
+    warmup_scheduler_cv_.Signal();
   };
   auto internal_queue =
       std::unique_ptr<internal::Queue<TaskType>>(new internal::Queue<TaskType>(
@@ -1267,7 +1297,7 @@ absl::Status SharedBatchScheduler<TaskType>::AddQueueAfterRewritingOptions(
       new internal::QueueHandle<TaskType>(this->shared_from_this(),
                                           internal_queue.get()));
   {
-    mutex_lock l(mu_);
+    absl::MutexLock l(mu_);
     queues_.push_back(std::move(internal_queue));
     if (next_queue_to_schedule_ == queues_.end()) {
       next_queue_to_schedule_ = queues_.begin();
@@ -1288,9 +1318,9 @@ SharedBatchScheduler<TaskType>::SharedBatchScheduler(const Options& options)
       options.batch_threads_startup_delay_micros;
   periodic_fn_options.env = options.env;
   for (int i = 0; i < options.num_batch_threads; ++i) {
-    std::unique_ptr<PeriodicFunction> thread(new PeriodicFunction(
+    auto thread = std::make_unique<PeriodicFunction>(
         [this] { this->ThreadLogic(); },
-        0 /* function invocation interval time */, periodic_fn_options));
+        0 /* function invocation interval time */, periodic_fn_options);
     batch_threads_.push_back(std::move(thread));
   }
   // Kick off the warmup threads.
@@ -1313,11 +1343,13 @@ bool SharedBatchScheduler<TaskType>::BatchExists(
 template <typename TaskType>
 void SharedBatchScheduler<TaskType>::GetNextWorkItem_Locked(
     internal::Queue<TaskType>** queue_for_batch_out,
-    BatchTaskUniquePtr* batch_to_process_out) {
+    BatchTaskUniquePtr* batch_to_process_out,
+    std::optional<absl::Time>* next_deadline_out) {
   BatchTaskUniquePtr batch_to_process;
   internal::Queue<TaskType>* queue_for_batch = nullptr;
   std::optional<typename internal::Queue<TaskType>::BatchPriorityKey>
       batch_priority_key;
+  std::optional<absl::Time> next_deadline;
   const int num_queues = queues_.size();
   for (int num_queues_tried = 0;
        !BatchExists(batch_to_process) && num_queues_tried < num_queues;
@@ -1350,12 +1382,23 @@ void SharedBatchScheduler<TaskType>::GetNextWorkItem_Locked(
       }
     }
 
+    auto queue_deadline = (*next_queue_to_schedule_)->EarliestTimeoutDeadline();
+    if (queue_deadline.has_value()) {
+      if (!next_deadline.has_value() || *queue_deadline < *next_deadline) {
+        next_deadline = queue_deadline;
+      }
+    }
+
     // Advance 'next_queue_to_schedule_'.
     if (queue_closed && (*next_queue_to_schedule_)->IsEmpty() &&
         !queue_has_work) {
       // We've encountered a closed queue with no work to do. Drop it.
       DCHECK_NE(queue_for_batch, next_queue_to_schedule_->get());
       next_queue_to_schedule_ = queues_.erase(next_queue_to_schedule_);
+      if (queues_.empty()) {
+        // Wake up any threads blocked to let them exit if need be.
+        schedulable_batch_cv_.SignalAll();
+      }
     } else {
       ++next_queue_to_schedule_;
     }
@@ -1371,6 +1414,7 @@ void SharedBatchScheduler<TaskType>::GetNextWorkItem_Locked(
 
   *queue_for_batch_out = queue_for_batch;
   *batch_to_process_out = std::move(batch_to_process);
+  *next_deadline_out = next_deadline;
 }
 
 template <typename TaskType>
@@ -1380,16 +1424,25 @@ void SharedBatchScheduler<TaskType>::ThreadLogic() {
   // The queue with which 'batch_to_process' is associated.
   internal::Queue<TaskType>* queue_for_batch = nullptr;
   {
-    mutex_lock l(mu_);
+    absl::MutexLock l(mu_);
     while (true) {
-      GetNextWorkItem_Locked(&queue_for_batch, &batch_to_process);
+      std::optional<absl::Time> next_deadline;
+      GetNextWorkItem_Locked(&queue_for_batch, &batch_to_process,
+                             &next_deadline);
       if (BatchExists(batch_to_process)) break;
-      // We couldn't find any work to do. Wait until a new batch becomes
-      // schedulable, or some time has elapsed, before checking again.
-      const int64_t kTimeoutMillis =
-          1;  // The smallest accepted granule of time.
-      WaitForMilliseconds(&l, &schedulable_batch_cv_, kTimeoutMillis);
       if (queues_.empty()) return;
+
+      if (!next_deadline.has_value()) {
+        // All queues are empty. Wait indefinitely until new tasks are enqueued
+        // or queues change.
+        schedulable_batch_cv_.Wait(&mu_);
+      } else {
+        const absl::Time now = absl::FromUnixMicros(options_.env->NowMicros());
+        if (*next_deadline > now) {
+          const absl::Duration wait = *next_deadline - now;
+          schedulable_batch_cv_.WaitWithTimeout(&mu_, wait);
+        }
+      }
     }
   }
 
@@ -1404,7 +1457,7 @@ void SharedBatchScheduler<TaskType>::WarmupThreadLogic() {
   BatchTaskUniquePtr batch_to_process = nullptr;
   internal::Queue<TaskType>* queue_for_batch = nullptr;
   {
-    mutex_lock l(mu_);
+    absl::MutexLock l(mu_);
     while (true) {
       if (queues_.empty()) return;
       // Select the first queue with a warmup batch. Fairness between queues is
@@ -1418,10 +1471,8 @@ void SharedBatchScheduler<TaskType>::WarmupThreadLogic() {
       }
       if (queue_for_batch != nullptr) break;
 
-      // No warmup batch found. Wait until a warmup batch is schedulable, or
-      // one second has elapsed, before checking again.
-      const int64_t kTimeoutMillis = 1000;
-      WaitForMilliseconds(&l, &warmup_scheduler_cv_, kTimeoutMillis);
+      // Wait until a warmup batch is schedulable, or one second has elapsed.
+      warmup_scheduler_cv_.WaitWithTimeout(&mu_, absl::Seconds(1));
     }
   }
 
@@ -1652,20 +1703,35 @@ absl::Status Queue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
             "Task size %d is larger than maximum input batch size %d",
             (*task)->size(), options_.input_batch_size_limit));
       }
+      const bool was_empty = tasks_priority_queue_.empty();
       TF_RETURN_IF_ERROR(
           tasks_priority_queue_.AddTask(task, env_->NowMicros()));
       if (!schedulable_batch_ && IsOpenBatchSchedulable()) {
         schedulable_batch_ = true;
+        notify_of_schedulable_batch = true;
+      } else if (was_empty) {
+        // We should notify the worker threads to wake up and start their
+        // batch timers.
         notify_of_schedulable_batch = true;
       }
     } else {
       if (IsLowPriorityTask(task)) {
         // Insert the task to the low priority task queue instead of the high
         // priority batch queue below.
+        const bool was_empty = low_priority_tasks_.empty();
         TF_RETURN_IF_ERROR(ValidateLowPriorityTaskQueueCapacity(**task));
         low_priority_tasks_.AddTask(std::move(*task), env_->NowMicros());
+        if (was_empty) {
+          notify_of_schedulable_batch = true;
+        }
       } else {
+        const bool was_empty =
+            GetBatches().empty() ||
+            (GetBatches().size() == 1 && GetBatches().back()->empty());
         TF_RETURN_IF_ERROR(ScheduleWithoutOrEagerSplitImpl(task));
+        if (was_empty) {
+          notify_of_schedulable_batch = true;
+        }
       }
 
       // Check if the batch queue has a schedulable batch and mark it
@@ -2006,6 +2072,8 @@ void Queue<TaskType>::CloseAndWaitUntilEmpty() {
       empty_notification_ = &empty;
     }
   }
+  // Wake up waiting threads so they can process this closed queue.
+  schedulable_batch_callback_();
   empty.WaitForNotification();
 }
 
@@ -2042,6 +2110,34 @@ absl::Status Queue<TaskType>::SplitInputBatchIntoSubtasks(
 template <typename TaskType>
 bool Queue<TaskType>::IsOpenBatchSchedulable() const {
   return PeekBatchPriorityImpl().has_value();
+}
+
+template <typename TaskType>
+std::optional<absl::Time> Queue<TaskType>::EarliestTimeoutDeadline() const {
+  mutex_lock l(mu_);
+  if (options_.enable_priority_aware_batch_scheduler) {
+    return tasks_priority_queue_.EarliestTimeoutDeadline();
+  }
+
+  std::optional<absl::Time> earliest_deadline;
+  const std::deque<std::unique_ptr<Batch<TaskType>>>& batches = GetBatches();
+  if (batches.size() == 1 && !batches.back()->empty()) {
+    earliest_deadline = absl::FromUnixMicros(open_batch_start_time_micros_ +
+                                             options_.batch_timeout_micros);
+  }
+
+  if (options_.enable_priority_queue && !low_priority_tasks_.empty()) {
+    auto low_start = low_priority_tasks_.EarliestTaskStartTime();
+    if (low_start.has_value()) {
+      absl::Time low_deadline = absl::FromUnixMicros(
+          *low_start +
+          options_.low_priority_queue_options.batch_timeout_micros);
+      if (!earliest_deadline.has_value() || low_deadline < *earliest_deadline) {
+        earliest_deadline = low_deadline;
+      }
+    }
+  }
+  return earliest_deadline;
 }
 
 template <typename TaskType>
