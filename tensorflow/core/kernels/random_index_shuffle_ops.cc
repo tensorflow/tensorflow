@@ -70,9 +70,9 @@ class RandomIndexShuffleOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr(kRounds, &rounds_));
     OP_REQUIRES(
         context, rounds_ >= 4 && rounds_ % 2 == 0,
-        absl::InvalidArgumentError(absl::StrFormat(
+        absl::InvalidArgumentError(absl::StrCat(
             "rounds must be an even integer greater than or equal to 4, but "
-            "got %d",
+            "got ",
             rounds_)));
   }
 
