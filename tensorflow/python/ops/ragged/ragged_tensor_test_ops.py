@@ -21,8 +21,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import parsing_ops
-from tensorflow.python.ops import sqrt_ops
 from tensorflow.python.ops import special_math_ops
+from tensorflow.python.ops import sqrt_ops
 from tensorflow.python.ops import string_ops
 
 
