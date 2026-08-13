@@ -591,6 +591,41 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
     v = array_ops.reverse_v2(x, axis=[1])
     self.assertAllEqual(self.evaluate(v), v)
 
+  def testReverseScalarOutOfRangeAxis(self):
+    # Regression test for GitHub issue 110038: a scalar has no valid axis, so
+    # any axis must be rejected. The kernel returned the input unchanged
+    # instead, which disagreed with the error shape inference raises for the
+    # same call in graph mode.
+    for axis in ([0], [1, 2, 3], [-1]):
+      with self.subTest(axis=axis):
+        with self.assertRaisesRegex(
+            (ValueError, errors.InvalidArgumentError), "out of valid range"):
+          self.evaluate(
+              array_ops.reverse_v2(constant_op.constant(4.0), axis=axis))
+
+  def testReverseScalarEmptyAxisIsValid(self):
+    # An empty axis list reverses nothing and stays valid for any input.
+    x = constant_op.constant(4.0)
+    self.assertAllEqual(4.0, self.evaluate(array_ops.reverse_v2(x, axis=[])))
+
+  def testReverseEmptyTensorOutOfRangeAxis(self):
+    # The same validation gap applied to empty tensors, whose axes can be out
+    # of range even though there is nothing to reverse.
+    for shape, axis in (([0], [5]), ([0, 3], [7]), ([0, 3], [-4])):
+      with self.subTest(shape=shape, axis=axis):
+        x = array_ops.zeros(shape, dtype=dtypes.float32)
+        with self.assertRaisesRegex(
+            (ValueError, errors.InvalidArgumentError), "out of valid range"):
+          self.evaluate(array_ops.reverse_v2(x, axis=axis))
+
+  def testReverseEmptyTensorValidAxis(self):
+    # In-range axes on empty tensors keep working.
+    for shape, axis in (([0], [0]), ([0, 3], [1]), ([0, 3], [-1])):
+      with self.subTest(shape=shape, axis=axis):
+        x = array_ops.zeros(shape, dtype=dtypes.float32)
+        self.assertAllEqual(
+            np.zeros(shape), self.evaluate(array_ops.reverse_v2(x, axis=axis)))
+
 
 class MeshgridTest(test_util.TensorFlowTestCase):
 
