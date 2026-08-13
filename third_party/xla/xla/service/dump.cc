@@ -16,7 +16,10 @@ limitations under the License.
 #include "xla/service/dump.h"
 
 #include <algorithm>
+#include <atomic>
+#include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <iostream>
 #include <memory>
@@ -371,11 +374,138 @@ static tsl::thread::ThreadPool* GetDumpThreadPool() {
   return pool;
 }
 
-// Returns full file paths of all dumps of the module.
+// Background writer for deferred per-pass HTML dumps. The bytes depend
+// only on the captured dot text, so the files are bit-identical; only the
+// write time moves. Drained at every named module dump (which every
+// compilation performs after its pipelines) and at process exit, but
+// deliberately not per pass: that would put one html-write latency on the
+// critical path per pipeline.
+class AsyncDumpWriter {
+ public:
+  static AsyncDumpWriter& Get() {
+    static AsyncDumpWriter* writer = [] {
+      AsyncDumpWriter* w = new AsyncDumpWriter();
+      created_.store(w, std::memory_order_release);
+      atexit([] { Get().Drain(); });
+      return w;
+    }();
+    return *writer;
+  }
+
+  // Cheap no-op when no writer was ever created.
+  static void DrainIfCreated() {
+    if (AsyncDumpWriter* writer = created_.load(std::memory_order_acquire)) {
+      writer->Drain();
+    }
+  }
+
+  // `cost_bytes` (the captured dot size) bounds the queue's memory.
+  void Enqueue(size_t cost_bytes, absl::AnyInvocable<void() &&> write_fn) {
+    {
+      absl::MutexLock lock(mu_);
+      // An oversized item is admitted once the queue is empty, and the
+      // writes run on a dedicated pool, so this wait always progresses.
+      AdmitArgs args{this, cost_bytes};
+      mu_.Await(absl::Condition(&CanAdmit, &args));
+      ++pending_;
+      pending_bytes_ += cost_bytes;
+    }
+    // Wrapped in a shared_ptr because ThreadPool::Schedule requires a
+    // copyable std::function.
+    auto shared_fn =
+        std::make_shared<absl::AnyInvocable<void() &&>>(std::move(write_fn));
+    pool_.Schedule([this, shared_fn, cost_bytes] {
+      std::move (*shared_fn)();
+      absl::MutexLock lock(mu_);
+      --pending_;
+      pending_bytes_ -= cost_bytes;
+    });
+  }
+
+  void Drain() {
+    absl::MutexLock lock(mu_);
+    mu_.Await(absl::Condition(
+        +[](int64_t* pending) { return *pending == 0; }, &pending_));
+  }
+
+ private:
+  AsyncDumpWriter()
+      : pool_(tsl::Env::Default(), "xla_dump_html", /*num_threads=*/8) {}
+
+  struct AdmitArgs {
+    AsyncDumpWriter* writer;
+    size_t cost_bytes;
+  };
+
+  // Evaluated by Mutex::Await, which holds writer->mu_; the analysis can't
+  // see that, hence the annotation.
+  static bool CanAdmit(AdmitArgs* args) ABSL_NO_THREAD_SAFETY_ANALYSIS {
+    AsyncDumpWriter* w = args->writer;
+    if (w->pending_ == 0) {
+      return true;
+    }
+    return w->pending_ < kMaxPendingItems &&
+           w->pending_bytes_ + args->cost_bytes <= kMaxPendingBytes;
+  }
+
+  // Deep enough not to throttle fast pipelines; bounded in bytes for
+  // pipelines dumping huge graphs.
+  static constexpr int64_t kMaxPendingItems = 64;
+  static constexpr size_t kMaxPendingBytes = size_t{256} << 20;  // 256 MiB
+
+  static std::atomic<AsyncDumpWriter*> created_;
+
+  // Dedicated pool so writes are not starved by dump-point tasks.
+  tsl::thread::ThreadPool pool_;
+  absl::Mutex mu_;
+  int64_t pending_ ABSL_GUARDED_BY(mu_) = 0;
+  size_t pending_bytes_ ABSL_GUARDED_BY(mu_) = 0;
+};
+
+std::atomic<AsyncDumpWriter*> AsyncDumpWriter::created_{nullptr};
+
+// Dumps the html rendering of `module` to `file_name`, deferring the
+// wrapping (gzip of the dot) and the write. The dot itself is rendered
+// synchronously since it reads the live module.
+static std::optional<std::string> DumpHtmlDeferred(
+    string_view label, string_view file_name, const HloModule& module,
+    bool show_fusion_subcomputations, const DebugOptions& debug_options,
+    const DumpOptions& opts) {
+  std::optional<std::string> file_path = GetDumpFilePath(file_name, opts);
+  if (!file_path) {
+    return std::nullopt;
+  }
+  std::string dot = RenderGraph(label, module, RenderedGraphFormat::kDot,
+                                show_fusion_subcomputations, &debug_options);
+  std::string title = GraphRenderingTitle(*module.entry_computation());
+  const size_t cost_bytes = dot.size() + title.size();
+  AsyncDumpWriter::Get().Enqueue(cost_bytes, [dot = std::move(dot),
+                                              title = std::move(title),
+                                              path = *file_path]() mutable {
+    absl::StatusOr<std::string> html = WrapDotInHtml(dot, title);
+    // Same error text as the synchronous RenderGraph wrapper.
+    std::string contents = html.ok()
+                               ? *std::move(html)
+                               : absl::StrFormat("Error rendering graph: %s",
+                                                 html.status().ToString());
+    absl::Status status =
+        tsl::WriteStringToFile(tsl::Env::Default(), path, contents);
+    if (!status.ok()) {
+      LOG(ERROR) << "Could not write XLA debug data to " << path << ": "
+                 << status;
+    }
+  });
+  return file_path;
+}
+
+// Returns full file paths of all dumps of the module. When
+// `defer_html_writes` is true (per-pass points), html wrapping and writes
+// go to AsyncDumpWriter; when false (named points), pending deferred
+// writes are drained before returning.
 static std::vector<std::string> DumpHloModuleImpl(
     const HloModule& module, const BufferAssignment* buffer_assn,
     string_view prefix, string_view suffix, const DumpOptions& opts,
-    const DebugOptions& debug_options) {
+    const DebugOptions& debug_options, bool defer_html_writes = false) {
   tsl::profiler::ScopedAnnotation annotation([&] {
     return absl::StrFormat("XlaDumpHloModule:#module=%s,program_id=%d#",
                            module.name(), module.unique_id());
@@ -487,7 +617,13 @@ static std::vector<std::string> DumpHloModuleImpl(
   }
 
   if (opts.dump_as_html) {
-    tasks.push_back([&module, &debug_options, &opts, &filename] {
+    tasks.push_back([&module, &debug_options, &opts, &filename,
+                     defer_html_writes]() -> std::optional<std::string> {
+      if (defer_html_writes) {
+        return DumpHtmlDeferred(
+            filename, StrFormat("%s.html", filename), module,
+            /*show_fusion_subcomputations=*/true, debug_options, opts);
+      }
       return DumpToFileInDirImpl(
           StrFormat("%s.html", filename),
           RenderGraph(filename, module, RenderedGraphFormat::kHtml,
@@ -495,7 +631,13 @@ static std::vector<std::string> DumpHloModuleImpl(
           opts);
     });
     if (absl::StrContains(filename, kAfterOptimizationsDumpName)) {
-      tasks.push_back([&module, &debug_options, &opts, &filename] {
+      tasks.push_back([&module, &debug_options, &opts, &filename,
+                       defer_html_writes]() -> std::optional<std::string> {
+        if (defer_html_writes) {
+          return DumpHtmlDeferred(
+              filename, StrFormat("%s.top_level.html", filename), module,
+              /*show_fusion_subcomputations=*/false, debug_options, opts);
+        }
         return DumpToFileInDirImpl(
             StrFormat("%s.top_level.html", filename),
             RenderGraph(filename, module, RenderedGraphFormat::kHtml,
@@ -589,6 +731,10 @@ static std::vector<std::string> DumpHloModuleImpl(
       module_id_to_timestamp.try_emplace(module.unique_id(),
                                          tsl::Env::Default()->NowMicros());
     }
+  }
+  if (!defer_html_writes) {
+    // Named dump points are barriers for earlier deferred writes.
+    AsyncDumpWriter::DrainIfCreated();
   }
   return dumped_file_paths;
 }
@@ -1065,7 +1211,8 @@ std::vector<std::string> DumpHloModuleBetweenPassesIfEnabled(
                 after_pass_name, before_pass_name);
   return DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, timestamp,
                            filename_suffix, opts,
-                           module.config().debug_options());
+                           module.config().debug_options(),
+                           /*defer_html_writes=*/true);
 }
 
 void DumpHloModuleDuringPassIfEnabled(string_view pass_name,
@@ -1083,7 +1230,8 @@ void DumpHloModuleDuringPassIfEnabled(string_view pass_name,
   std::string filename_suffix =
       StrFormat("%04d.%s.%s", step_number, pass_name, step_name);
   DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, timestamp, filename_suffix,
-                    opts, module.config().debug_options());
+                    opts, module.config().debug_options(),
+                    /*defer_html_writes=*/true);
 }
 
 void DumpHloSnapshotIfEnabled(const HloModule& module,

@@ -2208,8 +2208,8 @@ static absl::StatusOr<std::string> EncodeBase64(absl::string_view input) {
   return absl::StrReplaceAll(encoded, {{"_", "/"}, {"-", "+"}});
 }
 
-static absl::StatusOr<std::string> WrapDotInHtml(absl::string_view dot,
-                                                 absl::string_view title) {
+absl::StatusOr<std::string> WrapDotInHtml(absl::string_view dot,
+                                          absl::string_view title) {
   std::string dot_graph = absl::StrFormat("[%s]", EscapeJSONString(dot));
   std::string frames = absl::StrFormat("[0, %s, %s]", EscapeJSONString(title),
                                        EscapeJSONString(""));
@@ -2243,6 +2243,10 @@ static absl::StatusOr<std::string> WrapDotInFormat(
     case RenderedGraphFormat::kDot:
       return std::string(dot);
   }
+}
+
+std::string GraphRenderingTitle(const HloComputation& computation) {
+  return GraphTitle(computation);
 }
 
 void RegisterGraphToURLRenderer(
