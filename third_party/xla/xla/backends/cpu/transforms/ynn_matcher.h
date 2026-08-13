@@ -50,7 +50,7 @@ class YnnMatcher : public LibraryMatcher {
               HloOpcode::kConvolution,  HloOpcode::kReshape,
               HloOpcode::kBitcast,      HloOpcode::kBroadcast,
               HloOpcode::kTranspose,    HloOpcode::kPad,
-              HloOpcode::kIota,         HloOpcode::kSlice};
+              HloOpcode::kIota};
           for (const auto& [op, _] : GetYnnUnaryOpMap()) {
             supported_ops.insert(op);
           }
@@ -84,9 +84,6 @@ class YnnMatcher : public LibraryMatcher {
     }
     if (instr->opcode() == HloOpcode::kPad) {
       return IsPadOpSupportedByYnn(instr);
-    }
-    if (instr->opcode() == HloOpcode::kSlice) {
-      return IsSliceOpSupportedByYnn(instr);
     }
     if (!IsInstructionPreferredByYnn(instr)) {
       // TODO: It might make sense sometimes that even though an instruction is

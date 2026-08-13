@@ -250,39 +250,6 @@ TEST_F(YnnReduceTest, ReduceSquared) {
   )");
 }
 
-TEST_F(YnnReduceTest, SliceSubtractSquareReduce) {
-  const char* hlo_text = R"(
-  HloModule diff_like
-
-  add {
-    lhs = f32[] parameter(0)
-    rhs = f32[] parameter(1)
-    ROOT add = f32[] add(lhs, rhs)
-  }
-
-  ENTRY main {
-    input = f32[512,512] parameter(0)
-    slice_a = f32[512,511] slice(input), slice={[0:512], [1:512]}
-    slice_b = f32[512,511] slice(input), slice={[0:512], [0:511]}
-    diff = f32[512,511] subtract(slice_a, slice_b)
-    squared = f32[512,511] multiply(diff, diff)
-    init = f32[] constant(0)
-    ROOT result = f32[512] reduce(squared, init), dimensions={1}, to_apply=add
-  }
-  )";
-
-  MatchOptimizedHlo(hlo_text, R"(
-    CHECK: fused_computation
-    CHECK: slice
-    CHECK: subtract
-    CHECK: multiply
-    CHECK-NOT: wrapped_slice_computation
-    CHECK-LABEL: ENTRY
-    CHECK: kind=kCustom
-    CHECK: "kind":"__ynn_fusion"
-  )");
-}
-
 class YnnReduceEltwiseTest : public HloTestBase {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {

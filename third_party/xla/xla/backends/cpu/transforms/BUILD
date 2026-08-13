@@ -132,11 +132,11 @@ cc_library(
     name = "ynn_matcher",
     hdrs = ["ynn_matcher.h"],
     deps = [
-        ":library_fusion_kinds",
         ":library_matcher",
         "//xla:shape_util",
         "//xla/backends/cpu:ynn_support",
         "//xla/backends/cpu/codegen:target_machine_features",
+        "//xla/backends/cpu/transforms:library_fusion_kinds",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_set",
