@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/sort_thunk.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -54,6 +55,9 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla::cpu {
 
@@ -163,48 +167,6 @@ SortThunk::SortThunk(Info info, absl::Span<const Input> inputs,
       direction_(direction),
       comparator_name_(std::move(comparator_name)) {}
 
-// Sorts `data` of the given `shape` along the `dimension` inplace.
-static void SortInplace(const SortThunk::SortDims& sort_dims,
-                        absl::Span<se::DeviceAddressBase> data,
-                        absl::Span<const Shape> shapes, bool is_stable,
-                        SortThunk::LessThan* less_than,
-                        std::optional<SortThunk::SortDirection> direction) {
-  absl::InlinedVector<std::byte*, 16> raw_data;
-  absl::c_transform(data, std::back_inserter(raw_data),
-                    [](const se::DeviceAddressBase& mem) {
-                      return reinterpret_cast<std::byte*>(mem.opaque());
-                    });
-
-  absl::InlinedVector<size_t, 16> primitive_sizes;
-  absl::c_transform(shapes, std::back_inserter(primitive_sizes),
-                    [](const Shape& shape) {
-                      return primitive_util::ByteWidth(shape.element_type());
-                    });
-
-  if (raw_data.size() == 1 && direction.has_value()) {
-    primitive_util::ArrayTypeSwitch(
-        [&](auto type) {
-          if constexpr ((primitive_util::IsFloatingPointType(type) &&
-                         primitive_util::BitWidth(type) >= 32) ||
-                        (primitive_util::IsIntegralType(type) &&
-                         primitive_util::BitWidth(type) >= 8)) {
-            using T = primitive_util::NativeTypeOf<type>;
-            internal::SortInplace<T>(sort_dims,
-                                     reinterpret_cast<T*>(raw_data[0]),
-                                     is_stable, *direction);
-          } else {
-            internal::SortInplace(sort_dims, raw_data, primitive_sizes,
-                                  is_stable, less_than);
-          }
-        },
-        shapes[0].element_type());
-
-  } else {
-    internal::SortInplace(sort_dims, raw_data, primitive_sizes, is_stable,
-                          less_than);
-  }
-}
-
 tsl::AsyncValueRef<SortThunk::ExecuteEvent> SortThunk::Execute(
     const ExecuteParams& params) {
   VLOG(3) << absl::StreamFormat(
@@ -214,14 +176,19 @@ tsl::AsyncValueRef<SortThunk::ExecuteEvent> SortThunk::Execute(
   absl::InlinedVector<se::DeviceAddressBase, 8> data;
   data.reserve(inputs_.size());
 
-  absl::InlinedVector<Shape, 8> shapes;
-  shapes.reserve(inputs_.size());
+  absl::InlinedVector<std::byte*, 8> raw_data;
+  raw_data.reserve(inputs_.size());
+
+  absl::InlinedVector<size_t, 8> primitive_sizes;
+  primitive_sizes.reserve(inputs_.size());
 
   for (const Input& input : inputs_) {
     size_t idx = data.size();
     ABSL_ASSIGN_OR_RETURN(data.emplace_back(),
                      params.buffer_allocations->GetDeviceAddress(input.slice));
-    shapes.push_back(input.shape);
+    raw_data.push_back(reinterpret_cast<std::byte*>(data.back().opaque()));
+    primitive_sizes.push_back(
+        primitive_util::ByteWidth(input.shape.element_type()));
 
     VLOG(3) << absl::StreamFormat("  sort input #%d: %s in slice %s (%p)", idx,
                                   input.shape.ToString(/*print_layout=*/true),
@@ -255,10 +222,76 @@ tsl::AsyncValueRef<SortThunk::ExecuteEvent> SortThunk::Execute(
   ABSL_RETURN_IF_ERROR(less_than_.status());
   LessThan* less_than = &less_than_.value();
 
-  SortInplace(sort_dims_, absl::MakeSpan(data), shapes, is_stable_, less_than,
-              direction_);
+  int64_t num_slices = sort_dims_.outer_dim_size * sort_dims_.inner_dim_size;
 
-  return OkExecuteEvent();
+  // Annotate memory that might have been initialized by jit-compiled code.
+  for (int64_t i = 0; i < data.size(); ++i) {
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
+        data[i].opaque(),
+        primitive_sizes[i] * sort_dims_.sort_dim_size * num_slices);
+  }
+
+  PrimitiveType first_element_type = inputs_[0].shape.element_type();
+  auto sort_slice_range = [raw_data, primitive_sizes, first_element_type,
+                           sort_dims = sort_dims_, is_stable = is_stable_,
+                           less_than, direction = direction_](
+                              int64_t start_slice, int64_t end_slice) {
+    if (raw_data.size() == 1 && direction.has_value()) {
+      primitive_util::ArrayTypeSwitch(
+          [&](auto type) {
+            if constexpr ((primitive_util::IsFloatingPointType(type) &&
+                           primitive_util::BitWidth(type) >= 32) ||
+                          (primitive_util::IsIntegralType(type) &&
+                           primitive_util::BitWidth(type) >= 8)) {
+              using T = primitive_util::NativeTypeOf<type>;
+              internal::SortInplace<T>(sort_dims, start_slice, end_slice,
+                                       reinterpret_cast<T*>(raw_data[0]),
+                                       is_stable, *direction);
+            } else {
+              internal::SortInplace(sort_dims, start_slice, end_slice, raw_data,
+                                    primitive_sizes, is_stable, less_than);
+            }
+          },
+          first_element_type);
+    } else {
+      internal::SortInplace(sort_dims, start_slice, end_slice, raw_data,
+                            primitive_sizes, is_stable, less_than);
+    }
+  };
+
+  // Target ~32K elements per work chunk to balance thread scheduling overhead
+  // with multi-core load balancing.
+  static constexpr int64_t kTargetGrainElements = 32768;
+  int64_t grain_slices = std::max<int64_t>(
+      1, kTargetGrainElements / std::max<int64_t>(1, sort_dims_.sort_dim_size));
+
+  // If work fits in a single chunk or no threadpool, sort sequentially on the
+  // caller thread.
+  if (params.intra_op_threadpool == nullptr || num_slices <= grain_slices) {
+    sort_slice_range(0, num_slices);
+    return OkExecuteEvent();
+  }
+
+  // Use intra-op thread pool to sort slices in parallel.
+  int64_t num_tasks = CeilOfRatio(num_slices, grain_slices);
+
+  tsl::CountDownAsyncValueRef<ExecuteEvent> event(num_tasks);
+
+  for (int64_t t = 1; t < num_tasks; ++t) {
+    int64_t start_slice = t * grain_slices;
+    int64_t end_slice = std::min(num_slices, start_slice + grain_slices);
+    params.intra_op_threadpool->getPool()->Schedule(
+        [sort_slice_range, start_slice, end_slice, event]() mutable {
+          sort_slice_range(start_slice, end_slice);
+          event.CountDown();
+        });
+  }
+
+  // Execute the first task in the caller thread.
+  sort_slice_range(0, grain_slices);
+  event.CountDown();
+
+  return event.AsRef();
 }
 
 SortThunk::BufferUses SortThunk::buffer_uses() const {

@@ -36,11 +36,16 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
+
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla::cpu {
 namespace {
@@ -302,6 +307,84 @@ TEST_P(SortThunkTest, Sort2DWithLayout) {
 INSTANTIATE_TEST_SUITE_P(SortThunk, SortThunkTest, testing::Bool(),
                          testing::PrintToStringParamName());
 
+class ParallelSortThunkTest : public testing::TestWithParam<bool> {
+ protected:
+  ParallelSortThunkTest()
+      : thread_pool_(tsl::Env::Default(), "test", 4),
+        device_(thread_pool_.AsEigenThreadPool(), thread_pool_.NumThreads()) {}
+
+  void RunTest(const Shape& shape, int64_t dimension) {
+    ASSERT_OK_AND_ASSIGN(
+        Literal data, LiteralUtil::CreateRandomLiteral<F32>(shape, 1.0f, 0.5f));
+    ExecuteSort(data, dimension, GetParam());
+    VerifySlicesAreSorted(data, shape, dimension);
+  }
+
+ private:
+  void ExecuteSort(Literal& data, int64_t dimension, bool is_stable) {
+    BufferAllocations allocations = CreateBufferAllocations(data);
+    BufferAllocation alloc = CreateBufferAllocation(0, data);
+    BufferAllocation::Slice slice = CreateBufferAllocationSlice(alloc);
+
+    auto fake_less_than = [](const void**) { return false; };
+
+    ASSERT_OK_AND_ASSIGN(
+        auto thunk, SortThunk::Create({"sort"}, {{slice, data.shape()}},
+                                      dimension, is_stable, fake_less_than,
+                                      SortThunk::SortDirection::kAscending));
+
+    Thunk::ExecuteParams params;
+    params.buffer_allocations = &allocations;
+    params.intra_op_threadpool = &device_;
+
+    auto execute_event = thunk->Execute(params);
+    tsl::BlockUntilReady(execute_event);
+    ASSERT_FALSE(execute_event.IsError());
+  }
+
+  void VerifySlicesAreSorted(const Literal& data, const Shape& shape,
+                             int64_t dimension) {
+    int64_t outer_dim_size = 1;
+    for (int64_t i = 0; i < dimension; ++i) {
+      outer_dim_size *= shape.dimensions(i);
+    }
+    int64_t sort_dim_size = shape.dimensions(dimension);
+    int64_t inner_dim_size = 1;
+    for (int64_t i = dimension + 1; i < shape.dimensions_size(); ++i) {
+      inner_dim_size *= shape.dimensions(i);
+    }
+
+    auto span = data.data<float>();
+    for (int64_t outer = 0; outer < outer_dim_size; ++outer) {
+      for (int64_t inner = 0; inner < inner_dim_size; ++inner) {
+        std::vector<float> slice_elements;
+        slice_elements.reserve(sort_dim_size);
+        for (int64_t sort_idx = 0; sort_idx < sort_dim_size; ++sort_idx) {
+          slice_elements.push_back(
+              span[(outer * sort_dim_size + sort_idx) * inner_dim_size +
+                   inner]);
+        }
+        EXPECT_TRUE(std::is_sorted(slice_elements.begin(), slice_elements.end(),
+                                   std::less<float>()));
+      }
+    }
+  }
+
+  tsl::thread::ThreadPool thread_pool_;
+  Eigen::ThreadPoolDevice device_;
+};
+
+TEST_P(ParallelSortThunkTest, Sort2DF32) {
+  RunTest(ShapeUtil::MakeShape(F32, {32, 64}), /*dimension=*/1);
+}
+
+TEST_P(ParallelSortThunkTest, Sort3DF32) {
+  RunTest(ShapeUtil::MakeShape(F32, {4, 16, 8}), /*dimension=*/1);
+}
+
+INSTANTIATE_TEST_SUITE_P(ParallelSortThunk, ParallelSortThunkTest,
+                         testing::Bool(), testing::PrintToStringParamName());
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks below.
 //===----------------------------------------------------------------------===//
@@ -374,6 +457,67 @@ BENCHMARK(BM_Sort1D)
     ->Args({1000, 8, false, false})
     ->Args({1000, 16, false, false})
     ->Args({1000, 32, false, false});
+
+void BM_Sort2D(benchmark::State& state) {
+  int64_t outer_dim = state.range(0);
+  int64_t sort_dim = state.range(1);
+  int64_t num_threads = state.range(2);
+
+  auto data = LiteralUtil::CreateRandomLiteral<F32>(
+      ShapeUtil::MakeShape(F32, {outer_dim, sort_dim}), 1.0f, 1.0f);
+  CHECK_OK(data) << "Failed to create random literal";  // Crash OK
+
+  std::optional<tsl::thread::ThreadPool> threads;
+  std::optional<Eigen::ThreadPoolDevice> device;
+  if (num_threads > 0) {
+    threads.emplace(tsl::Env::Default(), "benchmark", num_threads);
+    device.emplace(threads->AsEigenThreadPool(), threads->NumThreads());
+  }
+
+  for (auto s : state) {
+    Literal data_copy = data->Clone();
+    BufferAllocations allocations = CreateBufferAllocations(data_copy);
+    BufferAllocation alloc = CreateBufferAllocation(0, data_copy);
+    BufferAllocation::Slice slice = CreateBufferAllocationSlice(alloc);
+
+    Thunk::ExecuteParams params;
+    params.buffer_allocations = &allocations;
+    if (device.has_value()) {
+      params.intra_op_threadpool = &*device;
+    }
+
+    auto fake_less_than = [](const void**) { return false; };
+    auto thunk =
+        SortThunk::Create({"sort"}, {{slice, data_copy.shape()}},
+                          /*dimension=*/1, /*is_stable=*/false, fake_less_than,
+                          SortThunk::SortDirection::kAscending);
+    CHECK_OK(thunk) << "Failed to create sort thunk";  // Crash OK
+
+    auto execute_event = (*thunk)->Execute(params);
+    tsl::BlockUntilReady(execute_event);
+    CHECK(execute_event.IsConcrete());
+  }
+}
+
+BENCHMARK(BM_Sort2D)
+    ->MeasureProcessCPUTime()
+    ->ArgNames({"outer_dim", "sort_dim", "num_threads"})
+    // Single-threaded baseline (num_threads = 0) vs multi-threaded (num_threads
+    // = 4, 8, 16)
+    ->Args({16, 1024, 0})
+    ->Args({16, 1024, 4})
+    ->Args({16, 1024, 8})
+    ->Args({64, 1024, 0})
+    ->Args({64, 1024, 4})
+    ->Args({64, 1024, 8})
+    ->Args({64, 4096, 0})
+    ->Args({64, 4096, 4})
+    ->Args({64, 4096, 8})
+    ->Args({64, 4096, 16})
+    ->Args({256, 4096, 0})
+    ->Args({256, 4096, 4})
+    ->Args({256, 4096, 8})
+    ->Args({256, 4096, 16});
 
 }  // namespace
 }  // namespace xla::cpu

@@ -45,22 +45,37 @@ enum class SortDirection {
   kDescending,
 };
 
-// Sorts `data` using `less_than` comparator function. Data is sorted in place,
-// and sort dimensions are specified in `sort_dims`.
+// Sorts `data` using `less_than` comparator function for slices in
+// [start_slice, end_slice). Data is sorted in place, and sort dimensions are
+// specified in `sort_dims`.
 using LessThan = absl::AnyInvocable<bool(const void** data)>;
+void SortInplace(const SortDims& sort_dims, int64_t start_slice,
+                 int64_t end_slice, absl::Span<std::byte* const> data,
+                 absl::Span<const size_t> primitive_sizes, bool is_stable,
+                 LessThan* less_than);
+
+// Sorts `data` using the sort `direction` with builtin comparator functions for
+// slices in [start_slice, end_slice).
+template <typename T>
+void SortInplace(const SortDims& sort_dims, int64_t start_slice,
+                 int64_t end_slice, T* data, bool is_stable,
+                 SortDirection direction);
+
+// TODO(b/525327509): Remove full-buffer SortInplace overloads in a follow-up
+// after updating AOT code generation in thunk_proto_execution_deserializer.cc.
 void SortInplace(const SortDims& sort_dims, absl::Span<std::byte* const> data,
                  absl::Span<const size_t> primitive_sizes, bool is_stable,
                  LessThan* less_than);
 
-// Sorts `data` using the sort `direction` with builtin comparator functions.
-// This is more efficient, as the comparator can be inlined.
 template <typename T>
 void SortInplace(const SortDims& sort_dims, T* data, bool is_stable,
                  SortDirection direction);
 
 // Declare SortInplace for all supported types. Template is instantiated in
 // the .cc file.
-#define DECLARE_SORT_INPLACE(T) \
+#define DECLARE_SORT_INPLACE(T)                                              \
+  extern template void SortInplace<T>(const SortDims&, int64_t, int64_t, T*, \
+                                      bool, SortDirection);                  \
   extern template void SortInplace<T>(const SortDims&, T*, bool, SortDirection)
 
 DECLARE_SORT_INPLACE(float);
