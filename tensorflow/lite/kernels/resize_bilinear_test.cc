@@ -488,5 +488,28 @@ TEST(ResizeBilinearOpTest, ModelWithIncorrectSizeTensorShapeIsRejected) {
 #endif
 }
 
+TEST(ResizeBilinearOpTest, ModelWithZeroSpatialDimensionIsRejected) {
+#if GTEST_HAS_DEATH_TEST
+  class ResizeBilinearOpModelZeroDimension : public SingleOpModel {
+   public:
+    ResizeBilinearOpModelZeroDimension() {
+      input_ = AddInput({TensorType_FLOAT32, {1, 0, 2, 1}});
+      size_ = AddConstInput(TensorType_INT32, {3, 3}, {2});
+      output_ = AddOutput(TensorType_FLOAT32);
+      SetBuiltinOp(BuiltinOperator_RESIZE_BILINEAR,
+                   BuiltinOptions_ResizeBilinearOptions,
+                   CreateResizeBilinearOptions(builder_, false, false).Union());
+      BuildInterpreter({GetShape(input_)});
+    }
+
+   private:
+    int input_;
+    int size_;
+    int output_;
+  };
+  EXPECT_DEATH(ResizeBilinearOpModelZeroDimension(), "Cannot allocate tensors");
+#endif
+}
+
 }  // namespace
 }  // namespace tflite
