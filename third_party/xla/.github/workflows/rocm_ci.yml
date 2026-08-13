@@ -111,7 +111,6 @@ jobs:
             --repo_env=HERMETIC_PYTHON_VERSION=3.14 \
             --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}" \
             --jobs=20 \
-            --bes_keywords=xla \
             --bes_keywords=jax \
             --bes_keywords=upstream \
             --bes_keywords=gpu \
