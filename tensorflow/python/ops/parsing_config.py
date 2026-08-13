@@ -171,7 +171,7 @@ class RaggedFeature(
     row_splits_dtype: (Optional.) Data type for the row-partitioning tensor(s).
       One of `int32` or `int64`.  Defaults to `int32`.
     validate: (Optional.) Boolean indicating whether or not to validate that
-      the input values form a valid RaggedTensor.  Defaults to `False`.
+      the input values form a valid RaggedTensor.  Defaults to `True`.
   """
 
   # pylint: disable=invalid-name
@@ -223,7 +223,7 @@ class RaggedFeature(
               value_key=None,
               partitions=(),
               row_splits_dtype=dtypes.int32,
-              validate=False):
+              validate=True):
     if value_key is not None:
       if not isinstance(value_key, str):
         raise ValueError(
@@ -878,8 +878,16 @@ def _add_ragged_partition(values, partition, tensor_dict, row_splits_dtype,
       return ragged_tensor.RaggedTensor.from_uniform_row_length(
           values, length, validate=validate)
     else:
-      return array_ops.reshape(values, array_ops.concat(
-          [[-1, partition.length], array_ops.shape(values)[1:]], axis=0))
+      checks = []
+      if validate:
+        checks.append(
+            check_ops.assert_equal(
+                math_ops.cast(math_ops.mod(array_ops.shape(values)[0], partition.length), row_splits_dtype),
+                math_ops.cast(0, row_splits_dtype),
+                message="Value count must be a multiple of uniform row length"))
+      with ops.control_dependencies(checks):
+        return array_ops.reshape(values, array_ops.concat(
+            [[-1, partition.length], array_ops.shape(values)[1:]], axis=0))
   else:
     partition_t = math_ops.cast(tensor_dict[partition.key], row_splits_dtype)
     if isinstance(partition, RaggedFeature.RowSplits):
@@ -922,18 +930,26 @@ def _add_batched_ragged_partition(rt, partition, tensor_dict, feature_key,
     using the `partition_t[i]`.
   """
   if isinstance(partition, RaggedFeature.UniformRowLength):
-    if rt.ragged_rank > 1:
-      length = ops.convert_to_tensor(partition.length, rt.row_splits.dtype)
-      return ragged_tensor.RaggedTensor.from_row_splits(
-          ragged_tensor.RaggedTensor.from_uniform_row_length(
-              rt.values, length, validate=validate),
-          rt.row_splits // length,
-          validate=validate)
-    else:
-      reshaped_vals = array_ops.reshape(rt.values, array_ops.concat(
-          [[-1, partition.length], array_ops.shape(rt.values)[1:]], axis=0))
-      return ragged_tensor.RaggedTensor.from_row_splits(
-          reshaped_vals, rt.row_splits // partition.length, validate=validate)
+    checks = []
+    if validate:
+      checks.append(
+          check_ops.assert_equal(
+              math_ops.cast(math_ops.mod(rt.row_lengths(), partition.length), rt.row_splits.dtype),
+              math_ops.cast(0, rt.row_splits.dtype),
+              message=f"Feature {feature_key}: value counts must be a multiple of uniform row length per batch item"))
+    with ops.control_dependencies(checks):
+      if rt.ragged_rank > 1:
+        length = ops.convert_to_tensor(partition.length, rt.row_splits.dtype)
+        return ragged_tensor.RaggedTensor.from_row_splits(
+            ragged_tensor.RaggedTensor.from_uniform_row_length(
+                rt.values, length, validate=validate),
+            rt.row_splits // length,
+            validate=validate)
+      else:
+        reshaped_vals = array_ops.reshape(rt.values, array_ops.concat(
+            [[-1, partition.length], array_ops.shape(rt.values)[1:]], axis=0))
+        return ragged_tensor.RaggedTensor.from_row_splits(
+            reshaped_vals, rt.row_splits // partition.length, validate=validate)
 
   partition_t = tensor_dict[partition.key]
   if partition_t.values.dtype != rt.row_splits.dtype:
@@ -948,6 +964,20 @@ def _add_batched_ragged_partition(rt, partition, tensor_dict, feature_key,
           % feature_key))
     partition_t = partition_t.values
 
+  if validate and outer_splits is None and rt.ragged_rank == 1:
+    if isinstance(partition, RaggedFeature.RowLengths):
+      checks.append(
+          check_ops.assert_equal(
+              math_ops.cast(ragged_math_ops.reduce_sum(partition_t, axis=1), rt.row_splits.dtype),
+              math_ops.cast(rt.row_lengths(), rt.row_splits.dtype),
+              message=f"Feature {feature_key}: partition row lengths sum does not match value counts per batch item"))
+    elif isinstance(partition, RaggedFeature.ValueRowIds):
+      checks.append(
+          check_ops.assert_equal(
+              math_ops.cast(partition_t.row_lengths(), rt.row_splits.dtype),
+              math_ops.cast(rt.row_lengths(), rt.row_splits.dtype),
+              message=f"Feature {feature_key}: partition value_rowids length does not match value count per batch item"))
+
   with ops.control_dependencies(checks):
     if isinstance(partition, (RaggedFeature.RowSplits,
                               RaggedFeature.RowLimits)):
@@ -955,17 +985,17 @@ def _add_batched_ragged_partition(rt, partition, tensor_dict, feature_key,
         partition_t = partition_t[:, 1:]
       adjusted_limits = partition_t.values + array_ops.repeat(
           rt.row_starts(), partition_t.row_lengths())
-      return partition_t.with_values(
+      res = partition_t.with_values(
           ragged_tensor.RaggedTensor.from_row_limits(
               rt.values, adjusted_limits, validate=validate))
     elif isinstance(partition, RaggedFeature.RowStarts):
       adjusted_starts = partition_t.values + array_ops.repeat(
           rt.row_starts(), partition_t.row_lengths())
-      return partition_t.with_values(
+      res = partition_t.with_values(
           ragged_tensor.RaggedTensor.from_row_starts(
               rt.values, adjusted_starts, validate=validate))
     elif isinstance(partition, RaggedFeature.RowLengths):
-      return partition_t.with_values(
+      res = partition_t.with_values(
           ragged_tensor.RaggedTensor.from_row_lengths(
               rt.values, partition_t.values, validate=validate))
     elif isinstance(partition, RaggedFeature.ValueRowIds):
@@ -973,13 +1003,18 @@ def _add_batched_ragged_partition(rt, partition, tensor_dict, feature_key,
           ragged_math_ops.reduce_max(partition_t + 1, axis=1), 0)
       adjusted_rowids = partition_t.values + array_ops.repeat(
           math_ops.cumsum(nrows, exclusive=True), partition_t.row_lengths())
-      return ragged_tensor.RaggedTensor.from_row_lengths(
+      res = ragged_tensor.RaggedTensor.from_row_lengths(
           ragged_tensor.RaggedTensor.from_value_rowids(
               rt.values, adjusted_rowids, validate=validate),
           nrows,
           validate=validate)
+    else:
+      raise ValueError(f"Unhandled partition type {partition!r}")
 
-    raise ValueError(f"Unhandled partition type {partition!r}")
+  if checks:
+    with ops.control_dependencies(checks):
+      res = res.with_values(array_ops.identity(res.values))
+  return res
 
 
 def _build_ragged_tensors(serialized_shape,
