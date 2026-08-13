@@ -1076,12 +1076,9 @@ constexpr char const* kTargetConfigString = R"(gpu_device_info {
   }
   registers_per_core_limit: 65536
   registers_per_block_limit: 65536
+  dnn_version: "9.3.0"
 }
 platform_name: "CUDA"
-dnn_version_info {
-  major: 9
-  minor: 3
-}
 device_description_str: "Tesla V100-SXM2-32GB"
 )";
 

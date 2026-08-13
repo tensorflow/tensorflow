@@ -84,8 +84,9 @@ class ConvFp8FallbackTestBase : public HloHardwareIndependentTestBase {
     const se::DeviceDescription& device_info = target_config.device_description;
     ABSL_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                      ParseAndReturnVerifiedModule(hlo_text));
-    ConvKindAssignment kind_assignment(device_info.gpu_compute_capability(),
-                                       target_config.dnn_version_info);
+    ConvKindAssignment kind_assignment(
+        device_info.gpu_compute_capability(),
+        se::dnn::VersionInfo(device_info.dnn_version()));
     ABSL_RETURN_IF_ERROR(RunHloPass(&kind_assignment, module.get()).status());
     ConvFusionRewriter rewriter(device_info);
     ABSL_RETURN_IF_ERROR(RunHloPass(&rewriter, module.get()).status());

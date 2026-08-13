@@ -140,9 +140,4 @@ gpu_device_info {
   thread_dim_limit_z: 64
 }
 platform_name: "CUDA"
-dnn_version_info {
-  major: 8
-  minor: 9
-  patch: 4
-}
 device_description_str: "NVIDIA A100-SXM4-80GB"

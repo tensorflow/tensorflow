@@ -629,6 +629,7 @@ cc_library(
         ":device_description_proto_cc",
         ":engine_options",
         ":scratch_allocator",
+        ":semantic_version",
         ":stream",
         "//xla:util",
         "//xla/tsl/lib/strings:proto_serialization",

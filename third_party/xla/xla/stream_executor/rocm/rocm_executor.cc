@@ -1266,6 +1266,9 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
                            "Could not get driver version"));
   desc.set_driver_version(
       ParseRocmVersion(driver_version).value_or(SemanticVersion{0, 0, 0}));
+  // This is currently hardcoded in rocm_dnn.cc.
+  // TODO(ROCm): Query MIOpen version instead of hardcoding.
+  desc.set_dnn_version(SemanticVersion(1, 3, 0));
 
   // It would be better to use the PCI device ID or some other truly unique
   // identifier for the GPU model.  But getting this requires using NVML or

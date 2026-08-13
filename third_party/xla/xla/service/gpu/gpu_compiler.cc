@@ -784,8 +784,9 @@ absl::Status RunOptimizationPasses(
       DebugOptions::DETECTION_MODE_NONE) {
     pipeline.AddPass<UnstableReductionDetector>();
   }
-  pipeline.AddPass<RaggedDotRewriter>(gpu_version,
-                                      gpu_target_config.dnn_version_info);
+  pipeline.AddPass<RaggedDotRewriter>(
+      gpu_version,
+      se::dnn::VersionInfo(gpu_target_config.device_description.dnn_version()));
   pipeline.AddPass<ScaledDotRewriter>([&compiler, &gpu_target_config](
                                           const HloInstruction* instr) {
     return !compiler.IsScaledDotSupportedByBackend(instr, gpu_target_config);
@@ -1878,7 +1879,8 @@ absl::Status GpuCompiler::OptimizeHloModule(
   // canonicalization.
   ABSL_RETURN_IF_ERROR(OptimizeHloConvolutionCanonicalization(
       hlo_module, gpu_version,
-      gpu_topology.gpu_target_config().dnn_version_info,
+      se::dnn::VersionInfo(
+          gpu_topology.gpu_target_config().device_description.dnn_version()),
       device_description.runtime_version(), compilation_stats));
 
   ABSL_RETURN_IF_ERROR(RunLayoutAssignmentPasses(

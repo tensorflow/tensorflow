@@ -151,9 +151,4 @@ gpu_device_info {
   cub_version: "3.1.2"
 }
 platform_name: "CUDA"
-dnn_version_info {
-  major: 9
-  minor: 10
-  patch: 0
-}
 device_description_str: "NVIDIA A100-SXM4-40GB"

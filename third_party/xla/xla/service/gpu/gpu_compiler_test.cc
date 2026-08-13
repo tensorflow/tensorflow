@@ -1645,8 +1645,8 @@ ENTRY main {
 }
 
 TEST_F(GpuCompilerTest, NoCudnnVectorizationOnHopperAndBeyond) {
-  if (gpu_target_config().dnn_version_info <
-          stream_executor::dnn::VersionInfo(9, 12, 0) &&
+  if (gpu_target_config().device_description.dnn_version() <
+          stream_executor::SemanticVersion(9, 12, 0) &&
       absl::StrContains(device_description().name(), "GB200")) {
     GTEST_SKIP()
         << "Skipping test as it requires cuDNN >= 9.12. on GB200. Otherwise, "
