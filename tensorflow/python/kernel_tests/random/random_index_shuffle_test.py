@@ -118,6 +118,18 @@ class StatelessOpsTest(test.TestCase, parameterized.TestCase):
     ):
       self.evaluate(stateless.index_shuffle(5, seed=(1, 2), max_index=4))
 
+  @parameterized.parameters(-1, 0, 2, 3, 5)
+  def test_invalid_rounds(self, rounds):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        'rounds must be an even integer greater than or equal to 4',
+    ):
+      self.evaluate(
+          gen_random_index_shuffle_ops.random_index_shuffle(
+              index=0, seed=[1, 2, 3], max_index=10, rounds=rounds
+          )
+      )
+
 
 if __name__ == '__main__':
   test.main()
