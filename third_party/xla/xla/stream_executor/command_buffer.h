@@ -412,7 +412,7 @@ absl::StatusOr<const CommandBuffer::Command*> CommandBuffer::CreateLaunch(
     const BlockDim& blocks, const std::optional<ClusterDim>& cluster_dims,
     absl::Span<const Command* const> dependencies, Args... args) {
   auto kernel_args = PackKernelArgs(kernel, args...);
-  return CreateLaunch(threads, blocks, cluster_dims, *kernel, *kernel_args,
+  return CreateLaunch(threads, blocks, cluster_dims, *kernel, kernel_args,
                       dependencies);
 }
 
@@ -423,7 +423,7 @@ absl::Status CommandBuffer::UpdateLaunch(
     const std::optional<ClusterDim>& cluster_dims, Args... args) {
   auto kernel_args = PackKernelArgs(kernel, args...);
   return UpdateLaunch(command, threads, blocks, cluster_dims, *kernel,
-                      *kernel_args);
+                      kernel_args);
 }
 
 }  // namespace stream_executor

@@ -202,7 +202,7 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateSetWhileConditionNode(
                                     ToCudaGraphHandle(conditional), predicate);
   return CreateKernelNode(dependencies, StreamPriority::Default, ThreadDim(),
                           BlockDim(), /*cluster_dims=*/std::nullopt,
-                          *set_while_condition_kernel_, *kernel_args);
+                          *set_while_condition_kernel_, kernel_args);
 }
 
 absl::Status CudaCommandBuffer::UpdateSetWhileConditionNode(
@@ -212,11 +212,11 @@ absl::Status CudaCommandBuffer::UpdateSetWhileConditionNode(
                                     ToCudaGraphHandle(conditional), predicate);
   return UpdateKernelNode(handle, ThreadDim(), BlockDim(),
                           /*cluster_dims=*/std::nullopt,
-                          *set_while_condition_kernel_, *kernel_args);
+                          *set_while_condition_kernel_, kernel_args);
 }
 
 template <typename... Params>
-static std::unique_ptr<KernelArgsPackedArrayBase> PackCaseConditionKernelArgs(
+static auto PackCaseConditionKernelArgs(
     const TypedKernel<Params...>& kernel,
     absl::Span<const GraphConditionalHandle> conditionals,
     DeviceAddress<uint8_t> index, bool index_is_bool, int32_t batch_offset,
@@ -260,7 +260,7 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateSetCaseConditionNode(
       batch_offset, enable_conditional_default);
   return CreateKernelNode(dependencies, StreamPriority::Default, ThreadDim(),
                           BlockDim(), /*cluster_dims=*/std::nullopt,
-                          *set_case_condition_kernel_, *kernel_args);
+                          *set_case_condition_kernel_, kernel_args);
 }
 
 absl::Status CudaCommandBuffer::UpdateSetCaseConditionNode(
@@ -273,7 +273,7 @@ absl::Status CudaCommandBuffer::UpdateSetCaseConditionNode(
       batch_offset, enable_conditional_default);
   return UpdateKernelNode(handle, ThreadDim(), BlockDim(),
                           /*cluster_dims=*/std::nullopt,
-                          *set_case_condition_kernel_, *kernel_args);
+                          *set_case_condition_kernel_, kernel_args);
 }
 
 //===----------------------------------------------------------------------===//
