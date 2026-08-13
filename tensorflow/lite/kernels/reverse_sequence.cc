@@ -89,7 +89,8 @@ TfLiteStatus ReverseSequenceImpl(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, batch_dim < NumDimensions(input));
   TF_LITE_ENSURE_EQ(context, SizeOfDimension(seq_lengths_tensor, 0),
                     SizeOfDimension(input, batch_dim));
-  for (int i = 0; i < NumDimensions(seq_lengths_tensor); ++i) {
+  for (int i = 0; i < SizeOfDimension(seq_lengths_tensor, 0); ++i) {
+    TF_LITE_ENSURE(context, seq_lengths[i] >= 0);
     TF_LITE_ENSURE(context, seq_lengths[i] <= SizeOfDimension(input, seq_dim));
   }
 
