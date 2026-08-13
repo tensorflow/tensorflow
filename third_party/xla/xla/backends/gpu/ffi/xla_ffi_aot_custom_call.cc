@@ -27,9 +27,11 @@ limitations under the License.
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/type_registry.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cudart_kernel_registry.h"
 #include "xla/stream_executor/cuda/simple_kernel_cuda.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -85,15 +87,24 @@ struct CustomCallLoadedKernel {
 // 1. Instantiate Handler
 XLA_FFI_DEFINE_HANDLER(
     kInstantiate,
-    []() -> absl::StatusOr<std::unique_ptr<CustomCallResources>> {
+    [](const se::GpuComputeCapability* gpu_compute_capability)
+        -> absl::StatusOr<std::unique_ptr<CustomCallResources>> {
+      TF_RET_CHECK(gpu_compute_capability != nullptr)
+          << "Gpu compute capability is null";
+      const stream_executor::CudaComputeCapability* cuda_compute_capability =
+          gpu_compute_capability->cuda_compute_capability();
+      TF_RET_CHECK(cuda_compute_capability != nullptr)
+          << "Target is not a CUDA compute capability";
+
       ABSL_ASSIGN_OR_RETURN(stream_executor::KernelLoaderSpec kernel,
                        stream_executor::cuda::FindCudaRuntimeKernel(
-                           stream_executor::cuda::GetWrite42Kernel()));
+                           stream_executor::cuda::GetWrite42Kernel(),
+                           *cuda_compute_capability));
 
       return std::make_unique<CustomCallResources>(
           CustomCallResources{std::move(kernel)});
     },
-    ffi::Ffi::BindInstantiate());
+    ffi::Ffi::BindInstantiate().Ctx<ffi::TargetGpuComputeCapability>());
 
 // 2. Initialize Handler
 XLA_FFI_DEFINE_HANDLER(

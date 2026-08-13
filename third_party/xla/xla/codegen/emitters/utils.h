@@ -30,6 +30,11 @@ limitations under the License.
 
 namespace xla::emitters {
 
+// Emits a cast from `value` to `target_type`. The cast is a `truncf` or `extf`
+// if the types have different bit widths, otherwise it is an identity.
+mlir::Value EmitFloatCast(mlir::Value value, mlir::Type target_type,
+                          mlir::ImplicitLocOpBuilder& b);
+
 mlir::DenseElementsAttr GetZeroDenseElementsAttr(mlir::ShapedType shaped_type);
 
 // Evaluates the epilogue of the fusion. Returns the results for each epilogue

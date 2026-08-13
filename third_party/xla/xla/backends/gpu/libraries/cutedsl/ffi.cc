@@ -17,13 +17,31 @@ limitations under the License.
 
 #include "xla/ffi/api/c_api.h"
 
-XLA_FFI_DECLARE_HANDLER_SYMBOL(CuteDSLRT_NvJaxCutlassCallPrepare);
-XLA_FFI_DECLARE_HANDLER_SYMBOL(CuteDSLRT_NvJaxCutlassCallExecute);
+XLA_FFI_DECLARE_TYPE_ID_SYMBOL(CuteDSLRT_NvJaxCutlassCallStateTypeId_v2);
+XLA_FFI_DECLARE_TYPE_INFO_SYMBOL(CuteDSLRT_NvJaxCutlassCallStateTypeInfo_v2);
+XLA_FFI_DECLARE_HANDLER_SYMBOL(CuteDSLRT_NvJaxCutlassCallInstantiate_v2);
+XLA_FFI_DECLARE_HANDLER_SYMBOL(CuteDSLRT_NvJaxCutlassCallPrepare_v2);
+XLA_FFI_DECLARE_HANDLER_SYMBOL(CuteDSLRT_NvJaxCutlassCallExecute_v2);
+XLA_FFI_DECLARE_HANDLER_SYMBOL(CuteDSLRT_NvJaxCutlassCallExecuteNoCudaGraph_v2);
 
-XLA_FFI_REGISTER_HANDLER(xla::ffi::GetXlaFfiApi(), "CuteDSLRT_NvJaxCutlassCall",
-                         "CUDA",
-                         (XLA_FFI_Handler_Bundle{
-                             /*instantiate=*/nullptr,
-                             /*prepare=*/CuteDSLRT_NvJaxCutlassCallPrepare,
-                             /*initialize=*/nullptr,
-                             /*execute=*/CuteDSLRT_NvJaxCutlassCallExecute}));
+XLA_FFI_REGISTER_TYPE(XLA_FFI_GetApi(), "CuteDSLRT_NvJaxCutlassCallTypes",
+                      CuteDSLRT_NvJaxCutlassCallStateTypeId_v2(),
+                      CuteDSLRT_NvJaxCutlassCallStateTypeInfo_v2());
+
+XLA_FFI_REGISTER_HANDLER(
+    XLA_FFI_GetApi(), "CuteDSLRT_NvJaxCutlassCall", "CUDA",
+    (XLA_FFI_Handler_Bundle{
+        /*instantiate=*/CuteDSLRT_NvJaxCutlassCallInstantiate_v2,
+        /*prepare=*/CuteDSLRT_NvJaxCutlassCallPrepare_v2,
+        /*initialize=*/nullptr,
+        /*execute=*/CuteDSLRT_NvJaxCutlassCallExecute_v2,
+        /*record=*/nullptr}));
+
+XLA_FFI_REGISTER_HANDLER(
+    XLA_FFI_GetApi(), "CuteDSLRT_NvJaxCutlassCallNoCudaGraph", "CUDA",
+    (XLA_FFI_Handler_Bundle{
+        /*instantiate=*/CuteDSLRT_NvJaxCutlassCallInstantiate_v2,
+        /*prepare=*/CuteDSLRT_NvJaxCutlassCallPrepare_v2,
+        /*initialize=*/nullptr,
+        /*execute=*/CuteDSLRT_NvJaxCutlassCallExecuteNoCudaGraph_v2,
+        /*record=*/nullptr}));
