@@ -14,14 +14,12 @@
 # ==============================================================================
 """Public square-root operation with dtype-specific gradient handling."""
 
-from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gen_math_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
@@ -176,12 +174,8 @@ def sqrt(x, name=None):  # pylint: disable=redefined-builtin
   Returns:
     A `tf.Tensor` of same size, type and sparsity as `x`.
   """
-  # SparseTensor's unary dispatcher is registered on math_ops.sqrt, so route
-  # composite inputs there before attempting dense tensor conversion.
-  if isinstance(x, composite_tensor.CompositeTensor):
-    return math_ops.sqrt(x, name=name)
   with ops.name_scope(name, "Sqrt", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
     if x.dtype == dtypes.float64:
       return _sqrt_float64(x)
-    return math_ops.sqrt(x, name=name)
+    return gen_math_ops.sqrt(x, name=name)
