@@ -1165,5 +1165,21 @@ class TensorArrayTest(xla_test.XLATestCase):
       self.assertEqual(size0_v, 2)
       self.assertEqual(size1_v, 4)
 
+  @test_util.disable_control_flow_v2("TensorArray.scatter in XLA")
+  def testTensorArrayScatterScalarRaisesError(self):
+    with self.session() as session, self.test_scope():
+      scalar = array_ops.placeholder(dtypes.float32, shape=None)
+
+      def fn():
+        ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=3)
+        return ta.scatter(indices=[0], value=scalar).flow
+
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          "scatter/unstack requires value to have rank >= 1, got scalar",
+      ):
+        session.run(xla.compile(fn), feed_dict={scalar: 1.0})
+
+
 if __name__ == "__main__":
   test.main()
