@@ -848,14 +848,14 @@ class SqrtGradTest(test.TestCase):
       float64_op_types = [
           op.type for op in ops.get_default_graph().get_operations()
       ]
-      raw_float64_result = math_ops.sqrt(
+      math_ops_float64_result = math_ops.sqrt(
           constant_op.constant(4.0, dtype=dtypes.float64)
       )
 
     self.assertEqual(float32_result.op.type, "Sqrt")
     self.assertEqual(float64_result.op.type, "IdentityN")
     self.assertNotIn("OnesLike", float64_op_types)
-    self.assertEqual(raw_float64_result.op.type, "Sqrt")
+    self.assertEqual(math_ops_float64_result.op.type, "IdentityN")
 
   @test_util.run_in_graph_and_eager_modes
   def testFloat64PositiveSubnormalGradient(self):

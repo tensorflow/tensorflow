@@ -5771,6 +5771,15 @@ def ceil(x, name=None):
   return gen_math_ops.ceil(x, name)
 
 
+_sqrt_implementation = gen_math_ops.sqrt
+
+
+def _set_sqrt_implementation(implementation):
+  """Installs the dtype-aware implementation used by `sqrt`."""
+  global _sqrt_implementation
+  _sqrt_implementation = implementation
+
+
 @dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def sqrt(x, name=None):  # pylint: disable=redefined-builtin
@@ -5805,7 +5814,7 @@ def sqrt(x, name=None):  # pylint: disable=redefined-builtin
   Returns:
     A `tf.Tensor` of same size, type and sparsity as `x`.
   """
-  return gen_math_ops.sqrt(x, name)
+  return _sqrt_implementation(x, name=name)
 
 
 # pylint: disable=g-docstring-has-escape

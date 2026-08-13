@@ -21,6 +21,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
@@ -190,3 +191,9 @@ def _sqrt_sparse(x: sparse_tensor.SparseTensor, name=None):
       values=sqrt(x.values, name=name),
       dense_shape=x.dense_shape,
   )
+
+
+# Keep the original math_ops.sqrt function object so its registered composite
+# tensor dispatchers remain valid, while routing dense calls through the public
+# dtype-aware implementation above.
+math_ops._set_sqrt_implementation(sqrt)  # pylint: disable=protected-access
