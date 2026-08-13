@@ -962,4 +962,50 @@ TEST(BasicFlatBufferModel, TestHandleZeroSizeConstant) {
 // These tests will occur with the evaluation tests of individual operators,
 // not here.
 
+#if FLATBUFFERS_LITTLEENDIAN == 0
+// A string tensor buffer records the string count in its leading int32 word.
+// When that (untrusted) count implies more offset words than the buffer holds,
+// ByteSwapBuffer must not swap past the end of the buffer.
+TEST(BasicFlatBufferModel, ByteSwapStringBufferRespectsBufferSize) {
+  // Only the first two words belong to the tensor buffer; the last two are
+  // guards that must remain untouched.
+  std::vector<int32_t> storage = {2, 0x11111111, 0x12345678, 0x23456789};
+  const size_t buffer_size = 2 * sizeof(int32_t);
+  FlatBufferModel::ByteSwapBuffer(
+      static_cast<int8_t>(TensorType_STRING), buffer_size,
+      reinterpret_cast<uint8_t*>(storage.data()), /*from_big_endian=*/true);
+  EXPECT_EQ(storage[2], 0x12345678);
+  EXPECT_EQ(storage[3], 0x23456789);
+}
+
+// A negative leading count is invalid. ByteSwapBuffer must swap only the count
+// word rather than treating it as a large unsigned length and running over the
+// whole buffer, which would corrupt the string character data.
+TEST(BasicFlatBufferModel, ByteSwapStringBufferHandlesNegativeCount) {
+  // storage[0] is the count (-1); the remaining words stand in for offset and
+  // character data that must remain untouched.
+  std::vector<int32_t> storage = {-1, 0x12345678, 0x23456789, 0x3456789a};
+  const size_t buffer_size = storage.size() * sizeof(int32_t);
+  FlatBufferModel::ByteSwapBuffer(
+      static_cast<int8_t>(TensorType_STRING), buffer_size,
+      reinterpret_cast<uint8_t*>(storage.data()), /*from_big_endian=*/true);
+  EXPECT_EQ(storage[0], flatbuffers::EndianSwap<int32_t>(-1));
+  EXPECT_EQ(storage[1], 0x12345678);
+  EXPECT_EQ(storage[2], 0x23456789);
+  EXPECT_EQ(storage[3], 0x3456789a);
+}
+
+// A buffer smaller than a single int32 word cannot even hold the string count.
+// ByteSwapBuffer must break out before dereferencing bp[0] and leave it as is.
+TEST(BasicFlatBufferModel, ByteSwapStringBufferTooSmall) {
+  std::vector<uint8_t> storage = {0x01, 0x02};
+  const size_t buffer_size = storage.size();
+  FlatBufferModel::ByteSwapBuffer(static_cast<int8_t>(TensorType_STRING),
+                                  buffer_size, storage.data(),
+                                  /*from_big_endian=*/true);
+  EXPECT_EQ(storage[0], 0x01);
+  EXPECT_EQ(storage[1], 0x02);
+}
+#endif
+
 }  // namespace tflite
