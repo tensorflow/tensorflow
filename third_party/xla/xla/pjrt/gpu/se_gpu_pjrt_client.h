@@ -90,18 +90,11 @@ class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
                           int process_index_in_partition, int partition_index,
                           int numa_node, std::string fabric_uuid);
 
-  absl::string_view device_vendor() const;
-
   absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats() const override;
-
-  absl::Span<int const> coords() const;
 
   absl::StatusOr<PjRtMemorySpace*> default_memory_space() const override;
 
   absl::Status ClearMemoryStats() override;
-
- private:
-  std::string device_vendor_;
 };
 
 class StreamExecutorGpuHbmMemorySpace : public PjRtStreamExecutorMemorySpace {
@@ -147,6 +140,9 @@ class StreamExecutorGpuRawClient : public PjRtStreamExecutorRawClient {
       std::vector<CommonPjRtClient::CrossHostTransferSpec> transfer_specs)
       override;
 
+  void UpdateCompileOptionsTopology(const PjRtTopologyDescription& topology,
+                                    CompileOptions* options) const override;
+
  private:
   void ScheduleTransfersOnLocalDevice(
       LocalDeviceState* local_device_state, GlobalDeviceId device_id,
@@ -188,7 +184,7 @@ class StreamExecutorGpuRawClient : public PjRtStreamExecutorRawClient {
 class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
  public:
   StreamExecutorGpuClient(
-      std::string platform_name, LocalClient* client,
+      std::string platform_name,
       std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
       int process_index, std::unique_ptr<StreamExecutorGpuRawClient> raw_client,
       std::shared_ptr<KeyValueStoreInterface> kv_store,
@@ -198,9 +194,6 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       std::shared_ptr<gpu::AllocatorMemoryRegistration> memory_registration =
           nullptr);
 
-  absl::StatusOr<xla::DeviceAssignment> GetDefaultDeviceAssignment(
-      int num_replicas, int num_partitions) const override;
-
   absl::string_view platform_version() const override;
 
   std::optional<PjRtPluginAttributes> plugin_attributes() const override;
@@ -209,10 +202,6 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       absl::Span<xla::coordination::TaskInfo> infos) override;
 
   void RecordMemoryStats();
-
-  absl::Status UpdateCompileOptionsInternal(
-      CompileOptions* options, ExecutableExtras* returned_extras,
-      bool lookup_addressable_devices) override;
 
   absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>> RuntimeAbiVersion()
       const override;

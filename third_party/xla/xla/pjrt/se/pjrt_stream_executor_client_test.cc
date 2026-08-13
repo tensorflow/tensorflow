@@ -28,6 +28,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
@@ -126,7 +127,7 @@ MakeTestPjRtStreamExecutorClient(
                                    {/*stack_size=*/512 * 1024}),
       first_executor, std::move(gpu_run_options));
   return std::make_unique<PjRtStreamExecutorClient>(
-      std::move(platform_name), client, std::move(devices), process_index,
+      std::move(platform_name), std::move(devices), process_index,
       std::move(memory_spaces), std::move(topology), std::move(raw_client),
       std::move(kv_store));
 }

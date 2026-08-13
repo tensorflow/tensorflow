@@ -243,6 +243,21 @@ absl::Status CommonPjRtClient::Linearize(
   return absl::OkStatus();
 }
 
+absl::StatusOr<DeviceAssignment> CommonPjRtClient::GetDefaultDeviceAssignment(
+    int num_replicas, int num_partitions) const {
+  return GetDefaultDeviceAssignment(num_replicas, std::nullopt, num_partitions,
+                                    nullptr);
+}
+
+absl::StatusOr<DeviceAssignment> CommonPjRtClient::GetDefaultDeviceAssignment(
+    int num_replicas, std::optional<int> num_replicas_per_slice,
+    int num_partitions, const MultiSliceConfig* multi_slice_config) const {
+  ABSL_ASSIGN_OR_RETURN(auto* topology, GetTopologyDescription());
+  return topology->GetDefaultDeviceAssignment(
+      process_index(), num_replicas, num_replicas_per_slice, num_partitions,
+      multi_slice_config);
+}
+
 absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeHostBufferInto(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,

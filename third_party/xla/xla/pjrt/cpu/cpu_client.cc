@@ -495,29 +495,6 @@ absl::Span<PjRtMemorySpace* const> PjRtCpuClient::memory_spaces() const {
   return memory_spaces_;
 }
 
-absl::StatusOr<DeviceAssignment> CpuGetDefaultDeviceAssignment(
-    const CpuTopologyDescription& topology, int num_replicas,
-    int num_partitions) {
-  auto device_descriptions = topology.DeviceDescriptions();
-  if (num_partitions * num_replicas <= device_descriptions.size()) {
-    xla::DeviceAssignment assignment(num_replicas, num_partitions);
-    for (int i = 0; i < num_replicas; ++i) {
-      for (int j = 0; j < num_partitions; ++j) {
-        assignment(i, j) = device_descriptions.at(i * num_partitions + j)->id();
-      }
-    }
-    return assignment;
-  }
-  ComputationPlacer computation_placer;
-  return computation_placer.AssignDevices(num_replicas, num_partitions);
-}
-
-absl::StatusOr<DeviceAssignment> PjRtCpuClient::GetDefaultDeviceAssignment(
-    int num_replicas, int num_partitions) const {
-  return CpuGetDefaultDeviceAssignment(*topology_, num_replicas,
-                                       num_partitions);
-}
-
 absl::StatusOr<std::unique_ptr<HloCostAnalysis>>
 PjRtCpuClient::GetHloCostAnalysis() const {
   return std::make_unique<HloCostAnalysis>(cpu::CpuExecutable::ShapeSizeBytes);
@@ -655,7 +632,9 @@ PjRtCpuClient::LoadSerializedExecutableInternal(
       compile_options.compile_portable_executable,
       &compile_options.executable_build_options,
       [this](int num_replicas, int num_partitions) {
-        return this->GetDefaultDeviceAssignment(num_replicas, num_partitions);
+        return topology_->GetDefaultDeviceAssignment(process_index(),
+                                                     num_replicas, std::nullopt,
+                                                     num_partitions, nullptr);
       },
       &num_replicas, &num_partitions, &device_assignment));
 
@@ -901,7 +880,9 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCpuClient::Load(
   ABSL_RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
       options.compile_portable_executable, &options.executable_build_options,
       [this](int num_replicas, int num_partitions) {
-        return this->GetDefaultDeviceAssignment(num_replicas, num_partitions);
+        return topology_->GetDefaultDeviceAssignment(process_index(),
+                                                     num_replicas, std::nullopt,
+                                                     num_partitions, nullptr);
       },
       &unused_num_replicas, &unused_num_partitions, &device_assignment));
   return LoadInternal(std::move(cpu_executable), std::move(device_assignment));
@@ -952,8 +933,8 @@ CompileCpuExecutableInternal(
   ABSL_RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
       options.compile_portable_executable, &options.executable_build_options,
       [&topology](int num_replicas, int num_partitions) {
-        return CpuGetDefaultDeviceAssignment(topology, num_replicas,
-                                             num_partitions);
+        return topology.GetDefaultDeviceAssignment(
+            0, num_replicas, std::nullopt, num_partitions, nullptr);
       },
       &num_replicas, &num_partitions, &device_assignment));
 

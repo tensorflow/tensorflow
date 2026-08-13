@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -34,11 +35,13 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_topology_description_registry.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_device_description.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/device_id.h"
+#include "xla/service/computation_placer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
@@ -127,6 +130,19 @@ absl::StatusOr<uint64_t> CpuTopologyDescription::Fingerprint() const {
   return tsl::Fingerprint64(result);
 }
 
+absl::StatusOr<std::pair<ProcessId, int>>
+CpuTopologyDescription::ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType(
+    GlobalDeviceId device_id) const {
+  if (device_id.value() < 0 ||
+      device_id.value() >= cpu_topology_.devices().size()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Invalid device id: ", device_id.value(), ", valid range: [0, ",
+        cpu_topology_.devices().size(), ")"));
+  }
+  const auto& device = cpu_topology_.devices()[device_id.value()];
+  return std::make_pair(ProcessId(device.process_id), device.local_device_id);
+}
+
 absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
 CpuTopologyDescription::ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
     GlobalDeviceId device_id) const {
@@ -155,6 +171,29 @@ CpuTopologyDescription::ToProto() const {
   CpuTopologyProto cpu_topology_proto = cpu_topology_.ToProto();
   proto.mutable_platform_specific_topology()->PackFrom(cpu_topology_proto);
   return proto;
+}
+
+absl::StatusOr<DeviceAssignment>
+CpuTopologyDescription::GetDefaultDeviceAssignment(
+    int process_index, int num_replicas,
+    std::optional<int> num_replicas_per_slice, int num_partitions,
+    const MultiSliceConfig* multi_slice_config) const {
+  if (num_replicas_per_slice.has_value() || multi_slice_config) {
+    return absl::UnimplementedError(
+        "Multi-slice GetDefaultDeviceAssignment is not supported.");
+  }
+  auto device_descriptions = DeviceDescriptions();
+  if (num_partitions * num_replicas <= device_descriptions.size()) {
+    xla::DeviceAssignment assignment(num_replicas, num_partitions);
+    for (int i = 0; i < num_replicas; ++i) {
+      for (int j = 0; j < num_partitions; ++j) {
+        assignment(i, j) = device_descriptions.at(i * num_partitions + j)->id();
+      }
+    }
+    return assignment;
+  }
+  ComputationPlacer computation_placer;
+  return computation_placer.AssignDevices(num_replicas, num_partitions);
 }
 
 absl::StatusOr<std::unique_ptr<CpuTopologyDescription>>
