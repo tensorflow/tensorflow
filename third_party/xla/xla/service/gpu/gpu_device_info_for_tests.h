@@ -24,6 +24,10 @@ namespace gpu {
 
 class TestGpuDeviceInfo {
  public:
+  static stream_executor::DeviceDescription A100SXMDeviceInfo(
+      stream_executor::GpuComputeCapability cc =
+          stream_executor::GpuComputeCapability{
+              stream_executor::CudaComputeCapability(8, 0)});
   static stream_executor::DeviceDescription RTXA6000DeviceInfo(
       stream_executor::GpuComputeCapability cc =
           stream_executor::GpuComputeCapability{

@@ -46,6 +46,7 @@ using gpu_dot_fusion_cost_model::detail::
     CalculatePipelinedLoopTimeWithLaunchWaves;
 using gpu_dot_fusion_cost_model::detail::CalculateSharedMemoryPerBlockBytes;
 using gpu_dot_fusion_cost_model::detail::CalculateSmOccupancy;
+using gpu_dot_fusion_cost_model::detail::ComputeAndFlops;
 using gpu_dot_fusion_cost_model::detail::DotProblemInfo;
 using gpu_dot_fusion_cost_model::detail::DotTileSize;
 using gpu_dot_fusion_cost_model::detail::GetEffectiveHbmBandwidth;
@@ -55,6 +56,7 @@ using gpu_dot_fusion_cost_model::detail::SmOccupancy;
 
 class GpuDotFusionCostModelTest : public HloHardwareIndependentTestBase {
  protected:
+  se::DeviceDescription dda100_{TestGpuDeviceInfo::A100SXMDeviceInfo()};
   se::DeviceDescription ddh100_{TestGpuDeviceInfo::H100SXMDeviceInfo()};
 };
 
@@ -599,6 +601,42 @@ TEST_F(GpuDotFusionCostModelTest, EffectiveHbmBandwidthScalesWithDeviceInfo) {
   double expected_ratio = static_cast<double>(ddb200.memory_bandwidth()) /
                           ddh100_.memory_bandwidth();
   EXPECT_NEAR(bw_b200 / bw_h100, expected_ratio, 1e-4);
+}
+
+TEST_F(GpuDotFusionCostModelTest, GpuDotComputeBoundA100Bf16) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+p0 = bf16[8192,8192] parameter(0)
+p1 = bf16[8192,8192] parameter(1)
+ROOT r = bf16[8192,8192] dot(p0, p1),
+lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16,
+backend_config={"sizes":["32"]}
+})"));
+
+  BlockLevelParameters block_params;
+  block_params.output_tile_sizes = {{256, 512}};
+  block_params.num_warps = 4;
+  block_params.num_ctas = 1;
+  block_params.num_stages = 3;
+  auto* dot =
+      Cast<HloDotInstruction>(module->entry_computation()->root_instruction());
+  ASSERT_OK(gpu_dot_fusion_cost_model::IsSupported(dot));
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData runtime_a100,
+      gpu_dot_fusion_cost_model::EstimateRunTimeForDotOpWithBlockParameters(
+          dot, block_params, dda100_));
+  ASSERT_OK_AND_ASSIGN(
+      ComputeAndFlops expected_compute_and_flops_a100,
+      CalculateComputeTimeWithTileAndWaveQuantization(
+          DotProblemInfo(*dot),
+          DotTileSize{/*m=*/block_params.output_tile_sizes[0][0],
+                      /*n=*/block_params.output_tile_sizes[0][1]},
+          dda100_));
+  absl::Duration expected_time =
+      expected_compute_and_flops_a100.compute_time + kLoopLatencyTax;
+  EXPECT_GE(runtime_a100.exec_time, expected_time);
+  EXPECT_LE(runtime_a100.exec_time, expected_time * 1.1);
 }
 
 }  // namespace

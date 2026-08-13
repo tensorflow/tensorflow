@@ -52,6 +52,40 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::RTXA6000DeviceInfo(
   return b;
 }
 
+stream_executor::DeviceDescription TestGpuDeviceInfo::A100SXMDeviceInfo(
+    stream_executor::GpuComputeCapability cc) {
+  stream_executor::DeviceDescription b;
+  b.set_name("NVIDIA A100-SXM4-80GB");
+  b.set_gpu_compute_capability(cc);
+  b.set_threads_per_block_limit(1024);
+  b.set_threads_per_warp(32);
+  b.set_shared_memory_per_block(48 * 1024);
+  b.set_shared_memory_per_block_optin(163 * 1024);
+  b.set_shared_memory_per_core(164 * 1024);
+  b.set_threads_per_core_limit(2048);
+  b.set_core_count(108);
+  b.set_block_dim_limit_x(2'147'483'647);
+  b.set_block_dim_limit_y(65535);
+  b.set_block_dim_limit_z(65535);
+  b.set_memory_bandwidth(2'039'040'000'000);
+  b.set_l2_cache_size(40 * 1024 * 1024);
+  b.set_clock_rate_ghz(1.41);
+  b.set_device_memory_size(85'100'068'864);
+  b.set_registers_per_core_limit(65536);
+  b.set_registers_per_block_limit(65536);
+  b.set_runtime_version(stream_executor::SemanticVersion{12, 8, 0});
+  b.set_driver_version(stream_executor::SemanticVersion{12, 8, 0});
+
+  b.set_fpus_per_core(
+      stream_executor::gpu::GetFpusPerCore(*cc.cuda_compute_capability()));
+  stream_executor::DeviceInterconnectInfo interconnect_info;
+  interconnect_info.active_links = 12;
+  b.set_device_interconnect_info(std::move(interconnect_info));
+  stream_executor::gpu::FillExecutionUnitDesc(*cc.cuda_compute_capability(),
+                                              b.clock_rate_ghz(), b);
+  return b;
+}
+
 stream_executor::DeviceDescription TestGpuDeviceInfo::H100SXMDeviceInfo(
     stream_executor::GpuComputeCapability cc) {
   stream_executor::DeviceDescription b;
