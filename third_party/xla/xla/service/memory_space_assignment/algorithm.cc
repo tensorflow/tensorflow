@@ -234,11 +234,15 @@ bool LooksLikeAnActivation(const HloInstruction* inst, bool permissive_mode) {
 bool UseDoesNotLiveOut(const HloUse& use,
                        const HloAliasAnalysis& alias_analysis,
                        const AliasInfo* alias_info,
-                       const HloInstruction* root_instruction) {
+                       const HloInstruction* root_instruction,
+                       absl::flat_hash_set<HloUse>& visited) {
   if (use.instruction == root_instruction &&
       (use.instruction->opcode() == HloOpcode::kTuple ||
        use.instruction->opcode() == HloOpcode::kBitcast)) {
     return false;
+  }
+  if (!visited.insert(use).second) {
+    return true;
   }
   auto in_place_pairs = alias_info->GetInPlaceInputOutputPairs(use.instruction);
   return absl::c_all_of(
@@ -255,7 +259,7 @@ bool UseDoesNotLiveOut(const HloUse& use,
                    .GetUses()) {
             if (nested_use != use &&
                 !UseDoesNotLiveOut(nested_use, alias_analysis, alias_info,
-                                   root_instruction)) {
+                                   root_instruction, visited)) {
               return false;
             }
           }
@@ -281,8 +285,9 @@ std::vector<HloUse> FindCrossProgramPrefetchUses(
 
   absl::c_copy_if(buffer_uses, std::back_inserter(uses),
                   [&](const HloUse& use) {
+                    absl::flat_hash_set<HloUse> visited;
                     return UseDoesNotLiveOut(use, alias_analysis, alias_info,
-                                             root_instruction);
+                                             root_instruction, visited);
                   });
   return uses;
 }
