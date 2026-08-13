@@ -160,13 +160,13 @@ absl::Status UncompressElement(const CompressedElement& compressed,
   size_t num_string_tensor_strings = 0;
   size_t total_nonmemcpyable_size = 0;
   for (const auto& metadata : compressed.component_metadata()) {
+    TensorShape shape;
+    TF_RETURN_IF_ERROR(
+        TensorShape::BuildTensorShape(metadata.tensor_shape(), &shape));
     if (metadata.dtype() == DT_STRING) {
       ++num_string_tensors;
       num_string_tensor_strings += metadata.uncompressed_bytes_size();
     } else {
-      TensorShape shape;
-      TF_RETURN_IF_ERROR(
-          TensorShape::BuildTensorShape(metadata.tensor_shape(), &shape));
       int64_t num_elements = shape.num_elements();
       if (num_elements > 0 && metadata.uncompressed_bytes_size() == 0) {
         return absl::InvalidArgumentError(
@@ -194,7 +194,7 @@ absl::Status UncompressElement(const CompressedElement& compressed,
       TF_RETURN_IF_ERROR(
           TensorShape::BuildTensorShape(metadata.tensor_shape(), &shape));
       int64_t num_elements = shape.num_elements();
-      out->emplace_back(metadata.dtype(), metadata.tensor_shape());
+      out->emplace_back(metadata.dtype(), shape);
       TensorBuffer* buffer = DMAHelper::buffer(&out->back());
       if (buffer && num_elements > 0) {
         if (metadata.uncompressed_bytes(0) > buffer->size()) {
@@ -205,7 +205,10 @@ absl::Status UncompressElement(const CompressedElement& compressed,
         iov.Add(buffer->data(), metadata.uncompressed_bytes(0));
       }
     } else if (metadata.dtype() == DT_STRING) {
-      out->emplace_back(metadata.dtype(), metadata.tensor_shape());
+      TensorShape shape;
+      TF_RETURN_IF_ERROR(
+          TensorShape::BuildTensorShape(metadata.tensor_shape(), &shape));
+      out->emplace_back(metadata.dtype(), shape);
       const auto& flats = out->back().unaligned_flat<tstring>();
       if (metadata.uncompressed_bytes_size() > flats.size()) {
         return absl::InvalidArgumentError(absl::StrCat(

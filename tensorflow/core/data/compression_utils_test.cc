@@ -82,6 +82,24 @@ TEST(CompressionUtilsTest, MalformedTensorShape) {
               absl_testing::StatusIs(error::INVALID_ARGUMENT));
 }
 
+TEST(CompressionUtilsTest, MalformedTensorShapeString) {
+  // A `DT_STRING` component with a malformed shape proto (negative dimension)
+  // must also be rejected with a status rather than aborting the direct
+  // `TensorShape` constructor when the string tensor is built.
+  std::vector<Tensor> empty_element;
+  CompressedElement compressed;
+  TF_ASSERT_OK(CompressElement(empty_element, &compressed));
+
+  CompressedComponentMetadata* metadata =
+      compressed.mutable_component_metadata()->Add();
+  metadata->set_dtype(DT_STRING);
+  metadata->mutable_tensor_shape()->add_dim()->set_size(-1);
+
+  std::vector<Tensor> element;
+  EXPECT_THAT(UncompressElement(compressed, &element),
+              absl_testing::StatusIs(error::INVALID_ARGUMENT));
+}
+
 std::vector<std::vector<Tensor>> TestCases() {
   return {
       // Single int64.
