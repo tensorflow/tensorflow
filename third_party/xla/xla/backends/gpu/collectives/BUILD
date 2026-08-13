@@ -946,7 +946,6 @@ cc_library(
         ":rccl_communicator",
         ":rccl_errors",
         ":rccl_group",
-        "//xla:debug_options_flags",
         "//xla:status_macros",
         "//xla:util",
         "//xla/core/collectives",

@@ -75,14 +75,20 @@ limitations under the License.
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/se/buffer_sequencing_event.h"
+#include "xla/pjrt/se/local_device_state.h"
 #include "xla/pjrt/se/pjrt_stream_executor_client.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/gpu_topology.pb.h"
+#include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/memory_space.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #if GOOGLE_CUDA
@@ -1237,14 +1243,14 @@ INSTANTIATE_TEST_SUITE_P(SuccessfulCrossHostSendReceive,
                          ::testing::ValuesIn({1, 2, 3}),
                          SuccessfulCrossHostSendReceiveTestName);
 
-struct PreparedCrossHostTransferTest {
+struct MultiProcessGpuClientSetup {
   std::unique_ptr<xla::DistributedRuntimeService> service;
   std::unique_ptr<PjRtClient> client;
 };
 
-absl::StatusOr<PreparedCrossHostTransferTest> PrepareCrossHostTransferTest(
-    int rank_id, absl::string_view log_prefix) {
-  PreparedCrossHostTransferTest prepared_test;
+absl::StatusOr<MultiProcessGpuClientSetup> SetUpMultiProcessGpuClient(
+    int rank_id, int num_nodes, absl::string_view log_prefix) {
+  MultiProcessGpuClientSetup prepared_test;
 
   // Rank 0 creates a coordination service on so both processes can find each
   // other via the distributed runtime (port chosen arbitrarily).
@@ -1254,7 +1260,7 @@ absl::StatusOr<PreparedCrossHostTransferTest> PrepareCrossHostTransferTest(
         prepared_test.service,
         xla::GetDistributedRuntimeService(
             "127.0.0.1:12347",
-            xla::CoordinationServiceImpl::Options{/*num_nodes=*/2}));
+            xla::CoordinationServiceImpl::Options{/*num_nodes=*/num_nodes}));
     LOG(INFO) << log_prefix << ": created service";
   }
 
@@ -1272,7 +1278,7 @@ absl::StatusOr<PreparedCrossHostTransferTest> PrepareCrossHostTransferTest(
   // Create the GPU client.
   GpuClientOptions options = GetTestGpuClientOptions(2);
   options.node_id = rank_id;
-  options.num_nodes = 2;
+  options.num_nodes = num_nodes;
   options.kv_store =
       GetDistributedKeyValueStore(distributed_client, /*key_prefix=*/"cross:");
   options.distributed_client = distributed_client;
@@ -1289,8 +1295,9 @@ absl::Status SuccessfulCrossHostSendReceiveTestBody(bool is_sender,
                                                     int num_arrays) {
   std::string log_prefix = is_sender ? "sender" : "receiver";
 
-  ABSL_ASSIGN_OR_RETURN(PreparedCrossHostTransferTest prepared_test,
-                   PrepareCrossHostTransferTest(is_sender ? 0 : 1, log_prefix));
+  ABSL_ASSIGN_OR_RETURN(MultiProcessGpuClientSetup prepared_test,
+                   SetUpMultiProcessGpuClient(is_sender ? 0 : 1,
+                                              /*num_nodes=*/2, log_prefix));
 
   std::unique_ptr<PjRtClient> client = std::move(prepared_test.client);
 
@@ -1500,8 +1507,9 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
   std::string log_prefix = rank_id == 0 ? "rank_0" : "rank_1";
   const int num_transfers = num_rank_0_to_rank_1 + num_rank_1_to_rank_0;
 
-  ABSL_ASSIGN_OR_RETURN(PreparedCrossHostTransferTest prepared_test,
-                   PrepareCrossHostTransferTest(rank_id, log_prefix));
+  ABSL_ASSIGN_OR_RETURN(
+      MultiProcessGpuClientSetup prepared_test,
+      SetUpMultiProcessGpuClient(rank_id, /*num_nodes=*/2, log_prefix));
   std::unique_ptr<PjRtClient> client = std::move(prepared_test.client);
 
   // Prepare the data sent for each transfer.
@@ -1639,6 +1647,104 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
 
   return absl::OkStatus();
 }
+
+constexpr int kMultiProcessNumNodes = 2;
+
+// Body for the InterProcessCollectiveInit test. Runs in a subprocess as one of
+// two ranks, each owning a single GPU. Creating the client triggers the eager
+// inter-process collectives initialization (InitializeTopology) of the selected
+// backend, then it allocates some collective memory.
+absl::Status InterProcessCollectiveInitTestBody(int rank_id) {
+  std::string log_prefix = absl::StrFormat("rank_%d", rank_id);
+
+  ABSL_ASSIGN_OR_RETURN(
+      MultiProcessGpuClientSetup prepared_test,
+      SetUpMultiProcessGpuClient(rank_id, kMultiProcessNumNodes, log_prefix));
+  std::unique_ptr<PjRtClient> client = std::move(prepared_test.client);
+
+  // Primary check: inter-process init completed without hang/crash and the
+  // topology is what we expect (one local device, two global devices).
+  TF_RET_CHECK(client->addressable_device_count() == 1)
+      << "expected exactly one local device per process";
+  TF_RET_CHECK(client->device_count() == kMultiProcessNumNodes)
+      << "expected " << kMultiProcessNumNodes << " global devices";
+  LOG(INFO) << log_prefix
+            << ": client created; eager inter-process collective init "
+               "succeeded";
+
+  // Best-effort collective-memory allocation. This routes through the
+  // executor's collective memory allocator into the selected collectives
+  // backend (e.g. MORI ShmemMalloc). With inert backend stubs the allocation
+  // may return null; we only log the outcome and do not fail the test.
+  auto* se_device = tsl::down_cast<PjRtStreamExecutorDevice*>(
+      client->addressable_devices()[0]);
+  TF_RET_CHECK(se_device != nullptr);
+  LocalDeviceState* local_device_state = se_device->local_device_state();
+  TF_RET_CHECK(local_device_state != nullptr);
+  se::StreamExecutor* executor = local_device_state->executor();
+
+  constexpr uint64_t kCollectiveBytes = 1024;
+  se::DeviceAddressBase mem = executor->Allocate(
+      kCollectiveBytes, static_cast<int64_t>(se::MemorySpace::kCollective));
+  EXPECT_NE(mem.opaque(), nullptr);
+  LOG(INFO) << log_prefix << ": allocated " << kCollectiveBytes
+            << " bytes of collective memory at " << mem.opaque();
+  executor->Deallocate(&mem);
+  return absl::OkStatus();
+}
+
+// Launches two subprocesses (one GPU each) that create an inter-process client,
+// which eagerly initializes the collectives backend, and then try to allocate
+// collective memory.
+class InterProcessCollectiveInitTest
+    : public ::testing::TestWithParam<std::string> {};
+
+TEST_P(InterProcessCollectiveInitTest, EagerInit) {
+  const std::string& collectives_impl = GetParam();
+
+  // The MORI backend is ROCm-only; skip on any other platform.
+  if (collectives_impl == "mori") {
+    absl::StatusOr<se::Platform*> platform = PlatformUtil::GetPlatform("gpu");
+    if (!platform.ok() || (*platform)->Name() != "ROCM") {
+      GTEST_SKIP() << "MORI backend is only available on the ROCM platform";
+    }
+  }
+
+  tsl::SubProcess child[kMultiProcessNumNodes];
+  // Start all ranks first: their backend init rendezvous requires them to run
+  // concurrently.
+  for (int node_id = 0; node_id < kMultiProcessNumNodes; ++node_id) {
+    std::vector<std::string> argv = {
+        test_binary_name, "inter_process_collective_init_test",
+        "--test_to_run=InterProcessCollectiveInitHelper",
+        absl::StrFormat("--node_id=%d", node_id)};
+    // "default" keeps the platform-default backend (no flag).
+    if (collectives_impl != "default") {
+      argv.push_back(absl::StrFormat("--xla_gpu_collectives_implementation=%s",
+                                     collectives_impl));
+    }
+    child[node_id].SetProgram(test_binary_name, argv);
+    child[node_id].SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
+    child[node_id].SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
+    ASSERT_TRUE(child[node_id].Start()) << "node " << node_id;
+  }
+
+  for (int node_id = 0; node_id < kMultiProcessNumNodes; ++node_id) {
+    std::string stdout_str, stderr_str;
+    int status = child[node_id].Communicate(nullptr, &stdout_str, &stderr_str);
+    EXPECT_EQ(status, 0) << "node " << node_id << "\nstdout:\n"
+                         << stdout_str << "\nstderr:\n"
+                         << stderr_str;
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(InterProcessCollectiveInit,
+                         InterProcessCollectiveInitTest,
+                         ::testing::Values(std::string("default"),
+                                           std::string("mori")),
+                         [](const ::testing::TestParamInfo<std::string>& info) {
+                           return info.param;
+                         });
 
 struct ShardedAutotuningTestInfo {
   int num_active_nodes;
@@ -1857,8 +1963,9 @@ int main(int argc, char* argv[]) {
       tsl::Flag("test_to_run", &test_to_run,
                 "Which test(s) to execute. Allowed values: '' (runs "
                 "all tests), 'ShardedAutotuningWorksHelper', "
-                "'SuccessfulCrossHostSendReceiveHelper', or "
-                "'SuccessfulCrossHostTransferHelper'."),
+                "'SuccessfulCrossHostSendReceiveHelper', "
+                "'SuccessfulCrossHostTransferHelper', or "
+                "'InterProcessCollectiveInitHelper'."),
 
       // Flags for ShardedAutotuningWorks.
       tsl::Flag("node_id", &node_id,
@@ -1927,6 +2034,8 @@ int main(int argc, char* argv[]) {
           cross_host_transfer_test_rank, num_rank_0_to_rank_1,
           num_rank_1_to_rank_0);
     }
+  } else if (test_to_run == "InterProcessCollectiveInitHelper") {
+    result = xla::InterProcessCollectiveInitTestBody(node_id);
   } else {
     result = absl::InvalidArgumentError(absl::StrFormat(
         "Unrecognized multiprocess test name %s.", test_to_run));

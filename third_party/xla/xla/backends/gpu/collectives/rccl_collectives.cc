@@ -55,7 +55,6 @@ limitations under the License.
 #include "xla/core/collectives/collectives_registry.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
-#include "xla/debug_options_flags.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/runtime/device_id.h"
 #include "xla/runtime/process_id.h"
@@ -354,7 +353,6 @@ RcclCollectives::SplitCommunicatorsWithCancel(
   return split_comms;
 }
 
-
 absl::StatusOr<void*> RcclCollectives::Allocate(uint64_t bytes) {
   void* ptr = nullptr;
   ncclResult_t res = ncclMemAlloc(&ptr, bytes);
@@ -385,7 +383,6 @@ absl::Status RcclCollectives::Deallocate(void* location) {
 
 absl::StatusOr<CliqueIdCallback> RcclCollectives::InitializeTopology(
     const Topology& topology) {
-
   if (topology.num_processes > 1) {
     auto rccl_id_store = std::make_shared<RcclIdStore>(
         topology.process_id, topology.device_to_process,
