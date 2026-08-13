@@ -3717,6 +3717,7 @@ xla_cc_test(
         ":gpu_device_info_for_tests",
         ":gpu_hlo_schedule",
         ":gpu_latency_hiding_scheduler",
+        "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/transforms/collectives:collective_domain",
         "//xla/hlo/ir:hlo",
