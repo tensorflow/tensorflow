@@ -65,6 +65,9 @@ class HostOffloader : public HloModulePass {
   absl::string_view name() const override { return "host-offloader"; }
 
  protected:
+  // Returns the target memory spaces for each output element of a Pallas custom
+  // call instruction. Derived classes may override this to provide
+  // hardware-specific memory space assignments.
   virtual absl::StatusOr<std::vector<int64_t>>
   GetPallasCustomCallOutputMemorySpaces(HloInstruction* instruction) const;
 
@@ -79,14 +82,25 @@ class HostOffloader : public HloModulePass {
   // instruction chain) are ignored.
   absl::StatusOr<bool> ProcessNextMoveToHostInstr(HloComputation* computation);
 
+  // Set of "MoveToHost" custom-call instructions that have already been visited
+  // and processed during graph traversal.
   absl::flat_hash_set<HloInstruction*>
       already_visited_move_to_host_custom_calls_;
+  // Set of DynamicUpdateSlice instructions for which host memory allocation
+  // buffers have already been created.
   absl::flat_hash_set<HloInstruction*> dynamic_update_slices_already_allocated_;
+  // Map of instructions to the host-to-device/device-to-host copy instructions
+  // created directly after them.
   absl::flat_hash_map<HloInstruction*, HloInstruction*> copies_created_after_;
+  // Set of "MoveToDevice" custom calls staged for removal after graph
+  // traversal.
   absl::flat_hash_set<HloInstruction*> move_to_device_custom_calls_to_remove_;
+  // Cache of (InstructionAndShapeIndex, operand_index) pairs for which a copy
+  // has already been inserted before the instruction.
   absl::flat_hash_set<
       std::pair<host_offload_utils::InstructionAndShapeIndex, int64_t>>
       already_inserted_copy_before_;
+  // Alias analysis of the module used to check for buffer aliasing constraints.
   const AliasInfo* alias_info_;
 
   // DynamicUpdateSlices are a bit special because they are the only op which
@@ -129,7 +143,8 @@ class HostOffloader : public HloModulePass {
   // host memory space. Returns true if the module was changed.
   absl::StatusOr<bool> HandlePallasKernels(HloModule* module);
 
-  // Handles a single Pallas kernel.
+  // Offloads outputs of a single Pallas kernel custom-call instruction to host
+  // memory if annotated or required.
   absl::StatusOr<bool> HandlePallasKernel(HloInstruction* instruction);
 
   // Walks down the graph and does "host memory offloading" starting from every
@@ -158,8 +173,12 @@ class HostOffloader : public HloModulePass {
   absl::StatusOr<bool> SliceLeadsToMoveToDeviceCustomCall(
       HloInstruction* slice);
 
-  // Common function for doing the actual walking of the graph. Host memory
-  // spaces are set and copies are inserted in here.
+  // Common function for doing the actual walking of the graph. Sets host memory
+  // spaces along dataflow paths starting at `starting_instruction_and_index`
+  // and inserts copies where needed.
+  // `insert_copy_before`: if true, inserts a device-to-host copy before the
+  // starting instruction. `operand_index`: if specified, only propagates
+  // through that operand.
   absl::StatusOr<bool> WalkDownHostMemoryOffloadPaths(
       const host_offload_utils::InstructionAndShapeIndex&
           starting_instruction_and_index,
