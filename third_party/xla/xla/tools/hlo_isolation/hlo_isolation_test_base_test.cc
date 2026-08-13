@@ -1044,17 +1044,17 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_string));
 
-  absl::Status compare_status = absl::InternalError(
-      R"(Value mismatch in check TPU_VS_INTERPRETER for module test_module
-
-Mismatch count 5 (50.0%)
-actual 1.0, expected 2.0, index {0}, rel error 0.5, abs error 1.0
-Elements exceeding abs error bound: 5 (50.0%)
-Elements exceeding rel error bound: 5 (50.0%)
-)");
+  HloIsolationTestResult result;
+  NumericCheck* check = result.add_numeric_checks();
+  check->set_name("TPU_VS_INTERPRETER");
+  NumericMismatch m;
+  m.set_actual(1.0);
+  m.set_expected(2.0);
+  m.set_rel_error(0.5);
+  *check->add_top_mismatches() = m;
 
   auto annotations = numerics::debug_info::PopulateMismatchAnnotations(
-      *module, ExtractMismatchDetails(*module, compare_status));
+      *module, ExtractMismatchDetails(*module, result));
   EXPECT_FALSE(annotations.empty());
   auto root_key = numerics::debug_info::TensorKey::Create("add", ShapeIndex{});
   EXPECT_TRUE(annotations.contains(root_key));
@@ -1081,16 +1081,20 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_string));
 
-  absl::Status compare_status = absl::InternalError(
-      R"(Value mismatch in check TPU_VS_INTERPRETER for module fusion_module
+  HloIsolationTestResult result;
+  NumericCheck* check = result.add_numeric_checks();
+  check->set_name("TPU_VS_INTERPRETER");
+  NumericMismatch m;
+  m.set_actual(1.0);
+  m.set_expected(2.0);
+  m.set_rel_error(0.25);
+  *check->add_top_mismatches() = m;
 
-Mismatch count 5 (50.0%)
-actual 1.0, expected 2.0, index {0}, rel error 0.25, abs error 1.0
-Elements exceeding abs error bound: 5 (50.0%)
-Elements exceeding rel error bound: 5 (50.0%)
-)");
+  NumericCheck* fusion_check = result.add_numeric_checks();
+  fusion_check->set_name("FusionDebugger:add.1");
+  *fusion_check->add_top_mismatches() = m;
 
-  auto details = ExtractMismatchDetails(*module, compare_status);
+  auto details = ExtractMismatchDetails(*module, result);
   auto annotations =
       numerics::debug_info::PopulateMismatchAnnotations(*module, details);
   auto graph_data =
@@ -1133,17 +1137,17 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_string));
 
-  absl::Status compare_status = absl::InternalError(
-      R"(Value mismatch in check TPU_VS_INTERPRETER for module test_module
-
-Mismatch count 5 (50.0%)
-actual 1.0, expected 1.0, index {0}, rel error 0.0, abs error 0.0
-Elements exceeding abs error bound: 0 (0.0%)
-Elements exceeding rel error bound: 0 (0.0%)
-)");
+  HloIsolationTestResult result;
+  NumericCheck* check = result.add_numeric_checks();
+  check->set_name("TPU_VS_INTERPRETER");
+  NumericMismatch m;
+  m.set_actual(1.0);
+  m.set_expected(1.0);
+  m.set_rel_error(0.0);
+  *check->add_top_mismatches() = m;
 
   auto graph_data = numerics::debug_info::PopulateMismatchGraphData(
-      *module, ExtractMismatchDetails(*module, compare_status));
+      *module, ExtractMismatchDetails(*module, result));
   bool found_add = false;
   for (const auto& node : graph_data.nodes) {
     if (node.key == "add") {
@@ -1152,6 +1156,88 @@ Elements exceeding rel error bound: 0 (0.0%)
     }
   }
   EXPECT_TRUE(found_add);
+}
+
+TEST_F(HloIsolationTest,
+       ExtractMismatchDetails_CombinedParentAndFusionDebugger) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule fusion_module
+fused_computation {
+  p0.1 = f32[10] parameter(0)
+  sin.0 = f32[10] sine(p0.1)
+  ROOT add.1 = f32[10] add(sin.0, sin.0)
+}
+ENTRY main {
+  p0 = f32[10] parameter(0)
+  ROOT fusion = f32[10] fusion(p0), kind=kLoop, calls=fused_computation
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  HloIsolationTestResult result;
+  result.set_module_name("fusion_module");
+  result.set_state(State::FAILURE);
+  result.set_reason("NUMERIC_MISMATCH");
+
+  // Add parent check
+  NumericCheck* parent_check = result.add_numeric_checks();
+  parent_check->set_name("TPU_VS_INTERPRETER");
+  NumericMismatch parent_mismatch;
+  parent_mismatch.set_actual(1.0);
+  parent_mismatch.set_expected(2.0);
+  parent_mismatch.set_rel_error(0.5);
+  *parent_check->add_top_mismatches() = parent_mismatch;
+
+  // Add fusion debugger check for intermediate op sin.0
+  NumericCheck* fusion_check = result.add_numeric_checks();
+  fusion_check->set_name("FusionDebugger:sin.0");
+  NumericMismatch fusion_mismatch;
+  fusion_mismatch.set_output_shape_index(0);
+  fusion_mismatch.set_actual(3.0);
+  fusion_mismatch.set_expected(4.0);
+  fusion_mismatch.set_rel_error(0.25);
+  *fusion_check->add_top_mismatches() = fusion_mismatch;
+
+  std::vector<numerics::debug_info::MismatchDetails> all_details =
+      ExtractMismatchDetails(*module, result);
+
+  // Expect details for fusion (parent check) and sin.0 (fusion debugger check)
+  EXPECT_EQ(all_details.size(), 2);
+
+  auto annotations =
+      numerics::debug_info::PopulateMismatchAnnotations(*module, all_details);
+  auto outer_key =
+      numerics::debug_info::TensorKey::Create("fusion", ShapeIndex{});
+  auto sin_key = numerics::debug_info::TensorKey::Create("sin.0", ShapeIndex{});
+
+  ASSERT_TRUE(annotations.contains(outer_key));
+  ASSERT_TRUE(annotations.contains(sin_key));
+
+  EXPECT_EQ(annotations[outer_key].background_color, "pink");
+  EXPECT_EQ(annotations[sin_key].background_color, "pink");
+  EXPECT_TRUE(annotations[sin_key].tooltip_data.has_value());
+
+  auto graph_data =
+      numerics::debug_info::PopulateMismatchGraphData(*module, all_details);
+  bool found_fusion = false;
+  bool found_add1 = false;
+  bool found_sin = false;
+  for (const auto& node : graph_data.nodes) {
+    if (node.key == "fusion") {
+      found_fusion = true;
+      EXPECT_EQ(node.diff_score, 50.0);
+    } else if (node.key == "fusion/add.1") {
+      found_add1 = true;
+      EXPECT_EQ(node.diff_score, 0.0);
+    } else if (node.key == "fusion/sin.0") {
+      found_sin = true;
+      EXPECT_EQ(node.diff_score, 25.0);
+    }
+  }
+  EXPECT_TRUE(found_fusion);
+  EXPECT_TRUE(found_add1);
+  EXPECT_TRUE(found_sin);
 }
 
 }  // namespace
