@@ -44,7 +44,6 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import special_math_ops
-from tensorflow.python.ops import sqrt_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_sparse_ops import *
@@ -3705,7 +3704,6 @@ _UNARY_OPS = [
     math_ops.sign,
     math_ops.square,
     math_ops.sqrt,
-    sqrt_ops.sqrt,
     math_ops.erf,
     math_ops.tanh,
     # TODO(b/157272291) Add dispatchers for rest of special functions.

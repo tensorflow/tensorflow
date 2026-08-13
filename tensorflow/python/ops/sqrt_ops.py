@@ -17,6 +17,7 @@
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gen_math_ops
@@ -179,3 +180,13 @@ def sqrt(x, name=None):  # pylint: disable=redefined-builtin
     if x.dtype == dtypes.float64:
       return _sqrt_float64(x)
     return gen_math_ops.sqrt(x, name=name)
+
+
+@dispatch.dispatch_for_api(sqrt)
+def _sqrt_sparse(x: sparse_tensor.SparseTensor, name=None):
+  """Applies sqrt to the values of a SparseTensor."""
+  return sparse_tensor.SparseTensor(
+      indices=x.indices,
+      values=sqrt(x.values, name=name),
+      dense_shape=x.dense_shape,
+  )
