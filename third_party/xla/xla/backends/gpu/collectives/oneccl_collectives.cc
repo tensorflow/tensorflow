@@ -30,9 +30,9 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/oneccl_communicator.h"
 #include "xla/backends/gpu/collectives/oneccl_errors.h"
@@ -86,7 +86,7 @@ OnecclCollectives::CreateCommunicators(
     auto* device = absl::down_cast<GpuCollectives::Device*>(ranks[i].device);
     int32_t device_ordinal = device->stream_executor()->device_ordinal();
     XLA_ONECCL_RETURN_IF_ERROR(onecclSetDevice(device_ordinal));
-    ASSIGN_OR_RETURN(auto oneccl_unique_id,
+    ABSL_ASSIGN_OR_RETURN(auto oneccl_unique_id,
                      AsOnecclUniqueId(clique_ids->at(0)));
     onecclComm_t comm;
     XLA_ONECCL_RETURN_IF_ERROR(onecclCommInitRankConfig(
@@ -117,7 +117,7 @@ OnecclCollectives::CreateCommunicators(
       });
     }
   }
-  RETURN_IF_ERROR(status);
+  ABSL_RETURN_IF_ERROR(status);
   return comms;
 }
 }  // namespace xla::gpu

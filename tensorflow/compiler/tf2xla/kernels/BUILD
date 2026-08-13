@@ -383,6 +383,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@shardy//shardy/dialect/sdy/transforms/common:passes",
         "@shardy//shardy/dialect/sdy/transforms/import:passes",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",

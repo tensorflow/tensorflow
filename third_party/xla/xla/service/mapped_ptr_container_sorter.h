@@ -44,10 +44,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -303,14 +303,14 @@ MappedPtrContainerSorter<PointedToTy>::SortedIndices::Flatten() const {
     const auto& indices =
         target_index_to_unmapped_element_index_.at(IndexBeforeMappedElements());
     for (size_t index : indices) {
-      ASSIGN_OR_RETURN(result[index], next_index_fn());
+      ABSL_ASSIGN_OR_RETURN(result[index], next_index_fn());
     }
   }
   size_t num_inserted_mapped_elements = 0;
   for (const auto& mapped_element_indices :
        mapped_element_indices_by_partial_order_) {
     for (size_t mapped_element_index : mapped_element_indices) {
-      ASSIGN_OR_RETURN(result[mapped_element_index], next_index_fn());
+      ABSL_ASSIGN_OR_RETURN(result[mapped_element_index], next_index_fn());
       ++num_inserted_mapped_elements;
       if (target_index_to_unmapped_element_index_.contains(
               num_inserted_mapped_elements - 1)) {
@@ -318,7 +318,7 @@ MappedPtrContainerSorter<PointedToTy>::SortedIndices::Flatten() const {
             target_index_to_unmapped_element_index_.at(
                 num_inserted_mapped_elements - 1);
         for (size_t unmapped_element_index : unmapped_element_indices) {
-          ASSIGN_OR_RETURN(result[unmapped_element_index], next_index_fn());
+          ABSL_ASSIGN_OR_RETURN(result[unmapped_element_index], next_index_fn());
         }
       }
     }
@@ -328,7 +328,7 @@ MappedPtrContainerSorter<PointedToTy>::SortedIndices::Flatten() const {
     const auto& indices =
         target_index_to_unmapped_element_index_.at(IndexAfterMappedElements());
     for (size_t index : indices) {
-      ASSIGN_OR_RETURN(result[index], next_index_fn());
+      ABSL_ASSIGN_OR_RETURN(result[index], next_index_fn());
     }
   }
 
@@ -410,7 +410,7 @@ MappedPtrContainerSorter<PointedToTy>::ComputeNewIndices(
     // Potentially, several elements in ordered_container map to ptr.
     // We assign ptr theindex corresponding to the next such ordered element.
     auto& index_list = mapped_ptr_to_partial_order[ptr];
-    RETURN_IF_ERROR(result.AddMappedElement(i, index_list.front()));
+    ABSL_RETURN_IF_ERROR(result.AddMappedElement(i, index_list.front()));
     // Do not map more than one unordered element to the same index, unless we
     // have no choice.
     if (index_list.size() > 1) {
@@ -446,7 +446,7 @@ absl::Status MappedPtrContainerSorter<PointedToTy>::Sort(
     MapPtrFn map_ptr, UnmappedPtrIndexFn unmapped_index,
     const OrderedTy& ordered_container, UnorderedTy& unordered_container) {
   std::vector<size_t> indices;
-  ASSIGN_OR_RETURN(indices,
+  ABSL_ASSIGN_OR_RETURN(indices,
                    ComputeNewIndices(map_ptr, unmapped_index, ordered_container,
                                      unordered_container));
   Reorder(std::move(indices), unordered_container);

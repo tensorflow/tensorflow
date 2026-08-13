@@ -37,7 +37,7 @@ cc_library(
     deps = if_google(
         ["//xla/python/ifrt_proxy/common/google:grpc_credentials_lib"],
         [":grpc_credentials_oss_lib"],
-    ) + ["@com_github_grpc_grpc//:grpc++"],
+    ) + ["@grpc//:grpc++"],
 )
 
 cc_library(
@@ -48,9 +48,9 @@ cc_library(
     ],
     visibility = ["//visibility:private"],
     deps = [
-        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@grpc//:grpc++",
         "@tsl//tsl/platform",
     ],
     alwayslink = True,
@@ -67,8 +67,8 @@ cc_library(
     visibility = ["//xla/python/ifrt_proxy:__subpackages__"],
     deps = [
         ":grpc_credentials",
-        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
+        "@grpc//:grpc++",
         "@tsl//tsl/platform",
     ],
 )
@@ -164,10 +164,10 @@ cc_library(
     deps = [
         ":array_util_proto_cc",
         "//xla/python/ifrt",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",

@@ -25,11 +25,11 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/status.h"
 #include "xla/tsl/platform/env.h"
@@ -97,7 +97,7 @@ absl::Status CollectData(const ProfileRequest& request,
                          ProfilerSession* profiler, ProfileResponse* response) {
   response->set_empty_trace(true);
   if (profiler->IsContinuousProfilingEnabled()) {
-    RETURN_IF_ERROR(profiler->Stop());
+    ABSL_RETURN_IF_ERROR(profiler->Stop());
     std::vector<tensorflow::profiler::XSpace> xspaces =
         profiler->SerializeChunks();
     VLOG(3) << "Collected " << xspaces.size() << " XSpace chunks to "
@@ -128,7 +128,7 @@ absl::Status CollectData(const ProfileRequest& request,
   tensorflow::profiler::XSpace xspace;
   tensorflow::profiler::XSpace* xspace_ptr =
       request.emit_xspace() ? response->mutable_xspace() : &xspace;
-  RETURN_IF_ERROR(profiler->CollectData(xspace_ptr));
+  ABSL_RETURN_IF_ERROR(profiler->CollectData(xspace_ptr));
   VLOG(3) << "Collected XSpace to "
           << (request.emit_xspace() ? "response" : "repository") << ".";
   response->set_empty_trace(IsEmpty(*xspace_ptr));

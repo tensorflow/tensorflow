@@ -50,6 +50,9 @@ filegroup(
     srcs = [
         "api.h",
         "c_api.h",
+        "collectives_api.h",
+        "collectives_c_api.h",
+        "collectives_ffi.h",
         "ffi.h",
         "record_api.h",
         "record_c_api.h",
@@ -61,6 +64,7 @@ filegroup(
     name = "api_headers",
     srcs = [
         "api.h",
+        "collectives_api.h",
         "record_api.h",
     ],
 )
@@ -69,6 +73,7 @@ filegroup(
     name = "c_api_headers",
     srcs = [
         "c_api.h",
+        "collectives_c_api.h",
         "record_c_api.h",
     ],
 )
@@ -122,6 +127,23 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "collectives_api",
+    hdrs = ["collectives_api.h"],
+    deps = [
+        ":c_api",
+    ],
+)
+
+cc_library(
+    name = "collectives_ffi",
+    hdrs = ["collectives_ffi.h"],
+    deps = [
+        ":collectives_api",
+        ":ffi",
+    ],
+)
+
 xla_cc_test(
     name = "ffi_test",
     srcs = ["ffi_test.cc"],
@@ -167,6 +189,22 @@ xla_cc_test(
         ":ffi",
         ":record_api",
         ":record_ffi",
+        "//xla/ffi:call_frame",
+        "//xla/ffi:ffi_api",  # buildcleaner: keep
+        "//xla/ffi:invoke",
+        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_cc_test(
+    name = "collectives_ffi_test",
+    srcs = ["collectives_ffi_test.cc"],
+    deps = [
+        ":c_api",
+        ":collectives_api",
+        ":collectives_ffi",
+        ":ffi",
         "//xla/ffi:call_frame",
         "//xla/ffi:ffi_api",  # buildcleaner: keep
         "//xla/ffi:invoke",

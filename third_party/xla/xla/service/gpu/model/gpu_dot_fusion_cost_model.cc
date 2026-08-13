@@ -24,14 +24,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
@@ -53,6 +54,72 @@ namespace detail {
 
 namespace {
 using ::xla::primitive_util::BitWidth;
+
+struct BandwidthEntry {
+  int64_t dma_size_bytes;
+  float bandwidth_gbps;
+};
+
+struct MemoryBandwidthSpec {
+  double l2_cache_bandwidth_bytes_per_sec;
+  absl::InlinedVector<BandwidthEntry, 32> hbm_bandwidth_table_gbps;
+};
+
+MemoryBandwidthSpec GetMemoryBandwidthSpec(
+    const se::DeviceDescription& device_info) {
+  // Empirical HBM bandwidth scaling table (dma_size_bytes -> fraction of peak
+  // memory bandwidth), obtained from microbenchmarks on H100 SXM (peak
+  // bandwidth: 3352.32 GB/s).
+  // TODO(karupayun): Add explicit microbenchmarked tables for Blackwell
+  // (B200/GB200) and other architectures here as they are measured.
+  static constexpr std::array<BandwidthEntry, 18> kScaledHbmBandwidthTable = {
+      {{8192, 0.00042359f},
+       {16384, 0.00090385f},
+       {32768, 0.00179577f},
+       {65536, 0.00351100f},
+       {131072, 0.00706376f},
+       {262144, 0.01412455f},
+       {524288, 0.02761073f},
+       {1048576, 0.05341375f},
+       {2097152, 0.10343583f},
+       {4194304, 0.19072761f},
+       {8388608, 0.31917596f},
+       {16777216, 0.47249365f},
+       {33554432, 0.58906066f},
+       {67108864, 0.69897562f},
+       {134217728, 0.78541428f},
+       {268435456, 0.82530600f},
+       {536870912, 0.88562244f},
+       {1073741824, 0.93248850f}}};
+
+  constexpr double kBytesPerGigabyte = 1 << 30;
+  double device_memory_bandwidth_gbps =
+      static_cast<double>(device_info.memory_bandwidth()) / kBytesPerGigabyte;
+
+  absl::InlinedVector<BandwidthEntry, 32> device_hbm_bandwidth_table(
+      kScaledHbmBandwidthTable.begin(), kScaledHbmBandwidthTable.end());
+  for (auto& entry : device_hbm_bandwidth_table) {
+    entry.bandwidth_gbps *= device_memory_bandwidth_gbps;
+  }
+
+  // L2 cache bandwidth scales proportionally to memory bandwidth relative to
+  // H100 SXM (measured at 6.65 TB/s on H100 SXM).
+  // TODO(maniananth): L2 bandwidth has been hardcoded for H100 based on
+  // microbenchmarking L2 bandwidth within a partition, but we should add this
+  // to the device info and extend for more GPUs.
+  constexpr double kH100L2CacheBandwidthBytesPerSec = 6.65 * 1e12;
+  // Peak memory bandwidth of H100 SXM in GB/s (3352.32 GB/s) from
+  // xla/backends/gpu/target_config/specs/h100_sxm.txtpb:L26.
+  constexpr double kH100SxmPeakMemoryBandwidthGBps = 3352.32;
+  double bandwidth_scale =
+      device_memory_bandwidth_gbps / kH100SxmPeakMemoryBandwidthGBps;
+
+  return MemoryBandwidthSpec{
+      /*l2_cache_bandwidth_bytes_per_sec=*/kH100L2CacheBandwidthBytesPerSec *
+          bandwidth_scale,
+      /*hbm_bandwidth_table_gbps=*/device_hbm_bandwidth_table,
+  };
+}
 
 int64_t CalculateNumThreadblocks(const DotProblemInfo& dot,
                                  const DotTileSize& dot_tile) {
@@ -213,11 +280,8 @@ absl::StatusOr<ComputeAndFlops> CalculateComputeTimeWithTileAndWaveQuantization(
 absl::StatusOr<absl::Duration> CalculateL2Time(
     int64_t dot_k, int64_t tile_k, const se::DeviceDescription& device_info,
     int64_t l2_bytes_read, bool is_tma_allowed) {
-  // TODO(maniananth): L2 bandwidth has been hardcoded for H100 based on
-  // microbenchmarking L2 bandwidth within a partition, but we should add this
-  // to the device info and extend for more GPUs.
-
-  double device_l2_bandwidth = 6.65 * 1e12;  // Measured H100 L2 bandwidth.
+  double l2_cache_bandwidth_bytes_per_sec =
+      GetMemoryBandwidthSpec(device_info).l2_cache_bandwidth_bytes_per_sec;
   int64_t num_k_iters = CeilOfRatio<int64_t>(dot_k, tile_k);
 
   // Empirical overheads per K-dimension iteration.
@@ -231,56 +295,40 @@ absl::StatusOr<absl::Duration> CalculateL2Time(
   double k_loop_overhead =
       is_tma_allowed ? kTmaLoopOverheadSeconds : kLegacyLoopOverheadSeconds;
 
-  double base_time_seconds = 1.0f * l2_bytes_read / device_l2_bandwidth;
+  double base_time_seconds =
+      1.0 * l2_bytes_read / l2_cache_bandwidth_bytes_per_sec;
   return absl::Seconds(base_time_seconds + num_k_iters * k_loop_overhead);
 }
 
 // Returns the effective HBM bandwidth in bytes per second for a given dma_size.
 // dma_size is the total amount of data transferred to/from HBM in bytes.
-float GetEffectiveHbmBandwidth(const int64_t dma_size,
+float GetEffectiveHbmBandwidth(int64_t dma_size,
                                const se::DeviceDescription& device_info) {
-  using HbmBandwidthLookupEntry =
-      std::pair</*dma_size*/ int64_t, /*measured bandwidth*/ float>;
-  std::array<HbmBandwidthLookupEntry, 18> hbm_bandwidth_GBps_lookup_h100 = {
-      {{8192, 1.42f},
-       {16384, 3.03f},
-       {32768, 6.02f},
-       {65536, 11.77f},
-       {131072, 23.68f},
-       {262144, 47.35f},
-       {524288, 92.56f},
-       {1048576, 179.06f},
-       {2097152, 346.75f},
-       {4194304, 639.38f},
-       {8388608, 1069.98f},
-       {16777216, 1583.95f},
-       {33554432, 1974.72f},
-       {67108864, 2343.19f},
-       {134217728, 2632.96f},
-       {268435456, 2766.69f},
-       {536870912, 2968.89f},
-       {1073741824, 3126.0f}}};
+  constexpr float kBytesPerGigabyte = 1 << 30;
+  MemoryBandwidthSpec spec = GetMemoryBandwidthSpec(device_info);
+  const absl::InlinedVector<BandwidthEntry, 32>& hbm_bandwidth_table_gbps =
+      spec.hbm_bandwidth_table_gbps;
 
-  if (dma_size <= hbm_bandwidth_GBps_lookup_h100.front().first) {
-    return hbm_bandwidth_GBps_lookup_h100.front().second * (1 << 30);
+  if (dma_size <= hbm_bandwidth_table_gbps.front().dma_size_bytes) {
+    return hbm_bandwidth_table_gbps.front().bandwidth_gbps * kBytesPerGigabyte;
   }
-  if (dma_size >= hbm_bandwidth_GBps_lookup_h100.back().first) {
-    return hbm_bandwidth_GBps_lookup_h100.back().second * (1 << 30);
+  if (dma_size >= hbm_bandwidth_table_gbps.back().dma_size_bytes) {
+    return hbm_bandwidth_table_gbps.back().bandwidth_gbps * kBytesPerGigabyte;
   }
 
-  auto it2 = std::lower_bound(hbm_bandwidth_GBps_lookup_h100.begin(),
-                              hbm_bandwidth_GBps_lookup_h100.end(), dma_size,
-                              [](const std::pair<int64_t, float>& a,
-                                 const int64_t b) { return a.first < b; });
+  auto it2 = std::lower_bound(
+      hbm_bandwidth_table_gbps.begin(), hbm_bandwidth_table_gbps.end(),
+      dma_size,
+      [](const BandwidthEntry& a, int64_t b) { return a.dma_size_bytes < b; });
   auto it1 = it2 - 1;
 
   // Linear interpolation between the two entries in the lookup table. std::lerp
   // is not used as it is only available since C++20.
-  auto a = it1->second;
-  auto b = it2->second;
-  auto t =
-      (dma_size - it1->first) / static_cast<float>(it2->first - it1->first);
-  return (a + t * (b - a)) * (1 << 30);
+  float a = it1->bandwidth_gbps;
+  float b = it2->bandwidth_gbps;
+  float t = (dma_size - it1->dma_size_bytes) /
+            static_cast<float>(it2->dma_size_bytes - it1->dma_size_bytes);
+  return (a + t * (b - a)) * kBytesPerGigabyte;
 }
 
 HbmEstimates CalculateHbmTime(const DotProblemInfo& dot,
@@ -450,6 +498,55 @@ int64_t CalculateSharedMemoryPerBlockBytes(const DotProblemInfo& dot_info,
   return (lhs_tile_bytes + rhs_tile_bytes) * num_stages;
 }
 
+double CalculateComputeUtilization(const EstimateRunTimeData& estimates,
+                                   const se::DeviceDescription& device_info,
+                                   xla::PrimitiveType output_element_type) {
+  const double total_estimated_sec = absl::ToDoubleSeconds(estimates.exec_time);
+  constexpr double kNsPerSecond = 1e9;
+  const double theoretical_flops_per_sec =
+      GpuPerformanceModelBase::CalculatePeakMatrixOpsPerNs(
+          device_info, output_element_type) *
+      kNsPerSecond;
+
+  if (total_estimated_sec == 0.0 || theoretical_flops_per_sec == 0.0) {
+    VLOG(2) << "Returning 0.0 compute utilization: total_estimated_sec="
+            << total_estimated_sec
+            << ", theoretical_flops_per_sec=" << theoretical_flops_per_sec;
+    return 0.0;
+  }
+  double utilization = (static_cast<double>(estimates.flops) /
+                        (theoretical_flops_per_sec * total_estimated_sec));
+
+  if (utilization > 1.0) {
+    VLOG(2) << "Compute utilization exceeded 1.0 in dot fusion cost model: "
+            << utilization;
+  }
+  return utilization;
+}
+
+double CalculateMemoryUtilization(const EstimateRunTimeData& estimates,
+                                  const se::DeviceDescription& device_info) {
+  const double total_estimated_sec = absl::ToDoubleSeconds(estimates.exec_time);
+  const double dram_bytes =
+      static_cast<double>(estimates.bytes_read + estimates.bytes_written);
+  const double peak_memory_bandwidth = device_info.memory_bandwidth();
+
+  if (total_estimated_sec == 0.0 || peak_memory_bandwidth == 0.0) {
+    VLOG(2) << "Returning 0.0 memory utilization: total_estimated_sec="
+            << total_estimated_sec
+            << ", peak_memory_bandwidth=" << peak_memory_bandwidth;
+    return 0.0;
+  }
+  double utilization =
+      dram_bytes / (peak_memory_bandwidth * total_estimated_sec);
+
+  if (utilization > 1.0) {
+    VLOG(2) << "Memory utilization exceeded 1.0 in dot fusion cost model: "
+            << utilization;
+  }
+  return utilization;
+}
+
 }  // namespace detail
 
 absl::Status IsSupported(const HloDotInstruction* dot) {
@@ -508,7 +605,7 @@ absl::StatusOr<int64_t> ExtractBlockK(const HloDotInstruction* dot) {
     return absl::FailedPreconditionError(
         "Dot instruction must have a backend config with tiling sizes.");
   }
-  ASSIGN_OR_RETURN(auto tile_config, dot->backend_config<xla::gpu::Tile>());
+  ABSL_ASSIGN_OR_RETURN(auto tile_config, dot->backend_config<xla::xtile::Tile>());
   TF_RET_CHECK(tile_config.sizes_size() > 0)
       << "Tile backend config must have sizes.";
   return tile_config.sizes(0);
@@ -517,7 +614,7 @@ absl::StatusOr<int64_t> ExtractBlockK(const HloDotInstruction* dot) {
 absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
     const HloDotInstruction* dot, const BlockLevelParameters& block_params,
     const se::DeviceDescription& device_info, std::optional<int64_t> block_k) {
-  RETURN_IF_ERROR(IsSupported(dot));
+  ABSL_RETURN_IF_ERROR(IsSupported(dot));
   if (block_params.output_tile_sizes.size() != 1) {
     return absl::UnimplementedError(
         absl::StrCat("Only single tile size is supported, got ",
@@ -528,7 +625,7 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   if (block_k.has_value()) {
     block_k_val = *block_k;
   } else {
-    ASSIGN_OR_RETURN(block_k_val, ExtractBlockK(dot));
+    ABSL_ASSIGN_OR_RETURN(block_k_val, ExtractBlockK(dot));
   }
 
   detail::DotProblemInfo dot_info(*dot);
@@ -552,7 +649,7 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   EstimateRunTimeData estimates;
 
   // Calculate compute roofline with tile and wave quantization.
-  ASSIGN_OR_RETURN(detail::ComputeAndFlops compute_and_flops,
+  ABSL_ASSIGN_OR_RETURN(detail::ComputeAndFlops compute_and_flops,
                    detail::CalculateComputeTimeWithTileAndWaveQuantization(
                        dot_info, dot_tile, device_info));
   estimates.compute_time = compute_and_flops.compute_time;
@@ -578,7 +675,7 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
                                                  num_stages);
 
   // Calculate L2 time.
-  ASSIGN_OR_RETURN(absl::Duration l2_time,
+  ABSL_ASSIGN_OR_RETURN(absl::Duration l2_time,
                    detail::CalculateL2Time(dot_info.k, dot_tile.k, device_info,
                                            estimates.l2_bytes_read,
                                            block_params.is_tma_allowed));
@@ -600,6 +697,10 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   // Assuming perfect overlap between compute and memory for the rest,
   // but main loop is now modeled precisely.
   estimates.exec_time = std::max({pipelined_loop_time, l2_time});
+  estimates.compute_utilization = detail::CalculateComputeUtilization(
+      estimates, device_info, dot_info.output_element_type);
+  estimates.memory_utilization =
+      detail::CalculateMemoryUtilization(estimates, device_info);
 
   return estimates;
 }

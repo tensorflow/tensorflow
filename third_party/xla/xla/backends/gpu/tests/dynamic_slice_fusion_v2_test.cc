@@ -22,9 +22,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/backends/gpu/runtime/while_loop.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
@@ -68,9 +68,9 @@ static absl::Status ScaledMemset(se::Stream* stream, ffi::RemainingArgs inputs,
 
   float iter = static_cast<float>(state->loop_iteration);
   for (size_t j = 0; j < outputs.size(); ++j) {
-    ASSIGN_OR_RETURN(auto out, outputs.get<ffi::AnyBuffer>(j));
+    ABSL_ASSIGN_OR_RETURN(auto out, outputs.get<ffi::AnyBuffer>(j));
     se::DeviceAddressBase dst = out->device_memory();
-    RETURN_IF_ERROR(stream->Memset32(
+    ABSL_RETURN_IF_ERROR(stream->Memset32(
         &dst, absl::bit_cast<uint32_t>(iter * scales[j]), dst.size()));
   }
 

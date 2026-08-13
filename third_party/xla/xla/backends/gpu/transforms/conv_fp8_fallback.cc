@@ -23,10 +23,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/transforms/cudnn_fusion_compiler.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -109,7 +109,7 @@ absl::StatusOr<HloFusionInstruction*> BuildBf16Fusion(
     HloInstruction* clone;
     if (instr->opcode() == HloOpcode::kConstant &&
         ShapeContainsF8(instr->shape())) {
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           Literal bf16_literal,
           Cast<HloConstantInstruction>(instr)->literal().Convert(BF16));
       clone = builder.AddInstruction(
@@ -143,9 +143,9 @@ absl::StatusOr<HloFusionInstruction*> BuildBf16Fusion(
       parent->AddInstruction(HloInstruction::CreateFusion(
           bf16_computation->root_instruction()->shape(), fusion->fusion_kind(),
           new_operands, bf16_computation));
-  ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                    fusion->backend_config<GpuBackendConfig>());
-  RETURN_IF_ERROR(bf16_fusion->set_backend_config(gpu_config));
+  ABSL_RETURN_IF_ERROR(bf16_fusion->set_backend_config(gpu_config));
   return Cast<HloFusionInstruction>(bf16_fusion);
 }
 
@@ -155,7 +155,7 @@ absl::Status RemoveBf16Fusion(HloFusionInstruction* bf16_fusion) {
   HloComputation* bf16_computation =
       bf16_fusion->fused_instructions_computation();
   HloModule* module = bf16_fusion->GetModule();
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       bf16_fusion->parent()->RemoveInstructionAndUnusedOperands(bf16_fusion));
   return module->RemoveEmbeddedComputation(bf16_computation);
 }
@@ -193,8 +193,8 @@ absl::Status ReplaceWithBf16Fusion(HloFusionInstruction* fusion,
 
 absl::StatusOr<HloFusionInstruction*> RewriteFp8FusionToBf16(
     HloFusionInstruction* fusion) {
-  ASSIGN_OR_RETURN(HloFusionInstruction * bf16_fusion, BuildBf16Fusion(fusion));
-  RETURN_IF_ERROR(ReplaceWithBf16Fusion(fusion, bf16_fusion));
+  ABSL_ASSIGN_OR_RETURN(HloFusionInstruction * bf16_fusion, BuildBf16Fusion(fusion));
+  ABSL_RETURN_IF_ERROR(ReplaceWithBf16Fusion(fusion, bf16_fusion));
   return bf16_fusion;
 }
 
@@ -230,14 +230,14 @@ absl::StatusOr<bool> ConvFp8Fallback::RunImpl(
 
       // No FP8 plans — check that the BF16 replacement has plans before
       // rewriting.
-      ASSIGN_OR_RETURN(HloFusionInstruction * bf16_fusion,
+      ABSL_ASSIGN_OR_RETURN(HloFusionInstruction * bf16_fusion,
                        BuildBf16Fusion(fusion));
       if (CuDnnFusionCompiler::SupportsFusionDeviceless(device_description_,
                                                         *bf16_fusion) !=
           DevicelessFusionSupport::kSupported) {
         LOG(WARNING) << "FP8 conv fusion " << fusion->name()
                      << " has no cuDNN plans for either FP8 or BF16.";
-        RETURN_IF_ERROR(RemoveBf16Fusion(bf16_fusion));
+        ABSL_RETURN_IF_ERROR(RemoveBf16Fusion(bf16_fusion));
         continue;
       }
 
@@ -245,7 +245,7 @@ absl::StatusOr<bool> ConvFp8Fallback::RunImpl(
                    << " has no cuDNN FP8 plans; rewriting to BF16. "
                    << "Try different convolution dimensions/group counts "
                    << "to regain FP8.";
-      RETURN_IF_ERROR(ReplaceWithBf16Fusion(fusion, bf16_fusion));
+      ABSL_RETURN_IF_ERROR(ReplaceWithBf16Fusion(fusion, bf16_fusion));
       changed = true;
     }
   }

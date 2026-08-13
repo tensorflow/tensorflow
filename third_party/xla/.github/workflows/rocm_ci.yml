@@ -41,12 +41,14 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       docker-image: ${{ steps.out.outputs.docker-image }}
+      docker-image-jax: ${{ steps.out.outputs.docker-image-jax }}
     steps:
       - id: out
         shell: bash
         run: |
           # hermetic llvm based on  ghcr.io/rocm/jax-ubu22.rocm7.2.4:latest
-          echo "docker-image=ghcr.io/rocm/jax-ubu22.rocm7.2.4@sha256:248db525342fb7438ccbc6f5f1396ec82c783f7e0ae5667cb698edcddc8fe2fd" >> "$GITHUB_OUTPUT"
+          echo "docker-image=ghcr.io/rocm/jax-build-ubu24.rocmless@sha256:68854ed30b800d3e8c390f6e651721e2bead58830da1c59e1b828354eb8f077f" >> "$GITHUB_OUTPUT"
+          echo "docker-image-jax=ghcr.io/rocm/jax-ubu22.rocm7.2.4@sha256:248db525342fb7438ccbc6f5f1396ec82c783f7e0ae5667cb698edcddc8fe2fd" >> "$GITHUB_OUTPUT"
 
   jax:
     needs: rocm-config
@@ -57,14 +59,14 @@ jobs:
     # Remove this once the JAX CI is stable.
     continue-on-error: true
     env:
-      DOCKER_IMAGE: ${{ needs.rocm-config.outputs.docker-image }}
-    container: &rocm_container
-      image: ${{ needs.rocm-config.outputs.docker-image }} # zizmor: ignore[unpinned-images] image is pinned in the rocm-config job.
-      volumes:
+      DOCKER_IMAGE: ${{ needs.rocm-config.outputs.docker-image-jax }}
+    container:
+      image: ${{ needs.rocm-config.outputs.docker-image-jax }} # zizmor: ignore[unpinned-images] image is pinned in the rocm-config job.
+      volumes: &rocm_container_volumes
         - /data/ci-cert.crt:/data/ci-cert.crt
         - /data/ci-cert.key:/data/ci-cert.key
         - /data:/data
-      options: >-
+      options: &rocm_container_options >-
         --device=/dev/dri
         --device=/dev/kfd
         --ipc=host
@@ -94,9 +96,6 @@ jobs:
       - name: CPU Info
         run: lscpu
 
-      - name: ROCm info
-        run: /opt/rocm/bin/rocminfo
-
       - name: Run JAX Unit Tests
         timeout-minutes: 60
         working-directory: jax
@@ -111,6 +110,7 @@ jobs:
             --action_env=JAX_ENABLE_X64=0 \
             --repo_env=HERMETIC_PYTHON_VERSION=3.14 \
             --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}" \
+            --jobs=20 \
             --bes_keywords=xla \
             --bes_keywords=jax \
             --bes_keywords=upstream \
@@ -124,7 +124,10 @@ jobs:
     env:
       DOCKER_IMAGE: ${{ needs.rocm-config.outputs.docker-image }}
       EXECUTE_CI_BUILD_URL: https://raw.githubusercontent.com/ROCm/xla/refs/heads/${{ inputs.rocm_xla_branch || 'rocm-dev-infra' }}/build_tools/rocm/execute_ci_build_upstream.sh
-    container: *rocm_container
+    container:
+      image: ${{ needs.rocm-config.outputs.docker-image }} # zizmor: ignore[unpinned-images] image is pinned in the rocm-config job.
+      volumes: *rocm_container_volumes
+      options: *rocm_container_options
     defaults:
       run:
         shell: bash
@@ -143,18 +146,17 @@ jobs:
       - name: CPU Info
         run: lscpu
 
-      - name: ROCm info
-        run: /opt/rocm/bin/rocminfo
-
       - name: Test XLA [single_gpu]
         timeout-minutes: 120
         run: |
           build_tools/rocm/execute_ci_build_upstream.sh \
-            --config=rocm_ci \
+            --config=rocm_ci_hermetic \
             --config=rocm_rbe \
             --config=ci_single_gpu \
             --local_test_jobs=1 \
             --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}" \
+            --repo_env=ROCM_DISTRO_URL="https://repo.amd.com/rocm/tarball-multi-arch/therock-dist-linux-multiarch-7.14.0.tar.gz" \
+            --repo_env=ROCM_DISTRO_HASH="baadd54cff7a064b3b0ae51c19606ee4bced0f4215a21c89f616cf9c01ea4b47" \
             --local_test_jobs=1 \
             --internal_spawn_scheduler \
             --strategy=TestRunner=dynamic \
@@ -166,11 +168,14 @@ jobs:
         timeout-minutes: 80
         run: |
           build_tools/rocm/execute_ci_build_upstream.sh \
-            --config=rocm_ci \
+            --config=rocm_ci_hermetic \
             --config=rocm_rbe \
             --config=ci_rocm_cpu \
             --local_test_jobs=200 \
             --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}" \
+            --repo_env=ROCM_PATH="" \
+            --repo_env=ROCM_DISTRO_URL="https://repo.amd.com/rocm/tarball-multi-arch/therock-dist-linux-multiarch-7.14.0.tar.gz" \
+            --repo_env=ROCM_DISTRO_HASH="baadd54cff7a064b3b0ae51c19606ee4bced0f4215a21c89f616cf9c01ea4b47" \
             --bes_keywords=xla \
             --bes_keywords=upstream \
             --bes_keywords=cpu \

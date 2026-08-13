@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# =============================================================================
+
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
 load("@bazel_features//:deps.bzl", "bazel_features_deps")
@@ -33,6 +48,7 @@ load("//third_party/highway:workspace.bzl", highway = "repo")
 load("//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
 load("//third_party/hwloc:workspace.bzl", hwloc = "repo")
 load("//third_party/implib_so:workspace.bzl", implib_so = "repo")
+load("//third_party/kleidiai:workspace.bzl", kleidiai = "repo")
 load("//third_party/libdrm:workspace.bzl", libdrm = "repo")
 load("//third_party/llvm:workspace.bzl", llvm = "repo")
 load("//third_party/llvm_openmp:workspace.bzl", llvm_openmp = "repo")
@@ -97,6 +113,7 @@ def _initialize_third_party():
     highwayhash()
     hwloc()
     implib_so()
+    kleidiai()
     libdrm()
     llvm_openmp()
     ml_dtypes()
@@ -190,13 +207,6 @@ def _tf_repositories():
     #    curl -L <url> | sha256sum
     # and update the sha256 with the result.
 
-    tf_http_archive(
-        name = "KleidiAI",
-        sha256 = "6b3e6630be314a28f6ea28fed14f7109b0b7c472f1e06d2dba17ffccda3b9466",
-        strip_prefix = "kleidiai-dce86647385ab2638aa5abebcb652f3e4271970d",
-        urls = tf_mirror_urls("https://gitlab.arm.com/kleidi/kleidiai/-/archive/dce86647385ab2638aa5abebcb652f3e4271970d/kleidiai-dce86647385ab2638aa5abebcb652f3e4271970d.zip"),
-    )
-
     compute_library()
 
     tf_http_archive(
@@ -242,6 +252,13 @@ def _tf_repositories():
         repo_mapping = {
             "@abseil-cpp": "@com_google_absl",
         },
+    )
+
+    tf_http_archive(
+        name = "rules_foreign_cc",
+        sha256 = "476303bd0f1b04cc311fc258f1708a5f6ef82d3091e53fd1977fa20383425a6a",
+        strip_prefix = "rules_foreign_cc-0.10.1",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_foreign_cc/releases/download/0.10.1/rules_foreign_cc-0.10.1.tar.gz"),
     )
 
     tf_http_archive(
@@ -348,10 +365,13 @@ def _tf_repositories():
     )
 
     tf_http_archive(
-        name = "com_github_grpc_grpc",
+        name = "grpc",
         sha256 = "41b695614b26652ff9e97ce50cfd4a6c7a3d45a9fe598d1454407746499bbf2c",
         strip_prefix = "grpc-1.81.0",
         patch_file = ["//third_party/grpc:grpc.patch"],
+        repo_mapping = {
+            "@com_github_grpc_grpc": "@grpc",
+        },
         urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.81.0.tar.gz"),
     )
 

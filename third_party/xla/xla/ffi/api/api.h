@@ -373,9 +373,6 @@ class Ffi {
   };
 
  protected:
-  template <typename... Args>
-  static std::string StrCat(Args... args);
-
   static XLA_FFI_Error* Success();
 
   static XLA_FFI_Error* MakeError(const XLA_FFI_Api* api,
@@ -396,6 +393,15 @@ class Ffi {
                                                    size_t expected,
                                                    size_t actual);
 };
+
+namespace internal {
+template <typename... Args>
+std::string StrCat(Args&&... args) {
+  std::stringstream ss;
+  (ss << ... << std::forward<Args>(args));
+  return ss.str();
+}
+}  // namespace internal
 
 inline XLA_FFI_Error* Ffi::RegisterStaticHandler(
     const XLA_FFI_Api* api, std::string_view name, std::string_view platform,
@@ -431,13 +437,6 @@ inline XLA_FFI_Error* Ffi::RegisterTypeId(const XLA_FFI_Api* api,
   return api->XLA_FFI_Type_Register(&args);
 }
 
-template <typename... Args>
-std::string Ffi::StrCat(Args... args) {
-  std::stringstream ss;
-  (ss << ... << args);
-  return ss.str();
-}
-
 inline XLA_FFI_Error* Ffi::Success() { return nullptr; }
 
 inline XLA_FFI_Error* Ffi::MakeError(const XLA_FFI_Api* api,
@@ -468,8 +467,9 @@ inline XLA_FFI_Error* Ffi::CheckStructSize(const XLA_FFI_Api* api,
                                            size_t expected, size_t actual) {
   if (XLA_FFI_PREDICT_FALSE(expected != actual)) {
     return InvalidArgument(
-        api, StrCat("Unexpected ", struct_name, " size: expected ", expected,
-                    " got ", actual, ". Check installed software versions."));
+        api, internal::StrCat("Unexpected ", struct_name, " size: expected ",
+                              expected, " got ", actual,
+                              ". Check installed software versions."));
   }
   return nullptr;
 }
@@ -479,9 +479,9 @@ inline XLA_FFI_Error* Ffi::StructSizeIsGreaterOrEqual(
     size_t actual) {
   if (XLA_FFI_PREDICT_FALSE(actual < expected)) {
     return InvalidArgument(
-        api, StrCat("Unexpected ", struct_name, " size: expected at least ",
-                    expected, " got ", actual,
-                    ". Check installed software versions."));
+        api, internal::StrCat("Unexpected ", struct_name,
+                              " size: expected at least ", expected, " got ",
+                              actual, ". Check installed software versions."));
   }
   return nullptr;
 }
@@ -489,6 +489,25 @@ inline XLA_FFI_Error* Ffi::StructSizeIsGreaterOrEqual(
 //===----------------------------------------------------------------------===//
 // XLA_FFI_Error helpers
 //===----------------------------------------------------------------------===//
+
+// ErrorPolicy is a compatibility layer for shared APIs that must report errors
+// using different user-facing types: Error/ErrorOr for external FFI and
+// absl::Status/absl::StatusOr for internal FFI. Concrete internal and external
+// FFI layers define an ErrorPolicy with the following interface:
+//
+//   struct ErrorPolicy {
+//     using Status = ...;
+//
+//     template <typename T>
+//     using StatusOr = ...;
+//
+//     static Status Ok();
+//     static Status FromErrorCode(XLA_FFI_Error_Code, std::string_view);
+//     static Status TakeError(const XLA_FFI_Api*, XLA_FFI_Error*);
+//   };
+//
+// TakeError takes ownership of a non-null XLA_FFI_Error. StatusOr<T> must be
+// constructible from both T and Status.
 
 namespace internal {
 
@@ -500,14 +519,26 @@ inline void DestroyError(const XLA_FFI_Api* api, XLA_FFI_Error* error) {
   api->XLA_FFI_Error_Destroy(&args);
 }
 
-inline const char* GetErrorMessage(const XLA_FFI_Api* api,
-                                   XLA_FFI_Error* error) {
-  XLA_FFI_Error_GetMessage_Args args;
-  args.struct_size = XLA_FFI_Error_GetMessage_Args_STRUCT_SIZE;
+struct ErrorDetails {
+  XLA_FFI_Error_Code errc;
+  const char* message;
+};
+
+inline ErrorDetails GetErrorDetails(const XLA_FFI_Api* api,
+                                    XLA_FFI_Error* error) {
+  XLA_FFI_Error_GetDetails_Args args;
+  args.struct_size = XLA_FFI_Error_GetDetails_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
   args.error = error;
-  api->XLA_FFI_Error_GetMessage(&args);
-  return args.message;
+  args.message = nullptr;
+  args.errc = XLA_FFI_Error_Code_INTERNAL;
+  api->XLA_FFI_Error_GetDetails(&args);
+  return ErrorDetails{args.errc, args.message};
+}
+
+inline const char* GetErrorMessage(const XLA_FFI_Api* api,
+                                   XLA_FFI_Error* error) {
+  return GetErrorDetails(api, error).message;
 }
 
 }  // namespace internal
@@ -1090,7 +1121,6 @@ constexpr bool IsDynamicRank() {
 // Buffer Matching
 //===----------------------------------------------------------------------===//
 
-namespace match {
 namespace internal {
 
 // Unlike std::integer_sequence, this sequence also supports enum values.
@@ -1102,6 +1132,8 @@ struct ValueSequence {
 
 }  // namespace internal
 
+namespace match {
+
 // Type-level set of the unique dtype constraints on a pattern. The dtype enum
 // type is fixed per header (DataType or PrimitiveType), so the type system
 // enforces that all dtypes share one enum type.
@@ -1112,6 +1144,8 @@ using DTypeSet = internal::ValueSequence<DType, dtypes...>;
 template <size_t... ranks>
 using RankSet = internal::ValueSequence<size_t, ranks...>;
 
+}  // namespace match
+
 namespace internal {
 
 // Reinterprets a buffer as a concrete `Buffer<dtype, rank>` without any checks.
@@ -1119,7 +1153,7 @@ namespace internal {
 // call once a successful match has confirmed the buffer's dtype and rank.
 struct BufferCast;
 
-// Prints a single constraint value into a diagnostic. The default uses
+// Prints a single constraint value into an error message. The default uses
 // `operator<<`; FFI headers specialize it for dtype enums that lack a symbolic
 // `operator<<` (see `PrimitiveType` in `xla/ffi/ffi.h`).
 template <typename T>
@@ -1141,26 +1175,26 @@ class ValueSet<name, ValueSequence<T, values...>> {
   using Values = ValueSequence<T, values...>;
 
  public:
-  static bool Match(T value, DiagnosticEngine& diagnostic) {
-    if (empty() ||
-        std::find(kValues.begin(), kValues.end(), value) != kValues.end()) {
-      return true;
+  static std::optional<std::string> Match(T value) {
+    if (XLA_FFI_PREDICT_TRUE(empty() ||
+                             std::find(kValues.begin(), kValues.end(), value) !=
+                                 kValues.end())) {
+      return std::nullopt;
     }
 
-    InFlightDiagnostic error = diagnostic.Emit("expected ");
-    error << name;
     if (kValues.size() == 1) {
-      error << " " << ValuePrinter<T>{kValues.front()} << " but got "
-            << ValuePrinter<T>{value};
-      return false;
+      return StrCat("expected ", name, " ", ValuePrinter<T>{kValues.front()},
+                    " but got ", ValuePrinter<T>{value});
     }
 
-    error << " to be one of [" << ValuePrinter<T>{kValues.front()};
+    std::ostringstream message;
+    message << "expected " << name;
+    message << " to be one of [" << ValuePrinter<T>{kValues.front()};
     for (size_t i = 1; i < kValues.size(); ++i) {
-      error << ", " << ValuePrinter<T>{kValues[i]};
+      message << ", " << ValuePrinter<T>{kValues[i]};
     }
-    error << "] but got " << ValuePrinter<T>{value};
-    return false;
+    message << "] but got " << ValuePrinter<T>{value};
+    return message.str();
   }
 
   static std::string Describe() {
@@ -1189,19 +1223,16 @@ class ValueSet<name, ValueSequence<T, values...>> {
 };
 
 template <typename Values>
-using DTypeValues =
-    ValueSet<kDType, Values>;  // NOLINT(readability-identifier-naming): alias
-                               // for internal matcher value sets
-
+using DTypeValues = ValueSet<kDType, Values>;  // NOLINT
 template <typename Values>
-using RankValues =
-    ValueSet<kRank, Values>;  // NOLINT(readability-identifier-naming): alias
-                              // for internal matcher value sets
+using RankValues = ValueSet<kRank, Values>;  // NOLINT
 
 template <typename DTypes, typename Ranks>
 class BufferPatternBase;
 
 }  // namespace internal
+
+namespace match {
 
 // Matches one buffer dimension. A dimension can be unconstrained, fixed, or
 // captured.
@@ -1210,32 +1241,30 @@ class DimPattern {
   DimPattern() = default;
 
   template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
-  // NOLINTNEXTLINE(google-explicit-constructor,runtime/explicit)
-  DimPattern(T value) : value_(static_cast<int64_t>(value)) {
+  DimPattern(T value) : value_(static_cast<int64_t>(value)) {  // NOLINT
     static_assert(sizeof(T) <= sizeof(int64_t),
                   "Integral dimension value must fit in 64-bit integer.");
   }
 
   // Intentionally implicit so that capture pointers (e.g. &rows) can be passed
   // directly to WithDims and WithDim.
-  // NOLINTNEXTLINE(google-explicit-constructor,runtime/explicit)
-  DimPattern(int64_t* value) : value_(value) {
+  DimPattern(int64_t* value) : value_(value) {  // NOLINT
     assert(value != nullptr && "dimension capture must be non-null");
   }
 
-  bool Match(int64_t value, size_t index, DiagnosticEngine& diagnostic) const {
+  std::optional<std::string> Match(int64_t value, size_t index) const {
     const int64_t* expected = std::get_if<int64_t>(&value_);
-    if (expected == nullptr || value == *expected) {
-      return true;
+    if (XLA_FFI_PREDICT_TRUE(expected == nullptr || value == *expected)) {
+      return std::nullopt;
     }
 
-    diagnostic.Emit("expected dimension ")
-        << index << " to be " << *expected << " but got " << value;
-    return false;
+    return internal::StrCat("expected dimension ", index, " to be ", *expected,
+                            " but got ", value);
   }
 
   void Capture(int64_t value) const {
-    if (auto capture = std::get_if<int64_t*>(&value_)) {
+    if (auto capture = std::get_if<int64_t*>(&value_);
+        XLA_FFI_PREDICT_FALSE(capture != nullptr)) {
       **capture = value;
     }
   }
@@ -1262,6 +1291,8 @@ class DimPattern {
   std::variant<std::monostate, int64_t, int64_t*> value_;
 };
 
+}  // namespace match
+
 namespace internal {
 
 // An immutable pattern for matching buffer metadata. Dtype and rank
@@ -1283,20 +1314,20 @@ class BufferPatternBase {
   auto WithRank() const {
     static_assert(!IsDynamicRank<rank, ranks...>(),
                   "dynamic rank is represented by an empty rank set");
-    using WithRankSet = RankSet<rank, ranks...>;
+    using WithRankSet = match::RankSet<rank, ranks...>;
     return BufferPatternBase<DTypes, WithRankSet>(*this);
   }
 
   template <DType dtype, DType... dtypes>
   auto WithDType() const {
-    using WithDTypeSet = DTypeSet<DType, dtype, dtypes...>;
+    using WithDTypeSet = match::DTypeSet<DType, dtype, dtypes...>;
     return BufferPatternBase<WithDTypeSet, Ranks>(*this);
   }
 
   // Constrains the complete shape to match `buffer`.
   template <typename Buffer>
   auto WithShapeOf(Buffer buffer) const {
-    using Pattern = BufferPatternBase<DTypes, RankSet<>>;
+    using Pattern = BufferPatternBase<DTypes, match::RankSet<>>;
     Pattern pattern(*this);
     auto dimensions = buffer.dimensions();
     pattern.rank_ = dimensions.size();
@@ -1308,7 +1339,7 @@ class BufferPatternBase {
   template <typename Buffer>
   auto Like(Buffer buffer) const {
     auto shape = WithShapeOf(buffer);
-    using Pattern = BufferPatternBase<DTypeSet<DType>, RankSet<>>;
+    using Pattern = BufferPatternBase<match::DTypeSet<DType>, match::RankSet<>>;
     Pattern pattern(shape);
     pattern.dtype_ = buffer.element_type();
     return pattern;
@@ -1318,16 +1349,16 @@ class BufferPatternBase {
   // from the number of arguments.
   template <typename... Args,
             typename = std::enable_if_t<
-                (std::is_convertible_v<Args, DimPattern> && ...)>>
+                (std::is_convertible_v<Args, match::DimPattern> && ...)>>
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE auto WithDims(Args&&... dimensions) const {
-    using WithRank = RankSet<sizeof...(Args)>;
+    using WithRank = match::RankSet<sizeof...(Args)>;
     BufferPatternBase<DTypes, WithRank> pattern(*this);
     pattern.dimensions_ = {std::forward<Args>(dimensions)...};
     return pattern;
   }
 
   // Constrains a single dimension, leaving the rest (and the rank) free.
-  BufferPatternBase WithDim(size_t index, DimPattern dimension) const {
+  BufferPatternBase WithDim(size_t index, match::DimPattern dimension) const {
     BufferPatternBase pattern(*this);
     auto& dimensions = pattern.dimensions_;
     dimensions.resize(std::max(dimensions.size(), index + 1));
@@ -1336,51 +1367,50 @@ class BufferPatternBase {
   }
 
   template <size_t index>
-  BufferPatternBase WithDim(DimPattern dimension) const {
+  BufferPatternBase WithDim(match::DimPattern dimension) const {
     return WithDim(index, std::move(dimension));
   }
 
   template <typename Buffer>
-  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE bool Match(
-      Buffer buffer, DiagnosticEngine& diagnostic) const {
-    if (!DTypeValues<DTypes>::Match(buffer.element_type(), diagnostic)) {
-      return false;
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE std::optional<std::string> Match(
+      Buffer buffer) const {
+    if (auto error = DTypeValues<DTypes>::Match(buffer.element_type());
+        XLA_FFI_PREDICT_FALSE(error.has_value())) {
+      return error;
     }
 
-    if (dtype_.has_value() && buffer.element_type() != *dtype_) {
-      diagnostic.Emit("expected dtype ")
-          << ValuePrinter<DType>{*dtype_} << " but got "
-          << ValuePrinter<DType>{buffer.element_type()};
-      return false;
+    if (XLA_FFI_PREDICT_FALSE(dtype_.has_value() &&
+                              buffer.element_type() != *dtype_)) {
+      return StrCat("expected dtype ", ValuePrinter<DType>{*dtype_},
+                    " but got ", ValuePrinter<DType>{buffer.element_type()});
     }
 
     auto dimensions = buffer.dimensions();
-    if (!RankValues<Ranks>::Match(dimensions.size(), diagnostic)) {
-      return false;
+    if (auto error = RankValues<Ranks>::Match(dimensions.size());
+        XLA_FFI_PREDICT_FALSE(error.has_value())) {
+      return error;
     }
 
-    if (rank_.has_value() && dimensions.size() != *rank_) {
-      diagnostic.Emit("expected rank ")
-          << *rank_ << " but got " << dimensions.size();
-      return false;
+    if (XLA_FFI_PREDICT_FALSE(rank_.has_value() &&
+                              dimensions.size() != *rank_)) {
+      return StrCat("expected rank ", *rank_, " but got ", dimensions.size());
     }
 
-    if (dimensions_.size() > dimensions.size()) {
-      diagnostic.Emit("expected dimension ")
-          << dimensions_.size() - 1 << " but buffer rank is "
-          << dimensions.size();
-      return false;
+    if (XLA_FFI_PREDICT_FALSE(dimensions_.size() > dimensions.size())) {
+      return StrCat("expected dimension ", dimensions_.size() - 1,
+                    " but buffer rank is ", dimensions.size());
     }
 
     size_t count = dimensions_.size();
     for (size_t i = 0; i < count; ++i) {
-      const DimPattern& dimension = dimensions_[i];
-      if (!dimension.Match(dimensions[i], i, diagnostic)) {
-        return false;
+      const match::DimPattern& dimension = dimensions_[i];
+      if (auto error = dimension.Match(dimensions[i], i);
+          XLA_FFI_PREDICT_FALSE(error.has_value())) {
+        return error;
       }
 
       int64_t* capture = dimension.capture();
-      if (capture == nullptr) {
+      if (XLA_FFI_PREDICT_TRUE(capture == nullptr)) {
         continue;
       }
       for (size_t j = 0; j < i; ++j) {
@@ -1390,13 +1420,12 @@ class BufferPatternBase {
         if (dimensions[i] == dimensions[j]) {
           break;
         }
-        diagnostic.Emit("expected dimension ")
-            << i << " to be " << dimensions[j] << " but got " << dimensions[i];
-        return false;
+        return StrCat("expected dimension ", i, " to be ", dimensions[j],
+                      " but got ", dimensions[i]);
       }
     }
 
-    return true;
+    return std::nullopt;
   }
 
   template <typename Buffer>
@@ -1462,10 +1491,12 @@ class BufferPatternBase {
   std::optional<size_t> rank_;
   // Positional dimension constraints. Unconstrained positions (the gaps left by
   // WithDim) hold a catch-all DimPattern that matches any extent.
-  std::vector<DimPattern> dimensions_;
+  std::vector<match::DimPattern> dimensions_;
 };
 
 }  // namespace internal
+
+namespace match {
 
 inline DimPattern Dim() { return DimPattern(); }
 
@@ -1479,22 +1510,44 @@ inline DimPattern Dim(int64_t* value) { return DimPattern(value); }
 
 namespace internal {
 
-// Matches buffer metadata and emits a diagnostic on failure. Captures are
-// applied only after all constraints match.
+// Matches buffer metadata and returns `std::nullopt` on success or an error
+// message for the first failed constraint. Captures are applied only after all
+// constraints match.
 template <typename Buffer, typename Pattern>
-XLA_FFI_ATTRIBUTE_ALWAYS_INLINE bool MatchBuffer(std::string_view name,
-                                                 Buffer buffer,
-                                                 const Pattern& pattern,
-                                                 DiagnosticEngine& diagnostic) {
-  if (pattern.Match(buffer, diagnostic)) {
-    pattern.Capture(buffer);
-    return true;
+XLA_FFI_ATTRIBUTE_ALWAYS_INLINE std::optional<std::string> TryMatchBuffer(
+    std::string_view name, Buffer buffer, const Pattern& pattern) {
+  if (auto error = pattern.Match(buffer);
+      XLA_FFI_PREDICT_FALSE(error.has_value())) {
+    return StrCat("Buffer '", name, "' failed to match ", pattern.Describe(),
+                  ": ", *error);
   }
+  pattern.Capture(buffer);
+  return std::nullopt;
+}
 
-  std::string reason = std::move(diagnostic).Result();
-  diagnostic.Emit("Buffer '")
-      << name << "' failed to match " << pattern.Describe() << ": " << reason;
-  return false;
+template <typename ErrorPolicy, typename Buffer, typename Pattern>
+XLA_FFI_ATTRIBUTE_ALWAYS_INLINE typename ErrorPolicy::Status VerifyBuffer(
+    std::string_view name, Buffer buffer, const Pattern& pattern) {
+  if (auto error = TryMatchBuffer(name, buffer, pattern);
+      XLA_FFI_PREDICT_FALSE(error.has_value())) {
+    return ErrorPolicy::FromErrorCode(XLA_FFI_Error_Code_INVALID_ARGUMENT,
+                                      *error);
+  }
+  return ErrorPolicy::Ok();
+}
+
+template <typename ErrorPolicy, typename T, typename Buffer, typename Pattern,
+          typename OnMatch>
+XLA_FFI_ATTRIBUTE_ALWAYS_INLINE typename ErrorPolicy::template StatusOr<T>
+MatchBuffer(std::string_view name, Buffer buffer, const Pattern& pattern,
+            OnMatch&& on_match) {
+  using Result = typename ErrorPolicy::template StatusOr<T>;
+  if (auto error = TryMatchBuffer(name, buffer, pattern);
+      XLA_FFI_PREDICT_FALSE(error.has_value())) {
+    return Result(ErrorPolicy::FromErrorCode(
+        XLA_FFI_Error_Code_INVALID_ARGUMENT, *error));
+  }
+  return Result(std::forward<OnMatch>(on_match)(buffer));
 }
 
 }  // namespace internal
@@ -1773,40 +1826,32 @@ struct HasExtensionSupport<
 // Decoding for Extensions
 //===----------------------------------------------------------------------===//
 
-// Type tag for decoding an Extension.
-// The type T must define the following traits:
-// - CExtension: The C API extension type. See: struct XLA_FFI_Extension.
-// - Type: The C++ type to be decoded to. Must be constructible from CExtension*
-//         using a static method Create (see below).
-// - kName: a name for the extension used for diagnostics.
-// - kExtensionType: int64 type id to identify this extension.
-// - kMajorVersion: the major version of the extension.
-// - kMinorVersion: the minor version of the extension.
-// - Create: a static method that creates the Type from the
-//     C API extension.
-// - Support: a static method that checks given a major and minor version if
-//     the extension is supported. Optional. By default, an extension is
-//     supported if both major and minor versions match.
-//     Signature: bool Support(int32_t major_version, int32_t minor_version);
-// Example:
+// Type tag for decoding a C API extension into a C++ context. `T` must define
+// the following interface:
+//
 //   struct MyExtension {
-//     using Type = MyContext;
-//     using CExtension = XLA_FFI_MyExtension;
+//     using CExtension = XLA_FFI_MyExtension;  // C API extension type
+//     using Type = MyContext;                  // decoded C++ context type
 //
 //     static constexpr auto kName = "MyExtension";
-//     static constexpr int64_t kExtensionType = XLA_FFI_Extension_MyExtension;
-//     static constexpr int32_t kMajorVersion =
-//         XLA_FFI_Extension_MyExtension_MajorVersion;
-//     static constexpr int32_t kMinorVersion =
-//         XLA_FFI_Extension_MyExtension_MinorVersion;
+//     static constexpr int64_t kExtensionType = ...;
+//     static constexpr int32_t kMajorVersion = ...;
+//     static constexpr int32_t kMinorVersion = ...;
 //
-//     static Type Create(const CExtension* ext) {
+//     static Type Create(const XLA_FFI_Api* api, const CExtension* ext) {
 //       return MyContext(ext->some_field);
 //     }
 //   };
-// And then use it with T::Type as a value type:
-//   Ffi::Bind().Ctx<Extension<MyExtension>>()
-//                     .To([](const MyExtension::Type ext) { ... });
+//
+// `Create` receives the API used for the handler call and a pointer to the
+// extension found in the invoke context.
+//
+// By default, both version numbers must match exactly. `T` can override this
+// by defining:
+//
+//   static bool Support(int32_t major_version, int32_t minor_version);
+//
+// Bind the decoded context with `.Ctx<Extension<MyExtension>>()`.
 template <typename T>
 struct Extension {};
 
@@ -1838,12 +1883,14 @@ struct CtxDecoding<Extension<T>> {
       diagnostic.Emit("Extension ") << T::kName << " not found in context";
       return std::nullopt;
     }
+
     const auto emit_version_mismatch = [&]() {
       diagnostic.Emit("Extension version mismatch for ")
           << T::kName << ": actual(" << args.extension->id.major_version << "."
           << args.extension->id.minor_version << ") vs current("
           << T::kMajorVersion << "." << T::kMinorVersion << ")";
     };
+
     if constexpr (internal::HasExtensionSupport<T>::value) {
       if (!T::Support(args.extension->id.major_version,
                       args.extension->id.minor_version)) {
@@ -1857,10 +1904,11 @@ struct CtxDecoding<Extension<T>> {
         return std::nullopt;
       }
     }
+
     return T::Create(
-        // T::kExtensionType is a contract that guarantees that the extension
-        // is of type T.
-        // NOLINTNEXTLINE
+        api,
+        // T::kExtensionType is a contract that guarantees that the
+        // extension is of type T. NOLINTNEXTLINE.
         reinterpret_cast<const typename T::CExtension*>(args.extension));
   }
 };
@@ -2267,10 +2315,11 @@ class Handler : public Ffi {
     // Check that handler is called during correct execution stage.
     if (XLA_FFI_PREDICT_FALSE(call_frame->stage !=
                               static_cast<XLA_FFI_ExecutionStage>(stage))) {
-      return InvalidArgument(call_frame->api,
-                             StrCat("Wrong execution stage: expected `",
-                                    static_cast<XLA_FFI_ExecutionStage>(stage),
-                                    "` but got `", call_frame->stage, "`"));
+      return InvalidArgument(
+          call_frame->api,
+          internal::StrCat("Wrong execution stage: expected `",
+                           static_cast<XLA_FFI_ExecutionStage>(stage),
+                           "` but got `", call_frame->stage, "`"));
     }
 
     // Check that the number of passed arguments matches the signature. Each
@@ -2279,19 +2328,19 @@ class Handler : public Ffi {
       if (XLA_FFI_PREDICT_FALSE(call_frame->args.size < kNumArgs)) {
         return InvalidArgument(
             call_frame->api,
-            StrCat("[", call_frame->stage, "] ",
-                   "Wrong number of arguments: expected at least ",
-                   kNumArgs - kNumOptionalArgs - 1, " but got ",
-                   call_frame->args.size));
+            internal::StrCat("[", call_frame->stage, "] ",
+                             "Wrong number of arguments: expected at least ",
+                             kNumArgs - kNumOptionalArgs - 1, " but got ",
+                             call_frame->args.size));
       }
     } else if constexpr (internal::HasOptionalArgTag<Ts...>::value) {
       if (XLA_FFI_PREDICT_FALSE(call_frame->args.size < kNumArgs)) {
         return InvalidArgument(
             call_frame->api,
-            StrCat("[", call_frame->stage, "] ",
-                   "Wrong number of arguments: expected at least ",
-                   kNumArgs - kNumOptionalArgs, " but got ",
-                   call_frame->args.size));
+            internal::StrCat("[", call_frame->stage, "] ",
+                             "Wrong number of arguments: expected at least ",
+                             kNumArgs - kNumOptionalArgs, " but got ",
+                             call_frame->args.size));
       }
     } else {
       // It is safe to not check the number of arguments if we don't plan to
@@ -2301,9 +2350,9 @@ class Handler : public Ffi {
                                 kNumArgs > 0)) {
         return InvalidArgument(
             call_frame->api,
-            StrCat("[", call_frame->stage, "] ",
-                   "Wrong number of arguments: expected ", kNumArgs,
-                   " but got ", call_frame->args.size));
+            internal::StrCat("[", call_frame->stage, "] ",
+                             "Wrong number of arguments: expected ", kNumArgs,
+                             " but got ", call_frame->args.size));
       }
     }
 
@@ -2313,19 +2362,19 @@ class Handler : public Ffi {
       if (XLA_FFI_PREDICT_FALSE(call_frame->rets.size < kNumRets)) {
         return InvalidArgument(
             call_frame->api,
-            StrCat("[", call_frame->stage, "] ",
-                   "Wrong number of results: expected at least ",
-                   kNumRets - kNumOptionalRets - 1, " but got ",
-                   call_frame->rets.size));
+            internal::StrCat("[", call_frame->stage, "] ",
+                             "Wrong number of results: expected at least ",
+                             kNumRets - kNumOptionalRets - 1, " but got ",
+                             call_frame->rets.size));
       }
     } else if constexpr (internal::HasOptionalRetTag<Ts...>::value) {
       if (XLA_FFI_PREDICT_FALSE(call_frame->rets.size < kNumRets)) {
         return InvalidArgument(
             call_frame->api,
-            StrCat("[", call_frame->stage, "] ",
-                   "Wrong number of results: expected at least ",
-                   kNumRets - kNumOptionalRets, " but got ",
-                   call_frame->rets.size));
+            internal::StrCat("[", call_frame->stage, "] ",
+                             "Wrong number of results: expected at least ",
+                             kNumRets - kNumOptionalRets, " but got ",
+                             call_frame->rets.size));
       }
     } else {
       // It is safe to not check the number of results if we don't plan to
@@ -2335,9 +2384,9 @@ class Handler : public Ffi {
                                 kNumRets > 0)) {
         return InvalidArgument(
             call_frame->api,
-            StrCat("[", call_frame->stage, "] ",
-                   "Wrong number of results: expected ", kNumRets, " but got ",
-                   call_frame->rets.size));
+            internal::StrCat("[", call_frame->stage, "] ",
+                             "Wrong number of results: expected ", kNumRets,
+                             " but got ", call_frame->rets.size));
       }
     }
 

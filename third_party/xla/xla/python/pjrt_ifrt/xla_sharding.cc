@@ -28,17 +28,16 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/sharding_spec.h"
@@ -114,7 +113,7 @@ std::unique_ptr<HloSharding> HloSharding::Create(
 
 HloSharding::HloSharding(DeviceListRef devices, MemoryKind memory_kind,
                          xla::HloSharding xla_hlo_sharding)
-    : llvm::RTTIExtends<HloSharding, XlaCompatibleSharding>(
+    : RTTIExtends<HloSharding, XlaCompatibleSharding>(
           std::move(devices), memory_kind,
           // Computed in the constructor because it needs to access `devices` or
           // `devices_`; this access would be unsafe unless `device` is not
@@ -166,7 +165,7 @@ bool HloSharding::HasSamePartitioning(const Sharding& other) const {
   if (devices()->size() != other.devices()->size()) {
     return false;
   }
-  const auto* other_hlo_sharding = llvm::dyn_cast<HloSharding>(&other);
+  const auto* other_hlo_sharding = dyn_cast<HloSharding>(&other);
   if (!other_hlo_sharding) {
     return false;
   }
@@ -227,7 +226,7 @@ HloSharding::DisassembleEven(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
   // Fast path for even sharding.
-  ASSIGN_OR_RETURN(xla::ifrt::Shape shard_shape, GetShardShape(shape));
+  ABSL_ASSIGN_OR_RETURN(xla::ifrt::Shape shard_shape, GetShardShape(shape));
   std::vector<std::pair<Shape, ShardingRef>> result;
   DeviceList* device_list;
   if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards) {
@@ -250,7 +249,7 @@ HloSharding::DisassembleUneven(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
   // Slow path that uses `IndexDomains()` to handle uneven sharding.
-  ASSIGN_OR_RETURN(std::vector<IndexDomain> index_domains,
+  ABSL_ASSIGN_OR_RETURN(std::vector<IndexDomain> index_domains,
                    IndexDomains(shape, SingleDeviceShardSemantics::kAllShards));
   CHECK_EQ(index_domains.size(), devices_->size());
   std::vector<std::pair<Shape, ShardingRef>> result;
@@ -334,11 +333,11 @@ absl::StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(
                         xla_hlo_sharding_.ToString()));
   }
 
-  ASSIGN_OR_RETURN(Shape tile_shape, GetShardShape(shape));
+  ABSL_ASSIGN_OR_RETURN(Shape tile_shape, GetShardShape(shape));
 
   const absl::Span<const int64_t> shape_dims = shape.dims();
   std::vector<std::optional<IndexDomain>> all(num_devices);
-  RETURN_IF_ERROR(xla_hlo_sharding_.EachTile(
+  ABSL_RETURN_IF_ERROR(xla_hlo_sharding_.EachTile(
       shape_dims, [shape_dims, &all](int device_index,
                                      absl::Span<const int64_t> tile_offset,
                                      absl::Span<const int64_t> tile_limit) {

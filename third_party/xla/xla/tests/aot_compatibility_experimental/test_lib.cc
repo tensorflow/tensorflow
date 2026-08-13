@@ -57,7 +57,7 @@ absl::StatusOr<std::vector<int32_t>> GetExecutableVersions(
   std::string dir = GetExecutablesDirectory(target_name);
   std::vector<std::string> children;
   auto* env = tsl::Env::Default();
-  RETURN_IF_ERROR(env->GetChildren(dir, &children));
+  ABSL_RETURN_IF_ERROR(env->GetChildren(dir, &children));
 
   std::vector<int32_t> all_versions;
   all_versions.reserve(children.size());
@@ -67,7 +67,7 @@ absl::StatusOr<std::vector<int32_t>> GetExecutableVersions(
           absl::StrCat("Failed to parse version: ", child));
     }
     std::string child_path = tsl::io::JoinPath(dir, child);
-    RETURN_IF_ERROR(env->IsDirectory(child_path));
+    ABSL_RETURN_IF_ERROR(env->IsDirectory(child_path));
     absl::string_view version_str = absl::string_view(child).substr(1);
     int32_t version;
     if (!absl::SimpleAtoi(version_str, &version)) {
@@ -85,7 +85,7 @@ absl::StatusOr<std::vector<int32_t>> GetExecutableVersions(
 
 absl::StatusOr<std::vector<AotTestParam>>
 GetAotTestParamsForBackwardsCompatibility(absl::string_view target_name) {
-  ASSIGN_OR_RETURN(std::vector<int32_t> versions,
+  ABSL_ASSIGN_OR_RETURN(std::vector<int32_t> versions,
                    GetExecutableVersions(target_name));
 
   if (std::getenv("XLA_AOT_TEST_ALL_VERSIONS") == nullptr &&
@@ -108,7 +108,7 @@ GetAotTestParamsForBackwardsCompatibility(absl::string_view target_name) {
 
 absl::StatusOr<std::vector<AotTestParam>>
 GetAotTestParamsForGoldenFileVerification(absl::string_view target_name) {
-  ASSIGN_OR_RETURN(std::vector<int32_t> versions,
+  ABSL_ASSIGN_OR_RETURN(std::vector<int32_t> versions,
                    GetExecutableVersions(target_name));
   if (versions.empty()) {
     return absl::NotFoundError(

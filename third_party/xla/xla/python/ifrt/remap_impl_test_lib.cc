@@ -21,11 +21,10 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/client.h"
@@ -34,6 +33,7 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
@@ -68,9 +68,9 @@ absl::StatusOr<ArraySpec> CreateArraySpec(Client* client,
                                           absl::Span<const int> device_indices,
                                           Shape shard_shape = Shape({2, 3}),
                                           DType dtype = DType(DType::kS32)) {
-  ASSIGN_OR_RETURN(DeviceListRef device_list,
+  ABSL_ASSIGN_OR_RETURN(DeviceListRef device_list,
                    test_util::GetAddressableDevices(client, device_indices));
-  ASSIGN_OR_RETURN(Shape shape, GetShape(device_indices.size(), shard_shape));
+  ABSL_ASSIGN_OR_RETURN(Shape shape, GetShape(device_indices.size(), shard_shape));
   return ArraySpec{/*dtype=*/dtype,
                    /*shape=*/shape,
                    /*sharding=*/
@@ -106,7 +106,7 @@ absl::StatusOr<ArrayRef> CreateArray(Client* client,
   TF_RET_CHECK(base_values.size() == device_indices.size());
 
   DType dtype(CppTypeToDType<ValueType>::kDType);
-  ASSIGN_OR_RETURN(Shape shape, GetShape(base_values.size(), shard_shape));
+  ABSL_ASSIGN_OR_RETURN(Shape shape, GetShape(base_values.size(), shard_shape));
 
   std::vector<ArrayRef> shards;
   shards.reserve(base_values.size());
@@ -121,7 +121,7 @@ absl::StatusOr<ArrayRef> CreateArray(Client* client,
     devices.push_back(device);
     ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
-    ASSIGN_OR_RETURN(shards.emplace_back(),
+    ABSL_ASSIGN_OR_RETURN(shards.emplace_back(),
                      client->MakeArrayFromHostBuffer(
                          data.data(), dtype, shard_shape,
                          /*byte_strides=*/std::nullopt, std::move(sharding),
@@ -130,7 +130,7 @@ absl::StatusOr<ArrayRef> CreateArray(Client* client,
                          /*on_done_with_host_buffer=*/{}));
   }
 
-  ASSIGN_OR_RETURN(DeviceListRef device_list, client->MakeDeviceList(devices));
+  ABSL_ASSIGN_OR_RETURN(DeviceListRef device_list, client->MakeDeviceList(devices));
   ShardingRef assembled_sharding =
       ConcreteEvenSharding::Create(std::move(device_list), MemoryKind(),
                                    /*shape=*/shape,
@@ -155,7 +155,7 @@ void AssertArrayContent(Client* client, Array* array,
   EXPECT_EQ(array->dtype(), expected_dtype);
   EXPECT_EQ(array->shape(), expected_shape);
   const auto* actual_sharding =
-      llvm::dyn_cast<ConcreteEvenSharding>(array->shared_ptr_sharding().get());
+      dyn_cast<ConcreteEvenSharding>(array->shared_ptr_sharding().get());
   ASSERT_NE(actual_sharding, nullptr);
   EXPECT_EQ(actual_sharding->shape(), expected_shape);
   EXPECT_EQ(actual_sharding->shard_shape(), expected_shard_shape);
@@ -168,8 +168,8 @@ void AssertArrayContent(Client* client, Array* array,
   for (int i = 0; i < shards.size(); ++i) {
     EXPECT_EQ(shards[i]->dtype(), expected_dtype);
     EXPECT_EQ(shards[i]->shape(), expected_shard_shape);
-    const auto* actual_shard_sharding = llvm::dyn_cast<SingleDeviceSharding>(
-        shards[i]->shared_ptr_sharding().get());
+    const auto* actual_shard_sharding =
+        dyn_cast<SingleDeviceSharding>(shards[i]->shared_ptr_sharding().get());
     ASSERT_NE(actual_shard_sharding, nullptr);
     Device* expected_device =
         client->addressable_devices().at(device_indices[i]);

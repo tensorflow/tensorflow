@@ -16,8 +16,8 @@ suggesting, or modifying code within the
     *   **Always** use `absl::Status` or `absl::StatusOr<T>` for functions that can encounter recoverable errors.
     *   **Macros**:
         *   Use header `tsl/platform/status_macros.h`.
-        *   Use `RETURN_IF_ERROR` for error propagation.
-        *   Use `ASSIGN_OR_RETURN` for `StatusOr` assignments.
+        *   Use `ABSL_RETURN_IF_ERROR` for error propagation.
+        *   Use `ABSL_ASSIGN_OR_RETURN` for `StatusOr` assignments.
     *   **Safely access `StatusOr<T>` values**: Check `.ok()` before accessing.
 
 2.  **Assertions & Invariant Checks (`TF_RET_CHECK`)**:

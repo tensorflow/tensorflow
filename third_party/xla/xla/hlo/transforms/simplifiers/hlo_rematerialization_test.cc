@@ -2101,7 +2101,7 @@ class TestHloRematerialization : public HloRematerialization {
   absl::StatusOr<RematAlgorithmFunction> GetRematAlgorithmFunction(
       RematAlgorithm remat_algorithm) override {
     if (simulate_long_run_) {
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           RematAlgorithmFunction base_func,
           HloRematerialization::GetRematAlgorithmFunction(remat_algorithm));
       return

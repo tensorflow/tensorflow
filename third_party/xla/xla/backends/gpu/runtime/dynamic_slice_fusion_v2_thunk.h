@@ -95,6 +95,9 @@ class DynamicSliceFusionV2Thunk : public Command {
 
   BufferUses buffer_uses() const override;
 
+  // Embedded thunks are an implementation detail and use a private synthetic
+  // allocation namespace. They are intentionally not exposed through generic
+  // Thunk::Walk or ThunkSequence::TransformNested traversal.
   const ThunkSequence& thunks() const { return executor_.thunks(); }
 
   absl::Span<const DynamicSliceFusion::Parameter> parameters() const {
@@ -125,10 +128,6 @@ class DynamicSliceFusionV2Thunk : public Command {
       ThunkInfo thunk_info, const DynamicSliceFusionThunkProto& proto,
       absl::Span<const BufferAllocation> buffer_allocations,
       const DeserializerWithCustomAllocations& deserializer);
-
- protected:
-  absl::Status WalkNested(Walker callback) override;
-  absl::Status TransformNested(Transformer callback) override;
 
  private:
   std::vector<se::DeviceAddressBase> BuildDynamicSliceBuffers(

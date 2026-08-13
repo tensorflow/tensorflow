@@ -131,6 +131,7 @@ bool ModuleContainsLargeKeyValueSort(const HloModule& module);
 bool ModuleTestsFloatsForEquality(const HloModule& module);
 bool ComputationHasRng(const HloComputation* computation);
 bool LiteralContainsInfOrNan(const LiteralSlice& literal);
+bool ModuleContainsConstantInfOrNan(const HloModule& module);
 
 std::string GetFusionDebuggerDir();
 std::string GetFusionDebuggerFilePath(absl::string_view op_name);

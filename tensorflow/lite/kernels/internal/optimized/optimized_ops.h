@@ -7329,8 +7329,11 @@ inline void BroadcastMinimumDispatch(const ArithmeticParams& params,
 }
 
 template <typename T>
-void CumsumImpl(const T* input_data, const RuntimeShape& shape, int axis,
-                bool exclusive, bool reverse, T* output_data) {
+TFLITE_NO_SANITIZE_INTEGER_OVERFLOW void CumsumImpl(const T* input_data,
+                                                    const RuntimeShape& shape,
+                                                    int axis, bool exclusive,
+                                                    bool reverse,
+                                                    T* output_data) {
   Eigen::array<Eigen::DenseIndex, 3> dims = {1, 1, 1};
 
   for (int i = 0; i < axis; ++i) {
@@ -7361,8 +7364,10 @@ void CumsumImpl(const T* input_data, const RuntimeShape& shape, int axis,
 }
 
 template <typename T>
-void CumSum(const T* input_data, const RuntimeShape& shape, int axis,
-            bool exclusive, bool reverse, T* output_data) {
+TFLITE_NO_SANITIZE_INTEGER_OVERFLOW void CumSum(const T* input_data,
+                                                const RuntimeShape& shape,
+                                                int axis, bool exclusive,
+                                                bool reverse, T* output_data) {
   const int dim = shape.DimensionsCount();
   TFLITE_DCHECK_GE(dim, 1);
   CumsumImpl<T>(input_data, shape, axis, exclusive, reverse, output_data);
@@ -8032,7 +8037,7 @@ inline void Conv3DTranspose(
 
   const int spatial_dim_1_padding_before = params.padding_values.depth;
   const int spatial_dim_1_padding_after =
-      params.padding_values.height + params.padding_values.depth_offset;
+      params.padding_values.depth + params.padding_values.depth_offset;
   const int spatial_dim_2_padding_before = params.padding_values.height;
   const int spatial_dim_2_padding_after =
       params.padding_values.height + params.padding_values.height_offset;

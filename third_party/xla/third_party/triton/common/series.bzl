@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# =============================================================================
+
 """
 Provides a list of patches that are applied internally and in oss.
 
@@ -29,19 +44,17 @@ common_patch_list = [
     "//third_party/triton:common/assert_fail.patch",
     "//third_party/triton:common/silence_matchAndRewrite_failures.patch",
     "//third_party/triton:common/check_null_encoding.patch",
-    "//third_party/triton:common/tmemfix.patch",
-    "//third_party/triton:common/tmem_scale_padding_second_half.patch",
     "//third_party/triton:common/test_cache_determinism_fix.patch",
     "//third_party/triton:common/mig_limits_pytests.patch",
-    "//third_party/triton:common/llvm_cl930478990.patch",
-    "//third_party/triton:common/llvm_cl933453789.patch",
-    "//third_party/triton:common/amdbufferopsemitter.patch",
     "//third_party/triton:common/allocator.patch",
     "//third_party/triton:common/llvm_cl943393061.patch",
     "//third_party/triton:common/convert_layout_heuristic.patch",
     "//third_party/triton:common/llvm_cl947230825.patch",
     "//third_party/triton:common/llvm_cl948082775.patch",
-    "//third_party/triton:common/sm120_fp4_non_k_fallback.patch",
-    "//third_party/triton:common/blackwell_fp4_mma_padding.patch",
+    "//third_party/triton:common/tmemfix.patch",
+    "//third_party/triton:common/tmem_scale_padding_second_half.patch",
+    "//third_party/triton:common/llvm_cl959585509.patch",
+    "//third_party/triton:common/old_ptxas.patch",
+    "//third_party/triton:common/blackwell_nvfp4_mn_major_fallback.patch",
     # Add new patches just above this line
 ]

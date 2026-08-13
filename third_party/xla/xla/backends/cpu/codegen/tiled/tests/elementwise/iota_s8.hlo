@@ -1,0 +1,47 @@
+// RUN: fusion_to_xtile %s | fusion_compiler_opt --canonicalize -cse \
+// RUN:   | FileCheck %s
+// RUN: fusion_to_xtile %s | fusion_compiler_opt --xtile-cpu-xtile-to-vector \
+// RUN:   | FileCheck %s --check-prefix=CHECK-VECTOR
+// RUN: fusion_to_xtile %s | fusion_compiler_opt --xtile-cpu-xtile-to-vector \
+// RUN:   --xtile-cpu-vector-to-llvm | FileCheck %s --check-prefix=CHECK-LLVM
+// RUN: test_correctness %s
+
+// RUN: fusion_to_xtile %s | fusion_compiler_opt \
+// RUN:   --xtile-cpu-new-xtile-to-vector --xla-simplify-arith \
+// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
+// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering=true
+
+fusion {
+  ROOT iota = s8[128] iota(), iota_dimension=0
+}
+
+ENTRY main {
+  ROOT fusion = s8[128] fusion(), kind=kLoop, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["32"]}],
+          "num_ctas":"1"
+        }
+      }
+    }
+}
+
+// CHECK:      xtile.entry_func @wrapped_fusion(
+// CHECK-SAME:   %[[OUT:[^:]+]]: memref<128xi8>,
+// CHECK-SAME:   %[[PID:[^:]+]]: index)
+// CHECK:        %[[IOTA:.*]] = stablehlo.iota dim = 0 : tensor<32xi32>
+// CHECK:        %[[CONV:.*]] = stablehlo.convert %{{.*}} : (tensor<32xi32>) -> tensor<32xi8>
+// CHECK:        xtile.insert %{{.*}} into %[[OUT]][%{{.*}}] [32] [1] : tensor<32xi8> -> memref<128xi8>
+
+// CHECK-VECTOR-LABEL: func.func @wrapped_fusion_impl
+// CHECK-VECTOR:         %[[TRUNC:.*]] = arith.trunci %{{.*}} : vector<8xi32> to vector<8xi8>
+// CHECK-VECTOR:         vector.transfer_write %[[TRUNC]], %{{.*}}
+
+// CHECK-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
+// CHECK-LLVM:         %[[TRUNC:.*]] = llvm.trunc %{{.*}} : vector<8xi32> to vector<8xi8>
+// CHECK-LLVM:         llvm.store %[[TRUNC]], %{{.*}}
+
+// NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl
+// NEW-VECTOR:         %[[TRUNC:.*]] = arith.trunci %{{.*}} : vector<32xi32> to vector<32xi8>
+// NEW-VECTOR:         vector.transfer_write %[[TRUNC]], %{{.*}}

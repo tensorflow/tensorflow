@@ -31,15 +31,16 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/transforms/collectives/async_collective_annotator.h"
+#include "xla/backends/gpu/transforms/collectives/collective_domain.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/backends/gpu/transforms/pgle_accuracy_checker.h"
 #include "xla/backends/gpu/transforms/scheduling_instruction_annotator.h"
@@ -91,6 +92,24 @@ namespace gpu {
 using tensorflow::profiler::ProfiledInstructionsProto;
 
 namespace {
+
+absl::StatusOr<bool> UsesMultipleCollectiveDomains(const HloModule& module) {
+  std::optional<CollectiveCommunicationDomain> first_domain;
+  for (const HloComputation* computation : module.computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (!SupportsCollectiveCommunicationDomain(*instruction)) {
+        continue;
+      }
+      ABSL_ASSIGN_OR_RETURN(CollectiveCommunicationDomain domain,
+                       GetCollectiveCommunicationDomain(*instruction));
+      if (first_domain.has_value() && *first_domain != domain) {
+        return true;
+      }
+      first_domain = domain;
+    }
+  }
+  return false;
+}
 
 bool ShouldScheduleAsEarlyAsPossible(const HloInstruction& instr) {
   switch (instr.opcode()) {
@@ -592,6 +611,17 @@ LegalizeSchedulingAnnotations::Config SchedulingAnnotationsConfig() {
   return annotation_config;
 }
 
+bool IsHostShape(const Shape& shape) {
+  return shape.IsArray() && shape.has_layout() &&
+         shape.layout().memory_space() == Layout::kHostMemorySpace;
+}
+
+bool IsDUSWithHost(const HloInstruction* instr) {
+  return instr->opcode() == HloOpcode::kDynamicUpdateSlice &&
+         (IsHostShape(instr->operand(0)->shape()) ||
+          IsHostShape(instr->shape()));
+}
+
 // Delays MoveToHostAsyncStart as late as possible
 // to achieve better overlapping with computation.
 // The only pattern we are seeing is async start of a fusion with a dynamic
@@ -625,7 +655,7 @@ DelayMoveToHostAsyncStartCandidateCondition(
                                 .async_wrapped_instruction()
                                 ->fused_instructions();
         for (auto instr : fused_instrs) {
-          if (instr->opcode() == HloOpcode::kDynamicUpdateSlice) {
+          if (IsDUSWithHost(instr)) {
             is_send_host_dus = true;
             break;
           }
@@ -652,6 +682,9 @@ absl::Status RunLatencyHidingSchedulerPasses(
   tsl::profiler::TraceMe traceme("RunLatencyHidingSchedulerPasses");
   HloPassPipeline pipeline("latency-hiding-scheduler");
   const DebugOptions& options = module->config().debug_options();
+  ABSL_ASSIGN_OR_RETURN(bool uses_multiple_collective_domains,
+                   UsesMultipleCollectiveDomains(*module));
+
   pipeline.AddPass<LegalizeSchedulingAnnotations>(
       SchedulingAnnotationsConfig());
 
@@ -753,7 +786,8 @@ absl::Status RunLatencyHidingSchedulerPasses(
       /*early_target_scheduling_rule=*/gpu_early_scheduling_rule,
       /*post_processing_fn=*/nullptr,
       /*scheduling_instruction_crosses_overlap_limit=*/
-      options.xla_gpu_experimental_enable_collective_multi_streaming()
+      (options.xla_gpu_experimental_enable_collective_multi_streaming() ||
+       uses_multiple_collective_domains)
           ? GpuScheduleCrossesOverlapLimit
           : nullptr);
 
@@ -921,12 +955,12 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
   // Run the scheduler which minimizes peak memory usage.
   // We need to run it anyway because LHS relies on it.
   // See `xla::LatencyHidingScheduler::Run`.
-  RETURN_IF_ERROR(RunP2PSchedulePreparation(module));
+  ABSL_RETURN_IF_ERROR(RunP2PSchedulePreparation(module));
   int64_t peak_memory_bytes;
-  ASSIGN_OR_RETURN(HloSchedule schedule,
+  ABSL_ASSIGN_OR_RETURN(HloSchedule schedule,
                    ScheduleGpuModuleWithMemoryScheduler(
                        module, alias_info, pointer_size, &peak_memory_bytes));
-  RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
+  ABSL_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
 
   bool enable_latency_hiding_scheduler =
       IsLHSEnabled(*module, fingerprint, gpu_device_info);
@@ -934,7 +968,7 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
   // Run Latency Hiding Scheduler (LHS). It maximizes the compute-communication
   // overlap, potentially at the cost of memory usage.
   if (enable_latency_hiding_scheduler) {
-    RETURN_IF_ERROR(RunLatencyHidingSchedulerPasses(
+    ABSL_RETURN_IF_ERROR(RunLatencyHidingSchedulerPasses(
         module, pointer_size, fingerprint, memory_limit, gpu_device_info,
         mlir_context, alias_info));
   }

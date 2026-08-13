@@ -70,16 +70,9 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/base/macros.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "xla/tsl/platform/status.h"
-#include "tsl/platform/platform.h"
-
-// Include appropriate platform-dependent `TF_ASSIGN_OR_RETURN`.
-#if defined(PLATFORM_GOOGLE)
-#include "xla/tsl/platform/google/statusor.h"  // IWYU pragma: export
-#else
-#include "xla/tsl/platform/default/statusor.h"  // IWYU pragma: export
-#endif
 
 namespace tsl {
 
@@ -87,10 +80,17 @@ template <typename T>
 using StatusOr ABSL_DEPRECATE_AND_INLINE() = absl::StatusOr<T>;
 
 ABSL_DEPRECATED(
+    "TF_ASSIGN_OR_RETURN is deprecated. Use ABSL_ASSIGN_OR_RETURN instead")
+inline void TfAssignOrReturnDeprecationMarker() {}
+
+ABSL_DEPRECATED(
     "TF_ASSERT_OK_AND_ASSIGN is deprecated. Use ASSERT_OK_AND_ASSIGN instead")
 inline void TfAssertOkAndAssignDeprecationMarker() {}
 
 }  // namespace tsl
+
+#define TF_ASSIGN_OR_RETURN(lhs, rexpr) \
+  ABSL_ASSIGN_OR_RETURN(lhs, (::tsl::TfAssignOrReturnDeprecationMarker(), (rexpr)))
 
 #define TF_ASSERT_OK_AND_ASSIGN(lhs, rexpr)                             \
   TF_ASSERT_OK_AND_ASSIGN_IMPL(                                         \

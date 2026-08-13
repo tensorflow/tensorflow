@@ -24,11 +24,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -119,14 +119,14 @@ class DynamicPadderTest : public HloTestBase {
         std::move(op_supports_dynamism_handler);
     options.custom_call_handler = std::move(custom_call_handler);
     DynamicPadder padder(std::move(options));
-    ASSIGN_OR_RETURN(bool changed, RunHloPass(&padder, module_.get()));
+    ABSL_ASSIGN_OR_RETURN(bool changed, RunHloPass(&padder, module_.get()));
     if (!changed) return false;
     // Dynamic padder can add redundant tuple/get-tuple-element and copy
     // instructions.
     TupleSimplifier tuple_simplifier;
-    RETURN_IF_ERROR(RunHloPass(&tuple_simplifier, module_.get()).status());
+    ABSL_RETURN_IF_ERROR(RunHloPass(&tuple_simplifier, module_.get()).status());
     AlgebraicSimplifier alg_simplifier(AlgebraicSimplifierOptions{});
-    RETURN_IF_ERROR(RunHloPass(&alg_simplifier, module_.get()).status());
+    ABSL_RETURN_IF_ERROR(RunHloPass(&alg_simplifier, module_.get()).status());
     return true;
   }
 

@@ -20,8 +20,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/lite_aot/xla_aot_function.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/xla_data.pb.h"
@@ -48,7 +48,7 @@ std::string GetRootDir() {
 
 absl::StatusOr<std::unique_ptr<XlaAotFunction>> GetAddAotFunction() {
   CompilationResultProto proto;
-  RETURN_IF_ERROR(tsl::ReadBinaryProto(
+  ABSL_RETURN_IF_ERROR(tsl::ReadBinaryProto(
       tsl::Env::Default(), tsl::io::JoinPath(GetRootDir(), "add_aot"), &proto));
   return XlaAotFunction::Create(std::move(proto));
 }

@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# =============================================================================
+
 """Lists of HLO files for end-to-end CPU benchmarks."""
 
 load(
@@ -17,7 +32,6 @@ REGULAR_HLO_FILES = [
     "dlrm_keras_jax_f32_test_step.hlo",
     "dlrm_keras_jax_f32_train_step.hlo",
     "dynamic_slice_loop_1x2048x768_bf16.hlo",
-    "gemma3_1b_flax_sample_loop.hlo",
     "in_place_dynamic_update_slice_fusion.hlo",
     "jax.b380442861.hlo",
     "jax.issue.33666.linx.frag_0100.module_0005.hlo",
@@ -45,6 +59,7 @@ REGULAR_HLO_FILES = [
 SLOW_HLO_FILES = [
     # go/keep-sorted start
     "gemma3_1b_flax_call.hlo",
+    "gemma3_1b_flax_sample_loop.hlo",
     "jax.b380427514.dynamic.hlo",
     "jax.b380427514.regular.hlo",
     # go/keep-sorted end

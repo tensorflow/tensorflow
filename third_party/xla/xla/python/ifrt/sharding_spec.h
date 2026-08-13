@@ -27,13 +27,13 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
@@ -66,7 +66,7 @@ using ShardingSpecRef = absl_nonnull std::shared_ptr<const ShardingSpec>;
 // Depending on the type of a sharding spec, the partitioning of the sharding
 // spec is applicable only to a particular array shape, but that of some others
 // may be applicable to a broad set of shapes.
-class ShardingSpec : public llvm::RTTIExtends<ShardingSpec, Serializable> {
+class ShardingSpec : public RTTIExtends<ShardingSpec, Serializable> {
  public:
   // Returns the number of shards.
   int num_shards() const { return num_shards_; }
@@ -138,7 +138,7 @@ class ShardingSpec : public llvm::RTTIExtends<ShardingSpec, Serializable> {
   absl::StatusOr<ShardingSpecProto> ToProto(
       SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
     ShardingSpecProto proto;
-    RETURN_IF_ERROR(ToProto(proto, version));
+    ABSL_RETURN_IF_ERROR(ToProto(proto, version));
     return proto;
   }
 
@@ -186,7 +186,7 @@ std::ostream& operator<<(std::ostream& os, const ShardingSpec& sharding_spec);
 // special-case this sharding type rather than expressing it as a general
 // `ShardingSpec`.
 class SingleDeviceShardingSpec final
-    : public llvm::RTTIExtends<SingleDeviceShardingSpec, ShardingSpec> {
+    : public RTTIExtends<SingleDeviceShardingSpec, ShardingSpec> {
  public:
   // Creates a single-device sharding spec.
   static std::unique_ptr<SingleDeviceShardingSpec> Create();
@@ -224,7 +224,7 @@ class SingleDeviceShardingSpec final
 // Opaque sharding spec that does not define a fixed semantics for conversion
 // between a logical shape and per-device shapes, and device placements.
 class OpaqueShardingSpec
-    : public llvm::RTTIExtends<OpaqueShardingSpec, ShardingSpec> {
+    : public RTTIExtends<OpaqueShardingSpec, ShardingSpec> {
  public:
   // Creates an opaque sharding spec. `Disassemble()` will fail.
   static std::unique_ptr<OpaqueShardingSpec> Create(int num_shards);
@@ -265,7 +265,7 @@ class OpaqueShardingSpec
 // is advised to use `ConcreteEvenShardingSpec` if all shard shapes are
 // identical.
 class ConcreteShardingSpec
-    : public llvm::RTTIExtends<ConcreteShardingSpec, ShardingSpec> {
+    : public RTTIExtends<ConcreteShardingSpec, ShardingSpec> {
  public:
   // Creates a concrete sharding spec that may contain non-identical shard
   // shapes.
@@ -363,7 +363,7 @@ class ConcreteShardingSpec
 // between a logical shape and shard shapes, and device placements. It can
 // disassemble a certain shape into shard shapes that are identical.
 class ConcreteEvenShardingSpec
-    : public llvm::RTTIExtends<ConcreteEvenShardingSpec, ShardingSpec> {
+    : public RTTIExtends<ConcreteEvenShardingSpec, ShardingSpec> {
  public:
   // Creates a concrete even sharding spec.
   // TODO(hyeontaek): Remove the default value of `is_fully_replicated` once all
@@ -417,7 +417,7 @@ class ConcreteEvenShardingSpec
 
 // Sharding spec derived from an IR ShardingParam.
 class ShardingParamShardingSpec
-    : public llvm::RTTIExtends<ShardingParamShardingSpec, ShardingSpec> {
+    : public RTTIExtends<ShardingParamShardingSpec, ShardingSpec> {
  public:
   static std::unique_ptr<ShardingParamShardingSpec> Create(
       ShardingParam sharding_param);

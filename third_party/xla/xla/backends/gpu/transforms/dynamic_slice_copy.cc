@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"

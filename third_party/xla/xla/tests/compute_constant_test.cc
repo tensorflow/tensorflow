@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/client/client.h"
 #include "xla/client/client_library.h"
 #include "xla/hlo/builder/xla_builder.h"
@@ -75,8 +75,8 @@ class ComputeConstantTest : public ::testing::Test {
   absl::StatusOr<Literal> ComputeConstantLiteral(
       Client* client, const XlaOp operand, XlaBuilder* builder,
       Layout* output_layout = nullptr) {
-    ASSIGN_OR_RETURN(auto subgraph, builder->BuildConstantSubGraph(operand));
-    ASSIGN_OR_RETURN(auto computed,
+    ABSL_ASSIGN_OR_RETURN(auto subgraph, builder->BuildConstantSubGraph(operand));
+    ABSL_ASSIGN_OR_RETURN(auto computed,
                      client->ComputeConstant(subgraph, output_layout));
     return std::move(computed);
   }
@@ -85,7 +85,7 @@ class ComputeConstantTest : public ::testing::Test {
   absl::StatusOr<Scalar> ComputeConstantScalar(Client* client,
                                                const XlaOp operand,
                                                XlaBuilder* builder) {
-    ASSIGN_OR_RETURN(auto literal,
+    ABSL_ASSIGN_OR_RETURN(auto literal,
                      ComputeConstantLiteral(client, operand, builder, nullptr));
     return literal.Get<Scalar>({});
   }

@@ -25,9 +25,9 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/transforms/reduce_scatter_creator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -71,7 +71,7 @@ class AllReduceSplitterFilecheckTest : public AllReduceSplitterTest {
  public:
   absl::Status FileCheck(const std::string& hlo_text,
                          absl::string_view pattern) {
-    ASSIGN_OR_RETURN(bool matched, RunFileCheck(hlo_text, pattern));
+    ABSL_ASSIGN_OR_RETURN(bool matched, RunFileCheck(hlo_text, pattern));
     if (!matched) {
       return absl::InternalError("Filecheck failed.");
     }
@@ -251,6 +251,44 @@ ENTRY main {
       HloPredicateIsOp<HloOpcode::kReduce>(grouped_all_reduce->operand(0)));
   EXPECT_EQ(grouped_all_reduce->get_frontend_attribute("collective_group_key"),
             "g0");
+}
+
+TEST_F(
+    AllReduceSplitterTest,
+    MatchesBasicPatternIfDynamicSliceIsRootAndProfitabilityCheckIsIgnored) {  // NOLINT
+  absl::string_view hlo_string = R"(
+HloModule m
+
+sum {
+  a = bf16[] parameter(0)
+  b = bf16[] parameter(1)
+  ROOT _ = bf16[] add(a,b)
+}
+
+ENTRY main {
+  p = bf16[2,4096,4096] parameter(0)
+  zero = bf16[] constant(0)
+  reduce = bf16[4096] reduce(p, zero), dimensions={0,1}, to_apply=sum
+  all-reduce = bf16[4096] all-reduce(reduce), replica_groups={{0,1,2,3,4,5,6,7}}, to_apply=sum, use_global_device_ids=true, channel_id=2
+  table = s32[8]{0} constant({0,1,2,3,0,1,2,3})
+  pid = u32[] partition-id()
+  id = s32[1] dynamic-slice(table, pid), dynamic_slice_sizes={1}
+  reshape = s32[] reshape(id)
+  slice_size = s32[] constant(1024)
+  offset = s32[] multiply(reshape, slice_size)
+  ROOT _ = bf16[1024] dynamic-slice(all-reduce, offset), dynamic_slice_sizes={1024}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      PrepareModule(hlo_string, /*num_replicas=*/1, /*num_partitions=*/8));
+
+  EXPECT_THAT(
+      AllReduceSplitter(/*ignore_profitability_check=*/true).Run(module.get()),
+      absl_testing::IsOkAndHolds(true));
+
+  EXPECT_EQ(AllReduceCount(*module), 2);
 }
 
 TEST_F(
@@ -489,10 +527,140 @@ ENTRY main {
       std::unique_ptr<HloModule> module,
       PrepareModule(hlo_string, /*num_replicas=*/1, /*num_partitions=*/8));
 
+  // Within each 4-device subgroup the shard map is unique (no DP replication),
+  // so there is no follow-on AR and the rewrite is a no-op.
   EXPECT_THAT(AllReduceSplitter().Run(module.get()),
               absl_testing::IsOkAndHolds(false));
 
   EXPECT_EQ(AllReduceCount(*module), 2);
+}
+
+TEST_F(AllReduceSplitterFilecheckTest,
+       MatchesSubgroupAllReduceWithDynamicSliceShardMap) {  // NOLINT
+  // Mimics DP=2, FSDP=4, TP=2: two 8-device AR groups (TP planes), DS factor
+  // 4, with each FSDP shard replicated across the 2 DP ranks inside a plane.
+  absl::string_view hlo_string = R"(
+HloModule m
+
+sum {
+  a = bf16[] parameter(0)
+  b = bf16[] parameter(1)
+  ROOT _ = bf16[] add(a,b)
+}
+
+ENTRY main {
+  p = bf16[2,4096] parameter(0)
+  first.ar = bf16[2,4096] all-reduce(p), replica_groups={{0,1,2,3},{4,5,6,7},{8,9,10,11},{12,13,14,15}}, to_apply=sum, use_global_device_ids=true, channel_id=1
+  zero = bf16[] constant(0)
+  reduce = bf16[4096] reduce(first.ar, zero), dimensions={0}, to_apply=sum
+  all-reduce = bf16[4096] all-reduce(reduce), replica_groups={{0,1,2,3,4,5,6,7},{8,9,10,11,12,13,14,15}}, to_apply=sum, use_global_device_ids=true, channel_id=2
+  table = s32[16]{0} constant({0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3})
+  pid = u32[] partition-id()
+  id = s32[1] dynamic-slice(table, pid), dynamic_slice_sizes={1}
+  reshape = s32[] reshape(id)
+  slice_size = s32[] constant(1024)
+  offset = s32[] multiply(reshape, slice_size)
+  ROOT _ = bf16[1024] dynamic-slice(all-reduce, offset), dynamic_slice_sizes={1024}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      PrepareModule(hlo_string, /*num_replicas=*/1, /*num_partitions=*/16));
+
+  EXPECT_THAT(AllReduceSplitter().Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_OK(FileCheck(module->ToString(), R"(
+    CHECK:        %[[LOCAL_REDUCE:.*]] = bf16[4096]{0} reduce
+    CHECK:        %[[AR0:.*]] = bf16[4096]{0} all-reduce(%[[LOCAL_REDUCE]])
+    CHECK-SAME:   replica_groups={{[{]}}{0,1,2,3},{4,5,6,7},{8,9,10,11},{12,13,14,15}{{[}]}}
+    CHECK:        %[[DS:.*]] = bf16[1024]{0} dynamic-slice(%[[AR0]], %[[_:.*]])
+    CHECK-SAME:   dynamic_slice_sizes={1024}
+    CHECK-NEXT:   ROOT %[[AR1:.*]] = bf16[1024]{0} all-reduce(%[[DS]])
+    CHECK-SAME:   replica_groups={{[{]}}{0,4},{1,5},{2,6},{3,7},{8,12},{9,13},{10,14},{11,15}{{[}]}}
+    )"));
+}
+
+TEST_F(AllReduceSplitterTest,
+       MatchesSubgroupAllReduceWhenProfitabilityCheckIsIgnored) {  // NOLINT
+  absl::string_view hlo_string = R"(
+HloModule m
+
+sum {
+  a = bf16[] parameter(0)
+  b = bf16[] parameter(1)
+  ROOT _ = bf16[] add(a,b)
+}
+
+ENTRY main {
+  p = bf16[4096] parameter(0)
+  all-reduce = bf16[4096] all-reduce(p), replica_groups={{0,1,2,3,4,5,6,7},{8,9,10,11,12,13,14,15}}, to_apply=sum, use_global_device_ids=true, channel_id=2
+  table = s32[16]{0} constant({0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3})
+  pid = u32[] partition-id()
+  id = s32[1] dynamic-slice(table, pid), dynamic_slice_sizes={1}
+  reshape = s32[] reshape(id)
+  slice_size = s32[] constant(1024)
+  offset = s32[] multiply(reshape, slice_size)
+  ROOT _ = bf16[1024] dynamic-slice(all-reduce, offset), dynamic_slice_sizes={1024}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      PrepareModule(hlo_string, /*num_replicas=*/1, /*num_partitions=*/16));
+
+  EXPECT_THAT(AllReduceSplitter().Run(module.get()),
+              absl_testing::IsOkAndHolds(false));
+  EXPECT_EQ(AllReduceCount(*module), 1);
+
+  EXPECT_THAT(
+      AllReduceSplitter(/*ignore_profitability_check=*/true).Run(module.get()),
+      absl_testing::IsOkAndHolds(true));
+  EXPECT_EQ(AllReduceCount(*module), 2);
+}
+
+TEST_F(AllReduceSplitterFilecheckTest,
+       PipelineMatchesSubgroupPatternAndRewritesToReduceScatter) {  // NOLINT
+  absl::string_view hlo_string = R"(
+HloModule m
+
+sum {
+  a = bf16[] parameter(0)
+  b = bf16[] parameter(1)
+  ROOT _ = bf16[] add(a,b)
+}
+
+ENTRY main {
+  p = bf16[2,4096] parameter(0)
+  first.ar = bf16[2,4096] all-reduce(p), replica_groups={{0,1,2,3},{4,5,6,7},{8,9,10,11},{12,13,14,15}}, to_apply=sum, use_global_device_ids=true, channel_id=1
+  zero = bf16[] constant(0)
+  reduce = bf16[4096] reduce(first.ar, zero), dimensions={0}, to_apply=sum
+  all-reduce = bf16[4096] all-reduce(reduce), replica_groups={{0,1,2,3,4,5,6,7},{8,9,10,11,12,13,14,15}}, to_apply=sum, use_global_device_ids=true, channel_id=2
+  table = s32[16]{0} constant({0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3})
+  pid = u32[] partition-id()
+  id = s32[1] dynamic-slice(table, pid), dynamic_slice_sizes={1}
+  reshape = s32[] reshape(id)
+  slice_size = s32[] constant(1024)
+  offset = s32[] multiply(reshape, slice_size)
+  ROOT _ = bf16[1024] dynamic-slice(all-reduce, offset), dynamic_slice_sizes={1024}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      PrepareModule(hlo_string, /*num_replicas=*/1, /*num_partitions=*/16));
+
+  HloPassPipeline pipeline("all-reduce-splitter-rewrite");
+  pipeline.AddPass<AllReduceSplitter>();
+  pipeline.AddPass<ReduceScatterCreator>();
+  EXPECT_THAT(pipeline.Run(module.get()), absl_testing::IsOkAndHolds(true));
+  EXPECT_OK(FileCheck(module->ToString(), R"(
+    CHECK:        %[[LOCAL_REDUCE:.*]] = bf16[4096]{0} reduce
+    CHECK:        %[[REDUCE_SCATTER:.*]] = bf16[1024]{0} reduce-scatter(%[[LOCAL_REDUCE]])
+    CHECK-SAME:   replica_groups={{[{]}}{0,1,2,3},{4,5,6,7},{8,9,10,11},{12,13,14,15}{{[}]}}
+    CHECK-NEXT:   ROOT %[[AR:.*]] = bf16[1024]{0} all-reduce(%[[REDUCE_SCATTER]])
+    CHECK-SAME:   replica_groups={{[{]}}{0,4},{1,5},{2,6},{3,7},{8,12},{9,13},{10,14},{11,15}{{[}]}}
+    )"));
 }
 
 TEST_F(

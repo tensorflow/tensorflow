@@ -245,13 +245,16 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
       HloModule* module, absl::Span<HloInstruction* const> instruction_sequence,
       int64_t alignment = 1,
       BufferAssigner::CanUseAllocation can_use_allocation =
-          BufferAssigner::DefaultCanUseAllocation()) {
+          BufferAssigner::DefaultCanUseAllocation(),
+      buffer_assignment::BufferAssignmentAlgorithmProto::Value algorithm =
+          buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT) {
     HloSchedule schedule(module);
     schedule.set_sequence(module->entry_computation(), instruction_sequence);
     CHECK_OK(schedule.Update());
     BufferAssigner::Options opts;
     opts.allocate_buffers_for_constants = true;
     opts.can_use_allocation = std::move(can_use_allocation);
+    opts.buffer_assignment_algorithm = algorithm;
     return BufferAssigner::Run(
                module, std::make_unique<SequentialHloOrdering>(schedule),
                &BufferSizeBytes, &alias_info_,
@@ -1029,6 +1032,98 @@ ENTRY main {
               ::testing::Contains(&neg1_value));
   EXPECT_THAT(neg0_allocation.CrossColorBuffers(),
               ::testing::Not(::testing::Contains(&neg0_value)));
+}
+
+TEST_F(BufferAssignmentTest, CrossColorReuseDoesNotPartiallyOverlapOperand) {
+  // Operand/user buffer sharing is only safe when the user is assigned the
+  // operand's exact chunk. Cross-color best-fit placement cannot use that
+  // exception because it may choose a different offset.
+  const char* const hlo_text = R"(
+HloModule test
+
+add_s {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  p_d = f32[2048]{0} parameter(0)
+  p_a = f32[1024]{0} parameter(1)
+  p_k = f32[256]{0} parameter(2)
+  d = f32[2048]{0:S(1)} negate(p_d)
+  zero = f32[] constant(0)
+  d_sum = f32[] reduce(d, zero), dimensions={0}, to_apply=add_s
+  a = f32[1024]{0} negate(p_a)
+  b = f32[1024]{0} abs(a)
+  k = f32[256]{0:S(1)} negate(p_k)
+  k_sum = f32[] reduce(k, zero), dimensions={0}, to_apply=add_s
+  b_sum = f32[] reduce(b, zero), dimensions={0}, to_apply=add_s
+  partial = f32[] add(d_sum, k_sum)
+  ROOT out = f32[] add(partial, b_sum)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  HloInstruction* p_d = FindInstruction(module.get(), "p_d");
+  HloInstruction* p_a = FindInstruction(module.get(), "p_a");
+  HloInstruction* p_k = FindInstruction(module.get(), "p_k");
+  HloInstruction* d = FindInstruction(module.get(), "d");
+  HloInstruction* zero = FindInstruction(module.get(), "zero");
+  HloInstruction* d_sum = FindInstruction(module.get(), "d_sum");
+  HloInstruction* a = FindInstruction(module.get(), "a");
+  HloInstruction* b = FindInstruction(module.get(), "b");
+  HloInstruction* k = FindInstruction(module.get(), "k");
+  HloInstruction* k_sum = FindInstruction(module.get(), "k_sum");
+  HloInstruction* b_sum = FindInstruction(module.get(), "b_sum");
+  HloInstruction* partial = FindInstruction(module.get(), "partial");
+  HloInstruction* out = FindInstruction(module.get(), "out");
+
+  std::vector<HloInstruction*> sequence = {
+      p_d, p_a, p_k, d, zero, d_sum, a, b, k, k_sum, b_sum, partial, out};
+  auto assignment = RunBufferAssignmentWithInstructionSequence(
+      module.get(), sequence, /*alignment=*/1,
+      BufferAssigner::AllowCrossColorReuse(0, 1),
+      buffer_assignment::BufferAssignmentAlgorithmProto::TEMPORAL);
+
+  const HloValue& d_value =
+      assignment->dataflow_analysis().GetUniqueValueAt(d, {});
+  const HloValue& k_value =
+      assignment->dataflow_analysis().GetUniqueValueAt(k, {});
+  const HloValue& a_value =
+      assignment->dataflow_analysis().GetUniqueValueAt(a, {});
+  const HloValue& b_value =
+      assignment->dataflow_analysis().GetUniqueValueAt(b, {});
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice d_slice,
+                       assignment->GetUniqueSlice(d, {}));
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice k_slice,
+                       assignment->GetUniqueSlice(k, {}));
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice a_slice,
+                       assignment->GetUniqueSlice(a, {}));
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice b_slice,
+                       assignment->GetUniqueSlice(b, {}));
+
+  EXPECT_EQ(d_value.shape().layout().memory_space(), 1);
+  EXPECT_EQ(k_value.shape().layout().memory_space(), 1);
+  EXPECT_EQ(a_value.shape().layout().memory_space(), 0);
+  EXPECT_EQ(b_value.shape().layout().memory_space(), 0);
+  EXPECT_EQ(d_slice.index(), k_slice.index());
+  EXPECT_EQ(d_slice.index(), a_slice.index());
+  EXPECT_EQ(d_slice.index(), b_slice.index());
+  EXPECT_EQ(d_slice.allocation()->color(), 1);
+  EXPECT_EQ(d_slice.allocation()->size(), 8192);
+  EXPECT_EQ(d_slice.offset(), 0);
+  EXPECT_EQ(k_slice.offset(), 0);
+  EXPECT_EQ(a_slice.offset(), 0);
+  EXPECT_EQ(b_slice.offset(), 4096);
+  EXPECT_EQ(a_slice.size(), 4096);
+  EXPECT_EQ(b_slice.size(), 4096);
+  EXPECT_FALSE(a_slice.OverlapsWith(b_slice));
+  EXPECT_THAT(d_slice.allocation()->CrossColorBuffers(),
+              ::testing::Contains(&a_value));
+  EXPECT_THAT(d_slice.allocation()->CrossColorBuffers(),
+              ::testing::Contains(&b_value));
 }
 
 TEST_F(BufferAssignmentTest,

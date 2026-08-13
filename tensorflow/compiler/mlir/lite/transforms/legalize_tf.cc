@@ -22,9 +22,9 @@ limitations under the License.
 // constant folding support for the TensorFlow ops.
 
 #include <algorithm>
-#include <climits>
 #include <complex>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <utility>
 
@@ -110,6 +110,34 @@ Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter) {
   return rewriter.createOrFold<TF::CastOp>(
       loc, UnrankedTensorType::get(new_ele_type), val,
       rewriter.getBoolAttr(false));
+}
+
+Value CreateStridedSliceIndexToInt32(Value val, Location loc,
+                                     PatternRewriter& rewriter) {
+  DenseIntElementsAttr value_attr;
+  if (matchPattern(val, m_Constant(&value_attr))) {
+    auto new_type = mlir::cast<ShapedType>(value_attr.getType())
+                        .clone(rewriter.getIntegerType(32));
+    auto clamp_to_int32 = [](const APInt& value) {
+      return static_cast<int32_t>(std::clamp<int64_t>(
+          value.getSExtValue(), std::numeric_limits<int32_t>::min(),
+          std::numeric_limits<int32_t>::max()));
+    };
+    if (value_attr.isSplat()) {
+      return arith::ConstantOp::create(
+          rewriter, loc,
+          DenseIntElementsAttr::get(
+              new_type, {clamp_to_int32(value_attr.getSplatValue<APInt>())}));
+    }
+    SmallVector<int32_t, 4> values;
+    values.reserve(value_attr.getNumElements());
+    for (const APInt& value : value_attr.getValues<APInt>()) {
+      values.push_back(clamp_to_int32(value));
+    }
+    return arith::ConstantOp::create(
+        rewriter, loc, DenseIntElementsAttr::get(new_type, values));
+  }
+  return CreateCastToInt32(val, loc, rewriter);
 }
 
 // Utility function to-

@@ -513,6 +513,13 @@ void PerDeviceCollector::GetDeviceCapabilities(
           compute_capability_minor);
     }
   }
+
+  // Emit the agent name (the GCN architecture string), for example "gfx942"
+  if (agent.name != nullptr && agent.name[0] != '\0') {
+    device_plane->AddStatValue(*device_plane->GetOrCreateStatMetadata(
+                                   GetStatTypeStr(StatType::kGpuDeviceName)),
+                               agent.name);
+  }
 }
 
 void RocmTraceCollectorImpl::AddEvent(RocmTracerEvent&& event,

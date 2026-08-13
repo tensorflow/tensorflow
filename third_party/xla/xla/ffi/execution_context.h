@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/ffi/type_registry.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -65,7 +65,7 @@ class ExecutionContext {
 
   // Looks up opaque execution context data with given `type_id`.
   absl::StatusOr<void*> Lookup(TypeId type_id) const {
-    ASSIGN_OR_RETURN(auto user_data, LookupUserData(type_id));
+    ABSL_ASSIGN_OR_RETURN(auto user_data, LookupUserData(type_id));
     return user_data->get();
   }
 
@@ -103,7 +103,7 @@ class ExecutionContext {
 
 template <typename T>
 absl::StatusOr<T*> ExecutionContext::Lookup() const {
-  ASSIGN_OR_RETURN(auto user_data,
+  ABSL_ASSIGN_OR_RETURN(auto user_data,
                    LookupUserData(TypeRegistry::GetTypeId<T>()));
   return static_cast<T*>(user_data->get());
 }

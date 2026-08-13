@@ -69,7 +69,7 @@ limitations under the License.
 
 // API notes:
 // PjRt stands for "Pretty much Just another RunTime".
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 
 namespace xla {
@@ -1151,7 +1151,7 @@ class PjRtBuffer {
   // Since this method actually acquires locks and communicate with the device,
   // it does not have the const qualifier, similar to what ToLiteral does.
   virtual absl::StatusOr<std::vector<int64_t>> logical_dimensions() {
-    ASSIGN_OR_RETURN(Shape logical_shape, logical_on_device_shape());
+    ABSL_ASSIGN_OR_RETURN(Shape logical_shape, logical_on_device_shape());
     absl::Span<const int64_t> dims = logical_shape.dimensions();
     return std::vector<int64_t>(dims.begin(), dims.end());
   }

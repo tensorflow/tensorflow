@@ -93,7 +93,7 @@ ParseInstructionNameAsRelativeScopedTensorKey(
   if (parts.size() > 1) {
     scope_instructions.reserve(parts.size() - 1);
     for (int64_t i = 0; i < parts.size() - 1; ++i) {
-      ASSIGN_OR_RETURN(ScopeInstruction scope_instr,
+      ABSL_ASSIGN_OR_RETURN(ScopeInstruction scope_instr,
                        ParseScopeInstruction(parts[i]));
       scope_instructions.push_back(std::move(scope_instr));
     }
@@ -1054,7 +1054,7 @@ absl::Status OriginalTensorSummaryCalculator::ProcessCompletedShards(
         if (u != unshard) {
           return absl::InternalError("Multiple Unshard transformations found.");
         }
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             summaries,
             CombineShardSummaries(current_shard_summaries, *u, current_shape));
         current_shape = u->original_dimensions;
@@ -1108,7 +1108,7 @@ absl::Status OriginalTensorSummaryCalculator::ProcessShardSummary(
       original_tensor_infos.size();
 
   for (const auto& original_tensor_info : original_tensor_infos) {
-    ASSIGN_OR_RETURN(AbsoluteScopedTensorKey original_tensor_key,
+    ABSL_ASSIGN_OR_RETURN(AbsoluteScopedTensorKey original_tensor_key,
                      ConstructOriginalTensorKey(
                          optimized_tensor_position.scope_instructions,
                          original_tensor_info.original_scoped_tensor_key));
@@ -1124,7 +1124,7 @@ absl::Status OriginalTensorSummaryCalculator::ProcessShardSummary(
     if (expected_shards ==
         expected_shard_ids_by_corresponding_tensor_key_pair_.end()) {
       // No unshard, process immediately
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           ProcessCompletedShards(optimized_tensor_position, original_tensor_key,
                                  original_tensor_info, {tensor_shard_summary}));
       completed_tensor_keys_.emplace(original_tensor_key);
@@ -1151,7 +1151,7 @@ absl::Status OriginalTensorSummaryCalculator::ProcessShardSummary(
                                          expected_shard_id;
                                 });
         })) {
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           ProcessCompletedShards(optimized_tensor_position, original_tensor_key,
                                  original_tensor_info, received_tensor_shards));
       completed_tensor_keys_.emplace(original_tensor_key);
@@ -1161,7 +1161,7 @@ absl::Status OriginalTensorSummaryCalculator::ProcessShardSummary(
 
   bool all_completed = true;
   for (const auto& original_tensor_info : original_tensor_infos) {
-    ASSIGN_OR_RETURN(AbsoluteScopedTensorKey original_tensor_key,
+    ABSL_ASSIGN_OR_RETURN(AbsoluteScopedTensorKey original_tensor_key,
                      ConstructOriginalTensorKey(
                          optimized_tensor_position.scope_instructions,
                          original_tensor_info.original_scoped_tensor_key));

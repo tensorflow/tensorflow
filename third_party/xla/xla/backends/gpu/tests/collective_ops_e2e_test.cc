@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/backends/gpu/tests/collective_ops_e2e_test_base.h"
+#include "xla/backends/gpu/transforms/collectives/collective_domain.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -358,6 +359,80 @@ TEST_P(AsyncCollectiveOps, AsyncAllReduce) {
   const uint32_t expected = kNumReplicas * (kNumReplicas - 1) / 2;
   for (int i = 0; i < kNumReplicas; ++i) {
     LiteralTestUtil::ExpectR0Equal<uint32_t>(expected, results[i]);
+  }
+}
+
+TEST_F(CollectiveOpsTestE2E, MixedCollectiveDomains) {
+  const absl::string_view kModuleStr = R"(
+    HloModule test, replica_count=2
+
+    add {
+      x = u32[] parameter(0)
+      y = u32[] parameter(1)
+      ROOT sum = u32[] add(x, y)
+    }
+
+    ENTRY main {
+      id = u32[] replica-id()
+      id_vector = u32[1] reshape(id)
+      ar = u32[] all-reduce(id), replica_groups={{0,1}}, to_apply=add,
+        frontend_attributes={collective_communication_domain="scale_up_fabric"}
+      ag = u32[2] all-gather(id_vector), replica_groups={{0,1}}, dimensions={0}
+      cp = u32[] collective-permute(id), source_target_pairs={{0,1},{1,0}},
+        frontend_attributes={collective_communication_domain="scale_up_fabric"}
+      ROOT result = (u32[], u32[2], u32[]) tuple(ar, ag, cp)
+    }
+  )";
+  constexpr int64_t kNumReplicas = 2;
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
+
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_experimental_enable_collective_multi_streaming(
+      true);
+  HloModuleConfig config = GetModuleConfigForTest(kNumReplicas);
+  config.set_debug_options(debug_options);
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                       ExecuteReplicated(std::move(module)));
+
+  const HloInstruction* all_reduce =
+      FindInstruction(execution_result.optimized_module, HloOpcode::kAllReduce);
+  const HloInstruction* all_gather =
+      FindInstruction(execution_result.optimized_module, HloOpcode::kAllGather);
+  const HloInstruction* collective_permute = FindInstruction(
+      execution_result.optimized_module, HloOpcode::kCollectivePermute);
+  ASSERT_THAT(all_reduce, NotNull());
+  ASSERT_THAT(all_gather, NotNull());
+  ASSERT_THAT(collective_permute, NotNull());
+
+  ASSERT_OK_AND_ASSIGN(gpu::GpuBackendConfig all_reduce_config,
+                       all_reduce->backend_config<gpu::GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(gpu::GpuBackendConfig all_gather_config,
+                       all_gather->backend_config<gpu::GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(
+      gpu::GpuBackendConfig collective_permute_config,
+      collective_permute->backend_config<gpu::GpuBackendConfig>());
+  EXPECT_EQ(
+      all_reduce_config.collective_backend_config().communication_domain(),
+      gpu::kScaleUpFabricCollectiveDomain);
+  EXPECT_EQ(
+      all_gather_config.collective_backend_config().communication_domain(),
+      gpu::kUnspecifiedCollectiveDomain);
+  EXPECT_EQ(collective_permute_config.collective_backend_config()
+                .communication_domain(),
+            gpu::kScaleUpFabricCollectiveDomain);
+
+  ASSERT_EQ(execution_result.results.size(), kNumReplicas);
+  for (int i = 0; i < kNumReplicas; ++i) {
+    std::vector<Literal> elements =
+        execution_result.results[i].DecomposeTuple();
+    ASSERT_EQ(elements.size(), 3);
+    LiteralTestUtil::ExpectR0Equal<uint32_t>(1, elements[0]);
+    LiteralTestUtil::ExpectR1Equal<uint32_t>({0, 1}, elements[1]);
+    LiteralTestUtil::ExpectR0Equal<uint32_t>(1 - i, elements[2]);
   }
 }
 
@@ -1708,12 +1783,8 @@ TEST_F(CollectiveOpsTestE2E, WhileLoopReduceScatterCodeMotion) {
       FindInstruction(executable_module, HloOpcode::kWhile);
   ASSERT_THAT(while_loop, NotNull());
   const HloInstruction* reduce_scatter =
-      FindInstruction(executable_module, HloOpcode::kAsyncStart);
+      FindInstruction(executable_module, HloOpcode::kReduceScatter);
   ASSERT_THAT(reduce_scatter, NotNull());
-
-  const HloAsyncInstruction* rs_async =
-      Cast<HloAsyncInstruction>(reduce_scatter);
-  EXPECT_EQ(rs_async->async_wrapped_opcode(), HloOpcode::kReduceScatter);
 
   // Verify that the reduce-scatter has been hoisted out of the while loop and
   // into the entry computation.
@@ -2888,12 +2959,11 @@ ENTRY entry {
   ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
                        test_runner().HloModuleFromWrapped(executable.get()));
   const HloInstruction* all_gather =
-      FindCollectiveStart(hlo_module, HloOpcode::kAllGather);
+      FindInstruction(hlo_module, HloOpcode::kAllGather);
 
-  EXPECT_THAT(all_gather, NotNull());
-  EXPECT_EQ(all_gather->shape().tuple_shapes(0).tuple_shapes(0).element_type(),
-            BF16);
-  EXPECT_EQ(all_gather->shape().tuple_shapes(1).element_type(), BF16);
+  ASSERT_THAT(all_gather, NotNull());
+  EXPECT_EQ(all_gather->operand(0)->shape().element_type(), BF16);
+  EXPECT_EQ(all_gather->shape().element_type(), BF16);
 }
 
 TEST_F(CollectiveOpsTestE2E, NoErrorOnDuplicateChannelId) {
@@ -3242,7 +3312,7 @@ TEST_F(CollectiveOpsTestE2E, OptimizedSubByteAllGatherOnDim0OutputIsCorrect) {
 
   const HloModule* module = execution_result.optimized_module;
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Bitcast(m::AsyncDone().WithShape(S8, {4, 2}))));
+              GmockMatch(m::Bitcast(m::AllGather().WithShape(S8, {4, 2}))));
 
   const Literal expected_result =
       LiteralUtil::CreateR2<s4>({{s4(0), s4(1), s4(2), s4(3)},
@@ -3281,7 +3351,7 @@ TEST_F(CollectiveOpsTestE2E, OptimizedSubByteAllGatherOnDim1OutputIsCorrect) {
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       root,
-      GmockMatch(m::Fusion(m::Bitcast(m::AsyncDone().WithShape(S8, {2, 4})))));
+      GmockMatch(m::Fusion(m::Bitcast(m::AllGather().WithShape(S8, {2, 4})))));
   EXPECT_THAT(root->fused_expression_root(),
               GmockMatch(m::Transpose(m::Parameter())));
 
@@ -3319,8 +3389,8 @@ TEST_F(CollectiveOpsTestE2E, AllGatherOnChangedDimensionIsCorrect) {
                           test_runner().HloModuleFromWrapped(executable.get()));
   const HloInstruction* root = module->entry_computation()->root_instruction();
 
-  EXPECT_THAT(root, GmockMatch(m::Fusion(m::AsyncDone(
-                        m::AsyncStart(m::Bitcast(m::Constant()))))));
+  EXPECT_THAT(root,
+              GmockMatch(m::Fusion(m::AllGather(m::Bitcast(m::Constant())))));
   EXPECT_THAT(root->fused_expression_root(),
               GmockMatch(m::Transpose(m::Bitcast(m::Parameter()))));
 

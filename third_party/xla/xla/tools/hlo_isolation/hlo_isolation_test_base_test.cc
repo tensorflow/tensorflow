@@ -32,13 +32,13 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/array2d.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -751,7 +751,7 @@ ENTRY main.1 {
          absl::Span<const Literal> input_data,
          const RunModuleOptions& run_opts) -> absl::StatusOr<Literal> {
     const bool should_inject = (m->name() == "sine_abs_fusion");
-    ASSIGN_OR_RETURN(Literal output,
+    ABSL_ASSIGN_OR_RETURN(Literal output,
                      RunModule(std::move(m), runner, input_data, run_opts));
     if (should_inject) {
       // Flip an exponent bit in the first element to guarantee a mismatch.

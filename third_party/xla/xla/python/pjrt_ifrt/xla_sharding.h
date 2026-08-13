@@ -27,11 +27,11 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/sharding_spec.h"
@@ -41,9 +41,9 @@ namespace ifrt {
 
 // XLA-compatible sharding types.
 class XlaCompatibleSharding
-    : public llvm::RTTIExtends<XlaCompatibleSharding, Sharding> {
+    : public RTTIExtends<XlaCompatibleSharding, Sharding> {
  public:
-  using llvm::RTTIExtends<XlaCompatibleSharding, Sharding>::RTTIExtends;
+  using RTTIExtends<XlaCompatibleSharding, Sharding>::RTTIExtends;
 
   static char ID;  // NOLINT
 };
@@ -51,7 +51,7 @@ class XlaCompatibleSharding
 // XLA `HloSharding` wrapper. `HloSharding` is the main sharding representation
 // in XLA. This class holds an `HloSharding` to be used with IFRT.
 class HloSharding final
-    : public llvm::RTTIExtends<HloSharding, XlaCompatibleSharding> {
+    : public RTTIExtends<HloSharding, XlaCompatibleSharding> {
  public:
   // Creates an `HloSharding` wrapper. This bypasses consistency checks against
   // devices to optimize the common path of passing it to the user or to a

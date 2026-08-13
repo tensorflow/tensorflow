@@ -139,9 +139,9 @@ cc_library(
         "//xla/service:hlo_proto_util",
         "//xla/service/gpu:gpu_executable_proto_cc",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf",
@@ -170,16 +170,51 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "proto_field_size_utils",
+    srcs = ["proto_field_size_utils.cc"],
+    hdrs = ["proto_field_size_utils.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    visibility = [
+        "//visibility:private",
+    ],
+    deps = [
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_protobuf//:protobuf",
+        "@tsl//tsl/platform:protobuf",
+    ],
+)
+
+xla_cc_test(
+    name = "proto_field_size_utils_test",
+    srcs = ["proto_field_size_utils_test.cc"],
+    deps = [
+        ":proto_field_size_utils",
+        "//xla:xla_proto_cc",
+        "//xla/service:hlo_proto_cc",
+        "//xla/service/gpu:gpu_executable_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:cord",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "split_proto_write_record",
+    srcs = ["split_proto_write_record.cc"],
     hdrs = ["split_proto_write_record.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     visibility = [
         "//visibility:private",
     ],
     deps = [
+        ":proto_field_size_utils",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_protobuf//:protobuf_lite",
         "@riegeli//riegeli/messages:serialize_message",
         "@riegeli//riegeli/records:record_writer",
     ],
@@ -191,7 +226,10 @@ xla_cc_test(
     deps = [
         ":split_proto_write_record",
         "//xla/pjrt/proto:compile_options_proto_cc",
+        "//xla/service/gpu:gpu_executable_proto_cc",
         "//xla/tsl/util/proto:parse_text_proto",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
         "@riegeli//riegeli/bytes:string_writer",
         "@riegeli//riegeli/records:record_writer",

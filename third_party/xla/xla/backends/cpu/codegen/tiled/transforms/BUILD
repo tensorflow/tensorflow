@@ -84,6 +84,7 @@ cc_library(
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
         "//xla/codegen/emitters/ir:xla",
         "//xla/codegen/xtile/ir:xtile",
+        "//xla/codegen/xtile/ir/transforms:passes",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/analysis:symbolic_map",
         "@com_google_absl//absl/algorithm:container",

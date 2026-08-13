@@ -591,6 +591,12 @@ message DebugOptions {
   // Size threshold (in bytes) for the GPU all-reduce combiner.
   optional int64 xla_gpu_all_reduce_combine_threshold_bytes = 157;
 
+  // If true, AllReduceSplitter rewrites AR+DS patterns even when the
+  // profitability heuristic does not find an existing all-reduce that shares
+  // either of the post-split replica group topologies (so the combiner can
+  // fuse them). Default: false.
+  optional bool xla_gpu_all_reduce_splitter_ignore_profitability_check = 533;
+
   // Extra platform-specific options to improve analytical latency
   // estimator precision; comma-separated list of 'key=val' strings (=val may be
   // omitted); no whitespace around commas. Available options:
@@ -1119,8 +1125,6 @@ message DebugOptions {
 
   // Enable flush-to-zero semantics in the GPU backend.
   optional bool xla_gpu_ftz = 62;
-
-  optional bool xla_gpu_fused_attention_use_cudnn_rng = 235;
 
   // Maximum number of candidate configs considered during autotuning non-gemm
   // fusions.
@@ -1714,6 +1718,10 @@ message DebugOptions {
     // Sets readonly access to the cache for the per fusion autotuner. Same as
     // above, but doesn't dump anything.
     AUTOTUNE_CACHE_MODE_READ = 2;
+
+    // Write only mode. Does not read the cache, useful for generating new cache
+    // and avoiding lookup overheads.
+    AUTOTUNE_CACHE_MODE_WRITE_ONLY = 3;
   }
 
   optional bool xla_pjrt_allow_auto_layout_in_hlo = 344;
@@ -1733,15 +1741,6 @@ message DebugOptions {
   // We need this to enable triton scaled dot emitter for testing.
   optional bool xla_gpu_experimental_scaled_dot_with_triton = 410;
 
-  // If true, use third-party library raft::matrix::select_k to implement TopK.
-  // DEPRECATED: Use top_k(is_stable=False) instead. This flag will be no-op
-  // in the future.
-  optional bool xla_gpu_experimental_use_raft_select_k = 413
-      [deprecated = true];
-
-  // If true, use MultiGpuBarrierKernel in one-shot RaggedAllToAll thunk.
-  optional bool xla_gpu_experimental_ragged_all_to_all_use_barrier = 450;
-
   // If true, use MultiGpuBarrierWithNcclKernel in one-shot RaggedAllToAll
   // thunk.
   optional bool xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl =
@@ -1756,6 +1755,10 @@ message DebugOptions {
   // If true, use the device-initiated (NCCL GIN + LSA) kernel for
   // ragged-all-to-all. Requires NCCL >= 2.29.
   optional bool xla_gpu_experimental_ragged_all_to_all_use_device_kernel = 521;
+
+  // If true, allow fallback to NCCL (Send/Recv or Put/Signal) path for
+  // ragged-all-to-all.
+  optional bool xla_gpu_allow_ragged_all_to_all_nccl_send_recv_fallback = 532;
 
   // Minimum transfer size (in bytes) for a device-to-device copy to be
   // converted to an async copy-start/copy-done pair by GpuCopyAsyncWrapper.
@@ -1789,7 +1792,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 532
+  // Next id: 534
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -1875,7 +1878,10 @@ message DebugOptions {
   reserved "xla_gpu_experimental_enable_triton_softmax_priority_fusion";
   reserved "xla_gpu_experimental_enable_triton_tma";
   reserved "xla_gpu_experimental_ragged_all_to_all_zero_copy";
+  reserved "xla_gpu_experimental_ragged_all_to_all_use_barrier";
   reserved "xla_gpu_experimental_use_autotuner_pass";
+  reserved "xla_gpu_experimental_use_raft_select_k";
+  reserved "xla_gpu_fused_attention_use_cudnn_rng";
   reserved "xla_gpu_graph_eviction_timeout_seconds";
   reserved "xla_gpu_graph_level";
   reserved "xla_gpu_graph_num_runs_to_instantiate";
@@ -1919,10 +1925,11 @@ message DebugOptions {
       158, 160, 161, 162, 165, 167, 168, 169, 171, 172, 173, 176, 177, 178, 179,
       180, 183, 184, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202,
       204, 206, 207, 211, 214, 217, 218, 220, 221, 226, 227, 229, 230, 231, 233,
-      234, 238, 239, 241, 242, 243, 249, 263, 264, 266, 270, 271, 275, 276, 278,
-      279, 281, 282, 286, 298, 299, 300, 302, 303, 309, 313, 314, 319, 320, 325,
-      326, 332, 346, 352, 354, 355, 358, 361, 367, 369, 371, 376, 385, 388, 389,
-      394, 396, 398, 402, 420, 423, 430, 435, 443, 446, 458, 464, 477, 480;
+      234, 235, 238, 239, 241, 242, 243, 249, 263, 264, 266, 270, 271, 275, 276,
+      278, 279, 281, 282, 286, 298, 299, 300, 302, 303, 309, 313, 314, 319, 320,
+      325, 326, 332, 346, 352, 354, 355, 358, 361, 367, 369, 371, 376, 385, 388,
+      389, 394, 396, 398, 402, 413, 420, 423, 430, 435, 443, 446, 450, 458, 464,
+      477, 480;
 }
 
 // Contains flags which affects the GPU compilation result.

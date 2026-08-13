@@ -29,11 +29,11 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -109,7 +109,7 @@ GetDTypesAndShapes(absl::Span<const xla::Shape> mlir_module_xla_shapes) {
   std::vector<Shape> shapes;
   shapes.reserve(mlir_module_xla_shapes.size());
   for (const xla::Shape& xla_shape : mlir_module_xla_shapes) {
-    ASSIGN_OR_RETURN(DType dtype, ToDType(xla_shape.element_type()));
+    ABSL_ASSIGN_OR_RETURN(DType dtype, ToDType(xla_shape.element_type()));
     dtypes.push_back(dtype);
     if (dtype.kind() == DType::kToken) {
       // Token uses a scalar shape by convention.
@@ -156,7 +156,7 @@ absl::StatusOr<std::optional<std::vector<xla::HloSharding>>> GetHloShardings(
       // Token uses a fully replicated sharding by convention.
       hlo_shardings.push_back(xla::HloSharding::Replicate());
     } else {
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           auto hlo_sharding,
           xla::HloSharding::FromProto((*pjrt_executable_op_shardings)[i]));
       hlo_shardings.push_back(hlo_sharding);
@@ -178,7 +178,7 @@ absl::StatusOr<std::vector<MemoryKind>> GetMemoryKinds(
     memory_kinds.resize(/*size=*/dtypes.size(), /*value=*/kDefaultMemoryKind);
     return memory_kinds;
   }
-  RETURN_IF_ERROR(pjrt_executable_memory_kinds.status());
+  ABSL_RETURN_IF_ERROR(pjrt_executable_memory_kinds.status());
   if (pjrt_executable_memory_kinds->empty()) {
     return FailedPrecondition("No module found");
   }
@@ -349,7 +349,7 @@ GatherHostSendAndRecvCallbacks(
   // guarantee the liveliness of host callbacks during executions.
   for (auto& loaded_host_callback : loaded_host_callbacks) {
     auto* host_send_and_recv_callback =
-        llvm::dyn_cast<PjRtHostSendAndRecvLoadedHostCallback>(
+        dyn_cast<PjRtHostSendAndRecvLoadedHostCallback>(
             loaded_host_callback.get());
     if (host_send_and_recv_callback != nullptr) {
       host_send_and_recv_callbacks.push_back(host_send_and_recv_callback);
@@ -366,8 +366,8 @@ std::vector<PjRtHloOutputLoadedHostCallback*> GatherHloOutputCallbacks(
   std::vector<PjRtHloOutputLoadedHostCallback*> hlo_output_callbacks;
   hlo_output_callbacks.reserve(loaded_host_callbacks.size());
   for (auto& loaded_host_callback : loaded_host_callbacks) {
-    auto* hlo_output_callback = llvm::dyn_cast<PjRtHloOutputLoadedHostCallback>(
-        loaded_host_callback.get());
+    auto* hlo_output_callback =
+        dyn_cast<PjRtHloOutputLoadedHostCallback>(loaded_host_callback.get());
     if (hlo_output_callback != nullptr) {
       hlo_output_callbacks.push_back(hlo_output_callback);
     }
@@ -390,32 +390,32 @@ absl::StatusOr<ExecutableRef> PjRtExecutable::Create(
 
   // We have to do process the MLIR before the compile call, since the latter
   // will use the MLIR as scratch space, or possibly even deallocate it.
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<int> donatable_input_indices,
       GetDonatableInputIndicesFromMlirModule(module.mlir_module()));
-  ASSIGN_OR_RETURN(const std::vector<xla::Shape> mlir_module_output_xla_shapes,
+  ABSL_ASSIGN_OR_RETURN(const std::vector<xla::Shape> mlir_module_output_xla_shapes,
                    ResultShapesOfModule(module.mlir_module()));
-  ASSIGN_OR_RETURN(const std::vector<xla::LayoutMode> output_layout_modes,
+  ABSL_ASSIGN_OR_RETURN(const std::vector<xla::LayoutMode> output_layout_modes,
                    GetOutputLayoutModes(module.mlir_module()));
 
-  ASSIGN_OR_RETURN(auto pjrt_executable,
+  ABSL_ASSIGN_OR_RETURN(auto pjrt_executable,
                    PjRtCompile(std::move(compile_options), std::move(module),
                                topology, compile_client));
 
-  ASSIGN_OR_RETURN(auto output_dtypes_and_shapes,
+  ABSL_ASSIGN_OR_RETURN(auto output_dtypes_and_shapes,
                    GetDTypesAndShapes(mlir_module_output_xla_shapes));
   std::vector<DType> output_dtypes = std::move(output_dtypes_and_shapes.first);
   std::vector<Shape> output_shapes = std::move(output_dtypes_and_shapes.second);
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::optional<std::vector<xla::HloSharding>> output_hlo_shardings,
       GetHloShardings(pjrt_executable->GetOutputShardings(), output_dtypes,
                       /*is_output=*/true));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<MemoryKind> output_memory_kinds,
       GetMemoryKinds(pjrt_executable->GetOutputMemoryKinds(), output_dtypes));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
           output_layouts,
       GetLayouts(pjrt_executable->GetOutputLayouts(), output_layout_modes));
@@ -460,7 +460,7 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
 
   // PjRt-IFRT currently does not track XLA executable versions.
   auto xla_executable_version = std::make_unique<XlaExecutableVersion>();
-  ASSIGN_OR_RETURN(SerializedXlaExecutableVersion serialized_executable_version,
+  ABSL_ASSIGN_OR_RETURN(SerializedXlaExecutableVersion serialized_executable_version,
                    xla_executable_version->ToProto(serdes_version));
   *metadata.mutable_executable_version() = serialized_executable_version;
 
@@ -473,7 +473,7 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
     // Layout - only populate if it's not the default layout
     if (output_layouts.has_value() && (*output_layouts)[i] != nullptr) {
       auto pjrt_layout = PjRtLayout::Create((*output_layouts)[i]);
-      ASSIGN_OR_RETURN(*output_spec.mutable_layout(),
+      ABSL_ASSIGN_OR_RETURN(*output_spec.mutable_layout(),
                        pjrt_layout->ToProto(serdes_version));
     }
 
@@ -498,7 +498,7 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
           output_dtypes[i].kind() == DType::kToken) {
         shard_shape = output_shapes[i];
       } else {
-        ASSIGN_OR_RETURN(xla::PrimitiveType element_type,
+        ABSL_ASSIGN_OR_RETURN(xla::PrimitiveType element_type,
                          ToPrimitiveType(output_dtypes[i]));
         xla::Shape xla_shape(element_type, output_shapes[i].dims());
         xla::Shape xla_shard_shape = xla::hlo_sharding_util::TileShape(
@@ -562,7 +562,7 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
     // Layout (nullptr means default layout)
     if (parameter_layouts[i] != nullptr) {
       auto pjrt_layout = PjRtLayout::Create(parameter_layouts[i]);
-      ASSIGN_OR_RETURN(*parameter_spec.mutable_layout(),
+      ABSL_ASSIGN_OR_RETURN(*parameter_spec.mutable_layout(),
                        pjrt_layout->ToProto(serdes_version));
     }
 
@@ -594,7 +594,7 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
   }
 
   // Get and write the serialized PjRt executable to string.
-  ASSIGN_OR_RETURN(std::string serialized_pjrt_executable,
+  ABSL_ASSIGN_OR_RETURN(std::string serialized_pjrt_executable,
                    pjrt_executable->SerializeExecutable());
   serialized_executable.append(std::move(serialized_pjrt_executable));
 
@@ -620,7 +620,7 @@ PjRtExecutable::CommonMetadata::Deserialize(
       input_stream.ByteCount(),
       serialized_executable.size() - input_stream.ByteCount());
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<xla::ifrt::XlaExecutableVersion> executable_version,
       xla::ifrt::XlaExecutableVersion::FromProto(
           metadata.executable_version()));
@@ -632,7 +632,7 @@ PjRtExecutable::CommonMetadata::Deserialize(
     // TODO(hyeontaek): Remove this check and always forward the error once
     // PjRt-IFRT tracks XLA executable versions.
     if (!absl::IsUnimplemented(executable_version_compatible)) {
-      RETURN_IF_ERROR(executable_version_compatible);
+      ABSL_RETURN_IF_ERROR(executable_version_compatible);
     }
   } else {
     // Accept unspecified `devices` for now.
@@ -661,16 +661,16 @@ PjRtExecutable::CommonMetadata::Deserialize(
   }
 
   for (const auto& output_spec : metadata.output_specs()) {
-    ASSIGN_OR_RETURN(auto dtype, DType::FromProto(output_spec.dtype()));
+    ABSL_ASSIGN_OR_RETURN(auto dtype, DType::FromProto(output_spec.dtype()));
     output_dtypes.push_back(dtype);
-    ASSIGN_OR_RETURN(auto shape, Shape::FromProto(output_spec.shape()));
+    ABSL_ASSIGN_OR_RETURN(auto shape, Shape::FromProto(output_spec.shape()));
     output_shapes.push_back(std::move(shape));
     if (output_spec.has_op_sharding()) {
       if (!output_hlo_shardings.has_value()) {
         output_hlo_shardings.emplace();
         output_hlo_shardings->reserve(metadata.output_specs_size());
       }
-      ASSIGN_OR_RETURN(auto hlo_sharding,
+      ABSL_ASSIGN_OR_RETURN(auto hlo_sharding,
                        xla::HloSharding::FromProto(output_spec.op_sharding()));
       output_hlo_shardings->push_back(std::move(hlo_sharding));
     } else {
@@ -688,9 +688,8 @@ PjRtExecutable::CommonMetadata::Deserialize(
       output_memory_kinds.push_back(MemoryKind(output_spec.memory_kind()));
     }
     if (output_spec.has_layout()) {
-      ASSIGN_OR_RETURN(auto layout, Layout::FromProto(output_spec.layout()));
-      output_layouts->push_back(
-          llvm::cast<PjRtLayout>(layout.get())->pjrt_layout());
+      ABSL_ASSIGN_OR_RETURN(auto layout, Layout::FromProto(output_spec.layout()));
+      output_layouts->push_back(cast<PjRtLayout>(layout.get())->pjrt_layout());
     } else {
       output_layouts->push_back(nullptr);
     }
@@ -751,35 +750,35 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
   const bool is_portable = compile_options.compile_portable_executable;
   // We have to do process the MLIR before the compile call, since the latter
   // will use the MLIR as scratch space, or possibly even deallocate it.
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<int> donatable_input_indices,
       GetDonatableInputIndicesFromMlirModule(module.mlir_module()));
-  ASSIGN_OR_RETURN(const std::vector<xla::Shape> mlir_module_output_xla_shapes,
+  ABSL_ASSIGN_OR_RETURN(const std::vector<xla::Shape> mlir_module_output_xla_shapes,
                    ResultShapesOfModule(module.mlir_module()));
-  ASSIGN_OR_RETURN(const std::vector<xla::LayoutMode> output_layout_modes,
+  ABSL_ASSIGN_OR_RETURN(const std::vector<xla::LayoutMode> output_layout_modes,
                    GetOutputLayoutModes(module.mlir_module()));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
       client->pjrt_client()->CompileAndLoad(std::move(module),
                                             std::move(compile_options)));
 
-  ASSIGN_OR_RETURN(auto output_dtypes_and_shapes,
+  ABSL_ASSIGN_OR_RETURN(auto output_dtypes_and_shapes,
                    GetDTypesAndShapes(mlir_module_output_xla_shapes));
   std::vector<DType> output_dtypes = std::move(output_dtypes_and_shapes.first);
   std::vector<Shape> output_shapes = std::move(output_dtypes_and_shapes.second);
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::optional<std::vector<xla::HloSharding>> output_hlo_shardings,
       GetHloShardings(pjrt_loaded_executable->GetOutputShardings(),
                       output_dtypes, /*is_output=*/true));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<MemoryKind> output_memory_kinds,
       GetMemoryKinds(pjrt_loaded_executable->GetOutputMemoryKinds(),
                      output_dtypes));
   std::vector<ShardingRef> output_shardings =
       MakeShardings(output_shapes, output_hlo_shardings, output_memory_kinds,
                     executable_devices);
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
           output_layouts,
       GetLayouts(pjrt_loaded_executable->GetOutputLayouts(),
@@ -866,8 +865,7 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
     argument_handles[i].reserve(args.size());
   }
   for (int i = 0; i < args.size(); ++i) {
-    auto* pjrt_array =
-        llvm::dyn_cast_or_null<PjRtCompatibleArray>(args[i].get());
+    auto* pjrt_array = dyn_cast_or_null<PjRtCompatibleArray>(args[i].get());
     if (!pjrt_array) {
       return InvalidArgument(
           "Only PjRtCompatibleArray is supported, but argument %d is %s", i,
@@ -924,7 +922,7 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
       platform_id == RocmId() || platform_id == OneapiId()) {
     for (const auto& loaded_host_callback : *all_loaded_host_callbacks_) {
       auto* ffi_loaded_host_callback =
-          llvm::dyn_cast<PjRtFfiLoadedHostCallback>(loaded_host_callback.get());
+          dyn_cast<PjRtFfiLoadedHostCallback>(loaded_host_callback.get());
       if (ffi_loaded_host_callback != nullptr) {
         void* callback = ffi_loaded_host_callback->callable();
         callbacks->push_back(callback);
@@ -987,7 +985,7 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
   if (portable_execution) {
     std::optional<tsl::Future<>> returned_pjrt_future;
     TF_RET_CHECK(portable_execution_device->IsAddressable());
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<PjRtBuffer>> single_device_pjrt_results,
         pjrt_loaded_executable_->ExecutePortable(
             argument_handles.front(), portable_execution_device->pjrt_device(),
@@ -1000,7 +998,7 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
     std::optional<std::vector<tsl::Future<>>> returned_pjrt_futures;
     returned_pjrt_futures.emplace();
 
-    ASSIGN_OR_RETURN(pjrt_outputs,
+    ABSL_ASSIGN_OR_RETURN(pjrt_outputs,
                      pjrt_loaded_executable_->Execute(argument_handles, opts,
                                                       returned_pjrt_futures));
 
@@ -1062,7 +1060,7 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
     if (absl::IsUnimplemented(maybe_layouts.status())) {
       layouts.resize(/*size=*/num_outputs, /*value=*/nullptr);
     } else {
-      RETURN_IF_ERROR(maybe_layouts.status());
+      ABSL_RETURN_IF_ERROR(maybe_layouts.status());
       layouts = *std::move(maybe_layouts);
     }
   }

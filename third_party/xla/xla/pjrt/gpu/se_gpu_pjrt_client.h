@@ -24,10 +24,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/allocator_memory_registration.h"
@@ -61,8 +63,10 @@ limitations under the License.
 #include "xla/service/gpu_topology.h"
 #include "xla/service/gpu_topology.pb.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/framework/allocator.h"
@@ -86,18 +90,11 @@ class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
                           int process_index_in_partition, int partition_index,
                           int numa_node, std::string fabric_uuid);
 
-  absl::string_view device_vendor() const;
-
   absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats() const override;
-
-  absl::Span<int const> coords() const;
 
   absl::StatusOr<PjRtMemorySpace*> default_memory_space() const override;
 
   absl::Status ClearMemoryStats() override;
-
- private:
-  std::string device_vendor_;
 };
 
 class StreamExecutorGpuHbmMemorySpace : public PjRtStreamExecutorMemorySpace {
@@ -116,13 +113,14 @@ class StreamExecutorGpuRawClient : public PjRtStreamExecutorRawClient {
       std::unique_ptr<HostMemoryAllocator> host_memory_allocator,
       bool should_stage_host_to_device_transfers,
       std::unique_ptr<AsyncWorkRunner> async_work_runner,
-      se::StreamExecutor* executor = nullptr,
+      se::StreamExecutor* executor = nullptr, bool cache_fabric_handles = false,
       bool abort_collectives_on_failure = false,
       std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options = nullptr)
       : PjRtStreamExecutorRawClient(
             std::move(allocator), client, std::move(host_memory_allocator),
             should_stage_host_to_device_transfers, std::move(async_work_runner),
             executor, std::move(gpu_run_options)),
+        cache_fabric_handles_(cache_fabric_handles),
         abort_collectives_on_failure_(abort_collectives_on_failure) {}
 
   void ScheduleRemoteSend(PjRtMemorySpace* memory_space,
@@ -142,6 +140,9 @@ class StreamExecutorGpuRawClient : public PjRtStreamExecutorRawClient {
       std::vector<CommonPjRtClient::CrossHostTransferSpec> transfer_specs)
       override;
 
+  void UpdateCompileOptionsTopology(const PjRtTopologyDescription& topology,
+                                    CompileOptions* options) const override;
+
  private:
   void ScheduleTransfersOnLocalDevice(
       LocalDeviceState* local_device_state, GlobalDeviceId device_id,
@@ -149,14 +150,41 @@ class StreamExecutorGpuRawClient : public PjRtStreamExecutorRawClient {
       PjRtDeviceEventRefVector transfer_dependencies,
       std::vector<CommonPjRtClient::CrossHostTransferSpec> transfer_specs);
 
+  // Exports a fabric handle for a given buffer. If `cache_fabric_handles_` is
+  // true, the fabric handle will be cached and reused for subsequent calls.
+  absl::StatusOr<std::string> GetOrExportFabricHandle(
+      se::StreamExecutor* executor, void* ptr);
+
+  // Imports a fabric handle and returns the address. If `cache_fabric_handles_`
+  // is true, the fabric handle will be cached and reused for subsequent calls.
+  absl::StatusOr<std::shared_ptr<se::DeviceAddressBase>>
+  GetOrImportFabricHandle(se::StreamExecutor* executor,
+                          absl::string_view fabric_handle);
+
+  // Whether to cache fabric handles. Exporting and importing fabric handles can
+  // be expensive, but it makes sense to cache them only if there are only a
+  // handful of such handles, e.g., preallocation is enabled.
+  const bool cache_fabric_handles_ = false;
+
   const bool abort_collectives_on_failure_ = false;
+
+  absl::Mutex mu_;
+
+  // Mapping from (executor, buffer_ptr) to fabric handle.
+  absl::flat_hash_map<std::pair<se::StreamExecutor*, void*>, std::string>
+      exported_fabric_handles_ ABSL_GUARDED_BY(mu_);
+
+  // Mapping from (executor, fabric_handle) to buffer.
+  absl::flat_hash_map<std::pair<se::StreamExecutor*, std::string>,
+                      std::shared_ptr<se::DeviceAddressBase>>
+      imported_fabric_handles_ ABSL_GUARDED_BY(mu_);
 };
 
 // A custom PjRtClient that overrides the device assignment method.
 class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
  public:
   StreamExecutorGpuClient(
-      std::string platform_name, LocalClient* client,
+      std::string platform_name,
       std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
       int process_index, std::unique_ptr<StreamExecutorGpuRawClient> raw_client,
       std::shared_ptr<KeyValueStoreInterface> kv_store,
@@ -165,9 +193,6 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       std::optional<int> num_processes,
       std::shared_ptr<gpu::AllocatorMemoryRegistration> memory_registration =
           nullptr);
-
-  absl::StatusOr<xla::DeviceAssignment> GetDefaultDeviceAssignment(
-      int num_replicas, int num_partitions) const override;
 
   absl::string_view platform_version() const override;
 
@@ -178,16 +203,13 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
 
   void RecordMemoryStats();
 
-  absl::Status UpdateCompileOptionsInternal(
-      CompileOptions* options, ExecutableExtras* returned_extras,
-      bool lookup_addressable_devices) override;
-
   absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>> RuntimeAbiVersion()
       const override;
 
  private:
   const bool abort_collectives_on_failure_ = false;
   std::shared_ptr<gpu::AllocatorMemoryRegistration> memory_registration_;
+  std::string platform_version_;
 };
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(

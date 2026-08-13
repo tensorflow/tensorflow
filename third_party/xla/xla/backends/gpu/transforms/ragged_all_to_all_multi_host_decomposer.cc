@@ -22,15 +22,16 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -43,8 +44,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal_util.h"
 #include "xla/shape.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -67,7 +66,6 @@ absl::InlinedVector<int64_t, 8> FindPermutation(
     int64_t host_i = replica_group.replica_ids(i) / num_devices_per_host;
     int64_t host_j = replica_group.replica_ids(j) / num_devices_per_host;
     return host_i < host_j;
-    return replica_group.replica_ids(i) < replica_group.replica_ids(j);
   });
   return permutation;
 }
@@ -266,8 +264,8 @@ absl::InlinedVector<HloInstruction*, 4> GetIntraHostMetadata(
 //   - The output is larger than the input, because we need to have a static
 //   allocation that will accommodate all the possible rows.
 // In case of dispatch phase, doing `all-gather` on inputs first is more
-// efficient, because we're only transferring significant data with up to 2x
-// overhead.
+// efficient, because we're only transferring significant data with up to num
+// hosts times overhead.
 absl::StatusOr<bool> DecomposeDispatchRaggedAllToAll(
     HloRaggedAllToAllInstruction* ragged_all_to_all,
     HloComputation* computation,
@@ -318,7 +316,7 @@ absl::StatusOr<bool> DecomposeDispatchRaggedAllToAll(
           std::make_shared<CollectiveDeviceList>(intra_host_replica_groups),
           /*channel_id=*/ragged_all_to_all->channel_id()));
 
-  RETURN_IF_ERROR(computation->ReplaceInstruction(ragged_all_to_all,
+  ABSL_RETURN_IF_ERROR(computation->ReplaceInstruction(ragged_all_to_all,
                                                   new_ragged_all_to_all));
 
   return true;
@@ -339,7 +337,8 @@ absl::StatusOr<bool> DecomposeDispatchRaggedAllToAll(
 // `ragged-all-to-all` within the hosts to partially gather the significant data
 // into smaller temporary buffer of output size. Exchange the data cross-host
 // and the do another local `ragged-all-to-all` to the final output. This way we
-// transfer more significant data with minimal padding with up to 2x overhead.
+// transfer more significant data with minimal padding with up to num hosts
+// times overhead.
 absl::StatusOr<bool> DecomposeCombineRaggedAllToAll(
     HloRaggedAllToAllInstruction* ragged_all_to_all,
     HloComputation* computation,
@@ -495,7 +494,7 @@ absl::StatusOr<bool> DecomposeCombineRaggedAllToAll(
           std::make_shared<CollectiveDeviceList>(degenerated_replica_groups),
           /*channel_id=*/ragged_all_to_all->channel_id()));
 
-  RETURN_IF_ERROR(computation->ReplaceInstruction(ragged_all_to_all,
+  ABSL_RETURN_IF_ERROR(computation->ReplaceInstruction(ragged_all_to_all,
                                                   local_ragged_all_to_all));
 
   return true;
@@ -523,19 +522,6 @@ absl::StatusOr<bool> DecomposeRaggedAllToAll(
   int64_t num_participating_devices = 0;
   for (auto& replica_group : replica_groups) {
     num_participating_devices += replica_group.replica_ids_size();
-  }
-
-  int64_t num_hosts =
-      CeilOfRatio(num_participating_devices, fast_interconnect_slice_size);
-
-  // All participating devices are in the same fast interconnect slice.
-  if (num_hosts == 1) {
-    return false;
-  }
-
-  // TODO(b/445380264): Support more than 2 hosts.
-  if (num_hosts != 2) {
-    return false;
   }
 
   // Offsets and sizes in metadata operands are stored in the order of replica
@@ -567,39 +553,50 @@ absl::StatusOr<bool> DecomposeRaggedAllToAll(
   absl::InlinedVector<ReplicaGroup, 8> intra_host_replica_groups;
   absl::InlinedVector<ReplicaGroup, 8> inter_host_replica_groups;
 
-  for (const auto& replica_group : replica_groups) {
-    absl::InlinedVector<int64_t, 8> replicas_per_host(num_hosts);
+  std::optional<int64_t> num_hosts;
 
-    absl::InlinedVector<ReplicaGroup, 8> intra_host_replica_group_split(
-        num_hosts);
+  for (const auto& replica_group : replica_groups) {
+    absl::btree_map<int64_t, ReplicaGroup> intra_host_replica_group_split;
     for (int64_t replica_id : replica_group.replica_ids()) {
       int64_t host_id = replica_id / fast_interconnect_slice_size;
 
       intra_host_replica_group_split[host_id].add_replica_ids(replica_id);
-      replicas_per_host[host_id]++;
     }
 
-    // Check that each group has the same number of replicas per host.
-    if (!absl::c_all_of(replicas_per_host,
-                        [&](int64_t v) { return v == replicas_per_host[0]; })) {
+    if (!num_hosts.has_value()) {
+      num_hosts = intra_host_replica_group_split.size();
+    } else if (intra_host_replica_group_split.size() != *num_hosts) {
       return false;
     }
 
-    absl::c_copy(intra_host_replica_group_split,
-                 std::back_inserter(intra_host_replica_groups));
+    int64_t replicas_per_host =
+        intra_host_replica_group_split.begin()->second.replica_ids_size();
+    for (const auto& [host_id, intra_host_replica_group] :
+         intra_host_replica_group_split) {
+      if (intra_host_replica_group.replica_ids_size() != replicas_per_host) {
+        return false;
+      }
 
-    for (int64_t i = 0;
-         i < intra_host_replica_group_split[0].replica_ids_size(); ++i) {
+      intra_host_replica_groups.push_back(intra_host_replica_group);
+    }
+
+    for (int64_t i = 0; i < replicas_per_host; ++i) {
       ReplicaGroup inter_host_replica_group;
 
-      inter_host_replica_group.mutable_replica_ids()->Reserve(num_hosts);
-      for (int64_t host_id = 0; host_id < num_hosts; ++host_id) {
+      inter_host_replica_group.mutable_replica_ids()->Reserve(*num_hosts);
+      for (const auto& [host_id, intra_host_replica_group] :
+           intra_host_replica_group_split) {
         inter_host_replica_group.add_replica_ids(
-            intra_host_replica_group_split[host_id].replica_ids(i));
+            intra_host_replica_group.replica_ids(i));
       }
 
       inter_host_replica_groups.push_back(inter_host_replica_group);
     }
+  }
+
+  // All participating devices are in the same fast interconnect slice.
+  if (!num_hosts.has_value() || *num_hosts <= 1) {
+    return false;
   }
 
   int64_t num_input_rows = ragged_all_to_all->operand(0)->shape().dimensions(0);
@@ -609,13 +606,13 @@ absl::StatusOr<bool> DecomposeRaggedAllToAll(
   if (num_input_rows > num_output_rows) {
     return DecomposeCombineRaggedAllToAll(
         ragged_all_to_all, computation, inter_host_replica_groups,
-        intra_host_replica_groups, *replica_groups_permutation, num_hosts,
+        intra_host_replica_groups, *replica_groups_permutation, *num_hosts,
         num_devices_in_replica, num_participating_devices);
   }
 
   return DecomposeDispatchRaggedAllToAll(
       ragged_all_to_all, computation, inter_host_replica_groups,
-      intra_host_replica_groups, *replica_groups_permutation, num_hosts,
+      intra_host_replica_groups, *replica_groups_permutation, *num_hosts,
       num_devices_in_replica);
 }
 
@@ -636,7 +633,7 @@ absl::StatusOr<bool> RaggedAllToAllMultiHostDecomposer::RunImpl(
             "`ragged-all-to-all-canonicalizer` pass executed?");
       }
 
-      ASSIGN_OR_RETURN(bool result,
+      ABSL_ASSIGN_OR_RETURN(bool result,
                        DecomposeRaggedAllToAll(hlo, computation, module,
                                                fast_interconnect_slice_size_));
       changed |= result;

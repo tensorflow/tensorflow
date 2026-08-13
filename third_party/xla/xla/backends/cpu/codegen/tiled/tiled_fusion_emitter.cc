@@ -28,12 +28,12 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -297,6 +297,8 @@ bool IsSupportedInstruction(const HloInstruction& inst,
       return ShapeUtil::IsEffectiveScalar(inst.shape());
     case HloOpcode::kDot:
       return use_new_xtile_lowering;
+    case HloOpcode::kReduce:
+      return use_new_xtile_lowering && !inst.shape().IsTuple();
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kMap:
     case HloOpcode::kPopulationCount:
@@ -397,7 +399,7 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> CreateTiledKernelDefinition(
 
   WorkDimensions work_dimensions;
   work_dimensions.num_work_groups.x = num_work_groups;
-  ASSIGN_OR_RETURN(KernelSpec kernel_spec,
+  ABSL_ASSIGN_OR_RETURN(KernelSpec kernel_spec,
                    emitters::GetKernelSpec(name, fusion, buffer_assignment,
                                            work_dimensions));
   return KernelDefinition<MlirKernelSource>(
@@ -407,11 +409,11 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> CreateTiledKernelDefinition(
 absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
     std::optional<gpu::BlockLevelParameters> block_level_parameters) {
-  RETURN_IF_ERROR(VerifyTensorRanks(fusion));
+  ABSL_RETURN_IF_ERROR(VerifyTensorRanks(fusion));
 
   std::unique_ptr<HloFusionAdaptor> fusion_adaptor =
       HloFusionAdaptor::ForInstruction(&fusion);
-  ASSIGN_OR_RETURN(std::unique_ptr<ge::TilingSpace> tiling_space,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<ge::TilingSpace> tiling_space,
                    ge::TilingSpace::Create(*fusion_adaptor, &context));
   using ValidTilings = std::vector<SmallVector<int64_t, 4>>;
   ValidTilings candidates;
@@ -422,18 +424,18 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
           .debug_options()
           .xla_gpu_experimental_enable_same_shape_multi_output_fusion();
   if (block_level_parameters.has_value()) {
-    ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> tile_sizes,
+    ABSL_ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> tile_sizes,
                      gpu::GetTilingSpaceConcreteSizes(
                          *tiling_space, *block_level_parameters,
                          enable_same_shape_multi_output_fusion));
     candidates.push_back(
         SmallVector<int64_t, 4>(tile_sizes.begin(), tile_sizes.end()));
   } else {
-    ASSIGN_OR_RETURN(candidates, tiling_space->GetValidTilings());
+    ABSL_ASSIGN_OR_RETURN(candidates, tiling_space->GetValidTilings());
   }
 
   // 1. Construct the Symbolic Graph EXACTLY ONCE on the stack/heap.
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       ge::TiledHloComputation symbolic_computation,
       ge::TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
 
@@ -471,7 +473,7 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
     VLOG(2) << "Trying candidate " << i << ": {"
             << absl::StrJoin(candidate.padded_tile_sizes, ", ")
             << "} cost: " << candidate.cost;
-    ASSIGN_OR_RETURN(std::unique_ptr<ge::TilingSpace> winning_tiling_space,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<ge::TilingSpace> winning_tiling_space,
                      ge::TilingSpace::Create(*fusion_adaptor, &context));
     if (const absl::Status status =
             winning_tiling_space->AssignTileSizes(candidate.padded_tile_sizes);
@@ -508,7 +510,7 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitTiledFusionKernelImpl(
   }
   VLOG(2) << "num_parallel_tiles: " << num_parallel_tiles;
   VLOG(2) << "num_work_groups: " << num_work_groups;
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> module,
       xtile::EmitXTileModule(name, fusion, tiled_computation, context,
                              /*opaque_args_types=*/{},

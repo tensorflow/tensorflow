@@ -25,13 +25,13 @@ limitations under the License.
 #include "absl/hash/hash_testing.h"
 #include "absl/status/status_matchers.h"
 #include "absl/types/span.h"
-#include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding_spec.h"
 #include "xla/tsl/platform/errors.h"
@@ -248,7 +248,7 @@ TEST_P(OpaqueShardingTest, WithDeviceAssignment) {
                                                 device_list1,
                                                 /*memory_kind=*/std::nullopt));
     // For OpaqueSharding, we cannot use an equality test.
-    ASSERT_TRUE(llvm::isa<OpaqueSharding>(*new_sharding));
+    ASSERT_TRUE(isa<OpaqueSharding>(*new_sharding));
     EXPECT_THAT(new_sharding->devices()->devices(),
                 ElementsAreArray(device_list1->devices()));
   }
@@ -1244,7 +1244,7 @@ TEST_P(OpaqueShardingTest, ShardingSpec) {
   ShardingSpecRef sharding_spec = sharding->sharding_spec();
   // `OpaqueShardingSpec` cannot use `HasSamePartitioning` for equality
   // comparison.
-  EXPECT_TRUE(llvm::isa<OpaqueShardingSpec>(sharding_spec.get()));
+  EXPECT_TRUE(isa<OpaqueShardingSpec>(sharding_spec.get()));
 }
 
 TEST_P(ConcreteShardingTest, ShardingSpec) {

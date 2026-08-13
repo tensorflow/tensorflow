@@ -27,10 +27,10 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/message.h"
 #include "tsl/platform/human_readable_json.h"
 #include "tsl/platform/protobuf.h"
@@ -47,7 +47,7 @@ using EnableIfProto = typename std::enable_if_t<
 // This is morally equivalent to:
 //
 //   HloInstruction instr;
-//   RETURN_IF_ERROR(instr.set_backend_config(proto));
+//   ABSL_RETURN_IF_ERROR(instr.set_backend_config(proto));
 //   return instr.raw_backend_config_string();
 //
 absl::StatusOr<std::string> BackendConfigToRawString(

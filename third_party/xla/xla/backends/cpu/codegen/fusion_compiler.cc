@@ -25,11 +25,11 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/BasicBlock.h"
@@ -359,11 +359,6 @@ void AddXtileToVectorPasses(mlir::OpPassManager& pm, bool msan_enabled) {
       mlir::stablehlo::createStablehloTargetIndependentOptimizationPass());
 
   pm.addPass(xtile::createStablehloLowerToArithPass());
-  // Has to run before legalize-to-linalg for specialized implementations of
-  // SHLO ops for XTile. It also has to run before
-  // legalize-unsigned-integers-as-signless, as we need to choose the right
-  // lowering for Convert based on unsigned type.
-  pm.addPass(xtile::createStablehloLowerToXtilePass());
   // This pass and the Canonicalizer pass need to run before ShloToVectorPass,
   // otherwise the LowerReduce pattern does not work due to
   // UnrealizedConversionCast in the reducer body.
@@ -539,7 +534,7 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
     pm.printAsTextualPipeline(log_stream);
     log_stream.write("\n\n", 2);
   }
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       RunPassPipeline(mlir_module, pm, nullptr, options_.verification_level));
 
   if (should_dump_mlir_passes) {
@@ -602,7 +597,7 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
 absl::StatusOr<LlvmKernelSource> FusionCompiler::Compile(
     MlirKernelSource mlir_kernel_source) {
   auto llvm_context = std::make_unique<llvm::LLVMContext>();
-  ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> llvm_module,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> llvm_module,
                    Compile(*llvm_context, mlir_kernel_source.module()));
   return LlvmKernelSource(std::move(llvm_context), std::move(llvm_module));
 }

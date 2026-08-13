@@ -24,12 +24,12 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/invoke.h"
 #include "xla/service/platform_util.h"
@@ -88,7 +88,7 @@ absl::Status RegisterHandler(const XLA_FFI_Api* api, absl::string_view name,
                              absl::string_view platform,
                              XLA_FFI_Handler_Bundle bundle,
                              XLA_FFI_Handler_Traits traits) {
-  ASSIGN_OR_RETURN(std::string canonical_platform,
+  ABSL_ASSIGN_OR_RETURN(std::string canonical_platform,
                    PlatformUtil::CanonicalPlatformName(platform));
 
   if (bundle.execute == nullptr) {
@@ -99,7 +99,7 @@ absl::Status RegisterHandler(const XLA_FFI_Api* api, absl::string_view name,
   }
 
   // Check the API version that FFI handler was compiled with is supported.
-  ASSIGN_OR_RETURN(XLA_FFI_Metadata metadata, GetMetadata(api, bundle.execute));
+  ABSL_ASSIGN_OR_RETURN(XLA_FFI_Metadata metadata, GetMetadata(api, bundle.execute));
   if (!IsSupportedApiVersion(metadata.api_version)) {
     return InvalidArgument(
         "XLA FFI handler registration for %s on platform %s (canonical %s) "
@@ -117,7 +117,7 @@ absl::Status RegisterHandler(const XLA_FFI_Api* api, absl::string_view name,
 
   // Incorporate state type id from the instantiate implementation if present.
   if (bundle.instantiate) {
-    ASSIGN_OR_RETURN(XLA_FFI_Metadata instantiate_metadata,
+    ABSL_ASSIGN_OR_RETURN(XLA_FFI_Metadata instantiate_metadata,
                      GetMetadata(api, bundle.instantiate));
     metadata.state_type_id = instantiate_metadata.state_type_id;
   }
@@ -159,7 +159,7 @@ absl::Status RegisterHandler(const XLA_FFI_Api* api, absl::string_view name,
 
 absl::StatusOr<HandlerRegistration> FindHandler(absl::string_view name,
                                                 absl::string_view platform) {
-  ASSIGN_OR_RETURN(std::string canonical_platform,
+  ABSL_ASSIGN_OR_RETURN(std::string canonical_platform,
                    PlatformUtil::CanonicalPlatformName(platform));
 
   auto& registry = internal::StaticHandlerRegistrationMap();
@@ -176,7 +176,7 @@ absl::StatusOr<HandlerRegistration> FindHandler(absl::string_view name,
 
 absl::StatusOr<absl::flat_hash_map<std::string, HandlerRegistration>>
 StaticRegisteredHandlers(absl::string_view platform) {
-  ASSIGN_OR_RETURN(std::string canonical_platform,
+  ABSL_ASSIGN_OR_RETURN(std::string canonical_platform,
                    PlatformUtil::CanonicalPlatformName(platform));
 
   auto& registry = internal::StaticHandlerRegistrationMap();

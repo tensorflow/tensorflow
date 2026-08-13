@@ -18,10 +18,10 @@ limitations under the License.
 #include <cstddef>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -51,10 +51,10 @@ absl::StatusOr<bool> RunOnComputation(HloComputation& computation) {
     }
 
     if (instruction->shape().element_type() == input->shape().element_type()) {
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           instruction->parent()->ReplaceInstruction(instruction, input));
     } else {
-      RETURN_IF_ERROR(instruction->parent()->ReplaceWithNewInstruction(
+      ABSL_RETURN_IF_ERROR(instruction->parent()->ReplaceWithNewInstruction(
           instruction,
           HloInstruction::CreateConvert(instruction->shape(), input)));
     }
@@ -74,7 +74,7 @@ absl::StatusOr<bool> SimplifyFPConversions::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeComputationPostOrder(execution_threads)) {
-    ASSIGN_OR_RETURN(bool comp_changed, RunOnComputation(*computation));
+    ABSL_ASSIGN_OR_RETURN(bool comp_changed, RunOnComputation(*computation));
     changed |= comp_changed;
   }
   XLA_VLOG_LINES(

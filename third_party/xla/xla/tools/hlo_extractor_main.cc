@@ -21,10 +21,10 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -84,7 +84,7 @@ static absl::Status RunHloExtractor(const HloExtractorConfig& opts, int argc,
   std::string hlo_path = GetHloPath(opts, argc, argv);
 
   std::string module_str;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       tsl::ReadFileToString(tsl::Env::Default(), hlo_path, &module_str));
 
   std::string format = opts.input_format;
@@ -92,7 +92,7 @@ static absl::Status RunHloExtractor(const HloExtractorConfig& opts, int argc,
     format = std::string(tsl::io::Extension(hlo_path));
   }
 
-  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                    LoadModuleFromData(module_str, format));
 
   // Instructions are printed with % prefix in the HLO text but it is not

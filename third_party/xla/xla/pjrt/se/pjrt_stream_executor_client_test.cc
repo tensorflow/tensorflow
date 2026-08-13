@@ -28,6 +28,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
@@ -54,13 +54,17 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
 #include "xla/pjrt/se/local_device_state.h"
+#include "xla/pjrt/se/stream_executor_platform_id_mapping.h"
 #include "xla/pjrt/thread_pool_async_work_runner.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -71,6 +75,13 @@ limitations under the License.
 #include "tsl/platform/path.h"
 
 namespace xla {
+
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(
+    pjrt_register_se_cpu_platform_id_mapping, {
+      CHECK_OK(StreamExecutorPlatformIdMapping::Global().AddMapping(
+          stream_executor::host::kHostPlatformId, CpuPlatformId()));
+    });
+
 namespace {
 
 using ::testing::HasSubstr;
@@ -116,15 +127,15 @@ MakeTestPjRtStreamExecutorClient(
                                    {/*stack_size=*/512 * 1024}),
       first_executor, std::move(gpu_run_options));
   return std::make_unique<PjRtStreamExecutorClient>(
-      std::move(platform_name), client, std::move(devices), process_index,
+      std::move(platform_name), std::move(devices), process_index,
       std::move(memory_spaces), std::move(topology), std::move(raw_client),
       std::move(kv_store));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
   LocalClient* local_client = xla::ClientLibrary::LocalClientOrDie();
-  ASSIGN_OR_RETURN(se::Platform * platform, PlatformUtil::GetPlatform("Host"));
-  ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+  ABSL_ASSIGN_OR_RETURN(se::Platform * platform, PlatformUtil::GetPlatform("Host"));
+  ABSL_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                    platform->ExecutorForDevice(0));
   auto device_state = std::make_unique<LocalDeviceState>(
       executor, local_client, LocalDeviceState::kSynchronous,
@@ -150,29 +161,32 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
       /*gpu_run_options=*/nullptr);
 }
 
-// Variant of GetClient() that creates `num_devices` Host-platform devices, so
-// multi-device code paths in CommonPjRtLoadedExecutable::Execute can be
-// exercised without accelerator hardware. The client's allocator is
+// Variant of GetClient() that creates `num_addressable_devices` Host-platform
+// devices and optional `num_non_addressable_devices` non-addressable devices,
+// so multi-device and cross-host code paths can be exercised without
+// accelerator hardware. The client's allocator is
 // `local_client->backend().memory_allocator()`, which only knows the
 // device ordinals PlatformUtil enumerated for the LocalClient's Backend —
 // on Host that is `xla_force_host_platform_device_count` (set via XLA_FLAGS
 // on this test target), not VisibleDeviceCount().
 absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClientWithDevices(
-    int num_devices) {
+    int num_addressable_devices, int num_non_addressable_devices = 0) {
   LocalClient* local_client = xla::ClientLibrary::LocalClientOrDie();
-  ASSIGN_OR_RETURN(se::Platform * platform, PlatformUtil::GetPlatform("Host"));
-  if (local_client->device_count() < num_devices) {
-    return absl::FailedPreconditionError(absl::StrFormat(
-        "LocalClient has %d Host devices, need %d; set "
-        "--xla_force_host_platform_device_count=%d",
-        local_client->device_count(), num_devices, num_devices));
+  ABSL_ASSIGN_OR_RETURN(se::Platform * platform, PlatformUtil::GetPlatform("Host"));
+  if (local_client->device_count() < num_addressable_devices) {
+    return absl::FailedPreconditionError(
+        absl::StrFormat("LocalClient has %d Host devices, need %d; set "
+                        "--xla_force_host_platform_device_count=%d",
+                        local_client->device_count(), num_addressable_devices,
+                        num_addressable_devices));
   }
+  int total_devices = num_addressable_devices + num_non_addressable_devices;
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
-  devices.reserve(num_devices);
+  devices.reserve(total_devices);
   std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces;
-  memory_spaces.reserve(num_devices);
-  for (int i = 0; i < num_devices; ++i) {
-    ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+  memory_spaces.reserve(num_addressable_devices);
+  for (int i = 0; i < num_addressable_devices; ++i) {
+    ABSL_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                      platform->ExecutorForDevice(i));
     auto device_state = std::make_unique<LocalDeviceState>(
         executor, local_client, LocalDeviceState::kSynchronous,
@@ -186,6 +200,12 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClientWithDevices(
         i, devices.back().get(), "cpu", 0));
     devices.back()->AttachMemorySpace(memory_spaces.back().get(),
                                       /*is_default=*/true);
+  }
+  for (int i = num_addressable_devices; i < total_devices; ++i) {
+    devices.emplace_back(std::make_unique<PjRtStreamExecutorDevice>(
+        i, /*local_device_state=*/nullptr, /*local_device_id=*/-1,
+        /*process_index=*/1, /*process_index_in_partition=*/0,
+        /*partition_index=*/0, "cpu"));
   }
   auto topology = CreateCpuTopologyDescription(devices.size());
   return MakeTestPjRtStreamExecutorClient(
@@ -208,9 +228,9 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> ToyExecutable(
   auto d = Add(c, c);
   Tuple(&builder, {c, d});
   set_up_aliases(builder);
-  ASSIGN_OR_RETURN(auto computation,
+  ABSL_ASSIGN_OR_RETURN(auto computation,
                    builder.Build(/*remove_dynamic_dimensions=*/true));
-  ASSIGN_OR_RETURN(auto executable,
+  ABSL_ASSIGN_OR_RETURN(auto executable,
                    client.CompileAndLoad(computation, compile_options));
   return executable;
 }
@@ -218,12 +238,12 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> ToyExecutable(
 absl::Status ExecuteWithSameInputBuffer(
     absl::AnyInvocable<void(XlaBuilder&)> set_up_aliases) {
   auto shape = xla::ShapeUtil::MakeScalarShape(xla::F32);
-  ASSIGN_OR_RETURN(auto client, GetClient());
+  ABSL_ASSIGN_OR_RETURN(auto client, GetClient());
   TF_RET_CHECK(!client->addressable_devices().empty());
   auto* device0 = client->addressable_devices().front();
-  ASSIGN_OR_RETURN(auto buffer, client->CreateUninitializedBuffer(
+  ABSL_ASSIGN_OR_RETURN(auto buffer, client->CreateUninitializedBuffer(
                                     shape, *device0->default_memory_space()));
-  ASSIGN_OR_RETURN(auto executable,
+  ABSL_ASSIGN_OR_RETURN(auto executable,
                    ToyExecutable(*client, shape, std::move(set_up_aliases)));
   xla::ExecuteOptions options;
   return executable->Execute({{buffer.get(), buffer.get()}}, options).status();
@@ -554,6 +574,75 @@ TEST(PjRtStreamExecutorClientTest, TwoPhaseExecutePrepareFailureSkipsLaunch) {
       << " device(s) across " << kIterations
       << " iterations despite a peer Prepare failure; the two-phase barrier "
          "let a succeeding device past before the failure was recorded.";
+}
+
+TEST(PjRtStreamExecutorClientTest, CrossHostSendBuffersCleanupAfterFailure) {
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetClientWithDevices(/*num_addressable_devices=*/1,
+                                            /*num_non_addressable_devices=*/1));
+
+  Shape shape = ShapeUtil::MakeShape(S32, {256});
+  std::vector<int32_t> data(256, 1);
+  auto* memory_space = client->memory_spaces()[0];
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer0,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          /*memory_space=*/memory_space,
+          /*device_layout=*/nullptr));
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer1,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          /*memory_space=*/memory_space,
+          /*device_layout=*/nullptr));
+
+  // Delete buffer1 so that AcquireScopedRawBuffer fails on it mid-loop in
+  // CrossHostSendBuffers.
+  buffer1->Delete();
+
+  std::vector<PjRtBuffer*> buffers = {buffer0.get(), buffer1.get()};
+  std::vector<GlobalDeviceId> dst_device_ids = {GlobalDeviceId(1),
+                                                GlobalDeviceId(1)};
+  std::vector<CrossHostTransferKey> transfer_keys = {CrossHostTransferKey(0),
+                                                     CrossHostTransferKey(1)};
+
+  EXPECT_THAT(
+      client->CrossHostSendBuffers(buffers, dst_device_ids, transfer_keys),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+
+  // Verify buffer0 can be deleted cleanly without hanging on unfulfilled usage
+  // event promise.
+  buffer0->Delete();
+  EXPECT_TRUE(buffer0->IsDeleted());
+}
+
+TEST(PjRtStreamExecutorClientTest, CrossHostReceiveBuffersCleanupAfterFailure) {
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetClientWithDevices(/*num_addressable_devices=*/1,
+                                            /*num_non_addressable_devices=*/1));
+
+  Shape valid_shape = ShapeUtil::MakeShapeWithDescendingLayout(S32, {256});
+  Shape invalid_shape = ShapeUtil::MakeTupleShape({});
+  std::vector<Shape> shapes = {valid_shape, invalid_shape};
+  std::vector<GlobalDeviceId> src_device_ids = {GlobalDeviceId(1),
+                                                GlobalDeviceId(1)};
+  std::vector<CrossHostTransferKey> transfer_keys = {CrossHostTransferKey(0),
+                                                     CrossHostTransferKey(1)};
+
+  // Iteration 0 succeeds in DefineBuffer, iteration 1 fails mid-loop.
+  // Buffers created in iteration 0 must be destroyed without deadlocking on
+  // unfulfilled definition event.
+  EXPECT_THAT(
+      client->CrossHostReceiveBuffers(client->addressable_devices()[0], shapes,
+                                      src_device_ids, transfer_keys),
+      absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 }  // namespace

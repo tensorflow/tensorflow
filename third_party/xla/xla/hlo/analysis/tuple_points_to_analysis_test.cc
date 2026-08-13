@@ -406,7 +406,8 @@ TEST_F(TuplePointsToAnalysisTest, AsyncOps) {
   ENTRY entry {
     p0 = f32[2,3] parameter(0)
     async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
-    async-update = ((f32[2,3]), f32[2,3], u32[]) custom-call-update(async-start)
+    async-update = ((f32[2,3]), f32[2,3], u32[]) custom-call-update(async-start),
+                      output_to_operand_aliasing={{2}: (0, {2})}
     ROOT async-done = f32[2,3] custom-call-done(async-update)
   }
 )";
@@ -437,6 +438,34 @@ TEST_F(TuplePointsToAnalysisTest, AsyncOps) {
       {{async_start, {1}}, {async_update, {1}}, {async_done, {}}});
   ExpectHasBufferAliases(async_start, {2},
                          {{async_start, {2}}, {async_update, {2}}});
+}
+
+TEST_F(TuplePointsToAnalysisTest, AsyncUpdate_LoopCrossing) {
+  const char* const kHlo = R"(
+HloModule test
+
+while_body {
+  state = ((f32[2,3]), f32[2,3], s32[]) parameter(0)
+  ROOT update = ((f32[2,3]), f32[2,3], s32[]) custom-call-update(state)
+}
+
+while_condition {
+  state = ((f32[2,3]), f32[2,3], s32[]) parameter(0)
+  ROOT predicate = pred[] constant(true)
+}
+
+ENTRY main {
+  p0 = f32[2,3] constant(0)
+  start = ((f32[2,3]), f32[2,3], s32[]) custom-call-start(p0),
+    custom_call_target="baz"
+  ROOT while_op = ((f32[2,3]), f32[2,3], s32[]) while(start), condition=while_condition, body=while_body
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(kHlo, GetModuleConfigForTest()));
+  RunAnalysis();
+  HloInstruction* update = FindInstruction(module_.get(), "update");
+  EXPECT_FALSE(points_to_analysis_->GetPointsToSet(update).IsAmbiguous());
 }
 
 TEST_F(TuplePointsToAnalysisTest, SendAndSendDone) {
@@ -928,6 +957,62 @@ ENTRY %FusedDynamicUpdateSlice (tuple: (f32[8], f32[8])) -> (f32[8], f32[8]) {
   EXPECT_FALSE(
       points_to_analysis_->DoesNotUseOperandBuffer(tuple, {1}, fusion));
 }
+
+TEST_F(TuplePointsToAnalysisTest, AsyncUpdateChangesContext) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module
+
+async_computation {
+  p0 = f32[4] parameter(0)
+  p1 = f32[4] parameter(1)
+  ROOT add = f32[4] add(p0, p1)
+}
+
+ENTRY entry {
+  x = f32[4] parameter(0)
+  y = f32[4] parameter(1)
+  start = ((), (), (s32[], s32[4])) async-start(), calls=async_computation,
+                                async_execution_thread="sparsecore"
+  update = ((f32[4], f32[4]), f32[4], (s32[8], s32[])) async-update(start, x, y),
+              output_to_operand_aliasing={{2, 1}: (0, {2, 0})}
+  ROOT done = f32[4] async-done(update)
+}
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  RunAnalysis();
+
+  HloInstruction* x = module_->entry_computation()->GetInstructionWithName("x");
+  HloInstruction* y = module_->entry_computation()->GetInstructionWithName("y");
+  HloInstruction* start =
+      module_->entry_computation()->GetInstructionWithName("start");
+  HloInstruction* update =
+      module_->entry_computation()->GetInstructionWithName("update");
+  HloInstruction* done =
+      module_->entry_computation()->GetInstructionWithName("done");
+
+  const LogicalBuffer* B_x = GetBuffer(x, {});
+  const LogicalBuffer* B_y = GetBuffer(y, {});
+
+  const LogicalBuffer* B_start_c0 = GetBuffer(start, {2, 0});
+  const LogicalBuffer* B_start_c1 = GetBuffer(start, {2, 1});
+  EXPECT_EQ(start, B_start_c0->instruction());
+  EXPECT_EQ(start, B_start_c1->instruction());
+
+  const PointsToSet& update_set = points_to_analysis_->GetPointsToSet(update);
+  ExpectHasBuffers(update_set.element({0, 0}), {B_x});
+  ExpectHasBuffers(update_set.element({0, 1}), {B_y});
+  ExpectHasBuffers(update_set.element({2, 1}), {B_start_c0});
+
+  const LogicalBuffer* B_update_out = GetBuffer(update, {1});
+  const LogicalBuffer* B_update_c0 = GetBuffer(update, {2, 0});
+  EXPECT_EQ(update, B_update_out->instruction());
+  EXPECT_EQ(update, B_update_c0->instruction());
+
+  const PointsToSet& done_set = points_to_analysis_->GetPointsToSet(done);
+  ExpectHasBuffers(done_set.element({}), {B_update_out});
+}
+
 TEST_F(TuplePointsToAnalysisTest, LateBindingAsyncUpdate) {
   absl::string_view hlo_string = R"hlo(
 HloModule module
@@ -943,7 +1028,8 @@ ENTRY entry {
   y = f32[4] parameter(1)
   start = ((), (), s32[]) async-start(), calls=async_computation,
                                 async_execution_thread="sparsecore"
-  update = ((f32[4], f32[4]), f32[4], s32[]) async-update(start, x, y)
+  update = ((f32[4], f32[4]), f32[4], s32[]) async-update(start, x, y),
+              output_to_operand_aliasing={{2}: (0, {2})}
   ROOT done = f32[4] async-done(update)
 }
   )hlo";

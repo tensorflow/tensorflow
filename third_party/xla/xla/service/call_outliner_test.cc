@@ -23,15 +23,17 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/layout_util.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/call_marker.h"
 #include "xla/tsl/platform/statusor.h"
@@ -44,18 +46,18 @@ class CallOutlinerTest : public HloHardwareIndependentTestBase {
   // Helper to parse, run marker, inliner, and outliner.
   absl::StatusOr<std::unique_ptr<HloModule>> ParseInlineAndOutline(
       absl::string_view hlo_string) {
-    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                      ParseAndReturnVerifiedModule(hlo_string));
     CallInliner call_inliner;
     CallMarker call_marker(call_inliner);
-    ASSIGN_OR_RETURN(bool marked, call_marker.Run(module.get()));
+    ABSL_ASSIGN_OR_RETURN(bool marked, call_marker.Run(module.get()));
     EXPECT_TRUE(marked);
 
-    ASSIGN_OR_RETURN(bool inlined, call_inliner.Run(module.get()));
+    ABSL_ASSIGN_OR_RETURN(bool inlined, call_inliner.Run(module.get()));
     EXPECT_TRUE(inlined);
 
     CallOutliner call_outliner;
-    ASSIGN_OR_RETURN(bool outlined, call_outliner.Run(module.get()));
+    ABSL_ASSIGN_OR_RETURN(bool outlined, call_outliner.Run(module.get()));
     EXPECT_TRUE(outlined);
     return module;
   }
@@ -63,10 +65,10 @@ class CallOutlinerTest : public HloHardwareIndependentTestBase {
   // Helper to parse and run outliner only (for pre-marked modules).
   absl::StatusOr<std::unique_ptr<HloModule>> OutlineModule(
       absl::string_view hlo_string) {
-    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                      ParseAndReturnVerifiedModule(hlo_string));
     CallOutliner call_outliner;
-    ASSIGN_OR_RETURN(bool outlined, call_outliner.Run(module.get()));
+    ABSL_ASSIGN_OR_RETURN(bool outlined, call_outliner.Run(module.get()));
     EXPECT_TRUE(outlined);
     return module;
   }
@@ -996,6 +998,46 @@ TEST_F(CallOutlinerTest, RetainOriginalInstructionName) {
   HloInstruction* call = FindCallByName(module->entry_computation(), "a");
   ASSERT_NE(call, nullptr);
   EXPECT_EQ(call->name(), "attention_block");
+}
+
+TEST_F(CallOutlinerTest, OutlineRootCallPreservesEntryResultLayout) {
+  const absl::string_view hlo_string = R"(
+  HloModule inline_module, entry_computation_layout={()->f32[4,4]{0,1}}
+
+  a {
+    p = f32[4,4]{1,0} parameter(0)
+    ROOT add = f32[4,4]{1,0} add(p, p)
+  }
+
+  ENTRY inline {
+    c = f32[4,4]{1,0} constant(1)
+    ROOT a = f32[4,4]{1,0} call(c), to_apply=a
+  })";
+
+  HloParserOptions parser_options;
+  parser_options.set_keep_module_auto_layouts(true);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(hlo_string, GetModuleConfigForTest(),
+                                   parser_options));
+  CallInliner call_inliner;
+  CallMarker call_marker(call_inliner);
+  TF_ASSERT_OK_AND_ASSIGN(bool marked, call_marker.Run(module.get()));
+  EXPECT_TRUE(marked);
+
+  TF_ASSERT_OK_AND_ASSIGN(bool inlined, call_inliner.Run(module.get()));
+  EXPECT_TRUE(inlined);
+
+  CallOutliner call_outliner;
+  TF_ASSERT_OK_AND_ASSIGN(bool outlined, call_outliner.Run(module.get()));
+  EXPECT_TRUE(outlined);
+
+  EXPECT_EQ(module->entry_computation()->root_instruction()->shape().layout(),
+            LayoutUtil::MakeLayout({1, 0}));
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kCall);
 }
 
 }  // namespace

@@ -34,12 +34,12 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/random/uniform_int_distribution.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/array2d.h"
 #include "xla/index_util.h"
 #include "xla/layout_util.h"
@@ -506,6 +506,30 @@ void PopulateWithComplexData(
   }
 }
 
+template <typename TargetT>
+TargetT SafeClampInt64(int64_t value) {
+  static_assert(std::numeric_limits<TargetT>::is_integer,
+                "TargetT must be an integral type.");
+  if constexpr (!std::numeric_limits<TargetT>::is_signed) {
+    if (value <= 0) {
+      return TargetT{0};
+    }
+    uint64_t uval = static_cast<uint64_t>(value);
+    if (uval > static_cast<uint64_t>(std::numeric_limits<TargetT>::max())) {
+      return std::numeric_limits<TargetT>::max();
+    }
+    return static_cast<TargetT>(uval);
+  } else {
+    if (value < static_cast<int64_t>(std::numeric_limits<TargetT>::lowest())) {
+      return std::numeric_limits<TargetT>::lowest();
+    }
+    if (value > static_cast<int64_t>(std::numeric_limits<TargetT>::max())) {
+      return std::numeric_limits<TargetT>::max();
+    }
+    return static_cast<TargetT>(value);
+  }
+}
+
 // uniform_int_distribution is not defined for 8-bit integers.
 // Use 'short' for those types.
 template <typename IntT>
@@ -873,7 +897,7 @@ absl::StatusOr<Literal> MakeFakeLiteral(
     const auto& shape_tuple_shapes = shape.tuple_shapes();
     elements.reserve(shape_tuple_shapes.size());
     for (const Shape& element_shape : shape_tuple_shapes) {
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           Literal element,
           MakeFakeLiteral(element_shape, engine, limit, is_sorted,
                           no_duplicates, use_large_range, max_bits_of_precision,
@@ -894,7 +918,7 @@ absl::StatusOr<Literal> MakeFakeLiteral(
   new_shape.mutable_layout()->set_element_size_in_bits(0);
   Literal literal(new_shape);
 
-  RETURN_IF_ERROR(primitive_util::PrimitiveTypeSwitch<absl::Status>(
+  ABSL_RETURN_IF_ERROR(primitive_util::PrimitiveTypeSwitch<absl::Status>(
       [&](auto primitive_type_constant) -> absl::Status {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
           using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
@@ -918,8 +942,8 @@ absl::StatusOr<Literal> MakeFakeLiteral(
             NativeT max = std::numeric_limits<NativeT>::max();
             NativeT min = std::numeric_limits<NativeT>::lowest();
             if (limit.has_value()) {
-              max = static_cast<NativeT>(limit->second);
-              min = static_cast<NativeT>(limit->first);
+              min = SafeClampInt64<NativeT>(limit->first);
+              max = SafeClampInt64<NativeT>(limit->second);
             }
             if (max_bits_of_precision.has_value()) {
               max = std::min(max,

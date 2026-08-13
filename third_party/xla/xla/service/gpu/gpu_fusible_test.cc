@@ -18,9 +18,9 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -45,7 +45,7 @@ using ::testing::ElementsAre;
 using ::testing::UnorderedElementsAre;
 
 absl::StatusOr<se::DeviceDescription> MakeDeviceDescription() {
-  ASSIGN_OR_RETURN(stream_executor::DeviceDescription device_description,
+  ABSL_ASSIGN_OR_RETURN(stream_executor::DeviceDescription device_description,
                    stream_executor::DeviceDescription::FromProto(
                        stream_executor::GpuDeviceInfoProto{}));
   device_description.set_threads_per_warp(32);

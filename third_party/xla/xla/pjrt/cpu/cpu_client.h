@@ -141,12 +141,6 @@ class PjRtCpuClient final : public CommonPjRtClient {
     return xla::CpuPlatformVersion();
   }
 
-  absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
-      int num_replicas, int num_partitions) const override;
-
-  absl::StatusOr<Layout> GetDefaultLayout(
-      PrimitiveType element_type, absl::Span<const int64_t> dims) override;
-
   PjRtDynamicShapeKind GetDynamicShapeKind(
       int memory_space_kind_id) const override {
     return PjRtDynamicShapeKind::kSuffix;
@@ -199,9 +193,6 @@ class PjRtCpuClient final : public CommonPjRtClient {
   LoadSerializedExecutable(const absl::Cord& serialized,
                            std::optional<CompileOptions> options,
                            const LoadOptions& load_options) override;
-
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
-      absl::Status error, const Shape& shape, PjRtMemorySpace* memory) override;
 
   absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(
@@ -262,9 +253,8 @@ class PjRtCpuClient final : public CommonPjRtClient {
   CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
                            absl::string_view debug_info) override;
 
-  using CommonPjRtClient::GetOnDeviceBytesCount;
-  absl::StatusOr<int64_t> GetOnDeviceBytesCount(
-      int memory_space_kind, const xla::Shape& shape) const override;
+  absl::StatusOr<PjRtDeviceEventRef> CreateDeviceEvent(
+      PjRtMemorySpace* memory_space, Future<> dependency) override;
 
   absl::StatusOr<int> GetMemorySpaceKindForShape(
       const Shape& shape) const override;
@@ -280,10 +270,6 @@ class PjRtCpuClient final : public CommonPjRtClient {
       const LiteralSlice& literal, const xla::Shape& device_shape,
       HostBufferSemantics host_buffer_semantics,
       PjRtRawBufferRef raw_buffer) override;
-
-  absl::StatusOr<xla::Shape> MakeDefaultShapeForMemorySpace(
-      PjRtMemorySpace* memory_space, xla::Shape shape,
-      const xla::Layout* layout) const override;
 
   bool BufferFromHostBufferSupportsZeroCopy(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
@@ -546,12 +532,7 @@ class PjRtCpuExecutable final : public PjRtExecutable {
 
 class PjRtCpuLoadedExecutable final : public CommonPjRtLoadedExecutable {
  public:
-  PjRtCpuLoadedExecutable(
-      std::shared_ptr<PjRtCpuExecutable> executable,
-      std::shared_ptr<DeviceAssignment> device_assignment,
-      std::vector<LogicalDeviceIds> addressable_device_logical_ids,
-      std::vector<PjRtDevice*> addressable_devices, PjRtCpuClient* client,
-      tsl::RCReference<PjRtExecutableLoadState> load_state);
+  using CommonPjRtLoadedExecutable::CommonPjRtLoadedExecutable;
 
   ~PjRtCpuLoadedExecutable() override = default;
 
@@ -560,7 +541,10 @@ class PjRtCpuLoadedExecutable final : public CommonPjRtLoadedExecutable {
         CommonPjRtLoadedExecutable::GetExecutable());
   }
 
-  PjRtCpuClient* client() const override { return client_; }
+  PjRtCpuClient* client() const override {
+    return absl::down_cast<PjRtCpuClient*>(
+        CommonPjRtLoadedExecutable::client());
+  }
 
   using PjRtLoadedExecutable::Execute;
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
@@ -585,19 +569,6 @@ class PjRtCpuLoadedExecutable final : public CommonPjRtLoadedExecutable {
         ->cpu_executable_->module()
         .input_output_alias_config();
   }
-
- private:
-  friend class PjRtCpuClient;
-  friend class CpuPjRtRawLoadedExecutable;
-
-  absl::Status SetUpDonation(bool tuple_inputs);
-
-  absl::StatusOr<Result> ExecuteHelper(
-      absl::Span<PjRtBuffer* const> argument_handles, int replica,
-      int partition, const RunId& run_id, const ExecuteOptions& options,
-      bool fill_future, PjRtCpuDevice* device = nullptr) const;
-
-  PjRtCpuClient* client_;
 };
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> ABSL_DEPRECATED(

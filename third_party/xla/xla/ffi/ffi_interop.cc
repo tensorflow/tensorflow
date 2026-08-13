@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/ffi/ffi_interop.h"
 
-#include <string>
 #include <utility>
 
 #include "absl/base/optimization.h"
@@ -27,7 +26,7 @@ limitations under the License.
 
 namespace xla::ffi {
 
-absl::Status TakeStatus(XLA_FFI_Error* error) {
+absl::Status TakeError(XLA_FFI_Error* error) {
   if (ABSL_PREDICT_TRUE(error == nullptr)) {
     return absl::OkStatus();
   }
@@ -67,13 +66,7 @@ XLA_FFI_Error* CreateError(absl::Status status) {
   if (status.ok()) {
     return nullptr;
   }
-  XLA_FFI_Error_Create_Args args;
-  args.struct_size = XLA_FFI_Error_Create_Args_STRUCT_SIZE;
-  args.extension_start = nullptr;
-  args.errc = static_cast<XLA_FFI_Error_Code>(status.code());
-  std::string message(status.message());
-  args.message = message.c_str();
-  return XLA_FFI_GetApi()->XLA_FFI_Error_Create(&args);
+  return new XLA_FFI_Error{std::move(status)};
 }
 
 }  // namespace xla::ffi

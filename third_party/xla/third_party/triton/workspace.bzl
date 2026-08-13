@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# =============================================================================
+
 """Provides the repository macro to import Triton."""
 
 load("//third_party:repo.bzl", "tf_mirror_urls")
@@ -54,8 +69,8 @@ triton_archive = repository_rule(
 def repo():
     """Imports Triton."""
 
-    TRITON_COMMIT = "72259b1cc3c543c361dcd185a6ff89662e8ed52f"
-    TRITON_SHA256 = "35744577b837c66cf934b3b1d31b1496e3c205c0fb431b8bdcc76f4c0245312c"
+    TRITON_COMMIT = "96bc7e783a19958182794f477d5f72f9a77d5924"
+    TRITON_SHA256 = "f7124c049f8638d714f2cf3a44cf261b79ca33a60cc4becb7a3cae29e1136563"
     triton_archive(
         name = "triton",
         sha256 = TRITON_SHA256,

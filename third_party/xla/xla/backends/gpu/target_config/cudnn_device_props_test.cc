@@ -51,6 +51,8 @@ absl::string_view kIgnoredFields[] = {
                      // its own value — encoding can differ
     "deviceName",    // not serialized by live cuDNN
     "maxThreadsPerBlock",  // not serialized by live cuDNN
+    "smCountOrigin",  // TODO(b/530828838): Ask NVIDIA about whether this should
+                      // be serialized.
 };
 
 // Clock-rate fields where small drift is expected because XLA stores them as

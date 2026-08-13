@@ -24,32 +24,32 @@ def xla_package_groups(name = "xla_package_groups"):
 
     native.package_group(
         name = "friends",
-        packages = ["//..."],
+        packages = ["public"],
     )
 
     native.package_group(
         name = "internal",
-        packages = ["//..."],
+        packages = ["public"],
     )
 
     native.package_group(
         name = "backends",
-        packages = ["//..."],
+        packages = ["public"],
     )
 
     native.package_group(
         name = "codegen",
-        packages = ["//..."],
+        packages = ["public"],
     )
 
     native.package_group(
         name = "collectives",
-        packages = ["//..."],
+        packages = ["public"],
     )
 
     native.package_group(
         name = "runtime",
-        packages = ["//..."],
+        packages = ["public"],
     )
 
 def xla_test_friend_package_group(name):
@@ -61,5 +61,5 @@ def xla_test_friend_package_group(name):
 
     native.package_group(
         name = name,
-        packages = ["//..."],
+        packages = ["public"],
     )

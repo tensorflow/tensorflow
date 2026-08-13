@@ -63,7 +63,7 @@ absl::StatusOr<std::vector<std::string>> FindFiles(
   std::vector<std::string> result;
   for (const auto& dir : dirs) {
     std::vector<std::string> matches;
-    RETURN_IF_ERROR(tsl::Env::Default()->GetMatchingPaths(
+    ABSL_RETURN_IF_ERROR(tsl::Env::Default()->GetMatchingPaths(
         tsl::io::JoinPath(dir, pattern), &matches));
     result.insert(result.end(), matches.begin(), matches.end());
   }
@@ -72,7 +72,7 @@ absl::StatusOr<std::vector<std::string>> FindFiles(
 
 absl::StatusOr<std::string> FindOneFile(absl::Span<const std::string> dirs,
                                         absl::string_view pattern) {
-  ASSIGN_OR_RETURN(std::vector<std::string> files, FindFiles(dirs, pattern));
+  ABSL_ASSIGN_OR_RETURN(std::vector<std::string> files, FindFiles(dirs, pattern));
   if (files.empty()) {
     return absl::NotFoundError(
         absl::StrCat("No file found matching pattern: ", pattern));
@@ -86,14 +86,14 @@ absl::StatusOr<LaunchInfoResult> FindLaunchInfo(
   if (launch_barrier_id.has_value()) {
     std::string pattern = absl::StrFormat("*module_*.%s.%d.launch_info.pbtxt",
                                           module_name, *launch_barrier_id);
-    ASSIGN_OR_RETURN(std::string path, FindOneFile(dirs, pattern));
+    ABSL_ASSIGN_OR_RETURN(std::string path, FindOneFile(dirs, pattern));
     return LaunchInfoResult{path, *launch_barrier_id};
   }
 
   // If no ID provided, find one and parse ID from filename.
   std::string pattern =
       absl::StrFormat("*module_*.%s.*.launch_info.pbtxt", module_name);
-  ASSIGN_OR_RETURN(std::vector<std::string> files, FindFiles(dirs, pattern));
+  ABSL_ASSIGN_OR_RETURN(std::vector<std::string> files, FindFiles(dirs, pattern));
   if (files.empty()) {
     return absl::NotFoundError(absl::StrFormat(
         "No launch info file found for module '%s'. The file name should match "
@@ -147,13 +147,13 @@ absl::StatusOr<LaunchInfoResult> FindLaunchInfo(
 absl::StatusOr<std::unique_ptr<HloModule>> ReadHloModuleFromFile(
     absl::string_view path, xla::StackFrameIndexProto* stack_frame_index) {
   HloModuleProto proto;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       tsl::ReadBinaryProto(tsl::Env::Default(), std::string(path), &proto));
   if (stack_frame_index != nullptr && proto.has_stack_frame_index()) {
     *stack_frame_index = proto.stack_frame_index();
   }
   xla::DebugOptions debug_options;
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       xla::HloModuleConfig module_config,
       xla::HloModule::CreateModuleConfigFromProto(proto, debug_options));
   return HloModule::CreateFromProto(proto, module_config);
@@ -166,37 +166,37 @@ absl::StatusOr<RunData> LoadRunData(absl::Span<const std::string> dirs,
   run_data.module_name = module_name;
 
   // 1. Load launch info and get device assignment.
-  ASSIGN_OR_RETURN(LaunchInfoResult launch_info,
+  ABSL_ASSIGN_OR_RETURN(LaunchInfoResult launch_info,
                    FindLaunchInfo(dirs, module_name, launch_barrier_id));
   run_data.launch_barrier_id = launch_info.launch_barrier_id;
 
   LaunchInfo launch_info_proto;
-  RETURN_IF_ERROR(tsl::ReadTextProto(tsl::Env::Default(), launch_info.path,
+  ABSL_RETURN_IF_ERROR(tsl::ReadTextProto(tsl::Env::Default(), launch_info.path,
                                      &launch_info_proto));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       run_data.device_assignment,
       DeviceAssignment::Deserialize(launch_info_proto.device_assignment()));
 
   // 2. Find and parse HLO modules.
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::string original_hlo_path,
       FindOneFile(dirs,
                   absl::StrFormat("*module_*.%s.%d.original_hlo_module.pb",
                                   module_name, run_data.launch_barrier_id)));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       run_data.original_module,
       ReadHloModuleFromFile(original_hlo_path, &run_data.stack_frame_index));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::string optimized_hlo_path,
       FindOneFile(dirs,
                   absl::StrFormat("*module_*.%s.%d.optimized_hlo_module.pb",
                                   module_name, run_data.launch_barrier_id)));
-  ASSIGN_OR_RETURN(run_data.optimized_module,
+  ABSL_ASSIGN_OR_RETURN(run_data.optimized_module,
                    ReadHloModuleFromFile(optimized_hlo_path));
 
   // 3. Find log files.
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<std::string> all_log_files,
       FindFiles(dirs, absl::StrFormat("*%s*tpu_log-*_%d-*.riegeli", module_name,
                                       launch_info.launch_barrier_id)));

@@ -24,10 +24,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
@@ -97,7 +97,7 @@ absl::Status SetupCollectiveThunksDevice(
     CollectiveThunkMultiGpuTestState& state) {
   state.device_ordinal = device_ordinal;
   state.executor = GetGpuExecutor(device_ordinal);
-  ASSIGN_OR_RETURN(state.stream, state.executor->CreateStream());
+  ABSL_ASSIGN_OR_RETURN(state.stream, state.executor->CreateStream());
   state.allocator =
       std::make_unique<se::StreamExecutorAddressAllocator>(state.executor);
 
@@ -135,7 +135,7 @@ absl::Status SetupCollectiveThunksDevice(
       &state.gpu_run_options);
   state.run_options.mutable_run_options()->set_local_device_count(num_devices);
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       CollectiveParams params,
       CollectiveParams::Create(state.run_options, /*async_streams=*/{},
                                LocalDeviceId(device_ordinal)));
@@ -148,10 +148,10 @@ absl::Status SetupCollectiveThunksDevice(
                                       &memory_requests, state.executor,
                                       &allocations};
   for (CollectiveThunk* thunk : thunks) {
-    RETURN_IF_ERROR(thunk->Prepare(prepare_params));
+    ABSL_RETURN_IF_ERROR(thunk->Prepare(prepare_params));
   }
 
-  ASSIGN_OR_RETURN(state.collective_cliques,
+  ABSL_ASSIGN_OR_RETURN(state.collective_cliques,
                    AcquireCollectiveCliques(params, clique_requests));
 
   Thunk::InitializeParams init_params;
@@ -163,7 +163,7 @@ absl::Status SetupCollectiveThunksDevice(
   init_params.collective_cliques = &state.collective_cliques;
   init_params.local_device_count = num_devices;
   for (CollectiveThunk* thunk : thunks) {
-    RETURN_IF_ERROR(thunk->Initialize(init_params));
+    ABSL_RETURN_IF_ERROR(thunk->Initialize(init_params));
   }
 
   state.collective_params = std::move(params);
@@ -189,19 +189,19 @@ Thunk::ExecuteParams MakeExecuteParams(
 
 absl::Status ExecuteOnStreamAndBlock(CollectiveThunk& thunk,
                                      const Thunk::ExecuteParams& params) {
-  RETURN_IF_ERROR(thunk.ExecuteOnStream(params));
+  ABSL_RETURN_IF_ERROR(thunk.ExecuteOnStream(params));
   return params.stream->BlockHostUntilDone();
 }
 
 absl::Status RecordCommandBufferCreate(
     CollectiveThunkMultiGpuTestState& state, CollectiveThunk& thunk,
     const Thunk::ExecuteParams& execute_params) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       state.command_buffer,
       state.executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
 
   Command::RecordParams record_params = {state.state_manager};
-  ASSIGN_OR_RETURN(state.command,
+  ABSL_ASSIGN_OR_RETURN(state.command,
                    thunk.Record(execute_params, record_params,
                                 Command::RecordCreate{/*dependencies=*/{}},
                                 state.command_buffer.get()));
@@ -219,8 +219,8 @@ absl::Status RecordCommandBufferUpdate(
   Command::RecordParams record_params = {state.state_manager,
                                          std::move(updated_allocations)};
 
-  RETURN_IF_ERROR(state.command_buffer->Update());
-  ASSIGN_OR_RETURN(const se::CommandBuffer::Command* updated_command,
+  ABSL_RETURN_IF_ERROR(state.command_buffer->Update());
+  ABSL_ASSIGN_OR_RETURN(const se::CommandBuffer::Command* updated_command,
                    thunk.Record(execute_params, record_params,
                                 Command::RecordUpdate{state.command},
                                 state.command_buffer.get()));
@@ -235,13 +235,13 @@ absl::Status RecordCommandBufferUpdate(
 }
 
 absl::Status SubmitCommandBuffer(CollectiveThunkMultiGpuTestState& state) {
-  RETURN_IF_ERROR(state.command_buffer->Submit(state.stream.get()));
+  ABSL_RETURN_IF_ERROR(state.command_buffer->Submit(state.stream.get()));
   return state.stream->BlockHostUntilDone();
 }
 
 absl::Status FillDeviceBuffer(se::Stream& stream, se::DeviceAddressBase buffer,
                               absl::Span<const float> data) {
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       stream.Memcpy(&buffer, data.data(), sizeof(float) * data.size()));
   return stream.BlockHostUntilDone();
 }
@@ -249,15 +249,15 @@ absl::Status FillDeviceBuffer(se::Stream& stream, se::DeviceAddressBase buffer,
 absl::StatusOr<std::vector<float>> ReadDeviceBuffer(
     se::Stream& stream, se::DeviceAddressBase buffer, int64_t length) {
   std::vector<float> data(length);
-  RETURN_IF_ERROR(stream.Memcpy(data.data(), buffer, sizeof(float) * length));
-  RETURN_IF_ERROR(stream.BlockHostUntilDone());
+  ABSL_RETURN_IF_ERROR(stream.Memcpy(data.data(), buffer, sizeof(float) * length));
+  ABSL_RETURN_IF_ERROR(stream.BlockHostUntilDone());
   return data;
 }
 
 absl::Status VerifyDeviceBuffer(se::Stream& stream,
                                 se::DeviceAddressBase buffer,
                                 absl::Span<const float> expected_values) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<float> output,
       ReadDeviceBuffer(stream, buffer,
                        static_cast<int64_t>(expected_values.size())));

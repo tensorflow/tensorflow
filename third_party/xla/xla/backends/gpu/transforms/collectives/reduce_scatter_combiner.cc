@@ -18,11 +18,11 @@ limitations under the License.
 #include <optional>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/transforms/collectives/collective_combiner_annotator.h"
 #include "xla/backends/gpu/transforms/collectives/gpu_collective_combiner_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -103,7 +103,7 @@ absl::StatusOr<bool> GpuReduceScatterCombiner::RunImpl(
 
   if (auto suggested_threshold = SuggestedCombinerThreshold(*module)) {
     combine_threshold_in_bytes_ = *suggested_threshold;
-    ASSIGN_OR_RETURN(bool combined,
+    ABSL_ASSIGN_OR_RETURN(bool combined,
                      RunWithKeyCombiner(module, execution_threads,
                                         CustomCombinerKey, post_combine));
     changed |= combined;
@@ -112,7 +112,7 @@ absl::StatusOr<bool> GpuReduceScatterCombiner::RunImpl(
   // Use the default combiner thresholds after we combined pipelined and
   // synchronous collectives.
   combine_threshold_in_bytes_ = default_combine_threshold_in_bytes_;
-  ASSIGN_OR_RETURN(bool combined,
+  ABSL_ASSIGN_OR_RETURN(bool combined,
                    RunWithKeyCombiner(module, execution_threads,
                                       DefaultCombinerKey, post_combine));
   changed |= combined;

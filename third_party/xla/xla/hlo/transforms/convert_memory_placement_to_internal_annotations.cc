@@ -18,10 +18,10 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/memory_annotations.h"
 #include "xla/side_effect_util.h"
@@ -74,7 +74,7 @@ ConvertCustomCallWithExternalAnnotationToInternalAnnotation(
   }
   const absl::StatusOr<absl::string_view> custom_call_target =
       GetCustomCallTarget(it->second);
-  RETURN_IF_ERROR(custom_call_target.status());
+  ABSL_RETURN_IF_ERROR(custom_call_target.status());
   if (is_to_host_case) {
     VLOG(1) << "Process forward case: " << instruction->ToString();
     if (instruction->operand_count() != 1) {
@@ -91,8 +91,8 @@ ConvertCustomCallWithExternalAnnotationToInternalAnnotation(
     if (instruction->has_sharding()) {
       move_to_host_custom_call->set_sharding(instruction->sharding());
     }
-    RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(move_to_host_custom_call));
-    RETURN_IF_ERROR(c->RemoveInstructionAndUnusedOperands(instruction));
+    ABSL_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(move_to_host_custom_call));
+    ABSL_RETURN_IF_ERROR(c->RemoveInstructionAndUnusedOperands(instruction));
     return true;
   } else if (is_to_device_case) {
     VLOG(1) << "Process backward case: " << instruction->ToString();
@@ -104,8 +104,8 @@ ConvertCustomCallWithExternalAnnotationToInternalAnnotation(
     if (instruction->has_sharding()) {
       new_result->set_sharding(instruction->sharding());
     }
-    RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(new_result));
-    RETURN_IF_ERROR(c->RemoveInstructionAndUnusedOperands(instruction));
+    ABSL_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(new_result));
+    ABSL_RETURN_IF_ERROR(c->RemoveInstructionAndUnusedOperands(instruction));
     return true;
   }
   return false;
@@ -120,7 +120,7 @@ absl::StatusOr<bool> ConvertMemoryPlacementToInternalAnnotations::RunImpl(
   for (HloComputation* c : module->MakeNonfusionComputations()) {
     for (HloInstruction* instruction : c->MakeInstructionPostOrder()) {
       if (instruction->IsCustomCall(memory_annotations::kDevicePlacement)) {
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             auto result,
             ConvertCustomCallWithExternalAnnotationToInternalAnnotation(
                 c, instruction));

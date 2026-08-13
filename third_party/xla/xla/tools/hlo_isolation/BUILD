@@ -53,7 +53,6 @@ cc_library(
         "//xla/tools:hlo_module_loader",
         "//xla/tools/hlo_dump:hlo_dump_utils",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:btree",
@@ -64,6 +63,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -112,19 +112,35 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tools/hlo_dump:hlo_dump_utils",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@tsl//tsl/platform:path",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_isolation_api_test",
+    srcs = ["hlo_isolation_api_test.cc"],
+    deps = [
+        ":hlo_isolation_api",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -157,9 +173,9 @@ xla_cc_binary(
         "//xla/service:hlo_runner_interface",
         "//xla/service:interpreter_plugin",
         "//xla/tools:run_hlo_module_lib",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@tsl//tsl/platform:platform_port",

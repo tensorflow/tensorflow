@@ -35,11 +35,11 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/error_spec.h"
 #include "xla/fp_util.h"
 #include "xla/index_util.h"
@@ -170,7 +170,7 @@ absl::Status Equal(LiteralSlice expected, LiteralSlice actual,
       result.Update(Equal<NativeT>(expected, actual, multi_index, dimension + 1,
                                    mismatched));
     } else {
-      RETURN_IF_ERROR(Equal<NativeT>(expected, actual, multi_index,
+      ABSL_RETURN_IF_ERROR(Equal<NativeT>(expected, actual, multi_index,
                                      dimension + 1, mismatched));
     }
   }
@@ -310,7 +310,7 @@ class NearComparator {
   absl::Status Run() {
     // If the shapes mismatch, we simply fail the expectation instead of
     // printing out data, as it's a type error rather than a value error.
-    RETURN_IF_ERROR(EqualShapes(expected_.shape(), actual_.shape()));
+    ABSL_RETURN_IF_ERROR(EqualShapes(expected_.shape(), actual_.shape()));
     if (!expected_.shape().IsArray()) {
       return InvalidArgument("Expected array shape; got %s.",
                              ShapeUtil::HumanString(expected_.shape()));
@@ -775,9 +775,9 @@ absl::Status EqualHelper(const LiteralSlice& expected,
                          const ShapeIndex& shape_index,
                          const MiscompareCallback& miscompare_callback) {
   if (expected.shape().is_static() && actual.shape().is_static()) {
-    RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
+    ABSL_RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
   } else {
-    RETURN_IF_ERROR(EqualDynamicShapesAndDimensions(expected, actual));
+    ABSL_RETURN_IF_ERROR(EqualDynamicShapesAndDimensions(expected, actual));
   }
 
   absl::Status result;
@@ -791,7 +791,7 @@ absl::Status EqualHelper(const LiteralSlice& expected,
       if (miscompare_callback) {
         result.Update(tuple_result);
       } else {
-        RETURN_IF_ERROR(tuple_result);
+        ABSL_RETURN_IF_ERROR(tuple_result);
       }
       next_index.pop_back();
     }
@@ -845,9 +845,9 @@ absl::Status NearHelper(const LiteralSlice& expected,
                         std::optional<bool> detailed_message,
                         const MiscompareCallback& miscompare_callback) {
   if (expected.shape().is_static() && actual.shape().is_static()) {
-    RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
+    ABSL_RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
   } else {
-    RETURN_IF_ERROR(EqualDynamicShapesAndDimensions(expected, actual));
+    ABSL_RETURN_IF_ERROR(EqualDynamicShapesAndDimensions(expected, actual));
   }
 
   if (expected.shape().IsTuple()) {
@@ -961,7 +961,7 @@ absl::Status EqualShapes(const Shape& expected, const Shape& actual) {
 
 absl::Status EqualDynamicShapesAndDimensions(const LiteralSlice& expected,
                                              const LiteralSlice& actual) {
-  RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
+  ABSL_RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
   return ShapeUtil::ForEachSubshapeWithStatus(
       expected.shape(),
       [&expected, &actual](const Shape& expected_shape,

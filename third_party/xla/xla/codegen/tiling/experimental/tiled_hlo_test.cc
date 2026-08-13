@@ -27,11 +27,11 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/test_utils.h"
@@ -173,10 +173,10 @@ class TileAnalysisTestBase : public HloHardwareIndependentTestBase {
       absl::string_view hlo_string, absl::Span<const int64_t> tile_sizes) {
     HloInstruction* root = ParseAndGetRoot(hlo_string);
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
-    ASSIGN_OR_RETURN(auto tiling_space,
+    ABSL_ASSIGN_OR_RETURN(auto tiling_space,
                      TilingSpace::Create(*fusion_adaptor, &mlir_context_));
-    RETURN_IF_ERROR(tiling_space->AssignTileSizes(tile_sizes));
-    ASSIGN_OR_RETURN(
+    ABSL_RETURN_IF_ERROR(tiling_space->AssignTileSizes(tile_sizes));
+    ABSL_ASSIGN_OR_RETURN(
         TiledHloComputation tiled_computation,
         TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
     tiled_computation.Simplify();

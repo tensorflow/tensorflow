@@ -495,7 +495,7 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
 using flatbuffers::Offset;
 using flatbuffers::Vector;
 
-bool VerifyOperators(const Vector<Offset<Operator>>& operators,
+bool VerifyOperators(const Vector<Offset<Operator>>& operators, size_t len,
                      ErrorReporter* error_reporter) {
   for (const auto* op : operators) {
     if (!op->inputs()) {
@@ -505,6 +505,21 @@ bool VerifyOperators(const Vector<Offset<Operator>>& operators,
     if (!op->outputs()) {
       ReportError(error_reporter, "Missing 'outputs' for operator.");
       return false;
+    }
+    // When custom_options lives outside the flatbuffer (models > 2GB), the
+    // offset/size pair points into the raw file allocation. Validate against
+    // the total allocation length here, at ingress, using the subtraction
+    // form so the check itself cannot overflow: `size > len` first rules out
+    // a size larger than the whole allocation, so `len - size` below cannot
+    // underflow.
+    if (op->large_custom_options_offset() > 1) {
+      if (op->large_custom_options_size() > len ||
+          op->large_custom_options_offset() >
+              len - op->large_custom_options_size()) {
+        ReportError(error_reporter,
+                    "Operator's large_custom_options is out of bound.");
+        return false;
+      }
     }
   }
   return true;
@@ -606,7 +621,8 @@ bool VerifySubGraphConsistency(const Model& model, const SubGraph& subgraph,
   return true;
 }
 
-bool VerifySubGraphs(const Model& model, ErrorReporter* error_reporter) {
+bool VerifySubGraphs(const Model& model, size_t len,
+                     ErrorReporter* error_reporter) {
   if (!model.subgraphs()) {
     ReportError(error_reporter, "Missing 'subgraphs' section.");
     return false;
@@ -617,7 +633,7 @@ bool VerifySubGraphs(const Model& model, ErrorReporter* error_reporter) {
       return false;
     }
 
-    if (!VerifyOperators(*subgraph->operators(), error_reporter)) {
+    if (!VerifyOperators(*subgraph->operators(), len, error_reporter)) {
       return false;
     }
 
@@ -629,7 +645,8 @@ bool VerifySubGraphs(const Model& model, ErrorReporter* error_reporter) {
 }
 
 // Verifies tensors have valid properties and legit buffer if set.
-bool VerifyTensors(const Model& model, ErrorReporter* error_reporter) {
+bool VerifyTensors(const Model& model, size_t len,
+                   ErrorReporter* error_reporter) {
   if (!model.subgraphs()) {
     return true;
   }
@@ -688,6 +705,19 @@ bool VerifyTensors(const Model& model, ErrorReporter* error_reporter) {
           if (!VerifyNumericTensorBuffer(*tensor, *buffer, error_reporter)) {
             return false;
           }
+        }
+      } else if (buffer->offset() > 1) {
+        // Buffer data lives outside the flatbuffer (models > 2GB), addressed
+        // by offset/size into the raw file allocation. Validate against the
+        // total allocation length here, at ingress, using the subtraction
+        // form so the check itself cannot overflow: `size > len` first rules
+        // out a size larger than the whole allocation, so `len - size` below
+        // cannot underflow.
+        if (buffer->size() > len || buffer->offset() > len - buffer->size()) {
+          ReportError(error_reporter,
+                      "Tensor %s buffer %d specified an out of range offset.",
+                      NameOrEmptyString(tensor->name()), tensor->buffer());
+          return false;
         }
       }
     }
@@ -755,7 +785,8 @@ bool VerifyOps(const Model& model, const OpResolver& resolver,
   return true;
 }
 
-bool VerifyModel(const Model* model, ErrorReporter* error_reporter) {
+bool VerifyModel(const Model* model, size_t len,
+                 ErrorReporter* error_reporter) {
   if (model == nullptr) {
     ReportError(error_reporter, "Invalid flatbuffer format");
     return false;
@@ -764,10 +795,10 @@ bool VerifyModel(const Model* model, ErrorReporter* error_reporter) {
     ReportError(error_reporter, "Invalid model version %d", model->version());
     return false;
   }
-  if (!VerifySubGraphs(*model, error_reporter)) {
+  if (!VerifySubGraphs(*model, len, error_reporter)) {
     return false;
   }
-  if (!VerifyTensors(*model, error_reporter)) {
+  if (!VerifyTensors(*model, len, error_reporter)) {
     return false;
   }
   return true;
@@ -777,14 +808,14 @@ bool VerifyModel(const Model* model, ErrorReporter* error_reporter) {
 
 bool Verify(const void* buf, size_t len, ErrorReporter* error_reporter) {
   const Model* model = internal::VerifyFlatBufferAndGetModel(buf, len);
-  return VerifyModel(model, error_reporter);
+  return VerifyModel(model, len, error_reporter);
 }
 
 // Deprecated: see comments in header.
 bool Verify(const void* buf, size_t len, const OpResolver& resolver,
             ErrorReporter* error_reporter) {
   const Model* model = internal::VerifyFlatBufferAndGetModel(buf, len);
-  if (!VerifyModel(model, error_reporter)) {
+  if (!VerifyModel(model, len, error_reporter)) {
     return false;
   }
   if (!VerifyOps(*model, resolver, error_reporter)) {

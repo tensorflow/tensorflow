@@ -26,12 +26,13 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/transforms/collectives/collective_domain.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -88,7 +89,7 @@ class GpuLatencyHidingSchedulerBaseTest
         enable_selective_memcpy_overlap);
     options.set_xla_gpu_pgle_accuracy_checker(strictness);
 
-    RETURN_IF_ERROR(ScheduleGpuModule(module, /*pointer_size=*/8,
+    ABSL_RETURN_IF_ERROR(ScheduleGpuModule(module, /*pointer_size=*/8,
                                       gpu_device_info, &mlir_context_,
                                       &alias_info)
                         .status());
@@ -462,8 +463,7 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   EXPECT_LT(compute_idx, a2a_done_idx);
 }
 
-TEST_F(GpuLatencyHidingSchedulerBaseTest,
-       OverlappingRanksPreventOverlappingCollectives) {
+TEST_F(GpuLatencyHidingSchedulerBaseTest, CollectiveDomainsPreventRankOverlap) {
   absl::string_view kFdoProfile = R"pb(
     costs { name: "add_0" cost_us: 100000.0 }
     costs { name: "ar_0" cost_us: 10.0 }
@@ -496,9 +496,12 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   HloModuleConfig config = GetModuleConfig(kFdoProfile);
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(kHloModule, config));
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_experimental_enable_collective_multi_streaming(true);
+  HloInstruction* all_reduce_start = FindInstruction(module.get(), "ar_0");
+  ASSERT_OK_AND_ASSIGN(GpuBackendConfig backend_config,
+                       all_reduce_start->backend_config<GpuBackendConfig>());
+  backend_config.mutable_collective_backend_config()->set_communication_domain(
+      kScaleUpFabricCollectiveDomain);
+  ASSERT_OK(all_reduce_start->set_backend_config(backend_config));
 
   EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
   const HloSchedule& schedule = module->schedule();
@@ -1014,7 +1017,7 @@ ENTRY main {
   std::vector<HloInstruction*> instruction_sequence =
       schedule.sequence(module->entry_computation()).instructions();
   EXPECT_TRUE(GetIndexByName(instruction_sequence, "dynamic-slice-start") <
-                  GetIndexByName(instruction_sequence, "add") ||
+                  GetIndexByName(instruction_sequence, "add") &&
               GetIndexByName(instruction_sequence, "add") <
                   GetIndexByName(instruction_sequence, "dynamic-slice-done"));
 }
@@ -1153,6 +1156,20 @@ ENTRY main {
   ASSERT_EQ(done_resources.size(), 1);
   EXPECT_EQ(done_resources[0].first, collective_resource);
   EXPECT_EQ(done_resources[0].second, ResourceUsageType::kResourceOccupy);
+
+  // A scale-up domain changes stream placement, not LHS accounting.
+  for (HloInstruction* instruction : {group_start, group_done}) {
+    ASSERT_OK_AND_ASSIGN(GpuBackendConfig backend_config,
+                         instruction->backend_config<GpuBackendConfig>());
+    backend_config.mutable_collective_backend_config()
+        ->set_communication_domain(kScaleUpFabricCollectiveDomain);
+    ASSERT_OK(instruction->set_backend_config(backend_config));
+  }
+
+  EXPECT_EQ(async_tracker.GetResourcesFromInstruction(*group_start),
+            start_resources);
+  EXPECT_EQ(async_tracker.GetResourcesFromInstruction(*group_done),
+            done_resources);
   EXPECT_EQ(async_tracker.GetNumResourcesPerInstruction(collective_resource,
                                                         *group_start),
             0);
@@ -2120,6 +2137,76 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest, DelayMoveToHostAsyncStart) {
   EXPECT_TRUE(
       GetIndexByName(instruction_sequence, "dynamic-update-slice-start.18") <
       GetIndexByName(instruction_sequence, "all-to-all-start.4"));
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest, NoDelayMoveToDeviceAsyncStart) {
+  absl::string_view kHloModule = R"(
+    HloModule noDelay_moveToDevic_asyncStart, is_scheduled=false
+
+
+    %wrapped_dynamic-update-slice_computation.6 (p0.0: bf16[8,2,4,128,128], p1.0: bf16[1,2,4,128,128], p2.0: s32[], p3.0: s32[], p4.0: s32[], p5.0: s32[], p6.0: s32[]) -> bf16[8,2,4,128,128] {
+      %p0.0 = bf16[8,2,4,128,128]{4,3,2,1,0} parameter(0)
+      %p1.0 = bf16[1,2,4,128,128]{4,3,2,1,0} parameter(1)
+      %p2.0 = s32[] parameter(2)
+      %p3.0 = s32[] parameter(3)
+      %p4.0 = s32[] parameter(4)
+      %p5.0 = s32[] parameter(5)
+      %p6.0 = s32[] parameter(6)
+      ROOT %dynamic-update-slice.536.1 = bf16[8,2,4,128,128]{4,3,2,1,0} dynamic-update-slice(%p0.0, %p1.0, %p2.0, %p3.0, %p4.0, /*index=5*/%p5.0, %p6.0)
+    }
+
+    %async_computation.6 (param_0.6: bf16[8,2,4,128,128], param_1.6: bf16[1,2,4,128,128], param_2.6: s32[], param_3.6: s32[], param_4.6: s32[], param_5.2: s32[], param_6: s32[]) -> bf16[8,2,4,128,128] {
+      %param_0.6 = bf16[8,2,4,128,128]{4,3,2,1,0} parameter(0)
+      %param_1.6 = bf16[1,2,4,128,128]{4,3,2,1,0} parameter(1)
+      %param_2.6 = s32[] parameter(2)
+      %param_3.6 = s32[] parameter(3)
+      %param_4.6 = s32[] parameter(4)
+      %param_5.2 = s32[] parameter(5)
+      %param_6 = s32[] parameter(6)
+      ROOT %wrapped_dynamic-update-slice.6 = bf16[8,2,4,128,128]{4,3,2,1,0} fusion(%param_0.6, %param_1.6, %param_2.6, %param_3.6, %param_4.6, /*index=5*/%param_5.2, %param_6), kind=kLoop, calls=%wrapped_dynamic-update-slice_computation.6
+    }
+
+    %async_computation.46 (param_0.38229: bf16[1,8,16,16,128,7168]) -> bf16[1,8,16,16,128,7168] {
+      %param_0.38229 = bf16[1,8,16,16,128,7168]{5,4,3,1,0,2} parameter(0)
+      ROOT %all-to-all.32.1 = bf16[1,8,16,16,128,7168]{5,4,3,1,0,2} all-to-all(%param_0.38229), channel_id=474, replica_groups=[8,16]<=[128], dimensions={2}
+    }
+
+
+    ENTRY main {
+      p0 = bf16[8,2,4,128,128] parameter(0)
+      p1 = bf16[1,2,4,128,128] parameter(1)
+      p2 = s32[] parameter(2)
+      p3 = s32[] parameter(3)
+      p4 = s32[] parameter(4)
+      p5 = s32[] parameter(5)
+      p6 = s32[] parameter(6)
+      p7 = bf16[1,8,16,16,128,7168] parameter(7)
+      p8 = bf16[] parameter(8)
+
+      %all-to-all-start.4 = ((bf16[1,8,16,16,128,7168]{5,4,3,1,0,2}), bf16[1,8,16,16,128,7168]{5,4,3,1,0,2}) async-start(p7), calls=%async_computation.46
+      %all-to-all-done.4 = bf16[1,8,16,16,128,7168]{5,4,3,1,0,2} async-done(%all-to-all-start.4)
+      %bitcast.309.7 = bf16[128,16,128,7168]{3,2,1,0} bitcast(%all-to-all-done.4)
+      %broadcast_in_dim.6026.9 = bf16[128,16,128,7168]{3,2,1,0} broadcast(%p8), dimensions={}
+      %mul.5173.7 = bf16[128,16,128,7168]{3,2,1,0} multiply(%bitcast.309.7, %broadcast_in_dim.6026.9)
+      %dynamic-update-slice-start.18 = ((bf16[8,2,4,128,128]{4,3,2,1,0}, bf16[1,2,4,128,128]{4,3,2,1,0}, s32[], s32[], s32[], /*index=5*/s32[], s32[]), bf16[8,2,4,128,128]{4,3,2,1,0}, u32[]) async-start(p0, p1, p2, p3, p4, p5, p6), calls=%async_computation.6
+      %dynamic-update-slice-done.18 = bf16[8,2,4,128,128]{4,3,2,1,0} async-done(%dynamic-update-slice-start.18)
+      ROOT _ = (bf16[128,16,128,7168], bf16[8,2,4,128,128]) tuple(%mul.5173.7, %dynamic-update-slice-done.18)
+    }
+  )";
+
+  absl::string_view kFdoProfile = "";
+  xla::HloModuleConfig config = GetModuleConfig(kFdoProfile);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
+
+  EXPECT_OK(ScheduleModule(module.get()));
+  const HloSchedule& schedule = module->schedule();
+  const std::vector<xla::HloInstruction*>& instruction_sequence =
+      schedule.sequence(module->entry_computation()).instructions();
+
+  EXPECT_TRUE(
+      GetIndexByName(instruction_sequence, "all-to-all-start.4") <
+      GetIndexByName(instruction_sequence, "dynamic-update-slice-start.18"));
 }
 
 TEST_F(GpuLatencyHidingSchedulerBaseTest,

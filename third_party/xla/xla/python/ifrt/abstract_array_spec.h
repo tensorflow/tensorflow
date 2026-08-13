@@ -24,8 +24,8 @@ limitations under the License.
 
 #include "absl/base/nullability.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/abstract_array_spec.pb.h"
 #include "xla/python/ifrt/device_list.h"
@@ -89,7 +89,7 @@ class AbstractArraySpec {
   absl::StatusOr<AbstractArraySpecProto> ToProto(
       SerDesVersion version = SerDesVersion::current()) const {
     AbstractArraySpecProto proto;
-    RETURN_IF_ERROR(ToProto(proto, version));
+    ABSL_RETURN_IF_ERROR(ToProto(proto, version));
     return proto;
   }
 

@@ -18,8 +18,10 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -29,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -50,6 +53,16 @@ class HostOffloadingPjRtExecutable : public HostOffloadingExecutable {
       absl::Span<const ShapeTree<HostOffloadingBuffer>> parameters,
       const xla::ShapeTree<HostOffloadingBuffer>& result,
       const ExecuteOptions& execute_options) final;
+
+  absl::StatusOr<std::vector<HloModuleConfig>> GetHloModuleConfigs() final {
+    ABSL_ASSIGN_OR_RETURN(auto hlo_modules, executable_->GetHloModules());
+    std::vector<HloModuleConfig> hlo_module_configs;
+    hlo_module_configs.reserve(hlo_modules.size());
+    for (const auto& hlo_module : hlo_modules) {
+      hlo_module_configs.push_back(hlo_module->config());
+    }
+    return hlo_module_configs;
+  }
 
   absl::string_view name() const final { return name_; }
 

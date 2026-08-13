@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -45,8 +46,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -78,6 +77,7 @@ limitations under the License.
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
@@ -352,7 +352,7 @@ absl::StatusOr<GlobalTopology> MakeGlobalTopologyFromPjRtClient(
           it == ifrt_device_id_to_pjrt_global_device_id.end()) {
         pjrt_device = nullptr;
       } else {
-        ASSIGN_OR_RETURN(pjrt_device, pjrt_client->LookupDevice(it->second));
+        ABSL_ASSIGN_OR_RETURN(pjrt_device, pjrt_client->LookupDevice(it->second));
       }
 
       if (pjrt_device == nullptr) {
@@ -452,7 +452,7 @@ absl::StatusOr<GlobalTopology> MakeGlobalTopologyWithLocalTopology(
     xla::PjRtClient* pjrt_client, const PjRtClient::CreateOptions& options,
     const LocalTopologyProto& local_topology_proto) {
   GlobalTopologyProto global_topology_proto;
-  RETURN_IF_ERROR(ExchangeTopologies(
+  ABSL_RETURN_IF_ERROR(ExchangeTopologies(
       pjrt_client->platform_name(), options.process_id, options.num_processes,
       options.get_local_topology_timeout, options.get_global_topology_timeout,
       options.kv_store.get(), local_topology_proto, &global_topology_proto,
@@ -527,7 +527,7 @@ MakePjRtDevicesFromGlobalTopology(PjRtClient* client,
     const bool node_is_me = process_index == global_topology.my_process_index;
     for (const DeviceProto& device_proto : node.devices()) {
       absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes;
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           DeserializePjRtDeviceAttributes(device_proto, attributes));
       if (partition_index != -1) {
         // Sets a generated `partition_index` attribute if not already present.
@@ -548,7 +548,7 @@ MakePjRtDevicesFromGlobalTopology(PjRtClient* client,
         xla::GlobalDeviceId pjrt_global_device_id =
             global_topology.ifrt_device_id_to_pjrt_global_device_id.at(
                 ifrt_device_id);
-        ASSIGN_OR_RETURN(pjrt_device,
+        ABSL_ASSIGN_OR_RETURN(pjrt_device,
                          pjrt_client->LookupDevice(pjrt_global_device_id));
         // Only append any device ID remapping to the device debug string. The
         // user code often uses a pattern matching on the debug string (which is
@@ -617,7 +617,7 @@ absl::StatusOr<ArrayRef> MakeStringArrayFromHostBuffer(
     return absl::OkStatus();
   }();
 
-  RETURN_IF_ERROR(param_validation);
+  ABSL_RETURN_IF_ERROR(param_validation);
 
   auto num_elements = shape.num_elements();
   auto strings = std::make_shared<std::vector<absl::Cord>>();
@@ -722,7 +722,7 @@ absl::StatusOr<ArrayRef> AssembleStringArrayFromSingleDeviceStringArrays(
   };
 
   for (int i = 0; i < arrays.size(); ++i) {
-    auto basic_string_array = llvm::dyn_cast<BasicStringArray>(arrays[i].get());
+    auto basic_string_array = dyn_cast<BasicStringArray>(arrays[i].get());
     if (!basic_string_array) {
       return absl::InvalidArgumentError(
           "All single device arrays must be BasicStringArrays");
@@ -757,9 +757,9 @@ CopyPjRtBuffersToLocalDevice(int index, absl::Span<ArrayRef> arrays,
   std::vector<std::shared_ptr<PjRtBuffer>> buffers;
   buffers.reserve(arrays.size());
   for (ArrayRef& array : arrays) {
-    if (auto* const pjrt_array = llvm::dyn_cast<PjRtArray>(array.get());
+    if (auto* const pjrt_array = dyn_cast<PjRtArray>(array.get());
         pjrt_array != nullptr) {
-      ASSIGN_OR_RETURN(std::shared_ptr<PjRtBuffer> buffer,
+      ABSL_ASSIGN_OR_RETURN(std::shared_ptr<PjRtBuffer> buffer,
                        pjrt_array->CopySinglePjRtBuffer(
                            index, dst_device, memory_kind, semantics));
       buffers.push_back(std::move(buffer));
@@ -797,7 +797,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
 
   GlobalTopology global_topology;
   if (!options.kv_store || !options.use_kv_store_for_topology_exchange) {
-    ASSIGN_OR_RETURN(global_topology,
+    ABSL_ASSIGN_OR_RETURN(global_topology,
                      MakeGlobalTopologyFromPjRtClient(pjrt_client, options));
   } else {
     if (options.global_device_mapping.has_value()) {
@@ -810,11 +810,11 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
     // from all processes.
     const LocalTopologyProto local_topology_proto =
         MakeLocalTopologyFromPjRtClient(pjrt_client, options);
-    ASSIGN_OR_RETURN(global_topology,
+    ABSL_ASSIGN_OR_RETURN(global_topology,
                      MakeGlobalTopologyWithLocalTopology(pjrt_client, options,
                                                          local_topology_proto));
   }
-  ASSIGN_OR_RETURN(std::vector<std::unique_ptr<PjRtDevice>> devices,
+  ABSL_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<PjRtDevice>> devices,
                    MakePjRtDevicesFromGlobalTopology(client.get(), pjrt_client,
                                                      global_topology));
 
@@ -1004,7 +1004,7 @@ absl::StatusOr<Device*> PjRtClient::LookupDevice(DeviceId device_id) const {
 absl::StatusOr<Device*> PjRtClient::LookupAddressableDevice(
     int local_hardware_id) const {
   DCHECK(this);
-  ASSIGN_OR_RETURN(xla::PjRtDevice * pjrt_device,
+  ABSL_ASSIGN_OR_RETURN(xla::PjRtDevice * pjrt_device,
                    pjrt_client_->LookupAddressableDevice(
                        xla::LocalDeviceId(local_hardware_id)));
   return LookupPjRtDevice(pjrt_device);
@@ -1020,7 +1020,7 @@ const AttributeMap& PjRtClient::Attributes() const { return attributes_; }
 absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>>
 PjRtClient::CreatePjRtArray(std::shared_ptr<PjRtBuffer> pjrt_buffer,
                             bool has_custom_layout) {
-  ASSIGN_OR_RETURN(auto array, PjRtArray::Create(this, std::move(pjrt_buffer),
+  ABSL_ASSIGN_OR_RETURN(auto array, PjRtArray::Create(this, std::move(pjrt_buffer),
                                                  has_custom_layout));
   return tsl::RCReference<PjRtCompatibleArray>(std::move(array));
 }
@@ -1029,7 +1029,7 @@ absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>>
 PjRtClient::CreatePjRtArray(Shape shape, PjRtBuffers pjrt_buffers,
                             bool has_custom_layout) {
   std::shared_ptr<const xla::PjRtLayout> layout;
-  ASSIGN_OR_RETURN(auto array, PjRtArray::Create(this, std::move(shape),
+  ABSL_ASSIGN_OR_RETURN(auto array, PjRtArray::Create(this, std::move(shape),
                                                  std::move(pjrt_buffers),
                                                  has_custom_layout));
   return tsl::RCReference<PjRtCompatibleArray>(std::move(array));
@@ -1050,14 +1050,14 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
                                          sharding, semantics,
                                          on_done_with_host_buffer);
   }
-  if (!llvm::isa<const SingleDeviceSharding>(sharding.get()) &&
+  if (!isa<const SingleDeviceSharding>(sharding.get()) &&
       !sharding->IsFullyReplicated()) {
     return InvalidArgument(
         "Only SingleDeviceSharding or fully-replicated sharding is supported: "
         "sharding=%v",
         sharding);
   }
-  ASSIGN_OR_RETURN(auto primitive_type, ToPrimitiveType(dtype));
+  ABSL_ASSIGN_OR_RETURN(auto primitive_type, ToPrimitiveType(dtype));
 
   absl::Span<xla::ifrt::Device* const> ifrt_addressable_devices =
       sharding->devices()->AddressableDeviceList()->devices();
@@ -1070,8 +1070,8 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
   if (layout == nullptr) {
     xla_layout = nullptr;
   } else {
-    ASSIGN_OR_RETURN(Shape shard_shape, sharding->GetShardShape(shape));
-    ASSIGN_OR_RETURN(pjrt_layout, ToPjRtLayout(dtype, shard_shape, layout));
+    ABSL_ASSIGN_OR_RETURN(Shape shard_shape, sharding->GetShardShape(shape));
+    ABSL_ASSIGN_OR_RETURN(pjrt_layout, ToPjRtLayout(dtype, shard_shape, layout));
     xla_layout = &pjrt_layout->xla_layout();
   }
   std::function<void()> on_done_with_host_buffer_per_device;
@@ -1114,18 +1114,18 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
                             absl::StrAppend(out, *ms->Kind().memory_kind());
                           }));
       }
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           buffer,
           pjrt_client_->BufferFromHostBuffer(
               data, primitive_type, shape.dims(), byte_strides, semantics,
               on_done_with_host_buffer_per_device,
               absl::down_cast<PjRtMemory*>(memory)->pjrt_memory(), xla_layout));
     } else {
-      ASSIGN_OR_RETURN(xla::PjRtMemorySpace * memory_space,
+      ABSL_ASSIGN_OR_RETURN(xla::PjRtMemorySpace * memory_space,
                        absl::down_cast<PjRtDevice*>(device)
                            ->pjrt_device()
                            ->default_memory_space());
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           buffer,
           pjrt_client_->BufferFromHostBuffer(
               data, primitive_type, shape.dims(), byte_strides, semantics,
@@ -1154,7 +1154,7 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
   arrays.reserve(array_specs.size());
   for (const auto& array_spec : array_specs) {
     if (array_spec.dtype.kind() == DType::kString) {
-      ASSIGN_OR_RETURN(arrays.emplace_back(),
+      ABSL_ASSIGN_OR_RETURN(arrays.emplace_back(),
                        BasicStringArray::Create(
                            this, array_spec.shape, array_spec.sharding,
                            tsl::Future<BasicStringArray::Buffers>(error),
@@ -1162,10 +1162,10 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
       continue;
     }
 
-    ASSIGN_OR_RETURN(auto primitive_type, ToPrimitiveType(array_spec.dtype));
+    ABSL_ASSIGN_OR_RETURN(auto primitive_type, ToPrimitiveType(array_spec.dtype));
     absl::Span<xla::ifrt::Device* const> ifrt_addressable_devices =
         array_spec.sharding->devices()->AddressableDeviceList()->devices();
-    ASSIGN_OR_RETURN(Shape shard_shape,
+    ABSL_ASSIGN_OR_RETURN(Shape shard_shape,
                      array_spec.sharding->GetShardShape(array_spec.shape));
     xla::Shape xla_shape;
     if (primitive_type == xla::TOKEN) {
@@ -1196,13 +1196,13 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
                             absl::StrAppend(out, *ms->Kind().memory_kind());
                           })));
       }
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           buffers.emplace_back(),
           pjrt_client_->CreateErrorBuffer(
               error, xla_shape,
               absl::down_cast<PjRtMemory*>(memory)->pjrt_memory()));
     }
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         arrays.emplace_back(),
         PjRtArray::Create(this, array_spec.dtype, std::move(shard_shape),
                           array_spec.sharding, std::move(buffers),
@@ -1216,8 +1216,7 @@ absl::StatusOr<ArrayRef> PjRtClient::AssembleArrayFromSingleDeviceArrays(
     ArrayCopySemantics array_copy_semantics,
     SingleDeviceShardSemantics single_device_shard_semantics) {
   DCHECK(this);
-  if (!arrays.empty() &&
-      llvm::isa<const SingleDeviceSharding>(sharding.get())) {
+  if (!arrays.empty() && isa<const SingleDeviceSharding>(sharding.get())) {
     // Assemble with SingleDeviceSharding is No-op.
     if (arrays.size() != 1) {
       return InvalidArgument(
@@ -1226,9 +1225,9 @@ absl::StatusOr<ArrayRef> PjRtClient::AssembleArrayFromSingleDeviceArrays(
           arrays.size());
     }
     return arrays[0];
-  } else if (!llvm::isa<const SingleDeviceSharding, const OpaqueSharding,
-                        const ConcreteSharding, const ConcreteEvenSharding,
-                        const ShardingParamSharding, const HloSharding>(
+  } else if (!isa<const SingleDeviceSharding, const OpaqueSharding,
+                  const ConcreteSharding, const ConcreteEvenSharding,
+                  const ShardingParamSharding, const HloSharding>(
                  sharding.get())) {
     return InvalidArgument(
         "Only SingleDeviceSharding, OpaqueSharding, ConcreteSharding, "
@@ -1257,7 +1256,7 @@ absl::StatusOr<ArrayRef> PjRtClient::AssembleArrayFromSingleDeviceArrays(
   PjRtArray::PjRtBuffers buffers;
   buffers.reserve(arrays.size());
   for (int i = 0; i < arrays.size(); ++i) {
-    if (!llvm::isa<PjRtCompatibleArray>(arrays[i].get())) {
+    if (!isa<PjRtCompatibleArray>(arrays[i].get())) {
       return InvalidArgument(
           "Only PjRtCompatibleArray is supported: arrays[%d]=%s", i,
           arrays[i]->DebugString());
@@ -1292,7 +1291,7 @@ absl::StatusOr<ArrayRef> PjRtClient::AssembleArrayFromSingleDeviceArrays(
   // TODO(emilyaf): Remove the following logic once layout is plumbed through.
   std::shared_ptr<const xla::PjRtLayout> layout;
   if (!arrays.empty()) {
-    ASSIGN_OR_RETURN(layout, arrays.front()->pjrt_layout());
+    ABSL_ASSIGN_OR_RETURN(layout, arrays.front()->pjrt_layout());
   }
   return PjRtArray::Create(this, dtype, std::move(shape), std::move(sharding),
                            std::move(buffers), std::move(layout));
@@ -1341,12 +1340,12 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::CopyArrays(
     std::vector<ArrayRef> new_arrays;
     new_arrays.reserve(arrays.size());
     for (const ArrayRef& array : arrays) {
-      if (auto* const pjrt_array = llvm::dyn_cast<PjRtArray>(array.get())) {
-        ASSIGN_OR_RETURN(new_arrays.emplace_back(),
+      if (auto* const pjrt_array = dyn_cast<PjRtArray>(array.get())) {
+        ABSL_ASSIGN_OR_RETURN(new_arrays.emplace_back(),
                          pjrt_array->Copy(devices, memory_kind, semantics));
       } else if (auto* const string_array =
-                     llvm::dyn_cast<BasicStringArray>(array.get())) {
-        ASSIGN_OR_RETURN(new_arrays.emplace_back(),
+                     dyn_cast<BasicStringArray>(array.get())) {
+        ABSL_ASSIGN_OR_RETURN(new_arrays.emplace_back(),
                          string_array->Copy(devices, memory_kind, semantics));
       } else {
         return absl::InvalidArgumentError(
@@ -1404,7 +1403,7 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
       std::vector<PjRtBuffer*> send_buffers;
       send_buffers.reserve(arrays.size());
       for (ArrayRef& array : arrays) {
-        if (auto* const pjrt_array = llvm::dyn_cast<PjRtArray>(array.get())) {
+        if (auto* const pjrt_array = dyn_cast<PjRtArray>(array.get())) {
           auto buffers = pjrt_array->pjrt_buffers();
           send_buffers.push_back(buffers[j].get());
         } else {
@@ -1417,14 +1416,14 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
 
       if (dst_devices->devices()[i]->IsAddressable()) {
         // This transfer is between two addressable devices.
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             recv_buffers.emplace_back(),
             CopyPjRtBuffersToLocalDevice(j, arrays, dst_devices->devices()[i],
                                          memory_kind, semantics));
       } else {
         // Create vector of (remote) dst devices; we send each array to
         // dst_devices->devices()[i].
-        ASSIGN_OR_RETURN(xla::GlobalDeviceId dst_global_device_id,
+        ABSL_ASSIGN_OR_RETURN(xla::GlobalDeviceId dst_global_device_id,
                          GetGlobalDeviceId(dst_devices->devices()[i]->Id()));
         std::vector<GlobalDeviceId> dst_global_device_ids(arrays.size(),
                                                           dst_global_device_id);
@@ -1441,7 +1440,7 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
             send_future.OnReady(on_send_done);
           }
         } else if (absl::IsUnimplemented(send_futures.status())) {
-          RETURN_IF_ERROR(
+          ABSL_RETURN_IF_ERROR(
               CrossHostSendBuffers(send_buffers, std::move(transfer_keys)));
         } else {
           return send_futures.status();
@@ -1453,10 +1452,10 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
       std::vector<xla::Shape> recv_shapes;
       recv_shapes.reserve(arrays.size());
       for (const ArrayRef& array : arrays) {
-        if (auto* const pjrt_array = llvm::dyn_cast<PjRtArray>(array.get())) {
-          ASSIGN_OR_RETURN(xla::PrimitiveType dtype,
+        if (auto* const pjrt_array = dyn_cast<PjRtArray>(array.get())) {
+          ABSL_ASSIGN_OR_RETURN(xla::PrimitiveType dtype,
                            ToPrimitiveType(pjrt_array->dtype()));
-          ASSIGN_OR_RETURN(
+          ABSL_ASSIGN_OR_RETURN(
               Shape shard_shape,
               pjrt_array->sharding().GetShardShape(pjrt_array->shape()));
           xla::Shape recv_shape =
@@ -1470,14 +1469,14 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
       }
 
       // Get the dst device we receive into.
-      ASSIGN_OR_RETURN(xla::GlobalDeviceId pjrt_global_device_id,
+      ABSL_ASSIGN_OR_RETURN(xla::GlobalDeviceId pjrt_global_device_id,
                        GetGlobalDeviceId(dst_devices->devices()[i]->Id()));
-      ASSIGN_OR_RETURN(xla::PjRtDevice * pjrt_device,
+      ABSL_ASSIGN_OR_RETURN(xla::PjRtDevice * pjrt_device,
                        pjrt_client_->LookupDevice(pjrt_global_device_id));
 
       // Create vector of src devices; we receive each array from
       // src_devices->devices()[i].
-      ASSIGN_OR_RETURN(xla::GlobalDeviceId src_global_device_id,
+      ABSL_ASSIGN_OR_RETURN(xla::GlobalDeviceId src_global_device_id,
                        GetGlobalDeviceId(src_devices->devices()[i]->Id()));
       std::vector<GlobalDeviceId> src_global_device_ids(arrays.size(),
                                                         src_global_device_id);
@@ -1491,7 +1490,7 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
               pjrt_device, recv_shapes, std::move(src_global_device_ids),
               transfer_keys);
       if (absl::IsUnimplemented(received_buffers.status())) {
-        ASSIGN_OR_RETURN(received_buffers,
+        ABSL_ASSIGN_OR_RETURN(received_buffers,
                          CrossHostReceiveBuffers(recv_shapes, pjrt_device,
                                                  std::move(transfer_keys)));
       }
@@ -1517,11 +1516,11 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
         new_buffers.push_back(std::move(recv_buffers[k++][i]));
       }
     }
-    ASSIGN_OR_RETURN(ShardingRef new_sharding,
+    ABSL_ASSIGN_OR_RETURN(ShardingRef new_sharding,
                      arrays[i]->shared_ptr_sharding()->WithDeviceAssignment(
                          dst_devices, memory_kind));
-    ASSIGN_OR_RETURN(auto new_layout, arrays[i]->pjrt_layout());
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(auto new_layout, arrays[i]->pjrt_layout());
+    ABSL_ASSIGN_OR_RETURN(
         new_arrays.emplace_back(),
         PjRtArray::Create(this, arrays[i]->dtype(), arrays[i]->shape(),
                           std::move(new_sharding), std::move(new_buffers),
@@ -1535,7 +1534,7 @@ absl::Status PjRtClient::InitializeTransferServer() {
     if (transfer_server_factory_ == nullptr) {
       return absl::FailedPreconditionError("Transfer server factory is null.");
     }
-    ASSIGN_OR_RETURN(transfer_server_, transfer_server_factory_(pjrt_client_));
+    ABSL_ASSIGN_OR_RETURN(transfer_server_, transfer_server_factory_(pjrt_client_));
   }
   return absl::OkStatus();
 }
@@ -1546,7 +1545,7 @@ PjRtClient::CopyArraysForCrossHostFallback(
     DeviceListRef dst_devices, std::optional<MemoryKind> memory_kind) {
   {
     absl::MutexLock lock(transfer_server_mu_);
-    RETURN_IF_ERROR(InitializeTransferServer());
+    ABSL_RETURN_IF_ERROR(InitializeTransferServer());
   }
   return (*transfer_server_)
       ->CopyArraysForCrossHost(this, arrays, src_devices, dst_devices,
@@ -1774,7 +1773,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::BitcastArrays(
   std::vector<ArrayRef> new_arrays;
   new_arrays.reserve(arrays.size());
   for (int i = 0; i < arrays.size(); ++i) {
-    auto* pjrt_array = llvm::dyn_cast<PjRtArray>(arrays[i].get());
+    auto* pjrt_array = dyn_cast<PjRtArray>(arrays[i].get());
     if (pjrt_array == nullptr) {
       return absl::InvalidArgumentError(
           absl::StrFormat("Array %d is not a PjRtArray", i));
@@ -1785,9 +1784,9 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::BitcastArrays(
     PjRtBuffers new_buffers;
     new_buffers.reserve(buffers.size());
 
-    ASSIGN_OR_RETURN(PrimitiveType element_type,
+    ABSL_ASSIGN_OR_RETURN(PrimitiveType element_type,
                      ToPrimitiveType(specs[i].dtype));
-    ASSIGN_OR_RETURN(const Shape& new_shard_shape,
+    ABSL_ASSIGN_OR_RETURN(const Shape& new_shard_shape,
                      specs[i].sharding->GetShardShape(specs[i].shape));
     const xla::Layout* device_layout = nullptr;
     if (specs[i].layout != nullptr) {
@@ -1795,13 +1794,13 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::BitcastArrays(
     }
 
     for (const std::shared_ptr<PjRtBuffer>& buffer : buffers) {
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           std::unique_ptr<PjRtBuffer> new_buffer,
           buffer->Bitcast(element_type, new_shard_shape.dims(), device_layout));
       new_buffers.push_back(std::move(new_buffer));
     }
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         tsl::RCReference<PjRtArray> new_array,
         PjRtArray::Create(this, specs[i].dtype, specs[i].shape,
                           specs[i].sharding, std::move(new_buffers),
@@ -1821,7 +1820,7 @@ tsl::Future<std::vector<uint64_t>> PjRtClient::HashValues(
   }
   int total_num_buffers = 0;
   for (int i = 0; i < values.size(); ++i) {
-    auto* pjrt_array = llvm::dyn_cast<PjRtCompatibleArray>(values[i].get());
+    auto* pjrt_array = dyn_cast<PjRtCompatibleArray>(values[i].get());
     if (pjrt_array == nullptr) {
       return absl::UnimplementedError(
           "PjRtClient::HashValues requires PjRtCompatibleArray");
@@ -1847,9 +1846,9 @@ tsl::Future<std::vector<uint64_t>> PjRtClient::HashValues(
 
   for (int i = 0; i < values.size(); ++i) {
     // We have verified that all values are `PjRtCompatibleArray`.
-    auto* pjrt_array = llvm::cast<PjRtCompatibleArray>(values[i].get());
+    auto* pjrt_array = cast<PjRtCompatibleArray>(values[i].get());
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::vector<IndexDomain> index_domains,
         pjrt_array->sharding().IndexDomains(
             pjrt_array->shape(), SingleDeviceShardSemantics::kAllShards));
@@ -1906,7 +1905,7 @@ tsl::Future<std::vector<uint64_t>> PjRtClient::HashValues(
 
           std::vector<int> replica_group_ids =
               GetReplicaGroupIds(value_index_domains);
-          ASSIGN_OR_RETURN(uint64_t aggregated_hash,
+          ABSL_ASSIGN_OR_RETURN(uint64_t aggregated_hash,
                            AggregateShardHashes(value_shard_hashes,
                                                 replica_group_ids, mode));
           hashes.push_back(aggregated_hash);
@@ -1958,7 +1957,7 @@ absl::StatusOr<std::shared_ptr<Topology>> PjRtClient::GetTopologyForDevices(
     const xla::ifrt::DeviceListRef& devices) const {
   // TODO(parkers): Consider constructing a sub-slice topology based on the
   // provided devices.
-  ASSIGN_OR_RETURN(auto topology, pjrt_client_->GetTopologyDescription());
+  ABSL_ASSIGN_OR_RETURN(auto topology, pjrt_client_->GetTopologyDescription());
   return std::make_shared<PjRtTopology>(
       std::shared_ptr<const xla::PjRtTopologyDescription>(pjrt_client_,
                                                           topology));
@@ -1988,12 +1987,12 @@ PjRtClient::GetDefaultPjRtLayout(DType dtype, absl::Span<const int64_t> dims,
       return std::make_shared<xla::PjRtLayout>(
           LayoutUtil::MakeDescendingLayout(dims.size()));
     }
-    ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
+    ABSL_ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
     if (element_type == PrimitiveType::TOKEN) {
       return std::make_shared<xla::PjRtLayout>(
           LayoutUtil::MakeDescendingLayout(dims.size()));
     }
-    ASSIGN_OR_RETURN(xla::Layout layout,
+    ABSL_ASSIGN_OR_RETURN(xla::Layout layout,
                      pjrt_client_->GetDefaultLayout(element_type, dims));
     return std::make_shared<xla::PjRtLayout>(std::move(layout));
   }();
@@ -2006,8 +2005,8 @@ PjRtClient::GetDefaultPjRtLayout(DType dtype, absl::Span<const int64_t> dims,
 
 absl::StatusOr<CustomLayoutRef> PjRtClient::GetDefaultLayout(
     DType dtype, const Shape& shape, const ShardingRef& sharding) const {
-  ASSIGN_OR_RETURN(const Shape shard_shape, sharding->GetShardShape(shape));
-  ASSIGN_OR_RETURN(std::shared_ptr<const xla::PjRtLayout> layout,
+  ABSL_ASSIGN_OR_RETURN(const Shape shard_shape, sharding->GetShardShape(shape));
+  ABSL_ASSIGN_OR_RETURN(std::shared_ptr<const xla::PjRtLayout> layout,
                    GetDefaultPjRtLayout(dtype, shard_shape.dims(),
                                         sharding->devices()->devices().front(),
                                         sharding->memory_kind()));
@@ -2041,7 +2040,7 @@ PjRtClient::Incarnations() const {
   if (!distributed_client_) {
     return absl::FailedPreconditionError("missing distributed client");
   }
-  ASSIGN_OR_RETURN(xla::CoordinationServiceAgent * agent,
+  ABSL_ASSIGN_OR_RETURN(xla::CoordinationServiceAgent * agent,
                    distributed_client_->GetCoordinationServiceAgent());
   return agent->Incarnations();
 }

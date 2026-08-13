@@ -28,9 +28,12 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
+#include "absl/base/log_severity.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/scoped_mock_log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
@@ -39,7 +42,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/backends/autotuner/autotuning.pb.h"
@@ -47,6 +49,7 @@ limitations under the License.
 #include "xla/backends/autotuner/in_memory_store.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/backends/gpu/runtime/async_thunk.h"
+#include "xla/backends/gpu/runtime/host_execute_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
@@ -68,6 +71,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/autotuner_cache.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -86,7 +90,7 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/lib/gtl/value_or_die.h"
@@ -132,7 +136,7 @@ class GpuCompilerTest
 absl::StatusOr<std::string> ReadNonEmptyFile(absl::string_view file_path) {
   std::string str;
   tsl::Env* env = tsl::Env::Default();
-  RETURN_IF_ERROR(tsl::ReadFileToString(env, std::string(file_path), &str));
+  ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(env, std::string(file_path), &str));
   if (str.empty()) {
     return absl::InvalidArgumentError(
         absl::StrCat("File is empty: ", file_path));
@@ -1747,15 +1751,14 @@ HloModule m
 
 ENTRY main {
   p = f32[8,$0]{1,0} parameter(0)
-  ROOT t = (f32[8,$1]{1,0}, s32[8,$1]{1,0}) topk(p), k=$1, largest=true
+  ROOT t = (f32[8,$1]{1,0}, s32[8,$1]{1,0}) topk(p), k=$1, largest=true, is_stable=false
 }
 )",
                                           n, k);
 
-  // Configure module with debug options for experimental raft select_k.
+  // Configure module with debug options.
   HloModuleConfig config;
   DebugOptions debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_experimental_use_raft_select_k(true);
   config.set_debug_options(debug_options);
 
   ASSERT_OK_AND_ASSIGN(auto module,
@@ -2015,9 +2018,8 @@ TEST_P(OneShotRaggedAllToAllMemSpaceTest, DirectUsage) {
   constexpr absl::string_view kS1TwoCopies = R"(
     // CHECK:  %output = f32[16]{0} parameter(1)
     // CHECK:  [[COPY1:%copy[0-9.]*]] = f32[16]{0:S(1)} copy(%output)
-    // CHECK:  %ragged-all-to-all-start = ((f32[16]{0}, f32[16]{0:S(1)}, s64[2]{0}, s64[2]{0}, s64[2]{0}, /*index=5*/s64[2]{0}), f32[16]{0:S(1)}) ragged-all-to-all-start(%input, [[COPY1]],
-    // CHECK:  %ragged-all-to-all-done = f32[16]{0:S(1)} ragged-all-to-all-done(%ragged-all-to-all-start)
-    // CHECK:  ROOT %copy.{{[0-9]+}} = f32[16]{0} copy(%ragged-all-to-all-done)
+    // CHECK:  [[RA2A:%[^ ]+]] = f32[16]{0:S(1)} ragged-all-to-all(%input, [[COPY1]],
+    // CHECK:  ROOT %copy.{{[0-9]+}} = f32[16]{0} copy([[RA2A]])
   )";
 
   const absl::string_view expected_check = [&]() {
@@ -2154,21 +2156,18 @@ ENTRY test_computation {
   const HloModule* optimized_module = optimized_module_and_executable.first;
 
   constexpr absl::string_view kS0NoCopy = R"(
-    // CHECK:  %collective-permute-start = ((u32[2]{0}), u32[2]{0}) collective-permute-start(%p)
-    // CHECK:  ROOT %collective-permute-done = u32[2]{0} collective-permute-done(%collective-permute-start)
+    // CHECK:  [[PERMUTE:%[^ ]+]] = u32[2]{0} collective-permute(%p)
   )";
 
   constexpr absl::string_view kS0OneResultCopy = R"(
-    // CHECK:  %collective-permute-start = ((u32[2]{0}), u32[2]{0}) collective-permute-start(%p)
-    // CHECK:  %collective-permute-done = u32[2]{0} collective-permute-done(%collective-permute-start)
-    // CHECK:  ROOT %copy{{.*}} = u32[2]{0} copy(%collective-permute-done)
+    // CHECK:  [[PERMUTE:%[^ ]+]] = u32[2]{0} collective-permute(%p)
+    // CHECK:  ROOT %copy{{.*}} = u32[2]{0} copy([[PERMUTE]])
   )";
 
   constexpr absl::string_view kS1TwoCopies = R"(
     // CHECK:  [[COPY0:%copy[0-9.]*]] = u32[2]{0:S(1)} copy(%p)
-    // CHECK:  %collective-permute-start = ((u32[2]{0:S(1)}), u32[2]{0:S(1)}) collective-permute-start([[COPY0]])
-    // CHECK:  %collective-permute-done = u32[2]{0:S(1)} collective-permute-done(%collective-permute-start)
-    // CHECK:  ROOT %copy{{.*}} = u32[2]{0} copy(%collective-permute-done)
+    // CHECK:  [[PERMUTE:%[^ ]+]] = u32[2]{0:S(1)} collective-permute([[COPY0]])
+    // CHECK:  ROOT %copy{{.*}} = u32[2]{0} copy([[PERMUTE]])
   )";
 
   const absl::string_view expected_check = [&]() {
@@ -2372,24 +2371,19 @@ TEST_P(GpuCompilerParametersCopyCollectiveMemoryTest, DirectUsage) {
   bool is_symmetric_buffers = GetParam().xla_gpu_enable_nccl_buffers ||
                               GetParam().enable_symmetric_buffers;
 
-  // NB: Its always async-start/async-done, for the all-reduce but syntactic
-  // sugar in the HLO printer makes it all-reduce-start/all-reduce-done.
   constexpr absl::string_view kS0NoCopy = R"(
-    // CHECK:  %all-reduce-start = ((s32[1]{0}), s32[1]{0}) all-reduce-start(%parameter_used_by_collective)
-    // CHECK:  ROOT %all-reduce-done = s32[1]{0} all-reduce-done(%all-reduce-start)
+    // CHECK:  [[ALL_REDUCE:%[^ ]+]] = s32[1]{0} all-reduce(%parameter_used_by_collective)
   )";
 
   constexpr absl::string_view kS0OneCopy = R"(
-    // CHECK:  %copy.{{[0-9]+}} = s32[1]{0} copy(%parameter_used_by_collective)
-    // CHECK:  %all-reduce-start = ((s32[1]{0}), s32[1]{0}) all-reduce-start(%copy.{{[0-9]+}})
-    // CHECK:  ROOT %all-reduce-done = s32[1]{0} all-reduce-done(%all-reduce-start)
+    // CHECK:  [[COPY:%copy[0-9.]*]] = s32[1]{0} copy(%parameter_used_by_collective)
+    // CHECK:  [[ALL_REDUCE:%[^ ]+]] = s32[1]{0} all-reduce([[COPY]])
   )";
 
   constexpr absl::string_view kS1TwoCopies = R"(
-    // CHECK:  %copy.{{[0-9]+}} = s32[1]{0:S(1)} copy(%parameter_used_by_collective)
-    // CHECK:  %all-reduce-start = ((s32[1]{0:S(1)}), s32[1]{0:S(1)}) all-reduce-start(%copy.{{[0-9]+}})
-    // CHECK:  %all-reduce-done = s32[1]{0:S(1)} all-reduce-done(%all-reduce-start)
-    // CHECK:  ROOT %copy.{{[0-9]+}} = s32[1]{0} copy(%all-reduce-done)
+    // CHECK:  [[COPY_IN:%copy[0-9.]*]] = s32[1]{0:S(1)} copy(%parameter_used_by_collective)
+    // CHECK:  [[ALL_REDUCE:%[^ ]+]] = s32[1]{0:S(1)} all-reduce([[COPY_IN]])
+    // CHECK:  ROOT %copy.{{[0-9]+}} = s32[1]{0} copy([[ALL_REDUCE]])
   )";
 
   const absl::string_view expected_check = [&]() {
@@ -2784,6 +2778,84 @@ TEST_P(FrontendAttributesMemorySpaceTest, LoopUsage) {
               absl_testing::IsOkAndHolds(true));
 }
 
+TEST_F(GpuCompilerTest, NonIotaStaticDeviceAssignment) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule test
+    ENTRY main {
+      p = f32[2] parameter(0)
+      ROOT res = f32[2] copy(p)
+    }
+  )";
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.set_replica_count(1);
+  config.set_num_partitions(2);
+
+  DeviceAssignment device_assignment(/*replica_count=*/1,
+                                     /*computation_count=*/2);
+  device_assignment(0, 0) = 1;
+  device_assignment(0, 1) = 0;
+  config.set_static_device_assignment(device_assignment);
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo, config));
+
+  Compiler::CompileOptions compile_options;
+  compile_options.gpu_topology =
+      GpuTopology(/*platform_version=*/"", 2, 1, 1, gpu_target_config());
+
+  absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
+  EXPECT_CALL(
+      mock_log,
+      Log(absl::LogSeverity::kError, ::testing::_,
+          ::testing::HasSubstr("XLA:GPU only supports IOTA device assignment")))
+      .Times(1);
+  mock_log.StartCapturingLogs();
+
+  auto executable_or_status =
+      compiler()->RunBackend(std::move(module), nullptr, compile_options);
+  mock_log.StopCapturingLogs();
+
+  EXPECT_OK(executable_or_status);
+}
+
+TEST_F(GpuCompilerTest, AllZerosStaticDeviceAssignmentDoesNotLogError) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule test
+    ENTRY main {
+      p = f32[2] parameter(0)
+      ROOT res = f32[2] copy(p)
+    }
+  )";
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.set_replica_count(1);
+  config.set_num_partitions(2);
+
+  DeviceAssignment device_assignment(/*replica_count=*/1,
+                                     /*computation_count=*/2);
+  device_assignment(0, 0) = 0;
+  device_assignment(0, 1) = 0;
+  config.set_static_device_assignment(device_assignment);
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo, config));
+
+  Compiler::CompileOptions compile_options;
+  compile_options.gpu_topology =
+      GpuTopology(/*platform_version=*/"", 2, 1, 1, gpu_target_config());
+
+  absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
+  EXPECT_CALL(
+      mock_log,
+      Log(absl::LogSeverity::kError, ::testing::_,
+          ::testing::HasSubstr("XLA:GPU only supports IOTA device assignment")))
+      .Times(0);
+  mock_log.StartCapturingLogs();
+
+  auto executable_or_status =
+      compiler()->RunBackend(std::move(module), nullptr, compile_options);
+  mock_log.StopCapturingLogs();
+
+  EXPECT_OK(executable_or_status);
+}
+
 INSTANTIATE_TEST_SUITE_P(FrontendAttributesMemorySpace,
                          FrontendAttributesMemorySpaceTest, ::testing::Bool(),
                          [](const ::testing::TestParamInfo<bool>& info) {
@@ -2840,9 +2912,9 @@ TEST_F(GpuCompilerTest, SymmetricBuffersFilter) {
   // - channel 3 does NOT have S(1) (f32, 8192 bytes - filtered out by size)
 
   constexpr absl::string_view expected_check = R"(
-    // CHECK-DAG: all-reduce-start{{.*}}f32[1024]{0:S(1)}{{.*}}channel_id=1
-    // CHECK-DAG: all-reduce-start{{.*}}s32[1024]{0}{{.*}}channel_id=2
-    // CHECK-DAG: all-reduce-start{{.*}}f32[2048]{0}{{.*}}channel_id=3
+    // CHECK-DAG: f32[1024]{0:S(1)}{{.*}}all-reduce{{.*}}channel_id=1
+    // CHECK-DAG: s32[1024]{0}{{.*}}all-reduce{{.*}}channel_id=2
+    // CHECK-DAG: f32[2048]{0}{{.*}}all-reduce{{.*}}channel_id=3
   )";
 
   EXPECT_THAT(RunFileCheck(
@@ -2897,9 +2969,9 @@ TEST_F(GpuCompilerTest, SymmetricBuffersMultipleCollectives) {
   const HloModule* optimized_module = optimized_module_and_executable.first;
 
   constexpr absl::string_view expected_check = R"(
-    // CHECK-DAG: all-reduce-start{{.*}}f32[1024]{0:S(1)}{{.*}}channel_id=1
-    // CHECK-DAG: all-gather-start{{.*}}f32[1024]{0:S(1)}{{.*}}channel_id=2
-    // CHECK-DAG: all-reduce-start{{.*}}f32[2048]{0}{{.*}}channel_id=3
+    // CHECK-DAG: f32[1024]{0:S(1)}{{.*}}all-reduce{{.*}}channel_id=1
+    // CHECK-DAG: f32[1024]{0:S(1)}{{.*}}all-gather{{.*}}channel_id=2
+    // CHECK-DAG: f32[2048]{0}{{.*}}all-reduce{{.*}}channel_id=3
   )";
 
   EXPECT_THAT(RunFileCheck(
@@ -2960,8 +3032,8 @@ TEST_F(GpuCompilerTest, SymmetricBuffersSeveralFilters) {
   const HloModule* optimized_module = optimized_module_and_executable.first;
 
   constexpr absl::string_view expected_check = R"(
-    // CHECK-DAG: all-reduce-start{{.*}}f32[1024]{0:S(1)}{{.*}}channel_id=1
-    // CHECK-DAG: all-gather-start{{.*}}s32[1024]{0:S(1)}{{.*}}channel_id=2
+    // CHECK-DAG: f32[1024]{0:S(1)}{{.*}}all-reduce{{.*}}channel_id=1
+    // CHECK-DAG: s32[2048]{0:S(1)}{{.*}}all-gather{{.*}}channel_id=2
   )";
 
   EXPECT_THAT(RunFileCheck(
@@ -3022,8 +3094,8 @@ TEST_F(GpuCompilerTest, SymmetricBuffersOverlappingFilters) {
   const HloModule* optimized_module = optimized_module_and_executable.first;
 
   constexpr absl::string_view expected_check = R"(
-    // CHECK-DAG: all-reduce-start{{.*}}f32[1024]{0:S(1)}{{.*}}channel_id=1
-    // CHECK-DAG: all-reduce-start{{.*}}f32[2048]{0:S(1)}{{.*}}channel_id=2
+    // CHECK-DAG: f32[1024]{0:S(1)}{{.*}}all-reduce{{.*}}channel_id=1
+    // CHECK-DAG: f32[2048]{0:S(1)}{{.*}}all-reduce{{.*}}channel_id=2
   )";
 
   EXPECT_THAT(RunFileCheck(
@@ -3149,6 +3221,63 @@ ENTRY main {
 
   EXPECT_THAT(RunFileCheck(optimized_module->ToString(), expected_check),
               absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(GpuCompilerTest, HostExecuteIsHostOffloadSet) {
+  const char* hlo_text = R"(
+HloModule test
+
+%host_fn (p0: f32[4]) -> f32[4] {
+  %p0 = f32[4] parameter(0)
+  ROOT %add = f32[4] add(%p0, %p0)
+}
+
+ENTRY main {
+  %p0 = f32[4]{0} parameter(0)
+  %custom-call-start = ((f32[4]{0}), f32[4]{0}, token[]) custom-call-start(%p0),
+    custom_call_target="HostExecute",
+    called_computations={%host_fn},
+    async_execution_thread="host"
+  ROOT %custom-call-done = f32[4]{0} custom-call-done(%custom-call-start)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+
+  Compiler::CompileOptions compile_options;
+  compile_options.gpu_topology =
+      GetSingleDeviceGpuTopology(/*platform_version=*/"", gpu_target_config());
+  compile_options.early_exit_with_layouts = false;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      compiler()->RunBackend(std::move(module), /*executor=*/nullptr,
+                             compile_options));
+  std::unique_ptr<GpuExecutable> gpu_exec(
+      static_cast<GpuExecutable*>(executable.release()));
+
+  // Find HostExecuteStartThunk
+  const HostExecuteStartThunk* host_execute_start_thunk = nullptr;
+  for (const auto& thunk : gpu_exec->thunk_executor().thunks()) {
+    if (thunk->kind() == Thunk::Kind::kHostExecuteStart) {
+      host_execute_start_thunk =
+          static_cast<const HostExecuteStartThunk*>(thunk.get());
+      break;
+    }
+  }
+  ASSERT_NE(host_execute_start_thunk, nullptr);
+
+  const auto& proto = host_execute_start_thunk->executable_proto();
+  ASSERT_TRUE(proto.has_aot_compilation_result());
+  const auto& aot_result = proto.aot_compilation_result();
+  ASSERT_TRUE(aot_result.has_hlo_module());
+  const auto& config = aot_result.hlo_module().config();
+  ASSERT_TRUE(config.has_debug_options());
+  const auto& debug_options = config.debug_options();
+
+  const auto& extra_options = debug_options.xla_backend_extra_options();
+  auto it = extra_options.find("xla_is_host_offload");
+  ASSERT_NE(it, extra_options.end());
+  EXPECT_EQ(it->second, "true");
 }
 
 }  // namespace gpu

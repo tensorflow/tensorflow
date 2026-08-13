@@ -22,7 +22,13 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include "absl/base/config.h"  // IWYU pragma: keep
 #include "absl/base/optimization.h"
+
+#if defined(ABSL_HAVE_MEMORY_SANITIZER)
+#include <sanitizer/msan_interface.h>
+#endif
+
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/numeric/bits.h"
@@ -144,24 +150,63 @@ static absl::StatusCode ToStatusCode(XLA_FFI_Error_Code errc) {
   } while (false)
 
 static XLA_FFI_Error* XLA_FFI_Error_Create(XLA_FFI_Error_Create_Args* args) {
+#if defined(ABSL_HAVE_MEMORY_SANITIZER)
+  __msan_unpoison(args, sizeof(args->struct_size));
+#endif
+
   XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_Error_Create", XLA_FFI_Error_Create_Args_STRUCT_SIZE,
       args->struct_size));
 
-  return new XLA_FFI_Error{
-      absl::Status(ToStatusCode(args->errc), args->message)};
+#if defined(ABSL_HAVE_MEMORY_SANITIZER)
+  __msan_unpoison(args, args->struct_size);
+  if (args->message != nullptr) {
+    __msan_unpoison_string(args->message);
+  }
+#endif
+
+  return new XLA_FFI_Error{absl::Status(
+      ToStatusCode(args->errc), absl::NullSafeStringView(args->message))};
 }
 
-static void XLA_FFI_Error_GetMessage(XLA_FFI_Error_GetMessage_Args* args) {
+namespace {
+
+// This is the argument layout for XLA_FFI_Error_GetDetails (called
+// XLA_FFI_Error_GetMessage at the time) in XLA:FFI version 0.3. We use it to
+// support older FFI modules. This can be removed 5 Aug 2027.
+struct XLA_FFI_Error_GetDetails_Args_V03 {
+  size_t struct_size;
+  XLA_FFI_InternalExtension* extension_start;
+  XLA_FFI_Error* error;
+  const char* message;
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Error_GetDetails_Args_V03, message);
+
+}  // namespace
+
+static void XLA_FFI_Error_GetDetails(XLA_FFI_Error_GetDetails_Args* args) {
+  if (args->struct_size == XLA_FFI_Error_GetDetails_Args_V03_STRUCT_SIZE) {
+    // memcpy to safely avoid U.B.
+    XLA_FFI_Error_GetDetails_Args_V03 v03{};
+    std::memcpy(&v03, args, XLA_FFI_Error_GetDetails_Args_V03_STRUCT_SIZE);
+    v03.message = v03.error->status.message().data();
+    std::memcpy(args, &v03, XLA_FFI_Error_GetDetails_Args_V03_STRUCT_SIZE);
+    return;
+  }
+
   absl::Status struct_size_check = ActualStructSizeIsGreaterOrEqual(
-      "XLA_FFI_Error_GetMessage", XLA_FFI_Error_GetMessage_Args_STRUCT_SIZE,
+      "XLA_FFI_Error_GetDetails", XLA_FFI_Error_GetDetails_Args_STRUCT_SIZE,
       args->struct_size);
   if (!struct_size_check.ok()) {
     LOG(ERROR) << struct_size_check.message();
+    return;
   }
+
   // absl::Status owns error message in a std::string which guarantees that
   // we'll get a null terminated string.
   args->message = args->error->status.message().data();
+  args->errc = static_cast<XLA_FFI_Error_Code>(args->error->status.code());
 }
 
 static void XLA_FFI_Error_Destroy(XLA_FFI_Error_Destroy_Args* args) {
@@ -635,7 +680,7 @@ const XLA_FFI_Api* GetXlaFfiApi() {
       internal::GetInternalApi(),
 
       XLA_FFI_Error_Create,
-      XLA_FFI_Error_GetMessage,
+      XLA_FFI_Error_GetDetails,
       XLA_FFI_Error_Destroy,
       XLA_FFI_Handler_Register,
       XLA_FFI_Stream_Get,

@@ -26,10 +26,10 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/env.h"
@@ -140,7 +140,7 @@ class HloModuleMetadata {
   absl::Status set_key_value_metric(const std::string& key, int64_t value);
 
   absl::StatusOr<int64_t> current_pass_id() {
-    ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
+    ABSL_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
                      GetCurrentHloPassMetadata());
     return pass_metadata->pass_id();
   }

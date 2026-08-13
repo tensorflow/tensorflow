@@ -81,6 +81,14 @@ common --@rules_python//python/config_settings:bootstrap_impl=script --repo_env=
 
 common --incompatible_default_to_explicit_init_py
 
+# Use a downloader config to mirror GitHub and Python package downloads.
+# We use the experimental_ name for better compatibility with different Bazel versions.
+build --experimental_downloader_config=bazel_downloader.cfg
+test --experimental_downloader_config=bazel_downloader.cfg
+fetch --experimental_downloader_config=bazel_downloader.cfg
+sync --experimental_downloader_config=bazel_downloader.cfg
+query --experimental_downloader_config=bazel_downloader.cfg
+
 # For local build, without dependency on rbe
 common:linux_cpu --config=avx_linux
 common:linux_cpu --linkopt=-lrt
@@ -332,6 +340,8 @@ common:windows --host_copt=/W0
 
 # Linux ARM64 specific options
 common:linux_arm64 --copt="-mtune=generic" --copt="-march=armv8-a" --copt="-O3"
+common:linux_arm64 --define=ynn_enable_arm64_neonfp8=false
+
 
 
 # On Windows, `__cplusplus` is wrongly defined without this switch

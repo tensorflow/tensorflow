@@ -21,10 +21,10 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/IR/Module.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
@@ -41,7 +41,7 @@ absl::StatusOr<std::unique_ptr<Executable>> CompileToExecutable(
     Compiler* compiler, const Compiler::CompileOptions& compile_options,
     std::unique_ptr<HloModule> hlo_module, bool run_optimization_passes) {
   if (run_optimization_passes) {
-    ASSIGN_OR_RETURN(hlo_module, compiler->RunHloPasses(std::move(hlo_module),
+    ABSL_ASSIGN_OR_RETURN(hlo_module, compiler->RunHloPasses(std::move(hlo_module),
                                                         /*executor=*/nullptr,
                                                         compile_options));
   }
@@ -106,7 +106,7 @@ absl::Status CompileAndVerifyIr(LLVMCompiler* compiler,
   if (run_optimization_passes) {
     // Run optimization passes before we set the hook so that we don't capture
     // intermediate compilations from autotuner.
-    ASSIGN_OR_RETURN(hlo_module, compiler->RunHloPasses(std::move(hlo_module),
+    ABSL_ASSIGN_OR_RETURN(hlo_module, compiler->RunHloPasses(std::move(hlo_module),
                                                         /*executor=*/nullptr,
                                                         compile_options));
   }
@@ -115,12 +115,12 @@ absl::Status CompileAndVerifyIr(LLVMCompiler* compiler,
     hook_handler.emplace(compiler, match_optimized_ir);
   }
 
-  RETURN_IF_ERROR(compiler
+  ABSL_RETURN_IF_ERROR(compiler
                       ->RunBackend(std::move(hlo_module), /*executor=*/nullptr,
                                    compile_options)
                       .status());
 
-  ASSIGN_OR_RETURN(bool succeeded,
+  ABSL_ASSIGN_OR_RETURN(bool succeeded,
                    RunFileCheck(FileCheckInput(hook_handler->ir()), pattern));
   if (!succeeded) {
     return absl::InternalError(
@@ -135,11 +135,11 @@ absl::Status CompileAheadOfTimeAndVerifyIr(
     bool match_optimized_ir) {
   ScopedHookHandler hook_handler(compiler, match_optimized_ir);
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       compiler->CompileAheadOfTime(std::move(hlo_module), aot_options)
           .status());
 
-  ASSIGN_OR_RETURN(bool succeeded,
+  ABSL_ASSIGN_OR_RETURN(bool succeeded,
                    RunFileCheck(FileCheckInput(hook_handler.ir()), pattern));
   if (!succeeded) {
     return absl::InternalError(

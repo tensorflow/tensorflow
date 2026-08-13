@@ -116,7 +116,7 @@ OriginalTensorSummaryComparator::Create(
     OriginalTensorSummaryComparisonCallback
         on_original_tensor_summary_comparison_ready) {
   BidirectionalMap<std::string, std::string, std::monostate> hlo_diff_bimap;
-  ASSIGN_OR_RETURN(hlo_diff::HloGumgraphDiffResults diff_results,
+  ABSL_ASSIGN_OR_RETURN(hlo_diff::HloGumgraphDiffResults diff_results,
                    hlo_diff::ComputeDiff(*baseline_module, *target_module));
   CreationMetrics creation_metrics;
   creation_metrics.baseline_tensor_count = 0;
@@ -150,7 +150,7 @@ OriginalTensorSummaryComparator::Create(
       }
     }
   }
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto key_matcher,
       OriginalTensorSummaryKeyMatcher::Create(
           std::make_shared<
@@ -177,7 +177,7 @@ OriginalTensorSummaryComparator::ProcessOriginalTensorSummaryInternal(
       baseline_pending_transformation, target_pending_transformation);
   std::optional<OriginalTensorSummary> transformed_baseline_summary;
   if (baseline_tensor_summary != nullptr) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         transformed_baseline_summary,
         ApplyNonUnshardTensorTransformationToSummary(
             *baseline_tensor_summary, baseline_pending_transformation.get(),
@@ -185,7 +185,7 @@ OriginalTensorSummaryComparator::ProcessOriginalTensorSummaryInternal(
   }
   std::optional<OriginalTensorSummary> transformed_target_summary;
   if (target_tensor_summary != nullptr) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         transformed_target_summary,
         ApplyNonUnshardTensorTransformationToSummary(
             *target_tensor_summary, target_pending_transformation.get(),
@@ -201,7 +201,7 @@ OriginalTensorSummaryComparator::ProcessOriginalTensorSummaryInternal(
         transformed_target_summary.has_value() ? &*transformed_target_summary
                                                : nullptr);
   }
-  ASSIGN_OR_RETURN((auto [aligned_baseline_summary, aligned_target_summary]),
+  ABSL_ASSIGN_OR_RETURN((auto [aligned_baseline_summary, aligned_target_summary]),
                    AlignTensorSummaries(*transformed_baseline_summary,
                                         *transformed_target_summary));
   return on_original_tensor_summary_comparison_ready_(
@@ -292,7 +292,7 @@ absl::Status OriginalTensorSummaryComparator::ProcessOriginalTensorSummary(
       if (auto it = pending_summaries.non_wildcard_summaries.find(
               indices_in_other_variant);
           it != pending_summaries.non_wildcard_summaries.end()) {
-        RETURN_IF_ERROR(process_match(it->second));
+        ABSL_RETURN_IF_ERROR(process_match(it->second));
         if (!current_has_wildcard) {
           pending_summaries.non_wildcard_summaries.erase(it);
         }
@@ -302,7 +302,7 @@ absl::Status OriginalTensorSummaryComparator::ProcessOriginalTensorSummary(
       if (auto it = pending_summaries.wildcard_summaries.find(
               indices_in_other_variant);
           it != pending_summaries.wildcard_summaries.end()) {
-        RETURN_IF_ERROR(process_match(it->second));
+        ABSL_RETURN_IF_ERROR(process_match(it->second));
         if (!current_has_wildcard && !absl::c_linear_search(it->first, -1)) {
           pending_summaries.wildcard_summaries.erase(it);
         }
@@ -313,7 +313,7 @@ absl::Status OriginalTensorSummaryComparator::ProcessOriginalTensorSummary(
       // NOLINTNEXTLINE
       for (auto it = summaries_map.begin(); it != summaries_map.end(); ++it) {
         if (IterationIndicesMatch(it->first, indices_in_other_variant)) {
-          RETURN_IF_ERROR(process_match(it->second));
+          ABSL_RETURN_IF_ERROR(process_match(it->second));
           if (!current_has_wildcard && !absl::c_linear_search(it->first, -1)) {
             summaries_map.erase(it);
           }
@@ -327,10 +327,10 @@ absl::Status OriginalTensorSummaryComparator::ProcessOriginalTensorSummary(
       // No exact match found, try wildcard matching starting with wildcard
       // table.
       bool matched = false;
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           matched, try_wildcard_match(pending_summaries.wildcard_summaries));
       if (!matched) {
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             matched,
             try_wildcard_match(pending_summaries.non_wildcard_summaries));
       }
@@ -385,7 +385,7 @@ absl::Status OriginalTensorSummaryComparator::FinishComparison() {
       if (!target_key.has_value()) {
         continue;
       }
-      RETURN_IF_ERROR(ProcessOriginalTensorSummaryInternal(
+      ABSL_RETURN_IF_ERROR(ProcessOriginalTensorSummaryInternal(
           pending_comparison.original_key,
           pending_comparison.pending_transformation,
           &pending_comparison.original_tensor_summary, *target_key, nullptr,
@@ -402,7 +402,7 @@ absl::Status OriginalTensorSummaryComparator::FinishComparison() {
       if (!baseline_key.has_value()) {
         continue;
       }
-      RETURN_IF_ERROR(ProcessOriginalTensorSummaryInternal(
+      ABSL_RETURN_IF_ERROR(ProcessOriginalTensorSummaryInternal(
           *baseline_key, nullptr, nullptr, pending_comparison.original_key,
           pending_comparison.pending_transformation,
           &pending_comparison.original_tensor_summary));

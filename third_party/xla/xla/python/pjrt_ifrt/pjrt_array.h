@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
@@ -37,6 +36,7 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/user_context.h"
@@ -53,8 +53,7 @@ namespace ifrt {
 MemoryKind MakeMemoryKindFromPjRtBuffer(PjRtBuffer* pjrt_buffer);
 
 // PjRt-compatible `Array` interface that wraps a list of `xla::PjRtBuffer`s.
-class PjRtCompatibleArray
-    : public llvm::RTTIExtends<PjRtCompatibleArray, Array> {
+class PjRtCompatibleArray : public RTTIExtends<PjRtCompatibleArray, Array> {
  public:
   // APIs that allow direct access to `PjRtBuffer` for PjRt-only operations.
   virtual absl::Span<const std::shared_ptr<PjRtBuffer>> pjrt_buffers() = 0;
@@ -65,8 +64,7 @@ class PjRtCompatibleArray
 };
 
 // `Array` implementation that wraps a list of `xla::PjRtBuffer`s.
-class PjRtArray final
-    : public llvm::RTTIExtends<PjRtArray, PjRtCompatibleArray> {
+class PjRtArray final : public RTTIExtends<PjRtArray, PjRtCompatibleArray> {
  public:
   static constexpr int kPjRtBufferInlineSize = 1;
   using PjRtBuffers =

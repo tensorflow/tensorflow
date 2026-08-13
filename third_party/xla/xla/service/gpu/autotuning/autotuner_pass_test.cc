@@ -434,6 +434,7 @@ struct AutotuneLevelParams {
   bool expected_select_first_config;
   bool expected_check_buffers;
   bool expected_should_init_buffers;
+  int expected_redzone_padding_bytes;
 };
 
 class AutotunerFlagsTest
@@ -449,23 +450,22 @@ TEST_P(AutotunerFlagsTest, AutotuneLevel) {
       GetConfigAssignerOptions(debug_options);
   EXPECT_EQ(config_assigner_options.select_first_config,
             params.expected_select_first_config);
-  EXPECT_EQ(config_assigner_options.check_buffers,
-            params.expected_check_buffers);
 
-  ProfileOptions profile_options =
-      GetProfileOptions(debug_options, config_assigner_options);
+  ProfileOptions profile_options = GetProfileOptions(debug_options);
   EXPECT_EQ(profile_options.should_init_buffers,
             params.expected_should_init_buffers);
+  EXPECT_EQ(profile_options.redzone_padding_bytes,
+            params.expected_redzone_padding_bytes);
 }
 
 INSTANTIATE_TEST_SUITE_P(
     AutotuneLevelTests, AutotunerFlagsTest,
     ::testing::ValuesIn<AutotuneLevelParams>({
-        {0, true, false, false},
-        {1, false, false, false},
-        {2, false, false, false},
-        {3, false, false, false},
-        {4, false, true, true},
+        {0, true, false, false, 0},
+        {1, false, false, false, 0},
+        {2, false, false, false, 0},
+        {3, false, false, false, 0},
+        {4, false, true, true, 8 * 1024 * 1024},
     }),
     [](const ::testing::TestParamInfo<AutotunerFlagsTest::ParamType>& info) {
       return std::to_string(info.param.autotune_level);

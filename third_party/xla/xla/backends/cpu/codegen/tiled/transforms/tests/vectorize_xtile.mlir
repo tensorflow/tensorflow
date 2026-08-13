@@ -449,9 +449,9 @@ func.func @test_extract_aligned(%arg0: memref<128xf32>, %arg1: index) -> tensor<
   return %0 : tensor<8xf32>
 }
 // CHECK-LABEL: @test_extract_aligned
-// CHECK: %[[INDEXING:[^:]+]] = xla.apply_indexing #indexing_map(%{{.*}})
+// CHECK-DAG: %[[PAD:.*]] = arith.constant 0.000000e+00 : f32
+// CHECK-DAG: %[[INDEXING:[^:]+]] = xla.apply_indexing #indexing_map(%{{.*}})
 // CHECK: %[[COND:.*]] = arith.cmpi sge, %[[INDEXING]], %{{.*}} : index
-// CHECK: %[[PAD:.*]] = arith.constant 0.000000e+00 : f32
 // CHECK: %[[RES:.*]] = scf.if %[[COND]] -> (vector<8xf32>) {
 // CHECK:   %[[READ:.*]] = vector.transfer_read %{{.*}}[%{{.*}}], %[[PAD]] {in_bounds = [true]} : memref<128xf32>, vector<8xf32>
 // CHECK:   scf.yield %[[READ]] : vector<8xf32>
@@ -467,9 +467,9 @@ func.func @test_extract_unaligned(%arg0: memref<128xf32>, %arg1: index) -> tenso
   return %0 : tensor<8xf32>
 }
 // CHECK-LABEL: @test_extract_unaligned
-// CHECK: %[[INDEXING:[^:]+]] = xla.apply_indexing #indexing_map(%{{.*}})
+// CHECK-DAG: %[[PAD:.*]] = arith.constant 0.000000e+00 : f32
+// CHECK-DAG: %[[INDEXING:[^:]+]] = xla.apply_indexing #indexing_map(%{{.*}})
 // CHECK: %[[COND:.*]] = arith.cmpi sge, %[[INDEXING]], %{{.*}} : index
-// CHECK: %[[PAD:.*]] = arith.constant 0.000000e+00 : f32
 // CHECK: %[[RES:.*]] = scf.if %[[COND]] -> (vector<8xf32>) {
 // CHECK:   %[[READ:.*]] = vector.transfer_read %{{.*}}[%{{.*}}], %[[PAD]] {in_bounds = [true]} : memref<128xf32>, vector<8xf32>
 // CHECK:   scf.yield %[[READ]] : vector<8xf32>
@@ -573,5 +573,95 @@ func.func @test_dot_general_batch(%arg0: tensor<2x8x8xf32>, %arg1: tensor<2x8x8x
 // CHECK: %[[RES:.*]] = vector.contract {indexing_maps = [{{.*}}], iterator_types = ["parallel", "reduction", "parallel", "parallel"], kind = #vector.kind<add>} %[[LHS]], %[[RHS]], %[[ACC]] : vector<2x8x8xf32>, vector<2x8x8xf32> into vector<2x8x8xf32>
 // CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[RES]] : vector<2x8x8xf32> to tensor<2x8x8xf32>
 // CHECK: return %[[RET]]
+
+func.func @test_iota() -> tensor<8xi32> {
+  %0 = stablehlo.iota dim = 0 : tensor<8xi32>
+  return %0 : tensor<8xi32>
+}
+// CHECK-LABEL: @test_iota
+// CHECK: %[[CST:.*]] = arith.constant dense<[0, 1, 2, 3, 4, 5, 6, 7]> : vector<8xi32>
+// CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[CST]] : vector<8xi32> to tensor<8xi32>
+// CHECK: return %[[RET]]
+
+func.func @test_iota_f32() -> tensor<8xf32> {
+  %0 = stablehlo.iota dim = 0 : tensor<8xf32>
+  return %0 : tensor<8xf32>
+}
+// CHECK-LABEL: @test_iota_f32
+// CHECK: %[[CST:.*]] = arith.constant dense<[0, 1, 2, 3, 4, 5, 6, 7]> : vector<8xi32>
+// CHECK: %[[CONV:.*]] = arith.sitofp %[[CST]] : vector<8xi32> to vector<8xf32>
+// CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[CONV]] : vector<8xf32> to tensor<8xf32>
+// CHECK: return %[[RET]]
+
+func.func @test_iota_2d() -> tensor<4x8xi32> {
+  %0 = stablehlo.iota dim = 1 : tensor<4x8xi32>
+  return %0 : tensor<4x8xi32>
+}
+// CHECK-LABEL: @test_iota_2d
+// CHECK: %[[CST:.*]] = arith.constant dense<[0, 1, 2, 3, 4, 5, 6, 7]> : vector<8xi32>
+// CHECK: %[[CAST:.*]] = vector.shape_cast %[[CST]] : vector<8xi32> to vector<1x8xi32>
+// CHECK: %[[BCAST:.*]] = vector.broadcast %[[CAST]] : vector<1x8xi32> to vector<4x8xi32>
+// CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[BCAST]] : vector<4x8xi32> to tensor<4x8xi32>
+// CHECK: return %[[RET]]
+
+func.func @test_reduce(%arg0: tensor<8x32xf32>, %arg1: tensor<f32>) -> tensor<8xf32> {
+  %0 = stablehlo.reduce(%arg0 init: %arg1) across dimensions = [1] : (tensor<8x32xf32>, tensor<f32>) -> tensor<8xf32>
+   reducer(%arg2: tensor<f32>, %arg3: tensor<f32>)  {
+    %1 = arith.addf %arg2, %arg3 : tensor<f32>
+    stablehlo.return %1 : tensor<f32>
+  }
+  return %0 : tensor<8xf32>
+}
+// CHECK-LABEL: @test_reduce
+// CHECK: %[[INIT_CAST:.*]] = builtin.unrealized_conversion_cast %arg1 : tensor<f32> to vector<f32>
+// CHECK: %[[CAST:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<8x32xf32> to vector<8x32xf32>
+// CHECK: %[[INIT:.*]] = vector.extract %[[INIT_CAST]][] : f32 from vector<f32>
+// CHECK: %[[ACC:.*]] = vector.broadcast %[[INIT]] : f32 to vector<8xf32>
+// CHECK: %[[REDUCE:.*]] = vector.multi_reduction <add>, %[[CAST]], %[[ACC]] [1] : vector<8x32xf32> to vector<8xf32>
+// CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[REDUCE]] : vector<8xf32> to tensor<8xf32>
+// CHECK: return %[[RET]]
+
+func.func @test_reduce_1d_0d(%arg0: tensor<8xf32>, %arg1: tensor<f32>) -> tensor<f32> {
+  %0 = stablehlo.reduce(%arg0 init: %arg1) across dimensions = [0] : (tensor<8xf32>, tensor<f32>) -> tensor<f32>
+   reducer(%arg2: tensor<f32>, %arg3: tensor<f32>)  {
+    %1 = arith.addf %arg2, %arg3 : tensor<f32>
+    stablehlo.return %1 : tensor<f32>
+  }
+  return %0 : tensor<f32>
+}
+// CHECK-LABEL: @test_reduce_1d_0d
+// CHECK: %[[INIT_CAST:.*]] = builtin.unrealized_conversion_cast %arg1 : tensor<f32> to vector<f32>
+// CHECK: %[[CAST:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<8xf32> to vector<8xf32>
+// CHECK: %[[INIT:.*]] = vector.extract %[[INIT_CAST]][] : f32 from vector<f32>
+// CHECK: %[[REDUCE:.*]] = vector.multi_reduction <add>, %[[CAST]], %[[INIT]] [0] : vector<8xf32> to f32
+// CHECK: %[[BCAST:.*]] = vector.broadcast %[[REDUCE]] : f32 to vector<f32>
+// CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[BCAST]] : vector<f32> to tensor<f32>
+// CHECK: return %[[RET]]
+
+func.func @test_reshape(%arg0: tensor<16x32xf32>) -> tensor<512xf32> {
+  %0 = stablehlo.reshape %arg0 : (tensor<16x32xf32>) -> tensor<512xf32>
+  return %0 : tensor<512xf32>
+}
+// CHECK-LABEL: @test_reshape
+// CHECK: %[[CAST:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<16x32xf32> to vector<16x32xf32>
+// CHECK: %[[RESHAPE:.*]] = vector.shape_cast %[[CAST]] : vector<16x32xf32> to vector<512xf32>
+// CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[RESHAPE]] : vector<512xf32> to tensor<512xf32>
+// CHECK: return %[[RET]]
+
+func.func @test_mask(%arg0: tensor<4x8xf32>, %arg1: f32) -> tensor<4x8xf32> {
+  %0 = xtile.mask %arg0 bounds [3, 6], %arg1 : tensor<4x8xf32>
+  return %0 : tensor<4x8xf32>
+}
+// CHECK-LABEL: @test_mask
+// CHECK: %[[SRC:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<4x8xf32> to vector<4x8xf32>
+// CHECK-DAG: %[[C3:.*]] = arith.constant 3 : index
+// CHECK-DAG: %[[C6:.*]] = arith.constant 6 : index
+// CHECK: %[[MASK:.*]] = vector.create_mask %[[C3]], %[[C6]] : vector<4x8xi1>
+// CHECK: %[[BCAST:.*]] = vector.broadcast %arg1 : f32 to vector<4x8xf32>
+// CHECK: %[[SELECT:.*]] = arith.select %[[MASK]], %[[SRC]], %[[BCAST]] : vector<4x8xi1>, vector<4x8xf32>
+// CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[SELECT]] : vector<4x8xf32> to tensor<4x8xf32>
+// CHECK: return %[[RET]]
+
+
 
 

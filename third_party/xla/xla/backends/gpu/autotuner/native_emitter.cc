@@ -22,8 +22,8 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallSet.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
@@ -87,7 +87,7 @@ NativeEmitterBackend::GetSupportedConfigs(const HloInstruction& instr) {
     return configs;
   }
 
-  ASSIGN_OR_RETURN(std::unique_ptr<BackendConfig> default_config,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<BackendConfig> default_config,
                    GetDefaultConfig(instr));
   if (!default_config->has_native_emitter()) {
     return absl::InternalError("Expected NativeEmitterBackendConfig.");
@@ -149,11 +149,11 @@ absl::Status NativeEmitterBackend::ApplyConfig(HloInstruction& instr,
              NativeEmitterType::NATIVE_EMITTER_TYPE_INVALID) {
     fusion_instr->set_fusion_kind(HloInstruction::FusionKind::kInput);
   }
-  ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
                    instr.backend_config<GpuBackendConfig>());
   *gpu_backend_config.mutable_native_emitter_backend_config() =
       native_emitter_fusion_config;
-  RETURN_IF_ERROR(fusion_instr->set_backend_config(gpu_backend_config));
+  ABSL_RETURN_IF_ERROR(fusion_instr->set_backend_config(gpu_backend_config));
   return absl::OkStatus();
 }
 

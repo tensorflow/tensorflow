@@ -26,6 +26,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/frontend_attributes.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
+#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -383,6 +385,33 @@ TEST_F(HloInstructionTest, AddFrontendAttributes) {
   EXPECT_EQ(instr.get_frontend_attribute("key1").value(), "value1")
       << "key1 should not be overwritten";
   EXPECT_EQ(instr.get_frontend_attribute("key2").value(), "value2");
+}
+
+TEST_F(HloInstructionTest, DisjointReadWriteRegionsAttributes) {
+  HloConstantInstruction instr(ShapeUtil::MakeShape(U32, {3, 2}));
+  EXPECT_FALSE(HasDisjointReadWriteRegionsAttr(&instr));
+  EXPECT_FALSE(HasDisjointReadWriteRegionsAttr(nullptr));
+  SetDisjointReadWriteRegionsAttr(nullptr);  // Should be a no-op and not crash.
+
+  SetDisjointReadWriteRegionsAttr(&instr);
+  EXPECT_TRUE(HasDisjointReadWriteRegionsAttr(&instr));
+
+  // Test different key variations and case-insensitive values.
+  for (absl::string_view key :
+       {kXlaDisjointReadWriteRegions, "xla.disjoint_read_write_regions"}) {
+    for (absl::string_view val : {"true", "True", "1", "yes", "YES"}) {
+      HloConstantInstruction test_instr(ShapeUtil::MakeShape(U32, {3, 2}));
+      test_instr.set_frontend_attribute(key, val);
+      EXPECT_TRUE(HasDisjointReadWriteRegionsAttr(&test_instr))
+          << "Failed for key: " << key << " and val: " << val;
+    }
+    for (absl::string_view val : {"false", "0", "no", "invalid", ""}) {
+      HloConstantInstruction test_instr(ShapeUtil::MakeShape(U32, {3, 2}));
+      test_instr.set_frontend_attribute(key, val);
+      EXPECT_FALSE(HasDisjointReadWriteRegionsAttr(&test_instr))
+          << "Expected false for key: " << key << " and val: " << val;
+    }
+  }
 }
 
 TEST_F(HloInstructionTest, CustomCallInstructionStorage) {
@@ -750,6 +779,30 @@ TEST_F(HloInstructionTest, PrecisionConfigMethodConsistency) {
       HloInstruction::CreateDot(ShapeUtil::MakeShape(F32, {2, 2}), lhs.get(),
                                 rhs.get(), dnums, PrecisionConfig());
   EXPECT_TRUE(dot->SupportsPrecisionConfig());
+}
+
+TEST_F(HloInstructionTest, DetachFromOperandsWithDuplicateOperands) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder("main");
+  HloInstruction* p0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0"));
+  // Create a tuple that uses p0 twice.
+  HloInstruction* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({p0, p0}));
+  module->AddEntryComputation(builder.Build());
+
+  // DetachFromOperands should not crash when operands are duplicated.
+  tuple->DetachFromOperands();
+
+  EXPECT_EQ(tuple->operand_count(), 0);
+  EXPECT_EQ(p0->user_count(), 0);
+
+  // Clean up the module to satisfy the HloVerifier on destruction.
+  module->entry_computation()->set_root_instruction(
+      p0, /*accept_different_shape=*/true);
+  *module->mutable_entry_computation_layout()->mutable_result_layout() =
+      ShapeLayout(p0->shape());
+  EXPECT_OK(module->entry_computation()->RemoveInstruction(tuple));
 }
 
 }  // namespace

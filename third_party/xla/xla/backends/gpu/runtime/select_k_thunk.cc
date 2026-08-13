@@ -25,10 +25,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/select_k_exec.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -135,7 +135,7 @@ absl::StatusOr<ThunkProto> SelectKThunk::ToProto() const {
   select_k_proto->set_dtype(dtype_);
 
   for (const BufferAllocation::Slice& arg : args_) {
-    ASSIGN_OR_RETURN(*select_k_proto->add_args(), arg.ToProto());
+    ABSL_ASSIGN_OR_RETURN(*select_k_proto->add_args(), arg.ToProto());
   }
   return proto;
 }
@@ -147,7 +147,7 @@ absl::StatusOr<std::unique_ptr<SelectKThunk>> SelectKThunk::FromProto(
   arguments.reserve(proto.args().size());
   for (const xla::buffer_assignment::BufferAllocationSliceProto& arg :
        proto.args()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         BufferAllocation::Slice slice,
         BufferAllocation::Slice::FromProto(arg, buffer_allocations));
     emitters::KernelArgument argument{Shape{}, slice};

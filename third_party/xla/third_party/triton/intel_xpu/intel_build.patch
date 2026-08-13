@@ -58,7 +58,7 @@ diff --git b/third_party/intel/BUILD b/third_party/intel/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/intel/BUILD
-@@ -0,0 +1,523 @@
+@@ -0,0 +1,554 @@
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 +
 +package(
@@ -329,6 +329,30 @@ new file mode 100644
 +)
 +
 +cc_library(
++    name = "XeAsmFormat",
++    srcs = [
++        "lib/TritonIntelGPUToLLVM/XeAsmFormat.cpp",
++    ],
++    hdrs = [
++        "include/TritonIntelGPUToLLVM/XeAsmFormat.h",
++    ],
++    copts = _no_unused_variable,
++    includes = [
++        "..",
++        "include",
++        "lib",
++        "lib/TritonIntelGPUToLLVM",
++    ],
++    deps = [
++        "@llvm-project//llvm:Support",
++        "@llvm-project//mlir:IR",
++        "@llvm-project//mlir:LLVMDialect",
++        "@llvm-project//mlir:Transforms",
++        "@triton//:TritonGPUToLLVM",
++    ],
++ )
++
++cc_library(
 +    name = "TritonIntelUtils",
 +    srcs = glob(["lib/Utils/*.cpp"]),
 +    hdrs = glob(["include/Utils/*.h"]) + glob(["lib/Utils/*.h"]) + ["lib/TritonGENToLLVM/Attributes.h"],
@@ -416,6 +440,7 @@ new file mode 100644
 +    deps = [
 +        ":TritonIntelUtils",
 +        ":TritonGENToSPIRV",
++        ":XeAsmFormat",
 +        ":triton_gen_to_llvm_passes_inc_gen",
 +        ":triton_gen_to_spirv_passes_inc_gen",
 +        ":triton_gen_attr_defs_inc_gen",
@@ -526,9 +551,14 @@ new file mode 100644
 +
 +cc_library(
 +    name = "TritonIntelGPUToLLVM",
-+    srcs = glob([
-+        "lib/TritonIntelGPUToLLVM/**/*.cpp",
-+    ]),
++    srcs = glob(
++        include = [
++            "lib/TritonIntelGPUToLLVM/**/*.cpp",
++        ],
++        exclude = [
++            "lib/TritonIntelGPUToLLVM/XeAsmFormat.cpp",
++        ],
++    ),
 +    hdrs = glob([
 +        "include/TritonIntelGPUToLLVM/*.h",
 +    ]) + glob([
@@ -553,6 +583,7 @@ new file mode 100644
 +        ":TritonGENToLLVM",
 +        ":TritonGENToSPIRV",
 +        ":TritonIntelUtils",
++        ":XeAsmFormat",
 +        ":triton_intel_gpu_to_llvm_passes_inc_gen",
 +        "@llvm-project//llvm:Support",
 +        "@llvm-project//mlir:ArithDialect",

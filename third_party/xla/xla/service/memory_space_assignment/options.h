@@ -129,6 +129,12 @@ struct CustomCallPrefetchDetails {
 
 // The different options to be passed to the Run() API.
 struct Options {
+  // The execution threads that memory space assignment operates on. This is
+  // used to determine which flattened instructions should be included/excluded
+  // from cost analysis.
+  absl::flat_hash_set<absl::string_view> execution_threads = {
+      HloInstruction::kMainExecutionThread};
+
   // The backend-specific integer value that describes the default memory.
   int64_t default_memory_space = 0;
 

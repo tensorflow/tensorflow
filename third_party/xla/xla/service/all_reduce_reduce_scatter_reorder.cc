@@ -17,9 +17,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -65,10 +65,10 @@ absl::Status ReorderAllReduceReduceScatter(HloInstruction* old_ar) {
       old_rs->CloneWithNewOperands(old_rs->shape(), old_ar->operands()));
   HloInstruction* new_ar = computation->AddInstruction(
       old_ar->CloneWithNewOperands(old_rs->shape(), {new_rs}));
-  RETURN_IF_ERROR(old_rs->ReplaceUsesWith(old_rs->users(), new_ar));
+  ABSL_RETURN_IF_ERROR(old_rs->ReplaceUsesWith(old_rs->users(), new_ar));
 
-  RETURN_IF_ERROR(computation->RemoveInstruction(old_rs));
-  RETURN_IF_ERROR(computation->RemoveInstruction(old_ar));
+  ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(old_rs));
+  ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(old_ar));
   return absl::OkStatus();
 }
 }  // namespace
@@ -80,7 +80,7 @@ absl::StatusOr<bool> AllReduceReduceScatterReorder::RunImpl(
   for (auto computation : module->computations(execution_threads)) {
     for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
       if (IsAllReduceReduceScatter(inst)) {
-        RETURN_IF_ERROR(ReorderAllReduceReduceScatter(inst));
+        ABSL_RETURN_IF_ERROR(ReorderAllReduceReduceScatter(inst));
         changed = true;
       }
     }

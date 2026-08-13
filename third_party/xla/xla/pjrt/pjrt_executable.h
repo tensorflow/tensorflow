@@ -136,9 +136,6 @@ struct CompileOptions {
   absl::Status ApplyOptionFromString(
       const tsl::protobuf::FieldDescriptor* field, const std::string& value);
 
-  // Compiler variant to indicate which compiler is invoked.
-  std::optional<std::string> compiler_variant = std::nullopt;
-
   static absl::StatusOr<EnvironmentOptionOverrides> LoadEnvOptionOverrides(
       const google::protobuf::Map<std::string, xla::OptionOverrideProto>&
           env_option_overrides);

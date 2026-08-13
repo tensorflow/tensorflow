@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <limits>
 #include <optional>
@@ -26,9 +28,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -161,58 +163,17 @@ class LowerReduce : public mlir::OpRewritePattern<stablehlo::ReduceOp> {
   using OpRewritePattern::OpRewritePattern;
 
  private:
-  mlir::LogicalResult matchAndRewrite(
-      stablehlo::ReduceOp op, mlir::PatternRewriter& rewriter) const override {
-    if (mlir::failed(VerifyOpIsCompatibleWithTritonReduce(op, rewriter))) {
-      return mlir::failure();
-    }
-
-    int32_t axis = op.getDimensions()[0];
-
-    // In case shlo returns a 0 rank tensor triton needs to return a scalar as
-    // triton doesn't support 0 rank tensors.
-    SmallVector<Type> adjusted_result_types;
-    adjusted_result_types.reserve(op.getNumResults());
-    for (auto result : op.getResults()) {
-      auto shaped_type = cast<mlir::ShapedType>(result.getType());
-      if (shaped_type.getRank() == 0) {
-        adjusted_result_types.push_back(shaped_type.getElementType());
-      } else {
-        adjusted_result_types.push_back(shaped_type);
+  Type RemoveDimension(Type type, int32_t axis) const {
+    auto ranked_type = cast<RankedTensorType>(type);
+    auto shape = ranked_type.getShape();
+    SmallVector<int64_t> new_shape;
+    new_shape.reserve(shape.size() - 1);
+    for (int i = 0; i < shape.size(); ++i) {
+      if (i != axis) {
+        new_shape.push_back(shape[i]);
       }
     }
-
-    auto triton_reduce_op = ttir::ReduceOp::create(
-        rewriter, op.getLoc(), adjusted_result_types, op.getInputs(), axis);
-
-    mlir::Block& old_block = op.getBody().front();
-    BuildTritonReduceBlock(op, old_block, triton_reduce_op.getCombineOp(),
-                           rewriter);
-
-    llvm::SmallVector<Value> new_results;
-    if (AllInitValuesAreNeutral(op, old_block)) {
-      for (auto [triton_result, op_result_type] :
-           llvm::zip(triton_reduce_op.getResults(), op.getResultTypes())) {
-        auto result_shaped_type = mlir::cast<mlir::ShapedType>(op_result_type);
-        if (result_shaped_type.getRank() == 0) {
-          if (!mlir::isa<mlir::ShapedType>(triton_result.getType())) {
-            new_results.push_back(mlir::tensor::FromElementsOp::create(
-                rewriter, op.getLoc(), op_result_type, triton_result));
-          } else {
-            new_results.push_back(mlir::stablehlo::ReshapeOp::create(
-                rewriter, op.getLoc(), op_result_type, triton_result));
-          }
-        } else {
-          new_results.push_back(triton_result);
-        }
-      }
-    } else {
-      new_results = CombineReduceResultsWithInitValues(op, triton_reduce_op,
-                                                       old_block, rewriter);
-    }
-
-    rewriter.replaceOp(op, new_results);
-    return mlir::success();
+    return RankedTensorType::get(new_shape, ranked_type.getElementType());
   }
 
   // Checks if a single init_value is a neutral constant for the reducer op.
@@ -457,24 +418,89 @@ class LowerReduce : public mlir::OpRewritePattern<stablehlo::ReduceOp> {
     return new_results;
   }
 
-  // Verifies that the stablehlo reduce op can be lowered to a triton reduce
-  // op.
-  // This checks that proper emitting of `tensor.from_elements` and
-  // `tensor.extract` on reducer inputs and outputs has happened. It also checks
-  // that `tensor.extract` was emitted on the result of the reduce operation if
-  // the result is a zero rank tensor.
-  mlir::LogicalResult VerifyOpIsCompatibleWithTritonReduce(
-      stablehlo::ReduceOp op, mlir::PatternRewriter& rewriter) const {
-    // Check that the reduction is along a single dimension.
+  mlir::LogicalResult matchAndRewrite(
+      stablehlo::ReduceOp op, mlir::PatternRewriter& rewriter) const override {
     auto dimensions = op.getDimensions();
-    if (dimensions.size() != 1) {
+    if (dimensions.empty()) {
       absl::string_view error_text =
-          "tt.reduce only supports single dimension reductions.";
-      // Report this as a hard error to abort the compilation.
+          "Reduction must have at least one dimension.";
       op.emitError(error_text);
       return rewriter.notifyMatchFailure(op->getLoc(), error_text);
     }
 
+    // Sort axes descending so peeling higher dimensions doesn't shift the
+    // index positions of remaining lower dimensions.
+    SmallVector<int64_t> sorted_dims(dimensions.begin(), dimensions.end());
+    std::sort(sorted_dims.begin(), sorted_dims.end(), std::greater<int64_t>());
+
+    SmallVector<Value> current_vals(op.getInputs().begin(),
+                                    op.getInputs().end());
+
+    // In case shlo returns a 0 rank tensor triton needs to return a scalar as
+    // triton doesn't support 0 rank tensors.
+    // We only apply this to the VERY LAST reduction in the chain.
+    SmallVector<Type> final_result_types;
+    final_result_types.reserve(op.getNumResults());
+    for (auto result : op.getResults()) {
+      auto shaped_type = cast<mlir::ShapedType>(result.getType());
+      if (shaped_type.getRank() == 0) {
+        final_result_types.push_back(shaped_type.getElementType());
+      } else {
+        final_result_types.push_back(shaped_type);
+      }
+    }
+
+    ttir::ReduceOp triton_reduce_op;
+    mlir::Block& old_block = op.getBody().front();
+
+    // Peel off reduction dimensions one at a time from highest axis to lowest,
+    // creating a sequential chain of 1D tt.reduce instructions.
+    for (auto [k, axis] : llvm::enumerate(sorted_dims)) {
+      bool is_last = (k == sorted_dims.size() - 1);
+      SmallVector<Type> step_result_types;
+      if (is_last) {
+        step_result_types = final_result_types;
+      } else {
+        step_result_types.reserve(current_vals.size());
+        for (auto val : current_vals) {
+          step_result_types.push_back(RemoveDimension(val.getType(), axis));
+        }
+      }
+
+      triton_reduce_op = ttir::ReduceOp::create(
+          rewriter, op.getLoc(), step_result_types, current_vals, axis);
+
+      BuildTritonReduceBlock(op, old_block, triton_reduce_op.getCombineOp(),
+                             rewriter);
+
+      current_vals.assign(triton_reduce_op.getResults().begin(),
+                          triton_reduce_op.getResults().end());
+      rewriter.setInsertionPointAfter(triton_reduce_op);
+    }
+
+    llvm::SmallVector<Value> new_results;
+    if (AllInitValuesAreNeutral(op, old_block)) {
+      for (auto [triton_result, op_result_type] :
+           llvm::zip(triton_reduce_op.getResults(), op.getResultTypes())) {
+        auto result_shaped_type = mlir::cast<mlir::ShapedType>(op_result_type);
+        if (result_shaped_type.getRank() == 0) {
+          if (!mlir::isa<mlir::ShapedType>(triton_result.getType())) {
+            new_results.push_back(mlir::tensor::FromElementsOp::create(
+                rewriter, op.getLoc(), op_result_type, triton_result));
+          } else {
+            new_results.push_back(mlir::stablehlo::ReshapeOp::create(
+                rewriter, op.getLoc(), op_result_type, triton_result));
+          }
+        } else {
+          new_results.push_back(triton_result);
+        }
+      }
+    } else {
+      new_results = CombineReduceResultsWithInitValues(op, triton_reduce_op,
+                                                       old_block, rewriter);
+    }
+
+    rewriter.replaceOp(op, new_results);
     return mlir::success();
   }
 };
@@ -672,9 +698,9 @@ absl::StatusOr<Value> EmitBF16x9Matmul(
   constexpr int kLow = 2;
 
   Type f32 = b.getF32Type();
-  RETURN_IF_ERROR(ExpectType(dot_operands.lhs, f32));
-  RETURN_IF_ERROR(ExpectType(dot_operands.rhs, f32));
-  RETURN_IF_ERROR(ExpectType(dot_operands.accumulator, f32));
+  ABSL_RETURN_IF_ERROR(ExpectType(dot_operands.lhs, f32));
+  ABSL_RETURN_IF_ERROR(ExpectType(dot_operands.rhs, f32));
+  ABSL_RETURN_IF_ERROR(ExpectType(dot_operands.accumulator, f32));
 
   std::vector<Value> lhs_parts = SplitF32(b, dot_operands.lhs, kNumParts);
   std::vector<Value> rhs_parts = SplitF32(b, dot_operands.rhs, kNumParts);
@@ -711,9 +737,9 @@ absl::StatusOr<Value> EmitBF16x6Matmul(
   constexpr int kLow = 2;
 
   Type f32 = b.getF32Type();
-  RETURN_IF_ERROR(ExpectType(dot_operands.lhs, f32));
-  RETURN_IF_ERROR(ExpectType(dot_operands.rhs, f32));
-  RETURN_IF_ERROR(ExpectType(dot_operands.accumulator, f32));
+  ABSL_RETURN_IF_ERROR(ExpectType(dot_operands.lhs, f32));
+  ABSL_RETURN_IF_ERROR(ExpectType(dot_operands.rhs, f32));
+  ABSL_RETURN_IF_ERROR(ExpectType(dot_operands.accumulator, f32));
 
   std::vector<Value> lhs_parts = SplitF32(b, dot_operands.lhs, kNumParts);
   std::vector<Value> rhs_parts = SplitF32(b, dot_operands.rhs, kNumParts);
@@ -745,9 +771,9 @@ absl::StatusOr<Value> EmitBF16x3Matmul(
   constexpr int kLow = 1;
 
   Type f32 = b.getF32Type();
-  RETURN_IF_ERROR(ExpectType(dot_operands.lhs, f32));
-  RETURN_IF_ERROR(ExpectType(dot_operands.rhs, f32));
-  RETURN_IF_ERROR(ExpectType(dot_operands.accumulator, f32));
+  ABSL_RETURN_IF_ERROR(ExpectType(dot_operands.lhs, f32));
+  ABSL_RETURN_IF_ERROR(ExpectType(dot_operands.rhs, f32));
+  ABSL_RETURN_IF_ERROR(ExpectType(dot_operands.accumulator, f32));
 
   std::vector<Value> lhs_bf16 = SplitF32(b, dot_operands.lhs, kNumParts);
   std::vector<Value> rhs_bf16 = SplitF32(b, dot_operands.rhs, kNumParts);
