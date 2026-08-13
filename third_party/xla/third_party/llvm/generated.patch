@@ -1,24 +1,19 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/Rematerializer.cpp b/llvm/lib/CodeGen/Rematerializer.cpp
---- a/llvm/lib/CodeGen/Rematerializer.cpp
-+++ b/llvm/lib/CodeGen/Rematerializer.cpp
-@@ -240,6 +240,8 @@
-     return true;
-   const LiveInterval &LI = LIS.getInterval(Reg);
-   const VNInfo *DefVN = LI.getVNInfoAt(RefSlot);
-+  if (!DefVN)
-+    return false;
-   for (SlotIndex Use : Uses) {
-     if (!isIdenticalAtUse(*DefVN, Mask, Use, LI))
-       return false;
-diff -ruN --strip-trailing-cr a/mlir/lib/ExecutionEngine/CRunnerUtils.cpp b/mlir/lib/ExecutionEngine/CRunnerUtils.cpp
---- a/mlir/lib/ExecutionEngine/CRunnerUtils.cpp
-+++ b/mlir/lib/ExecutionEngine/CRunnerUtils.cpp
-@@ -29,6 +29,7 @@
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -1475,8 +1475,12 @@
+         ":__support_macros_optimization",
+         ":__support_macros_properties_os",
+         ":__support_osutil_exit_hdrs",
+-        ":__support_osutil_io",
+-    ],
++    ] + select({
++        "@platforms//os:linux": [":__support_osutil_io"],
++        "@platforms//os:macos": [":__support_osutil_io"],
++        "@platforms//os:windows": [":__support_osutil_io"],
++        "//conditions:default": [],
++    }),
+ )
  
- #include <algorithm>
- #include <cinttypes>
-+#include <cmath>
- #include <cstdio>
- #include <cstdlib>
- #include <numeric>
+ libc_support_library(
