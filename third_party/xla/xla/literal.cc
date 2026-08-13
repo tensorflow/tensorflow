@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/literal.h"
 
 #include <algorithm>
+#include <climits>
 #include <complex>
 #include <cstdint>
 #include <cstring>
@@ -1861,11 +1862,6 @@ absl::StatusOr<Literal> LiteralBase::Convert(
 
 absl::StatusOr<Literal> LiteralBase::BitcastConvert(
     const Shape& dest_shape) const {
-  if (ShapeUtil::ByteSizeOf(dest_shape) != ShapeUtil::ByteSizeOf(shape())) {
-    return InvalidArgument(
-        "Can not bitcast-convert from shape %s to a shape of different size %s",
-        shape().ToString(), dest_shape.ToString());
-  }
   if (dest_shape.IsTuple() || shape().IsTuple()) {
     return InvalidArgument(
         "bitcast-convert is not valid for tuple shapes %s->%s",
@@ -1876,10 +1872,54 @@ absl::StatusOr<Literal> LiteralBase::BitcastConvert(
         "bitcast-convert is not valid for dynamic shape %s->%s",
         shape().ToString(), dest_shape.ToString());
   }
+  if (!shape().IsArray() || !dest_shape.IsArray()) {
+    return InvalidArgument(
+        "bitcast-convert is only valid for array shapes %s->%s",
+        shape().ToString(), dest_shape.ToString());
+  }
+  // Compare storage bits rather than ShapeUtil::ByteSizeOf: byte sizes depend
+  // on the layout's element_size_in_bits, which literals always strip.
+  const PrimitiveType src_type = shape().element_type();
+  const PrimitiveType dest_type = dest_shape.element_type();
+  const int64_t src_bits = ShapeUtil::ElementsIn(shape()) *
+                           primitive_util::StorageBitWidth(src_type);
+  const int64_t dest_bits = ShapeUtil::ElementsIn(dest_shape) *
+                            primitive_util::StorageBitWidth(dest_type);
+  if (src_bits != dest_bits) {
+    return InvalidArgument(
+        "Can not bitcast-convert from shape %s to a shape of different size %s",
+        shape().ToString(), dest_shape.ToString());
+  }
 
   Literal out(dest_shape);
-  std::memcpy(out.root_piece_.buffer(), root_piece().buffer(),
-              root_piece().size_bytes_dense());
+  const bool src_sub_byte = primitive_util::IsSubByteNonPredType(src_type);
+  const bool dest_sub_byte = primitive_util::IsSubByteNonPredType(dest_type);
+  if (src_sub_byte || dest_sub_byte) {
+    // Literal stores sub-byte types unpacked (one element per byte), while
+    // bitcast-convert semantics are defined on the packed representation.
+    std::vector<char> packed(CeilOfRatio<int64_t>(src_bits, CHAR_BIT));
+    absl::Span<const char> packed_view = packed;
+    if (src_sub_byte) {
+      PackIntN(primitive_util::BitWidth(src_type),
+               absl::MakeConstSpan(root_piece().buffer(),
+                                   root_piece().size_bytes_dense()),
+               absl::MakeSpan(packed));
+    } else {
+      packed_view = absl::MakeConstSpan(root_piece().buffer(),
+                                        root_piece().size_bytes_dense());
+    }
+    if (dest_sub_byte) {
+      UnpackIntN(primitive_util::BitWidth(dest_type), packed_view,
+                 absl::MakeSpan(out.root_piece_.buffer(),
+                                out.root_piece_.size_bytes_dense()));
+    } else if (!packed_view.empty()) {
+      std::memcpy(out.root_piece_.buffer(), packed_view.data(),
+                  packed_view.size());
+    }
+  } else {
+    std::memcpy(out.root_piece_.buffer(), root_piece().buffer(),
+                root_piece().size_bytes_dense());
+  }
 
   // Perform the reshape on little endian encoding even on big endian machines.
   if constexpr (!kLittleEndian) {
