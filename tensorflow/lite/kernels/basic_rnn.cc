@@ -89,6 +89,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteFloat32);
   TF_LITE_ENSURE_TYPES_EQ(context, input_weights->type,
                           recurrent_weights->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, bias->type, kTfLiteFloat32);
+  TF_LITE_ENSURE_TYPES_EQ(context, hidden_state->type, kTfLiteFloat32);
   TF_LITE_ENSURE_EQ(context, NumDimensions(hidden_state), 2);
   TF_LITE_ENSURE_EQ(context, hidden_state->dims->data[0], batch_size);
   TF_LITE_ENSURE_EQ(context, hidden_state->dims->data[1], num_units);
@@ -96,6 +98,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
+  TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteFloat32);
 
   // Resize output.
   TfLiteIntArray* output_size_array = TfLiteIntArrayCreate(2);
