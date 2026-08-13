@@ -18,7 +18,9 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 
+#ifndef TF_LITE_STATIC_MEMORY
 #include "absl/container/inlined_vector.h"
+#endif
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/runtime_shape.h"
 
@@ -118,11 +120,20 @@ inline void BroadcastBinaryOpSimple(const RuntimeShape& input1_shape,
   // - For all remaining dimensions, if the loop can be fused with the previous
   //   loop do that.
   // - Otherwise, make a new loop.
+#ifdef TF_LITE_STATIC_MEMORY
+  constexpr int kMaxRank = 8;
+  TFLITE_DCHECK_LE(dims_count, kMaxRank);
+  size_t a_strides[kMaxRank];
+  size_t b_strides[kMaxRank];
+  size_t o_strides[kMaxRank];
+  size_t o_shape[kMaxRank];
+#else
   const size_t rank = static_cast<size_t>(dims_count);
   absl::InlinedVector<size_t, kInlineRank> a_strides(rank);
   absl::InlinedVector<size_t, kInlineRank> b_strides(rank);
   absl::InlinedVector<size_t, kInlineRank> o_strides(rank);
   absl::InlinedVector<size_t, kInlineRank> o_shape(rank);
+#endif
 
   size_t a_accum_stride = 1;
   size_t b_accum_stride = 1;
@@ -162,9 +173,14 @@ inline void BroadcastBinaryOpSimple(const RuntimeShape& input1_shape,
     o_accum_stride *= output_dim;
   }
 
+#ifdef TF_LITE_STATIC_MEMORY
+  RunBinaryOp(input1_data, input2_data, output_data, a_strides, b_strides,
+              o_strides, o_shape, next_dim_idx, op);
+#else
   RunBinaryOp(input1_data, input2_data, output_data, a_strides.data(),
               b_strides.data(), o_strides.data(), o_shape.data(), next_dim_idx,
               op);
+#endif
 }
 
 }  // namespace reference_ops
