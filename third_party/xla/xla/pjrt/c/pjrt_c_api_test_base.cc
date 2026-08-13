@@ -36,7 +36,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
@@ -124,6 +124,14 @@ absl::Span<PJRT_Device* const> PjrtCApiTestBase::GetClientDevices() const {
 
 int PjrtCApiTestBase::GetNumDevices() const {
   return GetClientDevices().size();
+}
+
+void PjrtCApiTestBase::SetUp() {
+  if (GetClientAddressableDevices().empty()) {
+    GTEST_SKIP()
+        << "Skipping test since no physical or virtual TPU devices were found. "
+           "Hardware is required to test Buffer capabilities.";
+  }
 }
 
 std::string PjrtCApiTestBase::BuildSingleDeviceCompileOptionStr() {
