@@ -1356,10 +1356,12 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_Py_TapeWatch",
         [](const py::handle& tape, const py::handle& tensor) {
           TFE_Py_TapeWatch(tape.ptr(), tensor.ptr());
+          if (PyErr_Occurred()) throw py::error_already_set();
         });
   m.def("TFE_Py_TapeWatchVariable",
         [](const py::handle& tape, const py::handle& variable) {
           TFE_Py_TapeWatchVariable(tape.ptr(), variable.ptr());
+          if (PyErr_Occurred()) throw py::error_already_set();
         });
   m.def("TFE_Py_TapeWatchedVariables", [](const py::handle& tape) {
     return tensorflow::PyoOrThrow(TFE_Py_TapeWatchedVariables(tape.ptr()));
