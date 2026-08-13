@@ -20,6 +20,8 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#include <limits>
+
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -901,6 +903,11 @@ class TensorListScatterIntoExistingList : public OpKernel {
           absl::InvalidArgumentError(
               "Indices in TensorListScatterIntoExistingList must all be "
               "non-negative."));
+      OP_REQUIRES(
+          c, list_index < std::numeric_limits<int32_t>::max(),
+          absl::InvalidArgumentError(
+              "Indices in TensorListScatterIntoExistingList must be less "
+              "than the maximum 32-bit integer value."));
       max_index = std::max(max_index, list_index);
     }
 

@@ -593,14 +593,16 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         list_ops.tensor_list_stack(l, element_dtype=dtypes.float32),
         [1., 2., 3.])
 
-  def testScatterIntoExistingListWithNegativeIndicesFails(self):
+  @parameterized.named_parameters(
+      ("Negative", -1, "must all be non-negative"),
+      ("MaxInt32", np.iinfo(np.int32).max, "must be less than the maximum"))
+  def testScatterIntoExistingListWithInvalidIndicesFails(
+      self, invalid_index, error_message):
     l = list_ops.tensor_list_reserve(
         element_dtype=dtypes.float32, element_shape=[], num_elements=3)
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError,
-        "TensorListScatterIntoExistingList must all be non-negative"):
+    with self.assertRaisesRegex(errors.InvalidArgumentError, error_message):
       l = list_ops.tensor_list_scatter(
-          tensor=[1., 2.], indices=[0, -1], input_handle=l)
+          tensor=[1., 2.], indices=[0, invalid_index], input_handle=l)
       self.evaluate(l)
 
   def testScatterGrad(self):
