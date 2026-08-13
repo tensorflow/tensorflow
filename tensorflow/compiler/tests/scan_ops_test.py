@@ -125,9 +125,9 @@ class CumsumTest(xla_test.XLATestCase):
         self._compareAll(x, axis)
 
   def testComplex(self):
-    x = np.array([1 + 2j, 3 + 4j, 5 + 6j])
+    x = np.array([[1 + 2j, 3 + 4j], [5 + 6j, 7 + 8j]])
     for dtype in self.complex_types:
-      for axis in (-1, 0):
+      for axis in (-2, -1, 0, 1):
         self._compareAll(x.astype(dtype), axis)
 
   def testMixedPrecision(self):
@@ -303,9 +303,9 @@ class CumprodTest(xla_test.XLATestCase):
         self._compareAll(x, axis)
 
   def testComplex(self):
-    x = np.array([1 + 2j, 3 + 4j, 5 + 6j])
+    x = np.array([[1 + 2j, 3 + 4j], [5 + 6j, 7 + 8j]])
     for dtype in self.complex_types:
-      for axis in (-1, 0):
+      for axis in (-2, -1, 0, 1):
         self._compareAll(x.astype(dtype), axis)
 
   @test_util.disable_mlir_bridge("Error handling")
