@@ -24,6 +24,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import tape
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -382,6 +383,36 @@ class Tests(test.TestCase):
     pywrap_tfe.TFE_Py_FastPathExecute(ctx, "RandomUniformInt", None,
                                       shape, minval, maxval,
                                       "seed", seed)
+
+  def testTapeTypeConfusionProtection(self):
+    invalid_payloads = [100, "invalid_tape_obj", object()]
+    with backprop.GradientTape():
+      for payload in invalid_payloads:
+        with self.assertRaises(TypeError):
+          pywrap_tfe.TFE_Py_TapeWatchVariable(
+              payload, constant_op.constant(1.0)
+          )
+        with self.assertRaises(TypeError):
+          pywrap_tfe.TFE_Py_TapeWatchedVariables(payload)
+        with self.assertRaises(TypeError):
+          pywrap_tfe.TFE_Py_VariableWatcherRemove(payload)
+        with self.assertRaises(TypeError):
+          pywrap_tfe.TFE_Py_VariableWatcherWatchedVariables(payload)
+        with self.assertRaises(TypeError):
+          pywrap_tfe.TFE_Py_ForwardAccumulatorSetAdd(payload)
+        with self.assertRaises(TypeError):
+          pywrap_tfe.TFE_Py_ForwardAccumulatorSetRemove(payload)
+
+  def testVariableWatcherDoubleRemoveNoRefcountUnderflow(self):
+    w = pywrap_tfe.TFE_Py_VariableWatcherNew()
+    ref_before = sys.getrefcount(w)
+    pywrap_tfe.TFE_Py_VariableWatcherRemove(w)
+    ref_after_first = sys.getrefcount(w)
+    self.assertEqual(ref_after_first, ref_before - 1)
+    # Duplicate remove on baseline code decrefs again (double-decref)
+    # With our fix, duplicate removal is safe and does not decref again.
+    pywrap_tfe.TFE_Py_VariableWatcherRemove(w)
+    self.assertEqual(sys.getrefcount(w), ref_after_first)
 
 
 if __name__ == "__main__":
