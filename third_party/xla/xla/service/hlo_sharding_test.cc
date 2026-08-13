@@ -1473,7 +1473,7 @@ INSTANTIATE_TEST_SUITE_P(
         test_utils::FromAxisNames(Mesh({2, 2}, {"axis_0", "axis_1"}),
                                   {{"axis_0"}, {"axis_1"}}),
         test_utils::FromAxisNames(Mesh({4}, {"axis_0"}), {{"axis_0"}}),
-        test_utils::FromAxisNames(Mesh(Array<int64_t>({2, 2}, {0, 3, 1, 2}),
+        test_utils::FromAxisNames(Mesh(Array<int64_t>({2, 2}, {0, 2, 1, 3}),
                                        {"axis_0", "axis_1"}),
                                   {{"axis_0"}, {"axis_1"}})));
 

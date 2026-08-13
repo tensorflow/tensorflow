@@ -481,7 +481,6 @@ xla_cc_test(
         "//xla/hlo/ir:mesh_and_axis",
         "//xla/hlo/ir:named_sharding",
         "//xla/hlo/ir:tile_assignment",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_googletest//:gtest_main",
     ],
 )

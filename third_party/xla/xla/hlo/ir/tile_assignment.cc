@@ -202,75 +202,6 @@ DecanonicalizationInfo FullyDecanonicalize(
   return info;
 }
 
-std::optional<IotaTileAssignment> TryToConvertV1ToV2(const TileAssignment& T) {
-  if (T.iota().has_value()) {
-    return T.iota();
-  }
-  int64_t rank = T.num_dimensions();
-  if (rank == 0) {
-    return std::nullopt;
-  }
-
-  // An iota tile assignment is linear: T(x) = sum(x_d * stride_d).
-  // Thus, the physical stride for dimension d is T(0,...,1,...,0)
-  // (with 1 at d).
-  // Sorting these strides reconstructs the transposed layout's dimension order.
-  // Read strides for each dimension.
-  std::vector<std::pair<int64_t, int>> dim_strides;
-  dim_strides.reserve(rank);
-  for (int d = 0; d < rank; ++d) {
-    if (T.dim(d) > 1) {
-      std::vector<int64_t> idx(rank, 0);
-      idx[d] = 1;
-      dim_strides.push_back({T(idx), d});
-    } else {
-      dim_strides.push_back({0, d});
-    }
-  }
-
-  // Sort dimensions by stride in descending order to get major-to-minor layout.
-  absl::c_sort(dim_strides,
-               [](const auto& a, const auto& b) { return a.first > b.first; });
-
-  std::vector<int> perm(rank);
-  std::vector<int64_t> transposed_dims(rank);
-  for (int i = 0; i < rank; ++i) {
-    perm[i] = dim_strides[i].second;
-    transposed_dims[i] = T.dim(perm[i]);
-  }
-
-  // Compute expected strides for this permutation.
-  std::vector<int64_t> expected_strides(rank);
-  int64_t current_stride = 1;
-  for (int i = rank - 1; i >= 0; --i) {
-    expected_strides[i] = current_stride;
-    current_stride *= transposed_dims[i];
-  }
-
-  // Verify the permutation.
-  absl::Status matches_iota = T.EachStatus(
-      [&](absl::Span<const int64_t> index_of_T, int64_t device_id) {
-        int64_t flat_index = 0;
-        for (int k = 0; k < perm.size(); ++k) {
-          flat_index += index_of_T[perm[k]] * expected_strides[k];
-        }
-        return device_id == flat_index ? absl::OkStatus()
-                                       : absl::InvalidArgumentError("Mismatch");
-      });
-
-  if (matches_iota.ok()) {
-    IotaTileAssignment transposed_Iota =
-        IotaTileAssignment::Create(transposed_dims);
-    std::vector<int> inv_perm(rank);
-    for (int i = 0; i < rank; ++i) {
-      inv_perm[perm[i]] = i;
-    }
-    return transposed_Iota.Transpose(inv_perm);
-  }
-
-  return std::nullopt;
-}
-
 }  // namespace
 
 /*static*/ IotaTileAssignment IotaTileAssignment::Create(
@@ -950,13 +881,25 @@ std::optional<AnalyzeTileAssignmentResult> AnalyzeTileAssignment(
   // matches the original array.
   if (!tile_assignment.iota()) {
     // If the input is a full array tile assignment (the corresponding
-    // HloSharding is in V1 format), we try to detect if it's a (possibly
-    // transposed) iota tile assignment.
-    if (auto iota = TryToConvertV1ToV2(tile_assignment)) {
-      if (auto sub_dims =
-              GetOrderedSubDims(tile_assignment.dimensions(),
-                                iota->reshape_dims(), iota->transpose_perm());
-          sub_dims.ok()) {
+    // HloSharding is in V1 format), we try to detect if it's an identity iota
+    // tile assignment.
+    std::vector<int> transpose_perm(tile_assignment.num_dimensions());
+    absl::c_iota(transpose_perm, 0);
+    if (auto sub_dims =
+            GetOrderedSubDims(tile_assignment.dimensions(),
+                              tile_assignment.dimensions(), transpose_perm);
+        sub_dims.ok()) {
+      IotaTileAssignment iota = IotaTileAssignment::Create(
+          tile_assignment.dimensions(), tile_assignment.dimensions(),
+          transpose_perm);
+      bool is_iota = true;
+      tile_assignment.array().Each(
+          [&](absl::Span<const int64_t> index, int64_t device_id) {
+            if (device_id != iota.value_at(index)) {
+              is_iota = false;
+            }
+          });
+      if (is_iota) {
         std::vector<int64_t> mesh;
         mesh.reserve(sub_dims->size());
         absl::c_transform(*sub_dims, std::back_inserter(mesh),
@@ -964,7 +907,7 @@ std::optional<AnalyzeTileAssignmentResult> AnalyzeTileAssignment(
         return AnalyzeTileAssignmentResult{
             /* .sub_dims = */ std::move(*sub_dims),
             /* .local_mesh = */ std::move(mesh),
-            /* .iota = */ *iota,
+            /* .iota = */ std::move(iota),
         };
       }
     }

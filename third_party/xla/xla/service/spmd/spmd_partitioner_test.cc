@@ -18370,12 +18370,11 @@ ENTRY entry {
   EXPECT_NE(all_gather, nullptr);
 
   CollectiveDeviceListVersion expected_version;
-  if (enable_rgv3) {
-    expected_version = CollectiveDeviceListVersion::kMeshAxes;
-  } else if (sharding_type == ShardingFormatPicker::ShardingType::kV1) {
+  if (sharding_type == ShardingFormatPicker::ShardingType::kV1) {
     expected_version = CollectiveDeviceListVersion::kListOfLists;
   } else {
-    expected_version = CollectiveDeviceListVersion::kIota;
+    expected_version = enable_rgv3 ? CollectiveDeviceListVersion::kMeshAxes
+                                   : CollectiveDeviceListVersion::kIota;
   }
 
   EXPECT_EQ(all_gather->device_list()->version(), expected_version);
