@@ -275,7 +275,7 @@ cc_library(
         "@llvm-project//llvm:Core",  # buildcleaner: keep
         "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:IPO",
-        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:Passes",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",

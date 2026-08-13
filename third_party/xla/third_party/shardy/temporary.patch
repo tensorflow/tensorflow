@@ -1,74 +1,44 @@
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 9a42ef6f..754aff41 100644
+index 754aff41..509398da 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,32 +1,24 @@
+@@ -1,24 +1 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/llvm/lib/IR/Verifier.cpp b/llvm/lib/IR/Verifier.cpp
----- a/llvm/lib/IR/Verifier.cpp
--+++ b/llvm/lib/IR/Verifier.cpp
--@@ -3925,10 +3925,8 @@
--   Check(!Attrs.hasFnAttr(Attribute::DenormalFPEnv),
--         "denormal_fpenv attribute may not apply to call sites", Call);
-+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/Rematerializer.cpp b/llvm/lib/CodeGen/Rematerializer.cpp
-+--- a/llvm/lib/CodeGen/Rematerializer.cpp
-++++ b/llvm/lib/CodeGen/Rematerializer.cpp
-+@@ -240,6 +240,8 @@
-+     return true;
-+   const LiveInterval &LI = LIS.getInterval(Reg);
-+   const VNInfo *DefVN = LI.getVNInfoAt(RefSlot);
-++  if (!DefVN)
-++    return false;
-+   for (SlotIndex Use : Uses) {
-+     if (!isIdenticalAtUse(*DefVN, Mask, Use, LI))
-+       return false;
-+diff -ruN --strip-trailing-cr a/mlir/lib/ExecutionEngine/CRunnerUtils.cpp b/mlir/lib/ExecutionEngine/CRunnerUtils.cpp
-+--- a/mlir/lib/ExecutionEngine/CRunnerUtils.cpp
-++++ b/mlir/lib/ExecutionEngine/CRunnerUtils.cpp
-+@@ -29,6 +29,7 @@
-  
---  Check(!Attrs.hasFnAttr(Attribute::StrictFP) ||
---            Call.getFunction()->isStrictFP(),
---        "call site marked strictfp without caller function marked strictfp",
---        Call);
--+  // FIXME: Missing verifier check to forbid a call site marked strictfp without
--+  // caller function marked strictfp.
+-diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/Rematerializer.cpp b/llvm/lib/CodeGen/Rematerializer.cpp
+---- a/llvm/lib/CodeGen/Rematerializer.cpp
+-+++ b/llvm/lib/CodeGen/Rematerializer.cpp
+-@@ -240,6 +240,8 @@
+-     return true;
+-   const LiveInterval &LI = LIS.getInterval(Reg);
+-   const VNInfo *DefVN = LI.getVNInfoAt(RefSlot);
+-+  if (!DefVN)
+-+    return false;
+-   for (SlotIndex Use : Uses) {
+-     if (!isIdenticalAtUse(*DefVN, Mask, Use, LI))
+-       return false;
+-diff -ruN --strip-trailing-cr a/mlir/lib/ExecutionEngine/CRunnerUtils.cpp b/mlir/lib/ExecutionEngine/CRunnerUtils.cpp
+---- a/mlir/lib/ExecutionEngine/CRunnerUtils.cpp
+-+++ b/mlir/lib/ExecutionEngine/CRunnerUtils.cpp
+-@@ -29,6 +29,7 @@
 - 
--   // Verify call attributes.
--   verifyFunctionAttrs(FTy, Attrs, &Call, IsIntrinsic, Call.isInlineAsm());
--diff -ruN --strip-trailing-cr a/llvm/unittests/IR/VerifierTest.cpp b/llvm/unittests/IR/VerifierTest.cpp
----- a/llvm/unittests/IR/VerifierTest.cpp
--+++ b/llvm/unittests/IR/VerifierTest.cpp
--@@ -817,9 +817,7 @@
-- 
--   std::string Error;
--   raw_string_ostream ErrorOS(Error);
---  EXPECT_TRUE(verifyModule(M, &ErrorOS));
---  EXPECT_TRUE(StringRef(Error).starts_with(
---      "call site marked strictfp without caller function marked strictfp"))
---      << Error;
--+  // FIXME: Missing verifier check for strictfp.
--+  EXPECT_FALSE(verifyModule(M, &ErrorOS));
-- }
-- } // end anonymous namespace
-+ #include <algorithm>
-+ #include <cinttypes>
-++#include <cmath>
-+ #include <cstdio>
-+ #include <cstdlib>
-+ #include <numeric>
+- #include <algorithm>
+- #include <cinttypes>
+-+#include <cmath>
+- #include <cstdio>
+- #include <cstdlib>
+- #include <numeric>
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index b1538df3..531e555f 100644
+index 9a1b0cbf..aa98b34b 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -19,8 +19,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "084f6484d76625b995c07f512a323ab7cdc5351d"
--    LLVM_SHA256 = "1c5d4569335226713428bd8fa57dc0d57f0c117020adcf30c30b779e7d7a7535"
-+    LLVM_COMMIT = "a6b0af7536ef0ae8383ec729c5fbf23c73243776"
-+    LLVM_SHA256 = "dfd250ff52da324d2e93dcded5e00676653e319982fff4f3789c1df3db88316c"
+-    LLVM_COMMIT = "a6b0af7536ef0ae8383ec729c5fbf23c73243776"
+-    LLVM_SHA256 = "dfd250ff52da324d2e93dcded5e00676653e319982fff4f3789c1df3db88316c"
++    LLVM_COMMIT = "462a34178543bb74429ce0b30622947851bc3164"
++    LLVM_SHA256 = "f84d386c270889484f14d555e9289bcd9fb4e7ef4a79bc1be54ad98910634a86"
  
      tf_http_archive(
          name = name,
