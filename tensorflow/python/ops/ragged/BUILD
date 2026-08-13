@@ -738,6 +738,7 @@ py_library(
         "//tensorflow/python/ops:logging_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:parsing_ops",  # fixdeps: keep
+        "//tensorflow/python/ops:sqrt_ops",  # fixdeps: keep
         "//tensorflow/python/ops:string_ops",
         "//tensorflow/python/ops:variables",  # fixdeps: keep
         "//tensorflow/python/util:dispatch",

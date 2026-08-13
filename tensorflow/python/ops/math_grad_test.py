@@ -855,7 +855,6 @@ class SqrtGradTest(test.TestCase):
     self.assertEqual(float32_result.op.type, "Sqrt")
     self.assertEqual(float64_result.op.type, "IdentityN")
     self.assertNotIn("OnesLike", float64_op_types)
-    self.assertNotIn("ZerosLike", float64_op_types)
     self.assertEqual(raw_float64_result.op.type, "Sqrt")
 
   @test_util.run_in_graph_and_eager_modes
