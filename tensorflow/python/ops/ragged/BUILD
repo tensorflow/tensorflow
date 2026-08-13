@@ -761,6 +761,7 @@ py_library(
         "//tensorflow/python/ops:nn_impl",
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/ops:parsing_ops",
+        "//tensorflow/python/ops:sqrt_ops",
         "//tensorflow/python/ops:special_math_ops",
         "//tensorflow/python/ops:string_ops",
     ],
