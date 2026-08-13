@@ -1148,5 +1148,32 @@ ENTRY main {
   EXPECT_TRUE(row_max_int.IsPositive());
 }
 
+TEST_F(ConstraintPropagatorTest, GaussianDistanceSquaredExponential) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = s32[8,128] parameter(0)
+  iota = s32[8,128] iota(), iota_dimension=1
+  sub = s32[8,128] subtract(iota, param_0)
+  square = s32[8,128] multiply(sub, sub)
+  neg = s32[8,128] negate(square)
+  conv = f32[8,128] convert(neg)
+  c_scale = f32[] constant(0.8888)
+  b_scale = f32[8,128] broadcast(c_scale), dimensions={}
+  mul = f32[8,128] multiply(conv, b_scale)
+  ROOT exp = f32[8,128] exponential(mul)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_FALSE(p0_int.IsUnconstrained());
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_GE(p0_int.min, -20.0);
+  EXPECT_LE(p0_int.max, 150.0);
+}
+
 }  // namespace
 }  // namespace xla
