@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/types/span.h"
+#include "xla/types.h"
 
 namespace xla::cpu::internal {
 
@@ -716,6 +717,8 @@ void SortInplace(const SortDims& sort_dims, T* data, bool is_stable,
 
 DEFINE_SORT_INPLACE(float);
 DEFINE_SORT_INPLACE(double);
+DEFINE_SORT_INPLACE(bfloat16);
+DEFINE_SORT_INPLACE(half);
 DEFINE_SORT_INPLACE(int8_t);
 DEFINE_SORT_INPLACE(int16_t);
 DEFINE_SORT_INPLACE(int32_t);

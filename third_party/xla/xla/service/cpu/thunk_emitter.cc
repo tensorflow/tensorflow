@@ -1294,7 +1294,7 @@ std::optional<SortThunk::SortDirection> ThunkEmitter::MatchSortDirection(
                             .WithOperand(0, m::Parameter(0))
                             .WithOperand(1, m::Parameter(1))));
     switch (compare->comparison_direction()) {
-      case ComparisonDirection::kGe:
+      case ComparisonDirection::kGt:
         direction = (expected_param_order)
                         ? SortThunk::SortDirection::kDescending
                         : SortThunk::SortDirection::kAscending;

@@ -240,7 +240,7 @@ tsl::AsyncValueRef<SortThunk::ExecuteEvent> SortThunk::Execute(
       primitive_util::ArrayTypeSwitch(
           [&](auto type) {
             if constexpr ((primitive_util::IsFloatingPointType(type) &&
-                           primitive_util::BitWidth(type) >= 32) ||
+                           primitive_util::BitWidth(type) >= 16) ||
                           (primitive_util::IsIntegralType(type) &&
                            primitive_util::BitWidth(type) >= 8)) {
               using T = primitive_util::NativeTypeOf<type>;

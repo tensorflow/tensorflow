@@ -1114,6 +1114,7 @@ cc_library(
     srcs = ["sort_lib.cc"],
     hdrs = ["sort_lib.h"],
     deps = [
+        "//xla:types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/functional:any_invocable",
@@ -1169,6 +1170,7 @@ xla_cc_test(
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/service:buffer_assignment",
         "//xla/tsl/concurrency:async_value",

@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/types/span.h"
+#include "xla/types.h"
 
 namespace xla::cpu::internal {
 
@@ -80,6 +81,8 @@ void SortInplace(const SortDims& sort_dims, T* data, bool is_stable,
 
 DECLARE_SORT_INPLACE(float);
 DECLARE_SORT_INPLACE(double);
+DECLARE_SORT_INPLACE(bfloat16);
+DECLARE_SORT_INPLACE(half);
 DECLARE_SORT_INPLACE(int8_t);
 DECLARE_SORT_INPLACE(int16_t);
 DECLARE_SORT_INPLACE(int32_t);
