@@ -1,74 +1,61 @@
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 9a42ef6f..754aff41 100644
+index 754aff41..1080bf80 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,32 +1,24 @@
+@@ -1,24 +1,19 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/llvm/lib/IR/Verifier.cpp b/llvm/lib/IR/Verifier.cpp
----- a/llvm/lib/IR/Verifier.cpp
--+++ b/llvm/lib/IR/Verifier.cpp
--@@ -3925,10 +3925,8 @@
--   Check(!Attrs.hasFnAttr(Attribute::DenormalFPEnv),
--         "denormal_fpenv attribute may not apply to call sites", Call);
-+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/Rematerializer.cpp b/llvm/lib/CodeGen/Rematerializer.cpp
-+--- a/llvm/lib/CodeGen/Rematerializer.cpp
-++++ b/llvm/lib/CodeGen/Rematerializer.cpp
-+@@ -240,6 +240,8 @@
-+     return true;
-+   const LiveInterval &LI = LIS.getInterval(Reg);
-+   const VNInfo *DefVN = LI.getVNInfoAt(RefSlot);
-++  if (!DefVN)
-++    return false;
-+   for (SlotIndex Use : Uses) {
-+     if (!isIdenticalAtUse(*DefVN, Mask, Use, LI))
-+       return false;
-+diff -ruN --strip-trailing-cr a/mlir/lib/ExecutionEngine/CRunnerUtils.cpp b/mlir/lib/ExecutionEngine/CRunnerUtils.cpp
-+--- a/mlir/lib/ExecutionEngine/CRunnerUtils.cpp
-++++ b/mlir/lib/ExecutionEngine/CRunnerUtils.cpp
-+@@ -29,6 +29,7 @@
+-diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/Rematerializer.cpp b/llvm/lib/CodeGen/Rematerializer.cpp
+---- a/llvm/lib/CodeGen/Rematerializer.cpp
+-+++ b/llvm/lib/CodeGen/Rematerializer.cpp
+-@@ -240,6 +240,8 @@
+-     return true;
+-   const LiveInterval &LI = LIS.getInterval(Reg);
+-   const VNInfo *DefVN = LI.getVNInfoAt(RefSlot);
+-+  if (!DefVN)
+-+    return false;
+-   for (SlotIndex Use : Uses) {
+-     if (!isIdenticalAtUse(*DefVN, Mask, Use, LI))
+-       return false;
+-diff -ruN --strip-trailing-cr a/mlir/lib/ExecutionEngine/CRunnerUtils.cpp b/mlir/lib/ExecutionEngine/CRunnerUtils.cpp
+---- a/mlir/lib/ExecutionEngine/CRunnerUtils.cpp
+-+++ b/mlir/lib/ExecutionEngine/CRunnerUtils.cpp
+-@@ -29,6 +29,7 @@
++diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++@@ -1475,8 +1475,12 @@
++         ":__support_macros_optimization",
++         ":__support_macros_properties_os",
++         ":__support_osutil_exit_hdrs",
++-        ":__support_osutil_io",
++-    ],
+++    ] + select({
+++        "@platforms//os:linux": [":__support_osutil_io"],
+++        "@platforms//os:macos": [":__support_osutil_io"],
+++        "@platforms//os:windows": [":__support_osutil_io"],
+++        "//conditions:default": [],
+++    }),
++ )
   
---  Check(!Attrs.hasFnAttr(Attribute::StrictFP) ||
---            Call.getFunction()->isStrictFP(),
---        "call site marked strictfp without caller function marked strictfp",
---        Call);
--+  // FIXME: Missing verifier check to forbid a call site marked strictfp without
--+  // caller function marked strictfp.
-- 
--   // Verify call attributes.
--   verifyFunctionAttrs(FTy, Attrs, &Call, IsIntrinsic, Call.isInlineAsm());
--diff -ruN --strip-trailing-cr a/llvm/unittests/IR/VerifierTest.cpp b/llvm/unittests/IR/VerifierTest.cpp
----- a/llvm/unittests/IR/VerifierTest.cpp
--+++ b/llvm/unittests/IR/VerifierTest.cpp
--@@ -817,9 +817,7 @@
-- 
--   std::string Error;
--   raw_string_ostream ErrorOS(Error);
---  EXPECT_TRUE(verifyModule(M, &ErrorOS));
---  EXPECT_TRUE(StringRef(Error).starts_with(
---      "call site marked strictfp without caller function marked strictfp"))
---      << Error;
--+  // FIXME: Missing verifier check for strictfp.
--+  EXPECT_FALSE(verifyModule(M, &ErrorOS));
-- }
-- } // end anonymous namespace
-+ #include <algorithm>
-+ #include <cinttypes>
-++#include <cmath>
-+ #include <cstdio>
-+ #include <cstdlib>
-+ #include <numeric>
+- #include <algorithm>
+- #include <cinttypes>
+-+#include <cmath>
+- #include <cstdio>
+- #include <cstdlib>
+- #include <numeric>
++ libc_support_library(
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index b1538df3..531e555f 100644
+index 9a1b0cbf..505ea880 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -19,8 +19,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "084f6484d76625b995c07f512a323ab7cdc5351d"
--    LLVM_SHA256 = "1c5d4569335226713428bd8fa57dc0d57f0c117020adcf30c30b779e7d7a7535"
-+    LLVM_COMMIT = "a6b0af7536ef0ae8383ec729c5fbf23c73243776"
-+    LLVM_SHA256 = "dfd250ff52da324d2e93dcded5e00676653e319982fff4f3789c1df3db88316c"
+-    LLVM_COMMIT = "a6b0af7536ef0ae8383ec729c5fbf23c73243776"
+-    LLVM_SHA256 = "dfd250ff52da324d2e93dcded5e00676653e319982fff4f3789c1df3db88316c"
++    LLVM_COMMIT = "38d1460c5715bc2d336d4fe88921c55dc7d989db"
++    LLVM_SHA256 = "256aa1be15baeee5f2d4ee513e6fda6c1464a10bafa12a5eb26b48b3d1a7f7fa"
  
      tf_http_archive(
          name = name,
