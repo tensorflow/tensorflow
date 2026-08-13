@@ -158,6 +158,15 @@ absl::StatusOr<ComputeAndFlops> CalculateComputeTimeWithTileAndWaveQuantization(
     const DotProblemInfo& dot, const DotTileSize& dot_tile,
     const se::DeviceDescription& device_info);
 
+// Calculates the effective flops for a GPU DOT operation as a function of the
+// tile size (excludes clock throttling). Not all tile sizes are equally able to
+// extract utilization on the same generation GPUs even if the workload is
+// compute bound. GEMM performance is sensitive to the tensor core
+// instruction throughputs that the programming model exposes.
+double GetEffectiveFlopsPerNsForTileSize(
+    int64_t tile_m, const se::DeviceDescription& device_info,
+    PrimitiveType element_type);
+
 // Calculates Compute Utilization. Expected to be in the range [0.0, 1.0], but
 // may exceed 1.0 if the underlying time estimates are inaccurate.
 double CalculateComputeUtilization(const EstimateRunTimeData& estimates,

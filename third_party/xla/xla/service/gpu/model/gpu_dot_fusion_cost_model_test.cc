@@ -49,6 +49,7 @@ using gpu_dot_fusion_cost_model::detail::CalculateSmOccupancy;
 using gpu_dot_fusion_cost_model::detail::ComputeAndFlops;
 using gpu_dot_fusion_cost_model::detail::DotProblemInfo;
 using gpu_dot_fusion_cost_model::detail::DotTileSize;
+using gpu_dot_fusion_cost_model::detail::GetEffectiveFlopsPerNsForTileSize;
 using gpu_dot_fusion_cost_model::detail::GetEffectiveHbmBandwidth;
 using gpu_dot_fusion_cost_model::detail::HbmEstimates;
 using gpu_dot_fusion_cost_model::detail::kLoopLatencyTax;
@@ -637,6 +638,42 @@ backend_config={"sizes":["32"]}
       expected_compute_and_flops_a100.compute_time + kLoopLatencyTax;
   EXPECT_GE(runtime_a100.exec_time, expected_time);
   EXPECT_LE(runtime_a100.exec_time, expected_time * 1.1);
+}
+
+TEST_F(GpuDotFusionCostModelTest, AmpereTileMDerate) {
+  se::DeviceDescription dda100 = TestGpuDeviceInfo::RTXA6000DeviceInfo(
+      se::GpuComputeCapability{se::CudaComputeCapability(8, 0)});
+  double flops_small = GetEffectiveFlopsPerNsForTileSize(
+      /*tile_m=*/31, dda100, PrimitiveType::F16);
+  double flops_full = GetEffectiveFlopsPerNsForTileSize(
+      /*tile_m=*/32, dda100, PrimitiveType::F16);
+
+  ASSERT_GT(flops_full, 0);
+  // tile_m < 32: 50% derate.
+  EXPECT_NEAR(flops_small / flops_full, 0.50, 1e-4);
+}
+
+TEST_F(GpuDotFusionCostModelTest, HopperTileMDerate) {
+  double flops_small = GetEffectiveFlopsPerNsForTileSize(
+      /*tile_m=*/63, ddh100_, PrimitiveType::F16);
+  double flops_full = GetEffectiveFlopsPerNsForTileSize(
+      /*tile_m=*/64, ddh100_, PrimitiveType::F16);
+
+  ASSERT_GT(flops_full, 0);
+  // tile_m < 64: 63% derate.
+  EXPECT_NEAR(flops_small / flops_full, 0.63, 1e-4);
+}
+
+TEST_F(GpuDotFusionCostModelTest, BlackwellTileMDerate) {
+  se::DeviceDescription ddb200 = TestGpuDeviceInfo::B200SXMDeviceInfo();
+  double flops_small = GetEffectiveFlopsPerNsForTileSize(
+      /*tile_m=*/127, ddb200, PrimitiveType::BF16);
+  double flops_full = GetEffectiveFlopsPerNsForTileSize(
+      /*tile_m=*/128, ddb200, PrimitiveType::BF16);
+
+  ASSERT_GT(flops_full, 0);
+  // tile_m < 128: 50% derate.
+  EXPECT_NEAR(flops_small / flops_full, 0.50, 1e-4);
 }
 
 }  // namespace

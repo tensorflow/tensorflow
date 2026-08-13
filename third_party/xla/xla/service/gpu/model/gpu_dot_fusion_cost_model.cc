@@ -145,51 +145,6 @@ int64_t CalculateTileFlops(const DotTileSize& dot_tile, int64_t problem_k) {
          problem_k;
 }
 
-// Calculates the effective flops for a GPU DOT operation as a function of the
-// tile size (excludes clock throttling). Not all tile sizes are equally able to
-// extract utilization on the same generation GPUs even if the workload is
-// compute bound. GEMM performance is sensitive to the tensor core
-// instruction throughputs that the programming model exposes.
-double GetEffectiveFlopsPerNsForTileSize(
-    const int64_t tile_m, const se::DeviceDescription& device_info,
-    xla::PrimitiveType element_type) {
-  se::CudaComputeCapability cuda_compute_capability =
-      device_info.cuda_compute_capability();
-
-  // Peak flops per ns for device.
-  int64_t peak_flops_per_ns =
-      GpuPerformanceModelBase::CalculatePeakMatrixOpsPerNs(device_info,
-                                                           element_type);
-
-  // Final flops derate factor.
-  double flops_derate = 1.0;
-
-  if (cuda_compute_capability.IsBlackwell()) {
-    if (tile_m < 128) {
-      // TODO(maniananth): Update this derate once we have more data from
-      // actual measurements on Blackwell. For now, we are applying a 50%
-      // derate to account for smaller M shapes.
-      flops_derate = 0.5;
-    }
-  } else if (cuda_compute_capability.IsHopper()) {
-    if (tile_m < 64) {
-      // Having a tile size M < 64 will lead to not being able to use the H100
-      // tensor core instructions (wgmma). Defaulting to wmma instructions from
-      // A100 can result in a 63% derate in flops as benchmarked by HazyResearch
-      // as part of ThunderKittens work.
-      // (https://hazyresearch.stanford.edu/blog/2024-05-12-tk)
-      flops_derate = 0.63;
-    }
-  } else if (cuda_compute_capability.IsAmpere()) {
-    if (tile_m < 16) {
-      // A100 tensor core instructions are effective at tile_m >= 16. We're
-      // applying a 50% derate to account for this.
-      flops_derate = 0.5;
-    }
-  }
-  return peak_flops_per_ns * flops_derate;
-}
-
 int64_t CalculateL2Bytes(const DotProblemInfo& dot, const DotTileSize& out_tile,
                          int64_t threadblock_count) {
   // When tiling the GEMM problem on the outputs and mapping one tile per SM,
@@ -224,6 +179,46 @@ int64_t CalculateL2Bytes(const DotProblemInfo& dot, const DotTileSize& out_tile,
 }
 
 }  // namespace
+
+double GetEffectiveFlopsPerNsForTileSize(
+    int64_t tile_m, const se::DeviceDescription& device_info,
+    PrimitiveType element_type) {
+  se::CudaComputeCapability cuda_compute_capability =
+      device_info.cuda_compute_capability();
+
+  // Peak flops per ns for device.
+  int64_t peak_flops_per_ns =
+      GpuPerformanceModelBase::CalculatePeakMatrixOpsPerNs(device_info,
+                                                           element_type);
+
+  // Final flops derate factor.
+  double flops_derate = 1.0;
+
+  if (cuda_compute_capability.IsBlackwell()) {
+    if (tile_m < 128) {
+      // TODO(maniananth): Update this derate once we have more data from
+      // actual measurements on Blackwell. For now, we are applying a 50%
+      // derate to account for smaller M shapes.
+      flops_derate = 0.5;
+    }
+  } else if (cuda_compute_capability.IsHopper()) {
+    if (tile_m < 64) {
+      // Having a tile size M < 64 will lead to not being able to use the H100
+      // tensor core instructions (wgmma). Defaulting to wmma instructions from
+      // A100 can result in a 63% derate in flops as benchmarked by HazyResearch
+      // as part of ThunderKittens work.
+      // (https://hazyresearch.stanford.edu/blog/2024-05-12-tk)
+      flops_derate = 0.63;
+    }
+  } else if (cuda_compute_capability.IsAmpere()) {
+    if (tile_m < 32) {
+      // A100 tensor core instructions are not effective for small M shapes.
+      // They exhibit a ~50% empirical FLOPS derate on small M shapes (M < 32).
+      flops_derate = 0.5;
+    }
+  }
+  return peak_flops_per_ns * flops_derate;
+}
 
 DotProblemInfo::DotProblemInfo(const HloDotInstruction& dot) {
   const Shape& lhs_shape = dot.operand(0)->shape();
