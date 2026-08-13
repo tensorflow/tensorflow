@@ -844,6 +844,63 @@ class RpcOpsTest(test.TestCase):
 
     self.assertAllEqual(v, 2)
 
+  def test_rpc_get_value_dtype_mismatch_check(self):
+    """Verify that rpc_get_value raises InvalidArgumentError on dtype mismatch."""
+    @eager_def_function.function(input_signature=[
+        tensor_spec.TensorSpec([], dtypes.int32),
+        tensor_spec.TensorSpec([], dtypes.int32)
+    ])
+    def remote_fn(a, b):
+      return math_ops.multiply(a, b)
+
+    port = portpicker.pick_unused_port()
+    address = "localhost:{}".format(port)
+    server_resource = rpc_ops.Server.create("grpc", address)
+    server_resource.register("multiply", remote_fn)
+    server_resource.start()
+
+    client = rpc_ops.Client.create("grpc", address=address)
+    a = variables.Variable(2, dtype=dtypes.int32)
+    b = variables.Variable(3, dtype=dtypes.int32)
+
+    status_or, deleter = rpc_ops.gen_rpc_ops.rpc_call(
+        client._client_handle,
+        args=[a, b],
+        method_name="multiply",
+        timeout_in_ms=0)
+
+    error_code, _ = rpc_ops.gen_rpc_ops.rpc_check_status(status_or)
+    self.assertAllEqual(error_code, 0)
+
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "Output tensor dtype mismatch"):
+      rpc_ops.gen_rpc_ops.rpc_get_value(status_or, Tout=[dtypes.float32])
+
+    rpc_ops.gen_rpc_ops.delete_rpc_future_resource(status_or, deleter)
+
+  def test_rpc_client_list_methods(self):
+
+    @eager_def_function.function(input_signature=[
+        tensor_spec.TensorSpec([], dtypes.int32),
+        tensor_spec.TensorSpec([], dtypes.int32)
+    ])
+    def remote_fn(a, b):
+      return math_ops.multiply(a, b)
+
+    port = portpicker.pick_unused_port()
+    address = "localhost:{}".format(port)
+    server_resource = rpc_ops.Server.create("grpc", address)
+    server_resource.register("multiply", remote_fn)
+    server_resource.start()
+
+    client = rpc_ops.GrpcClient(
+        address=address, list_registered_methods=True)
+    a = variables.Variable(2, dtype=dtypes.int32)
+    b = variables.Variable(3, dtype=dtypes.int32)
+    result_or = client.multiply(a, b)
+    self.assertTrue(result_or.is_ok())
+    self.assertAllEqual(result_or.get_value(), 6)
+
 
 if __name__ == "__main__":
   ops.enable_eager_execution()

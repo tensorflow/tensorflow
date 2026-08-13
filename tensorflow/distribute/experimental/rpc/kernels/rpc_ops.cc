@@ -841,8 +841,16 @@ void RpcGetValueOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
             for (const auto& t_proto : response.output_tensors()) {
               Tensor t;
               if (!t.FromProto(t_proto)) {
-                ctx->SetStatus(absl::InternalError(
+                ctx->SetStatus(absl::InvalidArgumentError(
                     "Invalid Tensor Proto response returned."));
+                break;
+              }
+              if (t.dtype() != ctx->expected_output_dtype(i)) {
+                ctx->SetStatus(absl::InvalidArgumentError(absl::StrCat(
+                    "Output tensor dtype mismatch for output ", i, ". Expected ",
+                    DataTypeString(ctx->expected_output_dtype(i)), ", got ",
+                    DataTypeString(t.dtype()))));
+                break;
               }
               ctx->set_output(i++, std::move(t));
             }
