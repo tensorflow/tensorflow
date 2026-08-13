@@ -82,14 +82,21 @@ inline void ConvPerChannel(
   }
 
   const int gemm_input_rows = gemm_input_shape->Dims(3);
-  const int gemm_input_cols = FlatSizeSkipDim(*gemm_input_shape, 3);
+  size_t gemm_input_cols_size = 0;
+  TFLITE_DCHECK(
+      gemm_input_shape->CheckedFlatSizeSkipDim(3, gemm_input_cols_size));
+  const int gemm_input_cols = static_cast<int>(gemm_input_cols_size);
   const int filter_rows = filter_shape.Dims(0);
   const int filter_cols = FlatSizeSkipDim(filter_shape, 0);
   const int output_rows = output_shape.Dims(3);
   // See b/79927784.
   // const int output_cols = FlatSizeSkipDim(output_shape, 3);
-  const int output_cols =
-      output_shape.Dims(0) * output_shape.Dims(1) * output_shape.Dims(2);
+  const int64_t output_cols_64 = static_cast<int64_t>(output_shape.Dims(0)) *
+                                 static_cast<int64_t>(output_shape.Dims(1)) *
+                                 static_cast<int64_t>(output_shape.Dims(2));
+  TFLITE_DCHECK_LE(output_cols_64,
+                   static_cast<int64_t>(std::numeric_limits<int>::max()));
+  const int output_cols = static_cast<int>(output_cols_64);
   TFLITE_DCHECK_EQ(output_rows, filter_rows);
   TFLITE_DCHECK_EQ(output_cols, gemm_input_cols);
   TFLITE_DCHECK_EQ(filter_cols, gemm_input_rows);
