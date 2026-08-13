@@ -462,7 +462,8 @@ bool ConcreteSharding::HasSamePartitioning(const Sharding& other) const {
     return false;
   }
   return shape_ == other_concrete_sharding->shape_ &&
-         shard_shapes_ == other_concrete_sharding->shard_shapes_;
+         shard_shapes_ == other_concrete_sharding->shard_shapes_ &&
+         index_domains_ == other_concrete_sharding->index_domains_;
 }
 
 absl::StatusOr<std::unique_ptr<Sharding>>
@@ -478,7 +479,7 @@ ConcreteSharding::WithDeviceAssignment(
   if (has_static_shape()) {
     return Create(devices.value_or(devices_),
                   memory_kind.value_or(memory_kind_), std::get<Shape>(shape_),
-                  std::get<std::vector<Shape>>(shard_shapes_));
+                  std::get<std::vector<Shape>>(shard_shapes_), index_domains_);
   }
   return Create(devices.value_or(devices_), memory_kind.value_or(memory_kind_),
                 std::get<DynamicShape>(shape_),
@@ -632,7 +633,7 @@ std::string ConcreteSharding::DebugString() const {
 
 void ConcreteSharding::Hash(absl::HashState state) const {
   absl::HashState::combine(std::move(state), devices_, memory_kind_, shape_,
-                           shard_shapes_);
+                           shard_shapes_, index_domains_);
 }
 
 std::unique_ptr<ConcreteEvenSharding> ConcreteEvenSharding::Create(
