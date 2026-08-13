@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
@@ -599,9 +600,9 @@ void RpcClientOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     done();
     return;
   }
-  auto* response = new ListResponse();
+  auto response = std::make_shared<ListResponse>();
   client->ListAsync(
-      response, [ctx, response, done](const absl::Status& status) {
+      response.get(), [ctx, response, done](const absl::Status& status) {
         if (!status.ok()) {
           ctx->SetStatus(status);
         } else {
@@ -620,7 +621,6 @@ void RpcClientOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
                 response->registered_methods(i).SerializeAsString();
           }
         }
-        delete response;
         done();
       });
 }
@@ -843,6 +843,14 @@ void RpcGetValueOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
               if (!t.FromProto(t_proto)) {
                 ctx->SetStatus(absl::InternalError(
                     "Invalid Tensor Proto response returned."));
+                break;
+              }
+              if (t.dtype() != ctx->expected_output_dtype(i)) {
+                ctx->SetStatus(absl::InvalidArgumentError(absl::StrCat(
+                    "Output tensor data type mismatch: expected ",
+                    DataTypeString(ctx->expected_output_dtype(i)), ", got ",
+                    DataTypeString(t.dtype()))));
+                break;
               }
               ctx->set_output(i++, std::move(t));
             }
