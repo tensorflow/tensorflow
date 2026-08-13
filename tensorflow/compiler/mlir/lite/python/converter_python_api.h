@@ -67,6 +67,11 @@ std::vector<std::string> RetrieveCollectedErrors();
 std::string FlatBufferFileToMlir(const std::string& model,
                                  bool input_is_filepath);
 
+// Convert slim model to TfLite flatbuffer streamed directly to a file.
+PyObject* ConvertMlirBytecode(PyObject* converter_flags_proto_txt_raw,
+                              PyObject* model_dir_txt_raw,
+                              PyObject* output_file_path_raw);
+
 // All the exported functions should be listed in
 // tensorflow/tools/def_file_filter/symbols_pybind.txt for the Windows build.
 }  // namespace tflite

@@ -105,31 +105,36 @@ float CostAnalysis::GetAlternateMemoryBenefit(
       GetInstructionElapsedDueToCompute(instruction);
   float elapsed_time_due_to_memory =
       GetInstructionElapsedDueToMemory(instruction);
-  if (elapsed_time_due_to_memory > elapsed_time_due_to_compute) {
-    // Memory bound, return how much alternate memory is better.
-    float while_nest_multiplier;
-    if (cache) {
-      // If there is a cache provided, memoize the while nest multiplier.
-      auto it = cache->while_nest_multiplier.find(&instruction);
-      if (it != cache->while_nest_multiplier.end()) {
-        while_nest_multiplier = it->second;
-      } else {
-        while_nest_multiplier = GetWhileNestMultiplier(
-            CalculateComputationNestLevel(&instruction,
-                                          /*while_only=*/true));
-        cache->while_nest_multiplier[&instruction] = while_nest_multiplier;
-      }
+  if (elapsed_time_due_to_memory <= elapsed_time_due_to_compute) {
+    // If compute bound, return how far off are we to memory boundedness.
+    return elapsed_time_due_to_memory - elapsed_time_due_to_compute;
+  }
+  CHECK_LE(elapsed_time_due_to_alternate_mem, elapsed_time_due_to_memory)
+      << "Elapsed time due to alternate memory is greater than elapsed time "
+         "due to memory! "
+      << instruction.ToString();
+  // Memory bound, return how much alternate memory is better.
+  float while_nest_multiplier;
+  if (cache) {
+    // If there is a cache provided, memoize the while nest multiplier.
+    auto it = cache->while_nest_multiplier.find(&instruction);
+    if (it != cache->while_nest_multiplier.end()) {
+      while_nest_multiplier = it->second;
     } else {
       while_nest_multiplier = GetWhileNestMultiplier(
           CalculateComputationNestLevel(&instruction,
                                         /*while_only=*/true));
+      cache->while_nest_multiplier[&instruction] = while_nest_multiplier;
     }
-    return (elapsed_time_due_to_memory - elapsed_time_due_to_alternate_mem) *
-           while_nest_multiplier;
   } else {
-    // Compute bound, return how far off are we to memory boundedness.
-    return elapsed_time_due_to_memory - elapsed_time_due_to_compute;
+    while_nest_multiplier = GetWhileNestMultiplier(
+        CalculateComputationNestLevel(&instruction,
+                                      /*while_only=*/true));
   }
+  return (elapsed_time_due_to_memory -
+          std::max(elapsed_time_due_to_alternate_mem,
+                   elapsed_time_due_to_compute)) *
+         while_nest_multiplier;
 }
 
 float CostAnalysis::GetMemoryBoundedness(
