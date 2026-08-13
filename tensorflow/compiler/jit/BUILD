@@ -585,13 +585,12 @@ cc_library(
     ],
 )
 
-tf_cuda_cc_test(
+tf_cuda_only_cc_test(
     name = "pjrt_compile_util_test",
     srcs = ["pjrt_compile_util_test.cc"],
     tags = [
         "config-cuda-only",
         "no_oss",  # This test only runs with GPU.
-        "requires-gpu-nvidia",
         "xla",
     ],
     deps = [
@@ -1972,13 +1971,12 @@ tf_cc_test(
 )
 
 # TODO(b/261212343): Support running this test on CPU and OSS.
-tf_cuda_cc_test(
+tf_cuda_only_cc_test(
     name = "device_compiler_test",
     srcs = ["device_compiler_test.cc"],
     tags = [
         "config-cuda-only",
         "no_oss",  # This test only runs with GPU.
-        "requires-gpu-nvidia",
         "xla",
     ],
     deps = [

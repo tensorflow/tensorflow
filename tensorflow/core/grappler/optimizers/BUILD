@@ -318,7 +318,7 @@ cc_library(
     ],
 )
 
-tf_cuda_cc_test(
+tf_cc_test(
     name = "arithmetic_optimizer_test",
     size = "small",
     srcs = ["arithmetic_optimizer_test.cc"],

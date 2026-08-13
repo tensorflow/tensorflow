@@ -74,7 +74,8 @@ def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, b
         new_disabled_backends.extend(NVIDIA_GPU_BACKENDS)
 
     new_backend_tags = {key: value for key, value in backend_tags.items() if key != "gpu"}
-    gpu_backend_tags = backend_tags.get("gpu", tf_gpu_tests_tags())
+    gpu_fallback_tags = [t for t in tf_gpu_tests_tags() if not t.startswith("requires-gpu-")]
+    gpu_backend_tags = backend_tags.get("gpu", gpu_fallback_tags)
     for key in NVIDIA_GPU_BACKENDS:
         new_backend_tags.setdefault(key, gpu_backend_tags[:])
 
@@ -85,7 +86,7 @@ def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, b
 
     # Disable backends that don't meet the device requirements.
     sm_requirements = {
-        "nvgpu_any": (0, 0),
+        "nvgpu_any": (9, 0),
         "p100": (6, 0),
         "v100": (7, 0),
         "a100": (8, 0),
@@ -128,7 +129,8 @@ def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, b
         else:
             sm_major, sm_minor = sm_requirements[gpu_backend]
             full = "-full" if requires_full_gpu else ""
-            sm_tag = "requires-gpu-nvidia" if sm_major == 0 else "requires-gpu-sm%s%s%s-only" % (sm_major, sm_minor, full)
+            only_suffix = "" if gpu_backend.endswith("_any") else "-only"
+            sm_tag = "requires-gpu-sm%s%s%s%s" % (sm_major, sm_minor, full, only_suffix)
             if num_gpus:
                 sm_tag += ":%d" % num_gpus
             new_backend_tags[gpu_backend] = [t for t in all_tags if t not in requires_gpu]

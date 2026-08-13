@@ -14,7 +14,7 @@
 # ==============================================================================
 
 load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -140,7 +140,7 @@ cuda_py_strict_test(
     ],
 )
 
-tf_py_strict_test(
+cuda_py_strict_test(
     name = "pjrt_compile_test",
     srcs = ["tests/pjrt_compile_test.py"],
     env = {
@@ -150,7 +150,6 @@ tf_py_strict_test(
         "config-cuda-only",
         "gpu",
         "no_oss",
-        "requires-gpu-nvidia",
         "xla",
     ],
     xla_enable_strict_auto_jit = False,
@@ -165,7 +164,7 @@ tf_py_strict_test(
     ],
 )
 
-tf_py_strict_test(
+cuda_py_strict_test(
     name = "pjrt_autoclustering_test",
     srcs = ["tests/pjrt_autoclustering_test.py"],
     env = {
@@ -175,7 +174,6 @@ tf_py_strict_test(
         "config-cuda-only",
         "gpu",
         "no_oss",
-        "requires-gpu-nvidia",
         "xla",
     ],
     xla_enable_strict_auto_jit = False,
@@ -191,7 +189,7 @@ tf_py_strict_test(
     ],
 )
 
-tf_py_strict_test(
+cuda_py_strict_test(
     name = "pjrt_compile_virtual_device_test",
     srcs = ["pjrt_compile_virtual_device_test.py"],
     env = {
@@ -201,7 +199,6 @@ tf_py_strict_test(
         "config-cuda-only",
         "gpu",
         "no_oss",
-        "requires-gpu-nvidia",
         "xla",
     ],
     xla_enable_strict_auto_jit = False,

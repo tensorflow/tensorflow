@@ -115,7 +115,7 @@ def register_extension_info(**kwargs):
 # not contain rc or alpha, only numbers.
 VERSION = TF_VERSION
 VERSION_MAJOR = VERSION.split(".")[0]
-two_gpu_tags = ["requires-gpu-nvidia:2", "manual", "no_pip"]
+two_gpu_tags = ["requires-gpu-sm90-full:2", "manual", "no_pip"]
 
 # The workspace root, to be used to set workspace 'include' paths in a way that
 # will still work correctly when TensorFlow is included as a dependency of an
@@ -1717,7 +1717,7 @@ def tf_gpu_cc_test(
             linkopts = linkopts,
             linkstatic = linkstatic,
             suffix = "_cpu",
-            tags = tags,
+            tags = [tag for tag in tags if not tag.startswith("requires-gpu-") and tag != "gpu"],
             deps = deps,
             **kwargs
         )
@@ -1738,7 +1738,11 @@ def tf_gpu_cc_test(
             "//conditions:default": 0,
         }),
         suffix = "_gpu",
-        tags = tags + tf_gpu_tests_tags(),
+        tags = (
+            tags + (
+                tf_gpu_tests_tags() if not any([tag.startswith("requires-gpu-sm") for tag in tags]) else [tag for tag in tf_gpu_tests_tags() if not (tag.startswith("requires-gpu-sm") and ":" not in tag)]
+            )
+        ),
         deps = deps + if_cuda_or_rocm([
             clean_dep("//tensorflow/core:gpu_runtime"),
         ]),
@@ -1746,9 +1750,7 @@ def tf_gpu_cc_test(
     )
     targets.append(name + "_gpu")
     if "multi_gpu" in tags or "multi_and_single_gpu" in tags:
-        cleaned_tags = tags + two_gpu_tags
-        if "requires-gpu-nvidia" in cleaned_tags:
-            cleaned_tags.remove("requires-gpu-nvidia")
+        cleaned_tags = [t for t in (tags + two_gpu_tags) if not (t.startswith("requires-gpu-") and ":" not in t)]
         tf_cc_test(
             name = name,
             size = size,
@@ -1781,36 +1783,12 @@ def tf_cuda_cc_test(*args, **kwargs):
 
 def tf_gpu_only_cc_test(
         name,
-        srcs = [],
-        deps = [],
         tags = [],
-        data = [],
-        size = "medium",
-        args = [],
-        kernels = [],
-        linkopts = [],
-        features = []):
-    tags = tags + tf_gpu_tests_tags()
-
-    gpu_lib_name = "%s%s" % (name, "_gpu_lib")
-    tf_gpu_kernel_library(
-        name = gpu_lib_name,
-        srcs = srcs + tf_binary_additional_srcs(),
-        data = tf_binary_additional_srcs(fullversion = True),
-        deps = deps,
-        testonly = 1,
-        features = features,
-    )
-    cc_test(
-        name = "%s%s" % (name, "_gpu"),
-        size = size,
-        args = args,
-        features = features + if_cuda(["-use_header_modules"]),
-        data = data + tf_binary_dynamic_kernel_dsos(),
-        deps = [":" + gpu_lib_name],
-        linkopts = if_not_windows(["-lpthread", "-lm"]) + linkopts + _rpath_linkopts(name),
-        tags = tags,
-        exec_properties = tf_exec_properties({"tags": tags}),
+        **kwargs):
+    tf_gpu_cc_test(
+        name = name,
+        tags = tags + ["gpu"],
+        **kwargs
     )
 
 # terminology changes: saving tf_cuda_* definition for compatibility
@@ -2865,11 +2843,17 @@ def gpu_py_test(
         test_name = name
         test_tags = tags
         if config == "gpu":
-            test_tags = test_tags + tf_gpu_tests_tags()
+            use_config_gpu_tags = not any([tag.startswith("requires-gpu-sm") for tag in tags])
+            if use_config_gpu_tags:
+                filtered_gpu_tags = tf_gpu_tests_tags()
+            else:
+                filtered_gpu_tags = [tag for tag in tf_gpu_tests_tags() if not (tag.startswith("requires-gpu-sm") and ":" not in tag)]
+            test_tags = test_tags + filtered_gpu_tags
+            if "prefer-sm80" in test_tags:
+                test_tags = [t for t in test_tags if not t.startswith("requires-gpu-sm")]
+                test_tags.append("requires-gpu-sm80")
         if config == "2gpu":
-            test_tags = test_tags + two_gpu_tags
-            if "requires-gpu-nvidia" in test_tags:
-                test_tags.remove("requires-gpu-nvidia")
+            test_tags = [t for t in (test_tags + two_gpu_tags) if not (t.startswith("requires-gpu-") and ":" not in t)]
 
         # TODO(b/215751004): CPU on XLA tests are skipped intentionally.
         if config != "cpu" and xla_enable_strict_auto_jit:

@@ -144,7 +144,10 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["linalg_ops_test.py"],
     shard_count = 8,
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_windows_gpu",
+        "requires-gpu-sm80",
+    ],
     deps = [
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",

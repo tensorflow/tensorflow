@@ -74,7 +74,7 @@ def register_extension_info(**_kwargs):
 
 visibility(DEFAULT_LOAD_VISIBILITY + LEGACY_TSL_TSL_USERS)
 
-two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
+two_gpu_tags = ["requires-gpu-sm90:2", "notap", "manual", "no_pip"]
 
 def clean_dep(target):
     """Returns string to 'target' in the TSL repository.

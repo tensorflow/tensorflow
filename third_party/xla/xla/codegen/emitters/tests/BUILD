@@ -44,9 +44,51 @@ copy_file(
     is_executable = True,
 )
 
+# go/keep-sorted start
+deviceless_tests = [
+    "concatenate/test_small_dim.hlo",
+    "loop/acos_f32.hlo",
+    "loop/acos_f64.hlo",
+    "loop/acosh_f32.hlo",
+    "loop/acosh_f64.hlo",
+    "loop/asin_f32.hlo",
+    "loop/asin_f64.hlo",
+    "loop/asinh_f32.hlo",
+    "loop/asinh_f64.hlo",
+    "loop/atanh_f32.hlo",
+    "loop/atanh_f64.hlo",
+    "loop/broadcast_constant_block_dim_limit.hlo",
+    "loop/cosh_f32.hlo",
+    "loop/cosh_f64.hlo",
+    "loop/dot_fp8.hlo",
+    "loop/large_loop_slow_compile_time.hlo",
+    "loop/sinh_f32.hlo",
+    "loop/sinh_f64.hlo",
+]
+# go/keep-sorted end
+
+lit_test_suite(
+    name = "deviceless_tests",
+    srcs = deviceless_tests,
+    cfg = "//xla:lit.cfg.py",
+    default_tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    tools = [
+        ":cpu_fusion_to_mlir_copy",
+        ":gpu_fusion_to_mlir_copy",
+        "//xla/codegen/tools:emitters_opt",
+        "@llvm-project//llvm:FileCheck",
+    ],
+)
+
 lit_test_suite(
     name = "tests",
-    srcs = glob(["**/*.hlo"]),
+    srcs = glob(
+        include = ["**/*.hlo"],
+        exclude = deviceless_tests,
+    ),
     cfg = "//xla:lit.cfg.py",
     default_tags = tf_cuda_tests_tags(),
     exec_properties = tf_exec_properties({"tags": tf_cuda_tests_tags()}),

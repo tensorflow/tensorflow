@@ -256,6 +256,7 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["stateless_random_ops_test.py"],
     shard_count = 10,
+    tags = ["requires-gpu-sm80"],
     xla_tags = [
         "no_cuda_asan",  # times-out
     ],

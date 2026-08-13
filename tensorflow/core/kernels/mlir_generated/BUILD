@@ -20,6 +20,7 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_or_rocm",
+    "tf_cuda_only_cc_test",
 )
 load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test", "tf_kernel_library")
 load(
@@ -459,7 +460,7 @@ cc_library(
     ],
 )
 
-tf_cuda_cc_test(
+tf_cuda_only_cc_test(
     name = "gpu_unary_ops_test",
     size = "medium",
     srcs = ["gpu_unary_ops_test.cc"],
@@ -482,7 +483,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime:device",
         "//tensorflow/core/common_runtime:device_factory",
         "//tensorflow/core/framework:types_proto_cc",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
         "@llvm-project//llvm:Support",
         "@xla//xla/tsl/lib/core:status_test_util",
@@ -537,7 +538,7 @@ cc_library(
     ],
 )
 
-tf_cuda_cc_test(
+tf_cuda_only_cc_test(
     name = "gpu_binary_ops_test",
     size = "medium",
     srcs = ["gpu_binary_ops_test.cc"],

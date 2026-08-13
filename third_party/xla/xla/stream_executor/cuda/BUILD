@@ -942,7 +942,6 @@ xla_cc_test(
     tags = [
         "cuda-only",
         "gpu",
-        "requires-gpu-nvidia",
     ],
     deps = [
         ":cuda_device_address_vmm_allocator",
@@ -2670,7 +2669,6 @@ xla_cc_test(
     tags = [
         "cuda-only",
         "gpu",
-        "requires-gpu-nvidia",
     ],
     deps = [
         ":assemble_compilation_provider",

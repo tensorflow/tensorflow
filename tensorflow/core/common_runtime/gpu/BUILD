@@ -31,6 +31,7 @@ load(
     "//tensorflow:tensorflow.default.bzl",
     "filegroup",
     "tf_cuda_cc_test",
+    "tf_cuda_only_cc_test",
 )
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -355,7 +356,7 @@ tf_cuda_cc_test(
     ],
 )
 
-tf_cuda_cc_test(
+tf_cuda_only_cc_test(
     name = "gpu_device_test",
     size = "small",
     srcs = [
@@ -414,7 +415,7 @@ tf_cuda_cc_test(
     ],
 )
 
-tf_cuda_cc_test(
+tf_cuda_only_cc_test(
     name = "gpu_device_unified_memory_test",
     size = "small",
     srcs = [

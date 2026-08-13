@@ -393,6 +393,7 @@ cuda_py_strict_test(
     srcs = ["huge_slice_op_test.py"],
     tags = [
         "no_oss",  # Requires 4GB+ RAM
+        "requires-gpu-sm80",
     ],
     deps = [
         "//tensorflow/python/framework:constant_op",
@@ -624,6 +625,7 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["scatter_nd_ops_test.py"],
     shard_count = 2,
+    tags = ["requires-gpu-sm80"],
     deps = [
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",

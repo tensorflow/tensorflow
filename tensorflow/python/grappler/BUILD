@@ -469,7 +469,7 @@ tf_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+tf_py_strict_test(
     name = "constant_folding_test",
     size = "medium",
     srcs = ["constant_folding_test.py"],
@@ -493,7 +493,7 @@ cuda_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+tf_py_strict_test(
     name = "arithmetic_optimizer_test",
     size = "small",
     srcs = ["arithmetic_optimizer_test.py"],

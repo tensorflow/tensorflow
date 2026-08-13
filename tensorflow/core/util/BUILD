@@ -853,6 +853,7 @@ tf_cuda_only_cc_test(
     features = ["-layering_check"],
     tags = [
         "no_cuda_asan",  # TODO(b/171342366): re-enable.
+        "requires-gpu-sm80",
     ],
     deps = [
         "//tensorflow/core:test",

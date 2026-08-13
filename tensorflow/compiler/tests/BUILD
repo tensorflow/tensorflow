@@ -14,7 +14,7 @@
 # ==============================================================================
 
 load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_cuda_only_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_cuda_cc_test")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow/compiler/tests:build_combined_defs.bzl", "tf_xla_combined_py_test")
@@ -2875,7 +2875,7 @@ tf_cuda_cc_test(
 
 # Create a deterministic version of randomized_tests_mlir with fixed seed.
 # This can be used in presubmit checks as it is no longer randomized.
-tf_cuda_cc_test(
+tf_cuda_only_cc_test(
     name = "randomized_tests_mlir_seeded",
     size = "medium",
     args = [
@@ -2889,14 +2889,13 @@ tf_cuda_cc_test(
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "no_rocm",  # ROCmSoftwarePlatform #958
         "noasan",  # TODO(b/201651800)
-        "requires-gpu-nvidia",
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
 )
 
 # Create a deterministic version of randomized_tests with fixed seed.
 # This can be used in presubmit checks as it is no longer randomized.
-tf_cuda_cc_test(
+tf_cuda_only_cc_test(
     name = "randomized_tests_seeded",
     size = "medium",
     args = [
@@ -2910,7 +2909,6 @@ tf_cuda_cc_test(
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "no_rocm",  # ROCmSoftwarePlatform #958
         "noasan",  # TODO(b/201651800)
-        "requires-gpu-nvidia",
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
 )

@@ -104,8 +104,9 @@ tf_cc_test(
     srcs = ["legalize_tf_test_gpu.cc"],
     tags = [
         "config-cuda-only",
+        "gpu",
         "no_oss",  # This test only runs with GPU.
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         "//tensorflow/compiler/jit",

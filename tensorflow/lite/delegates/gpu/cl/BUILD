@@ -421,7 +421,6 @@ cc_library(
 # cc_test(
 #     name = "gl_interop_no_gl_test",
 #     srcs = ["gl_interop_no_gl_test.cc"],
-#     tags = ["requires-gpu-nvidia"],
 #     deps = [
 #         ":gl_interop_no_gl",
 #         "@com_google_googletest//:gtest_main",

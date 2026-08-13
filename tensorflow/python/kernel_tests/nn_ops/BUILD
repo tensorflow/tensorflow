@@ -247,6 +247,7 @@ cuda_py_strict_test(
     name = "conv3d_backprop_filter_v2_grad_test",
     size = "small",
     srcs = ["conv3d_backprop_filter_v2_grad_test.py"],
+    tags = ["requires-gpu-sm80"],
     deps = [
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
@@ -313,6 +314,7 @@ cuda_py_strict_test(
     tags = [
         "no_mac_arm64",
         "optonly",  # times out
+        "requires-gpu-sm80",
     ],
     deps = [
         "//tensorflow/core:protos_all_py",

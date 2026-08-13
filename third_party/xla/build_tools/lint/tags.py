@@ -73,6 +73,18 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "requires-gpu-sm60-only": "Requires exactly sm60.",
     "requires-gpu-sm70-only": "Requires exactly sm70.",
     "requires-gpu-sm80-only": "Requires exactly sm80.",
+    "requires-gpu-sm90": (
+        "Test requires NVIDIA GPU with compute capability >= 9.0 (sm90 or"
+        " newer)"
+    ),
+    "requires-gpu-sm90:2": (
+        "Test needs 2 NVIDIA GPUs with compute capability >= 9.0 (sm90 or"
+        " newer) to run"
+    ),
+    "requires-gpu-sm90-full:2": (
+        "Test needs 2 full NVIDIA GPUs with compute capability >= 9.0 (sm90 or"
+        " newer) to run"
+    ),
     "requires-gpu-sm90-only": "Requires exactly sm90.",
     "requires-gpu-sm100-only": "Requires exactly sm100.",
     "requires-gpu-sm103-only": "Requires exactly sm103.",

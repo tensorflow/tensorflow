@@ -135,7 +135,6 @@ cc_library(
     tags = [
         "cuda-only",
         "gpu",
-        "requires-gpu-nvidia",
     ],
     deps = [
         "@com_google_absl//absl/base:no_destructor",
@@ -154,7 +153,6 @@ xla_cc_test(
         "gpu",
         "no_mac",
         "nomsan",  # Disable  msan for cuda related tests.
-        "requires-gpu-nvidia",
     ],
     deps = [
         ":cuda_version_variants",
@@ -837,7 +835,6 @@ xla_cc_test(
         "cuda-only",
         "gpu",
         "no_mac",
-        "requires-gpu-nvidia",
     ],
     deps = [
         ":ondevice_event_exporter",

@@ -40,10 +40,11 @@ cc_test(
     name = "conv_pointwise_test",
     srcs = ["conv_pointwise_test.cc"],
     tags = [
+        "gpu",
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     # TODO(b/279977471) Once b/279347631 is resolved, check for heap again
     deps = [
