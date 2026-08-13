@@ -31,7 +31,6 @@ tf_custom_op_library(
     deps = [
         "//tensorflow/core/lib/gtl:map_util",
         "//tensorflow/core/platform:strcat",
-        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
