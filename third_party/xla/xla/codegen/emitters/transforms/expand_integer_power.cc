@@ -49,7 +49,8 @@ mlir::LogicalResult ExpandIntegerPower(mlir::math::IPowIOp op,
   llvm::SmallVector<mlir::Type> arg_types(op->getOperandTypes());
   mlir::Value result =
       mlir::mhlo::impl::mapMhloOpToStdScalarOp<mlir::mhlo::PowOp>(
-          op.getLoc(), result_types, arg_types, {op->getOperands()},
+          op.getLoc(), result_types, arg_types,
+          mlir::mhlo::PowOp::Adaptor(op->getOperands()),
           op->getAttrs(), &rewriter);
 
   rewriter.replaceOp(op, result);
