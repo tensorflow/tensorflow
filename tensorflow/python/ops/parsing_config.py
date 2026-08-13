@@ -171,7 +171,7 @@ class RaggedFeature(
     row_splits_dtype: (Optional.) Data type for the row-partitioning tensor(s).
       One of `int32` or `int64`.  Defaults to `int32`.
     validate: (Optional.) Boolean indicating whether or not to validate that
-      the input values form a valid RaggedTensor.  Defaults to `False`.
+      the input values form a valid RaggedTensor.  Defaults to `True`.
   """
 
   # pylint: disable=invalid-name
@@ -223,7 +223,7 @@ class RaggedFeature(
               value_key=None,
               partitions=(),
               row_splits_dtype=dtypes.int32,
-              validate=False):
+              validate=True):
     if value_key is not None:
       if not isinstance(value_key, str):
         raise ValueError(
@@ -947,6 +947,16 @@ def _add_batched_ragged_partition(rt, partition, tensor_dict, feature_key,
           message="Feature %s: values and partitions are not aligned"
           % feature_key))
     partition_t = partition_t.values
+
+  if validate and isinstance(partition, RaggedFeature.RowLengths):
+    checks.append(
+        check_ops.assert_equal(
+            ragged_math_ops.reduce_sum(partition_t, axis=1),
+            rt.row_lengths(),
+            message="Feature %s: partition row lengths sum does not match"
+            " feature values length per batch item" % feature_key,
+        )
+    )
 
   with ops.control_dependencies(checks):
     if isinstance(partition, (RaggedFeature.RowSplits,
