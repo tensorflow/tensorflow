@@ -373,11 +373,14 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjRtCpuClient(
     devices.push_back(std::move(device));
   }
 
-  return std::unique_ptr<PjRtClient>(new PjRtCpuClient(
-      options.process_id, std::move(devices), std::move(allocator),
-      std::move(options.collectives), num_threads, options.asynchronous,
-      std::move(options.customize_hlo_module_config),
-      options.max_transpose_threads, std::move(topology)));
+  auto raw_client = std::make_unique<PjRtCpuRawClient>(
+      std::move(allocator), std::move(options.collectives), num_threads,
+      options.asynchronous, options.max_transpose_threads,
+      std::move(options.customize_hlo_module_config));
+
+  return std::unique_ptr<PjRtClient>(
+      new PjRtCpuClient(options.process_id, std::move(devices),
+                        std::move(raw_client), std::move(topology)));
 }
 
 // An upper bound on the number of threads to use for intra-op parallelism. It
@@ -395,22 +398,17 @@ static tsl::ThreadOptions GetThreadOptions() {
   return thread_options;
 }
 
-PjRtCpuClient::PjRtCpuClient(
-    int process_index, std::vector<std::unique_ptr<PjRtCpuDevice>> devices,
+PjRtCpuRawClient::PjRtCpuRawClient(
     std::shared_ptr<CpuDeviceMemory::Allocator> allocator,
     std::shared_ptr<cpu::CpuCollectives> collectives, size_t num_threads,
-    bool asynchronous,
-    std::function<void(HloModuleConfig&)> customize_hlo_module_config,
-    int max_transpose_threads, std::unique_ptr<CpuTopologyDescription> topology)
-    : process_index_(process_index),
-      owned_devices_(std::move(devices)),
-      computation_placer_(std::make_unique<ComputationPlacer>()),
-      allocator_(std::move(allocator)),
+    bool asynchronous, int max_transpose_threads,
+    std::function<void(HloModuleConfig&)> customize_hlo_module_config)
+    : allocator_(std::move(allocator)),
+      collectives_(std::move(collectives)),
+      asynchronous_(asynchronous),
+      max_transpose_threads_(max_transpose_threads),
       last_collective_launch_event_(
           tsl::MakeAvailableAsyncValueRef<CpuEvent>()),
-      collectives_(std::move(collectives)),
-      topology_(std::move(topology)),
-      asynchronous_(asynchronous),
       customize_hlo_module_config_(std::move(customize_hlo_module_config)),
       eigen_intraop_pool_(new tsl::thread::ThreadPool(
           tsl::Env::Default(), GetThreadOptions(), "XLAEigen",
@@ -419,8 +417,17 @@ PjRtCpuClient::PjRtCpuClient(
           new Eigen::ThreadPoolDevice(eigen_intraop_pool_->AsEigenThreadPool(),
                                       eigen_intraop_pool_->NumThreads())),
       async_work_runner_(std::make_unique<ThreadPoolAsyncWorkRunner>(
-          tsl::Env::Default(), "XLAPjRtCpuClient", num_threads)),
-      max_transpose_threads_(max_transpose_threads) {
+          tsl::Env::Default(), "XLAPjRtCpuClient", num_threads)) {}
+
+PjRtCpuRawClient::~PjRtCpuRawClient() {}
+PjRtCpuClient::PjRtCpuClient(
+    int process_index, std::vector<std::unique_ptr<PjRtCpuDevice>> devices,
+    std::unique_ptr<PjRtCpuRawClient> raw_client,
+    std::unique_ptr<CpuTopologyDescription> topology)
+    : process_index_(process_index),
+      owned_devices_(std::move(devices)),
+      topology_(std::move(topology)),
+      raw_client_(std::move(raw_client)) {
   for (const std::unique_ptr<PjRtCpuDevice>& device : owned_devices_) {
     devices_.push_back(device.get());
     CHECK(
@@ -1096,46 +1103,29 @@ PjRtCpuClient::CompileInternal(
     CompileOptions options,
     const AotCompilationOptions* absl_nullable aot_options) {
   std::optional<int> num_threads = std::nullopt;
-  if (eigen_intraop_device() != nullptr &&
-      eigen_intraop_device()->getPool() != nullptr) {
-    num_threads = eigen_intraop_device()->getPool()->NumThreads();
+  if (raw_client_->eigen_intraop_device() != nullptr &&
+      raw_client_->eigen_intraop_device()->getPool() != nullptr) {
+    num_threads = raw_client_->eigen_intraop_device()->getPool()->NumThreads();
   }
   CpuCompilationParams params;
   params.layout_canonicalization_callback =
       std::move(layout_canonicalization_callback);
   params.num_threads = num_threads;
-  params.compile_thread_pool = async_work_runner_->thread_pool();
+  params.compile_thread_pool = raw_client_->async_work_runner()->thread_pool();
   params.aot_options = aot_options;
   params.process_index = process_index();
-  params.collectives_exists = (collectives_ != nullptr);
-  params.customize_hlo_module_config = customize_hlo_module_config_;
+  params.collectives_exists = (raw_client_->collectives() != nullptr);
+  params.customize_hlo_module_config =
+      raw_client_->customize_hlo_module_config();
 
   return CompileCpuExecutableInternal(computation, argument_layout_pointers,
                                       *topology_, std::move(options),
                                       std::move(params));
 }
 
-absl::StatusOr<PjRtRawBufferRef> PjRtCpuClient::ImportForeignMemory(
-    void* device_ptr, absl::AnyInvocable<void() &&> on_delete_callback,
-    size_t on_device_bytes_count, PjRtMemorySpace* memory_space,
-    bool is_mutable) {
-  return CpuRawBuffer::ImportForeignMemory(
-      device_ptr, std::move(on_delete_callback), on_device_bytes_count,
-      memory_space, is_mutable);
-}
-
-absl::StatusOr<PjRtDeviceEventRef> PjRtCpuClient::CreateDeviceEvent(
+absl::StatusOr<PjRtDeviceEventRef> PjRtCpuRawClient::CreateDeviceEvent(
     PjRtMemorySpace* memory_space, Future<void> dependency) {
   return ToCpuEvent(std::move(dependency));
-}
-
-absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
-PjRtCpuClient::CreateBuffersForAsyncHostToDevice(
-    absl::Span<const PjRtClient::ShapeSpec> shape_specs,
-    std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
-    PjRtMemorySpace* memory_space) {
-  return xla::CreateAsyncHostToDeviceTransferManager(
-      shape_specs, device_layouts, memory_space);
 }
 
 bool PjRtCpuClient::BufferFromHostBufferSupportsZeroCopy(
@@ -1162,7 +1152,7 @@ absl::StatusOr<PjRtDeviceEventRef> PjRtCpuClient::LinearizeHostBufferInto(
   return cpp_buf->CopyFromHostBuffer(
       data, type, dims, byte_strides, host_buffer_semantics,
       std::move(on_done_with_host_buffer), device_shape, async_work_runner(),
-      eigen_intraop_pool(), max_transpose_threads_);
+      raw_client_->eigen_intraop_pool(), raw_client_->max_transpose_threads());
 }
 
 absl::StatusOr<PjRtDeviceEventRef> PjRtCpuClient::LinearizeInto(
@@ -1207,8 +1197,8 @@ absl::StatusOr<CompiledMemoryStats> PjRtCpuExecutable::GetCompiledMemoryStats()
 }
 
 absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
-PjRtCpuClient::CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
-                                        absl::string_view debug_info) {
+PjRtCpuRawClient::CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
+                                           absl::string_view debug_info) {
   auto definition_event_promise = tsl::MakeIndirectAsyncValue();
   auto definition_event = PjRtDeviceEventRef(
       tsl::AsyncValueRef<CpuEvent>(definition_event_promise));
@@ -1219,16 +1209,24 @@ PjRtCpuClient::CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
       std::move(definition_event));
 }
 
-absl::StatusOr<PjRtRawBufferRef> PjRtCpuClient::AllocateRawBuffer(
+absl::StatusOr<PjRtRawBufferRef> PjRtCpuRawClient::ImportForeignMemory(
+    PjRtMemorySpace* memory_space, void* device_ptr, size_t size,
+    absl::AnyInvocable<void() &&> on_delete_callback, bool is_mutable) {
+  return CpuRawBuffer::ImportForeignMemory(device_ptr,
+                                           std::move(on_delete_callback), size,
+                                           memory_space, is_mutable);
+}
+
+absl::StatusOr<PjRtRawBufferRef> PjRtCpuRawClient::AllocateRawBuffer(
     PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
     bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after) {
-  CHECK(allocate_after == nullptr) << "allocate_after is not supported for "
-                                      "PjRtCpuClient.";
+  CHECK(allocate_after == nullptr)
+      << "allocate_after is not supported for PjRtCpuRawClient.";
   return xla::CpuRawBuffer::Allocate(memory_space, on_device_bytes_count,
                                      *allocator_);
 }
 
-absl::StatusOr<PjRtRawBufferRef> PjRtCpuClient::AllocateRawBufferForExecute(
+absl::StatusOr<PjRtRawBufferRef> PjRtCpuRawClient::AllocateRawBufferForExecute(
     PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
     bool retry_on_oom) {
   return tsl::MakeRef<CpuRawBuffer>(memory_space,
@@ -1239,8 +1237,8 @@ absl::StatusOr<PjRtRawBufferRef> PjRtCpuClient::AllocateRawBufferForExecute(
 
 absl::StatusOr<std::pair<PjRtRawBufferRef,
                          CommonPjRtClient::PjRtFulfillAliasRawBufferCallback>>
-PjRtCpuClient::CreateRawBufferChannel(PjRtMemorySpace* memory_space,
-                                      size_t on_device_bytes_count) {
+PjRtCpuRawClient::CreateRawBufferChannel(PjRtMemorySpace* memory_space,
+                                         size_t on_device_bytes_count) {
   auto buffer_promise = tsl::MakeIndirectAsyncValue();
   auto raw_buffer = tsl::MakeRef<CpuRawBuffer>(
       memory_space, tsl::AsyncValueRef<CpuDeviceMemory>(buffer_promise),
@@ -1255,7 +1253,7 @@ PjRtCpuClient::CreateRawBufferChannel(PjRtMemorySpace* memory_space,
     }
     if (memory_space != (*raw_buffer)->memory_space()) {
       auto status = absl::InvalidArgumentError(absl::StrFormat(
-          "Memory space mismatch when forarding raw buffers: %s vs %s",
+          "Memory space mismatch when forwarding raw buffers: %s vs %s",
           memory_space->DebugString(),
           (*raw_buffer)->memory_space()->DebugString()));
       buffer_promise->SetError(status);
@@ -1552,7 +1550,7 @@ CpuExecutableLoadState::LoadRawExecutable(
     DeviceAndAssignment device_and_assign, int attempt) {
   auto result = std::make_unique<CpuPjRtRawLoadedExecutable>(run_id);
   result->executable_ = absl::down_cast<PjRtCpuExecutable*>(&executable.get());
-  result->client_ = client_;
+  result->raw_client_ = client_->raw_client();
   int num_addressable_devices = 0;
   if (device_and_assign.device_assignment != nullptr) {
     for (int r = 0; r < device_and_assign.device_assignment->replica_count();
@@ -1572,7 +1570,7 @@ CpuExecutableLoadState::LoadRawExecutable(
   return result;
 }
 
-tsl::AsyncValueRef<CpuEvent> PjRtCpuClient::GetCollectiveLaunchEvent(
+tsl::AsyncValueRef<CpuEvent> PjRtCpuRawClient::GetCollectiveLaunchEvent(
     RunId run_id, uint64_t executable_id, size_t num_addressable_devices,
     tsl::AsyncValueRef<CpuEvent> execute_event) {
   mu_.lock();
@@ -1631,7 +1629,7 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
 
   std::shared_ptr<cpu::CpuExecutable> cpu_executable =
       executable_->cpu_executable_;
-  auto client = client_;
+  auto raw_client = raw_client_;
 
   // Tuplize the inputs if compiler expects a single tuple argument but runtime
   // gets many inputs that are not yet tupled.
@@ -1648,7 +1646,7 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
     tsl::RunWhenReady(
         absl::MakeConstSpan(leaf_buffers),
         [buffers = leaf_buffers, tuple_index_table,
-         allocator = client->allocator()]() mutable {
+         allocator = raw_client->allocator()]() mutable {
           for (int i = 0; i < buffers.size(); ++i) {
             if (buffers[i].IsError()) {
               tuple_index_table.SetError(buffers[i].GetError());
@@ -1691,7 +1689,7 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
   run_options.set_run_id(run_id_);
   // Need to keep device_assignment alive until execution completes.
   run_options.set_device_assignment(device_assignment_.get());
-  run_options.set_intra_op_thread_pool(client->eigen_intraop_device());
+  run_options.set_intra_op_thread_pool(raw_client->eigen_intraop_device());
   run_options.set_rng_seed(options.seed);
 
   auto cpu_run_options = std::make_unique<cpu::CpuExecutableRunOptions>();
@@ -1714,7 +1712,7 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
       cpu_execute_context->collectives() != nullptr) {
     cpu_run_options->set_collectives(cpu_execute_context->collectives());
   } else {
-    cpu_run_options->set_collectives(client->collectives_.get());
+    cpu_run_options->set_collectives(raw_client->collectives());
   }
 
   // Schedule only one collective at a time.
@@ -1725,9 +1723,10 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
     // We only created enough threads for one collective to complete.
     // The next collective launch will not be scheduled onto threadpool until
     // this one completes.
-    input_deps.push_back(PjRtDeviceEventRef(client_->GetCollectiveLaunchEvent(
-        run_id_, reinterpret_cast<uint64_t>(executable_),
-        num_addressable_devices_, execute_event)));
+    input_deps.push_back(
+        PjRtDeviceEventRef(raw_client_->GetCollectiveLaunchEvent(
+            run_id_, reinterpret_cast<uint64_t>(executable_),
+            num_addressable_devices_, execute_event)));
   } else {
     // This is a non-parallel computation. Add the last enqueue event as a
     // dependency with any error cleared.
@@ -1749,7 +1748,7 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
   }
 
   bool execute_inline = executable_->cheap_computation_ ||
-                        !client->asynchronous_ ||
+                        !raw_client->asynchronous() ||
                         ThisThreadIsInsideHostCallback();
 
   // Overwrite `execute_inline` if it is specified in the ExecuteOptions.
@@ -1761,7 +1760,7 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
   }
 
   auto execute_thunks = [cpu_executable, buffer_table = std::move(buffer_table),
-                         eigen_device = client->eigen_intraop_device(),
+                         eigen_device = raw_client->eigen_intraop_device(),
                          run_options = std::move(run_options)]()
       -> absl::StatusOr<tsl::AsyncValueRef<cpu::Thunk::ExecuteEvent>> {
     // Set denormal and rounding behavior to match the default TF
@@ -1838,8 +1837,8 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
 
   if (input_deps.empty() && execute_inline) {
     // Synchronously call generated function or thunk sequence.
-    buffer_alloc.Allocate(*client->allocator());
-    buffer_alloc_and_copy.AllocateAndCopy(*client->allocator());
+    buffer_alloc.Allocate(*raw_client->allocator());
+    buffer_alloc_and_copy.AllocateAndCopy(*raw_client->allocator());
 
     auto thunks_execute_event = execute_thunks();
 
@@ -1874,7 +1873,7 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
             run_id_.ToInt(), std::move(ready_on_exit).Release());
     PjRtDeviceEventSpan events_ref(input_deps);
     xla::ExecuteWhenReady(
-        events_ref, client->async_work_runner(),
+        events_ref, raw_client->async_work_runner(),
         [cpu_executable, buffer_alloc = std::move(buffer_alloc),
          buffer_alloc_and_copy = std::move(buffer_alloc_and_copy),
          execute_thunks = std::move(execute_thunks),
@@ -1884,7 +1883,7 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
          tuple_index_table = std::move(tuple_index_table),
          scoped_async_execution = std::move(scoped_async_execution),
          input_deps_avs = std::move(input_deps), num_control_deps,
-         allocator = client->allocator(),
+         allocator = raw_client->allocator(),
          returned_future_can_be_set_event =
              returned_future_can_be_set_event.CopyRef()]() mutable {
           // Because `input_deps` contains the definition events of all inputs,

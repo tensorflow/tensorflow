@@ -164,9 +164,9 @@ class CommonPjRtClient : public PjRtClient {
       void* device_ptr, absl::AnyInvocable<void() &&> on_delete_callback,
       size_t on_device_bytes_count, PjRtMemorySpace* memory_space,
       bool is_mutable) {
-    return raw_client()->ImportForeignMemory(memory_space, device_ptr,
-                                             on_device_bytes_count,
-                                             std::move(on_delete_callback));
+    return raw_client()->ImportForeignMemory(
+        memory_space, device_ptr, on_device_bytes_count,
+        std::move(on_delete_callback), is_mutable);
   }
 
   // Linearizes a literal into a raw buffer and returns a DeviceEvent

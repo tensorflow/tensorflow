@@ -149,15 +149,19 @@ class PjRtRawClient {
   }
 
   // Maps host memory for DMA transfers.
-  virtual absl::Status DmaMap(void* data, size_t size) = 0;
+  virtual absl::Status DmaMap(void* data, size_t size) {
+    return absl::UnimplementedError("DmaMap is not supported.");
+  }
 
   // Unmaps host memory previously mapped for DMA.
-  virtual absl::Status DmaUnmap(void* data) = 0;
+  virtual absl::Status DmaUnmap(void* data) {
+    return absl::UnimplementedError("DmaUnmap is not supported.");
+  }
 
   // Imports foreign memory as a raw buffer.
   virtual absl::StatusOr<PjRtRawBufferRef> ImportForeignMemory(
       PjRtMemorySpace* memory_space, void* device_ptr, size_t size,
-      absl::AnyInvocable<void() &&> on_delete_callback) = 0;
+      absl::AnyInvocable<void() &&> on_delete_callback, bool is_mutable) = 0;
 };
 
 }  // namespace xla

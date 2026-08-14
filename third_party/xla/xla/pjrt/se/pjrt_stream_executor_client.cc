@@ -750,7 +750,7 @@ absl::Status PjRtStreamExecutorClient::DmaUnmap(void* data) {
 absl::StatusOr<PjRtRawBufferRef>
 PjRtStreamExecutorRawClient::ImportForeignMemory(
     PjRtMemorySpace* memory_space, void* device_ptr, size_t size,
-    absl::AnyInvocable<void() &&> on_delete_callback) {
+    absl::AnyInvocable<void() &&> on_delete_callback, bool is_mutable) {
   CHECK_EQ(memory_space->devices().size(), 1);
   auto* device = memory_space->devices().front();
   ABSL_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
