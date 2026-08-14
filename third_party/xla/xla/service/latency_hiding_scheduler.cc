@@ -45,6 +45,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "re2/re2.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -628,11 +629,20 @@ ResourcesVector AsyncTracker::GetResourcesFromInstructionImpl(
 
 absl::Span<const ResourcePair> AsyncTracker::GetResourcesFromInstruction(
     const HloInstruction& hlo) const {
-  auto [it, inserted] = resources_cache_.emplace(&hlo, ResourcesVector{});
-  if (inserted) {
-    it->second = GetResourcesFromInstructionImpl(hlo);
+  {
+    absl::ReaderMutexLock lock(&resources_cache_mu_);
+    auto it = resources_cache_.find(&hlo);
+    if (it != resources_cache_.end()) {
+      return *(it->second);
+    }
   }
-  return it->second;
+  absl::WriterMutexLock lock(&resources_cache_mu_);
+  auto& val = resources_cache_[&hlo];
+  if (val == nullptr) {
+    val =
+        std::make_unique<ResourcesVector>(GetResourcesFromInstructionImpl(hlo));
+  }
+  return *val;
 }
 
 int64_t AsyncTracker::GetNumResourcesPerInstruction(
@@ -681,12 +691,14 @@ AsyncTracker::RecursivelyComputeResourceMap(
   if (schedule.is_computation_scheduled(computation)) {
     return RecursivelyComputeResourceMapForScheduledComputation(computation);
   }
-  auto& per_opcode_map = async_in_computation_cache_[computation];
-  if (per_opcode_map != nullptr) {
-    return *per_opcode_map;
+  {
+    absl::ReaderMutexLock lock(&async_in_computation_cache_mu_);
+    auto it = async_in_computation_cache_.find(computation);
+    if (it != async_in_computation_cache_.end()) {
+      return *(it->second);
+    }
   }
-  per_opcode_map = std::make_unique<absl::flat_hash_map<int64_t, int64_t>>();
-  auto* m = per_opcode_map.get();
+  auto m = std::make_unique<absl::flat_hash_map<int64_t, int64_t>>();
   absl::flat_hash_set<int64_t> seen_resources_per_comp;
   for (HloInstruction* instr : computation->instructions()) {
     if (IsSupportedAsyncDone(*instr)) {
@@ -712,7 +724,12 @@ AsyncTracker::RecursivelyComputeResourceMap(
       }
     }
   }
-  return *m;
+  absl::WriterMutexLock lock(&async_in_computation_cache_mu_);
+  auto& per_opcode_map = async_in_computation_cache_[computation];
+  if (per_opcode_map == nullptr) {
+    per_opcode_map = std::move(m);
+  }
+  return *per_opcode_map;
 }
 
 const absl::flat_hash_map<int64_t, int64_t>&
@@ -720,11 +737,14 @@ AsyncTracker::RecursivelyComputeResourceMapForScheduledComputation(
     const HloComputation* computation) const {
   auto& schedule = computation->parent()->schedule();
   CHECK(schedule.is_computation_scheduled(computation));
-  auto& m = async_in_computation_cache_[computation];
-  if (m != nullptr) {
-    return *m;
+  {
+    absl::ReaderMutexLock lock(&async_in_computation_cache_mu_);
+    auto it = async_in_computation_cache_.find(computation);
+    if (it != async_in_computation_cache_.end()) {
+      return *(it->second);
+    }
   }
-  m = std::make_unique<absl::flat_hash_map<int64_t, int64_t>>();
+  auto m = std::make_unique<absl::flat_hash_map<int64_t, int64_t>>();
   auto& res_map = *m;
   auto& inst_sequence = schedule.sequence(computation).instructions();
   // Traverse the sequence in reverse order and keep a running status of the
@@ -752,7 +772,12 @@ AsyncTracker::RecursivelyComputeResourceMapForScheduledComputation(
       max_usage = std::max(max_usage, current_usage);
     }
   }
-  return res_map;
+  absl::WriterMutexLock lock(&async_in_computation_cache_mu_);
+  auto& per_opcode_map = async_in_computation_cache_[computation];
+  if (per_opcode_map == nullptr) {
+    per_opcode_map = std::move(m);
+  }
+  return *per_opcode_map;
 }
 
 int64_t AsyncTracker::GetNumResourcesPerInstruction(
@@ -2863,7 +2888,12 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
   int64_t memory_peak =
       sched_state->memory_pressure_tracker.pressure_state().memory_peak;
 
-  if (schedule_proto_.has_value()) {
+  bool has_schedule_proto;
+  {
+    absl::MutexLock lock(&schedule_proto_mu_);
+    has_schedule_proto = schedule_proto_.has_value();
+  }
+  if (has_schedule_proto) {
     sched_state->memory_trace[&n->GetInstr()] = {memory_after, memory_peak};
   }
 
@@ -2900,12 +2930,16 @@ bool HloScheduleGraph::IsPredecessorTransitively(
 
 HloScheduleGraph::HloScheduleGraph(
     const std::vector<HloInstruction*>* post_order_instructions,
-    std::shared_ptr<const SchedulingContext> scheduling_context)
+    std::shared_ptr<const SchedulingContext> scheduling_context,
+    std::shared_ptr<const HloReachabilityMap> reachability_map)
     : original_order_(post_order_instructions->begin(),
                       post_order_instructions->end()),
-      scheduling_context_(scheduling_context) {
+      scheduling_context_(scheduling_context),
+      reachability_(std::move(reachability_map)) {
   HloComputation* comp = (*post_order_instructions)[0]->parent();
-  reachability_ = HloReachabilityMap::Build(comp);
+  if (reachability_ == nullptr) {
+    reachability_ = HloReachabilityMap::Build(comp);
+  }
   const HloReachabilityMap* reachability = reachability_.get();
   std::vector<const HloInstruction*> while_instrs;
   auto latency_estimator = scheduling_context->GetLatencyEstimator();
@@ -3445,6 +3479,10 @@ absl::Status DefaultSchedulerCore::InitializeScheduler(
   pressure_metadata_.clear();
   module_pressure_state_->InitializePressureStates();
   module_pressure_state_->SetMemoryPeak(0);
+  {
+    absl::MutexLock lock(&reachability_cache_mu_);
+    reachability_cache_.clear();
+  }
   if (top_down_scheduling_) {
     // We preprocess the annotations in two aspects:
     // 1. If annotations are on async-done ops only, move them to the matching
@@ -3673,10 +3711,30 @@ absl::StatusOr<bool> DefaultSchedulerCore::TryScheduleOneAnnotationGroup(
   return false;
 }
 
+std::shared_ptr<const HloReachabilityMap>
+DefaultSchedulerCore::GetReachabilityMap(const HloComputation* computation) {
+  {
+    absl::MutexLock lock(&reachability_cache_mu_);
+    auto it = reachability_cache_.find(computation);
+    if (it != reachability_cache_.end()) {
+      return it->second;
+    }
+  }
+  auto reachability = std::shared_ptr<const HloReachabilityMap>(
+      HloReachabilityMap::Build(computation));
+  {
+    absl::MutexLock lock(&reachability_cache_mu_);
+    reachability_cache_[computation] = reachability;
+  }
+  return reachability;
+}
+
 std::unique_ptr<HloScheduleGraph> DefaultSchedulerCore::CreateScheduleGraph(
     const std::vector<HloInstruction*>* instructions,
-    std::shared_ptr<const SchedulingContext> context) const {
-  return std::make_unique<HloScheduleGraph>(instructions, context);
+    std::shared_ptr<const SchedulingContext> context,
+    std::shared_ptr<const HloReachabilityMap> reachability) const {
+  return std::make_unique<HloScheduleGraph>(instructions, context,
+                                            std::move(reachability));
 }
 
 absl::StatusOr<std::shared_ptr<SchedulerCore::SchedulingState>>
@@ -3692,9 +3750,10 @@ DefaultSchedulerCore::MakeSchedulingState(const HloComputation* computation) {
     metadata->Initialize(computation);
     it = pressure_metadata_.emplace(computation, std::move(metadata)).first;
   }
+  auto reachability = GetReachabilityMap(computation);
   auto graph =
       CreateScheduleGraph(&module_schedule.sequence(computation).instructions(),
-                          scheduling_context_);
+                          scheduling_context_, reachability);
   std::shared_ptr<SchedulingState> sched_state =
       std::make_shared<SchedulingState>(&module_schedule.sequence(computation),
                                         scheduling_context_, it->second.get(),
@@ -3728,6 +3787,7 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
 
 std::shared_ptr<SchedulerCore::SchedulingState>
 DefaultSchedulerCore::GetSchedulingState() {
+  absl::MutexLock lock(&latest_sched_state_mu_);
   return latest_sched_state_;
 }
 
@@ -3761,7 +3821,12 @@ absl::StatusOr<std::vector<HloInstruction*>>
 DefaultSchedulerCore::ScheduleComputation(
     const HloComputation* computation,
     std::shared_ptr<SchedulerCore::SchedulingState> _sched_state) {
-  latest_sched_state_ = _sched_state;
+  {
+    absl::MutexLock lock(&latest_sched_state_mu_);
+    // At the end of scheduling, this holds the scheduling state of the root
+    // computation, ensuring deterministic compilation.
+    latest_sched_state_ = _sched_state;
+  }
   // Up-cast the scheduling state DefaultSchedulerCore::SchedulingState.
   std::shared_ptr<DefaultSchedulerCore::SchedulingState> sched_state =
       std::dynamic_pointer_cast<DefaultSchedulerCore::SchedulingState>(
@@ -3906,10 +3971,18 @@ DefaultSchedulerCore::ScheduleComputation(
                  ->GetNode(sched_state->new_sequence_reversed.front())
                  .GetReadyTime();
 
-  if (schedule_proto_.has_value()) {
-    *schedule_proto_->add_computation_schedules() = ComputationScheduleToProto(
-        computation, *sched_state, *scheduling_context_->GetLatencyEstimator(),
-        sched_state->new_sequence_reversed);
+  // We suppress recording to schedule_proto_ during concurrent execution
+  // (!IsEvaluatingConcurrently()) to avoid non-deterministic order when
+  // parallel threads execute.
+  if (!IsEvaluatingConcurrently()) {
+    absl::MutexLock lock(&schedule_proto_mu_);
+    if (schedule_proto_.has_value()) {
+      *schedule_proto_->add_computation_schedules() =
+          ComputationScheduleToProto(
+              computation, *sched_state,
+              *scheduling_context_->GetLatencyEstimator(),
+              sched_state->new_sequence_reversed);
+    }
   }
   return std::move(sched_state->new_sequence_reversed);
 }

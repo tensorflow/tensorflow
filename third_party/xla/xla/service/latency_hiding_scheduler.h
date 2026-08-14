@@ -30,6 +30,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/optimization.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
@@ -296,6 +298,8 @@ class SchedulerCore {
       std::shared_ptr<SchedulingState> sched_state) {
     return absl::UnimplementedError("Not implemented.");
   }
+  // Note: This function is not thread-safe. It must not be invoked during
+  // concurrent BRKGA or simulated evaluation.
   virtual std::shared_ptr<SchedulingState> GetSchedulingState() {
     return nullptr;
   }
@@ -312,6 +316,15 @@ class SchedulerCore {
   virtual absl::Status SetGraphProcessingHook(const GraphProcessingHook& hook) {
     return absl::OkStatus();
   }
+  virtual void SetEvaluatingConcurrently(bool val) {
+    is_evaluating_concurrently_ = val;
+  }
+  virtual bool IsEvaluatingConcurrently() const {
+    return is_evaluating_concurrently_;
+  }
+
+ protected:
+  bool is_evaluating_concurrently_ = false;
 };
 
 // Helper class to keep track of which instructions are to be supported and
@@ -438,11 +451,15 @@ class AsyncTracker {
   // Clears the cache of per-computation resource maps. This is needed when,
   // e.g., we modify the schedule of a computation, which could change the
   // resource usage of the computation.
-  void InvalidateCache() { async_in_computation_cache_.clear(); }
+  void InvalidateCache() {
+    absl::MutexLock lock(&async_in_computation_cache_mu_);
+    async_in_computation_cache_.clear();
+  }
 
   // Similar to InvalidateCache(), but only invalidates the cache for the given
   // computation.
   void InvalidateCache(const HloComputation* computation) {
+    absl::MutexLock lock(&async_in_computation_cache_mu_);
     async_in_computation_cache_.erase(computation);
   }
 
@@ -469,16 +486,20 @@ class AsyncTracker {
   RecursivelyComputeResourceMapForScheduledComputation(
       const HloComputation* computation) const;
 
+  mutable absl::Mutex async_in_computation_cache_mu_;
   mutable absl::flat_hash_map<
       const HloComputation*,
       std::unique_ptr<absl::flat_hash_map<int64_t, int64_t>>>
-      async_in_computation_cache_;
+      async_in_computation_cache_
+          ABSL_GUARDED_BY(async_in_computation_cache_mu_);
   GetCanonicalAsyncOpFunc get_canonical_async_op_;
 
  protected:
   const SchedulerConfig config_;
-  mutable absl::flat_hash_map<const HloInstruction*, ResourcesVector>
-      resources_cache_;
+  mutable absl::Mutex resources_cache_mu_;
+  mutable absl::flat_hash_map<const HloInstruction*,
+                              std::unique_ptr<ResourcesVector>>
+      resources_cache_ ABSL_GUARDED_BY(resources_cache_mu_);
 };
 
 class SchedulingContext {
@@ -1205,8 +1226,10 @@ class HloScheduleGraph {
   // altered/deleted during the existence of the HloScheduleGraph.
   // Nullptr is not a valid value for 'post_order_instructions' and
   // 'alias_analysis'.
-  HloScheduleGraph(const std::vector<HloInstruction*>* post_order_instructions,
-                   std::shared_ptr<const SchedulingContext> scheduling_context);
+  HloScheduleGraph(
+      const std::vector<HloInstruction*>* post_order_instructions,
+      std::shared_ptr<const SchedulingContext> scheduling_context,
+      std::shared_ptr<const HloReachabilityMap> reachability_map = nullptr);
   virtual ~HloScheduleGraph() = default;
   HloScheduleGraph(HloScheduleGraph&&) = default;
   HloScheduleGraph& operator=(HloScheduleGraph&&) = default;
@@ -1312,7 +1335,7 @@ class HloScheduleGraph {
                                  const HloGraphNode* possible_predecessor);
   // Scheduling context for the graph.
   std::shared_ptr<const SchedulingContext> scheduling_context_;
-  std::unique_ptr<HloReachabilityMap> reachability_;
+  std::shared_ptr<const HloReachabilityMap> reachability_;
 };
 
 // These HloEdge routines need to be defined after HloScheduleGraph, since
@@ -1882,6 +1905,7 @@ class DefaultSchedulerCore : public SchedulerCore {
   absl::Status InitializeScheduler(const HloModule* module) override;
 
   absl::Status CaptureScheduleProto() override {
+    absl::MutexLock lock(&schedule_proto_mu_);
     schedule_proto_ = ScheduleProto();
     *schedule_proto_->mutable_hlo_module() = module_->ToProto();
 
@@ -1889,6 +1913,7 @@ class DefaultSchedulerCore : public SchedulerCore {
   }
 
   absl::StatusOr<ScheduleProto> GetCapturedScheduleProto() override {
+    absl::MutexLock lock(&schedule_proto_mu_);
     if (!schedule_proto_.has_value()) {
       return absl::FailedPreconditionError("Schedule proto not captured.");
     }
@@ -1972,7 +1997,8 @@ class DefaultSchedulerCore : public SchedulerCore {
  protected:
   virtual std::unique_ptr<HloScheduleGraph> CreateScheduleGraph(
       const std::vector<HloInstruction*>* instructions,
-      std::shared_ptr<const SchedulingContext> context) const;
+      std::shared_ptr<const SchedulingContext> context,
+      std::shared_ptr<const HloReachabilityMap> reachability = nullptr) const;
   virtual void LogInstruction(const HloInstruction* instr) const;
 
   // Schedules the given annotated node.
@@ -2005,11 +2031,22 @@ class DefaultSchedulerCore : public SchedulerCore {
   OverlapLimitRule scheduling_instruction_crosses_overlap_limit_ = nullptr;
   bool is_default_scheduling_instruction_crosses_overlap_limit_ = false;
   std::unique_ptr<AnnotationTracker> annotation_tracker_;
-  std::optional<ScheduleProto> schedule_proto_;
+  mutable absl::Mutex schedule_proto_mu_;
+  std::optional<ScheduleProto> schedule_proto_
+      ABSL_GUARDED_BY(schedule_proto_mu_);
   const HloModule* module_ = nullptr;
   SchedulerCore::GraphProcessingHook default_graph_processing_hook_;
   std::shared_ptr<const SchedulingContext> scheduling_context_;
-  std::shared_ptr<SchedulerCore::SchedulingState> latest_sched_state_;
+  mutable absl::Mutex latest_sched_state_mu_;
+  std::shared_ptr<SchedulerCore::SchedulingState> latest_sched_state_
+      ABSL_GUARDED_BY(latest_sched_state_mu_);
+  std::shared_ptr<const HloReachabilityMap> GetReachabilityMap(
+      const HloComputation* computation);
+
+  mutable absl::Mutex reachability_cache_mu_;
+  absl::flat_hash_map<const HloComputation*,
+                      std::shared_ptr<const HloReachabilityMap>>
+      reachability_cache_ ABSL_GUARDED_BY(reachability_cache_mu_);
   bool top_down_scheduling_ = false;
 };
 
