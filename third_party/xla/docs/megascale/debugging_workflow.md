@@ -232,7 +232,9 @@ calls](./images/map_dma_buffer_example_trace.png)
 
 If the issue is observed then try to increase the size of the premapped memory
 region by increasing the value of `--megascale_grpc_premap_memory_bytes`,
-restarting the job, then checking again.
+restarting the job, then checking again. Please also check the checkpoint size:
+the general guidance is that the premap buffer should be at least twice the
+checkpoint size.
 
 ### Check for memory copies during network transfers
 
@@ -246,7 +248,9 @@ receive](./images/memory_copy_example_trace.png)
 
 If the issue is observed then try to increase the size of the premapped memory
 region by increasing the value of `--megascale_grpc_premap_memory_bytes`,
-restarting the job, then checking again.
+restarting the job, then checking again. Please also check the checkpoint size:
+the general guidance is that the premap buffer should be at least twice the
+checkpoint size.
 
 ### Network Analysis
 
