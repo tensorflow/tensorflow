@@ -761,6 +761,7 @@ target_link_libraries(tensorflow-lite
     absl::flags
     absl::hash
     absl::span
+    absl::log
     absl::status
     absl::strings
     absl::synchronization
