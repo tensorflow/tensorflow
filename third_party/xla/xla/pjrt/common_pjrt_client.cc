@@ -258,6 +258,40 @@ absl::StatusOr<DeviceAssignment> CommonPjRtClient::GetDefaultDeviceAssignment(
       multi_slice_config);
 }
 
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> CommonPjRtClient::Compile(
+    const XlaComputation& computation, CompileOptions options) {
+  ABSL_ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
+                   GetTopologyDescription());
+  return PjRtCompile(options, computation, *topology, this);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+CommonPjRtClient::CompileAndLoad(const XlaComputation& computation,
+                                 CompileOptions options) {
+  ABSL_ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
+                   GetTopologyDescription());
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
+                   PjRtCompile(options, computation, *topology, this));
+  return Load(std::move(executable), LoadOptions());
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> CommonPjRtClient::Compile(
+    MaybeOwningMlirModule module, CompileOptions options) {
+  ABSL_ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
+                   GetTopologyDescription());
+  return PjRtCompile(options, std::move(module), *topology, this);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+CommonPjRtClient::CompileAndLoad(MaybeOwningMlirModule module,
+                                 CompileOptions options) {
+  ABSL_ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
+                   GetTopologyDescription());
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
+                   PjRtCompile(options, std::move(module), *topology, this));
+  return Load(std::move(executable), LoadOptions());
+}
+
 absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeHostBufferInto(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,

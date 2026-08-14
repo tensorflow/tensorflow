@@ -76,10 +76,53 @@ limitations under the License.
 
 namespace xla {
 
+class StreamExecutorCpuCompiler : public PjRtCompiler {
+ public:
+  virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      CompileOptions options, const XlaComputation& computation,
+      const PjRtTopologyDescription& topology, PjRtClient* client) {
+    PjRtStreamExecutorRawClient* raw_client = nullptr;
+    if (auto* common_client = dynamic_cast<CommonPjRtClient*>(client)) {
+      raw_client = dynamic_cast<PjRtStreamExecutorRawClient*>(
+          common_client->raw_client());
+    }
+    if (raw_client == nullptr) {
+      return absl::InvalidArgumentError(
+          "StreamExecutorCpuCompiler::Compile requires a client");
+    }
+    ABSL_ASSIGN_OR_RETURN(const PjRtTopologyDescription* local_topology,
+                     client->GetTopologyDescription());
+    return raw_client->CrossCompile(
+        computation, std::move(options), client->process_index(),
+        client->key_value_store(), local_topology, topology);
+  }
+
+  virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      CompileOptions options, MaybeOwningMlirModule module,
+      const PjRtTopologyDescription& topology, PjRtClient* client) {
+    PjRtStreamExecutorRawClient* raw_client = nullptr;
+    if (auto* common_client = dynamic_cast<CommonPjRtClient*>(client)) {
+      raw_client = dynamic_cast<PjRtStreamExecutorRawClient*>(
+          common_client->raw_client());
+    }
+    if (raw_client == nullptr) {
+      return absl::InvalidArgumentError(
+          "StreamExecutorCpuCompiler::Compile requires a client");
+    }
+    ABSL_ASSIGN_OR_RETURN(const PjRtTopologyDescription* local_topology,
+                     client->GetTopologyDescription());
+    return raw_client->CrossCompile(
+        std::move(module), std::move(options), client->process_index(),
+        client->key_value_store(), local_topology, topology);
+  }
+};
+
 STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(
     pjrt_register_se_cpu_platform_id_mapping, {
       CHECK_OK(StreamExecutorPlatformIdMapping::Global().AddMapping(
           stream_executor::host::kHostPlatformId, CpuPlatformId()));
+      PjRtRegisterDefaultCompiler(
+          "cpu", std::make_unique<StreamExecutorCpuCompiler>());
     });
 
 namespace {

@@ -122,6 +122,9 @@ class StreamExecutorExecutable : public PjRtExecutable {
       const PjRtTopologyDescription& topology,
       std::optional<CompileOptions> options = std::nullopt);
 
+  static absl::StatusOr<absl::string_view> GetDefaultMemoryKind(
+      const PjRtTopologyDescription& topology);
+
  private:
   int64_t SizeOfGeneratedCodeInBytesLocked() const
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);

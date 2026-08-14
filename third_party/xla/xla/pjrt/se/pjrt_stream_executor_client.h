@@ -345,7 +345,30 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
       int process_index, const PjRtTopologyDescription& topology,
       CompileOptions* options, bool lookup_addressable_devices);
 
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> CompileInternal(
+      const XlaComputation& computation,
+      const std::vector<const Shape*>& argument_layout_pointers,
+      LayoutCanonicalizationCallback layout_canonicalization_callback,
+      int process_index,
+      std::optional<std::shared_ptr<KeyValueStoreInterface>> key_value_store,
+      const PjRtTopologyDescription* topology,
+      const PjRtTopologyDescription& target_topology, CompileOptions options);
+
   void Stop() { async_work_runner_.reset(); }
+
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> CrossCompile(
+      const XlaComputation& computation, CompileOptions options,
+      int process_index,
+      std::optional<std::shared_ptr<KeyValueStoreInterface>> key_value_store,
+      const PjRtTopologyDescription* topology,
+      const PjRtTopologyDescription& target_topology);
+
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> CrossCompile(
+      MaybeOwningMlirModule mlir_module, CompileOptions options,
+      int process_index,
+      std::optional<std::shared_ptr<KeyValueStoreInterface>> key_value_store,
+      const PjRtTopologyDescription* topology,
+      const PjRtTopologyDescription& target_topology);
 
  private:
   se::DeviceAddressAllocator* allocator_ = nullptr;
@@ -439,15 +462,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   absl::string_view platform_version() const override { return "<unknown>"; }
 
   std::optional<PjRtPluginAttributes> plugin_attributes() const override;
-
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      const XlaComputation& computation, CompileOptions options) override;
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
-      const XlaComputation& computation, CompileOptions options) override;
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      MaybeOwningMlirModule mlir_module, CompileOptions options) override;
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
-      MaybeOwningMlirModule mlir_module, CompileOptions options) override;
 
   absl::StatusOr<std::string> SerializeExecutable(
       const PjRtLoadedExecutable& executable) const {
@@ -568,7 +582,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
         std::move(transfer_dependencies), std::move(transfer_specs));
   }
 
-
   absl::Status WaitOnStream(PjRtMemorySpace* memory_space,
                             PjRtDeviceEventRef event,
                             std::intptr_t stream) override;
@@ -609,49 +622,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   friend class PjRtStreamExecutorRawLoadedExecutable;
 
   virtual void RecordMemoryStats() {}
-
-  // Helper function for creating PjRtStreamExecutorExecutables. Modifies
-  // `options` in-place.
-  struct ExecutableExtras {
-    std::shared_ptr<DeviceAssignment> device_assignment;
-    std::vector<PjRtLoadedExecutable::LogicalDeviceIds>
-        addressable_device_logical_ids;
-    std::vector<PjRtDevice*> addressable_devices;
-  };
-
-  // Updates `options` for compilation.
-  absl::Status UpdateCompileOptions(CompileOptions* options,
-                                    bool lookup_addressable_devices);
-
-  // Same as above, but also returns the executable extras.
-  absl::StatusOr<ExecutableExtras> UpdateCompileOptionsAndGetExecutableExtras(
-      CompileOptions* options);
-
-  // Updates `options` for compilation, and gets the executable extras if
-  // `returned_extras` is not null. It skips addressable device lookup if
-  // `lookup_addressable_devices` is false.
-  absl::Status UpdateCompileOptionsInternal(
-      int process_index, const PjRtTopologyDescription& topology,
-      CompileOptions* options, ExecutableExtras* returned_extras,
-      bool lookup_addressable_devices);
-
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      const XlaComputation& computation, CompileOptions options,
-      bool lookup_addressable_devices);
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      MaybeOwningMlirModule mlir_module, CompileOptions options,
-      bool lookup_addressable_devices);
-
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> CompileInternal(
-      const XlaComputation& computation,
-      const std::vector<const Shape*>& argument_layout_pointers,
-      LayoutCanonicalizationCallback layout_canonicalization_callback,
-      CompileOptions options, bool lookup_addressable_devices);
-
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> BuildPjRtExecutable(
-      std::optional<HloModuleProto> unoptimized_hlo_module_proto,
-      std::unique_ptr<LocalExecutable> local_executables,
-      CompileOptions compile_options);
 
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
       std::unique_ptr<riegeli::Reader> reader,

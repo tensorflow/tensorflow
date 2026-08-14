@@ -430,6 +430,18 @@ absl::StatusOr<ExecutableAndOptionsProto> SerializedGpuExecutableFromString(
   return SerializedGpuExecutableFromReader(riegeli::CordReader<>(&serialized));
 }
 
+/*static*/ absl::StatusOr<absl::string_view>
+StreamExecutorExecutable::GetDefaultMemoryKind(
+    const PjRtTopologyDescription& topology) {
+  static int device_id = static_cast<int>(tsl::Fingerprint32("device"));
+  if (device_id == topology.GetDefaultMemorySpaceKindId()) {
+    return "device";
+  } else {
+    return Internal("Unknown default memory space kind: %d",
+                    topology.GetDefaultMemorySpaceKindId());
+  }
+}
+
 absl::StatusOr<std::unique_ptr<StreamExecutorExecutable>>
 StreamExecutorExecutable::Deserialize(riegeli::Any<riegeli::Reader*> reader,
                                       const PjRtTopologyDescription& topology,
@@ -453,15 +465,7 @@ StreamExecutorExecutable::Deserialize(riegeli::Any<riegeli::Reader*> reader,
   }
   ABSL_RETURN_IF_ERROR(compile_options.ApplyAllOptionOverrides());
 
-  absl::string_view default_memory_space = UnpinnedHostMemorySpace::kKind;
-
-  static int device_id = static_cast<int>(tsl::Fingerprint32("device"));
-  if (device_id == topology.GetDefaultMemorySpaceKindId()) {
-    default_memory_space = "device";
-  } else {
-    return Internal("Unknown default memory space kind: %d",
-                    topology.GetDefaultMemorySpaceKindId());
-  }
+  ABSL_ASSIGN_OR_RETURN(auto default_memory_space, GetDefaultMemoryKind(topology));
 
   PjRtPlatformId platform_id = topology.platform_id();
   if (IsEarlyExitCompilation(compile_options)) {
