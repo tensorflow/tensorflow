@@ -88,6 +88,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/collectives/all_reduce_splitter.h"
 #include "xla/backends/gpu/transforms/collectives/collective_backend_assigner.h"
 #include "xla/backends/gpu/transforms/collectives/collective_combiner_annotator.h"
+#include "xla/backends/gpu/transforms/collectives/collective_domain_assigner.h"
 #include "xla/backends/gpu/transforms/collectives/collective_fusion.h"
 #include "xla/backends/gpu/transforms/collectives/collective_kernel_strategy_annotator.h"
 #include "xla/backends/gpu/transforms/collectives/collective_permute_cycle_decomposer.h"
@@ -1520,9 +1521,12 @@ absl::Status RunPostFusionPasses(
                               alias_info, pointer_size, options, gpu_topology,
                               mlir_context);
 
+  pipeline.AddPass<CollectiveDomainAssigner>(gpu_topology);
+
   // Form async collective groups from collectives sharing a
   // `collective_group_key` frontend attribute; runs after the combiner so
-  // combined collectives are grouped as a unit.
+  // combined collectives are grouped as a unit. Domain assignment runs first
+  // so collectives from different communication domains are grouped separately.
   pipeline.AddPass<GroupCollectivesByKey>();
 
   pipeline.AddPass<AllReduceContiguous>();
@@ -1536,6 +1540,10 @@ absl::Status RunPostFusionPasses(
   }
 
   AddDoubleBufferingPasses(*hlo_module, pipeline);
+
+  // Assign domains to collectives created by post-group transformations such
+  // as BlueConnect and loop unrolling.
+  pipeline.AddPass<CollectiveDomainAssigner>(gpu_topology);
 
   return pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
       .status();
