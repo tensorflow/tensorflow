@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <cstdlib>
+#include <limits>
 
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -25,8 +26,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/pooling.h"
 #include "tensorflow/lite/kernels/internal/reference/pooling.h"
-#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -83,6 +82,17 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
   int width = input->dims->data[2];
   int channels_out = input->dims->data[3];
 
+  TF_LITE_ENSURE(context, batches >= 0);
+  TF_LITE_ENSURE(context, height >= 0);
+  TF_LITE_ENSURE(context, width >= 0);
+  TF_LITE_ENSURE(context, channels_out >= 0);
+
+  int64_t total_input_elements =
+      static_cast<int64_t>(batches) * height * width * channels_out;
+  TF_LITE_ENSURE(context, total_input_elements >= 0);
+  TF_LITE_ENSURE(context,
+                 total_input_elements <= std::numeric_limits<int32_t>::max());
+
   // Matching GetWindowedOutputSize in TensorFlow.
   auto padding = params->padding;
   int out_width, out_height;
@@ -90,11 +100,19 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
   // Prevent division by 0 in optimized pooling implementations
   TF_LITE_ENSURE(context, params->stride_height > 0);
   TF_LITE_ENSURE(context, params->stride_width > 0);
+  TF_LITE_ENSURE(context, params->filter_height > 0);
+  TF_LITE_ENSURE(context, params->filter_width > 0);
 
-  data->padding = ComputePaddingHeightWidth(
+  TF_LITE_ENSURE_STATUS(ComputePaddingHeightWidthChecked(
       params->stride_height, params->stride_width, 1, 1, height, width,
       params->filter_height, params->filter_width, padding, &out_height,
-      &out_width);
+      &out_width, &data->padding));
+
+  int64_t total_output_elements = static_cast<int64_t>(batches) * out_height *
+                                  out_width * channels_out;
+  TF_LITE_ENSURE(context, total_output_elements >= 0);
+  TF_LITE_ENSURE(context,
+                 total_output_elements <= std::numeric_limits<int32_t>::max());
 
   if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
     if (pool_type == kAverage || pool_type == kMax) {
