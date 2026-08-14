@@ -384,8 +384,14 @@ absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeIntoImpl(
           std::tie(copy_event_promise, copy_event),
           CreateLinkedEventPromise(memory_space, "BufferFromHostBuffer"));
 
+      // Evaluate the dependency before the call: C++ argument evaluation
+      // order is unspecified, and when the lambda argument (which moves
+      // `linearized`) is evaluated before the dependency-list argument,
+      // `linearized.CopyRCRef()` inline in the argument list would produce a
+      // null reference and crash in RunWhenReady.
+      tsl::RCReference<tsl::AsyncValue> linearized_dep = linearized.CopyRCRef();
       async_work_runner()->ExecuteWhenReady(
-          {linearized.CopyRCRef()},
+          {std::move(linearized_dep)},
           [this, linearized = std::move(linearized), copy_event_promise,
            raw_buffer = std::move(raw_buffer), data,
            byte_strides = byte_strides.has_value()
