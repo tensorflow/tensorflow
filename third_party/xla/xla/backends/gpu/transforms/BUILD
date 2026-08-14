@@ -998,6 +998,8 @@ cc_library(
         "//xla:comparison_util",
         "//xla:debug_options_flags",
         "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/tests:gpu_pjrt_codegen_test",
