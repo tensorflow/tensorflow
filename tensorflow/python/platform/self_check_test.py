@@ -15,6 +15,7 @@
 """Tests for the TensorFlow build integrity checks."""
 
 import os
+import sys
 from unittest import mock
 
 from tensorflow.python.platform import self_check
@@ -125,12 +126,20 @@ class PreloadCheckTest(test.TestCase):
     conflicts.assert_called_once()
 
   def testNonWindowsSkipsNewChecks(self):
-    with mock.patch.object(self_check, "_is_windows", return_value=False):
-      with mock.patch.object(self_check, "_check_python_bitness") as bitness:
-        with mock.patch.object(
-            self_check, "_check_conflicting_installs"
-        ) as conflicts:
-          self_check.preload_check()
+    # The non-Windows branch loads a native CPU feature guard extension, which
+    # is unrelated to what this test covers; stub it so the test exercises only
+    # the branch selection.
+    guard = mock.MagicMock()
+    with mock.patch.dict(
+        sys.modules,
+        {"tensorflow.python.platform._pywrap_cpu_feature_guard": guard},
+    ):
+      with mock.patch.object(self_check, "_is_windows", return_value=False):
+        with mock.patch.object(self_check, "_check_python_bitness") as bitness:
+          with mock.patch.object(
+              self_check, "_check_conflicting_installs"
+          ) as conflicts:
+            self_check.preload_check()
     bitness.assert_not_called()
     conflicts.assert_not_called()
 
