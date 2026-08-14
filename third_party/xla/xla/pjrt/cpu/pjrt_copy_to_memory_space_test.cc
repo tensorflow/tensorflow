@@ -65,6 +65,7 @@ TEST(PjRtCopyToMemorySpaceTest, CopyWithDonatedRawBuffer) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> donated_buffer,
                        client->BufferFromHostLiteral(
                            initial_literal, client->memory_spaces()[0]));
+  ASSERT_OK(donated_buffer->GetReadyFuture().Await());
 
   ASSERT_OK_AND_ASSIGN(
       PjRtRawBufferRef raw_alias,
