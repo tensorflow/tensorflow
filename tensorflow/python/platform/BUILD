@@ -386,6 +386,17 @@ tf_py_strict_test(
 )
 
 tf_py_strict_test(
+    name = "self_check_test",
+    size = "small",
+    srcs = ["self_check_test.py"],
+    main = "self_check_test.py",
+    deps = [
+        ":client_testlib",
+        ":self_check",
+    ],
+)
+
+tf_py_strict_test(
     name = "benchmark_test",
     size = "small",
     srcs = ["benchmark_test.py"],

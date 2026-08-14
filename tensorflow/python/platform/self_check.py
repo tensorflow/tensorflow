@@ -16,8 +16,23 @@
 """Platform-specific code for checking the integrity of the TensorFlow build."""
 
 import os
+import struct
 
 MSVCP_DLL_NAMES = "msvcp_dll_names"
+
+# Distributions that all unpack into the same `site-packages/tensorflow`
+# directory. On Windows `tensorflow` is a meta-package that requires
+# `tensorflow-intel` at an identical version, so their coexistence is expected;
+# only a version mismatch between any two of these indicates that files from
+# different releases have been mixed in a single directory.
+_CONFLICTING_DISTRIBUTIONS = (
+    "tensorflow",
+    "tensorflow-cpu",
+    "tensorflow-intel",
+    "tf-nightly",
+    "tf-nightly-cpu",
+    "tf-nightly-intel",
+)
 
 try:
   from tensorflow.python.platform import build_info
@@ -30,6 +45,72 @@ except ImportError as exc:
   ) from exc
 
 
+def _installed_tensorflow_distributions():
+  """Returns a {distribution name: version} map of installed TensorFlow dists.
+
+  Only the distributions in `_CONFLICTING_DISTRIBUTIONS` are considered, and
+  distributions that are not installed are omitted.
+  """
+  import importlib.metadata  # pylint: disable=g-import-not-at-top
+
+  installed = {}
+  for name in _CONFLICTING_DISTRIBUTIONS:
+    try:
+      installed[name] = importlib.metadata.version(name)
+    except importlib.metadata.PackageNotFoundError:
+      pass
+    except Exception:  # pylint: disable=broad-except
+      # Package metadata can be missing or malformed in unusual environments.
+      # This is only a diagnostic aid, so never let it mask the real error.
+      pass
+  return installed
+
+
+def _check_conflicting_installs():
+  """Raises if TensorFlow distributions of differing versions are installed.
+
+  These distributions all unpack into the same `site-packages/tensorflow`
+  directory, so installing more than one at differing versions leaves shared
+  libraries from mismatched releases on disk. Loading the native runtime then
+  fails with an error that gives no indication of the real cause.
+
+  Raises:
+    ImportError: If two or more of the distributions are installed at differing
+      versions.
+  """
+  installed = _installed_tensorflow_distributions()
+  if len(set(installed.values())) > 1:
+    raise ImportError(
+        "Found conflicting TensorFlow installations in this environment: %s. "
+        "These distributions install into the same directory, so mixing "
+        "versions leaves shared libraries from different releases on disk and "
+        "the native TensorFlow runtime will fail to load. Uninstall all of "
+        "them and reinstall exactly one. Note that some packages (for example "
+        "tf-keras) depend on `tensorflow`, which can pull it in alongside a "
+        "`tensorflow-cpu` that you installed directly."
+        % ", ".join(
+            "%s %s" % (name, version)
+            for name, version in sorted(installed.items())
+        )
+    )
+
+
+def _check_python_bitness():
+  """Raises if the interpreter is not 64-bit.
+
+  Raises:
+    ImportError: If running under a 32-bit Python interpreter, for which no
+      TensorFlow wheels are published.
+  """
+  bitness = struct.calcsize("P") * 8
+  if bitness != 64:
+    raise ImportError(
+        "TensorFlow requires a 64-bit Python interpreter, but this "
+        "interpreter is %d-bit. Reinstall the 64-bit build of Python and "
+        "reinstall TensorFlow into it." % bitness
+    )
+
+
 def preload_check():
   """Raises an exception if the environment is not correctly configured.
 
@@ -38,6 +119,9 @@ def preload_check():
       configured, and attempting to load the TensorFlow runtime will fail.
   """
   if os.name == "nt":
+    _check_python_bitness()
+    _check_conflicting_installs()
+
     # Attempt to load any DLLs that the Python extension depends on before
     # we load the Python extension, so that we can raise an actionable error
     # message if they are not found.
