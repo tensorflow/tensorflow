@@ -219,7 +219,6 @@ def _irfft_wrapper(ifft_fn, fft_rank, default_name):
         fft_length = _infer_fft_length_for_irfft(input_tensor, fft_rank)
       else:
         fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
-      fft_length_static = _validate_nonnegative_fft_length(fft_length)
       fft_length_static = _tensor_util.constant_value(fft_length)
       is_empty = input_tensor.shape.num_elements() == 0
       if not is_empty:
@@ -401,7 +400,6 @@ def _irfftn_wrapper(irfft_n, default_name):
         fft_length = _infer_fft_length_for_irfftn(input_tensor)
       else:
         fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
-      fft_length_static = _validate_nonnegative_fft_length(fft_length)
       fft_length_static = _tensor_util.constant_value(fft_length)
       if input_tensor.shape.num_elements() != 0:
         _validate_static_irfft_fft_length(fft_length_static, fft_rank)
