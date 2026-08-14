@@ -129,6 +129,20 @@ TEST(Irfft2dOpTest, InputDimsGreaterThan2) {
   EXPECT_THAT(model.GetOutput(), ElementsAreArray(expected_result));
 }
 
+TEST(Irfft2dOpTest, InvalidFftLengthHeightTooLarge) {
+  Irfft2dOpModel model({TensorType_COMPLEX64, {1, 1}}, {TensorType_INT32, {2}});
+  model.PopulateTensor<std::complex<float>>(model.input(), {{1.0, 0.0}});
+  model.PopulateTensor<int32_t>(model.fft_lengths(), {536870912, 1});
+  EXPECT_NE(model.Invoke(), kTfLiteOk);
+}
+
+TEST(Irfft2dOpTest, InvalidFftLengthOverflowProduct) {
+  Irfft2dOpModel model({TensorType_COMPLEX64, {1, 1}}, {TensorType_INT32, {2}});
+  model.PopulateTensor<std::complex<float>>(model.input(), {{1.0, 0.0}});
+  model.PopulateTensor<int32_t>(model.fft_lengths(), {8192, 262144});
+  EXPECT_NE(model.Invoke(), kTfLiteOk);
+}
+
 }  // namespace
 }  // namespace custom
 }  // namespace ops
