@@ -99,6 +99,8 @@ def _validate_nonnegative_fft_length(fft_length):
           f'`fft_length` must be non-negative, got {fft_length_i}.'
       )
   return fft_length_static
+
+
 def _validate_static_irfft_fft_length(fft_length_static, fft_rank):
   if fft_length_static is None:
     return
