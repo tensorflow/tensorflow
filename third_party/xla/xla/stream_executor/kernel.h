@@ -148,6 +148,17 @@ class Kernel {
   void set_use_pdl(bool use_pdl) { use_pdl_ = use_pdl; }
   bool use_pdl() const { return use_pdl_; }
 
+  // Amount of *dynamic* shared memory (in bytes) to request when launching this
+  // kernel. This is a launch parameter (the `sharedMemBytes` argument of
+  // cuLaunchKernel), NOT the *static* shared memory reported by
+  // metadata().shared_memory_bytes().
+  void set_dynamic_shared_memory_bytes(int64_t bytes) {
+    dynamic_shared_memory_bytes_ = bytes;
+  }
+  int64_t dynamic_shared_memory_bytes() const {
+    return dynamic_shared_memory_bytes_;
+  }
+
  private:
   std::string name_;
 
@@ -155,6 +166,8 @@ class Kernel {
   KernelArgsPacking args_packing_;
   // Programmatic Dependent Launch.
   bool use_pdl_ = false;
+  // Dynamic shared memory (in bytes) requested at launch time.
+  int64_t dynamic_shared_memory_bytes_ = 0;
 };
 
 inline absl::Status Kernel::Launch(const ThreadDim& thread_dims,
@@ -239,7 +252,7 @@ std::unique_ptr<KernelArgsPackedArrayBase> PackKernelArgs(
 
   PackedParams::template CheckCompatibleStaticAssert<Args...>();
 
-  int64_t shmem_bytes = kernel->metadata().shared_memory_bytes().value_or(0);
+  int64_t shmem_bytes = kernel->dynamic_shared_memory_bytes();
   return std::make_unique<PackedArgs>(std::forward<Args>(args)..., shmem_bytes);
 }
 

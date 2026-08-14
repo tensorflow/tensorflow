@@ -370,9 +370,10 @@ absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
                    stream_exec->LoadKernel(loader_spec));
 
-  se::KernelMetadata m;
-  m.set_shared_memory_bytes(shared_mem_bytes);
-  kernel->set_metadata(m);
+  // Keep the static shared-memory and register metadata populated by
+  // LoadKernel; record the dynamic shared-memory requirement as a launch
+  // attribute instead of overwriting the metadata.
+  kernel->set_dynamic_shared_memory_bytes(shared_mem_bytes);
   kernel->set_use_pdl(use_pdl);
   return kernel;
 }
@@ -388,9 +389,10 @@ absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
                    stream_exec->LoadKernel(loader_spec));
 
-  se::KernelMetadata m;
-  m.set_shared_memory_bytes(shared_mem_bytes);
-  kernel->set_metadata(m);
+  // Keep the static shared-memory and register metadata populated by
+  // LoadKernel; record the dynamic shared-memory requirement as a launch
+  // attribute instead of overwriting the metadata.
+  kernel->set_dynamic_shared_memory_bytes(shared_mem_bytes);
   kernel->set_use_pdl(use_pdl);
   return kernel;
 }
@@ -409,7 +411,8 @@ absl::Status ExecuteKernelOnStream(
           return TraceMeEncode("ExecuteKernelOnStream/PackKernelArgs", {});
         },
         /*level=*/TraceMeLevel::kVerbose);
-    ABSL_ASSIGN_OR_RETURN(kernel_args, se::PackKernelArgs(args, kernel.metadata()));
+    kernel_args =
+        se::PackKernelArgs(args, kernel.dynamic_shared_memory_bytes());
   }
 
   return kernel.Launch(dims.thread_counts_per_block(), dims.block_counts(),
