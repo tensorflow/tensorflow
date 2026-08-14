@@ -483,6 +483,7 @@ cc_library(
         "@xla//xla/tsl:windows": [
             "-DEFAULTLIB:ws2_32.lib",
             "-DEFAULTLIB:advapi32.lib",
+            "-DEFAULTLIB:bcrypt.lib",
             "-DEFAULTLIB:crypt32.lib",
             "-DEFAULTLIB:secur32.lib",
             "-DEFAULTLIB:Normaliz.lib",
