@@ -33,6 +33,8 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
@@ -48,7 +50,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -334,18 +335,6 @@ HloAliasAnalysis::HloAliasAnalysis(const HloModule* module) : module_(module) {}
 
 const HloBuffer& HloAliasAnalysis::GetUniqueBufferAt(
     const HloInstruction* instruction, const ShapeIndex& index) const {
-  std::vector<const HloBuffer*> buffers = ComputeBuffersAt(instruction, index);
-  CHECK_EQ(buffers.size(), 1);
-  return *buffers[0];
-}
-
-const HloBuffer& HloAliasAnalysis::GetUniqueBufferAt(
-    const HloPosition& position) const {
-  return GetUniqueBufferAt(position.instruction, position.index);
-}
-
-std::vector<const HloBuffer*> HloAliasAnalysis::ComputeBuffersAt(
-    const HloInstruction* instruction, const ShapeIndex& index) const {
   const HloValueSet& value_set =
       dataflow_analysis_->GetValueSet(instruction, index);
   std::vector<const HloBuffer*> buffers;
@@ -357,8 +346,34 @@ std::vector<const HloBuffer*> HloAliasAnalysis::ComputeBuffersAt(
   // Sort and uniquify vector before returning.
   absl::c_sort(buffers, HloBuffer::IdLessThan);
   buffers.erase(std::unique(buffers.begin(), buffers.end()), buffers.end());
+  if (buffers.size() > 1) {
+    std::string buffers_str = absl::StrJoin(
+        buffers, "\n", [](std::string* out, const HloBuffer* buffer) {
+          absl::StrAppend(out, "    ", buffer->ToString());
+        });
 
-  return buffers;
+    const bool is_leaf = ShapeUtil::IsLeafIndex(instruction->shape(), index);
+
+    std::string crash_message =
+        absl::StrCat("More than one buffer found at position:\n",
+                     "  Instruction: ", instruction->name(), "\n",
+                     "  Shape Index: ", index.ToString(), "\n",
+                     "  Is Leaf Index: ", is_leaf ? "true" : "false", "\n",
+                     "  HLO Buffers:\n", buffers_str, "\n");
+
+    LOG(FATAL) << crash_message;
+  }
+  return *buffers[0];
+}
+
+const HloBuffer& HloAliasAnalysis::GetUniqueBufferAt(
+    const HloPosition& position) const {
+  return GetUniqueBufferAt(position.instruction, position.index);
+}
+
+std::vector<const HloBuffer*> HloAliasAnalysis::ComputeBuffersAt(
+    const HloInstruction* instruction, const ShapeIndex& index) const {
+  return {&GetUniqueBufferAt(instruction, index)};
 }
 
 absl::Status HloAliasAnalysis::Verify() const {

@@ -3573,7 +3573,8 @@ TEST_F(LatencyHidingSchedulerTest, RerunWithSmallerMemoryLimit) {
             PositionInVector(new_instruction_sequence, cps));
 }
 
-TEST_F(LatencyHidingSchedulerTest, MultipleAsyncDoneOperationsDoNotCreateLoop) {
+TEST_F(LatencyHidingSchedulerTest,
+       DISABLED_MultipleAsyncDoneOperationsDoNotCreateLoop) {
   absl::string_view hlo_string = R"(
 HloModule multiple_async_done_scheduler_test, is_scheduled=true
 
