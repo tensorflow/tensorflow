@@ -32,8 +32,10 @@ using ::ml_adj::data::MutableDataRef;
 inline void PerImageStandardization(dim_t batches, dim_t height, dim_t width,
                                     dim_t num_channels, const float* input_data,
                                     float* output_data) {
+  if (input_data == nullptr || output_data == nullptr) return;
   const ind_t num_pixels_per_image =
-      static_cast<ind_t>(height) * width * num_channels;
+      static_cast<ind_t>(height) * static_cast<ind_t>(width) *
+      static_cast<ind_t>(num_channels);
 
   if (batches == 0 || num_pixels_per_image == 0) return;
 
@@ -77,16 +79,18 @@ inline void PerImageStandardization(dim_t batches, dim_t height, dim_t width,
 // float datatype.
 void ComputePerImageStandardization(const InputPack& inputs,
                                     const OutputPack& outputs) {
-  TFLITE_CHECK_EQ(inputs.size(), 1);
-  TFLITE_CHECK_EQ(outputs.size(), 1);
+  if (inputs.size() != 1 || outputs.size() != 1) return;
 
   // Extract input image data.
   const DataRef* img = inputs[0];
-  TFLITE_CHECK_EQ(img->Dims().size(), 4);
   MutableDataRef* output = outputs[0];
+
+  if (img == nullptr || output == nullptr) return;
 
   TFLITE_CHECK_EQ(img->Type(), etype_t::f32);
   TFLITE_CHECK_EQ(output->Type(), etype_t::f32);
+
+  if (img->Dims().size() != 4) return;
 
   const float* img_data = reinterpret_cast<const float*>(img->Data());
   const dim_t img_num_batches = img->Dims()[0];
@@ -94,7 +98,10 @@ void ComputePerImageStandardization(const InputPack& inputs,
   const dim_t img_width = img->Dims()[2];
   const dim_t img_num_channels = img->Dims()[3];
 
-  if (img_num_batches == 0 || img_height == 0 || img_width == 0) return;
+  if (img_num_batches == 0 || img_height == 0 || img_width == 0 ||
+      img_num_channels == 0) {
+    return;
+  }
 
   // Resize output buffer for resized image.
   output->Resize({img_num_batches, img_height, img_width, img_num_channels});
