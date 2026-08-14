@@ -18,6 +18,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/tiled/tiled_fusion_emitter.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/cpu/ir_emission_utils.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -110,6 +111,9 @@ bool FusionWrapper::MustWrapInstruction(const HloInstruction& instruction) {
         return IsSupportedTilingType(type);
       }
       return false;
+    case HloOpcode::kConvolution:
+      return target_machine_features_ != nullptr &&
+             !CanUseEigenConvolution(instruction, *target_machine_features_);
     // The following ops are supported but the performance is not as good as the
     // non-fusion path.
     // TODO(willfroom): Remove this once the performance is improved.

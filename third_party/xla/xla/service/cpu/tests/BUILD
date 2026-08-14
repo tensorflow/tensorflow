@@ -425,3 +425,18 @@ xla_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+xla_test(
+    name = "cpu_edge_cases_test",
+    srcs = ["cpu_edge_cases_test.cc"],
+    backends = ["cpu"],
+    deps = [
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
+    ],
+)

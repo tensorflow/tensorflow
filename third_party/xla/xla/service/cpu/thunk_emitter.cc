@@ -741,31 +741,23 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConvolutionThunk(
       /*supported_types=*/
       {PRED, S8, U8, S16, U16, S32, U32, S64, U64, F16, F32, F64, C64, C128}));
 
-  // TODO(tonywy): Add PotentiallyImplementedAsMKLConvolution to support
-  // different data layouts.
-  if (PotentiallyImplementedAsEigenConvolution(*instruction,
-                                               target_machine_features_)) {
+  if (CanUseEigenConvolution(*instruction, target_machine_features_)) {
     const Shape& input_shape = input->shape();
     const Shape& kernel_shape = kernel->shape();
     const Shape& output_shape = instruction->shape();
 
-    // The input, kernel and output agree with respect to layout.
-    if (LayoutUtil::IsMonotonicWithDim0Major(input_shape.layout()) &&
-        LayoutUtil::IsMonotonicWithDim0Major(kernel_shape.layout()) &&
-        LayoutUtil::IsMonotonicWithDim0Major(output_shape.layout())) {
-      ABSL_ASSIGN_OR_RETURN(auto input_buffer, GetAllocationSlice(input));
+    ABSL_ASSIGN_OR_RETURN(auto input_buffer, GetAllocationSlice(input));
 
-      ABSL_ASSIGN_OR_RETURN(auto kernel_buffer, GetAllocationSlice(kernel));
+    ABSL_ASSIGN_OR_RETURN(auto kernel_buffer, GetAllocationSlice(kernel));
 
-      ABSL_ASSIGN_OR_RETURN(auto output_buffer, GetAllocationSlice(instruction));
+    ABSL_ASSIGN_OR_RETURN(auto output_buffer, GetAllocationSlice(instruction));
 
-      ConvolutionThunk::Options options;
-      return ThunkSequence::Of<ConvolutionThunk>(
-          ThunkInfo(instruction), options, input_buffer, input_shape,
-          kernel_buffer, kernel_shape, output_buffer, output_shape,
-          instruction->convolution_dimension_numbers(), instruction->window(),
-          instruction->feature_group_count());
-    }
+    ConvolutionThunk::Options options;
+    return ThunkSequence::Of<ConvolutionThunk>(
+        ThunkInfo(instruction), options, input_buffer, input_shape,
+        kernel_buffer, kernel_shape, output_buffer, output_shape,
+        instruction->convolution_dimension_numbers(), instruction->window(),
+        instruction->feature_group_count());
   }
 
   // This is a completely un-optimized version of convolution just to

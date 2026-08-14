@@ -789,6 +789,7 @@ HloInstructionIndexing ComputeOutputToInputReduceWindowOpIndexing(
   IndexingMap inputs_indexing = ComposeIndexingMapsForWindow(
       input_shape.dimensions(), output_shape.dimensions(),
       reduce_window->window(), mlir_context);
+  inputs_indexing.RemoveUnusedSymbols();
 
   // Indexing map for the init value.
   IndexingMap inits_indexing_map =
@@ -807,17 +808,17 @@ HloInstructionIndexing ComputeOutputToInputReduceWindowOpIndexing(
   return instr_indexing;
 }
 
+// Computes output-to-input indexing for Convolution.
 HloInstructionIndexing ComputeOutputToInputConvolutionOpIndexing(
     const HloConvolutionInstruction* convolution, MLIRContext* mlir_context) {
   const Shape& input_shape = convolution->operand(0)->shape();
   const Shape& kernel_shape = convolution->operand(1)->shape();
   const Shape& output_shape = convolution->shape();
-  const ConvolutionDimensionNumbers& dnums =
-      convolution->convolution_dimension_numbers();
+  const auto& dnums = convolution->convolution_dimension_numbers();
   size_t rank = output_shape.dimensions().size();
 
   // Collect sizes for input/output spatial dimensions.
-  size_t spatial_rank = rank - 2;
+  size_t spatial_rank = dnums.input_spatial_dimensions_size();
   std::vector<int64_t> input_spatial_sizes(spatial_rank);
   std::vector<int64_t> kernel_spatial_sizes(spatial_rank);
   std::vector<int64_t> output_spatial_sizes(spatial_rank);
@@ -847,11 +848,9 @@ HloInstructionIndexing ComputeOutputToInputConvolutionOpIndexing(
   int64_t current_num_dims = spatial_rank;
   int64_t new_num_dims = rank;
   int64_t num_symbols = input_spatial_indexing.GetRangeVars().size();
-
-  auto symbolic_map = input_spatial_indexing.GetSymbolicMap();
   for (int i = 0; i < spatial_rank; ++i) {
     input_exprs[dnums.input_spatial_dimensions(i)] =
-        symbolic_map.GetResult(i).ReplaceDims(
+        input_spatial_indexing.GetSymbolicMap().GetResult(i).ReplaceDims(
             replacement_dims, current_num_dims, new_num_dims, num_symbols);
   }
   llvm::MapVector<SymbolicExpr, Interval> input_constraints;
@@ -859,6 +858,12 @@ HloInstructionIndexing ComputeOutputToInputConvolutionOpIndexing(
        input_spatial_indexing.GetSymbolicConstraints()) {
     input_constraints[key.ReplaceDims(replacement_dims, current_num_dims,
                                       new_num_dims, num_symbols)] = val;
+  }
+  std::vector<Interval> bounds = input_spatial_indexing.GetDimensionBounds();
+  for (int i = 0; i < spatial_rank; ++i) {
+    if (bounds[i].lower > 0 || bounds[i].upper < output_spatial_sizes[i] - 1) {
+      input_constraints[replacement_dims[i]] = bounds[i];
+    }
   }
 
   // Build symbolic expressions for kernel spatial and output dimensions.
@@ -876,7 +881,6 @@ HloInstructionIndexing ComputeOutputToInputConvolutionOpIndexing(
       CreateDimExpr(dnums.output_feature_dimension(), mlir_context);
   kernel_exprs[dnums.kernel_output_feature_dimension()] = dim_expr;
 
-  // Build initial symbol ranges.
   std::vector<IndexingMap::Variable> input_symbols =
       input_spatial_indexing.GetRangeVars();
   std::vector<IndexingMap::Variable> kernel_symbols =
@@ -926,10 +930,7 @@ HloInstructionIndexing ComputeOutputToInputConvolutionOpIndexing(
       SymbolicMap::Get(mlir_context, rank, input_symbols.size(), input_exprs),
       DimVarsFromTensorSizes(output_shape.dimensions()), input_symbols,
       /*rt_vars=*/{}, input_constraints);
-  // We may need to simplify and remove unused symbols again, as the input
-  // feature dimension size may be trivial.
   inputs_indexing.Simplify();
-  inputs_indexing.RemoveUnusedSymbols();
 
   // Indexing map for the kernel value.
   IndexingMap kernel_indexing(
@@ -937,7 +938,19 @@ HloInstructionIndexing ComputeOutputToInputConvolutionOpIndexing(
       DimVarsFromTensorSizes(output_shape.dimensions()), kernel_symbols,
       /*rt_vars=*/{});
   kernel_indexing.Simplify();
-  kernel_indexing.RemoveUnusedSymbols();
+
+  llvm::SmallBitVector input_unused =
+      GetUnusedSymbolsBitVector(inputs_indexing.GetSymbolicMap());
+  llvm::SmallBitVector kernel_unused =
+      GetUnusedSymbolsBitVector(kernel_indexing.GetSymbolicMap());
+  llvm::SmallBitVector common_unused = input_unused;
+  common_unused.resize(kernel_unused.size());
+  common_unused &= kernel_unused;
+  common_unused.resize(inputs_indexing.GetSymbolCount(), false);
+
+  inputs_indexing.CompressVars(/*unused_dims=*/{}, common_unused);
+  common_unused.resize(kernel_indexing.GetSymbolCount());
+  kernel_indexing.CompressVars(/*unused_dims=*/{}, common_unused);
 
   return HloInstructionIndexing::FromIndexingMaps(
       {inputs_indexing, kernel_indexing});
