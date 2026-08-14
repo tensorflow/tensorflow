@@ -2171,6 +2171,60 @@ LogicalResult ReduceIndexOp::verify() {
   return success();
 }
 
+LogicalResult ReduceOp::verify() {
+  VectorType input_type = getInput().getType();
+  VectorType output_type = getOutput().getType();
+
+  // SameOperandsAndResultRank checks the following:
+  CHECK_EQ(input_type.getRank(), output_type.getRank());
+  const int64_t rank = input_type.getRank();
+
+  SmallVector<bool> is_reduced(rank, false);
+  for (int64_t dim : getDimensions()) {
+    if (dim < 0 || dim >= rank) {
+      return emitOpError("Reduced dimension ")
+             << dim << " is out of bounds [0, " << rank << ")";
+    }
+    if (is_reduced[dim]) {
+      return emitOpError("Reduced dimension ")
+             << dim << " is present more than once";
+    }
+    is_reduced[dim] = true;
+  }
+
+  const ArrayRef<int64_t> input_shape = input_type.getShape();
+  const ArrayRef<int64_t> output_shape = output_type.getShape();
+  for (int64_t i = 0; i < rank; ++i) {
+    const int64_t expected_output_size = is_reduced[i] ? 1 : input_shape[i];
+    if (output_shape[i] != expected_output_size) {
+      return emitOpError("Expected output dimension ")
+             << i << " to have size " << expected_output_size << ", but got "
+             << output_shape[i];
+    }
+  }
+
+  switch (getKind()) {
+    case ReductionKind::kArgMax:
+    case ReductionKind::kArgMin:
+      return emitOpError(
+          "arg_max/arg_min not supported - use tpu.reduce_index instead");
+    case ReductionKind::kFindFirstSet:
+      return emitOpError("find_first_set not supported");
+    case ReductionKind::kSum:
+    case ReductionKind::kMax:
+    case ReductionKind::kMin:
+      // TODO(tlongeri): Might be worth allowing things like bf16 -> f32.
+      if (input_type.getElementType() != output_type.getElementType()) {
+        return emitOpError(
+            "Input and output must have the same element type for sum, max and "
+            "min reductions");
+      }
+      break;
+  }
+
+  return success();
+}
+
 LogicalResult AssumeMultipleOp::verify() {
   if (getMultiple() < 1) {
     return emitError("Multiple must be >= 1, got ") << getMultiple();

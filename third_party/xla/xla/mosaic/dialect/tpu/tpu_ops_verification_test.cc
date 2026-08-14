@@ -1386,5 +1386,84 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
       VerifyOp(wait),
       StatusIs(_, HasSubstr("Indirect DMA wait semaphore must be rank 0")));
 }
+
+TEST_F(TpuOpsVerificationTest, ReduceOpVerificationWorks) {
+  Value input = ConstantF32Vector(/*shape=*/{100, 200}, /*values=*/{1.0f});
+  auto reduce = Create<ReduceOp>(
+      /*output=*/VectorType::get({1, 200}, builder().getF32Type()),
+      /*input=*/input,
+      /*dimensions=*/builder().getDenseI64ArrayAttr({0}),
+      /*kind=*/
+      ReductionKindAttr::get(builder().getContext(), ReductionKind::kSum));
+  ASSERT_OK(VerifyOp(reduce));
+}
+
+TEST_F(TpuOpsVerificationTest, ReduceOpInvalidDim) {
+  Value input = ConstantF32Vector(/*shape=*/{100, 200}, /*values=*/{1.0f});
+  auto reduce = Create<ReduceOp>(
+      /*output=*/VectorType::get({1, 200}, builder().getF32Type()),
+      /*input=*/input,
+      /*dimensions=*/builder().getDenseI64ArrayAttr({2}),
+      /*kind=*/
+      ReductionKindAttr::get(builder().getContext(), ReductionKind::kSum));
+  ASSERT_THAT(
+      VerifyOp(reduce),
+      StatusIs(_, HasSubstr("Reduced dimension 2 is out of bounds [0, 2)")));
+}
+
+TEST_F(TpuOpsVerificationTest, ReduceOpReducedDimNotOne) {
+  Value input = ConstantF32Vector(/*shape=*/{100, 200}, /*values=*/{1.0f});
+  auto reduce = Create<ReduceOp>(
+      /*output=*/VectorType::get({10, 200}, builder().getF32Type()),
+      /*input=*/input,
+      /*dimensions=*/builder().getDenseI64ArrayAttr({0}),
+      /*kind=*/
+      ReductionKindAttr::get(builder().getContext(), ReductionKind::kSum));
+  ASSERT_THAT(VerifyOp(reduce),
+              StatusIs(_, HasSubstr("Expected output dimension 0 to have size "
+                                    "1, but got 10")));
+}
+
+TEST_F(TpuOpsVerificationTest, ReduceOpNonReducedDimMismatch) {
+  Value input = ConstantF32Vector(/*shape=*/{100, 200}, /*values=*/{1.0f});
+  auto reduce = Create<ReduceOp>(
+      /*output=*/VectorType::get({1, 300}, builder().getF32Type()),
+      /*input=*/input,
+      /*dimensions=*/builder().getDenseI64ArrayAttr({0}),
+      /*kind=*/
+      ReductionKindAttr::get(builder().getContext(), ReductionKind::kSum));
+  ASSERT_THAT(VerifyOp(reduce),
+              StatusIs(_, HasSubstr("Expected output dimension 1 to have "
+                                    "size 200, but got 300")));
+}
+
+TEST_F(TpuOpsVerificationTest, ReduceOpArgMaxUnsupported) {
+  Value input = ConstantF32Vector(/*shape=*/{100, 200}, /*values=*/{1.0f});
+  auto reduce = Create<ReduceOp>(
+      /*output=*/VectorType::get({1, 200}, builder().getI32Type()),
+      /*input=*/input,
+      /*dimensions=*/builder().getDenseI64ArrayAttr({0}),
+      /*kind=*/
+      ReductionKindAttr::get(builder().getContext(), ReductionKind::kArgMax));
+  ASSERT_THAT(
+      VerifyOp(reduce),
+      StatusIs(
+          _,
+          HasSubstr(
+              "arg_max/arg_min not supported - use tpu.reduce_index instead")));
+}
+
+TEST_F(TpuOpsVerificationTest, ReduceOpDuplicateDims) {
+  Value input = ConstantF32Vector(/*shape=*/{100, 200}, /*values=*/{1.0f});
+  auto reduce = Create<ReduceOp>(
+      /*output=*/VectorType::get({1, 200}, builder().getF32Type()),
+      /*input=*/input,
+      /*dimensions=*/builder().getDenseI64ArrayAttr({0, 0}),
+      /*kind=*/
+      ReductionKindAttr::get(builder().getContext(), ReductionKind::kSum));
+  ASSERT_THAT(
+      VerifyOp(reduce),
+      StatusIs(_, HasSubstr("Reduced dimension 0 is present more than once")));
+}
 }  // namespace
 }  // namespace mlir::tpu
