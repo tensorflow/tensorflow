@@ -476,10 +476,10 @@ inline void DilatedIm2col3D(const Conv3DParams& params, int filter_depth,
                       // Filter pixel is within the input, copy the input data.
                       T const* src = input_data + Offset(input_shape, batch,
                                                          in_d, in_y, in_x, 0);
-                      memcpy(dst, src, input_depth * sizeof(T));
+                      memcpy(dst, src, input_channels * sizeof(T));
                     } else {
                       // Filter pixel is outside the input, zero it out.
-                      memset(dst, zero_byte, input_depth * sizeof(T));
+                      memset(dst, zero_byte, input_channels * sizeof(T));
                     }
                   }
                 } else {
@@ -488,7 +488,7 @@ inline void DilatedIm2col3D(const Conv3DParams& params, int filter_depth,
                   T* dst = im2col_data + Offset(im2col_reshaped, 0, 0,
                                                 row_offset, col_offset);
                   memset(dst, zero_byte,
-                         filter_width * input_depth * sizeof(T));
+                         filter_width * input_channels * sizeof(T));
                 }
               }
             } else {
@@ -496,7 +496,7 @@ inline void DilatedIm2col3D(const Conv3DParams& params, int filter_depth,
               T* dst = im2col_data +
                        Offset(im2col_reshaped, 0, 0, row_offset, col_offset);
               memset(dst, zero_byte,
-                     filter_height * filter_width * input_depth * sizeof(T));
+                     filter_height * filter_width * input_channels * sizeof(T));
             }
           }
         }
