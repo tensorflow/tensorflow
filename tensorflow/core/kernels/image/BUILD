@@ -279,8 +279,7 @@ tf_kernel_library(
     prefix = "extract_image_patches_op",
     deps = [
         "//tensorflow/core/kernels:ops_util",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
+        "//tensorflow/core/util:overflow",
     ] + IMAGE_DEPS,
 )
 
@@ -292,6 +291,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels:eigen_helpers",
         "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/util:overflow",
         "@eigen_archive//:eigen3",
     ],
 )
