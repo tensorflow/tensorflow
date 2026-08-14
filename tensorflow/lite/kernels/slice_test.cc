@@ -408,6 +408,63 @@ TEST_P(SliceOpTest, BeginNonZeroSizeMinus1Axis1BFloat16) {
                                 Eigen::bfloat16(8), Eigen::bfloat16(9)}));
 }
 
+TEST(SliceOpTest, NegativeBeginIndex) {
+  SliceOpModel<float, int32_t> m({4}, {1}, {-100}, {1}, {1}, TensorType_INT32,
+                                 TensorType_FLOAT32, TestType::kDynamic);
+  m.SetInput({1, 2, 3, 4});
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+}
+
+TEST(SliceOpTest, NumElementsMismatch) {
+  class PrepareOnlySliceOpModel : public SingleOpModel {
+   public:
+    PrepareOnlySliceOpModel() {
+      input_ = AddInput(TensorType_FLOAT32);
+      begin_ = AddConstInput(TensorType_INT32, std::vector<int32_t>{1}, {1});
+      size_ = AddConstInput(TensorType_INT32, std::vector<int32_t>{1}, {1});
+      output_ = AddOutput(TensorType_FLOAT32);
+      SetBuiltinOp(BuiltinOperator_SLICE, BuiltinOptions_SliceOptions,
+                   CreateSliceOptions(builder_).Union());
+      BuildInterpreter({{2, 3}, {1}, {1}}, /*num_threads=*/-1,
+                       /*allow_fp32_relax_to_fp16=*/false,
+                       /*apply_delegate=*/true,
+                       /*allocate_and_delegate=*/false);
+    }
+   private:
+    int input_;
+    int begin_;
+    int size_;
+    int output_;
+  };
+  PrepareOnlySliceOpModel m;
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(SliceOpTest, MismatchedIndexTypes) {
+  class MismatchedIndexTypeModel : public SingleOpModel {
+   public:
+    MismatchedIndexTypeModel() {
+      input_ = AddInput(TensorType_FLOAT32);
+      begin_ = AddInput(TensorType_INT64);
+      size_ = AddInput(TensorType_INT32);
+      output_ = AddOutput(TensorType_FLOAT32);
+      SetBuiltinOp(BuiltinOperator_SLICE, BuiltinOptions_SliceOptions,
+                   CreateSliceOptions(builder_).Union());
+      BuildInterpreter({{2}, {1}, {1}}, /*num_threads=*/-1,
+                       /*allow_fp32_relax_to_fp16=*/false,
+                       /*apply_delegate=*/true,
+                       /*allocate_and_delegate=*/false);
+    }
+   private:
+    int input_;
+    int begin_;
+    int size_;
+    int output_;
+  };
+  MismatchedIndexTypeModel m;
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
 INSTANTIATE_TEST_SUITE_P(SliceOpTest, SliceOpTest,
                          ::testing::Values(TestType::kConst,
                                            TestType::kDynamic));
