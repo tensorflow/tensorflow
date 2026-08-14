@@ -2508,6 +2508,25 @@ class RepeatTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(v_tf, v_np)
     self.assertAllEqual(v_tf_fn, v_np)
 
+  def testHighRankStringTensorToNumpyDoesNotSegfault(self):
+    # Regression test for #124973. Converting a rank > NPY_MAXDIMS tensor
+    # to numpy hit the unguarded slow path in TF_TensorToPyArray and
+    # segfaulted. The reporter reached it via tf.repeat's error formatter
+    # interpolating a string tensor; here we hit the same guard directly
+    # by reshaping a scalar string constant to rank 100 and calling
+    # .numpy() on it. String dtype forces the slow path -- numeric dtypes
+    # take the aliased fast path, which is already guarded upstream in
+    # ArrayFromMemory.
+    if not context.executing_eagerly():
+      self.skipTest("Bug is in the eager .numpy() conversion path.")
+    # Rank 100: above numpy's NPY_MAXDIMS ceiling (32 pre-2.0, 64 post-2.0)
+    # and below TF's own TensorShape cap of 254.
+    x = array_ops.reshape(constant_op.constant("s"), [1] * 100)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "NumPy arrays can have at most"
+    ):
+      x.numpy()
+
 
 class RepeatBenchmark(test_lib.Benchmark):
   """Benchmark the repeat implementation."""
