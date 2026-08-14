@@ -139,14 +139,15 @@ absl::Status AdjustDynamicSliceConfig(HloInstruction* instr,
       });
 }
 
-// Adjusts the DS/DUS DynamicSliceConfig on `instr` and, if it is a fusion,
-// recurses into its fused computation. Fusion computations are cloned with the
-// fusion instruction, so each clone has its own private fused computation and
-// no cross-clone deduplication is needed.
+// Adjusts the DS/DUS DynamicSliceConfig on `instr` and recurses into private
+// computations cloned together with the instruction. Fusion and async-start
+// clones each own a distinct computation, so no cross-clone deduplication is
+// needed.
 absl::Status AdjustDynamicSliceConfigsForInstruction(
     HloInstruction* instr, const LoopIteration& loop_iteration) {
   ABSL_RETURN_IF_ERROR(AdjustDynamicSliceConfig(instr, loop_iteration));
-  if (instr->opcode() == HloOpcode::kFusion) {
+  if (instr->opcode() == HloOpcode::kFusion ||
+      instr->opcode() == HloOpcode::kAsyncStart) {
     for (HloComputation* called_computation : instr->called_computations()) {
       for (HloInstruction* nested : called_computation->instructions()) {
         ABSL_RETURN_IF_ERROR(
