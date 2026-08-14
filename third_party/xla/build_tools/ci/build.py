@@ -690,8 +690,6 @@ Build(
     },
     repo_env={
         "TF_CUDA_COMPUTE_CAPABILITIES": "10",
-        "HERMETIC_CUDA_VERSION": "12.8.0",
-        "HERMETIC_CUDNN_VERSION": "9.8.0",
     },
     extra_setup_commands=(["nvidia-smi"],),
     subcommand="build",
@@ -713,8 +711,6 @@ Build(
     },
     repo_env={
         "TF_CUDA_COMPUTE_CAPABILITIES": "10",
-        "HERMETIC_CUDA_VERSION": "12.8.0",
-        "HERMETIC_CUDNN_VERSION": "9.8.0",
     },
     extra_setup_commands=(["nvidia-smi"],),
     subcommand="build",
@@ -849,7 +845,7 @@ Build(
 Build(
     type_=BuildType.JAX_LINUX_X86_GPU_L4_GITHUB_ACTIONS,
     repo="google/jax",
-    configs=("rbe_linux_x86_64_cuda",),
+    configs=("rbe_linux_x86_64_cuda13",),
     target_patterns=(
         "//tests:gpu_tests",
         "//tests:backend_independent_tests",

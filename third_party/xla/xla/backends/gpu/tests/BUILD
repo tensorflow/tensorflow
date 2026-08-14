@@ -756,22 +756,6 @@ lit_test_suite_for_gpus(
     cfg = "//xla:lit.cfg.py",
     default_tags = ["gpu"],  # Needs to run in a build with a gpu configured.
     disabled_on_gpus = {
-        "v100": [
-            "kernel_reuse.hlo",
-            "triton_calling_convention.hlo",
-            "triton_naming.hlo",
-            "triton_tdm_elemwise.hlo",
-            "vectorization.hlo",
-            "pdl.hlo",
-        ],
-        "p100": [
-            "kernel_reuse.hlo",
-            "triton_calling_convention.hlo",
-            "triton_naming.hlo",
-            "triton_tdm_elemwise.hlo",
-            "vectorization.hlo",
-            "pdl.hlo",
-        ],
         "mi200": [
             "dot_bf16.hlo",
             "element_wise_row_vectorization.hlo",
@@ -804,8 +788,6 @@ lit_test_suite_for_gpus(
         "h100_sxm",
         "mi200",
         "mi350",
-        "p100",
-        "v100",
     ],
     tags = ["no-oneapi"],
     tools = [
