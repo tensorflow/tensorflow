@@ -2943,6 +2943,9 @@ CommonPjRtBufferImpl::CopyToMemorySpace(
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 CommonPjRtBufferImpl::CopyToMemorySpace(PjRtBuffer* donated_dst) {
+  if (!donated_dst) {
+    return absl::InvalidArgumentError("donated_dst cannot be null");
+  }
   PjRtMemorySpace* dst_memory_space = donated_dst->memory_space();
   // Copying across PjRtClients involves a copy through the host.
   if (dst_memory_space->client() == client()) {
@@ -3037,6 +3040,44 @@ CommonPjRtBufferImpl::CopyToMemorySpaceFallbackThroughLiteral(
   return dst_buffer;
 }
 
+static void ScheduleOrBypassCopyTo(
+    PjRtRawBufferRef src_raw_buffer, PjRtRawBufferRef dst_raw_buffer,
+    PjRtMemorySpace* dst_memory_space,
+    PjRtDeviceEventRefVector definition_events,
+    PjRtDeviceEventPromiseRef definition_event_promise,
+    PjRtDeviceEventPromiseRef src_usage_event_promise,
+    ::tsl::AsyncValueRef<bool> allocation_event) {
+  if (src_raw_buffer != dst_raw_buffer ||
+      src_raw_buffer->memory_space() != dst_memory_space) {
+    src_raw_buffer->ScheduleCopyTo(
+        std::move(definition_events), std::move(dst_raw_buffer),
+        std::move(definition_event_promise), std::move(src_usage_event_promise),
+        ToAllocationCallback(std::move(allocation_event)));
+    return;
+  }
+
+  if (allocation_event) {
+    allocation_event.SetStateConcrete();
+  }
+  PjRtDeviceEventSpan deps_span(definition_events);
+  xla::ExecuteWhenReady(
+      deps_span,
+      absl::down_cast<CommonPjRtClient*>(dst_memory_space->client())
+          ->async_work_runner(),
+      [definition_event_promise = std::move(definition_event_promise),
+       src_usage_event_promise = std::move(src_usage_event_promise),
+       definition_events = std::move(definition_events)]() mutable {
+        absl::Status status = xla::GetErrors(definition_events);
+        if (!status.ok()) {
+          definition_event_promise.SetError(status);
+          src_usage_event_promise.SetError(status);
+          return;
+        }
+        definition_event_promise.SetReady();
+        src_usage_event_promise.SetReady();
+      });
+}
+
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 CommonPjRtBufferImpl::DirectCopyToMemorySpace(
     PjRtMemorySpace* dst_memory_space,
@@ -3064,31 +3105,64 @@ CommonPjRtBufferImpl::DirectCopyToMemorySpace(
       src_usage_event_promise, src_raw_buffer, dst_raw_buffer, dst_buffer,
       definition_events, allocation_event));
   if (src_raw_buffer) {
-    src_raw_buffer->ScheduleCopyTo(
-        std::move(definition_events), std::move(dst_raw_buffer),
-        std::move(definition_event_promise), std::move(src_usage_event_promise),
-        ToAllocationCallback(std::move(allocation_event)));
+    ScheduleOrBypassCopyTo(
+        std::move(src_raw_buffer), std::move(dst_raw_buffer), dst_memory_space,
+        std::move(definition_events), std::move(definition_event_promise),
+        std::move(src_usage_event_promise), std::move(allocation_event));
   }
   return dst_buffer;
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 CommonPjRtBufferImpl::DirectCopyToMemorySpace(PjRtBuffer* donated_dst) {
-  PjRtMemorySpace* dst_memory_space = donated_dst->memory_space();
+  if (!donated_dst) {
+    return absl::InvalidArgumentError("donated_dst cannot be null");
+  }
+  auto* common_donated_dst = dynamic_cast<CommonPjRtBuffer*>(donated_dst);
+  if (!common_donated_dst) {
+    return absl::InvalidArgumentError(
+        "DirectCopyToMemorySpace requires a donated buffer backed by "
+        "CommonPjRtBuffer");
+  }
+  PjRtMemorySpace* dst_memory_space = common_donated_dst->memory_space();
   tsl::profiler::TraceMe traceme("CopyToMemorySpace_Donated");
   if (!dynamic_cast<CommonPjRtClient*>(dst_memory_space->client())) {
     return absl::InvalidArgumentError(
         "DirectCopyToMemorySpace only supported across CommonPjRtClient "
         "subclassed clients");
   }
+
+  // Fast path for self-donation: if donating the buffer to itself on the same
+  // memory space, transfer ownership directly without any hardware copy.
+  if (this == common_donated_dst && memory_space() == dst_memory_space) {
+    CommonPjRtBuffer::ScopedHold hold = common_donated_dst->GetBufferWithHold(
+        CommonPjRtBuffer::ScopedHold::kDonation);
+    if (!hold.ok()) {
+      return InvalidArgument("Invalid buffer passed to CopyToMemorySpace: %s",
+                             hold.status().ToString());
+    }
+    PjRtRawBufferRef raw_buffer = hold.buffer()->raw_buffer();
+    PjRtDeviceEventRefVector definition_events =
+        hold.buffer()->GetAsyncValueDefinitionAndUsageDeviceEvents();
+    hold.ConfirmDonation();
+
+    absl::InlinedVector<PjRtDeviceEventRef, 2> inlined_events;
+    ConsumeEvents(std::move(definition_events), [&](PjRtDeviceEventRef&& ev) {
+      inlined_events.push_back(std::move(ev));
+    });
+    auto* common_client = absl::down_cast<CommonPjRtClient*>(client());
+    return common_client->DefineBuffer(on_device_shape_, dst_memory_space,
+                                       std::move(raw_buffer),
+                                       std::move(inlined_events));
+  }
+
   PjRtDeviceEventPromiseRef definition_event_promise;
   PjRtDeviceEventPromiseRef src_usage_event_promise;
   PjRtRawBufferRef src_raw_buffer;
   PjRtRawBufferRef dst_raw_buffer;
   std::unique_ptr<PjRtBuffer> dst_buffer;
   PjRtDeviceEventRefVector definition_events;
-  auto* common_donated_dst = dynamic_cast<CommonPjRtBuffer*>(donated_dst);
-  auto hold = common_donated_dst->GetBufferWithHold(
+  CommonPjRtBuffer::ScopedHold hold = common_donated_dst->GetBufferWithHold(
       CommonPjRtBuffer::ScopedHold::kDonation);
   if (!hold.ok()) {
     return InvalidArgument("Invalid buffer passed to BufferFromHostBuffer: %s",
@@ -3105,10 +3179,10 @@ CommonPjRtBufferImpl::DirectCopyToMemorySpace(PjRtBuffer* donated_dst) {
       src_usage_event_promise, src_raw_buffer, dst_raw_buffer, dst_buffer,
       definition_events, allocation_event));
   if (src_raw_buffer) {
-    src_raw_buffer->ScheduleCopyTo(
-        std::move(definition_events), std::move(dst_raw_buffer),
-        std::move(definition_event_promise), std::move(src_usage_event_promise),
-        ToAllocationCallback(std::move(allocation_event)));
+    ScheduleOrBypassCopyTo(
+        std::move(src_raw_buffer), std::move(dst_raw_buffer), dst_memory_space,
+        std::move(definition_events), std::move(definition_event_promise),
+        std::move(src_usage_event_promise), std::move(allocation_event));
   }
   return dst_buffer;
 }

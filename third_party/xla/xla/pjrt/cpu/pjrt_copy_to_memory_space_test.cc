@@ -87,5 +87,65 @@ TEST(PjRtCopyToMemorySpaceTest, CopyWithDonatedRawBuffer) {
   EXPECT_EQ(dst_raw_alias.get(), raw_alias.get());
 }
 
+TEST(PjRtCopyToMemorySpaceTest, CopyWithSelfDonatedRawBuffer) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient(CpuClientOptions()));
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  Literal src_literal = LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4});
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> src_buffer,
+      client->BufferFromHostLiteral(src_literal, client->memory_spaces()[0]));
+
+  ASSERT_OK_AND_ASSIGN(PjRtRawBufferRef raw_alias,
+                       PjRtRawBuffer::CreateRawAliasOfBuffer(src_buffer.get()));
+
+  auto* common_src = dynamic_cast<CommonPjRtBufferImpl*>(src_buffer.get());
+  ASSERT_NE(common_src, nullptr);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> dst_buffer,
+      common_src->CopyToMemorySpace(client->memory_spaces()[0], raw_alias));
+
+  // Check that the destination buffer contains the correct data.
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> dst_received_literal,
+                       dst_buffer->ToLiteral().Await());
+  EXPECT_TRUE(LiteralTestUtil::Equal(src_literal, *dst_received_literal));
+
+  // Check that dst_buffer reuses the same raw buffer as src_buffer.
+  ASSERT_OK_AND_ASSIGN(PjRtRawBufferRef dst_raw_alias,
+                       PjRtRawBuffer::CreateRawAliasOfBuffer(dst_buffer.get()));
+  EXPECT_EQ(dst_raw_alias.get(), raw_alias.get());
+}
+
+TEST(PjRtCopyToMemorySpaceTest, CopyWithSelfDonatedPjRtBuffer) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient(CpuClientOptions()));
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  Literal src_literal = LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4});
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> src_buffer,
+      client->BufferFromHostLiteral(src_literal, client->memory_spaces()[0]));
+
+  ASSERT_OK_AND_ASSIGN(PjRtRawBufferRef raw_alias,
+                       PjRtRawBuffer::CreateRawAliasOfBuffer(src_buffer.get()));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> dst_buffer,
+                       src_buffer->CopyToMemorySpace(src_buffer.get()));
+
+  // Check that src_buffer was donated / deleted.
+  EXPECT_TRUE(src_buffer->IsDeleted());
+
+  // Check that the destination buffer contains the correct data.
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> dst_received_literal,
+                       dst_buffer->ToLiteral().Await());
+  EXPECT_TRUE(LiteralTestUtil::Equal(src_literal, *dst_received_literal));
+
+  // Check that dst_buffer reuses the exact raw buffer from src_buffer.
+  ASSERT_OK_AND_ASSIGN(PjRtRawBufferRef dst_raw_alias,
+                       PjRtRawBuffer::CreateRawAliasOfBuffer(dst_buffer.get()));
+  EXPECT_EQ(dst_raw_alias.get(), raw_alias.get());
+}
+
 }  // namespace
 }  // namespace xla
