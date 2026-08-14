@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
 #include "xla/backends/profiler/gpu/cupti_tracer_options_utils.h"
 #include "xla/backends/profiler/gpu/gpu_metadata.h"
+#include "xla/debug_options_flags.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
 #include "xla/tsl/util/env_var.h"
@@ -86,6 +87,8 @@ absl::Status GpuTracer::DoStart() {
   }
 
   options_.cbids_selected = CuptiTracer::CreateDefaultCallbackIds();
+  options_.prefer_cupti_v2 =
+      xla::GetDebugOptionsFromFlags().xla_gpu_enable_cupti_multi_subscriber();
 
   bool trace_concurrent_kernels = false;
   ReadBoolFromEnvVar("TF_GPU_CUPTI_FORCE_CONCURRENT_KERNEL", true,

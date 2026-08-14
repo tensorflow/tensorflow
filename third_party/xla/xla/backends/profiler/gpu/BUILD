@@ -54,6 +54,7 @@ cc_library(
         ":cupti_tracer",
         ":cupti_tracer_options_utils",
         ":gpu_metadata",
+        "//xla:debug_options_flags",
         "//xla/tsl/platform:errors",
         "//xla/tsl/profiler/utils:time_utils",
         "//xla/tsl/util:env_var",

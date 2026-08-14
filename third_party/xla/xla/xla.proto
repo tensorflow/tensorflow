@@ -1313,6 +1313,10 @@ message DebugOptions {
   // names remain compact.
   optional int32 xla_gpu_trace_annotation_level = 530;
 
+  // Enables CUPTI V2 multi-subscriber APIs for GPU profiling when available.
+  // Allows XLA profiling to coexist with tools such as Nsight Systems.
+  optional bool xla_gpu_enable_cupti_multi_subscriber = 534;
+
   // Creates triton fusion for all supported gemms.
   // To make sure only triton gemm is chosen by the autotuner run with
   // `xla_gpu_cublas_fallback` set to false.
@@ -1792,7 +1796,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 534
+  // Next id: 535
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

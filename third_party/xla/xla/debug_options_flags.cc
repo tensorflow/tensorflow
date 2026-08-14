@@ -298,6 +298,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_enable_cublaslt(true);
   opts.set_xla_gpu_trace_annotation_level(0);
+  opts.set_xla_gpu_enable_cupti_multi_subscriber(true);
 
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CONDITIONAL);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
@@ -2775,6 +2776,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "names and basic structured payloads. Level 1 additionally emits "
       "detailed HLO and collective metadata in XProf annotation names and "
       "structured payloads. NVTX names remain compact."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_cupti_multi_subscriber",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_cupti_multi_subscriber),
+      debug_options->xla_gpu_enable_cupti_multi_subscriber(),
+      "Enable CUPTI V2 multi-subscriber APIs for GPU profiling when "
+      "available."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_operand_bytes_threshold_for_windowed_einsum",
       int64_setter_for(
