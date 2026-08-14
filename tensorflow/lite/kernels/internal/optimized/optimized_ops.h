@@ -8015,7 +8015,6 @@ inline void Conv3DTranspose(
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 5);
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 5);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 5);
-  TFLITE_DCHECK(col2im_data);
 
   const int batch_size = MatchingDim(input_shape, 0, output_shape, 0);
   const int input_channel = MatchingDim(input_shape, 4, filter_shape, 4);
@@ -8050,35 +8049,39 @@ inline void Conv3DTranspose(
   const int filter_total_size = filter_spatial_dim_1 * filter_spatial_dim_2 *
                                 filter_spatial_dim_3 * output_channel;
 
-  cpu_backend_gemm::MatrixParams<float> lhs_params;
-  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
-  lhs_params.rows = filter_total_size;
-  lhs_params.cols = input_channel;
   float* output_data_p = output_data;
   std::fill_n(output_data, output_offset * batch_size, 0.0f);
-  for (int i = 0; i < batch_size; ++i) {
-    cpu_backend_gemm::MatrixParams<float> rhs_params;
-    rhs_params.order = cpu_backend_gemm::Order::kColMajor;
-    rhs_params.rows = input_channel;
-    rhs_params.cols = input_spatial_size;
-    cpu_backend_gemm::MatrixParams<float> dst_params;
-    dst_params.order = cpu_backend_gemm::Order::kColMajor;
-    dst_params.rows = filter_total_size;
-    dst_params.cols = input_spatial_size;
-    cpu_backend_gemm::GemmParams<float, float> gemm_params;
-    cpu_backend_gemm::Gemm(lhs_params, filter_data, rhs_params,
-                           input_data + input_offset * i, dst_params,
-                           col2im_data, gemm_params, cpu_backend_context);
+  if (filter_total_size > 0 && input_channel > 0 && input_spatial_size > 0 &&
+      batch_size > 0) {
+    TFLITE_DCHECK(col2im_data);
+    cpu_backend_gemm::MatrixParams<float> lhs_params;
+    lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+    lhs_params.rows = filter_total_size;
+    lhs_params.cols = input_channel;
+    for (int i = 0; i < batch_size; ++i) {
+      cpu_backend_gemm::MatrixParams<float> rhs_params;
+      rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+      rhs_params.rows = input_channel;
+      rhs_params.cols = input_spatial_size;
+      cpu_backend_gemm::MatrixParams<float> dst_params;
+      dst_params.order = cpu_backend_gemm::Order::kColMajor;
+      dst_params.rows = filter_total_size;
+      dst_params.cols = input_spatial_size;
+      cpu_backend_gemm::GemmParams<float, float> gemm_params;
+      cpu_backend_gemm::Gemm(lhs_params, filter_data, rhs_params,
+                             input_data + input_offset * i, dst_params,
+                             col2im_data, gemm_params, cpu_backend_context);
 
-    Col2im(col2im_data, output_channel, output_spatial_dim_1,
-           output_spatial_dim_2, output_spatial_dim_3, filter_spatial_dim_1,
-           filter_spatial_dim_2, filter_spatial_dim_3,
-           spatial_dim_1_padding_before, spatial_dim_2_padding_before,
-           spatial_dim_3_padding_before, spatial_dim_1_padding_after,
-           spatial_dim_2_padding_after, spatial_dim_3_padding_after,
-           spatial_dim_1_stride, spatial_dim_2_stride, spatial_dim_3_stride,
-           output_data_p);
-    output_data_p += output_offset;
+      Col2im(col2im_data, output_channel, output_spatial_dim_1,
+             output_spatial_dim_2, output_spatial_dim_3, filter_spatial_dim_1,
+             filter_spatial_dim_2, filter_spatial_dim_3,
+             spatial_dim_1_padding_before, spatial_dim_2_padding_before,
+             spatial_dim_3_padding_before, spatial_dim_1_padding_after,
+             spatial_dim_2_padding_after, spatial_dim_3_padding_after,
+             spatial_dim_1_stride, spatial_dim_2_stride, spatial_dim_3_stride,
+             output_data_p);
+      output_data_p += output_offset;
+    }
   }
   output_data_p = output_data;
   BiasAdd3D(output_data_p, bias_data, output_shape, params.float_activation_min,
