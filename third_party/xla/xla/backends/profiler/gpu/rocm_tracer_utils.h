@@ -125,8 +125,9 @@ struct RocmTracerEvent {
       std::numeric_limits<uint32_t>::max();
   static constexpr uint64_t kInvalidThreadId =
       std::numeric_limits<uint64_t>::max();
-  static constexpr uint32_t kInvalidCorrelationId =
-      std::numeric_limits<uint32_t>::max();
+  // Matches rocprofiler_correlation_id_t::internal, which is 64-bit.
+  static constexpr uint64_t kInvalidCorrelationId =
+      std::numeric_limits<uint64_t>::max();
   static constexpr uint64_t kInvalidStreamId =
       std::numeric_limits<uint64_t>::max();
   RocmTracerEventType type;
@@ -140,7 +141,7 @@ struct RocmTracerEvent {
   uint64_t start_time_ns = 0;
   uint64_t end_time_ns = 0;
   uint32_t device_id = kInvalidDeviceId;
-  uint32_t correlation_id = kInvalidCorrelationId;
+  uint64_t correlation_id = kInvalidCorrelationId;
   uint64_t thread_id = kInvalidThreadId;
   uint64_t stream_id = kInvalidStreamId;
   uint64_t queue_id = 0;  // HSA queue handle, preserved for debugging/rocprof
@@ -172,10 +173,10 @@ struct RocmTraceCollectorOptions {
 class AnnotationMap {
  public:
   explicit AnnotationMap(uint64_t max_size) : max_size_(max_size) {}
-  void Add(uint32_t correlation_id, const std::string& annotation,
+  void Add(uint64_t correlation_id, const std::string& annotation,
            absl::Span<const int64_t> scope_range_ids = {});
-  absl::string_view LookUp(uint32_t correlation_id);
-  int64_t LookUpScopeRangeId(uint32_t correlation_id);
+  absl::string_view LookUp(uint64_t correlation_id);
+  int64_t LookUpScopeRangeId(uint64_t correlation_id);
   ScopeRangeIdTree TakeScopeRangeIdTree();
   void Clear();
 
@@ -187,9 +188,9 @@ class AnnotationMap {
     // Annotation tends to be repetitive, use a hash_set to store the strings,
     // an use the reference to the string in the map.
     absl::node_hash_set<std::string> annotations ABSL_GUARDED_BY(mutex);
-    absl::flat_hash_map<uint32_t, absl::string_view> correlation_map
+    absl::flat_hash_map<uint64_t, absl::string_view> correlation_map
         ABSL_GUARDED_BY(mutex);
-    absl::flat_hash_map<uint32_t, int64_t> scope_range_id_map
+    absl::flat_hash_map<uint64_t, int64_t> scope_range_id_map
         ABSL_GUARDED_BY(mutex);
     ScopeRangeIdTree scope_range_id_tree ABSL_GUARDED_BY(mutex);
   };
