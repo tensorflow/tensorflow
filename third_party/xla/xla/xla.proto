@@ -1796,11 +1796,15 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 535
+  // Next id: 536
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
   map<string, string> xla_backend_extra_options = 500;
+
+  // Google: Enables uploads of HLO to a repository. Can be disabled for
+  // dynamic/eager workloads where the overhead is undesirable.
+  optional bool xla_enable_hlo_modules_upload = 535;
 
   reserved "hlo_reduce_precision_options";
   reserved "legacy_command_buffer_custom_call_targets";

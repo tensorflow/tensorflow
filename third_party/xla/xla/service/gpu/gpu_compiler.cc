@@ -2310,9 +2310,13 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   if (gpu_topology.slice_size() > 0) {
     module->mutable_config().set_partition_size(gpu_topology.slice_size());
   }
-  const std::optional<std::string> unoptimized_fingerprint =
-      MaybeUploadUnoptimizedGpuSymbols(
-          module.get(), gpu_topology.gpu_target_config().ToProto());
+  std::optional<std::string> unoptimized_fingerprint;
+  const bool should_upload_hlo_modules =
+      debug_opts.xla_enable_hlo_modules_upload();
+  if (should_upload_hlo_modules) {
+    unoptimized_fingerprint = MaybeUploadUnoptimizedGpuSymbols(
+        module.get(), gpu_topology.gpu_target_config().ToProto());
+  }
   DumpHloConfigIfEnabled(*module);
   // We dump the post-optimization HLO in RunBackend so no need to dump it here.
   XLA_SCOPED_LOGGING_TIMER_IF(
@@ -2350,8 +2354,11 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
         AutotunerCache::SerializeAutotuneResults(&autotune_results));
     ABSL_RETURN_IF_ERROR(SerializeAutotuneResultsToFile(debug_opts));
   }
-  const std::optional<std::string> optimized_fingerprint =
-      MaybeUploadOptimizedGpuSymbols(module.get(), autotune_results);
+  std::optional<std::string> optimized_fingerprint;
+  if (should_upload_hlo_modules) {
+    optimized_fingerprint =
+        MaybeUploadOptimizedGpuSymbols(module.get(), autotune_results);
+  }
   if (unoptimized_fingerprint.has_value() &&
       optimized_fingerprint.has_value()) {
     MaybeUploadGpuSymbolMapping(*unoptimized_fingerprint,

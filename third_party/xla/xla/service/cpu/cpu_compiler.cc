@@ -1185,7 +1185,9 @@ absl::Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
                                        const CompileOptions& compile_options) {
   TargetMachineFeatures target_machine_features(target_machine);
 
-  bool has_uploader = GetGlobalSymbolUploaderRegistry().uploader() != nullptr;
+  const bool has_uploader =
+      GetGlobalSymbolUploaderRegistry().uploader() != nullptr &&
+      module->config().debug_options().xla_enable_hlo_modules_upload();
   TargetMachineOptionsProto target_machine_options_proto;
   std::optional<std::string> unoptimized_fingerprint;
 
