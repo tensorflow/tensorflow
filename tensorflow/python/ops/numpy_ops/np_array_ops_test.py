@@ -1171,6 +1171,43 @@ class ArrayMethodsTest(test.TestCase):
     out = np_array_ops.take_along_axis(x, ind, axis=1)
     self.assertAllEqual(out, out_expected)
 
+  def testTakeAlongAxisJitCompile(self):
+    # Regression test for GitHub issue 62391: the axis-swapping branch was
+    # emitted as a real conditional whose branches have different shapes, so
+    # the result shape XLA computed disagreed with the shape set on the
+    # result and a following op saw the wrong dimension.
+    x = constant_op.constant(
+        np.random.default_rng(1).standard_normal((5, 3, 2)), dtypes.float32
+    )
+    ind = constant_op.constant([[[-1]]], dtype=dtypes.int32)
+
+    def f(x, ind):
+      taken = np_array_ops.take_along_axis(x, ind, axis=-2)
+      return array_ops.squeeze(taken, axis=-2)
+
+    expected = f(x, ind)
+    self.assertAllEqual((5, 2), expected.shape)
+    actual = def_function.function(f, jit_compile=True)(x, ind)
+    self.assertAllEqual((5, 2), actual.shape)
+    self.assertAllClose(expected, actual)
+
+  def testTakeAlongAxisUnknownRank(self):
+    # The tensor predicate is still used when the rank is not known
+    # statically.
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(None, dtypes.float32),
+            tensor_spec.TensorSpec(None, dtypes.int32),
+        ]
+    )
+    def f(x, ind):
+      return np_array_ops.take_along_axis(x, ind, axis=1)
+
+    rng = np.random.default_rng(2)
+    x = rng.standard_normal((4, 6)).astype(np.float32)
+    ind = rng.integers(0, 6, (4, 3)).astype(np.int32)
+    self.assertAllClose(np.take_along_axis(x, ind, axis=1), f(x, ind))
+
   def testWhere(self):
     self.assertAllEqual([[1.0, 1.0], [1.0, 1.0]],
                         np_array_ops.where([True], [1.0, 1.0],
