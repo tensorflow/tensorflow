@@ -266,6 +266,39 @@ class SwishGradOpTest(test.TestCase):
       error = gradient_checker_v2.max_error(theoretical, numerical)
       self.assertLess(error, 1e-4)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testSwishPreservesSmallValuesAndGradients(self):
+    test_cases = (
+        (dtypes.float32, -90.0, 1e-5),
+        (dtypes.float64, -709.0, 1e-12),
+    )
+    for dtype, value, rtol in test_cases:
+      with self.subTest(dtype=dtype.name):
+        features = constant_op.constant(value, dtype=dtype)
+        beta = constant_op.constant(1.0, dtype=dtype)
+        with backprop.GradientTape() as tape:
+          tape.watch([features, beta])
+          swish = nn_impl.swish(features, beta)
+
+        features_grad, beta_grad = tape.gradient(swish, [features, beta])
+        q = np.exp(np.float64(value))
+        sigmoid = q / (1.0 + q)
+        expected_value = value * sigmoid
+        expected_features_grad = sigmoid * (1.0 + value * (1.0 - sigmoid))
+        expected_beta_grad = value**2 * sigmoid * (1.0 - sigmoid)
+        self.assertAllClose(
+            expected_value, self.evaluate(swish), rtol=rtol, atol=0
+        )
+        self.assertAllClose(
+            expected_features_grad,
+            self.evaluate(features_grad),
+            rtol=rtol,
+            atol=0,
+        )
+        self.assertAllClose(
+            expected_beta_grad, self.evaluate(beta_grad), rtol=rtol, atol=0
+        )
+
 
 if __name__ == "__main__":
   test.main()
