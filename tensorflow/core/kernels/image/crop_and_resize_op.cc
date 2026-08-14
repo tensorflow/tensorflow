@@ -252,6 +252,9 @@ struct CropAndResize<CPUDevice, T> {
         const float x1 = boxes(b, 1);
         const float y2 = boxes(b, 2);
         const float x2 = boxes(b, 3);
+        if (!std::isfinite(y1) || !std::isfinite(x1) || !std::isfinite(y2) || !std::isfinite(x2)) {
+          continue;
+        }
 
         const int32_t b_in = box_index(b);
         if (!FastBoundsCheck(b_in, batch_size)) {
@@ -372,6 +375,16 @@ class CropAndResizeGradImageOp : public AsyncOpKernel {
   }
 
   void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
+    const Tensor& boxes = context->input(1);
+    if (boxes.NumElements() > 0) {
+      const Eigen::Tensor<bool, 0, Eigen::RowMajor> only_finite =
+          boxes.tensor<float, 2>().isfinite().all();
+      OP_REQUIRES_ASYNC(
+          context, only_finite(),
+          absl::InvalidArgumentError(
+              "boxes contains at least one element that is not finite"),
+          done);
+    }
     // The shape of 'grads' is [num_boxes, crop_height, crop_width, depth].
     const Tensor& grads = context->input(0);
     // The shape of 'boxes' is [num_boxes, 4].
@@ -493,6 +506,9 @@ struct CropAndResizeBackpropImage<CPUDevice, T> {
         const float x1 = boxes(b, 1);
         const float y2 = boxes(b, 2);
         const float x2 = boxes(b, 3);
+        if (!std::isfinite(y1) || !std::isfinite(x1) || !std::isfinite(y2) || !std::isfinite(x2)) {
+          continue;
+        }
 
         const int32_t b_in = box_index(b);
         if (!FastBoundsCheck(b_in, batch_size)) {
@@ -599,6 +615,16 @@ class CropAndResizeGradBoxesOp : public AsyncOpKernel {
   }
 
   void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
+    const Tensor& boxes = context->input(3);
+    if (boxes.NumElements() > 0) {
+      const Eigen::Tensor<bool, 0, Eigen::RowMajor> only_finite =
+          boxes.tensor<float, 2>().isfinite().all();
+      OP_REQUIRES_ASYNC(
+          context, only_finite(),
+          absl::InvalidArgumentError(
+              "boxes contains at least one element that is not finite"),
+          done);
+    }
     // The shape of 'grads' is [num_boxes, crop_height, crop_width, depth].
     const Tensor& grads = context->input(0);
     // The shape of 'boxes' is [num_boxes, 4].
@@ -708,6 +734,9 @@ struct CropAndResizeBackpropBoxes<CPUDevice, T> {
       const float x1 = boxes(b, 1);
       const float y2 = boxes(b, 2);
       const float x2 = boxes(b, 3);
+        if (!std::isfinite(y1) || !std::isfinite(x1) || !std::isfinite(y2) || !std::isfinite(x2)) {
+          continue;
+        }
 
       const int32_t b_in = box_index(b);
       if (!FastBoundsCheck(b_in, batch_size)) {
