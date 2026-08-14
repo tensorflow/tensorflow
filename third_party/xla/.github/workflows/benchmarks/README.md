@@ -15,6 +15,7 @@ regression tracking.
 * [Postsubmit Workflow
   (`postsubmit_benchmark.yml`)](https://github.com/openxla/xla/blob/main/.github/workflows/postsubmit_benchmark.yml)
 * [Nightly Workflow (`nightly_benchmarks.yml`)](https://github.com/openxla/xla/blob/main/.github/workflows/nightly_benchmarks.yml)
+* [Run Benchmarks Manual Workflow (`run_benchmarks.yml`)](https://github.com/openxla/xla/blob/main/.github/workflows/run_benchmarks.yml)
 * [XLA HLO Workload Executor
   Documentation](https://github.com/openxla/xla/blob/main/xla/tools/benchmarks/hlo_workload_executor/README.md)
 * [BAP (Benchmarking Automation Platform)
@@ -52,7 +53,9 @@ consisting of four main components:
    `gpu_b200`, `cpu_x86`).
 2. **GitHub Actions Workflows**: The continuous integration pipelines
    [`postsubmit_benchmark.yml`](https://github.com/openxla/xla/blob/main/.github/workflows/postsubmit_benchmark.yml),
-   [`nightly_benchmarks.yml`](https://github.com/openxla/xla/blob/main/.github/workflows/nightly_benchmarks.yml) that invoke BAP's core
+   [`nightly_benchmarks.yml`](https://github.com/openxla/xla/blob/main/.github/workflows/nightly_benchmarks.yml), and the manual
+   [`run_benchmarks.yml`](https://github.com/openxla/xla/blob/main/.github/workflows/run_benchmarks.yml)
+   workflow that invoke BAP's core
    [`run-benchmarks.yaml`](https://github.com/google-ml-infra/bap/blob/main/.github/workflows/run-benchmarks.yaml)
    engine. BAP dynamically generates matrix jobs, delegates execution to our
    local composite action
@@ -94,17 +97,27 @@ workflows:
 ### Testing / Ad-hoc Runs
 
 If you need to execute benchmarks on demand—such as testing a registry change on
-a feature branch without merging, or reproducing a regression—you can trigger
-the pipeline manually via `workflow_dispatch` in the GitHub Actions UI:
+a feature branch without merging, reproducing a regression, or running A/B
+comparisons—you can trigger the **Run Benchmarks** workflow
+([`run_benchmarks.yml`](https://github.com/openxla/xla/blob/main/.github/workflows/run_benchmarks.yml))
+manually via `workflow_dispatch` in the GitHub Actions UI:
 
-1. **Push to a remote branch**: Commit your changes to
-   `benchmark_registry.pbtxt` and push your feature branch to your repository.
-2. **Trigger the workflow**: Navigate to the `Postsubmit - Run Benchmarks`
-   workflow inside the GitHub Actions UI and click **Run workflow** against your
-   branch.
-3. **Inspect Results**: Look at the benchmark report inside the workflow run
+1. **Push to a remote branch** (Optional): If you are testing changes to
+   `benchmark_registry.pbtxt` or benchmark code, commit and push your changes
+   to a feature branch.
+2. **Trigger the workflow**: Navigate to the **Run Benchmarks** workflow inside
+   the GitHub Actions UI and click **Run workflow**. You can select the branch
+   to run against.
+3. **Configure Options**:
+   * **`ab_mode`**: Enable this boolean to run an A/B comparison (baseline vs experiment).
+   * **`baseline_ref`**: The Git reference (e.g., branch, SHA) for the baseline in A/B mode. Defaults to PR base or `main`.
+   * **`experiment_ref`**: The Git reference for the experiment in A/B mode. Defaults to the current commit SHA.
+   * **`benchmark_filter`**: Regex to filter benchmarks by name (e.g., `^gemma3_.*`).
+   * **`environment_filter`**: Regex to filter by environment configuration ID (e.g., `^gpu_.*`).
+   * **`custom_metadata`**: JSON string of metadata to append to the benchmark result.
+4. **Inspect Results**: Look at the benchmark report inside the workflow run
    summary or inspect the downloaded artifact bundle to verify parsed scalar
-   values and static regression comparisons.
+   values and comparisons.
 
 ---
 

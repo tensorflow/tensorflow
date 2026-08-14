@@ -12,14 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-# .github/workflows/postsubmit_benchmark.yml
-name: Postsubmit Benchmarks
+# .github/workflows/run_benchmarks.yml
+name: Run Benchmarks
 
 on:
-  # Required for internal services to invoke workflow runs.
-  # Required inputs: benchmark_filter, environment_filter, custom_metadata.
+  # Allow manual runs from the Actions tab for testing
   workflow_dispatch:
     inputs:
+      ab_mode:
+        description: "Run A/B comparison (baseline vs experiment)."
+        required: false
+        type: boolean
+        default: false
+      baseline_ref:
+        description: "Git ref for the baseline in A/B mode. Defaults to PR base or main."
+        required: false
+        type: string
+        default: ""
+      experiment_ref:
+        description: "Git ref for the experiment in A/B mode. Defaults to current commit SHA."
+        required: false
+        type: string
+        default: ""
       benchmark_filter:
         description: "Regex to filter by benchmark name (e.g., 'gemma3_.*')."
         required: false
@@ -36,32 +50,20 @@ on:
         type: string
         default: "{}"
 
-  push:
-    branches:
-      - main
-
 permissions:
   contents: read
   pull-requests: write
 
-concurrency:
-  # Group by workflow name and branch to ensure runs execute sequentially.
-  # This prevents parallel postsubmit runs from clashing and ensures accurate
-  # reporting history.
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
   run_benchmarks:
-    name: Run XLA Postsubmit Benchmarks
+    name: XLA Benchmarks
     uses: google-ml-infra/bap/.github/workflows/run-benchmarks.yaml@fd37d1f65a06f0124d9d2022d97efa8dc8812557 # main
     with:
       registry_file: "xla/tools/benchmarks/benchmark_registry.pbtxt"
-      tag_filter: "postsubmit"
       bap_ref: "fd37d1f65a06f0124d9d2022d97efa8dc8812557"
-      publish_metrics: true
-      pub_sub_gcp_project_id: "ml-oss-benchmarking-production"
-      pub_sub_gcp_topic_id: "public-results-prod"
-      benchmark_filter: ${{ inputs.benchmark_filter || '' }}
-      environment_filter: ${{ inputs.environment_filter || '' }}
-      custom_metadata: ${{ inputs.custom_metadata || '{}' }}
+      ab_mode: ${{ inputs.ab_mode }}
+      baseline_ref: ${{ inputs.baseline_ref }}
+      experiment_ref: ${{ inputs.experiment_ref }}
+      benchmark_filter: ${{ inputs.benchmark_filter }}
+      environment_filter: ${{ inputs.environment_filter }}
+      custom_metadata: ${{ inputs.custom_metadata }}

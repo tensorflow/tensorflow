@@ -18,23 +18,6 @@ name: Nightly Benchmarks
 on:
   schedule:
     - cron: "0 0 * * *"
-  workflow_dispatch:
-    inputs:
-      benchmark_filter:
-        description: "Regex to filter by benchmark name (e.g., 'gemma.*')."
-        required: false
-        type: string
-        default: ""
-      environment_filter:
-        description: "Regex to filter by environment configuration ID (e.g., 'gpu_l4')."
-        required: false
-        type: string
-        default: ""
-      custom_metadata:
-        description: "JSON string of custom metadata to append to benchmark results."
-        required: false
-        type: string
-        default: "{}"
 
 permissions:
   contents: read
@@ -47,13 +30,8 @@ concurrency:
 jobs:
   run_benchmarks:
     name: Run XLA Nightly Benchmarks
-    uses: google-ml-infra/bap/.github/workflows/run-benchmarks.yaml@bd952b0063be0b4169f698947792d203ab5f5c42
+    uses: google-ml-infra/bap/.github/workflows/run-benchmarks.yaml@fd37d1f65a06f0124d9d2022d97efa8dc8812557 # main
     with:
       registry_file: "xla/tools/benchmarks/benchmark_registry.pbtxt"
       tag_filter: "scheduled"
-      benchmark_filter: ${{ inputs.benchmark_filter || '' }}
-      environment_filter: ${{ inputs.environment_filter || '' }}
-      custom_metadata: ${{ inputs.custom_metadata || '{}' }}
-      ab_mode: false
-      publish_metrics: true
-      bap_ref: "bd952b0063be0b4169f698947792d203ab5f5c42"
+      bap_ref: "fd37d1f65a06f0124d9d2022d97efa8dc8812557"
