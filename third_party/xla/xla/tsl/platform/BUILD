@@ -803,18 +803,6 @@ cc_library(
     ] + tf_platform_deps("types"),
 )
 
-# copybara:comment_begin(oss-only)
-cc_library(
-    name = "status_macros",
-    hdrs = ["status_macros.h"],
-    compatible_with = get_compatible_with_portable(),
-    visibility = internal_visibility([]),  # The header should be used only in OSS.
-    deps = [
-        "@com_google_absl//absl/status:status_macros",
-    ],
-)
-# copybara:comment_end
-
 cc_library(
     name = "byte_order",
     hdrs = ["byte_order.h"],
