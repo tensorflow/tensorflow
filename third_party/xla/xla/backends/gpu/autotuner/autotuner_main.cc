@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -55,10 +56,13 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_address_allocator.h"
+#include "xla/stream_executor/integrations/device_mem_allocator.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tools/hlo_module_loader.h"
+#include "xla/tsl/framework/bfc_allocator.h"
+#include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/command_line_flags.h"
@@ -139,6 +143,8 @@ struct AutotunerEnvironment {
   std::unique_ptr<mlir::MLIRContext> mlir_context;
   std::unique_ptr<AliasInfo> alias_info;
   std::unique_ptr<Compiler::GpuTargetConfig> target_config;
+  // For profiling.
+  std::vector<std::unique_ptr<se::Stream>> streams;
   std::unique_ptr<se::DeviceAddressAllocator> allocator;
   // For cache
   AutotuneCacheContext cache_ctx;
@@ -147,6 +153,49 @@ struct AutotunerEnvironment {
   // The autotuner.
   std::unique_ptr<Autotuner> autotuner;
 };
+
+absl::StatusOr<std::unique_ptr<se::DeviceAddressAllocator>>
+CreateMultiDeviceAllocator(se::Platform* platform,
+                           se::StreamExecutor* stream_executor_0,
+                           std::vector<std::unique_ptr<se::Stream>>& streams) {
+  int device_count = platform->VisibleDeviceCount();
+  std::vector<se::MultiDeviceAdapter::AllocatorInfo> allocator_infos;
+  allocator_infos.reserve(device_count);
+
+  for (int i = 0; i < device_count; ++i) {
+    ABSL_ASSIGN_OR_RETURN(se::StreamExecutor * stream_executor,
+                     platform->ExecutorForDevice(i));
+    TF_RET_CHECK(stream_executor->GetDeviceDescription().name() ==
+                 stream_executor_0->GetDeviceDescription().name())
+        << "Devices are not the same: device 0 is "
+        << stream_executor_0->GetDeviceDescription().name() << ", device " << i
+        << " is " << stream_executor->GetDeviceDescription().name();
+
+    int64_t free_memory;
+    int64_t total_memory;
+    TF_RET_CHECK(
+        stream_executor->DeviceMemoryUsage(&free_memory, &total_memory));
+
+    auto sub_allocator = std::make_unique<se::DeviceMemAllocator>(
+        stream_executor, tsl::PlatformDeviceId(i));
+    tsl::BFCAllocator::Options opts;
+    opts.allow_growth = true;
+    auto bfc_allocator = std::make_shared<tsl::BFCAllocator>(
+        std::move(sub_allocator), total_memory,
+        absl::StrCat("gpu_profiler_", i, "_bfc"), opts);
+
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
+                     stream_executor->CreateStream());
+    se::Stream* stream_ptr = stream.get();
+    streams.push_back(std::move(stream));
+
+    allocator_infos.push_back(
+        {std::move(bfc_allocator), stream_ptr, /*memory_space=*/0, i});
+  }
+
+  return std::make_unique<se::MultiDeviceAdapter>(platform,
+                                                  std::move(allocator_infos));
+}
 
 absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
     const DebugOptions& debug_options) {
@@ -173,31 +222,28 @@ absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
   auto target_config =
       std::make_unique<Compiler::GpuTargetConfig>(stream_executor_0);
 
-  std::unique_ptr<se::DeviceAddressAllocator> allocator =
-      std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
-          stream_executor_0);
-
   auto mlir_context = std::make_unique<mlir::MLIRContext>();
   xla::RegisterSymbolicExprStorage(mlir_context.get());
 
   auto thread_pool = std::make_unique<tsl::thread::ThreadPool>(
       tsl::Env::Default(), "autotuner", tsl::port::MaxParallelism());
 
-  std::vector<std::unique_ptr<Profiler>> autotuner_profilers;
-
   int device_count = platform->VisibleDeviceCount();
+  std::vector<std::unique_ptr<se::Stream>> streams;
+  streams.reserve(device_count);
+
+  ABSL_ASSIGN_OR_RETURN(
+      std::unique_ptr<se::DeviceAddressAllocator> allocator,
+      CreateMultiDeviceAllocator(platform, stream_executor_0, streams));
+
+  std::vector<std::unique_ptr<Profiler>> autotuner_profilers;
   autotuner_profilers.reserve(device_count);
 
   for (int i = 0; i < device_count; ++i) {
     ABSL_ASSIGN_OR_RETURN(se::StreamExecutor * stream_executor,
                      platform->ExecutorForDevice(i));
-    TF_RET_CHECK(stream_executor->GetDeviceDescription().name() ==
-                 stream_executor_0->GetDeviceDescription().name())
-        << "Devices are not the same: device 0 is "
-        << stream_executor_0->GetDeviceDescription().name() << ", device " << i
-        << " is " << stream_executor->GetDeviceDescription().name();
-    auto profiler =
-        GpuProfiler::Create(stream_executor, GetProfileOptions(debug_options));
+    std::unique_ptr<Profiler> profiler = GpuProfiler::Create(
+        stream_executor, GetProfileOptions(debug_options), allocator.get());
     TF_RET_CHECK(profiler != nullptr)
         << "Failed to create profiler for device " << i;
 
@@ -224,10 +270,10 @@ absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
                                      std::move(autotuner_profilers),
                                      autotuner_options, thread_pool.get()));
 
-  return AutotunerEnvironment{std::move(compiler),    std::move(mlir_context),
-                              std::move(alias_info),  std::move(target_config),
-                              std::move(allocator),   std::move(ctx),
-                              std::move(thread_pool), std::move(autotuner)};
+  return AutotunerEnvironment{
+      std::move(compiler),      std::move(mlir_context), std::move(alias_info),
+      std::move(target_config), std::move(streams),      std::move(allocator),
+      std::move(ctx),           std::move(thread_pool),  std::move(autotuner)};
 }
 
 }  // namespace
