@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -1225,6 +1226,158 @@ void MatmulOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                            MLIRContext* context) {
   results.add<CanonicalizeAddOfMatmul<arith::AddFOp>,
               CanonicalizeAddOfMatmul<arith::AddIOp>>(context);
+}
+
+LogicalResult ConvOp::verify() {
+  const VectorType lhs_ty = getLhs().getType();
+  const VectorType rhs_ty = getRhs().getType();
+  const VectorType acc_ty = getAcc().getType();
+  const VectorType res_ty = getResult().getType();
+  if (acc_ty != res_ty) {
+    return emitOpError("Conv acc and result have different types: ")
+           << acc_ty << " vs " << res_ty;
+  }
+
+  const auto dnums = getDimensionNumbers();
+  const int64_t num_spatial = dnums.getInputSpatialDimensions().size();
+  const int64_t expected_rank = 2 + num_spatial;
+
+  if (lhs_ty.getRank() != expected_rank) {
+    return emitOpError(
+        absl::StrFormat("Expected lhs rank to be %d (2 + num_spatial), got %d",
+                        expected_rank, lhs_ty.getRank()));
+  }
+  if (rhs_ty.getRank() != expected_rank) {
+    return emitOpError(
+        absl::StrFormat("Expected rhs rank to be %d (2 + num_spatial), got %d",
+                        expected_rank, rhs_ty.getRank()));
+  }
+  if (acc_ty.getRank() != expected_rank) {
+    return emitOpError(
+        absl::StrFormat("Expected acc rank to be %d (2 + num_spatial), got %d",
+                        expected_rank, acc_ty.getRank()));
+  }
+
+  if (dnums.getKernelSpatialDimensions().size() != num_spatial ||
+      dnums.getOutputSpatialDimensions().size() != num_spatial) {
+    return emitOpError(
+        "Expected spatial dimensions count to match across operands");
+  }
+
+  auto is_valid_permutation = [](int64_t rank, int64_t d0, int64_t d1,
+                                 ArrayRef<int64_t> spatial) {
+    llvm::SmallDenseSet<int64_t> dims;
+    if (d0 < 0 || d0 >= rank || !dims.insert(d0).second) {
+      return false;
+    }
+    if (d1 < 0 || d1 >= rank || !dims.insert(d1).second) {
+      return false;
+    }
+    for (int64_t d : spatial) {
+      if (d < 0 || d >= rank || !dims.insert(d).second) {
+        return false;
+      }
+    }
+    return dims.size() == static_cast<size_t>(rank);
+  };
+
+  if (!is_valid_permutation(expected_rank, dnums.getInputBatchDimension(),
+                            dnums.getInputFeatureDimension(),
+                            dnums.getInputSpatialDimensions())) {
+    return emitOpError("Invalid dimension permutation for lhs");
+  }
+  if (!is_valid_permutation(expected_rank,
+                            dnums.getKernelInputFeatureDimension(),
+                            dnums.getKernelOutputFeatureDimension(),
+                            dnums.getKernelSpatialDimensions())) {
+    return emitOpError("Invalid dimension permutation for rhs");
+  }
+  if (!is_valid_permutation(expected_rank, dnums.getOutputBatchDimension(),
+                            dnums.getOutputFeatureDimension(),
+                            dnums.getOutputSpatialDimensions())) {
+    return emitOpError("Invalid dimension permutation for acc/result");
+  }
+
+  if (getWindowStrides().size() != num_spatial ||
+      getPadding().size() != 2 * num_spatial ||
+      getLhsDilation().size() != num_spatial ||
+      getRhsDilation().size() != num_spatial ||
+      getWindowReversal().size() != num_spatial) {
+    return emitOpError("Expected window attributes size to match spatial dims");
+  }
+
+  // Contracting feature dimension size match
+  const int64_t in_feat = lhs_ty.getDimSize(dnums.getInputFeatureDimension());
+  const int64_t kernel_in_feat =
+      rhs_ty.getDimSize(dnums.getKernelInputFeatureDimension());
+  if (in_feat != kernel_in_feat) {
+    return emitOpError(absl::StrFormat(
+        "LHS feature dimension size (%d) must match kernel input feature "
+        "dimension size (%d)",
+        in_feat, kernel_in_feat));
+  }
+
+  // Output feature dimension size match
+  const int64_t out_feat = acc_ty.getDimSize(dnums.getOutputFeatureDimension());
+  const int64_t kernel_out_feat =
+      rhs_ty.getDimSize(dnums.getKernelOutputFeatureDimension());
+  if (out_feat != kernel_out_feat) {
+    return emitOpError(absl::StrFormat(
+        "ACC output feature dimension size (%d) must match kernel output "
+        "feature dimension size (%d)",
+        out_feat, kernel_out_feat));
+  }
+
+  // Batch dimension size match
+  const int64_t in_batch = lhs_ty.getDimSize(dnums.getInputBatchDimension());
+  const int64_t out_batch = acc_ty.getDimSize(dnums.getOutputBatchDimension());
+  if (in_batch != out_batch) {
+    return emitOpError(absl::StrFormat(
+        "LHS batch dimension size (%d) must match ACC output batch dimension "
+        "size (%d)",
+        in_batch, out_batch));
+  }
+
+  // Spatial dimension output size formula matching
+  for (int64_t i = 0; i < num_spatial; ++i) {
+    const int64_t in_dim = dnums.getInputSpatialDimensions()[i];
+    const int64_t kernel_dim = dnums.getKernelSpatialDimensions()[i];
+    const int64_t out_dim = dnums.getOutputSpatialDimensions()[i];
+    const int64_t in_size = lhs_ty.getDimSize(in_dim);
+    const int64_t kernel_size = rhs_ty.getDimSize(kernel_dim);
+    const int64_t stride = getWindowStrides()[i];
+    const int64_t pad_low = getPadding()[2 * i];
+    const int64_t pad_high = getPadding()[2 * i + 1];
+    const int64_t lhs_dil = getLhsDilation()[i];
+    const int64_t rhs_dil = getRhsDilation()[i];
+
+    if (stride <= 0) {
+      return emitOpError("Expected window strides to be positive");
+    }
+    if (lhs_dil <= 0 || rhs_dil <= 0) {
+      return emitOpError("Expected dilations to be positive");
+    }
+    const int64_t dilated_input =
+        in_size == 0 ? 0 : (in_size - 1) * lhs_dil + 1;
+    const int64_t dilated_kernel =
+        kernel_size == 0 ? 0 : (kernel_size - 1) * rhs_dil + 1;
+    const int64_t padded_input = dilated_input + pad_low + pad_high;
+    if (padded_input < dilated_kernel) {
+      return emitOpError(absl::StrFormat(
+          "Padded input spatial size (%d) must be at least dilated kernel size "
+          "(%d) for spatial dimension %d",
+          padded_input, dilated_kernel, i));
+    }
+    const int64_t expected_out_size =
+        (padded_input - dilated_kernel) / stride + 1;
+    if (acc_ty.getDimSize(out_dim) != expected_out_size) {
+      return emitOpError(absl::StrFormat(
+          "Output spatial dimension %d size mismatch: expected %d, got %d",
+          out_dim, expected_out_size, acc_ty.getDimSize(out_dim)));
+    }
+  }
+
+  return success();
 }
 
 LogicalResult MaskCastOp::verify() {

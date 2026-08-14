@@ -883,6 +883,46 @@ def TPU_MatmulOp : TPU_Op<"matmul", [Pure]> {
   let hasVerifier = 1;
 }
 
+def TPU_ConvOp : TPU_Op<"conv", [Pure]> {
+  let summary = "N-D General Convolution operation on TPU";
+  let description = [{
+    The `tpu.conv` operation performs an N-D general convolution over vector
+    registers and TPU Matrix Units (MXU).
+
+    It accepts input tensor `lhs`, kernel tensor `rhs`, and an initial accumulator
+    tensor `acc` (which may be passed in with zeros or prior partial sums).
+
+    Attributes:
+    - `dimension_numbers`: Defines the batch, feature, and spatial dimension
+      mappings for input, kernel, and output tensors.
+    - `window_strides`: Strides for sliding the kernel window across each spatial
+      dimension (defaults to 1).
+    - `padding`: Explicit low and high padding pairs for each spatial dimension.
+    - `lhs_dilation`: Dilation factor for the input (defaults to 1).
+    - `rhs_dilation`: Dilation factor for the kernel/filter (defaults to 1).
+    - `window_reversal`: Boolean flags indicating whether to reverse the kernel
+      window along each spatial dimension.
+    - `precision`: Optional contraction precision mode for TPU matrix multiplication.
+  }];
+  let arguments = (ins
+    AnyVectorOfNonZeroRank:$lhs,
+    AnyVectorOfNonZeroRank:$rhs,
+    AnyVectorOfNonZeroRank:$acc,
+    TPU_ConvDimensionNumbersAttr:$dimension_numbers,
+    DenseI64ArrayAttr:$window_strides,
+    DenseI64ArrayAttr:$padding,
+    DenseI64ArrayAttr:$lhs_dilation,
+    DenseI64ArrayAttr:$rhs_dilation,
+    DenseBoolArrayAttr:$window_reversal,
+    OptionalAttr<TPU_ContractPrecisionEnum>:$precision
+  );
+  let results = (outs AnyVectorOfNonZeroRank:$result);
+  let assemblyFormat = [{
+    $lhs `,` $rhs `,` $acc attr-dict `:` type($lhs) `,` type($rhs) `,` type($acc) `->` type($result)
+  }];
+  let hasVerifier = 1;
+}
+
 def TPU_MatmulPushRhsOp : TPU_Op<"matmul_push_rhs"> {
   let arguments = (ins
     AnyVectorOfNonZeroRank:$rhs,
