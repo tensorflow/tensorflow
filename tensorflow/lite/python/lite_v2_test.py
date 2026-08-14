@@ -491,7 +491,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     if is_int_only:
       if is_int16_quantize:
         quantized_converter.target_spec.supported_ops = [
-            lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+            lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8  # pylint: disable=line-too-long
         ]
       else:
         quantized_converter.target_spec.supported_ops = [
@@ -501,7 +501,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       if is_int16_quantize:
         quantized_converter.target_spec.supported_ops = [
             (
-                lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+                lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8  # pylint: disable=line-too-long
             ),
             lite.OpsSet.TFLITE_BUILTINS,
         ]
@@ -548,7 +548,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     if is_int16_quantize:
       quantized_converter.target_spec.supported_ops = [
           (
-              lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+              lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8  # pylint: disable=line-too-long
           ),
           lite.OpsSet.TFLITE_BUILTINS,
       ]
@@ -954,7 +954,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       if is_int16_quantize:
         quantized_converter.target_spec.supported_ops = [
             (
-                lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+                lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8  # pylint: disable=line-too-long
             ),
             lite.OpsSet.SELECT_TF_OPS,
         ]
@@ -967,7 +967,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       if is_int16_quantize:
         quantized_converter.target_spec.supported_ops = [
             (
-                lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+                lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8  # pylint: disable=line-too-long
             ),
             lite.OpsSet.TFLITE_BUILTINS,
             lite.OpsSet.SELECT_TF_OPS,
@@ -1067,7 +1067,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       if is_int16_quantize:
         quantized_converter.target_spec.supported_ops = [
             (
-                lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+                lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8  # pylint: disable=line-too-long
             ),
             lite.OpsSet.TFLITE_BUILTINS,
         ]
@@ -1080,7 +1080,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       if is_int16_quantize:
         quantized_converter.target_spec.supported_ops = [
             (
-                lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+                lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8  # pylint: disable=line-too-long
             ),
             lite.OpsSet.TFLITE_BUILTINS,
         ]
@@ -1185,7 +1185,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       if is_int16_quantize:
         quantized_converter.target_spec.supported_ops = [
             (
-                lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+                lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8  # pylint: disable=line-too-long
             ),
             lite.OpsSet.TFLITE_BUILTINS,
         ]
@@ -1198,7 +1198,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       if is_int16_quantize:
         quantized_converter.target_spec.supported_ops = [
             (
-                lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+                lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8  # pylint: disable=line-too-long
             ),
             lite.OpsSet.TFLITE_BUILTINS,
         ]
@@ -1908,7 +1908,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
     signature_def_map, init_op, assets_collection = (
         {
-            'serving_default': tf.compat.v1.saved_model.signature_def_utils.build_signature_def(
+            'serving_default': tf.compat.v1.saved_model.signature_def_utils.build_signature_def(  # pylint: disable=line-too-long
                 inputs={'x': tensor_info_x},
                 outputs={'y': tensor_info_y},
                 method_name='some_function',
@@ -1999,7 +1999,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
     signature_def_map, init_op, assets_collection = (
         {
-            'serving_default': tf.compat.v1.saved_model.signature_def_utils.build_signature_def(
+            'serving_default': tf.compat.v1.saved_model.signature_def_utils.build_signature_def(  # pylint: disable=line-too-long
                 inputs={'x': tensor_info_x},
                 outputs={'y': tensor_info_y},
                 method_name='some_function',
@@ -2485,14 +2485,14 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     if is_int_only:
       if is_int16_quantize:
         converter.target_spec.supported_ops = [
-            lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+            lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8  # pylint: disable=line-too-long
         ]
       else:
         converter.target_spec.supported_ops = [lite.OpsSet.TFLITE_BUILTINS_INT8]
     else:
       if is_int16_quantize:
         converter.target_spec.supported_ops = [
-            lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+            lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8  # pylint: disable=line-too-long
         ]
       else:
         converter.target_spec.supported_ops = [lite.OpsSet.TFLITE_BUILTINS]
@@ -3022,7 +3022,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
     if is_int16_quantize:
       quantized_converter.target_spec.supported_ops = [
-          lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+          lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8  # pylint: disable=line-too-long
       ]
     else:
       quantized_converter.target_spec.supported_ops = [
@@ -3739,6 +3739,26 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     self.assertLen(quant_params['scales'], expected_num_params)
     if len(quant_params['zero_points']) != 1:
       self.assertLen(quant_params['zero_points'], expected_num_params)
+
+  def testKerasMultipleTfFunctions(self):
+    class Model(tf.keras.Model):
+
+      def __init__(self):
+        super().__init__()
+        self.bias = tf.Variable([2.0], dtype=tf.float32)
+
+      @tf.function(input_signature=[tf.TensorSpec(shape=[1], dtype=tf.float32)])
+      def call(self, x):
+        return x + self.bias
+
+      @tf.function(input_signature=[tf.TensorSpec(shape=[1], dtype=tf.float32)])
+      def other_signature(self, x):
+        return x * 2.0
+
+    model = Model()
+    converter = lite.TFLiteConverterV2.from_keras_model(model)
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
 
 
 class FromJaxModelTest(lite_v2_test_util.ModelTest):
