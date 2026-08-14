@@ -588,6 +588,9 @@ ThunkProtoExecutionDeserializer::GetSortThunkRunImpl(
            {{SORT_DIMENSION_ELEMENTS}},
            {{LOWER_DIMENSIONS}}
          },
+         /*start_slice=*/0,
+         /*end_slice=*/static_cast<int64_t>({{HIGHER_DIMENSIONS}}) *
+             {{LOWER_DIMENSIONS}},
          values, primitive_sizes, {{IS_STABLE}}, &less_than);
      })";
 
