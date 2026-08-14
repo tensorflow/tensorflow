@@ -1359,7 +1359,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
                                        target_machine_options));
   }
 
-  ABSL_RETURN_IF_ERROR(RunHloPasses(module.get(), /*is_aot_compile=*/false,
+  ABSL_RETURN_IF_ERROR(RunHloPasses(module.get(), options.is_aot_compile,
                                jit_target_machine.get(),
                                /*compile_options=*/options));
   return std::move(module);
@@ -2188,7 +2188,7 @@ absl::StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
 
   ThunkEmitter::Options thunk_emitter_options = {
       /*compile_copy_as_llvm_kernel=*/false,
-      /*is_aot_compilation=*/false};
+      /*is_aot_compilation=*/options.is_aot_compile};
 
   auto ir_compiler = IrCompiler::Create(CompilerTargetOptions(module->config()),
                                         std::move(ir_compiler_options), {});
