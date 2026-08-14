@@ -50,7 +50,8 @@ class SliceOpModel : public SingleOpModel {
                std::initializer_list<index_type> size_data,
                TensorType tensor_index_type, TensorType tensor_input_type,
                TestType input_tensor_types,
-               std::initializer_list<int> output_shape = {}) {
+               std::initializer_list<int> output_shape = {},
+               bool allocate_and_delegate = true) {
     input_ = AddInput(tensor_input_type);
     if (input_tensor_types == TestType::kDynamic) {
       begin_ = AddInput(tensor_index_type);
@@ -63,7 +64,9 @@ class SliceOpModel : public SingleOpModel {
     output_ = AddOutput(TensorData(tensor_input_type, output_shape));
     SetBuiltinOp(BuiltinOperator_SLICE, BuiltinOptions_SliceOptions,
                  CreateSliceOptions(builder_).Union());
-    BuildInterpreter({input_shape, begin_shape, size_shape});
+    BuildInterpreter({input_shape, begin_shape, size_shape},
+                     /*num_threads=*/1, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false, allocate_and_delegate);
 
     if (input_tensor_types == TestType::kDynamic) {
       PopulateTensor<index_type>(begin_, begin_data);
@@ -91,6 +94,51 @@ class SliceOpModel : public SingleOpModel {
 
   const TfLiteTensor* GetOutputTensor() {
     return interpreter_->tensor(output_);
+  }
+
+ private:
+  int input_;
+  int begin_;
+  int size_;
+  int output_;
+};
+
+template <typename input_type, typename begin_type, typename size_type>
+class SliceOpModelMixedIndexTypes : public SingleOpModel {
+ public:
+  SliceOpModelMixedIndexTypes(std::initializer_list<int> input_shape,
+                              std::initializer_list<int> begin_shape,
+                              std::initializer_list<begin_type> begin_data,
+                              std::initializer_list<int> size_shape,
+                              std::initializer_list<size_type> size_data,
+                              TensorType begin_tensor_type,
+                              TensorType size_tensor_type,
+                              TensorType tensor_input_type,
+                              TestType input_tensor_types,
+                              bool allocate_and_delegate = true) {
+    input_ = AddInput(tensor_input_type);
+    if (input_tensor_types == TestType::kDynamic) {
+      begin_ = AddInput(begin_tensor_type);
+      size_ = AddInput(size_tensor_type);
+    } else {
+      begin_ = AddConstInput(begin_tensor_type, begin_data, begin_shape);
+      size_ = AddConstInput(size_tensor_type, size_data, size_shape);
+    }
+    output_ = AddOutput(TensorData(tensor_input_type, {}));
+    SetBuiltinOp(BuiltinOperator_SLICE, BuiltinOptions_SliceOptions,
+                 CreateSliceOptions(builder_).Union());
+    BuildInterpreter({input_shape, begin_shape, size_shape},
+                     /*num_threads=*/1, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false, allocate_and_delegate);
+
+    if (input_tensor_types == TestType::kDynamic) {
+      PopulateTensor<begin_type>(begin_, begin_data);
+      PopulateTensor<size_type>(size_, size_data);
+    }
+  }
+
+  void SetInput(std::initializer_list<input_type> data) {
+    PopulateTensor<input_type>(input_, data);
   }
 
  private:
@@ -406,6 +454,38 @@ TEST_P(SliceOpTest, BeginNonZeroSizeMinus1Axis1BFloat16) {
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({Eigen::bfloat16(5), Eigen::bfloat16(6),
                                 Eigen::bfloat16(8), Eigen::bfloat16(9)}));
+}
+
+TEST(SliceTest, NegativeBeginIndex) {
+  {
+    SliceOpModel<float, int32_t> m({10}, {1}, {-100}, {1}, {1},
+                                   TensorType_INT32, TensorType_FLOAT32,
+                                   TestType::kConst, {},
+                                   /*allocate_and_delegate=*/false);
+    EXPECT_NE(m.AllocateTensors(), kTfLiteOk);
+  }
+  {
+    SliceOpModel<float, int32_t> m({10}, {1}, {-100}, {1}, {1},
+                                   TensorType_INT32, TensorType_FLOAT32,
+                                   TestType::kDynamic);
+    m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+    EXPECT_NE(m.Invoke(), kTfLiteOk);
+  }
+}
+
+TEST(SliceTest, MismatchedIndexTypes) {
+  SliceOpModelMixedIndexTypes<float, int64_t, int32_t> m(
+      {4}, {1}, {1}, {1}, {2}, TensorType_INT64, TensorType_INT32,
+      TensorType_FLOAT32, TestType::kConst, /*allocate_and_delegate=*/false);
+  EXPECT_NE(m.AllocateTensors(), kTfLiteOk);
+}
+
+TEST(SliceTest, MismatchedBeginSizeElementCountVsRank) {
+  SliceOpModel<float, int32_t> m({2, 3}, {1}, {0}, {1}, {1},
+                                 TensorType_INT32, TensorType_FLOAT32,
+                                 TestType::kConst, {},
+                                 /*allocate_and_delegate=*/false);
+  EXPECT_NE(m.AllocateTensors(), kTfLiteOk);
 }
 
 INSTANTIATE_TEST_SUITE_P(SliceOpTest, SliceOpTest,
