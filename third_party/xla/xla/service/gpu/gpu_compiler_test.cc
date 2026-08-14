@@ -1631,6 +1631,43 @@ ENTRY main {
   EXPECT_EQ(thunks[0]->kind(), Thunk::Kind::kCommandBuffer);
 }
 
+// A collective permute with no source-target pairs delivers no data to any
+// participant, so every participant's output is zeroed. The emitter must
+// produce a memzero rather than a collective thunk, which would pointlessly
+// acquire a communicator (and fail outright on builds without collectives
+// support).
+TEST_F(GpuCompilerTest, CollectivePermuteWithNoSourceTargetPairsEmitsMemzero) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY main {
+  p = u32[2] parameter(0)
+  ROOT permute = u32[2] collective-permute(p), source_target_pairs={}
+}
+)";
+
+  auto hlo_module = ParseAndReturnVerifiedModule(hlo_text).value();
+
+  Compiler::CompileOptions compile_options;
+  compile_options.gpu_topology =
+      GetSingleDeviceGpuTopology(/*platform_version=*/"", gpu_target_config());
+  compile_options.early_exit_with_layouts = false;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      compiler()->RunBackend(std::move(hlo_module), /*executor=*/nullptr,
+                             compile_options));
+  GpuExecutable* gpu_exec = absl::down_cast<GpuExecutable*>(executable.get());
+  ASSERT_NE(gpu_exec, nullptr);
+
+  std::vector<Thunk::Kind> kinds;
+  kinds.reserve(gpu_exec->thunk_executor().thunks().size());
+  for (const auto& thunk : gpu_exec->thunk_executor().thunks()) {
+    kinds.push_back(thunk->kind());
+  }
+  using ::testing::ElementsAre;
+  EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kMemzero));
+}
+
 TEST_F(GpuCompilerTest, NoCudnnVectorizationOnHopperAndBeyond) {
   if (gpu_target_config().device_description.dnn_version() <
           stream_executor::SemanticVersion(9, 12, 0) &&

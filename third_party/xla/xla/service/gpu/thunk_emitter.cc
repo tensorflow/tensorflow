@@ -90,6 +90,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/host_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/infeed_thunk.h"
 #include "xla/backends/gpu/runtime/legacy_custom_call_thunk.h"
+#include "xla/backends/gpu/runtime/memset_thunk.h"
 #include "xla/backends/gpu/runtime/norm_thunk.h"
 #include "xla/backends/gpu/runtime/outfeed_thunk.h"
 #include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
@@ -2023,6 +2024,26 @@ Future<ThunkSequence> ThunkEmitter::EmitCollective(
       std::vector<CollectiveThunk::Buffer> buffers,
       GetCollectiveBuffers(ir_emitter_context_->buffer_assignment(), inst, kind,
                            has_dynamic_root));
+
+  // A collective permute with no source-target pairs receives no data on any
+  // participant, which the collective runtimes implement by zeroing the
+  // output (see RunCollectivePermute). Emit the memzero directly and skip the
+  // collective thunk; besides avoiding a pointless communicator acquisition,
+  // this keeps such programs (e.g. the gradient of a single-device ppermute)
+  // working on builds without collectives support.
+  if constexpr (is_collective_permute) {
+    if (inst->source_target_pairs().empty()) {
+      ThunkSequence thunks;
+      for (int64_t i = 0; i < buffers.size(); ++i) {
+        thunks.Emplace<MemzeroThunk>(
+            Thunk::ThunkInfo::WithProfileAnnotation(
+                inst, ir_emitter_context_->GetNextThunkId()),
+            ShapedSlice{buffers[i].destination_buffer.slice,
+                        inst->operand(i)->shape()});
+      }
+      return thunks;
+    }
+  }
 
   // A given collective op can be degenerate if across all groups
   // formed by it are singleton. In such a case, we don't need to do

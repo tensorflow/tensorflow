@@ -533,6 +533,7 @@ cc_library(
         "//xla/backends/gpu/runtime:host_to_device_copy_thunk",
         "//xla/backends/gpu/runtime:infeed_thunk",
         "//xla/backends/gpu/runtime:legacy_custom_call_thunk",
+        "//xla/backends/gpu/runtime:memset_thunk",
         "//xla/backends/gpu/runtime:norm_thunk",
         "//xla/backends/gpu/runtime:outfeed_thunk",
         "//xla/backends/gpu/runtime:ragged_all_to_all_thunk",
@@ -3888,6 +3889,7 @@ xla_test(
     use_legacy_runtime = True,
     deps = [
         ":intel_gpu_compiler",
+        "//xla/stream_executor/sycl:sycl_platform_id",
         "//xla/tests/restricted:hlo_test_base_legacy",
         "@com_google_googletest//:gtest_main",
     ],
