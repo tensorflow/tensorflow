@@ -540,32 +540,28 @@ TEST_F(GpuCompilerTest, CollectivePipeliningModes) {
     absl::string_view name;
     DebugOptions::CollectivePipeliningMode mode;
     ExecutionOptions::EffortLevel optimization_level;
-    float exec_time_optimization_effort;
     absl::string_view frontend_attributes;
     bool expect_pipelined;
   };
 
   const std::vector<TestCase> test_cases = {
       {"default_at_o0", DebugOptions::COLLECTIVE_PIPELINING_MODE_DEFAULT,
-       ExecutionOptions::EFFORT_O0, 0.0f, "", false},
-      {"default_at_o0_with_execution_effort",
-       DebugOptions::COLLECTIVE_PIPELINING_MODE_DEFAULT,
-       ExecutionOptions::EFFORT_O0, 0.2f, "", true},
+       ExecutionOptions::EFFORT_O0, "", false},
       {"default_at_o1", DebugOptions::COLLECTIVE_PIPELINING_MODE_DEFAULT,
-       ExecutionOptions::EFFORT_O1, 0.0f, "", true},
+       ExecutionOptions::EFFORT_O1, "", true},
       {"on_at_o0", DebugOptions::COLLECTIVE_PIPELINING_MODE_ON,
-       ExecutionOptions::EFFORT_O0, 0.0f, "", true},
+       ExecutionOptions::EFFORT_O0, "", true},
       {"explicit_marked_at_o0",
        DebugOptions::COLLECTIVE_PIPELINING_MODE_EXPLICIT,
-       ExecutionOptions::EFFORT_O0, 0.0f, R"(is_pipelineable="1")", true},
+       ExecutionOptions::EFFORT_O0, R"(is_pipelineable="1")", true},
       {"explicit_unmarked_at_o0",
        DebugOptions::COLLECTIVE_PIPELINING_MODE_EXPLICIT,
-       ExecutionOptions::EFFORT_O0, 0.0f, "", false},
+       ExecutionOptions::EFFORT_O0, "", false},
       {"explicit_unmarked_at_o1",
        DebugOptions::COLLECTIVE_PIPELINING_MODE_EXPLICIT,
-       ExecutionOptions::EFFORT_O1, 0.0f, "", false},
+       ExecutionOptions::EFFORT_O1, "", false},
       {"explicit_off_at_o1", DebugOptions::COLLECTIVE_PIPELINING_MODE_OFF,
-       ExecutionOptions::EFFORT_O1, 0.0f, R"(is_pipelineable="1")", false},
+       ExecutionOptions::EFFORT_O1, R"(is_pipelineable="1")", false},
   };
 
   for (const TestCase& test_case : test_cases) {
@@ -575,9 +571,6 @@ TEST_F(GpuCompilerTest, CollectivePipeliningModes) {
 
     HloModuleConfig config = GetModuleConfigForTest();
     config.set_optimization_level(test_case.optimization_level);
-    config.set_exec_time_optimization_effort(
-        test_case.exec_time_optimization_effort);
-
     DebugOptions& debug_options = config.mutable_debug_options();
     debug_options.set_xla_gpu_pipeline_all_reduce(test_case.mode);
     debug_options.set_xla_gpu_all_reduce_combine_threshold_bytes(0);
@@ -1191,12 +1184,6 @@ class PassOrderTest : public GpuCompilerTest {
     CompileModule(config);
   }
 
-  void SetAndCompileEfficiencyEffort(float exec_effort) {
-    HloModuleConfig config = GetModuleConfigForTest();
-    config.set_exec_time_optimization_effort(exec_effort);
-    CompileModule(config);
-  }
-
   // Fails if any of the passes matching `other_pass_regex` runs before
   // the first occurrence of the pass matching `first_pass_regex`.
   void VerifyPassRunsAtLeastOnceBefore(absl::string_view first_pass_regex,
@@ -1378,7 +1365,7 @@ MATCHER_P(HasExpectedPasses, expected_pass_names, "") {
   return Matches(IsSupersetOf(expected_pass_names))(run_pass_names);
 }
 
-TEST_F(PassOrderTest, ExecEffortAt0point2RunsSpecifiedPasses) {
+TEST_F(PassOrderTest, OptimizationLevelO2RunsSpecifiedPasses) {
   HloModuleConfig config = GetModuleConfigForTest();
   CompileModule(config);
 
@@ -1393,7 +1380,7 @@ TEST_F(PassOrderTest, ExecEffortAt0point2RunsSpecifiedPasses) {
 
   // Make sure only after setting the correct optimization effort they are
   // enabled.
-  config.set_exec_time_optimization_effort(0.2);
+  config.set_optimization_level(ExecutionOptions::EFFORT_O2);
   CompileModule(config);
   EXPECT_THAT(optimized_module_, HasExpectedPasses(kExpectedPasses));
 }
