@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for the TensorFlow build integrity checks."""
 
+import os
 from unittest import mock
 
 from tensorflow.python.platform import self_check
@@ -91,13 +92,64 @@ class ConflictingInstallsTest(test.TestCase):
 class PythonBitnessTest(test.TestCase):
 
   def testSixtyFourBitPasses(self):
-    with mock.patch.object(self_check.struct, "calcsize", return_value=8):
+    with mock.patch.object(self_check, "_python_bitness", return_value=64):
       self_check._check_python_bitness()
 
   def testThirtyTwoBitRaises(self):
-    with mock.patch.object(self_check.struct, "calcsize", return_value=4):
+    with mock.patch.object(self_check, "_python_bitness", return_value=32):
       with self.assertRaisesRegex(ImportError, "64-bit Python"):
         self_check._check_python_bitness()
+
+  def testReportsActualBitnessInMessage(self):
+    with mock.patch.object(self_check, "_python_bitness", return_value=32):
+      with self.assertRaisesRegex(ImportError, "this interpreter is 32-bit"):
+        self_check._check_python_bitness()
+
+  def testRealInterpreterIsSixtyFourBit(self):
+    # The test binary itself must be 64-bit, so the unmocked check passes.
+    self.assertEqual(self_check._python_bitness(), 64)
+    self_check._check_python_bitness()
+
+
+class PreloadCheckTest(test.TestCase):
+  """Verifies the new checks are actually reached from `preload_check`."""
+
+  def testWindowsRunsNewChecks(self):
+    with mock.patch.object(self_check, "_is_windows", return_value=True):
+      with mock.patch.object(self_check, "_check_python_bitness") as bitness:
+        with mock.patch.object(
+            self_check, "_check_conflicting_installs"
+        ) as conflicts:
+          self_check.preload_check()
+    bitness.assert_called_once()
+    conflicts.assert_called_once()
+
+  def testNonWindowsSkipsNewChecks(self):
+    with mock.patch.object(self_check, "_is_windows", return_value=False):
+      with mock.patch.object(self_check, "_check_python_bitness") as bitness:
+        with mock.patch.object(
+            self_check, "_check_conflicting_installs"
+        ) as conflicts:
+          self_check.preload_check()
+    bitness.assert_not_called()
+    conflicts.assert_not_called()
+
+  def testConflictingInstallsReportedBeforeDllScan(self):
+    # A conflicting install must surface its own error rather than the
+    # generic missing-DLL message, which is what made this hard to diagnose.
+    with mock.patch.object(self_check, "_is_windows", return_value=True):
+      with mock.patch.object(
+          self_check,
+          "_installed_tensorflow_distributions",
+          return_value={"tensorflow": "2.21.0", "tensorflow-cpu": "2.20.0"},
+      ):
+        with mock.patch.dict(
+            self_check.build_info.build_info,
+            {self_check.MSVCP_DLL_NAMES: "msvcp140.dll"},
+        ):
+          with mock.patch.dict(os.environ, {"PATH": ""}):
+            with self.assertRaisesRegex(ImportError, "conflicting TensorFlow"):
+              self_check.preload_check()
 
 
 if __name__ == "__main__":

@@ -45,6 +45,11 @@ except ImportError as exc:
   ) from exc
 
 
+def _is_windows():
+  """Returns True if running on Windows."""
+  return os.name == "nt"
+
+
 def _installed_tensorflow_distributions():
   """Returns a {distribution name: version} map of installed TensorFlow dists.
 
@@ -95,6 +100,11 @@ def _check_conflicting_installs():
     )
 
 
+def _python_bitness():
+  """Returns the pointer width of the running interpreter, in bits."""
+  return struct.calcsize("P") * 8
+
+
 def _check_python_bitness():
   """Raises if the interpreter is not 64-bit.
 
@@ -102,7 +112,7 @@ def _check_python_bitness():
     ImportError: If running under a 32-bit Python interpreter, for which no
       TensorFlow wheels are published.
   """
-  bitness = struct.calcsize("P") * 8
+  bitness = _python_bitness()
   if bitness != 64:
     raise ImportError(
         "TensorFlow requires a 64-bit Python interpreter, but this "
@@ -118,7 +128,7 @@ def preload_check():
     ImportError: If the check detects that the environment is not correctly
       configured, and attempting to load the TensorFlow runtime will fail.
   """
-  if os.name == "nt":
+  if _is_windows():
     _check_python_bitness()
     _check_conflicting_installs()
 
