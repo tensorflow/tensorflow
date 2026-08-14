@@ -207,17 +207,18 @@ class TypedKernel {
   // spit out helpful static_assert error traces with information as to the
   // argument number and types that were mismatched.
   template <typename... Args>
-  absl::Status Launch(ThreadDim thread_dims, BlockDim block_dims,
-                      Stream* stream, Args... args) {
-    return kernel_->Launch(thread_dims, block_dims, stream,
-                           PackKernelArgs(*this, args...));
+  inline absl::Status Launch(ThreadDim thread_dims, BlockDim block_dims,
+                             Stream* stream, Args... args) {
+    auto kernel_args = PackKernelArgs(*this, args...);
+    return kernel_->Launch(thread_dims, block_dims, stream, *kernel_args);
   }
 
   template <typename... Args>
-  absl::Status Launch(ThreadDim thread_dims, BlockDim block_dims,
-                      int32_t shmem_bytes, Stream* stream, Args... args) {
-    return kernel_->Launch(thread_dims, block_dims, stream,
-                           PackKernelArgs(*this, args...));
+  inline absl::Status Launch(ThreadDim thread_dims, BlockDim block_dims,
+                             int32_t shmem_bytes, Stream* stream,
+                             Args... args) {
+    auto kernel_args = PackKernelArgs(shmem_bytes, args...);
+    return kernel_->Launch(thread_dims, block_dims, stream, *kernel_args);
   }
 
  private:
@@ -231,14 +232,15 @@ class TypedKernel {
 // Packs the given arguments into a KernelArgsPackedTuple with compile-time type
 // checks that arguments are compatible with TypedKernel signature.
 template <typename... Params, typename... Args>
-auto PackKernelArgs(const TypedKernel<Params...>& kernel, Args... args) {
+std::unique_ptr<KernelArgsPackedArrayBase> PackKernelArgs(
+    const TypedKernel<Params...>& kernel, Args... args) {
   using PackedParams = KernelArgsPackedTuple<Params...>;
   using PackedArgs = KernelArgsPackedTuple<Args...>;
 
   PackedParams::template CheckCompatibleStaticAssert<Args...>();
 
   int64_t shmem_bytes = kernel->metadata().shared_memory_bytes().value_or(0);
-  return PackedArgs(std::forward<Args>(args)..., shmem_bytes);
+  return std::make_unique<PackedArgs>(std::forward<Args>(args)..., shmem_bytes);
 }
 
 }  // namespace stream_executor
