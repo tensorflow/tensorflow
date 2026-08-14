@@ -28,6 +28,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_grad
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -280,9 +281,54 @@ class EuclideanNormGradientTest(test.TestCase):
         y = math_ops.reduce_euclidean_norm(x)
 
       dx = tape.gradient(y, x)
-      dx_answer = constant_op.constant(
-          [float("NaN"), float("NaN")], dtype=dtype)
+      dx_answer = constant_op.constant([0.0, 0.0], dtype=dtype)
       self.assertAllClose(dx, dx_answer)
+
+  def testExtremeMagnitudes(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      np_dtype = dtype.as_numpy_dtype
+      values = [
+          np.finfo(np_dtype).tiny,
+          np.sqrt(np.finfo(np_dtype).max) * 2,
+      ]
+      for value in values:
+        x = constant_op.constant([value], dtype=dtype)
+
+        with backprop.GradientTape() as tape:
+          tape.watch(x)
+          y = math_ops.reduce_euclidean_norm(x)
+
+        self.assertAllClose(tape.gradient(y, x), [1.0])
+
+  def testBatchedExtremeMagnitudes(self):
+    tiny = np.finfo(np.float32).tiny
+    large = np.sqrt(np.finfo(np.float32).max) * 2
+    maximum = np.finfo(np.float32).max
+    x = constant_op.constant(
+        [
+            [0.0, 0.0],
+            [tiny, 0.0],
+            [large, 0.0],
+            [maximum, maximum],
+            [3.0, 4.0],
+        ],
+        dtype=dtypes.float32,
+    )
+
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = math_ops.reduce_euclidean_norm(x, axis=1, keepdims=True)
+
+    self.assertAllClose(
+        tape.gradient(y, x),
+        [
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 0.0],
+            [np.sqrt(0.5), np.sqrt(0.5)],
+            [0.6, 0.8],
+        ],
+    )
 
   def test2D_1(self):
     for dtype in [dtypes.float32, dtypes.float64]:
@@ -351,6 +397,118 @@ class EuclideanNormGradientTest(test.TestCase):
           lambda x: math_ops.reduce_euclidean_norm(x, 2), [x])
       err = gradient_checker_v2.max_error(*grads)
       self.assertLess(err, 2e-3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class LinalgNormGradientTest(test.TestCase):
+
+  def testZeroAndExtremeMagnitudes(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      np_dtype = dtype.as_numpy_dtype
+      values_and_expected = [
+          (0.0, 0.0),
+          (np.finfo(np_dtype).tiny, 1.0),
+          (np.sqrt(np.finfo(np_dtype).max) * 2, 1.0),
+      ]
+      for value, expected in values_and_expected:
+        x = constant_op.constant([value], dtype=dtype)
+
+        with backprop.GradientTape() as tape:
+          tape.watch(x)
+          y = linalg_ops.norm_v2(x)
+
+        self.assertAllClose(tape.gradient(y, x), [expected])
+
+  def testBatchedExtremeMagnitudes(self):
+    tiny = np.finfo(np.float32).tiny
+    large = np.sqrt(np.finfo(np.float32).max) * 2
+    maximum = np.finfo(np.float32).max
+    x = constant_op.constant(
+        [
+            [0.0, 0.0],
+            [tiny, 0.0],
+            [large, 0.0],
+            [maximum, maximum],
+            [3.0, 4.0],
+        ],
+        dtype=dtypes.float32,
+    )
+
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = linalg_ops.norm_v2(x, axis=1, keepdims=True)
+
+    self.assertAllClose(
+        tape.gradient(y, x),
+        [
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 0.0],
+            [np.sqrt(0.5), np.sqrt(0.5)],
+            [0.6, 0.8],
+        ],
+    )
+
+  def testComplex(self):
+    for dtype in [dtypes.complex64, dtypes.complex128]:
+      real_dtype = dtype.real_dtype.as_numpy_dtype
+      values_and_expected = [
+          (0.0j, 0.0j),
+          (np.finfo(real_dtype).tiny + 0.0j, 1.0 + 0.0j),
+          (3.0 + 4.0j, 0.6 + 0.8j),
+      ]
+      for value, expected in values_and_expected:
+        x = constant_op.constant([value], dtype=dtype)
+
+        with backprop.GradientTape() as tape:
+          tape.watch(x)
+          y = linalg_ops.norm_v2(x)
+
+        self.assertAllClose(tape.gradient(y, x), [expected])
+
+  def testMixedNonFiniteValuesPreserveForwardResult(self):
+    x = constant_op.constant(
+        [[0.0, 0.0], [np.inf, 0.0], [np.nan, 0.0]],
+        dtype=dtypes.float32,
+    )
+
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = linalg_ops.norm_v2(x, axis=1)
+
+    dx = tape.gradient(y, x)
+    y_value, dx_value = self.evaluate((y, dx))
+    self.assertEqual(y_value[0], 0.0)
+    self.assertTrue(np.isinf(y_value[1]))
+    self.assertTrue(np.isnan(y_value[2]))
+    self.assertAllEqual(dx_value[0], [0.0, 0.0])
+
+  def testFloat16LargeReduction(self):
+    x = array_ops.ones([65536], dtype=dtypes.float16)
+
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = linalg_ops.norm_v2(x)
+
+    dx = tape.gradient(y, x)
+    self.assertTrue(self.evaluate(math_ops.reduce_all(math_ops.is_finite(dx))))
+    self.assertAllClose(math_ops.reduce_min(dx), 1.0 / 256.0)
+    self.assertAllClose(math_ops.reduce_max(dx), 1.0 / 256.0)
+
+  def testSecondDerivative(self):
+    x = constant_op.constant([3.0, 4.0], dtype=dtypes.float64)
+
+    with backprop.GradientTape() as outer_tape:
+      outer_tape.watch(x)
+      with backprop.GradientTape() as inner_tape:
+        inner_tape.watch(x)
+        y = linalg_ops.norm_v2(x)
+      dx = inner_tape.gradient(y, x)
+
+    ddx = outer_tape.gradient(
+        dx, x, output_gradients=array_ops.ones_like(dx)
+    )
+    self.assertAllClose(ddx, [0.032, -0.024])
 
 
 class SegmentMinOrMaxGradientTest(test.TestCase):

@@ -27,6 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import norm_grad
 from tensorflow.python.ops import special_math_ops
 
 
@@ -54,7 +55,10 @@ def _EuclideanNormGrad(op: ops.Operation, grad):
     output = array_ops.reshape(output, output_shape_kept_dims)
     grad = array_ops.reshape(grad, output_shape_kept_dims)
 
-  return math_ops.truediv(op.inputs[0], output / grad), None
+  direction = norm_grad.safe_euclidean_norm_grad(
+      op.inputs[0], output, op.inputs[1]
+  )
+  return math_ops.multiply_no_nan(direction, grad), None
 
 
 def SmartBroadcastGradientArgs(x, y, grad=None):

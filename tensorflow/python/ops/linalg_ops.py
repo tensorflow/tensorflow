@@ -29,6 +29,7 @@ from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops_impl
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import norm_grad
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_linalg_ops import *
 # pylint: enable=wildcard-import
@@ -38,6 +39,16 @@ from tensorflow.python.util.tf_export import tf_export
 
 # Names below are lower_case.
 # pylint: disable=invalid-name
+
+
+def _euclidean_norm(tensor, axis):
+  """Computes a Euclidean norm with a numerically stable gradient."""
+  result = math_ops.sqrt(
+      math_ops.reduce_sum(
+          tensor * math_ops.conj(tensor), axis, keepdims=True
+      )
+  )
+  return norm_grad.safe_euclidean_norm(tensor, result, axis)
 
 
 def _RegularizedGramianCholesky(matrix, l2_regularizer, first_kind):
@@ -763,9 +774,7 @@ def norm(tensor,
         # NOTE: we unfortunately cannot use tf.math.reduce_euclidean_norm, since
         # this introduces a new op that is not supported in XLA, and breaks
         # many existing TPU workloads (e.g. ResNet).
-        result = math_ops.sqrt(
-            math_ops.reduce_sum(
-                tensor * math_ops.conj(tensor), axis, keepdims=True))
+        result = _euclidean_norm(tensor, axis)
     else:
       result = math_ops.abs(tensor)
       if ord == 1:
