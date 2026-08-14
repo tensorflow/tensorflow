@@ -344,19 +344,19 @@ uint64_t MlirModuleFingerprint(mlir::ModuleOp module) {
   return tsl::Fingerprint64(os.str());
 }
 
-absl::StatusOr<std::optional<xla::CompileOptions>> GetModuleXlaCompileOverrides(
+absl::StatusOr<XlaCompileOptions*> GetModuleXlaCompileOverrides(
     mlir::StringAttr compile_options_key,
     std::shared_ptr<
         absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
         compile_options_overrides) {
-  std::optional<xla::CompileOptions> compile_options = std::nullopt;
+  XlaCompileOptions* compile_options = nullptr;
   if (compile_options_overrides != nullptr && compile_options_key != nullptr) {
     if (auto option_override =
             compile_options_overrides->find(compile_options_key.str());
         option_override != compile_options_overrides->end()) {
       if (auto xla_options =
               dyn_cast<XlaCompileOptions>(option_override->second.get())) {
-        compile_options = xla_options->compile_options;
+        compile_options = xla_options;
       } else {
         return absl::InvalidArgumentError(absl::StrCat(
             "The `", kIfrtCompileOptionsKey.str(), "` compile options key `",
@@ -368,6 +368,20 @@ absl::StatusOr<std::optional<xla::CompileOptions>> GetModuleXlaCompileOverrides(
   }
 
   return compile_options;
+}
+
+absl::StatusOr<std::optional<xla::CompileOptions>> GetModuleCompileOverrides(
+    mlir::StringAttr compile_options_key,
+    std::shared_ptr<
+        absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
+        compile_options_overrides) {
+  ABSL_ASSIGN_OR_RETURN(XlaCompileOptions * xla_compile_options,
+                   GetModuleXlaCompileOverrides(compile_options_key,
+                                                compile_options_overrides));
+  if (xla_compile_options == nullptr) {
+    return std::nullopt;
+  }
+  return xla_compile_options->compile_options;
 }
 
 absl::StatusOr<ShardingRef> ShardingFromIfrtArrayType(

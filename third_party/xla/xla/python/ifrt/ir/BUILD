@@ -325,6 +325,7 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/python/ifrt/hlo:hlo_program",
         "//xla/tsl/concurrency:future",
+        "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -346,6 +347,7 @@ cc_library(
         "//xla/python/pjrt_ifrt:xla_ifrt",
         "//xla/service:computation_placer_hdr",
         "//xla/tsl/concurrency:future",
+        "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:nullability",
