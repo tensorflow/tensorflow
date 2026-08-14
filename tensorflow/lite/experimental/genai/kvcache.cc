@@ -277,6 +277,16 @@ TfLiteStatus KVCacheEval(TfLiteContext* context, TfLiteNode* node) {
 
   // Compute the span of the inputs.
   const int64_t input_first_idx = position->data.i64[0];
+  if (input_first_idx < 0 || num_slots_needed <= 0 ||
+      num_slots_needed > max_num_entries ||
+      input_first_idx > INT64_MAX - num_slots_needed) {
+    TF_LITE_KERNEL_LOG(
+        context,
+        "Invalid input position %d or sequence length %d (max_num_entries: %d)",
+        static_cast<int>(input_first_idx), static_cast<int>(num_slots_needed),
+        static_cast<int>(max_num_entries));
+    return kTfLiteError;
+  }
   const int64_t input_last_idx = input_first_idx + num_slots_needed - 1;
 
   // Compute the span of the cache.
@@ -289,30 +299,22 @@ TfLiteStatus KVCacheEval(TfLiteContext* context, TfLiteNode* node) {
       std::max(static_cast<int64_t>(0), input_last_idx - cache_last_slot_idx),
       max_num_entries);
 
-  // These values determine how we will write to the output tensor:
-  // first_slot := the first cache entry that we will write to in the output
-  int64_t first_slot = input_first_idx - op_data->first_slot_index;
-  if (first_slot < 0) {
+  // Validate the resulting slot position post-shift before modifying state or memory.
+  const int64_t target_first_slot_idx = op_data->first_slot_index + slots_to_shift;
+  const int64_t first_slot = input_first_idx - target_first_slot_idx;
+  if (first_slot < 0 || first_slot + num_slots_needed > max_num_entries) {
     TF_LITE_KERNEL_LOG(
         context,
-        "Can not specify a position before this cache's first slot index of %d",
-        op_data->first_slot_index);
+        "Invalid position %d for cache with first slot index %d and max entries %d",
+        static_cast<int>(input_first_idx),
+        static_cast<int>(target_first_slot_idx),
+        static_cast<int>(max_num_entries));
     return kTfLiteError;
   }
-
-  // byte_offset_for_output := the byte offset for the first slot.
-  int64_t byte_offset_for_output = first_slot * num_bytes_per_tensor;
-  // num_slots_for_output := the number of slots we write in the output
-  int64_t num_slots_for_output = num_slots_needed;
 
   // 3. If we need more slots, make room in the cache by writing over oldest
   //    entries.
   if (slots_to_shift > 0 && slots_to_shift < max_num_entries) {
-    // If we are shifting the cache, we need to start writing from the
-    // beginning.
-    byte_offset_for_output = 0;
-    // And we need to write the entire cache.
-    num_slots_for_output = max_num_entries;
     const int bytes_offset =
         sizeof(float) * elements_in_one_entry * slots_to_shift;
     const int size_bytes_to_shift = sizeof(float) * elements_in_one_entry *
@@ -324,10 +326,8 @@ TfLiteStatus KVCacheEval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   // Update the first slot this cache now covers.
-  op_data->first_slot_index = op_data->first_slot_index + slots_to_shift;
+  op_data->first_slot_index = target_first_slot_idx;
 
-  // Recompute the first slot in case any shifting occurred.
-  first_slot = input_first_idx - op_data->first_slot_index;
   const int64_t bytes_offset_for_cache = first_slot * num_bytes_per_tensor;
 
   // 4. Put the key and value in their respective caches.
