@@ -64,6 +64,15 @@ class ConflictingInstallsTest(test.TestCase):
       ):
         self_check._check_conflicting_installs()
 
+  def testLegacyGpuDistributionMismatchRaises(self):
+    # `tensorflow-gpu` is no longer published, but old pins are still installed
+    # and unpack into the same directory.
+    with self._with_installed(
+        {"tensorflow": "2.21.0", "tensorflow-gpu": "2.10.0"}
+    ):
+      with self.assertRaisesRegex(ImportError, "conflicting TensorFlow"):
+        self_check._check_conflicting_installs()
+
   def testNightlyMismatchRaises(self):
     with self._with_installed(
         {"tf-nightly": "2.22.0.dev1", "tf-nightly-cpu": "2.22.0.dev2"}

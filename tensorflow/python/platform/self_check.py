@@ -28,9 +28,11 @@ MSVCP_DLL_NAMES = "msvcp_dll_names"
 _CONFLICTING_DISTRIBUTIONS = (
     "tensorflow",
     "tensorflow-cpu",
+    "tensorflow-gpu",
     "tensorflow-intel",
     "tf-nightly",
     "tf-nightly-cpu",
+    "tf-nightly-gpu",
     "tf-nightly-intel",
 )
 
