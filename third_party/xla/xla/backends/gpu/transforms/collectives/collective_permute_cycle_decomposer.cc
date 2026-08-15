@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -227,17 +228,34 @@ absl::Status DecomposeCollectivePermuteCycle(
   //   recv-data = type[?] select(compare, cp1_done, cp2_done)
   // If the collective is across replicas, then `partition` is replaced by
   // `replica = u32[] replica-id()`.
+  //
+  // `source_target_pairs` may describe several disjoint cycles, in which case
+  // there is one back edge per cycle and the predicate has to hold for every
+  // one of their targets. A single equality would send all but one of those
+  // devices to the forward collective-permute, where they are not targets and
+  // so would read zeros instead of their permuted data. Or the comparisons
+  // together to test membership in the whole set.
   ABSL_ASSIGN_OR_RETURN(HloInstruction * partition_or_replica,
                    CreatePartitionOrReplicaId(computation, mode, cp_name));
-  int64_t bwd_recv_id = back_pairs.back().second;
-  HloInstruction* constant = computation->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0(U32, bwd_recv_id)),
-      absl::StrCat(cp_name, "-bwd-recv-id"));
-  HloInstruction* compare = computation->AddInstruction(
-      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}),
-                                    partition_or_replica, constant,
-                                    Comparison::Direction::kEq),
-      absl::StrCat(cp_name, "-cmp"));
+  HloInstruction* compare = nullptr;
+  for (const std::pair<int64_t, int64_t>& back_pair : back_pairs) {
+    HloInstruction* constant = computation->AddInstruction(
+        HloInstruction::CreateConstant(
+            LiteralUtil::CreateR0(U32, back_pair.second)),
+        absl::StrCat(cp_name, "-bwd-recv-id"));
+    HloInstruction* is_bwd_recv = computation->AddInstruction(
+        HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}),
+                                      partition_or_replica, constant,
+                                      Comparison::Direction::kEq),
+        absl::StrCat(cp_name, "-cmp"));
+    compare = compare == nullptr
+                  ? is_bwd_recv
+                  : computation->AddInstruction(
+                        HloInstruction::CreateBinary(
+                            ShapeUtil::MakeShape(PRED, {}), HloOpcode::kOr,
+                            compare, is_bwd_recv),
+                        absl::StrCat(cp_name, "-cmp-or"));
+  }
 
   // Later in the pipeline, CollectivePermuteDecomposer uses post order
   //  to chain the send/recv instructions. It's important that the back
