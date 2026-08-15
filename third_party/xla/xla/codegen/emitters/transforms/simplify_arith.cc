@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <utility>
 
@@ -22,7 +23,6 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
-#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributeInterfaces.h"
@@ -31,13 +31,13 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Value.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"  // IWYU pragma: keep
-#include "xla/codegen/emitters/transforms/passes.h"  // IWYU pragma: keep
+#include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/interval.h"
 
 namespace xla {
 namespace emitters {
@@ -435,22 +435,6 @@ struct RefineConstraints : public OpRewritePattern<ApplyIndexingOp> {
   }
 };
 
-// Rewrites atan2(x, 1) to its equivalent form of atan(x).
-struct SimplifyAtan2Pattern : public OpRewritePattern<mlir::math::Atan2Op> {
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(mlir::math::Atan2Op op,
-                                PatternRewriter& rewriter) const override {
-    if (!mlir::matchPattern(op.getRhs(), mlir::m_OneFloat())) {
-      return rewriter.notifyMatchFailure(op, "RHS is not 1.0");
-    }
-
-    rewriter.replaceOpWithNewOp<mlir::math::AtanOp>(
-        op, op.getType(), op.getLhs(), op.getFastmathAttr());
-    return mlir::success();
-  }
-};
-
 class SimplifyArithPass
     : public impl::SimplifyArithPassBase<SimplifyArithPass> {
  public:
@@ -469,8 +453,7 @@ class SimplifyArithPass
       RewriteMinSi,
       RewriteTruncBitExt<mlir::arith::AndIOp>,
       RewriteTruncBitExt<mlir::arith::OrIOp>,
-      RewriteTruncExtShuffle,
-      SimplifyAtan2Pattern
+      RewriteTruncExtShuffle
     >(ctx);
 
     if (fast_min_max_) {
