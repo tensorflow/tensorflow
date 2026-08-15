@@ -85,12 +85,18 @@ TfLiteStatus ResourceVariable::AssignFrom(const TfLiteTensor* tensor) {
   return kTfLiteOk;
 }
 
-void CreateResourceVariableIfNotAvailable(ResourceMap* resources,
-                                          int resource_id) {
-  if (resources->count(resource_id) != 0) {
-    return;
+TfLiteStatus CreateResourceVariableIfNotAvailable(ResourceMap* resources,
+                                                  int resource_id) {
+  auto it = resources->find(resource_id);
+  if (it != resources->end()) {
+    if (it->second->GetResourceType() !=
+        ResourceBase::ResourceType::kResourceVariable) {
+      return kTfLiteError;
+    }
+    return kTfLiteOk;
   }
   resources->emplace(resource_id, std::make_unique<ResourceVariable>());
+  return kTfLiteOk;
 }
 
 ResourceVariable* GetResourceVariable(ResourceMap* resources, int resource_id) {
