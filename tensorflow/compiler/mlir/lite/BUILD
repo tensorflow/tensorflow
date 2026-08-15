@@ -471,31 +471,6 @@ cc_library(
     ],
 )
 
-# Provider library that force-links the ConverterPassOptionsSetter symbols into
-# shared libraries that reference its vtable (e.g. the Windows
-# _pywrap_tensorflow_common.dll). On Windows, MSVC drops object files from
-# static libraries if their symbols are not directly referenced at the final
-# link, which causes LNK2019 for the ConverterPassOptionsSetter::SetOptions
-# overloads. This target is marked `alwayslink` and is only added to the
-# pywrap deps on Windows, so Linux/macOS link behavior is unchanged.
-cc_library(
-    name = "converter_pass_options_setter_provider",
-    srcs = ["transforms/converter_pass_options_setter_provider.cc"],
-    compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
-    deps = [
-        ":common",
-        ":converter_flags_proto_cc",
-        ":converter_pass_options_setter",
-        ":optimize_broadcast_like_pass_options",
-        ":optimize_pass_options",
-        ":pass_options",
-        ":variable_freezing_pipeline_options",
-        "@llvm-project//llvm:Support",
-    ],
-    alwayslink = 1,
-)
-
 cc_library(
     name = "tensorflow_lite_ops",
     srcs = [

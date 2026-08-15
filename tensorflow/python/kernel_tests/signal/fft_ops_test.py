@@ -1063,6 +1063,8 @@ class FFTShiftTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(fft_ops.fftshift(freqs, axes=(0, -1)), shifted)
       self.assertAllEqual(fft_ops.ifftshift(shifted, axes=(0, -1)), freqs)
       self.assertAllEqual(
+          fft_ops.fftshift(freqs, axes=-1), fft_ops.fftshift(freqs, axes=(1,)))
+      self.assertAllEqual(
           fft_ops.ifftshift(shifted, axes=-1),
           fft_ops.ifftshift(shifted, axes=(1,)))
 
