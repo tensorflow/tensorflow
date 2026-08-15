@@ -1,4 +1,4 @@
-# Disable Bzlmod for now
+# Disable Bzlmod for now testing123
 common --noenable_bzlmod --enable_workspace
 
 # Turn off empty glob check (flipped in Bazel 8).
