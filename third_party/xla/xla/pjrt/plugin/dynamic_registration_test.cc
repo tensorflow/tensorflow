@@ -41,4 +41,11 @@ TEST(DynamicRegistrationTest, RegistrationFailsWithoutEnvVar) {
   EXPECT_FALSE(RegisterDynamicPjrtPlugin("myplugin", "BAD_FAKE_ENV_VAR").ok());
 }
 
+static constexpr char kFakePluginName[] = "fake_plugin_test";
+REGISTER_DYNAMIC_PJRT_PLUGIN(kFakePluginName, "BAD_FAKE_ENV_VAR");
+
+TEST(DynamicRegistrationTest, RegisterMacroDoesNotCrashOnMissingPlugin) {
+  EXPECT_FALSE(xla::GetCApiClient(kFakePluginName).ok());
+}
+
 }  // namespace
