@@ -168,6 +168,30 @@ TEST_F(HloShardingTest, IotaProtoRoundTrip) {
   EXPECT_THAT(sharding.ToProto(), EqualsProto(proto));
 }
 
+TEST_F(HloShardingTest, FromProtoFailsWithNegativeIotaReshapeDims) {
+  auto proto = ParseTextProtoOrDie<OpSharding>(R"pb(
+    type: OTHER
+    tile_assignment_dimensions: 1
+    iota_reshape_dims: -1
+    iota_reshape_dims: -1
+    iota_transpose_perm: 0
+    iota_transpose_perm: 1
+  )pb");
+  EXPECT_FALSE(HloSharding::FromProto(proto).ok());
+}
+
+TEST_F(HloShardingTest, FromProtoFailsWithInvalidIotaTransposePerm) {
+  auto proto = ParseTextProtoOrDie<OpSharding>(R"pb(
+    type: OTHER
+    tile_assignment_dimensions: 6
+    iota_reshape_dims: 3
+    iota_reshape_dims: 2
+    iota_transpose_perm: 99
+    iota_transpose_perm: 0
+  )pb");
+  EXPECT_FALSE(HloSharding::FromProto(proto).ok());
+}
+
 TEST_F(HloShardingTest, NamedShardingTupleProtoRoundTrip) {
   auto proto = ParseTextProtoOrDie<OpSharding>(R"pb(
     type: TUPLE
