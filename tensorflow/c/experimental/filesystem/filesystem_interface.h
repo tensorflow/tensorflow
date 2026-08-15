@@ -836,7 +836,7 @@ typedef struct TF_FilesystemOps {
 /// only load compatible plugins and discard all others.
 
 // LINT.IfChange(random_access_file_ops_version)
-constexpr int TF_RANDOM_ACCESS_FILE_OPS_API = 0;
+constexpr int TF_RANDOM_ACCESS_FILE_OPS_API = 1;
 constexpr int TF_RANDOM_ACCESS_FILE_OPS_ABI = 0;
 constexpr size_t TF_RANDOM_ACCESS_FILE_OPS_SIZE =
     sizeof(TF_RandomAccessFileOps);
