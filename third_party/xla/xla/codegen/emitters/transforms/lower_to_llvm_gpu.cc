@@ -74,6 +74,9 @@ namespace se = ::stream_executor;
 // ln(2), used to express log(x) = log2(x) * ln(2).
 constexpr double kLn2 = 0.6931471805599453;
 
+// log2(e), used to express exp(x) = exp2(x * log2(e)).
+constexpr double kLog2e = 1.4426950408889634;
+
 // Lowers a scalar bf16 unary `math` op to the matching native gfx1250 bf16
 // transcendental instruction (v_exp_bf16, v_sqrt_bf16, v_rsq_bf16, v_tanh_bf16,
 // v_log_bf16, ...) via its `llvm.amdgcn.*` intrinsic, when the op maps 1:1 to
@@ -136,6 +139,48 @@ struct LogBF16ToAMDGPU
   }
 };
 
+// Lowers a scalar bf16 `math.exp` on gfx1250 by rewriting
+// exp(x) = 2^(x * log2(e)) and computing exp2 with the native `v_exp_f32`
+// transcendental (the `llvm.amdgcn.exp2` intrinsic) in f32.
+//
+// Everything is computed in f32: the bf16 input is widened to f32, scaled by
+// an f32 log2(e), exponentiated in f32, and the result rounded once to bf16.
+// Scaling and exponentiating in f32 rather than using the native bf16
+// `v_exp_bf16` (which would round x * log2(e) to bf16 before exponentiating)
+// keeps the result accurate: the bf16-rounded-exponent error otherwise grows
+// with |x| and can overflow to inf, which is why the native bf16 exp path was
+// removed. Lowers to
+// `v_lshlrev_b32` + `v_mul_f32` + `v_exp_f32` + `v_cvt_pk_bf16_f32`.
+struct ExpBF16ToAMDGPU
+    : public mlir::ConvertOpToLLVMPattern<mlir::math::ExpOp> {
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::math::ExpOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    if (!op.getType().isBF16()) {
+      return rewriter.notifyMatchFailure(op, "not a scalar bf16 exp");
+    }
+    mlir::Location loc = op.getLoc();
+    mlir::Value operand = adaptor.getOperands().front();
+    mlir::Type bf16 = operand.getType();
+    mlir::Type f32 = rewriter.getF32Type();
+    mlir::Value x_f32 =
+        mlir::LLVM::FPExtOp::create(rewriter, loc, f32, operand);
+    mlir::Value log2e = mlir::LLVM::ConstantOp::create(
+        rewriter, loc, f32, rewriter.getFloatAttr(f32, kLog2e));
+    mlir::Value scaled =
+        mlir::LLVM::FMulOp::create(rewriter, loc, x_f32, log2e);
+    mlir::Value exp2x = mlir::LLVM::CallIntrinsicOp::create(
+                            rewriter, loc, /*resultType=*/f32,
+                            rewriter.getStringAttr("llvm.amdgcn.exp2"),
+                            mlir::ValueRange{scaled})
+                            .getResults();
+    rewriter.replaceOpWithNewOp<mlir::LLVM::FPTruncOp>(op, bf16, exp2x);
+    return mlir::success();
+  }
+};
+
 class LowerToLLVMGPUPass
     : public impl::LowerToLLVMGPUPassBase<LowerToLLVMGPUPass> {
  public:
@@ -187,6 +232,7 @@ class LowerToLLVMGPUPass
                 .has_bf16_transcendental_support()) {
           mlir::PatternBenefit benefit(2);
           patterns.add<LogBF16ToAMDGPU>(converter, benefit);
+          patterns.add<ExpBF16ToAMDGPU>(converter, benefit);
           patterns.add<TranscendentalBF16ToAMDGPU<mlir::math::Exp2Op>>(
               converter, "llvm.amdgcn.exp2", benefit);
           patterns.add<TranscendentalBF16ToAMDGPU<mlir::math::SqrtOp>>(

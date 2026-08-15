@@ -1459,8 +1459,17 @@ class BaseSession(SessionInterface):
       raise type(e)(node_def, op, message)  # pylint: disable=no-value-for-parameter
 
   def _extend_graph(self):
+    self._assert_session_available()
     with self._graph._session_run_lock():  # pylint: disable=protected-access
       tf_session.ExtendSession(self._session)
+
+  def _assert_session_available(self):
+    if self._session is None:
+      raise RuntimeError(
+          'Session is not available. The internal session '
+          'handle is None. This may indicate the session has '
+          'been closed or corrupted.'
+      )
 
   # The threshold to run garbage collection to delete dead tensors.
   _DEAD_HANDLES_THRESHOLD = 10
@@ -1513,11 +1522,13 @@ class BaseSession(SessionInterface):
 
   def _call_tf_sessionrun(self, options, feed_dict, fetch_list, target_list,
                           run_metadata):
+    self._assert_session_available()
     return tf_session.TF_SessionRun_wrapper(self._session, options, feed_dict,
                                             fetch_list, target_list,
                                             run_metadata)
 
   def _call_tf_sessionprun(self, handle, feed_dict, fetch_list):
+    self._assert_session_available()
     return tf_session.TF_SessionPRun_wrapper(self._session, handle, feed_dict,
                                              fetch_list)
 

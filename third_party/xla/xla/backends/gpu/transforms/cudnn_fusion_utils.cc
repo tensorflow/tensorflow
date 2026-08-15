@@ -26,12 +26,35 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
+
+bool IsCuDnnConvertSupported(PrimitiveType src_type, PrimitiveType dst_type,
+                             const se::DeviceDescription& device_info) {
+  const se::CudaComputeCapability* cuda_cc =
+      device_info.gpu_compute_capability().cuda_compute_capability();
+  if (cuda_cc == nullptr) {
+    return false;
+  }
+  // cuDNN only supports BF16 convert fusions starting from Ampere.
+  if ((src_type == BF16 || dst_type == BF16) && !cuda_cc->IsAtLeastAmpere()) {
+    return false;
+  }
+  // cuDNN only supports FP8 convert fusions starting from Ada / Hopper.
+  if ((primitive_util::IsF8Type(src_type) ||
+       primitive_util::IsF8Type(dst_type)) &&
+      !cuda_cc->IsAtLeastAda()) {
+    return false;
+  }
+  return true;
+}
 
 PrecisionConfig GetPrecisionConfig(const HloInstruction& hlo) {
   if (auto gpu_config = hlo.backend_config<GpuBackendConfig>();
@@ -59,7 +82,8 @@ PrecisionConfig GetPrecisionConfig(const HloInstruction& hlo) {
 namespace {
 
 bool IsEpilogueOpSupportedByCuDNN(const HloInstruction& hlo,
-                                  bool can_fuse_reduce, bool is_nchw) {
+                                  bool can_fuse_reduce, bool is_nchw,
+                                  const se::DeviceDescription& device_info) {
   if (is_nchw) {
     return false;
   }
@@ -71,12 +95,16 @@ bool IsEpilogueOpSupportedByCuDNN(const HloInstruction& hlo,
       hlo.operand(0)->opcode() == HloOpcode::kConvert) {
     return false;
   }
+  if (opcode == HloOpcode::kConvert) {
+    PrimitiveType src_type = hlo.operand(0)->shape().element_type();
+    PrimitiveType dst_type = hlo.shape().element_type();
+    return IsCuDnnConvertSupported(src_type, dst_type, device_info);
+  }
   switch (opcode) {
     case HloOpcode::kAbs:
     case HloOpcode::kAdd:
     case HloOpcode::kCeil:
     case HloOpcode::kCompare:
-    case HloOpcode::kConvert:
     case HloOpcode::kCos:
     case HloOpcode::kDivide:
     case HloOpcode::kExp:
@@ -102,7 +130,7 @@ bool IsEpilogueOpSupportedByCuDNN(const HloInstruction& hlo,
       return hlo.user_count() == 1 &&
              hlo.users()[0]->opcode() == HloOpcode::kReduce &&
              IsEpilogueOpSupportedByCuDNN(*hlo.users()[0], can_fuse_reduce,
-                                          is_nchw);
+                                          is_nchw, device_info);
     case HloOpcode::kBroadcast:
       return ShapeUtil::IsScalar(hlo.operand(0)->shape()) ||
              hlo.operand(0)->shape().dimensions().size() == 1;
@@ -119,18 +147,20 @@ HloInstruction* FuseTowardOperand(
     HloInstruction* hlo, HloComputation::Builder& builder,
     std::vector<HloInstruction*>& fusion_params,
     absl::flat_hash_map<HloInstruction*, HloInstruction*>& fused_hlo_map,
-    bool is_nchw) {
+    const se::DeviceDescription& device_info, bool is_nchw) {
   if (auto it = fused_hlo_map.find(hlo); it != fused_hlo_map.end()) {
     return it->second;
   }
   HloInstruction* fused_hlo;
-  if (IsEpilogueOpSupportedByCuDNN(*hlo, /*can_fuse_reduce=*/false, is_nchw) &&
+  if (IsEpilogueOpSupportedByCuDNN(*hlo, /*can_fuse_reduce=*/false, is_nchw,
+                                   device_info) &&
       hlo->user_count() == 1) {
     HloInstruction::InstructionVector new_operands;
     for (int i = 0; i < hlo->operand_count(); ++i) {
       HloInstruction* operand = hlo->mutable_operand(i);
       new_operands.push_back(FuseTowardOperand(operand, builder, fusion_params,
-                                               fused_hlo_map, is_nchw));
+                                               fused_hlo_map, device_info,
+                                               is_nchw));
     }
     fused_hlo = builder.AddInstruction(
         hlo->CloneWithNewOperands(hlo->shape(), new_operands));
@@ -144,13 +174,15 @@ HloInstruction* FuseTowardOperand(
 }
 
 bool ShouldKeepFusingUsers(HloInstruction* hlo, bool& can_fuse_reduce,
-                           bool is_nchw) {
+                           bool is_nchw,
+                           const se::DeviceDescription& device_info) {
   if (hlo->user_count() == 0 || hlo->opcode() == HloOpcode::kReduce) {
     return false;
   }
   bool cached_can_fuse_reduce = can_fuse_reduce;
   for (HloInstruction* user : hlo->users()) {
-    if (!IsEpilogueOpSupportedByCuDNN(*user, can_fuse_reduce, is_nchw)) {
+    if (!IsEpilogueOpSupportedByCuDNN(*user, can_fuse_reduce, is_nchw,
+                                      device_info)) {
       can_fuse_reduce = cached_can_fuse_reduce;
       return false;
     }
@@ -177,13 +209,13 @@ void FuseTowardUsers(
     std::vector<HloInstruction*>& fusion_params,
     std::vector<HloInstruction*>& fusible_users,
     absl::flat_hash_map<HloInstruction*, HloInstruction*>& fused_hlo_map,
-    bool is_nchw) {
+    const se::DeviceDescription& device_info, bool is_nchw) {
   for (auto user : fusible_users) {
     HloInstruction::InstructionVector new_operands;
     for (int i = 0; i < user->operand_count(); ++i) {
       HloInstruction* operand = user->mutable_operand(i);
       HloInstruction* fused_operand = FuseTowardOperand(
-          operand, builder, fusion_params, fused_hlo_map, is_nchw);
+          operand, builder, fusion_params, fused_hlo_map, device_info, is_nchw);
       new_operands.push_back(fused_operand);
     }
     HloInstruction* fused_user = builder.AddInstruction(
@@ -195,7 +227,7 @@ void FuseTowardUsers(
 bool GrowFusionDFS(HloInstruction* hlo, HloReachabilityMap* reachability,
                    FusionState& state,
                    absl::flat_hash_map<HloInstruction*, bool>& fusible_cache,
-                   bool is_nchw,
+                   const se::DeviceDescription& device_info, bool is_nchw,
                    absl::FunctionRef<bool(const std::vector<HloInstruction*>&)>
                        is_outputs_valid) {
   if (fusible_cache.contains(hlo)) {
@@ -205,12 +237,12 @@ bool GrowFusionDFS(HloInstruction* hlo, HloReachabilityMap* reachability,
   const auto snapshot = state.TakeSnapshot();
 
   bool is_endpoint =
-      !ShouldKeepFusingUsers(hlo, state.can_fuse_reduce, is_nchw);
+      !ShouldKeepFusingUsers(hlo, state.can_fuse_reduce, is_nchw, device_info);
   bool is_subgraph_valid = true;
   if (!is_endpoint) {
     for (HloInstruction* user : hlo->users()) {
-      if (!GrowFusionDFS(user, reachability, state, fusible_cache, is_nchw,
-                         is_outputs_valid)) {
+      if (!GrowFusionDFS(user, reachability, state, fusible_cache, device_info,
+                         is_nchw, is_outputs_valid)) {
         is_subgraph_valid = false;
         is_endpoint = true;
         break;

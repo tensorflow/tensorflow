@@ -911,6 +911,47 @@ TEST_F(SameShapeMultiOutputFusionTileAnalysisTest, SimpleMultiOutputFusion) {
             tiled_computation.roots()[2]->tile());
 }
 
+TEST_P(TileAnalysisTest, ScanWithLoop) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"hlo(
+    add {
+      p0 = f32[16]{0} parameter(0)
+      p1 = f32[16]{0} parameter(1)
+      add = f32[16]{0} add(p0, p1)
+      ROOT tuple = (f32[16]{0}, f32[16]{0}) tuple(add, add)
+    }
+    fused_computation {
+      p0 = f32[16,97]{1,0} parameter(0)
+      constant = f32[16]{0} constant({0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0})
+      scan = (f32[16,97]{1,0}, f32[16]{0}) scan(p0, constant),
+        dimensions={1}, num_carries=1, is_associative=false, to_apply=add
+      ROOT get-tuple-element = f32[16,97]{1,0} get-tuple-element(scan), index=0
+    }
+    ENTRY e {
+      p0 = f32[16,97]{1,0} parameter(0)
+      ROOT fusion = f32[16,97]{1,0} fusion(p0), kind=kLoop, calls=fused_computation
+    })hlo",
+                                    {8, 32}));
+
+  EXPECT_THAT(tiled_computation, MatchString(R"(
+    Dimensions:
+    0 type: parallel size: 16 tile size: 8 dim ID:0
+      hlo: %get-tuple-element = f32[16,97]{1,0} get-tuple-element(%scan), index=0
+    1 type: sequential size: 97 tile size: 32 dim ID:1
+      hlo: %scan = (f32[16,97]{1,0}, f32[16]{0}) scan(%p0.1, %constant), dimensions={1}, num_carries=1, is_associative=false, to_apply=%add
+    Root tiles:
+    0 root tile:  offsets [tid_0 * 8, tid_1 * 32] sizes [8, 32] strides [1, 1] upper bounds [16, 97]
+
+    Tiled HLO:
+    constant.tile_0 = constant()  offsets [tid_0 * 8] sizes [8] strides [1] upper bounds [16]
+    scan.tile_0 = scan(p0.2.tile_0, constant.tile_0)  offsets [tid_0 * 8, tid_1 * 32] sizes [8, 32] strides [1, 1] upper bounds [16, 97]
+    region #0 {
+      p0.2.tile_0 = parameter(0)  offsets [tid_0 * 8, tid_1 * 32] sizes [8, 32] strides [1, 1] upper bounds [16, 97]
+    }
+    get-tuple-element.tile_0 = get-tuple-element(scan.tile_0)  offsets [tid_0 * 8, tid_1 * 32] sizes [8, 32] strides [1, 1] upper bounds [16, 97]
+  )"));
+}
+
 // TODO(b/422676780): Port the remaining tests.
 
 }  // namespace

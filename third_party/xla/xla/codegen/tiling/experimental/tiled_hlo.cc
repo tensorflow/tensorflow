@@ -224,6 +224,16 @@ bool IsReductionLoopRequired(const TiledHloInstruction& tiled_hlo) {
       });
 }
 
+bool IsScanLoopRequired(const TiledHloInstruction& tiled_hlo) {
+  const auto* scan = Cast<HloScanInstruction>(tiled_hlo.hlo());
+  const TilingSpace& tiling_space = tiled_hlo.tile().tiling_space();
+  const auto& dim_info =
+      tiling_space.GetDimensionInfo(*scan, scan->scan_dimension());
+  return dim_info.type == TilingSpace::DimensionSemantics::kSequential &&
+         dim_info.tile_size.has_value() &&
+         *dim_info.tile_size < dim_info.dimension_size;
+}
+
 // Defines how the operands of a TiledHloInstruction are partitioned during
 // region reconstruction.
 //
@@ -283,6 +293,15 @@ RegionSchema GetRegionSchema(const TiledHloInstruction& tiled_hlo,
     case HloOpcode::kReduce: {
       if (IsReductionLoopRequired(tiled_hlo)) {
         int64_t num_inputs = num_operands / 2;
+        return RegionSchema{/*region_roots=*/{iota(0, num_inputs)},
+                            /*operand_ids=*/{iota(num_inputs, num_operands)}};
+      }
+      break;
+    }
+    case HloOpcode::kScan: {
+      if (IsScanLoopRequired(tiled_hlo)) {
+        const auto* scan = Cast<HloScanInstruction>(tiled_hlo.hlo());
+        int64_t num_inputs = scan->inputs().size();
         return RegionSchema{/*region_roots=*/{iota(0, num_inputs)},
                             /*operand_ids=*/{iota(num_inputs, num_operands)}};
       }
