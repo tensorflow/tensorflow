@@ -393,6 +393,25 @@ TEST(Conv3dOpModel, DilationTest) {
                                 19880, 19248, 20392, 19728, 20904}));
 }
 
+TEST(Conv3dOpModel, DilationDifferentDepthAndChannelsTest) {
+  Conv3dOpModel m({TensorType_FLOAT32, {1, 8, 1, 4, 1}},
+                  {TensorType_FLOAT32, {1, 1, 1, 1, 1}},
+                  {TensorType_FLOAT32, {}}, Padding_VALID, /*stride_depth=*/3,
+                  /*stride_width=*/1, /*stride_height=*/4,
+                  /*activation=*/ActivationFunctionType_NONE,
+                  /*dilation_depth=*/3, /*dilation_width=*/3,
+                  /*dilation_height=*/1);
+
+  m.SetInput(CreateRangeVector<float>(32));
+  m.SetFilter({2.0f});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 3, 1, 4, 1));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({0.0f, 2.0f, 4.0f, 6.0f, 24.0f, 26.0f, 28.0f,
+                                30.0f, 48.0f, 50.0f, 52.0f, 54.0f}));
+}
+
 TEST(Conv3dOpModel, BiasTest) {
   Conv3dOpModel m({TensorType_FLOAT32, {2, 2, 3, 4, 2}},
                   {TensorType_FLOAT32, {2, 2, 2, 2, 2}},
