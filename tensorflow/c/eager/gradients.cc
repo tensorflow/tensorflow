@@ -446,7 +446,7 @@ absl::Status SetAttrIntList(AbstractOperation* op_, const char* attr_name,
                             const int64_t* values, int num_values,
                             ForwardOperation* forward_op_) {
   forward_op_->attrs.Set(
-      attr_name, gtl::ArraySlice<const int64_t>(
+      attr_name, absl::Span<const const int64_t>(
                      reinterpret_cast<const int64_t*>(values), num_values));
   return op_->SetAttrIntList(attr_name, values, num_values);
 }
