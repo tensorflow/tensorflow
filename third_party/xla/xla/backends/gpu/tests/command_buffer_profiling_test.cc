@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiled_module.h"
+#include "xla/service/compiled_module_base.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.h"
@@ -77,7 +79,7 @@ TEST_P(CommandBufferProfilingTest,
       GetSingleDeviceGpuTopology("gpu", gpu_target_config));
 
   ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<CompiledModule>> aot_results,
+      std::vector<std::unique_ptr<CompiledModuleBase>> aot_results,
       compiler->CompileAheadOfTime(std::move(hlo_module), aot_options));
   ASSERT_EQ(aot_results.size(), 1);
 
@@ -87,11 +89,12 @@ TEST_P(CommandBufferProfilingTest,
   runtime_debug_options.set_xla_enable_command_buffers_during_profiling(
       enable_cb_during_profiling);
 
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
-                       std::move(*aot_results[0])
-                           .LoadExecutable(compiler->PlatformId(),
-                                           gpu_target_config.device_description,
-                                           runtime_debug_options));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      std::move(*absl::down_cast<CompiledModule*>(aot_results[0].get()))
+          .LoadExecutable(compiler->PlatformId(),
+                          gpu_target_config.device_description,
+                          runtime_debug_options));
 
   GpuExecutable* gpu_exec = dynamic_cast<GpuExecutable*>(executable.get());
   ASSERT_NE(gpu_exec, nullptr);

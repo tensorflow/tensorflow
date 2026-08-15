@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/service/compiled_module.h"
+#include "xla/service/compiled_module_base.h"
 #include "xla/service/compiler.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
@@ -72,11 +74,12 @@ absl::Status CompileAndWriteExecutable(absl::string_view output_path) {
                    ParseAndReturnUnverifiedModule(kHloText, {}));
 
   ABSL_ASSIGN_OR_RETURN(
-      std::vector<std::unique_ptr<CompiledModule>> aot_results,
+      std::vector<std::unique_ptr<CompiledModuleBase>> aot_results,
       compiler->CompileAheadOfTime(std::move(hlo_module), aot_options));
 
   ABSL_ASSIGN_OR_RETURN(std::string serialized_executable,
-                   aot_results[0]->SerializeAsString());
+                   absl::down_cast<CompiledModule*>(aot_results[0].get())
+                       ->SerializeAsString());
 
   return tsl::WriteStringToFile(tsl::Env::Default(), output_path,
                                 serialized_executable);

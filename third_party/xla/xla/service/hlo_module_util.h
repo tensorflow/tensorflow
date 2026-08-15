@@ -27,7 +27,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
-#include "xla/service/compiler.h"
+#include "xla/service/compiler_base.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/util.h"
@@ -98,7 +98,7 @@ absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
     absl::Span<const Shape* const> argument_shapes,
     const ExecutionOptions* execution_options, int default_num_replicas,
     std::optional<int> num_threads = std::nullopt,
-    const AotCompilationOptions* aot_options = nullptr);
+    const AotCompilationOptionsBase* aot_options = nullptr);
 
 typedef std::function<Shape(const Shape&)> DeviceShapeRepresentationFn;
 

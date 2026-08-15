@@ -30,16 +30,16 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/compiled_module_base.h"
 #include "xla/service/compiler.h"
+#include "xla/service/compiler_base.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla.pb.h"
 
@@ -276,10 +276,10 @@ class MockCompiler : public Compiler {
                std::vector<se::StreamExecutor*> stream_execs,
                const CompileOptions& options),
               (override));
-  MOCK_METHOD(absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>,
+  MOCK_METHOD(absl::StatusOr<std::vector<std::unique_ptr<CompiledModuleBase>>>,
               CompileAheadOfTime,
               (std::unique_ptr<HloModule> hlo_module,
-               const AotCompilationOptions& options),
+               const AotCompilationOptionsBase& options),
               (override));
   MOCK_METHOD(HloCostAnalysis::ShapeSizeFunction, ShapeSizeBytesFunction, (),
               (const, override));

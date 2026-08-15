@@ -28,7 +28,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/attributes.h"
 #include "absl/base/macros.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
@@ -38,17 +37,17 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "google/protobuf/message.h"
 #include "xla/backends/cpu/target_machine_options.h"
-#include "xla/debug_options_flags.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/compiled_module.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/compiler_base.h"
 #include "xla/service/executable.h"
+#include "xla/service/executable_base.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/service/hlo_module_config.h"
 #include "xla/service/metrics_hook_interface.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_address_allocator.h"
@@ -57,39 +56,17 @@ limitations under the License.
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 
-namespace mlir {
-class DialectRegistry;
-}  // namespace mlir
-
 namespace stream_executor {
 class DeviceDescription;
-
 }  // namespace stream_executor
 
 namespace xla {
 
 // The following types are used for ahead of time compilation.
 
-// Contains the object file data created as a result of ahead-of-time
-// computation.
-using ObjectFileData = std::vector<char>;
-
 class AotCompilationOptions;
 
 using AotCompilationResult ABSL_DEPRECATE_AND_INLINE() = CompiledModule;
-
-// Abstract superclass describing metadata produced during ahead-of-time
-// compilation.
-class AotCompilationMetadata {
- public:
-  AotCompilationMetadata(const AotCompilationMetadata&) = delete;
-  AotCompilationMetadata& operator=(AotCompilationMetadata const&) = delete;
-  virtual std::string ToString() const { return ""; }
-  virtual ~AotCompilationMetadata() = default;
-
- protected:
-  AotCompilationMetadata() = default;
-};
 
 // Abstract compiler interface that is subclassed for compilation on a
 // particular platform.
@@ -105,7 +82,7 @@ class AotCompilationMetadata {
 // Thread-safety: subclasses of Compiler must be thread-safe, as multiple
 // XLA clients may be requesting compilation concurrently for a given
 // platform.
-class Compiler {
+class Compiler : public CompilerBase {
  public:
   // Description of a target device for compilation.
   using GpuTargetConfig = ::xla::gpu::GpuTargetConfig;
@@ -155,7 +132,7 @@ class Compiler {
     bool is_aot_compile = false;
   };
 
-  virtual ~Compiler() = default;
+  ~Compiler() override = default;
 
   // Returns the ID of the platform that this compiler targets.
   virtual se::Platform::Id PlatformId() const = 0;
@@ -170,6 +147,11 @@ class Compiler {
       se::DeviceAddressAllocator* device_allocator) {
     return RunHloPasses(std::move(module), executor,
                         CompileOptions{device_allocator});
+  }
+
+  absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
+      std::unique_ptr<HloModule> module) override {
+    return RunHloPasses(std::move(module), nullptr, nullptr);
   }
 
   // Compiles the HLO module for execution on a device given by the executor,
@@ -188,6 +170,11 @@ class Compiler {
       se::DeviceAddressAllocator* device_allocator) {
     return RunBackend(std::move(module), executor,
                       CompileOptions{device_allocator});
+  }
+
+  absl::StatusOr<std::unique_ptr<ExecutableBase>> RunBackend(
+      std::unique_ptr<HloModule> module) override {
+    return RunBackend(std::move(module), nullptr, nullptr);
   }
 
   // The following two interfaces are same as the above two, except they
@@ -213,6 +200,14 @@ class Compiler {
     return RunBackendWithBufferAssignment(std::move(module),
                                           buffer_assignment_proto, executor,
                                           CompileOptions{device_allocator});
+  }
+
+  absl::StatusOr<std::unique_ptr<ExecutableBase>>
+  RunBackendWithBufferAssignment(
+      std::unique_ptr<HloModule> module,
+      const BufferAssignmentProto* buffer_assignment_proto) override {
+    return RunBackendWithBufferAssignment(
+        std::move(module), buffer_assignment_proto, nullptr, nullptr);
   }
 
   // Returns a (deserialized) AotCompilationResult from a serialized
@@ -258,19 +253,6 @@ class Compiler {
   // that the backend configurations would be targeting.
   virtual std::unique_ptr<tsl::protobuf::Message> ComputeDefaultBackendConfig(
       const HloInstruction& hlo, se::StreamExecutor* executor) const;
-
-  // Compiles the HLO module for ahead-of-time execution.  This is intended for
-  // use in static compilation.
-  virtual absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
-  CompileAheadOfTime(std::unique_ptr<HloModule> module,
-                     const AotCompilationOptions& options) = 0;
-
-  // Similar to CompileAheadOfTime above but AotCompilationMetadata
-  // has an argument that can be populated during compilation.
-  virtual absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
-  CompileAheadOfTime(std::unique_ptr<HloModule> module,
-                     const AotCompilationOptions& options,
-                     std::unique_ptr<AotCompilationMetadata>* metadata);
 
   /////
   // The Compiler class also serves as a point to register compiler objects
@@ -352,33 +334,13 @@ class Compiler {
 };
 
 // Abstract superclass describing options to an ahead-of-time compilation.
-class AotCompilationOptions {
+class AotCompilationOptions : public AotCompilationOptionsBase {
  public:
-  AotCompilationOptions(const AotCompilationOptions&) = delete;
-  AotCompilationOptions& operator=(AotCompilationOptions const&) = delete;
-
   explicit AotCompilationOptions(se::Platform::Id platform_id)
-      : platform_id_(platform_id), debug_options_(GetDebugOptionsFromFlags()) {}
-  virtual ~AotCompilationOptions() = default;
+      : platform_id_(platform_id) {}
 
   // Returns the ID of the platform to which these options apply.
   virtual se::Platform::Id PlatformId() const { return platform_id_; }
-
-  virtual int64_t replica_count() const { return 0; }
-  virtual int64_t num_cores() const { return 0; }
-  virtual bool use_spmd_partitioning() const { return false; }
-  virtual bool use_shardy_partitioner() const { return false; }
-  virtual bool use_auto_spmd_partitioning() const { return false; }
-  virtual std::vector<int64_t> auto_spmd_partitioning_mesh_shape() const {
-    return {};
-  }
-  virtual std::vector<int64_t> auto_spmd_partitioning_mesh_ids() const {
-    return {};
-  }
-  virtual bool deduplicate_hlo() const { return false; }
-  virtual PrecisionConfig::Precision matrix_unit_operand_precision() const {
-    return PrecisionConfig::DEFAULT;
-  }
 
   // Optional allocator that may be used for allocating temp space on the device
   // during compilation.
@@ -389,54 +351,8 @@ class AotCompilationOptions {
     device_allocator_ = device_allocator;
   }
 
-  const DebugOptions& debug_options() const { return debug_options_; }
-  DebugOptions* mutable_debug_options() { return &debug_options_; }
-
-  bool has_static_device_assignment() const {
-    return static_device_assignment_.has_value();
-  }
-  const DeviceAssignment& static_device_assignment() const {
-    CHECK(static_device_assignment_.has_value());
-    return *static_device_assignment_;
-  }
-  void set_static_device_assignment(const DeviceAssignment& device_assignment) {
-    static_device_assignment_ = device_assignment;
-  }
-
-  FusionConfigCollection fusion_config_collection() const {
-    return fusion_config_collection_;
-  }
-  void set_fusion_config_collection(
-      FusionConfigCollection fusion_config_collection) {
-    fusion_config_collection_ = fusion_config_collection;
-  }
-
-  const std::vector<std::vector<bool>>& fusion_config() const {
-    return fusion_config_;
-  }
-  void set_fusion_config(const std::vector<std::vector<bool>>& fusion_config) {
-    fusion_config_ = fusion_config;
-  }
-
   se::StreamExecutor* executor() const { return executor_; }
   void set_executor(se::StreamExecutor* executor) { executor_ = executor; }
-
-  // Optional profile_version and cache key may be used to trigger recompilation
-  // when a compilation cache is used.
-  int64_t profile_version() const { return profile_version_; }
-  void set_profile_version(int64_t profile_version) {
-    profile_version_ = profile_version;
-  }
-
-  absl::string_view cache_key() const { return cache_key_; }
-  void set_cache_key(absl::string_view cache_key) {
-    cache_key_ = std::string(cache_key);
-  }
-
-  bool run_backend_only() const { return run_backend_only_; }
-  void set_run_backend_only(bool run_backend_only) {
-    run_backend_only_ = run_backend_only;
-  }
 
   bool sanitize_dataflow() const { return sanitize_dataflow_; }
   void set_sanitize_dataflow(bool sanitize_dataflow) {
@@ -458,38 +374,17 @@ class AotCompilationOptions {
     gpu_topology_ = gpu_topology;
   }
 
-  // Provides a way to end compilation early and get partial outputs.
-  enum class EarlyExitPoint {
-    kNone,
-    kAfterLayoutAssignment,
-    kAfterBufferAssignment,
-  };
-
-  EarlyExitPoint early_exit_point() const { return early_exit_point_; }
-  void set_early_exit_point(EarlyExitPoint early_exit_point) {
-    early_exit_point_ = early_exit_point;
-  }
-
  protected:
-  AotCompilationOptions();
+  AotCompilationOptions() = default;
 
  private:
   se::Platform::Id platform_id_;
   se::DeviceAddressAllocator* device_allocator_ = nullptr;
-  DebugOptions debug_options_;
-  std::optional<DeviceAssignment> static_device_assignment_;
-  std::vector<std::vector<bool>> fusion_config_;
-  FusionConfigCollection fusion_config_collection_ =
-      FusionConfigCollection::kOff;
   se::StreamExecutor* executor_ = nullptr;
-  int64_t profile_version_ = 0;
-  std::string cache_key_;
-  bool run_backend_only_ = false;
   bool sanitize_dataflow_ = false;
   std::vector<std::string> sanitize_abilists_dataflow_;
   // Contains target-specific information required by AOT compilation.
   std::optional<GpuTopology> gpu_topology_;
-  EarlyExitPoint early_exit_point_ = EarlyExitPoint::kNone;
 };
 
 }  // namespace xla

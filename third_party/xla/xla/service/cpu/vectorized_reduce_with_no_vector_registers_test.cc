@@ -33,7 +33,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/service/compiler.h"
+#include "xla/service/compiled_module_base.h"
+#include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/test_target_triple_helper.h"
 #include "xla/util.h"
@@ -116,7 +117,7 @@ ENTRY main {
       cpu::CpuAotCompilationOptions::RelocationModel::BigPic);
 
   ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<CompiledModule>> aot_compilation_result,
+      std::vector<std::unique_ptr<CompiledModuleBase>> aot_compilation_result,
       cpu_compiler.CompileAheadOfTime(std::move(hlo_module),
                                       aot_compilation_options));
   EXPECT_EQ(aot_compilation_result.size(), 1);

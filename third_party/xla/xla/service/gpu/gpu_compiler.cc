@@ -214,6 +214,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/broadcast_canonicalizer.h"
 #include "xla/hlo/transforms/simplifiers/conditional_canonicalizer.h"
 #include "xla/hlo/transforms/simplifiers/convert_mover.h"
+#include "xla/hlo/transforms/simplifiers/degenerate_dimension_rewriter.h"
 #include "xla/hlo/transforms/simplifiers/dot_merger.h"
 #include "xla/hlo/transforms/simplifiers/dynamic_dimension_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
@@ -252,7 +253,9 @@ limitations under the License.
 #include "xla/service/collective_utils.h"
 #include "xla/service/compilation_stats.h"
 #include "xla/service/compiled_module.h"
+#include "xla/service/compiled_module_base.h"
 #include "xla/service/compiler.h"
+#include "xla/service/compiler_base.h"
 #include "xla/service/conditional_simplifier.h"
 #include "xla/service/copy_insertion.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
@@ -979,6 +982,14 @@ absl::Status RunOptimizationPasses(
     pipeline.AddPass<ScatterSliceSimplifier>();
     pipeline.AddPass<DotStrengthReduction>(
         gpu_target_config.device_description.gpu_compute_capability());
+
+    // It's important to run AlgebraicSimplifier after
+    // DegenerateDimensionRewriter before ReshapeMover.
+    // DegenerateDimensionRewriter introduces reshape to remove size-1 dims from
+    // ops like iota and broadcast, and algebraic simplifier has patterns to
+    // fold reshape(iota) and reshape(broadcast). If we run ReshapeMover first,
+    // it will move these reshapes down the graph, and prevent the folding.
+    pipeline.AddPass<DegenerateDimensionRewriter>();
     pipeline.AddPass<GpuAlgebraicSimplifier>(layout_insensitive_algsimp_opts,
                                              gpu_version);
     pipeline.AddPass<SortSimplifier>();
@@ -2495,11 +2506,6 @@ bool RequiresCollectiveInput(const HloUse& use, const DebugOptions& opts) {
     return true;
   }
 
-  // Check Mosaic with symmetric_memory_parameters attribute
-  if (IsMosaicWithSymmetricParameter(*user)) {
-    return true;
-  }
-
   return false;
 }
 
@@ -2528,11 +2534,6 @@ bool RequiresCollectiveOutput(const HloValue* value, const DebugOptions& opts) {
 
   // Check custom calls with results_memory_spaces attribute
   if (DefinesCollectiveMemorySpaceFrontendAttr(value)) {
-    return true;
-  }
-
-  // Check Mosaic with symmetric_memory_parameters attribute
-  if (IsMosaicWithSymmetricParameter(*def)) {
     return true;
   }
 
@@ -3144,10 +3145,11 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   return static_cast<std::unique_ptr<Executable>>(std::move(gpu_executable));
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
+absl::StatusOr<std::vector<std::unique_ptr<CompiledModuleBase>>>
 GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
-                                const AotCompilationOptions& options) {
+                                const AotCompilationOptionsBase& options_base) {
   tsl::profiler::TraceMe traceme("CompileAheadOfTime");
+  auto& options = absl::down_cast<const AotCompilationOptions&>(options_base);
   // Check that we are on the platform (CUDA or ROCm) that was chosen for AOT
   // compilation.
   CHECK_EQ(options.PlatformId(), PlatformId());
@@ -3170,7 +3172,7 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
 
   if (options.early_exit_point() !=
       AotCompilationOptions::EarlyExitPoint::kNone) {
-    std::vector<std::unique_ptr<CompiledModule>> results;
+    std::vector<std::unique_ptr<CompiledModuleBase>> results;
     results.push_back(std::make_unique<EarlyExitCompilationResult>(
         std::move(optimized_hlo_module)));
     return results;
@@ -3180,7 +3182,7 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
                    RunBackend(std::move(optimized_hlo_module),
                               options.executor(), compile_options));
 
-  std::vector<std::unique_ptr<CompiledModule>> results;
+  std::vector<std::unique_ptr<CompiledModuleBase>> results;
   ABSL_ASSIGN_OR_RETURN(results.emplace_back(), Export(executable.get()));
   return results;
 }

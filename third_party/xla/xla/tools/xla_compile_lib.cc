@@ -48,10 +48,10 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/stream_executor_executable.h"
+#include "xla/pjrt/se/stream_executor_executable.h"
 #include "xla/service/compiled_module.h"
+#include "xla/service/compiled_module_base.h"
 #include "xla/service/compiler.h"
-#include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/cpu_symbol_repository.h"
 #include "xla/service/cpu/export_hlo.h"
 #include "xla/service/executable.h"
@@ -80,7 +80,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/status_to_from_proto.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/path.h"
@@ -173,15 +172,16 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
       aot_options.set_executor(stream_executor);
     }
 
-    // We need the optimized module, so we call RunHloPasses ourselves above.
+    // We need the optimized module, so we call `RunHloPasses` ourselves above.
     aot_options.set_run_backend_only(true);
 
     ABSL_ASSIGN_OR_RETURN(
-        std::vector<std::unique_ptr<CompiledModule>> aot_results,
+        std::vector<std::unique_ptr<CompiledModuleBase>> aot_results_bases,
         gpu_compiler->CompileAheadOfTime(std::move(hlo_module), aot_options));
-    if (!aot_results.empty() && aot_results[0]->optimized_module() != nullptr) {
+    if (!aot_results_bases.empty() &&
+        aot_results_bases[0]->optimized_module() != nullptr) {
       *result.mutable_hlo_module() =
-          aot_results[0]->optimized_module()->ToProto();
+          aot_results_bases[0]->optimized_module()->ToProto();
     }
     xla::CompileOptions compile_options;
     compile_options.executable_build_options.set_num_replicas(num_replicas);
@@ -199,6 +199,12 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
           "Could not determine PjRtPlatformId for platform: ", platform_name));
     }
 
+    std::vector<std::unique_ptr<CompiledModule>> aot_results;
+    aot_results.reserve(aot_results_bases.size());
+    for (auto& aot_result : aot_results_bases) {
+      aot_results.emplace_back(
+          absl::down_cast<CompiledModule*>(aot_result.release()));
+    }
     StreamExecutorExecutable stream_executor_executable(
         pjrt_platform_id, compile_options, std::move(aot_results),
         /*num_replicas=*/num_replicas,

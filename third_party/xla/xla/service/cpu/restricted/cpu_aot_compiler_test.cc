@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
@@ -30,10 +31,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/compiled_module.h"
+#include "xla/service/compiled_module_base.h"
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/test_target_triple_helper.h"
 #include "xla/service/executable.h"
+#include "xla/service/executable_base.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/restricted/hlo_runner_legacy.h"
 #include "xla/stream_executor/platform.h"
@@ -41,7 +45,6 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tsl/platform/test.h"
-#include "tsl/platform/casts.h"
 
 namespace xla {
 namespace cpu {
@@ -100,19 +103,23 @@ ENTRY e {
     ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                          ParseAndReturnVerifiedModule(hlo));
     ASSERT_OK_AND_ASSIGN(
-        std::vector<std::unique_ptr<CompiledModule>> aot_results,
+        std::vector<std::unique_ptr<CompiledModuleBase>> aot_results,
         compiler->CompileAheadOfTime(std::move(module), *aot_options));
 
     ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
-                         aot_results[0]->SerializeAsString());
+                         absl::down_cast<CompiledModule*>(aot_results[0].get())
+                             ->SerializeAsString());
     ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<CompiledModule> aot_result,
+        std::unique_ptr<CompiledModuleBase> aot_result_base,
         compiler->LoadAotCompilationResult(serialized_aot_result));
+    CompiledModule* aot_result =
+        absl::down_cast<CompiledModule*>(aot_result_base.get());
 
-    ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<ExecutableBase> executable_base,
                          std::move(*aot_result).LoadExecutable());
     std::unique_ptr<OpaqueExecutable> wrapped_executable =
-        test_runner_as_hlo_runner().WrapExecutable(std::move(executable));
+        test_runner_as_hlo_runner().WrapExecutable(absl::WrapUnique<Executable>(
+            absl::down_cast<Executable*>(executable_base.release())));
 
     const xla::Literal literal_input =
         xla::LiteralUtil::CreateR0<int32_t>(input);

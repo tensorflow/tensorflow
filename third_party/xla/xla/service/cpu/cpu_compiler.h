@@ -31,7 +31,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiled_module.h"
+#include "xla/service/compiled_module_base.h"
 #include "xla/service/compiler.h"
+#include "xla/service/compiler_base.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/service/cpu/thunk_emitter.h"
@@ -81,9 +83,9 @@ class CpuCompiler : public LLVMCompiler {
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       const CompileOptions& options) override;
 
-  absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
+  absl::StatusOr<std::vector<std::unique_ptr<CompiledModuleBase>>>
   CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
-                     const AotCompilationOptions& options) override;
+                     const AotCompilationOptionsBase& options) override;
 
   se::Platform::Id PlatformId() const override;
 
@@ -108,9 +110,9 @@ class CpuCompiler : public LLVMCompiler {
 
   // Runs the HLO passes which are necessary for both optimizations and
   // correctness.
-  absl::Status RunHloPasses(HloModule* module, bool is_aot_compile,
-                            llvm::TargetMachine* target_machine,
-                            const CompileOptions& compile_options);
+  absl::Status RunHloPassesInternal(HloModule* module, bool is_aot_compile,
+                                    llvm::TargetMachine* target_machine,
+                                    const CompileOptions& compile_options);
 
   // Runs HLO passes up to and including layout assignment.
   absl::Status RunHloPassesThroughLayoutAssn(

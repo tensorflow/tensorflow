@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -44,6 +46,8 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/service/backend.h"
+#include "xla/service/compiled_module.h"
+#include "xla/service/compiled_module_base.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
@@ -66,8 +70,6 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -320,8 +322,14 @@ Service::BuildAotResults(
   aot_options.set_run_backend_only(run_backend_only);
 
   ABSL_ASSIGN_OR_RETURN(
-      std::vector<std::unique_ptr<CompiledModule>> aot_results,
+      std::vector<std::unique_ptr<CompiledModuleBase>> aot_result_bases,
       backend->compiler()->CompileAheadOfTime(std::move(module), aot_options));
+  std::vector<std::unique_ptr<CompiledModule>> aot_results;
+  aot_results.reserve(aot_result_bases.size());
+  for (auto& aot_result_base : aot_result_bases) {
+    aot_results.emplace_back(
+        absl::down_cast<CompiledModule*>(aot_result_base.release()));
+  }
   return std::move(aot_results);
 }
 
