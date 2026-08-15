@@ -1218,6 +1218,17 @@ TEST_F(HloInstructionTest, IdenticalInstructions) {
       Identical(*HloInstruction::CreateUnary(shape, HloOpcode::kCopy, op1),
                 *HloInstruction::CreateUnary(shape, HloOpcode::kNegate, op1)));
 
+  // Rotate.
+  EXPECT_TRUE(
+      Identical(*HloInstruction::CreateRotate(shape, op1, {0, 1}, {2, 3}),
+                *HloInstruction::CreateRotate(shape, op1, {0, 1}, {2, 3})));
+  EXPECT_FALSE(
+      Identical(*HloInstruction::CreateRotate(shape, op1, {0, 1}, {2, 3}),
+                *HloInstruction::CreateRotate(shape, op1, {0, 1}, {3, 2})));
+  EXPECT_FALSE(
+      Identical(*HloInstruction::CreateRotate(shape, op1, {0, 1}, {2, 3}),
+                *HloInstruction::CreateRotate(shape, op1, {1, 0}, {2, 3})));
+
   // Tuples.
   EXPECT_TRUE(Identical(*HloInstruction::CreateTuple({op1, op2}),
                         *HloInstruction::CreateTuple({op1, op2})));

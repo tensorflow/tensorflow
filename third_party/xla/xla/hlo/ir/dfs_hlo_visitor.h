@@ -313,6 +313,7 @@ class DfsHloVisitorBase {
   virtual absl::Status HandleRng(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandleRngBitGenerator(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandleRngGetAndUpdateState(HloInstructionPtr hlo) = 0;
+  virtual absl::Status HandleRotate(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandleScan(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandleScatter(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandleSelectAndScatter(HloInstructionPtr hlo) = 0;
