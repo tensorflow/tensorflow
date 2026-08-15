@@ -62,7 +62,15 @@ class FallbackTensor {
   explicit FallbackTensor(ImmutableTensor* immutable_tensor)
       : tensor_(immutable_tensor->tensor()), is_immutable_(true) {}
 
-  FallbackTensor(const FallbackTensor& other) { *this = other; }
+  FallbackTensor(const FallbackTensor& other)
+      : tensor_(
+            (!other.is_immutable() && other.buffer() != nullptr)
+                ? tensorflow::tfrt_stub::ImmutableTensor::Create(other.tensor())
+                      .tensor()
+                : other.tensor()),
+        is_immutable_(true) {
+    tsl::profiler::TraceMe trace_me("FallbackTensor::Copy");
+  }
   FallbackTensor& operator=(const FallbackTensor& other) {
     tsl::profiler::TraceMe trace_me("FallbackTensor::Copy");
     if (!other.is_immutable() && other.buffer() != nullptr) {
