@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/client/client_library.h"
 #include "xla/client/compile_only_client.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/shape.h"
@@ -174,8 +175,10 @@ absl::Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
         graph_def, config, &computation, flags.debug_info,
         flags.debug_info_path_begin_marker));
   } else {
+    TF_ASSIGN_OR_RETURN(auto* pjrt_compiler,
+                        xla::GetDefaultPjRtCompiler(xla::CpuName()));
     TF_RETURN_IF_ERROR(ConvertGraphDefToXla(std::move(graph_def), config,
-                                            client, &computation));
+                                            pjrt_compiler, &computation));
   }
 
   if (flags.experimental_quantize && *quantize_xla) {

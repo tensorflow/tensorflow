@@ -36,7 +36,6 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
@@ -44,9 +43,8 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:Pass",
         "@xla//xla:shape_util",
-        "@xla//xla/client:client_library",
-        "@xla//xla/stream_executor:platform",
-        "@xla//xla/stream_executor:platform_manager",
+        "@xla//xla/pjrt:pjrt_compiler",
+        "@xla//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
     ],
 )
 

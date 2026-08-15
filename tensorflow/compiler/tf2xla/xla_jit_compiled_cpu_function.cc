@@ -16,12 +16,16 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_jit_compiled_cpu_function.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
@@ -29,28 +33,27 @@ limitations under the License.
 #include "xla/backends/cpu/buffer_allocation_info.h"
 #include "xla/backends/cpu/buffer_allocation_info_util.h"
 #include "xla/backends/cpu/codegen/compiled_function_library.h"
-#include "xla/client/client_library.h"
 #include "xla/client/executable_build_options.h"
-#include "xla/client/local_client.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/pjrt/cpu/cpu_client.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/cpu_executable.h"
-#include "xla/service/platform_util.h"
-#include "xla/shape_util.h"
-#include "xla/stream_executor/platform.h"
+#include "xla/shape.h"
+#include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
-#include "tsl/platform/casts.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
 namespace {
-constexpr char kHostPlatform[] = "Host";
 
 // Returns the index of the result in the temp buffers.
 absl::StatusOr<size_t> ComputeResultIndex(
@@ -107,19 +110,21 @@ void CollectNames(const T& entries, std::vector<std::string>* nonempty_names,
 XlaJitCompiledCpuFunction::Compile(
     const GraphDef& graph_def, const tf2xla::Config& config,
     const xla::ExecutableBuildOptions& build_options) {
+  TF_ASSIGN_OR_RETURN(xla::PjRtCompiler * compiler,
+                      xla::GetDefaultPjRtCompiler(xla::CpuName()));
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
+                      xla::GetXlaPjrtCpuClient(xla::CpuClientOptions()));
+
   // Convert the graph_def into an xla::XlaComputation.
-  TF_ASSIGN_OR_RETURN(se::Platform * platform,
-                      xla::PlatformUtil::GetPlatform(kHostPlatform));
-  TF_ASSIGN_OR_RETURN(xla::LocalClient * client,
-                      xla::ClientLibrary::GetOrCreateLocalClient(platform));
   xla::XlaComputation computation;
-  TF_RETURN_IF_ERROR(tensorflow::ConvertGraphDefToXla(graph_def, config, client,
-                                                      &computation));
+  TF_RETURN_IF_ERROR(tensorflow::ConvertGraphDefToXla(
+      graph_def, config, compiler, &computation, client.get()));
 
   // Get and verify the program shape.
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::ProgramShape> program_shape,
-                      client->GetComputationShape(computation));
-  if (program_shape->result().element_type() != xla::TUPLE) {
+  TF_ASSIGN_OR_RETURN(xla::ProgramShape program_shape,
+                      computation.GetProgramShape());
+  if (program_shape.result().element_type() != xla::TUPLE) {
     // The XlaCompiler we use to build the xla computation always generates a
     // tuple result, and XlaCompiledCpuFunction relies on this for simpler
     // calling semantics.
@@ -128,33 +133,40 @@ XlaJitCompiledCpuFunction::Compile(
   }
   // The parameter names are currently meaningless, and redundant with the rest
   // of our metadata, so clear them out to avoid confusion and save space.
-  program_shape->clear_parameter_names();
+  program_shape.clear_parameter_names();
 
   // Compute arg shapes, needed to compile the executable.
-  std::vector<const xla::Shape*> arg_shapes;
-  arg_shapes.reserve(program_shape->parameters_size());
-  for (int i = 0; i < program_shape->parameters_size(); ++i) {
-    arg_shapes.push_back(&program_shape->parameters(i));
+  std::vector<xla::Shape> arg_shapes;
+  arg_shapes.reserve(program_shape.parameters_size());
+  for (int i = 0; i < program_shape.parameters_size(); ++i) {
+    arg_shapes.push_back(program_shape.parameters(i));
   }
 
-  // Compile the executable. The static_cast to the CpuExecutable subclass is
-  // necessary since the raw function and buffer assignments are only available
-  // there.
-  TF_ASSIGN_OR_RETURN(auto executables,
-                      client->Compile(computation, arg_shapes, build_options));
-  TF_RET_CHECK(executables.size() == 1);
-  std::unique_ptr<xla::LocalExecutable> executable = std::move(executables[0]);
+  xla::CompileOptions compile_options;
+  compile_options.executable_build_options = build_options;
+  compile_options.argument_layouts = std::move(arg_shapes);
+
+  // Compile the executable.
+  TF_ASSIGN_OR_RETURN(const xla::PjRtTopologyDescription* topology,
+                      client->GetTopologyDescription());
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtExecutable> pjrt_executable,
+                      compiler->Compile(std::move(compile_options), computation,
+                                        *topology, client.get()));
+
+  auto* pjrt_cpu_executable =
+      absl::down_cast<xla::PjRtCpuExecutable*>(pjrt_executable.get());
+  if (!pjrt_cpu_executable) {
+    return absl::InternalError(
+        "Expected PjRtCpuExecutable from CPU compilation.");
+  }
   xla::cpu::CpuExecutable* cpu_executable =
-      static_cast<xla::cpu::CpuExecutable*>(executable->executable());
+      static_cast<xla::cpu::CpuExecutable*>(
+          pjrt_cpu_executable->cpu_executable().get());
   const xla::BufferAssignment& buffer_assignment =
       cpu_executable->buffer_assignment();
 
   // Compute buffer infos and the result index, needed to run the raw function.
   std::vector<xla::cpu::BufferAllocationInfo> buffer_infos =
-      xla::cpu::CreateBufferAllocationInfos(cpu_executable->module(),
-                                            buffer_assignment);
-
-  std::vector<xla::cpu::BufferAllocationInfo> buffer_allocation_infos =
       xla::cpu::CreateBufferAllocationInfos(cpu_executable->module(),
                                             buffer_assignment);
 
@@ -216,12 +228,12 @@ XlaJitCompiledCpuFunction::Compile(
         compiled_function_library->GetTypelessSymbolsMap();
   }
 
-  jit->executable_ = std::move(executable);
+  jit->pjrt_executable_ = std::move(pjrt_executable);
   jit->buffer_infos_ = std::move(buffer_infos);
   jit->arg_index_table_ = std::move(arg_index_table);
   jit->result_index_table_ = std::move(result_index_table);
   jit->program_shape_ =
-      std::make_unique<xla::ProgramShapeProto>(program_shape->ToProto());
+      std::make_unique<xla::ProgramShapeProto>(program_shape.ToProto());
   XlaCompiledCpuFunction::set_static_data_compilation_result_proto(
       &jit->static_data_, jit->compilation_result_proto_.get());
   XlaCompiledCpuFunction::set_static_data_function_library_symbol_map(

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_compiler_options_util.h"
 
+#include "absl/base/casts.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "tensorflow/compiler/jit/device_compiler.h"
@@ -59,7 +60,6 @@ XlaCompiler::Options GenerateCompilerOptions(
     se::Stream* stream, const XlaPlatformInfo& platform_info,
     bool has_ref_vars) {
   XlaCompiler::Options options;
-  options.client = static_cast<xla::LocalClient*>(xla_device_compiler.client());
   if (stream != nullptr) {
     options.device_ordinal = stream->parent()->device_ordinal();
   }
@@ -136,6 +136,9 @@ XlaCompiler::Options GenerateCompilerOptionsForPjRt(
         metadata->default_shape_determination_fns();
   } else if (pjrt_device_compiler != nullptr) {
     options.device_type = pjrt_device_compiler->device_type();
+  }
+  if (pjrt_device_compiler != nullptr) {
+    options.client = pjrt_device_compiler->client();
   }
   // TODO(b/255826209): Confirm below options are correctly set after testing.
   options.allow_cpu_custom_calls = false;

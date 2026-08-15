@@ -33,6 +33,7 @@ cc_library(
         "//xla/pjrt/cpu:cpu_client",
         "@com_google_absl//absl/status:statusor",
     ],
+    alwayslink = True,
 )
 
 xla_cc_test(
