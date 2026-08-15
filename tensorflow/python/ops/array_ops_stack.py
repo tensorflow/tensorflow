@@ -15,6 +15,7 @@
 # Tests for this file live in python/kernel_tests/array_ops_test.py
 """Operations to stack and unstack tensors."""
 
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.util import dispatch
@@ -68,6 +69,9 @@ def stack(values, axis=0, name="stack"):
   Raises:
     ValueError: If `axis` is out of the range [-(R+1), R+1).
   """
+  if isinstance(values, (ops.Tensor, composite_tensor.CompositeTensor)):
+    values = [values]
+
   if axis == 0:
     try:
       # If the input is a constant list, it can be converted to a constant op
