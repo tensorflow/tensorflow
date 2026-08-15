@@ -18519,6 +18519,78 @@ TEST_F(MemorySpaceAssignmentTest,
       HloOpcode::kTanh);
 }
 
+TEST_F(MemorySpaceAssignmentTest, AsyncBarrierAliasingCycle) {
+  absl::string_view hlo_string = R"hlo(
+HloModule sc_async_barrier_aliasing, is_scheduled=true
+
+  sc_custom_call_comp {
+    ROOT %custom_call = (f32[32,128,8]{1,2,0}, u32[], u32[]) custom-call(),
+      custom_call_target="SparseCoreBarrierStart",
+      custom_call_has_side_effect=true
+  }
+
+  sc_main {
+    %input = f32[32,128,8]{1,2,0} parameter(0)
+    %output = f32[32,128,8]{1,2,0} parameter(1)
+    %send_sflag = u32[] parameter(2)
+    %recv_sflag = u32[] parameter(3)
+    ROOT %a2a-result = f32[32,128,8]{1,2,0} custom-call(%input, %output, %send_sflag, %recv_sflag),
+      custom_call_target="SparseCoreBarrierDoneAndCollective",
+      output_to_operand_aliasing={{}: (1, {})}
+  }
+
+ENTRY %Comp_spmd {
+  %p0 = f32[32,128,8]{1,2,0} parameter(0)
+  %p1 = f32[32,128,8]{1,2,0} parameter(1)
+
+  %sc_custom_call_start = ((), (f32[32,128,8]{1,2,0}, u32[], u32[]), s32[]) call-start(),
+    to_apply=%sc_custom_call_comp
+  %sc_custom_call_done = (f32[32,128,8]{1,2,0}, u32[], u32[]) call-done(%sc_custom_call_start)
+  %send_sflag = u32[] get-tuple-element(%sc_custom_call_done), index=1
+  %recv_sflag = u32[] get-tuple-element(%sc_custom_call_done), index=2
+
+  %sc_start = ((f32[32,128,8]{1,2,0}, f32[32,128,8]{1,2,0}, u32[], u32[]), f32[32,128,8]{1,2,0}, s32[])
+    call-start(%p0, %p1, %send_sflag, %recv_sflag),
+      to_apply=%sc_main,
+      output_to_operand_aliasing={{0,0}: (0, {}), {0,1}: (1, {}), {0,2}: (2, {}), {0,3}: (3, {}), {1}: (1, {})}
+  %sc_output = f32[32,128,8]{1,2,0} call-done(%sc_start)
+  %neg = f32[32,128,8]{1,2,0} negate(%sc_output)
+
+  ROOT %root = (f32[32,128,8]{1,2,0}, f32[32,128,8]{1,2,0}) tuple(%neg, %p0)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_NO_FATAL_FAILURE(AssignMemorySpace(module.get()));
+}
+
+TEST_F(MemorySpaceAssignmentTest, AsyncStartOutputOperandAliasingCycle) {
+  absl::string_view hlo_string = R"hlo(
+HloModule async_aliasing_cycle, is_scheduled=true
+
+async_computation {
+  p0 = f32[2,3]{1,0} parameter(0)
+  ROOT p1 = f32[2,3]{1,0} parameter(1)
+}
+
+ENTRY main {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = f32[2,3]{1,0} parameter(1)
+  start = ((f32[2,3]{1,0}, f32[2,3]{1,0}), f32[2,3]{1,0}, s32[]) call-start(p0, p1),
+    to_apply=async_computation,
+    output_to_operand_aliasing={{0,1}: (1, {}), {1}: (1, {})}
+  done = f32[2,3]{1,0} call-done(start)
+  neg = f32[2,3]{1,0} negate(done)
+  ROOT root = (f32[2,3]{1,0}, f32[2,3]{1,0}) tuple(neg, p0)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_NO_FATAL_FAILURE(AssignMemorySpace(module.get()));
+}
+
 }  // namespace
 }  // namespace memory_space_assignment
 }  // namespace xla
