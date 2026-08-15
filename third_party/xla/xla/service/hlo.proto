@@ -692,8 +692,8 @@ message HloModuleProto {
   reserved "dynamic_parameter_binding";
 }
 
-// Serialization of LogicalBuffer.
-message LogicalBufferProto {
+// Serialization of BufferValue.
+message BufferValueProto {
   // Location represents an instruction and its shape index, which uniquely
   // identifies a point where a buffer is needed.
   message Location {
@@ -813,7 +813,7 @@ message BufferAssignmentProto {
   // aliases it.
   message BufferAlias {
     int64 source_buffer_id = 1;
-    LogicalBufferProto.Location location = 2;
+    BufferValueProto.Location location = 2;
   }
 
   // Set of buffers live at the point of peak memory usage for a
@@ -823,7 +823,7 @@ message BufferAssignmentProto {
     repeated int64 logical_buffer_ids = 2;
   }
 
-  repeated LogicalBufferProto logical_buffers = 1;
+  repeated BufferValueProto logical_buffers = 1;
   repeated BufferAlias buffer_aliases = 2;
   repeated BufferAllocationProto buffer_allocations = 3;
   repeated HeapSimulatorTrace heap_simulator_traces = 4;
