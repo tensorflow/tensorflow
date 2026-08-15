@@ -147,6 +147,15 @@ class ShapeOpsTest(test.TestCase):
     self._testAll(np.random.randn(2, 3, 5, 7, 11))
     self._testAll(np.random.randn(2, 3, 5, 7, 11, 13))
 
+  @test_util.run_deprecated_v1
+  def testOutTypeMustBeIntegral(self):
+    # Regression test: when the input's shape is fully known at graph
+    # construction time, shape() takes a constant-folding shortcut that
+    # used to skip the out_type validation the Shape op itself enforces.
+    x = constant_op.constant([1.0, 2.0, 3.0, 4.0])
+    with self.assertRaisesRegex(ValueError, "out_type"):
+      array_ops.shape(x, out_type=dtypes.float32)
+
   def testBool(self):
     self._testAll(np.random.choice((False, True), size=(2,)))
     self._testAll(np.random.choice((False, True), size=(2, 3)))

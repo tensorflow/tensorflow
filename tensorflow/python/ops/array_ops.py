@@ -736,6 +736,9 @@ def shape_internal(input, name=None, optimize=True, out_type=None):
           if not out_type:
             return constant_op._tensor_shape_tensor_conversion_function(  # pylint: disable=protected-access
                 input_shape)
+          if out_type not in (dtypes.int32, dtypes.int64):
+            raise ValueError("Argument `out_type` must be int32 or int64; got"
+                              f"{out_type!r}")
           return constant(input_shape.as_list(), out_type, name=name)
       if not out_type:
         out_type = dtypes.int32
