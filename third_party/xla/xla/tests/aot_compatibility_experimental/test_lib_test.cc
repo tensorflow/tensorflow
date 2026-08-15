@@ -20,8 +20,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/tests/aot_interception_pjrt_client.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/xla.pb.h"
+#include "tsl/platform/path.h"
 
 namespace xla {
 namespace aot_compatibility_experimental {
@@ -64,6 +67,54 @@ TEST(TestLibTest, GetAotTestParamsForGoldenFileVerification_With4Versions) {
       GetAotTestParamsForGoldenFileVerification("test_dummy_test"));
   EXPECT_THAT(params, ElementsAre(AotTestParam{AOTTestMode::kGoldenVerification,
                                                4, "test_dummy_test"}));
+}
+
+TEST(TestLibTest, AOTInterceptionPjrtClientLoadSerializedArtifact_Succeeds) {
+  std::string artifact_path = tsl::io::JoinPath(
+      GetExecutablesDirectory("test_dummy_test"), "v1", "exec.pbtxt");
+  AOTInterceptionPjrtClient client(
+      nullptr, AOTTestMode::kBackwardsCompatibility, artifact_path);
+  ASSERT_OK_AND_ASSIGN(std::string serialized, client.LoadSerializedArtifact());
+  EXPECT_FALSE(serialized.empty());
+}
+
+TEST(TestLibTest, CompareGoldenExecutable_StripsIgnoredFieldsAndReturnsOk) {
+  auto golden = std::make_unique<HumanReadableAotExecutable>();
+  golden->mutable_gpu_executable()->set_binary("golden_binary");
+  golden->mutable_gpu_executable()
+      ->mutable_hlo_module_with_config()
+      ->mutable_config()
+      ->mutable_debug_options()
+      ->set_xla_dump_to("/tmp/golden_dir");
+  golden->mutable_gpu_executable()->set_asm_text("test_asm");
+
+  auto fresh = std::make_unique<HumanReadableAotExecutable>();
+  fresh->mutable_gpu_executable()->set_binary(
+      "fresh_binary_that_should_be_ignored");
+  fresh->mutable_gpu_executable()
+      ->mutable_hlo_module_with_config()
+      ->mutable_config()
+      ->mutable_debug_options()
+      ->set_xla_dump_to("/tmp/fresh_dir");
+  fresh->mutable_gpu_executable()->set_asm_text("completely_different_asm");
+
+  // Since fields other than binary, asm_text, and xla_dump_to are identical,
+  // the helper should strip the divergent ones and return Ok.
+  EXPECT_OK(AOTInterceptionPjrtClient::CompareGoldenExecutable(fresh, golden));
+}
+
+TEST(TestLibTest, CompareGoldenExecutable_FailsOnGenuineDifferences) {
+  auto golden = std::make_unique<HumanReadableAotExecutable>();
+  golden->mutable_gpu_executable()->set_binary("same_binary");
+  golden->mutable_gpu_executable()->set_module_name("test_module");
+
+  auto fresh = std::make_unique<HumanReadableAotExecutable>();
+  fresh->mutable_gpu_executable()->set_binary("same_binary");
+  fresh->mutable_gpu_executable()->set_module_name("different_module");
+
+  // Since module_name is different, comparison should fail.
+  EXPECT_FALSE(
+      AOTInterceptionPjrtClient::CompareGoldenExecutable(fresh, golden).ok());
 }
 
 }  // namespace

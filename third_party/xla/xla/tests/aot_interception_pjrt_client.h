@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/computation_placer.h"
+#include "xla/util/split_proto/human_readable_aot_executable.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -56,7 +57,16 @@ class AOTInterceptionPjrtClient : public PjRtClient {
 
   ~AOTInterceptionPjrtClient() override = default;
 
-  // Intercepted compilation methods.
+  absl::StatusOr<std::unique_ptr<HumanReadableAotExecutable>>
+  LoadHumanReadableArtifact();
+  absl::StatusOr<std::string> LoadSerializedArtifact();
+
+  // Exposed static helpers for tests.
+  static absl::StatusOr<std::unique_ptr<HumanReadableAotExecutable>>
+  DeserializeToHumanReadable(absl::string_view serialized);
+  static absl::Status CompareGoldenExecutable(
+      const std::unique_ptr<HumanReadableAotExecutable>& fresh,
+      const std::unique_ptr<HumanReadableAotExecutable>& golden);
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) override;
 
@@ -135,6 +145,8 @@ class AOTInterceptionPjrtClient : public PjRtClient {
       const LoadOptions& load_options) override;
 
  private:
+  absl::Status VerifyAgainstGolden(PjRtExecutable* fresh_executable);
+
   std::unique_ptr<PjRtClient> inner_client_;
   AOTTestMode mode_;
   std::string artifact_path_;
