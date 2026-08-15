@@ -1600,6 +1600,15 @@ func.func @op_real_dynamic_slice(%arg0: tensor<?xf32>, %arg1: tensor<1xindex>, %
 
 // -----
 
+// CHECK-LABEL: "op_real_dynamic_slice_discardable_attrs"
+func.func @op_real_dynamic_slice_discardable_attrs(%arg0: tensor<?xf32>, %arg1: tensor<1xindex>, %arg2: tensor<1xindex>, %arg3: tensor<1xindex>) -> tensor<?xf32> {
+  // CHECK: "mhlo.real_dynamic_slice"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]], [[ARG2:%arg[0-9]+]], [[ARG3:%arg[0-9]+]]) {mhlo.frontend_attributes = {MUST_FUSE = "foo"}} : (tensor<?xf32>, tensor<1xindex>, tensor<1xindex>, tensor<1xindex>) -> tensor<?xf32>
+  %0 = "stablehlo.real_dynamic_slice"(%arg0, %arg1, %arg2, %arg3) {mhlo.frontend_attributes = {MUST_FUSE = "foo"}} : (tensor<?xf32>, tensor<1xindex>, tensor<1xindex>, tensor<1xindex>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// -----
+
 // CHECK-LABEL: "op_real"
 func.func @op_real(%arg0: tensor<complex<f32>>) -> tensor<f32> {
   // CHECK: "mhlo.real"([[ARG0:%arg[0-9]+]]) : (tensor<complex<f32>>) -> tensor<f32>
