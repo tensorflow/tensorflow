@@ -72,5 +72,13 @@ TEST(AsyncValueTensorTest, SetAndGetBuffer) {
   ASSERT_EQ(ret_buffer, buffer);
 }
 
+TEST(AsyncValueTensorTest, SlicedTensorReturnsNullptr) {
+  AsyncValueAllocator allocator;
+  tensorflow::Tensor av_tensor(&allocator, tensorflow::DT_UINT8,
+                               tensorflow::TensorShape({10}));
+  tensorflow::Tensor sliced_av_tensor = av_tensor.Slice(2, 9);
+  EXPECT_EQ(AsyncValueTensor::FromTensor(&sliced_av_tensor), nullptr);
+}
+
 }  // namespace
 }  // namespace tensorflow
