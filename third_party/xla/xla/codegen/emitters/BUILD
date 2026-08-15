@@ -327,7 +327,6 @@ xla_cc_test(
         "//xla/service:buffer_value",
         "//xla/service:logical_buffer",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:IR",

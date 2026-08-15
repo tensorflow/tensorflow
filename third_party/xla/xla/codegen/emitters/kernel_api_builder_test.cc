@@ -109,7 +109,7 @@ e {
           [](const BufferValue& buffer) {
             return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
           },
-          &alias_info, [](LogicalBuffer::Color) { return 0; },
+          &alias_info, [](HloValue::Color) { return 0; },
           BufferAssigner::Options{.allocate_buffers_for_constants = true}));
 
   ASSERT_OK_AND_ASSIGN(
