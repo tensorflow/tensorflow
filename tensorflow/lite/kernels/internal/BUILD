@@ -521,7 +521,6 @@ cc_library(
         ":types",
         "//tensorflow/lite:macros",
         "//tensorflow/lite/core/c:common",
-        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 
@@ -646,7 +645,6 @@ cc_library(
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
-        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
         "@gemmlowp//:fixedpoint",
@@ -747,7 +745,6 @@ cc_library(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
-        "@com_google_absl//absl/container:inlined_vector",
         "@eigen_archive//:eigen3",
         "@gemmlowp",
         "@ruy//ruy/profiler:instrumentation",
@@ -1385,15 +1382,6 @@ cc_test(
     srcs = ["optimized/reduce_utils_test.cc"],
     deps = [
         ":reduce_utils",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "broadcast_loop_test",
-    srcs = ["broadcast_loop_test.cc"],
-    deps = [
-        ":reference_comparisons",
         "@com_google_googletest//:gtest_main",
     ],
 )
