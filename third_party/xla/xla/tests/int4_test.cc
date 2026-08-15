@@ -345,6 +345,7 @@ class ElementwiseTest : public HloPjRtInterpreterReferenceMixin<HloTestBase>,
       case HloOpcode::kAsinh:
       case HloOpcode::kAcos:
       case HloOpcode::kAcosh:
+      case HloOpcode::kAtan:
       case HloOpcode::kAtan2:
       case HloOpcode::kAtanh:
       case HloOpcode::kCbrt:

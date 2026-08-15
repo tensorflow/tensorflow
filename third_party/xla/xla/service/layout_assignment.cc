@@ -3292,6 +3292,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kAdd:
     case HloOpcode::kAddDependency:
     case HloOpcode::kAnd:
+    case HloOpcode::kAtan:
     case HloOpcode::kAtan2:
     case HloOpcode::kAtanh:
     case HloOpcode::kBitcastConvert:

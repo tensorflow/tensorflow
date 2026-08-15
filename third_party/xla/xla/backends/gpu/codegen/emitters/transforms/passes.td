@@ -75,6 +75,15 @@ def RecoverExp2Pass : Pass<"xla-gpu-recover-exp2", "mlir::ModuleOp"> {
   ];
 }
 
+def SimplifyAtan2Pass : Pass<"xla-gpu-simplify-atan2", "mlir::func::FuncOp"> {
+  let summary = "Simplifies atan2(x, 1) to atan(x).";
+  let dependentDialects = [
+    "mlir::math::MathDialect",
+    "mlir::arith::ArithDialect",
+  ];
+}
+
+
 def PeelLoopsPass : Pass<"xla-gpu-peel-loops", "mlir::func::FuncOp"> {
   let summary = "Peels xla_gpu.loop.";
   let description = [{

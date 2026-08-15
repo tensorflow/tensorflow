@@ -163,6 +163,7 @@ absl::Status HloCostAnalysis::HandleElementwiseOp(
       opcode == HloOpcode::kAcosh ||
       opcode == HloOpcode::kAsin ||
       opcode == HloOpcode::kAsinh ||
+      opcode == HloOpcode::kAtan ||
       opcode == HloOpcode::kAtan2 ||
       opcode == HloOpcode::kAtanh ||
       opcode == HloOpcode::kCbrt ||

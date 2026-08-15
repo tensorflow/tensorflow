@@ -1168,6 +1168,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kAcosh:
     case HloOpcode::kAdd:
     case HloOpcode::kAnd:
+    case HloOpcode::kAtan:
     case HloOpcode::kAtan2:
     case HloOpcode::kAtanh:
     case HloOpcode::kBitcastConvert:

@@ -1223,7 +1223,13 @@ XlaOp Asin(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
       x, {}, [&](XlaOp x) { return b->ReportErrorOrReturn(do_it(x)); });
 }
 
-XlaOp Atan(XlaOp x) { return Atan2(x, ScalarLike(x, 1.0)); }
+XlaOp Atan(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
+           bool expand) {
+  if (expand) {
+    return Atan2(x, ScalarLike(x, 1.0));
+  }
+  return x.builder()->UnaryOp(HloOpcode::kAtan, x, result_accuracy);
+}
 
 // Hyperbolic trigonometric functions.
 

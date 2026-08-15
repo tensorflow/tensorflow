@@ -474,6 +474,36 @@ bool hasStablehloTypes(TypeRange types) {
   return hasStablehloType;
 }
 
+class AtanCustomCallLegalizationPattern
+    : public OpConversionPattern<stablehlo::CustomCallOp> {
+ public:
+  AtanCustomCallLegalizationPattern(TypeConverter& converter,
+                                    MLIRContext* context)
+      : OpConversionPattern<stablehlo::CustomCallOp>(converter, context,
+                                                     /*benefit=*/2) {}
+
+  LogicalResult matchAndRewrite(
+      stablehlo::CustomCallOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    if (op.getCallTargetName() != "stablehlo.atan") {
+      return failure();
+    }
+    if (op.getOperands().size() != 1) {
+      return rewriter.notifyMatchFailure(op, "expected 1 operand");
+    }
+
+    SmallVector<Type> hloTypes;
+    if (failed(
+            getTypeConverter()->convertTypes(op->getResultTypes(), hloTypes))) {
+      return failure();
+    }
+
+    rewriter.replaceOpWithNewOp<mhlo::AtanOp>(op, hloTypes,
+                                              adaptor.getOperands());
+    return success();
+  }
+};
+
 struct UpdateOperandsPattern : public ConversionPattern {
   UpdateOperandsPattern(TypeConverter& converter, MLIRContext* context)
       : ConversionPattern(converter, MatchAnyOpTypeTag(), /*benefit=*/1,
@@ -535,6 +565,7 @@ void populateStablehloToHloPatterns(RewritePatternSet* patterns,
   // Populate conversion patterns for ops that don't exist in StableHLO
   // and unknown dialect ops that may have StableHLO operands.
   patterns->add<UpdateOperandsPattern>(*converter, context);
+  patterns->add<AtanCustomCallLegalizationPattern>(*converter, context);
 }
 
 void setupStablehloToHloConversionTarget(ConversionTarget& target) {
