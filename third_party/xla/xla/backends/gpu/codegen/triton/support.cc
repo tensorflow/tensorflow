@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/support.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -325,6 +326,41 @@ bool IsTritonSupportedElementwise(HloOpcode opcode, PrimitiveType element_type,
 
 CodegenDecision IsTritonSupportedInstructionImpl(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version);
+
+// Filters Scans which can be handled using Triton.
+CodegenDecision CanTritonHandleScan(
+    const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
+  const HloScanInstruction& scan = *Cast<HloScanInstruction>(&instr);
+
+  if (!scan.shape().IsTuple()) {
+    return CodegenDecision::Forbid("Scan must return a tuple.");
+  }
+  for (const auto& shape : scan.shape().tuple_shapes()) {
+    if (primitive_util::IsF8Type(shape.element_type())) {
+      return CodegenDecision::Forbid("fp8 not supported for scans.");
+    }
+  }
+
+  bool is_triton_supported_scan_computation =
+      IsTritonSupportedComputation(*scan.to_apply(), gpu_version).IsAllowed();
+  if (!is_triton_supported_scan_computation) {
+    return CodegenDecision::Forbid("Unsupported scan computation by Triton.");
+  }
+
+  if (scan.is_associative() != TRI_STATE_TRUE) {
+    return CodegenDecision::Forbid(
+        "Triton requires the scan combiner to be associative.");
+  }
+
+  constexpr int64_t kMaxUntiledScanDimension = 4096;
+  if (scan.shape().tuple_shapes(0).dimensions(scan.scan_dimension()) >
+      kMaxUntiledScanDimension) {
+    return CodegenDecision::Forbid(
+        "Scan dimension size exceeds threshold for untiled Triton scan.");
+  }
+
+  return CodegenDecision::Allow();
+}
 
 // Filters Reduces which can be handled using Triton.
 CodegenDecision CanTritonHandleReduce(
@@ -724,7 +760,15 @@ CodegenDecision IsTritonSupportedInstructionImpl(
   }
 
   auto type = instr.shape().element_type();
-  auto output_type_is_supported = IsTritonSupportedDataType(type, gpu_version);
+  CodegenDecision output_type_is_supported = CodegenDecision::Allow();
+  if (instr.shape().IsTuple()) {
+    for (const auto& shape : instr.shape().tuple_shapes()) {
+      output_type_is_supported = output_type_is_supported.And(
+          IsTritonSupportedDataType(shape.element_type(), gpu_version));
+    }
+  } else {
+    output_type_is_supported = IsTritonSupportedDataType(type, gpu_version);
+  }
 
   if (!output_type_is_supported) {
     return CodegenDecision::Forbid(absl::StrCat(
@@ -789,6 +833,8 @@ CodegenDecision IsTritonSupportedInstructionImpl(
   }
 
   switch (instr.opcode()) {
+    case HloOpcode::kScan:
+      return CanTritonHandleScan(instr, gpu_version);
     case HloOpcode::kReduce: {
       return CanTritonHandleReduce(*Cast<HloReduceInstruction>(&instr),
                                    gpu_version);
@@ -880,7 +926,6 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
     case HloOpcode::kMulhi:
     case HloOpcode::kRaggedDot:
     case HloOpcode::kReduceWindow:
-    case HloOpcode::kScan:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSetDimensionSize:
