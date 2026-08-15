@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -244,6 +243,10 @@ class GpuPerformanceModelBase {
                                   int64_t bytes_written);
 
   static int64_t CalculateEffectiveFlopsPerNs(
+      const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
+      int64_t num_threads_per_block);
+
+  static int64_t CalculateEffectiveAluOpsPerNs(
       const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
       int64_t num_threads_per_block);
 
