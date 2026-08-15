@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/blocking_validator_runner.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <utility>
