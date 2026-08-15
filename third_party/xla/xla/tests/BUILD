@@ -1358,11 +1358,6 @@ xla_test(
 xla_test(
     name = "get_default_platform_test",
     srcs = ["get_default_platform_test.cc"],
-    disabled_backends = [
-        "cpu",
-        "gpu",
-        "interpreter",
-    ],
     deps = [
         ":hlo_pjrt_test_base",
         "//xla/service:platform_util",
