@@ -121,13 +121,14 @@ absl::Status ZeroBarrierSignalBuffers(
 
 absl::StatusOr<std::shared_ptr<std::vector<RaggedAllToAllRendezvousValue>>>
 RendezvousRaggedAllToAllBuffers(
-    int device_ordinal, RankId rank, const GpuCliqueKey& clique_key,
+    const RaggedAllToAllThunk* thunk, int device_ordinal, RankId rank,
+    const GpuCliqueKey& clique_key,
     absl::Span<DeviceBufferPair const> device_buffers,
     const se::DeviceAddressBase& barrier_signal_buffer) {
   const se::DeviceAddressBase& output_buffer =
       device_buffers[1].destination_buffer;
-  return RendezvousResources(device_ordinal, rank, clique_key, output_buffer,
-                             barrier_signal_buffer);
+  return RendezvousResources(thunk, device_ordinal, rank, clique_key,
+                             output_buffer, barrier_signal_buffer);
 }
 
 RaggedAllToAllConfig GetRaggedAllToAllConfig(
@@ -709,6 +710,9 @@ absl::Status RaggedAllToAllThunk::Initialize(const InitializeParams& params) {
                            state->clique_key, std::move(symmetric_memory)));
     }
   } else if (is_local(params.local_device_count)) {
+    if (state->participants != nullptr) {
+      return absl::OkStatus();
+    }
     // Rendezvous - Exchange output pointers and barrier signal buffers.
     ABSL_ASSIGN_OR_RETURN(
         std::vector<DeviceBufferPair> device_buffers,
@@ -718,7 +722,7 @@ absl::Status RaggedAllToAllThunk::Initialize(const InitializeParams& params) {
     ABSL_ASSIGN_OR_RETURN(
         state->participants,
         RendezvousRaggedAllToAllBuffers(
-            state->device_ordinal, state->rank, state->clique_key,
+            this, state->device_ordinal, state->rank, state->clique_key,
             device_buffers, state->barrier_signal_buffer->address()));
   }
   return absl::OkStatus();
@@ -817,7 +821,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> RaggedAllToAllThunk::Record(
                 std::shared_ptr<std::vector<RaggedAllToAllRendezvousValue>>
                     participants,
                 RendezvousRaggedAllToAllBuffers(
-                    device_ordinal, rank, clique_key, device_buffers,
+                    this, device_ordinal, rank, clique_key, device_buffers,
                     cmd_state->barrier_signal_buffer.cref()));
 
             return RunOneShotRaggedAllToAll(
@@ -1092,8 +1096,8 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
 // Executes the rendezvous to exchange buffer addresses and barrier signal
 // buffers.
 absl::StatusOr<std::shared_ptr<std::vector<RaggedAllToAllRendezvousValue>>>
-RendezvousResources(int device_ordinal, RankId rank,
-                    const GpuCliqueKey& clique_key,
+RendezvousResources(const RaggedAllToAllThunk* thunk, int device_ordinal,
+                    RankId rank, const GpuCliqueKey& clique_key,
                     const se::DeviceAddressBase& output_buffer,
                     const se::DeviceAddressBase& barrier_signal_buffer) {
   int64_t num_ranks = clique_key.num_local_participants();
@@ -1116,11 +1120,13 @@ RendezvousResources(int device_ordinal, RankId rank,
       };
 
   auto rendezvous_name = absl::StrFormat(
-      "[%d] [rank=%v] One-shot ragged-all-to-all rendezvous, clique: %v",
-      device_ordinal, rank, clique_key);
+      "[%d] [rank=%v] One-shot ragged-all-to-all rendezvous, thunk: %p, "
+      "clique: %v",
+      device_ordinal, rank, thunk, clique_key);
 
+  auto key = std::make_pair(clique_key, thunk);
   return Rendezvous<std::vector<RaggedAllToAllRendezvousValue>>(
-      rendezvous_name, clique_key, rendezvous_value, num_ranks, rendezvous_fn);
+      rendezvous_name, key, rendezvous_value, num_ranks, rendezvous_fn);
 }
 
 absl::Status RaggedAllToAllThunk::PrepareCollective(
