@@ -2188,6 +2188,178 @@ module @auto_layout {
   ASSERT_EQ(*default_layout, *output_layouts[3]);
 }
 
+TEST_F(IfrtIrLoadedExecutableTest, CustomLayoutPreservedWithCopyArrays) {
+  if (GetNumDevices() < 4) {
+    GTEST_SKIP() << "Insufficient devices to run this test.";
+  }
+  // Verifies that when an argument is used by both a CallLoadedExecutableOp
+  // with custom layout and a CopyArraysOp, the custom layout is preserved.
+  std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<2x2 to [0] on 4>, [0, 1, 2, 3]>
+module @custom_layout_copy_arrays {
+  func.func public @main(%arg0: !array)
+      -> (!array, !array) attributes {ifrt.function} {
+    %out_0, %ctrl_0 = ifrt.Call @transpose_w_custom_layout::@main(%arg0)
+      on devices [0, 1, 2, 3] : (!array) -> !array
+    %out_1, %ctrl_1 = ifrt.CopyArrays(%arg0) : (!array) -> !array
+    return %out_0, %out_1 : !array, !array
+  }
+  module @transpose_w_custom_layout attributes {sym_visibility = "private"} {
+    func.func public @main(%arg0: tensor<2x2xi32>
+        {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dim_replicate}"})
+        -> (tensor<2x2xi32> {mhlo.layout_mode = "auto"}) {
+      %0 = stablehlo.transpose %arg0, dims = [1, 0] : (tensor<2x2xi32>)
+        -> tensor<2x2xi32>
+      %1 = stablehlo.custom_call @Sharding(%0) {
+        backend_config = "",
+        mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dim_replicate}"}
+        : (tensor<2x2xi32>) -> tensor<2x2xi32>
+      %2 = stablehlo.custom_call @LayoutConstraint(%1) {
+        backend_config = "",
+        operand_layouts = [dense<[1, 0]> : tensor<2xindex>],
+        result_layouts = [dense<[0, 1]> : tensor<2xindex>]}
+        : (tensor<2x2xi32>) -> tensor<2x2xi32>
+      return %2 : tensor<2x2xi32>
+    }
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
+  ASSERT_OK_AND_ASSIGN(
+      program,
+      SerDeRoundTrip(std::move(program),
+                     xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(4));
+  ASSERT_OK_AND_ASSIGN(
+      auto ifrt_ir_executable,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::move(program),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+  ASSERT_OK_AND_ASSIGN(auto parameter_layouts,
+                       ifrt_ir_executable->GetParameterLayouts());
+  ASSERT_EQ(parameter_layouts.size(), 1);
+  if (client_->platform_id() == xla::TpuId()) {
+    ASSERT_EQ("{1,0:T(1,128)}", parameter_layouts[0]->ToString());
+  }
+  ASSERT_OK_AND_ASSIGN(auto output_layouts,
+                       ifrt_ir_executable->GetOutputLayouts());
+  ASSERT_EQ(output_layouts.size(), 2);
+  if (client_->platform_id() == xla::TpuId()) {
+    ASSERT_EQ("{0,1:T(1,128)}", output_layouts[0]->ToString());
+    ASSERT_EQ("{1,0:T(1,128)}", output_layouts[1]->ToString());
+  }
+
+  std::vector<int> data_shard0 = {1};
+  std::vector<int> data_shard1 = {2};
+  std::vector<int> data_shard2 = {3};
+  std::vector<int> data_shard3 = {4};
+  DType dtype(DType::kS32);
+  Shape shard_shape({1, 1});
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data_shard0.data(), data_shard1.data(),
+                                    data_shard2.data(), data_shard3.data()},
+                                   Shape({2, 2}), shard_shape, dtype, devices));
+
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutable::ExecuteResult result,
+      ifrt_ir_executable->Execute(absl::MakeSpan(&input, 1),
+                                  ExecuteOptionsWithFillStatus(), devices));
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 2);
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, shard_shape, {{1}, {3}, {2}, {4}}, devices));
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[1], dtype, shard_shape, {{1}, {2}, {3}, {4}}, devices));
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, CustomOutputLayoutPreservedWithCopyArrays) {
+  if (GetNumDevices() < 4) {
+    GTEST_SKIP() << "Insufficient devices to run this test.";
+  }
+  // Verifies that when an atom program output with custom layout is passed to a
+  // CopyArraysOp and returned, the custom output layout is preserved.
+  std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<2x2 to [0] on 4>, [0, 1, 2, 3]>
+module @custom_output_layout_copy_arrays {
+  func.func public @main(%arg0: !array)
+      -> (!array, !array) attributes {ifrt.function} {
+    %out_0, %ctrl_0 = ifrt.Call @transpose_w_custom_layout::@main(%arg0)
+      on devices [0, 1, 2, 3] : (!array) -> !array
+    %out_1, %ctrl_1 = ifrt.CopyArrays(%out_0) : (!array) -> !array
+    return %out_0, %out_1 : !array, !array
+  }
+  module @transpose_w_custom_layout attributes {sym_visibility = "private"} {
+    func.func public @main(%arg0: tensor<2x2xi32>
+        {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dim_replicate}"})
+        -> (tensor<2x2xi32> {mhlo.layout_mode = "auto"}) {
+      %0 = stablehlo.transpose %arg0, dims = [1, 0] : (tensor<2x2xi32>)
+        -> tensor<2x2xi32>
+      %1 = stablehlo.custom_call @Sharding(%0) {
+        backend_config = "",
+        mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dim_replicate}"}
+        : (tensor<2x2xi32>) -> tensor<2x2xi32>
+      %2 = stablehlo.custom_call @LayoutConstraint(%1) {
+        backend_config = "",
+        operand_layouts = [dense<[1, 0]> : tensor<2xindex>],
+        result_layouts = [dense<[0, 1]> : tensor<2xindex>]}
+        : (tensor<2x2xi32>) -> tensor<2x2xi32>
+      return %2 : tensor<2x2xi32>
+    }
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
+  ASSERT_OK_AND_ASSIGN(
+      program,
+      SerDeRoundTrip(std::move(program),
+                     xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(4));
+  ASSERT_OK_AND_ASSIGN(
+      auto ifrt_ir_executable,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::move(program),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+  ASSERT_OK_AND_ASSIGN(auto output_layouts,
+                       ifrt_ir_executable->GetOutputLayouts());
+  ASSERT_EQ(output_layouts.size(), 2);
+  if (client_->platform_id() == xla::TpuId()) {
+    ASSERT_EQ("{0,1:T(1,128)}", output_layouts[0]->ToString());
+    ASSERT_EQ("{0,1:T(1,128)}", output_layouts[1]->ToString());
+  }
+
+  std::vector<int> data_shard0 = {1};
+  std::vector<int> data_shard1 = {2};
+  std::vector<int> data_shard2 = {3};
+  std::vector<int> data_shard3 = {4};
+  DType dtype(DType::kS32);
+  Shape shard_shape({1, 1});
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data_shard0.data(), data_shard1.data(),
+                                    data_shard2.data(), data_shard3.data()},
+                                   Shape({2, 2}), shard_shape, dtype, devices));
+
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutable::ExecuteResult result,
+      ifrt_ir_executable->Execute(absl::MakeSpan(&input, 1),
+                                  ExecuteOptionsWithFillStatus(), devices));
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 2);
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, shard_shape, {{1}, {3}, {2}, {4}}, devices));
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[1], dtype, shard_shape, {{1}, {3}, {2}, {4}}, devices));
+}
+
 TEST_F(IfrtIrLoadedExecutableTest, NonDonatablePinnedHostInput) {
   std::string source = R"(
 !array = !ifrt.array<tensor<2x2xi32>,
