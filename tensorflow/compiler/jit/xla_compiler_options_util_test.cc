@@ -28,19 +28,15 @@ limitations under the License.
 #include "tensorflow/compiler/jit/pjrt_device_compiler_client.h"
 #include "tensorflow/compiler/jit/test_util.h"
 #include "tensorflow/compiler/jit/xla_device.h"
-#include "tensorflow/compiler/jit/xla_device_compiler_client.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_argument.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/client_library.h"
-#include "xla/client/local_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/host/host_platform_id.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -54,24 +50,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-using XlaDeviceCompiler =
-    DeviceCompiler<xla::LocalExecutable, xla::LocalClient>;
-using XlaDeviceExecutablePersistor =
-    DeviceExecutablePersistor<xla::LocalExecutable, xla::LocalClient>;
 using PjRtDeviceCompiler =
     DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>;
 using PjRtDeviceExecutablePersistor =
     DeviceExecutablePersistor<xla::PjRtLoadedExecutable, xla::PjRtClient>;
-
-XlaDeviceCompiler* CreateXlaDeviceCompiler(DeviceType device_type,
-                                           xla::LocalClient* local_client) {
-  auto persistor = std::make_unique<XlaDeviceExecutablePersistor>(
-      XlaDeviceExecutablePersistor::Config(), device_type);
-  auto compiler_client =
-      std::make_unique<XlaDeviceCompilerClient>(local_client);
-  return new XlaDeviceCompiler(std::move(persistor),
-                               std::move(compiler_client));
-}
 
 PjRtDeviceCompiler* CreatePjRtDeviceCompiler(DeviceType device_type,
                                              xla::PjRtClient* pjrt_client) {
@@ -229,103 +211,13 @@ TEST_F(XlaCompilerOptionsTest, PjRtOptionsNonXlaDevice) {
             tensorflow::XlaLayoutPreference::kNoPreference);
 }
 
-TEST_F(XlaCompilerOptionsTest, XlaOptions) {
-  device_setup_.AddDevicesAndSetUp({DEVICE_XLA_GPU});
-  Device* device = device_setup_.GetDevice(DEVICE_XLA_GPU);
-
-  xla::LocalClient* client = xla::ClientLibrary::LocalClientOrDie();
-  DeviceType device_type = DeviceType(DEVICE_XLA_GPU);
-  DeviceType compilation_device_type = DeviceType(DEVICE_GPU_XLA_JIT);
-
-  auto xla_device_compiler =
-      CreateXlaDeviceCompiler(compilation_device_type, client);
-  core::ScopedUnref xla_device_compiler_ref(xla_device_compiler);
-
-  se::Platform::Id platform_id = se::host::kHostPlatformId;
-  auto xla_device_metadata = CreateXlaDeviceMetadata(compilation_device_type);
-  std::shared_ptr<stream_executor::DeviceAddressAllocator> custom_allocator;
-  XlaPlatformInfo platform_info(
-      device_type, platform_id, xla_device_metadata.get(),
-      /*pjrt_device_metadata=*/nullptr, custom_allocator);
-
-  XlaCompiler::Options options =
-      GenerateCompilerOptions(*xla_device_compiler, *device_setup_.flr(),
-                              device, nullptr, platform_info, false);
-
-  EXPECT_EQ(options.device_type, compilation_device_type);
-  EXPECT_NE(options.flib_def, nullptr);
-  EXPECT_EQ(options.graph_def_version, TF_GRAPH_DEF_VERSION);
-  EXPECT_TRUE(options.allow_cpu_custom_calls);
-  EXPECT_NE(options.device_allocator, nullptr);
-  EXPECT_FALSE(options.alias_passthrough_params);
-  // Check if options have the supplied shape determination functions set.
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto shape, options.shape_determination_fns.shape_representation_fn(
-                      TensorShape(), DT_FLOAT, false,
-                      tensorflow::XlaLayoutPreference::kTpuPreferLinearLayout));
-  EXPECT_EQ(shape, xla::Shape());
-  EXPECT_EQ(options.shape_determination_fns.layout_preference_fn(
-                TensorShape(), DT_FLOAT, std::nullopt),
-            tensorflow::XlaLayoutPreference::kTpuPreferLinearLayout);
-}
-
-TEST_F(XlaCompilerOptionsTest, XlaOptionsHasRefVarsNoXlaDeviceMetadata) {
-  device_setup_.AddDevicesAndSetUp({DEVICE_CPU});
-  Device* device = device_setup_.GetDevice(DEVICE_CPU);
-
-  xla::LocalClient* client = xla::ClientLibrary::LocalClientOrDie();
-  DeviceType device_type = DeviceType(DEVICE_CPU);
-  DeviceType compilation_device_type = DeviceType(DEVICE_CPU_XLA_JIT);
-
-  auto xla_device_compiler =
-      CreateXlaDeviceCompiler(compilation_device_type, client);
-  core::ScopedUnref xla_device_compiler_ref(xla_device_compiler);
-
-  se::Platform::Id platform_id = se::host::kHostPlatformId;
-  std::shared_ptr<stream_executor::DeviceAddressAllocator> custom_allocator;
-  XlaPlatformInfo platform_info(
-      device_type, platform_id, /*xla_device_metadata=*/nullptr,
-      /*pjrt_device_metadata=*/nullptr, custom_allocator);
-
-  XlaCompiler::Options options =
-      GenerateCompilerOptions(*xla_device_compiler, *device_setup_.flr(),
-                              device, nullptr, platform_info, false);
-
-  EXPECT_EQ(options.device_type, compilation_device_type);
-  EXPECT_NE(options.flib_def, nullptr);
-  EXPECT_EQ(options.graph_def_version, TF_GRAPH_DEF_VERSION);
-  EXPECT_TRUE(options.allow_cpu_custom_calls);
-  EXPECT_NE(options.device_allocator, nullptr);
-  EXPECT_TRUE(options.alias_passthrough_params);
-  // Check whether options have default shape determination functions set.
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto shape, options.shape_determination_fns.shape_representation_fn(
-                      TensorShape(), DT_FLOAT, false,
-                      tensorflow::XlaLayoutPreference::kNoPreference));
-  xla::ShapeProto shape_proto;
-  shape_proto.set_element_type(xla::PrimitiveType::F32);
-  shape_proto.mutable_layout();
-  TF_ASSERT_OK_AND_ASSIGN(auto expected_shape,
-                          xla::Shape::FromProto(shape_proto));
-  EXPECT_EQ(shape, expected_shape);
-  EXPECT_EQ(options.shape_determination_fns.layout_preference_fn(
-                TensorShape(), DT_FLOAT, std::nullopt),
-            tensorflow::XlaLayoutPreference::kNoPreference);
-}
-
 TEST_F(XlaCompilerOptionsTest, TfRtTpuOptions) {
   device_setup_.AddDevicesAndSetUp({DEVICE_TPU_NODE});
 
-  // Just use the default local client for testing purposes.
-  xla::LocalClient* client = xla::ClientLibrary::LocalClientOrDie();
   DeviceType compilation_device_type = DeviceType(DEVICE_TPU_XLA_JIT);
 
-  auto xla_device_compiler =
-      CreateXlaDeviceCompiler(compilation_device_type, client);
-  core::ScopedUnref xla_device_compiler_ref(xla_device_compiler);
-
   XlaCompiler::Options options = GenerateCompilerOptionsForTfrtTpu(
-      *xla_device_compiler, *device_setup_.flr());
+      compilation_device_type, *device_setup_.flr());
 
   EXPECT_EQ(options.device_type, compilation_device_type);
   EXPECT_NE(options.flib_def, nullptr);

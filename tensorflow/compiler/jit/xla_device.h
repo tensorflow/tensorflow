@@ -205,14 +205,7 @@ class XlaDevice : public LocalDevice {
 
   absl::Status RefreshStatus() override TF_LOCKS_EXCLUDED(mu_);
 
- private:
-  absl::StatusOr<xla::LocalClient*> GetOrCreateClient() const;
   Allocator* GetAllocatorLocked(AllocatorAttributes attr)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  absl::Status EnsureStreamOkLocked(xla::Backend* backend,
-                                    const std::string& name,
-                                    std::shared_ptr<se::Stream>* stream,
-                                    bool* stream_was_changed)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Return a vector of device context, ordered by the sequence in the given
@@ -239,24 +232,6 @@ class XlaDevice : public LocalDevice {
   // Memory allocator associated with this device.
   Allocator* xla_allocator_ TF_GUARDED_BY(mu_) = nullptr;  // Not owned.
   std::unique_ptr<AsyncValueAllocator> pjrt_allocator_ TF_GUARDED_BY(mu_);
-
-  // Stream associated with this device. Operations enqueued on this
-  // stream are executed on the device. Operations include data
-  // copying back and forth between CPU and the device, and
-  // computations enqueued by XLA.
-  std::shared_ptr<se::Stream> stream_ TF_GUARDED_BY(mu_);
-  // If false, only stream_ is valid and all computation and transfers use
-  // stream_. If true, computation is performed by stream_ and transfers are
-  // performed by host_to_device/device_to_device stream or borrowing a stream
-  // for each device to host transfer.
-  const bool use_multiple_streams_;
-  // If use_multiple_streams_, host to device transfers are performed using this
-  // stream.
-  std::shared_ptr<se::Stream> host_to_device_stream_ TF_GUARDED_BY(mu_);
-  // If use_multiple_streams_, transfers between different devices are performed
-  // using these streams.
-  std::vector<std::shared_ptr<se::Stream>> device_to_device_streams_
-      TF_GUARDED_BY(mu_);
 
   // See comments in options.
   std::vector<XlaShapeLayoutHelpers::ShapeDeterminationFns>
@@ -288,15 +263,6 @@ class XlaDevice : public LocalDevice {
   // platform will have resources allocated. For GPUs this will be
   // filled from visible_gpu_devices list from session configuration.
   std::optional<std::set<int>> allowed_devices_;
-
-  const bool use_global_compute_stream_;
-
-  // A static vector with device_ordinal as its index, describing the global
-  // compute streams used in each XLA device. It is only used if
-  // `use_global_compute_stream` in `XlaDevice::Options` is set to true.
-  static mutex global_mu_;
-  static std::vector<std::shared_ptr<se::Stream>>* global_compute_streams_
-      TF_GUARDED_BY(global_mu_);
 };
 
 // Builds OpKernel registrations on 'device' for the JIT operators

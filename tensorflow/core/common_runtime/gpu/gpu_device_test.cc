@@ -15,13 +15,10 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#if (defined(PLATFORM_GOOGLE) && defined(TF_PLATFORM_LINUX_X86_64))
-#define TF_GPU_USE_PJRT
-#endif  // PLATFORM_GOOGLE && TF_PLATFORM_LINUX_X86_64
-
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 
 #include "absl/synchronization/notification.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/tsl/framework/device_id.h"
@@ -32,11 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
-
-#ifdef TF_GPU_USE_PJRT
-#include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
-#endif  // TF_GPU_USE_PJRT
 
 #if GOOGLE_CUDA
 // Needed for CUDA_VERSION preprocessor directive
@@ -317,7 +310,6 @@ TEST_F(GPUDeviceTest, VirtualDeviceConfigConflictsWithVisibleDeviceList) {
       "list.");
 }
 
-#ifdef TF_GPU_USE_PJRT
 TEST_F(GPUDeviceTest, GpuDeviceWithPjrt) {
   SessionOptions opts = MakeSessionOptions("0");
   std::vector<std::unique_ptr<Device>> devices;
@@ -329,7 +321,6 @@ TEST_F(GPUDeviceTest, GpuDeviceWithPjrt) {
   auto pjrt_client = GetPjRtClient(DeviceType(DEVICE_GPU));
   EXPECT_OK(pjrt_client.status());
 }
-#endif  // TF_GPU_USE_PJRT
 
 TEST_F(GPUDeviceTest, EmptyVirtualDeviceConfig) {
   // It'll create single virtual device when the virtual device config is empty.

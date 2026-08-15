@@ -35,8 +35,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/internal/legalize_tf_mlir.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "xla/client/compile_only_client.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/shape.h"
 #include "xla/tsl/framework/device_type.h"
 #include "xla/tsl/platform/errors.h"
@@ -72,7 +72,7 @@ absl::StatusOr<XlaCompilationResult> LegalizeTfToHlo(
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
     std::vector<std::unique_ptr<mlir::Pass>>& custom_legalization_passes,
-    xla::CompileOnlyClient* client, XlaCompilationResult* compilation_result) {
+    xla::PjRtCompiler* compiler, XlaCompilationResult* compilation_result) {
   if (!mlir::SetTPUInfeedLayout(mlir_module_op))
     return absl::AbortedError("Failed to set layouts attribute");
 
@@ -93,7 +93,7 @@ absl::StatusOr<XlaCompilationResult> LegalizeTfToHlo(
   absl::Status old_bridge_status = v1::CompileTensorflowGraphToHlo(
       mlir_to_hlo_args, metadata, use_tuple_args, shape_determination_fns,
       arg_shapes, tsl::DeviceType(device_type.str()), arg_core_mapping,
-      per_core_arg_shapes, client, compilation_result);
+      per_core_arg_shapes, compiler, compilation_result);
 
   TF_RETURN_IF_ERROR(CheckAndIncrementCounter(
       old_bridge_status, MlirBridgeSecondPhaseMetric::kMlirCombinedOldFailure));
@@ -114,7 +114,7 @@ absl::StatusOr<XlaCompilationResult> LegalizeTfToHlo(
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
     std::vector<std::unique_ptr<mlir::Pass>>& custom_legalization_passes,
-    xla::CompileOnlyClient* client, XlaCompilationResult* compilation_result) {
+    xla::PjRtCompiler* compiler, XlaCompilationResult* compilation_result) {
   LOG_FIRST_N(INFO, 1) << "Compiling MLIR computation to XLA HLO using the "
                           "Combined MLIR Tf2Xla Bridge.";
 
@@ -122,7 +122,7 @@ absl::StatusOr<XlaCompilationResult> LegalizeTfToHlo(
     return LegalizeTfToHlo(computation.mlir_module_op.value(), metadata,
                            use_tuple_args, device_type, shape_determination_fns,
                            arg_shapes, arg_core_mapping, per_core_arg_shapes,
-                           custom_legalization_passes, client,
+                           custom_legalization_passes, compiler,
                            compilation_result);
   }
 
@@ -142,7 +142,7 @@ absl::StatusOr<XlaCompilationResult> LegalizeTfToHlo(
   return LegalizeTfToHlo(mlir_module.get(), metadata, use_tuple_args,
                          device_type, shape_determination_fns, arg_shapes,
                          arg_core_mapping, per_core_arg_shapes,
-                         custom_legalization_passes, client,
+                         custom_legalization_passes, compiler,
                          compilation_result);
 }
 
