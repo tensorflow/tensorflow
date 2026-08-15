@@ -55,6 +55,7 @@ class OpcodeCollector : public ConstDfsHloVisitorWithDefault {
       case HloOpcode::kCos:
       case HloOpcode::kCosh:
       case HloOpcode::kErf:
+      case HloOpcode::kErfc:
       case HloOpcode::kExp:
       case HloOpcode::kExpm1:
       case HloOpcode::kFloor:

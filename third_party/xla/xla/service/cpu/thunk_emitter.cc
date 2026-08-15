@@ -336,6 +336,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kDivide:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kErf:
+    case HloOpcode::kErfc:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kFloor:

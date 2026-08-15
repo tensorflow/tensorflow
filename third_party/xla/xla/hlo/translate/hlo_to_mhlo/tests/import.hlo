@@ -223,6 +223,14 @@ add {
   ROOT %asinh.3 = f32[1,16,16,3]{3,2,1,0} asinh(f32[1,16,16,3]{3,2,1,0} %arg0.1)
 }
 
+// CHECK-LABEL:  func private @test_erfc(%arg0: tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>
+%test_erfc (arg0.1: f32[1,16,16,3]) -> f32[1,16,16,3] {
+  %arg0.1 = f32[1,16,16,3]{3,2,1,0} parameter(0), metadata={op_name="HLO_Args"}
+
+  // CHECK-NEXT:  mhlo.erfc %arg0 : tensor<1x16x16x3xf32>
+  ROOT %erfc.3 = f32[1,16,16,3]{3,2,1,0} erfc(f32[1,16,16,3]{3,2,1,0} %arg0.1)
+}
+
 // CHECK-LABEL:  func private @test_broadcast_in_dim
 %test_broadcast_in_dim {
   %Arg_0.1 = f32[1, 2] parameter(0)
