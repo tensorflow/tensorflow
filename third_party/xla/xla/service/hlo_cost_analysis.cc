@@ -380,6 +380,10 @@ absl::Status HloCostAnalysis::HandleReverse(const HloInstruction*) {
   return absl::OkStatus();
 }
 
+absl::Status HloCostAnalysis::HandleRotate(const HloInstruction*) {
+  return absl::OkStatus();
+}
+
 absl::Status HloCostAnalysis::HandleSlice(const HloInstruction* slice) {
   const int64_t output_shape_size = GetShapeSize(slice->shape());
 
