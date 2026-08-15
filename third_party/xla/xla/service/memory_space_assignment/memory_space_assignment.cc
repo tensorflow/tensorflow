@@ -363,6 +363,7 @@ absl::Status MemorySpaceAssignment::VerifyAllocations() const {
   for (const auto& allocation : allocations_) {
     if (allocation->memory_space() == MemorySpace::kAlternate &&
         !allocation->is_mirrored_allocation()) {
+      VLOG(1) << "Allocation: " << allocation->ToString();
       ABSL_RETURN_IF_ERROR(add_allocation_and_verify(allocation.get()));
     }
   }

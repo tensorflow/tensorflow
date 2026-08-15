@@ -1099,6 +1099,13 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       const AllocationValue::Use* previous_use,
       absl::Span<AllocationValue> allocation_values);
 
+  // For async-start uses where the operand is allocated in alternate memory,
+  // creates MirroredAllocations for the async-start output at location {0} and
+  // the corresponding parameters in the async computation.
+  void MaybeCreateMirroredAllocationForAsyncUse(
+      const AllocationValue& allocation_value, const AllocationValue::Use& use,
+      int64_t use_time, absl::Span<AllocationValue> allocation_values);
+
   // Creates a detailed memory allocation request for a given use of an
   // allocation value. Analyzes the usage pattern of the use to determine if it
   // can be placed in alternate memory, considering the restrictions for loops
@@ -1274,8 +1281,9 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
 
   // Returns the corrected schedule time of an HloUse. The corrected time is
   // equivalent to the actual time of the use instructions for all instructions
-  // except for while and conditional instructions. For while instructions, the
-  // corrected time is the time of the body parameter, and for conditional, the
+  // except for while and control-flow call instructions (e.g., conditional,
+  // call, async-start). For while instructions, the corrected time is the time
+  // of the body parameter, and for control-flow call instructions, the
   // corrected time is the time of the parameter of the earliest-scheduled
   // called computation.
   int64_t GetCorrectedUseTime(const HloUse& use) const;

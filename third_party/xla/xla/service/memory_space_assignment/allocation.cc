@@ -226,7 +226,9 @@ absl::Status Allocation::UpdateUses(HloComputation* computation,
         return {inst, index};
       };
 
-      bool should_skip_reconstruction = false;
+      bool should_skip_reconstruction = tuple_inst == producing_instruction ||
+                                        tuple_inst->IsAsynchronous() ||
+                                        use.instruction->IsAsynchronous();
 
       // If the producing instruction shares the same buffer with the operand,
       // then we skip the reconstruction.
