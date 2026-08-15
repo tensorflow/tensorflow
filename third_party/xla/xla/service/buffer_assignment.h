@@ -875,6 +875,8 @@ class BufferAssigner {
 
   using MustNotLiveOut = std::function<bool(
       const HloAliasAnalysis&, const HloInstruction*, const ShapeIndex&)>;
+  using HasLiveRangeInterference = std::function<std::optional<bool>(
+      const HloAliasAnalysis&, const HloValue*, const HloValue*)>;
   using PrivateStacks = absl::flat_hash_map<BufferValue::Color,
                                             std::vector<const HloComputation*>>;
 
@@ -901,6 +903,15 @@ class BufferAssigner {
     // live out of a computation.
     std::optional<MustNotLiveOut> must_not_live_out;
 
+    // Optional callback to override live-range interference analysis between
+    // two buffer values (e.g. for target-specific concurrency or barriers).
+    //
+    // - Must be symmetric: f(a, b) == f(b, a).
+    // - Returning true/false overrides interference; nullopt uses default
+    //   analysis.
+    // - If either lhs or rhs is nullptr, pessimistically checks whether the
+    //   non-null buffer overrides interference.
+    std::optional<HasLiveRangeInterference> has_live_range_interference;
     // Description of any buffer offsets that are already set by an earlier
     // pass.
     std::unique_ptr<memory_space_assignment::PresetAssignments>
