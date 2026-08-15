@@ -234,5 +234,24 @@ class Conv3DTransposeTest(test.TestCase):
       )
       _ = self.evaluate(output)
 
+  def testConv3DTransposeInvalidOutputShape(self):
+    from tensorflow.python.framework import errors
+    with self.cached_session():
+      x_shape = [2, 3, 4, 3, 2]
+      f_shape = [3, 3, 3, 2, 2]
+      # The output shape is inconsistent with input shape and valid padding
+      y_shape = [2, 6, 8, 6, 2]
+      strides = [1, 2, 2, 2, 1]
+      x = constant_op.constant(
+          1.0, shape=x_shape, name="x", dtype=dtypes.float32)
+      f = constant_op.constant(
+          1.0, shape=f_shape, name="filter", dtype=dtypes.float32)
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          "Size of out_backprop doesn't match computed"):
+        output = nn_ops.conv3d_transpose(
+            x, f, y_shape, strides=strides, padding="VALID")
+        self.evaluate(output)
+
 if __name__ == "__main__":
   test.main()
