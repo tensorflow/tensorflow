@@ -947,6 +947,16 @@ class BufferAssigner {
     // If set and returns > 0, the returned limit is used instead of the
     // default module config's device memory size.
     std::function<int64_t(LogicalBuffer::Color)> color_memory_limit;
+
+    // Colors whose heap simulation must never reuse space: every allocated
+    // buffer keeps its own offset range for the whole simulated program,
+    // while aliased (shared) values of one buffer still land at one offset.
+    // Takes precedence over heap_buffer_interval_compare and
+    // buffer_assignment_algorithm for the listed colors. Used for memories
+    // where reuse across live ranges is unsafe, e.g. TPU sync flag words
+    // that external agents may still increment after their last program
+    // order use.
+    absl::flat_hash_set<LogicalBuffer::Color> no_packing_colors;
   };
 
   static std::unique_ptr<BufferAllocationsManagerForComputationsWithoutOrdering>

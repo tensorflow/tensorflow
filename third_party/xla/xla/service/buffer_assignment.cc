@@ -2460,6 +2460,85 @@ std::vector<LogicalBuffer::Color> BufferAssigner::SortColorsForCanUseAllocation(
 }
 
 namespace {
+// Heap algorithm without temporal reuse: every allocated buffer group (an
+// Alloc plus the buffers later shared with it) keeps its own offset range
+// for the whole simulation, because Free never returns space. Must-aliased
+// values of one HloBuffer arrive through ShareWith and land at one shared
+// offset, so colocation is preserved. Used for the colors listed in
+// BufferAssigner::Options::no_packing_colors, where reusing a freed range is
+// unsafe (e.g. TPU sync flag words that external agents may still increment
+// after the word's last program order use).
+class NoPackingHeap : public HeapAlgorithm<HloValue> {
+ public:
+  using Chunk = HeapSimulator::Chunk;
+  using HeapResult = HeapSimulator::HeapResult<HloValue>;
+  using Result = HeapSimulator::Result<HloValue>;
+
+  explicit NoPackingHeap(int64_t alignment) : alignment_(alignment) {}
+
+  void Alloc(const HloValue* buffer, int64_t size) override {
+    // Degenerate case: 0-sized buffers are always allocated at offset 0.
+    if (size == 0) {
+      zero_sized_.push_back(buffer);
+      return;
+    }
+    group_index_[buffer] = groups_.size();
+    groups_.push_back(Group{{buffer}, size});
+  }
+
+  void Free(const HloValue* buffer, int64_t size) override {
+    // No temporal reuse: freed ranges are never returned to the heap.
+  }
+
+  void ShareWith(const HloValue* buffer, const HloValue* share_with,
+                 int64_t size) override {
+    if (size == 0) {
+      zero_sized_.push_back(buffer);
+      return;
+    }
+    auto it = group_index_.find(share_with);
+    CHECK(it != group_index_.end()) << "ShareWith target was never allocated: "
+                                    << share_with->ToShortString();
+    Group& group = groups_[it->second];
+    group.members.push_back(buffer);
+    group.size = std::max(group.size, size);
+    group_index_[buffer] = it->second;
+  }
+
+  absl::StatusOr<Result> Finish() override {
+    Result result;
+    result.heap_results.emplace_back();
+    HeapResult& heap = result.heap_results.back();
+    int64_t offset = 0;
+    for (const Group& group : groups_) {
+      offset = RoundUpTo<int64_t>(offset, alignment_);
+      for (const HloValue* member : group.members) {
+        heap.chunk_map.emplace(member,
+                               Chunk::FromOffsetSize(offset, group.size));
+      }
+      offset += group.size;
+    }
+    for (const HloValue* buffer : zero_sized_) {
+      heap.chunk_map.emplace(buffer, Chunk::FromOffsetSize(0, 0));
+    }
+    heap.heap_size = offset;
+    result.heap_size = offset;
+    return result;
+  }
+
+ private:
+  // One allocated buffer and the buffers that share its offset.
+  struct Group {
+    std::vector<const HloValue*> members;
+    int64_t size = 0;
+  };
+
+  const int64_t alignment_;
+  std::vector<Group> groups_;
+  absl::flat_hash_map<const HloValue*, size_t> group_index_;
+  std::vector<const HloValue*> zero_sized_;
+};
+
 // A whole HloBuffer that is a candidate for being placed into an existing,
 // compatible temp allocation. `size` is the buffer's allocation size, cached
 // because it is the (hot) sort key.
@@ -2735,6 +2814,12 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
   // algorithms.
   auto get_heap_algorithm = [&](int64_t alignment, LogicalBuffer::Color color)
       -> std::unique_ptr<HeapAlgorithm<HloValue>> {
+    // Colors in no_packing_colors bypass every packing strategy, including
+    // the custom interval compare: reuse of freed ranges is unsafe for them,
+    // so every buffer gets its own offset range.
+    if (opts_.no_packing_colors.contains(color)) {
+      return std::make_unique<NoPackingHeap>(alignment);
+    }
     uint64_t page_size = assignment->module().config().page_size_kib() * 1024;
     if (page_size > 0 && (color == LogicalBuffer::Color(0) ||
                           color == LogicalBuffer::Color(1))) {
@@ -2863,6 +2948,11 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       int64_t alignment = assignment->color_alignment_(color);
       HeapSimulator::Options options;
       options.alloc_constants = opts_.allocate_buffers_for_constants;
+      // Operand reuse shares a dying operand's storage with its user, one
+      // temporal reuse across two HloBuffers; forbid it for no packing
+      // colors. Sharing among aliased values of one buffer is unaffected.
+      options.may_reuse_operand_buffers =
+          !opts_.no_packing_colors.contains(color);
       auto private_stacks_it = private_stacks.find(color);
       if (private_stacks_it != private_stacks.end()) {
         // For private stack colors, we collect all of the buffers that are
@@ -2925,6 +3015,10 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
         VLOG(2) << "Simulating heap for color " << color;
         int64_t alignment = assignment->color_alignment_(color);
         HeapSimulator::Options options;
+        // See above: no packing colors must not reuse a dying operand's
+        // storage across HloBuffers.
+        options.may_reuse_operand_buffers =
+            !opts_.no_packing_colors.contains(color);
         options.buffers_to_assign = &color_map[color];
         HeapSimulator::Result<HloValue> result;
         ABSL_ASSIGN_OR_RETURN(
