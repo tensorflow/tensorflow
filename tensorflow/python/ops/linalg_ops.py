@@ -733,23 +733,35 @@ def norm(tensor,
 
     if ord in ['fro', 'euclidean', 2, 2.0]:
       if is_matrix_norm and ord in [2, 2.0]:
-        rank = array_ops.rank(tensor)
-        positive_axis = map_fn.map_fn(
+        static_rank = tensor.shape.rank
+        if static_rank is not None:
+          # axis is already validated to be a 2-tuple of Python ints above, so
+          # once the rank is also statically known, perm_before/perm_after are
+          # fully determined at trace time. Compute them in pure Python instead
+          # of emitting list_diff/map_fn/cond ops, whose output shapes XLA
+          # can't prove constant even though the values fully are.
+          positive_axis = tuple(a + static_rank if a < 0 else a for a in axis)
+          axes = list(range(static_rank))
+          perm_before = [a for a in axes if a not in positive_axis] + list(positive_axis)
+          perm_after = [perm_before.index(a) for a in axes]
+        else:
+          rank = array_ops.rank(tensor)
+          positive_axis = map_fn.map_fn(
             lambda i: cond.cond(
-                i >= 0,
-                lambda: i,
-                lambda: i + rank),
+              i >= 0,
+              lambda: i,
+              lambda: i + rank),
             ops.convert_to_tensor(axis))
-        axes = math_ops.range(rank)
-        perm_before = array_ops.concat([
+          axes = math_ops.range(rank)
+          perm_before = array_ops.concat([
             gen_array_ops.list_diff(axes, positive_axis, dtypes.int32)[0],
             positive_axis
-        ],
-                                       axis=0)
-        perm_after = map_fn.map_fn(
+          ],
+                                    axis=0)
+          perm_after = map_fn.map_fn(
             lambda i: math_ops.cast(
-                array_ops.squeeze(
-                    array_ops.where_v2(math_ops.equal(perm_before, i))),
+              array_ops.squeeze(
+                array_ops.where_v2(math_ops.equal(perm_before, i))),
                 dtype=dtypes.int32), axes)
         permed = array_ops.transpose(tensor, perm=perm_before)
         matrix_2_norm = array_ops.expand_dims(
