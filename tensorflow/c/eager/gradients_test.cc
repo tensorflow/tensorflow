@@ -14,26 +14,29 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/eager/gradients.h"
 
+#include <cstdint>
 #include <memory>
+#include <tuple>
+#include <vector>
 
-#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_context.h"
+#include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
-#include "tensorflow/c/eager/c_api_experimental.h"
-#include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/eager/c_api_unified_experimental.h"
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/c/eager/gradients_internal.h"
+#include "tensorflow/c/eager/tape.h"
 #include "tensorflow/c/eager/unified_api_testutil.h"
-#include "tensorflow/c/experimental/gradients/array_grad.h"
-#include "tensorflow/c/experimental/gradients/math_grad.h"
 #include "tensorflow/c/experimental/gradients/not_differentiable.h"
-#include "tensorflow/c/experimental/gradients/tape/tape_context.h"
-#include "tensorflow/c/experimental/ops/array_ops.h"
 #include "tensorflow/c/experimental/ops/math_ops.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/c/tf_tensor.h"
+#include "xla/tsl/platform/errors.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/test.h"
@@ -161,6 +164,72 @@ TEST_P(CppGradients, TestRecordOperationWithNullGradientFunctionRaises) {
       "or NotDifferentiableGradientFunction.",
       s.message());
   ASSERT_EQ(nullptr, outputs[0]);
+}
+
+struct DummyTensor {
+  int64_t id;
+  int64_t GetID() const { return id; }
+  tensorflow::DataType GetDType() const { return tensorflow::DT_FLOAT; }
+  int* ZerosLike() const { return nullptr; }
+};
+
+struct DummyBackwardFunction {};
+
+class MockVSpace
+    : public eager::VSpace<int, DummyBackwardFunction, DummyTensor> {
+ public:
+  mutable int delete_gradient_called_ = 0;
+
+  int64_t NumElements(int* tensor) const override { return 1; }
+  int* AggregateGradients(
+      gtl::ArraySlice<int*> gradient_tensors) const override {
+    return gradient_tensors[0];
+  }
+  absl::Status CallBackwardFunction(
+      const std::string& op_type, DummyBackwardFunction* backward_function,
+      const std::vector<int64_t>& unneeded_gradients,
+      gtl::ArraySlice<int*> output_gradients,
+      absl::Span<int*> result) const override {
+    for (int* g : output_gradients) {
+      if (g) DeleteGradient(g);
+    }
+    return absl::InternalError("Intentional failure");
+  }
+  absl::Status BuildOnesLike(const DummyTensor& t,
+                             int** result) const override {
+    *result = new int(1);
+    return absl::OkStatus();
+  }
+  int64_t TensorId(int* tensor) const override { return 0; }
+  DummyTensor TapeTensorFromGradient(int* gradient) const override {
+    return DummyTensor{0};
+  }
+  void MarkAsResult(int* gradient) const override {}
+  void DeleteGradient(int* gradient) const override {
+    delete_gradient_called_++;
+    delete gradient;
+  }
+};
+
+TEST(GradientTapeTest, MemoryLeakOnFailure) {
+  eager::GradientTape<int, DummyBackwardFunction, DummyTensor> tape(
+      /*persistent=*/false);
+  tape.Watch(1);
+
+  DummyBackwardFunction* bw = new DummyBackwardFunction();
+  tape.RecordOperation(
+      "TestOp", {DummyTensor{2}}, {1}, {tensorflow::DT_FLOAT},
+      [bw]() { return bw; }, [](DummyBackwardFunction* bw) { delete bw; });
+
+  MockVSpace vspace;
+  std::vector<int*> results(1);
+  absl::Status s =
+      tape.ComputeGradient(vspace, {2}, {1}, {}, {}, absl::MakeSpan(results),
+                           /*build_default_zeros_grads=*/false);
+
+  ASSERT_EQ(error::INTERNAL, s.code());
+  EXPECT_EQ(1, vspace.delete_gradient_called_)
+      << "Expected gradient to be deleted (memory leak if 0)";
 }
 
 TEST_P(CppGradients, TestExecuteWithLargerOutputsVectorDoesNotCrash) {
