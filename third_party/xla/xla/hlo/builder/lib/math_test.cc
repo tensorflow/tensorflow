@@ -842,5 +842,75 @@ TEST_F(MathTest, ZetaF64) {
                               ErrorSpec{0.00000000000001});
 }
 
+
+TEST_F(MathTest, IgammaDynamicDimensionMismatch) {
+  XlaBuilder builder(TestName());
+  // Logical shape is identical, but one operand carries a dynamic-dimension bit.
+  Shape shape_a = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape shape_x = ShapeUtil::MakeShape(F32, {2, 2});
+  shape_x.set_dynamic_dimension(0, true);
+  XlaOp a = Parameter(&builder, 0, shape_a, "a");
+  XlaOp x = Parameter(&builder, 1, shape_x, "x");
+  Igamma(a, x);
+  EXPECT_OK(builder.Build().status());
+}
+
+TEST_F(MathTest, IgammacDynamicDimensionMismatch) {
+  XlaBuilder builder(TestName());
+  Shape shape_a = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape shape_x = ShapeUtil::MakeShape(F32, {2, 2});
+  shape_x.set_dynamic_dimension(0, true);
+  XlaOp a = Parameter(&builder, 0, shape_a, "a");
+  XlaOp x = Parameter(&builder, 1, shape_x, "x");
+  Igammac(a, x);
+  EXPECT_OK(builder.Build().status());
+}
+
+TEST_F(MathTest, IgammaGradADynamicDimensionMismatch) {
+  XlaBuilder builder(TestName());
+  Shape shape_a = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape shape_x = ShapeUtil::MakeShape(F32, {2, 2});
+  shape_x.set_dynamic_dimension(0, true);
+  XlaOp a = Parameter(&builder, 0, shape_a, "a");
+  XlaOp x = Parameter(&builder, 1, shape_x, "x");
+  IgammaGradA(a, x);
+  EXPECT_OK(builder.Build().status());
+}
+
+TEST_F(MathTest, RandomGammaGradDynamicDimensionMismatch) {
+  XlaBuilder builder(TestName());
+  Shape shape_a = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape shape_x = ShapeUtil::MakeShape(F32, {2, 2});
+  shape_x.set_dynamic_dimension(0, true);
+  XlaOp a = Parameter(&builder, 0, shape_a, "a");
+  XlaOp x = Parameter(&builder, 1, shape_x, "x");
+  RandomGammaGrad(a, x);
+  EXPECT_OK(builder.Build().status());
+}
+
+TEST_F(MathTest, ZetaDynamicDimensionMismatch) {
+  XlaBuilder builder(TestName());
+  // x is static; q carries a dynamic-dimension bit.
+  Shape shape_x = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape shape_q = ShapeUtil::MakeShape(F32, {2, 2});
+  shape_q.set_dynamic_dimension(0, true);
+  XlaOp x = Parameter(&builder, 0, shape_x, "x");
+  XlaOp q = Parameter(&builder, 1, shape_q, "q");
+  Zeta(x, q);
+  EXPECT_OK(builder.Build().status());
+}
+
+TEST_F(MathTest, PolygammaDynamicDimensionMismatch) {
+  XlaBuilder builder(TestName());
+  // n is static; x carries a dynamic-dimension bit.
+  Shape shape_n = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape shape_x = ShapeUtil::MakeShape(F32, {2, 2});
+  shape_x.set_dynamic_dimension(0, true);
+  XlaOp n = Parameter(&builder, 0, shape_n, "n");
+  XlaOp x = Parameter(&builder, 1, shape_x, "x");
+  Polygamma(n, x);
+  EXPECT_OK(builder.Build().status());
+}
+
 }  // namespace
 }  // namespace xla
