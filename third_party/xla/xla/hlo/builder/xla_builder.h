@@ -1099,6 +1099,12 @@ class XlaBuilder {
   virtual absl::StatusOr<XlaOp> RevInternal(
       const Shape& shape, XlaOp operand, absl::Span<const int64_t> dimensions);
 
+  XlaOp Rotate(XlaOp operand, absl::Span<const int64_t> dimensions,
+               absl::Span<const int64_t> shifts);
+  virtual absl::StatusOr<XlaOp> RotateInternal(
+      const Shape& shape, XlaOp operand, absl::Span<const int64_t> dimensions,
+      absl::Span<const int64_t> shifts);
+
   XlaOp Sort(absl::Span<const XlaOp> operands, XlaComputationId comparator,
              int64_t dimension = -1, bool is_stable = false);
   virtual absl::StatusOr<XlaOp> SortInternal(const Shape& shape,
@@ -1971,6 +1977,8 @@ class XlaBuilder {
   friend XlaOp Neg(XlaOp operand);
   friend XlaOp Transpose(XlaOp operand, absl::Span<const int64_t> permutation);
   friend XlaOp Rev(XlaOp operand, absl::Span<const int64_t> dimensions);
+  friend XlaOp Rotate(XlaOp operand, absl::Span<const int64_t> dimensions,
+                      absl::Span<const int64_t> shifts);
   friend XlaOp Sort(absl::Span<const XlaOp> operands,
                     const XlaComputation& comparator, int64_t dimension,
                     bool is_stable);
@@ -3380,6 +3388,12 @@ XlaOp Transpose(XlaOp operand, absl::Span<const int64_t> permutation);
 // elements in the given dimensions is reversed (i.e., the element at index i
 // is moved to index dimension_size - 1 - i).
 XlaOp Rev(XlaOp operand, absl::Span<const int64_t> dimensions);
+
+// Enqueues a rotate instruction onto the computation. The order of the
+// elements are (right) rotated by the given shifts along the given dimensions
+// (i.e. element at i is moved to (i + shift[j]) % dimension_size[j])
+XlaOp Rotate(XlaOp operand, absl::Span<const int64_t> dimensions,
+             absl::Span<const int64_t> shifts);
 
 // Enqueues a sort instruction onto the computation, using 'comparator' for
 // comparisons. 'comparator' needs to define a strict weak order. 'is_stable'

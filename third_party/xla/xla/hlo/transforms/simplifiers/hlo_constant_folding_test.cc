@@ -309,6 +309,24 @@ TEST_F(HloConstantFoldingTest, DoesNotFoldLargePad) {
               GmockMatch(m::Pad(m::Constant(), m::Constant())));
 }
 
+TEST_F(HloConstantFoldingTest, FoldRotateConstant) {
+  const char* const kModuleStr = R"(
+    HloModule fold_rotate
+
+    ENTRY r {
+      vec = f32[5]{0} constant({1.0, 2.0, 3.0, 4.0, 5.0})
+      ROOT const = f32[5]{0} rotate(vec), dimensions={0}, shifts={2}
+    })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding const_folder;
+  ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Constant()));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->literal(),
+            LiteralUtil::CreateR1<float>({3.0f, 4.0f, 5.0f, 1.0f, 2.0f}));
+}
+
 TEST_F(HloConstantFoldingTest, DoesNotFoldPadBroadcast) {
   const char* const kConstantFoldPadBroadcast = R"(
   HloModule ConstantFoldLargePad

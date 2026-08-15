@@ -1245,6 +1245,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kReshape:
     case HloOpcode::kDynamicReshape:
     case HloOpcode::kReverse:
+    case HloOpcode::kRotate:
     case HloOpcode::kTranspose:
       // These data-movement ops can be expensive; emphasize them.  (Yes, even
       // concat can be expensive, at least on GPU, as it can create warp

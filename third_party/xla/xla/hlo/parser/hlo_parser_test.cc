@@ -775,6 +775,18 @@ ENTRY %Reverse4DFloatArrayOnDim01.v2 () -> f32[4,3,2,1] {
 
 )"
 },
+// rotate(constant)
+{
+"Rotate2D",
+R"(HloModule Rotate2DFloatArrayOnDim01_module, entry_computation_layout={()->f32[4,3]{1,0}}
+
+ENTRY %Rotate2DFloatArrayOnDim01.v2 () -> f32[4,3] {
+  %constant = f32[4,3]{1,0} constant({ { 1, 2, 3 }, { 4, 5, 6 }, { 7, 8, 9 }, { 10, 11, 12 } })
+  ROOT %rotate = f32[4,3]{1,0} rotate(f32[4,3]{1,0} %constant), dimensions={0,1}, shifts={1,2}
+}
+
+)"
+},
 // concat
 {
 "Concat",

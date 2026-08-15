@@ -290,65 +290,67 @@ class HloOpcode(enum.Enum):
 
   kRngGetAndUpdateState = 102
 
-  kRoundNearestAfz = 103
+  kRotate = 103
 
-  kRoundNearestEven = 104
+  kRoundNearestAfz = 104
 
-  kRsqrt = 105
+  kRoundNearestEven = 105
 
-  kScaledDot = 106
+  kRsqrt = 106
 
-  kScan = 107
+  kScaledDot = 107
 
-  kScatter = 108
+  kScan = 108
 
-  kSelect = 109
+  kScatter = 109
 
-  kSelectAndScatter = 110
+  kSelect = 110
 
-  kSend = 111
+  kSelectAndScatter = 111
 
-  kSendDone = 112
+  kSend = 112
 
-  kSetDimensionSize = 113
+  kSendDone = 113
 
-  kShiftLeft = 114
+  kSetDimensionSize = 114
 
-  kShiftRightArithmetic = 115
+  kShiftLeft = 115
 
-  kShiftRightLogical = 116
+  kShiftRightArithmetic = 116
 
-  kSign = 117
+  kShiftRightLogical = 117
 
-  kSin = 118
+  kSign = 118
 
-  kSinh = 119
+  kSin = 119
 
-  kSlice = 120
+  kSinh = 120
 
-  kSort = 121
+  kSlice = 121
 
-  kSqrt = 122
+  kSort = 122
 
-  kStochasticConvert = 123
+  kSqrt = 123
 
-  kSubtract = 124
+  kStochasticConvert = 124
 
-  kTan = 125
+  kSubtract = 125
 
-  kTanh = 126
+  kTan = 126
 
-  kTopK = 127
+  kTanh = 127
 
-  kTranspose = 128
+  kTopK = 128
 
-  kTriangularSolve = 129
+  kTranspose = 129
 
-  kTuple = 130
+  kTriangularSolve = 130
 
-  kWhile = 131
+  kTuple = 131
 
-  kXor = 132
+  kWhile = 132
+
+  kXor = 133
 
 class Layout:
   @overload

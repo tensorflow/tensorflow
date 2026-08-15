@@ -514,6 +514,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   absl::Status HandleRngGetAndUpdateState(
       const HloInstruction* random) override;
   absl::Status HandleReverse(const HloInstruction* reverse) override;
+  absl::Status HandleRotate(const HloInstruction* rotate) override;
   absl::Status HandleSort(const HloInstruction* sort) override;
   absl::Status HandleParameter(const HloInstruction* parameter) override;
   absl::Status HandleReduce(const HloInstruction* reduce) override;

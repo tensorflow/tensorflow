@@ -1854,6 +1854,53 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       }
       return op.getOperation();
     }
+    case HloOpcode::kRotate: {
+      auto rotate = Cast<HloRotateInstruction>(instruction);
+      const Shape& result_shape = rotate->shape();
+      int64_t rank = result_shape.dimensions().size();
+      mlir::Value current_val = operands[0];
+
+      for (size_t i = 0; i < rotate->dimensions().size(); ++i) {
+        int64_t shift = rotate->shifts()[i];
+        int64_t dim = rotate->dimensions()[i];
+        int64_t dim_size = result_shape.dimensions(dim);
+        int64_t norm_shift = ((shift % dim_size) + dim_size) % dim_size;
+
+        // 1. slice1 = a[norm_shift:]
+        llvm::SmallVector<int64_t> slice1_starts(rank, 0);
+        slice1_starts[dim] = norm_shift;
+        llvm::SmallVector<int64_t> slice1_limits(
+            result_shape.dimensions().begin(), result_shape.dimensions().end());
+
+        // 2. slice2 = a[:norm_shift]
+        llvm::SmallVector<int64_t> slice2_starts(rank, 0);
+        llvm::SmallVector<int64_t> slice2_limits(
+            result_shape.dimensions().begin(), result_shape.dimensions().end());
+        slice2_limits[dim] = norm_shift;
+
+        llvm::SmallVector<int64_t> strides(rank, 1);
+
+        auto slice1 = mlir::stablehlo::SliceOp::create(
+            *func_builder, loc, current_val, ConvertArray(slice1_starts),
+            ConvertArray(slice1_limits), ConvertArray(strides));
+        auto slice2 = mlir::stablehlo::SliceOp::create(
+            *func_builder, loc, current_val, ConvertArray(slice2_starts),
+            ConvertArray(slice2_limits), ConvertArray(strides));
+
+        // 3. concatenate([slice1, slice2], dimension=dim)
+        auto concat = mlir::stablehlo::ConcatenateOp::create(
+            *func_builder, loc,
+            llvm::ArrayRef<mlir::Value>{slice1.getResult(), slice2.getResult()},
+            builder_->getI64IntegerAttr(dim));
+        current_val = concat.getResult();
+      }
+
+      mlir::Operation* op = current_val.getDefiningOp();
+      for (const auto& attr : attributes) {
+        op->setAttr(attr.getName(), attr.getValue());
+      }
+      return op;
+    }
     case HloOpcode::kRng: {
       auto shape = mlir::stablehlo::ConstantOp::create(
           *func_builder, loc,
