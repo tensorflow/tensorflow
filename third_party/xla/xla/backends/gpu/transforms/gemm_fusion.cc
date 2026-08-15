@@ -202,7 +202,6 @@ int64_t NumAddedParameters(const HloInstruction& hlo) {
 std::optional<DimOrdersAndReqs> GetOperandDimOrdersAndCombinedReqs(
     const HloInstruction& hlo, const DimensionOrder& dim_order,
     const DotProperties& properties,
-    const se::GpuComputeCapability& gpu_version,
     const DotRequirements& requirements) {
   DimOrdersAndReqsOrError dim_orders_and_new_reqs =
       GetPropagatedDimOrdersAndRequirements(
@@ -621,7 +620,7 @@ HlosAndRequirements FuseTowardUsers(
     // We shouldn't do a profitability check here, we made that decision in
     // GetUserDimOrdersAndCombinedReqsIfProfitable.
     auto opt_operand_result = GetOperandDimOrdersAndCombinedReqs(
-        user, user_dim_order, properties, gpu_version, combined_requirements);
+        user, user_dim_order, properties, combined_requirements);
     // This shouldn't fail, because currently we only encounter this when we
     // have just propagated down the DimOrders on a binary elementwise
     // operation (user). In that case propagating up the DimOrders should always
@@ -714,9 +713,9 @@ bool AllowedInGemmFusion(const HloInstruction& instr) {
 // Returns true if we should consider fusing the instruction into the GEMM
 // fusion.
 bool IncludeInSearchSpace(const HloInstruction& instr,
-                          const se::GpuComputeCapability& gpu_version) {
+                          const se::DeviceDescription& device_description) {
   return AllowedInGemmFusion(instr) &&
-         IsTritonSupportedInstruction(instr, gpu_version);
+         IsTritonSupportedInstruction(instr, device_description);
 }
 
 // Returns a set of descendants from `ancestor`, not including ancestor.
@@ -749,7 +748,7 @@ HloInstruction* CreateBitcastWithShape(Shape shape,
 class FusionSearchSpace {
  public:
   FusionSearchSpace(HloInstruction* dot,
-                    const se::GpuComputeCapability& gpu_version)
+                    const se::DeviceDescription& device_description)
       : original_dot_(dot) {
     module_ = std::make_unique<HloModule>(
         absl::StrCat(dot->name(), "_fusion_search_space"),
@@ -758,13 +757,14 @@ class FusionSearchSpace {
     // Find the highest suitable user of the dot to be the root of the
     // fusion.
     HloInstruction* fusion_output = dot;
-    while (fusion_output->user_count() == 1 &&
-           IncludeInSearchSpace(*fusion_output->users()[0], gpu_version)) {
+    while (
+        fusion_output->user_count() == 1 &&
+        IncludeInSearchSpace(*fusion_output->users()[0], device_description)) {
       fusion_output = fusion_output->users()[0];
     }
     // Starting from the root of the fusion, fuse upwards.
     HloInstruction* cloned_output =
-        FuseOperandsRecursively(fusion_output, builder, gpu_version);
+        FuseOperandsRecursively(fusion_output, builder, device_description);
     entry_ = module_->AddEntryComputation(builder.Build(cloned_output));
   }
 
@@ -807,7 +807,7 @@ class FusionSearchSpace {
   // Recursive DFS to create maximum possible fusion.
   HloInstruction* FuseOperandsRecursively(
       HloInstruction* instr, HloComputation::Builder& builder,
-      const se::GpuComputeCapability& gpu_version);
+      const se::DeviceDescription& device_description);
   // A module containing the search space. Each op is cloned and can be mapped
   // to the original HLO with `fused_to_original`.
   std::unique_ptr<HloModule> module_;
@@ -826,7 +826,7 @@ class FusionSearchSpace {
 
 HloInstruction* FusionSearchSpace::FuseOperandsRecursively(
     HloInstruction* instr, HloComputation::Builder& builder,
-    const se::GpuComputeCapability& gpu_version) {
+    const se::DeviceDescription& device_description) {
   if (auto it = original_to_fused_.find(instr);
       it != original_to_fused_.end()) {
     // We have already processed this instruction. Return the corresponding
@@ -834,14 +834,15 @@ HloInstruction* FusionSearchSpace::FuseOperandsRecursively(
     return it->second;
   }
 
-  if (instr == original_dot_ || IncludeInSearchSpace(*instr, gpu_version)) {
+  if (instr == original_dot_ ||
+      IncludeInSearchSpace(*instr, device_description)) {
     VLOG(10) << "Including in search space: " << instr->ToString();
     // Found a candidate to fuse - recurse on its operands.
     std::vector<HloInstruction*> new_operands;
     new_operands.reserve(instr->operand_count());
     for (HloInstruction* operand : instr->operands()) {
       new_operands.push_back(
-          FuseOperandsRecursively(operand, builder, gpu_version));
+          FuseOperandsRecursively(operand, builder, device_description));
     }
     HloInstruction* cloned = builder.AddInstruction(
         instr->CloneWithNewOperands(instr->shape(), new_operands));
@@ -1385,8 +1386,7 @@ FusionSearchSpace::GetOrCreateOriginalInstruction(
 // it fuses tileable operands using BFS. Then it fuses tileable users and their
 // operands until it reaches the root of the search space.
 absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateTileableFusion(
-    FusionSearchSpace& fusion_search_space,
-    const se::GpuComputeCapability gpu_version, absl::string_view name) {
+    FusionSearchSpace& fusion_search_space, absl::string_view name) {
   HloInstruction* original_dot = fusion_search_space.original_dot();
   HloInstruction* dot =
       fusion_search_space.original_to_fused().at(original_dot);
@@ -1458,17 +1458,17 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateTileableFusion(
 }
 
 absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateDotFusionV2(
-    HloDotInstruction& dot, const se::GpuComputeCapability gpu_version,
+    HloDotInstruction& dot, const se::DeviceDescription& device_description,
     absl::string_view name) {
   VLOG(3) << "Creating dot fusion v2 around dot: " << dot.ToString();
-  FusionSearchSpace fusion_search_space(&dot, gpu_version);
+  FusionSearchSpace fusion_search_space(&dot, device_description);
   VLOG(3) << "Found fusion search space: \n"
           << fusion_search_space.entry()->ToString();
 
   ABSL_RETURN_IF_ERROR(fusion_search_space.ShepherdBitcastsAwayFromDot(
       fusion_search_space.entry()));
 
-  return CreateTileableFusion(fusion_search_space, gpu_version, name);
+  return CreateTileableFusion(fusion_search_space, name);
 }
 
 }  // namespace
@@ -1476,11 +1476,11 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateDotFusionV2(
 // Fuses dot and the compatible and profitable to fuse operations around it
 // into a new fusion computation.
 absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateDotFusion(
-    HloDotInstruction& dot, const se::GpuComputeCapability gpu_version,
+    HloDotInstruction& dot, const se::DeviceDescription& device_description,
     absl::string_view name) {
   VLOG(5) << dot.ToString();
   if (CodegenDecision is_supported =
-          IsTritonSupportedInstruction(dot, gpu_version);
+          IsTritonSupportedInstruction(dot, device_description);
       !is_supported) {
     return is_supported;
   }
@@ -1489,7 +1489,7 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateDotFusion(
           ->config()
           .debug_options()
           .xla_gpu_experimental_gemm_fusion_v2()) {
-    return CreateDotFusionV2(dot, gpu_version, name);
+    return CreateDotFusionV2(dot, device_description, name);
   }
 
   HloComputation::Builder builder(name);
@@ -1498,19 +1498,21 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateDotFusion(
   std::vector<HlosAndRequirements> hlos_and_reqs;
   hlos_and_reqs.reserve(dot.operand_count());
   ABSL_ASSIGN_OR_RETURN(HlosAndRequirements lhs_hlos_and_reqs,
-                   FuseDotOperand(dot, /*operand_index=*/0, gpu_version,
+                   FuseDotOperand(dot, /*operand_index=*/0,
+                                  device_description.gpu_compute_capability(),
                                   builder, fusion_inputs));
   hlos_and_reqs.push_back(lhs_hlos_and_reqs);
   ABSL_ASSIGN_OR_RETURN(HlosAndRequirements rhs_hlos_and_reqs,
-                   FuseDotOperand(dot, /*operand_index=*/1, gpu_version,
+                   FuseDotOperand(dot, /*operand_index=*/1,
+                                  device_description.gpu_compute_capability(),
                                   builder, fusion_inputs));
   hlos_and_reqs.push_back(rhs_hlos_and_reqs);
   HloInstruction& fused_dot = FuseDot(dot, hlos_and_reqs, builder);
   // For now the RHS doesn't support splits, so it also doesn't impose any
   // requirements.
   HlosAndRequirements fused_output_and_reqs =
-      FuseDotOutput(dot, fused_dot, gpu_version, lhs_hlos_and_reqs.requirements,
-                    builder, fusion_inputs);
+      FuseDotOutput(dot, fused_dot, device_description.gpu_compute_capability(),
+                    lhs_hlos_and_reqs.requirements, builder, fusion_inputs);
 
   HloInstruction* fusion_output = fused_output_and_reqs.original_hlo;
 
@@ -1573,8 +1575,8 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateDotFusion(
 // operations that can target the triton GEMM emitter.
 class GemmFusionVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit GemmFusionVisitor(const se::GpuComputeCapability& gpu_version)
-      : gpu_version_(gpu_version) {}
+  explicit GemmFusionVisitor(const se::DeviceDescription& device_description)
+      : device_description_(device_description) {}
   // Checks that a dot() should be targeting the triton GEMM emitter;
   // if so - fuses all its compatible inputs and outputs as a new computation
   // and replaces the original dot() with a call to the computation.
@@ -1596,7 +1598,7 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
     std::string fusion_name = absl::StrCat("gemm_fusion_", dot->name());
     ABSL_ASSIGN_OR_RETURN(
         auto fusion_or_decision,
-        CreateDotFusion(*Cast<HloDotInstruction>(dot), gpu_version_,
+        CreateDotFusion(*Cast<HloDotInstruction>(dot), device_description_,
                         absl::StrCat(fusion_name, "_computation")));
 
     if (std::holds_alternative<FusionDecision>(fusion_or_decision)) {
@@ -1655,28 +1657,36 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
 
     std::vector<HlosAndRequirements> hlos_and_reqs;
     hlos_and_reqs.reserve(scaled_dot->operand_count());
-    ABSL_ASSIGN_OR_RETURN(HlosAndRequirements lhs_hlos_and_reqs,
-                     FuseDotOperand(*scaled_dot, /*operand_index=*/0,
-                                    gpu_version_, builder, fusion_inputs));
+    ABSL_ASSIGN_OR_RETURN(
+        HlosAndRequirements lhs_hlos_and_reqs,
+        FuseDotOperand(*scaled_dot, /*operand_index=*/0,
+                       device_description_.gpu_compute_capability(), builder,
+                       fusion_inputs));
     hlos_and_reqs.push_back(lhs_hlos_and_reqs);
-    ABSL_ASSIGN_OR_RETURN(HlosAndRequirements rhs_hlos_and_reqs,
-                     FuseDotOperand(*scaled_dot, /*operand_index=*/1,
-                                    gpu_version_, builder, fusion_inputs));
+    ABSL_ASSIGN_OR_RETURN(
+        HlosAndRequirements rhs_hlos_and_reqs,
+        FuseDotOperand(*scaled_dot, /*operand_index=*/1,
+                       device_description_.gpu_compute_capability(), builder,
+                       fusion_inputs));
     hlos_and_reqs.push_back(rhs_hlos_and_reqs);
-    ABSL_ASSIGN_OR_RETURN(HlosAndRequirements lhs_scale_hlos_and_reqs,
-                     FuseDotOperand(*scaled_dot, /*operand_index=*/2,
-                                    gpu_version_, builder, fusion_inputs));
+    ABSL_ASSIGN_OR_RETURN(
+        HlosAndRequirements lhs_scale_hlos_and_reqs,
+        FuseDotOperand(*scaled_dot, /*operand_index=*/2,
+                       device_description_.gpu_compute_capability(), builder,
+                       fusion_inputs));
     hlos_and_reqs.push_back(lhs_scale_hlos_and_reqs);
-    ABSL_ASSIGN_OR_RETURN(HlosAndRequirements rhs_scale_hlos_and_reqs,
-                     FuseDotOperand(*scaled_dot, /*operand_index=*/3,
-                                    gpu_version_, builder, fusion_inputs));
+    ABSL_ASSIGN_OR_RETURN(
+        HlosAndRequirements rhs_scale_hlos_and_reqs,
+        FuseDotOperand(*scaled_dot, /*operand_index=*/3,
+                       device_description_.gpu_compute_capability(), builder,
+                       fusion_inputs));
     hlos_and_reqs.push_back(rhs_scale_hlos_and_reqs);
 
     HloInstruction& fused_dot = FuseDot(*scaled_dot, hlos_and_reqs, builder);
 
-    HlosAndRequirements fused_output_and_reqs =
-        FuseDotOutput(*scaled_dot, fused_dot, gpu_version_,
-                      lhs_hlos_and_reqs.requirements, builder, fusion_inputs);
+    HlosAndRequirements fused_output_and_reqs = FuseDotOutput(
+        *scaled_dot, fused_dot, device_description_.gpu_compute_capability(),
+        lhs_hlos_and_reqs.requirements, builder, fusion_inputs);
     HloComputation* computation =
         scaled_dot->GetModule()->AddComputationAndUnifyNamesAndIds(
             builder.Build(),
@@ -1700,12 +1710,13 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
   }
 
  private:
-  se::GpuComputeCapability gpu_version_;
+  se::DeviceDescription device_description_;
 };
 
 absl::StatusOr<bool> RunOnComputation(
-    HloComputation* computation, const se::GpuComputeCapability& gpu_version) {
-  GemmFusionVisitor visitor(gpu_version);
+    HloComputation* computation,
+    const se::DeviceDescription& device_description) {
+  GemmFusionVisitor visitor(device_description);
   ABSL_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.changed();
 }
@@ -1715,13 +1726,14 @@ absl::StatusOr<bool> RunOnComputation(
 absl::StatusOr<bool> GemmFusion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  ABSL_RETURN_IF_ERROR(EnsureTritonSupportsComputeCapability(compute_capability_));
+  ABSL_RETURN_IF_ERROR(EnsureTritonSupportsComputeCapability(
+      device_description_.gpu_compute_capability()));
 
   bool changed = false;
   for (HloComputation* computation :
        GetFusibleComputations(*module, execution_threads)) {
     ABSL_ASSIGN_OR_RETURN(bool result,
-                     RunOnComputation(computation, compute_capability_));
+                     RunOnComputation(computation, device_description_));
     changed |= result;
   }
   return changed;

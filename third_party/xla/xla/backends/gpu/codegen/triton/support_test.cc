@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/target_constants.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
@@ -197,6 +198,19 @@ stream_executor::GpuComputeCapability DefaultDeviceForTesting() {
   return AllDevicesToTest()[0];
 }
 
+se::DeviceDescription GetDeviceDescription(se::GpuComputeCapability cc) {
+  se::DeviceDescription dev_info =
+      cc.IsCuda() ? TestGpuDeviceInfo::RTXA6000DeviceInfo(cc)
+                  : TestGpuDeviceInfo::AMDMI210DeviceInfo();
+  if (cc.IsCuda()) {
+    const auto* cuda_cc = cc.cuda_compute_capability();
+    if (cuda_cc != nullptr && cuda_cc->major >= 9) {
+      dev_info.set_runtime_version(se::SemanticVersion{13, 0, 0});
+    }
+  }
+  return dev_info;
+}
+
 // Generates all the possible test combinations for a given opcodes. A test
 // combination is a tuple of the form (data_type, opcode, compute_capability).
 auto AllTestCombinationsForOpcodes(absl::Span<const HloOpcode> opcodes) {
@@ -333,9 +347,7 @@ class SupportTest : public HloHardwareIndependentTestBase,
     }
     BlockLevelParameters block_level_parameters =
         FromOutputTileSizes(std::move(output_tile_sizes));
-    const se::DeviceDescription dev_info =
-        cc.IsCuda() ? TestGpuDeviceInfo::RTXA6000DeviceInfo(cc)
-                    : TestGpuDeviceInfo::AMDMI210DeviceInfo();
+    const se::DeviceDescription dev_info = GetDeviceDescription(cc);
     if (cc.IsCuda()) {
       data_layout_ = nvptx::DataLayout();
       target_triple_ = llvm::Triple(nvptx::TargetTriple());
@@ -350,7 +362,7 @@ class SupportTest : public HloHardwareIndependentTestBase,
     };
 
     CodegenDecision is_supported =
-        IsTritonSupportedInstruction(ti.Instruction(), cc);
+        IsTritonSupportedInstruction(ti.Instruction(), dev_info);
     VLOG(1) << "Checking support of " << ti.Instruction().ToString()
             << " support decision: " << is_supported.Explain();
     if (is_supported) {
@@ -410,7 +422,9 @@ TEST_P(SupportTestWithTilingParam, IsTritonSupportedComputationSkipsRootTuple) {
   })";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_TRUE(IsTritonSupportedComputation(
-      *module->entry_computation(), se::CudaComputeCapability::Hopper()));
+      *module->entry_computation(),
+      GetDeviceDescription(
+          se::GpuComputeCapability(se::CudaComputeCapability::Hopper()))));
 }
 
 class SupportTestWithTypeAndOpcodeAndDeviceParam
@@ -947,10 +961,12 @@ ENTRY triton_computation {
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
   if (!tiling) {
-    EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
+    EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(),
+                                              GetDeviceDescription(cc)));
     return;
   }
-  if (!IsTritonSupportedInstruction(ti.Instruction(), cc)) {
+  if (!IsTritonSupportedInstruction(ti.Instruction(),
+                                    GetDeviceDescription(cc))) {
     return;
   }
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
@@ -1032,7 +1048,8 @@ ENTRY triton_computation {
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
                           ParseTemplateAndGetInstruction(kHloTestTemplate, F32,
                                                          HloOpcode::kReduce));
-  EXPECT_TRUE(IsTritonSupportedInstruction(ti.Instruction(), cc));
+  EXPECT_TRUE(
+      IsTritonSupportedInstruction(ti.Instruction(), GetDeviceDescription(cc)));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2}, cc);
 }
 
@@ -2496,7 +2513,8 @@ ENTRY entry {
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(hlo_text, F32, HloOpcode::kFusion));
   se::GpuComputeCapability cc = DefaultDeviceForTesting();
-  CodegenDecision decision = IsTritonSupportedInstruction(ti.Instruction(), cc);
+  CodegenDecision decision =
+      IsTritonSupportedInstruction(ti.Instruction(), GetDeviceDescription(cc));
   ASSERT_TRUE(decision.IsForbidden());
   EXPECT_THAT(decision.Explain(),
               HasSubstr("Nested fusions are not supported"));
@@ -3627,6 +3645,37 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.insert(kUnsupportedOps.begin(), kUnsupportedOps.end());
 
   return ret;
+}
+
+class TritonSupportCudaVersionTest : public HloHardwareIndependentTestBase {};
+
+TEST_F(TritonSupportCudaVersionTest, HopperCudaVersionLimit) {
+  auto builder = HloComputation::Builder("test");
+  auto param = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {128, 128}), "x"));
+  auto negate = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {128, 128}), HloOpcode::kNegate, param));
+
+  // Case 1: Hopper (SM 9.0) + CUDA 12.8 -> Rejected
+  {
+    se::DeviceDescription dev_info = TestGpuDeviceInfo::H100SXMDeviceInfo();
+    dev_info.set_runtime_version(se::SemanticVersion{12, 8, 0});
+    EXPECT_FALSE(IsTritonSupportedInstruction(*negate, dev_info).IsAllowed());
+  }
+
+  // Case 2: Hopper (SM 9.0) + CUDA 13.0 -> Allowed
+  {
+    se::DeviceDescription dev_info = TestGpuDeviceInfo::H100SXMDeviceInfo();
+    dev_info.set_runtime_version(se::SemanticVersion{13, 0, 0});
+    EXPECT_TRUE(IsTritonSupportedInstruction(*negate, dev_info).IsAllowed());
+  }
+
+  // Case 3: Ampere/Ada (SM < 9.0) + CUDA 12.8 -> Allowed
+  {
+    se::DeviceDescription dev_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+    dev_info.set_runtime_version(se::SemanticVersion{12, 8, 0});
+    EXPECT_TRUE(IsTritonSupportedInstruction(*negate, dev_info).IsAllowed());
+  }
 }
 
 TEST(OpCoverage, UnsupportedOpcodes) {

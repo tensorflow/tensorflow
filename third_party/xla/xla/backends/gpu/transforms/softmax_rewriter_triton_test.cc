@@ -195,8 +195,7 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   const HloInstruction* complex =
       module->entry_computation()->root_instruction();
-  EXPECT_FALSE(IsTritonSupportedInstruction(
-      *complex, device_info_.gpu_compute_capability()));
+  EXPECT_FALSE(IsTritonSupportedInstruction(*complex, device_info_));
   EXPECT_THAT(fusion_rewriter_.Run(module.get()), IsOkAndHolds(false));
 }
 
@@ -221,8 +220,7 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   const HloInstruction* complex =
       module->entry_computation()->root_instruction();
-  EXPECT_FALSE(IsTritonSupportedInstruction(
-      *complex, device_info_.gpu_compute_capability()));
+  EXPECT_FALSE(IsTritonSupportedInstruction(*complex, device_info_));
   EXPECT_THAT(fusion_rewriter_.Run(module.get()), IsOkAndHolds(true));
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   EXPECT_THAT(

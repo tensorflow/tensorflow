@@ -103,7 +103,7 @@ HloInstruction* ChooseOperandForFusionProcessing(HloInstruction* instr) {
 }
 
 bool IsTriviallyFusible(HloInstruction* instr,
-                        const se::GpuComputeCapability& gpu_version,
+                        const se::DeviceDescription& device_info,
                         int num_allowed_users = 1) {
   // Checks whether an op is trivially fusible. An op is said to be trivially
   // fusible if it does not increase the amount of memory read/written by the
@@ -120,7 +120,7 @@ bool IsTriviallyFusible(HloInstruction* instr,
   }
 
   if (instr->IsElementwise() && instr->operand_count() == 1) {
-    return static_cast<bool>(IsTritonSupportedInstruction(*instr, gpu_version));
+    return static_cast<bool>(IsTritonSupportedInstruction(*instr, device_info));
   }
 
   // Elementwise binary ops are trivially fusible if the operands are the same,
@@ -133,7 +133,7 @@ bool IsTriviallyFusible(HloInstruction* instr,
     // if the operand is triton supported.
     if (operand_0 == operand_1) {
       return static_cast<bool>(
-          IsTritonSupportedInstruction(*instr, gpu_version));
+          IsTritonSupportedInstruction(*instr, device_info));
     }
 
     // For simplicity we only fuse elementwise binary ops with splat operands
@@ -143,7 +143,7 @@ bool IsTriviallyFusible(HloInstruction* instr,
         (IsBroadcastOfScalarConstant(*operand_1) ||
          IsBroadcastOfParameter(*operand_1))) {
       return static_cast<bool>(
-          IsTritonSupportedInstruction(*instr, gpu_version));
+          IsTritonSupportedInstruction(*instr, device_info));
     }
   }
 
@@ -155,10 +155,9 @@ bool IsTriviallyFusible(HloInstruction* instr,
 // set to it. The definition of "trivial" operations is as given in
 // 'IsTriviallyFusible'.
 bool TrivialEdge(HloInstruction** producer, HloInstruction* consumer,
-                 HloOpcode opcode,
-                 const se::GpuComputeCapability& gpu_version) {
+                 HloOpcode opcode, const se::DeviceDescription& device_info) {
   while (consumer->opcode() != opcode) {
-    if (IsTriviallyFusible(consumer, gpu_version)) {
+    if (IsTriviallyFusible(consumer, device_info)) {
       consumer = ChooseOperandForFusionProcessing(consumer);
     } else {
       return false;
@@ -169,21 +168,21 @@ bool TrivialEdge(HloInstruction** producer, HloInstruction* consumer,
   return true;
 }
 
-bool IsTriviallyConnectedProducerOf(
-    HloInstruction* producer, HloInstruction* consumer,
-    const se::GpuComputeCapability& gpu_version) {
+bool IsTriviallyConnectedProducerOf(HloInstruction* producer,
+                                    HloInstruction* consumer,
+                                    const se::DeviceDescription& device_info) {
   if (producer == consumer) {
     return true;
   }
 
   HloInstruction* found_producer = consumer;
   while (
-      TrivialEdge(&found_producer, consumer, producer->opcode(), gpu_version)) {
+      TrivialEdge(&found_producer, consumer, producer->opcode(), device_info)) {
     if (found_producer == producer) {
       return true;
     }
 
-    if (!IsTriviallyFusible(found_producer, gpu_version)) {
+    if (!IsTriviallyFusible(found_producer, device_info)) {
       return false;
     }
 
@@ -490,8 +489,9 @@ absl::StatusOr<bool> CanSymbolicTileAnalysisTileDiamond(
 }
 
 FusionDecision ShouldFuseReduction(const HloInstruction& reduce,
-                                   const se::GpuComputeCapability& cc) {
-  if (CodegenDecision is_supported = IsTritonSupportedInstruction(reduce, cc);
+                                   const se::DeviceDescription& device_info) {
+  if (CodegenDecision is_supported =
+          IsTritonSupportedInstruction(reduce, device_info);
       !is_supported) {
     return FusionDecision::Forbid(is_supported.Explain());
   }
@@ -511,7 +511,7 @@ FusionDecision ShouldFuseReduction(const HloInstruction& reduce,
       HloPredicateIsOp<HloOpcode::kConstant>(identity) ||
       (HloPredicateIsOp<HloOpcode::kConvert>(identity) &&
        identity->operand(0)->opcode() == HloOpcode::kConstant &&
-       IsTritonSupportedInstruction(*identity, cc));
+       IsTritonSupportedInstruction(*identity, device_info));
   if (!should_fuse_identity) {
     return FusionDecision::Forbid(
         "Reduction identity is not a constant or a supported convert of a "
@@ -522,12 +522,12 @@ FusionDecision ShouldFuseReduction(const HloInstruction& reduce,
 }
 
 DiamondMatchingDecision MatchesTritonCompatibleClosedReductionDiamondImpl(
-    HloInstruction* instr, const se::GpuComputeCapability& cc) {
+    HloInstruction* instr, const se::DeviceDescription& device_info) {
   if (!instr->IsElementwiseBinary()) {
     return FusionDecision::Forbid("Root is not elementwise binary.");
   }
 
-  if (!IsTritonSupportedInstruction(*instr, cc)) {
+  if (!IsTritonSupportedInstruction(*instr, device_info)) {
     return FusionDecision::Forbid(
         "Root is not supported for Triton instruction.");
   }
@@ -537,13 +537,13 @@ DiamondMatchingDecision MatchesTritonCompatibleClosedReductionDiamondImpl(
   HloInstruction* reduce;
 
   if (!TrivialEdge(&broadcast, instr->mutable_operand(1), HloOpcode::kBroadcast,
-                   cc)) {
+                   device_info)) {
     return FusionDecision::Forbid(
         "Could not find a trivial connection from root to a broadcast.");
   }
 
   if (!TrivialEdge(&reduce, broadcast->mutable_operand(0), HloOpcode::kReduce,
-                   cc)) {
+                   device_info)) {
     return FusionDecision::Forbid(
         "Could not find a trivial connection from matched broadcast to a "
         "reduction.");
@@ -555,7 +555,8 @@ DiamondMatchingDecision MatchesTritonCompatibleClosedReductionDiamondImpl(
         "Broadcast or reduce have non-default layouts.");
   }
 
-  if (FusionDecision should_fuse_reduction = ShouldFuseReduction(*reduce, cc);
+  if (FusionDecision should_fuse_reduction =
+          ShouldFuseReduction(*reduce, device_info);
       !should_fuse_reduction) {
     VLOG(2) << should_fuse_reduction.Explain();
     return should_fuse_reduction;
@@ -568,7 +569,7 @@ DiamondMatchingDecision MatchesTritonCompatibleClosedReductionDiamondImpl(
       HloPredicateIsOp<HloOpcode::kConstant>(identity) ||
       (HloPredicateIsOp<HloOpcode::kConvert>(identity) &&
        identity->operand(0)->opcode() == HloOpcode::kConstant &&
-       IsTritonSupportedInstruction(*identity, cc));
+       IsTritonSupportedInstruction(*identity, device_info));
   if (!should_fuse_identity) {
     return FusionDecision::Forbid(
         "Reduction identity is not a constant or a supported convert of a "
@@ -587,7 +588,7 @@ DiamondMatchingDecision MatchesTritonCompatibleClosedReductionDiamondImpl(
         "Broadcast is not along the reduction dimension.");
   }
 
-  while (IsTriviallyFusible(producer, cc)) {
+  while (IsTriviallyFusible(producer, device_info)) {
     producer = ChooseOperandForFusionProcessing(producer);
   }
 
@@ -596,7 +597,7 @@ DiamondMatchingDecision MatchesTritonCompatibleClosedReductionDiamondImpl(
   }
 
   if (!IsTriviallyConnectedProducerOf(producer, instr->mutable_operand(0),
-                                      cc)) {
+                                      device_info)) {
     return FusionDecision::Forbid("Producer is not trivially connected.");
   }
 
@@ -618,15 +619,13 @@ DiamondMatchingDecision MatchesTritonCompatibleClosedReductionDiamondImpl(
 DiamondMatchingDecision
 SoftmaxRewriterTriton::MatchesTritonCompatibleClosedReductionDiamond(
     HloInstruction* instr) const {
-  return MatchesTritonCompatibleClosedReductionDiamondImpl(
-      instr, device_info_.gpu_compute_capability());
+  return MatchesTritonCompatibleClosedReductionDiamondImpl(instr, device_info_);
 }
 
 absl::StatusOr<std::vector<DiamondDescriptor>>
 SoftmaxRewriterTriton::FindAllFusibleNormalizationDiamonds(
     HloModule& module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) const {
-  const se::GpuComputeCapability& cc = device_info_.gpu_compute_capability();
   std::vector<DiamondDescriptor> matched_diamonds;
 
   for (HloComputation* comp :
@@ -635,8 +634,8 @@ SoftmaxRewriterTriton::FindAllFusibleNormalizationDiamonds(
       continue;
     }
     for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
-      auto producer =
-          MatchesTritonCompatibleClosedReductionDiamondImpl(instr, cc);
+      auto producer = MatchesTritonCompatibleClosedReductionDiamondImpl(
+          instr, device_info_);
       if (std::holds_alternative<HloInstruction*>(producer)) {
         DiamondDescriptor diamond{
             /*root=*/instr, /*producer=*/std::get<HloInstruction*>(producer)};

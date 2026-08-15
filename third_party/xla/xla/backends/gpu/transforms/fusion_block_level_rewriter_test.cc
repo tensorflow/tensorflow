@@ -250,8 +250,7 @@ ENTRY entry {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_text));
   ASSERT_FALSE(IsTritonSupportedComputation(
-      *module->GetComputationWithName("fusion_computation"),
-      device_info_.gpu_compute_capability()));
+      *module->GetComputationWithName("fusion_computation"), device_info_));
   EXPECT_THAT(
       FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize,
                                &mlir_context_)

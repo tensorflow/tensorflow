@@ -90,6 +90,20 @@ HloInstruction* GetNonBitcastRoot(const HloComputation* computation) {
 class TritonTest : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {
  public:
   TritonTest() = default;
+
+  void SetUp() override {
+    HloInterpreterReferenceMixin<GpuPjRtCodegenTest>::SetUp();
+    if (device_description().gpu_compute_capability().IsCuda()) {
+      const auto* cuda_cc = device_description()
+                                .gpu_compute_capability()
+                                .cuda_compute_capability();
+      if (cuda_cc != nullptr && cuda_cc->major >= 9 &&
+          device_description().runtime_version().major_version() < 13) {
+        GTEST_SKIP()
+            << "Triton lowering requires CUDA 13+ on Hopper and newer GPUs.";
+      }
+    }
+  }
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuPjRtCodegenTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_autotune_level(0);
