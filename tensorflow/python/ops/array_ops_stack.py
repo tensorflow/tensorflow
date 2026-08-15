@@ -69,7 +69,7 @@ def stack(values, axis=0, name="stack"):
   Raises:
     ValueError: If `axis` is out of the range [-(R+1), R+1).
   """
-  if isinstance(values, (ops.Tensor, composite_tensor.CompositeTensor)):
+  if ops.is_tensor(values) or isinstance(values, composite_tensor.CompositeTensor):
     values = [values]
 
   if axis == 0:
