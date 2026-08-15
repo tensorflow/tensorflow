@@ -404,8 +404,7 @@ BuildIdToLogicalBufferMap(
     HloDataflowAnalysis& dataflow_analysis) {
   absl::flat_hash_map<int64_t, const HloValue*> id_to_logical_buffer;
   // Process each logical buffer in the proto.
-  for (const LogicalBufferProto& logical_buffer_proto :
-       proto.logical_buffers()) {
+  for (const BufferValueProto& logical_buffer_proto : proto.logical_buffers()) {
     TF_RET_CHECK(logical_buffer_proto.has_defined_at())
         << "Expected logical buffer to have location information in the proto.";
     TF_RET_CHECK(id_to_hlo_instruction.contains(
@@ -1605,8 +1604,8 @@ void BufferAssignment::ToProto(BufferAssignmentProto* proto) const {
   for (BufferValue::Id id = 0; id < dataflow.values().size(); id++) {
     auto& value = dataflow.values().at(id);
     if (HasAllocation(*value)) {
-      LogicalBufferProto proto_buffer = value->ToProto(buffer_size_);
-      proto->add_logical_buffers()->Swap(&proto_buffer);
+      BufferValueProto buffer_value_proto = value->ToProto(buffer_size_);
+      proto->add_logical_buffers()->Swap(&buffer_value_proto);
 
       // Fill buffer aliases.
       for (const HloValue* alias :
@@ -1617,10 +1616,10 @@ void BufferAssignment::ToProto(BufferAssignmentProto* proto) const {
         }
         BufferAssignmentProto::BufferAlias* proto_alias =
             proto->add_buffer_aliases();
-        LogicalBufferProto::Location proto_alias_location =
+        BufferValueProto::Location alias_location_proto =
             BufferValue::ToLocationProto(*alias->instruction(), alias->index());
         proto_alias->set_source_buffer_id(value->id());
-        proto_alias->mutable_location()->Swap(&proto_alias_location);
+        proto_alias->mutable_location()->Swap(&alias_location_proto);
       }
     }
   }
@@ -3447,7 +3446,7 @@ struct BufferMap {
       const BufferAssignmentProto& proto,
       const absl::flat_hash_map<int64_t, int64_t>& unpadded_sizes) {
     buffers.reserve(proto.logical_buffers_size());
-    for (const LogicalBufferProto& b : proto.logical_buffers()) {
+    for (const BufferValueProto& b : proto.logical_buffers()) {
       buffers.push_back(Buffer(b.size(), unpadded_sizes.at(b.id())));
       id_to_buffer[b.id()] = &buffers.back();
     }
@@ -3502,7 +3501,7 @@ ComputeLogicalBufferUnpaddedSizes(
   }
 
   absl::flat_hash_map<int64_t, int64_t> logical_buffer_unpadded_sizes;
-  for (const LogicalBufferProto& buffer_proto :
+  for (const BufferValueProto& buffer_proto :
        buffer_assignment_proto.logical_buffers()) {
     const HloInstructionProto* instruction_proto =
         id_to_instruction.at(buffer_proto.defined_at().instruction_id());
@@ -3622,7 +3621,7 @@ absl::StatusOr<int64_t> ComputePeakMemory(const BufferAssignmentProto& proto) {
   absl::flat_hash_map<int64_t, int64_t> dummy_unpadded_sizes;
   // Set these to zero. We don't have an HLO to derive them, and we don't need
   // them for the (padded) peak memory.
-  for (const LogicalBufferProto& b : proto.logical_buffers()) {
+  for (const BufferValueProto& b : proto.logical_buffers()) {
     dummy_unpadded_sizes[b.id()] = 0;
   }
   auto result = ComputePeakMemoryImpl(proto, dummy_unpadded_sizes);
