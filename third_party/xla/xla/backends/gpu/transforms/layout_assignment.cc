@@ -145,14 +145,15 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
   Shape conv_shape = instr->shape().IsTuple() ? instr->shape().tuple_shapes(0)
                                               : instr->shape();
 
-  // Despite the specialized logic below for Volta, we expect GPUs with Tensor
-  // Cores work best using NHWC layouts for cuDNN convolutions---as per
+  // Despite the specialized logic below for Volta, Ampere, and Hopper, we
+  // expect GPUs with Tensor Cores work best using NHWC layouts for cuDNN
+  // convolutions---as per
   // https://docs.nvidia.com/deeplearning/performance/dl-performance-convolutional/index.html#tensor-layout.
   if (gpu_version.IsCuda()) {
     const auto* cc = gpu_version.cuda_compute_capability();
 
-    // Hopper and newer
-    if (cc->IsAtLeast(se::CudaComputeCapability::kHopper)) {
+    bool is_hopper_or_newer = cc->IsAtLeast(se::CudaComputeCapability::kHopper);
+    if (is_hopper_or_newer) {
       if (input_ty == F64) {
         VLOG(2) << "Using NCHW for F64 conv " << instr->ToString() << " on "
                 << cc->ToString();
@@ -171,14 +172,22 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
       return kAllNHWC;
     }
 
-    // Volta and pre-Volta
-    // If we're not Volta or not fp16/bfloat16, or not conv2D, the decision is
-    // easy: Use NCHW.
-    bool is_volta = cc->IsAtLeast(se::CudaComputeCapability::kVolta);
-    if (!isFloat16 || !is_volta || conv_shape.dimensions().size() != 4) {
-      return kAllNCHW;
+    bool is_ampere = cc->IsAtLeast(se::CudaComputeCapability::kAmpere);
+    bool supports_ampere_tensor_cores = isFloat16 || (input_ty == F32);
+    if (is_ampere && supports_ampere_tensor_cores &&
+        conv_shape.dimensions().size() == 4) {
+      return kAllNHWC;
     }
-    return kAllNHWC;
+
+    bool is_volta = cc->IsAtLeast(se::CudaComputeCapability::kVolta);
+    bool supports_volta_tensor_cores = isFloat16;
+    // Use NHWC if it's a 2D convolution on Volta.
+    if (is_volta && supports_volta_tensor_cores &&
+        conv_shape.dimensions().size() == 4) {
+      return kAllNHWC;
+    }
+
+    return kAllNCHW;
   }
 
   if (gpu_version.IsRocm()) {
