@@ -187,10 +187,14 @@ bool handleFuncResultSharding(
     // preserve the original func result sharding, but open all sharding
     // dimensions.
     rewriter.setInsertionPoint(funcResultSharding);
-    CHECK_EQ(funcResultSharding.getNumOperands(), 1);
-    rewriter.replaceOpWithNewOp<mlir::sdy::ShardingConstraintOp>(
-        funcResultSharding, funcResultSharding.getOperand(0),
-        openShardingDims(sharding));
+    llvm::SmallVector<mlir::Value> newResults;
+    newResults.reserve(funcResultSharding.getNumOperands());
+    for (mlir::Value operand : funcResultSharding.getOperands()) {
+      auto constraint = rewriter.create<mlir::sdy::ShardingConstraintOp>(
+          funcResultSharding.getLoc(), operand, openShardingDims(sharding));
+      newResults.push_back(constraint.getResult());
+    }
+    rewriter.replaceOp(funcResultSharding, newResults);
   } else {
     rewriter.replaceOp(funcResultSharding, funcResultSharding.getOperands());
   }
