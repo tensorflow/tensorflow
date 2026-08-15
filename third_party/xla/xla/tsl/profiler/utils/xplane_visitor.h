@@ -217,6 +217,13 @@ class XEventVisitor : public XStatsOwner<XEvent> {
     return event_->data_case() == XEvent::kNumOccurrences;
   }
 
+  // Returns the stat from event metadata or raw event, nullopt if absent.
+  std::optional<XStatVisitor> GetEventOrMetadataStat(int64_t stat_type) const;
+
+  // Shortcut to get an integer stat from event metadata or raw event, or return
+  // default_val if absent.
+  int64_t GetEventOrMetadataStat(int64_t stat_type, int64_t default_val) const;
+
   bool operator<(const XEventVisitor& other) const {
     return GetTimespan() < other.GetTimespan();
   }
