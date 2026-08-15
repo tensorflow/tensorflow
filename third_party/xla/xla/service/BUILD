@@ -4020,6 +4020,7 @@ xla_cc_test(
         ":hlo_phi_graph",
         "//xla:literal_util",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:test",
     ],
 )

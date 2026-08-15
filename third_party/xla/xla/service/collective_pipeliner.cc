@@ -2087,12 +2087,13 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
   // all-reduces in the new cloned loop as they aren't the same of the old.
   // Loop analysis should result exactly the same, because the loop is the same
   // except some new scalar unused parameters added at the end.
-  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> new_dataflow_analysis,
-                   HloDataflowAnalysis::Run(*(new_while_loop->GetModule()),
-                                            /*ssa_form=*/true,
-                                            /*bitcast_defines_value=*/false,
-                                            /*execution_threads=*/{},
-                                            /*propagate_through_calls=*/false));
+  ABSL_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloDataflowAnalysis> new_dataflow_analysis,
+      HloDataflowAnalysis::Run(*(new_while_loop->GetModule()),
+                               /*ssa_form=*/true,
+                               /*bitcast_defines_value=*/false,
+                               /*execution_threads=*/{},
+                               /*propagate_across_call_boundaries=*/false));
   WhileLoopAnalysis new_loop_analysis(
       new_while_loop, loop_analysis.GetMaxPipeliningPerLoop(),
       pipeline_use_tree, process_different_sized_ops,
@@ -3480,11 +3481,12 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
   ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<TuplePointsToAnalysis> tuple_points_to_analysis,
       TuplePointsToAnalysis::Run(module));
-  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
-                   HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
-                                            /*bitcast_defines_value=*/false,
-                                            /*execution_threads=*/{},
-                                            /*propagate_through_calls=*/false));
+  ABSL_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
+      HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
+                               /*bitcast_defines_value=*/false,
+                               /*execution_threads=*/{},
+                               /*propagate_across_call_boundaries=*/false));
 
   std::vector<std::pair<HloInstruction*, std::unique_ptr<WhileLoopAnalysis>>>
       loop_analyses;
