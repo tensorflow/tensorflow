@@ -157,5 +157,45 @@ TEST(EmbeddingLookupSparseOpTest, Indices3DTest) {
               })));
 }
 
+// Regression tests for the EMBEDDING_LOOKUP_SPARSE out-of-bounds write: the
+// aggregation output offset is computed from the untrusted sparse `indices`
+// tensor, so a malformed model can drive it past the output buffer. The op
+// must reject such inputs with kTfLiteError instead of writing out of bounds
+// or silently returning incomplete output. In each model below dense_shape[0]
+// is 3 (valid buckets [0, 3)) and embedding_size is 6, so output_size is 18;
+// the offending sparse coordinate pushes the offset well beyond that.
+
+TEST(EmbeddingLookupSparseOpTest, OutOfBoundsLastBucketReturnsError) {
+  EmbeddingLookupSparseOpModel m(CombinerType_MEAN, {3}, {3, 2}, {2},
+                                 {4, 3, 2});
+  // The final lookup's row coordinate (999) is finalized by the trailing
+  // FinalizeAggregation after the loop.
+  m.SetInput({1, 3, 0}, {0, 0, 2, 0, 999, 0}, {3, 2}, {1.0, 2.0, 4.0});
+  m.Set3DWeightMatrix(
+      [](int i, int j, int k) { return i + j / 10.0f + k / 100.0f; });
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+}
+
+TEST(EmbeddingLookupSparseOpTest, OutOfBoundsMidBucketReturnsError) {
+  EmbeddingLookupSparseOpModel m(CombinerType_MEAN, {3}, {3, 2}, {2},
+                                 {4, 3, 2});
+  // The middle lookup carries the inflated coordinate, so the offending bucket
+  // is finalized during the loop on the next bucket transition.
+  m.SetInput({1, 3, 0}, {0, 0, 999, 0, 2, 1}, {3, 2}, {1.0, 2.0, 4.0});
+  m.Set3DWeightMatrix(
+      [](int i, int j, int k) { return i + j / 10.0f + k / 100.0f; });
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+}
+
+TEST(EmbeddingLookupSparseOpTest, NegativeSparseIndexReturnsError) {
+  EmbeddingLookupSparseOpModel m(CombinerType_MEAN, {3}, {3, 2}, {2},
+                                 {4, 3, 2});
+  // A negative sparse coordinate yields a negative output offset.
+  m.SetInput({1, 3, 0}, {0, 0, 2, 0, -5, 0}, {3, 2}, {1.0, 2.0, 4.0});
+  m.Set3DWeightMatrix(
+      [](int i, int j, int k) { return i + j / 10.0f + k / 100.0f; });
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+}
+
 }  // namespace
 }  // namespace tflite
