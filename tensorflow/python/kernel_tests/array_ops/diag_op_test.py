@@ -1225,5 +1225,24 @@ class DiagGradPartOpTest(test.TestCase):
           self.assertLess(error, 1e-4)
 
 
+  def testMatrixDiagV3InvalidAndOverflowDimensions(self):
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      array_ops.matrix_diag_v3(
+          diagonal=[1.0, 2.0],
+          k=0,
+          num_rows=-5,
+          num_cols=2,
+          padding_value=0.0,
+      )
+
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      array_ops.matrix_diag_v3(
+          diagonal=[1.0, 2.0],
+          k=0,
+          num_rows=2**62,
+          num_cols=2**62,
+          padding_value=0.0,
+      )
+
 if __name__ == "__main__":
   test.main()
