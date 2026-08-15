@@ -2871,7 +2871,10 @@ TEST_F(AlgebraicSimplifierTest, ExpDiv) {
       GmockMatch(m::Exp(m::Subtract(m::Parameter(0), m::Parameter(1)))));
 }
 
-// Test that exp(A)*exp(B) is simplified to exp(A+B)
+// Test that exp(A)*exp(B) is simplified to exp(A+B) when fast-math is
+// enabled. This rewrite is not numerically equivalent at overflow/underflow
+// boundaries (e.g. exp(100)*exp(-100) is NaN, but exp(100 + -100) is 1), so
+// it is gated behind enable_fast_math.
 TEST_F(AlgebraicSimplifierTest, ExpMul) {
   auto m = CreateNewVerifiedModule();
   Shape r0f32 = ShapeUtil::MakeShape(F32, {});
@@ -2893,11 +2896,67 @@ TEST_F(AlgebraicSimplifierTest, ExpMul) {
               GmockMatch(m::Multiply(m::Exp(m::Parameter(0)),
                                      m::Exp(m::Parameter(1)))));
 
-  AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  // By default (fast-math disabled), the rewrite must not fire, since it
+  // would change NaN results (from overflow*underflow) into finite ones.
+  AlgebraicSimplifier default_simplifier(default_options_);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed_default,
+                           default_simplifier.Run(m.get()));
+  EXPECT_FALSE(changed_default);
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Multiply(m::Exp(m::Parameter(0)),
+                                     m::Exp(m::Parameter(1)))));
+
+  // With fast-math enabled, the rewrite is allowed to fire.
+  AlgebraicSimplifierOptions fast_math_options = default_options_;
+  fast_math_options.set_enable_fast_math(true);
+  AlgebraicSimplifier fast_math_simplifier(fast_math_options);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed_fast_math,
+                           fast_math_simplifier.Run(m.get()));
+  EXPECT_TRUE(changed_fast_math);
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Exp(m::Add(m::Parameter(0), m::Parameter(1)))));
+}
+
+// Regression test for https://github.com/tensorflow/tensorflow/issues/123169
+// exp(100) * exp(-100) is NaN (Inf * 0), but the naive rewrite to
+// exp(100 + -100) = exp(0) = 1 silently changes this to a finite value.
+// Without fast-math, the multiply of two exponentials must be preserved so
+// that NaN semantics are not altered.
+TEST_F(AlgebraicSimplifierTest, ExpMulOverflowUnderflowPreservesNanByDefault) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    test {
+      x = f32[] constant(100.0)
+      y = f32[] constant(-100.0)
+      exp0 = f32[] exponential(x)
+      exp1 = f32[] exponential(y)
+      ROOT mul = f32[] multiply(exp0, exp1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+
+  // Default options (fast-math disabled): the exp(A)*exp(B) => exp(A+B)
+  // rewrite must not apply, preserving the original NaN-producing
+  // computation.
+  AlgebraicSimplifier default_simplifier(default_options_);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed_default,
+                           default_simplifier.Run(m.get()));
+  EXPECT_FALSE(changed_default);
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Multiply(m::Exp(m::Constant()),
+                                     m::Exp(m::Constant()))));
+
+  // With fast-math enabled, the rewrite is expected to apply (this is the
+  // documented, opt-in behavior).
+  AlgebraicSimplifierOptions fast_math_options = default_options_;
+  fast_math_options.set_enable_fast_math(true);
+  AlgebraicSimplifier fast_math_simplifier(fast_math_options);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed_fast_math,
+                           fast_math_simplifier.Run(m.get()));
+  EXPECT_TRUE(changed_fast_math);
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Exp(m::Add(m::Constant(), m::Constant()))));
 }
 
 // Test that pow(exp(A), B) is simplified to exp(A*B)
