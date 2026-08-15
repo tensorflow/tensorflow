@@ -1878,7 +1878,7 @@ Add an upper bound for `protobuf` in `setup.py` since `protobuf` after version 3
     try it out, though be aware that the DTensor API is experimental and up-to
     backward-incompatible changes. DTensor and Keras integration is published
     under `tf.keras.dtensor` in this release (refer to the `tf.keras` entry).
-    The tutoral and guide for DTensor will be published on
+    The tutorial and guide for DTensor will be published on
     https://www.tensorflow.org/. Please stay tuned.
 
 *   [oneDNN CPU performance optimizations](https://github.com/tensorflow/community/blob/master/rfcs/20210930-enable-onednn-ops.md)
@@ -3464,7 +3464,7 @@ This release introduces several vulnerability fixes:
     *   Promoting `tf.data.experimental.scan` API to `tf.data.Dataset.scan` and
         deprecating the experimental endpoint.
     *   Promoting `tf.data.experimental.snapshot` API to
-        `tf.data.Dataset.shapshot` and deprecating the experimental endpoint.
+        `tf.data.Dataset.snapshot` and deprecating the experimental endpoint.
     *   Promoting `tf.data.experimental.take_while` API to
         `tf.data.Dataset.take_while` and deprecating the experimental endpoint.
     *   Promoting `tf.data.experimental.ThreadingOptions` API to
@@ -8354,7 +8354,7 @@ love to hear your migration feedback and questions.
         transition canned Estimators that are warm started from
         `tf.train.Optimizers` to `tf.keras.optimizers`.
     *   Losses are scaled in canned estimator v2 and not in the optimizers
-        anymore. If you are using Estimator + distribution strategy + optimikzer
+        anymore. If you are using Estimator + distribution strategy + optimizer
         v1 then the behavior does not change. This implies that if you are using
         custom estimator with optimizer v2, you have to scale losses. We have
         new utilities to help scale losses `tf.nn.compute_average_loss`,
