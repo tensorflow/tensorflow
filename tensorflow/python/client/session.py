@@ -1426,6 +1426,7 @@ class BaseSession(SessionInterface):
       raise type(e)(node_def, op, message)  # pylint: disable=no-value-for-parameter
 
   def _extend_graph(self):
+    self._assert_session_available()
     with self._graph._session_run_lock():  # pylint: disable=protected-access
       tf_session.ExtendSession(self._session)
 
