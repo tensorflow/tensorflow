@@ -15,16 +15,17 @@ limitations under the License.
 
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 
-#include <algorithm>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -83,7 +84,7 @@ class ReverseStringModulePass : public HloModulePass {
          module->computations(execution_threads)) {
       HloInstruction* root = computation->root_instruction();
       std::string name(root->name());
-      std::reverse(name.begin(), name.end());
+      absl::c_reverse(name);
       root->SetAndSanitizeName(name);
       changed = true;
     }
@@ -384,7 +385,139 @@ ENTRY main {
   TF_EXPECT_OK(status);
 }
 
-// TODO: Add test.
+class AppendPass : public HloModulePass {
+ public:
+  AppendPass(std::string name, std::string suffix)
+      : name_(name), suffix_(suffix) {}
+  absl::string_view name() const override { return name_; }
+
+ protected:
+  absl::StatusOr<bool> RunImpl(HloModule* module,
+                               const absl::flat_hash_set<absl::string_view>&
+                                   execution_threads) override {
+    HloInstruction* root = module->entry_computation()->root_instruction();
+    root->SetAndSanitizeName(absl::StrCat(root->name(), "_", suffix_));
+    return true;
+  }
+
+ private:
+  std::string name_;
+  std::string suffix_;
+};
+
+TEST_F(HloPassPipelineTest, RunPassesStartingFrom) {
+  const std::string module_str = R"(
+HloModule test_module
+
+ENTRY main {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT foo = f32[] multiply(p0, p1)
+}
+)";
+
+  {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                         ParseAndReturnVerifiedModule(module_str));
+    module->mutable_config()
+        .mutable_debug_options()
+        .set_xla_run_hlo_passes_starting_from("reverse");
+
+    HloPassPipeline pipeline(TestName());
+    pipeline.AddPass<FooToBarModulePass>();
+    pipeline.AddPass<ReverseStringModulePass>();
+
+    ASSERT_OK(pipeline.Run(module.get()).status());
+
+    EXPECT_EQ(module->entry_computation()->root_instruction()->name(), "oof");
+  }
+
+  {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                         ParseAndReturnVerifiedModule(module_str));
+    module->mutable_config()
+        .mutable_debug_options()
+        .set_xla_run_hlo_passes_starting_from("foo2bar");
+
+    HloPassPipeline pipeline(TestName());
+    pipeline.AddPass<FooToBarModulePass>();
+    pipeline.AddPass<ReverseStringModulePass>();
+
+    ASSERT_OK(pipeline.Run(module.get()).status());
+
+    EXPECT_EQ(module->entry_computation()->root_instruction()->name(), "rab");
+  }
+
+  {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                         ParseAndReturnVerifiedModule(module_str));
+    module->mutable_config()
+        .mutable_debug_options()
+        .set_xla_run_hlo_passes_starting_from("non-existent");
+
+    HloPassPipeline pipeline(TestName());
+    pipeline.AddPass<FooToBarModulePass>();
+    pipeline.AddPass<ReverseStringModulePass>();
+
+    ASSERT_OK(pipeline.Run(module.get()).status());
+
+    EXPECT_EQ(module->entry_computation()->root_instruction()->name(), "foo");
+  }
+}
+
+TEST_F(HloPassPipelineTest, RunPassesStartingFromNested) {
+  const std::string module_str = R"(
+HloModule test_module
+
+ENTRY main {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT foo = f32[] multiply(p0, p1)
+}
+)";
+
+  {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                         ParseAndReturnVerifiedModule(module_str));
+    module->mutable_config()
+        .mutable_debug_options()
+        .set_xla_run_hlo_passes_starting_from("B");
+
+    HloPassPipeline pipeline(TestName());
+    pipeline.AddPass<AppendPass>("A", "A");
+    auto& sub = pipeline.AddPass<HloPassPipeline>("sub");
+    sub.AddPass<AppendPass>("A2", "A2");
+    sub.AddPass<AppendPass>("B", "B");
+    sub.AddPass<AppendPass>("C", "C");
+    pipeline.AddPass<AppendPass>("D", "D");
+
+    ASSERT_OK(pipeline.Run(module.get()).status());
+
+    EXPECT_EQ(module->entry_computation()->root_instruction()->name(),
+              "foo_B_C_D");
+  }
+
+  {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                         ParseAndReturnVerifiedModule(module_str));
+    module->mutable_config()
+        .mutable_debug_options()
+        .set_xla_run_hlo_passes_starting_from("sub");
+
+    HloPassPipeline pipeline(TestName());
+    pipeline.AddPass<AppendPass>("A", "A");
+    auto& sub = pipeline.AddPass<HloPassPipeline>("sub");
+    sub.AddPass<AppendPass>("A2", "A2");
+    sub.AddPass<AppendPass>("B", "B");
+    sub.AddPass<AppendPass>("C", "C");
+    pipeline.AddPass<AppendPass>("D", "D");
+
+    ASSERT_OK(pipeline.Run(module.get()).status());
+
+    EXPECT_EQ(module->entry_computation()->root_instruction()->name(),
+              "foo_A2_B_C_D");
+  }
+}
 
 }  // namespace
 }  // namespace xla

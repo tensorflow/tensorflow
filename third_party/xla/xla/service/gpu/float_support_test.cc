@@ -27,7 +27,7 @@ namespace gpu {
 namespace {
 
 class FloatSupportTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase> {
+    : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  public:
   const se::GpuComputeCapability& GetGpuComputeCapability() {
     return device_description().gpu_compute_capability();

@@ -18,22 +18,24 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
-#include "absl/base/casts.h"
-#include "absl/container/flat_hash_set.h"
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
-#include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
+#include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
-#include "xla/core/collectives/communicator.h"
 #include "xla/future.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/util.h"
 
@@ -56,45 +58,55 @@ std::string CollectiveGroupThunk::ToString(int indent) const {
   return absl::StrCat("\n", executor_.thunks().ToString(indent + 1));
 }
 
-absl::StatusOr<GpuCliqueKey> CollectiveGroupThunk::GetCliqueKey(
-    const Thunk& thunk, const Thunk::ExecuteParams& params) {
-  // Gather the set of all cliques. There should be only one.
-  absl::flat_hash_set<GpuCliqueKey> clique_set;
-  RETURN_IF_ERROR(thunk.Walk([&](const Thunk* nested) -> absl::Status {
-    if (auto* collective = dynamic_cast<const CollectiveThunk*>(nested)) {
-      ASSIGN_OR_RETURN(GpuCliqueKey clique_key,
-                       collective->GetCliqueKey(params));
-      clique_set.insert(std::move(clique_key));
-    }
-    return absl::OkStatus();
-  }));
-
-  if (clique_set.empty()) {
-    return InvalidArgument("No clique in NCCL group");
-  }
-  if (clique_set.size() > 1) {
-    return InvalidArgument("More than one clique in NCCL group");
-  }
-
-  return *clique_set.begin();
-}
-
 absl::Status CollectiveGroupThunk::ExecuteOnStream(
     const Thunk::ExecuteParams& params) {
-  ASSIGN_OR_RETURN(GpuCliqueKey clique_key, GetCliqueKey(*this, params));
-  ASSIGN_OR_RETURN(Communicator * comm,
-                   params.collective_cliques->GetComm(
-                       clique_key, params.collective_params->global_device_id));
-  auto* gpu_comm = absl::down_cast<GpuCommunicator*>(comm);
-  Future<> group_future = gpu_comm->GroupExecute(
-      [this, &params](GpuCommunicator* comm) -> absl::Status {
-        return executor_.ExecuteOnStream(params);
-      });
-  return group_future.Await();
+  GlobalDeviceId global_device_id = params.collective_params->global_device_id;
+
+  // Collect all communicators used by non-degenerate collective thunks.
+  // Degenerate collectives are emitted as device-to-device copies.
+  std::vector<GpuCommunicator*> comms;
+  for (const std::unique_ptr<Thunk>& thunk : executor_.thunks()) {
+    auto* collective_thunk = dynamic_cast<CollectiveThunk*>(thunk.get());
+
+    if (collective_thunk == nullptr) {
+      if (dynamic_cast<DeviceToDeviceCopyThunk*>(thunk.get()) != nullptr) {
+        continue;
+      }
+
+      return InvalidArgument(
+          "Unexpected thunk in collective group; expected a collective or "
+          "device-to-device copy thunk, got %v",
+          thunk->kind());
+    }
+
+    ABSL_ASSIGN_OR_RETURN(auto clique_key, collective_thunk->GetCliqueKey(params));
+    ABSL_ASSIGN_OR_RETURN(GpuCommunicator * comm, params.collective_cliques->GetComm(
+                                                 clique_key, global_device_id));
+    if (!absl::c_contains(comms, comm)) {
+      comms.push_back(comm);
+    }
+  }
+
+  // No communicator means every nested thunk is a plain device-to-device copy.
+  if (comms.empty()) {
+    return executor_.ExecuteOnStream(params);
+  }
+
+  // If nested thunks use a single comm, use it directly to execute the group.
+  if (comms.size() == 1) {
+    Future<> executed = comms.front()->GroupExecute(
+        [&] { return executor_.ExecuteOnStream(params); });
+    return executed.Await();
+  }
+
+  // Otherwise use a multi-comm group launch.
+  return params.collective_params->collectives->GroupLaunch(
+      comms, [&] { return executor_.ExecuteOnStream(params); });
 }
 
-absl::Status CollectiveGroupThunk::WalkNested(Walker callback) {
-  return executor_.thunks().WalkNested(callback);
+absl::Status CollectiveGroupThunk::WalkNested(Walker pre_order,
+                                              Walker post_order) {
+  return executor_.thunks().WalkNested(pre_order, post_order);
 }
 
 absl::Status CollectiveGroupThunk::TransformNested(Transformer callback) {
@@ -108,12 +120,12 @@ CollectiveGroupThunk::FromProto(
     const Deserializer& deserializer) {
   ThunkSequence thunk_sequence;
   for (const auto& sub_thunk_proto : thunk_proto.thunks()) {
-    ASSIGN_OR_RETURN(std::unique_ptr<Thunk> sub_thunk,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> sub_thunk,
                      deserializer(sub_thunk_proto));
     thunk_sequence.push_back(std::move(sub_thunk));
   }
 
-  ASSIGN_OR_RETURN(Thunk::Kind kind,
+  ABSL_ASSIGN_OR_RETURN(Thunk::Kind kind,
                    Thunk::KindFromProto(thunk_proto.thunk_kind()));
 
   return std::make_unique<CollectiveGroupThunk>(std::move(thunk_info), kind,
@@ -130,7 +142,7 @@ absl::StatusOr<ThunkProto> CollectiveGroupThunk::ToProto() const {
   thunk_proto->set_thunk_kind(Thunk::KindToProto(kind()));
 
   for (const auto& thunk : executor_.thunks()) {
-    ASSIGN_OR_RETURN(*thunk_proto->add_thunks(), thunk->ToProto());
+    ABSL_ASSIGN_OR_RETURN(*thunk_proto->add_thunks(), thunk->ToProto());
   }
 
   return proto;

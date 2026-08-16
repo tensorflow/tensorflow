@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# =============================================================================
+
 """Module extension for third party dependencies."""
 
 load("//third_party/benchmark:workspace.bzl", benchmark = "repo")
@@ -18,6 +33,7 @@ load("//third_party/gloo:workspace.bzl", gloo = "repo")
 load("//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
 load("//third_party/hwloc:workspace.bzl", hwloc = "repo")
 load("//third_party/implib_so:workspace.bzl", implib_so = "repo")
+load("//third_party/kleidiai:workspace.bzl", kleidiai = "repo")
 load("//third_party/llvm:workspace.bzl", llvm = "repo")
 load("//third_party/llvm_openmp:workspace.bzl", llvm_openmp = "repo")
 load("//third_party/mkl_dnn:workspace.bzl", onednn = "repo")
@@ -28,6 +44,7 @@ load("//third_party/nccl:workspace.bzl", nccl = "repo")
 load("//third_party/net_zstd:workspace.bzl", net_zstd = "repo")
 load("//third_party/nvshmem:workspace.bzl", nvshmem = "repo")
 load("//third_party/nvtx:workspace.bzl", nvtx = "repo")
+load("//third_party/oneccl:workspace.bzl", oneccl = "repo_v2", oneccl_v1 = "repo_v1")
 load("//third_party/pthreadpool:workspace.bzl", pthreadpool = "repo")
 load("//third_party/py/ml_dtypes:workspace.bzl", ml_dtypes = "repo")
 load("//third_party/raft:workspace.bzl", raft = "xla_repo")
@@ -39,6 +56,7 @@ load("//third_party/rocm_device_libs:workspace.bzl", rocm_device_libs = "repo")
 load("//third_party/shardy:workspace.bzl", shardy = "repo")
 load("//third_party/slinky:workspace.bzl", slinky = "repo")
 load("//third_party/spdlog:workspace.bzl", spdlog = "repo")
+load("//third_party/sqlite:workspace.bzl", sqlite = "repo")
 load("//third_party/stablehlo:workspace.bzl", stablehlo = "repo")
 load("//third_party/tensorrt:workspace.bzl", tensorrt = "repo")
 load("//third_party/transformer_engine:workspace.bzl", transformer_engine = "repo")
@@ -66,6 +84,7 @@ def _third_party_ext_impl(mctx):  # @unused
     highwayhash()
     hwloc()
     implib_so()
+    kleidiai()
     llvm(name = "llvm-raw")
     llvm_openmp()
     ml_dtypes()
@@ -76,6 +95,8 @@ def _third_party_ext_impl(mctx):  # @unused
     net_zstd()  # Needed for Riegeli
     nvshmem()
     nvtx()
+    oneccl()
+    oneccl_v1()
     onednn()
     pthreadpool()
     raft()
@@ -87,6 +108,7 @@ def _third_party_ext_impl(mctx):  # @unused
     shardy()
     slinky()
     spdlog()
+    sqlite()
     stablehlo()
     tensorrt()
     transformer_engine()

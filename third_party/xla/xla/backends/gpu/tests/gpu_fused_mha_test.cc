@@ -43,7 +43,7 @@ namespace xla::gpu {
 namespace {
 
 class MultiHeadedAttentionTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase> {
+    : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  public:
   MultiHeadedAttentionTest() {
     if (!device_description().gpu_compute_capability().IsCuda() ||

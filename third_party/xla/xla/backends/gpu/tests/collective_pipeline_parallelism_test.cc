@@ -32,8 +32,8 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tests/test_utils.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -1582,7 +1582,8 @@ TEST_P(CollectivePipelineParallelismTest,
       ((f32[16], u32[], token[]), (f32[16], u32[], token[]), (f32[16], u32[], token[]),
       (f32[16], u32[], token[])), s32[]) async-start(next_stage_slice,
         after_all_fwd, after_all_fwd, next_stage_slice,
-        after_all_bwd, after_all_bwd), calls=wrapped_send_recv_1
+        after_all_bwd, after_all_bwd), calls=wrapped_send_recv_1,
+      frontend_attributes={_collectives_group=""}
 
     async_comp_done = ((f32[16], u32[], token[]), (f32[16], u32[], token[]),
       (f32[16], u32[], token[]), (f32[16], u32[], token[])) async-done(async_comp_start)

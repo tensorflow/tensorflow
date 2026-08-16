@@ -57,18 +57,18 @@ class TestCustomDevice : public CustomDevice {
   absl::Status Execute(const ImmediateExecutionOperation* op,
                        ImmediateExecutionTensorHandle** retvals,
                        int* num_retvals) override {
-    return errors::Unimplemented("Not implemented");
+    return absl::UnimplementedError("Not implemented");
   }
 
   absl::Status Pack(absl::Span<ImmediateExecutionTensorHandle*> handles,
                     ImmediateExecutionTensorHandle** result) override {
-    return errors::Unimplemented("Packing is not implemented");
+    return absl::UnimplementedError("Packing is not implemented");
   }
 
   // Pins `op` to `device`.
   absl::StatusOr<bool> ShallPinToThisDevice(
       const ImmediateExecutionOperation* op) override {
-    return errors::Unimplemented("No preference in custom device pinning.");
+    return absl::UnimplementedError("No preference in custom device pinning.");
   }
 
  private:
@@ -92,7 +92,7 @@ class TestCustomDeviceTensorHandle : public CustomDeviceTensorHandle {
       *dim = length_;
       return absl::OkStatus();
     } else {
-      return errors::Internal("Dim out of bounds");
+      return absl::InternalError("Dim out of bounds");
     }
   }
 

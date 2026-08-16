@@ -30,12 +30,12 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/debug_options_flags.h"
@@ -280,7 +280,7 @@ static absl::Status AllReduceOp(
   // Reduce all inputs into the destination buffer at rank 0.
   void* output = chunk_ptr(participants[0].dest);
 
-  RETURN_IF_ERROR(primitive_util::ArrayTypeSwitch(
+  ABSL_RETURN_IF_ERROR(primitive_util::ArrayTypeSwitch(
       [&](const auto type_tag) {
         return ReduceScatter<type_tag>(reduction_kind, inputs, output,
                                        chunk_count);
@@ -331,7 +331,7 @@ static absl::Status ReduceScatterOp(
   // Reduce all inputs into the destination buffer.
   void* output = participants[rank].dest.opaque();
 
-  RETURN_IF_ERROR(primitive_util::ArrayTypeSwitch(
+  ABSL_RETURN_IF_ERROR(primitive_util::ArrayTypeSwitch(
       [&](const auto type_tag) {
         return ReduceScatter<type_tag>(reduction_kind, inputs, output, count);
       },
@@ -421,19 +421,19 @@ Future<> InProcessCommunicator::AllReduce(se::DeviceAddressBase send_buffer,
                                           PrimitiveType dtype, size_t count,
                                           ReductionKind reduction_kind,
                                           const Executor& executor) {
-  ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
+  ABSL_ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
   const RendezvousKey& key = cpu_executor->rendezvous_key();
 
   std::string name = absl::StrCat("all reduce ", key.ToString());
   AllReduceParticipant partiticipant{rank_, send_buffer, recv_buffer};
 
-  ASSIGN_OR_RETURN(auto op,
+  ABSL_ASSIGN_OR_RETURN(auto op,
                    Rendezvous<OpParticipants<AllReduceParticipant>>(
                        name, key, partiticipant, key.num_local_participants,
                        CollectParticipants<AllReduceParticipant>,
                        WarnStuckTimeout(), TerminateTimeout()));
 
-  RETURN_IF_ERROR(op->Invoke(AllReduceOp, rank_, dtype, count, reduction_kind));
+  ABSL_RETURN_IF_ERROR(op->Invoke(AllReduceOp, rank_, dtype, count, reduction_kind));
 
   return Future<>(absl::OkStatus());
 }
@@ -443,19 +443,19 @@ Future<> InProcessCommunicator::ReduceScatter(se::DeviceAddressBase send_buffer,
                                               PrimitiveType dtype, size_t count,
                                               ReductionKind reduction_kind,
                                               const Executor& executor) {
-  ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
+  ABSL_ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
   const RendezvousKey& key = cpu_executor->rendezvous_key();
 
   std::string name = absl::StrCat("reduce scatter ", key.ToString());
   ReduceScatterParticipant partiticipant{rank_, send_buffer, recv_buffer};
 
-  ASSIGN_OR_RETURN(auto op,
+  ABSL_ASSIGN_OR_RETURN(auto op,
                    Rendezvous<OpParticipants<ReduceScatterParticipant>>(
                        name, key, partiticipant, key.num_local_participants,
                        CollectParticipants<ReduceScatterParticipant>,
                        WarnStuckTimeout(), TerminateTimeout()));
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       op->Invoke(ReduceScatterOp, rank_, dtype, count, reduction_kind));
 
   return Future<>(absl::OkStatus());
@@ -465,14 +465,14 @@ Future<> InProcessCommunicator::CollectivePermute(
     se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
     PrimitiveType dtype, size_t count, std::optional<RankId> source_rank,
     absl::Span<const RankId> target_ranks, const Executor& executor) {
-  ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
+  ABSL_ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
   const RendezvousKey& key = cpu_executor->rendezvous_key();
 
   std::string name = absl::StrCat("collective permute ", key.ToString());
   CollectivePermuteParticipant partiticipant{rank_, source_rank, send_buffer,
                                              recv_buffer};
 
-  ASSIGN_OR_RETURN(auto op,
+  ABSL_ASSIGN_OR_RETURN(auto op,
                    Rendezvous<OpParticipants<CollectivePermuteParticipant>>(
                        name, key, partiticipant, key.num_local_participants,
                        CollectParticipants<CollectivePermuteParticipant>,
@@ -480,7 +480,7 @@ Future<> InProcessCommunicator::CollectivePermute(
 
   size_t num_bytes = count * primitive_util::ByteWidth(dtype);
 
-  RETURN_IF_ERROR(op->Invoke(CollectivePermuteOp, rank_, num_bytes));
+  ABSL_RETURN_IF_ERROR(op->Invoke(CollectivePermuteOp, rank_, num_bytes));
 
   return Future<>(absl::OkStatus());
 }
@@ -489,7 +489,7 @@ Future<> InProcessCommunicator::AllToAll(
     absl::InlinedVector<se::DeviceAddressBase, 4> send_buffers,
     absl::InlinedVector<se::DeviceAddressBase, 4> recv_buffers,
     PrimitiveType dtype, size_t count, const Executor& executor) {
-  ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
+  ABSL_ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
   const RendezvousKey& key = cpu_executor->rendezvous_key();
 
   std::string name = absl::StrCat("all to all ", key.ToString());
@@ -497,7 +497,7 @@ Future<> InProcessCommunicator::AllToAll(
                                   {send_buffers.begin(), send_buffers.end()},
                                   {recv_buffers.begin(), recv_buffers.end()}};
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto op, Rendezvous<OpParticipants<AllToAllParticipant>>(
                    name, key, participant, key.num_local_participants,
                    CollectParticipants<AllToAllParticipant>, WarnStuckTimeout(),
@@ -505,7 +505,7 @@ Future<> InProcessCommunicator::AllToAll(
 
   size_t num_bytes = count * primitive_util::ByteWidth(dtype);
 
-  RETURN_IF_ERROR(op->Invoke(AllToAllOp, rank_, num_bytes));
+  ABSL_RETURN_IF_ERROR(op->Invoke(AllToAllOp, rank_, num_bytes));
 
   return Future<>(absl::OkStatus());
 }
@@ -514,13 +514,13 @@ Future<> InProcessCommunicator::AllGather(se::DeviceAddressBase send_buffer,
                                           se::DeviceAddressBase recv_buffer,
                                           PrimitiveType dtype, size_t count,
                                           const Executor& executor) {
-  ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
+  ABSL_ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
   const RendezvousKey& key = cpu_executor->rendezvous_key();
 
   std::string name = absl::StrCat("all gather ", key.ToString());
   AllGatherParticipant partiticipant{rank_, send_buffer, recv_buffer};
 
-  ASSIGN_OR_RETURN(auto op,
+  ABSL_ASSIGN_OR_RETURN(auto op,
                    Rendezvous<OpParticipants<AllGatherParticipant>>(
                        name, key, partiticipant, key.num_local_participants,
                        CollectParticipants<AllGatherParticipant>,
@@ -528,7 +528,7 @@ Future<> InProcessCommunicator::AllGather(se::DeviceAddressBase send_buffer,
 
   size_t num_bytes = count * primitive_util::ByteWidth(dtype);
 
-  RETURN_IF_ERROR(op->Invoke(AllGatherOp, rank_, num_bytes));
+  ABSL_RETURN_IF_ERROR(op->Invoke(AllGatherOp, rank_, num_bytes));
 
   return Future<>(absl::OkStatus());
 }

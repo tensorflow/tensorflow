@@ -45,8 +45,8 @@ ErrorSpec MakeErrorSpec() {
                                         : ErrorSpec(1e-4, 1e-3);
 }
 
-using ConvolutionTest = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using ConvolutionTest =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
 
 using TestTypes = ::testing::Types<float, Eigen::half>;
 

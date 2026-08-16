@@ -18,8 +18,8 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -36,8 +36,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class BatchNormExpanderTest
-    : public HloPjRtInterpreterReferenceMixin<HloTestBase> {
+class BatchNormExpanderTest : public HloInterpreterReferenceMixin<HloTestBase> {
  protected:
   // BatchNorm should have a dynamic sized divider for mean operations.
   int64_t CountGetDimensionSize(const HloModule& module) {

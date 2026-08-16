@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_MEMORY_H_
 #define XLA_PYTHON_IFRT_MEMORY_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -23,20 +24,20 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/rtti.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla {
 namespace ifrt {
 
 // `MemoryKind` uniquely identifies a group of memory spaces with a
-// platform-dependent string. When no specific memory kind is chosen, the
-// platform should use the default memory kind for a platform's device that is
-// being used.
+// platform-dependent string. When no specific memory kind is chosen,
+// the universal default "device" memory kind is used.
 class MemoryKind {
  public:
-  // Creates `MemoryKind` with no memory kind chosen.
-  MemoryKind() = default;
+  // Creates `MemoryKind` with default "device" memory kind.
+  MemoryKind();
 
   // Creates `MemoryKind` from a platform-dependent identifier of a memory kind.
   // `MemoryKind` will be stable even after the string referenced by
@@ -44,16 +45,10 @@ class MemoryKind {
   explicit MemoryKind(std::optional<absl::string_view> memory_kind);
 
   bool operator==(const MemoryKind& other) const {
-    // Use a pointer comparison. *memory_kind_ always points to a deduplicated
-    // string.
-    if (!memory_kind_.has_value() && !other.memory_kind_.has_value()) {
-      return true;
-    }
-    if (memory_kind_.has_value() && other.memory_kind_.has_value() &&
-        memory_kind_->data() == other.memory_kind_->data()) {
-      return true;
-    }
-    return false;
+    // Use a pointer comparison. `memory_kind_` always points to an interned
+    // string. We can only check the beginning of the string because having a
+    // different length will lead to a different pointer during interning.
+    return memory_kind_.data() == other.memory_kind_.data();
   }
   bool operator!=(const MemoryKind& other) const { return !(*this == other); }
 
@@ -64,16 +59,21 @@ class MemoryKind {
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const MemoryKind& memory_kind) {
-    sink.Append(memory_kind.ToString());
+    sink.Append(memory_kind.memory_kind_);
   }
 
-  // Returns a platform-dependent identifier of a memory kind.
+  ABSL_DEPRECATED(
+      "Use `value()` instead. If it is required to check if the memory kind is "
+      "default, use `is_default()`.")
   std::optional<absl::string_view> memory_kind() const { return memory_kind_; }
+
+  bool is_default() const;
+  absl::string_view value() const { return memory_kind_; }
 
  private:
   std::string ToString() const;
 
-  std::optional<absl::string_view> memory_kind_;
+  absl::string_view memory_kind_;
 };
 
 // Canonicalizes `MemoryKind`. If `MemoryKind` has no memory kind chosen,
@@ -81,9 +81,7 @@ class MemoryKind {
 // indicated by the device, simply returns `MemoryKind` with no memory kind
 // chosen.
 //
-// TODO(b/356623715): Harden `MemoryKind` creation paths so that every
-// `MemoryKind` is canonicalized and does not require on-demand
-// canonicalization.
+// TODO(b/356623715): Remove this function.
 MemoryKind CanonicalizeMemoryKind(MemoryKind memory_kind, const Device* device);
 
 TSL_LIB_GTL_DEFINE_INT_TYPE(MemoryId, int32_t);
@@ -91,7 +89,7 @@ TSL_LIB_GTL_DEFINE_INT_TYPE(MemoryId, int32_t);
 // `Memory` represents a memory space that one or more devices can be attached
 // to. A platform may have multiple memory spaces with different backing
 // hardware or memory region types.
-class Memory : public llvm::RTTIExtends<Memory, llvm::RTTIRoot> {
+class Memory : public RTTIExtends<Memory, RTTIRoot> {
  public:
   Memory() = default;
 

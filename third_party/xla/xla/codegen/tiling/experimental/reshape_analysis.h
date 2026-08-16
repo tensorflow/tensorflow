@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/shape.h"
@@ -106,6 +107,12 @@ MinimalReshapeCategory GetMinimalReshapeCategory(
 // 2. [1, 8, 1] -> [8] (Category: kDecreaseRank)
 std::vector<MinimalReshape> GetMinimalReshapes(const Shape& input_shape,
                                                const Shape& output_shape);
+
+// Extracts indices of non-trivial dimensions from a span of dimensions.
+//
+// For example, for shape [1,3,5,1,7,1,11], it returns [1, 2, 4, 6].
+llvm::SmallVector<int64_t> PositionsOfNonTrivialDims(
+    absl::Span<const int64_t> dimensions);
 
 }  // namespace xla::gpu::experimental
 

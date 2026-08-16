@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/sparse_expander_common.h"
 
+#include "absl/status/status.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -35,7 +36,7 @@ StatusOr<mlir::TF::SparseToDenseOp> GetSparseToDenseOp(mlir::Value value) {
 
   if (op && llvm::isa<mlir::TF::SparseToDenseOp>(op))
     return llvm::dyn_cast_or_null<mlir::TF::SparseToDenseOp>(op);
-  return errors::NotFound("SparseToDenseOp not found from value.");
+  return absl::NotFoundError("SparseToDenseOp not found from value.");
 }
 
 bool IsSparseValue(mlir::Value value) { return GetSparseToDenseOp(value).ok(); }
@@ -55,7 +56,7 @@ bool AllSparseInput(mlir::Operation* op) {
 StatusOr<mlir::Value> GetIndicesFromSparseTensor(mlir::Value value) {
   auto sparse_op = GetSparseToDenseOp(value);
   if (!sparse_op.ok())
-    return errors::NotFound(
+    return absl::NotFoundError(
         "Indices tensor not found from value because it was not from a "
         "SparseTensor.");
   return sparse_op->getOperand(0);
@@ -64,7 +65,7 @@ StatusOr<mlir::Value> GetIndicesFromSparseTensor(mlir::Value value) {
 StatusOr<mlir::Value> GetValuesFromSparseTensor(mlir::Value value) {
   auto sparse_op = GetSparseToDenseOp(value);
   if (!sparse_op.ok())
-    return errors::NotFound(
+    return absl::NotFoundError(
         "Values tensor not found from value because it was not from a "
         "SparseTensor.");
   return sparse_op->getOperand(2);
@@ -73,7 +74,7 @@ StatusOr<mlir::Value> GetValuesFromSparseTensor(mlir::Value value) {
 StatusOr<mlir::Value> GetDenseShapesFromSparseTensor(mlir::Value value) {
   auto sparse_op = GetSparseToDenseOp(value);
   if (!sparse_op.ok())
-    return errors::NotFound(
+    return absl::NotFoundError(
         "Dense shape tensor not found from value because it was not from a "
         "SparseTensor.");
   return sparse_op->getOperand(1);

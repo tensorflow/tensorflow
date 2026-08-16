@@ -264,6 +264,32 @@ auto* tf_data_service_data_transfer_protocol_error =
         "of non-retriable error with this message when using this protocol.",
         "data_transfer_protocol", "error_type", "error_message");
 
+auto* tf_data_service_client_routing_outcome_counter =
+    tsl::monitoring::Counter<4>::New(
+        "/tensorflow/data/service/client_routing_outcome",
+        "The number of times a tf.data client GetElement request resulted in "
+        "success, skip_empty_buffer, or skip_error, broken down by client ID, "
+        "worker address, and thread ID.",
+        "outcome", "client_id", "worker_address", "thread_id");
+
+auto* tf_data_prefetch_residence_time_usecs_histogram =
+    tsl::monitoring::Sampler<1>::New(
+        {"/tensorflow/data/prefetch_residence_time_usecs",
+         "Microseconds a specific element spent waiting in the prefetch buffer "
+         "before being consumed.",
+         "node_name"},
+        {tsl::monitoring::Buckets::Exponential(1000, 2, 30)});
+
+auto* tf_data_prefetch_buffer_counter = tsl::monitoring::Counter<2>::New(
+    "/tensorflow/data/prefetch_buffer",
+    "The number of elements enqueued/dequeued into/from a prefetch buffer.",
+    "node_name", "event_type");
+
+auto* tf_data_prefetch_buffer_size_gauge =
+    tsl::monitoring::Gauge<int64_t, 1>::New(
+        "/tensorflow/data/prefetch_buffer_size",
+        "The current number of elements in a prefetch buffer.", "node_name");
+
 auto* tf_data_service_optimal_number_of_workers =
     monitoring::Gauge<int64_t, 0>::New(
         "/tensorflow/data/service/optimal_number_of_workers",
@@ -665,6 +691,36 @@ void RecordTFDataServiceDataTransferProtocolError(
   tf_data_service_data_transfer_protocol_error
       ->GetCell(data_transfer_protocol, error::Code_Name(code), error_message)
       ->IncrementBy(1);
+}
+
+void RecordTFDataClientGetElementAction(const std::string& action,
+                                        const std::string& client_id,
+                                        const std::string& worker_address,
+                                        const std::string& thread_id) {
+  tf_data_service_client_routing_outcome_counter
+      ->GetCell(action, client_id, worker_address, thread_id)
+      ->IncrementBy(1);
+}
+
+void RecordTFDataPrefetchResidenceTime(const std::string& node_name,
+                                       int64_t duration_us) {
+  tf_data_prefetch_residence_time_usecs_histogram->GetCell(node_name)->Add(
+      duration_us);
+}
+
+void RecordTFDataPrefetchEnqueue(const std::string& node_name) {
+  tf_data_prefetch_buffer_counter->GetCell(node_name, "enqueue")
+      ->IncrementBy(1);
+}
+
+void RecordTFDataPrefetchDequeue(const std::string& node_name) {
+  tf_data_prefetch_buffer_counter->GetCell(node_name, "dequeue")
+      ->IncrementBy(1);
+}
+
+void RecordTFDataPrefetchBufferSize(const std::string& node_name,
+                                    int64_t buffer_size) {
+  tf_data_prefetch_buffer_size_gauge->GetCell(node_name)->Set(buffer_size);
 }
 
 void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit) {

@@ -79,6 +79,7 @@ absl::Status EncodeLayout(absl::Span<const xla::Shape> xla_input_shapes,
 
 class IfrtServingExecutable {
  public:
+  // TODO(b/514902739): Remove the default value of `use_output_arena`.
   static absl::StatusOr<std::unique_ptr<IfrtServingExecutable>> Create(
       int64_t program_id, absl::string_view model_name,
       absl::string_view signature_name,
@@ -96,7 +97,9 @@ class IfrtServingExecutable {
           compilation_env_or_overrides,
       TfToHloCompiler* tf_to_hlo_compiler,
       IfrtPersistentCompilationCache* persistent_compilation_cache,
-      H2DTransferExecutorFactory* h2d_transfer_executor_factory);
+      H2DTransferExecutorFactory* h2d_transfer_executor_factory,
+      bool use_output_arena = false,
+      bool use_undonatable_buffer_converter = false);
 
   // Movable but not copyable.
   IfrtServingExecutable(IfrtServingExecutable&& other) = default;
@@ -208,12 +211,19 @@ class IfrtServingExecutable {
     std::vector<std::shared_ptr<const xla::ifrt::Shape>> ifrt_input_shapes;
     std::vector<xla::ifrt::LayoutRef> xla_input_layouts;
     xla::ifrt::LoadedExecutableRef ifrt_executable;
+    // True for inputs the compiled program may donate (input/output aliasing
+    // or buffer donors). Empty when donation info could not be determined.
+    // Callers must treat a missing entry as "may be donated" and leave the
+    // input's buffers donatable.
+    std::vector<bool> input_may_be_donated;
     tensorflow::tpu::TPUCompileMetadataProto compile_metadata;
     std::vector<std::unique_ptr<TfHostCallback>> host_callbacks;
-    absl::flat_hash_map<IfrtLoadedVariableRegistry::Key,
-                        IfrtLoadedVariableRegistry::LoadedVariable,
-                        IfrtLoadedVariableRegistry::KeyHash,
-                        IfrtLoadedVariableRegistry::KeyEq>
+
+    using LoadedVariableList =
+        std::vector<IfrtLoadedVariableRegistry::LoadedVariable>;
+    using DeviceLoadedVariableListMap =
+        absl::flat_hash_map<xla::ifrt::DeviceId, LoadedVariableList>;
+    std::variant<LoadedVariableList, DeviceLoadedVariableListMap>
         variable_arrays;
     std::vector<xla::HloSharding> arg_hlo_shardings;
     std::vector<xla::ifrt::ShardingRef> arg_ifrt_shardings;
@@ -256,7 +266,9 @@ class IfrtServingExecutable {
           compilation_env_or_overrides,
       TfToHloCompiler* tf_to_hlo_compiler,
       IfrtPersistentCompilationCache* persistent_compilation_cache,
-      H2DTransferExecutorFactory* h2d_transfer_executor_factory)
+      H2DTransferExecutorFactory* h2d_transfer_executor_factory,
+      bool use_output_arena = false,
+      bool use_undonatable_buffer_converter = false)
       : program_id_(program_id),
         model_name_(std::string(model_name)),
         signature_name_(std::string(signature_name)),
@@ -283,7 +295,16 @@ class IfrtServingExecutable {
         compilation_env_or_overrides_(compilation_env_or_overrides),
         tf_to_hlo_compiler_(tf_to_hlo_compiler),
         persistent_compilation_cache_(persistent_compilation_cache),
-        h2d_transfer_executor_factory_(h2d_transfer_executor_factory) {}
+        h2d_transfer_executor_factory_(h2d_transfer_executor_factory),
+        use_output_arena_(use_output_arena),
+        use_undonatable_buffer_converter_(use_undonatable_buffer_converter) {
+    execute_options_.fill_status = true;
+    if (use_output_arena_) {
+      execute_options_.custom_options =
+          xla::ifrt::AttributeMap(xla::ifrt::AttributeMap::Map{
+              {"use_output_arena", xla::ifrt::AttributeMap::BoolValue(true)}});
+    }
+  }
 
   int64_t program_id_;
   using SharedCachedExecutableBundle = std::shared_ptr<CachedExecutableBundle>;
@@ -343,6 +364,10 @@ class IfrtServingExecutable {
   IfrtPersistentCompilationCache* persistent_compilation_cache_;
 
   H2DTransferExecutorFactory* h2d_transfer_executor_factory_ = nullptr;
+  bool use_output_arena_ = false;
+  bool use_undonatable_buffer_converter_ = false;
+
+  xla::ifrt::ExecuteOptions execute_options_;
 
   // Asynchronously load the restored variable tensors to Ifrt array.
   absl::Status LoadAndRegisterVariableOnExecutable(
@@ -396,6 +421,16 @@ class IfrtServingExecutable {
 
   bool UsePortableExecution();
 };
+
+// Returns a mask over the executable's `num_inputs` inputs that is true when
+// the compiled program may donate that input, derived from the compiled HLO's
+// input/output alias config and buffer-donor config. This is the
+// post-compilation ground truth for both TF (tf.aliasing_output) and JAX
+// (jax.buffer_donor) frontends, unlike
+// LoadedExecutable::GetDonatableInputIndices which only reads the JAX MLIR
+// attribute. Exposed for testing.
+absl::StatusOr<std::vector<bool>> GetInputDonationMask(
+    const xla::ifrt::LoadedExecutable& ifrt_executable, int num_inputs);
 
 }  // namespace ifrt_serving
 }  // namespace tensorflow

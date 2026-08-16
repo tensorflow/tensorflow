@@ -3,18 +3,18 @@ tf_class {
   is_instance: "<class \'tensorflow.python.training.ftrl.FtrlOptimizer\'>"
   is_instance: "<class \'tensorflow.python.training.optimizer.Optimizer\'>"
   is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "GATE_GRAPH"
-    mtype: "<type \'int\'>"
+    mtype: "<class \'int\'>"
   }
   member {
     name: "GATE_NONE"
-    mtype: "<type \'int\'>"
+    mtype: "<class \'int\'>"
   }
   member {
     name: "GATE_OP"
-    mtype: "<type \'int\'>"
+    mtype: "<class \'int\'>"
   }
   member_method {
     name: "__init__"

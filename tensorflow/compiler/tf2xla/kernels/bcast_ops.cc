@@ -20,6 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -102,6 +104,7 @@ class BCastGradArgsOp : public XlaOpKernel {
         absl::UnimplementedError("Broadcast for n-ary operations (n > 2)"));
 
     absl::InlinedVector<BCast::Vec, 4> shapes;
+    absl::InlinedVector<std::vector<bool>, 2> dynamic_dims;
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       const TensorShape in_shape = ctx->InputShape(i);
       OP_REQUIRES(
@@ -114,9 +117,42 @@ class BCastGradArgsOp : public XlaOpKernel {
       // path to use the same shape to decide the reduction indices.
       OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(
                               i, &vec, xla::ValueInferenceMode::kUpperBound));
+      std::vector<bool> dynamic;
+      OP_REQUIRES_OK(ctx, ctx->ResolveInputDynamismIntoPredVector(i, &dynamic));
+      OP_REQUIRES(ctx, dynamic.size() == vec.size(),
+                  absl::InternalError(absl::StrCat(
+                      "Size mismatch between input shape vector size (",
+                      vec.size(), ") and dynamism vector size (",
+                      dynamic.size(), ") for input ", i)));
 
       shapes.push_back(BCast::Vec(vec.begin(), vec.end()));
+      dynamic_dims.push_back(std::move(dynamic));
     }
+
+    // A dimension resolved from its upper bound (rather than a true
+    // compile-time constant) can numerically disagree with the other
+    // operand's static dimension even though the two are guaranteed equal at
+    // runtime. The forward broadcasting op already requires this, or it
+    // would have failed itself. Reconcile such axes, aligned from the
+    // trailing dimension per standard broadcasting rules, before the static
+    // compatibility check below, so a dynamic upper bound doesn't cause a
+    // false-positive shape-incompatibility failure.
+    const int64_t rank0 = shapes[0].size();
+    const int64_t rank1 = shapes[1].size();
+    const int64_t common_rank = rank0 < rank1 ? rank0 : rank1;
+    for (int64_t k = 0; k < common_rank; ++k) {
+      const int64_t i0 = rank0 - 1 - k;
+      const int64_t i1 = rank1 - 1 - k;
+      int64_t& d0 = shapes[0][i0];
+      int64_t& d1 = shapes[1][i1];
+      if (d0 == d1 || d0 == 1 || d1 == 1) continue;
+      if (dynamic_dims[0][i0]) {
+        d0 = d1;
+      } else if (dynamic_dims[1][i1]) {
+        d1 = d0;
+      }
+    }
+
     BCast bcast(shapes[0], shapes[1]);
     OP_REQUIRES(ctx, bcast.IsValid(),
                 absl::InvalidArgumentError(absl::StrCat(

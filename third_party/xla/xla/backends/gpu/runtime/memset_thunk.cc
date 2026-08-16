@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/memset_thunk.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <utility>
@@ -23,9 +22,9 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -66,7 +65,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> MemzeroThunk::Record(
                                         create->dependencies);
   }
   if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         command_buffer->UpdateMemset(update->command, &dest_data, uint8_t{0},
                                      /*num_elements=*/dest_.slice.size()));
     return update->command;
@@ -77,7 +76,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> MemzeroThunk::Record(
 absl::StatusOr<std::unique_ptr<MemzeroThunk>> MemzeroThunk::FromProto(
     ThunkInfo thunk_info, const MemzeroThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       ShapedSlice dest,
       ShapedSlice::FromProto(thunk_proto.dest_buffer(), buffer_allocations));
   return std::make_unique<MemzeroThunk>(std::move(thunk_info), dest);
@@ -88,7 +87,7 @@ absl::StatusOr<ThunkProto> MemzeroThunk::ToProto() const {
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 
   MemzeroThunkProto* memzero_thunk_proto = proto.mutable_memzero_thunk();
-  ASSIGN_OR_RETURN(*memzero_thunk_proto->mutable_dest_buffer(),
+  ABSL_ASSIGN_OR_RETURN(*memzero_thunk_proto->mutable_dest_buffer(),
                    dest_.ToProto());
   return proto;
 }
@@ -121,7 +120,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> Memset32BitValueThunk::Record(
         /*num_elements=*/dest_.size() / sizeof(uint32_t), create->dependencies);
   }
   if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
-    RETURN_IF_ERROR(command_buffer->UpdateMemset(
+    ABSL_RETURN_IF_ERROR(command_buffer->UpdateMemset(
         update->command, &dest_data, value_,
         /*num_elements=*/dest_.size() / sizeof(uint32_t)));
     return update->command;
@@ -133,7 +132,7 @@ absl::StatusOr<std::unique_ptr<Memset32BitValueThunk>>
 Memset32BitValueThunk::FromProto(
     ThunkInfo thunk_info, const Memset32BitValueThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
-  ASSIGN_OR_RETURN(BufferAllocation::Slice dest,
+  ABSL_ASSIGN_OR_RETURN(BufferAllocation::Slice dest,
                    BufferAllocation::Slice::FromProto(thunk_proto.dest_buffer(),
                                                       buffer_allocations));
   return std::make_unique<Memset32BitValueThunk>(std::move(thunk_info),
@@ -146,7 +145,7 @@ absl::StatusOr<ThunkProto> Memset32BitValueThunk::ToProto() const {
 
   Memset32BitValueThunkProto* memset_thunk_proto =
       proto.mutable_memset32bit_value_thunk();
-  ASSIGN_OR_RETURN(*memset_thunk_proto->mutable_dest_buffer(), dest_.ToProto());
+  ABSL_ASSIGN_OR_RETURN(*memset_thunk_proto->mutable_dest_buffer(), dest_.ToProto());
   memset_thunk_proto->set_value(value_);
   return proto;
 }

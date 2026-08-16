@@ -965,6 +965,23 @@ LogicalResult VerifySameScales(Operation* op) {
               compared_params.getExpressedType()) {
         continue;
       }
+      const auto expected_sub_channel_qtype =
+          dyn_cast<quant::UniformQuantizedSubChannelType>(expected_params);
+      const auto compared_sub_channel_qtype =
+          dyn_cast<quant::UniformQuantizedSubChannelType>(compared_params);
+      if (expected_sub_channel_qtype && compared_sub_channel_qtype &&
+          expected_sub_channel_qtype.getScales() ==
+              compared_sub_channel_qtype.getScales() &&
+          expected_sub_channel_qtype.getZeroPoints() ==
+              compared_sub_channel_qtype.getZeroPoints() &&
+          expected_sub_channel_qtype.getBlockSizes() ==
+              compared_sub_channel_qtype.getBlockSizes() &&
+          expected_params.getStorageType() ==
+              compared_params.getStorageType() &&
+          expected_params.getExpressedType() ==
+              compared_params.getExpressedType()) {
+        continue;
+      }
     }
     // Same quantization parameters are always ok.
     if (expected_params == compared_params) continue;

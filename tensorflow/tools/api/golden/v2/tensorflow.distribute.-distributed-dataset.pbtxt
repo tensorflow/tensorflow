@@ -2,13 +2,17 @@ path: "tensorflow.distribute.DistributedDataset"
 tf_class {
   is_instance: "<class \'tensorflow.python.types.distribute.DistributedDatasetInterface\'>"
   is_instance: "<class \'tensorflow.python.types.distribute.Iterable\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "element_spec"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"
+  }
+  member_method {
+    name: "__iter__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "reduce"

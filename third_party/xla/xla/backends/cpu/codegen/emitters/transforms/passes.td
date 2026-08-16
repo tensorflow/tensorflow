@@ -50,8 +50,6 @@ def LowerXlaSharedPass :
     "mlir::scf::SCFDialect",
     "xla::XlaDialect",
   ];
-
-  let constructor = "CreateLowerXlaSharedPass()";
 }
 
 def ExpandFloatOpsPass : Pass<"xla-cpu-expand-float-ops", "mlir::func::FuncOp"> {
@@ -69,8 +67,6 @@ def ExpandFloatOpsPass : Pass<"xla-cpu-expand-float-ops", "mlir::func::FuncOp"> 
     "mlir::math::MathDialect",
     "mlir::func::FuncDialect",
   ];
-
-  let constructor = "CreateExpandFloatOpsPass()";
 }
 
 def AddReductionFastMathFlagsPass : Pass<"xla-cpu-add-reduction-fast-math-flags", "mlir::ModuleOp"> {
@@ -84,8 +80,6 @@ def AddReductionFastMathFlagsPass : Pass<"xla-cpu-add-reduction-fast-math-flags"
   let dependentDialects = [
     "mlir::arith::ArithDialect",
   ];
-
-  let constructor = "CreateAddReductionFastMathFlagsPass()";
 }
 
 def AddLoopUnrollFlagsPass : Pass<"xla-cpu-add-loop-unroll-flags", "mlir::func::FuncOp"> {
@@ -105,8 +99,6 @@ def AddLoopUnrollFlagsPass : Pass<"xla-cpu-add-loop-unroll-flags", "mlir::func::
     Option<"max_nested_iterations_", "max_nested_iterations", "int32_t", "1",
            "The maximum number of iterations accessed in a nested loop before disabling unrolling">,
   ];
-
-  let constructor = "CreateAddLoopUnrollFlagsPass()";
 }
 
 
@@ -123,6 +115,5 @@ def PeelWorkgroupLoopPass : Pass<"xla-cpu-peel-workgroup-loop", "mlir::func::Fun
     "xla::XlaDialect",
     "mlir::scf::SCFDialect",
   ];
-  let constructor = "CreatePeelWorkgroupLoopPass()";
 }
 

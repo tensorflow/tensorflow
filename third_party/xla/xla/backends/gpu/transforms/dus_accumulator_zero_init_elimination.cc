@@ -17,14 +17,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
-#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/while_loop_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -32,8 +31,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/constant_value.h"
-#include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/value_range.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -186,7 +183,7 @@ absl::StatusOr<bool> FusionParamIsKilled(const HloInstruction* fusion,
   HloComputation* fc = fusion->fused_instructions_computation();
   HloInstruction* fused_param = fc->parameter_instruction(param_idx);
   bool ok = false;
-  ASSIGN_OR_RETURN(ok, AllUsersKillBuffer(fused_param, cfg));
+  ABSL_ASSIGN_OR_RETURN(ok, AllUsersKillBuffer(fused_param, cfg));
   return ok;
 }
 
@@ -196,7 +193,7 @@ absl::StatusOr<bool> AllUsersKillBuffer(const HloInstruction* buffer,
     return true;  // trivially dead
   }
   for (const HloInstruction* user : buffer->users()) {
-    ASSIGN_OR_RETURN(bool ok, UserKillsBuffer(user, buffer, cfg));
+    ABSL_ASSIGN_OR_RETURN(bool ok, UserKillsBuffer(user, buffer, cfg));
     if (!ok) {
       return false;
     }
@@ -226,62 +223,6 @@ absl::StatusOr<bool> UserKillsBuffer(const HloInstruction* user,
         break;
       }
       result = FusionParamIsKilled(user, op_idx, cfg).value_or(false);
-      if (result) {
-        break;
-      }
-
-      // DSF: in-place semantics live in output_to_operand_aliasing, not in
-      // the fused body — walk the alias map instead.
-      if (user->fusion_kind() != HloInstruction::FusionKind::kCustom) {
-        break;
-      }
-      auto bcfg = user->backend_config<GpuBackendConfig>();
-      if (!bcfg.ok()) {
-        break;
-      }
-      const FusionBackendConfig& fc = bcfg->fusion_backend_config();
-      if (fc.kind() != kCustomFusionKind || !fc.has_custom_fusion_config() ||
-          fc.custom_fusion_config().name() !=
-              kDynamicSliceFusionWithDynamicAddressComputationConfigName) {
-        break;
-      }
-      for (const auto& alias : user->output_operand_aliasing()) {
-        if (alias.second.first != op_idx || !alias.second.second.empty()) {
-          continue;
-        }
-        const ShapeIndex& output_idx = alias.first;
-        const HloInstruction* fused_root = user->fused_expression_root();
-        const HloInstruction* aliased;
-        if (output_idx.empty()) {
-          aliased = fused_root;
-        } else if (fused_root->opcode() == HloOpcode::kTuple &&
-                   output_idx.size() == 1 &&
-                   output_idx[0] < fused_root->operand_count()) {
-          aliased = fused_root->operand(output_idx[0]);
-        } else {
-          continue;
-        }
-        while (aliased->opcode() == HloOpcode::kBitcast) {
-          aliased = aliased->operand(0);
-        }
-        if (aliased->opcode() != HloOpcode::kDynamicUpdateSlice) {
-          continue;
-        }
-        // DUS's operand(0) must trace (through bitcasts) to
-        // fused_param[op_idx].
-        const HloInstruction* dus_target = aliased->operand(0);
-        while (dus_target->opcode() == HloOpcode::kBitcast) {
-          dus_target = dus_target->operand(0);
-        }
-        if (dus_target->opcode() != HloOpcode::kParameter ||
-            dus_target->parameter_number() != op_idx) {
-          continue;
-        }
-        if (IsKillingDus(aliased, dus_target, cfg)) {
-          result = true;
-          break;
-        }
-      }
       break;
     }
 
@@ -298,7 +239,7 @@ absl::StatusOr<bool> UserKillsBuffer(const HloInstruction* user,
         flows_into_some_branch = true;
         HloComputation* branch = user->branch_computation(b);
         HloInstruction* branch_param = branch->parameter_instruction(0);
-        ASSIGN_OR_RETURN(bool branch_ok, AllUsersKillBuffer(branch_param, cfg));
+        ABSL_ASSIGN_OR_RETURN(bool branch_ok, AllUsersKillBuffer(branch_param, cfg));
         if (!branch_ok) {
           every_branch_kills = false;
           break;
@@ -345,7 +286,7 @@ absl::StatusOr<bool> SlotIsDeadInput(int64_t slot, const CandidateLoop& cfg) {
     return true;  // never read; trivially dead
   }
 
-  ASSIGN_OR_RETURN(bool all_kill, AllUsersKillBuffer(slot_gte, cfg));
+  ABSL_ASSIGN_OR_RETURN(bool all_kill, AllUsersKillBuffer(slot_gte, cfg));
   if (!all_kill) {
     return false;
   }
@@ -448,7 +389,7 @@ absl::StatusOr<bool> DusAccumulatorZeroInitElimination::RunImpl(
         continue;
       }
 
-      ASSIGN_OR_RETURN(bool dead, SlotIsDeadInput(slot, cfg));
+      ABSL_ASSIGN_OR_RETURN(bool dead, SlotIsDeadInput(slot, cfg));
       if (!dead) {
         continue;
       }
@@ -459,7 +400,7 @@ absl::StatusOr<bool> DusAccumulatorZeroInitElimination::RunImpl(
       alloc->set_metadata(init->metadata());
       alloc->set_frontend_attributes(init->frontend_attributes());
       alloc->set_statistics_viz(init->statistics_viz());
-      RETURN_IF_ERROR(init_tuple->ReplaceOperandWith(slot, alloc));
+      ABSL_RETURN_IF_ERROR(init_tuple->ReplaceOperandWith(slot, alloc));
       changed = true;
     }
   }

@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # Description:
 #   Tensor Standard Libraries - common utilities for implementing XLA.
 #
@@ -5,7 +20,7 @@
 #   to other TF components outside of TSL.
 
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("//xla:py_strict.bzl", "py_strict_binary")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
 load(
     "//xla/tsl:tsl.bzl",
     "check_deps",
@@ -238,9 +253,9 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/strings",
         "@tsl//tsl/platform:numbers",
         "@tsl//tsl/platform:str_util",
@@ -261,10 +276,10 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:test_log_proto_cc",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/strings",
         "@tsl//tsl/platform:str_util",
     ],
@@ -473,13 +488,13 @@ cc_binary(
     deps = [
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/flags:parse",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -491,7 +506,7 @@ cc_binary(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "filewrapper_testdata_generator",
     testonly = True,
     srcs = ["filewrapper_testdata_generator.py"],
@@ -560,13 +575,13 @@ cc_library(
         "//xla/tsl/platform:embedded_filesystem",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@tsl//tsl/platform:path",
@@ -651,7 +666,19 @@ cc_library(
 cc_library(
     name = "maybe_owning",
     hdrs = ["maybe_owning.h"],
-    deps = [":safe_reinterpret_cast"],
+    deps = [
+        ":safe_reinterpret_cast",
+        "//xla/tsl/platform:logging",
+    ],
+)
+
+tsl_cc_test(
+    name = "maybe_owning_test",
+    srcs = ["maybe_owning_test.cc"],
+    deps = [
+        ":maybe_owning",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 tsl_cc_test(

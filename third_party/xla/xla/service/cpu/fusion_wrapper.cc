@@ -18,6 +18,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/tiled/tiled_fusion_emitter.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/cpu/ir_emission_utils.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -29,9 +30,14 @@ bool FusionWrapper::MustWrapInstruction(const HloInstruction& instruction) {
     case HloOpcode::kScatter:
       return true;
     case HloOpcode::kAbs:
+    case HloOpcode::kAcos:
+    case HloOpcode::kAcosh:
     case HloOpcode::kAdd:
     case HloOpcode::kAnd:
+    case HloOpcode::kAsin:
+    case HloOpcode::kAsinh:
     case HloOpcode::kAtan2:
+    case HloOpcode::kAtanh:
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kBroadcast:
     case HloOpcode::kCbrt:
@@ -42,8 +48,11 @@ bool FusionWrapper::MustWrapInstruction(const HloInstruction& instruction) {
     case HloOpcode::kComplex:
     case HloOpcode::kConvert:
     case HloOpcode::kCos:
+    case HloOpcode::kCosh:
     case HloOpcode::kDivide:
     case HloOpcode::kDynamicSlice:
+    case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kTranspose:
     case HloOpcode::kErf:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
@@ -57,6 +66,7 @@ bool FusionWrapper::MustWrapInstruction(const HloInstruction& instruction) {
     case HloOpcode::kMap:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
+    case HloOpcode::kMulhi:
     case HloOpcode::kMultiply:
     case HloOpcode::kNegate:
     case HloOpcode::kNot:
@@ -80,6 +90,7 @@ bool FusionWrapper::MustWrapInstruction(const HloInstruction& instruction) {
     case HloOpcode::kShiftRightLogical:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
+    case HloOpcode::kSinh:
     case HloOpcode::kSlice:
     case HloOpcode::kSqrt:
     case HloOpcode::kSubtract:
@@ -100,12 +111,13 @@ bool FusionWrapper::MustWrapInstruction(const HloInstruction& instruction) {
         return IsSupportedTilingType(type);
       }
       return false;
+    case HloOpcode::kConvolution:
+      return target_machine_features_ != nullptr &&
+             !CanUseEigenConvolution(instruction, *target_machine_features_);
     // The following ops are supported but the performance is not as good as the
     // non-fusion path.
     // TODO(willfroom): Remove this once the performance is improved.
     case HloOpcode::kConcatenate:
-    case HloOpcode::kDynamicUpdateSlice:
-    case HloOpcode::kTranspose:
     case HloOpcode::kDot:
       return false;
     default:

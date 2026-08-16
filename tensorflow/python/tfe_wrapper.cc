@@ -110,11 +110,12 @@ namespace tensorflow {
 // pybind11 custom type caster.
 
 TFE_Context* InputTFE_Context(const py::handle& ctx) {
-  return static_cast<TFE_Context*>(PyCapsule_GetPointer(ctx.ptr(), nullptr));
+  return static_cast<TFE_Context*>(
+      PyCapsule_GetPointer(ctx.ptr(), "TFE_Context"));
 }
 
 PyObject* OutputTFE_Context(TFE_Context* context) {
-  return PyCapsule_New(context, nullptr, TFE_DeleteContextCapsule);
+  return PyCapsule_New(context, "TFE_Context", TFE_DeleteContextCapsule);
 }
 
 TF_Buffer* ProtoStringToTFBuffer(PyObject* input) {
@@ -1154,7 +1155,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
              tensorflow::errors::GetPayloads(state[i].status)) {
           payloads[payload.first.c_str()] = payload.second;
         }
-        auto exception_class = py::reinterpret_steal<py::object>(
+        auto exception_class = py::reinterpret_borrow<py::object>(
             tensorflow::PyExceptionRegistry::Lookup(code));
         if (!exception_class) {
           status->status = absl::InternalError(absl::StrCat(

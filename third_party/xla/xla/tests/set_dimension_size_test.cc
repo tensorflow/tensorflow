@@ -45,7 +45,7 @@ void DisableAllHloPasses(HloModule& module) {
   module.mutable_config().set_debug_options(debug_options);
 }
 
-class SetDimensionSizeTest : public HloPjRtTestBase {};
+class SetDimensionSizeTest : public HloTestBase {};
 
 TEST_F(SetDimensionSizeTest, CorrectComputation) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,

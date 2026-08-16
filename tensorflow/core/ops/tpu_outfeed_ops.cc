@@ -55,7 +55,7 @@ REGISTER_OP("OutfeedDequeueTuple")
       TF_RETURN_IF_ERROR(c->GetAttr("shapes", &shapes));
       TF_RETURN_IF_ERROR(c->GetAttr("dtypes", &dtypes));
       if (shapes.size() != dtypes.size()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Incorrect number of output shapes specified");
       }
       for (int i = 0; i < shapes.size(); ++i) {
@@ -82,14 +82,14 @@ REGISTER_OP("OutfeedDequeueTupleV2")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       if (c->Rank(c->input(0)) != 0) {
-        return errors::InvalidArgument("device ordinal must be a scalar.");
+        return absl::InvalidArgumentError("device ordinal must be a scalar.");
       }
       std::vector<PartialTensorShape> shapes;
       std::vector<DataType> dtypes;
       TF_RETURN_IF_ERROR(c->GetAttr("shapes", &shapes));
       TF_RETURN_IF_ERROR(c->GetAttr("dtypes", &dtypes));
       if (shapes.size() != dtypes.size()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Incorrect number of output shapes specified");
       }
       for (int i = 0; i < shapes.size(); ++i) {

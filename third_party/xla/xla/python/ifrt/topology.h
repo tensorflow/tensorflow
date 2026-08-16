@@ -23,16 +23,16 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::ifrt {
 
-class Topology : public llvm::RTTIExtends<Topology, llvm::RTTIRoot> {
+class Topology : public RTTIExtends<Topology, RTTIRoot> {
  public:
   // Returns a string that identifies the platform (CPU/GPU/TPU).
   virtual absl::string_view platform_name() const = 0;

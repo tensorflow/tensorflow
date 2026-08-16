@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/literal_util.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -28,16 +29,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/random/uniform_int_distribution.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/array2d.h"
 #include "xla/index_util.h"
 #include "xla/layout_util.h"
@@ -48,7 +50,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tests/constraint_state.h"
 #include "xla/tsl/lib/core/bitmap.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/types.h"
 #include "xla/util.h"
@@ -320,18 +321,26 @@ void PopulateWithRandomFullRangeFloatingPointData(Literal* literal,
   // exponent of the floating point to have a uniform distribution.
   const int min_exp = std::numeric_limits<FloatT>::min_exponent;
   const int max_exp = std::numeric_limits<FloatT>::max_exponent;
-  std::uniform_real_distribution<double> generator(min_exp - 1, max_exp - 1);
+
+  using GeneratorT =
+      std::conditional_t<sizeof(FloatT) >= sizeof(double), double, float>;
+  std::uniform_real_distribution<GeneratorT> generator(min_exp - 1,
+                                                       max_exp - 1);
 
   for (FloatT& value : literal->data<FloatT>()) {
     // Each special value has a kSpecialValueProbability chance to be generated
     // instead of sampling using the normal distributions.
-    if (special_value_gen(*engine) <
-        kSpecialValueProbability * kNumSpecialValues) {
+    float random_interval = special_value_gen(*engine);
+    if (random_interval < kSpecialValueProbability * kNumSpecialValues) {
       value =
           static_cast<FloatT>(kSpecialValues[(*engine)() % kNumSpecialValues]);
     } else {
-      float sign = ((*engine)() % 2 == 0) ? 1 : -1;
-      value = static_cast<FloatT>(pow(2, generator(*engine)) * sign);
+      // Non special values range from [kSpecialValueProbability, 1]. Take the
+      // lower half of that range as a sign of -1, the upper half is +1.
+      const float kHalfInterval =
+          0.5f + (kSpecialValueProbability * kNumSpecialValues) / 2;
+      const float sign = (random_interval < kHalfInterval) ? 1 : -1;
+      value = static_cast<FloatT>(exp2(generator(*engine)) * sign);
     }
   }
 }
@@ -340,15 +349,24 @@ template <typename FloatT, typename GeneratorT>
 void PopulateWithRandomFloatingPointData(
     Literal* literal, std::minstd_rand0* engine,
     std::optional<ConstraintInterval> interval) {
-  GeneratorT min = -0.1f;
-  GeneratorT max = 0.2f;
+  GeneratorT min = static_cast<GeneratorT>(-0.1);
+  GeneratorT max = static_cast<GeneratorT>(0.2);
   if (interval.has_value() && !interval->IsUnconstrained()) {
     min = interval->min == ConstraintInterval::kMin
-              ? std::numeric_limits<GeneratorT>::lowest()
-              : interval->min;
+              ? min
+              : static_cast<GeneratorT>(interval->min);
     max = interval->max == ConstraintInterval::kMax
-              ? std::numeric_limits<GeneratorT>::max()
-              : interval->max;
+              ? max
+              : static_cast<GeneratorT>(interval->max);
+
+    // Prevent Undefined Behavior by fixing inverted ranges.
+    // If a single explicit bound crossed the opposite default bound,
+    // shift the unconstrained bound to maintain a 0.3 generation spread.
+    if (interval->max == ConstraintInterval::kMax && min > max) {
+      max = min + static_cast<GeneratorT>(0.3);
+    } else if (interval->min == ConstraintInterval::kMin && max < min) {
+      min = max - static_cast<GeneratorT>(0.3);
+    }
   }
   if (min == max) {
     for (FloatT& value : literal->data<FloatT>()) {
@@ -365,6 +383,51 @@ void PopulateWithRandomFloatingPointData(
   }
 }
 
+// Populates the literal with uniformly distributed full-range floating point
+// data. The difference from PopulateWithRandomFullRangeFloatingPointData is
+// that it samples uniformly from all possible values of the float (including
+// subnormals, 0, etc). It excludes inf and nan.
+template <typename FloatT>
+void PopulateWithUniformFullRangeFloatingPointData(Literal* literal,
+                                                   std::minstd_rand0* engine) {
+  CHECK_LE(sizeof(FloatT), 4) << "Only floats up to 4 bytes supported.";
+  // Needed for C++ template.
+  const int64_t bit_width =
+      std::min(32, primitive_util::BitWidth(
+                       primitive_util::NativeToPrimitiveType<FloatT>()));
+  const uint32_t max_val = bit_width == 32
+                               ? std::numeric_limits<uint32_t>::max()
+                               : (1U << bit_width) - 1;
+  absl::uniform_int_distribution<uint32_t> generator(0, max_val);
+  for (FloatT& value : literal->data<FloatT>()) {
+    int repeats = 0;
+    while (true) {
+      if constexpr (sizeof(FloatT) == 1) {
+        value =
+            absl::bit_cast<FloatT>(static_cast<uint8_t>(generator(*engine)));
+      } else if constexpr (sizeof(FloatT) == 2) {
+        value =
+            absl::bit_cast<FloatT>(static_cast<uint16_t>(generator(*engine)));
+      } else if constexpr (sizeof(FloatT) == 4) {
+        value =
+            absl::bit_cast<FloatT>(static_cast<uint32_t>(generator(*engine)));
+      } else {
+        LOG(FATAL) << "Unsupported float size: " << sizeof(FloatT);
+      }
+
+      bool is_forbidden = std::isinf(value) || std::isnan(value);
+
+      if (!is_forbidden) {
+        break;
+      }
+
+      repeats++;
+      CHECK_LE(repeats, 5)
+          << "Exceeded max_repeats=5 when generating float values";
+    }
+  }
+}
+
 template <typename FloatT>
 void PopulateWithFloatingPointData(
     Literal* literal, std::minstd_rand0* engine, bool no_duplicates,
@@ -376,6 +439,12 @@ void PopulateWithFloatingPointData(
   CHECK_NOTNULL(engine);
   CHECK_EQ(literal->shape().element_type(),
            primitive_util::NativeToPrimitiveType<FloatT>());
+  const int64_t bit_width =
+      primitive_util::BitWidth(primitive_util::NativeToPrimitiveType<FloatT>());
+  // Floats with exceptionally small bit width can represent just a handful of
+  // values. No sense in restricting the output values in the way we do for
+  // higher precision formats. We just let the random generator do its thing.
+  const bool float_with_small_bit_width = (bit_width <= 4);
   if (generator != nullptr) {
     for (FloatT& value : literal->data<FloatT>()) {
       value = static_cast<FloatT>(generator(engine));
@@ -397,6 +466,8 @@ void PopulateWithFloatingPointData(
     }
   } else if (no_duplicates) {
     PopulateWithNoDuplicateData<FloatT>(literal, engine);
+  } else if (float_with_small_bit_width) {
+    PopulateWithUniformFullRangeFloatingPointData<FloatT>(literal, engine);
   } else if (use_large_range) {
     PopulateWithRandomFullRangeFloatingPointData<FloatT>(literal, engine);
   } else {
@@ -432,6 +503,30 @@ void PopulateWithComplexData(
   absl::Span<ComplexT> result_data = result->data<ComplexT>();
   for (int i = 0; i < real_lit.data<InnerFloatT>().size(); i++) {
     result_data[i] = ComplexT(real_data[i], imaginary_data[i]);
+  }
+}
+
+template <typename TargetT>
+TargetT SafeClampInt64(int64_t value) {
+  static_assert(std::numeric_limits<TargetT>::is_integer,
+                "TargetT must be an integral type.");
+  if constexpr (!std::numeric_limits<TargetT>::is_signed) {
+    if (value <= 0) {
+      return TargetT{0};
+    }
+    uint64_t uval = static_cast<uint64_t>(value);
+    if (uval > static_cast<uint64_t>(std::numeric_limits<TargetT>::max())) {
+      return std::numeric_limits<TargetT>::max();
+    }
+    return static_cast<TargetT>(uval);
+  } else {
+    if (value < static_cast<int64_t>(std::numeric_limits<TargetT>::lowest())) {
+      return std::numeric_limits<TargetT>::lowest();
+    }
+    if (value > static_cast<int64_t>(std::numeric_limits<TargetT>::max())) {
+      return std::numeric_limits<TargetT>::max();
+    }
+    return static_cast<TargetT>(value);
   }
 }
 
@@ -802,7 +897,7 @@ absl::StatusOr<Literal> MakeFakeLiteral(
     const auto& shape_tuple_shapes = shape.tuple_shapes();
     elements.reserve(shape_tuple_shapes.size());
     for (const Shape& element_shape : shape_tuple_shapes) {
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           Literal element,
           MakeFakeLiteral(element_shape, engine, limit, is_sorted,
                           no_duplicates, use_large_range, max_bits_of_precision,
@@ -823,7 +918,7 @@ absl::StatusOr<Literal> MakeFakeLiteral(
   new_shape.mutable_layout()->set_element_size_in_bits(0);
   Literal literal(new_shape);
 
-  RETURN_IF_ERROR(primitive_util::PrimitiveTypeSwitch<absl::Status>(
+  ABSL_RETURN_IF_ERROR(primitive_util::PrimitiveTypeSwitch<absl::Status>(
       [&](auto primitive_type_constant) -> absl::Status {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
           using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
@@ -847,8 +942,8 @@ absl::StatusOr<Literal> MakeFakeLiteral(
             NativeT max = std::numeric_limits<NativeT>::max();
             NativeT min = std::numeric_limits<NativeT>::lowest();
             if (limit.has_value()) {
-              max = static_cast<NativeT>(limit->second);
-              min = static_cast<NativeT>(limit->first);
+              min = SafeClampInt64<NativeT>(limit->first);
+              max = SafeClampInt64<NativeT>(limit->second);
             }
             if (max_bits_of_precision.has_value()) {
               max = std::min(max,

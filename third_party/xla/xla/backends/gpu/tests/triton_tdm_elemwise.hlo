@@ -13,6 +13,10 @@
 // CHECK-mi200: @llvm.amdgcn.raw.ptr.buffer.load
 // CHECK-mi200-NOT: @llvm.amdgcn.{{(tensor\.|s\.wait\.tensorcnt)}}
 
+// CHECK-mi350-NOT: @llvm.amdgcn.{{(tensor\.|s\.wait\.tensorcnt)}}
+// CHECK-mi350: @llvm.amdgcn.raw.ptr.buffer.load
+// CHECK-mi350-NOT: @llvm.amdgcn.{{(tensor\.|s\.wait\.tensorcnt)}}
+
 // CHECK-PTX: define
 // CHECK-PTX-NOT: @llvm.amdgcn
 

@@ -88,6 +88,11 @@ const std::vector<DTypeCoreInfo>* FindCoreInfoForDType(CudaComputeCapability cc,
   // =============== Constants ===============
   // Make sure to annotate with the sources when adding new data.
 
+  // [AmpereArch] Numbers from "A100 SM Architecture" and "A100 Tensor Cores
+  // Accelerate HPC".
+  constexpr float kAmpereTcClockScale = 1.0;
+  constexpr int kAmpereTcPerSm = 4;
+
   // [HopperArch] Numbers from "Table 3. Comparison of NVIDIA A100 and H100 Data
   // Center GPUs".
   // TC vs non-TC clock rate on H100: 1830 MHz / 1980 MHz
@@ -105,6 +110,30 @@ const std::vector<DTypeCoreInfo>* FindCoreInfoForDType(CudaComputeCapability cc,
   // Make sure to annotate with the sources when adding new data.
   static const absl::NoDestructor<std::vector<CoreInfoTableForCC>> kTable(
       std::vector<CoreInfoTableForCC>{
+          {CudaComputeCapability::Ampere(),
+           // Most numbers are taken from [HopperArch] - "Table 3. Comparison of
+           // NVIDIA A100 and H100 Data Center GPUs" or [AmpereArch] - "A100 SM
+           // Architecture" unless otherwise specified.
+           /*cuda_core_infos=*/
+           {
+               // DType, Units/SM, Ops/Clk
+               {kF16, 64, 2},  // [ArithmThroughput]: 2-way SIMD
+               {kF32, 64, 1},
+               {kF64, 32, 1},
+               {kI32, 64, 1},
+           },
+           // Ops per clock taken from [AmpereArch] - "A100 SM Architecture" and
+           // "A100 Tensor Cores Accelerate HPC".
+           // Note: numbers in the sources are often per SM, we convert them to
+           // per-TC.
+           /*tensor_core_infos=*/
+           {
+               // DType  Units/SM   Ops/Clk  ClockScale
+               {kI8, kAmpereTcPerSm, 512, kAmpereTcClockScale},
+               {kF16, kAmpereTcPerSm, 256, kAmpereTcClockScale},
+               {kF32, kAmpereTcPerSm, 128, kAmpereTcClockScale},
+               {kF64, kAmpereTcPerSm, 16, kAmpereTcClockScale},
+           }},
           {CudaComputeCapability::Hopper(),
            // Most numbers are taken from [HopperArch] - "Table 3. Comparison of
            // NVIDIA A100 and H100 Data Center GPUs" unless otherwise specified.

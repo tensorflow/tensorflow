@@ -227,7 +227,6 @@ bool HloOrdering::UsesBeforeValueDefinition(
     absl::Span<const HloUse* const> uses, const HloValue& value,
     const HloDataflowAnalysis& dataflow, const AliasInfo* alias_info,
     bool use_is_always_before_def_in_same_instr) const {
-  bool has_use_in_exclusive_branches = false;
   bool has_escaped_use_in_conditional = false;
   auto UseIsBeforeValueDefinition = [&](const HloUse& use) {
     VLOG(4) << "UseIsBeforeValueDefinition(use=" << use
@@ -291,7 +290,6 @@ bool HloOrdering::UsesBeforeValueDefinition(
         // caught in the has_escaped_use_in_conditinoal variable.
         VLOG(4) << " use and value def are in exclusive branches.";
         if (!has_escaped_use_in_conditional) {
-          has_use_in_exclusive_branches = true;
           VLOG(4) << "Allowing them to share buffer.\n";
           return true;
         }
@@ -414,7 +412,7 @@ bool HloOrdering::UsesBeforeValueDefinition(
               }
             }
           }
-          if (!has_use_in_exclusive_branches) {
+          if (!has_escaped_use_in_conditional) {
             VLOG(4) << "  use is conditional " << use.instruction->name()
                     << " and def is in " << j << "th branch computation";
             return true;

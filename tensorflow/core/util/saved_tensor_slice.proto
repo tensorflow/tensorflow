@@ -1,3 +1,18 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
 // Protocol buffers for saved tensor slices. It's used for the brain tensor
 // ops checkpoints and the V3 checkpoints in dist_belief.
 
@@ -18,16 +33,17 @@
 syntax = "proto3";
 
 package tensorflow;
+
+import "tensorflow/core/framework/tensor.proto";
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/tensor_slice.proto";
+import "tensorflow/core/framework/types.proto";
+import "tensorflow/core/framework/versions.proto";
+
 option cc_enable_arenas = true;
 option java_outer_classname = "SavedTensorSliceProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.util";
-
-import "tensorflow/core/framework/tensor_shape.proto";
-import "tensorflow/core/framework/tensor_slice.proto";
-import "tensorflow/core/framework/tensor.proto";
-import "tensorflow/core/framework/types.proto";
-import "tensorflow/core/framework/versions.proto";
 
 // Metadata describing the set of slices of the same tensor saved in a
 // checkpoint file.
@@ -43,7 +59,7 @@ message SavedSliceMeta {
 
   // Explicit list of slices saved in the checkpoint file.
   repeated TensorSliceProto slice = 4;
-};
+}
 
 // Metadata describing the set of tensor slices saved in a checkpoint file.
 // It is always stored at the beginning of each checkpoint file.
@@ -54,7 +70,7 @@ message SavedTensorSliceMeta {
   // Compatibility version of this checkpoint.  See core/public/version.h
   // for version history.
   VersionDef versions = 2;
-};
+}
 
 // Saved tensor slice: it stores the name of the tensors, the slice, and the
 // raw data.
@@ -70,7 +86,7 @@ message SavedSlice {
   // The raw data of the slice is stored as a TensorProto. Only raw data are
   // stored (we don't fill in fields such as dtype or tensor_shape).
   TensorProto data = 3;
-};
+}
 
 // Each record in a v3 checkpoint file is a serialized SavedTensorSlices
 // message.
@@ -81,4 +97,4 @@ message SavedTensorSlices {
 
   // This exists in all but the first item of each checkpoint file.
   SavedSlice data = 2;
-};
+}

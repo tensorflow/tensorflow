@@ -165,16 +165,19 @@ typedef PJRT_Error* PJRT_Layouts_PJRT_Executable_GetParameterLayouts(
 typedef struct PJRT_Layouts_Extension {
   PJRT_Extension_Base base;
 
-  PJRT_Layouts_MemoryLayout_Destroy* PJRT_Layouts_MemoryLayout_Destroy;
-  PJRT_Layouts_MemoryLayout_Serialize* PJRT_Layouts_MemoryLayout_Serialize;
-  PJRT_Layouts_PJRT_Client_GetDefaultLayout*
+  PJRT_NO_DISCARD PJRT_Layouts_MemoryLayout_Destroy*
+      PJRT_Layouts_MemoryLayout_Destroy;
+  PJRT_NO_DISCARD PJRT_Layouts_MemoryLayout_Serialize*
+      PJRT_Layouts_MemoryLayout_Serialize;
+  PJRT_NO_DISCARD PJRT_Layouts_PJRT_Client_GetDefaultLayout*
       PJRT_Layouts_PJRT_Client_GetDefaultLayout;
-  PJRT_Layouts_PJRT_Buffer_MemoryLayout* PJRT_Layouts_PJRT_Buffer_MemoryLayout;
-  PJRT_Layouts_PJRT_Topology_GetDefaultLayout*
+  PJRT_NO_DISCARD PJRT_Layouts_PJRT_Buffer_MemoryLayout*
+      PJRT_Layouts_PJRT_Buffer_MemoryLayout;
+  PJRT_NO_DISCARD PJRT_Layouts_PJRT_Topology_GetDefaultLayout*
       PJRT_Layouts_PJRT_Topology_GetDefaultLayout;
-  PJRT_Layouts_PJRT_Executable_GetOutputLayouts*
+  PJRT_NO_DISCARD PJRT_Layouts_PJRT_Executable_GetOutputLayouts*
       PJRT_Layouts_PJRT_Executable_GetOutputLayouts;
-  PJRT_Layouts_PJRT_Executable_GetParameterLayouts*
+  PJRT_NO_DISCARD PJRT_Layouts_PJRT_Executable_GetParameterLayouts*
       PJRT_Layouts_PJRT_Executable_GetParameterLayouts;
 } PJRT_Layouts_Extension;
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Layouts_Extension,

@@ -20,6 +20,9 @@ limitations under the License.
 // These are currently implemented as custom-call pseudo-ops, but it is likely
 // that they will be upstreamed to StableHLO or CHLO in the future.
 
+#include <cstddef>
+#include <optional>
+
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Region.h"
 #include "mlir/IR/Value.h"
@@ -166,7 +169,8 @@ std::optional<DynamicRngBitGeneratorOpAdaptor> getDynamicRngBitGeneratorOp(
 // Within this experiment, DynamicTopKOp is represented via the
 // `stablehlo.custom_call @stablehlo.dynamic_top_k` custom call.
 // This custom call has the regular operand of TopKOp plus an
-// additional `k` operand that determines the shape of the output.
+// additional `k` operand that determines the shape of the output,
+// and an optional `is_stable` boolean attribute.
 //
 // Semantics of DynamicTopKOp are inherited from semantics of Chlo.TopKOp.
 //
@@ -176,6 +180,16 @@ std::optional<DynamicRngBitGeneratorOpAdaptor> getDynamicRngBitGeneratorOp(
 // |-------|-----------------|----------------------------------------------|
 // | (I1)  | `operand`       | tensor of integer or floating-point type     |
 // | (I2)  | `k`             | 0-dimensional tensor of integer or index type|
+//
+// #### Attributes
+//
+// | Name        | Type                                                     |
+// |-------------|----------------------------------------------------------|
+// | `is_stable` | bool (default: true)                                     |
+//
+// If `is_stable=true`, the output indices will maintain the original relative
+// order of equal elements. If `false`, the order of equal elements is
+// undefined.
 //
 // #### Outputs
 //
@@ -200,6 +214,7 @@ class DynamicTopKOpAdaptor {
   // can pass verification).
   TypedValue<ShapedType> getOperand();
   TypedValue<ShapedType> getK();
+  bool getIsStable();
   TypedValue<ShapedType> getValues();
   TypedValue<ShapedType> getIndices();
 

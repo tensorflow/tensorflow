@@ -3163,14 +3163,18 @@ std::unique_ptr<CollectiveDeviceListBase> GetPartitionGroupsForReplication(
     }
   }
 
+  HloSharding v2_sharding = sharding.UseNamedShardingLeaf()
+                                ? HloSharding::V3ToV2Sharding(sharding)
+                                : sharding;
   auto iota_groups =
-      GetIotaPartitionGroupsForReplication(sharding, replication_dims);
+      GetIotaPartitionGroupsForReplication(v2_sharding, replication_dims);
   if (iota_groups.has_value()) {
     return std::make_unique<IotaReplicaGroupList>(*iota_groups);
   }
 
   return std::make_unique<CollectiveDeviceList>(
-      GetListOfListsPartitionGroupsForReplication(sharding, replication_dims));
+      GetListOfListsPartitionGroupsForReplication(v2_sharding,
+                                                  replication_dims));
 }
 
 CollectiveDeviceList GetListOfListsPartitionGroupsAcrossTargetDims(
@@ -3389,13 +3393,16 @@ std::unique_ptr<CollectiveDeviceListBase> GetPartitionGroupsAcrossTargetDims(
       return std::make_unique<MeshAxesReplicaGroupList>(*mesh_axes_groups);
     }
   }
+  HloSharding v2_sharding = sharding.UseNamedShardingLeaf()
+                                ? HloSharding::V3ToV2Sharding(sharding)
+                                : sharding;
   if (std::optional<IotaReplicaGroupList> iota_groups =
-          GetIotaPartitionGroupsAcrossTargetDims(sharding, target_dims,
+          GetIotaPartitionGroupsAcrossTargetDims(v2_sharding, target_dims,
                                                  group_sizes)) {
     return std::make_unique<IotaReplicaGroupList>(*iota_groups);
   }
   return std::make_unique<CollectiveDeviceList>(
-      GetListOfListsPartitionGroupsAcrossTargetDims(sharding, target_dims,
+      GetListOfListsPartitionGroupsAcrossTargetDims(v2_sharding, target_dims,
                                                     group_sizes));
 }
 
@@ -3524,11 +3531,8 @@ DynamicUpdateSliceAnalysis AnalyzeDynamicUpdateSlice(
     }
 
     if (hlo->operand(i + 2)->IsConstant()) {
-      const PrimitiveType elemType =
-          hlo->operand(i + 2)->shape().element_type();
       int64_t start_index =
-          elemType == S64 ? hlo->operand(i + 2)->literal().Get<int64_t>({})
-                          : hlo->operand(i + 2)->literal().Get<int>({});
+          hlo->operand(i + 2)->literal().GetIntegralAsS64({}).value();
       int64_t end_index = start_index + slice_size - 1;
 
       int64_t per_partition_size =

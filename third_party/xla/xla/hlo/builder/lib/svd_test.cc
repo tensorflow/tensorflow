@@ -16,10 +16,10 @@ limitations under the License.
 #include "xla/hlo/builder/lib/svd.h"
 
 #include <cstdint>
-#include <numeric>
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
@@ -33,18 +33,18 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
-#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 
 class SVDTest : public ClientLibraryTestRunnerMixin<
-                    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+                    HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  protected:
   void SetUp() override {
     ClientLibraryTestRunnerMixin<
-        HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>::SetUp();
+        HloPjRtInterpreterReferenceMixin<HloTestBase>>::SetUp();
     batch_3d_4x5_ = Array3D<float>{
         {
             {4, 6, 8, 10, 1},
@@ -90,7 +90,7 @@ class SVDTest : public ClientLibraryTestRunnerMixin<
 
     int num_dims = u_shape.dimensions().size();
     std::vector<int64_t> broadcast_dims(num_dims - 1);
-    std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
+    absl::c_iota(broadcast_dims, 0);
     broadcast_dims[num_dims - 2] = num_dims - 1;
     return BatchDot(Mul(u, d, broadcast_dims), TransposeInMinorDims(v),
                     PrecisionConfig::HIGHEST);

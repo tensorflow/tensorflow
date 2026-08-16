@@ -25,9 +25,9 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -95,14 +95,14 @@ CollectiveOpsE2ETestBase::ExecuteReplicated(
     const std::vector<std::vector<Literal*>>& arguments, bool run_hlo_passes) {
   ExecutionResult execution_result;
 
-  ASSIGN_OR_RETURN(execution_result.executable,
+  ABSL_ASSIGN_OR_RETURN(execution_result.executable,
                    CreateExecutable(std::move(module), run_hlo_passes));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       execution_result.optimized_module,
       test_runner().HloModuleFromWrapped(execution_result.executable.get()));
 
-  ASSIGN_OR_RETURN(execution_result.results,
+  ABSL_ASSIGN_OR_RETURN(execution_result.results,
                    ExecuteReplicated(execution_result.executable.get(),
                                      arguments, run_hlo_passes));
 
@@ -113,7 +113,7 @@ absl::StatusOr<std::vector<Literal>>
 CollectiveOpsE2ETestBase::ExecuteReplicated(
     OpaqueExecutable* executable,
     const std::vector<std::vector<Literal*>>& arguments, bool run_hlo_passes) {
-  ASSIGN_OR_RETURN(const HloModule* module,
+  ABSL_ASSIGN_OR_RETURN(const HloModule* module,
                    test_runner().HloModuleFromWrapped(executable));
 
   int64_t num_replicas = module->config().replica_count();
@@ -153,7 +153,10 @@ DebugOptions CollectiveOpsWithFlagsBase::GetDebugOptionsForTest() const {
       CollectiveOpsE2ETestBase::GetDebugOptionsForTest();
 
   // Enable or disable all async collectives based on test parameter.
-  if (!enable_async_) {
+  if (enable_async_) {
+    debug_options.add_xla_disable_hlo_passes(
+        "gpu-convert-async-collectives-to-sync");
+  } else {
     for (auto option :
          {DebugOptions::NOOP, DebugOptions::ALLREDUCE, DebugOptions::ALLGATHER,
           DebugOptions::REDUCESCATTER, DebugOptions::COLLECTIVEBROADCAST,
@@ -164,11 +167,11 @@ DebugOptions CollectiveOpsWithFlagsBase::GetDebugOptionsForTest() const {
   }
 
   if (enable_symmetric_buffer_) {
-    debug_options.set_xla_gpu_experimental_enable_nccl_symmetric_buffers(true);
+    auto* filter =
+        debug_options.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+    filter->set_collective(DebugOptions::ALLCOLLECTIVES);
   }
 
-  debug_options.add_xla_disable_hlo_passes(
-      "gpu-convert-async-collectives-to-sync");
   if (enable_p2p_memcpy_) {
     debug_options.set_xla_gpu_use_memcpy_local_p2p(true);
   }
@@ -181,7 +184,7 @@ CollectiveOpsWithFlagsBase::CreateExecutable(absl::string_view hlo_string,
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/num_replicas);
 
-  ASSIGN_OR_RETURN(auto module,
+  ABSL_ASSIGN_OR_RETURN(auto module,
                    ParseAndReturnVerifiedModule(hlo_string, config));
   return test_runner().CreateExecutable(std::move(module),
                                         /*run_hlo_passes=*/true);

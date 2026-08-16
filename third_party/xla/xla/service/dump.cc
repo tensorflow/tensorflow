@@ -16,7 +16,10 @@ limitations under the License.
 #include "xla/service/dump.h"
 
 #include <algorithm>
+#include <atomic>
+#include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <iostream>
 #include <memory>
@@ -35,18 +38,20 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/Transforms/LocationSnapshot.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/text_format.h"
+#include "riegeli/bytes/writer.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -57,16 +62,19 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_proto_util.h"
+#include "xla/service/riegeli_file_writer_factory.h"
 #include "xla/tsl/lib/io/zlib_compression_options.h"
 #include "xla/tsl/lib/io/zlib_outputbuffer.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/file_system_helper.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
+#include "xla/util/split_proto/split_hlo_writer.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/platform.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
 // BuildData isn't available in OSS.
@@ -185,19 +193,19 @@ static absl::Status WriteStringToFile(tsl::Env* env, const std::string& fname,
                                       DataProducer& data_producer,
                                       bool compressed) {
   std::unique_ptr<tsl::WritableFile> file;
-  RETURN_IF_ERROR(env->NewWritableFile(fname, &file));
+  ABSL_RETURN_IF_ERROR(env->NewWritableFile(fname, &file));
   if (compressed) {
     auto gz_opts = tsl::io::ZlibCompressionOptions::GZIP();
     tsl::io::ZlibOutputBuffer gz_file(file.get(), gz_opts.input_buffer_size,
                                       gz_opts.output_buffer_size, gz_opts);
-    RETURN_IF_ERROR(gz_file.Init());
+    ABSL_RETURN_IF_ERROR(gz_file.Init());
     while (auto next_producer = data_producer.Next()) {
-      RETURN_IF_ERROR(gz_file.Append(next_producer()));
+      ABSL_RETURN_IF_ERROR(gz_file.Append(next_producer()));
     }
     return gz_file.Close();
   }
   while (auto next_producer = data_producer.Next()) {
-    RETURN_IF_ERROR(file->Append(next_producer()));
+    ABSL_RETURN_IF_ERROR(file->Append(next_producer()));
   }
   return file->Close();
 }
@@ -208,12 +216,12 @@ static absl::Status WriteStringToFile(tsl::Env* env, const std::string& fname,
     return tsl::WriteStringToFile(env, fname, data);
   }
   std::unique_ptr<tsl::WritableFile> file;
-  RETURN_IF_ERROR(env->NewWritableFile(fname, &file));
+  ABSL_RETURN_IF_ERROR(env->NewWritableFile(fname, &file));
   auto gz_opts = tsl::io::ZlibCompressionOptions::GZIP();
   tsl::io::ZlibOutputBuffer gz_file(file.get(), gz_opts.input_buffer_size,
                                     gz_opts.output_buffer_size, gz_opts);
-  RETURN_IF_ERROR(gz_file.Init());
-  RETURN_IF_ERROR(gz_file.Append(data));
+  ABSL_RETURN_IF_ERROR(gz_file.Init());
+  ABSL_RETURN_IF_ERROR(gz_file.Append(data));
   return gz_file.Close();
 }
 
@@ -268,6 +276,28 @@ static std::optional<std::string> DumpToFileInDirImpl(string_view filename,
     return std::nullopt;
   }
 
+  return file_path;
+}
+
+static std::optional<std::string> DumpHloModuleRiegeli(
+    string_view filename, const HloModule& module, const DumpOptions& opts) {
+  auto file_path = GetDumpFilePath(filename, opts);
+  if (!file_path) {
+    return std::nullopt;
+  }
+
+  std::unique_ptr<riegeli::Writer> writer = CreateRiegeliFileWriter(*file_path);
+  if (writer == nullptr) {
+    return std::nullopt;
+  }
+
+  absl::Status status =
+      WriteSplitHloProto(MakeHloProto(module), std::move(writer));
+  if (!status.ok()) {
+    LOG(ERROR) << "Could not write XLA debug data to " << *file_path << ": "
+               << status;
+    return std::nullopt;
+  }
   return file_path;
 }
 
@@ -336,100 +366,284 @@ static bool IsTrivial(const HloComputation& computation) {
          root->opcode() != HloOpcode::kFusion;
 }
 
-// Returns full file paths of all dumps of the module.
+// Pool for producing one dump point's output forms concurrently; created
+// lazily so compilations that never dump pay nothing.
+static tsl::thread::ThreadPool* GetDumpThreadPool() {
+  static tsl::thread::ThreadPool* pool = new tsl::thread::ThreadPool(
+      tsl::Env::Default(), "xla_dump", /*num_threads=*/8);
+  return pool;
+}
+
+// Background writer for deferred per-pass HTML dumps. The bytes depend
+// only on the captured dot text, so the files are bit-identical; only the
+// write time moves. Drained at every named module dump (which every
+// compilation performs after its pipelines) and at process exit, but
+// deliberately not per pass: that would put one html-write latency on the
+// critical path per pipeline.
+class AsyncDumpWriter {
+ public:
+  static AsyncDumpWriter& Get() {
+    static AsyncDumpWriter* writer = [] {
+      AsyncDumpWriter* w = new AsyncDumpWriter();
+      created_.store(w, std::memory_order_release);
+      atexit([] { Get().Drain(); });
+      return w;
+    }();
+    return *writer;
+  }
+
+  // Cheap no-op when no writer was ever created.
+  static void DrainIfCreated() {
+    if (AsyncDumpWriter* writer = created_.load(std::memory_order_acquire)) {
+      writer->Drain();
+    }
+  }
+
+  // `cost_bytes` (the captured dot size) bounds the queue's memory.
+  void Enqueue(size_t cost_bytes, absl::AnyInvocable<void() &&> write_fn) {
+    {
+      absl::MutexLock lock(mu_);
+      // An oversized item is admitted once the queue is empty, and the
+      // writes run on a dedicated pool, so this wait always progresses.
+      AdmitArgs args{this, cost_bytes};
+      mu_.Await(absl::Condition(&CanAdmit, &args));
+      ++pending_;
+      pending_bytes_ += cost_bytes;
+    }
+    // Wrapped in a shared_ptr because ThreadPool::Schedule requires a
+    // copyable std::function.
+    auto shared_fn =
+        std::make_shared<absl::AnyInvocable<void() &&>>(std::move(write_fn));
+    pool_.Schedule([this, shared_fn, cost_bytes] {
+      std::move (*shared_fn)();
+      absl::MutexLock lock(mu_);
+      --pending_;
+      pending_bytes_ -= cost_bytes;
+    });
+  }
+
+  void Drain() {
+    absl::MutexLock lock(mu_);
+    mu_.Await(absl::Condition(
+        +[](int64_t* pending) { return *pending == 0; }, &pending_));
+  }
+
+ private:
+  AsyncDumpWriter()
+      : pool_(tsl::Env::Default(), "xla_dump_html", /*num_threads=*/8) {}
+
+  struct AdmitArgs {
+    AsyncDumpWriter* writer;
+    size_t cost_bytes;
+  };
+
+  // Evaluated by Mutex::Await, which holds writer->mu_; the analysis can't
+  // see that, hence the annotation.
+  static bool CanAdmit(AdmitArgs* args) ABSL_NO_THREAD_SAFETY_ANALYSIS {
+    AsyncDumpWriter* w = args->writer;
+    if (w->pending_ == 0) {
+      return true;
+    }
+    return w->pending_ < kMaxPendingItems &&
+           w->pending_bytes_ + args->cost_bytes <= kMaxPendingBytes;
+  }
+
+  // Deep enough not to throttle fast pipelines; bounded in bytes for
+  // pipelines dumping huge graphs.
+  static constexpr int64_t kMaxPendingItems = 64;
+  static constexpr size_t kMaxPendingBytes = size_t{256} << 20;  // 256 MiB
+
+  static std::atomic<AsyncDumpWriter*> created_;
+
+  // Dedicated pool so writes are not starved by dump-point tasks.
+  tsl::thread::ThreadPool pool_;
+  absl::Mutex mu_;
+  int64_t pending_ ABSL_GUARDED_BY(mu_) = 0;
+  size_t pending_bytes_ ABSL_GUARDED_BY(mu_) = 0;
+};
+
+std::atomic<AsyncDumpWriter*> AsyncDumpWriter::created_{nullptr};
+
+// Dumps the html rendering of `module` to `file_name`, deferring the
+// wrapping (gzip of the dot) and the write. The dot itself is rendered
+// synchronously since it reads the live module.
+static std::optional<std::string> DumpHtmlDeferred(
+    string_view label, string_view file_name, const HloModule& module,
+    bool show_fusion_subcomputations, const DebugOptions& debug_options,
+    const DumpOptions& opts) {
+  std::optional<std::string> file_path = GetDumpFilePath(file_name, opts);
+  if (!file_path) {
+    return std::nullopt;
+  }
+  std::string dot = RenderGraph(label, module, RenderedGraphFormat::kDot,
+                                show_fusion_subcomputations, &debug_options);
+  std::string title = GraphRenderingTitle(*module.entry_computation());
+  const size_t cost_bytes = dot.size() + title.size();
+  AsyncDumpWriter::Get().Enqueue(cost_bytes, [dot = std::move(dot),
+                                              title = std::move(title),
+                                              path = *file_path]() mutable {
+    absl::StatusOr<std::string> html = WrapDotInHtml(dot, title);
+    // Same error text as the synchronous RenderGraph wrapper.
+    std::string contents = html.ok()
+                               ? *std::move(html)
+                               : absl::StrFormat("Error rendering graph: %s",
+                                                 html.status().ToString());
+    absl::Status status =
+        tsl::WriteStringToFile(tsl::Env::Default(), path, contents);
+    if (!status.ok()) {
+      LOG(ERROR) << "Could not write XLA debug data to " << path << ": "
+                 << status;
+    }
+  });
+  return file_path;
+}
+
+// Returns full file paths of all dumps of the module. When
+// `defer_html_writes` is true (per-pass points), html wrapping and writes
+// go to AsyncDumpWriter; when false (named points), pending deferred
+// writes are drained before returning.
 static std::vector<std::string> DumpHloModuleImpl(
     const HloModule& module, const BufferAssignment* buffer_assn,
     string_view prefix, string_view suffix, const DumpOptions& opts,
-    const DebugOptions& debug_options) {
+    const DebugOptions& debug_options, bool defer_html_writes = false) {
   tsl::profiler::ScopedAnnotation annotation([&] {
     return absl::StrFormat("XlaDumpHloModule:#module=%s,program_id=%d#",
                            module.name(), module.unique_id());
   });
   std::string filename = FilenameFor(module, prefix, suffix);
 
-  std::vector<std::optional<std::string>> file_paths;
+  // The output forms only read the module, so they run as independent
+  // tasks, all joined before returning: callers observe the same files and
+  // path order as sequential dumping.
+  std::vector<absl::AnyInvocable<std::optional<std::string>() &&>> tasks;
 
   if (opts.dump_as_text) {
-    file_paths.push_back(DumpToFileInDirOrStdoutImpl(StrCat(filename, ".txt"),
-                                                     module.ToString(), opts));
+    tasks.push_back([&module, &opts, &filename] {
+      return DumpToFileInDirOrStdoutImpl(StrCat(filename, ".txt"),
+                                         module.ToString(), opts);
+    });
     if (buffer_assn) {
-      DataProducer buffer_assignment;
-      buffer_assignment.Append([&] { return buffer_assn->ToString(); });
-      file_paths.push_back(DumpToFileInDirOrStdoutImpl(
-          StrCat(filename, "-buffer-assignment.txt"), buffer_assignment, opts));
-      DataProducer buffer_assignment_values;
-      DataProducer live_range;
+      tasks.push_back(
+          [&opts, buffer_assn, &filename]() -> std::optional<std::string> {
+            DataProducer buffer_assignment;
+            buffer_assignment.Append([&] { return buffer_assn->ToString(); });
+            return DumpToFileInDirOrStdoutImpl(
+                StrCat(filename, "-buffer-assignment.txt"), buffer_assignment,
+                opts);
+          });
       if (debug_options.xla_dump_buffer_assignment_analysis()) {
-        buffer_assignment_values.Append(
-            [&] { return buffer_assn->ValuesToString(); });
-        file_paths.push_back(DumpToFileInDirOrStdoutImpl(
-            StrCat(filename, "-buffer-assignment-values.txt"),
-            buffer_assignment_values, opts));
-        live_range.Append([&] {
-          if (buffer_assn->HasHloLiveRange()) {
-            return buffer_assn->hlo_live_range().ToString();
-          }
-          return std::string(
-              "HloLiveRange not available (finalized or constructed from "
-              "proto)");
-        });
-        file_paths.push_back(DumpToFileInDirOrStdoutImpl(
-            StrCat(filename, "-live-range.txt"), live_range, opts));
+        tasks.push_back(
+            [&opts, buffer_assn, &filename]() -> std::optional<std::string> {
+              DataProducer buffer_assignment_values;
+              buffer_assignment_values.Append(
+                  [&] { return buffer_assn->ValuesToString(); });
+              return DumpToFileInDirOrStdoutImpl(
+                  StrCat(filename, "-buffer-assignment-values.txt"),
+                  buffer_assignment_values, opts);
+            });
+        tasks.push_back(
+            [&opts, buffer_assn, &filename]() -> std::optional<std::string> {
+              DataProducer live_range;
+              live_range.Append([&] {
+                if (buffer_assn->HasHloLiveRange()) {
+                  return buffer_assn->hlo_live_range().ToString();
+                }
+                return std::string(
+                    "HloLiveRange not available (finalized or constructed from "
+                    "proto)");
+              });
+              return DumpToFileInDirOrStdoutImpl(
+                  StrCat(filename, "-live-range.txt"), live_range, opts);
+            });
       }
-      DataProducer summary_report;
-      summary_report.Append([&] { return buffer_assn->MemoryUsageReport(); });
-      file_paths.push_back(DumpToFileInDirOrStdoutImpl(
-          StrCat(filename, "-memory-usage-report.txt"), summary_report, opts));
+      tasks.push_back([&opts, buffer_assn,
+                       &filename]() -> std::optional<std::string> {
+        DataProducer summary_report;
+        summary_report.Append([&] { return buffer_assn->MemoryUsageReport(); });
+        return DumpToFileInDirOrStdoutImpl(
+            StrCat(filename, "-memory-usage-report.txt"), summary_report, opts);
+      });
     }
   }
 
   if (opts.dump_as_proto) {
-    HloProto module_proto =
-        buffer_assn ? MakeHloProto(module, *buffer_assn) : MakeHloProto(module);
-    std::string pb;
-    if (!tsl::SerializeToStringDeterministic(module_proto, &pb)) {
-      pb = "Failed to serialize HLO module proto.";
-    }
-    file_paths.push_back(DumpToFileInDirImpl(
-        StrCat(filename, opts.dump_compress_protos ? ".hlo.pb.gz" : ".hlo.pb"),
-        pb, opts, opts.dump_compress_protos));
+    tasks.push_back([&module, &opts, buffer_assn,
+                     &filename]() -> std::optional<std::string> {
+      HloProto module_proto = buffer_assn ? MakeHloProto(module, *buffer_assn)
+                                          : MakeHloProto(module);
+      std::string pb;
+      if (!tsl::SerializeToStringDeterministic(module_proto, &pb)) {
+        pb = "Failed to serialize HLO module proto.";
+      }
+      return DumpToFileInDirImpl(
+          StrCat(filename,
+                 opts.dump_compress_protos ? ".hlo.pb.gz" : ".hlo.pb"),
+          pb, opts, opts.dump_compress_protos);
+    });
 
     if (buffer_assn) {
-      MemoryUsageReportProto memory_report_proto =
-          buffer_assn->GetMemoryUsageReportProto();
-      std::string memory_report_pb;
-      if (!tsl::SerializeToStringDeterministic(memory_report_proto,
-                                               &memory_report_pb)) {
-        memory_report_pb = "Failed to serialize memory usage report proto.";
-      }
-      file_paths.push_back(DumpToFileInDirImpl(
-          StrCat(filename, opts.dump_compress_protos
-                               ? "-memory-usage-report.pb.gz"
-                               : "-memory-usage-report.pb"),
-          memory_report_pb, opts, opts.dump_compress_protos));
+      tasks.push_back([&opts, buffer_assn,
+                       &filename]() -> std::optional<std::string> {
+        MemoryUsageReportProto memory_report_proto =
+            buffer_assn->GetMemoryUsageReportProto();
+        std::string memory_report_pb;
+        if (!tsl::SerializeToStringDeterministic(memory_report_proto,
+                                                 &memory_report_pb)) {
+          memory_report_pb = "Failed to serialize memory usage report proto.";
+        }
+        return DumpToFileInDirImpl(
+            StrCat(filename, opts.dump_compress_protos
+                                 ? "-memory-usage-report.pb.gz"
+                                 : "-memory-usage-report.pb"),
+            memory_report_pb, opts, opts.dump_compress_protos);
+      });
     }
+  }
+
+  if (opts.dump_as_riegeli) {
+    tasks.push_back([&module, &opts, &filename] {
+      return DumpHloModuleRiegeli(StrCat(filename, ".riegeli"), module, opts);
+    });
   }
 
   if (opts.dump_as_dot) {
-    file_paths.push_back(DumpToFileInDirImpl(
-        StrFormat("%s.dot", filename),
-        RenderGraph(filename, module, RenderedGraphFormat::kDot,
-                    /*show_fusion_subcomputations=*/true, &debug_options),
-        opts));
+    tasks.push_back([&module, &debug_options, &opts, &filename] {
+      return DumpToFileInDirImpl(
+          StrFormat("%s.dot", filename),
+          RenderGraph(filename, module, RenderedGraphFormat::kDot,
+                      /*show_fusion_subcomputations=*/true, &debug_options),
+          opts);
+    });
   }
 
   if (opts.dump_as_html) {
-    file_paths.push_back(DumpToFileInDirImpl(
-        StrFormat("%s.html", filename),
-        RenderGraph(filename, module, RenderedGraphFormat::kHtml,
-                    /*show_fusion_subcomputations=*/true, &debug_options),
-        opts));
-    if (absl::StrContains(filename, kAfterOptimizationsDumpName)) {
-      file_paths.push_back(DumpToFileInDirImpl(
-          StrFormat("%s.top_level.html", filename),
+    tasks.push_back([&module, &debug_options, &opts, &filename,
+                     defer_html_writes]() -> std::optional<std::string> {
+      if (defer_html_writes) {
+        return DumpHtmlDeferred(
+            filename, StrFormat("%s.html", filename), module,
+            /*show_fusion_subcomputations=*/true, debug_options, opts);
+      }
+      return DumpToFileInDirImpl(
+          StrFormat("%s.html", filename),
           RenderGraph(filename, module, RenderedGraphFormat::kHtml,
-                      /*show_fusion_subcomputations=*/false, &debug_options),
-          opts));
+                      /*show_fusion_subcomputations=*/true, &debug_options),
+          opts);
+    });
+    if (absl::StrContains(filename, kAfterOptimizationsDumpName)) {
+      tasks.push_back([&module, &debug_options, &opts, &filename,
+                       defer_html_writes]() -> std::optional<std::string> {
+        if (defer_html_writes) {
+          return DumpHtmlDeferred(
+              filename, StrFormat("%s.top_level.html", filename), module,
+              /*show_fusion_subcomputations=*/false, debug_options, opts);
+        }
+        return DumpToFileInDirImpl(
+            StrFormat("%s.top_level.html", filename),
+            RenderGraph(filename, module, RenderedGraphFormat::kHtml,
+                        /*show_fusion_subcomputations=*/false, &debug_options),
+            opts);
+      });
     }
   }
 
@@ -441,25 +655,51 @@ static std::vector<std::string> DumpHloModuleImpl(
                 << " as trivial";
         continue;
       }
-
-      absl::StatusOr<std::string> rendered_graph =
-          WrapFusionExplorer(*computation);
-      if (!rendered_graph.ok()) {
-        VLOG(1) << "Skipping fusion visualization"
-                << " for computation " << computation->name()
-                << " due to: " << rendered_graph.status();
-        continue;
-      }
-      file_paths.push_back(DumpToFileInDirImpl(
-          FilenameFor(module, computation->name(), "_fusion.html"),
-          *rendered_graph, opts));
+      tasks.push_back(
+          [&module, &opts, computation]() -> std::optional<std::string> {
+            absl::StatusOr<std::string> rendered_graph =
+                WrapFusionExplorer(*computation);
+            if (!rendered_graph.ok()) {
+              VLOG(1) << "Skipping fusion visualization"
+                      << " for computation " << computation->name()
+                      << " due to: " << rendered_graph.status();
+              return std::nullopt;
+            }
+            return DumpToFileInDirImpl(
+                FilenameFor(module, computation->name(), "_fusion.pyz"),
+                *rendered_graph, opts);
+          });
     }
   }
 
   if (opts.dump_fdo_profiles) {
-    file_paths.push_back(
-        DumpToFileInDirImpl(StrFormat("%s.fdo_profile", filename),
-                            module.config().fdo_profile(), opts));
+    tasks.push_back([&module, &opts, &filename] {
+      return DumpToFileInDirImpl(StrFormat("%s.fdo_profile", filename),
+                                 module.config().fdo_profile(), opts);
+    });
+  }
+
+  std::vector<std::optional<std::string>> file_paths;
+  if (opts.dumping_to_stdout() || tasks.size() <= 1) {
+    // Keeps stdout dumps ordered and skips pool overhead for single files.
+    file_paths.reserve(tasks.size());
+    for (auto& task : tasks) {
+      file_paths.push_back(std::move(task)());
+    }
+  } else {
+    // Pre-sized because tasks finish out of order, each into its own slot.
+    file_paths.resize(tasks.size());
+    absl::BlockingCounter pending(tasks.size());
+    tsl::thread::ThreadPool* pool = GetDumpThreadPool();
+    std::optional<std::string>* file_path = file_paths.data();
+    for (auto& task : tasks) {
+      pool->Schedule([&task, file_path, &pending] {
+        *file_path = std::move(task)();
+        pending.DecrementCount();
+      });
+      ++file_path;
+    }
+    pending.Wait();
   }
 
   // Special case for rendering graphs as URLs.  We'll dump them to a file
@@ -491,6 +731,10 @@ static std::vector<std::string> DumpHloModuleImpl(
       module_id_to_timestamp.try_emplace(module.unique_id(),
                                          tsl::Env::Default()->NowMicros());
     }
+  }
+  if (!defer_html_writes) {
+    // Named dump points are barriers for earlier deferred writes.
+    AsyncDumpWriter::DrainIfCreated();
   }
   return dumped_file_paths;
 }
@@ -677,6 +921,9 @@ void DumpPerModuleProtobufToFile(const HloModule& module,
                                  absl::AnyInvocable<absl::StatusOr<std::string>(
                                      tsl::Env*, const tsl::protobuf::Message&)>
                                      text_formatter) {
+  if (!DumpingEnabledForHloModule(module)) {
+    return;
+  }
   const std::string filename = FilenameFor(module, TimestampFor(module), name);
   DumpOptions opts = GetDumpOptions(module.name(), debug_options);
   DumpProtobufToFile(proto, debug_options, filename, std::move(text_formatter),
@@ -854,7 +1101,7 @@ std::optional<std::string> DumpNonDefaultDebugOptions(
   const DebugOptions& debug_options = module.config().debug_options();
   std::string filename = FilenameFor(module, "", suffix);
   std::string nonDefaultDebugOptions = GetNonDefaultDebugOptions(debug_options);
-  // Options steering where the dump is actually written to can be overriden
+  // Options steering where the dump is actually written to can be overridden
   DumpOptions opts = GetDumpOptions(module, dump_options);
   return DumpToFileInDirImpl(filename, nonDefaultDebugOptions, opts);
 }
@@ -877,9 +1124,17 @@ std::vector<std::string> DumpHloModuleProtoIfEnabled(
     const HloModuleProto& module_proto, absl::string_view name) {
   auto config = xla::HloModule::CreateModuleConfigFromProto(
       module_proto, xla::GetDebugOptionsFromFlags());
+  if (!config.ok()) {
+    LOG(ERROR) << "Failed to create module config: " << config.status();
+    return {};
+  }
 
-  auto module =
-      xla::HloModule::CreateFromProto(module_proto, config.value()).value();
+  auto module_or = xla::HloModule::CreateFromProto(module_proto, *config);
+  if (!module_or.ok()) {
+    LOG(ERROR) << "Failed to create module from proto: " << module_or.status();
+    return {};
+  }
+  auto module = std::move(*module_or);
 
   DumpOptions opts = GetDumpOptions(*module);
   if (opts.should_dump_module(module->name())) {
@@ -956,7 +1211,8 @@ std::vector<std::string> DumpHloModuleBetweenPassesIfEnabled(
                 after_pass_name, before_pass_name);
   return DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, timestamp,
                            filename_suffix, opts,
-                           module.config().debug_options());
+                           module.config().debug_options(),
+                           /*defer_html_writes=*/true);
 }
 
 void DumpHloModuleDuringPassIfEnabled(string_view pass_name,
@@ -974,7 +1230,8 @@ void DumpHloModuleDuringPassIfEnabled(string_view pass_name,
   std::string filename_suffix =
       StrFormat("%04d.%s.%s", step_number, pass_name, step_name);
   DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, timestamp, filename_suffix,
-                    opts, module.config().debug_options());
+                    opts, module.config().debug_options(),
+                    /*defer_html_writes=*/true);
 }
 
 void DumpHloSnapshotIfEnabled(const HloModule& module,
@@ -1122,8 +1379,8 @@ absl::Status DumpProtoToDirectory(const tsl::protobuf::Message& message,
                                   absl::string_view file_name,
                                   std::string* full_path) {
   tsl::Env* env = tsl::Env::Default();
-  RETURN_IF_ERROR(env->RecursivelyCreateDir(directory));
-  RETURN_IF_ERROR(CreateDirIfNeeded(directory, env));
+  ABSL_RETURN_IF_ERROR(env->RecursivelyCreateDir(directory));
+  ABSL_RETURN_IF_ERROR(CreateDirIfNeeded(directory, env));
   std::string safe_file_name = SanitizeFileName(std::string(file_name)) + ".pb";
   std::string full_path_impl;
   if (!full_path) {

@@ -63,7 +63,6 @@ struct GpuTargetConfig {
 
   stream_executor::DeviceDescription device_description;
   std::string platform_name;
-  stream_executor::dnn::VersionInfo dnn_version_info;
   std::string device_description_str;
 
  private:

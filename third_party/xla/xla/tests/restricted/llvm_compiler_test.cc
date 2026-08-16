@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "xla/service/llvm_compiler.h"
 
-#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "llvm/IR/Module.h"
 #include "xla/hlo/ir/hlo_instruction.h"

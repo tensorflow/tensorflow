@@ -16,7 +16,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 
 #include "absl/status/status.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/tsl/platform/test.h"
 
 namespace tsl {
@@ -97,12 +97,12 @@ absl::Status GetError() {
 }
 
 absl::Status PropagateError() {
-  RETURN_IF_ERROR(GetError());
+  ABSL_RETURN_IF_ERROR(GetError());
   return absl::OkStatus();
 }
 
 absl::Status PropagateError2() {
-  RETURN_IF_ERROR(PropagateError());
+  ABSL_RETURN_IF_ERROR(PropagateError());
   return absl::OkStatus();
 }
 

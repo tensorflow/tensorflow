@@ -35,14 +35,10 @@ gpu_device_info {
   }
   registers_per_core_limit: 65536
   registers_per_block_limit: 65536
+  dnn_version: "9.1.0"
   thread_dim_limit_x: 1024
   thread_dim_limit_y: 1024
   thread_dim_limit_z: 64
 }
 platform_name: "CUDA"
-dnn_version_info {
-  major: 9
-  minor: 1
-  patch: 0
-}
 device_description_str: "NVIDIA RTX PRO 6000 Blackwell"

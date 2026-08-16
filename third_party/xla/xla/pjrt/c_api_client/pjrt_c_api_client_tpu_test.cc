@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -520,7 +521,7 @@ TEST(PjRtCApiClientTpuTest, GetHostMemoryAllocator) {
   std::memset(ptr.get(), 0, size);
 }
 
-TEST(PjRtCApiClientTpuTest, ClearMemoryStats) {
+TEST(PjRtCApiClientTpuTest, PeakMemoryStats) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetXlaPjrtTpuClient());
   PjRtDevice* device = client->addressable_devices()[0];
@@ -544,6 +545,8 @@ TEST(PjRtCApiClientTpuTest, ClearMemoryStats) {
             initial_stats.bytes_in_use + kAllocSize);
   ASSERT_EQ(stats_after_alloc.peak_bytes_in_use,
             initial_stats.peak_bytes_in_use + kAllocSize);
+  ASSERT_EQ(stats_after_alloc.peak_allocated_bytes,
+            initial_stats.peak_allocated_bytes + kAllocSize);
 
   buffer.reset();
 
@@ -551,6 +554,8 @@ TEST(PjRtCApiClientTpuTest, ClearMemoryStats) {
   ASSERT_EQ(stats_after_reset.bytes_in_use, initial_stats.bytes_in_use);
   ASSERT_EQ(stats_after_reset.peak_bytes_in_use,
             stats_after_alloc.peak_bytes_in_use);
+  ASSERT_EQ(stats_after_reset.peak_allocated_bytes,
+            stats_after_alloc.peak_allocated_bytes);
 
   ASSERT_OK(device->ClearMemoryStats());
 
@@ -558,6 +563,8 @@ TEST(PjRtCApiClientTpuTest, ClearMemoryStats) {
   EXPECT_EQ(stats_after_clear.bytes_in_use, initial_stats.bytes_in_use);
   EXPECT_EQ(stats_after_clear.peak_bytes_in_use,
             stats_after_clear.bytes_in_use);
+  EXPECT_EQ(stats_after_clear.peak_allocated_bytes,
+            stats_after_clear.bytes_in_use + stats_after_clear.bytes_reserved);
 }
 
 TEST(PjRtCApiClientTpuTest, LoadSerializedExecutableWithComputationOrigin) {

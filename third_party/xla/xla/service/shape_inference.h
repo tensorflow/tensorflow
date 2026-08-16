@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 
@@ -119,7 +120,8 @@ class ShapeInference {
       int64_t batch_group_count, const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
       const SparsityConfig& sparsity_config,
-      std::optional<PrimitiveType> preferred_element_type);
+      std::optional<PrimitiveType> preferred_element_type,
+      ConvolutionKind convolution_kind = CONVOLUTION_KIND_UNSET);
 
   // Infers the shape produced by the given FFT type on the given operand.
   static absl::StatusOr<Shape> InferFftShape(
@@ -185,7 +187,8 @@ class ShapeInference {
 
   // Infers the shape of a collective broadcast operation.
   static absl::StatusOr<Shape> InferCollectiveBroadcastShape(
-      absl::Span<const Shape* const> operand_shapes);
+      absl::Span<const Shape* const> operand_shapes,
+      bool has_dynamic_root = false);
 
   // Infers the shape of a collective permute operation.
   static absl::StatusOr<Shape> InferCollectivePermuteShape(

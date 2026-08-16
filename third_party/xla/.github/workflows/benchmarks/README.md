@@ -1,237 +1,287 @@
-# Onboard New Microbenchmarks to OpenXLA
+# OpenXLA Benchmarking Architecture & Onboarding Guide
 
-This guide provides step-by-step instructions for contributing new
-microbenchmarks to OpenXLA microbenchmarking infrastructure.
+This document outlines the architecture and maintenance process for OpenXLA's
+open-source microbenchmarking suite. We leverage the [Benchmarking Automation
+Platform (BAP)](https://github.com/google-ml-infra/bap) via GitHub Actions to
+execute workloads across physical hardware and publish metrics for performance
+regression tracking.
+
+---
+
+## Quick Links
+
+* [OpenXLA Benchmark Registry
+  (`benchmark_registry.pbtxt`)](https://github.com/openxla/xla/blob/main/xla/tools/benchmarks/benchmark_registry.pbtxt)
+* [Postsubmit Workflow
+  (`postsubmit_benchmark.yml`)](https://github.com/openxla/xla/blob/main/.github/workflows/postsubmit_benchmark.yml)
+* [Nightly Workflow (`nightly_benchmarks.yml`)](https://github.com/openxla/xla/blob/main/.github/workflows/nightly_benchmarks.yml)
+* [Run Benchmarks Manual Workflow (`run_benchmarks.yml`)](https://github.com/openxla/xla/blob/main/.github/workflows/run_benchmarks.yml)
+* [XLA HLO Workload Executor
+  Documentation](https://github.com/openxla/xla/blob/main/xla/tools/benchmarks/hlo_workload_executor/README.md)
+* [BAP (Benchmarking Automation Platform)
+  Repository](https://github.com/google-ml-infra/bap)
+* [BAP General Onboarding
+  Guide](https://github.com/google-ml-infra/bap/blob/main/docs/onboarding.md)
+* [BAP Registry Definition
+  (`benchmark_registry.proto`)](https://github.com/google-ml-infra/bap/blob/main/bap_proto/benchmark_registry.proto)
+
+---
 
 ## Overview
 
-The OpenXLA microbenchmarking system is designed to automatically detect
-performance regressions and track performance trends across different hardware
-backends (CPU, GPU) in presubmit, postsubmit and nightly workflows. By adding
-your microbenchmark, you help ensure XLA's performance remains robust for your
-specific use cases.
+The OpenXLA microbenchmarking suite is designed to automatically detect
+performance regressions on pull requests (`presubmit`) and track performance
+regressions across continuous post-merge (`postsubmit`) and nightly
+(`scheduled`) runs on CPU and GPU hardware backends.
 
-The process involves:
+Under BAP, all benchmark configurations, hardware variants, execution action
+paths, and static regression thresholds are centralized in a single declarative
+Protocol Buffer text file:
+[`xla/tools/benchmarks/benchmark_registry.pbtxt`](https://github.com/openxla/xla/blob/main/xla/tools/benchmarks/benchmark_registry.pbtxt).
 
-1.  **Preparing your Benchmark Artifact:** Ensuring your HLO file is OSS-friendly.
-2.  **Defining the Benchmark Configuration:** Adding an entry to a benchmark registry file.
-3.  **Establishing a Baseline:** Adding initial performance thresholds if your benchmark will run in presubmit/postsubmit/nightly jobs.
+---
 
-## Prerequisites
+## System Architecture
 
-*   **Benchmark Artifact (HLO):** You should have your benchmark ready as either
-    an HLO text file (`.hlo`) (Note: StableHLO MLIR text file (`.mlir`) will be
-    supported later).
-    *   For small artifacts, you can place them in `xla/tools/benchmarks/hlo/`.
-    *   **[Not yet supported]** For larger artifacts, upload them to a GCS
-        bucket (e.g., `gs://xla-benchmarking-temp/your-benchmark.hlo`) and
-        ensure it's publicly readable.
-*   **GitHub Access:** You'll need to create a Pull Request (PR) to the OpenXLA repository.
+Our benchmarking pipeline relies on a push-based execution and ingestion model
+consisting of four main components:
 
-## Step-by-Step Guide
+1. **Benchmark Registry**
+   ([`benchmark_registry.pbtxt`](https://github.com/openxla/xla/blob/main/xla/tools/benchmarks/benchmark_registry.pbtxt)):
+   The declarative source of truth for all workloads, target metrics, stat
+   definitions (e.g., `MEDIAN`), and environment configurations (e.g., `gpu_l4`,
+   `gpu_b200`, `cpu_x86`).
+2. **GitHub Actions Workflows**: The continuous integration pipelines
+   [`postsubmit_benchmark.yml`](https://github.com/openxla/xla/blob/main/.github/workflows/postsubmit_benchmark.yml),
+   [`nightly_benchmarks.yml`](https://github.com/openxla/xla/blob/main/.github/workflows/nightly_benchmarks.yml), and the manual
+   [`run_benchmarks.yml`](https://github.com/openxla/xla/blob/main/.github/workflows/run_benchmarks.yml)
+   workflow that invoke BAP's core
+   [`run-benchmarks.yaml`](https://github.com/google-ml-infra/bap/blob/main/.github/workflows/run-benchmarks.yaml)
+   engine. BAP dynamically generates matrix jobs, delegates execution to our
+   local composite action
+   [`hlo_workload_executor`](https://github.com/openxla/xla/blob/main/xla/tools/benchmarks/hlo_workload_executor),
+   parses scalar metrics (via `tb_parser`), performs static regression checking
+   directly inside the workflow, displays a formatted **benchmark report**
+   inside the GitHub Actions workflow run summary, and packages the **benchmark
+   result** (`results.json`), markdown summary report, execution logs, and
+   profiling traces (`_xspace.pb`) into a downloadable [GitHub Actions Artifact
+   Bundle](https://github.com/google-ml-infra/bap/blob/main/docs/onboarding.md#artifact-bundling).
+3. **Pub/Sub Metric Publishing (Optional)**: BAP can optionally be configured to
+   push telemetry downstream upon run completion. When enabled, BAP takes the
+   structured JSON result payloads generated in step 2 and publishes them
+   directly to a Google Cloud Pub/Sub topic (e.g., `public-results-prod` with
+   attribute `repo="openxla/xla"`).
+4. **Downstream Ingestion & Dashboards (Optional)**: When Pub/Sub publishing is
+   enabled, downstream ingestion pipelines drain the topic, format metric
+   payloads, and export telemetry to visualization and regression tracking
+   platforms (e.g., internal dashboards like MLCompass or external Looker Studio
+   dashboards).
+
+---
+
+## Running Benchmarks
+
+### Automatic Triggers
+
+The benchmarking suite executes automatically across three continuous CI
+workflows:
+
+* **Presubmit (`tag_filter: "presubmit"`)**: Runs on open Pull Requests
+  targeting the `main` branch. Executes baseline-checked benchmarks and blocks
+  CI if a metric regresses beyond its configured `threshold` tolerance.
+* **Postsubmit (`tag_filter: "postsubmit"`)**: Runs immediately on push after a
+  PR is merged into `main`. Records official post-merge baseline telemetry.
+* **Scheduled / Nightly (`tag_filter: "scheduled"`)**: Runs nightly via cron
+  across all scheduled benchmarks.
+
+### Testing / Ad-hoc Runs
+
+If you need to execute benchmarks on demand—such as testing a registry change on
+a feature branch without merging, reproducing a regression, or running A/B
+comparisons—you can trigger the **Run Benchmarks** workflow
+([`run_benchmarks.yml`](https://github.com/openxla/xla/blob/main/.github/workflows/run_benchmarks.yml))
+manually via `workflow_dispatch` in the GitHub Actions UI:
+
+1. **Push to a remote branch** (Optional): If you are testing changes to
+   `benchmark_registry.pbtxt` or benchmark code, commit and push your changes
+   to a feature branch.
+2. **Trigger the workflow**: Navigate to the **Run Benchmarks** workflow inside
+   the GitHub Actions UI and click **Run workflow**. You can select the branch
+   to run against.
+3. **Configure Options**:
+   * **`ab_mode`**: Enable this boolean to run an A/B comparison (baseline vs experiment).
+   * **`baseline_ref`**: The Git reference (e.g., branch, SHA) for the baseline in A/B mode. Defaults to PR base or `main`.
+   * **`experiment_ref`**: The Git reference for the experiment in A/B mode. Defaults to the current commit SHA.
+   * **`benchmark_filter`**: Regex to filter benchmarks by name (e.g., `^gemma3_.*`).
+   * **`environment_filter`**: Regex to filter by environment configuration ID (e.g., `^gpu_.*`).
+   * **`custom_metadata`**: JSON string of metadata to append to the benchmark result.
+4. **Inspect Results**: Look at the benchmark report inside the workflow run
+   summary or inspect the downloaded artifact bundle to verify parsed scalar
+   values and comparisons.
+
+---
+
+## Adding a New Benchmark or Hardware Platform
+
+Adding a new microbenchmark or expanding an existing benchmark to run on a new
+hardware platform requires zero updates to downstream comparison scripts or YAML
+workflows.
 
 ### Step 1: Prepare Your Benchmark Artifact
+You can host your HLO file either directly inside the repository (recommended
+for small microbenchmarks) or in a Google Cloud Storage (GCS) bucket
+(recommended for larger artifacts):
 
-Ensure your HLO file is ready and accessible.
+* **Option A: Store in the XLA Repository**
+  1. Place your `.hlo` file in the `xla/tools/benchmarks/hlo/` directory.
+* **Option B: Store in a GCS Bucket**
+  1. Upload your `.hlo` artifact to a GCS bucket
+     (e.g., `https://storage.googleapis.com/your-bucket/your-benchmark.hlo`).
+  2. **Important:** Ensure the GCS bucket/object is publicly readable (or that
+     the GitHub Actions runners have the required permissions to access it), as
+     the CI runner downloads the artifact via `wget`.
 
-*   **Store in the XLA Repository**
-    1.  Place your `.hlo` file in the `xla/xla/tools/benchmarks/hlo/` directory.
-    2.  Make sure your hlo benchmarks run < 15min/20min/30min for
-        presubmit/postsubmit/nightly workflows.
+**Important:** Regardless of which hosting option you choose, ensure your HLO
+execution finishes within our CI runner timeouts (`< 15 min` for presubmit,
+`< 20 min` for postsubmit/nightly).
 
-### Step 2: Define the Benchmark Configuration
+### Step 2: Define the Benchmark Configuration in `benchmark_registry.pbtxt`
+Add a new `benchmarks { ... }` block to
+`xla/tools/benchmarks/benchmark_registry.pbtxt`.
 
-You'll need to add a new entry to a benchmark registry YAML file. For most
-community contributions, this will be
-`xla/xla/tools/benchmarks/registries/default_registry.yml`.
+The schema for this file is defined by BAP's [`BenchmarkConfig` and
+`EnvironmentConfig` protobuf
+messages](https://github.com/google-ml-infra/bap/blob/main/bap_proto/benchmark_registry.proto).
 
-Each benchmark configuration is a YAML object with the following key fields:
+For standard HLO microbenchmarks, set `workload.action` to
+[`./user_repo/xla/tools/benchmarks/hlo_workload_executor`](https://github.com/openxla/xla/blob/main/xla/tools/benchmarks/hlo_workload_executor)
+and specify `hlo_path` alongside optional `runtime_flags` (`--num_repeats=5`).
+For detailed parameter specifications and path prefixing rules
+(`user_repo/...`), refer to the [XLA HLO Workload Executor
+README](https://github.com/openxla/xla/blob/main/xla/tools/benchmarks/hlo_workload_executor/README.md).
 
-*   `name`: A unique, descriptive name for your benchmark (e.g., `"my_model_attention_layer"`).
-*   `description`: A brief explanation of what the benchmark measures.
-*   `owner`: Your GitHub handle or relevant team alias (e.g., `"your-github-username@"`).
-*   `input_artifact`:
-    *   `input_format`: Currently we support `HLO_TEXT`, and `STABLEHLO_MLIR` will be supported in the future.
-    *   `artifact_path`: (If stored in repo) Relative path from `xla`, e.g., `xla/tools/benchmarks/hlo/my_new_benchmark.hlo`.
-    *   `artifact_gcs_bucket_path`: (If stored in GCS) Full GCS URL.
-*   `model_source_info`: A list of strings describing the origin of the benchmark (e.g., `["Gemma2 2B"]`).
-*   `hardware_targets`: A list defining on which hardware configurations this
-    benchmark should run. Each target has:
-    *   `hardware_category`: e.g., `GPU_L4`, `CPU_X86`, `GPU_B200`.
-    *   `topology`:
-        *   `num_hosts`: Number of hosts (default: 1).
-        *   `num_devices_per_host`: Number of devices per host (default: 1).
-        *   `multi_host`: `true` or `false`.
-    *   `multi_device`: `true` or `false`.
-    *   `target_metrics`: A list of metrics to collect, e.g., `[GPU_DEVICE_TIME, PEAK_GPU_MEMORY]`.
-    *   `run_frequencies`: When to run this benchmark, e.g., `[PRESUBMIT, POSTSUBMIT]`, `[SCHEDULED]`.
-*   `update_frequency_policy`: How often this benchmark definition should
-    be reviewed, e.g., `QUARTERLY`.
-*   `xla_compilation_flags` (Optional): List of XLA flags, e.g.,
-    `["--xla_gpu_enable_cudnn_fusion=false"]`.
-*   `runtime_flags` (Optional): List of flags for the
-    `multihost_hlo_runner`, e.g., `["--num_repeats=5"]`.
-*   `github_labels` (Optional): GitHub labels to manually trigger this
-    specific benchmark.
+### Step 3: Establish Baselines & Thresholds
+To enable automatic CI regression checking when your benchmark runs in CI
+(`postsubmit` or `scheduled`), embed static
+`comparison { baseline { ... } threshold { ... } }` blocks inside the respective
+metric definitions under each `environment_configs` block.
 
-**Example: Adding "gemma3\_1b\_flax\_sample\_loop" to `default_registry.yml`**
+**Tip:** When onboarding a new benchmark for the very first time, we recommend
+adding it with `postsubmit` or `scheduled` tags and omitting the `comparison`
+blocks. Once it runs cleanly on main and you observe its stable median numbers
+in BAP's outputs, lock in the exact `baseline` and `threshold` tolerance.
 
-```yaml
-# xla/xla/tools/benchmarks/registries/default_registry.yml
-benchmarks: [
-  # ... existing benchmarks ...
-  {
-    name: "gemma3_1b_flax_sample_loop"
-    description: "Gemma3 1B in Flax Sample Loop."
-    owner: "company-A@" # Replace with your GitHub handle or team
-    input_artifact: {
-      input_format: HLO_TEXT, # Or STABLEHLO_MLIR
-      artifact_path: "xla/tools/benchmarks/hlo/gemma3_1b_flax_sample_loop.hlo"
-      # Option 2 (for large hlo):
-      #`artifact_gcs_bucket_path`: (If stored in GCS) Full GCS URL (not supported yet).
+#### Example Full `benchmark_registry.pbtxt` Entry
+```protobuf
+benchmarks {
+  name: "gemma3_1b_flax_sample_loop"
+  description: "Gemma3 1B in Flax Sample Loop."
+  owner: "your-team@"
+
+  workload {
+    action: "./user_repo/xla/tools/benchmarks/hlo_workload_executor"
+    action_inputs {
+      key: "hlo_path"
+      value: "xla/tools/benchmarks/hlo/gemma3_1b_flax_sample_loop.hlo"
     }
-    model_source_info: ["Gemma3 1B"] # Describe the source of your HLO
-    hardware_targets: [{
-      hardware_category: GPU_L4
-      topology: { num_hosts: 1, num_devices_per_host: 1, multi_host: false, multi_device: false }
-      target_metrics: [GPU_DEVICE_TIME, GPU_DEVICE_MEMCPY_TIME]
-      run_frequencies: [PRESUBMIT, POSTSUBMIT] # Run on PRs in presubmit and postsubmit
-      runtime_flags: ["--num_repeats=5"] # Example: run 5 times to reduce noise
-    },
-    {
-      hardware_category: CPU_X86
-      topology: { num_hosts: 1, num_devices_per_host: 1, multi_host: false, multi_device: false }
-      target_metrics: [CPU_TIME, WALL_TIME]
-      run_frequencies: [PRESUBMIT] # Only run on PRs for presubmit
-      runtime_flags: ["--num_repeats=5"]
-    }]
-    update_frequency_policy: QUARTERLY # Review this benchmark definition quarterly
+    action_inputs {
+      key: "runtime_flags"
+      value: "--num_repeats=5"
+    }
   }
-]
-```
 
-### Step 3: Establish a Baseline
-
-1.  **Determine Baseline Values:**
-    *   The best way to get initial baseline values is to run your benchmark
-    manually on the target hardware or let it run once in postsubmit after your
-    initial PR (without presubmit blocking) is merged.
-    *   Promote your benchmarks from postsubmit to presubmit once you get
-        stable results for baseline values.
-    *   Run the benchmark multiple times (e.g., using `--num_repeats=5` or
-        more) and take the median or a stable average.
-    *   Benchmarks must run < 15min for presubmit, < 20min for postsubmit and < 30min for nightly.
-
-2.  **Add to `presubmit_baseline.yml`:**
-    Edit the file `xla/xla/tools/benchmarks/baseline/presubmit_baseline.yml`. The
-    key for each entry is the `config_id`.
-
-    **Note on `config_id` generation:**
-    `config_id` follows the below pattern:
-    `"{benchmark_name}_{hardware_category_simplified}_{topology_simplified}_{workflow_type}"`.
-    *   `hardware_category_simplified`: e.g., `l4` (for `GPU_L4`), `b200` (for `GPU_B200`), `x86` (for `CPU_X86`).
-    *   `topology_simplified`: e.g., `1h1d` for 1 host, 1 device. <!-- disableFinding(LINE_OVER_80) -->
-    *   `workflow_type`: e.g., `presubmit`, `postsubmit`, `scheduled`.
-
-    If unsure, you can check the GitHub Actions workflow logs for the
-    `generate_benchmark_matrices.py` script output, which will show the generated
-    `config_id`s.
-
-    For each metric you want to track in presubmit (must be in `target_metrics`
-    in the registry):
-
-    *   `baseline_ms`: The baseline performance in milliseconds.
-    *   `threshold`: The maximum allowed regression percentage (e.g.,
-        `0.30` for 30%).
-    *   **Note on metrics:** Currently, we support `GPU_DEVICE_TIME`,
-        `GPU_DEVICE_MEMCPY_TIME` for GPU, and `CPU_TIME`, `WALL_TIME` for CPU.
-
-**Example: Adding baseline for "gemma3\_1b\_flax\_sample\_loop"**
-
-Assuming the `name` is `"gemma3_1b_flax_sample_loop"`:
-
-*   For `GPU_L4`, `1` host, `1` device: `config_id` becomes
-    `gemma3_1b_flax_sample_loop_l4_1h1d_presubmit`
-*   For `CPU_X86`, `1` host, `1` device: `config_id` becomes
-    `gemma3_1b_flax_sample_loop_x86_1h1d_presubmit`
-
-```yaml
-# xla/xla/tools/benchmarks/baseline/presubmit_baseline.yml
-{
-  # ... existing baselines ...
-
-  "gemma3_1b_flax_sample_loop_l4_1h1d_presubmit": {
-    "GPU_DEVICE_TIME": {
-      "baseline_ms": 4,  # Your measured baseline
-      "threshold": 0.30
-    },
-    "GPU_DEVICE_MEMCPY_TIME": {
-      "baseline_ms": 10, # Your measured baseline
-      "threshold": 0.30
+  environment_configs {
+    id: "gpu_l4"
+    runner_label: "linux-x86-g2-16-l4-1gpu"
+    container_image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-cuda12.8-cudnn9.8:latest"
+    workload_action_inputs {
+      key: "hardware_category"
+      value: "GPU_L4"
     }
-  },
-  "gemma3_1b_flax_sample_loop_x86_1h1d_presubmit": {
-    "CPU_TIME": {
-      "baseline_ms": 8000, # Your measured baseline
-      "threshold": 0.30
-    },
-    "WALL_TIME": {
-      "baseline_ms": 1300, # Your measured baseline
-      "threshold": 0.30
+    tags: "presubmit"
+    tags: "postsubmit"
+
+    metrics {
+      name: "GPU_DEVICE_TIME"
+      unit: "ms"
+      stats {
+        stat: MEDIAN
+        comparison {
+          baseline { value: 15.0 }
+          threshold { value: 0.30 } # Allow up to 30% regression before failing CI
+          improvement_direction: LESS
+        }
+      }
+    }
+    metrics {
+      name: "GPU_DEVICE_MEMCPY_TIME"
+      unit: "ms"
+      stats {
+        stat: MEDIAN
+        comparison {
+          baseline { value: 0.3 }
+          threshold { value: 0.30 }
+          improvement_direction: LESS
+        }
+      }
+    }
+  }
+
+  environment_configs {
+    id: "cpu_x86"
+    runner_label: "linux-x86-n2-128"
+    container_image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest"
+    workload_action_inputs {
+      key: "hardware_category"
+      value: "CPU_X86"
+    }
+    tags: "presubmit"
+
+    metrics {
+      name: "CPU_TIME"
+      unit: "ms"
+      stats {
+        stat: MEDIAN
+        comparison {
+          baseline { value: 10000.0 }
+          threshold { value: 0.30 }
+          improvement_direction: LESS
+        }
+      }
+    }
+    metrics {
+      name: "WALL_TIME"
+      unit: "ms"
+      stats {
+        stat: MEDIAN
+        comparison {
+          baseline { value: 3000.0 }
+          threshold { value: 0.30 }
+          improvement_direction: LESS
+        }
+      }
     }
   }
 }
 ```
 
-### Step 4: Create a Pull Request
+---
 
-1.  Commit your changes:
-    *   The HLO file (if added to the repo).
-    *   The updated benchmark registry file (e.g., `default_registry.yml`).
-    *   The updated `presubmit_baseline.yml` (if applicable).
-2.  Push your branch and open a Pull Request against the `openxla/xla` main branch.
-3.  A member of the OpenXLA repository or organization will need to review your
-    PR for safety before the CI system is invoked.
-     * **Note**: This step happens
-    automatically for organization members and most Googlers, but require
-    manual review for external contributors.
-4.  Once approved, the CI system will pick up your new benchmark configuration.
-    *   If it's a `PRESUBMIT` benchmark, it will run against your PR and check for regressions based on the baseline you provided.
-    *   If it's `POSTSUBMIT` or `SCHEDULED`, it will run after your PR is merged.
-5.  Monitor the CI checks. If the presubmit check fails due to your new
-    benchmark (e.g., performance is significantly different from your initial
-    baseline), you might need to adjust the baseline values in
-    `presubmit_baseline.yml` and update your PR.
+## Removing a Benchmark
 
-## Best Practices
+Removing an obsolete benchmark or hardware configuration is straightforward:
+1. **Update the Registry**: Simply delete the corresponding
+   `benchmarks { ... }` block (or specific `environment_configs { ... }` block)
+   from `xla/tools/benchmarks/benchmark_registry.pbtxt`.
+2. **Commit and Merge**: Once merged, BAP will immediately stop synthesizing
+   matrix jobs and publishing telemetry for that workload.
 
-*   **Establish Baselines First:** Since, a baseline value per metric is required, always add the benchmark with only
-    `POSTSUBMIT` or `SCHEDULED` frequency first to establish stable baseline
-    values. Once it runs a few times and you have stable performance data, you
-    can add `PRESUBMIT` and the corresponding baseline entry in a follow-up PR.
-*   **Meaningful Names and Descriptions:** Make it easy for others to
-    understand what your benchmark does.
-*   **Targeted Metrics:** Only include relevant metrics in `target_metrics`.
-*   **Noise Reduction:** Use `runtime_flags: ["--num_repeats=X"]` (e.g., X=5 or
-    10) to run the benchmark multiple times within a single execution, which
-    helps in getting more stable measurements. The runner typically reports the
-    median or average.
-*   **Keep Baselines Updated:** If your benchmark's performance characteristics
-    change significantly (due to XLA improvements or changes in the benchmark
-    itself), the baseline values in `presubmit_baseline.yml` will need to be
-    updated. This is usually done by the benchmark owner or XLA maintainers.
+---
 
-## Troubleshooting
+## BAP Documentation & Troubleshooting
 
-*   **Workflow Failures:** Check the GitHub Actions logs for detailed error
-    messages. The logs for the "Compare Benchmarks" step are particularly useful
-    for presubmit issues.
-*   **Incorrect `config_id`:** If your presubmit benchmark isn't being picked up
-    or matched to a baseline, double-check the `config_id` format in
-    `presubmit_baseline.yml`.
-*   **Performance Fluctuations:** Microbenchmarks can be sensitive to noise.
-    Ensure you're using `--num_repeats` and that your baseline reflects typical
-    performance.
+For deeper dives into the underlying platform tooling or troubleshooting, refer
+to:
 
-If you encounter issues, feel free to ask for help on the OpenXLA communication
-channels or tag the juliagmt-google@ on your PR.
+* [BAP General Onboarding
+  Guide](https://github.com/google-ml-infra/bap/blob/main/docs/onboarding.md)

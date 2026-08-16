@@ -21,10 +21,10 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/runtime/device_id.h"
+#include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -51,7 +52,7 @@ static absl::StatusOr<std::vector<se::StreamExecutor*>> CreateExecutors(
     se::Platform* platform, size_t n) {
   std::vector<se::StreamExecutor*> executors(n);
   for (size_t d = 0; d < n; ++d) {
-    ASSIGN_OR_RETURN(executors[d], platform->ExecutorForDevice(d));
+    ABSL_ASSIGN_OR_RETURN(executors[d], platform->ExecutorForDevice(d));
   }
   return executors;
 }
@@ -73,14 +74,14 @@ CreateCommunicators(LoopbackCollectives* collectives,
     device_ranks.emplace_back(&devices[i], RankId(i));
   }
 
-  ASSIGN_OR_RETURN(CliqueId clique_id, collectives->CreateUniqueCliqueId());
+  ABSL_ASSIGN_OR_RETURN(CliqueId clique_id, collectives->CreateUniqueCliqueId());
   CliqueIds clique_ids;
   clique_ids.Add(clique_id);
 
   GpuCliqueKey clique_key(device_ids, executors.size());
   GpuCollectives::Config config;
 
-  ASSIGN_OR_RETURN(auto comms,
+  ABSL_ASSIGN_OR_RETURN(auto comms,
                    collectives->CreateCommunicators(clique_key, clique_ids,
                                                     device_ranks, config));
 
@@ -120,7 +121,7 @@ SplitCommunicators(
 
   GpuCollectives::Config config;
 
-  ASSIGN_OR_RETURN(auto comms, collectives->SplitCommunicators(
+  ABSL_ASSIGN_OR_RETURN(auto comms, collectives->SplitCommunicators(
                                    existing_comms_ptrs, /*color=*/0, keys,
                                    config, device_ranks));
 
@@ -136,7 +137,7 @@ SplitCommunicators(
 // creating communicators through CreateCommunicators.
 TEST(LoopbackCollectivesTest, CreateCommunicators) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 1) {
     GTEST_SKIP() << "Test requires at least 1 GPU";
@@ -156,7 +157,7 @@ TEST(LoopbackCollectivesTest, CreateCommunicators) {
 // Verifies that LoopbackCollectives can create multi-rank communicators.
 TEST(LoopbackCollectivesTest, CreateMultiRankCommunicators) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
@@ -178,7 +179,7 @@ TEST(LoopbackCollectivesTest, CreateMultiRankCommunicators) {
 // Verifies that LoopbackCollectives supports SplitCommunicators.
 TEST(LoopbackCollectivesTest, SplitCommunicators) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
@@ -201,7 +202,7 @@ TEST(LoopbackCollectivesTest, SplitCommunicators) {
 // Verifies that AllReduce copies send to recv on a single device.
 TEST(LoopbackCollectivesTest, AllReduce) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 1) {
     GTEST_SKIP() << "Test requires at least 1 GPU";
@@ -245,7 +246,7 @@ TEST(LoopbackCollectivesTest, AllReduce) {
 // Verifies that AllGather replicates input into every rank's slot.
 TEST(LoopbackCollectivesTest, AllGather) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 1) {
     GTEST_SKIP() << "Test requires at least 1 GPU";
@@ -292,7 +293,7 @@ TEST(LoopbackCollectivesTest, AllGather) {
 // Verifies that CollectivePermute copies send to recv (loopback).
 TEST(LoopbackCollectivesTest, CollectivePermute) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 1) {
     GTEST_SKIP() << "Test requires at least 1 GPU";

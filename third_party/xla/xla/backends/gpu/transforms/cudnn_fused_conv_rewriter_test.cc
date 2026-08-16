@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/cudnn_fused_conv_rewriter.h"
 
 #include <array>
+#include <cstdint>
 #include <initializer_list>
 #include <memory>
 #include <string>
@@ -38,6 +39,7 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/testlib/filecheck.h"
@@ -47,22 +49,22 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/convert_mover.h"
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
 #include "xla/hlo/transforms/simplifiers/reshape_mover.h"
+#include "xla/hlo/utils/hlo_query.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
-#include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
-#include "xla/tests/restricted/hlo_test_base_legacy.h"
-#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tests/hlo_interpreter_reference_mixin.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -73,6 +75,7 @@ namespace m = match;
 
 using ::testing::HasSubstr;
 using ::testing::Not;
+using ::testing::NotNull;
 
 static const std::initializer_list<absl::string_view> kf16f32f64{"f16", "f32",
                                                                  "f64"};
@@ -87,10 +90,8 @@ class CudnnFusedConvRewriterHloTest : public HloPjRtGpuTestBase {
     return device_description().cuda_compute_capability();
   }
   stream_executor::dnn::VersionInfo GetDnnVersion() const {
-    se::SemanticVersion version = device_description().dnn_version();
-    return stream_executor::dnn::VersionInfo(version.major_version(),
-                                             version.minor_version(),
-                                             version.patch_version());
+    return stream_executor::dnn::VersionInfo(
+        gpu_target_config().device_description.dnn_version());
   }
 
   se::SemanticVersion GetToolkitVersion() const {
@@ -110,7 +111,7 @@ class CudnnFusedConvRewriterHloTest : public HloPjRtGpuTestBase {
 };
 
 class CudnnFusedConvRewriterTest
-    : public HloPjRtInterpreterReferenceMixin<GpuPjRtCodegenTest> {
+    : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {
  public:
   bool IsCuda() const {
     return device_description().gpu_compute_capability().IsCuda();
@@ -122,10 +123,8 @@ class CudnnFusedConvRewriterTest
     return device_description().cuda_compute_capability();
   }
   stream_executor::dnn::VersionInfo GetDnnVersion() const {
-    se::SemanticVersion version = device_description().dnn_version();
-    return stream_executor::dnn::VersionInfo(version.major_version(),
-                                             version.minor_version(),
-                                             version.patch_version());
+    return stream_executor::dnn::VersionInfo(
+        gpu_target_config().device_description.dnn_version());
   }
 
   stream_executor::SemanticVersion GetToolkitVersion() const {
@@ -179,15 +178,15 @@ class CudnnFusedConvRewriterTest
   }
 
   void TestClamp(absl::string_view pre_hlo_string,
-                 absl::string_view post_hlo_string) {
-    std::string alpha_conv_scalar, alpha_side_input_scalar;
-    std::string elementwise_type;
-
+                 absl::string_view post_hlo_string,
+                 bool allow_integer_rounding = false) {
     std::string optimized_hlo_string = GetOptimizedHlo(pre_hlo_string);
     EXPECT_THAT(optimized_hlo_string, Not(HasSubstr("Convert")));
     EXPECT_THAT(optimized_hlo_string, HasSubstr("__cudnn$conv"));
-    EXPECT_TRUE(RunAndCompare(pre_hlo_string, ErrorSpec{0.01}))
-        << pre_hlo_string;
+
+    ErrorSpec error_spec{0.01};
+    error_spec.allow_integer_rounding_difference = allow_integer_rounding;
+    EXPECT_TRUE(RunAndCompare(pre_hlo_string, error_spec)) << pre_hlo_string;
 
     absl::StatusOr<bool> filecheck_result =
         RunFileCheck(optimized_hlo_string, post_hlo_string);
@@ -843,10 +842,11 @@ TEST_F(CudnnFusedConvRewriterTest, PreservesMetadata) {
   ASSERT_OK_AND_ASSIGN(
       auto optimized_module,
       GetOptimizedModule(kHloString, GetModuleConfigForTest()));
-  const std::string optimized_hlo_string = optimized_module->ToString();
-  EXPECT_THAT(optimized_hlo_string,
-              ::testing::ContainsRegex(
-                  R"(custom-call.*metadata=\{op_type="foo" op_name="bar"\})"));
+  const HloInstruction* custom_call = hlo_query::GetFirstInstructionWithOpcode(
+      *optimized_module->entry_computation(), HloOpcode::kCustomCall);
+  ASSERT_THAT(custom_call, NotNull()) << optimized_module->ToString();
+  EXPECT_EQ(custom_call->metadata().op_type(), "foo");
+  EXPECT_EQ(custom_call->metadata().op_name(), "bar");
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestPreservesFeatureGroupCount) {
@@ -3226,7 +3226,84 @@ TEST_F(CudnnFusedConvRewriterTest, TestFusedConvInt8ToInt8) {
       // post_hlo
       R"(
 // CHECK: [[cudnn_conv_bias_activation_7_0:%[^ ]+]] = (s8[1,3,3,64]{3,2,1,0}, u8[{{[0-9]+}}]{0}) custom-call([[input_1:%[^ ]+]], [[transpose_2:%[^ ]+]], [[bias_3:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convBiasActivationForward"
-      )");
+      )",
+      /*allow_integer_rounding=*/true);
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestFusedConvInt8RoundingDifference) {
+  MAYBE_SKIP_TEST("I8");
+  // Demonstrates the difference between standard round-to-zero (truncation)
+  // semantics in reference evaluation and round-to-nearest in cuDNN fused conv.
+  //
+  // When integer outputs are produced by converting clamped float activations,
+  // cuDNN fused convolution rounds to nearest (e.g. 1.0 + 2.9 = 3.9 -> 4),
+  // whereas the un-fused reference computation truncates towards zero
+  // (e.g. 1.0 + 2.9 = 3.9 -> 3).
+  //
+  // Strict integer comparison (default ErrorSpec) fails due to this off-by-one
+  // discrepancy, while ErrorSpec with allow_integer_rounding_difference = true
+  // accounts for it and succeeds.
+  constexpr absl::string_view kHlo = R"(
+    HloModule Test
+
+    ENTRY Test {
+      zero = f32[] constant(0)
+      zeros = f32[1,3,3,64] broadcast(zero), dimensions={}
+
+      input = s8[1,3,3,64] parameter(0)
+      filter = s8[3,3,64,64] parameter(1)
+      bias = f32[64] parameter(2)
+
+      inputs32 = s32[1,3,3,64] convert(input)
+      filters32 = s32[3,3,64,64] convert(filter)
+
+      conv = s32[1,3,3,64] convolution(inputs32, filters32), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, feature_group_count=1
+
+      convfloat = f32[1,3,3,64] convert(conv)
+      broadcasted_bias = f32[1,3,3,64] broadcast(bias), dimensions={3}
+      add1 = f32[1,3,3,64] add(convfloat, broadcasted_bias)
+      relu = f32[1,3,3,64] maximum(zeros, add1)
+
+      lower = f32[] constant(-128)
+      lowers = f32[1,3,3,64] broadcast(lower), dimensions={}
+      upper = f32[] constant(127)
+      uppers = f32[1,3,3,64] broadcast(upper), dimensions={}
+
+      clamp = f32[1,3,3,64] clamp(lowers, relu, uppers)
+
+      ROOT convert = s8[1,3,3,64] convert(clamp)
+    })";
+
+  // Explicit inputs: input = 1, filter has a single 1 at center, bias[0] = 2.9.
+  // The activation sum is 1.0 + 2.9 = 3.9.
+  // Reference un-fused convert truncates to 3; cuDNN fused conv rounds to 4.
+  ASSERT_OK_AND_ASSIGN(
+      Literal input,
+      LiteralUtil::CreateR1<int8_t>(std::vector<int8_t>(1 * 3 * 3 * 64, 1))
+          .Reshape({1, 3, 3, 64}));
+  ASSERT_OK_AND_ASSIGN(
+      Literal filter,
+      LiteralUtil::CreateR1<int8_t>(std::vector<int8_t>(3 * 3 * 64 * 64, 0))
+          .Reshape({3, 3, 64, 64}));
+  filter.Set<int8_t>({1, 1, 0, 0}, 1);
+
+  std::vector<float> bias_vec(64, 0.0f);
+  bias_vec[0] = 2.9f;
+  Literal bias = LiteralUtil::CreateR1<float>(bias_vec);
+
+  std::vector<const Literal*> args = {&input, &filter, &bias};
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+
+  // 1. Strict ErrorSpec rejects the off-by-one difference between GPU cuDNN
+  // (round-to-nearest) and reference interpreter (round-to-zero / truncation).
+  ErrorSpec strict_spec{0.01};
+  EXPECT_FALSE(RunAndCompare(module->Clone(), args, strict_spec));
+
+  // 2. ErrorSpec with allow_integer_rounding_difference accepts the difference.
+  ErrorSpec relaxed_spec{0.01};
+  relaxed_spec.allow_integer_rounding_difference = true;
+  EXPECT_TRUE(RunAndCompare(std::move(module), args, relaxed_spec));
 }
 
 // Disabled per b/190854862 or nvbugs/3326122.
@@ -3314,7 +3391,8 @@ TEST_F(CudnnFusedConvRewriterTest,
       // post_hlo
       R"(
 // CHECK: [[cudnn_conv_bias_activation_11_0:%[^ ]+]] = (s8[1,3,3,64]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[input_1:%[^ ]+]], [[transpose_2:%[^ ]+]], [[bias_3:%[^ ]+]], [[side_input_4:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convBiasActivationForward"
-      )");
+      )",
+      /*allow_integer_rounding=*/true);
 }
 
 TEST_F(CudnnFusedConvRewriterTest,

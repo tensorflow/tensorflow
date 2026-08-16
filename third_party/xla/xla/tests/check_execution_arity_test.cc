@@ -36,7 +36,7 @@ using ::testing::ContainsRegex;
 
 class CheckExecutionArityTest
     : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {};
+          HloPjRtInterpreterReferenceMixin<HloTestBase>> {};
 
 TEST_F(CheckExecutionArityTest, TwoParamComputationNumArguments) {
   XlaBuilder builder("add_two_params");

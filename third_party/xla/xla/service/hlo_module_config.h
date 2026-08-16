@@ -216,18 +216,6 @@ class HloModuleConfig {
     return auto_spmd_partitioning_mesh_ids_;
   }
 
-  void set_exec_time_optimization_effort(float exec_time_optimization_effort) {
-    exec_time_optimization_effort_ = exec_time_optimization_effort;
-  }
-  float exec_time_optimization_effort() const {
-    return exec_time_optimization_effort_;
-  }
-
-  void set_memory_fitting_effort(float memory_fitting_effort) {
-    memory_fitting_effort_ = memory_fitting_effort;
-  }
-  float memory_fitting_effort() const { return memory_fitting_effort_; }
-
   void set_optimization_level(
       ExecutionOptions::EffortLevel optimization_level) {
     optimization_level_ = optimization_level;
@@ -427,6 +415,7 @@ class HloModuleConfig {
   void SetAnalysisAllowance(absl::string_view pass_name, int64_t allowance) {
     analysis_allowance_map_[pass_name] = allowance;
   }
+  void clear_analysis_allowance_map() { analysis_allowance_map_.clear(); }
 
   PrecisionConfig::Precision matrix_unit_operand_precision() const {
     return matrix_unit_operand_precision_;
@@ -464,6 +453,17 @@ class HloModuleConfig {
     return !use_spmd_partitioning_;
   }
 
+  // Page size in kibibytes for usage in multi-page buffer assignment and/or
+  // lowering.
+  int64_t page_size_kib() const { return page_size_kib_; }
+
+  // Sets the page size in kibibytes for usage in multi-page buffer
+  // assignment and/or lowering. A value of 0 means no multi-page buffer
+  // assignment and/or lowering will take place.
+  void set_page_size_kib(int64_t page_size_kib) {
+    page_size_kib_ = page_size_kib;
+  }
+
  private:
   // If you add new members, be sure to update compilation_cache_key and the
   // HloModuleConfigProto.
@@ -496,24 +496,6 @@ class HloModuleConfig {
   std::vector<int64_t> auto_spmd_partitioning_mesh_shape_;
 
   std::vector<int64_t> auto_spmd_partitioning_mesh_ids_;
-
-  // The amount of effort to spend on optimizing for minimizing program
-  // execution time, as a value in [-1.0, +1.0]. The baseline is 0.0, which
-  // strongly prioritizes execution time at the cost of longer compile times,
-  // suitable for production workloads. A value of -0.5 would be appropriate for
-  // research use cases that prefer faster compilations to iterate more quickly.
-  // Positive values, on the other hand, might enable costly optimizations that
-  // are off by default.
-  float exec_time_optimization_effort_ = 0.0f;
-
-  // The amount of effort to spend on making the program fit in memory (where
-  // "fit in memory" here has a backend-dependent meaning), as a value in [-1.0,
-  // +1.0]. The baseline is 0.0, which expends significant effort on attempting
-  // to make the program fit. A value of -1.0 would be appropriate for use cases
-  // that wish to spend minimal effort here and fail as quickly as possible
-  // instead. Positive values, on the other hand, might enable costly algorithms
-  // to reduce memory usage that are off by default.
-  float memory_fitting_effort_ = 0.0f;
 
   // The amount of effort to spend on optimizing for minimizing program
   // execution time. As a general guideline, O2 strongly prioritizes execution
@@ -641,6 +623,12 @@ class HloModuleConfig {
   // Schedule configuration, where schedule_config_.sequence is the sequence of
   // instructions to be scheduled.
   ScheduleConfig schedule_config_;
+
+  // Page size in kibibytes for usage in multi-page buffer assignment. A value
+  // of 0 means no multi-page buffer assignment and/or lowering will take place.
+  // Pages are subdivisions of the shared memory space, with the constraint that
+  // a buffer will never cross a page boundary.
+  int64_t page_size_kib_ = 0;
 
   // LINT.ThenChange(//tensorflow/compiler/xla/xla.proto)
 };

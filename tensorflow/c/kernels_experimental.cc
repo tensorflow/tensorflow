@@ -16,21 +16,44 @@ limitations under the License.
 #include "tensorflow/c/kernels_experimental.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/c/c_api.h"
+#include "tensorflow/c/kernels.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_status_internal.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tensor_internal.h"
+#include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/control_flow.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/ref_var.h"
+#include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/strcat.h"
 
 #ifndef IS_MOBILE_PLATFORM
 #include "tensorflow/core/kernels/data/optional_ops_util.h"
@@ -40,9 +63,9 @@ limitations under the License.
 #include "tensorflow/core/platform/abi.h"
 #endif  // IS_MOBILE_PLATFORM
 
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
+#include "tsl/platform/mutex.h"
 
 using tensorflow::AllocatorAttributes;
 using tensorflow::mutex_lock;
@@ -52,7 +75,6 @@ using tensorflow::Tensor;
 using tensorflow::TF_TensorFromTensor;
 using tensorflow::Var;
 using tensorflow::Variant;
-using tensorflow::errors::InvalidArgument;
 
 struct TF_VariableInputLockHolder {
   TF_VariableInputLockHolder(
@@ -300,7 +322,7 @@ void TF_AssignUpdateVariable(TF_OpKernelContext* ctx, int input_index,
 
 struct TmpVar : public ResourceBase {
   tensorflow::mutex mu;
-  Tensor val;
+  Tensor val ABSL_GUARDED_BY(mu);
   std::string name;
   std::string DebugString() const override { return name; }
   ~TmpVar() override { VLOG(3) << "TmpVar " << name << " deleted"; }
@@ -332,8 +354,12 @@ void TF_TemporaryVariable(TF_OpKernelContext* ctx, TF_DataType dtype,
   OP_REQUIRES(context, rm,
               absl::InternalError("No per-step resource manager."));
 
+  std::string name_str;
+  if (var_name != nullptr && var_name->data != nullptr) {
+    name_str = std::string(var_name->data, var_name->len);
+  }
   std::string unique_name =
-      TemporaryVariableName(var_name->data, context->frame_iter());
+      TemporaryVariableName(name_str, context->frame_iter());
   auto* tmp_var = new TmpVar;
   OP_REQUIRES(context, tmp_var,
               absl::ResourceExhaustedError("Could not allocate TmpVar."));
@@ -341,19 +367,26 @@ void TF_TemporaryVariable(TF_OpKernelContext* ctx, TF_DataType dtype,
 
   Status s;
   std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> tmp_var_tf(
-      tensorflow::TF_TensorFromTensor(tmp_var->val, &s), TF_DeleteTensor);
+      nullptr, TF_DeleteTensor);
+  {
+    mutex_lock l(tmp_var->mu);
+    tmp_var_tf.reset(tensorflow::TF_TensorFromTensor(tmp_var->val, &s));
+  }
   OP_REQUIRES_OK(context, s);
   allocFunc(ctx, tmp_var_tf.get(), dtype, dims, num_dims, tf_status);
   s = tensorflow::StatusFromTF_Status(tf_status);
   if (!s.ok()) tmp_var->Unref();
   OP_REQUIRES_OK(context, s);
 
-  OP_REQUIRES_OK(context, TF_TensorToTensor(tmp_var_tf.get(), &tmp_var->val));
+  {
+    mutex_lock l(tmp_var->mu);
+    OP_REQUIRES_OK(context, TF_TensorToTensor(tmp_var_tf.get(), &tmp_var->val));
+  }
   OP_REQUIRES_OK(context,
                  context->step_container()->Create(rm, unique_name, tmp_var));
   context->set_output_ref(0, &tmp_var->mu, &tmp_var->val);
-
   if (context->track_allocations()) {
+    mutex_lock l(tmp_var->mu);
     context->record_persistent_memory_allocation(tmp_var->val.AllocatedBytes());
   }
 
@@ -364,19 +397,28 @@ void TF_DestroyTemporaryVariable(TF_OpKernelContext* ctx, const int index,
                                  TF_StringView* var_name,
                                  TF_Status* tf_status) {
   auto* context = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
-  if (!IsRefType(context->input_dtype(0))) {
+  if (index < 0 || index >= context->num_inputs()) {
+    tf_status->status = absl::InvalidArgumentError(
+        "TF_DestroyTemporaryVariable index out of bounds");
+    return;
+  }
+  if (!IsRefType(context->input_dtype(index))) {
     tf_status->status = absl::InvalidArgumentError(
         "TF_DestroyTemporaryVariable requires input is ref");
     return;
   }
-  Tensor tmpvar = context->mutable_input(0, false);
+  Tensor tmpvar = context->mutable_input(index, false);
   context->set_output(0, tmpvar);
 
   tensorflow::ResourceMgr* rm = context->resource_manager();
   OP_REQUIRES(context, rm,
               absl::InternalError("No per-step resource manager."));
+  std::string name_str;
+  if (var_name != nullptr && var_name->data != nullptr) {
+    name_str = std::string(var_name->data, var_name->len);
+  }
   std::string unique_name =
-      TemporaryVariableName(var_name->data, context->frame_iter());
+      TemporaryVariableName(name_str, context->frame_iter());
   OP_REQUIRES_OK(context,
                  context->step_container()->Delete<TmpVar>(rm, unique_name));
 
@@ -416,7 +458,7 @@ void TF_MaybeLockVariableInputMutexesInOrder(
     tensorflow::mutex* mutex = GetTrainingVariableMutex(ctx, input, &var);
     if (var) vars.push_back(var);
     // Only lock each mutex once if duplicates exist (n^2 but n is 2 or 3).
-    if (std::find(mutexes.begin(), mutexes.end(), mutex) == mutexes.end()) {
+    if (absl::c_find(mutexes, mutex) == mutexes.end()) {
       acquire_order.push_back(mutexes.size());
       mutexes.push_back(mutex);
     }
@@ -506,6 +548,7 @@ void TF_OpKernelContext_ForwardRefInputToRefOutput(TF_OpKernelContext* ctx,
 void TF_ReleaseVariableInputLockHolder(TF_VariableInputLockHolder* lockHolder) {
   if (lockHolder != nullptr) {
     lockHolder->locks.reset();
+    lockHolder->shared_locks.reset();
     for (tensorflow::Var* var : lockHolder->vars) {
       var->Unref();
     }
@@ -598,42 +641,47 @@ static Status CCBinaryAddFunc(
     return absl::OkStatus();
   }
 
-  Status status;
-  TF_Tensor* a = TF_TensorFromTensor(cc_a, &status);
-  TF_RETURN_IF_ERROR(status);
-
-  TF_Tensor* b = TF_TensorFromTensor(cc_b, &status);
-  if (!status.ok()) {
-    TF_DeleteTensor(a);
-    return status;
-  }
-
   ::tensorflow::AllocatorAttributes attr;
   if (cc_a.dtype() == ::tensorflow::DT_VARIANT) {
     attr.set_on_host(true);
   }
 
-  status = cc_ctx->allocate_temp(cc_a.dtype(), cc_a.shape(), cc_out, attr);
-  if (!status.ok()) {
-    TF_DeleteTensor(a);
-    TF_DeleteTensor(b);
-    return status;
-  }
+  Status status =
+      cc_ctx->allocate_temp(cc_a.dtype(), cc_a.shape(), cc_out, attr);
+  TF_RETURN_IF_ERROR(status);
 
-  TF_Tensor* out = TF_TensorFromTensor(*cc_out, &status);
-  if (!status.ok()) {
-    TF_DeleteTensor(a);
-    TF_DeleteTensor(b);
-    return status;
-  }
-
-  auto* ctx = reinterpret_cast<TF_OpKernelContext*>(cc_ctx);
   if (cc_a.dtype() == ::tensorflow::DT_VARIANT) {
     return VariantBinaryAddFunc(
         cc_ctx, cc_a.scalar<Variant>()(), cc_b.scalar<Variant>()(),
         cc_out->scalar<Variant>().data(), binary_add_func);
   } else {
+    TF_Tensor* a = TF_TensorFromTensor(cc_a, &status);
+    if (!status.ok()) {
+      TF_DeleteTensor(a);
+      return status;
+    }
+
+    TF_Tensor* b = TF_TensorFromTensor(cc_b, &status);
+    if (!status.ok()) {
+      TF_DeleteTensor(a);
+      TF_DeleteTensor(b);
+      return status;
+    }
+
+    TF_Tensor* out = TF_TensorFromTensor(*cc_out, &status);
+    if (!status.ok()) {
+      TF_DeleteTensor(a);
+      TF_DeleteTensor(b);
+      TF_DeleteTensor(out);
+      return status;
+    }
+
+    auto* ctx = reinterpret_cast<TF_OpKernelContext*>(cc_ctx);
     binary_add_func(ctx, a, b, out);
+
+    TF_DeleteTensor(a);
+    TF_DeleteTensor(b);
+    TF_DeleteTensor(out);
     return cc_ctx->status();
   }
 }
@@ -737,16 +785,23 @@ static Status ZerosLikeVariant(::tensorflow::OpKernelContext* cc_ctx,
       default: {
         Status status;
         TF_Tensor* input = TF_TensorFromTensor(cc_input, &status);
-        TF_RETURN_IF_ERROR(status);
-
-        TF_Tensor* out = TF_TensorFromTensor(*cc_out, &status);
         if (!status.ok()) {
           TF_DeleteTensor(input);
           return status;
         }
 
+        TF_Tensor* out = TF_TensorFromTensor(*cc_out, &status);
+        if (!status.ok()) {
+          TF_DeleteTensor(input);
+          TF_DeleteTensor(out);
+          return status;
+        }
+
         auto* ctx = reinterpret_cast<TF_OpKernelContext*>(cc_ctx);
         zeros_like_func(ctx, input, out);
+
+        TF_DeleteTensor(input);
+        TF_DeleteTensor(out);
       }
     }
     return cc_ctx->status();

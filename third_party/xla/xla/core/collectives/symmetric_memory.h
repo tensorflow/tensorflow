@@ -46,7 +46,12 @@ class SymmetricMemory {
     return absl::UnimplementedError("Multimem not supported");
   }
 
-  // Returns an address of the symmetrical memory on a peer device.
+  // Returns an address of the symmetric memory on a peer device.
+  //
+  // The rank argument is in the same rank space as the collective clique that
+  // created this memory. Backends are responsible for translating it to any
+  // backend-local rank space needed by their memory access API.
+  //
   // Useful for clients who need to pass peer addresses directly as a kernel
   // arguments instead of calculating a peer address from the kernel itself.
   virtual absl::StatusOr<stream_executor::DeviceAddressBase> peer_addr(

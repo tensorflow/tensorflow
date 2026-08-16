@@ -106,7 +106,7 @@ void AddNegativeValuesMaybeRemoveZero(std::vector<T>& values) {
 
 class ArrayElementwiseOpTest
     : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+          HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  public:
   static constexpr float kEpsF32 = std::numeric_limits<float>::epsilon();
   static constexpr double kEpsF64 = std::numeric_limits<double>::epsilon();
@@ -1342,7 +1342,7 @@ TEST_F(ArrayElementwiseOpTest, CompareEqF32s) {
 
 template <typename T>
 class TotalOrderTest : public ClientLibraryTestRunnerMixin<
-                           HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+                           HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  public:
   void DoIt(ComparisonDirection direction) {
     this->SetFastMathDisabled(true);
@@ -2800,6 +2800,26 @@ TEST_F(ArrayElementwiseOpTest, Atan2C64s) {
   Atan2(y, x);
 
   ComputeAndCompare(&builder, {}, error_spec_);
+}
+
+// Regression test for https://github.com/openxla/xla/issues/44705. The two
+// compares are distinct instructions (as emitted by the frontend in the
+// issue, before CSE), their xor is always false, and the converted zeros
+// only become constants during compilation; atan2(0, 0) must still be 0,
+// not NaN.
+TEST_F(ArrayElementwiseOpTest, Atan2ZerosFromXorSelf) {
+  XlaBuilder builder(TestName());
+  XlaOp a;
+  auto a_data =
+      CreateR1Parameter<int32_t>({0, 1, 2, 3, 4}, 0, "a", &builder, &a);
+  auto zero = Broadcast(ConstantR0<int32_t>(&builder, 0), {5});
+  auto ne1 = Ne(a, zero);
+  auto ne2 = Ne(a, zero);
+  auto zeros = ConvertElementType(Xor(ne1, ne2), F32);
+  Atan2(zeros, zeros);
+
+  ComputeAndCompareR1<float>(&builder, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+                             {&a_data}, error_spec_);
 }
 
 TEST_F(ArrayElementwiseOpTest, ErfF32s) {

@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -45,6 +44,18 @@ bool ShouldBeReplaced(const AsyncCollectiveReplacer::Config& config,
     return config.convert_all_gather(instruction);
   }
   if (instruction->opcode() == HloOpcode::kCollectivePermuteStart) {
+    return config.convert_collective_permute(instruction);
+  }
+  if (instruction->opcode() == HloOpcode::kAsyncStart &&
+      instruction->async_wrapped_opcode() == HloOpcode::kAllReduce) {
+    return config.convert_all_reduce(instruction);
+  }
+  if (instruction->opcode() == HloOpcode::kAsyncStart &&
+      instruction->async_wrapped_opcode() == HloOpcode::kAllGather) {
+    return config.convert_all_gather(instruction);
+  }
+  if (instruction->opcode() == HloOpcode::kAsyncStart &&
+      instruction->async_wrapped_opcode() == HloOpcode::kCollectivePermute) {
     return config.convert_collective_permute(instruction);
   }
   if (instruction->opcode() == HloOpcode::kAsyncStart &&
@@ -131,7 +142,7 @@ absl::StatusOr<bool> AsyncCollectiveReplacer::RunImpl(
     absl::flat_hash_set<HloInstruction*> removed;
     for (HloInstruction* control_dep : control_deps_to_remove) {
       if (!removed.contains(control_dep)) {
-        RETURN_IF_ERROR(computation->RemoveInstruction(control_dep));
+        ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(control_dep));
         removed.insert(control_dep);
       }
     }
@@ -144,7 +155,7 @@ absl::StatusOr<bool> AsyncCollectiveReplacer::RunImpl(
         VLOG(1) << "async done = " << done->ToString();
       }
     }
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         ConvertAsyncCollectivesToSync::ReplaceAsyncInstructionsWithSync(
             computation, async_pairs));
   }

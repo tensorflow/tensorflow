@@ -1,0 +1,73 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
+syntax = "proto3";
+
+package xla;
+
+import "xla/xla_data.proto";
+
+enum LogHloOutputKind {
+  LOG_HLO_OUTPUT_UNKNOWN = 0;
+  LOG_HLO_OUTPUT_DATA = 1;
+  LOG_HLO_OUTPUT_SUMMARY = 2;
+  LOG_HLO_OUTPUT_BLOCK_SUMMARY = 3;
+  LOG_HLO_DISTRIBUTED_HASH = 4;
+}
+
+enum LogHloScopeSection {
+  LOG_HLO_SCOPE_UNKNOWN = 0;
+  LOG_HLO_SCOPE_WHILE_COND = 1;
+  LOG_HLO_SCOPE_WHILE_BODY = 2;
+}
+
+// Represents a single HLO scope to be logged
+message LogHloScope {
+  // HLO instruction name
+  optional string instruction_name = 1;
+  // Denotes the iteration count for each while loop HLO op. The value will be
+  // known at runtime.
+  optional int32 it_count = 2;
+  // The section of the scope that this message belongs to (i.e. while condition
+  // vs. body).
+  optional LogHloScopeSection section = 3;
+  // The original value in the input HLO module this instruction corresponds to.
+  optional xla.OriginalValueProto original_value = 4;
+}
+
+message LogHloOutputMetadata {
+  repeated LogHloScope scopes = 1;
+  string module_name = 2;
+  int64 module_id = 3;
+  int64 run_id = 4;
+  repeated int64 shape_index = 5;
+  string instruction_name = 6;
+  LogHloOutputKind kind = 7;
+  OriginalValueProto original_value = 8;
+  string user_tag = 9;
+
+  message DimSplitSpecProto {
+    int64 dim_index = 1;
+    int64 block_count = 2;
+  }
+  repeated DimSplitSpecProto dim_split_spec = 10;
+}
+
+message LogData {
+  // Field numbers are kept wire-compatible with legacy internal LogData
+  // for migration purposes if needed.
+  xla.LiteralProto literal = 2;
+  LogHloOutputMetadata hlo_output_metadata = 5;
+}

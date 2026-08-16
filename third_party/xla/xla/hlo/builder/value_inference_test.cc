@@ -20,9 +20,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/lib/prng.h"
@@ -52,16 +52,16 @@ class DynamismInferenceTest : public ValueInferenceTest {
  public:
   absl::StatusOr<Literal> ComputeDynamismLiteral(
       XlaOp operand, XlaBuilder* builder, Layout* output_layout = nullptr) {
-    RETURN_IF_ERROR(builder->first_error());
+    ABSL_RETURN_IF_ERROR(builder->first_error());
     ValueInference value_inference(builder);
-    ASSIGN_OR_RETURN(auto literal_slice,
+    ABSL_ASSIGN_OR_RETURN(auto literal_slice,
                      value_inference.AnalyzeIsDynamic(operand));
     return literal_slice.Clone();
   }
 
   absl::StatusOr<bool> ComputeDynamismScalar(XlaOp operand, XlaBuilder* builder,
                                              ShapeIndex index = {}) {
-    ASSIGN_OR_RETURN(auto literal,
+    ABSL_ASSIGN_OR_RETURN(auto literal,
                      ComputeDynamismLiteral(operand, builder, nullptr));
     return literal.Get<bool>({}, index);
   }
@@ -245,6 +245,73 @@ TEST_F(DynamismInferenceTest, GetDimensionSize) {
   auto tuple_2 = Tuple(&b, {gds0, gds1});
   EXPECT_EQ(ComputeDynamismScalar(tuple_2, &b, {0}).value(), true);
   EXPECT_EQ(ComputeDynamismScalar(tuple_2, &b, {1}).value(), false);
+}
+
+TEST_F(DynamismInferenceTest, UnknownCustomCallIsConservativelyDynamic) {
+  XlaBuilder b(TestName());
+  auto p = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {2}), "p0");
+  auto cc =
+      CustomCall(&b, "UnknownTarget", {p}, ShapeUtil::MakeShape(F32, {2}));
+  auto value = ComputeDynamismLiteral(cc, &b);
+  ASSERT_TRUE(value.ok()) << value.status();
+  EXPECT_TRUE(value.value().Get<bool>({0}));
+  EXPECT_TRUE(value.value().Get<bool>({1}));
+}
+
+TEST_F(DynamismInferenceTest, QrCustomCallsAreConservativelyDynamic) {
+  // Mirrors https://github.com/openxla/xla/issues/45839: value inference is
+  // asked whether a reduction of XLA's own QR decomposition (lowered to the
+  // "Qr" and "ProductOfElementaryHouseholderReflectors" custom calls) is
+  // dynamic. It must answer "dynamic" instead of erroring out.
+  XlaBuilder b(TestName());
+  auto p = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {3, 32, 32}), "p0");
+  Shape qr_shape =
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {3, 32, 32}),
+                                 ShapeUtil::MakeShape(F32, {3, 32})});
+  auto qr = CustomCall(&b, "Qr", {p}, qr_shape);
+  auto q_and_r = GetTupleElement(qr, 0);
+  auto taus = GetTupleElement(qr, 1);
+  auto q = CustomCall(&b, "ProductOfElementaryHouseholderReflectors",
+                      {q_and_r, taus}, ShapeUtil::MakeShape(F32, {3, 32, 32}));
+  auto max = Reduce(q, ConstantR0<float>(&b, 0),
+                    CreateScalarMaxComputation(F32, &b), {0, 1, 2});
+  auto value = ComputeDynamismScalar(max, &b);
+  ASSERT_TRUE(value.ok()) << value.status();
+  EXPECT_TRUE(value.value());
+  // The tuple-shaped custom call, queried directly and through a
+  // get-tuple-element (non-empty shape index).
+  auto qr_dynamism = ComputeDynamismLiteral(qr, &b);
+  ASSERT_TRUE(qr_dynamism.ok()) << qr_dynamism.status();
+  EXPECT_TRUE(qr_dynamism.value().Get<bool>({0, 0, 0}, {0}));
+  EXPECT_TRUE(qr_dynamism.value().Get<bool>({0, 0}, {1}));
+  auto taus_dynamism = ComputeDynamismLiteral(taus, &b);
+  ASSERT_TRUE(taus_dynamism.ok()) << taus_dynamism.status();
+  EXPECT_TRUE(taus_dynamism.value().Get<bool>({0, 0}));
+}
+
+TEST_F(DynamismInferenceTest, AnalyzeConstantOnCustomCallReportsUnknown) {
+  // AnalyzeConstant must report "unknown value" (fully masked) for opaque
+  // custom calls instead of erroring, in every mode. This is the query
+  // tf2xla's compile-time-constant resolution makes.
+  XlaBuilder b(TestName());
+  auto p = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {3, 32, 32}), "p0");
+  Shape qr_shape =
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {3, 32, 32}),
+                                 ShapeUtil::MakeShape(F32, {3, 32})});
+  auto qr = CustomCall(&b, "Qr", {p}, qr_shape);
+  auto q_and_r = GetTupleElement(qr, 0);
+  auto taus = GetTupleElement(qr, 1);
+  auto q = CustomCall(&b, "ProductOfElementaryHouseholderReflectors",
+                      {q_and_r, taus}, ShapeUtil::MakeShape(F32, {3, 32, 32}));
+  auto max = Reduce(q, ConstantR0<float>(&b, 0),
+                    CreateScalarMaxComputation(F32, &b), {0, 1, 2});
+  for (auto mode : {ValueInferenceMode::kValue, ValueInferenceMode::kUpperBound,
+                    ValueInferenceMode::kLowerBound}) {
+    ValueInference value_inference(&b);
+    auto result = value_inference.AnalyzeConstant(max, mode);
+    ASSERT_TRUE(result.ok()) << result.status();
+    EXPECT_FALSE(result.value().GetValue().has_value());
+  }
 }
 
 TEST_F(DynamismInferenceTest, DynamicSliceWithConstantOperands) {
@@ -550,7 +617,7 @@ class UpperBoundInferenceTest : public ValueInferenceTest {
   absl::StatusOr<OptionalLiteral> ComputeUpperBoundLiteral(
       XlaOp operand, XlaBuilder* builder, Layout* output_layout = nullptr) {
     ValueInference value_inference(builder);
-    ASSIGN_OR_RETURN(auto literal,
+    ABSL_ASSIGN_OR_RETURN(auto literal,
                      value_inference.AnalyzeConstant(
                          operand, ValueInferenceMode::kUpperBound));
     return literal;
@@ -702,7 +769,7 @@ class ConstValueInferenceTest : public ValueInferenceTest {
   absl::StatusOr<OptionalLiteral> ComputeConstantValueLiteral(
       XlaOp operand, XlaBuilder* builder, Layout* output_layout = nullptr) {
     ValueInference value_inference(builder);
-    ASSIGN_OR_RETURN(auto literal, value_inference.AnalyzeConstant(
+    ABSL_ASSIGN_OR_RETURN(auto literal, value_inference.AnalyzeConstant(
                                        operand, ValueInferenceMode::kValue));
     return literal;
   }

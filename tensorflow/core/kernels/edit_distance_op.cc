@@ -43,64 +43,64 @@ absl::Status ValidateShapes(OpKernelContext* ctx,
                             const Tensor& truth_values,
                             const Tensor& truth_shape) {
   if (!TensorShapeUtils::IsMatrix(hypothesis_indices.shape()))
-    return errors::InvalidArgument(
-        "hypothesis_indices should be a matrix, but got shape: ",
-        hypothesis_indices.shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("hypothesis_indices should be a matrix, but got shape: ",
+                     hypothesis_indices.shape().DebugString()));
   if (!TensorShapeUtils::IsMatrix(truth_indices.shape()))
-    return errors::InvalidArgument(
-        "truth_indices should be a matrix, but got shape: ",
-        truth_indices.shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("truth_indices should be a matrix, but got shape: ",
+                     truth_indices.shape().DebugString()));
   if (!TensorShapeUtils::IsVector(hypothesis_values.shape()))
-    return errors::InvalidArgument(
-        "hypothesis_values should be a vector, but got shape: ",
-        hypothesis_values.shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("hypothesis_values should be a vector, but got shape: ",
+                     hypothesis_values.shape().DebugString()));
   if (!TensorShapeUtils::IsVector(truth_values.shape()))
-    return errors::InvalidArgument(
-        "truth_values should be a vector, but got shape: ",
-        truth_values.shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("truth_values should be a vector, but got shape: ",
+                     truth_values.shape().DebugString()));
   if (!TensorShapeUtils::IsVector(hypothesis_shape.shape()))
-    return errors::InvalidArgument(
-        "hypothesis_shape should be a vector, but got shape: ",
-        hypothesis_shape.shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("hypothesis_shape should be a vector, but got shape: ",
+                     hypothesis_shape.shape().DebugString()));
   if (!TensorShapeUtils::IsVector(truth_shape.shape()))
-    return errors::InvalidArgument(
-        "truth_shape should be a vector, but got shape: ",
-        truth_shape.shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("truth_shape should be a vector, but got shape: ",
+                     truth_shape.shape().DebugString()));
   if (hypothesis_values.NumElements() != hypothesis_indices.dim_size(0))
-    return errors::InvalidArgument(
-        "Expected hypothesis_values.NumElements == "
-        "#rows(hypothesis_indices), their shapes are: ",
-        hypothesis_values.shape().DebugString(), " and ",
-        hypothesis_indices.shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected hypothesis_values.NumElements == "
+                     "#rows(hypothesis_indices), their shapes are: ",
+                     hypothesis_values.shape().DebugString(), " and ",
+                     hypothesis_indices.shape().DebugString()));
   if (hypothesis_shape.NumElements() != hypothesis_indices.dim_size(1))
-    return errors::InvalidArgument(
-        "Expected hypothesis_shape.NumElements == "
-        "#cols(hypothesis_indices), their shapes are: ",
-        hypothesis_shape.shape().DebugString(), " and ",
-        hypothesis_indices.shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected hypothesis_shape.NumElements == "
+                     "#cols(hypothesis_indices), their shapes are: ",
+                     hypothesis_shape.shape().DebugString(), " and ",
+                     hypothesis_indices.shape().DebugString()));
   if (truth_shape.NumElements() < 2)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Input SparseTensors must have rank at least 2, but truth_shape "
         "rank is: ",
-        truth_shape.NumElements());
+        truth_shape.NumElements()));
   if (truth_values.NumElements() != truth_indices.dim_size(0))
-    return errors::InvalidArgument(
-        "Expected truth_values.NumElements == "
-        "#rows(truth_indices), their shapes are: ",
-        truth_values.shape().DebugString(), " and ",
-        truth_indices.shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected truth_values.NumElements == "
+                     "#rows(truth_indices), their shapes are: ",
+                     truth_values.shape().DebugString(), " and ",
+                     truth_indices.shape().DebugString()));
   if (truth_shape.NumElements() != truth_indices.dim_size(1))
-    return errors::InvalidArgument(
-        "Expected truth_shape.NumElements == "
-        "#cols(truth_indices), their shapes are: ",
-        truth_shape.shape().DebugString(), " and ",
-        truth_indices.shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected truth_shape.NumElements == "
+                     "#cols(truth_indices), their shapes are: ",
+                     truth_shape.shape().DebugString(), " and ",
+                     truth_indices.shape().DebugString()));
   if (truth_shape.NumElements() != hypothesis_shape.NumElements())
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Expected truth and hypothesis to have matching ranks, but "
         "their shapes are: ",
         truth_shape.shape().DebugString(), " and ",
-        hypothesis_shape.shape().DebugString());
+        hypothesis_shape.shape().DebugString()));
 
   return absl::OkStatus();
 }
@@ -169,10 +169,10 @@ class EditDistanceOp : public OpKernel {
                                        truth_st_shape.dim_size(d))));
     }
     const auto output_elements = output_shape.num_elements();
-    OP_REQUIRES(
-        ctx, output_elements > 0,
-        errors::InvalidArgument("Got output shape ", output_shape.DebugString(),
-                                " which has 0 elements"));
+    OP_REQUIRES(ctx, output_elements > 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Got output shape ", output_shape.DebugString(),
+                    " which has 0 elements")));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output("output", output_shape, &output));
@@ -205,12 +205,12 @@ class EditDistanceOp : public OpKernel {
       if (g_truth == g_hypothesis) {
         auto loc = std::inner_product(g_truth.begin(), g_truth.end(),
                                       output_strides.begin(), int64_t{0});
-        OP_REQUIRES(
-            ctx, 0 <= loc && loc < output_elements,
-            errors::Internal("Got an inner product ", loc,
-                             " which would require writing to outside of "
-                             "the buffer for the output tensor (max elements ",
-                             output_elements, ")"));
+        OP_REQUIRES(ctx, 0 <= loc && loc < output_elements,
+                    absl::InternalError(absl::StrCat(
+                        "Got an inner product ", loc,
+                        " which would require writing to outside of "
+                        "the buffer for the output tensor (max elements ",
+                        output_elements, ")")));
         output_t(loc) =
             gtl::LevenshteinDistance<T>(truth_seq, hypothesis_seq, cmp);
         if (normalize_) output_t(loc) /= truth_seq.size();
@@ -220,12 +220,12 @@ class EditDistanceOp : public OpKernel {
       } else if (g_truth > g_hypothesis) {  // zero-length truth
         auto loc = std::inner_product(g_hypothesis.begin(), g_hypothesis.end(),
                                       output_strides.begin(), int64_t{0});
-        OP_REQUIRES(
-            ctx, 0 <= loc && loc < output_elements,
-            errors::Internal("Got an inner product ", loc,
-                             " which would require writing to outside of "
-                             "the buffer for the output tensor (max elements ",
-                             output_elements, ")"));
+        OP_REQUIRES(ctx, 0 <= loc && loc < output_elements,
+                    absl::InternalError(absl::StrCat(
+                        "Got an inner product ", loc,
+                        " which would require writing to outside of "
+                        "the buffer for the output tensor (max elements ",
+                        output_elements, ")")));
         output_t(loc) = hypothesis_seq.size();
         if (normalize_ && output_t(loc) != 0.0f) {
           output_t(loc) = std::numeric_limits<float>::infinity();
@@ -234,12 +234,12 @@ class EditDistanceOp : public OpKernel {
       } else {  // zero-length hypothesis
         auto loc = std::inner_product(g_truth.begin(), g_truth.end(),
                                       output_strides.begin(), int64_t{0});
-        OP_REQUIRES(
-            ctx, 0 <= loc && loc < output_elements,
-            errors::Internal("Got an inner product ", loc,
-                             " which would require writing to outside of "
-                             "the buffer for the output tensor (max elements ",
-                             output_elements, ")"));
+        OP_REQUIRES(ctx, 0 <= loc && loc < output_elements,
+                    absl::InternalError(absl::StrCat(
+                        "Got an inner product ", loc,
+                        " which would require writing to outside of "
+                        "the buffer for the output tensor (max elements ",
+                        output_elements, ")")));
         output_t(loc) = (normalize_) ? 1.0 : truth_seq.size();
         ++truth_iter;
       }
@@ -250,12 +250,12 @@ class EditDistanceOp : public OpKernel {
       auto hypothesis_seq = hypothesis_j.values<T>();
       auto loc = std::inner_product(g_hypothesis.begin(), g_hypothesis.end(),
                                     output_strides.begin(), int64_t{0});
-      OP_REQUIRES(
-          ctx, 0 <= loc && loc < output_elements,
-          errors::Internal("Got an inner product ", loc,
-                           " which would require writing to outside of the "
-                           "buffer for the output tensor (max elements ",
-                           output_elements, ")"));
+      OP_REQUIRES(ctx, 0 <= loc && loc < output_elements,
+                  absl::InternalError(absl::StrCat(
+                      "Got an inner product ", loc,
+                      " which would require writing to outside of the "
+                      "buffer for the output tensor (max elements ",
+                      output_elements, ")")));
       output_t(loc) = hypothesis_seq.size();
       if (normalize_ && output_t(loc) != 0.0f) {
         output_t(loc) = std::numeric_limits<float>::infinity();
@@ -268,12 +268,12 @@ class EditDistanceOp : public OpKernel {
       auto truth_seq = truth_i.values<T>();
       auto loc = std::inner_product(g_truth.begin(), g_truth.end(),
                                     output_strides.begin(), int64_t{0});
-      OP_REQUIRES(
-          ctx, 0 <= loc && loc < output_elements,
-          errors::Internal("Got an inner product ", loc,
-                           " which would require writing to outside of the "
-                           "buffer for the output tensor (max elements ",
-                           output_elements, ")"));
+      OP_REQUIRES(ctx, 0 <= loc && loc < output_elements,
+                  absl::InternalError(absl::StrCat(
+                      "Got an inner product ", loc,
+                      " which would require writing to outside of the "
+                      "buffer for the output tensor (max elements ",
+                      output_elements, ")")));
       output_t(loc) = (normalize_) ? 1.0 : truth_seq.size();
       ++truth_iter;
     }

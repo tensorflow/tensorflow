@@ -37,8 +37,24 @@ class TiledHloInstruction;
 
 // A region is a collection of instructions grouped to represent a nested
 // control flow (e.g., loops) or a distinct computation branch.
-class TiledHloRegion
-    : public std::vector<std::unique_ptr<TiledHloInstruction>> {};
+class TiledHloRegion {
+ public:
+  TiledHloRegion() = default;
+  TiledHloRegion(TiledHloRegion&&) = default;
+  TiledHloRegion& operator=(TiledHloRegion&&) = default;
+
+  explicit TiledHloRegion(
+      std::vector<std::unique_ptr<TiledHloInstruction>> instructions)
+      : instructions_(std::move(instructions)) {}
+
+  const std::vector<std::unique_ptr<TiledHloInstruction>>& instructions()
+      const {
+    return instructions_;
+  }
+
+ private:
+  std::vector<std::unique_ptr<TiledHloInstruction>> instructions_;
+};
 
 // A wrapper around HloInstruction that represents a tiled HLO instruction.
 //

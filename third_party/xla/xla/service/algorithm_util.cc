@@ -22,8 +22,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -142,6 +145,43 @@ absl::StatusOr<PrimitiveType> GetDotAccumulatorType(
   }
 }
 
+absl::StatusOr<PrimitiveType> GetDefaultGemmAlgorithmAccumulatorType(
+    const HloInstruction* dot) {
+  TF_RET_CHECK(dot != nullptr);
+  TF_RET_CHECK(dot->opcode() == HloOpcode::kDot);
+
+  PrimitiveType lhs_type = dot->operand(0)->shape().element_type();
+  PrimitiveType rhs_type = dot->operand(1)->shape().element_type();
+  PrimitiveType output_type = dot->shape().element_type();
+
+  if (primitive_util::IsF8Type(lhs_type) &&
+      primitive_util::IsF8Type(rhs_type)) {
+    return F32;
+  }
+
+  if ((lhs_type == S8 || lhs_type == U8) &&
+      (rhs_type == S8 || rhs_type == U8) &&
+      (output_type == S32 || output_type == U32)) {
+    return S32;
+  }
+
+  if (lhs_type == F64 && output_type == F64) {
+    return F64;
+  }
+
+  return F32;
+}
+
+absl::StatusOr<PrimitiveType> GetDotAccumulatorType(const HloInstruction* dot) {
+  TF_RET_CHECK(dot != nullptr);
+  TF_RET_CHECK(dot->opcode() == HloOpcode::kDot);
+
+  if (dot->precision_config().algorithm() == PrecisionConfig::ALG_UNSET) {
+    return GetDefaultGemmAlgorithmAccumulatorType(dot);
+  }
+  return GetDotAccumulatorType(dot->precision_config().algorithm());
+}
+
 bool HasTf32InputType(PrecisionConfig::Algorithm algorithm) {
   return algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32 ||
          algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3;
@@ -206,6 +246,7 @@ bool IsSupportedByCudnn(PrecisionConfig::Algorithm algorithm) {
 bool IsSupportedByElementalIrEmitter(PrecisionConfig::Algorithm algorithm) {
   switch (algorithm) {
     // Probably more can be added.
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
     case PrecisionConfig::ALG_DOT_F32_F32_F32:
     case PrecisionConfig::ALG_UNSET:
       return true;
@@ -238,6 +279,8 @@ bool IsSupportedDotAlgorithmOnGpu(
                             gpu_compute_capability.rocm_compute_capability()
                                 ->has_bf16_dtype_support();
 
+  const bool is_sycl = gpu_compute_capability.IsOneAPI();
+
   switch (algorithm) {
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32:
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM:
@@ -263,7 +306,7 @@ bool IsSupportedDotAlgorithmOnGpu(
       return lhs_storage_type == rhs_storage_type && lhs_storage_type == F16 &&
              (output_storage_type == F16 || output_storage_type == F32);
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
-      if (!is_cuda_ge_ampere && !is_rocm_bf16) {
+      if (!is_cuda_ge_ampere && !is_rocm_bf16 && !is_sycl) {
         return false;
       }
       if (lhs_storage_type != rhs_storage_type) {
@@ -280,7 +323,7 @@ bool IsSupportedDotAlgorithmOnGpu(
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
-      return (is_cuda_ge_ampere || is_rocm_bf16) &&
+      return (is_cuda_ge_ampere || is_rocm_bf16 || is_sycl) &&
              lhs_storage_type == rhs_storage_type && lhs_storage_type == F32 &&
              output_storage_type == F32;
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
@@ -299,5 +342,15 @@ bool IsSupportedDotAlgorithmOnGpu(
   }
 }
 
+bool IsBf16ToF32AlgorithmRequested(const HloInstruction* instr) {
+  return instr->precision_config().algorithm() ==
+             PrecisionConfig::ALG_DOT_BF16_BF16_F32 &&
+         instr->operand_count() >= 2 &&
+         instr->operand(0)->shape().element_type() == F32 &&
+         instr->operand(1)->shape().element_type() == F32 &&
+         instr->shape().element_type() == F32;
+}
+
 }  // namespace algorithm_util
+
 }  // namespace xla

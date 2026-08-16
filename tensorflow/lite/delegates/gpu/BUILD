@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_dylib")
@@ -79,7 +94,7 @@ config_setting(
 )
 
 config_setting(
-    name = "tflite_gpu_extra_gles_deps",
+    name = "tflite_gpu_extra_gles_deps_x86_64",
     constraint_values = [
         "@platforms//cpu:x86_64",
         "@platforms//os:linux",
@@ -87,6 +102,25 @@ config_setting(
     values = {
         "copt": "-DTFLITE_GPU_EXTRA_GLES_DEPS",
     },
+)
+
+config_setting(
+    name = "tflite_gpu_extra_gles_deps_aarch64",
+    constraint_values = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:linux",
+    ],
+    values = {
+        "copt": "-DTFLITE_GPU_EXTRA_GLES_DEPS",
+    },
+)
+
+selects.config_setting_group(
+    name = "tflite_gpu_extra_gles_deps",
+    match_any = [
+        ":tflite_gpu_extra_gles_deps_x86_64",
+        ":tflite_gpu_extra_gles_deps_aarch64",
+    ],
 )
 
 cc_library(

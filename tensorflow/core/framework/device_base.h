@@ -62,7 +62,7 @@ class TensorProto;
 // OpKernelContext::Params structure wants to fill it in.
 class PerOpGpuDevice {
  public:
-  virtual ~PerOpGpuDevice() {}
+  virtual ~PerOpGpuDevice() = default;
   virtual const Eigen::GpuDevice& device() const = 0;
 };
 
@@ -70,7 +70,7 @@ class PerOpGpuDevice {
 // Device-specific context to OpKernels.
 class DeviceContext : public core::RefCounted {
  public:
-  ~DeviceContext() override {}
+  ~DeviceContext() override = default;
   virtual stream_executor::Stream* stream() const { return nullptr; }
   virtual void MaintainLifetimeOnStream(const Tensor* t,
                                         stream_executor::Stream* stream) const {

@@ -52,6 +52,7 @@ using ::mlir::func::FuncOp;
 void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm,
                                    bool keepMeshesInlined,
                                    bool enableHloShardingV3) {
+  pm.addPass(mlir::createCanonicalizerPass());
   // Lift meshes before deduping, since the dedup meshes pass ignores inlined
   // meshes.
   if (!keepMeshesInlined) {

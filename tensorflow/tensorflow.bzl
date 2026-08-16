@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# =============================================================================
+
 """Provides build configuration for TensorFlow."""
 
 load("@rules_cc//cc:cc_library.bzl", _cc_library = "cc_library")
@@ -3405,7 +3420,7 @@ def tf_python_pybind_static_deps(testonly = False):
         "@clog//:__subpackages__",
         "@com_github_cares_cares//:__subpackages__",
         "@com_github_googlecloudplatform_tensorflow_gcp_tools//:__subpackages__",
-        "@com_github_grpc_grpc//:__subpackages__",
+        "@grpc//:__subpackages__",
         "@com_google_absl//:__subpackages__",
         "@com_google_googleapis//:__subpackages__",
         "@com_google_protobuf//:__subpackages__",
@@ -3438,7 +3453,7 @@ def tf_python_pybind_static_deps(testonly = False):
         "@local_config_tensorrt//:__subpackages__",
         "@mkl_dnn_acl_compatible//:__subpackages__",
         "@nccl_archive//:__subpackages__",
-        "@onednn//:__subpackages__",
+        "@onednn_async//:__subpackages__",
         "@org_sqlite//:__subpackages__",
         "@platforms//:__subpackages__",
         "@png//:__subpackages__",
@@ -3540,12 +3555,12 @@ def tf_monitoring_framework_deps(link_to_tensorflow_framework = True):
       Currently in OSS, the protos must be statically linked to the tensorflow
       framework, whereas the grpc should not be linked here.
     """
-    return select({
+    return if_oss(select({
         "//tensorflow:stackdriver_support": [
             "@com_github_googlecloudplatform_tensorflow_gcp_tools//monitoring:stackdriver_exporter_protos",
         ],
         "//conditions:default": [],
-    })
+    }))
 
 def tf_monitoring_python_deps():
     """Get the monitoring libs that will be linked to the python wrapper.
@@ -3553,12 +3568,12 @@ def tf_monitoring_python_deps():
       Currently in OSS, the grpc must be statically linked to the python wrapper
       whereas the protos should not be linked here.
     """
-    return select({
+    return if_oss(select({
         "//tensorflow:stackdriver_support": [
             "@com_github_googlecloudplatform_tensorflow_gcp_tools//monitoring:stackdriver_exporter",
         ],
         "//conditions:default": [],
-    })
+    }))
 
 # Teams sharing the same repo can provide their own ops_to_register.h file using
 # this function, and pass in -Ipath/to/repo flag when building the target.

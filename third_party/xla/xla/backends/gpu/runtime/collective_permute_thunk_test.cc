@@ -27,11 +27,12 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
@@ -134,7 +135,7 @@ class NoOpCollectivePermuteThunk : public CollectivePermuteThunk {
     se::DeviceAddressBase dst =
         execute_params.buffer_allocations->GetDeviceAddress(
             buffers()[0].destination_buffer.slice);
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<se::CommandBuffer> nested_cmd,
         se::TraceCommandBufferFactory::Create(
             execute_params.stream->parent(),
@@ -146,7 +147,7 @@ class NoOpCollectivePermuteThunk : public CollectivePermuteThunk {
                                                 create->dependencies);
     }
     if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           command_buffer->UpdateChildCommand(update->command, *nested_cmd));
       return update->command;
     }
@@ -181,7 +182,7 @@ ENTRY test_computation {
       module->entry_computation()->root_instruction();
   ASSERT_EQ(root_instr->opcode(), HloOpcode::kCollectivePermute);
   const HloCollectivePermuteInstruction* cp_instr =
-      tensorflow::down_cast<const HloCollectivePermuteInstruction*>(root_instr);
+      absl::down_cast<const HloCollectivePermuteInstruction*>(root_instr);
   ASSERT_NE(cp_instr, nullptr);
 
   // Buffer and Allocation Setup
@@ -282,7 +283,7 @@ ENTRY test_computation {
                                        /*device_allocator=*/nullptr));
   // Downcast to GPU executable
   xla::gpu::GpuExecutable* gpu_executable =
-      tensorflow::down_cast<xla::gpu::GpuExecutable*>(executable.get());
+      absl::down_cast<GpuExecutable*>(executable.get());
   ASSERT_NE(gpu_executable, nullptr);
 
   // Get the thunk sequence and check its size and type

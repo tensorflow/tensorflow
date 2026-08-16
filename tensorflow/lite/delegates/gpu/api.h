@@ -204,7 +204,7 @@ struct Dimensions {
 
   int32_t d() const { return DivideRoundUp(c, 4); }
 
-  int32_t product() const { return b * h * w * c; }
+  int64_t product() const { return static_cast<int64_t>(b) * h * w * c; }
 
   bool operator==(const Dimensions& other) const {
     return b == other.b && h == other.h && w == other.w && c == other.c;
@@ -231,7 +231,7 @@ struct TensorObjectDef {
 bool IsValid(const TensorObjectDef& def);
 
 // @return the number of elements in a tensor object.
-uint32_t NumElements(const TensorObjectDef& def);
+int64_t NumElements(const TensorObjectDef& def);
 
 using TensorObject =
     std::variant<std::monostate, OpenGlBuffer, OpenGlTexture, CpuMemory,

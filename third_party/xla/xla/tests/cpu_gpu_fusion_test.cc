@@ -75,8 +75,7 @@ const float test_float_vals[3][test_width][test_height] = {
 
 // Test whether fusion operations are emitted with no errors and compute
 // accurate outputs.
-class CpuGpuFusionTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+class CpuGpuFusionTest : public HloPjRtInterpreterReferenceMixin<HloTestBase> {
  protected:
   template <typename T, int Arity>
   void TestElementwise2D(
@@ -157,7 +156,7 @@ class CpuGpuFusionTest
   bool ComputeElementwiseAnswerCompare(ComparisonDirection direction,
                                        absl::Span<const float> xs);
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.add_xla_disable_hlo_passes("layout-assignment");
     return debug_options;
   }
@@ -887,7 +886,7 @@ TEST_F(CpuGpuFusionTest, Clamp2D) {
 
 class FusionClientLibraryTest
     : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {};
+          HloPjRtInterpreterReferenceMixin<HloTestBase>> {};
 
 TEST_F(FusionClientLibraryTest, ManyLayoutTransformations) {
   // On the GPU backend, it's possible to have too many transposes within one

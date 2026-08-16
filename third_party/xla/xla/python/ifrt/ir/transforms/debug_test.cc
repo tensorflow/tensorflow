@@ -22,10 +22,10 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -87,7 +87,7 @@ class InitPassManagerTest : public testing::Test {
 
   absl::StatusOr<std::vector<std::string>> MatchUndeclaredOutputs() {
     std::vector<std::string> paths;
-    RETURN_IF_ERROR(tsl::Env::Default()->GetMatchingPaths(
+    ABSL_RETURN_IF_ERROR(tsl::Env::Default()->GetMatchingPaths(
         tsl::io::JoinPath(
             absl::NullSafeStringView(getenv("TEST_UNDECLARED_OUTPUTS_DIR")),
             "*.mlir"),

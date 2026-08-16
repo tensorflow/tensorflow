@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/SHA256.h"
 #include "google/protobuf/text_format.h"
@@ -79,7 +79,7 @@ absl::StatusOr<std::string> GetBase64EncodedSha256Hash(absl::string_view s) {
   absl::string_view hash_view(reinterpret_cast<const char*>(hash.data()),
                               hash.size());
   std::string base64_encoded_hash;
-  RETURN_IF_ERROR(tsl::Base64Encode(hash_view, &base64_encoded_hash));
+  ABSL_RETURN_IF_ERROR(tsl::Base64Encode(hash_view, &base64_encoded_hash));
   return base64_encoded_hash;
 }
 
@@ -114,12 +114,12 @@ absl::Status AddResultToFileBasedCacheIfEnabled(
   }
 
   tsl::Env* default_env = tsl::Env::Default();
-  RETURN_IF_ERROR(CreateDirIfNeeded(std::string(cache_dir), default_env));
+  ABSL_RETURN_IF_ERROR(CreateDirIfNeeded(std::string(cache_dir), default_env));
 
-  ASSIGN_OR_RETURN(std::string key_hash,
+  ABSL_ASSIGN_OR_RETURN(std::string key_hash,
                    GetBase64EncodedSha256Hash(key.ToString()));
 
-  ASSIGN_OR_RETURN(const std::string file_path,
+  ABSL_ASSIGN_OR_RETURN(const std::string file_path,
                    GetCacheFilePath(cache_dir, key_hash));
 
   VLOG(1) << "Writing autotune result to file: " << file_path;
@@ -134,14 +134,14 @@ absl::Status AddResultToFileBasedCacheIfEnabled(
   // file. Also avoids reading incomplete files. (This may not work on all file
   // systems.)
   std::string tmp_dir = tsl::io::JoinPath(cache_dir, "tmp");
-  RETURN_IF_ERROR(CreateDirIfNeeded(tmp_dir, default_env));
+  ABSL_RETURN_IF_ERROR(CreateDirIfNeeded(tmp_dir, default_env));
   int64_t time_stamp = absl::GetCurrentTimeNanos();
 
   std::string temp_file_path = tsl::io::JoinPath(
       tmp_dir, absl::StrCat("tmp_per_fusion_cache_", key_hash, "_",
                             std::to_string(time_stamp), ".textproto"));
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       tsl::WriteStringToFile(default_env, temp_file_path, result_str));
   return default_env->RenameFile(temp_file_path, file_path);
 }
@@ -164,10 +164,10 @@ TryToFindInFileBasedCacheIfEnabled(const AutotuneCacheKey& key,
     return std::nullopt;
   }
 
-  ASSIGN_OR_RETURN(std::string key_hash,
+  ABSL_ASSIGN_OR_RETURN(std::string key_hash,
                    GetBase64EncodedSha256Hash(key.ToString()));
 
-  ASSIGN_OR_RETURN(const std::string file_path,
+  ABSL_ASSIGN_OR_RETURN(const std::string file_path,
                    GetCacheFilePath(cache_dir, key_hash));
   if (!tsl::Env::Default()->FileExists(file_path).ok()) {
     VLOG(1) << "Autotune result file not found: " << file_path;
@@ -176,11 +176,13 @@ TryToFindInFileBasedCacheIfEnabled(const AutotuneCacheKey& key,
 
   VLOG(1) << "Autotune result file found: " << file_path;
   std::string autotune_result_str;
-  RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), file_path,
+  ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), file_path,
                                         &autotune_result_str));
   AutotuneResult result;
   if (!tsl::protobuf::TextFormat::ParseFromString(autotune_result_str,
                                                   &result)) {
+    LOG(ERROR) << "Failed to parse autotune result from file: " << file_path
+               << " with content: " << autotune_result_str;
     return absl::InvalidArgumentError("Failed to parse autotune result.");
   }
   return result;
@@ -279,7 +281,7 @@ TryFindInAllCacheTypes(const AutotuneCacheKey& key, absl::string_view cache_dir)
     return std::make_pair(CacheType::kInMemory, opt_result);
   }
 
-  ASSIGN_OR_RETURN(opt_result,
+  ABSL_ASSIGN_OR_RETURN(opt_result,
                    TryToFindInFileBasedCacheIfEnabled(key, cache_dir));
   if (opt_result.has_value()) {
     AddResultToInMemoryCache(key, opt_result.value());
@@ -293,7 +295,7 @@ TryFindInAllCacheTypes(const AutotuneCacheKey& key, absl::string_view cache_dir)
 absl::StatusOr<std::optional<AutotuneResult>> AutotunerCache::TryFindInCache(
     const AutotuneCacheKey& key, absl::string_view cache_dir)
     ABSL_LOCKS_EXCLUDED(autotune_cache_mu) {
-  ASSIGN_OR_RETURN(auto cached, TryFindInAllCacheTypes(key, cache_dir));
+  ABSL_ASSIGN_OR_RETURN(auto cached, TryFindInAllCacheTypes(key, cache_dir));
 
   if (VLOG_IS_ON(1)) {
     std::string logged_key =
@@ -321,7 +323,7 @@ absl::StatusOr<ResultAndInserted> AutotunerCache::AddResultToCaches(
     ABSL_LOCKS_EXCLUDED(autotune_cache_mu) {
   ResultAndInserted result_and_inserted = AddResultToInMemoryCache(key, result);
   if (result_and_inserted.inserted) {
-    RETURN_IF_ERROR(AddResultToFileBasedCacheIfEnabled(
+    ABSL_RETURN_IF_ERROR(AddResultToFileBasedCacheIfEnabled(
         key, result_and_inserted.result, cache_dir, autotune_cache_mode));
   }
   return result_and_inserted;
@@ -358,14 +360,14 @@ bool IsTextProtoPath(absl::string_view file_path) {
   }
 
   AddVersionToAutotuneResults(results);
-  RETURN_IF_ERROR(LoadAutotuneResults(results, allow_override));
+  ABSL_RETURN_IF_ERROR(LoadAutotuneResults(results, allow_override));
   return absl::OkStatus();
 }
 
 /*static*/ absl::StatusOr<std::string> AutotunerCache::SerializeAutotuneResults(
     bool as_textproto) {
   AutotuneResults results;
-  RETURN_IF_ERROR(SerializeAutotuneResults(&results));
+  ABSL_RETURN_IF_ERROR(SerializeAutotuneResults(&results));
   return AutotuneResultsToString(results, as_textproto);
 }
 
@@ -380,10 +382,10 @@ bool IsTextProtoPath(absl::string_view file_path) {
     return FailedPrecondition("File path can not be resolved: %s", file_path);
   }
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::string autotune_results_str,
       AutotuneResultsToString(results, IsTextProtoPath(resolved_path)));
-  RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(), resolved_path,
+  ABSL_RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(), resolved_path,
                                          autotune_results_str));
   LOG(INFO) << "Autotune results serialized to file: " << resolved_path;
 
@@ -393,7 +395,7 @@ bool IsTextProtoPath(absl::string_view file_path) {
 /*static*/ absl::Status AutotunerCache::SerializeAutotuneResultsToFile(
     absl::string_view file_path) {
   AutotuneResults results;
-  RETURN_IF_ERROR(SerializeAutotuneResults(&results));
+  ABSL_RETURN_IF_ERROR(SerializeAutotuneResults(&results));
   return SerializeAutotuneResultsToFile(results, file_path);
 }
 
@@ -411,10 +413,10 @@ bool IsTextProtoPath(absl::string_view file_path) {
                               resolved_path);
   }
   std::string autotune_results_str;
-  RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), resolved_path,
+  ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), resolved_path,
                                         &autotune_results_str));
 
-  RETURN_IF_ERROR(LoadAutotuneResults(autotune_results_str,
+  ABSL_RETURN_IF_ERROR(LoadAutotuneResults(autotune_results_str,
                                       IsTextProtoPath(resolved_path)));
 
   LOG(INFO) << "Autotune results loaded from file: " << resolved_path;

@@ -524,42 +524,51 @@ typedef PJRT_Error* PJRT_TpuTopology_GetDefaultPlatformConfig(
 
 typedef struct PJRT_TpuTopology_Extension {
   PJRT_Extension_Base base;
-  PJRT_TpuTopology_Subslice* subslice;
-  PJRT_TpuTopology_IsSubsliceTopology* is_subslice_topology;
-  PJRT_TpuTopology_SubsliceDeviceIdFromFullDeviceId*
+  PJRT_NO_DISCARD PJRT_TpuTopology_Subslice* subslice;
+  PJRT_NO_DISCARD PJRT_TpuTopology_IsSubsliceTopology* is_subslice_topology;
+  PJRT_NO_DISCARD PJRT_TpuTopology_SubsliceDeviceIdFromFullDeviceId*
       subslice_device_id_from_full_device_id;
-  PJRT_TpuTopology_ReplaceHostBounds* replace_host_bounds;
-  PJRT_TpuTopology_IsEnhancedBarrierEnabled* is_enhanced_barrier_enabled;
-  PJRT_TpuTopology_HasLimitedIciConnectivity* has_limited_ici_connectivity;
-  PJRT_TpuTopology_IsReachableOverLimitedIci* is_reachable_over_limited_ici;
+  PJRT_NO_DISCARD PJRT_TpuTopology_ReplaceHostBounds* replace_host_bounds;
+  PJRT_NO_DISCARD PJRT_TpuTopology_IsEnhancedBarrierEnabled*
+      is_enhanced_barrier_enabled;
+  PJRT_NO_DISCARD PJRT_TpuTopology_HasLimitedIciConnectivity*
+      has_limited_ici_connectivity;
+  PJRT_NO_DISCARD PJRT_TpuTopology_IsReachableOverLimitedIci*
+      is_reachable_over_limited_ici;
 
-  PJRT_TpuTopology_ProcessCount* process_count;
-  PJRT_TpuTopology_ChipsPerProcess* chips_per_process;
-  PJRT_TpuTopology_CoreCountPerChip* core_count_per_chip;
-  PJRT_TpuTopology_ChipCount* chip_count;
-  PJRT_TpuTopology_CoreCount* core_count;
-  PJRT_TpuTopology_LogiDeviceCountPerProcess* logical_device_count_per_process;
-  PJRT_TpuTopology_LogiDeviceCount* logical_device_count;
-  PJRT_TpuTopology_LogiDeviceCountPerChip* logical_device_count_per_chip;
-  PJRT_TpuTopology_CoreCountPerProcess* core_count_per_process;
-  PJRT_TpuTopology_ProcessIds* process_ids;
-  PJRT_TpuTopology_LogiDeviceIdsOnProcess* logical_device_ids_on_process;
-  PJRT_TpuTopology_ProcIdAndIdxOnProcForChip* proc_id_and_idx_on_proc_for_chip;
-  PJRT_TpuTopology_ProcIdAndIdxOnProcForLogiDevice*
+  PJRT_NO_DISCARD PJRT_TpuTopology_ProcessCount* process_count;
+  PJRT_NO_DISCARD PJRT_TpuTopology_ChipsPerProcess* chips_per_process;
+  PJRT_NO_DISCARD PJRT_TpuTopology_CoreCountPerChip* core_count_per_chip;
+  PJRT_NO_DISCARD PJRT_TpuTopology_ChipCount* chip_count;
+  PJRT_NO_DISCARD PJRT_TpuTopology_CoreCount* core_count;
+  PJRT_NO_DISCARD PJRT_TpuTopology_LogiDeviceCountPerProcess*
+      logical_device_count_per_process;
+  PJRT_NO_DISCARD PJRT_TpuTopology_LogiDeviceCount* logical_device_count;
+  PJRT_NO_DISCARD PJRT_TpuTopology_LogiDeviceCountPerChip*
+      logical_device_count_per_chip;
+  PJRT_NO_DISCARD PJRT_TpuTopology_CoreCountPerProcess* core_count_per_process;
+  PJRT_NO_DISCARD PJRT_TpuTopology_ProcessIds* process_ids;
+  PJRT_NO_DISCARD PJRT_TpuTopology_LogiDeviceIdsOnProcess*
+      logical_device_ids_on_process;
+  PJRT_NO_DISCARD PJRT_TpuTopology_ProcIdAndIdxOnProcForChip*
+      proc_id_and_idx_on_proc_for_chip;
+  PJRT_NO_DISCARD PJRT_TpuTopology_ProcIdAndIdxOnProcForLogiDevice*
       proc_id_and_idx_on_proc_for_logi_device;
-  PJRT_TpuTopology_ProcessCoordFromId* process_coord_from_id;
-  PJRT_TpuTopology_ChipIdFromCoord* chip_id_from_coord;
-  PJRT_TpuTopology_LogiDeviceIdFromChipCoordAndIdx*
+  PJRT_NO_DISCARD PJRT_TpuTopology_ProcessCoordFromId* process_coord_from_id;
+  PJRT_NO_DISCARD PJRT_TpuTopology_ChipIdFromCoord* chip_id_from_coord;
+  PJRT_NO_DISCARD PJRT_TpuTopology_LogiDeviceIdFromChipCoordAndIdx*
       logical_device_id_from_chip_coord_and_idx;
-  PJRT_TpuTopology_ChipCoordAndIdxForLogiDevice*
+  PJRT_NO_DISCARD PJRT_TpuTopology_ChipCoordAndIdxForLogiDevice*
       chip_coord_and_idx_for_logi_device;
-  PJRT_TpuTopology_ChipsPerProcessBounds* chips_per_process_bounds;
-  PJRT_TpuTopology_ChipBounds* chip_bounds;
-  PJRT_TpuTopology_ProcessBounds* process_bounds;
-  PJRT_TpuTopology_GetRoutingStrategy* get_routing_strategy;
-  PJRT_TpuTopology_GetSliceConfig* get_slice_config;
-  PJRT_TpuTopology_GetSliceConfigs* get_slice_configs;
-  PJRT_TpuTopology_GetDefaultPlatformConfig* get_default_platform_config;
+  PJRT_NO_DISCARD PJRT_TpuTopology_ChipsPerProcessBounds*
+      chips_per_process_bounds;
+  PJRT_NO_DISCARD PJRT_TpuTopology_ChipBounds* chip_bounds;
+  PJRT_NO_DISCARD PJRT_TpuTopology_ProcessBounds* process_bounds;
+  PJRT_NO_DISCARD PJRT_TpuTopology_GetRoutingStrategy* get_routing_strategy;
+  PJRT_NO_DISCARD PJRT_TpuTopology_GetSliceConfig* get_slice_config;
+  PJRT_NO_DISCARD PJRT_TpuTopology_GetSliceConfigs* get_slice_configs;
+  PJRT_NO_DISCARD PJRT_TpuTopology_GetDefaultPlatformConfig*
+      get_default_platform_config;
 } PJRT_TpuTopology_Extension;
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_TpuTopology_Extension,
                           get_default_platform_config);

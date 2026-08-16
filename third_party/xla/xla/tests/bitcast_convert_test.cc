@@ -38,9 +38,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class BitcastConvertTest
-    : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+class BitcastConvertTest : public ClientLibraryTestRunnerMixin<
+                               HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  public:
   BitcastConvertTest() {
     mutable_debug_options()->add_xla_disable_hlo_passes("algsimp");
@@ -155,7 +154,7 @@ TEST_F(BitcastConvertTest, ConvertReshape) {
 }
 
 class BitcastConvertHloTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {};
+    : public HloPjRtInterpreterReferenceMixin<HloTestBase> {};
 
 TEST_F(BitcastConvertHloTest, S32to4S8) {
   absl::string_view hlo_string = R"(
@@ -224,14 +223,14 @@ class HloPjRtInterpreterReferenceMixinNoAot
   template <typename... BaseArgs>
   explicit HloPjRtInterpreterReferenceMixinNoAot(BaseArgs&&... base_args)
       : HloRunnerAgnosticReferenceMixin<T>(
-            std::make_unique<HloRunnerPjRt>(std::make_unique<InterpreterClient>(
+            std::make_unique<HloRunner>(std::make_unique<InterpreterClient>(
                 []() { return std::make_unique<HloEvaluator>(); })),
             std::forward<BaseArgs>(base_args)...) {}
   ~HloPjRtInterpreterReferenceMixinNoAot() override = default;
 };
 
 class BitcastConvertNoAotTest
-    : public HloPjRtInterpreterReferenceMixinNoAot<HloPjRtTestBase> {};
+    : public HloPjRtInterpreterReferenceMixinNoAot<HloTestBase> {};
 
 TEST_F(BitcastConvertNoAotTest, S8ToPred) {
   absl::string_view hlo_string = R"(

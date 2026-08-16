@@ -464,17 +464,31 @@ struct SumOp {
 template <typename T>
 struct MaxOp {
   void operator()(const constMatrixChip<T> data, MatrixChip<T> output) {
-    output = data.cwiseMax(output);
+    if constexpr (!Eigen::NumTraits<T>::IsInteger) {
+      output = data.template cwiseMax<Eigen::PropagateNaN>(output);
+    } else {
+      output = data.cwiseMax(output);
+    }
   }
-  void operator()(const T& data, T& output) { output = std::max(data, output); }
+  void operator()(const T& data, T& output) {
+    output = Eigen::internal::scalar_max_op<T, T, Eigen::PropagateNaN>()(
+        data, output);
+  }
 };
 
 template <typename T>
 struct MinOp {
   void operator()(const constMatrixChip<T> data, MatrixChip<T> output) {
-    output = data.cwiseMin(output);
+    if constexpr (!Eigen::NumTraits<T>::IsInteger) {
+      output = data.template cwiseMin<Eigen::PropagateNaN>(output);
+    } else {
+      output = data.cwiseMin(output);
+    }
   }
-  void operator()(const T& data, T& output) { output = std::min(data, output); }
+  void operator()(const T& data, T& output) {
+    output = Eigen::internal::scalar_min_op<T, T, Eigen::PropagateNaN>()(
+        data, output);
+  }
 };
 
 template <typename T>

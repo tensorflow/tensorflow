@@ -60,7 +60,7 @@ static std::array<PrimitiveType, 2> test_type_params = {F32, BF16};
 
 class ReduceWindowTestBase
     : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+          HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  public:
   ErrorSpec DefaultErrorSpec() const {
     if (FloatType() == BF16) {
@@ -1636,7 +1636,7 @@ INSTANTIATE_TEST_CASE_P(
 
 // Test class for text-based test cases. Note that this compares with the
 // results on the interpreter backend.
-using ReduceWindowTextTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
+using ReduceWindowTextTest = HloPjRtInterpreterReferenceMixin<HloTestBase>;
 
 TEST_F(ReduceWindowTextTest, R2General256x384) {
   const std::string hlo_string = R"(
@@ -1728,7 +1728,7 @@ ENTRY R3Window {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.001}));
 }
 
-using ReduceWindowHloTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
+using ReduceWindowHloTest = HloPjRtInterpreterReferenceMixin<HloTestBase>;
 
 TEST_F(ReduceWindowHloTest, ReduceWindowIdentity) {
   const std::string hlo_string = R"(

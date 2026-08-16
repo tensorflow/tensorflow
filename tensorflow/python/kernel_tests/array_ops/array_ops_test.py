@@ -13,9 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for array_ops."""
+import concurrent.futures
 import re
+import threading
 import time
 import unittest
+from unittest import mock
 
 from absl.testing import parameterized
 import numpy as np
@@ -209,6 +212,48 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
       with self.subTest(arr_shape=arr_shape):
         self.CheckVersusNumpy(ndims_mask, arr_shape)
 
+  def testFullyDefinedShapeDoesNotReadShapeAtRuntime(self):
+    with context.eager_mode():
+      tensor_value = np.arange(24).reshape((2, 3, 4))
+      tensor = constant_op.constant(tensor_value)
+      mask = constant_op.constant(tensor_value % 2 == 0)
+      with mock.patch.object(
+          array_ops,
+          "shape",
+          side_effect=AssertionError("unexpected runtime Shape op"),
+      ):
+        result = array_ops.boolean_mask(tensor, mask)
+
+      self.assertAllEqual(tensor_value[tensor_value % 2 == 0], result)
+
+  @test_util.run_gpu_only
+  def testConcurrentEagerBooleanMaskOnGpu(self):
+    thread_count = 8
+    barrier = threading.Barrier(thread_count)
+    input_shape = (64, 64, 64, 4)
+    tensor_value = np.arange(np.prod(input_shape), dtype=np.float32).reshape(
+        input_shape
+    )
+    expected = tensor_value[tensor_value >= tensor_value.size // 2]
+
+    def apply_mask(_):
+      with context.eager_mode(), test_util.force_gpu():
+        tensor = constant_op.constant(tensor_value)
+        barrier.wait(timeout=60)
+        for _ in range(5):
+          result = array_ops.boolean_mask(
+              tensor, tensor >= tensor_value.size // 2
+          )
+        return result.numpy()
+
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=thread_count
+    ) as executor:
+      results = list(executor.map(apply_mask, range(thread_count)))
+
+    for result in results:
+      self.assertAllEqual(expected, result)
+
   def testEmptyInput2D(self):
     mask = np.array([True, False])
     arr = np.array([[], []]).astype(np.float32)
@@ -283,6 +328,27 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
     with self.cached_session():
       with self.assertRaisesRegex(ValueError, "incompatible"):
         self.evaluate(array_ops.boolean_mask(tensor, mask))
+
+  def testNonBooleanMaskDocumentedAsBackwardCompatible(self):
+    # Regression for https://github.com/tensorflow/tensorflow/issues/89106:
+    # the docstring used to say `mask` must be a boolean tensor, but the
+    # runtime silently accepts non-bool masks (treating them as truthy /
+    # falsy). The fix updates the docstring to make that contract
+    # explicit. This test pins both halves down: the int-mask call still
+    # works at runtime, AND the docstring no longer claims a bool-only
+    # mask is required.
+    self.assertIn(
+        "non-boolean tensors are also accepted", array_ops.boolean_mask.__doc__
+    )
+    self.assertIn(
+        "non-boolean tensors are also accepted",
+        array_ops.boolean_mask_v2.__doc__,
+    )
+    # Runtime behaviour: int32 mask still works (no TypeError).
+    tensor = constant_op.constant([1, 2, 3, 4, 5])
+    int_mask = constant_op.constant([1, 0, 1, 0, 1], dtype=dtypes.int32)
+    out = self.evaluate(array_ops.boolean_mask(tensor, int_mask))
+    self.assertAllEqual(out, [1, 3, 5])
 
   def testStringMask(self):
     # Reproduces b/111171330, where the optimized boolean_mask graph would
@@ -2441,6 +2507,25 @@ class RepeatTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     v_np = np.repeat(array, repeats, axis)
     self.assertAllEqual(v_tf, v_np)
     self.assertAllEqual(v_tf_fn, v_np)
+
+  def testHighRankStringTensorToNumpyDoesNotSegfault(self):
+    # Regression test for #124973. Converting a rank > NPY_MAXDIMS tensor
+    # to numpy hit the unguarded slow path in TF_TensorToPyArray and
+    # segfaulted. The reporter reached it via tf.repeat's error formatter
+    # interpolating a string tensor; here we hit the same guard directly
+    # by reshaping a scalar string constant to rank 100 and calling
+    # .numpy() on it. String dtype forces the slow path -- numeric dtypes
+    # take the aliased fast path, which is already guarded upstream in
+    # ArrayFromMemory.
+    if not context.executing_eagerly():
+      self.skipTest("Bug is in the eager .numpy() conversion path.")
+    # Rank 100: above numpy's NPY_MAXDIMS ceiling (32 pre-2.0, 64 post-2.0)
+    # and below TF's own TensorShape cap of 254.
+    x = array_ops.reshape(constant_op.constant("s"), [1] * 100)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "NumPy arrays can have at most"
+    ):
+      x.numpy()
 
 
 class RepeatBenchmark(test_lib.Benchmark):

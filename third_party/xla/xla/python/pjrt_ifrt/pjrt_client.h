@@ -36,7 +36,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/literal.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
@@ -56,6 +55,7 @@ limitations under the License.
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
@@ -81,8 +81,7 @@ class PjRtDevice;
 class PjRtMemory;
 
 // PjRt-compatible `Client` interface.
-class PjRtCompatibleClient
-    : public llvm::RTTIExtends<PjRtCompatibleClient, Client> {
+class PjRtCompatibleClient : public RTTIExtends<PjRtCompatibleClient, Client> {
  public:
   static constexpr int kPjRtBufferInlineSize = 1;
   using PjRtBuffers =
@@ -127,8 +126,7 @@ class PjRtCompatibleClient
 };
 
 // `Client` implementation that wraps `xla::PjRtClient`.
-class PjRtClient final
-    : public llvm::RTTIExtends<PjRtClient, PjRtCompatibleClient> {
+class PjRtClient final : public RTTIExtends<PjRtClient, PjRtCompatibleClient> {
  public:
   static constexpr absl::string_view kRuntimeType = "pjrt_ifrt";
 
@@ -265,6 +263,8 @@ class PjRtClient final
       ArrayCopySemantics semantics) override;
 
   tsl::Future<> GetReadyFuture(absl::Span<const ValueRef> values) override;
+
+  tsl::Future<> DeleteValues(absl::Span<ValueRef> values) override;
 
   absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
       absl::Span<ValueRef> values) override;

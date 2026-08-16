@@ -124,7 +124,7 @@ class StridedSliceOp : public OpKernel {
       VLOG(1) << "Strided slice identity ";
       Tensor tmp;
       OP_REQUIRES(context, tmp.CopyFrom(input, final_shape),
-                  errors::Internal("Copy failed"));
+                  absl::InternalError("Copy failed"));
       context->set_output(0, tmp);
       return;
     }
@@ -132,15 +132,15 @@ class StridedSliceOp : public OpKernel {
     // Optimization #2, slice is memory contiguous (only occurs in dim 0)
     if (slice_dim0 && IsDim0SliceAligned<T>(input.shape(), begin[0], end[0])) {
       OP_REQUIRES(context, input.dims() >= 1,
-                  errors::InvalidArgument(
-                      "Input must have rank at least 1, got: ", input.dims()));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Input must have rank at least 1, got: ", input.dims())));
       // Otherwise, is_identity should be true.
       VLOG(1) << "Strided slice dim 0: " << input.shape().DebugString();
       // To tolerate begin[0] > end[0] (a 0-output slice), we min(begin, end).
       Tensor slice = input.Slice(std::min(begin[0], end[0]), end[0]);
       Tensor tmp;
       OP_REQUIRES(context, tmp.CopyFrom(slice, final_shape),
-                  errors::Internal("Copy failed"));
+                  absl::InternalError("Copy failed"));
       context->set_output(0, tmp);
       return;
     }
@@ -185,9 +185,9 @@ class StridedSliceOp : public OpKernel {
 
 #undef HANDLE_DIM
 
-      OP_REQUIRES(
-          context, false,
-          errors::Unimplemented("Unhandled input dimensions ", input_dims));
+      OP_REQUIRES(context, false,
+                  absl::UnimplementedError(
+                      absl::StrCat("Unhandled input dimensions ", input_dims)));
     }
   }
 
@@ -220,10 +220,10 @@ class StridedSliceGradOp : public OpKernel {
 
     TensorShape input_shape;
     const Tensor& input_shape_tensor = context->input(0);
-    OP_REQUIRES(
-        context, input_shape_tensor.dims() == 1,
-        errors::InvalidArgument("shape must be 1-D, got shape.shape = ",
-                                input_shape_tensor.shape().DebugString()));
+    OP_REQUIRES(context, input_shape_tensor.dims() == 1,
+                absl::InvalidArgumentError(
+                    absl::StrCat("shape must be 1-D, got shape.shape = ",
+                                 input_shape_tensor.shape().DebugString())));
     if (input_shape_tensor.dtype() == DT_INT32) {
       OP_REQUIRES_OK(context,
                      TensorShapeUtils::MakeShape(
@@ -246,10 +246,10 @@ class StridedSliceGradOp : public OpKernel {
 
     // Check to make sure dy is consistent with the original slice
     TensorShape dy_shape = context->input(4).shape();
-    OP_REQUIRES(
-        context, final_shape == dy_shape,
-        errors::InvalidArgument("shape of dy was ", dy_shape.DebugString(),
-                                " instead of ", final_shape.DebugString()));
+    OP_REQUIRES(context, final_shape == dy_shape,
+                absl::InvalidArgumentError(
+                    absl::StrCat("shape of dy was ", dy_shape.DebugString(),
+                                 " instead of ", final_shape.DebugString())));
 
     if (!context->status().ok()) return;
 
@@ -261,7 +261,7 @@ class StridedSliceGradOp : public OpKernel {
     if (processing_shape.dims() == 0) {
       auto in = context->input(4);
       OP_REQUIRES(context, result->CopyFrom(in, processing_shape),
-                  errors::Internal("Copy failed"));
+                  absl::InternalError("Copy failed"));
       return;
     }
 
@@ -366,11 +366,11 @@ class StridedSliceAssignOp : public OpKernel {
 
       StridedSliceAssignBCast bcast(input_shape.dim_sizes(),
                                     final_shape.dim_sizes());
-      OP_REQUIRES(context, bcast.IsValid(),
-                  errors::InvalidArgument("Cannot broadcast input shape ",
-                                          input_shape.DebugString(),
-                                          " into final shape ",
-                                          final_shape.DebugString()));
+      OP_REQUIRES(
+          context, bcast.IsValid(),
+          absl::InvalidArgumentError(absl::StrCat(
+              "Cannot broadcast input shape ", input_shape.DebugString(),
+              " into final shape ", final_shape.DebugString())));
 
       // The assignment RHS and broadcast spec need to be remapped to
       // the same number of dimensions as the unstrided LHS (i.e. processing
@@ -408,8 +408,8 @@ class StridedSliceAssignOp : public OpKernel {
 #undef HANDLE_DIM
 
       OP_REQUIRES(context, false,
-                  errors::Unimplemented("Unhandled input dimensions ",
-                                        processing_dims));
+                  absl::UnimplementedError(absl::StrCat(
+                      "Unhandled input dimensions ", processing_dims)));
     }
   }
 

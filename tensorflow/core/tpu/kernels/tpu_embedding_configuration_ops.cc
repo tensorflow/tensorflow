@@ -18,9 +18,9 @@ limitations under the License.
 #include <string>
 
 #include "absl/cleanup/cleanup.h"
-#include "xla/stream_executor/tpu/proto_helper.h"
-#include "xla/stream_executor/tpu/status_helper.h"
-#include "xla/stream_executor/tpu/tpu_api.h"
+#include "xla/tpu/proto_helper.h"
+#include "xla/tpu/status_helper.h"
+#include "xla/tpu/tpu_api.h"
 #include "xla/util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"

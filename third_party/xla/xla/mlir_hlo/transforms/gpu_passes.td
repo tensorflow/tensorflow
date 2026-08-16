@@ -25,13 +25,11 @@ def GpuKernelToNVVMPass : Pass<"gpu-kernel-to-nvvm", "gpu::GPUModuleOp"> {
       Option<"useBarePtrCallConv", "use-bare-ptr-call-conv", "bool",
              /*default=*/"false", "Use bare pointer memref to llvm lowering">,
   ];
-  let constructor = "createGpuKernelToNvvmPass()";
 }
 
 def GpuKernelToROCDLPass : Pass<"gpu-kernel-to-rocdl", "gpu::GPUModuleOp"> {
   let summary = "Pass to transform a gpu module to rocdl.";
   let dependentDialects = ["LLVM::LLVMDialect", "ROCDL::ROCDLDialect"];
-  let constructor = "createGpuKernelToRocdlPass()";
   let options = [
     Option<"chipset", "chipset", "std::string",
            /*default=*/"\"gfx000\"",

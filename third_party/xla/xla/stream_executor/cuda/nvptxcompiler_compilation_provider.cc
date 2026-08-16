@@ -19,10 +19,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -46,6 +46,9 @@ absl::StatusOr<Assembly> CompileHelper(const CudaComputeCapability& cc,
   if (options.generate_debug_info) {
     asm_opts.extra_flags.push_back("--device-debug");
   }
+  asm_opts.extra_flags.insert(asm_opts.extra_flags.end(),
+                              options.additional_ptxas_flags.begin(),
+                              options.additional_ptxas_flags.end());
 
   return CompileGpuAsmUsingLibNvPtxCompiler(cc, ptx, asm_opts,
                                             options.cancel_if_reg_spill,
@@ -63,7 +66,7 @@ absl::StatusOr<RelocatableModule>
 NvptxcompilerCompilationProvider::CompileToRelocatableModule(
     const CudaComputeCapability& cc, absl::string_view ptx,
     const CompilationOptions& options) const {
-  ASSIGN_OR_RETURN(Assembly assembly,
+  ABSL_ASSIGN_OR_RETURN(Assembly assembly,
                    CompileHelper(cc, ptx, options,
                                  /*compile_to_relocatable_module=*/true));
   return RelocatableModule{std::move(assembly.cubin),

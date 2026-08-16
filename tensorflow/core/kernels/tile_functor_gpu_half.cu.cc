@@ -23,8 +23,8 @@ namespace tensorflow {
 namespace functor {
 using Eigen::GpuDevice;
 
-template struct Tile<GpuDevice, Eigen::half, int32>;
-template struct Tile<GpuDevice, Eigen::half, int64>;
+template struct Tile<GpuDevice, Eigen::half, int32_t>;
+template struct Tile<GpuDevice, Eigen::half, int64_t>;
 }  // namespace functor
 }  // namespace tensorflow
 

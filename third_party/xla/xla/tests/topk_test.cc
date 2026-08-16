@@ -23,7 +23,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using TopkTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
+using TopkTest = HloPjRtInterpreterReferenceMixin<HloTestBase>;
 
 TEST_F(TopkTest, LargestTopK) {
   absl::string_view hlo_text_module = R"(

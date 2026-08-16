@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/api/tensor_utils.h"
+#include "tensorflow/lite/core/c/allocator_internal.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -300,6 +301,7 @@ Subgraph::Subgraph(ErrorReporter* error_reporter,
 }
 
 Subgraph::~Subgraph() {
+  tflite::internal::ScopedTfLiteAllocator scoped_allocator(allocator_);
   for (int node_index = 0; node_index < nodes_and_registration_.size();
        ++node_index) {
     CleanupNode(node_index);
@@ -510,7 +512,8 @@ TfLiteStatus Subgraph::PartitionGraph(const TfLiteIntArray* nodes_to_replace,
                                       std::vector<NodeSubset>* node_subsets) {
   const InterpreterInfo info(this);
   // Tensor preservation requires node fusion to be disabled.
-  const bool disable_node_fusion = ShouldPreserveAllTensors();
+  const bool disable_node_fusion =
+      ShouldPreserveAllTensors() || DisableDelegateNodeFusion();
   return tflite::PartitionGraphIntoIndependentNodeSubsets(
       &info, nodes_to_replace, node_subsets,
       /*greedily=*/!DisableDelegateClustering(), control_edges_,
@@ -577,10 +580,10 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
   TFLITE_LOG_PROD(tflite::TFLITE_LOG_VERBOSE,
                   "Replacing %d out of %d node(s) with delegate (%s) node, "
                   "yielding %zu partitions "
-                  "for subgraph %d.",
+                  "for subgraph %d (%s).",
                   nodes_to_replace->size, execution_plan_.size(),
                   GetDelegateKernalName(registration), node_subsets.size(),
-                  subgraph_index_);
+                  subgraph_index_, name_.c_str());
 
   execution_plan_.clear();
 
@@ -987,6 +990,7 @@ TfLiteStatus Subgraph::AllocateTensors() {
 }
 
 TfLiteStatus Subgraph::AllocateTensors(InliningStrategy auto_inline) {
+  tflite::internal::ScopedTfLiteAllocator scoped_allocator(allocator_);
   if (!consistent_) {
     ReportError("AllocateTensors() called on inconsistent model.");
     return kTfLiteError;
@@ -1066,7 +1070,7 @@ TfLiteStatus Subgraph::AllocateTensors(InliningStrategy auto_inline) {
       // Free all temporary tensors allocated by delegated nodes.
       for (int i = 0; i < node.temporaries->size; ++i) {
         TfLiteTensor* temporary_tensor = tensor(node.temporaries->data[i]);
-        TfLiteTensorDataFree(temporary_tensor);
+        TfLiteTensorDataFreeWithAllocator(temporary_tensor, allocator_);
         temporary_tensor->bytes = 0;
       }
     }
@@ -1288,6 +1292,7 @@ TfLiteStatus Subgraph::ReleaseNonPersistentMemory() {
 }
 
 TfLiteStatus Subgraph::ReleaseMemory() {
+  tflite::internal::ScopedTfLiteAllocator scoped_allocator(allocator_);
   state_ = kStateUninvokable;
   ReleaseNonPersistentMemory();
 
@@ -1298,7 +1303,7 @@ TfLiteStatus Subgraph::ReleaseMemory() {
     if (!input_tensor || input_tensor->allocation_type != kTfLiteDynamic)
       continue;
     if (input_tensor->data.raw) {
-      TfLiteTensorDataFree(input_tensor);
+      TfLiteTensorDataFreeWithAllocator(input_tensor, allocator_);
     }
   }
   // Free dynamic output tensors.
@@ -1308,7 +1313,7 @@ TfLiteStatus Subgraph::ReleaseMemory() {
     if (!output_tensor || output_tensor->allocation_type != kTfLiteDynamic)
       continue;
     if (output_tensor->data.raw) {
-      TfLiteTensorDataFree(output_tensor);
+      TfLiteTensorDataFreeWithAllocator(output_tensor, allocator_);
     }
   }
 
@@ -1599,7 +1604,7 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
 #else
     memory_planner_ = std::make_unique<ArenaPlanner>(
         &context_, CreateGraphInfo(), ShouldPreserveAllTensors(),
-        kDefaultTensorAlignment, subgraph_index_);
+        kDefaultTensorAlignment, subgraph_index_, allocator_);
 #endif
     memory_planner_->PlanAllocations();
   }
@@ -1659,6 +1664,7 @@ TfLiteStatus Subgraph::Invoke() {
   return status;
 }
 TfLiteStatus Subgraph::InvokeImpl() {
+  tflite::internal::ScopedTfLiteAllocator scoped_allocator(allocator_);
   if (!consistent_) {
     ReportError("Invoke called on model that is not consistent.");
     return kTfLiteError;
@@ -1705,10 +1711,14 @@ TfLiteStatus Subgraph::InvokeImpl() {
 #endif  // TF_LITE_TENSORFLOW_PROFILER
 
     // If per operator profiling flag is set in the delegate, this macro op
-    // should not be profiled, thus a nullptr is passed to the ScopedProfile
-    bool profile_op =
-        !(node.delegate != nullptr &&
-          (node.delegate->flags & kTfLiteDelegateFlagsPerOperatorProfiling));
+    // should not be profiled, thus a nullptr is passed to the ScopedProfile.
+    // However, if ForceDelegateNodeProfiling() is true, we bypass this
+    // suppression (useful for calibration).
+    bool profile_op = true;
+    if (node.delegate != nullptr && !ForceDelegateNodeProfiling()) {
+      profile_op =
+          !(node.delegate->flags & kTfLiteDelegateFlagsPerOperatorProfiling);
+    }
     TFLITE_SCOPED_TAGGED_OPERATOR_PROFILE(
         profile_op ? profiler_.get() : nullptr, op_name, node_index);
 
@@ -1959,7 +1969,7 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
   if (type == tensor.type &&
       EqualArrayAndTfLiteIntArray(tensor.dims, ndims, dims)) {
     // Fast path which does not invalidate the invokable property.
-    TfLiteTensorDataFree(&tensor);
+    TfLiteTensorDataFreeWithAllocator(&tensor, allocator_);
     TfLiteQuantizationFree(&tensor.quantization);
     tensor.data.raw = const_cast<char*>(buffer);
     if (!tensor.dims) tensor.dims = ConvertArrayToTfLiteIntArray(ndims, dims);
@@ -2078,7 +2088,12 @@ TfLiteStatus Subgraph::ResizeTensorImpl(TfLiteTensor* tensor,
       }
 
       // Realloc space for heap-allocated tensors.
-      TfLiteTensorResizeMaybeCopy(bytes_required, tensor, false);
+      status = TfLiteTensorResizeMaybeCopyWithAllocator(bytes_required, tensor,
+                                                        false, allocator_);
+      if (status != kTfLiteOk) {
+        TfLiteIntArrayFree(new_size);
+        return status;
+      }
       tensor->bytes = bytes_required;
     }
     if (tensor->dims && tensor->dims != new_size) {
@@ -2395,7 +2410,7 @@ TfLiteStatus Subgraph::ReplaceNodeWithSubgraph(
   return kTfLiteOk;
 }
 
-TfLiteStatus Subgraph::InlineCompositeNodes() {
+TfLiteStatus Subgraph::InlineCompositeNodes(CompositeFilter filter) {
   // Checks if there are composite nodes in the current execution plan.
   // NOLINTNEXTLINE: absl not allowed.
   std::unordered_set<int> composite_nodes_execution_indices;
@@ -2404,7 +2419,9 @@ TfLiteStatus Subgraph::InlineCompositeNodes() {
     for (const int i : execution_plan_) {
       auto& [node, reg] = nodes_and_registration_[i];
       if (reg.builtin_code == kTfLiteBuiltinStablehloComposite) {
-        composite_nodes_execution_indices.insert(i);
+        if (!filter || filter(&node, &reg)) {
+          composite_nodes_execution_indices.insert(i);
+        }
       }
     }
     return !composite_nodes_execution_indices.empty();
@@ -2632,6 +2649,24 @@ TfLiteStatus Subgraph::SetCustomAllocationForTensor(
   return kTfLiteOk;
 }
 
+TfLiteStatus Subgraph::SetAllocator(TfLiteAllocator* allocator) {
+  if (memory_planner_ != nullptr) {
+    ReportError("SetAllocator must be called before AllocateTensors().");
+    return kTfLiteError;
+  }
+  for (size_t i = 0; i < context_.tensors_size; ++i) {
+    const TfLiteTensor& tensor = context_.tensors[i];
+    if ((tensor.allocation_type == kTfLiteDynamic ||
+         tensor.allocation_type == kTfLitePersistentRo) &&
+        tensor.data.raw != nullptr) {
+      ReportError("SetAllocator must be called before tensor allocation.");
+      return kTfLiteError;
+    }
+  }
+  allocator_ = allocator;
+  return kTfLiteOk;
+}
+
 void Subgraph::SetName(const char* name) {
   if (name) {
     name_ = name;
@@ -2720,7 +2755,7 @@ void Subgraph::MaybeReleaseDynamicTensors(const TfLiteNode& node,
     auto it = tensor_to_last_op_index_.find(input_tensor_index);
     if (it != tensor_to_last_op_index_.end() && it->second == node_index) {
       if (input_tensor->data.raw) {
-        TfLiteTensorDataFree(input_tensor);
+        TfLiteTensorDataFreeWithAllocator(input_tensor, allocator_);
       }
     }
   }
@@ -2740,7 +2775,7 @@ void Subgraph::MaybeReleaseDynamicTensors(const TfLiteNode& node,
     auto it = tensor_to_last_op_index_.find(output_tensor_index);
     if (it != tensor_to_last_op_index_.end() && it->second == node_index) {
       if (output_tensor->data.raw) {
-        TfLiteTensorDataFree(output_tensor);
+        TfLiteTensorDataFreeWithAllocator(output_tensor, allocator_);
       }
     }
   }

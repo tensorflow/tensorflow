@@ -64,6 +64,7 @@ class UnsortedSegmentModel : public SingleOpModel {
   int data() const { return data_id_; }
   int segment_ids() const { return segment_ids_id_; }
   int num_segments() const { return num_segments_id_; }
+  TfLiteTensor* output_tensor() { return GetOutputTensor(0); }
   std::vector<T> GetOutput() { return ExtractVector<T>(output_id_); }
   std::vector<int32_t> GetOutputShape() { return GetTensorShape(output_id_); }
 

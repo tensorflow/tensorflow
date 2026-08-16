@@ -26,10 +26,12 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/status_matchers.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/profiler/rpc/client/profiler_client_test_util.h"
 #include "xla/tsl/profiler/rpc/profiler_server.h"
 #include "xla/tsl/profiler/utils/file_system_utils.h"
+#include "tsl/platform/host_info.h"
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
@@ -40,6 +42,8 @@ namespace {
 
 using tensorflow::ProfileRequest;
 using tensorflow::RemoteProfilerSessionManagerOptions;
+using ::testing::ElementsAre;
+using ::testing::Field;
 using ::tsl::profiler::test::DurationApproxLess;
 using ::tsl::profiler::test::DurationNear;
 using ::tsl::profiler::test::StartServer;
@@ -93,11 +97,11 @@ TEST(RemoteProfilerSessionManagerTest, Simple) {
   absl::Status status;
   std::unique_ptr<RemoteProfilerSessionManager> sessions =
       RemoteProfilerSessionManager::Create(options, request, status);
-  EXPECT_TRUE(status.ok());
+  EXPECT_OK(status);
   std::vector<Response> responses = sessions->WaitForCompletion();
   absl::Duration elapsed = absl::Now() - approx_start;
   ASSERT_EQ(responses.size(), 1);
-  EXPECT_TRUE(responses.back().status.ok());
+  EXPECT_OK(responses.back().status);
   EXPECT_TRUE(responses.back().profile_response->empty_trace());
   EXPECT_EQ(responses.back().profile_response->tool_data_size(), 0);
   EXPECT_THAT(elapsed, DurationApproxLess(max_duration));
@@ -125,7 +129,7 @@ TEST(RemoteProfilerSessionManagerTest, ExpiredDeadline) {
   absl::Status status;
   std::unique_ptr<RemoteProfilerSessionManager> sessions =
       RemoteProfilerSessionManager::Create(options, request, status);
-  EXPECT_TRUE(status.ok());
+  EXPECT_OK(status);
   std::vector<Response> responses = sessions->WaitForCompletion();
   absl::Duration elapsed = absl::Now() - approx_start;
   EXPECT_THAT(elapsed, DurationNear(absl::Seconds(0)));
@@ -157,11 +161,11 @@ TEST(RemoteProfilerSessionManagerTest, LongSession) {
   absl::Status status;
   std::unique_ptr<RemoteProfilerSessionManager> sessions =
       RemoteProfilerSessionManager::Create(options, request, status);
-  EXPECT_TRUE(status.ok());
+  EXPECT_OK(status);
   std::vector<Response> responses = sessions->WaitForCompletion();
   absl::Duration elapsed = absl::Now() - approx_start;
   ASSERT_EQ(responses.size(), 1);
-  EXPECT_TRUE(responses.back().status.ok());
+  EXPECT_OK(responses.back().status);
   EXPECT_TRUE(responses.back().profile_response->empty_trace());
   EXPECT_EQ(responses.back().profile_response->tool_data_size(), 0);
   EXPECT_THAT(elapsed, DurationApproxLess(max_duration));
@@ -195,16 +199,48 @@ TEST(RemoteProfilerSessionManagerTest, OverrideHostnames) {
   absl::Status status;
   std::unique_ptr<RemoteProfilerSessionManager> sessions =
       RemoteProfilerSessionManager::Create(options, request, status);
-  ASSERT_TRUE(status.ok());
-  EXPECT_THAT(
-      sessions->WaitForCompletion(),
-      ElementsAre(::testing::Field(&Response::status, absl::OkStatus())));
+  ASSERT_OK(status);
+  EXPECT_THAT(sessions->WaitForCompletion(),
+              ElementsAre(Field(&Response::status, absl::OkStatus())));
 
-  EXPECT_TRUE(Env::Default()
-                  ->FileExists(ProfilerJoinPath(
-                      request.repository_root(), request.session_id(),
-                      absl::StrCat(random_hostname, ".xplane.pb")))
-                  .ok());
+  EXPECT_OK(Env::Default()->FileExists(
+      ProfilerJoinPath(request.repository_root(), request.session_id(),
+                       absl::StrCat(random_hostname, ".xplane.pb"))));
+}
+
+TEST(RemoteProfilerSessionManagerTest, UseSystemHostname) {
+  absl::Duration duration = absl::Milliseconds(100);
+  RemoteProfilerSessionManagerOptions options;
+  *options.mutable_profiler_options() = tsl::ProfilerSession::DefaultOptions();
+  options.mutable_profiler_options()->set_duration_ms(
+      absl::ToInt64Milliseconds(duration));
+
+  std::string service_address;
+  std::unique_ptr<ProfilerServer> server =
+      StartServer(duration, &service_address);
+  options.add_service_addresses(service_address);
+  absl::Time approx_start = absl::Now();
+  absl::Duration grace = absl::Seconds(kGracePeriodSeconds);
+  absl::Duration max_duration = duration + grace;
+  options.set_max_session_duration_ms(absl::ToInt64Milliseconds(max_duration));
+  options.set_session_creation_timestamp_ns(absl::ToUnixNanos(approx_start));
+
+  ProfileRequest request =
+      PopulateProfileRequest(TmpDir(), "session_id", service_address, options);
+  (*request.mutable_opts()
+        ->mutable_advanced_configuration())["use_system_hostname"]
+      .set_bool_value(true);
+
+  absl::Status status;
+  std::unique_ptr<RemoteProfilerSessionManager> sessions =
+      RemoteProfilerSessionManager::Create(options, request, status);
+  ASSERT_OK(status);
+  EXPECT_THAT(sessions->WaitForCompletion(),
+              ElementsAre(Field(&Response::status, absl::OkStatus())));
+
+  EXPECT_OK(Env::Default()->FileExists(
+      ProfilerJoinPath(request.repository_root(), request.session_id(),
+                       absl::StrCat(tsl::port::Hostname(), ".xplane.pb"))));
 }
 
 TEST(RemoteProfilerSessionManagerTest, OverrideHostnamesMismatch) {

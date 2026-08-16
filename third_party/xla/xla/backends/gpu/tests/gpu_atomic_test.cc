@@ -101,10 +101,10 @@ TEST_F(GpuAtomicTest, TestAddAtomicF32) {
     }
 )";
 
-  TF_ASSERT_OK(CompileAndVerifyIr(hlo_string, is_built_with_rocm_ ? R"(
+  TF_ASSERT_OK(CompileAndVerifyIr(hlo_string, IsBuiltWithRocm() ? R"(
 CHECK: atomicrmw fadd ptr %[[ADDR:.*]], float %[[VALUE:.*]] syncscope("agent-one-as") monotonic
 )"
-                                                                  : R"(
+                                                                : R"(
 CHECK: atomicrmw fadd ptr %[[ADDR:.*]], float %[[VALUE:.*]] monotonic
 )"));
 }

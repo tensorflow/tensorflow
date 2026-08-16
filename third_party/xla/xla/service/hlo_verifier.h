@@ -19,14 +19,17 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
@@ -40,84 +43,84 @@ namespace xla {
 using ShapeSizeFn = std::function<int64_t(const Shape&)>;
 
 struct HloVerifierOpts {
-  HloVerifierOpts&& MakeLayoutSensitive() {
+  HloVerifierOpts&& MakeLayoutSensitive() && {
     layout_sensitive = true;
     return std::move(*this);
   }
 
-  HloVerifierOpts&& WithLayoutSensitive(bool layout_sensitive_p) {
+  HloVerifierOpts&& WithLayoutSensitive(bool layout_sensitive_p) && {
     layout_sensitive = layout_sensitive_p;
     return std::move(*this);
   }
 
-  HloVerifierOpts&& WithAllowMixedPrecision(bool allow_mixed_precision_p) {
+  HloVerifierOpts&& WithAllowMixedPrecision(bool allow_mixed_precision_p) && {
     allow_mixed_precision = allow_mixed_precision_p;
     return std::move(*this);
   }
 
-  HloVerifierOpts&& AllowMixedPrecision() {
+  HloVerifierOpts&& AllowMixedPrecision() && {
     allow_mixed_precision = true;
     return std::move(*this);
   }
 
-  HloVerifierOpts&& VerifyBroadcastDimensionsOrder() {
+  HloVerifierOpts&& VerifyBroadcastDimensionsOrder() && {
     verify_broadcast_dimensions_order = true;
     return std::move(*this);
   }
 
-  HloVerifierOpts&& VerifyReshapeIsBitcast() {
+  HloVerifierOpts&& VerifyReshapeIsBitcast() && {
     verify_reshape_is_bitcast = true;
     return std::move(*this);
   }
 
-  HloVerifierOpts&& VerifyCallNestedComputationThreadName() {
+  HloVerifierOpts&& VerifyCallNestedComputationThreadName() && {
     verify_call_nested_computation_thread_name = true;
     return std::move(*this);
   }
 
-  HloVerifierOpts&& WithAllowBitcastToHaveDifferentSize(bool allow) {
+  HloVerifierOpts&& WithAllowBitcastToHaveDifferentSize(bool allow) && {
     allow_bitcast_to_have_different_size = allow;
     return std::move(*this);
   }
 
   HloVerifierOpts&& WithInstructionCanChangeLayout(
-      const HloPredicate& instruction_can_change_layout_p) {
+      const HloPredicate& instruction_can_change_layout_p) && {
     instruction_can_change_layout = instruction_can_change_layout_p;
     return std::move(*this);
   }
 
-  HloVerifierOpts&& WithCustomShapeSize(const ShapeSizeFn& shape_size_p) {
+  HloVerifierOpts&& WithCustomShapeSize(const ShapeSizeFn& shape_size_p) && {
     shape_size = shape_size_p;
     return std::move(*this);
   }
 
-  HloVerifierOpts&& WithVerifyShardingDeviceNumbers(bool verify) {
+  HloVerifierOpts&& WithVerifyShardingDeviceNumbers(bool verify) && {
     verify_sharding_device_numbers = verify;
     return std::move(*this);
   }
 
-  HloVerifierOpts&& WithAllowUnboundedDynamism(bool allow) {
-    allow_unbounded_dynamism = allow;
+  HloVerifierOpts&& WithSupportedUnboundedDynamicOp(HloPredicate fn) && {
+    supported_unbounded_dynamic_op = std::move(fn);
     return std::move(*this);
   }
 
-  HloVerifierOpts&& VerifyInstructionNameUnchanged() {
+  HloVerifierOpts&& VerifyInstructionNameUnchanged() && {
     verify_instruction_name_unchanged = true;
     return std::move(*this);
   }
 
-  HloVerifierOpts&& VerifyNoHostMemorySpace() {
+  HloVerifierOpts&& VerifyNoHostMemorySpace() && {
     verify_no_host_memory_space = true;
     return std::move(*this);
   }
 
   HloVerifierOpts&& WithVerifyNoCollectiveDeadlocks(
-      bool verify_no_collective_deadlocks_p) {
+      bool verify_no_collective_deadlocks_p) && {
     verify_no_collective_deadlocks = verify_no_collective_deadlocks_p;
     return std::move(*this);
   }
 
-  HloVerifierOpts&& WithCheckReplicaGroups(bool check_replica_groups_p) {
+  HloVerifierOpts&& WithCheckReplicaGroups(bool check_replica_groups_p) && {
     check_replica_groups = check_replica_groups_p;
     return std::move(*this);
   }
@@ -127,8 +130,6 @@ struct HloVerifierOpts {
   bool CheckForCollectiveDeadlocks() const {
     return verify_no_collective_deadlocks;
   }
-
-  bool AllowMixedPrecision() const { return allow_mixed_precision; }
 
   const HloPredicate& InstructionCanChangeLayout() const {
     return instruction_can_change_layout;
@@ -167,8 +168,9 @@ struct HloVerifierOpts {
   // Whether bitcast should have the same size, including all paddings.
   bool allow_bitcast_to_have_different_size = false;
 
-  // Whether unbounded dynamic sizes should be allowed for shapes.
-  bool allow_unbounded_dynamism = false;
+  // Whether unbounded dynamic sizes should be allowed for the given
+  // instruction.
+  HloPredicate supported_unbounded_dynamic_op;
 
   // Check whether instruction has been renamed.
   // Should enforce no function renames unless the name instruction has been
@@ -198,6 +200,9 @@ struct HloVerifierOpts {
 class ShapeVerifier : public DfsHloVisitor {
  public:
   explicit ShapeVerifier(const HloVerifierOpts& opts) : opts_(opts) {}
+  explicit ShapeVerifier(const HloVerifierOpts&& opts) = delete;
+
+  friend class HloVerifierTestHelper;
 
   // Verifies that entry computation layout matches parameters and root shape of
   // the module's entry computation.
@@ -299,7 +304,8 @@ class ShapeVerifier : public DfsHloVisitor {
 
  protected:
   // Helpers that switch on layout_sensitive_.
-  bool ShapesSame(const Shape& a, const Shape& b, Shape::Equal equal = {});
+  bool ShapesSame(const Shape& a, const Shape& b,
+                  Shape::Equal equal = {}) const;
 
   // Check the instruction's shape against the shape given by ShapeInference
   // and return an appropriate error if there is a mismatch.
@@ -322,6 +328,9 @@ class ShapeVerifier : public DfsHloVisitor {
   absl::Status CheckVariadicShape(const HloInstruction* instruction);
 
  private:
+  // Returns true if shape1 is a prefix of shape2.
+  bool IsShapePrefix(const Shape& shape1, const Shape& shape2) const;
+
   std::string StringifyShape(const Shape& s) {
     return opts_.layout_sensitive ? ShapeUtil::HumanStringWithLayout(s)
                                   : ShapeUtil::HumanString(s);
@@ -345,10 +354,23 @@ class ShapeVerifier : public DfsHloVisitor {
                                         const HloComputation* computation,
                                         int64_t parameter_number);
 
+  absl::Status CheckAsyncOp(const HloInstruction* async_op);
+  // Checks that the shape of the output of the given async instruction
+  absl::Status CheckAsyncOpOutputShape(const HloInstruction* async_op);
+  // Checks that the shape of the given async op's operands.
+  absl::Status CheckAsyncOpOperands(const HloInstruction* async_op);
+  absl::Status CheckAsyncStartOperands(const HloInstruction* async_start);
+  absl::Status CheckAsyncUpdateOperands(const HloInstruction* async_update);
+  absl::Status CheckAsyncDoneOperands(const HloInstruction* async_done);
+
   // Checks that the shape of async op operands and results match the called
   // computation parameters and root.
-  absl::Status CheckAsyncOpComputationShapes(const HloInstruction* async_op,
-                                             const Shape& async_shape);
+  absl::Status CheckAsyncOpComputationShapes(const HloInstruction* async_op);
+
+  // Checks that the aliasing config of the given async instruction is valid.
+  absl::Status CheckAsyncOpAliasConfig(const HloInstruction* async_op);
+  absl::Status CheckAsyncStartAliasConfig(const HloInstruction* async_op);
+  absl::Status CheckAsyncUpdateAliasConfig(const HloInstruction* async_op);
 
   // Returns true if the shapes of the two operands have the same element type,
   // and the result shape either has the same element type as the operand shapes

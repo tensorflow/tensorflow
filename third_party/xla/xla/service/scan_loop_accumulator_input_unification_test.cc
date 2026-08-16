@@ -34,7 +34,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ScanLoopAccumulatorInputUnificationTest = HloPjRtTestBase;
+using ScanLoopAccumulatorInputUnificationTest = HloTestBase;
 
 HloInstruction* GetTopLevelWhileInstruction(HloModule* module) {
   for (HloInstruction* instr :

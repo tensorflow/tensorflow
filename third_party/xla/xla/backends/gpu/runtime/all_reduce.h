@@ -21,12 +21,15 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -36,6 +39,11 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
+
+namespace xla {
+class DeviceAssignment;
+class GpuTopology;
+}  // namespace xla
 
 namespace xla::gpu {
 
@@ -78,10 +86,15 @@ se::gpu::AllReduceStrategy GetAllReduceStrategy(int64_t input_size_bytes,
 int64_t GetMaxSupportedAllReduceSizeBytes(se::gpu::AllReduceStrategy strategy);
 
 // Returns the launch dimensions for the all-reduce kernel.
-// The launch dimensions are determined by the number of elements and the
-// the all-reduce strategy.
-LaunchDimensions AllReduceLaunchDimensions(int64_t elements, int64_t num_ranks,
-                                           se::gpu::AllReduceStrategy strategy);
+// The launch dimensions are determined by the number of elements, the
+// all-reduce strategy, and the warp size of the target device.
+LaunchDimensions AllReduceLaunchDimensions(
+    int64_t elements, int64_t num_ranks, se::gpu::AllReduceStrategy strategy,
+    const se::DeviceDescription& device_info);
+
+// Creates a CollectiveKernelSpec for a given all-reduce instruction.
+absl::StatusOr<CollectiveKernelSpec> CreateAllReduceKernelSpec(
+    const HloInstruction* instr, const LaunchDimensions& launch_dimensions);
 
 // Returns absl::OkStatus() if supported, or an error status detailing why
 // it is not supported.
@@ -94,18 +107,24 @@ absl::Status IsAllReduceKernelSupported(
 // Returns absl::OkStatus() if supported, or an error status detailing why
 // it is not supported.
 absl::Status IsAllReduceKernelSupported(
-    bool is_collective_kernel_enabled, const se::DeviceDescription& device_info,
-    int32_t num_operands, std::optional<ReductionKind> reduction_kind,
-    int64_t num_devices, int64_t num_elements, PrimitiveType element_type,
-    bool is_local, bool is_multimem_enabled,
-    const std::vector<ReplicaGroup>& replica_groups);
+    bool is_collective_kernel_enabled,               //
+    const se::DeviceDescription& device_info,        //
+    int32_t num_operands,                            //
+    std::optional<ReductionKind> reduction_kind,     //
+    int64_t num_devices,                             //
+    int64_t num_elements,                            //
+    PrimitiveType element_type,                      //
+    bool is_local,                                   //
+    bool is_multimem_enabled,                        //
+    const std::vector<ReplicaGroup>& replica_groups  //
+);
 
 // Constructs an AllReduceInfo object for the given all-reduce instruction.
 // Returns an error status if the all-reduce kernel is not supported.
 absl::StatusOr<AllReduceInfo> BuildAllReduceInfo(
     bool is_collective_kernel_enabled, bool is_multimem_enabled,
-    const se::DeviceDescription& device_info,
-    const HloAllReduceInstruction* all_reduce);
+    const GpuTopology& gpu_topology, const HloAllReduceInstruction* all_reduce,
+    const DeviceAssignment* device_assignment);
 
 // Performs element-wise addition of all input buffers and stores the result in
 // the output buffer.

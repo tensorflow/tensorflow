@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -32,27 +33,36 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/threadpool.h"
+#include "xla/types.h"
 #include "xla/xla_data.pb.h"
+
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla::cpu {
 namespace {
 
 class SortThunkTest : public testing::TestWithParam<bool> {};
 
-// Sorts the data using only the first input (that must be float!).
-static bool LessThan(const void** data) {
-  auto* lhs = reinterpret_cast<const float*>(data[0]);
-  auto* rhs = reinterpret_cast<const float*>(data[1]);
+template <typename T>
+static bool TypedLessThan(const void** data) {
+  auto* lhs = reinterpret_cast<const T*>(data[0]);
+  auto* rhs = reinterpret_cast<const T*>(data[1]);
   return *lhs < *rhs;
 }
+
+static bool LessThan(const void** data) { return TypedLessThan<float>(data); }
 
 class LessThanComparator : public FunctionLibrary {
  public:
@@ -72,9 +82,9 @@ class LessThanComparator : public FunctionLibrary {
 TEST_P(SortThunkTest, DescendingSortPlainArray) {
   bool is_stable = GetParam();
 
-  TF_ASSERT_OK_AND_ASSIGN(auto data,
-                          LiteralUtil::CreateRandomLiteral<F32>(
-                              ShapeUtil::MakeShape(F32, {10000}), 1.0f, 0.1f));
+  ASSERT_OK_AND_ASSIGN(auto data,
+                       LiteralUtil::CreateRandomLiteral<F32>(
+                           ShapeUtil::MakeShape(F32, {10000}), 1.0f, 0.1f));
 
   BufferAllocations allocations = CreateBufferAllocations(data);
   BufferAllocation alloc = CreateBufferAllocation(0, data);
@@ -85,7 +95,7 @@ TEST_P(SortThunkTest, DescendingSortPlainArray) {
   auto fake_less_than = [](const void** data) { return false; };
 
   // Use sort direction to activate the most efficient sorting function.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk, SortThunk::Create({"sort"}, {{slice, data.shape()}},
                                     /*dimension=*/0, is_stable, fake_less_than,
                                     SortThunk::SortDirection::kDescending));
@@ -101,6 +111,67 @@ TEST_P(SortThunkTest, DescendingSortPlainArray) {
                              data.data<float>().end(), std::greater<float>()));
 }
 
+TEST_P(SortThunkTest, DescendingSortPlainArrayBF16) {
+  bool is_stable = GetParam();
+
+  ASSERT_OK_AND_ASSIGN(
+      auto data, LiteralUtil::CreateRandomLiteral<BF16>(
+                     ShapeUtil::MakeShape(BF16, {10000}),
+                     static_cast<bfloat16>(1.0f), static_cast<bfloat16>(0.1f)));
+
+  BufferAllocations allocations = CreateBufferAllocations(data);
+  BufferAllocation alloc = CreateBufferAllocation(0, data);
+  BufferAllocation::Slice slice = CreateBufferAllocationSlice(alloc);
+
+  auto fake_less_than = [](const void** data) { return false; };
+
+  ASSERT_OK_AND_ASSIGN(
+      auto thunk, SortThunk::Create({"sort"}, {{slice, data.shape()}},
+                                    /*dimension=*/0, is_stable, fake_less_than,
+                                    SortThunk::SortDirection::kDescending));
+
+  Thunk::ExecuteParams params;
+  params.buffer_allocations = &allocations;
+
+  auto execute_event = thunk->Execute(params);
+  tsl::BlockUntilReady(execute_event);
+  ASSERT_FALSE(execute_event.IsError());
+
+  EXPECT_TRUE(std::is_sorted(data.data<bfloat16>().begin(),
+                             data.data<bfloat16>().end(),
+                             std::greater<bfloat16>()));
+}
+
+TEST_P(SortThunkTest, DescendingSortPlainArrayF16) {
+  bool is_stable = GetParam();
+
+  ASSERT_OK_AND_ASSIGN(auto data,
+                       LiteralUtil::CreateRandomLiteral<F16>(
+                           ShapeUtil::MakeShape(F16, {10000}),
+                           static_cast<half>(1.0f), static_cast<half>(0.1f)));
+
+  BufferAllocations allocations = CreateBufferAllocations(data);
+  BufferAllocation alloc = CreateBufferAllocation(0, data);
+  BufferAllocation::Slice slice = CreateBufferAllocationSlice(alloc);
+
+  auto fake_less_than = [](const void** data) { return false; };
+
+  ASSERT_OK_AND_ASSIGN(
+      auto thunk, SortThunk::Create({"sort"}, {{slice, data.shape()}},
+                                    /*dimension=*/0, is_stable, fake_less_than,
+                                    SortThunk::SortDirection::kDescending));
+
+  Thunk::ExecuteParams params;
+  params.buffer_allocations = &allocations;
+
+  auto execute_event = thunk->Execute(params);
+  tsl::BlockUntilReady(execute_event);
+  ASSERT_FALSE(execute_event.IsError());
+
+  EXPECT_TRUE(std::is_sorted(data.data<half>().begin(), data.data<half>().end(),
+                             std::greater<half>()));
+}
+
 TEST_P(SortThunkTest, Sort1D) {
   bool is_stable = GetParam();
 
@@ -112,7 +183,7 @@ TEST_P(SortThunkTest, Sort1D) {
   auto [alloc0, alloc1] = CreateBufferAllocation(data, indices);
   auto [slice0, slice1] = CreateBufferAllocationSlice(alloc0, alloc1);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk,
       SortThunk::Create({"sort"},
                         {{slice0, data.shape()}, {slice1, indices.shape()}},
@@ -145,7 +216,7 @@ TEST_P(SortThunkTest, Sort1DDynamicNumInputs) {
 
   // We use dummy data to create large number of input to trigger the dynamic
   // sort implementation, but we don't use it for sorting.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal dummy_data,
       LiteralUtil::CreateRandomLiteral<F32>(data.shape(), 1.0f, 0.1f));
 
@@ -163,10 +234,10 @@ TEST_P(SortThunkTest, Sort1DDynamicNumInputs) {
                                           {indices_slice, indices.shape()}};
   inputs.resize(40, {dummy_slice, dummy_data.shape()});
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto thunk, SortThunk::Create({"sort"}, inputs,
-                                    /*dimension=*/0, is_stable, LessThan,
-                                    SortThunk::SortDirection::kAscending));
+  ASSERT_OK_AND_ASSIGN(auto thunk,
+                       SortThunk::Create({"sort"}, inputs,
+                                         /*dimension=*/0, is_stable, LessThan,
+                                         SortThunk::SortDirection::kAscending));
 
   Thunk::ExecuteParams params;
   params.buffer_allocations = &allocations;
@@ -201,7 +272,7 @@ TEST_P(SortThunkTest, Sort2D) {
   auto [slice0, slice1] = CreateBufferAllocationSlice(alloc0, alloc1);
 
   // Sort along the dimension `0`.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto sort_dim0,
       SortThunk::Create({"sort"},
                         {{slice0, data.shape()}, {slice1, indices.shape()}},
@@ -225,7 +296,7 @@ TEST_P(SortThunkTest, Sort2D) {
   data = LiteralUtil::CreateR2<float>({{4.0, 3.0}, {2.0, 1.0}});
   indices = LiteralUtil::CreateR2<int32_t>({{0, 1}, {2, 3}});
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto sort_dim1,
       SortThunk::Create({"sort"},
                         {{slice0, data.shape()}, {slice1, indices.shape()}},
@@ -259,7 +330,7 @@ TEST_P(SortThunkTest, Sort2DWithLayout) {
   *indices_shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1});
 
   // Sort along the dimension `0`.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto sort_dim0,
       SortThunk::Create({"sort"},
                         {{slice0, data_shape}, {slice1, indices_shape}},
@@ -283,7 +354,7 @@ TEST_P(SortThunkTest, Sort2DWithLayout) {
   data = LiteralUtil::CreateR2<float>({{2.0, 4.0}, {1.0, 3.0}});
   indices = LiteralUtil::CreateR2<int32_t>({{0, 1}, {2, 3}});
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto sort_dim1,
       SortThunk::Create({"sort"},
                         {{slice0, data_shape}, {slice1, indices_shape}},
@@ -302,10 +373,101 @@ TEST_P(SortThunkTest, Sort2DWithLayout) {
 INSTANTIATE_TEST_SUITE_P(SortThunk, SortThunkTest, testing::Bool(),
                          testing::PrintToStringParamName());
 
+class ParallelSortThunkTest : public testing::TestWithParam<bool> {
+ protected:
+  ParallelSortThunkTest()
+      : thread_pool_(tsl::Env::Default(), "test", 4),
+        device_(thread_pool_.AsEigenThreadPool(), thread_pool_.NumThreads()) {}
+
+  template <PrimitiveType kType>
+  void RunTest(const Shape& shape, int64_t dimension) {
+    using NativeT = typename primitive_util::PrimitiveTypeToNative<kType>::type;
+    ASSERT_OK_AND_ASSIGN(Literal data, LiteralUtil::CreateRandomLiteral<kType>(
+                                           shape, static_cast<NativeT>(1.0f),
+                                           static_cast<NativeT>(0.5f)));
+    ExecuteSort(data, dimension, GetParam());
+    VerifySlicesAreSorted<NativeT>(data, shape, dimension);
+  }
+
+ private:
+  void ExecuteSort(Literal& data, int64_t dimension, bool is_stable) {
+    BufferAllocations allocations = CreateBufferAllocations(data);
+    BufferAllocation alloc = CreateBufferAllocation(0, data);
+    BufferAllocation::Slice slice = CreateBufferAllocationSlice(alloc);
+
+    auto fake_less_than = [](const void**) { return false; };
+
+    ASSERT_OK_AND_ASSIGN(
+        auto thunk, SortThunk::Create({"sort"}, {{slice, data.shape()}},
+                                      dimension, is_stable, fake_less_than,
+                                      SortThunk::SortDirection::kAscending));
+
+    Thunk::ExecuteParams params;
+    params.buffer_allocations = &allocations;
+    params.intra_op_threadpool = &device_;
+
+    auto execute_event = thunk->Execute(params);
+    tsl::BlockUntilReady(execute_event);
+    ASSERT_FALSE(execute_event.IsError());
+  }
+
+  template <typename NativeT>
+  void VerifySlicesAreSorted(const Literal& data, const Shape& shape,
+                             int64_t dimension) {
+    int64_t outer_dim_size = 1;
+    for (int64_t i = 0; i < dimension; ++i) {
+      outer_dim_size *= shape.dimensions(i);
+    }
+    int64_t sort_dim_size = shape.dimensions(dimension);
+    int64_t inner_dim_size = 1;
+    for (int64_t i = dimension + 1; i < shape.dimensions_size(); ++i) {
+      inner_dim_size *= shape.dimensions(i);
+    }
+
+    auto span = data.data<NativeT>();
+    for (int64_t outer = 0; outer < outer_dim_size; ++outer) {
+      for (int64_t inner = 0; inner < inner_dim_size; ++inner) {
+        std::vector<NativeT> slice_elements;
+        slice_elements.reserve(sort_dim_size);
+        for (int64_t sort_idx = 0; sort_idx < sort_dim_size; ++sort_idx) {
+          slice_elements.push_back(
+              span[(outer * sort_dim_size + sort_idx) * inner_dim_size +
+                   inner]);
+        }
+        EXPECT_TRUE(std::is_sorted(slice_elements.begin(), slice_elements.end(),
+                                   std::less<NativeT>()));
+      }
+    }
+  }
+
+  tsl::thread::ThreadPool thread_pool_;
+  Eigen::ThreadPoolDevice device_;
+};
+
+TEST_P(ParallelSortThunkTest, Sort2DF32) {
+  RunTest<F32>(ShapeUtil::MakeShape(F32, {32, 64}), /*dimension=*/1);
+}
+
+TEST_P(ParallelSortThunkTest, Sort3DF32) {
+  RunTest<F32>(ShapeUtil::MakeShape(F32, {4, 16, 8}), /*dimension=*/1);
+}
+
+TEST_P(ParallelSortThunkTest, Sort2DBF16) {
+  RunTest<BF16>(ShapeUtil::MakeShape(BF16, {32, 64}), /*dimension=*/1);
+}
+
+TEST_P(ParallelSortThunkTest, Sort2DF16) {
+  RunTest<F16>(ShapeUtil::MakeShape(F16, {32, 64}), /*dimension=*/1);
+}
+
+INSTANTIATE_TEST_SUITE_P(ParallelSortThunk, ParallelSortThunkTest,
+                         testing::Bool(), testing::PrintToStringParamName());
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks below.
 //===----------------------------------------------------------------------===//
 
+template <PrimitiveType kType>
 void BM_Sort1D(benchmark::State& state) {
   int64_t input_size = state.range(0);
   int64_t num_inputs = state.range(1);
@@ -314,15 +476,19 @@ void BM_Sort1D(benchmark::State& state) {
 
   CHECK_GE(num_inputs, 1) << "Number of inputs must be at least 1";  // Crash OK
 
-  auto data = LiteralUtil::CreateRandomLiteral<F32>(
-      ShapeUtil::MakeShape(F32, {input_size}), 1.0f, 1.0f);
-  CHECK_OK(data) << "Failed to create random literal";  // Crash OK
+  using NativeT = typename primitive_util::PrimitiveTypeToNative<kType>::type;
+  auto data_or = LiteralUtil::CreateRandomLiteral<kType>(
+      ShapeUtil::MakeShape(kType, {input_size}), static_cast<NativeT>(1.0f),
+      static_cast<NativeT>(1.0f));
+  CHECK_OK(data_or);
+  Literal data = std::move(data_or).value();
 
   // We use dummy data to create additional inputs, but we don't use it for
   // sorting and simply shuffle it according to the values in the first input.
-  auto dummy_data =
-      LiteralUtil::CreateRandomLiteral<F32>(data->shape(), 1.f, 1.f);
-  CHECK_OK(dummy_data) << "Failed to create random literal";  // Crash OK
+  auto dummy_data_or = LiteralUtil::CreateRandomLiteral<kType>(
+      data.shape(), static_cast<NativeT>(1.0f), static_cast<NativeT>(1.0f));
+  CHECK_OK(dummy_data_or);
+  Literal dummy_data = std::move(dummy_data_or).value();
 
   // Use sort direction to activate the most efficient sorting function, or fall
   // back on the comparator functor.
@@ -331,49 +497,152 @@ void BM_Sort1D(benchmark::State& state) {
     direction = SortThunk::SortDirection::kAscending;
   }
 
-  auto [alloc, dummy_alloc] = CreateBufferAllocation(*data, *dummy_data);
+  auto [alloc, dummy_alloc] = CreateBufferAllocation(data, dummy_data);
   auto [slice, dummy_slice] = CreateBufferAllocationSlice(alloc, dummy_alloc);
 
   for (auto s : state) {
     // Clone the data to avoid sorting already sorted data.
-    Literal data_copy = data->Clone();
+    Literal data_copy = data.Clone();
     BufferAllocations allocations =
-        CreateBufferAllocations(data_copy, *dummy_data);
+        CreateBufferAllocations(data_copy, dummy_data);
 
     std::vector<SortThunk::Input> inputs = {{slice, data_copy.shape()}};
-    inputs.resize(num_inputs, {dummy_slice, dummy_data->shape()});
+    inputs.resize(num_inputs, {dummy_slice, dummy_data.shape()});
 
     Thunk::ExecuteParams params;
     params.buffer_allocations = &allocations;
 
-    auto thunk =
-        SortThunk::Create({"sort"}, inputs,
-                          /*dimension=*/0, is_stable, LessThan, direction);
-    CHECK_OK(thunk) << "Failed to create sort thunk";  // Crash OK
+    auto thunk_or = SortThunk::Create({"sort"}, inputs,
+                                      /*dimension=*/0, is_stable,
+                                      TypedLessThan<NativeT>, direction);
+    CHECK_OK(thunk_or);
+    std::unique_ptr<SortThunk> thunk = std::move(thunk_or).value();
 
-    auto execute_event = (*thunk)->Execute(params);
+    auto execute_event = thunk->Execute(params);
     tsl::BlockUntilReady(execute_event);
     CHECK(execute_event.IsConcrete());
   }
 }
 
-BENCHMARK(BM_Sort1D)
+BENCHMARK_TEMPLATE(BM_Sort1D, F32)
     ->MeasureProcessCPUTime()
     ->ArgNames({"input_size", "num_inputs", "is_stable", "sort_ascending"})
     // Sort using ascending directions.
     ->Args({1000, 1, false, true})
-    ->Args({1000, 2, false, true})
-    ->Args({1000, 4, false, true})
-    ->Args({1000, 8, false, true})
-    ->Args({1000, 16, false, true})
-    ->Args({1000, 32, false, true})
-    // Sort using LessThan comparator.
+    ->Args({10000, 1, false, true})
+    ->Args({100000, 1, false, true})
+    // Sort using LessThan comparator callback.
     ->Args({1000, 1, false, false})
-    ->Args({1000, 2, false, false})
-    ->Args({1000, 4, false, false})
-    ->Args({1000, 8, false, false})
-    ->Args({1000, 16, false, false})
-    ->Args({1000, 32, false, false});
+    ->Args({10000, 1, false, false})
+    ->Args({100000, 1, false, false});
+
+BENCHMARK_TEMPLATE(BM_Sort1D, BF16)
+    ->MeasureProcessCPUTime()
+    ->ArgNames({"input_size", "num_inputs", "is_stable", "sort_ascending"})
+    // Sort using ascending directions (inlined specialized).
+    ->Args({1000, 1, false, true})
+    ->Args({10000, 1, false, true})
+    ->Args({100000, 1, false, true})
+    // Sort using LessThan comparator callback (fallback baseline).
+    ->Args({1000, 1, false, false})
+    ->Args({10000, 1, false, false})
+    ->Args({100000, 1, false, false});
+
+BENCHMARK_TEMPLATE(BM_Sort1D, F16)
+    ->MeasureProcessCPUTime()
+    ->ArgNames({"input_size", "num_inputs", "is_stable", "sort_ascending"})
+    // Sort using ascending directions (inlined specialized).
+    ->Args({1000, 1, false, true})
+    ->Args({10000, 1, false, true})
+    ->Args({100000, 1, false, true})
+    // Sort using LessThan comparator callback (fallback baseline).
+    ->Args({1000, 1, false, false})
+    ->Args({10000, 1, false, false})
+    ->Args({100000, 1, false, false});
+
+template <PrimitiveType kType>
+void BM_Sort2D(benchmark::State& state) {
+  int64_t outer_dim = state.range(0);
+  int64_t sort_dim = state.range(1);
+  int64_t num_threads = state.range(2);
+
+  using NativeT = typename primitive_util::PrimitiveTypeToNative<kType>::type;
+  auto data_or = LiteralUtil::CreateRandomLiteral<kType>(
+      ShapeUtil::MakeShape(kType, {outer_dim, sort_dim}),
+      static_cast<NativeT>(1.0f), static_cast<NativeT>(1.0f));
+  CHECK_OK(data_or);
+  Literal data = std::move(data_or).value();
+
+  std::optional<tsl::thread::ThreadPool> threads;
+  std::optional<Eigen::ThreadPoolDevice> device;
+  if (num_threads > 0) {
+    threads.emplace(tsl::Env::Default(), "benchmark", num_threads);
+    device.emplace(threads->AsEigenThreadPool(), threads->NumThreads());
+  }
+
+  for (auto s : state) {
+    Literal data_copy = data.Clone();
+    BufferAllocations allocations = CreateBufferAllocations(data_copy);
+    BufferAllocation alloc = CreateBufferAllocation(0, data_copy);
+    BufferAllocation::Slice slice = CreateBufferAllocationSlice(alloc);
+
+    Thunk::ExecuteParams params;
+    params.buffer_allocations = &allocations;
+    if (device.has_value()) {
+      params.intra_op_threadpool = &*device;
+    }
+
+    auto fake_less_than = [](const void**) { return false; };
+    auto thunk_or =
+        SortThunk::Create({"sort"}, {{slice, data_copy.shape()}},
+                          /*dimension=*/1, /*is_stable=*/false, fake_less_than,
+                          SortThunk::SortDirection::kAscending);
+    CHECK_OK(thunk_or);
+    std::unique_ptr<SortThunk> thunk = std::move(thunk_or).value();
+
+    auto execute_event = thunk->Execute(params);
+    tsl::BlockUntilReady(execute_event);
+    CHECK(execute_event.IsConcrete());
+  }
+}
+
+BENCHMARK_TEMPLATE(BM_Sort2D, F32)
+    ->MeasureProcessCPUTime()
+    ->ArgNames({"outer_dim", "sort_dim", "num_threads"})
+    // Single-threaded baseline (num_threads = 0) vs multi-threaded (num_threads
+    // = 4, 8, 16)
+    ->Args({16, 1024, 0})
+    ->Args({16, 1024, 4})
+    ->Args({16, 1024, 8})
+    ->Args({64, 1024, 0})
+    ->Args({64, 1024, 4})
+    ->Args({64, 1024, 8})
+    ->Args({64, 4096, 0})
+    ->Args({64, 4096, 4})
+    ->Args({64, 4096, 8})
+    ->Args({64, 4096, 16})
+    ->Args({256, 4096, 0})
+    ->Args({256, 4096, 4})
+    ->Args({256, 4096, 8})
+    ->Args({256, 4096, 16});
+
+BENCHMARK_TEMPLATE(BM_Sort2D, BF16)
+    ->MeasureProcessCPUTime()
+    ->ArgNames({"outer_dim", "sort_dim", "num_threads"})
+    ->Args({16, 1024, 0})
+    ->Args({16, 1024, 4})
+    ->Args({16, 1024, 8})
+    ->Args({64, 1024, 0})
+    ->Args({64, 1024, 4})
+    ->Args({64, 1024, 8})
+    ->Args({64, 4096, 0})
+    ->Args({64, 4096, 4})
+    ->Args({64, 4096, 8})
+    ->Args({64, 4096, 16})
+    ->Args({256, 4096, 0})
+    ->Args({256, 4096, 4})
+    ->Args({256, 4096, 8})
+    ->Args({256, 4096, 16});
 
 }  // namespace
 }  // namespace xla::cpu

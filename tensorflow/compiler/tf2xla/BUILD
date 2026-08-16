@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 
@@ -7,6 +22,10 @@ load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 
 load("@xla//xla:xla.default.bzl", "xla_py_proto_library")
 load("@xla//xla/service/cpu:build_defs.bzl", "runtime_copts")
+load(
+    "@xla//xla/tsl:tsl.bzl",
+    "internal_visibility",
+)
 load("@xla//xla/tsl/mkl:build_defs.bzl", "mkl_deps")
 load("@xla//xla/tsl/platform:build_config_root.bzl", "if_static")
 load(
@@ -30,16 +49,20 @@ package(
 
 package_group(
     name = "internal",
-    packages = [
-        "//tensorflow/compiler/aot/...",
-        "//tensorflow/compiler/jit/...",
-        "//tensorflow/compiler/mlir/...",
-        "//tensorflow/compiler/tests/...",
-        "//tensorflow/compiler/tf2xla/...",
-        "//tensorflow/core/tpu/...",
-        "//tensorflow/python/compiler/...",
-        "//tensorflow/python/util/...",
-    ],
+    packages = internal_visibility(
+        [
+            "//tensorflow/compiler/aot/...",
+            "//tensorflow/compiler/jit/...",
+            "//tensorflow/compiler/mlir/...",
+            "//tensorflow/compiler/tests/...",
+            "//tensorflow/compiler/tf2xla/...",
+            "//tensorflow/contrib/compiler/...",
+            "//tensorflow/core/tpu/...",
+            "//tensorflow/python/compiler/...",
+            "//tensorflow/python/util/...",
+        ],
+        ["public"],
+    ),
 )
 
 package_group(
@@ -212,6 +235,8 @@ cc_library(
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:vlog_is_on",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:IR",
         "@tsl//tsl/platform:errors",

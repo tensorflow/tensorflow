@@ -18,13 +18,13 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/proto/pjrt_abi_version.pb.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/pjrt_ifrt/tpu_xla_executable_abi_version.h"
 #include "xla/python/pjrt_ifrt/xla_executable_abi_version.h"
@@ -43,22 +43,22 @@ namespace {
 
 // IFRT SerDes implementation for XlaExecutableAbiVersion on TPU.
 class TpuXlaExecutableAbiVersionSerDes
-    : public llvm::RTTIExtends<TpuXlaExecutableAbiVersionSerDes,
+    : public ifrt::RTTIExtends<TpuXlaExecutableAbiVersionSerDes,
                                xla::ifrt::SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::TpuXlaExecutableAbiVersion";
   }
 
-  absl::StatusOr<std::string> Serialize(
+  absl::StatusOr<absl::Cord> Serialize(
       const xla::ifrt::Serializable& serializable,
       std::unique_ptr<xla::ifrt::SerializeOptions> options) override {
     const auto& version =
-        llvm::cast<xla::ifrt::XlaExecutableAbiVersion>(serializable);
+        ifrt::cast<xla::ifrt::XlaExecutableAbiVersion>(serializable);
 
-    ASSIGN_OR_RETURN(xla::PjRtExecutableAbiVersionProto proto,
+    ABSL_ASSIGN_OR_RETURN(xla::PjRtExecutableAbiVersionProto proto,
                      version.ExecutableAbiVersion().ToProto());
-    std::string executable_abi_version;
+    absl::Cord executable_abi_version;
     if (!proto.SerializeToString(&executable_abi_version)) {
       return absl::InternalError(
           "Failed to serialize PjRtExecutableAbiVersion to string.");
@@ -67,14 +67,14 @@ class TpuXlaExecutableAbiVersionSerDes
   }
 
   absl::StatusOr<std::unique_ptr<xla::ifrt::Serializable>> Deserialize(
-      const std::string& serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<xla::ifrt::DeserializeOptions> options) override {
     xla::PjRtExecutableAbiVersionProto proto;
     if (!proto.ParseFromString(serialized)) {
       return absl::InvalidArgumentError(
           "Failed to parse PjRtExecutableAbiVersion from string.");
     }
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<xla::PjRtExecutableAbiVersion> runtime_abi_version,
         tpu_xla_executable_abi_version_serdes::
             PjRtExecutableAbiVersionFromProto(proto));

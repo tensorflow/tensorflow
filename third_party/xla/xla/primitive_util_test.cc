@@ -93,6 +93,8 @@ INSTANTIATE_TEST_SUITE_P(FloatTypeTests, FloatTypeTest,
                              {F32, 8, 24, 127, -125, 128},
                              {BF16, 8, 8, 127, -125, 128},
                              {F4E2M1FN, 2, 2, 1, 1, 3},
+                             {F6E3M2FN, 3, 3, 3, -1, 5},
+                             {F6E2M3FN, 2, 4, 1, 1, 3},
                              {F8E3M4, 3, 5, 3, -1, 4},
                              {F8E4M3, 4, 4, 7, -5, 8},
                              {F8E4M3FN, 4, 4, 7, -5, 9},
@@ -118,19 +120,19 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   set_true(PRED, {PRED, S1, S2, S4, S8, S16, S32, S64, U1, U2, U4, U8, U16});
   set_true(PRED, {U32, U64, F16, F32, F64, C64, BF16, C128, F8E5M2, F8E4M3});
   set_true(PRED, {F8E4M3FN, F8E4M3B11FNUZ, F8E5M2FNUZ, F8E4M3FNUZ, F8E3M4});
-  set_true(PRED, {F4E2M1FN});
+  set_true(PRED, {F4E2M1FN, F6E3M2FN, F6E2M3FN});
 
   set_true(S1, {S1, S2, S4, S8, S16, S32, S64, F16, F32, F64, C64});
   set_true(S1, {BF16, C128, F8E5M2, F8E4M3, F8E4M3FN, F8E4M3B11FNUZ});
-  set_true(S1, {F8E5M2FNUZ, F8E4M3FNUZ, F8E3M4, F4E2M1FN});
+  set_true(S1, {F8E5M2FNUZ, F8E4M3FNUZ, F8E3M4, F4E2M1FN, F6E3M2FN, F6E2M3FN});
 
   set_true(S2, {S2, S4, S8, S16, S32, S64, F16, F32, F64, C64, BF16});
   set_true(S2, {C128, F8E5M2, F8E4M3, F8E4M3FN, F8E4M3B11FNUZ, F8E5M2FNUZ});
-  set_true(S2, {F8E4M3FNUZ, F8E3M4, F4E2M1FN});
+  set_true(S2, {F8E4M3FNUZ, F8E3M4, F4E2M1FN, F6E3M2FN, F6E2M3FN});
 
   set_true(S4, {S4, S8, S16, S32, S64, F16, F32, F64, C64, BF16, C128});
   set_true(S4, {F8E5M2, F8E4M3, F8E4M3FN, F8E4M3B11FNUZ, F8E5M2FNUZ});
-  set_true(S4, {F8E4M3FNUZ, F8E3M4});
+  set_true(S4, {F8E4M3FNUZ, F8E3M4, F6E3M2FN});
 
   set_true(S8, {S8, S16, S32, S64, F16, F32, F64, C64, BF16, C128});
   set_true(S16, {S16, S32, S64, F32, F64, C64, C128});
@@ -140,11 +142,12 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   set_true(U1, {S2, S4, S8, S16, S32, S64, U1, U2, U4, U8, U16, U32});
   set_true(U1, {U64, F16, F32, F64, C64, BF16, C128, F8E5M2, F8E4M3});
   set_true(U1, {F8E4M3FN, F8E4M3B11FNUZ, F8E5M2FNUZ, F8E4M3FNUZ, F8E3M4});
-  set_true(U1, {F4E2M1FN});
+  set_true(U1, {F4E2M1FN, F6E3M2FN, F6E2M3FN});
 
   set_true(U2, {S4, S8, S16, S32, S64, U2, U4, U8, U16, U32, U64, F16});
   set_true(U2, {F32, F64, C64, BF16, C128, F8E5M2, F8E4M3, F8E4M3FN});
-  set_true(U2, {F8E4M3B11FNUZ, F8E5M2FNUZ, F8E4M3FNUZ, F8E3M4, F4E2M1FN});
+  set_true(U2, {F8E4M3B11FNUZ, F8E5M2FNUZ, F8E4M3FNUZ, F8E3M4, F4E2M1FN,
+                F6E3M2FN, F6E2M3FN});
 
   set_true(U4, {S8, S16, S32, S64, U4, U8, U16, U32, U64, F16, F32});
   set_true(U4, {F64, C64, BF16, C128, F8E4M3, F8E4M3FN, F8E4M3B11FNUZ});
@@ -170,7 +173,11 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   set_true(F8E4M3FNUZ, {F16, F32, F64, C64, BF16, C128, F8E4M3FNUZ});
   set_true(F8E3M4, {F16, F32, F64, C64, BF16, C128, F8E3M4});
   set_true(F4E2M1FN, {F16, F32, F64, C64, BF16, C128, F8E5M2, F8E4M3});
-  set_true(F4E2M1FN, {F8E4M3FN, F8E3M4, F4E2M1FN});
+  set_true(F4E2M1FN, {F8E4M3FN, F8E3M4, F4E2M1FN, F6E3M2FN, F6E2M3FN});
+  set_true(F6E3M2FN, {F16, F32, F64, C64, BF16, C128, F8E5M2, F8E4M3, F8E4M3FN,
+                      F6E3M2FN});
+  set_true(F6E2M3FN, {F16, F32, F64, C64, BF16, C128, F8E4M3, F8E4M3FN, F8E3M4,
+                      F6E2M3FN});
   set_true(F8E8M0FNU, {F32, F64, C64, BF16, C128, F8E8M0FNU});
 
   for (int from_type_int = PrimitiveType_MIN;

@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/filecheck.h"
@@ -98,7 +97,6 @@ class MlirKernelFusionTest : public HloHardwareIndependentTestBase {
     mlir_context_.appendDialectRegistry(
         MlirKernelEmitter::GetDialectRegistry());
     mlir_context_.loadAllAvailableDialects();
-    RegisterSymbolicExprStorage(&mlir_context_);
   }
 
   mlir::MLIRContext mlir_context_;

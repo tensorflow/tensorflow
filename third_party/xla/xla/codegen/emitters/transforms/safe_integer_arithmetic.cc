@@ -127,8 +127,4 @@ class SafeIntegerArithmeticPass
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> CreateSafeIntegerArithmeticPass() {
-  return std::make_unique<SafeIntegerArithmeticPass>();
-}
-
 }  // namespace xla::emitters

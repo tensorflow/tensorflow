@@ -29,12 +29,12 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_execution.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
@@ -45,6 +45,8 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/device_id.h"
@@ -55,13 +57,13 @@ limitations under the License.
 #include "xla/service/rendezvous.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/trace_command_buffer_factory.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -101,6 +103,25 @@ bool IsTypeSupportedBy(PrimitiveType element_type, Thunk::Kind reduction_op) {
     default:
       return false;
   }
+}
+
+ShapeIndex GetCollectiveResultShapeIndex(const HloInstruction* collective,
+                                         int64_t operand_index) {
+  const bool has_nested_result =
+      HloPredicateIsOp<HloOpcode::kAllGatherStart,
+                       HloOpcode::kCollectivePermuteStart>(collective);
+  const Shape& result_shape = has_nested_result
+                                  ? collective->shape().tuple_shapes(1)
+                                  : collective->shape();
+
+  ShapeIndex result_index;
+  if (has_nested_result) {
+    result_index.push_back(1);
+  }
+  if (result_shape.IsTuple()) {
+    result_index.push_back(operand_index);
+  }
+  return result_index;
 }
 
 }  // namespace
@@ -200,11 +221,8 @@ CollectiveConfig GetCollectiveConfig(
                           .value();
 
   config.use_symmetric_buffer =
-      hlo->GetModule() &&
-      hlo->GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_experimental_enable_nccl_symmetric_buffers();
+      hlo->GetModule() && IsNcclSymmetricBuffersEnabledForCollective(
+                              hlo, hlo->GetModule()->config().debug_options());
   return config;
 }
 
@@ -256,11 +274,83 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
   return device_buffers;
 }
 
+absl::StatusOr<std::vector<CollectiveThunk::Buffer>> GetCollectiveBuffers(
+    const BufferAssignment& buffer_assignment, const HloInstruction* inst,
+    Thunk::Kind kind, const bool has_dynamic_root) {
+  int64_t operand_count = inst->operand_count();
+  std::vector<CollectiveThunk::Buffer> buffers;
+  buffers.reserve(operand_count);
+
+  // Adds a source and destination buffers pair to `buffers`.
+  auto add_buffer = [&](const HloInstruction* src, const HloInstruction* dst,
+                        const ShapeIndex& dst_shape_index) -> absl::Status {
+    const Shape& src_shape = src->shape();
+    const Shape& dst_shape =
+        ShapeUtil::GetSubshape(dst->shape(), dst_shape_index);
+
+    ABSL_ASSIGN_OR_RETURN(auto src_slice,
+                     buffer_assignment.GetUniqueSlice(src, /*index=*/{}));
+    ABSL_ASSIGN_OR_RETURN(auto dst_slice,
+                     buffer_assignment.GetUniqueSlice(dst, dst_shape_index));
+
+    buffers.push_back(CollectiveThunk::Buffer{
+        /*element_count=*/ShapeUtil::ElementsIn(src_shape),
+        /*source_buffer=*/{src_slice, src_shape},
+        /*destination_buffer=*/{dst_slice, dst_shape},
+        /*source_memory_space=*/src_shape.layout().memory_space(),
+        /*destination_memory_space=*/dst_shape.layout().memory_space()});
+    return absl::OkStatus();
+  };
+
+  if (kind == Thunk::Kind::kAllGather) {
+    // Start operations return a tuple of (<<inputs>>, <<outputs>>)
+    // where outputs can be a tuple itself (if operation has
+    // multiple operands).
+    for (int64_t i = 0; i < operand_count; i++) {
+      ShapeIndex idx = GetCollectiveResultShapeIndex(inst, i);
+      ABSL_RETURN_IF_ERROR(add_buffer(inst->operand(i), inst, idx));
+    }
+  } else if (kind == Thunk::Kind::kRaggedAllToAll) {
+    // RaggedAllToAll operation has 6 operands: input, output,
+    // input_offset, send_size, output_offset, recv_size. `output`
+    // operand is aliased with the instruction result. All other
+    // operands are not aliased.
+    ABSL_RETURN_IF_ERROR(
+        add_buffer(inst->operand(0), inst->operand(0), ShapeIndex({})));
+    ABSL_RETURN_IF_ERROR(add_buffer(inst->operand(1), inst,
+                               GetCollectiveResultShapeIndex(inst, 0)));
+
+    for (int64_t i = 2; i < operand_count; i++) {
+      ABSL_RETURN_IF_ERROR(
+          add_buffer(inst->operand(i), inst->operand(i), ShapeIndex({})));
+    }
+  } else {
+    // For other operations simply zip operands with results.
+    //
+    // A collective-broadcast with a dynamic root carries an extra trailing
+    // operand: a 1-D S32 vector holding the runtime-selected root rank for each
+    // data operand. That operand has no corresponding output, so it is not
+    // zipped with a result; instead it is mapped to its own allocation and
+    // consumed separately by the thunk.
+    int64_t num_data_operands =
+        has_dynamic_root ? operand_count - 1 : operand_count;
+    for (int64_t i = 0; i < num_data_operands; i++) {
+      ShapeIndex idx = GetCollectiveResultShapeIndex(inst, i);
+      ABSL_RETURN_IF_ERROR(add_buffer(inst->operand(i), inst, idx));
+    }
+    if (has_dynamic_root) {
+      const HloInstruction* roots = inst->operand(operand_count - 1);
+      ABSL_RETURN_IF_ERROR(add_buffer(roots, roots, ShapeIndex({})));
+    }
+  }
+  return buffers;
+}
+
 absl::StatusOr<CollectiveBufferProto> CollectiveThunk::Buffer::ToProto() const {
   CollectiveBufferProto proto;
   proto.set_element_count(element_count);
-  ASSIGN_OR_RETURN(*proto.mutable_source_buffer(), source_buffer.ToProto());
-  ASSIGN_OR_RETURN(*proto.mutable_destination_buffer(),
+  ABSL_ASSIGN_OR_RETURN(*proto.mutable_source_buffer(), source_buffer.ToProto());
+  ABSL_ASSIGN_OR_RETURN(*proto.mutable_destination_buffer(),
                    destination_buffer.ToProto());
   proto.set_source_memory_space(source_memory_space);
   proto.set_destination_memory_space(destination_memory_space);
@@ -272,10 +362,10 @@ absl::StatusOr<CollectiveThunk::Buffer> CollectiveThunk::Buffer::FromProto(
     absl::Span<const BufferAllocation> buffer_allocations) {
   CollectiveThunk::Buffer res;
   res.element_count = buffer_proto.element_count();
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       res.source_buffer,
       ShapedSlice::FromProto(buffer_proto.source_buffer(), buffer_allocations));
-  ASSIGN_OR_RETURN(res.destination_buffer,
+  ABSL_ASSIGN_OR_RETURN(res.destination_buffer,
                    ShapedSlice::FromProto(buffer_proto.destination_buffer(),
                                           buffer_allocations));
   res.source_memory_space = buffer_proto.source_memory_space();
@@ -302,26 +392,26 @@ absl::Status CollectiveThunk::Prepare(const PrepareParams& params) {
     }
   });
 
-  RETURN_IF_ERROR(device_groups_.status());
+  ABSL_RETURN_IF_ERROR(device_groups_.status());
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*params.collective_params, config().replica_groups,
                       config().group_mode, communication_id_));
 
-  RETURN_IF_ERROR(params.collective_clique_requests->RequestClique(
+  ABSL_RETURN_IF_ERROR(params.collective_clique_requests->RequestClique(
       clique_key, *device_groups_, GetCliqueRequirements(clique_key)));
 
   if (CanUseSymmetricBuffer() && config().use_symmetric_buffer) {
     for (const Buffer& buffer : buffers_) {
       if (buffer.source_memory_space == kCollectiveMemorySpaceColor) {
-        RETURN_IF_ERROR(
+        ABSL_RETURN_IF_ERROR(
             params.collective_memory_requests->RequestSymmetricAllocation(
                 clique_key, buffer.source_buffer.slice.index()));
       }
 
       if (buffer.destination_memory_space == kCollectiveMemorySpaceColor) {
-        RETURN_IF_ERROR(
+        ABSL_RETURN_IF_ERROR(
             params.collective_memory_requests->RequestSymmetricAllocation(
                 clique_key, buffer.destination_buffer.slice.index()));
       }
@@ -332,7 +422,7 @@ absl::Status CollectiveThunk::Prepare(const PrepareParams& params) {
 }
 
 absl::Status CollectiveThunk::Initialize(const InitializeParams& params) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*params.collective_params, config().replica_groups,
                       config().group_mode, communication_id_));
@@ -379,19 +469,19 @@ absl::Status CollectiveThunk::FirstCallRendezvous(
 absl::Status CollectiveThunk::RunWithCommAndRendezvous(
     const ExecuteParams& params,
     absl::FunctionRef<absl::Status(const GpuCliqueKey&, Communicator&)> fn) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*params.collective_params, config().replica_groups,
                       config().group_mode, communication_id_));
-  ASSIGN_OR_RETURN(Communicator * comm,
+  ABSL_ASSIGN_OR_RETURN(Communicator * comm,
                    params.collective_cliques->GetComm(
                        clique_key, params.collective_params->global_device_id));
   DCHECK(comm) << "Failed to get communicator for collective operation";
 
-  RETURN_IF_ERROR(FirstCallRendezvous(params, clique_key, "before",
+  ABSL_RETURN_IF_ERROR(FirstCallRendezvous(params, clique_key, "before",
                                       pre_call_rendezvous_flag_));
-  RETURN_IF_ERROR(fn(clique_key, *comm));
-  RETURN_IF_ERROR(FirstCallRendezvous(params, clique_key, "after",
+  ABSL_RETURN_IF_ERROR(fn(clique_key, *comm));
+  ABSL_RETURN_IF_ERROR(FirstCallRendezvous(params, clique_key, "after",
                                       post_call_rendezvous_flag_));
   return absl::OkStatus();
 }
@@ -410,10 +500,10 @@ absl::StatusOr<const se::CommandBuffer::Command*> CollectiveThunk::Record(
     const ExecuteParams& execute_params, const RecordParams& record_params,
     RecordAction record_action, se::CommandBuffer* command_buffer) {
   std::unique_ptr<se::CommandBuffer> nested_cmd;
-  RETURN_IF_ERROR(RunWithCommAndRendezvous(
+  ABSL_RETURN_IF_ERROR(RunWithCommAndRendezvous(
       execute_params,
       [&](const GpuCliqueKey& clique_key, Communicator& comm) -> absl::Status {
-        ASSIGN_OR_RETURN(nested_cmd,
+        ABSL_ASSIGN_OR_RETURN(nested_cmd,
                          se::TraceCommandBufferFactory::Create(
                              execute_params.stream->parent(),
                              execute_params.command_buffer_trace_stream,
@@ -424,14 +514,14 @@ absl::StatusOr<const se::CommandBuffer::Command*> CollectiveThunk::Record(
         return absl::OkStatus();
       }));
 
-  RETURN_IF_ERROR(nested_cmd->SetPriority(se::StreamPriority::Highest));
+  ABSL_RETURN_IF_ERROR(nested_cmd->SetPriority(se::StreamPriority::Highest));
 
   if (auto* create = std::get_if<RecordCreate>(&record_action)) {
     return command_buffer->CreateChildCommand(*nested_cmd,
                                               create->dependencies);
   }
   if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         command_buffer->UpdateChildCommand(update->command, *nested_cmd));
     return update->command;
   }

@@ -18,18 +18,20 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_compiler.h"
 #include "xla/pjrt/pjrt_compiler.h"
-#include "xla/pjrt/stream_executor_platform_id_mapping.h"
+#include "xla/pjrt/se/stream_executor_platform_id_mapping.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
 
 namespace xla {
 
-STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(pjrt_register_se_gpu_compiler, {
-  PjRtRegisterDefaultCompiler(
-      OneapiName(), std::make_unique<StreamExecutorGpuCompiler>(
-                        OneapiId(), stream_executor::sycl::kSyclPlatformId));
-  CHECK_OK(StreamExecutorPlatformIdMapping::Global().AddMapping(
-      stream_executor::sycl::kSyclPlatformId, OneapiId()));
-});
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(
+    pjrt_register_se_gpu_sycl_compiler, {
+      PjRtRegisterDefaultCompiler(
+          OneapiName(),
+          std::make_unique<StreamExecutorGpuCompiler>(
+              OneapiId(), stream_executor::sycl::kSyclPlatformId));
+      CHECK_OK(StreamExecutorPlatformIdMapping::Global().AddMapping(
+          stream_executor::sycl::kSyclPlatformId, OneapiId()));
+    });
 
 }  // namespace xla

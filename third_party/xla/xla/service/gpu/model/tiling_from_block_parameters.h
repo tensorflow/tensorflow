@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 
@@ -42,7 +43,7 @@ namespace xla::gpu {
 absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
     const SymbolicTileAnalysis& symbolic_tile_analysis,
     const BlockLevelParameters& block_level_parameters,
-    const Tile* dot_tiling_config_override = nullptr);
+    const xla::xtile::Tile* dot_tiling_config_override = nullptr);
 
 // Returns concrete tiles sizes tiling space dimensions - in the order of
 // dimensions in the tiling space.
@@ -50,7 +51,8 @@ absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
 // of 2.
 absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
     const xla::gpu::experimental::TilingSpace& tiling_space,
-    const BlockLevelParameters& block_level_parameters);
+    const BlockLevelParameters& block_level_parameters,
+    bool enable_same_shape_multi_output_fusion);
 
 }  // namespace xla::gpu
 

@@ -1,23 +1,34 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
+load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl", "if_sycl_build_is_configured", "sycl_library")
 load("@xla//xla/tsl:tsl.bzl", "tf_openmp_copts")
 load("@xla//xla/tsl/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml", "if_mkldnn_openmp")
+load("@xla//xla/tsl/mkl:build_defs_gpu.bzl", "convert_cl_to_cpp", "convert_header_to_cpp")
 
 exports_files(["LICENSE"])
 
 _CMAKE_COMMON_LIST = {
-    "#cmakedefine DNNL_DISABLE_GPU_REF_KERNELS": "#define DNNL_DISABLE_GPU_REF_KERNELS 0",
-    "#cmakedefine DNNL_GPU_RUNTIME DNNL_RUNTIME_${DNNL_GPU_RUNTIME}": "#define DNNL_GPU_RUNTIME DNNL_RUNTIME_NONE",
-    "#cmakedefine DNNL_GPU_VENDOR DNNL_VENDOR_${DNNL_GPU_VENDOR}": "#define DNNL_VENDOR_NONE",
     "#cmakedefine DNNL_USE_RT_OBJECTS_IN_PRIMITIVE_CACHE": "#undef DNNL_USE_RT_OBJECTS_IN_PRIMITIVE_CACHE",
-    "#cmakedefine DNNL_WITH_SYCL": "#undef DNNL_WITH_SYCL",
     "#cmakedefine DNNL_WITH_LEVEL_ZERO": "#undef DNNL_WITH_LEVEL_ZERO",
-    "#cmakedefine DNNL_SYCL_CUDA": "#undef DNNL_SYCL_CUDA",
-    "#cmakedefine DNNL_SYCL_HIP": "#undef DNNL_SYCL_HIP",
-    "#cmakedefine DNNL_SYCL_GENERIC": "#define DNNL_SYCL_GENERIC 1",
     "#cmakedefine DNNL_ENABLE_STACK_CHECKER": "#undef DNNL_ENABLE_STACK_CHECKER",
     "#cmakedefine ONEDNN_BUILD_GRAPH": "#define ONEDNN_BUILD_GRAPH",
     "#cmakedefine DNNL_EXPERIMENTAL_SPARSE": "#define DNNL_EXPERIMENTAL_SPARSE",
     "#cmakedefine DNNL_EXPERIMENTAL": "#undef DNNL_EXPERIMENTAL",
+    "#cmakedefine01 DNNL_EXPERIMENTAL_GROUPED_MEMORY": "#undef DNNL_EXPERIMENTAL_GROUPED_MEMORY",
     "#cmakedefine DNNL_SAFE_RBP": "#undef DNNL_SAFE_RBP",
     "#cmakedefine01 BUILD_TRAINING": "#define BUILD_TRAINING 1",
     "#cmakedefine01 BUILD_INFERENCE": "#define BUILD_INFERENCE 0",
@@ -28,6 +39,7 @@ _CMAKE_COMMON_LIST = {
     "#cmakedefine01 BUILD_CONVOLUTION": "#define BUILD_CONVOLUTION 0",
     "#cmakedefine01 BUILD_DECONVOLUTION": "#define BUILD_DECONVOLUTION 0",
     "#cmakedefine01 BUILD_ELTWISE": "#define BUILD_ELTWISE 0",
+    "#cmakedefine01 BUILD_GATED_MLP": "#define BUILD_GATED_MLP 0",
     "#cmakedefine01 BUILD_GEMM_KERNELS_ALL": "#define BUILD_GEMM_KERNELS_ALL 1",
     "#cmakedefine01 BUILD_GEMM_KERNELS_NONE": "#define BUILD_GEMM_KERNELS_NONE 0",
     "#cmakedefine01 BUILD_GEMM_SSE41": "#define BUILD_GEMM_SSE41 1",
@@ -52,16 +64,26 @@ _CMAKE_COMMON_LIST = {
     "#cmakedefine01 BUILD_AVX2": "#define BUILD_AVX2 0",
     "#cmakedefine01 BUILD_AVX512": "#define BUILD_AVX512 0",
     "#cmakedefine01 BUILD_AMX": "#define BUILD_AMX 0",
-    "#cmakedefine01 BUILD_PRIMITIVE_GPU_ISA_ALL": "#define BUILD_PRIMITIVE_GPU_ISA_ALL 0",
     "#cmakedefine01 BUILD_GEN9": "#define BUILD_GEN9 0",
     "#cmakedefine01 BUILD_GEN11": "#define BUILD_GEN11 0",
     "#cmakedefine01 BUILD_SDPA": "#define BUILD_SDPA 1",
     "#cmakedefine01 BUILD_XE2": "#define BUILD_XE2 0",
+    "#cmakedefine01 BUILD_XE3P": "#define BUILD_XE3P 0",
     "#cmakedefine01 BUILD_XE3": "#define BUILD_XE3 0",
     "#cmakedefine01 BUILD_XELP": "#define BUILD_XELP 0",
     "#cmakedefine01 BUILD_XEHPG": "#define BUILD_XEHPG 0",
     "#cmakedefine01 BUILD_XEHPC": "#define BUILD_XEHPC 0",
     "#cmakedefine01 BUILD_XEHP": "#define BUILD_XEHP 0",
+    # SYCL specific settings
+    "#cmakedefine DNNL_SYCL_CUDA": "#undef DNNL_SYCL_CUDA",
+    "#cmakedefine DNNL_SYCL_HIP": "#undef DNNL_SYCL_HIP",
+    "#cmakedefine DNNL_GPU_RUNTIME DNNL_RUNTIME_${DNNL_GPU_RUNTIME}": if_sycl_build_is_configured("#define DNNL_GPU_RUNTIME DNNL_RUNTIME_SYCL", "#define DNNL_GPU_RUNTIME DNNL_RUNTIME_NONE"),
+    "#cmakedefine DNNL_GPU_VENDOR DNNL_VENDOR_${DNNL_GPU_VENDOR}": if_sycl_build_is_configured("#define DNNL_GPU_VENDOR DNNL_VENDOR_INTEL", "#define DNNL_GPU_VENDOR DNNL_VENDOR_NONE"),
+    "#cmakedefine DNNL_WITH_SYCL": if_sycl_build_is_configured("#define DNNL_WITH_SYCL", "#undef DNNL_WITH_SYCL"),
+    "#cmakedefine DNNL_SYCL_GENERIC": "#undef DNNL_SYCL_GENERIC",
+    "#cmakedefine DNNL_DISABLE_GPU_REF_KERNELS": "#undef DNNL_DISABLE_GPU_REF_KERNELS",
+    "#cmakedefine DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER": "#undef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER",
+    "#cmakedefine01 BUILD_PRIMITIVE_GPU_ISA_ALL": if_sycl_build_is_configured("#define BUILD_PRIMITIVE_GPU_ISA_ALL 1", "#define BUILD_PRIMITIVE_GPU_ISA_ALL 0"),
 }
 
 _DNNL_RUNTIME_OMP = {
@@ -88,6 +110,18 @@ expand_template(
     template = "include/oneapi/dnnl/dnnl_config.h.in",
 )
 
+convert_cl_to_cpp(
+    name = "kernel_list_generator",
+    src = "src/gpu/intel/ocl_kernel_list.cpp.in",
+    cl_list = glob(["src/gpu/intel/**/*.cl"]),
+)
+
+convert_header_to_cpp(
+    name = "header_generator",
+    src = "src/gpu/intel/ocl_kernel_list.cpp.in",
+    header_list = glob(["src/gpu/intel/**/*.h"]),
+)
+
 # Create the file dnnl_version.h with DNNL version numbers.
 # Currently, the version numbers are hard coded here. If DNNL is upgraded then
 # the version numbers have to be updated manually. The version numbers can be
@@ -100,9 +134,9 @@ expand_template(
     out = "include/oneapi/dnnl/dnnl_version.h",
     substitutions = {
         "@DNNL_VERSION_MAJOR@": "3",
-        "@DNNL_VERSION_MINOR@": "11",
+        "@DNNL_VERSION_MINOR@": "12",
         "@DNNL_VERSION_PATCH@": "3",
-        "@DNNL_VERSION_HASH@": "N/A",
+        "@DNNL_VERSION_HASH@": "6db5f1ba860ca8f65c3f65c4498ad867e9642447",
     },
     template = "include/oneapi/dnnl/dnnl_version.h.in",
 )
@@ -111,7 +145,7 @@ expand_template(
     name = "dnnl_version_hash_h",
     out = "include/oneapi/dnnl/dnnl_version_hash.h",
     substitutions = {
-        "@DNNL_VERSION_HASH@": "74d04752d9eaefff6a9ff62466c4d20b155e5bca",
+        "@DNNL_VERSION_HASH@": "6db5f1ba860ca8f65c3f65c4498ad867e9642447",
     },
     template = "include/oneapi/dnnl/dnnl_version_hash.h.in",
 )
@@ -123,7 +157,6 @@ _COPTS_LIST = select({
     "-UUSE_MKL",
     "-UUSE_CBLAS",
     "-DDNNL_ENABLE_MAX_CPU_ISA",
-    "-DDNNL_ENABLE_ITT_TASKS",
     "-DDNNL_ENABLE_GRAPH_DUMP",
 ] + tf_openmp_copts()
 
@@ -131,11 +164,24 @@ _INCLUDES_LIST = [
     "include",
     "src",
     "src/common",
-    "src/cpu",
     "src/cpu/gemm",
     "src/graph",
     "third_party",
-]
+] + if_sycl_build_is_configured(
+    [
+        "include/oneapi",
+        "include/oneapi/dnnl",
+        "src/gpu/intel/gemm/jit",
+        "src/gpu/intel/gemm/jit/include",
+        "src/gpu/intel/gemm/jit/include/gemmstone",
+        "src/gpu/intel/jit/ngen",
+        "src/gpu/intel/jit/config",
+        "src/gpu/intel/microkernels",
+        "third_party/ngen",
+    ],
+    # TODO(intel-tf): Use default value to eliminate empty list
+    [],
+)
 
 _TEXTUAL_HDRS_LIST = glob([
     "include/**/*",
@@ -155,7 +201,35 @@ _TEXTUAL_HDRS_LIST = glob([
     "src/graph/utils/pm/*.hpp",
     "third_party/**/*.h",
     "third_party/ittnotify/**/*.h",
-]) + [
+] + if_sycl_build_is_configured(
+    [
+        "src/gpu/*.hpp",
+        "src/gpu/generic/*.hpp",
+        "src/gpu/intel/*.hpp",
+        "src/gpu/intel/**/*.hpp",
+        "src/gpu/intel/include/*.h",
+        "src/gpu/intel/gemm/jit/include/gemmstone/*.hpp",
+        "src/gpu/intel/gemm/jit/include/internal/*.hpp",
+        "src/gpu/intel/gemm/jit/selector/db/*.db",
+        "src/gpu/intel/jit/gemm/include/internal/*.hpp",
+        "src/gpu/intel/jit/gemm/generator/*.hpp",
+        "src/gpu/intel/jit/gemm/selector/*.hpp",
+        "src/gpu/intel/jit/gemm/include/*.hpp",
+        "src/gpu/intel/jit/gemm/generator/pieces/*.hpp",
+        "src/gpu/intel/gemm/jit/include/internal/*.hxx",
+        "src/gpu/intel/gemm/jit/generator/pieces/*.hpp",
+        "src/gpu/intel/gemm/jit/generator/pieces/*.cxx",
+        "src/xpu/*.hpp",
+        "src/xpu/ocl/*.hpp",
+        "src/xpu/ocl/capi/*.hpp",
+        "src/xpu/sycl/*.hpp",
+        "src/xpu/sycl/capi/*.hpp",
+        "src/xpu/ze/*.hpp",
+        "third_party/ngen/*.hpp",
+        "third_party/ngen/**/*.hpp",
+    ],
+    [],
+)) + [
     ":dnnl_config_h",
     ":dnnl_version_h",
     ":dnnl_version_hash_h",
@@ -178,8 +252,16 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
-cc_library(
+alias(
     name = "mkl_dnn",
+    actual = if_sycl_build_is_configured(":onednn_gpu_and_cpu", ":onednn_cpu"),
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "onednn_cpu",
+    # Builds oneDNN with CPU support only (no GPU kernels).
+    # Used when SYCL is not configured. See :onednn_gpu_and_cpu for GPU variant.
     srcs = glob(
         [
             "src/common/*.cpp",
@@ -207,7 +289,9 @@ cc_library(
             "src/cpu/sycl/**",
         ],
     ),
-    copts = _COPTS_LIST,
+    copts = _COPTS_LIST + [
+        "-DDNNL_ENABLE_ITT_TASKS",  # Enable ITT for CPU
+    ],
     includes = _INCLUDES_LIST,
     # TODO(penpornk): Use lrt_if_needed from tensorflow.bzl instead.
     linkopts = select({
@@ -223,4 +307,71 @@ cc_library(
         ["@xla//xla/tsl/mkl:intel_binary_blob"],
         [],
     ),
+)
+
+sycl_library(
+    name = "onednn_gpu_and_cpu",
+    # Builds oneDNN with both CPU and GPU (Intel) support using SYCL runtime.
+    srcs = glob(
+        [
+            "src/common/*.cpp",
+            "src/cpu/*.cpp",
+            "src/cpu/**/*.cpp",
+            "src/common/ittnotify/*.c",
+            "src/cpu/jit_utils/**/*.cpp",
+            "src/cpu/x64/**/*.cpp",
+            "src/graph/interface/*.cpp",
+            "src/graph/backend/*.cpp",
+            "src/graph/backend/dnnl/*.cpp",
+            "src/graph/backend/fake/*.cpp",
+            "src/graph/backend/dnnl/passes/*.cpp",
+            "src/graph/backend/dnnl/patterns/*.cpp",
+            "src/graph/backend/dnnl/kernels/*.cpp",
+            "src/graph/backend/dnnl/executables/*.cpp",
+            "src/graph/utils/*.cpp",
+            "src/graph/utils/pm/*.cpp",
+            "src/xpu/*.cpp",
+            "src/xpu/sycl/*.cpp",
+            "src/xpu/sycl/capi/*.cpp",
+            "src/xpu/ocl/*.cpp",
+            "src/xpu/ocl/capi/*.cpp",
+            "src/xpu/ze/*.cpp",
+            "src/gpu/*.cpp",
+            "src/gpu/generic/*.cpp",
+            "src/gpu/intel/*.cpp",
+            "src/gpu/intel/**/*.cpp",
+        ],
+        exclude = [
+            "src/cpu/aarch64/**",
+            "src/cpu/ppc64/**",
+            "src/cpu/rv64/**",
+            "src/cpu/x64/gemm/**/*_kern_autogen.cpp",
+            "src/cpu/sycl/**",
+            "src/common/ittnotify/**",
+            "src/gpu/amd/**",
+            "src/gpu/intel/conv/jit/v2/planner/planner_main.cpp",
+            "src/gpu/nvidia/**",
+        ],
+    ) + [
+        ":header_generator",
+        ":kernel_list_generator",
+    ],
+    copts = _COPTS_LIST + [
+        "-fno-operator-names",
+        "-fsycl",
+        "-DCL_TARGET_OPENCL_VERSION=300",
+        "-DDNNL_ENABLE_JIT_PROFILING=0",  # disable profiling for Sycl build
+        "-DDNNL_ENABLE_JIT_DUMP=0",
+        "-DGEMMSTONE_BUILD_XE2",
+        "-DGEMMSTONE_BUILD_XE3",
+        "-DGEMMSTONE_BUILD_XE3P",
+        "-DGEMMSTONE_BUILD_12P8",
+        "-DGEMMSTONE_BUILD_12P7",
+        "-DGEMMSTONE_BUILD_12HP",
+        "-DGEMMSTONE_BUILD_12LP",
+    ],
+    includes = _INCLUDES_LIST,
+    textual_hdrs = _TEXTUAL_HDRS_LIST,
+    visibility = ["//visibility:public"],
+    deps = [":onednn_autogen"],
 )

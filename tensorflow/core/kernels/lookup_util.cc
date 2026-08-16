@@ -69,7 +69,7 @@ class TextFileLineIterator
   TextFileLineIterator()
       : valid_(false),
         vocab_size_(-1),
-        status_(errors::FailedPrecondition("Not initialized")) {}
+        status_(absl::FailedPreconditionError("Not initialized")) {}
 
   // Initialize iterator.
   //
@@ -114,9 +114,9 @@ class TextFileLineIterator
     if (!status_.ok()) {
       if (absl::IsOutOfRange(status_) && vocab_size_ != -1 &&
           next_id_ != vocab_size_) {
-        status_ = errors::InvalidArgument("Invalid vocab_size in ", filename_,
-                                          ": expected ", vocab_size_,
-                                          " but got ", next_id_);
+        status_ = absl::InvalidArgumentError(
+            absl::StrCat("Invalid vocab_size in ", filename_, ": expected ",
+                         vocab_size_, " but got ", next_id_));
       }
       valid_ = false;
       return;
@@ -125,15 +125,15 @@ class TextFileLineIterator
       LOG(WARNING) << "Truncated " << filename_ << " before its end at "
                    << vocab_size_ << " records.";
       LOG(WARNING) << "next_id_  : " << next_id_;
-      status_ = errors::OutOfRange("Finished reading ", vocab_size_,
-                                   " of lines from ", filename_);
+      status_ = absl::OutOfRangeError(absl::StrCat(
+          "Finished reading ", vocab_size_, " of lines from ", filename_));
       valid_ = false;
       return;
     }
     if (line.empty()) {
-      status_ = errors::InvalidArgument("Invalid content in ", filename_,
-                                        ": empty line found at position ",
-                                        input_buffer_->Tell(), ".");
+      status_ = absl::InvalidArgumentError(absl::StrCat(
+          "Invalid content in ", filename_, ": empty line found at position ",
+          input_buffer_->Tell(), "."));
       valid_ = false;
       return;
     }
@@ -144,10 +144,10 @@ class TextFileLineIterator
       const auto expected_size =
           static_cast<size_t>(std::max(key_index_, value_index_) + 1);
       if (tokens.size() < expected_size) {
-        status_ = errors::InvalidArgument(
-            "Invalid number of columns in ", filename_, " line ", next_id_,
-            " (", line, ") : expected at least ", expected_size, " got ",
-            tokens.size());
+        status_ = absl::InvalidArgumentError(
+            absl::StrCat("Invalid number of columns in ", filename_, " line ",
+                         next_id_, " (", line, ") : expected at least ",
+                         expected_size, " got ", tokens.size()));
         valid_ = false;
         return;
       }
@@ -221,8 +221,9 @@ class TextFileLineIterator
         int32_t value;
         if (!absl::SimpleAtoi(token.c_str(), &value)) {
           valid_ = false;
-          return errors::InvalidArgument("Field ", token, " in line ", next_id_,
-                                         " is not a valid int32.");
+          return absl::InvalidArgumentError(
+              absl::StrCat("Field ", token, " in line ", next_id_,
+                           " is not a valid int32."));
         }
         tensor->flat<int32_t>()(0) = value + offset_;
       } break;
@@ -230,8 +231,9 @@ class TextFileLineIterator
         int64_t value;
         if (!absl::SimpleAtoi(token.c_str(), &value)) {
           valid_ = false;
-          return errors::InvalidArgument("Field ", token, " in line ", next_id_,
-                                         " is not a valid int64.");
+          return absl::InvalidArgumentError(
+              absl::StrCat("Field ", token, " in line ", next_id_,
+                           " is not a valid int64."));
         }
         tensor->flat<int64_t>()(0) = value;
       } break;
@@ -239,8 +241,9 @@ class TextFileLineIterator
         float value;
         if (!absl::SimpleAtof(token.c_str(), &value)) {
           valid_ = false;
-          return errors::InvalidArgument("Field ", token, " in line ", next_id_,
-                                         " is not a valid float.");
+          return absl::InvalidArgumentError(
+              absl::StrCat("Field ", token, " in line ", next_id_,
+                           " is not a valid float."));
         }
         tensor->flat<float>()(0) = value;
       } break;
@@ -248,8 +251,9 @@ class TextFileLineIterator
         double value;
         if (!absl::SimpleAtod(token.c_str(), &value)) {
           valid_ = false;
-          return errors::InvalidArgument("Field ", token, " in line ", next_id_,
-                                         " is not a valid double.");
+          return absl::InvalidArgumentError(
+              absl::StrCat("Field ", token, " in line ", next_id_,
+                           " is not a valid double."));
         }
         tensor->flat<double>()(0) = value;
       } break;
@@ -258,8 +262,8 @@ class TextFileLineIterator
         break;
       default:
         valid_ = false;
-        return errors::InvalidArgument("Data type ", DataTypeString(dtype),
-                                       " not supported.");
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Data type ", DataTypeString(dtype), " not supported."));
     }
     return absl::OkStatus();
   }
@@ -277,9 +281,9 @@ absl::Status GetTableHandle(absl::string_view input_name, OpKernelContext* ctx,
     Tensor tensor;
     TF_RETURN_IF_ERROR(ctx->mutable_input(input_name, &tensor, true));
     if (tensor.NumElements() != 2) {
-      return errors::InvalidArgument(
-          "Lookup table handle must be scalar, but had shape: ",
-          tensor.shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Lookup table handle must be scalar, but had shape: ",
+                       tensor.shape().DebugString()));
     }
     auto h = tensor.flat<tstring>();
     *container = h(0);
@@ -333,8 +337,9 @@ absl::Status GetInitializableLookupTable(absl::string_view input_name,
     *table = lookup_table->GetInitializableLookupTable();
     if (*table == nullptr) {
       lookup_table->Unref();
-      return errors::InvalidArgument("Table ", handle.container(), " ",
-                                     handle.name(), " is not initializable");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Table ", handle.container(), " ", handle.name(),
+                       " is not initializable"));
     }
   } else {
     std::string container;
@@ -346,8 +351,8 @@ absl::Status GetInitializableLookupTable(absl::string_view input_name,
     *table = lookup_table->GetInitializableLookupTable();
     if (*table == nullptr) {
       lookup_table->Unref();
-      return errors::InvalidArgument("Table ", container, " ", table_handle,
-                                     " is not initializable");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Table ", container, " ", table_handle, " is not initializable"));
     }
   }
   return absl::OkStatus();
@@ -357,11 +362,11 @@ absl::Status CheckTableDataTypes(const LookupInterface& table,
                                  DataType key_dtype, DataType value_dtype,
                                  const std::string& table_name) {
   if (table.key_dtype() != key_dtype || table.value_dtype() != value_dtype) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Conflicting key/value dtypes ", DataTypeString(key_dtype), "->",
         DataTypeString(value_dtype), " with ",
         DataTypeString(table.key_dtype()), "-",
-        DataTypeString(table.value_dtype()), " for table ", table_name);
+        DataTypeString(table.value_dtype()), " for table ", table_name));
   }
   return absl::OkStatus();
 }
@@ -383,29 +388,29 @@ absl::Status InitializeTableFromTextFile(
     std::unique_ptr<InitializableLookupTable::InitializerSerializer> serializer,
     InitializableLookupTable* table) {
   if (key_index == kLineNumber && table->key_dtype() != DT_INT64) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Key index for line number requires table key dtype of int64, got ",
-        DataTypeString(table->key_dtype()));
+        DataTypeString(table->key_dtype())));
   }
   const DataType& key_dtype = table->key_dtype();
   const DataType& value_dtype = table->value_dtype();
   if (key_index == kWholeLine && !DataTypeIsInteger(key_dtype) &&
       key_dtype != DT_STRING) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Key index for whole line requires string or integer table key, got ",
-        DataTypeString(table->key_dtype()));
+        DataTypeString(table->key_dtype())));
   }
   if (value_index == kLineNumber && value_dtype != DT_INT64) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Value index for line number requires table value dtype of int64, got ",
-        DataTypeString(table->value_dtype()));
+        DataTypeString(table->value_dtype())));
   }
   if (value_index == kWholeLine && !DataTypeIsInteger(value_dtype) &&
       value_dtype != DT_STRING) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Value index for whole line requires table value dtype of integer or "
         "string, got ",
-        DataTypeString(table->value_dtype()));
+        DataTypeString(table->value_dtype())));
   }
 
   TextFileLineIterator iter;

@@ -352,6 +352,29 @@ def set_seed(seed):
   a new set of stateful random ops that use external variables to manage their
   states.
 
+  Note: `tf.random.set_seed` only governs TensorFlow's own stateful random
+  operations. It does not control seeds that higher-level components select for
+  themselves. In particular, Keras layer initializers create a variable's value
+  the first time the layer is built lazily, and an unseeded initializer chooses
+  its own operation-level seed independently of the global seed. Resetting the
+  global seed alone therefore does not guarantee that such lazily-created
+  variables (for example, layer kernels) are initialized to the same values,
+  whether across re-runs of a program or across eager, `tf.function`, and
+  `tf.function(jit_compile=True)` execution. This is most surprising in
+  differential tests that compare those execution modes, where the differing
+  weights come from initialization rather than from compilation changing the
+  computation. For reproducible initialization, pass an explicit seed to the
+  initializer:
+
+  ```python
+  initializer = tf.keras.initializers.GlorotUniform(seed=1)
+  layer = tf.keras.layers.Dense(4, kernel_initializer=initializer)
+  ```
+
+  Note that an explicit seed makes eager and `tf.function` execution agree, but
+  XLA (`jit_compile=True`) may still produce different values because it can
+  lower the random-number generator differently.
+
   Args:
     seed: integer.
   """

@@ -273,18 +273,18 @@ class IndexingMap {
   // (d0, d1, d2, d3, d4, d5) -> (d0, d1, d2, d3, d4, d5)
   IndexingMap ConvertSymbolsToDimensions() const;
 
+  // Removes DimVars, RangeVars, RTVars that correspond to the unused dimensions
+  // and symbols. If unused_dims is empty, then dims won't be removed. The same
+  // applies to unused_symbols. Returns true, if anything was removed.
+  bool CompressVars(const llvm::SmallBitVector& unused_dims,
+                    const llvm::SmallBitVector& unused_symbols);
+
  private:
   IndexingMap() = default;
 
   // Merges "mod" constraints for the same SymbolicExpr.
   // Returns true if simplification was performed.
   bool MergeModConstraints();
-
-  // Removes DimVars, RangeVars, RTVars that correspond to the unused dimensions
-  // and symbols. If unused_dims is empty, then dims won't be removed. The same
-  // applies to unused_symbols. Returns true, if anything was removed.
-  bool CompressVars(const llvm::SmallBitVector& unused_dims,
-                    const llvm::SmallBitVector& unused_symbols);
 
   // Resets the indexing map to the canonical "known" empty indexing map, i.e.
   // (d0...)[s0...]{r0...} -> (0...) symbolic map.
@@ -406,6 +406,8 @@ struct UsedParameters {
   // Sorted list of symbol IDs.
   llvm::SmallVector<int64_t> symbol_ids;
 };
+
+// Returns IDs of dimensions and symbols that participate in SymbolicExpr.
 UsedParameters GetUsedParameters(absl::Span<const SymbolicExpr> exprs,
                                  int64_t num_dims);
 

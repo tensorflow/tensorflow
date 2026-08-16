@@ -23,16 +23,19 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/base/nullability.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/bit.h"
 #include "llvm/Support/Casting.h"
@@ -56,27 +59,31 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/backends/gpu/codegen/triton/lowering_util.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"  // IWYU pragma: keep
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
+#include "xla/layout_util.h"
 #include "xla/mlir/utils/type_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
@@ -208,32 +215,45 @@ absl::StatusOr<AllReduceEmitterContext> CreateAllReduceEmitterContext(
 // where only the last dimension is used as a tiling dimension.
 absl::StatusOr<std::optional<BlockLevelFusionConfig>>
 GetBlockLevelFusionConfigForAllReduce(
-    const se::DeviceDescription& device_info,
-    const HloAllReduceInstruction* all_reduce) {
+    const GpuTopology& gpu_topology, const HloAllReduceInstruction* all_reduce,
+    const DeviceAssignment* device_assignment) {
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                   all_reduce->backend_config<GpuBackendConfig>());
+  if (!IsTritonCollectiveKernel(
+          gpu_config.collective_backend_config().kernel_strategy())) {
+    VLOG(3) << "All-reduce is not annotated with Triton strategy. Skipping.";
+    return std::nullopt;
+  }
+
   absl::StatusOr<AllReduceInfo> maybe_all_reduce_info = BuildAllReduceInfo(
-      /*is_collective_kernel_enabled=*/all_reduce->GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_unsupported_use_all_reduce_one_shot_kernel(),
-      /*is_multimem_enabled=*/false, device_info, all_reduce);
+      /*is_collective_kernel_enabled=*/absl::c_linear_search(
+          all_reduce->GetModule()
+              ->config()
+              .debug_options()
+              .xla_gpu_experimental_use_collective_kernels(),
+          static_cast<int>(DebugOptions::COLLECTIVE_KERNEL_ALL_REDUCE)),
+      /*is_multimem_enabled=*/false, gpu_topology, all_reduce,
+      device_assignment);
   if (absl::IsUnimplemented(maybe_all_reduce_info.status())) {
     VLOG(3) << "Codegen for all-reduce is not supported: "
             << maybe_all_reduce_info.status();
     return std::nullopt;
   }
-  ASSIGN_OR_RETURN(AllReduceInfo all_reduce_info,
+  ABSL_ASSIGN_OR_RETURN(AllReduceInfo all_reduce_info,
                    std::move(maybe_all_reduce_info));
   const Shape& output_shape = all_reduce->shape();
+  const se::DeviceDescription& device_info =
+      gpu_topology.gpu_target_config().device_description;
   const LaunchDimensions launch_dims = AllReduceLaunchDimensions(
       all_reduce_info.num_elements, all_reduce_info.num_devices,
-      all_reduce_info.all_reduce_strategy);
+      all_reduce_info.all_reduce_strategy, device_info);
   BlockLevelFusionConfig block_level_config;
   block_level_config.set_num_warps(xla::CeilOfRatio(
       static_cast<int64_t>(launch_dims.num_threads_per_block()),
       WarpSize(device_info)));
   block_level_config.set_num_ctas(1);    // No block-level clustering.
   block_level_config.set_num_stages(1);  // No pipelining of loops.
-  Tile* output_tile = block_level_config.add_output_tiles();
+  xla::xtile::Tile* output_tile = block_level_config.add_output_tiles();
   const llvm::SmallVector<int64_t> tile_sizes =
       GreedyPowerOfTwoTiles(output_shape, launch_dims.num_blocks());
   output_tile->mutable_sizes()->Assign(tile_sizes.begin(), tile_sizes.end());
@@ -401,7 +421,7 @@ class AllReduceEmitter {
         ttir::PointerType::get(builder_.getI64Type(), kGlobalAddressSpace);
     ptr_to_elem_type_ =
         ttir::PointerType::get(elem_storage_type_, kGlobalAddressSpace);
-    ASSIGN_OR_RETURN(layout_, xtile::GetPermutationMinorToMajor(
+    ABSL_ASSIGN_OR_RETURN(layout_, xtile::GetPermutationMinorToMajor(
                                   ctx_.input_extract.getSource().getType()));
 
     const llvm::ArrayRef<int64_t>& input_tile_shape_dims =
@@ -528,7 +548,9 @@ class AllReduceEmitter {
     // See fusion emitter for more details.
     if (elem_storage_type_ != elem_type_) {
       next_tile = mlir::cast<xtile::TensorValue>(
-          xtile::Cast(builder_, next_tile, elem_type_));
+          arith::TruncIOp::create(
+              builder_, next_tile.getType().clone(elem_type_), next_tile)
+              .getResult());
     }
     return next_tile;
   }
@@ -556,8 +578,9 @@ class AllReduceEmitter {
     // storage type. Downstream passes should be able to optimize this away.
     mlir::Value storage_tile = tile_to_store;
     if (elem_storage_type_ != elem_type_) {
-      storage_tile = mlir::cast<xtile::TensorValue>(
-          xtile::Cast(builder_, tile_to_store, elem_storage_type_));
+      auto shaped_type = mlir::cast<mlir::ShapedType>(tile_to_store.getType());
+      storage_tile = arith::ExtUIOp::create(
+          builder_, shaped_type.clone(elem_storage_type_), tile_to_store);
     }
     auto [ptrs, mask] = triton::CreateTensorOfPointersAndMask(
         builder_,        //
@@ -917,6 +940,45 @@ class AllReduceEmitter {
 
 }  // namespace
 
+absl::Status FlattenCollectiveFusion(
+    HloFusionInstruction* absl_nonnull fusion_instr) {
+  HloComputation* entry_computation = fusion_instr->parent();
+  HloComputation* fused_computation =
+      fusion_instr->fused_instructions_computation();
+  Shape original_shape = fusion_instr->shape();
+  const int64_t total_elements = ShapeUtil::ElementsIn(original_shape);
+  if (fused_computation->parameter_instructions().size() != 1) {
+    return absl::InternalError(
+        "Flattening to 1D is not supported for variadic fused computations "
+        "with more than one parameter instruction");
+  }
+  DCHECK_EQ(fusion_instr->operand_count(), 1);
+  // Flatten all instructions in the fused computation to 1D.
+  for (HloInstruction* instr : fused_computation->instructions()) {
+    if (ShapeUtil::SameDimensions(instr->shape(), original_shape)) {
+      *instr->mutable_shape() = ShapeUtil::MakeShapeWithDenseLayout(
+          instr->shape().element_type(), {total_elements}, {0});
+    }
+  }
+  *fusion_instr->mutable_shape() = ShapeUtil::MakeShapeWithDenseLayout(
+      original_shape.element_type(), {total_elements}, {0});
+  HloInstruction* fusion_operand = fusion_instr->mutable_operand(0);
+  Shape flat_input_shape = ShapeUtil::MakeShapeWithDenseLayout(
+      fusion_operand->shape().element_type(), {total_elements}, {0});
+  HloInstruction* bitcast_to_1d = entry_computation->AddInstruction(
+      HloInstruction::CreateBitcast(flat_input_shape, fusion_operand));
+  ABSL_RETURN_IF_ERROR(
+      fusion_instr->ReplaceOperandWithDifferentShape(0, bitcast_to_1d));
+  HloInstruction* bitcast_to_original_shape = entry_computation->AddInstruction(
+      HloInstruction::CreateBitcast(original_shape, fusion_instr));
+  if (VLOG_IS_ON(3)) {
+    VLOG(3) << "Flattening original shape : " << original_shape.ToString()
+            << " to 1D shape: " << flat_input_shape.ToString();
+  }
+  return fusion_instr->ReplaceAllUsesWithDifferentShape(
+      bitcast_to_original_shape);
+}
+
 llvm::SmallVector<int64_t> GreedyPowerOfTwoTiles(const Shape& output_shape,
                                                  int32_t num_blocks) {
   CHECK_GT(num_blocks, 0) << "num_blocks must be positive. Was " << num_blocks;
@@ -946,39 +1008,39 @@ llvm::SmallVector<int64_t> GreedyPowerOfTwoTiles(const Shape& output_shape,
 }
 
 absl::StatusOr<std::optional<BlockLevelFusionConfig>>
-GetCollectiveBlockLevelFusionConfig(const se::DeviceDescription& device_info,
-                                    const HloFusionInstruction* fusion_instr) {
+GetCollectiveBlockLevelFusionConfig(const GpuTopology& gpu_topology,
+                                    const HloFusionInstruction* fusion_instr,
+                                    const DeviceAssignment* device_assignment) {
   const HloInstruction* root = fusion_instr->fused_expression_root();
   switch (root->opcode()) {
-    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduce:
       return GetBlockLevelFusionConfigForAllReduce(
-          device_info, Cast<HloAllReduceInstruction>(root));
+          gpu_topology, Cast<HloAllReduceInstruction>(root), device_assignment);
     default:
       return std::nullopt;
   }
 }
 
-absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
-    const se::DeviceDescription& device_info,
-    HloFusionInstruction* fusion_instr) {
-  ASSIGN_OR_RETURN(
-      const std::optional<BlockLevelFusionConfig> block_config,
-      GetCollectiveBlockLevelFusionConfig(device_info, fusion_instr));
+absl::Status TrySetGpuBackendConfigForCollective(
+    const GpuTopology& gpu_topology, HloFusionInstruction* fusion_instr,
+    const DeviceAssignment* device_assignment) {
+  ABSL_ASSIGN_OR_RETURN(const std::optional<BlockLevelFusionConfig> block_config,
+                   GetCollectiveBlockLevelFusionConfig(
+                       gpu_topology, fusion_instr, device_assignment));
   if (!block_config.has_value()) {
-    VLOG(3) << "No block level fusion config calculated for collective: "
-            << fusion_instr->ToString()
-            << ". Not using Triton collective fusion.";
-    return false;
+    return absl::FailedPreconditionError(absl::StrCat(
+        "No block level fusion config calculated for collective ",
+        fusion_instr->ToString(), ". Not using Triton collective fusion."));
   }
-  ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
                    fusion_instr->backend_config<GpuBackendConfig>());
   gpu_backend_config.mutable_fusion_backend_config()->set_kind(
       kTritonCollectiveFusionKind);
   *gpu_backend_config.mutable_fusion_backend_config()
        ->mutable_block_level_fusion_config() = *std::move(block_config);
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       fusion_instr->set_backend_config(std::move(gpu_backend_config)));
-  return true;
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
@@ -986,7 +1048,7 @@ absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
   const HloComputation* computation = fusion->fused_instructions_computation();
   const HloInstruction* root = computation->root_instruction();
   switch (root->opcode()) {
-    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduce:
       return GetAllReduceUnmanagedKernelArguments(
           computation, Cast<HloAllReduceInstruction>(root));
     default:
@@ -1013,7 +1075,7 @@ absl::StatusOr<int32_t> AddCollectiveMetadataArguments(
     } else if (type == S4) {
       ir_type = b.getI4Type();
     } else {
-      ASSIGN_OR_RETURN(ir_type, xtile::PrimitiveTypeToMlirType(b, type));
+      ABSL_ASSIGN_OR_RETURN(ir_type, xtile::PrimitiveTypeToMlirType(b, type));
     }
     // Also add the remote/scratch buffers for collectives.
     // !tt.ptr<!tt.ptr<type>>
@@ -1041,6 +1103,23 @@ mlir::LogicalResult RewriteAllReduce(mlir::stablehlo::AllReduceOp op,
   VLOG(3) << "AllReduceEmitter::Emit using strategy: "
           << maybe_context->strategy;
   return AllReduceEmitter::Emit(maybe_context.value(), rewriter);
+}
+
+absl::StatusOr<CollectiveKernelSpec> CreateCollectiveKernelSpec(
+    const HloInstruction* instr, const LaunchDimensions& launch_dimensions) {
+  const HloInstruction* collective = instr;
+  if (instr->opcode() == HloOpcode::kFusion) {
+    collective = instr->fused_instructions_computation()->root_instruction();
+  }
+  switch (collective->opcode()) {
+    case HloOpcode::kAllReduce:
+      return CreateAllReduceKernelSpec(collective, launch_dimensions);
+    default:
+      return absl::UnimplementedError(
+          absl::StrFormat("CollectiveKernelSpec creation not implemented for "
+                          "opcode: %s",
+                          HloOpcodeString(collective->opcode())));
+  }
 }
 
 }  // namespace xla::gpu

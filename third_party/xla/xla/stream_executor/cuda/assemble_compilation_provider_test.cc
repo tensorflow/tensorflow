@@ -59,7 +59,6 @@ TEST(AssembleCompilationProviderTest,
   CompilationProviderOptions options{
       CompilationProviderOptions::NvJitLinkMode::kDisabled,
       /*enable_libnvptxcompiler=*/false,
-      /*enable_llvm_module_compilation_parallelism=*/false,
       /*enable_driver_compilation=*/false,
       /*cuda_data_dir=*/"/does/not/exist",
   };
@@ -78,7 +77,6 @@ TEST(AssembleCompilationProviderTest,
   CompilationProviderOptions options{
       CompilationProviderOptions::NvJitLinkMode::kDisabled,
       /*enable_libnvptxcompiler=*/false,
-      /*enable_llvm_module_compilation_parallelism=*/false,
       /*enable_driver_compilation=*/true,
       /*cuda_data_dir=*/"/does/not/exist",
   };
@@ -102,7 +100,6 @@ TEST(AssembleCompilationProviderTest,
   CompilationProviderOptions options{
       CompilationProviderOptions::NvJitLinkMode::kDisabled,
       /*enable_libnvptxcompiler=*/false,
-      /*enable_llvm_module_compilation_parallelism=*/false,
       /*enable_driver_compilation=*/false,
       /*cuda_data_dir=*/cuda_dir,
   };
@@ -125,7 +122,6 @@ TEST(
   CompilationProviderOptions options{
       CompilationProviderOptions::NvJitLinkMode::kEnabled,
       /*enable_libnvptxcompiler=*/false,
-      /*enable_llvm_module_compilation_parallelism=*/false,
       /*enable_driver_compilation=*/false,
       /*cuda_data_dir=*/"/does/not/exist",
   };
@@ -151,7 +147,6 @@ TEST(AssembleCompilationProviderTest,
   CompilationProviderOptions options{
       CompilationProviderOptions::NvJitLinkMode::kEnabled,
       /*enable_libnvptxcompiler=*/true,
-      /*enable_llvm_module_compilation_parallelism=*/false,
       /*enable_driver_compilation=*/false,
       /*cuda_data_dir=*/"/does/not/exist",
   };

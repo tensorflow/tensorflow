@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
@@ -64,7 +79,7 @@ cc_library(
 cc_library(
     name = "pjrt_c_api_callback_extension_hdrs",
     hdrs = ["pjrt_c_api_callback_extension.h"],
-    deps = ["//xla/pjrt/c:pjrt_c_api_hdrs"],
+    deps = [":pjrt_c_api_hdrs"],
 )
 
 cc_library(
@@ -144,6 +159,10 @@ cc_library(
     srcs = ["pjrt_c_api_collectives_internal.cc"],
     hdrs = ["pjrt_c_api_collectives_internal.h"],
     deps = [
+        ":pjrt_c_api_collectives_extension_hdrs",
+        ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_helpers",
+        ":pjrt_c_api_wrapper_impl",
         "//xla:executable_run_options",
         "//xla/backends/cpu/collectives:cpu_clique_key",
         "//xla/backends/cpu/collectives:cpu_collectives",
@@ -152,10 +171,6 @@ cc_library(
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/core/collectives:reduction_kind",
-        "//xla/pjrt/c:pjrt_c_api_collectives_extension_hdrs",
-        "//xla/pjrt/c:pjrt_c_api_hdrs",
-        "//xla/pjrt/c:pjrt_c_api_helpers",
-        "//xla/pjrt/c:pjrt_c_api_wrapper_impl",
         "//xla/runtime:device_id",
         "//xla/service:collective_ops_utils",
         "//xla/tsl/concurrency:future",
@@ -315,6 +330,7 @@ cc_library(
     hdrs = ["pjrt_c_api_raw_buffer_extension.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":pjrt_c_api_device_event_hdrs",
         ":pjrt_c_api_hdrs",
     ],
 )
@@ -331,7 +347,6 @@ cc_library(
         ":pjrt_c_api_status_utils",
         ":pjrt_c_api_wrapper_impl",
         "//xla/pjrt:raw_buffer",
-        "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/status",
     ],
 )
@@ -347,13 +362,15 @@ cc_library(
         ":pjrt_c_api_raw_buffer_extension_hdrs",
         ":pjrt_c_api_status_utils",
         "//xla:future",
+        "//xla/pjrt:device_event",
         "//xla/pjrt:raw_buffer",
         "//xla/pjrt/c_api_client:pjrt_c_api_client",
         "//xla/tsl/concurrency:ref_count",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@tsl//tsl/platform:casts",
     ],
@@ -391,11 +408,11 @@ cc_library(
         "//xla/service:xla_transform",
         "//xla/tsl/lib/strings:proto_serialization",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
@@ -472,7 +489,6 @@ cc_library(
         "//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
         "//xla/tsl/framework:allocator",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -483,6 +499,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
@@ -538,7 +555,6 @@ cc_library(
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/base:core_headers",
@@ -548,6 +564,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
@@ -655,6 +672,8 @@ cc_library(
         ":pjrt_c_api_triton_extension_hdrs",
         ":pjrt_c_api_triton_internal",
         ":pjrt_c_api_wrapper_impl",
+        ":pjrt_c_api_xla_transform_extension_hdrs",
+        ":pjrt_c_api_xla_transform_internal",
         "//xla/backends/cpu:target_machine_options",
         "//xla/backends/profiler:profiler_backends",  # To register the Host Tracers for GPU Plugin.
         "//xla/backends/profiler/gpu:device_tracer",  # To register the GPU Tracers with the GPU Plugin.
@@ -664,6 +683,7 @@ cc_library(
         "//xla/client:local_client",
         "//xla/ffi",
         "//xla/ffi:ffi_api",
+        "//xla/ffi:ffi_interop",
         "//xla/ffi/api:c_api",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
@@ -688,11 +708,11 @@ cc_library(
         "//xla/service:gpu_topology",
         "//xla/service/cpu:executable_proto_cc",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
@@ -805,6 +825,7 @@ xla_test(
         "//xla/ffi:execution_context",
         "//xla/ffi:ffi_api",
         "//xla/ffi:type_registry",
+        "//xla/ffi/api:c_api",
         "//xla/ffi/api:ffi",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",

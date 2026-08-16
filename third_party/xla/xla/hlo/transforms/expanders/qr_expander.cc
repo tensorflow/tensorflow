@@ -19,16 +19,16 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
-#include <numeric>
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/lib/loops.h"
@@ -37,14 +37,16 @@ limitations under the License.
 #include "xla/hlo/builder/lib/qr.h"
 #include "xla/hlo/builder/lib/slicing.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "xla/literal.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/hlo_creation_utils.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 
 namespace xla {
 
@@ -121,11 +123,11 @@ XlaOp Norm(std::vector<XlaOp> xs) {
 absl::Status House(XlaOp x, XlaOp k, absl::Span<const int64_t> batch_dims,
                    const int64_t m, XlaOp* v, XlaOp* tau, XlaOp* beta) {
   XlaBuilder* const builder = x.builder();
-  ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
+  ABSL_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
   const PrimitiveType type = x_shape.element_type();
 
   std::vector<int64_t> batch_dim_ids(batch_dims.size());
-  std::iota(batch_dim_ids.begin(), batch_dim_ids.end(), 0);
+  absl::c_iota(batch_dim_ids, 0);
   const int64_t minor_dim = batch_dims.size();
 
   XlaOp zero = ScalarLike(x, 0.0);
@@ -211,7 +213,7 @@ absl::Status House(XlaOp x, XlaOp k, absl::Span<const int64_t> batch_dims,
 absl::StatusOr<QrDecomposition> QrExpander::QrBlock(
     XlaOp a, PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
-  ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+  ABSL_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
   const int num_dims = a_shape.dimensions().size();
   if (num_dims < 2) {
     return InvalidArgument("Argument to QR must have rank >= 2; got shape %s",
@@ -229,7 +231,7 @@ absl::StatusOr<QrDecomposition> QrExpander::QrBlock(
   }
 
   std::vector<int64_t> batch_dim_indices(num_batch_dims);
-  std::iota(batch_dim_indices.begin(), batch_dim_indices.end(), 0);
+  absl::c_iota(batch_dim_indices, 0);
 
   auto qr_body_fn =
       [&](XlaOp j, absl::Span<const XlaOp> values,
@@ -240,7 +242,7 @@ absl::StatusOr<QrDecomposition> QrExpander::QrBlock(
     // v, tau, beta = house(a[:, j], j)
     auto x = DynamicSliceInMinorDims(a, {j}, {1});
     XlaOp v, tau, beta;
-    RETURN_IF_ERROR(House(Collapse(x, {num_dims - 2, num_dims - 1}), j,
+    ABSL_RETURN_IF_ERROR(House(Collapse(x, {num_dims - 2, num_dims - 1}), j,
                           batch_dims, m, &v, &tau, &beta));
 
     const int64_t minor_dim = batch_dims.size();
@@ -278,14 +280,14 @@ absl::StatusOr<QrDecomposition> QrExpander::QrBlock(
         /*broadcast_dimensions=*/ConcatVectors(batch_dim_indices, {minor_dim}));
     // Update a[:,j]
     std::vector<int64_t> dim_ids(num_dims);
-    std::iota(dim_ids.begin(), dim_ids.end(), 0);
+    absl::c_iota(dim_ids, 0);
     new_x = BroadcastInDim(new_x, ConcatVectors(batch_dims, {m, n}),
                            /*broadcast_dimensions=*/dim_ids);
     a = Select(Eq(iota_mn, j), new_x, a);
 
     // taus[j] = tau
     std::vector<int64_t> tau_broadcast_dims(batch_dims.size());
-    std::iota(tau_broadcast_dims.begin(), tau_broadcast_dims.end(), 0);
+    absl::c_iota(tau_broadcast_dims, 0);
 
     auto iota_n =
         Iota(builder, ShapeUtil::MakeShape(S32, ConcatVectors(batch_dims, {n})),
@@ -303,7 +305,7 @@ absl::StatusOr<QrDecomposition> QrExpander::QrBlock(
       builder,
       ShapeUtil::MakeShape(type, ConcatVectors(batch_dims, {std::min(m, n)})));
 
-  ASSIGN_OR_RETURN(auto values, ForEachIndex(std::min(m, n), S32, qr_body_fn,
+  ABSL_ASSIGN_OR_RETURN(auto values, ForEachIndex(std::min(m, n), S32, qr_body_fn,
                                              {a, taus}, "qr", builder));
 
   QrDecomposition result;
@@ -334,7 +336,7 @@ absl::StatusOr<XlaOp> QrExpander::CompactWYRepresentation(
   XlaBuilder* builder = vs.builder();
 
   std::vector<int64_t> batch_dim_indices(batch_dims.size());
-  std::iota(batch_dim_indices.begin(), batch_dim_indices.end(), 0);
+  absl::c_iota(batch_dim_indices, 0);
   int64_t n_index = batch_dims.size() + 1;
 
   auto body_fn =
@@ -366,7 +368,7 @@ absl::StatusOr<XlaOp> QrExpander::CompactWYRepresentation(
   vtv = Select(TriangleMask(vtv, 0), ZerosLike(vtv), vtv);
   vtv = (vtv + eye) * tau_scale;
 
-  ASSIGN_OR_RETURN(auto values,
+  ABSL_ASSIGN_OR_RETURN(auto values,
                    ForEachIndex(n, S32, body_fn, {t, vtv}, "wy", builder));
   return values[0];
 }
@@ -387,7 +389,7 @@ absl::StatusOr<XlaOp> QrExpander::CompactWYRepresentation(
 absl::StatusOr<XlaOp> QrExpander::BuildQrDecomposition(
     XlaOp a, int64_t block_size, PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
-  ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+  ABSL_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
   const int num_dims = a_shape.dimensions().size();
   if (num_dims < 2) {
     return InvalidArgument("Arguments to QR must have rank >= 2: got shape %s",
@@ -417,7 +419,7 @@ absl::StatusOr<XlaOp> QrExpander::BuildQrDecomposition(
     int64_t k = std::min(block_size, p - i);
 
     auto a_block = SliceInMinorDims(a, {i, i}, {m, i + k});
-    ASSIGN_OR_RETURN(auto qr_block, QrBlock(a_block, precision));
+    ABSL_ASSIGN_OR_RETURN(auto qr_block, QrBlock(a_block, precision));
     auto y = Add(IdentityMatrix(builder, type, m - i, k),
                  Select(TriangleMask(qr_block.q_and_r, -1), qr_block.q_and_r,
                         ZerosLike(qr_block.q_and_r)),
@@ -428,7 +430,7 @@ absl::StatusOr<XlaOp> QrExpander::BuildQrDecomposition(
 
     // Compute the I + Y @ T @ Y^t block representation of a product of
     // Householder matrices.
-    ASSIGN_OR_RETURN(auto t,
+    ABSL_ASSIGN_OR_RETURN(auto t,
                      CompactWYRepresentation(type, batch_dims, y, qr_block.taus,
                                              m - i, k, precision));
 
@@ -451,8 +453,8 @@ absl::StatusOr<XlaOp> QrExpander::ProductOfElementaryHouseholderReflectors(
     XlaOp a, XlaOp taus, int64_t block_size,
     PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
-  ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-  ASSIGN_OR_RETURN(Shape taus_shape, builder->GetShape(taus));
+  ABSL_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+  ABSL_ASSIGN_OR_RETURN(Shape taus_shape, builder->GetShape(taus));
   const int num_dims = a_shape.dimensions().size();
   if (num_dims < 2) {
     return InvalidArgument("Arguments to QR must have rank >= 2: got shape %s",
@@ -494,7 +496,7 @@ absl::StatusOr<XlaOp> QrExpander::ProductOfElementaryHouseholderReflectors(
     // Householder matrices.
     auto taus_block = SliceInMinorDims(taus, {i}, {i + k});
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto t, CompactWYRepresentation(type, batch_dims, y, taus_block, m - i,
                                         k, precision));
     // q[i:, i:] += y @ t @ (np.conj(y.T) @ q[i:, i:])
@@ -549,7 +551,7 @@ absl::StatusOr<HloInstruction*> QrExpander::ExpandInstruction(
     XlaOp result;
     if (instruction->custom_call_target() == kQrCustomCallName) {
       TF_RET_CHECK(instruction->operand_count() == 1);
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           result, BuildQrDecomposition(a,
                                        /*block_size=*/128,
                                        /*precision=*/PrecisionConfig::HIGHEST));
@@ -557,13 +559,13 @@ absl::StatusOr<HloInstruction*> QrExpander::ExpandInstruction(
       TF_RET_CHECK(instruction->operand_count() == 2);
       XlaOp taus =
           Parameter(&builder, 1, instruction->operand(1)->shape(), "taus");
-      ASSIGN_OR_RETURN(result, ProductOfElementaryHouseholderReflectors(
+      ABSL_ASSIGN_OR_RETURN(result, ProductOfElementaryHouseholderReflectors(
                                    a, taus, /*block_size=*/128,
                                    /*precision=*/PrecisionConfig::HIGHEST));
     }
 
-    ASSIGN_OR_RETURN(XlaComputation xla_computation, builder.Build(result));
-    ASSIGN_OR_RETURN(computation,
+    ABSL_ASSIGN_OR_RETURN(XlaComputation xla_computation, builder.Build(result));
+    ABSL_ASSIGN_OR_RETURN(computation,
                      XlaComputationToHloComputation(xla_computation, module));
   }
 

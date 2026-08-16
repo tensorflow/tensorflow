@@ -43,6 +43,8 @@ following new APIs:
 import ast
 import io
 import os
+import sys
+import unittest
 
 import pasta
 
@@ -201,6 +203,7 @@ class TestAstEdits(test_util.TensorFlowTestCase):
     _, new_text = self._upgrade(ast_edits.NoUpdateSpec(), text)
     self.assertEqual(new_text, text)
 
+  @unittest.skipIf(sys.version_info >= (3, 14), "Broken in 3.14")
   def testGooglePastaRoundTripModuleDocstringAndImport(self):
     text = '"""Tests for tf upgrader."""\n\nimport io\n'
     self.assertEqual(pasta.dump(pasta.parse(text)), text)

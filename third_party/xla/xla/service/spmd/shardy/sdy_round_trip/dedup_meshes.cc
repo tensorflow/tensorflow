@@ -53,9 +53,12 @@ namespace {
 using ::llvm::DenseMapInfo;
 using ::llvm::SmallDenseMap;
 using ::mlir::ArrayRef;
+using ::mlir::Attribute;
 using ::mlir::DenseMap;
 using ::mlir::DenseSet;
+using ::mlir::MLIRContext;
 using ::mlir::ModuleOp;
+using ::mlir::Operation;
 using ::mlir::SmallVector;
 using ::mlir::StringAttr;
 using ::mlir::StringRef;
@@ -99,15 +102,6 @@ struct MeshDeviceIdentifier {
 };
 
 struct MeshDeviceIdentifierInfo : public DenseMapInfo<MeshDeviceIdentifier> {
-  static inline MeshDeviceIdentifier getEmptyKey() {
-    return {TotalDeviceCountMapInfo::getEmptyKey(),
-            DeviceIdsMapInfo::getEmptyKey()};
-  }
-
-  static inline MeshDeviceIdentifier getTombstoneKey() {
-    return {TotalDeviceCountMapInfo::getTombstoneKey(),
-            DeviceIdsMapInfo::getTombstoneKey()};
-  }
   static unsigned getHashValue(const MeshDeviceIdentifier& inputs) {
     return llvm::hash_combine(
         TotalDeviceCountMapInfo::getHashValue(inputs.totalDeviceCount),
@@ -406,6 +400,67 @@ void replaceManualAxes(sdy::ManualComputationOp manualComputation,
       sdy::ManualAxesAttr::get(manualComputation.getContext(), newManualAxes));
 }
 
+Attribute rewriteReplicaGroupsAttr(
+    Attribute attr, MLIRContext* context,
+    const MeshToAxisMap& duplicateMeshesToAxisMap) {
+  auto rgv3 = mlir::dyn_cast<mlir::stablehlo::ReplicaGroupMeshAxesAttr>(attr);
+  if (!rgv3) {
+    return attr;
+  }
+  mlir::Attribute meshAttr = rgv3.getMesh();
+  StringRef oldMeshName;
+  if (auto symbolRef = mlir::dyn_cast<mlir::FlatSymbolRefAttr>(meshAttr)) {
+    oldMeshName = symbolRef.getValue();
+  } else if (auto stringAttr = mlir::dyn_cast<mlir::StringAttr>(meshAttr)) {
+    oldMeshName = stringAttr.getValue();
+  }
+  if (oldMeshName.empty()) {
+    return attr;
+  }
+  auto meshNameAndAxisMap = duplicateMeshesToAxisMap.find(oldMeshName);
+  if (meshNameAndAxisMap == duplicateMeshesToAxisMap.end()) {
+    return attr;
+  }
+  auto [mainMeshName, axisMap] = meshNameAndAxisMap->getSecond();
+
+  SmallVector<mlir::Attribute> newAxes;
+  for (mlir::Attribute axis : rgv3.getAxes()) {
+    auto axisRef = mlir::cast<mlir::stablehlo::AxisRefAttr>(axis);
+    StringRef axisName = axisRef.getName();
+    auto it = axisMap.find(axisName);
+    if (it == axisMap.end()) {
+      continue;
+    }
+    for (AxisRefAttr mainAxisRef : it->second) {
+      mlir::stablehlo::SubAxisInfoAttr subAxisInfo = nullptr;
+      if (auto sdySubAxisInfo = mainAxisRef.getSubAxisInfo()) {
+        subAxisInfo = mlir::stablehlo::SubAxisInfoAttr::get(
+            context, sdySubAxisInfo.getPreSize(), sdySubAxisInfo.getSize());
+      }
+      newAxes.push_back(mlir::stablehlo::AxisRefAttr::get(
+          context, mainAxisRef.getName(), subAxisInfo));
+    }
+  }
+
+  return mlir::stablehlo::ReplicaGroupMeshAxesAttr::get(
+      context, mlir::FlatSymbolRefAttr::get(context, mainMeshName),
+      mlir::ArrayAttr::get(context, newAxes));
+}
+
+void replaceReplicaGroups(ModuleOp moduleOp,
+                          const MeshToAxisMap& duplicateMeshesToAxisMap) {
+  MLIRContext* context = moduleOp.getContext();
+  moduleOp.walk([&](Operation* op) {
+    if (auto attr = op->getAttr("replica_groups")) {
+      Attribute newAttr =
+          rewriteReplicaGroupsAttr(attr, context, duplicateMeshesToAxisMap);
+      if (newAttr != attr) {
+        op->setAttr("replica_groups", newAttr);
+      }
+    }
+  });
+}
+
 // Maintains the following meshes and remove all the other meshes.
 // 1. For each unique combination of total size and device id order, keep one
 //    main mesh.
@@ -428,6 +483,7 @@ void dedupMeshes(ModuleOp moduleOp, const SymbolTable& symbolTable,
                             duplicateMeshesToAxisMap);
         }
       });
+  replaceReplicaGroups(moduleOp, duplicateMeshesToAxisMap);
   for (const auto& [targetMesh, mainMeshAndMap] : duplicateMeshesToAxisMap) {
     StringRef mainMeshName = mainMeshAndMap.first;
     if (failed(SymbolTable::replaceAllSymbolUses(

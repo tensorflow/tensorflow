@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/ir/named_sharding.h"
 
 #include <optional>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -232,7 +233,7 @@ TEST(NamedShardingTest, ToStringReplicated) {
   Mesh mesh({2, 8}, {"a", "b"});
 
   NamedSharding sharding_fully_replicated = NamedSharding::Replicate();
-  EXPECT_EQ(sharding_fully_replicated.ToString(), "{mesh[], replicated}");
+  EXPECT_EQ(sharding_fully_replicated.ToString(), "{replicated}");
 
   NamedSharding sharding_fully_replicated_with_dims =
       test_utils::FromAxisNames(mesh, {{}, {}});
@@ -240,8 +241,7 @@ TEST(NamedShardingTest, ToStringReplicated) {
             "{mesh['a'=2,'b'=8], [{}, {}]}");
 
   NamedSharding sharding_fully_replicated_with_mesh(mesh);
-  EXPECT_EQ(sharding_fully_replicated_with_mesh.ToString(),
-            "{mesh['a'=2,'b'=8], replicated}");
+  EXPECT_EQ(sharding_fully_replicated_with_mesh.ToString(), "{replicated}");
 
   NamedSharding sharding_replicated =
       test_utils::FromAxisNames(mesh, {}, {"b"});
@@ -253,8 +253,7 @@ TEST(NamedShardingTest, ToStringUnreduced) {
   Mesh mesh({2, 8}, {"a", "b"});
 
   NamedSharding sharding_fully_unreduced = NamedSharding::Unreduced(mesh);
-  EXPECT_EQ(sharding_fully_unreduced.ToString(),
-            "{mesh['a'=2,'b'=8], unreduced}");
+  EXPECT_EQ(sharding_fully_unreduced.ToString(), "{unreduced}");
 
   NamedSharding sharding_fully_unreduced_with_dims = test_utils::FromAxisNames(
       mesh, {{}, {}}, {}, /*unreduced_axes=*/{"a", "b"});
@@ -265,6 +264,20 @@ TEST(NamedShardingTest, ToStringUnreduced) {
       test_utils::FromAxisNames(mesh, {{}, {}}, {}, {"b:(4)2"});
   EXPECT_EQ(sharding_unreduced.ToString(),
             "{mesh['a'=2,'b'=8], [{}, {}], unreduced={'b':(4)2}}");
+}
+
+TEST(NamedShardingTest, ToStringUnreducedEnum) {
+  Mesh mesh({2, 8, 4}, {"a", "b", "c"});
+  std::vector<AxisRef> unreduced_axes = {AxisRef(0), AxisRef(1, {4, 2})};
+  NamedSharding sharding(mesh, {}, {}, unreduced_axes, {}, {},
+                         ReductionOp::kMax);
+  EXPECT_EQ(sharding.ToString(),
+            "{mesh['a'=2,'b'=8,'c'=4], [], unreduced=max{'a', 'b':(4)2}}");
+
+  NamedShardingProto proto = sharding.ToProto();
+  NamedSharding from_proto = NamedSharding::FromProto(proto);
+  EXPECT_EQ(from_proto.ToString(),
+            "{mesh['a'=2,'b'=8,'c'=4], [], unreduced=max{'a', 'b':(4)2}}");
 }
 
 TEST(NamedShardingTest, ToStringManual) {
@@ -743,6 +756,16 @@ TEST(NamedShardingPredicatesTest, IsUnreducedWithAxisOfSize1) {
   EXPECT_FALSE(sharding3.IsUnreduced());
 }
 
+TEST(NamedShardingPredicatesTest, IsUnreducedOnSize1Mesh) {
+  Mesh mesh({1}, {"a"});
+  NamedSharding sharding1 = test_utils::FromAxisNames(mesh, {}, {}, {});
+  EXPECT_FALSE(sharding1.IsUnreduced());
+
+  NamedSharding sharding2 = test_utils::FromAxisNames(mesh, {}, {},
+                                                      /*unreduced_axes=*/{"a"});
+  EXPECT_TRUE(sharding2.IsUnreduced());
+}
+
 TEST(NamedShardingPredicatesTest, IsManual) {
   Mesh mesh({2, 2}, {"a", "b"});
   NamedSharding sharding =
@@ -783,6 +806,16 @@ TEST(NamedShardingPredicatesTest, IsManualWithAxisOfSize1) {
       /*manual_axes=*/{"a"});
 
   EXPECT_FALSE(sharding3.IsManual());
+}
+
+TEST(NamedShardingPredicatesTest, IsManualOnSize1Mesh) {
+  Mesh mesh({1}, {"a"});
+  NamedSharding sharding1 = test_utils::FromAxisNames(mesh, {}, {}, {}, {});
+  EXPECT_FALSE(sharding1.IsManual());
+
+  NamedSharding sharding2 =
+      test_utils::FromAxisNames(mesh, {}, {}, {}, /*manual_axes=*/{"a"});
+  EXPECT_TRUE(sharding2.IsManual());
 }
 
 TEST(NamedShardingTest, NamedShardingProtoConversion) {

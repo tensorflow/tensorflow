@@ -32,7 +32,7 @@ namespace gpu {
 // new batch dimension.
 class SplitkRewriter : public HloModulePass {
  public:
-  explicit SplitkRewriter(se::DeviceDescription device_description)
+  explicit SplitkRewriter(const se::DeviceDescription& device_description)
       : device_description_(device_description) {}
 
   absl::string_view name() const override { return "splitk-rewriter"; }

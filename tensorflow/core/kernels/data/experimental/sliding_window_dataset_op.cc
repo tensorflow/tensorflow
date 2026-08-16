@@ -55,19 +55,19 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
         ctx, ParseScalarArgument<int64_t>(ctx, "window_size", &window_size));
     OP_REQUIRES(
         ctx, window_size > 0,
-        errors::InvalidArgument("Window size must be greater than zero."));
+        absl::InvalidArgumentError("Window size must be greater than zero."));
     int64_t window_shift = 0;
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument<int64_t>(ctx, "window_shift", &window_shift));
     OP_REQUIRES(
         ctx, window_shift > 0,
-        errors::InvalidArgument("Window shift must be greater than zero."));
+        absl::InvalidArgumentError("Window shift must be greater than zero."));
     int64_t window_stride = 0;
     OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, "window_stride",
                                                      &window_stride));
     OP_REQUIRES(
         ctx, window_stride > 0,
-        errors::InvalidArgument("window_stride must be greater than zero."));
+        absl::InvalidArgumentError("window_stride must be greater than zero."));
     if (window_size == window_shift && window_stride == 1) {
       LOG(WARNING) << "window_shift: " << window_shift
                    << " is equal to window_size: " << window_size
@@ -245,13 +245,13 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
           for (size_t i = 0; i < num_batch_elements; ++i) {
             if (batch_elements[i][component_index].shape() !=
                 first_element.shape()) {
-              return errors::InvalidArgument(
+              return absl::InvalidArgumentError(absl::StrCat(
                   "Cannot batch tensors with different shapes in component ",
                   component_index, ". First element had shape ",
                   first_element.shape().DebugString(), " and element ", i,
                   " had shape ",
                   batch_elements[i][component_index].shape().DebugString(),
-                  ".");
+                  "."));
             }
             TF_RETURN_IF_ERROR(batch_util::CopyElementToSlice(
                 std::move(batch_elements[i][component_index]), &batch_component,

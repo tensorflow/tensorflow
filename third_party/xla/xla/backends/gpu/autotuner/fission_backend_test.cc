@@ -24,6 +24,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -61,7 +62,10 @@ namespace {
 
 using absl_testing::IsOk;
 using absl_testing::IsOkAndHolds;
+using absl_testing::StatusIs;
 using ::testing::HasSubstr;
+using ::testing::IsEmpty;
+using ::testing::Not;
 
 const char kTritonFusionHlo[] = R"(
   HloModule module
@@ -270,6 +274,32 @@ TEST_P(FissionTest, GetSupportedConfigsUnsupportedFusion) {
   EXPECT_THAT(configs, IsOkAndHolds(testing::IsEmpty()));
 }
 
+TEST_P(FissionTest, GetSupportedConfigsWithNullStreamExecutor) {
+  const std::string& test_name = GetParam().test_name;
+  if (IsRocm(stream_executor_) && (test_name == "TritonFusion_CublasLt_F8" ||
+                                   test_name == "TritonFusion_CustomKernel")) {
+    GTEST_SKIP() << test_name << " is not supported on ROCm";
+  }
+
+  std::unique_ptr<GpuCodegenBackend> backend_without_stream_executor =
+      GetParam().backend_factory(/*stream_executor=*/nullptr, &debug_options_,
+                                 compiler_.get(), &target_config_);
+  std::unique_ptr<HloPassPipeline> rewriter_pipeline =
+      GetParam().pipeline_factory(device_description_);
+  FissionBackend fission_backend_without_stream_executor(
+      &debug_options_, compiler_.get(), &target_config_,
+      std::move(backend_without_stream_executor), std::move(rewriter_pipeline),
+      &alias_info_, &mlir_context_);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(GetParam().hlo_string));
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
+      fission_backend_without_stream_executor.GetSupportedConfigs(
+          (*module->entry_computation()->root_instruction()));
+  EXPECT_TRUE(configs.ok() ||
+              configs.status().code() == absl::StatusCode::kInvalidArgument);
+}
+
 TEST_P(FissionTest, GetDefaultConfig) {
   const std::string& test_name = GetParam().test_name;
   if (IsRocm(stream_executor_) && (test_name == "TritonFusion_CublasLt_F8" ||
@@ -280,7 +310,8 @@ TEST_P(FissionTest, GetDefaultConfig) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(GetParam().hlo_string));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
-  EXPECT_THAT(fission_backend_->GetDefaultConfig(*fusion), IsOk());
+  EXPECT_THAT(fission_backend_->GetDefaultConfig(*fusion),
+              StatusIs(absl::StatusCode::kUnimplemented));
 }
 
 TEST_P(FissionTest, Compile) {
@@ -293,11 +324,12 @@ TEST_P(FissionTest, Compile) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(GetParam().hlo_string));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
-                       fission_backend_->GetDefaultConfig(*fusion));
+  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                       fission_backend_->GetSupportedConfigs(*fusion));
 
+  ASSERT_THAT(configs, Not(IsEmpty()));
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
-                       fission_backend_->Compile(*fusion, *config));
+                       fission_backend_->Compile(*fusion, *configs[0]));
   EXPECT_NE(executable, nullptr);
 }
 
@@ -311,9 +343,10 @@ TEST_P(FissionTest, ApplyConfig) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(GetParam().hlo_string));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
-                       fission_backend_->GetDefaultConfig(*fusion));
-  EXPECT_THAT(fission_backend_->ApplyConfig(*fusion, *config), IsOk());
+  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                       fission_backend_->GetSupportedConfigs(*fusion));
+  ASSERT_THAT(configs, Not(IsEmpty()));
+  EXPECT_THAT(fission_backend_->ApplyConfig(*fusion, *configs[0]), IsOk());
   std::string module_str = module->ToString();
   for (const std::string& expected_substr :
        GetParam().expected_module_substrings_fn(device_description_)) {
@@ -387,14 +420,41 @@ class CublasFissionBackendTest : public HloHardwareIndependentTestBase {
             &mlir_context_, stream_executor_)) {}
 };
 
+TEST_F(CublasFissionBackendTest, ApplyConfigReplacesFusionWithControlDeps) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+  c {
+    p0 = bf16[1024,1024] parameter(0)
+    p1 = bf16[1024,1024] parameter(1)
+    dot = bf16[1024,1024] dot(p0, p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  }
+
+  main {
+    p0 = bf16[1024,1024] parameter(0)
+    p1 = bf16[1024,1024] parameter(1)
+    a = bf16[1024,1024] add(p0, p0)
+    f = bf16[1024,1024] fusion(p0, p1),
+      kind=kCustom, calls=c, control-predecessors={a},
+      backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+  })"));
+  HloInstruction& fusion = *module->entry_computation()->root_instruction();
+  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                       fission_backend_->GetSupportedConfigs(fusion));
+  ASSERT_THAT(configs, Not(IsEmpty()));
+  EXPECT_OK(fission_backend_->ApplyConfig(fusion, *configs[0]));
+  EXPECT_THAT(module->ToString(), testing::Not(HasSubstr("__triton_gemm")));
+}
+
 TEST_F(CublasFissionBackendTest, ApplyConfigRemovesComputation) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(kTritonFusionHlo));
   EXPECT_EQ(module->computation_count(), 2);
   HloInstruction* fusion = module->entry_computation()->root_instruction();
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
-                       fission_backend_->GetDefaultConfig(*fusion));
-  EXPECT_THAT(fission_backend_->ApplyConfig(*fusion, *config), IsOk());
+  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                       fission_backend_->GetSupportedConfigs(*fusion));
+  ASSERT_THAT(configs, Not(IsEmpty()));
+  EXPECT_THAT(fission_backend_->ApplyConfig(*fusion, *configs[0]), IsOk());
   EXPECT_EQ(module->computation_count(), 1);
 }
 
@@ -502,6 +562,61 @@ TEST_F(CublasFissionBackendTest, CublasFallbackForBf16Bf16F32Algorithm) {
       EXPECT_FALSE(hasCublasConfig(configs));
     }
   }
+}
+
+// Verifies that user-defined DebugOptions are propagated into the module
+// extracted by GetFissionedAndRewrittenModule, so that the rewriter pipeline
+// observes the correct flag values rather than
+// DefaultDebugOptionsIgnoringFlags.
+//
+// Concretely, DefaultDebugOptionsIgnoringFlags sets
+// xla_gpu_gemm_rewrite_size_threshold = 100, while the test fixture's
+// default-constructed DebugOptions proto has the field at its proto default
+// value of 0 (meaning: rewrite ALL GEMMs regardless of size).
+//
+// The tiny 5×5 dot has a "combined size" of (5+5)*5 = 50:
+//   • Without the fix: the extracted module inherits threshold=100, so 50 < 100
+//     → the dot is treated as "tiny" and skipped by GemmRewriter, yielding no
+//     cuBLAS custom call and therefore no supported configs.
+//   • With the fix: the module gets the user's threshold=0, so 50 < 0 is false
+//     → the dot is NOT tiny → rewritten to a cuBLAS custom call → configs
+//     returned.
+TEST_F(CublasFissionBackendTest,
+       GetSupportedConfigsRespectsUserGemmRewriteSizeThreshold) {
+  // Confirm the fixture's debug options use the proto default (0), which
+  // differs from DefaultDebugOptionsIgnoringFlags() that sets it to 100.
+  EXPECT_EQ(debug_options_.xla_gpu_gemm_rewrite_size_threshold(), 0);
+
+  // A tiny f32 fusion whose dot's combined size is 50 < 100
+  // (the DefaultDebugOptionsIgnoringFlags threshold).
+  constexpr absl::string_view kTinyF32DotFusion = R"(
+    HloModule module
+
+    computation {
+      p0 = f32[5,5]{1,0} parameter(0)
+      p1 = f32[5,5]{1,0} parameter(1)
+      ROOT dot = f32[5,5]{1,0} dot(p0, p1),
+          lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+
+    ENTRY main {
+      p0 = f32[5,5]{1,0} parameter(0)
+      p1 = f32[5,5]{1,0} parameter(1)
+      ROOT fusion = f32[5,5]{1,0} fusion(p0, p1),
+        kind=kCustom, calls=computation
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kTinyF32DotFusion));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+
+  // With user's threshold=0, the tiny dot is NOT considered "too small" and
+  // must be rewritten to a cuBLAS (or hipBLASLt on ROCm) custom call.
+  // GetSupportedConfigs must therefore return at least one config.
+  ASSERT_OK_AND_ASSIGN(auto configs,
+                       fission_backend_->GetSupportedConfigs(*fusion));
+  EXPECT_THAT(configs, testing::Not(testing::IsEmpty()));
 }
 
 }  // namespace

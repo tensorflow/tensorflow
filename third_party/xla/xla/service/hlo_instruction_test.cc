@@ -3397,6 +3397,38 @@ TEST_F(HloInstructionTest, CreateFromProtoExp) {
               ::testing::HasSubstr("Negative tolerance"));
 }
 
+TEST_F(HloInstructionTest, CreateFromProtoAsyncUpdateLateBinding) {
+  HloComputation::Builder async_builder("async_comp");
+  async_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32_, "async_p0"));
+  auto async_computation = async_builder.Build();
+
+  auto param = HloInstruction::CreateParameter(0, r0f32_, "p0");
+  auto async_start = HloInstruction::CreateAsyncStart(
+      r0f32_, {param.get()}, async_computation.get(), "parallel_thread");
+
+  auto param2 = HloInstruction::CreateParameter(1, r0f32_, "p1");
+
+  HloInstructionProto proto;
+  proto.set_opcode("async-update");
+  proto.set_name("async_update");
+  proto.mutable_shape()->set_element_type(PrimitiveType::F32);
+  proto.add_operand_ids(10);
+  proto.add_operand_ids(11);
+
+  absl::flat_hash_map<int64_t, HloInstruction*> instruction_map;
+  instruction_map[10] = async_start.get();
+  instruction_map[11] = param2.get();
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloInstruction> hlo,
+                       HloInstruction::CreateFromProto(proto, instruction_map));
+
+  EXPECT_EQ(hlo->opcode(), HloOpcode::kAsyncUpdate);
+  ASSERT_EQ(hlo->operands().size(), 2);
+  EXPECT_EQ(hlo->operand(0), async_start.get());
+  EXPECT_EQ(hlo->operand(1), param2.get());
+}
+
 TEST_F(HloInstructionTest, ExpInvalidResultAccuracy) {
   const char* const hlo_string = R"(
   HloModule exponential_hw
@@ -3537,6 +3569,49 @@ TEST_F(HloInstructionTest, FusionPermuteOperandsTest) {
               GmockMatch(m::Add(m::Subtract(m::Broadcast(m::Parameter(1)),
                                             m::Broadcast(m::Parameter(2))),
                                 m::Parameter(0))));
+}
+
+TEST_F(HloInstructionTest, SetupDerivedInstructionResultAccuracy) {
+  ResultAccuracy result_accuracy_highest;
+  result_accuracy_highest.set_mode(ResultAccuracy::HIGHEST);
+
+  HloComputation::Builder builder("Tanh");
+  HloInstruction* x =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "x"));
+  HloInstruction* tanh = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kTanh, x));
+  tanh->set_result_accuracy(result_accuracy_highest);
+
+  std::unique_ptr<HloInstruction> derived_exp =
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, x);
+  tanh->SetupDerivedInstruction(derived_exp.get());
+  EXPECT_TRUE(derived_exp->has_result_accuracy());
+  EXPECT_EQ(derived_exp->result_accuracy().mode(), ResultAccuracy::HIGHEST);
+
+  std::unique_ptr<HloInstruction> derived_convert =
+      HloInstruction::CreateConvert(r0f32_, x);
+  tanh->SetupDerivedInstruction(derived_convert.get());
+  EXPECT_FALSE(derived_convert->has_result_accuracy());
+
+  HloInstruction* plain_tanh = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kTanh, x));
+  plain_tanh->SetupDerivedInstruction(derived_exp.get());
+  EXPECT_FALSE(derived_exp->has_result_accuracy());
+
+  derived_exp->set_result_accuracy(result_accuracy_highest);
+  EXPECT_TRUE(derived_exp->has_result_accuracy());
+
+  HloInstruction* attr_tanh = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kTanh, x));
+  FrontendAttributes attributes;
+  (*attributes.mutable_map())["key"] = "val";
+  attr_tanh->set_frontend_attributes(attributes);
+  EXPECT_FALSE(attr_tanh->frontend_attributes().map().empty());
+  EXPECT_FALSE(attr_tanh->has_result_accuracy());
+
+  attr_tanh->SetupDerivedInstruction(derived_exp.get());
+  EXPECT_FALSE(derived_exp->has_result_accuracy());
+  EXPECT_EQ(derived_exp->frontend_attributes().map().at("key"), "val");
 }
 
 }  // namespace

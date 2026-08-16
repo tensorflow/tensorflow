@@ -1206,8 +1206,8 @@ int64_t get_uid() { return _uid++; }
 PyObject* TFE_Py_UID() { return PyLong_FromLongLong(get_uid()); }
 
 void TFE_DeleteContextCapsule(PyObject* context) {
-  TFE_Context* ctx =
-      reinterpret_cast<TFE_Context*>(PyCapsule_GetPointer(context, nullptr));
+  TFE_Context* ctx = reinterpret_cast<TFE_Context*>(
+      PyCapsule_GetPointer(context, "TFE_Context"));
   auto op = ReleaseThreadLocalOp(ctx);
   op.reset();
   TFE_DeleteContext(ctx);
@@ -1471,15 +1471,15 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
     PyObject* seq =
         PySequence_Fast(py_result, "expected a sequence of gradients");
     if (seq == nullptr) {
-      return tensorflow::errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "gradient function did not return a list");
     }
     int len = PySequence_Fast_GET_SIZE(seq);
     if (len != result.size()) {
-      return tensorflow::errors::Internal(
-          "Recorded operation '", op_type,
-          "' returned too few gradients. Expected ", result.size(),
-          " but received ", len);
+      return absl::InternalError(
+          absl::StrCat("Recorded operation '", op_type,
+                       "' returned too few gradients. Expected ", result.size(),
+                       " but received ", len));
     }
     PyObject** seq_array = PySequence_Fast_ITEMS(seq);
     VLOG(1) << "Gradient length is " << len;
@@ -1524,9 +1524,8 @@ PyObject* TFE_Py_RegisterVSpace(PyObject* e) {
       // Accumulators reference py_vspace, so we can't swap it out while one is
       // active. This is unlikely to ever happen.
       MaybeRaiseExceptionFromStatus(
-          tensorflow::errors::Internal(
-              "Can't change the vspace implementation while a "
-              "forward accumulator is active."),
+          absl::InternalError("Can't change the vspace implementation while a "
+                              "forward accumulator is active."),
           nullptr);
     }
     delete py_vspace;
@@ -2027,6 +2026,10 @@ PyObject* TFE_Py_TapeSetNew(PyObject* persistent,
 }
 
 void TFE_Py_TapeSetAdd(PyObject* tape) {
+  if (!PyObject_TypeCheck(tape, &TFE_Py_Tape_Type)) {
+    PyErr_SetString(PyExc_TypeError, "Expected a TFE_Py_Tape object");
+    return;
+  }
   Py_INCREF(tape);
   TFE_Py_Tape* tfe_tape = reinterpret_cast<TFE_Py_Tape*>(tape);
   if (!GetTapeSet()->insert(tfe_tape).second) {
@@ -2045,13 +2048,21 @@ PyObject* TFE_Py_TapeSetIsEmpty() {
 }
 
 void TFE_Py_TapeSetRemove(PyObject* tape) {
+  if (!PyObject_TypeCheck(tape, &TFE_Py_Tape_Type)) {
+    PyErr_SetString(PyExc_TypeError, "Expected a TFE_Py_Tape object");
+    return;
+  }
   auto* stack = GetTapeSet();
+  bool erased = false;
   if (stack != nullptr) {
-    stack->erase(reinterpret_cast<TFE_Py_Tape*>(tape));
+    erased = stack->erase(reinterpret_cast<TFE_Py_Tape*>(tape)) > 0;
   }
   // We kept a reference to the tape in the set to ensure it wouldn't get
   // deleted under us; cleaning it up here.
-  Py_DECREF(tape);
+  // We only decref if the tape was actually erased from the set.
+  if (erased) {
+    Py_DECREF(tape);
+  }
 }
 
 static std::vector<int64_t> MakeIntList(PyObject* list) {
@@ -2210,6 +2221,10 @@ PyObject* TFE_Py_TapeSetPossibleGradientTypes(PyObject* tensors) {
 }
 
 void TFE_Py_TapeWatch(PyObject* tape, PyObject* tensor) {
+  if (!PyObject_TypeCheck(tape, &TFE_Py_Tape_Type)) {
+    PyErr_SetString(PyExc_TypeError, "Expected a TFE_Py_Tape object");
+    return;
+  }
   if (!CouldBackprop()) {
     return;
   }
@@ -2512,7 +2527,7 @@ bool TapeSetRecordForwardprop(
     if (PySequence_Fast_GET_SIZE(indices_fast.get()) !=
         accumulator_set.size()) {
       MaybeRaiseExceptionFromStatus(
-          tensorflow::errors::Internal(
+          absl::InternalError(
               "Accumulators were added or removed from the active set "
               "between packing and unpacking."),
           nullptr);
@@ -2590,7 +2605,7 @@ absl::Status ParseTangentOutputs(PyObject* user_output,
   tensorflow::Safe_PyObjectPtr fast_result(
       PySequence_Fast(user_output, "expected a sequence of forward gradients"));
   if (fast_result == nullptr) {
-    return tensorflow::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "forward gradient function did not return a sequence.");
   }
   int len = PySequence_Fast_GET_SIZE(fast_result.get());
@@ -2619,8 +2634,7 @@ absl::Status CallJVPFunction(PyObject* op_name, PyObject* attrs,
                              std::vector<PyObject*>* output_tangents,
                              bool use_batch) {
   if (forward_gradient_function == nullptr) {
-    return tensorflow::errors::Internal(
-        "No forward gradient function registered.");
+    return absl::InternalError("No forward gradient function registered.");
   }
   tensorflow::Safe_PyObjectPtr py_input_tangents(
       TangentsAsPyTuple(input_tangents));
@@ -2635,8 +2649,7 @@ absl::Status CallJVPFunction(PyObject* op_name, PyObject* attrs,
   tensorflow::Safe_PyObjectPtr py_result(
       PyObject_CallObject(forward_gradient_function, callback_args.get()));
   if (py_result == nullptr || PyErr_Occurred()) {
-    return tensorflow::errors::Internal(
-        "forward gradient function threw exceptions");
+    return absl::InternalError("forward gradient function threw exceptions");
   }
   return ParseTangentOutputs(py_result.get(), output_tangents);
 }
@@ -2653,8 +2666,7 @@ absl::Status CallOpSpecificJVPFunction(
   tensorflow::Safe_PyObjectPtr py_result(PyObject_CallObject(
       op_specific_forward_function, py_input_tangents.get()));
   if (py_result == nullptr || PyErr_Occurred()) {
-    return tensorflow::errors::Internal(
-        "forward gradient function threw exceptions");
+    return absl::InternalError("forward gradient function threw exceptions");
   }
   return ParseTangentOutputs(py_result.get(), output_tangents);
 }
@@ -3021,7 +3033,7 @@ PyObject* TFE_Py_ForwardAccumulatorNew(bool use_batch) {
       PyObject_NEW(TFE_Py_ForwardAccumulator, &TFE_Py_ForwardAccumulator_Type);
   if (py_vspace == nullptr) {
     MaybeRaiseExceptionFromStatus(
-        tensorflow::errors::Internal(
+        absl::InternalError(
             "ForwardAccumulator requires a PyVSpace to be registered."),
         nullptr);
   }
@@ -3038,7 +3050,7 @@ PyObject* TFE_Py_ForwardAccumulatorSetAdd(PyObject* accumulator) {
     Py_RETURN_NONE;
   } else {
     MaybeRaiseExceptionFromStatus(
-        tensorflow::errors::Internal(
+        absl::InternalError(
             "A ForwardAccumulator was added to the active set twice."),
         nullptr);
     return nullptr;
@@ -3775,7 +3787,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
       PyObject_GetAttrString(py_eager_context, "_context_handle");
 
   TFE_Context* ctx = reinterpret_cast<TFE_Context*>(
-      PyCapsule_GetPointer(eager_context_handle, nullptr));
+      PyCapsule_GetPointer(eager_context_handle, "TFE_Context"));
   op_exec_info.ctx = ctx;
   op_exec_info.args = args;
 
@@ -3910,8 +3922,10 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
 
   // TODO(nareshmodi): Encapsulate callbacks information into a struct.
   if (op_exec_info.run_callbacks) {
-    flattened_attrs.reset(new std::vector<tensorflow::Safe_PyObjectPtr>);
-    flattened_inputs.reset(new std::vector<tensorflow::Safe_PyObjectPtr>);
+    flattened_attrs =
+        std::make_unique<std::vector<tensorflow::Safe_PyObjectPtr>>();
+    flattened_inputs =
+        std::make_unique<std::vector<tensorflow::Safe_PyObjectPtr>>();
   }
 
   // Add inferred attrs and inputs.

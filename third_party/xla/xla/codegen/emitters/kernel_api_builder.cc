@@ -26,9 +26,9 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/DLTI/DLTI.h"
@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/emitters/type_util.h"
 #include "xla/codegen/kernel_spec.h"
+#include "xla/frontend_attributes.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
@@ -149,7 +150,7 @@ absl::StatusOr<mlir::func::FuncOp> EmitKernelApi(
   llvm::SmallVector<mlir::Type> param_types;
   std::optional<KernelArguments> args;
   if (buffer_assignment != nullptr) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         args, KernelArguments::Create(*buffer_assignment, buffer_alignment,
                                       &hlo_instruction));
   }
@@ -172,8 +173,13 @@ absl::StatusOr<mlir::func::FuncOp> EmitKernelApi(
         mlir::LLVM::LLVMDialect::getDereferenceableAttrName(),
         builder.getIndexAttr(arg.slice().size())));
     if (!arg.written()) {
-      attrs.push_back(
-          builder.getNamedAttr(kXlaInvariantAttr, builder.getUnitAttr()));
+      if (arg.invariant()) {
+        attrs.push_back(
+            builder.getNamedAttr(kXlaInvariantAttr, builder.getUnitAttr()));
+      } else {
+        attrs.push_back(
+            builder.getNamedAttr(kXlaNotInvariantAttr, builder.getUnitAttr()));
+      }
     }
     return builder.getDictionaryAttr(attrs);
   };
@@ -367,7 +373,7 @@ absl::StatusOr<CallTargetProvider> EmitPartitionedComputations(
   for (const auto& comp : computations.partitioned_computations()) {
     for (const auto& subgraph : comp.subgraphs()) {
       if (subgraph_to_mlir_fn.contains(&subgraph)) {
-        RETURN_IF_ERROR(SubgraphToMlirFunction(
+        ABSL_RETURN_IF_ERROR(SubgraphToMlirFunction(
             comp, subgraph, subgraph_to_mlir_fn[&subgraph], call_targets,
             computations.mlir_context()));
       }
@@ -379,7 +385,7 @@ absl::StatusOr<CallTargetProvider> EmitPartitionedComputations(
     if (epilogue.roots.empty()) {
       continue;
     }
-    RETURN_IF_ERROR(SubgraphToMlirFunction(
+    ABSL_RETURN_IF_ERROR(SubgraphToMlirFunction(
         computations.FindPartitionedComputation(fused_computation), epilogue,
         subgraph_to_mlir_fn[&epilogue], call_targets,
         computations.mlir_context()));
@@ -401,7 +407,7 @@ absl::StatusOr<KernelSpec> GetKernelSpec(
 
   KernelSpec::Buffers result_buffers;
   for (auto& indexed : ShapeUtil::GetLeafShapes(hlo_instruction.shape())) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         BufferAllocation::Slice slice,
         buffer_assignment->GetUniqueSlice(&hlo_instruction, indexed.index));
     result_buffers.push_back({slice, indexed.shape});
@@ -409,10 +415,12 @@ absl::StatusOr<KernelSpec> GetKernelSpec(
 
   KernelSpec::Buffers argument_buffers;
   absl::flat_hash_set<int64_t> invariant_arguments;
+  absl::flat_hash_set<int> no_invariant_operands =
+      NonInvariantOperands(hlo_instruction);
   int64_t operand_index = 0;
   for (HloInstruction* operand : hlo_instruction.operands()) {
     for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           BufferAllocation::Slice slice,
           buffer_assignment->GetUniqueSlice(operand, indexed.index));
 
@@ -420,6 +428,10 @@ absl::StatusOr<KernelSpec> GetKernelSpec(
           result_buffers, [&slice](const ShapedSlice& result_slice) {
             return result_slice.slice.OverlapsWith(slice);
           });
+      // Allow overriding invariant attribute via frontend attribute
+      if (no_invariant_operands.contains(operand_index)) {
+        invariant = false;
+      }
       if (invariant) {
         invariant_arguments.insert(operand_index);
       }

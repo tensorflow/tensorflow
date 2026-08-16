@@ -119,6 +119,40 @@ TEST(L2NormOpTest, MultipleBatchFloatTest) {
                         }));
 }
 
+TEST(L2NormOpTest, RankFiveFloatTest) {
+  L2NormOpModel m({1, 2, 1, 1, 6}, TensorType_FLOAT32,
+                  ActivationFunctionType_NONE);
+  m.SetInput({
+      -1.1,
+      0.6,
+      0.7,
+      1.2,
+      -0.7,
+      0.1,
+      -1.1,
+      0.6,
+      0.7,
+      1.2,
+      -0.7,
+      0.1,
+  });
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<float>(), Pointwise(FloatingPointEq(), {
+                                                                     -0.55,
+                                                                     0.3,
+                                                                     0.35,
+                                                                     0.6,
+                                                                     -0.35,
+                                                                     0.05,
+                                                                     -0.55,
+                                                                     0.3,
+                                                                     0.35,
+                                                                     0.6,
+                                                                     -0.35,
+                                                                     0.05,
+                                                                 }));
+}
+
 TEST(L2NormOpTest, ZerosVectorUint8Test) {
   L2NormOpModel m({1, 1, 1, 6}, TensorType_UINT8, ActivationFunctionType_NONE);
 
@@ -192,6 +226,41 @@ TEST(L2NormOpTest, MultipleBatchUint8Test) {
                   0.1)));
 }
 
+TEST(L2NormOpTest, RankFiveUint8Test) {
+  L2NormOpModel m({1, 2, 1, 1, 6}, TensorType_UINT8,
+                  ActivationFunctionType_NONE);
+
+  m.QuantizeAndPopulate<uint8_t>(m.input(), {
+                                                -1.1,
+                                                0.6,
+                                                0.7,
+                                                1.2,
+                                                -0.7,
+                                                0.1,
+                                                -1.1,
+                                                0.6,
+                                                0.7,
+                                                1.2,
+                                                -0.7,
+                                                0.1,
+                                            });
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<uint8_t>(), ElementsAreArray({
+                                          58,
+                                          166,
+                                          173,
+                                          205,
+                                          83,
+                                          134,
+                                          58,
+                                          166,
+                                          173,
+                                          205,
+                                          83,
+                                          134,
+                                      }));
+}
+
 TEST(L2NormOpTest, MultipleBatchInt8Test) {
   L2NormOpModel m({3, 1, 1, 6}, TensorType_INT8, ActivationFunctionType_NONE);
 
@@ -215,6 +284,41 @@ TEST(L2NormOpTest, MultipleBatchInt8Test) {
                       -0.55, 0.3, 0.35, 0.6, -0.35, 0.05,  // batch 3
                   },
                   0.1)));
+}
+
+TEST(L2NormOpTest, RankFiveInt8Test) {
+  L2NormOpModel m({1, 2, 1, 1, 6}, TensorType_INT8,
+                  ActivationFunctionType_NONE);
+
+  m.QuantizeAndPopulate<int8_t>(m.input(), {
+                                               -1.1,
+                                               0.6,
+                                               0.7,
+                                               1.2,
+                                               -0.7,
+                                               0.1,
+                                               -1.1,
+                                               0.6,
+                                               0.7,
+                                               1.2,
+                                               -0.7,
+                                               0.1,
+                                           });
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({
+                                         -70,
+                                         38,
+                                         45,
+                                         77,
+                                         -45,
+                                         6,
+                                         -70,
+                                         38,
+                                         45,
+                                         77,
+                                         -45,
+                                         6,
+                                     }));
 }
 
 }  // namespace

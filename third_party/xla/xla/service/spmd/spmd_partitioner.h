@@ -107,6 +107,16 @@ struct SpmdPartitionerOptions {
   // Enables windowed einsum for result reduce-scatter.
   bool enable_windowed_einsum_for_reduce_scatter = true;
 
+  // Enables a narrow dynamic-slice lowering that broadcasts a single slice
+  // from its sharded owner instead of all-gathering the full operand first.
+  // Controlled via xla_spmd_enable_dynamic_slice_collective_broadcast.
+  bool enable_dynamic_slice_collective_broadcast = false;
+
+  // Maximum number of partitions for the dynamic-slice collective-broadcast
+  // lowering. The lowering creates one branch with a full replica group per
+  // partition, so this limit bounds quadratic HLO growth.
+  int64_t max_dynamic_slice_collective_broadcast_partitions = 32;
+
   // Whether disable rewrite for dots that share the same
   // operand as an already rewritten windowed einsum loop.
   bool disable_ag_rewrite_for_multiple_consumers = false;
@@ -514,6 +524,13 @@ class PartitionedHlo {
   // Returns the sharding of the SPMD instruction.
   const HloSharding& sharding() const { return hlo_->sharding(); }
 
+  // Converts the sharding to V2 if it is a NamedSharding leaf.
+  void set_sharding_may_convert_to_v2() const {
+    if (hlo_->has_sharding() && hlo_->sharding().UseNamedShardingLeaf()) {
+      hlo_->set_sharding(HloSharding::V3ToV2Sharding(hlo_->sharding()));
+    }
+  }
+
   void set_sharding(const HloSharding& sharding) {
     hlo_->set_sharding(sharding);
   }
@@ -642,6 +659,11 @@ class PartitionedHloMX {
 
   const HloSharding& sharding() const { return operand_.sharding(); }
 
+  void set_sharding_may_convert_to_v2() const {
+    operand_.set_sharding_may_convert_to_v2();
+    scale_.set_sharding_may_convert_to_v2();
+  }
+
   void set_sharding(const HloSharding& sharding) {
     operand_.set_sharding(sharding);
     scale_.set_sharding(sharding);
@@ -731,6 +753,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   absl::Status HandleReshape(HloInstruction* hlo) override;
   absl::Status HandleReverse(HloInstruction* hlo) override;
   absl::Status HandleRng(HloInstruction* hlo) override;
+  absl::Status HandleScan(HloInstruction* hlo) override;
   absl::Status HandleScatter(HloInstruction* hlo) override;
   absl::Status HandleSelectAndScatter(HloInstruction* hlo) override;
   absl::Status HandleSlice(HloInstruction* hlo) override;
@@ -850,6 +873,15 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   absl::Status Preprocess(HloInstruction* hlo) override;
   absl::Status Postprocess(HloInstruction* hlo) override;
 
+  // Partitions an associative scan whose sharding tiles the scan dimension
+  // with a distributed parallel prefix: shard-local scans, an all-gather of
+  // the carry-sized shard totals, and a local combine of each shard's
+  // exclusive prefix. Returns false (without partitioning) when the scan
+  // does not fit this scheme; the caller then falls back to moving the
+  // sharding off the scan dimension.
+  absl::StatusOr<bool> TryPartitionScanAlongScanDimension(
+      HloInstruction* hlo, const HloSharding& output_sharding);
+
   // Performs code motion for windowed dot-general loops in
   // windowed_dot_general_loops_. Invoked after the visitor finishes traversing
   // the graph.
@@ -871,6 +903,9 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   HloInstruction* partition_id_;
 
  private:
+  absl::StatusOr<bool> TryDynamicSliceWithCollectiveBroadcast(
+      HloInstruction* hlo);
+
   PartitionedHlo::ReshardCache reshard_cache_;
 
   // Mapping from the instruction in the original computation to the new SPMD
@@ -881,8 +916,9 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   SpmdLogger* logger_;
   const SpmdPartitionerOptions options_;
   SpmdPartitioner* partitioner_;
-  std::vector<HloSharding> visiting_hlo_operand_shardings_;
-  std::optional<HloSharding> visiting_hlo_sharding_;
+  std::vector<std::shared_ptr<const HloSharding>>
+      visiting_hlo_operand_shardings_;
+  std::shared_ptr<const HloSharding> visiting_hlo_sharding_;
   std::optional<int64_t> visiting_num_partitions_;
   std::optional<SPMDCollectiveOpsCreator> visiting_collective_ops_creator_;
   std::optional<HloInstruction*> visiting_partition_id_;

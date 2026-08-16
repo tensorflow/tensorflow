@@ -25,19 +25,21 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/custom_call_target.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/traced_command.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
@@ -118,7 +120,7 @@ LegacyCustomCallThunk::Create(ThunkInfo thunk_info, std::string target_name,
                               std::string opaque,
                               CustomCallApiVersion api_version,
                               absl::string_view platform_name) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       CustomCallTarget call_target,
       ResolveLegacyCustomCall(*CustomCallTargetRegistry::Global(), target_name,
                               platform_name, api_version));
@@ -186,12 +188,12 @@ absl::StatusOr<ThunkProto> LegacyCustomCallThunk::ToProto() const {
   proto.mutable_custom_call_thunk()->set_api_version(api_version_.value());
 
   for (const NullableShapedSlice& operand : operands_) {
-    ASSIGN_OR_RETURN(*proto.mutable_custom_call_thunk()->add_operands(),
+    ABSL_ASSIGN_OR_RETURN(*proto.mutable_custom_call_thunk()->add_operands(),
                      operand.ToProto());
   }
 
   for (const NullableShapedSlice& result : results_) {
-    ASSIGN_OR_RETURN(*proto.mutable_custom_call_thunk()->add_results(),
+    ABSL_ASSIGN_OR_RETURN(*proto.mutable_custom_call_thunk()->add_results(),
                      result.ToProto());
   }
 
@@ -205,13 +207,13 @@ LegacyCustomCallThunk::FromProto(
     absl::string_view platform_name) {
   std::vector<NullableShapedSlice> operands, results;
   for (const auto& operand_proto : proto.operands()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         NullableShapedSlice operand,
         NullableShapedSlice::FromProto(operand_proto, buffer_allocations));
     operands.push_back(std::move(operand));
   }
   for (const auto& result_proto : proto.results()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         NullableShapedSlice result,
         NullableShapedSlice::FromProto(result_proto, buffer_allocations));
     results.push_back(std::move(result));

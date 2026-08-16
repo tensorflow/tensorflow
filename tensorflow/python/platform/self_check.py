@@ -14,18 +14,20 @@
 # ==============================================================================
 
 """Platform-specific code for checking the integrity of the TensorFlow build."""
-import ctypes
+
 import os
 
 MSVCP_DLL_NAMES = "msvcp_dll_names"
 
 try:
   from tensorflow.python.platform import build_info
-except ImportError:
-  raise ImportError("Could not import tensorflow. Do not import tensorflow "
-                    "from its source directory; change directory to outside "
-                    "the TensorFlow source tree, and relaunch your Python "
-                    "interpreter from there.")
+except ImportError as exc:
+  raise ImportError(
+      "Could not import tensorflow. Do not import"
+      " tensorflow from its source directory; change directory to outside the"
+      " TensorFlow source tree, and relaunch your Python interpreter from"
+      " there."
+  ) from exc
 
 
 def preload_check():
@@ -42,9 +44,12 @@ def preload_check():
     if MSVCP_DLL_NAMES in build_info.build_info:
       missing = []
       for dll_name in build_info.build_info[MSVCP_DLL_NAMES].split(","):
-        try:
-          ctypes.WinDLL(dll_name)
-        except OSError:
+        found = False
+        for path_dir in os.environ.get("PATH", "").split(";"):
+          if os.path.isfile(os.path.join(path_dir, dll_name)):
+            found = True
+            break
+        if not found:
           missing.append(dll_name)
       if missing:
         raise ImportError(
@@ -54,11 +59,13 @@ def preload_check():
             '"Microsoft C++ Redistributable for Visual Studio 2015, 2017 and '
             '2019" for your platform from this URL: '
             "https://support.microsoft.com/help/2977003/the-latest-supported-visual-c-downloads"
-            % " or ".join(missing))
+            % " or ".join(missing)
+        )
   else:
     # Load a library that performs CPU feature guard checking.  Doing this here
     # as a preload check makes it more likely that we detect any CPU feature
     # incompatibilities before we trigger them (which would typically result in
     # SIGILL).
     from tensorflow.python.platform import _pywrap_cpu_feature_guard
+
     _pywrap_cpu_feature_guard.InfoAboutUnusedCPUFeatures()

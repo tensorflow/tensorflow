@@ -20,18 +20,16 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
@@ -40,12 +38,14 @@ limitations under the License.
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/utils.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/user_context.h"
@@ -91,7 +91,7 @@ absl::Status ValidateArrayCreationInput(
       CanonicalizeMemoryKind(sharding->memory_kind(), sharding_devices.front());
   for (int i = 0; i < sharding_devices.size(); ++i) {
     PjRtCompatibleDevice* device =
-        llvm::dyn_cast<PjRtCompatibleDevice>(sharding_devices[i]);
+        dyn_cast<PjRtCompatibleDevice>(sharding_devices[i]);
     if (!device) {
       return InvalidArgument("Sharding device %d is not a PjRtDevice", i);
     }
@@ -159,7 +159,7 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, DType dtype, Shape shape,
     ShardingRef sharding, PjRtBuffers pjrt_buffers,
     std::shared_ptr<const xla::PjRtLayout> layout) {
-  RETURN_IF_ERROR(ValidateArrayCreationInput(client, sharding, pjrt_buffers));
+  ABSL_RETURN_IF_ERROR(ValidateArrayCreationInput(client, sharding, pjrt_buffers));
   return tsl::MakeRef<PjRtArray>(client, dtype, std::move(shape),
                                  std::move(sharding), std::move(pjrt_buffers),
                                  std::move(layout));
@@ -178,7 +178,7 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, DType dtype, DynamicShape dynamic_shape,
     ShardingRef sharding, PjRtBuffers pjrt_buffers,
     std::shared_ptr<const xla::PjRtLayout> layout) {
-  RETURN_IF_ERROR(ValidateArrayCreationInput(client, sharding, pjrt_buffers));
+  ABSL_RETURN_IF_ERROR(ValidateArrayCreationInput(client, sharding, pjrt_buffers));
   return tsl::MakeRef<PjRtArray>(client, dtype, std::move(dynamic_shape),
                                  std::move(sharding), std::move(pjrt_buffers),
                                  std::move(layout));
@@ -187,9 +187,9 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
 absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, std::shared_ptr<PjRtBuffer> pjrt_buffer,
     bool has_custom_layout) {
-  ASSIGN_OR_RETURN(auto dtype, ToDType(pjrt_buffer->element_type()));
+  ABSL_ASSIGN_OR_RETURN(auto dtype, ToDType(pjrt_buffer->element_type()));
   Shape shape(pjrt_buffer->dimensions());
-  ASSIGN_OR_RETURN(auto device,
+  ABSL_ASSIGN_OR_RETURN(auto device,
                    client->LookupPjRtDevice(pjrt_buffer->device()));
   auto sharding = SingleDeviceSharding::Create(
       device, MakeMemoryKindFromPjRtBuffer(pjrt_buffer.get()));
@@ -206,7 +206,7 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
 
 absl::StatusOr<ArrayRef> PjRtArray::FullyReplicatedShard(
     ArrayCopySemantics semantics) {
-  if (sharding_->devices()->AddressableDeviceList()->empty()) {
+  if (array_spec_.sharding->devices()->AddressableDeviceList()->empty()) {
     return FailedPrecondition(
         "FullyReplicatedShard: Array has no addressable shards.");
   }
@@ -236,9 +236,9 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
   if (pjrt_buffers.empty()) {
     return InvalidArgument("PjRtBuffers must be non-empty.");
   }
-  ASSIGN_OR_RETURN(auto dtype,
+  ABSL_ASSIGN_OR_RETURN(auto dtype,
                    xla::ifrt::ToDType(pjrt_buffers.front()->element_type()));
-  ASSIGN_OR_RETURN(MemoryKind memory_kind,
+  ABSL_ASSIGN_OR_RETURN(MemoryKind memory_kind,
                    GetMemoryKindFromPjRtBuffers(pjrt_buffers));
 
   BasicDeviceList::Devices devices;
@@ -247,7 +247,7 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
   shapes.reserve(pjrt_buffers.size());
 
   for (const auto& pjrt_buffer : pjrt_buffers) {
-    ASSIGN_OR_RETURN(auto device,
+    ABSL_ASSIGN_OR_RETURN(auto device,
                      client->LookupPjRtDevice(pjrt_buffer->device()));
     devices.push_back(device);
     shapes.push_back(Shape(pjrt_buffer->dimensions()));
@@ -272,9 +272,9 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
   if (pjrt_buffers.empty()) {
     return InvalidArgument("PjRtBuffers must be non-empty.");
   }
-  ASSIGN_OR_RETURN(auto dtype,
+  ABSL_ASSIGN_OR_RETURN(auto dtype,
                    xla::ifrt::ToDType(pjrt_buffers.front()->element_type()));
-  ASSIGN_OR_RETURN(auto memory_kind,
+  ABSL_ASSIGN_OR_RETURN(auto memory_kind,
                    GetMemoryKindFromPjRtBuffers(pjrt_buffers));
 
   BasicDeviceList::Devices devices;
@@ -283,10 +283,10 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
   dynamic_shapes.reserve(pjrt_buffers.size());
 
   for (const auto& pjrt_buffer : pjrt_buffers) {
-    ASSIGN_OR_RETURN(auto device,
+    ABSL_ASSIGN_OR_RETURN(auto device,
                      client->LookupPjRtDevice(pjrt_buffer->device()));
     devices.push_back(device);
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         DynamicShape dynamic_shape,
         // Extracts dynamic shape info from the buffers.
         DynamicShape::Create(
@@ -313,23 +313,20 @@ PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype, Shape shape,
                      ShardingRef sharding, PjRtBuffers pjrt_buffers,
                      std::shared_ptr<const xla::PjRtLayout> layout)
     : client_(client),
-      dtype_(dtype),
-      shape_(std::move(shape)),
-      sharding_(std::move(sharding)),
+      array_spec_(ArraySpec{dtype, shape, sharding, layout}),
       pjrt_buffers_(std::move(pjrt_buffers)),
-      layout_(layout != nullptr ? PjRtLayout::Create(std::move(layout))
-                                : nullptr),
+      layout_(layout != nullptr ? PjRtLayout::Create(layout) : nullptr),
       user_context_(UserContextScope::current()) {}
 
 PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype, Shape shape,
                      ShardingRef sharding, PjRtBuffers pjrt_buffers,
                      std::shared_ptr<const xla::ifrt::PjRtLayout> layout)
     : client_(client),
-      dtype_(dtype),
-      shape_(std::move(shape)),
-      sharding_(std::move(sharding)),
+      array_spec_(
+          ArraySpec{dtype, shape, sharding,
+                    layout != nullptr ? layout->pjrt_layout() : nullptr}),
       pjrt_buffers_(std::move(pjrt_buffers)),
-      layout_(std::move(layout)),
+      layout_(layout),
       user_context_(UserContextScope::current()) {}
 
 PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype,
@@ -337,20 +334,19 @@ PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype,
                      PjRtBuffers pjrt_buffers,
                      std::shared_ptr<const xla::PjRtLayout> layout)
     : client_(client),
-      dtype_(dtype),
-      shape_(std::move(dynamic_shape)),
-      sharding_(std::move(sharding)),
+      array_spec_(ArraySpec{dtype, Shape({}), sharding, layout}),
+      dynamic_shape_(std::move(dynamic_shape)),
       pjrt_buffers_(std::move(pjrt_buffers)),
       layout_(layout != nullptr ? PjRtLayout::Create(std::move(layout))
                                 : nullptr),
       user_context_(UserContextScope::current()) {}
 
 absl::StatusOr<std::optional<int64_t>> PjRtArray::ByteSize() const {
-  const auto* static_shape = std::get_if<Shape>(&shape_);
-  if (static_shape == nullptr) {
+  if (dynamic_shape_ != std::nullopt) {
     return std::nullopt;
   }
-  return xla::ifrt::Layout::ByteSize(dtype_, *static_shape, sharding_, layout_);
+  return xla::ifrt::Layout::ByteSize(array_spec_.dtype, array_spec_.shape,
+                                     array_spec_.sharding, layout_);
 }
 
 absl::StatusOr<std::vector<ArrayRef>>
@@ -359,35 +355,40 @@ PjRtArray::DisassembleIntoSingleDeviceArrays(
     SingleDeviceShardSemantics single_device_shard_semantics) {
   DCHECK(this);
   if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards &&
-      !sharding_->devices()->IsFullyAddressable()) {
+      !array_spec_.sharding->devices()->IsFullyAddressable()) {
     return InvalidArgument(
         "All shards are requested but the sharding has non-addressable "
         "devices: %v",
-        *sharding_->devices());
+        *array_spec_.sharding->devices());
   }
   std::vector<ArrayRef> result;
-  result.reserve(sharding_->devices()->AddressableDeviceList()->size());
-  RETURN_IF_ERROR(std::visit(
-      [&](const auto& this_shape) {
-        ASSIGN_OR_RETURN(
-            auto shape_and_shardings,
-            sharding_->Disassemble(
-                this_shape, SingleDeviceShardSemantics::kAddressableShards));
-        for (int i = 0; i < shape_and_shardings.size(); ++i) {
-          PjRtBuffers buffers;
-          buffers.reserve(1);
-          buffers.push_back(GetPjRtBuffer(semantics, i));
-          ASSIGN_OR_RETURN(
-              auto array,
-              PjRtArray::Create(
-                  client_, dtype_, std::move(shape_and_shardings[i].first),
-                  std::move(shape_and_shardings[i].second), std::move(buffers),
-                  layout_ != nullptr ? layout_->pjrt_layout() : nullptr));
-          result.push_back(std::move(array));
-        }
-        return absl::OkStatus();
-      },
-      shape_));
+  result.reserve(
+      array_spec_.sharding->devices()->AddressableDeviceList()->size());
+  auto visitor = [&](const auto& this_shape) {
+    ABSL_ASSIGN_OR_RETURN(
+        auto shape_and_shardings,
+        array_spec_.sharding->Disassemble(
+            this_shape, SingleDeviceShardSemantics::kAddressableShards));
+    for (int i = 0; i < shape_and_shardings.size(); ++i) {
+      PjRtBuffers buffers;
+      buffers.reserve(1);
+      buffers.push_back(GetPjRtBuffer(semantics, i));
+      ABSL_ASSIGN_OR_RETURN(
+          auto array,
+          PjRtArray::Create(
+              client_, array_spec_.dtype,
+              std::move(shape_and_shardings[i].first),
+              std::move(shape_and_shardings[i].second), std::move(buffers),
+              layout_ != nullptr ? layout_->pjrt_layout() : nullptr));
+      result.push_back(std::move(array));
+    }
+    return absl::OkStatus();
+  };
+  if (dynamic_shape_ != std::nullopt) {
+    ABSL_RETURN_IF_ERROR(visitor(*dynamic_shape_));
+  } else {
+    ABSL_RETURN_IF_ERROR(visitor(array_spec_.shape));
+  }
 
   return result;
 }
@@ -396,8 +397,8 @@ tsl::Future<> PjRtArray::CopyToHostBuffer(
     void* data, std::optional<absl::Span<const int64_t>> byte_strides,
     ArrayCopySemantics semantics) {
   DCHECK(this);
-  if (sharding_->devices()->size() != 1) {
-    if (sharding_->IsFullyReplicated()) {
+  if (array_spec_.sharding->devices()->size() != 1) {
+    if (array_spec_.sharding->IsFullyReplicated()) {
       absl::StatusOr<ArrayRef> replicated = FullyReplicatedShard(semantics);
       if (!replicated.ok()) {
         return tsl::Future<>(std::move(replicated).status());
@@ -406,10 +407,10 @@ tsl::Future<> PjRtArray::CopyToHostBuffer(
     }
     return tsl::Future<>(
         InvalidArgument("Only single-shard is implemented, but got %d",
-                        sharding_->devices()->size()));
+                        array_spec_.sharding->devices()->size()));
   }
 
-  auto dtype = ToPrimitiveType(dtype_);
+  auto dtype = ToPrimitiveType(array_spec_.dtype);
   if (!dtype.ok()) {
     return tsl::Future<>(std::move(dtype).status());
   }
@@ -422,7 +423,7 @@ tsl::Future<> PjRtArray::CopyToHostBuffer(
   absl::Span<const int64_t> dims;
   absl::StatusOr<std::vector<int64_t>> logical_dims;
   if (!pjrt_buffer->has_dynamic_dimensions()) {
-    dims = std::get<Shape>(shape_).dims();
+    dims = array_spec_.shape.dims();
   } else {
     // TODO(b/182461453): This is a blocking call. If we further implemented
     // populating dynamic shape metadata while fetching the literal, we wouldn't
@@ -494,7 +495,7 @@ absl::StatusOr<std::shared_ptr<PjRtBuffer>> PjRtArray::CopySinglePjRtBuffer(
         "(=%d)",
         index, pjrt_buffers_.size());
   }
-  ASSIGN_OR_RETURN(Device * buffer_device,
+  ABSL_ASSIGN_OR_RETURN(Device * buffer_device,
                    client_->LookupPjRtDevice(pjrt_buffers_[index]->device()));
   bool devices_equal = buffer_device == dst_device;
   bool dst_has_memory_kind = dst_memory_kind->memory_kind().has_value();
@@ -506,9 +507,9 @@ absl::StatusOr<std::shared_ptr<PjRtBuffer>> PjRtArray::CopySinglePjRtBuffer(
   if (devices_equal && (!dst_has_memory_kind || memory_kind_equal)) {
     switch (semantics) {
       case ArrayCopySemantics::kAlwaysCopy: {
-        ASSIGN_OR_RETURN(Memory * memory, GetMemorySpaceFromMemoryKind(
+        ABSL_ASSIGN_OR_RETURN(Memory * memory, GetMemorySpaceFromMemoryKind(
                                               dst_device, *dst_memory_kind));
-        PjRtMemory* pjrt_memory = llvm::dyn_cast<PjRtMemory>(memory);
+        PjRtMemory* pjrt_memory = dyn_cast<PjRtMemory>(memory);
         return pjrt_buffers_[index]->CopyToMemorySpace(
             pjrt_memory->pjrt_memory());
       }
@@ -521,7 +522,7 @@ absl::StatusOr<std::shared_ptr<PjRtBuffer>> PjRtArray::CopySinglePjRtBuffer(
     }
   } else {
     PjRtCompatibleDevice* pjrt_device =
-        llvm::dyn_cast<PjRtCompatibleDevice>(dst_device);
+        dyn_cast<PjRtCompatibleDevice>(dst_device);
     if (!pjrt_device) {
       return InvalidArgument(
           "The destination device is owned by a non-PjRt-compatible client. "
@@ -535,16 +536,16 @@ absl::StatusOr<std::shared_ptr<PjRtBuffer>> PjRtArray::CopySinglePjRtBuffer(
     }
     PjRtMemorySpace* pjrt_memory_space = nullptr;
     if (dst_has_memory_kind) {
-      ASSIGN_OR_RETURN(auto memory, GetMemorySpaceFromMemoryKind(
+      ABSL_ASSIGN_OR_RETURN(auto memory, GetMemorySpaceFromMemoryKind(
                                         dst_device, *dst_memory_kind));
-      PjRtMemory* pjrt_memory = llvm::dyn_cast<PjRtMemory>(memory);
+      PjRtMemory* pjrt_memory = dyn_cast<PjRtMemory>(memory);
       TF_RET_CHECK(pjrt_memory != nullptr);
       pjrt_memory_space = pjrt_memory->pjrt_memory();
     } else {
-      ASSIGN_OR_RETURN(pjrt_memory_space,
+      ABSL_ASSIGN_OR_RETURN(pjrt_memory_space,
                        pjrt_device->pjrt_device()->default_memory_space());
     }
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<PjRtBuffer> copied_buffer,
         pjrt_buffers_[index]->CopyToMemorySpace(pjrt_memory_space));
     if (semantics == ArrayCopySemantics::kDonateInput) {
@@ -563,12 +564,14 @@ absl::StatusOr<ArrayRef> PjRtArray::Copy(
     std::optional<xla::ifrt::MemoryKind> memory_kind,
     ArrayCopySemantics semantics) {
   DCHECK(this);
-  ASSIGN_OR_RETURN(auto new_sharding,
+  ABSL_ASSIGN_OR_RETURN(auto new_sharding,
                    sharding().WithDeviceAssignment(devices, memory_kind));
-  if (new_sharding->devices()->size() != sharding_->devices()->size()) {
+  if (new_sharding->devices()->size() !=
+      array_spec_.sharding->devices()->size()) {
     return InvalidArgument(
         "Resharding to a different number of devices: %d; expected %d",
-        new_sharding->devices()->size(), sharding_->devices()->size());
+        new_sharding->devices()->size(),
+        array_spec_.sharding->devices()->size());
   }
   // TODO(hyeontaek): We should have an equivalence test for sharding that
   // permits device changes and nothing else.
@@ -583,17 +586,16 @@ absl::StatusOr<ArrayRef> PjRtArray::Copy(
       new_sharding->devices()->devices();
   PjRtCompatibleClient* new_client = nullptr;
   for (int i = 0; i < pjrt_buffers_.size(); ++i) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::shared_ptr<PjRtBuffer> copied_buffer,
         CopySinglePjRtBuffer(i, new_sharding_devices[i],
                              canonicalized_sharding_memory_kind, semantics));
     buffers.push_back(std::move(copied_buffer));
     if (new_client == nullptr) {
       PjRtCompatibleDevice* pjrt_device =
-          llvm::dyn_cast<PjRtCompatibleDevice>(new_sharding_devices[i]);
+          dyn_cast<PjRtCompatibleDevice>(new_sharding_devices[i]);
       if (pjrt_device != nullptr) {
-        new_client =
-            llvm::dyn_cast<PjRtCompatibleClient>(pjrt_device->client());
+        new_client = dyn_cast<PjRtCompatibleClient>(pjrt_device->client());
       }
     }
   }
@@ -607,18 +609,18 @@ absl::StatusOr<ArrayRef> PjRtArray::Copy(
   // buffer. Refreshing the custom layout using the new buffer layout makes sure
   // that `PjRtArray` tracks a valid custom layout.
   if (layout != nullptr &&
-      (client_ != new_client ||
-       sharding_->memory_kind() != canonicalized_sharding_memory_kind)) {
+      (client_ != new_client || array_spec_.sharding->memory_kind() !=
+                                    canonicalized_sharding_memory_kind)) {
     layout = buffers.front()->layout();
   }
-  return std::visit(
-      [this, new_client, &new_sharding, &buffers,
-       layout = std::move(layout)](const auto& shape) {
-        return PjRtArray::Create(new_client, dtype_, shape,
-                                 std::move(new_sharding), std::move(buffers),
-                                 layout);
-      },
-      shape_);
+  if (dynamic_shape_ != std::nullopt) {
+    return PjRtArray::Create(new_client, array_spec_.dtype, *dynamic_shape_,
+                             std::move(new_sharding), std::move(buffers),
+                             std::move(layout));
+  }
+  return PjRtArray::Create(new_client, array_spec_.dtype, array_spec_.shape,
+                           std::move(new_sharding), std::move(buffers),
+                           std::move(layout));
 }
 
 tsl::Future<> PjRtArray::GetReadyFuture() const {
@@ -659,13 +661,13 @@ std::string PjRtArray::DebugString() const {
   if (layout_ptr.ok() && *layout_ptr == nullptr) {
     layout_ptr =
         [&]() -> absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> {
-      ASSIGN_OR_RETURN(xla::ifrt::Shape shard_shape,
-                       sharding_->GetShardShape(std::get<Shape>(shape_)));
-      ASSIGN_OR_RETURN(
-          std::shared_ptr<const xla::PjRtLayout> layout,
-          client_->GetDefaultPjRtLayout(dtype_, shard_shape.dims(),
-                                        sharding_->devices()->devices().front(),
-                                        sharding_->memory_kind()));
+      ABSL_ASSIGN_OR_RETURN(xla::ifrt::Shape shard_shape,
+                       array_spec_.sharding->GetShardShape(array_spec_.shape));
+      ABSL_ASSIGN_OR_RETURN(std::shared_ptr<const xla::PjRtLayout> layout,
+                       client_->GetDefaultPjRtLayout(
+                           array_spec_.dtype, shard_shape.dims(),
+                           array_spec_.sharding->devices()->devices().front(),
+                           array_spec_.sharding->memory_kind()));
       return layout;
     }();
   }
@@ -673,9 +675,11 @@ std::string PjRtArray::DebugString() const {
       layout_ptr.ok() ? (*layout_ptr)->ToString() : "<unknown>";
 
   return absl::StrFormat(
-      "PjRtArray(dtype=%v; shape=%s; sharding=%v; layout=%s)", dtype_,
-      std::visit([](const auto& shape) { return absl::StrCat(shape); }, shape_),
-      sharding_, layout_str);
+      "PjRtArray(dtype=%v; shape=%s; sharding=%v; layout=%s)",
+      array_spec_.dtype,
+      dynamic_shape_ != std::nullopt ? absl::StrCat(*dynamic_shape_)
+                                     : absl::StrCat(array_spec_.shape),
+      array_spec_.sharding, layout_str);
 }
 
 absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> PjRtArray::pjrt_layout()

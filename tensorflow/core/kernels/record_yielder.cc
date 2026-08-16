@@ -106,7 +106,8 @@ void RecordYielder::MainLoop() {
     absl::Status s = MatchFiles(opts_.file_pattern, &filenames);
 
     if (filenames.empty()) {
-      s = errors::NotFound("Found no files at ", opts_.file_pattern);
+      s = absl::NotFoundError(
+          absl::StrCat("Found no files at ", opts_.file_pattern));
       if (ShouldFinish(s)) {
         buf_enough_.notify_all();
         break;
@@ -205,7 +206,8 @@ void RecordYielder::ShardLoop(Shard* shard) {
     if (ShouldFinish(absl::OkStatus())) break;
     absl::Status s = Env::Default()->NewRandomAccessFile(filename, &file);
     if (!s.ok()) {
-      shard->status = errors::InvalidArgument("Can't open ", filename);
+      shard->status =
+          absl::InvalidArgumentError(absl::StrCat("Can't open ", filename));
       break;
     }
     io::RecordReaderOptions options =
@@ -219,7 +221,7 @@ void RecordYielder::ShardLoop(Shard* shard) {
       if (s.ok()) {
         values.emplace_back(std::move(record));
         if (values.size() >= kRecords && Add(&values)) {
-          shard->status = errors::Aborted("stopped");
+          shard->status = absl::AbortedError("stopped");
           break;
         }
       } else if (absl::IsOutOfRange(s)) {

@@ -17,18 +17,17 @@ limitations under the License.
 #define XLA_PYTHON_PJRT_IFRT_PJRT_COMPILER_H_
 
 #include <memory>
-#include <optional>
 
 #include "absl/status/status.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/tsl/concurrency/future.h"
-#include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
 namespace ifrt {
@@ -39,9 +38,9 @@ class PjRtClient;
 //
 // TODO(hyeontaek): Move executable loading to `PjRtClient` and remove the
 // requirement of `PjRtClient`, which will enable ahead-of-time compilation.
-class PjRtCompiler final : public llvm::RTTIExtends<PjRtCompiler, Compiler> {
+class PjRtCompiler final : public RTTIExtends<PjRtCompiler, Compiler> {
  public:
-  PjRtCompiler(PjRtClient* client, int num_threads);
+  explicit PjRtCompiler(PjRtClient* client);
 
   // Compiler implementation.
 
@@ -62,14 +61,13 @@ class PjRtCompiler final : public llvm::RTTIExtends<PjRtCompiler, Compiler> {
   }
 
   tsl::Future<LoadedExecutableRef> DeserializeLoadedExecutable(
-      absl::string_view serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeExecutableOptions> options) override;
 
   static char ID;  // NOLINT
 
  private:
   PjRtClient* client_;
-  std::optional<tsl::thread::ThreadPool> thread_pool_;
 };
 
 }  // namespace ifrt

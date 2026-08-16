@@ -72,6 +72,36 @@ class TFStackTest(test.TestCase):
     with self.assertRaises(IndexError):
       _ = trace[len(trace)]
 
+  def testSlice(self):
+    def func(n):
+      if n == 0:
+        return tf_stack.extract_stack()
+      else:
+        return func(n - 1)
+
+    trace = func(5)
+
+    # Test full slice (step=1)
+    sliced_full = trace[:]
+    self.assertEqual(len(sliced_full), len(trace))
+
+    # Test partial slice (step=1)
+    if len(trace) > 2:
+      sliced_partial = trace[1:3]
+      self.assertEqual(len(sliced_partial), 2)
+
+    # Test slice with step != 1
+    sliced_step = trace[::2]
+    self.assertEqual(len(sliced_step), (len(trace) + 1) // 2)
+
+    # Test negative step
+    sliced_reverse = trace[::-1]
+    self.assertEqual(len(sliced_reverse), len(trace))
+
+    # Test empty slice
+    sliced_empty = trace[5:1]
+    self.assertEqual(len(sliced_empty), 0)
+
   def testSourceMap(self):
     source_map = tf_stack._tf_stack.PyBindSourceMap()
 

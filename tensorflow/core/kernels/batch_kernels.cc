@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -53,7 +54,6 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/threadpool.h"
@@ -74,10 +74,10 @@ constexpr int64_t kBatchThreadPoolSize = 128;
 }  // namespace
 
 // Per-model inflight batches parameters.
-const int64_t kMinInflightBatches = 1;
-const int64_t kInitialInflightBatches = 2;
-const int64_t kBatchesToAverageOver = 10;
-const int64_t kMaxInflightBatches = 64;
+ABSL_CONST_INIT const int64_t kMinInflightBatches = 1;
+ABSL_CONST_INIT const int64_t kInitialInflightBatches = 2;
+ABSL_CONST_INIT const int64_t kBatchesToAverageOver = 10;
+ABSL_CONST_INIT const int64_t kMaxInflightBatches = 64;
 
 void RecordBatchSplitUsage(
     std::optional<bool> maybe_enable_large_batch_splitting,
@@ -310,7 +310,7 @@ class BatchResource : public serving::BatchResourceBase {
 
     auto* flib = last_task_context->function_library();
     FunctionLibraryRuntime::Handle fhandle =
-        down_cast<const BatchTask&>(last_task).fhandle;
+        absl::down_cast<const BatchTask&>(last_task).fhandle;
     flib->Run(opts, fhandle, inputs, combined_outputs,
               [&](const absl::Status& run_status) {
                 done(run_status);

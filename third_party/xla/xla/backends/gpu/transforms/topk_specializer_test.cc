@@ -22,6 +22,7 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
@@ -39,7 +40,7 @@ limitations under the License.
 #include "xla/service/topk_rewriter.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -60,7 +61,7 @@ class TopkTest : public HloPjRtGpuTestBase, public ParameterizedInterface {
  protected:
   TopkTest()
       : HloPjRtGpuTestBase(
-            HloPjRtTestBaseOptions{.verifier_layout_sensitive = true}) {}
+            HloTestBaseOptions{.verifier_layout_sensitive = true}) {}
 
   absl::StatusOr<std::unique_ptr<HloModule>> TopkHlo(
       int n, int k, int batch_size, absl::string_view dtype) const {
@@ -131,6 +132,11 @@ void ToSortAndSlice(HloModule* module) {
 }
 
 TEST_P(TopkTest, ProducesCorrectResult) {
+  // TODO(intel-tf): Remove this check once specialization for SYCL/oneAPI
+  // backend is added.
+  if (device_description().gpu_compute_capability().IsOneAPI()) {
+    GTEST_SKIP() << "OneAPI does not support TopK custom call.";
+  }
   const auto [n_kb, k, batch_size, dtype] = GetParam();
   const size_t n = n_kb * 1024;
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> topk_module,
@@ -159,6 +165,47 @@ INSTANTIATE_TEST_SUITE_P(
                               std::get<0>(info.param), std::get<1>(info.param),
                               std::get<2>(info.param), std::get<3>(info.param));
     });
+
+TEST_F(TopkTest, PreservesBackendConfig) {
+  const char* hlo = R"(
+    HloModule m
+
+    %compare-gt.1 {
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      p.0.lhs = f32[] parameter(0)
+      p.0.rhs = f32[] parameter(1)
+      ROOT compare = pred[] compare(p.0.lhs, p.0.rhs), direction=GT, type=TOTALORDER
+    }
+
+    ENTRY top_k {
+      arg = f32[8,1024] parameter(0)
+      ROOT result = (f32[8,64], s32[8,64]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = false}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      TopkSpecializer(device_description().gpu_compute_capability())
+          .Run(module.get()));
+  if (!device_description().gpu_compute_capability().IsCuda()) {
+    // RAFT is CUDA-only. Without RAFT, k=64 exceeds the default max_k=16
+    // for SmallBufferOptimization, so the pass should gracefully do nothing.
+    ASSERT_FALSE(changed);
+    return;
+  }
+  ASSERT_TRUE(changed);
+
+  // Verify the new __gpu$TopK custom call still has the backend config.
+  // k=64 would normally fail the SmallBufferOptimization max_k=16 check,
+  // but should succeed because is_stable=false triggers the RAFT path.
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* custom_call = root->operand(0)->operand(0);
+  EXPECT_EQ(custom_call->custom_call_target(), "__gpu$TopK");
+  EXPECT_EQ(custom_call->raw_backend_config_string(), "{is_stable = false}");
+}
 
 }  // namespace
 }  // namespace xla::gpu

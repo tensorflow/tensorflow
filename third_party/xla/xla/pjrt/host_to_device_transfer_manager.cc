@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/common_pjrt_client.h"
@@ -65,12 +65,21 @@ class CommonAsyncHostToDeviceTransferManager
       std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
   Create(absl::Span<const PjRtClient::ShapeSpec> shape_specs,
          std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
-         PjRtMemorySpace* memory_space) {
+         PjRtMemorySpace* memory_space,
+         std::optional<absl::Span<const PjRtRawBufferRef>> donated_buffer_refs =
+             std::nullopt) {
     if (device_layouts.has_value() &&
         device_layouts->size() != shape_specs.size()) {
       return InvalidArgument(
           "Number of layouts %d does not match the number of shapes %d",
           device_layouts->size(), shape_specs.size());
+    }
+    if (donated_buffer_refs.has_value() &&
+        donated_buffer_refs->size() != shape_specs.size()) {
+      return InvalidArgument(
+          "Number of donated buffer refs %d does not match the number of "
+          "shapes %d",
+          donated_buffer_refs->size(), shape_specs.size());
     }
 
     auto* client = absl::down_cast<CommonPjRtClient*>(memory_space->client());
@@ -90,8 +99,7 @@ class CommonAsyncHostToDeviceTransferManager
     // holding on to empty, unusable HBM while waiting for data, for example
     // from a remote server,
     absl::InlinedVector<std::unique_ptr<ScopedEvent>, 4> allocation_events;
-    absl::InlinedVector<tsl::RCReference<PjRtDeviceEventPromise>, 4>
-        definition_events;
+    absl::InlinedVector<PjRtDeviceEventPromiseRef, 4> definition_events;
     absl::InlinedVector<std::shared_ptr<const Shape>, 4> device_shapes;
     absl::InlinedVector<PjRtRawBufferRef, 4> undispatched_buffer_refs;
     absl::InlinedVector<size_t, 4> buffer_sizes;
@@ -101,6 +109,14 @@ class CommonAsyncHostToDeviceTransferManager
     allocation_events.reserve(shape_specs.size());
     definition_events.reserve(shape_specs.size());
     device_shapes.reserve(shape_specs.size());
+
+    absl::Cleanup fail_definitions = [&] {
+      for (PjRtDeviceEventPromiseRef& definition_promise : definition_events) {
+        definition_promise.SetError(absl::UnknownError(
+            "Failed to create host to device transfer manager."));
+      }
+    };
+
     for (int i = 0; i < shape_specs.size(); ++i) {
       const PjRtClient::ShapeSpec& shape_spec = shape_specs[i];
       if (shape_spec.element_type == TUPLE) {
@@ -117,7 +133,7 @@ class CommonAsyncHostToDeviceTransferManager
         allocation_events.push_back({});
       }
 
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           Shape device_shape,
           client->MakeDefaultShapeForMemorySpace(
               memory_space,
@@ -130,32 +146,45 @@ class CommonAsyncHostToDeviceTransferManager
                   : nullptr));
       auto shared_device_shape =
           std::make_shared<const Shape>(std::move(device_shape));
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           int64_t on_device_bytes_count,
           client->GetOnDeviceBytesCount(memory_space, *shared_device_shape));
-      ASSIGN_OR_RETURN(
-          auto raw_buffer,
-          client->AllocateRawBuffer(memory_space, on_device_bytes_count,
-                                    /*retry_on_oom=*/true, allocation_event));
+      PjRtRawBufferRef raw_buffer;
+      if (donated_buffer_refs.has_value()) {
+        raw_buffer = (*donated_buffer_refs)[i];
+        if (!raw_buffer) {
+          return InvalidArgument("Donated buffer ref at index %d is null", i);
+        }
+        if (raw_buffer->GetOnDeviceSizeInBytes() != on_device_bytes_count) {
+          return InvalidArgument(
+              "Donated buffer size %d does not match target buffer size %d",
+              raw_buffer->GetOnDeviceSizeInBytes(), on_device_bytes_count);
+        }
+      } else {
+        ABSL_ASSIGN_OR_RETURN(
+            raw_buffer,
+            client->AllocateRawBuffer(memory_space, on_device_bytes_count,
+                                      /*retry_on_oom=*/true, allocation_event));
+      }
 
       // We make an event that will become available when the final transfer
       // is complete.
-      tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise;
+      PjRtDeviceEventPromiseRef definition_event_promise;
       PjRtDeviceEventRef definition_event;
       if (client->event_tracking_enabled()) {
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             std::tie(definition_event_promise, definition_event),
             client->CreateLinkedEventPromise(
                 memory_space,
                 absl::StrCat("AsyncHostToDeviceTransferManager Op:",
                              debug_info.value_or(""))));
       } else {
-        ASSIGN_OR_RETURN(std::tie(definition_event_promise, definition_event),
+        ABSL_ASSIGN_OR_RETURN(std::tie(definition_event_promise, definition_event),
                          client->CreateLinkedEventPromise(memory_space, ""));
       }
       definition_events.push_back(std::move(definition_event_promise));
 
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           auto buffer,
           client->DefineBuffer(shared_device_shape, memory_space, raw_buffer,
                                {std::move(definition_event)}));
@@ -165,6 +194,7 @@ class CommonAsyncHostToDeviceTransferManager
       buffer_sizes.push_back(on_device_bytes_count);
     }
 
+    std::move(fail_definitions).Cancel();
     return std::unique_ptr<CommonAsyncHostToDeviceTransferManager>(
         new CommonAsyncHostToDeviceTransferManager(
             std::move(buffers), std::move(undispatched_buffer_refs),
@@ -195,7 +225,7 @@ class CommonAsyncHostToDeviceTransferManager
       // definition_events_[x].GetAsyncValue might return nullptr.
       for (auto& event : definition_events_) {
         if (event) {
-          event->SetError(absl::InternalError(
+          event.SetError(absl::InternalError(
               "Async transfer object was deleted before transfers completed."));
         }
       }
@@ -261,7 +291,7 @@ class CommonAsyncHostToDeviceTransferManager
     tsl::profiler::TraceMeProducer producer("TransferLiteralToBuffer",
                                             tsl::profiler::ContextType::kPjRt);
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto h2d_transfer_event,
         client_->LinearizeInto(
             literal, *device_shapes_[buffer_index],
@@ -273,12 +303,12 @@ class CommonAsyncHostToDeviceTransferManager
       client_->AppendDescriptionToEvent(
           memory_space_, h2d_transfer_event.ptr(),
           " TransferToDevice TransferLiteralToBuffer",
-          {definition_events_[buffer_index]->event()});
+          {definition_events_[buffer_index].event()});
     }
 
     auto finish = [this, buffer_index, transfer_event = h2d_transfer_event,
                    on_done = std::move(on_done)]() mutable {
-      tsl::RCReference<PjRtDeviceEventPromise> definition_event;
+      PjRtDeviceEventPromiseRef definition_event;
       {
         absl::MutexLock l(mu_);
 
@@ -304,7 +334,7 @@ class CommonAsyncHostToDeviceTransferManager
       CHECK(definition_event);
       // Dependency of event on transfer_event was recorded above in
       // AppendDescriptionToEvent.
-      definition_event->Set(std::move(transfer_event));
+      definition_event.Set(std::move(transfer_event));
     };
     h2d_transfer_event.AndThen(std::move(finish));
     std::move(cleanup).Cancel();
@@ -374,7 +404,7 @@ class CommonAsyncHostToDeviceTransferManager
       --remaining_buffer_count_;
     };
 
-    ASSIGN_OR_RETURN(auto h2d_transfer_event,
+    ABSL_ASSIGN_OR_RETURN(auto h2d_transfer_event,
                      undispatched_buffer_ref->CopyRawHostToDeviceAndReturnEvent(
                          data, offset, transfer_size));
     if (client_->event_tracking_enabled()) {
@@ -388,13 +418,13 @@ class CommonAsyncHostToDeviceTransferManager
           absl::StrCat(" TransferToDevice TransferRawData offset:", offset,
                        " size:", transfer_size,
                        " last_transfer:", is_last_transfer, op_name),
-          {definition_events_[buffer_index]->event()});
+          {definition_events_[buffer_index].event()});
     }
 
     h2d_transfer_event.AndThen([this, buffer_index,
                                 transfer_event = h2d_transfer_event,
                                 on_done = std::move(on_done)]() mutable {
-      tsl::RCReference<PjRtDeviceEventPromise> definition_event;
+      PjRtDeviceEventPromiseRef definition_event;
       {
         absl::MutexLock l(mu_);
 
@@ -415,9 +445,9 @@ class CommonAsyncHostToDeviceTransferManager
           // error while holding the lock to avoid a race.
           auto state = transfer_event.async_value()->state();
           if (state == tsl::AsyncValue::State::kError) {
-            definition_event_ref->SetError(
+            definition_event_ref.SetError(
                 transfer_event.async_value()->GetError());
-            definition_event_ref = tsl::RCReference<PjRtDeviceEventPromise>();
+            definition_event_ref = PjRtDeviceEventPromiseRef();
           } else {
             CHECK(state == tsl::AsyncValue::State::kConcrete);
           }
@@ -437,7 +467,7 @@ class CommonAsyncHostToDeviceTransferManager
       if (definition_event) {
         // Dependency of event on transfer_event was recorded above in
         // AppendDescriptionToEvent.
-        definition_event->Set(std::move(transfer_event));
+        definition_event.Set(std::move(transfer_event));
       }
     });
     std::move(cleanup).Cancel();
@@ -451,7 +481,7 @@ class CommonAsyncHostToDeviceTransferManager
     // called after the last transfer has been enqueued.
     auto definition_event = std::move(definition_events_[buffer_index]);
     CHECK(definition_event);
-    definition_event->SetError(error);
+    definition_event.SetError(error);
     if (allocation_events_[buffer_index]) {
       allocation_events_[buffer_index]->SetError(error);
     }
@@ -467,7 +497,7 @@ class CommonAsyncHostToDeviceTransferManager
         if (definition_events_.size() > 1) {
           absl::StrAppend(&annotation, " buf_idx:", i);
         }
-        client_->AppendDescriptionToEvent(memory_space_, event->event(),
+        client_->AppendDescriptionToEvent(memory_space_, event.event(),
                                           annotation, {});
       }
     }
@@ -501,8 +531,7 @@ class CommonAsyncHostToDeviceTransferManager
       absl::InlinedVector<PjRtRawBufferRef, 4> raw_buffers,
       absl::InlinedVector<size_t, 4> buffer_sizes,
       absl::InlinedVector<std::unique_ptr<ScopedEvent>, 4> allocation_events,
-      absl::InlinedVector<tsl::RCReference<PjRtDeviceEventPromise>, 4>
-          definition_events,
+      absl::InlinedVector<PjRtDeviceEventPromiseRef, 4> definition_events,
       absl::InlinedVector<std::shared_ptr<const Shape>, 4> device_shapes,
       AsyncWorkRunner* async_work_runner, CommonPjRtClient* client,
       PjRtMemorySpace* memory_space, std::optional<std::string> debug_info)
@@ -549,8 +578,8 @@ class CommonAsyncHostToDeviceTransferManager
   // Per buffer definition event. It is made available once the buffer is ready
   // (either because the transfer for that buffer completed, or because an error
   // was recorded for that buffer).
-  absl::InlinedVector<tsl::RCReference<PjRtDeviceEventPromise>, 4>
-      definition_events_ ABSL_GUARDED_BY(mu_);
+  absl::InlinedVector<PjRtDeviceEventPromiseRef, 4> definition_events_
+      ABSL_GUARDED_BY(mu_);
   // Device shapes for all buffers with either compact or custom layout.
   const absl::InlinedVector<std::shared_ptr<const Shape>, 4> device_shapes_;
   // Count of buffers that have not yet been fully transferred.
@@ -568,9 +597,10 @@ absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
 CreateAsyncHostToDeviceTransferManager(
     absl::Span<const PjRtClient::ShapeSpec> shape_specs,
     std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
-    PjRtMemorySpace* memory_space) {
+    PjRtMemorySpace* memory_space,
+    std::optional<absl::Span<const PjRtRawBufferRef>> donated_buffer_refs) {
   return CommonAsyncHostToDeviceTransferManager::Create(
-      shape_specs, device_layouts, memory_space);
+      shape_specs, device_layouts, memory_space, donated_buffer_refs);
 }
 
 }  // namespace xla

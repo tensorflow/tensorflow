@@ -23,14 +23,15 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Parser/Parser.h"
+#include "riegeli/bytes/string_reader.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/pjrt/se/stream_executor_executable.h"
 #include "xla/service/compiler.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -76,7 +78,7 @@ constexpr absl::string_view mlir_str = R"mlir(
 
 absl::StatusOr<xla::XlaComputation> GetXlaComputation(
     absl::string_view program) {
-  ASSIGN_OR_RETURN(auto hlo_module,
+  ABSL_ASSIGN_OR_RETURN(auto hlo_module,
                    xla::ParseAndReturnUnverifiedModule(program, {}));
 
   return XlaComputation(hlo_module->ToProto());
@@ -126,6 +128,44 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileMlirAndLoad) {
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
       loaded_executable->Execute(/*argument_handles=*/{{}}, {}));
   ValidateResult(result);
+}
+
+TEST(StreamExecutorGpuCompilerTest, AotCompileDeserializeRoundTrip) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  auto se_client = absl::WrapUnique(
+      absl::down_cast<StreamExecutorGpuClient*>(client.release()));
+  Compiler::GpuTargetConfig gpu_target_config = xla::Compiler::GpuTargetConfig(
+      se_client->client()->backend().default_stream_executor());
+  StreamExecutorGpuCompiler compiler(se_client->platform_id(),
+                                     se_client->client()->platform()->id());
+
+  auto context = std::make_unique<mlir::MLIRContext>();
+  context->loadDialect<mlir::mhlo::MhloDialect, mlir::func::FuncDialect>();
+  auto mlir_module =
+      mlir::parseSourceString<mlir::ModuleOp>(mlir_str, context.get());
+  TF_ASSERT_OK_AND_ASSIGN(auto topology, se_client->GetTopologyDescription());
+  xla::CompileOptions opts;
+  opts.gpu_target_config = gpu_target_config;
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      compiler.Compile(
+          opts,
+          MaybeOwningMlirModule(std::move(context), std::move(mlir_module)),
+          *topology, /*client=*/nullptr));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::string serialized,
+                          executable->SerializeExecutable());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<StreamExecutorExecutable> deserialized_executable,
+      StreamExecutorExecutable::Deserialize(riegeli::StringReader<>(serialized),
+                                            *topology, std::nullopt));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::string reserialized,
+                          deserialized_executable->SerializeExecutable());
+  EXPECT_EQ(serialized, reserialized);
 }
 
 TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileXlaAndLoad) {
@@ -183,8 +223,8 @@ TEST(StreamExecutorGpuCompilerTest, SuccessLoadFromSerializedExecutable) {
                           executable->SerializeExecutable());
   TF_ASSERT_OK_AND_ASSIGN(
       auto loaded_executable,
-      se_client->LoadSerialized(serialized_executable, std::nullopt,
-                                LoadOptions()));
+      se_client->LoadSerializedExecutable(serialized_executable, std::nullopt,
+                                          LoadOptions()));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto result, loaded_executable->Execute(/*argument_handles=*/{{}}, {}));
@@ -222,7 +262,7 @@ TEST(StreamExecutorGpuCompilerTest, SuccessSerializeDeserialize) {
 
   // Serialize the executable and deserialize it without failure.
   TF_ASSERT_OK_AND_ASSIGN(std::string serialized_executable,
-                          se_client->SerializeExecutable(*loaded_executable));
+                          loaded_executable->SerializeExecutable());
   TF_ASSERT_OK_AND_ASSIGN(
       auto deserialized_executable,
       se_client->LoadSerializedExecutable(serialized_executable, std::nullopt,

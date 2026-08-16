@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/primitive_util.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "xla/service/tuple_util.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -48,8 +48,7 @@ namespace xla::gpu {
 namespace {
 
 absl::StatusOr<HloInstruction*> SmallBufferOptimization(
-    HloCustomCallInstruction* topk, bool is_cuda,
-    bool xla_gpu_experimental_use_raft_select_k) {
+    HloCustomCallInstruction* topk, bool is_cuda) {
   Shape data_shape = topk->operand(0)->shape();
   auto dtype = data_shape.element_type();
   auto supported_dtypes = {F32, BF16};
@@ -77,7 +76,10 @@ absl::StatusOr<HloInstruction*> SmallBufferOptimization(
         "k/n ratio (%f) is too high for TopK. Falling back to sort + slice.",
         ratio);
   }
-  if (is_cuda && xla_gpu_experimental_use_raft_select_k) {
+  // Enable RAFT if TopK is_stable = false.
+  bool use_raft = !hlo_instruction_utils::IsTopKStable(topk);
+
+  if (is_cuda && use_raft) {
     // The heuristic for deciding when to use Raft select_k versus Sort + Slice
     // was developed as part of the initial research in b/409009349
     if (dtype == F32) {
@@ -112,6 +114,7 @@ absl::StatusOr<HloInstruction*> SmallBufferOptimization(
           // us to round-trip this CustomCall on tests.
           topk->to_apply(), "__gpu$TopK",
           /*opaque=*/"", CustomCallApiVersion::API_VERSION_TYPED_FFI));
+  new_topk->set_raw_backend_config_string(topk->raw_backend_config_string());
   return TupleUtil::ExtractPrefix(new_topk, 2);
 }
 
@@ -122,18 +125,14 @@ class SpecializeTopkVisitor : public DfsHloRewriteVisitor {
 
   absl::Status HandleCustomCall(HloInstruction* inst) override {
     HloCustomCallInstruction* topk = DynCast<HloCustomCallInstruction>(inst);
-    if (topk == nullptr || topk->custom_call_target() != "TopK") {
+    if (topk == nullptr || topk->custom_call_target() != "TopK" ||
+        compute_capability_.IsOneAPI()) {
       return absl::OkStatus();
     }
     TF_RET_CHECK(topk->operand_count() == 1);
     bool is_cuda = compute_capability_.IsCuda();
 
-    if (auto small_topk = SmallBufferOptimization(
-            topk, is_cuda,
-            inst->GetModule()
-                ->config()
-                .debug_options()
-                .xla_gpu_experimental_use_raft_select_k());
+    if (auto small_topk = SmallBufferOptimization(topk, is_cuda);
         small_topk.ok()) {
       return ReplaceInstruction(topk, *small_topk);
     } else {  // NOLINT(readability-else-after-return)

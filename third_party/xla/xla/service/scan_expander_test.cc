@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
@@ -159,6 +160,72 @@ TEST_F(ScanExpanderTest, DoesNotExpandAssociativeScanWhenDisabled) {
   ScanExpander expander(/*expand_associative_scans=*/false);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, expander.Run(module.get()));
   EXPECT_FALSE(changed);
+}
+
+TEST_F(ScanExpanderTest, FoldsLengthOneScanToOneCombine) {
+  // A scan over a size 1 dimension is one combiner application; it must fold
+  // without a loop even when associative scan expansion is disabled.
+  const char* kModuleStr = R"(
+    HloModule scan_module
+
+    add {
+      input = f32[8,16] parameter(0)
+      acc = f32[8,16] parameter(1)
+      add = f32[8,16] add(acc, input)
+      ROOT t = (f32[8,16], f32[8,16]) tuple(add, add)
+    }
+
+    ENTRY Scan {
+      input = f32[1,8,16]{2,1,0} parameter(0)
+      init = f32[8,16]{1,0} parameter(1)
+      ROOT scan = (f32[1,8,16]{2,1,0}, f32[8,16]{1,0}) scan(input, init), dimensions={0}, num_carries=1, is_reverse=false, to_apply=add, is_associative=true
+    }
+  )";
+
+  HloModuleConfig config;
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
+  ScanExpander expander(/*expand_associative_scans=*/false);
+  ASSERT_OK_AND_ASSIGN(bool changed, expander.Run(module.get()));
+  EXPECT_TRUE(changed);
+  for (const HloComputation* computation : module->computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      EXPECT_NE(instruction->opcode(), HloOpcode::kScan)
+          << instruction->ToString();
+      EXPECT_NE(instruction->opcode(), HloOpcode::kWhile)
+          << "length 1 fold must not build a loop: " << instruction->ToString();
+      EXPECT_NE(instruction->opcode(), HloOpcode::kDynamicSlice)
+          << instruction->ToString();
+    }
+  }
+}
+
+TEST_F(ScanExpanderTest, FoldsLengthOneReverseScanMiddleDim) {
+  // Reverse does nothing at length 1; the fold applies at any scan dim
+  // position and preserves the size 1 dim in the scanned output shape.
+  const char* kModuleStr = R"(
+    HloModule scan_module
+
+    add {
+      input = f32[4,16] parameter(0)
+      acc = f32[4,16] parameter(1)
+      add = f32[4,16] add(acc, input)
+      ROOT t = (f32[4,16], f32[4,16]) tuple(add, add)
+    }
+
+    ENTRY Scan {
+      input = f32[4,1,16]{2,1,0} parameter(0)
+      init = f32[4,16]{1,0} parameter(1)
+      ROOT scan = (f32[4,1,16]{2,1,0}, f32[4,16]{1,0}) scan(input, init), dimensions={1}, num_carries=1, is_reverse=true, to_apply=add, is_associative=true
+    }
+  )";
+
+  RunAndFilecheckHloRewrite(kModuleStr, ScanExpander(), R"(
+    // CHECK-NOT: scan(
+    // CHECK-NOT: while(
+    // CHECK: reshape
+    // CHECK: add
+  )");
 }
 
 }  // namespace

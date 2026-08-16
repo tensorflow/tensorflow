@@ -63,7 +63,11 @@ class BetaincTest(test.TestCase):
       with self.cached_session():
         tf_comb = math_ops.betainc(a_comb, b_comb, x_comb).eval()
       invalid_mask = (
-          (a_comb <= 0) | (b_comb <= 0) | (x_comb < 0) | (x_comb > 1)
+          (a_comb < 0)
+          | (b_comb < 0)
+          | ((a_comb == 0) & (b_comb == 0))
+          | (x_comb < 0)
+          | (x_comb > 1)
       )
       self.assertAllEqual(
           np.ones_like(tf_comb[invalid_mask], dtype=np.bool_),

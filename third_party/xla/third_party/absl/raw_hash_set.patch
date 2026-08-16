@@ -1,0 +1,18 @@
+# ABSL PR #2071: Include immintrin.h instead of bmi2intrin.h
+# https://github.com/abseil/abseil-cpp/pull/2071
+diff --git a/absl/container/internal/raw_hash_set.h b/absl/container/internal/raw_hash_set.h
+--- a/absl/container/internal/raw_hash_set.h
++++ b/absl/container/internal/raw_hash_set.h
+@@ -232,9 +232,9 @@
+ #if ABSL_INTERNAL_CPLUSPLUS_LANG >= 202002L
+ #include <ranges>  // NOLINT(build/c++20)
+ #endif
+ 
+-#ifdef __BMI2__
+-#include <bmi2intrin.h>
+-#endif  // __BMI2__
++#if defined(__i386__) || defined(__x86_64__)
++#include <immintrin.h>
++#endif
+ 
+ namespace absl {

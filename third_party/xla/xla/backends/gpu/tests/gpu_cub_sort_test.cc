@@ -21,11 +21,11 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/libraries/cub/cub_scratch_size_deviceless_lookup.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/backends/gpu/transforms/sort_rewriter.h"
@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -47,15 +48,15 @@ constexpr int kTestDataSize = 10000;
 
 // Common base class to share configuration and helpers.
 class CubSortTestBase
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase> {
+    : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  public:
   void SetUp() override {
-    HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase>::SetUp();
+    HloInterpreterReferenceMixin<HloPjRtGpuTestBase>::SetUp();
     SortRewriter::SetSortModeForTestingOnly(SortRewriter::Mode::kAlways);
   }
 
   absl::StatusOr<bool> IsRewrittenToUseCubSort(absl::string_view hlo_text) {
-    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
                      GetOptimizedModule(hlo_text));
 
     for (const auto& pass_metadata :
@@ -236,9 +237,23 @@ ENTRY main {
 
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0, 0}));
 }
+#if defined(XLA_CUB_TEST_DEVICELESS_ONLY)
+constexpr std::optional<bool> kCubTestDevicelessValue = true;
+#elif defined(XLA_CUB_TEST_NO_DEVICELESS)
+constexpr std::optional<bool> kCubTestDevicelessValue = false;
+#else
+constexpr std::optional<bool> kCubTestDevicelessValue = std::nullopt;
+#endif
+
+inline ::testing::internal::ParamGenerator<bool> GetCubTestDevicelessValues() {
+  if (kCubTestDevicelessValue.has_value()) {
+    return ::testing::Values(*kCubTestDevicelessValue);
+  }
+  return ::testing::Bool();
+}
 
 INSTANTIATE_TEST_SUITE_P(CubSort, CubSortKeysSpecialOrderingTest,
-                         ::testing::Bool(),
+                         GetCubTestDevicelessValues(),
                          [](const ::testing::TestParamInfo<bool>& info) {
                            return info.param ? "deviceless" : "device";
                          });
@@ -283,7 +298,7 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Combine(::testing::Values(F16, F32, F64, S8, S16, S32, S64, U8,
                                          U16, U32, U64),
                        ::testing::Bool(), ::testing::Values(1, 10),
-                       ::testing::Bool()),
+                       GetCubTestDevicelessValues()),
     [](const ::testing::TestParamInfo<CubSortKeysParameterizedTest::ParamType>&
            info) {
       return absl::StrCat(
@@ -417,7 +432,7 @@ INSTANTIATE_TEST_SUITE_P(
     CubSort, CubSortPairsParameterizedTest,
     ::testing::Combine(::testing::Values(U8, U16, U32, U64, F32),
                        ::testing::Values(F16, F32, F64), ::testing::Bool(),
-                       ::testing::Values(1, 10), ::testing::Bool()),
+                       ::testing::Values(1, 10), GetCubTestDevicelessValues()),
     [](const ::testing::TestParamInfo<CubSortPairsParameterizedTest::ParamType>&
            info) {
       return absl::StrCat(

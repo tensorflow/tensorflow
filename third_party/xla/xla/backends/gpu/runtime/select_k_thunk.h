@@ -58,6 +58,8 @@ class SelectKThunk : public Thunk {
   // Executes the TopK operation on the given stream.
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  BufferUses buffer_uses() const override;
+
   const std::vector<BufferAllocation::Slice>& arguments() const {
     return args_;
   }

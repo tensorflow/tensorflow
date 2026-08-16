@@ -35,7 +35,7 @@ namespace xla {
 namespace {
 
 class PrngTest : public ClientLibraryTestRunnerMixin<
-                     HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+                     HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  public:
   template <PrimitiveType value_type, PrimitiveType bit_type,
             typename ValueT = typename primitive_util::PrimitiveTypeToNative<

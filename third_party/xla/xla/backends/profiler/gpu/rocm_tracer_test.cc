@@ -53,20 +53,20 @@ class TestRocmTraceCollector : public RocmTraceCollectorImpl {
   }
 
   void OnEventsDropped(const std::string& reason,
-                       uint32_t correlation_id) override {
+                       uint64_t correlation_id) override {
     dropped_reason_ = reason;
     dropped_id_ = correlation_id;
   }
 
   bool exported() const { return exported_; }
   const std::string& dropped_reason() const { return dropped_reason_; }
-  uint32_t dropped_id() const { return dropped_id_; }
+  uint64_t dropped_id() const { return dropped_id_; }
   XSpace* exported_space() const { return exported_space_; }
 
  private:
   bool exported_ = false;
   std::string dropped_reason_;
-  uint32_t dropped_id_ = 0;
+  uint64_t dropped_id_ = 0;
   XSpace* exported_space_ = nullptr;
 };
 
@@ -196,7 +196,7 @@ class EventCapturingCollector : public RocmTraceCollector {
   }
 
   void OnEventsDropped(const std::string& reason,
-                       uint32_t num_events) override {}
+                       uint64_t num_events) override {}
   void Flush() override {}
   void Export(tsl::profiler::XSpace* space) override {}
 

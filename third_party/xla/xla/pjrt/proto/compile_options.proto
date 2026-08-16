@@ -1,13 +1,29 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
 syntax = "proto3";
 
 package xla;
 
+import "xla/service/gpu_topology.proto";
 import "xla/stream_executor/device_description.proto";
 import "xla/xla.proto";
 import "xla/xla_data.proto";
 
 // A serialization of xla::ExecutableBuildOptions.
-// Next id: 27.
+// Next id: 28.
 message ExecutableBuildOptionsProto {
   // If set, this is the device to build the computation for. Valid
   // device_ordinal values are: 0 to # of devices - 1. These values are
@@ -44,24 +60,6 @@ message ExecutableBuildOptionsProto {
 
   // Whether to automatically generate XLA shardings for SPMD partitioner.
   bool use_auto_spmd_partitioning = 7;
-
-  // The amount of effort to spend on optimizing for minimizing program
-  // execution time, as a value in [-1.0, +1.0]. The baseline is 0.0, which
-  // strongly prioritizes execution time at the cost of longer compile times,
-  // suitable for production workloads. A value of -0.5 would be appropriate for
-  // research use cases that prefer faster compilations to iterate more quickly.
-  // Positive values, on the other hand, might enable costly optimizations that
-  // are off by default.
-  float exec_time_optimization_effort = 20;
-
-  // The amount of effort to spend on making the program fit in memory (where
-  // "fit in memory" here has a backend-dependent meaning), as a value in
-  // [-1.0,+1.0]. The baseline is 0.0, which expends significant effort on
-  // attempting to make the program fit. A value of -1.0 would be appropriate
-  // for use cases that wish to spend minimal effort here and fail as quickly as
-  // possible instead. Positive values, on the other hand, might enable costly
-  // algorithms to reduce memory usage that are off by default.
-  float memory_fitting_effort = 21;
 
   // The amount of effort to spend on optimizing for minimizing program
   // execution time. As a general guideline, O2 strongly prioritizes execution
@@ -144,8 +142,12 @@ message ExecutableBuildOptionsProto {
   int64 process_index = 22;
   int64 process_count = 23;
 
-  // The size of the slice.
-  int64 slice_size = 26;
+  GpuTopologyProto gpu_topology = 27;
+
+  reserved 26;
+  reserved "slice_size";
+
+  reserved 20, 21;
 }
 
 message OptionOverrideProto {
@@ -169,7 +171,7 @@ message CompileOptionsProto {
   stream_executor.GpuTargetConfigProto target_config = 8;
   bool allow_in_place_mlir_modification = 9;
   PrecisionConfig.Precision matrix_unit_operand_precision = 10;
-  optional string compiler_variant = 11;
+  optional string compiler_variant = 11 [deprecated = true];
 }
 
 // Helper for serializing opaque executables alongside CompileOptions.

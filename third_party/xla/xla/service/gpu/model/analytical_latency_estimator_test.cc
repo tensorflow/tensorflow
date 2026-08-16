@@ -25,10 +25,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -84,7 +84,7 @@ absl::StatusOr<bool> RunScheduler(
           alias_info, shape_size_bytes);
   auto scheduler_core =
       std::make_unique<DefaultSchedulerCore>(scheduling_context, sched_config);
-  ASSIGN_OR_RETURN(bool value, LatencyHidingScheduler(scheduling_context,
+  ABSL_ASSIGN_OR_RETURN(bool value, LatencyHidingScheduler(scheduling_context,
                                                       std::move(scheduler_core))
                                    .Run(module));
 
@@ -160,12 +160,11 @@ ENTRY entry {
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
-  auto mlir_context = std::make_unique<mlir::MLIRContext>();
   auto scheduler_config = GetDefaultSchedulerConfig();
   auto latency_estimator = std::make_unique<AnalyticalLatencyEstimator>(
       scheduler_config, std::make_unique<ApproximateLatencyEstimator>(),
       dev_info, HloCostAnalysis::DefaultShapeSize,
-      hlo_module->entry_computation(), mlir_context.get());
+      hlo_module->entry_computation());
   auto alias_info = GetAliasInfo();
   EXPECT_TRUE(RunScheduler(hlo_module.get(), scheduler_config, alias_info.get(),
                            std::move(latency_estimator))
@@ -233,12 +232,11 @@ ENTRY entry {
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
-  auto mlir_context = std::make_unique<mlir::MLIRContext>();
   auto scheduler_config = GetDefaultSchedulerConfig();
   auto latency_estimator = std::make_unique<AnalyticalLatencyEstimator>(
       scheduler_config, std::make_unique<ApproximateLatencyEstimator>(),
       dev_info, HloCostAnalysis::DefaultShapeSize,
-      hlo_module->entry_computation(), mlir_context.get());
+      hlo_module->entry_computation());
   auto alias_info = GetAliasInfo();
   EXPECT_TRUE(RunScheduler(hlo_module.get(), scheduler_config, alias_info.get(),
                            std::move(latency_estimator))
@@ -312,12 +310,11 @@ ENTRY entry {
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
-  auto mlir_context = std::make_unique<mlir::MLIRContext>();
   auto scheduler_config = GetDefaultSchedulerConfig();
   auto latency_estimator = std::make_unique<AnalyticalLatencyEstimator>(
       scheduler_config, std::make_unique<ApproximateLatencyEstimator>(),
       dev_info, HloCostAnalysis::DefaultShapeSize,
-      hlo_module->entry_computation(), mlir_context.get());
+      hlo_module->entry_computation());
   auto alias_info = GetAliasInfo();
   EXPECT_TRUE(RunScheduler(hlo_module.get(), scheduler_config, alias_info.get(),
                            std::move(latency_estimator))

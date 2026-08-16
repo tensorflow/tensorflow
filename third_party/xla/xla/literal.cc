@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/literal.h"
 
 #include <algorithm>
+#include <climits>
 #include <complex>
 #include <cstdint>
 #include <cstring>
@@ -37,12 +38,12 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
-#include "xla/tsl/platform/status_macros.h"
 #include "hwy//highway.h"
 #include "xla/index_util.h"
 #include "xla/layout.h"
@@ -60,6 +61,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/byte_swap_array.h"
+#include "xla/tsl/util/maybe_owning.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/types.h"
 #include "xla/util.h"
@@ -230,7 +232,7 @@ std::ostream& operator<<(std::ostream& out, const Literal& literal) {
 Shape* MutableLiteralBase::mutable_shape_do_not_use() {
   const Shape* const_shape = shape_.get();
   if (!shape_.OwnsPtr()) {
-    shape_ = MaybeOwningShapePtr(std::make_unique<Shape>(*shape_));
+    shape_ = tsl::MaybeOwning<Shape>(std::make_unique<Shape>(*shape_));
   }
   Shape* shape = shape_.get_mutable();
 
@@ -281,7 +283,7 @@ absl::Status Literal::SetPiece(const Shape& shape, Piece* piece,
     for (const Shape& subshape : shape.tuple_shapes()) {
       Piece child_piece;
       child_piece.set_subshape(&subshape);
-      RETURN_IF_ERROR(SetPiece(subshape, &child_piece, allocate_arrays,
+      ABSL_RETURN_IF_ERROR(SetPiece(subshape, &child_piece, allocate_arrays,
                                leaf_array_value_state));
       piece->emplace_back(std::move(child_piece));
     }
@@ -293,7 +295,7 @@ absl::Status Literal::SetPiece(const Shape& shape, Piece* piece,
     piece->set_array_value_state(leaf_array_value_state);
     if (leaf_array_value_state == LiteralBase::ArrayValueState::kKnown &&
         allocate_arrays) {
-      RETURN_IF_ERROR(piece->AllocateBuffers());
+      ABSL_RETURN_IF_ERROR(piece->AllocateBuffers());
     }
   }
   return absl::OkStatus();
@@ -311,7 +313,7 @@ absl::StatusOr<Literal> Literal::Make(
   literal.root_piece_.set_subshape(literal.shape_.get());
   CHECK(&literal.root_piece_.subshape() == literal.shape_.get());
 
-  RETURN_IF_ERROR(literal.SetPiece(*literal.shape_, &literal.root_piece_,
+  ABSL_RETURN_IF_ERROR(literal.SetPiece(*literal.shape_, &literal.root_piece_,
                                    allocate_arrays, leaf_array_value_state));
   return literal;
 }
@@ -319,7 +321,7 @@ absl::StatusOr<Literal> Literal::Make(
 absl::StatusOr<absl_nonnull std::unique_ptr<Literal>> Literal::MakeUnique(
     const Shape& shape, const bool allocate_arrays,
     const ArrayValueState leaf_array_value_state) {
-  ASSIGN_OR_RETURN(Literal literal, Literal::Make(shape, allocate_arrays,
+  ABSL_ASSIGN_OR_RETURN(Literal literal, Literal::Make(shape, allocate_arrays,
                                                   leaf_array_value_state));
   return std::make_unique<Literal>(std::move(literal));
 }
@@ -419,7 +421,7 @@ void LiteralBase::BuildPieceSubtree(const Shape& shape, Piece* piece) {
 
 absl::Status LiteralBase::SerializeToString(std::string* output) const {
   ShapeProto shape_proto = shape().ToProto();
-  ASSIGN_OR_RETURN(int64_t size,
+  ABSL_ASSIGN_OR_RETURN(int64_t size,
                    ShapeUtil::SerializedSizeWithProto(shape(), shape_proto));
   output->resize(size);
   return SerializeWithShapeProto(shape_proto, output->data());
@@ -427,7 +429,7 @@ absl::Status LiteralBase::SerializeToString(std::string* output) const {
 
 absl::StatusOr<std::string> LiteralBase::SerializeAsString() const {
   std::string result;
-  RETURN_IF_ERROR(SerializeToString(&result));
+  ABSL_RETURN_IF_ERROR(SerializeToString(&result));
   return result;
 }
 
@@ -517,7 +519,7 @@ void MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
   if (!proto.has_shape()) {
     return InvalidArgument("LiteralProto has no shape");
   }
-  ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
+  ABSL_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
   if (ShapeUtil::HasPrimitiveType(shape, OPAQUE_TYPE)) {
     return InvalidArgument(
         "Literal shape cannot include OPAQUE_TYPE sub-shape");
@@ -526,11 +528,11 @@ void MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
     return InvalidArgument("LiteralProto has no layout");
   }
 
-  RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
+  ABSL_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
 
   Literal literal(shape);
 
-  RETURN_IF_ERROR(literal.root_piece_.ForEachMutableSubpieceWithStatus(
+  ABSL_RETURN_IF_ERROR(literal.root_piece_.ForEachMutableSubpieceWithStatus(
       [&](const ShapeIndex& index, Piece* piece) -> absl::Status {
         const LiteralProto* proto_element = &proto;
         for (int64_t i : index) {
@@ -558,7 +560,7 @@ void MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
         // values), only copy from proto if the literal proto has values. This
         // mode is used for a learned cost model.
         if (prohibit_empty_literal || LiteralProtoHasValues(*proto_element)) {
-          RETURN_IF_ERROR(piece->CopyFromProto(*proto_element));
+          ABSL_RETURN_IF_ERROR(piece->CopyFromProto(*proto_element));
         }
 
         return absl::OkStatus();
@@ -725,7 +727,7 @@ absl::Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
     CHECK(src.array_value_state_ == ArrayValueState::kKnown);
     if (array_value_state_ == ArrayValueState::kUndetermined ||
         array_value_state_ == ArrayValueState::kUnknown) {
-      RETURN_IF_ERROR(AllocateBuffers());
+      ABSL_RETURN_IF_ERROR(AllocateBuffers());
     }
     array_value_state_ = src.array_value_state_;
   }
@@ -821,7 +823,7 @@ absl::Status MutableLiteralBase::CopyFrom(const LiteralSlice& src_literal,
              ++i) {
           src_piece_index.push_back(index[i]);
         }
-        RETURN_IF_ERROR(
+        ABSL_RETURN_IF_ERROR(
             piece->CopyFrom(src_literal.piece(src_piece_index),
                             /*only_dynamic_bound=*/only_dynamic_bound));
         return absl::OkStatus();
@@ -854,7 +856,7 @@ absl::Status Literal::MoveFrom(Literal&& src_literal,
         dest_piece.MoveDataFrom(*src_piece);
       });
 
-  src_literal.shape_ = MaybeOwningShapePtr(&NilShape());
+  src_literal.shape_ = tsl::MaybeOwning<Shape>(&NilShape());
   src_literal.root_piece_ = Piece();
   src_literal.root_piece_.set_subshape(src_literal.shape_.get());
 
@@ -1056,7 +1058,7 @@ Literal LiteralBase::Relayout(const Shape& shape_with_layout) const {
 
 Literal LiteralBase::ToBoundedDynamic(const Shape& bounded_shape) const {
   CHECK(bounded_shape.is_dynamic());
-  Literal result(bounded_shape);
+  Literal result = LiteralBase::CreateFromShape(bounded_shape);
   ShapeUtil::ForEachSubshape(
       shape(), [&](const Shape& subshape, const ShapeIndex& index) {
         if (!subshape.IsArray()) {
@@ -1842,7 +1844,7 @@ absl::StatusOr<Literal> ConvertSwitch(const LiteralBase& literal,
   // duplicating it N^2 times in the conversion implementation.
   Literal result(
       ShapeUtil::ChangeElementType(literal.shape(), primitive_dest_type));
-  RETURN_IF_ERROR(primitive_util::ArrayTypeSwitch(
+  ABSL_RETURN_IF_ERROR(primitive_util::ArrayTypeSwitch(
       [&](auto primitive_type_constant) -> absl::Status {
         return ConvertIfDestTypeMatches<primitive_type_constant>(literal,
                                                                  result);
@@ -1860,11 +1862,6 @@ absl::StatusOr<Literal> LiteralBase::Convert(
 
 absl::StatusOr<Literal> LiteralBase::BitcastConvert(
     const Shape& dest_shape) const {
-  if (ShapeUtil::ByteSizeOf(dest_shape) != ShapeUtil::ByteSizeOf(shape())) {
-    return InvalidArgument(
-        "Can not bitcast-convert from shape %s to a shape of different size %s",
-        shape().ToString(), dest_shape.ToString());
-  }
   if (dest_shape.IsTuple() || shape().IsTuple()) {
     return InvalidArgument(
         "bitcast-convert is not valid for tuple shapes %s->%s",
@@ -1875,23 +1872,67 @@ absl::StatusOr<Literal> LiteralBase::BitcastConvert(
         "bitcast-convert is not valid for dynamic shape %s->%s",
         shape().ToString(), dest_shape.ToString());
   }
+  if (!shape().IsArray() || !dest_shape.IsArray()) {
+    return InvalidArgument(
+        "bitcast-convert is only valid for array shapes %s->%s",
+        shape().ToString(), dest_shape.ToString());
+  }
+  // Compare storage bits rather than ShapeUtil::ByteSizeOf: byte sizes depend
+  // on the layout's element_size_in_bits, which literals always strip.
+  const PrimitiveType src_type = shape().element_type();
+  const PrimitiveType dest_type = dest_shape.element_type();
+  const int64_t src_bits = ShapeUtil::ElementsIn(shape()) *
+                           primitive_util::StorageBitWidth(src_type);
+  const int64_t dest_bits = ShapeUtil::ElementsIn(dest_shape) *
+                            primitive_util::StorageBitWidth(dest_type);
+  if (src_bits != dest_bits) {
+    return InvalidArgument(
+        "Can not bitcast-convert from shape %s to a shape of different size %s",
+        shape().ToString(), dest_shape.ToString());
+  }
 
   Literal out(dest_shape);
-  std::memcpy(out.root_piece_.buffer(), root_piece().buffer(),
-              root_piece().size_bytes_dense());
+  const bool src_sub_byte = primitive_util::IsSubByteNonPredType(src_type);
+  const bool dest_sub_byte = primitive_util::IsSubByteNonPredType(dest_type);
+  if (src_sub_byte || dest_sub_byte) {
+    // Literal stores sub-byte types unpacked (one element per byte), while
+    // bitcast-convert semantics are defined on the packed representation.
+    std::vector<char> packed(CeilOfRatio<int64_t>(src_bits, CHAR_BIT));
+    absl::Span<const char> packed_view = packed;
+    if (src_sub_byte) {
+      PackIntN(primitive_util::BitWidth(src_type),
+               absl::MakeConstSpan(root_piece().buffer(),
+                                   root_piece().size_bytes_dense()),
+               absl::MakeSpan(packed));
+    } else {
+      packed_view = absl::MakeConstSpan(root_piece().buffer(),
+                                        root_piece().size_bytes_dense());
+    }
+    if (dest_sub_byte) {
+      UnpackIntN(primitive_util::BitWidth(dest_type), packed_view,
+                 absl::MakeSpan(out.root_piece_.buffer(),
+                                out.root_piece_.size_bytes_dense()));
+    } else if (!packed_view.empty()) {
+      std::memcpy(out.root_piece_.buffer(), packed_view.data(),
+                  packed_view.size());
+    }
+  } else {
+    std::memcpy(out.root_piece_.buffer(), root_piece().buffer(),
+                root_piece().size_bytes_dense());
+  }
 
   // Perform the reshape on little endian encoding even on big endian machines.
   if constexpr (!kLittleEndian) {
     // Swap byte ordering as per the input data type.
     size_t input_elem_size =
         ShapeUtil::ByteSizeOfPrimitiveType(shape().element_type());
-    RETURN_IF_ERROR(tsl::ByteSwapArray(
+    ABSL_RETURN_IF_ERROR(tsl::ByteSwapArray(
         const_cast<char*>(out.root_piece().buffer()), input_elem_size,
         out.root_piece().size_bytes_dense() / input_elem_size));
     // Swap byte ordering as per the output data type.
     size_t output_elem_size =
         ShapeUtil::ByteSizeOfPrimitiveType(dest_shape.element_type());
-    RETURN_IF_ERROR(tsl::ByteSwapArray(
+    ABSL_RETURN_IF_ERROR(tsl::ByteSwapArray(
         const_cast<char*>(out.root_piece().buffer()), output_elem_size,
         out.root_piece().size_bytes_dense() / output_elem_size));
   }
@@ -1909,7 +1950,7 @@ absl::StatusOr<Literal> LiteralBase::ConvertToShape(
   elements.reserve(tuple_element_count);
   for (int i = 0; i < tuple_element_count; ++i) {
     auto element = LiteralSlice(*this, {i});
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto new_element,
         element.ConvertToShape(ShapeUtil::GetSubshape(dest_shape, {i})));
     elements.push_back(std::move(new_element));
@@ -1986,8 +2027,6 @@ bool LiteralBase::Piece::EqualElements(const LiteralBase::Piece& other) const {
     int64_t size_bytes = size_bytes_dense();
     CHECK_EQ(size_bytes, other.size_bytes_dense());
     if (primitive_util::IsSubByteNonPredType(subshape().element_type())) {
-      // TODO(b/507052779): JAX CI is currently unhappy with highway, re-enable
-      // this when it's fixed.
       auto one_array = reinterpret_cast<const uint8_t*>(buffer());
       auto two_array = reinterpret_cast<const uint8_t*>(other.buffer());
       const int bits_per_element =
@@ -2091,15 +2130,104 @@ static bool EqualIncludingNan(std::complex<T> a, std::complex<T> b) {
          EqualIncludingNan(a.imag(), b.imag());
 }
 
+template <class T>
+inline constexpr bool is_padding_free_v =
+    std::is_trivially_copyable_v<T> &&
+    (std::has_unique_object_representations_v<T> ||
+     (std::is_floating_point_v<T> && !std::is_same_v<T, long double>));
+
+// std::complex<T> is guaranteed layout-compatible with T[2]
+template <class U>
+inline constexpr bool is_padding_free_v<std::complex<U>> = is_padding_free_v<U>;
+
+// Specializations for custom float types that don't have unique object
+// representations (e.g. because they wrap compiler float types or have
+// NaN/signed zero semantics) or where the compiler might be conservative
+// (e.g. MSVC on Windows).
+template <>
+inline constexpr bool is_padding_free_v<Eigen::half> = true;
+template <>
+inline constexpr bool is_padding_free_v<Eigen::bfloat16> = true;
+
+template <>
+inline constexpr bool is_padding_free_v<tsl::float4_e2m1fn> = true;
+template <>
+inline constexpr bool is_padding_free_v<tsl::float6_e3m2fn> = true;
+template <>
+inline constexpr bool is_padding_free_v<tsl::float6_e2m3fn> = true;
+template <>
+inline constexpr bool is_padding_free_v<tsl::float8_e5m2> = true;
+template <>
+inline constexpr bool is_padding_free_v<tsl::float8_e4m3> = true;
+template <>
+inline constexpr bool is_padding_free_v<tsl::float8_e4m3fn> = true;
+template <>
+inline constexpr bool is_padding_free_v<tsl::float8_e4m3b11fnuz> = true;
+template <>
+inline constexpr bool is_padding_free_v<tsl::float8_e5m2fnuz> = true;
+template <>
+inline constexpr bool is_padding_free_v<tsl::float8_e4m3fnuz> = true;
+template <>
+inline constexpr bool is_padding_free_v<tsl::float8_e3m4> = true;
+template <>
+inline constexpr bool is_padding_free_v<tsl::float8_e8m0fnu> = true;
+
+template <>
+inline constexpr bool is_padding_free_v<s1> = true;
+template <>
+inline constexpr bool is_padding_free_v<u1> = true;
+template <>
+inline constexpr bool is_padding_free_v<s2> = true;
+template <>
+inline constexpr bool is_padding_free_v<u2> = true;
+template <>
+inline constexpr bool is_padding_free_v<s4> = true;
+template <>
+inline constexpr bool is_padding_free_v<u4> = true;
+
+template <>
+inline constexpr bool is_padding_free_v<float> = true;
+template <>
+inline constexpr bool is_padding_free_v<double> = true;
+template <>
+inline constexpr bool is_padding_free_v<int8_t> = true;
+template <>
+inline constexpr bool is_padding_free_v<uint8_t> = true;
+template <>
+inline constexpr bool is_padding_free_v<int16_t> = true;
+template <>
+inline constexpr bool is_padding_free_v<uint16_t> = true;
+template <>
+inline constexpr bool is_padding_free_v<int32_t> = true;
+template <>
+inline constexpr bool is_padding_free_v<uint32_t> = true;
+template <>
+inline constexpr bool is_padding_free_v<int64_t> = true;
+template <>
+inline constexpr bool is_padding_free_v<uint64_t> = true;
+
+template <>
+inline constexpr bool is_padding_free_v<complex64> = true;
+template <>
+inline constexpr bool is_padding_free_v<complex128> = true;
+
+template <>
+inline constexpr bool is_padding_free_v<bool> = true;
+
 template <typename NativeT>
 static bool AllElementsEqualValue(absl::Span<const NativeT> data,
                                   NativeT value) {
-  for (int64_t i = 0; i < data.size(); ++i) {
-    if (memcmp(&data[i], &value, sizeof value)) {
-      return false;
-    }
+  static_assert(is_padding_free_v<NativeT>, "NativeT must be padding-free");
+  if (data.empty()) {
+    return true;
   }
-  return true;
+  if (memcmp(&data[0], &value, sizeof(NativeT)) != 0) {
+    return false;
+  }
+  if (data.size() == 1) {
+    return true;
+  }
+  return memcmp(&data[0], &data[1], (data.size() - 1) * sizeof(NativeT)) == 0;
 }
 
 bool Literal::Piece::IsAll(const Literal& scalar) const {
@@ -2551,20 +2679,29 @@ absl::Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
   // These conditions should have been checked in
   // MutableLiteralBase::CreateFromProto.
   TF_RET_CHECK(proto.has_shape());
-  ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
+  ABSL_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
   TF_RET_CHECK(LayoutUtil::HasLayout(shape));
   TF_RET_CHECK(ShapeUtil::Equal(shape, subshape()));
 
   if (shape.is_dynamic()) {
     TF_RET_CHECK(proto.dynamic_sizes_size() == shape.dimensions().size());
     for (int64_t i = 0; i < shape.dimensions().size(); ++i) {
+      if (shape.is_dynamic_dimension(i)) {
+        const int32_t dynamic_size = proto.dynamic_sizes(i);
+        if (dynamic_size < 0 || dynamic_size > shape.dimensions(i)) {
+          return InvalidArgument(
+              "LiteralProto dynamic_sizes[%d] = %d is out of range [0, %d] "
+              "for dimension %d with static bound %d",
+              i, dynamic_size, shape.dimensions(i), i, shape.dimensions(i));
+        }
+      }
       SetDynamicSize(i, proto.dynamic_sizes(i));
     }
   }
 
   switch (subshape().element_type()) {
     case PRED:
-      RETURN_IF_ERROR(CopyFromRepeatedField(data<bool>(), proto.preds()));
+      ABSL_RETURN_IF_ERROR(CopyFromRepeatedField(data<bool>(), proto.preds()));
       break;
     case S2: {
       const std::string& s(proto.s2s());
@@ -2595,10 +2732,10 @@ absl::Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       break;
     }
     case S32:
-      RETURN_IF_ERROR(CopyFromRepeatedField(data<int32_t>(), proto.s32s()));
+      ABSL_RETURN_IF_ERROR(CopyFromRepeatedField(data<int32_t>(), proto.s32s()));
       break;
     case S64:
-      RETURN_IF_ERROR(CopyFromRepeatedField(data<int64_t>(), proto.s64s()));
+      ABSL_RETURN_IF_ERROR(CopyFromRepeatedField(data<int64_t>(), proto.s64s()));
       break;
     case U2: {
       const std::string& s(proto.u2s());
@@ -2629,10 +2766,10 @@ absl::Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       break;
     }
     case U32:
-      RETURN_IF_ERROR(CopyFromRepeatedField(data<uint32_t>(), proto.u32s()));
+      ABSL_RETURN_IF_ERROR(CopyFromRepeatedField(data<uint32_t>(), proto.u32s()));
       break;
     case U64:
-      RETURN_IF_ERROR(CopyFromRepeatedField(data<uint64_t>(), proto.u64s()));
+      ABSL_RETURN_IF_ERROR(CopyFromRepeatedField(data<uint64_t>(), proto.u64s()));
       break;
     case F4E2M1FN: {
       const std::string& s(proto.f4e2m1fns());
@@ -2724,10 +2861,10 @@ absl::Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       break;
     }
     case F32:
-      RETURN_IF_ERROR(CopyFromRepeatedField(data<float>(), proto.f32s()));
+      ABSL_RETURN_IF_ERROR(CopyFromRepeatedField(data<float>(), proto.f32s()));
       break;
     case F64:
-      RETURN_IF_ERROR(CopyFromRepeatedField(data<double>(), proto.f64s()));
+      ABSL_RETURN_IF_ERROR(CopyFromRepeatedField(data<double>(), proto.f64s()));
       break;
     case C64: {
       auto complex_data = data<complex64>();

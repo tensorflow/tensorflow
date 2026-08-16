@@ -49,7 +49,7 @@ struct YnnFusionTestParams {
 };
 
 class YnnFusionTest
-    : public HloPjRtInterpreterReferenceMixin<HloTestBase>,
+    : public HloInterpreterReferenceMixin<HloTestBase>,
       public ::testing::WithParamInterface<YnnFusionTestParams> {
  public:
   static std::string Name(
@@ -277,7 +277,7 @@ struct AddWithBroadcastConfig {
 };
 
 class AddWithBroadcastTest
-    : public HloPjRtInterpreterReferenceMixin<HloTestBase>,
+    : public HloInterpreterReferenceMixin<HloTestBase>,
       public ::testing::WithParamInterface<
           std::tuple<YnnFusionTestParams, AddWithBroadcastConfig>> {
  public:
@@ -347,10 +347,59 @@ TEST_P(YnnFusionTest, DotWithConstant) {
 
   RunTest(kModuleStr);
 }
+
+TEST_P(YnnFusionTest, SliceWithStrides) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule slice_with_strides
+
+    ynn_fusion {
+      %input = $dtype[16, 32] parameter(0)
+      ROOT %slice = $dtype[4, 8] slice(%input), slice={[4:12:2], [2:26:3]}
+    }
+
+    ENTRY entry {
+      %p0 = $dtype[16, 32] parameter(0)
+      ROOT %fusion = $dtype[4, 8] fusion(%p0), kind=kCustom, calls=ynn_fusion,
+        backend_config={"fusion_config": {kind: "__ynn_fusion"}}
+    })";
+
+  RunTest(kModuleStr);
+}
+
+TEST_P(YnnFusionTest, SliceReduce) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+
+    add {
+      p0 = $dtype[] parameter(0)
+      p1 = $dtype[] parameter(1)
+      ROOT add = $dtype[] add(p0, p1)
+    }
+
+    ynn_fusion {
+      p1 = $dtype[3,4,4,4]{3,2,1,0} parameter(1)
+      slice = $dtype[1,4,4,4]{3,2,1,0} slice(p1),
+        slice={[2:3], [0:4], [0:4], [0:4]}
+      p0 = $dtype[] parameter(0)
+      ROOT reduce = $dtype[4,4]{1,0} reduce(slice, p0), dimensions={0,2},
+        to_apply=add
+    }
+
+    ENTRY entry {
+      p0 = $dtype[] parameter(0)
+      p1 = $dtype[3,4,4,4] parameter(1)
+      ROOT fusion = $dtype[4,4] fusion(p0, p1), kind=kCustom, calls=ynn_fusion,
+        backend_config={"fusion_config": {kind: "__ynn_fusion"}}
+    })";
+
+  RunTest(kModuleStr);
+}
+
 std::vector<YnnFusionTestParams> GetSameTypeTestCases() {
   return std::vector<YnnFusionTestParams>({
       YnnFusionTestParams{"bf16", "bf16"},
       YnnFusionTestParams{"f32", "f32"},
+      YnnFusionTestParams{"f64", "f64"},
   });
 }
 
@@ -373,20 +422,22 @@ TEST_P(YnnFusionReduceWindowTest, ReduceWindow) {
     HloModule reduce_window
 
     %add {
-      %lhs = $dtype[] parameter(0)
-      %rhs = $dtype[] parameter(1)
-      ROOT %add = $dtype[] add(%lhs, %rhs)
+      %lhs = $out_dtype[] parameter(0)
+      %rhs = $out_dtype[] parameter(1)
+      ROOT %add = $out_dtype[] add(%lhs, %rhs)
     }
 
     ynn_fusion {
       %input = $dtype[4] parameter(0)
-      %zero = $dtype[] constant(0)
-      ROOT %reduce_window = $dtype[2] reduce-window(%input, %zero), window={size=3 stride=3 pad=1_1}, to_apply=%add
+      %zero = $out_dtype[] constant(0)
+      %converted = $out_dtype[4] convert(%input)
+      ROOT %reduce_window = $out_dtype[2] reduce-window(%converted, %zero),
+        window={size=3 stride=3 pad=1_1}, to_apply=%add
     }
 
     ENTRY entry {
       %p0 = $dtype[4] parameter(0)
-      ROOT %fusion = $dtype[2] fusion(%p0), kind=kCustom, calls=ynn_fusion,
+      ROOT %fusion = $out_dtype[2] fusion(%p0), kind=kCustom, calls=ynn_fusion,
         backend_config={"fusion_config": {kind: "__ynn_fusion"}}
     })";
 
@@ -405,8 +456,8 @@ TEST_P(YnnFusionReduceWindowTest, ReduceWindowWithInit) {
 
     ynn_fusion {
       %param_0 = f32[4,6]{1,0} parameter(0)
-      %constant.0 = f32[] constant(1)
-      ROOT %reduce_window.0 = f32[3,9]{1,0} reduce-window(%param_0, %constant.0),
+      %c.0 = f32[] constant(1)
+      ROOT %reduce_window.0 = f32[3,9]{1,0} reduce-window(%param_0, %c.0),
         window={size=2x1 stride=2x1 pad=0_3x1_2 rhs_dilate=1x2}, to_apply=%add
     }
 
@@ -424,21 +475,24 @@ TEST_P(YnnFusionReduceWindowTest, ReduceWindowAndReduce) {
     HloModule reduce_window_and_reduce
 
     %add {
-      %lhs = $dtype[] parameter(0)
-      %rhs = $dtype[] parameter(1)
-      ROOT %add = $dtype[] add(%lhs, %rhs)
+      %lhs = $out_dtype[] parameter(0)
+      %rhs = $out_dtype[] parameter(1)
+      ROOT %add = $out_dtype[] add(%lhs, %rhs)
     }
 
     ynn_fusion {
       %input = $dtype[4] parameter(0)
-      %zero = $dtype[] constant(0)
-      %rw = $dtype[2] reduce-window(%input, %zero), window={size=3 stride=3 pad=1_1}, to_apply=%add
-      ROOT %reduce = $dtype[] reduce(%rw, %zero), dimensions={0}, to_apply=%add
+      %zero = $out_dtype[] constant(0)
+      %converted = $out_dtype[4] convert(%input)
+      %rw = $out_dtype[2] reduce-window(%converted, %zero),
+          window={size=3 stride=3 pad=1_1}, to_apply=%add
+      ROOT %reduce = $out_dtype[] reduce(%rw, %zero), dimensions={0},
+          to_apply=%add
     }
 
     ENTRY entry {
       %p0 = $dtype[4] parameter(0)
-      ROOT %fusion = $dtype[] fusion(%p0), kind=kCustom, calls=ynn_fusion,
+      ROOT %fusion = $out_dtype[] fusion(%p0), kind=kCustom, calls=ynn_fusion,
         backend_config={"fusion_config": {kind: "__ynn_fusion"}}
     })";
 
@@ -497,6 +551,32 @@ TEST_P(YnnFusionReduceWindowTest, ConvertReduce) {
   RunTest(kModuleStr);
 }
 
+TEST_P(YnnFusionReduceWindowTest, MixedPrecisionReduce) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule convert_reduce
+
+    %add {
+      %lhs = $dtype[] parameter(0)
+      %rhs = $dtype[] parameter(1)
+      ROOT %add = $dtype[] add(%lhs, %rhs)
+    }
+
+    ynn_fusion {
+      %input = bf16[64, 2] parameter(0)
+      %zero = $dtype[] constant(0)
+      ROOT %reduce = $dtype[64] reduce(%input, %zero), dimensions={1},
+        to_apply=%add
+    }
+
+    ENTRY entry {
+      %p0 = bf16[64, 2] parameter(0)
+      ROOT %fusion = $dtype[64] fusion(%p0), kind=kCustom, calls=ynn_fusion,
+        backend_config={"fusion_config": {kind: "__ynn_fusion"}}
+    })";
+
+  RunTest(kModuleStr);
+}
+
 TEST_P(YnnFusionReduceWindowTest, ReduceWindowMax) {
   constexpr absl::string_view kModuleStr = R"(
     HloModule reduce_window_max
@@ -525,7 +605,9 @@ TEST_P(YnnFusionReduceWindowTest, ReduceWindowMax) {
 
 INSTANTIATE_TEST_SUITE_P(YnnFusionReduceWindowTestInstantiation,
                          YnnFusionReduceWindowTest,
-                         ::testing::Values(YnnFusionTestParams{"f32", "f32"}),
+                         ::testing::Values(YnnFusionTestParams{"bf16", "f32"},
+                                           YnnFusionTestParams{"f32", "f32"},
+                                           YnnFusionTestParams{"f64", "f64"}),
                          YnnFusionTest::Name);
 
 template <typename T>
@@ -561,6 +643,8 @@ Literal GetUnaryOpTestInputs(PrimitiveType type) {
   switch (type) {
     case F32:
       return LiteralUtil::CreateR1(GetUnaryOpTestInputs<float>());
+    case F64:
+      return LiteralUtil::CreateR1(GetUnaryOpTestInputs<double>());
     default:
       LOG(FATAL) << "Unsupported type: " << PrimitiveType_Name(type);
   }
@@ -574,7 +658,7 @@ struct YnnUnaryOpTestParams {
 };
 
 class YnnUnaryOpTest
-    : public HloPjRtInterpreterReferenceMixin<HloTestBase>,
+    : public HloInterpreterReferenceMixin<HloTestBase>,
       public ::testing::WithParamInterface<YnnUnaryOpTestParams> {
  public:
   static std::string Name(
@@ -620,9 +704,11 @@ TEST_P(YnnUnaryOpTest, Run) {
 }
 
 ErrorSpec F32_ErrorSpec{/*aabs=*/1e-7, /*arel=*/1e-7};
+ErrorSpec F64_ErrorSpec{/*aabs=*/1e-15, /*arel=*/1e-15};
 
 static YnnUnaryOpTestParams unary_op_test_params[] = {
     {HloOpcode::kConvert, F32, BF16},
+    {HloOpcode::kConvert, F64, F32},
 
     {HloOpcode::kAbs, F32, F32},
     {HloOpcode::kCeil, F32, F32},
@@ -646,6 +732,22 @@ static YnnUnaryOpTestParams unary_op_test_params[] = {
     {HloOpcode::kSign, F32, F32},
     {HloOpcode::kSqrt, F32, F32, F32_ErrorSpec},
     {HloOpcode::kTanh, F32, F32, ErrorSpec{/*aabs=*/2e-7, /*arel=*/4e-7}},
+
+    {HloOpcode::kAbs, F64, F64},
+    {HloOpcode::kCeil, F64, F64},
+    {HloOpcode::kErf, F64, F64, F64_ErrorSpec},
+    {HloOpcode::kExp, F64, F64, ErrorSpec(/*aabs=*/2e-308, /*arel=*/4e-14)},
+    {HloOpcode::kExpm1, F64, F64, F64_ErrorSpec},
+    {HloOpcode::kFloor, F64, F64},
+    {HloOpcode::kLog, F64, F64, F64_ErrorSpec},
+    {HloOpcode::kLog1p, F64, F64, F64_ErrorSpec},
+    {HloOpcode::kLogistic, F64, F64, F64_ErrorSpec},
+    {HloOpcode::kNegate, F64, F64},
+    {HloOpcode::kRoundNearestEven, F64, F64},
+    {HloOpcode::kRsqrt, F64, F64, F64_ErrorSpec},
+    {HloOpcode::kSign, F64, F64},
+    {HloOpcode::kSqrt, F64, F64, F64_ErrorSpec},
+    {HloOpcode::kTanh, F64, F64, F64_ErrorSpec},
 };
 
 INSTANTIATE_TEST_SUITE_P(YnnUnaryOpTestInstantiation, YnnUnaryOpTest,

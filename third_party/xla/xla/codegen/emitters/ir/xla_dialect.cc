@@ -13,7 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/codegen/emitters/ir/xla_dialect.h"
+
 #include <cstdint>
+#include <optional>
 
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringRef.h"
@@ -22,6 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectImplementation.h"  // IWYU pragma: keep
 #include "mlir/IR/Location.h"
 #include "mlir/IR/OpImplementation.h"  // IWYU pragma: keep
@@ -30,6 +34,7 @@ limitations under the License.
 #include "mlir/Transforms/InliningUtils.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/type_util.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 
 // The order of these includes is important.
 #define GET_ATTRDEF_CLASSES
@@ -40,8 +45,26 @@ namespace xla {
 namespace {
 
 constexpr int64_t kMaxFuncSize = 4000;
+// Size cap for the CPU-only multi-caller inline branch below.
+constexpr int64_t kMaxMultiCallerInlineOpsCpu = 100;
 
 int64_t GetNumOps(mlir::Block& block) { return block.getOperations().size(); }
+
+// Returns the backend kind of the kernel module containing `op`. The fusion
+// emitters stamp a BackendKindAttr on the entry function of each kernel
+// module; interior subgraph functions are not attributed, so scan the module.
+std::optional<xla::BackendKind> GetModuleBackendKind(mlir::Operation* op) {
+  auto module = op->getParentOfType<mlir::ModuleOp>();
+  if (!module) {
+    return std::nullopt;
+  }
+  for (auto fn : module.getOps<mlir::func::FuncOp>()) {
+    if (auto kind = GetBackendKind(fn)) {
+      return kind;
+    }
+  }
+  return std::nullopt;
+}
 
 struct XlaInlinerInterface : public mlir::DialectInlinerInterface {
   using DialectInlinerInterface::DialectInlinerInterface;
@@ -54,12 +77,12 @@ struct XlaInlinerInterface : public mlir::DialectInlinerInterface {
   // created).
   bool isLegalToInline(mlir::Operation* call, mlir::Operation* callable,
                        bool wouldBeCloned) const final {
-    if (call->hasAttr("noinline")) return false;
-    if (callable->hasAttr(emitters::kHasNoCompute)) return true;
-    // Otherwise, inline only if the called function is small. We could
-    // theoretically also inline if there is no other caller in the function
-    // that contains the callee that has a call path to the callable, but that
-    // is more expensive to check.
+    if (call->hasAttr("noinline")) {
+      return false;
+    }
+    if (callable->hasAttr(emitters::kHasNoCompute)) {
+      return true;
+    }
     auto func_op = mlir::dyn_cast<mlir::func::FuncOp>(callable);
     if (!func_op) {
       return false;
@@ -93,13 +116,34 @@ struct XlaInlinerInterface : public mlir::DialectInlinerInterface {
         }
       }
     }
-    if (num_calls_in_caller > 1) return false;
+    // Calls to the same callee with distinct arguments: inlining would
+    // duplicate the body with no CSE to collapse it (identical-argument
+    // duplicates are merged by CSE before the inliner sees them).
+    if (num_calls_in_caller > 1) {
+      return false;
+    }
     // Don't inline functions, if after inlining the size of the function
     // becomes too big.
     int num_ops = num_calls_in_caller * GetNumOps(callable_region->front()) +
                   GetNumOps(call->getParentRegion()->front());
-    if (num_ops > kMaxFuncSize) return false;
-    return !wouldBeCloned || contains_call_to_same_function;
+    if (num_ops > kMaxFuncSize) {
+      return false;
+    }
+    if (!wouldBeCloned || contains_call_to_same_function) {
+      return true;
+    }
+    // Multi-caller callee with no callee overlap. On CPU, inline small
+    // callees anyway: a call that is not inlined re-evaluates the callee's
+    // entire transitive computation per use; across call chains whose
+    // consecutive levels share no callees (e.g. rotation/quaternion chains
+    // emitted for kinematic models) this recomputation compounds
+    // exponentially with chain depth. Code growth is bounded by the size
+    // threshold and collapsed by the CSE that runs interleaved with the
+    // inliner. Other backends (GPU, TPU, and any module without a backend
+    // attribute) keep the old policy: this branch has only been validated on
+    // CPU workloads.
+    return GetModuleBackendKind(call) == xla::BackendKind::kCpu &&
+           GetNumOps(callable_region->front()) <= kMaxMultiCallerInlineOpsCpu;
   }
 
   // Returns true if the given operation 'op', that is registered to this
@@ -139,6 +183,7 @@ struct XlaOpAsmDialectInterface : public mlir::OpAsmDialectInterface {
 }  // namespace
 
 void XlaDialect::initialize() {
+  RegisterSymbolicExprStorage(getContext());
   addOperations<
 #define GET_OP_LIST
 #include "xla/codegen/emitters/ir/xla_ops.cc.inc"

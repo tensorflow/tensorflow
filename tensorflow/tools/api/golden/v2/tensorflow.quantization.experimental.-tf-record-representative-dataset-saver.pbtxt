@@ -2,7 +2,7 @@ path: "tensorflow.quantization.experimental.TfRecordRepresentativeDatasetSaver"
 tf_class {
   is_instance: "<class \'tensorflow.compiler.mlir.quantization.tensorflow.python.representative_dataset.TfRecordRepresentativeDatasetSaver\'>"
   is_instance: "<class \'tensorflow.compiler.mlir.quantization.tensorflow.python.representative_dataset.RepresentativeDatasetSaver\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'path_map\', \'expected_input_key_map\'], varargs=None, keywords=None, defaults=[\'None\'], "

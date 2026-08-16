@@ -748,13 +748,13 @@ void CustomCallOp::build(
     ::mlir::StringAttr backendConfig,
     ::mlir::mhlo::CustomCallApiVersionAttr apiVersion,
     ::mlir::ArrayAttr calledComputations, ::mlir::ArrayAttr operandLayouts,
-    ::mlir::ArrayAttr resultLayouts) {
+    ::mlir::ArrayAttr resultLayouts, ::mlir::ArrayAttr resultTilings) {
   return CustomCallOp::build(
       odsBuilder, odsState, resultType, operands, callTargetName, hasSideEffect,
       backendConfig, apiVersion, calledComputations,
       CustomCallScheduleAttr::get(odsBuilder.getContext(),
                                   CustomCallSchedule::NONE),
-      operandLayouts, resultLayouts, nullptr);
+      operandLayouts, resultLayouts, nullptr, resultTilings);
 }
 
 LogicalResult CustomCallOp::verify() {
@@ -6833,7 +6833,6 @@ using mlir::hlo::printVariadicSameOperandsAndResultType;
 
 using namespace mlir;  // NOLINT
 using mlir::mhlo::AsyncBundleType;
-using mlir::mhlo::TokenType;
 
 #define GET_OP_CLASSES
 #include "mhlo/IR/hlo_ops.cc.inc"
@@ -6870,10 +6869,12 @@ struct MhloHloDialectInterface : public hlo::HloDialectInterface {
   using HloDialectInterface::HloDialectInterface;
 
   Type createTokenType() const override {
-    return TokenType::get(getDialect()->getContext());
+    return mlir::mhlo::TokenType::get(getDialect()->getContext());
   }
 
-  bool isTokenType(Type type) const override { return isa<TokenType>(type); }
+  bool isTokenType(Type type) const override {
+    return isa<mlir::mhlo::TokenType>(type);
+  }
 
   Attribute createTypeExtensions(ArrayRef<int64_t> bounds) const override {
     return TypeExtensionsAttr::get(getDialect()->getContext(), bounds);
@@ -6894,7 +6895,7 @@ MhloDialect::MhloDialect(MLIRContext* context)
   addInterfaces<MhloHloDialectInterface>();
   addInterfaces<MhloDialectInlinerInterface>();
   addBytecodeInterface(this);
-  addTypes<TokenType, AsyncBundleType>();
+  addTypes<mlir::mhlo::TokenType, AsyncBundleType>();
   addAttributes<
 #define GET_ATTRDEF_LIST
 #include "mhlo/IR/hlo_ops_attrs.cc.inc"
@@ -6906,13 +6907,13 @@ Type MhloDialect::parseType(DialectAsmParser& parser) const {
   Type parsedType;
   auto parseResult = generatedTypeParser(parser, &mnemonic, parsedType);
   if (parseResult.has_value()) return parsedType;
-  if (mnemonic == "token") return TokenType::get(getContext());
+  if (mnemonic == "token") return mlir::mhlo::TokenType::get(getContext());
   parser.emitError(parser.getNameLoc()) << "unknown mhlo type: " << mnemonic;
   return nullptr;
 }
 
 void MhloDialect::printType(Type type, DialectAsmPrinter& os) const {
-  if (isa<TokenType>(type)) {
+  if (isa<mlir::mhlo::TokenType>(type)) {
     os << "token";
     return;
   }
@@ -7217,14 +7218,6 @@ enum NonSpatialDim : int64_t {
 };
 
 struct DenseMapInfoNonSpatialDim {
-  static inline NonSpatialDim getEmptyKey() {
-    return NonSpatialDim(DenseMapInfo<int64_t>::getEmptyKey());
-  }
-
-  static inline NonSpatialDim getTombstoneKey() {
-    return NonSpatialDim(DenseMapInfo<int64_t>::getTombstoneKey());
-  }
-
   static unsigned getHashValue(const NonSpatialDim& key) {
     return DenseMapInfo<int64_t>::getHashValue(key);
   }

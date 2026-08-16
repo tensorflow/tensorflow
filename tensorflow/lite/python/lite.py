@@ -752,6 +752,7 @@ class TFLiteConverterBase:
           self.representative_dataset
       )
 
+    calibrated = None
     # Add intermediate tensors to the model if needed.
     result = _calibrator.add_intermediate_tensors(result)
     calibrate_quantize = _calibrator.Calibrator(
@@ -767,16 +768,22 @@ class TFLiteConverterBase:
     elif self.experimental_new_quantizer and (
         activations_type != _dtypes.int16
     ):
+      disable_dense = (
+          self._experimental_disable_per_channel_quantization_for_dense_layers
+      )
       return _mlir_quantize(
           calibrated,
           self._experimental_disable_per_channel,
           input_data_type=input_type,
           output_data_type=output_type,
           enable_variable_quantization=enable_variable_quantization,
-          disable_per_channel_for_dense_layers=self._experimental_disable_per_channel_quantization_for_dense_layers,
+          disable_per_channel_for_dense_layers=disable_dense,
           debug_options_str=debug_options.SerializeToString(),
       )
     else:
+      disable_dense = (
+          self._experimental_disable_per_channel_quantization_for_dense_layers
+      )
       return calibrate_quantize.calibrate_and_quantize(
           self.representative_dataset.input_gen,
           input_type,
@@ -785,7 +792,7 @@ class TFLiteConverterBase:
           activations_type,
           bias_type,
           disable_per_channel=self._experimental_disable_per_channel,
-          disable_per_channel_quantization_for_dense_layers=self._experimental_disable_per_channel_quantization_for_dense_layers,
+          disable_per_channel_quantization_for_dense_layers=disable_dense,
       )
 
   def _is_unknown_shapes_allowed(self):
@@ -1610,6 +1617,7 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
     self._keras_model = keras_model
     self._trackable_obj = trackable_obj
     self.experimental_lower_to_saved_model = True
+    self._saved_model_export_error = None
 
   @convert_phase(
       Component.PREPARE_TF_MODEL, SubComponent.CONVERT_KERAS_TO_SAVED_MODEL
@@ -1625,6 +1633,7 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
       input_tensors: List of input tensors.
       output_tensors: List of output tensors.
     """
+    self._saved_model_export_error = None
     try:
 
       def _is_keras_3():
@@ -1678,9 +1687,10 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
             output_dir,
             options=_save_options.SaveOptions(save_debug_info=True),
         )
-    except Exception:  # pylint: disable=broad-except
+    except Exception as error:  # pylint: disable=broad-except
       # When storing the given keras model to a saved model is failed, let's
       # use original keras model conversion pipeline.
+      self._saved_model_export_error = error
       return None, None, None
     self.saved_model_dir = output_dir
     self._saved_model_tags = set([_tag_constants.SERVING])
@@ -1753,9 +1763,20 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
           self._convert_keras_to_saved_model(temp_dir)
       )
       if self.saved_model_dir:
-        return super(TFLiteKerasModelConverterV2, self).convert(
-            graph_def, input_tensors, output_tensors
-        )
+        try:
+          return super(TFLiteKerasModelConverterV2, self).convert(
+              graph_def, input_tensors, output_tensors
+          )
+        except Exception as e:  # pylint: disable=broad-except
+          # We catch all exceptions (such as MLIR translation or conversion
+          # failures) to safely fall back to freezing the Keras model.
+          logging.warning(
+              "SavedModel conversion failed. Fallback to freezing Keras "
+              "model: %s",
+              e,
+          )
+          self.saved_model_dir = None
+          return None
     finally:
       shutil.rmtree(temp_dir, True)
 
@@ -1776,9 +1797,19 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
     if saved_model_convert_result:
       return saved_model_convert_result
 
+    saved_model_export_error = self._saved_model_export_error
+    self._saved_model_export_error = None
     graph_def, input_tensors, output_tensors, frozen_func = (
         self._freeze_keras_model()
     )
+    if not output_tensors:
+      if saved_model_export_error is not None:
+        raise ConverterError(
+            "SavedModel export failed, and legacy Keras fallback tracing also "
+            "failed to produce any output tensors. SavedModel export error: "
+            f"{saved_model_export_error}"
+        ) from saved_model_export_error
+      raise ValueError("The Keras model has no outputs after tracing.")
 
     graph_def = self._optimize_tf_model(
         graph_def, input_tensors, output_tensors, frozen_func

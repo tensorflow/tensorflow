@@ -20,10 +20,12 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/delegates/flex/buffer_map_util.h"
+#include "tensorflow/lite/delegates/flex/util.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"
@@ -34,6 +36,8 @@ namespace flex {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::HasSubstr;
+using ::testing::status::StatusIs;
 
 // A bit of RAII to simplify handling of TfLiteTensors in the tests.
 using UniqueTfLiteTensor =
@@ -192,6 +196,28 @@ TEST(BufferMapTest, SetFromTfLiteBuiltinResource) {
   tensorflow::ResourceHandle handle =
       out_tensor.flat<tensorflow::ResourceHandle>()(0);
   EXPECT_EQ(handle.name(), "tflite_resource_variable:1");
+}
+
+TEST(BufferMapTest, SetTfTensorFromTfLiteResourceOrVariantInvalidData) {
+  auto tensor = UniqueTfLiteTensor(new TfLiteTensor(), [](TfLiteTensor* t) {
+    TfLiteTensorDataFree(t);
+    TfLiteIntArrayFree(t->dims);
+    delete t;
+  });
+  tensor->allocation_type = kTfLiteDynamic;
+  tensor->type = kTfLiteVariant;
+  tensor->dims = ConvertVectorToTfLiteIntArray({1});
+  TfLiteTensorRealloc(tflite::flex::kTensorflowResourceTensorBytes,
+                      tensor.get());
+  tensor->delegate = nullptr;
+  tensor->data_is_stale = false;
+
+  tensorflow::Tensor out_tensor;
+  EXPECT_THAT(
+      SetTfTensorFromTfLite(tensor.get(), &out_tensor),
+      StatusIs(absl::StatusCode::kInvalidArgument,  // NOLINT
+               HasSubstr("Input tensor has resource or variant type but "
+                         "is not managed by the Flex delegate.")));
 }
 
 TEST(BufferMapTest, SetFromTensorFlow) {

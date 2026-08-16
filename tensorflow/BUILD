@@ -91,7 +91,7 @@ PACKAGE_STATIC_DEPS = [
     "@boringssl//:__subpackages__",
     "@com_github_cares_cares//:__subpackages__",
     "@com_github_googlecloudplatform_tensorflow_gcp_tools//:__subpackages__",
-    "@com_github_grpc_grpc//:__subpackages__",
+    "@grpc//:__subpackages__",
     "@com_google_absl//:__subpackages__",
     "@com_google_googleapis//:__subpackages__",
     "@com_google_protobuf//:__subpackages__",
@@ -117,7 +117,7 @@ PACKAGE_STATIC_DEPS = [
     "@nccl_archive//:__subpackages__",
     "@net_zstd//:__subpackages__",
     "@nvtx_archive//:__subpackages__",
-    "@onednn//:__subpackages__",
+    "@onednn_async//:__subpackages__",
     "@org_sqlite//:__subpackages__",
     "@platforms//:__subpackages__",
     "@snappy//:__subpackages__",
@@ -190,7 +190,10 @@ package(
 #         "notsan",
 #         "noubsan",
 #     ],
-#     deps = [":copybara_config"],
+#     deps = [
+#         ":copybara_config",
+#         "//third_party/xla:leakr_badwords.dic",
+#     ],
 # )
 #
 # action_config_test(
@@ -1035,9 +1038,6 @@ package_group(
         "//learning/pathways/...",
         "//learning/serving/contrib/tfrt/mlir/canonical_ops/...",
         "//learning/serving/experimental/remote_predict/...",
-        "//perftools/accelerators/xprof/convert/...",
-        "//perftools/accelerators/xprof/integration_tests/...",
-        "//smartass/brain/...",
         "//tensorflow/...",
         "//tensorflow_decision_forests/...",
         "//tensorflow_federated/...",
@@ -1052,10 +1052,7 @@ package_group(
         "//third_party/py/keras/...",
         "//third_party/py/tf_keras/...",
         "//third_party/yggdrasil_decision_forests/...",
-        "//waymo/accelerator/...",
-        "//waymo/ml/cn/...",
-        "//waymo/ml/models/...",
-    ],
+    ] + if_oss(["public"]),
 )
 
 package_group(
@@ -1129,7 +1126,7 @@ cc_library(
     name = "grpc",
     visibility = ["//visibility:public"],
     deps = select({
-        "//conditions:default": ["@com_github_grpc_grpc//:grpc"],
+        "//conditions:default": ["@grpc"],
     }),
 )
 
@@ -1137,7 +1134,7 @@ cc_library(
     name = "grpc++",
     visibility = ["//visibility:public"],
     deps = select({
-        "//conditions:default": ["@com_github_grpc_grpc//:grpc++"],
+        "//conditions:default": ["@grpc//:grpc++"],
     }),
 )
 # copybara:comment_end

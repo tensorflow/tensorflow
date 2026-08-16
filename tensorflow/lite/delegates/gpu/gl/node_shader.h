@@ -101,7 +101,7 @@ class NodeShader {
 
     // Information extracted & copied from compiled graph.
     const std::string& op_type;
-    const absl::any& op_attr;
+    const std::any& op_attr;
     // Do NOT use StrongShape<Layout::BHWC> in preparation for
     // RankedTensorType::getShape() which returns ArrayRef<int64_t>.
     std::vector<std::array<int64_t, 4>> input_shapes;

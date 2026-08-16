@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+#include <utility>
+
+#include "absl/strings/str_cat.h"
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 
@@ -109,7 +113,7 @@ class LuOpGpu : public AsyncOpKernel {
     permutation_indices_shape.AddDim(num_rows);
 
     const GPUDevice& device = context->eigen_device<GPUDevice>();
-    auto solver = absl::make_unique<GpuSolver>(context);
+    auto solver = std::make_unique<GpuSolver>(context);
 
     // We output the packed triangular factors in a dense form.
     // The lower triangular factor L corresponds to the strictly lower

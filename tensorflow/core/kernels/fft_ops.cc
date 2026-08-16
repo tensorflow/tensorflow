@@ -453,15 +453,14 @@ struct FftPlanInfo {
   FftPlanInfo() = default;
 
   template <typename H>
-  friend inline H AbslHashValue(H h, const FftPlanInfo& key) {
+  friend H AbslHashValue(H h, const FftPlanInfo& key) {
     return H::combine(std::move(h), key.rank, key.shape, key.input_embed,
                       key.input_stride, key.input_distance, key.output_embed,
                       key.output_stride, key.output_distance, key.type,
                       key.batch, key.device_id);
   }
 
-  friend inline bool operator==(const FftPlanInfo& lhs,
-                                const FftPlanInfo& rhs) {
+  friend bool operator==(const FftPlanInfo& lhs, const FftPlanInfo& rhs) {
     return lhs.rank == rhs.rank && lhs.shape == rhs.shape &&
            lhs.input_embed == rhs.input_embed &&
            lhs.input_stride == rhs.input_stride &&

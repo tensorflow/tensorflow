@@ -75,7 +75,16 @@ cc_library(
     deps = [
         ":compatibility",
         ":runtime_shape",
+        "//tensorflow/lite/types:half",
     ],
+)
+
+cc_library(
+    name = "float8",
+    hdrs = ["float8.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    deps = ["@ml_dtypes_py//ml_dtypes:float8"],
 )
 
 cc_library(
@@ -237,11 +246,13 @@ cc_library(
         ":transpose_utils",
         ":types",
         "//tensorflow/lite:macros",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
-        "//tensorflow/lite/kernels:kernel_util",
+        "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
         "@gemmlowp//:fixedpoint",
         "@ruy//ruy/profiler:instrumentation",
@@ -358,7 +369,6 @@ cc_library(
     }),
     deps = [
         ":cppmath",
-        ":cpu_check",
         "@cpuinfo//:cpuinfo_with_unstripped_include_path",
     ],
 )
@@ -497,16 +507,21 @@ cc_library(
 
 cc_library(
     name = "reference_comparisons",
-    srcs = ["reference/comparisons.cc"],
-    hdrs = ["reference/comparisons.h"],
+    srcs = [],
+    hdrs = [
+        "reference/broadcast_loop.h",
+        "reference/comparisons.h",
+    ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":common",
         ":compatibility",
+        ":runtime_shape",
         ":types",
         "//tensorflow/lite:macros",
         "//tensorflow/lite/core/c:common",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 
@@ -522,6 +537,7 @@ cc_library(
         "reference/batch_to_space_nd.h",
         "reference/binary_function.h",
         "reference/broadcast_args.h",
+        "reference/broadcast_loop.h",
         "reference/broadcast_to.h",
         "reference/cast.h",
         "reference/ceil.h",
@@ -617,17 +633,21 @@ cc_library(
         ":cppmath",
         ":quantization_util",
         ":reference_comparisons",
+        ":runtime_shape",
         ":strided_slice_logic",
         ":tensor",
         ":tensor_utils",
         ":types",
         "//tensorflow/lite:macros",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
         "@gemmlowp//:fixedpoint",
         "@ruy//ruy/profiler:instrumentation",
@@ -644,6 +664,7 @@ cc_library(
         "reference/batch_matmul.h",
         "reference/batch_to_space_nd.h",
         "reference/binary_function.h",
+        "reference/broadcast_loop.h",
         "reference/cast.h",
         "reference/ceil.h",
         "reference/comparisons.h",
@@ -726,6 +747,7 @@ cc_library(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
+        "@com_google_absl//absl/container:inlined_vector",
         "@eigen_archive//:eigen3",
         "@gemmlowp",
         "@ruy//ruy/profiler:instrumentation",
@@ -890,8 +912,11 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
+        ":tensor_ctypes",
         ":tensor_utils",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
     ],
 )
 
@@ -902,6 +927,21 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
+    deps = [
+        "//tensorflow/lite:util",
+    ],
+)
+
+cc_library(
+    name = "reshape_utils",
+    hdrs = ["reshape_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    deps = [
+        ":runtime_shape",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/core/c:common",
+    ],
 )
 
 # Audio support classes imported directly from TensorFlow.
@@ -1335,6 +1375,7 @@ cc_test(
     deps = [
         ":avx2_quantization_utils",
         ":common",
+        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1343,8 +1384,25 @@ cc_test(
     name = "reduce_utils_test",
     srcs = ["optimized/reduce_utils_test.cc"],
     deps = [
-        ":common",
         ":reduce_utils",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "broadcast_loop_test",
+    srcs = ["broadcast_loop_test.cc"],
+    deps = [
+        ":reference_comparisons",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "select_test",
+    srcs = ["select_test.cc"],
+    deps = [
+        ":reference_base",
         "@com_google_googletest//:gtest_main",
     ],
 )

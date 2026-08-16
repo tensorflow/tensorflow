@@ -21,10 +21,10 @@ limitations under the License.
 #include "nvidia/include/TritonNVIDIAGPUToLLVM/Passes.h"
 #include "absl/base/call_once.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
@@ -59,7 +59,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
@@ -85,7 +85,7 @@ absl::StatusOr<std::string> LLVMToPTX(mlir::ModuleOp module,
     return absl::InternalError("Failed to emit LLVM IR");
   }
 
-  ASSIGN_OR_RETURN(auto cuda_cc,
+  ABSL_ASSIGN_OR_RETURN(auto cuda_cc,
                    se::CudaComputeCapability::FromString(arch_name));
   // Hopper and Blackwell require accelerated features ("a" suffix) for TMA and
   // other advanced instructions.
@@ -142,7 +142,7 @@ absl::StatusOr<CompilationResult> Compile(absl::string_view module,
 
   mlir::PassManager pm(&context);
   pm.enableVerifier();
-  ASSIGN_OR_RETURN(auto cuda_cc,
+  ABSL_ASSIGN_OR_RETURN(auto cuda_cc,
                    se::CudaComputeCapability::FromString(arch_name));
 
   gpu::CreateTritonPipeline(&pm, se::GpuComputeCapability(cuda_cc), num_warps,
@@ -168,7 +168,9 @@ absl::StatusOr<CompilationResult> Compile(absl::string_view module,
           (*module_op)
               ->getAttrOfType<::mlir::DenseI32ArrayAttr>("ttg.num-ctas")) {
     auto vals = attr.asArrayRef();
-    cluster_dim_x = vals[0];
+    if (!vals.empty()) {
+      cluster_dim_x = vals[0];
+    }
     if (vals.size() > 1) {
       cluster_dim_y = vals[1];
     }
@@ -181,7 +183,7 @@ absl::StatusOr<CompilationResult> Compile(absl::string_view module,
     cluster_dim_x = attr.getInt();
   }
 
-  ASSIGN_OR_RETURN(auto ptx, LLVMToPTX(*module_op, arch_name));
+  ABSL_ASSIGN_OR_RETURN(auto ptx, LLVMToPTX(*module_op, arch_name));
 
   return CompilationResult{
       AsmText{ptx},  shared_mem_bytes, global_scratch_size,

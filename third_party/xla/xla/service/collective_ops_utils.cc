@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/collective_ops_utils.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -26,12 +28,15 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/optimization.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "json/json.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -45,16 +50,21 @@ limitations under the License.
 #include "xla/runtime/device_id.h"
 #include "xla/service/collective_permute_cycle.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/source_target_pairs.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 using CycleType = collective_permute_cycle::CycleType;
+
+//===----------------------------------------------------------------------===//
+// Reduction utilities.
+//===----------------------------------------------------------------------===//
 
 std::optional<ReductionKind> OpcodeToReductionKind(HloOpcode hlo_opcode,
                                                    PrimitiveType type) {
@@ -150,6 +160,135 @@ std::optional<Literal> GetReductionIdentity(ReductionKind kind,
   }
 }
 
+//===----------------------------------------------------------------------===//
+// Collective operation classification.
+//===----------------------------------------------------------------------===//
+
+bool IsNonFusionCollective(const HloInstruction* instruction) {
+  switch (instruction->opcode()) {
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduceDone:
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kAllGatherDone:
+    case HloOpcode::kAllToAll:
+    case HloOpcode::kCollectiveBroadcast:
+    case HloOpcode::kCollectivePermute:
+    case HloOpcode::kCollectivePermuteStart:
+    case HloOpcode::kCollectivePermuteDone:
+    case HloOpcode::kRaggedAllToAll:
+    case HloOpcode::kReduceScatter:
+      return true;
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
+      return IsNonFusionCollective(instruction->async_wrapped_instruction());
+    case HloOpcode::kSend:
+    case HloOpcode::kRecv:
+      return !Cast<HloSendRecvInstruction>(instruction)->is_host_transfer();
+    default:
+      return false;
+  }
+}
+
+bool IsCollective(const HloInstruction* instruction) {
+  if (IsNonFusionCollective(instruction)) {
+    return true;
+  }
+  if (instruction->opcode() == HloOpcode::kFusion &&
+      instruction->IsCustomFusion()) {
+    for (const auto* inner_inst : instruction->fused_instructions()) {
+      if (IsCollective(inner_inst)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+absl::StatusOr<bool> IsAsyncCollective(const HloInstruction* instruction) {
+  if (!IsNonFusionCollective(instruction)) {
+    return false;
+  }
+  if (instruction->IsAsynchronous()) {
+    switch (instruction->async_wrapped_opcode()) {
+      case HloOpcode::kAllGather:
+      case HloOpcode::kAllReduce:
+      case HloOpcode::kAllToAll:
+      case HloOpcode::kCollectiveBroadcast:
+      case HloOpcode::kCollectivePermute:
+      case HloOpcode::kRaggedAllToAll:
+      case HloOpcode::kReduceScatter:
+        return true;
+      default:
+        return absl::InvalidArgumentError("Async instruction " +
+                                          instruction->ToString() +
+                                          " is not a collective.");
+    }
+  }
+  switch (instruction->opcode()) {
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kAllGatherDone:
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduceDone:
+    case HloOpcode::kCollectivePermuteStart:
+    case HloOpcode::kCollectivePermuteDone:
+      return true;
+    case HloOpcode::kSend:
+    case HloOpcode::kRecv:
+      return !Cast<HloSendRecvInstruction>(instruction)->is_host_transfer();
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kAllToAll:
+    case HloOpcode::kCollectiveBroadcast:
+    case HloOpcode::kCollectivePermute:
+    case HloOpcode::kRaggedAllToAll:
+    case HloOpcode::kReduceScatter:
+      return false;
+    default:
+      return absl::InvalidArgumentError("Instruction " +
+                                        instruction->ToString() +
+                                        " is not an async collective.");
+  }
+}
+
+bool IsRaggedAllToAllOrAsyncStartRaggedAllToAll(
+    const HloInstruction* instruction) {
+  return instruction->opcode() == HloOpcode::kRaggedAllToAll ||
+         (instruction->opcode() == HloOpcode::kAsyncStart &&
+          instruction->async_wrapped_opcode() == HloOpcode::kRaggedAllToAll);
+}
+
+bool IsRaggedAllToAllOrAsyncDoneRaggedAllToAll(
+    const HloInstruction* instruction) {
+  return instruction->opcode() == HloOpcode::kRaggedAllToAll ||
+         (instruction->opcode() == HloOpcode::kAsyncDone &&
+          instruction->async_wrapped_opcode() == HloOpcode::kRaggedAllToAll);
+}
+
+HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction) {
+  if (instruction->opcode() == HloOpcode::kFusion) {
+    for (auto* inner_inst : instruction->fused_instructions()) {
+      if (IsOrHasCollectiveWithChannelId(inner_inst) != nullptr) {
+        return inner_inst;
+      }
+    }
+    return nullptr;
+  }
+  if (DynCast<HloChannelInstruction>(instruction) == nullptr) {
+    return nullptr;
+  }
+  if (IsCollective(instruction) && instruction->channel_id().has_value()) {
+    return instruction;
+  }
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
+// Replica group utilities.
+//===----------------------------------------------------------------------===//
+
 absl::StatusOr<std::vector<int>> GetParticipatingIDs(
     CollectiveOpGroupMode group_mode, int current_id,
     std::optional<int> total_participant_count,
@@ -239,6 +378,333 @@ absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
   }
   return Internal("Unexpected instruction type.");
 }
+
+absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
+GetParticipatingFlattenedIdGroups(
+    const DeviceAssignment& device_assignment,
+    const CollectiveDeviceListBase& collective_device_list,
+    CollectiveOpGroupMode group_mode) {
+  return GetParticipatingFlattenedIdGroups(
+      collective_device_list, group_mode, device_assignment.replica_count(),
+      device_assignment.computation_count());
+}
+
+absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
+GetParticipatingFlattenedIdGroups(
+    const CollectiveDeviceListBase& collective_device_list,
+    CollectiveOpGroupMode group_mode, int replica_count, int partition_count) {
+  if (group_mode ==
+      CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID) {
+    return collective_device_list.Clone();
+  }
+  std::vector<ReplicaGroup> filled_empty_replica_group;
+  absl::Span<const ReplicaGroup> original_replica_groups =
+      collective_device_list.replica_groups();
+  std::vector<ReplicaGroup> flattened_replica_groups;
+  if (collective_device_list.replica_groups().empty()) {
+    filled_empty_replica_group.emplace_back();
+    const int64_t id_count =
+        group_mode ==
+                CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION
+            ? partition_count
+            : replica_count;
+    for (int i = 0; i < id_count; ++i) {
+      filled_empty_replica_group.back().add_replica_ids(i);
+    }
+    original_replica_groups = filled_empty_replica_group;
+  }
+  if (group_mode ==
+      CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA) {
+    flattened_replica_groups.resize(original_replica_groups.size() *
+                                    partition_count);
+    for (int64_t i = 0, current_group_offset = 0;
+         i < original_replica_groups.size();
+         ++i, current_group_offset += partition_count) {
+      for (int64_t replica_id : original_replica_groups.at(i).replica_ids()) {
+        for (int64_t partition_id = 0; partition_id < partition_count;
+             ++partition_id) {
+          const int64_t flattened_id =
+              replica_id * partition_count + partition_id;
+          flattened_replica_groups[current_group_offset + partition_id]
+              .add_replica_ids(flattened_id);
+        }
+      }
+    }
+  } else if (group_mode ==
+             CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION) {
+    flattened_replica_groups.resize(original_replica_groups.size() *
+                                    replica_count);
+    for (int64_t i = 0, current_group_offset = 0;
+         i < original_replica_groups.size();
+         ++i, current_group_offset += replica_count) {
+      for (int64_t partition_id : original_replica_groups.at(i).replica_ids()) {
+        for (int64_t replica_id = 0; replica_id < replica_count; ++replica_id) {
+          const int64_t flattened_id =
+              replica_id * partition_count + partition_id;
+          flattened_replica_groups[current_group_offset + replica_id]
+              .add_replica_ids(flattened_id);
+        }
+      }
+    }
+  } else {
+    CHECK(group_mode ==
+          CollectiveOpGroupMode::
+              COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION);
+    flattened_replica_groups.resize(original_replica_groups.size());
+    for (int64_t i = 0; i < original_replica_groups.size(); ++i) {
+      for (int64_t replica_id : original_replica_groups.at(i).replica_ids()) {
+        for (int64_t partition_id = 0; partition_id < partition_count;
+             ++partition_id) {
+          const int64_t flattened_id =
+              replica_id * partition_count + partition_id;
+          flattened_replica_groups[i].add_replica_ids(flattened_id);
+        }
+      }
+    }
+  }
+  return std::make_unique<CollectiveDeviceList>(flattened_replica_groups);
+}
+
+absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
+GetParticipatingFlattenedIdGroups(const HloInstruction* hlo,
+                                  const DeviceAssignment& device_assignment) {
+  ABSL_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode, GetCollectiveOpGroupMode(hlo));
+  ABSL_ASSIGN_OR_RETURN(
+      std::unique_ptr<CollectiveDeviceListBase> collective_device_list,
+      GetParticipatingFlattenedIdGroups(device_assignment, *hlo->device_list(),
+                                        mode));
+  return collective_device_list;
+}
+
+absl::StatusOr<std::vector<int64_t>> GetParticipantCountsForReplicaGroups(
+    int64_t num_replicas, int64_t num_partitions,
+    absl::Span<const ReplicaGroup> replica_groups,
+    CollectiveOpGroupMode group_mode) {
+  std::vector<int64_t> participant_counts;
+
+  // If replica groups are empty, assume a group with all replicas.
+  std::optional<ReplicaGroup> all_replica_groups;
+  if (replica_groups.empty()) {
+    if (group_mode ==
+        CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID) {
+      // replica groups contain flattened-ids and cannot be empty.
+      TF_RET_CHECK(!replica_groups.empty())
+          << "replica groups cannot be empty for kFlattenedID mode";
+    }
+
+    int total_participant_count;
+    if (group_mode ==
+        CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION) {
+      // replica group are partition ids.
+      total_participant_count = num_partitions;
+    } else {
+      // replica group are replica ids.
+      total_participant_count = num_replicas;
+    }
+
+    all_replica_groups.emplace();
+    all_replica_groups->mutable_replica_ids()->Reserve(total_participant_count);
+    for (int id = 0; id < total_participant_count; id++) {
+      all_replica_groups->add_replica_ids(id);
+    }
+    replica_groups = absl::MakeConstSpan(&*all_replica_groups, 1);
+  }
+
+  switch (group_mode) {
+    case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA: {
+      for (const auto& replica_group : replica_groups) {
+        for (int partition_id = 0; partition_id < num_partitions;
+             ++partition_id) {
+          participant_counts.push_back(replica_group.replica_ids().size());
+        }
+      }
+      return participant_counts;
+    }
+    case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION: {
+      for (const auto& replica_group : replica_groups) {
+        participant_counts.push_back(replica_group.replica_ids().size());
+      }
+      return participant_counts;
+    }
+    case CollectiveOpGroupMode::
+        COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION: {
+      for (const auto& replica_group : replica_groups) {
+        participant_counts.push_back(replica_group.replica_ids().size() *
+                                     num_partitions);
+      }
+      return participant_counts;
+    }
+    case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID: {
+      for (const auto& replica_group : replica_groups) {
+        participant_counts.push_back(replica_group.replica_ids().size());
+      }
+      return participant_counts;
+    }
+    default: {
+      return InvalidArgument("Invalid collective op group mode: %d",
+                             static_cast<int>(group_mode));
+    }
+  }
+}
+
+absl::StatusOr<std::optional<std::pair<int64_t, int64_t>>>
+GetReplicaGroupCountAndSize(const HloInstruction* hlo) {
+  std::shared_ptr<CollectiveDeviceListBase> device_list = hlo->device_list();
+  auto config = hlo->GetModule()->config();
+
+  if (device_list->version() == CollectiveDeviceListVersion::kIota) {
+    return std::make_pair(device_list->num_replica_groups(),
+                          device_list->num_devices_per_group());
+  }
+  ABSL_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                   GetCollectiveOpGroupMode(hlo));
+  ABSL_ASSIGN_OR_RETURN(std::vector<int64_t> participant_counts,
+                   GetParticipantCountsForReplicaGroups(
+                       config.replica_count(), config.num_partitions(),
+                       device_list->replica_groups(), group_mode));
+  int64_t replica_group_size = participant_counts[0];
+  for (int64_t participant_count : participant_counts) {
+    if (participant_count != replica_group_size) {
+      return std::nullopt;
+    }
+  }
+  return std::make_pair(participant_counts.size(), replica_group_size);
+}
+
+bool ReplicaGroupsOrthogonal(absl::Span<const ReplicaGroup> first,
+                             absl::Span<const ReplicaGroup> second) {
+  if (first.size() != second[0].replica_ids_size()) {
+    return false;
+  }
+  if (first[0].replica_ids_size() != second.size()) {
+    return false;
+  }
+  for (int64_t i = 0; i < first.size(); ++i) {
+    for (int64_t j = 0; j < first[i].replica_ids_size(); ++j) {
+      if (first[i].replica_ids(j) != second[j].replica_ids(i)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+bool ReplicaGroupsEqual(absl::Span<const ReplicaGroup> first,
+                        absl::Span<const ReplicaGroup> second) {
+  if (first.size() != second.size()) {
+    return false;
+  }
+  for (int64_t i = 0; i < first.size(); ++i) {
+    if (first[i].replica_ids_size() != second[i].replica_ids_size()) {
+      return false;
+    }
+    for (int j = 0; j < first[i].replica_ids_size(); ++j) {
+      if (first[i].replica_ids(j) != second[i].replica_ids(j)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+bool IsExclusivelyCrossModule(absl::Span<const ReplicaGroup> replica_groups,
+                              bool use_global_ids, bool has_channel_id,
+                              const DeviceAssignment& device_assignment) {
+  if (!has_channel_id) {
+    return false;
+  }
+  if (!use_global_ids) {
+    // Each id in a replica group is a replica id. If any group
+    // has more than one id then this is not exclusively cross module.
+    for (const ReplicaGroup& replica_group : replica_groups) {
+      if (replica_group.replica_ids_size() != 1) {
+        return false;
+      }
+    }
+    return true;
+  }
+  // Each id in a replica group is a global id. Check if all replica groups are
+  // exclusively cross module (all participants in a group have the same replica
+  // id).
+  const int64_t partition_count = device_assignment.computation_count();
+  for (const ReplicaGroup& replica_group : replica_groups) {
+    std::optional<int64_t> first_replica_id;
+    for (int64_t global_id : replica_group.replica_ids()) {
+      int64_t replica_id = global_id / partition_count;
+      if (!first_replica_id.has_value()) {
+        first_replica_id = replica_id;
+      } else if (replica_id != first_replica_id) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+bool IsExclusivelyCrossReplica(absl::Span<const ReplicaGroup> replica_groups,
+                               bool use_global_ids, bool has_channel_id,
+                               const DeviceAssignment& device_assignment) {
+  if (!has_channel_id) {
+    return true;
+  }
+  const int64_t partition_count = device_assignment.computation_count();
+  if (!use_global_ids) {
+    // Each id in a replica group is a replica id and we will perform the
+    // collective between all devices with that replica id. If partition count
+    // is > 1, then this is not exclusively cross replica.
+    return partition_count == 1;
+  }
+  // Each id in a replica group is a global id. Check if all replica groups are
+  // exclusively cross replica (all participants in a group have the same
+  // partition id).
+  for (const ReplicaGroup& replica_group : replica_groups) {
+    std::optional<int64_t> first_partition_id;
+    for (int64_t global_id : replica_group.replica_ids()) {
+      int64_t partition_id = global_id % partition_count;
+      if (!first_partition_id.has_value()) {
+        first_partition_id = partition_id;
+      } else if (partition_id != first_partition_id) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+int64_t GetSubgroupSize(const HloCollectiveInstruction* hlo,
+                        CollectiveOpGroupMode group_mode) {
+  const HloModuleConfig& config = hlo->GetModule()->config();
+  switch (group_mode) {
+    case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA:
+    case CollectiveOpGroupMode::
+        COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION: {
+      int64_t replica_subgroup_size =
+          hlo->replica_groups().empty()
+              ? config.replica_count()
+              : hlo->replica_groups()[0].replica_ids_size();
+      if (group_mode ==
+          CollectiveOpGroupMode::
+              COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION) {
+        // Replicas from all partitions participate.
+        replica_subgroup_size *= config.num_partitions();
+      }
+      return replica_subgroup_size;
+    }
+    case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID:
+      // Empty replica groups not allowed in this mode.
+      return hlo->replica_groups()[0].replica_ids_size();
+    case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION:
+      return hlo->replica_groups().empty()
+                 ? config.num_partitions()
+                 : hlo->replica_groups()[0].replica_ids_size();
+    default:
+      LOG(FATAL) << "Invalid collective op group mode: " << group_mode;
+  }
+}
+
+//===----------------------------------------------------------------------===//
+// Global device ID utilities.
+//===----------------------------------------------------------------------===//
 
 absl::StatusOr<std::vector<std::vector<GlobalDeviceId>>>
 GetParticipatingDevicesGroups(const DeviceAssignment& device_assignment,
@@ -362,107 +828,10 @@ GetParticipatingDevicesGroups(const HloInstruction* collective) {
   CHECK(collective->GetModule()->config().has_static_device_assignment());
   const DeviceAssignment& device_assignment =
       collective->GetModule()->config().static_device_assignment();
-  ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
+  ABSL_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
                    GetCollectiveOpGroupMode(collective));
   return GetParticipatingDevicesGroups(device_assignment,
                                        collective->replica_groups(), mode);
-}
-
-absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
-GetParticipatingFlattenedIdGroups(
-    const DeviceAssignment& device_assignment,
-    const CollectiveDeviceListBase& collective_device_list,
-    CollectiveOpGroupMode group_mode) {
-  return GetParticipatingFlattenedIdGroups(
-      collective_device_list, group_mode, device_assignment.replica_count(),
-      device_assignment.computation_count());
-}
-
-absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
-GetParticipatingFlattenedIdGroups(
-    const CollectiveDeviceListBase& collective_device_list,
-    CollectiveOpGroupMode group_mode, int replica_count, int partition_count) {
-  if (group_mode ==
-      CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID) {
-    return collective_device_list.Clone();
-  }
-  std::vector<ReplicaGroup> filled_empty_replica_group;
-  absl::Span<const ReplicaGroup> original_replica_groups =
-      collective_device_list.replica_groups();
-  std::vector<ReplicaGroup> flattened_replica_groups;
-  if (collective_device_list.replica_groups().empty()) {
-    filled_empty_replica_group.emplace_back();
-    const int64_t id_count =
-        group_mode ==
-                CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION
-            ? partition_count
-            : replica_count;
-    for (int i = 0; i < id_count; ++i) {
-      filled_empty_replica_group.back().add_replica_ids(i);
-    }
-    original_replica_groups = filled_empty_replica_group;
-  }
-  if (group_mode ==
-      CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA) {
-    flattened_replica_groups.resize(original_replica_groups.size() *
-                                    partition_count);
-    for (int64_t i = 0, current_group_offset = 0;
-         i < original_replica_groups.size();
-         ++i, current_group_offset += partition_count) {
-      for (int64_t replica_id : original_replica_groups.at(i).replica_ids()) {
-        for (int64_t partition_id = 0; partition_id < partition_count;
-             ++partition_id) {
-          const int64_t flattened_id =
-              replica_id * partition_count + partition_id;
-          flattened_replica_groups[current_group_offset + partition_id]
-              .add_replica_ids(flattened_id);
-        }
-      }
-    }
-  } else if (group_mode ==
-             CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION) {
-    flattened_replica_groups.resize(original_replica_groups.size() *
-                                    replica_count);
-    for (int64_t i = 0, current_group_offset = 0;
-         i < original_replica_groups.size();
-         ++i, current_group_offset += replica_count) {
-      for (int64_t partition_id : original_replica_groups.at(i).replica_ids()) {
-        for (int64_t replica_id = 0; replica_id < replica_count; ++replica_id) {
-          const int64_t flattened_id =
-              replica_id * partition_count + partition_id;
-          flattened_replica_groups[current_group_offset + replica_id]
-              .add_replica_ids(flattened_id);
-        }
-      }
-    }
-  } else {
-    CHECK(group_mode ==
-          CollectiveOpGroupMode::
-              COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION);
-    flattened_replica_groups.resize(original_replica_groups.size());
-    for (int64_t i = 0; i < original_replica_groups.size(); ++i) {
-      for (int64_t replica_id : original_replica_groups.at(i).replica_ids()) {
-        for (int64_t partition_id = 0; partition_id < partition_count;
-             ++partition_id) {
-          const int64_t flattened_id =
-              replica_id * partition_count + partition_id;
-          flattened_replica_groups[i].add_replica_ids(flattened_id);
-        }
-      }
-    }
-  }
-  return std::make_unique<CollectiveDeviceList>(flattened_replica_groups);
-}
-
-absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
-GetParticipatingFlattenedIdGroups(const HloInstruction* hlo,
-                                  const DeviceAssignment& device_assignment) {
-  ASSIGN_OR_RETURN(CollectiveOpGroupMode mode, GetCollectiveOpGroupMode(hlo));
-  ASSIGN_OR_RETURN(
-      std::unique_ptr<CollectiveDeviceListBase> collective_device_list,
-      GetParticipatingFlattenedIdGroups(device_assignment, *hlo->device_list(),
-                                        mode));
-  return collective_device_list;
 }
 
 absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
@@ -472,7 +841,7 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
   int replica_count = device_assignment.replica_count();
   int partition_count = device_assignment.computation_count();
 
-  ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID logical_id,
+  ABSL_ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID logical_id,
                    device_assignment.LogicalIdForDevice(device_id));
   int current_replica_id = logical_id.replica_id;
   int current_partition_id = logical_id.computation_id;
@@ -488,7 +857,7 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
       // This is a cross replica operation. replica group contains replica id.
       // use current replica id to find the set of participating replicas. If
       // replica groups are empty, assume a group with all replicas.
-      ASSIGN_OR_RETURN(std::vector<int> participating_replicas,
+      ABSL_ASSIGN_OR_RETURN(std::vector<int> participating_replicas,
                        GetParticipatingIDs(group_mode, current_replica_id,
                                            replica_count, replica_groups));
 
@@ -507,7 +876,7 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
     case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION: {
       // replica_groups contain partition_id, group contains all partitions for
       // the current replica.
-      ASSIGN_OR_RETURN(std::vector<int> participating_partitions,
+      ABSL_ASSIGN_OR_RETURN(std::vector<int> participating_partitions,
                        GetParticipatingIDs(group_mode, current_partition_id,
                                            partition_count, replica_groups));
       participants.reserve(participating_partitions.size());
@@ -524,7 +893,7 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
         COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION: {
       // replica_groups contain replica_ids. Group contains replicas for all
       // partitions.
-      ASSIGN_OR_RETURN(std::vector<int> participating_replicas,
+      ABSL_ASSIGN_OR_RETURN(std::vector<int> participating_replicas,
                        GetParticipatingIDs(group_mode, current_replica_id,
                                            replica_count, replica_groups));
       participants.reserve(participating_replicas.size() * partition_count);
@@ -550,7 +919,7 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
 
       // Find participants based on flattened id. replica_groups cannot be empty
       // so no need to pass in total_participant_count.
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           std::vector<int> participating_flattened_ids,
           GetParticipatingIDs(group_mode, current_flattened_id,
                               /*total_participant_count=*/std::nullopt,
@@ -574,326 +943,9 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
   }
 }
 
-absl::StatusOr<std::vector<int64_t>> GetPariticipantCountsForReplicaGroups(
-    int64_t num_replicas, int64_t num_partitions,
-    absl::Span<const ReplicaGroup> replica_groups,
-    CollectiveOpGroupMode group_mode) {
-  std::vector<int64_t> participant_counts;
-
-  // If replica groups are empty, assume a group with all replicas.
-  std::optional<ReplicaGroup> all_replica_groups;
-  if (replica_groups.empty()) {
-    if (group_mode ==
-        CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID) {
-      // replica groups contain flattened-ids and cannot be empty.
-      TF_RET_CHECK(!replica_groups.empty())
-          << "replica groups cannot be empty for kFlattenedID mode";
-    }
-
-    int total_participant_count;
-    if (group_mode ==
-        CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION) {
-      // replica group are partition ids.
-      total_participant_count = num_partitions;
-    } else {
-      // replica group are replica ids.
-      total_participant_count = num_replicas;
-    }
-
-    all_replica_groups.emplace();
-    all_replica_groups->mutable_replica_ids()->Reserve(total_participant_count);
-    for (int id = 0; id < total_participant_count; id++) {
-      all_replica_groups->add_replica_ids(id);
-    }
-    replica_groups = absl::MakeConstSpan(&*all_replica_groups, 1);
-  }
-
-  switch (group_mode) {
-    case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA: {
-      for (const auto& replica_group : replica_groups) {
-        for (int partition_id = 0; partition_id < num_partitions;
-             ++partition_id) {
-          participant_counts.push_back(replica_group.replica_ids().size());
-        }
-      }
-      return participant_counts;
-    }
-    case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION: {
-      for (const auto& replica_group : replica_groups) {
-        participant_counts.push_back(replica_group.replica_ids().size());
-      }
-      return participant_counts;
-    }
-    case CollectiveOpGroupMode::
-        COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION: {
-      for (const auto& replica_group : replica_groups) {
-        participant_counts.push_back(replica_group.replica_ids().size() *
-                                     num_partitions);
-      }
-      return participant_counts;
-    }
-    case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID: {
-      for (const auto& replica_group : replica_groups) {
-        participant_counts.push_back(replica_group.replica_ids().size());
-      }
-      return participant_counts;
-    }
-    default: {
-      return InvalidArgument("Invalid collective op group mode: %d",
-                             static_cast<int>(group_mode));
-    }
-  }
-}
-
-absl::StatusOr<std::optional<std::pair<int64_t, int64_t>>>
-GetReplicaGroupCountAndSize(const HloInstruction* hlo) {
-  std::shared_ptr<CollectiveDeviceListBase> device_list = hlo->device_list();
-  auto config = hlo->GetModule()->config();
-
-  if (device_list->version() == CollectiveDeviceListVersion::kIota) {
-    return std::make_pair(device_list->num_replica_groups(),
-                          device_list->num_devices_per_group());
-  }
-  ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
-                   GetCollectiveOpGroupMode(hlo));
-  ASSIGN_OR_RETURN(std::vector<int64_t> participant_counts,
-                   GetPariticipantCountsForReplicaGroups(
-                       config.replica_count(), config.num_partitions(),
-                       device_list->replica_groups(), group_mode));
-  int64_t replica_group_size = participant_counts[0];
-  for (int64_t participant_count : participant_counts) {
-    if (participant_count != replica_group_size) {
-      return std::nullopt;
-    }
-  }
-  return std::make_pair(participant_counts.size(), replica_group_size);
-}
-
-bool ReplicaGroupsOrthogonal(absl::Span<const ReplicaGroup> first,
-                             absl::Span<const ReplicaGroup> second) {
-  if (first.size() != second[0].replica_ids_size()) {
-    return false;
-  }
-  if (first[0].replica_ids_size() != second.size()) {
-    return false;
-  }
-  for (int64_t i = 0; i < first.size(); ++i) {
-    for (int64_t j = 0; j < first[i].replica_ids_size(); ++j) {
-      if (first[i].replica_ids(j) != second[j].replica_ids(i)) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
-bool ReplicaGroupsEqual(absl::Span<const ReplicaGroup> first,
-                        absl::Span<const ReplicaGroup> second) {
-  if (first.size() != second.size()) {
-    return false;
-  }
-  for (int64_t i = 0; i < first.size(); ++i) {
-    if (first[i].replica_ids_size() != second[i].replica_ids_size()) {
-      return false;
-    }
-    for (int j = 0; j < first[i].replica_ids_size(); ++j) {
-      if (first[i].replica_ids(j) != second[i].replica_ids(j)) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
-bool IsNonFusionCollective(const HloInstruction* instruction) {
-  switch (instruction->opcode()) {
-    case HloOpcode::kAllReduce:
-    case HloOpcode::kAllReduceStart:
-    case HloOpcode::kAllReduceDone:
-    case HloOpcode::kAllGather:
-    case HloOpcode::kAllGatherStart:
-    case HloOpcode::kAllGatherDone:
-    case HloOpcode::kAllToAll:
-    case HloOpcode::kCollectiveBroadcast:
-    case HloOpcode::kCollectivePermute:
-    case HloOpcode::kCollectivePermuteStart:
-    case HloOpcode::kCollectivePermuteDone:
-    case HloOpcode::kRaggedAllToAll:
-    case HloOpcode::kReduceScatter:
-      return true;
-    case HloOpcode::kAsyncStart:
-    case HloOpcode::kAsyncUpdate:
-    case HloOpcode::kAsyncDone:
-      return IsNonFusionCollective(instruction->async_wrapped_instruction());
-    case HloOpcode::kSend:
-    case HloOpcode::kRecv:
-      return !Cast<HloSendRecvInstruction>(instruction)->is_host_transfer();
-    default:
-      return false;
-  }
-}
-
-bool IsCollective(const HloInstruction* instruction) {
-  if (IsNonFusionCollective(instruction)) {
-    return true;
-  }
-  if (instruction->opcode() == HloOpcode::kFusion &&
-      instruction->IsCustomFusion()) {
-    for (const auto* inner_inst : instruction->fused_instructions()) {
-      if (IsCollective(inner_inst)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-absl::StatusOr<bool> IsAsyncCollective(const HloInstruction* instruction) {
-  if (!IsNonFusionCollective(instruction)) {
-    return false;
-  }
-  if (instruction->IsAsynchronous()) {
-    switch (instruction->async_wrapped_opcode()) {
-      case HloOpcode::kAllGather:
-      case HloOpcode::kAllReduce:
-      case HloOpcode::kAllToAll:
-      case HloOpcode::kCollectiveBroadcast:
-      case HloOpcode::kCollectivePermute:
-      case HloOpcode::kRaggedAllToAll:
-      case HloOpcode::kReduceScatter:
-        return true;
-      default:
-        return absl::InvalidArgumentError("Async instruction " +
-                                          instruction->ToString() +
-                                          " is not a collective.");
-    }
-  }
-  switch (instruction->opcode()) {
-    case HloOpcode::kAllGatherStart:
-    case HloOpcode::kAllGatherDone:
-    case HloOpcode::kAllReduceStart:
-    case HloOpcode::kAllReduceDone:
-    case HloOpcode::kCollectivePermuteStart:
-    case HloOpcode::kCollectivePermuteDone:
-      return true;
-    case HloOpcode::kSend:
-    case HloOpcode::kRecv:
-      return !Cast<HloSendRecvInstruction>(instruction)->is_host_transfer();
-    case HloOpcode::kAllGather:
-    case HloOpcode::kAllReduce:
-    case HloOpcode::kAllToAll:
-    case HloOpcode::kCollectiveBroadcast:
-    case HloOpcode::kCollectivePermute:
-    case HloOpcode::kRaggedAllToAll:
-    case HloOpcode::kReduceScatter:
-      return false;
-    default:
-      return absl::InvalidArgumentError("Instruction " +
-                                        instruction->ToString() +
-                                        " is not an async collective.");
-  }
-}
-
-bool IsRaggedAllToAllOrAsyncStartRaggedAllToAll(
-    const HloInstruction* instruction) {
-  return instruction->opcode() == HloOpcode::kRaggedAllToAll ||
-         (instruction->opcode() == HloOpcode::kAsyncStart &&
-          instruction->async_wrapped_opcode() == HloOpcode::kRaggedAllToAll);
-}
-
-bool IsRaggedAllToAllOrAsyncDoneRaggedAllToAll(
-    const HloInstruction* instruction) {
-  return instruction->opcode() == HloOpcode::kRaggedAllToAll ||
-         (instruction->opcode() == HloOpcode::kAsyncDone &&
-          instruction->async_wrapped_opcode() == HloOpcode::kRaggedAllToAll);
-}
-
-bool IsOneShotZeroCopyRaggedAllToAllEnabled(const DebugOptions& opts) {
-  return opts.xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl() &&
-         opts.xla_gpu_experimental_ragged_all_to_all_zero_copy();
-}
-
-HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction) {
-  if (instruction->opcode() == HloOpcode::kFusion) {
-    for (auto* inner_inst : instruction->fused_instructions()) {
-      if (IsOrHasCollectiveWithChannelId(inner_inst) != nullptr) {
-        return inner_inst;
-      }
-    }
-    return nullptr;
-  }
-  if (DynCast<HloChannelInstruction>(instruction) == nullptr) {
-    return nullptr;
-  }
-  if (IsCollective(instruction) && instruction->channel_id().has_value()) {
-    return instruction;
-  }
-  return nullptr;
-}
-
-bool IsExclusivelyCrossModule(absl::Span<const ReplicaGroup> replica_groups,
-                              bool use_global_ids, bool has_channel_id,
-                              const DeviceAssignment& device_assignment) {
-  if (!has_channel_id) {
-    return false;
-  }
-  if (!use_global_ids) {
-    // Each id in a replica group is a replica id. If any group
-    // has more than one id then this is not exclusively cross module.
-    for (const ReplicaGroup& replica_group : replica_groups) {
-      if (replica_group.replica_ids_size() != 1) {
-        return false;
-      }
-    }
-    return true;
-  }
-  // Each id in a replica group is a global id. Check if all replica groups are
-  // exclusively cross module (all participants in a group have the same replica
-  // id).
-  const int64_t partition_count = device_assignment.computation_count();
-  for (const ReplicaGroup& replica_group : replica_groups) {
-    std::optional<int64_t> first_replica_id;
-    for (int64_t global_id : replica_group.replica_ids()) {
-      int64_t replica_id = global_id / partition_count;
-      if (!first_replica_id.has_value()) {
-        first_replica_id = replica_id;
-      } else if (replica_id != first_replica_id) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
-bool IsExclusivelyCrossReplica(absl::Span<const ReplicaGroup> replica_groups,
-                               bool use_global_ids, bool has_channel_id,
-                               const DeviceAssignment& device_assignment) {
-  if (!has_channel_id) {
-    return true;
-  }
-  const int64_t partition_count = device_assignment.computation_count();
-  if (!use_global_ids) {
-    // Each id in a replica group is a replica id and we will perform the
-    // collective between all devices with that replica id. If partition count
-    // is > 1, then this is not exclusively cross replica.
-    return partition_count == 1;
-  }
-  // Each id in a replica group is a global id. Check if all replica groups are
-  // exclusively cross replica (all participants in a group have the same
-  // partition id).
-  for (const ReplicaGroup& replica_group : replica_groups) {
-    std::optional<int64_t> first_partition_id;
-    for (int64_t global_id : replica_group.replica_ids()) {
-      int64_t partition_id = global_id % partition_count;
-      if (!first_partition_id.has_value()) {
-        first_partition_id = partition_id;
-      } else if (partition_id != first_partition_id) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
+//===----------------------------------------------------------------------===//
+// Point-to-point utilities.
+//===----------------------------------------------------------------------===//
 
 bool HasDuplicateSourcesOrTargets(const SourceTargetPairs& pairs) {
   std::set<int> sources;
@@ -908,35 +960,305 @@ bool HasDuplicateSourcesOrTargets(const SourceTargetPairs& pairs) {
   return false;
 }
 
-int64_t GetSubgroupSize(const HloCollectiveInstruction* hlo,
-                        CollectiveOpGroupMode group_mode) {
-  const HloModuleConfig& config = hlo->GetModule()->config();
-  switch (group_mode) {
-    case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA:
-    case CollectiveOpGroupMode::
-        COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION: {
-      int64_t replica_subgroup_size =
-          hlo->replica_groups().empty()
-              ? config.replica_count()
-              : hlo->replica_groups()[0].replica_ids_size();
-      if (group_mode ==
-          CollectiveOpGroupMode::
-              COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION) {
-        // Replicas from all partitions participate.
-        replica_subgroup_size *= config.num_partitions();
-      }
-      return replica_subgroup_size;
-    }
-    case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID:
-      // Empty replica groups not allowed in this mode.
-      return hlo->replica_groups()[0].replica_ids_size();
-    case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION:
-      return hlo->replica_groups().empty()
-                 ? config.num_partitions()
-                 : hlo->replica_groups()[0].replica_ids_size();
-    default:
-      LOG(FATAL) << "Invalid collective op group mode: " << group_mode;
+//===----------------------------------------------------------------------===//
+// Collective group attributes.
+//===----------------------------------------------------------------------===//
+
+std::optional<absl::string_view> GetCollectiveGroupKey(
+    const HloInstruction& instruction) {
+  const auto& attributes = instruction.frontend_attributes().map();
+  auto it = attributes.find(kCollectiveGroupKeyAttr);
+  if (it == attributes.end() || it->second.empty()) {
+    return std::nullopt;
   }
+  return it->second;
+}
+
+bool HasCollectiveGroupKey(const HloInstruction& instruction) {
+  return GetCollectiveGroupKey(instruction).has_value();
+}
+
+bool HaveCompatibleCollectiveGroupKeys(const HloInstruction& lhs,
+                                       const HloInstruction& rhs) {
+  return GetCollectiveGroupKey(lhs) == GetCollectiveGroupKey(rhs);
+}
+
+void CopyCollectiveGroupKey(const HloInstruction& source,
+                            HloInstruction& destination) {
+  std::optional<std::string> value =
+      source.get_frontend_attribute(kCollectiveGroupKeyAttr);
+  if (value.has_value()) {
+    destination.set_frontend_attribute(kCollectiveGroupKeyAttr, *value);
+  } else {
+    destination.erase_frontend_attribute(kCollectiveGroupKeyAttr);
+  }
+}
+
+void ClearCollectiveGroupKey(HloInstruction& instruction) {
+  instruction.erase_frontend_attribute(kCollectiveGroupKeyAttr);
+}
+
+//===----------------------------------------------------------------------===//
+// Collective execution utilities.
+//===----------------------------------------------------------------------===//
+
+bool IsOneShotRaggedAllToAllWithNcclEnabled(const DebugOptions& opts) {
+  return opts.xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl();
+}
+
+namespace {
+
+std::optional<DebugOptions::CollectiveOpType> GetCollectiveOpType(
+    const HloInstruction* instruction) {
+  if (!IsNonFusionCollective(instruction)) {
+    return std::nullopt;
+  }
+  HloOpcode opcode = instruction->opcode();
+  if (opcode == HloOpcode::kAsyncStart || opcode == HloOpcode::kAsyncDone) {
+    opcode = instruction->async_wrapped_opcode();
+  }
+  switch (opcode) {
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduceDone:
+      return DebugOptions::ALLREDUCE;
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kAllGatherDone:
+      return DebugOptions::ALLGATHER;
+    case HloOpcode::kReduceScatter:
+      return DebugOptions::REDUCESCATTER;
+    case HloOpcode::kCollectiveBroadcast:
+      return DebugOptions::COLLECTIVEBROADCAST;
+    case HloOpcode::kAllToAll:
+      return DebugOptions::ALLTOALL;
+    case HloOpcode::kCollectivePermute:
+    case HloOpcode::kCollectivePermuteStart:
+    case HloOpcode::kCollectivePermuteDone:
+      return DebugOptions::COLLECTIVEPERMUTE;
+    case HloOpcode::kRaggedAllToAll:
+      return DebugOptions::RAGGEDALLTOALL;
+    default:
+      return std::nullopt;
+  }
+}
+
+}  // namespace
+
+NcclSymmetricBuffersSpec::NcclSymmetricBuffersSpec(
+    const DebugOptions& debug_options) {
+  for (const auto& filter_proto :
+       debug_options.xla_enable_nccl_symmetric_buffers_for_collectives()) {
+    Filter filter;
+    filter.collective = filter_proto.collective();
+    if (filter_proto.has_max_size_bytes()) {
+      filter.max_size_bytes = filter_proto.max_size_bytes();
+    }
+    if (filter_proto.has_op_type()) {
+      filter.op_type = filter_proto.op_type();
+    }
+    filters_.push_back(filter);
+  }
+}
+
+bool NcclSymmetricBuffersSpec::IsEnabled(const HloInstruction& inst) const {
+  const HloInstruction* collective = &inst;
+  if (collective->opcode() == HloOpcode::kAsyncStart ||
+      collective->opcode() == HloOpcode::kAsyncDone) {
+    collective = collective->async_wrapped_instruction();
+  }
+
+  if (collective->opcode() == HloOpcode::kAllReduceDone ||
+      collective->opcode() == HloOpcode::kAllGatherDone ||
+      collective->opcode() == HloOpcode::kCollectivePermuteDone) {
+    collective = collective->operand(0);
+  }
+
+  auto op_type_opt = GetCollectiveOpType(collective);
+  if (!op_type_opt.has_value()) {
+    return false;
+  }
+  DebugOptions::CollectiveOpType op_type = *op_type_opt;
+
+  const size_t size_in_bytes =
+      ShapeUtil::ByteSizeOfElementsRecursive(collective->shape());
+
+  std::optional<PrimitiveType> operand_type;
+  if (collective->operand_count() > 0) {
+    operand_type = collective->operand(0)->shape().element_type();
+  }
+
+  auto filter_matches = [&](const Filter& filter) {
+    bool match = true;
+    // Check the collective type.
+    if (filter.collective != DebugOptions::ALLCOLLECTIVES &&
+        filter.collective != op_type) {
+      match = false;
+    }
+    // Check the size.
+    if (filter.max_size_bytes.has_value() &&
+        size_in_bytes > filter.max_size_bytes.value_or(0)) {
+      match = false;
+    }
+    // Check the operand type.
+    if (filter.op_type.has_value()) {
+      if (!operand_type.has_value() || *operand_type != *filter.op_type) {
+        match = false;
+      }
+    }
+    return match;
+  };
+
+  if (std::any_of(filters_.begin(), filters_.end(), filter_matches)) {
+    return true;
+  }
+
+  return false;
+}
+
+bool IsNcclSymmetricBuffersEnabledForCollective(
+    const HloInstruction* instruction, const DebugOptions& opts) {
+  if (opts.xla_gpu_experimental_enable_nccl_symmetric_buffers()) {
+    return true;
+  }
+  if (opts.xla_enable_nccl_symmetric_buffers_for_collectives().empty()) {
+    return false;
+  }
+  if (instruction == nullptr) {
+    return false;
+  }
+
+  if (!IsNonFusionCollective(instruction)) {
+    return false;
+  }
+  NcclSymmetricBuffersSpec spec(opts);
+  return spec.IsEnabled(*instruction);
+}
+
+//===----------------------------------------------------------------------===//
+// Async collective configuration.
+//===----------------------------------------------------------------------===//
+
+absl::StatusOr<AsyncCollectiveConfig> ParseAsyncCollectiveConfig(
+    absl::string_view config_json_str) {
+  AsyncCollectiveConfig config;
+  if (config_json_str.empty()) {
+    return config;
+  }
+  Json::Value json;
+  Json::CharReaderBuilder builder;
+  std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+  std::string errors;
+  if (!reader->parse(config_json_str.data(),
+                     config_json_str.data() + config_json_str.size(), &json,
+                     &errors)) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Failed to parse collective op config JSON: ", errors,
+                     ". JSON string: ", config_json_str));
+  }
+  if (json.isMember("replica_groups")) {
+    const Json::Value& replica_groups = json["replica_groups"];
+    TF_RET_CHECK(replica_groups.isArray());
+    for (const auto& group : replica_groups) {
+      TF_RET_CHECK(group.isArray());
+      ReplicaGroup rg;
+      for (const auto& id_json : group) {
+        rg.add_replica_ids(id_json.asInt64());
+      }
+      config.replica_groups.push_back(rg);
+    }
+  }
+  if (json.isMember("channel_id")) {
+    config.channel_id = json["channel_id"].asInt64();
+  }
+  if (json.isMember("use_global_device_ids")) {
+    config.use_global_device_ids = json["use_global_device_ids"].asBool();
+  }
+  if (json.isMember("permutation")) {
+    const Json::Value& permutation = json["permutation"];
+    TF_RET_CHECK(permutation.isArray());
+    for (const auto& pair : permutation) {
+      TF_RET_CHECK(pair.isArray() && pair.size() == 2);
+      config.permutation.push_back({pair[0].asInt64(), pair[1].asInt64()});
+    }
+  }
+  if (json.isMember("all_gather_dimension")) {
+    config.all_gather_dimension = json["all_gather_dimension"].asInt64();
+  }
+  if (json.isMember("scatter_dimension")) {
+    config.scatter_dimension = json["scatter_dimension"].asInt64();
+  }
+  if (json.isMember("tiled")) {
+    config.tiled = json["tiled"].asBool();
+  }
+  if (json.isMember("split_dimension")) {
+    config.split_dimension = json["split_dimension"].asInt64();
+  }
+  if (json.isMember("concat_dimension")) {
+    config.concat_dimension = json["concat_dimension"].asInt64();
+  }
+  if (json.isMember("split_count")) {
+    config.split_count = json["split_count"].asInt64();
+  }
+  return config;
+}
+
+std::string SerializeAsyncCollectiveConfig(
+    const AsyncCollectiveConfig& config) {
+  Json::Value json(Json::objectValue);
+  if (!config.replica_groups.empty()) {
+    Json::Value rg_json(Json::arrayValue);
+    for (const auto& rg : config.replica_groups) {
+      Json::Value group(Json::arrayValue);
+      for (int64_t id : rg.replica_ids()) {
+        group.append(static_cast<Json::Value::Int64>(id));
+      }
+      rg_json.append(group);
+    }
+    json["replica_groups"] = rg_json;
+  }
+  if (config.channel_id.has_value()) {
+    json["channel_id"] = static_cast<Json::Value::Int64>(*config.channel_id);
+  }
+  if (config.use_global_device_ids) {
+    json["use_global_device_ids"] = config.use_global_device_ids;
+  }
+  if (!config.permutation.empty()) {
+    Json::Value perm_json(Json::arrayValue);
+    for (const auto& pair : config.permutation) {
+      Json::Value pair_json(Json::arrayValue);
+      pair_json.append(static_cast<Json::Value::Int64>(pair.first));
+      pair_json.append(static_cast<Json::Value::Int64>(pair.second));
+      perm_json.append(pair_json);
+    }
+    json["permutation"] = perm_json;
+  }
+  if (config.all_gather_dimension.has_value()) {
+    json["all_gather_dimension"] =
+        static_cast<Json::Value::Int64>(*config.all_gather_dimension);
+  }
+  if (config.scatter_dimension.has_value()) {
+    json["scatter_dimension"] =
+        static_cast<Json::Value::Int64>(*config.scatter_dimension);
+  }
+  if (config.tiled.has_value()) {
+    json["tiled"] = *config.tiled;
+  }
+  if (config.split_dimension.has_value()) {
+    json["split_dimension"] =
+        static_cast<Json::Value::Int64>(*config.split_dimension);
+  }
+  if (config.concat_dimension.has_value()) {
+    json["concat_dimension"] =
+        static_cast<Json::Value::Int64>(*config.concat_dimension);
+  }
+  if (config.split_count.has_value()) {
+    json["split_count"] = static_cast<Json::Value::Int64>(*config.split_count);
+  }
+
+  Json::StreamWriterBuilder builder;
+  builder["indentation"] = "";
+  return Json::writeString(builder, json);
 }
 
 }  // end namespace xla

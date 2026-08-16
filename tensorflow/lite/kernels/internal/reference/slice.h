@@ -30,6 +30,53 @@ namespace tflite {
 namespace reference_ops {
 
 template <typename T>
+inline void Slice(const std::vector<int>& begins,
+                  const RuntimeShape& input_shape,
+                  const RuntimeShape& output_shape,
+                  SequentialTensorWriter<T>* writer) {
+  const int dims = input_shape.DimensionsCount();
+  std::vector<int> input_strides(dims);
+  std::vector<int> output_strides(dims);
+  if (dims == 0) {
+    writer->Write(0);
+    return;
+  }
+  input_strides[dims - 1] = 1;
+  output_strides[dims - 1] = 1;
+  for (int i = dims - 2; i >= 0; --i) {
+    input_strides[i] = input_strides[i + 1] * input_shape.Dims(i + 1);
+    output_strides[i] = output_strides[i + 1] * output_shape.Dims(i + 1);
+  }
+  for (int output_index = 0; output_index < output_shape.FlatSize();
+       ++output_index) {
+    int remaining_index = output_index;
+    int input_index = 0;
+    for (int dim = 0; dim < dims; ++dim) {
+      const int coordinate = remaining_index / output_strides[dim];
+      remaining_index %= output_strides[dim];
+      input_index += (begins[dim] + coordinate) * input_strides[dim];
+    }
+    writer->Write(input_index);
+  }
+}
+
+template <typename T>
+inline void Slice(const std::vector<int>& begins,
+                  const RuntimeShape& input_shape, const T* input_data,
+                  const RuntimeShape& output_shape, T* output_data) {
+  SequentialTensorWriter<T> writer(input_data, output_data);
+  return Slice(begins, input_shape, output_shape, &writer);
+}
+
+template <typename T>
+inline void Slice(const std::vector<int>& begins,
+                  const RuntimeShape& input_shape, const TfLiteTensor* input,
+                  const RuntimeShape& output_shape, TfLiteTensor* output) {
+  SequentialTensorWriter<T> writer(input, output);
+  return Slice(begins, input_shape, output_shape, &writer);
+}
+
+template <typename T>
 inline void Slice(const tflite::SliceParams& op_params,
                   const RuntimeShape& input_shape,
                   const RuntimeShape& output_shape,
@@ -95,6 +142,27 @@ inline void SliceInt4(const tflite::SliceParams& op_params,
   std::vector<int8_t> unpacked_output(num_output_elements);
 
   reference_ops::Slice<int8_t>(op_params, input_shape, unpacked_input.data(),
+                               output_shape, unpacked_output.data());
+
+  tensor_utils::PackInt8IntoDenseInt(unpacked_output.data(),
+                                     num_output_elements, 4,
+                                     GetTensorData<int8_t>(output));
+}
+
+inline void SliceInt4(const std::vector<int>& begins,
+                      const RuntimeShape& input_shape,
+                      const TfLiteTensor* input,
+                      const RuntimeShape& output_shape, TfLiteTensor* output) {
+  const int num_input_elements = input_shape.FlatSize();
+  std::vector<int8_t> unpacked_input(num_input_elements);
+  tensor_utils::UnpackPackedIntToInt8(GetTensorData<int8_t>(input),
+                                      num_input_elements, 4,
+                                      unpacked_input.data());
+
+  const int num_output_elements = output_shape.FlatSize();
+  std::vector<int8_t> unpacked_output(num_output_elements);
+
+  reference_ops::Slice<int8_t>(begins, input_shape, unpacked_input.data(),
                                output_shape, unpacked_output.data());
 
   tensor_utils::PackInt8IntoDenseInt(unpacked_output.data(),

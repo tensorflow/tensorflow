@@ -14,7 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/hlo/transforms/simplifiers/computation_canonicalizers.h"
 
+#include <vector>
+
 #include <gtest/gtest.h>
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -82,20 +87,28 @@ e {
   g0 = s32[] get-tuple-element(t), index=0
   g1 = s32[] get-tuple-element(t), index=1
   r = s32[] multiply(g0, g1)
-})"));
+}
+)"));
   EXPECT_THAT(MoveGTEsRightAfterTupleDefinition(*module->entry_computation()),
               absl_testing::IsOkAndHolds(true));
-  EXPECT_THAT(RunFileCheck(module->ToString(),
-                           R"(
-// CHECK:      parameter
-// CHECK-NEXT: parameter
-// CHECK-NEXT: tuple
-// CHECK-NEXT: get-tuple-element
-// CHECK-NEXT: get-tuple-element
-// CHECK-NEXT: add
-// CHECK-NEXT: multiply
-)"),
-              absl_testing::IsOkAndHolds(true));
+
+  ASSERT_TRUE(module->has_schedule());
+  const HloSchedule& schedule = module->schedule();
+  ASSERT_TRUE(schedule.is_computation_scheduled(module->entry_computation()));
+  const HloInstructionSequence& sequence =
+      schedule.sequence(module->entry_computation());
+
+  std::vector<HloOpcode> opcodes;
+  for (const HloInstruction* inst : sequence.instructions()) {
+    opcodes.push_back(inst->opcode());
+  }
+
+  std::vector<HloOpcode> expected_opcodes = {
+      HloOpcode::kParameter,       HloOpcode::kParameter,
+      HloOpcode::kTuple,           HloOpcode::kGetTupleElement,
+      HloOpcode::kGetTupleElement, HloOpcode::kAdd,
+      HloOpcode::kMultiply};
+  EXPECT_EQ(opcodes, expected_opcodes);
 }
 
 }  // namespace

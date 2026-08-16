@@ -1,10 +1,10 @@
 path: "tensorflow.CriticalSection"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.critical_section_ops.CriticalSection\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "name"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

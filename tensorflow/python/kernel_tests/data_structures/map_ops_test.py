@@ -69,6 +69,17 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       l = map_ops.tensor_map_lookup(m, k2, dtypes.float32)
       self.evaluate(l)
 
+  def testTensorMapLookupDtypeMismatch(self):
+    m = map_ops.empty_tensor_map()
+    k = constant_op.constant(1.0)
+    v = constant_op.constant(2.0, dtype=dtypes.float32)
+    m = map_ops.tensor_map_insert(m, k, v)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "Key does not match requested dtype.*"
+    ):
+      l = map_ops.tensor_map_lookup(m, k, dtypes.int32)
+      self.evaluate(l)
+
   def testTensorMapErase(self):
     m = map_ops.empty_tensor_map()
     k = constant_op.constant(1.0)

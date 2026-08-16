@@ -22,10 +22,11 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
@@ -44,15 +45,16 @@ class TestThunk : public Thunk {
   absl::Status ExecuteOnStream(const ExecuteParams&) override {
     return absl::OkStatus();
   }
+  BufferUses buffer_uses() const override { return {}; }
   absl::StatusOr<ThunkProto> ToProto() const override {
     return absl::UnimplementedError("TestThunk::ToProto is not implemented");
   }
 };
 
 static absl::StatusOr<se::StreamExecutor*> CreateExecutor() {
-  ASSIGN_OR_RETURN(std::string platform_name,
+  ABSL_ASSIGN_OR_RETURN(std::string platform_name,
                    xla::PlatformUtil::CanonicalPlatformName("gpu"));
-  ASSIGN_OR_RETURN(se::Platform * platform,
+  ABSL_ASSIGN_OR_RETURN(se::Platform * platform,
                    se::PlatformManager::PlatformWithName(platform_name));
   return platform->ExecutorForDevice(0);
 }

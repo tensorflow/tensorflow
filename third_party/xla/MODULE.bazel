@@ -4,7 +4,7 @@ module(name = "xla")
 # Bazel module dependencies
 
 # go/keep-sorted start
-bazel_dep(name = "abseil-cpp", version = "20260107.1", repo_name = "com_google_absl")
+bazel_dep(name = "abseil-cpp", version = "20260526.0", repo_name = "com_google_absl")
 bazel_dep(name = "abseil-py", version = "2.1.0", repo_name = "absl_py")
 bazel_dep(name = "bazel_features", version = "1.36.0")
 bazel_dep(name = "bazel_skylib", version = "1.8.2")
@@ -12,9 +12,9 @@ bazel_dep(name = "boringssl", version = "0.20250818.0")
 bazel_dep(name = "curl", version = "8.12.0.bcr.1")
 bazel_dep(name = "google_benchmark", version = "1.8.5", repo_name = "com_google_benchmark")
 bazel_dep(name = "googletest", version = "1.17.0", repo_name = "com_google_googletest")
-bazel_dep(name = "grpc", version = "1.78.0", repo_name = "com_github_grpc_grpc")
+bazel_dep(name = "grpc", version = "1.81.0")
 bazel_dep(name = "gutil", version = "20260309.0.bcr.1", repo_name = "com_google_gutil")
-bazel_dep(name = "highway", version = "1.3.0", repo_name = "com_google_highway")
+bazel_dep(name = "highway", version = "1.3.0")
 bazel_dep(name = "jsoncpp", version = "1.9.6", repo_name = "jsoncpp_git")
 bazel_dep(name = "or-tools", version = "9.12", repo_name = "com_google_ortools")
 bazel_dep(name = "platforms", version = "1.0.0")
@@ -26,7 +26,7 @@ bazel_dep(name = "re2", version = "2025-11-05.bcr.1", repo_name = "com_googlesou
 bazel_dep(name = "rules_cc", version = "0.2.17")
 bazel_dep(name = "rules_java", version = "8.16.1")
 bazel_dep(name = "rules_license", version = "1.0.0")
-bazel_dep(name = "rules_python", version = "1.8.5")
+bazel_dep(name = "rules_python", version = "2.2.0")
 bazel_dep(name = "rules_shell", version = "0.6.1")
 bazel_dep(name = "snappy", version = "1.2.1")
 bazel_dep(name = "zlib", version = "1.3.2")
@@ -45,9 +45,9 @@ bazel_dep(name = "rules_ml_toolchain")
 # echo "sha256-${HASH}"
 archive_override(
     module_name = "rules_ml_toolchain",
-    integrity = "sha256-rniUnlQ0DNcwtAE/PGb9huKletQug8Wd5BNReZznYEs=",
-    strip_prefix = "rules_ml_toolchain-44a2499fc046cd3c88625494ad5b7ebffcbb7b7b",
-    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/44a2499fc046cd3c88625494ad5b7ebffcbb7b7b.tar.gz"],
+    integrity = "sha256-dcy3xNxpk0PwLQLwtbqm2sCcAT1GuStg8YVjRI6lnnc=",
+    strip_prefix = "rules_ml_toolchain-73cb731fed3ccf7551beac710bf1c5dbeb8be298",
+    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/73cb731fed3ccf7551beac710bf1c5dbeb8be298.tar.gz"],
 )
 
 # TODO: Upstream the patch?
@@ -56,20 +56,20 @@ single_version_override(
     patch_strip = 1,
     patches = [
         "//third_party/grpc:grpc.patch",
-        "//third_party/grpc:layering_check_bzlmod.patch",
     ],
-    version = "1.78.0",
+    version = "1.81.0",
 )
 
 # TODO: Upstream those patch?
 single_version_override(
     module_name = "abseil-cpp",
+    version = "20260526.0",
     patch_strip = 1,
     patches = [
         "//third_party/absl:btree.patch",
         "//third_party/absl:build_dll.patch",
         "//third_party/absl:endian.patch",
-        "//third_party/absl:append_and_overwrite.patch",
+        "//third_party/absl:raw_hash_set.patch",
     ],
 )
 
@@ -118,6 +118,7 @@ use_repo(
     "highwayhash",
     "hwloc",
     "implib_so",
+    "KleidiAI",
     "llvm-raw",
     "llvm_openmp",
     "mkl_dnn_acl_compatible",
@@ -128,8 +129,11 @@ use_repo(
     "net_zstd",
     "nvshmem",
     "nvtx_archive",
+    "oneccl",
+    "oneccl_v1",
     "onednn",
     "onednn_async",
+    "org_sqlite",
     "pthreadpool",
     "raft",
     "rapids_logger",
@@ -153,12 +157,10 @@ single_version_override(
     module_name = "rules_python",
     patch_strip = 1,
     patches = [
-        "//third_party/py:rules_python_pip_version.patch",
         "//third_party/py:rules_python_freethreaded.patch",
-        "//third_party/py:rules_python_versions.patch",
         "//third_party/py:rules_python_scope.patch",
     ],
-    version = "1.8.5",
+    version = "2.2.0",
 )
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
@@ -295,11 +297,8 @@ register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64_cuda")
 local_clang_configure = use_extension("@rules_ml_toolchain//extensions:local_clang_configure.bzl", "local_clang_configure_ext")
 use_repo(local_clang_configure, "local_config_clang")
 
-hipcc_configure = use_extension("@rules_ml_toolchain//extensions:hipcc_configure.bzl", "hipcc_configure_ext")
-use_repo(hipcc_configure, "config_rocm_hipcc")
-
 rocm_configure = use_extension("//third_party/extensions:rocm_configure.bzl", "rocm_configure_ext")
-use_repo(rocm_configure, "local_config_rocm")
+use_repo(rocm_configure, "config_rocm_hipcc", "local_config_rocm")
 
 tensorrt_configure = use_extension("//third_party/extensions:tensorrt_configure.bzl", "tensorrt_configure_ext")
 use_repo(tensorrt_configure, "local_config_tensorrt")

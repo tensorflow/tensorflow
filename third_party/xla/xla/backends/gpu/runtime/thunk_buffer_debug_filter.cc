@@ -105,11 +105,23 @@ ThunkFilter CreateProfileAnnotationRegexFilter(
   };
 }
 
+bool HasExplicitFilter(const DebugOptions& debug_options) {
+  const auto& filter =
+      debug_options.xla_gpu_experimental_thunk_buffer_debug_filter();
+  return !filter.thunk_id_ranges().empty() ||
+         !filter.profile_annotation_regexes().empty();
+}
+
 }  // namespace
 
 // Creates a thunk filter that filters thunks by all the conditions configured
 // in debug options.
 ThunkFilter CreateThunkFilter(const DebugOptions& debug_options) {
+  if (debug_options.xla_gpu_experimental_thunk_buffer_debug_module_outputs() &&
+      !HasExplicitFilter(debug_options)) {
+    return [](const Thunk& thunk) { return InstrumentAction::kSkip; };
+  }
+
   std::vector<ThunkFilter> filters;
   filters.push_back(CreateThunkIdFilter(debug_options));
   filters.push_back(CreateProfileAnnotationRegexFilter(debug_options));

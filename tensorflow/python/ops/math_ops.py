@@ -807,15 +807,31 @@ def sign(x, name=None):
   """
   x = ops.convert_to_tensor(x)
   if x.dtype.is_complex:
-    return gen_math_ops.div_no_nan(
-        x,
-        cast(
-            gen_math_ops.complex_abs(
-                x,
-                Tout=dtypes.float32
-                if x.dtype == dtypes.complex64 else dtypes.float64),
-            dtype=x.dtype),
-        name=name)
+    # Promote to complex128 for the entire computation to avoid underflow for
+    # small complex64 values. Two distinct underflow hazards must be addressed:
+    #   (1) |z| = sqrt(re^2 + im^2) computed via complex_abs on complex64
+    #       underflows to 0 for |z| < ~1.08e-19 (sqrt(float32_min)). The
+    #       ComplexAbs C++ kernel also rejects mismatched input/output
+    #       precision (e.g. complex64 -> float64), so we cannot simply ask
+    #       the kernel for a float64 magnitude while feeding it complex64.
+    #   (2) The vectorized complex division (div_no_nan) involves an
+    #       intermediate conjugate product that still underflows on FTZ
+    #       systems when the divisor's magnitude is below the input dtype's
+    #       smallest normal value, even when the divisor is computed in
+    #       float64.
+    # Casting the input itself to complex128 lifts both computations above
+    # the underflow threshold (~1e-154). The DivNoNan C++ kernel requires
+    # both operands to share the same dtype, so the float64 magnitude from
+    # complex_abs is cast back to complex128 before division. The final
+    # result is cast back to the original dtype.
+    compute_dtype = dtypes.complex128
+    x_compute = cast(x, compute_dtype) if x.dtype != compute_dtype else x
+    magnitude = cast(
+        gen_math_ops.complex_abs(x_compute, Tout=dtypes.float64), compute_dtype
+    )
+    return cast(
+        gen_math_ops.div_no_nan(x_compute, magnitude, name=name), dtype=x.dtype
+    )
   return gen_math_ops.sign(x, name=name)
 
 
@@ -2144,6 +2160,25 @@ def _may_reduce_to_scalar(keepdims, axis, output):
   return output
 
 
+def _check_keepdims(keepdims):
+  """Validate and normalize the keepdims argument.
+
+  Args:
+    keepdims: The keepdims value to validate.
+
+  Returns:
+    A bool value for keepdims.
+
+  Raises:
+    TypeError: If keepdims is not None or a bool.
+  """
+  if keepdims is None:
+    return False
+  if not isinstance(keepdims, (bool, np.bool_)):
+    raise TypeError(f"Expected bool for argument 'keepdims' not {keepdims}.")
+  return bool(keepdims)
+
+
 @tf_export(v1=["math.reduce_sum", "reduce_sum"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_args(None,
@@ -2296,7 +2331,7 @@ def reduce_sum_with_dims(input_tensor,
                          keepdims=False,
                          name=None,
                          dims=None):
-  keepdims = False if keepdims is None else bool(keepdims)
+  keepdims = _check_keepdims(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops._sum(input_tensor, dims, keepdims, name=name))
@@ -2339,7 +2374,7 @@ def reduce_euclidean_norm(input_tensor, axis=None, keepdims=False, name=None):
   Returns:
     The reduced tensor, of the same dtype as the input_tensor.
   """
-  keepdims = bool(keepdims)
+  keepdims = _check_keepdims(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops.euclidean_norm(
@@ -2620,7 +2655,7 @@ def reduce_mean(input_tensor, axis=None, keepdims=False, name=None):
 
   @end_compatibility
   """
-  keepdims = False if keepdims is None else bool(keepdims)
+  keepdims = _check_keepdims(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops.mean(
@@ -2783,7 +2818,7 @@ def reduce_prod(input_tensor, axis=None, keepdims=False, name=None):
   Equivalent to np.prod
   @end_compatibility
   """
-  keepdims = False if keepdims is None else bool(keepdims)
+  keepdims = _check_keepdims(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops.prod(
@@ -2966,11 +3001,15 @@ def reduce_min(input_tensor, axis=None, keepdims=False, name=None):
   Returns:
     The reduced tensor.
 
+  Note: When computing gradients, if multiple elements are equal to the
+    minimum value along the reduced axes, the gradient is distributed equally
+    among all such elements.
+
   @compatibility(numpy)
   Equivalent to np.min
   @end_compatibility
   """
-  keepdims = False if keepdims is None else bool(keepdims)
+  keepdims = _check_keepdims(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops._min(
@@ -3087,6 +3126,10 @@ def reduce_max(input_tensor, axis=None, keepdims=False, name=None):
 
   Returns:
     The reduced tensor.
+
+  Note: When computing gradients, if multiple elements are equal to the
+    maximum value along the reduced axes, the gradient is distributed equally
+    among all such elements.
   """
   return reduce_max_with_dims(input_tensor, axis, keepdims, name,
                               _ReductionDims(input_tensor, axis))
@@ -3097,7 +3140,7 @@ def reduce_max_with_dims(input_tensor,
                          keepdims=False,
                          name=None,
                          dims=None):
-  keepdims = False if keepdims is None else bool(keepdims)
+  keepdims = _check_keepdims(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops._max(input_tensor, dims, keepdims, name=name))
@@ -3201,7 +3244,7 @@ def reduce_all(input_tensor, axis=None, keepdims=False, name=None):
   Equivalent to np.all
   @end_compatibility
   """
-  keepdims = False if keepdims is None else bool(keepdims)
+  keepdims = _check_keepdims(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops._all(
@@ -3307,7 +3350,7 @@ def reduce_any(input_tensor, axis=None, keepdims=False, name=None):
   Equivalent to np.any
   @end_compatibility
   """
-  keepdims = False if keepdims is None else bool(keepdims)
+  keepdims = _check_keepdims(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops._any(
@@ -3633,6 +3676,24 @@ def matmul(
     # TODO(apassos) remove _shape_tuple here when it is not needed.
     a_shape = a._shape_tuple()  # pylint: disable=protected-access
     b_shape = b._shape_tuple()  # pylint: disable=protected-access
+
+    if a_shape is not None and len(a_shape) < 2:
+      raise ValueError(
+          "Argument `a` passed to `tf.linalg.matmul` must be at least rank 2."
+          f" Received `a` with shape {a_shape} (rank {len(a_shape)})."
+          " To fix this, consider using `tf.expand_dims(a, axis=0)` to add a"
+          " batch dimension, or `tf.reshape(a, [...])` to reshape it into a"
+          " 2-D (or higher-rank) matrix before calling `tf.linalg.matmul`."
+      )
+    if b_shape is not None and len(b_shape) < 2:
+      raise ValueError(
+          "Argument `b` passed to `tf.linalg.matmul` must be at least rank 2."
+          f" Received `b` with shape {b_shape} (rank {len(b_shape)})."
+          " For matrix-vector multiplication, use `tf.linalg.matvec`."
+          " Alternatively, consider using `tf.expand_dims(b, axis=-1)` to add a"
+          " column dimension, or `tf.reshape(b, [...])` to reshape it into a"
+          " 2-D (or higher-rank) matrix before calling `tf.linalg.matmul`."
+      )
 
     output_may_have_non_empty_batch_shape = (
         (a_shape is None or len(a_shape) > 2) or
@@ -4699,7 +4760,7 @@ def sparse_segment_sum(
   tf.sparse.segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))
   # => [[0 0 0 0]]
 
-  # Select two rows, two segment.
+  # Select two rows, two segments.
   tf.sparse.segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))
   # => [[ 1  2  3  4]
   #     [-1 -2 -3 -4]]
@@ -4983,7 +5044,7 @@ def sparse_segment_sum_v2(
   tf.sparse.segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))
   # => [[0 0 0 0]]
 
-  # Select two rows, two segment.
+  # Select two rows, two segments.
   tf.sparse.segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))
   # => [[ 1  2  3  4]
   #     [-1 -2 -3 -4]]
@@ -5527,6 +5588,11 @@ def polyval(coeffs, x, name=None):
     p = coeffs[0]
     for c in coeffs[1:]:
       p = c + p * x
+    # For single-coefficient polynomials, the loop above never executes,
+    # so x is unused. Add x*0 to broadcast against x's shape and
+    # propagate NaN, matching numpy.polyval behavior.
+    if len(coeffs) == 1:
+      p = p + x * 0
     return p
 
 

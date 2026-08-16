@@ -1,7 +1,7 @@
 path: "tensorflow.__internal__.test.combinations.TestCombination"
 tf_class {
   is_instance: "<class \'tensorflow.python.framework.test_combinations.TestCombination\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
   }

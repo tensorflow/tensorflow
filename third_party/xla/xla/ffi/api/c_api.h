@@ -47,15 +47,59 @@ typedef struct XLA_FFI_InternalApi XLA_FFI_InternalApi;  // Forward declare
 
 typedef enum {
   XLA_FFI_Extension_Metadata = 1,
-} XLA_FFI_Extension_Type;
+} XLA_FFI_InternalExtension_Type;
 
-typedef struct XLA_FFI_Extension_Base {
+// Internal extension mechanism used to extend XLA FFI data structures
+// (e.g., XLA_FFI_CallFrame) while preserving ABI compatibility.
+// This structure is reserved for XLA FFI use only, and  shouldn't be used for
+// extending to backend-specific extensions. Extensions should use
+// XLA_FFI_Extension instead. The only real use for this is to allow reading
+// metadata from an XLA_FFI_CallFrame at this point.
+//
+// API Versions for this stay the same as the XLA_FFI_Api versions.
+typedef struct XLA_FFI_InternalExtension {
   size_t struct_size;
-  XLA_FFI_Extension_Type type;
-  struct XLA_FFI_Extension_Base* next;
-} XLA_FFI_Extension_Base;
+  XLA_FFI_InternalExtension_Type type;
+  struct XLA_FFI_InternalExtension* next;
+} XLA_FFI_InternalExtension;
 
-XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Extension_Base, next);
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_InternalExtension, next);
+
+typedef struct XLA_FFI_ExtensionId {
+  // Unique identifier for the extension.
+  // All extensions attached to a given XLA_FFI_InvokeContext must have unique
+  // extension types.
+  int64_t extension_type;
+  // Major and minor versions of the extension.
+  int32_t major_version;
+  int32_t minor_version;
+} XLA_FFI_ExtensionId;
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_ExtensionId, minor_version);
+
+// XLA_FFI_Extension is the generic extensible mechanism for passing custom
+// runtime execution data down to handlers via XLA_FFI_InvokeContext. Stability
+// guarantees are per-extension, and not global.
+// - Extensions define their own extension ID in a 64 bit space which
+//   disambiguates them from other extensions.
+// - Extensions don't need to register themselves with the XLA FFI library, and
+//   can be used in a header-only fashion.
+// - Extensions must define their own ABI and API version, and must update
+//   XLA_FFI_DEFINE_STRUCT_TRAITS with the new `last_field` after adding a new
+//   member to a struct.
+// - At most one extension of each extension type can be attached to a given
+//   XLA_FFI_InvokeContext.
+// - Extensions are attached to an XLA_FFI_InvokeContext via the
+//   `extension_start` field and have the same lifetime as the context itself
+//   i.e; during the lifetime of the Handler.
+// - Extensions must be defined in separate headers from api.h and c_api.h, so
+//   they can be included in a plugin-like fashion.
+typedef struct XLA_FFI_Extension XLA_FFI_Extension;
+struct XLA_FFI_Extension {
+  size_t struct_size;
+  XLA_FFI_ExtensionId id;
+  const XLA_FFI_Extension* next;
+};
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Extension, next);
 
 //===----------------------------------------------------------------------===//
 // Version
@@ -91,11 +135,11 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Extension_Base, next);
 // Minor changes include:
 // * Adding a new field to the XLA_FFI_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define XLA_FFI_API_MINOR 3
+#define XLA_FFI_API_MINOR 4
 
 struct XLA_FFI_Api_Version {
   size_t struct_size;
-  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_InternalExtension* extension_start;
   int major_version;  // out
   int minor_version;  // out
 };
@@ -149,7 +193,7 @@ typedef enum {
 
 struct XLA_FFI_Error_Create_Args {
   size_t struct_size;
-  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_InternalExtension* extension_start;
   const char* message;
   XLA_FFI_Error_Code errc;
 };
@@ -158,20 +202,21 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Error_Create_Args, errc);
 
 typedef XLA_FFI_Error* XLA_FFI_Error_Create(XLA_FFI_Error_Create_Args* args);
 
-struct XLA_FFI_Error_GetMessage_Args {
+struct XLA_FFI_Error_GetDetails_Args {
   size_t struct_size;
-  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_InternalExtension* extension_start;
   XLA_FFI_Error* error;
-  const char* message;  // out
+  const char* message;      // out
+  XLA_FFI_Error_Code errc;  // out
 };
 
-XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Error_GetMessage_Args, message);
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Error_GetDetails_Args, errc);
 
-typedef void XLA_FFI_Error_GetMessage(XLA_FFI_Error_GetMessage_Args* args);
+typedef void XLA_FFI_Error_GetDetails(XLA_FFI_Error_GetDetails_Args* args);
 
 struct XLA_FFI_Error_Destroy_Args {
   size_t struct_size;
-  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_InternalExtension* extension_start;
   XLA_FFI_Error* error;
 };
 
@@ -227,7 +272,7 @@ typedef enum {
 
 struct XLA_FFI_Buffer {
   size_t struct_size;
-  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_InternalExtension* extension_start;
 
   XLA_FFI_DataType dtype;
   void* data;
@@ -265,7 +310,9 @@ typedef enum {
 //===----------------------------------------------------------------------===//
 
 // Execution context provides access to per-invocation state.
-typedef struct XLA_FFI_ExecutionContext XLA_FFI_ExecutionContext;
+typedef struct XLA_FFI_InvokeContext XLA_FFI_InvokeContext;
+// For backwards compatibility before JAX moves to InvokeContext
+typedef XLA_FFI_InvokeContext XLA_FFI_ExecutionContext;
 
 //===----------------------------------------------------------------------===//
 // Primitives
@@ -306,7 +353,7 @@ typedef struct XLA_FFI_TypeId {
 // to destroy their state when executable is being destroyed.
 typedef struct XLA_FFI_TypeInfo {
   size_t struct_size;
-  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_InternalExtension* extension_start;
   void (*deleter)(void* object);
 } XLA_FFI_TypeInfo;
 
@@ -326,7 +373,7 @@ typedef struct XLA_FFI_Future XLA_FFI_Future;
 
 struct XLA_FFI_Future_Create_Args {
   size_t struct_size;
-  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_InternalExtension* extension_start;
   XLA_FFI_Future* future;  // out
 };
 
@@ -336,7 +383,7 @@ typedef XLA_FFI_Error* XLA_FFI_Future_Create(XLA_FFI_Future_Create_Args* args);
 
 struct XLA_FFI_Future_SetAvailable_Args {
   size_t struct_size;
-  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_InternalExtension* extension_start;
   XLA_FFI_Future* future;
 };
 
@@ -347,7 +394,7 @@ typedef XLA_FFI_Error* XLA_FFI_Future_SetAvailable(
 
 struct XLA_FFI_Future_SetError_Args {
   size_t struct_size;
-  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_InternalExtension* extension_start;
   XLA_FFI_Future* future;
   XLA_FFI_Error* error;  // ownership is transferred to the XLA runtime
 };
@@ -383,6 +430,12 @@ typedef XLA_FFI_Error* XLA_FFI_Future_SetError(
 //     on GPU backend) and argument buffers might contain uninitialized
 //     values in this case.
 //
+// (5) Record - called when FFI handler is called as a part of command buffer
+//     recording (e.g. CUDA graph create/update kernel launch on GPU backend).
+//     FFI handler should not have any side effects on the arguments as they
+//     might contain uninitialized values. Can be called multiple times to
+//     create or update the state attached to the FFI handler instance.
+//
 // XLA program (HLO module) compiled to an XLA executable that can be executed
 // on any device accessible to the process, and by extension FFI handlers are
 // not instantiated for any particular device, but for a process. FFI handlers
@@ -398,11 +451,12 @@ typedef enum {
   XLA_FFI_ExecutionStage_PREPARE = 1,
   XLA_FFI_ExecutionStage_INITIALIZE = 2,
   XLA_FFI_ExecutionStage_EXECUTE = 3,
+  XLA_FFI_ExecutionStage_RECORD = 4,
 } XLA_FFI_ExecutionStage;
 
 struct XLA_FFI_Args {
   size_t struct_size;
-  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_InternalExtension* extension_start;
 
   int64_t size;
   XLA_FFI_ArgType* types;  // length == size
@@ -413,7 +467,7 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Args, args);
 
 struct XLA_FFI_Rets {
   size_t struct_size;
-  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_InternalExtension* extension_start;
 
   int64_t size;
   XLA_FFI_RetType* types;  // length == size
@@ -426,7 +480,7 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Rets, rets);
 // rely on binary search to look up attributes by name.
 struct XLA_FFI_Attrs {
   size_t struct_size;
-  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_InternalExtension* extension_start;
 
   int64_t size;
   XLA_FFI_AttrType* types;   // length == size
@@ -438,10 +492,10 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Attrs, attrs);
 
 struct XLA_FFI_CallFrame {
   size_t struct_size;
-  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_InternalExtension* extension_start;
 
   const XLA_FFI_Api* api;
-  XLA_FFI_ExecutionContext* ctx;
+  XLA_FFI_InvokeContext* ctx;
   XLA_FFI_ExecutionStage stage;
   XLA_FFI_Args args;
   XLA_FFI_Rets rets;
@@ -468,6 +522,7 @@ typedef struct XLA_FFI_Handler_Bundle {
   XLA_FFI_Handler* prepare;      // optional
   XLA_FFI_Handler* initialize;   // optional
   XLA_FFI_Handler* execute;      // required
+  XLA_FFI_Handler* record;       // optional
 } XLA_FFI_Handler_Bundle;
 
 enum XLA_FFI_Handler_TraitsBits {
@@ -481,7 +536,7 @@ typedef uint32_t XLA_FFI_Handler_Traits;
 
 struct XLA_FFI_Handler_Register_Args {
   size_t struct_size;
-  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_InternalExtension* extension_start;
 
   XLA_FFI_ByteSpan name;
   XLA_FFI_ByteSpan platform;
@@ -502,7 +557,7 @@ typedef XLA_FFI_Error* XLA_FFI_Handler_Register(
 
 struct XLA_FFI_Type_Register_Args {
   size_t struct_size;
-  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_InternalExtension* extension_start;
 
   XLA_FFI_ByteSpan name;
   XLA_FFI_TypeId* type_id;  // in-out
@@ -517,24 +572,39 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Type_Register_Args, type_id);
 // the type registered with the same `name` earlier.
 typedef XLA_FFI_Error* XLA_FFI_Type_Register(XLA_FFI_Type_Register_Args* args);
 
+struct XLA_FFI_InvokeContext_FindExtension_Args {
+  size_t struct_size;
+  XLA_FFI_InternalExtension* extension_start;
+
+  XLA_FFI_InvokeContext* ctx;
+  int64_t extension_type;
+  const XLA_FFI_Extension* extension;  // out
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_InvokeContext_FindExtension_Args,
+                             extension);
+
+typedef XLA_FFI_Error* XLA_FFI_InvokeContext_FindExtension(
+    XLA_FFI_InvokeContext_FindExtension_Args* args);
+
 //===----------------------------------------------------------------------===//
 // ExecutionContext
 //===----------------------------------------------------------------------===//
 
-struct XLA_FFI_ExecutionContext_Get_Args {
+struct XLA_FFI_InvokeContext_Get_Args {
   size_t struct_size;
-  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_InternalExtension* extension_start;
 
-  XLA_FFI_ExecutionContext* ctx;
+  XLA_FFI_InvokeContext* ctx;
   XLA_FFI_TypeId* type_id;
   void* data;  // out
 };
 
-XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_ExecutionContext_Get_Args, data);
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_InvokeContext_Get_Args, data);
 
 // Returns an opaque data from the execution context for a given type id.
-typedef XLA_FFI_Error* XLA_FFI_ExecutionContext_Get(
-    XLA_FFI_ExecutionContext_Get_Args* args);
+typedef XLA_FFI_Error* XLA_FFI_InvokeContext_Get(
+    XLA_FFI_InvokeContext_Get_Args* args);
 
 //===----------------------------------------------------------------------===//
 // State
@@ -542,9 +612,9 @@ typedef XLA_FFI_Error* XLA_FFI_ExecutionContext_Get(
 
 struct XLA_FFI_State_Set_Args {
   size_t struct_size;
-  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_InternalExtension* extension_start;
 
-  XLA_FFI_ExecutionContext* ctx;
+  XLA_FFI_InvokeContext* ctx;
   XLA_FFI_ExecutionStage stage;
   XLA_FFI_TypeId* type_id;
   void* state;
@@ -558,9 +628,9 @@ typedef XLA_FFI_Error* XLA_FFI_State_Set(XLA_FFI_State_Set_Args* args);
 
 struct XLA_FFI_State_Get_Args {
   size_t struct_size;
-  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_InternalExtension* extension_start;
 
-  XLA_FFI_ExecutionContext* ctx;
+  XLA_FFI_InvokeContext* ctx;
   XLA_FFI_ExecutionStage stage;
   XLA_FFI_TypeId* type_id;
   void* state;  // out
@@ -578,9 +648,9 @@ typedef XLA_FFI_Error* XLA_FFI_State_Get(XLA_FFI_State_Get_Args* args);
 
 struct XLA_FFI_Stream_Get_Args {
   size_t struct_size;
-  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_InternalExtension* extension_start;
 
-  XLA_FFI_ExecutionContext* ctx;
+  XLA_FFI_InvokeContext* ctx;
   void* stream;  // out
 };
 
@@ -596,9 +666,9 @@ typedef XLA_FFI_Error* XLA_FFI_Stream_Get(XLA_FFI_Stream_Get_Args* args);
 
 struct XLA_FFI_DeviceMemory_Allocate_Args {
   size_t struct_size;
-  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_InternalExtension* extension_start;
 
-  XLA_FFI_ExecutionContext* ctx;
+  XLA_FFI_InvokeContext* ctx;
   size_t size;
   size_t alignment;
   void* data;  // out
@@ -612,9 +682,9 @@ typedef XLA_FFI_Error* XLA_FFI_DeviceMemory_Allocate(
 
 struct XLA_FFI_DeviceMemory_Free_Args {
   size_t struct_size;
-  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_InternalExtension* extension_start;
 
-  XLA_FFI_ExecutionContext* ctx;
+  XLA_FFI_InvokeContext* ctx;
   size_t size;
   void* data;
 };
@@ -642,9 +712,9 @@ typedef void XLA_FFI_Task(void* data);
 
 struct XLA_FFI_ThreadPool_Schedule_Args {
   size_t struct_size;
-  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_InternalExtension* extension_start;
 
-  XLA_FFI_ExecutionContext* ctx;
+  XLA_FFI_InvokeContext* ctx;
   XLA_FFI_Task* task;
   void* data;
 };
@@ -658,9 +728,9 @@ typedef XLA_FFI_Error* XLA_FFI_ThreadPool_Schedule(
 
 struct XLA_FFI_ThreadPool_NumThreads_Args {
   size_t struct_size;
-  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_InternalExtension* extension_start;
 
-  XLA_FFI_ExecutionContext* ctx;
+  XLA_FFI_InvokeContext* ctx;
   int64_t* num_threads;  // out
 };
 
@@ -686,9 +756,9 @@ typedef XLA_FFI_Error* XLA_FFI_ThreadPool_NumThreads(
 
 struct XLA_FFI_RunId_Get_Args {
   size_t struct_size;
-  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_InternalExtension* extension_start;
 
-  XLA_FFI_ExecutionContext* ctx;
+  XLA_FFI_InvokeContext* ctx;
   int64_t run_id;  // out
 };
 
@@ -703,9 +773,9 @@ typedef XLA_FFI_Error* XLA_FFI_RunId_Get(XLA_FFI_RunId_Get_Args* args);
 
 struct XLA_FFI_DeviceOrdinal_Get_Args {
   size_t struct_size;
-  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_InternalExtension* extension_start;
 
-  XLA_FFI_ExecutionContext* ctx;
+  XLA_FFI_InvokeContext* ctx;
   int32_t device_ordinal;  // out
 };
 
@@ -736,7 +806,7 @@ struct XLA_FFI_Metadata {
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Metadata, traits);
 
 struct XLA_FFI_Metadata_Extension {
-  XLA_FFI_Extension_Base extension_base;
+  XLA_FFI_InternalExtension extension_base;
   XLA_FFI_Metadata* metadata;
 };
 
@@ -750,18 +820,18 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Metadata_Extension, metadata);
 
 struct XLA_FFI_Api {
   size_t struct_size;
-  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_InternalExtension* extension_start;
 
   XLA_FFI_Api_Version api_version;
   const XLA_FFI_InternalApi* internal_api;
 
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Error_Create);
-  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Error_GetMessage);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Error_GetDetails);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Error_Destroy);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Handler_Register);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Stream_Get);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Type_Register);
-  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_ExecutionContext_Get);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_InvokeContext_Get);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_State_Set);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_State_Get);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_DeviceMemory_Allocate);
@@ -773,11 +843,12 @@ struct XLA_FFI_Api {
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Future_SetError);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_RunId_Get);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_DeviceOrdinal_Get);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_InvokeContext_FindExtension);
 };
 
 #undef _XLA_FFI_API_STRUCT_FIELD
 
-XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Api, XLA_FFI_DeviceOrdinal_Get);
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Api, XLA_FFI_InvokeContext_FindExtension);
 
 const XLA_FFI_Api* XLA_FFI_GetApi();
 

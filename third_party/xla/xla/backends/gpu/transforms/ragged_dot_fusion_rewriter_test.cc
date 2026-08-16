@@ -100,10 +100,10 @@ class RaggedDotFusionRewriterUnitTest : public HloPjRtGpuTestBase {
   }
 
   RaggedDotFusionRewriterUnitTest()
-      : HloPjRtGpuTestBase(HloPjRtTestBaseOptions{
-            /*verifier_layout_sensitive=*/false,
-            /*allow_mixed_precision_in_hlo_verifier=*/false,
-            /*instruction_can_change_layout_func=*/{}}) {}
+      : HloPjRtGpuTestBase(
+            HloTestBaseOptions{/*verifier_layout_sensitive=*/false,
+                               /*allow_mixed_precision_in_hlo_verifier=*/false,
+                               /*instruction_can_change_layout_func=*/{}}) {}
 };
 
 TEST_F(RaggedDotFusionRewriterUnitTest, TestSupportedRaggedDot) {
@@ -126,7 +126,7 @@ TEST_F(RaggedDotFusionRewriterUnitTest, TestSupportedRaggedDot) {
 // It verifies that the rewriter works correctly within the full GPU
 // optimization pipeline and produces numerically correct results on hardware.
 class RaggedDotFusionRewriterIntegrationTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase>,
+    : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase>,
       public ::testing::WithParamInterface<
           std::tuple<absl::string_view, absl::string_view>> {
  public:
@@ -148,11 +148,10 @@ class RaggedDotFusionRewriterIntegrationTest
   }
 
   RaggedDotFusionRewriterIntegrationTest()
-      : HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase>(
-            HloPjRtTestBaseOptions{
-                /*verifier_layout_sensitive=*/false,
-                /*allow_mixed_precision_in_hlo_verifier=*/false,
-                /*instruction_can_change_layout_func=*/{}}) {}
+      : HloInterpreterReferenceMixin<HloPjRtGpuTestBase>(
+            HloTestBaseOptions{/*verifier_layout_sensitive=*/false,
+                               /*allow_mixed_precision_in_hlo_verifier=*/false,
+                               /*instruction_can_change_layout_func=*/{}}) {}
 
  protected:
   std::string GetOptimizedHlo(absl::string_view hlo_string) {

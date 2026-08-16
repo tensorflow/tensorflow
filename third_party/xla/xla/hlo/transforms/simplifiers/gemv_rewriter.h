@@ -30,12 +30,21 @@ namespace xla {
 // rewritten to [n x 1] @ [m x n].
 class GemvRewriter : public HloModulePass {
  public:
+  explicit GemvRewriter(const bool is_layout_sensitive = true)
+      : is_layout_sensitive_(is_layout_sensitive) {}
+  ~GemvRewriter() override = default;
   absl::string_view name() const override { return "gemv-rewriter"; }
 
  protected:
   absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  // Whether the pass should be layout sensitive. If this pass is run before
+  // layout assignment then this value should be set to false, else should be
+  // set to true.
+  const bool is_layout_sensitive_;
 };
 
 }  // namespace xla

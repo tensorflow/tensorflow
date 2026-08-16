@@ -72,9 +72,8 @@ ENTRY entry_computation {
   auto* root = module->entry_computation()->root_instruction();
   HloFusionAnalysis analysis = HloFusionAnalysis::Create(*root, device_info);
 
-  mlir::MLIRContext mlir_context;
   std::unique_ptr<FusionInterface> emitter =
-      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis}, &mlir_context);
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis});
   auto triton_fusion = dynamic_cast<TritonFusion*>(emitter.get());
   ASSERT_NE(triton_fusion, nullptr);
   std::optional<TritonFusion::LaunchConfig> launch_config =
@@ -115,9 +114,8 @@ ENTRY entry_computation {
   TF_ASSERT_OK_AND_ASSIGN(BorrowedMlirContext borrowed_context,
                           mlir_context_pool.GetOrCreate());
 
-  mlir::MLIRContext mlir_context;
   std::unique_ptr<FusionInterface> emitter =
-      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis}, &mlir_context);
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis});
   auto triton_fusion_emitter = dynamic_cast<TritonFusion*>(emitter.get());
   ASSERT_NE(triton_fusion_emitter, nullptr);
   EXPECT_EQ(TritonFusion::GetLaunchConfig(&analysis), std::nullopt);
@@ -160,9 +158,8 @@ ENTRY entry_computation {
   auto* root = module->entry_computation()->root_instruction();
   HloFusionAnalysis analysis = HloFusionAnalysis::Create(*root, device_info);
 
-  mlir::MLIRContext mlir_context;
   std::unique_ptr<FusionInterface> emitter =
-      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis}, &mlir_context);
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis});
   auto triton_fusion = dynamic_cast<TritonFusion*>(emitter.get());
 
   ASSERT_NE(triton_fusion, nullptr);

@@ -27,12 +27,12 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm-c/Target.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/cpu_compiler.h"
+#include "xla/service/cpu/export_hlo.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/autotuner_cache.h"
 #include "xla/service/gpu/export_hlo.h"
@@ -70,6 +71,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/tools/hlo_module_loader.h"
+#include "xla/tools/xla_cpu_compile_lib.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/env_time.h"
 #include "xla/tsl/platform/errors.h"
@@ -81,20 +83,6 @@ limitations under the License.
 #include "tsl/platform/path.h"
 
 namespace xla {
-
-static absl::StatusOr<std::string> AotCompileCpuExecutable(
-    std::unique_ptr<HloModule> hlo_module,
-    std::optional<Compiler::CpuTargetConfig> target_config) {
-  cpu::CpuCompiler cpu_compiler;
-  Compiler::CompileOptions compile_options;
-  compile_options.cpu_target_config = std::move(target_config);
-  ASSIGN_OR_RETURN(
-      std::vector<std::unique_ptr<Executable>> executables,
-      cpu_compiler.Compile(std::move(hlo_module), {nullptr}, compile_options));
-  ASSIGN_OR_RETURN(std::unique_ptr<CompiledModule> aot_result,
-                   cpu_compiler.Export(executables[0].get()));
-  return aot_result->SerializeAsString();
-}
 
 static absl::StatusOr<stream_executor::StreamExecutor*> GetStreamExecutor(
     stream_executor::Platform* platform, int ordinal) {
@@ -112,16 +100,16 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
     std::optional<Compiler::GpuTargetConfig> target_config,
     CompilationResult& result, int32_t num_partitions, int32_t num_replicas,
     absl::string_view target_platform_version, bool use_attached_device) {
-  ASSIGN_OR_RETURN(std::string platform_name,
+  ABSL_ASSIGN_OR_RETURN(std::string platform_name,
                    xla::PlatformUtil::CanonicalPlatformName("gpu"));
   platform_name = absl::AsciiStrToUpper(platform_name);
   const bool aot = target_config.has_value() ||
                    !target_platform_version.empty() || use_attached_device;
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       se::Platform::Id platform_id,
       xla::PlatformUtil::GetPlatformIdFromCanonicalName(platform_name));
-  ASSIGN_OR_RETURN(auto gpu_compiler, Compiler::GetForPlatform(platform_id));
+  ABSL_ASSIGN_OR_RETURN(auto gpu_compiler, Compiler::GetForPlatform(platform_id));
   // Set the number of replicas and partitions in the HLO module
   // config only if they are non-trivial (meaning passed as command line
   // flags), otherwise the values from the HLO module will be used.
@@ -144,7 +132,7 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
     // altogether and use the GetGpuTopologyForPlatform constructor by
     // default.
     if (!target_platform_version.empty()) {
-      ASSIGN_OR_RETURN(topology,
+      ABSL_ASSIGN_OR_RETURN(topology,
                        GetGpuTopologyForPlatform(
                            target_platform_version, num_partitions,
                            /*num_hosts_per_partition=*/1, num_replicas));
@@ -162,7 +150,7 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
     if (topology.has_value() && topology->has_gpu_target_config()) {
       std::string target_platform_name =
           topology->gpu_target_config().platform_name;
-      ASSIGN_OR_RETURN(se::Platform::Id target_platform_id,
+      ABSL_ASSIGN_OR_RETURN(se::Platform::Id target_platform_id,
                        xla::PlatformUtil::GetPlatformIdFromCanonicalName(
                            target_platform_name));
       if (platform_id != target_platform_id) {
@@ -173,10 +161,10 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
     }
 
     if (use_attached_device) {
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           auto platform,
           stream_executor::PlatformManager::PlatformWithName(platform_name));
-      ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
+      ABSL_ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
                        GetStreamExecutor(platform, 0));
 
       aot_options.set_executor(stream_executor);
@@ -185,7 +173,7 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
     // We need the optimized module, so we call RunHloPasses ourselves above.
     aot_options.set_run_backend_only(true);
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<CompiledModule>> aot_results,
         gpu_compiler->CompileAheadOfTime(std::move(hlo_module), aot_options));
     if (!aot_results.empty() && aot_results[0]->optimized_module() != nullptr) {
@@ -216,18 +204,18 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
         /*default_memory_kind=*/"fake_memory_kind");
     return stream_executor_executable.SerializeExecutable();
   }
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto platform,
       stream_executor::PlatformManager::PlatformWithName(platform_name));
   Compiler::CompileOptions compile_options;
-  ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
+  ABSL_ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
                    GetStreamExecutor(platform, 0));
   auto allocator =
       std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
           stream_executor);
   compile_options.device_allocator = allocator.get();
 
-  ASSIGN_OR_RETURN(std::vector<std::unique_ptr<Executable>> executables,
+  ABSL_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<Executable>> executables,
                    gpu_compiler->Compile(std::move(hlo_module),
                                          {stream_executor}, compile_options));
   *result.mutable_hlo_module() = executables[0]->module().ToProto();
@@ -241,8 +229,12 @@ absl::StatusOr<std::string> CompileExecutable(
     int32_t num_partitions, int32_t num_replicas, CompilationResult& result,
     absl::string_view target_platform_version, bool use_attached_device) {
   if (backend == BackendType::kCpu) {
+    std::optional<cpu::TargetMachineOptions> target_options = std::nullopt;
+    if (cpu_target_config.has_value()) {
+      target_options = cpu_target_config->cpu_target_machine_options;
+    }
     return AotCompileCpuExecutable(std::move(hlo_module),
-                                   std::move(cpu_target_config));
+                                   std::move(target_options));
   }
   return CompileGpuExecutable(std::move(hlo_module),
                               std::move(gpu_target_config), result,
@@ -281,25 +273,25 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModule(
         [&](HloModuleConfig* c) {}, nullptr);
   }
   std::string module_string;
-  RETURN_IF_ERROR(tsl::ReadFileToString(
+  ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(
       tsl::Env::Default(), std::string(module_path), &module_string));
 
   // Parse MHLO module.
   auto threading = mlir::MLIRContext::Threading::DISABLED;
   auto ctx = std::make_unique<mlir::MLIRContext>(threading);
 
-  ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+  ABSL_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                    ParseMlirModuleString(module_string, *ctx));
 
   // Convert Mhlo to Hlo Module.
   XlaComputation xla_computation;
-  RETURN_IF_ERROR(MlirToXlaComputation(*module, xla_computation,
+  ABSL_RETURN_IF_ERROR(MlirToXlaComputation(*module, xla_computation,
                                        /*use_tuple_args=*/false,
                                        /*return_tuple=*/false,
                                        /*exec_build_options=*/nullptr));
   HloModuleProto hlo_module_proto = xla_computation.proto();
 
-  ASSIGN_OR_RETURN(ProgramShape shape, xla_computation.GetProgramShape());
+  ABSL_ASSIGN_OR_RETURN(ProgramShape shape, xla_computation.GetProgramShape());
   DebugOptions debug_options = GetDebugOptionsFromFlags();
   HloModuleConfig config(shape);
   config.set_debug_options(debug_options);
@@ -311,7 +303,7 @@ ReadModuleFromSymbolRepo(absl::string_view symbol_repo,
                          absl::string_view symbol_reference,
                          BackendType backend) {
   std::unique_ptr<HloModuleAndMetadata> mod;
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       mod, LookupSymbolInRepository(symbol_repo, symbol_reference, backend));
   if (mod == nullptr) {
     return absl::NotFoundError(
@@ -343,7 +335,7 @@ absl::StatusOr<bool> LoadAutotuneDataFromModule(HloModuleAndMetadata* mod,
         data != nullptr && data->autotune_results.has_value() &&
         mod->hlo_module->config().debug_options().xla_gpu_autotune_level() >
             0) {
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           gpu::AutotunerCache::LoadAutotuneResults(*data->autotune_results));
       return true;
     }
@@ -401,6 +393,22 @@ static void InitializeTargets() {
 
 }  // namespace internal
 
+static absl::StatusOr<std::unique_ptr<HloModuleConfig>> LoadModuleConfig(
+    absl::string_view config_file) {
+  HloModuleConfigProto config_proto;
+  std::string file_content;
+  ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(
+      tsl::Env::Default(), std::string(config_file), &file_content));
+  google::protobuf::TextFormat::Parser parser;
+  parser.AllowUnknownField(true);
+  if (!parser.ParseFromString(file_content, &config_proto)) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Failed to parse HloModuleConfigProto from ", config_file));
+  }
+
+  return HloModuleConfig::CreateFromProto(config_proto);
+}
+
 absl::Status XlaCompileMain(const XlaCompileOptions& options) {
   absl::call_once(internal::targets_init, &internal::InitializeTargets);
   std::unique_ptr<HloModule> hlo_module;
@@ -421,13 +429,34 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
   absl::string_view symbol_repo = options.repo_options.symbol_repo;
   if (absl::string_view symbol_id = options.repo_options.symbol_id;
       !symbol_id.empty()) {
-    ASSIGN_OR_RETURN(std::unique_ptr<HloModuleAndMetadata> mod,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleAndMetadata> mod,
                      ReadModuleFromSymbolRepo(symbol_repo, symbol_id, backend));
 
     hlo_module = std::move(mod->hlo_module);
     gpu_cfg = std::move(*ReadTargetConfigFromModule(mod.get(), backend));
   } else {
-    ASSIGN_OR_RETURN(hlo_module, LoadModule(options.module_path));
+    ABSL_ASSIGN_OR_RETURN(hlo_module, LoadModule(options.module_path));
+  }
+
+  // Override partitioning parameters with values from HloModuleConfig if it is
+  // provided.
+  int num_partitions = options.num_partitions;
+  int num_replicas = options.num_replicas;
+  bool use_shardy_partitioner = options.use_shardy_partitioner;
+  if (!options.module_config_path.empty()) {
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> loaded_config,
+                     LoadModuleConfig(options.module_config_path));
+    if (!loaded_config->has_entry_computation_layout() &&
+        hlo_module->config().has_entry_computation_layout()) {
+      loaded_config->SetComputationLayoutIfExists(
+          hlo_module->config()
+              .entry_computation_layout()
+              .ComputeProgramShape());
+    }
+    hlo_module->set_config(*loaded_config);
+    num_partitions = loaded_config->num_partitions();
+    num_replicas = loaded_config->replica_count();
+    use_shardy_partitioner = loaded_config->use_shardy_partitioner();
   }
 
   bool found_autotune = false;
@@ -435,11 +464,11 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
   if (absl::string_view optimized_symbol_id =
           options.repo_options.optimized_symbol_id;
       !optimized_symbol_id.empty()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleAndMetadata> optimized_mod,
         ReadModuleFromSymbolRepo(symbol_repo, optimized_symbol_id, backend));
 
-    ASSIGN_OR_RETURN(found_autotune, internal::LoadAutotuneDataFromModule(
+    ABSL_ASSIGN_OR_RETURN(found_autotune, internal::LoadAutotuneDataFromModule(
                                          optimized_mod.get(), backend));
   }
 
@@ -464,7 +493,7 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
         !gpu_target_config_path.empty()) {
       // Parse GpuTargetConfig.
       std::string gpu_target_config_string;
-      RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(),
+      ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(),
                                             std::string(gpu_target_config_path),
                                             &gpu_target_config_string));
       stream_executor::GpuTargetConfigProto gpu_target_config_proto;
@@ -474,14 +503,14 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
         return FailedPrecondition("Failed to parse GpuTargetConfigProto");
       }
 
-      ASSIGN_OR_RETURN(gpu_cfg, Compiler::GpuTargetConfig::FromProto(
+      ABSL_ASSIGN_OR_RETURN(gpu_cfg, Compiler::GpuTargetConfig::FromProto(
                                     gpu_target_config_proto));
 
       if (absl::string_view autotune_results_path =
               options.gpu_options.autotune_results_path;
           !found_autotune && !autotune_results_path.empty() &&
           hlo_module->config().debug_options().xla_gpu_autotune_level() > 0) {
-        RETURN_IF_ERROR(gpu::AutotunerCache::LoadAutotuneResultsFromFile(
+        ABSL_RETURN_IF_ERROR(gpu::AutotunerCache::LoadAutotuneResultsFromFile(
             autotune_results_path));
       }
     }
@@ -495,7 +524,7 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
     cpu_cfg =
         std::make_optional<Compiler::CpuTargetConfig>(target_machine_options);
   }
-  if (options.use_shardy_partitioner) {
+  if (use_shardy_partitioner) {
     hlo_module->mutable_config().set_use_shardy_partitioner(true);
   }
   if (options.force_auto_layout) {
@@ -525,7 +554,7 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
 
   auto result = CompileExecutable(
       std::move(hlo_module), backend, std::move(gpu_cfg), std::move(cpu_cfg),
-      options.num_partitions, options.num_replicas, compilation_result,
+      num_partitions, num_replicas, compilation_result,
       options.gpu_options.target_platform_version,
       options.gpu_options.use_attached_device);
   *compilation_result.mutable_status() = tsl::StatusToProto(result.status());
@@ -534,12 +563,16 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
   }
 
   if (!options.output_file.empty()) {
-    RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(),
+    ABSL_RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(),
                                            options.output_file, *result));
   }
 
   if (options.repo_options.wait_for_uploads) {
-    MaybeWaitForUploads();
+    if (backend == BackendType::kCpu) {
+      cpu::MaybeWaitForUploads();
+    } else {
+      gpu::MaybeWaitForUploads();
+    }
   }
   return absl::OkStatus();
 }

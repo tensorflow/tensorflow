@@ -1,0 +1,48 @@
+HloModule jit_layer_norm, entry_computation_layout={(bf16[1,4096,768]{2,1,0})->bf16[1,4096,768]{2,1,0}}
+
+region_0.1 {
+  reduce_sum.3 = f32[] parameter(0)
+  reduce_sum.4 = f32[] parameter(1)
+  ROOT reduce_sum.5 = f32[] add(reduce_sum.3, reduce_sum.4)
+}
+
+region_1.2 {
+  reduce_sum.10 = f32[] parameter(0)
+  reduce_sum.11 = f32[] parameter(1)
+  ROOT reduce_sum.12 = f32[] add(reduce_sum.10, reduce_sum.11)
+}
+
+ENTRY main.3 {
+  x.1 = bf16[1,4096,768]{2,1,0} parameter(0)
+  convert_element_type.4 = f32[1,4096,768]{2,1,0} convert(x.1)
+  constant.5 = f32[] constant(0)
+  reduce_sum.14 = f32[1,4096]{1,0} reduce(convert_element_type.4, constant.5), dimensions={2}, to_apply=region_0.1
+  broadcast_in_dim.2 = f32[1,4096,1]{2,1,0} reshape(reduce_sum.14)
+  constant.4 = f32[] constant(768)
+  broadcast.1 = f32[1,4096,1]{2,1,0} broadcast(constant.4), dimensions={}
+  div.6 = f32[1,4096,1]{2,1,0} divide(broadcast_in_dim.2, broadcast.1)
+  convert_element_type.5 = bf16[1,4096,1]{2,1,0} convert(div.6)
+  sub.12 = bf16[1,4096,1]{2,1,0} broadcast(convert_element_type.5), dimensions={0,1,2}
+  sub.13 = bf16[1,4096]{1,0} reshape(sub.12)
+  sub.14 = bf16[1,4096,768]{2,1,0} broadcast(sub.13), dimensions={0,1}
+  sub.15 = bf16[1,4096,768]{2,1,0} subtract(x.1, sub.14)
+  sub.8 = bf16[1,4096,1]{2,1,0} broadcast(convert_element_type.5), dimensions={0,1,2}
+  sub.9 = bf16[1,4096]{1,0} reshape(sub.8)
+  sub.10 = bf16[1,4096,768]{2,1,0} broadcast(sub.9), dimensions={0,1}
+  sub.11 = bf16[1,4096,768]{2,1,0} subtract(x.1, sub.10)
+  integer_pow.1 = bf16[1,4096,768]{2,1,0} multiply(sub.11, sub.11)
+  convert_element_type.6 = f32[1,4096,768]{2,1,0} convert(integer_pow.1)
+  reduce_sum.15 = f32[1,4096]{1,0} reduce(convert_element_type.6, constant.5), dimensions={2}, to_apply=region_1.2
+  broadcast_in_dim.3 = f32[1,4096,1]{2,1,0} reshape(reduce_sum.15)
+  div.7 = f32[1,4096,1]{2,1,0} divide(broadcast_in_dim.3, broadcast.1)
+  convert_element_type.7 = bf16[1,4096,1]{2,1,0} convert(div.7)
+  constant.3 = bf16[] constant(1.001e-05)
+  add.2 = bf16[1,4096,1]{2,1,0} broadcast(constant.3), dimensions={}
+  add.3 = bf16[1,4096,1]{2,1,0} add(convert_element_type.7, add.2)
+  sqrt.1 = bf16[1,4096,1]{2,1,0} sqrt(add.3)
+  div.8 = bf16[1,4096,1]{2,1,0} broadcast(sqrt.1), dimensions={0,1,2}
+  div.9 = bf16[1,4096]{1,0} reshape(div.8)
+  div.10 = bf16[1,4096,768]{2,1,0} broadcast(div.9), dimensions={0,1}
+  ROOT div.11 = bf16[1,4096,768]{2,1,0} divide(sub.15, div.10)
+}
+

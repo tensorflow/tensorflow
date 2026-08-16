@@ -25,10 +25,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "triton/Version.h"
 
 namespace xla {
 namespace gpu {
@@ -116,7 +117,7 @@ TritonBackend::GetSupportedConfigs(const HloInstruction& instr) {
   if (!IsSupported(instr)) {
     return std::vector<std::unique_ptr<BackendConfig>>();
   }
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<BackendConfig>> overridden_configs,
       GetOverriddenConfigs(&instr));
   if (!overridden_configs.empty()) {
@@ -166,8 +167,14 @@ TritonBackend::GetSupportedConfigsForDot(const HloInstruction* instr) {
     if (!debug_options()
              .xla_gpu_experimental_cost_model_gemm_tiling_options()
              .empty()) {
-      ASSIGN_OR_RETURN(gemm_configs, OptimizeConfigsWithCostModel(
+      ABSL_ASSIGN_OR_RETURN(gemm_configs, OptimizeConfigsWithCostModel(
                                          dot, all_configs, gemm_configs,
+                                         target_config().device_description,
+                                         debug_options(), mlir_context_));
+    } else if (debug_options()
+                   .xla_gpu_experimental_cost_model_gemm_tiling_default()) {
+      ABSL_ASSIGN_OR_RETURN(gemm_configs, SortConfigsWithCostModel(
+                                         dot, gemm_configs,
                                          target_config().device_description,
                                          debug_options(), mlir_context_));
     }
@@ -236,7 +243,7 @@ TritonBackend::GetOverriddenConfigs(const HloInstruction* instr) {
       debug_options().xla_gpu_gemm_autotuner_override_file();
   if (!override_file.empty()) {
     std::string file_content;
-    RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), override_file,
+    ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), override_file,
                                           &file_content));
     TritonGemmConfigsProto gemm_configs;
     if (!tsl::protobuf::TextFormat::ParseFromString(file_content,
@@ -264,15 +271,8 @@ TritonBackend::GetOverriddenConfigs(const HloInstruction* instr) {
 
 absl::StatusOr<std::unique_ptr<BackendConfig>> TritonBackend::GetDefaultConfig(
     const HloInstruction& instr) {
-  ASSIGN_OR_RETURN(std::vector<std::unique_ptr<BackendConfig>> configs,
-                   GetSupportedConfigs(instr));
-
-  if (configs.empty()) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("TritonBackend has no supported configs for '",
-                     instr.name(), "' instruction"));
-  }
-  return std::move(configs[0]);
+  return absl::UnimplementedError(
+      "TritonBackend does not support a default config.");
 }
 
 absl::Status TritonBackend::ApplyConfig(HloInstruction& instr,
@@ -287,17 +287,17 @@ absl::Status TritonBackend::ApplyConfig(HloInstruction& instr,
   }
   const AutotuneResult::TritonGemmKey& triton_config_proto = config.triton();
 
-  ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                    instr.backend_config<GpuBackendConfig>());
   FusionBackendConfig& backend_config =
       *gpu_config.mutable_fusion_backend_config();
 
   backend_config.set_kind(kTritonGemmFusionKind);
   *backend_config.mutable_triton_gemm_config() = triton_config_proto;
-  RETURN_IF_ERROR(instr.set_backend_config(gpu_config));
+  ABSL_RETURN_IF_ERROR(instr.set_backend_config(gpu_config));
 
   // FromProto has validation checks, that's why we call it here.
-  RETURN_IF_ERROR(TritonGemmConfig::FromProto(triton_config_proto).status());
+  ABSL_RETURN_IF_ERROR(TritonGemmConfig::FromProto(triton_config_proto).status());
   if (triton_config_proto.split_k() > 1) {
     return absl::InvalidArgumentError(
         "TritonBackend no longer supports split-k (split_k > 1).");
@@ -315,7 +315,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonBackend::RunHloPasses(
     GpuFloatSupport float_support(gpu_device_info.gpu_compute_capability(),
                                   type);
     FloatNormalization float_normalization(&float_support);
-    RETURN_IF_ERROR(float_normalization.Run(hlo_module.get()).status());
+    ABSL_RETURN_IF_ERROR(float_normalization.Run(hlo_module.get()).status());
   }
 
   HloCostAnalysis::Options priority_fusion_options;
@@ -323,15 +323,15 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonBackend::RunHloPasses(
   PriorityFusion priority_fusion(
       /*thread_pool=*/nullptr, gpu_device_info, alias_info_,
       priority_fusion_options, mlir_context_);
-  RETURN_IF_ERROR(priority_fusion.Run(hlo_module.get()).status());
+  ABSL_RETURN_IF_ERROR(priority_fusion.Run(hlo_module.get()).status());
 
   // If the priority fusion pass above skipped some instructions, turn them
   // into fusions.
   FusionWrapper fusion_wrapper(gpu_device_info);
-  RETURN_IF_ERROR(fusion_wrapper.Run(hlo_module.get()).status());
+  ABSL_RETURN_IF_ERROR(fusion_wrapper.Run(hlo_module.get()).status());
   ConvertTritonGemmConfig convert_triton_gemm_config(gpu_device_info,
                                                      mlir_context_);
-  RETURN_IF_ERROR(convert_triton_gemm_config.Run(hlo_module.get()).status());
+  ABSL_RETURN_IF_ERROR(convert_triton_gemm_config.Run(hlo_module.get()).status());
   return hlo_module;
 }
 
@@ -356,10 +356,14 @@ bool TritonBackend::IsSupported(const HloInstruction& instr) {
             ->config()
             .debug_options()
             .xla_gpu_experimental_enable_tiling_propagation()) {
-      std::unique_ptr<experimental::TilingSpace> ts =
+      auto ts =
           experimental::TilingSpace::Create(*fusion_adaptor, mlir_context_);
+      if (!ts.ok()) {
+        VLOG(1) << "Failed to create tiling space: " << ts.status().message();
+        return false;
+      }
       auto tiled_computation_or = experimental::TiledHloComputation::Tile(
-          *fusion_adaptor, std::move(ts));
+          *fusion_adaptor, std::move(ts.value()));
       if (!tiled_computation_or.ok()) {
         VLOG(1) << "Fusion is not tileable with experimental tiling: "
                 << tiled_computation_or.status().message();
@@ -385,6 +389,8 @@ bool TritonBackend::IsSupported(const HloInstruction& instr) {
   return backend_config.kind() == kCuDnnFusionKind ||
          backend_config.kind() == kCustomFusionKind;
 }
+
+std::string TritonBackend::version() const { return TRITON_VERSION; }
 
 }  // namespace gpu
 }  // namespace xla

@@ -46,7 +46,7 @@ namespace xla {
 namespace {
 
 class GatherOperationTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+    : public HloPjRtInterpreterReferenceMixin<HloTestBase> {
  protected:
   void RunTest(const std::string& hlo_text, Literal* operand,
                Literal* start_indices) {
@@ -752,7 +752,7 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{0, 0}));
 }
 
-using GatherOperationWithoutReferenceTest = HloPjRtTestBase;
+using GatherOperationWithoutReferenceTest = HloTestBase;
 
 TEST_F(GatherOperationWithoutReferenceTest, Basic) {
   // We create this HLO, but using the XlaBuilder API.

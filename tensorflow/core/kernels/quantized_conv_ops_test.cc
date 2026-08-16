@@ -19,9 +19,13 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/test.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -30,7 +34,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -320,6 +324,198 @@ TEST_F(QuantizedConv2DTest, SmallWithNoZero) {
   Tensor output_float =
       QuantizedTensorToFloat<qint32>(output_quantized, output_min, output_max);
   test::ExpectTensorNear<float>(expected_float, output_float, 1.0);
+}
+
+TEST_F(QuantizedConv2DTest, ValidPaddingZeroOutput) {
+  const int stride = 1;
+  TF_ASSERT_OK(NodeDefBuilder("quantized_conv_op", "QuantizedConv2D")
+                   .Input(FakeInput(DT_QUINT8))
+                   .Input(FakeInput(DT_QUINT8))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("out_type", DataTypeToEnum<qint32>::v())
+                   .Attr("strides", {1, stride, stride, 1})
+                   .Attr("padding", "VALID")
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  const int depth = 1;
+  const int image_width = 2;
+  const int image_height = 2;
+  const int image_batch_count = 1;
+  AddInputFromArray<quint8>(
+      TensorShape({image_batch_count, image_height, image_width, depth}),
+      {1, 1, 1, 1});
+  const int filter_size = 3;
+  const int filter_count = 1;
+  AddInputFromArray<quint8>(
+      TensorShape({filter_size, filter_size, depth, filter_count}),
+      {1, 2, 3, 4, 5, 6, 7, 8, 9});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
+
+  EXPECT_THAT(RunOpKernel(),
+              testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(QuantizedConv2DTest, ValidPaddingZeroOutputCols) {
+  const int stride = 1;
+  TF_ASSERT_OK(NodeDefBuilder("quantized_conv_op", "QuantizedConv2D")
+                   .Input(FakeInput(DT_QUINT8))
+                   .Input(FakeInput(DT_QUINT8))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("out_type", DataTypeToEnum<qint32>::v())
+                   .Attr("strides", {1, stride, stride, 1})
+                   .Attr("padding", "VALID")
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  const int depth = 1;
+  const int image_width = 2;
+  const int image_height = 3;
+  const int image_batch_count = 1;
+  AddInputFromArray<quint8>(
+      TensorShape({image_batch_count, image_height, image_width, depth}),
+      {1, 1, 1, 1, 1, 1});
+  const int filter_size = 3;
+  const int filter_count = 1;
+  AddInputFromArray<quint8>(
+      TensorShape({filter_size, filter_size, depth, filter_count}),
+      {1, 2, 3, 4, 5, 6, 7, 8, 9});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
+
+  EXPECT_THAT(RunOpKernel(),
+              testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(QuantizedConv2DTest, ZeroBatch) {
+  const int stride = 1;
+  TF_ASSERT_OK(NodeDefBuilder("quantized_conv_op", "QuantizedConv2D")
+                   .Input(FakeInput(DT_QUINT8))
+                   .Input(FakeInput(DT_QUINT8))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("out_type", DataTypeToEnum<qint32>::v())
+                   .Attr("strides", {1, stride, stride, 1})
+                   .Attr("padding", "SAME")
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  const int depth = 1;
+  const int image_width = 4;
+  const int image_height = 4;
+  const int image_batch_count = 0;
+  AddInputFromArray<quint8>(
+      TensorShape({image_batch_count, image_height, image_width, depth}), {});
+  const int filter_size = 3;
+  const int filter_count = 1;
+  AddInputFromArray<quint8>(
+      TensorShape({filter_size, filter_size, depth, filter_count}),
+      {1, 2, 3, 4, 5, 6, 7, 8, 9});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
+
+  EXPECT_THAT(RunOpKernel(),
+              testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(QuantizedConv2DTest, ZeroFilterCount) {
+  const int stride = 1;
+  TF_ASSERT_OK(NodeDefBuilder("quantized_conv_op", "QuantizedConv2D")
+                   .Input(FakeInput(DT_QUINT8))
+                   .Input(FakeInput(DT_QUINT8))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("out_type", DataTypeToEnum<qint32>::v())
+                   .Attr("strides", {1, stride, stride, 1})
+                   .Attr("padding", "SAME")
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  const int depth = 1;
+  const int image_width = 4;
+  const int image_height = 4;
+  const int image_batch_count = 1;
+  AddInputFromArray<quint8>(
+      TensorShape({image_batch_count, image_height, image_width, depth}),
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  const int filter_size = 3;
+  const int filter_count = 0;
+  AddInputFromArray<quint8>(
+      TensorShape({filter_size, filter_size, depth, filter_count}), {});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
+
+  EXPECT_THAT(RunOpKernel(),
+              testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(QuantizedConv2DTest, ZeroFilterRows) {
+  const int stride = 1;
+  TF_ASSERT_OK(NodeDefBuilder("quantized_conv_op", "QuantizedConv2D")
+                   .Input(FakeInput(DT_QUINT8))
+                   .Input(FakeInput(DT_QUINT8))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("out_type", DataTypeToEnum<qint32>::v())
+                   .Attr("strides", {1, stride, stride, 1})
+                   .Attr("padding", "SAME")
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<quint8>(
+      TensorShape({1, 4, 4, 1}),
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  AddInputFromArray<quint8>(TensorShape({0, 3, 1, 1}), {});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
+
+  EXPECT_THAT(RunOpKernel(),
+              testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(QuantizedConv2DTest, ZeroFilterCols) {
+  const int stride = 1;
+  TF_ASSERT_OK(NodeDefBuilder("quantized_conv_op", "QuantizedConv2D")
+                   .Input(FakeInput(DT_QUINT8))
+                   .Input(FakeInput(DT_QUINT8))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("out_type", DataTypeToEnum<qint32>::v())
+                   .Attr("strides", {1, stride, stride, 1})
+                   .Attr("padding", "SAME")
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<quint8>(
+      TensorShape({1, 4, 4, 1}),
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  AddInputFromArray<quint8>(TensorShape({3, 0, 1, 1}), {});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
+
+  EXPECT_THAT(RunOpKernel(),
+              testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace tensorflow

@@ -1,0 +1,69 @@
+# Copyright 2025 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+# .github/workflows/run_benchmarks.yml
+name: Run Benchmarks
+
+on:
+  # Allow manual runs from the Actions tab for testing
+  workflow_dispatch:
+    inputs:
+      ab_mode:
+        description: "Run A/B comparison (baseline vs experiment)."
+        required: false
+        type: boolean
+        default: false
+      baseline_ref:
+        description: "Git ref for the baseline in A/B mode. Defaults to PR base or main."
+        required: false
+        type: string
+        default: ""
+      experiment_ref:
+        description: "Git ref for the experiment in A/B mode. Defaults to current commit SHA."
+        required: false
+        type: string
+        default: ""
+      benchmark_filter:
+        description: "Regex to filter by benchmark name (e.g., 'gemma3_.*')."
+        required: false
+        type: string
+        default: ""
+      environment_filter:
+        description: "Regex to filter by environment configuration ID (e.g., 'gpu_.*')."
+        required: false
+        type: string
+        default: ""
+      custom_metadata:
+        description: "JSON string of metadata to append to the benchmark result. Overwrites static metadata from the registry but is overwritten by dynamic metadata from the workload."
+        required: false
+        type: string
+        default: "{}"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  run_benchmarks:
+    name: XLA Benchmarks
+    uses: google-ml-infra/bap/.github/workflows/run-benchmarks.yaml@fd37d1f65a06f0124d9d2022d97efa8dc8812557 # main
+    with:
+      registry_file: "xla/tools/benchmarks/benchmark_registry.pbtxt"
+      bap_ref: "fd37d1f65a06f0124d9d2022d97efa8dc8812557"
+      ab_mode: ${{ inputs.ab_mode }}
+      baseline_ref: ${{ inputs.baseline_ref }}
+      experiment_ref: ${{ inputs.experiment_ref }}
+      benchmark_filter: ${{ inputs.benchmark_filter }}
+      environment_filter: ${{ inputs.environment_filter }}
+      custom_metadata: ${{ inputs.custom_metadata }}

@@ -2003,6 +2003,13 @@ class ResamplerOperationParser : public TFLiteOperationParser {
     auto src_shape = graph->FindInputs(node->id)[0]->tensor.shape;
     auto warp_shape = graph->FindInputs(node->id)[1]->tensor.shape;
 
+    if (src_shape.b != warp_shape.b) {
+      return absl::InvalidArgumentError("src_shape.b != warp_shape.b");
+    }
+    if (warp_shape.c < 2) {
+      return absl::InvalidArgumentError("warp_shape.c < 2");
+    }
+
     auto output_value = graph->FindOutputs(node->id)[0];
     output_value->tensor.shape =
         BHWC(src_shape.b, warp_shape.h, warp_shape.w, src_shape.c);

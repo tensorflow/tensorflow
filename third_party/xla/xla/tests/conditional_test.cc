@@ -50,13 +50,12 @@ using ::absl_testing::IsOkAndHolds;
 
 constexpr ErrorSpec kErrorSpec{0.001};
 
-class ConditionalOpTest
-    : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+class ConditionalOpTest : public ClientLibraryTestRunnerMixin<
+                              HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  protected:
   void SetUp() override {
     ClientLibraryTestRunnerMixin<
-        HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>::SetUp();
+        HloPjRtInterpreterReferenceMixin<HloTestBase>>::SetUp();
     mutable_debug_options()->set_xla_test_add_command_buffer_mode(true);
   }
 
@@ -805,7 +804,7 @@ TEST_F(ConditionalOpTest, SwappedInputsInSequentialConditionals) {
     const Literal y_arg = LiteralUtil::CreateR0<float>(b);
     const Literal expected = LiteralUtil::MakeTupleFromSlices(
         {LiteralUtil::CreateR0<float>(a), LiteralUtil::CreateR0<float>(b)});
-    ASSIGN_OR_RETURN(const Literal result,
+    ABSL_ASSIGN_OR_RETURN(const Literal result,
                      test_runner().ExecuteWithExecutable(executable.get(),
                                                          {&x_arg, &y_arg}));
     return LiteralTestUtil::Near(expected, result, kErrorSpec);
@@ -876,7 +875,7 @@ TEST_F(ConditionalOpTest, DuplicateElementsConditional) {
   EXPECT_TRUE(LiteralTestUtil::Equal(false_reference, false_result));
 }
 
-using ConditionalOpHloTest = HloPjRtTestBase;
+using ConditionalOpHloTest = HloTestBase;
 
 TEST_F(ConditionalOpHloTest, ParallelExecution) {
   // Test conditional works when an executable is executed in parallel.

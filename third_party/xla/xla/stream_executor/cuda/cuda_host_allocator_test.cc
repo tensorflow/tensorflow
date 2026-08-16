@@ -93,13 +93,12 @@ TEST_P(CudaHostAllocatorTest, MemcpyRoundTrip) {
   }
 
   // Copy pinned host memory to device.
-  DeviceAddress<uint8_t> device_addr(device_alloc->address());
-  ASSERT_OK(
-      stream->MemcpyH2D(absl::Span<const uint8_t>(host_span), &device_addr));
+  DeviceAddressBase device_addr = device_alloc->address();
+  ASSERT_OK(stream->Memcpy(&device_addr, host_span.data(), kSize));
 
   // Zero the host buffer and copy back from device.
   std::memset(host_span.data(), 0, kSize);
-  ASSERT_OK(stream->MemcpyD2H(device_addr, host_span));
+  ASSERT_OK(stream->Memcpy(host_span.data(), device_addr, kSize));
   ASSERT_OK(stream->BlockHostUntilDone());
 
   // Verify the data roundtripped correctly.

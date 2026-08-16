@@ -261,4 +261,44 @@ TEST(CheckGpuDelegateCompatibility, BasicLstmAlignedActivationDepth) {
   EXPECT_THAT(CheckGpuDelegateCompatibility(op_sig), IsOk());
 }
 
+TEST(CheckGpuDelegateCompatibility, ResamplerMismatchedBatch) {
+  OpSignature op_sig = OpSignature();
+  op_sig.op = BuiltinOperator_CUSTOM;
+  op_sig.custom_name = "Resampler";
+  op_sig.inputs = std::vector<OpSignatureTensorSpec>(2);
+  op_sig.inputs[0].is_const = false;
+  op_sig.inputs[0].type = kTfLiteFloat32;
+  op_sig.inputs[0].dims = {2, 4, 4, 3};
+  op_sig.inputs[1].is_const = false;
+  op_sig.inputs[1].type = kTfLiteFloat32;
+  op_sig.inputs[1].dims = {1, 4, 4, 2};
+  op_sig.outputs = std::vector<OpSignatureTensorSpec>(1);
+  op_sig.outputs[0].type = kTfLiteFloat32;
+  op_sig.outputs[0].dims = {2, 4, 4, 3};
+
+  EXPECT_THAT(CheckGpuDelegateCompatibility(op_sig),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("src.b != warp.b")));
+}
+
+TEST(CheckGpuDelegateCompatibility, ResamplerInvalidChannels) {
+  OpSignature op_sig = OpSignature();
+  op_sig.op = BuiltinOperator_CUSTOM;
+  op_sig.custom_name = "Resampler";
+  op_sig.inputs = std::vector<OpSignatureTensorSpec>(2);
+  op_sig.inputs[0].is_const = false;
+  op_sig.inputs[0].type = kTfLiteFloat32;
+  op_sig.inputs[0].dims = {1, 4, 4, 3};
+  op_sig.inputs[1].is_const = false;
+  op_sig.inputs[1].type = kTfLiteFloat32;
+  op_sig.inputs[1].dims = {1, 4, 4, 1};
+  op_sig.outputs = std::vector<OpSignatureTensorSpec>(1);
+  op_sig.outputs[0].type = kTfLiteFloat32;
+  op_sig.outputs[0].dims = {1, 4, 4, 3};
+
+  EXPECT_THAT(
+      CheckGpuDelegateCompatibility(op_sig),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("warp.c < 2")));
+}
+
 }  // namespace tflite

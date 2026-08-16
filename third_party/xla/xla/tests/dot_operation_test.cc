@@ -57,9 +57,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class DotOperationTest
-    : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+class DotOperationTest : public ClientLibraryTestRunnerMixin<
+                             HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  public:
   ErrorSpec error_spec_{0.0001, 1e-5};
 };
@@ -1723,7 +1722,7 @@ INSTANTIATE_TEST_SUITE_P(BatchDot, BatchDotTest,
                          ::testing::ValuesIn(GetBatchDotTestCases()));
 
 class DotOperationTextTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {};
+    : public HloPjRtInterpreterReferenceMixin<HloTestBase> {};
 
 TEST_F(DotOperationTextTest, DotReorderedDotDims) {
   absl::string_view hlo_string =

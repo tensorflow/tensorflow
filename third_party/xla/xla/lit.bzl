@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """Helper rules for writing LIT tests."""
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
@@ -17,7 +32,6 @@ load(
 )
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 load("//xla/tsl:tsl.bzl", "if_google", "if_nccl", "if_oss")
-load("//xla/tsl:tsl.default.bzl", "if_cuda_tools")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 visibility(DEFAULT_LOAD_VISIBILITY)
@@ -69,7 +83,6 @@ def lit_test_suite(
         timeout = None,
         default_tags = None,
         tags_override = None,
-        hermetic_cuda_data_dir = None,
         exec_properties = {},
         tags = [],
         gpu_suffix = "",
@@ -100,8 +113,6 @@ def lit_test_suite(
       timeout: timeout argument passed to the individual tests.
       default_tags: string list. Tags applied to all tests.
       tags_override: string_dict. Tags applied in addition to only select tests.
-      hermetic_cuda_data_dir: string. If set, the tests will be run with a
-        `--xla_gpu_cuda_data_dir` flag set to the hermetic CUDA data directory.
       tags: string list. Tags applied to all tests and the test suite.
       exec_properties: string_dict. Properties to pass to the test rule, e.g.
         requirement to run on a GPU.
@@ -113,6 +124,7 @@ def lit_test_suite(
 
     See https://llvm.org/docs/CommandGuide/lit.html for details on lit
     """
+
     # If there are kwargs that need to be passed to only some of the generated
     # rules, they should be extracted into separate named arguments.
 
@@ -140,9 +152,7 @@ def lit_test_suite(
             env = env,
             timeout = timeout,
             tags = tags + default_tags + tags_override.get(test_file, []),
-            hermetic_cuda_data_dir = hermetic_cuda_data_dir,
             exec_properties = exec_properties,
-            gpu_suffix = gpu_suffix,
             native_test_rule = native_test_rule,
             **kwargs
         )
@@ -166,7 +176,6 @@ def lit_test_suite_for_gpus(
         timeout = None,
         default_tags = None,
         tags_override = None,
-        hermetic_cuda_data_dir = None,
         exec_properties = {},
         tags = [],
         gpus = ["a6000"],
@@ -198,8 +207,6 @@ def lit_test_suite_for_gpus(
       timeout: timeout argument passed to the individual tests.
       default_tags: string list. Tags applied to all tests.
       tags_override: string_dict. Tags applied in addition to only select tests.
-      hermetic_cuda_data_dir: string. If set, the tests will be run with a
-        `--xla_gpu_cuda_data_dir` flag set to the hermetic CUDA data directory.
       tags: string list. Tags applied to all tests and the test suite.
       exec_properties: string_dict. Properties to pass to the test rule, e.g.
         requirement to run on a GPU.
@@ -212,10 +219,11 @@ def lit_test_suite_for_gpus(
 
     See https://llvm.org/docs/CommandGuide/lit.html for details on lit
     """
+
     # If there are kwargs that need to be passed to only some of the generated
     # rules, they should be extracted into separate named arguments.
 
-    rocm_gpus = ["mi200", "gfx1250"]
+    rocm_gpus = ["mi200", "mi350", "gfx1250"]
 
     for gpu in gpus:
         is_rocm = gpu in rocm_gpus
@@ -228,24 +236,23 @@ def lit_test_suite_for_gpus(
             "//xla/backends/gpu/target_config:all_gpu_specs",
         ]
         lit_test_suite(
-            "%s_%s" % (name, gpu),
-            filtered_srcs,
-            cfg,
-            tools,
-            gpu_args,
-            gpu_data,
-            visibility,
-            env,
-            timeout,
-            default_tags,
-            tags_override,
-            hermetic_cuda_data_dir,
-            exec_properties,
+            name = "%s_%s" % (name, gpu),
+            srcs = filtered_srcs,
+            cfg = cfg,
+            tools = tools,
+            args = gpu_args,
+            data = gpu_data,
+            visibility = visibility,
+            env = env,
+            timeout = timeout,
+            default_tags = default_tags,
+            tags_override = tags_override,
+            exec_properties = exec_properties,
             # We add the tag xla_h100 to avoid that the test suite is scheduled
             # on different GPU architectures. Technically these tests don't
             # need a GPU, but a build with GPU configured.
-            tags + ["rocm-only"] if is_rocm else ["cuda-only", "xla_h100"],
-            "_%s" % (gpu),
+            tags = tags + (["rocm-only"] if is_rocm else ["cuda-only", "xla_h100"]),
+            gpu_suffix = "_%s" % (gpu),
             **kwargs
         )
 
@@ -263,7 +270,6 @@ def lit_device_test(
         timeout = None,
         default_tags = None,
         tags_override = None,
-        hermetic_cuda_data_dir = None,
         exec_properties = {},
         backend_tags = {},
         backend_args = {},
@@ -297,8 +303,6 @@ def lit_device_test(
       timeout: timeout argument passed to the individual tests.
       default_tags: string list. Tags applied to all tests.
       tags_override: string_dict. Tags applied in addition to only select tests.
-      hermetic_cuda_data_dir: string. If set, the tests will be run with a
-        `--xla_gpu_cuda_data_dir` flag set to the hermetic CUDA data directory.
       exec_properties: string_dict. Properties to pass to the test rule, e.g.
         requirement to run on a GPU.
       backend_tags: A dict mapping backend name to list of additional tags to
@@ -343,30 +347,12 @@ def lit_device_test(
             timeout = timeout,
             default_tags = default_tags,
             tags_override = tags_override,
-            hermetic_cuda_data_dir = hermetic_cuda_data_dir,
             exec_properties = exec_properties,
             tags = this_backend_tags,
             gpu_suffix = "_%s" % (backend),
             native_test_rule = platform_native_rule(name = test_name, backend = backend),
             **kwargs
         )
-
-def lit_script_with_xla_gpu_cuda_data_dir(
-        name,
-        input_file,
-        output_file,
-        xla_gpu_cuda_data_dir):
-    """Adds a line to the LIT script to set the XLA_FLAGS environment variable."""
-    return native.genrule(
-        name = name,
-        srcs = [input_file],
-        outs = [output_file],
-        cmd = if_cuda_tools(
-            """echo -e '// RUN: export XLA_FLAGS=\"--xla_gpu_cuda_data_dir={}\"' > $@;
-cat $< >> $@;""".format(xla_gpu_cuda_data_dir),
-            "cat $< >> $@;",
-        ),
-    )
 
 def lit_test(
         name,
@@ -378,9 +364,7 @@ def lit_test(
         visibility = None,
         env = None,
         timeout = None,
-        hermetic_cuda_data_dir = None,
         exec_properties = {},
-        gpu_suffix = "",
         native_test_rule = native_test,
         **kwargs):
     """Runs a single test file with LLVM's lit tool.
@@ -406,12 +390,8 @@ def lit_test(
       env: string_dict. Environment variables available during test execution.
         See the common Bazel test attribute.
       timeout: bazel test timeout string, as per common bazel definitions.
-      hermetic_cuda_data_dir: string. If set, the tests will be run with a
-        `--xla_gpu_cuda_data_dir` flag set to the hermetic CUDA data directory.
       exec_properties: string_dict. Properties to pass to the test rule, e.g.
         requirement to run on a GPU.
-      gpu_suffix: string. A suffix derived from the gpu name that can be added
-        to make (file) names unique.
       native_test_rule: callable. A rule or macro to create the test target,
         instead of `native_test`.
       **kwargs: additional keyword arguments to pass to all generated rules.
@@ -469,8 +449,8 @@ def lit_test(
     lit_name = "lit_custom_" + name.replace("/", "_")
     py_binary(
         name = lit_name,
-        main = "@llvm-project//llvm:utils/lit/lit.py",
-        srcs = ["@llvm-project//llvm:utils/lit/lit.py"],
+        main = "@llvm-project//llvm/utils/lit:lit.py",
+        srcs = ["@llvm-project//llvm/utils/lit:lit.py"],
         testonly = True,
         deps = [
             "@llvm-project//llvm:lit_lib",
@@ -479,17 +459,6 @@ def lit_test(
     )
 
     # copybara:comment_end
-
-    if hermetic_cuda_data_dir:
-        output_file = "with_xla_gpu_cuda_data_dir%s_%s" % (gpu_suffix, test_file)
-        rule_name = "script%s_%s" % (gpu_suffix, output_file)
-        lit_script_with_xla_gpu_cuda_data_dir(
-            rule_name,
-            test_file,
-            output_file,
-            hermetic_cuda_data_dir,
-        )
-        test_file = output_file
 
     native_test_rule(
         name = name,

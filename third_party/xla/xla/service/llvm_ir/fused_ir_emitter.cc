@@ -21,8 +21,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
@@ -85,7 +85,7 @@ absl::StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::DefaultAction(
       }
     }
 
-    ASSIGN_OR_RETURN(value, generator(index));
+    ABSL_ASSIGN_OR_RETURN(value, generator(index));
     value_cache_[std::move(key)] = value;
     return value;
   });
@@ -144,7 +144,7 @@ absl::StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::HandleTuple(
         used_index = used_index.SourceIndexOfBitcast(
             tuple.operand(0)->shape(), tuple.operand(i)->shape(), b);
       }
-      ASSIGN_OR_RETURN(llvm::Value * value,
+      ABSL_ASSIGN_OR_RETURN(llvm::Value * value,
                        indexed_generators_.at(tuple.operand(i))(used_index));
       ret = b->CreateInsertValue(ret, value, i);
     }
@@ -179,7 +179,7 @@ absl::StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::GetGenerator(
     if (indexed_generator != nullptr) continue;
 
     stack.insert(stack.end(), instr.operands().begin(), instr.operands().end());
-    ASSIGN_OR_RETURN(indexed_generator, CreateGenerator(instr));
+    ABSL_ASSIGN_OR_RETURN(indexed_generator, CreateGenerator(instr));
   }
   return indexed_generators_[&instruction];
 }

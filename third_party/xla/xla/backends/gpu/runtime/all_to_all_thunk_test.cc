@@ -28,12 +28,11 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/btree_map.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_clique.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
@@ -96,11 +95,6 @@ static bool IsAtLeastCuda12900(const se::StreamExecutor* executor) {
 
 class FakeGpuCommunicator : public GpuCommunicator {
  public:
-  Future<> GroupExecute(
-      absl::AnyInvocable<absl::Status(GpuCommunicator*)> f) override {
-    return f(this);
-  }
-
   absl::Status LaunchAllReduce(se::DeviceAddressBase, se::DeviceAddressBase,
                                PrimitiveType, size_t, ReductionKind,
                                const Executor&) override {
@@ -286,11 +280,11 @@ static absl::Status InitCollectiveTestState(se::Stream* stream,
   state->run_options.mutable_run_options()->set_device_assignment(
       &state->device_assignment);
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       CollectiveParams collective_params,
       CollectiveParams::Create(state->run_options,
                                /*async_streams=*/{}, LocalDeviceId(0)));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(collective_params, thunk.config().replica_groups,
                       thunk.config().group_mode, thunk.communication_id()));
@@ -313,15 +307,15 @@ static absl::Status FillDeviceBuffer(se::Stream& stream,
                                      se::DeviceAddressBase buffer,
                                      int64_t length, float value) {
   std::vector<float> data(length, value);
-  RETURN_IF_ERROR(stream.Memcpy(&buffer, data.data(), sizeof(float) * length));
+  ABSL_RETURN_IF_ERROR(stream.Memcpy(&buffer, data.data(), sizeof(float) * length));
   return stream.BlockHostUntilDone();
 }
 
 static absl::StatusOr<std::vector<float>> ReadDeviceBuffer(
     se::Stream& stream, se::DeviceAddressBase buffer, int64_t length) {
   std::vector<float> data(length);
-  RETURN_IF_ERROR(stream.Memcpy(data.data(), buffer, sizeof(float) * length));
-  RETURN_IF_ERROR(stream.BlockHostUntilDone());
+  ABSL_RETURN_IF_ERROR(stream.Memcpy(data.data(), buffer, sizeof(float) * length));
+  ABSL_RETURN_IF_ERROR(stream.BlockHostUntilDone());
   return data;
 }
 

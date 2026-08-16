@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/types/span.h"
+#include "xla/types.h"
 
 namespace xla::cpu::internal {
 
@@ -558,20 +559,17 @@ static void DSort1DInplace(const SortDims& sort_dims, int64_t offset,
   }
 }
 
-// Sorts `data` using `less_than` comparator function.
-void SortInplace(const SortDims& sort_dims, absl::Span<std::byte* const> data,
+// Sorts `data` using `less_than` comparator function for slices in
+// [start_slice, end_slice).
+void SortInplace(const SortDims& sort_dims, int64_t start_slice,
+                 int64_t end_slice, absl::Span<std::byte* const> data,
                  absl::Span<const size_t> primitive_sizes, bool is_stable,
                  LessThan* less_than) {
-  // Iterate over all the 1-dimensional slices of the buffers and sort them.
-  int64_t num_iterations = sort_dims.outer_dim_size * sort_dims.inner_dim_size;
+  DCHECK_LE(0, start_slice);
+  DCHECK_LE(start_slice, end_slice);
+  DCHECK_LE(end_slice, sort_dims.outer_dim_size * sort_dims.inner_dim_size);
 
-  // Annotate memory that might have been initialized by jit-compiled code.
-  for (int64_t i = 0; i < data.size(); ++i) {
-    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
-        data[i], primitive_sizes[i] * sort_dims.sort_dim_size * num_iterations);
-  }
-
-  for (int64_t i = 0; i < num_iterations; ++i) {
+  for (int64_t i = start_slice; i < end_slice; ++i) {
     int64_t inner_idx = i % sort_dims.inner_dim_size;
     int64_t offset = inner_idx + (i - inner_idx) * sort_dims.sort_dim_size;
 
@@ -639,6 +637,18 @@ void SortInplace(const SortDims& sort_dims, absl::Span<std::byte* const> data,
   }
 }
 
+void SortInplace(const SortDims& sort_dims, absl::Span<std::byte* const> data,
+                 absl::Span<const size_t> primitive_sizes, bool is_stable,
+                 LessThan* less_than) {
+  int64_t num_slices = sort_dims.outer_dim_size * sort_dims.inner_dim_size;
+  for (int64_t i = 0; i < data.size(); ++i) {
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
+        data[i], primitive_sizes[i] * sort_dims.sort_dim_size * num_slices);
+  }
+  SortInplace(sort_dims, 0, num_slices, data, primitive_sizes, is_stable,
+              less_than);
+}
+
 template <class Iterator, class T>
 static void Sort1DInplace(Iterator begin, Iterator end, bool is_stable,
                           SortDirection direction) {
@@ -674,16 +684,14 @@ static void Sort1DInplace(const SortDims& sort_dims, int64_t offset, T* data,
 }
 
 template <typename T>
-void SortInplace(const SortDims& sort_dims, T* data, bool is_stable,
+void SortInplace(const SortDims& sort_dims, int64_t start_slice,
+                 int64_t end_slice, T* data, bool is_stable,
                  SortDirection direction) {
-  // Iterate over all the 1-dimensional slices of the buffers and sort them.
-  int64_t num_iterations = sort_dims.outer_dim_size * sort_dims.inner_dim_size;
+  DCHECK_LE(0, start_slice);
+  DCHECK_LE(start_slice, end_slice);
+  DCHECK_LE(end_slice, sort_dims.outer_dim_size * sort_dims.inner_dim_size);
 
-  // Annotate memory that might have been initialized by jit-compiled code.
-  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
-      data, sizeof(T) * sort_dims.sort_dim_size * num_iterations);
-
-  for (int64_t i = 0; i < num_iterations; ++i) {
+  for (int64_t i = start_slice; i < end_slice; ++i) {
     int64_t inner_idx = i % sort_dims.inner_dim_size;
     int64_t offset = inner_idx + (i - inner_idx) * sort_dims.sort_dim_size;
 
@@ -691,13 +699,26 @@ void SortInplace(const SortDims& sort_dims, T* data, bool is_stable,
   }
 }
 
-// Declare Sort1DInplace for all supported types. Template is instantiated in
+template <typename T>
+void SortInplace(const SortDims& sort_dims, T* data, bool is_stable,
+                 SortDirection direction) {
+  int64_t num_slices = sort_dims.outer_dim_size * sort_dims.inner_dim_size;
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
+      data, sizeof(T) * sort_dims.sort_dim_size * num_slices);
+  SortInplace<T>(sort_dims, 0, num_slices, data, is_stable, direction);
+}
+
+// Declare SortInplace for all supported types. Template is instantiated in
 // the .cc file.
-#define DEFINE_SORT_INPLACE(T) \
+#define DEFINE_SORT_INPLACE(T)                                              \
+  template void SortInplace<T>(const SortDims&, int64_t, int64_t, T*, bool, \
+                               SortDirection);                              \
   template void SortInplace<T>(const SortDims&, T*, bool, SortDirection)
 
 DEFINE_SORT_INPLACE(float);
 DEFINE_SORT_INPLACE(double);
+DEFINE_SORT_INPLACE(bfloat16);
+DEFINE_SORT_INPLACE(half);
 DEFINE_SORT_INPLACE(int8_t);
 DEFINE_SORT_INPLACE(int16_t);
 DEFINE_SORT_INPLACE(int32_t);

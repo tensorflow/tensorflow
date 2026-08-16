@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -443,7 +444,7 @@ absl::Status DelegateKernel::ExecuteOpKernelRunner(
   const auto& op_kernel_runner = node_data->op_kernel_runner();
 
   if (op_kernel_runner.op_kernel()->num_outputs() != node_data->NumOutputs()) {
-    return tensorflow::errors::Internal(
+    return absl::InternalError(
         "Unexpected number of outputs from tensorflow::OpKernel");
   }
 
@@ -507,10 +508,13 @@ TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
   // Now we explicitly disable reusing TFLite tensor buffers for certain TF ops,
   // since those ops might produce results which keep reference of the input
   // tensors (buffer forwarding).
-  auto check_if_op_reuses_input = [](const string& op_name) {
-    return op_name == "TensorListPushBack" || op_name == "TensorListSetItem" ||
-           op_name == "SparseReshape" || op_name == "StridedSlice" ||
-           op_name == "RaggedTensorToVariant" || op_name == "TensorMapInsert";
+  auto check_if_op_reuses_input = [](absl::string_view op_name) {
+    static const auto* const kReusingOps =
+        new absl::flat_hash_set<absl::string_view>(
+            {"TensorListPushBack", "TensorListSetItem", "SparseReshape",
+             "StridedSlice", "RaggedTensorToVariant", "TensorMapInsert",
+             "AssignVariableOp", "TensorArrayWriteV3", "QueueEnqueueV2"});
+    return kReusingOps->contains(op_name);
     // TensorMapInsert hashes a tensor using a string_view of the key tensor.
     // If the key tensor is shared with TfLite, the memory be reused. The string
     // view will also change - it stores a ptr and a size, not the data so the

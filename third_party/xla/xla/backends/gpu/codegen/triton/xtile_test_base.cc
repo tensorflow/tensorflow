@@ -22,10 +22,10 @@ limitations under the License.
 #include <variant>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/service/decision.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
@@ -52,7 +53,6 @@ limitations under the License.
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 
 namespace xla::gpu {
@@ -71,7 +71,7 @@ XTileTestBase::CreateXTileIrAndFileCheck(std::unique_ptr<HloModule> hlo_module,
   BlockLevelParameters block_level_parameters =
       BlockLevelParameters::FromBlockLevelFusionConfig(
           fusion_backend_config.block_level_fusion_config());
-  ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> xtile_dialect_module,
+  ABSL_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> xtile_dialect_module,
                    CreateXTileIrAndFileCheck(*comp, block_level_parameters,
                                              filecheck_pattern));
   return std::make_pair(std::move(xtile_dialect_module), std::move(hlo_module));
@@ -98,11 +98,11 @@ CreateXTileIrAndFileCheckLegacy(
   const auto& symbolic_tile_analysis =
       std::get<SymbolicTileAnalysis>(symbolic_tile_analysis_or);
 
-  ASSIGN_OR_RETURN(Tiling tiling,
+  ABSL_ASSIGN_OR_RETURN(Tiling tiling,
                    TilingFromAnnotatedFusion(symbolic_tile_analysis,
                                              block_level_parameters));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> xtile_dialect_module,
       xtile::EmitXTileModule("xtile_dialect_fn", *fusion,
                              symbolic_tile_analysis, tiling, *mlir_context));
@@ -123,16 +123,23 @@ XTileTestBase::CreateXTileIrAndFileCheck(
     namespace ge = ::xla::gpu::experimental;
     auto* fusion = Cast<HloFusionInstruction>(computation.FusionInstruction());
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
-    std::unique_ptr<ge::TilingSpace> tiling_space =
-        ge::TilingSpace::Create(*fusion_adaptor, mlir_context());
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<ge::TilingSpace> tiling_space,
+                     ge::TilingSpace::Create(*fusion_adaptor, mlir_context()));
+    ABSL_ASSIGN_OR_RETURN(
         llvm::SmallVector<int64_t> concrete_sizes,
-        GetTilingSpaceConcreteSizes(*tiling_space, block_level_parameters));
-    RETURN_IF_ERROR(tiling_space->AssignTileSizes(
+        GetTilingSpaceConcreteSizes(
+            *tiling_space, block_level_parameters,
+            computation.parent()
+                ->config()
+                .debug_options()
+                .xla_gpu_experimental_enable_same_shape_multi_output_fusion()));
+    ABSL_RETURN_IF_ERROR(tiling_space->AssignTileSizes(
         xtile::GetPaddedTileSizes(concrete_sizes)));
-    ASSIGN_OR_RETURN(ge::TiledHloComputation tiled_computation,
+    ABSL_ASSIGN_OR_RETURN(ge::TiledHloComputation tiled_computation,
                      ge::TiledHloComputation::Tile(*fusion_adaptor,
                                                    std::move(tiling_space)));
+    tiled_computation.Simplify();
+    tiled_computation.SortInstructionsPostOrder();
     if (Decision constraints = ge::VerifyTritonConstraints(
             tiled_computation, TestGpuDeviceInfo::RTXA6000DeviceInfo());
         !constraints) {
@@ -140,12 +147,12 @@ XTileTestBase::CreateXTileIrAndFileCheck(
           absl::StrCat("Triton constraints violated during test codegen: ",
                        constraints.Explain()));
     }
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         xtile_dialect_module,
         xtile::EmitXTileModule("xtile_dialect_fn", *fusion, tiled_computation,
                                *mlir_context()));
   } else {
-    ASSIGN_OR_RETURN(xtile_dialect_module,
+    ABSL_ASSIGN_OR_RETURN(xtile_dialect_module,
                      CreateXTileIrAndFileCheckLegacy(
                          mlir_context(), computation, block_level_parameters,
                          filecheck_pattern));
@@ -153,7 +160,7 @@ XTileTestBase::CreateXTileIrAndFileCheck(
   std::string out;
   llvm::raw_string_ostream os(out);
   xtile_dialect_module->print(os);
-  ASSIGN_OR_RETURN(bool succeeded, RunFileCheck(out, filecheck_pattern));
+  ABSL_ASSIGN_OR_RETURN(bool succeeded, RunFileCheck(out, filecheck_pattern));
   if (!succeeded) {
     return absl::InternalError("FileCheck failed.");
   }
@@ -168,14 +175,14 @@ absl::Status XTileTestBase::LowerXTileIrToTritonAndFileCheck(
   BlockLevelParameters block_level_parameters =
       BlockLevelParameters::FromBlockLevelFusionConfig(
           fusion_backend_config.block_level_fusion_config());
-  RETURN_IF_ERROR(ir_emitter_triton_internal::LowerXTileToTriton(
+  ABSL_RETURN_IF_ERROR(ir_emitter_triton_internal::LowerXTileToTriton(
       xtile_dialect_module, *mlir_context(), fusion,
       TestGpuDeviceInfo::H100SXMDeviceInfo(), block_level_parameters));
 
   std::string out;
   llvm::raw_string_ostream os(out);
   xtile_dialect_module->print(os);
-  ASSIGN_OR_RETURN(bool succeeded, RunFileCheck(out, filecheck_pattern));
+  ABSL_ASSIGN_OR_RETURN(bool succeeded, RunFileCheck(out, filecheck_pattern));
   if (!succeeded) {
     return absl::InternalError("FileCheck failed.");
   }

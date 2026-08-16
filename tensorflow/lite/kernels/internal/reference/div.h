@@ -20,6 +20,7 @@ limitations under the License.
 #include <type_traits>
 
 #include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/reference/broadcast_loop.h"
 
 namespace tflite {
 
@@ -119,29 +120,13 @@ inline void BroadcastDivSlowQuantized(
     const T* input1_data, const RuntimeShape& unextended_input2_shape,
     const T* input2_data, const RuntimeShape& unextended_output_shape,
     T* output_data) {
-  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), N);
-  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), N);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), N);
-
-  NdArrayDesc<N> desc1;
-  NdArrayDesc<N> desc2;
-  NdArrayDesc<N> output_desc;
-  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
-                                      unextended_input2_shape, &desc1, &desc2);
-  CopyDimsToDesc(RuntimeShape::ExtendedShape(N, unextended_output_shape),
-                 &output_desc);
-
   DivCheckArithmeticParams<T>(params);
 
-  auto div_func = [&](int indexes[N]) {
-    int32_t input1_val =
-        params.input1_offset + input1_data[SubscriptToIndex(desc1, indexes)];
-    int32_t input2_val =
-        params.input2_offset + input2_data[SubscriptToIndex(desc2, indexes)];
+  auto op = [&params](T a, T b) {
+    int32_t input1_val = params.input1_offset + a;
+    int32_t input2_val = params.input2_offset + b;
     TFLITE_DCHECK_NE(input2_val, 0);
     if (input2_val < 0) {
-      // Invert signs to avoid a negative input2_val as input2_inv needs to be
-      // positive to be used as multiplier of MultiplyByQuantizedMultiplier.
       input1_val = -input1_val;
       input2_val = -input2_val;
     }
@@ -159,10 +144,12 @@ inline void BroadcastDivSlowQuantized(
     const int32_t clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, unclamped_result));
-    output_data[SubscriptToIndex(output_desc, indexes)] =
-        static_cast<T>(clamped_output);
+    return static_cast<T>(clamped_output);
   };
-  NDOpsHelper<N>(output_desc, div_func);
+
+  BroadcastBinaryOpSimple(unextended_input1_shape, input1_data,
+                          unextended_input2_shape, input2_data,
+                          unextended_output_shape, output_data, op);
 }
 
 template <int N = 5>
@@ -204,10 +191,6 @@ inline void BroadcastDivSlow(const ArithmeticParams& params,
       input2_data, unextended_output_shape, output_data);
 }
 
-// TODO(jiawen): We can implement BroadcastDiv on buffers of arbitrary
-// dimensionality if the runtime code does a single loop over one dimension
-// that handles broadcasting as the base case. The code generator would then
-// generate max(D1, D2) nested for loops.
 template <typename T, int N = 5>
 void BroadcastDivSlow(const ArithmeticParams& params,
                       const RuntimeShape& unextended_input1_shape,
