@@ -122,7 +122,7 @@ def make_conv_activation_tests(activation_op):
         test_parameters,
         build_graph,
         build_inputs,
-        expected_tf_failures=48)
+        expected_tf_failures=12)
 
   return f
 
