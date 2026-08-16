@@ -228,6 +228,19 @@ class TupleTestCase(test_util.TensorFlowTestCase):
     res = control_flow_ops.tuple([a, b])
     self.assertLen(res, 2)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testRepeatedVariableUnderTFFunction(self):
+    v = variables.Variable([10.0, 20.0])
+    self.evaluate(v.initializer)
+
+    @def_function.function
+    def compute():
+      return control_flow_ops.tuple([v, v, v])
+
+    result = self.evaluate(compute())
+    for t in result:
+      self.assertAllClose(t, [10.0, 20.0])
+
 
 class SwitchTestCase(test_util.TensorFlowTestCase):
 
