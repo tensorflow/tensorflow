@@ -31,6 +31,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // IWYU pragma: keep
 #include "mlir/IR/OpDefinition.h"  // IWYU pragma: keep
 #include "mlir/IR/OpImplementation.h"  // IWYU pragma: keep
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/ValueRange.h"
 #include "mlir/Interfaces/CallInterfaces.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // IWYU pragma: keep
@@ -41,5 +43,23 @@ limitations under the License.
 #define GET_OP_CLASSES
 #include "xla/codegen/xtile/ir/xtile_interface_ops.h.inc"  // IWYU pragma: keep
 #include "xla/codegen/xtile/ir/xtile_ops.h.inc"  // IWYU pragma: keep
+
+namespace xla::xtile {
+
+// Computes whether the given tile parameters will require an allocation
+// for layout fixup during bufferization.
+bool ShouldAllocateForLayoutFixup(mlir::RankedTensorType tile_type,
+                                  mlir::MemRefType buffer_type,
+                                  mlir::ValueRange offsets,
+                                  llvm::ArrayRef<int64_t> strides,
+                                  mlir::Operation* op = nullptr);
+
+// Returns true if the tile is statically guaranteed to fit entirely within
+// the bounds of the input buffer under all possible indices.
+bool IsAlwaysFullSize(mlir::RankedTensorType tile_type,
+                      mlir::MemRefType buffer_type, mlir::ValueRange offsets,
+                      llvm::ArrayRef<int64_t> strides);
+
+}  // namespace xla::xtile
 
 #endif  // XLA_CODEGEN_XTILE_IR_XTILE_OPS_H_
