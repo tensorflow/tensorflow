@@ -19,7 +19,6 @@ limitations under the License.
 #include <cmath>
 #include <cstring>
 
-#include "absl/container/inlined_vector.h"
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/reference/broadcast_loop.h"
@@ -151,7 +150,7 @@ inline void BroadcastSelectSimple(const RuntimeShape& cond_shape,
                                   const RuntimeShape& y_shape, const T* y_data,
                                   const RuntimeShape& output_shape,
                                   T* output_data) {
-  constexpr size_t kInlineRank = 8;
+  constexpr int kMaxRank = 8;
   const int dims_count = std::max(
       output_shape.DimensionsCount(),
       std::max(cond_shape.DimensionsCount(),
@@ -160,6 +159,8 @@ inline void BroadcastSelectSimple(const RuntimeShape& cond_shape,
     *output_data = *cond_data ? *x_data : *y_data;
     return;
   }
+
+  TFLITE_DCHECK_LE(dims_count, kMaxRank);
 
   const RuntimeShape extended_output_shape =
       RuntimeShape::ExtendedShape(dims_count, output_shape);
@@ -170,12 +171,11 @@ inline void BroadcastSelectSimple(const RuntimeShape& cond_shape,
   const RuntimeShape extended_y_shape =
       RuntimeShape::ExtendedShape(dims_count, y_shape);
 
-  const size_t rank = static_cast<size_t>(dims_count);
-  absl::InlinedVector<size_t, kInlineRank> cond_strides(rank);
-  absl::InlinedVector<size_t, kInlineRank> x_strides(rank);
-  absl::InlinedVector<size_t, kInlineRank> y_strides(rank);
-  absl::InlinedVector<size_t, kInlineRank> o_strides(rank);
-  absl::InlinedVector<size_t, kInlineRank> o_shape(rank);
+  size_t cond_strides[kMaxRank];
+  size_t x_strides[kMaxRank];
+  size_t y_strides[kMaxRank];
+  size_t o_strides[kMaxRank];
+  size_t o_shape[kMaxRank];
 
   size_t cond_accum_stride = 1;
   size_t x_accum_stride = 1;
@@ -224,9 +224,8 @@ inline void BroadcastSelectSimple(const RuntimeShape& cond_shape,
     o_accum_stride *= output_dim;
   }
 
-  RunSelectOp(cond_data, x_data, y_data, output_data, cond_strides.data(),
-              x_strides.data(), y_strides.data(), o_strides.data(),
-              o_shape.data(), next_dim_idx);
+  RunSelectOp(cond_data, x_data, y_data, output_data, cond_strides, x_strides,
+              y_strides, o_strides, o_shape, next_dim_idx);
 }
 
 template <typename D, typename T>
@@ -238,6 +237,10 @@ void BroadcastSelect5DSlow(const RuntimeShape& input_condition_shape,
                            const T* input_y_data,
                            const RuntimeShape& output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("Select/BroadcastSelectSlow");
+  TFLITE_DCHECK_LE(input_condition_shape.DimensionsCount(), 8);
+  TFLITE_DCHECK_LE(input_x_shape.DimensionsCount(), 8);
+  TFLITE_DCHECK_LE(input_y_shape.DimensionsCount(), 8);
+  TFLITE_DCHECK_LE(output_shape.DimensionsCount(), 8);
 
   BroadcastSelectSimple(input_condition_shape, input_condition_data,
                         input_x_shape, input_x_data, input_y_shape,
