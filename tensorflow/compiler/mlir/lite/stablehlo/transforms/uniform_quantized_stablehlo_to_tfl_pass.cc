@@ -77,6 +77,50 @@ using ::mlir::quant::QuantizedType;
 using ::mlir::quant::UniformQuantizedPerAxisType;
 using ::mlir::quant::UniformQuantizedType;
 
+// Helper function to create a UniformQuantizedPerAxisType for bias.
+quant::UniformQuantizedPerAxisType CreateBiasUniformQuantizedPerAxisType(
+    Location loc, MLIRContext& context, ArrayRef<double> scales,
+    ArrayRef<int64_t> zero_points, int quantization_dimension,
+    const bool is_input_int16) {
+  if (is_input_int16) {
+    return quant::UniformQuantizedPerAxisType::getChecked(
+        loc, /*flags=*/quant::QuantizationFlags::Signed,
+        /*storageType=*/IntegerType::get(&context, /*width=*/64),
+        /*expressedType=*/Float32Type::get(&context),
+        SmallVector<double>(scales), SmallVector<int64_t>(zero_points),
+        quantization_dimension, /*storageTypeMin=*/llvm::minIntN(64),
+        /*storageTypeMax=*/llvm::maxIntN(64));
+  }
+  return CreateI32F32UniformQuantizedPerAxisType(
+      loc, context, scales, zero_points, quantization_dimension);
+}
+
+// Helper function to create a UniformQuantizedType for bias.
+quant::UniformQuantizedType CreateBiasUniformQuantizedType(
+    Location loc, MLIRContext& context, const double scale,
+    const int64_t zero_point, const bool is_input_int16) {
+  if (is_input_int16) {
+    return quant::UniformQuantizedType::getChecked(
+        loc, /*flags=*/quant::QuantizationFlags::Signed,
+        /*storageType=*/IntegerType::get(&context, /*width=*/64),
+        /*expressedType=*/Float32Type::get(&context), scale, zero_point,
+        /*storageTypeMin=*/llvm::minIntN(64),
+        /*storageTypeMax=*/llvm::maxIntN(64));
+  }
+  return CreateI32F32UniformQuantizedType(loc, context, scale, zero_point);
+}
+
+// Helper function to convert a DenseIntElementsAttr from int32 to int64.
+DenseIntElementsAttr ConvertInt32ToConstInt64ElementsAttr(
+    DenseIntElementsAttr attr, RankedTensorType new_type) {
+  SmallVector<int64_t> values;
+  values.reserve(attr.getNumElements());
+  for (auto val : attr.getValues<int32_t>()) {
+    values.push_back(static_cast<int64_t>(val));
+  }
+  return DenseIntElementsAttr::get(new_type, values);
+}
+
 const char* kPaddingSame = "SAME";
 const char* kPaddingValid = "VALID";
 
@@ -228,7 +272,8 @@ TFL::QConstOp CreateTflConstOpForFilter(Operation* rhs_op,
 // the size of the bias constant.
 TFL::QConstOp CreateTflConstOpForDummyBias(
     const Location loc, const double input_scale, TFL::QConstOp filter_const_op,
-    PatternRewriter& rewriter, const bool is_per_channel, MLIRContext& ctx) {
+    PatternRewriter& rewriter, const bool is_per_channel, MLIRContext& ctx,
+    const bool is_input_int16 = false) {
   const ArrayRef<int64_t> filter_shape =
       filter_const_op.getResult().getType().getShape();
 
@@ -238,34 +283,35 @@ TFL::QConstOp CreateTflConstOpForDummyBias(
         llvm::cast<quant::UniformQuantizedPerAxisType>(
             GetElementType(filter_const_op.getResult()));
 
-    // The storage type is i32 for bias, which is the precision used for
-    // accumulation.
-    bias_quantized_type = CreateI32F32UniformQuantizedPerAxisType(
+    bias_quantized_type = CreateBiasUniformQuantizedPerAxisType(
         loc, ctx,
         GetBiasScales(input_scale, filter_quantized_element_type.getScales()),
         filter_quantized_element_type.getZeroPoints(),
-        /*quantization_dimension=*/0);
+        /*quantization_dimension=*/0, is_input_int16);
   } else {
     const auto filter_quantized_element_type =
         llvm::cast<quant::UniformQuantizedType>(
             GetElementType(filter_const_op.getResult()));
 
-    // The storage type is i32 for bias, which is the precision used for
-    // accumulation.
-    bias_quantized_type = CreateI32F32UniformQuantizedType(
+    bias_quantized_type = CreateBiasUniformQuantizedType(
         loc, ctx,
         GetBiasScale(input_scale, filter_quantized_element_type.getScale()),
-        filter_quantized_element_type.getZeroPoint());
+        filter_quantized_element_type.getZeroPoint(), is_input_int16);
   }
 
   SmallVector<int64_t, 1> bias_shape = {filter_shape[0]};
-  auto bias_type =
+  const auto bias_type =
       RankedTensorType::getChecked(loc, bias_shape, bias_quantized_type);
 
-  auto bias_value_type = RankedTensorType::getChecked(
-      loc, std::move(bias_shape), rewriter.getI32Type());
-  auto bias_value = DenseIntElementsAttr::get(
-      bias_value_type, APInt(/*numBits=*/32, /*value=*/0, /*isSigned=*/true));
+  const Type value_element_type =
+      is_input_int16 ? rewriter.getI64Type() : rewriter.getI32Type();
+  const int bit_width = is_input_int16 ? 64 : 32;
+
+  const auto bias_value_type = RankedTensorType::getChecked(
+      loc, std::move(bias_shape), value_element_type);
+  const auto bias_value = DenseIntElementsAttr::get(
+      bias_value_type,
+      APInt(/*numBits=*/bit_width, /*value=*/0, /*isSigned=*/true));
 
   return TFL::QConstOp::create(
       rewriter, loc, /*output=*/TypeAttr::get(bias_type), /*value=*/bias_value);
@@ -882,9 +928,11 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
     TFL::QConstOp filter_constant_op = CreateTflConstOpForFilter(
         rhs_value.getDefiningOp(), rewriter, /*is_per_channel=*/true);
 
-    const double input_scale =
-        llvm::cast<quant::UniformQuantizedType>(GetElementType(lhs_value))
-            .getScale();
+    const auto input_quantized_type =
+        llvm::cast<quant::UniformQuantizedType>(GetElementType(lhs_value));
+    const double input_scale = input_quantized_type.getScale();
+    const bool is_input_int16 =
+        input_quantized_type.getStorageType().isInteger(16);
     TFL::QConstOp bias_tfl_op;
     bool fuse_bias_constant =
         FindUserOfType<stablehlo::AddOp>(op) && has_i32_output;
@@ -897,7 +945,7 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
     if (!fuse_bias_constant) {
       bias_tfl_op = CreateTflConstOpForDummyBias(
           op.getLoc(), input_scale, filter_constant_op, rewriter,
-          /*is_per_channel=*/true, *op.getContext());
+          /*is_per_channel=*/true, *op.getContext(), is_input_int16);
     }
     rewriter.replaceOpWithNewOp<TFL::FullyConnectedOp>(
         op, /*output=*/output_type,
@@ -922,23 +970,25 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
         const auto filter_quantized_type =
             llvm::cast<quant::UniformQuantizedPerAxisType>(
                 GetElementType(op->getOperand(1)));
-        const SmallVector<double> bias_scales = GetBiasScales(
-            /*input_scale=*/llvm::cast<quant::UniformQuantizedType>(
-                GetElementType(op->getOperand(0)))
-                .getScale(),
-            /*filter_scales=*/filter_quantized_type.getScales());
+        const auto input_quantized_type =
+            llvm::cast<quant::UniformQuantizedType>(
+                GetElementType(op->getOperand(0)));
+        const double input_scale = input_quantized_type.getScale();
+        const bool is_input_int16 =
+            input_quantized_type.getStorageType().isInteger(16);
+        const SmallVector<double> bias_scales =
+            GetBiasScales(input_scale, filter_quantized_type.getScales());
         const ArrayRef<int64_t> output_shape =
             llvm::cast<TensorType>(op->getResult(0).getType()).getShape();
         const SmallVector<int64_t, 1> bias_shape = {
             output_shape[output_shape.size() - 1]};
         // `tfl.fully_connected`'s `GetChannelDimIndex` is 0.
-        const auto bias_quantized_type =
-            CreateI32F32UniformQuantizedPerAxisType(
-                op->getLoc(), *op->getContext(), std::move(bias_scales),
-                llvm::cast<quant::UniformQuantizedPerAxisType>(
-                    GetElementType(op->getResult(0)))
-                    .getZeroPoints(),
-                /*quantization_dimension=*/0);
+        const auto bias_quantized_type = CreateBiasUniformQuantizedPerAxisType(
+            op->getLoc(), *op->getContext(), std::move(bias_scales),
+            llvm::cast<quant::UniformQuantizedPerAxisType>(
+                GetElementType(op->getResult(0)))
+                .getZeroPoints(),
+            /*quantization_dimension=*/0, is_input_int16);
         Operation* bias_const_op = GetBiasConstOp(add_op);
         if (bias_const_op != nullptr) {
           const auto bias_type = RankedTensorType::getChecked(
@@ -946,9 +996,16 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
           const auto bias_value = cast<DenseIntElementsAttr>(
               cast<stablehlo::ConstantOp>(bias_const_op).getValue());
 
+          ElementsAttr final_bias_value = bias_value;
+          if (is_input_int16) {
+            const auto bias_value_type = RankedTensorType::getChecked(
+                op->getLoc(), bias_shape, rewriter.getI64Type());
+            final_bias_value = ConvertInt32ToConstInt64ElementsAttr(
+                bias_value, bias_value_type);
+          }
           *bias_tfl_op = TFL::QConstOp::create(
               rewriter, op->getLoc(),
-              /*output=*/TypeAttr::get(bias_type), /*value=*/bias_value);
+              /*output=*/TypeAttr::get(bias_type), /*value=*/final_bias_value);
         }
       } else {
         uniform_quantize_op = FindUserOfType<TFL::QuantizeOp>(op);
@@ -1452,16 +1509,20 @@ class RewriteQuantizedConvolutionOp
       const UniformQuantizedPerAxisType new_filter_quantized_type,
       const SmallVector<int64_t, 1> bias_shape, const bool has_i32_output,
       const bool fuse_bias_constant) const {
-    const SmallVector<double> bias_scales = GetBiasScales(
-        /*input_scale=*/llvm::cast<quant::UniformQuantizedType>(
-            GetElementType(op.getOperand(0)))
-            .getScale(),
-        /*filter_scales=*/new_filter_quantized_type.getScales());
+    const auto input_quantized_type = llvm::cast<quant::UniformQuantizedType>(
+        GetElementType(op.getOperand(0)));
+    const double input_scale = input_quantized_type.getScale();
+    const bool is_input_int16 =
+        input_quantized_type.getStorageType().isInteger(16);
 
-    const auto bias_quantized_type = CreateI32F32UniformQuantizedPerAxisType(
+    const SmallVector<double> bias_scales =
+        GetBiasScales(input_scale, new_filter_quantized_type.getScales());
+
+    const auto bias_quantized_type = CreateBiasUniformQuantizedPerAxisType(
         op.getLoc(), *op.getContext(), std::move(bias_scales),
         new_filter_quantized_type.getZeroPoints(),
-        /*quantization_dimension=*/0);
+        /*quantization_dimension=*/0, is_input_int16);
+
     const auto bias_type = RankedTensorType::getChecked(op.getLoc(), bias_shape,
                                                         bias_quantized_type);
     TFL::QConstOp bias;
@@ -1470,17 +1531,30 @@ class RewriteQuantizedConvolutionOp
       Operation* bias_const_op = GetBiasConstOp(add_op);
       const ElementsAttr bias_constant_value =
           cast<stablehlo::ConstantOp>(bias_const_op).getValue();
+
+      ElementsAttr final_bias_value = bias_constant_value;
+      if (is_input_int16) {
+        const auto bias_value_type = RankedTensorType::getChecked(
+            op.getLoc(), bias_shape, rewriter.getI64Type());
+        final_bias_value = ConvertInt32ToConstInt64ElementsAttr(
+            cast<DenseIntElementsAttr>(bias_constant_value), bias_value_type);
+      }
+
       bias = TFL::QConstOp::create(rewriter, op.getLoc(),
                                    /*output=*/TypeAttr::get(bias_type),
-                                   /*value=*/bias_constant_value);
+                                   /*value=*/final_bias_value);
     } else {
       // Create a bias constant. It should have values of 0.
+      const Type value_element_type =
+          is_input_int16 ? rewriter.getI64Type() : rewriter.getI32Type();
+      const int bit_width = is_input_int16 ? 64 : 32;
+
       const auto bias_value_type = RankedTensorType::getChecked(
-          op.getLoc(), bias_shape, rewriter.getI32Type());
-      // Create a bias filled with zeros. Mimics the behavior of no bias add.
+          op.getLoc(), bias_shape, value_element_type);
       const auto bias_value = DenseIntElementsAttr::get(
           bias_value_type,
-          APInt(/*numBits=*/32, /*value=*/0, /*isSigned=*/true));
+          APInt(/*numBits=*/bit_width, /*value=*/0, /*isSigned=*/true));
+
       bias = TFL::QConstOp::create(rewriter, op.getLoc(),
                                    /*output=*/TypeAttr::get(bias_type),
                                    /*value=*/bias_value);
