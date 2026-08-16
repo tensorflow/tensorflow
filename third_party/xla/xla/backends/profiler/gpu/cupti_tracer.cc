@@ -786,6 +786,10 @@ void SetCudaGraphNodeEventUponApiExit(CuptiTracerEvent& event,
                                       uint32_t device_id, CUpti_CallbackId cbid,
                                       const CUpti_CallbackData* cbdata,
                                       uint64_t start_time, uint64_t end_time) {
+  if (tsl::profiler::AnnotationStack::IsEnabled()) {
+    LOG(INFO) << "=============== " << cbdata->functionName << ": "
+              << tsl::profiler::AnnotationStack::Get();
+  }
   GraphResourceCreationInfo& graph_id_info = GetGraphResourceCreationInfo();
 
   event.type = CuptiTracerEventType::CudaGraph;
