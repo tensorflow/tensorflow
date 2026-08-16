@@ -551,6 +551,10 @@ def multiply(x, y, name=None):
    * InvalidArgumentError: When `x` and `y` have incompatible shapes or types.
   """
 
+  if not tensor_util.is_tf_type(x) and tensor_util.is_tf_type(y):
+    x = ops.convert_to_tensor(x, dtype=y.dtype.base_dtype)
+  elif tensor_util.is_tf_type(x) and not tensor_util.is_tf_type(y):
+    y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype)
   return gen_math_ops.mul(x, y, name)
 
 
@@ -719,6 +723,10 @@ def pow(x, y, name=None):  # pylint: disable=redefined-builtin
   Returns:
     A `Tensor`.
   """
+  if not tensor_util.is_tf_type(x) and tensor_util.is_tf_type(y):
+    x = ops.convert_to_tensor(x, dtype=y.dtype.base_dtype)
+  elif tensor_util.is_tf_type(x) and not tensor_util.is_tf_type(y):
+    y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype)
   with ops.name_scope(name, "Pow", [x]) as name:
     return gen_math_ops._pow(x, y, name=name)
 

@@ -1526,5 +1526,27 @@ class CastTest(test_util.TensorFlowTestCase):
 
     self.assertAllEqual(self.evaluate(test_fn()), [1])
 
+
+class ScalarCoercionTest(test_util.TensorFlowTestCase):
+
+  def testMultiplyAndPowScalarCoercion(self):
+    x1 = constant_op.constant([1.0, 2.0, 3.0, 4.0], dtype=dtypes.float32)
+    x2 = constant_op.constant([4.0, 5.0, 6.0, 7.0], dtype=dtypes.bfloat16)
+
+    def mul_fn(x):
+      return math_ops.multiply(5, x)
+
+    def pow_fn(x):
+      return math_ops.pow(1, x)
+
+    self.assertAllClose(mul_fn(x1), [5.0, 10.0, 15.0, 20.0])
+    self.assertAllClose(pow_fn(x2), [1.0, 1.0, 1.0, 1.0])
+
+    mul_xla = def_function.function(mul_fn, jit_compile=True)
+    pow_xla = def_function.function(pow_fn, jit_compile=True)
+
+    self.assertAllClose(mul_xla(x1), [5.0, 10.0, 15.0, 20.0])
+    self.assertAllClose(pow_xla(x2), [1.0, 1.0, 1.0, 1.0])
+
 if __name__ == "__main__":
   googletest.main()
