@@ -551,13 +551,15 @@ def multiply(x, y, name=None):
    * InvalidArgumentError: When `x` and `y` have incompatible shapes or types.
   """
 
-  x_dtype = y.dtype.base_dtype if hasattr(y, "dtype") and y.dtype else None
-  y_dtype = x.dtype.base_dtype if hasattr(x, "dtype") and x.dtype else None
+  x_dtype = getattr(y, "dtype", None)
+  x_dtype = getattr(x_dtype, "base_dtype", x_dtype)
+  y_dtype = getattr(x, "dtype", None)
+  y_dtype = getattr(y_dtype, "base_dtype", y_dtype)
   if not tensor_util.is_tf_type(x):
     x = ops.convert_to_tensor(x, dtype_hint=x_dtype, name="x")
   if not tensor_util.is_tf_type(y):
     y = ops.convert_to_tensor(y, dtype_hint=y_dtype, name="y")
-  return gen_math_ops.mul(x,y, name)
+  return gen_math_ops.mul(x, y, name)
 
 
 # TODO(aselle): put deprecation in after another round of global code changes
