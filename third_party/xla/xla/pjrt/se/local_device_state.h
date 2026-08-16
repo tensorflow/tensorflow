@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <queue>
 #include <random>
 #include <stack>
 #include <vector>
@@ -32,6 +33,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/client/local_client.h"
+#include "xla/future.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/se/buffer_sequencing_event.h"
@@ -173,6 +175,12 @@ class LocalDeviceState {
   // have any outstanding work at its tail.
   void ReturnStreamToPool(std::unique_ptr<se::Stream> stream);
 
+  // Borrows an exclusive remote recv stream or returns a Future that resolves
+  // when a stream is returned to the pool.
+  Future<std::unique_ptr<se::Stream>> BorrowRemoteRecvStream();
+  // Returns a remote recv stream to the pool.
+  void ReturnRemoteRecvStream(std::unique_ptr<se::Stream> stream);
+
   // Enqueues a copy of `src_buffer` to `dst_buffer` onto `transfer_stream`.
   virtual absl::Status ThenMemcpyDeviceToDevice(
       se::Stream* transfer_stream, se::Stream* dst_stream,
@@ -264,6 +272,7 @@ class LocalDeviceState {
   static constexpr int kNumDeviceToDeviceStreams = 4;
   static constexpr int kNumFixedSizePoolUsageStreams = 4;
   static constexpr int kNumExternalReadyEventStreams = 4;
+  static constexpr int kNumRemoteRecvStreams = 4;
 
   absl::Mutex mu_;
   int next_device_to_host_stream_ ABSL_GUARDED_BY(mu_) = 0;
@@ -271,6 +280,11 @@ class LocalDeviceState {
   int next_fixed_size_pool_usage_stream_ ABSL_GUARDED_BY(mu_) = 0;
   int next_external_ready_event_stream_ ABSL_GUARDED_BY(mu_) = 0;
 
+  absl::Mutex remote_recv_stream_mu_;
+  std::stack<std::unique_ptr<se::Stream>> free_remote_recv_streams_
+      ABSL_GUARDED_BY(remote_recv_stream_mu_);
+  std::queue<Promise<std::unique_ptr<se::Stream>>> remote_recv_wait_queue_
+      ABSL_GUARDED_BY(remote_recv_stream_mu_);
 
   absl::Mutex stream_pool_mu_;
   std::stack<std::unique_ptr<se::Stream>> usage_stream_pool_

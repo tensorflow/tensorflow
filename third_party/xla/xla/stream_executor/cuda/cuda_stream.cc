@@ -412,6 +412,16 @@ absl::Status CudaStream::Memset32(DeviceAddressBase* location, uint32_t pattern,
       "Failed to enqueue async memset operation");
 }
 
+absl::Status CudaStream::WaitValue32(const DeviceAddressBase& location,
+                                     uint32_t value) {
+  std::unique_ptr<ActivateContext> activation = executor_->Activate();
+  return cuda::ToStatus(
+      cuStreamWaitValue32(stream_handle_,
+                          reinterpret_cast<CUdeviceptr>(location.opaque()),
+                          value, CU_STREAM_WAIT_VALUE_EQ),
+      "cuStreamWaitValue32");
+}
+
 absl::Status CudaStream::MemZero(DeviceAddressBase* location, uint64_t size) {
   if (reinterpret_cast<uintptr_t>(location->opaque()) % alignof(uint32_t) ==
           0 &&

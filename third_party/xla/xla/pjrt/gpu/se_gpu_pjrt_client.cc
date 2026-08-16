@@ -914,6 +914,8 @@ void StreamExecutorGpuRawClient::ScheduleRemoteSend(
                 auto mem = se_raw_buffer->device_buffer()->mem();
                 const size_t size = se_raw_buffer->GetOnDeviceSizeInBytes();
                 ABSL_RETURN_IF_ERROR(WaitForAllocation(stream, *raw_buffer));
+                ABSL_RETURN_IF_ERROR(
+                    WaitForDeviceEventRefsOnStream(definition_events, stream));
 
                 StreamExecutorGpuCrossHostRecvDescriptor desc;
                 if (!desc.ParseFromString(serialized_descriptor)) {
@@ -969,70 +971,26 @@ namespace {
 // Keeps track of the state of an in-flight cross-host recv.
 class CrossHostRecvState {
  public:
-  CrossHostRecvState(int num_buffers, se::DeviceAddressBase flag,
-                     HostMemoryAllocator* host_memory_allocator)
-      : num_buffers_(num_buffers),
-        flag_(std::move(flag)),
-        host_memory_allocator_(host_memory_allocator),
+  CrossHostRecvState(
+      StreamExecutorGpuRawClient* client, LocalDeviceState* local_device,
+      std::unique_ptr<se::Stream> stream, int num_buffers,
+      se::DeviceAddressBase flag_address,
+      std::vector<BufferSequencingEventRef> buffer_sequencing_events)
+      : client_(client),
+        local_device_(local_device),
+        stream_(std::move(stream)),
+        num_buffers_(num_buffers),
+        flag_address_(std::move(flag_address)),
+        buffer_sequencing_events_(std::move(buffer_sequencing_events)),
         cancellation_statuses_(num_buffers) {}
 
-  // Waits until all transfers in the batch are complete or cancelled. Returns
-  // a list of cancellations statuses, one for each buffer.
-  absl::StatusOr<std::vector<absl::Status>> Wait(se::Stream* stream) {
-    static constexpr absl::Duration kInitialDelay = absl::Microseconds(2);
-    static constexpr absl::Duration kPeriod = absl::Microseconds(10);
-
-    // Keeps track of indices of buffers that are still pending.
-    std::vector<int> buffer_indices;
-    buffer_indices.reserve(num_buffers_);
-    for (int i = 0; i < num_buffers_; ++i) {
-      buffer_indices.push_back(i);
+  ~CrossHostRecvState() {
+    if (stream_ != nullptr) {
+      local_device_->ReturnRemoteRecvStream(std::move(stream_));
     }
-
-    absl::SleepFor(kInitialDelay);
-
-    // Allocate host memory to copy the flags into from the pinned host memory
-    // allocator to optimize DMA.
-    auto values_storage =
-        host_memory_allocator_->Allocate(sizeof(uint32_t) * num_buffers_);
-    uint32_t* const values = reinterpret_cast<uint32_t*>(values_storage.get());
-
-    while (true) {
-      // Poll the flags to see if any transfers are complete. We may consider
-      // replacing with a 1-SM polling kernel that listens to both completion
-      // signals from the sender and cancellation signals from the receiver.
-      ABSL_RETURN_IF_ERROR(
-          stream->Memcpy(values, flag_, sizeof(uint32_t) * num_buffers_));
-      ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
-
-      std::vector<int> pending_buffer_indices;
-      for (const int index : buffer_indices) {
-        {
-          absl::MutexLock l(mu_);
-          if (!cancellation_statuses_[index].ok()) {
-            continue;
-          }
-        }
-        if (values[index] == 0) {
-          pending_buffer_indices.push_back(index);
-        } else if (values[index] != 1) {
-          return xla::Internal(
-              "Unexpected cross-host recv flag value (potentially a bug or a "
-              "memory corruption): %u",
-              values[index]);
-        }
-      }
-      if (pending_buffer_indices.empty()) {
-        break;
-      }
-
-      buffer_indices = std::move(pending_buffer_indices);
-      absl::SleepFor(kPeriod);
-    }
-
-    absl::MutexLock l(mu_);
-    return cancellation_statuses_;
   }
+
+  se::Stream* stream() const { return stream_.get(); }
 
   // Cancels the transfer associated with the given serialized descriptor. Per
   // the cross-host send/recv API contract, a given transfer must either
@@ -1052,26 +1010,66 @@ class CrossHostRecvState {
         return xla::Internal("Buffer index out of range: [0, %d, %d)",
                              desc.buffer_index(), num_buffers_);
       }
+      const int idx = desc.buffer_index();
       {
         absl::MutexLock l(mu_);
-        auto& status = cancellation_statuses_[desc.buffer_index()];
+        auto& status = cancellation_statuses_[idx];
         if (!status.ok()) {
           return xla::Internal(
               "Received multiple cancellations for the same cross-host recv");
         }
         status = reason;
       }
-      VLOG(3) << "Received cancellation request for buffer "
-              << desc.buffer_index() << ": " << reason;
+      // Write 1 to the flag on device to unblock any pending GPU WaitValue32.
+      // Must not be issued on the recv stream where WaitValue32 is waiting.
+      se::DeviceAddressBase flag_i_addr(
+          reinterpret_cast<void*>(
+              reinterpret_cast<uintptr_t>(flag_address_.opaque()) +
+              sizeof(uint32_t) * idx),
+          sizeof(uint32_t));
+      std::unique_ptr<se::Stream> cancel_stream =
+          local_device_->BorrowStreamFromPool();
+      if (!cancel_stream) {
+        return xla::Internal("Failed to borrow stream for cancellation");
+      }
+      ABSL_RETURN_IF_ERROR(
+          cancel_stream->Memset32(&flag_i_addr, 1, sizeof(uint32_t)));
+      ABSL_RETURN_IF_ERROR(cancel_stream->BlockHostUntilDone());
+      local_device_->ReturnStreamToPool(std::move(cancel_stream));
+      VLOG(3) << "Received cancellation request for buffer " << idx << ": "
+              << reason;
       return absl::OkStatus();
     }();
     on_canceled(status);
   }
 
+  // Fulfills events for all buffers after GPU execution on the borrowed stream
+  // completes.
+  void FulfillEvents() {
+    absl::MutexLock l(mu_);
+    for (int i = 0; i < num_buffers_; ++i) {
+      absl::Status status = cancellation_statuses_[i];
+      if (status.ok()) {
+        status = client_->AllocateAndRecordEvent(buffer_sequencing_events_[i],
+                                                 local_device_, stream_.get(),
+                                                 "CrossHostReceiveBuffersInto");
+      }
+      if (!status.ok()) {
+        client_->SetEventAsError(buffer_sequencing_events_[i], status);
+      }
+    }
+    if (stream_ != nullptr) {
+      local_device_->ReturnRemoteRecvStream(std::move(stream_));
+    }
+  }
+
  private:
+  StreamExecutorGpuRawClient* client_;
+  LocalDeviceState* local_device_;
+  std::unique_ptr<se::Stream> stream_;
   int num_buffers_;
-  se::DeviceAddressBase flag_;
-  HostMemoryAllocator* host_memory_allocator_;
+  se::DeviceAddressBase flag_address_;
+  std::vector<BufferSequencingEventRef> buffer_sequencing_events_;
 
   absl::Mutex mu_;
 
@@ -1115,7 +1113,6 @@ StreamExecutorGpuRawClient::CrossHostReceiveBuffersInto(
   // All buffers are on the same device.
   LocalDeviceState* local_device =
       raw_buffers[0]->down_cast<PjRtStreamExecutorRawBuffer>()->local_device();
-  se::Stream* stream = local_device->GetDeviceToDeviceStream();
 
   std::vector<BufferSequencingEventRef> buffer_sequencing_events;
   buffer_sequencing_events.reserve(buffers.size());
@@ -1132,119 +1129,143 @@ StreamExecutorGpuRawClient::CrossHostReceiveBuffersInto(
       AllocateRawBuffer(memory_space, sizeof(uint32_t) * raw_buffers.size(),
                         /*retry_on_oom=*/true, {}));
 
-  auto recv = [this, raw_buffers = std::move(raw_buffers),
-               flag_buffer = std::move(flag_buffer), buffer_sequencing_events,
-               notifier = std::move(notifier), local_device, stream]() mutable {
-    auto results = [&]() -> absl::StatusOr<std::vector<absl::Status>> {
-      auto* executor =
-          absl::down_cast<se::gpu::GpuExecutor*>(local_device->executor());
-
-      se::DeviceAddressBase flag_address;
-      {
-        auto* se_flag_buffer =
-            flag_buffer->down_cast<PjRtStreamExecutorRawBuffer>();
-        tsl::AsyncValueRef<RawSEDeviceMemory> flag_mem =
-            se_flag_buffer->device_buffer();
-        ABSL_RETURN_IF_ERROR(WaitForAllocation(stream, *se_flag_buffer));
-        flag_address = flag_mem->mem();
-
-        // Keep flags alive until the transfer is done.
-        for (const auto& buffer_sequencing_event : buffer_sequencing_events) {
-          buffer_sequencing_event.AndThen([flag_mem]() {});
+  // Borrow a dedicated stream from a fixed-size pool for remote receives.
+  // Recv operations must not share streams with compute or local D2D transfers
+  // because `WaitValue32` blocks subsequent work on the stream until the remote
+  // sender writes data, which would cause head-of-line blocking and distributed
+  // deadlocks. Furthermore, keeping a fixed-size stream pool bounds concurrent
+  // in-flight receive streams to avoid exhausting CUDA hardware channels and
+  // multiplexing active copies behind blocked `WaitValue32` commands.
+  auto recv =
+      [this, raw_buffers = std::move(raw_buffers),
+       flag_buffer = std::move(flag_buffer), buffer_sequencing_events,
+       notifier = std::move(notifier), local_device](
+          absl::StatusOr<std::unique_ptr<se::Stream>> stream_or) mutable {
+        if (!stream_or.ok()) {
+          VLOG(2) << "Failed to borrow remote recv stream: "
+                  << stream_or.status();
+          for (const auto& buffer_sequencing_event : buffer_sequencing_events) {
+            SetEventAsError(buffer_sequencing_event, stream_or.status());
+          }
+          return;
         }
-      }
+        std::unique_ptr<se::Stream> stream = *std::move(stream_or);
 
-      // Set all flags to 0 before starting the transfer.
-      ABSL_RETURN_IF_ERROR(stream->Memset32(&flag_address, 0,
-                                       sizeof(uint32_t) * raw_buffers.size()));
+        auto results = [&]() -> absl::Status {
+          auto* executor =
+              absl::down_cast<se::gpu::GpuExecutor*>(local_device->executor());
 
-      // Export the address range which contains the flag buffer. The flags are
-      // addressed as offsets from the beginning of this range.
-      ABSL_ASSIGN_OR_RETURN(
-          const std::string flag_handle,
-          GetOrExportFabricHandle(executor, flag_address.opaque()));
-      ABSL_ASSIGN_OR_RETURN(auto flag_range,
-                       executor->GetAllocationRange(flag_address.opaque()));
-      const int64_t flag_offset =
-          reinterpret_cast<intptr_t>(flag_address.opaque()) -
-          reinterpret_cast<intptr_t>(flag_range.opaque());
+          se::DeviceAddressBase flag_address;
+          {
+            auto* se_flag_buffer =
+                flag_buffer->down_cast<PjRtStreamExecutorRawBuffer>();
+            tsl::AsyncValueRef<RawSEDeviceMemory> flag_mem =
+                se_flag_buffer->device_buffer();
+            flag_address = flag_mem->mem();
 
-      StreamExecutorGpuCrossHostRecvDescriptor desc;
-      std::vector<PjRtCrossHostRecvDescriptors> descriptors;
-      descriptors.reserve(raw_buffers.size());
+            // Keep flags alive until the transfer is done.
+            for (const auto& buffer_sequencing_event :
+                 buffer_sequencing_events) {
+              buffer_sequencing_event.AndThen([flag_mem]() {});
+            }
+          }
 
-      for (int i = 0; i < raw_buffers.size(); ++i) {
-        auto* se_raw_buffer =
-            raw_buffers[i]->down_cast<PjRtStreamExecutorRawBuffer>();
+          auto state = std::make_shared<CrossHostRecvState>(
+              this, local_device, std::move(stream), raw_buffers.size(),
+              flag_address, buffer_sequencing_events);
+          se::Stream* stream = state->stream();
 
-        tsl::AsyncValueRef<RawSEDeviceMemory> mem =
-            se_raw_buffer->device_buffer();
-        ABSL_RETURN_IF_ERROR(WaitForAllocation(stream, *raw_buffers[i]));
+          ABSL_RETURN_IF_ERROR(WaitForAllocation(
+              stream, *flag_buffer->down_cast<PjRtStreamExecutorRawBuffer>()));
 
-        // Keep mem alive until the Recv has finished executing.
-        buffer_sequencing_events[i].AndThen([mem]() {});
+          // Set all flags to 0 before starting the transfer.
+          ABSL_RETURN_IF_ERROR(stream->Memset32(
+              &flag_address, 0, sizeof(uint32_t) * raw_buffers.size()));
 
-        // Export the buffer/flag fabric handles and use them as descriptors to
-        // be sent to the sender.
-        desc.Clear();
-        desc.set_buffer_index(i);
-        if (mem->mem().size() > 0) {
+          // Export the address range which contains the flag buffer. The flags
+          // are addressed as offsets from the beginning of this range.
           ABSL_ASSIGN_OR_RETURN(
-              *desc.mutable_buffer_handle(),
-              GetOrExportFabricHandle(executor, mem->mem().opaque()));
-          ABSL_ASSIGN_OR_RETURN(auto range,
-                           executor->GetAllocationRange(mem->mem().opaque()));
-          desc.set_buffer_offset(
-              reinterpret_cast<intptr_t>(mem->mem().opaque()) -
-              reinterpret_cast<intptr_t>(range.opaque()));
+              const std::string flag_handle,
+              GetOrExportFabricHandle(executor, flag_address.opaque()));
+          ABSL_ASSIGN_OR_RETURN(auto flag_range,
+                           executor->GetAllocationRange(flag_address.opaque()));
+          const int64_t flag_offset =
+              reinterpret_cast<intptr_t>(flag_address.opaque()) -
+              reinterpret_cast<intptr_t>(flag_range.opaque());
+
+          StreamExecutorGpuCrossHostRecvDescriptor desc;
+          std::vector<PjRtCrossHostRecvDescriptors> descriptors;
+          descriptors.reserve(raw_buffers.size());
+
+          for (int i = 0; i < raw_buffers.size(); ++i) {
+            auto* se_raw_buffer =
+                raw_buffers[i]->down_cast<PjRtStreamExecutorRawBuffer>();
+
+            tsl::AsyncValueRef<RawSEDeviceMemory> mem =
+                se_raw_buffer->device_buffer();
+            ABSL_RETURN_IF_ERROR(WaitForAllocation(stream, *raw_buffers[i]));
+
+            // Keep mem alive until the Recv has finished executing.
+            buffer_sequencing_events[i].AndThen([mem]() {});
+
+            // Export the buffer/flag fabric handles and use them as descriptors
+            // to be sent to the sender.
+            desc.Clear();
+            desc.set_buffer_index(i);
+            if (mem->mem().size() > 0) {
+              ABSL_ASSIGN_OR_RETURN(
+                  *desc.mutable_buffer_handle(),
+                  GetOrExportFabricHandle(executor, mem->mem().opaque()));
+              ABSL_ASSIGN_OR_RETURN(auto range, executor->GetAllocationRange(
+                                               mem->mem().opaque()));
+              desc.set_buffer_offset(
+                  reinterpret_cast<intptr_t>(mem->mem().opaque()) -
+                  reinterpret_cast<intptr_t>(range.opaque()));
+            }
+            desc.set_flag_handle(flag_handle);
+            desc.set_flag_offset(flag_offset + sizeof(uint32_t) * i);
+
+            descriptors.push_back(
+                PjRtCrossHostRecvDescriptors{{desc.SerializeAsString()}});
+          }
+
+          // Notify the receiver of the descriptors and cancellation callback.
+          // The caller is responsible for sending the descriptors to the sender
+          // and/or cancelling the transfer if needed.
+          VLOG(3) << "Notifying receiver of descriptors for cross-host recv of "
+                  << descriptors.size() << " buffers";
+          notifier(PjRtCrossHostRecvState{
+              /*descriptors=*/std::move(descriptors),
+              /*cancel_notifier=*/
+              absl::bind_front(&CrossHostRecvState::NotifyCancellation, state),
+          });
+
+          // Enqueue WaitValue32 on the borrowed stream for each flag.
+          for (int i = 0; i < raw_buffers.size(); ++i) {
+            se::DeviceAddressBase flag_i_addr(
+                reinterpret_cast<void*>(
+                    reinterpret_cast<uintptr_t>(flag_address.opaque()) +
+                    sizeof(uint32_t) * i),
+                sizeof(uint32_t));
+            ABSL_RETURN_IF_ERROR(stream->WaitValue32(flag_i_addr, 1));
+          }
+
+          // Enqueue host callback on the borrowed stream to fulfill events and
+          // return the stream to the pool when GPU execution completes.
+          return stream->DoHostCallback(
+              [worker = this->async_work_runner(), state]() mutable {
+                worker->Execute([state]() { state->FulfillEvents(); });
+              });
+        }();
+        if (!results.ok()) {
+          VLOG(2) << "CrossHostReceiveBuffersInto failed: " << results;
+          for (const auto& buffer_sequencing_event : buffer_sequencing_events) {
+            SetEventAsError(buffer_sequencing_event, results);
+          }
         }
-        desc.set_flag_handle(flag_handle);
-        desc.set_flag_offset(flag_offset + sizeof(uint32_t) * i);
+      };
 
-        descriptors.push_back(
-            PjRtCrossHostRecvDescriptors{{desc.SerializeAsString()}});
-      }
-
-      auto state = std::make_shared<CrossHostRecvState>(
-          raw_buffers.size(), flag_address, GetHostMemoryAllocator());
-
-      // Notify the receiver of the descriptors and cancellation callback. The
-      // caller is responsible for sending the descriptors to the sender and/or
-      // cancelling the transfer if needed.
-      VLOG(3) << "Notifying receiver of descriptors for cross-host recv of "
-              << descriptors.size() << " buffers";
-      notifier(PjRtCrossHostRecvState{
-          /*descriptors=*/std::move(descriptors),
-          /*cancel_notifier=*/
-          absl::bind_front(&CrossHostRecvState::NotifyCancellation, state),
-      });
-
-      VLOG(3) << "Waiting for cross-host recv completion";
-      return state->Wait(stream);
-    }();
-    if (!results.ok()) {
-      VLOG(2) << "CrossHostReceiveBuffersInto failed: " << results.status();
-      for (const auto& buffer_sequencing_event : buffer_sequencing_events) {
-        SetEventAsError(buffer_sequencing_event, results.status());
-      }
-      return;
-    }
-
-    VLOG(3) << "Cross-host recv completed";
-    CHECK_EQ(results->size(), buffer_sequencing_events.size());
-    for (int i = 0; i < buffer_sequencing_events.size(); ++i) {
-      absl::Status status = (*results)[i];
-      if (status.ok()) {
-        status =
-            AllocateAndRecordEvent(buffer_sequencing_events[i], local_device,
-                                   stream, "CrossHostReceiveBuffersInto");
-      }
-      if (!status.ok()) {
-        SetEventAsError(buffer_sequencing_events[i], status);
-      }
-    }
-  };
-  async_work_runner()->Execute(std::move(recv));
+  local_device->BorrowRemoteRecvStream().OnReady(std::move(recv));
 
   PjRtDeviceEventRefVector definition_events;
   for (const auto& buffer_sequencing_event : buffer_sequencing_events) {

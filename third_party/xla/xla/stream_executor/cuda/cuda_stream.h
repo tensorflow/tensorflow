@@ -62,6 +62,8 @@ class CudaStream : public StreamCommon {
 
   absl::Status Memset32(DeviceAddressBase* location, uint32_t pattern,
                         uint64_t size) override;
+  absl::Status WaitValue32(const DeviceAddressBase& location,
+                           uint32_t value) override;
   absl::Status MemZero(DeviceAddressBase* location, uint64_t size) override;
   absl::Status Memcpy(DeviceAddressBase* gpu_dst, const void* host_src,
                       uint64_t size) override;
