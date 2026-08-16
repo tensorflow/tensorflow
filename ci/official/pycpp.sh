@@ -37,12 +37,40 @@ if [[ "$TFCI_WHL_NUMPY_VERSION" == 1 ]]; then
   cp ./ci/official/requirements_updater/numpy1_requirements/*.txt .
 fi
 
-if [[ $TFCI_PYCPP_SWAP_TO_BUILD_ENABLE == 1 ]]; then
-  tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS build $TFCI_BAZEL_COMMON_ARGS --profile "$PROFILE_JSON_PATH" $HERMETIC_CUDA_UMD_FLAGS --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_pycpp_test"
-else
-  tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS test $TFCI_BAZEL_COMMON_ARGS --profile "$PROFILE_JSON_PATH" $HERMETIC_CUDA_UMD_FLAGS --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_pycpp_test"
+if [[ $(uname -s) == "MSYS_NT"* ]] || [[ $(uname -s) == "MINGW64_NT"* ]]; then
+  TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --dynamic_mode=off --copt=-DTF_WIN_CACHE_BUSTER_PR_927401425"
+  if [[ "$TFCI_PYCPP_DISABLE_DEF_FILE_GEN" != 1 ]]; then
+    echo "=== Phase 0: Generating C++ Protobuf Headers on host runner ==="
+    tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS build $TFCI_BAZEL_COMMON_ARGS $HERMETIC_CUDA_UMD_FLAGS --remote_download_outputs=all //tensorflow/python:pywrap_required_headers
+    if [[ $? -ne 0 ]]; then
+      echo "ERROR: C++ Protobuf header generation failed."
+      exit 1
+    fi
+
+    echo "=== Phase 1: Harvesting unmangled C++ AST declarations on host runner ==="
+    python3 ./tensorflow/tools/def_file_gen/regenerate_win_exports.py --stage=discovery --output_def_file=tensorflow/python/_pywrap_tensorflow_unmangled.def
+    if [[ $? -eq 1 ]]; then
+      echo "ERROR: regenerate_win_exports.py failed during host discovery pass."
+      exit 1
+    fi
+  else
+    echo "=== Skipping Windows DEF File Export Table Generation ==="
+  fi
 fi
+
+BAZEL_EXIT_CODE=0
+if [[ $TFCI_PYCPP_SWAP_TO_BUILD_ENABLE == 1 ]]; then
+  tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS build $TFCI_BAZEL_COMMON_ARGS --profile "$PROFILE_JSON_PATH" $HERMETIC_CUDA_UMD_FLAGS --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_pycpp_test" || BAZEL_EXIT_CODE=$?
+else
+  tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS test $TFCI_BAZEL_COMMON_ARGS --profile "$PROFILE_JSON_PATH" $HERMETIC_CUDA_UMD_FLAGS --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_pycpp_test" || BAZEL_EXIT_CODE=$?
+fi
+
+
 
 # Note: the profile can be viewed by visiting chrome://tracing in a Chrome browser.
 # See https://docs.bazel.build/versions/main/skylark/performance.html#performance-profiling
 tfrun bazel analyze-profile "$PROFILE_JSON_PATH"
+
+if [[ $BAZEL_EXIT_CODE -ne 0 ]]; then
+  exit $BAZEL_EXIT_CODE
+fi

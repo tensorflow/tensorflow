@@ -42,6 +42,7 @@ package_group(
     packages = [
         "//tensorflow/c/...",
         "//tensorflow/compiler/...",
+        "//tensorflow/python/...",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
     ],
