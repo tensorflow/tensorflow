@@ -159,6 +159,29 @@ class MathTest(test.TestCase, parameterized.TestCase):
   def testSqrt(self):
     self._testUnaryOp(np_math_ops.sqrt, np.sqrt, 'sqrt')
 
+  def testAngle(self):
+    # The result must keep the dtype of the argument. Building the real-input
+    # branch out of Python scalars made it float32 for every real dtype, which
+    # for float64 also cost precision.
+    for dtype in [np.float16, np.float32, np.float64]:
+      arg = np.array([-2.0, -0.5, 0.0, 0.5, 2.0], dtype=dtype)
+      self.match(
+          np_math_ops.angle(arg), np.angle(arg),
+          msg='angle({})'.format(arg))
+      self.match(
+          np_math_ops.angle(arg, deg=True), np.angle(arg, deg=True),
+          msg='angle({}, deg=True)'.format(arg))
+
+    for dtype in [np.complex64, np.complex128]:
+      arg = np.array([1 + 2j, -1 - 2j, 0j], dtype=dtype)
+      self.match(
+          np_math_ops.angle(arg), np.angle(arg),
+          msg='angle({})'.format(arg))
+
+    # An integer argument is promoted to the default float type.
+    arg = np.array([-3, 0, 3], dtype=np.int32)
+    self.match(np_math_ops.angle(arg), np.angle(arg), msg='angle(int32)')
+
   def testHypot(self):
     self._testBinaryOp(np_math_ops.hypot, np.hypot, 'hypot')
 
