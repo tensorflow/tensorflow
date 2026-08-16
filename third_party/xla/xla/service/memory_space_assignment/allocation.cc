@@ -186,6 +186,13 @@ absl::Status Allocation::UpdateUses(HloComputation* computation,
                                     const HloLiveRange& hlo_live_range,
                                     const HloAliasAnalysis& alias_analysis) {
   for (const HloUse& use : uses()) {
+    if ((use.instruction->opcode() == HloOpcode::kAsyncDone ||
+         use.instruction->opcode() == HloOpcode::kAsyncUpdate) &&
+        use.operand_number == 0) {
+      VLOG(1) << "Skipping operand replacement for async chain link: "
+              << use.instruction->name() << " operand " << use.operand_number;
+      continue;
+    }
     HloInstruction* replacement_instruction = producing_instruction;
     const Shape& operand_shape =
         use.instruction->operand(use.operand_number)->shape();
