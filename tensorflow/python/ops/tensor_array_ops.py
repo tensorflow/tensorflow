@@ -375,7 +375,7 @@ class _GraphTensorArray:
                 % value.shape.as_list())
           clengths = tensor_util.constant_value(lengths_64)
           if (value.shape.rank is not None and value.shape.rank > 0 and
-              clengths is not None):
+              lengths_64.shape.rank == 1 and clengths is not None):
             sum_lengths = int(np.sum(clengths))
             value_first_dim = value.shape.as_list()[0]
             if value_first_dim is not None:
@@ -663,7 +663,7 @@ class _GraphTensorArrayV2:
               % value.shape.as_list())
         clengths = tensor_util.constant_value(lengths_64)
         if (value.shape.rank is not None and value.shape.rank > 0 and
-            clengths is not None):
+            lengths_64.shape.rank == 1 and clengths is not None):
           sum_lengths = int(np.sum(clengths))
           value_first_dim = value.shape.as_list()[0]
           if value_first_dim is not None:

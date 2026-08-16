@@ -454,8 +454,10 @@ class TensorArrayTest(xla_test.XLATestCase):
             infer_shape=False)
         return ta.split([1.0, 2.0, 3.0], [1, 2, 3]).flow
 
-      with self.assertRaisesOpError(
-          r"lengths must be equal: 1 vs. 2"):
+      with self.assertRaisesRegex(
+          ValueError,
+          r"Expected sum of lengths to be equal to values.shape\[0\], "
+          r"but sum of lengths is 6 and value's shape is: \[3\]"):
         xla.compile(fn)[0].eval()
 
       def fn():
@@ -466,8 +468,9 @@ class TensorArrayTest(xla_test.XLATestCase):
             infer_shape=False)
         return ta.split(1.0, [1]).flow
 
-      with self.assertRaisesOpError(
-          r"value must have rank >= 1"):
+      with self.assertRaisesRegex(
+          ValueError,
+          r"Expected value to be at least a vector, but received shape: \[\]"):
         xla.compile(fn)[0].eval()
 
       def fn():
