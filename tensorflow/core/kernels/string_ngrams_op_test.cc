@@ -12,11 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
+#include <string>
 #include <vector>
 
+#include <gtest/gtest.h>
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
-#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -24,7 +27,8 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace text {
@@ -577,6 +581,30 @@ TEST_F(NgramKernelTest, TestNoTokensNoPad) {
 
   assert_string_equal(expected_values, *GetOutput(0));
   assert_int64_equal(expected_splits, *GetOutput(1));
+}
+
+TEST_F(NgramKernelTest, TestIntegerOverflow) {
+  std::vector<int> ngram_widths(100000, 1);
+  TF_ASSERT_OK(NodeDefBuilder("tested_op", "StringNGrams")
+                   .Attr("separator", "|")
+                   .Attr("ngram_widths", ngram_widths)
+                   .Attr("left_pad", "")
+                   .Attr("right_pad", "")
+                   .Attr("pad_width", 0)
+                   .Attr("preserve_short_sequences", false)
+                   .Input(FakeInput(DT_STRING))
+                   .Input(FakeInput(DT_INT32))
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+
+  std::vector<tstring> data(21475, "a");
+  AddInputFromArray<tstring>(TensorShape({21475}), data);
+  AddInputFromArray<int32>(TensorShape({2}), {0, 21475});
+
+  Status s = RunOpKernel();
+  EXPECT_FALSE(s.ok());
+  EXPECT_NE(s.message().find("exceeds maximum for SPLITS_TYPE"),
+            std::string::npos);
 }
 
 TEST_F(NgramKernelTest, ShapeFn) {

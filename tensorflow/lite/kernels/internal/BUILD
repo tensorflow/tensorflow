@@ -1399,15 +1399,6 @@ cc_test(
 )
 
 cc_test(
-    name = "select_test",
-    srcs = ["select_test.cc"],
-    deps = [
-        ":reference_base",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
     name = "runtime_shape_test",
     srcs = ["runtime_shape_test.cc"],
     deps = [

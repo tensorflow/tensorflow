@@ -318,6 +318,7 @@ bool IsSupportedInstruction(const HloInstruction& inst,
           switch (opcode) {
             case HloOpcode::kAdd:
             case HloOpcode::kSubtract:
+              return true;
             case HloOpcode::kMultiply:
             case HloOpcode::kDivide:
             case HloOpcode::kPower:
@@ -328,7 +329,7 @@ bool IsSupportedInstruction(const HloInstruction& inst,
             case HloOpcode::kImag:
             case HloOpcode::kSelect:
             case HloOpcode::kCompare:
-              return true;
+              return !use_new_xtile_lowering;
             default:
               return false;
           }
