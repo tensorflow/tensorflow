@@ -3,6 +3,9 @@
 
 load("@xla//third_party/rules_python/python:defs.bzl", "py_library")
 
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     # TODO(scottzhu): Remove non-keras deps from TF.
@@ -98,6 +101,35 @@ py_library(
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
         "@pypi//h5py",
+    ],
+)
+
+tf_py_test(
+    name = "compile_utils_test",
+    size = "small",
+    srcs = ["compile_utils_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":engine",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/platform:client_testlib",
+    ],
+)
+
+tf_py_test(
+    name = "training_utils_v1_test",
+    size = "small",
+    srcs = ["training_utils_v1_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":engine",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -223,6 +255,18 @@ py_library(
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
+    ],
+)
+
+tf_py_test(
+    name = "input_spec_test",
+    size = "small",
+    srcs = ["input_spec_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":input_spec",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 

@@ -525,8 +525,15 @@ def standardize_single_array(x, expected_shape=None):
     raise ValueError(
         'Expected an array data type but received an integer: {}'.format(x))
 
-  if (x.shape is not None and len(x.shape) == 1 and
-      (expected_shape is None or len(expected_shape) != 1)):
+  if tensor_util.is_tf_type(x):
+    # `x.shape` may have an unknown rank (`x.shape.rank is None`), in which
+    # case `len(x.shape)` would raise. `TensorShape.rank` is always safe to
+    # read, so use it instead.
+    x_rank = x.shape.rank
+  else:
+    x_rank = len(x.shape) if x.shape is not None else None
+
+  if (x_rank == 1 and (expected_shape is None or len(expected_shape) != 1)):
     if tensor_util.is_tf_type(x):
       x = array_ops.expand_dims(x, axis=1)
     else:
