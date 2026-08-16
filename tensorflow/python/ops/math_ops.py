@@ -551,7 +551,13 @@ def multiply(x, y, name=None):
    * InvalidArgumentError: When `x` and `y` have incompatible shapes or types.
   """
 
-  return gen_math_ops.mul(x, y, name)
+  x_dtype = y.dtype.base_dtype if hasattr(y, "dtype") and y.dtype else None
+  y_dtype = x.dtype.base_dtype if hasattr(x, "dtype") and x.dtype else None
+  if not tensor_util.is_tf_type(x):
+    x = ops.convert_to_tensor(x, dtype_hint=x_dtype, name="x")
+  if not tensor_util.is_tf_type(y):
+    y = ops.convert_to_tensor(y, dtype_hint=y_dtype, name="y")
+  return gen_math_ops.mul(x,y, name)
 
 
 # TODO(aselle): put deprecation in after another round of global code changes
@@ -720,7 +726,13 @@ def pow(x, y, name=None):  # pylint: disable=redefined-builtin
     A `Tensor`.
   """
   with ops.name_scope(name, "Pow", [x]) as name:
-    return gen_math_ops._pow(x, y, name=name)
+    x_dtype = y.dtype.base_dtype if hasattr(y, "dtype") and y.dtype else None
+    y_dtype = x.dtype.base_dtype if hasattr(x, "dtype") and x.dtype else None
+    if not tensor_util.is_tf_type(x):
+      x = ops.convert_to_tensor(x, dtype_hint=x_dtype, name="x")
+    if not tensor_util.is_tf_type(y):
+      y = ops.convert_to_tensor(y, dtype_hint=y_dtype, name="y")
+    return gen_math_ops._pow(x,y, name=name)
 
 
 # pylint: disable=redefined-builtin,redefined-outer-name
