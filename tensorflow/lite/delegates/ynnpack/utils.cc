@@ -268,9 +268,18 @@ bool IsConstant(const TfLiteTensor& tensor, bool allow_prepare) {
   }
 }
 
-bool IsSupportedQuantization(const TfLiteTensor& tensor,
-                             bool allow_per_channel) {
+bool IsSupportedQuantization(const TfLiteTensor& tensor, bool allow_per_channel,
+                             bool allow_blockwise) {
   if (!IsQuantized(tensor)) return true;
+  if (tensor.quantization.type == kTfLiteBlockwiseQuantization) {
+    if (!allow_blockwise) return false;
+    const auto* params = static_cast<const TfLiteBlockwiseQuantization*>(
+        tensor.quantization.params);
+    if (!params) return false;
+    if (params->scale < 0) return false;
+    if (params->blocksize <= 0) return false;
+    return true;
+  }
   if (tensor.quantization.type != kTfLiteAffineQuantization) return false;
   const auto* params =
       static_cast<const TfLiteAffineQuantization*>(tensor.quantization.params);
@@ -300,7 +309,8 @@ size_t YnnTypeElementCount(ynn_type type) {
   }
 }
 
-bool IsTensorSupported(const TfLiteTensor& tensor, bool allow_per_channel) {
+bool IsTensorSupported(const TfLiteTensor& tensor, bool allow_per_channel,
+                       bool allow_blockwise) {
   if (tensor.type == kTfLiteBool) return false;
   ynn_type type = GetYnnType(tensor.type);
   if (type == ynn_type_invalid) return false;
@@ -311,7 +321,7 @@ bool IsTensorSupported(const TfLiteTensor& tensor, bool allow_per_channel) {
         tensor.dims->size == 0 ? 1 : tensor.dims->data[tensor.dims->size - 1];
     if (dense_dim % element_count != 0) return false;
   }
-  return IsSupportedQuantization(tensor, allow_per_channel);
+  return IsSupportedQuantization(tensor, allow_per_channel, allow_blockwise);
 }
 
 bool QuantizationParamsEqual(const TfLiteTensor& tensor1,
