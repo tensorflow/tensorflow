@@ -64,9 +64,11 @@ bool IsQuantized(const TfLiteTensor& tensor);
 // is constant between `Prepare` calls.
 bool IsConstant(const TfLiteTensor& tensor, bool allow_prepare = false);
 bool IsSupportedQuantization(const TfLiteTensor& tensor,
-                             bool allow_per_channel = false);
+                             bool allow_per_channel = false,
+                             bool allow_blockwise = false);
 bool IsTensorSupported(const TfLiteTensor& tensor,
-                       bool allow_per_channel = false);
+                       bool allow_per_channel = false,
+                       bool allow_blockwise = false);
 bool QuantizationParamsEqual(const TfLiteTensor& tensor1,
                              const TfLiteTensor& tensor2);
 bool IsActivationSupported(TfLiteFusedActivation activation,
