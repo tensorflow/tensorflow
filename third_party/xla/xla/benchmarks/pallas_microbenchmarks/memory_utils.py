@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Utility functions for memory operations used in XLA benchmarks.
-"""
+"""Utility functions for memory operations used in XLA benchmarks."""
 
 import jax
 from jax.experimental import pallas as pl
@@ -60,3 +59,38 @@ def copy_to_vmem(arr: jax.Array) -> jax.Array:
           ],
       ),
   )(arr)
+
+
+def remote_dma_kernel(
+    src_ref: jax.Array,
+    dst_ref: jax.Array,
+    send_sem: jax.Array,
+    recv_sem: jax.Array,
+) -> None:
+  """Bare inter-chip DMA kernel using make_async_remote_copy.
+
+  Chip 0 sends src_ref over ICI to Chip 1 dst_ref without using HLO collectives.
+
+  Args:
+    src_ref: Source array reference in HBM on chip 0.
+    dst_ref: Destination array reference in HBM on chip 1.
+    send_sem: Semaphore for sending DMA.
+    recv_sem: Semaphore for receiving DMA.
+  """
+  chip_idx = jax.lax.axis_index("chips")
+  remote_copy = pltpu.make_async_remote_copy(
+      src_ref=src_ref,
+      dst_ref=dst_ref,
+      send_sem=send_sem,
+      recv_sem=recv_sem,
+      device_id=(1,),
+  )
+
+  @pl.when(chip_idx == 0)
+  def send():
+    remote_copy.start()
+    remote_copy.wait_send()
+
+  @pl.when(chip_idx == 1)
+  def receive():
+    remote_copy.wait_recv()
