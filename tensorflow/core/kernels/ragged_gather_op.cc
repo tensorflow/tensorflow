@@ -200,9 +200,13 @@ class RaggedGatherOpBase : public OpKernel {
     // Validate
     for (int dim = 0; dim < params_nested_splits.size(); ++dim) {
       const auto& splits = params_nested_splits[dim];
+      // For an intermediate ragged dimension, the split values are used as
+      // indices into the next dimension's splits tensor by MakeSplits, so the
+      // largest valid value is one less than that tensor's length. Only the
+      // innermost dimension may reference num_params_dense_values directly.
       SPLITS_TYPE last_split = (dim == params_nested_splits.size() - 1)
                                    ? num_params_dense_values
-                                   : params_nested_splits[dim + 1].size();
+                                   : params_nested_splits[dim + 1].size() - 1;
       if (splits.size() == 0) {
         return absl::InvalidArgumentError("Ragged splits may not be empty");
       }
