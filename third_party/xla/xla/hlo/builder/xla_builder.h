@@ -709,7 +709,10 @@ class XlaBuilder {
   XlaOp DotGeneral(
       XlaOp lhs, XlaOp rhs, const DotDimensionNumbers& dimension_numbers,
       const PrecisionConfig* precision_config = nullptr,
-      std::optional<PrimitiveType> preferred_element_type = std::nullopt);
+      std::optional<PrimitiveType> preferred_element_type = std::nullopt,
+      absl::Span<const XlaOp> ext_operands = {},
+      const SparsityConfig* sparsity_config = nullptr,
+      const BlockScalingConfig* block_scaling_config = nullptr);
 
   XlaOp RaggedAllToAll(
       XlaOp input, XlaOp input_offsets, XlaOp send_sizes, XlaOp output,
@@ -1529,7 +1532,10 @@ class XlaBuilder {
   friend XlaOp DotGeneral(XlaOp lhs, XlaOp rhs,
                           const DotDimensionNumbers& dimension_number,
                           const PrecisionConfig* precision_config,
-                          std::optional<PrimitiveType> preferred_element_type);
+                          std::optional<PrimitiveType> preferred_element_type,
+                          absl::Span<const XlaOp> ext_operands,
+                          const SparsityConfig* sparsity_config,
+                          const BlockScalingConfig* block_scaling_config);
   friend XlaOp RaggedDot(XlaOp lhs, XlaOp rhs, XlaOp group_sizes,
                          const RaggedDotDimensionNumbers& dimension_numbers,
                          const PrecisionConfig* precision_config,
@@ -1541,7 +1547,10 @@ class XlaBuilder {
   virtual absl::StatusOr<XlaOp> DotGeneralInternal(
       const Shape& shape, XlaOp lhs, XlaOp rhs,
       const DotDimensionNumbers& dimension_number,
-      const PrecisionConfig* precision_config);
+      const PrecisionConfig* precision_config,
+      absl::Span<const XlaOp> ext_operands,
+      const SparsityConfig* sparsity_config,
+      const BlockScalingConfig* block_scaling_config);
   friend XlaOp RaggedAllToAll(XlaOp input, XlaOp input_offsets,
                               XlaOp send_sizes, XlaOp output,
                               XlaOp output_offsets, XlaOp recv_sizes,
@@ -2591,7 +2600,10 @@ XlaOp Dot(XlaOp lhs, XlaOp rhs,
 XlaOp DotGeneral(
     XlaOp lhs, XlaOp rhs, const DotDimensionNumbers& dimension_numbers,
     const PrecisionConfig* precision_config = nullptr,
-    std::optional<PrimitiveType> preferred_element_type = std::nullopt);
+    std::optional<PrimitiveType> preferred_element_type = std::nullopt,
+    absl::Span<const XlaOp> ext_operands = {},
+    const SparsityConfig* sparsity_config = nullptr,
+    const BlockScalingConfig* block_scaling_config = nullptr);
 
 // Enqueues a ragged all to all instruction onto the computation.
 XlaOp RaggedAllToAll(

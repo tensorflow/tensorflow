@@ -207,6 +207,45 @@ TEST_F(HloInstructionTest, BlockScalingConfigToString) {
   }
 }
 
+TEST_F(HloInstructionTest, DotBlockScalingAndSparsityToString) {
+  HloComputation::Builder builder("main");
+  auto lhs = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(BF16, {64, 64}), "lhs"));
+  auto rhs = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(BF16, {128, 64}), "rhs"));
+  auto lhs_scale = builder.AddInstruction(HloInstruction::CreateParameter(
+      2, ShapeUtil::MakeShape(F8E8M0FNU, {64, 2}), "lhs_scale"));
+  auto lhs_indices = builder.AddInstruction(HloInstruction::CreateParameter(
+      3, ShapeUtil::MakeShape(S8, {64, 16}), "lhs_indices"));
+
+  DotDimensionNumbers dnums;
+  dnums.add_lhs_contracting_dimensions(1);
+  dnums.add_rhs_contracting_dimensions(0);
+  PrecisionConfig precision_config;
+
+  SparsityConfig sp;
+  sp.mutable_lhs()->set_idx(3);
+  sp.mutable_lhs()->set_num_non_zero(2);
+  sp.mutable_lhs()->set_block_size(4);
+  sp.mutable_lhs()->set_dimension(1);
+  sp.mutable_lhs()->set_stride(1);
+
+  BlockScalingConfig bs;
+  bs.mutable_lhs()->set_scale_idx(2);
+  bs.mutable_lhs()->add_strides(1);
+  bs.mutable_lhs()->add_strides(32);
+  bs.mutable_lhs()->add_steps(1);
+  bs.mutable_lhs()->add_steps(1);
+
+  auto dot = builder.AddInstruction(HloInstruction::CreateDot(
+      ShapeUtil::MakeShape(BF16, {64, 64}), {lhs, rhs, lhs_scale, lhs_indices},
+      dnums, precision_config, sp, bs));
+
+  EXPECT_EQ(
+      dot->ToString(),
+      R"(%dot = bf16[64,64]{1,0} dot(%lhs, %rhs, %lhs_scale, %lhs_indices), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity_config={lhs={sparsity=2x4 dimension=1 stride=1 idx=3}}, block_scaling_config={lhs={scale_idx=2 strides=1x32 steps=1x1}})");
+}
+
 TEST_F(HloInstructionTest, GetStackTraceStringFromStackFrameId) {
   auto module = CreateNewVerifiedModule();
   HloComputation::Builder builder("main");
