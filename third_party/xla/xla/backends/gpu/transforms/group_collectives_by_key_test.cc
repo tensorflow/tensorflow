@@ -17,13 +17,17 @@ limitations under the License.
 
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/transforms/collectives/collective_domain.h"
 #include "xla/backends/gpu/transforms/explicit_collectives_group_async_wrapper.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -827,6 +831,71 @@ TEST_F(GroupCollectivesByKeyTest, ErrorsWhenGroupedNodeGraphHasCycle) {
   //       CHECK: %g1_first = {{.*}} all-reduce(
   //       CHECK: %g1_second = {{.*}} all-reduce(
   //       CHECK: %g0_second = {{.*}} all-reduce(
+  )";
+  ExpectFileCheck(module->ToString(), expected_hlo);
+}
+
+TEST_F(GroupCollectivesByKeyTest, SeparatesCommunicationDomains) {
+  const absl::string_view hlo_string = R"(
+  HloModule test, replica_count=2
+
+  add {
+    a = f32[] parameter(0)
+    b = f32[] parameter(1)
+    ROOT sum = f32[] add(a, b)
+  }
+
+  ENTRY main {
+    w0 = f32[2] parameter(0)
+    g0 = f32[4] parameter(1)
+    w1 = f32[2] parameter(2)
+    g1 = f32[4] parameter(3)
+    scale_ag = f32[4] all-gather(w0), dimensions={0},
+        replica_groups={{0,1}},
+        frontend_attributes={collective_group_key="g0"}
+    scale_rs = f32[2] reduce-scatter(g0), dimensions={0},
+        replica_groups={{0,1}}, to_apply=add,
+        frontend_attributes={collective_group_key="g0"}
+    default_ag = f32[4] all-gather(w1), dimensions={0},
+        replica_groups={{0,1}},
+        frontend_attributes={collective_group_key="g0"}
+    default_rs = f32[2] reduce-scatter(g1), dimensions={0},
+        replica_groups={{0,1}}, to_apply=add,
+        frontend_attributes={collective_group_key="g0"}
+    ROOT result = (f32[4], f32[2], f32[4], f32[2])
+        tuple(scale_ag, scale_rs, default_ag, default_rs)
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  for (absl::string_view name : {"scale_ag", "scale_rs"}) {
+    HloInstruction* collective =
+        module->entry_computation()->GetInstructionWithName(name);
+    ASSERT_NE(collective, nullptr);
+    GpuBackendConfig config;
+    config.mutable_collective_backend_config()->set_communication_domain(
+        kScaleUpFabricCollectiveDomain);
+    ASSERT_OK(collective->set_backend_config(config));
+  }
+
+  GroupCollectivesByKey pass;
+  ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  const absl::string_view expected_hlo = R"(
+  // CHECK-LABEL: ENTRY %main
+  //       CHECK: %[[SCALE_START:[^ ]+]] = {{.*}} async-start
+  //  CHECK-SAME:   frontend_attributes={_collectives_group="",
+  //  CHECK-SAME:   collective_group_key="g0"}
+  //  CHECK-SAME:   backend_config={{.*}}communication_domain
+  //  CHECK-SAME:   COLLECTIVE_COMMUNICATION_DOMAIN_SCALE_UP_FABRIC
+  //       CHECK: %[[SCALE_DONE:[^ ]+]] = {{.*}} async-done(%[[SCALE_START]])
+  //       CHECK: %[[DEFAULT_START:[^ ]+]] = {{.*}} async-start
+  //  CHECK-SAME:   frontend_attributes={_collectives_group="",
+  //  CHECK-SAME:   collective_group_key="g0"}
+  //   CHECK-NOT:   communication_domain
+  //       CHECK: %[[DEFAULT_DONE:[^ ]+]] = {{.*}} async-done(%[[DEFAULT_START]])
+  //   CHECK-NOT:   async-start(
   )";
   ExpectFileCheck(module->ToString(), expected_hlo);
 }
