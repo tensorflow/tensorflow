@@ -215,9 +215,10 @@ std::vector<std::string> GetNVPTXBackendOptions(
   // better cost model.
   backend_llvm_opts.emplace_back("-bonus-inst-threshold=2");
 
-  // Use div.full -- it matters for some float-division heavy benchmarks.
-  // Using div.approx produces incorrect result for float32(max)/float32(max).
-  backend_llvm_opts.emplace_back("-nvptx-prec-divf32=1");
+  // Use IEEE-compliant div.rnd. Previously used div.full (value 1) which has
+  // up to 2 ULP error and violates IEEE 754 (e.g., a/a != 1.0).
+  // LLVM already defaults to IEEE754 mode; don't override it.
+  backend_llvm_opts.emplace_back("-nvptx-prec-divf32=2");
 
   // SLPVectorizer is useful (vectorizes f16x2 ops) but slow.  Most of the
   // slowness appears to be in trying to form horizontal reductions, which don't

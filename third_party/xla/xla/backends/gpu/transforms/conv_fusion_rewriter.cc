@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
@@ -132,19 +134,51 @@ HloComputation::Builder CreateConvFusionBuilder(HloInstruction* conv) {
   return HloComputation::Builder(computation_name);
 }
 
-// cuDNN convolutions support fp8 and int8 input types.
+// Supported input types and destination (accumulation) types for cuDNN
+// prologue convert fusions:
+//
+// +------------------+---------------------------+---------------------+
+// | Source Type      | Allowed Convert Dst Types | cuDNN Compute / Acc |
+// +------------------+---------------------------+---------------------+
+// | FP8 (E4M3, E5M2) | F32, F16, BF16            | FP32 (Tensor Core)  |
+// | INT8 (S8, U8)    | S32                       | INT32 (Tensor Core) |
+// | FP16, BF16       | F32 (if out is F16/BF16)  | FP32 (Tensor Core)  |
+// +------------------+---------------------------+---------------------+
+//
 // Fuses the input parameters and any immediate conversions (prologue).
 std::pair<HloInstruction*, HloInstruction*> TryFuseConvolutionPrologue(
-    HloInstruction* convolution, HloComputation::Builder& builder,
+    HloInstruction* convolution,
+    const std::vector<HloInstruction*>& fusion_outputs,
+    HloComputation::Builder& builder,
     std::vector<HloInstruction*>& fusion_params,
     absl::flat_hash_map<HloInstruction*, HloInstruction*>& fused_hlo_map,
     const se::DeviceDescription& device_info) {
   const se::CudaComputeCapability* cuda_cc =
       device_info.gpu_compute_capability().cuda_compute_capability();
-  auto is_fusable_convert = [cuda_cc](const HloInstruction* hlo) {
+  auto is_fusable_convert = [cuda_cc,
+                             &fusion_outputs](const HloInstruction* hlo) {
     // CuDNN only supports convert fusions starting from Ampere.
-    return cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere() &&
-           hlo->opcode() == HloOpcode::kConvert && hlo->user_count() == 1;
+    if (cuda_cc == nullptr || !cuda_cc->IsAtLeastAmpere() ||
+        hlo->opcode() != HloOpcode::kConvert || hlo->user_count() != 1) {
+      return false;
+    }
+    PrimitiveType src_type = hlo->operand(0)->shape().element_type();
+    PrimitiveType dst_type = hlo->shape().element_type();
+    if (primitive_util::IsF8Type(src_type)) {
+      return dst_type == F32 || dst_type == F16 || dst_type == BF16;
+    }
+    if (primitive_util::Is8BitIntegralType(src_type)) {
+      return dst_type == S32;
+    }
+    if (src_type == F16 || src_type == BF16) {
+      // F16/BF16 prologue converts are only fusible when the fused epilogue
+      // downcasts the final output back to src_type.
+      return dst_type == F32 && !fusion_outputs.empty() &&
+             absl::c_all_of(fusion_outputs, [&](const HloInstruction* out) {
+               return out->shape().element_type() == src_type;
+             });
+    }
+    return false;
   };
 
   // Only fuse the prologue converts when both conv operands have one and
@@ -189,6 +223,9 @@ std::pair<HloInstruction*, HloInstruction*> TryFuseConvolutionPrologue(
 HloInstruction* CreateGpuConvFusion(
     HloInstruction* convolution, std::vector<HloInstruction*>& fusion_outputs,
     const se::DeviceDescription& device_info) {
+  std::vector<HloInstruction*> fusible_users =
+      GetAllReachableAndFusible(convolution, fusion_outputs);
+
   HloComputation::Builder builder = CreateConvFusionBuilder(convolution);
 
   // Seeding the parameters and the map for the convolution and its prologue.
@@ -197,19 +234,14 @@ HloInstruction* CreateGpuConvFusion(
 
   // Returns fused prologue operands.
   std::pair<HloInstruction*, HloInstruction*> operands =
-      TryFuseConvolutionPrologue(convolution, builder, fusion_params,
-                                 fused_hlo_map, device_info);
+      TryFuseConvolutionPrologue(convolution, fusion_outputs, builder,
+                                 fusion_params, fused_hlo_map, device_info);
   HloInstruction* lhs = operands.first;
   HloInstruction* rhs = operands.second;
 
   HloInstruction* fused_conv = builder.AddInstruction(
       convolution->CloneWithNewOperands(convolution->shape(), {lhs, rhs}));
   fused_hlo_map[convolution] = fused_conv;
-
-  // Get all reachable and fusible instructions from a convolution in reverse
-  // post order.
-  std::vector<HloInstruction*> fusible_users =
-      GetAllReachableAndFusible(convolution, fusion_outputs);
 
   FuseTowardUsers(builder, fusion_params, fusible_users, fused_hlo_map,
                   IsNCHW(convolution));

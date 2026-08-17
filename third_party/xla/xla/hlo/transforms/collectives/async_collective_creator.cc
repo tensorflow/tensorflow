@@ -185,11 +185,13 @@ std::vector<HloInstruction*> AsyncCollectiveCreator::MatchCollectives(
   for (HloInstruction* instruction : computation->instructions()) {
     const HloOpcode op = instruction->opcode();
 
-    // We only care about collective ops here.
-    if (op != HloOpcode::kAllReduce && op != HloOpcode::kAllGather &&
-        op != HloOpcode::kCollectiveBroadcast &&
-        op != HloOpcode::kCollectivePermute && op != HloOpcode::kAllToAll &&
-        op != HloOpcode::kReduceScatter && op != HloOpcode::kRaggedAllToAll) {
+    // We only care about collective ops and collective fusions here.
+    if (HloPredicateIsNotOp<HloOpcode::kAllReduce, HloOpcode::kAllGather,
+                            HloOpcode::kCollectiveBroadcast,
+                            HloOpcode::kCollectivePermute, HloOpcode::kAllToAll,
+                            HloOpcode::kReduceScatter,
+                            HloOpcode::kRaggedAllToAll, HloOpcode::kFusion>(
+            instruction)) {
       continue;
     }
 
@@ -236,6 +238,10 @@ std::vector<HloInstruction*> AsyncCollectiveCreator::MatchCollectives(
     } else if (op == HloOpcode::kRaggedAllToAll) {
       bool convert = config_.convert_ragged_all_to_all(instruction);
       VLOG(2) << "kRaggedAllToAll: convert=" << convert;
+      matched = convert;
+    } else if (op == HloOpcode::kFusion) {
+      bool convert = config_.convert_collective_fusion(instruction);
+      VLOG(2) << "kFusion: convert=" << convert;
       matched = convert;
     }
 

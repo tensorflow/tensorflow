@@ -95,7 +95,7 @@ cc_library(
         ":kernel_source",
         "//xla/service/llvm_ir:llvm_util",
         "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:OrcJIT",
     ],
 )
 
@@ -223,9 +223,12 @@ xla_cc_test(
     deps = [
         ":intrinsic_lib",
         "//xla/codegen/intrinsic",
+        "//xla/codegen/intrinsic/cpp:_cpp_gen_intrinsics",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Analysis",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
     ],
 )
 
