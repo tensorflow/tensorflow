@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -36,6 +37,51 @@ limitations under the License.
 namespace xla::cpu::internal {
 
 namespace {
+
+template <typename T>
+inline constexpr bool is_float_type_v =
+    std::is_floating_point_v<T> || std::is_same_v<T, bfloat16> ||
+    std::is_same_v<T, half>;
+
+template <typename T>
+inline bool IsNaN(const T& val) {
+  if constexpr (std::is_same_v<T, double>) {
+    return std::isnan(val);
+  } else if constexpr (std::is_same_v<T, float> ||
+                       std::is_same_v<T, bfloat16> || std::is_same_v<T, half>) {
+    return std::isnan(static_cast<float>(val));
+  } else {
+    return false;
+  }
+}
+
+template <typename T>
+struct SortComparatorLess {
+  bool operator()(const T& a, const T& b) const {
+    if constexpr (is_float_type_v<T>) {
+      bool a_nan = IsNaN(a);
+      bool b_nan = IsNaN(b);
+      if (a_nan || b_nan) {
+        return !a_nan && b_nan;
+      }
+    }
+    return a < b;
+  }
+};
+
+template <typename T>
+struct SortComparatorGreater {
+  bool operator()(const T& a, const T& b) const {
+    if constexpr (is_float_type_v<T>) {
+      bool a_nan = IsNaN(a);
+      bool b_nan = IsNaN(b);
+      if (a_nan || b_nan) {
+        return a_nan && !b_nan;
+      }
+    }
+    return a > b;
+  }
+};
 
 // We use a lot of template metaprogramming below to be able to construct
 // iterators with statically known number of compared elements. We support a
@@ -652,19 +698,35 @@ void SortInplace(const SortDims& sort_dims, absl::Span<std::byte* const> data,
 template <class Iterator, class T>
 static void Sort1DInplace(Iterator begin, Iterator end, bool is_stable,
                           SortDirection direction) {
-  if (direction == SortDirection::kAscending) {
-    if (is_stable) {
-      std::stable_sort(begin, end, std::less<T>());
+  if constexpr (std::is_integral_v<T>) {
+    if (direction == SortDirection::kAscending) {
+      if (is_stable) {
+        std::stable_sort(begin, end, std::less<T>());
+      } else {
+        std::sort(begin, end, std::less<T>());
+      }
     } else {
-      std::sort(begin, end, std::less<T>());
+      if (is_stable) {
+        std::stable_sort(begin, end, std::greater<T>());
+      } else {
+        std::sort(begin, end, std::greater<T>());
+      }
     }
   } else {
-    if (is_stable) {
-      std::stable_sort(begin, end, std::greater<T>());
+    if (direction == SortDirection::kAscending) {
+      if (is_stable) {
+        std::stable_sort(begin, end, SortComparatorLess<T>());
+      } else {
+        std::sort(begin, end, SortComparatorLess<T>());
+      }
     } else {
-      std::sort(begin, end, std::greater<T>());
+      if (is_stable) {
+        std::stable_sort(begin, end, SortComparatorGreater<T>());
+      } else {
+        std::sort(begin, end, SortComparatorGreater<T>());
+      }
     }
-  };
+  }
 }
 
 template <typename T>
