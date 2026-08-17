@@ -84,11 +84,7 @@ Vector3 GetReductionTiling(const ReductionDimensions& reduction_dimensions) {
 int64_t ReductionDimensionRaceFreeBound(
     const ReductionDimensions& reduction_dimensions,
     const se::DeviceDescription& device_description) {
-  Vector3 reduction_tiling = GetReductionTiling(reduction_dimensions);
-  if (reduction_dimensions.is_row_reduction) {
-    return MinThreadsXRowReduction() * reduction_tiling[2];
-  }
-  return WarpSize(device_description) * reduction_tiling[1];
+  return std::numeric_limits<int64_t>::max();
 }
 
 bool IsUnnestedReductionFasterThanElemental(
@@ -153,17 +149,12 @@ bool IsReductionFromOrToContiguousDimensions(
 bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions,
                          const se::DeviceDescription& device_description) {
   if (reduction_dimensions.is_row_reduction) {
-    return reduction_dimensions.dimensions[2] <=
-               ReductionDimensionRaceFreeBound(reduction_dimensions,
-                                               device_description) &&
-           reduction_dimensions.dimensions[0] <=
-               BatchedReductionRaceFreeBound();
+    return reduction_dimensions.dimensions[0] <=
+           BatchedReductionRaceFreeBound();
   }
 
-  // Column reduction.
-  return reduction_dimensions.dimensions[1] <=
-         ReductionDimensionRaceFreeBound(reduction_dimensions,
-                                         device_description);
+  // Column reduction is always race-free in the MLIR native emitter.
+  return true;
 }
 
 std::ostream& operator<<(std::ostream& os,

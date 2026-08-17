@@ -882,15 +882,12 @@ RowReductionFusion::RowReductionFusion(const HloFusionAnalysis& analysis)
   //   d0 floordiv 32 + s1 * 32 in [0, 63]
   //
   // Tighten the bound of s1 to [0, 1].
-  int minor_reduced_tile_size =
-      std::min(kMinorReducedElementsPerThread / vector_size,
-               CeilOfRatio(input_shape_[2], num_threads_[1]));
+  int minor_reduced_tile_size = CeilOfRatio(input_shape_[2], num_threads_[1]);
 
   tile_sizes_per_thread_ = {shape[0], minor_reduced_tile_size, vector_size};
   tile_sizes_per_block_ = {num_threads_kept,
                            minor_reduced_tile_size * num_threads_reduced};
-  num_blocks_ = {CeilOfRatio(input_shape_[1], tile_sizes_per_block_[0]),
-                 CeilOfRatio(input_shape_[2], tile_sizes_per_block_[1])};
+  num_blocks_ = {CeilOfRatio(input_shape_[1], tile_sizes_per_block_[0]), 1};
   gpu_blocks_ = MaybeSplitGridDimensionX(
       Product(num_threads_), Product(num_blocks_), analysis_.device_info());
 
