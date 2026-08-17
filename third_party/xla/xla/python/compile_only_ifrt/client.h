@@ -237,6 +237,20 @@ class CompileOnlyIfRtClient final
     return Unimplemented("CopyArrays not available with compile-only client.");
   }
 
+  absl::StatusOr<std::vector<ifrt::ArrayRef>> CopyArrays(
+      absl::Span<ifrt::ArrayRef> arrays,
+      std::optional<ifrt::DeviceListRef> devices,
+      std::optional<ifrt::MemoryKind> memory_kind,
+      std::optional<absl::Span<ifrt::LayoutRef>> layouts,
+      ifrt::ArrayCopySemantics semantics) override {
+    if (layouts.has_value()) {
+      return Unimplemented(
+          "CopyArrays with specified layouts is not implemented.");
+    }
+    return CopyArrays(arrays, std::move(devices), std::move(memory_kind),
+                      semantics);
+  }
+
   absl::StatusOr<std::vector<ifrt::ArrayRef>> RemapArrays(
       const ifrt::RemapPlan& plan, absl::Span<ifrt::ArrayRef> arrays,
       ifrt::ArrayCopySemantics semantics) override {

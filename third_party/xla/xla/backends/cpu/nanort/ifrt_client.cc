@@ -1475,6 +1475,20 @@ absl::StatusOr<std::vector<ifrt::ArrayRef>> NanoIfrtClient::CopyArrays(
   return result;
 }
 
+absl::StatusOr<std::vector<ifrt::ArrayRef>> NanoIfrtClient::CopyArrays(
+    absl::Span<ifrt::ArrayRef> arrays,
+    std::optional<ifrt::DeviceListRef> devices,
+    std::optional<ifrt::MemoryKind> memory_kind,
+    std::optional<absl::Span<ifrt::LayoutRef>> layouts,
+    ifrt::ArrayCopySemantics semantics) {
+  if (layouts.has_value()) {
+    return absl::UnimplementedError(
+        "CopyArrays with specified layouts is not implemented.");
+  }
+  return CopyArrays(arrays, std::move(devices), std::move(memory_kind),
+                    semantics);
+}
+
 absl::StatusOr<std::vector<ifrt::ArrayRef>> NanoIfrtClient::RemapArrays(
     const ifrt::RemapPlan& plan, absl::Span<ifrt::ArrayRef> arrays,
     ifrt::ArrayCopySemantics semantics) {

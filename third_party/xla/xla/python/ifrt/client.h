@@ -224,6 +224,12 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
   virtual absl::StatusOr<std::vector<ArrayRef>> CopyArrays(
       absl::Span<ArrayRef> arrays, std::optional<DeviceListRef> devices,
       std::optional<MemoryKind> memory_kind, ArrayCopySemantics semantics) = 0;
+  // TODO(icgog): Replace the above method with this one.
+  virtual absl::StatusOr<std::vector<ArrayRef>> CopyArrays(
+      absl::Span<ArrayRef> arrays, std::optional<DeviceListRef> devices,
+      std::optional<MemoryKind> memory_kind,
+      std::optional<absl::Span<LayoutRef>> layouts,
+      ArrayCopySemantics semantics) = 0;
 
   // Remaps shards across input `Array`s to create new `Array`s based on `plan`.
   // This array remapping is a metadata-only operation that can shuffle or
