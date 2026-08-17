@@ -380,9 +380,11 @@ absl::StatusOr<absl::flat_hash_set<HloOpcode>> OpcodesForTritonCollectives(
   for (auto collective :
        debug_options.xla_gpu_experimental_use_collective_kernels()) {
     switch (collective) {
-      case xla::DebugOptions::COLLECTIVE_KERNEL_ALL_REDUCE:
+      case xla::DebugOptions::COLLECTIVE_KERNEL_ALL_REDUCE: {
         instructions_to_annotate.insert(HloOpcode::kAllReduce);
+        instructions_to_annotate.insert(HloOpcode::kAllReduceStart);
         break;
+      }
       case xla::DebugOptions::COLLECTIVE_KERNEL_ALL_GATHER:
         instructions_to_annotate.insert(HloOpcode::kAllGather);
         break;

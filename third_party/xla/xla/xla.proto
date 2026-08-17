@@ -649,6 +649,16 @@ message DebugOptions {
   // Maximum number of instructions to be combined in collective combiners.
   optional int64 xla_gpu_collective_combine_threshold_count = 461;
 
+  // Comma-separated list of collective communication domains to assign
+  // automatically.
+  //
+  // scale_up_fabric: uses the fast-interconnect partition size from GpuTopology
+  //   and assigns the domain when every participant group is contained in one
+  //   topology partition.
+  //
+  // An empty string disables automatic assignment.
+  optional string xla_gpu_collective_domain_assignment = 536;
+
   // Inflate collective cost by running each collective multiple times.
   optional int32 xla_gpu_collective_inflation_factor = 205;
 
@@ -1796,7 +1806,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 536
+  // Next id: 537
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
