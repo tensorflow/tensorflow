@@ -3505,7 +3505,45 @@ TEST_F(ShapeInferenceTest, ConvWithSparsityFail) {
       /*preferred_element_type=*/std::nullopt);
   EXPECT_FALSE(status_or.ok());
   EXPECT_THAT(status_or.status().message(),
-              HasSubstr("Only 1:N sparsity is currently supported."));
+              HasSubstr("num_non_zero and block_size must be positive"));
+}
+
+TEST_F(ShapeInferenceTest, ConvAndDotWithMtoNSparsity) {
+  const Shape lhs = ShapeUtil::MakeShape(F32, {256, 256});
+  const Shape rhs = ShapeUtil::MakeShape(F32, {128, 256});
+  SparsityConfig sp;
+  auto* rhs_sp = sp.mutable_rhs();
+  rhs_sp->set_num_non_zero(2);
+  rhs_sp->set_block_size(4);
+  rhs_sp->set_dimension(0);
+  rhs_sp->set_stride(1);
+
+  ConvolutionDimensionNumbers cdnums;
+  cdnums.set_input_batch_dimension(0);
+  cdnums.set_input_feature_dimension(1);
+  cdnums.set_kernel_input_feature_dimension(0);
+  cdnums.set_kernel_output_feature_dimension(1);
+  cdnums.set_output_batch_dimension(0);
+  cdnums.set_output_feature_dimension(1);
+  ASSERT_OK_AND_ASSIGN(Shape conv_shape,
+                       ShapeInference::InferConvolveShape(
+                           lhs, rhs, 1, 1, Window(), cdnums, sp, std::nullopt));
+  EXPECT_TRUE(ShapeUtil::Equal(conv_shape, lhs));
+
+  DotDimensionNumbers ddnums;
+  ddnums.add_lhs_contracting_dimensions(1);
+  ddnums.add_rhs_contracting_dimensions(0);
+  ASSERT_OK_AND_ASSIGN(
+      Shape dot_shape,
+      ShapeInference::InferDotOpShape(lhs, rhs, ddnums, std::nullopt, sp));
+  EXPECT_TRUE(ShapeUtil::Equal(dot_shape, lhs));
+
+  const Shape bad_rhs = ShapeUtil::MakeShape(F32, {127, 256});
+  auto bad_status =
+      ShapeInference::InferDotOpShape(lhs, bad_rhs, ddnums, std::nullopt, sp);
+  EXPECT_FALSE(bad_status.ok());
+  EXPECT_THAT(bad_status.status().message(),
+              HasSubstr("must be divisible by num_non_zero"));
 }
 
 TEST_F(ShapeInferenceTest, InferStochasticConvertShape) {

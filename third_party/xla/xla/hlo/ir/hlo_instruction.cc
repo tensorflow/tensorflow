@@ -519,29 +519,17 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             comparison_direction,
             StringToComparisonDirection(proto.comparison_direction()));
       }
-      auto comparison_order_str = proto.comparison_order();
-      if (!comparison_order_str.empty()) {
-        ABSL_ASSIGN_OR_RETURN(auto comparison_order,
-                         ShortStringToComparisonOrder(comparison_order_str));
-        instruction = CreateCompare(shape, operands(0), operands(1),
-                                    *comparison_direction, comparison_order);
-      } else {
-        auto comparison_type_str = proto.comparison_type();
-        if (!comparison_type_str.empty()) {
-          // If a comparison type is specified, it *must* be valid.
-          ABSL_ASSIGN_OR_RETURN(auto comparison_type,
-                           StringToComparisonType(comparison_type_str));
-          instruction = CreateCompare(
-              shape, operands(0), operands(1), *comparison_direction,
-              Comparison::DefaultOrdering(comparison_type));
-        } else {
-          // Allow the specification of comparison type to be optional.
-          // The comparison type will be determined by the types of the
-          // operands.
-          instruction = CreateCompare(shape, operands(0), operands(1),
-                                      *comparison_direction);
-        }
+      std::optional<ComparisonOrder> comparison_order;
+      if (!proto.comparison_order().empty()) {
+        ABSL_ASSIGN_OR_RETURN(comparison_order, ShortStringToComparisonOrder(
+                                               proto.comparison_order()));
+      } else if (!proto.comparison_type().empty()) {
+        // If a comparison type is specified, it *must* be valid.
+        ABSL_ASSIGN_OR_RETURN(comparison_order,
+                         ComparisonTypeToOrder(proto.comparison_type()));
       }
+      instruction = CreateCompare(shape, operands(0), operands(1),
+                                  *comparison_direction, comparison_order);
       break;
     }
     case HloOpcode::kTriangularSolve: {
@@ -1247,10 +1235,10 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       PrecisionConfig precision_config = proto.precision_config();
       precision_config.mutable_operand_precision()->Resize(
           proto.operand_ids_size(), PrecisionConfig::DEFAULT);
-      auto operand_vector = all_operands();
       instruction = std::make_unique<HloDotInstruction>(
-          shape, operands(0), operands(1), proto.dot_dimension_numbers(),
-          precision_config);
+          shape, all_operands(), proto.dot_dimension_numbers(),
+          precision_config, proto.sparsity_config(),
+          proto.block_scaling_config());
       break;
     }
     case HloOpcode::kRaggedDot: {
@@ -1809,8 +1797,18 @@ HloInstruction::CreateTriangularSolve(const Shape& shape, HloInstruction* a,
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
     const DotDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config) {
-  return std::make_unique<HloDotInstruction>(shape, lhs, rhs, dimension_numbers,
-                                             precision_config);
+  return CreateDot(shape, {lhs, rhs}, dimension_numbers, precision_config);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDot(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    const DotDimensionNumbers& dimension_numbers,
+    const PrecisionConfig& precision_config,
+    const SparsityConfig& sparsity_config,
+    const BlockScalingConfig& block_scaling_config) {
+  return std::make_unique<HloDotInstruction>(shape, operands, dimension_numbers,
+                                             precision_config, sparsity_config,
+                                             block_scaling_config);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRaggedDot(
@@ -3076,15 +3074,22 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
 }
 
 void HloInstruction::DetachFromOperandsAndUsers() {
+  DetachFromOperandsAndUsersOutside(/*computation=*/nullptr);
+}
+
+void HloInstruction::DetachFromOperandsAndUsersOutside(
+    const HloComputation* computation) {
   if (cleaned_up_) {
     return;
   }
+  DCHECK(computation == nullptr || computation == parent());
   cleaned_up_ = true;
   // Detach from operands. An instruction may be repeated as an operand. To
   // avoid calling RemoveUser twice on the same operand, check before remove.
   for (int64_t operand_num = 0; operand_num < operand_count(); ++operand_num) {
     HloInstruction* operand = operands_[operand_num];
-    if (operand == nullptr) {
+    if (operand == nullptr ||
+        (computation != nullptr && operand->parent() == computation)) {
       continue;
     }
     operand->users_.MaybeRemoveUser(this);
@@ -3092,7 +3097,10 @@ void HloInstruction::DetachFromOperandsAndUsers() {
   }
 
   // Update users. Set `nullptr` to the corresponding operand slot for users.
-  for (auto& user : this->users()) {
+  for (HloInstruction* user : users()) {
+    if (computation != nullptr && user->parent() == computation) {
+      continue;
+    }
     for (int i = 0; i < user->operand_count(); ++i) {
       if (user->operands_[i] == this) {
         user->operands_[i] = nullptr;
@@ -6464,20 +6472,32 @@ const RaggedDotDimensionNumbers& HloInstruction::ragged_dot_dimension_numbers()
 }
 
 const SparsityConfig& HloInstruction::sparsity_config() const {
+  if (auto d = DynCast<HloDotInstruction>(this)) {
+    return d->sparsity_config();
+  }
   return Cast<HloConvolutionInstruction>(this)->sparsity_config();
 }
 
 void HloInstruction::set_sparsity_config(
     const SparsityConfig& sparsity_config) {
+  if (auto d = DynCast<HloDotInstruction>(this)) {
+    return d->set_sparsity_config(sparsity_config);
+  }
   Cast<HloConvolutionInstruction>(this)->set_sparsity_config(sparsity_config);
 }
 
 const BlockScalingConfig& HloInstruction::block_scaling_config() const {
+  if (auto d = DynCast<HloDotInstruction>(this)) {
+    return d->block_scaling_config();
+  }
   return Cast<HloConvolutionInstruction>(this)->block_scaling_config();
 }
 
 void HloInstruction::set_block_scaling_config(
     const BlockScalingConfig& block_scaling_config) {
+  if (auto d = DynCast<HloDotInstruction>(this)) {
+    return d->set_block_scaling_config(block_scaling_config);
+  }
   Cast<HloConvolutionInstruction>(this)->set_block_scaling_config(
       block_scaling_config);
 }
