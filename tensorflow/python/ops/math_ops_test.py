@@ -1527,6 +1527,7 @@ class CastTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(self.evaluate(test_fn()), [1])
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class ScalarCoercionTest(test_util.TensorFlowTestCase):
 
   def testMultiplyAndPowScalarCoercion(self):
@@ -1539,14 +1540,27 @@ class ScalarCoercionTest(test_util.TensorFlowTestCase):
     def pow_fn(x):
       return math_ops.pow(1, x)
 
+    def mul_reverse_fn(x):
+      return math_ops.multiply(x, 5)
+
+    def pow_reverse_fn(x):
+      return math_ops.pow(x, 2)
+
     self.assertAllClose(mul_fn(x1), [5.0, 10.0, 15.0, 20.0])
     self.assertAllClose(pow_fn(x2), [1.0, 1.0, 1.0, 1.0])
+    self.assertAllClose(mul_reverse_fn(x1), [5.0, 10.0, 15.0, 20.0])
+    self.assertAllClose(pow_reverse_fn(x2), [16.0, 25.0, 36.0, 49.0])
 
-    mul_xla = def_function.function(mul_fn, jit_compile=True)
-    pow_xla = def_function.function(pow_fn, jit_compile=True)
+    if test_util.is_xla_enabled():
+      mul_xla = def_function.function(mul_fn, jit_compile=True)
+      pow_xla = def_function.function(pow_fn, jit_compile=True)
+      mul_rev_xla = def_function.function(mul_reverse_fn, jit_compile=True)
+      pow_rev_xla = def_function.function(pow_reverse_fn, jit_compile=True)
 
-    self.assertAllClose(mul_xla(x1), [5.0, 10.0, 15.0, 20.0])
-    self.assertAllClose(pow_xla(x2), [1.0, 1.0, 1.0, 1.0])
+      self.assertAllClose(mul_xla(x1), [5.0, 10.0, 15.0, 20.0])
+      self.assertAllClose(pow_xla(x2), [1.0, 1.0, 1.0, 1.0])
+      self.assertAllClose(mul_rev_xla(x1), [5.0, 10.0, 15.0, 20.0])
+      self.assertAllClose(pow_rev_xla(x2), [16.0, 25.0, 36.0, 49.0])
 
 if __name__ == "__main__":
   googletest.main()
