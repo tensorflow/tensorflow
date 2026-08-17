@@ -185,7 +185,8 @@ absl::StatusOr<bool> CollectiveKernelStrategyAnnotator::RunImpl(
       if (!instructions_to_annotate.contains(instr->opcode())) {
         continue;
       }
-      if (instr->opcode() == HloOpcode::kAllReduce) {
+      if (instr->opcode() == HloOpcode::kAllReduce ||
+          instr->opcode() == HloOpcode::kAllReduceStart) {
         ABSL_ASSIGN_OR_RETURN(
             bool annotated,
             TryAnnotateAllReduce(instr, gpu_topology_, is_multimem_enabled_));

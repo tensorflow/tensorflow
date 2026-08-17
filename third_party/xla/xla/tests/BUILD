@@ -2390,6 +2390,22 @@ xla_test(
 )
 
 xla_test(
+    name = "ieee_f32_division_test",
+    srcs = ["ieee_f32_division_test.cc"],
+    deps = [
+        ":client_library_test_runner_mixin",
+        ":hlo_pjrt_interpreter_reference_mixin",
+        ":hlo_pjrt_test_base",
+        ":xla_internal_test_main",  # fixdeps: keep
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla/hlo/builder:xla_builder",
+        "//xla/service",
+        "//xla/tsl/platform:test",
+    ],
+)
+
+xla_test(
     name = "log_test",
     srcs = ["log_test.cc"],
     deps = [
@@ -3654,11 +3670,22 @@ cc_library(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/runtime:device_id",
         "//xla/service:computation_placer_hdr",
+        "//xla/service/gpu:gpu_executable_proto_cc",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:logging",
+        "//xla/util/split_proto:human_readable_aot_executable_proto_cc",
+        "//xla/util/split_proto:split_executable_and_options_writer",
+        "//xla/util/split_proto:split_gpu_executable_writer",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@riegeli//riegeli/bytes:string_writer",
+        "@tsl//tsl/platform:protobuf",
     ],
 )

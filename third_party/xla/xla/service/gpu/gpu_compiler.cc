@@ -88,6 +88,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/collectives/all_reduce_splitter.h"
 #include "xla/backends/gpu/transforms/collectives/collective_backend_assigner.h"
 #include "xla/backends/gpu/transforms/collectives/collective_combiner_annotator.h"
+#include "xla/backends/gpu/transforms/collectives/collective_domain_assigner.h"
 #include "xla/backends/gpu/transforms/collectives/collective_fusion.h"
 #include "xla/backends/gpu/transforms/collectives/collective_kernel_strategy_annotator.h"
 #include "xla/backends/gpu/transforms/collectives/collective_permute_cycle_decomposer.h"
@@ -1504,6 +1505,23 @@ void AddCollectiveCombinerPasses(
   // Assign collective backends after combining, so that combined collectives
   // get the correct backend config.
   pipeline.AddPass<CollectiveBackendAssigner>();
+  // Pattern based Collective fusion passes.
+  {
+    // Annotate collective ops with the Triton kernel strategy (one-shot /
+    // two-shot) that will be used at runtime. This annotation is consumed by
+    // SolLatencyEstimator to apply the correct NVLink-based cost model
+    // instead of the NCCL ring model.  Only added when the Triton collective
+    // kernel flag is enabled; when the flag is off all collectives keep
+    // KERNEL_STRATEGY_DEFAULT.
+    // Run the annotator if any collective kernel type is enabled.
+    // It annotates AllReduce and AllGather instructions with the
+    // kernel strategy determined at compile time (before scheduling),
+    // so that SolLatencyEstimator and the thunk emitter can consume it.
+    pipeline.AddPass<CollectiveKernelStrategyAnnotator>(
+        gpu_topology, /*is_multimem_enabled=*/false);
+    // TODO(b/436548063): Re-enable collective fusion after fixing bugs.
+    // pipeline.AddPass<CollectiveFusion>(gpu_topology);
+  }
 }
 
 absl::Status RunPostFusionPasses(
@@ -1520,9 +1538,12 @@ absl::Status RunPostFusionPasses(
                               alias_info, pointer_size, options, gpu_topology,
                               mlir_context);
 
+  pipeline.AddPass<CollectiveDomainAssigner>(gpu_topology);
+
   // Form async collective groups from collectives sharing a
   // `collective_group_key` frontend attribute; runs after the combiner so
-  // combined collectives are grouped as a unit.
+  // combined collectives are grouped as a unit. Domain assignment runs first
+  // so collectives from different communication domains are grouped separately.
   pipeline.AddPass<GroupCollectivesByKey>();
 
   pipeline.AddPass<AllReduceContiguous>();
@@ -1536,6 +1557,10 @@ absl::Status RunPostFusionPasses(
   }
 
   AddDoubleBufferingPasses(*hlo_module, pipeline);
+
+  // Assign domains to collectives created by post-group transformations such
+  // as BlueConnect and loop unrolling.
+  pipeline.AddPass<CollectiveDomainAssigner>(gpu_topology);
 
   return pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
       .status();
@@ -2087,21 +2112,6 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // AlgebraicSimplifier will simplify it away again.
     // TODO(b/375566188): Figure out whether we can get rid of this pass.
     pipeline.AddPass<DotNormalizer>();
-    // Pattern based Collective fusion passes.
-    {
-      // Annotate collective ops with the Triton kernel strategy (one-shot /
-      // two-shot) that will be used at runtime. This annotation is consumed by
-      // SolLatencyEstimator to apply the correct NVLink-based cost model
-      // instead of the NCCL ring model.  Only added when the Triton collective
-      // kernel flag is enabled; when the flag is off all collectives keep
-      // KERNEL_STRATEGY_DEFAULT.
-      // Run the annotator if any collective kernel type is enabled.
-      // It annotates AllReduce and AllGather instructions with the
-      // kernel strategy determined at compile time (before scheduling),
-      // so that SolLatencyEstimator and the thunk emitter can consume it.
-      pipeline.AddPass<CollectiveKernelStrategyAnnotator>(
-          gpu_topology, /*is_multimem_enabled=*/false);
-    }
     if (IsTritonGemmEnabled(debug_options, gpu_version)) {
       pipeline.AddPass<DotDimensionNormalizer>(
           /*normalize_noncontracting_dimensions=*/!debug_options

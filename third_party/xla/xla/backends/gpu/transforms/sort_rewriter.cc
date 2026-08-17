@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/sort_utils.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/cublas_cudnn.h"
@@ -82,64 +83,6 @@ struct SortComputationAnalysis {
   std::optional<PrimitiveType> value_type;
 };
 
-bool MatchConstNan(const HloInstruction* op) {
-  const auto const_nan = DynCast<HloConstantInstruction>(op);
-  if (const_nan == nullptr) {
-    return false;
-  }
-  return const_nan->literal().GetAsString({}) == "nan";
-}
-
-// Matches the HLO pattern used to ensure Numpy sort order. This is how JAX
-// lowers `lax.sort` to HLO comparators.
-int ParamNumberOfCanonicalizedZerosAndNans(const HloInstruction* select) {
-  const HloInstruction* param = nullptr;
-  const HloInstruction* maybe_const_nan;
-  if (!Match(select,
-             m::Select(
-                 m::Compare(m::Parameter(&param), m::Parameter(&param))
-                     .WithComparisonDirection(ComparisonDirection::kNe),
-                 m::Constant(&maybe_const_nan),
-                 m::Select(
-                     m::Compare(m::Parameter(&param),
-                                m::ConstantEffectiveScalar(0))
-                         .WithComparisonDirection(ComparisonDirection::kEq),
-                     m::ConstantEffectiveScalar(0), m::Parameter(&param))))) {
-    return -1;
-  }
-  if (!MatchConstNan(maybe_const_nan)) {
-    return -1;
-  }
-  return param->parameter_number();
-}
-
-// Returns numbers of the parameters used in a comparator for Numpy sort order.
-std::pair<int64_t, int64_t> ParamNumberOfNumpySortComparator(
-    const HloCompareInstruction* cmp_op) {
-  const HloInstruction *select0, *select1;
-  if (!Match(cmp_op, m::Compare(m::Op(&select0), m::Op(&select1)))) {
-    return std::pair<int64_t, int64_t>(-1, -1);
-  }
-  return std::pair<int64_t, int64_t>(
-      ParamNumberOfCanonicalizedZerosAndNans(select0),
-      ParamNumberOfCanonicalizedZerosAndNans(select1));
-}
-
-// Returns numbers of the parameters used in a simple comparator.
-std::pair<int64_t, int64_t> ParamNumberOfSimpleSortComparator(
-    const HloCompareInstruction* cmp_op) {
-  if (cmp_op == nullptr) {
-    return std::pair<int64_t, int64_t>(-1, -1);
-  }
-  const HloParameterInstruction* param0 =
-      DynCast<HloParameterInstruction>(cmp_op->operand(0));
-  const HloParameterInstruction* param1 =
-      DynCast<HloParameterInstruction>(cmp_op->operand(1));
-  return (param0 && param1) ? std::make_pair(param0->parameter_number(),
-                                             param1->parameter_number())
-                            : std::pair<int64_t, int64_t>(-1, -1);
-}
-
 // Returns sort info on compatible compare instructions. The instruction may
 // belong to a computation that has 2 or 4 operands. If this is the root
 // instruction of a computation with 4 parameters only succeeds in cases where
@@ -158,14 +101,14 @@ std::optional<SortComputationAnalysis> AnalyzeCompareOp(
   SortOrderType sort_order;
   int64_t index0, index1;
   auto [simple_sort_index0, simple_sort_index1] =
-      ParamNumberOfSimpleSortComparator(compare);
+      MatchSimpleSortComparator(compare);
   if (simple_sort_index0 != -1 && simple_sort_index1 != -1) {
     sort_order = SortOrderType::kDefaultOrder;
     index0 = simple_sort_index0;
     index1 = simple_sort_index1;
   } else {
     auto [numpy_sort_index0, numpy_sort_index1] =
-        ParamNumberOfNumpySortComparator(compare);
+        MatchNumpySortComparator(compare);
     if (numpy_sort_index0 != -1 && numpy_sort_index1 != -1) {
       sort_order = SortOrderType::kNumpyOrder;
       index0 = numpy_sort_index0;
