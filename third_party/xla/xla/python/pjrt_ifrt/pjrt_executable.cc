@@ -422,14 +422,14 @@ std::vector<PjRtHloOutputLoadedHostCallback*> GatherHloOutputCallbacks(
 // Options consumed by the PjRt-IFRT layer itself are not forwarded.
 xla::CustomOptions::Map ToCustomOptionsMap(const AttributeMap& attribute_map) {
   xla::CustomOptions::Map custom_options;
+  custom_options.reserve(attribute_map.size());
   attribute_map.ForEach([&](const std::string& name,
                             const AttributeMap::Value& value) {
-    if (name == "use_output_arena" ||
-        name == PjRtCompatibleLoadedExecutable::kCallLocation) {
-      return;
-    }
-    std::visit([&](const auto& v) { custom_options[name] = v.value; }, value);
+    std::visit([&](const auto& v) { custom_options.insert({name, v.value}); },
+               value);
   });
+  custom_options.erase("use_output_arena");
+  custom_options.erase(PjRtCompatibleLoadedExecutable::kCallLocation);
   return custom_options;
 }
 
