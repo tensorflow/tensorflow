@@ -115,7 +115,7 @@ def XLAGPU_ShuffleReduceOp : XLAGPU_Op<"shuffle_reduce",
       return getOperandsMutable();
     }
     void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
-      (*this)->setAttr("reducer", callee.get<mlir::SymbolRefAttr>());
+      (*this)->setAttr("reducer", cast<mlir::SymbolRefAttr>(callee));
     }
     mlir::Attribute removeArgAttrsAttr() { return nullptr; }
     mlir::Attribute removeResAttrsAttr() { return nullptr; }
@@ -182,7 +182,7 @@ def XLAGPU_ReduceOp : XLAGPU_Op<"reduce", [
       return (*this)->getAttrOfType<mlir::SymbolRefAttr>("combiner");
     }
     void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
-      (*this)->setAttr("combiner", callee.get<mlir::SymbolRefAttr>());
+      (*this)->setAttr("combiner", cast<mlir::SymbolRefAttr>(callee));
     }
     mlir::Attribute removeArgAttrsAttr() { return nullptr; }
     mlir::Attribute removeResAttrsAttr() { return nullptr; }
