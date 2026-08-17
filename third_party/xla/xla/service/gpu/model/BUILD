@@ -527,6 +527,7 @@ xla_cc_test(
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
@@ -660,6 +661,7 @@ xla_cc_test(
     srcs = ["block_level_parameters_test.cc"],
     deps = [
         ":block_level_parameters",
+        "//xla/codegen/xtile:xtile_config_proto_cc",
         "//xla/service/gpu:backend_configs_cc",
         "@com_google_googletest//:gtest_main",
     ],
