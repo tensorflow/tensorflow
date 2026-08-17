@@ -29,6 +29,7 @@ from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -394,6 +395,27 @@ class AutomaticStackingTest(test.TestCase):
 
     t_2 = ops.convert_to_tensor([t_0, t_0, t_1], dtype=dtypes.float64)
     self.assertEqual(dtypes.float64, t_2.dtype)
+
+
+  def testSingleTensorInput(self):
+    t = constant_op.constant([1, 2, 3])
+    stacked_axis0 = array_ops_stack.stack(t, axis=0)
+    self.assertAllEqual(self.evaluate(stacked_axis0), [[1, 2, 3]])
+
+    stacked_axis1 = array_ops_stack.stack(t, axis=1)
+    self.assertAllEqual(self.evaluate(stacked_axis1), [[1], [2], [3]])
+
+    v = variables.Variable([1, 2, 3])
+    self.evaluate(variables.global_variables_initializer())
+    stacked_var = array_ops_stack.stack(v, axis=0)
+    self.assertAllEqual(self.evaluate(stacked_var), [[1, 2, 3]])
+
+    @def_function.function
+    def compiled_stack(x):
+      return array_ops_stack.stack(x, axis=0)
+
+    result = compiled_stack(t)
+    self.assertAllEqual(self.evaluate(result), [[1, 2, 3]])
 
 
 if __name__ == "__main__":
