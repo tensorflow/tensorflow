@@ -211,6 +211,14 @@ class Stream {
         "Memset32 is not supported on this stream.");
   }
 
+  // Entrain onto the stream: a hardware wait until the 32-bit memory at
+  // `location` equals `value`.
+  virtual absl::Status WaitValue32(const DeviceAddressBase& location,
+                                   uint32_t value) {
+    return absl::UnimplementedError(
+        "WaitValue32 is not supported on this stream.");
+  }
+
   // (Synchronously) block the host code waiting for the operations
   // entrained on the stream (enqueued to this point in program
   // execution) to complete.

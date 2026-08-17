@@ -1255,6 +1255,16 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
 
   owned_delegates_.clear();
 
+  total_node_count_ = interpreter_runner_->execution_plan().size();
+  int current_undelegated_nodes = total_node_count_;
+  npu_delegated_node_count_ = 0;
+  npu_partition_count_ = 0;
+  gpu_delegated_node_count_ = 0;
+  gpu_partition_count_ = 0;
+  cpu_delegated_node_count_ = 0;
+  cpu_partition_count_ = 0;
+  is_fully_delegated_ = false;
+
   // Contains all ids of TfLiteNodes that have been checked to see whether
   // it's delegated or not.
   std::unordered_set<int> checked_node_ids;
@@ -1291,6 +1301,7 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
       // Ideally, such delegate info should already be computed when the
       // delegate is being applied to the model graph.
       int num_delegated_kernels = 0;
+      int num_undelegated_nodes = 0;
       for (int i = 0; i < interpreter_runner_->execution_plan().size(); ++i) {
         int node_id = interpreter_runner_->execution_plan()[i];
         if (checked_node_ids.find(node_id) != checked_node_ids.end()) {
@@ -1307,11 +1318,30 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
         if (node.delegate != nullptr) {
           num_delegated_kernels++;
           checked_node_ids.insert(node_id);
+        } else {
+          num_undelegated_nodes++;
         }
       }
       bool fully_delegated =
           (num_delegated_kernels == 1 &&
            interpreter_runner_->execution_plan().size() == 1);
+
+      int delegated_ops = current_undelegated_nodes - num_undelegated_nodes;
+      std::string provider_name = delegate_provider->GetName();
+      if (provider_name == "GPU") {
+        gpu_partition_count_ += num_delegated_kernels;
+        gpu_delegated_node_count_ += delegated_ops;
+      } else if (provider_name == "XNNPACK" || provider_name == "YNNPACK") {
+        cpu_partition_count_ += num_delegated_kernels;
+        cpu_delegated_node_count_ += delegated_ops;
+      } else {
+        // NPU / Accelerators like NNAPI, Hexagon, CoreML, etc.
+        npu_partition_count_ += num_delegated_kernels;
+        npu_delegated_node_count_ += delegated_ops;
+      }
+      current_undelegated_nodes = num_undelegated_nodes;
+
+      is_fully_delegated_ = fully_delegated;
 
       if (params_.Get<bool>("require_full_delegation") && !fully_delegated) {
         TFLITE_LOG(ERROR) << "Disallowed CPU fallback detected.";

@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/client/local_client.h"
+#include "xla/future.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/se/buffer_sequencing_event.h"
 #include "xla/pjrt/worker_thread.h"
@@ -144,6 +145,12 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
     external_ready_event_streams_.emplace_back(
         create_stream(absl::StrFormat("External ready event #%d", i)));
   }
+  for (int i = 0; i < kNumRemoteRecvStreams; ++i) {
+    auto stream = create_stream(absl::StrFormat("Remote recv #%d", i));
+    if (stream) {
+      free_remote_recv_streams_.push(std::move(stream));
+    }
+  }
   tsl::ThreadOptions thread_options;
   thread_options.numa_node = executor->numa_node();
   execute_thread_ = std::make_unique<WorkerThread>(
@@ -232,6 +239,9 @@ absl::Status LocalDeviceState::SynchronizeAllActivity() {
     }
   }
   for (auto& stream : device_to_host_streams_) {
+    status.Update(stream->BlockHostUntilDone());
+  }
+  for (auto& stream : device_to_device_streams_) {
     status.Update(stream->BlockHostUntilDone());
   }
   bool ok = compute_stream_->parent()->SynchronizeAllActivity();
@@ -384,6 +394,37 @@ void LocalDeviceState::ReturnStreamToPool(std::unique_ptr<se::Stream> stream) {
   usage_stream_pool_.push(std::move(stream));
 }
 
+Future<std::unique_ptr<se::Stream>> LocalDeviceState::BorrowRemoteRecvStream() {
+  absl::MutexLock lock(&remote_recv_stream_mu_);
+  if (!free_remote_recv_streams_.empty()) {
+    std::unique_ptr<se::Stream> stream =
+        std::move(free_remote_recv_streams_.top());
+    free_remote_recv_streams_.pop();
+    return Future<std::unique_ptr<se::Stream>>(std::move(stream));
+  }
+  auto [promise, future] = MakePromise<std::unique_ptr<se::Stream>>();
+  remote_recv_wait_queue_.push(std::move(promise));
+  return std::move(future);
+}
+
+void LocalDeviceState::ReturnRemoteRecvStream(
+    std::unique_ptr<se::Stream> stream) {
+  if (stream == nullptr) {
+    return;
+  }
+  Promise<std::unique_ptr<se::Stream>> next_promise;
+  {
+    absl::MutexLock lock(&remote_recv_stream_mu_);
+    if (!remote_recv_wait_queue_.empty()) {
+      next_promise = std::move(remote_recv_wait_queue_.front());
+      remote_recv_wait_queue_.pop();
+    } else {
+      free_remote_recv_streams_.push(std::move(stream));
+      return;
+    }
+  }
+  next_promise.Set(std::move(stream));
+}
 
 absl::Status LocalDeviceState::AllocateAndRecordEvent(
     AsyncWorkRunner* async_work_runner, BufferSequencingEventRef event,

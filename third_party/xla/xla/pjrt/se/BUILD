@@ -74,6 +74,7 @@ cc_library(
     ],
     deps = [
         ":event_pool",
+        "//xla:future",
         "//xla:util",
         "//xla/client:local_client",
         "//xla/pjrt:async_work_runner",
