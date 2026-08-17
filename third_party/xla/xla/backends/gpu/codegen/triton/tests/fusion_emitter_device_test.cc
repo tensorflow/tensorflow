@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/backends/gpu/codegen/triton/xtile_test_base.h"
 #include "xla/backends/gpu/tests/gpu_pjrt_codegen_test.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -91,6 +92,7 @@ namespace {
 using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
 using ::testing::HasSubstr;
+using ::xla::xtile::BlockLevelFusionConfig;
 
 const HloFusionInstruction& GetFusionInstruction(
     const HloModule& hlo_module, absl::string_view fusion_name) {

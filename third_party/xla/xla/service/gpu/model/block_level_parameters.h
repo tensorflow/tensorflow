@@ -43,7 +43,7 @@ struct BlockLevelParameters {
 
   // Returns a BlockLevelParameters struct from a BlockLevelFusionConfig proto.
   static BlockLevelParameters FromBlockLevelFusionConfig(
-      const BlockLevelFusionConfig& config) {
+      const xla::xtile::BlockLevelFusionConfig& config) {
     BlockLevelParameters result;
     result.num_warps = config.num_warps();
     result.num_ctas = config.num_ctas();
@@ -62,8 +62,8 @@ struct BlockLevelParameters {
   }
 
   // Returns a BlockLevelFusionConfig proto from a BlockLevelParameters struct.
-  BlockLevelFusionConfig ToBlockLevelFusionConfig() const {
-    BlockLevelFusionConfig config;
+  xla::xtile::BlockLevelFusionConfig ToBlockLevelFusionConfig() const {
+    xla::xtile::BlockLevelFusionConfig config;
     for (const auto& tile_sizes : output_tile_sizes) {
       xla::xtile::Tile tile;
       tile.mutable_sizes()->Add(tile_sizes.begin(), tile_sizes.end());

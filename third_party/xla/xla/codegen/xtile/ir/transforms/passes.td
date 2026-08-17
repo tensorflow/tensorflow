@@ -50,3 +50,13 @@ def StablehloLowerToArithPass : Pass<"stablehlo-lower-to-arith"> {
     "mlir::stablehlo::StablehloDialect",
   ];
 }
+
+def ExpandXtileComplexOpsPass : Pass<"expand-xtile-complex-ops", "mlir::ModuleOp"> {
+  let summary = "Expand complex ops to operate on floats.";
+  let dependentDialects = [
+    "mlir::arith::ArithDialect",
+    "mlir::memref::MemRefDialect",
+    "mlir::tensor::TensorDialect",
+    "mlir::stablehlo::StablehloDialect",
+  ];
+}
