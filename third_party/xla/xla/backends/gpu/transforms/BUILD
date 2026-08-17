@@ -1797,6 +1797,7 @@ cc_library(
         "//xla:side_effect_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/transforms/collectives:collective_domain",
         "//xla/hlo/analysis:hlo_reachability",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
@@ -1821,9 +1822,11 @@ xla_cc_test(
     deps = [
         ":explicit_collectives_group_async_wrapper",
         ":group_collectives_by_key",
+        "//xla/backends/gpu/transforms/collectives:collective_domain",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service/gpu:backend_configs_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",  # fixdeps: keep
@@ -3303,6 +3306,7 @@ cc_library(
         "//xla/backends/gpu/libraries/cub:cub_scratch_size_deviceless_lookup",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/utils:sort_utils",
         "//xla/service:pattern_matcher",
         "//xla/service/gpu:cublas_cudnn",
         "//xla/stream_executor:device_description",

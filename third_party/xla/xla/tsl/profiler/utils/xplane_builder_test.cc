@@ -105,6 +105,10 @@ TEST(TimespanTests, NonInstantSpanIncludesSingleTimeTests) {
   EXPECT_EQ(num_stats, 9);
 }
 
+TEST(TimespanTests, NullPlaneHandlesSafely) {
+  XPlaneBuilder xplane_builder(nullptr);
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tsl
