@@ -62,22 +62,11 @@ void SortInplace(const SortDims& sort_dims, int64_t start_slice,
                  int64_t end_slice, T* data, bool is_stable,
                  SortDirection direction);
 
-// TODO(b/525327509): Remove full-buffer SortInplace overloads in a follow-up
-// after updating AOT code generation in thunk_proto_execution_deserializer.cc.
-void SortInplace(const SortDims& sort_dims, absl::Span<std::byte* const> data,
-                 absl::Span<const size_t> primitive_sizes, bool is_stable,
-                 LessThan* less_than);
-
-template <typename T>
-void SortInplace(const SortDims& sort_dims, T* data, bool is_stable,
-                 SortDirection direction);
-
 // Declare SortInplace for all supported types. Template is instantiated in
 // the .cc file.
 #define DECLARE_SORT_INPLACE(T)                                              \
   extern template void SortInplace<T>(const SortDims&, int64_t, int64_t, T*, \
-                                      bool, SortDirection);                  \
-  extern template void SortInplace<T>(const SortDims&, T*, bool, SortDirection)
+                                      bool, SortDirection)
 
 DECLARE_SORT_INPLACE(float);
 DECLARE_SORT_INPLACE(double);
