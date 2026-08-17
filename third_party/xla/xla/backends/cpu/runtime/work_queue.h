@@ -337,7 +337,7 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE tsl::AsyncValueRef<tsl::Chain> Worker::Parallelize(
   }
 
   // Short-circuit single-threaded execution.
-  if (ABSL_PREDICT_FALSE(num_workers == 1)) {
+  if (ABSL_PREDICT_FALSE(num_workers <= 1)) {
     if (absl::Status status = ExecuteInline(
             num_work_items, std::forward<ParallelWork>(parallel_work));
         ABSL_PREDICT_FALSE(!status.ok())) {
@@ -362,7 +362,7 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE tsl::AsyncValueRef<tsl::Chain> Worker::Parallelize(
     num_partitions =
         (num_work_items + kMinItemsPerPartition - 1) / kMinItemsPerPartition;
     num_workers = std::min(num_workers, num_partitions);
-    if (ABSL_PREDICT_FALSE(num_workers == 1)) {
+    if (ABSL_PREDICT_FALSE(num_workers <= 1)) {
       if (absl::Status status = ExecuteInline(
               num_work_items, std::forward<ParallelWork>(parallel_work));
           ABSL_PREDICT_FALSE(!status.ok())) {

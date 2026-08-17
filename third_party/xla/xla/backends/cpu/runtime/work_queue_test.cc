@@ -221,16 +221,17 @@ TEST(WorkQueueTest, WorkerParallelizeVariousWorkerTaskRatios) {
   };
 
   std::vector<TestCase> test_cases = {
-      {0, 1},     // Edge: no work_items
-      {0, 8},     // Edge: no work_items, many workers
-      {1, 1},     // Edge: single task, single worker
-      {1, 8},     // Edge: single task, many workers
-      {8, 1},     // Serial execution
-      {8, 4},     // Fewer workers than work_items
-      {8, 8},     // Equal
-      {8, 16},    // More workers than work_items
-      {1024, 8},  // Many work_items, fewer workers
-      {1024, 64}  // Many work_items, many workers
+      {0, 1},      // Edge: no work_items
+      {0, 8},      // Edge: no work_items, many workers
+      {1, 1},      // Edge: single task, single worker
+      {1, 8},      // Edge: single task, many workers
+      {8, 1},      // Serial execution
+      {8, 4},      // Fewer workers than work_items
+      {8, 8},      // Equal
+      {8, 16},     // More workers than work_items
+      {1024, 8},   // Many work_items, fewer workers
+      {1024, 64},  // Many work_items, many workers
+      {1024, 0}    // Edge: num_workers is 0
   };
 
   for (const auto& test : test_cases) {
@@ -331,4 +332,5 @@ BENCHMARK(BM_WorkerParallelize)
     ->Arg(1024);
 
 }  // namespace
+
 }  // namespace xla::cpu

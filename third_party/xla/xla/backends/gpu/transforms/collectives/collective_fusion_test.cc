@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/backends/gpu/transforms/collectives/collective_kernel_strategy_annotator.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -193,6 +194,55 @@ TEST_F(CollectiveFusionTest, Idempotent) {
 
   ASSERT_OK_AND_ASSIGN(bool changed2, pipeline.Run(module.get()));
   EXPECT_FALSE(changed2);
+}
+
+TEST_F(CollectiveFusionTest, NormalizeAsyncCandidate) {
+  constexpr absl::string_view kAllReduceHloTemplate = R"(
+    HloModule all_reduce_test
+
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p0, p1)
+    }
+
+    ENTRY e {
+      p0 = $0 parameter(0)
+      %ar-start = $0 all-reduce-start(p0),
+          replica_groups={{0,1,2,3,4,5,6,7}},
+          to_apply=add
+      ROOT %ar-done = $0 all-reduce-done(%ar-start)
+    }
+  )";
+
+  constexpr int64_t kNumElements = 32768;
+  Shape shape = ShapeUtil::MakeShape(F32, {kNumElements});
+  std::string hlo = absl::Substitute(kAllReduceHloTemplate, shape.ToString());
+  SCOPED_TRACE(::testing::Message() << "hlo: " << hlo);
+
+  // Note that fusion-start/done are syntactic sugar for async-start/done.
+  // In reality this is async-start calls = async_comp
+  // where async_comp = fusion calls = fusion_computation.
+  // and fusion_computation = all-reduce as shown before.
+  static constexpr absl::string_view kExpected = R"(
+    // CHECK: %[[FUSION_COMPUTATION:.*]] ({{.*}}: f32[32768]) -> f32[32768] {
+    // CHECK:   %[[P0:.*]] = f32[32768]{0} parameter(0)
+    // CHECK:   ROOT {{.*}} = f32[32768]{0} all-reduce(%[[P0]]),
+    // CHECK-SAME: to_apply=%add
+    // CHECK: }
+    //
+    // CHECK: ENTRY %e ({{.*}}: f32[32768]) -> f32[32768] {
+    // CHECK:   %[[P0_ENTRY:.*]] = f32[32768]{0} parameter(0)
+    // CHECK:   %[[ASYNC_START:.*]] = ((f32[32768]{0}), f32[32768]{0})
+    // CHECK-SAME: fusion-start(%[[P0_ENTRY]]), kind=kCustom
+    // CHECK-SAME: , calls=%[[FUSION_COMPUTATION]]
+    // CHECK:   ROOT {{.*}} = f32[32768]{0} fusion-done(%[[ASYNC_START]])
+    // CHECK: }
+  )";
+
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/8);
+  RunAndFilecheckHloRewrite(hlo, AnnotateAndFusePipeline(*gpu_topology_),
+                            kExpected, /*after_pass_checks=*/nullptr, &config);
 }
 
 }  // namespace
