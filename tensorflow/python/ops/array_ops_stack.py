@@ -68,6 +68,12 @@ def stack(values, axis=0, name="stack"):
   Raises:
     ValueError: If `axis` is out of the range [-(R+1), R+1).
   """
+  if ops.is_dense_tensor_like(values):
+    raise TypeError(
+        f"Argument `values` must be a sequence of Tensor objects, but got a "
+        f"single Tensor of type {type(values).__name__}."
+    )
+
   if axis == 0:
     try:
       # If the input is a constant list, it can be converted to a constant op
