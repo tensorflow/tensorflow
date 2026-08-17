@@ -95,7 +95,7 @@ cc_library(
         ":kernel_source",
         "//xla/service/llvm_ir:llvm_util",
         "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:OrcJIT",
     ],
 )
 

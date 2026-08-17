@@ -54,6 +54,8 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
+using ::xla::xtile::BlockLevelFusionConfig;
+
 TEST(CubinCustomKernelCompilerTest, CallbackInvoked) {
   int compiler_invoked = 0;
   auto llvm_compiler =
