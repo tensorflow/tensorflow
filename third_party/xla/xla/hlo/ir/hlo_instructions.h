@@ -282,20 +282,19 @@ class HloAsyncInstruction : public HloInstruction {
 
   // Returns async-start instruction of the async chain.
   HloAsyncInstruction* async_chain_start() const;
-  // Returns the next async instruction in the async chain.
-  HloAsyncInstruction* async_chain_next() const { return async_chain_next_; }
   // Returns async-done instruction of the async chain.
   HloAsyncInstruction* async_chain_done() const;
+  // Returns the next async instruction in the async chain, or nullptr if this
+  // is async-done.
+  HloAsyncInstruction* async_chain_next() const;
   // Returns the chain of async op referencing this computation,
-  // where *begin(GetAsyncChain()) is the async-start op and
-  // *end(GetAsyncChain()) is the async-done op.
+  // where GetAsyncChain().front() is the async-start op and
+  // GetAsyncChain().back() is the async-done op.
   std::vector<HloAsyncInstruction*> GetAsyncChain() const;
 
   bool HasSideEffect() const override {
     return async_wrapped_instruction()->HasSideEffect();
   }
-
-  void UpdateAsyncChain();
 
   // Updates all future instructions in the async chain to match the shape of
   // the current instruction.

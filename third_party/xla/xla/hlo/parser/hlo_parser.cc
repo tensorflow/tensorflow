@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -2181,19 +2182,22 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           return nullptr;
         }
       }
-      // async-{update,done} expect their one singular operand.
+      HloInstruction* async_producer = nullptr;
+      // async-{update,done} expect their first operand to be the previous async
+      // op or an allowed async intermediary.
       if (opcode == HloOpcode::kAsyncUpdate ||
           opcode == HloOpcode::kAsyncDone) {
         if (operands.empty()) {
           TokenError("No operand found for AsyncUpdate and AsyncDone");
           return nullptr;
         }
-        if (HloAsyncInstruction::ClassOf(operands[0]) &&
-            operands[0]->opcode() == HloOpcode::kAsyncDone) {
+        if (operands[0]->opcode() == HloOpcode::kAsyncDone) {
           TokenError(
               "AsyncUpdate and AsyncDone cannot have AsyncDone as operand.");
           return nullptr;
         }
+        async_producer =
+            hlo_instruction_utils::async::FindAsyncProducer(operands[0]);
       }
       optional<std::string> async_execution_thread;
       attrs["async_execution_thread"] = {/*required=*/false, AttrTy::kString,
@@ -2242,8 +2246,6 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           // Since async-{update,done} will inherit the computation from
           // async-start, we'll only need to make sure it matches what was
           // specified explicitly.
-          HloInstruction* async_producer =
-              HloInstruction::FindAsyncProducer(operands[0]);
           if (async_producer != nullptr &&
               HloAsyncInstruction::ClassOf(async_producer)) {
             auto* async_op = Cast<HloAsyncInstruction>(async_producer);
@@ -2274,8 +2276,6 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       // specified matches what is inherited.
       if (opcode == HloOpcode::kAsyncUpdate ||
           opcode == HloOpcode::kAsyncDone) {
-        HloInstruction* async_producer =
-            HloInstruction::FindAsyncProducer(operands[0]);
         if (async_producer != nullptr &&
             HloAsyncInstruction::ClassOf(async_producer)) {
           auto* async_op = Cast<HloAsyncInstruction>(async_producer);
@@ -2291,8 +2291,11 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
                 async_op->async_wrapped_computation() != *async_computation) {
               TokenError(StrFormat(
                   "Expect async_wrapped_computation to be %s, but got %s",
-                  async_op->async_wrapped_computation()->name(),
-                  (*async_computation)->name()));
+                  async_op->async_wrapped_computation() != nullptr
+                      ? async_op->async_wrapped_computation()->name()
+                      : "nullptr",
+                  (*async_computation != nullptr) ? (*async_computation)->name()
+                                                  : "nullptr"));
               return nullptr;
             }
           }
@@ -2344,15 +2347,21 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
               *shape, operands[0], async_wrapped_opcode,
               async_computation ? *async_computation : nullptr));
 
-      const Shape& operand_shape = async_done->operand(0)->shape();
-
-      if (async_wrapped_opcode &&
-          async_done->async_wrapped_computation() != nullptr) {
-        UpdateAsyncWrappedComputation(
-            async_done->async_wrapped_computation(),
-            /*result_shape=*/*shape,
-            /*operand_shapes=*/
-            operand_shape.tuple_shapes(0).tuple_shapes());
+      if (async_wrapped_opcode) {
+        const HloInstruction* async_start =
+            async_producer != nullptr
+                ? hlo_instruction_utils::async::FindAsyncStart(async_producer)
+                : nullptr;
+        const Shape& operand_shape = async_start != nullptr
+                                         ? async_start->shape()
+                                         : async_done->operand(0)->shape();
+        if (async_done->async_wrapped_computation() != nullptr) {
+          UpdateAsyncWrappedComputation(
+              async_done->async_wrapped_computation(),
+              /*result_shape=*/*shape,
+              /*operand_shapes=*/
+              operand_shape.tuple_shapes(0).tuple_shapes());
+        }
       }
       return async_done;
     }
