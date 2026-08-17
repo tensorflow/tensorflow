@@ -237,35 +237,6 @@ message CuDnnFusionConfig {
   PrecisionConfig precision_config = 2;
 }
 
-// Block-level parameters for a fusion.
-message BlockLevelFusionConfig {
-  reserved 1;  // Was output_tile_sizes
-
-  // The output tile sizes for each fusion root.
-  repeated xla.xtile.Tile output_tiles = 3;
-
-  // The number of warps to use for the kernel.
-  int64 num_warps = 2;
-
-  // The number of CTAs to use for the kernel.
-  int32 num_ctas = 4;
-
-  // The number of stages to use for loop pipelining.
-  int32 num_stages = 5;
-
-  // Allow/disallow TMA usage for all arguments of the kernel (where possible).
-  bool is_tma_allowed = 6;
-
-  // Allow/disallow automatic warp specialization.
-  bool is_warp_specialization_allowed = 7;
-
-  // Number of waves per execution unit (0 = no restriction).
-  int32 waves_per_eu = 8;
-
-  // Number of tiles per pid.
-  int32 num_tiles_per_pid = 9;
-}
-
 // A backend config for dynamic-slice and dynamic-update-slice instructions
 // whose runtime offset is a simple function of the parent loop iteration.
 // Only set on instructions where offset analysis succeeds; absence of this
@@ -310,7 +281,7 @@ message FusionBackendConfig {
 
   // Only valid when kind is "__triton" or "__triton_nested_gemm_fusion". Code
   // generation of such fusions will fail if this field is not set.
-  BlockLevelFusionConfig block_level_fusion_config = 6;
+  xla.xtile.BlockLevelFusionConfig block_level_fusion_config = 6;
 
   // Only valid when kind == "__custom_fusion".
   xla.xtile.CustomFusionConfig custom_fusion_config = 4;
