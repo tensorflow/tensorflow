@@ -104,6 +104,21 @@ void AddNegativeValuesMaybeRemoveZero(std::vector<T>& values) {
   }
 }
 
+template <typename T>
+T IntegerPow(T base, T exp) {
+  T result = 1;
+  if (exp >= 0) {
+    for (T i = 0; i < exp; ++i) {
+      result *= base;
+    }
+  } else {
+    for (T i = 0; i < -exp; ++i) {
+      result /= base;
+    }
+  }
+  return result;
+}
+
 class ArrayElementwiseOpTest
     : public ClientLibraryTestRunnerMixin<
           HloPjRtInterpreterReferenceMixin<HloTestBase>> {
@@ -1424,12 +1439,9 @@ class TotalOrderTest : public ClientLibraryTestRunnerMixin<
 using Types =
     ::testing::Types<tsl::float8_e3m4, tsl::float8_e4m3, tsl::float8_e4m3fn,
                      tsl::float8_e4m3fnuz, tsl::float8_e4m3b11fnuz,
-                     tsl::float8_e5m2, tsl::float8_e5m2fnuz,
-                     Eigen::half,
-                     Eigen::bfloat16,
-                     double,
-                     tsl::float4_e2m1fn, tsl::float8_e8m0fnu,
-                     float>;
+                     tsl::float8_e5m2, tsl::float8_e5m2fnuz, Eigen::half,
+                     Eigen::bfloat16, double, tsl::float4_e2m1fn,
+                     tsl::float8_e8m0fnu, float>;
 
 TYPED_TEST_SUITE(TotalOrderTest, Types);
 
@@ -1737,6 +1749,44 @@ TEST_F(ArrayElementwiseOpTest, CompareLtU32s) {
   ComputeAndCompareR1<bool>(
       &builder, {false, true, true, false, false, true, false, false, false},
       {});
+}
+
+TEST_F(ArrayElementwiseOpTest, PowI64sConstants) {
+  XlaBuilder b(TestName());
+
+  const std::vector<int64_t> values0 = {2, 2, 2, -1, -1, -1};
+  const std::vector<int64_t> values1 = {2, 0, -1, -1, 4, -6};
+
+  auto lhs = ConstantR1<int64_t>(&b, values0);
+  auto rhs = ConstantR1<int64_t>(&b, values1);
+  Pow(lhs, rhs);
+
+  std::vector<int64_t> expected(values0.size());
+  for (int64_t i = 0; i < values0.size(); ++i) {
+    expected[i] = IntegerPow(values0[i], values1[i]);
+  }
+
+  ComputeAndCompareR1<int64_t>(&b, expected, {});
+}
+
+TEST_F(ArrayElementwiseOpTest, PowI64s) {
+  XlaBuilder b(TestName());
+
+  const std::vector<int64_t> values0 = {2, 2, 2, -1, -1, -1};
+  const std::vector<int64_t> values1 = {2, 0, -1, -1, 4, -6};
+
+  const Literal lhs_literal = LiteralUtil::CreateR1<int64_t>(values0);
+  auto lhs = Parameter(&b, 0, lhs_literal.shape(), "lhs");
+  Literal rhs_literal = LiteralUtil::CreateR1<int64_t>(values1);
+  auto rhs = Parameter(&b, 1, rhs_literal.shape(), "rhs");
+  Pow(lhs, rhs);
+
+  std::vector<int64_t> expected(values0.size());
+  for (int64_t i = 0; i < values0.size(); ++i) {
+    expected[i] = IntegerPow(values0[i], values1[i]);
+  }
+
+  ComputeAndCompareR1<int64_t>(&b, expected, {&lhs_literal, &rhs_literal});
 }
 
 TEST_F(ArrayElementwiseOpTest, PowF32s) {
