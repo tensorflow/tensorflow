@@ -23,10 +23,16 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
+
+// Returns whether cuDNN supports convert between src_type and dst_type
+// on the given GPU device / compute capability.
+bool IsCuDnnConvertSupported(PrimitiveType src_type, PrimitiveType dst_type,
+                             const se::DeviceDescription& device_info);
 
 // Returns the PrecisionConfig for a cuDNN fusion instruction.
 // Precedence order:
@@ -64,7 +70,7 @@ void FuseTowardUsers(
     std::vector<HloInstruction*>& fusion_params,
     std::vector<HloInstruction*>& fusible_users,
     absl::flat_hash_map<HloInstruction*, HloInstruction*>& fused_hlo_map,
-    bool is_nchw = false);
+    const se::DeviceDescription& device_info, bool is_nchw = false);
 
 // Performs a DFS from hlo through its users to collect all instructions that
 // can be fused into a cuDNN epilogue. Updates state.fusible_users with nodes
@@ -78,7 +84,7 @@ void FuseTowardUsers(
 bool GrowFusionDFS(HloInstruction* hlo, HloReachabilityMap* reachability,
                    FusionState& state,
                    absl::flat_hash_map<HloInstruction*, bool>& fusible_cache,
-                   bool is_nchw,
+                   const se::DeviceDescription& device_info, bool is_nchw,
                    absl::FunctionRef<bool(const std::vector<HloInstruction*>&)>
                        is_outputs_valid);
 

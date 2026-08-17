@@ -877,6 +877,18 @@ absl::Status RunAsyncCollectivesConversionPasses(HloModule* module) {
   config.convert_collective_permute = HloPredicateTrue;
   config.convert_ragged_all_to_all = HloPredicateTrue;
   config.convert_reduce_scatter = HloPredicateTrue;
+  config.convert_collective_fusion = [](const HloInstruction* instr) {
+    if (!instr->IsCustomFusion()) {
+      return false;
+    }
+    absl::StatusOr<GpuBackendConfig> gpu_config =
+        instr->backend_config<GpuBackendConfig>();
+    if (!gpu_config.ok()) {
+      return false;
+    }
+    return gpu_config->fusion_backend_config().kind() ==
+           xla::gpu::kTritonCollectiveFusionKind;
+  };
   config.use_generic_async_start_done = true;
   pipeline.AddPass<AsyncCollectiveCreator>(std::move(config));
 

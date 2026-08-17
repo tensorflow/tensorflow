@@ -502,6 +502,22 @@ absl::StatusOr<HloInstruction*> AssignConvKind(
     HloInstruction* conv, const se::GpuComputeCapability& cc,
     const se::dnn::VersionInfo& dnn_version) {
   ABSL_RETURN_IF_ERROR(CheckTypes(conv, cc, dnn_version));
+
+  PrimitiveType element_type = conv->shape().element_type();
+  // cuDNN graph API does not support f64 convolutions.
+  if (element_type == F64) {
+    return nullptr;
+  }
+  // cuDNN graph API does not support disabling TF32 for f32 convolutions.
+  if (element_type == F32) {
+    bool is_highest_precision = !absl::c_all_of(
+        conv->precision_config().operand_precision(),
+        [](int precision) { return precision <= PrecisionConfig::HIGH; });
+    if (is_highest_precision) {
+      return nullptr;
+    }
+  }
+
   if (ConvolutionMatch m = MatchBackwardInput(conv)) {
     conv = CreateGpuConv(CONVOLUTION_KIND_DGRAD, conv, conv->mutable_operand(0),
                          *m);
@@ -518,6 +534,8 @@ absl::StatusOr<HloInstruction*> AssignConvKind(
       conv = CreateGpuConv(CONVOLUTION_KIND_FPROP, conv,
                            conv->mutable_operand(0), conv->mutable_operand(1));
     }
+  } else {
+    return nullptr;
   }
   return conv;
 }
@@ -529,7 +547,9 @@ absl::StatusOr<bool> RunOnInstruction(HloInstruction* conv,
   CHECK_EQ(conv->opcode(), HloOpcode::kConvolution);
   ABSL_ASSIGN_OR_RETURN(HloInstruction * conv_with_kind,
                    AssignConvKind(conv, cc, dnn_version));
-  if (conv == nullptr) {
+  if (conv_with_kind == nullptr || conv_with_kind == conv ||
+      Cast<HloConvolutionInstruction>(conv_with_kind)->convolution_kind() ==
+          CONVOLUTION_KIND_UNSET) {
     return false;
   }
 

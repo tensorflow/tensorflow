@@ -4669,6 +4669,9 @@ absl::StatusOr<bool> HloVerifier::RunImpl(
             execution_threads)) {
       ABSL_RETURN_IF_ERROR(module->input_output_alias_config().Verify(
           *module, [this](const Shape& shape) -> int64_t {
+            if (shape.is_unbounded_dynamic()) {
+              return Shape::kUnboundedSize;
+            }
             if (target_metadata_->GetVerifierOpts().IsLayoutSensitive()) {
               return target_metadata_->GetVerifierOpts().ShapeSize(shape);
             }

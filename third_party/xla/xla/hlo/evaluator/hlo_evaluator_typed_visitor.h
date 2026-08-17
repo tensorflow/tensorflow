@@ -670,8 +670,13 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           } else if constexpr (std::is_integral_v<ElementwiseT>) {
             if constexpr (std::is_signed_v<ElementwiseT>) {
               if (rhs_el < static_cast<ElementwiseT>(0)) {
-                return static_cast<ElementwiseT>(
-                    lhs_el == static_cast<ElementwiseT>(1) ? 1 : 0);
+                if (lhs_el == static_cast<ElementwiseT>(1)) {
+                  return static_cast<ElementwiseT>(1);
+                } else if (lhs_el == static_cast<ElementwiseT>(-1)) {
+                  return static_cast<ElementwiseT>(rhs_el % 2 == 0 ? 1 : -1);
+                } else {
+                  return static_cast<ElementwiseT>(0);
+                }
               }
             }
             return static_cast<ElementwiseT>(

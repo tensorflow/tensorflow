@@ -487,6 +487,7 @@ tf_proto_library(
     srcs = ["backend_config.proto"],
     deps = [
         "//xla:autotuning_proto",
+        "//xla/codegen/xtile:xtile_config_proto",
         "//xla/service/cpu:backend_config_proto",
         "//xla/service/gpu:backend_configs",
         "//xla/tsl/protobuf:dnn_proto",
