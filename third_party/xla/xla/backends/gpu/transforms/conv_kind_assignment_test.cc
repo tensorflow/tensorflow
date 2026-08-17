@@ -634,7 +634,7 @@ TEST_F(ConvKindAssignmentTest, BackwardInputConvolveConstantFilter) {
           dim_labels=bf01_01oi->bf01, feature_group_count=1
     })",
                                                  constant_str);
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   EXPECT_TRUE(RunPass(m.get()));
   EXPECT_THAT(
@@ -658,7 +658,7 @@ TEST_F(ConvKindAssignmentTest, TestBackwardFilterPatternMatch) {
 
       ROOT conv = f32[120,120,3,3] convolution(input, filter), window={size=256x256 pad=1_1x1_1}, dim_labels=fb01_io01->fb01
     })");
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   EXPECT_TRUE(RunPass(m.get()));
   EXPECT_THAT(DynCast<HloConvolutionInstruction>(
@@ -679,7 +679,7 @@ TEST_F(ConvKindAssignmentTest, TestBackwardFilterPatternNoMatch) {
 
       ROOT conv = f32[8,128,2,32] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01
     })");
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   EXPECT_TRUE(RunPass(m.get()));
   EXPECT_THAT(DynCast<HloConvolutionInstruction>(
@@ -701,7 +701,7 @@ TEST_F(ConvKindAssignmentTest, TestConv1dBackwardFilterPatternMatch) {
       reshape.2 = f32[8,1,254,128] reshape(filter)
       ROOT conv = f32[1,3,128,128] convolution(reshape.1, reshape.2), window={size=1x254}, dim_labels=f01b_i01o->01bf
     })");
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   EXPECT_TRUE(RunPass(m.get()));
   EXPECT_THAT(DynCast<HloConvolutionInstruction>(
@@ -723,7 +723,7 @@ TEST_F(ConvKindAssignmentTest, TestConv1dBackwardInputPatternMatch) {
       reshape.2 = f32[1,3,128,128] reshape(reverse)
       ROOT conv = f32[8,1,256,128] convolution(reshape.1, reshape.2), window={size=1x3 pad=0_0x2_2}, dim_labels=b01f_01oi->b01f
     })");
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   EXPECT_TRUE(RunPass(m.get()));
   EXPECT_THAT(DynCast<HloConvolutionInstruction>(
@@ -743,7 +743,7 @@ TEST_F(ConvKindAssignmentTest, ForwardConvolutionWithWindowDilation) {
       filter = f32[3,3,128,128] parameter(1)
       ROOT conv = f32[8,128,32,32] convolution(input, filter), window={size=3x3 pad=2_2x2_2 rhs_dilate=2x2}, dim_labels=bf01_01io->bf01
     })");
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   EXPECT_TRUE(RunPass(m.get()));
   EXPECT_THAT(DynCast<HloConvolutionInstruction>(
@@ -761,7 +761,7 @@ TEST_F(ConvKindAssignmentTest, BatchGroupedConvolution) {
       filter = bf16[2,2,1,2] parameter(1)
       ROOT conv = bf16[2,2,2,2] convolution(input, filter), window={size=2x2 stride=2x2}, dim_labels=b01f_01io->b01f, batch_group_count=2
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   EXPECT_TRUE(RunPass(m.get()));
   for (const HloComputation* comp : m->computations()) {
@@ -788,8 +788,8 @@ TEST_F(ConvKindAssignmentTest, TestInvalidTypes) {
   for (absl::string_view type : {"c64", "c128"}) {
     const std::string module_with_type =
         absl::StrReplaceAll(module_str, {{"TYPE", type}});
-    TF_ASSERT_OK_AND_ASSIGN(auto m,
-                            ParseAndReturnVerifiedModule(module_with_type));
+    ASSERT_OK_AND_ASSIGN(auto m,
+                         ParseAndReturnVerifiedModule(module_with_type));
 
     absl::Status s = ConvKindAssignment(kDefaultCC).Run(m.get()).status();
     EXPECT_THAT(
@@ -802,8 +802,7 @@ TEST_F(ConvKindAssignmentTest, TestInvalidTypes) {
   // Test FP8 type on unsupported GPUs
   std::string module_with_type =
       absl::StrReplaceAll(module_str, {{"TYPE", "f8e4m3fn"}});
-  TF_ASSERT_OK_AND_ASSIGN(auto m,
-                          ParseAndReturnVerifiedModule(module_with_type));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_with_type));
   absl::Status s = ConvKindAssignment(se::CudaComputeCapability::Ampere())
                        .Run(m.get())
                        .status();
@@ -823,7 +822,7 @@ TEST_F(ConvKindAssignmentTest, TestInvalidTypes) {
 
   // Test unsupported FP8 type
   module_with_type = absl::StrReplaceAll(module_str, {{"TYPE", "f8e4m3fnuz"}});
-  TF_ASSERT_OK_AND_ASSIGN(m, ParseAndReturnVerifiedModule(module_with_type));
+  ASSERT_OK_AND_ASSIGN(m, ParseAndReturnVerifiedModule(module_with_type));
   s = ConvKindAssignment(kDefaultCC).Run(m.get()).status();
   EXPECT_THAT(s,
               absl_testing::StatusIs(

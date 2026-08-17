@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -40,6 +41,8 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"
@@ -898,6 +901,158 @@ absl::StatusOr<std::vector<TensorValue>> EmitScan(
       *::xla::Cast<HloScanInstruction>(tiled_hlo_scan.hlo());
 
   int num_operands = hlo_scan.inputs().size();
+  int64_t scan_dim = hlo_scan.scan_dimension();
+  const ge::TilingSpace& tiling_space = tiled_hlo_scan.tile().tiling_space();
+
+  // TODO(b/390559452): Support variadic scans with multiple inputs and outputs.
+  if (hlo_scan.inputs().size() != 1 || hlo_scan.num_carries() != 1) {
+    return absl::UnimplementedError(
+        "Only single-input, single-carry scan operations are currently "
+        "supported "
+        "in Triton emission.");
+  }
+
+  const HloInstruction* scan_root = hlo_scan.to_apply()->root_instruction();
+  if (!HloPredicateIsOp<HloOpcode::kTuple>(scan_root) ||
+      !absl::c_all_of(scan_root->operands(),
+                      HloPredicateIsOp<HloOpcode::kAdd>)) {
+    // Non-additive scans (e.g. min, max, product) require their respective
+    // identity elements for out-of-bounds padding, which is not yet supported.
+    return absl::UnimplementedError(
+        "Only additive scan operations are currently supported in Triton "
+        "emission.");
+  }
+
+  // TODO(b/390559452): Support complex-typed scans. Complex additive scans pass
+  // the kAdd check above, but creating the neutral masking value below via
+  // CreateConst with a float literal would LOG(FATAL) on complex element types.
+  if (primitive_util::IsComplexType(
+          hlo_scan.operand(0)->shape().element_type())) {
+    return absl::UnimplementedError(
+        "Complex-typed scan operations are not yet supported in Triton "
+        "emission.");
+  }
+
+  const HloComputation* computation =
+      emitter_ctx.fusion().fused_instructions_computation();
+  const HloInstruction* root = computation->root_instruction();
+  // Reject scans that are themselves the fusion root (returning the scan tuple
+  // directly). In that case only the scan output buffer is written below, while
+  // the carry output buffer would be left uninitialized, silently corrupting
+  // results. Supported cases feed the output through a GetTupleElement.
+  if (root == &hlo_scan) {
+    return absl::UnimplementedError(
+        "Scan as the fusion root instruction is not yet supported in Triton "
+        "emission.");
+  }
+  // TODO(b/390559452): Handle multiple outputs beyond index 0 once variadic
+  // scans are supported.
+  for (const HloInstruction* user : hlo_scan.users()) {
+    if (user->opcode() != HloOpcode::kGetTupleElement ||
+        user->tuple_index() != 0) {
+      return absl::UnimplementedError(
+          "Only extracting scan output (tuple index 0) is currently "
+          "supported.");
+    }
+    for (const HloInstruction* gte_user : user->users()) {
+      if (gte_user != root || root->opcode() != HloOpcode::kTuple) {
+        return absl::UnimplementedError(
+            "Epilogue fusion for scan is not supported yet.");
+      }
+    }
+  }
+
+  if (!tiled_hlo_scan.hlo_regions().empty()) {
+    // Tiled scan with scf.for loop across the scan dimension.
+    const auto& dim_info = tiling_space.GetDimensionInfo(hlo_scan, scan_dim);
+    int64_t scan_dim_size = dim_info.dimension_size;
+    int64_t tile_size = *dim_info.tile_size;
+    int64_t loop_count = CeilOfRatio(scan_dim_size, tile_size);
+
+    SmallVector<Value> inits;
+    for (int i = 0; i < num_operands; ++i) {
+      inits.push_back(emitter_ctx.TiledHloToTensorValue(
+          *tiled_hlo_scan.operand(num_operands + i)));
+    }
+
+    Value zero = MakeIndex(b, 0);
+    Value upper = MakeIndex(b, loop_count);
+    Value one = MakeIndex(b, 1);
+    auto for_op = mlir::scf::ForOp::create(b, zero, upper, one, inits);
+    b.setInsertionPointToStart(for_op.getBody());
+
+    Value iv = for_op.getInductionVar();
+    emitter_ctx.MapSymbolIdToSequentialDimValue(dim_info.id, iv,
+                                                Interval{0, loop_count - 1});
+
+    const auto& input_region = tiled_hlo_scan.hlo_regions().front();
+    ABSL_ASSIGN_OR_RETURN(
+        std::vector<TensorValue> input_results,
+        EmitTiledComputation(emitter_ctx, input_region, input_region.roots()));
+
+    SmallVector<Value> masked_inputs;
+    SmallVector<Value> current_carries;
+    SmallVector<Type> carry_types;
+    SmallVector<Type> output_types;
+
+    Value iv_i32 = Cast(b, iv, b.getI32Type());
+
+    for (int i = 0; i < num_operands; ++i) {
+      TensorValue input_tile = input_results[i];
+      Value current_carry = for_op.getRegionIterArgs()[i];
+      current_carries.push_back(current_carry);
+      carry_types.push_back(current_carry.getType());
+      output_types.push_back(input_tile.getType());
+
+      auto init_type = mlir::cast<mlir::ShapedType>(inits[i].getType());
+      mlir::Value neutral_value =
+          CreateConst(b, init_type.getElementType(), 0.0f);
+      ABSL_ASSIGN_OR_RETURN(input_tile,
+                       MaskOperand(b, *input_region.roots()[i], input_tile,
+                                   iv_i32, scan_dim, neutral_value));
+      masked_inputs.push_back(input_tile);
+    }
+
+    auto scan = xtile::ScanOp::create(b, output_types, carry_types,
+                                      masked_inputs, current_carries, scan_dim,
+                                      tile_size, hlo_scan.is_reverse());
+
+    ABSL_RETURN_IF_ERROR(
+        EmitScanComputation(b, &hlo_scan, hlo_scan.to_apply(), scan));
+
+    // Inside loop body, insert output tile into destination argument.
+    // TODO(b/390559452): Support multi-output scans by mapping each tuple_index
+    // to its corresponding scan output rather than hardcoding index 0.
+    for (const auto& [r_idx, root] :
+         llvm::enumerate(emitter_ctx.tiled_computation().roots())) {
+      const HloInstruction* root_hlo = root->hlo();
+      if ((root_hlo->opcode() == HloOpcode::kGetTupleElement &&
+           root->operand(0) == &tiled_hlo_scan &&
+           root_hlo->tuple_index() == 0) ||
+          root == &tiled_hlo_scan) {
+        Value output_arg =
+            emitter_ctx.entry_func()
+                .getArguments()[computation->num_parameters() + r_idx];
+        ABSL_ASSIGN_OR_RETURN(auto tile_info,
+                         TileInfo::Construct(emitter_ctx, *root));
+        xtile::InsertTileOp::create(
+            b, scan.getOutputs()[0], output_arg, tile_info.offsets(),
+            tile_info.padded_tile_sizes(), tile_info.tile_strides());
+      }
+    }
+
+    b.create<mlir::scf::YieldOp>(scan.getCarries());
+    b.setInsertionPointAfter(for_op);
+
+    std::vector<TensorValue> results;
+    results.reserve(for_op.getNumResults());
+    for (auto res : for_op.getResults()) {
+      results.push_back(mlir::cast<TensorValue>(res));
+    }
+    return results;
+  }
+
+  // Untiled scan path (tile covers entire dimension).
   SmallVector<Value> inputs;
   SmallVector<Value> inits;
   SmallVector<Type> carry_types;
@@ -915,24 +1070,22 @@ absl::StatusOr<std::vector<TensorValue>> EmitScan(
     mask_dim_bounds.reserve(unpadded_tile_sizes.size());
     for (auto [idx, dim_size] : llvm::enumerate(unpadded_tile_sizes)) {
       if (idx == hlo_scan.scan_dimension()) {
-        mask_dim_bounds.push_back(dim_size);
+        mask_dim_bounds.push_back(hlo_scan.operand(0)->shape().dimensions(idx));
       } else {
         mask_dim_bounds.push_back(input.getType().getDimSize(idx));
       }
     }
-    mlir::Value neutral_value = mlir::tensor::ExtractOp::create(
-        b, emitter_ctx.TiledHloToTensorValue(
-               *tiled_hlo_scan.operand(num_operands + i)));
+    TensorValue init_tensor = emitter_ctx.TiledHloToTensorValue(
+        *tiled_hlo_scan.operand(num_operands + i));
+    mlir::Value neutral_value =
+        CreateConst(b, init_tensor.getType().getElementType(), 0.0f);
 
     input = mlir::cast<TensorValue>(
         b.createOrFold<xtile::MaskOp>(input, mask_dim_bounds, neutral_value));
 
-    TensorValue init = emitter_ctx.TiledHloToTensorValue(
-        *tiled_hlo_scan.operand(num_operands + i));
-
     inputs.push_back(input);
-    inits.push_back(init);
-    carry_types.push_back(init.getType());
+    inits.push_back(init_tensor);
+    carry_types.push_back(init_tensor.getType());
     output_types.push_back(input.getType());
   }
 
@@ -1189,6 +1342,10 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
   if (hlo->opcode() == HloOpcode::kConcatenate) {
     return EmitConcatenate(emitter_ctx, tiled_hlo);
   }
+  if (hlo->opcode() == HloOpcode::kScan) {
+    ABSL_ASSIGN_OR_RETURN(auto result, EmitScan(emitter_ctx, tiled_hlo));
+    return result.front();
+  }
   if (hlo->opcode() == HloOpcode::kGetTupleElement) {
     int64_t index = hlo->tuple_index();
     if (index == 0) {
@@ -1261,10 +1418,6 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
       return EmitTranspose(b, storage_tile_sizes, hlo->dimensions(),
                            mlir::cast<TensorValue>(operands[0]));
     }
-    case HloOpcode::kScan: {
-      ABSL_ASSIGN_OR_RETURN(auto result, EmitScan(emitter_ctx, tiled_hlo));
-      return result.front();
-    }
     default:
       break;
   }
@@ -1329,9 +1482,10 @@ void EmitFullyTiledSequentialDimensions(
                                        "HLO.";
     QCHECK(dim_info.tile_size.has_value()) << "Sequential dimension " << dim_id
                                            << " does not have a tile size set.";
-    if (dim_info.hlo->opcode() == HloOpcode::kReduce &&
+    if ((dim_info.hlo->opcode() == HloOpcode::kReduce ||
+         dim_info.hlo->opcode() == HloOpcode::kScan) &&
         *dim_info.tile_size >= dim_info.dimension_size) {
-      VLOG(2) << "Mapping reduce sequential dimension " << dim_id << " of size "
+      VLOG(2) << "Mapping sequential dimension " << dim_id << " of size "
               << dim_info.dimension_size << " with tile size "
               << *dim_info.tile_size << " for hlo " << dim_info.hlo->name()
               << " to a new value 0";
@@ -1393,6 +1547,19 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
   for (const auto& [root, result, arg] :
        llvm::zip(tiled_computation.roots(), results,
                  fn.getArguments().drop_front(computation->num_parameters()))) {
+    // The array output of a looped scan is inserted inside the loop body.
+    // Handle scans and GTEs that extract the output of a scan.
+    if (root->hlo()->opcode() == HloOpcode::kScan &&
+        !root->hlo_regions().empty()) {
+      continue;
+    }
+    if (root->hlo()->opcode() == HloOpcode::kGetTupleElement &&
+        root->operand(0)->hlo()->opcode() == HloOpcode::kScan &&
+        !root->operand(0)->hlo_regions().empty() &&
+        root->hlo()->tuple_index() == 0) {
+      continue;
+    }
+
     // Workaround(i1_to_i8_workaround)
     // Some types are stored using different types, e.g. i1 is stored in memory
     // as i8. It's important to check converted types before storing if the type

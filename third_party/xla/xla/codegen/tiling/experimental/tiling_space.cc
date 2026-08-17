@@ -280,7 +280,7 @@ void TilingSpace::ProcessRaggedDot(const HloInstruction& hlo) {
               /*upper_bound=*/M_total);
 }
 
-// Ensure scan dimensions are not tiled across CTAs.
+// Ensure scan dimensions are sequential within the thread block.
 void TilingSpace::ProcessScan(const HloInstruction& hlo) {
   auto scan = Cast<HloScanInstruction>(&hlo);
   int64_t scan_dim_idx = scan->scan_dimension();
@@ -292,17 +292,8 @@ void TilingSpace::ProcessScan(const HloInstruction& hlo) {
     return;
   }
 
-  int64_t global_dim_id = it->second->id.value();
-  SymbolicExpr scan_dim_tile_size = CreateDimExpr(global_dim_id, mlir_context_);
-
-  const Shape& shape = GetFirstShape(&hlo);
-  SymbolicExpr scan_dim_bound =
-      CreateSymbolicConstant(shape.dimensions(scan_dim_idx), mlir_context_);
-
-  // Require that the tile size equals the dimension bound.
-  ConstraintExpression::Constraint eq_constraint{
-      scan_dim_bound - scan_dim_tile_size, Interval{0, 0}};
-  constraint_ = constraint_ && eq_constraint;
+  dimensions_[it->second->id.value()].type = DimensionSemantics::kSequential;
+  dimensions_[it->second->id.value()].hlo = &hlo;
 }
 
 // Add offsets of dynamic slice.
@@ -448,8 +439,14 @@ absl::Status TilingSpace::InitializeDimensions(
 
     const Shape& shape = GetFirstShape(&root.instruction());
     for (auto [index, dim] : llvm::enumerate(shape.dimensions())) {
-      AppendDimension(&root.instruction(), index, dim,
-                      DimensionSemantics::kParallel);
+      DimensionSemantics dim_type = DimensionSemantics::kParallel;
+      if (root.opcode() == HloOpcode::kScan) {
+        auto scan = Cast<HloScanInstruction>(&root.instruction());
+        if (index == scan->scan_dimension()) {
+          dim_type = DimensionSemantics::kSequential;
+        }
+      }
+      AppendDimension(&root.instruction(), index, dim, dim_type);
     }
   }
   return absl::OkStatus();

@@ -114,6 +114,50 @@ cc_library(
 )
 
 cc_library(
+    name = "collective_domain_assigner",
+    srcs = ["collective_domain_assigner.cc"],
+    hdrs = ["collective_domain_assigner.h"],
+    deps = [
+        ":collective_domain",
+        "//xla:side_effect_util",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/runtime:device_id",
+        "//xla/service:collective_ops_utils",
+        "//xla/service:computation_placer_hdr",
+        "//xla/service:gpu_topology",
+        "//xla/service:hlo_module_config",
+        "//xla/service/gpu:backend_configs_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "collective_domain_assigner_test",
+    srcs = ["collective_domain_assigner_test.cc"],
+    deps = [
+        ":collective_domain_assigner",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:gpu_topology",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "legalize_collective_domain",
     srcs = ["legalize_collective_domain.cc"],
     hdrs = ["legalize_collective_domain.h"],
@@ -930,6 +974,7 @@ cc_library(
     deps = [
         ":collective_ops_utils",
         "//xla:shape_util",
+        "//xla:status_macros",
         "//xla/backends/gpu/codegen/triton:collective_emitter",
         "//xla/backends/gpu/runtime:all_reduce",
         "//xla/hlo/ir:hlo",
@@ -960,14 +1005,17 @@ xla_cc_test(
         "//xla/backends/gpu/target_config",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:gpu_topology",
         "//xla/service:hlo_module_config",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/service/gpu:gpu_hlo_schedule",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",

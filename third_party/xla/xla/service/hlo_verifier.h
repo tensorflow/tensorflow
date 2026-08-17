@@ -191,6 +191,9 @@ struct HloVerifierOpts {
 
   // Returns a target-specific shape size.
   ShapeSizeFn shape_size = [](const Shape& shape) {
+    if (shape.is_unbounded_dynamic()) {
+      return Shape::kUnboundedSize;
+    }
     return ShapeUtil::ByteSizeOf(shape);
   };
 };

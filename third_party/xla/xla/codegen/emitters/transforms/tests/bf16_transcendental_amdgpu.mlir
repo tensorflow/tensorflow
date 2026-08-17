@@ -33,6 +33,27 @@ module {
 
 // -----
 
+// A plain bf16 exp is rewritten to exp2(x * log2(e)) computed in f32 on
+// gfx1250: the input is widened to f32, scaled by an f32 log2(e), passed to the
+// native f32 exp2 (llvm.amdgcn.exp2), then rounded back to bf16. Computing in
+// f32 avoids rounding the scaled exponent to bf16, which loses accuracy and can
+// overflow to inf (why the native bf16 exp path is not used).
+module {
+  func.func @exp_bf16(%arg0: bf16) -> bf16 {
+    %0 = math.exp %arg0 : bf16
+    return %0 : bf16
+  }
+}
+
+// CHECK-LABEL: llvm.func @exp_bf16
+// CHECK: llvm.fpext {{.*}} : bf16 to f32
+// CHECK: llvm.fmul {{.*}} : f32
+// CHECK: llvm.call_intrinsic "llvm.amdgcn.exp2"({{.*}}) : (f32) -> f32
+// CHECK: llvm.fptrunc {{.*}} : f32 to bf16
+// CHECK-NOT: __ocml
+
+// -----
+
 // gfx1250 has a native bf16 sqrt instruction (v_sqrt_bf16), reached via the
 // llvm.amdgcn.sqrt intrinsic.
 module {

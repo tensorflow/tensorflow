@@ -32,8 +32,10 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
@@ -44,8 +46,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -854,6 +855,13 @@ absl::StatusOr<bool> RunOnInstruction(HloInstruction* conv,
                                       const se::GpuComputeCapability& cc,
                                       const se::dnn::VersionInfo& dnn_version) {
   CHECK_EQ(conv->opcode(), HloOpcode::kConvolution);
+
+  // If a convolution kind is already assigned (by ConvKindAssignment for cuDNN
+  // graph API / ConvFusionRewriter), do not rewrite it to legacy custom calls.
+  if (Cast<HloConvolutionInstruction>(conv)->convolution_kind() !=
+      CONVOLUTION_KIND_UNSET) {
+    return false;
+  }
 
   ABSL_ASSIGN_OR_RETURN(HloInstruction * custom_call,
                    CreateCustomCallHelper(conv, cc, dnn_version));

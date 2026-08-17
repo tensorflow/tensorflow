@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
+#include "xla/util.h"
 
 namespace xla::cpu {
 
@@ -145,6 +146,58 @@ mlir::ArrayAttr GetInBoundsAttr(mlir::OpBuilder& builder, int64_t rank,
   return builder.getBoolArrayAttr(llvm::SmallVector<bool>(rank, in_bounds));
 }
 
+template <typename EmitFn>
+void EmitElements(mlir::OpBuilder& builder, mlir::Location loc,
+                  llvm::ArrayRef<int64_t> shape, ValueRange offsets,
+                  llvm::ArrayRef<int64_t> strides,
+                  llvm::ArrayRef<int64_t> memref_shape, EmitFn&& emit_fn) {
+  int64_t rank = shape.size();
+  llvm::SmallVector<int64_t> vector_coords(rank, 0);
+  llvm::SmallVector<Value> memref_coords(rank);
+
+  int64_t num_elements = Product(shape);
+  for (int64_t idx = 0; idx < num_elements; ++idx) {
+    bool in_bounds = true;
+    for (int64_t d = 0; d < rank; ++d) {
+      int64_t stride_offset = vector_coords[d] * strides[d];
+      if (d < memref_shape.size() &&
+          !mlir::ShapedType::isDynamic(memref_shape[d])) {
+        int64_t dim_size = memref_shape[d];
+        std::optional<int64_t> const_offset =
+            mlir::getConstantIntValue(offsets[d]);
+        if (const_offset.has_value()) {
+          int64_t coord = *const_offset + stride_offset;
+          if (coord < 0 || coord >= dim_size) {
+            in_bounds = false;
+            break;
+          }
+        } else if (stride_offset >= dim_size) {
+          in_bounds = false;
+          break;
+        }
+      }
+      if (stride_offset == 0) {
+        memref_coords[d] = offsets[d];
+        continue;
+      }
+      Value delta_val =
+          ma::ConstantIndexOp::create(builder, loc, stride_offset);
+      memref_coords[d] =
+          ma::AddIOp::create(builder, loc, offsets[d], delta_val);
+    }
+    if (in_bounds) {
+      emit_fn(vector_coords, memref_coords);
+    }
+
+    for (int64_t d = rank - 1; d >= 0; --d) {
+      if (++vector_coords[d] < shape[d]) {
+        break;
+      }
+      vector_coords[d] = 0;
+    }
+  }
+}
+
 struct ConvertExtractTile
     : public mlir::OpConversionPattern<xtile::ExtractTileOp> {
   using mlir::OpConversionPattern<xtile::ExtractTileOp>::OpConversionPattern;
@@ -158,10 +211,29 @@ struct ConvertExtractTile
 
     ValueRange offsets = adaptor.getOffsets();
     Value source_memref = adaptor.getSource();
+    auto source_memref_type =
+        mlir::cast<mlir::MemRefType>(source_memref.getType());
 
     Value pad = ma::ConstantOp::create(
         rewriter, loc, result_vector_type.getElementType(),
         rewriter.getZeroAttr(result_vector_type.getElementType()));
+
+    if (llvm::any_of(op.getStrides(), llvm::not_equal_to<int64_t>(1))) {
+      mlir::Value res =
+          ma::ConstantOp::create(rewriter, loc, result_vector_type,
+                                 rewriter.getZeroAttr(result_vector_type));
+      EmitElements(rewriter, loc, result_vector_type.getShape(), offsets,
+                   op.getStrides(), source_memref_type.getShape(),
+                   [&](llvm::ArrayRef<int64_t> vector_coords,
+                       llvm::ArrayRef<Value> memref_coords) {
+                     mlir::Value elem = mlir::memref::LoadOp::create(
+                         rewriter, loc, source_memref, memref_coords);
+                     res = mv::InsertOp::create(rewriter, loc, elem, res,
+                                                vector_coords);
+                   });
+      rewriter.replaceOp(op, res);
+      return mlir::success();
+    }
 
     if (result_vector_type.getRank() == 0) {
       mlir::AffineMap permutation_map =
@@ -235,6 +307,21 @@ struct ConvertInsertTile
 
     ValueRange offsets = adaptor.getOffsets();
     Value dest_memref = adaptor.getDestination();
+    auto dest_memref_type = mlir::cast<mlir::MemRefType>(dest_memref.getType());
+
+    if (llvm::any_of(op.getStrides(), llvm::not_equal_to<int64_t>(1))) {
+      EmitElements(rewriter, loc, source_vector_type.getShape(), offsets,
+                   op.getStrides(), dest_memref_type.getShape(),
+                   [&](llvm::ArrayRef<int64_t> vector_coords,
+                       llvm::ArrayRef<Value> memref_coords) {
+                     mlir::Value elem = mv::ExtractOp::create(
+                         rewriter, loc, source_vector, vector_coords);
+                     mlir::memref::StoreOp::create(rewriter, loc, elem,
+                                                   dest_memref, memref_coords);
+                   });
+      rewriter.eraseOp(op);
+      return mlir::success();
+    }
 
     if (source_vector_type.getRank() == 0) {
       mlir::AffineMap permutation_map = mv::getTransferMinorIdentityMap(
@@ -587,6 +674,91 @@ struct VectorizeTransposeOp
   }
 };
 
+struct VectorizeSliceOp : public mlir::OpConversionPattern<shlo::SliceOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      shlo::SliceOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    mlir::Type new_type = this->getTypeConverter()->convertType(op.getType());
+    if (!new_type) {
+      return mlir::failure();
+    }
+    auto res_vec_ty = mlir::cast<mlir::VectorType>(new_type);
+    llvm::ArrayRef<int64_t> shape = res_vec_ty.getShape();
+    int64_t rank = res_vec_ty.getRank();
+
+    if (llvm::all_of(op.getStrides(), llvm::equal_to<int64_t>(1))) {
+      llvm::SmallVector<int64_t> offsets(op.getStartIndices().begin(),
+                                         op.getStartIndices().end());
+      llvm::SmallVector<int64_t> strides(rank, 1);
+      llvm::SmallVector<int64_t> sizes(shape.begin(), shape.end());
+      rewriter.replaceOpWithNewOp<mv::ExtractStridedSliceOp>(
+          op, adaptor.getOperand(), offsets, sizes, strides);
+      return mlir::success();
+    }
+
+    mlir::Value res = ma::ConstantOp::create(rewriter, op.getLoc(), res_vec_ty,
+                                             rewriter.getZeroAttr(res_vec_ty));
+    llvm::SmallVector<int64_t> start_indices(op.getStartIndices().begin(),
+                                             op.getStartIndices().end());
+    llvm::SmallVector<int64_t> strides(op.getStrides().begin(),
+                                       op.getStrides().end());
+
+    llvm::SmallVector<int64_t> curr_dst(rank, 0);
+    llvm::SmallVector<int64_t> curr_src(rank, 0);
+
+    auto emit_elements = [&](auto& self, int64_t dim) -> void {
+      if (dim == rank) {
+        mlir::Value elem = mv::ExtractOp::create(
+            rewriter, op.getLoc(), adaptor.getOperand(), curr_src);
+        res = mv::InsertOp::create(rewriter, op.getLoc(), elem, res, curr_dst);
+        return;
+      }
+      for (int64_t i = 0; i < shape[dim]; ++i) {
+        curr_dst[dim] = i;
+        curr_src[dim] = start_indices[dim] + i * strides[dim];
+        self(self, dim + 1);
+      }
+    };
+    emit_elements(emit_elements, 0);
+
+    rewriter.replaceOp(op, res);
+    return mlir::success();
+  }
+};
+
+struct VectorizeConcatenateOp
+    : public mlir::OpConversionPattern<shlo::ConcatenateOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      shlo::ConcatenateOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    mlir::Type new_type = this->getTypeConverter()->convertType(op.getType());
+    if (!new_type) {
+      return mlir::failure();
+    }
+    auto res_vec_ty = mlir::cast<mlir::VectorType>(new_type);
+    mlir::Value res = ma::ConstantOp::create(rewriter, op.getLoc(), res_vec_ty,
+                                             rewriter.getZeroAttr(res_vec_ty));
+    int64_t current_offset = 0;
+    uint64_t dim = op.getDimension();
+    for (mlir::Value input : adaptor.getInputs()) {
+      auto in_vec_ty = mlir::cast<mlir::VectorType>(input.getType());
+      llvm::SmallVector<int64_t> offsets(res_vec_ty.getRank(), 0);
+      offsets[dim] = current_offset;
+      llvm::SmallVector<int64_t> strides(in_vec_ty.getRank(), 1);
+      res = mv::InsertStridedSliceOp::create(rewriter, op.getLoc(), input, res,
+                                             rewriter.getI64ArrayAttr(offsets),
+                                             rewriter.getI64ArrayAttr(strides));
+      current_offset += in_vec_ty.getDimSize(dim);
+    }
+    rewriter.replaceOp(op, res);
+    return mlir::success();
+  }
+};
+
 struct VectorizeReshapeOp : public mlir::OpConversionPattern<shlo::ReshapeOp> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -686,6 +858,23 @@ struct VectorizeIotaOp : public mlir::OpConversionPattern<shlo::IotaOp> {
   }
 };
 
+struct VectorizeBitcastOp
+    : public mlir::OpConversionPattern<mlir::tensor::BitcastOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::tensor::BitcastOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    mlir::Type new_type = this->getTypeConverter()->convertType(op.getType());
+    if (!new_type) {
+      return mlir::failure();
+    }
+    rewriter.replaceOpWithNewOp<ma::BitcastOp>(op, new_type,
+                                               adaptor.getSource());
+    return mlir::success();
+  }
+};
+
 template <typename OpTy>
 struct VectorizeElementwiseOp : public mlir::OpConversionPattern<OpTy> {
   using mlir::OpConversionPattern<OpTy>::OpConversionPattern;
@@ -741,9 +930,10 @@ class VectorizeXTilePass
         ma::ArithDialect, mlir::memref::MemRefDialect, mm::MathDialect,
         ms::SCFDialect, mlir::tensor::TensorDialect, mv::VectorDialect,
         shlo::StablehloDialect, xla::XlaDialect, xtile::XTileDialect>();
-    target.addIllegalOp<shlo::BroadcastInDimOp, shlo::DotGeneralOp,
-                        shlo::IotaOp, shlo::ReduceOp, shlo::ReshapeOp,
-                        shlo::TransposeOp, mlir::tensor::ExtractOp,
+    target.addIllegalOp<shlo::BroadcastInDimOp, shlo::ConcatenateOp,
+                        shlo::DotGeneralOp, shlo::IotaOp, shlo::ReduceOp,
+                        shlo::ReshapeOp, shlo::SliceOp, shlo::TransposeOp,
+                        mlir::tensor::BitcastOp, mlir::tensor::ExtractOp,
                         mlir::tensor::FromElementsOp, xtile::ExtractTileOp,
                         xtile::InsertTileOp, xtile::MaskOp>();
     target.addLegalOp<mlir::UnrealizedConversionCastOp>();
@@ -751,28 +941,68 @@ class VectorizeXTilePass
         [&](mlir::Operation* op) { return type_converter.isLegal(op); });
 
     mlir::RewritePatternSet patterns(context);
-    patterns
-        .add<ConvertExtractTile, ConvertInsertTile, VectorizeBroadcastInDimOp,
-             VectorizeConstantOp, VectorizeDotGeneralOp, VectorizeExtractOp,
-             VectorizeFromElementsOp, VectorizeIotaOp, VectorizeMaskOp,
-             VectorizeReduceOp, VectorizeReshapeOp, VectorizeTransposeOp>(
-            type_converter, context);
+    // clang-format off
+    patterns.add<
+      ConvertExtractTile,
+      ConvertInsertTile,
+      VectorizeBitcastOp,
+      VectorizeConcatenateOp,
+      VectorizeDotGeneralOp,
+      VectorizeExtractOp,
+      VectorizeIotaOp,
+      VectorizeMaskOp,
+      VectorizeReshapeOp,
+      VectorizeSliceOp,
+      VectorizeBroadcastInDimOp,
+      VectorizeConstantOp,
+      VectorizeFromElementsOp,
+      VectorizeReduceOp,
+      VectorizeTransposeOp
+    >(type_converter, context);
     populateVectorizePatterns<
-        ma::AddFOp, ma::AddIOp, ma::SubFOp, ma::SubIOp, ma::MulFOp, ma::MulIOp,
-        ma::DivFOp, ma::DivSIOp, ma::DivUIOp, ma::RemFOp, ma::RemSIOp,
-        ma::RemUIOp, ma::MaximumFOp, ma::MaxSIOp, ma::MaxUIOp, ma::MinimumFOp,
-        ma::MinSIOp, ma::MinUIOp, ma::AndIOp, ma::OrIOp, ma::XOrIOp, ma::NegFOp,
-        ma::SelectOp, ma::CmpFOp, ma::CmpIOp, ma::ExtFOp, ma::TruncFOp,
-        ma::ExtSIOp, ma::ExtUIOp, ma::FPToSIOp, ma::FPToUIOp, ma::SIToFPOp,
-        ma::UIToFPOp, ma::TruncIOp, ma::IndexCastOp, mm::AbsIOp, mm::AbsFOp,
-        mm::CeilOp, mm::FloorOp, mm::RoundEvenOp, mm::AcosOp, mm::AcoshOp,
-        mm::AsinOp, mm::AsinhOp, mm::Atan2Op, mm::AtanhOp, mm::CosOp,
-        mm::CoshOp, mm::ExpOp, mm::ErfOp, mm::ExpM1Op, mm::LogOp, mm::Log1pOp,
-        mm::IPowIOp, mm::PowFOp, mm::RsqrtOp, mm::SinOp, mm::SinhOp, mm::SqrtOp,
-        mm::TanOp, mm::TanhOp, mm::CbrtOp, mm::IsFiniteOp>(type_converter,
-                                                           patterns);
-    mlir::scf::populateSCFStructuralTypeConversionsAndLegality(
-        type_converter, patterns, target);
+      ma::AddFOp, ma::AddIOp,
+      ma::AndIOp,
+      ma::BitcastOp,
+      ma::CmpFOp, ma::CmpIOp,
+      ma::DivFOp, ma::DivSIOp, ma::DivUIOp,
+      ma::ExtFOp, ma::ExtSIOp, ma::ExtUIOp,
+      ma::FPToSIOp, ma::FPToUIOp,
+      ma::IndexCastOp, ma::IndexCastUIOp,
+      ma::MaxSIOp, ma::MaxUIOp, ma::MaximumFOp,
+      ma::MinSIOp, ma::MinUIOp, ma::MinimumFOp,
+      ma::MulFOp, ma::MulIOp,
+      ma::NegFOp,
+      ma::OrIOp,
+      ma::RemFOp, ma::RemSIOp, ma::RemUIOp,
+      ma::SIToFPOp,
+      ma::SelectOp,
+      ma::ShLIOp, ma::ShRSIOp, ma::ShRUIOp,
+      ma::SubFOp, ma::SubIOp,
+      ma::TruncFOp, ma::TruncIOp,
+      ma::UIToFPOp,
+      ma::XOrIOp,
+      mm::AbsFOp, mm::AbsIOp,
+      mm::AcosOp, mm::AcoshOp,
+      mm::AsinOp, mm::AsinhOp,
+      mm::Atan2Op, mm::AtanhOp,
+      mm::CbrtOp,
+      mm::CeilOp,
+      mm::CosOp, mm::CoshOp,
+      mm::ErfOp,
+      mm::ExpM1Op,
+      mm::ExpOp,
+      mm::FloorOp,
+      mm::IPowIOp,
+      mm::IsFiniteOp,
+      mm::Log1pOp, mm::LogOp,
+      mm::PowFOp,
+      mm::RoundEvenOp,
+      mm::RsqrtOp,
+      mm::SinOp, mm::SinhOp,
+      mm::SqrtOp,
+      mm::TanOp, mm::TanhOp
+    >(type_converter, patterns);
+    // clang-format on
 
     mlir::scf::populateSCFStructuralTypeConversionsAndLegality(
         type_converter, patterns, target);

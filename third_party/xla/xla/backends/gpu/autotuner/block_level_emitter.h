@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/compiler.h"
@@ -89,7 +90,7 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
   std::string version() const override;
 
  private:
-  absl::StatusOr<BlockLevelFusionConfig> GetCostModelConfig(
+  absl::StatusOr<xtile::BlockLevelFusionConfig> GetCostModelConfig(
       const HloInstruction& instr);
   // A function which returns the size in bytes of the top-level buffer of a
   // shape.

@@ -186,14 +186,12 @@ TEST_F(TilingSpaceTest, SingleOutputScanDim) {
                        TilingSpace::Create(*fusion_adaptor, &mlir_context_));
   EXPECT_THAT(*tiling_space, MatchString(R"(
     Dimensions:
-      0 type: parallel size: 150 dim ID:0
-        hlo: %get-tuple-element = f32[150]{0} get-tuple-element(%scan), index=0
+      0 type: sequential size: 150 dim ID:0
+        hlo: %scan = (f32[150]{0}, f32[]) scan(%p0.1, %p1.1), dimensions={0}, num_carries=1, is_associative=false, to_apply=%add
     Root tiles:
       0 root tile:
            offsets [tid_0 * ts_0] sizes [ts_0]
            strides [1] upper bounds [150]
-    Constraints:
-      -v0 + 150 in [0, 0]
   )"));
 }
 
