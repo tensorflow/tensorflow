@@ -21,8 +21,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_description.pb.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -31,17 +31,126 @@ namespace {
 
 class TreeReductionRewriterTest : public HloHardwareIndependentTestBase {
  public:
-  void CheckTreeRewriter(absl::string_view hlo,
-                         std::optional<absl::string_view> expected) {
-    TF_ASSERT_OK_AND_ASSIGN(
-        stream_executor::DeviceDescription device_description,
-        stream_executor::DeviceDescription::FromProto(
-            stream_executor::GpuDeviceInfoProto{}));
-    device_description.set_threads_per_warp(32);
+  void CheckTreeRewriter(
+      absl::string_view hlo, std::optional<absl::string_view> expected,
+      const stream_executor::DeviceDescription& device_description =
+          gpu::TestGpuDeviceInfo::B200SXMDeviceInfo()) {
     RunAndFilecheckHloRewrite(
         hlo, gpu::TreeReductionRewriter{device_description}, expected);
   }
+
+  // Helper for tests verifying sub-kernel splitting mechanics where test shapes
+  // use large batch dimensions.
+  void CheckTreeRewriterForSplit(absl::string_view hlo,
+                                 absl::string_view expected) {
+    auto dev = gpu::TestGpuDeviceInfo::B200SXMDeviceInfo();
+    dev.set_core_count(1000);
+    RunAndFilecheckHloRewrite(hlo, gpu::TreeReductionRewriter{dev}, expected);
+  }
 };
+
+TEST_F(TreeReductionRewriterTest, HighParallelismRowReductionNotSplit) {
+  const char* hlo = R"(
+HloModule HighParallelismRow
+
+add {
+  accum = f32[] parameter(0)
+  op = f32[] parameter(1)
+  ROOT out = f32[] add(accum, op)
+}
+
+ENTRY main {
+  input = f32[1024,16384]{1,0} parameter(0)
+  zero = f32[] constant(0)
+  ROOT out = f32[1024]{0} reduce(input, zero), dimensions={1}, to_apply=add
+}
+)";
+
+  // Moderate reduction (R = 16384 <= 32768) and parallel output elements = 1024
+  // >= 2 * 148 = 296 on B200 and 2 * 132 = 264 on H100. Should not be split.
+  CheckTreeRewriter(hlo, std::nullopt,
+                    gpu::TestGpuDeviceInfo::B200SXMDeviceInfo());
+  CheckTreeRewriter(hlo, std::nullopt,
+                    gpu::TestGpuDeviceInfo::H100SXMDeviceInfo());
+}
+
+TEST_F(TreeReductionRewriterTest, HighParallelismColumnReductionNotSplit) {
+  const char* hlo = R"(
+HloModule HighParallelismCol
+
+add {
+  accum = f32[] parameter(0)
+  op = f32[] parameter(1)
+  ROOT out = f32[] add(accum, op)
+}
+
+ENTRY main {
+  input = f32[16384,1024]{1,0} parameter(0)
+  zero = f32[] constant(0)
+  ROOT out = f32[1024]{0} reduce(input, zero), dimensions={0}, to_apply=add
+}
+)";
+
+  // Moderate reduction (R = 16384 <= 32768) and parallel output elements = 1024
+  // >= 2 * 148 = 296 on B200 and 2 * 132 = 264 on H100. Should not be split.
+  CheckTreeRewriter(hlo, std::nullopt,
+                    gpu::TestGpuDeviceInfo::B200SXMDeviceInfo());
+  CheckTreeRewriter(hlo, std::nullopt,
+                    gpu::TestGpuDeviceInfo::H100SXMDeviceInfo());
+}
+
+TEST_F(TreeReductionRewriterTest, MassiveReductionWithHighParallelismNotSplit) {
+  const char* hlo = R"(
+HloModule MassiveReductionHighParallelism
+
+add {
+  accum = f32[] parameter(0)
+  op = f32[] parameter(1)
+  ROOT out = f32[] add(accum, op)
+}
+
+ENTRY main {
+  input = f32[16384,50000]{1,0} parameter(0)
+  zero = f32[] constant(0)
+  ROOT out = f32[16384]{0} reduce(input, zero), dimensions={1}, to_apply=add
+}
+)";
+
+  // Massive reduction (R = 50000 > 32768) but parallel output elements = 16384
+  // >= 64 * 148 = 9472. Should not be split.
+  CheckTreeRewriter(hlo, std::nullopt,
+                    gpu::TestGpuDeviceInfo::B200SXMDeviceInfo());
+}
+
+TEST_F(TreeReductionRewriterTest,
+       MassiveReductionWithModerateParallelismIsSplit) {
+  const char* hlo = R"(
+HloModule MassiveReductionModerateParallelism
+
+add {
+  accum = f32[] parameter(0)
+  op = f32[] parameter(1)
+  ROOT out = f32[] add(accum, op)
+}
+
+ENTRY main {
+  input = f32[1024,50000]{1,0} parameter(0)
+  zero = f32[] constant(0)
+  ROOT out = f32[1024]{0} reduce(input, zero), dimensions={1}, to_apply=add
+}
+)";
+
+  // Massive reduction (R = 50000 > 32768) with moderate parallelism (P = 1024 <
+  // 64 * 148 = 9472). Should be split into 2 stages.
+  CheckTreeRewriter(hlo,
+                    R"(
+// CHECK: [[bitcast_0:%[^ ]+]] = f32[1024,200,250]{2,1,0} bitcast([[input_1:%[^ ]+]])
+// CHECK: [[zero_2:%[^ ]+]] = f32[] constant(0)
+// CHECK: [[reduce_3:%[^ ]+]] = f32[1024,200]{1,0} reduce([[bitcast_0]], [[zero_2]]), dimensions={2}, to_apply=[[add_4:%[^ ]+]]
+// CHECK: ROOT [[out_1_5:%[^ ]+]] = f32[1024]{0} reduce([[reduce_3]], [[zero_2]]), dimensions={1}, to_apply=[[add_4]]
+      )",
+                    gpu::TestGpuDeviceInfo::B200SXMDeviceInfo());
+}
 
 TEST_F(TreeReductionRewriterTest, RowReductionSingleDimensionNoBatched) {
   const char* hlo = R"(
@@ -138,8 +247,8 @@ ENTRY main {
 }
 )";
 
-  CheckTreeRewriter(hlo,
-                    R"(
+  CheckTreeRewriterForSplit(hlo,
+                            R"(
 // CHECK: [[bitcast_0:%[^ ]+]] = f32[100,10,256,256]{3,2,1,0} bitcast([[input_1:%[^ ]+]])
 // CHECK: [[zero_2:%[^ ]+]] = f32[] constant(0)
 // CHECK: [[reduce_3:%[^ ]+]] = f32[100,10,256]{2,1,0} reduce([[bitcast_0]], [[zero_2]]), dimensions={3}, to_apply=[[add_4:%[^ ]+]]
@@ -442,8 +551,8 @@ ENTRY main {
 }
 )";
 
-  CheckTreeRewriter(hlo,
-                    R"(
+  CheckTreeRewriterForSplit(hlo,
+                            R"(
 
 // CHECK:  [[bitcast_0:%[^ ]+]] = f32[1024,289,256]{2,1,0} bitcast([[input_1:%[^ ]+]])
 // CHECK:  [[zero_2:%[^ ]+]] = f32[] constant(0)
@@ -469,8 +578,8 @@ ENTRY main {
 }
 )";
 
-  CheckTreeRewriter(hlo,
-                    R"(
+  CheckTreeRewriterForSplit(hlo,
+                            R"(
 
 // CHECK:  [[bitcast_0:%[^ ]+]] = f32[1024,256,384]{2,1,0} bitcast([[input_1:%[^ ]+]])
 // CHECK:  [[zero_2:%[^ ]+]] = f32[] constant(0)
@@ -496,8 +605,8 @@ ENTRY main {
 }
 )";
 
-  CheckTreeRewriter(hlo,
-                    R"(
+  CheckTreeRewriterForSplit(hlo,
+                            R"(
 
 // CHECK-DAG:  [[bitcast_0:%[^ ]+]] = f32[1024,140,141]{2,1,0} bitcast([[input_1:%[^ ]+]])
 // CHECK-DAG:  [[zero_2:%[^ ]+]] = f32[] constant(0)
@@ -523,8 +632,8 @@ ENTRY main {
 }
 )";
 
-  CheckTreeRewriter(hlo,
-                    R"(
+  CheckTreeRewriterForSplit(hlo,
+                            R"(
 
 // CHECK-DAG:  [[bitcast_0:%[^ ]+]] = f32[1024,140,139]{2,1,0} bitcast([[input_1:%[^ ]+]])
 // CHECK-DAG:  [[zero_2:%[^ ]+]] = f32[] constant(0)

@@ -86,10 +86,6 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     }
     ReductionDimensions reduction_dims =
         GetReductionKindAndContiguousComponents(*hlo);
-    if (ReductionIsRaceFree(reduction_dims, device_description_)) {
-      VLOG(3) << "Base case: dimensions fit";
-      return absl::OkStatus();
-    }
     auto sorted_dims_to_reduce = GetSortedReducedDims(reduce);
     CHECK_LE(sorted_dims_to_reduce.size(), 2);
 
@@ -103,6 +99,41 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
       return RewriteBatchDimensionLargerThanTile(reduce, reduction_dims,
                                                  sorted_dims_to_reduce);
     }
+
+    // Gating heuristic:
+    // 1. For moderate reductions (R <= 32768), if output parallelism is high
+    //    enough to saturate GPU SMs (P >= 2 * SM_count), keep as a single
+    //    kernel.
+    // 2. For massive reductions (R > 32768), single-kernel execution requires
+    //    thousands of unrolled loop iterations in native emitter registers.
+    //    Therefore, require high output parallelism (P >= 64 * SM_count) to
+    //    justify single-kernel execution; otherwise, split into 2 stages to
+    //    prevent compiler memory explosion and thread loop serialization.
+    const Shape& output_shape = reduce->shape().IsTuple()
+                                    ? reduce->shape().tuple_shapes(0)
+                                    : reduce->shape();
+    int64_t parallel_output_elements = ShapeUtil::ElementsIn(output_shape);
+
+    int64_t reduction_size =
+        reduction_dims.is_row_reduction
+            ? reduction_dims
+                  .dimensions[ReductionDimensions::kRowMinorReducedDimension]
+            : reduction_dims
+                  .dimensions[ReductionDimensions::kColReducedDimension];
+
+    bool is_deep_reduction = reduction_size > 32768;
+    int64_t core_count = device_description_.core_count() > 0
+                             ? device_description_.core_count()
+                             : 128;
+    int64_t min_parallelism =
+        is_deep_reduction ? 64 * core_count : 2 * core_count;
+
+    if (parallel_output_elements >= min_parallelism) {
+      VLOG(3) << "High parallelism (" << parallel_output_elements
+              << " >= " << min_parallelism << "): keep single kernel";
+      return absl::OkStatus();
+    }
+
     SplitParams split_params =
         ComputeSplitParams(reduce, reduction_dims, sorted_dims_to_reduce);
     return SplitReductionDimension(reduce, split_params, sorted_dims_to_reduce);
