@@ -300,7 +300,9 @@ rocm_lib_import(
     name = "miopen",
     data = glob([
         "%{rocm_root}/lib/libMIOpen.so*",
-        "%{rocm_root}/share/miopen/**",
+    ]) + glob([
+        "%{rocm_root}/share/miopen/db/" + arch + "*"
+        for arch in rocm_gpu_architectures()
     ]) + glob([
         "%{rocm_root}/lib/libMIOpenCKGroupedConv_" + arch + ".so"
         for arch in rocm_gpu_architectures()

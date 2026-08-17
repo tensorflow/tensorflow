@@ -805,5 +805,152 @@ TEST_F(HloInstructionTest, DetachFromOperandsWithDuplicateOperands) {
   EXPECT_OK(module->entry_computation()->RemoveInstruction(tuple));
 }
 
+TEST_F(HloInstructionTest, AsyncChainTraversalAndShapesWithIntermediaries) {
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+
+async_comp {
+  p0 = f32[2,4] parameter(0)
+  p1 = f32[2,4] parameter(1)
+  ROOT add = f32[2,4] add(p0, p1)
+}
+
+ENTRY main {
+  p0 = f32[2,4] parameter(0)
+  p1 = f32[2,4] parameter(1)
+  start = ((f32[2,4]), (), s32[]) call-start(p0), to_apply=async_comp
+  barrier1 = ((f32[2,4]), (), s32[]) opt-barrier(start)
+  tup1 = (((f32[2,4]), (), s32[])) tuple(barrier1)
+  gte1 = ((f32[2,4]), (), s32[]) get-tuple-element(tup1), index=0
+  sharding_cc = ((f32[2,4]), (), s32[]) custom-call(gte1), custom_call_target="Sharding"
+  copy1 = ((f32[2,4]), (), s32[]) copy(sharding_cc)
+  update = ((f32[2,4], f32[2,4]), f32[2,4], ()) call-update(copy1, p1)
+  barrier2 = ((f32[2,4], f32[2,4]), f32[2,4], ()) opt-barrier(update)
+  tup2 = (((f32[2,4], f32[2,4]), f32[2,4], ())) tuple(barrier2)
+  gte2 = ((f32[2,4], f32[2,4]), f32[2,4], ()) get-tuple-element(tup2), index=0
+  ROOT done = f32[2,4] call-done(gte2)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kHlo));
+  HloInstruction* start = FindInstruction(module.get(), "start");
+  HloInstruction* update = FindInstruction(module.get(), "update");
+  HloInstruction* done = FindInstruction(module.get(), "done");
+
+  auto* async_start = Cast<HloAsyncInstruction>(start);
+  auto* async_update = Cast<HloAsyncInstruction>(update);
+  auto* async_done = Cast<HloAsyncInstruction>(done);
+
+  // Invariant navigation across intermediaries.
+  EXPECT_EQ(async_start->async_chain_done(), async_done);
+  EXPECT_EQ(async_start->async_chain_next(), async_update);
+  EXPECT_EQ(async_start->async_chain_start(), async_start);
+
+  EXPECT_EQ(async_update->async_chain_done(), async_done);
+  EXPECT_EQ(async_update->async_chain_next(), async_done);
+  EXPECT_EQ(async_update->async_chain_start(), async_start);
+
+  EXPECT_EQ(async_done->async_chain_done(), async_done);
+  EXPECT_EQ(async_done->async_chain_next(), nullptr);
+  EXPECT_EQ(async_done->async_chain_start(), async_start);
+
+  std::vector<HloAsyncInstruction*> chain = async_start->GetAsyncChain();
+  EXPECT_EQ(chain.size(), 3);
+  EXPECT_EQ(chain[0], async_start);
+  EXPECT_EQ(chain[1], async_update);
+  EXPECT_EQ(chain[2], async_done);
+
+  // UpdateChainShapes propagating through intermediaries.
+  Shape new_start_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {4, 8}),
+                                  ShapeUtil::MakeShape(F32, {4, 8})}),
+       ShapeUtil::MakeShape(F32, {4, 8}), ShapeUtil::MakeShape(S32, {})});
+  *async_start->mutable_shape() = new_start_shape;
+  async_start->UpdateChainShapes();
+
+  EXPECT_EQ(update->shape(), new_start_shape);
+  EXPECT_EQ(done->shape(), ShapeUtil::MakeShape(F32, {4, 8}));
+
+  // Invariants preserved across module cloning.
+  std::unique_ptr<HloModule> cloned = module->Clone();
+  auto* cloned_start =
+      Cast<HloAsyncInstruction>(FindInstruction(cloned.get(), "start"));
+  auto* cloned_done =
+      Cast<HloAsyncInstruction>(FindInstruction(cloned.get(), "done"));
+  EXPECT_EQ(cloned_start->async_chain_done(), cloned_done);
+  EXPECT_EQ(cloned_done->async_chain_start(), cloned_start);
+}
+
+TEST_F(HloInstructionTest, AsyncPredicates) {
+  const char* const kHlo = R"(
+HloModule async_predicates_test
+
+async_comp {
+  p0 = f32[2,4] parameter(0)
+  p1 = f32[2,4] parameter(1)
+  ROOT add = f32[2,4] add(p0, p1)
+}
+
+ENTRY main {
+  p0 = f32[2,4] parameter(0)
+  p1 = f32[2,4] parameter(1)
+  start = ((f32[2,4]), (), s32[]) call-start(p0), to_apply=async_comp
+  update = ((f32[2,4], f32[2,4]), f32[2,4], ()) call-update(start, p1)
+  done = f32[2,4] call-done(update)
+  ag_start = (f32[2,4], f32[4,4]) all-gather-start(p0), dimensions={0}
+  ag_done = f32[4,4] all-gather-done(ag_start)
+  ROOT non_async = f32[2,4] copy(p0)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kHlo));
+  HloInstruction* start = FindInstruction(module.get(), "start");
+  HloInstruction* update = FindInstruction(module.get(), "update");
+  HloInstruction* done = FindInstruction(module.get(), "done");
+  HloInstruction* ag_start = FindInstruction(module.get(), "ag_start");
+  HloInstruction* ag_done = FindInstruction(module.get(), "ag_done");
+  HloInstruction* non_async = FindInstruction(module.get(), "non_async");
+
+  struct ExpectedPredicates {
+    bool is_producer;
+    bool is_start;
+    bool is_done;
+    bool is_consumer;
+  };
+
+  const std::vector<std::pair<const HloInstruction*, ExpectedPredicates>>
+      tests = {
+          {start,
+           {/*is_producer=*/true, /*is_start=*/true, /*is_done=*/false,
+            /*is_consumer=*/false}},
+          {update,
+           {/*is_producer=*/true, /*is_start=*/false, /*is_done=*/false,
+            /*is_consumer=*/true}},
+          {done,
+           {/*is_producer=*/false, /*is_start=*/false, /*is_done=*/true,
+            /*is_consumer=*/true}},
+          {ag_start,
+           {/*is_producer=*/true, /*is_start=*/true, /*is_done=*/false,
+            /*is_consumer=*/false}},
+          {ag_done,
+           {/*is_producer=*/false, /*is_start=*/false, /*is_done=*/true,
+            /*is_consumer=*/true}},
+          {non_async,
+           {/*is_producer=*/false, /*is_start=*/false, /*is_done=*/false,
+            /*is_consumer=*/false}},
+      };
+
+  for (const auto& [instr, expected] : tests) {
+    EXPECT_EQ(instr->IsAsyncProducer(), expected.is_producer)
+        << instr->ToString();
+    EXPECT_EQ(instr->IsAsyncStart(), expected.is_start) << instr->ToString();
+    EXPECT_EQ(instr->IsAsyncDone(), expected.is_done) << instr->ToString();
+    EXPECT_EQ(instr->IsAsyncConsumer(), expected.is_consumer)
+        << instr->ToString();
+  }
+}
+
 }  // namespace
 }  // namespace xla
