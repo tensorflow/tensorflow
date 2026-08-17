@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/gemm_rewriter.h"
 
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <string>
@@ -145,6 +146,10 @@ TEST_F(GemmRewriteTest, TestBatchedAutotuning) {
   if (HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
     GTEST_SKIP()
         << "There is no autotuning starting with the Nvidia Ampere generation";
+  }
+  // TODO(intel-tf): Remove this check when autotuning is supported on SYCL.
+  if (IsSycl()) {
+    GTEST_SKIP() << "Autotuning is not supported on SYCL platform.";
   }
 
   const char* hlo_text = R"(
@@ -866,6 +871,10 @@ ENTRY test {
 }
 
 TEST_F(CublasLtGemmRewriteTest, VectorBiasSliced) {
+  // TODO(intel-tf): Remove this check when autotuning is supported on SYCL.
+  if (IsSycl()) {
+    GTEST_SKIP() << "Autotuning is not supported on SYCL platform.";
+  }
   const char* hlo_text = R"(
 HloModule test
 
@@ -1251,6 +1260,10 @@ ENTRY test {
 }
 
 TEST_F(CublasLtGemmRewriteTest, ReluActivationSliced) {
+  // TODO(intel-tf): Remove this check when autotuning is supported on SYCL.
+  if (IsSycl()) {
+    GTEST_SKIP() << "Autotuning is not supported on SYCL platform.";
+  }
   const char* hlo_text = R"(
 HloModule test
 
@@ -1849,6 +1862,9 @@ TEST_F(CublasLtGemmRewriteTest, ApproxGeluActivationWithAux) {
   if (IsRocm()) {
     GTEST_SKIP() << "TODO: Unsupported blas-lt epilogue on ROCM";
   }
+  if (IsSycl()) {
+    GTEST_SKIP() << "TODO: BIAS_GELU_AUX epilogue not yet supported on SYCL";
+  }
   const char* hlo_text = R"(
 HloModule test
 
@@ -2043,6 +2059,9 @@ ENTRY test {
 TEST_F(CublasLtGemmRewriteTest, VectorBiasThenApproxGeluActivationWithAux) {
   if (IsRocm()) {
     GTEST_SKIP() << "TODO: Unsupported blas-lt epilogue on ROCM";
+  }
+  if (IsSycl()) {
+    GTEST_SKIP() << "TODO: BIAS_GELU_AUX epilogue not yet supported on SYCL";
   }
   const char* hlo_text = R"(
 HloModule test
@@ -2762,6 +2781,10 @@ TEST_F(ParameterizedGemmRewriteTest, F64C64_CublasLtSupportTest) {
   if (IsRocm()) {
     GTEST_SKIP() << " hipblaslt doesn't support c64 c128 types";
   }
+  // TODO(intel-tf): Remove this check once SYCL supports c64/c128.
+  if (IsSycl()) {
+    GTEST_SKIP() << "c64/c128 not supported on SYCL.";
+  }
   // This test should fail if gemm rewriter does not correctly rewrite
   // F64/C64 dots to cublas-lt or legacy cublas calls
   {
@@ -2974,8 +2997,9 @@ ENTRY main {
 }
 
 TEST_F(ParameterizedGemmRewriteTest, ComplexAlphaSimpleRewrite) {
-  if (IsRocm() && GetDebugOptionsForTest().xla_gpu_enable_cublaslt()) {
-    GTEST_SKIP() << "TODO: Unsupported C64 gpublas-lt datatype on ROCM";
+  if ((IsSycl() || IsRocm()) &&
+      GetDebugOptionsForTest().xla_gpu_enable_cublaslt()) {
+    GTEST_SKIP() << "TODO: Unsupported C64 gpublas-lt datatype on ROCM/SYCL.";
   }
   const char* hlo_text = R"(
 HloModule ComplexAlphaSimpleRewrite
@@ -3167,7 +3191,7 @@ ENTRY int8gemm {
   )";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 
-  if (IsRocm() ||
+  if (IsRocm() || IsSycl() ||
       HasCudaComputeCapability(se::CudaComputeCapability::Volta())) {
     MatchOptimizedHlo(hlo_text,
                       R"(
@@ -3240,7 +3264,7 @@ ENTRY int8gemm {
   )";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 
-  if (IsRocm() ||
+  if (IsRocm() || IsSycl() ||
       HasCudaComputeCapability(se::CudaComputeCapability::Volta())) {
     MatchOptimizedHlo(hlo_text,
                       R"(
@@ -3275,7 +3299,7 @@ ENTRY int8gemm {
   )";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 
-  if (IsRocm() ||
+  if (IsRocm() || IsSycl() ||
       HasCudaComputeCapability(se::CudaComputeCapability::Volta())) {
     MatchOptimizedHlo(hlo_text,
                       R"(
@@ -3396,6 +3420,19 @@ TEST_F(ParameterizedGemmRewriteTest, GemmTypeCombinationCheck) {
   } else {
     type_combinations.push_back({"c64", "c64", true});
     type_combinations.push_back({"c128", "c128", true});
+  }
+
+  // TODO(intel-tf): Remove this check once SYCL supports f64, c64, c128 data
+  // types. SYCL does not support f64, c64, c128 data types in oneDNN matmul
+  if (IsSycl()) {
+    type_combinations.erase(
+        std::remove_if(type_combinations.begin(), type_combinations.end(),
+                       [](const auto& combo) {
+                         auto [input_type, output_type, should_rewrite] = combo;
+                         return input_type == "f64" || input_type == "c64" ||
+                                input_type == "c128";
+                       }),
+        type_combinations.end());
   }
 
   for (const auto& type_combination : type_combinations) {
@@ -3520,6 +3557,10 @@ class SmallDotGemmRewriteTest : public GemmRewriteTest {
 };
 
 TEST_F(SmallDotGemmRewriteTest, SkipSmallMatrixMultiplicationRewrite) {
+  // TODO(intel-tf): Remove this check when autotuning is supported on SYCL.
+  if (IsSycl()) {
+    GTEST_SKIP() << "Autotuning is not supported on SYCL platform.";
+  }
   const char* hlo_text = R"(
 HloModule SkipSmallMatrixRewrite
 

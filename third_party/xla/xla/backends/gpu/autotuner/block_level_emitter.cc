@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/codegen/triton/tma_utils.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -51,6 +52,9 @@ limitations under the License.
 #include "triton/Version.h"
 
 namespace xla::gpu {
+
+using ::xla::xtile::BlockLevelFusionConfig;
+
 namespace {
 
 std::unique_ptr<BackendConfig> Pack(

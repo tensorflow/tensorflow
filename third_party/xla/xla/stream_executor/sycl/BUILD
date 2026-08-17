@@ -568,6 +568,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":sycl_matmul_utils",
         ":sycl_platform_id",
         "//xla/service/gpu:matmul_utils",
         "//xla/stream_executor:blas",
@@ -575,6 +576,8 @@ cc_library(
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:gpu_blas_lt",
         "//xla/stream_executor/platform:initialize",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:status_macros",
     ],
     alwayslink = True,
 )
@@ -642,5 +645,24 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_test(
+    name = "gemm_sycl_test",
+    srcs = ["gemm_sycl_test.cc"],
+    backends = ["gpu"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        "//xla:error_spec",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
     ],
 )
