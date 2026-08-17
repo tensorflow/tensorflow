@@ -108,20 +108,36 @@ class StreamExecutorGpuHbmMemorySpace : public PjRtStreamExecutorMemorySpace {
 class StreamExecutorGpuRawClient : public PjRtStreamExecutorRawClient {
  public:
   StreamExecutorGpuRawClient(
+      PjRtPlatformId platform_id,
       std::unique_ptr<se::DeviceAddressAllocator> allocator,
       LocalClient* client,
       std::unique_ptr<HostMemoryAllocator> host_memory_allocator,
       bool should_stage_host_to_device_transfers,
       std::unique_ptr<AsyncWorkRunner> async_work_runner,
-      se::StreamExecutor* executor = nullptr, bool cache_fabric_handles = false,
+      se::StreamExecutor* executor = nullptr,
+      std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr,
+      bool cache_fabric_handles = false,
       bool abort_collectives_on_failure = false,
-      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options = nullptr)
+      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options = nullptr,
+      std::shared_ptr<gpu::AllocatorMemoryRegistration> memory_registration =
+          nullptr)
       : PjRtStreamExecutorRawClient(
             std::move(allocator), client, std::move(host_memory_allocator),
             should_stage_host_to_device_transfers, std::move(async_work_runner),
             executor, std::move(gpu_run_options)),
+        platform_id_(platform_id),
+        kv_store_(std::move(kv_store)),
         cache_fabric_handles_(cache_fabric_handles),
-        abort_collectives_on_failure_(abort_collectives_on_failure) {}
+        abort_collectives_on_failure_(abort_collectives_on_failure),
+        memory_registration_(std::move(memory_registration)) {}
+
+  std::optional<std::shared_ptr<KeyValueStoreInterface>> key_value_store()
+      const override {
+    if (!kv_store_) {
+      return std::nullopt;
+    }
+    return kv_store_;
+  }
 
   void ScheduleRemoteSend(PjRtMemorySpace* memory_space,
                           PjRtRawBufferRef raw_buffer,
@@ -143,6 +159,13 @@ class StreamExecutorGpuRawClient : public PjRtStreamExecutorRawClient {
   void UpdateCompileOptionsTopology(const PjRtTopologyDescription& topology,
                                     CompileOptions* options) const override;
 
+  void UpdateGlobalProcessInfo(absl::Span<xla::coordination::TaskInfo> infos);
+
+  absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>> RuntimeAbiVersion()
+      const override;
+
+  void RecordMemoryStats(LocalDeviceState* local_device_state) override;
+
  private:
   void ScheduleTransfersOnLocalDevice(
       LocalDeviceState* local_device_state, GlobalDeviceId device_id,
@@ -161,6 +184,9 @@ class StreamExecutorGpuRawClient : public PjRtStreamExecutorRawClient {
   GetOrImportFabricHandle(se::StreamExecutor* executor,
                           absl::string_view fabric_handle);
 
+  PjRtPlatformId platform_id_;
+
+  std::shared_ptr<KeyValueStoreInterface> kv_store_;
   // Whether to cache fabric handles. Exporting and importing fabric handles can
   // be expensive, but it makes sense to cache them only if there are only a
   // handful of such handles, e.g., preallocation is enabled.
@@ -178,38 +204,14 @@ class StreamExecutorGpuRawClient : public PjRtStreamExecutorRawClient {
   absl::flat_hash_map<std::pair<se::StreamExecutor*, std::string>,
                       std::shared_ptr<se::DeviceAddressBase>>
       imported_fabric_handles_ ABSL_GUARDED_BY(mu_);
+
+  std::shared_ptr<gpu::AllocatorMemoryRegistration> memory_registration_;
 };
 
 // A custom PjRtClient that overrides the device assignment method.
 class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
  public:
-  StreamExecutorGpuClient(
-      std::string platform_name,
-      std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
-      int process_index, std::unique_ptr<StreamExecutorGpuRawClient> raw_client,
-      std::shared_ptr<KeyValueStoreInterface> kv_store,
-      bool abort_collectives_on_failure,
-      std::shared_ptr<xla::StreamExecutorGpuTopologyDescription> topology,
-      std::optional<int> num_processes,
-      std::shared_ptr<gpu::AllocatorMemoryRegistration> memory_registration =
-          nullptr);
-
-  absl::string_view platform_version() const override;
-
-  std::optional<PjRtPluginAttributes> plugin_attributes() const override;
-
-  void UpdateGlobalProcessInfo(
-      absl::Span<xla::coordination::TaskInfo> infos) override;
-
-  void RecordMemoryStats();
-
-  absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>> RuntimeAbiVersion()
-      const override;
-
- private:
-  const bool abort_collectives_on_failure_ = false;
-  std::shared_ptr<gpu::AllocatorMemoryRegistration> memory_registration_;
-  std::string platform_version_;
+  using PjRtStreamExecutorClient::PjRtStreamExecutorClient;
 };
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
