@@ -3689,6 +3689,92 @@ TEST_F(MemorySpaceAssignmentTest, WhileInPlaceBuffer) {
       kAlternateMemorySpace);
 }
 
+TEST_F(MemorySpaceAssignmentTest, WhileLoopPreferredOffsetExceedsHeapLimit) {
+  // Tests that when an instruction inside a while-loop body naturally inherits
+  // a preferred offset from an aliased while-loop operand placed in alternate
+  // memory, candidate chunks exceeding available_heap_size() are rejected and
+  // safely assigned to default memory (HBM).
+  //
+  // Dataflow:
+  // - options.max_size_in_bytes = 100.
+  // - In ENTRY main, 'a' (64 bytes) occupies alternate memory at [0, 64).
+  // - 'copy1' (32 bytes) occupies [64, 96) and feeds while-loop 'w'.
+  // - 'WhileBody' naturally inherits preferred_offset = 64 via
+  //   MaybeCreateMirroredParentAllocationForWhileUse.
+  // - Inside 'WhileBody', 'big_add' (64 bytes) is evaluated at preferred_offset
+  //   = 64 (requiring [64, 128)).
+  // - Since 64 + 64 = 128 > 100, FindBestChunkCandidates rejects the candidate
+  //   and keeps 'big_add' in Default Memory (0).
+  absl::string_view hlo_string = R"hlo(
+  HloModule WhileLoopNaturalPreferredOffsetExceedsHeapLimit, is_scheduled=true
+
+  WhileBody {
+    body_param = (f32[2,4], f32[]) parameter(0)
+    v0 = f32[2,4] get-tuple-element(body_param), index=0
+    i = f32[] get-tuple-element(body_param), index=1
+    one = f32[] constant(1)
+    new_i = f32[] add(i, one)
+
+    big_zero = f32[4,4] broadcast(i), dimensions={}
+    big_one = f32[4,4] broadcast(one), dimensions={}
+    big_add = f32[4,4] add(big_zero, big_one)
+    slice = f32[2,4] slice(big_add), slice={[0:2], [0:4]}
+    new_v0 = f32[2,4] add(v0, slice)
+
+    ROOT while_result = (f32[2,4], f32[]) tuple(new_v0, new_i)
+  }
+
+  WhileCond {
+    cond_param = (f32[2,4], f32[]) parameter(0)
+    i = f32[] get-tuple-element(cond_param), index=1
+    limit = f32[] constant(10)
+    ROOT cond_result = pred[] compare(i, limit), direction=LT
+  }
+
+  ENTRY main {
+    p0 = f32[4,4] parameter(0)
+    p1 = f32[2,4] parameter(1)
+    a = f32[4,4] tanh(p0)
+    initial_i = f32[] constant(0)
+    copy1 = f32[2,4] copy(p1)
+    t = (f32[2,4], f32[]) tuple(copy1, initial_i)
+    w = (f32[2,4], f32[]) while(t), condition=WhileCond, body=WhileBody
+    d = f32[2,4] get-tuple-element(w), index=0
+    d_pad = f32[4,4] pad(d, initial_i), padding=0_2x0_0
+    ROOT r = f32[4,4] add(a, d_pad)
+  }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 100;
+  MsaBufferIntervalCompare buffer_interval_compare =
+      [](const MsaBufferInterval& lhs, const MsaBufferInterval& rhs) {
+        auto lookup = [](const MsaBufferInterval& x) {
+          int priority = 100;
+          absl::string_view name = x.buffer->instruction()->name();
+          if (name == "a") {
+            priority = 1;
+          } else if (name == "copy1" || name == "w") {
+            priority = 2;
+          } else if (name == "big_add") {
+            priority = 3;
+          }
+          return std::make_tuple(priority, x.buffer->instruction()->name());
+        };
+        return lookup(lhs) < lookup(rhs);
+      };
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(0, 1000);
+  AssignMemorySpace(module.get(), std::move(options), buffer_interval_compare,
+                    &prefetch_interval_picker);
+
+  const HloInstruction* big_add = module->GetComputationWithName("WhileBody")
+                                      ->GetInstructionWithName("big_add");
+  ASSERT_NE(big_add, nullptr);
+  EXPECT_EQ(big_add->shape().layout().memory_space(), kDefaultMemorySpace);
+}
+
 TEST_F(MemorySpaceAssignmentTest, WhileSharedBufferVerificationBug) {
   // Tests a spurious verification failure when a while has the same value
   // passed in twice (copy0) and that value is evicted within the while loop.
