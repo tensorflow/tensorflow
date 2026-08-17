@@ -1,0 +1,52 @@
+// RUN: fusion_to_xtile %s --xla_cpu_use_new_xtile_lowering | fusion_compiler_opt \
+// RUN:   --xtile-cpu-new-xtile-to-vector --xla-simplify-arith \
+// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
+// RUN: fusion_to_xtile %s --xla_cpu_use_new_xtile_lowering | fusion_compiler_opt \
+// RUN:   --xtile-cpu-new-xtile-to-vector --xtile-cpu-new-vector-to-llvm \
+// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR-LLVM
+// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering
+
+min {
+  x = u32[] parameter(0)
+  y = u32[] parameter(1)
+  ROOT min = u32[] minimum(x, y)
+}
+
+fusion {
+  p0 = u32[100] parameter(0)
+  c0 = u32[] constant(4294967295)
+  ROOT reduce = u32[] reduce(p0, c0), dimensions={0}, to_apply=min,
+   backend_config={sizes:[32]}
+}
+
+// NEW-VECTOR: func.func @wrapped_fusion_impl
+
+// NEW-VECTOR-DAG: %[[C0:.*]] = arith.constant 0 : index
+// NEW-VECTOR-DAG: %[[C1:.*]] = arith.constant 1 : index
+// NEW-VECTOR-DAG: %[[C4:.*]] = arith.constant 4 : index
+// NEW-VECTOR-DAG: %[[CST:.*]] = arith.constant dense<[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]> : vector<32xi32>
+// NEW-VECTOR-DAG: %[[CST_0:.*]] = arith.constant -1 : i32
+// NEW-VECTOR-DAG: %[[CST_1:.*]] = arith.constant dense<-1> : vector<32xi32>
+
+// NEW-VECTOR:  %[[LOOP_RES:.*]] = scf.for %[[IV:.*]] = %[[C0]] to %[[C4]] step %[[C1]] iter_args(%[[ACC:.*]] = %[[CST_1]]) -> (vector<32xi32>) {
+// NEW-VECTOR:    %[[READ_SLICE:.*]] = scf.if %{{.*}} -> (vector<32xi32>)
+// NEW-VECTOR:    %[[MASK_SLICE:.*]] = scf.if %{{.*}} -> (vector<32xi32>)
+// NEW-VECTOR:    %[[ACC_NEXT:.*]] = arith.minui %[[ACC]], %[[MASK_SLICE]] : vector<32xi32>
+// NEW-VECTOR:    scf.yield %[[ACC_NEXT]] : vector<32xi32>
+// NEW-VECTOR:  vector.reduction <minui>, %[[LOOP_RES]], %[[CST_0]]
+
+ENTRY main {
+  p0 = u32[100] parameter(0)
+  ROOT fusion = u32[] fusion(p0), kind=kLoop, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":[]}],
+          "num_ctas":"1"
+        }
+      }
+    }
+}
+
+// NEW-VECTOR-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
+// NEW-VECTOR-LLVM-NOT: llvm.alloc

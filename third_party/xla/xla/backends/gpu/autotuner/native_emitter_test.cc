@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/substitute.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -46,6 +47,7 @@ namespace {
 
 using ::testing::UnorderedElementsAre;
 using ::tsl::proto_testing::EqualsProto;
+using ::xla::xtile::BlockLevelFusionConfig;
 
 const char kReductionFusionHlo[] = R"(
 HloModule m
