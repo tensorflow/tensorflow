@@ -156,12 +156,22 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
                 std::move(dtype), std::move(shape), std::move(sharding), arrays,
                 array_copy_semantics, single_device_shard_semantics);
           });
-  ON_CALL(*this, CopyArrays)
+  ON_CALL(*this, CopyArrays(_, _, _, _))
       .WillByDefault([this](absl::Span<ArrayRef> arrays,
                             std::optional<DeviceListRef> devices,
                             std::optional<MemoryKind> memory_kind,
                             ArrayCopySemantics semantics) {
         return delegated_->CopyArrays(arrays, std::move(devices), memory_kind,
+                                      semantics);
+      });
+  ON_CALL(*this, CopyArrays(_, _, _, _, _))
+      .WillByDefault([this](absl::Span<ArrayRef> arrays,
+                            std::optional<DeviceListRef> devices,
+                            std::optional<MemoryKind> memory_kind,
+                            std::optional<absl::Span<LayoutRef>> layouts,
+                            ArrayCopySemantics semantics) {
+        return delegated_->CopyArrays(arrays, std::move(devices),
+                                      std::move(memory_kind), layouts,
                                       semantics);
       });
   ON_CALL(*this, RemapArrays)

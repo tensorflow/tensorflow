@@ -246,6 +246,12 @@ class PjRtClient final : public RTTIExtends<PjRtClient, PjRtCompatibleClient> {
       std::optional<MemoryKind> memory_kind,
       ArrayCopySemantics semantics) override;
 
+  absl::StatusOr<std::vector<ArrayRef>> CopyArrays(
+      absl::Span<ArrayRef> arrays, std::optional<DeviceListRef> devices,
+      std::optional<MemoryKind> memory_kind,
+      std::optional<absl::Span<LayoutRef>> layouts,
+      ArrayCopySemantics semantics) override;
+
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> RemapArrays(
       const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
       ArrayCopySemantics semantics) override;

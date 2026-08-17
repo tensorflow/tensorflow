@@ -150,6 +150,13 @@ class NanoIfrtClient
       std::optional<ifrt::MemoryKind> memory_kind,
       ifrt::ArrayCopySemantics semantics) override;
 
+  absl::StatusOr<std::vector<ifrt::ArrayRef>> CopyArrays(
+      absl::Span<ifrt::ArrayRef> arrays,
+      std::optional<ifrt::DeviceListRef> devices,
+      std::optional<ifrt::MemoryKind> memory_kind,
+      std::optional<absl::Span<ifrt::LayoutRef>> layouts,
+      ifrt::ArrayCopySemantics semantics) override;
+
   absl::StatusOr<std::vector<ifrt::ArrayRef>> RemapArrays(
       const ifrt::RemapPlan& plan, absl::Span<ifrt::ArrayRef> arrays,
       ifrt::ArrayCopySemantics semantics) override;

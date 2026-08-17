@@ -1747,6 +1747,19 @@ PjRtClient::CrossHostReceiveBuffers(absl::Span<const xla::Shape> shapes,
                                                    std::move(notifier));
 }
 
+absl::StatusOr<std::vector<ArrayRef>> PjRtClient::CopyArrays(
+    absl::Span<ArrayRef> arrays, std::optional<DeviceListRef> devices,
+    std::optional<MemoryKind> memory_kind,
+    std::optional<absl::Span<LayoutRef>> layouts,
+    ArrayCopySemantics semantics) {
+  if (layouts.has_value()) {
+    return absl::UnimplementedError(
+        "CopyArrays with specified layouts is not implemented.");
+  }
+  return CopyArrays(arrays, std::move(devices), std::move(memory_kind),
+                    semantics);
+}
+
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::RemapArrays(
     const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
     ArrayCopySemantics semantics) {
