@@ -765,9 +765,12 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::FromProto(
       execution_state =
           std::make_unique<ffi::ExecutionState>(std::move(state.value()));
     } else {
-      LOG(WARNING)
-          << "Failed to deserialize the custom call execution state. Falling "
-             "back to runtime instantiation of the execution state. Reason: "
+      LOG(ERROR)
+          << "Failed to deserialize the custom call execution state for the "
+             "custom call with target name: "
+          << proto.target_name()
+          << ". Falling back to runtime instantiation of the execution state. "
+             "Reason: "
           << state.status();
     }
   }
