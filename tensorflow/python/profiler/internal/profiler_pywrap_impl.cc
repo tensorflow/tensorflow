@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/python/profiler/internal/profiler_pywrap_impl.h"
 
+#include <mutex>
 #include <string>
 #include <variant>
 
@@ -39,6 +40,7 @@ absl::Status ProfilerSessionWrapper::Start(
     const char* logdir,
     const absl::flat_hash_map<std::string,
                               std::variant<bool, int, std::string>>& options) {
+  std::lock_guard<std::mutex> lock(mu_);
   auto opts = GetRemoteSessionManagerOptionsLocked(logdir, options);
   session_ = tsl::ProfilerSession::Create(opts.profiler_options());
   logdir_ = logdir;
@@ -46,6 +48,7 @@ absl::Status ProfilerSessionWrapper::Start(
 }
 
 absl::Status ProfilerSessionWrapper::Stop(std::string* result) {
+  std::lock_guard<std::mutex> lock(mu_);
   if (session_ != nullptr) {
     tensorflow::profiler::XSpace xspace;
     absl::Status status = session_->CollectData(&xspace);
@@ -57,6 +60,7 @@ absl::Status ProfilerSessionWrapper::Stop(std::string* result) {
 }
 
 absl::Status ProfilerSessionWrapper::ExportToTensorBoard() {
+  std::lock_guard<std::mutex> lock(mu_);
   if (!session_ || logdir_.empty()) {
     return absl::OkStatus();
   }
