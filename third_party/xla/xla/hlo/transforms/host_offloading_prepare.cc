@@ -31,12 +31,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/memory_annotations.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
+using xla::memory_annotations::kMoveToDeviceCustomCallTarget;
 using xla::memory_annotations::kMoveToHostCustomCallTarget;
 
 bool IsHostAsyncStart(const HloInstruction* instruction) {
@@ -47,18 +49,52 @@ bool IsHostAsyncStart(const HloInstruction* instruction) {
 
 absl::StatusOr<bool> RemoveSurroundingMoveCustomCalls(
     HloInstruction* async_start) {
-  // If any of the operands are a MoveToHost custom call, remove them.
   bool removed = false;
+  // If any of the operands are a MoveToHost custom call, remove them.
   for (HloInstruction* operand : async_start->operands()) {
-    // TODO(b/338463228): It could be the case that custom-calls are on the
-    // other side of a bitcast or tuple.
+    while (operand->opcode() == HloOpcode::kOptimizationBarrier ||
+           operand->opcode() == HloOpcode::kBitcast ||
+           operand->opcode() == HloOpcode::kReshape) {
+      if (operand->operand_count() == 0) {
+        break;
+      }
+      operand = operand->mutable_operand(0);
+    }
     if (operand->IsCustomCall(kMoveToHostCustomCallTarget)) {
       CHECK_EQ(operand->operands().size(), 1);
       VLOG(1) << "Replacing " << operand->ToString() << " with "
               << operand->operands().at(0)->ToString();
+      HloComputation* parent = operand->parent();
       ABSL_RETURN_IF_ERROR(operand->ReplaceAllUsesWith(operand->mutable_operand(0)));
-      ABSL_RETURN_IF_ERROR(async_start->parent()->RemoveInstruction(operand));
+      ABSL_RETURN_IF_ERROR(parent->RemoveInstruction(operand));
       removed = true;
+    }
+  }
+
+  // If any users of async_done are MoveToDevice custom calls, remove them.
+  for (HloInstruction* user : async_start->users()) {
+    if (user->opcode() == HloOpcode::kAsyncDone) {
+      std::vector<HloInstruction*> move_to_device_users;
+      for (HloInstruction* done_user : user->users()) {
+        if (done_user->IsCustomCall(kMoveToDeviceCustomCallTarget)) {
+          move_to_device_users.push_back(done_user);
+        }
+      }
+      for (HloInstruction* move_to_device : move_to_device_users) {
+        CHECK_EQ(move_to_device->operands().size(), 1);
+        VLOG(1) << "Replacing " << move_to_device->ToString() << " with "
+                << user->ToString();
+        if (move_to_device->shape().has_layout()) {
+          user->mutable_shape()->mutable_layout()->set_memory_space(
+              move_to_device->shape().layout().memory_space());
+          *ShapeUtil::GetMutableSubshape(async_start->mutable_shape(), {1}) =
+              user->shape();
+        }
+        ABSL_RETURN_IF_ERROR(move_to_device->ReplaceAllUsesWith(user));
+        ABSL_RETURN_IF_ERROR(
+            async_start->parent()->RemoveInstruction(move_to_device));
+        removed = true;
+      }
     }
   }
   return removed;

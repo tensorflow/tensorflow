@@ -41,6 +41,10 @@ absl::StatusOr<bool> FusionWrapperBase::RunImpl(
     if (opcode == HloOpcode::kConditional || opcode == HloOpcode::kWhile ||
         opcode == HloOpcode::kCall || opcode == HloOpcode::kAsyncStart) {
       for (auto* computation : instruction->called_computations()) {
+        if (!HloInstruction::IsThreadIncluded(computation->execution_thread(),
+                                              execution_threads)) {
+          continue;
+        }
         for (auto* inner_instruction :
              computation->MakeInstructionPostOrder()) {
           ABSL_RETURN_IF_ERROR(handle_instruction(inner_instruction));
@@ -48,7 +52,9 @@ absl::StatusOr<bool> FusionWrapperBase::RunImpl(
       }
       return absl::OkStatus();
     }
-    if (!MustWrapInstruction(*instruction)) {
+    if (!HloInstruction::IsThreadIncluded(
+            instruction->parent()->execution_thread(), execution_threads) ||
+        !MustWrapInstruction(*instruction)) {
       return absl::OkStatus();
     }
     auto* computation = instruction->parent();
