@@ -3728,4 +3728,72 @@ bool CommonPjRtClient::RequiresRuntimeShapeMetadata(
   return requirements.metadata_size > 0;
 }
 
+CommonPjRtClientImpl::CommonPjRtClientImpl(
+    PjRtPlatformId platform_id, std::string platform_name,
+    std::string platform_version, int process_index,
+    std::shared_ptr<const xla::PjRtTopologyDescription> topology,
+    std::unique_ptr<PjRtRawClient> raw_client,
+    std::shared_ptr<KeyValueStoreInterface> kv_store,
+    std::optional<PjRtPluginAttributes> plugin_attributes)
+    : platform_id_(platform_id),
+      platform_name_(std::move(platform_name)),
+      platform_version_(std::move(platform_version)),
+      topology_(std::move(topology)),
+      process_index_(process_index),
+      plugin_attributes_(std::move(plugin_attributes)),
+      kv_store_(std::move(kv_store)),
+      raw_client_(std::move(raw_client)) {
+  CHECK(topology_) << " topology is required.";
+}
+
+void CommonPjRtClientImpl::AttachDevices(
+    std::vector<std::unique_ptr<PjRtDevice>> devices,
+    std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces) {
+  owned_devices_ = std::move(devices);
+  owned_memory_spaces_ = std::move(memory_spaces);
+
+  for (const std::unique_ptr<PjRtDevice>& device : owned_devices_) {
+    devices_.push_back(device.get());
+    CHECK(id_to_device_.insert({device->id(), device.get()}).second)
+        << "Duplicate device id: " << device->id();
+
+    if (device->IsAddressable()) {
+      addressable_devices_.push_back(device.get());
+    }
+  }
+  // TODO(phawkins): we don't really promise anything about the order of
+  // these devices, but users may be depending on the current order. Sort into
+  // device ordinal order, which is the historical order these values have
+  // appeared.
+  absl::c_sort(addressable_devices_,
+               [](const PjRtDevice* a, const PjRtDevice* b) {
+                 return a->local_device_id() < b->local_device_id();
+               });
+
+  for (const std::unique_ptr<PjRtMemorySpace>& memory_space :
+       owned_memory_spaces_) {
+    memory_spaces_.push_back(memory_space.get());
+  }
+}
+
+absl::StatusOr<PjRtDevice*> CommonPjRtClientImpl::LookupAddressableDevice(
+    xla::LocalDeviceId local_device_id) const {
+  for (auto* device : addressable_devices_) {
+    if (local_device_id == device->local_device_id()) {
+      return device;
+    }
+  }
+  return InvalidArgument("No matching device found for local_device_id %d",
+                         local_device_id.value());
+}
+
+absl::Span<PjRtMemorySpace* const> CommonPjRtClientImpl::memory_spaces() const {
+  return memory_spaces_;
+}
+
+absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>>
+CommonPjRtClientImpl::RuntimeAbiVersion() const {
+  return raw_client_->RuntimeAbiVersion();
+}
+
 }  // namespace xla

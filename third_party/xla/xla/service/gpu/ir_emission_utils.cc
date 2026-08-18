@@ -163,11 +163,16 @@ bool IsCustomCallToMosaicGpu(const HloInstruction& hlo) {
           hlo.custom_call_target() == "mosaic_gpu_v2");
 }
 
-
 bool IsMosaicWithMultimem(const HloInstruction& hlo) {
-  return IsCustomCallToMosaicGpu(hlo) &&
-         absl::StrContains(hlo.raw_backend_config_string(),
-                           "multimem_parameters");
+  if (!IsCustomCallToMosaicGpu(hlo)) {
+    return false;
+  }
+
+  const std::string& backend_config = hlo.raw_backend_config_string();
+  // TODO(b/546817872): Remove multimem_parameters check once backward
+  // compatibility period is over.
+  return absl::StrContains(backend_config, "symmetrical_memory_parameters") ||
+         absl::StrContains(backend_config, "multimem_parameters");
 }
 
 bool IsMosaicWithCollectiveMetadata(const HloInstruction& hlo) {
