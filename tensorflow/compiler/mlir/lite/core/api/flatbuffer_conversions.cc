@@ -2498,7 +2498,7 @@ absl::Status ParseStablehloScatter(const Operator* op,
 
     if (schema_params->update_window_dims()) {
       TFL_FILE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-          schema_params->update_window_dims()->size() * sizeof(int64_t),
+          sizeof(params->update_window_dims),
           schema_params->update_window_dims(), params->update_window_dims,
           "stablehlo_scatter"));
       params->num_update_window_dims =
@@ -2507,7 +2507,7 @@ absl::Status ParseStablehloScatter(const Operator* op,
 
     if (schema_params->inserted_window_dims()) {
       TFL_FILE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-          schema_params->inserted_window_dims()->size() * sizeof(int64_t),
+          sizeof(params->inserted_window_dims),
           schema_params->inserted_window_dims(), params->inserted_window_dims,
           "stablehlo_scatter"));
       params->num_inserted_window_dims =
@@ -2516,8 +2516,7 @@ absl::Status ParseStablehloScatter(const Operator* op,
 
     if (schema_params->scatter_dims_to_operand_dims()) {
       TFL_FILE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-          schema_params->scatter_dims_to_operand_dims()->size() *
-              sizeof(int64_t),
+          sizeof(params->scatter_dims_to_operand_dims),
           schema_params->scatter_dims_to_operand_dims(),
           params->scatter_dims_to_operand_dims, "stablehlo_scatter"));
       params->num_scatter_dims_to_operand_dims =
@@ -2579,8 +2578,7 @@ absl::Status ParseStablehloGather(const Operator* op,
   if (schema_params != nullptr) {
     if (schema_params->offset_dims()) {
       TFL_FILE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-          /*max_size_of_buffer=*/schema_params->offset_dims()->size() *
-              sizeof(int64_t),
+          /*max_size_of_buffer=*/sizeof(params->offset_dims),
           /*flat_vector=*/schema_params->offset_dims(),
           /*buffer=*/params->offset_dims,
           /*op_name=*/"stablehlo_gather"));
@@ -2589,7 +2587,7 @@ absl::Status ParseStablehloGather(const Operator* op,
 
     if (schema_params->collapsed_slice_dims()) {
       TFL_FILE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-          schema_params->collapsed_slice_dims()->size() * sizeof(int64_t),
+          sizeof(params->collapsed_slice_dims),
           schema_params->collapsed_slice_dims(), params->collapsed_slice_dims,
           "stablehlo_gather"));
       params->num_collapsed_slice_dims =
@@ -2598,7 +2596,7 @@ absl::Status ParseStablehloGather(const Operator* op,
 
     if (schema_params->start_index_map()) {
       TFL_FILE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-          schema_params->start_index_map()->size() * sizeof(int64_t),
+          sizeof(params->start_index_map),
           schema_params->start_index_map(), params->start_index_map,
           "stablehlo_gather"));
       params->num_start_index_map = schema_params->start_index_map()->size();
@@ -2608,7 +2606,7 @@ absl::Status ParseStablehloGather(const Operator* op,
 
     if (schema_params->slice_sizes()) {
       TFL_FILE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-          schema_params->slice_sizes()->size() * sizeof(int64_t),
+          sizeof(params->slice_sizes),
           schema_params->slice_sizes(), params->slice_sizes,
           "stablehlo_gather"));
       params->num_slice_sizes = schema_params->slice_sizes()->size();

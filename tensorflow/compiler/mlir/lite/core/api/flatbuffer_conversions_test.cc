@@ -49,18 +49,24 @@ using tflite::BuiltinOperator_CUSTOM;
 using tflite::BuiltinOperator_FULLY_CONNECTED;
 using tflite::BuiltinOperator_RESHAPE;
 using tflite::BuiltinOperator_SQUEEZE;
+using tflite::BuiltinOperator_STABLEHLO_GATHER;
 using tflite::BuiltinOperator_STABLEHLO_PAD;
 using tflite::BuiltinOperator_STABLEHLO_REDUCE_WINDOW;
+using tflite::BuiltinOperator_STABLEHLO_SCATTER;
+using tflite::BuiltinOptions2_StablehloGatherOptions;
 using tflite::BuiltinOptions2_StablehloPadOptions;
 using tflite::BuiltinOptions2_StablehloReduceWindowOptions;
+using tflite::BuiltinOptions2_StablehloScatterOptions;
 using tflite::BuiltinOptions_Conv2DOptions;
 using tflite::BuiltinOptions_FullyConnectedOptions;
 using tflite::BuiltinOptions_NONE;
 using tflite::BuiltinOptions_ReshapeOptions;
 using tflite::CreateReshapeOptions;
 using tflite::CreateSqueezeOptions;
+using tflite::CreateStablehloGatherOptions;
 using tflite::CreateStablehloPadOptions;
 using tflite::CreateStablehloReduceWindowOptions;
+using tflite::CreateStablehloScatterOptions;
 using tflite::FullyConnectedOptionsWeightsFormat;
 using tflite::Padding_SAME;
 using tflite::TensorType_BFLOAT16;
@@ -869,6 +875,45 @@ TEST_F(StablehloPadFlatbufferConversionsTest, DeathTests) {
                            &mock_allocator_, nullptr)
                    .IgnoreError(),
                "");
+}
+
+TEST_F(FlatbufferConversionsTest, ParseStablehloScatterFailsTooManyDimensions) {
+  std::vector<int64_t> too_many_dims(
+      TFLITE_STABLEHLO_SCATTER_PARAMS_MAX_DIMENSION_COUNT + 1, 1);
+  const Operator* op = BuildTestOperator(
+      BuiltinOptions2_StablehloScatterOptions,
+      CreateStablehloScatterOptions(
+          builder_, /*indices_are_sorted=*/true,
+          /*update_window_dims=*/builder_.CreateVector(too_many_dims),
+          /*inserted_window_dims=*/builder_.CreateVector<int64_t>({1}),
+          /*scatter_dims_to_operand_dims=*/builder_.CreateVector<int64_t>({1}),
+          /*index_vector_dim=*/0, /*unique_indices=*/false,
+          /*update_computation_subgraph_index=*/0)
+          .Union());
+  void* output_data = nullptr;
+  auto status = ParseOpData(op, BuiltinOperator_STABLEHLO_SCATTER,
+                            &mock_allocator_, &output_data);
+  EXPECT_FALSE(status.ok());
+}
+
+TEST_F(FlatbufferConversionsTest, ParseStablehloGatherFailsTooManyDimensions) {
+  std::vector<int64_t> too_many_dims(
+      TFLITE_STABLEHLO_GATHER_PARAMS_MAX_DIMENSION_COUNT + 1, 1);
+  const Operator* op = BuildTestOperator(
+      BuiltinOptions2_StablehloGatherOptions,
+      CreateStablehloGatherOptions(
+          builder_,
+          /*offset_dims=*/builder_.CreateVector(too_many_dims),
+          /*collapsed_slice_dims=*/builder_.CreateVector<int64_t>({1}),
+          /*start_index_map=*/builder_.CreateVector<int64_t>({1}),
+          /*index_vector_dim=*/0,
+          /*slice_sizes=*/builder_.CreateVector<int64_t>({1}),
+          /*indices_are_sorted=*/true)
+          .Union());
+  void* output_data = nullptr;
+  auto status = ParseOpData(op, BuiltinOperator_STABLEHLO_GATHER,
+                            &mock_allocator_, &output_data);
+  EXPECT_FALSE(status.ok());
 }
 
 }  // namespace flatbuffer_conversions
