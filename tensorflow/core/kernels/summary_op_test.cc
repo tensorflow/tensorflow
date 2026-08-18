@@ -13,27 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <functional>
-#include <memory>
+#include <string>
 
-#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
-#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/histogram/histogram.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/tstring.h"
 
 namespace tensorflow {
 namespace {
@@ -165,6 +162,19 @@ TEST_F(SummaryHistoOpTest, Error_TooManyTagValues) {
   EXPECT_TRUE(absl::StrContains(s.ToString(), "tags must be scalar")) << s;
 }
 
+TEST_F(SummaryHistoOpTest, Error_UninitializedTensor) {
+  MakeOp(DT_FLOAT);
+
+  // Feed and run
+  AddInputFromArray<tstring>(TensorShape({}), {"taghisto"});
+  Tensor* uninit = new Tensor(DT_FLOAT, TensorShape({1}), nullptr);
+  ASSERT_FALSE(uninit->IsInitialized());
+  tensors_.push_back(uninit);
+  inputs_.push_back(TensorValue(uninit));
+  absl::Status s = RunOpKernel();
+  EXPECT_FALSE(s.ok());
+}
+
 // --------------------------------------------------------------------------
 // SummaryMergeOp
 // --------------------------------------------------------------------------
@@ -262,6 +272,16 @@ TEST_F(SummaryMergeOpTest, Error_MismatchedSize) {
                              {s1.SerializeAsString(), s2.SerializeAsString()});
   absl::Status s = RunOpKernel();
   EXPECT_TRUE(absl::StrContains(s.ToString(), "Duplicate tag")) << s;
+}
+
+TEST_F(SummaryMergeOpTest, Error_UninitializedTensor) {
+  MakeOp(1);
+  Tensor* uninit = new Tensor(DT_STRING, TensorShape({1}), nullptr);
+  ASSERT_FALSE(uninit->IsInitialized());
+  tensors_.push_back(uninit);
+  inputs_.push_back(TensorValue(uninit));
+  absl::Status s = RunOpKernel();
+  EXPECT_FALSE(s.ok());
 }
 
 }  // namespace
