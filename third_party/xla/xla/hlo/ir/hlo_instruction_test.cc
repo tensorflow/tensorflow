@@ -64,11 +64,15 @@ TEST_F(HloInstructionTest, SparsityConfigToString_RHSOnly) {
       0, ShapeUtil::MakeShape(BF16, {256, 256}), "lhs"));
   HloInstruction* rhs = builder.AddInstruction(HloInstruction::CreateParameter(
       1, ShapeUtil::MakeShape(BF16, {64, 256}), "rhs"));
+  HloInstruction* rhs_indices =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          2, ShapeUtil::MakeShape(S32, {64, 256}), "rhs_indices"));
   SparsityConfig sparsity_config;
   sparsity_config.mutable_rhs()->set_block_size(4);
   sparsity_config.mutable_rhs()->set_num_non_zero(1);
   sparsity_config.mutable_rhs()->set_dimension(0);
   sparsity_config.mutable_rhs()->set_stride(1);
+  sparsity_config.mutable_rhs()->set_idx(2);
   ConvolutionDimensionNumbers dnums;
   dnums.set_input_batch_dimension(0);
   dnums.set_input_feature_dimension(1);
@@ -78,8 +82,9 @@ TEST_F(HloInstructionTest, SparsityConfigToString_RHSOnly) {
   dnums.set_output_feature_dimension(1);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       /*shape=*/ShapeUtil::MakeShape(BF16, {256, 256}),
-      /*lhs=*/lhs,
-      /*rhs=*/rhs,
+      {/*lhs=*/lhs,
+       /*rhs=*/rhs,
+       /*rhs_indices=*/rhs_indices},
       /*feature_group_count=*/1,
       /*batch_group_count=*/1,
       /*window=*/Window(),
@@ -90,7 +95,7 @@ TEST_F(HloInstructionTest, SparsityConfigToString_RHSOnly) {
 
   EXPECT_EQ(
       conv->ToString(),
-      R"(%convolution = bf16[256,256]{1,0} convolution(%lhs, %rhs), dim_labels=bf_io->bf, sparsity_config={rhs={sparsity=1x4 dimension=0 stride=1}})");
+      R"(%convolution = bf16[256,256]{1,0} convolution(%lhs, %rhs, %rhs_indices), dim_labels=bf_io->bf, sparsity_config={rhs={sparsity=1x4 dimension=0 stride=1 idx=2}})");
 }
 
 TEST_F(HloInstructionTest, SparsityConfigToString_LHSAndRHS) {
@@ -102,15 +107,23 @@ TEST_F(HloInstructionTest, SparsityConfigToString_LHSAndRHS) {
       0, ShapeUtil::MakeShape(BF16, {256, 256}), "lhs"));
   HloInstruction* rhs = builder.AddInstruction(HloInstruction::CreateParameter(
       1, ShapeUtil::MakeShape(BF16, {64, 256}), "rhs"));
+  HloInstruction* lhs_indices =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          2, ShapeUtil::MakeShape(S32, {256, 256}), "lhs_indices"));
+  HloInstruction* rhs_indices =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          3, ShapeUtil::MakeShape(S32, {64, 256}), "rhs_indices"));
   SparsityConfig sparsity_config;
   sparsity_config.mutable_rhs()->set_block_size(4);
   sparsity_config.mutable_rhs()->set_num_non_zero(1);
   sparsity_config.mutable_rhs()->set_dimension(0);
   sparsity_config.mutable_rhs()->set_stride(1);
+  sparsity_config.mutable_rhs()->set_idx(3);
   sparsity_config.mutable_lhs()->set_block_size(4);
   sparsity_config.mutable_lhs()->set_num_non_zero(1);
   sparsity_config.mutable_lhs()->set_dimension(0);
   sparsity_config.mutable_lhs()->set_stride(1);
+  sparsity_config.mutable_lhs()->set_idx(2);
   ConvolutionDimensionNumbers dnums;
   dnums.set_input_batch_dimension(0);
   dnums.set_input_feature_dimension(1);
@@ -120,8 +133,10 @@ TEST_F(HloInstructionTest, SparsityConfigToString_LHSAndRHS) {
   dnums.set_output_feature_dimension(1);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       /*shape=*/ShapeUtil::MakeShape(BF16, {256, 256}),
-      /*lhs=*/lhs,
-      /*rhs=*/rhs,
+      {/*lhs=*/lhs,
+       /*rhs=*/rhs,
+       /*lhs_indices=*/lhs_indices,
+       /*rhs_indices=*/rhs_indices},
       /*feature_group_count=*/1,
       /*batch_group_count=*/1,
       /*window=*/Window(),
@@ -132,7 +147,7 @@ TEST_F(HloInstructionTest, SparsityConfigToString_LHSAndRHS) {
 
   EXPECT_EQ(
       conv->ToString(),
-      R"(%convolution = bf16[256,256]{1,0} convolution(%lhs, %rhs), dim_labels=bf_io->bf, sparsity_config={lhs={sparsity=1x4 dimension=0 stride=1} rhs={sparsity=1x4 dimension=0 stride=1}})");
+      R"(%convolution = bf16[256,256]{1,0} convolution(%lhs, %rhs, %lhs_indices, %rhs_indices), dim_labels=bf_io->bf, sparsity_config={lhs={sparsity=1x4 dimension=0 stride=1 idx=2} rhs={sparsity=1x4 dimension=0 stride=1 idx=3}})");
 }
 
 TEST_F(HloInstructionTest, GetStackTraceStringFromStackFrameId) {
@@ -803,6 +818,153 @@ TEST_F(HloInstructionTest, DetachFromOperandsWithDuplicateOperands) {
   *module->mutable_entry_computation_layout()->mutable_result_layout() =
       ShapeLayout(p0->shape());
   EXPECT_OK(module->entry_computation()->RemoveInstruction(tuple));
+}
+
+TEST_F(HloInstructionTest, AsyncChainTraversalAndShapesWithIntermediaries) {
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+
+async_comp {
+  p0 = f32[2,4] parameter(0)
+  p1 = f32[2,4] parameter(1)
+  ROOT add = f32[2,4] add(p0, p1)
+}
+
+ENTRY main {
+  p0 = f32[2,4] parameter(0)
+  p1 = f32[2,4] parameter(1)
+  start = ((f32[2,4]), (), s32[]) call-start(p0), to_apply=async_comp
+  barrier1 = ((f32[2,4]), (), s32[]) opt-barrier(start)
+  tup1 = (((f32[2,4]), (), s32[])) tuple(barrier1)
+  gte1 = ((f32[2,4]), (), s32[]) get-tuple-element(tup1), index=0
+  sharding_cc = ((f32[2,4]), (), s32[]) custom-call(gte1), custom_call_target="Sharding"
+  copy1 = ((f32[2,4]), (), s32[]) copy(sharding_cc)
+  update = ((f32[2,4], f32[2,4]), f32[2,4], ()) call-update(copy1, p1)
+  barrier2 = ((f32[2,4], f32[2,4]), f32[2,4], ()) opt-barrier(update)
+  tup2 = (((f32[2,4], f32[2,4]), f32[2,4], ())) tuple(barrier2)
+  gte2 = ((f32[2,4], f32[2,4]), f32[2,4], ()) get-tuple-element(tup2), index=0
+  ROOT done = f32[2,4] call-done(gte2)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kHlo));
+  HloInstruction* start = FindInstruction(module.get(), "start");
+  HloInstruction* update = FindInstruction(module.get(), "update");
+  HloInstruction* done = FindInstruction(module.get(), "done");
+
+  auto* async_start = Cast<HloAsyncInstruction>(start);
+  auto* async_update = Cast<HloAsyncInstruction>(update);
+  auto* async_done = Cast<HloAsyncInstruction>(done);
+
+  // Invariant navigation across intermediaries.
+  EXPECT_EQ(async_start->async_chain_done(), async_done);
+  EXPECT_EQ(async_start->async_chain_next(), async_update);
+  EXPECT_EQ(async_start->async_chain_start(), async_start);
+
+  EXPECT_EQ(async_update->async_chain_done(), async_done);
+  EXPECT_EQ(async_update->async_chain_next(), async_done);
+  EXPECT_EQ(async_update->async_chain_start(), async_start);
+
+  EXPECT_EQ(async_done->async_chain_done(), async_done);
+  EXPECT_EQ(async_done->async_chain_next(), nullptr);
+  EXPECT_EQ(async_done->async_chain_start(), async_start);
+
+  std::vector<HloAsyncInstruction*> chain = async_start->GetAsyncChain();
+  EXPECT_EQ(chain.size(), 3);
+  EXPECT_EQ(chain[0], async_start);
+  EXPECT_EQ(chain[1], async_update);
+  EXPECT_EQ(chain[2], async_done);
+
+  // UpdateChainShapes propagating through intermediaries.
+  Shape new_start_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {4, 8}),
+                                  ShapeUtil::MakeShape(F32, {4, 8})}),
+       ShapeUtil::MakeShape(F32, {4, 8}), ShapeUtil::MakeShape(S32, {})});
+  *async_start->mutable_shape() = new_start_shape;
+  async_start->UpdateChainShapes();
+
+  EXPECT_EQ(update->shape(), new_start_shape);
+  EXPECT_EQ(done->shape(), ShapeUtil::MakeShape(F32, {4, 8}));
+
+  // Invariants preserved across module cloning.
+  std::unique_ptr<HloModule> cloned = module->Clone();
+  auto* cloned_start =
+      Cast<HloAsyncInstruction>(FindInstruction(cloned.get(), "start"));
+  auto* cloned_done =
+      Cast<HloAsyncInstruction>(FindInstruction(cloned.get(), "done"));
+  EXPECT_EQ(cloned_start->async_chain_done(), cloned_done);
+  EXPECT_EQ(cloned_done->async_chain_start(), cloned_start);
+}
+
+TEST_F(HloInstructionTest, AsyncPredicates) {
+  const char* const kHlo = R"(
+HloModule async_predicates_test
+
+async_comp {
+  p0 = f32[2,4] parameter(0)
+  p1 = f32[2,4] parameter(1)
+  ROOT add = f32[2,4] add(p0, p1)
+}
+
+ENTRY main {
+  p0 = f32[2,4] parameter(0)
+  p1 = f32[2,4] parameter(1)
+  start = ((f32[2,4]), (), s32[]) call-start(p0), to_apply=async_comp
+  update = ((f32[2,4], f32[2,4]), f32[2,4], ()) call-update(start, p1)
+  done = f32[2,4] call-done(update)
+  ag_start = (f32[2,4], f32[4,4]) all-gather-start(p0), dimensions={0}
+  ag_done = f32[4,4] all-gather-done(ag_start)
+  ROOT non_async = f32[2,4] copy(p0)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kHlo));
+  HloInstruction* start = FindInstruction(module.get(), "start");
+  HloInstruction* update = FindInstruction(module.get(), "update");
+  HloInstruction* done = FindInstruction(module.get(), "done");
+  HloInstruction* ag_start = FindInstruction(module.get(), "ag_start");
+  HloInstruction* ag_done = FindInstruction(module.get(), "ag_done");
+  HloInstruction* non_async = FindInstruction(module.get(), "non_async");
+
+  struct ExpectedPredicates {
+    bool is_producer;
+    bool is_start;
+    bool is_done;
+    bool is_consumer;
+  };
+
+  const std::vector<std::pair<const HloInstruction*, ExpectedPredicates>>
+      tests = {
+          {start,
+           {/*is_producer=*/true, /*is_start=*/true, /*is_done=*/false,
+            /*is_consumer=*/false}},
+          {update,
+           {/*is_producer=*/true, /*is_start=*/false, /*is_done=*/false,
+            /*is_consumer=*/true}},
+          {done,
+           {/*is_producer=*/false, /*is_start=*/false, /*is_done=*/true,
+            /*is_consumer=*/true}},
+          {ag_start,
+           {/*is_producer=*/true, /*is_start=*/true, /*is_done=*/false,
+            /*is_consumer=*/false}},
+          {ag_done,
+           {/*is_producer=*/false, /*is_start=*/false, /*is_done=*/true,
+            /*is_consumer=*/true}},
+          {non_async,
+           {/*is_producer=*/false, /*is_start=*/false, /*is_done=*/false,
+            /*is_consumer=*/false}},
+      };
+
+  for (const auto& [instr, expected] : tests) {
+    EXPECT_EQ(instr->IsAsyncProducer(), expected.is_producer)
+        << instr->ToString();
+    EXPECT_EQ(instr->IsAsyncStart(), expected.is_start) << instr->ToString();
+    EXPECT_EQ(instr->IsAsyncDone(), expected.is_done) << instr->ToString();
+    EXPECT_EQ(instr->IsAsyncConsumer(), expected.is_consumer)
+        << instr->ToString();
+  }
 }
 
 }  // namespace
