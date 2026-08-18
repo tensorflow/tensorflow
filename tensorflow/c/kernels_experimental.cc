@@ -506,6 +506,7 @@ void TF_GetInputTensorFromVariable(TF_OpKernelContext* ctx, int input,
                                                     TF_Tensor* source,
                                                     TF_Tensor* dest),
                                    TF_Tensor** out, TF_Status* status) {
+  *out = nullptr;
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
 
   auto status_setter = ::tensorflow::gtl::MakeCleanup([cc_ctx, status]() {
@@ -525,8 +526,8 @@ void TF_GetInputTensorFromVariable(TF_OpKernelContext* ctx, int input,
       return;
     }
     OP_REQUIRES_OK(cc_ctx, PrepareToUpdateVariable(
-                               ctx, var->tensor(),
-                               var->copy_on_read_mode.load(), false, copyFunc));
+        ctx, var->tensor(),
+        var->copy_on_read_mode.load(), false, copyFunc));
     *out = ::tensorflow::TF_TensorFromTensor(*var->tensor(), &s);
     OP_REQUIRES_OK(cc_ctx, s);
     return;
@@ -558,6 +559,7 @@ void TF_ReleaseVariableInputLockHolder(TF_VariableInputLockHolder* lockHolder) {
 
 void TF_GetInputByName(TF_OpKernelContext* ctx, const char* inputName,
                        TF_Tensor** tensor, TF_Status* status) {
+  *tensor = nullptr;
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
   const ::tensorflow::Tensor* cc_tensor = nullptr;
   absl::Status s = cc_ctx->input(inputName, &cc_tensor);

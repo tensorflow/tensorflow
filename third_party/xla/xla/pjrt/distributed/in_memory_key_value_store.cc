@@ -16,14 +16,17 @@ limitations under the License.
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 
@@ -31,50 +34,64 @@ namespace xla {
 
 absl::StatusOr<std::string> InMemoryKeyValueStore::Get(absl::string_view key,
                                                        absl::Duration timeout) {
-  absl::MutexLock lock(mu_);
-  auto cond = [&]() {
-    mu_.AssertHeld();
-    return kv_store_.find(key) != kv_store_.end();
-  };
-  bool exists = mu_.AwaitWithTimeout(absl::Condition(&cond), timeout);
-  if (!exists) {
+  absl::Notification done;
+  absl::StatusOr<std::string> result;
+  auto call_opts =
+      AsyncGet(key, [&done, &result](const absl::StatusOr<std::string>& res) {
+        result = res;
+        done.Notify();
+      });
+
+  if (!done.WaitForNotificationWithTimeout(timeout)) {
+    if (call_opts != nullptr) {
+      call_opts->StartCancel();
+    }
     return absl::NotFoundError(
         absl::StrCat(key, " is not found in the kv store."));
   }
-  return kv_store_.find(key)->second;
+  return result;
 }
 
 absl::StatusOr<std::string> InMemoryKeyValueStore::TryGet(
     absl::string_view key) {
-  absl::MutexLock lock(mu_);
-  auto it = kv_store_.find(key);
-  if (it == kv_store_.end()) {
+  std::optional<std::string> val = kv_store_.Get(key);
+  if (!val.has_value()) {
     return absl::NotFoundError(
         absl::StrCat(key, " is not found in the kv store."));
   }
-  return it->second;
+  return *val;
 }
 
 std::shared_ptr<tsl::CallOptions> InMemoryKeyValueStore::AsyncGet(
     absl::string_view key,
     tsl::CoordinationServiceAgent::StatusOrValueCallback done) {
-  absl::Status status = absl::UnimplementedError(
-      "AsyncGet is not supported in InMemoryKeyValueStore.");
-  done(status);
-  return nullptr;
+  auto call_opts = std::make_shared<tsl::CallOptions>();
+  auto promise_and_future = tsl::MakePromiseOnce<std::string>();
+  tsl::PromiseOnce<std::string> promise = std::move(promise_and_future.first);
+  tsl::Future<std::string> future = std::move(promise_and_future.second);
+
+  future.OnReady([done = std::move(done)](
+                     const absl::StatusOr<std::string>& res) { done(res); });
+
+  call_opts->SetCancelCallback([promise]() mutable {
+    promise.Set(absl::CancelledError("AsyncGet was cancelled."));
+  });
+
+  kv_store_.AddCallbackForKey(
+      key, [promise](const absl::StatusOr<absl::string_view>& res) mutable {
+        if (res.ok()) {
+          promise.Set(std::string(*res));
+        } else {
+          promise.Set(res.status());
+        }
+      });
+
+  return call_opts;
 }
 
 absl::Status InMemoryKeyValueStore::Set(absl::string_view key,
                                         absl::string_view value) {
-  absl::MutexLock lock(mu_);
-  if (!allow_overwrite_) {
-    if (kv_store_.contains(key)) {
-      return absl::AlreadyExistsError(
-          absl::StrCat(key, " already exists in the kv store."));
-    }
-  }
-  kv_store_[key] = value;
-  return absl::OkStatus();
+  return kv_store_.Put(key, value, allow_overwrite_);
 }
 
 }  // namespace xla

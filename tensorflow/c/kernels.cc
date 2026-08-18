@@ -383,6 +383,7 @@ int TF_NumOutputs(TF_OpKernelContext* ctx) {
 
 void TF_GetInput(TF_OpKernelContext* ctx, int i, TF_Tensor** tensor,
                  TF_Status* status) {
+  *tensor = nullptr;
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
   if (i < 0 || i >= cc_ctx->num_inputs()) {
     TF_SetStatus(status, TF_OUT_OF_RANGE, "input index out of range");

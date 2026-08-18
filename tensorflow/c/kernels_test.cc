@@ -827,10 +827,14 @@ TEST(TestKernel, TestInputAndOutputCount) {
     TF_GetInput(ctx, 0, &input, s);
     EXPECT_EQ(TF_OK, TF_GetCode(s)) << "Failed to get input: " << TF_Message(s);
     EXPECT_EQ(123, *static_cast<uint8_t*>(TF_TensorData(input)));
-    TF_GetInput(ctx, -1, &input, s);
+    TF_Tensor* invalid_input = reinterpret_cast<TF_Tensor*>(0x1234);
+    TF_GetInput(ctx, -1, &invalid_input, s);
     EXPECT_EQ(TF_OUT_OF_RANGE, TF_GetCode(s));
-    TF_GetInput(ctx, 3, &input, s);
+    EXPECT_EQ(invalid_input, nullptr);
+    invalid_input = reinterpret_cast<TF_Tensor*>(0x1234);
+    TF_GetInput(ctx, 3, &invalid_input, s);
     EXPECT_EQ(TF_OUT_OF_RANGE, TF_GetCode(s));
+    EXPECT_EQ(invalid_input, nullptr);
 
     // Copy the input tensor to output.
     TF_SetOutput(ctx, 0, input, s);
