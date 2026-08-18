@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <initializer_list>
 #include <memory>
-#include <optional>
 
 #include "absl/status/status.h"
 #include "absl/types/span.h"
@@ -28,9 +27,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/layout_assignment.h"
-#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/dnn.h"
 
 namespace xla {
 namespace gpu {
@@ -80,9 +77,6 @@ class GpuLayoutAssignment : public LayoutAssignment {
                             LayoutConstraints* constraints);
 
   bool PropagateReductionLayoutToOperand(const HloInstruction* user) override;
-
-  bool InstructionCanChangeLayoutInstance(
-      const HloInstruction* instruction) override;
 
   std::unique_ptr<Layout> ChooseOperandLayoutFromOutputLayout(
       const Layout& output_layout, const HloInstruction* instruction,

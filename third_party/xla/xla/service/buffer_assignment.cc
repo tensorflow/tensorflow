@@ -1926,20 +1926,6 @@ bool BufferAssigner::LiveRangeInterferes(
     const HloValue* buffer1, const HloLiveRange::LiveRangeBounds& live_range1,
     const HloValue* buffer2, const HloLiveRange::LiveRangeBounds& live_range2,
     BufferAssignment* assignment) {
-  if (opts_.live_range_interference_options.has_value()) {
-    const auto& options = *opts_.live_range_interference_options;
-    if (options.has_custom_interference(assignment->alias_analysis(),
-                                        *buffer1) &&
-        options.has_custom_interference(assignment->alias_analysis(),
-                                        *buffer2)) {
-      std::optional<bool> custom_interference =
-          options.interferes(assignment->alias_analysis(), *buffer1, *buffer2);
-      if (custom_interference.has_value()) {
-        return *custom_interference;
-      }
-    }
-  }
-
   CHECK((assignment->hlo_live_range().total_order_scheduled()));
 
   // An HloValue can hold multiple instruction positions during its lifetime
@@ -1969,6 +1955,7 @@ bool BufferAssigner::LiveRangeInterferes(
         return false;
       };
 
+  bool interferes = false;
   if (!(live_range1.start > live_range2.end ||
         live_range2.start > live_range1.end)) {
     if (live_range1.end == live_range2.start) {
@@ -1978,7 +1965,7 @@ bool BufferAssigner::LiveRangeInterferes(
         VLOG(4) << "End of live range of " << buffer1->ToShortString()
                 << " is equal to the start of live range of "
                 << buffer2->ToShortString() << ", buffer cannot be shared.";
-        return true;
+        interferes = true;
       }
     } else if (live_range2.end == live_range1.start) {
       auto operand_value = buffer2;
@@ -1987,7 +1974,7 @@ bool BufferAssigner::LiveRangeInterferes(
         VLOG(4) << "End of live range of " << buffer2->ToShortString()
                 << " is equal to the start of live range of "
                 << buffer1->ToShortString() << ", buffer cannot be shared.";
-        return true;
+        interferes = true;
       }
     } else {
       VLOG(4) << "Can't assign: assignee " << *buffer1 << " may interfere with "
@@ -1996,10 +1983,25 @@ bool BufferAssigner::LiveRangeInterferes(
       VLOG(4) << "assigned_buffer.end: " << live_range1.end;
       VLOG(4) << "live_range2.start" << live_range2.start;
       VLOG(4) << "live_range2.end" << live_range2.end;
-      return true;
+      interferes = true;
     }
   }
-  return false;
+
+  if (interferes && opts_.live_range_interference_options.has_value()) {
+    const auto& options = *opts_.live_range_interference_options;
+    if (options.has_custom_interference(assignment->alias_analysis(),
+                                        *buffer1) &&
+        options.has_custom_interference(assignment->alias_analysis(),
+                                        *buffer2)) {
+      std::optional<bool> custom_interference =
+          options.interferes(assignment->alias_analysis(), *buffer1, *buffer2);
+      if (custom_interference.has_value()) {
+        return *custom_interference;
+      }
+    }
+  }
+
+  return interferes;
 }
 
 absl::StatusOr<bool> BufferAssigner::MaybeAssignBuffer(
@@ -2129,32 +2131,27 @@ absl::StatusOr<bool> BufferAssigner::MaybeAssignBuffer(
           return false;
         }
       } else {
-        std::optional<bool> custom_interference;
-        if (opts_.live_range_interference_options.has_value()) {
-          const auto& options = *opts_.live_range_interference_options;
-          if (options.has_custom_interference(assignment->alias_analysis(),
-                                              *new_value) &&
-              options.has_custom_interference(assignment->alias_analysis(),
-                                              assigned_buffer)) {
-            custom_interference = options.interferes(
-                assignment->alias_analysis(), *new_value, assigned_buffer);
+        if (assignment->hlo_ordering().MayInterfere(
+                assigned_buffer, *new_value, assignment->dataflow_analysis(),
+                alias_info_)) {
+          std::optional<bool> custom_interference;
+          if (opts_.live_range_interference_options.has_value()) {
+            const auto& options = *opts_.live_range_interference_options;
+            if (options.has_custom_interference(assignment->alias_analysis(),
+                                                *new_value) &&
+                options.has_custom_interference(assignment->alias_analysis(),
+                                                assigned_buffer)) {
+              custom_interference = options.interferes(
+                  assignment->alias_analysis(), *new_value, assigned_buffer);
+            }
           }
-        }
-        if (custom_interference.has_value()) {
-          if (*custom_interference) {
+          if (custom_interference.value_or(true)) {
+            // Fallback to partial order based interference detection (slower)
+            // when we don't have a total order scheduled module.
             VLOG(4) << "Can't assign: assignee " << assigned_buffer
-                    << " custom interference with "
-                    << new_value->ToShortString();
+                    << " may interfere with " << new_value->ToShortString();
             return false;
           }
-        } else if (assignment->hlo_ordering().MayInterfere(
-                       assigned_buffer, *new_value,
-                       assignment->dataflow_analysis(), alias_info_)) {
-          // Fallback to partial order based interference detection (slower)
-          // when we don't have a total order scheduled module.
-          VLOG(4) << "Can't assign: assignee " << assigned_buffer
-                  << " may interfere with " << new_value->ToShortString();
-          return false;
         }
       }
 

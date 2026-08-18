@@ -1598,7 +1598,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     TF_CHECK_OK(GetNodeAttr(n->def(), "strides", &strides));
     TF_CHECK_OK(GetNodeAttr(n->def(), "data_format", &data_format_str));
     bool result = FormatFromString(data_format_str, &data_format);
-    DCHECK(result);
+    // The oneDNN MaxPool ops accept only NHWC and NCHW (NDHWC and NCDHW in 3D).
+    if (!result || (data_format != FORMAT_NHWC && data_format != FORMAT_NCHW)) {
+      return false;
+    }
 
     // Condition that specifies non-batch-wise and non-depth-wise pooling.
     if (GetTensorDim(ksize, data_format, 'N') == 1 &&

@@ -19,19 +19,25 @@ limitations under the License.
 #include <optional>
 
 #include "absl/log/check.h"
+#include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/SmallVectorExtras.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
+#include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributeInterfaces.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -215,6 +221,38 @@ static std::optional<mlir::Value> TileIsFullSize(
   return is_full_size;
 }
 
+// Returns a padding attribute chosen to surface unintended reads of
+// out-of-bounds lanes in tests.
+static mlir::TypedAttr GetPaddingAttr(mlir::ImplicitLocOpBuilder& builder,
+                                      mlir::Type element_type) {
+  if (auto float_type = mlir::dyn_cast<mlir::FloatType>(element_type)) {
+    const llvm::fltSemantics& semantics = float_type.getFloatSemantics();
+    return builder.getFloatAttr(float_type,
+                                llvm::APFloat::semanticsHasNaN(semantics)
+                                    ? llvm::APFloat::getNaN(semantics)
+                                    : llvm::APFloat::getZero(semantics));
+  }
+  if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(element_type)) {
+    return builder.getIntegerAttr(
+        int_type, llvm::APInt::getAllOnes(int_type.getIntOrFloatBitWidth()));
+  }
+  return nullptr;
+}
+
+static mlir::Value GetPaddingValue(mlir::ImplicitLocOpBuilder& builder,
+                                   mlir::Type element_type) {
+  if (mlir::TypedAttr attr = GetPaddingAttr(builder, element_type)) {
+    return mlir::arith::ConstantOp::create(builder, element_type, attr);
+  }
+  if (auto complex_type = mlir::dyn_cast<mlir::ComplexType>(element_type)) {
+    mlir::Value component =
+        GetPaddingValue(builder, complex_type.getElementType());
+    return mlir::complex::CreateOp::create(builder, complex_type, component,
+                                           component);
+  }
+  llvm_unreachable("unhandled element type");
+}
+
 // Get a buffer copied from the original buffer that is padded to the full tile
 // size.
 static mlir::TypedValue<mlir::MemRefType> GetPaddedTileBuffer(
@@ -224,6 +262,40 @@ static mlir::TypedValue<mlir::MemRefType> GetPaddedTileBuffer(
   auto buffer = mlir::memref::AllocOp::create(
       builder, GetStaticFoldResult(builder, tile_type.getShape()),
       tile_type.getElementType());
+
+  mlir::Type element_type = tile_type.getElementType();
+  llvm::SmallVector<mlir::Value> zeros(
+      tile_type.getRank(), mlir::arith::ConstantIndexOp::create(builder, 0));
+
+  if (element_type.isIntOrFloat() &&
+      element_type.getIntOrFloatBitWidth() >= 8) {
+    // A 1-D vector.store at [0, ..., 0] initializes the entire contiguous
+    // buffer in a single flat store (0-D tiles are always in-bounds and never
+    // reach here).
+    DCHECK_GE(tile_type.getRank(), 1);
+    auto vector_type =
+        mlir::VectorType::get({tile_type.getNumElements()}, element_type);
+    auto padding_vector = mlir::arith::ConstantOp::create(
+        builder, vector_type,
+        mlir::DenseElementsAttr::get(vector_type,
+                                     GetPaddingAttr(builder, element_type)));
+    mlir::vector::StoreOp::create(builder, padding_vector, buffer, zeros);
+  } else {
+    mlir::Value padding_value = GetPaddingValue(builder, element_type);
+    llvm::SmallVector<mlir::Value> ubs = llvm::map_to_vector(
+        tile_type.getShape(), [&builder](int64_t dim_size) -> mlir::Value {
+          return mlir::arith::ConstantIndexOp::create(builder, dim_size);
+        });
+    llvm::SmallVector<mlir::Value> steps(
+        tile_type.getRank(), mlir::arith::ConstantIndexOp::create(builder, 1));
+    mlir::scf::buildLoopNest(
+        builder, builder.getLoc(), zeros, ubs, steps,
+        [padding_value, &buffer](mlir::OpBuilder& nested_builder,
+                                 mlir::Location loc, mlir::ValueRange ivs) {
+          mlir::memref::StoreOp::create(nested_builder, loc, padding_value,
+                                        buffer, ivs);
+        });
+  }
 
   auto local_tile_size = GetClampedTileSize(builder, op, false);
   auto local_buffer_subview =
