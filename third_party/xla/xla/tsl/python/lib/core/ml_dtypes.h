@@ -48,8 +48,6 @@ bool RegisterTypes();
 // Implicitly calls RegisterTypes on first use.
 const NumpyDtypes& GetNumpyDtypes();
 
-inline int GetBfloat16TypeNum() { return GetNumpyDtypes().bfloat16; }
-
 }  // namespace ml_dtypes
 }  // namespace tsl
 
