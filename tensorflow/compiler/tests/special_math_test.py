@@ -27,7 +27,7 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.ops import array_ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gradient_checker_v2
@@ -626,12 +626,12 @@ class IgammacTest(xla_test.XLATestCase, parameterized.TestCase):
 class DynamicShapeEqualityTest(xla_test.XLATestCase, parameterized.TestCase):
 
   def _test_op_with_dynamic_shapes(self, op_fn, dtype):
-    random_ops.set_random_seed(3994)
-    t = random_ops.random_normal([1, 32], dtype=dtype)
+    random_seed.set_random_seed(3994)
+    t = math_ops.abs(random_ops.random_normal([1, 32], dtype=dtype)) + 1.0
 
     def model(t):
-      a = math_ops.logaddexp(t, t)
-      b = array_ops.linspace(a, a, 6)
+      a = math_ops.log(math_ops.exp(t) + math_ops.exp(t))
+      b = math_ops.linspace(a, a, 6)
       c = linalg_ops.matrix_solve_ls(t, b)
       d = math_ops.pow(b, t)
       return op_fn(a=c, x=d)
