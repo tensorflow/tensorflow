@@ -38,11 +38,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_callbacks.h"
@@ -1191,7 +1191,7 @@ absl::Status CuptiTracer::Enable(
 
   absl::Status api_status = EnableApiTracing();
   need_root_access_ |= api_status.code() == tsl::error::PERMISSION_DENIED;
-  RETURN_IF_ERROR(api_status);
+  ABSL_RETURN_IF_ERROR(api_status);
 
   absl::Cleanup activity_tracing_cleanup = [&] {
     if (cupti_interface_->Disabled()) {
@@ -1202,7 +1202,7 @@ absl::Status CuptiTracer::Enable(
       DisableActivityTracing().IgnoreError();
     }
   };
-  RETURN_IF_ERROR(EnableActivityTracing());
+  ABSL_RETURN_IF_ERROR(EnableActivityTracing());
 
   int num_gpus_requested = xplanes.size();
   // Enable PM Sampling after CUPTI is initialized.
@@ -1228,13 +1228,13 @@ absl::Status CuptiTracer::Enable(
           samples->PopulateCounterLine(&xplane_builder,
                                        collector_->GetProfileStartTimeNs());
         };
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         cupti_pm_sampler_,
         CreatePmSampler(num_gpus_requested, option_->pm_sampler_options));
     absl::Cleanup pm_sampler_cleanup = [&] {
       cupti_pm_sampler_->Deinitialize().IgnoreError();
     };
-    RETURN_IF_ERROR(cupti_pm_sampler_->StartSampler());
+    ABSL_RETURN_IF_ERROR(cupti_pm_sampler_->StartSampler());
     pm_sampling_enabled_ = true;
     std::move(pm_sampler_cleanup).Cancel();
   }
@@ -1509,7 +1509,7 @@ absl::Status CuptiTracer::PrepareSubscriberForSession(
                   << timestamp_status
                   << "; falling back to legacy CUPTI subscriber.";
         // Unsubscribe V2 because GetTimestampV2() is unavailable.
-        RETURN_IF_ERROR(UnsubscribeAndClearSubscriber());
+        ABSL_RETURN_IF_ERROR(UnsubscribeAndClearSubscriber());
         // Remove the stale V2 unsubscribe callback from the undo stack.
         cupti_interface_->CleanUp();
         // Prepare to retry with the legacy V1 subscriber API.
@@ -1549,7 +1549,7 @@ absl::Status CuptiTracer::EnableApiTracing() {
 
   PrepareCallbackStart();
   using_v2_subscriber_api_ = false;
-  RETURN_IF_ERROR(PrepareSubscriberForSession(*option_));
+  ABSL_RETURN_IF_ERROR(PrepareSubscriberForSession(*option_));
   using_v2_subscriber_api_ = subscriber_is_v2_;
   api_tracing_enabled_ = true;
 
@@ -1600,7 +1600,7 @@ absl::Status CuptiTracer::DisableApiTracing(bool unsubscribe) {
 
   if (unsubscribe) {
     VLOG(1) << "Disable subscriber";
-    RETURN_IF_ERROR(UnsubscribeAndClearSubscriber());
+    ABSL_RETURN_IF_ERROR(UnsubscribeAndClearSubscriber());
   }
   return absl::OkStatus();
 }
@@ -1868,10 +1868,10 @@ absl::Status CuptiTracer::HandleDriverApiCallback(
   }
 
   if (cbdata->callbackSite == CUPTI_API_ENTER) {
-    RETURN_IF_ERROR(cupti_driver_api_hook_->OnDriverApiEnter(device_id, domain,
+    ABSL_RETURN_IF_ERROR(cupti_driver_api_hook_->OnDriverApiEnter(device_id, domain,
                                                              cbid, cbdata));
   } else if (cbdata->callbackSite == CUPTI_API_EXIT) {
-    RETURN_IF_ERROR(cupti_driver_api_hook_->OnDriverApiExit(device_id, domain,
+    ABSL_RETURN_IF_ERROR(cupti_driver_api_hook_->OnDriverApiExit(device_id, domain,
                                                             cbid, cbdata));
   }
   return absl::OkStatus();

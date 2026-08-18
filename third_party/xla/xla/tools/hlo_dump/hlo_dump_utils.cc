@@ -1063,7 +1063,8 @@ absl::flat_hash_map<TensorKey, TensorAnnotation> PopulateMismatchAnnotations(
     const HloInstruction* target_instr = it->second;
     TensorKey key;
     key.instruction_name = target_instr->name();
-    if (mismatch.output_shape_index.has_value()) {
+    if (target_instr->shape().IsTuple() &&
+        mismatch.output_shape_index.has_value()) {
       key.shape_index.push_back(*mismatch.output_shape_index);
     }
 
@@ -1105,19 +1106,7 @@ absl::flat_hash_map<TensorKey, TensorAnnotation> PopulateMismatchAnnotations(
 
     ann.tooltip_data = absl::StrCat(
         "\"", JsStringEscape(absl::StrJoin(tooltip_parts, "<br/>")), "\"");
-    std::optional<std::string> tooltip_data = ann.tooltip_data;
     annotations[key] = std::move(ann);
-
-    const HloInstruction* cur = target_instr;
-    while (cur->opcode() == HloOpcode::kFusion) {
-      cur = cur->fused_instructions_computation()->root_instruction();
-      TensorKey inner_key = TensorKey::Create(cur->name(), ShapeIndex{});
-      TensorAnnotation inner_ann;
-      inner_ann.anchor_id = absl::StrCat("step", cur->unique_id());
-      inner_ann.background_color = "pink";
-      inner_ann.tooltip_data = tooltip_data;
-      annotations[inner_key] = std::move(inner_ann);
-    }
   }
 
   return annotations;
@@ -1126,9 +1115,6 @@ absl::flat_hash_map<TensorKey, TensorAnnotation> PopulateMismatchAnnotations(
 GraphData PopulateMismatchGraphData(
     const HloModule& module, absl::Span<const MismatchDetails> mismatches) {
   GraphData graph_data;
-
-  const HloComputation* entry = module.entry_computation();
-  const HloInstruction* root = entry ? entry->root_instruction() : nullptr;
 
   absl::flat_hash_map<const HloComputation*, const HloInstruction*>
       comp_to_fusion;
@@ -1147,26 +1133,32 @@ GraphData PopulateMismatchGraphData(
     }
   }
 
-  double root_score = 100.0;
-  if (!mismatches.empty()) {
-    double max_rel = 0.0;
-    for (const auto& m : mismatches) {
-      if (m.rel_error > max_rel) {
-        max_rel = m.rel_error;
-      }
-    }
-    if (max_rel > 0.0) {
-      root_score = max_rel * 100.0;
+  absl::flat_hash_map<std::string, const HloInstruction*> name_to_instr;
+  for (const HloComputation* comp : module.computations()) {
+    for (const HloInstruction* instr : comp->instructions()) {
+      name_to_instr[instr->name()] = instr;
     }
   }
 
-  absl::flat_hash_set<const HloInstruction*> root_instrs;
-  if (root != nullptr) {
-    const HloInstruction* cur = root;
-    root_instrs.insert(cur);
-    while (cur->opcode() == HloOpcode::kFusion) {
-      cur = cur->fused_instructions_computation()->root_instruction();
-      root_instrs.insert(cur);
+  absl::flat_hash_map<const HloInstruction*, double> instr_to_score;
+  auto update_score = [&](const HloInstruction* instr, double score) {
+    auto [it, inserted] = instr_to_score.try_emplace(instr, score);
+    if (!inserted) {
+      it->second = std::max(it->second, score);
+    }
+  };
+
+  for (const MismatchDetails& m : mismatches) {
+    double score = 100.0;
+    if (m.rel_error > 0.0) {
+      score = m.rel_error * 100.0;
+    }
+
+    const HloInstruction* target_instr = nullptr;
+    auto it = name_to_instr.find(m.target_instruction_name);
+    if (it != name_to_instr.end()) {
+      target_instr = it->second;
+      update_score(target_instr, score);
     }
   }
 
@@ -1217,7 +1209,10 @@ GraphData PopulateMismatchGraphData(
     double y = next_y;
     next_y += 2.0;
 
-    double score = root_instrs.contains(instr) ? root_score : 0.0;
+    double score = 0.0;
+    if (auto it = instr_to_score.find(instr); it != instr_to_score.end()) {
+      score = it->second;
+    }
 
     std::vector<std::string> scopes;
     const HloComputation* cur_comp = instr->parent();

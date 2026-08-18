@@ -113,12 +113,12 @@ XlaJobRecoverer::Create(
   data->calculators.reserve(data->device_assignment->replica_count());
 
   // Create the directory for temp files if it doesn't exist.
-  RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(
+  ABSL_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(
       std::string(tsl::io::Dirname(temp_file_base_path))));
   std::string variant_name = ToString(comparison_variant);
   const std::string raw_path_0 = absl::StrCat(
       temp_file_base_path, ".", variant_name, ".raw_replica_0.riegeli");
-  ASSIGN_OR_RETURN(auto writer_0, CreateRecordWriter(raw_path_0));
+  ABSL_ASSIGN_OR_RETURN(auto writer_0, CreateRecordWriter(raw_path_0));
   data->per_replica_writers.push_back(
       {/*raw_summary_writer=*/std::move(writer_0),
        /*raw_summary_path=*/raw_path_0});
@@ -126,7 +126,7 @@ XlaJobRecoverer::Create(
   std::pair<std::unique_ptr<OriginalTensorSummaryCalculator>,
             OriginalTensorSummaryCalculator::CreationMetrics>
       calculator_with_metrics;
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       calculator_with_metrics,
       OriginalTensorSummaryCalculator::Create(
           optimized_module, original_module,
@@ -147,7 +147,7 @@ XlaJobRecoverer::Create(
   for (int64_t i = 1; i < data->device_assignment->replica_count(); ++i) {
     const std::string raw_path = absl::StrCat(
         temp_file_base_path, ".", variant_name, ".raw_replica_", i, ".riegeli");
-    ASSIGN_OR_RETURN(auto writer, CreateRecordWriter(raw_path));
+    ABSL_ASSIGN_OR_RETURN(auto writer, CreateRecordWriter(raw_path));
     data->per_replica_writers.push_back(
         {/*raw_summary_writer=*/std::move(writer),
          /*raw_summary_path=*/raw_path});
@@ -173,7 +173,7 @@ XlaJobRecoverer::Create(
 absl::Status XlaJobRecoverer::ProcessDeviceTensorSummary(
     const AbsoluteScopedTensorKey& optimized_tensor_position,
     DeviceTensorSummary shard_summary) {
-  ASSIGN_OR_RETURN(LogicalID logical_id,
+  ABSL_ASSIGN_OR_RETURN(LogicalID logical_id,
                    data_->device_assignment->LogicalIdForDevice(
                        shard_summary.logical_device_id));
   CHECK_LT(logical_id.replica_id, data_->calculators.size());
@@ -198,20 +198,20 @@ XlaJobRecoverer::Finish() {
       return writer.raw_summary_writer->status();
     }
 
-    ASSIGN_OR_RETURN(auto sequencer, OriginalTensorSummarySequencer::Create(
+    ABSL_ASSIGN_OR_RETURN(auto sequencer, OriginalTensorSummarySequencer::Create(
                                          data_->original_module));
     std::string variant_name = ToString(data_->comparison_variant);
     const std::string sequenced_path =
         absl::StrCat(data_->sequenced_file_base_path, ".", variant_name,
                      ".sequenced_replica_", i, ".riegeli");
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto is_recovered_cb,
         sequencer->Sequence(writer.raw_summary_path, sequenced_path));
 
     const std::string propagated_path =
         absl::StrCat(data_->temp_file_base_path, ".", variant_name,
                      ".propagated_replica_", i, ".riegeli");
-    ASSIGN_OR_RETURN(auto propagated_writer,
+    ABSL_ASSIGN_OR_RETURN(auto propagated_writer,
                      CreateRecordWriter(propagated_path));
     OriginalTensorSummaryPropagator propagator(
         data_->original_module,
@@ -228,19 +228,19 @@ XlaJobRecoverer::Finish() {
           return absl::OkStatus();
         },
         std::move(*is_recovered_cb));
-    RETURN_IF_ERROR(propagator.Initialize());
+    ABSL_RETURN_IF_ERROR(propagator.Initialize());
 
     riegeli::RecordReader sequenced_reader(
         riegeli::Maker<riegeli::FdReader>(sequenced_path));
     RecoveredTensorSummaryProto summary_proto;
     while (sequenced_reader.ReadRecord(summary_proto)) {
-      ASSIGN_OR_RETURN(auto summary,
+      ABSL_ASSIGN_OR_RETURN(auto summary,
                        RecoveredTensorSummaryFromProto(summary_proto));
-      RETURN_IF_ERROR(propagator.Process(summary.original_tensor_key,
+      ABSL_RETURN_IF_ERROR(propagator.Process(summary.original_tensor_key,
                                          summary.pending_transformation,
                                          summary.original_tensor_summary));
     }
-    RETURN_IF_ERROR(propagator.Finish());
+    ABSL_RETURN_IF_ERROR(propagator.Finish());
     metrics.push_back(propagator.GetProcessingMetrics());
     if (!sequenced_reader.Close()) {
       return sequenced_reader.status();
@@ -258,9 +258,9 @@ XlaJobRecoverer::Finish() {
     RecoveredTensorSummaryProto summary_proto;
     OriginalTensorSummaryCallback callback = data_->callback_getter(i);
     while (propagated_reader.ReadRecord(summary_proto)) {
-      ASSIGN_OR_RETURN(auto summary,
+      ABSL_ASSIGN_OR_RETURN(auto summary,
                        RecoveredTensorSummaryFromProto(summary_proto));
-      RETURN_IF_ERROR(callback(summary.original_tensor_key,
+      ABSL_RETURN_IF_ERROR(callback(summary.original_tensor_key,
                                summary.pending_transformation,
                                summary.original_tensor_summary));
     }

@@ -19,6 +19,7 @@ limitations under the License.
 #include <stddef.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -616,6 +617,17 @@ class PriorityTaskQueue {
            start_times_.HasTimedOutRequest(env_->NowMicros());
   }
 
+  // Returns the current number of enqueued tasks with the given criticality.
+  int num_tasks(tsl::criticality::Criticality criticality) const {
+    return gtl::FindWithDefault(num_tasks_by_criticality_, criticality, 0);
+  }
+
+  // Returns the current summed size (sum of task sizes) of all enqueued tasks
+  // with the given criticality.
+  size_t size(tsl::criticality::Criticality criticality) const {
+    return gtl::FindWithDefault(size_by_criticality_, criticality, size_t{0});
+  }
+
   // Returns a batch of tasks from the queue if the batch is ready to be
   // executed. Otherwise, returns nullptr.
   // BatchPaddingPolicy is applied to determine the optimal batch size.
@@ -710,6 +722,8 @@ class PriorityTaskQueue {
 
   void AddEntryInternal(QueueEntry entry) {
     current_queue_size_ += entry.task->size();
+    num_tasks_by_criticality_[entry.criticality] += 1;
+    size_by_criticality_[entry.criticality] += entry.task->size();
     start_times_.Insert(entry.criticality, entry.start_time_micros);
     tasks_.insert(std::move(entry));
   }
@@ -719,6 +733,8 @@ class PriorityTaskQueue {
     auto node = tasks_.extract(it);
     QueueEntry& entry = node.value();
     current_queue_size_ -= entry.task->size();
+    num_tasks_by_criticality_[entry.criticality] -= 1;
+    size_by_criticality_[entry.criticality] -= entry.task->size();
     start_times_.Erase(entry.criticality, entry.start_time_micros);
     return std::move(entry);
   }
@@ -737,6 +753,16 @@ class PriorityTaskQueue {
   std::multiset<QueueEntry> tasks_;
   StartTimes start_times_;
   size_t current_queue_size_ = 0;
+
+  // Per-criticality bookkeeping for the currently-enqueued tasks. Maintained
+  // incrementally by AddEntryInternal/RemoveEntryInternal so that queue state
+  // can be exported as tfstreamz metrics without scanning the multiset. A
+  // criticality that has never been enqueued is absent; read these through the
+  // num_tasks()/size() accessors, which treat a missing key as zero.
+  absl::flat_hash_map<tsl::criticality::Criticality, int>
+      num_tasks_by_criticality_;
+  absl::flat_hash_map<tsl::criticality::Criticality, size_t>
+      size_by_criticality_;
 
   const std::vector<int32_t> allowed_batch_sizes_;
   const std::string batch_padding_policy_;
@@ -818,6 +844,12 @@ class Queue {
   // Returns the queue capacity, with the same semantics as
   // BatchScheduler::SchedulingCapacity().
   size_t SchedulingCapacity() const;
+
+  // Returns a snapshot of the per-criticality priority queue state, or nullopt
+  // when `enable_priority_aware_batch_scheduler` is false (in which case there
+  // is no priority-aware queue to report on). See PriorityQueueState in
+  // batch_scheduler.h.
+  std::optional<PriorityQueueState> GetPriorityQueueState() const;
 
   // Returns the maximum allowed size of tasks submitted to the queue.
   size_t max_task_size() const { return options_.input_batch_size_limit; }
@@ -1055,6 +1087,10 @@ class QueueHandle : public BatchScheduler<TaskType> {
   size_t SchedulingCapacity() const override;
 
   size_t max_task_size() const override { return queue_->max_task_size(); }
+
+  std::optional<PriorityQueueState> GetPriorityQueueState() const override {
+    return queue_->GetPriorityQueueState();
+  }
 
  private:
   // The scheduler that owns 'queue_'.
@@ -1665,6 +1701,26 @@ size_t Queue<TaskType>::NumEnqueuedTasks() const {
   }
   return num_enqueued_tasks + low_priority_tasks_.num_tasks() +
          warmup_tasks_.num_tasks();
+}
+
+template <typename TaskType>
+std::optional<PriorityQueueState> Queue<TaskType>::GetPriorityQueueState()
+    const {
+  if (!options_.enable_priority_aware_batch_scheduler) {
+    return std::nullopt;
+  }
+  PriorityQueueState state;
+  mutex_lock l(mu_);
+  // Every band is populated, including empty ones, so that consumers exporting
+  // one gauge cell per criticality reset idle bands to zero instead of leaving
+  // them at their last non-zero value.
+  for (const tsl::criticality::Criticality criticality :
+       tsl::criticality::kAllCriticalitiesDescending) {
+    state.num_tasks[criticality] = tasks_priority_queue_.num_tasks(criticality);
+    state.size[criticality] = tasks_priority_queue_.size(criticality);
+  }
+  state.max_queue_depth = tasks_priority_queue_.max_queue_depth();
+  return state;
 }
 
 template <typename TaskType>

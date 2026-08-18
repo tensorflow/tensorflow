@@ -40,7 +40,7 @@ class CastBf16OpsToF32Pass
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(CastBf16OpsToF32Pass)
 
   CastBf16OpsToF32Pass() = default;
-  CastBf16OpsToF32Pass(const CastBf16OpsToF32Pass&) {};
+  CastBf16OpsToF32Pass(const CastBf16OpsToF32Pass&) = default;
 
   void runOnOperation() override;
   static llvm::StringRef GetName() { return "CastBf16OpsToF32Pass"; }

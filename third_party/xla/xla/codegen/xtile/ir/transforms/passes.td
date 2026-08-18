@@ -34,18 +34,6 @@ def ConvertElementwise0DTensorToScalarPass
   ];
 }
 
-def StablehloLowerToXtilePass
-    : Pass<"stablehlo-lower-to-xtile", "mlir::ModuleOp"> {
-  let summary = "Lowers stablehlo ops to Xtile.";
-  let description = [{
-    This pass lowers stablehlo ops to Xtile supported ops.
-  }];
-  let dependentDialects = [
-    "mlir::arith::ArithDialect",
-    "mlir::stablehlo::StablehloDialect",
-  ];
-}
-
 def LegalizeUnsignedIntegersAsSignlessPass
     : Pass<"legalize-unsigned-integers-as-signless"> {
   let summary = "Legalizes unsigned integers as signless.";
@@ -59,5 +47,6 @@ def StablehloLowerToArithPass : Pass<"stablehlo-lower-to-arith"> {
   let dependentDialects = [
     "mlir::arith::ArithDialect",
     "mlir::math::MathDialect",
+    "mlir::stablehlo::StablehloDialect",
   ];
 }

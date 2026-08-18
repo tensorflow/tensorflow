@@ -1,0 +1,67 @@
+// RUN: hlo-opt %s --platform=gpu --stage=hlo --xla_gpu_target_config_filename=%S/../target_config/specs/%{GPU}.txtpb --xla_gpu_autotune_level=0 | FileCheck %s --check-prefixes=CHECK-%{GPU},CHECK-%{PTX} --allow-unused-prefixes
+
+// Tests that device memory bandwidth drives the reduce-into-consumers fusion
+// decision. A reduce feeds two elementwise consumers. Duplicating the reduce
+// into a consumer means re-reading the large input from HBM, so whether it pays
+// off depends on the modeled bandwidth. This checks the final HLO, after the
+// passes that run on top of PriorityFusion -- note the final fusion count is
+// the opposite of PriorityFusion's immediate output (see
+// PriorityFusionRocmMemoryBandwidthTest.MemoryBandwidthTipsReduceFusion in
+// priority_fusion_test.cc):
+//
+//   - mi350 (gfx950, HBM3e, 6.81 TB/s): with the corrected per-gfx bandwidth
+//     (rocm_memory_bandwidth.cc) the re-read is cheap, so PriorityFusion
+//     duplicates the reduce into both consumers (two fusions); a later
+//     multi-output fusion pass then merges them, since they share the input,
+//     into a single fused_add_subtract. The legacy `2 * bus * UCLK` formula
+//     would undercount bandwidth as ~3.89 TB/s and produce the split form
+//     below; this is the regression guard for the fix.
+//   - mi200 (gfx90a, HBM2e): the re-read is too expensive to duplicate, so the
+//     reduce stays a standalone fusion and the subtract ends up in its own
+//     wrapped fusion -> two fusions.
+
+HloModule rf_8_256_1152
+
+add {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT r = f32[] add(a, b)
+}
+
+ENTRY main {
+  p = f32[8,256,1152]{2,1,0} parameter(0)
+  w1 = f32[256,1152]{1,0} parameter(1)
+  w2 = f32[256,1152]{1,0} parameter(2)
+  z = f32[] constant(0)
+  red = f32[256,1152]{1,0} reduce(p, z), dimensions={0}, to_apply=add
+  c1 = f32[256,1152]{1,0} add(red, w1)
+  c2 = f32[256,1152]{1,0} subtract(red, w2)
+  ROOT out = (f32[256,1152]{1,0}, f32[256,1152]{1,0}) tuple(c1, c2)
+}
+
+// mi350: reduce + both consumers collapse into ONE multi-output fusion.
+// CHECK-mi350:      %fused_add_subtract
+// CHECK-mi350-DAG:    reduce(
+// CHECK-mi350-DAG:    add(
+// CHECK-mi350-DAG:    subtract(
+// CHECK-mi350:      ENTRY
+// CHECK-mi350:      fusion(
+// CHECK-mi350-NOT:  fusion(
+// CHECK-mi350-NOT:  wrapped_subtract
+
+// mi200: reduce fuses with only one consumer; subtract is a separate fusion.
+// CHECK-mi200:      %wrapped_subtract_computation
+// CHECK-mi200:      ENTRY
+// CHECK-mi200:      fusion({{.*}}), kind=kLoop, calls=%fused_add_reduce
+// CHECK-mi200:      fusion({{.*}}), kind=kLoop, calls=%wrapped_subtract_computation
+
+// CHECK-PTX: HloModule
+
+// CHECK-b200:      %fused_add_subtract
+// CHECK-b200-DAG:    reduce(
+// CHECK-b200-DAG:    add(
+// CHECK-b200-DAG:    subtract(
+// CHECK-b200:      ENTRY
+// CHECK-b200:      fusion(
+// CHECK-b200-NOT:  fusion(
+// CHECK-b200-NOT:  wrapped_subtract

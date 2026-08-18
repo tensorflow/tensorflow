@@ -60,4 +60,8 @@ class IsBoolCompositeAttribute <string attr_name, string val>:
 class IsStrCompositeAttribute <string attr_name, string val>:
   IsCompositeAttribute<attr_name, StrAttr, "\"" # val # "\"">;
 
+def GetMirrorPadMode : NativeCodeCall<"GetMirrorPadMode($0, $_builder)">;
+def BuildPaddingsAttr : NativeCodeCall<"BuildPaddingsAttr($0, $_builder)">;
+
 #endif
+

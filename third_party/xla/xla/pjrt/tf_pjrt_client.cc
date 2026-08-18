@@ -24,9 +24,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/future.h"
 #include "xla/pjrt/pjrt_client.h"
 
@@ -45,7 +45,7 @@ PjRtClient* TfPjRtExecutable::client() const { return client_; }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfPjRtBuffer::CopyToMemorySpace(
     PjRtMemorySpace* dst_memory_space) {
-  ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> result,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> result,
                    wrapped_->CopyToMemorySpace(dst_memory_space));
   return std::unique_ptr<PjRtBuffer>(
       std::make_unique<TfPjRtBuffer>(client_, std::move(result)));
@@ -71,7 +71,7 @@ TfPjRtExecutable::Execute(
           absl::down_cast<TfPjRtBuffer*>(buffer)->wrapped());
     }
   }
-  ASSIGN_OR_RETURN(auto out, wrapped_->Execute(unwrapped_argument_handles,
+  ABSL_ASSIGN_OR_RETURN(auto out, wrapped_->Execute(unwrapped_argument_handles,
                                                options, returned_futures));
   for (auto& buffer_list : out) {
     for (std::unique_ptr<PjRtBuffer>& buffer : buffer_list) {
@@ -93,7 +93,7 @@ TfPjRtExecutable::ExecuteSharded(absl::Span<PjRtBuffer* const> argument_handles,
     unwrapped_argument_handles.push_back(
         absl::down_cast<TfPjRtBuffer*>(buffer)->wrapped());
   }
-  ASSIGN_OR_RETURN(auto out, wrapped_->ExecuteSharded(
+  ABSL_ASSIGN_OR_RETURN(auto out, wrapped_->ExecuteSharded(
                                  unwrapped_argument_handles, device, options,
                                  returned_future, fill_future));
   for (std::unique_ptr<PjRtBuffer>& buffer : out) {
@@ -112,7 +112,7 @@ TfPjRtExecutable::ExecutePortable(
     unwrapped_argument_handles.push_back(
         absl::down_cast<TfPjRtBuffer*>(buffer)->wrapped());
   }
-  ASSIGN_OR_RETURN(auto out, wrapped_->ExecutePortable(
+  ABSL_ASSIGN_OR_RETURN(auto out, wrapped_->ExecutePortable(
                                  unwrapped_argument_handles, device, options,
                                  returned_future, fill_future));
   for (std::unique_ptr<PjRtBuffer>& buffer : out) {
@@ -136,7 +136,7 @@ TfPjRtClient::~TfPjRtClient() { LOG(INFO) << "TfPjRtClient destroyed."; }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfPjRtClient::WrapBuffer(
     absl::StatusOr<std::unique_ptr<PjRtBuffer>> to_wrap) {
-  ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> buffer, std::move(to_wrap));
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> buffer, std::move(to_wrap));
   return std::unique_ptr<PjRtBuffer>(
       std::make_unique<TfPjRtBuffer>(this, std::move(buffer)));
 }
@@ -144,7 +144,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfPjRtClient::WrapBuffer(
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 TfPjRtClient::WrapExecutable(
     absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> to_wrap) {
-  ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
                    std::move(to_wrap));
   return std::unique_ptr<PjRtLoadedExecutable>(
       std::make_unique<TfPjRtExecutable>(this, std::move(executable)));

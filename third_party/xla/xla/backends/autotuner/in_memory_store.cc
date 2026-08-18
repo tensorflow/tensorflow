@@ -22,11 +22,11 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/autotuner/autotuning.pb.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/util/sorted_range.h"
@@ -150,7 +150,7 @@ void InMemoryStore::Clear() {
 absl::Status InMemoryStore::LoadFromFile(absl::string_view file_path) {
   std::string autotune_results_str;
   tsl::Env* env = tsl::Env::Default();
-  RETURN_IF_ERROR(tsl::ReadFileToString(env, std::string(file_path),
+  ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(env, std::string(file_path),
                                         &autotune_results_str));
 
   autotuner::AutotuneCache cache;
@@ -177,7 +177,7 @@ absl::Status InMemoryStore::LoadFromFile(absl::string_view file_path) {
 
   InMemoryStore store;
   for (const autotuner::AutotuneEntry& entry : cache.entries()) {
-    RETURN_IF_ERROR(store.Write(entry));
+    ABSL_RETURN_IF_ERROR(store.Write(entry));
   }
   return absl::OkStatus();
 }

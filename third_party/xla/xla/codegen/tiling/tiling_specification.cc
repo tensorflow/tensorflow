@@ -21,10 +21,10 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -78,7 +78,7 @@ absl::StatusOr<FlatTiling> Tiling::Flatten(
   FlatTiling flat_tile_sizes;
   flat_tile_sizes.reserve(tiling_specification.num_parameters());
   for (const auto& mapping : tiling_specification.parameter_mapping()) {
-    ASSIGN_OR_RETURN(absl::Span<const int64_t> tile_sizes,
+    ABSL_ASSIGN_OR_RETURN(absl::Span<const int64_t> tile_sizes,
                      TileSizesForInstruction(mapping.instruction));
     if (tile_sizes.size() != mapping.num_tiling_parameters) {
       return absl::FailedPreconditionError(

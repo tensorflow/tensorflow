@@ -346,5 +346,43 @@ TEST_F(TieredCacheTest, LooseMatchingBackendVersionFallback) {
   }
 }
 
+TEST_F(TieredCacheTest, WriteOnlySecondarySkipsLookupButAllowsInsert) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo1));
+  const HloInstruction* instr1 =
+      module->entry_computation()->root_instruction();
+  AutotuneCacheContext cache_ctx = CreateCacheContext("v1.0");
+  AutotunerCacheInterface::Config config = CreateTestConfig();
+
+  // 1. Create a TieredCache where the secondary store is in kWriteOnly mode.
+  auto primary = std::make_unique<InMemoryStore>();
+  auto secondary =
+      std::make_unique<DirectoryStore>(cache_dir_, CacheMode::kWriteOnly);
+  TieredCache cache(cache_ctx, KeyMatchingMode::kLoose, std::move(primary),
+                    std::move(secondary));
+
+  // 2. Insert an entry.
+  EXPECT_OK(cache.Insert(instr1, config));
+
+  // 3. Clear the global in-memory store so lookup will fall back to secondary.
+  InMemoryStore::Clear();
+
+  // 4. Lookup should miss (return std::nullopt) because secondary is WriteOnly.
+  EXPECT_FALSE(cache.Lookup(instr1).has_value());
+  EXPECT_EQ(cache.GetCacheStats().hits, 0);
+  EXPECT_EQ(cache.GetCacheStats().misses, 1);
+
+  // 5. Verify the entry was actually written to the directory store (by
+  // creating a separate TieredCache with ReadWrite secondary store and looking
+  // up).
+  auto primary2 = std::make_unique<InMemoryStore>();
+  auto secondary2 =
+      std::make_unique<DirectoryStore>(cache_dir_, CacheMode::kReadWrite);
+  TieredCache cache2(cache_ctx, KeyMatchingMode::kLoose, std::move(primary2),
+                     std::move(secondary2));
+  EXPECT_TRUE(cache2.Lookup(instr1).has_value());
+  EXPECT_EQ(cache2.GetCacheStats().hits, 1);
+}
+
 }  // namespace
 }  // namespace xla

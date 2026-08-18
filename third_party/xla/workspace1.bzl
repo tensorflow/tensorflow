@@ -15,7 +15,7 @@
 
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
-load("@com_github_grpc_grpc//bazel:grpc_deps.bzl", "grpc_deps")
+load("@grpc//bazel:grpc_deps.bzl", "grpc_deps")
 load("@rules_cc//cc:extensions.bzl", "compatibility_proxy_repo")
 load("@rules_pkg//:deps.bzl", "rules_pkg_dependencies")
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")

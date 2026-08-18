@@ -26,12 +26,12 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/libraries/cub/cub_scratch_size_deviceless_lookup.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -743,7 +743,7 @@ absl::StatusOr<DevicelessLookupParams> GetDevicelessLookupParams(
 
 absl::StatusOr<bool> DevicelessTableHasDataForSort(
     const DevicelessLookupParams& params) {
-  ASSIGN_OR_RETURN(const CubScratchSizeDevicelessLookup& lookup,
+  ABSL_ASSIGN_OR_RETURN(const CubScratchSizeDevicelessLookup& lookup,
                    CubScratchSizeDevicelessLookup::GetInstance());
   return lookup.CanLookup(params.cub_version, params.device_name,
                           params.key_type_size, params.value_type_size,
@@ -805,12 +805,12 @@ absl::StatusOr<bool> ShouldRewriteSort(
   // When compiling CUB sorts we need to determine the scratch size needed. The
   // CUB API to do so requires a device, so we need to differentiate between
   // deviceless and non-deviceless compilation here.
-  ASSIGN_OR_RETURN(DevicelessLookupParams lookup_params,
+  ABSL_ASSIGN_OR_RETURN(DevicelessLookupParams lookup_params,
                    GetDevicelessLookupParams(device_description, sort));
 
   if (deviceless_cub_mode ==
       DebugOptions::DEVICELESS_CUB_FORCE_ON_NO_FALLBACK) {
-    ASSIGN_OR_RETURN(bool has_deviceless_data,
+    ABSL_ASSIGN_OR_RETURN(bool has_deviceless_data,
                      DevicelessTableHasDataForSort(lookup_params));
     if (!has_deviceless_data) {
       return absl::NotFoundError(absl::StrFormat(
@@ -836,7 +836,7 @@ absl::StatusOr<bool> ShouldRewriteSort(
     return false;
   }
 
-  ASSIGN_OR_RETURN(bool has_deviceless_data,
+  ABSL_ASSIGN_OR_RETURN(bool has_deviceless_data,
                    DevicelessTableHasDataForSort(lookup_params));
   if (has_deviceless_data) {
     return true;
@@ -926,7 +926,7 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
   // MLIR dictionary attributes when rewriting to the final FFI target.
   SortOptions sort_options;
   sort_options.set_descending(sort_analysis.descending);
-  RETURN_IF_ERROR(custom_call->set_backend_config(sort_options));
+  ABSL_RETURN_IF_ERROR(custom_call->set_backend_config(sort_options));
 
   // Build the replacement instruction.
   HloInstruction* replacement;
@@ -949,7 +949,7 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
   }
 
   // Replace sort operation with custom call followed by GTE.
-  RETURN_IF_ERROR(sort_op->parent()->ReplaceInstruction(sort_op, replacement));
+  ABSL_RETURN_IF_ERROR(sort_op->parent()->ReplaceInstruction(sort_op, replacement));
   return true;
 }
 
@@ -963,7 +963,7 @@ absl::StatusOr<bool> SortRewriter::RunOnComputation(
     if (sort == nullptr) {
       continue;
     }
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         bool should_rewrite,
         ShouldRewriteSort(device_description_, *sort, is_deviceless_,
                           is_early_exit_with_layouts_, deviceless_cub_mode));
@@ -974,7 +974,7 @@ absl::StatusOr<bool> SortRewriter::RunOnComputation(
 
   bool changed = false;
   for (auto* sort : sort_ops) {
-    ASSIGN_OR_RETURN(bool result, RunOnInstruction(sort));
+    ABSL_ASSIGN_OR_RETURN(bool result, RunOnInstruction(sort));
     changed |= result;
   }
   return changed;
@@ -996,7 +996,7 @@ absl::StatusOr<bool> SortRewriter::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    ASSIGN_OR_RETURN(bool result,
+    ABSL_ASSIGN_OR_RETURN(bool result,
                      RunOnComputation(computation, deviceless_cub_mode));
     changed |= result;
   }

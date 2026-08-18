@@ -375,23 +375,34 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   };
 
   const PerInstruction* PerInst(const HloInstruction* inst) const {
-    int64_t id = inst->unique_id();
-    DCHECK_GE(id, 0);
-    auto iter = per_instruction_.find(id);
-    if (iter == per_instruction_.end()) {
+    const int64_t computation_id = inst->parent()->unique_id();
+    const int32_t local_id = inst->local_id();
+    DCHECK_GE(computation_id, 0);
+    DCHECK_GE(local_id, 0);
+    if (computation_id >= per_instruction_.size() ||
+        local_id >= per_instruction_[computation_id].size() ||
+        per_instruction_[computation_id][local_id] == nullptr) {
       LOG(FATAL) << "Expected per-instruction information to already exist";
     }
-    return iter->second.get();
+    return per_instruction_[computation_id][local_id].get();
   }
   PerInstruction* PerInst(const HloInstruction* inst) {
-    int64_t id = inst->unique_id();
-    DCHECK_GE(id, 0);
-    auto iter = per_instruction_.find(id);
-    if (iter == per_instruction_.end()) {
-      return per_instruction_.emplace(id, std::make_unique<PerInstruction>())
-          .first->second.get();
+    const int64_t computation_id = inst->parent()->unique_id();
+    const int32_t local_id = inst->local_id();
+    DCHECK_GE(computation_id, 0);
+    DCHECK_GE(local_id, 0);
+    if (computation_id >= per_instruction_.size()) {
+      per_instruction_.resize(computation_id + 1);
     }
-    return iter->second.get();
+    auto& slots = per_instruction_[computation_id];
+    if (local_id >= slots.size()) {
+      slots.resize(local_id + 1);
+    }
+    auto& slot = slots[local_id];
+    if (slot == nullptr) {
+      slot = std::make_unique<PerInstruction>();
+    }
+    return slot.get();
   }
 
   // The module this analysis is performed on.
@@ -400,9 +411,20 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   // The logical buffers for this module.
   const std::unique_ptr<LogicalBufferAnalysis> logical_buffer_analysis_;
 
-  // A map from instruction->unique_id() to
-  absl::flat_hash_map<int64_t, std::unique_ptr<PerInstruction>>
-      per_instruction_;
+  // Per-instruction information, stored densely: the outer vector is indexed
+  // by the owning computation's unique_id() and the inner vector by the
+  // instruction's computation-local id. This replaces a large hash map keyed
+  // by instruction unique_id (which was a top find() hotspot on big modules)
+  // with two array indexes.
+  //
+  // Both id spaces are dense when the analysis runs: local ids are
+  // recompacted by HloComputation::Cleanup(), which HloPassPipeline runs
+  // after every pass, and analyses are built at pass start (the same
+  // assumption the post-order DFS VisitMap makes). Instructions deleted
+  // while the analysis is alive leave 8-byte holes that are never queried,
+  // matching the previous hash-map semantics where stale entries lingered
+  // until the analysis was rebuilt.
+  std::vector<std::vector<std::unique_ptr<PerInstruction>>> per_instruction_;
 
   // A map from LogicalBuffer->id() to alias information about that logical
   // buffer

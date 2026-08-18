@@ -26,8 +26,8 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/cuda_bf16.h"
 #include "raft/core/device_mdspan.hpp"
 #include "raft/core/mdspan_types.hpp"
@@ -63,7 +63,7 @@ class OwningScratchAllocator {
 
   // Allocate memory and track ownership
   absl::StatusOr<se::DeviceAddress<uint8_t>> AllocateBytes(int64_t byte_size) {
-    ASSIGN_OR_RETURN(se::ScopedDeviceAddress<uint8_t> buffer,
+    ABSL_ASSIGN_OR_RETURN(se::ScopedDeviceAddress<uint8_t> buffer,
                      allocator_->Allocate(device_ordinal_, byte_size,
                                           /*retry_on_failure=*/false));
 

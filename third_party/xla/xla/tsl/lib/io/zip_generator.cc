@@ -23,9 +23,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/lib/io/zip_writer.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/file_system.h"
@@ -39,17 +39,17 @@ struct FileEntry {
 absl::StatusOr<std::string> GenerateZip(absl::string_view output_path,
                                         const std::vector<FileEntry>& entries) {
   std::unique_ptr<tsl::WritableFile> file;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       tsl::Env::Default()->NewWritableFile(std::string(output_path), &file));
 
-  ASSIGN_OR_RETURN(tsl::io::ZipWriter writer,
+  ABSL_ASSIGN_OR_RETURN(tsl::io::ZipWriter writer,
                    tsl::io::ZipWriter::Create(std::move(file)));
 
   for (const auto& entry : entries) {
-    RETURN_IF_ERROR(writer.AddFile(entry.name, entry.content));
+    ABSL_RETURN_IF_ERROR(writer.AddFile(entry.name, entry.content));
   }
 
-  RETURN_IF_ERROR(std::move(writer).Finish());
+  ABSL_RETURN_IF_ERROR(std::move(writer).Finish());
   return std::string(output_path);
 }
 

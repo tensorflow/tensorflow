@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/core/host_offloading/host_offloading_allocator.h"
 #include "xla/core/host_offloading/host_offloading_buffer.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
@@ -39,6 +40,18 @@ limitations under the License.
 #include "xla/tsl/concurrency/chain.h"
 
 namespace xla {
+
+// Sets up host-offloading-specific options in HLO module config.
+inline void SetHostOffloadingHloModuleConfig(HloModuleConfig& config) {
+  auto& debug_options = config.mutable_debug_options();
+  debug_options.set_xla_cpu_copy_insertion_use_region_analysis(true);
+  // TODO(b/374556751): Megascale custom calls do not have correct data
+  // dependencies and can be scheduled in wrong order.
+  debug_options.set_xla_cpu_scheduler_type(
+      DebugOptions::CPU_SCHEDULER_TYPE_MEMORY_OPTIMIZED);
+  debug_options.mutable_xla_backend_extra_options()->insert(
+      {"xla_is_host_offload", "true"});
+}
 
 // Host offloading executable is a base class for executables that can be
 // invoked by a TPU program on a host attached to a device. It can wrap
@@ -85,6 +98,10 @@ class HostOffloadingExecutable {
       const ShapeTree<HostOffloadingBuffer>& result,
       const ExecuteOptions& execute_options) = 0;
 
+  // HLO module configs of the executable.
+  virtual absl::StatusOr<std::vector<HloModuleConfig>>
+  GetHloModuleConfigs() = 0;
+
   // Host offloading executable name (for debugging and tracing).
   virtual absl::string_view name() const = 0;
 
@@ -93,6 +110,7 @@ class HostOffloadingExecutable {
 
   virtual bool needs_layout_conversion() const { return false; }
 };
+
 }  // namespace xla
 
 #endif  // XLA_CORE_HOST_OFFLOADING_HOST_OFFLOADING_EXECUTABLE_H_

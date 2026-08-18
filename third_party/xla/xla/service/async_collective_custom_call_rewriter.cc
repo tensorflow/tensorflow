@@ -82,15 +82,15 @@ absl::Status CleanupAndPropagate(HloComputation* computation,
   }
 
   for (HloInstruction* pred : start_call->control_predecessors()) {
-    RETURN_IF_ERROR(pred->AddControlDependencyTo(async_start));
+    ABSL_RETURN_IF_ERROR(pred->AddControlDependencyTo(async_start));
   }
   for (HloInstruction* succ : done_call->control_successors()) {
-    RETURN_IF_ERROR(final_result->AddControlDependencyTo(succ));
+    ABSL_RETURN_IF_ERROR(final_result->AddControlDependencyTo(succ));
   }
 
-  RETURN_IF_ERROR(done_call->ReplaceAllUsesWith(final_result));
-  RETURN_IF_ERROR(computation->RemoveInstruction(done_call));
-  RETURN_IF_ERROR(computation->RemoveInstruction(start_call));
+  ABSL_RETURN_IF_ERROR(done_call->ReplaceAllUsesWith(final_result));
+  ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(done_call));
+  ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(start_call));
   return absl::OkStatus();
 }
 
@@ -99,7 +99,7 @@ absl::StatusOr<bool> ProcessAllGather(HloComputation* computation,
                                       HloInstruction* done_call,
                                       bool use_legacy_collectives) {
   std::string config_str = GetConfigString(start_call);
-  ASSIGN_OR_RETURN(AsyncCollectiveConfig config,
+  ABSL_ASSIGN_OR_RETURN(AsyncCollectiveConfig config,
                    ParseAsyncCollectiveConfig(config_str));
 
   TF_RET_CHECK(config.all_gather_dimension.has_value());
@@ -138,7 +138,7 @@ absl::StatusOr<bool> ProcessAllGather(HloComputation* computation,
             /*constrain_layout=*/false, config.channel_id,
             config.use_global_device_ids);
 
-    ASSIGN_OR_RETURN(async_done,
+    ABSL_ASSIGN_OR_RETURN(async_done,
                      computation->CreateAsyncInstructions(
                          sync_all_gather.get(), /*context_shapes=*/{},
                          computation->execution_thread(), /*replace=*/false));
@@ -146,7 +146,7 @@ absl::StatusOr<bool> ProcessAllGather(HloComputation* computation,
     async_start = async_done->mutable_operand(0);
   }
 
-  RETURN_IF_ERROR(CleanupAndPropagate(computation, start_call, done_call,
+  ABSL_RETURN_IF_ERROR(CleanupAndPropagate(computation, start_call, done_call,
                                       async_start, async_done, async_done));
 
   return true;
@@ -157,7 +157,7 @@ absl::StatusOr<bool> ProcessAllReduce(HloComputation* computation,
                                       HloInstruction* done_call,
                                       bool use_legacy_collectives) {
   std::string config_str = GetConfigString(start_call);
-  ASSIGN_OR_RETURN(AsyncCollectiveConfig config,
+  ABSL_ASSIGN_OR_RETURN(AsyncCollectiveConfig config,
                    ParseAsyncCollectiveConfig(config_str));
 
   TF_RET_CHECK(start_call->called_computations().size() == 1)
@@ -187,7 +187,7 @@ absl::StatusOr<bool> ProcessAllReduce(HloComputation* computation,
             /*constrain_layout=*/false, config.channel_id,
             config.use_global_device_ids);
 
-    ASSIGN_OR_RETURN(async_done,
+    ABSL_ASSIGN_OR_RETURN(async_done,
                      computation->CreateAsyncInstructions(
                          sync_all_reduce.get(), /*context_shapes=*/{},
                          computation->execution_thread(), /*replace=*/false));
@@ -195,7 +195,7 @@ absl::StatusOr<bool> ProcessAllReduce(HloComputation* computation,
     async_start = async_done->mutable_operand(0);
   }
 
-  RETURN_IF_ERROR(CleanupAndPropagate(computation, start_call, done_call,
+  ABSL_RETURN_IF_ERROR(CleanupAndPropagate(computation, start_call, done_call,
                                       async_start, async_done, async_done));
 
   return true;
@@ -205,7 +205,7 @@ absl::StatusOr<bool> ProcessReduceScatter(HloComputation* computation,
                                           HloInstruction* start_call,
                                           HloInstruction* done_call) {
   std::string config_str = GetConfigString(start_call);
-  ASSIGN_OR_RETURN(AsyncCollectiveConfig config,
+  ABSL_ASSIGN_OR_RETURN(AsyncCollectiveConfig config,
                    ParseAsyncCollectiveConfig(config_str));
 
   TF_RET_CHECK(config.scatter_dimension.has_value());
@@ -246,7 +246,7 @@ absl::StatusOr<bool> ProcessReduceScatter(HloComputation* computation,
           /*constrain_layout=*/false, config.channel_id,
           config.use_global_device_ids, scatter_dimension);
 
-  ASSIGN_OR_RETURN(HloInstruction * async_done,
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * async_done,
                    computation->CreateAsyncInstructions(
                        sync_reduce_scatter.get(), /*context_shapes=*/{},
                        computation->execution_thread(), /*replace=*/false));
@@ -259,7 +259,7 @@ absl::StatusOr<bool> ProcessReduceScatter(HloComputation* computation,
         HloInstruction::CreateReshape(done_call->shape(), async_done));
   }
 
-  RETURN_IF_ERROR(CleanupAndPropagate(computation, start_call, done_call,
+  ABSL_RETURN_IF_ERROR(CleanupAndPropagate(computation, start_call, done_call,
                                       async_start, async_done, final_result));
 
   return true;
@@ -269,7 +269,7 @@ absl::StatusOr<bool> ProcessAllToAll(HloComputation* computation,
                                      HloInstruction* start_call,
                                      HloInstruction* done_call) {
   std::string config_str = GetConfigString(start_call);
-  ASSIGN_OR_RETURN(AsyncCollectiveConfig config,
+  ABSL_ASSIGN_OR_RETURN(AsyncCollectiveConfig config,
                    ParseAsyncCollectiveConfig(config_str));
 
   TF_RET_CHECK(config.split_dimension.has_value());
@@ -297,7 +297,7 @@ absl::StatusOr<bool> ProcessAllToAll(HloComputation* computation,
             shape, start_call->operands(), device_list,
             /*constrain_layout=*/false, config.channel_id, split_dimension);
 
-    ASSIGN_OR_RETURN(async_done,
+    ABSL_ASSIGN_OR_RETURN(async_done,
                      computation->CreateAsyncInstructions(
                          sync_all_to_all.get(), /*context_shapes=*/{},
                          computation->execution_thread(), /*replace=*/false));
@@ -308,7 +308,7 @@ absl::StatusOr<bool> ProcessAllToAll(HloComputation* computation,
             input_shape, start_call->operands(), device_list,
             /*constrain_layout=*/false, config.channel_id, split_dimension);
 
-    ASSIGN_OR_RETURN(async_done,
+    ABSL_ASSIGN_OR_RETURN(async_done,
                      computation->CreateAsyncInstructions(
                          sync_all_to_all.get(), /*context_shapes=*/{},
                          computation->execution_thread(), /*replace=*/false));
@@ -358,7 +358,7 @@ absl::StatusOr<bool> ProcessAllToAll(HloComputation* computation,
 
   HloInstruction* async_start = async_done->mutable_operand(0);
 
-  RETURN_IF_ERROR(CleanupAndPropagate(computation, start_call, done_call,
+  ABSL_RETURN_IF_ERROR(CleanupAndPropagate(computation, start_call, done_call,
                                       async_start, async_done, final_result));
 
   return true;
@@ -369,7 +369,7 @@ absl::StatusOr<bool> ProcessCollectivePermute(HloComputation* computation,
                                               HloInstruction* done_call,
                                               bool use_legacy_collectives) {
   std::string config_str = GetConfigString(start_call);
-  ASSIGN_OR_RETURN(AsyncCollectiveConfig config,
+  ABSL_ASSIGN_OR_RETURN(AsyncCollectiveConfig config,
                    ParseAsyncCollectiveConfig(config_str));
 
   HloInstruction* async_start = nullptr;
@@ -381,7 +381,7 @@ absl::StatusOr<bool> ProcessCollectivePermute(HloComputation* computation,
       operand_shapes.push_back(&operand->shape());
     }
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         Shape start_shape,
         ShapeInference::InferCollectivePermuteStartShape(
             operand_shapes, /*context_shapes=*/{}, /*inplace=*/false));
@@ -399,7 +399,7 @@ absl::StatusOr<bool> ProcessCollectivePermute(HloComputation* computation,
             done_call->shape(), start_call->operands(), config.permutation,
             config.channel_id);
 
-    ASSIGN_OR_RETURN(async_done,
+    ABSL_ASSIGN_OR_RETURN(async_done,
                      computation->CreateAsyncInstructions(
                          sync_collective_permute.get(), /*context_shapes=*/{},
                          computation->execution_thread(), /*replace=*/false));
@@ -407,7 +407,7 @@ absl::StatusOr<bool> ProcessCollectivePermute(HloComputation* computation,
     async_start = async_done->mutable_operand(0);
   }
 
-  RETURN_IF_ERROR(CleanupAndPropagate(computation, start_call, done_call,
+  ABSL_RETURN_IF_ERROR(CleanupAndPropagate(computation, start_call, done_call,
                                       async_start, async_done, async_done));
 
   return true;
@@ -466,7 +466,7 @@ absl::StatusOr<bool> AsyncCollectiveCustomCallRewriter::RunImpl(
 
     // Second pass to process the collected pairs.
     for (const auto& pair : pairs_to_rewrite) {
-      ASSIGN_OR_RETURN(bool pair_changed,
+      ABSL_ASSIGN_OR_RETURN(bool pair_changed,
                        ProcessPair(computation, pair.first, pair.second,
                                    use_legacy_collectives_));
       if (pair_changed) {

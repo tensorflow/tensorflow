@@ -23,9 +23,18 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
+
+// Returns the PrecisionConfig for a cuDNN fusion instruction.
+// Precedence order:
+// 1. Outer GpuBackendConfig (`cudnn_fusion_config.precision_config`), if set.
+// 2. Inner hero instruction (`kDot`, `kConvolution`, `kScaledDot`,
+// `kRaggedDot`).
+// 3. Default empty PrecisionConfig if neither is set.
+PrecisionConfig GetPrecisionConfig(const HloInstruction& hlo);
 
 // Manages the growth of the fusion subgraph during DFS epilogue search.
 // Supports snapshot/restore for backtracking when a consumer branch is invalid.

@@ -88,6 +88,21 @@ ENTRY %conv_computation (x: f32[16,40,40,64], source: f32[3,3,64,64]) -> f32[16,
   EXPECT_TRUE(RunAndCompare(hlo_text, kErrorSpec));
 }
 
+// TODO(b/542582954): Re-enable once cuDNN supports FP32 convolution with
+// highest precision.
+TEST_P(TensorFloat32GlobalVarTest, DISABLED_ConvolutionHighestPrecision) {
+  const char* hlo_text = R"(
+HloModule TestModule
+
+ENTRY %conv_computation (x: f32[16,40,40,64], source: f32[3,3,64,64]) -> f32[16,40,40,64] {
+  %x = f32[16,40,40,64] parameter(0)
+  %y = f32[3,3,64,64] parameter(1)
+  ROOT %result = f32[16,40,40,64] convolution(x, y), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, operand_precision={highest, highest}
+}
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, kErrorSpec));
+}
+
 std::string TestParamToString(const ::testing::TestParamInfo<bool>& info) {
   return info.param ? "WithTritonGemm" : "WithoutTritonGemm";
 }

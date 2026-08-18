@@ -22,9 +22,9 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -42,7 +42,7 @@ namespace gpu {
 absl::StatusOr<uint32_t> ReplicaOrPartitionIdThunk::ComputeId(
     const ExecuteParams& params) const {
   GlobalDeviceId global_device_id = params.collective_params->global_device_id;
-  ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID logical_id,
+  ABSL_ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID logical_id,
                    params.collective_params->device_assn->LogicalIdForDevice(
                        global_device_id));
   return static_cast<uint32_t>(kind() == Kind::kReplicaId
@@ -53,7 +53,7 @@ absl::StatusOr<uint32_t> ReplicaOrPartitionIdThunk::ComputeId(
 absl::Status ReplicaOrPartitionIdThunk::ExecuteOnStream(
     const ExecuteParams& params) {
   auto dest_addr = params.buffer_allocations->GetDeviceAddress(dest_);
-  ASSIGN_OR_RETURN(uint32_t id, ComputeId(params));
+  ABSL_ASSIGN_OR_RETURN(uint32_t id, ComputeId(params));
   return params.stream->Memset32(&dest_addr, id, /*size=*/4);
 }
 
@@ -64,7 +64,7 @@ ReplicaOrPartitionIdThunk::Record(const Thunk::ExecuteParams& execute_params,
                                   se::CommandBuffer* command_buffer) {
   se::DeviceAddressBase dst =
       execute_params.buffer_allocations->GetDeviceAddress(dest_);
-  ASSIGN_OR_RETURN(uint32_t value, ComputeId(execute_params));
+  ABSL_ASSIGN_OR_RETURN(uint32_t value, ComputeId(execute_params));
 
   VLOG(5) << (kind() == Kind::kReplicaId ? "Replica" : "Partition")
           << "IdThunk::Record: value=" << value;
@@ -75,7 +75,7 @@ ReplicaOrPartitionIdThunk::Record(const Thunk::ExecuteParams& execute_params,
                                         create->dependencies);
   }
   if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
-    RETURN_IF_ERROR(command_buffer->UpdateMemset(update->command, &dst, value,
+    ABSL_RETURN_IF_ERROR(command_buffer->UpdateMemset(update->command, &dst, value,
                                                  /*num_elements=*/1));
     return update->command;
   }
@@ -87,7 +87,7 @@ absl::StatusOr<ThunkProto> ReplicaIdThunk::ToProto() const {
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 
   auto* replica_id_thunk_proto = proto.mutable_replica_id_thunk();
-  ASSIGN_OR_RETURN(*replica_id_thunk_proto->mutable_dest_buffer(),
+  ABSL_ASSIGN_OR_RETURN(*replica_id_thunk_proto->mutable_dest_buffer(),
                    dest().ToProto());
   return proto;
 }
@@ -95,7 +95,7 @@ absl::StatusOr<ThunkProto> ReplicaIdThunk::ToProto() const {
 absl::StatusOr<std::unique_ptr<ReplicaIdThunk>> ReplicaIdThunk::FromProto(
     ThunkInfo thunk_info, const ReplicaIdThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
-  ASSIGN_OR_RETURN(BufferAllocation::Slice dest,
+  ABSL_ASSIGN_OR_RETURN(BufferAllocation::Slice dest,
                    BufferAllocation::Slice::FromProto(thunk_proto.dest_buffer(),
                                                       buffer_allocations));
   return std::make_unique<ReplicaIdThunk>(std::move(thunk_info), dest);
@@ -106,7 +106,7 @@ absl::StatusOr<ThunkProto> PartitionIdThunk::ToProto() const {
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 
   auto* partition_id_thunk_proto = proto.mutable_partition_id_thunk();
-  ASSIGN_OR_RETURN(*partition_id_thunk_proto->mutable_dest_buffer(),
+  ABSL_ASSIGN_OR_RETURN(*partition_id_thunk_proto->mutable_dest_buffer(),
                    dest().ToProto());
   return proto;
 }
@@ -115,7 +115,7 @@ absl::StatusOr<ThunkProto> PartitionIdThunk::ToProto() const {
 PartitionIdThunk::FromProto(ThunkInfo thunk_info,
                             const PartitionIdThunkProto& proto,
                             absl::Span<const BufferAllocation> allocations) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       BufferAllocation::Slice dest_buffer,
       BufferAllocation::Slice::FromProto(proto.dest_buffer(), allocations));
   return std::make_unique<PartitionIdThunk>(std::move(thunk_info), dest_buffer);

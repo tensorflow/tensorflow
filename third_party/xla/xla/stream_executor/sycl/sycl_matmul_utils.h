@@ -91,7 +91,7 @@ absl::StatusOr<dnnl::memory::desc> TransposeLastTwoDims(
 inline absl::Status TransposeLastTwoDimsIf(bool pred,
                                            dnnl::memory::desc& mem_desc) {
   if (pred) {
-    ASSIGN_OR_RETURN(mem_desc, TransposeLastTwoDims(mem_desc));
+    ABSL_ASSIGN_OR_RETURN(mem_desc, TransposeLastTwoDims(mem_desc));
   }
   return absl::OkStatus();
 }

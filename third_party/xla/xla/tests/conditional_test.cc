@@ -804,7 +804,7 @@ TEST_F(ConditionalOpTest, SwappedInputsInSequentialConditionals) {
     const Literal y_arg = LiteralUtil::CreateR0<float>(b);
     const Literal expected = LiteralUtil::MakeTupleFromSlices(
         {LiteralUtil::CreateR0<float>(a), LiteralUtil::CreateR0<float>(b)});
-    ASSIGN_OR_RETURN(const Literal result,
+    ABSL_ASSIGN_OR_RETURN(const Literal result,
                      test_runner().ExecuteWithExecutable(executable.get(),
                                                          {&x_arg, &y_arg}));
     return LiteralTestUtil::Near(expected, result, kErrorSpec);

@@ -150,6 +150,9 @@ class Compiler {
 
     // If true, the compiler will exit after the layout assignment pass.
     bool early_exit_with_layouts = false;
+
+    // If true, indicates this compilation is ahead-of-time (AOT).
+    bool is_aot_compile = false;
   };
 
   virtual ~Compiler() = default;

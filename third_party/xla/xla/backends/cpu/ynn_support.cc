@@ -26,8 +26,8 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/dot_dims.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -399,10 +399,10 @@ absl::StatusOr<bool> IsDotSupportedByYnn(const HloInstruction* hlo) {
   }
 
   // Check shapes.
-  ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
+  ABSL_ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
                                                    rhs_shape, out_shape));
 
-  ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
+  ABSL_ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
                    GetDotCanonicalDims(dot_dimensions, dot_shape));
 
   if (dot_canonical_dims.m == 1 || dot_canonical_dims.n == 1) {

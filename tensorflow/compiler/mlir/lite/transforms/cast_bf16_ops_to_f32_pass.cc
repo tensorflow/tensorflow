@@ -91,7 +91,7 @@ class CastBf16OpsToF32 : public RewritePattern {
   void rewrite(Operation& op, PatternRewriter& rewriter) const {
     rewriter.modifyOpInPlace(&op, [&]() {
       // Casts inputs of the operation from BF16 to F32.
-      for (int i = 0; i < op.getNumOperands(); ++i) {
+      for (unsigned i = 0; i < op.getNumOperands(); ++i) {
         Value input = op.getOperand(i);
         if (getElementTypeOrSelf(input).isBF16()) {
           Type f32_type = CloneTypeWithNewElementType(input.getType(),

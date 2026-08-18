@@ -25,9 +25,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
@@ -164,7 +164,7 @@ absl::StatusOr<bool> SchedulerMemoryFencing::RunImpl(
         "SchedulerMemoryFencing requires a scheduled module.");
   }
   TF_RET_CHECK(slack_windows_ >= 0);
-  ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                    HloAliasAnalysis::Run(module, alias_info_));
   const HloSchedule& schedule = module->schedule();
 
@@ -248,7 +248,7 @@ absl::StatusOr<bool> SchedulerMemoryFencing::RunImpl(
       if (info.reachability->IsReachable(user, target)) {
         continue;
       }
-      RETURN_IF_ERROR(user->AddControlDependencyTo(target));
+      ABSL_RETURN_IF_ERROR(user->AddControlDependencyTo(target));
       ++edges_added;
       VLOG(2) << "Fenced buffer " << buffer.ToString() << " (" << buffer_size
               << " bytes): control edge " << user->name() << " -> "

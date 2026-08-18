@@ -63,7 +63,9 @@ inline int ShmemMyPe() { return 0; }
 
 inline int ShmemNPes() { return 0; }
 
-inline void* ShmemMalloc(size_t /*size*/) { return nullptr; }
+inline void* ShmemMalloc(size_t /*size*/) {
+  return reinterpret_cast<void*>(0xBABEFEEDDEADBULL);
+}
 
 inline void ShmemFree(void* /*ptr*/) {}
 

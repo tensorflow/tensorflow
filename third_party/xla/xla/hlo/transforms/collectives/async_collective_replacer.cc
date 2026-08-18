@@ -142,7 +142,7 @@ absl::StatusOr<bool> AsyncCollectiveReplacer::RunImpl(
     absl::flat_hash_set<HloInstruction*> removed;
     for (HloInstruction* control_dep : control_deps_to_remove) {
       if (!removed.contains(control_dep)) {
-        RETURN_IF_ERROR(computation->RemoveInstruction(control_dep));
+        ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(control_dep));
         removed.insert(control_dep);
       }
     }
@@ -155,7 +155,7 @@ absl::StatusOr<bool> AsyncCollectiveReplacer::RunImpl(
         VLOG(1) << "async done = " << done->ToString();
       }
     }
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         ConvertAsyncCollectivesToSync::ReplaceAsyncInstructionsWithSync(
             computation, async_pairs));
   }

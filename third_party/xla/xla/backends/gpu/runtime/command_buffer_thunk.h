@@ -72,7 +72,7 @@ class CommandBufferThunk : public Thunk {
 
   BufferUses buffer_uses() const override { return {}; }
 
-  absl::Status WalkNested(Walker callback) override;
+  absl::Status WalkNested(Walker pre_order, Walker post_order) override;
 
   std::string ToString(int indent) const override;
 

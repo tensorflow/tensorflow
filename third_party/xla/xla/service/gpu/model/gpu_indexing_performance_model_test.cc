@@ -76,8 +76,12 @@ class GpuIndexingPerformanceModelTest
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
   HloFusionAnalysisCache fusion_analysis_cache_{device_info_};
   GpuPerformanceModelWithIndexingAnalysis indexing_cost_model_{
-      &device_info_, &fusion_analysis_cache_, HloCostAnalysis::DefaultShapeSize,
-      &mlir_context_, use_experimental_tiling()};
+      &device_info_,
+      &fusion_analysis_cache_,
+      HloCostAnalysis::DefaultShapeSize,
+      &mlir_context_,
+      use_experimental_tiling(),
+      /*enable_same_shape_multi_output_fusion=*/false};
 
   size_t WarpSize() const { return ::xla::gpu::WarpSize(device_info_); }
 
@@ -271,9 +275,11 @@ ENTRY e {
       indexing_cost_model_.EstimateRunTimeForTriton(root, nullptr));
 
   const int64_t approx_total_bytes = 2 /*BF16*/ * (4096 + 4 * 2) * 4096;
+  const float approx_hbm_bandwidth =
+      gpu_dot_fusion_cost_model::detail::GetEffectiveHbmBandwidth(
+          approx_total_bytes, device_info_);
   const absl::Duration approx_hbm_time =
-      absl::Seconds(1.0f * approx_total_bytes /
-                    device_info_.memory_bandwidth()) +
+      absl::Seconds(1.0f * approx_total_bytes / approx_hbm_bandwidth) +
       gpu_dot_fusion_cost_model::detail::kLoopLatencyTax;
 
   // For pipelined loops, execution time is bounded by the dominant cost (memory

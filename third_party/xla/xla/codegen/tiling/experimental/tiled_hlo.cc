@@ -34,11 +34,11 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
@@ -275,7 +275,8 @@ RegionSchema GetRegionSchema(const TiledHloInstruction& tiled_hlo,
   };
   switch (opcode) {
     case HloOpcode::kDot:
-    case HloOpcode::kScaledDot: {
+    case HloOpcode::kScaledDot:
+    case HloOpcode::kRaggedDot: {
       return RegionSchema{/*region_roots=*/{iota(0, num_operands)},
                           /*operand_ids=*/{}};
     }
@@ -426,7 +427,7 @@ absl::StatusOr<TiledHloRegion> TiledHloComputation::CreateHloRegion(
       continue;
     }
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto operands_tiles,
         PropagateTileToInput(tiling_space, *hlo, tiled_hlo->tile(), 0));
 
@@ -451,7 +452,7 @@ absl::StatusOr<TiledHloRegion> TiledHloComputation::CreateHloRegion(
         region_roots.push_back(std::move(tiled_operands[id]));
       }
 
-      ASSIGN_OR_RETURN(TiledHloRegion res,
+      ABSL_ASSIGN_OR_RETURN(TiledHloRegion res,
                        CreateHloRegion(std::move(region_roots), fusion,
                                        tiling_space, rt_symbol_to_tiled_hlo));
       for (const auto& [i, id] : llvm::enumerate(region_root_ids)) {
@@ -503,7 +504,7 @@ absl::StatusOr<TiledHloRegion> TiledHloComputation::CreateHloRegion(
 
   absl::flat_hash_map<int64_t, std::pair<const TiledHloInstruction*, Interval>>
       rt_symbol_to_tiled_hlo;
-  ASSIGN_OR_RETURN(TiledHloRegion region,
+  ABSL_ASSIGN_OR_RETURN(TiledHloRegion region,
                    CreateHloRegion(std::move(tiled_roots), fusion,
                                    *tiling_space, rt_symbol_to_tiled_hlo));
 

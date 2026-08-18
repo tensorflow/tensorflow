@@ -394,10 +394,19 @@ class StridedSliceOp : public XlaOpKernel {
             }
             operand_size = xla::Min(operand_size, end_size);
           }
+          // Clamp the runtime size to zero, matching the dynamic-index
+          // branch above (line 219). Without the clamp, a bounded-dynamic
+          // input paired with static bounds that produce a degenerate
+          // interval (e.g. tf.strided_slice(dyn, [-1, 0], [0, 3])) emits
+          // set-dimension-size with a negative runtime value, which
+          // XLA:CPU codegens into a fused kernel that segfaults on launch
+          // (issue #124950).
           slice = xla::SetDimensionSize(
               slice,
-              xla::Sub(operand_size, xla::ConstantR0<int32_t>(
-                                         ctx->builder(), begin[input_index])),
+              xla::Max(xla::Sub(operand_size,
+                                xla::ConstantR0<int32_t>(ctx->builder(),
+                                                         begin[input_index])),
+                       xla::ConstantR0<int32_t>(ctx->builder(), 0)),
               i);
         }
       }

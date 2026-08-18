@@ -25,10 +25,10 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/xfeed_manager.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -109,7 +109,7 @@ absl::StatusOr<cpu::XfeedBuffer*> TransferBufferToInfeedInternal(
 
 absl::Status TransferBufferToInfeed(int device_ordinal, int64_t size,
                                     const void* source) {
-  ASSIGN_OR_RETURN(cpu::XfeedBuffer * buffer,
+  ABSL_ASSIGN_OR_RETURN(cpu::XfeedBuffer * buffer,
                    TransferBufferToInfeedInternal(size, source));
 
   cpu::XfeedManager* xfeed_manager = cpu::GetXfeedManager(device_ordinal);
@@ -153,7 +153,7 @@ absl::StatusOr<Shape> TransferBuffersFromOutfeedInternal(
   std::vector<Shape> outfed_shapes;
   outfed_shapes.reserve(buffers.size());
   for (auto& buffer : buffers) {
-    ASSIGN_OR_RETURN(Shape outfed_shape, buffer->WaitForNotification());
+    ABSL_ASSIGN_OR_RETURN(Shape outfed_shape, buffer->WaitForNotification());
     outfed_shapes.push_back(std::move(outfed_shape));
   }
   if (is_tuple) {
@@ -210,7 +210,7 @@ absl::Status TransferLiteralToInfeedOnCpu(int device_ordinal,
     const Shape& tuple_element_shape = ShapeUtil::GetSubshape(shape, {i});
     int64_t tuple_element_size =
         cpu::GetByteSizeRequirement(tuple_element_shape, sizeof(void*));
-    ASSIGN_OR_RETURN(cpu::XfeedBuffer * buffer,
+    ABSL_ASSIGN_OR_RETURN(cpu::XfeedBuffer * buffer,
                      TransferBufferToInfeedInternal(tuple_element_size,
                                                     literal.untyped_data({i})));
     buffers.push_back(buffer);
@@ -232,7 +232,7 @@ absl::Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
     absl::Span<const int64_t> dimensions(
         absl::bit_cast<const int64_t*>(literal.shape().dimensions().data()),
         literal.shape().dimensions().size());
-    ASSIGN_OR_RETURN(Shape received_shape,
+    ABSL_ASSIGN_OR_RETURN(Shape received_shape,
                      TransferArrayBufferFromOutfeed(
                          device_ordinal, literal.untyped_data(), size));
     TF_RET_CHECK(ShapeUtil::Compatible(received_shape, literal.shape()))
@@ -260,7 +260,7 @@ absl::Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
     buffer_data.push_back({literal.untyped_data({i}), size});
   }
 
-  ASSIGN_OR_RETURN(Shape received_shape, TransferTupleBuffersFromOutfeed(
+  ABSL_ASSIGN_OR_RETURN(Shape received_shape, TransferTupleBuffersFromOutfeed(
                                              device_ordinal, buffer_data));
 
   TF_RET_CHECK(ShapeUtil::Compatible(received_shape, literal.shape()))
@@ -280,7 +280,7 @@ absl::Status ReadDynamicShapesOnCpu(
     HloCostAnalysis::ShapeSizeFunction shape_size_fn) {
   TF_RET_CHECK(device_shape->is_dynamic());
   Shape original_device_shape = *device_shape;
-  RETURN_IF_ERROR(device_buffer->buffers().ForEachElementWithStatus(
+  ABSL_RETURN_IF_ERROR(device_buffer->buffers().ForEachElementWithStatus(
       [&](const ShapeIndex& index,
           const se::DeviceAddressBase& buffer) -> absl::Status {
         const Shape& buffer_shape =

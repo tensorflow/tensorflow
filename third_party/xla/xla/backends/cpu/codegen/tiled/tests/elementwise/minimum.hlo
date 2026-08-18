@@ -6,6 +6,11 @@
 // RUN:   --xtile-cpu-vector-to-llvm | FileCheck %s --check-prefix=CHECK-LLVM
 // RUN: test_correctness %s
 
+// RUN: fusion_to_xtile %s | fusion_compiler_opt \
+// RUN:   --xtile-cpu-new-xtile-to-vector --xla-simplify-arith \
+// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
+// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering=true
+
 fusion {
   p0 = f32[128,256] parameter(0)
   p1 = f32[128,256] parameter(1)
@@ -34,7 +39,22 @@ fusion {
 // CHECK:  }
 // CHECK:  xtile.return
 
-// CHECK-VECTOR: vector.transfer_write
+// CHECK-VECTOR-LABEL: func.func @wrapped_fusion_impl
+// CHECK-VECTOR:         %[[ALLOCA_0:.*]] = memref.alloca() : memref<1x4xf32>
+// CHECK-VECTOR:         %[[ALLOCA_1:.*]] = memref.alloca() : memref<1x4xf32>
+// CHECK-VECTOR:         memref.copy %{{.*}}, %[[ALLOCA_0]]
+// CHECK-VECTOR:         memref.copy %{{.*}}, %{{.*}}
+
+// NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl
+// NEW-VECTOR-SAME:    %[[ARG0:.*]]: memref<128x256xf32>, %[[ARG1:.*]]: memref<128x256xf32>, %[[ARG2:.*]]: memref<128x256xf32>
+// NEW-VECTOR:         %[[PAD:.*]] = arith.constant 0.000000e+00 : f32
+// NEW-VECTOR:         scf.for
+// NEW-VECTOR-NOT:     scf.if
+// NEW-VECTOR:         %[[R0:.*]] = vector.transfer_read %[[ARG0]][%{{.*}}, %{{.*}}], %[[PAD]] {in_bounds = [true, true]} : memref<128x256xf32>, vector<1x4xf32>
+// NEW-VECTOR:         %[[R1:.*]] = vector.transfer_read %[[ARG1]][%{{.*}}, %{{.*}}], %[[PAD]] {in_bounds = [true, true]} : memref<128x256xf32>, vector<1x4xf32>
+// NEW-VECTOR:         %[[MIN:.*]] = arith.minimumf %[[R0]], %[[R1]]
+// NEW-VECTOR:         vector.transfer_write %[[MIN]], %[[ARG2]][%{{.*}}, %{{.*}}] {in_bounds = [true, true]} : vector<1x4xf32>, memref<128x256xf32>
+
 // CHECK-LLVM: llvm.intr.memcpy
 
 ENTRY main {

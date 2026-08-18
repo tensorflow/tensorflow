@@ -21,9 +21,9 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -300,7 +300,7 @@ absl::StatusOr<HloInstruction*> MakeR1ConstantHlo(
     absl::Span<const NativeT> values) {
   Literal literal = LiteralUtil::CreateR1<NativeT>(values);
   if (literal.shape().element_type() != type) {
-    ASSIGN_OR_RETURN(literal, literal.Convert(type));
+    ABSL_ASSIGN_OR_RETURN(literal, literal.Convert(type));
   }
   return computation->AddInstruction(
       HloInstruction::CreateConstant(std::move(literal)));

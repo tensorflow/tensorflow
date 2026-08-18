@@ -46,14 +46,16 @@ class CodegenBackend {
   virtual std::string version() const = 0;
 
   // Returns all supported configs for the given HLO instruction.
+  // May be called with null stream executor in deviceless mode.
   virtual absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigs(const HloInstruction& instr) = 0;
 
   // Returns a default config for the given HLO instruction.
+  // Returns absl::UnimplementedError if no default config is available.
   virtual absl::StatusOr<std::unique_ptr<BackendConfig>> GetDefaultConfig(
       const HloInstruction& instr) {
     return absl::UnimplementedError("Not implemented.");
-  };
+  }
 
   // Wraps the HLO instruction in a module, applies the given config, and
   // compiles it.

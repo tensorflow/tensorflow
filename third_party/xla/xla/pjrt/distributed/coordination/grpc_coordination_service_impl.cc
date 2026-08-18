@@ -34,7 +34,7 @@ GrpcCoordinationServiceImpl::GrpcCoordinationServiceImpl(
 void GrpcCoordinationServiceImpl::HandleRPCsLoop() {
 #define ENQUEUE_REQUEST(method)                                               \
   do {                                                                        \
-    absl::ReaderMutexLock l(&shutdown_mu_);                                   \
+    absl::ReaderMutexLock l(shutdown_mu_);                                    \
     if (shutdown_) {                                                          \
       continue;                                                               \
     }                                                                         \
@@ -61,6 +61,7 @@ void GrpcCoordinationServiceImpl::HandleRPCsLoop() {
   ENQUEUE_REQUEST(CancelBarrier);
   ENQUEUE_REQUEST(GetAliveTasks);
   ENQUEUE_REQUEST(PollForError);
+  ENQUEUE_REQUEST(ReportErrorToService);
 #undef ENQUEUE_REQUEST
 
   void* tag;  // Matches the operation started against this cq_.

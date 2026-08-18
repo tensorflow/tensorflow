@@ -146,3 +146,14 @@ def HoistAllocaPass : Pass<"xtile-cpu-hoist-alloca", "mlir::func::FuncOp"> {
   ];
 }
 
+def VectorizeXTilePass : Pass<"xtile-cpu-vectorize-xtile", "mlir::ModuleOp"> {
+  let summary = "Vectorize arith and math ops on tensors";
+  let dependentDialects = [
+    "mlir::arith::ArithDialect",
+    "mlir::math::MathDialect",
+    "mlir::vector::VectorDialect",
+    "mlir::tensor::TensorDialect",
+    "xla::XlaDialect",
+  ];
+}
+

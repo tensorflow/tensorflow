@@ -1,0 +1,360 @@
+# proto-file: https://github.com/google-ml-infra/bap/blob/main/bap_proto/benchmark_registry.proto
+# proto-message: BenchmarkSuite
+
+benchmarks {
+  name: "gemma3_1b_flax_call"
+  description: "Gemma3 1B in Flax."
+  owner: "Andrew-Dame@"
+
+  workload {
+    action: "./user_repo/xla/tools/benchmarks/hlo_workload_executor"
+    action_inputs {
+      key: "hlo_path"
+      value: "https://storage.googleapis.com/xla-benchmarking-temp/gemma3_1b_flax_call.hlo"
+    }
+    action_inputs {
+      key: "runtime_flags"
+      value: "--num_repeats=5"
+    }
+  }
+
+  environment_configs {
+    id: "gpu_l4"
+    runner_label: "linux-x86-g2-16-l4-1gpu"
+    container_image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-cuda12.8-cudnn9.8:latest"
+    workload_action_inputs {
+      key: "hardware_category"
+      value: "GPU_L4"
+    }
+    tags: "postsubmit"
+    tags: "scheduled"
+
+    metrics {
+      name: "GPU_DEVICE_TIME"
+      unit: "ms"
+      stats {
+        stat: MEDIAN
+        comparison {
+          baseline { value: 15.0 }
+          threshold { value: 0.30 }
+          improvement_direction: LESS
+        }
+      }
+    }
+    metrics {
+      name: "GPU_DEVICE_MEMCPY_TIME"
+      unit: "ms"
+      stats {
+        stat: MEDIAN
+        comparison {
+          baseline { value: 0.3 }
+          threshold { value: 0.30 }
+          improvement_direction: LESS
+        }
+      }
+    }
+    metrics {
+      name: "PEAK_GPU_MEMORY"
+      unit: "GB"
+      stats {
+        stat: MEDIAN
+        comparison {
+          baseline { value: 1.87 }
+          threshold { value: 0.10 }
+          improvement_direction: LESS
+        }
+      }
+    }
+  }
+
+  environment_configs {
+    id: "cpu_x86"
+    runner_label: "linux-x86-n2-128"
+    container_image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest"
+    workload_action_inputs {
+      key: "hardware_category"
+      value: "CPU_X86"
+    }
+    tags: "postsubmit"
+    tags: "scheduled"
+
+    metrics {
+      name: "CPU_TIME"
+      unit: "ms"
+      stats {
+        stat: MEDIAN
+        comparison {
+          baseline { value: 10000.0 }
+          threshold { value: 0.30 }
+          improvement_direction: LESS
+        }
+      }
+    }
+    metrics {
+      name: "WALL_TIME"
+      unit: "ms"
+      stats {
+        stat: MEDIAN
+        comparison {
+          baseline { value: 3000.0 }
+          threshold { value: 0.30 }
+          improvement_direction: LESS
+        }
+      }
+    }
+  }
+}
+
+benchmarks {
+  name: "gemma2_2b_keras_jax"
+  description: "Gemma2 2B in Keras."
+  owner: "Andrew-Dame@"
+
+  workload {
+    action: "./user_repo/xla/tools/benchmarks/hlo_workload_executor"
+    action_inputs {
+      key: "hlo_path"
+      value: "https://storage.googleapis.com/xla-benchmarking-temp/gemma2_2b_keras_jax.hlo"
+    }
+    action_inputs {
+      key: "runtime_flags"
+      value: "--num_repeats=5"
+    }
+  }
+
+  environment_configs {
+    id: "gpu_l4"
+    runner_label: "linux-x86-g2-16-l4-1gpu"
+    container_image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-cuda12.8-cudnn9.8:latest"
+    workload_action_inputs {
+      key: "hardware_category"
+      value: "GPU_L4"
+    }
+    tags: "postsubmit"
+
+    metrics {
+      name: "GPU_DEVICE_TIME"
+      unit: "ms"
+      stats {
+        stat: MEDIAN
+        comparison {
+          baseline { value: 1000.0 }
+          threshold { value: 0.30 }
+          improvement_direction: LESS
+        }
+      }
+    }
+    metrics {
+      name: "GPU_DEVICE_MEMCPY_TIME"
+      unit: "ms"
+      stats {
+        stat: MEDIAN
+        comparison {
+          baseline { value: 0.05 }
+          threshold { value: 0.30 }
+          improvement_direction: LESS
+        }
+      }
+    }
+    metrics {
+      name: "PEAK_GPU_MEMORY"
+      unit: "GB"
+      stats {
+        stat: MEDIAN
+        comparison {
+          baseline { value: 10.21 }
+          threshold { value: 0.10 }
+          improvement_direction: LESS
+        }
+      }
+    }
+  }
+
+  environment_configs {
+    id: "gpu_b200"
+    runner_label: "linux-x86-a4-224-b200-1gpu"
+    container_image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-cuda12.8-cudnn9.8:latest"
+    workload_action_inputs {
+      key: "hardware_category"
+      value: "GPU_B200"
+    }
+    tags: "postsubmit"
+
+    metrics {
+      name: "GPU_DEVICE_TIME"
+      unit: "ms"
+      stats {
+        stat: MEDIAN
+        comparison {
+          baseline { value: 100.0 }
+          threshold { value: 0.30 }
+          improvement_direction: LESS
+        }
+      }
+    }
+    metrics {
+      name: "GPU_DEVICE_MEMCPY_TIME"
+      unit: "ms"
+      stats {
+        stat: MEDIAN
+        comparison {
+          baseline { value: 0.085 }
+          threshold { value: 0.30 }
+          improvement_direction: LESS
+        }
+      }
+    }
+  }
+
+  environment_configs {
+    id: "cpu_x86"
+    runner_label: "linux-x86-n2-128"
+    container_image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest"
+    workload_action_inputs {
+      key: "hardware_category"
+      value: "CPU_X86"
+    }
+    tags: "postsubmit"
+
+    metrics {
+      name: "CPU_TIME"
+      unit: "ms"
+      stats {
+        stat: MEDIAN
+        comparison {
+          baseline { value: 42000.0 }
+          threshold { value: 0.30 }
+          improvement_direction: LESS
+        }
+      }
+    }
+    metrics {
+      name: "WALL_TIME"
+      unit: "ms"
+      stats {
+        stat: MEDIAN
+        comparison {
+          baseline { value: 14000.0 }
+          threshold { value: 0.30 }
+          improvement_direction: LESS
+        }
+      }
+    }
+  }
+}
+
+benchmarks {
+  name: "gemma4_2b_bf16"
+  description: "Gemma4 2B in Keras with bf16."
+  owner: "xprof-devs@"
+
+  workload {
+    action: "./user_repo/xla/tools/benchmarks/hlo_workload_executor"
+    action_inputs {
+      key: "hlo_path"
+      value: "user_repo/xla/tools/benchmarks/hlo/hlo_gemma4_2b_bf16.hlo"
+    }
+    action_inputs {
+      key: "runtime_flags"
+      value: "--num_repeats=5"
+    }
+  }
+
+  environment_configs {
+    id: "gpu_b200"
+    runner_label: "linux-x86-a4-224-b200-1gpu"
+    container_image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-cuda12.8-cudnn9.8:latest"
+    workload_action_inputs {
+      key: "hardware_category"
+      value: "GPU_B200"
+    }
+    tags: "postsubmit"
+
+    metrics {
+      name: "GPU_DEVICE_TIME"
+      unit: "ms"
+      stats { stat: MEDIAN }
+    }
+    metrics {
+      name: "GPU_DEVICE_MEMCPY_TIME"
+      unit: "ms"
+      stats { stat: MEDIAN }
+    }
+  }
+
+  environment_configs {
+    id: "cpu_x86"
+    runner_label: "linux-x86-n2-128"
+    container_image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest"
+    workload_action_inputs {
+      key: "hardware_category"
+      value: "CPU_X86"
+    }
+    tags: "postsubmit"
+
+    metrics {
+      name: "CPU_TIME"
+      unit: "ms"
+      stats { stat: MEDIAN }
+    }
+    metrics {
+      name: "WALL_TIME"
+      unit: "ms"
+      stats { stat: MEDIAN }
+    }
+  }
+}
+
+benchmarks {
+  name: "nv_maxtext_1n1g_jit_train_step_before_optimization"
+  description: "Nvidia benchmark for Maxtext 1 node 1 gpu config for gpt3-52k model."
+  owner: "hmonishN@"
+
+  workload {
+    action: "./user_repo/xla/tools/benchmarks/hlo_workload_executor"
+    action_inputs {
+      key: "hlo_path"
+      value: "user_repo/xla/tools/benchmarks/hlo/nv_maxtext_1n1g_jit_train_step_before_optimization.hlo"
+    }
+    action_inputs {
+      key: "runtime_flags"
+      value: "--num_repeats=5 --xla_gpu_enable_latency_hiding_scheduler --xla_gpu_all_reduce_combine_threshold_bytes=1073741824 --xla_gpu_all_gather_combine_threshold_bytes=1073741824 --xla_gpu_reduce_scatter_combine_threshold_bytes=134217728 --xla_gpu_pipeline_all_gather=on --xla_gpu_pipeline_all_reduce=on --xla_gpu_enable_while_loop_double_buffering --xla_gpu_enable_all_gather_combine_by_dim=false --xla_gpu_enable_reduce_scatter_combine_by_dim=false --xla_disable_hlo_passes=rematerialization"
+    }
+  }
+
+  environment_configs {
+    id: "gpu_b200"
+    runner_label: "linux-x86-a4-224-b200-1gpu"
+    container_image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-cuda12.8-cudnn9.8:latest"
+    workload_action_inputs {
+      key: "hardware_category"
+      value: "GPU_B200"
+    }
+    tags: "postsubmit"
+
+    metrics {
+      name: "GPU_DEVICE_TIME"
+      unit: "ms"
+      stats {
+        stat: MEDIAN
+        comparison {
+          baseline { value: 302.173 }
+          threshold { value: 0.30 }
+          improvement_direction: LESS
+        }
+      }
+    }
+    metrics {
+      name: "GPU_DEVICE_MEMCPY_TIME"
+      unit: "ms"
+      stats {
+        stat: MEDIAN
+        comparison {
+          baseline { value: 142.109 }
+          threshold { value: 0.30 }
+          improvement_direction: LESS
+        }
+      }
+    }
+  }
+}

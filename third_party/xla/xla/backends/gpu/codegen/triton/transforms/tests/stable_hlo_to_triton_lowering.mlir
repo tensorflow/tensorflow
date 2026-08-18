@@ -119,16 +119,17 @@ func.func @reduce_to_scalar_followed_by_extract(%arg0: tensor<16xf32>) -> f32 {
   return %extract : f32
 }
 
-// CHECK: func @reduce_over_multiple_dimensions_falls_back_to_stablehlo(%[[ARG0:.*]]: tensor<16x8x4xf32>) -> tensor<4xf32>
-func.func @reduce_over_multiple_dimensions_falls_back_to_stablehlo(%arg0: tensor<16x8x4xf32>) -> tensor<4xf32> {
+// CHECK: func @reduce_over_multiple_dimensions(%[[ARG0:.*]]: tensor<16x8x4xf32>) -> tensor<4xf32>
+func.func @reduce_over_multiple_dimensions(%arg0: tensor<16x8x4xf32>) -> tensor<4xf32> {
   %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
-  // CHECK: %[[RES:.*]] = stablehlo.reduce(%[[ARG0]] init: %{{.*}}) across dimensions = [0, 1] : (tensor<16x8x4xf32>, tensor<f32>) -> tensor<4xf32>
+  // CHECK: %[[REDUCE1:.*]] = "tt.reduce"(%[[ARG0]]) <{axis = 1 : i32}>
+  // CHECK: %[[REDUCE0:.*]] = "tt.reduce"(%[[REDUCE1]]) <{axis = 0 : i32}>
   %1 = "stablehlo.reduce"(%arg0, %0) ({
   ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
     %add = arith.addf %arg1, %arg2 : tensor<f32>
     stablehlo.return %add : tensor<f32>
   }) {dimensions = array<i64: 0, 1>} : (tensor<16x8x4xf32>, tensor<f32>) -> tensor<4xf32>
-  // CHECK: return %[[RES]] : tensor<4xf32>
+  // CHECK: return %[[REDUCE0]] : tensor<4xf32>
   return %1 : tensor<4xf32>
 }
 
@@ -184,6 +185,17 @@ func.func @lower_dot_add_to_triton(%arg0: tensor<2x4xf32>, %arg1: tensor<4x8xf32
   %1 = arith.addf %0, %arg2 : tensor<2x8xf32>
   // CHECK: return %[[RES]] : tensor<2x8xf32>
   return %1 : tensor<2x8xf32>
+}
+
+// CHECK: func @lower_integer_dot_add_to_triton(%[[ARG0:.*]]: tensor<2x4xi32>, %[[ARG1:.*]]: tensor<4x8xi32>, %[[ARG2:.*]]: tensor<2x8xi32>) -> tensor<2x8xi32>
+func.func @lower_integer_dot_add_to_triton(%arg0: tensor<2x4xi32>, %arg1: tensor<4x8xi32>, %arg2: tensor<2x8xi32>) -> tensor<2x8xi32> {
+  // CHECK: %[[RES:.*]] = tt.dot %[[ARG0]], %[[ARG1]], %[[ARG2]] : tensor<2x4xi32> * tensor<4x8xi32> -> tensor<2x8xi32>
+  // CHECK-NOT: inputPrecision = tf32
+  // CHECK-NOT: arith.addi
+  %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT] : (tensor<2x4xi32>, tensor<4x8xi32>) -> tensor<2x8xi32>
+  %1 = arith.addi %0, %arg2 : tensor<2x8xi32>
+  // CHECK: return %[[RES]] : tensor<2x8xi32>
+  return %1 : tensor<2x8xi32>
 }
 
 // CHECK: func @lower_dot_without_add_falls_back_to_stablehlo(%[[ARG0:.*]]: tensor<2x4xf32>, %[[ARG1:.*]]: tensor<4x8xf32>, %[[ARG2:.*]]: tensor<2x8xf32>) -> tensor<2x8xf32>

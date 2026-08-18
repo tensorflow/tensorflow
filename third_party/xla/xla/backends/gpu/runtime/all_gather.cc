@@ -21,9 +21,9 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/bit.h"
 #include "llvm/Support/Alignment.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
@@ -142,12 +142,12 @@ absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
         "Collective kernels are only supported on devices with NVLink/UALink "
         "support.");
   }
-  ASSIGN_OR_RETURN(const CollectiveOpGroupMode group_mode,
+  ABSL_ASSIGN_OR_RETURN(const CollectiveOpGroupMode group_mode,
                    GetCollectiveOpGroupMode(all_gather));
   const bool is_local = IsAllReplicasLocal(
       gpu_topology.num_devices_per_process(), all_gather->replica_groups(),
       group_mode, device_assignment);
-  RETURN_IF_ERROR(IsAllGatherKernelSupported(
+  ABSL_RETURN_IF_ERROR(IsAllGatherKernelSupported(
       is_collective_kernel_enabled, device_info, num_operands, num_devices,
       num_elements, element_type, is_local, all_gather->replica_groups()));
   return AllGatherInfo{

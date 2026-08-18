@@ -142,6 +142,14 @@ void RegisterGraphToURLRenderer(
 absl::StatusOr<std::string> WrapFusionExplorer(
     const HloComputation& computation);
 
+// Wraps an already-rendered dot graph in the interactive HTML viewer page;
+// kHtml rendering is exactly WrapDotInHtml(kDot dot, GraphRenderingTitle).
+absl::StatusOr<std::string> WrapDotInHtml(absl::string_view dot,
+                                          absl::string_view title);
+
+// Returns the title RenderGraph uses for a computation's graph rendering.
+std::string GraphRenderingTitle(const HloComputation& computation);
+
 }  // namespace xla
 
 #endif  // XLA_SERVICE_HLO_GRAPH_DUMPER_H_

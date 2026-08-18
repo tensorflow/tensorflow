@@ -27,11 +27,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
@@ -226,7 +226,7 @@ static absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitLoopFusionKernel(
   emitters::LoopFusionKernelEmitter loop_fusion_emitter(
       context, fusion, std::move(fusion_spec), buffer_assignment,
       GetDefaultBufferAlignment(), work_dimensions, name, BackendKind::kCpu);
-  ASSIGN_OR_RETURN(auto mlir_kernel_definition,
+  ABSL_ASSIGN_OR_RETURN(auto mlir_kernel_definition,
                    loop_fusion_emitter.EmitKernelDefinition());
 
   mlir::OpBuilder builder(&context);
@@ -250,7 +250,7 @@ EmitConcatenateFusionKernel(MLIRContext& context,
   emitters::ConcatenateFusionKernelEmitter concatenate_fusion_emitter(
       context, fusion, std::move(fusion_spec), buffer_assignment,
       GetDefaultBufferAlignment(), work_dimensions, name, BackendKind::kCpu);
-  ASSIGN_OR_RETURN(auto mlir_kernel_definition,
+  ABSL_ASSIGN_OR_RETURN(auto mlir_kernel_definition,
                    concatenate_fusion_emitter.EmitKernelDefinition());
 
   mlir::OpBuilder builder(&context);
@@ -275,7 +275,7 @@ EmitDynamicUpdateSliceFusionKernel(MLIRContext& context,
   emitters::DynamicUpdateSliceKernelEmitter emitter(
       context, fusion, std::move(fusion_spec), buffer_assignment,
       GetDefaultBufferAlignment(), work_dimensions, name, BackendKind::kCpu);
-  ASSIGN_OR_RETURN(auto mlir_kernel_definition, emitter.EmitKernelDefinition());
+  ABSL_ASSIGN_OR_RETURN(auto mlir_kernel_definition, emitter.EmitKernelDefinition());
 
   mlir::OpBuilder builder(&context);
   mlir_kernel_definition.source().module().getOperation()->setAttr(
@@ -290,7 +290,7 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitFusionKernel(
     MLIRContext& mlir_context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, bool use_unique_c_name,
     bool enable_tiled_emitter) {
-  ASSIGN_OR_RETURN(std::string name, GetName(fusion, use_unique_c_name));
+  ABSL_ASSIGN_OR_RETURN(std::string name, GetName(fusion, use_unique_c_name));
 
   std::optional<gpu::BlockLevelParameters> block_level_parameters;
   auto gpu_config_or = fusion.backend_config<gpu::GpuBackendConfig>();
@@ -332,7 +332,7 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitFusionKernel(
     }
     auto fusion_spec = GetLoopFusionSpec(fusion);
     if (IsDynamicUpdateSliceFusion(fusion_spec)) {
-      ASSIGN_OR_RETURN(bool dus_inplace,
+      ABSL_ASSIGN_OR_RETURN(bool dus_inplace,
                        CanEmitFusedDynamicUpdateSliceInPlace(
                            fusion_spec.fusion(), buffer_assignment, &fusion));
       if (dus_inplace) {

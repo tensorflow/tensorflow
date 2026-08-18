@@ -135,7 +135,7 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Extension, next);
 // Minor changes include:
 // * Adding a new field to the XLA_FFI_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define XLA_FFI_API_MINOR 3
+#define XLA_FFI_API_MINOR 4
 
 struct XLA_FFI_Api_Version {
   size_t struct_size;
@@ -202,16 +202,17 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Error_Create_Args, errc);
 
 typedef XLA_FFI_Error* XLA_FFI_Error_Create(XLA_FFI_Error_Create_Args* args);
 
-struct XLA_FFI_Error_GetMessage_Args {
+struct XLA_FFI_Error_GetDetails_Args {
   size_t struct_size;
   XLA_FFI_InternalExtension* extension_start;
   XLA_FFI_Error* error;
-  const char* message;  // out
+  const char* message;      // out
+  XLA_FFI_Error_Code errc;  // out
 };
 
-XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Error_GetMessage_Args, message);
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Error_GetDetails_Args, errc);
 
-typedef void XLA_FFI_Error_GetMessage(XLA_FFI_Error_GetMessage_Args* args);
+typedef void XLA_FFI_Error_GetDetails(XLA_FFI_Error_GetDetails_Args* args);
 
 struct XLA_FFI_Error_Destroy_Args {
   size_t struct_size;
@@ -429,6 +430,12 @@ typedef XLA_FFI_Error* XLA_FFI_Future_SetError(
 //     on GPU backend) and argument buffers might contain uninitialized
 //     values in this case.
 //
+// (5) Record - called when FFI handler is called as a part of command buffer
+//     recording (e.g. CUDA graph create/update kernel launch on GPU backend).
+//     FFI handler should not have any side effects on the arguments as they
+//     might contain uninitialized values. Can be called multiple times to
+//     create or update the state attached to the FFI handler instance.
+//
 // XLA program (HLO module) compiled to an XLA executable that can be executed
 // on any device accessible to the process, and by extension FFI handlers are
 // not instantiated for any particular device, but for a process. FFI handlers
@@ -444,6 +451,7 @@ typedef enum {
   XLA_FFI_ExecutionStage_PREPARE = 1,
   XLA_FFI_ExecutionStage_INITIALIZE = 2,
   XLA_FFI_ExecutionStage_EXECUTE = 3,
+  XLA_FFI_ExecutionStage_RECORD = 4,
 } XLA_FFI_ExecutionStage;
 
 struct XLA_FFI_Args {
@@ -514,6 +522,7 @@ typedef struct XLA_FFI_Handler_Bundle {
   XLA_FFI_Handler* prepare;      // optional
   XLA_FFI_Handler* initialize;   // optional
   XLA_FFI_Handler* execute;      // required
+  XLA_FFI_Handler* record;       // optional
 } XLA_FFI_Handler_Bundle;
 
 enum XLA_FFI_Handler_TraitsBits {
@@ -817,7 +826,7 @@ struct XLA_FFI_Api {
   const XLA_FFI_InternalApi* internal_api;
 
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Error_Create);
-  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Error_GetMessage);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Error_GetDetails);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Error_Destroy);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Handler_Register);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Stream_Get);

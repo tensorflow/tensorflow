@@ -25,8 +25,8 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/future.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
@@ -205,7 +205,7 @@ void* PjRtCApiRawBuffer::OpaqueDeviceMemoryDataPointer() const {
 
 absl::StatusOr<PjRtRawBufferRef> PjRtCApiRawBuffer::Slice(int64_t offset,
                                                           int64_t size) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto result,
       static_cast<PjRtRawBufferInterface*>(c_buffer_)->Slice(offset, size));
   return tsl::MakeRef<PjRtCApiRawBuffer>(result.release(), client_, c_api_,
@@ -270,7 +270,7 @@ PjRtCApiBuffer_CreateRawAliasOfBuffer_Factory(PjRtBuffer* buffer) {
       return absl::UnimplementedError(
           "RawBuffer extension not implemented in this PJRT plugin.");
     }
-    ASSIGN_OR_RETURN(PJRT_RawBuffer * raw_buffer,
+    ABSL_ASSIGN_OR_RETURN(PJRT_RawBuffer * raw_buffer,
                      pjrt::PjRtCApiBuffer_CreateRawAliasOfBuffer(
                          c_api, extension, c_api_buffer->c_buffer()));
     return tsl::MakeRef<PjRtCApiRawBuffer>(

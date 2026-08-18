@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
+#include "xla/frontend_attributes.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -318,8 +319,11 @@ void HloLivenessAnalysis::RunAnalysis() {
                        &live_index_map_, &worklist, &workset);
   for (auto* computation : module_.computations()) {
     for (auto* instruction : computation->instructions()) {
-      if (instruction->HasSideEffectNoRecurse()) {
-        // Add instructions with side effects.
+      if (instruction->HasSideEffectNoRecurse() ||
+          HasDisableWhileLoopDceAttr(instruction)) {
+        // Mark live at all indices if the instruction has side effects or if
+        // dead code elimination is explicitly disabled via frontend attribute
+        // (e.g., on special while loops).
         MarkLiveAtAllIndices(instruction, &live_index_map_, &worklist,
                              &workset);
       }

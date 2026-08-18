@@ -159,6 +159,27 @@ class MathTest(test.TestCase, parameterized.TestCase):
   def testSqrt(self):
     self._testUnaryOp(np_math_ops.sqrt, np.sqrt, 'sqrt')
 
+  def testHypot(self):
+    self._testBinaryOp(np_math_ops.hypot, np.hypot, 'hypot')
+
+  def testHypotLargeFiniteNoOverflow(self):
+    # Regression for large finite float64 inputs that overflow the naive
+    # sqrt(x*x + y*y) formulation (tensorflow/tensorflow#124774).
+    x = np.array([1e200, 1e300, 1e308, 1e200, 0.0, -1e200], dtype=np.float64)
+    y = np.array([1e200, 1e300, 1e308, 1.0, 1e300, -1e200], dtype=np.float64)
+    actual = np_math_ops.hypot(x, y)
+    expected = np.hypot(x, y)
+    self.assertTrue(np.all(np.isfinite(actual)))
+    self.assertTrue(np.all(np.isfinite(expected)))
+    self.match(actual, expected, msg='hypot large finite')
+
+  def testHypotSpecialCases(self):
+    x = np.array([np.inf, -np.inf, np.nan, np.inf, 0.0, -3.0], dtype=np.float64)
+    y = np.array([np.nan, np.nan, np.inf, 5.0, 0.0, -4.0], dtype=np.float64)
+    actual = np_math_ops.hypot(x, y)
+    expected = np.hypot(x, y)
+    np.testing.assert_equal(actual.tolist(), expected.tolist())
+
   def match(self, actual, expected, msg='', check_dtype=True):
     self.assertIsInstance(actual, np_arrays.ndarray)
     if check_dtype:
@@ -447,6 +468,66 @@ class MathTest(test.TestCase, parameterized.TestCase):
     run_test(0, -5, num=10)
     run_test(0, -5, endpoint=False)
     run_test(0, -5, base=2.0)
+
+  def testLinSpaceDtype(self):
+    # An explicitly requested `dtype` must be honored, and must not be used as
+    # the type the samples are computed in: numpy computes the samples in a
+    # floating point type derived from `start` and `stop`, and only casts them
+    # to `dtype` as a final step.
+    dtypes = [
+        np.int32,
+        np.int64,
+        np.float16,
+        np.float32,
+        np.float64,
+        np.complex64,
+        np.complex128,
+    ]
+
+    def run_test(start, stop, **kwargs):
+      for dtype in dtypes:
+        self.match(
+            np_math_ops.linspace(start, stop, dtype=dtype, **kwargs),
+            np.linspace(start, stop, dtype=dtype, **kwargs),
+            msg='linspace({}, {}, dtype={})'.format(start, stop, dtype),
+        )
+
+    run_test(0, 10)
+    run_test(0, 10, num=0)
+    run_test(0, 10, num=1)
+    run_test(0, 10, num=5)
+    run_test(0, 10, num=5, endpoint=False)
+    run_test(0, -10, num=5)
+    run_test(0, -10, num=5, endpoint=False)
+    run_test(-5, 5, num=4)
+
+  def testLogSpaceDtype(self):
+    # As for `linspace`, `dtype` only determines the type of the result; the
+    # exponents are computed in a floating point type derived from `start` and
+    # `stop`.
+    dtypes = [
+        np.int32,
+        np.int64,
+        np.float16,
+        np.float32,
+        np.float64,
+        np.complex64,
+        np.complex128,
+    ]
+
+    def run_test(start, stop, **kwargs):
+      for dtype in dtypes:
+        self.match(
+            np_math_ops.logspace(start, stop, dtype=dtype, **kwargs),
+            np.logspace(start, stop, dtype=dtype, **kwargs),
+            msg='logspace({}, {}, dtype={})'.format(start, stop, dtype),
+        )
+
+    run_test(0, 3, num=4)
+    run_test(0, 3, num=4, endpoint=False)
+    run_test(0, 3, num=4, base=2.0)
+    run_test(0, -3, num=4)
+    run_test(1, 3, num=5)
 
   def testGeomSpace(self):
 

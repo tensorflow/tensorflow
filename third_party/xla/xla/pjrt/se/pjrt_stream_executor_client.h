@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_SE_PJRT_STREAM_EXECUTOR_CLIENT_H_
 #define XLA_PJRT_SE_PJRT_STREAM_EXECUTOR_CLIENT_H_
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -59,6 +60,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/raw_pjrt_client.h"
 #include "xla/pjrt/se/local_device_state.h"
 #include "xla/pjrt/se/pjrt_stream_executor_device_description.h"
 #include "xla/pjrt/se/tracked_device_buffer.h"
@@ -331,12 +333,43 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
 
   absl::StatusOr<PjRtRawBufferRef> ImportForeignMemory(
       PjRtMemorySpace* memory_space, void* device_ptr, size_t size,
-      absl::AnyInvocable<void() &&> on_delete_callback) override;
+      absl::AnyInvocable<void() &&> on_delete_callback,
+      bool is_mutable) override;
 
   absl::StatusOr<PjRtDeviceEventRef> CreateDeviceEventForStream(
       PjRtMemorySpace* memory_space, std::intptr_t stream) override;
 
+  virtual void UpdateCompileOptionsTopology(
+      const PjRtTopologyDescription& topology, CompileOptions* options) const {}
+
+  absl::StatusOr<std::shared_ptr<DeviceAssignment>> UpdateCompileOptions(
+      int process_index, const PjRtTopologyDescription& topology,
+      CompileOptions* options, bool lookup_addressable_devices);
+
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> CompileInternal(
+      const XlaComputation& computation,
+      const std::vector<const Shape*>& argument_layout_pointers,
+      LayoutCanonicalizationCallback layout_canonicalization_callback,
+      int process_index,
+      std::optional<std::shared_ptr<KeyValueStoreInterface>> key_value_store,
+      const PjRtTopologyDescription* topology,
+      const PjRtTopologyDescription& target_topology, CompileOptions options);
+
   void Stop() { async_work_runner_.reset(); }
+
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> CrossCompile(
+      const XlaComputation& computation, CompileOptions options,
+      int process_index,
+      std::optional<std::shared_ptr<KeyValueStoreInterface>> key_value_store,
+      const PjRtTopologyDescription* topology,
+      const PjRtTopologyDescription& target_topology);
+
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> CrossCompile(
+      MaybeOwningMlirModule mlir_module, CompileOptions options,
+      int process_index,
+      std::optional<std::shared_ptr<KeyValueStoreInterface>> key_value_store,
+      const PjRtTopologyDescription* topology,
+      const PjRtTopologyDescription& target_topology);
 
  private:
   se::DeviceAddressAllocator* allocator_ = nullptr;
@@ -355,12 +388,38 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
   std::unique_ptr<AsyncWorkRunner> async_work_runner_;
   se::StreamExecutor* executor_;
   std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_;
+
+  tsl::thread::ThreadPool compile_thread_pool_;
+};
+
+class PjRtStreamExecutorExecutableLoadState : public PjRtExecutableLoadState {
+ public:
+  explicit PjRtStreamExecutorExecutableLoadState(
+      PjRtStreamExecutorRawClient* raw_client)
+      : raw_client_(raw_client) {}
+
+  ~PjRtStreamExecutorExecutableLoadState() override = default;
+
+  void Delete() override { is_deleted_.store(true); }
+  bool IsDeleted() const override { return is_deleted_.load(); }
+
+  absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>> LoadRawExecutable(
+      tsl::AsyncValueRef<PjRtExecutable> executable,
+      const ExecuteOptions& options, size_t host_callback_idx,
+      xla::RunId run_id, DeviceAndAssignment device_and_assign,
+      int attempt) override;
+
+  PjRtStreamExecutorRawClient* raw_client() const { return raw_client_; }
+
+ private:
+  PjRtStreamExecutorRawClient* raw_client_;
+  std::atomic<bool> is_deleted_{false};
 };
 
 class PjRtStreamExecutorClient : public CommonPjRtClient {
  public:
   explicit PjRtStreamExecutorClient(
-      std::string platform_name, LocalClient* client,
+      std::string platform_name,
       std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
       int process_index,
       std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces,
@@ -405,28 +464,10 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 
   std::optional<PjRtPluginAttributes> plugin_attributes() const override;
 
-  // Most platforms expect device-to-device transfers to be enqueued on the
-  // source d2d stream, but some platforms use the destination d2d stream. This
-  // function specifies which one the platform expects.
-  virtual bool EnqueueD2DTransfersOnSrcStream() const { return true; }
-
-  absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
-      int num_replicas, int num_partitions) const override;
-
-  absl::StatusOr<Layout> GetDefaultLayout(
-      PrimitiveType element_type, absl::Span<const int64_t> dims) override;
-
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      const XlaComputation& computation, CompileOptions options) override;
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
-      const XlaComputation& computation, CompileOptions options) override;
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      MaybeOwningMlirModule mlir_module, CompileOptions options) override;
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
-      MaybeOwningMlirModule mlir_module, CompileOptions options) override;
-
-  virtual absl::StatusOr<std::string> SerializeExecutable(
-      const PjRtLoadedExecutable& executable) const;
+  absl::StatusOr<std::string> SerializeExecutable(
+      const PjRtLoadedExecutable& executable) const {
+    return executable.SerializeExecutable();
+  }
 
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
       absl::string_view serialized,
@@ -456,9 +497,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   absl::StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
       const override;
 
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
-      absl::Status error, const Shape& shape, PjRtMemorySpace* memory) override;
-
   // Caller is responsible to ensure that `data` has allocated enough memory
   // for `buffer_size` to do DMA mapping.
   absl::Status DmaMap(void* data, size_t buffer_size) override;
@@ -473,7 +511,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
                     .value())
                 ->local_device_state();
   }
-  LocalClient* client() const { return client_; }
+  LocalClient* client() const { return raw_client_->client(); }
   se::DeviceAddressAllocator* allocator() const {
     return raw_client_->allocator();
   }
@@ -500,14 +538,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
       int memory_space_kind_id) const override {
     return PjRtDynamicShapeKind::kSuffix;
   }
-
-  using CommonPjRtClient::GetOnDeviceBytesCount;
-  absl::StatusOr<int64_t> GetOnDeviceBytesCount(
-      int memory_space_kind, const xla::Shape& shape) const override;
-
-  absl::StatusOr<xla::Shape> MakeDefaultShapeForMemorySpace(
-      PjRtMemorySpace* memory_space, xla::Shape shape,
-      const xla::Layout* layout) const override;
 
   absl::StatusOr<PjRtRawBufferRef> AllocateRawBufferForExecute(
       PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
@@ -553,7 +583,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
         std::move(transfer_dependencies), std::move(transfer_specs));
   }
 
-
   absl::Status WaitOnStream(PjRtMemorySpace* memory_space,
                             PjRtDeviceEventRef event,
                             std::intptr_t stream) override;
@@ -595,48 +624,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 
   virtual void RecordMemoryStats() {}
 
-  // Helper function for creating PjRtStreamExecutorExecutables. Modifies
-  // `options` in-place.
-  struct ExecutableExtras {
-    std::shared_ptr<DeviceAssignment> device_assignment;
-    std::vector<PjRtLoadedExecutable::LogicalDeviceIds>
-        addressable_device_logical_ids;
-    std::vector<PjRtDevice*> addressable_devices;
-  };
-
-  // Updates `options` for compilation.
-  absl::Status UpdateCompileOptions(CompileOptions* options,
-                                    bool lookup_addressable_devices);
-
-  // Same as above, but also returns the executable extras.
-  absl::StatusOr<ExecutableExtras> UpdateCompileOptionsAndGetExecutableExtras(
-      CompileOptions* options);
-
-  // Updates `options` for compilation, and gets the executable extras if
-  // `returned_extras` is not null. It skips addressable device lookup if
-  // `lookup_addressable_devices` is false.
-  virtual absl::Status UpdateCompileOptionsInternal(
-      CompileOptions* options, ExecutableExtras* returned_extras,
-      bool lookup_addressable_devices);
-
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      const XlaComputation& computation, CompileOptions options,
-      bool lookup_addressable_devices);
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      MaybeOwningMlirModule mlir_module, CompileOptions options,
-      bool lookup_addressable_devices);
-
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> CompileInternal(
-      const XlaComputation& computation,
-      const std::vector<const Shape*>& argument_layout_pointers,
-      LayoutCanonicalizationCallback layout_canonicalization_callback,
-      CompileOptions options, bool lookup_addressable_devices);
-
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> BuildPjRtExecutable(
-      std::optional<HloModuleProto> unoptimized_hlo_module_proto,
-      std::unique_ptr<LocalExecutable> local_executables,
-      CompileOptions compile_options);
-
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
       std::unique_ptr<riegeli::Reader> reader,
       std::optional<CompileOptions> options);
@@ -646,7 +633,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;
-  LocalClient* client_;
   std::shared_ptr<const xla::PjRtTopologyDescription> topology_;
 
   std::unique_ptr<PjRtStreamExecutorRawClient> raw_client_;
@@ -666,8 +652,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   std::vector<PjRtMemorySpace*> memory_spaces_;
 
   std::shared_ptr<KeyValueStoreInterface> kv_store_;
-
-  tsl::thread::ThreadPool compile_thread_pool_;
 };
 
 struct PjRtStreamExecutorExecutionOutput {
@@ -679,11 +663,10 @@ struct PjRtStreamExecutorExecutionOutput {
 };
 
 using RunAsyncHandlerFn = absl::StatusOr<PjRtStreamExecutorExecutionOutput> (*)(
-    LocalExecutable& exec, PjRtDevice* device,
+    LocalExecutable& exec, LocalDeviceState* local_device_state,
     absl::Span<const PjRtRawBufferRef> flat_arguments,
     absl::Span<const PjRtRawBufferRef> results,
-    ExecutableRunOptions run_options, bool parameter_is_tupled_arguments,
-    absl::Span<const Shape> executable_parameter_shapes);
+    ExecutableRunOptions run_options, bool parameter_is_tupled_arguments);
 
 void RegisterRunAsyncHandler(std::type_index executable_type,
                              RunAsyncHandlerFn handler);
@@ -700,8 +683,7 @@ class PjRtStreamExecutorRawLoadedExecutable : public PjRtRawLoadedExecutable {
       std::shared_ptr<DeviceAssignment> device_assignment,
       std::shared_ptr<LocalExecutable> executable,
       PjRtStreamExecutorRawClient* raw_client,
-      bool parameter_is_tupled_arguments,
-      std::shared_ptr<std::vector<Shape>> on_device_executable_parameter_shapes)
+      bool parameter_is_tupled_arguments)
       : replica_(replica),
         partition_(partition),
         run_id_(run_id),
@@ -709,9 +691,7 @@ class PjRtStreamExecutorRawLoadedExecutable : public PjRtRawLoadedExecutable {
         device_assignment_(std::move(device_assignment)),
         executable_(std::move(executable)),
         raw_client_(raw_client),
-        parameter_is_tupled_arguments_(parameter_is_tupled_arguments),
-        on_device_executable_parameter_shapes_(
-            std::move(on_device_executable_parameter_shapes)) {}
+        parameter_is_tupled_arguments_(parameter_is_tupled_arguments) {}
   PjRtRawLoadedExecutable::RawExecuteResult Execute(
       const ExecuteOptions& options, absl::Span<const PjRtRawBufferRef> inputs,
       absl::Span<const PjRtRawBufferRef> results,
@@ -729,122 +709,17 @@ class PjRtStreamExecutorRawLoadedExecutable : public PjRtRawLoadedExecutable {
   std::shared_ptr<LocalExecutable> executable_;
   PjRtStreamExecutorRawClient* raw_client_;
   bool parameter_is_tupled_arguments_;
-  std::shared_ptr<std::vector<Shape>> on_device_executable_parameter_shapes_;
 };
 
 // Wraps one or more XLA LocalExecutables (one per partition, as specified by
 // the build options).
 class PjRtStreamExecutorLoadedExecutable : public CommonPjRtLoadedExecutable {
  public:
-  PjRtStreamExecutorLoadedExecutable(
-      std::shared_ptr<LocalExecutable> executables,
-      std::shared_ptr<PjRtExecutable> pjrt_executable,
-      bool parameter_is_tupled_arguments,
-      std::shared_ptr<DeviceAssignment> device_assignment,
-      CompileOptions compile_options,
-      std::vector<LogicalDeviceIds> addressable_device_logical_ids,
-      std::vector<PjRtDevice*> addressable_devices,
-      PjRtStreamExecutorClient* client, std::vector<Shape> parameter_shapes,
-      xla::Shape result_shape, std::vector<int> parameter_memory_space_kind_ids,
-      std::vector<int> output_memory_space_kind_ids);
+  using CommonPjRtLoadedExecutable::CommonPjRtLoadedExecutable;
 
   ~PjRtStreamExecutorLoadedExecutable() override = default;
 
-  PjRtStreamExecutorClient* client() const override { return client_; }
-
-  PjRtExecutable* GetExecutable() const override {
-    return pjrt_executable_.get();
-  }
-
-  const HloInputOutputAliasConfig& input_output_alias_config() const override {
-    return executable_->executable()->module().input_output_alias_config();
-  }
-
-  absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>> LoadRawExecutable(
-      const ExecuteOptions& options, size_t host_callback_idx,
-      xla::RunId run_id, DeviceAndAssignment device_and_assign,
-      int attempt) const override;
-
-  using PjRtLoadedExecutable::Execute;
-  absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
-      absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
-      const ExecuteOptions& options,
-      std::optional<std::vector<Future<>>>& returned_futures) const override;
-
-  using PjRtLoadedExecutable::ExecuteSharded;
-  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
-      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options, std::optional<Future<>>& returned_future,
-      bool fill_future) const override;
-
-  using PjRtLoadedExecutable::ExecutePortable;
-  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
-      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options, std::optional<Future<>>& returned_future,
-      bool fill_future) const override;
-
-  void Delete() override { executable_.reset(); }
-
-  bool IsDeleted() const override { return executable_ != nullptr; }
-
-  absl::StatusOr<std::string> SerializeExecutable() const override {
-    return client_->SerializeExecutable(*this);
-  }
-
-  const std::shared_ptr<LocalExecutable>& executable() const {
-    return executable_;
-  }
-
-  absl::StatusOr<CompileOptions> GetCompileOptions() const override {
-    return compile_options_;
-  }
-
-  void SetInputHloSnapshotBits(HloModuleProto hlo_module,
-                               DebugOptions debug_options) {
-    input_hlo_snapshot_bits_ =
-        std::make_optional<InputHloSnapshotBits>(InputHloSnapshotBits{
-            HloModuleProto(std::move(hlo_module)), std::move(debug_options)});
-  }
-
-  absl::StatusOr<std::unique_ptr<PjRtExecutableAbiVersion>> GetAbiVersion()
-      const override;
-
- protected:
-  bool parameter_is_tupled_arguments() const {
-    return parameter_is_tupled_arguments_;
-  }
-
- private:
-  friend class PjRtStreamExecutorClient;
-  friend class PjRtTpuClient;
-  friend class InternalPjRtTpuClient;
-  friend class StreamExecutorGpuClient;
-  // Initializes information about which arguments to which executables must be
-  // donated due to aliases that were specified by the computation.
-  absl::Status SetUpDonation(bool tuple_inputs);
-
-  // Create shared pointers so we can free them after the execution: with
-  // asynchronous execution, the process being executed can outlive the
-  // executable itself.
-  PjRtStreamExecutorClient* const client_;
-  // One executable per partition.
-  std::shared_ptr<LocalExecutable> executable_;
-  std::shared_ptr<PjRtExecutable> pjrt_executable_;
-  // On device shapes of the executable parameters.
-  std::shared_ptr<std::vector<Shape>> on_device_executable_parameter_shapes_;
-  CompileOptions compile_options_;
-
-  // True if the executables were compiled expecting arguments in a single
-  // tuple.
-  const bool parameter_is_tupled_arguments_;
-
-  struct InputHloSnapshotBits {
-    HloModuleProto hlo_module;
-    DebugOptions debug_options;
-  };
-
-  // The unoptimized (unsharded) HloModule. Primarily used for debugging.
-  std::optional<InputHloSnapshotBits> input_hlo_snapshot_bits_;
+  const HloInputOutputAliasConfig& input_output_alias_config() const override;
 };
 
 }  // namespace xla

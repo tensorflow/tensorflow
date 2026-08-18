@@ -24,10 +24,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -201,11 +201,11 @@ absl::Status DecomposeCollectivePermuteCycle(
       fwd_pairs.push_back(pairs[i]);
     }
   }
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       CollectiveOpGroupMode mode,
       GetCollectiveOpGroupMode(cp->channel_id().has_value(), std::nullopt));
 
-  ASSIGN_OR_RETURN(auto attrs, DecomposeFrontendAttributes(
+  ABSL_ASSIGN_OR_RETURN(auto attrs, DecomposeFrontendAttributes(
                                    cp->frontend_attributes(), cycle_type));
 
   // Backward edge.
@@ -227,7 +227,7 @@ absl::Status DecomposeCollectivePermuteCycle(
   //   recv-data = type[?] select(compare, cp1_done, cp2_done)
   // If the collective is across replicas, then `partition` is replaced by
   // `replica = u32[] replica-id()`.
-  ASSIGN_OR_RETURN(HloInstruction * partition_or_replica,
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * partition_or_replica,
                    CreatePartitionOrReplicaId(computation, mode, cp_name));
   int64_t bwd_recv_id = back_pairs.back().second;
   HloInstruction* constant = computation->AddInstruction(
@@ -248,8 +248,8 @@ absl::Status DecomposeCollectivePermuteCycle(
                                     back_cp, fwd_cp),
       absl::StrCat(cp_name, "-sel"));
 
-  RETURN_IF_ERROR(cp->ReplaceAllUsesWith(recv_data));
-  RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(cp));
+  ABSL_RETURN_IF_ERROR(cp->ReplaceAllUsesWith(recv_data));
+  ABSL_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(cp));
 
   return absl::OkStatus();
 }
@@ -275,7 +275,7 @@ absl::StatusOr<bool> CollectivePermuteCycleDecomposer::RunImpl(
           next_channel_id = hlo_query::NextChannelId(*module);
           changed = true;
         }
-        RETURN_IF_ERROR(DecomposeCollectivePermuteCycle(
+        ABSL_RETURN_IF_ERROR(DecomposeCollectivePermuteCycle(
             collective_permute, comp, module, next_channel_id++, cycle_type,
             indices_to_break_out));
       }

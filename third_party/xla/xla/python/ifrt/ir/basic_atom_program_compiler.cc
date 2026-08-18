@@ -23,11 +23,11 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
+#include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/compilation_utils.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -54,7 +56,7 @@ BasicAtomProgramCompiler::Create(Client* absl_nonnull client,
                                  absl::Span<const DeviceId> device_assignments,
                                  bool strict_memory_reservation) {
   for (const DeviceId device_id : device_assignments) {
-    RETURN_IF_ERROR(client->LookupDevice(device_id).status());
+    ABSL_RETURN_IF_ERROR(client->LookupDevice(device_id).status());
   }
   return absl::WrapUnique(new BasicAtomProgramCompiler(
       client, device_assignments, strict_memory_reservation));
@@ -68,11 +70,12 @@ BasicAtomProgramCompiler::BasicAtomProgramCompiler(
       strict_memory_reservation_(strict_memory_reservation) {}
 
 tsl::Future<LoadedExecutableRef> BasicAtomProgramCompiler::CompileXla(
-    std::unique_ptr<HloProgram> hlo_program, xla::CompileOptions options) {
+    std::unique_ptr<HloProgram> hlo_program, xla::CompileOptions options,
+    std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks) {
   // Rewrite device assignment from logical ids to IFRT device ids.
   xla::DeviceAssignment device_assignment =
       options.executable_build_options.device_assignment();
-  RETURN_IF_ERROR(device_assignment.EachStatus(
+  ABSL_RETURN_IF_ERROR(device_assignment.EachStatus(
       [&](absl::Span<const int64_t>, int64_t* id) -> absl::Status {
         if (*id < 0 || *id >= device_assignments_.size()) {
           return absl::NotFoundError(
@@ -85,7 +88,7 @@ tsl::Future<LoadedExecutableRef> BasicAtomProgramCompiler::CompileXla(
       }));
   options.executable_build_options.set_device_assignment(device_assignment);
 
-  ASSIGN_OR_RETURN(DeviceListRef devices,
+  ABSL_ASSIGN_OR_RETURN(DeviceListRef devices,
                    GetDeviceListFromXlaCompileOptions(client_, options));
 
   TF_RET_CHECK(!devices->devices().empty())
@@ -101,17 +104,18 @@ tsl::Future<LoadedExecutableRef> BasicAtomProgramCompiler::CompileXla(
         << "IFRT IR `strict_memory_reservation` option is only supported for "
            "TPU devices. Got device platform: "
         << first_device->PlatformName();
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         int64_t device_memory,
         first_device->Attributes().Get<int64_t>("device_memory_bytes_limit"));
 
-    RETURN_IF_ERROR(SetStrictMemoryReservation(hlo_program->name(),
+    ABSL_RETURN_IF_ERROR(SetStrictMemoryReservation(hlo_program->name(),
                                                device_memory, options));
   }
 
   return client_->GetDefaultCompiler()->CompileAndLoad(
       std::move(hlo_program), std::make_unique<XlaCompileOptions>(
-                                  std::move(options), std::move(devices)));
+                                  std::move(options), std::move(devices),
+                                  std::move(loaded_host_callbacks)));
 }
 
 tsl::Future<LoadedExecutableRef> BasicAtomProgramCompiler::CompileMpmdReshard(

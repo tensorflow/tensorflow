@@ -645,6 +645,55 @@ ENTRY test {
 )");
 }
 
+TEST_F(CublasLtGemmRewriteTest, VectorBiasSquareMatrixRowBroadcastNotFused) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[8,8] parameter(0)
+  y = f32[8,8] parameter(1)
+  z = f32[8] parameter(2)
+  dot_a = f32[8,8] dot(x, y), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+  z_bcast = f32[8,8] broadcast(z), dimensions={0}
+  ROOT out = f32[8,8] add(dot_a, z_bcast)
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[8,8], {{.*}}: f32[8,8], {{.*}}: f32[8]) -> f32[8,8] {
+; CHECK:         [[MATMUL:%[^ ]+]] = (f32[8,8]{1,0}, s8[{{[0-9]+}}]{0}) custom-call
+; CHECK-NOT:     "epilogue":"BIAS"
+; CHECK:         ROOT [[OUT:%[^ ]+]] = f32[8,8]{1,0} fusion
+)");
+}
+
+TEST_F(CublasLtGemmRewriteTest, VectorBiasSquareMatrixColumnBroadcastFused) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[8,8] parameter(0)
+  y = f32[8,8] parameter(1)
+  z = f32[8] parameter(2)
+  dot_a = f32[8,8] dot(x, y), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+  z_bcast = f32[8,8] broadcast(z), dimensions={1}
+  ROOT out = f32[8,8] add(dot_a, z_bcast)
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[8,8], {{.*}}: f32[8,8], {{.*}}: f32[8]) -> f32[8,8] {
+; CHECK:         [[OUT:%[^ ]+]] = (f32[8,8]{1,0}, s8[{{[0-9]+}}]{0}) custom-call
+; CHECK:           backend_config={
+; CHECK-DAG:         "epilogue":"BIAS"
+; CHECK:           }
+)");
+}
+
 TEST_F(CublasLtGemmRewriteTest, VectorBiasWithAlphaScale) {
   const char* hlo_text = R"(
 HloModule test

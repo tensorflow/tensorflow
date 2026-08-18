@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/FloatingPointMode.h"
@@ -279,7 +279,7 @@ absl::StatusOr<llvm::Function*> EmitFxxToF8E(llvm::Module* module,
   if (!from.is_scalar() && !from.is_vector()) {
     return absl::InvalidArgumentError("from_type must be a scalar or vector.");
   }
-  RETURN_IF_ERROR(Type::VerifySameWidth(from, to));
+  ABSL_RETURN_IF_ERROR(Type::VerifySameWidth(from, to));
 
   llvm::Function* func = CreateFunction(module, from, to);
   llvm::BasicBlock* entry_bb = llvm::BasicBlock::Create(context, "entry", func);
@@ -349,7 +349,7 @@ absl::StatusOr<llvm::Function*> EmitFxxToF8E(llvm::Module* module,
   // we can delegate all logic to EmitReducePrecisionIR and do a simple shift.
   if (fx_bias == f8_bias && fx_exp_bits == f8_exp_bits) {
     LOG(INFO) << "Using fast path for " << from.name() << " -> " << to.name();
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         llvm::Value * reduced_precision,
         llvm_ir::EmitReducePrecisionIR(
             /*src_ty=*/fx_type, from_value,
@@ -512,7 +512,7 @@ absl::StatusOr<llvm::Function*> EmitFxxToF8E(llvm::Module* module,
 
 absl::StatusOr<llvm::Function*> FpTrunc::CreateDefinition(llvm::Module* module,
                                                           Type from, Type to) {
-  RETURN_IF_ERROR(Type::VerifySameWidth(from, to));
+  ABSL_RETURN_IF_ERROR(Type::VerifySameWidth(from, to));
 
   if (primitive_util::IsF8Type(to.element_type()) &&
       (from.element_type() == F16 || from.element_type() == F32 ||

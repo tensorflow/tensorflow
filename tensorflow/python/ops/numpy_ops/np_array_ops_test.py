@@ -29,8 +29,10 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
@@ -618,6 +620,66 @@ class ArrayMethodsTest(test.TestCase):
     run_test([False, True], [[1, 2], [3, 4]], axis=0)
     run_test([False, True], [[1, 2], [3, 4]], axis=-1)
     run_test([False, True], [[1, 2], [3, 4]], axis=-2)
+    # Condition shorter than the compressed axis: `np.compress` ignores the
+    # trailing entries of `a`. Exercises the sliced (tightened-bound) path.
+    run_test([True, False, True], [1, 2, 3, 4, 5])
+    run_test([True], [1, 2, 3])
+    run_test([True, False], [[1, 2, 3], [4, 5, 6]], axis=1)
+    run_test([True], [[1, 2], [3, 4], [5, 6]], axis=0)
+
+  def testCompressJitCompile(self):
+    # Regression test for #122055: `compress` produced a dynamic size bounded by
+    # `a.shape[axis]` rather than `len(condition)`, so feeding its result into an
+    # op requiring a smaller static extent failed to compile under XLA even
+    # though eager execution succeeded. The condition is derived from the input
+    # so its selected count is data-dependent (not constant-folded away).
+    if not test_util.is_xla_enabled():
+      self.skipTest('XLA JIT compiler is not enabled in this test environment.')
+
+    def f(x):
+      condition = x[:3] > 0.0  # data-dependent, static length 3
+      compressed = np_array_ops.compress(
+          condition, x
+      )  # bounded by len 3, not 5
+      return array_ops.broadcast_to(compressed, [3])
+
+    x = np_array_ops.array([10.0, 20.0, 30.0, 40.0, 50.0])
+    expected = f(x)
+    got = def_function.function(f, jit_compile=True)(x)
+    self.assertAllEqual(got, expected)
+
+  def testCompressDynamicShape(self):
+    # #122563: under `@tf.function` with dynamic (`None`) dimensions,
+    # `condition.shape[0]` / `a.shape[axis]` are `None` and cannot be compared
+    # in Python. Tracing with an unknown-length signature must succeed (no
+    # `None` comparison error) and, from a single trace, match `np.compress`
+    # across equal, shorter, and longer condition lengths.
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(shape=[None], dtype=dtypes.bool),
+            tensor_spec.TensorSpec(shape=[None], dtype=dtypes.float32),
+        ]
+    )
+    def f(condition, a):
+      return np_array_ops.compress(condition, a)
+
+    a = np.array([1.0, 2.0, 3.0, 4.0], np.float32)
+    # Equal length.
+    self.assertAllEqual(
+        f(np.array([True, False, True, False]), a),
+        np.compress([True, False, True, False], a),
+    )
+    # Condition shorter than `a`: trailing entries of `a` are dropped.
+    self.assertAllEqual(
+        f(np.array([True, False]), a), np.compress([True, False], a)
+    )
+    # Condition longer than `a` (extra entry is False, so still valid in numpy):
+    # the old code hit `boolean_mask`'s "Dimensions must be equal" error here.
+    a3 = np.array([1.0, 2.0, 3.0], np.float32)
+    self.assertAllEqual(
+        f(np.array([True, False, True, False]), a3),
+        np.compress([True, False, True, False], a3),
+    )
 
   def testCopy(self):
 
@@ -1109,6 +1171,43 @@ class ArrayMethodsTest(test.TestCase):
     out = np_array_ops.take_along_axis(x, ind, axis=1)
     self.assertAllEqual(out, out_expected)
 
+  def testTakeAlongAxisJitCompile(self):
+    # Regression test for GitHub issue 62391: the axis-swapping branch was
+    # emitted as a real conditional whose branches have different shapes, so
+    # the result shape XLA computed disagreed with the shape set on the
+    # result and a following op saw the wrong dimension.
+    x = constant_op.constant(
+        np.random.default_rng(1).standard_normal((5, 3, 2)), dtypes.float32
+    )
+    ind = constant_op.constant([[[-1]]], dtype=dtypes.int32)
+
+    def f(x, ind):
+      taken = np_array_ops.take_along_axis(x, ind, axis=-2)
+      return array_ops.squeeze(taken, axis=-2)
+
+    expected = f(x, ind)
+    self.assertAllEqual((5, 2), expected.shape)
+    actual = def_function.function(f, jit_compile=True)(x, ind)
+    self.assertAllEqual((5, 2), actual.shape)
+    self.assertAllClose(expected, actual)
+
+  def testTakeAlongAxisUnknownRank(self):
+    # The tensor predicate is still used when the rank is not known
+    # statically.
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(None, dtypes.float32),
+            tensor_spec.TensorSpec(None, dtypes.int32),
+        ]
+    )
+    def f(x, ind):
+      return np_array_ops.take_along_axis(x, ind, axis=1)
+
+    rng = np.random.default_rng(2)
+    x = rng.standard_normal((4, 6)).astype(np.float32)
+    ind = rng.integers(0, 6, (4, 3)).astype(np.int32)
+    self.assertAllClose(np.take_along_axis(x, ind, axis=1), f(x, ind))
+
   def testWhere(self):
     self.assertAllEqual([[1.0, 1.0], [1.0, 1.0]],
                         np_array_ops.where([True], [1.0, 1.0],
@@ -1195,6 +1294,31 @@ class ArrayMethodsTest(test.TestCase):
     _test(a, tuple(range(6)), tuple(range(6)))
     _test(a, tuple(range(6)), tuple(reversed(range(6))))
     _test(a, (), ())
+
+  def testFlip(self):
+    np.random.seed(0)
+    random_seed.set_seed(0)
+
+    def _test(*args, **kwargs):
+      expected = np.flip(*args, **kwargs)
+      raw_ans = np_array_ops.flip(*args, **kwargs)
+
+      self.assertAllEqual(expected, raw_ans)
+
+    a = np.random.rand(2, 3, 4)
+
+    # No axis reverses every dimension.
+    _test(a)
+    # A single axis, including negative values.
+    _test(a, axis=0)
+    _test(a, axis=2)
+    _test(a, axis=-1)
+    # A tuple, list or range of axes, including negative values.
+    _test(a, axis=(0, 1))
+    _test(a, axis=(-1, -3))
+    _test(a, axis=[0, 2])
+    _test(a, axis=(0, 1, 2))
+    _test(a, axis=range(3))
 
   def testNdim(self):
     self.assertAllEqual(0, np_array_ops.ndim(0.5))

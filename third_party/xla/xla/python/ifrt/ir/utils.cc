@@ -21,9 +21,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -52,7 +52,7 @@ absl::StatusOr<DeviceListRef> LookUpDevices(Client* client,
   std::vector<Device*> devices;
   devices.reserve(ids.size());
   for (DeviceId id : ids) {
-    ASSIGN_OR_RETURN(devices.emplace_back(), client->LookupDevice(id));
+    ABSL_ASSIGN_OR_RETURN(devices.emplace_back(), client->LookupDevice(id));
   }
   return client->MakeDeviceList(devices);
 }
@@ -63,17 +63,17 @@ absl::StatusOr<std::unique_ptr<HloProgram>> XlaComputationToHloProgram(
     absl::Span<const MemoryKind> arg_memory_kinds,
     absl::Span<const MemoryKind> result_memory_kinds) {
   const xla::HloModuleProto& hlo_module_proto = xla_computation.proto();
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto host_program_shape,
       xla::ProgramShape::FromProto(hlo_module_proto.host_program_shape()));
   const xla::HloModuleConfig hlo_module_config(host_program_shape,
                                                /*ignore_layouts=*/false);
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       const auto hlo_module,
       xla::HloModule::CreateFromProto(hlo_module_proto, hlo_module_config));
 
   auto mlir_context = std::make_unique<mlir::MLIRContext>();
-  ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+  ABSL_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                    xla::ConvertHloToStablehlo(*mlir_context, hlo_module.get()));
   auto program = std::make_unique<HloProgram>(std::move(mlir_context),
                                               std::move(mlir_module));

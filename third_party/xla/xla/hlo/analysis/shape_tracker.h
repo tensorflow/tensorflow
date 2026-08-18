@@ -41,10 +41,10 @@ class HloInstruction;
 //
 // Example usage:
 //   ShapeTracker tracker(initial_shape);
-//   RETURN_IF_ERROR(tracker.AppendReshape(new_dims));
-//   RETURN_IF_ERROR(tracker.AppendTranspose(permutation));
+//   ABSL_RETURN_IF_ERROR(tracker.AppendReshape(new_dims));
+//   ABSL_RETURN_IF_ERROR(tracker.AppendTranspose(permutation));
 //   ...
-//   ASSIGN_OR_RETURN(HloInstruction* chain,
+//   ABSL_ASSIGN_OR_RETURN(HloInstruction* chain,
 //                       tracker.ToInstructionChain(base_inst));
 //
 // This class works correctly when there are degenerate dimensions (size 1), but
@@ -141,6 +141,11 @@ class ShapeTracker {
   // sorted by index.
   std::optional<std::vector<int64_t>> MapInputDimensionsToOutputUnordered(
       absl::Span<const int64_t> input_dims) const;
+
+  // Returns true if the specified input dimensions map to a single contiguous
+  // stride in the output shape (i.e. they are not swapped, and there are no
+  // other non-degenerate dimensions between them in the output layout).
+  bool MapsToOneStride(absl::Span<const int64_t> input_dims) const;
 
   // Zips multiple ShapeTrackers into a single one.
   // For example, suppose we have two trackers:

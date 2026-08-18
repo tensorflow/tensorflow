@@ -75,6 +75,27 @@
     #app_container.collapsed #frames_list {
       display: none;
     }
+    #search-container {
+      padding: 10px 15px;
+      border-bottom: 1px solid #e0e0e0;
+      background-color: #f7f7f7;
+    }
+    #search-box {
+      width: 100%;
+      padding: 6px 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.15s ease-in-out;
+    }
+    #search-box:focus {
+      border-color: #007acc;
+      box-shadow: 0 0 0 2px rgba(0,122,204,0.2);
+    }
+    #app_container.collapsed #search-container {
+      display: none;
+    }
     #frames_list {
       list-style: none;
       padding: 0;
@@ -117,6 +138,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      min-height: 0;
     }
     #rendered svg {
       height: 100% !important;
@@ -178,6 +200,9 @@
           <span id="collapsed_frame_desc"></span>
           <button id="toggle_sidebar" title="Collapse Sidebar">▼</button>
         </div>
+        <div id="search-container">
+          <input type="text" id="search-box" placeholder="Filter frames..." autocomplete="off" disabled>
+        </div>
         <ul id="frames_list"></ul>
       </div>
       <div id="rendered">
@@ -195,16 +220,17 @@
   const cssregex = new RegExp('stylesheet=<([^]*)\n>\n', 'gm');
   const hpccWasm = window["@hpcc-js/wasm"];
   window.currentPanZoom = null;
+  let filteredIndices = [];
 
   const getIdFromHash = () => {
     let hash = window.location.hash;
     if (hash.indexOf('frame') == -1) {
       return 0;
     }
-    return parseInt(window.location.hash.substring('#frame'.length, window.location.hash.length));
+    return Number(window.location.hash.substring('#frame'.length, window.location.hash.length));
   }
 
-  window.frames = [];
+  window.compilationFrames = [];
   window.graphs = {};
   const pendingGraphRequests = new Map();
   const getGraph = (graphId) => {
@@ -245,7 +271,7 @@
   };
 
   const renderCurrentFrame = () => {
-    if (window.frames.length === 0) return;
+    if (window.compilationFrames.length === 0) return;
 
     const frames_list = document.getElementById('frames_list');
     const currId = getIdFromHash();
@@ -253,33 +279,32 @@
     for (let selected of frames_list.getElementsByClassName('selected')) {
         selected.classList.remove('selected');
     }
-    if (frames_list.children.length > currId) {
-      const items = frames_list.getElementsByTagName('li');
-      for (let item of items) {
-        const link = item.getElementsByTagName('a')[0];
-        if (link && link.getAttribute('href') === `#frame${currId}`) {
-          item.classList.add('selected');
-          item.scrollIntoView({ block: 'nearest' });
-          break;
-        }
-      }
+    const activeLink = frames_list.querySelector(`a[href="#frame${currId}"]`);
+    if (activeLink) {
+      const item = activeLink.parentElement;
+      item.classList.add('selected');
+      item.scrollIntoView({ block: 'nearest' });
     }
 
-    const frame = window.frames[currId];
-    if (!frame) return;
+    const frame = window.compilationFrames[currId];
+    if (!frame) {
+      document.getElementById('svg_container').innerHTML = `<center>Frame ${currId} not found</center>`;
+      return;
+    }
     const graphId = frame.graph_id;
 
-    const setupInteractiveFeatures = (cssData) => {
+    const setupInteractiveFeatures = () => {
       const toHighlight = frame.to_highlight.length ?
         document.querySelector(`${frame.to_highlight}`) : null;
       if (toHighlight) {
         toHighlight.style.setProperty('fill', 'red');
       }
       // Change cursor.
-      let text_nodes = document.getElementsByTagName("text");
-      for (var el of text_nodes) {
+      const text_nodes = document.getElementsByTagName("text");
+      for (const el of text_nodes) {
         if (title_to_id.has(el.innerHTML)) {
-          el.style.cursor = "pointer";
+          const interactiveEl = el.closest('.node, a') || el;
+          interactiveEl.style.cursor = "pointer";
         }
       }
     };
@@ -287,7 +312,7 @@
     if (renderCache[graphId]) {
       const cached = renderCache[graphId];
       updateSvgAndPanZoom(cached.svg, cached.cssData);
-      setupInteractiveFeatures(cached.cssData);
+      setupInteractiveFeatures();
       updateCollapsedDesc(frame);
       document.getElementById('performance_note').textContent = "Rendered from cache";
       return;
@@ -314,7 +339,7 @@
         renderCache[graphId] = { svg, cssData };
         if (getIdFromHash() !== currId) return;
         updateSvgAndPanZoom(svg, cssData);
-        setupInteractiveFeatures(cssData);
+        setupInteractiveFeatures();
         document.getElementById('performance_note').textContent =
           `Rendering took ${(performance.now() - renderStart).toFixed(2)}ms`;
       });
@@ -335,24 +360,40 @@
   };
 
   const update = (delta) => {
-    let currId = getIdFromHash();
-    currId = (currId + delta + frames.length) % frames.length;
-    window.location.hash = `#frame${currId}`
+    if (filteredIndices.length === 0) return;
+    const currId = getIdFromHash();
+    let filteredIdx = filteredIndices.indexOf(currId);
+    if (filteredIdx === -1) {
+      filteredIdx = delta > 0 ? 0 : filteredIndices.length - 1;
+    } else {
+      filteredIdx = (filteredIdx + delta + filteredIndices.length) % filteredIndices.length;
+    }
+    const nextOriginalIndex = filteredIndices[filteredIdx];
+    window.location.hash = `#frame${nextOriginalIndex}`;
   };
 
   const renderFrameList = () => {
     const currId = getIdFromHash();
     const frames_list = document.getElementById('frames_list');
-    frames_list.innerHTML = ''; // Clear if re-rendering
-    for (let i = 0; i < window.frames.length; i++) {
-      const f = window.frames[i];
+    const fragment = document.createDocumentFragment();
+    for (let i = 0; i < filteredIndices.length; i++) {
+      const originalIndex = filteredIndices[i];
+      const f = window.compilationFrames[originalIndex];
       let frameDescr = f.label || "Unnamed state";
       const rendered = document.createElement("li");
-      rendered.innerHTML = `<a href="#frame${i}">${frameDescr}</a>`;
-      if (i == currId) {
+      const link = document.createElement("a");
+      link.href = `#frame${originalIndex}`;
+      link.textContent = frameDescr;
+      rendered.appendChild(link);
+      if (originalIndex === currId) {
         rendered.classList.add('selected');
       }
-      frames_list.appendChild(rendered);
+      fragment.appendChild(rendered);
+    }
+    frames_list.replaceChildren(fragment);
+    const selected = frames_list.querySelector('.selected');
+    if (selected) {
+      selected.scrollIntoView({ block: 'nearest' });
     }
   };
 
@@ -364,9 +405,15 @@
     if (event.defaultPrevented) {
       return;
     }
-    if (event.key == "j") {
+    if (event.ctrlKey || event.altKey || event.metaKey) {
+      return;
+    }
+    if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
+      return;
+    }
+    if (event.key === "j") {
       update(1);
-    } else if (event.key == "k") {
+    } else if (event.key === "k") {
       update(-1);
     } else {
       return;
@@ -389,18 +436,20 @@
           sidebarTitle.title = data.title;
         }
 
-        window.frames = data.frames;
+        window.compilationFrames = data.frames || [];
         window.graphs = {};
+        filteredIndices = [...window.compilationFrames.keys()];
 
         window.title_to_id = new Map();
-        for (let i=0; i < window.frames.length; i++) {
-           title_to_id.set(window.frames[i].label, i);
-         }
+        for (let i = 0; i < window.compilationFrames.length; i++) {
+          title_to_id.set(window.compilationFrames[i].label, i);
+        }
 
         renderFrameList();
         renderCurrentFrame();
 
         document.getElementById('performance_note').textContent = "Metadata loaded";
+        document.getElementById('search-box').disabled = false;
       })
       .catch(err => {
         document.getElementById('performance_note').textContent = `Error: ${err.message}`;
@@ -427,8 +476,77 @@
       });
     });
 
+    // Setup search
+    const searchBox = document.getElementById('search-box');
+    let searchTimeout = null;
+    const applyFilter = (query) => {
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+        searchTimeout = null;
+      }
+      const filterStart = performance.now();
+      query = (query || "").trim().toLowerCase();
+      if (query === "") {
+        filteredIndices = [...window.compilationFrames.keys()];
+        renderFrameList();
+        document.getElementById('performance_note').textContent = "Metadata loaded";
+        return;
+      }
+      filteredIndices = [];
+      for (let i = 0; i < window.compilationFrames.length; i++) {
+        const label = (window.compilationFrames[i].label || "").toLowerCase();
+        if (label.indexOf(query) !== -1) {
+          filteredIndices.push(i);
+        }
+      }
+      renderFrameList();
+      const filterDuration = performance.now() - filterStart;
+      document.getElementById('performance_note').textContent =
+          `Matched ${filteredIndices.length} frames in ${filterDuration.toFixed(2)}ms`;
+    };
+    // 1. Debounced filtering on typing
+    searchBox.addEventListener('input', () => {
+      document.getElementById('performance_note').textContent = 'Filtering...';
+      if (searchTimeout) clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => applyFilter(searchBox.value), 200);
+    });
+    // 2. Immediate action on Enter or Escape
+    searchBox.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        searchBox.value = '';
+        applyFilter('');
+        searchBox.blur();
+        event.preventDefault();
+      } else if (event.key === 'Enter') {
+        // Flush filter immediately in case debounce is still pending
+        applyFilter(searchBox.value);
+        searchBox.blur();
+        // If the current frame isn't in the matched results, select the first match
+        if (filteredIndices.length > 0 && !filteredIndices.includes(getIdFromHash())) {
+          window.location.hash = `#frame${filteredIndices[0]}`;
+        }
+        event.preventDefault();
+      }
+    });
+
     // Navigate to next elements on click.
     document.addEventListener("click", (event) => {
+      // Ignore clicks outside the SVG container (e.g. sidebar items, search box, buttons).
+      if (!event.target.closest('#rendered')) {
+        return;
+      }
+      const node = event.target.closest('.node, a');
+      if (node) {
+        const textEl = node.querySelector('text');
+        if (textEl) {
+          const txt = textEl.textContent;
+          if (title_to_id.has(txt)) {
+            const id = title_to_id.get(txt);
+            window.location.hash = `#frame${id}`;
+            return;
+          }
+        }
+      }
       let txt = event.target.innerHTML;
       if (title_to_id.has(txt)) {
         let id = title_to_id.get(txt);

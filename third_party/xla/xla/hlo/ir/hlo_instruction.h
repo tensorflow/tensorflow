@@ -45,10 +45,10 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
@@ -449,12 +449,18 @@ class HloInstruction {
       HloComputation* async_computation,
       absl::string_view async_execution_thread = kMainExecutionThread);
   static std::unique_ptr<HloInstruction> CreateAsyncUpdate(
-      const Shape& shape, HloInstruction* operand);
+      const Shape& shape, HloInstruction* operand,
+      std::optional<HloOpcode> async_wrapped_opcode = std::nullopt,
+      HloComputation* async_computation = nullptr);
   // Creates a variadic async-update op.
   static std::unique_ptr<HloInstruction> CreateAsyncUpdate(
-      const Shape& shape, absl::Span<HloInstruction* const> operands);
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      std::optional<HloOpcode> async_wrapped_opcode = std::nullopt,
+      HloComputation* async_computation = nullptr);
   static std::unique_ptr<HloInstruction> CreateAsyncDone(
-      const Shape& shape, HloInstruction* operand);
+      const Shape& shape, HloInstruction* operand,
+      std::optional<HloOpcode> async_wrapped_opcode = std::nullopt,
+      HloComputation* async_computation = nullptr);
 
   // Creates a copy-start op, indicating whether this is a cross-program
   // prefetch or not.
@@ -2086,7 +2092,7 @@ class HloInstruction {
   template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
   absl::StatusOr<ConfigProto> backend_config() const {
     ConfigProto proto;
-    RETURN_IF_ERROR(backend_config_->GetProto(&proto));
+    ABSL_RETURN_IF_ERROR(backend_config_->GetProto(&proto));
     return proto;
   }
 
@@ -2513,6 +2519,13 @@ class HloInstruction {
   // Delagates to HloAsyncInstruction::async_chain_start().
   HloInstruction* async_chain_start() const;
 
+  // Traces backward from an instruction to find the matching async producer.
+  static HloInstruction* FindAsyncProducer(HloInstruction* instr);
+  static const HloInstruction* FindAsyncProducer(const HloInstruction* instr);
+
+  // Delagates to HloAsyncInstruction::async_chain_next().
+  HloInstruction* async_chain_next() const;
+
   // Delagates to HloAsyncInstruction::async_done().
   HloInstruction* async_chain_done() const;
 
@@ -2581,7 +2594,7 @@ class HloInstruction {
 
   // TODO(phui): reimplement this method
   void DetachFromOperands() {
-    for (HloInstruction* operand : operands_) {
+    for (HloInstruction* operand : unique_operands()) {
       operand->RemoveUser(this);
     }
     RemoveAllOperands();

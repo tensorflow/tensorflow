@@ -53,7 +53,7 @@ do_external_licenses_check(){
 @pybind11_abseil//pybind11_abseil
 @org_tensorflow//
 @com_github_googlecloudplatform_google_cloud_cpp//google
-@com_github_grpc_grpc//src/compiler
+@grpc//src/compiler
 @com_google_protobuf//upb_generator
 @llvm-project//third-party/siphash
 @platforms//os

@@ -37,8 +37,11 @@ class HloTestBase : public HloRunnerAgnosticTestBase {
   // automatically finds a PjRt backend for the test backend.
   explicit HloTestBase(HloTestBaseOptions options = {});
 
+ protected:
+  // Needed by aot_compatibility tests.
+  HloTestBase(std::unique_ptr<PjRtClient> client, HloTestBaseOptions options);
+
  private:
-  HloTestBase(PjRtClient* client, HloTestBaseOptions options);
   HloTestBase(DeviceShapeRepresentationFn device_shape_representation_fn,
               DeviceShapeSizeFn device_shape_size_fn,
               std::unique_ptr<PjRtClient> client, HloTestBaseOptions options);

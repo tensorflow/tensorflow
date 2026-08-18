@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_value.h"
@@ -865,6 +866,32 @@ ENTRY %main {
       ├── constant{1} (30.8%, total: 16 bytes, current: 16 bytes, remaining: 20 bytes)
       ├── paramA (30.8%, total: 16 bytes, current: 16 bytes, remaining: 4 bytes)
       └── constant{0} (7.7%, total: 4 bytes, current: 4 bytes, remaining: 0 bytes)
+)";
+  EXPECT_EQ(hlo_live_range_->ToString(), expected_string);
+}
+
+TEST_F(HloLiveRangeTest, ToStringComputationWithUnboundedDynamicShape) {
+  std::string hlo_string = R"hlo(
+HloModule Module, is_scheduled=true
+
+ENTRY %main {
+  %paramA = f32[?] parameter(0)
+  ROOT %add = f32[?] add(%paramA, %paramA)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnUnverifiedModule(hlo_string));
+  const HloSchedule& schedule = module_->schedule();
+  Analyze(schedule);
+
+  std::string expected_string = R"(HloLiveRange (max 2):
+  InstructionSequence:
+    0:paramA
+    1:add
+  BufferLiveRange:
+    paramA{}:0-2
+    add{}:1-2
+  Peak memory could not be determined due to unbounded dynamic shape.
 )";
   EXPECT_EQ(hlo_live_range_->ToString(), expected_string);
 }

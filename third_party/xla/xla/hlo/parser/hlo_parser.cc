@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "absl/strings/strip.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
-#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/descriptor.h"
 #include "xla/array.h"
 #include "xla/comparison_util.h"
@@ -819,15 +819,24 @@ absl::Status HloParserImpl::Run(HloModule* module) {
     }
   }
 
-  // There should be a 1:1 correspondence between async-start ops and
-  // async wrapped computations. Verify that each async computation has exactly
-  // one caller.
+  // Verify that each async computation is only called by async-start ops.
   for (HloComputation* computation : module->computations()) {
-    if (computation->IsAsyncComputation() &&
-        !computation->GetUniqueCaller(HloOpcode::kAsyncStart)) {
-      return InvalidArgument(
-          "Computation %s is called by more than one async op.",
-          computation->name());
+    if (computation->IsAsyncComputation()) {
+      auto callers = computation->caller_instructions();
+      for (auto* caller : callers) {
+        if (caller->opcode() != HloOpcode::kAsyncStart &&
+            caller->opcode() != HloOpcode::kAsyncUpdate &&
+            caller->opcode() != HloOpcode::kAsyncDone) {
+          return InvalidArgument(
+              "Async computation %s is called by non-async instruction "
+              "%s.",
+              computation->name(), caller->name());
+        }
+      }
+      if (callers.empty()) {
+        return InvalidArgument("Async computation %s has no callers.",
+                               computation->name());
+      }
     }
   }
 
@@ -2172,24 +2181,17 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           return nullptr;
         }
       }
-      // async-{update,done} expect their one singular operand to be the
-      // previous async op.
+      // async-{update,done} expect their one singular operand.
       if (opcode == HloOpcode::kAsyncUpdate ||
           opcode == HloOpcode::kAsyncDone) {
         if (operands.empty()) {
           TokenError("No operand found for AsyncUpdate and AsyncDone");
           return nullptr;
         }
-        if (!operands[0]->IsAsynchronous()) {
+        if (HloAsyncInstruction::ClassOf(operands[0]) &&
+            operands[0]->opcode() == HloOpcode::kAsyncDone) {
           TokenError(
-              "AsyncUpdate and AsyncDone expect an asynchronous "
-              "operation as their first operand.");
-          return nullptr;
-        }
-        if (operands[0]->opcode() == HloOpcode::kAsyncDone) {
-          TokenError(
-              "AsyncDone cannot be the first operand of an AsyncUpdate "
-              "or AsyncDone.");
+              "AsyncUpdate and AsyncDone cannot have AsyncDone as operand.");
           return nullptr;
         }
       }
@@ -2200,7 +2202,8 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       optional<
           std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
           output_to_operand_aliasing;
-      if (opcode == HloOpcode::kAsyncStart) {
+      if (opcode == HloOpcode::kAsyncStart ||
+          opcode == HloOpcode::kAsyncUpdate) {
         attrs["output_to_operand_aliasing"] = {/*required=*/false,
                                                AttrTy::kInstructionAliasing,
                                                &output_to_operand_aliasing};
@@ -2239,12 +2242,19 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           // Since async-{update,done} will inherit the computation from
           // async-start, we'll only need to make sure it matches what was
           // specified explicitly.
-          if (operands[0]->async_wrapped_opcode() != *async_wrapped_opcode) {
-            TokenError(
-                StrFormat("Expect async wrapped opcode to be %s, but got %s",
-                          HloOpcodeString(operands[0]->async_wrapped_opcode()),
-                          HloOpcodeString(*async_wrapped_opcode)));
-            return nullptr;
+          HloInstruction* async_producer =
+              HloInstruction::FindAsyncProducer(operands[0]);
+          if (async_producer != nullptr &&
+              HloAsyncInstruction::ClassOf(async_producer)) {
+            auto* async_op = Cast<HloAsyncInstruction>(async_producer);
+            if (async_op->async_chain_start() != nullptr &&
+                async_op->async_wrapped_opcode() != *async_wrapped_opcode) {
+              TokenError(
+                  StrFormat("Expect async wrapped opcode to be %s, but got %s",
+                            HloOpcodeString(async_op->async_wrapped_opcode()),
+                            HloOpcodeString(*async_wrapped_opcode)));
+              return nullptr;
+            }
           }
         }
       } else {
@@ -2264,20 +2274,28 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       // specified matches what is inherited.
       if (opcode == HloOpcode::kAsyncUpdate ||
           opcode == HloOpcode::kAsyncDone) {
-        if (async_execution_thread &&
-            operands[0]->async_execution_thread() != *async_execution_thread) {
-          TokenError(StrFormat(
-              "Expect async_execution_thread to be %s, but got %s",
-              operands[0]->async_execution_thread(), *async_execution_thread));
-          return nullptr;
-        }
-        if (async_computation &&
-            operands[0]->async_wrapped_computation() != *async_computation) {
-          TokenError(
-              StrFormat("Expect async_wrapped_computation to be %s, but got %s",
-                        operands[0]->async_wrapped_computation()->name(),
-                        (*async_computation)->name()));
-          return nullptr;
+        HloInstruction* async_producer =
+            HloInstruction::FindAsyncProducer(operands[0]);
+        if (async_producer != nullptr &&
+            HloAsyncInstruction::ClassOf(async_producer)) {
+          auto* async_op = Cast<HloAsyncInstruction>(async_producer);
+          if (async_op->async_chain_start() != nullptr) {
+            if (async_execution_thread &&
+                async_op->async_execution_thread() != *async_execution_thread) {
+              TokenError(StrFormat(
+                  "Expect async_execution_thread to be %s, but got %s",
+                  async_op->async_execution_thread(), *async_execution_thread));
+              return nullptr;
+            }
+            if (async_computation &&
+                async_op->async_wrapped_computation() != *async_computation) {
+              TokenError(StrFormat(
+                  "Expect async_wrapped_computation to be %s, but got %s",
+                  async_op->async_wrapped_computation()->name(),
+                  (*async_computation)->name()));
+              return nullptr;
+            }
+          }
         }
       }
 
@@ -2298,26 +2316,38 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       }
       if (opcode == HloOpcode::kAsyncUpdate) {
         // Create async-update.
-        HloInstruction* async_update = builder->AddInstruction(
-            HloInstruction::CreateAsyncUpdate(*shape, operands));
+        HloInstruction* async_update =
+            builder->AddInstruction(HloInstruction::CreateAsyncUpdate(
+                *shape, operands, async_wrapped_opcode,
+                async_computation ? *async_computation : nullptr));
         //  We update async_wrapped_computation with the parsed shape,
         //  if there is mismatch, the verifier will catch it.
-        if (async_wrapped_opcode) {
+        if (async_wrapped_opcode &&
+            async_update->async_wrapped_computation() != nullptr) {
           UpdateAsyncWrappedComputation(
               async_update->async_wrapped_computation(),
               /*result_shape=*/shape->tuple_shapes(1),
               /*operand_shapes=*/shape->tuple_shapes(0).tuple_shapes());
         }
+
+        if (output_to_operand_aliasing.has_value()) {
+          Cast<HloAsyncUpdateInstruction>(async_update)
+              ->set_output_to_operand_aliasing(
+                  std::move(*output_to_operand_aliasing));
+        }
         return async_update;
       }
 
       // Create async-done.
-      HloInstruction* async_done = builder->AddInstruction(
-          HloInstruction::CreateAsyncDone(*shape, operands[0]));
+      HloInstruction* async_done =
+          builder->AddInstruction(HloInstruction::CreateAsyncDone(
+              *shape, operands[0], async_wrapped_opcode,
+              async_computation ? *async_computation : nullptr));
 
       const Shape& operand_shape = async_done->operand(0)->shape();
 
-      if (async_wrapped_opcode) {
+      if (async_wrapped_opcode &&
+          async_done->async_wrapped_computation() != nullptr) {
         UpdateAsyncWrappedComputation(
             async_done->async_wrapped_computation(),
             /*result_shape=*/*shape,
@@ -2370,6 +2400,22 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         TokenError("DynamicReshape requires at least one operand.");
         return nullptr;
       }
+      if (!shape->IsArray() || !operands[0]->shape().IsArray() ||
+          ShapeUtil::StaticExtentProduct(*shape) !=
+              ShapeUtil::StaticExtentProduct(operands[0]->shape())) {
+        TokenError(
+            StrCat("expects the same number of elements in result shape ",
+                   ShapeUtil::HumanString(*shape), " and operand shape ",
+                   ShapeUtil::HumanString(operands[0]->shape())));
+        return nullptr;
+      }
+      if (operands.size() - 1 != shape->dimensions().size()) {
+        TokenError(
+            StrCat("expects one dim size operand per result dimension; got ",
+                   operands.size() - 1, " for ", shape->dimensions().size(),
+                   " result dimensions"));
+        return nullptr;
+      }
       return builder->AddInstruction(HloInstruction::CreateDynamicReshape(
           *shape, operands[0],
           absl::Span<HloInstruction* const>(operands).subspan(1)));
@@ -2381,6 +2427,16 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       if ((!preset_operands &&
            !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
           !ParseAttributes(attrs, allow_attributes, shape)) {
+        return nullptr;
+      }
+      if (!shape->IsArray() || !operands[0]->shape().IsArray() ||
+          (!operands[0]->shape().is_unbounded_dynamic() &&
+           ShapeUtil::StaticExtentProduct(*shape) !=
+               ShapeUtil::StaticExtentProduct(operands[0]->shape()))) {
+        TokenError(
+            StrCat("expects the same number of elements in result shape ",
+                   ShapeUtil::HumanString(*shape), " and operand shape ",
+                   ShapeUtil::HumanString(operands[0]->shape())));
         return nullptr;
       }
       return builder->AddInstruction(HloInstruction::CreateReshape(
@@ -4000,6 +4056,13 @@ bool HloParserImpl::ParseCollectiveDeviceListBase(
     return false;
   }
 
+  if (Product(tile_assignment_dimensions) != Product(iota_reshape_dims)) {
+    return TokenError(absl::StrCat(
+        "collective device list iota size ", Product(iota_reshape_dims),
+        " does not match the tile assignment dimensions product ",
+        Product(tile_assignment_dimensions)));
+  }
+
   *device_list = std::make_unique<IotaReplicaGroupList>(
       tile_assignment_dimensions[0], tile_assignment_dimensions[1],
       iota_reshape_dims, iota_transpose_perm);
@@ -4235,6 +4298,12 @@ bool HloParserImpl::ParseMesh(std::optional<Mesh>& mesh) {
                                         iota_transpose_perm) ||
           !ParseToken(TokKind::kRparen, "expected ')' to end device_ids")) {
         return false;
+      }
+      if (Product(axis_sizes) != Product(iota_reshape_dims)) {
+        return TokenError(absl::StrCat(
+            "mesh device_ids iota size ", Product(iota_reshape_dims),
+            " does not match the product of the mesh axis sizes ",
+            Product(axis_sizes)));
       }
       mesh.emplace(
           TileAssignment(axis_sizes, iota_reshape_dims, iota_transpose_perm),
@@ -4836,6 +4905,14 @@ bool HloParserImpl::ParseSingleSharding(std::optional<HloSharding>& sharding,
     }
     if (!iota_reshape_dims.empty()) {
       CHECK(devices.empty());
+      if (Product(tile_assignment_dimensions) != Product(iota_reshape_dims)) {
+        return Error(
+            loc, absl::StrCat("iota tile assignment size ",
+                              Product(iota_reshape_dims),
+                              " does not match the tile assignment dimensions "
+                              "product ",
+                              Product(tile_assignment_dimensions)));
+      }
       sharding =
           subgroup_types.empty()
               ? HloSharding::IotaTile(tile_assignment_dimensions,
@@ -8740,13 +8817,13 @@ absl::StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
     const HloParserOptions& options) {
   auto module = std::make_unique<HloModule>(/*name=*/"_", config);
   HloParserImpl parser(str, options);
-  RETURN_IF_ERROR(parser.Run(module.get()));
+  ABSL_RETURN_IF_ERROR(parser.Run(module.get()));
   return module;
 }
 
 absl::StatusOr<HloSharding> ParseSharding(absl::string_view str) {
   HloParserImpl parser(str);
-  ASSIGN_OR_RETURN(HloSharding sharding, parser.ParseShardingOnly());
+  ABSL_ASSIGN_OR_RETURN(HloSharding sharding, parser.ParseShardingOnly());
   sharding.ExtractReductionOpFromMetadata();
   return sharding;
 }

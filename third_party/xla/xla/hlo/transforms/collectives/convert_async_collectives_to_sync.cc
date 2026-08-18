@@ -24,10 +24,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -108,7 +108,7 @@ ConvertAsyncCollectivesToSync::ReplaceWithSyncVariant(
   FrontendAttributes fas = async_done->frontend_attributes();
   sync_instruction->set_frontend_attributes(fas);
 
-  RETURN_IF_ERROR(async_done->ReplaceAllUsesWith(sync_instruction));
+  ABSL_RETURN_IF_ERROR(async_done->ReplaceAllUsesWith(sync_instruction));
 
   // Copy control dependencies.
   //
@@ -117,10 +117,10 @@ ConvertAsyncCollectivesToSync::ReplaceWithSyncVariant(
   // only control dependencies we cannot respect are those that schedule an
   // operation to run between a start and done.
   for (HloInstruction* pred : async_start->control_predecessors()) {
-    RETURN_IF_ERROR(pred->AddControlDependencyTo(sync_instruction));
+    ABSL_RETURN_IF_ERROR(pred->AddControlDependencyTo(sync_instruction));
   }
   for (HloInstruction* succ : async_done->control_successors()) {
-    RETURN_IF_ERROR(sync_instruction->AddControlDependencyTo(succ));
+    ABSL_RETURN_IF_ERROR(sync_instruction->AddControlDependencyTo(succ));
   }
   if (!async_start->control_successors().empty()) {
     LOG(WARNING) << "Async start " << async_start->name()
@@ -133,28 +133,9 @@ ConvertAsyncCollectivesToSync::ReplaceWithSyncVariant(
         << " is being replaced by a synchronous op, but it has "
            "control predecessors. These dependencies are being dropped";
   }
-  RETURN_IF_ERROR(async_start->DropAllControlDeps());
-  RETURN_IF_ERROR(async_done->DropAllControlDeps());
+  ABSL_RETURN_IF_ERROR(async_start->DropAllControlDeps());
+  ABSL_RETURN_IF_ERROR(async_done->DropAllControlDeps());
 
-  // Remember name of async instruction for profile usability.
-  FrontendAttributes attributes;
-  auto& map = *attributes.mutable_map();
-  map[kAsyncCollectiveNameAttributeName] = async_start->name();
-  sync_instruction->add_frontend_attributes(std::move(attributes));
-
-  // When we remove the async-done (and its unused operands), in most cases,
-  // the async-start may not be deleted if its considered as having side effects
-  // but in some cases it will be (e.g., the generic HLO kAsyncStart). Track its
-  // removal and remove it if it was not removed when async-done is removed.
-  bool is_async_start_removed = false;
-  auto track_async_start_removed = [&](const HloInstruction* instr) {
-    is_async_start_removed |= instr == async_start;
-  };
-  RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(
-      async_done, track_async_start_removed));
-  if (!is_async_start_removed) {
-    RETURN_IF_ERROR(computation->RemoveInstruction(async_start));
-  }
   return sync_instruction;
 }
 
@@ -164,10 +145,10 @@ ConvertAsyncCollectivesToSync::ReplaceAsyncInstructionsWithSync(
     absl::Span<const std::pair<HloInstruction*, HloInstruction*>> async_pairs) {
   absl::flat_hash_map<HloInstruction*, HloInstruction*> replaced_ops;
   for (auto& [async_start, async_done] : async_pairs) {
-    ASSIGN_OR_RETURN(HloInstruction * sync,
-                     ReplaceWithSyncVariant(async_start, async_done));
-    ASSIGN_OR_RETURN(std::optional<int64_t> group_id,
+    ABSL_ASSIGN_OR_RETURN(std::optional<int64_t> group_id,
                      GetSchedulingAnnotationGroupId(async_done));
+    ABSL_ASSIGN_OR_RETURN(HloInstruction * sync,
+                     ReplaceWithSyncVariant(async_start, async_done));
     if (group_id) {
       LOG(WARNING) << "Async collective pair (" << async_start->name() << ", "
                    << async_done->name() << ") with scheduling group id "
@@ -183,24 +164,40 @@ ConvertAsyncCollectivesToSync::ReplaceAsyncInstructionsWithSync(
 
   // Update schedule, if there is one.
   HloModule* module = computation->parent();
-  if (!module->has_schedule()) {
-    return absl::OkStatus();
-  }
-  const HloInstructionSequence& sequence =
-      module->schedule().sequence(computation);
-  std::vector<HloInstruction*> new_sequence;
-  new_sequence.reserve(sequence.size());
-  for (HloInstruction* instr : sequence.instructions()) {
-    auto it = replaced_ops.find(instr);
-    if (it != replaced_ops.end()) {
-      if (it->second != nullptr) {
-        new_sequence.push_back(it->second);
+  if (module->has_schedule() &&
+      module->schedule().is_computation_scheduled(computation)) {
+    const HloInstructionSequence& sequence =
+        module->schedule().sequence(computation);
+    std::vector<HloInstruction*> new_sequence;
+    new_sequence.reserve(sequence.size());
+    for (HloInstruction* instr : sequence.instructions()) {
+      auto it = replaced_ops.find(instr);
+      if (it != replaced_ops.end()) {
+        if (it->second != nullptr) {
+          new_sequence.push_back(it->second);
+        }
+      } else {
+        new_sequence.push_back(instr);
       }
-    } else {
-      new_sequence.push_back(instr);
+    }
+    module->schedule().set_sequence(computation, new_sequence);
+  }
+
+  // Remove the replaced async instructions and their unused operands.
+  for (const auto& pair : async_pairs) {
+    HloInstruction* async_start = pair.first;
+    HloInstruction* async_done = pair.second;
+    bool is_async_start_removed = false;
+    auto track_async_start_removed = [&](const HloInstruction* instr) {
+      is_async_start_removed |= instr == async_start;
+    };
+    ABSL_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(
+        async_done, track_async_start_removed));
+    if (!is_async_start_removed) {
+      ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(async_start));
     }
   }
-  module->schedule().set_sequence(computation, new_sequence);
+
   return absl::OkStatus();
 }
 
@@ -249,7 +246,7 @@ absl::StatusOr<bool> ConvertAsyncCollectivesToSync::RunOnComputation(
     return false;
   }
 
-  RETURN_IF_ERROR(ConvertAsyncInstructionsToSync(computation, async_pairs));
+  ABSL_RETURN_IF_ERROR(ConvertAsyncInstructionsToSync(computation, async_pairs));
   return true;
 }
 
@@ -268,7 +265,7 @@ absl::StatusOr<bool> ConvertAsyncCollectivesToSync::RunImpl(
               << " as it is not scheduled";
       continue;
     }
-    ASSIGN_OR_RETURN(bool computation_changed, RunOnComputation(computation));
+    ABSL_ASSIGN_OR_RETURN(bool computation_changed, RunOnComputation(computation));
     changed |= computation_changed;
   }
   return changed;

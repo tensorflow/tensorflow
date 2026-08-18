@@ -776,5 +776,28 @@ TEST_F(DumpModuleFilterTest, EnablesDumpWhenFilterMatches) {
   EXPECT_TRUE(Run("my_.*"));
 }
 
+TEST(DumpEmitterFilterTest, EmitterFilterControlsDumping) {
+  DebugOptions options;
+  EXPECT_FALSE(DumpingEnabledForEmitter("llvm", options));
+  EXPECT_FALSE(DumpingEnabledForEmitter("ptx", options));
+
+  options.set_xla_dump_emitter_re("llvm");
+  EXPECT_TRUE(DumpingEnabledForEmitter("llvm", options));
+  EXPECT_FALSE(DumpingEnabledForEmitter("ptx", options));
+
+  options.set_xla_dump_emitter_re("ptx");
+  EXPECT_FALSE(DumpingEnabledForEmitter("llvm", options));
+  EXPECT_TRUE(DumpingEnabledForEmitter("ptx", options));
+
+  options.set_xla_dump_emitter_re("llvm|ptx");
+  EXPECT_TRUE(DumpingEnabledForEmitter("llvm", options));
+  EXPECT_TRUE(DumpingEnabledForEmitter("ptx", options));
+
+  options.set_xla_dump_emitter_re(".*");
+  EXPECT_TRUE(DumpingEnabledForEmitter("llvm", options));
+  EXPECT_TRUE(DumpingEnabledForEmitter("ptx", options));
+  EXPECT_TRUE(DumpingEnabledForEmitter("triton-fusion", options));
+}
+
 }  // namespace
 }  // namespace xla

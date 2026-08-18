@@ -1,6 +1,6 @@
 --- a/python/src/llvm.cc
 +++ b/python/src/llvm.cc
-@@ -629,11 +629,12 @@
+@@ -629,11 +629,12 @@ void init_triton_llvm(py::module_ &m) {
        });
  
    // optimization levels

@@ -5133,6 +5133,102 @@ ENTRY entry {
   EXPECT_EQ(CountCopies(*rw_branch_2), 1);
 }
 
+TEST_F(CopyInsertionTest, ConditionalBranchRootReplicatedBuffersPassthrough) {
+  // (b/515404581): This test verifies that we do not insert copies for
+  // replicated root buffers in a conditional when all branches simply pass
+  // through the input buffer without merging different values.
+  const std::string& hlo_string = R"(
+HloModule TestModule
+
+passthrough_branch_1 {
+  p0 = (f32[4]) parameter(0)
+  val = f32[4] get-tuple-element(p0), index=0
+  val_bitcast = f32[4] bitcast(val)
+  ROOT t = (f32[4], f32[4]) tuple(val, val_bitcast)
+}
+
+passthrough_branch_2 {
+  p0 = (f32[4]) parameter(0)
+  val = f32[4] get-tuple-element(p0), index=0
+  val_bitcast = f32[4] bitcast(val)
+  ROOT t = (f32[4], f32[4]) tuple(val, val_bitcast)
+}
+
+passthrough_branch_3 {
+  p0 = (f32[4]) parameter(0)
+  val = f32[4] get-tuple-element(p0), index=0
+  val_bitcast = f32[4] bitcast(val)
+  ROOT t = (f32[4], f32[4]) tuple(val, val_bitcast)
+}
+
+passthrough_branch_4 {
+  p0 = (f32[4]) parameter(0)
+  val = f32[4] get-tuple-element(p0), index=0
+  val_bitcast = f32[4] bitcast(val)
+  ROOT t = (f32[4], f32[4]) tuple(val, val_bitcast)
+}
+
+ENTRY entry {
+  p0 = f32[4] parameter(0)
+  cond_pred = pred[] parameter(1)
+  cond_input = (f32[4]) tuple(p0)
+
+  cond1 = (f32[4], f32[4]) conditional(cond_pred, cond_input, cond_input),
+    true_computation=passthrough_branch_1, false_computation=passthrough_branch_2
+
+  out1_0 = f32[4] get-tuple-element(cond1), index=0 // val
+  out1_1 = f32[4] get-tuple-element(cond1), index=1 // val_bitcast
+
+  barrier_input = (f32[4]) tuple(out1_1)
+  barrier = (f32[4]) opt-barrier(barrier_input)
+  barrier_0 = f32[4] get-tuple-element(barrier), index=0
+
+  cond2_input = (f32[4]) tuple(out1_0) // uses out1_0 directly!
+  cond2 = (f32[4], f32[4]) conditional(cond_pred, cond2_input, cond2_input),
+    true_computation=passthrough_branch_3, false_computation=passthrough_branch_4
+
+  out2_0 = f32[4] get-tuple-element(cond2), index=0
+  out2_1 = f32[4] get-tuple-element(cond2), index=1
+
+  add = f32[4] add(barrier_0, out2_1) // uses barrier output
+
+  ROOT root = (f32[4], f32[4]) tuple(out2_0, add)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  auto size_fn = [](const BufferValue& buffer) {
+    return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
+  };
+  HloMemoryScheduler scheduler(&alias_info_, size_fn);
+  ASSERT_OK(scheduler.Run(module.get()).status());
+  CopyInsertion copy_insertion(
+      &alias_info_, /*use_region_based_live_range_analysis=*/1000000);
+  ASSERT_OK(copy_insertion.Run(module.get()).status());
+  LOG(ERROR) << "HLO MODULE AFTER INSERT COPIES:\n" << module->ToString();
+
+  HloComputation* passthrough_branch_1 =
+      module->GetComputationWithName("passthrough_branch_1");
+  ASSERT_THAT(passthrough_branch_1, NotNull());
+  EXPECT_EQ(CountCopies(*passthrough_branch_1), 0);
+
+  HloComputation* passthrough_branch_2 =
+      module->GetComputationWithName("passthrough_branch_2");
+  ASSERT_THAT(passthrough_branch_2, NotNull());
+  EXPECT_EQ(CountCopies(*passthrough_branch_2), 0);
+
+  HloComputation* passthrough_branch_3 =
+      module->GetComputationWithName("passthrough_branch_3");
+  ASSERT_THAT(passthrough_branch_3, NotNull());
+  EXPECT_EQ(CountCopies(*passthrough_branch_3), 0);
+
+  HloComputation* passthrough_branch_4 =
+      module->GetComputationWithName("passthrough_branch_4");
+  ASSERT_THAT(passthrough_branch_4, NotNull());
+  EXPECT_EQ(CountCopies(*passthrough_branch_4), 0);
+}
+
 // A while loop whose body contains a conditional where one branch is a
 // passthrough and the other performs an update. This is the HLO-level
 // representation of lax.scan + lax.cond(passthrough) pattern from

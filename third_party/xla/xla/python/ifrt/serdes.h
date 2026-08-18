@@ -21,12 +21,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
@@ -36,7 +35,7 @@ namespace xla {
 namespace ifrt {
 
 // Base class for serialization options to be passed to `Serialize`.
-struct SerializeOptions : llvm::RTTIExtends<SerializeOptions, llvm::RTTIRoot> {
+struct SerializeOptions : RTTIExtends<SerializeOptions, RTTIRoot> {
   explicit SerializeOptions(
       SerDesVersion version = SerDesDefaultVersionAccessor::Get())
       : version(version) {}
@@ -52,13 +51,12 @@ struct SerializeOptions : llvm::RTTIExtends<SerializeOptions, llvm::RTTIRoot> {
 SerDesVersion GetRequestedSerDesVersion(const SerializeOptions* options);
 
 // Base class for deserialization options to be passed to `Deserialize`.
-struct DeserializeOptions
-    : llvm::RTTIExtends<DeserializeOptions, llvm::RTTIRoot> {
+struct DeserializeOptions : RTTIExtends<DeserializeOptions, RTTIRoot> {
   static char ID;  // NOLINT
 };
 
 // Base class for serializable IFRT types.
-class Serializable : public llvm::RTTIExtends<Serializable, llvm::RTTIRoot> {
+class Serializable : public RTTIExtends<Serializable, RTTIRoot> {
  public:
   static char ID;  // NOLINT
 
@@ -71,7 +69,7 @@ class Serializable : public llvm::RTTIExtends<Serializable, llvm::RTTIRoot> {
 // Serializer and deserializer implementations for one `Serializable` type.
 // This, combined with the registration mechanism below, allows extending IFRT
 // object serialization without having to extend the base IFRT itself.
-class SerDes : public llvm::RTTIExtends<SerDes, llvm::RTTIRoot> {
+class SerDes : public RTTIExtends<SerDes, RTTIRoot> {
  public:
   // Type name. Must be unique. The recommended convention is to use the fully
   // qualified type name of the class that implements `Serializable`.
@@ -143,9 +141,9 @@ template <typename InterfaceType>
 absl::StatusOr<std::unique_ptr<InterfaceType>> Deserialize(
     const Serialized& serialized,
     std::unique_ptr<typename InterfaceType::DeserializeOptions> options) {
-  ASSIGN_OR_RETURN(auto result, serdes_internal::DeserializeUnchecked(
+  ABSL_ASSIGN_OR_RETURN(auto result, serdes_internal::DeserializeUnchecked(
                                     serialized, std::move(options)));
-  if (!llvm::isa<InterfaceType>(result.get())) {
+  if (!isa<InterfaceType>(result.get())) {
     return absl::InternalError(
         "Unexpected Serializable type after deserialization");
   }

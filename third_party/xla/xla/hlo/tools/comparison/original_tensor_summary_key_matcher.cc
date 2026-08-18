@@ -355,9 +355,9 @@ OriginalTensorSummaryKeyMatcher::Create(
     absl::string_view target_recovered_tensor_summaries_file) {
   auto matcher = std::shared_ptr<OriginalTensorSummaryKeyMatcher>(
       new OriginalTensorSummaryKeyMatcher());
-  RETURN_IF_ERROR(ReadKeys(baseline_recovered_tensor_summaries_file,
+  ABSL_RETURN_IF_ERROR(ReadKeys(baseline_recovered_tensor_summaries_file,
                            &matcher->baseline_root_));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ReadKeys(target_recovered_tensor_summaries_file, &matcher->target_root_));
   MatchTrees(&matcher->baseline_root_, &matcher->target_root_, *hlo_diff_bimap);
   return matcher;

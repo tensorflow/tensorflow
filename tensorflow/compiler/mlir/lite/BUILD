@@ -452,9 +452,6 @@ cc_library(
     hdrs = ["transforms/pass_options_setter.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
-    deps = [
-        "@llvm-project//llvm:Support",
-    ],
 )
 
 cc_library(
@@ -471,7 +468,6 @@ cc_library(
         ":pass_options",
         ":pass_options_setter",
         ":variable_freezing_pipeline_options",
-        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -586,6 +582,7 @@ cc_library(
         "transforms/canonicalize_boundary_value_pass.h",
         "transforms/cast_bf16_ops_to_f32_pass.h",
         "transforms/cleanup_optimization_barrier_pass.h",
+        "transforms/large_constant_fold_pass.h",
         "transforms/optimize_batch_matmul_pass.h",
         "transforms/optimize_broadcast_like_pass.h",
         "transforms/optimize_pass.h",
@@ -610,6 +607,7 @@ cc_library(
         ":cost_estimators",
         ":downcast_x64",
         ":elements_attr_roundtrip_pass",
+        ":large_constant_fold",
         ":optimize_broadcast_like_pass",
         ":optimize_broadcast_like_pass_options",
         ":optimize_pass_options",
@@ -1073,6 +1071,34 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ControlFlowInterfaces",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
+    name = "large_constant_fold",
+    srcs = [
+        "transforms/large_constant_fold_pass.cc",
+    ],
+    hdrs = [
+        "transforms/large_constant_fold_pass.h",
+    ],
+    deps = [
+        ":attribute_utils",
+        ":pass",
+        ":tensorflow_lite_ops",
+        ":utils",
+        "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@eigen_archive//:eigen3",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -1995,7 +2021,7 @@ cc_library(
         "common/tfl_pass_config.h",
     ],
     deps = [
-        "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc",
+        ":converter_flags_proto_cc",
         "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib:quantization_config",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",

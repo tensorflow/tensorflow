@@ -31,6 +31,7 @@
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
@@ -39,9 +40,6 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "google/protobuf/text_format.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/layout_util.h"
@@ -65,6 +63,7 @@
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/program_serdes.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
@@ -189,13 +188,13 @@ INSTANTIATE_TEST_SUITE_P(
       return absl::StrCat(info.param);
     });
 
-struct TestProgram : llvm::RTTIExtends<TestProgram, Program> {
+struct TestProgram : RTTIExtends<TestProgram, Program> {
   static char ID;  // NOLINT
 };
 
 [[maybe_unused]] char TestProgram::ID = 0;  // NOLINT
 
-class TestProgramSerDes : public llvm::RTTIExtends<TestProgramSerDes, SerDes> {
+class TestProgramSerDes : public RTTIExtends<TestProgramSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::proxy::TestProgram";
@@ -204,7 +203,7 @@ class TestProgramSerDes : public llvm::RTTIExtends<TestProgramSerDes, SerDes> {
   absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions>) override {
-    CHECK(llvm::isa<TestProgram>(serializable));
+    CHECK(isa<TestProgram>(serializable));
     return absl::Cord();
   }
 
@@ -212,7 +211,7 @@ class TestProgramSerDes : public llvm::RTTIExtends<TestProgramSerDes, SerDes> {
       const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     const auto* deserialize_program_options =
-        llvm::cast<DeserializeProgramOptions>(options.get());
+        cast<DeserializeProgramOptions>(options.get());
     CHECK_OK(deserialize_program_options->client->LookupDevice(DeviceId(0)));
 
     return std::make_unique<TestProgram>();
@@ -223,15 +222,14 @@ class TestProgramSerDes : public llvm::RTTIExtends<TestProgramSerDes, SerDes> {
 
 [[maybe_unused]] char TestProgramSerDes::ID = 0;  // NOLINT
 
-struct TestCompileOptions
-    : llvm::RTTIExtends<TestCompileOptions, CompileOptions> {
+struct TestCompileOptions : RTTIExtends<TestCompileOptions, CompileOptions> {
   static char ID;  // NOLINT
 };
 
 [[maybe_unused]] char TestCompileOptions::ID = 0;  // NOLINT
 
 class TestCompileOptionsSerDes
-    : public llvm::RTTIExtends<TestCompileOptionsSerDes, SerDes> {
+    : public RTTIExtends<TestCompileOptionsSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::proxy::TestCompileOptions";
@@ -240,7 +238,7 @@ class TestCompileOptionsSerDes
   absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions>) override {
-    CHECK(llvm::isa<TestCompileOptions>(serializable));
+    CHECK(isa<TestCompileOptions>(serializable));
     return absl::Cord();
   }
 
@@ -341,7 +339,7 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
     auto ifrt_request = NewIfrtRequest(NewOpId());
     {
       const uint64_t host_buffer_handle = NewHostBufferHandle();
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           host_buffer_store_->Store(host_buffer_handle, "01234567"));
 
       auto* make_array =
@@ -350,15 +348,15 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
       make_array->mutable_shape()->add_dims(2);
       make_array->set_host_buffer_handle(host_buffer_handle);
 
-      ASSIGN_OR_RETURN(auto* device, mock_client_->LookupDevice(DeviceId(1)));
-      RETURN_IF_ERROR(SingleDeviceSharding::Create(device, MemoryKind())
+      ABSL_ASSIGN_OR_RETURN(auto* device, mock_client_->LookupDevice(DeviceId(1)));
+      ABSL_RETURN_IF_ERROR(SingleDeviceSharding::Create(device, MemoryKind())
                           ->ToProto(*make_array->mutable_sharding(),
                                     ifrt_serdes_version()));
     }
-    ASSIGN_OR_RETURN(auto make_array_response,
+    ABSL_ASSIGN_OR_RETURN(auto make_array_response,
                      CallBackend(std::move(ifrt_request)));
 
-    RETURN_IF_ERROR(tsl::StatusFromProto(
+    ABSL_RETURN_IF_ERROR(tsl::StatusFromProto(
         make_array_response->response_metadata().status()));
     return make_array_response->make_array_from_host_buffer_response()
         .array_handle();
@@ -372,14 +370,14 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
     {
       auto serialize_options =
           std::make_unique<SerializeOptions>(ifrt_serdes_version());
-      ASSIGN_OR_RETURN(*compile_request->mutable_program(),
+      ABSL_ASSIGN_OR_RETURN(*compile_request->mutable_program(),
                        Serialize(program, std::move(serialize_options)));
     }
     {
       TestCompileOptions compile_options;
       auto serialize_options =
           std::make_unique<SerializeOptions>(ifrt_serdes_version());
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           *compile_request->mutable_compile_options(),
           Serialize(compile_options, std::move(serialize_options)));
     }
@@ -388,7 +386,7 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
         .WillOnce(Return(tsl::Future<xla::ifrt::LoadedExecutableRef>(
             std::move(loaded_executable))));
 
-    ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
+    ABSL_ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
                      CallBackend(std::move(request)));
 
     TF_RET_CHECK(response->has_compile_response());
@@ -401,7 +399,7 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
     }
     auto request = NewIfrtRequest(NewOpId());
     request->mutable_check_future_request()->set_future_handle(handle);
-    ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
+    ABSL_ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
                      CallBackend(std::move(request)));
     return tsl::StatusFromProto(response->response_metadata().status());
   }
@@ -412,7 +410,7 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
     }
     auto request = NewIfrtRequest(NewOpId());
     request->mutable_check_value_ready_request()->add_value_handles(handle);
-    ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
+    ABSL_ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
                      CallBackend(std::move(request)));
     return tsl::StatusFromProto(response->response_metadata().status());
   }
@@ -1466,7 +1464,7 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecute) {
       auto request = NewIfrtRequest(NewOpId());
       request->mutable_loaded_executable_fetch_execute_result_request()
           ->set_result_status_handle(handle);
-      ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
+      ABSL_ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
                        CallBackend(std::move(request)));
       return tsl::StatusFromProto(response->response_metadata().status());
     } else {
@@ -1728,7 +1726,7 @@ TEST_P(IfrtBackendHandlerTest, LoadedHostCallbackExecute) {
             [&](const std::unique_ptr<xla::ifrt::Program>& program,
                 const std::unique_ptr<xla::ifrt::CompileOptions>& options) {
               auto* xla_compile_options =
-                  llvm::cast<xla::ifrt::XlaCompileOptions>(options.get());
+                  cast<xla::ifrt::XlaCompileOptions>(options.get());
               auto& loaded_host_callbacks =
                   xla_compile_options->loaded_host_callbacks;
               ASSERT_EQ(loaded_host_callbacks.size(), 1);
@@ -1761,7 +1759,7 @@ TEST_P(IfrtBackendHandlerTest, LoadedHostCallbackExecute) {
         results.push_back(out.untyped_data());
 
         const xla::HostCallback* xla_host_callback =
-            &llvm::cast<RemoteLoadedHostCallback>(loaded_host_callback.get())
+            &cast<RemoteLoadedHostCallback>(loaded_host_callback.get())
                  ->host_callback();
         ASSERT_THAT(
             xla_host_callback->callback(results.data(), operands.data()),

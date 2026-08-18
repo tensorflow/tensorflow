@@ -1262,6 +1262,7 @@ TEST_F(ShardyXLATest, ManualComputationInlineableFalseErasedAndRenamed) {
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kCall);
   EXPECT_FALSE(root->has_frontend_attributes());
+  EXPECT_EQ(root->to_apply()->name(), "inlineable_callee");
 }
 
 TEST_F(ShardyXLATest, ManualComputationInlineableXlaLateErasedAndRenamed) {
@@ -1284,6 +1285,7 @@ TEST_F(ShardyXLATest, ManualComputationInlineableXlaLateErasedAndRenamed) {
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kCall);
   EXPECT_FALSE(root->has_frontend_attributes());
+  EXPECT_EQ(root->to_apply()->name(), "inlineable_callee");
 }
 
 TEST_F(ShardyXLATest, ManualComputationCallOpWithToken) {

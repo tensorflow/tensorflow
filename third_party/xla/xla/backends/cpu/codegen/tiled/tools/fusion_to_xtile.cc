@@ -44,12 +44,12 @@ namespace xla::gpu {
 namespace {
 
 absl::Status RealMain(absl::string_view input_file) {
-  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                    xla::LoadModuleFromFile(std::string(input_file)));
 
   const HloInstruction& fusion =
       *hlo_module->entry_computation()->root_instruction();
-  ASSIGN_OR_RETURN(auto gpu_config, fusion.backend_config<GpuBackendConfig>());
+  ABSL_ASSIGN_OR_RETURN(auto gpu_config, fusion.backend_config<GpuBackendConfig>());
   const HloFusionInstruction* fusion_instr =
       Cast<HloFusionInstruction>(&fusion);
   const FusionBackendConfig& backend_config =
