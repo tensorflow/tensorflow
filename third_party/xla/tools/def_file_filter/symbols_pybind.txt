@@ -65,7 +65,6 @@ tsl::ml_dtypes::GetBfloat16Dtype
 tsl::ml_dtypes::GetFloat8E4m3b11fnuzDtype
 tsl::ml_dtypes::GetFloat8E4m3fnDtype
 tsl::ml_dtypes::GetFloat8E5m2Dtype
-tsl::ml_dtypes::GetBfloat16TypeNum
 tsl::ml_dtypes::GetFloat8E4m3b11fnuzTypeNum
 tsl::ml_dtypes::GetFloat8E4m3fnTypeNum
 tsl::ml_dtypes::GetFloat8E5m2TypeNum
