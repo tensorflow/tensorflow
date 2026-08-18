@@ -219,6 +219,10 @@ cc_library(
     name = "kernel_arguments",
     srcs = ["kernel_arguments.cc"],
     hdrs = ["kernel_arguments.h"],
+    visibility = [
+        ":friends",
+        "//xla/backends/gpu/libraries/native_custom_call_thunks:handler_allowlist",
+    ],
     deps = [
         "//xla:frontend_attributes",
         "//xla:shape_util",
