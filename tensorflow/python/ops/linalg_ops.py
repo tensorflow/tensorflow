@@ -407,6 +407,10 @@ def eig(tensor, name=None):
     out_dtype = dtypes.complex64
   elif tensor.dtype == dtypes.float64 or tensor.dtype == dtypes.complex128:
     out_dtype = dtypes.complex128
+  else:
+    raise ValueError(
+        "'tensor' must have dtype float32, float64, complex64, or "
+        f"complex128, got {tensor.dtype}")
   e, v = gen_linalg_ops.eig(tensor, Tout=out_dtype, compute_v=True, name=name)
   return e, v
 
@@ -434,6 +438,10 @@ def eigvals(tensor, name=None):
     out_dtype = dtypes.complex64
   elif tensor.dtype == dtypes.float64 or tensor.dtype == dtypes.complex128:
     out_dtype = dtypes.complex128
+  else:
+    raise ValueError(
+        "'tensor' must have dtype float32, float64, complex64, or "
+        f"complex128, got {tensor.dtype}")
   e, _ = gen_linalg_ops.eig(tensor, Tout=out_dtype, compute_v=False, name=name)
   return e
 
