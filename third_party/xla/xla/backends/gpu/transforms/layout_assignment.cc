@@ -530,10 +530,6 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
         instruction->GetModule()->config().debug_options();
     if (debug_options.xla_gpu_experimental_enable_conv_fusion() &&
         HloPredicateIsOp<HloOpcode::kConvolution>(instruction)) {
-      CHECK(
-          DynCast<HloConvolutionInstruction>(instruction)->convolution_kind() !=
-          CONVOLUTION_KIND_UNSET)
-          << "conv-kind-assignment pass should run before this pass.";
       ABSL_RETURN_IF_ERROR(AddBackendConstraintsToConvolution(
           Cast<HloConvolutionInstruction>(instruction), constraints));
     } else if (HloPredicateIsOp<HloOpcode::kDot>(instruction)) {
