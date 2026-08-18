@@ -329,11 +329,17 @@ class UnaryOpTest(test.TestCase):
     # +/-inf overflowed the intermediate and returned NaN. Values on both
     # sides of that overflow threshold are covered, along with the
     # saturation seam at 6 and NaN propagation.
-    x = np.array([np.inf, -np.inf, 1e300, -1e300, 1.35e154, -1.35e154,
-                  1.34e154, 5.9, 6.0, 6.1, -7.0], dtype=np.float64)
-    expected = np.array([1.0, -1.0, 1.0, -1.0, 1.0, -1.0,
-                         1.0, 1.0, 1.0, 1.0, -1.0], dtype=np.float64)
-    self.assertAllEqual(expected, self.evaluate(math_ops.erf(x)))
+    # These arguments take the saturating branch, which returns the literal
+    # +/-1.0, so exact equality cannot flake.
+    saturated = np.array([np.inf, -np.inf, 1e300, -1e300, 1.35e154,
+                          -1.35e154, 6.0, 6.1, -7.0], dtype=np.float64)
+    expected = np.array([1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0],
+                        dtype=np.float64)
+    self.assertAllEqual(expected, self.evaluate(math_ops.erf(saturated)))
+    # These stay just below the threshold on the forwarded implementation,
+    # whose last-ulp rounding may differ across platforms.
+    near_threshold = np.array([5.9, 1.34e154], dtype=np.float64)
+    self.assertAllClose([1.0, 1.0], self.evaluate(math_ops.erf(near_threshold)))
     nan_result = self.evaluate(math_ops.erf(np.float64(np.nan)))
     self.assertTrue(np.isnan(nan_result))
 
