@@ -375,6 +375,7 @@ INSTANTIATE_TEST_CASE_P(CacheDatasetOpTest,
                         ParameterizedIteratorSaveAndRestoreTest,
                         ::testing::ValuesIn(IteratorSaveAndRestoreTestCases()));
 
+<<<<<<< dest:             4912b9a3faf0 - frameworks-actuation-server: Batched...
 TEST_F(CacheDatasetOpTest, NegativeIndexTest) {
   auto params = CacheDatasetParams3();
   TF_ASSERT_OK(Initialize(params));
@@ -385,6 +386,55 @@ TEST_F(CacheDatasetOpTest, NegativeIndexTest) {
   EXPECT_EQ(status.message(), "Index out of range [0, 3):-1");
 }
 
+||||||| parent of source: 0d028627c9e0 - ymzhou: Update the FC prober, change...
+=======
+TEST_F(CacheDatasetOpTest, MemoryDatasetGet) {
+  auto dataset_params = CacheDatasetParams3();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  std::vector<Tensor> out_tensors;
+
+  // Valid indices using AnyContext.
+  TF_EXPECT_OK(
+      dataset_->Get(AnyContext(dataset_ctx_.get()), 0, &out_tensors));
+  TF_EXPECT_OK(ExpectEqual(
+      out_tensors,
+      CreateTensors<int64_t>(TensorShape({3, 1}), {{0, 1, 2}}),
+      /*compare_order=*/true));
+
+  out_tensors.clear();
+  TF_EXPECT_OK(
+      dataset_->Get(AnyContext(dataset_ctx_.get()), 1, &out_tensors));
+  TF_EXPECT_OK(ExpectEqual(
+      out_tensors,
+      CreateTensors<int64_t>(TensorShape({3, 1}), {{3, 4, 5}}),
+      /*compare_order=*/true));
+
+  out_tensors.clear();
+  TF_EXPECT_OK(
+      dataset_->Get(AnyContext(dataset_ctx_.get()), 2, &out_tensors));
+  TF_EXPECT_OK(ExpectEqual(
+      out_tensors,
+      CreateTensors<int64_t>(TensorShape({3, 1}), {{6, 7, 8}}),
+      /*compare_order=*/true));
+
+  // Out of range positive index.
+  EXPECT_EQ(
+      dataset_->Get(AnyContext(dataset_ctx_.get()), 3, &out_tensors).code(),
+      absl::StatusCode::kOutOfRange);
+
+  // Negative indices should return OutOfRange error.
+  EXPECT_EQ(
+      dataset_->Get(AnyContext(dataset_ctx_.get()), -1, &out_tensors).code(),
+      absl::StatusCode::kOutOfRange);
+  EXPECT_EQ(
+      dataset_->Get(AnyContext(dataset_ctx_.get()), -10, &out_tensors).code(),
+      absl::StatusCode::kOutOfRange);
+  EXPECT_EQ(
+      dataset_->Get(dataset_ctx_.get(), -1, &out_tensors).code(),
+      absl::StatusCode::kOutOfRange);
+}
+
+>>>>>>> source:           1ac53cf8b587 - kehuang: Validate index in MemoryDat...
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

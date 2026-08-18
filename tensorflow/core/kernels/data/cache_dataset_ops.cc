@@ -89,6 +89,10 @@ class DatasetRandomAccessCache {
   // out_tensors with the element at that index.
   absl::Status Get(OpKernelContext* ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) {
+    if (index < 0) {
+      return errors::OutOfRange("Index out of range [0, ", cache_.size(),
+                                "):", index);
+    }
     if (!iter_resource_) {
       TF_ASSIGN_OR_RETURN(iter_resource_,
                           GetIteratorResourceFromDataset(ctx, input_));
@@ -110,6 +114,10 @@ class DatasetRandomAccessCache {
 
  private:
   absl::Status ExtendTempCacheToIndex(int64_t index, OpKernelContext* ctx) {
+    if (index < 0) {
+      return errors::OutOfRange("Index out of range [0, ", cache_.size(),
+                                "):", index);
+    }
     bool end_of_sequence;
     while (cache_.size() <= index) {
       std::vector<Tensor> out_tensors;
@@ -805,7 +813,9 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
 
   absl::Status Get(OpKernelContext* ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) const override {
+    TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     mutex_lock l(mu_);
+<<<<<<< dest:             4912b9a3faf0 - frameworks-actuation-server: Batched...
 
     CardinalityOptions options;
     options.set_compute_level(CardinalityOptions::CARDINALITY_COMPUTE_LOW);
@@ -817,6 +827,19 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
       return absl::OutOfRangeError(
           absl::StrCat("Index out of range [0, ", cardinality, "):", index));
     }
+||||||| parent of source: 0d028627c9e0 - ymzhou: Update the FC prober, change...
+
+    CardinalityOptions options;
+    options.set_compute_level(CardinalityOptions::CARDINALITY_COMPUTE_LOW);
+    int64_t cardinality = Cardinality(options);
+
+    if (cardinality != kUnknownCardinality &&
+        cardinality != kInfiniteCardinality && index >= cardinality) {
+      return errors::OutOfRange("Index out of range [0, ", cardinality,
+                                "):", index);
+    }
+=======
+>>>>>>> source:           1ac53cf8b587 - kehuang: Validate index in MemoryDat...
     if (!dataset_random_access_cache_) {
       dataset_random_access_cache_ =
           std::make_unique<DatasetRandomAccessCache>(input_);
@@ -826,6 +849,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
 
   absl::Status Get(AnyContext ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) const override {
+<<<<<<< dest:             4912b9a3faf0 - frameworks-actuation-server: Batched...
     CardinalityOptions options;
     options.set_compute_level(CardinalityOptions::CARDINALITY_COMPUTE_LOW);
     int64_t cardinality = Cardinality(options);
@@ -836,6 +860,10 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
       return absl::OutOfRangeError(
           absl::StrCat("Index out of range [0, ", cardinality, "):", index));
     }
+||||||| parent of source: 0d028627c9e0 - ymzhou: Update the FC prober, change...
+=======
+    TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
+>>>>>>> source:           1ac53cf8b587 - kehuang: Validate index in MemoryDat...
     mutex_lock l(mu_);
     if (!iterator_random_access_cache_) {
       iterator_random_access_cache_ =
