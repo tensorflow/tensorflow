@@ -323,6 +323,20 @@ class UnaryOpTest(test.TestCase):
     self._compareBothSparse(x, np.sign, math_ops.sign)
     self._compareBothSparse(x, np.sign, math_ops.erf)
 
+  def testErfDoubleSpecialValues(self):
+    # Regression test for GitHub issue 108483. The double-precision erf
+    # squared its argument, so |x| > sqrt(DBL_MAX), about 1.34e154, and
+    # +/-inf overflowed the intermediate and returned NaN. Values on both
+    # sides of that overflow threshold are covered, along with the
+    # saturation seam at 6 and NaN propagation.
+    x = np.array([np.inf, -np.inf, 1e300, -1e300, 1.35e154, -1.35e154,
+                  1.34e154, 5.9, 6.0, 6.1, -7.0], dtype=np.float64)
+    expected = np.array([1.0, -1.0, 1.0, -1.0, 1.0, -1.0,
+                         1.0, 1.0, 1.0, 1.0, -1.0], dtype=np.float64)
+    self.assertAllEqual(expected, self.evaluate(math_ops.erf(x)))
+    nan_result = self.evaluate(math_ops.erf(np.float64(np.nan)))
+    self.assertTrue(np.isnan(nan_result))
+
   @test_util.run_deprecated_v1
   def testDoubleBasic(self):
     x = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float64)

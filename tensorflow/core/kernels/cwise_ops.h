@@ -844,6 +844,44 @@ struct functor_traits<scalar_erfinv_op<float>> {
   };
 };
 
+// Double-precision erf that saturates large arguments. Eigen's
+// scalar_erf_op<double> squares its argument, so for |x| > sqrt(DBL_MAX),
+// about 1.34e154, and for +/-infinity the intermediate overflows and the
+// result becomes NaN. erf(x) rounds to exactly +/-1 in double precision for
+// every |x| >= 6, so such arguments are answered directly and the rest are
+// forwarded. NaN fails the saturation comparison and is forwarded, which
+// preserves erf(NaN) = NaN. The single-precision implementation saturates
+// internally and does not need this.
+struct scalar_erf_saturating_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE double
+  operator()(const double& x) const {
+    if (TF_PREDICT_FALSE(Eigen::numext::abs(x) >= 6.0)) {
+      return x > 0.0 ? 1.0 : -1.0;
+    }
+    return scalar_erf_op<double>()(x);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
+    const Packet six = pset1<Packet>(6.0);
+    const Packet one = pset1<Packet>(1.0);
+    const Packet saturated =
+        pselect(pcmp_lt(x, pzero(x)), pnegate(one), one);
+    const Packet erf_val = scalar_erf_op<double>().packetOp(x);
+    // The mask is true only for saturated lanes: NaN compares false against
+    // the threshold and therefore keeps the forwarded erf value.
+    return pselect(pcmp_le(six, pabs(x)), saturated, erf_val);
+  }
+};
+
+template <>
+struct functor_traits<scalar_erf_saturating_op> {
+  enum {
+    Cost = functor_traits<scalar_erf_op<double>>::Cost +
+           2 * NumTraits<double>::AddCost,
+    PacketAccess = functor_traits<scalar_erf_op<double>>::PacketAccess,
+  };
+};
+
 }  // end namespace internal
 }  // end namespace Eigen
 
@@ -985,6 +1023,10 @@ struct digamma : base<T, Eigen::internal::scalar_digamma_op<T>> {};
 
 template <typename T>
 struct erf : base<T, Eigen::internal::scalar_erf_op<T>> {};
+
+// See scalar_erf_saturating_op for why double is special-cased.
+template <>
+struct erf<double> : base<double, Eigen::internal::scalar_erf_saturating_op> {};
 
 template <typename T>
 struct erfc : base<T, Eigen::internal::scalar_erfc_op<T>> {};
