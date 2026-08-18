@@ -140,7 +140,14 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
     // Elementwise ops.
     case HloOpcode::kExp:
       if (LowPrecisionType() == BF16) {
-        return compute_capability_.IsCuda();
+        if (compute_capability_.IsCuda()) {
+          return true;
+        }
+        // gfx1250 lowers bf16 exp as exp2(x * log2(e)) computed in f32, so
+        // there is no need to upcast bf16 exp to f32 in FloatNormalization.
+        if (auto* rocm_cc = compute_capability_.rocm_compute_capability()) {
+          return rocm_cc->has_bf16_transcendental_support();
+        }
       }
       return false;
     case HloOpcode::kLog:
