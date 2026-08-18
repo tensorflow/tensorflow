@@ -377,6 +377,7 @@ TEST_F(SimplePlannerTest, SimpleGraphOptionalOutput) {
   EXPECT_TRUE(IsAllocated(5));
 }
 
+<<<<<<< dest:             88bd00b6334f - jscai: Add inter-domain routing rule...
 TEST_F(SimplePlannerTest, UAFWhenResizedToZero) {
   TestGraph graph({0}, {{{0}, {1}, {}}}, {1});
   SetGraph(&graph);
@@ -413,5 +414,60 @@ TEST_F(SimplePlannerTest, NonPersistentMemoryLifecycle) {
   EXPECT_TRUE(IsAllocated(2));
 }
 
+||||||| parent of source: e33eb7ccd76c - searchads-capture: Auto generating c...
+=======
+TEST_F(SimplePlannerTest, ResizeTensorToZero) {
+  TestGraph graph({0, 1},
+                  {
+                      /* in, out, tmp */
+                      {{0, 1}, {2}, {}},     // First op
+                      {{2, 0}, {4, 5}, {}},  // Second op
+                      {{4, 5}, {3}, {}}      // Third op
+                  },
+                  {3});
+  SetGraph(&graph);
+  Execute(0, 10);
+
+  EXPECT_TRUE(IsAllocated(2));
+  EXPECT_NE((*graph.tensors())[2].data.raw, nullptr);
+
+  // Resize tensor 2 to 0 bytes and re-execute.
+  (*graph.tensors())[2].bytes = 0;
+  Execute(0, 10);
+
+  // Ensure tensor 2's data.raw is reset to nullptr instead of retaining the
+  // dangling pointer.
+  EXPECT_FALSE(IsAllocated(2));
+  EXPECT_EQ((*graph.tensors())[2].data.raw, nullptr);
+
+  // Resize tensor 2 back to positive bytes and re-execute.
+  (*graph.tensors())[2].bytes = 16;
+  Execute(0, 10);
+
+  EXPECT_TRUE(IsAllocated(2));
+  EXPECT_NE((*graph.tensors())[2].data.raw, nullptr);
+}
+
+TEST_F(SimplePlannerTest, NodeWithOptionalOutputAndTemporary) {
+  TestGraph graph({0, 1},
+                  {
+                      /* in, out, tmp */
+                      // Op with optional output and temporary.
+                      {{0, 1}, {-1, 2}, {-1, 5}},
+                      {{2, 0}, {4}, {}},
+                      {{4}, {3}, {}}
+                  },
+                  {3});
+  SetGraph(&graph);
+  Execute(0, 10);
+
+  EXPECT_TRUE(IsAllocated(1));
+  EXPECT_TRUE(IsAllocated(2));
+  EXPECT_TRUE(IsAllocated(3));
+  EXPECT_TRUE(IsAllocated(4));
+  EXPECT_TRUE(IsAllocated(5));
+}
+
+>>>>>>> source:           a33955346755 - kehuang: Fix use-after-free on zero-...
 }  // namespace
 }  // namespace tflite
