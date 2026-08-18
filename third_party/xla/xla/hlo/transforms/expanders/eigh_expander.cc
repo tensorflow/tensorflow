@@ -477,6 +477,29 @@ XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64_t max_iter, float tol,
 
     a = Symmetrize(a, lower);
 
+    PrimitiveType real_type = primitive_util::IsComplexType(type)
+                                  ? primitive_util::ComplexComponentType(type)
+                                  : type;
+    XlaOp zero_real = Zero(builder, real_type);
+    XlaOp one_real = One(builder, real_type);
+    XlaOp abs_a = primitive_util::IsComplexType(type)
+                      ? Max(Abs(Real(a)), Abs(Imag(a)))
+                      : Abs(a);
+    XlaOp a_max =
+        Reduce(abs_a, zero_real, CreateScalarMaxComputation(real_type, builder),
+               {num_dims - 2, num_dims - 1});
+    XlaOp scale = Select(Eq(a_max, zero_real), one_real, a_max);
+
+    std::vector<int64_t> batch_broadcast_dims(num_batch_dims);
+    absl::c_iota(batch_broadcast_dims, 0);
+
+    XlaOp scale_a = primitive_util::IsComplexType(type)
+                        ? Complex(scale, ZerosLike(scale))
+                        : scale;
+    scale_a =
+        BroadcastInDim(scale_a, a_shape.dimensions(), batch_broadcast_dims);
+    a = a / scale_a;
+
     const int64_t k = CeilOfRatio(n, int64_t{2});
     // tl = A[:n // 2, :n // 2]
     // bl = A[n // 2:, :n // 2]
@@ -536,6 +559,11 @@ XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64_t max_iter, float tol,
       v = SliceInMinorDims(v, {0, 0}, {n, n});
     }
     v = MaybeConjugate(TransposeInMinorDims(v), true);
+
+    ABSL_ASSIGN_OR_RETURN(Shape w_shape, builder->GetShape(w));
+    XlaOp scale_w =
+        BroadcastInDim(scale, w_shape.dimensions(), batch_broadcast_dims);
+    w = w * scale_w;
 
     if (sort_eigenvalues) {
       ABSL_RETURN_IF_ERROR(SortByEigenvalues(v, w));
