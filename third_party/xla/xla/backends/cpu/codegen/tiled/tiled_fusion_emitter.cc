@@ -256,8 +256,6 @@ bool IsSupportedInstruction(const HloInstruction& inst,
                             bool use_new_xtile_lowering) {
   HloOpcode opcode = inst.opcode();
   switch (opcode) {
-    case HloOpcode::kBroadcast:
-      return use_new_xtile_lowering;
     case HloOpcode::kConvert: {
       PrimitiveType operand_type = inst.operand(0)->shape().element_type();
       PrimitiveType result_type = inst.shape().element_type();
@@ -295,10 +293,9 @@ bool IsSupportedInstruction(const HloInstruction& inst,
       return true;
     case HloOpcode::kConstant:
       return ShapeUtil::IsEffectiveScalar(inst.shape());
+    case HloOpcode::kBroadcast:
     case HloOpcode::kDot:
-      return use_new_xtile_lowering;
     case HloOpcode::kReduce:
-      return use_new_xtile_lowering && !inst.shape().IsTuple();
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kMap:
     case HloOpcode::kPopulationCount:
@@ -317,18 +314,19 @@ bool IsSupportedInstruction(const HloInstruction& inst,
         if (HasComplexType(inst)) {
           switch (opcode) {
             case HloOpcode::kAdd:
+            case HloOpcode::kComplex:
+            case HloOpcode::kImag:
+            case HloOpcode::kReal:
             case HloOpcode::kSubtract:
+              return true;
             case HloOpcode::kMultiply:
             case HloOpcode::kDivide:
             case HloOpcode::kPower:
             case HloOpcode::kAbs:
             case HloOpcode::kNegate:
-            case HloOpcode::kComplex:
-            case HloOpcode::kReal:
-            case HloOpcode::kImag:
             case HloOpcode::kSelect:
             case HloOpcode::kCompare:
-              return true;
+              return !use_new_xtile_lowering;
             default:
               return false;
           }
@@ -444,6 +442,10 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
 
   // 2. Evaluate all candidates by substituting concrete tile sizes into the
   // symbolic tiles of roots and operands.
+  bool use_new_xtile_lowering = fusion.GetModule()
+                                    ->config()
+                                    .debug_options()
+                                    .xla_cpu_use_new_xtile_lowering();
   struct Candidate {
     SmallVector<int64_t, 4> padded_tile_sizes;
     int64_t cost;
@@ -452,6 +454,12 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
   evaluated_candidates.reserve(candidates.size());
   for (const auto& tile_sizes : candidates) {
     auto padded_tile_sizes = xla::xtile::GetPaddedTileSizes(tile_sizes);
+    // For the new tiling lowering, we skip large tiles, because we tile to the
+    // vector level.
+    if (use_new_xtile_lowering && Product(padded_tile_sizes) > 512 &&
+        llvm::any_of(tile_sizes, [](int64_t size) { return size > 32; })) {
+      continue;
+    }
     int64_t cost =
         EvaluateSymbolicCost(symbolic_computation, padded_tile_sizes, operands);
     VLOG(2) << "Candidate: {" << absl::StrJoin(tile_sizes, ", ")
@@ -552,13 +560,17 @@ TiledEmissionResult EmitTiledFusionKernel(
                                     ->config()
                                     .debug_options()
                                     .xla_cpu_use_new_xtile_lowering();
-  auto supported_status =
-      IsSupportedTiledFusion(fusion, use_new_xtile_lowering);
-  VLOG(2) << "  IsSupportedTiledFusion: " << supported_status;
-  if (!supported_status.ok()) {
-    return {absl::UnimplementedError(
-                "Fusion is not supported by the tiled CPU emitter."),
-            /*tiling_succeeded=*/false};
+  // If the block level params are set, we assume that the caller has already
+  // verified that the fusion is supported by the tiled emitter.
+  if (!block_level_parameters.has_value()) {
+    auto supported_status =
+        IsSupportedTiledFusion(fusion, use_new_xtile_lowering);
+    VLOG(2) << "  IsSupportedTiledFusion: " << supported_status;
+    if (!supported_status.ok()) {
+      return {absl::UnimplementedError(
+                  "Fusion is not supported by the tiled CPU emitter."),
+              /*tiling_succeeded=*/false};
+    }
   }
   absl::StatusOr<ge::TiledHloComputation> tiled_computation =
       GetTiledHloComputation(context, fusion, block_level_parameters);
