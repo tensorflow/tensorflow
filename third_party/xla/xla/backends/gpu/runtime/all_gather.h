@@ -88,7 +88,9 @@ absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
 // to the symmetric buffer and then reads each peer's slice.
 // warp_size should be device_description.threads_per_warp() (32 on NVIDIA,
 // 64 on AMD) so that the thread count is a multiple of the hardware warp.
-LaunchDimensions AllGatherLaunchDimensions(int64_t elements, int64_t warp_size);
+LaunchDimensions AllGatherLaunchDimensions(
+    int64_t elements, int64_t num_ranks,
+    const se::DeviceDescription& device_info);
 
 // Creates a CollectiveKernelSpec describing the resource requirements of a
 // Triton all-gather kernel.  The returned spec uses the same 6-argument layout
