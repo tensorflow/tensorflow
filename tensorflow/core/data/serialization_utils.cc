@@ -188,6 +188,10 @@ VariantTensorDataReader::VariantTensorDataReader(
     std::string metadata;
     d->get_metadata(&metadata);
     auto keys = str_util::Split(metadata, kDelimiter, str_util::SkipEmpty());
+    if (keys.empty()) {
+      LOG(WARNING) << "Found empty metadata in VariantTensorData; skipping.";
+      continue;
+    }
     const std::string name = keys[0];
     data_[name] = d;
     map_[name] = std::map<std::string, size_t>();
