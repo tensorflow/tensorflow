@@ -86,6 +86,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@xla//xla/pjrt:pjrt_client",
+        "@xla//xla/pjrt:tf_pjrt_client",
         "@xla//xla/pjrt/c:pjrt_c_api_hdrs",
         "@xla//xla/pjrt/c_api_client:pjrt_c_api_client",
         "@xla//xla/tsl/platform:errors",

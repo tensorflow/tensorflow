@@ -21,8 +21,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
-#include "tensorflow/core/common_runtime/next_pluggable_device/c/plugin_c_api.h"
-#include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
 #include "tensorflow/core/framework/device_factory.h"
 
 namespace tensorflow {
@@ -32,8 +30,7 @@ class NextPluggableDeviceFactory : public DeviceFactory {
   explicit NextPluggableDeviceFactory(
       const std::string& device_type,
       const std::string& compilation_device_name)
-      : api_(TfnpdApi()),
-        device_type_(device_type),
+      : device_type_(device_type),
         compilation_device_name_(compilation_device_name) {}
 
   absl::Status ListPhysicalDevices(std::vector<std::string>* devices) override;
@@ -47,7 +44,6 @@ class NextPluggableDeviceFactory : public DeviceFactory {
   }
 
  private:
-  const TFNPD_Api* api_;
   const std::string device_type_;
   const std::string compilation_device_name_;
 };

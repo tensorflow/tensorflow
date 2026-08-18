@@ -21,14 +21,12 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/flags/flag.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/compiler/jit/pjrt_device_context.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
-#include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_allocator.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -36,9 +34,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/reffed_status_callback.h"
-
-ABSL_FLAG(bool, next_pluggable_device_use_pjrt_allocator, true,
-          "Use PjRtAllocator in next pluggable device.");
 
 namespace tensorflow {
 
@@ -62,14 +57,8 @@ NextPluggableDevice::NextPluggableDevice(const SessionOptions& session_options,
                                   options.compilation_device_name,
                                   options.shape_determination_fns)),
       device_ordinal_(options.device_ordinal) {
-  if (absl::GetFlag(FLAGS_next_pluggable_device_use_pjrt_allocator)) {
-    pjrt_allocator_ = std::make_unique<AsyncValueAllocator>();
-    allocator_ = pjrt_allocator_.get();
-  } else {
-    tfnpd_allocator_ =
-        std::make_unique<NextPluggableDeviceAllocator>(device_ordinal_);
-    allocator_ = tfnpd_allocator_.get();
-  }
+  pjrt_allocator_ = std::make_unique<AsyncValueAllocator>();
+  allocator_ = pjrt_allocator_.get();
 
   if (!options.shape_determination_fns.empty()) {
     device_context_ = core::RefCountPtr<DeviceContext>(

@@ -22,8 +22,6 @@ limitations under the License.
 // Forward declarations to avoid dependency.
 struct PJRT_Api;
 struct SE_PlatformRegistrationParams;
-struct TFNPD_Api;
-struct TFNPD_PluginParams;
 struct TF_ProfilerRegistrationParams;
 struct TP_OptimizerRegistrationParams;
 struct TSL_Status;
@@ -47,12 +45,9 @@ using TFInitProfilerFn = void (*)(TF_ProfilerRegistrationParams* const,
 
 using PjrtApiInitFn = const PJRT_Api* (*)();
 using TFKernelInitFn = void (*)();
-using TFNPDInitPluginFn = const TFNPD_Api* (*)(TFNPD_PluginParams*,
-                                               TSL_Status*);
 
 struct PluggableDeviceInit_Api {
   ::stream_executor::SEInitPluginFn init_plugin_fn = nullptr;
-  TFNPDInitPluginFn init_np_plugin_fn = nullptr;
   PjrtApiInitFn get_pjrt_api_fn = nullptr;
   TFKernelInitFn init_kernel_fn = nullptr;
   grappler::TFInitGraphPluginFn init_graph_fn = nullptr;

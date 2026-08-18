@@ -20,7 +20,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
-#include "tensorflow/c/experimental/next_pluggable_device/tensor_pjrt_buffer_util.h"
 #include "tensorflow/compiler/jit/pjrt_tensor_buffer.h"
 #include "tensorflow/compiler/jit/pjrt_tensor_buffer_util.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
@@ -29,7 +28,6 @@ limitations under the License.
 #include "xla/tsl/c/tsl_status_internal.h"
 #include "xla/tsl/framework/device_id_utils.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
-#include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -196,45 +194,88 @@ void PjRtDeviceContext::CopyTensorInSameDevice(const Tensor* input_tensor,
                                                Device* device,
                                                Tensor* output_tensor,
                                                StatusCallback done) const {
-  if (!DeviceFactory::IsPluggableDevice(device->device_type())) {
-    done(absl::UnimplementedError(
-        "Same-device copies in PjRtDeviceContext is only implemented when "
-        "is_pluggable_device is true."));
-    return;
-  }
-  // TODO(b/288585098): consider whether to support same device copy in PJRT
-  // API.
-  absl::StatusOr<PJRT_Buffer*> c_src_buffer =
-      GetPjRtCBufferFromTensor(input_tensor);
-  if (!c_src_buffer.ok()) {
-    done(c_src_buffer.status());
-    return;
-  }
-  absl::StatusOr<xla::PjRtCApiClient*> c_api_client =
-      tensorflow::GetPjRtCApiClient(
-          tensorflow::DeviceType(device->device_type()));
-  if (!c_api_client.ok()) {
-    done(c_api_client.status());
+  if (input_tensor->NumElements() == 0) {
+    VLOG(2) << "CopyTensorInSameDevice empty tensor";
+    done(absl::OkStatus());
     return;
   }
 
-  TSL_Status c_status;
-  PJRT_Buffer* dst_buffer = TfnpdApi()->TFNPD_SameDevicePjRtBufferCopy(
-      *c_src_buffer, (*c_api_client)->pjrt_c_client(), &c_status);
-  if (!c_status.status.ok()) {
-    done(c_status.status);
+  absl::StatusOr<xla::PjRtClient*> pjrt_client =
+      GetOrCreatePjRtClient(DeviceType(device->device_type()));
+  if (!pjrt_client.ok()) {
+    done(pjrt_client.status());
     return;
   }
 
-  auto set_c_buffer_status =
-      SetPjRtCBufferToTensor(dst_buffer, *c_api_client, output_tensor);
-  if (!set_c_buffer_status.ok()) {
-    done(set_c_buffer_status);
+  xla::PjRtBuffer* src_device_buffer = nullptr;
+  AsyncValueTensor* input_av =
+      tensorflow::AsyncValueTensor::FromTensor(input_tensor);
+  if (use_pjrt_tensor_buffer_) {
+    if (input_av) {
+      done(absl::InvalidArgumentError(
+          "If use_pjrt_tensor_buffer is set, the input tensor should not "
+          "contain an AsyncValueTensor."));
+      return;
+    }
+    const PjRtTensorBuffer* pjrt_tensor_buffer =
+        dynamic_cast<const PjRtTensorBuffer*>(DMAHelper::buffer(input_tensor));
+    if (pjrt_tensor_buffer == nullptr) {
+      done(absl::UnimplementedError(
+          "use_pjrt_tensor_buffer is set to true. Transferring a tensor "
+          "without pjrt_tensor_buffer in this case is not supported."));
+      return;
+    }
+    src_device_buffer = pjrt_tensor_buffer->pjrt_buffer();
+  } else {
+    if (input_av) {
+      src_device_buffer = input_av->GetBuffer().get();
+    }
+  }
+
+  if (src_device_buffer == nullptr) {
+    done(absl::InvalidArgumentError(
+        "The input tensor has no associated device buffer."));
     return;
   }
-  AsyncValueTensor* result_tensor =
-      tensorflow::AsyncValueTensor::FromTensor(output_tensor);
-  result_tensor->GetBuffer()->GetReadyFuture().OnReady(std::move(done));
+
+  const int pjrt_device_id =
+      tsl::GetDeviceIdFromDeviceParsedName(device->parsed_name());
+  auto pjrt_device_or =
+      (*pjrt_client)
+          ->LookupAddressableDevice(xla::LocalDeviceId(pjrt_device_id));
+  if (!pjrt_device_or.ok()) {
+    done(pjrt_device_or.status());
+    return;
+  }
+  auto memory_space_or = (*pjrt_device_or)->default_memory_space();
+  if (!memory_space_or.ok()) {
+    done(memory_space_or.status());
+    return;
+  }
+
+  absl::StatusOr<std::unique_ptr<xla::PjRtBuffer>> buffer_or =
+      src_device_buffer->CopyToMemorySpace(*memory_space_or);
+  if (!buffer_or.ok()) {
+    done(buffer_or.status());
+    return;
+  }
+
+  xla::PjRtBuffer* pjrt_buffer = (*buffer_or).get();
+  if (use_pjrt_tensor_buffer_) {
+    absl::StatusOr<Tensor> t = MakeTensorFromPjRtBuffer(
+        output_tensor->dtype(), output_tensor->shape(), std::move(*buffer_or));
+    if (!t.ok()) {
+      done(t.status());
+      return;
+    }
+    *output_tensor = *t;
+  } else {
+    AsyncValueTensor* result_tensor =
+        tensorflow::AsyncValueTensor::FromTensor(output_tensor);
+    CHECK(!result_tensor->GetBuffer());  // Crash OK
+    result_tensor->SetBuffer(std::move(*buffer_or));
+  }
+  pjrt_buffer->GetReadyFuture().OnReady(std::move(done));
 }
 
 void PjRtDeviceToDeviceCopy(DeviceContext* send_dev_context,

@@ -1809,12 +1809,10 @@ cc_library(
     deps = [
         ":pjrt_tensor_buffer",
         ":pjrt_tensor_buffer_util",
-        "//tensorflow/c/experimental/next_pluggable_device:tensor_pjrt_buffer_util",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime:dma_helper",
-        "//tensorflow/core/common_runtime/next_pluggable_device:next_pluggable_device_api",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/tfrt/common:async_value_tensor",

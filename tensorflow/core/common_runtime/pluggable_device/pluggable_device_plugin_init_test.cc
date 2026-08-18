@@ -37,8 +37,6 @@ void SE_InitPlugin(SE_PlatformRegistrationParams* params, TF_Status* status);
 void TF_InitKernel();
 
 // from test_next_pluggable_device_plugin.cc
-const TFNPD_Api* TFNPD_InitPlugin(TFNPD_PluginParams* params,
-                                  TF_Status* tf_status);
 const PJRT_Api* GetPjrtApi();
 }
 
@@ -62,14 +60,7 @@ TEST(PluggableDevicePluginInitTest, StaticInitTest) {
 }
 
 TEST(PluggableDevicePluginInitTest, StaticNPInitTest) {
-  static bool init_np_plugin_fn_called = false;
   static bool init_pjrt_fn_called = false;
-
-  auto init_np_plugin_fn = +[](TFNPD_PluginParams* plugin_params,
-                               TF_Status* status) -> const TFNPD_Api* {
-    init_np_plugin_fn_called = true;
-    return TFNPD_InitPlugin(plugin_params, status);
-  };
 
   auto init_pjrt_fn = +[]() -> const PJRT_Api* {
     init_pjrt_fn_called = true;
@@ -77,12 +68,9 @@ TEST(PluggableDevicePluginInitTest, StaticNPInitTest) {
   };
 
   PluggableDeviceInit_Api api;
-  init_np_plugin_fn_called = false;
   init_pjrt_fn_called = false;
-  api.init_np_plugin_fn = init_np_plugin_fn;
   api.get_pjrt_api_fn = init_pjrt_fn;
   TF_ASSERT_OK(RegisterPluggableDevicePlugin(&api));
-  ASSERT_TRUE(init_np_plugin_fn_called);
   ASSERT_TRUE(init_pjrt_fn_called);
 }
 

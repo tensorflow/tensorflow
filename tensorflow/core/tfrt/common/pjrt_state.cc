@@ -21,6 +21,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
+#include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/tf_pjrt_client.h"
 #include "tensorflow/core/framework/types.h"
@@ -55,13 +57,20 @@ absl::StatusOr<xla::PjRtClient*> PjRtState::GetOrCreatePjRtClient(
   // TODO(b/260799193): use XlaPlatformInfo to pass device-specific options.
   // This info should be set in the plugin init for next pluggable device.
 
-  // TODO(b/280111106): make PjrtClientFactoryOptions an input of
-  // GetOrCreatePjRtClient.
-  xla::PjrtClientFactoryOptions options = xla::PjrtClientFactoryOptions();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
-                      xla::PjrtClientFactoryRegistry::Get().GetPjrtClient(
-                          device_type, options));
-  pjrt_client = xla::TfPjRtClient::CreateTfPjRtClient(std::move(client));
+  auto c_api = pjrt::PjrtApi(device_type.type_string());
+  if (c_api.ok()) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
+                        xla::GetCApiClient(device_type.type_string()));
+    pjrt_client = xla::TfPjRtClient::CreateTfPjRtClient(std::move(client));
+  } else {
+    // TODO(b/280111106): make PjrtClientFactoryOptions an input of
+    // GetOrCreatePjRtClient.
+    xla::PjrtClientFactoryOptions options = xla::PjrtClientFactoryOptions();
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
+                        xla::PjrtClientFactoryRegistry::Get().GetPjrtClient(
+                            device_type, options));
+    pjrt_client = xla::TfPjRtClient::CreateTfPjRtClient(std::move(client));
+  }
 
   clients_[device_type] = std::move(pjrt_client);
   return clients_[device_type].get();

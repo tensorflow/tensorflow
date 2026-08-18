@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/tf_pjrt_client.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -72,6 +73,12 @@ absl::StatusOr<xla::PjRtCApiClient*> GetPjRtCApiClient(
   TF_ASSIGN_OR_RETURN(absl::StatusOr<xla::PjRtClient*> pjrt_client,
                       tensorflow::GetPjRtClient(device_type));
   auto* pjrt_c_api_client = dynamic_cast<xla::PjRtCApiClient*>(*pjrt_client);
+  if (pjrt_c_api_client == nullptr) {
+    if (auto* tf_client = dynamic_cast<xla::TfPjRtClient*>(*pjrt_client)) {
+      pjrt_c_api_client =
+          dynamic_cast<xla::PjRtCApiClient*>(tf_client->wrapped());
+    }
+  }
   if (pjrt_c_api_client == nullptr) {
     return absl::InternalError(absl::StrCat("PjRtClient for ",
                                             device_type.type_string(),
