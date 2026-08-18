@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstring>
 
 #include "absl/container/inlined_vector.h"
-#include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/reference/broadcast_loop.h"
 #include "tensorflow/lite/kernels/internal/types.h"
