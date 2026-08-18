@@ -413,13 +413,13 @@ class TestDenseBincount(test.TestCase, parameterized.TestCase):
     # Regression test for GitHub issue 99513. `maxlength` is applied after
     # `minlength`, so a smaller `maxlength` silently won and the output was
     # shorter than `minlength` promises.
-    x = np.random.randint(0, 10, (100,))
+    x = [1, 2, 3]
     with self.assertRaisesRegex(ValueError, "must be at least `minlength`"):
       bincount_ops.bincount(x, minlength=10, maxlength=5)
 
   def test_maxlength_below_minlength_raises_for_constants(self):
     # The same check applies when the bounds are constant tensors.
-    x = np.random.randint(0, 10, (100,))
+    x = [1, 2, 3]
     with self.assertRaisesRegex(ValueError, "must be at least `minlength`"):
       bincount_ops.bincount(
           x,
@@ -428,8 +428,10 @@ class TestDenseBincount(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters((5, 10), (3, 3), (0, 4))
   def test_maxlength_at_least_minlength_is_accepted(self, minlength, maxlength):
-    # Consistent bounds keep working, including when they are equal.
-    x = np.random.randint(0, 10, (100,))
+    # Consistent bounds keep working, including when they are equal. The
+    # input contains every value below maxlength so the expected output
+    # length is deterministic.
+    x = list(range(maxlength))
     result = bincount_ops.bincount(x, minlength=minlength, maxlength=maxlength)
     self.assertEqual(maxlength, int(self.evaluate(result).shape[0]))
 

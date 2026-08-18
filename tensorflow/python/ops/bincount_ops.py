@@ -14,6 +14,8 @@
 # ==============================================================================
 """bincount ops."""
 
+import numpy as np
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
@@ -173,7 +175,10 @@ def bincount(arr,
       min_value = tensor_util.constant_value(minlength)
       max_value = tensor_util.constant_value(maxlength)
       if (min_value is not None and max_value is not None and
+          np.ndim(min_value) == 0 and np.ndim(max_value) == 0 and
           max_value < min_value):
+        # Non-scalar bounds are skipped here; they are rejected by the op
+        # itself.
         raise ValueError(
             "Argument `maxlength` must be at least `minlength`, received "
             f"minlength={min_value} and maxlength={max_value}.")
