@@ -267,6 +267,24 @@ class FIFOQueueTest(test.TestCase):
     with self.assertRaisesOpError("specified shapes"):
       self.evaluate(q.dequeue_many(0))
 
+  def testDequeueNonScalar(self):
+    q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, shapes=())
+    with self.assertRaisesRegex((errors_impl.InvalidArgumentError, ValueError),
+                                "must be a scalar"):
+      self.evaluate(
+          data_flow_ops.gen_data_flow_ops.queue_dequeue_many_v2(
+              q.queue_ref,
+              n=constant_op.constant([], dtype=dtypes_lib.int32),
+              component_types=[dtypes_lib.float32]))
+
+    with self.assertRaisesRegex((errors_impl.InvalidArgumentError, ValueError),
+                                "must be a scalar"):
+      self.evaluate(
+          data_flow_ops.gen_data_flow_ops.queue_dequeue_up_to_v2(
+              q.queue_ref,
+              n=constant_op.constant([], dtype=dtypes_lib.int32),
+              component_types=[dtypes_lib.float32]))
+
   def testMultiEnqueueMany(self):
     q = data_flow_ops.FIFOQueue(10, (dtypes_lib.float32, dtypes_lib.int32))
     float_elems = [10.0, 20.0, 30.0, 40.0]

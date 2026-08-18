@@ -100,6 +100,10 @@ class Autotuner {
 
   mutable absl::Mutex logs_mutex_;
   mutable AutotuningLogs logs_ ABSL_GUARDED_BY(logs_mutex_);
+
+  mutable absl::Mutex runner_mu_;
+  mutable int next_runner_index_ ABSL_GUARDED_BY(runner_mu_) = 0;
+  int GetNextRunnerIndex() const;
 };
 
 }  // namespace xla
