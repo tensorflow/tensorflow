@@ -21,6 +21,7 @@ load("//tensorflow:pytype.default.bzl", "pytype_strict_contrib_test", "pytype_st
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "pywrap_binaries", "pywrap_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
+load("//tensorflow/lite:api_visibility.bzl", "TFLITE_PYTHON_CLIENTS_VISIBILITY")
 load("//tensorflow/lite:build_def.bzl", "tflite_exec_properties")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
 
@@ -64,7 +65,7 @@ py_library(
     ],
     compatible_with = get_compatible_with_portable(),
     strict_deps = True,
-    visibility = ["//visibility:public"],
+    visibility = TFLITE_PYTHON_CLIENTS_VISIBILITY,
     deps = [
         "//tensorflow/lite/python/interpreter_wrapper:_pywrap_tensorflow_interpreter_wrapper",
         "//tensorflow/lite/python/metrics",

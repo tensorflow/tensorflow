@@ -1,18 +1,3 @@
-# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# ==============================================================================
-
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
@@ -219,6 +204,7 @@ cc_library(
         "//xla/codegen/emitters:elemental_hlo_to_mlir",
         "//xla/codegen/emitters:implicit_arith_op_builder",
         "//xla/codegen/emitters:kernel_api_builder",
+        "//xla/codegen/emitters:utils",
         "//xla/codegen/emitters/ir:xla",
         "//xla/codegen/intrinsic:erf",
         "//xla/codegen/intrinsic:exp",
@@ -230,6 +216,7 @@ cc_library(
         "//xla/codegen/intrinsic/cpp:_intrinsic_declarations",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/analysis:symbolic_map",
+        "//xla/mlir/utils:type_util",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:map_mhlo_to_scalar_op",
         "//xla/service/gpu:ir_emission_utils",
@@ -250,6 +237,7 @@ cc_library(
         "@llvm-project//mlir:DataLayoutInterfaces",
         "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncUtils",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMCommonConversion",

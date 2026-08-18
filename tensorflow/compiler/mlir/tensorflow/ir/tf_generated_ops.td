@@ -12983,7 +12983,7 @@ def TF_RemoteCallOp : TF_Op<"RemoteCall", [CallOpInterface]> {
 
     /// Set the callee for this operation.
     void setCalleeFromCallable(CallInterfaceCallable callee) {
-      (*this)->setAttr("f", callee.get<SymbolRefAttr>());
+      (*this)->setAttr("f", ::llvm::cast<SymbolRefAttr>(callee));
     }
     Attribute removeArgAttrsAttr() { return nullptr; }
     Attribute removeResAttrsAttr() { return nullptr; }
