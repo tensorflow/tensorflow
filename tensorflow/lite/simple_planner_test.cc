@@ -377,6 +377,7 @@ TEST_F(SimplePlannerTest, SimpleGraphOptionalOutput) {
   EXPECT_TRUE(IsAllocated(5));
 }
 
+<<<<<<< dest:             4912b9a3faf0 - frameworks-actuation-server: Batched...
 TEST_F(SimplePlannerTest, UAFWhenResizedToZero) {
   TestGraph graph({0}, {{{0}, {1}, {}}}, {1});
   SetGraph(&graph);
@@ -413,5 +414,42 @@ TEST_F(SimplePlannerTest, NonPersistentMemoryLifecycle) {
   EXPECT_TRUE(IsAllocated(2));
 }
 
+||||||| parent of source: e33eb7ccd76c - searchads-capture: Auto generating c...
+=======
+TEST_F(SimplePlannerTest, ResizingTensorToZeroClearsDataPointer) {
+  TestGraph graph({1}, {{{1}, {2}, {}}}, {2});
+  SetGraph(&graph);
+  Execute(0, 10);
+  EXPECT_TRUE(IsAllocated(2));
+  void* allocated_ptr = (*graph.tensors())[2].data.raw;
+  EXPECT_NE(allocated_ptr, nullptr);
+
+  // Resize tensor 2 to 0 bytes and re-execute allocations.
+  (*graph.tensors())[2].bytes = 0;
+  Execute(0, 10);
+  EXPECT_FALSE(IsAllocated(2));
+  EXPECT_EQ((*graph.tensors())[2].data.raw, nullptr);
+}
+
+TEST_F(SimplePlannerTest, SimpleGraphOptionalNodeOutputsAndTemporaries) {
+  TestGraph graph({0, 1},
+                  {
+                      /* in, out, tmp */
+                      {{0, 1}, {-1, 2}, {-1}},  // Op with optional output and temporary
+                      {{2, 0}, {4, 5}, {}},
+                      {{4, 5}, {3}, {}}
+                  },
+                  {3});
+  SetGraph(&graph);
+  Execute(0, 10);
+
+  EXPECT_TRUE(IsAllocated(1));
+  EXPECT_TRUE(IsAllocated(2));
+  EXPECT_TRUE(IsAllocated(3));
+  EXPECT_TRUE(IsAllocated(4));
+  EXPECT_TRUE(IsAllocated(5));
+}
+
+>>>>>>> source:           f61760f7031f - kehuang: Fix use-after-free on zero-...
 }  // namespace
 }  // namespace tflite
