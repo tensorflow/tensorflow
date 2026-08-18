@@ -121,6 +121,7 @@ TEST(SnapshotUtilTest, MetadataFileDoesntExist) {
   EXPECT_FALSE(file_exists);
 }
 
+<<<<<<< dest:             4912b9a3faf0 - frameworks-actuation-server: Batched...
 TEST(SnapshotUtilTest, SnappyTensorSizeMismatch) {
   // Generate ground-truth tensors for writing and reading.
   std::vector<Tensor> tensors;
@@ -150,6 +151,56 @@ TEST(SnapshotUtilTest, SnappyTensorSizeMismatch) {
   TF_ASSERT_OK(Env::Default()->DeleteFile(filename));
 }
 
+||||||| parent of source: b96dfffae3e9 - haimingxu: Automated g4 rollback of ...
+=======
+TEST(SnapshotUtilTest, MismatchedTensorCount) {
+  std::vector<Tensor> tensors;
+  tensorflow::DataTypeVector dtypes;
+  GenerateTensorVector(dtypes, tensors);
+
+  std::string filename;
+  EXPECT_TRUE(Env::Default()->LocalTempFilename(&filename));
+
+  std::unique_ptr<Writer> writer;
+  TF_ASSERT_OK(Writer::Create(tensorflow::Env::Default(), filename,
+                              io::compression::kSnappy, /*version=*/1, dtypes,
+                              &writer));
+  TF_ASSERT_OK(writer->WriteTensors(tensors));
+  TF_ASSERT_OK(writer->Close());
+
+  // Test reading with fewer expected dtypes than the snapshot file contains.
+  tensorflow::DataTypeVector reader_dtypes_fewer(dtypes.begin(),
+                                                 dtypes.begin() + 5);
+  std::unique_ptr<Reader> reader_fewer;
+  TF_ASSERT_OK(Reader::Create(Env::Default(), filename,
+                              io::compression::kSnappy, /*version=*/1,
+                              reader_dtypes_fewer, &reader_fewer));
+
+  std::vector<Tensor> read_tensors;
+  absl::Status status = reader_fewer->ReadTensors(&read_tensors);
+  EXPECT_TRUE(absl::IsInvalidArgument(status));
+  EXPECT_NE(status.message().find(
+                "Mismatched number of tensors in snapshot metadata"),
+            absl::string_view::npos);
+
+  // Test reading with more expected dtypes than the snapshot file contains.
+  tensorflow::DataTypeVector reader_dtypes_more = dtypes;
+  reader_dtypes_more.push_back(DT_STRING);
+  std::unique_ptr<Reader> reader_more;
+  TF_ASSERT_OK(Reader::Create(Env::Default(), filename,
+                              io::compression::kSnappy, /*version=*/1,
+                              reader_dtypes_more, &reader_more));
+
+  status = reader_more->ReadTensors(&read_tensors);
+  EXPECT_TRUE(absl::IsInvalidArgument(status));
+  EXPECT_NE(status.message().find(
+                "Mismatched number of tensors in snapshot metadata"),
+            absl::string_view::npos);
+
+  TF_ASSERT_OK(Env::Default()->DeleteFile(filename));
+}
+
+>>>>>>> source:           2df8de59016a - kehuang: Validate snapshot metadata ...
 void SnapshotReaderBenchmarkLoop(::testing::benchmark::State& state,
                                  std::string compression_type, int version) {
   tensorflow::DataTypeVector dtypes;

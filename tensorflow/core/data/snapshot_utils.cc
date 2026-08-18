@@ -943,6 +943,13 @@ absl::Status CustomReader::SnappyUncompress(
     std::vector<Tensor>* simple_tensors,
     std::vector<std::pair<std::unique_ptr<char[]>, size_t>>*
         tensor_proto_strs) {
+  int num_tensors = metadata->tensor_metadata_size();
+  if (num_tensors != simple_tensor_mask_.size()) {
+    return errors::InvalidArgument(
+        "Mismatched number of tensors in snapshot metadata: expected ",
+        simple_tensor_mask_.size(), ", got ", num_tensors);
+  }
+
   tstring compressed;
   TF_RETURN_IF_ERROR(ReadRecord(&compressed));
   size_t size;
@@ -959,7 +966,6 @@ absl::Status CustomReader::SnappyUncompress(
                      simple_tensor_mask_.size(), ")."));
   }
 
-  int num_tensors = metadata->tensor_metadata_size();
   std::vector<tsl::iovec> iov(num_tensors);
   int index = 0;
   int64_t total_size = 0;
