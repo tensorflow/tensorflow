@@ -125,6 +125,32 @@ tsl_cc_test(
 )
 
 cc_library(
+    name = "callback_metric",
+    hdrs = ["callback_metric.h"],
+    deps = [
+        ":collection_registry",
+        ":gauge",
+        ":label_array_utils",
+        ":metric_def",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tsl_cc_test(
+    name = "callback_metric_test",
+    srcs = ["callback_metric_test.cc"],
+    deps = [
+        ":callback_metric",
+        ":cell_reader",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "sampler",
     srcs = ["sampler.cc"],
     hdrs = ["sampler.h"],
