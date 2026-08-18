@@ -35,6 +35,7 @@ def repo():
         patch_file = [
             "//third_party/mkl_dnn:setting_tsan_race_v3_12_3.patch",
             "//third_party/mkl_dnn:rename_gtest.patch",
+            "//third_party/mkl_dnn:onednn_bfloat16_windows_arm64.patch",
         ],
         sha256 = "12d8551668515c64adae2b26e5ebeeefa48b1ad1035717fe8718fd702c5e066b",
         strip_prefix = "oneDNN-3.12.3",
@@ -47,6 +48,7 @@ def repo():
         patch_file = [
             "//third_party/mkl_dnn:onednn_acl_lock_fixed_format_matmul.patch",
             "//third_party/mkl_dnn:onednn_acl_threadpool_default_max.patch",
+            "//third_party/mkl_dnn:onednn_bfloat16_windows_arm64.patch",
         ],
         sha256 = "5792cbc07764c6e25c459ff68efb5cfcd7f4a0ba66dca6a4a2c681cd7a644596",
         strip_prefix = "oneDNN-3.7",
