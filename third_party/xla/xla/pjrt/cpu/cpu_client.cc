@@ -1136,6 +1136,17 @@ bool PjRtCpuClient::BufferFromHostBufferSupportsZeroCopy(
       data, type, dims, byte_strides, shape);
 }
 
+absl::StatusOr<xla::Shape> PjRtCpuClient::GetCopyDestinationShape(
+    const xla::Shape& shape, PjRtMemorySpace* src_memory_space,
+    PjRtMemorySpace* dst_memory_space) {
+  if (this != dst_memory_space->client()) {
+    return CommonPjRtClient::GetCopyDestinationShape(shape, src_memory_space,
+                                                     dst_memory_space);
+  }
+  return MakeDefaultShapeForMemorySpace(
+      dst_memory_space, shape, shape.has_layout() ? &shape.layout() : nullptr);
+}
+
 absl::StatusOr<PjRtDeviceEventRef> PjRtCpuClient::LinearizeHostBufferInto(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,

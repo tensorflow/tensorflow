@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/codegen/emitters/transforms/passes.h"  // IWYU pragma: keep
+#include "xla/codegen/emitters/utils.h"
 #include "xla/codegen/intrinsic/cpp/intrinsic_declarations.h"
 #include "xla/codegen/intrinsic/erf.h"
 #include "xla/codegen/intrinsic/exp.h"
@@ -103,21 +104,18 @@ class LowerErfPattern : public mlir::OpRewritePattern<mlir::math::ErfOp> {
       return type;
     };
 
-    // Extend the argument to f32 and truncate the result back unconditionally
-    // as these will be cleaned up later if they are already f32.
     if (element_type.isF16() || element_type.isF32()) {
       mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
       mlir::Type f32_type = get_vector_type(b.getF32Type());
 
-      mlir::Value input_value =
-          mlir::arith::ExtFOp::create(b, f32_type, op.getOperand());
+      mlir::Value input_value = EmitFloatCast(op.getOperand(), f32_type, b);
 
       auto erf_decl = codegen::intrinsics::Erf::GetOrInsertDeclaration(
           rewriter, module_op_, Type::TypeFromIrType(f32_type));
       auto call_op = mlir::func::CallOp::create(b, erf_decl, input_value);
 
       mlir::Value f32_result = call_op.getResult(0);
-      mlir::Value result = mlir::arith::TruncFOp::create(b, type, f32_result);
+      mlir::Value result = EmitFloatCast(f32_result, type, b);
 
       rewriter.replaceOp(op, result);
       return mlir::success();

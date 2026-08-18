@@ -1428,6 +1428,24 @@ xla_py_proto_library(
 # copybara:uncomment_end
 
 tf_proto_library(
+    name = "autotune_cache_proto",
+    srcs = ["autotune_cache.proto"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/backends/autotuner:backend_config_proto",
+        "//xla/backends/autotuner:backends_proto",
+    ],
+)
+
+xla_py_proto_library(
+    name = "autotune_cache_py_pb2",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":autotune_cache_proto",
+    ],
+)
+
+tf_proto_library(
     name = "autotuning_proto",
     srcs = ["autotuning.proto"],
     make_default_target_header_only = True,
