@@ -47,6 +47,12 @@ void SimplePlanner::FreeAllAllocations() {
 
 TfLiteStatus SimplePlanner::ResetAllocations() {
   FreeAllAllocations();
+  TfLiteTensor* tensors = graph_info_->tensors();
+  for (size_t i = 0; i < graph_info_->num_tensors(); ++i) {
+    if (tensors && tensors[i].allocation_type == kTfLiteArenaRw) {
+      tensors[i].data.raw = nullptr;
+    }
+  }
   allocs_.clear();
   allocs_.resize(graph_info_->num_tensors());
   return kTfLiteOk;
@@ -197,7 +203,14 @@ TfLiteStatus SimplePlanner::ExecuteAllocations(int first_node, int last_node) {
   // Conduct the planned allocations.
   const int total_tensors = static_cast<int>(num_tensors);
   TfLiteTensor* tensors = graph_info_->tensors();
+<<<<<<< dest:             88bd00b6334f - jscai: Add inter-domain routing rule...
   for (int i = 0; i < total_tensors; ++i) {
+||||||| parent of source: e33eb7ccd76c - searchads-capture: Auto generating c...
+  for (int i = 0; i < num_tensors; ++i) {
+    bool allocated = false;
+=======
+  for (int i = 0; i < num_tensors; ++i) {
+>>>>>>> source:           a33955346755 - kehuang: Fix use-after-free on zero-...
     if (alloc_node_[i] >= first_node && alloc_node_[i] <= last_node) {
       bool allocated = false;
       TfLiteTensor& tensor = tensors[i];
@@ -206,6 +219,7 @@ TfLiteStatus SimplePlanner::ExecuteAllocations(int first_node, int last_node) {
           allocs_[i].free();
           tensor.data.raw = nullptr;
         }
+<<<<<<< dest:             88bd00b6334f - jscai: Add inter-domain routing rule...
         allocated = allocs_[i].alloc(tensor.bytes, alloc_node_[i]);
       } else if (tensor.allocation_type == kTfLiteArenaRwPersistent) {
         if (allocs_[i].size == 0) {
@@ -213,7 +227,21 @@ TfLiteStatus SimplePlanner::ExecuteAllocations(int first_node, int last_node) {
         } else {
           allocated = true;
         }
+||||||| parent of source: e33eb7ccd76c - searchads-capture: Auto generating c...
+        allocated = allocs_[i].alloc(tensor.bytes, alloc_node_[i]);
+      } else if (tensor.allocation_type == kTfLiteArenaRwPersistent &&
+                 allocs_[i].size == 0) {
+        allocated = allocs_[i].alloc(tensor.bytes, alloc_node_[i]);
+=======
+        allocs_[i].alloc(tensor.bytes, alloc_node_[i]);
+        TF_LITE_ENSURE_STATUS(ResolveTensorAllocation(i));
+      } else if (tensor.allocation_type == kTfLiteArenaRwPersistent &&
+                 allocs_[i].size == 0) {
+        allocs_[i].alloc(tensor.bytes, alloc_node_[i]);
+        TF_LITE_ENSURE_STATUS(ResolveTensorAllocation(i));
+>>>>>>> source:           a33955346755 - kehuang: Fix use-after-free on zero-...
       }
+<<<<<<< dest:             88bd00b6334f - jscai: Add inter-domain routing rule...
 
       if (allocated) {
         TF_LITE_ENSURE_STATUS(ResolveTensorAllocation(i));
@@ -222,6 +250,14 @@ TfLiteStatus SimplePlanner::ExecuteAllocations(int first_node, int last_node) {
         tensor.data.raw = nullptr;
       }
     }
+||||||| parent of source: e33eb7ccd76c - searchads-capture: Auto generating c...
+    }
+    if (allocated) {
+      TF_LITE_ENSURE_STATUS(ResolveTensorAllocation(i));
+    }
+=======
+    }
+>>>>>>> source:           a33955346755 - kehuang: Fix use-after-free on zero-...
   }
   // TODO(b/191631156): Dealloc node if it's not needed.
 
@@ -261,6 +297,7 @@ TfLiteStatus SimplePlanner::AcquireNonPersistentMemory() {
 
 TfLiteStatus SimplePlanner::ResolveTensorAllocation(int tensor_index) {
   TfLiteTensor& tensor = *graph_info_->tensor(tensor_index);
+<<<<<<< dest:             88bd00b6334f - jscai: Add inter-domain routing rule...
   if (tensor.allocation_type == kTfLiteArenaRw ||
       tensor.allocation_type == kTfLiteArenaRwPersistent) {
     if (allocs_[tensor_index].size != 0) {
@@ -268,6 +305,17 @@ TfLiteStatus SimplePlanner::ResolveTensorAllocation(int tensor_index) {
     } else {
       tensor.data.raw = nullptr;
     }
+||||||| parent of source: e33eb7ccd76c - searchads-capture: Auto generating c...
+  if (tensor.allocation_type == kTfLiteArenaRw) {
+    // Skip resolution if the size of the tensor is zero, leaving it as a
+    // nullptr.
+    if (allocs_[tensor_index].size != 0) {
+      tensor.data.raw = allocs_[tensor_index].ptr;
+    }
+=======
+  if (tensor.allocation_type == kTfLiteArenaRw) {
+    tensor.data.raw = allocs_[tensor_index].ptr;
+>>>>>>> source:           a33955346755 - kehuang: Fix use-after-free on zero-...
   }
   return kTfLiteOk;
 }
