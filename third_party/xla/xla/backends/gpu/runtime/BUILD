@@ -2321,7 +2321,6 @@ cc_library(
         "//xla/stream_executor:trace_command_buffer_factory",
         "//xla/stream_executor/gpu:multi_gpu_barrier_kernel",
         "//xla/stream_executor/gpu:ragged_all_to_all_kernel",
-        "//xla/tsl/util:tied_ref",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
@@ -3515,6 +3514,10 @@ cc_library(
     name = "thunk",
     srcs = ["thunk.cc"],
     hdrs = ["thunk.h"],
+    visibility = internal_visibility([
+        ":friends",
+        "//xla/backends/gpu/libraries/native_custom_call_thunks:handler_allowlist",
+    ]),
     deps = [
         ":collective_clique_requests",
         ":collective_cliques",
@@ -5199,6 +5202,10 @@ cc_library(
     name = "custom_kernel_thunk",
     srcs = ["custom_kernel_thunk.cc"],
     hdrs = ["custom_kernel_thunk.h"],
+    visibility = internal_visibility([
+        ":friends",
+        "//xla/backends/gpu/libraries/native_custom_call_thunks:handler_allowlist",
+    ]),
     deps = [
         ":command",
         ":print_buffer_contents",
