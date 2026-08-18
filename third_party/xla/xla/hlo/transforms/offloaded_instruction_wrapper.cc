@@ -105,7 +105,7 @@ FindAndWrapOffloadedComputations(
     for (auto it = post_order.rbegin(); it != post_order.rend(); ++it) {
       HloInstruction* instr = *it;
       // The current instruction is not an offload instruction.
-      if (!should_offload(instr)) {
+      if (instr->opcode() == HloOpcode::kParameter || !should_offload(instr)) {
         if (absl::c_any_of(instr->users(), [&](const HloInstruction* user) {
               return user == offloaded_call_instr ||
                      unmerged_ancestors.contains(user);
