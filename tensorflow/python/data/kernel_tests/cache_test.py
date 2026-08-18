@@ -642,6 +642,14 @@ class CacheRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(random_access.at(dataset, index))
 
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(index=[-1, -2, -100])))
+  def testInvalidNegativeIndexInfiniteDataset(self, index):
+    dataset = dataset_ops.Dataset.range(10).repeat().cache()
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index))
+
   @combinations.generate(test_base.default_test_combinations())
   def testCacheRangeDataset(self):
     dataset = dataset_ops.Dataset.range(10).cache()
