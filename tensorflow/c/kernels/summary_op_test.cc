@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <vector>
+
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -182,6 +184,93 @@ TEST(ScalarSummaryOpTest, Error_WrongWithSingleTag) {
 TEST(ScalarSummaryOpTest, IsRegistered) {
   const OpRegistrationData* reg;
   TF_CHECK_OK(OpRegistry::Global()->LookUp("ScalarSummary", &reg));
+}
+
+void TestHistogramSummaryOp(Tensor* tags, Tensor* values,
+                            error::Code expected_code) {
+  absl::Status status;
+  NodeDef def;
+  def.set_op("HistogramSummary");
+  def.set_device(DEVICE_CPU);
+
+  AttrValue valuesTypeAttr;
+  SetAttrValue(values->dtype(), &valuesTypeAttr);
+  (*def.mutable_attr())["T"] = valuesTypeAttr;
+
+  def.add_input(absl::StrCat("input1: ", DataTypeString(tags->dtype())));
+  def.add_input(absl::StrCat("input2: ", DataTypeString(values->dtype())));
+
+  std::unique_ptr<OpKernel> kernel =
+      CreateOpKernel(DeviceType(DEVICE_CPU), nullptr, nullptr, def, 1, &status);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+  OpKernelContext::Params params;
+  DummyDevice dummy_device(nullptr);
+  params.device = &dummy_device;
+  params.op_kernel = kernel.get();
+  AllocatorAttributes alloc_attrs;
+  params.output_attr_array = &alloc_attrs;
+  absl::InlinedVector<TensorValue, 4UL> inputs;
+  inputs.emplace_back(tags);
+  inputs.emplace_back(values);
+  params.inputs = inputs;
+  OpKernelContext ctx(&params, 1);
+  kernel->Compute(&ctx);
+  ASSERT_EQ(expected_code, ctx.status().code());
+}
+
+void TestMergeSummaryOp(const std::vector<Tensor*>& inputs_vec,
+                        error::Code expected_code) {
+  absl::Status status;
+  NodeDef def;
+  def.set_op("MergeSummary");
+  def.set_device(DEVICE_CPU);
+
+  AttrValue nAttr;
+  SetAttrValue(static_cast<int64_t>(inputs_vec.size()), &nAttr);
+  (*def.mutable_attr())["N"] = nAttr;
+
+  for (size_t i = 0; i < inputs_vec.size(); ++i) {
+    def.add_input(absl::StrCat("input", i, ": string"));
+  }
+
+  std::unique_ptr<OpKernel> kernel =
+      CreateOpKernel(DeviceType(DEVICE_CPU), nullptr, nullptr, def, 1, &status);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+  OpKernelContext::Params params;
+  DummyDevice dummy_device(nullptr);
+  params.device = &dummy_device;
+  params.op_kernel = kernel.get();
+  AllocatorAttributes alloc_attrs;
+  params.output_attr_array = &alloc_attrs;
+  absl::InlinedVector<TensorValue, 4UL> inputs;
+  for (Tensor* input : inputs_vec) {
+    inputs.emplace_back(input);
+  }
+  params.inputs = inputs;
+  OpKernelContext ctx(&params, 1);
+  kernel->Compute(&ctx);
+  ASSERT_EQ(expected_code, ctx.status().code());
+}
+
+TEST(HistogramSummaryOpTest, UninitializedTags) {
+  Tensor tags(DT_STRING, TensorShape({1}), nullptr);
+  Tensor values(DT_FLOAT, TensorShape({3}));
+  values.vec<float>()(0) = 1.0f;
+  values.vec<float>()(1) = 2.0f;
+  values.vec<float>()(2) = 3.0f;
+  TestHistogramSummaryOp(&tags, &values, error::FAILED_PRECONDITION);
+}
+
+TEST(HistogramSummaryOpTest, UninitializedValues) {
+  Tensor tags(DT_STRING, TensorShape({}));
+  tags.scalar<tstring>()() = "tag1";
+  Tensor values(DT_FLOAT, TensorShape({3}), nullptr);
+  TestHistogramSummaryOp(&tags, &values, error::FAILED_PRECONDITION);
+}
+
+TEST(MergeSummaryOpTest, UninitializedInput) {
+  Tensor uninit_input(DT_STRING, TensorShape({1}), nullptr);
+  TestMergeSummaryOp({&uninit_input}, error::FAILED_PRECONDITION);
 }
 
 }  // namespace

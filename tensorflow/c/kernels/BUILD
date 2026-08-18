@@ -144,6 +144,8 @@ tf_cc_test(
     name = "summary_op_test",
     srcs = ["summary_op_test.cc"],
     deps = [
+        ":histogram_summary_op",
+        ":merge_summary_op",
         ":summary_op",
         "//tensorflow/c:kernels",
         "//tensorflow/core:framework",
