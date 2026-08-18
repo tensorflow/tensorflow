@@ -278,16 +278,24 @@ absl::StatusOr<PjRtDeviceEventRef> CpuRawBuffer::CopyFromHostBuffer(
     byte_size *= 8 / bit_width;
   }
   auto dst_data_ptr = device_buffer->untyped_data();
-  if (!has_default_layout || is_packed) {
-    // If the input array does not have a major-to-minor layout, transpose it
-    // into major-to-minor layout. Currently we choose to always do this
-    // synchronously.
+  if (!has_default_layout ||
+      (shape.has_layout() &&
+       !LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) ||
+      is_packed) {
+    // If the input array does not have a major-to-minor layout or device layout
+    // is not major-to-minor, transpose it into the device layout. Currently we
+    // choose to always do this synchronously.
     // TODO(phawkins): consider performing the transpose asynchronously.
     // TODO(phawkins): parallelize the transpose.
     std::shared_ptr<TransposePlan> transpose;
     {
       absl::InlinedVector<int64_t, 4> permutation(dims.size());
-      absl::c_iota(permutation, 0);
+      if (shape.has_layout()) {
+        absl::c_reverse_copy(shape.layout().minor_to_major(),
+                             permutation.begin());
+      } else {
+        absl::c_iota(permutation, 0);
+      }
       TransposePlan::Options options;
       options.elem_size_in_bytes = primitive_util::ByteWidth(type);
       options.dims = dims;
