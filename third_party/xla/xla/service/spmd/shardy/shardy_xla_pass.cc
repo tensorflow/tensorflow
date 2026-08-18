@@ -516,6 +516,8 @@ absl::StatusOr<bool> ShardyXLA::RunImpl(
                                      useTupleArgs);
 
   if (runSdyShardingPropagation) {
+    propagationOptions.replicaCount = hloModule->config().replica_count();
+    propagationOptions.partitionCount = hloModule->config().num_partitions();
     ABSL_RETURN_IF_ERROR(runShardingPropagation(
         hloModule, mlirModule.get(), importMhloShardings, propagationOptions,
         enableNativeNonFlatSupport, name()));

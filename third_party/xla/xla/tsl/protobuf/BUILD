@@ -13,7 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-# copybara:uncomment load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
     "//xla/tsl:tsl.bzl",
     "if_google",
@@ -91,14 +90,6 @@ tf_proto_library(
     visibility = ["//visibility:public"],
     deps = ["@com_google_protobuf//:any_proto"],
 )
-
-# copybara:uncomment_begin(google-only)
-# py_proto_library(
-#     name = "coordination_service_py_pb2",
-#     visibility = ["//visibility:public"],
-#     deps = [":coordination_service_proto"],
-# )
-# copybara:uncomment_end
 
 tf_proto_library(
     name = "distributed_runtime_payloads_proto",

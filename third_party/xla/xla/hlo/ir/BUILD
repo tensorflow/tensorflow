@@ -387,13 +387,18 @@ cc_library(
     deps = [
         ":hlo",
         "//xla:shape_util",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@com_googlesource_code_re2//:re2",
     ],
 )
@@ -404,6 +409,7 @@ xla_cc_test(
     deps = [
         ":hlo",
         ":hlo_instruction_utils",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
