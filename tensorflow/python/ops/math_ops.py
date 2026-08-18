@@ -552,9 +552,9 @@ def multiply(x, y, name=None):
   """
 
   if not tensor_util.is_tf_type(x) and tensor_util.is_tf_type(y):
-    x = ops.convert_to_tensor(x, dtype=y.dtype.base_dtype)
+    x = ops.convert_to_tensor(x, dtype=y.dtype.base_dtype, name="x")
   elif tensor_util.is_tf_type(x) and not tensor_util.is_tf_type(y):
-    y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype)
+    y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype, name="y")
   return gen_math_ops.mul(x, y, name)
 
 
@@ -723,11 +723,11 @@ def pow(x, y, name=None):  # pylint: disable=redefined-builtin
   Returns:
     A `Tensor`.
   """
-  if not tensor_util.is_tf_type(x) and tensor_util.is_tf_type(y):
-    x = ops.convert_to_tensor(x, dtype=y.dtype.base_dtype)
-  elif tensor_util.is_tf_type(x) and not tensor_util.is_tf_type(y):
-    y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype)
   with ops.name_scope(name, "Pow", [x]) as name:
+    if not tensor_util.is_tf_type(x) and tensor_util.is_tf_type(y):
+      x = ops.convert_to_tensor(x, dtype=y.dtype.base_dtype, name="x")
+    elif tensor_util.is_tf_type(x) and not tensor_util.is_tf_type(y):
+      y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype, name="y")
     return gen_math_ops._pow(x, y, name=name)
 
 
