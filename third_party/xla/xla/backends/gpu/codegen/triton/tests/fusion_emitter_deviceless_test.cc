@@ -288,7 +288,7 @@ ENTRY main {
     "fusion_backend_config": {
       "kind": "__triton_nested_gemm_fusion",
       "block_level_fusion_config": {
-        "output_tiles": [{"sizes": ["1024"]}],
+        "output_tiles": [{"sizes": []}],
         "num_warps": 4,
         "num_ctas": 1,
         "num_stages": 1
