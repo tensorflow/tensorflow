@@ -124,7 +124,11 @@ class TransferBufferSubAllocator : public tsl::SubAllocator {
   void* Alloc(size_t alignment, size_t num_bytes, size_t* bytes_received) final;
   void Free(void* ptr, size_t num_bytes) final;
 
-  bool SupportsCoalescing() const final { return true; }
+  // Transfer buffers are passed directly to D2H/H2D copies. Coalescing
+  // adjacent HostMemoryAllocate regions into one logical BFC range can trigger
+  // CUDA_ERROR_INVALID_VALUE during transfers, so keep each chunk within a
+  // single HostMemoryAllocate region.
+  bool SupportsCoalescing() const final { return false; }
 
  private:
   stream_executor::StreamExecutor* executor_;
