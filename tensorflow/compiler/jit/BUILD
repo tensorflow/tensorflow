@@ -75,6 +75,8 @@ cc_library(
         ":legacy_jit_users",
         "//tensorflow/python/profiler:__pkg__",
         "//tensorflow/python/kernel_tests/nn_ops:__pkg__",
+        "//tensorflow/python/kernel_tests/linalg/sparse:__pkg__",
+        "//tensorflow/python/kernel_tests/image_ops:__pkg__",
     ]),
     deps = [
         ":xla_cpu_device",

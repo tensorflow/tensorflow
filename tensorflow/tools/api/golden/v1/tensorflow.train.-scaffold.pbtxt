@@ -45,6 +45,7 @@ tf_class {
   member_method {
     name: "default_local_init_op"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
+    method_kind: STATIC
   }
   member_method {
     name: "finalize"
@@ -53,5 +54,6 @@ tf_class {
   member_method {
     name: "get_or_default"
     argspec: "args=[\'arg_name\', \'collection_key\', \'default_constructor\'], varargs=None, keywords=None, defaults=None"
+    method_kind: STATIC
   }
 }

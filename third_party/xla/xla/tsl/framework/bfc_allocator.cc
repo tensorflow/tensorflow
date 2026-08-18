@@ -195,7 +195,15 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
 
     // Try allocating less memory.
     while (mem_addr == nullptr) {
-      bytes = RoundedBytes(bytes * kBackpedalFactor);
+      size_t backpedal_bytes = RoundedBytes(bytes * kBackpedalFactor);
+      // RoundedBytes rounds up to a multiple of kMinAllocationSize, so for
+      // small sizes (bytes <= 10 * kMinAllocationSize) the backpedal can round
+      // back up to the same value. Force strict progress so a persistently
+      // failing sub-allocator cannot make this loop spin forever.
+      if (backpedal_bytes >= bytes) {
+        backpedal_bytes = bytes - kMinAllocationSize;
+      }
+      bytes = backpedal_bytes;
       if (bytes < rounded_bytes) {
         return false;
       }
@@ -1578,7 +1586,7 @@ MemoryDump BFCAllocator::RecordMemoryMapInternal() {
 #ifdef TENSORFLOW_MEM_DEBUG
   // Record the recent size history
   int history_len = static_cast<int>(std::min(
-      action_counter_, static_cast<int64>(MEM_DEBUG_SIZE_HISTORY_SIZE)));
+      action_counter_, static_cast<int64_t>(MEM_DEBUG_SIZE_HISTORY_SIZE)));
   for (int i = action_counter_ - history_len; i < action_counter_; ++i) {
     tensorflow::SnapShot* ss = md.add_snap_shot();
     ss->set_action_count(i);

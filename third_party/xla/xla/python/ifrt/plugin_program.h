@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <string>
 
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/rtti.h"
 
 namespace xla {
 namespace ifrt {
@@ -37,14 +37,13 @@ namespace ifrt {
 // 'controller device', as opposed to CPU or GPU devices, where the term
 // 'controller' means the same as in 'JAX uses a multi-controller programming
 // model'.
-struct PluginProgram
-    : public llvm::RTTIExtends<PluginProgram, xla::ifrt::Program> {
+struct PluginProgram : public RTTIExtends<PluginProgram, xla::ifrt::Program> {
   std::string data;
   static char ID;  // NOLINT
 };
 
 struct PluginCompileOptions
-    : llvm::RTTIExtends<PluginCompileOptions, CompileOptions> {
+    : RTTIExtends<PluginCompileOptions, CompileOptions> {
   PluginCompileOptions() = default;
   ~PluginCompileOptions() override = default;
 

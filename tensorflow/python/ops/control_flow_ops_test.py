@@ -197,6 +197,38 @@ class WithDependenciesTestCase(test_util.TensorFlowTestCase):
     self.assertEqual(1, self.evaluate(counter))
 
 
+class TupleTestCase(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testNestedTupleRaisesTypeError(self):
+    a = constant_op.constant(1.0)
+    b = constant_op.constant(2.0)
+    c = constant_op.constant(3.0)
+    with self.assertRaises(TypeError):
+      control_flow_ops.tuple(((a, b), c))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testNestedListRaisesTypeError(self):
+    a = constant_op.constant(1.0)
+    b = constant_op.constant(2.0)
+    with self.assertRaises(TypeError):
+      control_flow_ops.tuple([[a, b]])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDictElementRaisesTypeError(self):
+    a = constant_op.constant(1.0)
+    b = constant_op.constant(2.0)
+    with self.assertRaises(TypeError):
+      control_flow_ops.tuple([{"x": a}, b])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFlatSequenceSucceeds(self):
+    a = constant_op.constant(1.0)
+    b = constant_op.constant(2.0)
+    res = control_flow_ops.tuple([a, b])
+    self.assertLen(res, 2)
+
+
 class SwitchTestCase(test_util.TensorFlowTestCase):
 
   @test_util.run_deprecated_v1
@@ -459,6 +491,40 @@ class CondTest(test_util.TensorFlowTestCase):
     self.assertEqual(3. * 2. * 5., self.evaluate(grads_false[1]))
     self.assertEqual(None if context.executing_eagerly() else 0.,
                      self.evaluate(grads_false[0]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testCondEagerConstantValidation(self):
+    if not context.executing_eagerly():
+      return
+
+    x = constant_op.constant(1.0, dtype=dtypes.float32)
+
+    def true_fn():
+      return constant_op.constant(5.0)
+
+    def false_fn():
+      # Type mismatch: adding a float32 tensor and an int32 tensor. Only fails
+      # when false_fn is actually traced/executed.
+      return math_ops.add(x, constant_op.constant(1, dtype=dtypes.int32))
+
+    # By default the inactive branch is not validated, so the bug in false_fn is
+    # not surfaced when the constant predicate selects true_fn.
+    self.assertEqual(
+        5.0,
+        self.evaluate(
+            tf_cond.cond(constant_op.constant(True), true_fn, false_fn)
+        ),
+    )
+
+    # With validation opted in, both branches are traced up front, so the error
+    # in the inactive branch is raised even though true_fn is selected.
+    validation_was_enabled = tf_cond._VALIDATE_INACTIVE_BRANCH
+    tf_cond._VALIDATE_INACTIVE_BRANCH = True
+    try:
+      with self.assertRaises((TypeError, ValueError)):
+        tf_cond.cond(constant_op.constant(True), true_fn, false_fn)
+    finally:
+      tf_cond._VALIDATE_INACTIVE_BRANCH = validation_was_enabled
 
   def testCondWithGroupAndSummaries(self):
     with ops.Graph().as_default():

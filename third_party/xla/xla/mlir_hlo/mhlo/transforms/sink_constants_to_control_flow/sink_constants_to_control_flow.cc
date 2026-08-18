@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Casting.h"
 #include "mhlo/IR/hlo_ops.h"

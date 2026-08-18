@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/mlir/utils/type_util.h"
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -76,7 +76,7 @@ absl::StatusOr<mlir::Type> ConvertPrimitiveTypeToMlirType(
                 : mlir::IntegerType::Signless);
       }
       if (xla::primitive_util::IsComplexType(type)) {
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             mlir::Type component_type,
             xla::ConvertPrimitiveTypeToMlirType(
                 xla::primitive_util::ComplexComponentType(type), b));

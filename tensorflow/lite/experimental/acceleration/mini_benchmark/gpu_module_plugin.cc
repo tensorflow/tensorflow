@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/acceleration/configuration/c/delegate_plugin.h"
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/core/acceleration/configuration/delegate_registry.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
@@ -65,15 +66,15 @@ GpuModulePlugin::GpuModulePlugin(const TFLiteSettings& tflite_settings) {
   tflite_settings_ =
       flatbuffers::GetRoot<TFLiteSettings>(fbb_.GetBufferPointer());
 
+  int dlopen_flags = RTLD_NOW | RTLD_LOCAL;
+#ifdef RTLD_NODELETE
+  dlopen_flags |= RTLD_NODELETE;
+#endif
   module_ = dlopen(tflite_settings_->stable_delegate_loader_settings()
                        ->delegate_path()
                        ->c_str(),
-                   RTLD_NOW | RTLD_LOCAL);
+                   dlopen_flags);
   if (!module_) {
-    TFLITE_LOG_PROD(TFLITE_LOG_WARNING, "Failed to load Gpu Module from %s",
-                    tflite_settings_->stable_delegate_loader_settings()
-                        ->delegate_path()
-                        ->c_str());
     error_code_ = kMinibenchmarkCannotLoadGpuModule;
     return;
   }
@@ -105,6 +106,6 @@ GpuModulePlugin::~GpuModulePlugin() {
 
 static auto* g_delegate_plugin_GpuModulePlugin =
     new tflite::delegates::DelegatePluginRegistry::Register(
-        "GpuModulePlugin", GpuModulePlugin ::New);
+        "GpuModulePlugin", GpuModulePlugin::New);
 }  // namespace acceleration
 }  // namespace tflite

@@ -29,12 +29,12 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -299,7 +299,7 @@ absl::Status VerifyConcatenateAlignment(
 absl::StatusOr<Tiles> PropagateTileToInputForConcatenateOp(
     TilingSpace& tiling_space, const HloConcatenateInstruction& concatenate,
     const Tile& output_tile) {
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       VerifyConcatenateAlignment(tiling_space, concatenate, output_tile));
   int64_t num_operands = concatenate.operand_count();
   Tiles tiles;
@@ -623,6 +623,285 @@ Tiles PropagateTileToInputForScaledDotOp(const TilingSpace& tiling_space,
           std::move(lhs_scale_tile), std::move(rhs_scale_tile)};
 }
 
+// Propagate tile to inputs for a kRaggedDot instruction.
+//
+// Returns three operand tiles: [lhs_tile, rhs_tile, group_sizes_tile].
+//
+// kRaggedNonContracting (G is kSequential):
+//   LHS (M_total, K), RHS (G, K, N), group_sizes (G,) → output (M_total, N)
+//   LHS M tile: offset = d[m]*BLOCK_M (within-group); upper_bound = gs_sym.
+//   The emitter adds last_m (loop-carried iter_arg) to the M pointer offset.
+//   LHS K tile: sequential dim tile.
+//   RHS G tile: sequential dim tile (one group per G-loop iteration).
+//   RHS K tile: sequential dim tile (same as LHS K tile).
+//   RHS N tile: directly from output N dim.
+//   group_sizes tile: scalar slice at G-loop index.
+//
+// kRaggedContracting (G is kParallel):
+//   LHS (M_total, K), RHS (K, N), group_sizes (G,) → output (G, K, N)
+//   LHS/RHS M tile: absolute offset = sm_sym + d[m]*BLOCK_M;
+//                   upper_bound = sm_sym + gs_sym.
+//   LHS K tile, RHS N tile: directly from output K / N dims.
+//   group_sizes tile: scalar slice at output G dim.
+absl::StatusOr<Tiles> PropagateTileToInputForRaggedDotOp(
+    const TilingSpace& tiling_space, const HloInstruction& hlo,
+    const Tile& output_tile) {
+  const auto* ragged_dot = Cast<HloRaggedDotInstruction>(&hlo);
+  const RaggedDotDimensionNumbers& ragged_dims =
+      ragged_dot->ragged_dot_dimension_numbers();
+  const DotDimensionNumbers& dot_dims = ragged_dims.dot_dimension_numbers();
+
+  MLIRContext* ctx = output_tile.mlir_context();
+  const int64_t num_dims = tiling_space.num_dimensions();
+
+  absl::Span<const int64_t> lhs_contracting_dims(
+      dot_dims.lhs_contracting_dimensions());
+  absl::Span<const int64_t> rhs_contracting_dims(
+      dot_dims.rhs_contracting_dimensions());
+  absl::Span<const int64_t> lhs_batch_dims(dot_dims.lhs_batch_dimensions());
+  absl::Span<const int64_t> rhs_batch_dims(dot_dims.rhs_batch_dimensions());
+
+  const int64_t lhs_ragged_dim = ragged_dims.lhs_ragged_dimensions(0);
+  const bool is_contracting =
+      absl::c_count(lhs_contracting_dims, lhs_ragged_dim) > 0;
+  const bool is_batch = absl::c_count(lhs_batch_dims, lhs_ragged_dim) > 0;
+
+  const Shape& lhs_shape = hlo.operand(0)->shape();
+  const Shape& rhs_shape = hlo.operand(1)->shape();
+  const int64_t lhs_rank = lhs_shape.dimensions().size();
+  const int64_t rhs_rank = rhs_shape.dimensions().size();
+  const int64_t output_rank = hlo.shape().dimensions().size();
+
+  if (is_batch) {
+    // kRaggedBatch: regular batched GEMM tiling.
+    // LHS [B_total, M, K]: B from output batch dims, M from non-contracting,
+    //                       K from sequential dim.
+    // RHS [B_total, K, N]: same B batch, K sequential, N non-contracting.
+    // gs  [G]: trivial tile (group_sizes not used in computation).
+
+    // K sequential dim tile(s).
+    SmallVector<DimTile, 1> k_tiles;
+    k_tiles.reserve(lhs_contracting_dims.size());
+    for (auto [index, _] : llvm::enumerate(lhs_contracting_dims)) {
+      k_tiles.push_back(
+          GetDimTile(tiling_space.GetDimensionInfo(hlo, output_rank + index),
+                     num_dims, ctx));
+    }
+
+    // Output dim ordering for kRaggedBatch: [B_total, M, N]
+    auto lhs_nc =
+        GetNonContractingDims(lhs_shape, lhs_batch_dims, lhs_contracting_dims);
+    CHECK_OK(lhs_nc);
+    auto rhs_nc =
+        GetNonContractingDims(rhs_shape, rhs_batch_dims, rhs_contracting_dims);
+    CHECK_OK(rhs_nc);
+
+    const int64_t num_batch = lhs_batch_dims.size();
+    const int64_t out_m_start = num_batch;
+    const int64_t out_n_start = out_m_start + lhs_nc.value().size();
+
+    // Build LHS tile.
+    SmallVector<DimTile> lhs_dim_tiles(lhs_rank);
+    for (auto [i, b] : llvm::enumerate(lhs_batch_dims)) {
+      lhs_dim_tiles[b] = output_tile.dim_tiles()[i];
+    }
+    for (auto [i, m] : llvm::enumerate(lhs_nc.value())) {
+      lhs_dim_tiles[m] = output_tile.dim_tiles()[out_m_start + i];
+    }
+    for (auto [lhs_k, k_tile] : llvm::zip(lhs_contracting_dims, k_tiles)) {
+      lhs_dim_tiles[lhs_k] = k_tile;
+    }
+
+    // Build RHS tile.
+    SmallVector<DimTile> rhs_dim_tiles(rhs_rank);
+    for (auto [i, b] : llvm::enumerate(rhs_batch_dims)) {
+      rhs_dim_tiles[b] = output_tile.dim_tiles()[i];
+    }
+    for (auto [rhs_k, k_tile] : llvm::zip(rhs_contracting_dims, k_tiles)) {
+      rhs_dim_tiles[rhs_k] = k_tile;
+    }
+    for (auto [i, n] : llvm::enumerate(rhs_nc.value())) {
+      rhs_dim_tiles[n] = output_tile.dim_tiles()[out_n_start + i];
+    }
+
+    // gs tile.
+    const int64_t G = hlo.operand(2)->shape().dimensions(0);
+    SmallVector<DimTile> gs_dim_tiles = {GetFullDimTile(G, ctx)};
+
+    return Tiles{output_tile.CloneWithNewDims(std::move(lhs_dim_tiles)),
+                 output_tile.CloneWithNewDims(std::move(rhs_dim_tiles)),
+                 output_tile.CloneWithNewDims(std::move(gs_dim_tiles))};
+  }
+
+  // group_size[g] RTVar — always registered at operand_id=2.
+  auto gs_rtvar_or = tiling_space.GetRTVarInfo(hlo, 2);
+  CHECK(gs_rtvar_or.has_value())
+      << "Missing group_size RTVar for " << hlo.ToString();
+  SymbolicExpr gs_sym =
+      CreateSymbolExpr(num_dims + (*gs_rtvar_or)->id, num_dims, ctx);
+
+  if (!is_contracting) {
+    // ---- kRaggedNonContracting ----
+    // Output: (batch..., M_total, N).
+    // Sequential dims registered by ProcessRaggedDot:
+    //   dim_position = output_rank + 0  → G (outer group loop)
+    //   dim_position = output_rank + 1  → K (inner contraction)
+    const TilingSpace::DimensionInfo& g_dim_info =
+        tiling_space.GetDimensionInfo(hlo, output_rank);
+    DimTile g_tile = GetDimTile(g_dim_info, num_dims, ctx);
+
+    // Build per-contracting-dim K tiles.
+    SmallVector<DimTile, 1> k_tiles;
+    k_tiles.reserve(lhs_contracting_dims.size());
+    for (auto [index, _] : llvm::enumerate(lhs_contracting_dims)) {
+      k_tiles.push_back(GetDimTile(
+          tiling_space.GetDimensionInfo(hlo, output_rank + 1 + index), num_dims,
+          ctx));
+    }
+
+    // Compute non-contracting dims of LHS (M) and RHS (N).
+    auto lhs_nc =
+        GetNonContractingDims(lhs_shape, lhs_batch_dims, lhs_contracting_dims);
+    CHECK_OK(lhs_nc);
+    // For RHS non-contracting dims, treat the group dim as a batch dim.
+    std::vector<int64_t> rhs_batch_group_dims(rhs_batch_dims.begin(),
+                                              rhs_batch_dims.end());
+    for (int64_t d : ragged_dims.rhs_group_dimensions()) {
+      rhs_batch_group_dims.push_back(d);
+    }
+    auto rhs_nc = GetNonContractingDims(
+        rhs_shape, absl::MakeSpan(rhs_batch_group_dims), rhs_contracting_dims);
+    CHECK_OK(rhs_nc);
+
+    // Build LHS tile.
+    SmallVector<DimTile> lhs_dim_tiles(lhs_rank);
+    // Batch dims → pass through from output.
+    for (auto [i, lhs_b] : llvm::enumerate(lhs_batch_dims)) {
+      lhs_dim_tiles[lhs_b] = output_tile.dim_tiles()[i];
+    }
+    // LHS non-contracting (M) → within-group offset; emitter adds last_m.
+    int64_t out_m_id = lhs_batch_dims.size();
+    for (int64_t lhs_m : lhs_nc.value()) {
+      const DimTile& m_out = output_tile.dim_tiles()[out_m_id++];
+      lhs_dim_tiles[lhs_m] = DimTile{
+          m_out.offset,  // d[m]*BLOCK_M — within-group (emitter adds last_m)
+          m_out.size,    // BLOCK_M
+          m_out.stride,  // 1
+          gs_sym         // runtime mask: offs_m < group_size_g
+      };
+    }
+    // LHS contracting (K).
+    for (auto [lhs_k, k_tile] : llvm::zip(lhs_contracting_dims, k_tiles)) {
+      lhs_dim_tiles[lhs_k] = k_tile;
+    }
+
+    // Build RHS tile.
+    SmallVector<DimTile> rhs_dim_tiles(rhs_rank);
+    // Batch dims → pass through from output.
+    for (auto [i, rhs_b] : llvm::enumerate(rhs_batch_dims)) {
+      rhs_dim_tiles[rhs_b] = output_tile.dim_tiles()[i];
+    }
+    // Group dim in RHS → G sequential tile (one group per iteration).
+    for (int64_t g_rhs : ragged_dims.rhs_group_dimensions()) {
+      rhs_dim_tiles[g_rhs] = g_tile;
+    }
+    // RHS non-contracting (N) → output N dims.
+    int64_t out_n_id = out_m_id;  // continues after M dims
+    for (int64_t rhs_n : rhs_nc.value()) {
+      rhs_dim_tiles[rhs_n] = output_tile.dim_tiles()[out_n_id++];
+    }
+    // RHS contracting (K).
+    for (auto [rhs_k, k_tile] : llvm::zip(rhs_contracting_dims, k_tiles)) {
+      rhs_dim_tiles[rhs_k] = k_tile;
+    }
+
+    // group_sizes tile: one element per G-loop iteration.
+    // For non-batched gs [G]: tile is [g_tile] (1D).
+    // For batched gs [B, G]: tile is [batch_tiles..., g_tile] (2D+).
+    SmallVector<DimTile> gs_dim_tiles;
+    for (int64_t i = 0; i < static_cast<int64_t>(lhs_batch_dims.size()); ++i) {
+      gs_dim_tiles.push_back(output_tile.dim_tiles()[i]);
+    }
+    gs_dim_tiles.push_back(g_tile);
+
+    return Tiles{output_tile.CloneWithNewDims(std::move(lhs_dim_tiles)),
+                 output_tile.CloneWithNewDims(std::move(rhs_dim_tiles)),
+                 output_tile.CloneWithNewDims(std::move(gs_dim_tiles))};
+  }
+
+  // ---- kRaggedContracting ----
+  // Output: (G, batch..., K, N).  G is output dim 0.
+  // Sequential dim registered by ProcessRaggedDot:
+  //   dim_position = output_rank + 0  → M (ragged contracting)
+  // RTVars: group_size (op_id=2), start_m (op_id=-1).
+
+  const TilingSpace::DimensionInfo& m_dim_info =
+      tiling_space.GetDimensionInfo(hlo, output_rank);
+  DimTile m_rel_tile = GetDimTile(m_dim_info, num_dims, ctx);
+  // Relative M tile: offset is just d[m]*BLOCK_M (relative within the group).
+  // The emitter adds start_m to the buffer address manually when calling
+  // ExtractTileOp, since start_m is a synthetic prefix-sum RTVar (op_id=-1)
+  // that has no backing tiled HLO instruction and cannot be resolved by
+  // EvaluateTilingParameters via rt_symbol_to_tiled_hlo.
+  // The upper_bound uses gs_sym (group_size, op_id=2) which IS a real
+  // operand.
+  DimTile m_tile = DimTile{
+      m_rel_tile.offset,  // d[m]*BLOCK_M (relative, no sm_sym)
+      m_rel_tile.size,    // BLOCK_M
+      m_rel_tile.stride,  // 1
+      gs_sym              // group_size (relative mask, no sm_sym)
+  };
+
+  // Compute non-contracting dims of LHS (K) and RHS (N).
+  auto lhs_nc =
+      GetNonContractingDims(lhs_shape, lhs_batch_dims, lhs_contracting_dims);
+  CHECK_OK(lhs_nc);
+  auto rhs_nc =
+      GetNonContractingDims(rhs_shape, rhs_batch_dims, rhs_contracting_dims);
+  CHECK_OK(rhs_nc);
+
+  // Output dim ordering for kRaggedContracting:
+  //   [G, batch..., lhs_nc(K)..., rhs_nc(N)...]
+  // output_tile.dim_tiles()[0]                   = G
+  // output_tile.dim_tiles()[1..1+num_batch-1]    = batch
+  // output_tile.dim_tiles()[1+num_batch..]       = K (lhs nc)
+  // output_tile.dim_tiles()[1+num_batch+num_lnc..] = N (rhs nc)
+  const int64_t num_batch = lhs_batch_dims.size();
+  const int64_t out_k_start = 1 + num_batch;
+  const int64_t out_n_start = out_k_start + lhs_nc.value().size();
+
+  // Build LHS tile.
+  SmallVector<DimTile> lhs_dim_tiles(lhs_rank);
+  for (auto [i, lhs_b] : llvm::enumerate(lhs_batch_dims)) {
+    lhs_dim_tiles[lhs_b] = output_tile.dim_tiles()[1 + i];
+  }
+  for (auto [i, lhs_k] : llvm::enumerate(lhs_nc.value())) {
+    lhs_dim_tiles[lhs_k] = output_tile.dim_tiles()[out_k_start + i];
+  }
+  for (int64_t lhs_c : lhs_contracting_dims) {
+    lhs_dim_tiles[lhs_c] = m_tile;
+  }
+
+  // Build RHS tile.
+  SmallVector<DimTile> rhs_dim_tiles(rhs_rank);
+  for (auto [i, rhs_b] : llvm::enumerate(rhs_batch_dims)) {
+    rhs_dim_tiles[rhs_b] = output_tile.dim_tiles()[1 + i];
+  }
+  for (auto [i, rhs_n] : llvm::enumerate(rhs_nc.value())) {
+    rhs_dim_tiles[rhs_n] = output_tile.dim_tiles()[out_n_start + i];
+  }
+  for (int64_t rhs_c : rhs_contracting_dims) {
+    rhs_dim_tiles[rhs_c] = m_tile;
+  }
+
+  // group_sizes tile: scalar slice at output G dim [0].
+  SmallVector<DimTile> gs_dim_tiles = {output_tile.dim_tiles()[0]};
+
+  return Tiles{output_tile.CloneWithNewDims(std::move(lhs_dim_tiles)),
+               output_tile.CloneWithNewDims(std::move(rhs_dim_tiles)),
+               output_tile.CloneWithNewDims(std::move(gs_dim_tiles))};
+}
+
 Tiles PropagateTileToInputForReduceOp(const TilingSpace& tiling_space,
                                       const HloReduceInstruction& reduce,
                                       const Tile& output_tile) {
@@ -854,24 +1133,34 @@ NonTrivialDimInfo GetNonTrivialDimInfo(
 //   * UNSUPPORTED:
 //     - Linear tile has stride 2.
 //
-absl::Status VerifyReshapeContiguity(
-    const MinimalReshape& minimal_reshape,
-    absl::Span<const DimTile> linear_side_tiles,
-    absl::Span<const DimTile> multidim_side_tiles,
-    absl::Span<const int64_t> multidim_side_dims) {
-  const MinimalReshapeCategory& category = minimal_reshape.category;
-  CHECK(category == MinimalReshapeCategory::kCollapseShape ||
-        category == MinimalReshapeCategory::kExpandShape);
-  const bool is_collapse = category == MinimalReshapeCategory::kCollapseShape;
+absl::Status VerifyReshapeContiguity(absl::Span<const int64_t> source_dims,
+                                     absl::Span<const DimTile> source_tiles,
+                                     absl::Span<const int64_t> target_dims,
+                                     absl::Span<const DimTile> target_tiles) {
+  const bool is_collapse = target_tiles.size() < source_tiles.size();
+
+  absl::Span<const int64_t> multidim_side_dims =
+      is_collapse ? source_dims : target_dims;
+  absl::Span<const DimTile> multidim_side_tiles =
+      is_collapse ? source_tiles : target_tiles;
+  absl::Span<const DimTile> linear_side_tiles =
+      is_collapse ? target_tiles : source_tiles;
+
   auto FormatError = [&](auto... args) {
-    return absl::UnimplementedError(absl::StrCat("Unsupported minimal reshape ",
-                                                 minimal_reshape.ToString(),
-                                                 ": ", args...));
+    return absl::UnimplementedError(absl::StrCat(
+        "Reshape is non-contiguous [", absl::StrJoin(source_dims, ", "),
+        "] -> [", absl::StrJoin(target_dims, ", "), "], tiling ",
+        absl::StrJoin(source_tiles, "; "), " -> ",
+        absl::StrJoin(target_tiles, "; "), ": ", args...));
   };
 
-  CHECK(linear_side_tiles.size() == 1 && !multidim_side_tiles.empty())
-      << "Invalid minimal reshape dimensions for " << minimal_reshape.ToString()
-      << ".";
+  if (linear_side_tiles.size() != 1) {
+    return FormatError("Expected linear side to have 1 tile, got ",
+                       linear_side_tiles.size(), ".");
+  }
+  if (multidim_side_tiles.empty()) {
+    return FormatError("Expected multidim side to be non-empty.");
+  }
 
   // ===========================================================================
   // 1. Stride Verification & Strided Dimension Identification
@@ -972,8 +1261,7 @@ absl::Status VerifyReshapeContiguity(
   while (j >= 0) {
     auto size_val = TryGetConstantValue(multidim_side_tiles[j].size);
     if (!size_val.has_value()) {
-      return FormatError("Expect constant source tile size. Got: ",
-                         multidim_side_tiles[j].size.ToString());
+      break;
     }
     if (DimIsFullyCovered(multidim_side_tiles[j], multidim_side_dims[j])) {
       if (*size_val > 1) {
@@ -992,13 +1280,7 @@ absl::Status VerifyReshapeContiguity(
   // All dimensions before i are size 1 and all dimensions after j are full.
   // If i >= j, then only index k=i=j potentially partially tiled.
   if (i < j) {
-    return FormatError(
-        "Multiple dimensions are partially tiled: tile_size [",
-        absl::StrJoin(multidim_side_tiles, ", ",
-                      [](std::string* out, const DimTile& tile) {
-                        absl::StrAppend(out, tile.size.ToString());
-                      }),
-        "], dims [", absl::StrJoin(multidim_side_dims, ", "), "]");
+    return FormatError("Multiple dimensions are partially tiled");
   }
 
   return absl::OkStatus();
@@ -1071,8 +1353,8 @@ absl::Status PropagateTileThroughMinimalReshape(
       }
 
       return VerifyReshapeContiguity(
-          minimal_reshape, absl::MakeSpan(&target_dim_tiles[target_id], 1),
-          source_info.tiles, source_info.dims);
+          source_info.dims, source_info.tiles, target_info.dims,
+          absl::MakeSpan(&target_dim_tiles[target_id], 1));
     }
     case MinimalReshapeCategory::kExpandShape: {
       const DimTile& source_dt = source_info.tiles[0];
@@ -1101,8 +1383,8 @@ absl::Status PropagateTileThroughMinimalReshape(
         return absl::OkStatus();
       }
 
-      return VerifyReshapeContiguity(minimal_reshape, source_info.tiles,
-                                     target_info.tiles, target_info.dims);
+      return VerifyReshapeContiguity(source_info.dims, source_info.tiles,
+                                     target_info.dims, target_info.tiles);
     }
     // m-to-n mapping of the "significant" dimensions (size > 1).
     case MinimalReshapeCategory::kGeneric:
@@ -1141,7 +1423,7 @@ absl::StatusOr<Tile> PropagateTileThroughReshape(const Tile& tile,
 
   std::vector<MinimalReshape> reshapes = GetMinimalReshapes(src, reshape_shape);
   VLOG(2) << "reshapes: " << absl::StrJoin(reshapes, ", ");
-  RETURN_IF_ERROR(IsSupportedReshape(reshapes));
+  ABSL_RETURN_IF_ERROR(IsSupportedReshape(reshapes));
   SmallVector<DimTile> target_dim_tiles;
   target_dim_tiles.reserve(reshape_dims.size());
   const TilingSpace& tiling_space = tile.tiling_space();
@@ -1150,7 +1432,7 @@ absl::StatusOr<Tile> PropagateTileThroughReshape(const Tile& tile,
     target_dim_tiles.push_back(GetFullDimTile(dim_size, mlir_context));
   }
   for (const auto& minimal_reshape : reshapes) {
-    RETURN_IF_ERROR(PropagateTileThroughMinimalReshape(
+    ABSL_RETURN_IF_ERROR(PropagateTileThroughMinimalReshape(
         mlir_context, minimal_reshape, src, reshape_shape, tile,
         target_dim_tiles));
   }
@@ -1163,7 +1445,7 @@ absl::StatusOr<Tiles> PropagateTileToInputForReshapeOp(
     const HloInstruction& hlo, const Tile& output_tile) {
   const Shape& input_shape = hlo.operand(0)->shape();
   const Shape& output_shape = hlo.shape();
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto input_tile,
       PropagateTileThroughReshape(output_tile, output_shape, input_shape));
   return Tiles{std::move(input_tile)};
@@ -1173,7 +1455,7 @@ absl::StatusOr<Tiles> PropagateTileToOutputForReshapeOp(
     const HloInstruction& hlo, const Tile& input_tile) {
   const Shape& input_shape = hlo.operand(0)->shape();
   const Shape& output_shape = hlo.shape();
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto output_tile,
       PropagateTileThroughReshape(input_tile, input_shape, output_shape));
   return Tiles{std::move(output_tile)};
@@ -1205,7 +1487,7 @@ absl::StatusOr<Tile> PropagateTileForBitcastOp(const Tile& tile,
   const ShapeUtil::BitcastDecompositionTrt& trt = maybe_trt.value();
   Tile transpose1_tile = PropagateTileThroughTransposeOp(
       tile, InversePermutation(trt.transpose1_dims));
-  ASSIGN_OR_RETURN(auto reshape_tile, PropagateTileThroughReshape(
+  ABSL_ASSIGN_OR_RETURN(auto reshape_tile, PropagateTileThroughReshape(
                                           transpose1_tile, trt.transpose1_shape,
                                           trt.reshape_shape));
   return PropagateTileThroughTransposeOp(
@@ -1216,7 +1498,7 @@ absl::StatusOr<Tiles> PropagateTileToInputForBitcastOp(
     const HloInstruction& hlo, const Tile& output_tile) {
   const Shape& input_shape = hlo.operand(0)->shape();
   const Shape& output_shape = hlo.shape();
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto input_tile,
       PropagateTileForBitcastOp(output_tile, output_shape, input_shape));
   return Tiles{std::move(input_tile)};
@@ -1226,7 +1508,7 @@ absl::StatusOr<Tiles> PropagateTileToOutputForBitcastOp(
     const HloInstruction& hlo, const Tile& input_tile) {
   const Shape& input_shape = hlo.operand(0)->shape();
   const Shape& output_shape = hlo.shape();
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto output_tile,
       PropagateTileForBitcastOp(input_tile, input_shape, output_shape));
   return Tiles{std::move(output_tile)};
@@ -1326,6 +1608,9 @@ absl::StatusOr<Tiles> PropagateTileToInput(TilingSpace& tiling_space,
   }
   if (hlo.opcode() == HloOpcode::kScaledDot) {
     return PropagateTileToInputForScaledDotOp(tiling_space, hlo, output_tile);
+  }
+  if (hlo.opcode() == HloOpcode::kRaggedDot) {
+    return PropagateTileToInputForRaggedDotOp(tiling_space, hlo, output_tile);
   }
   if (hlo.opcode() == HloOpcode::kPad) {
     const HloPadInstruction& pad = *Cast<HloPadInstruction>(&hlo);

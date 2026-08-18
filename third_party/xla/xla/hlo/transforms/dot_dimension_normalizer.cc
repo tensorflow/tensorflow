@@ -22,10 +22,10 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/shape_tracker.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -45,10 +45,10 @@ absl::Status NormalizeCategory(DotOperandDims* dims, ShapeTracker* tracker,
   std::optional<std::vector<int64_t>> permutation =
       dims->PermuteToConsecutive(category);
   if (permutation.has_value()) {
-    RETURN_IF_ERROR(tracker->AppendTranspose(*permutation));
+    ABSL_RETURN_IF_ERROR(tracker->AppendTranspose(*permutation));
   }
-  RETURN_IF_ERROR(dims->CollapseCategory(category, false));
-  RETURN_IF_ERROR(tracker->AppendReshape(dims->shape().dimensions()));
+  ABSL_RETURN_IF_ERROR(dims->CollapseCategory(category, false));
+  ABSL_RETURN_IF_ERROR(tracker->AppendReshape(dims->shape().dimensions()));
   return absl::OkStatus();
 }
 
@@ -69,17 +69,17 @@ absl::StatusOr<HloInstruction*> NormalizeOperand(
   // Build the tracker from head to operand.
   ShapeTracker tracker(head->shape());
   for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
-    RETURN_IF_ERROR(tracker.AppendInstruction(*it));
+    ABSL_RETURN_IF_ERROR(tracker.AppendInstruction(*it));
   }
 
   // Normalize contracting dimensions.
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       NormalizeCategory(dims, &tracker, DotOperandDims::kContracting));
 
   // Normalize non-contracting dimensions if requested.
   if (normalize_noncontracting &&
       dims->Rank(DotOperandDims::kNonContracting) > 1) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         NormalizeCategory(dims, &tracker, DotOperandDims::kNonContracting));
   }
 
@@ -93,9 +93,9 @@ class NormalizerVisitor : public DfsHloRewriteVisitor {
             normalize_noncontracting_dimensions) {}
 
   absl::Status HandleDot(HloInstruction* dot) override {
-    ASSIGN_OR_RETURN(DotOperandDims lhs_dims,
+    ABSL_ASSIGN_OR_RETURN(DotOperandDims lhs_dims,
                      DotOperandDims::FromDotOperand(dot, 0));
-    ASSIGN_OR_RETURN(DotOperandDims rhs_dims,
+    ABSL_ASSIGN_OR_RETURN(DotOperandDims rhs_dims,
                      DotOperandDims::FromDotOperand(dot, 1));
 
     bool contracting_normalization_needed =
@@ -111,16 +111,16 @@ class NormalizerVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();
     }
 
-    ASSIGN_OR_RETURN(HloInstruction * normalized_lhs,
+    ABSL_ASSIGN_OR_RETURN(HloInstruction * normalized_lhs,
                      NormalizeOperand(&lhs_dims, dot->mutable_operand(0),
                                       normalize_noncontracting_dimensions_));
-    ASSIGN_OR_RETURN(HloInstruction * normalized_rhs,
+    ABSL_ASSIGN_OR_RETURN(HloInstruction * normalized_rhs,
                      NormalizeOperand(&rhs_dims, dot->mutable_operand(1),
                                       normalize_noncontracting_dimensions_));
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         DotDimensionNumbers new_dnums,
         DotOperandDims::CreateDotDimensionNumbers(lhs_dims, rhs_dims));
-    ASSIGN_OR_RETURN(Shape new_dot_shape,
+    ABSL_ASSIGN_OR_RETURN(Shape new_dot_shape,
                      DotOperandDims::ComputeOutputShape(
                          dot->shape().element_type(), lhs_dims, rhs_dims));
     HloInstruction* new_dot = dot->parent()->AddInstruction(

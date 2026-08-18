@@ -599,8 +599,18 @@ bool HasUnspecifiedDimension(const TfLiteTensor* tensor) {
 TfLiteStatus CheckedShapeProduct(TfLiteContext* context,
                                  std::initializer_list<int> dims,
                                  const char* error_message, size_t& product) {
+  return CheckedShapeProduct(context, dims.begin(), dims.size(), error_message,
+                             product);
+}
+
+TfLiteStatus CheckedShapeProduct(TfLiteContext* context, const int* dims,
+                                 int count, const char* error_message,
+                                 size_t& product) {
+  TF_LITE_ENSURE(context, count >= 0);
+  TF_LITE_ENSURE(context, dims != nullptr || count == 0);
   size_t checked_count = 1;
-  for (const int d : dims) {
+  for (int i = 0; i < count; ++i) {
+    const int d = dims[i];
     TF_LITE_ENSURE_MSG(context, d >= 0, "Encountered a negative dimension.");
     TF_LITE_ENSURE_MSG(
         context,

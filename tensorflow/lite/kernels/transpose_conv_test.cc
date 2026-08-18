@@ -16,6 +16,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <initializer_list>
+#include <limits>
 #include <map>
 #include <memory>
 #include <string>
@@ -200,6 +201,49 @@ TEST(TransposeConvPrepareSecurityTest, RejectsHybridInputOverflow) {
       /*stride_h=*/1, ActivationFunctionType_NONE);
 
   EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(TransposeConvPrepareSecurityTest, RejectsUnsupportedWeightsType) {
+  PrepareOnlyTransposeConvOpModel<float> m(
+      ops::builtin::Register_TRANSPOSECONV_GENERIC_OPT(), {1, 1, 1, 1},
+      {TensorType_UINT8, {1, 1, 1, 1}}, {TensorType_FLOAT32, {1, 1, 1, 1}},
+      {TensorType_FLOAT32, {}}, Padding_SAME, /*stride_w=*/1, /*stride_h=*/1,
+      ActivationFunctionType_NONE);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(TransposeConvPrepareSecurityTest, RejectsStrideOutsideInt16Range) {
+  constexpr int kTooLarge = std::numeric_limits<int16_t>::max() + 1;
+  PrepareOnlyTransposeConvOpModel<float> m(
+      ops::builtin::Register_TRANSPOSECONV_GENERIC_OPT(), {1, 1, 1, 1},
+      {TensorType_FLOAT32, {1, 1, 1, 1}}, {TensorType_FLOAT32, {1, 1, 1, 1}},
+      {TensorType_FLOAT32, {}}, Padding_SAME, /*stride_w=*/kTooLarge,
+      /*stride_h=*/1, ActivationFunctionType_NONE);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(TransposeConvPrepareSecurityTest, RejectsMismatchedOutputChannels) {
+  PrepareOnlyTransposeConvOpModel<float> m(
+      ops::builtin::Register_TRANSPOSECONV_GENERIC_OPT(), {1, 1, 1, 2},
+      {TensorType_FLOAT32, {1, 1, 1, 1}}, {TensorType_FLOAT32, {1, 1, 1, 1}},
+      {TensorType_FLOAT32, {}}, Padding_SAME, /*stride_w=*/1, /*stride_h=*/1,
+      ActivationFunctionType_NONE);
+
+  ASSERT_EQ(m.AllocateTensors(), kTfLiteOk);
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+}
+
+TEST(TransposeConvPrepareSecurityTest, RejectsInconsistentSpatialShape) {
+  PrepareOnlyTransposeConvOpModel<float> m(
+      ops::builtin::Register_TRANSPOSECONV_GENERIC_OPT(), {1, 3, 3, 1},
+      {TensorType_FLOAT32, {1, 1, 1, 1}}, {TensorType_FLOAT32, {1, 2, 2, 1}},
+      {TensorType_FLOAT32, {}}, Padding_SAME, /*stride_w=*/1, /*stride_h=*/1,
+      ActivationFunctionType_NONE);
+
+  ASSERT_EQ(m.AllocateTensors(), kTfLiteOk);
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
 }
 
 // Test case:

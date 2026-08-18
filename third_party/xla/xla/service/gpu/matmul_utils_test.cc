@@ -56,6 +56,25 @@ ENTRY AddDotsFunc {
               absl_testing::IsOkAndHolds(true));
 }
 
+TEST_F(CanFoldTransposeOperandIntoDotTest, RhsTransposeFoldGemm) {
+  const char* hlo_text = R"(
+HloModule RhsTransposeFoldGemm
+
+ENTRY AddDotsFunc {
+  x = f32[2,3] parameter(0)
+  y = f32[4,3] parameter(1)
+  y_transposed = f32[3,4] transpose(y), dimensions={1, 0}
+  ROOT dot_a = f32[2,4] dot(x, y_transposed), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  auto dot = module->entry_computation()->root_instruction();
+  EXPECT_THAT(CanFoldTransposeOperandIntoDot(*dot, 1),
+              absl_testing::IsOkAndHolds(true));
+}
+
 TEST_F(CanFoldTransposeOperandIntoDotTest, BatchedArgRowColTransposeFoldGemm) {
   const char* hlo_text = R"(
 HloModule BatchedArgRowColTransposeFoldGemm

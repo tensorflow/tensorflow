@@ -200,6 +200,11 @@ class CollectiveThunk : public Command {
 
   virtual bool CanUseSymmetricBuffer() const { return false; }
 
+  const absl::StatusOr<std::vector<std::vector<GlobalDeviceId>>>&
+  device_groups() const {
+    return device_groups_;
+  }
+
  private:
   // Rendezvous with other local participants before/after the first call to
   // the collective operation to avoid NCCL deadlocks. See the comment on
@@ -293,6 +298,12 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
     const BufferAllocations* buffer_allocations,
     const std::vector<CollectiveThunk::Buffer>& buffers,
     const std::vector<PrimitiveType>& element_types);
+
+// Builds the buffers for the given collective instruction.
+absl::StatusOr<std::vector<CollectiveThunk::Buffer>> GetCollectiveBuffers(
+    const BufferAssignment& buffer_assignment, const HloInstruction* inst,
+    Thunk::Kind kind, bool has_dynamic_root);
+
 }  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_THUNK_H_

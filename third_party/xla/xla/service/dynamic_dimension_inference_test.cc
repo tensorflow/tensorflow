@@ -22,8 +22,8 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -58,7 +58,7 @@ class DynamicDimensionInferenceTest : public HloHardwareIndependentTestBase {
           DynamicDimensionInference::ShapeCheckMode::kIgnore,
       const DynamicDimensionInference::AssertionGenerator& assertion_generator =
           nullptr) {
-    ASSIGN_OR_RETURN(DynamicDimensionInference inference,
+    ABSL_ASSIGN_OR_RETURN(DynamicDimensionInference inference,
                      DynamicDimensionInference::Run(
                          module_.get(), op_supports_dynamism_handler, handler,
                          shape_check_mode, assertion_generator));
@@ -160,6 +160,30 @@ TEST_F(DynamicDimensionInferenceTest, ElementwiseTest) {
   SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(negate, {}, 1), size_param);
+}
+
+// Test that dynamic dimensions are propagated through optimization_barrier.
+TEST_F(DynamicDimensionInferenceTest, OptimizationBarrierTest) {
+  const std::string hlo_text = R"(
+HloModule OptimizationBarrierTest
+
+ENTRY %OptimizationBarrierTest (data_param: f32[1,2,2], size_param: s32[]) -> f32[1,<=2,2] {
+  %data_param = f32[1,2,2]{2,1,0} parameter(0)
+  %size_param = s32[] parameter(1)
+  %set-dimension-size = f32[1,<=2,2]{2,1,0} set-dimension-size(%data_param, %size_param), dimensions={1}
+  ROOT %opt-barrier = f32[1,<=2,2]{2,1,0} opt-barrier(%set-dimension-size)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_text));
+  SCOPED_TRACE(module_->ToString());
+  TF_ASSERT_OK(RunInference());
+  // Verify that the dynamic size of the root instruction (%opt-barrier) at
+  // dimension 1 is inferred to be the input parameter %size_param (parameter
+  // 1).
+  EXPECT_EQ(inference_->GetDynamicSize(
+                module_->entry_computation()->root_instruction(), {}, 1),
+            module_->entry_computation()->parameter_instruction(1));
 }
 
 TEST_F(DynamicDimensionInferenceTest, ReduceTestI) {

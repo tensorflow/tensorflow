@@ -52,8 +52,7 @@ namespace tensorflow {
 // decremented, and any objects added to `params` are new references.
 //
 // Returns true on success, or sets an exception and returns false on error.
-ABSL_MUST_USE_RESULT
-bool ConvertPythonAPIParameters(
+TF_EXPORT ABSL_MUST_USE_RESULT bool ConvertPythonAPIParameters(
     const PythonAPIInfo& api_info,
     const PythonTensorConverter& tensor_converter, absl::Span<PyObject*> params,
     PythonAPIInfo::InferredAttributes* inferred_attrs);
@@ -66,11 +65,10 @@ bool ConvertPythonAPIParameters(
 // decremented, and any objects added to `params` are new references.
 //
 // Returns true on success, or sets an exception and returns false on error.
-ABSL_MUST_USE_RESULT
-bool CopyPythonAPITensorLists(const PythonAPIInfo& api_info,
-                              absl::Span<PyObject*> params);
+TF_EXPORT ABSL_MUST_USE_RESULT bool CopyPythonAPITensorLists(
+    const PythonAPIInfo& api_info, absl::Span<PyObject*> params);
 
-int GetPythonAPIMaxIndex(const PythonAPIInfo& api_info);
+TF_EXPORT int GetPythonAPIMaxIndex(const PythonAPIInfo& api_info);
 
 }  // namespace tensorflow
 

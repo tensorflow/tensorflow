@@ -170,5 +170,27 @@ TEST(CpuTopologyDescriptionTest, MemorySpaceKindIds) {
             CpuDeviceMemorySpace::kKindId);
 }
 
+TEST(CpuTopologyDescriptionTest, ProcessIdAndIndexOnProcess) {
+  std::vector<CpuTopology::CpuDevice> cpu_devices = {
+      {0, 0}, {0, 1}, {1, 0}, {1, 1}};
+  xla::cpu::TargetMachineOptions target_machine_options(
+      /*triple=*/"triple", /*cpu=*/"cpu", /*features=*/"");
+  CpuTopologyDescription topology(
+      xla::CpuId(), "cpu", "1.0",
+      CpuTopology(cpu_devices, target_machine_options));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto process_and_index,
+      topology.ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType(
+          GlobalDeviceId(2)));
+  EXPECT_EQ(process_and_index.first, ProcessId(1));
+  EXPECT_EQ(process_and_index.second, 0);
+
+  EXPECT_FALSE(topology
+                   .ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType(
+                       GlobalDeviceId(10))
+                   .ok());
+}
+
 }  // namespace
 }  // namespace xla

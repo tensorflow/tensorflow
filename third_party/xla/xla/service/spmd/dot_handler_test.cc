@@ -22,9 +22,9 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -69,11 +69,11 @@ class DotHandlerTest
         GetParam() == ShardingFormatPicker::ShardingType::kNamed);
     config.set_debug_options(debug_options);
 
-    ASSIGN_OR_RETURN(auto module,
+    ABSL_ASSIGN_OR_RETURN(auto module,
                      ParseAndReturnVerifiedModule(hlo_module, config));
 
     ShardingFormatPicker format_picker(GetParam());
-    RETURN_IF_ERROR(format_picker.Run(module.get()).status());
+    ABSL_RETURN_IF_ERROR(format_picker.Run(module.get()).status());
 
     HloPassPipeline pass("partitioning");
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
@@ -92,7 +92,7 @@ class DotHandlerTest
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
 
-    RETURN_IF_ERROR(pass.Run(module.get()).status());
+    ABSL_RETURN_IF_ERROR(pass.Run(module.get()).status());
     return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
 

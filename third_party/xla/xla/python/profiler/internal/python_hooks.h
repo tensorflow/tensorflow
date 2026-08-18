@@ -24,6 +24,7 @@ limitations under the License.
 #include <stack>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
@@ -51,6 +52,17 @@ struct PythonHooksOptions {
   // result, profiler start, end time are used respectively to the absent
   // timestamps.
   bool include_incomplete_events = true;
+};
+
+struct TraceEventInfo {
+  std::string name;
+  uint64_t start_time_ns;
+  uint64_t end_time_ns;
+};
+
+struct PerThreadConsumeData {
+  int64_t thread_id;
+  std::vector<TraceEventInfo> events;
 };
 
 struct PythonTraceEntry {
@@ -126,7 +138,9 @@ class PythonHooks;
 
 class PythonHookContext {
  public:
+  ~PythonHookContext();
   void Finalize(tensorflow::profiler::XSpace* space);
+  std::vector<PerThreadConsumeData> Consume();
 
   friend class ::xla::profiler::PythonHooks;
 
@@ -161,6 +175,7 @@ class PythonHookContext {
   std::array<EntryShard, kNumEntryShards> entry_shards_;
   uint64_t start_timestamp_ns_;
   PythonHooksOptions options_;
+  bool stopped_ = false;
   // In end to end mode, Python get uninitialized before Stop()/Finalize(), we
   // need to buffer the result.
   std::optional<tensorflow::profiler::XPlane> end_to_end_xplane_;
@@ -193,6 +208,16 @@ class PythonHooks {
     std::unique_ptr<PythonHookContext> output = std::move(active_context_);
     active_context_.reset();
     return output;
+  }
+
+  std::vector<PerThreadConsumeData> Consume() {
+    if (!active_context_) {
+      return {};
+    }
+    if (Py_IsInitialized()) {
+      return active_context_->Consume();
+    }
+    return {};
   }
 
   friend class ::xla::profiler::PythonHookContext;

@@ -40,7 +40,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class ReplicatedIOFeedTest : public HloPjRtTestBase {};
+class ReplicatedIOFeedTest : public HloTestBase {};
 
 TEST_F(ReplicatedIOFeedTest, InfeedAndOutfeed) {
   static constexpr int kNumReplicas = 4;

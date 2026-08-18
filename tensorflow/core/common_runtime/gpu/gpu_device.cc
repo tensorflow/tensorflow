@@ -1921,37 +1921,18 @@ Status BaseGPUDeviceFactory::CreateDevices(
       // Otherwise, once a client is created by the first call, it is the only
       // client that is created/used and future calls skip this code block.
       int node_id = gpu_options.experimental().node_id();
-      std::vector<std::unique_ptr<xla::PjRtStreamExecutorDevice>> pjrt_devices =
-          xla::BuildLocalDevices(std::move(local_device_states),
-                                 /*node_id=*/node_id);
+      xla::GpuClientOptions options;
+      options.node_id = node_id;
+      ASSIGN_OR_RETURN(auto pjrt_client,
+                       xla::GetSharedStreamExecutorGpuClient(
+                           options, xla_client, std::move(local_device_states),
+                           std::move(allocator_adapter),
+                           std::move(pjrt_gpu_host_allocator)));
 
       auto& pjrt_rollout_config = GetXlaOpsCommonFlags()->tf_xla_use_device_api;
       pjrt_rollout_config.AllowForDeviceInXlaLaunch(DEVICE_GPU);
       pjrt_rollout_config.AllowForDeviceInXlaCompileOnDemand(DEVICE_GPU);
       pjrt_rollout_config.AllowForDeviceInXlaCompileAndRun(DEVICE_GPU);
-
-      // Creates PJRT GPU client and places it into a TF global resource
-      // manager.
-      auto gpu_run_options =
-          std::make_unique<xla::gpu::GpuExecutableRunOptions>();
-#if TENSORFLOW_USE_ROCM
-      auto platform_name = xla::RocmName();
-#elif TENSORFLOW_USE_SYCL
-      auto pjrt_platform_name = xla::SyclName();
-#else   // TENSORFLOW_USE_ROCM
-      auto platform_name = xla::CudaName();
-#endif  // TENSORFLOW_USE_ROCM
-      std::unique_ptr<xla::PjRtClient> pjrt_client =
-          std::make_unique<xla::StreamExecutorGpuClient>(
-              platform_name, xla_client, std::move(pjrt_devices),
-              /*process_index=*/numa_node,
-              /*allocator=*/std::move(allocator_adapter),
-              /*host_memory_allocator=*/std::move(pjrt_gpu_host_allocator),
-              /*should_stage_host_to_device_transfers=*/true,
-              /*gpu_run_options=*/std::move(gpu_run_options),
-              /*kv_store=*/nullptr,
-              /*abort_collectives_on_failure=*/false, /*gpu_topology=*/nullptr,
-              /*num_nodes=*/std::nullopt);
 
       return SetPjRtClientInTFGlobalResourceManager(DeviceType(DEVICE_GPU),
                                                     std::move(pjrt_client));

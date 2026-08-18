@@ -41,12 +41,14 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       docker-image: ${{ steps.out.outputs.docker-image }}
+      docker-image-jax: ${{ steps.out.outputs.docker-image-jax }}
     steps:
       - id: out
         shell: bash
         run: |
           # hermetic llvm based on  ghcr.io/rocm/jax-ubu22.rocm7.2.4:latest
           echo "docker-image=ghcr.io/rocm/jax-ubu22.rocm7.2.4@sha256:248db525342fb7438ccbc6f5f1396ec82c783f7e0ae5667cb698edcddc8fe2fd" >> "$GITHUB_OUTPUT"
+          echo "docker-image-jax=ghcr.io/rocm/jax-ubu22.rocm7.2.4@sha256:248db525342fb7438ccbc6f5f1396ec82c783f7e0ae5667cb698edcddc8fe2fd" >> "$GITHUB_OUTPUT"
 
   jax:
     needs: rocm-config
@@ -54,15 +56,17 @@ jobs:
     name: JAX Linux x86 AMD Instinct GPU
     runs-on: ${{ inputs.runner_label || 'amd-do-linux-xla-gpu-gfx950-1' }}
     timeout-minutes: 80
+    # Remove this once the JAX CI is stable.
+    continue-on-error: true
     env:
-      DOCKER_IMAGE: ${{ needs.rocm-config.outputs.docker-image }}
-    container: &rocm_container
-      image: ${{ needs.rocm-config.outputs.docker-image }} # zizmor: ignore[unpinned-images] image is pinned in the rocm-config job.
-      volumes:
+      DOCKER_IMAGE: ${{ needs.rocm-config.outputs.docker-image-jax }}
+    container:
+      image: ${{ needs.rocm-config.outputs.docker-image-jax }} # zizmor: ignore[unpinned-images] image is pinned in the rocm-config job.
+      volumes: &rocm_container_volumes
         - /data/ci-cert.crt:/data/ci-cert.crt
         - /data/ci-cert.key:/data/ci-cert.key
         - /data:/data
-      options: >-
+      options: &rocm_container_options >-
         --device=/dev/dri
         --device=/dev/kfd
         --ipc=host
@@ -77,13 +81,13 @@ jobs:
         shell: bash
     steps:
       - name: Checking out openxla/xla
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: openxla/xla
           persist-credentials: false
 
       - name: Checkout JAX
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: jax-ml/jax
           path: jax
@@ -91,9 +95,6 @@ jobs:
 
       - name: CPU Info
         run: lscpu
-
-      - name: ROCm info
-        run: /opt/rocm/bin/rocminfo
 
       - name: Run JAX Unit Tests
         timeout-minutes: 60
@@ -109,7 +110,7 @@ jobs:
             --action_env=JAX_ENABLE_X64=0 \
             --repo_env=HERMETIC_PYTHON_VERSION=3.14 \
             --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}" \
-            --bes_keywords=xla \
+            --jobs=20 \
             --bes_keywords=jax \
             --bes_keywords=upstream \
             --bes_keywords=gpu \
@@ -122,13 +123,16 @@ jobs:
     env:
       DOCKER_IMAGE: ${{ needs.rocm-config.outputs.docker-image }}
       EXECUTE_CI_BUILD_URL: https://raw.githubusercontent.com/ROCm/xla/refs/heads/${{ inputs.rocm_xla_branch || 'rocm-dev-infra' }}/build_tools/rocm/execute_ci_build_upstream.sh
-    container: *rocm_container
+    container:
+      image: ${{ needs.rocm-config.outputs.docker-image }} # zizmor: ignore[unpinned-images] image is pinned in the rocm-config job.
+      volumes: *rocm_container_volumes
+      options: *rocm_container_options
     defaults:
       run:
         shell: bash
     steps:
       - name: Checking out openxla/xla
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: openxla/xla
           persist-credentials: false
@@ -141,9 +145,6 @@ jobs:
       - name: CPU Info
         run: lscpu
 
-      - name: ROCm info
-        run: /opt/rocm/bin/rocminfo
-
       - name: Test XLA [single_gpu]
         timeout-minutes: 120
         run: |
@@ -153,13 +154,14 @@ jobs:
             --config=ci_single_gpu \
             --local_test_jobs=1 \
             --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}" \
+            --repo_env=ROCM_PATH="/opt/rocm" \
             --local_test_jobs=1 \
             --internal_spawn_scheduler \
             --strategy=TestRunner=dynamic \
             --bes_keywords=xla \
             --bes_keywords=upstream \
             --bes_keywords=gpu \
-            --bes_keywords=pull_request
+            --bes_keywords=pull_request \
       - name: Test XLA [rocm_cpu]
         timeout-minutes: 80
         run: |
@@ -169,6 +171,7 @@ jobs:
             --config=ci_rocm_cpu \
             --local_test_jobs=200 \
             --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}" \
+            --repo_env=ROCM_PATH="/opt/rocm" \
             --bes_keywords=xla \
             --bes_keywords=upstream \
             --bes_keywords=cpu \

@@ -288,7 +288,8 @@ PyObject* AddIntermediateTensors(PyObject* data) {
   }
 
   std::unique_ptr<FlatBufferModel> model =
-      FlatBufferModel::BuildFromBuffer(buf, length, error_reporter.get());
+      FlatBufferModel::VerifyAndBuildFromBuffer(
+          buf, length, /*extra_verifier=*/nullptr, error_reporter.get());
   if (!model) {
     PyErr_Format(PyExc_ValueError, "Invalid model");
     return nullptr;
@@ -800,7 +801,8 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
     return nullptr;
   }
   std::unique_ptr<FlatBufferModel> model =
-      FlatBufferModel::BuildFromBuffer(buf, length, error_reporter.get());
+      FlatBufferModel::VerifyAndBuildFromBuffer(
+          buf, length, /*extra_verifier=*/nullptr, error_reporter.get());
   if (!model) {
     *error_msg = "Invalid model";
     return nullptr;

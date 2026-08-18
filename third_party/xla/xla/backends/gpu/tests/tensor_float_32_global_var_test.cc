@@ -39,7 +39,7 @@ constexpr ErrorSpec kErrorSpec = ErrorSpec{1e-4, 1e-4};
 // the global variable.
 class TensorFloat32GlobalVarTest
     : public ::testing::WithParamInterface<bool>,
-      public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+      public HloInterpreterReferenceMixin<HloTestBase> {
  protected:
   TensorFloat32GlobalVarTest() {
     tsl::enable_tensor_float_32_execution(false);
@@ -50,7 +50,7 @@ class TensorFloat32GlobalVarTest
   }
 
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     const bool enable_triton_gemm = GetParam();
     if (enable_triton_gemm) {
       debug_options.set_xla_gpu_enable_triton_gemm(true);
@@ -83,6 +83,21 @@ ENTRY %conv_computation (x: f32[16,40,40,64], source: f32[3,3,64,64]) -> f32[16,
   %x = f32[16,40,40,64] parameter(0)
   %y = f32[3,3,64,64] parameter(1)
   ROOT %result = f32[16,40,40,64] convolution(x, y), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, operand_precision={default, default}
+}
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, kErrorSpec));
+}
+
+// TODO(b/542582954): Re-enable once cuDNN supports FP32 convolution with
+// highest precision.
+TEST_P(TensorFloat32GlobalVarTest, DISABLED_ConvolutionHighestPrecision) {
+  const char* hlo_text = R"(
+HloModule TestModule
+
+ENTRY %conv_computation (x: f32[16,40,40,64], source: f32[3,3,64,64]) -> f32[16,40,40,64] {
+  %x = f32[16,40,40,64] parameter(0)
+  %y = f32[3,3,64,64] parameter(1)
+  ROOT %result = f32[16,40,40,64] convolution(x, y), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, operand_precision={highest, highest}
 }
 )";
   EXPECT_TRUE(RunAndCompare(hlo_text, kErrorSpec));

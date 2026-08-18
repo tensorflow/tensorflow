@@ -25,8 +25,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/replica_group.h"
@@ -778,7 +778,7 @@ class IsSolLatencyEstimatorEnabledTest : public HloTestBaseLegacy {
         HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({2})));
     HloInstruction* call =
         entry->AddInstruction(HloInstruction::CreateCall(shape, dummy_operand));
-    ASSIGN_OR_RETURN(GpuBackendConfig new_backend_config,
+    ABSL_ASSIGN_OR_RETURN(GpuBackendConfig new_backend_config,
                      call->backend_config<GpuBackendConfig>());
     new_backend_config.set_device_type(DEVICE_TYPE_HOST);
     return call->set_backend_config(new_backend_config);

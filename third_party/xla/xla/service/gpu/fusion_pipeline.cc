@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/transforms/conv_fusion_rewriter.h"
+#include "xla/backends/gpu/transforms/conv_operand_canonicalizer.h"
 #include "xla/backends/gpu/transforms/multi_output_fusion.h"
 #include "xla/backends/gpu/transforms/priority_fusion.h"
 #include "xla/backends/gpu/transforms/ragged_dot_fusion_rewriter.h"
@@ -66,7 +67,8 @@ HloPassPipeline FusionPipeline(
   // Rewrite convs into conv fusions.
   if (!debug_options.xla_gpu_experimental_disable_binary_libraries() &&
       debug_options.xla_gpu_experimental_enable_conv_fusion()) {
-    fusion.AddPass<ConvFusionRewriter>();
+    fusion.AddPass<ConvOperandCanonicalizer>();
+    fusion.AddPass<ConvFusionRewriter>(gpu_device_info);
   }
 
   GpuHloCostAnalysis::Options cost_analysis_options{

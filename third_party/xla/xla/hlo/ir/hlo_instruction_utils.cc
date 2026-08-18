@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "re2/re2.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -91,32 +92,32 @@ int32_t NestingDepth(const HloInstruction* hlo) {
   return level;
 }
 
+bool IsTopKStable(const HloCustomCallInstruction* inst) {
+  static const LazyRE2 kUnstableRegex = {R"((?i)is_stable\s*=\s*false)"};
+  if (RE2::PartialMatch(inst->raw_backend_config_string(), *kUnstableRegex)) {
+    return false;
+  }
+  return true;
+}
+
 namespace async {
 namespace {
 
 const HloInstruction* GetAsyncChainStart(const HloInstruction* async_op) {
-  const HloInstruction* current = async_op;
-  while (current != nullptr && current->opcode() != HloOpcode::kAsyncStart) {
-    if (current->opcode() != HloOpcode::kAsyncUpdate &&
-        current->opcode() != HloOpcode::kAsyncDone) {
-      return nullptr;
-    }
-    if (current->operand_count() == 0 || current->operand(0) == nullptr) {
-      return nullptr;
-    }
-    current = current->operand(0);
+  if (async_op == nullptr || !async_op->IsAsynchronous()) {
+    return nullptr;
   }
-  return current;
+  return async_op->async_chain_start();
 }
 
 absl::StatusOr<bool> AreOperandsAndOutputFullyBoundImpl(
     const HloInstruction* async_op, const Shape& expected_shape,
     const Shape& async_tuple_shape, const ShapeIndex& index) {
   if (index.empty()) {
-    ASSIGN_OR_RETURN(bool operands_bound,
+    ABSL_ASSIGN_OR_RETURN(bool operands_bound,
                      AreOperandsAndOutputFullyBoundImpl(
                          async_op, expected_shape, async_tuple_shape, {0}));
-    ASSIGN_OR_RETURN(bool output_bound,
+    ABSL_ASSIGN_OR_RETURN(bool output_bound,
                      AreOperandsAndOutputFullyBoundImpl(
                          async_op, expected_shape, async_tuple_shape, {1}));
     return operands_bound && output_bound;
@@ -226,9 +227,15 @@ absl::StatusOr<bool> AreOperandsAndOutputFullyBound(
 std::vector<const HloInstruction*> GetAsyncBoundOperands(
     const HloAsyncInstruction* async_op) {
   std::vector<const HloInstruction*> bound_operands;
-  for (const HloInstruction* instr :
-       Cast<HloAsyncStartInstruction>(async_op->async_chain_start())
-           ->GetAsyncChain()) {
+  if (async_op == nullptr || async_op->async_chain_start() == nullptr) {
+    return bound_operands;
+  }
+  const HloAsyncStartInstruction* async_start =
+      DynCast<HloAsyncStartInstruction>(async_op->async_chain_start());
+  if (async_start == nullptr) {
+    return bound_operands;
+  }
+  for (const HloInstruction* instr : async_start->GetAsyncChain()) {
     int start_idx = (instr->opcode() == HloOpcode::kAsyncStart) ? 0 : 1;
 
     for (int i = start_idx; i < instr->operand_count(); ++i) {
@@ -243,7 +250,7 @@ std::vector<const HloInstruction*> GetAsyncBoundOperands(
 }
 
 absl::StatusOr<bool> IsFirstFullyBound(const HloInstruction* async_inst) {
-  ASSIGN_OR_RETURN(bool fully_bound,
+  ABSL_ASSIGN_OR_RETURN(bool fully_bound,
                    AreOperandsAndOutputFullyBound(async_inst));
   if (!fully_bound) {
     return false;
@@ -252,7 +259,11 @@ absl::StatusOr<bool> IsFirstFullyBound(const HloInstruction* async_inst) {
     return true;
   }
 
-  ASSIGN_OR_RETURN(bool prev_fully_bound,
+  if (!async_inst->operand(0)->IsAsynchronous()) {
+    return true;
+  }
+
+  ABSL_ASSIGN_OR_RETURN(bool prev_fully_bound,
                    AreOperandsAndOutputFullyBound(async_inst->operand(0)));
   return !prev_fully_bound;
 }

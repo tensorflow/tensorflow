@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -405,7 +406,8 @@ TEST_F(TuplePointsToAnalysisTest, AsyncOps) {
   ENTRY entry {
     p0 = f32[2,3] parameter(0)
     async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
-    async-update = ((f32[2,3]), f32[2,3], u32[]) custom-call-update(async-start)
+    async-update = ((f32[2,3]), f32[2,3], u32[]) custom-call-update(async-start),
+                      output_to_operand_aliasing={{2}: (0, {2})}
     ROOT async-done = f32[2,3] custom-call-done(async-update)
   }
 )";
@@ -436,6 +438,34 @@ TEST_F(TuplePointsToAnalysisTest, AsyncOps) {
       {{async_start, {1}}, {async_update, {1}}, {async_done, {}}});
   ExpectHasBufferAliases(async_start, {2},
                          {{async_start, {2}}, {async_update, {2}}});
+}
+
+TEST_F(TuplePointsToAnalysisTest, AsyncUpdate_LoopCrossing) {
+  const char* const kHlo = R"(
+HloModule test
+
+while_body {
+  state = ((f32[2,3]), f32[2,3], s32[]) parameter(0)
+  ROOT update = ((f32[2,3]), f32[2,3], s32[]) custom-call-update(state)
+}
+
+while_condition {
+  state = ((f32[2,3]), f32[2,3], s32[]) parameter(0)
+  ROOT predicate = pred[] constant(true)
+}
+
+ENTRY main {
+  p0 = f32[2,3] constant(0)
+  start = ((f32[2,3]), f32[2,3], s32[]) custom-call-start(p0),
+    custom_call_target="baz"
+  ROOT while_op = ((f32[2,3]), f32[2,3], s32[]) while(start), condition=while_condition, body=while_body
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(kHlo, GetModuleConfigForTest()));
+  RunAnalysis();
+  HloInstruction* update = FindInstruction(module_.get(), "update");
+  EXPECT_FALSE(points_to_analysis_->GetPointsToSet(update).IsAmbiguous());
 }
 
 TEST_F(TuplePointsToAnalysisTest, SendAndSendDone) {
@@ -927,5 +957,432 @@ ENTRY %FusedDynamicUpdateSlice (tuple: (f32[8], f32[8])) -> (f32[8], f32[8]) {
   EXPECT_FALSE(
       points_to_analysis_->DoesNotUseOperandBuffer(tuple, {1}, fusion));
 }
+
+TEST_F(TuplePointsToAnalysisTest, AsyncUpdateChangesContext) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module
+
+async_computation {
+  p0 = f32[4] parameter(0)
+  p1 = f32[4] parameter(1)
+  ROOT add = f32[4] add(p0, p1)
+}
+
+ENTRY entry {
+  x = f32[4] parameter(0)
+  y = f32[4] parameter(1)
+  start = ((), (), (s32[], s32[4])) async-start(), calls=async_computation,
+                                async_execution_thread="sparsecore"
+  update = ((f32[4], f32[4]), f32[4], (s32[8], s32[])) async-update(start, x, y),
+              output_to_operand_aliasing={{2, 1}: (0, {2, 0})}
+  ROOT done = f32[4] async-done(update)
+}
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  RunAnalysis();
+
+  HloInstruction* x = module_->entry_computation()->GetInstructionWithName("x");
+  HloInstruction* y = module_->entry_computation()->GetInstructionWithName("y");
+  HloInstruction* start =
+      module_->entry_computation()->GetInstructionWithName("start");
+  HloInstruction* update =
+      module_->entry_computation()->GetInstructionWithName("update");
+  HloInstruction* done =
+      module_->entry_computation()->GetInstructionWithName("done");
+
+  const LogicalBuffer* B_x = GetBuffer(x, {});
+  const LogicalBuffer* B_y = GetBuffer(y, {});
+
+  const LogicalBuffer* B_start_c0 = GetBuffer(start, {2, 0});
+  const LogicalBuffer* B_start_c1 = GetBuffer(start, {2, 1});
+  EXPECT_EQ(start, B_start_c0->instruction());
+  EXPECT_EQ(start, B_start_c1->instruction());
+
+  const PointsToSet& update_set = points_to_analysis_->GetPointsToSet(update);
+  ExpectHasBuffers(update_set.element({0, 0}), {B_x});
+  ExpectHasBuffers(update_set.element({0, 1}), {B_y});
+  ExpectHasBuffers(update_set.element({2, 1}), {B_start_c0});
+
+  const LogicalBuffer* B_update_out = GetBuffer(update, {1});
+  const LogicalBuffer* B_update_c0 = GetBuffer(update, {2, 0});
+  EXPECT_EQ(update, B_update_out->instruction());
+  EXPECT_EQ(update, B_update_c0->instruction());
+
+  const PointsToSet& done_set = points_to_analysis_->GetPointsToSet(done);
+  ExpectHasBuffers(done_set.element({}), {B_update_out});
+}
+
+TEST_F(TuplePointsToAnalysisTest, LateBindingAsyncUpdate) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module
+
+async_computation {
+  p0 = f32[4] parameter(0)
+  p1 = f32[4] parameter(1)
+  ROOT add = f32[4] add(p0, p1)
+}
+
+ENTRY entry {
+  x = f32[4] parameter(0)
+  y = f32[4] parameter(1)
+  start = ((), (), s32[]) async-start(), calls=async_computation,
+                                async_execution_thread="sparsecore"
+  update = ((f32[4], f32[4]), f32[4], s32[]) async-update(start, x, y),
+              output_to_operand_aliasing={{2}: (0, {2})}
+  ROOT done = f32[4] async-done(update)
+}
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  RunAnalysis();
+
+  HloInstruction* x = module_->entry_computation()->GetInstructionWithName("x");
+  HloInstruction* y = module_->entry_computation()->GetInstructionWithName("y");
+  HloInstruction* start =
+      module_->entry_computation()->GetInstructionWithName("start");
+  HloInstruction* update =
+      module_->entry_computation()->GetInstructionWithName("update");
+  HloInstruction* done =
+      module_->entry_computation()->GetInstructionWithName("done");
+
+  const LogicalBuffer* B_x = GetBuffer(x, {});
+  const LogicalBuffer* B_y = GetBuffer(y, {});
+  const LogicalBuffer* B_start_sflag = GetBuffer(start, {2});
+
+  const PointsToSet& update_set = points_to_analysis_->GetPointsToSet(update);
+  ExpectHasBuffers(update_set.element({0, 0}), {B_x});
+  ExpectHasBuffers(update_set.element({0, 1}), {B_y});
+  ExpectHasBuffers(update_set.element({2}), {B_start_sflag});
+
+  const LogicalBuffer* B_update_out = GetBuffer(update, {1});
+  EXPECT_EQ(update, B_update_out->instruction());
+
+  const PointsToSet& done_set = points_to_analysis_->GetPointsToSet(done);
+  ExpectHasBuffers(done_set.element({}), {B_update_out});
+}
+
+TEST_F(TuplePointsToAnalysisTest,
+       LateBindingAsync_InputAliased_OutputBoundEarly) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module
+
+async_computation {
+  p0 = f32[4] parameter(0)
+  ROOT custom-call = (f32[4]) custom-call(p0), custom_call_target="foo"
+}
+
+ENTRY entry {
+  param = f32[4] parameter(0)
+  async-start = ((), (f32[4]), s32[]) async-start(), calls=async_computation,
+                                      output_to_operand_aliasing={{1, 0}: (0, {})}
+  async-update = ((f32[4]), (f32[4]), s32[]) async-update(async-start, param)
+  ROOT async-done = (f32[4]) async-done(async-update)
+}
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  RunAnalysis();
+
+  HloInstruction* param =
+      module_->entry_computation()->GetInstructionWithName("param");
+  HloInstruction* start =
+      module_->entry_computation()->GetInstructionWithName("async-start");
+  HloInstruction* update =
+      module_->entry_computation()->GetInstructionWithName("async-update");
+  HloInstruction* done =
+      module_->entry_computation()->GetInstructionWithName("async-done");
+
+  const LogicalBuffer* B_param = GetBuffer(param, {});
+
+  // With back-propagation, the resolved alias is propagated back to start.
+  const PointsToSet& start_set = points_to_analysis_->GetPointsToSet(start);
+  ExpectHasBuffers(start_set.element({1, 0}), {B_param});
+
+  // At async-update, the alias is active.
+  const PointsToSet& update_set = points_to_analysis_->GetPointsToSet(update);
+  ExpectHasBuffers(update_set.element({0, 0}), {B_param});
+  ExpectHasBuffers(update_set.element({1, 0}), {B_param});  // Alias resolved!
+
+  // At async-done, the output is forwarded.
+  const PointsToSet& done_set = points_to_analysis_->GetPointsToSet(done);
+  ExpectHasBuffers(done_set.element({0}), {B_param});
+}
+
+TEST_F(TuplePointsToAnalysisTest,
+       LateBindingAsync_InputAliased_OutputBoundLate) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module
+
+async_computation {
+  p0 = f32[4] parameter(0)
+  p1 = f32[4] parameter(1)
+  ROOT tuple = (f32[4], f32[4]) tuple(p0, p1)
+}
+
+ENTRY entry {
+  param0 = f32[4] parameter(0)
+  param1 = f32[4] parameter(1)
+  async-start = ((f32[4]), (), s32[]) async-start(param0),
+                                      calls=async_computation,
+                                      output_to_operand_aliasing={{1, 1}: (0, {})}
+  async-update = ((f32[4], f32[4]), (f32[4], f32[4]), s32[]) async-update(async-start, param1)
+  ROOT async-done = (f32[4], f32[4]) async-done(async-update)
+}
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  RunAnalysis();
+
+  HloInstruction* param0 =
+      module_->entry_computation()->GetInstructionWithName("param0");
+  HloInstruction* param1 =
+      module_->entry_computation()->GetInstructionWithName("param1");
+  HloInstruction* start =
+      module_->entry_computation()->GetInstructionWithName("async-start");
+  HloInstruction* update =
+      module_->entry_computation()->GetInstructionWithName("async-update");
+  HloInstruction* done =
+      module_->entry_computation()->GetInstructionWithName("async-done");
+
+  const LogicalBuffer* B_param0 = GetBuffer(param0, {});
+  const LogicalBuffer* B_param1 = GetBuffer(param1, {});
+
+  // At async-start, input is bound but output {1, 1} doesn't exist.
+  const PointsToSet& start_set = points_to_analysis_->GetPointsToSet(start);
+  ExpectHasBuffers(start_set.element({0, 0}), {B_param0});
+  // {1} is empty tuple, so no {1, 1} index.
+
+  // At async-update, both are bound, alias resolved.
+  const PointsToSet& update_set = points_to_analysis_->GetPointsToSet(update);
+  ExpectHasBuffers(update_set.element({0, 0}), {B_param0});
+  ExpectHasBuffers(update_set.element({0, 1}), {B_param1});
+  ExpectHasBuffers(update_set.element({1, 1}), {B_param0});  // Alias resolved!
+
+  // {1, 0} is new output, not aliased, should have a new buffer.
+  const auto& r0_buffers = update_set.element({1, 0});
+  ASSERT_EQ(1, r0_buffers.size());
+  EXPECT_EQ(update, r0_buffers[0]->instruction());
+
+  // At async-done, outputs are forwarded.
+  const PointsToSet& done_set = points_to_analysis_->GetPointsToSet(done);
+  ExpectHasBuffers(done_set.element({0}), r0_buffers);
+  ExpectHasBuffers(done_set.element({1}), {B_param0});
+}
+
+TEST_F(TuplePointsToAnalysisTest, LateBindingAsync_PostponedOutput) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module
+
+async_computation {
+  p0 = f32[4] parameter(0)
+  ROOT custom-call = f32[4] custom-call(p0), custom_call_target="foo"
+}
+
+ENTRY entry {
+  param = f32[4] parameter(0)
+  async-start = ((), (), s32[]) async-start(), calls=async_computation,
+                                output_to_operand_aliasing={{1}: (0, {})}
+  async-update = ((f32[4]), (), s32[]) async-update(async-start, param)
+  ROOT async-done = f32[4] async-done(async-update)
+}
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  RunAnalysis();
+
+  HloInstruction* param =
+      module_->entry_computation()->GetInstructionWithName("param");
+  HloInstruction* start =
+      module_->entry_computation()->GetInstructionWithName("async-start");
+  HloInstruction* update =
+      module_->entry_computation()->GetInstructionWithName("async-update");
+  HloInstruction* done =
+      module_->entry_computation()->GetInstructionWithName("async-done");
+
+  const LogicalBuffer* B_param = GetBuffer(param, {});
+
+  // With back-propagation, the resolved alias is propagated back to start and
+  // update.
+  const PointsToSet& start_set = points_to_analysis_->GetPointsToSet(start);
+  ExpectHasBuffers(start_set.element({1}), {B_param});
+  const PointsToSet& update_set = points_to_analysis_->GetPointsToSet(update);
+  ExpectHasBuffers(update_set.element({1}), {B_param});
+
+  // At async-done, output is bound and alias is resolved.
+  const PointsToSet& done_set = points_to_analysis_->GetPointsToSet(done);
+  ExpectHasBuffers(done_set.element({}),
+                   {B_param});  // Alias resolved at async-done!
+}
+
+TEST_F(TuplePointsToAnalysisTest, LateBindingAsync_MultipleUpdates) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module
+
+async_computation {
+  p0 = f32[4] parameter(0)
+  p1 = f32[4] parameter(1)
+  ROOT tuple = (f32[4], f32[4]) tuple(p0, p1)
+}
+
+ENTRY entry {
+  param0 = f32[4] parameter(0)
+  param1 = f32[4] parameter(1)
+  async-start = ((), (), s32[]) async-start(), calls=async_computation
+  async-update1 = ((f32[4]), (f32[4]), s32[]) async-update(async-start, param0)
+  async-update2 = ((f32[4], f32[4]), (f32[4], f32[4]), s32[]) async-update(async-update1, param1)
+  ROOT async-done = (f32[4], f32[4]) async-done(async-update2)
+}
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  RunAnalysis();
+
+  HloInstruction* param0 =
+      module_->entry_computation()->GetInstructionWithName("param0");
+  HloInstruction* param1 =
+      module_->entry_computation()->GetInstructionWithName("param1");
+  HloInstruction* update1 =
+      module_->entry_computation()->GetInstructionWithName("async-update1");
+  HloInstruction* update2 =
+      module_->entry_computation()->GetInstructionWithName("async-update2");
+  HloInstruction* done =
+      module_->entry_computation()->GetInstructionWithName("async-done");
+
+  const LogicalBuffer* B_param0 = GetBuffer(param0, {});
+  const LogicalBuffer* B_param1 = GetBuffer(param1, {});
+
+  // At async-update1, param0 is bound.
+  const PointsToSet& update1_set = points_to_analysis_->GetPointsToSet(update1);
+  ExpectHasBuffers(update1_set.element({0, 0}), {B_param0});
+
+  // At async-update2, param0 is forwarded and param1 is bound.
+  const PointsToSet& update2_set = points_to_analysis_->GetPointsToSet(update2);
+  ExpectHasBuffers(update2_set.element({0, 0}), {B_param0});
+  ExpectHasBuffers(update2_set.element({0, 1}),
+                   {B_param1});  // Verified bug fix!
+
+  // Outputs should be forwarded to async-done.
+  const PointsToSet& done_set = points_to_analysis_->GetPointsToSet(done);
+  ExpectHasBuffers(done_set.element({0}), update2_set.element({1, 0}));
+  ExpectHasBuffers(done_set.element({1}), update2_set.element({1, 1}));
+}
+
+TEST_F(TuplePointsToAnalysisTest, CallMarkerBeforePointsToOutputs) {
+  std::string hlo_str = R"(
+HloModule CallMarkerBeforePointsToOutputs
+
+ENTRY main {
+  p0 = f32[2,2] parameter(0)
+  p1 = f32[4,4] parameter(1)
+  ROOT cc = (f32[2,2], f32[4,4]) custom-call(p0, p1),
+    custom_call_target="__xla_internal_call_marker_before"
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  RunAnalysis();
+
+  auto* p0 = FindInstruction(module_.get(), "p0");
+  auto* p1 = FindInstruction(module_.get(), "p1");
+  auto* cc = FindInstruction(module_.get(), "cc");
+
+  // The custom call output element {0} should point to p0's buffer.
+  ExpectHasTopLevelBuffers(points_to_analysis_->GetPointsToSet(cc).element({0}),
+                           {p0});
+  // The custom call output element {1} should point to p1's buffer.
+  ExpectHasTopLevelBuffers(points_to_analysis_->GetPointsToSet(cc).element({1}),
+                           {p1});
+}
+
+TEST_F(TuplePointsToAnalysisTest, CallMarkerAfterPointsToOutput) {
+  std::string hlo_str = R"(
+HloModule CallMarkerAfterPointsToOutput
+
+ENTRY main {
+  p0 = f32[2,2] parameter(0)
+  ROOT cc = f32[2,2] custom-call(p0),
+    custom_call_target="__xla_internal_call_marker_after"
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  RunAnalysis();
+
+  auto* p0 = FindInstruction(module_.get(), "p0");
+  auto* cc = FindInstruction(module_.get(), "cc");
+
+  // The custom call output should point to p0's buffer.
+  ExpectHasTopLevelBuffers(points_to_analysis_->GetPointsToSet(cc).element({}),
+                           {p0});
+}
+
+// Test that if async-done has incompatible output shape (e.g., empty tuple at
+// index {1} in async-start), AsyncDone (which returns a non-tuple array) does
+// not forward the points-to set of the empty tuple from async-start, but
+// instead defines its own buffer.
+TEST_F(TuplePointsToAnalysisTest, AsyncDoneNoBindOutput) {
+  std::string hlo_str = R"(
+HloModule AsyncDoneNoBindOutput
+
+%async_comp (param: f32[8,8]) -> f32[8,8] {
+  %param = f32[8,8]{0,1} parameter(0)
+  ROOT %copy = f32[8,8]{0,1} copy(%param)
+}
+
+ENTRY main {
+  %param = f32[8,8]{0,1} parameter(0)
+  %async_start = ((f32[8,8]{0,1}), (), s32[]) async-start(%param), calls=%async_comp
+  ROOT %async_done = f32[8,8]{0,1} async-done(%async_start)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  RunAnalysis();
+
+  auto* async_done = FindInstruction(module_.get(), "async_done");
+  const PointsToSet& points_to_set =
+      points_to_analysis_->GetPointsToSet(async_done);
+  EXPECT_FALSE(points_to_set.element({}).empty());
+  EXPECT_EQ(async_done, points_to_set.element({}).at(0)->instruction());
+}
+
+// Test that if async-done binds a tuple output (empty tuple at index {1} in
+// async-start),
+// and AsyncDone returns a tuple, we do not forward and instead define new
+// buffers for all elements of the AsyncDone tuple.
+TEST_F(TuplePointsToAnalysisTest, AsyncDoneNoBindOutputTuple) {
+  std::string hlo_str = R"(
+HloModule AsyncDoneNoBindOutputTuple
+
+%async_comp (param: f32[8,8]) -> (f32[8,8], f32[4,4]) {
+  %param = f32[8,8]{0,1} parameter(0)
+  ROOT %cc = (f32[8,8]{0,1}, f32[4,4]{0,1}) custom-call(%param), custom_call_target="some_target"
+}
+
+ENTRY main {
+  %param = f32[8,8]{0,1} parameter(0)
+  %async_start = ((f32[8,8]{0,1}), (), s32[]) async-start(%param), calls=%async_comp
+  ROOT %async_done = (f32[8,8]{0,1}, f32[4,4]{0,1}) async-done(%async_start)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  RunAnalysis();
+
+  auto* async_done = FindInstruction(module_.get(), "async_done");
+  const PointsToSet& points_to_set =
+      points_to_analysis_->GetPointsToSet(async_done);
+
+  // Element {0} and {1} should have buffers defined by async_done itself.
+  EXPECT_FALSE(points_to_set.element({0}).empty());
+  EXPECT_EQ(async_done, points_to_set.element({0}).at(0)->instruction());
+  EXPECT_EQ(ShapeIndex({0}), points_to_set.element({0}).at(0)->index());
+
+  EXPECT_FALSE(points_to_set.element({1}).empty());
+  EXPECT_EQ(async_done, points_to_set.element({1}).at(0)->instruction());
+  EXPECT_EQ(ShapeIndex({1}), points_to_set.element({1}).at(0)->index());
+}
+
 }  // namespace
 }  // namespace xla

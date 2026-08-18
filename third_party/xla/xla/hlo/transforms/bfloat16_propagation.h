@@ -88,6 +88,16 @@ class BFloat16Propagation : public HloModulePass {
 
   const AliasInfo* alias_info_;
 
+  // Returns the original element type of the HLO instruction before
+  // RunImpl starts mutating shapes in-place with changes_to_bf16_.
+  PrimitiveType UnmutatedElementType(const HloInstruction* hlo) const {
+    if (hlo->shape().element_type() == BF16 &&
+        changes_to_bf16_.contains(const_cast<HloInstruction*>(hlo))) {
+      return F32;
+    }
+    return hlo->shape().element_type();
+  }
+
   // Runs the pass on the given module. Returns whether the module was changed
   // (precision reductions were added).
   absl::StatusOr<bool> RunImpl(

@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -47,6 +46,7 @@ limitations under the License.
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
@@ -67,7 +67,7 @@ using DeviceAssignment = ::xla::DeviceAssignment;
 
 // Represents an IFRT client. It wraps a runtime that interacts with computation
 // devices and memory attached to it.
-class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
+class Client : public RTTIExtends<Client, RTTIRoot> {
  public:
   // Describes the semantics the caller to `MakeArrayFromHostBuffer` expects
   // from the runtime, in a total order from most restrictive to least

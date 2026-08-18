@@ -70,5 +70,45 @@ TEST(ComputationPlacerTest, DuplicateDevices) {
   EXPECT_FALSE(da.LogicalIdForDevice(GlobalDeviceId(1)).ok());
 }
 
+TEST(ComputationPlacerTest, IsIota) {
+  DeviceAssignment da_empty;
+  EXPECT_TRUE(da_empty.IsIota());
+
+  DeviceAssignment da_iota(2, 2);
+  da_iota(0, 0) = 0;
+  da_iota(0, 1) = 1;
+  da_iota(1, 0) = 2;
+  da_iota(1, 1) = 3;
+  EXPECT_TRUE(da_iota.IsIota());
+
+  DeviceAssignment da_offset_iota(2, 2);
+  da_offset_iota(0, 0) = 4;
+  da_offset_iota(0, 1) = 5;
+  da_offset_iota(1, 0) = 6;
+  da_offset_iota(1, 1) = 7;
+  EXPECT_TRUE(da_offset_iota.IsIota());
+
+  DeviceAssignment da_non_iota(2, 2);
+  da_non_iota(0, 0) = 1;
+  da_non_iota(0, 1) = 0;
+  da_non_iota(1, 0) = 2;
+  da_non_iota(1, 1) = 3;
+  EXPECT_FALSE(da_non_iota.IsIota());
+}
+
+TEST(ComputationPlacerTest, IsAll) {
+  DeviceAssignment da_zeros(2, 2);
+  da_zeros.Fill(0);
+  EXPECT_TRUE(da_zeros.IsAll(0));
+  EXPECT_FALSE(da_zeros.IsAll(1));
+
+  DeviceAssignment da_mixed(2, 2);
+  da_mixed(0, 0) = 0;
+  da_mixed(0, 1) = 0;
+  da_mixed(1, 0) = 0;
+  da_mixed(1, 1) = 1;
+  EXPECT_FALSE(da_mixed.IsAll(0));
+}
+
 }  // namespace
 }  // namespace xla

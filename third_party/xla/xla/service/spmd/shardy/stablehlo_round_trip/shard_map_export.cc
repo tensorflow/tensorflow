@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/spmd/shardy/stablehlo_round_trip/shard_map_export.h"
 
 #include <cassert>
+#include <cstdint>
 #include <memory>
 #include <tuple>
 #include <utility>
@@ -67,6 +68,7 @@ namespace sdy {
 namespace {
 
 using ::mlir::ArrayRef;
+using ::mlir::Attribute;
 using ::mlir::MLIRContext;
 using ::mlir::ModuleOp;
 using ::mlir::Operation;
@@ -130,25 +132,45 @@ TensorShardingAttr getFirstSharding(ManualComputationOp op) {
   return *inOutShardings.begin();
 }
 
-void setFullyClosedShardingsIfMissing(Operation* op, StringRef meshName) {
+// Builds a closed `TensorSharding` for each type in `types` locally to avoid
+// depending on Shardy's Attribute overload which might not be rolled yet.
+SmallVector<TensorShardingAttr> getFullyClosedShardings(MLIRContext* context,
+                                                        mlir::TypeRange types,
+                                                        Attribute meshOrRef) {
+  SmallVector<TensorShardingAttr> shardings;
+  shardings.reserve(types.size());
+  for (mlir::Type type : types) {
+    int64_t rank = 0;
+    if (auto tensorType = mlir::dyn_cast<mlir::ShapedType>(type)) {
+      if (tensorType.hasRank()) {
+        rank = tensorType.getRank();
+      }
+    }
+    shardings.push_back(TensorShardingAttr::getFullyReplicated(
+        context, rank, meshOrRef, /*isClosed=*/true));
+  }
+  return shardings;
+}
+
+void setFullyClosedShardingsIfMissing(Operation* op, Attribute meshOrRef) {
   MLIRContext* context = op->getContext();
   if (!op->hasAttrOfType<TensorShardingPerValueAttr>(kShardingAttr)) {
     SmallVector<TensorShardingAttr> shardings =
-        sdy::getFullyClosedShardings(context, op->getResultTypes(), meshName);
+        getFullyClosedShardings(context, op->getResultTypes(), meshOrRef);
     if (shardings.empty() && !op->hasTrait<mlir::OpTrait::IsTerminator>()) {
       shardings = {TensorShardingAttr::getFullyReplicated(
-          context, /*rank=*/0, meshName, /*isClosed=*/true)};
+          context, /*rank=*/0, meshOrRef, /*isClosed=*/true)};
     }
     sdy::setShardings(op, shardings);
   }
 }
 
 void setOpManualAxes(Operation* op, ManualAxesAttr manualAxes,
-                     StringRef meshName) {
+                     Attribute meshOrRef) {
   // TODO(b/415378067). Polish how we handle shardings with different meshes.
   bool hasOtherMesh = false;
   for (TensorShardingAttr opSharding : sdy::getShardings(op)) {
-    if (opSharding.getMeshName() != meshName) {
+    if (opSharding.getMeshOrRef() != meshOrRef) {
       hasOtherMesh = true;
       MeshAttr otherMesh = opSharding.getMesh(op);
       CHECK(otherMesh.getAxes().empty() || otherMesh.isMaximal());
@@ -158,16 +180,16 @@ void setOpManualAxes(Operation* op, ManualAxesAttr manualAxes,
     op->removeAttr(kShardingAttr);
   }
 
-  setFullyClosedShardingsIfMissing(op, meshName);
+  setFullyClosedShardingsIfMissing(op, meshOrRef);
   op->setAttr(kManualAxes, manualAxes);
 }
 
 void setFuncManualAxesRecursively(FuncOp funcOp, ManualAxesAttr manualAxes,
-                                  StringRef meshName,
+                                  Attribute meshOrRef,
                                   const mlir::SymbolTable& symbolTable);
 
 mlir::WalkResult setManualAxes(Operation* op, ManualAxesAttr manualAxes,
-                               StringRef meshName,
+                               Attribute meshOrRef,
                                const mlir::SymbolTable& symbolTable) {
   if (mlir::isa<ManualComputationOp>(op)) {
     // Skip `ManualComputationOp`s and their nested operations, they will
@@ -175,18 +197,18 @@ mlir::WalkResult setManualAxes(Operation* op, ManualAxesAttr manualAxes,
     return mlir::WalkResult::skip();
   }
   if (!mlir::isa<FuncOp, mlir::func::ReturnOp>(op)) {
-    setOpManualAxes(op, manualAxes, meshName);
+    setOpManualAxes(op, manualAxes, meshOrRef);
   }
   if (CallOp callOp = mlir::dyn_cast<CallOp>(op)) {
     FuncOp funcOp = symbolTable.lookup<FuncOp>(callOp.getCallee());
     CHECK(funcOp) << "Failed to lookup function: " << callOp.getCallee().str();
-    setFuncManualAxesRecursively(funcOp, manualAxes, meshName, symbolTable);
+    setFuncManualAxesRecursively(funcOp, manualAxes, meshOrRef, symbolTable);
   }
   return mlir::WalkResult::advance();
 }
 
 void setFuncManualAxesRecursively(FuncOp funcOp, ManualAxesAttr manualAxes,
-                                  StringRef meshName,
+                                  Attribute meshOrRef,
                                   const mlir::SymbolTable& symbolTable) {
   llvm::SmallVector<mlir::DictionaryAttr> funcArgAttrs;
   funcArgAttrs.reserve(funcOp.getNumArguments());
@@ -197,7 +219,7 @@ void setFuncManualAxesRecursively(FuncOp funcOp, ManualAxesAttr manualAxes,
           kShardingAttr,
           TensorShardingAttr::getFullyReplicated(
               funcOp->getContext(),
-              mlir::sdy::getTensorRank(funcOp.getArgument(argNum)), meshName,
+              mlir::sdy::getTensorRank(funcOp.getArgument(argNum)), meshOrRef,
               /*isClosed=*/true));
     }
     attrs.set(kManualAxes, manualAxes);
@@ -216,7 +238,7 @@ void setFuncManualAxesRecursively(FuncOp funcOp, ManualAxesAttr manualAxes,
                 TensorShardingAttr::getFullyReplicated(
                     funcOp->getContext(),
                     mlir::sdy::getTensorRank(funcOp.getResultTypes()[resNum]),
-                    meshName,
+                    meshOrRef,
                     /*isClosed=*/true));
     }
     if (attrs.get(kManualAxes) != manualAxes) {
@@ -228,7 +250,7 @@ void setFuncManualAxesRecursively(FuncOp funcOp, ManualAxesAttr manualAxes,
 
   // Walk in preorder of blocks in order to stop walks on manual computations.
   funcOp->walk([&](Operation* op) {
-    return setManualAxes(op, manualAxes, meshName, symbolTable);
+    return setManualAxes(op, manualAxes, meshOrRef, symbolTable);
   });
 }
 
@@ -251,14 +273,14 @@ void setManualAxesForOpsInBody(
   }
 
   MLIRContext* context = op.getContext();
-  StringRef meshName = sharding.getMeshName();
+  Attribute meshOrRef = sharding.getMeshOrRef();
   ManualAxesAttr manualAxesAttr =
       ManualAxesAttr::get(context, manualAxes.region);
 
   // Set the manual axes of all operations in the body.
   op.getBody().front().walk<mlir::WalkOrder::PreOrder>(
       [&](Operation* opInBody) {
-        return setManualAxes(opInBody, manualAxesAttr, meshName, symbolTable);
+        return setManualAxes(opInBody, manualAxesAttr, meshOrRef, symbolTable);
       });
 }
 

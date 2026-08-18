@@ -20,6 +20,8 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.ops.linalg.sparse import conjugate_gradient
@@ -105,6 +107,23 @@ class ConjugateGradientTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(cg_results[0].x, cg_results[1].x, rtol=tol)
     self.assertAllClose(cg_results[0].p, cg_results[1].p, rtol=tol)
 
+  def test_conjugate_gradient_scalar_rhs(self):
+    operator = linalg.LinearOperatorDiag(
+        [1.0, 2.0], is_self_adjoint=True, is_positive_definite=True
+    )
+    rhs = 1.0
+    with self.assertRaisesRegex(ValueError, 'rhs must have at least rank 1'):
+      conjugate_gradient.conjugate_gradient(operator, rhs)
 
-if __name__ == "__main__":
+  def test_conjugate_gradient_unknown_shape(self):
+    with ops.Graph().as_default():
+      operator = linalg.LinearOperatorDiag(
+          [1.0, 2.0], is_self_adjoint=True, is_positive_definite=True
+      )
+      rhs = array_ops.placeholder(dtypes.float32, shape=None)
+      # Just asserting that tracing this doesn't raise a rank ValueError
+      conjugate_gradient.conjugate_gradient(operator, rhs)
+
+
+if __name__ == '__main__':
   test.main()

@@ -1,0 +1,107 @@
+// RUN: fusion_to_xtile %s | fusion_compiler_opt --canonicalize -cse \
+// RUN:   | FileCheck %s
+// RUN: fusion_to_xtile %s | fusion_compiler_opt --xtile-cpu-xtile-to-vector \
+// RUN:   | FileCheck %s --check-prefix=CHECK-VECTOR
+// RUN: fusion_to_xtile %s | fusion_compiler_opt --xtile-cpu-xtile-to-vector \
+// RUN:   --xtile-cpu-vector-to-llvm | FileCheck %s --check-prefix=CHECK-LLVM
+// RUN: test_correctness %s
+
+// RUN: fusion_to_xtile %s | fusion_compiler_opt \
+// RUN:   --xtile-cpu-new-xtile-to-vector \
+// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
+// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering=true
+
+fusion {
+  p0 = f32[100, 100] parameter(0)
+  p1 = f32[100, 100] parameter(1)
+  ROOT minimum = f32[100, 100] minimum(p0, p1)
+}
+// CHECK:      #indexing_map = #xla.indexing_map<"(tid) -> ((tid / 4) * 16), domain: tid in [0, 27]">
+// CHECK:      #indexing_map1 = #xla.indexing_map<"(tid) -> ((tid mod 4) * 32), domain: tid in [0, 27]">
+
+// CHECK:        xtile.entry_func @wrapped_fusion(
+// CHECK-SAME:     %[[LHS:[^:]+]]: memref<100x100xf32>,
+// CHECK-SAME:     %[[RHS:[^:]+]]: memref<100x100xf32>,
+// CHECK-SAME:     %[[OUT:[^:]+]]: memref<100x100xf32>,
+// CHECK-SAME:     %[[PID:[^:]+]]: index)
+// CHECK-SAME:     attributes {num_opaque_args = 0 : i32}
+
+// CHECK:  %[[C0:.*]] = arith.constant 0 : index
+// CHECK:  %[[C1:.*]] = arith.constant 1 : index
+// CHECK:  %[[LIMIT:.*]] = arith.constant 28 : index
+// CHECK:  scf.for %[[TID:.*]] = %[[C0]] to %[[LIMIT]] step %[[C1]] {
+// CHECK:    %[[IDX_0:.*]] = xla.apply_indexing #indexing_map(%[[TID]])
+// CHECK:    %[[IDX_1:.*]] = xla.apply_indexing #indexing_map1(%[[TID]])
+// CHECK:    %[[T_0:.*]] = xtile.extract %[[LHS]][%[[IDX_0]], %[[IDX_1]]] [16, 32] [1, 1]
+// CHECK:    %[[T_1:.*]] = xtile.extract %[[RHS]][%[[IDX_0]], %[[IDX_1]]] [16, 32] [1, 1]
+// CHECK:    %[[MIN:.*]] = stablehlo.minimum %[[T_0]], %[[T_1]] : tensor<16x32xf32>
+// CHECK:    xtile.insert %[[MIN]] into %[[OUT]][%[[IDX_0]], %[[IDX_1]]] [16, 32] [1, 1] : tensor<16x32xf32> -> memref<100x100xf32>
+// CHECK:  }
+// CHECK:  xtile.return
+
+// CHECK-VECTOR-LABEL: func.func @wrapped_fusion_impl
+// CHECK-VECTOR:         %[[ALLOCA_0:.*]] = memref.alloca() : memref<16x32xf32>
+// CHECK-VECTOR:         %[[ALLOCA_1:.*]] = memref.alloca() : memref<16x32xf32>
+// CHECK-VECTOR:         scf.for
+// CHECK-VECTOR:           %[[SEL:.*]] = arith.select %[[COND:.*]], %[[ALLOCA_0]], %[[ALLOCA_1]]
+// CHECK-VECTOR:           scf.if %[[COND]] {
+// CHECK-VECTOR:             memref.copy %{{.*}}, %[[ALLOCA_0]]
+// CHECK-VECTOR:           } else {
+// CHECK-VECTOR:             memref.copy %{{.*}}, %{{.*}}
+// CHECK-VECTOR:           }
+// CHECK-VECTOR:           scf.for
+// CHECK-VECTOR:             scf.for
+// CHECK-VECTOR:               %[[V:.*]] = vector.transfer_read %[[SEL]][%{{.*}}, %{{.*}}]
+// CHECK-VECTOR:               vector.transfer_write %{{.*}}, %{{.*}}
+
+// NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl
+// NEW-VECTOR-SAME:    %[[ARG0:.*]]: memref<100x100xf32>, %[[ARG1:.*]]: memref<100x100xf32>, %[[ARG2:.*]]: memref<100x100xf32>
+// NEW-VECTOR:         %[[PAD:.*]] = arith.constant 0.000000e+00 : f32
+// NEW-VECTOR:         scf.for
+// NEW-VECTOR:           {{.*}} = xla.apply_indexing
+// NEW-VECTOR:           {{.*}} = xla.apply_indexing
+// NEW-VECTOR:           %[[BOUNDS:.*]]:2 = xla.apply_indexing
+// NEW-VECTOR:           %[[CMP0:.*]] = arith.cmpi sge, %[[BOUNDS]]#0, %{{.*}} : index
+// NEW-VECTOR:           %[[CMP1:.*]] = arith.cmpi sge, %[[BOUNDS]]#1, %{{.*}} : index
+// NEW-VECTOR:           %[[COND:.*]] = arith.andi %[[CMP0]], %[[CMP1]] : i1
+// NEW-VECTOR:           %[[R0:.*]] = scf.if %[[COND]] -> (vector<16x32xf32>) {
+// NEW-VECTOR:             %[[R0_IN:.*]] = vector.transfer_read %[[ARG0]][%{{.*}}, %{{.*}}], %[[PAD]] {in_bounds = [true, true]} : memref<100x100xf32>, vector<16x32xf32>
+// NEW-VECTOR:             scf.yield %[[R0_IN]]
+// NEW-VECTOR:           } else {
+// NEW-VECTOR:             %[[MASK0:.*]] = vector.create_mask %{{.*}}, %{{.*}} : vector<16x32xi1>
+// NEW-VECTOR:             %[[R0_MASK:.*]] = vector.transfer_read %[[ARG0]][%{{.*}}, %{{.*}}], %[[PAD]], %[[MASK0]] : memref<100x100xf32>, vector<16x32xf32>
+// NEW-VECTOR:             scf.yield %[[R0_MASK]]
+// NEW-VECTOR:           }
+// NEW-VECTOR:           %[[R1:.*]] = scf.if %[[COND]] -> (vector<16x32xf32>) {
+// NEW-VECTOR:             %[[R1_IN:.*]] = vector.transfer_read %[[ARG1]][%{{.*}}, %{{.*}}], %[[PAD]] {in_bounds = [true, true]} : memref<100x100xf32>, vector<16x32xf32>
+// NEW-VECTOR:             scf.yield %[[R1_IN]]
+// NEW-VECTOR:           } else {
+// NEW-VECTOR:             %[[MASK1:.*]] = vector.create_mask %{{.*}}, %{{.*}} : vector<16x32xi1>
+// NEW-VECTOR:             %[[R1_MASK:.*]] = vector.transfer_read %[[ARG1]][%{{.*}}, %{{.*}}], %[[PAD]], %[[MASK1]] : memref<100x100xf32>, vector<16x32xf32>
+// NEW-VECTOR:             scf.yield %[[R1_MASK]]
+// NEW-VECTOR:           }
+// NEW-VECTOR:           %[[MIN:.*]] = arith.minimumf %[[R0]], %[[R1]]
+// NEW-VECTOR:           scf.if %[[COND]] {
+// NEW-VECTOR:             vector.transfer_write %[[MIN]], %[[ARG2]][%{{.*}}, %{{.*}}] {in_bounds = [true, true]} : vector<16x32xf32>, memref<100x100xf32>
+// NEW-VECTOR:           } else {
+// NEW-VECTOR:             %[[MASK2:.*]] = vector.create_mask %{{.*}}, %{{.*}} : vector<16x32xi1>
+// NEW-VECTOR:             vector.transfer_write %[[MIN]], %[[ARG2]][%{{.*}}, %{{.*}}], %[[MASK2]] : vector<16x32xf32>, memref<100x100xf32>
+// NEW-VECTOR:           }
+
+// CHECK-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
+// CHECK-LLVM:         llvm.load
+// CHECK-LLVM:         llvm.store
+
+ENTRY main {
+  p0 = f32[100,100] parameter(0)
+  p1 = f32[100,100] parameter(1)
+  ROOT fusion = f32[100,100] fusion(p0, p1), kind=kLoop, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["16", "32"]}],
+          "num_ctas":"1"
+        }
+      }
+    }
+}

@@ -266,13 +266,40 @@ absl::StatusOr<bool> TritonEmitterConstraints::ParametersSatisfyConstraints(
 
 namespace gpu::experimental {
 
+namespace {
+
+void CollectAllInstructions(
+    const TiledHloInstruction* inst,
+    llvm::SmallVector<const TiledHloInstruction*>& out) {
+  out.push_back(inst);
+  for (const auto& region : inst->hlo_regions()) {
+    for (const auto& sub_inst : region.instructions()) {
+      CollectAllInstructions(sub_inst.get(), out);
+    }
+  }
+}
+
+llvm::SmallVector<const TiledHloInstruction*> CollectAllInstructions(
+    const TiledHloComputation& tiled_computation) {
+  llvm::SmallVector<const TiledHloInstruction*> all_instructions;
+  for (const TiledHloInstruction* inst : tiled_computation.instructions()) {
+    CollectAllInstructions(inst, all_instructions);
+  }
+  return all_instructions;
+}
+
+}  // namespace
+
 Decision VerifyTritonConstraints(const TiledHloComputation& tiled_computation,
                                  const se::DeviceDescription& device_info) {
+  llvm::SmallVector<const TiledHloInstruction*> all_instructions =
+      CollectAllInstructions(tiled_computation);
+
   // 1. Max Tensor Elements (TRITON_MAX_TENSOR_NUMEL limit in triton.language).
   // Triton's validate_block_shape (triton/python/triton/_utils.py) enforces
   // that the total number of elements in a padded block (product of tile sizes
   // padded to power of 2) does not exceed TRITON_MAX_TENSOR_NUMEL = 1048576.
-  for (const TiledHloInstruction* inst : tiled_computation.instructions()) {
+  for (const TiledHloInstruction* inst : all_instructions) {
     auto static_tile_sizes_or = inst->tile().GetStaticTileSizes();
     if (!static_tile_sizes_or.ok()) {
       return Decision(static_tile_sizes_or.status());
@@ -300,7 +327,7 @@ Decision VerifyTritonConstraints(const TiledHloComputation& tiled_computation,
   // Triton's GPU codegen constrains dot operands to avoid excessive register
   // pressure and comply with hardware MMA layout constraints. Contracting and
   // free dimension tile sizes are limited to kMaxMMADimSize.
-  for (const TiledHloInstruction* inst : tiled_computation.instructions()) {
+  for (const TiledHloInstruction* inst : all_instructions) {
     if (inst->hlo()->opcode() == HloOpcode::kDot) {
       for (const TiledHloInstruction* operand : inst->operands()) {
         auto op_tile_sizes_or = operand->tile().GetStaticTileSizes();

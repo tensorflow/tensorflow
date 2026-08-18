@@ -20,6 +20,11 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+// Conditionally include sysmacros.h only on Linux
+#if defined(__linux__)
+#include <sys/sysmacros.h>
+#endif
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project

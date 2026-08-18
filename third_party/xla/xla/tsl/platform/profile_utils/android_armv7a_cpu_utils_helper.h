@@ -35,14 +35,14 @@ class AndroidArmV7ACpuUtilsHelper : public ICpuUtilsHelper {
  public:
   AndroidArmV7ACpuUtilsHelper() = default;
   void ResetClockCycle() final;
-  uint64 GetCurrentClockCycle() final;
+  uint64_t GetCurrentClockCycle() final;
   void EnableClockCycleProfiling() final;
   void DisableClockCycleProfiling() final;
-  int64 CalculateCpuFrequency() final;
+  int64_t CalculateCpuFrequency() final;
 
  private:
   static constexpr int INVALID_FD = -1;
-  static constexpr int64 INVALID_CPU_FREQUENCY = -1;
+  static constexpr int64_t INVALID_CPU_FREQUENCY = -1;
 
   void InitializeInternal();
 
@@ -51,7 +51,7 @@ class AndroidArmV7ACpuUtilsHelper : public ICpuUtilsHelper {
                     const int cpu, const int group_fd,
                     const unsigned long flags);
 
-  int64 ReadCpuFrequencyFile(const int cpu_id, const char *const type);
+  int64_t ReadCpuFrequencyFile(const int cpu_id, const char* const type);
 
   bool is_initialized_{false};
   int fd_{INVALID_FD};

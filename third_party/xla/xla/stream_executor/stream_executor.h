@@ -149,6 +149,12 @@ class StreamExecutor {
   // Releases any state associated with the previously loaded kernel.
   virtual void UnloadKernel(const Kernel* kernel) {}
 
+  // Updates the dynamic shared memory limit for the given kernel.
+  virtual absl::Status UpdateMaxDynamicSharedMemoryBytes(
+      const Kernel* kernel, int32_t shared_memory_bytes) {
+    return absl::UnimplementedError("Not Implemented");
+  }
+
   // Unloads the module with handle `module_handle`.
   virtual bool UnloadModule(ModuleHandle module_handle) { return false; }
 
@@ -212,6 +218,16 @@ class StreamExecutor {
   virtual bool HostMemoryRegister(void* location, uint64_t size) {
     return false;
   };
+  virtual bool IsHostMemoryPinned(const void* ptr, uint64_t size) {
+    if (size == 0) return false;
+    auto start_space = GetPointerMemorySpace(ptr);
+    if (!start_space.ok() || *start_space != MemorySpace::kHost) {
+      return false;
+    }
+    auto end_space =
+        GetPointerMemorySpace(static_cast<const char*>(ptr) + size - 1);
+    return end_space.ok() && *end_space == MemorySpace::kHost;
+  }
 
   // Blocks the caller while "size" bytes are copied to the given location in
   // device memory.

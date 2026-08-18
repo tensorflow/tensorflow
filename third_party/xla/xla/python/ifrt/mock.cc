@@ -79,6 +79,9 @@ MockArray::MockArray(xla::ifrt::ArrayRef delegated)
   ON_CALL(*this, IsDeleted).WillByDefault([this]() {
     return delegated_->IsDeleted();
   });
+  ON_CALL(*this, array_spec).WillByDefault([this]() {
+    return delegated_->array_spec();
+  });
   ON_CALL(*this, dtype).WillByDefault([this]() { return delegated_->dtype(); });
   ON_CALL(*this, shape).WillByDefault([this]() -> const Shape& {
     return delegated_->shape();

@@ -149,6 +149,32 @@ ENTRY main {
   RunTest(hlo_text, {&lhs, &rhs});
 }
 
+TEST_F(ElementalIrEmitterExecutionTest, F16DotFusion) {
+  const char* hlo_text = R"(
+HloModule F16DotFusion
+
+fused_computation {
+  arg0 = f16[2,2]{1,0} parameter(0)
+  reshape.lhs = f16[4]{0} reshape(arg0)
+  arg1 = f16[2,2]{1,0} parameter(1)
+  reshape.rhs = f16[4]{0} reshape(arg1)
+  ROOT dot = f16[] dot(reshape.lhs, reshape.rhs), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+}
+
+ENTRY main {
+  entry_arg0 = f16[2,2]{1,0} parameter(0)
+  entry_arg1 = f16[2,2]{1,0} parameter(1)
+  ROOT fusion = f16[] fusion(entry_arg0, entry_arg1), kind=kLoop, calls=fused_computation
+}
+)";
+
+  Literal lhs = LiteralUtil::CreateR2<half>(
+      {{half(1.0), half(2.0)}, {half(3.0), half(4.0)}});
+  Literal rhs = LiteralUtil::CreateR2<half>(
+      {{half(10.0), half(20.0)}, {half(30.0), half(40.0)}});
+  RunTest(hlo_text, {&lhs, &rhs});
+}
+
 TEST_F(ElementalIrEmitterExecutionTest, BatchDot) {
   const char* hlo_text = R"(
 HloModule BatchDot

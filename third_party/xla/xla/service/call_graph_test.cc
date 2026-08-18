@@ -850,5 +850,152 @@ TEST_F(CallGraphTest, ExecutionThread) {
   }
 }
 
+TEST_F(CallGraphTest, IsFlatOnControlFlowSingleWhile) {
+  constexpr absl::string_view kHloString = R"(
+    HloModule test_module
+    %cond (param: f32[]) -> pred[] {
+      %param = f32[] parameter(0)
+      %zero = f32[] constant(0)
+      ROOT %cmp = pred[] compare(f32[] %param, f32[] %zero), direction=GT
+    }
+    %body (param: f32[]) -> f32[] {
+      %param = f32[] parameter(0)
+      ROOT %neg = f32[] negate(f32[] %param)
+    }
+    ENTRY %main (param: f32[]) -> f32[] {
+      %param = f32[] parameter(0)
+      ROOT %while = f32[] while(f32[] %param), condition=%cond, body=%body
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+  EXPECT_TRUE(call_graph->IsFlatOnControlFlow());
+}
+
+TEST_F(CallGraphTest, IsFlatOnControlFlowSharedWhileBody) {
+  constexpr absl::string_view kHloString = R"(
+    HloModule test_module
+    %cond.1 (param: f32[]) -> pred[] {
+      %param = f32[] parameter(0)
+      %zero = f32[] constant(0)
+      ROOT %cmp = pred[] compare(f32[] %param, f32[] %zero), direction=GT
+    }
+    %cond.2 (param: f32[]) -> pred[] {
+      %param = f32[] parameter(0)
+      %zero = f32[] constant(0)
+      ROOT %cmp = pred[] compare(f32[] %param, f32[] %zero), direction=GT
+    }
+    %body (param: f32[]) -> f32[] {
+      %param = f32[] parameter(0)
+      ROOT %neg = f32[] negate(f32[] %param)
+    }
+    ENTRY %main (param: f32[]) -> f32[] {
+      %param = f32[] parameter(0)
+      %while.1 = f32[] while(f32[] %param), condition=%cond.1, body=%body
+      ROOT %while.2 = f32[] while(f32[] %while.1), condition=%cond.2, body=%body
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+  EXPECT_FALSE(call_graph->IsFlatOnControlFlow());
+}
+
+TEST_F(CallGraphTest, IsFlatOnControlFlowConditionalSeparateBranches) {
+  constexpr absl::string_view kHloString = R"(
+    HloModule test_module
+    %true_branch (param: f32[]) -> f32[] {
+      %param = f32[] parameter(0)
+      ROOT %neg = f32[] negate(f32[] %param)
+    }
+    %false_branch (param: f32[]) -> f32[] {
+      %param = f32[] parameter(0)
+      ROOT %abs = f32[] abs(f32[] %param)
+    }
+    ENTRY %main (p_pred: pred[], param: f32[]) -> f32[] {
+      %p_pred = pred[] parameter(0)
+      %param = f32[] parameter(1)
+      ROOT %cond = f32[] conditional(pred[] %p_pred, f32[] %param, f32[] %param), true_computation=%true_branch, false_computation=%false_branch
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+  EXPECT_TRUE(call_graph->IsFlatOnControlFlow());
+}
+
+TEST_F(CallGraphTest, IsFlatOnControlFlowConditionalSharedBranch) {
+  constexpr absl::string_view kHloString = R"(
+    HloModule test_module
+    %shared_branch (param: f32[]) -> f32[] {
+      %param = f32[] parameter(0)
+      ROOT %neg = f32[] negate(f32[] %param)
+    }
+    ENTRY %main (p_pred: pred[], param: f32[]) -> f32[] {
+      %p_pred = pred[] parameter(0)
+      %param = f32[] parameter(1)
+      ROOT %cond = f32[] conditional(pred[] %p_pred, f32[] %param, f32[] %param), true_computation=%shared_branch, false_computation=%shared_branch
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+  EXPECT_FALSE(call_graph->IsFlatOnControlFlow());
+}
+
+TEST_F(CallGraphTest, IsFlatOnControlFlowConditionalAndWhileSharedBody) {
+  constexpr absl::string_view kHloString = R"(
+    HloModule test_module
+    %shared_comp (param: f32[]) -> f32[] {
+      %param = f32[] parameter(0)
+      ROOT %neg = f32[] negate(f32[] %param)
+    }
+    %false_branch (param: f32[]) -> f32[] {
+      %param = f32[] parameter(0)
+      ROOT %abs = f32[] abs(f32[] %param)
+    }
+    %while_cond (param: f32[]) -> pred[] {
+      %param = f32[] parameter(0)
+      %zero = f32[] constant(0)
+      ROOT %cmp = pred[] compare(f32[] %param, f32[] %zero), direction=GT
+    }
+    ENTRY %main (p_pred: pred[], param: f32[]) -> f32[] {
+      %p_pred = pred[] parameter(0)
+      %param = f32[] parameter(1)
+      %cond_inst = f32[] conditional(pred[] %p_pred, f32[] %param, f32[] %param), true_computation=%shared_comp, false_computation=%false_branch
+      ROOT %while_inst = f32[] while(f32[] %cond_inst), condition=%while_cond, body=%shared_comp
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+  EXPECT_FALSE(call_graph->IsFlatOnControlFlow());
+}
+
+TEST_F(CallGraphTest, IsFlatOnControlFlowWhileBodyAndCallShared) {
+  constexpr absl::string_view kHloString = R"(
+    HloModule test_module
+    %shared_comp (param: f32[]) -> f32[] {
+      %param = f32[] parameter(0)
+      ROOT %neg = f32[] negate(f32[] %param)
+    }
+    %while_cond (param: f32[]) -> pred[] {
+      %param = f32[] parameter(0)
+      %zero = f32[] constant(0)
+      ROOT %cmp = pred[] compare(f32[] %param, f32[] %zero), direction=GT
+    }
+    ENTRY %main (param: f32[]) -> f32[] {
+      %param = f32[] parameter(0)
+      %call_inst = f32[] call(f32[] %param), to_apply=%shared_comp
+      ROOT %while_inst = f32[] while(f32[] %call_inst), condition=%while_cond, body=%shared_comp
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+  EXPECT_FALSE(call_graph->IsFlatOnControlFlow());
+}
+
 }  // namespace
 }  // namespace xla

@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/logging.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -39,7 +40,9 @@ namespace profiler {
 template <typename ProfilerType>
 class ContinuousProfilerOrchestrator : public ProfilerInterface {
  public:
-  static constexpr absl::Duration kDefaultPollingInterval = absl::Seconds(1);
+  static constexpr absl::Duration kDefaultPollingInterval = absl::Seconds(2);
+  static constexpr absl::Duration kMinPollingInterval = absl::Seconds(2);
+  static constexpr absl::Duration kMaxPollingInterval = absl::Seconds(5);
 
   explicit ContinuousProfilerOrchestrator(
       std::unique_ptr<ProfilerType> profiler)
@@ -47,7 +50,7 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
         is_running_(false),
         polling_interval_(kDefaultPollingInterval) {}
 
-  ~ContinuousProfilerOrchestrator() override { StopIngestionThread(); }
+  ~ContinuousProfilerOrchestrator() override { StopInternal().IgnoreError(); }
 
   // Starts profiling and spawns background thread.
   absl::Status Start() override {
@@ -73,8 +76,15 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
 
   // Stops background thread and profiling.
   absl::Status Stop() override {
-    StopIngestionThread();
-    return profiler_->Stop();
+    absl::Status status = StopInternal();
+    auto result = profiler_->Consume();
+    if (result.ok()) {
+      absl::MutexLock lock(mutex_);
+      circular_buffer_.push_back(std::move(result->data));
+    } else if (!absl::IsUnimplemented(result.status())) {
+      LOG(WARNING) << "Final Consume failed during Stop: " << result.status();
+    }
+    return status;
   }
 
   absl::Status CollectData(tensorflow::profiler::XSpace* space) override {
@@ -93,6 +103,23 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
     return status;
   }
 
+  std::vector<tensorflow::profiler::XSpace> SerializeChunks() {
+    std::vector<std::any> chunks = PopBuffer();
+    std::vector<tensorflow::profiler::XSpace> spaces;
+    spaces.reserve(chunks.size());
+    tensorflow::profiler::XSpace space;
+    for (auto& chunk : chunks) {
+      space.Clear();
+      absl::Status status = profiler_->Serialize(std::move(chunk), &space);
+      if (status.ok()) {
+        spaces.push_back(std::move(space));
+      } else {
+        LOG(ERROR) << "Failed to serialize profiler chunk: " << status;
+      }
+    }
+    return spaces;
+  }
+
   // Returns the current polling interval (primarily for testing).
   absl::Duration polling_interval() const {
     absl::MutexLock lock(mutex_);
@@ -102,7 +129,6 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
   ProfilerType* profiler() { return profiler_.get(); }
   const ProfilerType* profiler() const { return profiler_.get(); }
 
- private:
   std::vector<std::any> PopBuffer() {
     absl::MutexLock lock(mutex_);
     std::vector<std::any> chunks;
@@ -113,13 +139,18 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
     circular_buffer_.clear();
     return chunks;
   }
+
+ private:
   void IngestionLoop() {
+    LOG(INFO) << "ContinuousProfilerOrchestrator::IngestionLoop started";
     while (true) {
+      {
+        absl::MutexLock lock(mutex_);
+        if (!is_running_) break;
+      }
       absl::StatusOr<ConsumeResult> result = profiler_->Consume();
 
       absl::MutexLock lock(mutex_);
-      if (!is_running_) break;
-
       if (result.ok()) {
         circular_buffer_.push_back(std::move(result->data));
 
@@ -131,20 +162,24 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
         AdjustIntervalLocked(result->estimated_size_bytes);
       }
 
+      if (!is_running_) break;
+
       // Wait using absl::CondVar on absl::Mutex
       cv_.WaitWithTimeout(&mutex_, polling_interval_);
       if (!is_running_) break;
     }
   }
 
-  void StopIngestionThread() {
+  absl::Status StopInternal() {
     {
       absl::MutexLock lock(mutex_);
-      if (!is_running_) return;
+      if (!is_running_) return absl::OkStatus();
       is_running_ = false;
       cv_.SignalAll();
     }
+    absl::Status status = profiler_->Stop();
     ingestion_thread_.reset();
+    return status;
   }
 
   void AdjustIntervalLocked(size_t chunk_size_bytes)
@@ -153,10 +188,9 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
     constexpr size_t kLowWatermark = 5 * 1024 * 1024;     // 5MB
 
     if (chunk_size_bytes > kHighWatermark) {
-      polling_interval_ =
-          std::max(polling_interval_ / 2, absl::Milliseconds(100));
+      polling_interval_ = std::max(polling_interval_ / 2, kMinPollingInterval);
     } else if (chunk_size_bytes < kLowWatermark) {
-      polling_interval_ = std::min(polling_interval_ * 2, absl::Seconds(5));
+      polling_interval_ = std::min(polling_interval_ * 2, kMaxPollingInterval);
     }
   }
 

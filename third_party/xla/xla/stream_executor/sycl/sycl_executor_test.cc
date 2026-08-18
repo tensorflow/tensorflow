@@ -128,6 +128,25 @@ TEST_F(SyclExecutorTest, GetSyclKernel) {
               StatusIs(absl::StatusCode::kNotFound));
 }
 
+TEST_F(SyclExecutorTest, RegisteredHostMemoryIsPinned) {
+  ASSERT_OK_AND_ASSIGN(
+      Platform * platform,
+      stream_executor::PlatformManager::PlatformWithId(kSyclPlatformId));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(kDefaultDeviceOrdinal));
+
+  constexpr size_t kSize = 64 * 1024;
+  std::vector<uint8_t> buffer(kSize);
+  EXPECT_FALSE(executor->IsHostMemoryPinned(buffer.data(), buffer.size()));
+  ASSERT_TRUE(executor->HostMemoryRegister(buffer.data(), buffer.size()));
+  EXPECT_TRUE(executor->IsHostMemoryPinned(buffer.data(), buffer.size()));
+  EXPECT_TRUE(executor->IsHostMemoryPinned(buffer.data() + 1024, 4096));
+  EXPECT_FALSE(executor->IsHostMemoryPinned(buffer.data(), 0));
+  EXPECT_FALSE(executor->IsHostMemoryPinned(buffer.data() + kSize / 2, kSize));
+  ASSERT_TRUE(executor->HostMemoryUnregister(buffer.data()));
+  EXPECT_FALSE(executor->IsHostMemoryPinned(buffer.data(), buffer.size()));
+}
+
 TEST_F(SyclExecutorTest, CreateUnifiedMemoryAllocatorWorks) {
   TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
                           stream_executor::PlatformManager::PlatformWithId(

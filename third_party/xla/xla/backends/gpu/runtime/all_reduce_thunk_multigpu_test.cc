@@ -25,7 +25,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
@@ -70,7 +70,7 @@ class DirectAllReduceThunk : public AllReduceReduceScatterThunkBase {
   absl::Status RunCollective(const ExecuteParams& params,
                              const GpuCliqueKey& /*clique_key*/,
                              se::Stream& stream, Communicator& comm) override {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::vector<DeviceBufferPair> device_buffers,
         ConvertToDeviceBuffers(params.buffer_allocations, buffers(),
                                config_.config.operand_element_type));
@@ -237,7 +237,7 @@ static absl::Status RunCreatePhase(DeviceTestSlot& slot,
                                    AllReduceReduceScatterThunkBase& thunk,
                                    const std::vector<float>& src_values,
                                    const std::vector<float>& expected_values) {
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       FillDeviceBuffer(*slot.stream, slot.create_buffers[0], src_values));
 
   BufferAllocations allocations =
@@ -248,11 +248,11 @@ static absl::Status RunCreatePhase(DeviceTestSlot& slot,
   // initialization outside of the stream capture performed by Record below.
   // CUDA graph capture rejects the NCCL bootstrap's sync primitives, which
   // would otherwise cause CUDA_ERROR_STREAM_CAPTURE_INVALIDATED.
-  RETURN_IF_ERROR(ExecuteOnStreamAndBlock(thunk, execute_params));
-  RETURN_IF_ERROR(RecordCommandBufferCreate(slot, thunk, execute_params));
-  RETURN_IF_ERROR(FillDeviceBuffer(*slot.stream, slot.create_buffers[1],
+  ABSL_RETURN_IF_ERROR(ExecuteOnStreamAndBlock(thunk, execute_params));
+  ABSL_RETURN_IF_ERROR(RecordCommandBufferCreate(slot, thunk, execute_params));
+  ABSL_RETURN_IF_ERROR(FillDeviceBuffer(*slot.stream, slot.create_buffers[1],
                                    SentinelValues(expected_values.size())));
-  RETURN_IF_ERROR(SubmitCommandBuffer(slot));
+  ABSL_RETURN_IF_ERROR(SubmitCommandBuffer(slot));
   return VerifyDeviceBuffer(*slot.stream, slot.create_buffers[1],
                             expected_values);
 }
@@ -264,18 +264,18 @@ static absl::Status RunUpdatePhase(DeviceTestSlot& slot,
                                    AllReduceReduceScatterThunkBase& thunk,
                                    const std::vector<float>& src_values,
                                    const std::vector<float>& expected_values) {
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       FillDeviceBuffer(*slot.stream, slot.update_buffers[0], src_values));
 
   BufferAllocations allocations =
       MakeBufferAllocations(slot, slot.update_buffers);
   Thunk::ExecuteParams execute_params = MakeExecuteParams(slot, allocations);
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       RecordCommandBufferUpdate(slot, thunk, execute_params, {0, 1}));
-  RETURN_IF_ERROR(FillDeviceBuffer(*slot.stream, slot.update_buffers[1],
+  ABSL_RETURN_IF_ERROR(FillDeviceBuffer(*slot.stream, slot.update_buffers[1],
                                    SentinelValues(expected_values.size())));
-  RETURN_IF_ERROR(SubmitCommandBuffer(slot));
+  ABSL_RETURN_IF_ERROR(SubmitCommandBuffer(slot));
   return VerifyDeviceBuffer(*slot.stream, slot.update_buffers[1],
                             expected_values);
 }
@@ -285,9 +285,9 @@ static absl::Status SetupAndCreate(int d, DeviceTestSlot* slots,
                                    AllReduceReduceScatterThunkBase* thunk,
                                    const DeviceAssignment* device_assignment,
                                    CollectiveTestKind kind) {
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       SetupDeviceSlot(d, slots[d], *thunk, *device_assignment, kind));
-  RETURN_IF_ERROR(RunCreatePhase(slots[d], *thunk,
+  ABSL_RETURN_IF_ERROR(RunCreatePhase(slots[d], *thunk,
                                  InputValues(kind, d, /*phase_scale=*/1.0f),
                                  ExpectedValues(kind, d,
                                                 /*phase_scale=*/1.0f)));
@@ -298,7 +298,7 @@ static absl::Status SetupAndCreate(int d, DeviceTestSlot* slots,
 static absl::Status RunUpdate(int d, DeviceTestSlot* slots,
                               AllReduceReduceScatterThunkBase* thunk,
                               CollectiveTestKind kind) {
-  RETURN_IF_ERROR(RunUpdatePhase(slots[d], *thunk,
+  ABSL_RETURN_IF_ERROR(RunUpdatePhase(slots[d], *thunk,
                                  InputValues(kind, d, /*phase_scale=*/100.0f),
                                  ExpectedValues(kind, d,
                                                 /*phase_scale=*/100.0f)));

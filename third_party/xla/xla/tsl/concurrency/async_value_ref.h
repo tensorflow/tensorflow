@@ -68,6 +68,8 @@ template <typename T, typename... Args>
 AsyncValueRef<T> MakeConstructedAsyncValueRef(Args&&... args);
 template <typename T, typename... Args>
 AsyncValueRef<T> MakeAvailableAsyncValueRef(Args&&... args);
+template <typename T>
+AsyncValueRef<T> MakeAvailableAsyncValueRef(std::shared_ptr<T> value);
 
 // A collection of type traits used by AsyncValueRef and AsyncValuePtr.
 namespace internal {
@@ -1092,6 +1094,14 @@ AsyncValueRef<T> MakeAvailableAsyncValueRef(Args&&... args) {
       internal::AllocateAndConstruct<internal::ConcreteAsyncValue<T>>(
           typename internal::ConcreteAsyncValue<T>::ConcretePayload{},
           std::forward<Args>(args)...)));
+}
+
+// Allocate and construct an available AsyncValueRef backed by a
+// std::shared_ptr.
+template <typename T>
+AsyncValueRef<T> MakeAvailableAsyncValueRef(std::shared_ptr<T> value) {
+  return AsyncValueRef<T>(
+      tsl::MakeRef<internal::SharedPtrAsyncValue>(std::move(value)));
 }
 
 // Allocates an AsyncValueRef that is constructed from the result of calling an

@@ -1283,7 +1283,7 @@ struct MhloOpToStdScalarOp {
                                  ArrayRef<Type> argTypes, ValueRange args,
                                  ArrayRef<NamedAttribute> attributes,
                                  OpBuilder* b) {
-    static_assert(!std::is_same<MhloOpTy, mhlo::ConvertOp>::value);
+    static_assert(!std::is_same_v<MhloOpTy, mhlo::ConvertOp>);
     typename MhloOpTy::Adaptor adaptor(args, op->getAttrDictionary(),
                                        op->getPropertiesStorage(),
                                        op->getRegions());

@@ -31,9 +31,9 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -316,13 +316,13 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
       options.is_allowed_in_alternate_mem_fn = is_allowed_in_alternate_mem;
     }
 
-    ASSIGN_OR_RETURN(auto alias_analysis,
+    ABSL_ASSIGN_OR_RETURN(auto alias_analysis,
                      HloAliasAnalysis::Run(module, &alias_info_));
-    ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
                      HloLiveRange::Run(module->schedule(), *alias_analysis,
                                        module->entry_computation()));
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<PresetAssignments> preset_assignments,
         MemorySpaceAssignment::Run(module, *hlo_live_range, *alias_analysis,
                                    &alias_info_, options));
@@ -476,8 +476,19 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
       int64_t memory_space) {
     for (const std::string& name : instruction_names) {
       HloInstruction* instruction = FindInstruction(module, name);
-      EXPECT_NE(instruction, nullptr);
-      EXPECT_EQ(instruction->shape().layout().memory_space(), memory_space);
+      EXPECT_NE(instruction, nullptr) << "Instruction not found: " << name;
+      if (!instruction) {
+        continue;
+      }
+      EXPECT_TRUE(instruction->shape().has_layout())
+          << "Instruction " << name << " has no layout.";
+      if (!instruction->shape().has_layout()) {
+        continue;
+      }
+      EXPECT_EQ(instruction->shape().layout().memory_space(), memory_space)
+          << "Instruction " << name << " has memory space "
+          << instruction->shape().layout().memory_space() << " instead of "
+          << memory_space;
     }
   }
 

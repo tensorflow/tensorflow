@@ -10,8 +10,32 @@ tf_class {
     mtype: "<class \'property\'>"
   }
   member_method {
+    name: "__bool__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__debug_string__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'dataset\', \'mesh\', \'layouts\', \'global_batch_size\', \'dataset_already_batched\', \'batch_dim\', \'prefetch\', \'tf_data_service_config\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "__iter__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__len__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__nonzero__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__tf_tracing_type__"
+    argspec: "args=[\'self\', \'context\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "apply"
@@ -40,6 +64,7 @@ tf_class {
   member_method {
     name: "choose_from_datasets"
     argspec: "args=[\'datasets\', \'choice_dataset\', \'stop_on_empty_dataset\'], varargs=None, keywords=None, defaults=[\'True\'], "
+    method_kind: STATIC
   }
   member_method {
     name: "concatenate"
@@ -48,6 +73,7 @@ tf_class {
   member_method {
     name: "counter"
     argspec: "args=[\'start\', \'step\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'1\', \"<dtype: \'int64\'>\", \'None\'], "
+    method_kind: STATIC
   }
   member_method {
     name: "enumerate"
@@ -68,14 +94,17 @@ tf_class {
   member_method {
     name: "from_generator"
     argspec: "args=[\'generator\', \'output_types\', \'output_shapes\', \'args\', \'output_signature\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
+    method_kind: STATIC
   }
   member_method {
     name: "from_tensor_slices"
     argspec: "args=[\'tensors\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    method_kind: STATIC
   }
   member_method {
     name: "from_tensors"
     argspec: "args=[\'tensors\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    method_kind: STATIC
   }
   member_method {
     name: "get_single_element"
@@ -96,10 +125,12 @@ tf_class {
   member_method {
     name: "list_files"
     argspec: "args=[\'file_pattern\', \'shuffle\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    method_kind: STATIC
   }
   member_method {
     name: "load"
     argspec: "args=[\'path\', \'element_spec\', \'compression\', \'reader_func\', \'wait\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'False\'], "
+    method_kind: STATIC
   }
   member_method {
     name: "map"
@@ -124,10 +155,12 @@ tf_class {
   member_method {
     name: "random"
     argspec: "args=[\'seed\', \'rerandomize_each_iteration\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    method_kind: STATIC
   }
   member_method {
     name: "range"
     argspec: "args=[], varargs=args, keywords=kwargs, defaults=None"
+    method_kind: STATIC
   }
   member_method {
     name: "rebatch"
@@ -148,6 +181,7 @@ tf_class {
   member_method {
     name: "sample_from_datasets"
     argspec: "args=[\'datasets\', \'weights\', \'seed\', \'stop_on_empty_dataset\', \'rerandomize_each_iteration\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'None\'], "
+    method_kind: STATIC
   }
   member_method {
     name: "save"
@@ -204,5 +238,6 @@ tf_class {
   member_method {
     name: "zip"
     argspec: "args=[\'datasets\', \'name\'], varargs=args, keywords=None, defaults=[\'None\', \'None\'], "
+    method_kind: STATIC
   }
 }

@@ -140,14 +140,7 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
     // Elementwise ops.
     case HloOpcode::kExp:
       if (LowPrecisionType() == BF16) {
-        if (compute_capability_.IsCuda()) {
-          return true;
-        }
-        // gfx1250 has a native bf16 exponential instruction, so there is no
-        // need to upcast bf16 exp to f32.
-        if (auto* rocm_cc = compute_capability_.rocm_compute_capability()) {
-          return rocm_cc->has_bf16_transcendental_support();
-        }
+        return compute_capability_.IsCuda();
       }
       return false;
     case HloOpcode::kLog:

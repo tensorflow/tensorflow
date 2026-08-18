@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
@@ -77,8 +76,12 @@ class GpuIndexingPerformanceModelTest
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
   HloFusionAnalysisCache fusion_analysis_cache_{device_info_};
   GpuPerformanceModelWithIndexingAnalysis indexing_cost_model_{
-      &device_info_, &fusion_analysis_cache_, HloCostAnalysis::DefaultShapeSize,
-      &mlir_context_, use_experimental_tiling()};
+      &device_info_,
+      &fusion_analysis_cache_,
+      HloCostAnalysis::DefaultShapeSize,
+      &mlir_context_,
+      use_experimental_tiling(),
+      /*enable_same_shape_multi_output_fusion=*/false};
 
   size_t WarpSize() const { return ::xla::gpu::WarpSize(device_info_); }
 
@@ -272,9 +275,11 @@ ENTRY e {
       indexing_cost_model_.EstimateRunTimeForTriton(root, nullptr));
 
   const int64_t approx_total_bytes = 2 /*BF16*/ * (4096 + 4 * 2) * 4096;
+  const float approx_hbm_bandwidth =
+      gpu_dot_fusion_cost_model::detail::GetEffectiveHbmBandwidth(
+          approx_total_bytes, device_info_);
   const absl::Duration approx_hbm_time =
-      absl::Seconds(1.0f * approx_total_bytes /
-                    device_info_.memory_bandwidth()) +
+      absl::Seconds(1.0f * approx_total_bytes / approx_hbm_bandwidth) +
       gpu_dot_fusion_cost_model::detail::kLoopLatencyTax;
 
   // For pipelined loops, execution time is bounded by the dominant cost (memory
@@ -1086,6 +1091,9 @@ INSTANTIATE_TEST_SUITE_P(FlopsPerElementTestInstantiation, FlopsPerElementTest,
                          ::testing::ValuesIn({false}));
 
 TEST_P(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Reduce) {
+  // Note: This comparison only succeeds when the reduction dimension size is a
+  // power of two (e.g. 64), because FlopsPerElement accounts for power-of-two
+  // padding while GpuHloCostAnalysis measures unpadded FLOP counts.
   CompareFlopsModels(R"(
 HloModule m
 
@@ -1096,7 +1104,7 @@ add {
 }
 
 ENTRY entry_computation {
-  param_0.3 = f32[32,40] parameter(0)
+  param_0.3 = f32[32,64] parameter(0)
   constant = f32[] constant(0)
   ROOT reduce = f32[32] reduce(param_0.3, constant), dimensions={1}, to_apply=add
 }
@@ -1104,6 +1112,9 @@ ENTRY entry_computation {
 }
 
 TEST_P(FlopsPerElementTest, MatchesGpuHloCostAnalysis_VariadicReduce) {
+  // Note: This comparison only succeeds when the reduction dimension size is a
+  // power of two (e.g. 64), because FlopsPerElement accounts for power-of-two
+  // padding while GpuHloCostAnalysis measures unpadded FLOP counts.
   CompareFlopsModels(R"(
 HloModule m
 
@@ -1118,11 +1129,37 @@ add_multiply {
 }
 
 ENTRY entry_computation {
-  param_0 = f32[32,40] parameter(0)
+  param_0 = f32[32,64] parameter(0)
   c0 = f32[] constant(0)
   ROOT reduce = (f32[32], f32[32]) reduce(param_0, param_0, c0, c0), dimensions={1}, to_apply=add_multiply
 }
 )");
+}
+
+TEST_P(FlopsPerElementTest, PaddedReduceDimensions) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT add.0 = f32[] add(param_0, param_1)
+}
+
+ENTRY entry_computation {
+  param_0.3 = f32[10,15,9] parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce = f32[10] reduce(param_0.3, constant), dimensions={1,2}, to_apply=add
+}
+)"));
+  auto* instr = module->entry_computation()->root_instruction();
+
+  // Dim 1 size 15 -> PowerOf2Ceil(15) = 16.
+  // Dim 2 size 9  -> PowerOf2Ceil(9)  = 16.
+  // Padded reduction factor = 16 * 16 = 256.
+  // Elementwise f32 add = 3 FLOPs per operation.
+  // FLOPs per output element = (256 - 1) * 3 = 765.
+  EXPECT_EQ(indexing_cost_model_.FlopsPerElement(instr), 765);
 }
 
 TEST_P(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Elementwise_Cosine) {

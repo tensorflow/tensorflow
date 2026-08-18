@@ -25,10 +25,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/message.h"
 #include "google/protobuf/message_lite.h"
@@ -50,9 +50,9 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/stream_executor/abi/executable_abi_version.pb.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/tools/split_proto/split_proto_cli.pb.h"
 #include "xla/tsl/util/fixed_option_set_flag.h"
 #include "xla/tsl/util/sorted_range.h"
+#include "xla/util/split_proto/human_readable_aot_executable.pb.h"
 #include "xla/util/split_proto/split_executable_and_options_writer.h"
 #include "xla/util/split_proto/split_gpu_executable_writer.h"
 #include "xla/util/split_proto/split_hlo_writer.h"
@@ -89,7 +89,7 @@ absl::Status ParseProto(riegeli::Reader& reader, ProtoFormat format,
                         google::protobuf::Message& message) {
   switch (format) {
     case ProtoFormat::kBinary: {
-      RETURN_IF_ERROR(riegeli::ParseMessage(reader, message));
+      ABSL_RETURN_IF_ERROR(riegeli::ParseMessage(reader, message));
       break;
     }
     case ProtoFormat::kText: {
@@ -119,7 +119,7 @@ absl::Status ParseProto(riegeli::Reader& reader, ProtoFormat format,
       if (!reader.Seek(pos)) {
         return reader.status();
       }
-      RETURN_IF_ERROR(riegeli::ParseMessage(reader, message));
+      ABSL_RETURN_IF_ERROR(riegeli::ParseMessage(reader, message));
       break;
     }
   }
@@ -145,7 +145,7 @@ absl::Status Pack(std::unique_ptr<riegeli::Reader> reader,
         absl::StrCat("Unsupported proto type: ", options.proto_type));
   }
 
-  RETURN_IF_ERROR(ParseProto(*reader, options.input_format, *message));
+  ABSL_RETURN_IF_ERROR(ParseProto(*reader, options.input_format, *message));
 
   if (options.proto_type == "xla.gpu.GpuExecutableProto") {
     auto* gpu_proto =
@@ -204,7 +204,7 @@ absl::Status SerializeProto(const google::protobuf::Message& message, ProtoForma
       return absl::InternalError("Failed to serialize text proto");
     }
   } else {
-    RETURN_IF_ERROR(riegeli::SerializeMessage(message, writer));
+    ABSL_RETURN_IF_ERROR(riegeli::SerializeMessage(message, writer));
   }
   return absl::OkStatus();
 }
@@ -213,7 +213,7 @@ absl::Status SerializeProto(const google::protobuf::Message& message, ProtoForma
 absl::Status Unpack(std::unique_ptr<riegeli::Reader> reader,
                     std::unique_ptr<riegeli::Writer> writer,
                     const UnpackOptions& options) {
-  ASSIGN_OR_RETURN(SplitProtoManifest manifest, ReadManifest(*reader));
+  ABSL_ASSIGN_OR_RETURN(SplitProtoManifest manifest, ReadManifest(*reader));
   std::cout << "Unpacking split proto format (type: "
             << manifest.result_proto_type() << ") to standard protobuf ("
             << AbslUnparseFlag(options.output_format) << " format)" << "\n";
@@ -230,9 +230,9 @@ absl::Status Unpack(std::unique_ptr<riegeli::Reader> reader,
         "Unsupported proto type in manifest: ", manifest.result_proto_type()));
   }
 
-  RETURN_IF_ERROR(ReadSplitProto(std::move(reader), *message));
+  ABSL_RETURN_IF_ERROR(ReadSplitProto(std::move(reader), *message));
 
-  RETURN_IF_ERROR(SerializeProto(*message, options.output_format, *writer));
+  ABSL_RETURN_IF_ERROR(SerializeProto(*message, options.output_format, *writer));
 
   if (!writer->Close()) {
     return writer->status();
@@ -244,21 +244,21 @@ absl::Status Unpack(std::unique_ptr<riegeli::Reader> reader,
 absl::Status PackAot(std::unique_ptr<riegeli::Reader> reader,
                      std::unique_ptr<riegeli::Writer> writer,
                      const PackOptions& options) {
-  std::cout << "Packing DeserializedSplitExecutableAndOptions to split "
+  std::cout << "Packing HumanReadableAotExecutable to split "
                "ExecutableAndOptionsProto"
             << "\n";
-  DeserializedSplitExecutableAndOptions wrapper;
-  RETURN_IF_ERROR(ParseProto(*reader, options.input_format, wrapper));
+  HumanReadableAotExecutable wrapper;
+  ABSL_RETURN_IF_ERROR(ParseProto(*reader, options.input_format, wrapper));
 
   std::unique_ptr<riegeli::Writer> serialized_executable_writer =
       riegeli::Maker<riegeli::StringWriter>(
           wrapper.mutable_executable_and_options()
               ->mutable_serialized_executable());
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       WriteSplitGpuExecutable(std::move(*wrapper.mutable_gpu_executable()),
                               std::move(serialized_executable_writer)));
 
-  RETURN_IF_ERROR(WriteSplitExecutableAndOptions(
+  ABSL_RETURN_IF_ERROR(WriteSplitExecutableAndOptions(
       *wrapper.mutable_executable_and_options(), std::move(writer)));
 
   return absl::OkStatus();
@@ -268,26 +268,26 @@ absl::Status UnpackAot(std::unique_ptr<riegeli::Reader> reader,
                        std::unique_ptr<riegeli::Writer> writer,
                        const UnpackOptions& options) {
   std::cout << "Unpacking split ExecutableAndOptionsProto to "
-               "DeserializedSplitExecutableAndOptions ("
+               "HumanReadableAotExecutable ("
             << AbslUnparseFlag(options.output_format) << " format)" << "\n";
   ExecutableAndOptionsProto executable_and_options_proto;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ReadSplitProto(std::move(reader), executable_and_options_proto));
 
   xla::gpu::GpuExecutableProto gpu_proto;
-  RETURN_IF_ERROR(ReadSplitProto(
+  ABSL_RETURN_IF_ERROR(ReadSplitProto(
       riegeli::Maker<riegeli::StringReader>(
           executable_and_options_proto.mutable_serialized_executable()),
       gpu_proto));
 
   executable_and_options_proto.clear_serialized_executable();
 
-  DeserializedSplitExecutableAndOptions wrapper;
+  HumanReadableAotExecutable wrapper;
   *wrapper.mutable_executable_and_options() =
       std::move(executable_and_options_proto);
   *wrapper.mutable_gpu_executable() = std::move(gpu_proto);
 
-  RETURN_IF_ERROR(SerializeProto(wrapper, options.output_format, *writer));
+  ABSL_RETURN_IF_ERROR(SerializeProto(wrapper, options.output_format, *writer));
 
   if (!writer->Close()) {
     return writer->status();
@@ -325,7 +325,6 @@ bool IsContainerThunk(ImplCase impl_case) {
     case ThunkProto::kConditionalThunk:
     case ThunkProto::kAsyncStartThunk:
     case ThunkProto::kCollectiveGroupThunk:
-    case ThunkProto::kDynamicSliceThunk:
     case ThunkProto::kDynamicSliceFusionThunk:
       return true;
     default:
@@ -407,12 +406,6 @@ void ProcessNestedThunks(const ThunkProto& thunk,
         CollectThunkInfo(inner_thunk, thunk_counts);
       }
       break;
-    case ThunkProto::kDynamicSliceThunk:
-      for (const ThunkProto& inner_thunk :
-           thunk.dynamic_slice_thunk().embedded_thunk().thunks()) {
-        CollectThunkInfo(inner_thunk, thunk_counts);
-      }
-      break;
     case ThunkProto::kDynamicSliceFusionThunk:
       for (const ThunkProto& inner_thunk :
            thunk.dynamic_slice_fusion_thunk().embedded_thunks().thunks()) {
@@ -456,9 +449,9 @@ std::string PrintProto(const google::protobuf::Message& message) {
 
 absl::Status AotInfo(std::unique_ptr<riegeli::Reader> reader) {
   xla::ExecutableAndOptionsProto executable_options;
-  RETURN_IF_ERROR(ReadSplitProto(std::move(reader), executable_options));
+  ABSL_RETURN_IF_ERROR(ReadSplitProto(std::move(reader), executable_options));
   xla::gpu::GpuExecutableProto gpu_exec;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ReadSplitProto(riegeli::Maker<riegeli::StringReader>(
                          executable_options.serialized_executable()),
                      gpu_exec));

@@ -103,10 +103,10 @@ TEST(ZipWriterTest, FileCountLimitEnforced) {
   }
 
   // Adding the 65,536th file must fail with ResourceExhaustedError.
-  EXPECT_THAT(
-      writer.AddFile("overflow.txt", ""),
-      StatusIs(absl::StatusCode::kResourceExhausted,
-               HasSubstr("ZIP archive exceeds maximum of 65535 files")));
+  EXPECT_THAT(writer.AddFile("overflow.txt", ""),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kResourceExhausted,
+                  HasSubstr("ZIP archive exceeds maximum of 65535 files")));
 }
 
 TEST(ZipWriterTest, MoveConstructorDoesNotDoubleFinalize) {
@@ -152,8 +152,8 @@ TEST(ZipWriterTest, LargeFilenameFails) {
 
   std::string long_name(0xFFFF + 1, 'a');
   EXPECT_THAT(writer.AddFile(long_name, ""),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("Filename too long")));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("Filename too long")));
 }
 
 }  // namespace

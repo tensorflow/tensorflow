@@ -32,11 +32,20 @@ tf_class {
     mtype: "<class \'collections._tuplegetter\'>"
   }
   member_method {
+    name: "__getnewargs__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
   }
   member_method {
     name: "__new__"
     argspec: "args=[\'cls\', \'new_vocab\', \'new_vocab_size\', \'num_oov_buckets\', \'old_vocab\', \'old_vocab_size\', \'backup_initializer\', \'axis\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\', \'0\'], "
+    method_kind: STATIC
+  }
+  member_method {
+    name: "__replace__"
+    argspec: "args=[\'self\'], varargs=None, keywords=kwds, defaults=None"
   }
   member_method {
     name: "count"

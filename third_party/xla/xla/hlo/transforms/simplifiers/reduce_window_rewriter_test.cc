@@ -297,6 +297,31 @@ ENTRY entry (arg: f32[46592]) -> f32[46592] {
   CheckScanRewrite(hlo, std::nullopt);
 }
 
+TEST_F(ReduceWindowRewriterTest, NoOptimizeScanWithUsedCarry) {
+  // The reduce-window rewrite drops the final carry, so a scan whose carry
+  // is read must keep its other lowerings.
+  const char* hlo = R"(
+HloModule scan
+
+add_float {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  add = f32[] add(lhs, rhs)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+
+ENTRY entry (arg: f32[46592]) -> (f32[46592], f32[]) {
+  arg = f32[46592]{0} parameter(0)
+  constant = f32[] constant(0)
+  scan = (f32[46592]{0}, f32[]) scan(f32[46592]{0} %arg, f32[] %constant), dimensions={0}, num_carries=1, to_apply=%add_float, is_associative=true
+  out = f32[46592]{0} get-tuple-element(scan), index=0
+  carry = f32[] get-tuple-element(scan), index=1
+  ROOT result = (f32[46592]{0}, f32[]) tuple(out, carry)
+})";
+
+  CheckScanRewrite(hlo, std::nullopt);
+}
+
 TEST_F(ReduceWindowRewriterTest, OptimizeVariadicAssociativeScan) {
   const char* hlo = R"(
 HloModule scan
@@ -341,6 +366,182 @@ ENTRY entry (arg: f32[46592]) -> f32[46592] {
   constant = f32[] constant(0)
   scan = (f32[46592]{0}, f32[]) scan(f32[46592]{0} %arg, f32[] %constant), dimensions={0}, num_carries=1, to_apply=%add_float, is_associative=false
   ROOT result = f32[46592]{0} get-tuple-element(scan), index=0
+})";
+
+  CheckScanRewrite(hlo, std::nullopt);
+}
+
+TEST_F(ReduceWindowRewriterTest, NoOptimizeScanWithVectorInit) {
+  // A scan seeded with a vector carry (for example the per shard seeds the
+  // SPMD partitioner builds for scans sharded on the scan dimension) cannot
+  // be expressed as a reduce-window cumsum: reduce-window inits are scalars.
+  // The rewriter must skip it, not fail compilation.
+  const char* hlo = R"(
+HloModule scan
+
+add_float {
+  lhs = f32[64] parameter(0)
+  rhs = f32[64] parameter(1)
+  add = f32[64] add(lhs, rhs)
+  ROOT tuple = (f32[64], f32[64]) tuple(add, add)
+}
+
+ENTRY entry (arg: f32[64,512], init: f32[64]) -> f32[64,512] {
+  arg = f32[64,512]{1,0} parameter(0)
+  init = f32[64]{0} parameter(1)
+  scan = (f32[64,512]{1,0}, f32[64]{0}) scan(f32[64,512]{1,0} %arg, f32[64]{0} %init), dimensions={1}, num_carries=1, to_apply=%add_float, is_associative=true
+  ROOT result = f32[64,512]{1,0} get-tuple-element(scan), index=0
+})";
+
+  CheckScanRewrite(hlo, std::nullopt);
+}
+
+TEST_F(ReduceWindowRewriterTest, NoOptimizeScanWithNonElementwiseBody) {
+  // The scalar reduce-window wrapper only exists for elementwise bodies; a
+  // body with a reverse must be skipped, not fail compilation.
+  const char* hlo = R"(
+HloModule scan
+
+combiner {
+  lhs = f32[128] parameter(0)
+  rhs = f32[128] parameter(1)
+  rev = f32[128] reverse(lhs), dimensions={0}
+  add = f32[128] add(rev, rhs)
+  ROOT tuple = (f32[128], f32[128]) tuple(add, add)
+}
+
+ENTRY entry (arg: f32[128,512]) -> f32[128,512] {
+  arg = f32[128,512]{1,0} parameter(0)
+  zero = f32[] constant(0)
+  init = f32[128]{0} broadcast(zero), dimensions={}
+  scan = (f32[128,512]{1,0}, f32[128]{0}) scan(f32[128,512]{1,0} %arg, f32[128]{0} %init), dimensions={1}, num_carries=1, to_apply=%combiner, is_associative=true
+  ROOT result = f32[128,512]{1,0} get-tuple-element(scan), index=0
+})";
+
+  CheckScanRewrite(hlo, std::nullopt);
+}
+
+TEST_F(ReduceWindowRewriterTest, NoOptimizeLongScanWithNonConstantInit) {
+  // The tree rewrite folds the init into both tree levels, which is wrong
+  // for anything but an identity/idempotent/absorbing init. A non-constant
+  // scalar seed (such as the per shard carry seed the SPMD partitioner
+  // builds) past base_length must be skipped, not tree rewritten.
+  const char* hlo = R"(
+HloModule scan
+
+add_float {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  add = f32[] add(lhs, rhs)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+
+ENTRY entry (arg: f32[256], init: f32[]) -> f32[256] {
+  arg = f32[256]{0} parameter(0)
+  init = f32[] parameter(1)
+  scan = (f32[256]{0}, f32[]) scan(f32[256]{0} %arg, f32[] %init), dimensions={0}, num_carries=1, to_apply=%add_float, is_associative=true
+  ROOT result = f32[256]{0} get-tuple-element(scan), index=0
+})";
+
+  CheckScanRewrite(hlo, std::nullopt);
+}
+
+TEST_F(ReduceWindowRewriterTest, NoOptimizeLongScanWithNonIdentityInit) {
+  // A constant but non-identity init is equally unsafe for the tree rewrite.
+  const char* hlo = R"(
+HloModule scan
+
+add_float {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  add = f32[] add(lhs, rhs)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+
+ENTRY entry (arg: f32[256]) -> f32[256] {
+  arg = f32[256]{0} parameter(0)
+  init = f32[] constant(7)
+  scan = (f32[256]{0}, f32[]) scan(f32[256]{0} %arg, f32[] %init), dimensions={0}, num_carries=1, to_apply=%add_float, is_associative=true
+  ROOT result = f32[256]{0} get-tuple-element(scan), index=0
+})";
+
+  CheckScanRewrite(hlo, std::nullopt);
+}
+
+TEST_F(ReduceWindowRewriterTest, OptimizeLongMinScanWithArbitraryInit) {
+  // Min is idempotent in the init, so the tree rewrite stays safe for any
+  // seed, including a non-constant one.
+  const char* hlo = R"(
+HloModule scan
+
+min_float {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  min = f32[] minimum(lhs, rhs)
+  ROOT tuple = (f32[], f32[]) tuple(min, min)
+}
+
+ENTRY entry (arg: f32[256], init: f32[]) -> f32[256] {
+  arg = f32[256]{0} parameter(0)
+  init = f32[] parameter(1)
+  scan = (f32[256]{0}, f32[]) scan(f32[256]{0} %arg, f32[] %init), dimensions={0}, num_carries=1, to_apply=%min_float, is_associative=true
+  ROOT result = f32[256]{0} get-tuple-element(scan), index=0
+})";
+
+  CheckScanRewrite(hlo, R"(
+// CHECK-NOT: = {{.*}} scan(
+// CHECK: reduce-window
+  )");
+}
+
+TEST_F(ReduceWindowRewriterTest, OptimizeShortScanWithNonConstantInit) {
+  // Below base_length the single reduce-window form folds the seed exactly
+  // once per output, which is correct for any scalar init.
+  const char* hlo = R"(
+HloModule scan
+
+add_float {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  add = f32[] add(lhs, rhs)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+
+ENTRY entry (arg: f32[64], init: f32[]) -> f32[64] {
+  arg = f32[64]{0} parameter(0)
+  init = f32[] parameter(1)
+  scan = (f32[64]{0}, f32[]) scan(f32[64]{0} %arg, f32[] %init), dimensions={0}, num_carries=1, to_apply=%add_float, is_associative=true
+  ROOT result = f32[64]{0} get-tuple-element(scan), index=0
+})";
+
+  CheckScanRewrite(hlo, R"(
+// CHECK: [[arg:%[^ ]+]] = f32[64]{0} parameter(0)
+// CHECK: [[init:%[^ ]+]] = f32[] parameter(1)
+// CHECK: reduce-window([[arg]], [[init]]), window={size=64 pad=63_0}
+  )");
+}
+
+TEST_F(ReduceWindowRewriterTest,
+       NoOptimizeScanUniformConstInitNonElementwiseBody) {
+  // The non-elementwise body is rejected after the init gates; no scalar
+  // constant may be materialized on this rejected path (the pass must not
+  // modify the module when it reports no change).
+  const char* hlo = R"(
+HloModule scan
+
+combiner {
+  lhs = f32[2] parameter(0)
+  rhs = f32[2] parameter(1)
+  rev = f32[2] reverse(lhs), dimensions={0}
+  add = f32[2] add(rev, rhs)
+  ROOT tuple = (f32[2], f32[2]) tuple(add, add)
+}
+
+ENTRY entry (arg: f32[2,512]) -> f32[2,512] {
+  arg = f32[2,512]{1,0} parameter(0)
+  init = f32[2]{0} constant({0, 0})
+  scan = (f32[2,512]{1,0}, f32[2]{0}) scan(f32[2,512]{1,0} %arg, f32[2]{0} %init), dimensions={1}, num_carries=1, to_apply=%combiner, is_associative=true
+  ROOT result = f32[2,512]{1,0} get-tuple-element(scan), index=0
 })";
 
   CheckScanRewrite(hlo, std::nullopt);

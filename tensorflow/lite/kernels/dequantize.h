@@ -21,6 +21,9 @@ limitations under the License.
 
 #include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/core/c/common.h"
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+#include "tensorflow/lite/kernels/internal/float8.h"
+#endif
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/reference/dequantize.h"
@@ -50,6 +53,19 @@ inline bool IsQuantizedPerChannel(const TfLiteTensor* input) {
   }
   return false;
 }
+
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+template <typename Float8T>
+inline void DequantizeFloat8(const TfLiteTensor* input, TfLiteTensor* output) {
+  const uint8_t* input_data = GetTensorData<uint8_t>(input);
+  float* output_data = GetTensorData<float>(output);
+  const int flat_size =
+      MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
+  for (int i = 0; i < flat_size; ++i) {
+    output_data[i] = static_cast<float>(Float8T::FromRep(input_data[i]));
+  }
+}
+#endif
 
 inline TfLiteStatus PerChannelDequantizeImpl(TfLiteContext* context,
                                              TfLiteNode* node,
@@ -202,6 +218,14 @@ TfLiteStatus DequantizeImpl(TfLiteContext* context, TfLiteNode* node,
                                 GetTensorData<float>(output));
       break;
     }
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+    case kTfLiteFloat8E4M3FN:
+      DequantizeFloat8<float8_internal::Float8E4M3FN>(input, output);
+      break;
+    case kTfLiteFloat8E5M2:
+      DequantizeFloat8<float8_internal::Float8E5M2>(input, output);
+      break;
+#endif
     default:
       TF_LITE_KERNEL_LOG(context, "Type %d not supported.", input->type);
       return kTfLiteError;

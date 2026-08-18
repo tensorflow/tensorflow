@@ -589,7 +589,7 @@ message StackFrameIndexProto {
 }
 
 // Serialization of HloModule.
-// Next ID: 24
+// Next ID: 25
 message HloModuleProto {
   string name = 1;
   string entry_computation_name = 2;
@@ -685,6 +685,8 @@ message HloModuleProto {
 
   // The type of the device that the module is targeted for.
   string device_type = 21;
+
+  repeated DebugAttributeTableEntryProto debug_attributes = 24;
 
   reserved 9;
   reserved "dynamic_parameter_binding";
@@ -946,6 +948,50 @@ message HloPassMetadata {
 
   // Used to log any number of key, value pair stats per pass.
   repeated KeyValueMetric kv_metrics = 11;
+}
+
+message DebugAttributesProto {
+  enum DebugLogModeProto {
+    // No logging is performed.
+    NONE = 0;
+    // Non-guaranteed delivery. Tensors might be dropped if Original Value
+    // Tracking fails or if the instruction is fused. However, this mode does
+    // not perturb the computation graph and the data logged is exactly what it
+    // would be without logging.
+    DEFAULT = 1;
+    // Same with DEFAULT, but fused value can logged at the expense of
+    // significant performance overhead.
+    FUSION_DEBUGGER = 2;
+    // Uses an optimization barrier to prevent fusion, preserving ordering but
+    // would perturb the computation graph and cause numerical differences. Log
+    // can still be dropped.
+    NO_FUSION = 3;
+    // Guaranteed delivery at the expense of significant graph perturbation and
+    // numerical differences.
+    GUARANTEED = 4;
+  }
+  DebugLogModeProto log_mode = 1;
+  // The id that uniquely identifies the xla.debug.Log in the HLO module.
+  int64 callback_id = 2;
+  // The index identifying which operand of the xla.debug.Log custom call this
+  // tensor belongs to.
+  int64 op_id = 3;
+  // If true, the device-specific sharded tensor is returned to the callback. If
+  // false, reconstructed tensor is returned to the callback as if XLA's
+  // automatic sharding didn't happen.
+  bool partitioned = 4;
+  // The sharding of the operands of the custom call. This is used by the
+  // runtime to unshard tensors logged in guaranteed mode.
+  string operands_sharding = 5;
+}
+
+message DebugLogBackendConfigProto {
+  DebugAttributesProto debug_attributes_config = 64;
+}
+
+message DebugAttributeTableEntryProto {
+  OriginalArrayProto original_array = 1;
+  repeated DebugAttributesProto debug_attributes = 2;
 }
 
 message OriginalValueRecoveryTableProto {

@@ -71,9 +71,6 @@ namespace {
 
 namespace se = ::stream_executor;
 
-// log2(e), used to express exp(x) = exp2(x * log2(e)).
-constexpr double kLog2E = 1.4426950408889634;
-
 // ln(2), used to express log(x) = log2(x) * ln(2).
 constexpr double kLn2 = 0.6931471805599453;
 
@@ -107,34 +104,6 @@ struct TranscendentalBF16ToAMDGPU : public mlir::ConvertOpToLLVMPattern<OpTy> {
   }
 
   llvm::StringRef intrinsic;
-};
-
-// Lowers a scalar bf16 `math.exp` to the native gfx1250 `v_exp_bf16`
-// instruction by rewriting exp(x) = exp2(x * log2(e)) and emitting the
-// `llvm.amdgcn.exp2` intrinsic. See TranscendentalBF16ToAMDGPU for the
-// rationale.
-struct ExpBF16ToAMDGPU
-    : public mlir::ConvertOpToLLVMPattern<mlir::math::ExpOp> {
-  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
-
-  mlir::LogicalResult matchAndRewrite(
-      mlir::math::ExpOp op, OpAdaptor adaptor,
-      mlir::ConversionPatternRewriter& rewriter) const override {
-    if (!op.getType().isBF16()) {
-      return rewriter.notifyMatchFailure(op, "not a scalar bf16 exp");
-    }
-    mlir::Location loc = op.getLoc();
-    mlir::Value operand = adaptor.getOperands().front();
-    mlir::Type bf16 = operand.getType();
-    mlir::Value log2e = rewriter.create<mlir::LLVM::ConstantOp>(
-        loc, bf16, rewriter.getFloatAttr(bf16, kLog2E));
-    mlir::Value scaled =
-        rewriter.create<mlir::LLVM::FMulOp>(loc, operand, log2e);
-    rewriter.replaceOpWithNewOp<mlir::LLVM::CallIntrinsicOp>(
-        op, /*resultType=*/bf16, rewriter.getStringAttr("llvm.amdgcn.exp2"),
-        mlir::ValueRange{scaled});
-    return mlir::success();
-  }
 };
 
 // Lowers a scalar bf16 `math.log` to the native gfx1250 `v_log_bf16`
@@ -217,7 +186,6 @@ class LowerToLLVMGPUPass
                 .rocm_compute_capability()
                 .has_bf16_transcendental_support()) {
           mlir::PatternBenefit benefit(2);
-          patterns.add<ExpBF16ToAMDGPU>(converter, benefit);
           patterns.add<LogBF16ToAMDGPU>(converter, benefit);
           patterns.add<TranscendentalBF16ToAMDGPU<mlir::math::Exp2Op>>(
               converter, "llvm.amdgcn.exp2", benefit);

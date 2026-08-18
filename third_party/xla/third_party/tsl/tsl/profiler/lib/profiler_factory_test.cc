@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ class TestProfiler : public ProfilerInterface {
 
 std::unique_ptr<ProfilerInterface> TestFactoryFunction(
     const tensorflow::ProfileOptions& options) {
-  return absl::make_unique<TestProfiler>();
+  return std::make_unique<TestProfiler>();
 }
 
 TEST(ProfilerFactoryTest, FactoryFunctionPointer) {
@@ -53,7 +53,7 @@ TEST(ProfilerFactoryTest, FactoryFunctionPointer) {
 TEST(ProfilerFactoryTest, FactoryLambda) {
   ClearRegisteredProfilersForTest();
   RegisterProfilerFactory([](const tensorflow::ProfileOptions& options) {
-    return absl::make_unique<TestProfiler>();
+    return std::make_unique<TestProfiler>();
   });
   auto profilers = CreateProfilers(tensorflow::ProfileOptions());
   EXPECT_EQ(profilers.size(), 1);
@@ -79,7 +79,7 @@ class FactoryClass {
 
   std::unique_ptr<ProfilerInterface> CreateProfiler(
       const tensorflow::ProfileOptions& options) const {
-    return absl::make_unique<TestProfiler>();
+    return std::make_unique<TestProfiler>();
   }
 
  private:

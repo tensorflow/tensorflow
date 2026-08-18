@@ -32,8 +32,8 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/common_pjrt_client.h"
+#include "xla/pjrt/cpu/cpu_device_memory.h"
 #include "xla/pjrt/cpu/cpu_event.h"
-#include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/raw_buffer.h"
@@ -70,6 +70,8 @@ class CpuTrackedDeviceEventPromise : public PjRtDeviceEventPromise {
 
 tsl::AsyncValueRef<CpuEvent> AfterAllCpuEvents(
     absl::Span<const PjRtDeviceEventRef> events);
+
+PjRtDeviceEventRef ToCpuEvent(tsl::Future<void> future);
 
 class CpuRawBuffer : public CommonPjRtRawBufferImpl {
  public:

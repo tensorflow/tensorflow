@@ -1,4 +1,20 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("@rules_python//python:proto.bzl", "py_proto_library")
+load("@xla//xla/tsl:tsl.bzl", "internal_visibility")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -745,7 +761,7 @@ cc_library(
 cc_library(
     name = "resource_base",
     hdrs = ["resource_base.h"],
-    visibility = default_visibility + [
+    visibility = internal_visibility(default_visibility + [
         "//learning/brain/experimental/jax_pst/grpc/tf:__pkg__",
         "//learning/brain/google/data/core/kernels:__pkg__",
         "//learning/brain/google/data/core/parse_proto:__pkg__",
@@ -754,11 +770,11 @@ cc_library(
         "//learning/processing/hydra/tensorflow:__pkg__",
         "//learning/sibyl/tfx/state/kernels:__pkg__",
         "//learning/sibyl/tfx/transformation/kernels:__pkg__",
+        "//third_party/py/grain/_src/tensorflow/ops:__pkg__",
         "//tensorflow/compiler/mlir/tools/kernel_gen:__pkg__",
         "//tensorflow/compiler/tf2xla:__pkg__",
         "//tensorflow/examples/custom_ops_doc/simple_hash_table:__pkg__",
-        "//third_party/py/grain/_src/tensorflow/ops:__pkg__",
-    ],
+    ]),
     deps = [
         "//tensorflow/core/lib/core:refcount",
         "//tensorflow/core/platform:errors",
@@ -1442,13 +1458,17 @@ tf_cc_tests(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/synchronization",
+        "@com_google_benchmark//:benchmark",
         "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
+        "@tsl//tsl/profiler/lib:profiler_session",
         "@xla//xla/tsl/profiler/utils:xplane_utils",
     ],
 )

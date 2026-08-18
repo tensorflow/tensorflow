@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/utils/hlo_original_value_analyzer_utils.h"
 
+#include <string>
 #include <utility>
 #include <vector>
 

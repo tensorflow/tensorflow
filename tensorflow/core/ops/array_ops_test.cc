@@ -989,10 +989,32 @@ TEST(ArrayOpsTest, Reshape_ShapeFn) {
   // dimensions.
   INFER_ERROR("Dimension size must be evenly divisible by 2 but is 7", op,
               "[7];[2]");
-  // Multiple missing dimensions cannot be inferred.
   new_shape = test::AsTensor<int32_t>({-1, -1, 2});
-  INFER_OK(op, "[8];[3]", "[?,?,2]");
-  INFER_OK(op, "?;[3]", "[?,?,2]");
+  INFER_ERROR("Only one input size may be -1, not both 0 and 1", op, "[8];[3]");
+  INFER_ERROR("Only one input size may be -1, not both 0 and 1", op, "?;[3]");
+
+  new_shape = test::AsTensor<int32_t>({2, -1, -1});
+  INFER_ERROR("Only one input size may be -1, not both 1 and 2", op,
+              "[12];[3]");
+
+  new_shape = test::AsTensor<int32_t>({-1, -1});
+  INFER_ERROR("Only one input size may be -1, not both 0 and 1", op,
+              "[4,12];[2]");
+
+  new_shape = test::AsTensor<int32_t>({4, 3, -1});
+  INFER_OK(op, "[48];[3]", "[4,3,4]");
+
+  new_shape = test::AsTensor<int32_t>({-1, 4, -1});
+  INFER_ERROR("Only one input size may be -1, not both 0 and 2", op,
+              "[48];[3]");
+
+  new_shape = test::AsTensor<int32_t>({-1, 2, 3});
+  INFER_OK(op, "?;[3]", "[?,2,3]");
+
+  op.input_tensors[1] = nullptr;
+  INFER_OK(op, "[8];[3]", "[?,?,?]");
+  INFER_OK(op, "[?];[3]", "[?,?,?]");
+  op.input_tensors[1] = &new_shape;
 
   // Symbolic shape propagation
   new_shape = test::AsTensor<int32_t>({-1, 2, 3});

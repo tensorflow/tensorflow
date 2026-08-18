@@ -1,0 +1,664 @@
+diff --git b/BUILD b/BUILD
+--- a/BUILD
++++ b/BUILD
+@@ -5,3 +5,4 @@
+ load("@rules_cc//cc:cc_library.bzl", "cc_library")
+ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
++load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl_is_configured")
+ # copybara:uncomment load("//tools/build_defs/license:license.bzl", "license")
+@@ -545,7 +546,7 @@
+         "lib/Dialect/TritonGPU/Transforms/Utility.cpp",  # Avoid circular dependency.
+         "lib/Dialect/TritonNvidiaGPU/Transforms/ClusterBarrierMbarAllocator.cpp",  # Avoid circular dependency.
+         "lib/Dialect/TritonNvidiaGPU/Transforms/TMAUtilities.cpp",  # Avoid circular dependency.
+-    ],
++    ] + if_sycl_is_configured(["//third_party/intel:TritonIntelGPU_srcs"]),
+     hdrs = glob([
+         "include/triton/Dialect/Gluon/IR/*.h",
+         "include/triton/Dialect/Triton/IR/*.h",
+@@ -565,7 +566,7 @@
+         # it would be better if upstream moved it there.
+         "include/triton/Conversion/MLIRTypes.h",
+         "include/triton/Dialect/TritonInstrument/Transforms/ConSanTargetHooks.h",
+-    ],
++    ] + if_sycl_is_configured(["//third_party/intel:TritonIntelGPU_hdrs"]),
+     copts = select({
+         ":compiler_is_msvc": [],
+         "//conditions:default": [
+@@ -576,7 +577,10 @@
+             "-Wno-implicit-fallthrough",
+         ],
+     }),
+-    includes = ["include"],
++    includes = ["include"] + if_sycl_is_configured([
++         "third_party",
++         "third_party/intel/include",
++    ]),
+     deps = [
+         ":Dump",
+         ":GetEnv",  # for Utility
+@@ -633,7 +638,16 @@
+         "@llvm-project//mlir:UBDialect",
+         "@triton//third_party/f2reduce",  # for Utility
+         "@triton//third_party/nvidia:NVGPUDialect",
+-    ],
++    ] + if_sycl_is_configured([
++        "@llvm-project//llvm:AsmParser",
++        "@llvm-project//mlir:SPIRVDialect",
++        "@triton//third_party/intel:triton_gen_attr_defs_inc_gen",
++        "@triton//third_party/intel:triton_gen_dialect_inc_gen",
++        "@triton//third_party/intel:triton_gen_ops_inc_gen",
++        "@triton//third_party/intel:triton_intel_gpu_attr_defs_inc_gen",
++        "@triton//third_party/intel:triton_intel_gpu_ops_inc_gen",
++        "@triton//third_party/intel:triton_intel_gpu_dialect_inc_gen",
++    ]),
+     alwayslink = True,
+ )
+ 
+diff --git b/third_party/intel/BUILD b/third_party/intel/BUILD
+new file mode 100644
+--- /dev/null
++++ b/third_party/intel/BUILD
+@@ -0,0 +1,554 @@
++load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
++
++package(
++    # copybara:uncomment_begin
++    # default_applicable_licenses = ["@triton//:license"],
++    # default_compatible_with = [# "@build-target"],
++    # default_visibility = [
++        # "//third_party/tensorflow/compiler/xla/backends/gpu/codegen/triton:__subpackages__",
++        # "@triton//:__subpackages__",
++    # ],
++    # copybara:uncomment_end_and_comment_begin
++    default_visibility = ["//visibility:public"],
++    # copybara:comment_end
++    features = [
++        "-parse_headers",
++        "-use_header_modules",
++    ],
++)
++
++_no_unused_variable = select({
++    "@triton//:compiler_is_msvc": [],
++    "//conditions:default": ["-Wno-unused-variable"],
++})
++
++td_library(
++    name = "td_files",
++    srcs = glob(["include/**/*.td"]),
++    includes = ["..", "include"],
++    deps = ["@triton//:td_files", "@llvm-project//mlir:GPUOpsTdFiles"],
++)
++
++gentbl_cc_library(
++    name = "triton_gen_ops_inc_gen",
++    tbl_outs = {
++        "include/Dialect/TritonGEN/IR/TritonGENOps.h.inc": [
++            "--gen-op-decls",
++        ],
++        "include/Dialect/TritonGEN/IR/TritonGENOps.cpp.inc": [
++            "--gen-op-defs",
++        ],
++        "include/Dialect/TritonGEN/IR/TritonGENOpsConversions.inc": [
++            "--gen-llvmir-conversions",
++        ],
++    },
++    tblgen = "@llvm-project//mlir:mlir-tblgen",
++    td_file = "include/Dialect/TritonGEN/IR/TritonGENOps.td",
++    deps = [":td_files"],
++)
++
++gentbl_cc_library(
++    name = "triton_gen_dialect_inc_gen",
++    tbl_outs = {
++        "include/Dialect/TritonGEN/IR/TritonGENDialect.h.inc": [
++            "--gen-dialect-decls",
++            "--dialect=triton_gen",
++        ],
++        "include/Dialect/TritonGEN/IR/TritonGENDialect.cpp.inc": [
++            "--gen-dialect-defs",
++            "--dialect=triton_gen",
++        ],
++    },
++    tblgen = "@llvm-project//mlir:mlir-tblgen",
++    td_file = "include/Dialect/TritonGEN/IR/TritonGENDialect.td",
++    deps = [":td_files"],
++)
++
++gentbl_cc_library(
++    name = "triton_gen_attr_defs_inc_gen",
++    tbl_outs = {
++        "include/Dialect/TritonGEN/IR/TritonGENOpsAttrDefs.h.inc": [
++            "--gen-attrdef-decls",
++        ],
++        "include/Dialect/TritonGEN/IR/TritonGENOpsAttrDefs.cpp.inc": [
++            "--gen-attrdef-defs",
++        ],
++        "include/Dialect/TritonGEN/IR/TritonGENOpsEnums.h.inc": [
++            "--gen-enum-decls",
++        ],
++        "include/Dialect/TritonGEN/IR/TritonGENOpsEnums.cpp.inc": [
++            "--gen-enum-defs",
++        ],
++    },
++    tblgen = "@llvm-project//mlir:mlir-tblgen",
++    td_file = "include/Dialect/TritonGEN/IR/TritonGENAttrDefs.td",
++    deps = [":td_files"],
++)
++
++gentbl_cc_library(
++    name = "triton_intel_gpu_ops_inc_gen",
++    tbl_outs = {
++        "include/Dialect/TritonIntelGPU/IR/Ops.h.inc": [
++            "--gen-op-decls",
++        ],
++        "include/Dialect/TritonIntelGPU/IR/Ops.cpp.inc": [
++            "--gen-op-defs",
++        ],
++    },
++    tblgen = "@llvm-project//mlir:mlir-tblgen",
++    td_file = "include/Dialect/TritonIntelGPU/IR/TritonIntelGPUOps.td",
++    deps = [":td_files"],
++)
++
++gentbl_cc_library(
++    name = "triton_intel_gpu_dialect_inc_gen",
++    tbl_outs = {
++        "include/Dialect/TritonIntelGPU/IR/Dialect.h.inc": [
++            "--gen-dialect-decls",
++            "--dialect=ttig",
++        ],
++        "include/Dialect/TritonIntelGPU/IR/Dialect.cpp.inc": [
++            "--gen-dialect-defs",
++            "--dialect=ttig",
++        ],
++    },
++    tblgen = "@llvm-project//mlir:mlir-tblgen",
++    td_file = "include/Dialect/TritonIntelGPU/IR/TritonIntelGPUDialect.td",
++    deps = [":td_files"],
++)
++
++gentbl_cc_library(
++    name = "triton_intel_gpu_attr_defs_inc_gen",
++    tbl_outs = {
++        "include/Dialect/TritonIntelGPU/IR/TritonIntelGPUAttrDefs.h.inc": [
++            "--gen-attrdef-decls",
++            "--attrdefs-dialect=ttig",
++        ],
++        "include/Dialect/TritonIntelGPU/IR/TritonIntelGPUAttrDefs.cpp.inc": [
++            "--gen-attrdef-defs",
++            "--attrdefs-dialect=ttig",
++        ],
++        "include/Dialect/TritonIntelGPU/IR/TritonIntelGPUEnums.h.inc": [
++            "--gen-enum-decls",
++        ],
++        "include/Dialect/TritonIntelGPU/IR/TritonIntelGPUEnums.cpp.inc": [
++            "--gen-enum-defs",
++        ],
++    },
++    tblgen = "@llvm-project//mlir:mlir-tblgen",
++    td_file = "include/Dialect/TritonIntelGPU/IR/TritonIntelGPUAttrDefs.td",
++    deps = [":td_files"],
++)
++
++gentbl_cc_library(
++    name = "triton_intel_gpu_transforms_inc_gen",
++    tbl_outs = {
++        "include/Dialect/TritonIntelGPU/Transforms/Passes.h.inc": [
++            "--gen-pass-decls",
++            "--name=TritonIntelGPU",
++        ],
++    },
++    tblgen = "@llvm-project//mlir:mlir-tblgen",
++    td_file = "include/Dialect/TritonIntelGPU/Transforms/Passes.td",
++    deps = [":td_files"],
++)
++
++gentbl_cc_library(
++    name = "triton_intel_transforms_inc_gen",
++    tbl_outs = {
++        "include/Dialect/Triton/Transforms/Passes.h.inc": [
++            "--gen-pass-decls",
++            "--name=TritonIntel",
++        ],
++    },
++    tblgen = "@llvm-project//mlir:mlir-tblgen",
++    td_file = "include/Dialect/Triton/Transforms/Passes.td",
++    deps = [":td_files"],
++)
++
++gentbl_cc_library(
++    name = "triton_intel_gpu_to_llvm_passes_inc_gen",
++    tbl_outs = {
++        "include/TritonIntelGPUToLLVM/Passes.h.inc": [
++            "--gen-pass-decls",
++            "--name=TritonIntelGPUToLLVM",
++        ],
++    },
++    tblgen = "@llvm-project//mlir:mlir-tblgen",
++    td_file = "include/TritonIntelGPUToLLVM/Passes.td",
++    deps = [":td_files"],
++)
++
++gentbl_cc_library(
++    name = "triton_gen_to_llvm_passes_inc_gen",
++    tbl_outs = {
++        "include/TritonGENToLLVM/Passes.h.inc": [
++            "--gen-pass-decls",
++            "--name=TritonGENToLLVM",
++        ],
++    },
++    tblgen = "@llvm-project//mlir:mlir-tblgen",
++    td_file = "include/TritonGENToLLVM/Passes.td",
++    deps = [":td_files"],
++)
++
++gentbl_cc_library(
++    name = "triton_gen_to_spirv_passes_inc_gen",
++    tbl_outs = {
++        "include/TritonGENToSPIRV/Passes.h.inc": [
++            "--gen-pass-decls",
++            "--name=TritonGENToSPIRV",
++        ],
++    },
++    tblgen = "@llvm-project//mlir:mlir-tblgen",
++    td_file = "include/TritonGENToSPIRV/Passes.td",
++    deps = [":td_files"],
++)
++
++gentbl_cc_library(
++    name = "gpu_to_triton_gen_passes_inc_gen",
++    tbl_outs = {
++        "include/GPUToTritonGEN/Passes.h.inc": [
++            "--gen-pass-decls",
++            "--name=GPUToTritonGEN",
++        ],
++    },
++    tblgen = "@llvm-project//mlir:mlir-tblgen",
++    td_file = "include/GPUToTritonGEN/Passes.td",
++    deps = [":td_files"],
++)
++
++gentbl_cc_library(
++    name = "triton_annotate_module_passes_inc_gen",
++    tbl_outs = {
++        "include/TritonAnnotateModule/Passes.h.inc": [
++            "--gen-pass-decls",
++            "--name=TritonAnnotateModule",
++        ],
++    },
++    tblgen = "@llvm-project//mlir:mlir-tblgen",
++    td_file = "include/TritonAnnotateModule/Passes.td",
++    deps = [":td_files"],
++)
++
++gentbl_cc_library(
++    name = "triton_gpu_to_triton_gen_inc_gen",
++    tbl_outs = {
++        "lib/GPUToTritonGEN/GPUToTritonGEN.cpp.inc": [
++            "--gen-rewriters",
++        ],
++    },
++    tblgen = "@llvm-project//mlir:mlir-tblgen",
++    td_file = "lib/GPUToTritonGEN/GPUToTritonGEN.td",
++    deps = [":td_files"],
++)
++
++# Filegroups to export Intel dialect sources for inclusion in @triton//:TritonDialects.
++# Globs can't cross package boundaries, so we use these filegroups.
++filegroup(
++    name = "TritonIntelGPU_srcs",
++    srcs = glob([
++        "lib/Dialect/TritonGEN/IR/*.cpp",
++        "lib/Dialect/TritonIntelGPU/IR/*.cpp",
++    ]) + [
++        "lib/TritonIntelGPUTransforms/Utility.cpp",
++        "lib/Analysis/Utility.cpp",
++    ],
++)
++
++filegroup(
++    name = "TritonIntelGPU_hdrs",
++    srcs = glob([
++        "include/Analysis/*.h",
++        "include/Analysis/*.tpp",
++        "include/Dialect/TritonGEN/IR/*.h",
++        "include/Dialect/TritonIntelGPU/IR/*.h",
++        "include/Dialect/TritonIntelGPU/Transforms/*.h",
++    ])
++)
++
++cc_library(
++    name = "XeAsmFormat",
++    srcs = [
++        "lib/TritonIntelGPUToLLVM/XeAsmFormat.cpp",
++    ],
++    hdrs = [
++        "include/TritonIntelGPUToLLVM/XeAsmFormat.h",
++    ],
++    copts = _no_unused_variable,
++    includes = [
++        "..",
++        "include",
++        "lib",
++        "lib/TritonIntelGPUToLLVM",
++    ],
++    deps = [
++        "@llvm-project//llvm:Support",
++        "@llvm-project//mlir:IR",
++        "@llvm-project//mlir:LLVMDialect",
++        "@llvm-project//mlir:Transforms",
++        "@triton//:TritonGPUToLLVM",
++    ],
++ )
++
++cc_library(
++    name = "TritonIntelUtils",
++    srcs = glob(["lib/Utils/*.cpp"]),
++    hdrs = glob(["include/Utils/*.h"]) + glob(["lib/Utils/*.h"]) + ["lib/TritonGENToLLVM/Attributes.h"],
++    copts = _no_unused_variable,
++    includes = ["..", "include"],
++    deps = [
++        ":triton_gen_attr_defs_inc_gen",
++        ":triton_gen_dialect_inc_gen",
++        ":triton_gen_ops_inc_gen",
++        "@llvm-project//mlir:IR",
++        "@triton//:TritonDialects",
++    ],
++)
++
++# Intel dialect sources are compiled inside @triton//:TritonDialects.
++# This target re-exports TritonDialects so that other Intel targets can depend on it.
++cc_library(
++    name = "TritonIntelDialects",
++    copts = _no_unused_variable,
++    includes = ["..", "include"],
++    deps = [
++        ":triton_gen_attr_defs_inc_gen",
++        ":triton_gen_dialect_inc_gen",
++        ":triton_gen_ops_inc_gen",
++        ":triton_intel_gpu_attr_defs_inc_gen",
++        ":triton_intel_gpu_dialect_inc_gen",
++        ":triton_intel_gpu_ops_inc_gen",
++        "@llvm-project//llvm:AsmParser",
++        "@triton//:TritonDialects",
++    ],
++)
++
++cc_library(
++    name = "TritonAnnotateModule",
++    srcs = glob(["lib/TritonAnnotateModule/*.cpp"]),
++    hdrs = glob(["include/TritonAnnotateModule/*.h"]),
++    copts = _no_unused_variable,
++    includes = ["..", "include"],
++    deps = [
++        ":TritonIntelAnalysis",
++        ":TritonIntelDialects",
++        ":triton_annotate_module_passes_inc_gen",
++        "@llvm-project//mlir:IR",
++        "@llvm-project//mlir:Pass",
++        "@llvm-project//mlir:Transforms",
++        "@triton//:TritonDialects",
++        "@triton//:TritonTools",
++    ],
++)
++
++cc_library(
++    name = "GPUToTritonGEN",
++    srcs = glob(["lib/GPUToTritonGEN/*.cpp"]),
++    hdrs = glob([
++        "include/GPUToTritonGEN/*.h",
++    ]) + glob(["lib/GPUToTritonGEN/*.h"]),
++    copts = _no_unused_variable,
++    includes = ["..", "include", "lib/GPUToTritonGEN"],
++    deps = [
++        ":TritonIntelDialects",
++        ":gpu_to_triton_gen_passes_inc_gen",
++        ":triton_gen_attr_defs_inc_gen",
++        ":triton_gen_ops_inc_gen",
++        ":triton_gpu_to_triton_gen_inc_gen",
++        "@llvm-project//mlir:ArithToLLVM",
++        "@llvm-project//mlir:FuncToLLVM",
++        "@llvm-project//mlir:GPUToGPURuntimeTransforms",
++        "@llvm-project//mlir:GPUDialect",
++        "@llvm-project//mlir:GPUTransforms",
++        "@llvm-project//mlir:LLVMCommonConversion",
++        "@llvm-project//mlir:LLVMDialect",
++        "@llvm-project//mlir:MemRefToLLVM",
++        "@llvm-project//mlir:Pass",
++    ],
++)
++
++cc_library(
++    name = "TritonGENToLLVM",
++    srcs = glob(["lib/TritonGENToLLVM/*.cpp"]),
++    hdrs = glob([
++        "include/TritonGENToLLVM/*.h",
++    ]) + glob(["lib/TritonGENToLLVM/*.h"]),
++    copts = _no_unused_variable,
++    includes = ["..", "include", "lib"],
++    deps = [
++        ":TritonIntelUtils",
++        ":TritonGENToSPIRV",
++        ":XeAsmFormat",
++        ":triton_gen_to_llvm_passes_inc_gen",
++        ":triton_gen_to_spirv_passes_inc_gen",
++        ":triton_gen_attr_defs_inc_gen",
++        ":triton_gen_dialect_inc_gen",
++        ":triton_gen_ops_inc_gen",
++        "@llvm-project//mlir:LLVMDialect",
++        "@llvm-project//mlir:SPIRVDialect",
++        "@llvm-project//mlir:SPIRVToLLVM",
++        "@llvm-project//mlir:ToLLVMIRTranslation",
++    ],
++)
++
++cc_library(
++    name = "TritonIntelAnalysis",
++    srcs = glob(
++        include = ["lib/Analysis/*.cpp"],
++        exclude = ["lib/Analysis/Utility.cpp"],
++    ),
++    hdrs = glob(["include/Analysis/*.h", "include/Analysis/*.tpp"]),
++    copts = _no_unused_variable,
++    includes = ["..", "include"],
++    deps = [
++        ":TritonIntelDialects",
++        "@llvm-project//llvm:Support",
++        ":TritonIntelUtils",
++        "@llvm-project//mlir:Analysis",
++        "@llvm-project//mlir:ArithDialect",
++        "@llvm-project//mlir:IR",
++        "@llvm-project//mlir:InferIntRangeCommon",
++        "@llvm-project//mlir:LLVMDialect",
++        "@llvm-project//mlir:LoopLikeInterface",
++        "@llvm-project//mlir:SCFDialect",
++        "@llvm-project//mlir:Support",
++        "@triton//:TritonDialects",
++    ],
++)
++
++cc_library(
++    name = "TritonIntelTransforms",
++    srcs = glob(["lib/Dialect/Triton/Transforms/*.cpp"]),
++    hdrs = glob(["include/Dialect/Triton/Transforms/*.h"]),
++    copts = _no_unused_variable,
++    includes = ["..", "include"],
++    deps = [
++        ":TritonIntelAnalysis",
++        ":TritonIntelUtils",
++        ":triton_intel_transforms_inc_gen",
++        "@triton//:TritonTransforms",
++        "@llvm-project//mlir:Pass",
++        "@llvm-project//mlir:TransformUtils",
++        "@triton//:TritonDialects",
++    ],
++)
++
++cc_library(
++    name = "TritonIntelGPUTransforms",
++    srcs = glob(
++        include = [
++            "lib/TritonIntelGPUTransforms/**/*.cpp",
++            "lib/TritonIntelGPUTransforms/**/*.h",
++        ],
++        exclude = [
++            "lib/TritonIntelGPUTransforms/Utility.cpp",
++        ],
++    ),
++    hdrs = glob([
++        "include/Dialect/TritonIntelGPU/Transforms/*.h",
++    ]),
++    copts = _no_unused_variable,
++    includes = ["..", "include", "lib/TritonIntelGPUTransforms"],
++    deps = [
++        ":TritonIntelDialects",
++        ":TritonIntelAnalysis",
++        ":TritonIntelUtils",
++        ":triton_intel_gpu_transforms_inc_gen",
++        "@llvm-project//llvm:Support",
++        "@llvm-project//mlir:ArithDialect",
++        "@llvm-project//mlir:IR",
++        "@llvm-project//mlir:Pass",
++        "@llvm-project//mlir:SCFDialect",
++        "@llvm-project//mlir:SCFTransforms",
++        "@llvm-project//mlir:SPIRVDialect",
++        "@llvm-project//mlir:Support",
++        "@llvm-project//mlir:TransformUtils",
++        "@llvm-project//mlir:Transforms",
++        "@triton//:TritonDialects",
++        "@triton//:TritonGPUTransforms",
++        "@triton//:TritonTools",
++    ],
++)
++
++cc_library(
++    name = "TritonGENToSPIRV",
++    srcs = glob(["lib/TritonGENToSPIRV/*.cpp"]),
++    hdrs = glob(["include/TritonGENToSPIRV/*.h"]),
++    copts = _no_unused_variable,
++    includes = ["..", "include"],
++    deps = [
++        ":TritonIntelDialects",
++        ":triton_gen_to_spirv_passes_inc_gen",
++        ":triton_gen_attr_defs_inc_gen",
++        ":triton_gen_dialect_inc_gen",
++        ":triton_gen_ops_inc_gen",
++        "@llvm-project//mlir:LLVMDialect",
++        "@llvm-project//mlir:SPIRVDialect",
++    ],
++)
++
++cc_library(
++    name = "TritonIntelGPUToLLVM",
++    srcs = glob(
++        include = [
++            "lib/TritonIntelGPUToLLVM/**/*.cpp",
++        ],
++        exclude = [
++            "lib/TritonIntelGPUToLLVM/XeAsmFormat.cpp",
++        ],
++    ),
++    hdrs = glob([
++        "include/TritonIntelGPUToLLVM/*.h",
++    ]) + glob([
++        "lib/TritonIntelGPUToLLVM/*.h",
++    ]),
++    copts = _no_unused_variable + select({
++        "@triton//:compiler_is_msvc": [],
++        "//conditions:default": [
++            "-Wno-implicit-fallthrough",
++            "-Wno-sometimes-uninitialized",
++        ],
++    }),
++    includes = [
++        "..",
++        "include",
++        "lib",
++        "lib/TritonIntelGPUToLLVM",
++    ],
++    deps = [
++        ":GPUToTritonGEN",
++        ":TritonIntelDialects",
++        ":TritonGENToLLVM",
++        ":TritonGENToSPIRV",
++        ":TritonIntelUtils",
++        ":XeAsmFormat",
++        ":triton_intel_gpu_to_llvm_passes_inc_gen",
++        "@llvm-project//llvm:Support",
++        "@llvm-project//mlir:ArithDialect",
++        "@llvm-project//mlir:ArithToLLVM",
++        "@llvm-project//mlir:ControlFlowDialect",
++        "@llvm-project//mlir:ControlFlowToLLVM",
++        "@llvm-project//mlir:ConvertToLLVM",
++        "@llvm-project//mlir:FuncToLLVM",
++        "@llvm-project//mlir:GPUDialect",
++        "@llvm-project//mlir:GPUToLLVMSPVTransforms",
++        "@llvm-project//mlir:IR",
++        "@llvm-project//mlir:IndexDialect",
++        "@llvm-project//mlir:LLVMCommonConversion",
++        "@llvm-project//mlir:LLVMDialect",
++        "@llvm-project//mlir:MathToLLVM",
++        "@llvm-project//mlir:Pass",
++        "@llvm-project//mlir:SCFDialect",
++        "@llvm-project//mlir:SCFToControlFlow",
++        "@llvm-project//mlir:SPIRVDialect",
++        "@llvm-project//mlir:SPIRVToLLVM",
++        "@llvm-project//mlir:Support",
++        "@llvm-project//mlir:TransformUtils",
++        "@llvm-project//mlir:Transforms",
++        "@llvm-project//mlir:UBToLLVM",
++        "@triton//:TritonDialects",
++        "@triton//:TritonGPUToLLVM",
++        "@triton//:TritonTools",
++    ],
++)
+
+diff --git b/third_party/intel/backend/BUILD b/third_party/intel/backend/BUILD
+new file mode 100644
+--- /dev/null
++++ b/third_party/intel/backend/BUILD
+@@ -0,0 +1,43 @@
++# load("@rules_cc//cc:cc_library.bzl", "cc_library")
++
++package(
++    # copybara:uncomment_begin
++    # default_applicable_licenses = ["@triton//:license"],
++    # default_compatible_with = [# "@build-target"],
++    # default_visibility = [
++        # "//third_party/py/triton:__subpackages__",
++        # "@triton//:__subpackages__",
++    # ],
++    # copybara:uncomment_end_and_comment_begin
++    default_visibility = ["//visibility:public"],
++    # copybara:comment_end
++)
++
++filegroup(
++    name = "files",
++    srcs = glob(
++        include = ["**/*.py"],
++    ),
++)
++
++filegroup(
++    name = "all-files",
++    srcs = glob(
++        include = ["**"],
++    ),
++)
++
++cc_library(
++    name = "headers",
++    defines = [
++        "__ONEAPI_PLATFORM_INTEL__",
++    ],
++    includes = [
++        "include",
++    ],
++    textual_hdrs = glob(["include/**/*.h"]),
++)
++
++exports_files([
++    "include/sycl_functions.h",
++])

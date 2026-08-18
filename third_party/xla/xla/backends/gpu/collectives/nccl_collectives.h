@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/base/call_once.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"

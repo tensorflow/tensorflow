@@ -23,14 +23,15 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
 #include "xla/backends/profiler/gpu/cupti_tracer_options_utils.h"
 #include "xla/backends/profiler/gpu/gpu_metadata.h"
+#include "xla/debug_options_flags.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
 #include "xla/tsl/util/env_var.h"
@@ -86,6 +87,8 @@ absl::Status GpuTracer::DoStart() {
   }
 
   options_.cbids_selected = CuptiTracer::CreateDefaultCallbackIds();
+  options_.prefer_cupti_v2 =
+      xla::GetDebugOptionsFromFlags().xla_gpu_enable_cupti_multi_subscriber();
 
   bool trace_concurrent_kernels = false;
   ReadBoolFromEnvVar("TF_GPU_CUPTI_FORCE_CONCURRENT_KERNEL", true,
@@ -116,7 +119,7 @@ absl::Status GpuTracer::DoStart() {
   // TODO: Add a test to verify that the options are set correctly and
   // collectors are generating correct data once ProfileData is
   // available(b/399675726).
-  RETURN_IF_ERROR(UpdateCuptiTracerOptionsFromProfilerOptions(
+  ABSL_RETURN_IF_ERROR(UpdateCuptiTracerOptionsFromProfilerOptions(
       profile_options_, options_, collector_options));
 
   if (collector_options.num_gpus <= 0 ||
@@ -130,7 +133,9 @@ absl::Status GpuTracer::DoStart() {
     collector_options.num_gpus = num_gpus;
   }
 
-  uint64_t start_gputime_ns = CuptiTracer::GetTimestamp();
+  // A fresh V2 subscriber must exist before its timestamp API can be used.
+  ABSL_RETURN_IF_ERROR(cupti_tracer_->PrepareForProfilerStart(options_));
+  uint64_t start_gputime_ns = cupti_tracer_->GetTimestampForSubscriber();
   uint64_t start_walltime_ns = tsl::profiler::GetCurrentTimeNanos();
   cupti_collector_ = CreateCuptiCollector(collector_options, start_walltime_ns,
                                           start_gputime_ns);
@@ -139,7 +144,7 @@ absl::Status GpuTracer::DoStart() {
   for (int i = 0; i < collector_options.num_gpus; ++i) {
     xplanes_.push_back(std::make_unique<tensorflow::profiler::XPlane>());
   }
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       cupti_tracer_->Enable(options_, cupti_collector_.get(), xplanes_));
   AddGpuMetadata();
   return absl::OkStatus();

@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_GPU_HLO_SCHEDULE_H_
 
 #include <cstdint>
+#include <optional>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -48,6 +49,12 @@ struct ScheduleMetadata {
 SchedulerConfig MakeGPUSchedulerConfig(uint64_t memory_limit,
                                        int64_t overlap_limit,
                                        int64_t async_compute_limit);
+
+// Resolves the configured SchedulerMemoryFencing threshold. A negative value
+// disables the pass, zero selects 1% of the scheduler memory limit, and a
+// positive value selects an explicit threshold capped at the memory limit.
+std::optional<int64_t> GetSchedulerMemoryFencingThresholdBytes(
+    int64_t configured_threshold_bytes, uint64_t memory_limit);
 
 // Compute the device memory limit to be used by passes like scheduler and
 // HLO rematerialization.

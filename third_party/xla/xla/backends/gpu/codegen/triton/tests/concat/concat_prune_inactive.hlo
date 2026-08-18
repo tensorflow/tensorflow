@@ -1,7 +1,7 @@
-// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation=false %s 2>&1 | FileCheck %s
+// RUN: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation=false %s 2>&1 | FileCheck %s
 // RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false %s
 
-// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation %s 2>&1 | FileCheck %s --check-prefixes=CHECK-ERROR
+// RUN: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation %s 2>&1 | FileCheck %s --check-prefixes=CHECK-ERROR
 
 // CHECK:      xtile.entry_func @triton_fn
 // CHECK-NEXT:   %[[C0:.*]] = arith.constant 0 : index

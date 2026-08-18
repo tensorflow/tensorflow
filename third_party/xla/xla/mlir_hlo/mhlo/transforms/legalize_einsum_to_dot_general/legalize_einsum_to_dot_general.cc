@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
-#include <memory>
 #include <utility>
 
 #include "llvm/ADT/StringExtras.h"

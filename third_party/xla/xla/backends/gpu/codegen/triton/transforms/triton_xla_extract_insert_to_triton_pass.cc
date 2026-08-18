@@ -17,9 +17,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <numeric>
-#include <optional>
 #include <utility>
-#include <vector>
 
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Pass/Pass.h"
@@ -59,9 +57,9 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/backends/gpu/codegen/triton/lowering_util.h"
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
+#include "xla/backends/gpu/codegen/triton/transforms/tdm_lowering_util.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"  // IWYU pragma: keep
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
-#include "xla/permutation_util.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "triton/Dialect/Triton/IR/Types.h"
 
@@ -230,139 +228,6 @@ void AddTmaAttributes(ImplicitLocOpBuilder& builder,
           pointer.getType().getPointeeType().getIntOrFloatBitWidth() / 8));
 }
 
-// Checks whether 'layout' is the default HLO layout in major-to-minor order,
-// i.e. iff it's [N-1, N-2, ... 1, 0].
-bool IsMajorToMinorLayout(ArrayRef<int64_t> layout) {
-  for (auto [i, value] : llvm::enumerate(layout)) {
-    if (value != layout.size() - 1 - i) {
-      return false;
-    }
-  }
-  return true;
-}
-
-// Returns 'values' in major-to-minor order given minor-to-major 'layout'.
-template <typename T>
-SmallVector<T> GetMajorToMinorOrder(ArrayRef<T> values,
-                                    ArrayRef<int64_t> layout) {
-  if (IsMajorToMinorLayout(layout)) {
-    return llvm::to_vector(values);
-  }
-
-  auto reversed_layout = llvm::to_vector(layout);
-  std::reverse(reversed_layout.begin(), reversed_layout.end());
-  std::vector<T> vector = ::xla::Permute(values, reversed_layout);
-  return SmallVector<T>(vector.begin(), vector.end());
-}
-
-// Returns 'values' in major-to-minor order given minor-to-major 'layout'.
-SmallVector<Value> GetMajorToMinorOrder(ValueRange values,
-                                        ArrayRef<int64_t> layout) {
-  return GetMajorToMinorOrder(ArrayRef<Value>(llvm::to_vector(values)), layout);
-}
-
-// Whether the tile shape is compatible with AMD TDM lowering. Rejects:
-//   - dynamic tile sizes or strides
-//   - non-unit tile strides
-//   - non-trailing singleton dims (violates upstream Triton's TDM legalizer
-//     contract: shared order must be [rank-1, ..., 0] with stride-1 dims
-//     consecutive trailing). A smarter pass could canonicalize the singleton
-//     out and lower to TDM. We reject conservatively for now.
-//
-// Not checked here, deferred to upstream Triton / hardware legalization:
-//   - Hardware rank cap (TDM supports ranks 1 to 5).
-//   - Innermost dim byte alignment requirements.
-//   - Per-dim box size limits.
-//   - Padding mode compatibility (this pass hardcodes PAD_ZERO).
-bool CanUseTdm(bool allow_tdm, const ArrayRef<int64_t>& tile_sizes,
-               const ArrayRef<int64_t>& tile_strides,
-               const ArrayRef<int64_t>& minor_to_major_layout) {
-  if (!allow_tdm) {
-    return false;
-  }
-  // Dynamic sizes or strides would feed sentinel values into the i32/i64
-  // descriptor constants and silently produce a malformed descriptor.
-  if (mlir::ShapedType::isDynamicShape(tile_sizes) ||
-      mlir::ShapedType::isDynamicShape(tile_strides)) {
-    VLOG(1) << "TDM is not compatible: dynamic tile sizes or strides.";
-    return false;
-  }
-  // TDM descriptors describe contiguous boxes; non-unit (or zero) tile strides
-  // cannot be expressed and would silently produce a contiguous load.
-  for (int64_t s : tile_strides) {
-    if (s != 1) {
-      VLOG(1) << "TDM is not compatible: non-unit tile stride.";
-      return false;
-    }
-  }
-  auto ordered_sizes = GetMajorToMinorOrder(tile_sizes, minor_to_major_layout);
-  bool seen_singleton = false;
-  for (int64_t s : ordered_sizes) {
-    if (s == 1) {
-      seen_singleton = true;
-    } else if (seen_singleton) {
-      // Non-singleton dim follows a singleton dim, TDM-incompatible.
-      VLOG(1) << "TDM is not compatible: non-trailing singleton dim in tile.";
-      return false;
-    }
-  }
-  return true;
-}
-
-// Builds a tt.make_tensor_descriptor for a contiguous box load/store from
-// `pointer`. Global shape and strides come from `shape` + `layout` (the source
-// memref geometry); the descriptor's block dims come from `tile_sizes`. All
-// arrays are reordered to major-to-minor as required by Triton's TDM
-// legalizer. Padding mode is hardcoded to PAD_ZERO.
-MakeTensorDescOp BuildTensorDescriptor(ImplicitLocOpBuilder& builder,
-                                       Value pointer, ArrayRef<int64_t> shape,
-                                       ArrayRef<int64_t> layout,
-                                       ArrayRef<int64_t> tile_sizes) {
-  // Global shape as i32 SSA values, in major-to-minor order.
-  auto ordered_shape = GetMajorToMinorOrder(shape, layout);
-  SmallVector<Value> shape_values;
-  for (int64_t dim : ordered_shape) {
-    shape_values.push_back(
-        arith::ConstantOp::create(builder, builder.getI32IntegerAttr(dim)));
-  }
-
-  // Global strides as i64 SSA values, in major-to-minor order.
-  auto global_strides = xtriton::ComputeStrides(shape, layout);
-  auto ordered_strides =
-      GetMajorToMinorOrder(ArrayRef<int64_t>(global_strides), layout);
-  SmallVector<Value> stride_values;
-  for (int64_t s : ordered_strides) {
-    stride_values.push_back(
-        arith::ConstantOp::create(builder, builder.getI64IntegerAttr(s)));
-  }
-
-  // Block shape in major-to-minor order as i32.
-  auto ordered_sizes = GetMajorToMinorOrder(tile_sizes, layout);
-  SmallVector<int32_t> block_shape;
-  for (int64_t s : ordered_sizes) {
-    CHECK_LE(s, INT32_MAX) << "tile dim " << s << " exceeds i32 range";
-    block_shape.push_back(static_cast<int32_t>(s));
-  }
-
-  auto element_type = cast<PointerType>(pointer.getType()).getPointeeType();
-  bool is_signed_integer =
-      mlir::isa<IntegerType>(element_type) && !element_type.isUnsignedInteger();
-
-  return MakeTensorDescOp::create(builder, pointer, shape_values, stride_values,
-                                  block_shape, is_signed_integer,
-                                  PaddingOption::PAD_ZERO);
-}
-
-// Given the layout of a tensor, return the inverse permutation required to
-// transpose an already major-to-minor tensor to the original tensor.
-SmallVector<int32_t> GetInverseLayoutPermutation(ArrayRef<int64_t> layout) {
-  auto reversed_layout = llvm::to_vector(layout);
-  std::reverse(reversed_layout.begin(), reversed_layout.end());
-  auto permutation =
-      llvm::to_vector_of<int32_t>(::xla::InversePermutation(reversed_layout));
-  return SmallVector<int32_t>(permutation.begin(), permutation.end());
-}
-
 // Rewrite func.func to tt.func.
 class RewriteFuncOp : public mlir::OpRewritePattern<func::FuncOp> {
  public:
@@ -388,7 +253,7 @@ class RewriteFuncOp : public mlir::OpRewritePattern<func::FuncOp> {
       auto layout = tma_descriptor.getLayout();
       auto block_shape = tma_descriptor.getTileShape();
       SmallVector<int64_t> ordered_block_shape =
-          GetMajorToMinorOrder(block_shape, layout);
+          xtriton::GetMajorToMinorOrder(block_shape, layout);
 
       auto result_type =
           RankedTensorType::get(ordered_block_shape, element_type);
@@ -493,10 +358,10 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
       AddTmaAttributes(builder, op.getSrc(), src_shape, src_layout, sizes,
                        strides);
 
-      auto ordered_offsets = GetMajorToMinorOrder(offsets, src_layout);
-      auto ordered_sizes = GetMajorToMinorOrder(sizes, src_layout);
+      auto ordered_offsets = xtriton::GetMajorToMinorOrder(offsets, src_layout);
+      auto ordered_sizes = xtriton::GetMajorToMinorOrder(sizes, src_layout);
       auto ordered_type =
-          tile_type.clone(GetMajorToMinorOrder(sizes, src_layout));
+          tile_type.clone(xtriton::GetMajorToMinorOrder(sizes, src_layout));
 
       // ptr -> !tt.tensordesc<tile_type>
       auto desc_type = TensorDescType::get(ordered_type.getShape(),
@@ -510,9 +375,9 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
           xtriton::IndexCast(builder, builder.getI32Type(), ordered_offsets));
 
       // Insert a transpose if the layout is not major-to-minor.
-      if (!IsMajorToMinorLayout(src_layout)) {
-        result = TransOp::create(builder, result,
-                                 GetInverseLayoutPermutation(src_layout));
+      if (!xtriton::IsMajorToMinorLayout(src_layout)) {
+        result = TransOp::create(
+            builder, result, xtriton::GetInverseLayoutPermutation(src_layout));
       }
       // Insert a reshape if the result is rank-reduced.
       if (sizes.size() != tile_shape.size()) {
@@ -524,23 +389,34 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
       return mlir::success();
     }
 
-    if (CanUseTdm(allow_tdm_, sizes, strides, src_layout)) {
-      auto ordered_offsets = GetMajorToMinorOrder(offsets, src_layout);
-      auto ordered_type =
-          tile_type.clone(GetMajorToMinorOrder(sizes, src_layout));
+    if (TdmAllowed(
+            CanUseTdm(allow_tdm_, src_shape, sizes, strides, src_layout,
+                      tile_type.getElementType().getIntOrFloatBitWidth()))) {
+      SmallVector<int64_t> singleton_dims =
+          GetSingletonTileDims(sizes, src_layout);
+      TdmDescriptorOperands operands(op.getSrc(), src_shape, src_layout, sizes,
+                                     offsets);
+      if (!singleton_dims.empty()) {
+        operands = operands.DropSingletonTileDims(builder, singleton_dims);
+      }
 
-      auto desc = BuildTensorDescriptor(builder, op.getSrc(), src_shape,
-                                        src_layout, sizes);
+      auto desc = BuildTensorDescriptor(builder, operands);
+
+      auto ordered_offsets = xtriton::GetMajorToMinorOrder(
+          ValueRange(operands.offsets), operands.layout);
+      auto ordered_type = tile_type.clone(xtriton::GetMajorToMinorOrder(
+          ArrayRef<int64_t>(operands.sizes), operands.layout));
 
       Value result = DescriptorLoadOp::create(
           builder, ordered_type, desc.getResult(),
           xtriton::IndexCast(builder, builder.getI32Type(), ordered_offsets));
 
-      if (!IsMajorToMinorLayout(src_layout)) {
-        result = TransOp::create(builder, result,
-                                 GetInverseLayoutPermutation(src_layout));
+      if (!xtriton::IsMajorToMinorLayout(operands.layout)) {
+        result = TransOp::create(
+            builder, result,
+            xtriton::GetInverseLayoutPermutation(operands.layout));
       }
-      if (sizes.size() != tile_shape.size()) {
+      if (ArrayRef<int64_t>(operands.sizes) != tile_shape) {
         result = ReshapeOp::create(builder, tile_shape, result,
                                    /*allowReorder=*/false);
       }
@@ -632,7 +508,7 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
 
       // ptr -> !tt.tensordesc<tile_type>
       auto result_type =
-          tile_type.clone(GetMajorToMinorOrder(sizes, dst_layout));
+          tile_type.clone(xtriton::GetMajorToMinorOrder(sizes, dst_layout));
       auto desc_type = TensorDescType::get(result_type.getShape(),
                                            result_type.getElementType(),
                                            result_type.getEncoding());
@@ -645,29 +521,40 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
         src = ExpandDimsOp::create(builder, src, dim);
       }
       // Insert a transpose if the layout is not major-to-minor.
-      if (!IsMajorToMinorLayout(dst_layout)) {
+      if (!xtriton::IsMajorToMinorLayout(dst_layout)) {
         // Transpose to a major-to-minor tensor by simply reversing the layout.
         auto transpose_order = llvm::to_vector_of<int32_t>(dst_layout);
         std::reverse(transpose_order.begin(), transpose_order.end());
         src = TransOp::create(builder, src, transpose_order);
       }
 
-      auto ordered_offsets = GetMajorToMinorOrder(offsets, dst_layout);
+      auto ordered_offsets = xtriton::GetMajorToMinorOrder(offsets, dst_layout);
       DescriptorStoreOp::create(
           builder, cast_to_tensor_desc.getResult(0), src,
           xtriton::IndexCast(builder, builder.getI32Type(), ordered_offsets));
-    } else if (CanUseTdm(allow_tdm_, sizes, strides, dst_layout)) {
-      auto ordered_offsets = GetMajorToMinorOrder(offsets, dst_layout);
+    } else if (TdmAllowed(CanUseTdm(
+                   allow_tdm_, dst_shape, sizes, strides, dst_layout,
+                   tile_type.getElementType().getIntOrFloatBitWidth()))) {
+      SmallVector<int64_t> singleton_dims =
+          GetSingletonTileDims(sizes, dst_layout);
+      TdmDescriptorOperands operands(op.getDst(), dst_shape, dst_layout, sizes,
+                                     offsets);
+      if (!singleton_dims.empty()) {
+        operands = operands.DropSingletonTileDims(builder, singleton_dims);
+      }
 
-      auto desc = BuildTensorDescriptor(builder, op.getDst(), dst_shape,
-                                        dst_layout, sizes);
+      auto desc = BuildTensorDescriptor(builder, operands);
+
+      auto ordered_offsets = xtriton::GetMajorToMinorOrder(
+          ValueRange(operands.offsets), operands.layout);
 
       Value src = op.getSrc();
-      for (auto dim : reduced_dims) {
-        src = ExpandDimsOp::create(builder, src, dim);
+      if (ArrayRef<int64_t>(operands.sizes) != tile_shape) {
+        src = ReshapeOp::create(builder, operands.sizes, src,
+                                /*allowReorder=*/false);
       }
-      if (!IsMajorToMinorLayout(dst_layout)) {
-        auto transpose_order = llvm::to_vector_of<int32_t>(dst_layout);
+      if (!xtriton::IsMajorToMinorLayout(operands.layout)) {
+        auto transpose_order = llvm::to_vector_of<int32_t>(operands.layout);
         std::reverse(transpose_order.begin(), transpose_order.end());
         src = TransOp::create(builder, src, transpose_order);
       }

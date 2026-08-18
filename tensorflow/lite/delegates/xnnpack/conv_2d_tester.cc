@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/xnnpack/test_util.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/profiling/buffered_profiler.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 
@@ -71,6 +72,12 @@ void Conv2DTester::Test(TfLiteDelegate* delegate) {
   ASSERT_EQ(delegate_interpreter->AllocateTensors(), kTfLiteOk);
   ASSERT_EQ(default_interpreter->AllocateTensors(), kTfLiteOk);
 
+  std::unique_ptr<::tflite::profiling::BufferedProfiler> profiler;
+  if (yield_fp16_precision_) {
+    profiler = std::make_unique<::tflite::profiling::BufferedProfiler>(1024);
+    delegate_interpreter->SetProfiler(profiler.get());
+  }
+
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
 
   if (weights_cache_ != nullptr) {
@@ -92,8 +99,18 @@ void Conv2DTester::Test(TfLiteDelegate* delegate) {
               BatchSize() * InputHeight() * InputWidth() * InputChannels(),
               delegate_input_data);
 
+  if (profiler) {
+    profiler->StartProfiling();
+  }
+
   ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
   ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);
+
+  if (profiler) {
+    profiler->StopProfiling();
+    EXPECT_TRUE(HasConvertNode(profiler.get()))
+        << "Expected Convert nodes in FP16 rewrite";
+  }
 
   float* default_output_data =
       default_interpreter->typed_output_tensor<float>(0);
@@ -107,8 +124,14 @@ void Conv2DTester::Test(TfLiteDelegate* delegate) {
           const int32_t index = ((i * OutputHeight() + y) * OutputWidth() + x) *
                                     OutputChannels() +
                                 c;
+          float tolerance =
+              std::abs(default_output_data[index]) * RelativeTolerance();
+          if (RelativeTolerance() > 0.0f) {
+            const float floor = yield_fp16_precision_ ? 1.0e-3f : 1.0e-5f;
+            tolerance = std::max(tolerance, floor);
+          }
           ASSERT_NEAR(default_output_data[index], delegate_output_data[index],
-                      std::abs(default_output_data[index]) * 3.0e-6f)
+                      tolerance)
               << "batch " << i << " / " << BatchSize() << ", y position " << y
               << " / " << OutputHeight() << ", x position " << x << " / "
               << OutputWidth() << ", channel " << c << " / "

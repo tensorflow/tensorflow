@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/legalize_scheduling_annotations.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -34,7 +35,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/scheduling_annotations_util.h"
 #include "xla/side_effect_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -57,8 +57,8 @@ TEST_F(LegalizeSchedulingAnnotationsTest, NonIntegerAnnotation) {
     ROOT tuple = (f32[16,256,256]{2,1,0}, f32[1024,1024]{1,0}) tuple(c0, agd0)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   EXPECT_IS_NOT_OK(
       LegalizeSchedulingAnnotations(config).Run(hlo_module.get()).status());
@@ -79,8 +79,8 @@ TEST_F(LegalizeSchedulingAnnotationsTest, MultipleAnnotations) {
     ROOT tuple = (f32[16,256,256]{2,1,0}, f32[1024,1024]{1,0}, f32[1024,1024]{1,0}) tuple(c0, agd0, agd1)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   EXPECT_IS_NOT_OK(
       LegalizeSchedulingAnnotations(config).Run(hlo_module.get()).status());
@@ -99,8 +99,8 @@ TEST_F(LegalizeSchedulingAnnotationsTest, NegativeAnnotation) {
     ROOT tuple = (f32[16,256,256]{2,1,0}, f32[1024,1024]{1,0}) tuple(c0, agd0)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   EXPECT_IS_NOT_OK(
       LegalizeSchedulingAnnotations(config).Run(hlo_module.get()).status());
@@ -142,8 +142,8 @@ TEST_F(LegalizeSchedulingAnnotationsTest, CrossComputationAnnotation) {
     ROOT tuple1 = (f32[16,64,256]{2,1,0}, f32[16,256,256]{2,1,0}, f32[1024,1024]{1,0}) tuple(gte, c0, agd0)
   }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   EXPECT_IS_OK(
       LegalizeSchedulingAnnotations(config).Run(hlo_module.get()).status());
@@ -166,8 +166,8 @@ TEST_F(LegalizeSchedulingAnnotationsTest, AnnotationWithGaps) {
     ROOT tuple = (f32[16,256,256]{2,1,0}, f32[1024,1024]{1,0}) tuple(c0, agd0)
   }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   EXPECT_IS_NOT_OK(
       LegalizeSchedulingAnnotations(config).Run(hlo_module.get()).status());
@@ -190,8 +190,8 @@ TEST_F(LegalizeSchedulingAnnotationsTest, AnnotationWithGaps2) {
     ROOT tuple = (f32[16,64,256]{2,1,0}, f32[1024,1024]{1,0}) tuple(add1, agd0)
   }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   EXPECT_IS_NOT_OK(
       LegalizeSchedulingAnnotations(config).Run(hlo_module.get()).status());
@@ -213,8 +213,8 @@ ENTRY entry {
   ROOT add = f32[16]{0} add(b2, b2)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   config.skip_opt_barriers = true;
   auto result = LegalizeSchedulingAnnotations(config).Run(hlo_module.get());
@@ -238,8 +238,8 @@ ENTRY entry {
   ROOT add = f32[16]{0} add(b2, b2)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   config.skip_opt_barriers = true;
   auto result = LegalizeSchedulingAnnotations(config).Run(hlo_module.get());
@@ -259,8 +259,8 @@ TEST_F(LegalizeSchedulingAnnotationsTest, MissingAnnotationInStart) {
     ROOT tuple = (f32[16,256,256]{2,1,0}, f32[1024,1024]{1,0}) tuple(c0, agd0)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   EXPECT_IS_NOT_OK(
       LegalizeSchedulingAnnotations(config).Run(hlo_module.get()).status());
@@ -282,8 +282,8 @@ TEST_F(LegalizeSchedulingAnnotationsTest, MoveFusedOpAnnotationToCaller) {
     ROOT fusion0 = bf16[1024,2048]{1,0:T(8,128)(2,1)} fusion(p0, p1), kind=kOutput, calls=fused_computation.1
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   EXPECT_IS_OK(
       LegalizeSchedulingAnnotations(config).Run(hlo_module.get()).status());
@@ -311,8 +311,8 @@ TEST_F(LegalizeSchedulingAnnotationsTest, FusedOpsWithDifferentAnnotationIds) {
     ROOT fusion0 = bf16[1024,2048]{1,0:T(8,128)(2,1)} fusion(p0, p1), kind=kOutput, calls=fused_computation.1
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   EXPECT_IS_NOT_OK(
       LegalizeSchedulingAnnotations(config).Run(hlo_module.get()).status());
@@ -330,8 +330,8 @@ TEST_F(LegalizeSchedulingAnnotationsTest, DropAnnotationFromBitcast) {
     ROOT tuple = (f32[16,64,256]{2,1,0}, f32[1024,1024]{1,0}) tuple(bitcast, agd0)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   config.keep_sync_annotation = [](const HloInstruction* instr) {
     return instr->opcode() != HloOpcode::kBitcast;
@@ -364,8 +364,8 @@ TEST_F(LegalizeSchedulingAnnotationsTest, DropAnnotationFromTrivialGroups) {
     ROOT tuple = (f32[16,64,256]{2,1,0}, f32[1024,1024]{1,0}) tuple(bitcast3, agd0)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   config.keep_trivial_sync_annotation = [](const HloInstruction* instr) {
     return instr->opcode() != HloOpcode::kBitcast;
@@ -418,8 +418,8 @@ TEST_F(LegalizeSchedulingAnnotationsTest,
     ROOT tuple1 = (f32[16,64,256]{2,1,0}, f32[16,256,256]{2,1,0}) tuple(gte, c0)
   }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   config.keep_trivial_sync_annotation = HloPredicateFalse;
   EXPECT_IS_OK(
@@ -463,8 +463,8 @@ ENTRY entry {
     ROOT tuple.2 = (f32[16,256,256]{2,1,0}, f32[16,256,256]{2,1,0}, f32[128,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}) tuple(c0, c1, get-tuple-element.1, get-tuple-element.2)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   EXPECT_IS_OK(
       LegalizeSchedulingAnnotations(config).Run(hlo_module.get()).status());
@@ -480,8 +480,8 @@ ENTRY entry {
   ROOT a0 = f32[16]{0} add(p0, p1), frontend_attributes={_scheduling_group_id="noop"}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   EXPECT_IS_OK(
       LegalizeSchedulingAnnotations(config).Run(hlo_module.get()).status());
@@ -510,8 +510,8 @@ TEST_F(LegalizeSchedulingAnnotationsTest, ProgagateAnnotationToGap) {
     ROOT tuple = (f32[16,256,256]{2,1,0}, f32[1024,1024]{1,0}) tuple(c0, agd0)
   }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   config.propagate_annotation = true;
   EXPECT_THAT(LegalizeSchedulingAnnotations(config).Run(hlo_module.get()),
@@ -541,8 +541,8 @@ TEST_F(SchedulingAnnotationPropagationTest, NothingToPropagate) {
     ROOT tuple = (f32[16,256,256]{2,1,0}, f32[1024,1024]{1,0}) tuple(c0, agd0)
   }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   config.propagate_annotation = true;
   EXPECT_THAT(LegalizeSchedulingAnnotations(config).Run(hlo_module.get()),
@@ -565,8 +565,8 @@ TEST_F(SchedulingAnnotationPropagationTest, NoDataDependentGap) {
     ROOT tuple = (f32[16,256,256]{2,1,0}, f32[1024,1024]{1,0}) tuple(c0, agd0)
   }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   config.propagate_annotation = true;
   EXPECT_THAT(LegalizeSchedulingAnnotations(config).Run(hlo_module.get()),
@@ -589,8 +589,8 @@ TEST_F(SchedulingAnnotationPropagationTest, GapDueToControlDependency) {
     ROOT tuple = (f32[16,256,256]{2,1,0}, f32[1024,1024]{1,0}) tuple(c0, agd0)
   }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   config.propagate_annotation = true;
   EXPECT_THAT(LegalizeSchedulingAnnotations(config).Run(hlo_module.get()),
@@ -630,8 +630,8 @@ TEST_F(SchedulingAnnotationPropagationTest, GapDueToControlDependency2) {
     ROOT tuple = (f32[16,256,256]{2,1,0}, f32[1024,1024]{1,0}) tuple(c0, agd0)
   }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   config.propagate_annotation = true;
   EXPECT_THAT(LegalizeSchedulingAnnotations(config).Run(hlo_module.get()),
@@ -670,11 +670,12 @@ TEST_F(SchedulingAnnotationPropagationTest, TwoGroups) {
     slice = f32[16,64,256]{2,1,0} slice(c0), slice={[0:16], [0:64], [0:256]}
     c1 = f32[16,256,256]{2,1,0} convolution(slice, slice), window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb, frontend_attributes={_scheduling_group_id="3"}
     agd0 = f32[1024,1024]{1,0} all-gather-done(ags0), frontend_attributes={_scheduling_group_id="2"}
-    ROOT tuple = (f32[16,256,256]{2,1,0}, f32[1024,1024]{1,0}) tuple(c0, agd0)
+    ag = f32[1024,1024]{1,0} all-gather(p0), replica_groups={{0,1,2,3}}, dimensions={0}, frontend_attributes={_scheduling_group_id="3"}
+    ROOT tuple = (f32[16,256,256]{2,1,0}, f32[1024,1024]{1,0}, f32[1024,1024]{1,0}) tuple(c0, agd0, ag)
   }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   config.propagate_annotation = true;
   EXPECT_THAT(LegalizeSchedulingAnnotations(config).Run(hlo_module.get()),
@@ -724,8 +725,8 @@ TEST_F(SchedulingAnnotationPropagationTest, CrossComputationAnnotation) {
     ROOT tuple1 = (f32[16,64,256]{2,1,0}, f32[16,256,256]{2,1,0}, f32[1024,1024]{1,0}) tuple(gte, c0, agd0)
   }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   config.propagate_annotation = true;
   EXPECT_THAT(LegalizeSchedulingAnnotations(config).Run(hlo_module.get()),
@@ -752,11 +753,12 @@ TEST_F(SchedulingAnnotationPropagationTest, ConflictingAnnotationGroups) {
     slice = f32[16,64,256]{2,1,0} slice(c0), slice={[0:16], [0:64], [0:256]}, control-predecessors={ags0}
     c1 = f32[16,256,256]{2,1,0} convolution(slice, slice), window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb, frontend_attributes={_scheduling_group_id="3"}
     agd0 = f32[1024,1024]{1,0} all-gather-done(ags0), frontend_attributes={_scheduling_group_id="2"}, control-predecessors={slice}
-    ROOT tuple = (f32[16,256,256]{2,1,0}, f32[1024,1024]{1,0}) tuple(c0, agd0)
+    ag = f32[1024,1024]{1,0} all-gather(p0), replica_groups={{0,1,2,3}}, dimensions={0}, frontend_attributes={_scheduling_group_id="3"}
+    ROOT tuple = (f32[16,256,256]{2,1,0}, f32[1024,1024]{1,0}, f32[1024,1024]{1,0}) tuple(c0, agd0, ag)
   }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   config.propagate_annotation = true;
   auto result = LegalizeSchedulingAnnotations(config).Run(hlo_module.get());
@@ -780,11 +782,13 @@ ENTRY entry {
   a2 = f32[16]{0} add(a0, a1)
   a3 = f32[16]{0} add(p0, a2), frontend_attributes={_scheduling_group_id="1"}
   a4 = f32[16]{0} add(p1, a2), frontend_attributes={_scheduling_group_id="2"}
-  ROOT tuple = (f32[16]{0}, f32[16]{0}) tuple(a3, a4)
+  ag1 = f32[16]{0} all-gather(p0), replica_groups={}, dimensions={0}, frontend_attributes={_scheduling_group_id="1"}
+  ag2 = f32[16]{0} all-gather(p1), replica_groups={}, dimensions={0}, frontend_attributes={_scheduling_group_id="2"}
+  ROOT tuple = (f32[16]{0}, f32[16]{0}, f32[16]{0}, f32[16]{0}) tuple(a3, a4, ag1, ag2)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   config.propagate_annotation = true;
   auto result = LegalizeSchedulingAnnotations(config).Run(hlo_module.get());
@@ -868,8 +872,8 @@ ENTRY %entry (p0: bf16[5,8,128], p1: bf16[5,1,2,128]) -> bf16[5,8,128] {
   %add.5 = bf16[1,2,128]{2,1,0} add(%dynamic_slice_reshape.4, %dynamic_slice_reshape.4), control-predecessors={%c3.4}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   config.remove_loop_iteration_annotation_only = true;
   EXPECT_IS_OK(
@@ -898,8 +902,8 @@ ENTRY entry {
   ROOT tuple = (f32[16]{0}, f32[16]{0}) tuple(a3, a4)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   config.run_verification = true;
   config.keep_sync_annotation = HloPredicateFalse;
@@ -923,8 +927,8 @@ ENTRY entry {
   ROOT tuple = (f32[16]{0}, f32[16]{0}) tuple(a3, a4)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   config.run_verification = true;
 
@@ -970,8 +974,8 @@ ENTRY entry {
   %sparse-core-data-format-call.47.cloned.1.call-done = bf16[2048,1,7168]{2,0,1:T(16,128)(2,1)} async-done(%sparse-core-data-format-call.47.cloned.1.call-start), frontend_attributes={_scheduling_group_id="47"}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"used_scoped_memory_configs":[]}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   config.keep_sync_annotation = HloPredicateFalse;
   EXPECT_IS_OK(
@@ -983,13 +987,15 @@ ENTRY entry {
   EXPECT_FALSE(annotation);
 }
 
-TEST_F(SchedulingAnnotationPropagationTest, ContainsFormattingOpsAndOthers) {
+TEST_F(SchedulingAnnotationPropagationTest,
+       ContainsFormattingOpsAndNestedOthers) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
 
 %called_computation.441 (param_0.14479: bf16[2048,1,7168]) -> bf16[2048,1,7168] {
   %param_0.14479 = bf16[2048,1,7168]{0,2,1:T(8,128)(2,1)} parameter(0)
-  ROOT %copy.6583 = bf16[2048,1,7168]{2,0,1:T(16,128)(2,1)} copy(%param_0.14479), frontend_attributes={_scheduling_group_id="47"}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"compute_type":"COMPUTE_TYPE_TILE","used_scoped_memory_configs":[]}
+  %add = bf16[2048,1,7168]{2,0,1:T(16,128)(2,1)} add(%param_0.14479, %param_0.14479)
+  ROOT %copy.6583 = bf16[2048,1,7168]{2,0,1:T(16,128)(2,1)} copy(%add), frontend_attributes={_scheduling_group_id="47"}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"compute_type":"COMPUTE_TYPE_TILE","used_scoped_memory_configs":[]}
 }, execution_thread="sparsecore"
 
 %async_computation.510 (param_0.14480: bf16[2048,1,7168]) -> bf16[2048,1,7168] {
@@ -999,8 +1005,7 @@ HloModule module, is_scheduled=true
 
 %called_computation.47 (param_0.13516: bf16[2048,1,7168]) -> bf16[2048,1,7168] {
   %param_0.13516 = bf16[2048,1,7168]{0,2,1:T(8,128)(2,1)} parameter(0)
-  %add = bf16[2048,1,7168]{2,0,1:T(16,128)(2,1)} add(%param_0.13516, %param_0.13516)
-  %copy.6584.cloned.1.call-start = ((bf16[2048,1,7168]{0,2,1:T(8,128)(2,1)}), bf16[2048,1,7168]{2,0,1:T(16,128)(2,1)}, u32[]{:S(8)}) async-start(%add), async_execution_thread="sparsecore", calls=%async_computation.510
+  %copy.6584.cloned.1.call-start = ((bf16[2048,1,7168]{0,2,1:T(8,128)(2,1)}), bf16[2048,1,7168]{2,0,1:T(16,128)(2,1)}, u32[]{:S(8)}) async-start(%param_0.13516), async_execution_thread="sparsecore", calls=%async_computation.510
   ROOT %copy.6584.cloned.1.call-done = bf16[2048,1,7168]{2,0,1:T(16,128)(2,1)} async-done(%copy.6584.cloned.1.call-start)
 }, execution_thread="sparsecore"
 
@@ -1016,8 +1021,8 @@ ENTRY entry {
   %sparse-core-data-format-call.47.cloned.1.call-done = bf16[2048,1,7168]{2,0,1:T(16,128)(2,1)} async-done(%sparse-core-data-format-call.47.cloned.1.call-start), frontend_attributes={_scheduling_group_id="47"}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"used_scoped_memory_configs":[]}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   config.keep_sync_annotation = HloPredicateFalse;
   EXPECT_IS_OK(
@@ -1027,6 +1032,43 @@ ENTRY entry {
       hlo_module.get(), "sparse-core-data-format-call.47.cloned.1.call-start");
   auto annotation = GetSchedulingAnnotation(async_start).value();
   EXPECT_TRUE(annotation);
+}
+
+TEST_F(SchedulingAnnotationPropagationTest,
+       KeepsAnnotationOnTupleRootedCollectivesGroup) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+comms {
+  p0 = f32[1] parameter(0)
+  ag = f32[1] all-gather(p0), dimensions={0}
+  cp = f32[1] collective-permute(p0), source_target_pairs={{0,1}}
+  ROOT result = (f32[1], f32[1]) tuple(ag, cp)
+}
+
+ENTRY entry {
+  p0 = f32[1] parameter(0)
+  group-start = ((f32[1]), (f32[1], f32[1])) async-start(p0),
+    calls=comms,
+    frontend_attributes={_collectives_group="",_scheduling_group_id="1"}
+  ROOT group-done = (f32[1], f32[1]) async-done(group-start),
+    frontend_attributes={_collectives_group="",_scheduling_group_id="1"}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  LegalizeSchedulingAnnotations::Config config;
+  config.keep_sync_annotation = HloPredicateFalse;
+  EXPECT_IS_OK(
+      LegalizeSchedulingAnnotations(config).Run(hlo_module.get()).status());
+
+  for (absl::string_view name : {"group-start", "group-done"}) {
+    ASSERT_OK_AND_ASSIGN(
+        std::optional<Annotation> annotation,
+        GetSchedulingAnnotation(FindInstruction(hlo_module.get(), name)));
+    ASSERT_TRUE(annotation.has_value());
+    EXPECT_EQ(annotation->group_id, 1);
+  }
 }
 
 TEST_F(SchedulingAnnotationPropagationTest, FillSimpleGaps) {
@@ -1041,8 +1083,8 @@ ENTRY entry {
   ROOT a1 = f32[32]{0} all-gather(c1), replica_groups={{0,1},{2,3}}, dimensions={0}, frontend_attributes={_scheduling_group_id="1"}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
   config.keep_sync_annotation = [](const HloInstruction* instr) {
     return instr->opcode() == HloOpcode::kAllGather;
@@ -1057,5 +1099,31 @@ ENTRY entry {
   EXPECT_TRUE(GetSchedulingAnnotation(copy).value());
 }
 
+TEST_F(LegalizeSchedulingAnnotationsTest, DropAnnotationsProperly) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY %main.1 {
+  %Arg_0.1 = f32[8,128]{1,0} parameter(0)
+  %custom-call.2 = f32[8,128]{1,0} custom-call(%Arg_0.1), custom_call_target="tpu_custom_call", frontend_attributes={_scheduling_group_id="0"}
+  %add.1 = f32[8,128]{1,0} add(%custom-call.2, %custom-call.2), frontend_attributes={_scheduling_group_id="0"}
+  ROOT %custom-call.3 = f32[8,128]{1,0} custom-call(%add.1), custom_call_target="tpu_custom_call", frontend_attributes={_scheduling_group_id="0"}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  LegalizeSchedulingAnnotations::Config config;
+  config.keep_sync_annotation = [](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kCustomCall;
+  };
+
+  auto result = LegalizeSchedulingAnnotations(config).Run(hlo_module.get());
+  EXPECT_IS_OK(result);
+  VLOG(1) << "module after: " << hlo_module->ToString();
+  HloInstruction* cc1 = FindInstruction(hlo_module.get(), "custom-call.2");
+  HloInstruction* cc2 = FindInstruction(hlo_module.get(), "custom-call.3");
+  EXPECT_FALSE(GetSchedulingAnnotation(cc1).value());
+  EXPECT_FALSE(GetSchedulingAnnotation(cc2).value());
+}
 }  // namespace
 }  // namespace xla

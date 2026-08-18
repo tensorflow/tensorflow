@@ -18,6 +18,7 @@ limitations under the License.
 #include <string.h>
 
 #include <algorithm>
+#include <limits>
 #include <vector>
 
 #include "ruy/profiler/instrumentation.h"  // from @ruy
@@ -1957,11 +1958,31 @@ inline int HowManyConvThreads(const RuntimeShape& output_shape,
   const int output_units = output_shape.Dims(thread_dim);
   const int filter_height = filter_shape.Dims(1);
   const int filter_width = filter_shape.Dims(2);
-  const int num_mul_per_unit =
-      FlatSizeSkipDim(output_shape, thread_dim) * filter_height * filter_width;
+  if (output_units <= 0 || filter_height <= 0 || filter_width <= 0) {
+    return 0;
+  }
+  size_t num_mul_per_unit = 0;
+  if (!output_shape.CheckedFlatSizeSkipDim(thread_dim, num_mul_per_unit) ||
+      num_mul_per_unit == 0) {
+    return 0;
+  }
+  const size_t filter_height_size = static_cast<size_t>(filter_height);
+  if (num_mul_per_unit >
+      std::numeric_limits<size_t>::max() / filter_height_size) {
+    return 0;
+  }
+  num_mul_per_unit *= filter_height_size;
+  const size_t filter_width_size = static_cast<size_t>(filter_width);
+  if (num_mul_per_unit >
+      std::numeric_limits<size_t>::max() / filter_width_size) {
+    return 0;
+  }
+  num_mul_per_unit *= filter_width_size;
+  if (num_mul_per_unit == 0) {
+    return 0;
+  }
   const int min_units_per_thread = kMinMulPerThread / num_mul_per_unit + 1;
-  int thread_count = output_units / min_units_per_thread;
-  return thread_count;
+  return output_units / min_units_per_thread;
 }
 
 inline void DepthwiseConvPerChannel(

@@ -698,6 +698,13 @@ class BaseSession(SessionInterface):
       raise TypeError('Argument `config` must be a tf.ConfigProto, but got '
                       f'"{type(config).__name__}"')
 
+    if config.intra_op_parallelism_threads < 0:
+      raise ValueError(
+          'Argument `config.intra_op_parallelism_threads` must be >= 0, '
+          f'but got {config.intra_op_parallelism_threads}. '
+          'Use 0 to let the system pick an appropriate value.'
+      )
+
     if (mixed_precision_global_state.is_mixed_precision_graph_rewrite_enabled()
         and config.graph_options.rewrite_options.auto_mixed_precision !=
         rewriter_config_pb2.RewriterConfig.OFF):
@@ -939,7 +946,33 @@ class BaseSession(SessionInterface):
 
     The optional `options` argument expects a [`RunOptions`] proto. The options
     allow controlling the behavior of this particular step (e.g. turning tracing
-    on).
+    on, setting step execution timeouts, or enabling detailed OOM allocation
+    reporting via `report_tensor_allocations_upon_oom`).
+
+    For example, to report detailed tensor allocation information if an
+    out-of-memory
+    (OOM) error occurs during execution (note: this option is supported in
+    Graph mode / `tf.compat.v1.Session` and not in Eager mode):
+
+    ```python
+    run_options = tf.compat.v1.RunOptions(
+        report_tensor_allocations_upon_oom=True)
+    output = session.run(fetches, feed_dict=feed_dict, options=run_options)
+    ```
+
+    To enable execution tracing and set a step execution timeout:
+
+    ```python
+    run_options = tf.compat.v1.RunOptions(
+        trace_level=tf.compat.v1.RunOptions.FULL_TRACE,
+        timeout_in_ms=5000)
+    run_metadata = tf.compat.v1.RunMetadata()
+    output = session.run(
+        fetches,
+        feed_dict=feed_dict,
+        options=run_options,
+        run_metadata=run_metadata)
+    ```
 
     The optional `run_metadata` argument expects a [`RunMetadata`] proto. When
     appropriate, the non-Tensor output of this step will be collected there. For

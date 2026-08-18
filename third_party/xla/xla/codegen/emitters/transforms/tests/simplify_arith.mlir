@@ -449,3 +449,37 @@ module {
 // CHECK-NEXT: %[[MAX:.*]] = arith.minimumf %[[ARG0]], %[[ARG1]] : f32
 // CHECK-NEXT: return %[[MAX]] : f32
 
+// -----
+
+module {
+  func.func @pred_reduce_tensor(%in: tensor<16xi1>, %shuffled: tensor<16xi32>) -> tensor<16xi1> {
+    %0 = arith.trunci %shuffled : tensor<16xi32> to tensor<16xi1>
+    %1 = arith.ori %in, %0 : tensor<16xi1>
+    return %1 : tensor<16xi1>
+  }
+}
+
+// CHECK-LABEL: @pred_reduce_tensor
+// CHECK: %[[EXT:.*]] = arith.extui %arg0
+// CHECK-NEXT: %[[ORI:.*]] = arith.ori %[[EXT]], %arg1
+// CHECK-NEXT: %[[TRUNC:.*]] = arith.trunci %[[ORI]]
+// CHECK-NEXT: return %[[TRUNC]]
+
+// -----
+
+module {
+  func.func @both_range_tensor(%arg0: tensor<4xindex> {xla.range = [12 : index, 42 : index]},
+                               %arg1: tensor<4xindex> {xla.range = [63 : index, 100 : index]}) -> tensor<4xi1> {
+    %eq = arith.cmpi slt, %arg0, %arg1 : tensor<4xindex>
+    return %eq : tensor<4xi1>
+  }
+}
+
+// CHECK-LABEL: @both_range_tensor
+// CHECK-NEXT: %[[CST:.*]] = arith.constant dense<true> : tensor<4xi1>
+// CHECK-NEXT: return %[[CST]]
+
+
+
+
+

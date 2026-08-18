@@ -22,8 +22,8 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/fft_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
@@ -49,10 +49,10 @@ absl::Status FftThunkToProto(const Thunk& thunk, ThunkProto& proto) {
   fft_thunk_proto->mutable_fft_length()->Add(fft_length.begin(),
                                              fft_length.end());
 
-  RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
+  ABSL_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
       fft_thunk.input_buffer(), fft_thunk.input_shape(),
       fft_thunk_proto->mutable_input_buffer_shape()));
-  RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
+  ABSL_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
       fft_thunk.output_buffer(), fft_thunk.output_shape(),
       fft_thunk_proto->mutable_output_buffer_shape()));
 
@@ -64,13 +64,13 @@ absl::StatusOr<std::unique_ptr<Thunk>> FftThunkFromProto(
     const std::vector<BufferAllocation>& buffer_allocations,
     const HloModule* hlo_module,
     const std::vector<std::shared_ptr<Resource>>* resources) {
-  ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+  ABSL_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto input_slice_shape,
       DeserializeSliceShapeFromProto(proto.fft_thunk().input_buffer_shape(),
                                      buffer_allocations));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto output_slice_shape,
       DeserializeSliceShapeFromProto(proto.fft_thunk().output_buffer_shape(),
                                      buffer_allocations));

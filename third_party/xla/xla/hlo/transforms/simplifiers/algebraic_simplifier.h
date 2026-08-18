@@ -391,6 +391,14 @@ class AlgebraicSimplifierOptions {
     enable_fold_transpose_into_scatter_ = value;
   }
 
+  bool enable_folding_pad_into_convolution() const {
+    return enable_folding_pad_into_convolution_;
+  }
+
+  void set_enable_folding_pad_into_convolution(bool value) {
+    enable_folding_pad_into_convolution_ = value;
+  }
+
  private:
   // Metadata struct can be used to store any metadata information encapsulated
   // with the AlgebraicSimplifierOptions that can be later used in an
@@ -441,6 +449,7 @@ class AlgebraicSimplifierOptions {
   bool enable_conditional_simplification_{false};
   bool enable_hoist_transpose_of_reshape_{false};
   bool enable_fold_transpose_into_scatter_{false};
+  bool enable_folding_pad_into_convolution_{true};
   Metadata metadata_;
 };
 
@@ -593,6 +602,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   absl::Status HandleSubtract(HloInstruction* sub) override;
 
   absl::Status HandleMap(HloInstruction* map) override;
+
+  absl::Status HandleXor(HloInstruction* logical_xor) override;
 
   // Runs the visitor on a computation.
   bool Run(HloComputation* computation,

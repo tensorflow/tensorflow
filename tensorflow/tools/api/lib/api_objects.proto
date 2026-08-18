@@ -25,9 +25,16 @@ message TFAPIMember {
 }
 
 message TFAPIMethod {
+  enum MethodKind {
+    INSTANCE = 0;
+    CLASS = 1;
+    STATIC = 2;
+  }
+
   optional string name = 1;
   optional string path = 2;
   optional string argspec = 3;
+  optional MethodKind method_kind = 4;
 }
 
 message TFAPIModule {
