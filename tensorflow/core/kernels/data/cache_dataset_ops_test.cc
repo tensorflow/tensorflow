@@ -375,6 +375,7 @@ INSTANTIATE_TEST_CASE_P(CacheDatasetOpTest,
                         ParameterizedIteratorSaveAndRestoreTest,
                         ::testing::ValuesIn(IteratorSaveAndRestoreTestCases()));
 
+<<<<<<< dest:             26527cc2becb - jiminjun: Introduce step executor wo...
 TEST_F(CacheDatasetOpTest, NegativeIndexTest) {
   auto params = CacheDatasetParams3();
   TF_ASSERT_OK(Initialize(params));
@@ -385,6 +386,19 @@ TEST_F(CacheDatasetOpTest, NegativeIndexTest) {
   EXPECT_EQ(status.message(), "Index out of range [0, 3):-1");
 }
 
+||||||| parent of source: 0d028627c9e0 - ymzhou: Update the FC prober, change...
+=======
+TEST_F(CacheDatasetOpTest, GetInvalidIndex) {
+  auto dataset_params = CacheDatasetParams3();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  std::vector<Tensor> out_tensors;
+  EXPECT_TRUE(absl::IsOutOfRange(
+      dataset_->Get(dataset_ctx_.get(), -1, &out_tensors)));
+  EXPECT_TRUE(absl::IsOutOfRange(
+      dataset_->Get(dataset_ctx_.get(), 3, &out_tensors)));
+}
+
+>>>>>>> source:           26bd8327bec0 - kehuang: Validate lower bounds of in...
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow
