@@ -83,8 +83,6 @@ xla_cc_binary(
         "//xla/service:gpu_topology",
         "//xla/service/gpu:nvptx_compiler",
         "//xla/service/gpu:nvptx_compiler_impl",  # buildcleaner: keep
-        "//xla/stream_executor/cuda:all_runtime",
-        "//xla/stream_executor/cuda:cuda_platform",
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/cuda:gpu_test_kernels_cuda",
         "//xla/tsl/platform:env",
