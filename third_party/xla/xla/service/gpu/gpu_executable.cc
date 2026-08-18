@@ -774,14 +774,11 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
     ABSL_RETURN_IF_ERROR(thunk_executor.Initialize(initialize_params));
   }
 
-  // Join a round of rendezvous after thunk initialization. We do this only in
-  // presence of newly acquired collective cliques which means that we have
-  // collective operations and clique initialization is famous for introducing
-  // deadlocks if we try to execute it concurrently with other potentially
-  // memory-allocating operations.
-  if (!collective_cliques.empty()) {
-    ABSL_RETURN_IF_ERROR(RendezvousAfterInitialization(*run_options, debug_options));
-  }
+  // Join a round of rendezvous after thunk initialization in multi-gpu setup.
+  // Thunk initialization (e.g. CUDA graph instantiation) can allocate new
+  // control data structures on device that can lead to deadlocks if other
+  // replicas are executing concurrently.
+  ABSL_RETURN_IF_ERROR(RendezvousAfterInitialization(*run_options, debug_options));
 
   // Prepare parameters for thunks execution.
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
@@ -854,6 +851,11 @@ absl::Status RendezvousAfterInitialization(
       return absl::InternalError(
           "Cound't find the number of local participants");
     }
+  }
+
+  // If there is only one local participant, no rendezvous is needed.
+  if (num_local_participants <= 1) {
+    return absl::OkStatus();
   }
 
   XLA_VLOG_DEVICE(1, run_options.device_ordinal()) << absl::StreamFormat(
