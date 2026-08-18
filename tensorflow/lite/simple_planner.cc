@@ -109,12 +109,24 @@ TfLiteStatus SimplePlanner::PlanAllocations() {
   // Variable tensors also should be ensured to be never overwritten and need to
   // be alive all the time.
   for (int tensor_index : graph_info_->variables()) {
+    // `variables` is a subgraph-level list and it should never be
+    // kTfLiteOptionalTensor.
+    TF_LITE_ENSURE(context_, tensor_index != kTfLiteOptionalTensor);
     // Increase the reference count for variable tensors by one, so it will
     // never be deallocated.
+<<<<<<< dest:             4912b9a3faf0 - frameworks-actuation-server: Batched...
     ++refcounts[tensor_index];
     // `variables` is a subgraph-level list and it should never be
     // kTfLiteOptionalTensor.
     TF_LITE_ENSURE(context_, tensor_index != kTfLiteOptionalTensor);
+||||||| parent of source: e33eb7ccd76c - searchads-capture: Auto generating c...
+    refcounts[tensor_index]++;
+    // `variables` is a subgraph-level list and it should never be
+    // kTfLiteOptionalTensor.
+    TF_LITE_ENSURE(context_, tensor_index != kTfLiteOptionalTensor);
+=======
+    refcounts[tensor_index]++;
+>>>>>>> source:           f61760f7031f - kehuang: Fix use-after-free on zero-...
     // Variable tensor should be allocated at the very beginning.
     TF_LITE_ENSURE_STATUS(allocate(0, tensor_index));
   }
@@ -197,7 +209,14 @@ TfLiteStatus SimplePlanner::ExecuteAllocations(int first_node, int last_node) {
   // Conduct the planned allocations.
   const int total_tensors = static_cast<int>(num_tensors);
   TfLiteTensor* tensors = graph_info_->tensors();
+<<<<<<< dest:             4912b9a3faf0 - frameworks-actuation-server: Batched...
   for (int i = 0; i < total_tensors; ++i) {
+||||||| parent of source: e33eb7ccd76c - searchads-capture: Auto generating c...
+  for (int i = 0; i < num_tensors; ++i) {
+    bool allocated = false;
+=======
+  for (int i = 0; i < num_tensors; ++i) {
+>>>>>>> source:           f61760f7031f - kehuang: Fix use-after-free on zero-...
     if (alloc_node_[i] >= first_node && alloc_node_[i] <= last_node) {
       bool allocated = false;
       TfLiteTensor& tensor = tensors[i];
@@ -206,6 +225,7 @@ TfLiteStatus SimplePlanner::ExecuteAllocations(int first_node, int last_node) {
           allocs_[i].free();
           tensor.data.raw = nullptr;
         }
+<<<<<<< dest:             4912b9a3faf0 - frameworks-actuation-server: Batched...
         allocated = allocs_[i].alloc(tensor.bytes, alloc_node_[i]);
       } else if (tensor.allocation_type == kTfLiteArenaRwPersistent) {
         if (allocs_[i].size == 0) {
@@ -213,7 +233,19 @@ TfLiteStatus SimplePlanner::ExecuteAllocations(int first_node, int last_node) {
         } else {
           allocated = true;
         }
+||||||| parent of source: e33eb7ccd76c - searchads-capture: Auto generating c...
+        allocated = allocs_[i].alloc(tensor.bytes, alloc_node_[i]);
+      } else if (tensor.allocation_type == kTfLiteArenaRwPersistent &&
+                 allocs_[i].size == 0) {
+        allocated = allocs_[i].alloc(tensor.bytes, alloc_node_[i]);
+=======
+        allocs_[i].alloc(tensor.bytes, alloc_node_[i]);
+      } else if (tensor.allocation_type == kTfLiteArenaRwPersistent &&
+                 allocs_[i].size == 0) {
+        allocs_[i].alloc(tensor.bytes, alloc_node_[i]);
+>>>>>>> source:           f61760f7031f - kehuang: Fix use-after-free on zero-...
       }
+<<<<<<< dest:             4912b9a3faf0 - frameworks-actuation-server: Batched...
 
       if (allocated) {
         TF_LITE_ENSURE_STATUS(ResolveTensorAllocation(i));
@@ -221,6 +253,13 @@ TfLiteStatus SimplePlanner::ExecuteAllocations(int first_node, int last_node) {
                  tensor.allocation_type == kTfLiteArenaRwPersistent) {
         tensor.data.raw = nullptr;
       }
+||||||| parent of source: e33eb7ccd76c - searchads-capture: Auto generating c...
+    }
+    if (allocated) {
+      TF_LITE_ENSURE_STATUS(ResolveTensorAllocation(i));
+=======
+      TF_LITE_ENSURE_STATUS(ResolveTensorAllocation(i));
+>>>>>>> source:           f61760f7031f - kehuang: Fix use-after-free on zero-...
     }
   }
   // TODO(b/191631156): Dealloc node if it's not needed.
@@ -261,6 +300,7 @@ TfLiteStatus SimplePlanner::AcquireNonPersistentMemory() {
 
 TfLiteStatus SimplePlanner::ResolveTensorAllocation(int tensor_index) {
   TfLiteTensor& tensor = *graph_info_->tensor(tensor_index);
+<<<<<<< dest:             4912b9a3faf0 - frameworks-actuation-server: Batched...
   if (tensor.allocation_type == kTfLiteArenaRw ||
       tensor.allocation_type == kTfLiteArenaRwPersistent) {
     if (allocs_[tensor_index].size != 0) {
@@ -269,6 +309,23 @@ TfLiteStatus SimplePlanner::ResolveTensorAllocation(int tensor_index) {
       tensor.data.raw = nullptr;
     }
   }
+||||||| parent of source: e33eb7ccd76c - searchads-capture: Auto generating c...
+  if (tensor.allocation_type == kTfLiteArenaRw) {
+    // Skip resolution if the size of the tensor is zero, leaving it as a
+    // nullptr.
+    if (allocs_[tensor_index].size != 0) {
+      tensor.data.raw = allocs_[tensor_index].ptr;
+    }
+  }
+  if (tensor.allocation_type == kTfLiteArenaRwPersistent) {
+    tensor.data.raw = allocs_[tensor_index].ptr;
+  }
+=======
+  if (tensor.allocation_type == kTfLiteArenaRw ||
+      tensor.allocation_type == kTfLiteArenaRwPersistent) {
+    tensor.data.raw = allocs_[tensor_index].ptr;
+  }
+>>>>>>> source:           f61760f7031f - kehuang: Fix use-after-free on zero-...
   return kTfLiteOk;
 }
 
