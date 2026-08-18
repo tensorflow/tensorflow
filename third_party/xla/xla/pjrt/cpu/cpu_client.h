@@ -352,6 +352,10 @@ class PjRtCpuClient final : public CommonPjRtClient {
       PjRtMemorySpace* memory_space,
       const Layout* device_layout) const override;
 
+  absl::StatusOr<xla::Shape> GetCopyDestinationShape(
+      const xla::Shape& shape, PjRtMemorySpace* src_memory_space,
+      PjRtMemorySpace* dst_memory_space) override;
+
  private:
   friend class PjRtCpuLoadedExecutable;
   friend class CpuPjRtRawLoadedExecutable;
