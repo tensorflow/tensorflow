@@ -13,10 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
@@ -340,6 +348,11 @@ REGISTER_OP("QueueDequeueManyV2")
       if (c->input_tensor(1) == nullptr) {
         n_shape = c->Vector(InferenceContext::kUnknownDim);
       } else {
+        if (c->input_tensor(1)->NumElements() != 1) {
+          return errors::InvalidArgument(
+              "Input 'n' must be a scalar, but has shape ",
+              c->input_tensor(1)->shape().DebugString());
+        }
         const int32_t n = c->input_tensor(1)->scalar<int32_t>()();
         if (n < 0) {
           return absl::InvalidArgumentError(
