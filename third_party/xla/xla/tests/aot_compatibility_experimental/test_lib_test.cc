@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "xla/tests/aot_interception_pjrt_client.h"
 #include "xla/tsl/platform/test.h"
+#include "tsl/platform/path.h"
 
 namespace xla {
 namespace aot_compatibility_experimental {
@@ -64,6 +65,15 @@ TEST(TestLibTest, GetAotTestParamsForGoldenFileVerification_With4Versions) {
       GetAotTestParamsForGoldenFileVerification("test_dummy_test"));
   EXPECT_THAT(params, ElementsAre(AotTestParam{AOTTestMode::kGoldenVerification,
                                                4, "test_dummy_test"}));
+}
+
+TEST(TestLibTest, AOTInterceptionPjrtClientLoadSerializedArtifact_Succeeds) {
+  std::string artifact_path = tsl::io::JoinPath(
+      GetExecutablesDirectory("test_dummy_test"), "v1", "exec.pbtxt");
+  AOTInterceptionPjrtClient client(
+      nullptr, AOTTestMode::kBackwardsCompatibility, artifact_path);
+  ASSERT_OK_AND_ASSIGN(std::string serialized, client.LoadSerializedArtifact());
+  EXPECT_FALSE(serialized.empty());
 }
 
 }  // namespace

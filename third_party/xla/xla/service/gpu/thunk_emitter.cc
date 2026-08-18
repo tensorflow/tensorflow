@@ -64,6 +64,8 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/llvm/llvm_emitter.h"
 #include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
+#include "xla/backends/gpu/libraries/native_custom_call_thunks/native_custom_call_emitter_context.h"
+#include "xla/backends/gpu/libraries/native_custom_call_thunks/native_custom_call_handler_registry.h"
 #include "xla/backends/gpu/runtime/all_gather_thunk.h"
 #include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/all_to_all_thunk.h"
@@ -104,7 +106,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/topk.h"
 #include "xla/backends/gpu/runtime/triangular_solve_thunk.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
-#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_copy.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
@@ -152,6 +153,7 @@ limitations under the License.
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/triton_call.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
@@ -426,6 +428,16 @@ Future<ThunkSequence> ThunkEmitter::DispatchCustomCall(
   }
   if (hlo->custom_call_target() == "GetRngSeed") {
     return EmitRngSeed(hlo);
+  }
+  // Custom calls that have registered a thunk-folding handler are lowered
+  // directly to a native ThunkSequence instead of a CustomCallThunk. This is
+  // checked last, so the built-in specialized emitters above always take
+  // precedence.
+  if (std::optional<NativeCustomCallHandlerRef> handler =
+          NativeCustomCallHandlerRegistry::GetGlobal().Lookup(
+              hlo->custom_call_target());
+      handler.has_value()) {
+    return EmitNativeCustomCallThunks(custom_call, *handler);
   }
   return EmitGenericCustomCall(custom_call);
 }
@@ -1139,6 +1151,70 @@ absl::StatusOr<ShapedSlice> ThunkEmitter::GetShapedSliceForHlo(
       ir_emitter_context_->buffer_assignment().GetShapeForUniqueSlice(instr,
                                                                       index));
   return ShapedSlice{slice, shape};
+}
+
+class NativeCustomCallEmitterContextImpl
+    : public NativeCustomCallEmitterContext {
+ public:
+  NativeCustomCallEmitterContextImpl(const ThunkEmitter* emitter,
+                                     const HloCustomCallInstruction* instr)
+      : emitter_(*emitter), instr_(*instr) {}
+
+  const GpuTopology& GetTargetTopology() const override {
+    return emitter_.ir_emitter_context_->gpu_topology();
+  }
+
+  const DebugOptions& GetDebugOptions() const override {
+    return emitter_.ir_emitter_context_->debug_options();
+  }
+
+  Thunk::ThunkInfo GenerateThunkInfo() const override {
+    return Thunk::ThunkInfo::WithProfileAnnotation(
+        &instr_, emitter_.ir_emitter_context_->GetNextThunkId());
+  }
+
+  absl::StatusOr<BufferAllocation::Slice> GetResultAllocationSlice(
+      const ShapeIndex& index) const override {
+    return emitter_.GetAllocationSlice(&instr_, index);
+  }
+
+  absl::StatusOr<BufferAllocation::Slice> GetOperandAllocationSlice(
+      int64_t operand_index, const ShapeIndex& index) const override {
+    TF_RET_CHECK(operand_index >= 0 && operand_index < instr_.operand_count());
+    return emitter_.GetAllocationSlice(instr_.operand(operand_index), index);
+  }
+
+  absl::StatusOr<xla::ffi::AttributesMap> GetFfiAttributes() const override {
+    // Decode the opaque backend config into an FFI attributes map, mirroring
+    // EmitGenericCustomCall. For FFI handlers the backend config must be a
+    // string parsable into an MLIR dictionary attribute.
+    absl::StatusOr<GpuBackendConfig> backend_config =
+        instr_.backend_config<GpuBackendConfig>();
+    const std::string& backend_config_str =
+        backend_config.ok()
+            ? backend_config->custom_call_backend_config().attributes()
+            : instr_.raw_backend_config_string();
+    if (backend_config_str.empty()) {
+      return xla::ffi::AttributesMap();
+    }
+    mlir::Attribute attr = mlir::parseAttribute(
+        backend_config_str, emitter_.ir_emitter_context_->mlir_context());
+    auto dict = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(attr);
+    TF_RET_CHECK(dict != nullptr)
+        << "Unsupported backend config. Expected a string parsable into a "
+           "dictionary attribute.";
+    return xla::ffi::BuildAttributesMap(dict);
+  }
+
+ private:
+  const ThunkEmitter& emitter_;
+  const HloCustomCallInstruction& instr_;
+};
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitNativeCustomCallThunks(
+    const HloCustomCallInstruction* instr, NativeCustomCallHandlerRef handler) {
+  NativeCustomCallEmitterContextImpl ctx(this, instr);
+  return handler(*instr, ctx);
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitGenericCustomCall(

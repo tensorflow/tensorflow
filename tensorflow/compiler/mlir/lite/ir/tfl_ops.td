@@ -2898,6 +2898,8 @@ def TFL_PadV2Op : TFL_Op<"padv2", [
   let hasOptions = 1;
 
   let hasFolder = 1;
+
+  let hasCanonicalizer = 1;
 }
 
 def TFL_PolyCallOp : Op<TFL_Dialect, "poly_call", [
