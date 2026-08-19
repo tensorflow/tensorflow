@@ -2710,9 +2710,11 @@ class CheckpointReaderTest(test.TestCase):
     v0 = variable_v1.VariableV1([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
                                 dtype=dtypes.float32,
                                 name="v0")
-    v1 = variable_v1.VariableV1([[[1.0], [2.0]], [[3.0], [4.0]], [[5.0], [6.0]]],
-                                dtype=dtypes.float32,
-                                name="v1")
+    v1 = variable_v1.VariableV1(
+        [[[1.0], [2.0]], [[3.0], [4.0]], [[5.0], [6.0]]],
+        dtype=dtypes.float32,
+        name="v1",
+    )
 
     init_all_op = variables.global_variables_initializer()
     save = saver_module.Saver(
