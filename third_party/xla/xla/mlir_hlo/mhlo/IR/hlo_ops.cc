@@ -6472,8 +6472,8 @@ static llvm::SmallVector<Attribute, 4> evaluateMhloRegion(
     llvm::SmallVector<OpFoldResult, 4> results;
     if (failed(op.fold(inputs, results))) return {};
     for (auto it : llvm::zip(op.getResults(), results)) {
-      if (!std::get<1>(it).is<Attribute>()) return {};
-      values.insert({std::get<0>(it), std::get<1>(it).get<Attribute>()});
+      if (!isa<Attribute>(std::get<1>(it))) return {};
+      values.insert({std::get<0>(it), cast<Attribute>(std::get<1>(it))});
     }
   }
   return {};
