@@ -89,7 +89,7 @@ class StringNGramsOp : public tensorflow::OpKernel {
     const int input_data_size = data->flat<tstring>().size();
     const int splits_vec_size = splits_vec.size();
     if (splits_vec_size > 0) {
-      int prev_split = splits_vec(0);
+      SPLITS_TYPE prev_split = splits_vec(0);
       OP_REQUIRES(context, prev_split == 0,
                   absl::InvalidArgumentError(absl::StrCat(
                       "First split value must be 0, got ", prev_split)));
