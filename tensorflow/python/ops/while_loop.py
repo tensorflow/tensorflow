@@ -483,7 +483,7 @@ def while_loop(cond,
       packed = False  # whether the body result was packed into a 1-item tuple
 
       orig_loop_vars_type = (
-          type(loop_vars) if isinstance(loop_vars, (list, tuple)) else list)
+          type(loop_vars) if type(loop_vars) in (list, tuple) else list)
 
       loop_var_structure = nest.map_structure(type_spec.type_spec_from_value,
                                               list(loop_vars))
