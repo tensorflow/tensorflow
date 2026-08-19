@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/Support/Compiler.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Location.h"
@@ -131,6 +132,10 @@ int8_t getTypeBitwidth(Type ty) {
   }
   if (isa<Float8EXMYType>(ty)) {
     return 8;
+  }
+  if (auto shaped_ty = dyn_cast<ShapedType>(ty)) {
+    return shaped_ty.getNumElements() *
+           getTypeBitwidth<adjust_bool>(shaped_ty.getElementType());
   }
   return ty.getIntOrFloatBitWidth();
 }

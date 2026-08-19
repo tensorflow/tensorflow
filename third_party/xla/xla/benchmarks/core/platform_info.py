@@ -91,6 +91,11 @@ class PlatformInfo:
     """
     return self._tpu_info.mxu_column_size, self._tpu_info.mxu_column_size
 
+  @property
+  def num_accumulators(self) -> int:
+    """Returns the number of accumulators on the TPU platform."""
+    return self._tpu_info.num_accumulators
+
   def mxu_size_by_dtype(self, lhs_dtype: jnp.dtype) -> tuple[int, int]:
     """Returns the MXU size for the given LHS dtype."""
     if (
