@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_CONFIG_FLAGS_H_
 #define TENSORFLOW_CORE_CONFIG_FLAGS_H_
 
+#include <atomic>
+
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/stringpiece.h"
 
@@ -23,15 +25,30 @@ namespace tensorflow {
 namespace config {
 
 // Container class for a single feature flag.
-// Note: this class is not thread safe.
+//
+// Flags are process-global and can be accessed concurrently from Python when
+// running CPython in free-threaded mode, so the flag value must be atomic.
 class Flag {
  public:
   explicit Flag(absl::string_view flag_name, bool default_value);
-  bool value() { return value_; }
-  void reset(bool value) { value_ = value; }
+
+  Flag(const Flag& other) : value_(other.value()) {}
+  Flag& operator=(const Flag& other) {
+    reset(other.value());
+    return *this;
+  }
+
+  Flag(Flag&& other) noexcept : value_(other.value()) {}
+  Flag& operator=(Flag&& other) noexcept {
+    reset(other.value());
+    return *this;
+  }
+
+  bool value() const { return value_.load(); }
+  void reset(bool value) { value_.store(value); }
 
  private:
-  bool value_;
+  std::atomic<bool> value_;
 };
 
 // Macro to declare new flags. Declare all flags in core/config/flag_defs.h
