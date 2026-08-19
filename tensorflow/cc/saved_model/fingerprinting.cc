@@ -173,6 +173,11 @@ absl::StatusOr<FingerprintDef> CreateFingerprintDefPb(
   SavedModel saved_model;
   TF_RETURN_IF_ERROR(ReadBinaryProto(Env::Default(), pb_file, &saved_model));
 
+  if (saved_model.meta_graphs_size() == 0) {
+    return absl::InvalidArgumentError(
+        "SavedModel (.pb) contains no MetaGraphs.");
+  }
+
   // Create a copy of `metagraph` which will be used and mutated for fingerprint
   // computation.
   FingerprintDef fingerprint_def;

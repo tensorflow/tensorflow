@@ -109,11 +109,11 @@ absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo> InferDispatchInfo(
       result.output_memory_space_kind_ids.push_back(kind);
     }
   }
-  // Initializes information about which arguments to which executables must
+  // Initializes information about which arguments to which executables may
   // be donated due to aliases that were specified by the computation.
   ABSL_ASSIGN_OR_RETURN(
-      result.parameters_that_must_be_donated,
-      ComputeParametersThatMustBeDonated(
+      result.parameters_that_may_be_donated,
+      ComputeParametersThatMayBeDonated(
           alias_config, result.parameter_device_shapes.size(), tuple_inputs));
   result.input_buffer_sizes_in_bytes.reserve(
       result.parameter_device_shapes.size());
