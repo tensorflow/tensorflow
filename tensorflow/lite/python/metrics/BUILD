@@ -34,6 +34,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:private"],
     deps = [
+        "@com_google_absl//absl/synchronization",
         "@xla//third_party/python_runtime:headers",
     ] + if_portable(
         if_false = [

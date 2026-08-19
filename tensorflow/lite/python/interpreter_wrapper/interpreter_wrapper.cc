@@ -83,6 +83,42 @@ namespace interpreter_wrapper {
 
 namespace {
 
+// Waiting for the per-interpreter mutex while holding the legacy GIL can
+// deadlock with Invoke(), because Invoke intentionally releases the GIL while
+// keeping this native mutex held. On GIL builds, release the GIL only while
+// waiting for the mutex. Free-threaded Python has no global GIL to release.
+class ScopedInterpreterLock {
+ public:
+  explicit ScopedInterpreterLock(
+      absl::Mutex* mu)
+      : mu_(mu) {
+#ifndef Py_GIL_DISABLED
+    Py_BEGIN_ALLOW_THREADS
+    mu_->Lock();
+    Py_END_ALLOW_THREADS
+#else
+    mu_->Lock();
+#endif
+  }
+
+  ~ScopedInterpreterLock() {
+    mu_->Unlock();
+  }
+
+  ScopedInterpreterLock(
+      const ScopedInterpreterLock&) = delete;
+
+  ScopedInterpreterLock& operator=(
+      const ScopedInterpreterLock&) = delete;
+
+ private:
+  absl::Mutex* const mu_;
+};
+
+}  // namespace
+
+namespace {
+
 using python_utils::PyDecrefDeleter;
 
 std::unique_ptr<Interpreter> CreateInterpreter(
@@ -448,6 +484,7 @@ InterpreterWrapper::~InterpreterWrapper() = default;
 static constexpr int kUndeterminedSubgraphIndex = -1;
 // LINT.ThenChange(//tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper_pybind11.cc)
 PyObject* InterpreterWrapper::AllocateTensors(int subgraph_index) {
+  ScopedInterpreterLock lock(&interpreter_mu_);
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   if (subgraph_index == kUndeterminedSubgraphIndex) {
     TFLITE_PY_CHECK(interpreter_->AllocateTensors());
@@ -462,6 +499,7 @@ PyObject* InterpreterWrapper::AllocateTensors(int subgraph_index) {
 }
 
 PyObject* InterpreterWrapper::Invoke(int subgraph_index) {
+  ScopedInterpreterLock lock(&interpreter_mu_);
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   TFLITE_PY_SUBGRAPH_BOUNDS_CHECK(subgraph_index);
 
@@ -485,6 +523,7 @@ PyObject* InterpreterWrapper::Invoke(int subgraph_index) {
 }
 
 PyObject* InterpreterWrapper::InputIndices() const {
+  ScopedInterpreterLock lock(&interpreter_mu_);
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   PyObject* np_array = PyArrayFromIntVector(interpreter_->inputs().data(),
                                             interpreter_->inputs().size());
@@ -493,6 +532,7 @@ PyObject* InterpreterWrapper::InputIndices() const {
 }
 
 PyObject* InterpreterWrapper::OutputIndices() const {
+  ScopedInterpreterLock lock(&interpreter_mu_);
   PyObject* np_array = PyArrayFromIntVector(interpreter_->outputs().data(),
                                             interpreter_->outputs().size());
 
@@ -530,6 +570,7 @@ PyObject* InterpreterWrapper::ResizeInputTensorImpl(int i, PyObject* value) {
 PyObject* InterpreterWrapper::ResizeInputTensor(int i, PyObject* value,
                                                 bool strict,
                                                 int subgraph_index) {
+  ScopedInterpreterLock lock(&interpreter_mu_);
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   TFLITE_PY_SUBGRAPH_BOUNDS_CHECK(subgraph_index);
 
@@ -554,6 +595,7 @@ PyObject* InterpreterWrapper::ResizeInputTensor(int i, PyObject* value,
 }
 
 int InterpreterWrapper::NumTensors(int subgraph_index) const {
+  ScopedInterpreterLock lock(&interpreter_mu_);
   if (!interpreter_) {
     return 0;
   }
@@ -561,6 +603,7 @@ int InterpreterWrapper::NumTensors(int subgraph_index) const {
 }
 
 int InterpreterWrapper::NumSubgraphs() const {
+  ScopedInterpreterLock lock(&interpreter_mu_);
   if (interpreter_ == nullptr) {
     return 0;
   }
@@ -569,6 +612,7 @@ int InterpreterWrapper::NumSubgraphs() const {
 
 std::string InterpreterWrapper::TensorName(int tensor_index,
                                            int subgraph_index) const {
+  ScopedInterpreterLock lock(&interpreter_mu_);
   const Subgraph* subgraph = interpreter_->subgraph(subgraph_index);
   if (!interpreter_ || tensor_index >= subgraph->tensors_size() ||
       tensor_index < 0) {
@@ -581,6 +625,7 @@ std::string InterpreterWrapper::TensorName(int tensor_index,
 
 PyObject* InterpreterWrapper::TensorType(int tensor_index,
                                          int subgraph_index) const {
+  ScopedInterpreterLock lock(&interpreter_mu_);
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(tensor_index, subgraph_index);
 
@@ -601,6 +646,7 @@ PyObject* InterpreterWrapper::TensorType(int tensor_index,
 
 PyObject* InterpreterWrapper::TensorSize(int tensor_index,
                                          int subgraph_index) const {
+  ScopedInterpreterLock lock(&interpreter_mu_);
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(tensor_index, subgraph_index);
 
@@ -618,6 +664,7 @@ PyObject* InterpreterWrapper::TensorSize(int tensor_index,
 
 PyObject* InterpreterWrapper::TensorSizeSignature(int tensor_index,
                                                   int subgraph_index) const {
+  ScopedInterpreterLock lock(&interpreter_mu_);
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(tensor_index, subgraph_index);
 
@@ -632,6 +679,7 @@ PyObject* InterpreterWrapper::TensorSizeSignature(int tensor_index,
 
 PyObject* InterpreterWrapper::TensorSparsityParameters(
     int tensor_index, int subgraph_index) const {
+  ScopedInterpreterLock lock(&interpreter_mu_);
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(tensor_index, subgraph_index);
 
@@ -646,6 +694,7 @@ PyObject* InterpreterWrapper::TensorSparsityParameters(
 
 PyObject* InterpreterWrapper::TensorQuantization(int tensor_index,
                                                  int subgraph_index) const {
+  ScopedInterpreterLock lock(&interpreter_mu_);
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(tensor_index, subgraph_index);
 
@@ -656,6 +705,7 @@ PyObject* InterpreterWrapper::TensorQuantization(int tensor_index,
 
 PyObject* InterpreterWrapper::TensorQuantizationParameters(
     int tensor_index, int subgraph_index) const {
+  ScopedInterpreterLock lock(&interpreter_mu_);
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(tensor_index, subgraph_index);
 
@@ -722,6 +772,7 @@ PyObject* InterpreterWrapper::TensorQuantizationParameters(
 
 PyObject* InterpreterWrapper::SetTensor(int tensor_index, PyObject* value,
                                         int subgraph_index) {
+  ScopedInterpreterLock lock(&interpreter_mu_);
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   TFLITE_PY_SUBGRAPH_BOUNDS_CHECK(subgraph_index);
   TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(tensor_index, subgraph_index);
@@ -810,6 +861,7 @@ PyObject* InterpreterWrapper::SetTensor(int tensor_index, PyObject* value,
 }
 
 int InterpreterWrapper::NumNodes() const {
+  ScopedInterpreterLock lock(&interpreter_mu_);
   if (!interpreter_) {
     return 0;
   }
@@ -817,6 +869,7 @@ int InterpreterWrapper::NumNodes() const {
 }
 
 PyObject* InterpreterWrapper::NodeInputs(int i) const {
+  ScopedInterpreterLock lock(&interpreter_mu_);
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   TFLITE_PY_NODES_BOUNDS_CHECK(i);
 
@@ -827,6 +880,7 @@ PyObject* InterpreterWrapper::NodeInputs(int i) const {
 }
 
 PyObject* InterpreterWrapper::NodeOutputs(int i) const {
+  ScopedInterpreterLock lock(&interpreter_mu_);
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   TFLITE_PY_NODES_BOUNDS_CHECK(i);
 
@@ -837,6 +891,7 @@ PyObject* InterpreterWrapper::NodeOutputs(int i) const {
 }
 
 std::string InterpreterWrapper::NodeName(int i) const {
+  ScopedInterpreterLock lock(&interpreter_mu_);
   if (!interpreter_ || i >= interpreter_->nodes_size() || i < 0) {
     return "";
   }
@@ -894,6 +949,7 @@ PyObject* CheckGetTensorArgs(Interpreter* interpreter_, int tensor_index,
 }  // namespace
 
 PyObject* InterpreterWrapper::GetSignatureDefs() const {
+  ScopedInterpreterLock lock(&interpreter_mu_);
   PyObject* result = PyDict_New();
   if (result == nullptr) return nullptr;
 
@@ -960,6 +1016,7 @@ PyObject* InterpreterWrapper::GetSignatureDefs() const {
 
 PyObject* InterpreterWrapper::GetSubgraphIndexFromSignature(
     const char* signature_key) {
+  ScopedInterpreterLock lock(&interpreter_mu_);
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
 
   int32_t subgraph_index =
@@ -974,6 +1031,7 @@ PyObject* InterpreterWrapper::GetSubgraphIndexFromSignature(
 
 PyObject* InterpreterWrapper::GetTensor(int tensor_index,
                                         int subgraph_index) const {
+  ScopedInterpreterLock lock(&interpreter_mu_);
   // Sanity check accessor
   TfLiteTensor* tensor = nullptr;
   int type_num = 0;
@@ -1103,6 +1161,7 @@ PyObject* InterpreterWrapper::GetTensor(int tensor_index,
 
 PyObject* InterpreterWrapper::tensor(PyObject* base_object, int tensor_index,
                                      int subgraph_index) {
+  ScopedInterpreterLock lock(&interpreter_mu_);
   // Sanity check accessor
   TfLiteTensor* tensor = nullptr;
   int type_num = 0;
@@ -1199,12 +1258,14 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
 }
 
 PyObject* InterpreterWrapper::ResetVariableTensors() {
+  ScopedInterpreterLock lock(&interpreter_mu_);
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   TFLITE_PY_CHECK(interpreter_->ResetVariableTensors());
   Py_RETURN_NONE;
 }
 
 PyObject* InterpreterWrapper::SetNumThreads(int num_threads) {
+  ScopedInterpreterLock lock(&interpreter_mu_);
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   interpreter_->SetNumThreads(num_threads);
   Py_RETURN_NONE;
@@ -1212,6 +1273,7 @@ PyObject* InterpreterWrapper::SetNumThreads(int num_threads) {
 
 PyObject* InterpreterWrapper::ModifyGraphWithDelegate(
     TfLiteDelegate* delegate) {
+  ScopedInterpreterLock lock(&interpreter_mu_);
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   TFLITE_PY_CHECK(interpreter_->ModifyGraphWithDelegate(delegate));
   Py_RETURN_NONE;

@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "learning/brain/google/monitoring/metrics_exporter.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/lite/python/metrics/wrapper/metrics_wrapper.h"
 
 namespace tflite {
@@ -54,7 +55,10 @@ PyObject* MetricsWrapper::ExportMetrics() {
     return nullptr;
   }
 
-  exporter_->ExportMetrics();
+  {
+    absl::MutexLock lock(&exporter_mu_);
+    exporter_->ExportMetrics();
+  }
 
   Py_RETURN_NONE;
 }
