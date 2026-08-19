@@ -396,5 +396,13 @@ class AutomaticStackingTest(test.TestCase):
     self.assertEqual(dtypes.float64, t_2.dtype)
 
 
+  def testInvalidValuesTypeRaisesTypeError(self):
+    t = constant_op.constant([1, 2, 3])
+    with self.assertRaisesRegex(
+        TypeError, r"Argument `values` must be a sequence of Tensor objects"
+    ):
+      array_ops_stack.stack(t)
+
+
 if __name__ == "__main__":
   test.main()
