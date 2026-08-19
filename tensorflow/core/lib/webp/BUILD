@@ -13,11 +13,23 @@
 # limitations under the License.
 # ==============================================================================
 
+# copybara:uncomment_begin
+# load(
+#     "//third_party/sandboxed_api/bazel:sapi.bzl",
+#     "cc_sandboxed_library",
+#     "cc_sandboxed_library_test",
+# )
+# copybara:uncomment_end
+
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
-    "cc_library",
+    "cc_library",  # @unused
 )
+
+# copybara:comment_begin
+cc_sandboxed_library = cc_library
+# copybara:comment_end
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -33,10 +45,13 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-cc_library(
+cc_sandboxed_library(
     name = "webp_io",
     srcs = ["webp_io.cc"],
     hdrs = ["webp_io.h"],
+    # copybara:uncomment annotations = ["webp_io_sandbox_annotations.cc"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    # copybara:uncomment default_sandboxed = False,
     features = ["-layering_check"],
     deps = [
         "//tensorflow/core/platform:types",
@@ -77,3 +92,16 @@ tf_cc_test(
         "@xla//xla/tsl/platform:test_benchmark",
     ],
 )
+
+# copybara:uncomment_begin
+# cc_sandboxed_library_test(
+#     name = "webp_io_sandbox_test",
+#     srcs = ["webp_io_sandbox_test.cc"],
+#     data = ["//tensorflow/core/lib/webp/testdata:webp_testdata"],
+#     lib = ":webp_io",
+#     deps = [
+#         "@com_google_googletest//:gtest_main",
+#         "@com_google_absl//absl/strings:string_view",
+#     ],
+# )
+# copybara:uncomment_end
