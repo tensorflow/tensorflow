@@ -56,6 +56,8 @@ class AOTInterceptionPjrtClient : public PjRtClient {
 
   ~AOTInterceptionPjrtClient() override = default;
 
+  absl::StatusOr<std::string> LoadSerializedArtifact();
+
   // Intercepted compilation methods.
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) override;
