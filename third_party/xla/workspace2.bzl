@@ -1,18 +1,3 @@
-# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# =============================================================================
-
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
 load("@bazel_features//:deps.bzl", "bazel_features_deps")
@@ -68,15 +53,18 @@ load("//third_party/pybind11_abseil:workspace.bzl", pybind11_abseil = "repo")
 load("//third_party/pybind11_bazel:workspace.bzl", pybind11_bazel = "repo")
 load("//third_party/raft:workspace.bzl", raft = "xla_repo")
 load("//third_party/rapids_logger:workspace.bzl", rapids_logger = "xla_repo")
+load("//third_party/rdma_core:workspace.bzl", rdma_core = "repo")
 load("//third_party/riegeli:workspace.bzl", riegeli = "repo")
 load("//third_party/rmm:workspace.bzl", rmm = "xla_repo")
 load("//third_party/robin_map:workspace.bzl", robin_map = "repo")
+load("//third_party/roc_mori:workspace.bzl", roc_mori = "xla_repo")
 load("//third_party/rocm_device_libs:workspace.bzl", rocm_device_libs = "repo")
 load("//third_party/shardy:workspace.bzl", shardy = "repo")
 load("//third_party/slinky:workspace.bzl", slinky = "repo")
 load("//third_party/spdlog:workspace.bzl", spdlog = "repo")
 load("//third_party/sqlite:workspace.bzl", sqlite = "repo")
 load("//third_party/stablehlo:workspace.bzl", stablehlo = "repo")
+load("//third_party/system_libpci:workspace.bzl", system_libpci = "repo")
 load("//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
 load("//third_party/tensorrt:workspace.bzl", tensorrt = "repo")
 load("//third_party/transformer_engine:workspace.bzl", transformer_engine = "repo")
@@ -134,6 +122,9 @@ def _initialize_third_party():
     rapids_logger()
     rmm()
     robin_map()
+    rdma_core()
+    system_libpci()  # ROCm CI image's pciutils headers (used by @roc_mori//:libpci).
+    roc_mori()  # MORI: hermetic Bazel build from GitHub tarball + BUILD overlays.
     rocm_device_libs()
     shardy()
     slinky()
