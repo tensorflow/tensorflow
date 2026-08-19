@@ -1,13 +1,10 @@
 // RUN: fusion_to_xtile %s | fusion_compiler_opt --canonicalize -cse \
 // RUN:   | FileCheck %s
-// RUN: fusion_to_xtile %s | fusion_compiler_opt --xtile-cpu-xtile-to-vector \
-// RUN:   | FileCheck %s --check-prefix=CHECK-VECTOR
-// RUN: test_correctness %s
 
 // RUN: fusion_to_xtile %s | fusion_compiler_opt \
-// RUN:   --xtile-cpu-new-xtile-to-vector --xla-simplify-arith \
-// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
-// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering=true
+// RUN:   --xtile-cpu-xtile-to-vector --xla-simplify-arith \
+// RUN:   | FileCheck %s --check-prefix=CHECK-VECTOR
+// RUN: test_correctness %s
 
 
 fusion {
@@ -39,20 +36,13 @@ fusion {
 // CHECK:    xtile.insert %[[TRANSPOSE]] into %[[OUT]][%[[IDX_2]], %[[IDX_0]], %[[IDX_1]], %[[C0]]] [16, 1, 1, 16] [1, 1, 1, 1]
 
 // CHECK-VECTOR-LABEL: func.func @wrapped_fusion_impl
-// CHECK-VECTOR:         %[[ALLOCA_0:.*]] = memref.alloca() : memref<16x1x1x16xcomplex<f32>>
-// CHECK-VECTOR:         %[[ALLOCA_1:.*]] = memref.alloca() : memref<16x1x1x16xcomplex<f32>>
-// CHECK-VECTOR:         %[[ALLOCA_2:.*]] = memref.alloca() {alignment = 64 : i64} : memref<16x1x1x16xcomplex<f32>>
-// CHECK-VECTOR:         memref.copy %{{.*}}, %[[ALLOCA_0]]
-// CHECK-VECTOR:         memref.copy %[[ALLOCA_2]], %{{.*}}
+// CHECK-VECTOR-SAME:    %[[ARG0:.*]]: memref<16x40x40x64x2xf32>, %[[ARG1:.*]]: memref<64x40x40x16x2xf32>
 
-// NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl
-// NEW-VECTOR-SAME:    %[[ARG0:.*]]: memref<16x40x40x64x2xf32>, %[[ARG1:.*]]: memref<64x40x40x16x2xf32>
-
-// NEW-VECTOR: %[[PAD:.*]] = arith.constant 0.000000e+00 : f32
-// NEW-VECTOR: scf.for
-// NEW-VECTOR: vector.transfer_read %[[ARG0]][%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}], %[[PAD]] {{.*}} : memref<16x40x40x64x2xf32>, vector<16x1x1x16x2xf32>
-// NEW-VECTOR: %[[TRANSPOSE:.*]] = vector.transpose %{{.*}}, [3, 1, 2, 0, 4] : vector<16x1x1x16x2xf32> to vector<16x1x1x16x2xf32>
-// NEW-VECTOR: vector.transfer_write %[[TRANSPOSE]], %[[ARG1]][%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}] {{.*}} : vector<16x1x1x16x2xf32>, memref<64x40x40x16x2xf32>
+// CHECK-VECTOR: %[[PAD:.*]] = arith.constant 0.000000e+00 : f32
+// CHECK-VECTOR: scf.for
+// CHECK-VECTOR: vector.transfer_read %[[ARG0]][%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}], %[[PAD]] {{.*}} : memref<16x40x40x64x2xf32>, vector<16x1x1x16x2xf32>
+// CHECK-VECTOR: %[[TRANSPOSE:.*]] = vector.transpose %{{.*}}, [3, 1, 2, 0, 4] : vector<16x1x1x16x2xf32> to vector<16x1x1x16x2xf32>
+// CHECK-VECTOR: vector.transfer_write %[[TRANSPOSE]], %[[ARG1]][%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}] {{.*}} : vector<16x1x1x16x2xf32>, memref<64x40x40x16x2xf32>
 
 ENTRY main {
   p0 = c64[16,40,40,64]{3,2,1,0} parameter(0)

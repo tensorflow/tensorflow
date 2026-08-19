@@ -53,13 +53,6 @@ limitations under the License.
 #include "mlir/Conversion/VectorToSCF/VectorToSCF.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Affine/Transforms/Passes.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/Arith/Transforms/BufferDeallocationOpInterfaceImpl.h"
-#include "mlir/Dialect/Arith/Transforms/BufferizableOpInterfaceImpl.h"
-#include "mlir/Dialect/Bufferization/Pipelines/Passes.h"
-#include "mlir/Dialect/Bufferization/Transforms/BufferizableOpInterfaceImpl.h"
-#include "mlir/Dialect/Bufferization/Transforms/FuncBufferizableOpInterfaceImpl.h"
-#include "mlir/Dialect/Bufferization/Transforms/Passes.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/Func/Extensions/InlinerExtension.h"
@@ -68,21 +61,13 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/Transforms/InlinerInterfaceImpl.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
-#include "mlir/Dialect/Linalg/Passes.h"
-#include "mlir/Dialect/Linalg/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Math/IR/Math.h"
-#include "mlir/Dialect/MemRef/Transforms/AllocationOpInterfaceImpl.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
-#include "mlir/Dialect/SCF/Transforms/BufferDeallocationOpInterfaceImpl.h"
-#include "mlir/Dialect/SCF/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
-#include "mlir/Dialect/Vector/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Vector/Transforms/Passes.h"
-#include "mlir/Dialect/Vector/Transforms/SubsetOpInterfaceImpl.h"
 #include "mlir/Dialect/Vector/Transforms/VectorRewritePatterns.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -100,7 +85,6 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Transforms/Passes.h"
-#include "stablehlo/conversions/linalg/transforms/Passes.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/transforms/Passes.h"
 #include "stablehlo/transforms/optimization/Passes.h"
@@ -288,33 +272,6 @@ static void AddScalarLoweringPasses(mlir::OpPassManager& pm,
   AddGenericLoweringPasses(pm, fast_min_max);
 }
 
-void AddBufferizationPasses(mlir::OpPassManager& pm, bool msan_enabled) {
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::bufferization::createEmptyTensorEliminationPass());
-  pm.addPass(mlir::bufferization::createOneShotBufferizePass());
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::bufferization::createBufferHoistingPass());
-  pm.addPass(mlir::memref::createFoldMemRefAliasOpsPass());
-
-  if (msan_enabled) {
-    pm.addPass(cpu::createInitializeAllocsPass());
-  }
-
-  mlir::bufferization::PromoteBuffersToStackPassOptions
-      buffer_promotion_options;
-  // TODO(willfroom): Look at a more principled way to set this option.
-  buffer_promotion_options.maxAllocSizeInBytes = 4096;
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::bufferization::createPromoteBuffersToStackPass(
-          buffer_promotion_options));
-
-  mlir::bufferization::buildBufferDeallocationPipeline(
-      pm, mlir::bufferization::BufferDeallocationPipelineOptions());
-  pm.addNestedPass<mlir::func::FuncOp>(cpu::createHoistAllocaPass());
-}
-
 }  //  namespace
 
 void DumpMlirModule(mlir::ModuleOp module, absl::string_view stage_name,
@@ -347,55 +304,7 @@ class ModuleCallbackPass
 };
 
 // Optimizations passes for the tiled emitter.
-// This is currently very simple but will grow to include tiled optimizations
-// such as transpose hoisting and dimension reduction.
-void AddXtileToVectorPasses(mlir::OpPassManager& pm, bool msan_enabled) {
-  pm.addPass(xtile::createVerifyLegalXTileOpsPass());
-
-  emitters::RegisterOptimizationPasses(pm);
-
-  pm.addPass(cpu::createLowerXTileEntryPass());
-
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::stablehlo::createStablehloTargetIndependentOptimizationPass());
-
-  pm.addPass(xtile::createStablehloLowerToArithPass());
-  // This pass and the Canonicalizer pass need to run before ShloToVectorPass,
-  // otherwise the LowerReduce pattern does not work due to
-  // UnrealizedConversionCast in the reducer body.
-  pm.addPass(xtile::createLegalizeUnsignedIntegersAsSignlessPass());
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(cpu::createShloToVectorPass());
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::vector::createLowerVectorMultiReductionPass(
-          mlir::vector::VectorMultiReductionLowering::InnerParallel));
-  pm.addPass(cpu::createTensorOpsToBufferizablePass());
-
-  mlir::stablehlo::StablehloLegalizeToLinalgPassOptions
-      stablehlo_to_linalg_options;
-  stablehlo_to_linalg_options.enablePrimitiveOps = true;
-  pm.addPass(mlir::stablehlo::createStablehloLegalizeToLinalgPass());
-  pm.addPass(xtile::createConvertElementwise0DTensorToScalarPass());
-
-  pm.addPass(mlir::createConvertElementwiseToLinalgPass());
-  pm.addPass(cpu::createFuseElementwisePass());
-
-  AddBufferizationPasses(pm, msan_enabled);
-
-  pm.addPass(cpu::createLinalgElementwiseToVectorPass());
-
-  // For lowering of complex loops.
-  pm.addPass(mlir::createConvertLinalgToLoopsPass());
-  pm.addPass(mlir::createConvertComplexToStandardPass());
-
-  pm.addPass(mlir::memref::createFoldMemRefAliasOpsPass());
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
-}
-
-// Optimizations passes for the tiled emitter.
-void AddNewXtileToVectorPasses(mlir::OpPassManager& pm) {
+void AddXtileToVectorPasses(mlir::OpPassManager& pm) {
   pm.addPass(xtile::createVerifyLegalXTileOpsPass());
 
   emitters::RegisterOptimizationPasses(pm);
@@ -427,52 +336,17 @@ void AddNewXtileToVectorPasses(mlir::OpPassManager& pm) {
 // first to the vector dialect and then to LLVM.
 void AddVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max) {
   pm.addPass(cpu::createVectorToScalarPass());
-  pm.addPass(cpu::createMemrefCopyToLoopsPass());
-  pm.addPass(cpu::createLowerToLLVMPass());
-  pm.addPass(mlir::createConvertVectorToSCFPass(
-      mlir::VectorTransferToSCFOptions().enableFullUnroll(false)));
-  pm.addNestedPass<mlir::func::FuncOp>(cpu::createHoistAllocaPass());
-  pm.addPass(cpu::createUnpackSubByteVectorWritePass());
-
-  mlir::ConvertVectorToLLVMPassOptions options;
-
-  // If the tile size is 16x16 this will generate the most efficient code for
-  // avx512 platforms.
-  options.vectorTransposeLowering =
-      mlir::vector::VectorTransposeLowering::Shuffle16x16;
-  pm.addPass(mlir::createConvertVectorToLLVMPass(options));
-
-  pm.addPass(mlir::createConvertComplexToStandardPass());
-  pm.addPass(mlir::memref::createExpandStridedMetadataPass());
-
-  pm.addPass(emitters::createSafeIntegerArithmeticPass());
-
-  AddGenericLoweringPasses(pm, fast_min_max);
-}
-
-// Lowering passes for the new tiled emitter.
-// The input IR is from the xtile dialect which uses tensors that are converted
-// first to the vector dialect and then to LLVM.
-void AddNewVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max) {
-  pm.addPass(cpu::createVectorToScalarPass());
-  pm.addPass(cpu::createMemrefCopyToLoopsPass());
   pm.addPass(cpu::createLowerToLLVMPass());
   pm.addPass(mlir::createConvertVectorToSCFPass(
       mlir::VectorTransferToSCFOptions().enableFullUnroll(true)));
-  pm.addNestedPass<mlir::func::FuncOp>(cpu::createHoistAllocaPass());
   pm.addPass(cpu::createUnpackSubByteVectorWritePass());
 
   mlir::ConvertVectorToLLVMPassOptions options;
-
   // If the tile size is 16x16 this will generate the most efficient code for
   // avx512 platforms.
   options.vectorTransposeLowering =
       mlir::vector::VectorTransposeLowering::Shuffle16x16;
   pm.addPass(mlir::createConvertVectorToLLVMPass(options));
-
-  pm.addPass(mlir::createConvertComplexToStandardPass());
-  pm.addPass(mlir::memref::createExpandStridedMetadataPass());
-
   pm.addPass(emitters::createSafeIntegerArithmeticPass());
 
   AddGenericLoweringPasses(pm, fast_min_max);
@@ -504,21 +378,12 @@ FusionCompiler::FusionCompiler(mlir::MLIRContext* context, Options options,
       std::make_unique<TraceInstrumentation>());
 
   // Tiled passes.
-
-  if (options_.use_new_xtile_lowering) {
-    AddNewXtileToVectorPasses(tiled_pass_manager_);
-  } else {
-    AddXtileToVectorPasses(tiled_pass_manager_, options_.msan_enabled);
-  }
+  AddXtileToVectorPasses(tiled_pass_manager_);
   if (should_dump_mlir_passes) {
     tiled_pass_manager_.addPass(
         std::make_unique<ModuleCallbackPass>(hlo_module_, "post-optimization"));
   }
-  if (options_.use_new_xtile_lowering) {
-    AddNewVectorToLLVMPasses(tiled_pass_manager_, options_.fast_min_max);
-  } else {
-    AddVectorToLLVMPasses(tiled_pass_manager_, options_.fast_min_max);
-  }
+  AddVectorToLLVMPasses(tiled_pass_manager_, options_.fast_min_max);
   tiled_pass_manager_.enableVerifier(should_verify);
   tiled_pass_manager_.addInstrumentation(
       std::make_unique<TraceInstrumentation>());
@@ -667,22 +532,6 @@ mlir::DialectRegistry FusionCompiler::CreateDialectRegistry() {
 
   mlir::LLVM::registerInlinerInterface(registry);
   mlir::func::registerInlinerExtension(registry);
-
-  mlir::memref::registerAllocationOpInterfaceExternalModels(registry);
-
-  mlir::arith::registerBufferDeallocationOpInterfaceExternalModels(registry);
-  mlir::scf::registerBufferDeallocationOpInterfaceExternalModels(registry);
-
-  mlir::arith::registerBufferizableOpInterfaceExternalModels(registry);
-  mlir::bufferization::registerBufferizableOpInterfaceExternalModels(registry);
-  mlir::bufferization::func_ext::registerBufferizableOpInterfaceExternalModels(
-      registry);
-  mlir::linalg::registerBufferizableOpInterfaceExternalModels(registry);
-  mlir::scf::registerBufferizableOpInterfaceExternalModels(registry);
-  mlir::tensor::registerBufferizableOpInterfaceExternalModels(registry);
-  mlir::vector::registerBufferizableOpInterfaceExternalModels(registry);
-
-  mlir::vector::registerSubsetOpInterfaceExternalModels(registry);
 
   mlir::registerLLVMDialectTranslation(registry);
   mlir::registerBuiltinDialectTranslation(registry);

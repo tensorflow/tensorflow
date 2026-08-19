@@ -1,14 +1,10 @@
-// RUN: fusion_to_xtile %s | fusion_compiler_opt --xtile-cpu-xtile-to-vector \
+// RUN: fusion_to_xtile %s | fusion_compiler_opt \
+// RUN:   --xtile-cpu-xtile-to-vector --xla-simplify-arith \
 // RUN:   | FileCheck %s --check-prefix=CHECK-VECTOR
+// RUN: fusion_to_xtile %s | fusion_compiler_opt \
+// RUN:   --xtile-cpu-vector-to-llvm \
+// RUN:   | FileCheck %s --check-prefix=CHECK-LLVM
 // RUN: test_correctness %s
-
-// RUN: fusion_to_xtile %s | fusion_compiler_opt \
-// RUN:   --xtile-cpu-new-xtile-to-vector --xla-simplify-arith \
-// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
-// RUN: fusion_to_xtile %s | fusion_compiler_opt \
-// RUN:   --xtile-cpu-new-xtile-to-vector --xtile-cpu-new-vector-to-llvm \
-// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR-LLVM
-// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering=true
 
 fusion {
   p0 = f64[1,12,1,1]{3,2,1,0} parameter(0)
@@ -30,14 +26,11 @@ ENTRY main {
       }
     }
 }
-// CHECK-VECTOR-LABEL: func.func @wrapped_fusion_impl
-// CHECK-VECTOR:         memref.subview %{{.*}} [1, 4, 1, 1] [1, 3, 1, 1]
+// CHECK-VECTOR-LABEL: func.func @wrapped_fusion_impl(
+// CHECK-VECTOR-COUNT-4:   memref.load {{.*}} : memref<1x12x1x1xf64>
+// CHECK-VECTOR:           vector.transfer_write
+// CHECK-VECTOR-SAME:        : vector<2x2xf64>, memref<1x3x2x2xf64>
 
-// NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl(
-// NEW-VECTOR-COUNT-4:   memref.load {{.*}} : memref<1x12x1x1xf64>
-// NEW-VECTOR:           vector.transfer_write
-// NEW-VECTOR-SAME:        : vector<2x2xf64>, memref<1x3x2x2xf64>
-
-// NEW-VECTOR-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
-// NEW-VECTOR-LLVM-NOT:   llvm.alloca
+// CHECK-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
+// CHECK-LLVM-NOT:   llvm.alloca
 

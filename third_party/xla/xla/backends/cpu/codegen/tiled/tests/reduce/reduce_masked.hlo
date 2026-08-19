@@ -1,12 +1,12 @@
-// RUN: fusion_to_xtile %s --xla_cpu_use_new_xtile_lowering  | FileCheck %s
+// RUN: fusion_to_xtile %s  | FileCheck %s
 
-// RUN: fusion_to_xtile %s --xla_cpu_use_new_xtile_lowering | fusion_compiler_opt \
-// RUN:   --xtile-cpu-new-xtile-to-vector --xla-simplify-arith \
-// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
-// RUN: fusion_to_xtile %s --xla_cpu_use_new_xtile_lowering | fusion_compiler_opt \
-// RUN:   --xtile-cpu-new-xtile-to-vector --xtile-cpu-new-vector-to-llvm \
-// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR-LLVM
-// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering --abs_error_bound=1e-5
+// RUN: fusion_to_xtile %s | fusion_compiler_opt \
+// RUN:   --xtile-cpu-xtile-to-vector --xla-simplify-arith \
+// RUN:   | FileCheck %s --check-prefix=CHECK-VECTOR
+// RUN: fusion_to_xtile %s | fusion_compiler_opt \
+// RUN:   --xtile-cpu-vector-to-llvm \
+// RUN:   | FileCheck %s --check-prefix=CHECK-LLVM
+// RUN: test_correctness %s --abs_error_bound=1e-5
 
 add {
   x = f32[] parameter(0)
@@ -22,10 +22,10 @@ fusion {
 
 // CHECK: xtile.mask %{{.*}} bounds [1, 250]
 
-// NEW-VECTOR: func.func @wrapped_fusion_impl
+// CHECK-VECTOR: func.func @wrapped_fusion_impl
 
-// NEW-VECTOR: %[[MASK:.*]] = vector.constant_mask [250] : vector<256xi1>
-// NEW-VECTOR: arith.select %[[MASK]]
+// CHECK-VECTOR: %[[MASK:.*]] = vector.constant_mask [250] : vector<256xi1>
+// CHECK-VECTOR: arith.select %[[MASK]]
 
 ENTRY main {
   p0 = f32[128,250] parameter(0)
@@ -40,5 +40,5 @@ ENTRY main {
     }
 }
 
-// NEW-VECTOR-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
-// NEW-VECTOR-LLVM-NOT: llvm.alloc
+// CHECK-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
+// CHECK-LLVM-NOT: llvm.alloc

@@ -1,14 +1,13 @@
 // RUN: fusion_to_xtile %s | fusion_compiler_opt --canonicalize -cse \
 // RUN:   | FileCheck %s
-// RUN: test_correctness %s
 
 // RUN: fusion_to_xtile %s | fusion_compiler_opt \
-// RUN:   --xtile-cpu-new-xtile-to-vector --xla-simplify-arith \
-// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
+// RUN:   --xtile-cpu-xtile-to-vector --xla-simplify-arith \
+// RUN:   | FileCheck %s --check-prefix=CHECK-VECTOR
 // RUN: fusion_to_xtile %s | fusion_compiler_opt \
-// RUN:   --xtile-cpu-new-xtile-to-vector --xtile-cpu-new-vector-to-llvm \
-// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR-LLVM
-// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering=true
+// RUN:   --xtile-cpu-vector-to-llvm \
+// RUN:   | FileCheck %s --check-prefix=CHECK-LLVM
+// RUN: test_correctness %s
 
 fusion {
   p0 = f32[128,32,64] parameter(0)
@@ -45,11 +44,11 @@ ENTRY main {
 // CHECK:          %[[TRANS:.*]] = stablehlo.transpose %[[EXT]], dims = [1, 2, 0]
 // CHECK:          xtile.insert %[[TRANS]] into %[[ARG1]][%[[OFF1]], %[[OFF2]], %[[OFF0]]] [8, 16, 16] [1, 1, 1]
 
-// NEW-VECTOR:    scf.for %[[IDX:.*]] = %{{.*}} to %{{.*}} step %{{.*}} {
-// NEW-VECTOR-NOT:  scf.if
-// NEW-VECTOR:      %[[EXT:.*]] = vector.transfer_read %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}], %{{.*}} {in_bounds = [true, true, true]} : memref<128x32x64xf32>, vector<16x8x16xf32>
-// NEW-VECTOR:      %[[TRANS:.*]] = vector.transpose %[[EXT]], [1, 2, 0] : vector<16x8x16xf32> to vector<8x16x16xf32>
-// NEW-VECTOR:      vector.transfer_write %[[TRANS]], %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] {in_bounds = [true, true, true]} : vector<8x16x16xf32>, memref<32x64x128xf32>
+// CHECK-VECTOR:    scf.for %[[IDX:.*]] = %{{.*}} to %{{.*}} step %{{.*}} {
+// CHECK-VECTOR-NOT:  scf.if
+// CHECK-VECTOR:      %[[EXT:.*]] = vector.transfer_read %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}], %{{.*}} {in_bounds = [true, true, true]} : memref<128x32x64xf32>, vector<16x8x16xf32>
+// CHECK-VECTOR:      %[[TRANS:.*]] = vector.transpose %[[EXT]], [1, 2, 0] : vector<16x8x16xf32> to vector<8x16x16xf32>
+// CHECK-VECTOR:      vector.transfer_write %[[TRANS]], %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] {in_bounds = [true, true, true]} : vector<8x16x16xf32>, memref<32x64x128xf32>
 
-// NEW-VECTOR-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
-// NEW-VECTOR-LLVM-NOT: llvm.alloc
+// CHECK-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
+// CHECK-LLVM-NOT: llvm.alloc

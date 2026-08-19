@@ -1,5 +1,4 @@
 // RUN: test_correctness %s --abs_error_bound=1e-4
-// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering=true --abs_error_bound=1e-4
 
 fusion {
   p0 = c64[128,256] parameter(0)
@@ -20,17 +19,14 @@ fusion {
 // CHECK:       stablehlo.power %[[T_0]], %[[T_1]]
 
 // CHECK-VECTOR-LABEL: func.func @wrapped_fusion_impl(
-// CHECK-VECTOR:   math.powf
+// CHECK-VECTOR-SAME:    %[[LHS:[^:]+]]: memref<128x256x2xf32>,
+// CHECK-VECTOR-SAME:    %[[RHS:[^:]+]]: memref<128x256x2xf32>,
+// CHECK-VECTOR-SAME:    %[[OUT:[^:]+]]: memref<128x256x2xf32>,
+// CHECK-VECTOR-SAME:    %[[PID:[^:]+]]: index)
 
-// NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl(
-// NEW-VECTOR-SAME:    %[[LHS:[^:]+]]: memref<128x256x2xf32>,
-// NEW-VECTOR-SAME:    %[[RHS:[^:]+]]: memref<128x256x2xf32>,
-// NEW-VECTOR-SAME:    %[[OUT:[^:]+]]: memref<128x256x2xf32>,
-// NEW-VECTOR-SAME:    %[[PID:[^:]+]]: index)
-
-// NEW-VECTOR:       vector.transfer_read %[[LHS]]
-// NEW-VECTOR:       vector.transfer_read %[[RHS]]
-// NEW-VECTOR:       math.powf
+// CHECK-VECTOR:       vector.transfer_read %[[LHS]]
+// CHECK-VECTOR:       vector.transfer_read %[[RHS]]
+// CHECK-VECTOR:       math.powf
 
 ENTRY main {
   p0 = c64[128,256] parameter(0)

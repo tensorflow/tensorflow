@@ -1,10 +1,10 @@
-// RUN: fusion_to_xtile %s --xla_cpu_use_new_xtile_lowering | fusion_compiler_opt \
-// RUN:   --xtile-cpu-new-xtile-to-vector --xla-simplify-arith \
-// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
-// RUN: fusion_to_xtile %s --xla_cpu_use_new_xtile_lowering | fusion_compiler_opt \
-// RUN:   --xtile-cpu-new-xtile-to-vector --xtile-cpu-new-vector-to-llvm \
-// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR-LLVM
-// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering --abs_error_bound=1e-5
+// RUN: fusion_to_xtile %s | fusion_compiler_opt \
+// RUN:   --xtile-cpu-xtile-to-vector --xla-simplify-arith \
+// RUN:   | FileCheck %s --check-prefix=CHECK-VECTOR
+// RUN: fusion_to_xtile %s | fusion_compiler_opt \
+// RUN:   --xtile-cpu-vector-to-llvm \
+// RUN:   | FileCheck %s --check-prefix=CHECK-LLVM
+// RUN: test_correctness %s --abs_error_bound=1e-5
 
 add {
   x = f32[] parameter(0)
@@ -19,20 +19,20 @@ fusion {
    backend_config={sizes:[16]}
 }
 
-// NEW-VECTOR: func.func @wrapped_fusion_impl
+// CHECK-VECTOR: func.func @wrapped_fusion_impl
 
-// NEW-VECTOR-DAG: %[[C0:.*]] = arith.constant 0 : index
-// NEW-VECTOR-DAG: %[[C1:.*]] = arith.constant 1 : index
-// NEW-VECTOR-DAG: %[[C8:.*]] = arith.constant 8 : index
-// NEW-VECTOR-DAG: %[[CST:.*]] = arith.constant dense<0.000000e+00> : vector<8xf32>
-// NEW-VECTOR-DAG: %[[CST_0:.*]] = arith.constant dense<0.000000e+00> : vector<16x8xf32>
+// CHECK-VECTOR-DAG: %[[C0:.*]] = arith.constant 0 : index
+// CHECK-VECTOR-DAG: %[[C1:.*]] = arith.constant 1 : index
+// CHECK-VECTOR-DAG: %[[C8:.*]] = arith.constant 8 : index
+// CHECK-VECTOR-DAG: %[[CST:.*]] = arith.constant dense<0.000000e+00> : vector<8xf32>
+// CHECK-VECTOR-DAG: %[[CST_0:.*]] = arith.constant dense<0.000000e+00> : vector<16x8xf32>
 
-// NEW-VECTOR: scf.for %[[IV0:.*]] = %[[C0]] to %{{.*}} step %[[C1]] {
-// NEW-VECTOR:   %[[LOOP_RES:.*]] = scf.for %[[IV1:.*]] = %[[C0]] to %[[C8]] step %[[C1]] iter_args(%[[ACC:.*]] = %[[CST_0]]) -> (vector<16x8xf32>) {
-// NEW-VECTOR:     %[[READ:.*]] = vector.transfer_read %arg0[%{{.*}}, %{{.*}}], %{{.*}} {in_bounds = [true, true]} : memref<128x256xf32>, vector<16x8xf32>
-// NEW-VECTOR:     %[[ACC_NEXT:.*]] = arith.addf %[[ACC]], %[[READ]] : vector<16x8xf32>
-// NEW-VECTOR:     scf.yield %[[ACC_NEXT]] : vector<16x8xf32>
-// NEW-VECTOR:   vector.extract %[[LOOP_RES]][0] : vector<8xf32> from vector<16x8xf32>
+// CHECK-VECTOR: scf.for %[[IV0:.*]] = %[[C0]] to %{{.*}} step %[[C1]] {
+// CHECK-VECTOR:   %[[LOOP_RES:.*]] = scf.for %[[IV1:.*]] = %[[C0]] to %[[C8]] step %[[C1]] iter_args(%[[ACC:.*]] = %[[CST_0]]) -> (vector<16x8xf32>) {
+// CHECK-VECTOR:     %[[READ:.*]] = vector.transfer_read %arg0[%{{.*}}, %{{.*}}], %{{.*}} {in_bounds = [true, true]} : memref<128x256xf32>, vector<16x8xf32>
+// CHECK-VECTOR:     %[[ACC_NEXT:.*]] = arith.addf %[[ACC]], %[[READ]] : vector<16x8xf32>
+// CHECK-VECTOR:     scf.yield %[[ACC_NEXT]] : vector<16x8xf32>
+// CHECK-VECTOR:   vector.extract %[[LOOP_RES]][0] : vector<8xf32> from vector<16x8xf32>
 
 ENTRY main {
   p0 = f32[128,256] parameter(0)
@@ -47,5 +47,5 @@ ENTRY main {
     }
 }
 
-// NEW-VECTOR-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
-// NEW-VECTOR-LLVM-NOT: llvm.alloc
+// CHECK-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
+// CHECK-LLVM-NOT: llvm.alloc

@@ -1,13 +1,10 @@
 // RUN: fusion_to_xtile %s | fusion_compiler_opt --canonicalize -cse \
 // RUN:   | FileCheck %s
-// RUN: fusion_to_xtile %s | fusion_compiler_opt --xtile-cpu-xtile-to-vector \
-// RUN:   | FileCheck %s --check-prefix=CHECK-VECTOR
-// RUN: test_correctness %s
 
 // RUN: fusion_to_xtile %s | fusion_compiler_opt \
-// RUN:   --xtile-cpu-new-xtile-to-vector --xla-simplify-arith \
-// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
-// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering=true
+// RUN:   --xtile-cpu-xtile-to-vector --xla-simplify-arith \
+// RUN:   | FileCheck %s --check-prefix=CHECK-VECTOR
+// RUN: test_correctness %s
 
 fusion {
   p0 = c64[128,256] parameter(0)
@@ -24,15 +21,12 @@ fusion {
 // CHECK:       stablehlo.real %[[T_0]]
 
 // CHECK-VECTOR-LABEL: func.func @wrapped_fusion_impl(
-// CHECK-VECTOR:   complex.re
+// CHECK-VECTOR-SAME:    %[[IN:[^:]+]]: memref<128x256x2xf32>,
+// CHECK-VECTOR-SAME:    %[[OUT:[^:]+]]: memref<128x256xf32>,
+// CHECK-VECTOR-SAME:    %[[PID:[^:]+]]: index)
 
-// NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl(
-// NEW-VECTOR-SAME:    %[[IN:[^:]+]]: memref<128x256x2xf32>,
-// NEW-VECTOR-SAME:    %[[OUT:[^:]+]]: memref<128x256xf32>,
-// NEW-VECTOR-SAME:    %[[PID:[^:]+]]: index)
-
-// NEW-VECTOR:       vector.transfer_read %[[IN]]
-// NEW-VECTOR:       vector.extract_strided_slice
+// CHECK-VECTOR:       vector.transfer_read %[[IN]]
+// CHECK-VECTOR:       vector.extract_strided_slice
 
 ENTRY main {
   p0 = c64[128,256] parameter(0)
