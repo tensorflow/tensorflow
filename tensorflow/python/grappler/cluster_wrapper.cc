@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <mutex>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -53,6 +54,15 @@ limitations under the License.
 
 namespace py = pybind11;
 
+
+namespace {
+
+// SingleMachine uses process-global provisioning state. Serialize Python
+// creation/shutdown paths that update that state.
+std::mutex cluster_lifecycle_mu;
+
+}  // namespace
+
 absl::Status _GetOpPerformanceDataAndRunTime(
     const tensorflow::grappler::GrapplerItem& item,
     tensorflow::grappler::CostEstimator* cost_measure,
@@ -74,7 +84,8 @@ absl::Status _GetOpPerformanceDataAndRunTime(
 
 PYBIND11_MAKE_OPAQUE(tensorflow::grappler::Cluster);
 
-PYBIND11_MODULE(_pywrap_tf_cluster, m) {
+PYBIND11_MODULE(
+    _pywrap_tf_cluster, m, pybind11::mod_gil_not_used()) {
   py::class_<tensorflow::grappler::Cluster> grappler_cluster(m, "Cluster");
 
   m.def("TF_NewCluster",
@@ -82,6 +93,8 @@ PYBIND11_MODULE(_pywrap_tf_cluster, m) {
            bool disable_detailed_stats) -> tensorflow::grappler::Cluster* {
           // TODO(petebu): Make these named arguments with default values
           // instead.
+          std::unique_lock<std::mutex> lifecycle_lock(cluster_lifecycle_mu);
+
           int num_cpu_cores =
               tensorflow::grappler::GetNumAvailableLogicalCPUCores();
           int num_gpus = tensorflow::grappler::GetNumAvailableGPUs();
@@ -92,7 +105,9 @@ PYBIND11_MODULE(_pywrap_tf_cluster, m) {
           cluster->DisableDetailedStats(disable_detailed_stats);
           cluster->AllowSoftPlacement(allow_soft_placement);
           cluster->SetNumWarmupSteps(10);
-          tsl::MaybeRaiseRegisteredFromStatus(cluster->Provision());
+          absl::Status provision_status = cluster->Provision();
+          lifecycle_lock.unlock();
+          tsl::MaybeRaiseRegisteredFromStatus(provision_status);
           return cluster.release();
         });
 
@@ -125,17 +140,30 @@ PYBIND11_MODULE(_pywrap_tf_cluster, m) {
         });
 
   m.def("TF_ShutdownCluster", [](tensorflow::grappler::Cluster* cluster) {
-    // TODO(petebu): Do we need to hold the GIL here?
-    py::gil_scoped_acquire acquire;
+    if (cluster == nullptr) {
+      return;
+    }
+    std::lock_guard<std::mutex> lifecycle_lock(cluster_lifecycle_mu);
+    std::lock_guard<std::mutex> cluster_lock(cluster->ExternalMutex());
     (void)cluster->Shutdown();
   });
 
   m.def("TF_ListDevices",
         [](tensorflow::grappler::Cluster* cluster) -> std::vector<py::bytes> {
-          const std::unordered_map<std::string, tensorflow::DeviceProperties>&
-              devices = cluster->GetDevices();
+          if (cluster == nullptr) {
+            tsl::MaybeRaiseRegisteredFromStatus(
+                absl::InvalidArgumentError("Cluster cannot be None."));
+            return {};
+          }
+
+          std::unordered_map<std::string, tensorflow::DeviceProperties> devices;
+          {
+            std::lock_guard<std::mutex> lock(cluster->ExternalMutex());
+            devices = cluster->GetDevices();
+          }
+
           std::vector<py::bytes> named_devices;
-          for (auto& dev : devices) {
+          for (const auto& dev : devices) {
             tensorflow::NamedDevice d;
             d.set_name(dev.first);
             *d.mutable_properties() = dev.second;
@@ -167,8 +195,14 @@ PYBIND11_MODULE(_pywrap_tf_cluster, m) {
               absl::InternalError("You need both a cluster and an "
                                   "item to get supported devices.")));
         }
-        const std::unordered_map<std::string, tensorflow::DeviceProperties>&
-            devices = cluster->GetDevices();
+        std::unordered_map<std::string, tensorflow::DeviceProperties> devices;
+        std::string cluster_type;
+        {
+          std::lock_guard<std::mutex> lock(cluster->ExternalMutex());
+          devices = cluster->GetDevices();
+          cluster_type = cluster->type();
+        }
+
         std::unordered_map<std::string, std::vector<std::string>> device_types;
         for (const auto& dev : devices) {
           device_types[dev.second.type()].push_back(dev.first);
@@ -182,7 +216,7 @@ PYBIND11_MODULE(_pywrap_tf_cluster, m) {
         for (const auto& node : item->graph.node()) {
           for (const auto& dev : device_types) {
             const std::string& type = dev.first;
-            if (cluster->type() != "single_machine") {
+            if (cluster_type != "single_machine") {
               // The actual kernel may not be linked in this binary.
               supported_device_types[node.name()].insert(type);
             } else {
@@ -259,6 +293,14 @@ PYBIND11_MODULE(_pywrap_tf_cluster, m) {
         [](tensorflow::grappler::GrapplerItem* item,
            tensorflow::grappler::Cluster* cluster, bool generate_timeline)
             -> std::tuple<std::vector<py::bytes>, double, py::bytes> {
+          if (cluster == nullptr || item == nullptr) {
+            tsl::MaybeRaiseRegisteredFromStatus(absl::InvalidArgumentError(
+                "You need both a cluster and an item to measure costs."));
+            return {};
+          }
+
+          std::lock_guard<std::mutex> lock(cluster->ExternalMutex());
+
           const int num_measurements = cluster->type() == "virtual" ? 1 : 10;
           tensorflow::grappler::MeasuringCostEstimator cost_measure(
               cluster, num_measurements, 0);
@@ -305,6 +347,8 @@ PYBIND11_MODULE(_pywrap_tf_cluster, m) {
               "You need both a cluster and an item to determine peak "
               "memory usage.")));
         }
+        std::lock_guard<std::mutex> lock(cluster->ExternalMutex());
+
         tensorflow::grappler::GraphMemory memory(*item);
 
         if (cluster->DetailedStatsEnabled()) {
