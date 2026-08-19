@@ -219,6 +219,14 @@ class CompileOnlyIfRtClient final
         "MakeErrorArrays not available with compile-only client.");
   }
 
+  absl::StatusOr<std::vector<tsl::Future<>>> CopyArraysToHostBufferShards(
+      absl::Span<CopyArraysToHostBufferShardsSpec> specs,
+      ifrt::ArrayCopySemantics semantics) override {
+    return absl::UnimplementedError(
+        "CopyArraysToHostBufferShards not available with compile-only "
+        "client");
+  }
+
   absl::StatusOr<ifrt::ArrayRef> AssembleArrayFromSingleDeviceArrays(
       ifrt::DType dtype, ifrt::Shape shape, ifrt::ShardingRef sharding,
       absl::Span<ifrt::ArrayRef> arrays,
