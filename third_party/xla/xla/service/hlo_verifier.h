@@ -324,6 +324,7 @@ class ShapeVerifier : public DfsHloVisitor {
   static absl::Status CheckParameterCount(
       const HloInstruction* calling_instruction,
       const HloComputation* computation, int expected);
+  static absl::Status CheckCompositeCall(const HloInstruction* call);
 
   // Check a unary (binary, etc) instruction's shape against the inferred shape.
   absl::Status CheckUnaryShape(const HloInstruction* instruction);

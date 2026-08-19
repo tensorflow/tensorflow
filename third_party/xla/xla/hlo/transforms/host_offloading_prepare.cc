@@ -22,7 +22,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -31,12 +33,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/memory_annotations.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 namespace {
 
+using xla::memory_annotations::kMoveToDeviceCustomCallTarget;
 using xla::memory_annotations::kMoveToHostCustomCallTarget;
 
 bool IsHostAsyncStart(const HloInstruction* instruction) {
@@ -47,18 +49,60 @@ bool IsHostAsyncStart(const HloInstruction* instruction) {
 
 absl::StatusOr<bool> RemoveSurroundingMoveCustomCalls(
     HloInstruction* async_start) {
-  // If any of the operands are a MoveToHost custom call, remove them.
   bool removed = false;
+  // If any input operand traces back to a MoveToHost custom call (even through
+  // transparent/shape-preserving operations like optimization barriers,
+  // bitcasts, or reshapes), remove it since host offloading handles data
+  // placement directly without requiring explicit memory copy instructions.
   for (HloInstruction* operand : async_start->operands()) {
-    // TODO(b/338463228): It could be the case that custom-calls are on the
-    // other side of a bitcast or tuple.
+    // Traverse transparent unary operations backwards to find the source.
+    while (operand->opcode() == HloOpcode::kOptimizationBarrier ||
+           operand->opcode() == HloOpcode::kBitcast ||
+           operand->opcode() == HloOpcode::kReshape) {
+      if (operand->operand_count() == 0) {
+        break;
+      }
+      operand = operand->mutable_operand(0);
+    }
     if (operand->IsCustomCall(kMoveToHostCustomCallTarget)) {
       CHECK_EQ(operand->operands().size(), 1);
       VLOG(1) << "Replacing " << operand->ToString() << " with "
               << operand->operands().at(0)->ToString();
+      HloComputation* parent = operand->parent();
       ABSL_RETURN_IF_ERROR(operand->ReplaceAllUsesWith(operand->mutable_operand(0)));
-      ABSL_RETURN_IF_ERROR(async_start->parent()->RemoveInstruction(operand));
+      ABSL_RETURN_IF_ERROR(parent->RemoveInstruction(operand));
       removed = true;
+    }
+  }
+
+  // If any users of async_done are MoveToDevice custom calls, remove them and
+  // propagate the target memory space directly onto the async_done and
+  // async_start output shapes to preserve layout annotations.
+  for (HloInstruction* user : async_start->users()) {
+    if (user->opcode() == HloOpcode::kAsyncDone) {
+      std::vector<HloInstruction*> move_to_device_users;
+      for (HloInstruction* done_user : user->users()) {
+        if (done_user->IsCustomCall(kMoveToDeviceCustomCallTarget)) {
+          move_to_device_users.push_back(done_user);
+        }
+      }
+      for (HloInstruction* move_to_device : move_to_device_users) {
+        CHECK_EQ(move_to_device->operands().size(), 1);
+        VLOG(1) << "Replacing " << move_to_device->ToString() << " with "
+                << user->ToString();
+        // Preserve target memory space annotations from MoveToDevice on the
+        // async output tuple and async_done shapes.
+        if (move_to_device->shape().has_layout()) {
+          user->mutable_shape()->mutable_layout()->set_memory_space(
+              move_to_device->shape().layout().memory_space());
+          *ShapeUtil::GetMutableSubshape(async_start->mutable_shape(), {1}) =
+              user->shape();
+        }
+        ABSL_RETURN_IF_ERROR(move_to_device->ReplaceAllUsesWith(user));
+        ABSL_RETURN_IF_ERROR(
+            async_start->parent()->RemoveInstruction(move_to_device));
+        removed = true;
+      }
     }
   }
   return removed;

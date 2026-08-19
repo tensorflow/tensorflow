@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
@@ -50,9 +52,11 @@ namespace xla {
 /*static*/
 absl::StatusOr<std::unique_ptr<HloLiveRange>> HloLiveRange::Run(
     const HloSchedule& schedule, const HloAliasAnalysis& alias_analysis,
-    const HloComputation* computation, bool module_scoped_analysis) {
+    const HloComputation* computation, bool module_scoped_analysis,
+    absl::flat_hash_set<absl::string_view> execution_threads) {
   std::unique_ptr<HloLiveRange> hlo_live_range(
-      new HloLiveRange(schedule, alias_analysis, module_scoped_analysis));
+      new HloLiveRange(schedule, alias_analysis, module_scoped_analysis,
+                       std::move(execution_threads)));
   ABSL_RETURN_IF_ERROR(hlo_live_range->FlattenSchedule(*computation));
   hlo_live_range->CalculateBufferStartEndMap();
   hlo_live_range->NormalizeAliasedBuffers();
@@ -92,6 +96,10 @@ void HloLiveRange::NormalizeAliasedBuffers() {
 // number of each instruction in the schedule.
 absl::Status HloLiveRange::FlattenSchedule(
     const HloComputation& computation, const HloComputation* async_context) {
+  if (!HloInstruction::IsThreadIncluded(computation.execution_thread(),
+                                        execution_threads_)) {
+    return absl::OkStatus();
+  }
   auto it = schedule_.sequences().find(computation.unique_id());
   if (it == schedule_.sequences().end()) {
     total_order_scheduled_ = false;
@@ -197,18 +205,22 @@ HloLiveRange::LogicalTime HloLiveRange::GetLastUsageTime(
     // by call operation itself, and rely on the last usage time inferred from
     // the operations in the called computation.
     if (module_scoped_analysis_ && used->opcode() == HloOpcode::kCall) {
-      continue;
+      if (computation_span_times_.contains(used->to_apply())) {
+        continue;
+      }
     }
 
     // As an optimization, we deem a while's init value's live range ends as
     // soon as the loop body starts. This optimization is only applicable in
     // module scoped mode.
     if (module_scoped_analysis_ && used->opcode() == HloOpcode::kWhile) {
-      // The current live range is at the end of the while, move it to
-      // the beginning of the body.
-      used = used->while_body()->parameter_instruction(0);
-      VLOG(1) << "Moved value " << value.ToShortString()
-              << " to while param: " << used->ToString();
+      if (computation_span_times_.contains(used->while_body())) {
+        // The current live range is at the end of the while, move it to
+        // the beginning of the body.
+        used = used->while_body()->parameter_instruction(0);
+        VLOG(1) << "Moved value " << value.ToShortString()
+                << " to while param: " << used->ToString();
+      }
     }
 
     // It's possible that we didn't track the instruction `used`. This

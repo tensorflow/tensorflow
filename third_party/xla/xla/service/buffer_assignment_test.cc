@@ -5838,5 +5838,278 @@ TEST_F(BufferAssignmentTest, FromProtoRejectsNegativeSize) {
   EXPECT_THAT(result.status().message(), ::testing::HasSubstr("negative"));
 }
 
+TEST_F(BufferAssignmentTest, ExecutionThreadFiltering) {
+  const std::string hlo_string = R"(
+      HloModule module
+
+      %thread_a_comp (p_a: f32[4]) -> f32[4] {
+        %p_a = f32[4] parameter(0)
+        ROOT %neg_a = f32[4] negate(%p_a)
+      }, execution_thread="thread_a"
+
+      %thread_b_comp (p_b: f32[4]) -> f32[4] {
+        %p_b = f32[4] parameter(0)
+        ROOT %neg_b = f32[4] negate(%p_b)
+      }, execution_thread="thread_b"
+
+      ENTRY %main (p0: f32[4]) -> f32[4] {
+        %p0 = f32[4] parameter(0)
+        %call_a = f32[4] call(%p0), to_apply=%thread_a_comp
+        ROOT %call_b = f32[4] call(%call_a), to_apply=%thread_b_comp
+      }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  auto* p0 = FindInstruction(module.get(), "p0");
+  auto* call_a = FindInstruction(module.get(), "call_a");
+  auto* call_b = FindInstruction(module.get(), "call_b");
+  auto* p_a = FindInstruction(module.get(), "p_a");
+  auto* neg_a = FindInstruction(module.get(), "neg_a");
+  auto* p_b = FindInstruction(module.get(), "p_b");
+  auto* neg_b = FindInstruction(module.get(), "neg_b");
+
+  ASSERT_NE(p0, nullptr);
+  ASSERT_NE(call_a, nullptr);
+  ASSERT_NE(call_b, nullptr);
+  ASSERT_NE(p_a, nullptr);
+  ASSERT_NE(neg_a, nullptr);
+  ASSERT_NE(p_b, nullptr);
+  ASSERT_NE(neg_b, nullptr);
+
+  // Run buffer assignment filtering for "thread_a".
+  // This should allocate buffers for thread_a_comp (p_a, neg_a).
+  // Due to aliasing:
+  // - p0 aliases with p_a (Buffer 1) -> allocated.
+  // - call_a aliases with neg_a and p_b (Buffer 2) -> allocated.
+  // - call_b aliases with neg_b (Buffer 3) -> NOT allocated (thread_b only).
+  BufferAssigner::Options opts_a;
+  opts_a.allocate_buffers_for_constants = true;
+  opts_a.execution_threads = {"thread_a"};
+  ASSERT_OK_AND_ASSIGN(
+      auto buffers_a,
+      BufferAssigner::Run(
+          module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
+          &BufferSizeBytes, &alias_info_,
+          [](LogicalBuffer::Color) { return 1; }, std::move(opts_a)));
+
+  // Buffer 1 (thread_a input)
+  EXPECT_TRUE(buffers_a->HasAllocationAt(p_a, {}));
+  EXPECT_TRUE(buffers_a->HasAllocationAt(p0, {}));
+
+  // Buffer 2 (thread_a output / thread_b input)
+  EXPECT_TRUE(buffers_a->HasAllocationAt(neg_a, {}));
+  EXPECT_TRUE(buffers_a->HasAllocationAt(call_a, {}));
+  EXPECT_TRUE(buffers_a->HasAllocationAt(p_b, {}));
+
+  // Buffer 3 (thread_b output)
+  EXPECT_FALSE(buffers_a->HasAllocationAt(neg_b, {}));
+  EXPECT_FALSE(buffers_a->HasAllocationAt(call_b, {}));
+
+  // Run buffer assignment filtering for "thread_b".
+  // This should allocate buffers for thread_b_comp (p_b, neg_b).
+  // Due to aliasing:
+  // - p_b aliases with call_a and neg_a (Buffer 2) -> allocated.
+  // - neg_b aliases with call_b (Buffer 3) -> allocated.
+  // - p_a aliases with p0 (Buffer 1) -> NOT allocated (thread_a only).
+  BufferAssigner::Options opts_b;
+  opts_b.allocate_buffers_for_constants = true;
+  opts_b.execution_threads = {"thread_b"};
+  ASSERT_OK_AND_ASSIGN(
+      auto buffers_b,
+      BufferAssigner::Run(
+          module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
+          &BufferSizeBytes, &alias_info_,
+          [](LogicalBuffer::Color) { return 1; }, std::move(opts_b)));
+
+  // Buffer 1 (thread_a input)
+  EXPECT_FALSE(buffers_b->HasAllocationAt(p_a, {}));
+  EXPECT_FALSE(buffers_b->HasAllocationAt(p0, {}));
+
+  // Buffer 2 (thread_a output / thread_b input)
+  EXPECT_TRUE(buffers_b->HasAllocationAt(p_b, {}));
+  EXPECT_TRUE(buffers_b->HasAllocationAt(call_a, {}));
+  EXPECT_TRUE(buffers_b->HasAllocationAt(neg_a, {}));
+
+  // Buffer 3 (thread_b output)
+  EXPECT_TRUE(buffers_b->HasAllocationAt(neg_b, {}));
+  EXPECT_TRUE(buffers_b->HasAllocationAt(call_b, {}));
+
+  // Run buffer assignment without filtering (empty execution_threads).
+  // This should allocate buffers for all computations.
+  BufferAssigner::Options opts_empty;
+  opts_empty.allocate_buffers_for_constants = true;
+  ASSERT_OK_AND_ASSIGN(
+      auto buffers_empty,
+      BufferAssigner::Run(
+          module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
+          &BufferSizeBytes, &alias_info_,
+          [](LogicalBuffer::Color) { return 1; }, std::move(opts_empty)));
+
+  // All buffers should be allocated
+  EXPECT_TRUE(buffers_empty->HasAllocationAt(p_a, {}));
+  EXPECT_TRUE(buffers_empty->HasAllocationAt(p0, {}));
+  EXPECT_TRUE(buffers_empty->HasAllocationAt(neg_a, {}));
+  EXPECT_TRUE(buffers_empty->HasAllocationAt(call_a, {}));
+  EXPECT_TRUE(buffers_empty->HasAllocationAt(p_b, {}));
+  EXPECT_TRUE(buffers_empty->HasAllocationAt(neg_b, {}));
+  EXPECT_TRUE(buffers_empty->HasAllocationAt(call_b, {}));
+}
+
+TEST_F(BufferAssignmentTest, ExecutionThreadFilteringWithScatter) {
+  const std::string hlo_string = R"(
+      HloModule module
+
+      %scatter_region (a: f32[], b: f32[]) -> f32[] {
+        %a = f32[] parameter(0)
+        ROOT %b = f32[] parameter(1)
+      }
+
+      %scatter_comp (operand: f32[8], indices: s32[2], updates: f32[2]) -> f32[8] {
+        %operand = f32[8] parameter(0)
+        %indices = s32[2] parameter(1)
+        %updates = f32[2] parameter(2)
+        ROOT %scatter = f32[8] scatter(%operand, %indices, %updates),
+            update_window_dims={},
+            inserted_window_dims={0},
+            scatter_dims_to_operand_dims={0},
+            index_vector_dim=1,
+            to_apply=%scatter_region
+      }, execution_thread="thread_scatter"
+
+      %other_comp (p_other_param: f32[4]) -> f32[4] {
+        %p_other_param = f32[4] parameter(0)
+        ROOT %neg_other = f32[4] negate(%p_other_param)
+      }, execution_thread="thread_other"
+
+      ENTRY %main (p_operand: f32[8], p_indices: s32[2], p_updates: f32[2], p_other: f32[4]) -> (f32[8], f32[4]) {
+        %p_operand = f32[8] parameter(0)
+        %p_indices = s32[2] parameter(1)
+        %p_updates = f32[2] parameter(2)
+        %p_other = f32[4] parameter(3)
+        %call_scatter = f32[8] call(%p_operand, %p_indices, %p_updates), to_apply=%scatter_comp
+        %call_other = f32[4] call(%p_other), to_apply=%other_comp
+        ROOT %root_tuple = (f32[8], f32[4]) tuple(%call_scatter, %call_other)
+      }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  auto* p_operand = FindInstruction(module.get(), "p_operand");
+  auto* p_indices = FindInstruction(module.get(), "p_indices");
+  auto* p_updates = FindInstruction(module.get(), "p_updates");
+  auto* p_other = FindInstruction(module.get(), "p_other");
+  auto* call_scatter = FindInstruction(module.get(), "call_scatter");
+  auto* call_other = FindInstruction(module.get(), "call_other");
+  auto* operand = FindInstruction(module.get(), "operand");
+  auto* indices = FindInstruction(module.get(), "indices");
+  auto* updates = FindInstruction(module.get(), "updates");
+  auto* scatter = FindInstruction(module.get(), "scatter");
+  auto* p_other_param = FindInstruction(module.get(), "p_other_param");
+  auto* neg_other = FindInstruction(module.get(), "neg_other");
+
+  ASSERT_NE(p_operand, nullptr);
+  ASSERT_NE(p_indices, nullptr);
+  ASSERT_NE(p_updates, nullptr);
+  ASSERT_NE(p_other, nullptr);
+  ASSERT_NE(call_scatter, nullptr);
+  ASSERT_NE(call_other, nullptr);
+  ASSERT_NE(operand, nullptr);
+  ASSERT_NE(indices, nullptr);
+  ASSERT_NE(updates, nullptr);
+  ASSERT_NE(scatter, nullptr);
+  ASSERT_NE(p_other_param, nullptr);
+  ASSERT_NE(neg_other, nullptr);
+
+  // 1. Run buffer assignment filtering for "thread_scatter".
+  BufferAssigner::Options opts_scatter;
+  opts_scatter.allocate_buffers_for_constants = true;
+  opts_scatter.execution_threads = {"thread_scatter"};
+  ASSERT_OK_AND_ASSIGN(
+      auto buffers_scatter,
+      BufferAssigner::Run(
+          module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
+          &BufferSizeBytes, &alias_info_,
+          [](LogicalBuffer::Color) { return 1; }, std::move(opts_scatter)));
+
+  // Scatter operand and output are allocated and share the same slice
+  // (aliased).
+  EXPECT_TRUE(buffers_scatter->HasAllocationAt(operand, {}));
+  EXPECT_TRUE(buffers_scatter->HasAllocationAt(scatter, {}));
+  EXPECT_TRUE(buffers_scatter->HasAllocationAt(p_operand, {}));
+  EXPECT_TRUE(buffers_scatter->HasAllocationAt(call_scatter, {}));
+  EXPECT_EQ(buffers_scatter->GetUniqueSlice(operand, {}),
+            buffers_scatter->GetUniqueSlice(scatter, {}));
+  EXPECT_EQ(buffers_scatter->GetUniqueSlice(p_operand, {}),
+            buffers_scatter->GetUniqueSlice(call_scatter, {}));
+  EXPECT_EQ(buffers_scatter->GetUniqueSlice(operand, {}),
+            buffers_scatter->GetUniqueSlice(call_scatter, {}));
+
+  // Scatter indices and updates are allocated.
+  EXPECT_TRUE(buffers_scatter->HasAllocationAt(indices, {}));
+  EXPECT_TRUE(buffers_scatter->HasAllocationAt(p_indices, {}));
+  EXPECT_TRUE(buffers_scatter->HasAllocationAt(updates, {}));
+  EXPECT_TRUE(buffers_scatter->HasAllocationAt(p_updates, {}));
+
+  // Other thread computations are NOT allocated.
+  EXPECT_FALSE(buffers_scatter->HasAllocationAt(p_other, {}));
+  EXPECT_FALSE(buffers_scatter->HasAllocationAt(p_other_param, {}));
+  EXPECT_FALSE(buffers_scatter->HasAllocationAt(call_other, {}));
+  EXPECT_FALSE(buffers_scatter->HasAllocationAt(neg_other, {}));
+
+  // 2. Run buffer assignment filtering for "thread_other".
+  BufferAssigner::Options opts_other;
+  opts_other.allocate_buffers_for_constants = true;
+  opts_other.execution_threads = {"thread_other"};
+  ASSERT_OK_AND_ASSIGN(
+      auto buffers_other,
+      BufferAssigner::Run(
+          module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
+          &BufferSizeBytes, &alias_info_,
+          [](LogicalBuffer::Color) { return 1; }, std::move(opts_other)));
+
+  // Other thread is allocated.
+  EXPECT_TRUE(buffers_other->HasAllocationAt(p_other, {}));
+  EXPECT_TRUE(buffers_other->HasAllocationAt(p_other_param, {}));
+  EXPECT_TRUE(buffers_other->HasAllocationAt(call_other, {}));
+  EXPECT_TRUE(buffers_other->HasAllocationAt(neg_other, {}));
+
+  // Scatter thread is NOT allocated.
+  EXPECT_FALSE(buffers_other->HasAllocationAt(operand, {}));
+  EXPECT_FALSE(buffers_other->HasAllocationAt(scatter, {}));
+  EXPECT_FALSE(buffers_other->HasAllocationAt(p_operand, {}));
+  EXPECT_FALSE(buffers_other->HasAllocationAt(call_scatter, {}));
+  EXPECT_FALSE(buffers_other->HasAllocationAt(indices, {}));
+  EXPECT_FALSE(buffers_other->HasAllocationAt(updates, {}));
+
+  // 3. Run buffer assignment without filtering (empty execution_threads).
+  BufferAssigner::Options opts_empty;
+  opts_empty.allocate_buffers_for_constants = true;
+  ASSERT_OK_AND_ASSIGN(
+      auto buffers_empty,
+      BufferAssigner::Run(
+          module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
+          &BufferSizeBytes, &alias_info_,
+          [](LogicalBuffer::Color) { return 1; }, std::move(opts_empty)));
+
+  // All buffers are allocated.
+  EXPECT_TRUE(buffers_empty->HasAllocationAt(operand, {}));
+  EXPECT_TRUE(buffers_empty->HasAllocationAt(scatter, {}));
+  EXPECT_TRUE(buffers_empty->HasAllocationAt(p_operand, {}));
+  EXPECT_TRUE(buffers_empty->HasAllocationAt(call_scatter, {}));
+  EXPECT_TRUE(buffers_empty->HasAllocationAt(indices, {}));
+  EXPECT_TRUE(buffers_empty->HasAllocationAt(updates, {}));
+  EXPECT_TRUE(buffers_empty->HasAllocationAt(p_other, {}));
+  EXPECT_TRUE(buffers_empty->HasAllocationAt(p_other_param, {}));
+  EXPECT_TRUE(buffers_empty->HasAllocationAt(call_other, {}));
+  EXPECT_TRUE(buffers_empty->HasAllocationAt(neg_other, {}));
+
+  // Aliasing between scatter operand and output remains preserved.
+  EXPECT_EQ(buffers_empty->GetUniqueSlice(operand, {}),
+            buffers_empty->GetUniqueSlice(scatter, {}));
+}
+
 }  // namespace
 }  // namespace xla
