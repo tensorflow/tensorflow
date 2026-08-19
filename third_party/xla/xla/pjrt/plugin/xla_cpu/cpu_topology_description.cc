@@ -237,9 +237,9 @@ absl::StatusOr<xla::Shape> MakeDefaultCpuBufferShape(
         primitive_util::BitWidth(element_type));
   }
   if (layout && *layout != shape.layout()) {
-    return absl::UnimplementedError(
-        absl::StrCat("PjRt CPU buffers only support default layout. ",
-                     shape.ToString(), " vs ", layout->ToString()));
+    return absl::UnimplementedError(absl::StrCat(
+        "Unsupported layout used for PjRt CPU buffers: ", layout->ToString(),
+        " (original) vs. ", shape.ToString(), " (canonicalized)"));
   }
   return shape;
 }
