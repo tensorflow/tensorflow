@@ -312,8 +312,8 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     self.assertIsNone(acc2.jvp(y))
 
   def testRunFunctionsEagerly(self):
+    original_setting = def_function.functions_run_eagerly()
     try:
-      original_setting = def_function.functions_run_eagerly()
       def_function.run_functions_eagerly(True)
       x = constant_op.constant(1.)
       with forwardprop.ForwardAccumulator(x, 2.) as acc:
