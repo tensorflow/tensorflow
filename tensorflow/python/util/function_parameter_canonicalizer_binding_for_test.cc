@@ -57,11 +57,11 @@ PYBIND11_MODULE(_function_parameter_canonicalizer_binding_for_test, m) {
       }))
       .def("canonicalize", [](FunctionParameterCanonicalizerWrapper& self,
                               py::args args, py::kwargs kwargs) {
-        std::vector<tensorflow::Safe_PyObjectPtr> result(
+        std::vector<PyObject*> result_raw(
             self.function_parameter_canonicalizer_.GetArgSize());
 
         bool is_suceeded = self.function_parameter_canonicalizer_.Canonicalize(
-            args.ptr(), kwargs.ptr(), absl::MakeSpan(result));
+            args.ptr(), kwargs.ptr(), absl::MakeSpan(result_raw));
 
         if (!is_suceeded) {
           CHECK(PyErr_Occurred());
@@ -69,7 +69,7 @@ PYBIND11_MODULE(_function_parameter_canonicalizer_binding_for_test, m) {
         }
 
         py::list result_list;
-        for (const auto& obj : result) result_list.append(py::handle(obj.get()));
+        for (PyObject* obj : result_raw) result_list.append(obj);
         return result_list;
       });
 }

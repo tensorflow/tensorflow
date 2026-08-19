@@ -1054,7 +1054,7 @@ PYBIND11_MODULE(
           {
             absl::MutexLock lock(data->shape_val_mu);
             shape_val = data->shape_val.ptr();
-            Py_INCREF(shape_val);
+            Py_XINCREF(shape_val);
           }
           return py::reinterpret_steal<py::object>(shape_val);
 #else

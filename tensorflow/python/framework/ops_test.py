@@ -128,7 +128,7 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
           shape = t.shape
           if shape.rank != 2 or shape[1] != 4:
             errors.append(repr(shape))
-        except BaseException as e:  # pylint: disable=broad-exception-caught
+        except BaseException as e:  # pylint: disable=broad-except
           errors.append(repr(e))
         done.wait()
 
