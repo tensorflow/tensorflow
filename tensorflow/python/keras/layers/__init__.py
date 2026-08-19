@@ -42,6 +42,7 @@ from tensorflow.python.keras.layers.convolutional import Conv2DTranspose
 from tensorflow.python.keras.layers.convolutional import Conv3DTranspose
 from tensorflow.python.keras.layers.convolutional import SeparableConv1D
 from tensorflow.python.keras.layers.convolutional import SeparableConv2D
+from tensorflow.python.keras.layers.convolutional import SeparableConv2DTranspose
 
 # Convolution layer aliases.
 from tensorflow.python.keras.layers.convolutional import Convolution1D
@@ -51,6 +52,7 @@ from tensorflow.python.keras.layers.convolutional import Convolution2DTranspose
 from tensorflow.python.keras.layers.convolutional import Convolution3DTranspose
 from tensorflow.python.keras.layers.convolutional import SeparableConvolution1D
 from tensorflow.python.keras.layers.convolutional import SeparableConvolution2D
+from tensorflow.python.keras.layers.convolutional import SeparableConvolution2DTranspose
 from tensorflow.python.keras.layers.convolutional import DepthwiseConv2D
 
 # Image processing layers.
