@@ -114,6 +114,31 @@ class LRNOpTest(test.TestCase):
     self.assertShapeEqual(expected, grad)
 
   @test_util.run_in_graph_and_eager_modes
+  def testEmptyInput(self):
+    for shape in [(0, 0, 0, 0), (2, 0, 4, 3), (0, 3, 3, 3), (2, 3, 3, 0)]:
+      x = array_ops.zeros(shape, dtype=dtypes.float32)
+      val = self.evaluate(
+          nn.local_response_normalization(
+              x, depth_radius=2, bias=1.0, alpha=1.0, beta=0.5
+          )
+      )
+      self.assertEqual(val.shape, shape)
+
+      grad_in = array_ops.zeros(shape, dtype=dtypes.float32)
+      grad_val = self.evaluate(
+          nn.lrn_grad(
+              input_grads=grad_in,
+              input_image=x,
+              output_image=val,
+              depth_radius=2,
+              bias=1.0,
+              alpha=1.0,
+              beta=0.5,
+          )
+      )
+      self.assertEqual(grad_val.shape, shape)
+
+  @test_util.run_in_graph_and_eager_modes
   def testIncompatibleInputAndOutputImageShapes(self):
     depth_radius = 1
     bias = 1.59018219

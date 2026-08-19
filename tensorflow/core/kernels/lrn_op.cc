@@ -352,6 +352,10 @@ class LRNOp : public OpKernel {
                    context->allocate_output(
                        0, TensorShape({batch, rows, cols, depth}), &output));
 
+    if (output->NumElements() == 0) {
+      return;
+    }
+
     LaunchLRN<Device, T> launcher(depth_radius_, bias_, alpha_, beta_);
     launcher.launch(context, this, in, output);
   }
@@ -695,6 +699,10 @@ class LRNGradOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(
                        0, TensorShape({batch, rows, cols, depth}), &output));
+
+    if (output->NumElements() == 0) {
+      return;
+    }
 
     LaunchLRNGrad<Device, T> launcher(depth_radius_, bias_, alpha_, beta_);
     launcher.launch(context, this, in_grads, in_image, out_image, output);
