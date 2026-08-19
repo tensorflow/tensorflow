@@ -48,7 +48,7 @@ PYBIND11_MODULE(_function_parameter_canonicalizer_binding_for_test, m) {
 
         tensorflow::Safe_PyObjectPtr defaults_fast(
             PySequence_Fast(defaults.ptr(), "Expected tuple"));
-        if (!defaults) throw py::error_already_set();
+        if (!defaults_fast) throw py::error_already_set();
         PyObject** default_items = PySequence_Fast_ITEMS(defaults_fast.get());
         return new FunctionParameterCanonicalizerWrapper(
             absl::MakeSpan(arg_names_c_str),
@@ -57,7 +57,7 @@ PYBIND11_MODULE(_function_parameter_canonicalizer_binding_for_test, m) {
       }))
       .def("canonicalize", [](FunctionParameterCanonicalizerWrapper& self,
                               py::args args, py::kwargs kwargs) {
-        std::vector<tensorflow::Safe_PyObjectPtr> result_raw(
+        std::vector<PyObject*> result_raw(
             self.function_parameter_canonicalizer_.GetArgSize());
 
         bool is_suceeded = self.function_parameter_canonicalizer_.Canonicalize(
@@ -68,10 +68,8 @@ PYBIND11_MODULE(_function_parameter_canonicalizer_binding_for_test, m) {
           throw py::error_already_set();
         }
 
-        py::list result;
-        for (const auto& obj : result_raw) {
-          result.append(py::handle(obj.get()));
-        }
-        return result;
+        py::list result_list;
+        for (PyObject* obj : result_raw) result_list.append(obj);
+        return result_list;
       });
 }
