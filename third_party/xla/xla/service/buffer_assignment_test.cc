@@ -5838,5 +5838,124 @@ TEST_F(BufferAssignmentTest, FromProtoRejectsNegativeSize) {
   EXPECT_THAT(result.status().message(), ::testing::HasSubstr("negative"));
 }
 
+TEST_F(BufferAssignmentTest, ExecutionThreadFiltering) {
+  const std::string hlo_string = R"(
+      HloModule module
+
+      %thread_a_comp (p_a: f32[4]) -> f32[4] {
+        %p_a = f32[4] parameter(0)
+        ROOT %neg_a = f32[4] negate(%p_a)
+      }, execution_thread="thread_a"
+
+      %thread_b_comp (p_b: f32[4]) -> f32[4] {
+        %p_b = f32[4] parameter(0)
+        ROOT %neg_b = f32[4] negate(%p_b)
+      }, execution_thread="thread_b"
+
+      ENTRY %main (p0: f32[4]) -> f32[4] {
+        %p0 = f32[4] parameter(0)
+        %call_a = f32[4] call(%p0), to_apply=%thread_a_comp
+        ROOT %call_b = f32[4] call(%call_a), to_apply=%thread_b_comp
+      }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  auto* p0 = FindInstruction(module.get(), "p0");
+  auto* call_a = FindInstruction(module.get(), "call_a");
+  auto* call_b = FindInstruction(module.get(), "call_b");
+  auto* p_a = FindInstruction(module.get(), "p_a");
+  auto* neg_a = FindInstruction(module.get(), "neg_a");
+  auto* p_b = FindInstruction(module.get(), "p_b");
+  auto* neg_b = FindInstruction(module.get(), "neg_b");
+
+  ASSERT_NE(p0, nullptr);
+  ASSERT_NE(call_a, nullptr);
+  ASSERT_NE(call_b, nullptr);
+  ASSERT_NE(p_a, nullptr);
+  ASSERT_NE(neg_a, nullptr);
+  ASSERT_NE(p_b, nullptr);
+  ASSERT_NE(neg_b, nullptr);
+
+  // Run buffer assignment filtering for "thread_a".
+  // This should allocate buffers for thread_a_comp (p_a, neg_a).
+  // Due to aliasing:
+  // - p0 aliases with p_a (Buffer 1) -> allocated.
+  // - call_a aliases with neg_a and p_b (Buffer 2) -> allocated.
+  // - call_b aliases with neg_b (Buffer 3) -> NOT allocated (thread_b only).
+  BufferAssigner::Options opts_a;
+  opts_a.allocate_buffers_for_constants = true;
+  opts_a.execution_threads = {"thread_a"};
+  ASSERT_OK_AND_ASSIGN(
+      auto buffers_a,
+      BufferAssigner::Run(
+          module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
+          &BufferSizeBytes, &alias_info_,
+          [](LogicalBuffer::Color) { return 1; }, std::move(opts_a)));
+
+  // Buffer 1 (thread_a input)
+  EXPECT_TRUE(buffers_a->HasAllocationAt(p_a, {}));
+  EXPECT_TRUE(buffers_a->HasAllocationAt(p0, {}));
+
+  // Buffer 2 (thread_a output / thread_b input)
+  EXPECT_TRUE(buffers_a->HasAllocationAt(neg_a, {}));
+  EXPECT_TRUE(buffers_a->HasAllocationAt(call_a, {}));
+  EXPECT_TRUE(buffers_a->HasAllocationAt(p_b, {}));
+
+  // Buffer 3 (thread_b output)
+  EXPECT_FALSE(buffers_a->HasAllocationAt(neg_b, {}));
+  EXPECT_FALSE(buffers_a->HasAllocationAt(call_b, {}));
+
+  // Run buffer assignment filtering for "thread_b".
+  // This should allocate buffers for thread_b_comp (p_b, neg_b).
+  // Due to aliasing:
+  // - p_b aliases with call_a and neg_a (Buffer 2) -> allocated.
+  // - neg_b aliases with call_b (Buffer 3) -> allocated.
+  // - p_a aliases with p0 (Buffer 1) -> NOT allocated (thread_a only).
+  BufferAssigner::Options opts_b;
+  opts_b.allocate_buffers_for_constants = true;
+  opts_b.execution_threads = {"thread_b"};
+  ASSERT_OK_AND_ASSIGN(
+      auto buffers_b,
+      BufferAssigner::Run(
+          module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
+          &BufferSizeBytes, &alias_info_,
+          [](LogicalBuffer::Color) { return 1; }, std::move(opts_b)));
+
+  // Buffer 1 (thread_a input)
+  EXPECT_FALSE(buffers_b->HasAllocationAt(p_a, {}));
+  EXPECT_FALSE(buffers_b->HasAllocationAt(p0, {}));
+
+  // Buffer 2 (thread_a output / thread_b input)
+  EXPECT_TRUE(buffers_b->HasAllocationAt(p_b, {}));
+  EXPECT_TRUE(buffers_b->HasAllocationAt(call_a, {}));
+  EXPECT_TRUE(buffers_b->HasAllocationAt(neg_a, {}));
+
+  // Buffer 3 (thread_b output)
+  EXPECT_TRUE(buffers_b->HasAllocationAt(neg_b, {}));
+  EXPECT_TRUE(buffers_b->HasAllocationAt(call_b, {}));
+
+  // Run buffer assignment without filtering (empty execution_threads).
+  // This should allocate buffers for all computations.
+  BufferAssigner::Options opts_empty;
+  opts_empty.allocate_buffers_for_constants = true;
+  ASSERT_OK_AND_ASSIGN(
+      auto buffers_empty,
+      BufferAssigner::Run(
+          module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
+          &BufferSizeBytes, &alias_info_,
+          [](LogicalBuffer::Color) { return 1; }, std::move(opts_empty)));
+
+  // All buffers should be allocated
+  EXPECT_TRUE(buffers_empty->HasAllocationAt(p_a, {}));
+  EXPECT_TRUE(buffers_empty->HasAllocationAt(p0, {}));
+  EXPECT_TRUE(buffers_empty->HasAllocationAt(neg_a, {}));
+  EXPECT_TRUE(buffers_empty->HasAllocationAt(call_a, {}));
+  EXPECT_TRUE(buffers_empty->HasAllocationAt(p_b, {}));
+  EXPECT_TRUE(buffers_empty->HasAllocationAt(neg_b, {}));
+  EXPECT_TRUE(buffers_empty->HasAllocationAt(call_b, {}));
+}
+
 }  // namespace
 }  // namespace xla

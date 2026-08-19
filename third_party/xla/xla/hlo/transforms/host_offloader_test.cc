@@ -24,7 +24,6 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
@@ -4255,8 +4254,8 @@ ENTRY %main {
 // DynamicUpdateSlice(MoveToHost(...)) in a while loop body.
 TEST_F(HostOffloaderTest, MoveToHostInsideWhileLoopBodyShareSameBroadcast) {
   const absl::string_view hlo_string = R"(
-    HloModule MoveToHostFoundOutsideAndInsideOfWhileLoop, entry_computation_layout={(s32[],f32[1,1,128,128],f32[1,1,128,128])->(f32[8,1,128,128]{3,2,1,0:T(8,128)S(5)}, f32[8,1,128,128]{3,2,1,0:T(8,128)S(5)}, f32[1,1,128,128], f32[1,1,128,128], s32[], s32[])} 
-    
+    HloModule MoveToHostFoundOutsideAndInsideOfWhileLoop, entry_computation_layout={(s32[],f32[1,1,128,128],f32[1,1,128,128])->(f32[8,1,128,128]{3,2,1,0:T(8,128)S(5)}, f32[8,1,128,128]{3,2,1,0:T(8,128)S(5)}, f32[1,1,128,128], f32[1,1,128,128], s32[], s32[])}
+
     while_condition {
       condition_param = (f32[8,1,128,128], f32[8,1,128,128], f32[1,1,128,128], f32[1,1,128,128], s32[], s32[]) parameter(0)
       condition_current_iteration_index = s32[] get-tuple-element(condition_param), index=5

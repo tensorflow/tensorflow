@@ -43,8 +43,8 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
 #include "google/protobuf/text_format.h"
+#include "xla/autotune_cache.pb.h"
 #include "xla/autotune_results.pb.h"
-#include "xla/backends/autotuner/autotuning.pb.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/in_memory_store.h"
 #include "xla/backends/gpu/ffi.h"
@@ -3263,6 +3263,67 @@ ENTRY main {
     called_computations={%host_fn},
     async_execution_thread="host"
   ROOT %custom-call-done = f32[4]{0} custom-call-done(%custom-call-start)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+
+  Compiler::CompileOptions compile_options;
+  compile_options.gpu_topology =
+      GetSingleDeviceGpuTopology(/*platform_version=*/"", gpu_target_config());
+  compile_options.early_exit_with_layouts = false;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      compiler()->RunBackend(std::move(module), /*executor=*/nullptr,
+                             compile_options));
+  std::unique_ptr<GpuExecutable> gpu_exec(
+      static_cast<GpuExecutable*>(executable.release()));
+
+  // Find HostExecuteStartThunk
+  const HostExecuteStartThunk* host_execute_start_thunk = nullptr;
+  for (const auto& thunk : gpu_exec->thunk_executor().thunks()) {
+    if (thunk->kind() == Thunk::Kind::kHostExecuteStart) {
+      host_execute_start_thunk =
+          static_cast<const HostExecuteStartThunk*>(thunk.get());
+      break;
+    }
+  }
+  ASSERT_NE(host_execute_start_thunk, nullptr);
+
+  const auto& proto = host_execute_start_thunk->executable_proto();
+  ASSERT_TRUE(proto.has_aot_compilation_result());
+  const auto& aot_result = proto.aot_compilation_result();
+  ASSERT_TRUE(aot_result.has_hlo_module());
+  const auto& config = aot_result.hlo_module().config();
+  ASSERT_TRUE(config.has_debug_options());
+  const auto& debug_options = config.debug_options();
+
+  const auto& extra_options = debug_options.xla_backend_extra_options();
+  auto it = extra_options.find("xla_is_host_offload");
+  ASSERT_NE(it, extra_options.end());
+  EXPECT_EQ(it->second, "true");
+}
+
+TEST_F(GpuCompilerTest, HostNativeCallIsHostOffloadSet) {
+  const char* hlo_text = R"(
+HloModule test
+
+%host_fn (p0: f32[4]) -> f32[4] {
+  %p0 = f32[4] parameter(0)
+  ROOT %add = f32[4] add(%p0, %p0)
+}
+
+%async_computation (p0: f32[4]) -> f32[4] {
+  %p0 = f32[4] parameter(0)
+  ROOT %call = f32[4] call(%p0), to_apply=%host_fn, frontend_attributes={_xla_compute_type="host"}
+}
+
+ENTRY main {
+  %p0 = f32[4]{0} parameter(0)
+  %start = ((f32[4]{0}), f32[4]{0}, u32[]) async-start(%p0),
+    calls=%async_computation,
+    async_execution_thread="host"
+  ROOT %done = f32[4]{0} async-done(%start)
 }
 )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
