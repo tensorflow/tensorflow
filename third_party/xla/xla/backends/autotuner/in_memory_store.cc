@@ -27,7 +27,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/backends/autotuner/autotuning.pb.h"
+#include "xla/autotune_cache.pb.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/util/sorted_range.h"
 #include "tsl/platform/protobuf.h"
@@ -196,7 +196,9 @@ absl::Status InMemoryStore::DumpToFile(absl::string_view file_path) {
 
   std::string serialized;
   if (IsTextProtoPath(file_path)) {
-    if (!tsl::protobuf::TextFormat::PrintToString(cache, &serialized)) {
+    tsl::protobuf::TextFormat::Printer printer;
+    printer.SetExpandAny(true);
+    if (!printer.PrintToString(cache, &serialized)) {
       return absl::InternalError(absl::StrCat(
           "Failed to serialize AutotuneCache proto as textproto: ", file_path));
     }
