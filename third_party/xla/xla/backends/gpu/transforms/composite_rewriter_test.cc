@@ -252,8 +252,8 @@ INSTANTIATE_TEST_SUITE_P(
             /*rhs_type=*/"f8e4m3fn",
             /*lhs_scale_type=*/"f8e8m0fnu",
             /*rhs_scale_type=*/"f8e8m0fnu",
-            /*lhs_scale_shape=*/"3,128,16",  // 256 / 16 = 16 (divisible by 16)
-            /*rhs_scale_shape=*/"3,8,128",
+            /*lhs_scale_shape=*/"3,128,16",  // 256 / 16 = 16
+            /*rhs_scale_shape=*/"3,16,128",  // 256 / 16 = 16
             /*lhs_scale_const_val=*/std::nullopt,
             /*rhs_scale_const_val=*/std::nullopt,
             /*expected_rewrite=*/true,
@@ -265,23 +265,73 @@ INSTANTIATE_TEST_SUITE_P(
             /*lhs_scale_type=*/"f8e8m0fnu",
             /*rhs_scale_type=*/"f8e8m0fnu",
             /*lhs_scale_shape=*/"3,128,32",  // K=256, scale_k=32 -> block_size
-                                             // = 8 (not divisible by 16)
+                                             // = 8 (not 16 or 32)
+            /*rhs_scale_shape=*/"3,32,128",
+            /*lhs_scale_const_val=*/std::nullopt,
+            /*rhs_scale_const_val=*/std::nullopt,
+            /*expected_rewrite=*/false,
+        },
+        TestCase{
+            /*test_name=*/"FP8_ScaleFactor_64_Invalid",
+            /*lhs_type=*/"f8e4m3fn",
+            /*rhs_type=*/"f8e4m3fn",
+            /*lhs_scale_type=*/"f8e8m0fnu",
+            /*rhs_scale_type=*/"f8e8m0fnu",
+            /*lhs_scale_shape=*/"3,128,4",  // 256 / 4 = 64 (only 16 and 32
+                                            // supported)
+            /*rhs_scale_shape=*/"3,4,128",
+            /*lhs_scale_const_val=*/std::nullopt,
+            /*rhs_scale_const_val=*/std::nullopt,
+            /*expected_rewrite=*/false,
+        },
+        TestCase{
+            /*test_name=*/"FP4_E4M3_Scale_Block16",
+            /*lhs_type=*/"f4e2m1fn",
+            /*rhs_type=*/"f4e2m1fn",
+            /*lhs_scale_type=*/"f8e4m3fn",
+            /*rhs_scale_type=*/"f8e4m3fn",
+            /*lhs_scale_shape=*/"3,128,16",  // 256 / 16 = 16
+            /*rhs_scale_shape=*/"3,16,128",  // 256 / 16 = 16
+            /*lhs_scale_const_val=*/std::nullopt,
+            /*rhs_scale_const_val=*/std::nullopt,
+            /*expected_rewrite=*/true,
+        },
+        TestCase{
+            /*test_name=*/"FP4_E4M3_Scale_Invalid_Block32",
+            /*lhs_type=*/"f4e2m1fn",
+            /*rhs_type=*/"f4e2m1fn",
+            /*lhs_scale_type=*/"f8e4m3fn",
+            /*rhs_scale_type=*/"f8e4m3fn",
+            /*lhs_scale_shape=*/"3,128,8",  // 256 / 8 = 32 (E4M3 only supports
+                                            // 16)
             /*rhs_scale_shape=*/"3,8,128",
             /*lhs_scale_const_val=*/std::nullopt,
             /*rhs_scale_const_val=*/std::nullopt,
             /*expected_rewrite=*/false,
         },
         TestCase{
-            /*test_name=*/"FP8_ScaleFactor_64",
+            /*test_name=*/"Scale_Type_Mismatch_Fail",
+            /*lhs_type=*/"f4e2m1fn",
+            /*rhs_type=*/"f4e2m1fn",
+            /*lhs_scale_type=*/"f8e8m0fnu",
+            /*rhs_scale_type=*/"f8e4m3fn",
+            /*lhs_scale_shape=*/"3,128,16",
+            /*rhs_scale_shape=*/"3,16,128",
+            /*lhs_scale_const_val=*/std::nullopt,
+            /*rhs_scale_const_val=*/std::nullopt,
+            /*expected_rewrite=*/false,
+        },
+        TestCase{
+            /*test_name=*/"Scale_Factor_Mismatch_Fail",
             /*lhs_type=*/"f8e4m3fn",
             /*rhs_type=*/"f8e4m3fn",
             /*lhs_scale_type=*/"f8e8m0fnu",
             /*rhs_scale_type=*/"f8e8m0fnu",
-            /*lhs_scale_shape=*/"3,128,4",  // 256 / 4 = 64 (divisible by 32)
-            /*rhs_scale_shape=*/"3,8,128",
+            /*lhs_scale_shape=*/"3,128,16",  // block size 16
+            /*rhs_scale_shape=*/"3,8,128",   // block size 32
             /*lhs_scale_const_val=*/std::nullopt,
             /*rhs_scale_const_val=*/std::nullopt,
-            /*expected_rewrite=*/true,
+            /*expected_rewrite=*/false,
         }),
     [](const ::testing::TestParamInfo<TestCase>& info) {
       return info.param.test_name;
