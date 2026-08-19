@@ -371,6 +371,7 @@ tpu_py_strict_test(
 py_library(
     name = "monitoring",
     srcs = ["monitoring.py"],
+    lazy_imports = True,
     strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
@@ -606,6 +607,7 @@ py_library(
 py_library(
     name = "execute",
     srcs = ["execute.py"],
+    lazy_imports = True,
     strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
