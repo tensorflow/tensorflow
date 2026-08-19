@@ -15,6 +15,7 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -42,20 +43,35 @@ limitations under the License.
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(_pywrap_server_lib, m) {
+PYBIND11_MODULE(
+    _pywrap_server_lib, m, pybind11::mod_gil_not_used()) {
   pybind11_protobuf::ImportNativeProtoCasters();
 
-  py::class_<tensorflow::data::DispatchGrpcDataServer>(m,
-                                                       "DispatchGrpcDataServer")
-      .def("start", &tensorflow::data::DispatchGrpcDataServer::Start)
-      .def("stop", &tensorflow::data::DispatchGrpcDataServer::Stop)
+  py::class_<tensorflow::data::DispatchGrpcDataServer>(
+      m, "DispatchGrpcDataServer")
+      .def("start", [](tensorflow::data::DispatchGrpcDataServer* server) {
+        std::lock_guard<std::mutex> lock(server->ExternalMutex());
+        return server->Start();
+      })
+      .def("stop", [](tensorflow::data::DispatchGrpcDataServer* server) {
+        std::lock_guard<std::mutex> lock(server->ExternalMutex());
+        server->Stop();
+      })
       .def("join", &tensorflow::data::DispatchGrpcDataServer::Join,
            py::call_guard<py::gil_scoped_release>())
-      .def("bound_port", &tensorflow::data::DispatchGrpcDataServer::BoundPort)
+      .def("bound_port",
+           [](tensorflow::data::DispatchGrpcDataServer* server) {
+             std::lock_guard<std::mutex> lock(server->ExternalMutex());
+             return server->BoundPort();
+           })
       .def("num_workers",
            [](tensorflow::data::DispatchGrpcDataServer* server) -> int {
              int num_workers;
-             absl::Status status = server->NumWorkers(&num_workers);
+             absl::Status status;
+             {
+               std::lock_guard<std::mutex> lock(server->ExternalMutex());
+               status = server->NumWorkers(&num_workers);
+             }
              tensorflow::MaybeRaiseFromStatus(status);
              return num_workers;
            })
@@ -64,21 +80,40 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
               const std::string& path)
                -> std::vector<tensorflow::data::SnapshotStreamInfoWrapper> {
              std::vector<tensorflow::data::SnapshotStreamInfoWrapper> streams;
-             absl::Status status = server->SnapshotStreams(path, &streams);
+             absl::Status status;
+             {
+               std::lock_guard<std::mutex> lock(server->ExternalMutex());
+               status = server->SnapshotStreams(path, &streams);
+             }
              tensorflow::MaybeRaiseFromStatus(status);
              return streams;
            });
 
-  py::class_<tensorflow::data::WorkerGrpcDataServer>(m, "WorkerGrpcDataServer")
-      .def("start", &tensorflow::data::WorkerGrpcDataServer::Start)
-      .def("stop", &tensorflow::data::WorkerGrpcDataServer::Stop)
+  py::class_<tensorflow::data::WorkerGrpcDataServer>(
+      m, "WorkerGrpcDataServer")
+      .def("start", [](tensorflow::data::WorkerGrpcDataServer* server) {
+        std::lock_guard<std::mutex> lock(server->ExternalMutex());
+        return server->Start();
+      })
+      .def("stop", [](tensorflow::data::WorkerGrpcDataServer* server) {
+        std::lock_guard<std::mutex> lock(server->ExternalMutex());
+        server->Stop();
+      })
       .def("join", &tensorflow::data::WorkerGrpcDataServer::Join,
            py::call_guard<py::gil_scoped_release>())
-      .def("bound_port", &tensorflow::data::WorkerGrpcDataServer::BoundPort)
+      .def("bound_port",
+           [](tensorflow::data::WorkerGrpcDataServer* server) {
+             std::lock_guard<std::mutex> lock(server->ExternalMutex());
+             return server->BoundPort();
+           })
       .def("num_tasks",
            [](tensorflow::data::WorkerGrpcDataServer* server) -> int {
              int num_tasks;
-             absl::Status status = server->NumTasks(&num_tasks);
+             absl::Status status;
+             {
+               std::lock_guard<std::mutex> lock(server->ExternalMutex());
+               status = server->NumTasks(&num_tasks);
+             }
              tensorflow::MaybeRaiseFromStatus(status);
              return num_tasks;
            })
@@ -87,8 +122,12 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
                -> std::vector<tensorflow::data::SnapshotTaskProgressWrapper> {
              std::vector<tensorflow::data::SnapshotTaskProgressWrapper>
                  snapshot_task_progresses;
-             absl::Status status =
-                 server->SnapshotTaskProgresses(&snapshot_task_progresses);
+             absl::Status status;
+             {
+               std::lock_guard<std::mutex> lock(server->ExternalMutex());
+               status =
+                   server->SnapshotTaskProgresses(&snapshot_task_progresses);
+             }
              tensorflow::MaybeRaiseFromStatus(status);
              return snapshot_task_progresses;
            });
@@ -120,7 +159,8 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
               "Failed to deserialize worker config."));
         }
         std::unique_ptr<tensorflow::data::WorkerGrpcDataServer> server;
-        absl::Status status = tensorflow::data::NewWorkerServer(config, server);
+        absl::Status status =
+            tensorflow::data::NewWorkerServer(config, server);
         tensorflow::MaybeRaiseFromStatus(status);
         return server;
       },
@@ -170,6 +210,7 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
                  snapshot_task_progress_wrapper) -> bool {
             return snapshot_task_progress_wrapper.completed;
           });
+
   py::class_<tensorflow::data::SnapshotStreamInfoWrapper>
       snapshot_stream_info_wrapper(m, "SnapshotStreamInfoWrapper");
   snapshot_stream_info_wrapper.def(py::init<>())
