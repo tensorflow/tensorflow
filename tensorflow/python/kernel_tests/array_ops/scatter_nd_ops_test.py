@@ -994,6 +994,15 @@ class ScatterNdTensorTest(test.TestCase):
         constant_op.constant([10., 11., 12., 13., 14., 15., 16., 17., 18.,
                               19.]))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testTensorScatterUpdate_MalformedIndicesShape(self):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Outer dimensions"):
+      array_ops.tensor_scatter_update(
+          constant_op.constant([0, 0, 0, 0, 0, 0, 0, 0], dtype=dtypes.int32),
+          constant_op.constant([[[4]]], dtype=dtypes.int32),
+          constant_op.constant([3], dtype=dtypes.int32))
+
 
 class ScatterNdTensorDeterminismTest(ScatterNdTensorTest):
 
