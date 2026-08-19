@@ -45,6 +45,10 @@ absl::StatusOr<const PJRT_Api*> LoadPjrtPlugin(absl::string_view device_type,
 absl::StatusOr<bool> IsPjrtPluginInitialized(absl::string_view device_type);
 // Initializes a PJRT plugin with `PJRT_Plugin_Initialize`.
 absl::Status InitializePjrtPlugin(absl::string_view device_type);
+// Initializes a PJRT plugin with `PJRT_Plugin_Initialize` if it has not been
+// initialized yet, and returns the PJRT_Api for the given `device_type`.
+absl::StatusOr<const PJRT_Api*> GetInitializedPjrtApi(
+    absl::string_view device_type);
 
 }  // namespace pjrt
 
