@@ -37,7 +37,7 @@ void CallDelete_DeviceInfo(PyObject* capsule) {
   destructor(PyCapsule_GetPointer(capsule, "TFE_CustomDevice_DeviceInfo"));
 }
 
-PYBIND11_MODULE(_pywrap_parallel_device, m) {
+PYBIND11_MODULE(_pywrap_parallel_device, m, pybind11::mod_gil_not_used()) {
   m.def("GetParallelDeviceCapsules",
         [](const char* name, std::vector<std::string> underlying_devices) {
           std::vector<const char*> underlying_devices_c;
