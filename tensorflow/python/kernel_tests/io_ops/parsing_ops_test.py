@@ -1189,6 +1189,40 @@ class ParseExampleTest(test.TestCase):
         "features": test_features
     }, expected_output)
 
+  def testSerializedContainingMisalignedRaggedFeatureRowLengths(self):
+    original = [
+        example(
+            features=features({
+                "rt_values": float_feature([]),
+                "rt_lengths": int64_feature([5]),
+            })),
+        example(
+            features=features({
+                "rt_values": float_feature([1.0, 2.0, 3.0, 4.0, 5.0]),
+                "rt_lengths": int64_feature([]),
+            })),
+    ]
+    serialized = ops.convert_to_tensor(
+        [m.SerializeToString() for m in original])
+    test_features = {
+        "rt":
+            parsing_ops.RaggedFeature(
+                value_key="rt_values",
+                partitions=[parsing_ops.RaggedFeature.RowLengths("rt_lengths")],
+                dtype=dtypes.float32),
+    }
+    self._test(
+        {
+            "serialized": serialized,
+            "features": test_features,
+        },
+        expected_err=(
+            (errors_impl.InvalidArgumentError, ValueError),
+            "Feature rt: partition row lengths do not match value row lengths",
+        ),
+    )
+
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class ParseSingleExampleTest(test.TestCase):
