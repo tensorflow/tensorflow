@@ -81,6 +81,7 @@ cc_library(
         ":lowering_utils",
         ":passes_inc_gen",
         ":vectorized_reduce_emitter",
+        "//xla:util",
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
         "//xla/codegen/emitters/ir:xla",
         "//xla/codegen/xtile/ir:xtile",

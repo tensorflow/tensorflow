@@ -41,6 +41,11 @@ xla_cc_test(
         "//xla/tests:aot_interception_pjrt_client",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
+        "//xla/tsl/util/proto:parse_text_proto",
+        "//xla/util/split_proto:human_readable_aot_executable_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@tsl//tsl/platform:path",
     ],
 )
 

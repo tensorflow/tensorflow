@@ -64,6 +64,7 @@ cc_library(
         "//xla/backends/autotuner:codegen_backend",
         "//xla/backends/gpu/codegen/triton:support",
         "//xla/backends/gpu/codegen/triton:tma_utils",
+        "//xla/codegen/xtile:xtile_config_proto_cc",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
@@ -114,6 +115,7 @@ xla_test(
         "//xla:debug_options_flags",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
+        "//xla/codegen/xtile:xtile_config_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:compiler",
@@ -483,6 +485,7 @@ xla_test(
         ":native_emitter",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
+        "//xla/codegen/xtile:xtile_config_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:compiler",
@@ -692,7 +695,6 @@ xla_test(
     name = "gpu_profiler_test",
     srcs = ["gpu_profiler_test.cc"],
     backends = ["gpu"],
-    tags = ["cuda-only"],
     use_legacy_runtime = True,
     deps = [
         ":gpu_profiler",
@@ -704,12 +706,12 @@ xla_test(
         "//xla/backends/autotuner:profiler",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:compiler",
         "//xla/service:executable",
         "//xla/service:platform_util",
         "//xla/service:shaped_buffer",
         "//xla/service:transfer_manager",
         "//xla/service/gpu:gpu_compiler",
-        "//xla/service/gpu:nvptx_compiler_impl",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:platform",
@@ -1072,11 +1074,6 @@ xla_test(
     name = "factory_test",
     srcs = ["factory_test.cc"],
     backends = ["gpu"],
-    local_defines = (
-        if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-            "TENSORFLOW_USE_ROCM=1",
-        ])
-    ),
     deps = [
         ":factory",
         "//xla:shape_util",
