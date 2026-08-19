@@ -27,6 +27,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/random/uniform_int_distribution.h"
 #include "absl/status/status.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
@@ -51,6 +53,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/backends/gpu/codegen/triton/xtile_test_base.h"
 #include "xla/backends/gpu/tests/gpu_pjrt_codegen_test.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -64,6 +67,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/target_constants.h"
@@ -91,6 +95,7 @@ namespace {
 using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
 using ::testing::HasSubstr;
+using ::xla::xtile::BlockLevelFusionConfig;
 
 const HloFusionInstruction& GetFusionInstruction(
     const HloModule& hlo_module, absl::string_view fusion_name) {
@@ -2537,6 +2542,47 @@ class TritonScaledDotTestBase : public TritonEmitterTest {
     }
     return nullptr;
   }
+
+  absl::Status PopulateScale(Literal* scale, std::minstd_rand0* engine) {
+    switch (scale->shape().element_type()) {
+      case F8E8M0FNU: {
+        absl::uniform_int_distribution<int> exponent_distribution(-4, 1);
+        return scale->Populate<float8_e8m0fnu>(
+            [&](absl::Span<const int64_t> /*indices*/) {
+              return float8_e8m0fnu(
+                  std::ldexp(1.0f, exponent_distribution(*engine)));
+            });
+      }
+      case F8E4M3FN:
+        for (float8_e4m3fn& value : scale->data<float8_e4m3fn>()) {
+          value = float8_e4m3fn(std::abs(static_cast<float>(value)));
+        }
+        return absl::OkStatus();
+      case F8E5M2:
+        for (float8_e5m2& value : scale->data<float8_e5m2>()) {
+          value = float8_e5m2(std::abs(static_cast<float>(value)));
+        }
+        return absl::OkStatus();
+      default:
+        return absl::InvalidArgumentError(
+            absl::StrCat("Unsupported scale type: ",
+                         PrimitiveType_Name(scale->shape().element_type())));
+    }
+  }
+
+  absl::StatusOr<std::vector<Literal>> MakeScaledDotArguments(
+      const HloModule* module) {
+    std::minstd_rand0 engine;
+    ABSL_ASSIGN_OR_RETURN(std::vector<Literal> arguments,
+                     MakeFakeArguments(module, &engine));
+    if (arguments.size() != 4) {
+      return absl::InternalError(absl::StrCat(
+          "Expected 4 scaled-dot arguments, got ", arguments.size()));
+    }
+    ABSL_RETURN_IF_ERROR(PopulateScale(&arguments[2], &engine));
+    ABSL_RETURN_IF_ERROR(PopulateScale(&arguments[3], &engine));
+    return arguments;
+  }
 };
 
 class TritonScaledDotTest : public TritonScaledDotTestBase,
@@ -2575,46 +2621,6 @@ class TritonFp4ScaledDotTest
     return std::get<3>(GetParam());
   }
 
-  absl::Status PopulateFp4ScaledDotScale(Literal* scale,
-                                         std::minstd_rand0* engine) {
-    switch (scale->shape().element_type()) {
-      case F8E8M0FNU: {
-        // E8M0 encodes powers of two. This exponent range keeps scaled FP4 dot
-        // values numerically useful while exercising nonuniform scales.
-        absl::uniform_int_distribution<int> exponent_distribution(-4, 1);
-        return scale->Populate<float8_e8m0fnu>(
-            [&](absl::Span<const int64_t> /*indices*/) {
-              return float8_e8m0fnu(
-                  std::ldexp(1.0f, exponent_distribution(*engine)));
-            });
-      }
-      case F8E4M3FN:
-        // Triton interprets F8E4M3FN scale parameters as unsigned UE4M3.
-        for (float8_e4m3fn& value : scale->data<float8_e4m3fn>()) {
-          value = float8_e4m3fn(std::abs(static_cast<float>(value)));
-        }
-        return absl::OkStatus();
-      default:
-        return absl::InvalidArgumentError(
-            absl::StrCat("Unsupported F4 scaled-dot scale type: ",
-                         PrimitiveType_Name(scale->shape().element_type())));
-    }
-  }
-
-  absl::StatusOr<std::vector<Literal>> MakeFp4ScaledDotArguments(
-      const HloModule* module) {
-    std::minstd_rand0 engine;
-    ABSL_ASSIGN_OR_RETURN(std::vector<Literal> arguments,
-                     MakeFakeArguments(module, &engine));
-    if (arguments.size() != 4) {
-      return absl::InternalError(absl::StrCat(
-          "Expected 4 scaled-dot arguments, got ", arguments.size()));
-    }
-    ABSL_RETURN_IF_ERROR(PopulateFp4ScaledDotScale(&arguments[2], &engine));
-    ABSL_RETURN_IF_ERROR(PopulateFp4ScaledDotScale(&arguments[3], &engine));
-    return arguments;
-  }
-
   void RunFp4ScaledDotExecutionTest(PrimitiveType lhs_type,
                                     PrimitiveType rhs_type,
                                     PrimitiveType scale_type, bool lhs_k_minor,
@@ -2638,7 +2644,12 @@ ENTRY e {
     constexpr int64_t m = 128;
     constexpr int64_t n = 128;
     constexpr int64_t k = 256;
-    const int64_t scale_k = k / (scale_type == F8E8M0FNU ? 32 : 16);
+    int block_size = 32;
+    if ((lhs_type == F4E2M1FN && rhs_type == F4E2M1FN) ||
+        scale_type == F8E4M3FN) {
+      block_size = 16;
+    }
+    const int64_t scale_k = k / block_size;
 
     const std::string lhs_shape =
         lhs_k_minor ? absl::StrCat(m, ",", k) : absl::StrCat(k, ",", m);
@@ -2650,6 +2661,17 @@ ENTRY e {
     const std::string rhs_scale_shape = rhs_k_minor
                                             ? absl::StrCat(n, ",", scale_k)
                                             : absl::StrCat(scale_k, ",", n);
+
+    LOG(INFO) << "TritonFp4ScaledDotTest Params:"
+              << "\n  LHS Type: "
+              << primitive_util::LowercasePrimitiveTypeName(lhs_type)
+              << "\n  RHS Type: "
+              << primitive_util::LowercasePrimitiveTypeName(rhs_type)
+              << "\n  Scale Type: "
+              << primitive_util::LowercasePrimitiveTypeName(scale_type)
+              << "\n  Block Size: " << block_size
+              << "\n  LHS K Minor: " << lhs_k_minor
+              << "\n  RHS K Minor: " << rhs_k_minor;
 
     std::string hlo = absl::StrReplaceAll(
         kHloTemplate,
@@ -2671,7 +2693,7 @@ ENTRY e {
                                                  "CHECK: tt.dot_scaled"),
                 IsOk());
     ASSERT_OK_AND_ASSIGN(std::vector<Literal> arguments,
-                         MakeFp4ScaledDotArguments(optimized_module.get()));
+                         MakeScaledDotArguments(optimized_module.get()));
     EXPECT_TRUE(RunAndCompareNoHloPasses(
         std::move(optimized_module), LiteralUtil::MakePointers(arguments),
         ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -2705,6 +2727,10 @@ INSTANTIATE_TEST_SUITE_P(
                                  F8E8M0FNU},  // MXFP4 x MXFP8 (MMAv5 mxf8f6f4)
             Fp4ScaledDotTypeCase{F8E4M3FN, F4E2M1FN,
                                  F8E8M0FNU},  // MXFP8 x MXFP4 (MMAv5 mxf8f6f4)
+            Fp4ScaledDotTypeCase{F4E2M1FN, F8E5M2,
+                                 F8E8M0FNU},  // MXFP4 x MXE5M2
+            Fp4ScaledDotTypeCase{F8E5M2, F4E2M1FN,
+                                 F8E8M0FNU},  // MXE5M2 x MXFP4
             Fp4ScaledDotTypeCase{F4E2M1FN, F4E2M1FN,
                                  F8E4M3FN}),  // NVFP4 x NVFP4
         ::testing::Bool(), ::testing::Bool(), ::testing::Bool()),
@@ -3230,6 +3256,244 @@ ENTRY e {
         std::move(optimized_module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
   }
 }
+
+struct ScaledDotCoverageTestCase {
+  PrimitiveType lhs_type;
+  PrimitiveType rhs_type;
+  PrimitiveType scale_type;
+  int block_size;
+};
+
+class TritonScaledDotCoverageTest : public TritonScaledDotTestBase,
+                                    public ::testing::WithParamInterface<
+                                        std::tuple<ScaledDotCoverageTestCase,
+                                                   /*lhs_k_minor=*/bool,
+                                                   /*rhs_k_minor=*/bool,
+                                                   /*tiling_enabled=*/bool>> {
+ public:
+  bool EnableTilingPropagation() const override {
+    return std::get<3>(GetParam());
+  }
+};
+
+std::vector<ScaledDotCoverageTestCase> GetCoverageTestCases() {
+  std::vector<PrimitiveType> fp8_types = {F8E4M3FN, F8E5M2};
+  std::vector<ScaledDotCoverageTestCase> cases;
+
+  // 1. Pure FP8 with E8M0 scales (Block 32)
+  for (auto lhs : fp8_types) {
+    for (auto rhs : fp8_types) {
+      cases.push_back({lhs, rhs, F8E8M0FNU, 32});
+    }
+  }
+
+  // 2. Mixed FP4/FP8 with E8M0 scales (Block 32)
+  for (auto fp8_type : fp8_types) {
+    cases.push_back({F4E2M1FN, fp8_type, F8E8M0FNU, 32});
+    cases.push_back({fp8_type, F4E2M1FN, F8E8M0FNU, 32});
+  }
+
+  // 3. Pure FP4 with E8M0 scales (Block 16)
+  cases.push_back({F4E2M1FN, F4E2M1FN, F8E8M0FNU, 16});
+
+  // 4. Pure FP4 with E4M3 scales (Block 16)
+  cases.push_back({F4E2M1FN, F4E2M1FN, F8E4M3FN, 16});
+
+  return cases;
+}
+
+std::string ScaledDotCoverageTestParamToString(
+    const ::testing::TestParamInfo<
+        std::tuple<ScaledDotCoverageTestCase, bool, bool, bool>>& info) {
+  const auto& [type_case, lhs_k_minor, rhs_k_minor, tiling_enabled] =
+      info.param;
+  return absl::StrCat(PrimitiveType_Name(type_case.lhs_type), "_",
+                      PrimitiveType_Name(type_case.rhs_type), "_",
+                      PrimitiveType_Name(type_case.scale_type), "_Block",
+                      type_case.block_size, "_Lhs", lhs_k_minor, "_Rhs",
+                      rhs_k_minor, "_",
+                      TilingParametersToString(tiling_enabled));
+}
+
+TEST_P(TritonScaledDotCoverageTest, Executes) {
+  auto cc = GpuComputeCapability().cuda_compute_capability();
+  if (!cc || !cc->IsAtLeastHopper()) {
+    GTEST_SKIP() << "Scaled dot isn't supported by Triton for pre-Hopper GPUs.";
+  }
+
+  const auto& [param, lhs_k_minor, rhs_k_minor, tiling_enabled] = GetParam();
+
+  // We want to test all combinations.
+  // if (cc->IsAtLeastBlackwell() && param.scale_type != F8E8M0FNU) {
+  //   GTEST_SKIP() << "Blackwell TMEM scale expects E8M0 scale, skipping other
+  //   "
+  //                   "scales for now.";
+  // }
+
+  constexpr absl::string_view kHloTemplate = R"hlo(
+HloModule m
+
+ENTRY e {
+  lhs = $lhs_type[$lhs_shape] parameter(0)
+  rhs = $rhs_type[$rhs_shape] parameter(1)
+  lhs_scale = $scale_type[$lhs_scale_shape] parameter(2)
+  rhs_scale = $scale_type[$rhs_scale_shape] parameter(3)
+  ROOT dot = bf16[$output_shape] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+    lhs_contracting_dims={$lhs_contracting_dim},
+    rhs_contracting_dims={$rhs_contracting_dim}
+}
+)hlo";
+
+  constexpr int64_t m = 128;
+  constexpr int64_t n = 128;
+  constexpr int64_t k = 256;
+  const int64_t scale_k = k / param.block_size;
+
+  const std::string lhs_shape =
+      lhs_k_minor ? absl::StrCat(m, ",", k) : absl::StrCat(k, ",", m);
+  const std::string rhs_shape =
+      rhs_k_minor ? absl::StrCat(n, ",", k) : absl::StrCat(k, ",", n);
+  const std::string lhs_scale_shape = lhs_k_minor
+                                          ? absl::StrCat(m, ",", scale_k)
+                                          : absl::StrCat(scale_k, ",", m);
+  const std::string rhs_scale_shape = rhs_k_minor
+                                          ? absl::StrCat(n, ",", scale_k)
+                                          : absl::StrCat(scale_k, ",", n);
+
+  // 1: original dot types
+  std::string original_types = absl::StrCat(
+      "LHS: ", primitive_util::LowercasePrimitiveTypeName(param.lhs_type),
+      ", RHS: ", primitive_util::LowercasePrimitiveTypeName(param.rhs_type),
+      ", Scale: ", primitive_util::LowercasePrimitiveTypeName(param.scale_type),
+      ", Block Size: ", param.block_size);
+
+  std::string after_composite = "scaled-dot";
+
+  std::string hlo = absl::StrReplaceAll(
+      kHloTemplate,
+      {{"$lhs_type",
+        primitive_util::LowercasePrimitiveTypeName(param.lhs_type)},
+       {"$rhs_type",
+        primitive_util::LowercasePrimitiveTypeName(param.rhs_type)},
+       {"$scale_type",
+        primitive_util::LowercasePrimitiveTypeName(param.scale_type)},
+       {"$lhs_shape", lhs_shape},
+       {"$rhs_shape", rhs_shape},
+       {"$lhs_scale_shape", lhs_scale_shape},
+       {"$rhs_scale_shape", rhs_scale_shape},
+       {"$output_shape", absl::StrCat(m, ",", n)},
+       {"$lhs_contracting_dim", lhs_k_minor ? "1" : "0"},
+       {"$rhs_contracting_dim", rhs_k_minor ? "1" : "0"}});
+
+  ASSERT_OK_AND_ASSIGN(auto optimized_module, GetOptimizedModule(hlo));
+
+  HloComputation* scaled_dot_computation = GetFirstComputationWithInstruction(
+      *optimized_module, HloOpcode::kScaledDot);
+
+  std::string optimized_dot_str = "N/A";
+  if (scaled_dot_computation) {
+    for (const auto* inst : scaled_dot_computation->instructions()) {
+      if (inst->opcode() == HloOpcode::kScaledDot) {
+        optimized_dot_str = inst->ToString();
+        break;
+      }
+    }
+  }
+
+  ASSERT_NE(scaled_dot_computation, nullptr)
+      << "Scaled dot instruction not found in optimized module.";
+
+  EXPECT_THAT(CreateTritonIrAndFileCheckForDot(*scaled_dot_computation,
+                                               "CHECK: tt.dot_scaled"),
+              IsOk());
+
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> arguments,
+                       MakeScaledDotArguments(optimized_module.get()));
+
+  // Assert that arguments (inputs and scales) are not all zeros
+  for (int i = 0; i < arguments.size(); ++i) {
+    EXPECT_FALSE(arguments[i].IsAll(0)) << "Argument " << i << " is all zeros";
+  }
+
+  GpuCompiler* gpu_compiler = dynamic_cast<GpuCompiler*>(compiler());
+  std::vector<std::string> ptx_instructions;
+  if (gpu_compiler) {
+    gpu_compiler->SetAsmHook([&](absl::string_view ptx) {
+      std::string ptx_str(ptx);
+      std::string line;
+      size_t pos = 0;
+      while ((pos = ptx_str.find('\n')) != std::string::npos) {
+        line = ptx_str.substr(0, pos);
+        // Trim leading whitespace
+        size_t first_non_space = line.find_first_not_of(" \t");
+        if (first_non_space != std::string::npos) {
+          line = line.substr(first_non_space);
+        }
+
+        // Split by space or semicolon to find tokens
+        std::vector<std::string> tokens =
+            absl::StrSplit(line, absl::ByAnyChar(" \t;"), absl::SkipEmpty());
+        if (!tokens.empty()) {
+          std::string inst = tokens[0];
+          // Skip predicate if present
+          if (inst.starts_with('@') && tokens.size() > 1) {
+            inst = tokens[1];
+          }
+
+          // Filter for MMA instructions specifically
+          if (absl::StrContains(inst, "mma") &&
+              (inst.starts_with("wgmma.mma") ||
+               inst.starts_with("tcgen05.mma"))) {
+            ptx_instructions.push_back(inst);
+          }
+        }
+        ptx_str.erase(0, pos + 1);
+      }
+    });
+  }
+
+  // Explicitly compile to trigger the hook and get PTX
+  auto cloned_module = optimized_module->Clone();
+  auto executable_or = CompileToExecutable(std::move(cloned_module),
+                                           /*run_optimization_passes=*/true);
+  if (!executable_or.ok()) {
+    LOG(ERROR) << "Explicit compilation failed: " << executable_or.status();
+  }
+  // Deduplicate PTX instructions
+  std::vector<std::string> unique_ptx;
+  for (const auto& inst : ptx_instructions) {
+    if (absl::c_find(unique_ptx, inst) == unique_ptx.end()) {
+      unique_ptx.push_back(inst);
+    }
+  }
+
+  LOG(ERROR) << "[SCALED_DOT_COVERAGE_SUMMARY]"
+             << "\n  1: Original Types: " << original_types
+             << "\n  2: After Composite: " << after_composite
+             << "\n  3: Optimized HLO Dot: " << optimized_dot_str
+             << "\n  4: Triton Dot: tt.dot_scaled"
+             << "\n  5: PTX Instructions:\n    "
+             << absl::StrJoin(unique_ptx, "\n    ");
+
+  bool run_status = RunAndCompareNoHloPasses(
+      std::move(optimized_module), LiteralUtil::MakePointers(arguments),
+      ErrorSpec{/*aabs=*/0.1, /*arel=*/0.1});
+
+  if (gpu_compiler) {
+    gpu_compiler->RemoveAsmHook();
+  }
+
+  LOG(ERROR) << "[SCALED_DOT_COVERAGE_STATUS] Execution Status: "
+             << (run_status ? "SUCCESS" : "FAILURE");
+
+  EXPECT_TRUE(run_status);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    TritonScaledDotCoverageTestSuite, TritonScaledDotCoverageTest,
+    ::testing::Combine(::testing::ValuesIn(GetCoverageTestCases()),
+                       ::testing::Bool(), ::testing::Bool(), ::testing::Bool()),
+    ScaledDotCoverageTestParamToString);
 
 }  // namespace
 }  // namespace gpu

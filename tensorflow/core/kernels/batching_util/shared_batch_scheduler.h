@@ -523,11 +523,11 @@ class PriorityTaskQueue {
       if constexpr (std::is_base_of_v<BatchTask, TaskType>) {
         if (enable_lazy_cancellation_filtering_) {
           if (it->task->IsDeadlineExceeded(now)) {
-            QueueEntry cancelled_entry = RemoveEntryInternal(it);
+            QueueEntry timed_out_entry = RemoveEntryInternal(it);
             RecordLazyCancelledTaskMetrics(
-                cancelled_entry.task->size(),
+                timed_out_entry.task->size(),
                 kLazyCancellationReasonDeadlineExceeded);
-            cancelled_entry.task->FinishTask(absl::DeadlineExceededError(
+            timed_out_entry.task->FinishTask(absl::DeadlineExceededError(
                 "Task cancelled: RPC deadline exceeded."));
             continue;
           }
@@ -640,9 +640,16 @@ class PriorityTaskQueue {
     int32_t tasks_to_schedule = ApplyBatchPaddingPolicy(
         candidate_size, allowed_batch_sizes_, disable_padding_,
         batch_padding_policy_, model_batch_stats_);
-    auto batch = std::make_unique<Batch<TaskType>>();
     std::vector<std::unique_ptr<TaskType>> tasks =
         RemoveTask(tasks_to_schedule);
+
+    // If no tasks could be dequeued (e.g. all tasks were filtered out by lazy
+    // cancellation), return nullptr to avoid scheduling an empty batch.
+    if (tasks.empty()) {
+      return nullptr;
+    }
+
+    auto batch = std::make_unique<Batch<TaskType>>();
     for (auto& t : tasks) {
       batch->AddTask(std::move(t), env_->NowMicros());
     }
