@@ -107,6 +107,12 @@ TEST(BitcastOpTest, TestImpossibleCast) {
   TestBitcastOp(&int8_input, DT_UINT32, TensorShape(), error::INVALID_ARGUMENT);
 }
 
+TEST(BitcastOpTest, TestUninitializedInput) {
+  Tensor uninit_input(DT_FLOAT, TensorShape({1}), nullptr);
+  TestBitcastOp(&uninit_input, DT_UINT32, TensorShape(),
+                error::FAILED_PRECONDITION);
+}
+
 PartialTensorShape S(std::initializer_list<int64_t> dims) {
   return PartialTensorShape(dims);
 }
