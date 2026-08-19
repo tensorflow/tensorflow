@@ -79,7 +79,17 @@ PythonAPIInfo::InferredAttributes Convert(
   if (PyList_Check(arg_list.ptr())) {
     for (Py_ssize_t i = 0; i < size; ++i) {
       PyObject* new_item = args_raw_vec[i];
-      PyList_SET_ITEM(arg_list.ptr(), i, new_item);
+
+      // Transfer the owned reference in args_raw_vec to the list.
+      // PyList_SetItem also releases the reference previously owned by
+      // the list at this index.
+      args_raw_vec[i] = nullptr;
+      if (PyList_SetItem(arg_list.ptr(), i, new_item) < 0) {
+        for (Py_ssize_t j = i + 1; j < size; ++j) {
+          Py_XDECREF(args_raw_vec[j]);
+        }
+        throw py::error_already_set();
+      }
     }
   } else {
     for (Py_ssize_t i = 0; i < size; ++i) {
@@ -93,6 +103,7 @@ PythonAPIInfo::InferredAttributes Convert(
 }  // namespace
 }  // namespace tensorflow
 
-PYBIND11_MODULE(_pywrap_python_api_parameter_converter, m) {
+PYBIND11_MODULE(_pywrap_python_api_parameter_converter, m,
+                  py::mod_gil_not_used()) {
   m.def("Convert", tensorflow::Convert);
 }
