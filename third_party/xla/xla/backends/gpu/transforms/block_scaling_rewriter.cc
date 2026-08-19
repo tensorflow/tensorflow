@@ -266,6 +266,8 @@ CudnnMxType GetCudnnMxType(const Shape& input_shape, const Shape& scale_shape,
   // Non-default layout is not supported.
   if (!LayoutUtil::IsMonotonicWithDim0Major(input_shape.layout()) ||
       !LayoutUtil::IsMonotonicWithDim0Major(scale_shape.layout())) {
+    VLOG(3) << "Non-default layout: input=" << input_shape.layout().ToString()
+            << ", scale=" << scale_shape.layout().ToString();
     return CudnnMxType::UNSUPPORTED_TYPE;
   }
 
@@ -297,6 +299,12 @@ CudnnMxType GetCudnnMxType(const Shape& input_shape, const Shape& scale_shape,
       contracting_size % actual_block_size == 0) {
     return CudnnMxType::NVFP4;
   }
+
+  VLOG(3) << "Unsupported types in GetCudnnMxType: input="
+          << PrimitiveType_Name(input_shape.element_type())
+          << ", scale=" << PrimitiveType_Name(scale_shape.element_type())
+          << ", block_size=" << actual_block_size
+          << ", contracting_size=" << contracting_size;
 
   return CudnnMxType::UNSUPPORTED_TYPE;
 }
@@ -727,11 +735,23 @@ bool CudnnScaledDotHelper::IsSupported(
 
   // Input fusion is not supported, as the underlying kernel reads from HBM.
   auto is_parameter = [](const HloInstruction* instr, int index) {
-    return instr->opcode() == HloOpcode::kParameter &&
-           instr->parameter_number() == index && instr->user_count() == 1;
+    bool is_param = instr->opcode() == HloOpcode::kParameter &&
+                    instr->parameter_number() == index &&
+                    instr->user_count() == 1;
+    if (!is_param) {
+      VLOG(3) << "Operand " << index
+              << " is not a parameter or has multiple users. Opcode: "
+              << instr->opcode() << ", param_num: "
+              << (instr->opcode() == HloOpcode::kParameter
+                      ? instr->parameter_number()
+                      : -1)
+              << ", users: " << instr->user_count();
+    }
+    return is_param;
   };
   if (!is_parameter(lhs_input, 0) || !is_parameter(rhs_input, 1) ||
       !is_parameter(lhs_scale, 2) || !is_parameter(rhs_scale, 3)) {
+    VLOG(3) << "Operands are not parameters meeting criteria";
     return false;
   }
 
@@ -743,13 +763,20 @@ bool CudnnScaledDotHelper::IsSupported(
       dnums.rhs_contracting_dimensions()[0] != rank - 1 ||
       (rank == 3 && (dnums.lhs_batch_dimensions()[0] != 0 ||
                      dnums.rhs_batch_dimensions()[0] != 0))) {
+    VLOG(3) << "Unsupported dimension numbers: " << dnums.DebugString()
+            << ", rank: " << rank;
     return false;
   }
 
   // cuDNN kernel supports a subset of block scaled types.
-  return IsSupportedByCudnn(
+  bool supported = IsSupportedByCudnn(
       GetCudnnMxType(lhs_input->shape(), lhs_scale->shape(), std::nullopt),
       GetCudnnMxType(rhs_input->shape(), rhs_scale->shape(), std::nullopt));
+
+  if (!supported) {
+    VLOG(3) << "Type combination not supported by cuDNN";
+  }
+  return supported;
 }
 
 absl::StatusOr<HloInstruction*> CudnnScaledDotHelper::AddScaleSwizzle(
