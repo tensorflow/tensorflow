@@ -81,8 +81,9 @@ const TensorSliceReader* TensorSliceReaderCache::GetReader(
       cv_.wait(l);
     }
 
-    if (readers_.find(filepattern) != readers_.end()) {
-      auto cached_val = readers_[filepattern];
+    auto it = readers_.find(filepattern);
+    if (it != readers_.end()) {
+      auto cached_val = it->second;
       if (cached_val.first == *func_ptr) {
         reader = cached_val.second;
         VLOG(1) << "Using cached TensorSliceReader for " << filepattern << ": "
