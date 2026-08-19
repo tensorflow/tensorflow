@@ -142,6 +142,13 @@ common --incompatible_enforce_config_setting_visibility
 # TODO: also enable this flag after fixing the visibility violations
 # common --incompatible_config_setting_private_default_visibility
 
+# external_include_paths feature forces passing external repositories headers
+# via -isystem alters how Clang resolves their file paths. This feature with
+# old versions of rules_cc triggering errors.
+# Following lines can be removed after rules_cc will be updated to >= 0.2.20
+common --features=-external_include_paths
+common --host_features=-external_include_paths
+
 # Print a stacktrace when a test is killed
 test --test_env="GTEST_INSTALL_FAILURE_SIGNAL_HANDLER=1"
 
