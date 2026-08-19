@@ -4172,7 +4172,9 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
   Args:
     lengths: integer tensor, all its values <= maxlen.
     maxlen: scalar integer tensor, size of last dimension of returned tensor.
-      Default is the maximum value in `lengths`.
+      Default is the maximum value in `lengths`. When compiling with XLA (such
+      as with `tf.function(jit_compile=True)`), `maxlen` must be explicitly
+      provided and evaluate to a compile-time constant.
     dtype: output type of the resulting tensor.
     name: name of the op.
 
