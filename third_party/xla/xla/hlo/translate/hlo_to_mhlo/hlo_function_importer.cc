@@ -2111,9 +2111,12 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto lhs_element_type = instruction->operand(0)->shape().element_type();
       auto rhs_element_type = instruction->operand(1)->shape().element_type();
       if (lhs_element_type != rhs_element_type) {
-        // Cast LHS or RHS to the common element type.
-        if (primitive_util::CastPreservesValues(lhs_element_type,
-                                                rhs_element_type)) {
+        if (primitive_util::IsF8Type(lhs_element_type) &&
+            primitive_util::IsF8Type(rhs_element_type)) {
+          // Allow mixed FP8 without conversion.
+        } else if (primitive_util::CastPreservesValues(lhs_element_type,
+                                                       rhs_element_type)) {
+          // Cast LHS to the common element type.
           auto convert_op_return_type =
               mlir::cast<mlir::ShapedType>(lhs.getType())
                   .clone(mlir::getElementTypeOrSelf(rhs));
@@ -2121,6 +2124,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
                                                    convert_op_return_type, lhs);
         } else if (primitive_util::CastPreservesValues(rhs_element_type,
                                                        lhs_element_type)) {
+          // Cast RHS to the common element type.
           auto convert_op_return_type =
               mlir::cast<mlir::ShapedType>(rhs.getType())
                   .clone(mlir::getElementTypeOrSelf(lhs));
