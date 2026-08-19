@@ -177,6 +177,14 @@ class AtrousConv2DTest(test.TestCase):
           rate=1,
           padding="SAME")
 
+  def testAtrousConv2DInvalidFilterRank(self):
+    with self.assertRaisesRegex(ValueError, "rank 4"):
+      nn_ops.atrous_conv2d(
+          value=np.ones([1, 1, 1, 1]),
+          filters=np.ones([10]),
+          rate=1,
+          padding="SAME")
+
 
 class AtrousConv2DTransposeTest(test.TestCase):
 
