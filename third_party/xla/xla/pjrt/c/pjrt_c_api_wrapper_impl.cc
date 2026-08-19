@@ -514,6 +514,11 @@ class CApiKeyValueStore : public xla::KeyValueStoreInterface {
     return absl::OkStatus();
   }
 
+  absl::Status Delete(absl::string_view key) override {
+    return absl::UnimplementedError(
+        "Delete is not supported in CApiKeyValueStore.");
+  }
+
  private:
   PJRT_KeyValueGetCallback c_get_callback_;
   void* get_user_arg_;

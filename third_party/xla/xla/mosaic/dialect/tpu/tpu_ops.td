@@ -101,6 +101,10 @@ def TPU_TiledLayoutAttr
 
     ::llvm::SmallVector<int64_t> getExpandedShape(::llvm::ArrayRef<int64_t> shape) const;
     ::llvm::SmallVector<int64_t> getExpandedStrides() const;
+
+    // Returns true if any of the tile strides are dynamic.
+    bool hasDynamicStrides() const;
+    int64_t getNumDynamicStrides() const;
   }];
 
   let hasCustomAssemblyFormat = 1;
@@ -1223,15 +1227,16 @@ def TPU_ReinterpretCastOp : TPU_Op<"reinterpret_cast", [Pure, AttrSizedOperandSe
     // NOTE: The size of the shift must be a multiple of the memory space word
     // size for lowering to succeed.
     Optional<I32>:$dynamic_offset,
-    Variadic<I32>:$dynamic_sizes
+    Variadic<I32>:$dynamic_sizes,
+    Variadic<I32>:$dynamic_strides
   );
   let results = (outs AnyMemRef:$result);
   let assemblyFormat = [{
-    $input ($dynamic_offset^)? (`<` $dynamic_sizes^ `>`)? attr-dict `:` type($input) `->` type($result)
+    $input ($dynamic_offset^)? (`<` $dynamic_sizes^ `>`)? (`[` $dynamic_strides^ `]`)? attr-dict `:` type($input) `->` type($result)
   }];
   let skipDefaultBuilders = 1;
   let builders = [
-    OpBuilder<(ins "::mlir::Type":$result_type, "::mlir::Value":$input, CArg<"::mlir::Value", "nullptr">:$dynamic_offset, CArg<"::mlir::ValueRange", "{}">:$dynamic_sizes)>
+    OpBuilder<(ins "::mlir::Type":$result_type, "::mlir::Value":$input, CArg<"::mlir::Value", "nullptr">:$dynamic_offset, CArg<"::mlir::ValueRange", "{}">:$dynamic_sizes, CArg<"::mlir::ValueRange", "{}">:$dynamic_strides)>
   ];
   let hasVerifier = 1;
 }
