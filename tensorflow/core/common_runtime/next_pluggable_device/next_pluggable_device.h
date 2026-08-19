@@ -24,13 +24,11 @@ limitations under the License.
 #include "tensorflow/compiler/jit/pjrt_base_device.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/core/common_runtime/local_device.h"
-#include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_context.h"
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
 
 namespace tensorflow {
-
-class NextPluggableDeviceAllocator;
 
 class NextPluggableDevice : public PjRtBaseDevice {
  public:
@@ -85,7 +83,6 @@ class NextPluggableDevice : public PjRtBaseDevice {
   int device_ordinal_;
   // Need to use RefCountPtr since DeviceContext is a ref counted object.
   core::RefCountPtr<DeviceContext> device_context_;
-  std::unique_ptr<NextPluggableDeviceAllocator> tfnpd_allocator_;
   std::unique_ptr<AsyncValueAllocator> pjrt_allocator_;
   Allocator* allocator_ = nullptr;  // Not owned.
   std::unique_ptr<DeviceBase::AcceleratorDeviceInfo> accelerator_device_info_;

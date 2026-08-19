@@ -27,48 +27,44 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/c/tf_status.h"
-#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "xla/tpu/c_api_conversions.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/tsl/framework/device_id_utils.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device.h"
-#include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/utils.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/tfrt/common/create_pjrt_client_util.h"
 
 namespace tensorflow {
 namespace {
 absl::StatusOr<xla::Shape> DeviceShapeRepresentation(
-    const TensorShape& shape, DataType type, bool use_fast_memory,
-    XlaLayoutPreference layout_preference) {
+    const std::string& device_type, const TensorShape& shape, DataType type,
+    bool use_fast_memory, XlaLayoutPreference layout_preference) {
   xla::Shape xla_shape;
   TF_RETURN_IF_ERROR(
       tensorflow::TensorShapeToXLAShape(type, shape, &xla_shape));
-  ApiConverter::StackHelper<XLA_Shape> c_xla_shape(xla_shape);
-  ApiConverter::StackHelper<XLA_Shape> c_device_shape;
-  TF_Status* tf_status = TF_NewStatus();
-  TfnpdApi()->TFNPD_XlaShapeToDeviceShapeRepresentation(
-      &c_xla_shape.value, type, use_fast_memory,
-      ConvertToCXlaLayoutPreference(layout_preference), &c_device_shape.value,
-      tf_status);
-  const absl::Status status = StatusFromTF_Status(tf_status);
-  TF_DeleteStatus(tf_status);
-  TF_RETURN_IF_ERROR(status);
-  return c_device_shape.AsCpp<xla::Shape>();
+  auto client_or = GetOrCreatePjRtClient(DeviceType(device_type));
+  if (client_or.ok()) {
+    auto layout_or = (*client_or)
+                         ->GetDefaultLayout(xla_shape.element_type(),
+                                            xla_shape.dimensions());
+    if (layout_or.ok()) {
+      *xla_shape.mutable_layout() = *layout_or;
+    }
+  }
+  return xla_shape;
 }
 }  // namespace
 
 absl::Status NextPluggableDeviceFactory::ListPhysicalDevices(
     std::vector<std::string>* devices) {
-  TF_Status* c_status = TF_NewStatus();
-  int32_t device_count = api_->TFNPD_GetDeviceCount(c_status);
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(c_status));
-  TF_DeleteStatus(c_status);
+  TF_ASSIGN_OR_RETURN(xla::PjRtClient * pjrt_client,
+                      GetOrCreatePjRtClient(DeviceType(device_type_)));
+  int32_t device_count = pjrt_client->addressable_device_count();
 
   for (int i = 0; i < device_count; ++i) {
     const std::string device_name =
@@ -82,16 +78,10 @@ absl::Status NextPluggableDeviceFactory::ListPhysicalDevices(
 absl::Status NextPluggableDeviceFactory::CreateDevices(
     const SessionOptions& session_options, const std::string& name_prefix,
     std::vector<std::unique_ptr<Device>>* devices) {
-  TF_Status* c_status = TF_NewStatus();
+  TF_ASSIGN_OR_RETURN(xla::PjRtClient * pjrt_client,
+                      GetOrCreatePjRtClient(DeviceType(device_type_)));
 
-  // Setup per-device states or resources that are internal to plugin.
-  api_->TFNPD_InitPluginInternalDeviceStates(c_status);
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(c_status));
-
-  const int32_t visible_device_count = api_->TFNPD_GetDeviceCount(c_status);
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(c_status));
-  TF_DeleteStatus(c_status);
-
+  const int32_t visible_device_count = pjrt_client->addressable_device_count();
   if (visible_device_count <= 0) {
     return absl::OkStatus();
   }
@@ -118,7 +108,13 @@ absl::Status NextPluggableDeviceFactory::CreateDevices(
     options.device_ordinal = i;
     options.shape_determination_fns = {
         XlaShapeLayoutHelpers::ShapeDeterminationFns{
-            UseNoPreferenceLayoutFn(), DeviceShapeRepresentation}};
+            UseNoPreferenceLayoutFn(),
+            [device_type = device_type_](
+                const TensorShape& shape, DataType type, bool use_fast_memory,
+                XlaLayoutPreference layout_preference) {
+              return DeviceShapeRepresentation(
+                  device_type, shape, type, use_fast_memory, layout_preference);
+            }}};
 
     auto device =
         std::make_unique<NextPluggableDevice>(session_options, options);

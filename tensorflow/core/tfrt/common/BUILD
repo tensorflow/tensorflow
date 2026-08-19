@@ -124,8 +124,10 @@ cc_library(
         "@xla//xla/client:local_client",
         "@xla//xla/pjrt:host_memory_allocator",
         "@xla//xla/pjrt:local_device_state",
+        "@xla//xla/pjrt:pjrt_api",
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt:tf_pjrt_client",
+        "@xla//xla/pjrt/c_api_client:pjrt_c_api_client",
         "@xla//xla/stream_executor/integrations:tf_allocator_adapter",
     ],
 )

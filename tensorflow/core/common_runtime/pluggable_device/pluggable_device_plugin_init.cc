@@ -21,6 +21,8 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/c/experimental/grappler/grappler_internal.h"
 #include "tensorflow/c/experimental/pluggable_profiler/pluggable_profiler_internal.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
@@ -32,7 +34,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
-#include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_factory.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_factory.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_util.h"
@@ -67,24 +68,75 @@ static absl::Status InitDeviceModule(stream_executor::SEInitPluginFn init_fn) {
   return absl::OkStatus();
 }
 
-static absl::Status InitNextPluggableDeviceModule(TFNPDInitPluginFn init_fn,
-                                                  PjrtApiInitFn init_pjrt_fn) {
-  if (init_fn == nullptr) {
-    VLOG(1) << "Next pluggable device init function not found.";
-    return absl::OkStatus();
-  }
-  TF_ASSIGN_OR_RETURN(auto init_params, InitNextPluggableDevicePlugin(init_fn));
-  std::string device_type(init_params.device_type);
-  std::string compilation_device_name(init_params.compilation_device_name);
-  int priority = init_params.priority;
-  bool is_pluggable_device = init_params.is_pluggable_device;
-  // Loads the PJRT plugin.
-  // TODO(b/265301627): use LoadPjrtPlugin when it supports windows.
+static absl::Status InitNextPluggableDeviceModule(PjrtApiInitFn init_pjrt_fn) {
   if (init_pjrt_fn == nullptr) {
-    VLOG(1) << "PJRT plugin init function not found for " << device_type;
+    VLOG(1) << "PJRT plugin init function not found.";
     return absl::OkStatus();
   }
-  TF_RETURN_IF_ERROR(pjrt::SetPjrtApi(device_type, init_pjrt_fn()));
+
+  const PJRT_Api* pjrt_c_api = init_pjrt_fn();
+  if (pjrt_c_api == nullptr) {
+    return absl::InternalError("PJRT plugin init function returned nullptr.");
+  }
+
+  auto destroy_pjrt_error = [&](PJRT_Error* err) {
+    if (err != nullptr && pjrt_c_api->PJRT_Error_Destroy != nullptr) {
+      PJRT_Error_Destroy_Args args;
+      args.struct_size = PJRT_Error_Destroy_Args_STRUCT_SIZE;
+      args.extension_start = nullptr;
+      args.error = err;
+      pjrt_c_api->PJRT_Error_Destroy(&args);
+    }
+  };
+
+  std::string device_type;
+  if (pjrt_c_api->PJRT_TopologyDescription_Create != nullptr &&
+      pjrt_c_api->PJRT_TopologyDescription_PlatformName != nullptr) {
+    PJRT_TopologyDescription_Create_Args init_args;
+    init_args.struct_size = PJRT_TopologyDescription_Create_Args_STRUCT_SIZE;
+    init_args.extension_start = nullptr;
+    init_args.create_options = nullptr;
+    init_args.num_options = 0;
+    init_args.topology_name = nullptr;
+    init_args.topology_name_size = 0;
+    PJRT_Error* create_error =
+        pjrt_c_api->PJRT_TopologyDescription_Create(&init_args);
+    if (create_error == nullptr && init_args.topology != nullptr) {
+      PJRT_TopologyDescription_PlatformName_Args name_args;
+      name_args.struct_size =
+          PJRT_TopologyDescription_PlatformName_Args_STRUCT_SIZE;
+      name_args.extension_start = nullptr;
+      name_args.topology = init_args.topology;
+      PJRT_Error* name_error =
+          pjrt_c_api->PJRT_TopologyDescription_PlatformName(&name_args);
+      if (name_error == nullptr && name_args.platform_name != nullptr) {
+        device_type = absl::AsciiStrToUpper(absl::string_view(
+            name_args.platform_name, name_args.platform_name_size));
+      } else {
+        destroy_pjrt_error(name_error);
+      }
+      if (pjrt_c_api->PJRT_TopologyDescription_Destroy != nullptr) {
+        PJRT_TopologyDescription_Destroy_Args destroy_args;
+        destroy_args.struct_size =
+            PJRT_TopologyDescription_Destroy_Args_STRUCT_SIZE;
+        destroy_args.extension_start = nullptr;
+        destroy_args.topology = init_args.topology;
+        PJRT_Error* destroy_error =
+            pjrt_c_api->PJRT_TopologyDescription_Destroy(&destroy_args);
+        destroy_pjrt_error(destroy_error);
+      }
+    } else {
+      destroy_pjrt_error(create_error);
+    }
+  }
+  if (device_type.empty()) {
+    device_type = "TPU";
+  }
+  std::string compilation_device_name = device_type;
+  int priority = 220;
+  bool is_pluggable_device = true;
+
+  TF_RETURN_IF_ERROR(pjrt::SetPjrtApi(device_type, pjrt_c_api));
   TF_ASSIGN_OR_RETURN(bool is_pjrt_plugin_initialized,
                       pjrt::IsPjrtPluginInitialized(device_type));
   if (!is_pjrt_plugin_initialized) {
@@ -94,30 +146,10 @@ static absl::Status InitNextPluggableDeviceModule(TFNPDInitPluginFn init_fn,
                           std::make_unique<NextPluggableDeviceFactory>(
                               device_type, compilation_device_name),
                           priority, is_pluggable_device);
-  if (init_params.use_pjrt_on_demand_compile) {
-    // XlaCompileOnDemand op compiles a TensorFlow op to a PjRtExecutable and
-    // runs it.
-    auto& pjrt_rollout_config = GetXlaOpsCommonFlags()->tf_xla_use_device_api;
-    pjrt_rollout_config.AllowForDeviceInXlaCompileOnDemand(
-        DeviceType(device_type));
-    CHECK(  // Crash OK
-        pjrt_rollout_config.IsEnabledInXlaCompileOnDemandForDevice(
-            DeviceType(device_type)))
-        << "Using Device API (PjRt) for 'on-demand' mode needs to be turned on "
-           "by setting the '--tf_xla_use_device_api_for_compile_on_demand' "
-           "flag in the `TF_XLA_FLAGS` environment variable.";
-
-    static XlaDeviceOpRegistrations* registrations = RegisterXlaDeviceKernels(
-        device_type.c_str(), compilation_device_name.c_str());
-    (void)registrations;
-
-    VLOG(1) << "Registered XlaCompileOnDemand op for device_type: "
-            << device_type;
-  }
   TF_RETURN_IF_ERROR(CopyTensor::Register(
       DeviceType(device_type), DeviceType(device_type), PjRtDeviceToDeviceCopy,
       /*is_pluggable_device=*/true));  // Register the Copy tensor.
-  VLOG(1) << "Successfully initialized NextPluggableDevice module.";
+  VLOG(1) << "Successfully initialized NextPluggableDevice module with PJRT.";
   return absl::OkStatus();
 }
 
@@ -179,9 +211,6 @@ absl::Status RegisterPluggableDevicePlugin(void* dso_handle) {
   TF_RETURN_IF_ERROR(FindSymbol(dso_handle, "SE_InitPlugin",
                                 reinterpret_cast<void**>(&api.init_plugin_fn)));
   TF_RETURN_IF_ERROR(
-      FindSymbol(dso_handle, "TFNPD_InitPlugin",
-                 reinterpret_cast<void**>(&api.init_np_plugin_fn)));
-  TF_RETURN_IF_ERROR(
       FindSymbol(dso_handle, "GetPjrtApi",
                  reinterpret_cast<void**>(&api.get_pjrt_api_fn)));
   // Step 2 Find InitKernel function.
@@ -207,8 +236,7 @@ absl::Status RegisterPluggableDevicePlugin(const PluggableDeviceInit_Api* api) {
   // has issues in loading / initializing.
   // Step 1 Init Device Module.
   TF_RETURN_IF_ERROR(InitDeviceModule(api->init_plugin_fn));
-  TF_RETURN_IF_ERROR(InitNextPluggableDeviceModule(api->init_np_plugin_fn,
-                                                   api->get_pjrt_api_fn));
+  TF_RETURN_IF_ERROR(InitNextPluggableDeviceModule(api->get_pjrt_api_fn));
 
   // Step 2 Init Kernel Module.
   TF_RETURN_IF_ERROR(InitKernelModule(api->init_kernel_fn));
