@@ -99,6 +99,40 @@ TEST(DataTransferTest, EstimateVariantMemoryUsageBytes) {
             compressed->SpaceUsedLong());
 }
 
+TEST(DataTransferTest, EstimateMultidimensionalVariantMemoryUsageBytes) {
+  const size_t data_size = 1000;
+  const int64_t num_elements = 3;
+
+  Tensor tensor(DT_VARIANT, TensorShape({num_elements}));
+  auto variants = tensor.flat<Variant>();
+  size_t total_compressed_space = 0;
+  for (int64_t i = 0; i < num_elements; ++i) {
+    std::unique_ptr<CompressedElement> compressed{
+        protobuf::Arena::Create<CompressedElement>(nullptr)};
+    compressed->set_data(std::string(data_size, 'a' + i));
+    total_compressed_space += compressed->SpaceUsedLong();
+    variants(i) = *compressed;
+  }
+
+  GetElementResult variant_result = MakeElementResult(tensor);
+  EXPECT_GT(variant_result.EstimatedMemoryUsageBytes(),
+            num_elements * data_size);
+  EXPECT_GT(variant_result.EstimatedMemoryUsageBytes(), total_compressed_space);
+}
+
+TEST(DataTransferTest, EstimateNonCompressedVariantMemoryUsageBytes) {
+  const int64_t num_elements = 3;
+  Tensor tensor(DT_VARIANT, TensorShape({num_elements}));
+  auto variants = tensor.flat<Variant>();
+  for (int64_t i = 0; i < num_elements; ++i) {
+    variants(i) = Tensor(DT_INT64, TensorShape({10}));
+  }
+
+  GetElementResult variant_result = MakeElementResult(tensor);
+  EXPECT_GE(variant_result.EstimatedMemoryUsageBytes(), sizeof(variant_result));
+  EXPECT_GT(variant_result.EstimatedMemoryUsageBytes(), tensor.TotalBytes());
+}
+
 TEST(DataTransferTest, CopyGetElementResult) {
   std::string hello_world = "hello, world!";
   GetElementResult result = MakeElementResult(hello_world);
