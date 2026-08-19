@@ -52,7 +52,10 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/testing/temporary_directory.h"
 #include "xla/util.h"
+#include "tsl/platform/path.h"
 
 namespace xla {
 namespace gpu {
@@ -502,6 +505,46 @@ ENTRY entry_computation {
   EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[1],
               ElementsAre(16));
   EXPECT_EQ(tiled_runtime_data.block_level_parameters.num_warps, 1);
+}
+
+TEST_P(GpuIndexingPerformanceModelTest,
+       TryFindTopKBestTilingsForFusion_DumpsToFile) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+fused_computation {
+  param_0.1 = f32[1024] parameter(0)
+  ROOT negate.1 = f32[1024] negate(param_0.1)
+}
+
+ENTRY main {
+  param_0.3 = f32[1024] parameter(0)
+  ROOT fusion = f32[1024] fusion(param_0.3), kind=kCustom, calls=fused_computation
+}
+)"));
+  tsl::testing::TemporaryDirectory temp_dir =
+      tsl::testing::TemporaryDirectory::CreateForCurrentTestcase().value();
+  std::string dump_file =
+      tsl::io::JoinPath(temp_dir.path(), "top_k_candidates.txt");
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_dump_cost_model_top_k_candidates(dump_file);
+
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  ASSERT_OK_AND_ASSIGN(
+      auto top_k_result,
+      indexing_cost_model_.TryFindTopKBestTilingsForFusion(*fusion_adaptor,
+                                                           /*top_k=*/3));
+  ASSERT_TRUE((std::holds_alternative<absl::InlinedVector<TiledRunTimeData, 4>>(
+      top_k_result)));
+
+  std::string dumped_content;
+  ASSERT_OK(
+      tsl::ReadFileToString(tsl::Env::Default(), dump_file, &dumped_content));
+  EXPECT_THAT(dumped_content, ::testing::HasSubstr("=== Cost model top-"));
+  EXPECT_THAT(dumped_content, ::testing::HasSubstr("Candidate #0:"));
 }
 
 TEST_P(GpuIndexingPerformanceModelTest,

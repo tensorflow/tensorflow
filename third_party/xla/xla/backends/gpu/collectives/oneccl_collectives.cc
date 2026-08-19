@@ -27,6 +27,7 @@ limitations under the License.
 #include "oneapi/ccl.h"
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
+#include "absl/base/casts.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
@@ -48,9 +49,21 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
-#include "tsl/platform/casts.h"
 
 namespace xla::gpu {
+
+static onecclComm_t Cast(const Communicator* comm) {
+  auto* oneccl_communicator = absl::down_cast<const OnecclCommunicator*>(comm);
+  CHECK(oneccl_communicator != nullptr) << "Unsupported XLA communicator";
+  return oneccl_communicator->comm();
+}
+
+absl::StatusOr<CliqueId> OnecclCollectives::CreateUniqueCliqueId() const {
+  VLOG(3) << "Create oneCCL unique clique id";
+  onecclUniqueId id;
+  XLA_ONECCL_RETURN_IF_ERROR(onecclGetUniqueId(&id));
+  return CliqueId(absl::string_view(id.data, ONECCL_UNIQUE_ID_BYTES));
+}
 
 onecclConfig_t AsOnecclConfig(const Collectives::Config& config) {
   onecclConfig_t comm_config = ONECCL_CONFIG_INITIALIZER;
