@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
+#include "xla/codegen/xtile/tiling_from_block_parameters.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -63,17 +64,22 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_dot_fusion_cost_model.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
-#include "xla/service/gpu/model/tiling_from_block_parameters.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/util.h"
+#include "tsl/platform/path.h"
 
 namespace xla {
 namespace gpu {
+
+using ::xla::xtile::GetTilingSpaceConcreteSizes;
+using ::xla::xtile::TilingFromAnnotatedFusion;
+
 namespace {
 
 // Information about an operand read.
@@ -867,6 +873,52 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
 
   if (candidates.size() > top_k) {
     candidates.resize(top_k);
+  }
+
+  std::string dump_path;
+  if (!fusion_adaptor.GetRoots().empty()) {
+    if (const HloModule* module =
+            fusion_adaptor.GetRoots().front().instruction().GetModule()) {
+      dump_path = module->config()
+                      .debug_options()
+                      .xla_gpu_dump_cost_model_top_k_candidates();
+    }
+  }
+
+  if (VLOG_IS_ON(2) || !dump_path.empty()) {
+    std::string dump_content;
+    const std::string fusion_name =
+        fusion_adaptor.GetRoots().empty()
+            ? "unknown_fusion"
+            : fusion_adaptor.GetRoots().front().instruction().ToString(
+                  HloPrintOptions::ShortParsable());
+    if (!dump_path.empty()) {
+      absl::StrAppend(&dump_content, "=== Cost model top-", candidates.size(),
+                      " candidates for: ", fusion_name, " ===\n");
+    }
+    for (int i = 0; i < candidates.size(); ++i) {
+      std::string cand_str =
+          absl::StrCat("Candidate #", i, ": ", candidates[i]);
+      VLOG(2) << "[" << fusion_name << "] " << cand_str;
+      if (!dump_path.empty()) {
+        absl::StrAppend(&dump_content, cand_str, "\n");
+      }
+    }
+    if (!dump_path.empty()) {
+      absl::StrAppend(&dump_content, "\n");
+      std::string resolved_path;
+      if (!tsl::io::ResolveTestPrefixes(dump_path, resolved_path)) {
+        LOG(WARNING) << "Failed to resolve cost model dump path: " << dump_path;
+      } else {
+        tsl::Env* env = tsl::Env::Default();
+        if (absl::Status s =
+                tsl::AppendStringToFile(env, resolved_path, dump_content);
+            !s.ok()) {
+          LOG(WARNING) << "Failed to dump cost model top_k candidates to "
+                       << resolved_path << ": " << s;
+        }
+      }
+    }
   }
 
   return candidates;
