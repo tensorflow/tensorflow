@@ -261,6 +261,7 @@ tf_python_pybind_extension(
     name = "_pywrap_checkpoint_reader",
     srcs = ["py_checkpoint_reader_wrapper.cc"],
     hdrs = [
+        "@xla//xla/tsl/python/lib/core:numpy_hdr",
         "//tensorflow/c:checkpoint_reader_hdrs",
         "//tensorflow/c:headers",
         "//tensorflow/c:safe_ptr_hdr",
