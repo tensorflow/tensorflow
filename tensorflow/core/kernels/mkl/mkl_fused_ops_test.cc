@@ -712,9 +712,12 @@ TYPED_TEST_P(MklFusedDepthwiseConv2DWithBiasOpTest, InvalidInputDims) {
   Tensor bias(dtype, {3});
   bias.template flat<TypeParam>().setZero();
 
-  this->AddInputFromArray<TypeParam>(image.shape(), image.flat<TypeParam>());
-  this->AddInputFromArray<TypeParam>(filter.shape(), filter.flat<TypeParam>());
-  this->AddInputFromArray<TypeParam>(bias.shape(), bias.flat<TypeParam>());
+  this->template AddInputFromArray<TypeParam>(image.shape(),
+                                               image.flat<TypeParam>());
+  this->template AddInputFromArray<TypeParam>(filter.shape(),
+                                               filter.flat<TypeParam>());
+  this->template AddInputFromArray<TypeParam>(bias.shape(),
+                                               bias.flat<TypeParam>());
 
   absl::Status status = this->RunOpKernel();
   EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
@@ -746,9 +749,12 @@ TYPED_TEST_P(MklFusedDepthwiseConv2DWithBiasOpTest, InvalidFilterDims) {
   Tensor bias(dtype, {3});
   bias.template flat<TypeParam>().setZero();
 
-  this->AddInputFromArray<TypeParam>(image.shape(), image.flat<TypeParam>());
-  this->AddInputFromArray<TypeParam>(filter.shape(), filter.flat<TypeParam>());
-  this->AddInputFromArray<TypeParam>(bias.shape(), bias.flat<TypeParam>());
+  this->template AddInputFromArray<TypeParam>(image.shape(),
+                                               image.flat<TypeParam>());
+  this->template AddInputFromArray<TypeParam>(filter.shape(),
+                                               filter.flat<TypeParam>());
+  this->template AddInputFromArray<TypeParam>(bias.shape(),
+                                               bias.flat<TypeParam>());
 
   absl::Status status = this->RunOpKernel();
   EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
