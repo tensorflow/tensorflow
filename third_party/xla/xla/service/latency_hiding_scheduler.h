@@ -1692,12 +1692,18 @@ class ModulePressureState {
   const BufferInfoTracker& buffer_tracker() const { return buffer_tracker_; }
   int64_t GetMemoryPeak() { return memory_peak_; }
   void SetMemoryPeak(int64_t peak) { memory_peak_ = peak; }
+  const MemoryPressureMetadata* GetOrCreatePressureMetadata(
+      const HloComputation* comp) const;
 
  private:
   const HloModule* module_;
   const HloAliasAnalysis* hlo_alias_analysis_;
   absl::flat_hash_map<const HloComputation*, MemoryPressureState>
       memory_pressure_states_;
+  mutable absl::Mutex pressure_metadata_cache_mu_;
+  mutable absl::flat_hash_map<const HloComputation*,
+                              std::unique_ptr<MemoryPressureMetadata>>
+      pressure_metadata_cache_ ABSL_GUARDED_BY(pressure_metadata_cache_mu_);
   BufferInfoTracker buffer_tracker_;
   int64_t memory_peak_ = 0;
   bool top_down_scheduling_ = false;
