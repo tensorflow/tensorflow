@@ -943,4 +943,49 @@ TEST_F(StablehloPadFlatbufferConversionsTest, DeathTests) {
                "");
 }
 
+TEST_F(FlatbufferConversionsTest, ParseStablehloScatterFailsTooManyDimensions) {
+  std::vector<int64_t> too_many_dims(
+      TFLITE_STABLEHLO_SCATTER_PARAMS_MAX_DIMENSION_COUNT + 1, 1);
+  const Operator* op = BuildTestOperator(
+      BuiltinOptions2_StablehloScatterOptions,
+      CreateStablehloScatterOptions(
+          builder_, /*indices_are_sorted=*/true,
+          /*update_window_dims=*/builder_.CreateVector(too_many_dims),
+          /*inserted_window_dims=*/builder_.CreateVector<int64_t>({1}),
+          /*scatter_dims_to_operand_dims=*/builder_.CreateVector<int64_t>({1}),
+          /*index_vector_dim=*/0, /*unique_indices=*/false,
+          /*update_computation_subgraph_index=*/0)
+          .Union());
+  void* output_data = nullptr;
+  EXPECT_EQ(kTfLiteError,
+            ParseOpData(op, BuiltinOperator_STABLEHLO_SCATTER, &mock_reporter_,
+                        &mock_allocator_, &output_data));
+  EXPECT_THAT(mock_reporter_.GetString(),
+              HasSubstr("Found too many dimensions in the input array of "
+                        "operation 'stablehlo_scatter'."));
+}
+
+TEST_F(FlatbufferConversionsTest, ParseStablehloGatherFailsTooManyDimensions) {
+  std::vector<int64_t> too_many_dims(
+      TFLITE_STABLEHLO_GATHER_PARAMS_MAX_DIMENSION_COUNT + 1, 1);
+  const Operator* op = BuildTestOperator(
+      BuiltinOptions2_StablehloGatherOptions,
+      CreateStablehloGatherOptions(
+          builder_,
+          /*offset_dims=*/builder_.CreateVector(too_many_dims),
+          /*collapsed_slice_dims=*/builder_.CreateVector<int64_t>({1}),
+          /*start_index_map=*/builder_.CreateVector<int64_t>({1}),
+          /*index_vector_dim=*/0,
+          /*slice_sizes=*/builder_.CreateVector<int64_t>({1}),
+          /*indices_are_sorted=*/true)
+          .Union());
+  void* output_data = nullptr;
+  EXPECT_EQ(kTfLiteError,
+            ParseOpData(op, BuiltinOperator_STABLEHLO_GATHER, &mock_reporter_,
+                        &mock_allocator_, &output_data));
+  EXPECT_THAT(mock_reporter_.GetString(),
+              HasSubstr("Found too many dimensions in the input array of "
+                        "operation 'stablehlo_gather'."));
+}
+
 }  // namespace tflite
