@@ -334,6 +334,15 @@ class TraceMe {
 #endif
   }
 
+  // Returns whether this TraceMe instance is currently recording.
+  bool IsRecording() const {
+#if !defined(IS_MOBILE_PLATFORM)
+    return start_time_ != kUntracedActivity && TraceMeRecorder::Active();
+#else
+    return false;
+#endif
+  }
+
   static int64_t NewActivityId() {
 #if !defined(IS_MOBILE_PLATFORM)
     return TraceMeRecorder::NewActivityId();

@@ -19,6 +19,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_cat.h"
+#ifdef Py_GIL_DISABLED
+#include "absl/synchronization/mutex.h"
+#endif
 #include "absl/strings/string_view.h"
 #include "pybind11/pytypes.h"
 #include "xla/tsl/platform/macros.h"
@@ -48,15 +51,42 @@ class TraceMeWrapper {
   // reference-counting overhead.
   void SetMetadata(const pybind11::kwargs& kwargs) {
     if (TF_PREDICT_FALSE(!kwargs.empty())) {
-      traceme_.AppendMetadata([&]() {
-        std::string metadata;
-        AppendMetadata(&metadata, kwargs);
-        return metadata;
-      });
+#ifndef NDEBUG
+      // Preserve TraceMe's debug behavior: metadata generators are evaluated
+      // even when tracing is disabled.
+#else
+#ifdef Py_GIL_DISABLED
+      {
+        absl::MutexLock lock(&mu_);
+        if (!traceme_.IsRecording()) {
+          return;
+        }
+      }
+#else
+      if (!traceme_.IsRecording()) {
+        return;
+      }
+#endif
+#endif  // NDEBUG
+
+      // Convert Python objects outside the native mutex so Python-level
+      // string conversion cannot re-enter TraceMe while the mutex is held.
+      std::string metadata;
+      AppendMetadata(&metadata, kwargs);
+
+#ifdef Py_GIL_DISABLED
+      absl::MutexLock lock(&mu_);
+#endif
+      traceme_.AppendMetadata([&metadata]() { return metadata; });
     }
   }
 
-  void Stop() { traceme_.Stop(); }
+  void Stop() {
+#ifdef Py_GIL_DISABLED
+    absl::MutexLock lock(&mu_);
+#endif
+    traceme_.Stop();
+  }
 
  private:
   // Converts kwargs to strings and appends them to name encoded as TraceMe
@@ -78,6 +108,9 @@ class TraceMeWrapper {
     return std::string(pybind11::str(handle));
   }
 
+#ifdef Py_GIL_DISABLED
+  absl::Mutex mu_;
+#endif
   tsl::profiler::TraceMe traceme_;
 };
 
