@@ -91,6 +91,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/py/numpy:headers",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@eigen_archive//:eigen3",
         "@pybind11",

@@ -45,7 +45,7 @@ static PyObject* DoQuantizeTrainingOnGraphDefHelper(
 }
 }  // namespace tensorflow
 
-PYBIND11_MODULE(_pywrap_quantize_training, m) {
+PYBIND11_MODULE(_pywrap_quantize_training, m, pybind11::mod_gil_not_used()) {
   m.def("DoQuantizeTrainingOnGraphDefHelper",
         [](const py::object input_graph, int num_bits) {
           return tensorflow::PyoOrThrow(
