@@ -156,18 +156,17 @@ PYBIND11_MODULE(
             return {};
           }
 
-          std::unordered_map<std::string, tensorflow::DeviceProperties> devices;
+          std::vector<py::bytes> named_devices;
           {
             std::lock_guard<std::mutex> lock(cluster->ExternalMutex());
-            devices = cluster->GetDevices();
-          }
+            const auto& devices = cluster->GetDevices();
 
-          std::vector<py::bytes> named_devices;
-          for (const auto& dev : devices) {
-            tensorflow::NamedDevice d;
-            d.set_name(dev.first);
-            *d.mutable_properties() = dev.second;
-            named_devices.push_back(d.SerializeAsString());
+            for (const auto& dev : devices) {
+              tensorflow::NamedDevice d;
+              d.set_name(dev.first);
+              *d.mutable_properties() = dev.second;
+              named_devices.push_back(d.SerializeAsString());
+            }
           }
           return named_devices;
         });
@@ -195,17 +194,17 @@ PYBIND11_MODULE(
               absl::InternalError("You need both a cluster and an "
                                   "item to get supported devices.")));
         }
-        std::unordered_map<std::string, tensorflow::DeviceProperties> devices;
+        std::unordered_map<std::string, std::vector<std::string>> device_types;
         std::string cluster_type;
+
         {
           std::lock_guard<std::mutex> lock(cluster->ExternalMutex());
-          devices = cluster->GetDevices();
+          const auto& devices = cluster->GetDevices();
           cluster_type = cluster->type();
-        }
 
-        std::unordered_map<std::string, std::vector<std::string>> device_types;
-        for (const auto& dev : devices) {
-          device_types[dev.second.type()].push_back(dev.first);
+          for (const auto& dev : devices) {
+            device_types[dev.second.type()].push_back(dev.first);
+          }
         }
 
         std::unordered_map<std::string, std::set<std::string>>
