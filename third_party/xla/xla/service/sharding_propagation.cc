@@ -3193,10 +3193,11 @@ std::vector<HloInstruction*> ShardingPropagation::GetRelatedInstructions(
 absl::StatusOr<bool> ShardingPropagation::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  LOG(WARNING) << "GSPMD sharding propagation is going to be deprecated and "
-                  "not supported in the future. Please consider migrating to "
-                  "Shardy (https://openxla.org/shardy). For reference, Shardy "
-                  "is already the default partitioner in JAX.";
+  LOG_FIRST_N(WARNING, 1)
+      << "GSPMD sharding propagation is going to be deprecated and "
+         "not supported in the future. Please consider migrating to "
+         "Shardy (https://openxla.org/shardy). For reference, Shardy "
+         "is already the default partitioner in JAX.";
   // Register custom-call partitioner for SharBarrierFrom and ShardBarrierTo.
   ABSL_CONST_INIT static absl::once_flag did_registration;
   absl::call_once(did_registration, [] {

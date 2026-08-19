@@ -419,6 +419,7 @@ cuda_library(
     ]),
     deps = [
         "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:typed_kernel_factory",
         "//xla/stream_executor/gpu:gpu_semaphore",
         "@com_google_absl//absl/status:status_macros",
