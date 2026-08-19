@@ -1,18 +1,3 @@
-# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# ==============================================================================
-
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
@@ -98,16 +83,20 @@ lit_device_test(
         "//xla/backends/gpu/target_config:all_gpu_specs",
     ],
     tags_override = {
-        "dot/dot_unit_tile_sizes.hlo": ["nozapfhahn"],
         "dot/dot.hlo": ["nozapfhahn"],
+        "dot/dot_concat.hlo": ["nozapfhahn"],
+        "dot/dot_major_lhs_contract.hlo": ["nozapfhahn"],
+        "dot/dot_minor_rhs_contract.hlo": ["nozapfhahn"],
+        "dot/dot_transpose_tma.hlo": ["nozapfhahn"],
+        "dot/dot_unit_tile_sizes.hlo": ["nozapfhahn"],
         "dot/layout_021_201_210.hlo": ["nozapfhahn"],
         "dot/layout_201_012_201.hlo": ["nozapfhahn"],
         "dot/layout_210_210_102.hlo": ["nozapfhahn"],
         "dot/layout_210_210_210.hlo": ["nozapfhahn"],
-        "dot/dot_major_lhs_contract.hlo": ["nozapfhahn"],
-        "dot/dot_transpose_tma.hlo": ["nozapfhahn"],
+        "dot/masked_dot.hlo": ["nozapfhahn"],
         "dot/reshape_of_pad.hlo": ["nozapfhahn"],
-        "dot/scaled_dot.hlo": ["nozapfhahn"],
+        "normalization/generic_emitter_multi_tiled_dims.hlo": ["nozapfhahn"],
+        "scaled_dot/scaled_dot.hlo": ["nozapfhahn"],
     },
     tools = [
         ":triton_test_correctness",
@@ -159,7 +148,7 @@ xla_test(
         "b200",
         "amdgpu_any",
     ],
-    shard_count = 10,
+    shard_count = 20,
     tags = ["no_mac"],
     deps = [
         "//xla:autotuning_proto_cc",
@@ -176,6 +165,7 @@ xla_test(
         "//xla/backends/gpu/codegen/triton:xtile_compiler",
         "//xla/backends/gpu/codegen/triton:xtile_test_base",
         "//xla/backends/gpu/tests:gpu_pjrt_codegen_test",
+        "//xla/codegen/xtile:xtile_config_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
