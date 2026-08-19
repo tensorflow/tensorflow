@@ -108,7 +108,7 @@ absl::Duration CalculatePipelinedLoopTimeWithLaunchWaves(
     int64_t num_stages, int64_t k_loop_iterations, int64_t threadblock_count,
     absl::Duration compute_time, const HbmEstimates& hbm_timing,
     int64_t shared_memory_per_block_bytes, int64_t num_warps,
-    const se::DeviceDescription& device_info);
+    const se::DeviceDescription& device_info, int64_t registers_per_thread);
 
 // Represents the occupancy of a single Streaming Multiprocessor (SM) for a
 // given kernel launch configuration.
@@ -117,17 +117,20 @@ struct SmOccupancy {
   int64_t active_warps_per_sm = 0;
 };
 
-// Calculates the SM occupancy based on shared memory and thread limits.
+// Calculates the SM occupancy based on shared memory, register, and thread
+// limits.
 SmOccupancy CalculateSmOccupancy(int64_t shared_memory_per_block_bytes,
                                  int64_t num_warps,
-                                 const se::DeviceDescription& device_info);
+                                 const se::DeviceDescription& device_info,
+                                 int64_t registers_per_thread);
 
 // Calculates the estimated number of hardware launch waves required to execute
 // the threadblocks.
 int64_t CalculateHardwareLaunchWaves(int64_t threadblock_count,
                                      int64_t shared_memory_per_block_bytes,
                                      int64_t num_warps,
-                                     const se::DeviceDescription& device_info);
+                                     const se::DeviceDescription& device_info,
+                                     int64_t registers_per_thread);
 
 // Calculates the bytes read from HBM for one inner loop iteration.
 int64_t CalculateLoopIterBytes(const DotProblemInfo& dot,
@@ -137,6 +140,13 @@ int64_t CalculateLoopIterBytes(const DotProblemInfo& dot,
 int64_t CalculateSharedMemoryPerBlockBytes(const DotProblemInfo& dot_info,
                                            const DotTileSize& dot_tile,
                                            int64_t num_stages);
+
+// Estimates physical PTX register usage per thread for a GPU dot fusion kernel,
+// accounting for output accumulator registers and base state overhead.
+int CalculateRegistersPerThread(const DotProblemInfo& dot_info,
+                                const DotTileSize& dot_tile,
+                                const BlockLevelParameters& block_params,
+                                const se::DeviceDescription& device_info);
 
 // Calculates the L2 time for a GPU DOT operation.
 absl::StatusOr<absl::Duration> CalculateL2Time(

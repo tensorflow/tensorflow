@@ -33,7 +33,8 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
+#include "xla/util/split_proto/human_readable_aot_executable.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -56,7 +57,11 @@ class AOTInterceptionPjrtClient : public PjRtClient {
 
   ~AOTInterceptionPjrtClient() override = default;
 
-  // Intercepted compilation methods.
+  absl::StatusOr<std::string> PackArtifactForInnerClient();
+
+  static absl::Status CompareGPUExecutables(
+      const HumanReadableAotExecutable& fresh,
+      const HumanReadableAotExecutable& golden);
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) override;
 
@@ -135,6 +140,16 @@ class AOTInterceptionPjrtClient : public PjRtClient {
       const LoadOptions& load_options) override;
 
  private:
+  // Unpacks a serialized PjRtExecutable into a human-readable proto format
+  // which separates the options and the GPU executable bytes naturally.
+  static absl::StatusOr<HumanReadableAotExecutable> DeserializeToHumanReadable(
+      absl::string_view serialized);
+  absl::Status VerifyAgainstGolden(const PjRtExecutable& fresh_executable);
+
+  // Loads the artifact at artifact_path_ and parses it into its human-readable
+  // proto form. Used internally by the compile and verification paths.
+  absl::StatusOr<HumanReadableAotExecutable> LoadHumanReadableArtifact();
+
   std::unique_ptr<PjRtClient> inner_client_;
   AOTTestMode mode_;
   std::string artifact_path_;
