@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/python/lib/core/py_util.h"
@@ -61,10 +62,12 @@ RegisteredDispatchableTypes& GetRegisteredDispatchableTypes() {
   {
     absl::MutexLock lock(&registered_dispatchable_types->mu);
     if (registered_dispatchable_types->types.empty()) {
-      Py_INCREF(composite_tensor);
-      registered_dispatchable_types->types.push_back(
-          Safe_PyObjectPtr(composite_tensor));
-      ++registered_dispatchable_types->version;
+      if (composite_tensor != nullptr) {
+        Py_INCREF(composite_tensor);
+        registered_dispatchable_types->types.push_back(
+            Safe_PyObjectPtr(composite_tensor));
+        ++registered_dispatchable_types->version;
+      }
     }
   }
 
@@ -221,7 +224,7 @@ Safe_PyObjectPtr PythonAPIDispatcher::Dispatch(PyObject* args,
 
   // Canonicalize args (so we don't need to deal with kwargs). Keep strong
   // references alive for the entire dispatch operation.
-  std::vector<Safe_PyObjectPtr> canonicalized_args_storage(
+  absl::InlinedVector<Safe_PyObjectPtr, 8> canonicalized_args_storage(
       canonicalizer_.GetArgSize());
 
   if (!canonicalizer_.Canonicalize(
@@ -229,7 +232,7 @@ Safe_PyObjectPtr PythonAPIDispatcher::Dispatch(PyObject* args,
     return nullptr;
   }
 
-  std::vector<PyObject*> canonicalized_args_raw;
+  absl::InlinedVector<PyObject*, 8> canonicalized_args_raw;
   canonicalized_args_raw.reserve(canonicalized_args_storage.size());
   for (const auto& arg : canonicalized_args_storage) {
     canonicalized_args_raw.push_back(arg.get());
