@@ -264,6 +264,42 @@ TEST(DynamicUpdateSliceOpTest, SimpleTestInt4) {
                                                    7, 0, 1}));
 }
 
+TEST(DynamicUpdateSliceOpTest, Int4InflatedInputBytesTest) {
+  DynamicUpdateSliceOpModel m({TensorType_INT4, {3, 3}},
+                              {TensorType_INT4, {1, 2}},
+                              {TensorType_INT32, {2}});
+  m.SetInput4bit({1, 2, 3,  //
+                  4, 5, 6,  //
+                  7, 0, 1});
+  m.SetUpdate4bit({-1, -2});
+  m.SetStartIndices<int32_t>({1, 1});
+  TfLiteTensor* input_tensor = m.GetInputTensor(0);
+  input_tensor->bytes = 1024;
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput4bit(), ElementsAreArray({1, 2, 3,    //
+                                                   4, -1, -2,  //
+                                                   7, 0, 1}));
+}
+
+TEST(DynamicUpdateSliceOpTest, Int4FullUpdateInflatedBytesTest) {
+  DynamicUpdateSliceOpModel m({TensorType_INT4, {3, 3}},
+                              {TensorType_INT4, {3, 3}},
+                              {TensorType_INT32, {2}});
+  m.SetInput4bit({1, 2, 3,  //
+                  4, 5, 6,  //
+                  7, 0, 1});
+  m.SetUpdate4bit({-1, -2, -3,  //
+                   -4, -5, -6,  //
+                   -7, 0, -1});
+  m.SetStartIndices<int32_t>({0, 0});
+  TfLiteTensor* update_tensor = m.GetInputTensor(1);
+  update_tensor->bytes = 1024;
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput4bit(), ElementsAreArray({-1, -2, -3,  //
+                                                   -4, -5, -6,  //
+                                                   -7, 0, -1}));
+}
+
 TEST(DynamicUpdateSliceOpTest, SimpleTestI16) {
   DynamicUpdateSliceOpModel m({TensorType_INT16, {3, 3}},
                               {TensorType_INT16, {2, 1}},
