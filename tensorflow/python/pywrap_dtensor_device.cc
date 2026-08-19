@@ -253,12 +253,11 @@ PYBIND11_MODULE(
 
     for (Py_ssize_t i = 0; i < len; ++i) {
 #if PY_VERSION_HEX >= 0x030D0000
-      PyObject* raw_elem = nullptr;
-      if (PyList_GetItemRef(input_tensors.ptr(), i, &raw_elem) < 0 ||
-          !raw_elem) {
+      tensorflow::Safe_PyObjectPtr elem(
+          PyList_GetItemRef(input_tensors.ptr(), i));
+      if (!elem) {
         throw py::error_already_set();
       }
-      tensorflow::Safe_PyObjectPtr elem(raw_elem);
 #else
       PyObject* borrowed_elem = PyList_GetItem(input_tensors.ptr(), i);
       if (!borrowed_elem) {
