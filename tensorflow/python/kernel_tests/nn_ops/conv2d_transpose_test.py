@@ -321,6 +321,14 @@ class Conv2DTransposeTest(test.TestCase):
             strides=[1])
         self.evaluate(op)
 
+  def testConv2DTransposeInvalidOutputShapeRank(self):
+    with self.assertRaisesRegex(ValueError, "four elements"):
+      nn_ops.conv2d_transpose(
+          input=np.ones((1, 1, 1, 1)),
+          filters=np.ones((1, 1, 1, 1)),
+          output_shape=[2, 4, 2],
+          strides=[1])
+
   def testConv2DTransposeLargeOutputShape(self):
     # On GPU, this test does try to allocate the output tensor and OOMs.
     with test_util.device(use_gpu=False):
