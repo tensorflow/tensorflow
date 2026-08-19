@@ -909,6 +909,11 @@ class BufferAssigner {
     const PrivateStacks* private_stacks = nullptr;
     GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
         heap_buffer_interval_compare;
+    // The packing strategy to use for multi-page (page_size > 0) heap
+    // allocation.
+    GlobalDecreasingSizeBestFitHeap<HloValue>::PackingStrategy
+        multi_page_strategy =
+            GlobalDecreasingSizeBestFitHeap<HloValue>::kSpatial;
     std::optional<BufferAssignment::BufferIsolationOptions> isolation_options;
     std::optional<BufferValue::Color> temp_buffer_color;
 
