@@ -32,11 +32,14 @@ InputSpec = benchmark.InputSpec
 class FakeJaxProfiler:
   """Fake JaxProfiler context manager for unit testing."""
 
-  def __init__(self, kernel_name: str) -> None:
+  def __init__(self, kernel_name: str, enable_profiling: bool = True) -> None:
     self.kernel_name = kernel_name
+    self.enable_profiling = enable_profiling
     self.result = None
 
   def __enter__(self) -> Self:
+    if not self.enable_profiling:
+      return self
     self._count = 0
     self._orig_block = benchmark._block_until_ready
 
@@ -63,6 +66,8 @@ class FakeJaxProfiler:
       exc_val: Exception value.
       exc_tb: Exception traceback.
     """
+    if not self.enable_profiling:
+      return
     self._patcher.stop()
     self.result = jax_profiler_utils.JaxProfilerResult(
         runtimes_us=np.ones(self._count, dtype=np.float64),  # pyrefly: ignore[bad-argument-type]
