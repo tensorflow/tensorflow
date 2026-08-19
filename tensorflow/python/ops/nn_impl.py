@@ -1557,12 +1557,12 @@ def batch_normalization(x,
   if not tensor_util.is_tf_type(variance_epsilon):
     if variance_epsilon < 0:
       raise ValueError(
-          f'variance_epsilon must be non-negative, got {variance_epsilon}'
+          f"variance_epsilon must be non-negative, got {variance_epsilon}"
       )
     if variance_epsilon == 0.0:
       warnings.warn(
-          'variance_epsilon is set to 0.0, which may cause division by zero.'
-          ' Consider using a small positive value instead.',
+          "variance_epsilon is set to 0.0, which may cause division by zero."
+          " Consider using a small positive value instead.",
           stacklevel=2,
       )
   with ops.name_scope(name, "batchnorm",
@@ -1571,7 +1571,7 @@ def batch_normalization(x,
       with ops.control_dependencies(
           [check_ops.assert_non_negative(
               variance_epsilon,
-              message='variance_epsilon must be non-negative.'
+              message="variance_epsilon must be non-negative."
           )]):
         variance_epsilon = array_ops.identity(variance_epsilon)
     inv = math_ops.rsqrt(variance + variance_epsilon)
