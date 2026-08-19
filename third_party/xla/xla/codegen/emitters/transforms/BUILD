@@ -219,6 +219,7 @@ cc_library(
         "//xla/codegen/emitters:elemental_hlo_to_mlir",
         "//xla/codegen/emitters:implicit_arith_op_builder",
         "//xla/codegen/emitters:kernel_api_builder",
+        "//xla/codegen/emitters:utils",
         "//xla/codegen/emitters/ir:xla",
         "//xla/codegen/intrinsic:erf",
         "//xla/codegen/intrinsic:exp",
