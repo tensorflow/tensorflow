@@ -108,8 +108,10 @@ absl::StatusOr<bool> CompositeRewriter::RewriteComputation(
     if (instruction->opcode() != HloOpcode::kCall) {
       continue;
     }
+    VLOG(3) << "Found call instruction: " << instruction->name();
     auto call = Cast<HloCallInstruction>(instruction);
     if (!call->is_composite()) {
+      VLOG(3) << instruction->name() << " is not composite";
       continue;
     }
     if (!call->has_frontend_attributes()) {
@@ -155,40 +157,81 @@ absl::StatusOr<bool> CompositeRewriter::RewriteComputation(
                             int64_t contracting_dim) {
       auto op_type = operand->shape().element_type();
       auto scale_type = scale->shape().element_type();
-      if ((op_type == F8E4M3FN || op_type == F8E5M2 || op_type == F4E2M1FN) &&
-          scale_type == F8E8M0FNU) {
-        if (contracting_dim >= scale->shape().dimensions().size()) {
-          return false;
-        }
-        int64_t operand_dim_size = operand->shape().dimensions(contracting_dim);
-        int64_t scale_dim_size = scale->shape().dimensions(contracting_dim);
+      auto is_fp8 = [](PrimitiveType type) {
+        return type == F8E4M3FN || type == F8E5M2;
+      };
 
-        if (scale_dim_size == 0 || operand_dim_size % scale_dim_size != 0) {
-          return false;
-        }
-        int64_t scale_factor = operand_dim_size / scale_dim_size;
-        return scale_factor % 32 == 0;
-      }
       if (op_type == BF16 && scale_type == BF16) {
         if (scale->shape().dimensions().size() !=
             operand->shape().dimensions().size()) {
+          VLOG(3) << "scale and operand rank mismatch for BF16";
           return false;
         }
         for (int64_t dim : scale->shape().dimensions()) {
           if (dim != 1) {
+            VLOG(3) << "scale dim != 1 for BF16";
             return false;
           }
         }
         if (scale->opcode() != HloOpcode::kConstant) {
+          VLOG(3) << "scale is not constant for BF16";
           return false;
         }
-        return scale->literal().IsAllFloat(1.0);
+        bool supported = scale->literal().IsAllFloat(1.0);
+        if (!supported) {
+          VLOG(3) << "scale is not 1.0 for BF16";
+        }
+        return supported;
       }
+
+      auto is_supported_scale_type = [](PrimitiveType type) {
+        return type == F8E8M0FNU;
+      };
+
+      if (!is_supported_scale_type(scale_type)) {
+        VLOG(3) << "Unsupported scale type: " << PrimitiveType_Name(scale_type);
+        return false;
+      }
+
+      if (contracting_dim >= scale->shape().dimensions().size()) {
+        VLOG(3) << "contracting_dim out of bounds for scale";
+        return false;
+      }
+      int64_t operand_dim_size = operand->shape().dimensions(contracting_dim);
+      int64_t scale_dim_size = scale->shape().dimensions(contracting_dim);
+
+      if (scale_dim_size == 0 || operand_dim_size % scale_dim_size != 0) {
+        VLOG(3) << "operand_dim_size not divisible by scale_dim_size";
+        return false;
+      }
+      int64_t scale_factor = operand_dim_size / scale_dim_size;
+
+      if (is_fp8(op_type)) {
+        bool supported = scale_factor % 16 == 0;
+        if (!supported) {
+          VLOG(3) << "scale_factor % 16 != 0: " << scale_factor;
+        }
+        return supported;
+      }
+
+      if (op_type == F4E2M1FN) {
+        bool supported = scale_factor % 16 == 0;
+        if (!supported) {
+          VLOG(3) << "scale_factor % 16 != 0: " << scale_factor;
+        }
+        return supported;
+      }
+
+      VLOG(3) << "Unsupported operand type: " << PrimitiveType_Name(op_type);
       return false;
     };
 
-    if (!is_supported(lhs, lhs_scale, lhs_contracting_dim) ||
-        !is_supported(rhs, rhs_scale, rhs_contracting_dim)) {
+    if (!is_supported(lhs, lhs_scale, lhs_contracting_dim)) {
+      VLOG(3) << "LHS not supported";
+      continue;
+    }
+    if (!is_supported(rhs, rhs_scale, rhs_contracting_dim)) {
+      VLOG(3) << "RHS not supported";
       continue;
     }
 

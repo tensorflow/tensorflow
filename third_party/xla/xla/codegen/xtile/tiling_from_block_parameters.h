@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_MODEL_TILING_FROM_BLOCK_PARAMETERS_H_
-#define XLA_SERVICE_GPU_MODEL_TILING_FROM_BLOCK_PARAMETERS_H_
+#ifndef XLA_CODEGEN_XTILE_TILING_FROM_BLOCK_PARAMETERS_H_
+#define XLA_CODEGEN_XTILE_TILING_FROM_BLOCK_PARAMETERS_H_
 
 #include <cstdint>
 
@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 
-namespace xla::gpu {
+namespace xla::xtile {
 
 // Given a tiling specification for an annotated fusion, derives a tiling for
 // this fusion.
@@ -42,18 +42,18 @@ namespace xla::gpu {
 // if there are several dots present they will all use this override.
 absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
     const SymbolicTileAnalysis& symbolic_tile_analysis,
-    const BlockLevelParameters& block_level_parameters,
-    const xla::xtile::Tile* dot_tiling_config_override = nullptr);
+    const ::xla::gpu::BlockLevelParameters& block_level_parameters,
+    const Tile* dot_tiling_config_override = nullptr);
 
 // Returns concrete tiles sizes tiling space dimensions - in the order of
 // dimensions in the tiling space.
 // Sizes are returned "as is", i.e. they are not rounded up to the next power
 // of 2.
 absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
-    const xla::gpu::experimental::TilingSpace& tiling_space,
-    const BlockLevelParameters& block_level_parameters,
+    const ::xla::gpu::experimental::TilingSpace& tiling_space,
+    const ::xla::gpu::BlockLevelParameters& block_level_parameters,
     bool enable_same_shape_multi_output_fusion);
 
-}  // namespace xla::gpu
+}  // namespace xla::xtile
 
-#endif  // XLA_SERVICE_GPU_MODEL_TILING_FROM_BLOCK_PARAMETERS_H_
+#endif  // XLA_CODEGEN_XTILE_TILING_FROM_BLOCK_PARAMETERS_H_

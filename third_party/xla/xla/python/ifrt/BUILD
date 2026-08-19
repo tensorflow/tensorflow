@@ -117,7 +117,7 @@ cc_library(
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt/ir:sharding_param",
-        "//xla/service:computation_placer_hdr",
+        "//xla/service:device_assignment",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/lib/core:bitmap",
