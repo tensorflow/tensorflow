@@ -514,6 +514,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_dot_merger_threshold_mb(64);
   opts.set_xla_enable_fast_math(false);
   opts.set_xla_gpu_experimental_parallel_collective_overlap_limit(1);
+  opts.set_xla_gpu_collective_domain_assignment("");
   opts.set_xla_gpu_experimental_collective_start_as_early_as_possible(false);
   opts.set_xla_gpu_experimental_enable_selective_memcpy_overlap(false);
   opts.set_xla_gpu_experimental_parallel_async_compute_limit(2);
@@ -771,6 +772,23 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
         for (const auto& passname : std::vector<std::string>(
                  absl::StrSplit(comma_separated_values, ','))) {
           debug_options->add_xla_enable_hlo_passes_only(passname);
+        }
+        return true;
+      };
+
+  // Custom "sub-parser" lambda for xla_gpu_hlo_custom_call_allowlist. Each
+  // token is trimmed of surrounding whitespace and empty tokens are skipped, so
+  // an empty (or whitespace-only) flag value leaves the allowlist empty.
+  auto setter_for_xla_gpu_hlo_custom_call_allowlist =
+      [debug_options](std::string comma_separated_values) {
+        for (absl::string_view token :
+             absl::StrSplit(comma_separated_values, ',', absl::SkipEmpty())) {
+          absl::string_view target = absl::StripAsciiWhitespace(token);
+          if (target.empty()) {
+            continue;
+          }
+          debug_options->add_xla_gpu_hlo_custom_call_allowlist(
+              std::string(target));
         }
         return true;
       };
@@ -1418,6 +1436,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "xla_disable_hlo_passes", setter_for_xla_disable_hlo_passes, "",
       "Comma-separated list of hlo passes to be disabled. These names must "
       "exactly match the passes' names; no whitespace around commas."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_hlo_custom_call_allowlist",
+      setter_for_xla_gpu_hlo_custom_call_allowlist, "",
+      "Comma-separated allowlist of FFI custom-call target names permitted for "
+      "this module. When non-empty, creating an FFI CustomCallThunk for a "
+      "target that is not on this list fails compilation. Empty (the default) "
+      "disables the check. FFI-only: legacy custom calls and custom kernels "
+      "(e.g. PTX) are not gated. Surrounding whitespace around entries is "
+      "ignored."));
   flag_list->push_back(tsl::Flag(
       "xla_enable_hlo_passes_only", setter_for_xla_enable_hlo_passes_only, "",
       "Comma-separated list of hlo passes to be enabled. These names must "
@@ -3166,6 +3193,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_experimental_parallel_collective_overlap_limit(),
       "This controls how many in-flight collectives "
       "latency hiding scheduler can schedule."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_collective_domain_assignment",
+      string_setter_for(
+          &DebugOptions::set_xla_gpu_collective_domain_assignment),
+      debug_options->xla_gpu_collective_domain_assignment(),
+      "Comma-separated list of collective communication domains to assign "
+      "automatically."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_collective_start_as_early_as_possible",
       bool_setter_for(

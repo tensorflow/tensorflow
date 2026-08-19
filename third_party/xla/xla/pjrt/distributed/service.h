@@ -65,6 +65,9 @@ class CoordinationServiceImpl {
 
     // An optional gRPC credentials to use for the server.
     absl_nullable std::shared_ptr<::grpc::ServerCredentials> credentials;
+
+    // If true, crash if insecure credentials are used.
+    bool verify_secure_credentials = false;
   };
 
   CoordinationServiceImpl(const Options& options,
