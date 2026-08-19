@@ -611,6 +611,17 @@ LegalizeSchedulingAnnotations::Config SchedulingAnnotationsConfig() {
   return annotation_config;
 }
 
+bool IsHostShape(const Shape& shape) {
+  return shape.IsArray() && shape.has_layout() &&
+         shape.layout().memory_space() == Layout::kHostMemorySpace;
+}
+
+bool IsDUSWithHost(const HloInstruction* instr) {
+  return instr->opcode() == HloOpcode::kDynamicUpdateSlice &&
+         (IsHostShape(instr->operand(0)->shape()) ||
+          IsHostShape(instr->shape()));
+}
+
 // Delays MoveToHostAsyncStart as late as possible
 // to achieve better overlapping with computation.
 // The only pattern we are seeing is async start of a fusion with a dynamic
@@ -644,7 +655,7 @@ DelayMoveToHostAsyncStartCandidateCondition(
                                 .async_wrapped_instruction()
                                 ->fused_instructions();
         for (auto instr : fused_instrs) {
-          if (instr->opcode() == HloOpcode::kDynamicUpdateSlice) {
+          if (IsDUSWithHost(instr)) {
             is_send_host_dus = true;
             break;
           }

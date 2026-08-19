@@ -5010,7 +5010,8 @@ class Subgraph {
 
     bool dynamically_quantized =
         (!delegate.disable_dynamically_quantized_ops() &&
-         (input_tensor.type == kTfLiteFloat32 &&
+         ((input_tensor.type == kTfLiteFloat32 ||
+           input_tensor.type == kTfLiteFloat16) &&
           (filter_tensor.type == kTfLiteInt2 ||
            filter_tensor.type == kTfLiteInt4 ||
            filter_tensor.type == kTfLiteInt8)));

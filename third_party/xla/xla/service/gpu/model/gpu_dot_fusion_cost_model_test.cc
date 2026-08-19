@@ -46,8 +46,10 @@ using gpu_dot_fusion_cost_model::detail::
     CalculatePipelinedLoopTimeWithLaunchWaves;
 using gpu_dot_fusion_cost_model::detail::CalculateSharedMemoryPerBlockBytes;
 using gpu_dot_fusion_cost_model::detail::CalculateSmOccupancy;
+using gpu_dot_fusion_cost_model::detail::ComputeAndFlops;
 using gpu_dot_fusion_cost_model::detail::DotProblemInfo;
 using gpu_dot_fusion_cost_model::detail::DotTileSize;
+using gpu_dot_fusion_cost_model::detail::GetEffectiveFlopsPerNsForTileSize;
 using gpu_dot_fusion_cost_model::detail::GetEffectiveHbmBandwidth;
 using gpu_dot_fusion_cost_model::detail::HbmEstimates;
 using gpu_dot_fusion_cost_model::detail::kLoopLatencyTax;
@@ -55,6 +57,7 @@ using gpu_dot_fusion_cost_model::detail::SmOccupancy;
 
 class GpuDotFusionCostModelTest : public HloHardwareIndependentTestBase {
  protected:
+  se::DeviceDescription dda100_{TestGpuDeviceInfo::A100SXMDeviceInfo()};
   se::DeviceDescription ddh100_{TestGpuDeviceInfo::H100SXMDeviceInfo()};
 };
 
@@ -561,6 +564,116 @@ TEST_F(GpuDotFusionCostModelTest, CalculateMemoryUtilization) {
       gpu_dot_fusion_cost_model::detail::CalculateMemoryUtilization(estimates,
                                                                     ddh100_),
       0.0);
+}
+
+TEST_F(GpuDotFusionCostModelTest,
+       EffectiveHbmBandwidthMatchesH100EmpiricalTable) {
+  const float h100_memory_bandwidth = ddh100_.memory_bandwidth();
+
+  // 1. Min clamp / first table entry (8192 bytes -> 0.00042359)
+  EXPECT_FLOAT_EQ(GetEffectiveHbmBandwidth(4096, ddh100_),
+                  0.00042359f * h100_memory_bandwidth);
+  EXPECT_FLOAT_EQ(GetEffectiveHbmBandwidth(8192, ddh100_),
+                  0.00042359f * h100_memory_bandwidth);
+
+  // 2. Exact table entry (65536 bytes -> 0.00351100)
+  EXPECT_FLOAT_EQ(GetEffectiveHbmBandwidth(65536, ddh100_),
+                  0.00351100f * h100_memory_bandwidth);
+
+  // 3. Midpoint linear interpolation between 8192 (0.00042359) and 16384
+  // (0.00090385) -> 12288 bytes
+  float expected_midpoint = (0.00042359f + 0.00090385f) / 2.0f;
+  EXPECT_FLOAT_EQ(GetEffectiveHbmBandwidth(12288, ddh100_),
+                  expected_midpoint * h100_memory_bandwidth);
+
+  // 4. Max clamp / last table entry (1073741824 bytes -> 0.93248850)
+  EXPECT_FLOAT_EQ(GetEffectiveHbmBandwidth(1073741824, ddh100_),
+                  0.93248850f * h100_memory_bandwidth);
+  EXPECT_FLOAT_EQ(GetEffectiveHbmBandwidth(2147483648, ddh100_),
+                  0.93248850f * h100_memory_bandwidth);
+}
+
+TEST_F(GpuDotFusionCostModelTest, EffectiveHbmBandwidthScalesWithDeviceInfo) {
+  se::DeviceDescription ddb200 = TestGpuDeviceInfo::B200SXMDeviceInfo();
+  const int64_t dma_size = 134217728;  // 128 MiB
+  float bw_h100 = GetEffectiveHbmBandwidth(dma_size, ddh100_);
+  float bw_b200 = GetEffectiveHbmBandwidth(dma_size, ddb200);
+  EXPECT_GT(bw_b200, bw_h100);
+  double expected_ratio = static_cast<double>(ddb200.memory_bandwidth()) /
+                          ddh100_.memory_bandwidth();
+  EXPECT_NEAR(bw_b200 / bw_h100, expected_ratio, 1e-4);
+}
+
+TEST_F(GpuDotFusionCostModelTest, GpuDotComputeBoundA100Bf16) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+p0 = bf16[8192,8192] parameter(0)
+p1 = bf16[8192,8192] parameter(1)
+ROOT r = bf16[8192,8192] dot(p0, p1),
+lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16,
+backend_config={"sizes":["32"]}
+})"));
+
+  BlockLevelParameters block_params;
+  block_params.output_tile_sizes = {{256, 512}};
+  block_params.num_warps = 4;
+  block_params.num_ctas = 1;
+  block_params.num_stages = 3;
+  auto* dot =
+      Cast<HloDotInstruction>(module->entry_computation()->root_instruction());
+  ASSERT_OK(gpu_dot_fusion_cost_model::IsSupported(dot));
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData runtime_a100,
+      gpu_dot_fusion_cost_model::EstimateRunTimeForDotOpWithBlockParameters(
+          dot, block_params, dda100_));
+  ASSERT_OK_AND_ASSIGN(
+      ComputeAndFlops expected_compute_and_flops_a100,
+      CalculateComputeTimeWithTileAndWaveQuantization(
+          DotProblemInfo(*dot),
+          DotTileSize{/*m=*/block_params.output_tile_sizes[0][0],
+                      /*n=*/block_params.output_tile_sizes[0][1]},
+          dda100_));
+  absl::Duration expected_time =
+      expected_compute_and_flops_a100.compute_time + kLoopLatencyTax;
+  EXPECT_GE(runtime_a100.exec_time, expected_time);
+  EXPECT_LE(runtime_a100.exec_time, expected_time * 1.1);
+}
+
+TEST_F(GpuDotFusionCostModelTest, AmpereTileMDerate) {
+  se::DeviceDescription dda100 = TestGpuDeviceInfo::RTXA6000DeviceInfo(
+      se::GpuComputeCapability{se::CudaComputeCapability(8, 0)});
+  double flops_small = GetEffectiveFlopsPerNsForTileSize(
+      /*tile_m=*/31, dda100, PrimitiveType::F16);
+  double flops_full = GetEffectiveFlopsPerNsForTileSize(
+      /*tile_m=*/32, dda100, PrimitiveType::F16);
+
+  ASSERT_GT(flops_full, 0);
+  // tile_m < 32: 50% derate.
+  EXPECT_NEAR(flops_small / flops_full, 0.50, 1e-4);
+}
+
+TEST_F(GpuDotFusionCostModelTest, HopperTileMDerate) {
+  double flops_small = GetEffectiveFlopsPerNsForTileSize(
+      /*tile_m=*/63, ddh100_, PrimitiveType::F16);
+  double flops_full = GetEffectiveFlopsPerNsForTileSize(
+      /*tile_m=*/64, ddh100_, PrimitiveType::F16);
+
+  ASSERT_GT(flops_full, 0);
+  // tile_m < 64: 63% derate.
+  EXPECT_NEAR(flops_small / flops_full, 0.63, 1e-4);
+}
+
+TEST_F(GpuDotFusionCostModelTest, BlackwellTileMDerate) {
+  se::DeviceDescription ddb200 = TestGpuDeviceInfo::B200SXMDeviceInfo();
+  double flops_small = GetEffectiveFlopsPerNsForTileSize(
+      /*tile_m=*/127, ddb200, PrimitiveType::BF16);
+  double flops_full = GetEffectiveFlopsPerNsForTileSize(
+      /*tile_m=*/128, ddb200, PrimitiveType::BF16);
+
+  ASSERT_GT(flops_full, 0);
+  // tile_m < 128: 50% derate.
+  EXPECT_NEAR(flops_small / flops_full, 0.50, 1e-4);
 }
 
 }  // namespace

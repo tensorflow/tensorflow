@@ -1501,7 +1501,6 @@ TEST(ThunkProtoDeserializationTest, CollectiveKernelThunk) {
             }
             invocation_count_increment: 1
           }
-          is_async: false
           buffers {
             element_count: 64
             source_buffer {

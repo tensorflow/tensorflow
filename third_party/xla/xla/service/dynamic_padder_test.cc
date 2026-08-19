@@ -218,6 +218,23 @@ TEST_F(DynamicPadderTest, ReduceTest) {
   EXPECT_TRUE(module_->is_dynamic());
 }
 
+TEST_F(DynamicPadderTest, OptimizationBarrierTest) {
+  const std::string hlo_text = R"(
+HloModule OptimizationBarrierTest
+
+ENTRY %OptimizationBarrierTest (data_param: f32[1,2,2], size_param: s32[]) -> f32[1,2,<=2] {
+  %data_param = f32[1,2,2]{2,1,0} parameter(0)
+  %size_param = s32[] parameter(1)
+  %set-dimension-size = f32[1,2,<=2]{2,1,0} set-dimension-size(%data_param, %size_param), dimensions={2}
+  %opt-barrier = f32[1,2,<=2]{2,1,0} opt-barrier(%set-dimension-size)
+  ROOT %negate = f32[1,2,<=2]{2,1,0} negate(%opt-barrier)
+}
+)";
+
+  module_ = GetHloModule(hlo_text);
+  TF_ASSERT_OK(RunPadder().status());
+}
+
 TEST_F(DynamicPadderTest, DynamicLoweringTest) {
   const std::string hlo_text = R"(
 HloModule DynamicLowering

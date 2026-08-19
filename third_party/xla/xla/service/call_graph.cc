@@ -423,6 +423,34 @@ bool CallGraph::IsFlattened() const {
   return true;
 }
 
+bool CallGraph::IsFlatOnControlFlow() const {
+  for (const CallGraphNode& node : nodes_) {
+    for (const CallSite& callsite : node.callsites()) {
+      if (callsite.instruction()->opcode() == HloOpcode::kWhile) {
+        HloComputation* body = callsite.instruction()->while_body();
+        HloComputation* cond = callsite.instruction()->while_condition();
+        if (body == cond || GetNode(body).caller_callsites().size() > 1 ||
+            GetNode(cond).caller_callsites().size() > 1) {
+          return false;
+        }
+        continue;
+      }
+      if (callsite.instruction()->opcode() == HloOpcode::kConditional) {
+        absl::flat_hash_set<const HloComputation*> seen_branches;
+        for (HloComputation* branch :
+             callsite.instruction()->called_computations()) {
+          if (!seen_branches.insert(branch).second ||
+              GetNode(branch).caller_callsites().size() > 1) {
+            return false;
+          }
+        }
+        continue;
+      }
+    }
+  }
+  return true;
+}
+
 std::vector<HloInstruction*> CallGraph::GetComputationCallers(
     const HloComputation* c) const {
   std::vector<HloInstruction*> callers;

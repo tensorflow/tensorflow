@@ -18,10 +18,10 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/proto/pjrt_abi_version.pb.h"
 #include "xla/python/ifrt/rtti.h"

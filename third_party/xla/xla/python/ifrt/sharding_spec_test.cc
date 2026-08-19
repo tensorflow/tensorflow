@@ -250,6 +250,33 @@ TEST_P(ConcreteShardingSpecTest, HasSamePartitioning) {
         ConcreteShardingSpec::Create(Shape({30}), shard_shapes1);
     EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding1));
   }
+  // With index domains.
+  {
+    std::vector<IndexDomain> index_domains0 = {
+        IndexDomain(Index({0}), Shape({10})),
+        IndexDomain(Index({10}), Shape({20})),
+    };
+    ShardingSpecRef sharding_with_index_domains0 = ConcreteShardingSpec::Create(
+        Shape({30}), shard_shapes0, index_domains0);
+
+    EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding_with_index_domains0));
+    EXPECT_FALSE(sharding_with_index_domains0->HasSamePartitioning(*sharding0));
+
+    ShardingSpecRef sharding_with_index_domains1 = ConcreteShardingSpec::Create(
+        Shape({30}), shard_shapes0, index_domains0);
+    EXPECT_TRUE(sharding_with_index_domains0->HasSamePartitioning(
+        *sharding_with_index_domains1));
+
+    std::vector<IndexDomain> index_domains1 = {
+        IndexDomain(Index({5}), Shape({10})),
+        IndexDomain(Index({15}), Shape({20})),
+    };
+    ShardingSpecRef sharding_with_different_index_domains =
+        ConcreteShardingSpec::Create(Shape({30}), shard_shapes0,
+                                     index_domains1);
+    EXPECT_FALSE(sharding_with_index_domains0->HasSamePartitioning(
+        *sharding_with_different_index_domains));
+  }
 }
 
 TEST_P(ConcreteShardingSpecTest, Disassemble) {
@@ -348,8 +375,20 @@ TEST_P(ConcreteShardingSpecTest, Hash) {
   ASSERT_OK_AND_ASSIGN(
       auto dynamic_shape,
       DynamicShape::Create(Shape({30}), BoundedDynamicShapeTag({true})));
+  std::vector<IndexDomain> index_domains0 = {
+      IndexDomain(Index({0}), Shape({10})),
+      IndexDomain(Index({10}), Shape({20})),
+  };
+  std::vector<IndexDomain> index_domains1 = {
+      IndexDomain(Index({5}), Shape({10})),
+      IndexDomain(Index({15}), Shape({20})),
+  };
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
       *ConcreteShardingSpec::Create(Shape({30}), {Shape({10}), Shape({20})}),
+      *ConcreteShardingSpec::Create(Shape({30}), {Shape({10}), Shape({20})},
+                                    index_domains0),
+      *ConcreteShardingSpec::Create(Shape({30}), {Shape({10}), Shape({20})},
+                                    index_domains1),
       *ConcreteShardingSpec::Create(dynamic_shape,
                                     {dynamic_shape, dynamic_shape}),
   }));

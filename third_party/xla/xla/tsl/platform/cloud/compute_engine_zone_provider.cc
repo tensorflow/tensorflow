@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <utility>
 
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "tsl/platform/str_util.h"
 namespace tsl {
 

@@ -337,12 +337,9 @@ def tf_proto_library(
 
 def tf_additional_lib_hdrs():
     return [
-        clean_dep("//xla/tsl/platform/default:casts.h"),
         clean_dep("//xla/tsl/platform/default:context.h"),
         clean_dep("//xla/tsl/platform/default:criticality.h"),
         clean_dep("//xla/tsl/platform/default:stacktrace.h"),
-        clean_dep("//xla/tsl/platform/default:status.h"),
-        clean_dep("//xla/tsl/platform/default:statusor.h"),
         clean_dep("//xla/tsl/platform/default:tracing_impl.h"),
         clean_dep("//xla/tsl/platform/default:unbounded_work_queue.h"),
     ] + select({

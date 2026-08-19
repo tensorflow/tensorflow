@@ -95,6 +95,10 @@ class CpuTopologyDescription : public PjRtTopologyDescription {
 
   absl::StatusOr<uint64_t> Fingerprint() const override;
 
+  absl::StatusOr<std::pair<ProcessId, int>>
+  ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType(
+      GlobalDeviceId device_id) const override;
+
   absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
   ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
       GlobalDeviceId device_id) const override;
@@ -123,6 +127,11 @@ class CpuTopologyDescription : public PjRtTopologyDescription {
 
   static absl::StatusOr<std::unique_ptr<CpuTopologyDescription>> FromProto(
       const xla::PjRtTopologyDescriptionProto& proto);
+
+  absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+      int process_index, int num_replicas,
+      std::optional<int> num_replicas_per_slice, int num_partitions,
+      const MultiSliceConfig* multi_slice_config) const override;
 
  private:
   const PjRtPlatformId platform_id_;

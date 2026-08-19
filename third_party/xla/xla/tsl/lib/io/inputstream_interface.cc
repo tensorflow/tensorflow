@@ -16,7 +16,7 @@ limitations under the License.
 #include "xla/tsl/lib/io/inputstream_interface.h"
 
 #include "absl/status/status.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 
 namespace tsl {

@@ -58,7 +58,9 @@ GPU_DEFAULT_BACKENDS = NVIDIA_GPU_DEFAULT_BACKENDS
 
 DEFAULT_DISABLED_BACKENDS = []
 
-ALL_BACKENDS = ["cpu", "interpreter"] + NVIDIA_GPU_BACKENDS + AMD_GPU_DEFAULT_BACKENDS + INTEL_GPU_DEFAULT_BACKENDS + list(plugins.keys())
+ALL_HARDWARE_BACKENDS = ["cpu"] + GPU_BACKENDS + list(plugins.keys())
+
+ALL_BACKENDS = ["interpreter"] + ALL_HARDWARE_BACKENDS
 
 # buildifier: disable=function-docstring
 def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args, common_tags):

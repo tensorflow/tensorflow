@@ -29,12 +29,12 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/python/ifrt/device_list.h"
@@ -389,7 +389,8 @@ bool ConcreteShardingSpec::HasSamePartitioning(
     return false;
   }
   return shape_ == other_concrete_sharding_spec->shape_ &&
-         shard_shapes_ == other_concrete_sharding_spec->shard_shapes_;
+         shard_shapes_ == other_concrete_sharding_spec->shard_shapes_ &&
+         index_domains_ == other_concrete_sharding_spec->index_domains_;
 }
 
 absl::StatusOr<std::vector<std::pair<Shape, ShardingSpecRef>>>
@@ -464,8 +465,8 @@ std::string ConcreteShardingSpec::DebugString() const {
 }
 
 void ConcreteShardingSpec::Hash(absl::HashState state) const {
-  absl::HashState::combine(std::move(state), num_shards_, shape_,
-                           shard_shapes_);
+  absl::HashState::combine(std::move(state), num_shards_, shape_, shard_shapes_,
+                           index_domains_);
 }
 
 std::unique_ptr<ConcreteEvenShardingSpec> ConcreteEvenShardingSpec::Create(

@@ -74,65 +74,6 @@ namespace xla::gpu {
     }                                                            \
   } while (0)
 
-//===----------------------------------------------------------------------===//
-// MoriIdStore
-//===----------------------------------------------------------------------===//
-
-namespace {
-class MoriIdStore {
- public:
-  MoriIdStore(ProcessId process_id,
-              absl::flat_hash_map<GlobalDeviceId, ProcessId> device_to_process,
-              std::shared_ptr<KeyValueStoreInterface> kv_store)
-      : process_id_(process_id),
-        device_to_process_(std::move(device_to_process)),
-        kv_store_(std::move(kv_store)) {}
-
-  absl::StatusOr<CliqueIds> GetCliqueIds(const CliqueKey& key,
-                                         MoriCollectives& mori_collectives) {
-    auto* gpu_key = tsl::down_cast<const gpu::GpuCliqueKey*>(&key);
-    if (gpu_key == nullptr) {
-      return InvalidArgument("Expected GPU clique key");
-    }
-
-    // The caller must ensure that threads calling this method concurrently have
-    // unique keys, otherwise the global key-value store may hold the wrong
-    // value.
-    {
-      absl::MutexLock lock(mu_);
-      auto it = cache_.find(*gpu_key);
-      if (it != cache_.end()) {
-        return CliqueIds(it->second);
-      }
-    }
-
-    CliqueId clique_id;
-    if (process_id_ == device_to_process_.at(gpu_key->devices().front())) {
-      ABSL_ASSIGN_OR_RETURN(clique_id, mori_collectives.CreateUniqueCliqueId());
-      ABSL_RETURN_IF_ERROR(
-          kv_store_->Set(gpu_key->ToString(), clique_id.ToString()));
-    } else {
-      ABSL_ASSIGN_OR_RETURN(std::string id_str,
-                       kv_store_->Get(gpu_key->ToString(), absl::Minutes(10)));
-      clique_id = CliqueId(id_str);
-    }
-
-    absl::MutexLock lock(mu_);
-    auto result = cache_.emplace(*gpu_key, std::move(clique_id));
-    TF_RET_CHECK(result.second) << "Unique ID already in cache.";
-    return CliqueIds(result.first->second);
-  }
-
- private:
-  ProcessId process_id_;
-  const absl::flat_hash_map<GlobalDeviceId, ProcessId> device_to_process_;
-  const std::shared_ptr<KeyValueStoreInterface> kv_store_;
-
-  absl::Mutex mu_;
-  absl::flat_hash_map<gpu::GpuCliqueKey, CliqueId> cache_ ABSL_GUARDED_BY(mu_);
-};
-}  // namespace
-
 MoriCollectives::~MoriCollectives() {
   // NOTE this is most probably wrong since we need to call finalize
   // for all threads !
@@ -166,7 +107,7 @@ void MoriCollectives::Finalize() {
   shmem::ShmemFinalize();
 }
 
-absl::Status MoriCollectives::InitPe(int32_t rank, int32_t nranks,
+absl::Status MoriCollectives::InitPe(size_t rank, size_t nranks,
                                      const CliqueId& clique_id,
                                      se::StreamExecutor* executor) {
   // ShmemInitAttr keys the per-device MORI state off the calling thread's
@@ -174,8 +115,9 @@ absl::Status MoriCollectives::InitPe(int32_t rank, int32_t nranks,
   auto activate_context = executor->Activate();
   ABSL_ASSIGN_OR_RETURN(auto uid, AsMoriUniqueId(clique_id));
   shmem::mori_shmem_init_attr_t init_attr;
-  XLA_MORI_RETURN_IF_ERROR(
-      shmem::ShmemSetAttrUniqueIdArgs(rank, nranks, &uid, &init_attr));
+  XLA_MORI_RETURN_IF_ERROR(shmem::ShmemSetAttrUniqueIdArgs(
+      static_cast<int32_t>(rank), static_cast<int32_t>(nranks), &uid,
+      &init_attr));
   XLA_MORI_RETURN_IF_ERROR(
       shmem::ShmemInitAttr(shmem::MORI_SHMEM_INIT_WITH_UNIQUEID, &init_attr));
   VLOG(1) << "Initialized MORI PE rank " << rank << " of " << nranks;
@@ -241,8 +183,6 @@ MoriCollectives::CreateCommunicatorsWithCancel(
     // When MORI was already initialized eagerly (see InitializeTopology), we
     // only build the communicator wrapper. Otherwise (e.g. unit tests that
     // bypass InitializeTopology) we lazily initialize this PE here.
-    // ShmemInitAttr is idempotent, but the initialized_ gate avoids redundant
-    // uid setup.
     auto activate_context = device->stream_executor()->Activate();
     if (!initialized_) {
       ABSL_RETURN_IF_ERROR(InitPe(ranks[i].rank.value(), clique_key.num_devices(),
@@ -250,10 +190,7 @@ MoriCollectives::CreateCommunicatorsWithCancel(
     }
 
     // Map each collective rank to its global MORI PE. In the single-process
-    // eager-init path the MORI PE equals the global device ordinal, which is
-    // exactly clique_key.devices()[rank]. Passing this (rather than relying on
-    // ShmemNPes()/ShmemMyPe(), which describe the whole local clique) lets the
-    // collective run correctly over an arbitrary device subset.
+    // eager-init path the MORI PE equals the global device ordinal.
     std::vector<int> rank_to_pe;
     rank_to_pe.reserve(clique_key.devices().size());
     for (GlobalDeviceId d : clique_key.devices()) {
@@ -286,62 +223,107 @@ MoriCollectives::CreateCommunicatorsWithCancel(
   return comms;
 }
 
-absl::StatusOr<GpuCollectives::CliqueIdCallback>
-MoriCollectives::InitializeTopology(const Topology& topology) {
-  VLOG(1) << "InitializeTopology: num_processes=" << topology.num_processes
-          << " device_count_per_process=" << topology.device_count_per_process
-          << " kv_store=" << (topology.kv_store != nullptr);
-
-  if (topology.num_processes > 1) {
-    // Multi-process eager init is not implemented yet; fall back to the lazy
-    // per-clique initialization performed in CreateCommunicatorsWithCancel
-    // (which keeps the previous hipMalloc + ShmemSymmetricRegister behavior).
-    auto mori_id_store = std::make_shared<MoriIdStore>(
-        topology.process_id, topology.device_to_process,
-        std::move(topology.kv_store));
-    return [mori_id_store, this](const CliqueKey& key) {
-      return mori_id_store->GetCliqueIds(key, *this);
-    };
+absl::Status MoriCollectives::EagerInitLocalPes(ProcessId process_id,
+                                                size_t nranks_local,
+                                                size_t nranks_total,
+                                                const CliqueId& clique_id) {
+  if (nranks_local == 0) {
+    return absl::OkStatus();
   }
-
-  // Single process: eagerly initialize MORI for every local device as a single
-  // global clique so that collective-memory allocations can use MORI's static
-  // heap (ShmemMalloc) before any executable runs.
-  const int32_t nranks =
-      static_cast<int32_t>(topology.device_count_per_process);
-  if (nranks <= 0) {
-    return nullptr;
-  }
-
   ABSL_ASSIGN_OR_RETURN(se::Platform * platform,
                    se::PlatformManager::PlatformWithName("ROCM"));
 
-  // All local PEs share one unique id and must initialize concurrently, so
-  // ShmemInitAttr's bootstrap collective can complete.
-  ABSL_ASSIGN_OR_RETURN(CliqueId clique_id, CreateUniqueCliqueId());
-
+  // XLA:GPU assumes IOTA device assignment, so the global PE id of a local
+  // device is `process_id * ndevs_per_process + dev_ord`.
+  // dev_ord is needed for the executor to be activated.
+  // pe is needed for the InitPe function.
   absl::Status status;
   absl::once_flag once;
   {
-    tsl::thread::ThreadPool pool(tsl::Env::Default(), "MoriEagerInit", nranks);
-    for (int32_t rank = 0; rank < nranks; ++rank) {
-      pool.Schedule([&, rank]() {
-        auto executor_or = platform->ExecutorForDevice(rank);
+    // All PEs must initialize concurrently, so ShmemInitAttr's socket bootstrap
+    // collective can rendezvous.
+    tsl::thread::ThreadPool pool(tsl::Env::Default(), "MoriEagerInit",
+                                 nranks_local);
+    for (size_t dev_ord = 0; dev_ord < nranks_local; dev_ord++) {
+      const size_t pe = process_id.value() * nranks_local + dev_ord;
+      pool.Schedule([&, dev_ord, pe]() {
+        auto executor_or = platform->ExecutorForDevice(dev_ord);
         if (!executor_or.ok()) {
           absl::call_once(once, [&] { status = executor_or.status(); });
           return;
         }
-        if (auto s = InitPe(rank, nranks, clique_id, *executor_or); !s.ok()) {
+        if (auto s = InitPe(pe, nranks_total, clique_id, *executor_or);
+            !s.ok()) {
           absl::call_once(once, [&] { status = s; });
         }
       });
     }
   }  // pool's destructor blocks until all scheduled work is done.
   ABSL_RETURN_IF_ERROR(status);
-
   initialized_ = true;
-  VLOG(1) << "Eagerly initialized MORI for " << nranks << " local devices";
-  return nullptr;
+  return absl::OkStatus();
+}
+
+absl::StatusOr<GpuCollectives::CliqueIdCallback>
+MoriCollectives::InitializeTopology(const Topology& topology) {
+  VLOG(1) << "InitializeTopology: num_processes=" << topology.num_processes
+          << " device_count_per_process=" << topology.device_count_per_process
+          << " kv_store=" << (topology.kv_store != nullptr);
+
+  const size_t nranks_local = topology.device_count_per_process;
+  if (topology.num_processes <= 1) {
+    // Single process: eagerly initialize MORI for every local device as a
+    // single global clique so that collective-memory allocations can use MORI's
+    // static heap (ShmemMalloc) before any executable runs. The MORI PE equals
+    // the local device ordinal.
+    if (nranks_local == 0) {
+      return absl::InvalidArgumentError("Wrong device_count_per_process");
+    }
+    ABSL_ASSIGN_OR_RETURN(CliqueId clique_id, CreateUniqueCliqueId());
+    ABSL_RETURN_IF_ERROR(EagerInitLocalPes(topology.process_id, nranks_local,
+                                      nranks_local, clique_id));
+    VLOG(1) << "Eagerly initialized MORI for " << nranks_local
+            << " local devices";
+    return nullptr;
+  }
+
+  // Multi-process: eagerly initialize every local device as its global PE over
+  // the full world. One root process generates the unique id and publishes it
+  // via the key-value store; all other processes fetch it. Every PE across all
+  // processes then initializes concurrently so MORI's socket bootstrap can
+  // rendezvous, making the symmetric heap (ShmemMalloc/Allocate) available
+  // before any executable runs.
+  if (topology.kv_store == nullptr) {
+    return InvalidArgument(
+        "A key-value store is required for multi-process MORI initialization");
+  }
+  const size_t nranks_total = nranks_local * topology.num_processes;
+  if (nranks_total == 0 || nranks_local == 0) {
+    return InvalidArgument("Wrong nranks_total or nranks_local");
+  }
+
+  // Process 0 is the root that generates and publishes the unique
+  // id; all other processes agree on this without extra coordination.
+  const ProcessId root_process(0);
+
+  static constexpr absl::string_view kMoriUidKey = "mori_shmem_global_uid";
+  CliqueId clique_id;
+  if (topology.process_id == root_process) {
+    ABSL_ASSIGN_OR_RETURN(clique_id, CreateUniqueCliqueId());
+    ABSL_RETURN_IF_ERROR(topology.kv_store->Set(kMoriUidKey, clique_id.ToString()));
+  } else {
+    ABSL_ASSIGN_OR_RETURN(std::string id_str,
+                     topology.kv_store->Get(kMoriUidKey, absl::Minutes(10)));
+    clique_id = CliqueId(id_str);
+  }
+
+  ABSL_RETURN_IF_ERROR(EagerInitLocalPes(topology.process_id, nranks_local,
+                                    nranks_total, clique_id));
+  VLOG(1) << "Eagerly initialized MORI: " << nranks_local << " local PEs of "
+          << nranks_total << " global";
+  return [clique_id](const CliqueKey&) -> absl::StatusOr<CliqueIds> {
+    return CliqueIds(clique_id);
+  };
 }
 
 }  // namespace xla::gpu

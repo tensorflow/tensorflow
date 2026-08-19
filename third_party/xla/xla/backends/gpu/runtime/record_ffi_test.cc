@@ -22,8 +22,12 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/base/no_destructor.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/ffi/api/record_api.h"
 #include "xla/ffi/api/record_c_api.h"
 #include "xla/ffi/call_frame.h"
@@ -33,7 +37,9 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/gpu/gpu_test_kernels.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
+#include "xla/stream_executor/gpu/gpu_test_kernels_fatbin.h"
+#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
@@ -42,6 +48,31 @@ limitations under the License.
 
 namespace xla::gpu {
 namespace {
+
+struct KernelBinary {
+  absl::Span<const uint8_t> bytes;
+  ffi::SourceFormat format;
+
+  const void* data() const { return bytes.data(); }
+  size_t size() const { return bytes.size(); }
+};
+
+// Select the kernel bytes based on the platform.
+// Selects the device binary (CUBIN on CUDA, HSACO on ROCm) via the fatbin.
+// The bytes must outlive the handler, so the fatbin is kept in a static
+// variable with a stable address that is also used as the kernel cache key.
+absl::StatusOr<KernelBinary> GetKernelSpec() {
+  static const absl::NoDestructor<absl::StatusOr<std::vector<uint8_t>>> kFatbin(
+      []() -> absl::StatusOr<std::vector<uint8_t>> {
+        ABSL_ASSIGN_OR_RETURN(auto fatbin,
+                         stream_executor::gpu::GetGpuTestKernelsFatbin(
+                             stream_executor::GpuPlatformName()));
+        return fatbin;
+      }());
+  ABSL_RETURN_IF_ERROR(kFatbin->status());
+  return KernelBinary{/*.bytes=*/kFatbin->value(),
+                      /*.format=*/ffi::SourceFormat::kCubin};
+}
 
 absl::Status RecordFfiHandler(ffi::RecordContext record_ctx,
                               ffi::AnyBuffer input_0, ffi::AnyBuffer input_1,
@@ -55,20 +86,18 @@ absl::Status RecordFfiHandler(ffi::RecordContext record_ctx,
 
   const auto action = record_ctx.action();
   if (action == ffi::RecordAction::kCreate) {
-    ABSL_RETURN_IF_ERROR(record_ctx.CreateMemcpyD2D(scratch, in0, size).status());
-
-    absl::string_view ptx = stream_executor::gpu::GetAddI32PtxKernelSpec()
-                                .cuda_ptx_in_memory()
-                                .value()
-                                .ptx;
+    ABSL_ASSIGN_OR_RETURN(const XLA_FFI_Command* memcpy_d2d,
+                     record_ctx.CreateMemcpyD2D(scratch, in0, size));
+    ABSL_ASSIGN_OR_RETURN(KernelBinary binary, GetKernelSpec());
     ABSL_RETURN_IF_ERROR(
         record_ctx
             .CreateLaunch(
-                "AddI32", ptx.data(), ptx.size(), ffi::SourceFormat::kPtx,
+                "AddI32", binary.data(), binary.size(), binary.format,
                 /*launch_dims=*/{{1, 1, 1}, {8, 1, 1}}, /*shared_mem_bytes=*/0,
                 std::vector<ffi::KernelArg>{ffi::DevicePointer{scratch},
                                             ffi::DevicePointer{in1},
-                                            ffi::DevicePointer{res}})
+                                            ffi::DevicePointer{res}},
+                /*dependencies=*/{memcpy_d2d})
             .status());
   } else if (action == ffi::RecordAction::kUpdate) {
     auto cmds = record_ctx.commands();
@@ -103,14 +132,14 @@ struct DeviceMemoryBundle {
 };
 
 TEST(RecordFfiTest, KernelLaunchBoundFfi) {
-  ASSERT_OK_AND_ASSIGN(
-      auto platform,
-      stream_executor::PlatformManager::PlatformWithName("cuda"));
-  ASSERT_OK_AND_ASSIGN(stream_executor::StreamExecutor * executor,
-                       platform->ExecutorForDevice(0));
-  if (!executor->GetDeviceDescription()
-           .cuda_compute_capability()
-           .IsAtLeastAmpere()) {
+  ASSERT_OK_AND_ASSIGN(auto platform,
+                       stream_executor::PlatformManager::PlatformWithName(
+                           stream_executor::GpuPlatformName()));
+  ASSERT_OK_AND_ASSIGN(auto* executor, platform->ExecutorForDevice(0));
+  const auto* cuda_cc = executor->GetDeviceDescription()
+                            .gpu_compute_capability()
+                            .cuda_compute_capability();
+  if (cuda_cc && !cuda_cc->IsAtLeastAmpere()) {
     GTEST_SKIP() << "Skipping test for compute capability less than Ampere.";
   }
   ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());

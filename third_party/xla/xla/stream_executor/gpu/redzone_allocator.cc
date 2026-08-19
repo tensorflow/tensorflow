@@ -268,6 +268,13 @@ absl::StatusOr<DeviceAddressBase> RedzoneAllocator::CreateBuffer(
 }
 
 absl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
+  // Nothing to check. This also avoids freeing the pinned out-param below
+  // while its async MemZero is still pending on the stream; see
+  // https://github.com/openxla/xla/issues/46093.
+  if (allocated_buffers_.empty()) {
+    return RedzoneCheckStatus::OK();
+  }
+
   StreamExecutor* executor = stream_->parent();
 
   ABSL_ASSIGN_OR_RETURN(auto kernel,

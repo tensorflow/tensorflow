@@ -430,6 +430,19 @@ class PjRtTopologyDescription {
         "MakeCanonicalShapeForMemorySpace is unsupported.");
   }
 
+  // Returns a device-specific default device assignment for multi-slice system.
+  // If num_replicas_per_slice is not defined (nullopt) then we assume that
+  // all the partitions live entirely on a single slice and that all cross slice
+  // communication happens across replicas assuming then that
+  // num_replicas_per_slice is going to be "num_replicas / num_slices".
+  virtual absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+      int process_index, int num_replicas,
+      std::optional<int> num_replicas_per_slice, int num_partitions,
+      const MultiSliceConfig* multi_slice_config) const {
+    return absl::UnimplementedError(
+        "GetDefaultDeviceAssignment is not supported.");
+  }
+
   // A list of all memory spaces kind_ids supported by this topology.
   virtual absl::Span<const int> GetMemorySpaceKindIds() const;
 

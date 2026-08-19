@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/util.h"

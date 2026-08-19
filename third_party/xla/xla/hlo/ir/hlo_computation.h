@@ -862,7 +862,9 @@ class HloComputation {
 
   // Returns if this computation is an async computation.
   bool IsAsyncComputation() const {
-    return !caller_instructions(HloOpcode::kAsyncStart).empty();
+    return !caller_instructions(HloOpcode::kAsyncStart).empty() ||
+           !caller_instructions(HloOpcode::kAsyncDone).empty() ||
+           !caller_instructions(HloOpcode::kAsyncUpdate).empty();
   }
 
   // Returns true if this computation only contains send/recv instructions.

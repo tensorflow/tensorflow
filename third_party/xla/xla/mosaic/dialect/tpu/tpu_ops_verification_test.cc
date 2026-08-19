@@ -605,7 +605,7 @@ TEST_F(TpuOpsVerificationTest, VectorStoreIdxInvalidMaskShape) {
 TEST_F(TpuOpsVectorSubcoreVerificationTest, ScanVerificationWorksI32) {
   Value src = ConstantI32Vector(/*shape=*/{8}, /*values=*/{1});
   Type dst = VectorType::get(/*shape=*/{8}, /*type=*/builder().getI32Type());
-  Value mask = ConstantI1Vector(/*shape=*/{8}, /*values=*/{1});
+  Value mask = ConstantI1Vector(/*shape=*/{8}, /*values=*/{true});
 
   ASSERT_OK(VerifyOp(Create<ScanOp>(dst, src, tpu::ReductionKind::kSum, mask)));
 }
@@ -614,13 +614,13 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest, ScanVerificationWorksBF16) {
   Value src = ConstantBF16Vector(/*shape=*/{2, 8}, /*value=*/1);
   Type dst =
       VectorType::get(/*shape=*/{2, 8}, /*type=*/builder().getBF16Type());
-  Value mask = ConstantI1Vector(/*shape=*/{8}, /*values=*/{1});
+  Value mask = ConstantI1Vector(/*shape=*/{8}, /*values=*/{true});
 
   ASSERT_OK(VerifyOp(Create<ScanOp>(dst, src, tpu::ReductionKind::kSum, mask)));
 }
 
 TEST_F(TpuOpsVectorSubcoreVerificationTest, ScanVerificationWorksI1) {
-  Value src = ConstantI1Vector(/*shape=*/{8}, /*values=*/{1});
+  Value src = ConstantI1Vector(/*shape=*/{8}, /*values=*/{true});
   Type dst = VectorType::get(/*shape=*/{8}, /*type=*/builder().getI32Type());
 
   ASSERT_OK(VerifyOp(
@@ -635,7 +635,7 @@ TEST_F(TpuOpsVerificationTest, ScanOnUnsupportedCore) {
   builder().setInsertionPointToStart(func_op.addEntryBlock());
   Value src = ConstantI32Vector(/*shape=*/{8}, /*values=*/{1});
   Type dst = VectorType::get(/*shape=*/{8}, /*type=*/builder().getI32Type());
-  Value mask = ConstantI1Vector(/*shape=*/{8}, /*values=*/{1});
+  Value mask = ConstantI1Vector(/*shape=*/{8}, /*values=*/{true});
 
   ASSERT_THAT(
       VerifyOp(Create<ScanOp>(dst, src, tpu::ReductionKind::kSum, mask)),
@@ -645,9 +645,9 @@ TEST_F(TpuOpsVerificationTest, ScanOnUnsupportedCore) {
 
 TEST_F(TpuOpsVectorSubcoreVerificationTest,
        ScanVerificationInvalidOutputTypeWithI1Input) {
-  Value src = ConstantI1Vector(/*shape=*/{8}, /*values=*/{1});
+  Value src = ConstantI1Vector(/*shape=*/{8}, /*values=*/{true});
   Type dst = VectorType::get(/*shape=*/{8}, /*type=*/builder().getI1Type());
-  Value mask = ConstantI1Vector(/*shape=*/{8}, /*values=*/{1});
+  Value mask = ConstantI1Vector(/*shape=*/{8}, /*values=*/{true});
 
   ASSERT_THAT(
       VerifyOp(Create<ScanOp>(dst, src, tpu::ReductionKind::kMin, mask)),
@@ -661,7 +661,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
        ScanVerificationMismatchElementType) {
   Value src = ConstantI32Vector(/*shape=*/{8}, /*values=*/{1});
   Type dst = VectorType::get(/*shape=*/{8}, /*type=*/builder().getF32Type());
-  Value mask = ConstantI1Vector(/*shape=*/{8}, /*values=*/{1});
+  Value mask = ConstantI1Vector(/*shape=*/{8}, /*values=*/{true});
 
   ASSERT_THAT(
       VerifyOp(Create<ScanOp>(dst, src, tpu::ReductionKind::kSum, mask)),
@@ -671,7 +671,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
 TEST_F(TpuOpsVectorSubcoreVerificationTest, ScanVerificationMismatchShape) {
   Value src = ConstantI32Vector(/*shape=*/{16}, /*values=*/{1});
   Type dst = VectorType::get(/*shape=*/{8}, /*type=*/builder().getI32Type());
-  Value mask = ConstantI1Vector(/*shape=*/{16}, /*values=*/{1});
+  Value mask = ConstantI1Vector(/*shape=*/{16}, /*values=*/{true});
 
   ASSERT_THAT(
       VerifyOp(Create<ScanOp>(dst, src, tpu::ReductionKind::kSum, mask)),
@@ -694,7 +694,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
        ScanVerificationInvalidReductionKind) {
   Value src = ConstantI32Vector(/*shape=*/{8}, /*values=*/{1});
   Type dst = VectorType::get(/*shape=*/{8}, /*type=*/builder().getI32Type());
-  Value mask = ConstantI1Vector(/*shape=*/{8}, /*values=*/{1});
+  Value mask = ConstantI1Vector(/*shape=*/{8}, /*values=*/{true});
 
   ASSERT_THAT(
       VerifyOp(Create<ScanOp>(dst, src, tpu::ReductionKind::kArgMax, mask)),
@@ -704,9 +704,9 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
 
 TEST_F(TpuOpsVectorSubcoreVerificationTest,
        ScanVerificationInvalidReductionKindWithI1Input) {
-  Value src = ConstantI1Vector(/*shape=*/{8}, /*values=*/{1});
+  Value src = ConstantI1Vector(/*shape=*/{8}, /*values=*/{true});
   Type dst = VectorType::get(/*shape=*/{8}, /*type=*/builder().getI32Type());
-  Value mask = ConstantI1Vector(/*shape=*/{8}, /*values=*/{1});
+  Value mask = ConstantI1Vector(/*shape=*/{8}, /*values=*/{true});
 
   ASSERT_THAT(
       VerifyOp(Create<ScanOp>(dst, src, tpu::ReductionKind::kMin, mask)),
@@ -717,9 +717,9 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
 
 TEST_F(TpuOpsVectorSubcoreVerificationTest,
        ScanVerificationInvalidMaskWithI1Input) {
-  Value src = ConstantI1Vector(/*shape=*/{8}, /*values=*/{1});
+  Value src = ConstantI1Vector(/*shape=*/{8}, /*values=*/{true});
   Type dst = VectorType::get(/*shape=*/{8}, /*type=*/builder().getI32Type());
-  Value mask = ConstantI1Vector(/*shape=*/{8}, /*values=*/{1});
+  Value mask = ConstantI1Vector(/*shape=*/{8}, /*values=*/{true});
 
   ASSERT_THAT(
       VerifyOp(Create<ScanOp>(dst, src, tpu::ReductionKind::kSum, mask)),
@@ -729,7 +729,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
 TEST_F(TpuOpsVectorSubcoreVerificationTest, ScanVerificationInvalidMaskRank) {
   Value src = ConstantI32Vector(/*shape=*/{1, 8}, /*values=*/{1});
   Type dst = VectorType::get(/*shape=*/{1, 8}, /*type=*/builder().getI32Type());
-  Value mask = ConstantI1Vector(/*shape=*/{1, 8}, /*values=*/{1});
+  Value mask = ConstantI1Vector(/*shape=*/{1, 8}, /*values=*/{true});
 
   ASSERT_THAT(
       VerifyOp(Create<ScanOp>(dst, src, tpu::ReductionKind::kMax, mask)),
@@ -739,7 +739,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest, ScanVerificationInvalidMaskRank) {
 TEST_F(TpuOpsVectorSubcoreVerificationTest, ScanVerificationInvalidMaskShape) {
   Value src = ConstantI32Vector(/*shape=*/{1, 8}, /*values=*/{1});
   Type dst = VectorType::get(/*shape=*/{1, 8}, /*type=*/builder().getI32Type());
-  Value mask = ConstantI1Vector(/*shape=*/{16}, /*values=*/{1});
+  Value mask = ConstantI1Vector(/*shape=*/{16}, /*values=*/{true});
 
   ASSERT_THAT(
       VerifyOp(Create<ScanOp>(dst, src, tpu::ReductionKind::kMax, mask)),
@@ -1385,6 +1385,194 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
   ASSERT_THAT(
       VerifyOp(wait),
       StatusIs(_, HasSubstr("Indirect DMA wait semaphore must be rank 0")));
+}
+TEST_F(TpuOpsVerificationTest, ReduceOpVerificationWorks) {
+  Value input = ConstantF32Vector(/*shape=*/{100, 200}, /*values=*/{1.0f});
+  auto reduce = Create<ReduceOp>(
+      /*output=*/VectorType::get({1, 200}, builder().getF32Type()),
+      /*input=*/input,
+      /*dimensions=*/builder().getDenseI64ArrayAttr({0}),
+      /*kind=*/
+      ReductionKindAttr::get(builder().getContext(), ReductionKind::kSum));
+  ASSERT_OK(VerifyOp(reduce));
+}
+
+TEST_F(TpuOpsVerificationTest, ReduceOpInvalidDim) {
+  Value input = ConstantF32Vector(/*shape=*/{100, 200}, /*values=*/{1.0f});
+  auto reduce = Create<ReduceOp>(
+      /*output=*/VectorType::get({1, 200}, builder().getF32Type()),
+      /*input=*/input,
+      /*dimensions=*/builder().getDenseI64ArrayAttr({2}),
+      /*kind=*/
+      ReductionKindAttr::get(builder().getContext(), ReductionKind::kSum));
+  ASSERT_THAT(
+      VerifyOp(reduce),
+      StatusIs(_, HasSubstr("Reduced dimension 2 is out of bounds [0, 2)")));
+}
+
+TEST_F(TpuOpsVerificationTest, ReduceOpReducedDimNotOne) {
+  Value input = ConstantF32Vector(/*shape=*/{100, 200}, /*values=*/{1.0f});
+  auto reduce = Create<ReduceOp>(
+      /*output=*/VectorType::get({10, 200}, builder().getF32Type()),
+      /*input=*/input,
+      /*dimensions=*/builder().getDenseI64ArrayAttr({0}),
+      /*kind=*/
+      ReductionKindAttr::get(builder().getContext(), ReductionKind::kSum));
+  ASSERT_THAT(VerifyOp(reduce),
+              StatusIs(_, HasSubstr("Expected output dimension 0 to have size "
+                                    "1, but got 10")));
+}
+
+TEST_F(TpuOpsVerificationTest, ReduceOpNonReducedDimMismatch) {
+  Value input = ConstantF32Vector(/*shape=*/{100, 200}, /*values=*/{1.0f});
+  auto reduce = Create<ReduceOp>(
+      /*output=*/VectorType::get({1, 300}, builder().getF32Type()),
+      /*input=*/input,
+      /*dimensions=*/builder().getDenseI64ArrayAttr({0}),
+      /*kind=*/
+      ReductionKindAttr::get(builder().getContext(), ReductionKind::kSum));
+  ASSERT_THAT(VerifyOp(reduce),
+              StatusIs(_, HasSubstr("Expected output dimension 1 to have "
+                                    "size 200, but got 300")));
+}
+
+TEST_F(TpuOpsVerificationTest, ReduceOpArgMaxUnsupported) {
+  Value input = ConstantF32Vector(/*shape=*/{100, 200}, /*values=*/{1.0f});
+  auto reduce = Create<ReduceOp>(
+      /*output=*/VectorType::get({1, 200}, builder().getI32Type()),
+      /*input=*/input,
+      /*dimensions=*/builder().getDenseI64ArrayAttr({0}),
+      /*kind=*/
+      ReductionKindAttr::get(builder().getContext(), ReductionKind::kArgMax));
+  ASSERT_THAT(
+      VerifyOp(reduce),
+      StatusIs(
+          _,
+          HasSubstr(
+              "arg_max/arg_min not supported - use tpu.reduce_index instead")));
+}
+
+TEST_F(TpuOpsVerificationTest, ReduceOpDuplicateDims) {
+  Value input = ConstantF32Vector(/*shape=*/{100, 200}, /*values=*/{1.0f});
+  auto reduce = Create<ReduceOp>(
+      /*output=*/VectorType::get({1, 200}, builder().getF32Type()),
+      /*input=*/input,
+      /*dimensions=*/builder().getDenseI64ArrayAttr({0, 0}),
+      /*kind=*/
+      ReductionKindAttr::get(builder().getContext(), ReductionKind::kSum));
+  ASSERT_THAT(
+      VerifyOp(reduce),
+      StatusIs(_, HasSubstr("Reduced dimension 0 is present more than once")));
+}
+
+TEST_F(TpuOpsVerificationTest, ConvOpVerificationWorks) {
+  Value lhs = ConstantF32Vector({1, 8, 128}, {1.0f});
+  Value rhs = ConstantF32Vector({3, 128, 128}, {1.0f});
+  Value acc = ConstantF32Vector({1, 6, 128}, {1.0f});
+  auto dnums = ConvDimensionNumbersAttr::get(
+      builder().getContext(),
+      /*input_batch_dimension=*/0, /*input_feature_dimension=*/2,
+      /*input_spatial_dimensions=*/{1},
+      /*kernel_input_feature_dimension=*/1,
+      /*kernel_output_feature_dimension=*/2,
+      /*kernel_spatial_dimensions=*/{0},
+      /*output_batch_dimension=*/0, /*output_feature_dimension=*/2,
+      /*output_spatial_dimensions=*/{1});
+  auto conv = Create<ConvOp>(
+      /*result=*/VectorType::get({1, 6, 128}, builder().getF32Type()),
+      /*lhs=*/lhs, /*rhs=*/rhs, /*acc=*/acc,
+      /*dimension_numbers=*/dnums,
+      /*window_strides=*/builder().getDenseI64ArrayAttr({1}),
+      /*padding=*/builder().getDenseI64ArrayAttr({0, 0}),
+      /*lhs_dilation=*/builder().getDenseI64ArrayAttr({1}),
+      /*rhs_dilation=*/builder().getDenseI64ArrayAttr({1}),
+      /*window_reversal=*/builder().getDenseBoolArrayAttr({false}),
+      /*precision=*/nullptr);
+  ASSERT_OK(VerifyOp(conv));
+}
+
+TEST_F(TpuOpsVerificationTest, ConvOpRankMismatch) {
+  Value lhs = ConstantF32Vector({1, 8, 128}, {1.0f});
+  Value rhs = ConstantF32Vector({3, 128}, {1.0f});
+  Value acc = ConstantF32Vector({1, 6, 128}, {1.0f});
+  auto dnums = ConvDimensionNumbersAttr::get(
+      builder().getContext(),
+      /*input_batch_dimension=*/0, /*input_feature_dimension=*/2,
+      /*input_spatial_dimensions=*/{1},
+      /*kernel_input_feature_dimension=*/1,
+      /*kernel_output_feature_dimension=*/2,
+      /*kernel_spatial_dimensions=*/{0},
+      /*output_batch_dimension=*/0, /*output_feature_dimension=*/2,
+      /*output_spatial_dimensions=*/{1});
+  auto conv = Create<ConvOp>(
+      /*result=*/VectorType::get({1, 6, 128}, builder().getF32Type()),
+      /*lhs=*/lhs, /*rhs=*/rhs, /*acc=*/acc,
+      /*dimension_numbers=*/dnums,
+      /*window_strides=*/builder().getDenseI64ArrayAttr({1}),
+      /*padding=*/builder().getDenseI64ArrayAttr({0, 0}),
+      /*lhs_dilation=*/builder().getDenseI64ArrayAttr({1}),
+      /*rhs_dilation=*/builder().getDenseI64ArrayAttr({1}),
+      /*window_reversal=*/builder().getDenseBoolArrayAttr({false}),
+      /*precision=*/nullptr);
+  ASSERT_THAT(VerifyOp(conv),
+              StatusIs(_, HasSubstr("Expected rhs rank to be 3")));
+}
+
+TEST_F(TpuOpsVerificationTest, ConvOpFeatureSizeMismatch) {
+  Value lhs = ConstantF32Vector({1, 8, 64}, {1.0f});
+  Value rhs = ConstantF32Vector({3, 128, 128}, {1.0f});
+  Value acc = ConstantF32Vector({1, 6, 128}, {1.0f});
+  auto dnums = ConvDimensionNumbersAttr::get(
+      builder().getContext(),
+      /*input_batch_dimension=*/0, /*input_feature_dimension=*/2,
+      /*input_spatial_dimensions=*/{1},
+      /*kernel_input_feature_dimension=*/1,
+      /*kernel_output_feature_dimension=*/2,
+      /*kernel_spatial_dimensions=*/{0},
+      /*output_batch_dimension=*/0, /*output_feature_dimension=*/2,
+      /*output_spatial_dimensions=*/{1});
+  auto conv = Create<ConvOp>(
+      /*result=*/VectorType::get({1, 6, 128}, builder().getF32Type()),
+      /*lhs=*/lhs, /*rhs=*/rhs, /*acc=*/acc,
+      /*dimension_numbers=*/dnums,
+      /*window_strides=*/builder().getDenseI64ArrayAttr({1}),
+      /*padding=*/builder().getDenseI64ArrayAttr({0, 0}),
+      /*lhs_dilation=*/builder().getDenseI64ArrayAttr({1}),
+      /*rhs_dilation=*/builder().getDenseI64ArrayAttr({1}),
+      /*window_reversal=*/builder().getDenseBoolArrayAttr({false}),
+      /*precision=*/nullptr);
+  ASSERT_THAT(
+      VerifyOp(conv),
+      StatusIs(_, HasSubstr("LHS feature dimension size (64) must match "
+                            "kernel input feature dimension size (128)")));
+}
+
+TEST_F(TpuOpsVerificationTest, ConvOpSpatialOutputMismatch) {
+  Value lhs = ConstantF32Vector({1, 8, 128}, {1.0f});
+  Value rhs = ConstantF32Vector({3, 128, 128}, {1.0f});
+  Value acc = ConstantF32Vector({1, 5, 128}, {1.0f});
+  auto dnums = ConvDimensionNumbersAttr::get(
+      builder().getContext(),
+      /*input_batch_dimension=*/0, /*input_feature_dimension=*/2,
+      /*input_spatial_dimensions=*/{1},
+      /*kernel_input_feature_dimension=*/1,
+      /*kernel_output_feature_dimension=*/2,
+      /*kernel_spatial_dimensions=*/{0},
+      /*output_batch_dimension=*/0, /*output_feature_dimension=*/2,
+      /*output_spatial_dimensions=*/{1});
+  auto conv = Create<ConvOp>(
+      /*result=*/VectorType::get({1, 5, 128}, builder().getF32Type()),
+      /*lhs=*/lhs, /*rhs=*/rhs, /*acc=*/acc,
+      /*dimension_numbers=*/dnums,
+      /*window_strides=*/builder().getDenseI64ArrayAttr({1}),
+      /*padding=*/builder().getDenseI64ArrayAttr({0, 0}),
+      /*lhs_dilation=*/builder().getDenseI64ArrayAttr({1}),
+      /*rhs_dilation=*/builder().getDenseI64ArrayAttr({1}),
+      /*window_reversal=*/builder().getDenseBoolArrayAttr({false}),
+      /*precision=*/nullptr);
+  ASSERT_THAT(VerifyOp(conv),
+              StatusIs(_, HasSubstr("Output spatial dimension 1 size mismatch: "
+                                    "expected 6, got 5")));
 }
 }  // namespace
 }  // namespace mlir::tpu

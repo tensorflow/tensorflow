@@ -259,9 +259,9 @@ def _tf_repositories():
     # XNNPack dependency.
     tf_http_archive(
         name = "KleidiAI",
-        sha256 = "6b3e6630be314a28f6ea28fed14f7109b0b7c472f1e06d2dba17ffccda3b9466",
-        strip_prefix = "kleidiai-dce86647385ab2638aa5abebcb652f3e4271970d",
-        urls = tf_mirror_urls("https://gitlab.arm.com/kleidi/kleidiai/-/archive/dce86647385ab2638aa5abebcb652f3e4271970d/kleidiai-dce86647385ab2638aa5abebcb652f3e4271970d.zip"),
+        sha256 = "b30044217e8e6f131aea4906e87a9908e78828822576d280af7ce68eda4578fd",
+        strip_prefix = "kleidiai-13cd35993d8439143aff1e756a862d366acded0d",
+        urls = tf_mirror_urls("https://gitlab.arm.com/kleidi/kleidiai/-/archive/13cd35993d8439143aff1e756a862d366acded0d/kleidiai-13cd35993d8439143aff1e756a862d366acded0d.zip"),
     )
 
     FXdiv()
@@ -320,6 +320,13 @@ def _tf_repositories():
         repo_mapping = {
             "@abseil-cpp": "@com_google_absl",
         },
+    )
+
+    tf_http_archive(
+        name = "rules_foreign_cc",
+        sha256 = "476303bd0f1b04cc311fc258f1708a5f6ef82d3091e53fd1977fa20383425a6a",
+        strip_prefix = "rules_foreign_cc-0.10.1",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_foreign_cc/releases/download/0.10.1/rules_foreign_cc-0.10.1.tar.gz"),
     )
 
     tf_http_archive(
@@ -393,6 +400,10 @@ def _tf_repositories():
         # The patch path is relative to third_party/tensorflow.
         patch_file = ["@xla//third_party/googletest:googletest.patch"],
         urls = tf_mirror_urls("https://github.com/google/googletest/archive/d72f9c8aea6817cdf1ca0ac10887f328de7f3da29.zip"),
+        repo_mapping = {
+            "@abseil-cpp": "@com_google_absl",
+            "@re2": "@com_googlesource_code_re2",
+        },
     )
 
     tf_http_archive(

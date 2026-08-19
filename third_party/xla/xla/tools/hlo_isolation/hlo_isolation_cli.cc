@@ -20,10 +20,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/service/hlo_runner_interface.h"

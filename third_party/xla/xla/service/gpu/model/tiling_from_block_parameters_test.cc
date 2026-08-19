@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -179,7 +180,7 @@ ENTRY entry_computation {
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{16, 16}};
 
-  Tile tile_override;
+  xla::xtile::Tile tile_override;
   tile_override.add_sizes(64);
 
   ASSERT_OK_AND_ASSIGN(Tiling tiling,

@@ -23,6 +23,23 @@ xla_cc_test(
 )
 
 xla_cc_test(
+    name = "pjrt_copy_to_memory_space_test",
+    srcs = ["pjrt_copy_to_memory_space_test.cc"],
+    deps = [
+        ":cpu_client",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla/pjrt:common_pjrt_client",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:raw_buffer",
+        "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
+        "//xla/tests:literal_test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
     name = "cpu_device_memory_test",
     srcs = ["cpu_device_memory_test.cc"],
     deps = [

@@ -826,7 +826,7 @@ struct TestCase {
   std::vector<std::vector<int64_t>> participating_device_groups;
   // Expected output for GetParticipatingFlattenedIdGroups.
   std::vector<std::vector<int64_t>> participating_flattened_id_groups;
-  // Expected output for GetPariticipantCountsForReplicaGroups.
+  // Expected output for GetParticipantCountsForReplicaGroups.
   std::vector<int64_t> participant_counts_for_replica_groups;
   // Expected output for GetReplicaGroupCountAndSize.
   std::optional<std::pair<int64_t, int64_t>> replica_group_count_and_size;
@@ -1199,10 +1199,10 @@ TEST_P(GetParticipatingTest, Test) {
   EXPECT_EQ(actual_flattened_id_groups_int,
             tc.participating_flattened_id_groups);
 
-  // Test GetPariticipantCountsForReplicaGroups.
+  // Test GetParticipantCountsForReplicaGroups.
   absl::StatusOr<std::vector<int64_t>> actual_participant_counts =
-      GetPariticipantCountsForReplicaGroups(num_replicas, num_partitions,
-                                            replica_groups, *group_mode);
+      GetParticipantCountsForReplicaGroups(num_replicas, num_partitions,
+                                           replica_groups, *group_mode);
   if (!actual_participant_counts.ok()) {
     EXPECT_TRUE(tc.expected_failure);
     return;
@@ -1257,7 +1257,7 @@ INSTANTIATE_TEST_SUITE_P(GetParticipating, GetParticipatingTest,
 
 }  // namespace GetParticipatingTest
 
-namespace GetPariticipantCountsForReplicaGroupsTest {
+namespace GetParticipantCountsForReplicaGroupsTest {
 
 struct TestCase {
   std::string test_name;
@@ -1268,18 +1268,18 @@ struct TestCase {
   std::vector<int64_t> expected;
 };
 
-class GetPariticipantCountsForReplicaGroupsTest
+class GetParticipantCountsForReplicaGroupsTest
     : public testing::TestWithParam<TestCase> {};
 
-TEST_P(GetPariticipantCountsForReplicaGroupsTest, Test) {
+TEST_P(GetParticipantCountsForReplicaGroupsTest, Test) {
   const TestCase& tc = GetParam();
 
   std::vector<ReplicaGroup> replica_groups =
       CreateReplicaGroups(tc.replica_groups);
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<int64_t> actual,
-      GetPariticipantCountsForReplicaGroups(tc.num_replicas, tc.num_partitions,
-                                            replica_groups, tc.group_mode));
+      GetParticipantCountsForReplicaGroups(tc.num_replicas, tc.num_partitions,
+                                           replica_groups, tc.group_mode));
   EXPECT_THAT(actual, testing::ElementsAreArray(tc.expected));
 }
 
@@ -1321,11 +1321,10 @@ std::vector<TestCase> GetTestCases() {
   };
 }
 INSTANTIATE_TEST_SUITE_P(
-    GetPariticipantCountsForReplicaGroups,
-    GetPariticipantCountsForReplicaGroupsTest,
-    testing::ValuesIn(GetTestCases()),
+    GetParticipantCountsForReplicaGroups,
+    GetParticipantCountsForReplicaGroupsTest, testing::ValuesIn(GetTestCases()),
     [](const testing::TestParamInfo<
-        GetPariticipantCountsForReplicaGroupsTest::ParamType>& info) {
+        GetParticipantCountsForReplicaGroupsTest::ParamType>& info) {
       return info.param.test_name;
     });
 
@@ -1337,7 +1336,7 @@ TEST(GetReductionIdentity, NoCrashForComplexType) {
   EXPECT_FALSE(identity.has_value());
 }
 
-}  // namespace GetPariticipantCountsForReplicaGroupsTest
+}  // namespace GetParticipantCountsForReplicaGroupsTest
 class IsNcclSymmetricBuffersEnabledForCollectiveTest : public ::testing::Test {
  protected:
   void SetUp() override {

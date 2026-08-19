@@ -429,8 +429,33 @@ def heaviside(x1, x2):  # pylint: disable=missing-function-docstring
 
 @tf_export.tf_export('experimental.numpy.hypot', v1=[])
 @np_utils.np_doc('hypot')
-def hypot(x1, x2):
-  return sqrt(square(x1) + square(x2))
+def hypot(x1, x2):  # pylint: disable=missing-function-docstring
+  def f(x1, x2):
+    # Promote non-floating inputs so scaling and sqrt stay accurate (matches
+    # the previous sqrt(square(x)+square(y)) float promotion via sqrt).
+    if not np.issubdtype(x1.dtype.as_numpy_dtype, np.inexact):
+      dtype = np_utils.result_type(float)
+      x1 = math_ops.cast(x1, dtype)
+      x2 = math_ops.cast(x2, dtype)
+    x1 = math_ops.abs(x1)
+    x2 = math_ops.abs(x2)
+    # C99/IEEE: hypot(±inf, y) == +inf even when y is NaN.
+    either_inf = math_ops.logical_or(math_ops.is_inf(x1), math_ops.is_inf(x2))
+    max_abs = math_ops.maximum(x1, x2)
+    min_abs = math_ops.minimum(x1, x2)
+    zero = constant_op.constant(0, dtype=max_abs.dtype)
+    one = constant_op.constant(1, dtype=max_abs.dtype)
+    # Scale by the larger magnitude to avoid intermediate overflow/underflow
+    # from square(x) + square(y) (e.g. hypot(1e200, 1e200) must stay finite).
+    safe_max = array_ops.where_v2(math_ops.equal(max_abs, zero), one, max_abs)
+    result = max_abs * math_ops.sqrt(one + math_ops.square(min_abs / safe_max))
+    return array_ops.where_v2(
+        either_inf,
+        constant_op.constant(np.inf, dtype=result.dtype),
+        result,
+    )
+
+  return _bin_op(f, x1, x2)
 
 
 @tf_export.tf_export('experimental.numpy.kron', v1=[])
@@ -1242,15 +1267,26 @@ def logical_not(x):
 def linspace(  # pylint: disable=missing-docstring
     start, stop, num=50, endpoint=True, retstep=False, dtype=float, axis=0
 ):
-  if dtype:
-    # In numpy 2.x, the result type of np.linspace is based off of `start` and
-    # `end`. We mimic the behavior.
-    if np.lib.NumpyVersion(np.__version__) >= '2.0.0.dev0':
-      dtype = np_utils.result_type([start * 1.0, stop * 1.0])
-    else:
-      dtype = np_utils.result_type(dtype)
-  start = np_array_ops.array(start, dtype=dtype)
-  stop = np_array_ops.array(stop, dtype=dtype)
+  # numpy computes the samples in a floating point type derived from `start`
+  # and `stop`, and only casts them to `dtype` as a final step. `dtype` must
+  # therefore not be used as the computation type, otherwise e.g. an integer
+  # `dtype` would truncate the samples before they are even computed.
+  # The default value of `dtype` plays the role of numpy's `dtype=None`, i.e.
+  # "infer the output type", so it is not treated as an explicit request.
+  if dtype is float or dtype is None:
+    dtype = None
+  else:
+    dtype = np_utils.result_type(dtype)
+  # In numpy 2.x, the result type of np.linspace is based off of `start` and
+  # `end`. We mimic the behavior.
+  if np.lib.NumpyVersion(np.__version__) >= '2.0.0.dev0':
+    computation_dtype = np_utils.result_type(start, stop)
+    if not (computation_dtype.is_floating or computation_dtype.is_complex):
+      computation_dtype = np_utils.result_type(float)
+  else:
+    computation_dtype = np_utils.result_type(float)
+  start = np_array_ops.array(start, dtype=computation_dtype)
+  stop = np_array_ops.array(stop, dtype=computation_dtype)
   if num < 0:
     raise ValueError(
         'Argument `num` (number of samples) must be a non-negative integer. '
@@ -1272,7 +1308,7 @@ def linspace(  # pylint: disable=missing-docstring
       result = math_ops.linspace(start, new_stop, num, axis=axis)
     else:
       result = math_ops.linspace(start, stop, num, axis=axis)
-  if dtype:
+  if dtype is not None:
     if dtype.is_integer:
       # Since numpy 1.20, linspace's rounding is towards -inf instead of 0
       result = math_ops.floor(result)
@@ -1286,18 +1322,13 @@ def linspace(  # pylint: disable=missing-docstring
 @tf_export.tf_export('experimental.numpy.logspace', v1=[])
 @np_utils.np_doc('logspace')
 def logspace(start, stop, num=50, endpoint=True, base=10.0, dtype=None, axis=0):
-  # In numpy 2.x, the result type of np.logspace is based off of `start` and
-  # `end`. We mimic the behavior.
-  if np.lib.NumpyVersion(np.__version__) >= '2.0.0.dev0':
-    dtype = np_utils.result_type([start * 1.0, stop * 1.0])
-  else:
-    dtype = np_utils.result_type(start, stop, dtype)
-  result = linspace(
-      start, stop, num=num, endpoint=endpoint, dtype=dtype, axis=axis
-  )
+  # Like numpy, the exponents are computed in the floating point type derived
+  # from `start` and `stop` (which `linspace` takes care of), and `dtype` only
+  # determines the type the final result is cast to.
+  result = linspace(start, stop, num=num, endpoint=endpoint, axis=axis)
   result = math_ops.pow(math_ops.cast(base, result.dtype), result)
-  if dtype:
-    result = math_ops.cast(result, dtype)
+  if dtype is not None:
+    result = math_ops.cast(result, np_utils.result_type(dtype))
   return result
 
 

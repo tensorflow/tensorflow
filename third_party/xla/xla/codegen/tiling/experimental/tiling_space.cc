@@ -25,7 +25,6 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
@@ -55,6 +54,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu::experimental {
@@ -133,6 +133,9 @@ void TilingSpace::ProcessInstruction(const HloInstruction& hlo) {
     case HloOpcode::kGetTupleElement:
       ProcessGetTupleElement(hlo);
       break;
+    case HloOpcode::kRaggedDot:
+      ProcessRaggedDot(hlo);
+      break;
     default:
       // TODO(goncharov): should have a explicit list of supported instructions?
       break;
@@ -162,6 +165,119 @@ void TilingSpace::ProcessReduce(const HloInstruction& hlo) {
                     input_shape.dimensions(reduction_dim_id),
                     DimensionSemantics::kSequential);
   }
+}
+
+// Register sequential dimensions and RTVars for a kRaggedDot instruction.
+//
+// --- kRaggedNonContracting ---
+//   Shape: LHS (M_total, K) × RHS (G, K, N) × group_sizes (G,) → (M_total, N)
+//   G is NOT in the output → registered as kSequential outer loop.
+//   K (contracting) → kSequential.
+//   M, N are already kParallel from root processing.
+//
+//   RTVar (ragged_dot, 2): group_size[g]
+//     Array RTVar indexed by the G sequential dim's loop IV.
+//     Used to build the runtime M-dimension upper-bound mask.
+//   last_m (= sum of group_sizes[0..g-1]):
+//     NOT an RTVar.  The emitter maintains it as a loop-carried iter_arg
+//     of the G scf::ForOp and adds it directly to M pointer arithmetic.
+//
+// --- kRaggedContracting ---
+//   Shape: LHS (M_total, K) × RHS (K, N) × group_sizes (G,) → (G, K, N)
+//   G IS in the output (dim 0) → kParallel (from root processing).
+//   Programs are assigned to (g, k_tile, n_tile) output tiles.
+//   G is a tile-ownership dimension, never a scan loop.
+//   M (ragged contracting) → kSequential (inner accumulation per tile).
+//
+//   RTVar (ragged_dot, 2):  group_size[g]
+//     Bounds the M sequential loop for each group.
+//   RTVar (ragged_dot, -1): start_m[g]   (absolute M offset / prefix sum)
+//     Provides the absolute M offset.  G is kParallel so no loop-carried
+//     last_m.  How each of these RTVars is materialized at emit time (a
+//     per-iteration load vs. an explicit prefix-sum loop) is decided by the
+//     emitter based on the ragged-dot variant; see EmitRaggedDot.
+void TilingSpace::ProcessRaggedDot(const HloInstruction& hlo) {
+  const auto* ragged_dot = Cast<HloRaggedDotInstruction>(&hlo);
+  const RaggedDotDimensionNumbers& ragged_dims =
+      ragged_dot->ragged_dot_dimension_numbers();
+  const DotDimensionNumbers& dot_dims = ragged_dims.dot_dimension_numbers();
+
+  const int64_t lhs_ragged_dim = ragged_dims.lhs_ragged_dimensions(0);
+  const Shape& lhs_shape = hlo.operand(0)->shape();
+  const HloInstruction* group_sizes_hlo = hlo.operand(2);
+  const int64_t M_total = lhs_shape.dimensions(lhs_ragged_dim);
+
+  // Determine the ragged mode by checking where the ragged dim appears.
+  const bool is_batch =
+      absl::c_count(dot_dims.lhs_batch_dimensions(), lhs_ragged_dim) > 0;
+  const bool is_contracting =
+      absl::c_count(dot_dims.lhs_contracting_dimensions(), lhs_ragged_dim) > 0;
+
+  const int64_t output_rank =
+      static_cast<int64_t>(hlo.shape().dimensions().size());
+
+  if (is_batch) {
+    // kRaggedBatch: output [B_total, M, N] — all kParallel (from root).
+    // K contracting → kSequential.  Identical to ProcessDotLike.
+    for (auto [index, lhs_k_dim] :
+         llvm::enumerate(dot_dims.lhs_contracting_dimensions())) {
+      AppendDimension(
+          &hlo,
+          /*dim_position=*/output_rank + static_cast<int64_t>(index),
+          lhs_shape.dimensions(lhs_k_dim), DimensionSemantics::kSequential);
+    }
+    return;  // No RTVar needed — computation = regular batched dot.
+  }
+
+  if (!is_contracting) {
+    // kRaggedNonContracting — G is not in the output; it runs as a sequential
+    // outer loop. Register G as kSequential outer loop (dim_position =
+    // output_rank + 0). G = RHS size along the group dimension (works for both
+    // non-batched [G] and batched [B, G] group_sizes tensors).
+    const int64_t G =
+        hlo.operand(1)->shape().dimensions(ragged_dims.rhs_group_dimensions(0));
+    AppendDimension(&hlo, /*dim_position=*/output_rank, G,
+                    DimensionSemantics::kSequential);
+
+    // Register K contracting dimension(s) as kSequential (dim_position =
+    // output_rank + 1 + i).
+    for (auto [index, lhs_k_dim] :
+         llvm::enumerate(dot_dims.lhs_contracting_dimensions())) {
+      AppendDimension(
+          &hlo,
+          /*dim_position=*/output_rank + 1 + static_cast<int64_t>(index),
+          lhs_shape.dimensions(lhs_k_dim), DimensionSemantics::kSequential);
+    }
+
+    // group_size[g]: array RTVar — at emit time load group_sizes[g_loop_iv].
+    // The emitter uses this to mask the M dimension: offs_m < group_size_g.
+    // last_m is NOT registered here; it is a loop-carried iter_arg maintained
+    // by the emitter (see EmitRaggedDot, kRaggedNonContracting).
+    AppendRTVar(&hlo, /*operand_id=*/2, group_sizes_hlo,
+                /*upper_bound=*/M_total);
+    return;
+  }
+
+  // kRaggedContracting: G is kParallel (output dim 0, from grid).
+  // Grid = G × K × N.
+  // M sequential (inner accumulation); start_m computed as prefix sum.
+  AppendDimension(&hlo, /*dim_position=*/output_rank, M_total,
+                  DimensionSemantics::kSequential);
+
+  // group_size[g]: RTVar bounding the M sequential loop per group.
+  // Keyed at operand_id=2.  Materialized by the emitter as a load of
+  // group_sizes[g] (see EmitRaggedDot, kRaggedContracting).
+  AppendRTVar(&hlo, /*operand_id=*/2, group_sizes_hlo,
+              /*upper_bound=*/M_total);
+
+  // start_m[g]: absolute M offset for the group.  Keyed at the sentinel
+  // operand_id=-1 to distinguish it from the group_size RTVar above (both
+  // reference the same group_sizes hlo).  Materialized by the emitter as an
+  // explicit prefix sum over group_sizes[0..g-1] (see EmitRaggedDot,
+  // kRaggedContracting), since G is kParallel and there is no loop-carried
+  // last_m to accumulate it.
+  AppendRTVar(&hlo, /*operand_id=*/-1, group_sizes_hlo,
+              /*upper_bound=*/M_total);
 }
 
 // Ensure scan dimensions are not tiled across CTAs.
@@ -422,12 +538,13 @@ absl::StatusOr<std::unique_ptr<TilingSpace>> TilingSpace::Create(
         GetFirstShape(&root.instruction()).dimensions();
     llvm::SmallVector<DimTile> dim_tiles;
     dim_tiles.reserve(dims.size());
-    for (auto [index, dim_size] : llvm::enumerate(dims)) {
-      TiledDimId dim_id =
-          tiling_space->GetDimensionInfo(root.instruction(), index).id;
-      SymbolicExpr tile_size =
-          CreateSymbolExpr(dim_id.value(), tiling_space->num_dimensions(), ctx);
-      dim_tiles.push_back(GetDefaultDimTile(dim_id, tile_size, dim_size));
+    for (auto [index, dim] : llvm::enumerate(dims)) {
+      int64_t global_dim_id =
+          tiling_space->GetDimensionInfo(root.instruction(), index).id.value();
+      dim_tiles.push_back(GetDefaultDimTile(
+          TiledDimId(global_dim_id),
+          CreateSymbolExpr(global_dim_id, tiling_space->num_dimensions(), ctx),
+          dim));
     }
     Tile tile{*tiling_space, std::move(dim_tiles)};
     if (root_shape.IsTuple()) {

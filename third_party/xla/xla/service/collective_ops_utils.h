@@ -45,30 +45,9 @@ limitations under the License.
 
 namespace xla {
 
-// Returns the nonempty collective_group_key frontend attribute. An absent or
-// empty attribute does not opt the instruction into collective grouping.
-std::optional<absl::string_view> GetCollectiveGroupKey(
-    const HloInstruction& instruction);
-
-// Returns whether an instruction has a nonempty collective_group_key frontend
-// attribute.
-bool HasCollectiveGroupKey(const HloInstruction& instruction);
-
-// Returns whether two distinct collective payloads may be coalesced without
-// changing explicit collective groups. Nonempty collective group keys must
-// match; an absent or empty key matches only another absent or empty key.
-// This compatibility check must not gate common-subexpression elimination or
-// decomposition into an equivalent sequence of operations.
-bool HaveCompatibleCollectiveGroupKeys(const HloInstruction& lhs,
-                                       const HloInstruction& rhs);
-
-// Copies the collective_group_key from `source` to `destination`. Attribute
-// absence is copied as well, so any existing key on `destination` is cleared.
-void CopyCollectiveGroupKey(const HloInstruction& source,
-                            HloInstruction& destination);
-
-// Removes the collective_group_key attribute.
-void ClearCollectiveGroupKey(HloInstruction& instruction);
+//===----------------------------------------------------------------------===//
+// Reduction utilities.
+//===----------------------------------------------------------------------===//
 
 absl::StatusOr<ReductionKind> StringToReductionKind(
     absl::string_view reduction_kind);
@@ -104,6 +83,38 @@ HloOpcode ReductionKindToOpcode(ReductionKind reduction_kind,
 std::optional<Literal> GetReductionIdentity(ReductionKind kind,
                                             PrimitiveType type);
 
+//===----------------------------------------------------------------------===//
+// Collective operation classification.
+//===----------------------------------------------------------------------===//
+
+// Returns true if instruction is a collective op that is not a collective
+// fusion.
+bool IsNonFusionCollective(const HloInstruction* instruction);
+
+// Returns true if instruction is a collective op or a collective fusion.
+bool IsCollective(const HloInstruction* instruction);
+
+// Returns true if instruction is an async collective op.
+absl::StatusOr<bool> IsAsyncCollective(const HloInstruction* instruction);
+
+// Returns true if instruction is a RaggedAllToAll op or an async-start that
+// wraps a RaggedAllToAll op.
+bool IsRaggedAllToAllOrAsyncStartRaggedAllToAll(
+    const HloInstruction* instruction);
+
+// Returns true if instruction is a RaggedAllToAll op or an async-done that
+// wraps a RaggedAllToAll op.
+bool IsRaggedAllToAllOrAsyncDoneRaggedAllToAll(
+    const HloInstruction* instruction);
+
+// Returns the collective instruction if argument is a collective op (or a
+// collective fusion) with channel_id.
+HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction);
+
+//===----------------------------------------------------------------------===//
+// Replica group utilities.
+//===----------------------------------------------------------------------===//
+
 // Figures out which IDs are participating in the collective subgroup.
 // An empty `groups` indicates that all [0, total_participant_count) IDs
 // are participating. Note that for CollectiveOpGroupMode::kFlattenedID,
@@ -132,6 +143,61 @@ absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>> GetAsyncReplicaGroups(
 //   * HloRaggedAllToAllInstruction
 absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
     const HloInstruction* instr);
+
+// Returns the flattened IDs in each participating replica group.
+absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
+GetParticipatingFlattenedIdGroups(
+    const DeviceAssignment& device_assignment,
+    const CollectiveDeviceListBase& collective_device_list,
+    CollectiveOpGroupMode group_mode);
+
+// Same as above, but takes replica and partition counts instead of a device
+// assignment.
+absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
+GetParticipatingFlattenedIdGroups(
+    const CollectiveDeviceListBase& collective_device_list,
+    CollectiveOpGroupMode group_mode, int replica_count, int partition_count);
+
+// Same as above, with collective group mode determined by the collective
+// instruction.
+absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
+GetParticipatingFlattenedIdGroups(const HloInstruction* hlo,
+                                  const DeviceAssignment& device_assignment);
+
+// Figures out how many ranks are participating in each collective subgroup.
+absl::StatusOr<std::vector<int64_t>> GetParticipantCountsForReplicaGroups(
+    int64_t num_replicas, int64_t num_partitions,
+    absl::Span<const ReplicaGroup> replica_groups,
+    CollectiveOpGroupMode group_mode);
+
+absl::StatusOr<std::optional<std::pair<int64_t, int64_t>>>
+GetReplicaGroupCountAndSize(const HloInstruction* hlo);
+
+// Returns true if the two replica groups are orthogonal.
+bool ReplicaGroupsOrthogonal(absl::Span<const ReplicaGroup> first,
+                             absl::Span<const ReplicaGroup> second);
+
+// Returns true if the two replica groups are equal.
+bool ReplicaGroupsEqual(absl::Span<const ReplicaGroup> first,
+                        absl::Span<const ReplicaGroup> second);
+
+// Returns true if all subgroups in replica_groups are exclusively cross-module.
+bool IsExclusivelyCrossModule(absl::Span<const ReplicaGroup> replica_groups,
+                              bool use_global_ids, bool has_channel_id,
+                              const DeviceAssignment& device_assignment);
+
+// Returns true if all subgroups in replica_groups are exclusively
+// cross-replica.
+bool IsExclusivelyCrossReplica(absl::Span<const ReplicaGroup> replica_groups,
+                               bool use_global_ids, bool has_channel_id,
+                               const DeviceAssignment& device_assignment);
+
+int64_t GetSubgroupSize(const HloCollectiveInstruction* hlo,
+                        CollectiveOpGroupMode group_mode);
+
+//===----------------------------------------------------------------------===//
+// Global device ID utilities.
+//===----------------------------------------------------------------------===//
 
 // Figures out subgroups of participating devices from given replica_groups and
 // group_mode.
@@ -164,96 +230,68 @@ GetParticipatingDevicesGroups(const DeviceAssignment& device_assignment,
 absl::StatusOr<std::vector<std::vector<GlobalDeviceId>>>
 GetParticipatingDevicesGroups(const HloInstruction* collective);
 
-// Same as above, except that it returns the flattened id in the replica groups
-// instead of device id.
-absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
-GetParticipatingFlattenedIdGroups(
-    const DeviceAssignment& device_assignment,
-    const CollectiveDeviceListBase& collective_device_list,
-    CollectiveOpGroupMode group_mode);
-
-// Same as above, but take replica/partition count instead of device assignment.
-absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
-GetParticipatingFlattenedIdGroups(
-    const CollectiveDeviceListBase& collective_device_list,
-    CollectiveOpGroupMode group_mode, int replica_count, int partition_count);
-
-// Same as above, with collective group mode determined by the collective
-// instruction.
-absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
-GetParticipatingFlattenedIdGroups(const HloInstruction* hlo,
-                                  const DeviceAssignment& device_assignment);
-
 // Figures out which devices are participating in the collective subgroup.
 absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
     GlobalDeviceId device_id, const DeviceAssignment& device_assignment,
     absl::Span<const ReplicaGroup> replica_groups,
     CollectiveOpGroupMode group_mode);
 
-// Figures out how many ranks are participating in each collective subgroup.
-absl::StatusOr<std::vector<int64_t>> GetPariticipantCountsForReplicaGroups(
-    int64_t num_replicas, int64_t num_partitions,
-    absl::Span<const ReplicaGroup> replica_groups,
-    CollectiveOpGroupMode group_mode);
-
-absl::StatusOr<std::optional<std::pair<int64_t, int64_t>>>
-GetReplicaGroupCountAndSize(const HloInstruction* hlo);
-
-// Returns true if the two replica group are orthogonal.
-bool ReplicaGroupsOrthogonal(absl::Span<const ReplicaGroup> first,
-                             absl::Span<const ReplicaGroup> second);
-
-// Returns true if the two replica group are Equal.
-bool ReplicaGroupsEqual(absl::Span<const ReplicaGroup> first,
-                        absl::Span<const ReplicaGroup> second);
-
-// Returns true if all subgroups in replica_groups are exclusively cross-module.
-bool IsExclusivelyCrossModule(absl::Span<const ReplicaGroup> replica_groups,
-                              bool use_global_ids, bool has_channel_id,
-                              const DeviceAssignment& device_assignment);
-
-// Returns true if all subgroups in replica_groups are exclusively
-// cross-replica.
-bool IsExclusivelyCrossReplica(absl::Span<const ReplicaGroup> replica_groups,
-                               bool use_global_ids, bool has_channel_id,
-                               const DeviceAssignment& device_assignment);
+//===----------------------------------------------------------------------===//
+// Point-to-point utilities.
+//===----------------------------------------------------------------------===//
 
 bool HasDuplicateSourcesOrTargets(const SourceTargetPairs& pairs);
 
-// A custom call target that can be used to create a nop that can legally
-// replace a collective op.
-inline constexpr absl::string_view kNopCustomCallTarget = "AllocateBuffer";
-// A custom call target that can be used to create a nop that can legally
-// replace a collective op and it returns a token.
-inline constexpr absl::string_view kNopReturnTokenCustomCallTarget =
-    "NopReturnToken";
+// We only pipeline Send-Recv chains with channel_id > 0, where each chain has a
+// unique channel_id, and allow multiple Send-Recv chains using channel_id 0.
+inline bool MayPipelineSendRecvChannel(int64_t channel_id) {
+  return channel_id > 0;
+}
 
-// Returns true if instruction is a collective op that is not a collective
-// fusion.
-bool IsNonFusionCollective(const HloInstruction* instruction);
+// When a Send or Recv is annotated with frontend attribute
+// _xla_send_recv_pipeline="1", asynchronous stream kP2P1 is used to execute the
+// Send or Recv. For all other cases, asynchronous stream kP2P0 is used.
+inline constexpr char kSendRecvPipelineAttr[] = "_xla_send_recv_pipeline";
 
-// Returns true if instruction is a collective op or a collective fusion.
-bool IsCollective(const HloInstruction* instruction);
+// Attribute to indicate that collective operations should be issued on a
+// dedicated p2p stream. This is a hint and there is no guarantee that this will
+// be honored.
+inline constexpr absl::string_view kCollectiveStreamAttrName =
+    "_xla_gpu_collective_stream";
+inline constexpr absl::string_view kCollectiveStreamP2P = "p2p";
 
-// Returns true if instruction is an async collective op.
-absl::StatusOr<bool> IsAsyncCollective(const HloInstruction* instruction);
+//===----------------------------------------------------------------------===//
+// Collective group attributes.
+//===----------------------------------------------------------------------===//
 
-// Returns true if instruction is a RaggedAllToAll op or an async-start that
-// wraps a RaggedAllToAll op.
-bool IsRaggedAllToAllOrAsyncStartRaggedAllToAll(
-    const HloInstruction* instruction);
+// Returns the nonempty collective_group_key frontend attribute. An absent or
+// empty attribute does not opt the instruction into collective grouping.
+std::optional<absl::string_view> GetCollectiveGroupKey(
+    const HloInstruction& instruction);
 
-// Returns true if instruction is a RaggedAllToAll op or an async-done that
-// wraps a RaggedAllToAll op.
-bool IsRaggedAllToAllOrAsyncDoneRaggedAllToAll(
-    const HloInstruction* instruction);
+// Returns whether an instruction has a nonempty collective_group_key frontend
+// attribute.
+bool HasCollectiveGroupKey(const HloInstruction& instruction);
 
-// Returns true if the one-shot RaggedAllToAll with NCCL feature is enabled.
-bool IsOneShotRaggedAllToAllWithNcclEnabled(const DebugOptions& opts);
+// Returns whether two distinct collective payloads may be coalesced without
+// changing explicit collective groups. Nonempty collective group keys must
+// match; an absent or empty key matches only another absent or empty key.
+// This compatibility check must not gate common-subexpression elimination or
+// decomposition into an equivalent sequence of operations.
+bool HaveCompatibleCollectiveGroupKeys(const HloInstruction& lhs,
+                                       const HloInstruction& rhs);
 
-// Returns the collective instruction if argument is a collective op (or a
-// collective fusion) with channel_id.
-HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction);
+// Copies the collective_group_key from `source` to `destination`. Attribute
+// absence is copied as well, so any existing key on `destination` is cleared.
+void CopyCollectiveGroupKey(const HloInstruction& source,
+                            HloInstruction& destination);
+
+// Removes the collective_group_key attribute.
+void ClearCollectiveGroupKey(HloInstruction& instruction);
+
+//===----------------------------------------------------------------------===//
+// Collective rendezvous.
+//===----------------------------------------------------------------------===//
 
 // Key that identifies a particular Rendezvous object in our global hashtable.
 // This determines which calls to ExecuteOnStream communicate with each other.
@@ -333,27 +371,20 @@ struct RendezvousKey {
   int64_t op_id;
 };
 
-// We only pipeline Send-Recv chains with channel_id > 0, where each chain
-// has a unique channel_id, and allows multiple Send-Recv chains using
-// channel_id 0.
-inline bool MayPipelineSendRecvChannel(int64_t channel_id) {
-  return channel_id > 0;
-}
+//===----------------------------------------------------------------------===//
+// Collective execution utilities.
+//===----------------------------------------------------------------------===//
 
-// When a Send or Recv is annotated with frontend attribute
-// _xla_send_recv_pipeline="1", asynchronous stream kP2P1 is used to execute the
-// Send or Recv. For all other cases, asynchronous stream kP2P0 is used.
-inline constexpr char kSendRecvPipelineAttr[] = "_xla_send_recv_pipeline";
+// A custom call target that can be used to create a nop that can legally
+// replace a collective op.
+inline constexpr absl::string_view kNopCustomCallTarget = "AllocateBuffer";
+// A custom call target that can be used to create a nop that can legally
+// replace a collective op and it returns a token.
+inline constexpr absl::string_view kNopReturnTokenCustomCallTarget =
+    "NopReturnToken";
 
-// Attribute to indicate that collective operations should be issued on a
-// dedicated p2p stream. This is a hint and there is no guarantee that this will
-// be honored.
-inline constexpr absl::string_view kCollectiveStreamAttrName =
-    "_xla_gpu_collective_stream";
-inline constexpr absl::string_view kCollectiveStreamP2P = "p2p";
-
-int64_t GetSubgroupSize(const HloCollectiveInstruction* hlo,
-                        CollectiveOpGroupMode group_mode);
+// Returns true if the one-shot RaggedAllToAll with NCCL feature is enabled.
+bool IsOneShotRaggedAllToAllWithNcclEnabled(const DebugOptions& opts);
 
 class NcclSymmetricBuffersSpec {
  public:
@@ -372,6 +403,10 @@ class NcclSymmetricBuffersSpec {
 
 bool IsNcclSymmetricBuffersEnabledForCollective(
     const HloInstruction* instruction, const DebugOptions& opts);
+
+//===----------------------------------------------------------------------===//
+// Async collective configuration.
+//===----------------------------------------------------------------------===//
 
 struct AsyncCollectiveConfig {
   std::vector<ReplicaGroup> replica_groups;

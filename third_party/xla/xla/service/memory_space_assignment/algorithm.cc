@@ -531,7 +531,9 @@ MsaAlgorithm::MsaAlgorithm(HloModule* module, AllocationSequence* allocations,
             farthest_bandwidth_limiting_async_done_found,
             hlo_live_range.instruction_schedule().at(inst->users()[0]));
       }
-      if (inst->opcode() == HloOpcode::kWhile ||
+      if (!MemorySpaceAssignmentUtils::IsInstructionOnConfiguredExecThread(
+              *inst, options.execution_threads) ||
+          inst->opcode() == HloOpcode::kWhile ||
           inst->opcode() == HloOpcode::kConditional) {
         initial_resources[i] = 0;
       } else {
@@ -1936,7 +1938,7 @@ void MsaAlgorithm::CreateAllocationValuesForJointProcessedValues(
       continue;
     }
 
-    if (!options_.enable_window_prefetch &&
+    if (!options_.IsOpSpanExposureEnabled() &&
         interval.size > available_heap_size()) {
       const HloInstruction* defining_instruction =
           interval.buffer->instruction();
@@ -3866,10 +3868,13 @@ absl::Status MsaAlgorithm::CreateNewBlockPrefetches(
       options_.reserved_bytes_for_block_prefetches;
 
   if (block_prefetching_limit_bytes > options_.max_size_in_bytes) {
+    int64_t corrected_reserved_bytes =
+        options_.max_size_in_bytes - block_prefetching_starting_offset;
     return absl::InvalidArgumentError(absl::StrCat(
         "Block prefetched values bytes limit: ", block_prefetching_limit_bytes,
         " is greater than options_.max_size_in_bytes ",
-        options_.max_size_in_bytes));
+        options_.max_size_in_bytes, ". Try setting it to ",
+        (corrected_reserved_bytes / 1024), " KiB."));
   }
   VLOG(3) << "Block prefetched values bytes limit: "
           << block_prefetching_limit_bytes;
@@ -4690,7 +4695,7 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
     }
   }
 
-  if (options_.enable_window_prefetch) {
+  if (options_.IsOpSpanExposureEnabled()) {
     CHECK_OK(WindowPrefetch());
   }
 
@@ -8995,7 +9000,7 @@ std::string DescribeSlicedBufferMove(
 }  // namespace
 
 void MsaAlgorithm::WindowPrefetchOperand(const HloUse& use, int64_t bytes) {
-  CHECK(options_.enable_window_prefetch);
+  CHECK(options_.IsOpSpanExposureEnabled());
 
   HloInstruction* instruction = use.instruction;
   ShapeIndex shape_index = use.operand_index;
@@ -9058,13 +9063,14 @@ void MsaAlgorithm::WindowPrefetchOperand(const HloUse& use, int64_t bytes) {
   options.notify_operand_appended_fn = options_.notify_operand_appended_fn;
   request.window_prefetch_options = &options;
 
-  if (options_.window_prefetch_mode == WindowPrefetchMode::kWindowPrefetch) {
+  if (options_.IsWindowPrefetchingEnabled()) {
     // Window prefetch mode
     Prefetch(request, dummy_prev_allocation);
   } else {
     // Window exposure mode, we only need to find a chunk for the window
     // buffer.
-    CHECK(options_.window_prefetch_mode == WindowPrefetchMode::kWindowExposure);
+    CHECK(options_.IsOpSpanExposureEnabled() &&
+          !options_.IsWindowPrefetchingEnabled());
     // Adjust the start time of the buffer interval to be the use time. This is
     // because we only need the buffer to be alive at the use time.
     buffer_interval.start = end_time;
@@ -9090,7 +9096,7 @@ void MsaAlgorithm::WindowPrefetchOperand(const HloUse& use, int64_t bytes) {
 }
 
 absl::Status MsaAlgorithm::WindowPrefetch() {
-  CHECK(options_.enable_window_prefetch);
+  CHECK(options_.IsOpSpanExposureEnabled());
 
   absl::flat_hash_set<HloInstruction*> window_prefetchable_instructions;
 
@@ -9108,24 +9114,9 @@ absl::Status MsaAlgorithm::WindowPrefetch() {
   absl::flat_hash_map<HloInstruction*, HloInstruction*> cloned_insts;
   const std::vector<HloInstruction*>& instruction_sequence =
       hlo_live_range_.flattened_instruction_sequence().instructions();
-  // Determine which instructions are window-prefetchable. Use the
-  // caller-provided functor if available, otherwise fall back to the default
-  // logic: output fusions and loop fusions not on sparsecore.
-  auto is_window_prefetchable = [&](const HloInstruction* instruction) {
-    if (!instruction->IsOutputFusion() && !instruction->IsLoopFusion()) {
-      return false;
-    }
-    if (instruction->parent()->execution_thread() == "sparsecore") {
-      return false;
-    }
-    if (options_.is_window_prefetchable_instruction_fn) {
-      return options_.is_window_prefetchable_instruction_fn(instruction);
-    }
-    return true;
-  };
 
   for (HloInstruction* instruction : instruction_sequence) {
-    if (!is_window_prefetchable(instruction)) {
+    if (!options_.is_window_prefetchable_instruction_fn(instruction)) {
       continue;
     }
 
@@ -9290,7 +9281,9 @@ AllocationResult MsaAlgorithm::PrefetchWithResourceConstraints(
   // If the request has window prefetch options, it is called from window
   // prefetch.
   context.window_prefetch = (request.window_prefetch_options != nullptr);
-  CHECK(!context.window_prefetch || options_.enable_window_prefetch);
+  // If we're actually doing a prefetch, it should be for a non-window-prefetch
+  // buffer or the window prefetching should be enabled.
+  CHECK(!context.window_prefetch || options_.IsWindowPrefetchingEnabled());
 
   // Create a SliceProposal and WorkingIntervals.
   SetupPrefetchWorkingIntervalsAndSliceProposal(context);

@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 
 namespace xla {
@@ -64,7 +65,7 @@ struct BlockLevelParameters {
   BlockLevelFusionConfig ToBlockLevelFusionConfig() const {
     BlockLevelFusionConfig config;
     for (const auto& tile_sizes : output_tile_sizes) {
-      Tile tile;
+      xla::xtile::Tile tile;
       tile.mutable_sizes()->Add(tile_sizes.begin(), tile_sizes.end());
       *config.add_output_tiles() = tile;
     }

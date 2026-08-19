@@ -333,12 +333,43 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
 
   absl::StatusOr<PjRtRawBufferRef> ImportForeignMemory(
       PjRtMemorySpace* memory_space, void* device_ptr, size_t size,
-      absl::AnyInvocable<void() &&> on_delete_callback) override;
+      absl::AnyInvocable<void() &&> on_delete_callback,
+      bool is_mutable) override;
 
   absl::StatusOr<PjRtDeviceEventRef> CreateDeviceEventForStream(
       PjRtMemorySpace* memory_space, std::intptr_t stream) override;
 
+  virtual void UpdateCompileOptionsTopology(
+      const PjRtTopologyDescription& topology, CompileOptions* options) const {}
+
+  absl::StatusOr<std::shared_ptr<DeviceAssignment>> UpdateCompileOptions(
+      int process_index, const PjRtTopologyDescription& topology,
+      CompileOptions* options, bool lookup_addressable_devices);
+
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> CompileInternal(
+      const XlaComputation& computation,
+      const std::vector<const Shape*>& argument_layout_pointers,
+      LayoutCanonicalizationCallback layout_canonicalization_callback,
+      int process_index,
+      std::optional<std::shared_ptr<KeyValueStoreInterface>> key_value_store,
+      const PjRtTopologyDescription* topology,
+      const PjRtTopologyDescription& target_topology, CompileOptions options);
+
   void Stop() { async_work_runner_.reset(); }
+
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> CrossCompile(
+      const XlaComputation& computation, CompileOptions options,
+      int process_index,
+      std::optional<std::shared_ptr<KeyValueStoreInterface>> key_value_store,
+      const PjRtTopologyDescription* topology,
+      const PjRtTopologyDescription& target_topology);
+
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> CrossCompile(
+      MaybeOwningMlirModule mlir_module, CompileOptions options,
+      int process_index,
+      std::optional<std::shared_ptr<KeyValueStoreInterface>> key_value_store,
+      const PjRtTopologyDescription* topology,
+      const PjRtTopologyDescription& target_topology);
 
  private:
   se::DeviceAddressAllocator* allocator_ = nullptr;
@@ -357,6 +388,8 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
   std::unique_ptr<AsyncWorkRunner> async_work_runner_;
   se::StreamExecutor* executor_;
   std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_;
+
+  tsl::thread::ThreadPool compile_thread_pool_;
 };
 
 class PjRtStreamExecutorExecutableLoadState : public PjRtExecutableLoadState {
@@ -386,7 +419,7 @@ class PjRtStreamExecutorExecutableLoadState : public PjRtExecutableLoadState {
 class PjRtStreamExecutorClient : public CommonPjRtClient {
  public:
   explicit PjRtStreamExecutorClient(
-      std::string platform_name, LocalClient* client,
+      std::string platform_name,
       std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
       int process_index,
       std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces,
@@ -430,18 +463,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   absl::string_view platform_version() const override { return "<unknown>"; }
 
   std::optional<PjRtPluginAttributes> plugin_attributes() const override;
-
-  absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
-      int num_replicas, int num_partitions) const override;
-
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      const XlaComputation& computation, CompileOptions options) override;
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
-      const XlaComputation& computation, CompileOptions options) override;
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      MaybeOwningMlirModule mlir_module, CompileOptions options) override;
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
-      MaybeOwningMlirModule mlir_module, CompileOptions options) override;
 
   absl::StatusOr<std::string> SerializeExecutable(
       const PjRtLoadedExecutable& executable) const {
@@ -490,7 +511,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
                     .value())
                 ->local_device_state();
   }
-  LocalClient* client() const { return client_; }
+  LocalClient* client() const { return raw_client_->client(); }
   se::DeviceAddressAllocator* allocator() const {
     return raw_client_->allocator();
   }
@@ -562,7 +583,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
         std::move(transfer_dependencies), std::move(transfer_specs));
   }
 
-
   absl::Status WaitOnStream(PjRtMemorySpace* memory_space,
                             PjRtDeviceEventRef event,
                             std::intptr_t stream) override;
@@ -604,48 +624,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 
   virtual void RecordMemoryStats() {}
 
-  // Helper function for creating PjRtStreamExecutorExecutables. Modifies
-  // `options` in-place.
-  struct ExecutableExtras {
-    std::shared_ptr<DeviceAssignment> device_assignment;
-    std::vector<PjRtLoadedExecutable::LogicalDeviceIds>
-        addressable_device_logical_ids;
-    std::vector<PjRtDevice*> addressable_devices;
-  };
-
-  // Updates `options` for compilation.
-  absl::Status UpdateCompileOptions(CompileOptions* options,
-                                    bool lookup_addressable_devices);
-
-  // Same as above, but also returns the executable extras.
-  absl::StatusOr<ExecutableExtras> UpdateCompileOptionsAndGetExecutableExtras(
-      CompileOptions* options);
-
-  // Updates `options` for compilation, and gets the executable extras if
-  // `returned_extras` is not null. It skips addressable device lookup if
-  // `lookup_addressable_devices` is false.
-  virtual absl::Status UpdateCompileOptionsInternal(
-      CompileOptions* options, ExecutableExtras* returned_extras,
-      bool lookup_addressable_devices);
-
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      const XlaComputation& computation, CompileOptions options,
-      bool lookup_addressable_devices);
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      MaybeOwningMlirModule mlir_module, CompileOptions options,
-      bool lookup_addressable_devices);
-
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> CompileInternal(
-      const XlaComputation& computation,
-      const std::vector<const Shape*>& argument_layout_pointers,
-      LayoutCanonicalizationCallback layout_canonicalization_callback,
-      CompileOptions options, bool lookup_addressable_devices);
-
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> BuildPjRtExecutable(
-      std::optional<HloModuleProto> unoptimized_hlo_module_proto,
-      std::unique_ptr<LocalExecutable> local_executables,
-      CompileOptions compile_options);
-
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
       std::unique_ptr<riegeli::Reader> reader,
       std::optional<CompileOptions> options);
@@ -655,7 +633,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;
-  LocalClient* client_;
   std::shared_ptr<const xla::PjRtTopologyDescription> topology_;
 
   std::unique_ptr<PjRtStreamExecutorRawClient> raw_client_;
@@ -675,8 +652,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   std::vector<PjRtMemorySpace*> memory_spaces_;
 
   std::shared_ptr<KeyValueStoreInterface> kv_store_;
-
-  tsl::thread::ThreadPool compile_thread_pool_;
 };
 
 struct PjRtStreamExecutorExecutionOutput {
@@ -688,7 +663,7 @@ struct PjRtStreamExecutorExecutionOutput {
 };
 
 using RunAsyncHandlerFn = absl::StatusOr<PjRtStreamExecutorExecutionOutput> (*)(
-    LocalExecutable& exec, PjRtDevice* device,
+    LocalExecutable& exec, LocalDeviceState* local_device_state,
     absl::Span<const PjRtRawBufferRef> flat_arguments,
     absl::Span<const PjRtRawBufferRef> results,
     ExecutableRunOptions run_options, bool parameter_is_tupled_arguments);

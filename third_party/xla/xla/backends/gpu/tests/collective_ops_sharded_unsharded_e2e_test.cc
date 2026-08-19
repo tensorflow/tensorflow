@@ -49,7 +49,7 @@ namespace {
 class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsE2ETestBase {
  public:
   CollectiveOpsTestE2EShardedUnsharded()
-      : CollectiveOpsE2ETestBase(/*memory_size=*/64 * kMB,
+      : CollectiveOpsE2ETestBase(/*memory_size=*/128 * kMB,
                                  /*collectives_memory_size=*/0) {}
 
   void CollectiveOpsCompareShardedUnsharded(

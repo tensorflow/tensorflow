@@ -179,12 +179,44 @@ absl::StatusOr<GpuTopology> GetTopologyWithTargetConfig(
 }
 }  // namespace
 
+static absl::StatusOr<std::unique_ptr<PjRtExecutable>> CrossCompile(
+    CommonPjRtClient* client, MaybeOwningMlirModule module,
+    CompileOptions options, const PjRtTopologyDescription& target_topology) {
+  ABSL_ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
+                   client->GetTopologyDescription());
+  PjRtStreamExecutorRawClient* raw_client = nullptr;
+  if (client) {
+    raw_client =
+        dynamic_cast<PjRtStreamExecutorRawClient*>(client->raw_client());
+  }
+  return raw_client->CrossCompile(
+      std::move(module), std::move(options), client->process_index(),
+      client->key_value_store(), topology, target_topology);
+}
+
+static absl::StatusOr<std::unique_ptr<PjRtExecutable>> CrossCompile(
+    CommonPjRtClient* client, const XlaComputation& computation,
+    CompileOptions options, const PjRtTopologyDescription& target_topology) {
+  ABSL_ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
+                   client->GetTopologyDescription());
+  PjRtStreamExecutorRawClient* raw_client = nullptr;
+  if (client) {
+    raw_client =
+        dynamic_cast<PjRtStreamExecutorRawClient*>(client->raw_client());
+  }
+  return raw_client->CrossCompile(
+      computation, std::move(options), client->process_index(),
+      client->key_value_store(), topology, target_topology);
+}
+
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
 StreamExecutorGpuCompiler::Compile(
     CompileOptions options, const XlaComputation& computation,
     const PjRtTopologyDescription& topology, PjRtClient* client,
     LayoutCanonicalizationCallback layout_callback) {
   ABSL_ASSIGN_OR_RETURN(Compiler * gpu_compiler, GetOrCreateCompiler());
+
+  auto* se_client = dynamic_cast<CommonPjRtClient*>(client);
 
   // This function does a bunch of temporary modifications to the CompileOptions
   // which should not be reflected in the options that we keep with the
@@ -208,8 +240,8 @@ StreamExecutorGpuCompiler::Compile(
               << topology_with_target_config.status();
     TF_RET_CHECK(IsGpuClient(*client))
         << "JIT compilation requires a GPU PjRt client.";
-    ABSL_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
-    return client->Compile(computation, input_options);
+    ABSL_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, se_client));
+    return CrossCompile(se_client, computation, input_options, topology);
   }
 
   ABSL_ASSIGN_OR_RETURN(GpuTopology xla_gpu_topology, topology_with_target_config);
@@ -233,7 +265,7 @@ StreamExecutorGpuCompiler::Compile(
                    "configuration. Performing a JIT compilation.";
       // This code path is necessary as long as the legacy AOT compilation is
       // still in use.
-      return client->Compile(computation, input_options);
+      return CrossCompile(se_client, computation, input_options, topology);
     }
 
     LOG(INFO) << "Found GPU target config and a PjRtClient. Performing a cross "
@@ -324,12 +356,15 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   absl::StatusOr<GpuTopology> topology_with_target_config =
       GetTopologyWithTargetConfig(topology, options);
 
+  auto* se_client = dynamic_cast<CommonPjRtClient*>(client);
+
   if (!topology_with_target_config.ok() && client != nullptr) {
     TF_RET_CHECK(IsGpuClient(*client))
         << "GPU compilation requires a GPU PjRt client.";
-    ABSL_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
-    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
-                     client->Compile(std::move(module), options));
+    ABSL_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, se_client));
+    ABSL_ASSIGN_OR_RETURN(
+        std::unique_ptr<PjRtExecutable> executable,
+        CrossCompile(se_client, std::move(module), options, topology));
     return executable;
   }
 
@@ -343,7 +378,7 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
                    "configuration. Performing a JIT compilation.";
       // This code path is necessary as long as the legacy AOT compilation is
       // still in use.
-      return client->Compile(std::move(module), options);
+      return CrossCompile(se_client, std::move(module), options, topology);
     }
   }
 

@@ -149,6 +149,35 @@ def TPU_ReduceIndexOp : TPU_Op<"reduce_index", [Pure]> {
   let hasVerifier = 1;
 }
 
+def TPU_ReduceOp : TPU_Op<"reduce", [Pure, SameOperandsAndResultRank]> {
+  let summary = "Multi-dimensional reduction operation";
+  let description = [{
+    Reduces an n-D vector into an n-D vector with reduced dimensions set to 1.
+
+    This operation is similar to MLIR's `vector.multi_reduction` operation, but
+    the reduced dimensions are kept and set to 1, instead of being removed.
+    There is also no accumulator operand.
+
+    For example, the following operation
+
+    ```
+    %output = tpu.reduce <sum>, %input [0] : vector<2x2xi32> -> vector<1x2xi32>
+    ```
+
+    might reduce `%input` = [[1, 2], [3, 4]] to `%output` = [[4, 6]].
+  }];
+  let arguments = (ins
+    AnyVectorOfNonZeroRank:$input,
+    DenseI64ArrayAttr:$dimensions,
+    TPU_ReductionKindAttr:$kind
+  );
+  let results = (outs AnyVectorOfNonZeroRank:$output);
+  let assemblyFormat = [{
+    $kind `,` $input $dimensions attr-dict `:` type($input) `->` type($output)
+  }];
+  let hasVerifier = 1;
+}
+
 // tpu.scan performs a scan across a vector.
 //
 // If a mask is provided, all output elements before the first unmasked input
@@ -851,6 +880,46 @@ def TPU_MatmulOp : TPU_Op<"matmul", [Pure]> {
     $lhs `,` $rhs `,` $acc attr-dict `:` type($lhs) `,` type($rhs) `,` type($acc) `->` type($result)
   }];
   let hasCanonicalizer = 1;
+  let hasVerifier = 1;
+}
+
+def TPU_ConvOp : TPU_Op<"conv", [Pure]> {
+  let summary = "N-D General Convolution operation on TPU";
+  let description = [{
+    The `tpu.conv` operation performs an N-D general convolution over vector
+    registers and TPU Matrix Units (MXU).
+
+    It accepts input tensor `lhs`, kernel tensor `rhs`, and an initial accumulator
+    tensor `acc` (which may be passed in with zeros or prior partial sums).
+
+    Attributes:
+    - `dimension_numbers`: Defines the batch, feature, and spatial dimension
+      mappings for input, kernel, and output tensors.
+    - `window_strides`: Strides for sliding the kernel window across each spatial
+      dimension (defaults to 1).
+    - `padding`: Explicit low and high padding pairs for each spatial dimension.
+    - `lhs_dilation`: Dilation factor for the input (defaults to 1).
+    - `rhs_dilation`: Dilation factor for the kernel/filter (defaults to 1).
+    - `window_reversal`: Boolean flags indicating whether to reverse the kernel
+      window along each spatial dimension.
+    - `precision`: Optional contraction precision mode for TPU matrix multiplication.
+  }];
+  let arguments = (ins
+    AnyVectorOfNonZeroRank:$lhs,
+    AnyVectorOfNonZeroRank:$rhs,
+    AnyVectorOfNonZeroRank:$acc,
+    TPU_ConvDimensionNumbersAttr:$dimension_numbers,
+    DenseI64ArrayAttr:$window_strides,
+    DenseI64ArrayAttr:$padding,
+    DenseI64ArrayAttr:$lhs_dilation,
+    DenseI64ArrayAttr:$rhs_dilation,
+    DenseBoolArrayAttr:$window_reversal,
+    OptionalAttr<TPU_ContractPrecisionEnum>:$precision
+  );
+  let results = (outs AnyVectorOfNonZeroRank:$result);
+  let assemblyFormat = [{
+    $lhs `,` $rhs `,` $acc attr-dict `:` type($lhs) `,` type($rhs) `,` type($acc) `->` type($result)
+  }];
   let hasVerifier = 1;
 }
 

@@ -369,6 +369,8 @@ class ShapeVerifier : public DfsHloVisitor {
 
   // Checks that the aliasing config of the given async instruction is valid.
   absl::Status CheckAsyncOpAliasConfig(const HloInstruction* async_op);
+  absl::Status CheckAsyncStartAliasConfig(const HloInstruction* async_op);
+  absl::Status CheckAsyncUpdateAliasConfig(const HloInstruction* async_op);
 
   // Returns true if the shapes of the two operands have the same element type,
   // and the result shape either has the same element type as the operand shapes

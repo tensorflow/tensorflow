@@ -31,11 +31,11 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/nanort/nanort_client.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/core/host_offloading/host_offloading_buffer.h"
@@ -207,10 +207,17 @@ HostOffloadingNanoRtExecutable::LoadFromProto(
       bool needs_layout_conversion,
       HostOffloadingLayoutAnalysis::NeedsLayoutConversion(hlo_module.get()));
 
+  // Evaluate `executable->program_shape()` before the constructor call below:
+  // `std::move(executable)` initializes the constructor's by-value unique_ptr
+  // parameter, and argument evaluation order is unspecified (right-to-left on
+  // the MSVC ABI), so reading `executable` in another argument of the same
+  // call would dereference an already moved-from (null) pointer.
+  ProgramShape executable_program_shape = executable->program_shape()
+                                              ? *executable->program_shape()
+                                              : std::move(program_shape);
+
   return absl::WrapUnique(new HostOffloadingNanoRtExecutable(
-      hlo_module_proto.name(),
-      executable->program_shape() ? *executable->program_shape()
-                                  : program_shape,
+      hlo_module_proto.name(), std::move(executable_program_shape),
       std::move(alias_config), std::move(executable), needs_layout_conversion,
       std::move(device_assignment)));
 }

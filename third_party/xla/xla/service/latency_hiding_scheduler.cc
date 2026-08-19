@@ -45,6 +45,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "re2/re2.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -628,11 +629,20 @@ ResourcesVector AsyncTracker::GetResourcesFromInstructionImpl(
 
 absl::Span<const ResourcePair> AsyncTracker::GetResourcesFromInstruction(
     const HloInstruction& hlo) const {
-  auto [it, inserted] = resources_cache_.emplace(&hlo, ResourcesVector{});
-  if (inserted) {
-    it->second = GetResourcesFromInstructionImpl(hlo);
+  {
+    absl::ReaderMutexLock lock(&resources_cache_mu_);
+    auto it = resources_cache_.find(&hlo);
+    if (it != resources_cache_.end()) {
+      return *(it->second);
+    }
   }
-  return it->second;
+  absl::WriterMutexLock lock(&resources_cache_mu_);
+  auto& val = resources_cache_[&hlo];
+  if (val == nullptr) {
+    val =
+        std::make_unique<ResourcesVector>(GetResourcesFromInstructionImpl(hlo));
+  }
+  return *val;
 }
 
 int64_t AsyncTracker::GetNumResourcesPerInstruction(
@@ -681,12 +691,14 @@ AsyncTracker::RecursivelyComputeResourceMap(
   if (schedule.is_computation_scheduled(computation)) {
     return RecursivelyComputeResourceMapForScheduledComputation(computation);
   }
-  auto& per_opcode_map = async_in_computation_cache_[computation];
-  if (per_opcode_map != nullptr) {
-    return *per_opcode_map;
+  {
+    absl::ReaderMutexLock lock(&async_in_computation_cache_mu_);
+    auto it = async_in_computation_cache_.find(computation);
+    if (it != async_in_computation_cache_.end()) {
+      return *(it->second);
+    }
   }
-  per_opcode_map = std::make_unique<absl::flat_hash_map<int64_t, int64_t>>();
-  auto* m = per_opcode_map.get();
+  auto m = std::make_unique<absl::flat_hash_map<int64_t, int64_t>>();
   absl::flat_hash_set<int64_t> seen_resources_per_comp;
   for (HloInstruction* instr : computation->instructions()) {
     if (IsSupportedAsyncDone(*instr)) {
@@ -712,7 +724,12 @@ AsyncTracker::RecursivelyComputeResourceMap(
       }
     }
   }
-  return *m;
+  absl::WriterMutexLock lock(&async_in_computation_cache_mu_);
+  auto& per_opcode_map = async_in_computation_cache_[computation];
+  if (per_opcode_map == nullptr) {
+    per_opcode_map = std::move(m);
+  }
+  return *per_opcode_map;
 }
 
 const absl::flat_hash_map<int64_t, int64_t>&
@@ -720,11 +737,14 @@ AsyncTracker::RecursivelyComputeResourceMapForScheduledComputation(
     const HloComputation* computation) const {
   auto& schedule = computation->parent()->schedule();
   CHECK(schedule.is_computation_scheduled(computation));
-  auto& m = async_in_computation_cache_[computation];
-  if (m != nullptr) {
-    return *m;
+  {
+    absl::ReaderMutexLock lock(&async_in_computation_cache_mu_);
+    auto it = async_in_computation_cache_.find(computation);
+    if (it != async_in_computation_cache_.end()) {
+      return *(it->second);
+    }
   }
-  m = std::make_unique<absl::flat_hash_map<int64_t, int64_t>>();
+  auto m = std::make_unique<absl::flat_hash_map<int64_t, int64_t>>();
   auto& res_map = *m;
   auto& inst_sequence = schedule.sequence(computation).instructions();
   // Traverse the sequence in reverse order and keep a running status of the
@@ -752,7 +772,12 @@ AsyncTracker::RecursivelyComputeResourceMapForScheduledComputation(
       max_usage = std::max(max_usage, current_usage);
     }
   }
-  return res_map;
+  absl::WriterMutexLock lock(&async_in_computation_cache_mu_);
+  auto& per_opcode_map = async_in_computation_cache_[computation];
+  if (per_opcode_map == nullptr) {
+    per_opcode_map = std::move(m);
+  }
+  return *per_opcode_map;
 }
 
 int64_t AsyncTracker::GetNumResourcesPerInstruction(
@@ -2725,7 +2750,8 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
   // successors.
   scheduling_context_->GetAsyncTracker()->UpdateTargetDefinedStates(
       n->GetInstr(), sched_state->sched_graph.get(),
-      scheduling_context_->GetLatencyEstimator().get(), current_time);
+      scheduling_context_->GetLatencyEstimator().get(), current_time,
+      sched_state);
 
   auto ready_time_cmp = [](const HloGraphNode* a, const HloGraphNode* b) {
     return a->GetReadyTime() > b->GetReadyTime();
@@ -2862,7 +2888,12 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
   int64_t memory_peak =
       sched_state->memory_pressure_tracker.pressure_state().memory_peak;
 
-  if (schedule_proto_.has_value()) {
+  bool has_schedule_proto;
+  {
+    absl::MutexLock lock(&schedule_proto_mu_);
+    has_schedule_proto = schedule_proto_.has_value();
+  }
+  if (has_schedule_proto) {
     sched_state->memory_trace[&n->GetInstr()] = {memory_after, memory_peak};
   }
 
@@ -2899,12 +2930,16 @@ bool HloScheduleGraph::IsPredecessorTransitively(
 
 HloScheduleGraph::HloScheduleGraph(
     const std::vector<HloInstruction*>* post_order_instructions,
-    std::shared_ptr<const SchedulingContext> scheduling_context)
+    std::shared_ptr<const SchedulingContext> scheduling_context,
+    std::shared_ptr<const HloReachabilityMap> reachability_map)
     : original_order_(post_order_instructions->begin(),
                       post_order_instructions->end()),
-      scheduling_context_(scheduling_context) {
+      scheduling_context_(scheduling_context),
+      reachability_(std::move(reachability_map)) {
   HloComputation* comp = (*post_order_instructions)[0]->parent();
-  reachability_ = HloReachabilityMap::Build(comp);
+  if (reachability_ == nullptr) {
+    reachability_ = HloReachabilityMap::Build(comp);
+  }
   const HloReachabilityMap* reachability = reachability_.get();
   std::vector<const HloInstruction*> while_instrs;
   auto latency_estimator = scheduling_context->GetLatencyEstimator();
@@ -3444,6 +3479,10 @@ absl::Status DefaultSchedulerCore::InitializeScheduler(
   pressure_metadata_.clear();
   module_pressure_state_->InitializePressureStates();
   module_pressure_state_->SetMemoryPeak(0);
+  {
+    absl::MutexLock lock(&reachability_cache_mu_);
+    reachability_cache_.clear();
+  }
   if (top_down_scheduling_) {
     // We preprocess the annotations in two aspects:
     // 1. If annotations are on async-done ops only, move them to the matching
@@ -3672,10 +3711,30 @@ absl::StatusOr<bool> DefaultSchedulerCore::TryScheduleOneAnnotationGroup(
   return false;
 }
 
+std::shared_ptr<const HloReachabilityMap>
+DefaultSchedulerCore::GetReachabilityMap(const HloComputation* computation) {
+  {
+    absl::MutexLock lock(&reachability_cache_mu_);
+    auto it = reachability_cache_.find(computation);
+    if (it != reachability_cache_.end()) {
+      return it->second;
+    }
+  }
+  auto reachability = std::shared_ptr<const HloReachabilityMap>(
+      HloReachabilityMap::Build(computation));
+  {
+    absl::MutexLock lock(&reachability_cache_mu_);
+    reachability_cache_[computation] = reachability;
+  }
+  return reachability;
+}
+
 std::unique_ptr<HloScheduleGraph> DefaultSchedulerCore::CreateScheduleGraph(
     const std::vector<HloInstruction*>* instructions,
-    std::shared_ptr<const SchedulingContext> context) const {
-  return std::make_unique<HloScheduleGraph>(instructions, context);
+    std::shared_ptr<const SchedulingContext> context,
+    std::shared_ptr<const HloReachabilityMap> reachability) const {
+  return std::make_unique<HloScheduleGraph>(instructions, context,
+                                            std::move(reachability));
 }
 
 absl::StatusOr<std::shared_ptr<SchedulerCore::SchedulingState>>
@@ -3691,14 +3750,16 @@ DefaultSchedulerCore::MakeSchedulingState(const HloComputation* computation) {
     metadata->Initialize(computation);
     it = pressure_metadata_.emplace(computation, std::move(metadata)).first;
   }
+  auto reachability = GetReachabilityMap(computation);
   auto graph =
       CreateScheduleGraph(&module_schedule.sequence(computation).instructions(),
-                          scheduling_context_);
+                          scheduling_context_, reachability);
   std::shared_ptr<SchedulingState> sched_state =
       std::make_shared<SchedulingState>(&module_schedule.sequence(computation),
                                         scheduling_context_, it->second.get(),
                                         config_, std::move(graph));
   sched_state->sched_graph->InitializeGraphAnalysis();
+  sched_state->graph_processing_hook = default_graph_processing_hook_;
   return sched_state;
 }
 
@@ -3708,7 +3769,26 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
   // Activate the log filter for this computation.
   ScopedVlogFilter filter_guard(computation->name(),
                                 config_.log_computation_re);
-  return ScheduleComputation(computation, sched_state);
+  ABSL_ASSIGN_OR_RETURN(auto new_schedule,
+                   ScheduleComputation(computation, sched_state));
+  auto default_sched_state =
+      std::dynamic_pointer_cast<DefaultSchedulerCore::SchedulingState>(
+          sched_state);
+  CHECK_NE(default_sched_state, nullptr);
+  // We update module pressure state metadata out of the ScheduleComputation
+  // loop. The module-level pressure tracker is initialized once (capturing all
+  // buffers), and the reachability map only acts as an execution constraint
+  // without requiring continuous pressure recalculation during scheduling.
+  module_pressure_state_->UpdatePressureStateForComputation(
+      computation,
+      default_sched_state->memory_pressure_tracker.pressure_state());
+  return new_schedule;
+}
+
+std::shared_ptr<SchedulerCore::SchedulingState>
+DefaultSchedulerCore::GetSchedulingState() {
+  absl::MutexLock lock(&latest_sched_state_mu_);
+  return latest_sched_state_;
 }
 
 // Reset the scheduling state to its initial state.
@@ -3716,6 +3796,7 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
 // attempts to reuse the state, avoiding the overhead of re-allocation and
 // graph construction.
 void DefaultSchedulerCore::SchedulingState::Reset() {
+  SchedulerCore::SchedulingState::Reset();
   sched_graph->ResetScheduling();
   ready_set.clear();
   nop_set.clear();
@@ -3740,6 +3821,12 @@ absl::StatusOr<std::vector<HloInstruction*>>
 DefaultSchedulerCore::ScheduleComputation(
     const HloComputation* computation,
     std::shared_ptr<SchedulerCore::SchedulingState> _sched_state) {
+  {
+    absl::MutexLock lock(&latest_sched_state_mu_);
+    // At the end of scheduling, this holds the scheduling state of the root
+    // computation, ensuring deterministic compilation.
+    latest_sched_state_ = _sched_state;
+  }
   // Up-cast the scheduling state DefaultSchedulerCore::SchedulingState.
   std::shared_ptr<DefaultSchedulerCore::SchedulingState> sched_state =
       std::dynamic_pointer_cast<DefaultSchedulerCore::SchedulingState>(
@@ -3759,8 +3846,9 @@ DefaultSchedulerCore::ScheduleComputation(
       module_pressure_state_->GetPressureStateForComputation(computation)
           .live_ids_at_bottom);
 
-  if (graph_processing_hook_) {
-    ABSL_RETURN_IF_ERROR(graph_processing_hook_(sched_state->sched_graph.get()));
+  if (sched_state->graph_processing_hook) {
+    ABSL_RETURN_IF_ERROR(
+        sched_state->graph_processing_hook(sched_state->sched_graph.get()));
   }
 
   VLOG(5) << "Just built graph:";
@@ -3867,8 +3955,6 @@ DefaultSchedulerCore::ScheduleComputation(
     }
   }
 
-  module_pressure_state_->UpdatePressureStateForComputation(
-      computation, memory_pressure_tracker.pressure_state());
   if (!top_down_scheduling_) {
     absl::c_reverse(sched_state->new_sequence_reversed);
   }
@@ -3885,10 +3971,18 @@ DefaultSchedulerCore::ScheduleComputation(
                  ->GetNode(sched_state->new_sequence_reversed.front())
                  .GetReadyTime();
 
-  if (schedule_proto_.has_value()) {
-    *schedule_proto_->add_computation_schedules() = ComputationScheduleToProto(
-        computation, *sched_state, *scheduling_context_->GetLatencyEstimator(),
-        sched_state->new_sequence_reversed);
+  // We suppress recording to schedule_proto_ during concurrent execution
+  // (!IsEvaluatingConcurrently()) to avoid non-deterministic order when
+  // parallel threads execute.
+  if (!IsEvaluatingConcurrently()) {
+    absl::MutexLock lock(&schedule_proto_mu_);
+    if (schedule_proto_.has_value()) {
+      *schedule_proto_->add_computation_schedules() =
+          ComputationScheduleToProto(
+              computation, *sched_state,
+              *scheduling_context_->GetLatencyEstimator(),
+              sched_state->new_sequence_reversed);
+    }
   }
   return std::move(sched_state->new_sequence_reversed);
 }
@@ -3903,7 +3997,7 @@ DefaultSchedulerCore::ComputationScheduleToProto(
   proto.set_computation_id(computation->unique_id());
   proto.set_cycles_per_microsecond(estimator.CyclesPerMicrosecond());
   *proto.mutable_scheduler_statistics() =
-      LatencyHidingScheduler::LatencyHidingStatistics(computation,
+      LatencyHidingScheduler::LatencyHidingStatistics(computation, instructions,
                                                       scheduling_context_)
           .ToProto();
 
@@ -3932,6 +4026,7 @@ DefaultSchedulerCore::ComputationScheduleToProto(
 LatencyHidingScheduler::SchedulerStatistics
 LatencyHidingScheduler::LatencyHidingStatistics(
     const HloComputation* computation,
+    absl::Span<const HloInstruction* const> candidate_sequence,
     std::shared_ptr<const SchedulingContext> scheduling_context,
     const ModulePressureState* module_pressure_state,
     MemoryPressureTracker* memory_pressure_tracker,
@@ -4024,8 +4119,7 @@ LatencyHidingScheduler::LatencyHidingStatistics(
     schedule_graph = default_sched_state->sched_graph.get();
   }
   int64_t curr_pos = 0;
-  for (const HloInstruction* instr :
-       module->schedule().sequence(computation).instructions()) {
+  for (const HloInstruction* instr : candidate_sequence) {
     const HloGraphNode& instr_node = schedule_graph->GetNode(instr);
     current_time += instr_node.GetCost();
     if (instr_node.IsSupportedAsyncStart()) {
@@ -4113,10 +4207,13 @@ LatencyHidingScheduler::LatencyHidingStatistics(
       /*call_wasted_cycles=*/wasted_time_per_collective[AsyncKind::kCall],
       /*total_cycles=*/current_time,
       /*memory_pressure_peak=*/
-      memory_pressure_state
+      (memory_pressure_tracker && memory_pressure_tracker_ptr == nullptr)
           ? memory_pressure_tracker->initial_memory_pressure() +
-                memory_pressure_state->memory_peak
-          : 0};
+                memory_pressure_tracker->pressure_state().memory_peak
+          : (memory_pressure_state
+                 ? memory_pressure_tracker->initial_memory_pressure() +
+                       memory_pressure_state->memory_peak
+                 : 0)};
 }
 
 // Prints a SchedulerStatistics object.
@@ -4177,61 +4274,16 @@ LatencyHidingScheduler::SchedulerStatistics::ToProto() const {
 
 void LatencyHidingScheduler::LogScheduleStatistics(
     const HloComputation* computation) {
-  XLA_VLOG_LINES(
-      1, LatencyHidingStatistics(computation, scheduling_context_).ToString());
+  XLA_VLOG_LINES(1, LatencyHidingStatistics(computation,
+                                            computation->parent()
+                                                ->schedule()
+                                                .sequence(computation)
+                                                .instructions(),
+                                            scheduling_context_)
+                        .ToString());
 }
 
-absl::StatusOr<std::pair<std::vector<HloInstruction*>, ComputationScheduleInfo>>
-LatencyHidingScheduler::ScheduleWithPreferences(
-    HloModule* module, const std::vector<double>& preferences,
-    const HloComputation* computation,
-    std::shared_ptr<SchedulerCore::SchedulingState> sched_state) {
-  ABSL_RETURN_IF_ERROR(scheduler_core_->ResetScheduler(module));
-  auto set_preferences = [&](HloScheduleGraph* graph) -> absl::Status {
-    VLOG(3) << "Setting scheduling preferences.";
-    graph->SetPreferences(preferences);
-    return absl::OkStatus();
-  };
-  ABSL_RETURN_IF_ERROR(scheduler_core_->SetGraphProcessingHook(set_preferences));
-  absl::Cleanup clear_hook = [&] {
-    scheduler_core_->SetGraphProcessingHook(nullptr).IgnoreError();
-  };
-  ABSL_ASSIGN_OR_RETURN(auto new_schedule, scheduler_core_->ScheduleComputation(
-                                          computation, sched_state));
 
-  // Save the old schedule.
-  auto old_schedule = std::vector<HloInstruction*>(
-      module->schedule().sequence(computation).instructions());
-  // Temporarily use the new schedule to capture stats.
-  module->schedule().set_sequence(computation,
-                                  absl::MakeConstSpan(new_schedule));
-
-  DefaultSchedulerCore::SchedulingState* default_sched_state =
-      dynamic_cast<DefaultSchedulerCore::SchedulingState*>(sched_state.get());
-  DefaultSchedulerCore* default_scheduler_core =
-      dynamic_cast<DefaultSchedulerCore*>(scheduler_core_.get());
-
-  LatencyHidingScheduler::SchedulerStatistics stats = LatencyHidingStatistics(
-      computation, scheduling_context_,
-      default_scheduler_core ? default_scheduler_core->GetModulePressureState()
-                             : nullptr,
-      default_sched_state ? &default_sched_state->memory_pressure_tracker
-                          : nullptr,
-      sched_state);
-
-  // Restore the old schedule.
-  module->schedule().set_sequence(computation,
-                                  absl::MakeConstSpan(old_schedule));
-
-  ComputationScheduleInfo schedule_info;
-  schedule_info.total_wasted_cycles = stats.GetTotalWastedCycles();
-
-  // Return the peak memory of this computation instead of the whole module
-  // to allow heuristic to optimize this functions memory usage.
-  schedule_info.peak_memory = stats.memory_pressure_peak;
-
-  return std::make_pair(new_schedule, schedule_info);
-}
 
 absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
     HloModule* module,
@@ -4284,9 +4336,12 @@ absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
     pressure_state.InitializePressureStates();
     for (HloComputation* computation : computations_to_schedule_) {
       VLOG(1) << "[" << name() << "] Statistics before scheduling:";
-      XLA_VLOG_LINES(1, LatencyHidingStatistics(
-                            computation, scheduling_context_, &pressure_state)
-                            .ToString());
+      XLA_VLOG_LINES(
+          1, LatencyHidingStatistics(
+                 computation,
+                 module->schedule().sequence(computation).instructions(),
+                 scheduling_context_, &pressure_state)
+                 .ToString());
     }
   }
   for (HloComputation* computation : computations_to_schedule_) {
@@ -4295,10 +4350,11 @@ absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
     // Update target specific states that may include altering the
     // computation.
     scheduling_context_->GetAsyncTracker()->UpdateTargetDefinedStates(
-        computation);
+        computation, scheduler_core_->GetSchedulingState().get());
     module->schedule().set_sequence(computation,
                                     absl::MakeConstSpan(new_schedule));
-    scheduling_context_->GetAsyncTracker()->ResetTargetDefinedStates();
+    scheduling_context_->GetAsyncTracker()->ResetTargetDefinedStates(
+        scheduler_core_->GetSchedulingState().get());
     scheduling_context_->GetAsyncTracker()->InvalidateCache(computation);
   }
   int64_t fragmentation_size =
@@ -4325,10 +4381,11 @@ absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
       ABSL_ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
                        scheduler_core_->ScheduleComputation(computation));
       scheduling_context_->GetAsyncTracker()->UpdateTargetDefinedStates(
-          computation);
+          computation, scheduler_core_->GetSchedulingState().get());
       module->schedule().set_sequence(computation,
                                       absl::MakeConstSpan(new_schedule));
-      scheduling_context_->GetAsyncTracker()->ResetTargetDefinedStates();
+      scheduling_context_->GetAsyncTracker()->ResetTargetDefinedStates(
+          scheduler_core_->GetSchedulingState().get());
       scheduling_context_->GetAsyncTracker()->InvalidateCache(computation);
     }
     fragmentation_size =
@@ -4353,10 +4410,12 @@ absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
     post_scheduling_pressure_state.InitializePressureStates();
     for (HloComputation* computation : computations_to_schedule_) {
       VLOG(1) << "[" << name() << "] Statistics after scheduling:";
-      XLA_VLOG_LINES(1,
-                     LatencyHidingStatistics(computation, scheduling_context_,
-                                             &post_scheduling_pressure_state)
-                         .ToString());
+      XLA_VLOG_LINES(
+          1, LatencyHidingStatistics(
+                 computation,
+                 module->schedule().sequence(computation).instructions(),
+                 scheduling_context_, &post_scheduling_pressure_state)
+                 .ToString());
     }
   }
   if (debug_options.xla_dump_latency_hiding_schedule()) {

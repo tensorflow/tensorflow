@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -74,11 +75,11 @@ absl::StatusOr<absl::Duration> EstimateRunTimeWithConfig(
     GpuPerformanceModelWithIndexingAnalysis& cost_model,
     mlir::MLIRContext* mlir_context) {
   // Save the old backend config to restore later.
-  ABSL_ASSIGN_OR_RETURN(Tile old_backend_config,
-                   context.dot->backend_config<Tile>());
+  ABSL_ASSIGN_OR_RETURN(xla::xtile::Tile old_backend_config,
+                   context.dot->backend_config<xla::xtile::Tile>());
 
   // Set the contracting dimension tile size.
-  Tile tile_config;
+  xla::xtile::Tile tile_config;
   tile_config.add_sizes(config.block_k);
   ABSL_RETURN_IF_ERROR(context.dot->set_backend_config(tile_config));
 

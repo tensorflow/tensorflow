@@ -165,6 +165,7 @@ absl::StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
     case HloOpcode::kSort:
     case HloOpcode::kSlice:
     case HloOpcode::kDomain:
+    case HloOpcode::kOptimizationBarrier:
       return nullptr;
     case HloOpcode::kCustomCall:
       // Assume that custom calls created by the client are valid with padded

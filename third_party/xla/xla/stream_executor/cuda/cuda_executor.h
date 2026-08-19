@@ -106,6 +106,8 @@ class CudaExecutor : public GpuExecutor {
   absl::StatusOr<std::unique_ptr<Kernel>> LoadKernel(
       const KernelLoaderSpec& spec) override;
   void UnloadKernel(const Kernel* kernel) override;
+  absl::Status UpdateMaxDynamicSharedMemoryBytes(
+      const Kernel* kernel, int32_t shared_memory_bytes) override;
   absl::StatusOr<ModuleHandle> LoadModule(
       const MultiModuleLoaderSpec& spec) override;
   bool UnloadModule(ModuleHandle module_handle) override;
@@ -282,13 +284,25 @@ class CudaExecutor : public GpuExecutor {
   std::map<const absl::uint128, std::weak_ptr<DeviceAddressBase>>
       shared_constants_ ABSL_GUARDED_BY(shared_constants_mu_);
 
+  struct LoadedModule {
+    CUmodule module = nullptr;
+    uint64_t refcount = 0;
+    absl::flat_hash_map<CUfunction, int32_t> max_dynamic_shared_memory_bytes;
+  };
+
   // Kernel -> loaded GPU module. Many kernels may load the same binary.
   absl::flat_hash_map<const Kernel*, ModuleHandle> kernel_to_gpu_binary_
       ABSL_GUARDED_BY(in_memory_modules_mu_);
 
-  // Loaded GPU module handle -> {CUDA module, reference count}.
-  absl::flat_hash_map<ModuleHandle, std::pair<CUmodule, uint64_t>>
-      gpu_binary_to_module_ ABSL_GUARDED_BY(in_memory_modules_mu_);
+  // Loaded GPU module handle -> LoadedModule.
+  absl::flat_hash_map<ModuleHandle, LoadedModule> gpu_binary_to_module_
+      ABSL_GUARDED_BY(in_memory_modules_mu_);
+
+  // Dynamic shared memory limit for in-process symbol kernels (not belonging to
+  // a loaded module).
+  absl::flat_hash_map<CUfunction, int32_t>
+      in_process_max_dynamic_shared_memory_bytes_
+          ABSL_GUARDED_BY(in_memory_modules_mu_);
 
   // Set of loaded kernels. This contains all kernels loaded by this executor,
   // including in-process kernels.

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,12 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_TSL_PLATFORM_DEFAULT_STATUS_H_
-#define XLA_TSL_PLATFORM_DEFAULT_STATUS_H_
 
-#define MAYBE_ADD_SOURCE_LOCATION(status) \
-  {}
+#include "xla/python/ifrt/rtti.h"
 
-#define ADD_SOURCE_LOCATION(status) status
+namespace xla {
+namespace ifrt {
 
-#endif  // XLA_TSL_PLATFORM_DEFAULT_STATUS_H_
+char RTTIRoot::ID = 0;
+
+}  // namespace ifrt
+}  // namespace xla

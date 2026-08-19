@@ -102,6 +102,27 @@ class ConstraintPropagator {
   // and also result in empty constraints.
   absl::Status PropagateConstraintsApprox(const HloInstruction* instruction);
 
+  // Opcode-specific approximate constraint propagation helpers.
+  void PropagateAddApprox(const HloInstruction* instruction,
+                          const ConstraintInterval& output_interval);
+  void PropagateSubtractApprox(const HloInstruction* instruction,
+                               const ConstraintInterval& output_interval);
+  void PropagateMultiplyApprox(const HloInstruction* instruction,
+                               const ConstraintInterval& output_interval);
+  void PropagateReduceApprox(const HloInstruction* instruction,
+                             const ConstraintInterval& output_interval);
+  void PropagateContractingProductApprox(
+      const HloInstruction* instruction,
+      const ConstraintInterval& output_interval);
+  void PropagateDivideApprox(const HloInstruction* instruction,
+                             const ConstraintInterval& output_interval);
+  void PropagateMinMaxApprox(const HloInstruction* instruction,
+                             const ConstraintInterval& output_interval);
+  void PropagateExpApprox(const HloInstruction* instruction,
+                          const ConstraintInterval& output_interval);
+  void PropagatePowerApprox(const HloInstruction* instruction,
+                            const ConstraintInterval& output_interval);
+
   // Attempts to apply constraint_0 to inst_0 AND constraint_1 to inst_1.
   // Applies BOTH constraints ONLY IF neither instruction's state becomes Empty.
   // Returns true if both constraints were applied, false otherwise.
@@ -109,6 +130,10 @@ class ConstraintPropagator {
                              const ConstraintInterval& constraint_0,
                              const HloInstruction* inst_1,
                              const ConstraintInterval& constraint_1);
+
+  // Returns the constant scalar value (or broadcast of constant scalar) if
+  // available in states_, or std::nullopt otherwise.
+  std::optional<double> GetConstantValue(const HloInstruction* inst) const;
 
   // Function that extracts known zeroes bitmask for the given dimension of a
   // DynamicSlice or DynamicUpdateSlice instruction.

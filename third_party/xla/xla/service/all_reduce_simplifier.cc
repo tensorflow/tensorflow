@@ -66,7 +66,7 @@ absl::StatusOr<bool> AllReduceSimplifier::RunImpl(
     int64_t num_devices = config.num_partitions();
     int64_t num_replicas = config.replica_count();
     ABSL_ASSIGN_OR_RETURN(std::vector<int64_t> participant_counts,
-                     GetPariticipantCountsForReplicaGroups(
+                     GetParticipantCountsForReplicaGroups(
                          num_replicas, num_devices,
                          all_reduce->replica_groups(), group_mode));
     if (participant_counts.empty()) {

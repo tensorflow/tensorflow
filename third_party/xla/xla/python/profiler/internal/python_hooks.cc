@@ -15,8 +15,10 @@ limitations under the License.
 #include "xla/python/profiler/internal/python_hooks.h"
 
 #include <cstdint>
+#include <deque>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -192,6 +194,7 @@ void PythonHookContext::Start(const PythonHooksOptions& options) {
 }
 
 void PythonHookContext::Stop() {
+  stopped_ = true;
   if (!Py_IsInitialized()) {
     return;
   }
@@ -205,6 +208,67 @@ void PythonHookContext::Stop() {
     }
     PyGILState_Release(gil_state);
   }
+}
+
+std::vector<PerThreadConsumeData> PythonHookContext::Consume() {
+  std::vector<PerThreadConsumeData> consumed_data;
+
+  {
+    PyGILState_STATE gil_state;
+    bool has_gil = false;
+    if (Py_IsInitialized()) {
+      gil_state = PyGILState_Ensure();
+      has_gil = true;
+    }
+
+    for (EntryShard& shard : entry_shards_) {
+#ifdef Py_GIL_DISABLED
+      absl::MutexLock lock(shard.mu);
+#else
+      DCHECK(PyGILState_Check());
+#endif  // Py_GIL_DISABLED
+      // NOLINTNEXTLINE
+      for (auto& it : shard.entries) {
+        int64_t thread_id = it.first;
+        PerThreadEvents& thread_events = it.second;
+        VLOG(1) << "Consuming " << thread_events.completed.size() << ":"
+                << thread_events.active.size() << " events on thread "
+                << thread_id;
+
+        PerThreadConsumeData thread_data;
+        thread_data.thread_id = thread_id;
+        thread_data.events.reserve(thread_events.completed.size());
+        for (const PythonTraceEntry& event : thread_events.completed) {
+          thread_data.events.push_back(
+              {event.Name(), event.start_time_ns, event.end_time_ns});
+        }
+        thread_events.completed.clear();
+
+        if (stopped_ && options_.include_incomplete_events) {
+          uint64_t now = tsl::profiler::GetCurrentTimeNanos();
+          while (!thread_events.active.empty()) {
+            PythonTraceEntry& event = thread_events.active.top();
+            thread_data.events.push_back(
+                {event.Name(), event.start_time_ns, now});
+            thread_events.active.pop();
+          }
+          while (!thread_events.active_c.empty()) {
+            PythonTraceEntry& event = thread_events.active_c.top();
+            thread_data.events.push_back(
+                {event.Name(), event.start_time_ns, now});
+            thread_events.active_c.pop();
+          }
+        }
+        consumed_data.push_back(std::move(thread_data));
+      }
+    }
+
+    if (has_gil) {
+      PyGILState_Release(gil_state);
+    }
+  }
+
+  return consumed_data;
 }
 
 void PythonHookContext::CollectData(tensorflow::profiler::XPlane* raw_plane) {

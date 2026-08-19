@@ -1255,6 +1255,45 @@ ShapeTracker::MapInputDimensionsToOutputUnordered(
   return kept_output_dims;
 }
 
+bool ShapeTracker::MapsToOneStride(absl::Span<const int64_t> input_dims) const {
+  std::optional<std::vector<int64_t>> mapped =
+      MapInputDimensionsToOutputUnordered(input_dims);
+  if (!mapped.has_value()) {
+    return false;
+  }
+  if (mapped->empty()) {
+    return true;
+  }
+
+  // Check if output dimensions are consecutive.
+  auto is_invalid_transition = [this](int64_t prev, int64_t next) {
+    if (prev + 1 == next) {
+      return false;
+    }
+    // Check if intermediate dimensions are degenerate.
+    for (int64_t i = prev + 1; i < next; ++i) {
+      if (output_shape_.dimensions(i) != 1) {
+        return true;
+      }
+    }
+    return false;
+  };
+  if (absl::c_adjacent_find(*mapped, is_invalid_transition) != mapped->end()) {
+    return false;
+  }
+
+  // Check for swaps.
+  absl::StatusOr<ShapeTracker> narrowed = Narrow(input_dims);
+  if (!narrowed.ok()) {
+    return false;
+  }
+  bool has_swaps =
+      absl::c_any_of(narrowed->GetSteps(), [](const ShapeTracker::Step& step) {
+        return step.type == ShapeTracker::Step::Type::kTranspose;
+      });
+  return !has_swaps;
+}
+
 absl::StatusOr<ShapeTracker> ShapeTracker::Zip(
     absl::Span<const ShapeTracker> trackers) {
   if (trackers.empty()) {

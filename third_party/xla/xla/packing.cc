@@ -19,9 +19,14 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/types/span.h"
-#include "hwy//highway.h"
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/tsl/platform/logging.h"
+
+// First undef to prevent error when re-included.
+#undef HWY_TARGET_INCLUDE
+#define HWY_TARGET_INCLUDE "xla/packing.cc"
+#include "hwy//foreach_target.h"  // IWYU pragma: keep
+#include "hwy//highway.h"
 
 HWY_BEFORE_NAMESPACE();
 namespace xla {
@@ -212,7 +217,15 @@ void Unpack1Impl(const uint8_t* HWY_RESTRICT in, size_t count,
 }  // namespace xla
 HWY_AFTER_NAMESPACE();
 
+#if HWY_ONCE
 namespace xla {
+
+HWY_EXPORT(Pack4Impl);
+HWY_EXPORT(Pack2Impl);
+HWY_EXPORT(Pack1Impl);
+HWY_EXPORT(Unpack4Impl);
+HWY_EXPORT(Unpack2Impl);
+HWY_EXPORT(Unpack1Impl);
 
 template <>
 void PackIntNHwy<4>(absl::Span<const char> input, absl::Span<char> output) {
@@ -222,9 +235,9 @@ void PackIntNHwy<4>(absl::Span<const char> input, absl::Span<char> output) {
   CHECK_GE(output.size(), required_output_size)
       << "Output span too small for packed elements: " << output.size() << " < "
       << required_output_size;
-  HWY_STATIC_DISPATCH(Pack4Impl)(reinterpret_cast<const uint8_t*>(input.data()),
-                                 input.size(),
-                                 reinterpret_cast<uint8_t*>(output.data()));
+  HWY_DYNAMIC_DISPATCH(Pack4Impl)(
+      reinterpret_cast<const uint8_t*>(input.data()), input.size(),
+      reinterpret_cast<uint8_t*>(output.data()));
 }
 
 template <>
@@ -235,9 +248,9 @@ void PackIntNHwy<2>(absl::Span<const char> input, absl::Span<char> output) {
   CHECK_GE(output.size(), required_output_size)
       << "Output span too small for packed elements: " << output.size() << " < "
       << required_output_size;
-  HWY_STATIC_DISPATCH(Pack2Impl)(reinterpret_cast<const uint8_t*>(input.data()),
-                                 input.size(),
-                                 reinterpret_cast<uint8_t*>(output.data()));
+  HWY_DYNAMIC_DISPATCH(Pack2Impl)(
+      reinterpret_cast<const uint8_t*>(input.data()), input.size(),
+      reinterpret_cast<uint8_t*>(output.data()));
 }
 
 template <>
@@ -248,9 +261,9 @@ void PackIntNHwy<1>(absl::Span<const char> input, absl::Span<char> output) {
   CHECK_GE(output.size(), required_output_size)
       << "Output span too small for packed elements: " << output.size() << " < "
       << required_output_size;
-  HWY_STATIC_DISPATCH(Pack1Impl)(reinterpret_cast<const uint8_t*>(input.data()),
-                                 input.size(),
-                                 reinterpret_cast<uint8_t*>(output.data()));
+  HWY_DYNAMIC_DISPATCH(Pack1Impl)(
+      reinterpret_cast<const uint8_t*>(input.data()), input.size(),
+      reinterpret_cast<uint8_t*>(output.data()));
 }
 
 void PackIntNHwy(int bits_per_element, absl::Span<const char> input,
@@ -274,7 +287,7 @@ void UnpackIntNHwy<4>(absl::Span<const char> input, absl::Span<char> output) {
   CHECK_GE(input.size(), required_input_size)
       << "Input span too small for unpacked elements: " << input.size() << " < "
       << required_input_size;
-  HWY_STATIC_DISPATCH(Unpack4Impl)(
+  HWY_DYNAMIC_DISPATCH(Unpack4Impl)(
       reinterpret_cast<const uint8_t*>(input.data()), output.size(),
       reinterpret_cast<uint8_t*>(output.data()));
 }
@@ -287,7 +300,7 @@ void UnpackIntNHwy<2>(absl::Span<const char> input, absl::Span<char> output) {
   CHECK_GE(input.size(), required_input_size)
       << "Input span too small for unpacked elements: " << input.size() << " < "
       << required_input_size;
-  HWY_STATIC_DISPATCH(Unpack2Impl)(
+  HWY_DYNAMIC_DISPATCH(Unpack2Impl)(
       reinterpret_cast<const uint8_t*>(input.data()), output.size(),
       reinterpret_cast<uint8_t*>(output.data()));
 }
@@ -300,7 +313,7 @@ void UnpackIntNHwy<1>(absl::Span<const char> input, absl::Span<char> output) {
   CHECK_GE(input.size(), required_input_size)
       << "Input span too small for unpacked elements: " << input.size() << " < "
       << required_input_size;
-  HWY_STATIC_DISPATCH(Unpack1Impl)(
+  HWY_DYNAMIC_DISPATCH(Unpack1Impl)(
       reinterpret_cast<const uint8_t*>(input.data()), output.size(),
       reinterpret_cast<uint8_t*>(output.data()));
 }
@@ -319,3 +332,4 @@ void UnpackIntNHwy(int bits_per_element, absl::Span<const char> input,
 }
 
 }  // namespace xla
+#endif  // HWY_ONCE

@@ -218,6 +218,8 @@ class DynamicDimensionInferenceVisitor : public DfsHloRewriteVisitor {
 
   absl::Status HandleDomain(HloInstruction* hlo) override;
 
+  absl::Status HandleOptimizationBarrier(HloInstruction* hlo) override;
+
   absl::Status HandleAsyncStart(HloInstruction* hlo) override;
 
   absl::Status HandleAsyncDone(HloInstruction* hlo) override;
@@ -1118,6 +1120,11 @@ absl::Status DynamicDimensionInferenceVisitor::PassThroughDynamicDimension(
 }
 
 absl::Status DynamicDimensionInferenceVisitor::HandleDomain(
+    HloInstruction* hlo) {
+  return PassThroughDynamicDimension(hlo);
+}
+
+absl::Status DynamicDimensionInferenceVisitor::HandleOptimizationBarrier(
     HloInstruction* hlo) {
   return PassThroughDynamicDimension(hlo);
 }

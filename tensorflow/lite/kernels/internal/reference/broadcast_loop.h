@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/runtime_shape.h"
 
@@ -93,7 +94,7 @@ inline void BroadcastBinaryOpSimple(const RuntimeShape& input1_shape,
                                     Pointer2 input2_data,
                                     const RuntimeShape& output_shape,
                                     OutputType* output_data, BinaryOp op) {
-  constexpr int kMaxRank = 8;
+  constexpr size_t kInlineRank = 8;
 
   int dims_count = std::max(
       output_shape.DimensionsCount(),
@@ -103,8 +104,6 @@ inline void BroadcastBinaryOpSimple(const RuntimeShape& input1_shape,
     *output_data = op(*input1_data, *input2_data);
     return;
   }
-
-  TFLITE_DCHECK_LE(dims_count, kMaxRank);
 
   const RuntimeShape extended_output_shape =
       RuntimeShape::ExtendedShape(dims_count, output_shape);
@@ -119,10 +118,11 @@ inline void BroadcastBinaryOpSimple(const RuntimeShape& input1_shape,
   // - For all remaining dimensions, if the loop can be fused with the previous
   //   loop do that.
   // - Otherwise, make a new loop.
-  size_t a_strides[kMaxRank];
-  size_t b_strides[kMaxRank];
-  size_t o_strides[kMaxRank];
-  size_t o_shape[kMaxRank];
+  const size_t rank = static_cast<size_t>(dims_count);
+  absl::InlinedVector<size_t, kInlineRank> a_strides(rank);
+  absl::InlinedVector<size_t, kInlineRank> b_strides(rank);
+  absl::InlinedVector<size_t, kInlineRank> o_strides(rank);
+  absl::InlinedVector<size_t, kInlineRank> o_shape(rank);
 
   size_t a_accum_stride = 1;
   size_t b_accum_stride = 1;
@@ -162,8 +162,9 @@ inline void BroadcastBinaryOpSimple(const RuntimeShape& input1_shape,
     o_accum_stride *= output_dim;
   }
 
-  RunBinaryOp(input1_data, input2_data, output_data, a_strides, b_strides,
-              o_strides, o_shape, next_dim_idx, op);
+  RunBinaryOp(input1_data, input2_data, output_data, a_strides.data(),
+              b_strides.data(), o_strides.data(), o_shape.data(), next_dim_idx,
+              op);
 }
 
 }  // namespace reference_ops

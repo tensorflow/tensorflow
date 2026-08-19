@@ -240,8 +240,7 @@ CollectiveKernelThunkMetadata CreateCollectiveKernelThunk(
       std::move(thunk_info), collective_config,
       CreateCollectiveKernelSpec(num_elements, signal_size, remote_size,
                                  is_multimem_enabled),
-      /*is_async=*/false, result.buffers,
-      /*is_collective_kernel_enabled=*/true,
+      result.buffers, /*is_collective_kernel_enabled=*/true,
       /*kernel_name=*/kKernelName,
       /*launch_dimensions=*/launch_dimensions,
       /*shmem_bytes=*/0);
@@ -347,6 +346,7 @@ absl::StatusOr<se::DeviceAddressBase> RunCollectiveKernelThunk(
           collective_params, {all_replica_groups},
           CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID));
   std::vector<GlobalDeviceId> all_device_groups;
+  all_device_groups.reserve(metadata.num_devices);
   for (int i = 0; i < metadata.num_devices; ++i) {
     all_device_groups.push_back(GlobalDeviceId(i));
   }
@@ -571,8 +571,7 @@ TEST(CollectiveKernelThunkTest, RecordCommandBufferCreateUpdate) {
       Thunk::ThunkInfo(), collective_config,
       CreateCollectiveKernelSpec(num_elements, signal_size, remote_size,
                                  is_multimem_enabled),
-      /*is_async=*/true, buffers,
-      /*is_collective_kernel_enabled=*/true, std::string(kKernelName),
+      buffers, /*is_collective_kernel_enabled=*/true, std::string(kKernelName),
       launch_dimensions);
 
   DeviceAssignment device_assignment(/*replica_count=*/1,

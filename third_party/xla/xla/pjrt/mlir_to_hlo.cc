@@ -305,6 +305,12 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
   // Legalize CHLO -> [StableHLO+Shape] -> StableHLO
   // Preserve higher-level ops with XLA support. To be replaced by composites.
   mlir::PassManager pm(context);
+  // Only enable verifier in debug builds.
+  bool enableVerifier = false;
+#ifndef NDEBUG
+  enableVerifier = true;
+#endif
+  pm.enableVerifier(enableVerifier);
   // Expand stablehlo complex math functions such as log_plus_one, etc.
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createStablehloComplexMathExpanderPass());

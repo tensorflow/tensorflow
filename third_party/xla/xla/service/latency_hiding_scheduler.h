@@ -30,6 +30,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/optimization.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
@@ -253,6 +255,78 @@ class ApproximateLatencyEstimator : public LatencyEstimator {
   static constexpr TimeCost kHighLatency = 5000.0;
 };
 
+// Base class for the core scheduling algorithm.
+class SchedulerCore {
+ public:
+  // Hook function to modify scheduling graph before scheduler runs.
+  using GraphProcessingHook = std::function<absl::Status(HloScheduleGraph*)>;
+
+  // Abstract base class for target defined state.
+  struct TargetDefinedState {
+    virtual ~TargetDefinedState() = default;
+    virtual void Reset() {}
+  };
+
+  // Abstract base class for scheduling state.
+  struct SchedulingState {
+    virtual ~SchedulingState() = default;
+    virtual void Reset() {
+      if (target_defined_state) {
+        target_defined_state->Reset();
+      }
+    }
+    GraphProcessingHook graph_processing_hook;
+    std::unique_ptr<TargetDefinedState> target_defined_state;
+  };
+
+  virtual absl::Status InitializeScheduler(const HloModule* module) = 0;
+
+  virtual absl::Status CaptureScheduleProto() = 0;
+
+  virtual absl::StatusOr<ScheduleProto> GetCapturedScheduleProto() = 0;
+
+  virtual absl::StatusOr<std::shared_ptr<SchedulerCore::SchedulingState>>
+  MakeSchedulingState(const HloComputation* computation) {
+    return absl::UnimplementedError("Not implemented.");
+  }
+  virtual absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
+      const HloComputation* computation) {
+    return absl::UnimplementedError("Not implemented.");
+  }
+  virtual absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
+      const HloComputation* computation,
+      std::shared_ptr<SchedulingState> sched_state) {
+    return absl::UnimplementedError("Not implemented.");
+  }
+  // Note: This function is not thread-safe. It must not be invoked during
+  // concurrent BRKGA or simulated evaluation.
+  virtual std::shared_ptr<SchedulingState> GetSchedulingState() {
+    return nullptr;
+  }
+
+  virtual ~SchedulerCore() = default;
+  virtual int64_t GetMemoryPeak() = 0;
+  virtual void SetMemoryLimit(uint64_t new_limit) = 0;
+  virtual uint64_t GetMemoryLimit() = 0;
+  virtual int64_t GetRerunTimes() = 0;
+
+  // Set a graph processing hook that will run before scheduling a computation.
+  // Heuristics can use this to set scheduling preferences to the scheduling
+  // graph nodes.
+  virtual absl::Status SetGraphProcessingHook(const GraphProcessingHook& hook) {
+    return absl::OkStatus();
+  }
+  virtual void SetEvaluatingConcurrently(bool val) {
+    is_evaluating_concurrently_ = val;
+  }
+  virtual bool IsEvaluatingConcurrently() const {
+    return is_evaluating_concurrently_;
+  }
+
+ protected:
+  bool is_evaluating_concurrently_ = false;
+};
+
 // Helper class to keep track of which instructions are to be supported and
 // how many supported instructions per-type are contained in computations
 // recursively.
@@ -360,24 +434,32 @@ class AsyncTracker {
   virtual void UpdateTargetDefinedStates(
       const HloInstruction& hlo, const HloScheduleGraph* schedule_graph,
       const LatencyEstimator* latency_estimator,
-      LatencyEstimator::TimeCost current_time) {}
+      LatencyEstimator::TimeCost current_time,
+      SchedulerCore::SchedulingState* sched_state) {}
 
   // Updates target defined states after scheduling a computation.
-  virtual void UpdateTargetDefinedStates(HloComputation* computation) {}
+  virtual void UpdateTargetDefinedStates(
+      HloComputation* computation,
+      SchedulerCore::SchedulingState* sched_state) {}
 
   // Resets target defined states after scheduling a computation.
-  virtual void ResetTargetDefinedStates() {}
+  virtual void ResetTargetDefinedStates(
+      SchedulerCore::SchedulingState* sched_state) {}
 
   const SchedulerConfig& GetConfig() const { return config_; }
 
   // Clears the cache of per-computation resource maps. This is needed when,
   // e.g., we modify the schedule of a computation, which could change the
   // resource usage of the computation.
-  void InvalidateCache() { async_in_computation_cache_.clear(); }
+  void InvalidateCache() {
+    absl::MutexLock lock(&async_in_computation_cache_mu_);
+    async_in_computation_cache_.clear();
+  }
 
   // Similar to InvalidateCache(), but only invalidates the cache for the given
   // computation.
   void InvalidateCache(const HloComputation* computation) {
+    absl::MutexLock lock(&async_in_computation_cache_mu_);
     async_in_computation_cache_.erase(computation);
   }
 
@@ -404,66 +486,20 @@ class AsyncTracker {
   RecursivelyComputeResourceMapForScheduledComputation(
       const HloComputation* computation) const;
 
+  mutable absl::Mutex async_in_computation_cache_mu_;
   mutable absl::flat_hash_map<
       const HloComputation*,
       std::unique_ptr<absl::flat_hash_map<int64_t, int64_t>>>
-      async_in_computation_cache_;
+      async_in_computation_cache_
+          ABSL_GUARDED_BY(async_in_computation_cache_mu_);
   GetCanonicalAsyncOpFunc get_canonical_async_op_;
 
  protected:
   const SchedulerConfig config_;
-  mutable absl::flat_hash_map<const HloInstruction*, ResourcesVector>
-      resources_cache_;
-};
-
-// Base class for the core scheduling algorithm.
-class SchedulerCore {
- public:
-  // Abstract base class for scheduling state.
-  struct SchedulingState {
-    virtual ~SchedulingState() = default;
-    virtual void Reset() {}
-  };
-
-  // Hook function to modify scheduling graph before scheduler runs.
-  using GraphProcessingHook = std::function<absl::Status(HloScheduleGraph*)>;
-
-  virtual absl::Status InitializeScheduler(const HloModule* module) = 0;
-
-  virtual absl::Status ResetScheduler(const HloModule* module) {
-    return InitializeScheduler(module);
-  }
-
-  virtual absl::Status CaptureScheduleProto() = 0;
-
-  virtual absl::StatusOr<ScheduleProto> GetCapturedScheduleProto() = 0;
-
-  virtual absl::StatusOr<std::shared_ptr<SchedulerCore::SchedulingState>>
-  MakeSchedulingState(const HloComputation* computation) {
-    return absl::UnimplementedError("Not implemented.");
-  }
-  virtual absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
-      const HloComputation* computation) {
-    return absl::UnimplementedError("Not implemented.");
-  }
-  virtual absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
-      const HloComputation* computation,
-      std::shared_ptr<SchedulingState> sched_state) {
-    return absl::UnimplementedError("Not implemented.");
-  }
-
-  virtual ~SchedulerCore() = default;
-  virtual int64_t GetMemoryPeak() = 0;
-  virtual void SetMemoryLimit(uint64_t new_limit) = 0;
-  virtual uint64_t GetMemoryLimit() = 0;
-  virtual int64_t GetRerunTimes() = 0;
-
-  // Set a graph processing hook that will run before scheduling a computation.
-  // Heuristics can use this to set scheduling preferences to the scheduling
-  // graph nodes.
-  virtual absl::Status SetGraphProcessingHook(const GraphProcessingHook& hook) {
-    return absl::UnimplementedError("Unimplemented. ");
-  }
+  mutable absl::Mutex resources_cache_mu_;
+  mutable absl::flat_hash_map<const HloInstruction*,
+                              std::unique_ptr<ResourcesVector>>
+      resources_cache_ ABSL_GUARDED_BY(resources_cache_mu_);
 };
 
 class SchedulingContext {
@@ -1190,8 +1226,10 @@ class HloScheduleGraph {
   // altered/deleted during the existence of the HloScheduleGraph.
   // Nullptr is not a valid value for 'post_order_instructions' and
   // 'alias_analysis'.
-  HloScheduleGraph(const std::vector<HloInstruction*>* post_order_instructions,
-                   std::shared_ptr<const SchedulingContext> scheduling_context);
+  HloScheduleGraph(
+      const std::vector<HloInstruction*>* post_order_instructions,
+      std::shared_ptr<const SchedulingContext> scheduling_context,
+      std::shared_ptr<const HloReachabilityMap> reachability_map = nullptr);
   virtual ~HloScheduleGraph() = default;
   HloScheduleGraph(HloScheduleGraph&&) = default;
   HloScheduleGraph& operator=(HloScheduleGraph&&) = default;
@@ -1297,7 +1335,7 @@ class HloScheduleGraph {
                                  const HloGraphNode* possible_predecessor);
   // Scheduling context for the graph.
   std::shared_ptr<const SchedulingContext> scheduling_context_;
-  std::unique_ptr<HloReachabilityMap> reachability_;
+  std::shared_ptr<const HloReachabilityMap> reachability_;
 };
 
 // These HloEdge routines need to be defined after HloScheduleGraph, since
@@ -1746,7 +1784,7 @@ class DefaultSchedulerCore : public SchedulerCore {
 
   absl::Status SetGraphProcessingHook(
       const SchedulerCore::GraphProcessingHook& hook) override {
-    graph_processing_hook_ = hook;
+    default_graph_processing_hook_ = hook;
     return absl::OkStatus();
   }
 
@@ -1867,6 +1905,7 @@ class DefaultSchedulerCore : public SchedulerCore {
   absl::Status InitializeScheduler(const HloModule* module) override;
 
   absl::Status CaptureScheduleProto() override {
+    absl::MutexLock lock(&schedule_proto_mu_);
     schedule_proto_ = ScheduleProto();
     *schedule_proto_->mutable_hlo_module() = module_->ToProto();
 
@@ -1874,6 +1913,7 @@ class DefaultSchedulerCore : public SchedulerCore {
   }
 
   absl::StatusOr<ScheduleProto> GetCapturedScheduleProto() override {
+    absl::MutexLock lock(&schedule_proto_mu_);
     if (!schedule_proto_.has_value()) {
       return absl::FailedPreconditionError("Schedule proto not captured.");
     }
@@ -1886,15 +1926,12 @@ class DefaultSchedulerCore : public SchedulerCore {
   virtual std::unique_ptr<ReadySetLt> CreateReadySetComparator(
       SchedulingState& sched_state) const;
 
-  absl::Status ResetScheduler(const HloModule* module) override {
-    module_pressure_state_->ResetPressureStates();
-    return absl::OkStatus();
-  }
   absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
       const HloComputation* computation) override;
   absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
       const HloComputation* computation,
       std::shared_ptr<SchedulerCore::SchedulingState> sched_state) override;
+  std::shared_ptr<SchedulerCore::SchedulingState> GetSchedulingState() override;
   static bool AddOccupierToResource(
       HloGraphNode::TimeCost current_time, HloEdge& new_edge,
       std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>>& occupiers,
@@ -1960,7 +1997,8 @@ class DefaultSchedulerCore : public SchedulerCore {
  protected:
   virtual std::unique_ptr<HloScheduleGraph> CreateScheduleGraph(
       const std::vector<HloInstruction*>* instructions,
-      std::shared_ptr<const SchedulingContext> context) const;
+      std::shared_ptr<const SchedulingContext> context,
+      std::shared_ptr<const HloReachabilityMap> reachability = nullptr) const;
   virtual void LogInstruction(const HloInstruction* instr) const;
 
   // Schedules the given annotated node.
@@ -1993,10 +2031,22 @@ class DefaultSchedulerCore : public SchedulerCore {
   OverlapLimitRule scheduling_instruction_crosses_overlap_limit_ = nullptr;
   bool is_default_scheduling_instruction_crosses_overlap_limit_ = false;
   std::unique_ptr<AnnotationTracker> annotation_tracker_;
-  std::optional<ScheduleProto> schedule_proto_;
+  mutable absl::Mutex schedule_proto_mu_;
+  std::optional<ScheduleProto> schedule_proto_
+      ABSL_GUARDED_BY(schedule_proto_mu_);
   const HloModule* module_ = nullptr;
-  SchedulerCore::GraphProcessingHook graph_processing_hook_;
+  SchedulerCore::GraphProcessingHook default_graph_processing_hook_;
   std::shared_ptr<const SchedulingContext> scheduling_context_;
+  mutable absl::Mutex latest_sched_state_mu_;
+  std::shared_ptr<SchedulerCore::SchedulingState> latest_sched_state_
+      ABSL_GUARDED_BY(latest_sched_state_mu_);
+  std::shared_ptr<const HloReachabilityMap> GetReachabilityMap(
+      const HloComputation* computation);
+
+  mutable absl::Mutex reachability_cache_mu_;
+  absl::flat_hash_map<const HloComputation*,
+                      std::shared_ptr<const HloReachabilityMap>>
+      reachability_cache_ ABSL_GUARDED_BY(reachability_cache_mu_);
   bool top_down_scheduling_ = false;
 };
 
@@ -2153,6 +2203,10 @@ class LatencyHidingScheduler : public HloModulePass {
   constexpr static absl::string_view kName = "latency-hiding-scheduler";
   absl::string_view name() const override { return kName; }
 
+  std::shared_ptr<const SchedulingContext> scheduling_context() const {
+    return scheduling_context_;
+  }
+
   // Returns some printable statistics about the latency hiding for
   // operations that can run in parallel to help evaluating the performance of
   // the scheduler and improve it.
@@ -2162,19 +2216,11 @@ class LatencyHidingScheduler : public HloModulePass {
   // same module.
   static SchedulerStatistics LatencyHidingStatistics(
       const HloComputation* computation,
+      absl::Span<const HloInstruction* const> candidate_sequence,
       std::shared_ptr<const SchedulingContext> scheduling_context,
       const ModulePressureState* pressure_state = nullptr,
       MemoryPressureTracker* memory_pressure_tracker = nullptr,
       std::shared_ptr<SchedulerCore::SchedulingState> sched_state = nullptr);
-
-  // Even with random preferences this function will always return a schedule
-  // that obeys overlap constraints.
-  absl::StatusOr<
-      std::pair<std::vector<HloInstruction*>, ComputationScheduleInfo>>
-  ScheduleWithPreferences(
-      HloModule* module, const std::vector<double>& preferences,
-      const HloComputation* computation,
-      std::shared_ptr<SchedulerCore::SchedulingState> sched_state);
 
   virtual void LogScheduleStatistics(const HloComputation* computation);
 

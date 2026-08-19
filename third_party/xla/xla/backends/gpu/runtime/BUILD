@@ -2411,7 +2411,11 @@ xla_test(
     name = "ragged_all_to_all_thunk_multigpu_test",
     srcs = ["ragged_all_to_all_thunk_multigpu_test.cc"],
     backend_tags = {
-        "gpu": ["multi_gpu"],
+        "gpu": [
+            "multi_gpu",
+            # peer-to-peer access is unreliable/flaky before ampere.
+            "requires-gpu-sm80",
+        ],
     },
     backends = ["gpu"],
     deps = [
@@ -5399,9 +5403,6 @@ xla_test(
     name = "record_ffi_test",
     srcs = ["record_ffi_test.cc"],
     backends = ["gpu"],
-    tags = [
-        "cuda-only",
-    ],
     deps = [
         ":record_ffi",
         "//xla:status_macros",
@@ -5411,16 +5412,23 @@ xla_test(
         "//xla/ffi:invoke",
         "//xla/ffi:record_ffi",
         "//xla/ffi/api:c_api",
+        "//xla/ffi/api:record_api",
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_address",
+        "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor/gpu:gpu_test_kernels",
+        "//xla/stream_executor/gpu:gpu_init",
+        "//xla/stream_executor/gpu:gpu_test_kernels_fatbin",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )

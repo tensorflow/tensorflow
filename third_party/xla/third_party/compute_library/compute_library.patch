@@ -34,8 +34,8 @@ index 8be867e814..ada3c191b4 100644
          "//utils",
 -        "@@kleidiai//:common",
 -        "@@kleidiai//kai/ukernels/matmul:matmul",
-+        "@@KleidiAI//:common",
-+        "@@KleidiAI//kai/ukernels/matmul:matmul",
++        "@KleidiAI//:common",
++        "@KleidiAI//kai/ukernels/matmul:matmul",
          "//:arm_compute_sve",
          "//:arm_compute_sve2"
      ],

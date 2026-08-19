@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/client/local_client.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/ffi.h"
+#include "xla/ffi/ffi_interop.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_abi_version_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_custom_partitioner_extension.h"
@@ -561,16 +562,16 @@ static PJRT_Error* RegisterCustomCall(PJRT_Gpu_Register_Custom_Call_Args* args,
           function_name, args->handler_execute, PJRT_GPU_PLUGIN_PLATFORM_NAME);
       return nullptr;
     case 1:
-      xla::ffi::Ffi::RegisterStaticHandler(
-          xla::ffi::GetXlaFfiApi(), function_name,
-          PJRT_GPU_PLUGIN_PLATFORM_NAME,
-          XLA_FFI_Handler_Bundle{
-              reinterpret_cast<XLA_FFI_Handler*>(args->handler_instantiate),
-              reinterpret_cast<XLA_FFI_Handler*>(args->handler_prepare),
-              reinterpret_cast<XLA_FFI_Handler*>(args->handler_initialize),
-              reinterpret_cast<XLA_FFI_Handler*>(args->handler_execute)},
-          traits);
-      return nullptr;
+      return StatusToPjRtError(
+          xla::ffi::TakeError(xla::ffi::Ffi::RegisterStaticHandler(
+              xla::ffi::GetXlaFfiApi(), function_name,
+              PJRT_GPU_PLUGIN_PLATFORM_NAME,
+              XLA_FFI_Handler_Bundle{
+                  reinterpret_cast<XLA_FFI_Handler*>(args->handler_instantiate),
+                  reinterpret_cast<XLA_FFI_Handler*>(args->handler_prepare),
+                  reinterpret_cast<XLA_FFI_Handler*>(args->handler_initialize),
+                  reinterpret_cast<XLA_FFI_Handler*>(args->handler_execute)},
+              traits)));
     default:
       return StatusToPjRtError(absl::UnimplementedError(
           absl::StrFormat("API version %d not supported for PJRT GPU plugin. "

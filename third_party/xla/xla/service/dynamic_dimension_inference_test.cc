@@ -162,6 +162,30 @@ TEST_F(DynamicDimensionInferenceTest, ElementwiseTest) {
   EXPECT_EQ(inference_->GetDynamicSize(negate, {}, 1), size_param);
 }
 
+// Test that dynamic dimensions are propagated through optimization_barrier.
+TEST_F(DynamicDimensionInferenceTest, OptimizationBarrierTest) {
+  const std::string hlo_text = R"(
+HloModule OptimizationBarrierTest
+
+ENTRY %OptimizationBarrierTest (data_param: f32[1,2,2], size_param: s32[]) -> f32[1,<=2,2] {
+  %data_param = f32[1,2,2]{2,1,0} parameter(0)
+  %size_param = s32[] parameter(1)
+  %set-dimension-size = f32[1,<=2,2]{2,1,0} set-dimension-size(%data_param, %size_param), dimensions={1}
+  ROOT %opt-barrier = f32[1,<=2,2]{2,1,0} opt-barrier(%set-dimension-size)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_text));
+  SCOPED_TRACE(module_->ToString());
+  TF_ASSERT_OK(RunInference());
+  // Verify that the dynamic size of the root instruction (%opt-barrier) at
+  // dimension 1 is inferred to be the input parameter %size_param (parameter
+  // 1).
+  EXPECT_EQ(inference_->GetDynamicSize(
+                module_->entry_computation()->root_instruction(), {}, 1),
+            module_->entry_computation()->parameter_instruction(1));
+}
+
 TEST_F(DynamicDimensionInferenceTest, ReduceTestI) {
   auto builder = HloComputation::Builder(TestName());
   auto input_shape = ShapeUtil::MakeShape(F32, {1, 2, 2});

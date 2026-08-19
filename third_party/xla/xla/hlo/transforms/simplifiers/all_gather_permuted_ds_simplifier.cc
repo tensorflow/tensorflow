@@ -71,15 +71,15 @@ AllGatherDynamicSlicePermutedOffsetSimplifierVisitor::HandleDynamicSlice(
           /*allow_multiple_users=*/false);
 
   if (offset_spec.has_value() && !offset_spec->permutation_pairs.empty()) {
-    // Remove the duplicated pairs as no collective permute is needed.
-    offset_spec->permutation_pairs.erase(
-        std::remove_if(offset_spec->permutation_pairs.begin(),
-                       offset_spec->permutation_pairs.end(),
-                       [](const std::pair<int64_t, int64_t>& pair) {
-                         return pair.first == pair.second;
-                       }),
-        offset_spec->permutation_pairs.end());
     // Replace the pattern with a collective permute.
+    //
+    // Note: self-pairs (src == dst) must be kept. A pair (p, p) means partition
+    // p reads the all-gather offset holding its own shard, i.e. it keeps its
+    // own data. Removing such pairs would make those partitions non-targets of
+    // the collective-permute, and per its semantics a replica/partition that is
+    // not a target of any pair outputs zeros -- silently replacing the
+    // partition's data with zeros. Keeping the self-pair produces the correct
+    // identity copy.
     HloInstruction* cp =
         dynamic_slice->AddInstruction(HloInstruction::CreateCollectivePermute(
             dynamic_slice->shape(), all_gather->mutable_operand(0),

@@ -230,6 +230,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_blas_max_algorithms(0);
   opts.set_xla_gpu_fusion_autotune_top_k_configs(1);
   opts.set_xla_cpu_multi_thread_eigen(true);
+  opts.set_xla_enable_hlo_modules_upload(true);
   opts.set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
   opts.set_xla_gpu_generate_debug_info(false);
   opts.set_xla_gpu_generate_line_info(false);
@@ -293,13 +294,12 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // Default to true for backwards compatibility (always flush denormals).
   opts.set_xla_cpu_ftz(true);
 
-  opts.set_xla_gpu_fused_attention_use_cudnn_rng(false);
-
   // By default, copy TF's Eigen style min_max behavior with nans.
   opts.set_xla_cpu_enable_fast_min_max(true);
 
   opts.set_xla_gpu_enable_cublaslt(true);
   opts.set_xla_gpu_trace_annotation_level(0);
+  opts.set_xla_gpu_enable_cupti_multi_subscriber(true);
 
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CONDITIONAL);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
@@ -551,7 +551,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_scaled_dot_with_triton(true);
   opts.set_xla_early_exit_with_layouts(false);
   opts.set_xla_gpu_experimental_all_fusions_with_triton(false);
-  opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier(true);
   opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(true);
   opts.set_xla_gpu_ragged_all_to_all_mode(
       DebugOptions::COLLECTIVES_PRIVATE_MEMORY);
@@ -2128,11 +2127,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
   flag_list->push_back(tsl::Flag("xla_gpu_enable_cudnn_fmha",
                                  noop_flag_setter<bool>, false,
                                  "[Deprecated, do not use]"));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_fused_attention_use_cudnn_rng",
-      bool_setter_for(&DebugOptions::set_xla_gpu_fused_attention_use_cudnn_rng),
-      debug_options->xla_gpu_fused_attention_use_cudnn_rng(),
-      "Use cudnn random number generator for fused attention kernel."));
+
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_cudnn_layer_norm",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_cudnn_layer_norm),
@@ -2782,6 +2777,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "names and basic structured payloads. Level 1 additionally emits "
       "detailed HLO and collective metadata in XProf annotation names and "
       "structured payloads. NVTX names remain compact."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_cupti_multi_subscriber",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_cupti_multi_subscriber),
+      debug_options->xla_gpu_enable_cupti_multi_subscriber(),
+      "Enable CUPTI V2 multi-subscriber APIs for GPU profiling when "
+      "available."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_operand_bytes_threshold_for_windowed_einsum",
       int64_setter_for(
@@ -3448,14 +3449,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "that checks for unstable reductions in HLO computations after "
       "optimizations. Acceptable values are: 'none', 'log', and "
       "'crash'. 'none' is the default."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_experimental_ragged_all_to_all_use_barrier",
-      bool_setter_for(
-          &DebugOptions::
-              set_xla_gpu_experimental_ragged_all_to_all_use_barrier),
-      debug_options->xla_gpu_experimental_ragged_all_to_all_use_barrier(),
-      "If true, use the MultiGpuBarrierKernel in one-shot RaggedAllToAll "
-      "thunk."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl",
       bool_setter_for(

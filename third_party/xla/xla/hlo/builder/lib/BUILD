@@ -16,7 +16,7 @@
 # Common computation builders for XLA.
 
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/tests:build_defs.bzl", "generate_backend_suites", "xla_test")
+load("//xla/tests:build_defs.bzl", "ALL_HARDWARE_BACKENDS", "generate_backend_suites", "xla_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
@@ -648,7 +648,7 @@ cc_library(
 xla_test(
     name = "self_adjoint_eig_test",
     srcs = ["self_adjoint_eig_test.cc"],
-    real_hardware_only = True,
+    backends = ALL_HARDWARE_BACKENDS,
     shard_count = 5,
     tags = ["optonly"],
     deps = [
@@ -709,7 +709,7 @@ cc_library(
 xla_test(
     name = "svd_test",
     srcs = ["svd_test.cc"],
-    real_hardware_only = True,
+    backends = ALL_HARDWARE_BACKENDS,
     shard_count = 10,
     tags = ["optonly"],
     deps = [
@@ -759,7 +759,7 @@ cc_library(
 xla_test(
     name = "tridiagonal_test",
     srcs = ["tridiagonal_test.cc"],
-    real_hardware_only = True,
+    backends = ALL_HARDWARE_BACKENDS,
     shard_count = 10,
     tags = ["optonly"],
     deps = [

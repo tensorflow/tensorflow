@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/experimental/tiling_space_utils.h"
 #include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -51,7 +52,7 @@ using DimensionSemantics =
 absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
     const SymbolicTileAnalysis& symbolic_tile_analysis,
     const BlockLevelParameters& block_level_parameters,
-    const Tile* dot_tiling_config_override) {
+    const xla::xtile::Tile* dot_tiling_config_override) {
   Tiling::TileMapping tile_mapping;
   int64_t real_root_index = symbolic_tile_analysis.real_root_index();
   const HloInstruction* real_root =
@@ -72,7 +73,8 @@ absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
               "Dot instruction ", hlo->name(),
               " does not have a backend config for tile sizes set."));
         }
-        ABSL_ASSIGN_OR_RETURN(Tile tile_config, hlo->backend_config<Tile>());
+        ABSL_ASSIGN_OR_RETURN(xla::xtile::Tile tile_config,
+                         hlo->backend_config<xla::xtile::Tile>());
         if (tile_config.sizes().empty()) {
           return absl::FailedPreconditionError(
               absl::StrCat("Dot instruction ", hlo->name(),
@@ -155,7 +157,8 @@ absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
         break;
       case DimensionSemantics::kSequential: {
         if (dim.hlo->has_backend_config()) {
-          ABSL_ASSIGN_OR_RETURN(Tile config, dim.hlo->backend_config<Tile>());
+          ABSL_ASSIGN_OR_RETURN(xla::xtile::Tile config,
+                           dim.hlo->backend_config<xla::xtile::Tile>());
           int64_t output_rank = dim.hlo->shape().dimensions().size();
           int64_t reduction_idx = dim.dim_position - output_rank;
           if (reduction_idx < 0 || reduction_idx >= config.sizes_size()) {

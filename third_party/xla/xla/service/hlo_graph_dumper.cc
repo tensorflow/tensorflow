@@ -606,27 +606,32 @@ stylesheet=<
   //  - Nodes come before their in- and out-edges in the SVG.  We need this
   //    because the "X ~ Y" CSS selector finds a sibling of X that *comes
   //    after X in the DOM* and matches Y.
-  std::vector<std::string> edge_css_rules;
-  std::string kBlue = "#1976d2";
-  std::string kRed = "#d32f2f";
+  //
+  // Browsers require URI-encoding the data URI ('#' as "%23"); the rules
+  // are emitted with the encoding already applied.
+  std::string edge_css_rules;
+  edge_css_rules.reserve(edge_ids_.size() * 512);
+  constexpr absl::string_view kBlue = "%231976d2";  // "#1976d2"
+  constexpr absl::string_view kRed = "%23d32f2f";   // "#d32f2f"
   for (const auto& kv : edge_ids_) {
     const HloInstruction* from_node = kv.first.first;
     const HloInstruction* to_node = kv.first.second;
     int64_t edge_id = kv.second;
 
-    auto add_hover_css_rule = [&](std::string elem_type, int64_t elem_id,
-                                  std::string color) {
-      // One could imagine other ways of writing this CSS rule that involve
-      // less duplication, but this way seems to be relatively performant.
-      edge_css_rules.push_back(
-          StrFormat("  #%s%d:hover ~ #edge%d text { fill: %s; }\n"
-                    "  #%s%d:hover ~ #edge%d path { "
-                    "stroke: %s; stroke-width: .2em; }\n"
-                    "  #%s%d:hover ~ #edge%d polygon { "
-                    "fill: %s; stroke: %s; stroke-width: .2em; }\n",
-                    elem_type, elem_id, edge_id, color,  //
-                    elem_type, elem_id, edge_id, color,  //
-                    elem_type, elem_id, edge_id, color, color));
+    auto add_hover_css_rule = [&](absl::string_view elem_type, int64_t elem_id,
+                                  absl::string_view color) {
+      // Extra newline between rules (historically a StrJoin separator).
+      if (!edge_css_rules.empty()) {
+        absl::StrAppend(&edge_css_rules, "\n");
+      }
+      absl::StrAppend(&edge_css_rules,  //
+                      "  %23", elem_type, elem_id, ":hover ~ %23edge", edge_id,
+                      " text { fill: ", color, "; }\n",  //
+                      "  %23", elem_type, elem_id, ":hover ~ %23edge", edge_id,
+                      " path { stroke: ", color, "; stroke-width: .2em; }\n",
+                      "  %23", elem_type, elem_id, ":hover ~ %23edge", edge_id,
+                      " polygon { fill: ", color, "; stroke: ", color,
+                      "; stroke-width: .2em; }\n");
     };
 
     // The "to_node" value may be a NULL, indicating that this points to the
@@ -673,12 +678,7 @@ stylesheet=<
     }
   }
 
-  // Browsers require that we URI-encode the contents of our data URI.  (It
-  // seems this was a relatively recent change?) In practice, this means that we
-  // need to escape '#'.
-  return StrFormat(
-      fmt, graph_label,
-      absl::StrReplaceAll(StrJoin(edge_css_rules, "\n"), {{"#", "%23"}}));
+  return StrFormat(fmt, graph_label, edge_css_rules);
 }
 
 std::string HloDotDumper::Footer() {
@@ -2208,8 +2208,8 @@ static absl::StatusOr<std::string> EncodeBase64(absl::string_view input) {
   return absl::StrReplaceAll(encoded, {{"_", "/"}, {"-", "+"}});
 }
 
-static absl::StatusOr<std::string> WrapDotInHtml(absl::string_view dot,
-                                                 absl::string_view title) {
+absl::StatusOr<std::string> WrapDotInHtml(absl::string_view dot,
+                                          absl::string_view title) {
   std::string dot_graph = absl::StrFormat("[%s]", EscapeJSONString(dot));
   std::string frames = absl::StrFormat("[0, %s, %s]", EscapeJSONString(title),
                                        EscapeJSONString(""));
@@ -2243,6 +2243,10 @@ static absl::StatusOr<std::string> WrapDotInFormat(
     case RenderedGraphFormat::kDot:
       return std::string(dot);
   }
+}
+
+std::string GraphRenderingTitle(const HloComputation& computation) {
+  return GraphTitle(computation);
 }
 
 void RegisterGraphToURLRenderer(
@@ -2296,16 +2300,33 @@ absl::StatusOr<std::string> RenderGraph(
     HloRenderOptions hlo_render_options,
     std::optional<absl::flat_hash_map<const HloInstruction*, ColorStats>>
         color_map) {
-  absl::MutexLock lock(url_renderer_mu);
-  if (format == RenderedGraphFormat::kUrl && url_renderer == nullptr) {
-    return Unavailable("Can't render as URL; no URL renderer was registered.");
+  // Only the URL renderer needs the global lock; dot/html rendering is
+  // pure and may run concurrently.
+  if (format == RenderedGraphFormat::kUrl) {
+    absl::MutexLock lock(url_renderer_mu);
+    if (url_renderer == nullptr) {
+      return Unavailable(
+          "Can't render as URL; no URL renderer was registered.");
+    }
+    std::string rendered_dot =
+        HloDotDumper(&computation, label, debug_options, hlo_render_options,
+                     NodeFilter(), color_map)
+            .Dump();
+    return WrapDotInFormat(computation, rendered_dot, format);
   }
 
   std::string rendered_dot =
       HloDotDumper(&computation, label, debug_options, hlo_render_options,
                    NodeFilter(), color_map)
           .Dump();
-  return WrapDotInFormat(computation, rendered_dot, format);
+  switch (format) {
+    case RenderedGraphFormat::kUrl:
+      return Internal("Unreachable");
+    case RenderedGraphFormat::kHtml:
+      return WrapDotInHtml(rendered_dot, GraphTitle(computation));
+    case RenderedGraphFormat::kDot:
+      return std::string(rendered_dot);
+  }
 }
 
 absl::StatusOr<std::string> RenderAllComputationsToHtml(

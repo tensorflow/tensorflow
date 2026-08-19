@@ -2195,6 +2195,86 @@ TEST_F(LiteralUtilTest, BitcastConvertBetweenInvalidTypes) {
       absl::StrContains(status.message(), "to a shape of different size"));
 }
 
+// Sub-byte types are stored unpacked in literals (one element per byte), but
+// bitcast-convert semantics are defined on the packed representation, with
+// element 0 in the low-order bits of each byte.
+TEST_F(LiteralUtilTest, BitcastConvertU8ToS4) {
+  Literal original = LiteralUtil::CreateR1<uint8_t>({0xE1});
+  ASSERT_OK_AND_ASSIGN(
+      Literal converted,
+      original.BitcastConvert(ShapeUtil::MakeShape(S4, {1, 2})));
+  EXPECT_EQ(converted, LiteralUtil::CreateR2<s4>({{s4(1), s4(-2)}}));
+}
+
+TEST_F(LiteralUtilTest, BitcastConvertS4ToU8) {
+  Literal original = LiteralUtil::CreateR2<s4>({{s4(1), s4(-2)}});
+  ASSERT_OK_AND_ASSIGN(Literal converted,
+                       original.BitcastConvert(ShapeUtil::MakeShape(U8, {1})));
+  EXPECT_EQ(converted, LiteralUtil::CreateR1<uint8_t>({0xE1}));
+}
+
+TEST_F(LiteralUtilTest, BitcastConvertU8ToS2) {
+  Literal original = LiteralUtil::CreateR1<uint8_t>({0xE1});
+  ASSERT_OK_AND_ASSIGN(
+      Literal converted,
+      original.BitcastConvert(ShapeUtil::MakeShape(S2, {1, 4})));
+  EXPECT_EQ(converted,
+            LiteralUtil::CreateR2<s2>({{s2(1), s2(0), s2(-2), s2(-1)}}));
+}
+
+TEST_F(LiteralUtilTest, BitcastConvertU16ToU4) {
+  Literal original = LiteralUtil::CreateR1<uint16_t>({0x4321});
+  ASSERT_OK_AND_ASSIGN(
+      Literal converted,
+      original.BitcastConvert(ShapeUtil::MakeShape(U4, {1, 4})));
+  EXPECT_EQ(converted,
+            LiteralUtil::CreateR2<u4>({{u4(1), u4(2), u4(3), u4(4)}}));
+}
+
+TEST_F(LiteralUtilTest, BitcastConvertU4ToS4) {
+  Literal original = LiteralUtil::CreateR1<u4>({u4(1), u4(14)});
+  ASSERT_OK_AND_ASSIGN(Literal converted,
+                       original.BitcastConvert(ShapeUtil::MakeShape(S4, {2})));
+  EXPECT_EQ(converted, LiteralUtil::CreateR1<s4>({s4(1), s4(-2)}));
+}
+
+TEST_F(LiteralUtilTest, BitcastConvertSubByteRoundTrip) {
+  Literal original = LiteralUtil::CreateR1<uint16_t>({0xE1F0, 0x1234});
+  ASSERT_OK_AND_ASSIGN(
+      Literal as_u4, original.BitcastConvert(ShapeUtil::MakeShape(U4, {2, 4})));
+  ASSERT_OK_AND_ASSIGN(Literal round_tripped,
+                       as_u4.BitcastConvert(ShapeUtil::MakeShape(U16, {2})));
+  EXPECT_EQ(round_tripped, original);
+}
+
+// Odd element counts exercise the partially-filled final packed byte.
+TEST_F(LiteralUtilTest, BitcastConvertSubByteOddElementCount) {
+  Literal original = LiteralUtil::CreateR1<s4>({s4(1), s4(-2), s4(7)});
+  ASSERT_OK_AND_ASSIGN(Literal converted,
+                       original.BitcastConvert(ShapeUtil::MakeShape(U4, {3})));
+  EXPECT_EQ(converted, LiteralUtil::CreateR1<u4>({u4(1), u4(14), u4(7)}));
+}
+
+TEST_F(LiteralUtilTest, BitcastConvertSubByteSizeMismatchRejected) {
+  Literal literal = LiteralUtil::CreateR1<uint8_t>({0xE1});
+  absl::Status status =
+      literal.BitcastConvert(ShapeUtil::MakeShape(S4, {3})).status();
+  EXPECT_NE(absl::OkStatus(), status);
+  EXPECT_TRUE(
+      absl::StrContains(status.message(), "to a shape of different size"));
+}
+
+// The result must not depend on whether the destination shape's layout
+// carries element_size_in_bits (set after layout assignment, stripped inside
+// literals).
+TEST_F(LiteralUtilTest, BitcastConvertToS4WithElementSizeInBitsLayout) {
+  Literal original = LiteralUtil::CreateR1<uint8_t>({0xE1});
+  Shape dest_shape = ShapeUtil::MakeShape(S4, {1, 2});
+  dest_shape.mutable_layout()->set_element_size_in_bits(4);
+  ASSERT_OK_AND_ASSIGN(Literal converted, original.BitcastConvert(dest_shape));
+  EXPECT_EQ(converted, LiteralUtil::CreateR2<s4>({{s4(1), s4(-2)}}));
+}
+
 // Sets the layout of the given ShapeProto to the default.
 void SetDefaultLayoutOnProto(ShapeProto* shape_proto) {
   CHECK(primitive_util::IsArrayType(shape_proto->element_type()));

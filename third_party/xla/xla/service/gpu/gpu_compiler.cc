@@ -251,6 +251,7 @@ limitations under the License.
 #include "xla/service/compilation_stats.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/conditional_simplifier.h"
 #include "xla/service/copy_insertion.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
@@ -783,8 +784,9 @@ absl::Status RunOptimizationPasses(
       DebugOptions::DETECTION_MODE_NONE) {
     pipeline.AddPass<UnstableReductionDetector>();
   }
-  pipeline.AddPass<RaggedDotRewriter>(gpu_version,
-                                      gpu_target_config.dnn_version_info);
+  pipeline.AddPass<RaggedDotRewriter>(
+      gpu_version,
+      se::dnn::VersionInfo(gpu_target_config.device_description.dnn_version()));
   pipeline.AddPass<ScaledDotRewriter>([&compiler, &gpu_target_config](
                                           const HloInstruction* instr) {
     return !compiler.IsScaledDotSupportedByBackend(instr, gpu_target_config);
@@ -993,8 +995,6 @@ absl::Status RunOptimizationPasses(
       [&](const HloInstruction* dot) -> int64_t {
     return dot->backend_config<GpuBackendConfig>()->operation_queue_id();
   };
-  // Only merge "smallish" dots. This threshold defaults to 32MB today, with
-  // a flag to override.
   pipeline.AddPass<DotMerger>(
       /*max_size_to_merge=*/int64_t{debug_options
                                         .xla_gpu_dot_merger_threshold_mb()}
@@ -1879,7 +1879,8 @@ absl::Status GpuCompiler::OptimizeHloModule(
   // canonicalization.
   ABSL_RETURN_IF_ERROR(OptimizeHloConvolutionCanonicalization(
       hlo_module, gpu_version,
-      gpu_topology.gpu_target_config().dnn_version_info,
+      se::dnn::VersionInfo(
+          gpu_topology.gpu_target_config().device_description.dnn_version()),
       device_description.runtime_version(), compilation_stats));
 
   ABSL_RETURN_IF_ERROR(RunLayoutAssignmentPasses(
@@ -2309,9 +2310,13 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   if (gpu_topology.slice_size() > 0) {
     module->mutable_config().set_partition_size(gpu_topology.slice_size());
   }
-  const std::optional<std::string> unoptimized_fingerprint =
-      MaybeUploadUnoptimizedGpuSymbols(
-          module.get(), gpu_topology.gpu_target_config().ToProto());
+  std::optional<std::string> unoptimized_fingerprint;
+  const bool should_upload_hlo_modules =
+      debug_opts.xla_enable_hlo_modules_upload();
+  if (should_upload_hlo_modules) {
+    unoptimized_fingerprint = MaybeUploadUnoptimizedGpuSymbols(
+        module.get(), gpu_topology.gpu_target_config().ToProto());
+  }
   DumpHloConfigIfEnabled(*module);
   // We dump the post-optimization HLO in RunBackend so no need to dump it here.
   XLA_SCOPED_LOGGING_TIMER_IF(
@@ -2349,8 +2354,11 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
         AutotunerCache::SerializeAutotuneResults(&autotune_results));
     ABSL_RETURN_IF_ERROR(SerializeAutotuneResultsToFile(debug_opts));
   }
-  const std::optional<std::string> optimized_fingerprint =
-      MaybeUploadOptimizedGpuSymbols(module.get(), autotune_results);
+  std::optional<std::string> optimized_fingerprint;
+  if (should_upload_hlo_modules) {
+    optimized_fingerprint =
+        MaybeUploadOptimizedGpuSymbols(module.get(), autotune_results);
+  }
   if (unoptimized_fingerprint.has_value() &&
       optimized_fingerprint.has_value()) {
     MaybeUploadGpuSymbolMapping(*unoptimized_fingerprint,
@@ -2931,6 +2939,13 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   }};
 
   RecordGpuCompilerStacktrace();
+  if (module->config().has_static_device_assignment()) {
+    const DeviceAssignment& da = module->config().static_device_assignment();
+    if (!da.IsIota() && !da.IsAll(0)) {
+      LOG(ERROR) << "XLA:GPU only supports IOTA device assignment. Got: "
+                 << da.ToString();
+    }
+  }
 
   const DebugOptions& debug_opts = module->config().debug_options();
   XLA_SCOPED_LOGGING_TIMER_IF(

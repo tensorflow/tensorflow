@@ -1199,17 +1199,13 @@ absl::Status BufferAssignment::CombineTempAllocations(
   // Update allocation indices to their new positions.
   allocation_index_for_value_.erase(allocation_index_for_value_.begin(),
                                     allocation_index_for_value_.end());
-  for (size_t index = 0; index < allocations_.size(); ++index) {
-    BufferAllocation* allocation = &allocations_[index];
-    allocation->set_index(index);
-    std::vector<const HloValue*> sorted_values;
-    sorted_values.reserve(allocation->assigned_buffers_.size());
-    for (const auto& buffer_offset_size : allocation->assigned_buffers_) {
+  for (BufferAllocation::Index index = 0; index < allocations_.size();
+       ++index) {
+    BufferAllocation& allocation = allocations_[index];
+    allocation.set_index(index);
+    // NOLINTNEXTLINE : the order of the loop is not important.
+    for (const auto& buffer_offset_size : allocation.assigned_buffers_) {
       const HloValue* value = buffer_offset_size.first;
-      sorted_values.emplace(sorted_values.end(), value);
-    }
-    absl::c_sort(sorted_values, &CompareHloValuesById);
-    for (const HloValue* value : sorted_values) {
       allocation_index_for_value_[value] = index;
     }
   }
