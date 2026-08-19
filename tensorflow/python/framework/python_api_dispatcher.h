@@ -214,7 +214,10 @@ class PyInstanceChecker : public PyTypeChecker {
   std::string DebugString() const override;
 
   // Size of the cache (for regression testing).
-  size_t cache_size() const;
+  size_t cache_size() const {
+    absl::MutexLock lock(py_class_cache_mu_.get());
+    return py_class_cache_.size();
+  }
 
  private:
   // Python class to check values against.

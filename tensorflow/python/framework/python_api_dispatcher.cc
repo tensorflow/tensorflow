@@ -397,11 +397,6 @@ PyInstanceChecker::~PyInstanceChecker() {
   }
 }
 
-size_t PyInstanceChecker::cache_size() const {
-  absl::MutexLock lock(py_class_cache_mu_.get());
-  return py_class_cache_.size();
-}
-
 PyTypeChecker::MatchType PyInstanceChecker::Check(PyObject* value) {
   DCheckPyGilState();
   auto* type = Py_TYPE(value);
