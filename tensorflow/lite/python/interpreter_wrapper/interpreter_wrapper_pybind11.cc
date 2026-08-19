@@ -29,7 +29,7 @@ limitations under the License.
 namespace py = pybind11;
 using tflite::interpreter_wrapper::InterpreterWrapper;
 
-PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
+PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m, py::mod_gil_not_used()) {
   m.doc() = R"pbdoc(
     _pywrap_tensorflow_interpreter_wrapper
     -----
