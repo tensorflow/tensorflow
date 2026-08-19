@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "xla/codegen/xtile/xtile_config.pb.h"
@@ -43,7 +44,7 @@ struct BlockLevelParameters {
 
   // Returns a BlockLevelParameters struct from a BlockLevelFusionConfig proto.
   static BlockLevelParameters FromBlockLevelFusionConfig(
-      const BlockLevelFusionConfig& config) {
+      const xla::xtile::BlockLevelFusionConfig& config) {
     BlockLevelParameters result;
     result.num_warps = config.num_warps();
     result.num_ctas = config.num_ctas();
@@ -62,8 +63,8 @@ struct BlockLevelParameters {
   }
 
   // Returns a BlockLevelFusionConfig proto from a BlockLevelParameters struct.
-  BlockLevelFusionConfig ToBlockLevelFusionConfig() const {
-    BlockLevelFusionConfig config;
+  xla::xtile::BlockLevelFusionConfig ToBlockLevelFusionConfig() const {
+    xla::xtile::BlockLevelFusionConfig config;
     for (const auto& tile_sizes : output_tile_sizes) {
       xla::xtile::Tile tile;
       tile.mutable_sizes()->Add(tile_sizes.begin(), tile_sizes.end());
@@ -79,6 +80,15 @@ struct BlockLevelParameters {
       config.set_num_tiles_per_pid(num_tiles_per_pid);
     }
     return config;
+  }
+
+  std::string ToString() const {
+    return ToBlockLevelFusionConfig().ShortDebugString();
+  }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const BlockLevelParameters& params) {
+    sink.Append(params.ToString());
   }
 };
 
