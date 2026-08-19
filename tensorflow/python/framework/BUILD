@@ -1156,6 +1156,7 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/python/util:function_parameter_canonicalizer_hdrs",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@pybind11",
         "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
