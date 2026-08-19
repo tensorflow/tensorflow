@@ -927,14 +927,17 @@ ARRAY_DEPS = [
     "//tensorflow/core/framework:bounds_check",
     "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
     "//tensorflow/core/util:bad_indices_policy",
-    "//tensorflow/core/util:overflow",
     "@eigen_archive//:eigen3",
 ]
 
 tf_kernel_library(
     name = "immutable_constant_op",
     prefix = "immutable_constant_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [
+        "//tensorflow/core/util:overflow",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -1128,7 +1131,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "one_hot_op",
     prefix = "one_hot_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + ["//tensorflow/core/util:overflow"],
 )
 
 tf_kernel_library(
@@ -4159,6 +4162,7 @@ tf_cc_test(
         ":ops_testutil",
         ":ops_util",
         ":random_shuffle_op",
+        "@com_google_absl//absl/strings",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:direct_session",
