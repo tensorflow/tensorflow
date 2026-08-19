@@ -1,17 +1,3 @@
-# Copyright 2023 The OpenXLA Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla/python/ifrt_proxy/common:ifrt_proxy.bzl", "default_ifrt_proxy_visibility", "ifrt_proxy_cc_test", "ifrt_proxy_grpc_client_visibility")
 load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
@@ -229,7 +215,7 @@ ifrt_proxy_cc_test(
         "//xla/python/ifrt_proxy/common:ifrt_service_proto_cc",
         "//xla/python/ifrt_proxy/common:types",
         "//xla/python/ifrt_proxy/common:versions",
-        "//xla/service:computation_placer_hdr",
+        "//xla/service:device_assignment",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:statusor",

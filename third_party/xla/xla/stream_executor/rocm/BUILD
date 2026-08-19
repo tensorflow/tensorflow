@@ -1,18 +1,3 @@
-# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# ==============================================================================
-
 """ROCm-platform specific StreamExecutor support code."""
 
 load(
@@ -982,6 +967,59 @@ xla_test(
     ],
 )
 
+rocm_library(
+    name = "delay_kernel_rocm",
+    srcs = ["delay_kernel_rocm.cu.cc"],
+    hdrs = ["delay_kernel.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    visibility = internal_visibility([
+        "//xla/stream_executor:__subpackages__",
+    ]),
+    deps = [
+        ":rocm_status",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:generic_memory_allocation",
+        "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor:typed_kernel_factory",
+        "//xla/stream_executor/gpu:gpu_semaphore",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@local_config_rocm//rocm:hip",  # buildcleaner: keep
+        "@local_config_rocm//rocm:rocm_headers",
+    ],
+)
+
+xla_test(
+    name = "delay_kernel_test",
+    srcs = ["delay_kernel_test.cc"],
+    backends = ["gpu"],
+    tags = ["rocm-only"],
+    deps = [
+        ":delay_kernel_rocm",
+        ":rocm_event",
+        ":rocm_executor",
+        ":rocm_platform_id",
+        "//xla/stream_executor:event",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/gpu:gpu_semaphore",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "rocm_timer",
     srcs = ["rocm_timer.cc"],
@@ -991,12 +1029,14 @@ cc_library(
         "rocm-only",
     ],
     deps = [
+        ":delay_kernel_rocm",
         ":rocm_event",
         ":rocm_status",
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:event_based_timer",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/gpu:gpu_semaphore",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",

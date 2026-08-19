@@ -1,18 +1,3 @@
-# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# ==============================================================================
-
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -85,6 +70,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:DataLayoutInterfaces",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -99,6 +85,7 @@ cc_library(
     deps = [
         ":computation_partitioner",
         ":type_util",
+        ":utils",
         "//xla:comparison_util",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -219,6 +206,10 @@ cc_library(
     name = "kernel_arguments",
     srcs = ["kernel_arguments.cc"],
     hdrs = ["kernel_arguments.h"],
+    visibility = [
+        ":friends",
+        "//xla/backends/gpu/libraries/native_custom_call_thunks:handler_allowlist",
+    ],
     deps = [
         "//xla:frontend_attributes",
         "//xla:shape_util",
