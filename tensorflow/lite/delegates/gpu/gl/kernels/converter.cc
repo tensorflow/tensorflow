@@ -22,6 +22,7 @@ limitations under the License.
 #include <variant>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -255,8 +256,10 @@ class ToTensorConverter : public OpenGlConverterImpl {
     RETURN_IF_ERROR(WrapSSBO(*output, &output_ssbo));
 
     if (input_ssbo.bytes_size() != SizeInBytesBHWC(shape_)) {
-      return absl::InvalidArgumentError(
-          "ToTensorConverter: input data size does not match expected size.");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "ToTensorConverter: input data size (", input_ssbo.bytes_size(),
+          ") does not match expected size (", SizeInBytesBHWC(shape_),
+          "), shape = ", absl::StrJoin(shape_.ToShape().dimensions, ", ")));
     }
     if (output_ssbo.bytes_size() != SizeInBytesDHWC4(shape_)) {
       return absl::InvalidArgumentError(
