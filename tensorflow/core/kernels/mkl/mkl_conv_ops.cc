@@ -818,10 +818,6 @@ class MklConvOp : public OpKernel {
       OP_REQUIRES(
           context, filter_tensor.NumElements() > 0,
           absl::InvalidArgumentError("filter must not have zero elements "
-                                    "(i.e. all dimensions must be non-zero)"));
-      OP_REQUIRES(
-          context, filter_tensor.NumElements() > 0,
-          absl::InvalidArgumentError("filter must not have zero elements "
                                      "(i.e. all dimensions must be non-zero)"));
 
       if (std::is_same<Tinput, float>::value) {
