@@ -3496,7 +3496,7 @@ This release introduces several vulnerability fixes:
     *   Add `keepdims` argument to all `GlobalPooling` layers.
     *   Add `include_preprocessing` argument to `MobileNetV3` architectures to
         control the inclusion of `Rescaling` layer in the model.
-    *   Add optional argument (`force`) to `make_(train|test|predict)_funtion`
+    *   Add optional argument (`force`) to `make_(train|test|predict)_function`
         methods to skip the cached function and generate a new one. This is
         useful to regenerate in a single call the compiled training function
         when any `.trainable` attribute of any model's layer has changed.
