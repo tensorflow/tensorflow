@@ -232,6 +232,11 @@ absl::StatusOr<HloComputation*> CallOutliner::BuildOutlinedComputation(
 
   original_to_outlined_map_.clear();
   for (HloInstruction* instruction : block.body) {
+    // Skip instructions that have been removed. This could happen when an inner
+    // block is outlined before an outer block.
+    if (instruction->parent() == nullptr) {
+      continue;
+    }
     ProcessInstruction(instruction, block, builder, new_parameters,
                        old_operands);
   }
@@ -417,6 +422,12 @@ absl::StatusOr<bool> CallOutliner::OutlineComputation(
 
   bool mutated = false;
   for (HloInstruction* instruction : instructions) {
+    // Skip instructions that have been removed from the parent computation.
+    // This could happen when previous instruction in the post-order traversal
+    // already outlined this instruction (ex: as operand in nested blocks).
+    if (instruction->parent() == nullptr) {
+      continue;
+    }
     if (IsBeforeMarker(instruction)) {
       HandleBeforeMarker(instruction);
     } else if (IsAfterMarker(instruction)) {

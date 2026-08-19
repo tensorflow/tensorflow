@@ -4506,7 +4506,10 @@ tf_kernel_library(
     name = "lrn_op",
     features = ["-layering_check"],
     prefix = "lrn_op",
-    deps = NN_DEPS + if_rocm([":conv_ops_gpu_hdrs"]) + [":loose_headers"],
+    deps = NN_DEPS + if_rocm([":conv_ops_gpu_hdrs"]) + [
+        ":loose_headers",
+        "//tensorflow/core/platform:stream_executor",
+    ],
 )
 
 tf_kernel_library(
@@ -4667,7 +4670,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -5980,6 +5982,9 @@ tf_kernel_library(
     name = "string_ngrams_op",
     srcs = ["string_ngrams_op.cc"],
     deps = STRING_DEPS + [
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -5989,7 +5994,6 @@ tf_cc_test(
     srcs = ["string_ngrams_op_test.cc"],
     deps = [
         ":ops_testutil",
-        ":ops_util",
         ":string_ngrams_op",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -5997,6 +6001,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_googletest//:gtest",
     ],
 )
 
