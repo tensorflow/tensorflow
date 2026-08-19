@@ -47,12 +47,14 @@ cc_library(
         "//xla/ffi",
         "//xla/ffi:type_registry",
         "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_description",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:typed_kernel_factory",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/cuda:cudart_kernel_registry",
         "//xla/stream_executor/cuda:simple_kernel_cuda",
         "@com_google_absl//absl/status",
@@ -97,50 +99,60 @@ xla_cc_binary(
     ],
 )
 
-genrule(
-    name = "xla_ffi_aot_custom_call_executable",
-    testonly = True,
-    outs = ["xla_ffi_aot_custom_call_executable_h100"],
-    cmd = "$(location :xla_ffi_aot_custom_call_compile_main) $@",
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
-    tools = [":xla_ffi_aot_custom_call_compile_main"],
-)
-
-xla_test(
-    name = "xla_ffi_aot_custom_call_test",
-    srcs = ["xla_ffi_aot_custom_call_test.cc"],
-    backends = [
+[
+    genrule(
+        name = "xla_ffi_aot_custom_call_executable_" + target,
+        testonly = True,
+        outs = ["xla_ffi_aot_custom_call_executable_" + target],
+        cmd = "$(location :xla_ffi_aot_custom_call_compile_main) $@ " + target,
+        tags = [
+            "cuda-only",
+            "gpu",
+            "manual",
+        ],
+        tools = [":xla_ffi_aot_custom_call_compile_main"],
+    )
+    for target in [
+        "b200",
         "h100",
-    ],
-    data = [
-        ":xla_ffi_aot_custom_call_executable",
-    ],
-    tags = [
-        "cuda-only",
-    ],
-    deps = [
-        ":xla_ffi_aot_custom_call",
-        "//xla:executable_run_options",
-        "//xla:literal",
-        "//xla:literal_util",
-        "//xla/service:compiled_module",
-        "//xla/service:compiler",
-        "//xla/service:executable",
-        "//xla/service:service_executable_run_options",
-        "//xla/service:shaped_buffer",
-        "//xla/service:transfer_manager",
-        "//xla/stream_executor:platform",
-        "//xla/stream_executor:platform_manager",
-        "//xla/stream_executor:stream_executor_address_allocator",
-        "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor/cuda:cuda_platform_id",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:resource_loader",
-        "//xla/tsl/platform:test",
-        "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
+    ]
+]
+
+[
+    xla_test(
+        name = "xla_ffi_aot_custom_call_" + target + "_test",
+        srcs = ["xla_ffi_aot_custom_call_test.cc"],
+        backends = [target],
+        data = [":xla_ffi_aot_custom_call_executable_" + target],
+        tags = [
+            "cuda-only",
+        ],
+        deps = [
+            ":xla_ffi_aot_custom_call",
+            "//xla:executable_run_options",
+            "//xla:literal",
+            "//xla:literal_util",
+            "//xla/service:compiled_module",
+            "//xla/service:compiler",
+            "//xla/service:executable",
+            "//xla/service:service_executable_run_options",
+            "//xla/service:shaped_buffer",
+            "//xla/service:transfer_manager",
+            "//xla/stream_executor:platform",
+            "//xla/stream_executor:platform_manager",
+            "//xla/stream_executor:stream_executor_address_allocator",
+            "//xla/stream_executor:stream_executor_h",
+            "//xla/stream_executor/cuda:cuda_platform_id",
+            "//xla/tsl/platform:env",
+            "//xla/tsl/platform:resource_loader",
+            "//xla/tsl/platform:test",
+            "@com_google_absl//absl/strings",
+            "@com_google_absl//absl/types:span",
+            "@com_google_googletest//:gtest_main",
+        ],
+    )
+    for target in [
+        "b200",
+        "h100",
+    ]
+]

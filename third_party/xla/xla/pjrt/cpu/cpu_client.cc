@@ -670,12 +670,9 @@ PjRtCpuClient::LoadSerializedExecutableInternal(
   }
 
   auto cpu_executable = std::make_shared<PjRtCpuExecutable>(
-      num_replicas, num_partitions,
-      compile_options.parameter_is_tupled_arguments, std::move(input_options),
+      num_replicas, num_partitions, std::move(input_options),
       std::move(executable), std::move(result_buffer_indices), nullptr,
       *topology_);
-  ABSL_RETURN_IF_ERROR(cpu_executable->SetUpDonation(
-      compile_options.parameter_is_tupled_arguments));
   return LoadInternal(std::move(cpu_executable), std::move(device_assignment));
 }
 
@@ -744,6 +741,11 @@ PjRtCpuClient::LoadInternal(
     }
   }
   auto load_state = tsl::MakeRef<CpuExecutableLoadState>(this);
+  ABSL_ASSIGN_OR_RETURN(
+      auto parameters_that_may_be_donated,
+      ComputeParametersThatMayBeDonated(
+          *cpu_executable->cpu_executable_->shared_module(),
+          cpu_executable->compile_options_.parameter_is_tupled_arguments));
   return std::make_unique<PjRtCpuLoadedExecutable>(
       this, tsl::MakeAvailableAsyncValueRef(cpu_executable),
       CommonPjRtLoadedExecutable::DispatchInfo{
@@ -755,7 +757,7 @@ PjRtCpuClient::LoadInternal(
           std::move(addressable_devices),
           std::move(addressable_device_logical_ids),
           std::move(device_assignment),
-          cpu_executable->parameters_that_must_be_donated_,
+          std::move(parameters_that_may_be_donated),
           cpu_executable->input_buffer_sizes_in_bytes_,
       },
       std::move(load_state));
@@ -1030,16 +1032,12 @@ CompileCpuExecutableInternal(
                                    cpu_executable->module().config()));
   }
 
-  const bool parameter_is_tupled_arguments =
-      options.parameter_is_tupled_arguments;
   options.executable_build_options.set_layout_canonicalization_callback(
       nullptr);
   auto executable = std::make_unique<PjRtCpuExecutable>(
-      num_replicas, num_partitions, parameter_is_tupled_arguments,
-      std::move(options), std::move(cpu_executable),
-      std::move(result_buffer_indices), std::move(unoptimized_hlo_module),
-      topology);
-  ABSL_RETURN_IF_ERROR(executable->SetUpDonation(parameter_is_tupled_arguments));
+      num_replicas, num_partitions, std::move(options),
+      std::move(cpu_executable), std::move(result_buffer_indices),
+      std::move(unoptimized_hlo_module), topology);
 
   return std::make_pair(std::move(executable), std::move(device_assignment));
 }
@@ -1134,6 +1132,17 @@ bool PjRtCpuClient::BufferFromHostBufferSupportsZeroCopy(
     PjRtMemorySpace* memory_space, const Layout* device_layout) const {
   return AbstractCpuBuffer::BufferFromHostBufferSupportsZeroCopy(
       data, type, dims, byte_strides, shape);
+}
+
+absl::StatusOr<xla::Shape> PjRtCpuClient::GetCopyDestinationShape(
+    const xla::Shape& shape, PjRtMemorySpace* src_memory_space,
+    PjRtMemorySpace* dst_memory_space) {
+  if (this != dst_memory_space->client()) {
+    return CommonPjRtClient::GetCopyDestinationShape(shape, src_memory_space,
+                                                     dst_memory_space);
+  }
+  return MakeDefaultShapeForMemorySpace(
+      dst_memory_space, shape, shape.has_layout() ? &shape.layout() : nullptr);
 }
 
 absl::StatusOr<PjRtDeviceEventRef> PjRtCpuClient::LinearizeHostBufferInto(
@@ -1296,14 +1305,13 @@ static std::vector<Shape> GetParameterShapes(const ComputationLayout& layout) {
 }
 
 PjRtCpuExecutable::PjRtCpuExecutable(
-    int num_replicas, int num_partitions, bool parameter_is_tupled_arguments,
-    CompileOptions compile_options, std::unique_ptr<Executable> cpu_executable,
+    int num_replicas, int num_partitions, CompileOptions compile_options,
+    std::unique_ptr<Executable> cpu_executable,
     absl::InlinedVector<BufferAllocation::Index, 4> result_buffer_indices,
     std::unique_ptr<HloModule> unoptimized_hlo_module,
     const CpuTopologyDescription& topology)
     : num_replicas_(num_replicas),
       num_partitions_(num_partitions),
-      parameter_is_tupled_arguments_(parameter_is_tupled_arguments),
       compile_options_(std::move(compile_options)),
       cpu_executable_(
           absl::down_cast<cpu::CpuExecutable*>(cpu_executable.release())),
@@ -1392,13 +1400,6 @@ PjRtCpuExecutable::PjRtCpuExecutable(
       tsl::Fingerprint128(fingerprint_),
       tsl::Fingerprint128(cpu_executable_->module().ToString()));
   fingerprint_ = absl::StrCat(fingerprint.low64, fingerprint.high64);
-}
-
-absl::Status PjRtCpuExecutable::SetUpDonation(bool tuple_inputs) {
-  ABSL_ASSIGN_OR_RETURN(parameters_that_must_be_donated_,
-                   ComputeParametersThatMustBeDonated(
-                       *cpu_executable_->shared_module(), tuple_inputs));
-  return absl::OkStatus();
 }
 
 namespace {
@@ -1634,7 +1635,7 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
   // Tuplize the inputs if compiler expects a single tuple argument but runtime
   // gets many inputs that are not yet tupled.
   tsl::AsyncValueRef<CpuDeviceMemory> tuple_index_table;
-  if (executable_->parameter_is_tupled_arguments_) {
+  if (executable_->compile_options_.parameter_is_tupled_arguments) {
     absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> leaf_buffers;
     leaf_buffers.reserve(input_buffers.size());
     for (const auto& buffer : input_buffers) {

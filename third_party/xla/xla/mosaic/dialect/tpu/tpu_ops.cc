@@ -194,10 +194,6 @@ LogicalResult MemRefSliceOp::verify() {
   auto target_memory_space = target_type.getMemorySpace();
   auto indices = getBaseIdx();
   auto slice_shape = getResult().getType().getShape();
-  if (!source_type.hasStaticShape()) {
-    return emitOpError(
-        "Only slicing of memrefs with static shapes is supported.");
-  }
   if (getDynamicSizes().size() != target_type.getNumDynamicDims()) {
     return emitOpError(
         "Number of provided dynamic dimensions sizes must match the number of "
@@ -894,16 +890,19 @@ LogicalResult VectorStoreIdxOp::verify() {
 
 void ReinterpretCastOp::build(OpBuilder& builder, OperationState& state,
                               Type result_type, Value input,
-                              Value dynamic_offset, ValueRange dynamic_sizes) {
+                              Value dynamic_offset, ValueRange dynamic_sizes,
+                              ValueRange dynamic_strides) {
   state.addOperands(input);
   if (dynamic_offset) {
     state.addOperands(dynamic_offset);
   }
   state.addOperands(dynamic_sizes);
+  state.addOperands(dynamic_strides);
   state.addAttribute("operandSegmentSizes",
                      builder.getDenseI32ArrayAttr(
                          {1, dynamic_offset ? 1 : 0,
-                          static_cast<int32_t>(dynamic_sizes.size())}));
+                          static_cast<int32_t>(dynamic_sizes.size()),
+                          static_cast<int32_t>(dynamic_strides.size())}));
   state.addTypes(result_type);
 }
 
@@ -921,6 +920,15 @@ LogicalResult ReinterpretCastOp::verify() {
            << num_dynamic_dims
            << " dynamic size(s) for the result type, but got "
            << getDynamicSizes().size();
+  }
+  if (auto layout = dyn_cast<TiledLayoutAttr>(target_type.getLayout())) {
+    int64_t num_dynamic_strides = layout.getNumDynamicStrides();
+    if (getDynamicStrides().size() != num_dynamic_strides) {
+      return emitOpError("expected ")
+             << num_dynamic_strides
+             << " dynamic stride(s) for the result type, but got "
+             << getDynamicStrides().size();
+    }
   }
   return success();
 }

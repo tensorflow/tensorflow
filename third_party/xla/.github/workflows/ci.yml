@@ -122,6 +122,12 @@ jobs:
           repository: ${{ matrix.job_info.repo }}
           path: ${{ matrix.job_info.repo }}
           persist-credentials: false
+      - name: "Set Bazel version for JAX"
+        if: ${{ matrix.job_info.repo == 'jax-ml/jax' }}
+        shell: bash
+        run: |
+          echo "7.7.1" > "$GITHUB_WORKSPACE/jax-ml/jax/.bazelversion"
+          echo "USE_BAZEL_VERSION=7.7.1" >> "$GITHUB_ENV"
       - name: "Wait For Connection"
         uses: google-ml-infra/actions/ci_connection@7f5ca0c263a81ed09ea276524c1b9192f1304e3c
         with:
