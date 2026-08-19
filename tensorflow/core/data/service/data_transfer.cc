@@ -72,11 +72,14 @@ size_t GetElementResult::EstimatedMemoryUsageBytes() const {
       continue;
     }
 
-    // Estimates the memory usage of a compressed element.
-    const Variant& variant = tensor.scalar<Variant>()();
-    const CompressedElement* compressed = variant.get<CompressedElement>();
-    if (compressed) {
-      size_bytes += compressed->SpaceUsedLong();
+    // Estimates the memory usage of compressed elements.
+    auto variants = tensor.flat<Variant>();
+    for (int64_t i = 0; i < variants.size(); ++i) {
+      const CompressedElement* compressed =
+          variants(i).get<CompressedElement>();
+      if (compressed) {
+        size_bytes += compressed->SpaceUsedLong();
+      }
     }
   }
   return size_bytes;
