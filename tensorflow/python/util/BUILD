@@ -292,6 +292,7 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/synchronization",
         "//third_party/py/numpy:headers",
         "@pybind11",
+        "@xla//xla/tsl/python/lib/core:numpy",
         "@xla//third_party/python_runtime:headers",
     ] + if_pywrap(["@com_google_absl//absl/strings"]),
 )
