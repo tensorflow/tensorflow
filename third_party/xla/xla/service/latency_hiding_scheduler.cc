@@ -1459,8 +1459,8 @@ std::optional<bool> ReadySetLt::IsValuableForSelectiveOverlap(
 // *reason and return true or false depending on whether we should copy
 // a into b.
 std::optional<bool> ReadySetLt::InvokeTargetSchedulingFunction(
-    TargetSchedulingRule func, ScheduleCandidate& a, ScheduleCandidate& b,
-    const char** reason) {
+    const TargetSchedulingRule& func, ScheduleCandidate& a,
+    ScheduleCandidate& b, const char** reason) {
   DCHECK(func != nullptr);
   if (std::optional<CandidateResult> r = func(a, b)) {
     *reason = r->reason;
@@ -1473,6 +1473,9 @@ std::optional<bool> ReadySetLt::InvokeTargetSchedulingFunction(
 void ReadySetLt::UpdateCandidateResourceConstrained(
     const SchedulingState& sched_state, ScheduleCandidate& cand,
     const HloGraphNode* cand_node) const {
+  if (cand.has_resource_constrained) {
+    return;
+  }
   if (cand_node->GetResources().empty()) {
     cand.set_resource_constrained(false);
     return;
