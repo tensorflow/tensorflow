@@ -35,6 +35,7 @@ cc_library(
     srcs = ["error_collector.cc"],
     hdrs = ["error_collector.h"],
     deps = [
+        "@com_google_absl//absl/synchronization",
         ":converter_error_data_proto_cc",
         ":types_util",
         "@com_google_absl//absl/strings",
