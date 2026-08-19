@@ -257,7 +257,12 @@ void TiledLayoutAttr::print(AsmPrinter& printer) const {
     if (i > 0) {
       printer << ',';
     }
-    printer << getTileStrides()[i];
+    int64_t stride = getTileStrides()[i];
+    if (ShapedType::isDynamic(stride)) {
+      printer << "?";
+    } else {
+      printer << stride;
+    }
   }
   printer << "]>";
 }
@@ -298,7 +303,9 @@ Attribute TiledLayoutAttr::parse(AsmParser& parser, Type type) {
         }
       }
       first = false;
-      if (failed(parser.parseInteger(stride))) {
+      if (succeeded(parser.parseOptionalQuestion())) {
+        stride = ShapedType::kDynamic;
+      } else if (failed(parser.parseInteger(stride))) {
         return {};
       }
       tile_strides.push_back(stride);
@@ -404,8 +411,11 @@ SmallVector<int64_t> TiledLayoutAttr::getDefaultTileStrides(
   const int64_t first_tile_rank =
       first_tile == nullptr ? 0 : first_tile->dimensions().size();
   for (int64_t d = shape.size() - 1; d >= 0; --d) {
-    assert(!ShapedType::isDynamic(shape[d]));
     strides[d] = stride;
+    if (ShapedType::isDynamic(shape[d]) || ShapedType::isDynamic(stride)) {
+      stride = ShapedType::kDynamic;
+      continue;
+    }
     if (d >= shape.size() - first_tile_rank) {
       assert(first_tile != nullptr);
       const int64_t tile_d = d - (shape.size() - first_tile_rank);
@@ -443,9 +453,13 @@ int64_t TiledLayoutAttr::getNumTrailingDimsWithContiguousTiles(
     } else {
       size_tiles = shape[d];
     }
-    assert(tile_strides[d] != ShapedType::kDynamic);
+
+    // Dynamic strides are always considered to be a mismatch as they could
+    // potentially not be contiguous.
+    bool mismatch_stride =
+        stride != tile_strides[d] || ShapedType::isDynamic(tile_strides[d]);
     // Dimensions with only one element/tile can have any stride.
-    if (stride != tile_strides[d] && size_tiles != 1) {
+    if (mismatch_stride && size_tiles != 1) {
       break;
     }
     if (stride == ShapedType::kDynamic || size_tiles == ShapedType::kDynamic) {
@@ -487,7 +501,9 @@ SmallVector<int64_t> TiledLayoutAttr::getExpandedStrides() const {
       tile_size *= expanded_tile[d - getRank()];
       strides[d] = new_stride;
     } else {
-      strides[d] *= first_tile_size;
+      if (ShapedType::isStatic(strides[d])) {
+        strides[d] *= first_tile_size;
+      }
     }
   }
   return strides;
@@ -515,13 +531,18 @@ SmallVector<int64_t> TiledLayoutAttr::getSubtileUnit(
   return subtile_unit;
 }
 
+bool TiledLayoutAttr::hasDynamicStrides() const {
+  return llvm::any_of(getTileStrides(), ShapedType::isDynamic);
+}
+
+int64_t TiledLayoutAttr::getNumDynamicStrides() const {
+  return llvm::count_if(getTileStrides(), ShapedType::isDynamic);
+}
+
 LogicalResult TiledLayoutAttr::verify(
     function_ref<InFlightDiagnostic()> emitError,
     const llvm::ArrayRef<xla::Tile> tiles,
     const llvm::ArrayRef<int64_t> tile_strides) {
-  if (llvm::any_of(tile_strides, ShapedType::isDynamic)) {
-    return emitError() << "Not implemented: Dynamic tile strides";
-  }
   if (tiles.empty()) {
     return success();
   }
