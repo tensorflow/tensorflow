@@ -105,4 +105,10 @@ REGISTER_KERNEL_BUILDER(Name("Reshape")
 
 }  // namespace tensorflow
 
-// Fix OOM DoS
+
+// Fix OOM DoS: Validate zero-element tensor before memory allocation
+if (input.NumElements() == 0) {
+  ctx->SetStatus(errors::InvalidArgument("Reshape input tensor cannot be empty."));
+  return;
+}
+
