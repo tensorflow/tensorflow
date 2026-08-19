@@ -154,12 +154,17 @@ bool IsEarlyExitCompilation(const xla::CompileOptions& compile_options) {
   for (int i = compile_options.env_option_overrides.size() - 1; i >= 0; --i) {
     const auto& [k, v] = compile_options.env_option_overrides[i];
     if (k == "xla_early_exit_with_layouts") {
-      return std::get<bool>(v);
+      if (std::get<bool>(v)) {
+        return true;
+      }
     }
   }
-  return compile_options.executable_build_options.has_debug_options() &&
-         compile_options.executable_build_options.debug_options()
-             .xla_early_exit_with_layouts();
+  if (!compile_options.executable_build_options.has_debug_options()) {
+    return false;
+  }
+  const auto& dbg = compile_options.executable_build_options.debug_options();
+  return dbg.xla_early_exit_with_layouts() ||
+         dbg.xla_gpu_experimental_early_exit_after_autotuning();
 }
 
 MultiSliceConfig::~MultiSliceConfig() = default;

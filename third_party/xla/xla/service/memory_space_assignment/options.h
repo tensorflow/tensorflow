@@ -157,12 +157,6 @@ struct Options {
   // values. std::nullopt disables views.
   std::optional<int64_t> dus_view_color;
 
-  // When true, a view's source buffer is kept in default memory instead of
-  // being considered for alternate memory. Set this to avoid the superlinear
-  // compile time growth that can occur when views extend the live ranges of
-  // while loop carried buffers. Only meaningful when dus_view_color is set.
-  bool view_source_default_memory_only = false;
-
   // Maximum size of the alternate memory space.
   int64_t max_size_in_bytes = 0;
 

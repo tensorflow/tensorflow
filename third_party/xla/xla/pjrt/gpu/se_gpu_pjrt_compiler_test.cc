@@ -566,5 +566,112 @@ TEST(StreamExecutorGpuCompilerTest, DisjointDeviceAssignmentCompile) {
       absl_testing::IsOk());
 }
 
+TEST(StreamExecutorGpuCompilerTest, DeserializePjRtTopologyDescriptionSuccess) {
+  StreamExecutorGpuTopologyDescription topology(
+      CudaId(), CudaName(), GetGpuTopology(kFakeDeviceName, 1, 1, 2, 10));
+  ASSERT_OK_AND_ASSIGN(auto proto, topology.ToProto());
+
+  std::string serialized_proto;
+  ASSERT_TRUE(proto.SerializeToString(&serialized_proto));
+
+  StreamExecutorGpuCompiler compiler(CudaId());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtTopologyDescription> deserialized_topology,
+      compiler.DeserializePjRtTopologyDescription(serialized_proto));
+
+  EXPECT_EQ(deserialized_topology->platform_name(), topology.platform_name());
+  EXPECT_EQ(deserialized_topology->platform_id(), topology.platform_id());
+  EXPECT_EQ(deserialized_topology->DeviceDescriptions().size(),
+            topology.DeviceDescriptions().size());
+}
+
+TEST(StreamExecutorGpuCompilerTest, DeserializeInvalidProtobufPayloadFails) {
+  StreamExecutorGpuCompiler compiler(CudaId());
+  auto status_or = compiler.DeserializePjRtTopologyDescription(
+      "invalid_non_proto_binary_string");
+  EXPECT_THAT(status_or,
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  ::testing::HasSubstr(
+                      "Failed to parse StreamExecutorGpuTopologyDescription")));
+}
+
+TEST(StreamExecutorGpuCompilerTest, DeserializeMismatchedPlatformFails) {
+  PjRtTopologyDescriptionProto cpu_proto;
+  cpu_proto.set_platform_id(CpuId());
+  cpu_proto.set_platform_name(CpuName());
+
+  std::string serialized_cpu_proto;
+  ASSERT_TRUE(cpu_proto.SerializeToString(&serialized_cpu_proto));
+
+  StreamExecutorGpuCompiler compiler(CudaId());
+  auto status_or =
+      compiler.DeserializePjRtTopologyDescription(serialized_cpu_proto);
+  EXPECT_THAT(status_or,
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  ::testing::HasSubstr("The platform is not a GPU platform")));
+}
+
+TEST(StreamExecutorGpuCompilerTest,
+     DeserializeMissingPlatformSpecificTopologyFails) {
+  PjRtTopologyDescriptionProto missing_payload_proto;
+  missing_payload_proto.set_platform_id(CudaId());
+  missing_payload_proto.set_platform_name(CudaName());
+
+  std::string serialized_proto;
+  ASSERT_TRUE(missing_payload_proto.SerializeToString(&serialized_proto));
+
+  StreamExecutorGpuCompiler compiler(CudaId());
+  auto status_or =
+      compiler.DeserializePjRtTopologyDescription(serialized_proto);
+  EXPECT_THAT(
+      status_or,
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          ::testing::HasSubstr(
+              "The platform_specific_topology is not a GpuTopologyProto")));
+}
+
+TEST(StreamExecutorGpuCompilerTest,
+     AutoLayoutIsPropagatedInEarlyExitAfterAutotuning) {
+  auto mock_compiler = std::make_unique<MockCompiler>();
+  MockCompiler& mock_compiler_ref = *mock_compiler;
+
+  StreamExecutorGpuCompiler pjrt_compiler(CudaId(), std::move(mock_compiler));
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<GpuTopology> gpu_topology,
+                       GetSampleH100basedGpuTopology());
+
+  StreamExecutorGpuTopologyDescription topology_description(
+      CudaId(), CudaName(), std::move(gpu_topology));
+
+  EXPECT_CALL(mock_compiler_ref, PlatformId)
+      .WillRepeatedly(Return(stream_executor::cuda::kCudaPlatformId));
+  EXPECT_CALL(mock_compiler_ref, Compile).Times(0);
+
+  std::unique_ptr<HloModule> hlo_module;
+  AotCompilationOptions::EarlyExitPoint early_exit_point =
+      AotCompilationOptions::EarlyExitPoint::kNone;
+  EXPECT_CALL(mock_compiler_ref, CompileAheadOfTime)
+      .WillOnce([&](std::unique_ptr<HloModule> module,
+                    const AotCompilationOptions& options) {
+        hlo_module = std::move(module);
+        early_exit_point = options.early_exit_point();
+        return std::vector<std::unique_ptr<CompiledModule>>{};
+      });
+
+  CompileOptions options{};
+  options.executable_build_options.mutable_debug_options()
+      ->set_xla_gpu_experimental_early_exit_after_autotuning(true);
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtExecutable> executable,
+      pjrt_compiler.Compile(options, GetMlirModuleWithAutoLayout(),
+                            topology_description, nullptr));
+  ASSERT_NE(hlo_module, nullptr);
+  EXPECT_EQ(early_exit_point,
+            AotCompilationOptions::EarlyExitPoint::kAfterAutotuning);
+}
 }  // namespace
 }  // namespace xla

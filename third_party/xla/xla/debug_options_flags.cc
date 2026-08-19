@@ -514,6 +514,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_dot_merger_threshold_mb(64);
   opts.set_xla_enable_fast_math(false);
   opts.set_xla_gpu_experimental_parallel_collective_overlap_limit(1);
+  opts.set_xla_gpu_collective_domain_assignment("");
   opts.set_xla_gpu_experimental_collective_start_as_early_as_possible(false);
   opts.set_xla_gpu_experimental_enable_selective_memcpy_overlap(false);
   opts.set_xla_gpu_experimental_parallel_async_compute_limit(2);
@@ -550,6 +551,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
       DebugOptions::DETECTION_MODE_NONE);
   opts.set_xla_gpu_experimental_scaled_dot_with_triton(true);
   opts.set_xla_early_exit_with_layouts(false);
+  opts.set_xla_gpu_experimental_early_exit_after_autotuning(false);
   opts.set_xla_gpu_experimental_all_fusions_with_triton(false);
   opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(true);
   opts.set_xla_gpu_ragged_all_to_all_mode(
@@ -3167,6 +3169,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "This controls how many in-flight collectives "
       "latency hiding scheduler can schedule."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_collective_domain_assignment",
+      string_setter_for(
+          &DebugOptions::set_xla_gpu_collective_domain_assignment),
+      debug_options->xla_gpu_collective_domain_assignment(),
+      "Comma-separated list of collective communication domains to assign "
+      "automatically."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_collective_start_as_early_as_possible",
       bool_setter_for(
           &DebugOptions::
@@ -3677,6 +3686,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_early_exit_with_layouts(),
       "If true, exit early from the layout assignment pass after assigning "
       "layouts to entry computations."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_early_exit_after_autotuning",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_experimental_early_exit_after_autotuning),
+      debug_options->xla_gpu_experimental_early_exit_after_autotuning(),
+      "Exits GPU compilation after autotuning (i.e. exits after the HLO "
+      "passes), and returns the HLO up to that point."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_print_compilation_stats",
       bool_setter_for(&DebugOptions::set_xla_gpu_print_compilation_stats),
