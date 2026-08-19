@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/codegen/intrinsic/intrinsic.h"
 
 #include <optional>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -78,6 +80,37 @@ TEST(IntrinsicTypeTest, FromName) {
   EXPECT_TRUE(v4s8.is_vector());
   EXPECT_EQ(v4s8.element_type(), S8);
   EXPECT_EQ(v4s8.vector_width(), 4);
+}
+
+struct DummyIntrinsic : public intrinsics::Intrinsic<DummyIntrinsic> {
+  static std::vector<std::vector<Type>> SupportedVectorTypes(
+      absl::string_view features = "") {
+    return {{Type::S(F32)}, {Type::V(F32, 4)}, {Type::S(F32), Type::S(BF16)}};
+  }
+};
+
+struct DummyFeatureIntrinsic
+    : public intrinsics::Intrinsic<DummyFeatureIntrinsic> {
+  static std::vector<std::vector<Type>> SupportedVectorTypes(
+      absl::string_view features) {
+    if (features == "+avx") {
+      return {{Type::V(F32, 8)}};
+    }
+    return {{Type::S(F32)}};
+  }
+};
+
+TEST(IntrinsicTest, IsSupported) {
+  EXPECT_TRUE(DummyIntrinsic::IsSupported("", {Type::S(F32)}));
+  EXPECT_TRUE(DummyIntrinsic::IsSupported("", {Type::V(F32, 4)}));
+  EXPECT_TRUE(DummyIntrinsic::IsSupported("", {Type::S(F32), Type::S(BF16)}));
+  EXPECT_FALSE(DummyIntrinsic::IsSupported("", {Type::S(F64)}));
+  EXPECT_FALSE(DummyIntrinsic::IsSupported("", {Type::V(F32, 8)}));
+  EXPECT_FALSE(DummyIntrinsic::IsSupported("", {Type::S(F32), Type::S(F32)}));
+
+  EXPECT_TRUE(DummyFeatureIntrinsic::IsSupported("+avx", {Type::V(F32, 8)}));
+  EXPECT_FALSE(DummyFeatureIntrinsic::IsSupported("", {Type::V(F32, 8)}));
+  EXPECT_TRUE(DummyFeatureIntrinsic::IsSupported("", {Type::S(F32)}));
 }
 
 }  // namespace
