@@ -206,4 +206,13 @@ absl::Status InitializePjrtPlugin(absl::string_view device_type) {
   return absl::OkStatus();
 }
 
+absl::StatusOr<const PJRT_Api*> GetInitializedPjrtApi(
+    absl::string_view device_type) {
+  ABSL_ASSIGN_OR_RETURN(bool is_initialized, IsPjrtPluginInitialized(device_type));
+  if (!is_initialized) {
+    ABSL_RETURN_IF_ERROR(InitializePjrtPlugin(device_type));
+  }
+  return PjrtApi(device_type);
+}
+
 }  // namespace pjrt

@@ -269,7 +269,9 @@ void CreateDefinitionAndReplaceDeclaration(llvm::Module& module,
   llvm::Function* definition =
       math_func.CreateDefinition(module, options, name);
   definition->setLinkage(llvm::Function::InternalLinkage);
-  definition->addFnAttr(llvm::Attribute::AlwaysInline);
+  if (!definition->hasFnAttribute(llvm::Attribute::NoInline)) {
+    definition->addFnAttr(llvm::Attribute::AlwaysInline);
+  }
   llvm::verifyFunction(*definition);
   if (existing_func && existing_func->isDeclaration()) {
     // Remove the declaration and replace all uses with the
