@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -44,6 +45,7 @@ using gpu_dot_fusion_cost_model::detail::CalculateHardwareLaunchWaves;
 using gpu_dot_fusion_cost_model::detail::CalculateLoopIterBytes;
 using gpu_dot_fusion_cost_model::detail::
     CalculatePipelinedLoopTimeWithLaunchWaves;
+using gpu_dot_fusion_cost_model::detail::CalculateRegistersPerThread;
 using gpu_dot_fusion_cost_model::detail::CalculateSharedMemoryPerBlockBytes;
 using gpu_dot_fusion_cost_model::detail::CalculateSmOccupancy;
 using gpu_dot_fusion_cost_model::detail::ComputeAndFlops;
@@ -59,6 +61,7 @@ class GpuDotFusionCostModelTest : public HloHardwareIndependentTestBase {
  protected:
   se::DeviceDescription dda100_{TestGpuDeviceInfo::A100SXMDeviceInfo()};
   se::DeviceDescription ddh100_{TestGpuDeviceInfo::H100SXMDeviceInfo()};
+  se::DeviceDescription ddb200_{TestGpuDeviceInfo::B200SXMDeviceInfo()};
 };
 
 TEST_F(GpuDotFusionCostModelTest, GpuDotComputeBoundBf16NumStages1) {
@@ -387,7 +390,7 @@ TEST_F(GpuDotFusionCostModelTest, CalculateSmOccupancy_ShmemLimited) {
   // Large shared memory should limit the occupancy to 1 block per SM.
   const SmOccupancy occupancy = CalculateSmOccupancy(
       /*shared_memory_per_block_bytes=*/200000,
-      /*num_warps=*/4, ddh100_);
+      /*num_warps=*/4, ddh100_, /*registers_per_thread=*/0);
   EXPECT_EQ(occupancy.active_blocks_per_sm, 1);
   EXPECT_EQ(occupancy.active_warps_per_sm, 4);
 }
@@ -395,11 +398,23 @@ TEST_F(GpuDotFusionCostModelTest, CalculateSmOccupancy_ShmemLimited) {
 TEST_F(GpuDotFusionCostModelTest, CalculateSmOccupancy_ThreadLimited) {
   const SmOccupancy occupancy = CalculateSmOccupancy(
       /*shared_memory_per_block_bytes=*/1024,
-      /*num_warps=*/4, ddh100_);
+      /*num_warps=*/4, ddh100_, /*registers_per_thread=*/0);
   // H100 has 2048 threads per SM. 4 warps * 32 threads/warp = 128
   // threads/block. 2048 / 128 = 16 blocks per SM maximum.
   EXPECT_EQ(occupancy.active_blocks_per_sm, 16);
   EXPECT_EQ(occupancy.active_warps_per_sm, 64);
+}
+
+TEST_F(GpuDotFusionCostModelTest, CalculateSmOccupancy_RegsLimited) {
+  // H100 has 65536 registers per SM. 4 warps * 32 threads/warp = 128
+  // threads/block.
+  // At 200 registers/thread, 1 block requires 25600 registers.
+  // 65536 / 25600 = 2 blocks per SM.
+  const SmOccupancy occupancy = CalculateSmOccupancy(
+      /*shared_memory_per_block_bytes=*/1024,
+      /*num_warps=*/4, ddh100_, /*registers_per_thread=*/200);
+  EXPECT_EQ(occupancy.active_blocks_per_sm, 2);
+  EXPECT_EQ(occupancy.active_warps_per_sm, 8);
 }
 
 TEST_F(GpuDotFusionCostModelTest, CalculateHardwareLaunchWaves_ZeroBlocks) {
@@ -407,7 +422,8 @@ TEST_F(GpuDotFusionCostModelTest, CalculateHardwareLaunchWaves_ZeroBlocks) {
   EXPECT_EQ(0,
             CalculateHardwareLaunchWaves(/*threadblock_count=*/0,
                                          /*shared_memory_per_block_bytes=*/1024,
-                                         /*num_warps=*/4, ddh100_));
+                                         /*num_warps=*/4, ddh100_,
+                                         /*registers_per_thread=*/0));
 }
 
 TEST_F(GpuDotFusionCostModelTest,
@@ -415,7 +431,7 @@ TEST_F(GpuDotFusionCostModelTest,
   // Small shared memory with few threadblocks should require 1 wave.
   int64_t small_shmem_waves = CalculateHardwareLaunchWaves(
       /*threadblock_count=*/1000, /*shared_memory_per_block_bytes=*/1024,
-      /*num_warps=*/4, ddh100_);
+      /*num_warps=*/4, ddh100_, /*registers_per_thread=*/0);
   EXPECT_EQ(1, small_shmem_waves);
 }
 
@@ -424,7 +440,7 @@ TEST_F(GpuDotFusionCostModelTest, CalculateHardwareLaunchWaves_LargeShmem) {
   // number of blocks.
   int64_t large_shmem_waves = CalculateHardwareLaunchWaves(
       /*threadblock_count=*/1000, /*shared_memory_per_block_bytes=*/200000,
-      /*num_warps=*/4, ddh100_);
+      /*num_warps=*/4, ddh100_, /*registers_per_thread=*/0);
   EXPECT_GE(large_shmem_waves, 4);
 }
 
@@ -432,7 +448,7 @@ TEST_F(GpuDotFusionCostModelTest, CalculateHardwareLaunchWaves_MoreBlocks) {
   // More threadblocks requires more waves.
   int64_t more_blocks_waves = CalculateHardwareLaunchWaves(
       /*threadblock_count=*/5000, /*shared_memory_per_block_bytes=*/1024,
-      /*num_warps=*/4, ddh100_);
+      /*num_warps=*/4, ddh100_, /*registers_per_thread=*/0);
   EXPECT_GT(more_blocks_waves, 1);
 }
 
@@ -475,7 +491,7 @@ TEST_F(GpuDotFusionCostModelTest,
       CalculatePipelinedLoopTimeWithLaunchWaves(
           /*num_stages=*/3, k_loop_iterations, /*threadblock_count=*/0,
           compute_time, hbm_timing, /*shared_memory_per_block_bytes=*/1024,
-          /*num_warps=*/4, ddh100_));
+          /*num_warps=*/4, ddh100_, /*registers_per_thread=*/0));
 }
 
 TEST_F(GpuDotFusionCostModelTest,
@@ -491,18 +507,18 @@ TEST_F(GpuDotFusionCostModelTest,
   absl::Duration result_one_wave = CalculatePipelinedLoopTimeWithLaunchWaves(
       /*num_stages=*/3, k_loop_iterations, /*threadblock_count=*/1,
       compute_time, hbm_timing, /*shared_memory_per_block_bytes=*/1024,
-      /*num_warps=*/4, ddh100_);
+      /*num_warps=*/4, ddh100_, /*registers_per_thread=*/0);
 
   absl::Duration result_more_blocks_still_one_wave =
       CalculatePipelinedLoopTimeWithLaunchWaves(
           /*num_stages=*/3, k_loop_iterations, /*threadblock_count=*/1000,
           compute_time, hbm_timing, /*shared_memory_per_block_bytes=*/1024,
-          /*num_warps=*/4, ddh100_);
+          /*num_warps=*/4, ddh100_, /*registers_per_thread=*/0);
 
   absl::Duration result_many_waves = CalculatePipelinedLoopTimeWithLaunchWaves(
       /*num_stages=*/3, k_loop_iterations, /*threadblock_count=*/5000,
       compute_time, hbm_timing, /*shared_memory_per_block_bytes=*/1024,
-      /*num_warps=*/4, ddh100_);
+      /*num_warps=*/4, ddh100_, /*registers_per_thread=*/0);
 
   EXPECT_EQ(result_one_wave, result_more_blocks_still_one_wave);
   EXPECT_GT(result_many_waves, result_one_wave);
@@ -567,41 +583,115 @@ TEST_F(GpuDotFusionCostModelTest, CalculateMemoryUtilization) {
 }
 
 TEST_F(GpuDotFusionCostModelTest,
-       EffectiveHbmBandwidthMatchesH100EmpiricalTable) {
-  const float h100_memory_bandwidth = ddh100_.memory_bandwidth();
-
-  // 1. Min clamp / first table entry (8192 bytes -> 0.00042359)
-  EXPECT_FLOAT_EQ(GetEffectiveHbmBandwidth(4096, ddh100_),
-                  0.00042359f * h100_memory_bandwidth);
-  EXPECT_FLOAT_EQ(GetEffectiveHbmBandwidth(8192, ddh100_),
-                  0.00042359f * h100_memory_bandwidth);
-
-  // 2. Exact table entry (65536 bytes -> 0.00351100)
-  EXPECT_FLOAT_EQ(GetEffectiveHbmBandwidth(65536, ddh100_),
-                  0.00351100f * h100_memory_bandwidth);
-
-  // 3. Midpoint linear interpolation between 8192 (0.00042359) and 16384
-  // (0.00090385) -> 12288 bytes
-  float expected_midpoint = (0.00042359f + 0.00090385f) / 2.0f;
-  EXPECT_FLOAT_EQ(GetEffectiveHbmBandwidth(12288, ddh100_),
-                  expected_midpoint * h100_memory_bandwidth);
-
-  // 4. Max clamp / last table entry (1073741824 bytes -> 0.93248850)
-  EXPECT_FLOAT_EQ(GetEffectiveHbmBandwidth(1073741824, ddh100_),
-                  0.93248850f * h100_memory_bandwidth);
-  EXPECT_FLOAT_EQ(GetEffectiveHbmBandwidth(2147483648, ddh100_),
-                  0.93248850f * h100_memory_bandwidth);
+       EffectiveHbmBandwidthMonotonicallyIncreasesWithTransferSize) {
+  constexpr int64_t k8GiB = 8LL * (1LL << 30);
+  for (const se::DeviceDescription* dev : {&dda100_, &ddh100_, &ddb200_}) {
+    float prev_bw = 0.0f;
+    for (int64_t dma_size = 8192; dma_size <= k8GiB; dma_size *= 2) {
+      float bw = GetEffectiveHbmBandwidth(dma_size, *dev);
+      EXPECT_GT(bw, prev_bw);
+      prev_bw = bw;
+    }
+  }
 }
 
-TEST_F(GpuDotFusionCostModelTest, EffectiveHbmBandwidthScalesWithDeviceInfo) {
-  se::DeviceDescription ddb200 = TestGpuDeviceInfo::B200SXMDeviceInfo();
-  const int64_t dma_size = 134217728;  // 128 MiB
-  float bw_h100 = GetEffectiveHbmBandwidth(dma_size, ddh100_);
-  float bw_b200 = GetEffectiveHbmBandwidth(dma_size, ddb200);
-  EXPECT_GT(bw_b200, bw_h100);
-  double expected_ratio = static_cast<double>(ddb200.memory_bandwidth()) /
-                          ddh100_.memory_bandwidth();
-  EXPECT_NEAR(bw_b200 / bw_h100, expected_ratio, 1e-4);
+// Verifies that normalized fractional bandwidth scales Ampere > Hopper >
+// Blackwell. Narrower memory buses with fewer pseudo-channels require less
+// in-flight concurrency to saturate memory pipelines, achieving higher
+// fractions of peak bandwidth at smaller transfer sizes.
+TEST_F(GpuDotFusionCostModelTest,
+       EffectiveHbmBandwidthFractionOrderingAcrossArchitectures) {
+  constexpr int64_t kTransferSizes[] = {
+      16 * 1024,         // 16 KiB
+      64 * 1024,         // 64 KiB
+      2 * 1024 * 1024,   // 2 MiB
+      8 * 1024 * 1024,   // 8 MiB
+      32 * 1024 * 1024,  // 32 MiB
+      128 * 1024 * 1024  // 128 MiB
+  };
+  for (int64_t dma_size : kTransferSizes) {
+    float frac_a100 = GetEffectiveHbmBandwidth(dma_size, dda100_) /
+                      dda100_.memory_bandwidth();
+    float frac_h100 = GetEffectiveHbmBandwidth(dma_size, ddh100_) /
+                      ddh100_.memory_bandwidth();
+    float frac_b200 = GetEffectiveHbmBandwidth(dma_size, ddb200_) /
+                      ddb200_.memory_bandwidth();
+
+    EXPECT_GT(frac_a100, frac_h100);
+    EXPECT_GT(frac_h100, frac_b200);
+  }
+}
+
+// Verifies that minimum transfer sizes are latency-bound and achieve a small
+// fraction (< 10%) of peak bandwidth across architectures.
+TEST_F(GpuDotFusionCostModelTest,
+       EffectiveHbmBandwidthMinTransferSizeIsLatencyBound) {
+  for (const se::DeviceDescription* dev : {&dda100_, &ddh100_, &ddb200_}) {
+    float first_frac =
+        GetEffectiveHbmBandwidth(8192, *dev) / dev->memory_bandwidth();
+    EXPECT_GT(first_frac, 0.0f);
+    EXPECT_LT(first_frac, 0.10f);
+  }
+}
+
+// Verifies that large asymptotic transfers approach full hardware saturation (>
+// 90% peak bandwidth) across architectures.
+TEST_F(GpuDotFusionCostModelTest,
+       EffectiveHbmBandwidthAsymptoticTransferApproachesHardwareSaturation) {
+  constexpr int64_t k8GiB = 8LL * (1LL << 30);
+  for (const se::DeviceDescription* dev : {&dda100_, &ddh100_, &ddb200_}) {
+    float last_frac =
+        GetEffectiveHbmBandwidth(k8GiB, *dev) / dev->memory_bandwidth();
+    EXPECT_GT(last_frac, 0.90f);
+    EXPECT_LE(last_frac, 1.0f);
+  }
+}
+
+TEST_F(GpuDotFusionCostModelTest,
+       EffectiveHbmBandwidthClampsBelowMinimumTransferSize) {
+  // DMA sizes below minimum table entry (8 KiB) clamp to the minimum entry.
+  EXPECT_FLOAT_EQ(GetEffectiveHbmBandwidth(4096, ddh100_),
+                  GetEffectiveHbmBandwidth(8192, ddh100_));
+}
+
+TEST_F(GpuDotFusionCostModelTest,
+       EffectiveHbmBandwidthClampsAboveMaximumTransferSize) {
+  constexpr int64_t k8GiB = 8LL * (1LL << 30);
+  constexpr int64_t k16GiB = 16LL * (1LL << 30);
+  // DMA sizes above maximum table entry (8 GiB) clamp to the maximum entry.
+  EXPECT_FLOAT_EQ(GetEffectiveHbmBandwidth(k16GiB, ddh100_),
+                  GetEffectiveHbmBandwidth(k8GiB, ddh100_));
+}
+
+TEST_F(GpuDotFusionCostModelTest,
+       EffectiveHbmBandwidthLinearlyInterpolatesBetweenTableEntries) {
+  float bw_8k = GetEffectiveHbmBandwidth(8192, ddh100_);
+  float bw_16k = GetEffectiveHbmBandwidth(16384, ddh100_);
+  EXPECT_FLOAT_EQ(GetEffectiveHbmBandwidth(12288, ddh100_),
+                  (bw_8k + bw_16k) / 2.0f);
+}
+
+TEST_F(GpuDotFusionCostModelTest,
+       EffectiveHbmBandwidthFallsBackToAmpereForOlderArchitectures) {
+  constexpr int64_t k128MiB = 128LL * (1LL << 20);
+  se::DeviceDescription dd_volta = TestGpuDeviceInfo::RTXA6000DeviceInfo(
+      se::GpuComputeCapability{se::CudaComputeCapability(7, 0)});
+  dd_volta.set_memory_bandwidth(900ULL * 1000 * 1000 * 1000);  // 900 GB/s
+  EXPECT_FLOAT_EQ(
+      GetEffectiveHbmBandwidth(k128MiB, dd_volta) / dd_volta.memory_bandwidth(),
+      GetEffectiveHbmBandwidth(k128MiB, dda100_) / dda100_.memory_bandwidth());
+}
+
+TEST_F(GpuDotFusionCostModelTest,
+       EffectiveHbmBandwidthFallsBackToBlackwellForFutureArchitectures) {
+  constexpr int64_t k128MiB = 128LL * (1LL << 20);
+  se::DeviceDescription dd_future = TestGpuDeviceInfo::RTXA6000DeviceInfo(
+      se::GpuComputeCapability{se::CudaComputeCapability(11, 0)});
+  dd_future.set_memory_bandwidth(10000ULL * 1000 * 1000 * 1000);  // 10 TB/s
+  EXPECT_FLOAT_EQ(
+      GetEffectiveHbmBandwidth(k128MiB, dd_future) /
+          dd_future.memory_bandwidth(),
+      GetEffectiveHbmBandwidth(k128MiB, ddb200_) / ddb200_.memory_bandwidth());
 }
 
 TEST_F(GpuDotFusionCostModelTest, GpuDotComputeBoundA100Bf16) {
@@ -641,12 +731,10 @@ backend_config={"sizes":["32"]}
 }
 
 TEST_F(GpuDotFusionCostModelTest, AmpereTileMDerate) {
-  se::DeviceDescription dda100 = TestGpuDeviceInfo::RTXA6000DeviceInfo(
-      se::GpuComputeCapability{se::CudaComputeCapability(8, 0)});
   double flops_small = GetEffectiveFlopsPerNsForTileSize(
-      /*tile_m=*/31, dda100, PrimitiveType::F16);
+      /*tile_m=*/31, dda100_, PrimitiveType::F16);
   double flops_full = GetEffectiveFlopsPerNsForTileSize(
-      /*tile_m=*/32, dda100, PrimitiveType::F16);
+      /*tile_m=*/32, dda100_, PrimitiveType::F16);
 
   ASSERT_GT(flops_full, 0);
   // tile_m < 32: 50% derate.
@@ -665,15 +753,87 @@ TEST_F(GpuDotFusionCostModelTest, HopperTileMDerate) {
 }
 
 TEST_F(GpuDotFusionCostModelTest, BlackwellTileMDerate) {
-  se::DeviceDescription ddb200 = TestGpuDeviceInfo::B200SXMDeviceInfo();
   double flops_small = GetEffectiveFlopsPerNsForTileSize(
-      /*tile_m=*/127, ddb200, PrimitiveType::BF16);
+      /*tile_m=*/127, ddb200_, PrimitiveType::BF16);
   double flops_full = GetEffectiveFlopsPerNsForTileSize(
-      /*tile_m=*/128, ddb200, PrimitiveType::BF16);
+      /*tile_m=*/128, ddb200_, PrimitiveType::BF16);
 
   ASSERT_GT(flops_full, 0);
   // tile_m < 128: 50% derate.
   EXPECT_NEAR(flops_small / flops_full, 0.50, 1e-4);
+}
+
+DotProblemInfo CreateDotInfo(PrimitiveType output_type) {
+  DotProblemInfo dot_info;
+  dot_info.lhs_element_type = output_type;
+  dot_info.rhs_element_type = output_type;
+  dot_info.output_element_type = output_type;
+  return dot_info;
+}
+
+BlockLevelParameters CreateBlockParams(int64_t num_warps) {
+  BlockLevelParameters params;
+  params.num_warps = num_warps;
+  return params;
+}
+
+TEST_F(GpuDotFusionCostModelTest,
+       CalculateRegistersPerThreadIncreasesWithTileSize) {
+  const DotProblemInfo dot_info = CreateDotInfo(PrimitiveType::F32);
+  const BlockLevelParameters block_params = CreateBlockParams(/*num_warps=*/4);
+
+  const int regs_small_tile = CalculateRegistersPerThread(
+      dot_info, DotTileSize{/*m=*/64, /*n=*/64, /*k=*/32, /*b=*/1},
+      block_params, ddh100_);
+  const int regs_large_tile = CalculateRegistersPerThread(
+      dot_info, DotTileSize{/*m=*/128, /*n=*/128, /*k=*/32, /*b=*/1},
+      block_params, ddh100_);
+
+  EXPECT_GT(regs_large_tile, regs_small_tile);
+}
+
+TEST_F(GpuDotFusionCostModelTest,
+       CalculateRegistersPerThreadDecreasesWithMoreWarps) {
+  const DotProblemInfo dot_info = CreateDotInfo(PrimitiveType::F32);
+  const DotTileSize tile{/*m=*/128, /*n=*/128, /*k=*/32, /*b=*/1};
+
+  const int regs_4_warps = CalculateRegistersPerThread(
+      dot_info, tile, CreateBlockParams(/*num_warps=*/4), ddh100_);
+  const int regs_8_warps = CalculateRegistersPerThread(
+      dot_info, tile, CreateBlockParams(/*num_warps=*/8), ddh100_);
+
+  EXPECT_LT(regs_8_warps, regs_4_warps);
+}
+
+TEST_F(GpuDotFusionCostModelTest,
+       CalculateRegistersPerThreadIncreasesWithOutputBitWidth) {
+  const DotTileSize tile{/*m=*/128, /*n=*/128, /*k=*/32, /*b=*/1};
+  const BlockLevelParameters block_params = CreateBlockParams(/*num_warps=*/4);
+
+  const int regs_f16 = CalculateRegistersPerThread(
+      CreateDotInfo(PrimitiveType::F16), tile, block_params, ddh100_);
+  const int regs_f32 = CalculateRegistersPerThread(
+      CreateDotInfo(PrimitiveType::F32), tile, block_params, ddh100_);
+  const int regs_f64 = CalculateRegistersPerThread(
+      CreateDotInfo(PrimitiveType::F64), tile, block_params, ddh100_);
+
+  EXPECT_GT(regs_f32, regs_f16);
+  EXPECT_GT(regs_f64, regs_f32);
+}
+
+TEST_F(GpuDotFusionCostModelTest,
+       CalculateRegistersPerThreadWithinRealisticBounds) {
+  const DotProblemInfo dot_info = CreateDotInfo(PrimitiveType::F32);
+  const BlockLevelParameters block_params = CreateBlockParams(/*num_warps=*/4);
+  const DotTileSize tile{/*m=*/128, /*n=*/128, /*k=*/64, /*b=*/1};
+
+  const int regs =
+      CalculateRegistersPerThread(dot_info, tile, block_params, ddh100_);
+
+  // Estimates must be strictly above base overhead (24) and within GPU hardware
+  // max (255).
+  EXPECT_GT(regs, 24);
+  EXPECT_LE(regs, 255);
 }
 
 }  // namespace
