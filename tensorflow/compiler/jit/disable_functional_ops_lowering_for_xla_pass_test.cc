@@ -36,6 +36,7 @@ namespace {
 
 absl::Status AddWhileNode(Graph* graph, absl::string_view name, Node** node) {
   return NodeBuilder(name, "While")
+      .Input(std::vector<NodeBuilder::NodeOut>{})
       .Attr("_lower_using_switch_merge", true)
       .Attr("cond", NameAttrList())
       .Attr("body", NameAttrList())
