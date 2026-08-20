@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/build_xla_ops_pass.h"
 #include "tensorflow/compiler/jit/clone_constants_for_better_clustering.h"
 #include "tensorflow/compiler/jit/cluster_scoping_pass.h"
+#include "tensorflow/compiler/jit/disable_functional_ops_lowering_for_xla_pass.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/encapsulate_xla_computations_pass.h"
 #include "tensorflow/compiler/jit/force_xla_constants_on_host_pass.h"
@@ -23,42 +24,9 @@ limitations under the License.
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
 #include "tensorflow/compiler/jit/partially_decluster_pass.h"
 #include "tensorflow/compiler/jit/report_clustering_info_pass.h"
-#include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
-#include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
-
-namespace {
-
-class DisableFunctionalOpsLoweringForXlaPass : public GraphOptimizationPass {
- public:
-  absl::Status Run(const GraphOptimizationPassOptions& options) override {
-    if (options.session_options == nullptr || options.graph == nullptr) {
-      return absl::OkStatus();
-    }
-    Graph* graph = options.graph->get();
-    if (graph == nullptr) {
-      return absl::OkStatus();
-    }
-    if (GetGlobalJitLevelForGraph(options) < OptimizerOptions::ON_1) {
-      return absl::OkStatus();
-    }
-    for (Node* n : graph->op_nodes()) {
-      if (!n->IsIfNode() && !n->IsCaseNode() && !n->IsWhileNode()) continue;
-      bool lower = false;
-      if (TryGetNodeAttr(n->attrs(), "_lower_using_switch_merge", &lower) &&
-          lower) {
-        n->ClearAttr("_lower_using_switch_merge");
-      }
-    }
-    return absl::OkStatus();
-  }
-};
-
-}  // namespace
 
 // PRE_PLACEMENT passes:
 
