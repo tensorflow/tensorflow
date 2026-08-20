@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/literal_util.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -695,6 +696,212 @@ TEST_F(HloInstructionUtilsTest, IsTopKStable) {
   EXPECT_FALSE(IsTopKStable(topk_unstable));
   EXPECT_TRUE(IsTopKStable(topk_default));
 }
+
+TEST_F(HloInstructionUtilsTest, IsAllowedAsyncIntermediary) {
+  const char* hlo_text = R"(
+    HloModule test
+    ENTRY main {
+      p0 = f32[2,4] parameter(0)
+      sharding = f32[2,4] custom-call(p0), custom_call_target="Sharding"
+      ltg = f32[4,4] custom-call(p0), custom_call_target="LocalToGlobalShape"
+      gtl = f32[4,4] custom-call(p0), custom_call_target="GlobalToLocalShape"
+      sdy_ltg = f32[4,4] custom-call(p0), custom_call_target="xla.sdy.LocalToGlobalShape"
+      sdy_gtl = f32[4,4] custom-call(p0), custom_call_target="xla.sdy.GlobalToLocalShape"
+      sdy_frs = f32[2,4] custom-call(p0), custom_call_target="xla.sdy.FuncResultSharding"
+      other_cc = f32[2,4] custom-call(p0), custom_call_target="SomeCustomCall"
+      copy = f32[2,4] copy(p0)
+      tup = (f32[2,4]) tuple(p0)
+      gte = f32[2,4] get-tuple-element(tup), index=0
+      barrier = f32[2,4] opt-barrier(p0)
+      ROOT add = f32[2,4] add(p0, p0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  auto* sharding = FindInstruction(m.get(), "sharding");
+  auto* ltg = FindInstruction(m.get(), "ltg");
+  auto* gtl = FindInstruction(m.get(), "gtl");
+  auto* sdy_ltg = FindInstruction(m.get(), "sdy_ltg");
+  auto* sdy_gtl = FindInstruction(m.get(), "sdy_gtl");
+  auto* sdy_frs = FindInstruction(m.get(), "sdy_frs");
+  auto* other_cc = FindInstruction(m.get(), "other_cc");
+  auto* copy = FindInstruction(m.get(), "copy");
+  auto* tup = FindInstruction(m.get(), "tup");
+  auto* gte = FindInstruction(m.get(), "gte");
+  auto* barrier = FindInstruction(m.get(), "barrier");
+  auto* add = FindInstruction(m.get(), "add");
+
+  EXPECT_TRUE(sharding->IsAllowedAsyncIntermediaryCustomCall());
+  EXPECT_TRUE(sharding->IsAllowedAsyncIntermediary());
+  EXPECT_TRUE(ltg->IsAllowedAsyncIntermediaryCustomCall());
+  EXPECT_TRUE(ltg->IsAllowedAsyncIntermediary());
+  EXPECT_TRUE(gtl->IsAllowedAsyncIntermediaryCustomCall());
+  EXPECT_TRUE(gtl->IsAllowedAsyncIntermediary());
+  EXPECT_TRUE(sdy_ltg->IsAllowedAsyncIntermediaryCustomCall());
+  EXPECT_TRUE(sdy_ltg->IsAllowedAsyncIntermediary());
+  EXPECT_TRUE(sdy_gtl->IsAllowedAsyncIntermediaryCustomCall());
+  EXPECT_TRUE(sdy_gtl->IsAllowedAsyncIntermediary());
+  EXPECT_TRUE(sdy_frs->IsAllowedAsyncIntermediaryCustomCall());
+  EXPECT_TRUE(sdy_frs->IsAllowedAsyncIntermediary());
+  EXPECT_FALSE(other_cc->IsAllowedAsyncIntermediaryCustomCall());
+  EXPECT_FALSE(other_cc->IsAllowedAsyncIntermediary());
+
+  EXPECT_TRUE(copy->IsAllowedAsyncIntermediary());
+  EXPECT_TRUE(tup->IsAllowedAsyncIntermediary());
+  EXPECT_TRUE(gte->IsAllowedAsyncIntermediary());
+  EXPECT_TRUE(barrier->IsAllowedAsyncIntermediary());
+  EXPECT_FALSE(add->IsAllowedAsyncIntermediary());
+}
+
+TEST_F(HloInstructionUtilsTest, TraceAndPropagateDataflow) {
+  const char* hlo_text = R"(
+    HloModule test
+    ENTRY main {
+      p0 = f32[2,4] parameter(0)
+      start = (f32[2,4]) custom-call(p0), custom_call_target="all-gather-start"
+      gte0 = f32[2,4] get-tuple-element(start), index=0
+      copy = f32[2,4] copy(gte0)
+      sharding = f32[2,4] custom-call(copy), custom_call_target="Sharding"
+      sdy_ltg = f32[2,4] custom-call(sharding), custom_call_target="xla.sdy.LocalToGlobalShape"
+      tup = (f32[2,4]) tuple(sdy_ltg)
+      gte1 = f32[2,4] get-tuple-element(tup), index=0
+      barrier = f32[2,4] opt-barrier(gte1)
+      done = f32[2,4] custom-call(barrier), custom_call_target="all-gather-done"
+
+      ROOT dummy = tuple(done)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  auto* start = FindInstruction(m.get(), "start");
+  auto* gte0 = FindInstruction(m.get(), "gte0");
+  auto* copy = FindInstruction(m.get(), "copy");
+  auto* sharding = FindInstruction(m.get(), "sharding");
+  auto* sdy_ltg = FindInstruction(m.get(), "sdy_ltg");
+  auto* tup = FindInstruction(m.get(), "tup");
+  auto* gte1 = FindInstruction(m.get(), "gte1");
+  auto* barrier = FindInstruction(m.get(), "barrier");
+  auto* done = FindInstruction(m.get(), "done");
+  auto* p0 = FindInstruction(m.get(), "p0");
+
+  // TraceDataflowPath: target overload and predicate overload.
+  auto path = async::TraceDataflowPath(done, start);
+  ASSERT_TRUE(path.has_value());
+  EXPECT_EQ(path->size(), 7);
+
+  auto pred_path =
+      async::TraceDataflowPath(done, [](const HloInstruction* inst) {
+        return inst->IsCustomCall("all-gather-start");
+      });
+  ASSERT_TRUE(pred_path.has_value());
+  EXPECT_EQ(pred_path->first, start);
+  EXPECT_EQ(pred_path->second.size(), 7);
+
+  // TraceAsyncDataflow const and non-const with step recording.
+  std::vector<async::AsyncTraceStep> steps;
+  EXPECT_EQ(async::TraceAsyncDataflow(gte1, start, &steps), start);
+  EXPECT_EQ(steps.size(), 6);
+
+  const HloInstruction* const_gte1 = gte1;
+  std::vector<async::AsyncTraceStepT<const HloInstruction>> const_steps;
+  EXPECT_EQ(async::TraceAsyncDataflow(const_gte1, start, &const_steps), start);
+  EXPECT_EQ(const_steps.size(), 6);
+
+  // Negative and boundary cases.
+  EXPECT_EQ(async::TraceAsyncDataflow(gte1, p0), nullptr);
+  EXPECT_EQ(
+      async::TraceAsyncDataflow(static_cast<HloInstruction*>(nullptr), start),
+      nullptr);
+
+  // PropagateDataflow: forward shape update through intermediaries.
+  HloInstruction* replacement = m->entry_computation()->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2<float>(
+          {{1.0f, 2.0f}, {3.0f, 4.0f}, {5.0f, 6.0f}, {7.0f, 8.0f}})));
+  replacement = m->entry_computation()->AddInstruction(
+      HloInstruction::CreateTuple({replacement}));
+
+  TF_ASSERT_OK_AND_ASSIGN(HloInstruction * propagated,
+                          async::PropagateDataflow(*path, replacement));
+
+  EXPECT_EQ(gte0->shape(), ShapeUtil::MakeShape(F32, {4, 2}));
+  EXPECT_EQ(copy->shape(), ShapeUtil::MakeShape(F32, {4, 2}));
+  EXPECT_EQ(sharding->shape(), ShapeUtil::MakeShape(F32, {4, 2}));
+  EXPECT_EQ(sdy_ltg->shape(), ShapeUtil::MakeShape(F32, {4, 2}));
+  EXPECT_EQ(tup->shape(),
+            ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {4, 2})}));
+  EXPECT_EQ(gte1->shape(), ShapeUtil::MakeShape(F32, {4, 2}));
+  EXPECT_EQ(barrier->shape(), ShapeUtil::MakeShape(F32, {4, 2}));
+  EXPECT_EQ(propagated, barrier);
+}
+
+TEST_F(HloInstructionUtilsTest, FindAsyncTraversal) {
+  const char* hlo_text = R"(
+    HloModule test
+
+    async_comp {
+      p0 = f32[2,4] parameter(0)
+      p1 = f32[2,4] parameter(1)
+      ROOT add = f32[2,4] add(p0, p1)
+    }
+
+    ENTRY main {
+      p0 = f32[2,4] parameter(0)
+      p1 = f32[2,4] parameter(1)
+      start = ((f32[2,4]), (), s32[]) call-start(p0), to_apply=async_comp
+      update = ((f32[2,4], f32[2,4]), f32[2,4], ()) call-update(start, p1)
+      done = f32[2,4] call-done(update)
+
+      ag_start = (f32[2,4], f32[4,4]) all-gather-start(p0), dimensions={0}
+      ag_done = f32[4,4] all-gather-done(ag_start)
+
+      ROOT dummy = (f32[2,4], f32[4,4]) tuple(done, ag_done)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnUnverifiedModule(hlo_text));
+  auto* start = FindInstruction(m.get(), "start");
+  auto* update = FindInstruction(m.get(), "update");
+  auto* done = FindInstruction(m.get(), "done");
+  auto* ag_start = FindInstruction(m.get(), "ag_start");
+  auto* ag_done = FindInstruction(m.get(), "ag_done");
+
+  // FindAsyncProducer vs FindAsyncStart across AsyncUpdate.
+  EXPECT_EQ(async::FindAsyncProducer(done->operand(0)), update);
+  EXPECT_EQ(async::FindAsyncStart(done->operand(0)), start);
+  EXPECT_EQ(async::FindAsyncStart(done), start);
+  EXPECT_EQ(async::FindAsyncProducer(update->operand(0)), start);
+  EXPECT_EQ(async::FindAsyncStart(update->operand(0)), start);
+
+  // FindAsyncConsumer vs FindAsyncDone across AsyncUpdate.
+  EXPECT_EQ(async::FindAsyncConsumer(start), update);
+  EXPECT_EQ(async::FindAsyncDone(start), done);
+  EXPECT_EQ(async::FindAsyncConsumer(update), done);
+  EXPECT_EQ(async::FindAsyncDone(update), done);
+  EXPECT_EQ(async::FindAsyncConsumer(done), nullptr);
+  EXPECT_EQ(async::FindAsyncDone(done), done);
+
+  // Intermediary tracing.
+  HloComputation* comp = m->entry_computation();
+  HloInstruction* barrier = comp->AddInstruction(HloInstruction::CreateUnary(
+      update->shape(), HloOpcode::kOptimizationBarrier, update));
+  HloInstruction* tup =
+      comp->AddInstruction(HloInstruction::CreateTuple({barrier}));
+  HloInstruction* gte = comp->AddInstruction(
+      HloInstruction::CreateGetTupleElement(barrier->shape(), tup, 0));
+  ASSERT_TRUE(done->ReplaceOperandWith(0, gte).ok());
+
+  EXPECT_EQ(async::FindAsyncProducer(gte), update);
+  EXPECT_EQ(async::FindAsyncStart(gte), start);
+  EXPECT_EQ(async::FindAsyncConsumer(barrier), done);
+  EXPECT_EQ(async::FindAsyncDone(barrier), done);
+
+  // Legacy collective operations.
+  EXPECT_EQ(async::FindAsyncStart(ag_done), ag_start);
+  EXPECT_EQ(async::FindAsyncConsumer(ag_start), ag_done);
+  EXPECT_EQ(async::FindAsyncDone(ag_start), ag_done);
+  EXPECT_EQ(async::FindAsyncDone(ag_done), ag_done);
+}
+
 }  // namespace
 
 }  // namespace hlo_instruction_utils
