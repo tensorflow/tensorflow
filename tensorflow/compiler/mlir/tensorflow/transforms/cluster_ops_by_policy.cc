@@ -263,7 +263,7 @@ LogicalResult ClusteringState::VerifyDominanceProperty(
 
     // Block arguments do not really participate in clustering, they are only
     // used to connect independent operation using the same argument.
-    if (member.source.is<BlockArgument *>()) continue;
+    if (isa<BlockArgument*>(member.source)) continue;
 
     Operation *op = member.source.dyn_cast<Operation *>();
     assert(op && "member operation must be not null");
