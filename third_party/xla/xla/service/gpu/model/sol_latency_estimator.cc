@@ -439,12 +439,14 @@ SolLatencyEstimator::Create(
 
 /*static*/ bool SolLatencyEstimator::IsSupportedForModule(
     const HloModule& module, const se::DeviceDescription& gpu_device_info) {
+  const se::GpuComputeCapability& cc = gpu_device_info.gpu_compute_capability();
   bool is_supported_device =
       gpu_device_info.cuda_compute_capability().IsHopper() ||
-      gpu_device_info.cuda_compute_capability().IsBlackwell();
+      gpu_device_info.cuda_compute_capability().IsBlackwell() ||
+      (cc.IsRocm() && cc.rocm_compute_capability()->gfx9_mi350());
   if (IsPassEnabledAtOptimizationEffort<LatencyHidingScheduler>(module)) {
     // If the user enabled opt effort we turn the estimator on if we're
-    // compiling for Hopper/Blackwell.
+    // compiling for a supported device.
     return is_supported_device;
   }
   // If this flag is on by default then we provide users an escape hatch in case
@@ -454,8 +456,9 @@ SolLatencyEstimator::Create(
            .xla_gpu_enable_analytical_sol_latency_estimator()) {
     return false;
   }
-  // Otherwise we are more conservative and we turn it on only for
-  // Hopper/Blackwell and if `module` contains only supported collectives.
+  // Otherwise we are more conservative and we turn it on only for supported
+  // devices (Hopper/Blackwell/gfx950) and if `module` contains only supported
+  // collectives.
   return is_supported_device && HasOnlySupportedCollectives(module);
 }
 

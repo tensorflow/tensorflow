@@ -67,6 +67,48 @@ diff --ruN a/stablehlo/stablehlo/dialect/Serialization.cpp b/stablehlo/stablehlo
      return nullptr;
    }
  
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
+--- stablehlo/stablehlo/dialect/TypeInference.cpp
++++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -2219,13 +2219,20 @@
+                              rankedLhsType, " and ", rankedRhsType, ".");
+ 
+   // convolution_c27
++  auto isFp8Type = [](mlir::Type type) {
++    return llvm::isa<mlir::Float8E4M3Type, mlir::Float8E5M2Type,
++                     mlir::Float8E4M3FNType>(type);
++  };
+   if (!anyQuantized<quant::QuantizedType>({rankedLhsType, rankedRhsType}) &&
+       !isCompatibleForHloTypeInference(rankedLhsType.getElementType(),
+-                                       rankedRhsType.getElementType()))
++                                       rankedRhsType.getElementType()) &&
++      !(isFp8Type(rankedLhsType.getElementType()) &&
++        isFp8Type(rankedRhsType.getElementType()))) {
+     return emitOptionalError(
+         location, "expects lhs and rhs to have compatible element type. Got: ",
+         rankedLhsType.getElementType(), " and ",
+         rankedRhsType.getElementType());
++  }
+ 
+   if (failed(verifyConvolutionAttributes(
+           location, lhsType, rhsType, inputBatchDimension,
+@@ -2546,9 +2553,15 @@
+                              rankedLhsType, " and ", rankedRhsType, ".");
+ 
+   // dynamic_conv_c27
++  auto isFp8Type = [](mlir::Type type) {
++    return llvm::isa<mlir::Float8E4M3Type, mlir::Float8E5M2Type,
++                     mlir::Float8E4M3FNType>(type);
++  };
+   if (!anyQuantized<quant::QuantizedType>({rankedLhsType, rankedRhsType}) &&
+       !isCompatibleForHloTypeInference(rankedLhsType.getElementType(),
+-                                       rankedRhsType.getElementType()))
++                                       rankedRhsType.getElementType()) &&
++      !(isFp8Type(rankedLhsType.getElementType()) &&
++        isFp8Type(rankedRhsType.getElementType())))
+     return emitOptionalError(
+         location, "expects lhs and rhs to have compatible element type. Got: ",
+         rankedLhsType.getElementType(), " and ",
 diff --ruN a/stablehlo/stablehlo/tests/TestUtils.cpp b/stablehlo/stablehlo/tests/TestUtils.cpp
 --- stablehlo/stablehlo/tests/TestUtils.cpp
 +++ stablehlo/stablehlo/tests/TestUtils.cpp

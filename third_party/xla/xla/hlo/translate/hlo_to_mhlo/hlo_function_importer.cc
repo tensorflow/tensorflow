@@ -2126,6 +2126,9 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
                   .clone(mlir::getElementTypeOrSelf(lhs));
           rhs = mlir::stablehlo::ConvertOp::create(*func_builder, loc,
                                                    convert_op_return_type, rhs);
+        } else if (primitive_util::IsF8Type(lhs_element_type) &&
+                   primitive_util::IsF8Type(rhs_element_type)) {
+          // Allow mixed FP8 without conversion.
         } else {
           return InvalidArgument(
               "Unsupported conversion between element types of operands (%s "
