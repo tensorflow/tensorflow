@@ -74,6 +74,37 @@ TEST(MfccOpTest, SimpleTest) {
       1e-3);
 }
 
+TEST(MfccOpTest, MultiChannelTest) {
+  Scope root = Scope::DisabledShapeInferenceScope();
+
+  Tensor spectrogram_tensor(DT_FLOAT, TensorShape({2, 1, 513}));
+  test::FillIota<float>(&spectrogram_tensor, 1.0f);
+
+  Output spectrogram_const_op = Const(root.WithOpName("spectrogram_const_op"),
+                                      Input::Initializer(spectrogram_tensor));
+
+  Output sample_rate_const_op =
+      Const(root.WithOpName("sample_rate_const_op"), 22050);
+
+  Mfcc mfcc_op = Mfcc(root.WithOpName("mfcc_op"), spectrogram_const_op,
+                      sample_rate_const_op);
+
+  TF_ASSERT_OK(root.status());
+
+  ClientSession session(root);
+  std::vector<Tensor> outputs;
+
+  TF_EXPECT_OK(
+      session.Run(ClientSession::FeedType(), {mfcc_op.output}, &outputs));
+
+  const Tensor& mfcc_tensor = outputs[0];
+
+  EXPECT_EQ(3, mfcc_tensor.dims());
+  EXPECT_EQ(13, mfcc_tensor.dim_size(2));
+  EXPECT_EQ(1, mfcc_tensor.dim_size(1));
+  EXPECT_EQ(2, mfcc_tensor.dim_size(0));
+}
+
 }  // namespace
 }  // namespace ops
 }  // namespace tensorflow

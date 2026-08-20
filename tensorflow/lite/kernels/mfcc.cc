@@ -86,6 +86,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(input_wav), 3);
   TF_LITE_ENSURE_EQ(context, NumElements(input_rate), 1);
 
+  TF_LITE_ENSURE(context, input_wav->dims->data[0] > 0);
+  TF_LITE_ENSURE(context, input_wav->dims->data[1] > 0);
+  TF_LITE_ENSURE(context, input_wav->dims->data[2] > 0);
+  TF_LITE_ENSURE(context, params->dct_coefficient_count > 0);
+  TF_LITE_ENSURE(context, params->filterbank_channel_count > 0);
+
   TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteFloat32);
   TF_LITE_ENSURE_TYPES_EQ(context, input_wav->type, output->type);
   TF_LITE_ENSURE_TYPES_EQ(context, input_rate->type, kTfLiteInt32);
@@ -117,11 +123,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
+  TF_LITE_ENSURE(context, input_wav->dims->data[0] > 0);
+  TF_LITE_ENSURE(context, input_wav->dims->data[1] > 0);
+  TF_LITE_ENSURE(context, input_wav->dims->data[2] > 0);
+  TF_LITE_ENSURE(context, params->dct_coefficient_count > 0);
+
   const int32 sample_rate = *GetTensorData<int>(input_rate);
 
-  const int spectrogram_channels = input_wav->dims->data[2];
-  const int spectrogram_samples = input_wav->dims->data[1];
-  const int audio_channels = input_wav->dims->data[0];
+  const int64_t spectrogram_channels = input_wav->dims->data[2];
+  const int64_t spectrogram_samples = input_wav->dims->data[1];
+  const int64_t audio_channels = input_wav->dims->data[0];
+  const int64_t dct_coefficient_count = params->dct_coefficient_count;
 
   internal::Mfcc mfcc;
   mfcc.set_upper_frequency_limit(params->upper_frequency_limit);
@@ -129,14 +141,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   mfcc.set_filterbank_channel_count(params->filterbank_channel_count);
   mfcc.set_dct_coefficient_count(params->dct_coefficient_count);
 
-  mfcc.Initialize(spectrogram_channels, sample_rate);
+  TF_LITE_ENSURE(context, mfcc.Initialize(spectrogram_channels, sample_rate));
 
   const float* spectrogram_flat = GetTensorData<float>(input_wav);
   float* output_flat = GetTensorData<float>(output);
 
-  for (int audio_channel = 0; audio_channel < audio_channels; ++audio_channel) {
-    for (int spectrogram_sample = 0; spectrogram_sample < spectrogram_samples;
-         ++spectrogram_sample) {
+  for (int64_t audio_channel = 0; audio_channel < audio_channels;
+       ++audio_channel) {
+    for (int64_t spectrogram_sample = 0;
+         spectrogram_sample < spectrogram_samples; ++spectrogram_sample) {
       const float* sample_data =
           spectrogram_flat +
           (audio_channel * spectrogram_samples * spectrogram_channels) +
@@ -147,11 +160,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       mfcc.Compute(mfcc_input, &mfcc_output);
       TF_LITE_ENSURE_EQ(context, params->dct_coefficient_count,
                         mfcc_output.size());
-      float* output_data = output_flat +
-                           (audio_channel * spectrogram_samples *
-                            params->dct_coefficient_count) +
-                           (spectrogram_sample * params->dct_coefficient_count);
-      for (int i = 0; i < params->dct_coefficient_count; ++i) {
+      float* output_data =
+          output_flat +
+          (audio_channel * spectrogram_samples * dct_coefficient_count) +
+          (spectrogram_sample * dct_coefficient_count);
+      for (int64_t i = 0; i < params->dct_coefficient_count; ++i) {
         output_data[i] = mfcc_output[i];
       }
     }

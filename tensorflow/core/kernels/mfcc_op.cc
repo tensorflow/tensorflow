@@ -52,9 +52,22 @@ class MfccOp : public OpKernel {
                     sample_rate_tensor.shape().DebugString(), " instead.")));
     const int32_t sample_rate = sample_rate_tensor.scalar<int32_t>()();
 
-    const int spectrogram_channels = spectrogram.dim_size(2);
-    const int spectrogram_samples = spectrogram.dim_size(1);
-    const int audio_channels = spectrogram.dim_size(0);
+    const int64_t spectrogram_channels = spectrogram.dim_size(2);
+    const int64_t spectrogram_samples = spectrogram.dim_size(1);
+    const int64_t audio_channels = spectrogram.dim_size(0);
+    const int64_t dct_coefficient_count = dct_coefficient_count_;
+
+    OP_REQUIRES(
+        context,
+        spectrogram_channels > 0 && spectrogram_samples > 0 &&
+            audio_channels > 0,
+        absl::InvalidArgumentError(
+            absl::StrCat("spectrogram dimensions must be positive, got ",
+                         spectrogram.shape().DebugString())));
+    OP_REQUIRES(context, dct_coefficient_count_ > 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("dct_coefficient_count must be positive, got ",
+                                 dct_coefficient_count_)));
 
     Mfcc mfcc;
     mfcc.set_upper_frequency_limit(upper_frequency_limit_);
@@ -79,10 +92,10 @@ class MfccOp : public OpKernel {
     const float* spectrogram_flat = spectrogram.flat<float>().data();
     float* output_flat = output_tensor->flat<float>().data();
 
-    for (int audio_channel = 0; audio_channel < audio_channels;
+    for (int64_t audio_channel = 0; audio_channel < audio_channels;
          ++audio_channel) {
-      for (int spectrogram_sample = 0; spectrogram_sample < spectrogram_samples;
-           ++spectrogram_sample) {
+      for (int64_t spectrogram_sample = 0;
+           spectrogram_sample < spectrogram_samples; ++spectrogram_sample) {
         const float* sample_data =
             spectrogram_flat +
             (audio_channel * spectrogram_samples * spectrogram_channels) +
@@ -94,9 +107,9 @@ class MfccOp : public OpKernel {
         DCHECK_EQ(dct_coefficient_count_, mfcc_output.size());
         float* output_data =
             output_flat +
-            (audio_channel * spectrogram_samples * dct_coefficient_count_) +
-            (spectrogram_sample * dct_coefficient_count_);
-        for (int i = 0; i < dct_coefficient_count_; ++i) {
+            (audio_channel * spectrogram_samples * dct_coefficient_count) +
+            (spectrogram_sample * dct_coefficient_count);
+        for (int64_t i = 0; i < dct_coefficient_count_; ++i) {
           output_data[i] = mfcc_output[i];
         }
       }
