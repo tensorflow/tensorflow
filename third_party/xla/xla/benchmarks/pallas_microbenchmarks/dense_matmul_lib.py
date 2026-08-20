@@ -49,6 +49,8 @@ class DenseMatmulConfig:
     rhs_dtype: The dtype of the second operand.
     out_dtype: The dtype of the output.
     acc_dtype: The dtype of the accumulator.
+    subblock_m: Subblock size in the m dimension on which the matmuls are
+      emitted.
   """
   m: int
   k: int
@@ -63,6 +65,7 @@ class DenseMatmulConfig:
   rhs_dtype: jnp.dtype
   out_dtype: jnp.dtype
   acc_dtype: jnp.dtype
+  subblock_m: int | None = None
 
 
 def dense_matmul_kernel(
@@ -88,6 +91,7 @@ def dense_matmul_kernel(
       cfg.out_dtype,
   )
   acc_dtype = cfg.acc_dtype
+  subblock_m = cfg.subblock_m or block_m
 
   grid_m = math.ceil(m / block_m)
   grid_n = math.ceil(n / block_n)
@@ -105,12 +109,20 @@ def dense_matmul_kernel(
     def init():
       acc_ref[...] = jnp.zeros_like(acc_ref)
 
-    matmul = jnp.dot(
-        x_tile_ref[...],
-        y_tile_ref[...],
-        preferred_element_type=acc_ref.dtype,
-    )
-    acc_ref[...] = acc_ref[...] + matmul
+    num_iters = math.ceil(block_m / subblock_m)
+    for i in range(num_iters):
+      x = x_tile_ref[
+          i * subblock_m : (i + 1) * subblock_m,
+          :,
+      ]
+      matmul = jnp.dot(
+          x,
+          y_tile_ref[...],
+          preferred_element_type=acc_ref.dtype,
+      )
+      acc_ref[i * subblock_m : (i + 1) * subblock_m, :] = (
+          acc_ref[i * subblock_m : (i + 1) * subblock_m, :] + matmul
+      )
 
     @pl.when(pl.program_id(2) == grid_k - 1)
     def store():

@@ -376,6 +376,28 @@ onednn_cc_test(
     ],
 )
 
+onednn_cc_test(
+    name = "onednn_verbose_test",
+    srcs = ["onednn_verbose_test.cc"],
+    copts = tsl_copts(),
+    deps = [
+        "//xla:array2d",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla/backends/cpu/runtime:buffer_allocations",
+        "//xla/backends/cpu/runtime:thunk",
+        "//xla/backends/cpu/runtime:thunk_testlib",
+        "//xla/backends/cpu/runtime/onednn:onednn_op_thunk",
+        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_googletest//:gtest_main",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
 xla_test(
     name = "cpu_copy_test",
     srcs = ["cpu_copy_test.cc"],

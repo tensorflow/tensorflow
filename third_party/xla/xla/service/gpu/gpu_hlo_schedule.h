@@ -48,6 +48,7 @@ struct ScheduleMetadata {
 // Defines the scheduler config to be used by LHS.
 SchedulerConfig MakeGPUSchedulerConfig(uint64_t memory_limit,
                                        int64_t overlap_limit,
+                                       int64_t scale_up_overlap_limit,
                                        int64_t async_compute_limit);
 
 // Resolves the configured SchedulerMemoryFencing threshold. A negative value
