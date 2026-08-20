@@ -1936,6 +1936,86 @@ TEST_F(ConstrainedGlobalDecreasingSizeBestFitHeapTest,
   EXPECT_EQ(2, result.heap_results.size());
 }
 
+// Returns true if both buffers were assigned to the same heap (page).
+static bool InSameHeap(const HeapSimulator::Result<HloValue>& result,
+                       const HloValue* x, const HloValue* y) {
+  for (const auto& heap_result : result.heap_results) {
+    if (heap_result.chunk_map.contains(x) &&
+        heap_result.chunk_map.contains(y)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+TEST_F(ConstrainedGlobalDecreasingSizeBestFitHeapTest,
+       PhaseWindowEndClustersByExpiry) {
+  // Three mutually-overlapping buffers with distinct sizes and distinct end
+  // times:
+  //   a: size 40, live [0, 5]  (expires last)
+  //   b: size 35, live [1, 3]  (expires first)
+  //   c: size 10, live [2, 4]  (expires in the middle)
+  // With a per-heap (page) size limit of 50, a and b cannot share a page
+  // (75 > 50), but the small buffer c fits alongside either one.
+  //
+  //  - kSpatial orders by decreasing size (a, b, c), so the small buffer is
+  //    packed with the largest buffer: pages {a, c} and {b}.
+  //  - kPhaseWindowEnd orders by ascending end time (b, c, a), so the two
+  //    earliest-expiring buffers are grouped: pages {b, c} and {a}. This is the
+  //    expiry clustering that lets the runtime pager retire a whole page at
+  //    once (and, with dead-page elision, discard it without a write-back).
+  auto build =
+      [&](GlobalDecreasingSizeBestFitHeap<HloValue>::PackingStrategy strategy) {
+        ConstrainedGlobalDecreasingSizeBestFitHeap heap(
+            /*size_limit_per_heap=*/50,
+            /*alignment=*/1, strategy);
+        heap.Alloc(buffer_a_, 40);  // start 0
+        heap.Alloc(buffer_b_, 35);  // start 1
+        heap.Alloc(buffer_c_, 10);  // start 2
+        heap.Free(buffer_b_, 35);   // b end 3
+        heap.Free(buffer_c_, 10);   // c end 4
+        heap.Free(buffer_a_, 40);   // a end 5
+        return heap.Finish();
+      };
+
+  ASSERT_OK_AND_ASSIGN(
+      const HeapSimulator::Result<HloValue> spatial,
+      build(GlobalDecreasingSizeBestFitHeap<HloValue>::kSpatial));
+  EXPECT_EQ(2, spatial.heap_results.size());
+  EXPECT_TRUE(InSameHeap(spatial, buffer_a_, buffer_c_));
+  EXPECT_FALSE(InSameHeap(spatial, buffer_b_, buffer_c_));
+
+  ASSERT_OK_AND_ASSIGN(
+      const HeapSimulator::Result<HloValue> end_time,
+      build(GlobalDecreasingSizeBestFitHeap<HloValue>::kPhaseWindowEnd));
+  EXPECT_EQ(2, end_time.heap_results.size());
+  EXPECT_TRUE(InSameHeap(end_time, buffer_b_, buffer_c_));
+  EXPECT_FALSE(InSameHeap(end_time, buffer_a_, buffer_c_));
+}
+
+TEST_F(ConstrainedGlobalDecreasingSizeBestFitHeapTest,
+       PhaseWindowOrdersByStartTime) {
+  // Same three buffers as above. kPhaseWindow orders by ascending START time
+  // (a, b, c). Here that coincides with decreasing size, so the packing matches
+  // kSpatial: pages {a, c} and {b}. This pins the start-time ordering as the
+  // baseline that kPhaseWindowEnd refines.
+  ConstrainedGlobalDecreasingSizeBestFitHeap heap(
+      /*size_limit_per_heap=*/50, /*alignment=*/1,
+      GlobalDecreasingSizeBestFitHeap<HloValue>::kPhaseWindow);
+  heap.Alloc(buffer_a_, 40);  // start 0
+  heap.Alloc(buffer_b_, 35);  // start 1
+  heap.Alloc(buffer_c_, 10);  // start 2
+  heap.Free(buffer_b_, 35);
+  heap.Free(buffer_c_, 10);
+  heap.Free(buffer_a_, 40);
+
+  ASSERT_OK_AND_ASSIGN(const HeapSimulator::Result<HloValue> result,
+                       heap.Finish());
+  EXPECT_EQ(2, result.heap_results.size());
+  EXPECT_TRUE(InSameHeap(result, buffer_a_, buffer_c_));
+  EXPECT_FALSE(InSameHeap(result, buffer_b_, buffer_c_));
+}
+
 class IntervalTreeTest : public ::testing::Test {};
 
 TEST_F(IntervalTreeTest, InsertAndRemove) {

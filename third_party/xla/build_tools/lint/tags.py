@@ -56,6 +56,11 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "config-cuda-only": (
         "Meaningless in OSS as all GPU tests are built with `--config=cuda`"
     ),
+    "depends-on-libcuda-in-compilation": (
+        "Target executes a binary in compilation that links libcuda.so and"
+        " therefore cannot be built without the CUDA SDK installed or"
+        " --config=hermetic_cuda_umd"
+    ),
     # GPU tags
     "requires-gpu": (
         "Test requires GPU to execute. Fallback if neither CUDA nor ROCm is"
@@ -72,8 +77,9 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "requires-gpu-sm100-only": "Requires exactly sm100.",
     "requires-gpu-sm103-only": "Requires exactly sm103.",
     "requires-gpu-sm120-only": "Requires exactly sm120.",
-    "full": "Test requires a full GPU, not a partitioned one. No effect in"
-            " OSS.",
+    "full": (
+        "Test requires a full GPU, not a partitioned one. No effect in OSS."
+    ),
     "gpu": "Catch-all tag for targets that should be built/tested on GPU CI",
     "cpu": "Catch-all tag for targets that should be built/tested on CPU CI.",
     "cuda-only": "Targets that require the CUDA backend to be enabled.",

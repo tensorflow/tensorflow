@@ -43,12 +43,14 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/target_constants.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
@@ -305,6 +307,18 @@ class SupportTest : public HloHardwareIndependentTestBase,
         std::move(ti), {std::move(output_tile_sizes)}, cc, failure_mode);
   }
 
+  static int64_t GetExpectedTileRank(const HloInstruction* instr,
+                                     const Shape& shape) {
+    int64_t rank = shape.dimensions().size();
+    // Scans are tiled only along non-scan (parallel) dimensions; the scan
+    // dimension is omitted from output_tile_sizes.
+    if (instr->opcode() == HloOpcode::kGetTupleElement &&
+        instr->operand(0)->opcode() == HloOpcode::kScan) {
+      return rank - 1;
+    }
+    return rank;
+  }
+
   void RunSupportTestMultipleOutputTiles(
       TestedInstruction ti, std::vector<std::vector<int64_t>> output_tile_sizes,
       se::GpuComputeCapability cc,
@@ -313,11 +327,13 @@ class SupportTest : public HloHardwareIndependentTestBase,
     // If that is not the case, codegen could fail for that reason---which
     // wouldn't give any valuable signal here. The check is only done for array
     // and tuple shapes (only one layer of nesting is supported for tuples).
+
     const auto& root_instruction = ti.TritonComputation().root_instruction();
     if (root_instruction->shape().IsArray()) {
       ASSERT_EQ(output_tile_sizes.size(), 1);
-      ASSERT_EQ(output_tile_sizes[0].size(),
-                root_instruction->shape().dimensions().size());
+      ASSERT_EQ(
+          output_tile_sizes[0].size(),
+          GetExpectedTileRank(root_instruction, root_instruction->shape()));
     } else if (root_instruction->shape().IsTuple()) {
       ASSERT_EQ(output_tile_sizes.size(),
                 root_instruction->shape().tuple_shapes().size());
@@ -328,7 +344,12 @@ class SupportTest : public HloHardwareIndependentTestBase,
                      // specify output tile sizes for them.
         }
         ASSERT_TRUE(shape.IsArray());
-        ASSERT_EQ(shape.dimensions().size(), output_tile_sizes[i].size());
+        const HloInstruction* elem_instr =
+            root_instruction->opcode() == HloOpcode::kTuple
+                ? root_instruction->operand(i)
+                : root_instruction;
+        ASSERT_EQ(output_tile_sizes[i].size(),
+                  GetExpectedTileRank(elem_instr, shape));
       }
     }
     BlockLevelParameters block_level_parameters =
@@ -412,11 +433,6 @@ TEST_P(SupportTestWithTilingParam, IsTritonSupportedComputationSkipsRootTuple) {
   EXPECT_TRUE(IsTritonSupportedComputation(
       *module->entry_computation(), se::CudaComputeCapability::Hopper()));
 }
-
-class SupportTestWithTypeAndOpcodeAndDeviceParam
-    : public SupportTest,
-      public ::testing::WithParamInterface<
-          std::tuple<PrimitiveType, HloOpcode, se::GpuComputeCapability>> {};
 
 class SupportTestWithTypeAndOpcodeAndDeviceAndTilingParam
     : public SupportTest,
@@ -1126,6 +1142,150 @@ INSTANTIATE_TEST_SUITE_P(ReductionComputationTestSuite,
                              ExcludeOps(kTestedOpsBinaryElementwise,
                                         {HloOpcode::kCompare})),
                          SupportTestTypeAndOpcodeAndDeviceAndTilingToString);
+
+class ScanTest
+    : public SupportTest,
+      public ::testing::WithParamInterface<
+          std::tuple<PrimitiveType, HloOpcode, se::GpuComputeCapability>> {
+ public:
+  bool EnableTilingPropagation() const override { return true; }
+};
+
+TEST_P(ScanTest, IsTritonSupportedScan) {
+  auto [data_type, opcode, cc] = GetParam();
+  const std::string kHloTestTemplate = absl::Substitute(R"(
+add {
+  Arg_0 = $$0[125] parameter(0)
+  Arg_1 = $$0[125] parameter(1)
+  add = $$0[125] add(Arg_0, Arg_1)
+  ROOT t = ($$0[125], $$0[125]) tuple(add, add)
+}
+
+ENTRY triton_computation {
+  parameter_0 = $$0[125,127] parameter(0)
+  constant_0 = $$0[125] broadcast($$0[] constant($0)), dimensions={}
+  $$1 = ($$0[125,127], $$0[125]) $$1(parameter_0, constant_0),
+    dimensions={1}, to_apply=add, num_carries=1, is_associative=true
+  ROOT get-tuple-element = $$0[125,127] get-tuple-element($$1), index=0
+})",
+                                                        init_value(data_type));
+  ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+  bool crashes_on_failure = data_type == PrimitiveType::F8E4M3FN ||
+                            data_type == PrimitiveType::F8E5M2;
+  if (cc.IsRocm()) {
+    crashes_on_failure |= data_type == PrimitiveType::F8E5M2FNUZ ||
+                          data_type == PrimitiveType::F8E4M3FNUZ;
+  }
+  RunSupportTest(
+      std::move(ti), /*output_tile_sizes=*/{1}, cc,
+      crashes_on_failure ? ExpectedFailMode::kCrash : ExpectedFailMode::kFail);
+}
+
+constexpr std::array kTestedOpsScan = {HloOpcode::kScan};
+
+INSTANTIATE_TEST_SUITE_P(ScanTestSuite, ScanTest,
+                         AllTestCombinationsForOpcodes(kTestedOpsScan),
+                         SupportTestTypeAndOpcodeAndDeviceToString);
+
+// Negative tests for CanTritonHandleScan forbid conditions.
+class ScanSupportTest : public SupportTest {
+ public:
+  bool EnableTilingPropagation() const override { return true; }
+
+  void ExpectScanNotSupported(absl::string_view entry_hlo,
+                              absl::string_view combiner_hlo = R"(
+  add {
+    Arg_0 = f32[] parameter(0)
+    Arg_1 = f32[] parameter(1)
+    ROOT add = f32[] add(Arg_0, Arg_1)
+  })") {
+    ASSERT_OK_AND_ASSIGN(auto module,
+                         xla::ParseAndReturnUnverifiedModule(
+                             absl::StrCat(combiner_hlo, "\n", entry_hlo)));
+    const HloInstruction* root =
+        module->entry_computation()->root_instruction();
+    const HloInstruction* scan =
+        root->opcode() == HloOpcode::kScan ? root : root->operand(0);
+    EXPECT_FALSE(IsTritonSupportedInstruction(
+        *scan, se::CudaComputeCapability::Hopper()));
+  }
+};
+
+TEST_F(ScanSupportTest, ScanMustReturnTuple) {
+  ExpectScanNotSupported(R"(
+  ENTRY main {
+    param = f32[10] parameter(0)
+    init = f32[] constant(0)
+    ROOT scan = f32[10] scan(param, init), dimensions={0}, to_apply=add,
+      num_carries=1, is_associative=true
+  })");
+}
+
+TEST_F(ScanSupportTest, ReverseScanNotSupported) {
+  ExpectScanNotSupported(R"(
+  ENTRY main {
+    param = f32[10] parameter(0)
+    init = f32[] constant(0)
+    scan = (f32[10], f32[]) scan(param, init), dimensions={0}, to_apply=add,
+      num_carries=1, is_associative=true, is_reverse=true
+    ROOT gte = f32[10] get-tuple-element(scan), index=0
+  })");
+}
+
+TEST_F(ScanSupportTest, MultiInputScanNotSupported) {
+  ExpectScanNotSupported(R"(
+  ENTRY main {
+    p0 = f32[10] parameter(0)
+    p1 = f32[10] parameter(1)
+    init = f32[] constant(0)
+    scan = (f32[10], f32[10], f32[]) scan(p0, p1, init), dimensions={0},
+      to_apply=add, num_carries=1, is_associative=true
+    ROOT gte = f32[10] get-tuple-element(scan), index=0
+  })",
+                         R"(
+  add {
+    Arg_0 = f32[] parameter(0)
+    Arg_1 = f32[] parameter(1)
+    Arg_2 = f32[] parameter(2)
+    add0 = f32[] add(Arg_0, Arg_2)
+    add1 = f32[] add(Arg_1, Arg_2)
+    ROOT t = (f32[], f32[], f32[]) tuple(add0, add1, add0)
+  })");
+}
+
+TEST_F(ScanSupportTest, MultiCarryScanNotSupported) {
+  ExpectScanNotSupported(R"(
+  ENTRY main {
+    p0 = f32[10] parameter(0)
+    init0 = f32[] constant(0)
+    init1 = f32[] constant(0)
+    scan = (f32[10], f32[], f32[]) scan(p0, init0, init1), dimensions={0},
+      to_apply=add, num_carries=2, is_associative=true
+    ROOT gte = f32[10] get-tuple-element(scan), index=0
+  })",
+                         R"(
+  add {
+    Arg_0 = f32[] parameter(0)
+    Arg_1 = f32[] parameter(1)
+    Arg_2 = f32[] parameter(2)
+    add0 = f32[] add(Arg_0, Arg_2)
+    add1 = f32[] add(Arg_1, Arg_2)
+    ROOT t = (f32[], f32[], f32[]) tuple(add0, add1, add0)
+  })");
+}
+
+TEST_F(ScanSupportTest, NonAssociativeScanNotSupported) {
+  ExpectScanNotSupported(R"(
+  ENTRY main {
+    param = f32[10] parameter(0)
+    init = f32[] constant(0)
+    scan = (f32[10], f32[]) scan(param, init), dimensions={0}, to_apply=add,
+      num_carries=1, is_associative=false
+    ROOT gte = f32[10] get-tuple-element(scan), index=0
+  })");
+}
 
 using TransposeTest = SupportTestWithTypeAndOpcodeAndDeviceAndTilingParam;
 
@@ -3551,7 +3711,6 @@ constexpr std::array kUnsupportedOps = {
     HloOpcode::kMulhi,
     HloOpcode::kRaggedDot,
     HloOpcode::kReduceWindow,
-    HloOpcode::kScan,
     HloOpcode::kScatter,
     HloOpcode::kSelectAndScatter,
     HloOpcode::kSetDimensionSize,
@@ -3577,6 +3736,7 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.insert(kTestedOpsTernaryElementwise.begin(),
              kTestedOpsTernaryElementwise.end());
   ret.insert(kTestedOpsReduction.begin(), kTestedOpsReduction.end());
+  ret.insert(kTestedOpsScan.begin(), kTestedOpsScan.end());
   ret.insert(kTestedOpsSlice.begin(), kTestedOpsSlice.end());
   ret.insert(kTestedOpsConcatenate.begin(), kTestedOpsConcatenate.end());
   ret.insert(kTestedOpsTranspose.begin(), kTestedOpsTranspose.end());
