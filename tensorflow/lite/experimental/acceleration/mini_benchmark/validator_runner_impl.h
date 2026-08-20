@@ -136,7 +136,7 @@ class ValidatorRunnerImpl {
 
     // Returns the function name. Lifetime is the same as the helper class
     // itself.
-    const std::string& name() { return validation_entrypoint_name_; }
+    const std::string& name() const { return validation_entrypoint_name_; }
 
    private:
     std::string validation_entrypoint_name_;
