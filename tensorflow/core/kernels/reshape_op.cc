@@ -10,27 +10,42 @@ Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
-limitations me the License.
+limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/reshape_op.h"
 
 namespace tensorflow {
 
-REGISTER_KERNEL_BUILDER(
-    Name("Reshape").Device(DEVICE_CPU).HostMemory("shape"),
-    ReshapeOp);
+REGISTER_KERNEL_BUILDER(Name("Reshape")
+                            .Device(DEVICE_CPU)
+                            .HostMemory("shape")
+                            .TypeConstraint<int32_t>("Tshape"),
+                        ReshapeOp);
+REGISTER_KERNEL_BUILDER(Name("Reshape")
+                            .Device(DEVICE_CPU)
+                            .HostMemory("shape")
+                            .TypeConstraint<int64_t>("Tshape"),
+                        ReshapeOp);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-REGISTER_KERNEL_BUILDER(
-    Name("Reshape").Device(DEVICE_GPU).HostMemory("shape"),
-    ReshapeOp);
+REGISTER_KERNEL_BUILDER(Name("Reshape")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("shape")
+                            .TypeConstraint<int32_t>("Tshape"),
+                        ReshapeOp);
+REGISTER_KERNEL_BUILDER(Name("Reshape")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("shape")
+                            .TypeConstraint<int64_t>("Tshape"),
+                        ReshapeOp);
 #endif
 
 #if TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(
-    Name("Reshape").Device(DEVICE_SYCL).HostMemory("shape"),
-    ReshapeOp);
+REGISTER_KERNEL_BUILDER(Name("Reshape")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("shape"),
+                        ReshapeOp);
 #endif
 
 }  // namespace tensorflow
