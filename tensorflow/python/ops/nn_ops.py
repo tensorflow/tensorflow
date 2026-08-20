@@ -2752,15 +2752,30 @@ def conv2d_transpose_v2(
   with ops.name_scope(name, "conv2d_transpose",
                       [input, filter, output_shape]) as name:
     output_shape = ops.convert_to_tensor(output_shape, name="output_shape")
-    output_shape.shape.assert_has_rank(1)
-    output_shape_size = output_shape.shape[0].value
-    if output_shape_size is not None:
-      if output_shape_size != 4:
+    if output_shape.shape.rank is not None:
+      if output_shape.shape.rank != 1:
         raise ValueError(
-            "`output_shape` must have four elements. "
+            "`output_shape` must be a rank 1 Tensor. "
             f"Received: output_shape={output_shape.shape}")
+      if output_shape.shape[0] is not None:
+        if output_shape.shape[0] != 4:
+          raise ValueError(
+              "`output_shape` must have four elements. "
+              f"Received: output_shape={output_shape.shape}")
+      else:
+        with ops.control_dependencies([
+            check_ops.assert_equal(
+                array_ops.size(output_shape),
+                4,
+                message="`output_shape` must have four elements.")
+        ]):
+          output_shape = array_ops.identity(output_shape)
     else:
       with ops.control_dependencies([
+          check_ops.assert_rank(
+              output_shape,
+              1,
+              message="`output_shape` must be a rank 1 Tensor."),
           check_ops.assert_equal(
               array_ops.size(output_shape),
               4,
