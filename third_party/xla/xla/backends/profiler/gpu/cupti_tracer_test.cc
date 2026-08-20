@@ -147,9 +147,7 @@ class CuptiTracerTest : public ::testing::Test {
 
   void ExpectV2KernelSession(CUpti_SubscriberHandle subscriber,
                              uint64_t preflight_timestamp,
-                             uint64_t fallback_stop_timestamp,
-                             uint64_t stop_timestamp,
-                             CUptiResult stop_timestamp_status = CUPTI_SUCCESS,
+                             uint64_t end_timestamp, uint64_t final_timestamp,
                              bool expect_preflight_timestamp = true) {
     if (expect_preflight_timestamp) {
       EXPECT_CALL(*mock_, GetTimestampV2(subscriber, _))
@@ -167,7 +165,9 @@ class CuptiTracerTest : public ::testing::Test {
                 ActivityEnableV2(subscriber, CUPTI_ACTIVITY_KIND_KERNEL, _))
         .WillOnce(Return(CUPTI_SUCCESS));
     EXPECT_CALL(*mock_, GetTimestampV2(subscriber, _))
-        .WillOnce(SetTimestampAndReturnSuccess(fallback_stop_timestamp));
+        .WillOnce(SetTimestampAndReturnSuccess(end_timestamp));
+    EXPECT_CALL(*mock_, GetTimestampV2(subscriber, _))
+        .WillOnce(SetTimestampAndReturnSuccess(final_timestamp));
     ExpectV2ResourceCallbacks(subscriber, /*enable=*/0);
     ExpectV2KernelCallback(subscriber, /*enable=*/0);
     EXPECT_CALL(*mock_,
@@ -175,13 +175,6 @@ class CuptiTracerTest : public ::testing::Test {
         .WillOnce(Return(CUPTI_SUCCESS));
     EXPECT_CALL(*mock_, ActivityFlushAll(CUPTI_ACTIVITY_FLAG_FLUSH_FORCED))
         .WillOnce(Return(CUPTI_SUCCESS));
-    if (stop_timestamp_status == CUPTI_SUCCESS) {
-      EXPECT_CALL(*mock_, GetTimestampV2(subscriber, _))
-          .WillOnce(SetTimestampAndReturnSuccess(stop_timestamp));
-    } else {
-      EXPECT_CALL(*mock_, GetTimestampV2(subscriber, _))
-          .WillOnce(Return(stop_timestamp_status));
-    }
   }
 
   StrictMock<MockCupti>* mock_;
@@ -282,7 +275,7 @@ TEST_F(CuptiTracerTest,
   EXPECT_TRUE(CuptiDisabled());
 }
 
-TEST_F(CuptiTracerTest, PreparesFreshV2SubscriberBeforeEachSessionTimestamp) {
+TEST_F(CuptiTracerTest, PreparesFreshV2SubscriberForEachSession) {
   EXPECT_FALSE(CuptiDisabled());
 
   CuptiTracerOptions options = KernelTraceOptions();
@@ -295,44 +288,63 @@ TEST_F(CuptiTracerTest, PreparesFreshV2SubscriberBeforeEachSessionTimestamp) {
     EXPECT_CALL(*mock_, GetTimestampV2(subscriber, _))
         .WillOnce(SetTimestampAndReturnSuccess(session * 10));
 
-    absl::Status prepare_status =
-        cupti_tracer_->PrepareForProfilerStart(options);
-    ASSERT_TRUE(prepare_status.ok()) << prepare_status;
+    ASSERT_OK(cupti_tracer_->PrepareForProfilerStart(options));
 
     EXPECT_CALL(*mock_, GetTimestampV2(subscriber, _))
         .WillOnce(SetTimestampAndReturnSuccess(session * 10 + 1));
-    EXPECT_EQ(cupti_tracer_->GetTimestampForSubscriber(), session * 10 + 1);
+    ASSERT_OK_AND_ASSIGN(uint64_t prepare_timestamp,
+                         cupti_tracer_->GetTimestampForSubscriber());
+    EXPECT_EQ(prepare_timestamp, session * 10 + 1);
 
     ExpectV2KernelSession(subscriber, /*preflight_timestamp=*/0,
-                          /*fallback_stop_timestamp=*/session * 10 + 2,
-                          /*stop_timestamp=*/session * 10 + 3, CUPTI_SUCCESS,
+                          /*end_timestamp=*/session * 10 + 2,
+                          /*final_timestamp=*/session * 10 + 3,
                           /*expect_preflight_timestamp=*/false);
     EXPECT_CALL(*mock_, Unsubscribe(subscriber))
         .WillOnce(Return(CUPTI_SUCCESS));
 
     EnableProfiling(options);
     DisableProfiling();
-    EXPECT_EQ(cupti_collector_->GetTracingEndTimeNs(), session * 10 + 3);
+    ASSERT_OK_AND_ASSIGN(uint64_t tracing_end_time_ns,
+                         cupti_collector_->GetTracingEndTimeNs());
+    EXPECT_EQ(tracing_end_time_ns, session * 10 + 3);
   }
 
   EXPECT_FALSE(CuptiDisabled());
 }
 
-TEST_F(CuptiTracerTest,
-       FatalStopTimestampDoesNotUnsubscribeFreshSubscriberTwice) {
+TEST_F(CuptiTracerTest, FinalTimestampFailurePreservesEndTime) {
   ::testing::InSequence in_sequence;
   auto* const subscriber =
       reinterpret_cast<CUpti_SubscriberHandle>(uintptr_t{1});
   EXPECT_CALL(*mock_, SubscribeV2(_, _, _))
       .WillOnce(DoAll(SetArgPointee<0>(subscriber), Return(CUPTI_SUCCESS)));
-  ExpectV2KernelSession(subscriber, /*preflight_timestamp=*/1,
-                        /*fallback_stop_timestamp=*/2,
-                        /*stop_timestamp=*/0, CUPTI_ERROR_INVALID_PARAMETER);
+  EXPECT_CALL(*mock_, GetTimestampV2(subscriber, _))
+      .WillOnce(SetTimestampAndReturnSuccess(1));
+  ExpectV2ResourceCallbacks(subscriber, /*enable=*/1);
+  ExpectV2KernelCallback(subscriber, /*enable=*/1);
+  EXPECT_CALL(*mock_, ActivityUseSystemThreadIdV2(subscriber))
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_, ActivityUsePerThreadBufferV2())
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_, ActivityRegisterCallbacksV2(subscriber, _, _))
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_,
+              ActivityEnableV2(subscriber, CUPTI_ACTIVITY_KIND_KERNEL, _))
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_, GetTimestampV2(subscriber, _))
+      .WillOnce(SetTimestampAndReturnSuccess(2));
+  EXPECT_CALL(*mock_, GetTimestampV2(subscriber, _))
+      .WillOnce(Return(CUPTI_ERROR_INVALID_PARAMETER));
   EXPECT_CALL(*mock_, GetResultString(CUPTI_ERROR_INVALID_PARAMETER, _))
       .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::GetResultString));
+  // A fatal timestamp failure is handled by CuptiErrorManager's undo stack.
   EXPECT_CALL(*mock_,
               ActivityDisableV2(subscriber, CUPTI_ACTIVITY_KIND_KERNEL, _))
       .WillOnce(Return(CUPTI_SUCCESS));
+  // KernelTraceOptions registers CUDA graph resource callbacks before its
+  // cuLaunchKernel callback. CuptiErrorManager undoes those registrations
+  // last-in, first-out.
   ExpectV2KernelCallback(subscriber, /*enable=*/0);
   ExpectV2ResourceCallbacks(subscriber, /*enable=*/0);
   EXPECT_CALL(*mock_, Unsubscribe(subscriber)).WillOnce(Return(CUPTI_SUCCESS));
@@ -340,7 +352,11 @@ TEST_F(CuptiTracerTest,
   CuptiTracerOptions options = KernelTraceOptions();
   EnableProfiling(options);
   DisableProfiling();
-  EXPECT_EQ(cupti_collector_->GetTracingEndTimeNs(), 2);
+  // If the final V2 timestamp query fails, retain the valid pre-teardown
+  // timestamp as the trace end time.
+  ASSERT_OK_AND_ASSIGN(uint64_t tracing_end_time_ns,
+                       cupti_collector_->GetTracingEndTimeNs());
+  EXPECT_EQ(tracing_end_time_ns, 2);
   EXPECT_TRUE(CuptiDisabled());
   // A stale handle would make this retry issue an unexpected second
   // Unsubscribe call through the disabled error manager.
