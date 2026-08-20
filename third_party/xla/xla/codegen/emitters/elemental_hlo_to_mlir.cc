@@ -58,6 +58,7 @@ limitations under the License.
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/TypeRange.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
@@ -67,6 +68,7 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/transforms/lowering_utils.h"
 #include "xla/codegen/emitters/type_util.h"
+#include "xla/codegen/emitters/utils.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -485,31 +487,17 @@ absl::StatusOr<SmallVector<Value, 1>> EmitPad(
   return {{if_op.getResult(0)}};
 }
 
-absl::StatusOr<Value> EmitFloatCast(Value value, mlir::Type target_type,
-                                    ImplicitLocOpBuilder& b) {
-  if (value.getType().getIntOrFloatBitWidth() <
-      target_type.getIntOrFloatBitWidth()) {
-    return arith::ExtFOp::create(b, target_type, value);
-  }
-  if (value.getType().getIntOrFloatBitWidth() >
-      target_type.getIntOrFloatBitWidth()) {
-    return arith::TruncFOp::create(b, target_type, value);
-  }
-  return value;
-}
-
 absl::StatusOr<Value> EmitMulAdd(Value lhs, Value rhs, Value accumulator,
                                  PrimitiveType result_element_type,
                                  mlir::Type accumulator_type,
                                  ImplicitLocOpBuilder& b) {
   if (primitive_util::IsFloatingPointType(result_element_type)) {
     if (result_element_type == PrimitiveType::BF16) {
-      lhs = arith::ExtFOp::create(b, b.getF32Type(), lhs);
-      rhs = arith::ExtFOp::create(b, b.getF32Type(), rhs);
+      lhs = EmitFloatCast(lhs, b.getF32Type(), b);
+      rhs = EmitFloatCast(rhs, b.getF32Type(), b);
     }
-    ABSL_ASSIGN_OR_RETURN(
-        Value casted,
-        EmitFloatCast(arith::MulFOp::create(b, lhs, rhs), accumulator_type, b));
+    Value casted =
+        EmitFloatCast(arith::MulFOp::create(b, lhs, rhs), accumulator_type, b);
     return arith::AddFOp::create(b, accumulator, casted);
   }
   if (result_element_type == PrimitiveType::PRED) {

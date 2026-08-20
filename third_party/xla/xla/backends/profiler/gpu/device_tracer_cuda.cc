@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -135,7 +136,8 @@ absl::Status GpuTracer::DoStart() {
 
   // A fresh V2 subscriber must exist before its timestamp API can be used.
   ABSL_RETURN_IF_ERROR(cupti_tracer_->PrepareForProfilerStart(options_));
-  uint64_t start_gputime_ns = cupti_tracer_->GetTimestampForSubscriber();
+  ABSL_ASSIGN_OR_RETURN(uint64_t start_gputime_ns,
+                   cupti_tracer_->GetTimestampForSubscriber());
   uint64_t start_walltime_ns = tsl::profiler::GetCurrentTimeNanos();
   cupti_collector_ = CreateCuptiCollector(collector_options, start_walltime_ns,
                                           start_gputime_ns);
@@ -207,8 +209,13 @@ absl::Status GpuTracer::CollectData(XSpace* space) {
         }
       }
       if (cupti_collector_) {
-        uint64_t end_gpu_ns = cupti_collector_->GetTracingEndTimeNs();
-        cupti_collector_->Export(space, end_gpu_ns);
+        absl::StatusOr<uint64_t> end_gpu_ns =
+            cupti_collector_->GetTracingEndTimeNs();
+        if (end_gpu_ns.ok()) {
+          cupti_collector_->Export(space, *end_gpu_ns);
+        } else {
+          space->add_errors(end_gpu_ns.status().ToString());
+        }
       }
       return absl::OkStatus();
     }

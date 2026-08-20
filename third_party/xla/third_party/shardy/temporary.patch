@@ -1,0 +1,424 @@
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/run_sdy_interpreter_test.sh b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/run_sdy_interpreter_test.sh
+index b78f0986..ffd58d98 100755
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/run_sdy_interpreter_test.sh
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/run_sdy_interpreter_test.sh
+@@ -16,40 +16,12 @@
+ 
+ set -e
+ 
+-SRC=""
+-TMP=""
+-ENABLE_HALO_EXCHANGE=true
++SRC=$1
++TMP=$2
++ENABLE_HALO_EXCHANGE=${3:-true}
+ # When replica_count=partition_count=1, the test use partition id.
+-REPLICA_COUNT=1
+-PARTITION_COUNT=1
+-
+-pos_idx=0
+-
+-for arg in "$@"; do
+-  case "$arg" in
+-    --src=*)                  SRC="${arg#*=}" ;;
+-    --temp_dir=*)             TMP="${arg#*=}" ;;
+-    --enable_halo_exchange=*) ENABLE_HALO_EXCHANGE="${arg#*=}" ;;
+-    --replica_count=*)        REPLICA_COUNT="${arg#*=}" ;;
+-    --partition_count=*)      PARTITION_COUNT="${arg#*=}" ;;
+-    --*)                      echo "Warning: Unknown flag '$arg'" >&2 ;;
+-    *)
+-      pos_idx=$((pos_idx + 1))
+-      case "$pos_idx" in
+-        1) SRC="$arg" ;;
+-        2) TMP="$arg" ;;
+-        3) ENABLE_HALO_EXCHANGE="$arg" ;;
+-        4) REPLICA_COUNT="$arg" ;;
+-        5) PARTITION_COUNT="$arg" ;;
+-      esac
+-      ;;
+-  esac
+-done
+-
+-if [ -z "$SRC" ] || [ -z "$TMP" ]; then
+-  echo "Error: Missing required arguments. Usage: $0 <src.mlir> <temp_dir> [flags...]" >&2
+-  exit 1
+-fi
++REPLICA_COUNT=${4:-1}
++PARTITION_COUNT=${5:-1}
+ 
+ SPLIT_FILE=${SPLIT_FILE:-split-file}
+ SDY_OPT=${SDY_OPT:-sdy_opt}
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_dot_general_indivisible.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_dot_general_indivisible.mlir
+index 7b264fba..98517d97 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_dot_general_indivisible.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_dot_general_indivisible.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
+ 
+ //--- part1.mlir
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_interior.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_interior.mlir
+index a354bb55..d1f5bde7 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_interior.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_interior.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
+ 
+ //--- part1.mlir
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_large_pad.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_large_pad.mlir
+index ee1b8aad..37b085ce 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_large_pad.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_large_pad.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
+ 
+ //--- part1.mlir
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_large_pad_within_one_hop.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_large_pad_within_one_hop.mlir
+index ee1b8aad..37b085ce 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_large_pad_within_one_hop.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_large_pad_within_one_hop.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
+ 
+ //--- part1.mlir
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_left_shift.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_left_shift.mlir
+index c12481ba..cd69a4de 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_left_shift.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_left_shift.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
+ 
+ //--- part1.mlir
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_multidim_mixed_shifts.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_multidim_mixed_shifts.mlir
+index 0e4ae18c..a35482c0 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_multidim_mixed_shifts.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_multidim_mixed_shifts.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
+ 
+ //--- part1.mlir
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_multidim_with_hops.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_multidim_with_hops.mlir
+index f4de6600..a40033c8 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_multidim_with_hops.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_multidim_with_hops.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
+ 
+ //--- part1.mlir
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_multiple_hops_right_shift.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_multiple_hops_right_shift.mlir
+index cc16cde0..6445df1a 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_multiple_hops_right_shift.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_multiple_hops_right_shift.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
+ 
+ //--- part1.mlir
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_multiple_right_hops.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_multiple_right_hops.mlir
+index 37fddb58..6f51217e 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_multiple_right_hops.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_multiple_right_hops.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
+ 
+ //--- part1.mlir
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_replica_id.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_replica_id.mlir
+index 0c673577..3f8d4b85 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_replica_id.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_replica_id.mlir
+@@ -1,5 +1,5 @@
+ // No need to run this test with halo exchange enabled.
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false --replica_count=2 --partition_count=1
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false" "2" "1"
+ 
+ //--- part1.mlir
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_replicated_dual_slice_pad.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_replicated_dual_slice_pad.mlir
+index edbcd1e1..9479a6c2 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_replicated_dual_slice_pad.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_replicated_dual_slice_pad.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
+ 
+ //--- part1.mlir
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_replicated_negative_high_padding.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_replicated_negative_high_padding.mlir
+index f50d72c4..d74cb6c5 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_replicated_negative_high_padding.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_replicated_negative_high_padding.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
+ 
+ //--- part1.mlir
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_replicated_negative_low_padding.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_replicated_negative_low_padding.mlir
+index 8e106666..b6722be5 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_replicated_negative_low_padding.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_replicated_negative_low_padding.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
+ 
+ //--- part1.mlir
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_right_shift.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_right_shift.mlir
+index 88447ca8..8d015419 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_right_shift.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_right_shift.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
+ 
+ //--- part1.mlir
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_single_left_hop.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_single_left_hop.mlir
+index ca6cb09f..034c453c 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_single_left_hop.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_single_left_hop.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
+ 
+ //--- part1.mlir
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_single_right_hop.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_single_right_hop.mlir
+index f8728c74..941dc224 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_single_right_hop.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_pad_single_right_hop.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
+ 
+ //--- part1.mlir
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_1d_to_2d_split.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_1d_to_2d_split.mlir
+index ae5a93d0..5731ac1d 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_1d_to_2d_split.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_1d_to_2d_split.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
+ 
+ //--- part1.mlir
+ sdy.mesh @mesh_a_4 = <["b"=2, "c"=2]>
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_1d_to_2d_split_2groups.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_1d_to_2d_split_2groups.mlir
+index f9efc79f..e4fb3008 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_1d_to_2d_split_2groups.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_1d_to_2d_split_2groups.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
+ 
+ //--- part1.mlir
+ sdy.mesh @mesh_ab_16 = <["a"=4, "b"=4]>
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_1d_to_2d_split_custom_device_ids.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_1d_to_2d_split_custom_device_ids.mlir
+index 20c925ed..51f5158f 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_1d_to_2d_split_custom_device_ids.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_1d_to_2d_split_custom_device_ids.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
+ 
+ //--- part1.mlir
+ sdy.mesh @mesh_custom = <["b"=2, "c"=2], device_ids=[3, 2, 1, 0]>
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_1d_to_2d_split_gap_2.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_1d_to_2d_split_gap_2.mlir
+index 99d44f3c..3f6db498 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_1d_to_2d_split_gap_2.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_1d_to_2d_split_gap_2.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
+ 
+ //--- part1.mlir
+ sdy.mesh @mesh_bc_6 = <["b"=2, "c"=3]>
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_1d_to_2d_split_passthrough_indivisible.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_1d_to_2d_split_passthrough_indivisible.mlir
+index 0b896654..ad72ee85 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_1d_to_2d_split_passthrough_indivisible.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_1d_to_2d_split_passthrough_indivisible.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
+ 
+ //--- part1.mlir
+ sdy.mesh @mesh_xbc_8 = <["x"=2, "b"=2, "c"=2]>
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_2d_split_unrelated_axis.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_2d_split_unrelated_axis.mlir
+index 43c3db86..3321c3d1 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_2d_split_unrelated_axis.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_2d_split_unrelated_axis.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
+ 
+ //--- part1.mlir
+ sdy.mesh @mesh_a2_b2 = <["a"=2, "b"=2]>
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_axis_shift.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_axis_shift.mlir
+index cd59b850..0ba5846e 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_axis_shift.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_axis_shift.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
+ 
+ //--- part1.mlir
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reverse_multi_dim_divisible.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reverse_multi_dim_divisible.mlir
+index 3fb35e9c..d67bc0ff 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reverse_multi_dim_divisible.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reverse_multi_dim_divisible.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
+ 
+ //--- part1.mlir
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reverse_single_dim_indivisible.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reverse_single_dim_indivisible.mlir
+index 7bf0a2ba..e6dd8d84 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reverse_single_dim_indivisible.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reverse_single_dim_indivisible.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
+ 
+ //--- part1.mlir
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_slice_comm_free.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_slice_comm_free.mlir
+index 48451213..4f11975b 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_slice_comm_free.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_slice_comm_free.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
+ 
+ //--- part1.mlir
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_slice_indivisible.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_slice_indivisible.mlir
+index b7fb2218..df8086b1 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_slice_indivisible.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_slice_indivisible.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
+ 
+ //--- part1.mlir
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_slice_replicated.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_slice_replicated.mlir
+index bc92d0cb..706cb4a3 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_slice_replicated.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_slice_replicated.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
+ 
+ //--- part1.mlir
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_slice_replicated_mesh_2.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_slice_replicated_mesh_2.mlir
+index d15920cf..d83f5525 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_slice_replicated_mesh_2.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_slice_replicated_mesh_2.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
+ 
+ //--- part1.mlir
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_slice_with_communication.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_slice_with_communication.mlir
+index 690afbe4..59258f94 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_slice_with_communication.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_slice_with_communication.mlir
+@@ -1,5 +1,5 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "true"
++// RUN: %S/run_sdy_interpreter_test.sh %s %t "false"
+ 
+ //--- part1.mlir
+ 
+diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
+index ad5fa7f9..cffb0ba5 100644
+--- a/third_party/llvm/workspace.bzl
++++ b/third_party/llvm/workspace.bzl
+@@ -19,8 +19,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
+ 
+ def repo(name):
+     """Imports LLVM."""
+-    LLVM_COMMIT = "fdb39b1112a6db0343de169b79820768bd16c7d9"
+-    LLVM_SHA256 = "15b2d88aa699b4c1d47b489fc0d8a4c389deee53d93c4a985e4c8dc251397da3"
++    LLVM_COMMIT = "fc636be1b4c21fdf801b08ecb54c9229d17f70c5"
++    LLVM_SHA256 = "b016f3ebd5e34d964974e59fc5d95967d2cf7b840c642ea34a1b8ed5c6b681e8"
+ 
+     tf_http_archive(
+         name = name,

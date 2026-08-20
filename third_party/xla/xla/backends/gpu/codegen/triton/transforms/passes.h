@@ -21,8 +21,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "mlir/IR/Operation.h"
-#include "mlir/Pass/Pass.h"
-#include "xla/backends/gpu/codegen/triton/extern_function_helper.h"
+#include "mlir/Pass/Pass.h"  // IWYU pragma: keep
+#include "xla/backends/gpu/codegen/triton/extern_function_helper.h"  // IWYU pragma: keep
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"  // IWYU pragma: keep
 #include "xla/codegen/xtile/ir/xtile_dialect.h"  // IWYU pragma: keep
 
