@@ -42,7 +42,7 @@ struct MosaicSerdePass : public jaxlib::mlir::Pass<MosaicSerdePass, ModuleOp> {
 
   // When this is bumped, we should file a TODO to update the forward-compatible
   // version in tpu_custom_call.py in a month!
-  static constexpr int kVersion = 15;
+  static constexpr int kVersion = 16;
 
   MosaicSerdePass() = default;
 

@@ -36,18 +36,18 @@ namespace gpu {
 
 // Static analytical latency estimator for GPU. It uses empirical data and
 // interpolation techniques to estimate the runtime of matrix multiplications
-// and ICI (NVLINK) collectives, it also uses the GPU performance model to
+// and ICI (NVLink/XGMI) collectives, it also uses the GPU performance model to
 // estimate runtime of fusion operations and DCN collectives.
 //
 // The rationale for this mix is that we do not have proper analytical solutions
 // to estimate the runtime of GEMMs and we have not yet developed a good enough
-// set of parameters to reconstruct a bandwidth derating curve for NVLINK.
+// set of parameters to reconstruct a bandwidth derating curve for ICI links.
 // Interpolation/collection happens at the level of the HLO instruction,
 // therefore in the case of algorithmic improvements at lower levels of
 // abstractions performance tables need to be updated.
 //
-// Currently this estimator supports H100s and standard DP collectives, that is:
-// All-Reduce, All-Gather, Reduce-Scatter.
+// The estimator is enabled for Hopper, Blackwell, and ROCm gfx950 when a module
+// contains only supported collective operations.
 class SolLatencyEstimator : public LatencyEstimator {
  public:
   TimeCost GetLatencyBetween(const HloGraphNode& from,

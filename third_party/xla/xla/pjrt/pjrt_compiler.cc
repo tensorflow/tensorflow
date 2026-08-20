@@ -328,10 +328,9 @@ absl::StatusOr<std::vector<std::string>> PjRtPhaseCompiler::GetPhaseNames() {
 absl::StatusOr<std::vector<PjRtPartialProgramProto>>
 PjRtPhaseCompiler::RunPhases(
     CompileOptions options,
-    const std::vector<PjRtPartialProgramProto>& input_programs,
+    std::vector<PjRtPartialProgramProto>&& input_programs,
     const PjRtTopologyDescription& topology,
     const std::vector<std::string>& phases_to_run) {
-  std::vector<PjRtPartialProgramProto> programs = input_programs;
   for (const auto& phase_name : phases_to_run) {
     auto it = phase_map_.find(phase_name);
     if (it == phase_map_.end()) {
@@ -342,20 +341,21 @@ PjRtPhaseCompiler::RunPhases(
     }
 
     // Validate (plugin specific) the input programs.
-    auto validation_status = it->second.validator(options, programs);
+    auto validation_status = it->second.validator(options, input_programs);
     if (!validation_status.ok()) {
       return validation_status;
     }
 
     // Run the phase.
-    auto out_programs = it->second.compiler(options, programs, topology);
+    auto out_programs =
+        it->second.compiler(options, std::move(input_programs), topology);
     if (!out_programs.ok()) {
       return out_programs.status();
     }
-    programs = *out_programs;
+    input_programs = std::move(*out_programs);
   }
 
-  return programs;
+  return input_programs;
 }
 
 absl::Span<const int> PjRtTopologyDescription::GetMemorySpaceKindIds() const {
