@@ -241,6 +241,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
     case HloOpcode::kReduceScatter:
+    case HloOpcode::kCollectiveReduce:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectiveBroadcast:
     case HloOpcode::kCollectivePermute:

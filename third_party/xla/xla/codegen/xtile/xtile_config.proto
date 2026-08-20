@@ -62,4 +62,9 @@ message BlockLevelFusionConfig {
 
   // Number of tiles per pid.
   int32 num_tiles_per_pid = 9;
+
+  // The `group_size` in the block-level fusion config. Used for L2 tile
+  // reordering (grouping) in ragged-dot fusions. A value <= 1 disables the
+  // reordering.
+  int32 group_size = 10;
 }
