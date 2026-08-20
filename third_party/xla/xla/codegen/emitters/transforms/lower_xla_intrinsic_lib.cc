@@ -13,13 +13,14 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <type_traits>
 #include <utility>
 
-#include "absl/strings/string_view.h"
 #include "llvm/ADT/APFloat.h"
 #include "mlir/Conversion/LLVMCommon/LoweringOptions.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Func/Utils/Utils.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Dialect/Vector/Utils/VectorUtils.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
@@ -37,6 +39,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/codegen/emitters/transforms/passes.h"  // IWYU pragma: keep
+#include "xla/codegen/emitters/utils.h"
 #include "xla/codegen/intrinsic/cpp/intrinsic_declarations.h"
 #include "xla/codegen/intrinsic/erf.h"
 #include "xla/codegen/intrinsic/exp.h"
@@ -45,6 +48,7 @@ limitations under the License.
 #include "xla/codegen/intrinsic/rsqrt.h"
 #include "xla/codegen/intrinsic/tanh.h"
 #include "xla/codegen/intrinsic/type.h"
+#include "xla/mlir/utils/type_util.h"
 
 namespace xla {
 namespace emitters {
@@ -54,245 +58,176 @@ namespace emitters {
 
 namespace {
 
-using Type = ::xla::codegen::intrinsics::Type;
+using llvm::SmallVector;
+using mlir::TypeRange;
+using mlir::Value;
+
+namespace mm = ::mlir::math;
+namespace mv = ::mlir::vector;
+namespace ma = ::mlir::arith;
+namespace mf = ::mlir::func;
+namespace ci = ::xla::codegen::intrinsics;
+
 // TODO(talts): Add LowerMathOpPattern based on MathFunction instances.
 
-mlir::func::FuncOp GetOrInsertDeclaration(mlir::PatternRewriter& rewriter,
-                                          mlir::ModuleOp& module_op,
-                                          absl::string_view name,
-                                          mlir::FunctionType func_type) {
-  // Check if the function already exists
-  if (auto func = module_op.lookupSymbol<mlir::func::FuncOp>(name)) {
-    // Ensure the existing function has the correct type
-    if (func.getFunctionType() == func_type) {
-      return func;
-    }
-  }
-
-  // If not found or type mismatch, create the declaration
-  mlir::PatternRewriter::InsertionGuard insertGuard(rewriter);
-  rewriter.setInsertionPointToStart(module_op.getBody());
-
-  auto func_decl =
-      mlir::func::FuncOp::create(rewriter, module_op.getLoc(), name, func_type);
-  func_decl.setPrivate();
-  return func_decl;
+// Get the vectorized version of the given element type if `vector_type` is
+// present, else return the given element type.
+mlir::Type GetVectorType(mlir::VectorType vector_type,
+                         mlir::Type element_type) {
+  return vector_type ? vector_type.clone(element_type) : element_type;
 }
 
-class LowerErfPattern : public mlir::OpRewritePattern<mlir::math::ErfOp> {
- public:
-  LowerErfPattern(mlir::MLIRContext* context, mlir::ModuleOp& module_op)
-      : OpRewritePattern(context), module_op_(module_op) {}
-
-  mlir::LogicalResult matchAndRewrite(
-      mlir::math::ErfOp op, mlir::PatternRewriter& rewriter) const override {
-    auto type = op.getType();
-    mlir::Type element_type = mlir::getElementTypeOrSelf(op.getType());
-    auto maybe_vector_type = mlir::dyn_cast<mlir::VectorType>(type);
-
-    if (maybe_vector_type && maybe_vector_type.getRank() != 1) {
-      return rewriter.notifyMatchFailure(op, "Vector rank is not 1.");
-    }
-
-    // Get the vectorized version of the given type if op has a vector type,
-    // else just return the given type.
-    auto get_vector_type = [&maybe_vector_type](mlir::Type type) -> mlir::Type {
-      if (maybe_vector_type) {
-        return maybe_vector_type.clone(type);
-      }
-      return type;
-    };
-
-    // Extend the argument to f32 and truncate the result back unconditionally
-    // as these will be cleaned up later if they are already f32.
-    if (element_type.isF16() || element_type.isF32()) {
-      mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-      mlir::Type f32_type = get_vector_type(b.getF32Type());
-
-      mlir::Value input_value =
-          mlir::arith::ExtFOp::create(b, f32_type, op.getOperand());
-
-      auto erf_decl = codegen::intrinsics::Erf::GetOrInsertDeclaration(
-          rewriter, module_op_, Type::TypeFromIrType(f32_type));
-      auto call_op = mlir::func::CallOp::create(b, erf_decl, input_value);
-
-      mlir::Value f32_result = call_op.getResult(0);
-      mlir::Value result = mlir::arith::TruncFOp::create(b, type, f32_result);
-
-      rewriter.replaceOp(op, result);
-      return mlir::success();
-    }
-
-    if (element_type.isF64()) {
-      mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-
-      auto erf_decl = GetErf64Declaration(rewriter);
-
-      if (!maybe_vector_type) {
-        auto call_op = mlir::func::CallOp::create(b, erf_decl, op.getOperand());
-        rewriter.replaceOp(op, call_op->getResults());
-        return mlir::success();
-      }
-
-      llvm::SmallVector<mlir::Value> scalar_erf_results;
-      for (int64_t idx = 0; idx < maybe_vector_type.getNumElements(); ++idx) {
-        mlir::Value extracted = mlir::vector::ExtractOp::create(
-            rewriter, op.getLoc(), op.getOperand(), idx);
-        mlir::Value scalar_erf =
-            mlir::func::CallOp::create(b, erf_decl, extracted).getResult(0);
-        scalar_erf_results.push_back(scalar_erf);
-      }
-      rewriter.replaceOpWithNewOp<mlir::vector::FromElementsOp>(
-          op, type, scalar_erf_results);
-      return mlir::success();
-    }
-
-    return rewriter.notifyMatchFailure(op, "Argument is not f32 or f64.");
-  }
-
- private:
-  mlir::func::FuncOp GetErf64Declaration(
-      mlir::PatternRewriter& rewriter) const {
-    mlir::Type f64_type = rewriter.getF64Type();
-    return GetOrInsertDeclaration(rewriter, module_op_, "erf",
-                                  rewriter.getFunctionType(f64_type, f64_type));
-  }
-
-  mlir::ModuleOp& module_op_;
+struct TargetTypes {
+  SmallVector<ci::Type, 2> vector_types;
+  SmallVector<ci::Type, 2> scalar_types;
+  bool needs_upcast = false;
 };
 
-class LowerTruncF32BF16FPattern
-    : public mlir::OpRewritePattern<mlir::arith::TruncFOp> {
- public:
-  LowerTruncF32BF16FPattern(mlir::MLIRContext* context,
-                            mlir::ModuleOp& module_op)
-      : OpRewritePattern(context), module_op_(module_op) {}
-
-  mlir::LogicalResult matchAndRewrite(
-      mlir::arith::TruncFOp op,
-      mlir::PatternRewriter& rewriter) const override {
-    auto src = op.getOperand();
-    auto dst_ty = op.getType();
-
-    if (!mlir::isa<mlir::Float32Type>(
-            mlir::getElementTypeOrSelf(src.getType())) ||
-        !mlir::isa<mlir::BFloat16Type>(mlir::getElementTypeOrSelf(dst_ty))) {
-      return rewriter.notifyMatchFailure(op, "Not f32 -> bf16");
-    }
-
-    if (auto vec_type = mlir::dyn_cast<mlir::VectorType>(src.getType());
-        vec_type && vec_type.getRank() != 1) {
-      // These will later be converted to loops of 1D vectors but will then miss
-      // the XLA intrinsic lowering.
-      op->emitWarning() << "Missed XLA intrinsic lowering as vector rank != 1.";
-      return rewriter.notifyMatchFailure(op, "Vector rank is not 1.");
-    }
-
-    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-
-    auto src_type = Type::TypeFromIrType(src.getType());
-    auto dst_type = Type::TypeFromIrType(dst_ty);
-    auto f32_to_bf16_decl =
-        codegen::intrinsics::FpTrunc::GetOrInsertDeclaration(
-            rewriter, module_op_, src_type, dst_type);
-    auto call_op =
-        mlir::func::CallOp::create(b, f32_to_bf16_decl, op.getOperand());
-    rewriter.replaceOp(op, call_op->getResults());
-    return mlir::success();
-  }
-
- private:
-  mlir::ModuleOp& module_op_;
-};
+std::string GetCpuFeaturesStr(mlir::ModuleOp module_op) {
+  mlir::StringAttr features =
+      module_op->template getAttrOfType<mlir::StringAttr>("mhlo.cpu_features");
+  return !features ? "" : features.getValue().str();
+}
 
 template <typename Intrinsic, typename Op>
-class LowerIntrinsicPattern : public mlir::OpRewritePattern<Op> {
- public:
-  LowerIntrinsicPattern(mlir::MLIRContext* context, mlir::ModuleOp& module_op)
-      : mlir::OpRewritePattern<Op>(context), module_op_(module_op) {}
-
-  mlir::LogicalResult matchAndRewrite(
-      Op op, mlir::PatternRewriter& rewriter) const override {
-    auto vec_type = mlir::dyn_cast<mlir::VectorType>(op.getType());
-    if (vec_type && vec_type.getRank() != 1) {
-      // These will later be converted to loops of 1D vectors but will then miss
-      // the XLA intrinsic lowering.
-      op->emitWarning() << "Missed XLA intrinsic lowering as vector rank != 1.";
-      return rewriter.notifyMatchFailure(op, "Vector rank is not 1.");
-    }
-    mlir::StringAttr features =
-        module_op_->getAttrOfType<mlir::StringAttr>("mhlo.cpu_features");
-    const std::string features_str = !features ? "" : features.getValue().str();
-
-    mlir::Type element_type = mlir::getElementTypeOrSelf(op.getType());
-    bool needs_upcast = element_type.isF16() || element_type.isBF16();
-
-    auto get_vector_type = [&vec_type](mlir::Type type) -> mlir::Type {
-      if (vec_type) {
-        return vec_type.clone(type);
+TargetTypes GetTargetTypes(Op& op) {
+  TargetTypes target_types;
+  auto vector_type = mlir::dyn_cast<mlir::VectorType>(op.getType());
+  for (mlir::Type type : TypeRange(op->getOperands())) {
+    mlir::Type element_type = mlir::getElementTypeOrSelf(type);
+    PrimitiveType target_type;
+    if constexpr (!Intrinsic::kLastArgIsReturnType) {
+      if (element_type.isBF16() || element_type.isF16()) {
+        target_type = xla::F32;
+        target_types.needs_upcast = true;
+      } else {
+        target_type = ConvertMlirTypeToPrimitiveType(element_type);
       }
-      return type;
-    };
-
-    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-
-    mlir::Type target_element_type =
-        needs_upcast ? b.getF32Type() : element_type;
-    mlir::Type compute_type = get_vector_type(target_element_type);
-
-    Type type = Type::TypeFromIrType(compute_type);
-    Type scalar_type = Type::TypeFromIrType(target_element_type);
-
-    bool is_supported = Intrinsic::IsSupported(features_str, type);
-    bool scalar_supported = Intrinsic::IsSupported(features_str, scalar_type);
-    if (!is_supported && !scalar_supported) {
-      return rewriter.notifyMatchFailure(op, "unsupported type");
-    }
-
-    mlir::Value compute_input =
-        needs_upcast
-            ? mlir::arith::ExtFOp::create(b, compute_type, op.getOperand())
-            : op.getOperand();
-
-    mlir::Value compute_result;
-    if (is_supported) {
-      auto intrinsic_decl =
-          Intrinsic::GetOrInsertDeclaration(rewriter, module_op_, type);
-      compute_result = rewriter
-                           .create<mlir::func::CallOp>(
-                               op.getLoc(), intrinsic_decl, compute_input)
-                           .getResult(0);
     } else {
-      auto intrinsic_decl =
-          Intrinsic::GetOrInsertDeclaration(rewriter, module_op_, scalar_type);
-
-      llvm::SmallVector<mlir::Value> scalar_results;
-      scalar_results.reserve(vec_type.getNumElements());
-      for (int64_t idx = 0; idx != vec_type.getNumElements(); ++idx) {
-        mlir::Value scalar_value = mlir::vector::ExtractOp::create(
-            rewriter, op.getLoc(), compute_input, idx);
-        mlir::Value scalar_result =
-            mlir::func::CallOp::create(rewriter, op.getLoc(), intrinsic_decl,
-                                       scalar_value)
-                .getResult(0);
-        scalar_results.push_back(scalar_result);
-      }
-      compute_result = rewriter.create<mlir::vector::FromElementsOp>(
-          op.getLoc(), compute_type, scalar_results);
+      target_type = ConvertMlirTypeToPrimitiveType(element_type);
     }
+    if (vector_type) {
+      target_types.vector_types.push_back(
+          ci::Type::V(target_type, vector_type.getNumElements()));
+    }
+    target_types.scalar_types.push_back(ci::Type::S(target_type));
+  }
+  if constexpr (Intrinsic::kLastArgIsReturnType) {
+    mlir::Type result_element_type = mlir::getElementTypeOrSelf(op.getType());
+    PrimitiveType result_target_type =
+        ConvertMlirTypeToPrimitiveType(result_element_type);
+    if (vector_type) {
+      target_types.vector_types.push_back(
+          ci::Type::V(result_target_type, vector_type.getNumElements()));
+    }
+    target_types.scalar_types.push_back(ci::Type::S(result_target_type));
+  }
+  return target_types;
+}
 
-    mlir::Value final_result =
-        needs_upcast
-            ? mlir::arith::TruncFOp::create(b, op.getType(), compute_result)
-            : compute_result;
+template <typename Intrinsic>
+mlir::func::FuncOp GetDeclaration(mlir::ImplicitLocOpBuilder& b,
+                                  mlir::ModuleOp module_op,
+                                  llvm::ArrayRef<ci::Type> types) {
+  return Intrinsic::GetOrInsertDeclaration(b, module_op, types);
+}
 
-    rewriter.replaceOp(op, final_result);
-    return mlir::success();
+template <typename Intrinsic, typename Op>
+Value CallIntrinsicFunc(mlir::ImplicitLocOpBuilder& b, Op op,
+                        const TargetTypes& target_types,
+                        mlir::VectorType vec_type, bool vector_supported,
+                        bool scalar_supported) {
+  auto module_op = op->template getParentOfType<mlir::ModuleOp>();
+
+  SmallVector<Value> compute_inputs;
+  compute_inputs.reserve(op->getNumOperands());
+  for (Value operand : op->getOperands()) {
+    mlir::Type elem_type = mlir::getElementTypeOrSelf(operand.getType());
+    if (target_types.needs_upcast &&
+        (elem_type.isF16() || elem_type.isBF16())) {
+      compute_inputs.push_back(
+          EmitFloatCast(operand, GetVectorType(vec_type, b.getF32Type()), b));
+    } else {
+      compute_inputs.push_back(operand);
+    }
+  }
+  if (vector_supported) {
+    auto intrinsic_decl =
+        GetDeclaration<Intrinsic>(b, module_op, target_types.vector_types);
+    Value compute_result =
+        mf::CallOp::create(b, intrinsic_decl, compute_inputs).getResult(0);
+    return target_types.needs_upcast
+               ? EmitFloatCast(compute_result, op.getType(), b)
+               : compute_result;
   }
 
- private:
-  mlir::ModuleOp& module_op_;
-};
+  // Fallback to scalar.
+  auto intrinsic_decl =
+      GetDeclaration<Intrinsic>(b, module_op, target_types.scalar_types);
+
+  if (!vec_type) {
+    Value scalar_result =
+        mf::CallOp::create(b, intrinsic_decl, compute_inputs).getResult(0);
+    return target_types.needs_upcast
+               ? ma::TruncFOp::create(b, op.getType(), scalar_result)
+               : scalar_result;
+  }
+
+  llvm::SmallVector<Value> scalar_results;
+  scalar_results.reserve(vec_type.getNumElements());
+  for (int64_t idx = 0; idx != vec_type.getNumElements(); ++idx) {
+    SmallVector<Value> scalar_inputs;
+    scalar_inputs.reserve(compute_inputs.size());
+    for (Value compute_input : compute_inputs) {
+      if (mlir::isa<mlir::VectorType>(compute_input.getType())) {
+        scalar_inputs.push_back(mv::ExtractOp::create(b, compute_input, idx));
+      } else {
+        scalar_inputs.push_back(compute_input);
+      }
+    }
+    Value scalar_result =
+        mf::CallOp::create(b, intrinsic_decl, scalar_inputs).getResult(0);
+    scalar_results.push_back(scalar_result);
+  }
+  mlir::Type compute_type = target_types.needs_upcast
+                                ? GetVectorType(vec_type, b.getF32Type())
+                                : op.getType();
+  Value compute_result =
+      mv::FromElementsOp::create(b, compute_type, scalar_results);
+
+  return target_types.needs_upcast
+             ? ma::TruncFOp::create(b, op.getType(), compute_result)
+             : compute_result;
+}
+
+template <typename Intrinsic, typename Op>
+mlir::LogicalResult LowerIntrinsicPattern(Op op,
+                                          mlir::PatternRewriter& rewriter) {
+  auto vec_type = mlir::dyn_cast<mlir::VectorType>(op.getType());
+  if (vec_type && vec_type.getRank() != 1) {
+    // These will later be converted to loops of 1D vectors but will then miss
+    // the XLA intrinsic lowering.
+    op->emitWarning() << "Missed XLA intrinsic lowering as vector rank != 1.";
+    return rewriter.notifyMatchFailure(op, "Vector rank is not 1.");
+  }
+
+  mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+  TargetTypes target_types = GetTargetTypes<Intrinsic>(op);
+  auto module_op = op->template getParentOfType<mlir::ModuleOp>();
+
+  std::string features_str = GetCpuFeaturesStr(module_op);
+  bool vector_supported =
+      Intrinsic::IsSupported(features_str, target_types.vector_types);
+  bool scalar_supported =
+      Intrinsic::IsSupported(features_str, target_types.scalar_types);
+  if (!vector_supported && !scalar_supported) {
+    return rewriter.notifyMatchFailure(op, "unsupported type");
+  }
+  Value result = CallIntrinsicFunc<Intrinsic>(
+      b, op, target_types, vec_type, vector_supported, scalar_supported);
+  rewriter.replaceOp(op, result);
+  return mlir::success();
+}
 
 class LowerXlaIntrinsicLibPass
     : public impl::LowerXlaIntrinsicLibPassBase<LowerXlaIntrinsicLibPass> {
@@ -301,24 +236,23 @@ class LowerXlaIntrinsicLibPass
       : impl::LowerXlaIntrinsicLibPassBase<LowerXlaIntrinsicLibPass>() {}
 
   void runOnOperation() override {
+    mlir::MLIRContext* context = &getContext();
     mlir::ModuleOp module_op = getOperation();
-    mlir::RewritePatternSet patterns(&getContext());
-    patterns.add<
-        LowerIntrinsicPattern<codegen::intrinsics::Exp, mlir::math::ExpOp>,
-        LowerIntrinsicPattern<codegen::intrinsics::Log1p, mlir::math::Log1pOp>,
-        LowerIntrinsicPattern<codegen::intrinsics::Rsqrt, mlir::math::RsqrtOp>,
-        LowerIntrinsicPattern<codegen::intrinsics::Tanh, mlir::math::TanhOp>,
-        LowerIntrinsicPattern<codegen::intrinsics::EigenAtan,
-                              mlir::math::AtanOp>,
-        LowerErfPattern, LowerTruncF32BF16FPattern>(&getContext(), module_op);
-
+    mlir::RewritePatternSet patterns(context);
+    patterns.add(LowerIntrinsicPattern<ci::Exp, mm::ExpOp>);
+    patterns.add(LowerIntrinsicPattern<ci::Log1p, mm::Log1pOp>);
+    patterns.add(LowerIntrinsicPattern<ci::Rsqrt, mm::RsqrtOp>);
+    patterns.add(LowerIntrinsicPattern<ci::Tanh, mm::TanhOp>);
+    patterns.add(LowerIntrinsicPattern<ci::EigenAtan, mm::AtanOp>);
+    patterns.add(LowerIntrinsicPattern<ci::FpTrunc, ma::TruncFOp>);
+    patterns.add(LowerIntrinsicPattern<ci::Erf, mm::ErfOp>);
     if (mlir::failed(
             mlir::applyPatternsGreedily(module_op, std::move(patterns)))) {
       signalPassFailure();
     }
   }
 };
-}  // namespace
 
+}  // namespace
 }  // namespace emitters
 }  // namespace xla

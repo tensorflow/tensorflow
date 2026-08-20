@@ -893,11 +893,22 @@ class TensorListScatterIntoExistingList : public OpKernel {
     TensorList* output_list = nullptr;
     OP_REQUIRES_OK(c, ForwardInputOrCreateNewList(c, 0, 0, *l, &output_list));
     const auto indices_vec = indices.vec<int32_t>();
-    int32_t max_index =
-        (indices.NumElements() == 0)
-            ? -1
-            : *std::max_element(indices_vec.data(),
-                                indices_vec.data() + indices.NumElements());
+    // Reject negative indices (mirrors the sibling op TensorListScatter): a
+    // negative index reaches Scatter()'s std::swap(list->tensors()[i], ...)
+    // with i < 0, an out-of-bounds heap access. Do it in the same pass that
+    // finds the max via std::minmax_element, and reuse the max for the resize.
+    int32_t max_index = -1;
+    if (indices.NumElements() > 0) {
+      const auto minmax = std::minmax_element(
+          indices_vec.data(), indices_vec.data() + indices.NumElements());
+      OP_REQUIRES(
+          c, *minmax.first >= 0,
+          absl::InvalidArgumentError(absl::StrCat(
+              "Indices in TensorListScatterIntoExistingList must all be "
+              "non-negative; got ",
+              *minmax.first)));
+      max_index = *minmax.second;
+    }
     if (max_index + 1 > output_list->tensors().size()) {
       output_list->tensors().resize(max_index + 1);
     }
