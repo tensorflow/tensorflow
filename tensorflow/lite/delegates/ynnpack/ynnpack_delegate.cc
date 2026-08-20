@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/ynnpack/copy.h"
 #include "tensorflow/lite/delegates/ynnpack/dot.h"
 #include "tensorflow/lite/delegates/ynnpack/elementwise.h"
+#include "tensorflow/lite/delegates/ynnpack/moe.h"
 #include "tensorflow/lite/delegates/ynnpack/pooling.h"
 #include "tensorflow/lite/delegates/ynnpack/reduction.h"
 #include "tensorflow/lite/delegates/ynnpack/softmax.h"
@@ -70,6 +71,8 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
     }
     tensor_to_value_id_.clear();
     inputs_.clear();
+    temporary_copied_weights_.clear();
+    moe_infos_.clear();
 
     outputs_.clear();
     dummy_inputs_.clear();
@@ -81,6 +84,11 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
         num_dummy_inputs += 2;
       } else if (IsSdpa(context, node.node_index)) {
         num_dummy_inputs += 4;
+      } else if (IsMoe(context, node.node_index)) {
+        const TfLiteTensor& gate_w = context->tensors[node.inputs[3]];
+        int num_experts =
+            (gate_w.dims && gate_w.dims->size >= 2) ? gate_w.dims->data[1] : 0;
+        num_dummy_inputs += (num_experts + 1);
       }
     }
 
@@ -256,6 +264,12 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
       } else if (node.builtin_code == kTfLiteBuiltinDequantize) {
         TF_LITE_ENSURE_STATUS(DefineDequantizeNode(context, subgraph_,
                                                    tensor_to_value_id_, node));
+      } else if (IsMoe(context, node.node_index)) {
+        MoeInfo moe_info;
+        TF_LITE_ENSURE_STATUS(DefineMoeNode(
+            context, subgraph_, tensor_to_value_id_, next_external_id, node,
+            &temporary_copied_weights_, &moe_info, options_.static_shape));
+        moe_infos_.push_back(std::move(moe_info));
       } else {
         TF_LITE_ENSURE_MSG(context, false, "Unsupported op: %d",
                            node.builtin_code);
@@ -266,6 +280,8 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
     TF_LITE_ENSURE_YNN_STATUS(ynn_optimize_subgraph(subgraph_, ynn_tp, 0));
     TF_LITE_ENSURE_YNN_STATUS(
         ynn_create_runtime(subgraph_, ynn_tp, 0, &runtime_));
+
+    TF_LITE_ENSURE_STATUS(InitMoeRuntime(context, runtime_, moe_infos_));
 
     return kTfLiteOk;
   }
@@ -364,6 +380,8 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
   }
 
   TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) override {
+    TF_LITE_ENSURE_STATUS(EvalMoeNodes(context, runtime_, moe_infos_));
+
     if (!dummy_inputs_.empty()) {
       // Set shape for dummy inputs based on param_tensor data at each
       // invocation.
@@ -397,7 +415,9 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
         TF_LITE_ENSURE_YNN_STATUS(ynn_set_external_value_shape(
             runtime_, dummy.dummy_val_id, dummy.rank, dims));
       }
+    }
 
+    if (!dummy_inputs_.empty() || !moe_infos_.empty()) {
       TF_LITE_ENSURE_YNN_STATUS(ynn_reshape_runtime(runtime_));
     }
 
@@ -438,6 +458,8 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
   std::vector<std::vector<size_t>> input_shapes_;
   TensorToValueIdMap tensor_to_value_id_;
   std::vector<DummyInputInfo> dummy_inputs_;
+  std::vector<std::unique_ptr<float[]>> temporary_copied_weights_;
+  std::vector<MoeInfo> moe_infos_;
 };
 
 class YNNPackDelegate : public SimpleDelegateInterface {
@@ -522,6 +544,8 @@ class YNNPackDelegate : public SimpleDelegateInterface {
              kTfLiteOk;
     } else if (IsSdpa(registration, node)) {
       return IsSdpaSupported(registration, node, context) == kTfLiteOk;
+    } else if (IsMoe(registration, node)) {
+      return IsMoeSupported(registration, node, context) == kTfLiteOk;
     }
     return false;
   }
@@ -545,6 +569,10 @@ class YNNPackDelegate : public SimpleDelegateInterface {
         } else if (IsSdpa(reg, node) &&
                    IsSdpaSupported(reg, node, context) == kTfLiteOk) {
           // Don't inline this supported sdpa.
+          return false;
+        } else if (IsMoe(reg, node) &&
+                   IsMoeSupported(reg, node, context) == kTfLiteOk) {
+          // Don't inline this supported MoE.
           return false;
         }
         return true;

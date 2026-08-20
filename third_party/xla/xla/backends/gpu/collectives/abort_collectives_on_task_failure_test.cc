@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/ascii.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/runtime/device_id.h"
+#include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -157,8 +159,11 @@ TEST(AbortCollectivesOnTaskFailureTest, AbortsAcquiredGpuCliqueOnTaskFailure) {
   });
   ResetProcessTaskState();
 
+  ASSERT_OK_AND_ASSIGN(auto platform_name,
+                       xla::PlatformUtil::CanonicalPlatformName("gpu"));
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       se::PlatformManager::PlatformWithName(
+                           absl::AsciiStrToUpper(platform_name)));
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
   }
