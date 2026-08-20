@@ -539,8 +539,14 @@ struct scalar_round_half_to_even_op {
   }
 };
 
-template <typename Scalar>
-struct scalar_round_half_to_even_op<Scalar, true, false> {
+// Integer types are already rounded, so rounding is the identity. This holds
+// regardless of whether the packet traits advertise rounding support, so the
+// specialization must match any value of the HasRint template parameter.
+// Otherwise integer types whose packet_traits report HasRound == true
+// instantiate as <Scalar, true, true>, miss this specialization, fall through
+// to the floating-point primary template, and produce zeros (issue #74789).
+template <typename Scalar, bool HasRint>
+struct scalar_round_half_to_even_op<Scalar, true, HasRint> {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& x) const {
     return x;
