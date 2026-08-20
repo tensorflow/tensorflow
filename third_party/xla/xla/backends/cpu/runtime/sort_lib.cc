@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -27,7 +28,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
-#include "absl/base/dynamic_annotations.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/types/span.h"
@@ -36,6 +36,51 @@ limitations under the License.
 namespace xla::cpu::internal {
 
 namespace {
+
+template <typename T>
+inline constexpr bool is_float_type_v =
+    std::is_floating_point_v<T> || std::is_same_v<T, bfloat16> ||
+    std::is_same_v<T, half>;
+
+template <typename T>
+inline bool IsNaN(const T& val) {
+  if constexpr (std::is_same_v<T, double>) {
+    return std::isnan(val);
+  } else if constexpr (std::is_same_v<T, float> ||
+                       std::is_same_v<T, bfloat16> || std::is_same_v<T, half>) {
+    return std::isnan(static_cast<float>(val));
+  } else {
+    return false;
+  }
+}
+
+template <typename T>
+struct SortComparatorLess {
+  bool operator()(const T& a, const T& b) const {
+    if constexpr (is_float_type_v<T>) {
+      bool a_nan = IsNaN(a);
+      bool b_nan = IsNaN(b);
+      if (a_nan || b_nan) {
+        return !a_nan && b_nan;
+      }
+    }
+    return a < b;
+  }
+};
+
+template <typename T>
+struct SortComparatorGreater {
+  bool operator()(const T& a, const T& b) const {
+    if constexpr (is_float_type_v<T>) {
+      bool a_nan = IsNaN(a);
+      bool b_nan = IsNaN(b);
+      if (a_nan || b_nan) {
+        return a_nan && !b_nan;
+      }
+    }
+    return a > b;
+  }
+};
 
 // We use a lot of template metaprogramming below to be able to construct
 // iterators with statically known number of compared elements. We support a
@@ -637,34 +682,38 @@ void SortInplace(const SortDims& sort_dims, int64_t start_slice,
   }
 }
 
-void SortInplace(const SortDims& sort_dims, absl::Span<std::byte* const> data,
-                 absl::Span<const size_t> primitive_sizes, bool is_stable,
-                 LessThan* less_than) {
-  int64_t num_slices = sort_dims.outer_dim_size * sort_dims.inner_dim_size;
-  for (int64_t i = 0; i < data.size(); ++i) {
-    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
-        data[i], primitive_sizes[i] * sort_dims.sort_dim_size * num_slices);
-  }
-  SortInplace(sort_dims, 0, num_slices, data, primitive_sizes, is_stable,
-              less_than);
-}
-
 template <class Iterator, class T>
 static void Sort1DInplace(Iterator begin, Iterator end, bool is_stable,
                           SortDirection direction) {
-  if (direction == SortDirection::kAscending) {
-    if (is_stable) {
-      std::stable_sort(begin, end, std::less<T>());
+  if constexpr (std::is_integral_v<T>) {
+    if (direction == SortDirection::kAscending) {
+      if (is_stable) {
+        std::stable_sort(begin, end, std::less<T>());
+      } else {
+        std::sort(begin, end, std::less<T>());
+      }
     } else {
-      std::sort(begin, end, std::less<T>());
+      if (is_stable) {
+        std::stable_sort(begin, end, std::greater<T>());
+      } else {
+        std::sort(begin, end, std::greater<T>());
+      }
     }
   } else {
-    if (is_stable) {
-      std::stable_sort(begin, end, std::greater<T>());
+    if (direction == SortDirection::kAscending) {
+      if (is_stable) {
+        std::stable_sort(begin, end, SortComparatorLess<T>());
+      } else {
+        std::sort(begin, end, SortComparatorLess<T>());
+      }
     } else {
-      std::sort(begin, end, std::greater<T>());
+      if (is_stable) {
+        std::stable_sort(begin, end, SortComparatorGreater<T>());
+      } else {
+        std::sort(begin, end, SortComparatorGreater<T>());
+      }
     }
-  };
+  }
 }
 
 template <typename T>
@@ -699,21 +748,11 @@ void SortInplace(const SortDims& sort_dims, int64_t start_slice,
   }
 }
 
-template <typename T>
-void SortInplace(const SortDims& sort_dims, T* data, bool is_stable,
-                 SortDirection direction) {
-  int64_t num_slices = sort_dims.outer_dim_size * sort_dims.inner_dim_size;
-  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
-      data, sizeof(T) * sort_dims.sort_dim_size * num_slices);
-  SortInplace<T>(sort_dims, 0, num_slices, data, is_stable, direction);
-}
-
 // Declare SortInplace for all supported types. Template is instantiated in
 // the .cc file.
 #define DEFINE_SORT_INPLACE(T)                                              \
   template void SortInplace<T>(const SortDims&, int64_t, int64_t, T*, bool, \
-                               SortDirection);                              \
-  template void SortInplace<T>(const SortDims&, T*, bool, SortDirection)
+                               SortDirection)
 
 DEFINE_SORT_INPLACE(float);
 DEFINE_SORT_INPLACE(double);
@@ -729,5 +768,277 @@ DEFINE_SORT_INPLACE(uint32_t);
 DEFINE_SORT_INPLACE(uint64_t);
 
 #undef DEFINE_SORT_INPLACE
+
+template <typename Key, typename Value>
+struct ZipRef {
+  Key& key;
+  Value& value;
+
+  ZipRef(Key& k, Value& v) : key(k), value(v) {}
+  ZipRef(const ZipRef&) = default;
+
+  // Non-defaulted copy assignment is required to write through to referenced
+  // memory (defaulted assignment is implicitly deleted on reference members).
+  // NOLINTNEXTLINE(modernize-use-equals-default)
+  ZipRef& operator=(const ZipRef& other) {
+    key = other.key;
+    value = other.value;
+    return *this;
+  }
+
+  ZipRef& operator=(const std::pair<Key, Value>& p) {
+    key = p.first;
+    value = p.second;
+    return *this;
+  }
+
+  ZipRef& operator=(std::pair<Key, Value>&& p) {
+    key = std::move(p.first);
+    value = std::move(p.second);
+    return *this;
+  }
+
+  // Implicit conversion to std::pair is required by std::sort / STL algorithms
+  // for copy-initialization of temporary value_type variables (e.g. pivots).
+  // NOLINTNEXTLINE(google-explicit-constructor)
+  operator std::pair<Key, Value>() const { return {key, value}; }
+
+  friend void swap(ZipRef a, ZipRef b) noexcept {
+    std::swap(a.key, b.key);
+    std::swap(a.value, b.value);
+  }
+
+  friend void swap(ZipRef a, std::pair<Key, Value>& b) noexcept {
+    std::swap(a.key, b.first);
+    std::swap(a.value, b.second);
+  }
+
+  friend void swap(std::pair<Key, Value>& a, ZipRef b) noexcept {
+    std::swap(a.first, b.key);
+    std::swap(a.second, b.value);
+  }
+};
+
+template <typename Key, typename Value>
+class ZipIterator {
+ public:
+  using iterator_category = std::random_access_iterator_tag;
+  using value_type = std::pair<Key, Value>;
+  using difference_type = std::ptrdiff_t;
+  using reference = ZipRef<Key, Value>;
+  // Required by std::iterator_traits in C++17 for proxy iterators.
+  using pointer = void;
+
+  ZipIterator() : key_ptr_(nullptr), val_ptr_(nullptr) {}
+  ZipIterator(Key* key_ptr, Value* val_ptr)
+      : key_ptr_(key_ptr), val_ptr_(val_ptr) {}
+
+  reference operator*() const { return reference(*key_ptr_, *val_ptr_); }
+  reference operator[](difference_type n) const {
+    return reference(key_ptr_[n], val_ptr_[n]);
+  }
+
+  ZipIterator& operator++() {
+    ++key_ptr_;
+    ++val_ptr_;
+    return *this;
+  }
+  ZipIterator operator++(int) {
+    ZipIterator tmp = *this;
+    ++(*this);
+    return tmp;
+  }
+  ZipIterator& operator--() {
+    --key_ptr_;
+    --val_ptr_;
+    return *this;
+  }
+  ZipIterator operator--(int) {
+    ZipIterator tmp = *this;
+    --(*this);
+    return tmp;
+  }
+
+  ZipIterator& operator+=(difference_type n) {
+    key_ptr_ += n;
+    val_ptr_ += n;
+    return *this;
+  }
+  ZipIterator& operator-=(difference_type n) {
+    key_ptr_ -= n;
+    val_ptr_ -= n;
+    return *this;
+  }
+
+  friend ZipIterator operator+(ZipIterator it, difference_type n) {
+    return it += n;
+  }
+  friend ZipIterator operator+(difference_type n, ZipIterator it) {
+    return it += n;
+  }
+  friend ZipIterator operator-(ZipIterator it, difference_type n) {
+    return it -= n;
+  }
+  friend difference_type operator-(const ZipIterator& a, const ZipIterator& b) {
+    return a.key_ptr_ - b.key_ptr_;
+  }
+
+  friend bool operator==(const ZipIterator& a, const ZipIterator& b) {
+    return a.key_ptr_ == b.key_ptr_;
+  }
+  friend bool operator!=(const ZipIterator& a, const ZipIterator& b) {
+    return a.key_ptr_ != b.key_ptr_;
+  }
+  friend bool operator<(const ZipIterator& a, const ZipIterator& b) {
+    return a.key_ptr_ < b.key_ptr_;
+  }
+  friend bool operator>(const ZipIterator& a, const ZipIterator& b) {
+    return a.key_ptr_ > b.key_ptr_;
+  }
+  friend bool operator<=(const ZipIterator& a, const ZipIterator& b) {
+    return a.key_ptr_ <= b.key_ptr_;
+  }
+  friend bool operator>=(const ZipIterator& a, const ZipIterator& b) {
+    return a.key_ptr_ >= b.key_ptr_;
+  }
+
+  Key* key_ptr() const { return key_ptr_; }
+  Value* val_ptr() const { return val_ptr_; }
+
+  friend void iter_swap(ZipIterator a, ZipIterator b) noexcept {
+    std::swap(*a.key_ptr_, *b.key_ptr_);
+    std::swap(*a.val_ptr_, *b.val_ptr_);
+  }
+
+ private:
+  Key* key_ptr_;
+  Value* val_ptr_;
+};
+
+template <typename Key, typename Value>
+static void SortKeyValueSlice(int64_t n, Key* keys, Value* values,
+                              bool is_stable, SortDirection direction) {
+  auto comp = [direction](const auto& a, const auto& b) -> bool {
+    auto get_key = [](const auto& item) -> const Key& {
+      using T = std::decay_t<decltype(item)>;
+      if constexpr (std::is_same_v<T, std::pair<Key, Value>>) {
+        return item.first;
+      } else {
+        return item.key;
+      }
+    };
+    const Key& ka = get_key(a);
+    const Key& kb = get_key(b);
+    if constexpr (std::is_integral_v<Key>) {
+      if (direction == SortDirection::kAscending) {
+        return std::less<Key>()(ka, kb);
+      }
+      return std::greater<Key>()(ka, kb);
+    } else {
+      if (direction == SortDirection::kAscending) {
+        return SortComparatorLess<Key>()(ka, kb);
+      }
+      return SortComparatorGreater<Key>()(ka, kb);
+    }
+  };
+
+  ZipIterator<Key, Value> begin(keys, values);
+  ZipIterator<Key, Value> end(keys + n, values + n);
+  if (is_stable) {
+    std::stable_sort(begin, end, comp);
+  } else {
+    std::sort(begin, end, comp);
+  }
+}
+
+template <typename Key, typename Value>
+void Sort2DKeyValue(const SortDims& sort_dims, int64_t start_slice,
+                    int64_t end_slice, Key* keys, Value* values, bool is_stable,
+                    SortDirection direction) {
+  DCHECK_LE(0, start_slice);
+  DCHECK_LE(start_slice, end_slice);
+  DCHECK_LE(end_slice, sort_dims.outer_dim_size * sort_dims.inner_dim_size);
+
+  int64_t n = sort_dims.sort_dim_size;
+  if (sort_dims.inner_dim_size == 1) {
+    for (int64_t i = start_slice; i < end_slice; ++i) {
+      int64_t offset = i * n;
+      SortKeyValueSlice<Key, Value>(n, keys + offset, values + offset,
+                                    is_stable, direction);
+    }
+    return;
+  }
+
+  // Strided case (inner_dim_size > 1): Gather into contiguous arrays (SoA),
+  // sort with contiguous ZipIterator, and scatter back.
+  DCHECK_GT(sort_dims.inner_dim_size, 0);
+  int64_t stride = sort_dims.inner_dim_size;
+  auto sort_strided_slice = [&](int64_t offset, Key* key_buf, Value* val_buf) {
+    Key* key_ptr = keys + offset;
+    Value* val_ptr = values + offset;
+    for (int64_t i = 0; i < n; ++i) {
+      key_buf[i] = key_ptr[i * stride];
+      val_buf[i] = val_ptr[i * stride];
+    }
+    SortKeyValueSlice<Key, Value>(n, key_buf, val_buf, is_stable, direction);
+    for (int64_t i = 0; i < n; ++i) {
+      key_ptr[i * stride] = key_buf[i];
+      val_ptr[i * stride] = val_buf[i];
+    }
+  };
+
+  int64_t slice_stride = n * stride;
+  int64_t outer = start_slice / stride;
+  int64_t inner = start_slice % stride;
+  int64_t offset = outer * slice_stride + inner;
+
+  auto run_slices = [&](Key* key_buf, Value* val_buf) {
+    for (int64_t i = start_slice; i < end_slice; ++i) {
+      sort_strided_slice(offset, key_buf, val_buf);
+      if (++inner == stride) {
+        inner = 0;
+        offset += slice_stride - stride + 1;
+      } else {
+        ++offset;
+      }
+    }
+  };
+
+  if (n <= 1024) {
+    std::array<Key, 1024> key_buf;
+    std::array<Value, 1024> val_buf;
+    run_slices(key_buf.data(), val_buf.data());
+  } else {
+    std::vector<Key> key_buf(n);
+    std::vector<Value> val_buf(n);
+    run_slices(key_buf.data(), val_buf.data());
+  }
+}
+
+#define DEFINE_SORT_2D_KEY_VALUE(Key, Value)                                  \
+  template void Sort2DKeyValue<Key, Value>(const SortDims&, int64_t, int64_t, \
+                                           Key*, Value*, bool, SortDirection)
+
+#define DEFINE_SORT_2D_KEY_VALUE_KEY(Key)  \
+  DEFINE_SORT_2D_KEY_VALUE(Key, uint8_t);  \
+  DEFINE_SORT_2D_KEY_VALUE(Key, uint16_t); \
+  DEFINE_SORT_2D_KEY_VALUE(Key, uint32_t); \
+  DEFINE_SORT_2D_KEY_VALUE(Key, uint64_t)
+
+DEFINE_SORT_2D_KEY_VALUE_KEY(float);
+DEFINE_SORT_2D_KEY_VALUE_KEY(double);
+DEFINE_SORT_2D_KEY_VALUE_KEY(bfloat16);
+DEFINE_SORT_2D_KEY_VALUE_KEY(half);
+DEFINE_SORT_2D_KEY_VALUE_KEY(int8_t);
+DEFINE_SORT_2D_KEY_VALUE_KEY(int16_t);
+DEFINE_SORT_2D_KEY_VALUE_KEY(int32_t);
+DEFINE_SORT_2D_KEY_VALUE_KEY(int64_t);
+DEFINE_SORT_2D_KEY_VALUE_KEY(uint8_t);
+DEFINE_SORT_2D_KEY_VALUE_KEY(uint16_t);
+DEFINE_SORT_2D_KEY_VALUE_KEY(uint32_t);
+DEFINE_SORT_2D_KEY_VALUE_KEY(uint64_t);
+
+#undef DEFINE_SORT_2D_KEY_VALUE_KEY
+#undef DEFINE_SORT_2D_KEY_VALUE
 
 }  // namespace xla::cpu::internal

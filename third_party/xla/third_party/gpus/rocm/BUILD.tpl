@@ -300,7 +300,9 @@ rocm_lib_import(
     name = "miopen",
     data = glob([
         "%{rocm_root}/lib/libMIOpen.so*",
-        "%{rocm_root}/share/miopen/**",
+    ]) + glob([
+        "%{rocm_root}/share/miopen/db/" + arch + "*"
+        for arch in rocm_gpu_architectures()
     ]) + glob([
         "%{rocm_root}/lib/libMIOpenCKGroupedConv_" + arch + ".so"
         for arch in rocm_gpu_architectures()
@@ -347,6 +349,19 @@ rocm_lib_import(
     name = "rocm_smi",
     data = glob(["%{rocm_root}/lib/librocm_smi64.so*"]),
     interface_library = "%{rocm_root}/lib/librocm_smi64.so",
+    deps = [],
+)
+
+cc_import(
+    name = "hsakmt",
+    static_library = "%{rocm_root}/lib/libhsakmt.a",
+    visibility = ["//visibility:public"],
+)
+
+rocm_lib_import(
+    name = "hsa_runtime",
+    data = [":hsa_rocr_libs_data"],
+    interface_library = "%{rocm_root}/lib/libhsa-runtime64.so",
     deps = [],
 )
 

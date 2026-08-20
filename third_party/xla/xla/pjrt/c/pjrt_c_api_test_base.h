@@ -45,6 +45,7 @@ class PjrtCApiTestBase : public ::testing::Test {
  public:
   explicit PjrtCApiTestBase(const PJRT_Api* api);
   ~PjrtCApiTestBase() override;
+  void SetUp() override;
 
  protected:
   const PJRT_Api* api_;
