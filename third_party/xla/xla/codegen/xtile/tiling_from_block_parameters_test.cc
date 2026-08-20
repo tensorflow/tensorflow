@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/tiling_from_block_parameters.h"
+#include "xla/codegen/xtile/tiling_from_block_parameters.h"
 
 #include <cstdint>
 #include <memory>
@@ -46,7 +46,8 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/test.h"
 
-namespace xla::gpu {
+namespace xla::xtile {
+using ::xla::gpu::BlockLevelParameters;
 namespace {
 
 using ::absl_testing::IsOkAndHolds;
@@ -207,13 +208,14 @@ class GetTileTilingSpaceConcreteSizesTest
       const HloInstruction* fusion) {
     TF_RET_CHECK(fusion->opcode() == HloOpcode::kFusion) << fusion->ToString();
     ABSL_ASSIGN_OR_RETURN(auto backend_config,
-                     fusion->backend_config<GpuBackendConfig>());
+                     fusion->backend_config<::xla::gpu::GpuBackendConfig>());
     BlockLevelParameters block_level_parameters =
         BlockLevelParameters::FromBlockLevelFusionConfig(
             backend_config.fusion_backend_config().block_level_fusion_config());
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
-    ABSL_ASSIGN_OR_RETURN(auto tiling_space, experimental::TilingSpace::Create(
-                                            *fusion_adaptor, &mlir_context_));
+    ABSL_ASSIGN_OR_RETURN(auto tiling_space,
+                     ::xla::gpu::experimental::TilingSpace::Create(
+                         *fusion_adaptor, &mlir_context_));
     return GetTilingSpaceConcreteSizes(
         *tiling_space, block_level_parameters,
         GetDebugOptionsForTest()
@@ -454,4 +456,4 @@ ENTRY entry {
 }
 
 }  // namespace
-}  // namespace xla::gpu
+}  // namespace xla::xtile

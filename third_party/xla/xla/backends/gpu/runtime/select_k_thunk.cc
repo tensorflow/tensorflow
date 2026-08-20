@@ -117,6 +117,10 @@ absl::Status SelectKThunk::ExecuteOnStream(const ExecuteParams& params) {
       return select_k_exec<::xla::bfloat16>(
           device_ordinal, allocator, stream, buffer_args[0], buffer_args[1],
           buffer_args[2], batch_size_, num_elements_, k_);
+    case PrimitiveType::U64:
+      return select_k_exec<uint64_t>(
+          device_ordinal, allocator, stream, buffer_args[0], buffer_args[1],
+          buffer_args[2], batch_size_, num_elements_, k_);
     default:
       return absl::UnimplementedError(
           absl::StrCat("SelectKThunk: Unsupported dtype: ",

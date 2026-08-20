@@ -241,37 +241,16 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
       : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("table_name", &table_name_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("input_size", &input_size_));
-
     // Try to get the number of sparsecores per chip from topology. And fall
     // back to the attribute if the topology is not available.
     GetAndSetSparseCoresPerLogicalDevice(ctx, num_sparsecores_per_device_);
-
-    // Get and save quantization config params, if they were configured.
-    // num_buckets == 0 indicate no quantization configs were provided.
-    int check_num_buckets;
-    absl::Status status =
-        ctx->GetAttr("quantization_config_num_buckets", &check_num_buckets);
-    if (status.ok() && check_num_buckets > 0) {
-      quantization_config_num_buckets_ = check_num_buckets;
-      float quant_clipping_float;
-      status = ctx->GetAttr("quantization_config_low", &quant_clipping_float);
-      if (status.ok()) {
-        quantization_config_low_ = quant_clipping_float;
-      }
-      status = ctx->GetAttr("quantization_config_high", &quant_clipping_float);
-      if (status.ok()) {
-        quantization_config_high_ = quant_clipping_float;
-      }
-    }
-    device_name_ = ctx->device()->name();
-    // Check for incomplete quantization config.
     OP_REQUIRES(
         ctx,
-        quantization_config_low_.has_value() ==
-                quantization_config_high_.has_value() &&
-            quantization_config_low_.has_value() ==
-                quantization_config_num_buckets_.has_value(),
+        ParseQuantizationConfigs(ctx, quantization_config_num_buckets_,
+                                 quantization_config_low_,
+                                 quantization_config_high_),
         absl::InvalidArgumentError("Quantization config is incomplete."));
+    device_name_ = ctx->device()->name();
   }
 
   ~XlaSparseDenseMatmulWithCsrInputOp() override = default;
@@ -547,6 +526,357 @@ class XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp
 
 REGISTER_XLA_OP(Name("XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInput"),
                 XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp);
+
+// Similar to XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp, but without
+// `sorted_gains` in the input Csr. `weights` which is a tensor of shape
+// [num_weights] that represents the positional weights to be applied to the
+// embedding lookup results. It produces the same embedding look up result as
+// `XlaSparseDenseMatmulWithCsrInputOp`.
+//
+// Comparing to the same positional weighting combiner implemented with
+// XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp, this op is much more
+// efficient with both HBM usage and MST because the aggregation of lookup
+// results are pinned on to the SparseCore, which avoids materializing the
+// intermediate lookup results.
+class XlaSparseDenseMatmulPositionalWeightedWithCsrInputOp
+    : public XlaSparseDenseMatmulWithCsrInputOp {
+ public:
+  explicit XlaSparseDenseMatmulPositionalWeightedWithCsrInputOp(
+      OpKernelConstruction* ctx)
+      : XlaSparseDenseMatmulWithCsrInputOp(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("num_weights", &num_weights_));
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttr("num_logical_devices", &num_logical_devices_));
+  }
+
+  ~XlaSparseDenseMatmulPositionalWeightedWithCsrInputOp() override = default;
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    int64_t per_sparse_core_batch_size =
+        input_size_ / num_sparsecores_per_device_;
+    int64_t max_ids_per_partition = 0;
+    int64_t max_unique_ids_per_partition = 0;
+
+    xla::XlaBuilder* builder = ctx->builder();
+    xla::XlaOp row_pointers = ctx->Input("row_pointers");
+    xla::XlaOp sorted_sample_ids = ctx->Input("sorted_sample_ids");
+    xla::XlaOp sorted_token_ids = ctx->Input("sorted_token_ids");
+    xla::XlaOp sorted_pos_ids = ctx->Input("sorted_pos_ids");
+    xla::XlaOp embedding_table = ctx->Input("embedding_table");
+    xla::XlaOp positional_weights = ctx->Input("weights");
+
+    OP_REQUIRES_VALUE(xla::Shape embedding_table_shape, ctx,
+                      ctx->InputXlaShape("embedding_table"));
+    const int32_t vocab_size = embedding_table_shape.dimensions(0);
+    const int32_t feature_width = embedding_table_shape.dimensions(1);
+
+    OP_REQUIRES_OK(
+        ctx, GetMaxIdsAndUniques(per_sparse_core_batch_size, feature_width,
+                                 &max_ids_per_partition,
+                                 &max_unique_ids_per_partition));
+    // Log max_ids and max_uniques for offline analysis. We do this here since
+    // these values are fixed at TPU compile time and remain fixed during
+    // training.
+    max_ids_per_partition_gauge_->GetCell(device_name_, table_name_)
+        ->Set(max_ids_per_partition);
+    max_unique_ids_per_partition_gauge_->GetCell(device_name_, table_name_)
+        ->Set(max_unique_ids_per_partition);
+    LOG(INFO) << "Lowering "
+                 "XlaSparseDenseMatmulPositionalWeightedWithCsrInputOp to HLO: "
+              << "table_name = '" << table_name_
+              << "', max_ids = " << max_ids_per_partition
+              << ", max_uniques = " << max_unique_ids_per_partition;
+
+    xla::FrontendAttributes sc_frontend_attributes;
+    OP_REQUIRES_OK(
+        ctx, SetSparseCoreFrontendAttributes(
+                 &sc_frontend_attributes, max_ids_per_partition,
+                 max_unique_ids_per_partition, num_sparsecores_per_device_,
+                 vocab_size, feature_width, input_size_, table_name_,
+                 /*max_valency=*/std::nullopt, quantization_config_low_,
+                 quantization_config_high_, quantization_config_num_buckets_));
+
+    // Emit the positional weighted forward pass custom call. Output is a tuple
+    // of the 2D activations buffer and the preserved received unique vectors
+    // buffer.
+    builder->SetFrontendAttributes(sc_frontend_attributes);
+    xla::Shape activation_shape =
+        xla::ShapeUtil::MakeShape(xla::F32, {input_size_, feature_width});
+    xla::Shape preserved_received_unique_vectors_shape =
+        xla::ShapeUtil::MakeShape(
+            xla::F32, {GetPerSparseCorePreservedBufferSize(
+                           max_ids_per_partition, max_unique_ids_per_partition,
+                           num_logical_devices_, num_sparsecores_per_device_) *
+                           num_sparsecores_per_device_,
+                       feature_width});
+    xla::Shape result_tuple_shape = xla::ShapeUtil::MakeTupleShape(
+        {activation_shape, preserved_received_unique_vectors_shape});
+    xla::XlaOp results = xla::CustomCall(
+        builder, "SparseDenseMatmulPositionalWeightedMegachipOp",
+        {row_pointers, sorted_token_ids, sorted_sample_ids, sorted_pos_ids,
+         embedding_table, positional_weights},
+        result_tuple_shape);
+
+    xla::FrontendAttributes tuple_frontend_attributes;
+    tuple_frontend_attributes.mutable_map()->insert(
+        {"_xla_compute_type", "sparse"});
+    builder->SetFrontendAttributes(tuple_frontend_attributes);
+
+    // Embedding layer output.
+    ctx->SetOutput(0, xla::GetTupleElement(results, 0));
+    ctx->SetOutput(1, xla::GetTupleElement(results, 1));
+  }
+
+ private:
+  int num_weights_;
+  int num_logical_devices_;
+
+  XlaSparseDenseMatmulPositionalWeightedWithCsrInputOp(
+      const XlaSparseDenseMatmulPositionalWeightedWithCsrInputOp&) = delete;
+  void operator=(const XlaSparseDenseMatmulPositionalWeightedWithCsrInputOp&) =
+      delete;
+};
+
+REGISTER_XLA_OP(Name("XlaSparseDenseMatmulPositionalWeightedWithCsrInput"),
+                XlaSparseDenseMatmulPositionalWeightedWithCsrInputOp);
+
+class XlaSparseDenseMatmulPositionalWeightedGradWithAdagradAndCsrInputOp
+    : public XlaOpKernel {
+ public:
+  explicit XlaSparseDenseMatmulPositionalWeightedGradWithAdagradAndCsrInputOp(
+      OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {
+    const NameAttrList* name_attr;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("custom_computation", &name_attr));
+    custom_computation_ = *name_attr;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("table_name", &table_name_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("num_weights", &num_weights_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("clip_weight_min", &clip_weight_min_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("clip_weight_max", &clip_weight_max_));
+    // Try to get the number of sparsecores per chip from topology. And fall
+    // back to the attribute if the topology is not available.
+    GetAndSetSparseCoresPerLogicalDevice(ctx, num_sparsecores_per_device_);
+    OP_REQUIRES(ctx, clip_weight_min_ <= clip_weight_max_,
+                absl::InvalidArgumentError(
+                    absl::StrCat("clip_weight_min must be smaller or equal to "
+                                 "clip_weight_max but got clip_weight_min as ",
+                                 clip_weight_min_, " and clip_weight_max as ",
+                                 clip_weight_max_, ".")));
+    OP_REQUIRES(
+        ctx,
+        ParseQuantizationConfigs(ctx, quantization_config_num_buckets_,
+                                 quantization_config_low_,
+                                 quantization_config_high_),
+        absl::InvalidArgumentError("Quantization config is incomplete."));
+    device_name_ = ctx->device()->name();
+  }
+
+  ~XlaSparseDenseMatmulPositionalWeightedGradWithAdagradAndCsrInputOp()
+      override = default;
+
+  std::vector<XlaCompiler::Argument> GetPositionalWeightOptimizerArguments(
+      XlaOpKernelContext* ctx, const int num_weights_variables,
+      const int num_weights_hyperparameters,
+      const std::vector<TensorShape>& hyperparameters_shapes,
+      int64_t per_core_weight_size) {
+    int32_t num_arguments =
+        1 + num_weights_variables + num_weights_hyperparameters;
+    std::vector<XlaCompiler::Argument> arguments(num_arguments);
+    // First argument: gradient of the positional weights.
+    arguments[0].kind = XlaCompiler::Argument::kParameter;
+    arguments[0].type = DT_FLOAT;
+    arguments[0].shape =
+        xla::ShapeUtil::MakeShape(xla::F32, {per_core_weight_size});
+    // Positional weights and its slot variables.
+    for (int32_t i = 0; i < num_weights_variables; ++i) {
+      arguments[1 + i].kind = XlaCompiler::Argument::kParameter;
+      arguments[1 + i].type = DT_FLOAT;
+      arguments[1 + i].shape =
+          xla::ShapeUtil::MakeShape(xla::F32, {per_core_weight_size});
+    }
+    // Hyperparameters.
+    int32_t hyper_offset = 1 + num_weights_variables;
+    for (int32_t i = 0; i < num_weights_hyperparameters; ++i) {
+      arguments[hyper_offset + i].kind = XlaCompiler::Argument::kParameter;
+      arguments[hyper_offset + i].type = DT_FLOAT;
+      std::vector<int64_t> dims;
+      dims.reserve(hyperparameters_shapes[i].dims());
+      for (int d = 0; d < hyperparameters_shapes[i].dims(); ++d) {
+        dims.push_back(hyperparameters_shapes[i].dim_size(d));
+      }
+      arguments[hyper_offset + i].shape =
+          xla::ShapeUtil::MakeShape(xla::F32, dims);
+    }
+    return arguments;
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::XlaBuilder* builder = ctx->builder();
+    xla::XlaOp row_pointers = ctx->Input("row_pointers");
+    xla::XlaOp sorted_sample_ids = ctx->Input("sorted_sample_ids");
+    xla::XlaOp sorted_token_ids = ctx->Input("sorted_token_ids");
+    xla::XlaOp sorted_pos_ids = ctx->Input("sorted_pos_ids");
+    xla::XlaOp activation_gradients = ctx->Input("activation_gradients");
+    xla::XlaOp preserved_received_unique_vectors =
+        ctx->Input("preserved_received_unique_vectors");
+    xla::XlaOp preserved_weights = ctx->Input("preserved_weights");
+    xla::XlaOp embedding_table = ctx->Input("embedding_table");
+    xla::XlaOp embedding_table_accumulator =
+        ctx->Input("embedding_table_accumulator");
+    xla::XlaOp embedding_table_learning_rate =
+        ctx->Input("embedding_table_learning_rate");
+    std::vector<xla::XlaOp> weights_inputs;
+    std::vector<TensorShape> weights_shapes;
+    std::vector<xla::XlaOp> hyperparameters_inputs;
+    std::vector<TensorShape> hyperparameters_shapes;
+    OP_REQUIRES_OK(ctx,
+                   ctx->InputList("weights", &weights_inputs, &weights_shapes));
+    OP_REQUIRES_OK(ctx,
+                   ctx->InputList("hyperparameters", &hyperparameters_inputs,
+                                  &hyperparameters_shapes));
+
+    OP_REQUIRES_VALUE(xla::Shape activation_shape, ctx,
+                      ctx->InputXlaShape("activation_gradients"));
+    int64_t num_samples_per_chip = activation_shape.dimensions(0);
+    int64_t per_sparse_core_batch_size =
+        num_samples_per_chip / num_sparsecores_per_device_;
+    int64_t per_core_weight_size = num_weights_ / num_sparsecores_per_device_;
+
+    OP_REQUIRES_VALUE(xla::Shape embedding_table_shape, ctx,
+                      ctx->InputXlaShape("embedding_table"));
+    const int64_t vocab_size = embedding_table_shape.dimensions(0);
+    const int32_t feature_width = embedding_table_shape.dimensions(1);
+
+    int64_t max_ids_per_partition = 0;
+    int64_t max_unique_ids_per_partition = 0;
+    OP_REQUIRES_OK(
+        ctx, GetMaxIdsAndUniquesExternal(kUnknownProgramKey, table_name_,
+                                         per_sparse_core_batch_size,
+                                         feature_width, &max_ids_per_partition,
+                                         &max_unique_ids_per_partition));
+    LOG(INFO) << "Lowering "
+                 "XlaSparseDenseMatmulPositionalWeightedGradWithAdagradAndCsrIn"
+                 "putOp to HLO: "
+              << "table_name = '" << table_name_
+              << "', max_ids = " << max_ids_per_partition
+              << ", max_uniques = " << max_unique_ids_per_partition;
+
+    // Build the positional weights custom optimizer computation. The arguments
+    // consist of gradient, positional weights, any associated slot variables,
+    // and hyperparameters.
+    XlaCompiler::CompileOptions options;
+    options.use_tuple_arg = false;
+    options.always_return_tuple = true;
+    options.is_entry_computation = false;
+    XlaCompiler* compiler = ctx->compiler();
+    XlaCompiler::CompilationResult weights_optimizer_result;
+    OP_REQUIRES_OK(
+        ctx, compiler->CompileFunction(
+                 options, custom_computation_,
+                 GetPositionalWeightOptimizerArguments(
+                     ctx, weights_inputs.size(), hyperparameters_inputs.size(),
+                     hyperparameters_shapes, per_core_weight_size),
+                 &weights_optimizer_result));
+
+    // Emit custom-call that back-propagates the gradients into the replicated
+    // positional weights. This op takes the custom optimizer computation on the
+    // weights and the tuple'd weights and hyperparameters.
+    xla::FrontendAttributes original_frontend_attributes =
+        builder->frontend_attributes();
+
+    xla::FrontendAttributes tuple_frontend_attributes;
+    tuple_frontend_attributes.mutable_map()->insert(
+        {"_xla_compute_type", "sparse"});
+    builder->SetFrontendAttributes(tuple_frontend_attributes);
+
+    xla::XlaOp weights_tuple = xla::Tuple(builder, weights_inputs);
+    xla::XlaOp weights_hyperparameters_tuple =
+        xla::Tuple(builder, hyperparameters_inputs);
+
+    xla::FrontendAttributes sc_frontend_attributes;
+    OP_REQUIRES_OK(
+        ctx, SetSparseCoreFrontendAttributes(
+                 &sc_frontend_attributes, max_ids_per_partition,
+                 max_unique_ids_per_partition, num_sparsecores_per_device_,
+                 vocab_size, feature_width, num_samples_per_chip, table_name_,
+                 /*max_valency=*/std::nullopt, quantization_config_low_,
+                 quantization_config_high_, quantization_config_num_buckets_));
+
+    std::vector<xla::Shape> weights_xla_shapes;
+    for (const xla::XlaOp& w : weights_inputs) {
+      OP_REQUIRES_VALUE(xla::Shape w_shape, ctx, builder->GetShape(w));
+      weights_xla_shapes.push_back(w_shape);
+    }
+    xla::Shape weights_tuple_shape =
+        xla::ShapeUtil::MakeTupleShape(weights_xla_shapes);
+
+    builder->SetFrontendAttributes(sc_frontend_attributes);
+    xla::XlaOp updated_weights_tuple = xla::CustomCallWithComputation(
+        builder,
+        "SparseDenseMatmulPositionalWeightedReplicatedWeightsGradMegachipOp",
+        {row_pointers, sorted_token_ids, sorted_sample_ids, sorted_pos_ids,
+         activation_gradients, preserved_received_unique_vectors, weights_tuple,
+         weights_hyperparameters_tuple},
+        *weights_optimizer_result.computation, weights_tuple_shape);
+
+    builder->SetFrontendAttributes(tuple_frontend_attributes);
+
+    // Emit custom-call that back-propagates the gradients into the sharded
+    // table. This op takes the custom optimizer computation on the table and
+    // the tuple'd table and hyperparameters. Note that the positional weights
+    // operand to this op must be the preserved weights from the corresponding
+    // forward pass.
+    xla::XlaOp tables_tuple =
+        xla::Tuple(builder, {embedding_table, embedding_table_accumulator});
+    xla::XlaOp table_hyperparameters_tuple =
+        xla::Tuple(builder, {embedding_table_learning_rate});
+    xla::Shape tables_tuple_shape = xla::ShapeUtil::MakeTupleShape(
+        {embedding_table_shape, embedding_table_shape});
+
+    builder->SetFrontendAttributes(sc_frontend_attributes);
+    xla::XlaOp updated_tables_tuple = xla::CustomCallWithComputation(
+        builder,
+        "SparseDenseMatmulPositionalWeightedShardedTableGradMegachipOp",
+        {row_pointers, sorted_token_ids, sorted_sample_ids, sorted_pos_ids,
+         activation_gradients, preserved_weights, tables_tuple,
+         table_hyperparameters_tuple},
+        BuildAdagradOptimizerComputation(feature_width, clip_weight_min_,
+                                         clip_weight_max_),
+        tables_tuple_shape);
+
+    builder->SetFrontendAttributes(tuple_frontend_attributes);
+    ctx->SetOutput(0, xla::GetTupleElement(updated_tables_tuple, 0));
+    ctx->SetOutput(1, xla::GetTupleElement(updated_tables_tuple, 1));
+    for (int i = 0; i < weights_inputs.size(); ++i) {
+      ctx->SetOutput(2 + i, xla::GetTupleElement(updated_weights_tuple, i));
+    }
+
+    builder->SetFrontendAttributes(original_frontend_attributes);
+  }
+
+ private:
+  std::string table_name_;
+  int64_t num_weights_;
+  int64_t num_sparsecores_per_device_;
+  float clip_weight_min_;
+  float clip_weight_max_;
+  NameAttrList custom_computation_;
+  std::optional<float> quantization_config_low_;
+  std::optional<float> quantization_config_high_;
+  std::optional<int> quantization_config_num_buckets_;
+  std::string device_name_;
+
+  XlaSparseDenseMatmulPositionalWeightedGradWithAdagradAndCsrInputOp(
+      const XlaSparseDenseMatmulPositionalWeightedGradWithAdagradAndCsrInputOp&) =  // NOLINT
+      delete;
+  void operator=(
+      const XlaSparseDenseMatmulPositionalWeightedGradWithAdagradAndCsrInputOp&) =  // NOLINT
+      delete;
+};
+
+REGISTER_XLA_OP(
+    Name("XlaSparseDenseMatmulPositionalWeightedGradWithAdagradAndCsrInput"),
+    XlaSparseDenseMatmulPositionalWeightedGradWithAdagradAndCsrInputOp);
 
 // Base class for all the minibatch with CSR input optimizer kernel.
 class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
