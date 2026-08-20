@@ -758,6 +758,45 @@ ENTRY DuplicateDonationError() -> (f32[2, 2], f32[2, 2]) {
   }
 }
 
+TEST(PjRtClientTest, RuntimeDonationDenialMustAliasFails) {
+  static constexpr char kProgram[] =
+      R"(
+HloModule RuntimeDonationDenialMustAliasFails,
+          input_output_alias={ {}: (0, {}, must-alias) }
+
+ENTRY RuntimeDonationDenialMustAliasFails() -> f32[2, 2] {
+    ROOT %param = f32[2, 2] parameter(0)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnUnverifiedModule(kProgram, {}));
+  XlaComputation xla_computation(hlo_module->ToProto());
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
+                          client->CompileAndLoad(xla_computation, {}));
+
+  std::vector<float> data(4, 0);
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+
+  ExecuteOptions options;
+  options.non_donatable_input_indices.insert(0);
+  auto result =
+      pjrt_executable->Execute(/*argument_handles=*/{{buffer.get()}}, options);
+  ASSERT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(),
+              ::testing::HasSubstr(
+                  "An input was configured to be must-alias at compile time "
+                  "but not donated at runtime"));
+}
+
 TEST(PjRtClientTest, GetDefaultLayout) {}
 
 TEST(PjRtClientTest, ClearPeakMemory) {

@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <iterator>
+#include <memory>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
@@ -53,6 +55,20 @@ namespace xla {
 namespace gpu {
 
 namespace {
+
+bool ContainsScan(const HloInstruction& instr) {
+  if (instr.opcode() == HloOpcode::kScan) {
+    return true;
+  }
+  if (instr.opcode() != HloOpcode::kFusion) {
+    return false;
+  }
+  std::unique_ptr<HloFusionAdaptor> fusion =
+      HloFusionAdaptor::ForInstruction(&instr);
+  return HloAnyOf(*fusion, [](const auto& node) {
+    return node.opcode() == HloOpcode::kScan;
+  });
+}
 
 bool IsProfitableOperand(HloInstruction* instr) {
   // Effective scalars are not a profitable shared operand. Skip them.
@@ -140,6 +156,11 @@ FusionDecision LegalToFuse(const HloInstruction& instr1,
        instr2.fused_expression_root()->opcode() ==
            HloOpcode::kDynamicUpdateSlice)) {
     return FusionDecision::Forbid("can't fuse multiple DUSs");
+  }
+
+  if (ContainsScan(instr1) || ContainsScan(instr2)) {
+    return FusionDecision::Forbid(
+        "multi-output fusion for scan is not supported");
   }
 
   // Do this check last, as it may be expensive.

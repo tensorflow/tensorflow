@@ -115,14 +115,12 @@ absl::StatusOr<std::vector<Autotuner::TuningResult>> Autotuner::TuneConfigs(
   std::vector<const HloInstruction*> leaders;
   leaders.reserve(instruction_groups.size());
 
-  const int num_runners = runners_.size();
   for (int i = 0; i < instruction_groups.size(); ++i) {
     const EquivalentInstructions& group = instruction_groups[i];
     TF_RET_CHECK(!group.empty()) << "Instruction group cannot be empty.";
     const HloInstruction* leader = group.front();
     leaders.push_back(leader);
-    int runner_index = i % num_runners;
-    future_configs.push_back(GetTunedConfig(leader, runner_index));
+    future_configs.push_back(GetTunedConfig(leader));
   }
 
   // Await and verify all configuration selections.
@@ -143,11 +141,16 @@ absl::StatusOr<std::vector<Autotuner::TuningResult>> Autotuner::TuneConfigs(
   return tuning_results;
 }
 
+int Autotuner::GetNextRunnerIndex() const {
+  absl::MutexLock lock(runner_mu_);
+  int index = next_runner_index_;
+  next_runner_index_ = (next_runner_index_ + 1) % runners_.size();
+  return index;
+}
+
 tsl::Future<Autotuner::Config> Autotuner::GetTunedConfig(
     const HloInstruction* absl_nonnull instr) const {
-  // TODO(b/521833070): Use next available runner rather than always using the
-  // first one.
-  return GetTunedConfig(instr, 0);
+  return GetTunedConfig(instr, GetNextRunnerIndex());
 }
 
 tsl::Future<Autotuner::Config> Autotuner::GetTunedConfig(
@@ -200,6 +203,8 @@ tsl::Future<Autotuner::Config> Autotuner::GetTunedConfig(
                   << candidates[0].config.ToString();
           return std::move(candidates[0].config);
         }
+
+        VLOG(1) << "Using runner " << runner_index;
 
         ABSL_ASSIGN_OR_RETURN(
             std::vector<ConfigRunner::ConfigProfile> profiles,

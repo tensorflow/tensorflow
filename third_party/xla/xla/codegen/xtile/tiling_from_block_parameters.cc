@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/tiling_from_block_parameters.h"
+#include "xla/codegen/xtile/tiling_from_block_parameters.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -40,7 +40,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/util.h"
 
-namespace xla::gpu {
+namespace xla::xtile {
 
 namespace {
 
@@ -51,8 +51,8 @@ using DimensionSemantics =
 
 absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
     const SymbolicTileAnalysis& symbolic_tile_analysis,
-    const BlockLevelParameters& block_level_parameters,
-    const xla::xtile::Tile* dot_tiling_config_override) {
+    const ::xla::gpu::BlockLevelParameters& block_level_parameters,
+    const Tile* dot_tiling_config_override) {
   Tiling::TileMapping tile_mapping;
   int64_t real_root_index = symbolic_tile_analysis.real_root_index();
   const HloInstruction* real_root =
@@ -106,8 +106,8 @@ absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
 }
 
 absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
-    const xla::gpu::experimental::TilingSpace& tiling_space,
-    const BlockLevelParameters& block_level_parameters,
+    const ::xla::gpu::experimental::TilingSpace& tiling_space,
+    const ::xla::gpu::BlockLevelParameters& block_level_parameters,
     bool enable_same_shape_multi_output_fusion) {
   TF_RET_CHECK(!block_level_parameters.output_tile_sizes.empty())
       << "output_tile_sizes cannot be empty.";
@@ -159,15 +159,23 @@ absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
         if (dim.hlo->has_backend_config()) {
           ABSL_ASSIGN_OR_RETURN(xla::xtile::Tile config,
                            dim.hlo->backend_config<xla::xtile::Tile>());
-          int64_t output_rank = dim.hlo->shape().dimensions().size();
-          int64_t reduction_idx = dim.dim_position - output_rank;
-          if (reduction_idx < 0 || reduction_idx >= config.sizes_size()) {
+          // For reductions/dots, sequential (reduction/contracting) dimensions
+          // are indexed after output dimensions in TilingSpace, so their index
+          // in config.sizes is offset by output_rank. For scans, the sequential
+          // dimension is in the output and config.sizes contains only the scan
+          // dimension at index 0.
+          int64_t seq_dim_idx = 0;
+          if (dim.hlo->opcode() != HloOpcode::kScan) {
+            int64_t output_rank = dim.hlo->shape().dimensions().size();
+            seq_dim_idx = dim.dim_position - output_rank;
+          }
+          if (seq_dim_idx < 0 || seq_dim_idx >= config.sizes_size()) {
             return Internal(
                 "Sequential dimension index %d is out of bounds for backend "
                 "config sizes of size %d.",
-                reduction_idx, config.sizes_size());
+                seq_dim_idx, config.sizes_size());
           }
-          tile_sizes.push_back(config.sizes(reduction_idx));
+          tile_sizes.push_back(config.sizes(seq_dim_idx));
         } else {
           VLOG(1) << "No backend_config set for HLO instruction of dimension "
                   << dim.ToString() << ". Using dimension size as tile size.";
@@ -182,4 +190,4 @@ absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
   return std::move(tile_sizes);
 }
 
-}  // namespace xla::gpu
+}  // namespace xla::xtile

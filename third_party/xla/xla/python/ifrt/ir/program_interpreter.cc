@@ -137,6 +137,12 @@ struct Environment {
   // Policy that controls how `ExecuteOptions.fill_status` is passed to
   // `Execute()` calls.
   ProgramFillStatus program_fill_status;
+  // Execution stream ID for the program execution. Propagated to every atom
+  // program so that atom program executions within a program are serialized
+  // in the order the interpreter dispatches them. By contrast, distinct
+  // program executions with different stream IDs can execute concurrently or
+  // interleave.
+  int64_t execution_stream_id = 0;
   // Contains a future for each ifrt.CallOp that is a leaf (i.e., has no outputs
   // or all its outputs are returned from the program).
   std::vector<tsl::Future<>> leaf_call_op_futures;
@@ -200,6 +206,7 @@ struct ProgramInterpreterState {
     Environment env;
     env.set_op_user_contexts = set_op_user_contexts;
     env.client = client;
+    env.execution_stream_id = options.execution_stream_id;
     // TODO(icgog): Set default fill status to kFillLeafOps instead of kFillNone
     // when  options.fill_status is set.
     env.program_fill_status = options.fill_status
@@ -354,8 +361,9 @@ struct CallLoadedExecutableOpState {
     VLOG(3) << pretty_print;
 
     ifrt::UserContextRef new_context =
-        env.set_op_user_contexts ? ifrt::BasicUserContext::Create("Execute")
-                                 : ifrt::UserContextScope::current();
+        env.set_op_user_contexts
+            ? ifrt::BasicUserContext::Create("Execute program op")
+            : ifrt::UserContextScope::current();
     ifrt::UserContextScope context_scope(std::move(new_context));
 
     ExecuteOptions options = execute_options;
@@ -364,6 +372,7 @@ struct CallLoadedExecutableOpState {
          is_leaf_op)) {
       options.fill_status = true;
     }
+    options.execution_stream_id = env.execution_stream_id;
 
     std::vector<ArrayHandle> arrays_to_remove;
     {
@@ -556,8 +565,9 @@ struct RemapArraysOpState {
     VLOG(3) << pretty_print;
 
     ifrt::UserContextRef new_context =
-        env.set_op_user_contexts ? ifrt::BasicUserContext::Create("RemapArrays")
-                                 : ifrt::UserContextScope::current();
+        env.set_op_user_contexts
+            ? ifrt::BasicUserContext::Create("RemapArrays program op")
+            : ifrt::UserContextScope::current();
     ifrt::UserContextScope context_scope(std::move(new_context));
 
     std::vector<ArrayRef> inputs;
@@ -729,7 +739,7 @@ struct BitcastArraysOpState {
 
     ifrt::UserContextRef new_context =
         env.set_op_user_contexts
-            ? ifrt::BasicUserContext::Create("BitcastArrays")
+            ? ifrt::BasicUserContext::Create("BitcastArrays program op")
             : ifrt::UserContextScope::current();
     ifrt::UserContextScope context_scope(std::move(new_context));
 
@@ -860,8 +870,9 @@ struct CopyArraysOpState {
     VLOG(3) << pretty_print;
 
     ifrt::UserContextRef new_context =
-        env.set_op_user_contexts ? ifrt::BasicUserContext::Create("CopyArrays")
-                                 : ifrt::UserContextScope::current();
+        env.set_op_user_contexts
+            ? ifrt::BasicUserContext::Create("CopyArrays program op")
+            : ifrt::UserContextScope::current();
     ifrt::UserContextScope context_scope(std::move(new_context));
 
     std::vector<ArrayRef> inputs;

@@ -83,6 +83,20 @@ namespace gpu {
 
 namespace {
 
+bool ContainsScan(const HloInstruction* instr) {
+  if (instr->opcode() == HloOpcode::kScan) {
+    return true;
+  }
+  if (instr->opcode() != HloOpcode::kFusion) {
+    return false;
+  }
+  std::unique_ptr<HloFusionAdaptor> fusion =
+      HloFusionAdaptor::ForInstruction(instr);
+  return HloAnyOf(*fusion, [](const auto& node) {
+    return node.opcode() == HloOpcode::kScan;
+  });
+}
+
 // Bitcasts are fusible if they don't change the bit width.
 bool IsFusibleBitcast(const HloInstruction& instr) {
   return instr.opcode() == HloOpcode::kBitcast &&
@@ -757,6 +771,11 @@ class PriorityFusionQueue {
 
     if (!IsFusible(*consumer)) {
       return FusionDecision::Forbid("the consumer is not fusible");
+    }
+
+    if (ContainsScan(producer)) {
+      return FusionDecision::Forbid(
+          "epilogue fusion for scan is not supported");
     }
 
     if (!(IsGenericTritonFusion(*producer) ||

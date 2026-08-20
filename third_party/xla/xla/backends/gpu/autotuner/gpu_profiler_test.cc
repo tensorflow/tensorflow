@@ -38,9 +38,9 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_compiler.h"
-#include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
@@ -170,15 +170,18 @@ class GpuProfilerTest : public HloHardwareIndependentTestBase {
   }
 
   absl::StatusOr<int64_t> GetScratchBytes(absl::string_view hlo_text) {
-    NVPTXCompiler compiler;
+    ABSL_ASSIGN_OR_RETURN(se::Platform * platform,
+                     PlatformUtil::GetDefaultPlatform());
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
+                     Compiler::GetForPlatform(platform->id()));
     ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                      ParseAndReturnVerifiedModule(hlo_text));
     module->mutable_config()
         .mutable_debug_options()
         .clear_xla_gpu_enable_command_buffer();
     ABSL_ASSIGN_OR_RETURN(auto gpu_executable,
-                     compiler.RunBackend(std::move(module), stream_exec_,
-                                         GpuCompiler::CompileOptions()));
+                     compiler->RunBackend(std::move(module), stream_exec_,
+                                          GpuCompiler::CompileOptions()));
     auto profiler =
         GpuProfiler::Create(stream_exec_, ProfileOptions(), allocator_.get());
     ABSL_ASSIGN_OR_RETURN(std::unique_ptr<InputBuffers> buffers,

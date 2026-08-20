@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/multi_output_fusion.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -2239,6 +2240,40 @@ ENTRY computation {
 })")
                     .value();
   ASSERT_FALSE(mof_.Run(module.get()).value()) << module->ToString();
+}
+
+TEST_F(MultiOutputFusionTest, DoNotMultiOutputFuseScan) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    combiner {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      add = f32[] add(p0, p1)
+      ROOT t = (f32[], f32[]) tuple(add, add)
+    }
+
+    fused_scan {
+      p0.1 = f32[100]{0} parameter(0)
+      init = f32[] constant(0)
+      scan = (f32[100]{0}, f32[]) scan(p0.1, init), dimensions={0},
+        num_carries=1, to_apply=combiner, is_associative=true
+      ROOT gte = f32[100]{0} get-tuple-element(scan), index=0
+    }
+
+    fused_loop {
+      p0.2 = f32[100]{0} parameter(0)
+      ROOT mul = f32[100]{0} multiply(p0.2, p0.2)
+    }
+
+    ENTRY entry {
+      p0 = f32[100]{0} parameter(0)
+      fusion.1 = f32[100]{0} fusion(p0), kind=kLoop, calls=fused_scan
+      fusion.2 = f32[100]{0} fusion(p0), kind=kLoop, calls=fused_loop
+      ROOT root = (f32[100]{0}, f32[100]{0}) tuple(fusion.1, fusion.2)
+    })")));
+  ASSERT_OK_AND_ASSIGN(bool changed, mof_.Run(module.get()));
+  EXPECT_FALSE(changed);
 }
 
 }  // namespace gpu
