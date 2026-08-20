@@ -786,6 +786,39 @@ TEST_F(ArenaPlannerTest, SimpleGraphWithPersistentTensor) {
   EXPECT_EQ(GetOffset(1), 0);
 }
 
+TEST_F(ArenaPlannerTest, SimpleGraphWithPersistentTensorResized) {
+  TestGraph graph({0, -1, 1},
+                  {
+                      /* in, out, tmp */
+                      {{0, 1}, {2}, {}},   // First op
+                      {{2, 0}, {4}, {5}},  // Second op, with persistent
+                      {{4, -1}, {3}, {}}   // Third op, with optional
+                  },
+                  {3});
+
+  // Make #1 persistent so it goes into its own arena.
+  (*graph.tensors())[1].allocation_type = kTfLiteArenaRwPersistent;
+  (*graph.tensors())[1].bytes = 8;
+  graph.SetVariables({1});
+
+  SetGraph(&graph);
+  Execute(0, graph.nodes().size() - 1);
+
+  EXPECT_NE((*graph.tensors())[0].data.raw, (*graph.tensors())[1].data.raw);
+  EXPECT_EQ(GetOffset(1), 0);
+  void* tensor1_ptr = (*graph.tensors())[1].data.raw;
+  EXPECT_NE(tensor1_ptr, nullptr);
+
+  // Resize persistent tensor to a larger size and re-execute allocations.
+  (*graph.tensors())[1].bytes = 64;
+  (*graph.tensors())[1].data.raw = nullptr;
+  Execute(0, graph.nodes().size() - 1);
+
+  EXPECT_FALSE(IsUnallocated(1));
+  EXPECT_NE((*graph.tensors())[1].data.raw, nullptr);
+  EXPECT_EQ(GetOffset(1), 8);
+}
+
 TEST_F(ArenaPlannerTest, SimpleGraphWithDynamicTensor) {
   TestGraph graph({0, -1, 1},
                   {

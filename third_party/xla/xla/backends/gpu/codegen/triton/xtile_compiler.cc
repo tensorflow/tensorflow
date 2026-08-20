@@ -101,6 +101,7 @@ limitations under the License.
 #include "xla/codegen/xtile/codegen/fusion_emitter.h"
 #include "xla/codegen/xtile/ir/transforms/passes.h"
 #include "xla/codegen/xtile/ir/xtile_dialect.h"
+#include "xla/codegen/xtile/tiling_from_block_parameters.h"
 #include "xla/frontend_attributes.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -116,7 +117,6 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_libdevice_path.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
-#include "xla/service/gpu/model/tiling_from_block_parameters.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/instruction_fusion.h"
@@ -137,6 +137,7 @@ limitations under the License.
 
 namespace xla::gpu {
 namespace {
+
 absl::Status CheckAtLeastAmpere(const se::GpuComputeCapability& gpu_cc) {
   if (auto* cuda_cc = gpu_cc.cuda_compute_capability();
       cuda_cc != nullptr && !cuda_cc->IsAtLeastAmpere()) {
@@ -236,6 +237,8 @@ using ::llvm::SmallVector;
 using ::mlir::MLIRContext;
 
 using ::xla::gpu::ir_emitter_triton_internal::GetModuleIrString;
+using ::xla::xtile::GetTilingSpaceConcreteSizes;
+using ::xla::xtile::TilingFromAnnotatedFusion;
 
 void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context) {
   mlir_context.loadDialect<
