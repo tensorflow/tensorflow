@@ -23,7 +23,7 @@ namespace {
 // Test harness for PyContextManager.  Creates a PyContextManager `cm` that
 // wraps `context_manager`, calls `cm.Enter()`, and then calls `body_func`
 // with `cm.var()`.  Returns the result of the function.
-py::handle TestPyContextManager(py::handle context_manager,
+py::object TestPyContextManager(py::handle context_manager,
                                 py::handle body_func) {
   tensorflow::Safe_PyObjectPtr result;
   {
@@ -38,7 +38,7 @@ py::handle TestPyContextManager(py::handle context_manager,
   // cm gets destroyed here.
 
   if (result) {
-    return result.release();
+    return py::reinterpret_steal<py::object>(result.release());
   } else {
     throw py::error_already_set();
   }
@@ -46,6 +46,6 @@ py::handle TestPyContextManager(py::handle context_manager,
 
 }  // namespace
 
-PYBIND11_MODULE(_py_context_manager, m) {
+PYBIND11_MODULE(_py_context_manager, m, py::mod_gil_not_used()) {
   m.def("test_py_context_manager", TestPyContextManager);
 }
