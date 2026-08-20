@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -260,7 +262,8 @@ scan_computation {
 scan_fusion {
   p0 = f32[1024] parameter(0)
   p1 = f32[] parameter(1)
-  scan = (f32[1024], f32[]) scan(p0, p1), dimensions={0}, num_carries=1, is_associative=true, to_apply=scan_computation
+  scan = (f32[1024], f32[]) scan(p0, p1), dimensions={0}, num_carries=1, is_associative=true, to_apply=scan_computation,
+    backend_config={sizes:[1024]}
   ROOT gte = f32[1024] get-tuple-element(scan), index=0
 }
 
@@ -275,13 +278,15 @@ ENTRY e {
                        ParseAndReturnVerifiedModule(kHloText));
 
   BlockLevelParameters block_level_parameters;
-  block_level_parameters.output_tile_sizes = {{1024}};
+  block_level_parameters.output_tile_sizes =
+      GetParam() ? std::vector<std::vector<int64_t>>{{}}
+                 : std::vector<std::vector<int64_t>>{{1024}};
 
   EXPECT_OK(CreateXTileIrAndFileCheck(
       *module->GetComputationWithName("scan_fusion"), block_level_parameters,
       R"(
 // CHECK-LABEL: @xtile_dialect_fn
-// CHECK:         %[[EXTRACT0:.*]] = xtile.extract %arg0[%c0] [1024] [1] : memref<1024xf32> -> tensor<1024xf32>
+// CHECK:         %[[EXTRACT0:.*]] = xtile.extract %arg0[%{{.*}}] [1024] [1] : memref<1024xf32> -> tensor<1024xf32>
 // CHECK:         %[[EXTRACT1:.*]] = xtile.extract %arg1[] [] [] : memref<f32> -> tensor<f32>
 // CHECK:         %[[OUTPUT:.*]], %{{.*}} = xtile.scan(%[[EXTRACT0]]) inits(%[[EXTRACT1]])
 // CHECK-SAME:        dimension = 0 {scan_dim_size = 1024 : i64}
@@ -579,6 +584,105 @@ TEST_F(XTileDialectTest, HloAllGatherDotLowering) {
     CHECK: %[[RHS_TILE:.*]] = xtile.extract %arg1
     CHECK: stablehlo.dot_general %[[LHS_TILE]], %[[RHS_TILE]]
     )"));
+}
+
+TEST_F(XTileDialectTest, HloScanWithLoop) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+add_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  add = f32[] add(p0, p1)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+
+scan_fusion {
+  p0 = f32[1024] parameter(0)
+  p1 = f32[] parameter(1)
+  scan = (f32[1024], f32[]) scan(p0, p1),
+    dimensions={0}, num_carries=1, is_associative=true, to_apply=add_computation,
+    backend_config={sizes:[128]}
+  ROOT get-tuple-element = f32[1024] get-tuple-element(scan), index=0
+}
+
+ENTRY e {
+  p0 = f32[1024] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT custom-call = f32[1024] fusion(p0, p1), kind=kCustom,
+    calls=scan_fusion,
+    backend_config={"fusion_backend_config": {kind: "__triton"}}
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHloText));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_tiling_propagation(true);
+
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{}};
+
+  EXPECT_OK(CreateXTileIrAndFileCheck(
+      *module->GetComputationWithName("scan_fusion"), block_level_parameters,
+      R"(
+    CHECK: scf.for %[[IV:.*]] = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[CARRY:.*]] = %{{.*}})
+    CHECK: %[[INPUT_TILE:.*]] = xtile.extract %arg0
+    CHECK: %[[SCAN_OUT:.*]], %[[NEW_CARRY:.*]] = xtile.scan(%[[INPUT_TILE]]) inits(%[[CARRY]])
+    CHECK: xtile.insert %[[SCAN_OUT]] into %arg2
+    CHECK: scf.yield %[[NEW_CARRY]]
+  )"));
+}
+
+// When the scan dimension is not divisible by the tile size, the input tile of
+// the final loop iteration extends past the global dimension bound. These
+// out-of-bounds elements must be dynamically masked (using the loop induction
+// variable) before being fed to the scan, otherwise they corrupt the running
+// carry. A static xtile.mask cannot express this per-iteration boundary.
+TEST_F(XTileDialectTest, HloScanWithLoopMasksBoundary) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+add_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  add = f32[] add(p0, p1)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+scan_fusion {
+  p0 = f32[1000] parameter(0)
+  p1 = f32[] parameter(1)
+  scan = (f32[1000], f32[]) scan(p0, p1),
+    dimensions={0}, num_carries=1, is_associative=true, to_apply=add_computation,
+    backend_config={sizes:[128]}
+  ROOT get-tuple-element = f32[1000] get-tuple-element(scan), index=0
+}
+ENTRY e {
+  p0 = f32[1000] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT custom-call = f32[1000] fusion(p0, p1), kind=kCustom,
+    calls=scan_fusion,
+    backend_config={"fusion_backend_config": {kind: "__triton"}}
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHloText));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_tiling_propagation(true);
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{}};
+  // The mask is emitted as a dynamic boundary check (scf.if + arith.select)
+  // keyed on the loop induction variable, applied to the input tile before the
+  // scan.
+  EXPECT_OK(CreateXTileIrAndFileCheck(
+      *module->GetComputationWithName("scan_fusion"), block_level_parameters,
+      R"(
+    CHECK: scf.for %[[IV:.*]] = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[CARRY:.*]] = %{{.*}})
+    CHECK: %[[INPUT_TILE:.*]] = xtile.extract %arg0
+    CHECK: %[[MASKED:.*]] = scf.if
+    CHECK: arith.select
+    CHECK: %[[SCAN_OUT:.*]], %[[NEW_CARRY:.*]] = xtile.scan(%[[MASKED]]) inits(%[[CARRY]])
+    CHECK: xtile.insert %[[SCAN_OUT]] into %arg2
+    CHECK: scf.yield %[[NEW_CARRY]]
+  )"));
 }
 
 }  // namespace
