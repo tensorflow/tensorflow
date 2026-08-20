@@ -100,7 +100,7 @@ llvm::Value* EmitFxToF8e(llvm::Module* module, PrimitiveType fx_type,
                          PrimitiveType f8_type, llvm::Value* fx_value,
                          llvm::IRBuilderBase* b) {
   llvm::Function* fptrunc = FpTrunc::GetOrInsertDeclaration(
-      module, IntrinsicType::S(fx_type), IntrinsicType::S(f8_type));
+      module, {IntrinsicType::S(fx_type), IntrinsicType::S(f8_type)});
   return b->CreateCall(fptrunc, {fx_value});
 }
 
@@ -237,7 +237,7 @@ llvm::Value* EmitToF16F8e(llvm::Value* f8_value, llvm::IRBuilderBase* b) {
 llvm::Value* EmitF8e4m3fnToF16(llvm::Value* f8_value, llvm::Module* module,
                                llvm::IRBuilderBase* b) {
   llvm::Function* fptrunc = FpTrunc::GetOrInsertDeclaration(
-      module, IntrinsicType::S(F8E4M3FN), IntrinsicType::S(F16));
+      module, {IntrinsicType::S(F8E4M3FN), IntrinsicType::S(F16)});
   return b->CreateCall(fptrunc, {f8_value});
 }
 
@@ -818,7 +818,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       if (options_.xla_cpu_use_truncate_f32_to_bf16_conversion) {
         if (from_type == F32 && to_type == BF16) {
           llvm::Function* fptrunc = FpTrunc::GetOrInsertDeclaration(
-              module_, IntrinsicType::S(F32), IntrinsicType::S(BF16));
+              module_, {IntrinsicType::S(F32), IntrinsicType::S(BF16)});
           return b_->CreateCall(fptrunc, {operand_value});
         }
         if (from_type == BF16 && to_type == F32) {
@@ -845,7 +845,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       if (from_type == F8E5M2) {
         TF_RET_CHECK(to_type != F8E5M2);
         llvm::Function* fptrunc = FpTrunc::GetOrInsertDeclaration(
-            module_, IntrinsicType::S(F8E5M2), IntrinsicType::S(F16));
+            module_, {IntrinsicType::S(F8E5M2), IntrinsicType::S(F16)});
         operand_value = b_->CreateCall(fptrunc, {operand_value});
         from_type = F16;
         if (from_type == to_type) {
@@ -863,7 +863,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       if (from_type == F8E4M3FN) {
         TF_RET_CHECK(to_type != F8E4M3FN);
         llvm::Function* fptrunc = FpTrunc::GetOrInsertDeclaration(
-            module_, IntrinsicType::S(F8E4M3FN), IntrinsicType::S(F16));
+            module_, {IntrinsicType::S(F8E4M3FN), IntrinsicType::S(F16)});
         operand_value = b_->CreateCall(fptrunc, {operand_value});
         from_type = F16;
         if (from_type == to_type) {

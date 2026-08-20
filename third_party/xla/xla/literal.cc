@@ -1109,6 +1109,14 @@ absl::StatusOr<Literal> BroadcastHelper(const LiteralBase& src,
 
   TF_RET_CHECK(result_shape.element_type() == src_shape.element_type());
   Literal result(result_shape);
+  // Start every dynamic dimension at its bound: a broadcast fills dimensions
+  // completely, and dimensions not mapped from the source (e.g. a scalar
+  // broadcast) would otherwise keep uninitialized sizes.
+  for (int64_t i = 0; i < result_shape.dimensions().size(); ++i) {
+    if (result_shape.is_dynamic_dimension(i)) {
+      result.SetDynamicSize(i, result_shape.dimensions(i));
+    }
+  }
   if (src_shape.is_dynamic()) {
     for (int64_t i = 0; i < dimensions.size(); ++i) {
       if (src_shape.is_dynamic_dimension(i)) {

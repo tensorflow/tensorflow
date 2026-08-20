@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/proto/executable_metadata.pb.h"
 #include "xla/pjrt/proto/execute_options.pb.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"

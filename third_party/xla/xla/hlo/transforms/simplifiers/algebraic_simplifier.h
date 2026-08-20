@@ -399,6 +399,14 @@ class AlgebraicSimplifierOptions {
     enable_folding_pad_into_convolution_ = value;
   }
 
+  bool enable_dynamic_update_slice_to_pad_replacement() const {
+    return enable_dynamic_update_slice_to_pad_replacement_;
+  }
+
+  void set_enable_dynamic_update_slice_to_pad_replacement(bool value) {
+    enable_dynamic_update_slice_to_pad_replacement_ = value;
+  }
+
  private:
   // Metadata struct can be used to store any metadata information encapsulated
   // with the AlgebraicSimplifierOptions that can be later used in an
@@ -427,6 +435,7 @@ class AlgebraicSimplifierOptions {
   bool enable_window_reduce_to_reduce_replacement_{true};
   bool enable_reduce_of_reshape_{true};
   bool enable_negative_padding_replacement_{true};
+  bool enable_dynamic_update_slice_to_pad_replacement_{true};
   bool enable_sink_broadcast_{true};
   bool unconditionally_simplify_reduce_of_transpose_or_reshape_{false};
   int64_t very_small_gather_size_{4};
