@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -108,7 +109,20 @@ ConvertAsyncCollectivesToSync::ReplaceWithSyncVariant(
   FrontendAttributes fas = async_done->frontend_attributes();
   sync_instruction->set_frontend_attributes(fas);
 
-  ABSL_RETURN_IF_ERROR(async_done->ReplaceAllUsesWith(sync_instruction));
+  HloInstruction* final_result = sync_instruction;
+  if (async_done->operand(0) != async_start) {
+    auto forward_path = hlo_instruction_utils::async::TraceDataflowPath(
+        async_done, async_start);
+    if (!forward_path.has_value()) {
+      return Internal("Could not trace from async done %s to async start %s",
+                      async_done->name(), async_start->name());
+    }
+    ABSL_ASSIGN_OR_RETURN(final_result,
+                     hlo_instruction_utils::async::PropagateDataflow(
+                         *forward_path, sync_instruction));
+  }
+
+  ABSL_RETURN_IF_ERROR(async_done->ReplaceAllUsesWith(final_result));
 
   // Copy control dependencies.
   //
@@ -120,7 +134,7 @@ ConvertAsyncCollectivesToSync::ReplaceWithSyncVariant(
     ABSL_RETURN_IF_ERROR(pred->AddControlDependencyTo(sync_instruction));
   }
   for (HloInstruction* succ : async_done->control_successors()) {
-    ABSL_RETURN_IF_ERROR(sync_instruction->AddControlDependencyTo(succ));
+    ABSL_RETURN_IF_ERROR(final_result->AddControlDependencyTo(succ));
   }
   if (!async_start->control_successors().empty()) {
     LOG(WARNING) << "Async start " << async_start->name()
@@ -226,11 +240,14 @@ absl::StatusOr<bool> ConvertAsyncCollectivesToSync::RunOnComputation(
 
       // All async-done ops are unary ops.
       TF_RET_CHECK(instruction->operand_count() == 1);
-      HloInstruction* matching_async_start = instruction->mutable_operand(0);
+      HloInstruction* matching_async_start =
+          hlo_instruction_utils::async::FindAsyncStart(
+              instruction->mutable_operand(0));
 
       // Find if corresponding async-start is in the set of in-flight ops and
       // erase it (since it cannot be paired with any other async-done).
-      if (in_flight_ops.erase(matching_async_start) == 1) {
+      if (matching_async_start != nullptr &&
+          in_flight_ops.erase(matching_async_start) == 1) {
         async_pairs.push_back({matching_async_start, instruction});
         VLOG(3) << "Added pair: {" << matching_async_start->name() << ", "
                 << instruction->name();

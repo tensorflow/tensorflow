@@ -43,8 +43,8 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
 #include "google/protobuf/text_format.h"
+#include "xla/autotune_cache.pb.h"
 #include "xla/autotune_results.pb.h"
-#include "xla/backends/autotuner/autotuning.pb.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/in_memory_store.h"
 #include "xla/backends/gpu/ffi.h"
@@ -71,7 +71,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/autotuner_cache.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -380,6 +380,8 @@ class PersistedAutotuningTest : public HloTestBase,
     InMemoryStore::Clear();
   }
 
+  bool use_new_format() const { return GetParam(); }
+
   static constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -405,7 +407,7 @@ ENTRY e {
         xla_gpu_dump_autotune_results_to_);
     options.set_xla_gpu_load_autotune_results_from(
         xla_gpu_load_autotune_results_from_);
-    options.set_xla_gpu_use_new_autotune_cache_format(GetParam());
+    options.set_xla_gpu_use_new_autotune_cache_format(use_new_format());
     return options;
   }
 
@@ -437,7 +439,7 @@ TEST_P(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
   {
     ASSERT_OK_AND_ASSIGN(std::string autotune_results_str,
                          ReadNonEmptyFile(xla_gpu_dump_autotune_results_to_));
-    ExpectValidAutotuneResults(autotune_results_str, GetParam());
+    ExpectValidAutotuneResults(autotune_results_str, use_new_format());
   }
 
   // Overwrite results with an invalid textproto.
@@ -450,22 +452,59 @@ TEST_P(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
   {
     ASSERT_OK_AND_ASSIGN(std::string autotune_results_str,
                          ReadNonEmptyFile(xla_gpu_dump_autotune_results_to_));
-    ExpectValidAutotuneResults(autotune_results_str, GetParam());
+    ExpectValidAutotuneResults(autotune_results_str, use_new_format());
   }
 }
 
 TEST_P(PersistedAutotuningTest, SingleOperationGetsAutotuned) {
-  TF_EXPECT_OK(GetOptimizedModuleForExecutable(R"(
+  EXPECT_OK(GetOptimizedModuleForExecutable(R"(
 e {
   a = f32[64,128] parameter(0)
   t = f32[128,64] transpose(a), dimensions={1,0}
 })",
-                                               GetModuleConfigForTest())
-                   .status());
+                                            GetModuleConfigForTest())
+                .status());
 
   ASSERT_OK_AND_ASSIGN(std::string autotune_results_str,
                        ReadNonEmptyFile(xla_gpu_dump_autotune_results_to_));
-  ExpectValidAutotuneResults(autotune_results_str, GetParam());
+  ExpectValidAutotuneResults(autotune_results_str, use_new_format());
+}
+
+TEST_P(PersistedAutotuningTest, LoadMismatchedFormatResultsFallback) {
+  tsl::Env* env = tsl::Env::Default();
+  std::string autotune_file = GetUniqueTempFilePath(".txt");
+
+  if (use_new_format()) {
+    AutotuneResults legacy_results;
+    legacy_results.set_version(3);
+    auto* entry = legacy_results.add_results();
+    entry->set_device("test_device");
+    entry->set_hlo("test_hlo");
+    entry->set_version(3);
+    entry->mutable_result()->mutable_gemm()->set_algorithm(1);
+
+    std::string serialized;
+    ASSERT_TRUE(
+        tsl::protobuf::TextFormat::PrintToString(legacy_results, &serialized));
+    ASSERT_OK(tsl::WriteStringToFile(env, autotune_file, serialized));
+  } else {
+    autotuner::AutotuneCache new_cache;
+    auto* entry = new_cache.add_entries();
+    entry->mutable_key()->mutable_target()->set_device("test_device");
+    entry->mutable_key()->mutable_target()->set_hlo_fingerprint("test_hlo");
+    entry->mutable_value()->mutable_optimal_config()->set_backend(
+        autotuner::CUBLASLT_FISSION);
+
+    std::string serialized;
+    ASSERT_TRUE(
+        tsl::protobuf::TextFormat::PrintToString(new_cache, &serialized));
+    ASSERT_OK(tsl::WriteStringToFile(env, autotune_file, serialized));
+  }
+
+  xla_gpu_load_autotune_results_from_ = autotune_file;
+
+  EXPECT_OK(GetOptimizedModuleForExecutable(kHloText, GetModuleConfigForTest())
+                .status());
 }
 
 INSTANTIATE_TEST_SUITE_P(PersistedAutotuningTestInstantiation,

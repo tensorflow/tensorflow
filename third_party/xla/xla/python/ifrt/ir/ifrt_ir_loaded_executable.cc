@@ -372,8 +372,9 @@ absl::StatusOr<LoadedExecutableRef> IfrtIrLoadedExecutable::Create(
   ABSL_ASSIGN_OR_RETURN(
       DeviceListRef device_list,
       LookUpDevices(client, program->compile_options->device_assignments));
-  ABSL_ASSIGN_OR_RETURN(auto memory_tracer,
-                   ProgramMemoryTracer::Create(program, client, device_list));
+  auto memory_tracer =
+      std::make_unique<ProgramMemoryTracer>(program, client, device_list,
+                                            /*dump_dir=*/"");
   return std::unique_ptr<IfrtIrLoadedExecutable>(new IfrtIrLoadedExecutable(
       client, std::move(program), std::move(device_list),
       std::move(memory_tracer)));

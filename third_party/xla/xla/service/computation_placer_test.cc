@@ -15,99 +15,22 @@ limitations under the License.
 
 #include "xla/service/computation_placer.h"
 
-#include <memory>
-
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/status/status.h"
-#include "xla/runtime/device_id.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/service/device_assignment.h"
 
 namespace xla {
 namespace {
 
 TEST(ComputationPlacerTest, Basic) {
   ComputationPlacer cp;
-  TF_ASSERT_OK_AND_ASSIGN(DeviceAssignment da, cp.AssignDevices(4, 2));
+  ASSERT_OK_AND_ASSIGN(DeviceAssignment da, cp.AssignDevices(4, 2));
   EXPECT_EQ(da.ToString(),
             "DeviceAssignment{replica_count=4, computation_count=2, "
             "Computation0{0 1 2 3} Computation1{4 5 6 7}}");
 
   EXPECT_EQ(da(0, 0), 0);
   EXPECT_EQ(da(0, 1), 4);
-  TF_ASSERT_OK_AND_ASSIGN(auto logical_id,
-                          da.LogicalIdForDevice(GlobalDeviceId(4)));
-  EXPECT_EQ(logical_id.replica_id, 0);
-  EXPECT_EQ(logical_id.computation_id, 1);
-  EXPECT_FALSE(da.LogicalIdForDevice(GlobalDeviceId(10)).ok());
-}
-
-TEST(ComputationPlacerTest, SerDes) {
-  ComputationPlacer cp;
-  TF_ASSERT_OK_AND_ASSIGN(DeviceAssignment da, cp.AssignDevices(4, 2));
-  DeviceAssignmentProto proto;
-  da.Serialize(&proto);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<DeviceAssignment> da2,
-                          DeviceAssignment::Deserialize(proto));
-  EXPECT_EQ(da, *da2);
-}
-
-TEST(ComputationPlacerTest, SerDesError) {
-  ComputationPlacer cp;
-  TF_ASSERT_OK_AND_ASSIGN(DeviceAssignment da, cp.AssignDevices(4, 2));
-  DeviceAssignmentProto proto;
-  da.Serialize(&proto);
-  proto.set_replica_count(-1);
-  auto sor = DeviceAssignment::Deserialize(proto);
-  EXPECT_EQ(sor.status().code(), absl::StatusCode::kInvalidArgument);
-}
-
-TEST(ComputationPlacerTest, DuplicateDevices) {
-  DeviceAssignment da(4, 2);
-  da.Fill(0);
-  EXPECT_EQ(da(0, 0), 0);
-  EXPECT_EQ(da(0, 1), 0);
-  EXPECT_FALSE(da.LogicalIdForDevice(GlobalDeviceId(0)).ok());
-  EXPECT_FALSE(da.LogicalIdForDevice(GlobalDeviceId(1)).ok());
-}
-
-TEST(ComputationPlacerTest, IsIota) {
-  DeviceAssignment da_empty;
-  EXPECT_TRUE(da_empty.IsIota());
-
-  DeviceAssignment da_iota(2, 2);
-  da_iota(0, 0) = 0;
-  da_iota(0, 1) = 1;
-  da_iota(1, 0) = 2;
-  da_iota(1, 1) = 3;
-  EXPECT_TRUE(da_iota.IsIota());
-
-  DeviceAssignment da_offset_iota(2, 2);
-  da_offset_iota(0, 0) = 4;
-  da_offset_iota(0, 1) = 5;
-  da_offset_iota(1, 0) = 6;
-  da_offset_iota(1, 1) = 7;
-  EXPECT_TRUE(da_offset_iota.IsIota());
-
-  DeviceAssignment da_non_iota(2, 2);
-  da_non_iota(0, 0) = 1;
-  da_non_iota(0, 1) = 0;
-  da_non_iota(1, 0) = 2;
-  da_non_iota(1, 1) = 3;
-  EXPECT_FALSE(da_non_iota.IsIota());
-}
-
-TEST(ComputationPlacerTest, IsAll) {
-  DeviceAssignment da_zeros(2, 2);
-  da_zeros.Fill(0);
-  EXPECT_TRUE(da_zeros.IsAll(0));
-  EXPECT_FALSE(da_zeros.IsAll(1));
-
-  DeviceAssignment da_mixed(2, 2);
-  da_mixed(0, 0) = 0;
-  da_mixed(0, 1) = 0;
-  da_mixed(1, 0) = 0;
-  da_mixed(1, 1) = 1;
-  EXPECT_FALSE(da_mixed.IsAll(0));
 }
 
 }  // namespace

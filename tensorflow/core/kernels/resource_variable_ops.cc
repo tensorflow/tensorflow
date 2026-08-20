@@ -758,6 +758,12 @@ class ResourceGatherOp : public OpKernel {
     ResourceHandle handle;
     OP_REQUIRES_OK(c, HandleFromInput(c, 0, &handle));
     OP_REQUIRES_OK(c, LookupResource(c, handle, &v));
+    OP_REQUIRES(
+        c, v->tensor()->dtype() == DataTypeToEnum<T>::v(),
+        absl::InvalidArgumentError(absl::StrCat(
+            "dtype mismatch: expected ", DataTypeString(DataTypeToEnum<T>::v()),
+            " but got ", DataTypeString(v->tensor()->dtype()),
+            " (resource variable dtype)")));
     OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v.get()));
     // NOTE: We hold the lock for the whole gather operation instead
     // of increasing the reference count of v->tensor() to avoid a
@@ -938,6 +944,12 @@ class ResourceGatherNdOp : public OpKernel {
     ResourceHandle handle;
     OP_REQUIRES_OK(c, HandleFromInput(c, 0, &handle));
     OP_REQUIRES_OK(c, LookupResource(c, handle, &v));
+    OP_REQUIRES(
+        c, v->tensor()->dtype() == DataTypeToEnum<T>::v(),
+        absl::InvalidArgumentError(absl::StrCat(
+            "dtype mismatch: expected ", DataTypeString(DataTypeToEnum<T>::v()),
+            " but got ", DataTypeString(v->tensor()->dtype()),
+            " (resource variable dtype)")));
     OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v.get()));
     // NOTE: We hold the lock for the whole gather operation instead
     // of increasing the reference count of v->tensor() to avoid a
