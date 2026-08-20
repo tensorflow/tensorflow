@@ -2362,7 +2362,16 @@ void BroadcastDivSlow(const ArithmeticParams& params,
   GetActivationParams(params, &output_activation_min, &output_activation_max);
 
   auto op = [output_activation_min, output_activation_max](T a, T b) {
-    return ActivationFunctionWithMinMax(a / b, output_activation_min,
+    T div_result;
+    // Guard against signed integer overflow: INT_MIN / -1 is undefined
+    // behavior in C++. Saturate to T::max() instead.
+    if (std::is_integral<T>::value && std::is_signed<T>::value &&
+        b == static_cast<T>(-1) && a == std::numeric_limits<T>::min()) {
+      div_result = std::numeric_limits<T>::max();
+    } else {
+      div_result = a / b;
+    }
+    return ActivationFunctionWithMinMax(div_result, output_activation_min,
                                         output_activation_max);
   };
   reference_ops::BroadcastBinaryOpSimple(
