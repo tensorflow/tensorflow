@@ -76,6 +76,10 @@ inline const char* TpuName() {
   static constexpr char kTpuName[] = "tpu";
   return kTpuName;
 }
+inline const char* InterpreterName() {
+  static constexpr char kInterpreterName[] = "interpreter";
+  return kInterpreterName;
+}
 inline PjRtPlatformId CpuId() {
   static const PjRtPlatformId kCpuId = tsl::Fingerprint64(CpuName());
   return kCpuId;
@@ -100,6 +104,11 @@ inline PjRtPlatformId SyclId() { return OneapiId(); }
 inline PjRtPlatformId TpuId() {
   static const PjRtPlatformId kTpuId = tsl::Fingerprint64(TpuName());
   return kTpuId;
+}
+inline PjRtPlatformId InterpreterId() {
+  static const PjRtPlatformId kInterpreterId =
+      tsl::Fingerprint64(InterpreterName());
+  return kInterpreterId;
 }
 
 class PjRtCompiler;
@@ -476,6 +485,11 @@ inline bool IsGpuId(PjRtPlatformId platform_id) {
 // Returns true if it's CPU id.
 inline bool IsCpuId(PjRtPlatformId platform_id) {
   return platform_id == xla::CpuId();
+}
+
+// Returns true if it's Interpreter id.
+inline bool IsInterpreterId(PjRtPlatformId platform_id) {
+  return platform_id == xla::InterpreterId();
 }
 
 class PjRtPhaseCompiler;
