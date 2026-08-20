@@ -8028,7 +8028,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
   HloInstruction* updated = dynamic_update_slice->mutable_operand(0);
   HloInstruction* dus_update = dynamic_update_slice->mutable_operand(1);
   HloInstruction* pad_value;
-  if (Match(updated,
+  if (options_.enable_dynamic_update_slice_to_pad_replacement() &&
+      Match(updated,
             m::Broadcast(m::Op(&pad_value).WithShape(m::Shape().IsScalar())))) {
     auto updated_shape = updated->shape();
     auto update_shape = dus_update->shape();

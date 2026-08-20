@@ -24,7 +24,7 @@ limitations under the License.
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
