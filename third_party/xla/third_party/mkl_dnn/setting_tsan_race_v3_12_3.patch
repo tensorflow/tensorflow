@@ -1,8 +1,8 @@
 diff --git a/src/common/utils.hpp b/src/common/utils.hpp
-index 51b55b909d..43b6df24ec 100644
+index 3e19c39d4f..dcb748ae40 100644
 --- a/src/common/utils.hpp
 +++ b/src/common/utils.hpp
-@@ -795,17 +795,41 @@ static constexpr bool is_dev_mode() {
+@@ -801,17 +801,41 @@ static constexpr bool is_dev_mode() {
  template <typename T>
  struct setting_t {
  private:
@@ -13,10 +13,9 @@ index 51b55b909d..43b6df24ec 100644
  
  public:
      constexpr setting_t() : value_ {}, initialized_ {false} {}
--    constexpr setting_t(const T init) : value_ {init}, initialized_ {false} {}
+     constexpr setting_t(const T init) : value_ {init}, initialized_ {false} {}
 -    bool initialized() { return initialized_; }
 -    T get() { return value_; }
-+    constexpr setting_t(const T init) : value_ {init}, initialized_ {true} {}
 +    bool initialized() const { return initialized_.load(std::memory_order_acquire); }
 +    T get() const {
 +        return value_.load(std::memory_order_relaxed);
@@ -38,7 +37,7 @@ index 51b55b909d..43b6df24ec 100644
 +
 +public:
 +    setting_t() : value_ {}, initialized_ {false} {}
-+    setting_t(const std::string &init) : value_ {init}, initialized_ {true} {}
++    setting_t(const std::string &init) : value_ {init}, initialized_ {false} {}
 +    bool initialized() const { return initialized_.load(std::memory_order_acquire); }
 +    std::string get() const {
 +        return value_;

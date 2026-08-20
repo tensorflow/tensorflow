@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -2181,19 +2182,22 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           return nullptr;
         }
       }
-      // async-{update,done} expect their one singular operand.
+      HloInstruction* async_producer = nullptr;
+      // async-{update,done} expect their first operand to be the previous async
+      // op or an allowed async intermediary.
       if (opcode == HloOpcode::kAsyncUpdate ||
           opcode == HloOpcode::kAsyncDone) {
         if (operands.empty()) {
           TokenError("No operand found for AsyncUpdate and AsyncDone");
           return nullptr;
         }
-        if (HloAsyncInstruction::ClassOf(operands[0]) &&
-            operands[0]->opcode() == HloOpcode::kAsyncDone) {
+        if (operands[0]->opcode() == HloOpcode::kAsyncDone) {
           TokenError(
               "AsyncUpdate and AsyncDone cannot have AsyncDone as operand.");
           return nullptr;
         }
+        async_producer =
+            hlo_instruction_utils::async::FindAsyncProducer(operands[0]);
       }
       optional<std::string> async_execution_thread;
       attrs["async_execution_thread"] = {/*required=*/false, AttrTy::kString,
@@ -2242,8 +2246,6 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           // Since async-{update,done} will inherit the computation from
           // async-start, we'll only need to make sure it matches what was
           // specified explicitly.
-          HloInstruction* async_producer =
-              HloInstruction::FindAsyncProducer(operands[0]);
           if (async_producer != nullptr &&
               HloAsyncInstruction::ClassOf(async_producer)) {
             auto* async_op = Cast<HloAsyncInstruction>(async_producer);
@@ -2274,8 +2276,6 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       // specified matches what is inherited.
       if (opcode == HloOpcode::kAsyncUpdate ||
           opcode == HloOpcode::kAsyncDone) {
-        HloInstruction* async_producer =
-            HloInstruction::FindAsyncProducer(operands[0]);
         if (async_producer != nullptr &&
             HloAsyncInstruction::ClassOf(async_producer)) {
           auto* async_op = Cast<HloAsyncInstruction>(async_producer);
@@ -2291,8 +2291,11 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
                 async_op->async_wrapped_computation() != *async_computation) {
               TokenError(StrFormat(
                   "Expect async_wrapped_computation to be %s, but got %s",
-                  async_op->async_wrapped_computation()->name(),
-                  (*async_computation)->name()));
+                  async_op->async_wrapped_computation() != nullptr
+                      ? async_op->async_wrapped_computation()->name()
+                      : "nullptr",
+                  (*async_computation != nullptr) ? (*async_computation)->name()
+                                                  : "nullptr"));
               return nullptr;
             }
           }
@@ -2344,15 +2347,21 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
               *shape, operands[0], async_wrapped_opcode,
               async_computation ? *async_computation : nullptr));
 
-      const Shape& operand_shape = async_done->operand(0)->shape();
-
-      if (async_wrapped_opcode &&
-          async_done->async_wrapped_computation() != nullptr) {
-        UpdateAsyncWrappedComputation(
-            async_done->async_wrapped_computation(),
-            /*result_shape=*/*shape,
-            /*operand_shapes=*/
-            operand_shape.tuple_shapes(0).tuple_shapes());
+      if (async_wrapped_opcode) {
+        const HloInstruction* async_start =
+            async_producer != nullptr
+                ? hlo_instruction_utils::async::FindAsyncStart(async_producer)
+                : nullptr;
+        const Shape& operand_shape = async_start != nullptr
+                                         ? async_start->shape()
+                                         : async_done->operand(0)->shape();
+        if (async_done->async_wrapped_computation() != nullptr) {
+          UpdateAsyncWrappedComputation(
+              async_done->async_wrapped_computation(),
+              /*result_shape=*/*shape,
+              /*operand_shapes=*/
+              operand_shape.tuple_shapes(0).tuple_shapes());
+        }
       }
       return async_done;
     }
@@ -2718,9 +2727,12 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       optional<SparsityConfig> parsed_sparsity_config;
       attrs["sparsity_config"] = {/*required=*/false, AttrTy::kSparsityConfig,
                                   &parsed_sparsity_config};
-      if ((!preset_operands &&
-           !ParseOperands(&operands, builder, /*expected_size=*/2)) ||
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes, shape)) {
+        return nullptr;
+      }
+      if (!preset_operands && operands.size() < 2) {
+        Error(lexer_.GetLoc(), "expects at least 2 operands");
         return nullptr;
       }
       if (!window) {
@@ -2755,9 +2767,9 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       }
       ConvolutionKind kind = convolution_kind.value_or(CONVOLUTION_KIND_UNSET);
       return builder->AddInstruction(HloInstruction::CreateConvolve(
-          *shape, /*lhs=*/operands[0], /*rhs=*/operands[1],
-          feature_group_count.value(), batch_group_count.value(), *window,
-          *dnums, precision_config, sparsity_config, kind));
+          *shape, operands, feature_group_count.value(),
+          batch_group_count.value(), *window, *dnums, precision_config,
+          sparsity_config, kind));
     }
     case HloOpcode::kFft: {
       optional<FftType> fft_type;
@@ -7630,6 +7642,12 @@ bool HloParserImpl::ParseTensorSparsityConfig(
           return Error(lexer_.GetLoc(), "expects int64_t");
         }
         result->set_stride(stride);
+      } else if (attribute == "idx") {
+        int64_t idx;
+        if (!ParseInt64(&idx)) {
+          return Error(lexer_.GetLoc(), "expects int64_t");
+        }
+        result->set_idx(idx);
       } else {
         return Error(lexer_.GetLoc(), "unknown attribute");
       }
