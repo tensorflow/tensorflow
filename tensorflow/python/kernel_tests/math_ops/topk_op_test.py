@@ -62,8 +62,10 @@ class TopKTest(test.TestCase):
         # Do some special casing of equality of indices: if indices
         # are not the same, but values are floating type, ensure that
         # the values are within epsilon of each other.
-        if not np.issubdtype(np_expected_values.dtype, np.floating) and \
-            np_expected_values.dtype != dtypes.bfloat16.as_numpy_dtype:
+        if (
+            not np.issubdtype(np_expected_values.dtype, np.floating)
+            and np_expected_values.dtype != dtypes.bfloat16.as_numpy_dtype
+        ):
           # Values are not floating point type; check indices exactly
           self.assertAllEqual(np_expected_indices, indices)
         else:
@@ -138,6 +140,38 @@ class TopKTest(test.TestCase):
   def testTop1AllNan(self):
     inputs = [[np.nan, np.nan], [np.nan, np.nan]]
     self._validateTopK(inputs, 1, [[np.nan], [np.nan]], [[0], [0]])
+
+  def testTop1WithNan(self):
+    inputs = [
+        [3.0, np.nan, 2.0],
+        [1.0, 2.0, 3.0, np.nan],
+        [np.nan, 5.0, np.nan],
+        [1.0, 5.0, 2.0],
+    ]
+    with self.cached_session():
+      for row, expected_idx in zip(inputs, [1, 3, 0, 1]):
+        values, indices = self.evaluate(nn_ops.top_k(row, 1))
+        self.assertAllEqual(indices, [expected_idx])
+        if np.isnan(row[expected_idx]):
+          self.assertTrue(np.isnan(values[0]))
+        else:
+          self.assertEqual(values[0], row[expected_idx])
+
+  def testTopKNan(self):
+    inputs = [np.nan, 3.0, 1.0, np.nan, 2.0, np.nan, 0.5]
+    with self.cached_session():
+      values, indices = self.evaluate(nn_ops.top_k(inputs, 1))
+      self.assertTrue(np.isnan(values[0]))
+      self.assertEqual(indices[0], 0)
+
+      values, indices = self.evaluate(nn_ops.top_k(inputs, 3))
+      self.assertTrue(np.all(np.isnan(values)))
+      self.assertAllEqual(indices, [0, 3, 5])
+
+      values, indices = self.evaluate(nn_ops.top_k(inputs, 7))
+      self.assertTrue(np.all(np.isnan(values[:3])))
+      self.assertAllClose(values[3:], [3.0, 2.0, 1.0, 0.5])
+      self.assertAllEqual(indices, [0, 3, 5, 1, 4, 2, 6])
 
   def _testLargeSort(self, dtype):
     b = 10

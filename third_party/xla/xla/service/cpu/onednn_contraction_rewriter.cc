@@ -1440,9 +1440,12 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
     HloInstruction *transpose, *operand;
     // Update the dimensions only when the transpose does not involve the batch
     // dimension, as modifying it could significantly impact the performance.
+    // Rank-2 operands have no batch dimension, so their only non-identity
+    // permutation ({1,0}) is always safe to fold.
     if (Match(matmul->mutable_operand(operand_idx),
               m::Copy(m::Transpose(&transpose, m::Op(&operand)))) &&
-        transpose->dimensions()[0] == 0) {
+        (transpose->dimensions().size() == 2 ||
+         transpose->dimensions()[0] == 0)) {
       new_ops[operand_idx] = operand;
       for (auto x : transpose->dimensions()) {
         (*GetOperandTensor(operand_idx, backend_config))->Add(x + 1);

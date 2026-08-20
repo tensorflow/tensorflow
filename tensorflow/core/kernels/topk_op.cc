@@ -20,6 +20,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/topk_op.h"
 
 #include <algorithm>
+#include <limits>
+#include <memory>
 #include <numeric>
 #include <vector>
 
@@ -139,36 +141,18 @@ struct TopKFunctor<CPUDevice, T, Tidx> {
       const typename TTypes<T, 2>::ConstTensor& input, const int64_t num_rows,
       const int64_t num_cols, typename TTypes<T, 2>::Tensor values,
       typename TTypes<Tidx, 2>::Tensor indices) {
-    const CPUDevice& d = context->eigen_device<CPUDevice>();
-
-    // Special case for k == 1.
-    if (k == 1) {
-      typename Eigen::IndexList<Eigen::type2index<1>> reduce_on_cols;
-      typename Eigen::IndexList<int, Eigen::type2index<1>> rows_by_one;
-      rows_by_one.set(0, num_rows);
-
-      values.device(d) =
-          input.maximum(/*dims=*/reduce_on_cols).eval().reshape(rows_by_one);
-      // Get the indices of the maximum values.
-      for (int r = 0; r < num_rows; ++r) {
-        indices(r, 0) = Tidx(0);
-        for (int c = 0; c < num_cols; ++c) {
-          if (values(r, 0) == input(r, c)) {
-            indices(r, 0) = static_cast<Tidx>(c);
-            break;
-          }
-        }
-        values(r, 0) = input(r, indices(r, 0));
-      }
-
-      return absl::OkStatus();
-    }
-
     auto SortIndices = [&](int64_t start_batch, int64_t limit_batch) {
-      for (int32_t b = start_batch; b < limit_batch; ++b) {
+      for (int64_t b = start_batch; b < limit_batch; ++b) {
         const T* input_data = &input(b, 0);
-        const auto stable_comp = [input_data](const int32_t a,
-                                              const int32_t b) {
+        const auto stable_comp = [input_data](const Tidx a, const Tidx b) {
+          const bool a_nan = Eigen::numext::isnan(input_data[a]);
+          const bool b_nan = Eigen::numext::isnan(input_data[b]);
+          if (a_nan || b_nan) {
+            if (a_nan && b_nan) {
+              return a < b;
+            }
+            return a_nan;
+          }
           if (input_data[b] < input_data[a]) {
             return true;
           } else if (input_data[b] > input_data[a]) {
@@ -177,7 +161,12 @@ struct TopKFunctor<CPUDevice, T, Tidx> {
             return a < b;
           }
         };
-        const auto comp = [input_data](const int32_t a, const int32_t b) {
+        const auto comp = [input_data](const Tidx a, const Tidx b) {
+          const bool a_nan = Eigen::numext::isnan(input_data[a]);
+          const bool b_nan = Eigen::numext::isnan(input_data[b]);
+          if (a_nan || b_nan) {
+            return a_nan && !b_nan;
+          }
           return input_data[b] < input_data[a];
         };
         // TODO(ebrevdo): For large k < num_cols, instead of using
@@ -199,14 +188,30 @@ struct TopKFunctor<CPUDevice, T, Tidx> {
           for (auto* run_begin = begin; run_begin != end;) {
             auto* run_end = run_begin + 1;
             if (run_end == end) break;
-            if (input_data[*run_begin] == input_data[*run_end]) {
+            const bool run_begin_nan =
+                Eigen::numext::isnan(input_data[*run_begin]);
+            if ((run_begin_nan && Eigen::numext::isnan(input_data[*run_end])) ||
+                (!run_begin_nan &&
+                 input_data[*run_begin] == input_data[*run_end])) {
               while (++run_end != end) {
-                if (input_data[*run_begin] != input_data[*run_end]) break;
+                if (run_begin_nan) {
+                  if (!Eigen::numext::isnan(input_data[*run_end])) break;
+                } else {
+                  if (input_data[*run_begin] != input_data[*run_end]) break;
+                }
               }
               std::sort(run_begin, run_end);
             }
             run_begin = run_end;
           }
+        } else if (k == 1) {
+          Tidx best_c = 0;
+          for (Tidx c = 1; c < num_cols; ++c) {
+            if (stable_comp(c, best_c)) {
+              best_c = c;
+            }
+          }
+          indices(b, 0) = best_c;
         } else {
           // Use the TopN heap object to sort.
           gtl::TopN<Tidx, decltype(stable_comp)> filter(k, stable_comp);
