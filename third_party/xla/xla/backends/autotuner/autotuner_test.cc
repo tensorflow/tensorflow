@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/autotuner/autotuner.h"
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -24,85 +23,57 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/container/flat_hash_map.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "google/protobuf/text_format.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/codegen_orchestrator.h"
+#include "xla/backends/autotuner/mock_codegen_backend.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/literal_util.h"
 #include "xla/service/executable.h"
+#include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/testing/temporary_directory.h"
+#include "xla/tsl/util/proto/parse_text_proto.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/path.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
 
+using absl_testing::IsOk;
 using absl_testing::StatusIs;
 using ::testing::_;
 using ::testing::Return;
+using ::tsl::proto_testing::EqualsProto;
+using ::tsl::proto_testing::ParseTextProtoOrDie;
 
-int64_t GetAlgorithmId(absl::string_view name) {
-  static const auto* kConfigMap =
-      new absl::flat_hash_map<absl::string_view, int64_t>({
-          {"best_config", 1},
-          {"another_config", 2},
-          {"only_config", 3},
-          {"some_config", 4},
-          {"some_other_config", 5},
-      });
-  if (auto it = kConfigMap->find(name); it != kConfigMap->end()) {
-    return it->second;
-  }
-  LOG(FATAL) << "Unknown config name: " << name;
-  return 0;
-}
-
-MATCHER_P(ConfigMatcher, name, "") {
-  if (!arg.has_gemm()) {
-    return false;
-  }
-  return arg.gemm().algorithm() == GetAlgorithmId(name);
-}
-
-MATCHER_P(InstructionMatcher, opcode, "") { return arg.opcode() == opcode; }
-
-std::unique_ptr<BackendConfig> GetTestConfig(absl::string_view name) {
-  auto config = std::make_unique<BackendConfig>();
-  config->mutable_gemm()->set_algorithm(GetAlgorithmId(name));
-  return config;
-}
-
-class MockCodegenBackend : public CodegenBackend {
+class FakeExecutable : public Executable {
  public:
-  MOCK_METHOD(absl::string_view, name, (), (const, override));
-  MOCK_METHOD(autotuner::Backend, backend, (), (const, override));
-  MOCK_METHOD(std::string, version, (), (const, override));
-  MOCK_METHOD(absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>,
-              GetSupportedConfigs, (const HloInstruction& instr), (override));
-  MOCK_METHOD(absl::StatusOr<std::unique_ptr<BackendConfig>>, GetDefaultConfig,
-              (const HloInstruction& instr), (override));
-  MOCK_METHOD(absl::StatusOr<std::unique_ptr<Executable>>, Compile,
-              (const HloInstruction& instr, const BackendConfig& config),
-              (override));
-  MOCK_METHOD(absl::Status, ApplyConfig,
-              (HloInstruction & instr, const BackendConfig& config),
-              (override));
-  MOCK_METHOD(bool, CanProduceWrongResults, (), (const, override));
+  FakeExecutable() : Executable(nullptr) {}
+  absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
+      const ServiceExecutableRunOptions*,
+      std::vector<ExecutionInput>) override {
+    return absl::UnimplementedError("unused in test");
+  }
 };
 
 class MockProfiler : public Profiler {
@@ -168,8 +139,6 @@ TEST_F(AutotunerTest, AutotuneSingleSupportedConfig) {
   ASSERT_OK_AND_ASSIGN(auto autotuner,
                        Autotuner::Create(std::move(orchestrator),
                                          std::move(profilers), options_));
-
-  auto dummy_instr = HloInstruction::CreateConstant(LiteralUtil::CreateR0(1));
 
   constexpr absl::string_view kHlo = R"(
     HloModule test_module
@@ -252,6 +221,279 @@ TEST_F(AutotunerTest, AutotuneMultipleConfigsSelectsBest) {
   EXPECT_FALSE(results.empty());
   EXPECT_EQ(results[0].config.backend_config->gemm().algorithm(),
             GetAlgorithmId("best_config"));
+}
+
+TEST_F(AutotunerTest, AutotuneAppliesBestConfigAndSkipsNonCompilableConfig) {
+  std::vector<std::unique_ptr<BackendConfig>> configs;
+  configs.push_back(GetTestConfig("test_config_1"));
+  configs.push_back(GetTestConfig("non_compilable_config"));
+  configs.push_back(GetTestConfig("test_config_2"));
+
+  auto backend = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*backend, name()).WillRepeatedly(Return("mock_backend"));
+  EXPECT_CALL(*backend, GetSupportedConfigs)
+      .WillOnce(Return(std::move(configs)));
+  EXPECT_CALL(*backend, Compile(_, _))
+      .WillOnce(Return(std::unique_ptr<Executable>()))
+      .WillOnce(Return(absl::InternalError("test error")))
+      .WillOnce(Return(std::unique_ptr<Executable>()));
+
+  auto profiler = std::make_unique<MockProfiler>();
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
+      .WillOnce(Return(std::make_unique<InputBuffers>()));
+  EXPECT_CALL(*profiler, Profile(_, _))
+      .WillOnce(Return(ProfileResult({absl::Seconds(2)})))
+      .WillOnce(Return(ProfileResult({absl::Seconds(1)})));
+
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend));
+  ASSERT_OK_AND_ASSIGN(auto orchestrator,
+                       CodegenOrchestrator::Create(std::move(backends), {}));
+
+  std::vector<std::unique_ptr<Profiler>> profilers;
+  profilers.push_back(std::move(profiler));
+  options_.correctness_check_options.enable_correctness_check = false;
+
+  ASSERT_OK_AND_ASSIGN(auto autotuner,
+                       Autotuner::Create(std::move(orchestrator),
+                                         std::move(profilers), options_));
+
+  constexpr absl::string_view kHlo = R"(
+    HloModule test_module
+    ENTRY main {
+      p0 = f32[] parameter(0)
+      ROOT copy = f32[] copy(p0)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto results,
+      autotuner->TuneConfigs(*module, [](const HloInstruction& instr) {
+        return instr.opcode() == HloOpcode::kCopy;
+      }));
+  ASSERT_FALSE(results.empty());
+  EXPECT_EQ(results[0].config.backend_config->gemm().algorithm(),
+            GetAlgorithmId("test_config_2"));
+}
+
+TEST_F(AutotunerTest, AutotuneAppliesBestConfigUsingThreadPool) {
+  std::vector<std::unique_ptr<BackendConfig>> configs;
+  configs.push_back(GetTestConfig("test_config_1"));
+  configs.push_back(GetTestConfig("test_config_2"));
+
+  std::unique_ptr<Executable> executable1 = std::make_unique<FakeExecutable>();
+  Executable* exec1 = executable1.get();
+  std::unique_ptr<Executable> executable2 = std::make_unique<FakeExecutable>();
+  Executable* exec2 = executable2.get();
+
+  auto backend = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*backend, name()).WillRepeatedly(Return("mock_backend"));
+  EXPECT_CALL(*backend, GetSupportedConfigs)
+      .WillOnce(Return(std::move(configs)));
+  EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_1")))
+      .WillOnce(Return(std::move(executable1)));
+  EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_2")))
+      .WillOnce(Return(std::move(executable2)));
+
+  auto profiler = std::make_unique<MockProfiler>();
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
+      .WillOnce(Return(std::make_unique<InputBuffers>()));
+  EXPECT_CALL(*profiler, Profile(testing::Pointer(exec1), _))
+      .WillOnce(Return(ProfileResult({absl::Seconds(2)})));
+  EXPECT_CALL(*profiler, Profile(testing::Pointer(exec2), _))
+      .WillOnce(Return(ProfileResult({absl::Seconds(1)})));
+
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend));
+  ASSERT_OK_AND_ASSIGN(auto orchestrator,
+                       CodegenOrchestrator::Create(std::move(backends), {}));
+
+  std::vector<std::unique_ptr<Profiler>> profilers;
+  profilers.push_back(std::move(profiler));
+  options_.correctness_check_options.enable_correctness_check = false;
+
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test", 2);
+  ASSERT_OK_AND_ASSIGN(
+      auto autotuner,
+      Autotuner::Create(std::move(orchestrator), std::move(profilers), options_,
+                        &thread_pool));
+
+  constexpr absl::string_view kHlo = R"(
+    HloModule test_module
+    ENTRY main {
+      p0 = f32[] parameter(0)
+      ROOT copy = f32[] copy(p0)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto results,
+      autotuner->TuneConfigs(*module, [](const HloInstruction& instr) {
+        return instr.opcode() == HloOpcode::kCopy;
+      }));
+  ASSERT_FALSE(results.empty());
+  EXPECT_EQ(results[0].config.backend_config->gemm().algorithm(),
+            GetAlgorithmId("test_config_2"));
+}
+
+TEST_F(AutotunerTest, AutotuneToleratesSingleBackendFailure) {
+  std::vector<std::unique_ptr<BackendConfig>> configs;
+  configs.push_back(GetTestConfig("test_config_1"));
+  configs.push_back(GetTestConfig("test_config_2"));
+
+  auto good_backend = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*good_backend, name()).WillRepeatedly(Return("good_backend"));
+  EXPECT_CALL(*good_backend, GetSupportedConfigs)
+      .WillOnce(Return(std::move(configs)));
+  EXPECT_CALL(*good_backend, Compile(_, _))
+      .WillRepeatedly([](const HloInstruction&, const BackendConfig&) {
+        return std::unique_ptr<Executable>();
+      });
+
+  auto bad_backend = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*bad_backend, name()).WillRepeatedly(Return("bad_backend"));
+  EXPECT_CALL(*bad_backend, GetSupportedConfigs)
+      .WillOnce(Return(absl::InternalError("backend error")));
+
+  auto profiler = std::make_unique<MockProfiler>();
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
+      .WillOnce(Return(std::make_unique<InputBuffers>()));
+  EXPECT_CALL(*profiler, Profile(_, _))
+      .WillOnce(Return(ProfileResult({absl::Seconds(2)})))
+      .WillOnce(Return(ProfileResult({absl::Seconds(1)})));
+
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(good_backend));
+  backends.push_back(std::move(bad_backend));
+  ASSERT_OK_AND_ASSIGN(auto orchestrator,
+                       CodegenOrchestrator::Create(std::move(backends), {}));
+
+  std::vector<std::unique_ptr<Profiler>> profilers;
+  profilers.push_back(std::move(profiler));
+  options_.correctness_check_options.enable_correctness_check = false;
+
+  ASSERT_OK_AND_ASSIGN(auto autotuner,
+                       Autotuner::Create(std::move(orchestrator),
+                                         std::move(profilers), options_));
+
+  constexpr absl::string_view kHlo = R"(
+    HloModule test_module
+    ENTRY main {
+      p0 = f32[] parameter(0)
+      ROOT copy = f32[] copy(p0)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto results,
+      autotuner->TuneConfigs(*module, [](const HloInstruction& instr) {
+        return instr.opcode() == HloOpcode::kCopy;
+      }));
+  ASSERT_FALSE(results.empty());
+  EXPECT_EQ(results[0].config.backend_config->gemm().algorithm(),
+            GetAlgorithmId("test_config_2"));
+}
+
+TEST_F(AutotunerTest, DumpLogsToFile) {
+  ASSERT_OK_AND_ASSIGN(
+      tsl::testing::TemporaryDirectory temp_dir,
+      tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
+  options_.dump_logs_to = tsl::io::JoinPath(temp_dir.path(), "dump.log");
+  options_.correctness_check_options.enable_correctness_check = false;
+
+  std::vector<std::unique_ptr<BackendConfig>> configs;
+  configs.push_back(GetTestConfig("test_config_1"));
+  configs.push_back(GetTestConfig("test_config_failure"));
+  configs.push_back(GetTestConfig("test_config_2"));
+
+  auto backend = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*backend, name()).WillRepeatedly(Return("mock_backend"));
+  EXPECT_CALL(*backend, GetSupportedConfigs)
+      .WillOnce(Return(std::move(configs)));
+  EXPECT_CALL(*backend, Compile(_, _))
+      .WillOnce(Return(std::unique_ptr<Executable>()))
+      .WillOnce(Return(absl::InternalError("failed to compile")))
+      .WillOnce(Return(std::unique_ptr<Executable>()));
+
+  auto profiler = std::make_unique<MockProfiler>();
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
+      .WillOnce(Return(std::make_unique<InputBuffers>()));
+  EXPECT_CALL(*profiler, Profile(_, _))
+      .WillOnce(Return(ProfileResult({absl::Seconds(2),
+                                      /*output_buffer=*/std::nullopt,
+                                      /*scratch_bytes=*/100})))
+      .WillOnce(Return(ProfileResult({absl::Seconds(1)})));
+
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend));
+  ASSERT_OK_AND_ASSIGN(auto orchestrator,
+                       CodegenOrchestrator::Create(std::move(backends), {}));
+
+  std::vector<std::unique_ptr<Profiler>> profilers;
+  profilers.push_back(std::move(profiler));
+
+  ASSERT_OK_AND_ASSIGN(auto autotuner,
+                       Autotuner::Create(std::move(orchestrator),
+                                         std::move(profilers), options_));
+
+  constexpr absl::string_view kHlo = R"(
+    HloModule test_module
+    ENTRY main {
+      p0 = f32[] parameter(0)
+      ROOT copy = f32[] copy(p0)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  auto dummy_instr = module->entry_computation()->root_instruction();
+
+  ASSERT_OK_AND_ASSIGN(
+      auto results,
+      autotuner->TuneConfigs(*module, [](const HloInstruction& instr) {
+        return instr.opcode() == HloOpcode::kCopy;
+      }));
+  EXPECT_FALSE(results.empty());
+  EXPECT_OK(autotuner->DumpTuningLogs());
+
+  std::string content;
+  EXPECT_THAT(tsl::ReadFileToString(tsl::Env::Default(), options_.dump_logs_to,
+                                    &content),
+              IsOk());
+  AutotuningLogs actual_logs;
+  EXPECT_TRUE(
+      tsl::protobuf::TextFormat::ParseFromString(content, &actual_logs));
+
+  auto expected_logs = ParseTextProtoOrDie<AutotuningLogs>(absl::StrFormat(
+      R"pb(
+        logs {
+          results {
+            gemm { algorithm: %d }
+            run_time { seconds: 2 nanos: 0 }
+            scratch_bytes: 100
+          }
+          results {
+            gemm { algorithm: %d }
+            run_time { seconds: 1 nanos: 0 }
+          }
+          results {
+            gemm { algorithm: %d }
+            run_time { seconds: 0 nanos: 0 }
+            failure {
+              kind: DISQUALIFIED
+              msg: "INTERNAL: Compilation failed: failed to compile"
+            }
+          }
+        }
+      )pb",
+      GetAlgorithmId("test_config_1"), GetAlgorithmId("test_config_2"),
+      GetAlgorithmId("test_config_failure")));
+  expected_logs.mutable_logs(0)->mutable_instr()->PackFrom(
+      dummy_instr->ToProto());
+
+  EXPECT_THAT(actual_logs, EqualsProto(expected_logs));
 }
 
 TEST_F(AutotunerTest, AutotuneCompileErrorWithNoSupportedConfigs) {
