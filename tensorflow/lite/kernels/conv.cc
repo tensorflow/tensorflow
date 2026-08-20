@@ -497,7 +497,7 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
 
   int output_spatial_elements = 0;
   TF_LITE_ENSURE_MSG(context,
-                     CheckedNumElements({out_height, out_width},
+                     CheckedNumElements({batches, out_height, out_width},
                                         output_spatial_elements) == kTfLiteOk,
                      "%s", "Conv output spatial dimensions overflow.");
 
