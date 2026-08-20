@@ -256,7 +256,7 @@ cc_library(
         "//xla/service:compiled_module",
         "//xla/service:compiler",
         "//xla/service:computation_layout",
-        "//xla/service:computation_placer_hdr",
+        "//xla/service:device_assignment",
         "//xla/service:dump",
         "//xla/service:executable",
         "//xla/service:hlo_cost_analysis",
