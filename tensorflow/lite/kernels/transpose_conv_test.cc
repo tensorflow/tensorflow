@@ -231,8 +231,7 @@ TEST(TransposeConvPrepareSecurityTest, RejectsMismatchedOutputChannels) {
       {TensorType_FLOAT32, {}}, Padding_SAME, /*stride_w=*/1, /*stride_h=*/1,
       ActivationFunctionType_NONE);
 
-  ASSERT_EQ(m.AllocateTensors(), kTfLiteOk);
-  EXPECT_EQ(m.Invoke(), kTfLiteError);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
 }
 
 TEST(TransposeConvPrepareSecurityTest, RejectsInconsistentSpatialShape) {
@@ -242,8 +241,28 @@ TEST(TransposeConvPrepareSecurityTest, RejectsInconsistentSpatialShape) {
       {TensorType_FLOAT32, {}}, Padding_SAME, /*stride_w=*/1, /*stride_h=*/1,
       ActivationFunctionType_NONE);
 
-  ASSERT_EQ(m.AllocateTensors(), kTfLiteOk);
-  EXPECT_EQ(m.Invoke(), kTfLiteError);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(TransposeConvPrepareSecurityTest, RejectsInflatedOutputShape) {
+  PrepareOnlyTransposeConvOpModel<float> m(
+      ops::builtin::Register_TRANSPOSECONV_GENERIC_OPT(), {1, 512, 512, 1},
+      {TensorType_FLOAT32, {1, 1, 1, 1}}, {TensorType_FLOAT32, {1, 1, 1, 1}},
+      {TensorType_FLOAT32, {}}, Padding_SAME, /*stride_w=*/1, /*stride_h=*/1,
+      ActivationFunctionType_NONE);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(TransposeConvTest, RejectsInflatedDynamicOutputShapeInEval) {
+  TransposeConvOpModel model(
+      ops::builtin::Register_TRANSPOSECONV_GENERIC_OPT(), {1, 512, 512, 1},
+      {TensorType_FLOAT32, {1, 1, 1, 1}}, {1.0f},
+      {TensorType_FLOAT32, {1, 1, 1, 1}}, {TensorType_FLOAT32, {}},
+      Padding_SAME, /*stride_w=*/1, /*stride_h=*/1,
+      ActivationFunctionType_NONE, TestType::kDynamic);
+  model.SetInput({1.0f});
+  EXPECT_EQ(model.Invoke(), kTfLiteError);
 }
 
 // Test case:

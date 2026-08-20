@@ -81,6 +81,12 @@ class KeyValueStore {
   // Deletes all key-value pairs where the key has the provided prefix.
   void DeletePrefix(absl::string_view prefix);
 
+  // Utility for normalizing structured config key string.
+  // The normalized key will not have leading or trailing slashes, and all parts
+  // in the key path are separated by exactly one slash ('/').
+  // E.g., ///a//b/c// --> a/b/c
+  static std::string NormalizeKey(absl::string_view key);
+
  private:
   // Notifies all callbacks registered for the provided key.
   void NotifyCallbacksForKey(absl::string_view key,
