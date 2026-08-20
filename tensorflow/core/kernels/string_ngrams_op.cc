@@ -16,15 +16,20 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <limits>
-#include <locale>
 #include <string>
+#include <vector>
 
-#include "absl/strings/ascii.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/platform/tstring.h"
 
 namespace tensorflow {
 namespace text {
@@ -123,7 +128,7 @@ class StringNGramsOp : public tensorflow::OpKernel {
     ngrams_splits_data[0] = 0;
     for (int i = 1; i <= num_batch_items; ++i) {
       int length = splits_vec(i) - splits_vec(i - 1);
-      int num_ngrams = 0;
+      int64_t num_ngrams = 0;
       for (int ngram_width : ngram_widths_) {
         auto ngrams_or = get_num_ngrams(length, ngram_width);
         OP_REQUIRES_OK(context, ngrams_or.status());
@@ -132,7 +137,15 @@ class StringNGramsOp : public tensorflow::OpKernel {
       if (preserve_short_ && length > 0 && num_ngrams == 0) {
         num_ngrams = 1;
       }
-      ngrams_splits_data[i] = ngrams_splits_data[i - 1] + num_ngrams;
+      OP_REQUIRES(
+          context,
+          num_ngrams <= std::numeric_limits<SPLITS_TYPE>::max() -
+                            static_cast<int64_t>(ngrams_splits_data[i - 1]),
+          absl::InvalidArgumentError(absl::StrCat(
+              "Up to batch item ", i,
+              ", the number of ngrams exceeds maximum for SPLITS_TYPE")));
+      ngrams_splits_data[i] =
+          ngrams_splits_data[i - 1] + static_cast<SPLITS_TYPE>(num_ngrams);
     }
 
     tensorflow::Tensor* ngrams;
@@ -144,7 +157,7 @@ class StringNGramsOp : public tensorflow::OpKernel {
 
     for (int i = 0; i < num_batch_items; ++i) {
       auto data_start = &input_data[splits_vec(i)];
-      int output_start_idx = ngrams_splits_data[i];
+      int64_t output_start_idx = ngrams_splits_data[i];
       for (int ngram_width : ngram_widths_) {
         auto output_start = &ngrams_data[output_start_idx];
         int length = splits_vec(i + 1) - splits_vec(i);

@@ -226,7 +226,12 @@ GetParticipatingDevicesGroups(const DeviceAssignment& device_assignment,
                               absl::Span<const ReplicaGroup> replica_groups,
                               CollectiveOpGroupMode group_mode);
 
-// Same as above, except taking an HloInstruction instead.
+// Returns the groups of global devices that communicate in `collective`.
+absl::StatusOr<std::vector<std::vector<GlobalDeviceId>>>
+GetParticipatingDevicesGroups(const HloInstruction& collective,
+                              const DeviceAssignment& device_assignment);
+
+// Same as above, except using the static device assignment from the module.
 absl::StatusOr<std::vector<std::vector<GlobalDeviceId>>>
 GetParticipatingDevicesGroups(const HloInstruction* collective);
 
