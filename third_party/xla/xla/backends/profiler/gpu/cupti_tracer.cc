@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <ios>
+#include <limits>
 #include <list>
 #include <memory>
 #include <string>
@@ -79,6 +80,12 @@ using tsl::profiler::GpuPlaneName;
 using tsl::profiler::XPlaneBuilder;
 
 static thread_local int internalCuCall = 0;
+
+// CUPTI reuses correlationData between enter and exit callbacks. Mark entries
+// without a usable timestamp so their matching exit callbacks drop incomplete
+// records.
+constexpr uint64_t kInvalidCallbackTimestamp =
+    std::numeric_limits<uint64_t>::max();
 
 // Temporary disable cupti api tracing for this thread during the life scope of
 // this class. Used for the API calls that initiated by us.
@@ -1037,17 +1044,21 @@ class CuptiDriverApiHookWithActivityApi : public CuptiDriverApiHook {
                                 CUpti_CallbackId cbid,
                                 const CUpti_CallbackData* cbdata) override {
     // Stash away the current Cupti timestamp into cbdata.
-    *cbdata->correlationData = option_.required_callback_api_events
-                                   ? tracer_->GetTimestampForSubscriber()
-                                   : 0;
+    *cbdata->correlationData = kInvalidCallbackTimestamp;
+    ABSL_ASSIGN_OR_RETURN(*cbdata->correlationData,
+                     tracer_->GetTimestampForSubscriber());
     return absl::OkStatus();
   }
   absl::Status OnDriverApiExit(int device_id, CUpti_CallbackDomain domain,
                                CUpti_CallbackId cbid,
                                const CUpti_CallbackData* cbdata) override {
     // Grab timestamp for API exit. API entry timestamp saved in cbdata.
-    uint64_t end_tsc = tracer_->GetTimestampForSubscriber();
     uint64_t start_tsc = *cbdata->correlationData;
+    if (start_tsc == kInvalidCallbackTimestamp) {
+      return absl::FailedPreconditionError(
+          "CUPTI callback entry timestamp was unavailable");
+    }
+    ABSL_ASSIGN_OR_RETURN(uint64_t end_tsc, tracer_->GetTimestampForSubscriber());
     TrackContext(cbid, cbdata->context);
     return AddDriverApiCallbackEvent(tracer_, cupti_interface_, device_id,
                                      start_tsc, end_tsc, domain, cbid, cbdata);
@@ -1259,22 +1270,42 @@ void CuptiTracer::Disable() {
   }
 
   if (using_v2_subscriber_api_) {
-    // Preserve a best effort end timestamp in case teardown disables CUPTI
-    // before the final timestamp can be read.
-    uint64_t tracing_end_time_ns = GetTimestampForSubscriber();
-    // The subsequent ActivityDisableV2 and ActivityGetNextRecordV2 calls still
-    // need the subscriber handle.
-    DisableApiTracing(/*unsubscribe=*/false).IgnoreError();
-    DisableActivityTracing().IgnoreError();
-    cupti_driver_api_hook_->SyncAndFlush().IgnoreError();
+    // Preserve an end timestamp before a fatal CUPTI error can trigger the
+    // error manager's teardown.
+    absl::StatusOr<uint64_t> tracing_end_time_ns = GetTimestampForSubscriber();
+
+    // Synchronize while the V2 subscriber and its registered CUPTI state are
+    // still live. This lets the final timestamp cover synchronized work.
     if (!cupti_interface_->Disabled()) {
-      // Prefer the timestamp taken after synchronization.
-      uint64_t final_timestamp_ns = GetTimestampForSubscriber();
-      if (!cupti_interface_->Disabled()) {
-        tracing_end_time_ns = final_timestamp_ns;
+      cupti_driver_api_hook_->SyncAndFlush().IgnoreError();
+    }
+
+    if (!cupti_interface_->Disabled()) {
+      // Prefer the post-synchronization timestamp, but retain the earlier
+      // valid value when the final V2 timestamp query fails.
+      absl::StatusOr<uint64_t> final_timestamp_ns = GetTimestampForSubscriber();
+      if (final_timestamp_ns.ok()) {
+        tracing_end_time_ns = *final_timestamp_ns;
+      } else {
+        LOG(WARNING) << "Unable to read final CUPTI V2 tracing end timestamp: "
+                     << final_timestamp_ns.status();
       }
     }
-    collector_->SetTracingEndTimeNs(tracing_end_time_ns);
+
+    // A fatal final timestamp error makes CuptiErrorManager undo the
+    // registered CUPTI operations, including unsubscribe. Do not manually
+    // tear down those operations after that happens.
+    if (!cupti_interface_->Disabled()) {
+      DisableApiTracing(/*unsubscribe=*/false).IgnoreError();
+      DisableActivityTracing().IgnoreError();
+    }
+
+    if (tracing_end_time_ns.ok()) {
+      collector_->SetTracingEndTimeNs(*tracing_end_time_ns);
+    } else {
+      LOG(WARNING) << "Unable to read a CUPTI V2 tracing end timestamp: "
+                   << tracing_end_time_ns.status();
+    }
 
     // Process callback events first because they populate AnnotationMap.
     // Activity events then use that map to attach annotations to GPU events.
@@ -1772,7 +1803,7 @@ absl::Status CuptiTracer::UnsubscribeAndClearSubscriber() {
   return 0;
 }
 
-uint64_t CuptiTracer::GetTimestampForSubscriber() const {
+absl::StatusOr<uint64_t> CuptiTracer::GetTimestampForSubscriber() const {
   if (!subscriber_is_v2_) {
     return CuptiTracer::GetTimestamp();
   }
@@ -1785,11 +1816,10 @@ uint64_t CuptiTracer::GetTimestampForSubscriber() const {
   if (timestamp_status == CUPTI_SUCCESS) {
     return tsc;
   }
-  LOG_FIRST_N(WARNING, 1) << "CUPTI V2 GetTimestamp failed for the subscriber; "
-                             "returning timestamp 0.";
-  // Return 0 for an unavailable V2 timestamp; dependent events may be dropped
-  // during time normalization.
-  return 0;
+  return absl::InternalError(absl::StrCat(
+      "CUPTI V2 GetTimestamp failed for the subscriber with status ",
+      static_cast<int>(timestamp_status), " (",
+      GetCuptiErrorString(cupti_interface_, timestamp_status), ")"));
 }
 
 // Resource callback happens logically inside a driver API call's enter/exit.

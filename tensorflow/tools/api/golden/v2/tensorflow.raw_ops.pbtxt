@@ -382,7 +382,7 @@ tf_module {
   }
   member_method {
     name: "BatchFunction"
-    argspec: "args=[\'in_tensors\', \'captured_tensors\', \'f\', \'num_batch_threads\', \'max_batch_size\', \'batch_timeout_micros\', \'Tout\', \'max_enqueued_batches\', \'allowed_batch_sizes\', \'container\', \'shared_name\', \'batching_queue\', \'low_priority_max_batch_size\', \'low_priority_batch_timeout_micros\', \'low_priority_allowed_batch_sizes\', \'low_priority_max_enqueued_batches\', \'mixed_priority_policy\', \'batch_padding_policy\', \'enable_large_batch_splitting\', \'enable_priority_aware_batch_scheduler\', \'enable_priority_aware_batch_scheduler_resplit\', \'enable_batching_task_lazy_cancellation\', \'num_warmup_batch_threads\', \'name\'], varargs=None, keywords=None, defaults=[\'10\', \'[]\', \'\', \'\', \'\', \'0\', \'0\', \'[]\', \'0\', \'low_priority_padding_with_max_batch_size\', \'PAD_UP\', \'False\', \'False\', \'False\', \'False\', \'0\', \'None\'], "
+    argspec: "args=[\'in_tensors\', \'captured_tensors\', \'f\', \'num_batch_threads\', \'max_batch_size\', \'batch_timeout_micros\', \'Tout\', \'max_enqueued_batches\', \'allowed_batch_sizes\', \'container\', \'shared_name\', \'batching_queue\', \'low_priority_max_batch_size\', \'low_priority_batch_timeout_micros\', \'low_priority_allowed_batch_sizes\', \'low_priority_max_enqueued_batches\', \'mixed_priority_policy\', \'batch_padding_policy\', \'enable_large_batch_splitting\', \'enable_priority_aware_batch_scheduler\', \'enable_priority_aware_batch_scheduler_resplit\', \'per_criticality_batch_timeout_micros\', \'enable_batching_task_lazy_cancellation\', \'num_warmup_batch_threads\', \'name\'], varargs=None, keywords=None, defaults=[\'10\', \'[]\', \'\', \'\', \'\', \'0\', \'0\', \'[]\', \'0\', \'low_priority_padding_with_max_batch_size\', \'PAD_UP\', \'False\', \'False\', \'False\', \'[]\', \'False\', \'0\', \'None\'], "
   }
   member_method {
     name: "BatchIFFT"
@@ -5815,6 +5815,10 @@ tf_module {
   member_method {
     name: "XlaSparseDenseMatmulGradWithSgdAndStaticBufferSize"
     argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'num_minibatches_per_physical_sparse_core\', \'max_ids_per_sparse_core\', \'max_unique_ids_per_sparse_core\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'num_sparsecores_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'-1\', \'None\'], "
+  }
+  member_method {
+    name: "XlaSparseDenseMatmulPositionalWeightedWithCsrInput"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_pos_ids\', \'embedding_table\', \'weights\', \'input_size\', \'num_weights\', \'num_logical_devices\', \'quantization_config_low\', \'quantization_config_high\', \'quantization_config_num_buckets\', \'table_name\', \'num_sparsecores_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
   }
   member_method {
     name: "XlaSparseDenseMatmulWithCsrInput"
