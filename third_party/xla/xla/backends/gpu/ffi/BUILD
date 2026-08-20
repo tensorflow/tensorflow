@@ -104,6 +104,7 @@ genrule(
     cmd = "$(location :xla_ffi_aot_custom_call_compile_main) $@",
     tags = [
         "cuda-only",
+        "depends-on-libcuda-in-compilation",
         "gpu",
     ],
     tools = [":xla_ffi_aot_custom_call_compile_main"],
@@ -120,6 +121,7 @@ xla_test(
     ],
     tags = [
         "cuda-only",
+        "depends-on-libcuda-in-compilation",
     ],
     deps = [
         ":xla_ffi_aot_custom_call",

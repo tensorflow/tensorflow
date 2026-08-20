@@ -209,7 +209,7 @@ ifrt_proxy_cc_test(
         "//xla/python/ifrt_proxy/common:types_proto_cc",
         "//xla/python/ifrt_proxy/common:versions",
         "//xla/python/pjrt_ifrt:xla_ifrt",
-        "//xla/service:computation_placer_hdr",
+        "//xla/service:device_assignment",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/lib/core:status_test_util",

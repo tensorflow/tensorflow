@@ -296,34 +296,20 @@ HloAsyncInstruction::HloAsyncInstruction(
     AppendOperand(operand);
   }
 
-  HloAsyncInstruction* prev = nullptr;
   if (opcode == HloOpcode::kAsyncUpdate || opcode == HloOpcode::kAsyncDone) {
     if (!operands.empty() && operands[0] != nullptr) {
       if (HloAsyncInstruction::ClassOf(operands[0])) {
-        prev = Cast<HloAsyncInstruction>(operands[0]);
+        HloAsyncInstruction* prev = Cast<HloAsyncInstruction>(operands[0]);
         prev->async_chain_next_ = this;
-      } else {
-        HloInstruction* producer =
-            HloInstruction::FindAsyncProducer(operands[0]);
-        if (producer != nullptr && HloAsyncInstruction::ClassOf(producer)) {
-          prev = Cast<HloAsyncInstruction>(producer);
-          prev->async_chain_next_ = this;
-        }
       }
     }
   }
 
   // Drop 'async' from async-{start/update/done} to get the suffix.
-  if (!async_wrapped_opcode.has_value()) {
-    if (prev != nullptr) {
-      async_wrapped_opcode = prev->async_wrapped_opcode();
-    } else {
-      async_wrapped_opcode = opcode;
-    }
-  }
   absl::string_view suffix = HloOpcodeString(opcode).substr(5);
-  absl::string_view wrapped_name = HloOpcodeString(*async_wrapped_opcode);
-  if (async_wrapped_opcode == opcode) {
+  HloOpcode wrapped_opcode = async_wrapped_opcode.value_or(opcode);
+  absl::string_view wrapped_name = HloOpcodeString(wrapped_opcode);
+  if (wrapped_opcode == opcode) {
     SetAndSanitizeName(wrapped_name);
   } else {
     SetAndSanitizeName(absl::StrCat(wrapped_name, suffix));
@@ -372,6 +358,7 @@ HloAsyncInstruction* HloAsyncInstruction::async_chain_start() const {
   if (opcode() == HloOpcode::kAsyncStart) {
     return const_cast<HloAsyncInstruction*>(this);
   }
+
   if (operands().empty() || operands()[0] == nullptr) {
     return nullptr;
   }
@@ -387,20 +374,7 @@ HloAsyncInstruction* HloAsyncInstruction::async_chain_start() const {
       prev = prev->operands()[0];
       continue;
     }
-    HloInstruction* producer = HloInstruction::FindAsyncProducer(prev);
-    if (producer == nullptr) {
-      return nullptr;
-    }
-    if (producer->opcode() == HloOpcode::kAsyncStart) {
-      return Cast<HloAsyncInstruction>(producer);
-    }
-    if (producer->opcode() != HloOpcode::kAsyncUpdate) {
-      return nullptr;
-    }
-    if (producer->operands().empty() || producer->operands()[0] == nullptr) {
-      return nullptr;
-    }
-    prev = producer->operands()[0];
+    break;
   }
   return nullptr;
 }
@@ -424,10 +398,13 @@ HloAsyncInstruction* HloAsyncInstruction::async_chain_done() const {
 void HloAsyncInstruction::UpdateAsyncChain() {
   auto update_chain = [this]() {
     if (this->users().size() == 1) {
-      HloInstruction* user = this->users()[0];
-      if (user != nullptr && HloAsyncInstruction::ClassOf(user)) {
+      // If this instruction has more than one user, assuming async_chain_next_
+      // is already pointing to the correct user and the other users are
+      // transient.
+      if (this->users()[0]->opcode() == HloOpcode::kAsyncUpdate ||
+          this->users()[0]->opcode() == HloOpcode::kAsyncDone) {
         Cast<HloAsyncInstruction>(this)->async_chain_next_ =
-            Cast<HloAsyncInstruction>(user);
+            Cast<HloAsyncInstruction>(this->users()[0]);
       }
     }
   };
@@ -435,14 +412,10 @@ void HloAsyncInstruction::UpdateAsyncChain() {
     if (this->operands().empty() || this->operand(0) == nullptr) {
       return;
     }
-    HloInstruction* operand = this->mutable_operand(0);
-    if (HloAsyncInstruction::ClassOf(operand)) {
-      Cast<HloAsyncInstruction>(operand)->async_chain_next_ = this;
-    } else {
-      HloInstruction* producer = HloInstruction::FindAsyncProducer(operand);
-      if (producer != nullptr && HloAsyncInstruction::ClassOf(producer)) {
-        Cast<HloAsyncInstruction>(producer)->async_chain_next_ = this;
-      }
+    if (this->operand(0)->opcode() == HloOpcode::kAsyncStart ||
+        this->operand(0)->opcode() == HloOpcode::kAsyncUpdate) {
+      Cast<HloAsyncInstruction>(this->mutable_operand(0))->async_chain_next_ =
+          this;
     }
   };
   if (this->opcode() == HloOpcode::kAsyncStart) {
@@ -462,15 +435,16 @@ std::vector<HloAsyncInstruction*> HloAsyncInstruction::GetAsyncChain() const {
   HloAsyncInstruction* current = async_chain_start();
   while (current != nullptr) {
     chain.push_back(current);
+    if (current->opcode() == HloOpcode::kAsyncDone) {
+      break;
+    }
     current = current->async_chain_next_;
   }
   return chain;
 }
 
 void HloAsyncInstruction::UpdateChainShapes() {
-  if (opcode() == HloOpcode::kAsyncDone) {
-    return;
-  }
+  CHECK_EQ(opcode(), HloOpcode::kAsyncStart);
 
   const Shape& async_update_shape = shape();
   const Shape& async_done_shape = shape().tuple_shapes(1);
@@ -3287,7 +3261,7 @@ std::unique_ptr<HloInstruction> HloOutfeedInstruction::CloneWithNewOperandsImpl(
 }
 
 HloConvolutionInstruction::HloConvolutionInstruction(
-    const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
     int64_t feature_group_count, int64_t batch_group_count,
     const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config,
@@ -3306,8 +3280,9 @@ HloConvolutionInstruction::HloConvolutionInstruction(
   if (window_util::HasWindowDilation(window)) {
     SetAndSanitizeName(StrCat(name(), "-window-dilated"));
   }
-  AppendOperand(lhs);
-  AppendOperand(rhs);
+  for (HloInstruction* operand : operands) {
+    AppendOperand(operand);
+  }
 }
 
 std::string HloConvolutionInstruction::ToCategory() const {
@@ -3405,11 +3380,10 @@ std::unique_ptr<HloInstruction>
 HloConvolutionInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
-  CHECK_EQ(new_operands.size(), 2);
   return std::make_unique<HloConvolutionInstruction>(
-      shape, new_operands[0], new_operands[1], feature_group_count_,
-      batch_group_count_, window(), convolution_dimension_numbers_,
-      precision_config_, sparsity_config_, convolution_kind_);
+      shape, new_operands, feature_group_count_, batch_group_count_, window(),
+      convolution_dimension_numbers_, precision_config_, sparsity_config_,
+      convolution_kind_);
 }
 
 HloReduceWindowInstruction::HloReduceWindowInstruction(
