@@ -27,7 +27,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/backends/autotuner/autotuning.pb.h"
+#include "xla/autotune_cache.pb.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/util/sorted_range.h"
 #include "tsl/platform/protobuf.h"
