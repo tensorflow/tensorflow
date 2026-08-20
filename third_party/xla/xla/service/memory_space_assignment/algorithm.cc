@@ -2714,14 +2714,10 @@ absl::Status MsaAlgorithm::AllocateAndScheduleExistingBlockPrefetches(
 
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
 
-  // Compute the live ranges for each block prefetched value. When view
-  // sources stay in default memory their storage is permanent, so no
-  // extension is needed (mirrors GetExtendedUseTimeIfUseIsView).
+  // Compute the live ranges for each block prefetched value.
   absl::flat_hash_map<const HloValue*, UseInterval> value_to_use_intervals =
       GetUseIntervals(block_prefetched_values, instruction_schedule,
-                      options_.view_source_default_memory_only
-                          ? std::nullopt
-                          : options_.dus_view_color);
+                      options_.dus_view_color);
 
   // Erase all the values from block_prefetched_values that have been finalized.
   block_prefetched_values.erase(
@@ -5643,19 +5639,11 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
     use_time = GetCorrectedUseTime(hlo_use);
   }
 
-  const bool is_view_use_requiring_default_memory =
-      options_.view_source_default_memory_only &&
-      options_.dus_view_color.has_value() && hlo_use.operand_number == 0 &&
-      hlo_use.instruction->shape().has_layout() &&
-      hlo_use.instruction->shape().layout().memory_space() ==
-          *options_.dus_view_color;
-
   // Add a required assignment in default memory if the use not allowed in
   // alternate memory.
   if (IsWhileLoopUseRequiredInDefaultMemory(hlo_use) ||
       !IsUseAllowedInAlternateMemory(hlo_use) ||
-      !IsWhileLoopUseBeneficialInAlternateMemory(hlo_use) ||
-      is_view_use_requiring_default_memory) {
+      !IsWhileLoopUseBeneficialInAlternateMemory(hlo_use)) {
     if (require_no_copy_alternate_mem_allocation) {
       LOG(WARNING) << "The value "
                    << allocation_value_to_update.value()->ToShortString()
@@ -7005,13 +6993,6 @@ int64_t MsaAlgorithm::GetExtendedUseTimeIfUseIsView(const HloUse& use) const {
   const absl::flat_hash_map<const HloInstruction*, int64_t>& schedule =
       hlo_live_range_.instruction_schedule();
   int64_t use_time = schedule.at(use.instruction);
-  // When view sources are kept in default memory, their storage is permanent,
-  // so a view reads valid data at any later consumer time without extending the
-  // reservation. Skip the extension entirely (it exists only to keep an
-  // alternate-memory copy of the source alive across the view's consumers).
-  if (options_.view_source_default_memory_only) {
-    return use_time;
-  }
   // Only the viewed value itself (operand 0 of the view, on both the read
   // and write sides) needs its reservation extended; a view's start index
   // operands are consumed at the view's own time.
