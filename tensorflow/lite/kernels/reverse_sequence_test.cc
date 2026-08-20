@@ -204,5 +204,16 @@ TEST(ReverseSequenceOpTest, Int16BatchDimIsGreater) {
                                 8,  3,  10, 5,  12, 19, 2, 21, 4, 23, 6}));
 }
 
+TEST(ReverseSequenceOpTest, InvalidSeqLengths) {
+  ReverseSequenceOpModel<float> model({TensorType_FLOAT32, {4, 3, 2}},
+                                      {TensorType_INT32, {4}}, 1, 0);
+  model.PopulateTensor<float>(model.input(),
+                              {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+                               13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24});
+  // seq_dim is 1 with size 3. seq_lengths[0]=3 is valid, but seq_lengths[1]=4 > 3 is invalid.
+  model.PopulateTensor<int32_t>(model.seq_lengths(), {3, 4, 3, 3});
+  EXPECT_NE(model.Invoke(), kTfLiteOk);
+}
+
 }  // namespace
 }  // namespace tflite
