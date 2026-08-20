@@ -176,6 +176,29 @@ module @module_1 {
     return %3 : tensor<1xi32>
   }
 
+  // Tests importing shard map custom calls annotated with HloShardingV3 mhlo.sharding.
+  // CHECK-LABEL: func @manual_computation_hlo_sharding_v3
+  // CHECK-SAME:     (%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
+  // CHECK-NEXT:    %[[MAN_COMP:.*]] = sdy.manual_computation(%arg0)
+  // CHECK-SAME{LITERAL}: in_shardings=[<@mesh_2, [{"a"}, {}]>] out_shardings=[<@mesh_2, [{"a"}, {}]>] manual_axes={"a"}
+  // CHECK-SAME:        (%arg1: tensor<2x16xf32>) {
+  // CHECK-NEXT:      %[[ADD:.*]] = stablehlo.add %arg1, %arg1 : tensor<2x16xf32>
+  // CHECK-NEXT:      sdy.return %[[ADD]] : tensor<2x16xf32>
+  // CHECK-NEXT:    } : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  // CHECK-NEXT:    return %[[MAN_COMP]] : tensor<8x16xf32>
+  // CHECK-NEXT:  }
+  func.func @manual_computation_hlo_sharding_v3(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
+    %0 = stablehlo.custom_call @xla.sdy.GlobalToLocalShape(%arg0) {has_side_effect = true, mhlo.sharding = "{mesh['a'=4,'b'=2], [{}, {}], manual={'a'}}"} : (tensor<8x16xf32>) -> tensor<2x16xf32>
+    %1 = call @xla.sdy.manual_computation_body_hlo_v3(%0) : (tensor<2x16xf32>) -> tensor<2x16xf32>
+    %2 = stablehlo.custom_call @xla.sdy.LocalToGlobalShape(%1) {has_side_effect = true, mhlo.sharding = "{mesh['a'=4,'b'=2], [{'a'}, {}]}"} : (tensor<2x16xf32>) -> tensor<8x16xf32>
+    return %2 : tensor<8x16xf32>
+  }
+
+  func.func private @xla.sdy.manual_computation_body_hlo_v3(%arg0: tensor<2x16xf32>) -> tensor<2x16xf32> {
+    %0 = stablehlo.add %arg0, %arg0 : tensor<2x16xf32>
+    return %0 : tensor<2x16xf32>
+  }
+
   // CHECK-LABEL: func @frontend_attr_not_sharding
   // CHECK-SAME:    %arg0: tensor<16x8xf32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"a", "b"}, {?}]>},
   // CHECK-SAME:    %arg1: tensor<16x8xf32> {mhlo.frontend_attributes = {baz = 1 : i32, foo = "bar"}},

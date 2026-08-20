@@ -55,6 +55,8 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/mesh_and_axis.h"
+#include "xla/hlo/ir/named_sharding.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/service/spmd/shardy/constants.h"
@@ -82,6 +84,7 @@ using ::mlir::func::FuncOp;
 using ::mlir::sdy::getSharding;
 using ::mlir::sdy::kShardingAttr;
 using ::mlir::sdy::kShardingRuleAttr;
+using ::mlir::sdy::ManualAxesAttr;
 using ::mlir::sdy::MeshAttr;
 using ::mlir::sdy::OpShardingRuleAttr;
 using ::mlir::sdy::PropagationBarrierOp;
@@ -206,6 +209,31 @@ bool handleFuncResultSharding(
   return anyChanged;
 }
 
+ManualAxesAttr extractManualAxes(const xla::HloSharding& hloSharding,
+                                 mlir::MLIRContext* context) {
+  if (hloSharding.IsTuple()) {
+    if (hloSharding.tuple_elements().empty()) {
+      return nullptr;
+    }
+    return extractManualAxes(hloSharding.tuple_elements().front(), context);
+  }
+  if (hloSharding.UseNamedShardingLeaf()) {
+    const xla::NamedSharding& namedSharding = hloSharding.named_sharding();
+    llvm::SmallVector<mlir::StringAttr> manualAxes;
+    const xla::Mesh& mesh = namedSharding.mesh();
+    for (const auto& axisRef : namedSharding.manual_axes()) {
+      if (axisRef.mesh_axis_index() < mesh.axis_names().size()) {
+        absl::string_view name = mesh.axis_names()[axisRef.mesh_axis_index()];
+        manualAxes.push_back(mlir::StringAttr::get(context, name));
+      }
+    }
+    if (!manualAxes.empty()) {
+      return ManualAxesAttr::get(context, manualAxes);
+    }
+  }
+  return nullptr;
+}
+
 // The sharding information is in the `kXlaShardingAttr` attribute.
 void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
   for (auto [argNum, argType] : llvm::enumerate(funcOp.getArgumentTypes())) {
@@ -268,11 +296,20 @@ void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
       StringRef targetName = customCallOp.getCallTargetName();
       if (targetName == kShardingCustomCallTargetName ||
           targetName == "X64Combine" ||
+          targetName == kGlobalToLocalShapeCallTargetName ||
+          targetName == kLocalToGlobalShapeCallTargetName ||
           isPythonCallbackCustomCall(customCallOp)) {
+        HloSharding hloSharding = parseShardingFromString(shardingAttr);
         customCallOp->setAttr(
             kShardingAttr,
-            convertToSdySharding(parseShardingFromString(shardingAttr),
-                                 customCallOp->getContext()));
+            convertToSdySharding(hloSharding, customCallOp->getContext()));
+        if (targetName == kGlobalToLocalShapeCallTargetName ||
+            targetName == kLocalToGlobalShapeCallTargetName) {
+          if (auto manualAxesAttr =
+                  extractManualAxes(hloSharding, customCallOp->getContext())) {
+            customCallOp->setAttr(kManualAxes, manualAxesAttr);
+          }
+        }
       }
     }
 
