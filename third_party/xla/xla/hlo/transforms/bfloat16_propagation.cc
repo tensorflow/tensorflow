@@ -18,6 +18,7 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/cleanup/cleanup.h"
@@ -370,16 +371,14 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
     return false;
   }
 
-  const auto& value_set = dataflow_->GetValueSet(&hlo, index);
+  const HloValueSet& value_set = dataflow_->GetValueSet(&hlo, index);
   for (const HloValue* value : value_set.values()) {
     if (ContainsKey(values_that_must_be_kept_as_f32_, value)) {
       return false;
     }
-    // We use the original type for the value because we are going to examine
-    // the uses of it, instead of the value itself. If ValueTypeAfterChange()
-    // were used, it would cause problems when there are aliasing buffers, i.e.,
-    // ResolveInconsistencyOfAliasingBuffers() would fail to revert the
-    // tentative change to BF16 even if the uses require F32.
+    // Check the uses against the value's original type. Using the type
+    // after pending changes would keep a tentative BF16 change even when
+    // aliasing users require F32.
     if (value->shape().element_type() == BF16) {
       continue;
     }
@@ -643,7 +642,7 @@ void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
     return;
   }
 
-  if (ShouldKeepPrecisionUnchanged(hlo) ||
+  if (ShouldKeepPrecisionUnchangedCached(hlo) ||
       (hlo->opcode() == HloOpcode::kParameter && skip_parameters)) {
     return;
   }
@@ -697,419 +696,502 @@ bool BFloat16Propagation::InstructionIsCandidateForBF16Output(
   return true;
 }
 
-void BFloat16Propagation::AdjustCalledComputationParameters(
-    HloInstruction* hlo) {
-  auto adjust_computation = [this, hlo](
-                                HloComputation* computation,
-                                absl::Span<HloInstruction* const> operands) {
-    // Adjust parameters.
-    CHECK_EQ(operands.size(), computation->num_parameters());
-    for (int64_t i = 0; i < operands.size(); ++i) {
-      auto parameter = computation->parameter_instruction(i);
-      ShapeUtil::ForEachSubshape(
-          parameter->shape(),
-          [this, i, hlo, &operands, parameter](const Shape& /* subshape */,
-                                               const ShapeIndex& index) {
-            if (!ShapeUtil::IsLeafIndex(parameter->shape(), index)) {
-              return;
-            }
-            PrimitiveType operand_type =
-                OutputTypeAfterChange(operands[i], index);
-            if (OutputTypeAfterChange(parameter, index) == operand_type) {
-              return;
-            }
-            AddToOrRemoveFromBF16ChangeSet(parameter, index, operand_type);
-            VLOG(2) << "Called computation parameter " << parameter->ToString()
-                    << " at shape index " << index << " adjusted to "
-                    << (operand_type == BF16 ? "BF16" : "F32")
-                    << " to match operand in HLO " << hlo->ToString();
-          });
+void BFloat16Propagation::BuildF32ConstraintGraph(HloModule* module) {
+  const std::vector<HloComputation*> computations =
+      module->MakeComputationPostOrder(execution_threads_);
+  included_computations_ = absl::flat_hash_set<const HloComputation*>(
+      computations.begin(), computations.end());
+
+  // The seeds depend on the push index, so build it first.
+  BuildCallBoundaryPushIndex(computations);
+  for (HloComputation* computation : computations) {
+    for (HloInstruction* hlo : computation->instructions()) {
+      AddInPlaceEdges(hlo);
+      AddKeepPrecisionSeeds(hlo);
+      AddScanCarryEdges(hlo);
     }
-  };
-
-  switch (hlo->opcode()) {
-    case HloOpcode::kFusion:
-      adjust_computation(hlo->fused_instructions_computation(),
-                         hlo->operands());
-      break;
-    case HloOpcode::kWhile:
-      adjust_computation(hlo->while_condition(), hlo->operands());
-      adjust_computation(hlo->while_body(), hlo->operands());
-      break;
-    case HloOpcode::kScan:
-      if (IsAssociativeScan(hlo)) {
-        adjust_computation(hlo->to_apply(), hlo->operands());
-      }
-      break;
-    case HloOpcode::kConditional:
-      for (int64_t i = 0; i < hlo->branch_count(); ++i) {
-        adjust_computation(hlo->branch_computation(i),
-                           {hlo->mutable_operand(i + 1)});
-      }
-      break;
-    case HloOpcode::kAsyncStart:
-      if (HloInstruction::IsThreadIncluded(hlo->async_execution_thread(),
-                                           execution_threads_) &&
-          hlo->async_wrapped_computation() != nullptr) {
-        adjust_computation(hlo->async_wrapped_computation(), hlo->operands());
-      }
-      break;
-    case HloOpcode::kCall:
-      adjust_computation(hlo->to_apply(), hlo->operands());
-      break;
-    default:
-      break;
+  }
+  for (const HloValue* value : dataflow_->values()) {
+    AddValueSeedsAndUseEdges(value);
   }
 }
 
-void BFloat16Propagation::AdjustCalledComputationRoot(HloInstruction* hlo) {
-  auto adjust_computation = [this, hlo](HloComputation* computation,
-                                        HloInstruction* output) {
-    // Adjust root.
-    HloInstruction* root = computation->root_instruction();
-    ShapeUtil::ForEachSubshape(root->shape(), [this, hlo, root, output](
-                                                  const Shape& /* subshape */,
-                                                  const ShapeIndex& index) {
-      if (!ShapeUtil::IsLeafIndex(hlo->shape(), index)) {
-        return;
-      }
-      const PrimitiveType output_type = OutputTypeAfterChange(output, index);
-      if (OutputTypeAfterChange(root, index) == output_type) {
-        return;
-      }
-      if (output_type == BF16 && ShouldKeepPrecisionUnchanged(root)) {
-        return;
-      }
-      AddToOrRemoveFromBF16ChangeSet(root, index, output_type);
-      // It's possible that output_type is F32, but the root instruction's
-      // type is BF16; e.g., a fusion node's output was changed to BF16
-      // initially but then adjusted back to F32, and the fusion computation
-      // is now being adjusted after the fusion node.
-      if (output_type == F32) {
-        for (const auto* value : dataflow_->GetValueSet(root, index).values()) {
-          // We rely on the fact that this adjustment works in reverse
-          // topological order so that called computation will be
-          // processed later. Adding the value to
-          // values_that_must_be_kept_as_f32_ will ensure the
-          // correctness of the adjustment for HLOs that will be
-          // processed later.
-          if (value->shape().element_type() == F32) {
-            values_that_must_be_kept_as_f32_.insert(value);
+void BFloat16Propagation::AddPushableParams(
+    HloComputation* callee, absl::Span<HloInstruction* const> operands) {
+  CHECK_EQ(operands.size(), callee->num_parameters());
+  for (int64_t i = 0; i < operands.size(); ++i) {
+    HloInstruction* parameter = callee->parameter_instruction(i);
+    push_params_[operands[i]].push_back(parameter);
+    ShapeUtil::ForEachSubshape(
+        parameter->shape(),
+        [&](const Shape& subshape, const ShapeIndex& index) {
+          if (ShapeUtil::IsLeafIndex(parameter->shape(), index)) {
+            bf16_pushable_positions_.insert({parameter, index});
           }
-        }
-      }
-      VLOG(2) << "Called computation root " << root->ToString()
-              << " at shape index " << index << " adjusted to "
-              << (output_type == BF16 ? "BF16" : "F32")
-              << " to match output shape of " << hlo->ToString();
-    });
-  };
-
-  switch (hlo->opcode()) {
-    case HloOpcode::kFusion:
-      adjust_computation(hlo->fused_instructions_computation(), hlo);
-      break;
-    case HloOpcode::kWhile:
-      adjust_computation(hlo->while_body(), hlo);
-      break;
-    case HloOpcode::kScan:
-      if (IsAssociativeScan(hlo)) {
-        adjust_computation(hlo->to_apply(), hlo);
-      }
-      break;
-    case HloOpcode::kConditional:
-      for (auto* branch : hlo->branch_computations()) {
-        adjust_computation(branch, hlo);
-      }
-      break;
-    case HloOpcode::kAsyncStart:
-      if (HloInstruction::IsThreadIncluded(hlo->async_execution_thread(),
-                                           execution_threads_) &&
-          hlo->async_wrapped_computation() != nullptr) {
-        adjust_computation(hlo->async_wrapped_computation(), hlo);
-      }
-      break;
-    case HloOpcode::kCall:
-      adjust_computation(hlo->to_apply(), hlo);
-      break;
-    default:
-      break;
+        });
   }
 }
 
-bool BFloat16Propagation::AlignScanCarryPrecisions(HloInstruction* scan_hlo) {
-  CHECK(IsAssociativeScan(scan_hlo));
-  auto* scan_instr = Cast<HloScanInstruction>(scan_hlo);
-  const int64_t num_carries = scan_instr->num_carries();
-  if (num_carries == 0) {
-    return false;
+void BFloat16Propagation::AddPushableRoot(HloInstruction* call_site,
+                                          HloComputation* callee) {
+  HloInstruction* root = callee->root_instruction();
+  // Every root takes F32 pushes; only BF16 pushes are gated on
+  // ShouldKeepPrecisionUnchanged.
+  push_roots_[call_site].push_back(root);
+  if (ShouldKeepPrecisionUnchangedCached(root)) {
+    return;
   }
-  HloComputation* body = scan_hlo->to_apply();
-  HloInstruction* body_root = body->root_instruction();
-  const int64_t num_inputs = scan_hlo->operand_count() - num_carries;
-  const int64_t num_outputs =
-      scan_hlo->shape().IsTuple()
-          ? static_cast<int64_t>(scan_hlo->shape().tuple_shapes().size()) -
-                num_carries
-          : 0;
+  ShapeUtil::ForEachSubshape(
+      root->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        if (ShapeUtil::IsLeafIndex(call_site->shape(), index)) {
+          bf16_pushable_positions_.insert({root, index});
+        }
+      });
+}
 
-  // For a 1-carry-0-output associative scan, body root and scan result are
-  // arrays (not tuples), and the single carry slot is addressed by ShapeIndex
-  // {}. Indexing a non-tuple shape with {num_outputs + i} would CHECK-fail
-  // in ShapeUtil::GetSubshape, so we conditionally pick the right index.
+void BFloat16Propagation::BuildCallBoundaryPushIndex(
+    absl::Span<HloComputation* const> computations) {
+  for (HloComputation* computation : computations) {
+    for (HloInstruction* hlo : computation->instructions()) {
+      switch (hlo->opcode()) {
+        case HloOpcode::kFusion:
+          AddPushableParams(hlo->fused_instructions_computation(),
+                            hlo->operands());
+          AddPushableRoot(hlo, hlo->fused_instructions_computation());
+          break;
+        case HloOpcode::kWhile:
+          AddPushableParams(hlo->while_condition(), hlo->operands());
+          AddPushableParams(hlo->while_body(), hlo->operands());
+          AddPushableRoot(hlo, hlo->while_body());
+          break;
+        case HloOpcode::kScan:
+          if (IsAssociativeScan(hlo)) {
+            AddPushableParams(hlo->to_apply(), hlo->operands());
+            AddPushableRoot(hlo, hlo->to_apply());
+          }
+          break;
+        case HloOpcode::kConditional:
+          for (int64_t i = 0; i < hlo->branch_count(); ++i) {
+            AddPushableParams(hlo->branch_computation(i),
+                              {hlo->mutable_operand(i + 1)});
+            AddPushableRoot(hlo, hlo->branch_computation(i));
+          }
+          break;
+        case HloOpcode::kAsyncStart:
+          if (HloInstruction::IsThreadIncluded(hlo->async_execution_thread(),
+                                               execution_threads_) &&
+              hlo->async_wrapped_computation() != nullptr) {
+            AddPushableParams(hlo->async_wrapped_computation(),
+                              hlo->operands());
+            AddPushableRoot(hlo, hlo->async_wrapped_computation());
+          }
+          break;
+        case HloOpcode::kCall:
+          AddPushableParams(hlo->to_apply(), hlo->operands());
+          AddPushableRoot(hlo, hlo->to_apply());
+          break;
+        default:
+          break;
+      }
+    }
+  }
+}
+
+void BFloat16Propagation::AddInPlaceEdges(HloInstruction* hlo) {
+  if (ShouldKeepPrecisionUnchangedCached(hlo)) {
+    return;  // The rules never adjusted kept instructions' outputs.
+  }
+  for (const auto& operand_and_output_index :
+       GetInPlaceInputOutputPairsCached(hlo)) {
+    const HloOperandIndex& operand_index = operand_and_output_index.first;
+    for (const HloValue* value :
+         dataflow_
+             ->GetValueSet(hlo->operand(operand_index.operand_number),
+                           operand_index.operand_index)
+             .values()) {
+      const PrimitiveType value_type = value->shape().element_type();
+      if (value_type != F32 && value_type != BF16) {
+        // A value that can never be BF16 (e.g. reached through a type
+        // punning bitcast) forces the in place output F32 up front.
+        static_f32_seed_positions_.push_back(
+            {hlo, operand_and_output_index.second});
+        continue;
+      }
+      if (value_type == BF16) {
+        continue;  // A BF16 value imposes nothing on the output.
+      }
+      value_to_inplace_outputs_[value].push_back(
+          HloPosition{hlo, operand_and_output_index.second});
+    }
+  }
+}
+
+void BFloat16Propagation::AddKeepPrecisionSeeds(HloInstruction* hlo) {
+  if (!ShouldKeepPrecisionUnchangedCached(hlo)) {
+    return;
+  }
+  // These positions always read as F32, unless a call boundary push can
+  // still mark them BF16.
+  ShapeUtil::ForEachSubshape(
+      hlo->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        if (subshape.IsArray() && OutputTypeAfterChange(hlo, index) == F32 &&
+            !bf16_pushable_positions_.contains({hlo, index})) {
+          static_f32_seed_positions_.push_back({hlo, index});
+        }
+      });
+}
+
+void BFloat16Propagation::AddScanCarryEdges(HloInstruction* hlo) {
+  if (!IsAssociativeScan(hlo)) {
+    return;
+  }
+  auto* scan = Cast<HloScanInstruction>(hlo);
+  const int64_t num_carries = scan->num_carries();
+  const int64_t num_inputs = hlo->operand_count() - num_carries;
+  const int64_t num_outputs =
+      hlo->shape().IsTuple() ? hlo->shape().tuple_shapes().size() - num_carries
+                             : 1 - num_carries;
+  HloComputation* body = hlo->to_apply();
+  HloInstruction* body_root = body->root_instruction();
   auto carry_index = [&](const Shape& shape, int64_t i) -> ShapeIndex {
     return shape.IsTuple() ? ShapeIndex{num_outputs + i} : ShapeIndex{};
   };
-  // Returns the leaf primitive type at (hlo, index), or INVALID if the
-  // sub-shape is not an array (tuple carries are out of scope here:
-  // HloVerifier::HandleScan accepts them but no real backend emits them).
-  auto leaf_type = [&](HloInstruction* hlo,
-                       const ShapeIndex& index) -> PrimitiveType {
-    const Shape& sub = ShapeUtil::GetSubshape(hlo->shape(), index);
-    if (!sub.IsArray()) {
-      return PRIMITIVE_TYPE_INVALID;
-    }
-    return OutputTypeAfterChange(hlo, index);
+  auto is_leaf_array = [&](const HloInstruction* loc, const ShapeIndex& index) {
+    auto subshape = ShapeUtil::TryGetSubshape(loc->shape(), index);
+    return subshape.ok() && (*subshape)->IsArray();
   };
-
-  bool changed = false;
   for (int64_t i = 0; i < num_carries; ++i) {
-    HloInstruction* carry_init = scan_hlo->mutable_operand(num_inputs + i);
+    HloInstruction* carry_init = hlo->mutable_operand(num_inputs + i);
     HloInstruction* body_param = body->parameter_instruction(num_inputs + i);
     const ShapeIndex root_carry_index = carry_index(body_root->shape(), i);
-    const ShapeIndex result_carry_index = carry_index(scan_hlo->shape(), i);
-
-    // The four logical locations of carry slot `i`. Order is
-    // (init_operand, body_param, body_root, scan_result).
-    using CarryLoc = std::pair<HloInstruction*, ShapeIndex>;
-    const std::array<CarryLoc, 4> locations{{
-        {carry_init, /*index=*/{}},
-        {body_param, /*index=*/{}},
-        {body_root, root_carry_index},
-        {scan_hlo, result_carry_index},
-    }};
-
-    // Only align if all four locations are leaf array slots. The carry init
-    // (operand 0) is the one location we cannot rewrite here because it may
-    // have other consumers, so the alignment is only safe when carry_init is
-    // already F32: in that case we can DOWNGRADE BF16 -> F32 on the body
-    // parameter, body root and scan result so all four agree. If carry_init
-    // is BF16 and any of the other slots became F32 during propagation, we
-    // cannot fix the mismatch here without inserting a Convert on the scan
-    // operand; we leave that for FloatNormalization to clean up downstream.
-    PrimitiveType types[4];
-    bool valid = true;
-    for (int k = 0; k < 4; ++k) {
-      types[k] = leaf_type(locations[k].first, locations[k].second);
-      if (types[k] == PRIMITIVE_TYPE_INVALID) {
-        valid = false;
-        break;
-      }
-    }
-    if (!valid || types[0] != F32) {
+    const ShapeIndex result_carry_index = carry_index(hlo->shape(), i);
+    // Skip carries whose four locations are not all leaf arrays (e.g. tuple
+    // carries); they have no single element type to align.
+    if (!is_leaf_array(carry_init, {}) || !is_leaf_array(body_param, {}) ||
+        !is_leaf_array(body_root, root_carry_index) ||
+        !is_leaf_array(hlo, result_carry_index)) {
       continue;
     }
-
-    // Downgrade body_param/body_root/scan_hlo (skip the carry_init operand at
-    // index 0). At this point types[0] is F32, so any BF16 leaves are forced
-    // up to F32 to make all four agree without touching the operand.
-    bool slot_changed = false;
-    for (int k = 1; k < 4; ++k) {
-      if (types[k] != BF16) {
-        continue;
-      }
-      AddToOrRemoveFromBF16ChangeSet(locations[k].first, locations[k].second,
-                                     F32);
-      slot_changed = true;
-    }
-    if (slot_changed) {
-      changed = true;
-      VLOG(2) << "Aligned scan carry slot " << i << " to F32 for scan "
-              << scan_hlo->ToString();
-    }
+    scan_carry_edges_[HloPosition{carry_init, ShapeIndex{}}].push_back(
+        {HloPosition{body_param, ShapeIndex{}},
+         HloPosition{body_root, root_carry_index},
+         HloPosition{hlo, result_carry_index}});
   }
-  return changed;
 }
 
-bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
-    HloComputation* computation,
-    absl::flat_hash_set<const HloComputation*>* visited_computations) {
-  bool parameter_changed = false;
-  auto insts = computation->MakeInstructionPostOrder();
-  // Do the adjustment on each instruction in the computation in reverse
-  // topological order.
-  while (true) {
-    bool any_change = false;
-    for (auto inst_it = insts.rbegin(); inst_it != insts.rend(); ++inst_it) {
-      auto hlo = *inst_it;
-      auto adjust_hlo_output = [&](const Shape& /* subshape */,
-                                   const ShapeIndex& index) {
-        if (ShouldKeepPrecisionUnchanged(hlo)) {
-          return;
-        }
-        const PrimitiveType output_type = OutputTypeAfterChange(hlo, index);
-        VLOG(2) << "output_type is " << ((output_type == BF16) ? "BF16" : "F32")
-                << " for :" << hlo->ToString() << "\n";
-        if (output_type != F32 && output_type != BF16) {
-          return;
-        }
-        PrimitiveType type = BF16;
-        for (const auto* value : dataflow_->GetValueSet(hlo, index).values()) {
-          auto value_type = ValueTypeAfterChange(value);
-          if (value_type == BF16) {
-            continue;
-          }
-          VLOG(2) << "Adjust to F32 due to aliased dataflow value: "
-                  << value->ToString() << "\n";
-          type = F32;
-          break;
-        }
-        // In order to find aliases due to in-place operations, use
-        // GetInPlaceInputOutputPairs. Ideally, we'd use HloAliasAnalysis here,
-        // but this code works with HloModules that aren't ready yet to use
-        // HloAliasAnalysis (e.g., their computation graphs may not have been
-        // flattened yet).
-        for (const auto& operand_and_output_index :
-             alias_info_->GetInPlaceInputOutputPairs(hlo)) {
-          if (operand_and_output_index.second == index) {
-            const HloOperandIndex& operand_index =
-                operand_and_output_index.first;
-            for (const auto* value :
-                 dataflow_
-                     ->GetValueSet(hlo->operand(operand_index.operand_number),
-                                   operand_index.operand_index)
-                     .values()) {
-              auto value_type = ValueTypeAfterChange(value);
-              if (value_type == BF16) {
-                continue;
-              }
-              VLOG(2) << "Adjust to F32 due to InputOutPair: "
-                      << value->ToString() << "\n";
-              type = F32;
-              break;
-            }
-          }
-        }
-
-        // It's possible that a user has been changed from BF16 to F32
-        // during this final adjustment pass, so we need to check
-        // AllUsersConsumeBF16() again.
-        if (type == BF16 && !AllUsersConsumeBF16(*hlo, index)) {
-          VLOG(2) << "Adjust to F32 due to All user consumeBF16 fail\n";
-          type = F32;
-        }
-        if (type == F32) {
-          for (const auto* value :
-               dataflow_->GetValueSet(hlo, index).values()) {
-            // We rely on the fact that this adjustment works in reverse
-            // topological order. Adding the value to
-            // values_that_must_be_kept_as_f32_ will ensure the correctness
-            // of the adjustment for HLOs that will be processed later.
-            if (value->shape().element_type() == F32) {
-              values_that_must_be_kept_as_f32_.insert(value);
-            }
-          }
-        }
-        if (type != output_type) {
-          any_change = true;
-          AddToOrRemoveFromBF16ChangeSet(hlo, index, type);
-          VLOG(2) << "HloInstruction output at shape index " << index
-                  << " adjusted to " << (type == BF16 ? "BF16" : "F32") << ": "
-                  << hlo->ToString();
-          if (hlo->opcode() == HloOpcode::kParameter) {
-            parameter_changed = true;
-          }
-        }
-      };
-      ShapeUtil::ForEachSubshape(hlo->shape(), adjust_hlo_output);
-      AdjustCalledComputationRoot(hlo);
-      if (hlo->opcode() == HloOpcode::kWhile) {
-        // We need to run on the while body and condition repeatedly until a
-        // fixed point is reached, i.e., the parameters do not change any more.
-        // We may need more than one iteration because the while input and
-        // output alias each other, so changing one input parameter requires
-        // changing the corresponding output element and thus may transitively
-        // require changing another input parameter. A fixed point will be
-        // reached because the parameters can only be changed from BF16 to F32,
-        // not the other way around.
-        absl::flat_hash_set<const HloComputation*> visited_in_while;
-        while (ResolveInconsistencyOfAliasingBuffersHelper(
-                   hlo->while_condition(), &visited_in_while) ||
-               ResolveInconsistencyOfAliasingBuffersHelper(hlo->while_body(),
-                                                           &visited_in_while)) {
-          visited_in_while.clear();
-          ShapeUtil::ForEachSubshape(hlo->shape(), adjust_hlo_output);
-          AdjustCalledComputationRoot(hlo);
-        }
-        visited_computations->insert(visited_in_while.begin(),
-                                     visited_in_while.end());
-      } else if (IsAssociativeScan(hlo)) {
-        // Mirrors the kWhile loop above: re-run the body until parameters
-        // stop changing. A fixed point is guaranteed because parameters
-        // can only be downgraded BF16 -> F32, never the other way. Unlike
-        // kWhile, scan carries are not represented as runtime aliases so
-        // HloDataflowAnalysis does not give the standard helper a way to
-        // propagate precision across them. We call AlignScanCarryPrecisions
-        // on each iteration to enforce the verifier-required precision
-        // agreement across the four carry locations (init operand, body
-        // param, body root, scan result).
-        // TODO(b/509674535): once HloDataflowAnalysis (and HloAliasAnalysis)
-        // model scan carries as cross-iteration aliases the way they model
-        // kWhile carries, the standard helper above will propagate
-        // precision across the carries on its own and AlignScanCarryPrecisions
-        // can be removed.
-        absl::flat_hash_set<const HloComputation*> visited_in_scan;
-        while (ResolveInconsistencyOfAliasingBuffersHelper(hlo->to_apply(),
-                                                           &visited_in_scan) ||
-               AlignScanCarryPrecisions(hlo)) {
-          visited_in_scan.clear();
-          ShapeUtil::ForEachSubshape(hlo->shape(), adjust_hlo_output);
-          AdjustCalledComputationRoot(hlo);
-        }
-        visited_computations->insert(visited_in_scan.begin(),
-                                     visited_in_scan.end());
-      } else if (hlo->opcode() == HloOpcode::kFusion) {
-        ResolveInconsistencyOfAliasingBuffersHelper(
-            hlo->fused_instructions_computation(), visited_computations);
-      } else if (hlo->opcode() == HloOpcode::kConditional) {
-        for (auto* branch : hlo->branch_computations()) {
-          ResolveInconsistencyOfAliasingBuffersHelper(branch,
-                                                      visited_computations);
-        }
-      } else if (hlo->opcode() == HloOpcode::kAsyncStart &&
-                 HloInstruction::IsThreadIncluded(hlo->async_execution_thread(),
-                                                  execution_threads_) &&
-                 hlo->async_wrapped_computation() != nullptr) {
-        ResolveInconsistencyOfAliasingBuffersHelper(
-            hlo->async_wrapped_computation(), visited_computations);
-      } else if (hlo->opcode() == HloOpcode::kCall) {
-        ResolveInconsistencyOfAliasingBuffersHelper(hlo->to_apply(),
-                                                    visited_computations);
+void BFloat16Propagation::AddValueSeedsAndUseEdges(const HloValue* value) {
+  const PrimitiveType value_type = value->shape().element_type();
+  if (value_type != F32) {
+    if (value_type != BF16) {
+      // A value that is neither F32 nor BF16 forces every position it
+      // appears at.
+      for (const HloPosition& position : value->positions()) {
+        static_f32_seed_positions_.push_back(position);
       }
     }
-    if (!any_change) {
+    return;
+  }
+  HloInstruction* defining_instruction = value->defining_instruction();
+  const ShapeIndex& defining_index = value->defining_position().index;
+  // An unmarked value stays F32, unless a call boundary push can still
+  // mark it.
+  if (values_that_must_be_kept_as_f32_.contains(value) ||
+      (OutputTypeAfterChange(defining_instruction, defining_index) == F32 &&
+       !bf16_pushable_positions_.contains(
+           {defining_instruction, defining_index}))) {
+    static_f32_seed_values_.push_back(value);
+  }
+  for (const HloUse& use : value->GetUses()) {
+    AddEdgesForUse(value, use);
+  }
+}
+
+void BFloat16Propagation::AddEdgesForUse(const HloValue* value,
+                                         const HloUse& use) {
+  if (!ContainsKey(instructions_visited_in_backward_pass_, use.instruction)) {
+    return;  // AllUsersConsumeBF16 skips unvisited users.
+  }
+  if (use.instruction->HasSideEffectNoRecurse()) {
+    static_f32_seed_values_.push_back(value);
+    return;
+  }
+  auto add_reader = [&](HloInstruction* instruction, const ShapeIndex& index) {
+    use_edges_[HloPosition{instruction, index}].push_back(value);
+  };
+  // Uses of called computations read the callee parameter position.
+  bool handled = true;
+  switch (use.instruction->opcode()) {
+    case HloOpcode::kFusion:
+      add_reader(use.instruction->fused_parameter(use.operand_number),
+                 use.operand_index);
       break;
+    case HloOpcode::kWhile:
+      add_reader(use.instruction->while_condition()->parameter_instruction(
+                     use.operand_number),
+                 use.operand_index);
+      add_reader(use.instruction->while_body()->parameter_instruction(
+                     use.operand_number),
+                 use.operand_index);
+      break;
+    case HloOpcode::kConditional:
+      if (use.operand_number > 0) {
+        add_reader(use.instruction->branch_computation(use.operand_number - 1)
+                       ->parameter_instruction(0),
+                   use.operand_index);
+      }
+      break;
+    case HloOpcode::kAsyncStart:
+      if (HloInstruction::IsThreadIncluded(
+              use.instruction->async_execution_thread(), execution_threads_)) {
+        HloComputation* wrapped_comp =
+            use.instruction->async_wrapped_computation();
+        if (wrapped_comp == nullptr) {
+          // AllUsersConsumeBF16 statically fails such uses.
+          static_f32_seed_values_.push_back(value);
+          return;
+        }
+        add_reader(wrapped_comp->parameter_instruction(use.operand_number),
+                   use.operand_index);
+      } else {
+        handled = false;
+      }
+      break;
+    case HloOpcode::kCall:
+      add_reader(use.instruction->to_apply()->parameter_instruction(
+                     use.operand_number),
+                 use.operand_index);
+      break;
+    case HloOpcode::kScan:
+      if (IsAssociativeScan(use.instruction)) {
+        add_reader(use.instruction->to_apply()->parameter_instruction(
+                       use.operand_number),
+                   use.operand_index);
+      } else {
+        handled = false;
+      }
+      break;
+    case HloOpcode::kAsyncDone:
+      break;  // async-done consumes whatever async-start gives it.
+    default:
+      handled = false;
+      break;
+  }
+  if (handled) {
+    return;
+  }
+  if (use.instruction->opcode() == HloOpcode::kBitcast &&
+      use.instruction->operand(use.operand_number)->shape().element_type() ==
+          BF16) {
+    return;
+  }
+  if (bfloat16_support_->EffectiveOperandPrecisionIsLowPrecision(
+          *use.instruction, use.operand_number)) {
+    return;
+  }
+  if (!bfloat16_support_->EffectiveOperandPrecisionIsOutputPrecision(
+          *use.instruction, use.operand_number)) {
+    static_f32_seed_values_.push_back(value);
+    return;
+  }
+  // Forwarding users read their own output position.
+  ShapeIndex use_output_index;
+  if (use.instruction->opcode() == HloOpcode::kTuple ||
+      (use.instruction->opcode() == HloOpcode::kAllReduce &&
+       use.instruction->shape().IsTuple())) {
+    use_output_index.push_back(use.operand_number);
+    for (int64_t i : use.operand_index) {
+      use_output_index.push_back(i);
+    }
+  } else if (use.instruction->opcode() == HloOpcode::kGetTupleElement) {
+    for (int64_t i = 1; i < use.operand_index.size(); ++i) {
+      use_output_index.push_back(use.operand_index[i]);
+    }
+  } else {
+    use_output_index = use.operand_index;
+  }
+  // What the user reads as depends on the read position's type. An original
+  // F32 array can go either way, so it becomes an edge. A tuple (variadic
+  // sort, tuple shaped collectives) or non BF16 array (widening convert) can
+  // never read as BF16, so the use fails statically. An original BF16 array
+  // always reads as BF16.
+  auto read_subshape =
+      ShapeUtil::TryGetSubshape(use.instruction->shape(), use_output_index);
+  if (!read_subshape.ok() || !(*read_subshape)->IsArray() ||
+      ((*read_subshape)->element_type() != F32 &&
+       (*read_subshape)->element_type() != BF16)) {
+    static_f32_seed_values_.push_back(value);
+    return;
+  }
+  if ((*read_subshape)->element_type() == BF16) {
+    return;
+  }
+  // A forwarder like a same type bitcast records a use that reads a position
+  // of `value` itself, which only the value could reach: an edge would be a
+  // dead self loop. If that position is unmarked it can never become BF16
+  // (its own read fails), so the value must stay F32; if it is marked, the
+  // read is consistent whichever way the value resolves.
+  const HloValueSet& read_set =
+      dataflow_->GetValueSet(use.instruction, use_output_index);
+  for (const HloValue* read_value : read_set.values()) {
+    if (read_value == value) {
+      if (OutputTypeAfterChange(use.instruction, use_output_index) == F32) {
+        static_f32_seed_values_.push_back(value);
+      }
+      return;
     }
   }
-  // Now adjust parameters of called computations.
-  for (auto inst_it = insts.rbegin(); inst_it != insts.rend(); ++inst_it) {
-    AdjustCalledComputationParameters(*inst_it);
+  add_reader(use.instruction, use_output_index);
+}
+
+void BFloat16Propagation::ConstrainValueToF32(const HloValue* value) {
+  if (!f32_values_.insert(value).second) {
+    return;
   }
-  return parameter_changed;
+  value_queue_.push_back(value);
+}
+
+void BFloat16Propagation::ConstrainPositionToF32(const HloPosition& position) {
+  if (!included_computations_.contains(position.instruction->parent())) {
+    return;
+  }
+  if (!f32_positions_.insert(position).second) {
+    return;
+  }
+  position_queue_.push_back(position);
+}
+
+void BFloat16Propagation::PropagateFromValue(const HloValue* value) {
+  for (const HloPosition& position : value->positions()) {
+    ConstrainPositionToF32(position);
+  }
+  auto it = value_to_inplace_outputs_.find(value);
+  if (it != value_to_inplace_outputs_.end()) {
+    for (const HloPosition& position : it->second) {
+      ConstrainPositionToF32(position);
+    }
+  }
+}
+
+void BFloat16Propagation::PropagateFromPosition(const HloPosition& position) {
+  HloInstruction* instr = position.instruction;
+  const ShapeIndex& index = position.index;
+  const Shape& subshape = ShapeUtil::GetSubshape(instr->shape(), index);
+  // The F32 values this position aliases.
+  if (!ShouldKeepPrecisionUnchangedCached(instr) && subshape.IsArray() &&
+      (subshape.element_type() == F32 || subshape.element_type() == BF16)) {
+    for (const HloValue* value :
+         dataflow_->GetValueSet(instr, index).values()) {
+      if (value->shape().element_type() == F32) {
+        ConstrainValueToF32(value);
+      }
+    }
+  }
+  if (!subshape.IsArray() || subshape.element_type() != F32) {
+    return;  // Only F32 subshapes can read as F32.
+  }
+  // The values whose AllUsersConsumeBF16 check reads this position.
+  auto readers_it = use_edges_.find(position);
+  if (readers_it != use_edges_.end()) {
+    for (const HloValue* value : readers_it->second) {
+      ConstrainValueToF32(value);
+    }
+  }
+  // Scan carry alignment.
+  auto align_it = scan_carry_edges_.find(position);
+  if (align_it != scan_carry_edges_.end()) {
+    for (const auto& targets : align_it->second) {
+      for (const HloPosition& target : targets) {
+        ConstrainPositionToF32(target);
+      }
+    }
+  }
+  PushAcrossCallBoundaries(position);
+}
+
+void BFloat16Propagation::PushAcrossCallBoundaries(
+    const HloPosition& position) {
+  const ShapeIndex& index = position.index;
+  auto roots_it = push_roots_.find(position.instruction);
+  if (roots_it != push_roots_.end()) {
+    for (HloInstruction* root : roots_it->second) {
+      auto root_subshape = ShapeUtil::TryGetSubshape(root->shape(), index);
+      if (!root_subshape.ok() || !(*root_subshape)->IsArray()) {
+        continue;
+      }
+      // The root push also constrains the root's F32 values.
+      ConstrainPositionToF32({root, index});
+      for (const HloValue* value :
+           dataflow_->GetValueSet(root, index).values()) {
+        if (value->shape().element_type() == F32) {
+          ConstrainValueToF32(value);
+        }
+      }
+    }
+  }
+  auto params_it = push_params_.find(position.instruction);
+  if (params_it != push_params_.end()) {
+    for (HloInstruction* parameter : params_it->second) {
+      auto param_subshape =
+          ShapeUtil::TryGetSubshape(parameter->shape(), index);
+      if (!param_subshape.ok() || !(*param_subshape)->IsArray()) {
+        continue;
+      }
+      ConstrainPositionToF32({parameter, index});
+    }
+  }
+}
+
+void BFloat16Propagation::PropagateF32Constraints() {
+  f32_values_.reserve(dataflow_->values().size());
+  for (const HloValue* value : static_f32_seed_values_) {
+    ConstrainValueToF32(value);
+  }
+  for (const HloPosition& position : static_f32_seed_positions_) {
+    ConstrainPositionToF32(position);
+  }
+  while (!value_queue_.empty() || !position_queue_.empty()) {
+    if (!value_queue_.empty()) {
+      const HloValue* value = value_queue_.front();
+      value_queue_.pop_front();
+      PropagateFromValue(value);
+      continue;
+    }
+    const HloPosition position = position_queue_.front();
+    position_queue_.pop_front();
+    PropagateFromPosition(position);
+  }
+}
+
+void BFloat16Propagation::MaterializeResolvedPrecisions(HloModule* module) {
+  for (HloComputation* computation :
+       module->MakeComputationPostOrder(execution_threads_)) {
+    for (HloInstruction* hlo : computation->MakeInstructionPostOrder()) {
+      const bool adjusted = !ShouldKeepPrecisionUnchangedCached(hlo);
+      ShapeUtil::ForEachSubshape(hlo->shape(), [&](const Shape& subshape,
+                                                   const ShapeIndex& index) {
+        if (!subshape.IsArray() || subshape.element_type() != F32) {
+          return;  // Only originally-F32 positions can change to BF16.
+        }
+        const bool must_be_f32 = f32_positions_.contains({hlo, index});
+        if (!adjusted && !bf16_pushable_positions_.contains({hlo, index})) {
+          // Nothing may mark this position BF16, but an F32 push still
+          // removes a BF16 mark introduced by the backward pass.
+          if (must_be_f32) {
+            AddToOrRemoveFromBF16ChangeSet(hlo, index, F32);
+          }
+          return;
+        }
+        AddToOrRemoveFromBF16ChangeSet(hlo, index, must_be_f32 ? F32 : BF16);
+      });
+    }
+  }
 }
 
 void BFloat16Propagation::ResolveInconsistencyOfAliasingBuffers(
     HloModule* module) {
-  const auto& computations_topological_order =
-      module->MakeComputationPostOrder(execution_threads_);
-  absl::flat_hash_set<const HloComputation*> resolved;
-  for (auto comp_it = computations_topological_order.rbegin();
-       comp_it != computations_topological_order.rend(); ++comp_it) {
-    if (ContainsKey(resolved, *comp_it)) {
-      continue;
-    }
-    ResolveInconsistencyOfAliasingBuffersHelper(*comp_it, &resolved);
-  }
+  BuildF32ConstraintGraph(module);
+  PropagateF32Constraints();
+  MaterializeResolvedPrecisions(module);
 }
 
 absl::Status BFloat16Propagation::ResolveInconsistentFusions(
@@ -1230,8 +1312,9 @@ absl::Status BFloat16Propagation::SkipNoopConversions(HloModule* module) {
 // set of instructions to consider using bfloat16, then does a backward pass to
 // determine the precisions of those instructions according to the need of
 // their users. During the backward pass, the potential changes are stored in
-// changes_to_bf16_ which are subject to further adjustments then applied to the
-// HLOs.
+// changes_to_bf16_. A final resolving pass finds, with one BFS over the F32
+// constraint graph, everything that must stay F32 so that aliasing buffers
+// agree on precision. The remaining changes are then applied to the HLOs.
 absl::StatusOr<bool> BFloat16Propagation::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -1241,6 +1324,21 @@ absl::StatusOr<bool> BFloat16Propagation::RunImpl(
   values_that_must_be_kept_as_f32_.clear();
   caller_counts_.clear();
   changes_to_bf16_.clear();
+  value_queue_.clear();
+  position_queue_.clear();
+  f32_values_.clear();
+  f32_positions_.clear();
+  included_computations_.clear();
+  use_edges_.clear();
+  value_to_inplace_outputs_.clear();
+  static_f32_seed_values_.clear();
+  static_f32_seed_positions_.clear();
+  bf16_pushable_positions_.clear();
+  push_roots_.clear();
+  push_params_.clear();
+  scan_carry_edges_.clear();
+  keep_precision_unchanged_cache_.clear();
+  inplace_input_output_pairs_cache_.clear();
   changed_ = false;
   execution_threads_ = execution_threads;
 
@@ -1385,22 +1483,15 @@ absl::StatusOr<bool> BFloat16Propagation::RunImpl(
 }
 
 absl::Status BFloat16Propagation::ResolveInconsistentScans(HloModule* module) {
-  // Per HloVerifier::HandleScan, body root slot i must match scan output
-  // slot i (per-step output for i < num_outputs, carry pass-through for
-  // i >= num_outputs). AlignScanCarryPrecisions handles the carry slots
-  // (i >= num_outputs), but two cases still leave a body_root vs scan_output
-  // mismatch and need to be patched up here:
-  //   1. Per-step output slots (i < num_outputs): not covered by
-  //      AlignScanCarryPrecisions at all. The scan output element type may
-  //      have been switched to BF16 while the underlying body root value
-  //      (e.g. the `add` in `tuple(add, add)` for cumsum) had to stay F32
-  //      because some other use of that value demanded F32.
-  //   2. Carry slots where AlignScanCarryPrecisions could not safely align
-  //      (carry_init was BF16 but body/scan slots ended up F32).
-  // Insert precision-changing converts on the affected body root tuple slots
-  // to bring the body root shape into agreement with the scan output shape.
-  // Mirrors ResolveInconsistentFusions for fusion roots; needed even when
-  // there is no fusion in the module.
+  // Each body root slot must match the corresponding scan output slot, as
+  // enforced by the HloVerifier. The resolving pass can leave them
+  // different, because no dataflow alias ties the two slots together:
+  //   1. Per-step output slots: the scan output went BF16 while the body
+  //      root value had to stay F32 for another use.
+  //   2. Carry slots with a BF16 init and F32 body/scan slots.
+  // Forcing the two sides to agree would change the precision seen by the
+  // other users of the body root value, so insert a convert on the body
+  // root slot instead, like ResolveInconsistentFusions.
   for (auto computation :
        module->MakeComputationPostOrder(execution_threads_)) {
     for (auto inst : computation->MakeInstructionPostOrder()) {
@@ -1460,31 +1551,45 @@ PrimitiveType BFloat16Propagation::OutputTypeAfterChange(
   return ContainsKey(it->second, subshape) ? BF16 : F32;
 }
 
-PrimitiveType BFloat16Propagation::ValueTypeAfterChange(
-    const HloValue* value) const {
-  auto hlo = value->defining_instruction();
-  const auto& position = value->defining_position();
-  return OutputTypeAfterChange(hlo, position.index);
-}
-
 void BFloat16Propagation::AddToOrRemoveFromBF16ChangeSet(
     HloInstruction* hlo, const ShapeIndex& index, PrimitiveType target_type) {
   if (target_type == BF16) {
-    auto& entry = changes_to_bf16_[hlo];
-    entry.emplace(ShapeUtil::GetMutableSubshape(hlo->mutable_shape(), index),
-                  index);
-  } else {
-    CHECK_EQ(target_type, F32);
-    auto it = changes_to_bf16_.find(hlo);
-    if (it == changes_to_bf16_.end()) {
-      return;
-    }
-    it->second.erase(
-        ShapeUtil::GetMutableSubshape(hlo->mutable_shape(), index));
-    if (it->second.empty()) {
-      changes_to_bf16_.erase(it);
-    }
+    changes_to_bf16_[hlo].emplace(
+        ShapeUtil::GetMutableSubshape(hlo->mutable_shape(), index), index);
+    return;
   }
+  CHECK_EQ(target_type, F32);
+  auto it = changes_to_bf16_.find(hlo);
+  if (it == changes_to_bf16_.end()) {
+    return;
+  }
+  it->second.erase(ShapeUtil::GetMutableSubshape(hlo->mutable_shape(), index));
+  if (it->second.empty()) {
+    changes_to_bf16_.erase(it);
+  }
+}
+
+bool BFloat16Propagation::ShouldKeepPrecisionUnchangedCached(
+    const HloInstruction* inst) {
+  auto it = keep_precision_unchanged_cache_.find(inst);
+  if (it != keep_precision_unchanged_cache_.end()) {
+    return it->second;
+  }
+  const bool result = ShouldKeepPrecisionUnchanged(inst);
+  keep_precision_unchanged_cache_.emplace(inst, result);
+  return result;
+}
+
+const std::vector<std::pair<HloOperandIndex, ShapeIndex>>&
+BFloat16Propagation::GetInPlaceInputOutputPairsCached(
+    const HloInstruction* hlo) {
+  auto it = inplace_input_output_pairs_cache_.find(hlo);
+  if (it == inplace_input_output_pairs_cache_.end()) {
+    it = inplace_input_output_pairs_cache_
+             .emplace(hlo, alias_info_->GetInPlaceInputOutputPairs(hlo))
+             .first;
+  }
+  return it->second;
 }
 
 }  // namespace xla

@@ -1303,6 +1303,7 @@ cc_library(
             ":xla_data_proto_cc",
             ":xla_proto_cc",
             "//xla/backends/autotuner:backends_proto_cc",
+            "//xla/hlo/pass:hlo_pass_filter",
             "//xla/service:collective_utils",
             "//xla/stream_executor/cuda:nvjitlink_support",
             "//xla/stream_executor/cuda:ptx_compiler_support",
@@ -1426,6 +1427,24 @@ xla_py_proto_library(
 #     visibility = ["//visibility:public"],
 # )
 # copybara:uncomment_end
+
+tf_proto_library(
+    name = "autotune_cache_proto",
+    srcs = ["autotune_cache.proto"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/backends/autotuner:backend_config_proto",
+        "//xla/backends/autotuner:backends_proto",
+    ],
+)
+
+xla_py_proto_library(
+    name = "autotune_cache_py_pb2",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":autotune_cache_proto",
+    ],
+)
 
 tf_proto_library(
     name = "autotuning_proto",

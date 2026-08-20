@@ -1,6 +1,9 @@
 // RUN: fusion_to_xtile %s --xla_cpu_use_new_xtile_lowering | fusion_compiler_opt \
 // RUN:   --xtile-cpu-new-xtile-to-vector --xla-simplify-arith \
 // RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
+// RUN: fusion_to_xtile %s --xla_cpu_use_new_xtile_lowering | fusion_compiler_opt \
+// RUN:   --xtile-cpu-new-xtile-to-vector --xtile-cpu-new-vector-to-llvm \
+// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR-LLVM
 // RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering --abs_error_bound=1e-5
 
 add {
@@ -18,17 +21,19 @@ fusion {
 
 // NEW-VECTOR: func.func @wrapped_fusion_impl
 
-// NEW-VECTOR-DAG: %[[C0:.*]] = arith.constant 0 : index
-// NEW-VECTOR-DAG: %[[C1:.*]] = arith.constant 1 : index
-// NEW-VECTOR-DAG: %[[C8:.*]] = arith.constant 8 : index
 // NEW-VECTOR-DAG: %[[CST:.*]] = arith.constant dense<0.000000e+00> : vector<1xf32>
 // NEW-VECTOR-DAG: %[[CST_0:.*]] = arith.constant dense<0.000000e+00> : vector<1x32xf32>
+// NEW-VECTOR-DAG: %[[C8:.*]] = arith.constant 8 : index
+// NEW-VECTOR-DAG: %[[C0:.*]] = arith.constant 0 : index
+// NEW-VECTOR-DAG: %[[C1:.*]] = arith.constant 1 : index
 
 // NEW-VECTOR: scf.for %[[IV0:.*]] = %[[C0]] to %{{.*}} step %[[C1]] {
 // NEW-VECTOR:   %[[LOOP_RES:.*]] = scf.for %[[IV1:.*]] = %[[C0]] to %[[C8]] step %[[C1]] iter_args(%[[ACC:.*]] = %[[CST_0]]) -> (vector<1x32xf32>) {
-// NEW-VECTOR:     %[[READ:.*]] = vector.transfer_read %arg0[%[[IV0]], %{{.*}}], %{{.*}} {in_bounds = [true, true]} : memref<128x256xf32>, vector<1x32xf32>
-// NEW-VECTOR:     %[[ACC_NEXT:.*]] = arith.addf %[[ACC]], %[[READ]] : vector<1x32xf32>
-// NEW-VECTOR:     scf.yield %[[ACC_NEXT]] : vector<1x32xf32>
+// NEW-VECTOR:     %[[READ:.*]] = vector.transfer_read %arg0[%[[IV0]], %{{.*}}], %{{.*}} {in_bounds = [true]} : memref<128x256xf32>, vector<32xf32>
+// NEW-VECTOR:     %[[ACC_CAST:.*]] = vector.shape_cast %[[ACC]] : vector<1x32xf32> to vector<32xf32>
+// NEW-VECTOR:     %[[ACC_NEXT:.*]] = arith.addf %[[ACC_CAST]], %[[READ]] : vector<32xf32>
+// NEW-VECTOR:     %[[ACC_NEXT_CAST:.*]] = vector.shape_cast %[[ACC_NEXT]] : vector<32xf32> to vector<1x32xf32>
+// NEW-VECTOR:     scf.yield %[[ACC_NEXT_CAST]] : vector<1x32xf32>
 // NEW-VECTOR:   %[[TRANSPOSE:.*]] = vector.transpose %[[LOOP_RES]], [1, 0] : vector<1x32xf32> to vector<32x1xf32>
 // NEW-VECTOR:   vector.extract %[[TRANSPOSE]][0] : vector<1xf32> from vector<32x1xf32>
 
@@ -44,3 +49,6 @@ ENTRY main {
       }
     }
 }
+
+// NEW-VECTOR-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
+// NEW-VECTOR-LLVM-NOT: llvm.alloc

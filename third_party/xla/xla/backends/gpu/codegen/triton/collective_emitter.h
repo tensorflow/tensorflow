@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_CODEGEN_TRITON_COLLECTIVE_EMITTER_H_
 
 #include <cstdint>
-#include <optional>
 #include <vector>
 
 #include "absl/base/nullability.h"
@@ -30,6 +29,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -70,7 +70,7 @@ llvm::SmallVector<int64_t> GreedyPowerOfTwoTiles(const Shape& output_shape,
 // For now only all-reduce is supported.
 // If an std::nullopt is returned, it implies that the collective kernel is
 // not supported and cannot be emitted.
-absl::StatusOr<std::optional<xla::gpu::BlockLevelFusionConfig>>
+absl::StatusOr<xla::xtile::BlockLevelFusionConfig>
 GetCollectiveBlockLevelFusionConfig(
     const GpuTopology& gpu_topology, const HloFusionInstruction* fusion_instr,
     const DeviceAssignment* device_assignment = nullptr);

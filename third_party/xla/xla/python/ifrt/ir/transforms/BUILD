@@ -149,7 +149,7 @@ cc_library(
         "//xla/python/ifrt/ir/support:sharding_conversions",
         "//xla/python/pjrt_ifrt:pjrt_dtype",
         "//xla/python/pjrt_ifrt:xla_ifrt",
-        "//xla/service:computation_placer_hdr",
+        "//xla/service:device_assignment",
         "//xla/service/spmd/shardy:utils",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
