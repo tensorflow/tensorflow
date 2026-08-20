@@ -113,7 +113,11 @@ static py::object CheckpointReader_GetTensor(
   tensorflow::MaybeRaiseFromStatus(
       tensorflow::TensorToNdarray(*tensor, &py_obj));
 
-  return tensorflow::PyoOrThrow(py_obj);
+  py::object result = tensorflow::PyoOrThrow(py_obj);
+  if (result.attr("ndim").cast<int>() == 0) {
+    return result.attr("__getitem__")(py::tuple());
+  }
+  return result;
 }
 
 }  // namespace tensorflow
