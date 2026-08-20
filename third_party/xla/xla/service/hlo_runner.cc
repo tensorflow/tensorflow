@@ -55,7 +55,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/computation_layout.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
