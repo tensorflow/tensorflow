@@ -75,6 +75,10 @@ int64_t GetXlaSparseCoreStackingMemLimit();
 
 int64_t GetXlaSparseCoreStackingTableShardLimit();
 
+int64_t GetPerSparseCorePreservedBufferSize(
+    int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition,
+    int32_t num_logical_devices, int32_t num_sparse_cores_per_logical_device);
+
 absl::Status GetMaxIdsAndUniquesExternal(const std::string& program_key,
                                          const std::string& table_name,
                                          int64_t num_samples_per_sparse_core,
