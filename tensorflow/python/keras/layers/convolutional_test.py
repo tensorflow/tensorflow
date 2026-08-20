@@ -15,8 +15,6 @@
 """Tests for Keras convolutional layers."""
 
 from tensorflow.python.keras.layers import convolutional as keras_layers
-from tensorflow.python.framework import tensor_shape
-from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 

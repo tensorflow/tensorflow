@@ -2406,8 +2406,10 @@ class SeparableConv2DTranspose(SeparableConv):
     input_dim = int(input_shape[channel_axis])
     self.input_spec = InputSpec(ndim=4, axes={channel_axis: input_dim})
 
-    depthwise_kernel_shape = self.kernel_size + (self.filters, self.depth_multiplier)
-    pointwise_kernel_shape = (1, 1) + (self.depth_multiplier * self.filters, input_dim)
+    depthwise_kernel_shape = self.kernel_size + (
+        self.filters, self.depth_multiplier)
+    pointwise_kernel_shape = (1, 1) + (
+        self.depth_multiplier * self.filters, input_dim)
 
     self.depthwise_kernel = self.add_weight(
         name='depthwise_kernel',
