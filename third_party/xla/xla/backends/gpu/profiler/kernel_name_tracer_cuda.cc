@@ -16,8 +16,11 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "xla/backends/gpu/profiler/kernel_name_tracer.h"
 #include "xla/backends/gpu/profiler/kernel_name_tracer_factory.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
@@ -46,23 +49,48 @@ class KernelNameTracerCuda : public KernelNameTracer {
 };
 
 void KernelNameTracerCuda::start() {
+  cupti_collector_.reset();
   profiler::CuptiTracerCollectorOptions collector_options{};
   collector_options.num_gpus = profiler::CuptiTracer::NumGpus();
   profiler::CuptiTracerOptions options{};
   options.activities_selected = {CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL};
-  cupti_tracer_->PrepareForProfilerStart(options).IgnoreError();
+  absl::Status prepare_status = cupti_tracer_->PrepareForProfilerStart(options);
+  if (!prepare_status.ok()) {
+    LOG(WARNING) << "Unable to prepare CUPTI kernel-name tracing: "
+                 << prepare_status;
+    return;
+  }
   auto start_gputime_ns = cupti_tracer_->GetTimestampForSubscriber();
+  if (!start_gputime_ns.ok()) {
+    LOG(WARNING) << "Unable to read CUPTI kernel-name start timestamp: "
+                 << start_gputime_ns.status();
+    return;
+  }
   auto start_walltime_ns = tsl::profiler::GetCurrentTimeNanos();
-  cupti_collector_ = profiler::CreateCuptiCollector(
-      collector_options, start_walltime_ns, start_gputime_ns);
-  cupti_tracer_->Enable(options, cupti_collector_.get()).IgnoreError();
+  auto collector = profiler::CreateCuptiCollector(
+      collector_options, start_walltime_ns, *start_gputime_ns);
+  absl::Status enable_status = cupti_tracer_->Enable(options, collector.get());
+  if (!enable_status.ok()) {
+    LOG(WARNING) << "Unable to enable CUPTI kernel-name tracing: "
+                 << enable_status;
+    return;
+  }
+  cupti_collector_ = std::move(collector);
 }
 
 std::vector<std::string> KernelNameTracerCuda::stop() {
+  if (cupti_collector_ == nullptr) {
+    return {};
+  }
   cupti_tracer_->Disable();
-  uint64_t end_gpu_ns = cupti_collector_->GetTracingEndTimeNs();
+  auto end_gpu_ns = cupti_collector_->GetTracingEndTimeNs();
+  if (!end_gpu_ns.ok()) {
+    LOG(WARNING) << "Unable to export CUPTI kernel-name trace: "
+                 << end_gpu_ns.status();
+    return {};
+  }
   auto space = std::make_unique<tensorflow::profiler::XSpace>();
-  cupti_collector_->Export(space.get(), end_gpu_ns);
+  cupti_collector_->Export(space.get(), *end_gpu_ns);
   for (const auto& plane : space->planes()) {
     if (plane.name() == "/device:GPU:0") {
       std::vector<std::string> names;
