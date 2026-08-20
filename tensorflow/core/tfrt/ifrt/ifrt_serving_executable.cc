@@ -68,6 +68,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
@@ -82,7 +83,7 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/dump.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -842,6 +843,25 @@ IfrtServingExecutable::CreateExecutableSynchronously(
                 ->CompileAndLoad(std::move(program), std::move(options))
                 .Await();
           }));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::shared_ptr<xla::HloModule>> xla_hlo_modules,
+      ifrt_executable->GetHloModules());
+  xla::Shape result_shape = xla_hlo_modules[0]->result_shape();
+  if (result_shape.IsTuple()) {
+    for (const auto& tuple_shape : result_shape.tuple_shapes()) {
+      if (tuple_shape.is_dynamic()) {
+        return absl::UnimplementedError(
+            "[Tuple Shape] Dynamic shape is not supported in IFRT serving "
+            "executables.");
+      }
+    }
+  } else {
+    if (result_shape.is_dynamic()) {
+      return absl::UnimplementedError(
+          "[Non-Tuple Shape] Dynamic shape is not supported in IFRT serving "
+          "executables.");
+    }
+  }
 
   TF_RETURN_IF_ERROR(PopulateInvariantMetadata(
       tf2hlo_result, std::move(ifrt_executable), std::move(tf_host_callbacks),
