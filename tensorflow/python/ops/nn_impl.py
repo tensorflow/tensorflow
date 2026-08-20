@@ -17,11 +17,13 @@
 import math
 import warnings
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_util
+
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import candidate_sampling_ops
@@ -88,10 +90,11 @@ def log_poisson_loss(targets, log_input, compute_full_loss=False, name=None):
     targets = ops.convert_to_tensor(targets, name="targets")
     try:
       targets.get_shape().assert_is_compatible_with(log_input.get_shape())
-    except ValueError:
+    except ValueError as exc:
       raise ValueError(
           "`log_input` and `targets` must have the same shape, received "
-          f"({log_input.get_shape()} vs {targets.get_shape()}).")
+          f"({log_input.get_shape()} vs {targets.get_shape()})."
+      ) from exc
 
     result = math_ops.exp(log_input) - log_input * targets
     if compute_full_loss:
@@ -125,10 +128,12 @@ def sigmoid_cross_entropy_with_logits(
     labels = ops.convert_to_tensor(labels, name="labels")
     try:
       labels.get_shape().assert_is_compatible_with(logits.get_shape())
-    except ValueError:
-      raise ValueError("`logits` and `labels` must have the same shape, "
-                       f"received ({logits.get_shape()} vs "
-                       f"{labels.get_shape()}).")
+    except ValueError as exc:
+      raise ValueError(
+          "`logits` and `labels` must have the same shape, "
+          f"received ({logits.get_shape()} vs "
+          f"{labels.get_shape()})."
+      ) from exc
 
     # The logistic loss formula from above is
     #   x - x * z + log(1 + exp(-x))
@@ -322,10 +327,12 @@ def weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight,
     labels = ops.convert_to_tensor(labels, name="labels")
     try:
       labels.get_shape().assert_is_compatible_with(logits.get_shape())
-    except ValueError:
-      raise ValueError("`logits` and `labels` must have the same shape, "
-                       f"received ({logits.get_shape()} vs "
-                       f"{labels.get_shape()}).")
+    except ValueError as exc:
+      raise ValueError(
+          "`logits` and `labels` must have the same shape, "
+          f"received ({logits.get_shape()} vs "
+          f"{labels.get_shape()})."
+      ) from exc
 
     # The logistic loss formula from above is
     #   (1 - z) * x + (1 + (q - 1) * z) * log(1 + exp(-x))
@@ -461,9 +468,11 @@ def swish(features, beta=1.0):
 
   def multiply_with_sigmoid(multiplier, logits, sigmoid_logits):
     """Computes `multiplier * sigmoid(logits)` without early underflow."""
-    # sigmoid(logits) may underflow even when the scaled result is representable.
-    # In that range sigmoid(logits) and exp(logits) differ by less than the
-    # dtype's precision, so evaluate the product in the log domain.
+    # sigmoid(logits) may underflow even when the scaled result is
+    # representable. In that range sigmoid(logits) and exp(logits) differ by
+    # less than the dtype's precision, so evaluate the product in the log
+    # domain.
+
     sigmoid_underflow = math_ops.logical_and(
         math_ops.equal(sigmoid_logits, 0.0), math_ops.is_finite(logits)
     )
@@ -516,7 +525,7 @@ def swish(features, beta=1.0):
   return swish_impl(features, beta)
 
 
-# pylint: disable=redefined-builtin
+# pylint: disable=redefined-builtin,redefined-outer-name
 @tf_export("linalg.normalize")
 @dispatch.add_dispatch_support
 def normalize(tensor, ord="euclidean", axis=None, name=None):
@@ -1294,10 +1303,9 @@ def moments(
   if keep_dims is None:
     keep_dims = False
   if isinstance(axes, (tensor.Tensor, variables.Variable)):
-    from tensorflow.python.eager import context
-
     if context.executing_eagerly():
       axes = axes.numpy().tolist()
+
     else:
       axes_const = tensor_util.constant_value(axes)
       if axes_const is not None:
@@ -1313,11 +1321,16 @@ def moments(
     # Note: stop_gradient does not change the gradient that gets
     #       backpropagated to the mean from the variance calculation,
     #       because that gradient is zero
-    variance = math_ops.reduce_mean(
-        math_ops.squared_difference(y, array_ops.stop_gradient(mean)),
-        axes,
-        keepdims=True,
-        name="variance")
+    diff = math_ops.subtract(y, array_ops.stop_gradient(mean))
+    variance = math_ops.maximum(
+        math_ops.subtract(
+            math_ops.reduce_mean(math_ops.square(diff), axes, keepdims=True),
+            math_ops.square(math_ops.reduce_mean(diff, axes, keepdims=True)),
+        ),
+        math_ops.cast(0, y.dtype),
+        name="variance",
+    )
+
     if not keep_dims:
       mean = array_ops.squeeze(mean, axes)
       variance = array_ops.squeeze(variance, axes)
@@ -1389,10 +1402,9 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=None,
   if keep_dims is None:
     keep_dims = False
   if isinstance(axes, (tensor.Tensor, variables.Variable)):
-    from tensorflow.python.eager import context
-
     if context.executing_eagerly():
       axes = axes.numpy().tolist()
+
     else:
       axes_const = tensor_util.constant_value(axes)
       if axes_const is not None:

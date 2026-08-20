@@ -19,12 +19,20 @@ from collections.abc import Callable, Sequence
 import dataclasses
 from typing import Any
 
+from absl import flags
 from absl import logging
 import jax
 import jax.numpy as jnp
 import numpy as np
 
 from xla.benchmarks.jax_microbenchmarks import jax_profiler_utils  # pylint: disable=g-direct-tensorflow-import
+
+
+_USE_PROFILER = flags.DEFINE_bool(
+    "use_profiler",
+    True,
+    "Whether to use the profiler to profile the kernel.",
+)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -151,7 +159,9 @@ class Benchmark(abc.ABC):
     for _ in range(runs):
       inputs = self.generate_inputs(use_random_data=use_random_data)
 
-      with jax_profiler_utils.JaxProfiler(kernel_name) as profiler:
+      with jax_profiler_utils.JaxProfiler(
+          kernel_name, enable_profiling=_USE_PROFILER.value
+      ) as profiler:
         target_fn = self.target_fn()
         result = target_fn(*inputs)
         _block_until_ready(result)
