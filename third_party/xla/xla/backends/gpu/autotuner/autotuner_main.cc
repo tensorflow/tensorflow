@@ -265,6 +265,7 @@ absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
                                                orchestrator_options));
 
   Autotuner::Options autotuner_options = GetAutotunerOptions(debug_options);
+  autotuner_options.cache_context = ctx;
   ABSL_ASSIGN_OR_RETURN(auto autotuner,
                    Autotuner::Create(std::move(autotuner_orchestrator),
                                      std::move(autotuner_profilers),
