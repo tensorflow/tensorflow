@@ -69,7 +69,7 @@ limitations under the License.
 #include "xla/printer.h"
 #include "xla/service/compilation_environments.h"
 #include "xla/service/computation_layout.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/mapped_ptr_container_sorter.h"
