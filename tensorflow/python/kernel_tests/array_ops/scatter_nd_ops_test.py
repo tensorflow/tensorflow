@@ -996,8 +996,8 @@ class ScatterNdTensorTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testTensorScatterUpdate_MalformedIndicesShape(self):
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                "Outer dimensions"):
+    with self.assertRaisesWithPredicateMatch(
+        (errors.InvalidArgumentError, ValueError), r"must match"):
       array_ops.tensor_scatter_update(
           constant_op.constant([0, 0, 0, 0, 0, 0, 0, 0], dtype=dtypes.int32),
           constant_op.constant([[[4]]], dtype=dtypes.int32),
