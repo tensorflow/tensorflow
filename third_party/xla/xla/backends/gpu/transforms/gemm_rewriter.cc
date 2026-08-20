@@ -2313,6 +2313,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   absl::StatusOr<absl::string_view> GetNonFp8GemmCustomCallTarget(
       const HloInstruction& instr,
       const GemmBackendConfig& gemm_backend_config) const {
+    // TODO(intel-tf): For SYCL, we currently route all GEMMs to cublasLt.
+    // We should check the capabilities and route accordingly.
+    if (gpu_version_.IsOneAPI()) {
+      return absl::string_view(kCublasLtMatmulCallTarget);
+    }
+
     // All internal conditions are met, check if we meet the requirements of
     // cublasLt.
     ABSL_ASSIGN_OR_RETURN(bool gemm_is_supported_by_cublas_lt,
