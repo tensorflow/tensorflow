@@ -194,8 +194,14 @@ cc_library(
 
 cc_library(
     name = "cpu_client",
-    srcs = ["cpu_client.cc"],
-    hdrs = ["cpu_client.h"],
+    srcs = [
+        "cpu_client.cc",
+        "cpu_pjrt_compiler.cc",
+    ],
+    hdrs = [
+        "cpu_client.h",
+        "cpu_pjrt_compiler.h",
+    ],
     visibility = internal_visibility(["//xla/pjrt/cpu:legacy_cpu_client_users"]),
     deps = [
         ":abstract_cpu_buffer",
@@ -256,7 +262,7 @@ cc_library(
         "//xla/service:compiled_module",
         "//xla/service:compiler",
         "//xla/service:computation_layout",
-        "//xla/service:computation_placer_hdr",
+        "//xla/service:device_assignment",
         "//xla/service:dump",
         "//xla/service:executable",
         "//xla/service:hlo_cost_analysis",
@@ -299,6 +305,7 @@ cc_library(
         "@tsl//tsl/platform:setround",
         "@tsl//tsl/profiler/lib:traceme",
     ],
+    alwayslink = True,
 )
 
 xla_cc_test(
@@ -378,24 +385,17 @@ cc_library(
 
 cc_library(
     name = "cpu_pjrt_compiler",
-    srcs = ["cpu_pjrt_compiler.cc"],
+    srcs = [],
     hdrs = ["cpu_pjrt_compiler.h"],
     visibility = internal_visibility(["//xla/pjrt/cpu:legacy_cpu_client_users"]),
     deps = [
         ":cpu_client",
         "//xla/hlo/builder:xla_computation",
         "//xla/pjrt:maybe_owning_mlir_module",
-        "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/plugin/xla_cpu:cpu_topology_description",
-        "//xla/stream_executor/platform:initialize",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
     ],
     alwayslink = True,
 )

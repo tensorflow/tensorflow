@@ -50,7 +50,8 @@ class SliceOpModel : public SingleOpModel {
                std::initializer_list<index_type> size_data,
                TensorType tensor_index_type, TensorType tensor_input_type,
                TestType input_tensor_types,
-               std::initializer_list<int> output_shape = {}) {
+               std::initializer_list<int> output_shape = {},
+               bool allocate_and_delegate = true) {
     input_ = AddInput(tensor_input_type);
     if (input_tensor_types == TestType::kDynamic) {
       begin_ = AddInput(tensor_index_type);
@@ -63,9 +64,12 @@ class SliceOpModel : public SingleOpModel {
     output_ = AddOutput(TensorData(tensor_input_type, output_shape));
     SetBuiltinOp(BuiltinOperator_SLICE, BuiltinOptions_SliceOptions,
                  CreateSliceOptions(builder_).Union());
-    BuildInterpreter({input_shape, begin_shape, size_shape});
+    BuildInterpreter({input_shape, begin_shape, size_shape},
+                     /*num_threads=*/-1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/true, allocate_and_delegate);
 
-    if (input_tensor_types == TestType::kDynamic) {
+    if (input_tensor_types == TestType::kDynamic && allocate_and_delegate) {
       PopulateTensor<index_type>(begin_, begin_data);
       PopulateTensor<index_type>(size_, size_data);
     }
@@ -406,6 +410,30 @@ TEST_P(SliceOpTest, BeginNonZeroSizeMinus1Axis1BFloat16) {
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({Eigen::bfloat16(5), Eigen::bfloat16(6),
                                 Eigen::bfloat16(8), Eigen::bfloat16(9)}));
+}
+
+TEST(SliceOpTest, NegativeBegin) {
+  SliceOpModel<float, int32_t> m({4}, {1}, {-1}, {1}, {2}, TensorType_INT32,
+                                 TensorType_FLOAT32, TestType::kConst,
+                                 /*output_shape=*/{},
+                                 /*allocate_and_delegate=*/false);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(SliceOpTest, SizeMinus1BeginOutOfBounds) {
+  SliceOpModel<float, int32_t> m({4}, {1}, {5}, {1}, {-1}, TensorType_INT32,
+                                 TensorType_FLOAT32, TestType::kConst,
+                                 /*output_shape=*/{},
+                                 /*allocate_and_delegate=*/false);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(SliceOpTest, BeginAndSizeOverflow) {
+  SliceOpModel<float, int32_t> m({4}, {1}, {2}, {1}, {3}, TensorType_INT32,
+                                 TensorType_FLOAT32, TestType::kConst,
+                                 /*output_shape=*/{},
+                                 /*allocate_and_delegate=*/false);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
 }
 
 INSTANTIATE_TEST_SUITE_P(SliceOpTest, SliceOpTest,

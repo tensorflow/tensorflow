@@ -1,0 +1,47 @@
+// RUN: test_correctness %s --abs_error_bound=1e-4
+// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering=true --abs_error_bound=1e-4
+
+fusion {
+  p0 = c64[128,256] parameter(0)
+  p1 = c64[128,256] parameter(1)
+  ROOT divide = c64[128,256] divide(p0, p1)
+}
+
+// CHECK-LABEL: xtile.entry_func @wrapped_fusion(
+// CHECK-SAME:     %[[LHS:[^:]+]]: memref<128x256xcomplex<f32>>,
+// CHECK-SAME:     %[[RHS:[^:]+]]: memref<128x256xcomplex<f32>>,
+// CHECK-SAME:     %[[OUT:[^:]+]]: memref<128x256xcomplex<f32>>,
+// CHECK-SAME:     %[[PID:[^:]+]]: index)
+
+// CHECK:       %[[T_0:.*]] = xtile.extract %[[LHS]]
+// CHECK-SAME:    : memref<128x256xcomplex<f32>> -> tensor<1x4xcomplex<f32>>
+// CHECK:       %[[T_1:.*]] = xtile.extract %[[RHS]]
+// CHECK-SAME:    : memref<128x256xcomplex<f32>> -> tensor<1x4xcomplex<f32>>
+// CHECK:       stablehlo.divide %[[T_0]], %[[T_1]]
+
+// CHECK-VECTOR-LABEL: func.func @wrapped_fusion_impl(
+// CHECK-VECTOR:   arith.divf
+
+// NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl(
+// NEW-VECTOR-SAME:    %[[LHS:[^:]+]]: memref<128x256x2xf32>,
+// NEW-VECTOR-SAME:    %[[RHS:[^:]+]]: memref<128x256x2xf32>,
+// NEW-VECTOR-SAME:    %[[OUT:[^:]+]]: memref<128x256x2xf32>,
+// NEW-VECTOR-SAME:    %[[PID:[^:]+]]: index)
+
+// NEW-VECTOR:       vector.transfer_read %[[LHS]]
+// NEW-VECTOR:       vector.transfer_read %[[RHS]]
+// NEW-VECTOR:       arith.divf
+
+ENTRY main {
+  p0 = c64[128,256] parameter(0)
+  p1 = c64[128,256] parameter(1)
+  ROOT fusion = c64[128,256] fusion(p0, p1), kind=kLoop, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["1", "4"]}],
+          "num_ctas":"4"
+        }
+      }
+    }
+}
