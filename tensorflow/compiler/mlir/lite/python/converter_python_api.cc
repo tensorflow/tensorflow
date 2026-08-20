@@ -220,9 +220,7 @@ int ToStringSet(PyObject* py_denylist,
   }
 
   for (Py_ssize_t i = 0; i < size; ++i) {
-    // PySequence_GetItem returns a new reference.
-    PyObject* value =
-        PySequence_GetItem(snapshot, i);
+    PyObject* value = PyList_GetItem(snapshot, i);
 
     if (value == nullptr) {
       Py_DECREF(snapshot);
@@ -239,7 +237,6 @@ int ToStringSet(PyObject* py_denylist,
             &length);
 
     if (result == -1) {
-      Py_DECREF(value);
       Py_DECREF(snapshot);
       return -1;
     }
@@ -247,8 +244,6 @@ int ToStringSet(PyObject* py_denylist,
     string_set->emplace(
         str_buf,
         length);
-
-    Py_DECREF(value);
   }
 
   Py_DECREF(snapshot);
@@ -422,7 +417,7 @@ PyObject* RegisterCustomOpdefs(PyObject* list) {
        i < size;
        ++i) {
     PyObject* value =
-        PySequence_GetItem(
+        PyList_GetItem(
             snapshot,
             i);
 
@@ -441,7 +436,6 @@ PyObject* RegisterCustomOpdefs(PyObject* list) {
             &len);
 
     if (conversion_result == -1) {
-      Py_DECREF(value);
       Py_DECREF(snapshot);
 
       PyErr_Format(
@@ -453,12 +447,10 @@ PyObject* RegisterCustomOpdefs(PyObject* list) {
       return nullptr;
     }
 
-    // Own the bytes before releasing the Python object that backs them.
+    // Own the bytes before releasing the snapshot that backs them.
     const std::string opdef_text(
         tf_opdefs,
         len);
-
-    Py_DECREF(value);
 
     tensorflow::OpDef opdef;
 
