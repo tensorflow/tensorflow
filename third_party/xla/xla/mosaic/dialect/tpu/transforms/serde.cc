@@ -594,7 +594,6 @@ LogicalResult arith_constant_downgrade(Operation* op, int version, bool&) {
   }
   return success();
 }
-
 LogicalResult reinterpret_cast_upgrade(Operation* op, int version, bool&) {
   if (version < 15) {
     bool dynamic_offset = op->getNumOperands() > 1;
@@ -602,19 +601,46 @@ LogicalResult reinterpret_cast_upgrade(Operation* op, int version, bool&) {
                 mlir::DenseI32ArrayAttr::get(op->getContext(),
                                              {1, dynamic_offset ? 1 : 0, 0}));
   }
+  if (version < 16) {
+    auto operand_segment_sizes =
+        op->getAttrOfType<DenseI32ArrayAttr>("operandSegmentSizes");
+    llvm::SmallVector<int32_t> new_sizes(operand_segment_sizes.asArrayRef());
+    new_sizes.push_back(0);
+    op->setAttr("operandSegmentSizes",
+                mlir::DenseI32ArrayAttr::get(op->getContext(), new_sizes));
+  }
   return success();
 }
 
 LogicalResult reinterpret_cast_downgrade(Operation* op, int version, bool&) {
+  if (version < 16) {
+    auto operand_segment_sizes =
+        op->getAttrOfType<DenseI32ArrayAttr>("operandSegmentSizes");
+    if (operand_segment_sizes[3] > 0) {
+      return op->emitOpError(
+          "Can only downgrade below version 16 when dynamic_strides is "
+          "empty");
+    }
+
+    op->setAttr(
+        "operandSegmentSizes",
+        mlir::DenseI32ArrayAttr::get(
+            op->getContext(), operand_segment_sizes.asArrayRef().drop_back()));
+  }
+
   if (version < 15) {
     auto operand_segment_sizes =
         op->getAttrOfType<DenseI32ArrayAttr>("operandSegmentSizes");
-    if (operand_segment_sizes && operand_segment_sizes.asArrayRef()[2] > 0) {
-      return op->emitOpError(
-          "Can only downgrade below version 15 when dynamic_sizes is empty");
+    if (operand_segment_sizes) {
+      auto array_ref = operand_segment_sizes.asArrayRef();
+      if (array_ref.size() >= 3 && array_ref[2] > 0) {
+        return op->emitOpError(
+            "Can only downgrade below version 15 when dynamic_sizes is empty");
+      }
     }
     op->removeAttr("operandSegmentSizes");
   }
+
   if (version < 12) {
     if (op->getNumOperands() == 2) {
       return op->emitOpError(

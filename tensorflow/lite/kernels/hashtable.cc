@@ -12,7 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <string>
+#include <stdint.h>
+
+#include <cstddef>
 
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -77,8 +79,9 @@ TfLiteStatus EvalHashtable(TfLiteContext* context, TfLiteNode* node) {
 
   Subgraph* subgraph = reinterpret_cast<Subgraph*>(context->impl_);
   auto& resources = subgraph->resources();
-  resource::CreateHashtableResourceIfNotAvailable(
-      &resources, resource_id, params->key_dtype, params->value_dtype);
+  TF_LITE_ENSURE_OK(context, resource::CreateHashtableResourceIfNotAvailable(
+                                 &resources, resource_id, params->key_dtype,
+                                 params->value_dtype));
   return kTfLiteOk;
 }
 

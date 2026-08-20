@@ -619,7 +619,7 @@ GraphDefExporter::GetOutputSegment(OpResult result) {
         arg_name,
         GetFunctionOutputName(
             result_idx, op_name,
-            *function_table_.get<const FunctionLibraryDefinition *>()));
+            *llvm::cast<const FunctionLibraryDefinition*>(function_table_)));
   }
   return std::pair<StringRef, unsigned>(arg_name, 0);
 }
