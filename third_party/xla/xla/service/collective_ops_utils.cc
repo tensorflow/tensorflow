@@ -828,10 +828,30 @@ GetParticipatingDevicesGroups(const HloInstruction* collective) {
   CHECK(collective->GetModule()->config().has_static_device_assignment());
   const DeviceAssignment& device_assignment =
       collective->GetModule()->config().static_device_assignment();
-  ABSL_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
-                   GetCollectiveOpGroupMode(collective));
+  return GetParticipatingDevicesGroups(*collective, device_assignment);
+}
+
+absl::StatusOr<std::vector<std::vector<GlobalDeviceId>>>
+GetParticipatingDevicesGroups(const HloInstruction& collective,
+                              const DeviceAssignment& device_assignment) {
+  ABSL_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                   GetCollectiveOpGroupMode(&collective));
+
+  if (HloPredicateIsOp<HloOpcode::kCollectivePermute,
+                       HloOpcode::kCollectivePermuteStart>(&collective)) {
+    std::vector<ReplicaGroup> source_target_groups;
+    source_target_groups.reserve(collective.source_target_pairs().size());
+    for (const auto& [source, target] : collective.source_target_pairs()) {
+      ReplicaGroup& group = source_target_groups.emplace_back();
+      group.add_replica_ids(source);
+      group.add_replica_ids(target);
+    }
+    return GetParticipatingDevicesGroups(device_assignment,
+                                         source_target_groups, group_mode);
+  }
+
   return GetParticipatingDevicesGroups(device_assignment,
-                                       collective->replica_groups(), mode);
+                                       collective.replica_groups(), group_mode);
 }
 
 absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
