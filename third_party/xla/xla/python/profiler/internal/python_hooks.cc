@@ -41,29 +41,46 @@ limitations under the License.
 namespace xla {
 namespace profiler {
 
-namespace py = ::pybind11;
-
 namespace {
 
-void SysSetProfileNone() {
-  py::object setprofile = py::module::import("sys").attr("setprofile");
-  setprofile(py::none());
+bool SysSetProfileNone() {
+  PyObject* sys_mod = PyImport_ImportModule("sys");
+  if (sys_mod == nullptr) {
+    return false;
+  }
+  PyObject* res = PyObject_CallMethod(sys_mod, "setprofile", "O", Py_None);
+  Py_DECREF(sys_mod);
+  Py_XDECREF(res);
+  return res != nullptr;
 }
 
-void ThreadingSetProfile(const py::object& callback) {
-  py::object setprofile = py::module::import("threading").attr("setprofile");
-  setprofile(callback);
+bool ThreadingSetProfile(PyObject* callback) {
+  PyObject* threading_mod = PyImport_ImportModule("threading");
+  if (threading_mod == nullptr) {
+    return false;
+  }
+  PyObject* res = PyObject_CallMethod(threading_mod, "setprofile", "O",
+                                      callback != nullptr ? callback : Py_None);
+  Py_DECREF(threading_mod);
+  Py_XDECREF(res);
+  return res != nullptr;
+}
+
+const char* PyUnicodeToStringOrUnknown(PyObject* obj) {
+  if (obj != nullptr && PyUnicode_Check(obj)) {
+    const char* str = PyUnicode_AsUTF8(obj);
+    if (str != nullptr) {
+      return str;
+    }
+    PyErr_Clear();
+  }
+  return "<unknown>";
 }
 
 std::string GetEventName(PyObject* co_filename, PyObject* co_name,
                          int co_firstlineno) {
-  std::string filename(py::reinterpret_borrow<py::str>(co_filename));
-  std::string function;
-  if (co_name == nullptr) {
-    function = "<unknown>";
-  } else {
-    function = py::reinterpret_borrow<py::str>(co_name);
-  }
+  absl::string_view filename = PyUnicodeToStringOrUnknown(co_filename);
+  absl::string_view function = PyUnicodeToStringOrUnknown(co_name);
 
   return absl::StrCat("$", tsl::io::Basename(filename), ":", co_firstlineno,
                       " ", function);
@@ -72,14 +89,7 @@ std::string GetEventName(PyObject* co_filename, PyObject* co_name,
 std::string GetEventName(absl::string_view method_name, PyObject* module) {
   // Python stack does not have a filename/line_no for native calls.
   // Use module name and function/method name instead.
-  std::string filename;
-  bool filename_ok;
-  filename_ok = (module != nullptr && PyUnicode_Check(module));
-  if (filename_ok) {
-    filename = py::reinterpret_borrow<py::str>(module);
-  } else {
-    filename = "<unknown>";
-  }
+  absl::string_view filename = PyUnicodeToStringOrUnknown(module);
   if (!method_name.empty()) {
     return absl::StrCat("$", filename, " ", method_name);
   }
@@ -129,6 +139,40 @@ void ForEachThread(PyThreadState* curr_thread, ForEachThreadFunc&& callback) {
 
 /*static*/ PythonHookContext* PythonHooks::e2e_context_ = nullptr;
 
+/*static*/ PyObject* PythonHookContext::PyProfileCallback(PyObject* /*self*/,
+                                                          PyObject* const* args,
+                                                          Py_ssize_t nargs) {
+  if (nargs != 3) {
+    PyErr_SetString(PyExc_TypeError, "profile_callback expects 3 arguments");
+    return nullptr;
+  }
+  const char* event = PyUnicode_AsUTF8(args[1]);
+  if (event == nullptr) {
+    return nullptr;
+  }
+
+  PythonHooks::GetSingleton()->ProfileSlow(
+      reinterpret_cast<PyFrameObject*>(args[0]), event, args[2]);
+  if (!SysSetProfileNone()) {
+    return nullptr;
+  }
+  PyEval_SetProfile(&PythonHooks::ProfileFunction, nullptr);
+  Py_RETURN_NONE;
+}
+
+/*static*/ PyObject* PythonHookContext::PyAtexitCallback(PyObject* /*self*/,
+                                                         PyObject* /*args*/) {
+  PythonHooks* singleton = PythonHooks::GetSingleton();
+  auto e2e_context = singleton->Stop();
+  // Serialize into internal storage before the tracked PyCodeObjects
+  // went out of scope.
+  if (e2e_context) {
+    e2e_context->CollectData(nullptr);
+    PythonHooks::set_e2e_context(e2e_context.release());
+  }
+  Py_RETURN_NONE;
+}
+
 std::string PythonTraceEntry::Name() const {
   if (co_filename) {
     return GetEventName(co_filename, co_name, co_firstlineno);
@@ -167,26 +211,15 @@ void PythonHookContext::Start(const PythonHooksOptions& options) {
       traceme_enabled = true;
     }
     if (options_.enable_trace_python_function) {
-      SetProfilerInAllThreads();
+      if (!SetProfilerInAllThreads()) {
+        LOG(ERROR) << "Can't set profiler in all threads.";
+        PyErr_Print();
+      }
     }
     if (options_.end_to_end_mode) {
-      // When end to end mode is used, Stop() and Finalize() i.e. symbolization
-      // and data collection happens during C's atexit(), when Py_FinalizeEx()
-      // already called.
-      try {
-        auto atexit = py::module::import("atexit");
-        atexit.attr("register")(py::cpp_function([]() {
-          PythonHooks* singleton = PythonHooks::GetSingleton();
-          auto e2e_context = singleton->Stop();
-          // Serialize into internal storage before the tracked PyCodeObjects
-          // went out of scope.
-          if (e2e_context) {
-            e2e_context->CollectData(nullptr);
-            PythonHooks::set_e2e_context(e2e_context.release());
-          }
-        }));
-      } catch (const py::error_already_set& e) {
-        LOG(ERROR) << "Can't install atexit handler for e2e mode." << e.what();
+      if (!RegisterAtexitCallback()) {
+        LOG(ERROR) << "Can't install atexit handler for e2e mode.";
+        PyErr_Print();
       }
     }
     PyGILState_Release(gil_state);
@@ -201,7 +234,10 @@ void PythonHookContext::Stop() {
   if (options_.enable_python_traceme || options_.enable_trace_python_function) {
     PyGILState_STATE gil_state = PyGILState_Ensure();
     if (options_.enable_trace_python_function) {
-      ClearProfilerInAllThreads();
+      if (!ClearProfilerInAllThreads()) {
+        LOG(ERROR) << "Can't clear profiler in all threads.";
+        PyErr_Print();
+      }
     }
     if (options_.enable_python_traceme) {
       traceme_enabled = false;
@@ -333,34 +369,33 @@ void PythonHookContext::Finalize(tensorflow::profiler::XSpace* space) {
   return 0;
 }
 
-void PythonHooks::ProfileSlow(const py::object& frame, const std::string& event,
-                              const py::object& arg) {
+void PythonHooks::ProfileSlow(PyFrameObject* frame, absl::string_view event,
+                              PyObject* arg) {
   int what;
-  absl::string_view event_name(event);
 
-  if (absl::ConsumePrefix(&event_name, "c_")) {
-    if (event_name == "call") {
+  if (absl::ConsumePrefix(&event, "c_")) {
+    if (event == "call") {
       what = PyTrace_C_CALL;
-    } else if (event_name == "return") {
+    } else if (event == "return") {
       what = PyTrace_C_RETURN;
-    } else if (event_name == "exception") {
+    } else if (event == "exception") {
       what = PyTrace_C_EXCEPTION;
     } else {
       return;
     }
   } else {
-    if (event_name == "call") {
+    if (event == "call") {
       what = PyTrace_CALL;
-    } else if (event_name == "return") {
+    } else if (event == "return") {
       what = PyTrace_RETURN;
-    } else if (event_name == "exception") {
+    } else if (event == "exception") {
       what = PyTrace_EXCEPTION;
     } else {
       return;
     }
   }
 
-  ProfileFast(reinterpret_cast<PyFrameObject*>(frame.ptr()), what, arg.ptr());
+  ProfileFast(frame, what, arg);
 }
 
 void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
@@ -437,7 +472,7 @@ void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
   }
 }
 
-/*static*/ void PythonHookContext::SetProfilerInAllThreads() {
+/*static*/ bool PythonHookContext::SetProfilerInAllThreads() {
   // We also want any new threads started to use our profiler.
   // NOTE: threading does not provide a C API equivalent to
   // `threading.setprofile` so we are forced to go via Python to setup the
@@ -445,16 +480,19 @@ void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
   // thread we unregister the Python profile function and use
   // `PyEval_SetProfile` to register a C profiler which has significantly less
   // overhead (>2x faster).
-  PythonHooks* singleton = PythonHooks::GetSingleton();
-  py::cpp_function callback = py::cpp_function(
-      [singleton](const py::object& frame, const std::string& event,
-                  const py::object& arg) {
-        singleton->ProfileSlow(frame, event, arg);
-        SysSetProfileNone();
-        PyEval_SetProfile(&PythonHooks::ProfileFunction, nullptr);
-      });
-
-  ThreadingSetProfile(callback);
+  static PyMethodDef kProfileMethodDef = {
+      "profile_callback",
+      reinterpret_cast<PyCFunction>(PythonHookContext::PyProfileCallback),
+      METH_FASTCALL, nullptr};
+  PyObject* callback = PyCFunction_New(&kProfileMethodDef, nullptr);
+  if (callback == nullptr) {
+    return false;
+  }
+  bool ok = ThreadingSetProfile(callback);
+  Py_DECREF(callback);
+  if (!ok) {
+    return false;
+  }
 
   // NOTE: This must be after `threading.setprofile` otherwise we
   // end up recording that in our trace.
@@ -468,9 +506,10 @@ void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
 #else   // PY_VERSION_HEX >= 0x030C0000
   PyEval_SetProfileAllThreads(&PythonHooks::ProfileFunction, nullptr);
 #endif  // PY_VERSION_HEX >= 0x030C0000
+  return true;
 }
 
-/*static*/ void PythonHookContext::ClearProfilerInAllThreads() {
+/*static*/ bool PythonHookContext::ClearProfilerInAllThreads() {
 #if PY_VERSION_HEX < 0x030C0000
   PyThreadState* curr_thread = PyThreadState_Get();
   ForEachThread(curr_thread, [](PyThreadState* thread) {
@@ -483,7 +522,30 @@ void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
 #endif  // PY_VERSION_HEX >= 0x030C0000
 
   // And notify the threading library that we're done.
-  ThreadingSetProfile(py::none());
+  return ThreadingSetProfile(nullptr);
+}
+
+/*static*/ bool PythonHookContext::RegisterAtexitCallback() {
+  // When end to end mode is used, Stop() and Finalize() i.e. symbolization
+  // and data collection happens during C's atexit(), when Py_FinalizeEx()
+  // already called.
+  static PyMethodDef kAtexitMethodDef = {"e2e_atexit_callback",
+                                         PythonHookContext::PyAtexitCallback,
+                                         METH_NOARGS, nullptr};
+  PyObject* atexit_mod = PyImport_ImportModule("atexit");
+  if (atexit_mod == nullptr) {
+    return false;
+  }
+  PyObject* py_fn = PyCFunction_New(&kAtexitMethodDef, nullptr);
+  if (py_fn == nullptr) {
+    Py_DECREF(atexit_mod);
+    return false;
+  }
+  PyObject* res = PyObject_CallMethod(atexit_mod, "register", "O", py_fn);
+  Py_DECREF(py_fn);
+  Py_DECREF(atexit_mod);
+  Py_XDECREF(res);
+  return res != nullptr;
 }
 
 }  // namespace profiler

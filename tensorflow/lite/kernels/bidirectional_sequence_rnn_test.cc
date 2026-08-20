@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 // Unit test for TFLite Bidirectional RNN op.
 
+#include <sys/mman.h>
+
 #include <algorithm>
 #include <functional>
 #include <initializer_list>
@@ -24,6 +26,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -1506,6 +1509,39 @@ TEST(BidirectionalRNNOpTest,
 TEST(BidirectionalRNNOpTest,
      ClosedBoxTestCrossLinkingRegularAndAuxInputUnevenSplit) {
   run_closedbox_test_with_input_split(/*input_size=*/2, /*aux_input_size=*/6);
+}
+
+// Verify that large batch offsets do not cause 32-bit signed integer overflow in pointer calculations.
+TEST(BidirectionalRNNOpTest, RnnBatchStepLargeLeadingDimNoOverflow) {
+  const size_t arena_bytes = 16ULL * 1024 * 1024 * 1024;
+  void* arena = mmap(nullptr, arena_bytes, PROT_READ | PROT_WRITE,
+                     MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+  if (arena == MAP_FAILED) {
+    GTEST_SKIP() << "mmap failed for large arena";
+    return;
+  }
+  float* output_buf = static_cast<float*>(arena);
+  const float bias = 42.0f;
+  float hidden_state[3] = {0.0f, 0.0f, 0.0f};
+  const float input[3] = {0.0f, 0.0f, 0.0f};
+  const float input_weights = 0.0f;
+  const float recurrent_weights = 0.0f;
+
+  const int input_size = 1;
+  const int num_units = 1;
+  const int batch_size = 3;
+  const int output_batch_leading_dim = 1500000000;
+
+  kernel_utils::RnnBatchStep(
+      input, &input_weights, &recurrent_weights, &bias,
+      input_size, num_units, batch_size, output_batch_leading_dim,
+      kTfLiteActNone, hidden_state, output_buf);
+
+  EXPECT_EQ(output_buf[0], 42.0f);
+  EXPECT_EQ(output_buf[1500000000ULL], 42.0f);
+  EXPECT_EQ(output_buf[3000000000ULL], 42.0f);
+
+  munmap(arena, arena_bytes);
 }
 
 }  // namespace
