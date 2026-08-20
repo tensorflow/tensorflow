@@ -32,11 +32,16 @@ limitations under the License.
 
 namespace xla {
 namespace aot_compatibility_experimental {
+
+using ::testing::TestParamInfo;
+using ::testing::UnitTest;
+using ::testing::ValuesIn;
+using ::testing::WithParamInterface;
+
 namespace {
 
-class CollectiveOpsAotTest
-    : public AotCompatibilityTest,
-      public ::testing::WithParamInterface<AotTestParam> {
+class CollectiveOpsAotTest : public AotCompatibilityTest,
+                             public WithParamInterface<AotTestParam> {
  public:
   CollectiveOpsAotTest() : AotCompatibilityTest(GetParam()) {}
 
@@ -47,7 +52,7 @@ class CollectiveOpsAotTest
     AotCompatibilityTest::SetUp();
     int version = GetParam().version;
     std::string full_name =
-        ::testing::UnitTest::GetInstance()->current_test_info()->name();
+        UnitTest::GetInstance()->current_test_info()->name();
     std::string test_name = full_name.substr(0, full_name.find('/'));
     file_path_ = tsl::io::JoinPath(
         GetExecutablesDirectory(GetParam().target_name),
@@ -135,19 +140,17 @@ std::vector<AotTestParam> GetTestParamsOrDie(
 
 INSTANTIATE_TEST_SUITE_P(
     BackwardsCompatibility, CollectiveOpsAotTest,
-    ::testing::ValuesIn(
-        GetTestParamsOrDie(GetAotTestParamsForBackwardsCompatibility(
-            "collective_ops_aot_test_2gpu"))),
-    [](const ::testing::TestParamInfo<AotTestParam>& info) {
+    ValuesIn(GetTestParamsOrDie(GetAotTestParamsForBackwardsCompatibility(
+        "collective_ops_aot_test_2gpu"))),
+    [](const TestParamInfo<AotTestParam>& info) {
       return absl::StrCat("v", info.param.version);
     });
 
 INSTANTIATE_TEST_SUITE_P(
     GoldenFileVerification, CollectiveOpsAotTest,
-    ::testing::ValuesIn(
-        GetTestParamsOrDie(GetAotTestParamsForGoldenFileVerification(
-            "collective_ops_aot_test_2gpu"))),
-    [](const ::testing::TestParamInfo<AotTestParam>& info) {
+    ValuesIn(GetTestParamsOrDie(GetAotTestParamsForGoldenFileVerification(
+        "collective_ops_aot_test_2gpu"))),
+    [](const TestParamInfo<AotTestParam>& info) {
       return absl::StrCat("v", info.param.version);
     });
 

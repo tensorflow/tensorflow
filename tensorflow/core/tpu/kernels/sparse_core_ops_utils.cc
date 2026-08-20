@@ -307,6 +307,23 @@ ABSL_ATTRIBUTE_WEAK int64_t GetXlaSparseCoreStackingTableShardLimit() {
   return sparse_core_flags->tf_xla_sparse_core_stacking_table_shard_limit_bytes;
 }
 
+int64_t GetPerSparseCorePreservedBufferSize(
+    int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition,
+    int32_t num_logical_devices, int32_t num_sparse_cores_per_logical_device) {
+  // TODO(peitianpan): Derive this value from the TPU target?
+  constexpr int64_t kMaxTileSpmemSizeBytes = 512 * 1024;  // 512 KiB
+  const int64_t num_physical_sparse_cores =
+      num_logical_devices * num_sparse_cores_per_logical_device;
+  const int64_t total_id_count =
+      max_ids_per_partition * num_physical_sparse_cores;
+  const int64_t max_map_factor =
+      kMaxTileSpmemSizeBytes / (sizeof(int32_t) * num_physical_sparse_cores);
+  const int64_t max_total_unique_id_count =
+      (max_unique_ids_per_partition + max_map_factor) *
+      num_physical_sparse_cores;
+  return std::min(total_id_count, max_total_unique_id_count);
+}
+
 xla::XlaOp ApplyWeightClippingToTable(xla::XlaBuilder* builder,
                                       xla::XlaOp table, float clip_weight_min,
                                       float clip_weight_max) {
