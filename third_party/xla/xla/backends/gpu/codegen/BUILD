@@ -276,7 +276,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:TargetParser",
     ],
 )

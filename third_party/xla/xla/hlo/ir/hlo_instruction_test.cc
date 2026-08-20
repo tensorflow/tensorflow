@@ -64,11 +64,15 @@ TEST_F(HloInstructionTest, SparsityConfigToString_RHSOnly) {
       0, ShapeUtil::MakeShape(BF16, {256, 256}), "lhs"));
   HloInstruction* rhs = builder.AddInstruction(HloInstruction::CreateParameter(
       1, ShapeUtil::MakeShape(BF16, {64, 256}), "rhs"));
+  HloInstruction* rhs_indices =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          2, ShapeUtil::MakeShape(S32, {64, 256}), "rhs_indices"));
   SparsityConfig sparsity_config;
   sparsity_config.mutable_rhs()->set_block_size(4);
   sparsity_config.mutable_rhs()->set_num_non_zero(1);
   sparsity_config.mutable_rhs()->set_dimension(0);
   sparsity_config.mutable_rhs()->set_stride(1);
+  sparsity_config.mutable_rhs()->set_idx(2);
   ConvolutionDimensionNumbers dnums;
   dnums.set_input_batch_dimension(0);
   dnums.set_input_feature_dimension(1);
@@ -78,8 +82,9 @@ TEST_F(HloInstructionTest, SparsityConfigToString_RHSOnly) {
   dnums.set_output_feature_dimension(1);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       /*shape=*/ShapeUtil::MakeShape(BF16, {256, 256}),
-      /*lhs=*/lhs,
-      /*rhs=*/rhs,
+      {/*lhs=*/lhs,
+       /*rhs=*/rhs,
+       /*rhs_indices=*/rhs_indices},
       /*feature_group_count=*/1,
       /*batch_group_count=*/1,
       /*window=*/Window(),
@@ -90,7 +95,7 @@ TEST_F(HloInstructionTest, SparsityConfigToString_RHSOnly) {
 
   EXPECT_EQ(
       conv->ToString(),
-      R"(%convolution = bf16[256,256]{1,0} convolution(%lhs, %rhs), dim_labels=bf_io->bf, sparsity_config={rhs={sparsity=1x4 dimension=0 stride=1}})");
+      R"(%convolution = bf16[256,256]{1,0} convolution(%lhs, %rhs, %rhs_indices), dim_labels=bf_io->bf, sparsity_config={rhs={sparsity=1x4 dimension=0 stride=1 idx=2}})");
 }
 
 TEST_F(HloInstructionTest, SparsityConfigToString_LHSAndRHS) {
@@ -102,15 +107,23 @@ TEST_F(HloInstructionTest, SparsityConfigToString_LHSAndRHS) {
       0, ShapeUtil::MakeShape(BF16, {256, 256}), "lhs"));
   HloInstruction* rhs = builder.AddInstruction(HloInstruction::CreateParameter(
       1, ShapeUtil::MakeShape(BF16, {64, 256}), "rhs"));
+  HloInstruction* lhs_indices =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          2, ShapeUtil::MakeShape(S32, {256, 256}), "lhs_indices"));
+  HloInstruction* rhs_indices =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          3, ShapeUtil::MakeShape(S32, {64, 256}), "rhs_indices"));
   SparsityConfig sparsity_config;
   sparsity_config.mutable_rhs()->set_block_size(4);
   sparsity_config.mutable_rhs()->set_num_non_zero(1);
   sparsity_config.mutable_rhs()->set_dimension(0);
   sparsity_config.mutable_rhs()->set_stride(1);
+  sparsity_config.mutable_rhs()->set_idx(3);
   sparsity_config.mutable_lhs()->set_block_size(4);
   sparsity_config.mutable_lhs()->set_num_non_zero(1);
   sparsity_config.mutable_lhs()->set_dimension(0);
   sparsity_config.mutable_lhs()->set_stride(1);
+  sparsity_config.mutable_lhs()->set_idx(2);
   ConvolutionDimensionNumbers dnums;
   dnums.set_input_batch_dimension(0);
   dnums.set_input_feature_dimension(1);
@@ -120,8 +133,10 @@ TEST_F(HloInstructionTest, SparsityConfigToString_LHSAndRHS) {
   dnums.set_output_feature_dimension(1);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       /*shape=*/ShapeUtil::MakeShape(BF16, {256, 256}),
-      /*lhs=*/lhs,
-      /*rhs=*/rhs,
+      {/*lhs=*/lhs,
+       /*rhs=*/rhs,
+       /*lhs_indices=*/lhs_indices,
+       /*rhs_indices=*/rhs_indices},
       /*feature_group_count=*/1,
       /*batch_group_count=*/1,
       /*window=*/Window(),
@@ -132,7 +147,7 @@ TEST_F(HloInstructionTest, SparsityConfigToString_LHSAndRHS) {
 
   EXPECT_EQ(
       conv->ToString(),
-      R"(%convolution = bf16[256,256]{1,0} convolution(%lhs, %rhs), dim_labels=bf_io->bf, sparsity_config={lhs={sparsity=1x4 dimension=0 stride=1} rhs={sparsity=1x4 dimension=0 stride=1}})");
+      R"(%convolution = bf16[256,256]{1,0} convolution(%lhs, %rhs, %lhs_indices, %rhs_indices), dim_labels=bf_io->bf, sparsity_config={lhs={sparsity=1x4 dimension=0 stride=1 idx=2} rhs={sparsity=1x4 dimension=0 stride=1 idx=3}})");
 }
 
 TEST_F(HloInstructionTest, GetStackTraceStringFromStackFrameId) {

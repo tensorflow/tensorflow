@@ -30,15 +30,21 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/backends/gpu/transforms/collectives/collective_domain.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_copy.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -190,79 +196,58 @@ bool IsCollectivesGroupAsyncOp(const HloInstruction& hlo) {
          IsCollectivesGroupAsyncDoneOp(hlo);
 }
 
-using ReplicaGroups = std::vector<std::vector<int64_t>>;
+using ParticipatingDeviceGroups = std::vector<std::vector<GlobalDeviceId>>;
 
-// Returns the replica groups used by an async collective start.
-std::optional<ReplicaGroups> GetReplicaGroups(const HloInstruction& start) {
+// Returns the groups of global devices used by an async collective start.
+absl::StatusOr<ParticipatingDeviceGroups>
+GetParticipatingDevicesGroupsForAsyncStart(
+    const HloInstruction& start, const DeviceAssignment& device_assignment) {
   const HloInstruction* collective = &start;
   if (HloPredicateIsOp<HloOpcode::kAsyncStart>(collective)) {
     collective = collective->async_wrapped_instruction();
   }
-
-  if (HloPredicateIsOp<HloOpcode::kCollectivePermute,
-                       HloOpcode::kCollectivePermuteStart>(collective)) {
-    ReplicaGroups groups;
-    groups.reserve(collective->source_target_pairs().size());
-    for (const auto& [source, target] : collective->source_target_pairs()) {
-      groups.push_back({source, target});
-    }
-    return groups;
-  }
-
-  if (!hlo_query::IsCollectiveCommunicationOp(collective->opcode())) {
-    return std::nullopt;
-  }
-
-  // An empty list represents one implicit group containing all participants.
-  return collective->device_list()->flattened_replica_groups();
+  return GetParticipatingDevicesGroups(*collective, device_assignment);
 }
 
-// Returns the replica groups from every collective in a collective group.
-std::optional<ReplicaGroups> GetReplicaGroups(
-    const HloComputation& computation) {
-  std::optional<ReplicaGroups> groups;
+// Returns the participating device groups from every collective in a
+// collective group.
+absl::StatusOr<ParticipatingDeviceGroups> GetParticipatingDevicesGroups(
+    const HloComputation& computation,
+    const DeviceAssignment& device_assignment) {
+  ParticipatingDeviceGroups groups;
   for (const HloInstruction* instruction : computation.instructions()) {
     if (!hlo_query::IsCollectiveCommunicationOp(instruction->opcode()) &&
         !hlo_query::IsAsyncCollectiveStartOp(instruction,
                                              /*include_send_recv=*/true)) {
       continue;
     }
-    auto instruction_groups = GetReplicaGroups(*instruction);
-    if (!instruction_groups) {
-      return std::nullopt;
-    }
-    // An all-participants collective overlaps every other collective.
-    if (instruction_groups->empty()) {
-      return ReplicaGroups{};
-    }
-    if (!groups) {
-      groups.emplace();
-    }
-    for (auto& group : *instruction_groups) {
-      groups->push_back(std::move(group));
+    ABSL_ASSIGN_OR_RETURN(ParticipatingDeviceGroups instruction_groups,
+                     GetParticipatingDevicesGroupsForAsyncStart(
+                         *instruction, device_assignment));
+    for (std::vector<GlobalDeviceId>& group : instruction_groups) {
+      groups.push_back(std::move(group));
     }
   }
   return groups;
 }
 
-// Returns the maximum number of ranks shared by any pair of replica groups.
-size_t CountOverlappingRanks(const ReplicaGroups& groups,
-                             const ReplicaGroups& other_groups) {
+// Returns the maximum number of devices shared by any pair of groups.
+size_t CountOverlappingDevices(
+    absl::Span<const std::vector<GlobalDeviceId>> groups,
+    absl::Span<const std::vector<GlobalDeviceId>> other_groups) {
   // Scratch flat hash set to avoid allocation inside a loop.
-  absl::flat_hash_set<int64_t> replica_ids;
-  auto is_in_replica_ids = [&](int64_t replica_id) {
-    return replica_ids.contains(replica_id);
+  absl::flat_hash_set<GlobalDeviceId> devices;
+  auto is_in_devices = [&](GlobalDeviceId device) {
+    return devices.contains(device);
   };
 
   size_t overlapping_count = 0;
-  for (const auto& group : groups) {
-    replica_ids.clear();
-    for (int64_t replica_id : group) {
-      replica_ids.insert(replica_id);
-    }
+  for (const std::vector<GlobalDeviceId>& group : groups) {
+    devices.clear();
+    devices.insert(group.begin(), group.end());
 
-    for (const auto& other_group : other_groups) {
-      size_t group_overlap = absl::c_count_if(other_group, is_in_replica_ids);
+    for (const std::vector<GlobalDeviceId>& other_group : other_groups) {
+      size_t group_overlap = absl::c_count_if(other_group, is_in_devices);
       overlapping_count = std::max(overlapping_count, group_overlap);
     }
   }
@@ -393,7 +378,7 @@ CanonicalAsyncOp GpuGetCanonicalAsyncOp(const HloInstruction& hlo) {
 
 bool GpuScheduleCrossesOverlapLimit(
     const DefaultSchedulerCore::SchedulingState& sched_state,
-    const HloGraphNode* node) {
+    const HloGraphNode* node, const DeviceAssignment& device_assignment) {
   for (const auto& [resource, limit] : sched_state.max_concurrent_resource) {
     // No resources in flight of this kind. Continue.
     auto it = sched_state.resource_occupiers_in_flight.find(resource);
@@ -416,64 +401,88 @@ bool GpuScheduleCrossesOverlapLimit(
     return false;
   }
 
-  const int64_t resource_type = node->GetResources().at(0).first;
+  int64_t default_collective_resource =
+      ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamCollectives);
+  int64_t scale_up_collective_resource =
+      ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamScaleUpCollectives);
+  auto has_occupiers = [&](int64_t resource) {
+    auto it = sched_state.resource_occupiers_in_flight.find(resource);
+    return it != sched_state.resource_occupiers_in_flight.end() &&
+           !it->second.empty();
+  };
 
-  // Rank-overlap constraints apply only while a collective is in flight.
-  if (resource_type != xla::ResourceTypeToIndex(
-                           GpuResourceType::kGpuAsyncStreamCollectives) ||
-      !sched_state.resource_occupiers_in_flight.contains(resource_type) ||
-      sched_state.resource_occupiers_in_flight.at(resource_type).empty()) {
+  int64_t candidate_resource = node->GetResources().at(0).first;
+  bool is_collective_resource =
+      candidate_resource == default_collective_resource ||
+      candidate_resource == scale_up_collective_resource;
+
+  // Device-overlap constraints apply across both collective resources.
+  if (!is_collective_resource ||
+      (!has_occupiers(default_collective_resource) &&
+       !has_occupiers(scale_up_collective_resource))) {
     return false;
   }
 
   // Custom collectives are opaque; only async-done candidates expose a
-  // corresponding start whose replica groups can be checked.
+  // corresponding start whose participating device groups can be checked.
   const HloInstruction& curr_hlo = node->GetInstr();
   if (IsCustomCollectiveOp(&curr_hlo) ||
       !sched_state.async_tracker->IsSupportedAsyncDone(curr_hlo)) {
     return false;
   }
 
-  // A collective group contributes the replica groups of all collectives in
-  // its wrapped computation.
+  // A collective group contributes the participating device groups of all
+  // collectives in its wrapped computation.
   const HloInstruction* curr_start = curr_hlo.operand(0);
-  std::optional<ReplicaGroups> curr_replica_groups =
+  auto curr_groups =
       IsCollectivesGroupAsyncStartOp(*curr_start)
-          ? GetReplicaGroups(*curr_start->async_wrapped_computation())
-          : GetReplicaGroups(*curr_start);
+          ? GetParticipatingDevicesGroups(
+                *curr_start->async_wrapped_computation(), device_assignment)
+          : GetParticipatingDevicesGroupsForAsyncStart(*curr_start,
+                                                       device_assignment);
 
-  // Unknown groups are unsafe to overlap; an empty list means all ranks.
-  if (!curr_replica_groups || curr_replica_groups->empty()) {
+  // Unknown or missing participating device groups are unsafe to overlap.
+  if (!curr_groups.ok() || curr_groups->empty()) {
     return true;
   }
 
-  for (const HloInstruction* async_occupier :
-       sched_state.resource_occupiers_in_flight.at(resource_type)) {
-    if (!sched_state.async_tracker->IsSupportedAsyncStart(*async_occupier) ||
-        IsCustomCollectiveOp(async_occupier)) {
+  for (int64_t resource :
+       {default_collective_resource, scale_up_collective_resource}) {
+    auto occupiers_it = sched_state.resource_occupiers_in_flight.find(resource);
+    if (occupiers_it == sched_state.resource_occupiers_in_flight.end()) {
       continue;
     }
 
-    std::optional<ReplicaGroups> occupier_replica_groups =
-        IsCollectivesGroupAsyncStartOp(*async_occupier)
-            ? GetReplicaGroups(*async_occupier->async_wrapped_computation())
-            : GetReplicaGroups(*async_occupier);
+    for (const HloInstruction* async_occupier : occupiers_it->second) {
+      if (!sched_state.async_tracker->IsSupportedAsyncStart(*async_occupier) ||
+          IsCustomCollectiveOp(async_occupier)) {
+        continue;
+      }
 
-    // Unknown groups are unsafe to overlap; an empty list means all ranks.
-    if (!occupier_replica_groups || occupier_replica_groups->empty()) {
-      return true;
-    }
+      auto occupier_groups =
+          IsCollectivesGroupAsyncStartOp(*async_occupier)
+              ? GetParticipatingDevicesGroups(
+                    *async_occupier->async_wrapped_computation(),
+                    device_assignment)
+              : GetParticipatingDevicesGroupsForAsyncStart(*async_occupier,
+                                                           device_assignment);
 
-    // More than one shared rank can create a cyclic launch dependency.
-    size_t overlapping_count =
-        CountOverlappingRanks(*curr_replica_groups, *occupier_replica_groups);
-    if (overlapping_count > 1) {
-      VLOG(3) << "Collectives have " << overlapping_count
-              << " overlapping ranks and cannot be overlapped. Candidate "
-                 "collective: "
-              << curr_start->ToString()
-              << ", in flight collective: " << async_occupier->ToString();
-      return true;
+      // Unknown or missing participating device groups are unsafe to overlap.
+      if (!occupier_groups.ok() || occupier_groups->empty()) {
+        return true;
+      }
+
+      // More than one shared device can create a cyclic launch dependency.
+      size_t overlapping_count =
+          CountOverlappingDevices(*curr_groups, *occupier_groups);
+      if (overlapping_count > 1) {
+        VLOG(3) << "Collectives have " << overlapping_count
+                << " overlapping devices and cannot be overlapped. Candidate "
+                   "collective: "
+                << curr_start->ToString()
+                << ", in flight collective: " << async_occupier->ToString();
+        return true;
+      }
     }
   }
 
@@ -621,6 +630,19 @@ static bool IsAnnotatedForGpuAsyncStreamCollectivesP2P(
   return it->second == kCollectiveStreamP2P;
 }
 
+GpuResourceType GetCollectiveResource(const HloInstruction& instruction) {
+  if (!SupportsCollectiveCommunicationDomain(instruction)) {
+    return GpuResourceType::kGpuAsyncStreamCollectives;
+  }
+
+  absl::StatusOr<CollectiveCommunicationDomain> domain =
+      GetCollectiveCommunicationDomain(instruction);
+  if (!domain.ok() || *domain != kScaleUpFabricCollectiveDomain) {
+    return GpuResourceType::kGpuAsyncStreamCollectives;
+  }
+  return GpuResourceType::kGpuAsyncStreamScaleUpCollectives;
+}
+
 ResourcesVector GpuAsyncTracker::GetResourcesFromInstructionImpl(
     const HloInstruction& instr) const {
   CanonicalAsyncOp op = GetCanonicalAsyncOp(instr);
@@ -654,7 +676,7 @@ ResourcesVector GpuAsyncTracker::GetResourcesFromInstructionImpl(
       resource = hlo_query::IsCollectiveCommunicationOp(op.inner) ||
                          IsCustomCollectiveOp(&instr) ||
                          IsCollectivesGroupAsyncOp(instr)
-                     ? GpuResourceType::kGpuAsyncStreamCollectives
+                     ? GetCollectiveResource(instr)
                      : GpuResourceType::kGpuAsyncStreamComputes;
     }
     return {std::make_pair(ResourceTypeToIndex(resource), usage)};
@@ -717,6 +739,10 @@ int64_t GpuAsyncTracker::GetNumAvailableResources(int64_t resource_type) const {
       ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamCollectives)) {
     return config_.parallel_collective_overlap_limit;
   }
+  if (resource_type ==
+      ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamScaleUpCollectives)) {
+    return config_.parallel_scale_up_collective_overlap_limit;
+  }
 
   if (resource_type ==
           ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamCollectivesP2P) ||
@@ -763,6 +789,8 @@ absl::string_view GpuAsyncTracker::GetResourceName(
       return "kGpuAsyncStreamComputes";
     case GpuResourceType::kGpuAsyncStreamMemcpy:
       return "kGpuAsyncStreamMemcpy";
+    case GpuResourceType::kGpuAsyncStreamScaleUpCollectives:
+      return "kGpuAsyncStreamScaleUpCollectives";
     default:
       return "kUnsupportedResource";
   }
