@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
-#include "xla/stream_executor/platform/initialize.h"
 
 namespace xla::cpu {
 namespace {
@@ -47,6 +46,14 @@ absl::StatusOr<const CpuTopologyDescription*> GetCpuTopology(
   return &absl::down_cast<const xla::CpuTopologyDescription&>(topology);
 }
 
+PjRtCpuRawClient* GetRawClient(PjRtClient* client) {
+  auto* common_client = dynamic_cast<CommonPjRtClient*>(client);
+  if (!common_client) {
+    return nullptr;
+  }
+  return dynamic_cast<PjRtCpuRawClient*>(common_client->raw_client());
+}
+
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> CpuPjRtCompiler::Compile(
@@ -54,6 +61,10 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> CpuPjRtCompiler::Compile(
     const PjRtTopologyDescription& topology, PjRtClient* client) {
   ABSL_ASSIGN_OR_RETURN(const CpuTopologyDescription* cpu_topology,
                    GetCpuTopology(topology));
+  if (auto* raw_client = GetRawClient(client)) {
+    return raw_client->Compile(computation, *cpu_topology,
+                               client->process_index(), std::move(options));
+  }
 
   ABSL_ASSIGN_OR_RETURN(
       auto executable,
@@ -66,6 +77,10 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> CpuPjRtCompiler::Compile(
     const PjRtTopologyDescription& topology, PjRtClient* client) {
   ABSL_ASSIGN_OR_RETURN(const CpuTopologyDescription* cpu_topology,
                    GetCpuTopology(topology));
+  if (auto* raw_client = GetRawClient(client)) {
+    return raw_client->Compile(std::move(module), *cpu_topology,
+                               client->process_index(), std::move(options));
+  }
 
   ABSL_ASSIGN_OR_RETURN(auto executable,
                    CompileCpuExecutable(std::move(module), std::move(options),
@@ -86,8 +101,14 @@ CpuPjRtCompiler::DeserializePjRtTopologyDescription(
 
 }  // namespace xla::cpu
 
-STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(pjrt_register_cpu_compiler, {
-  std::unique_ptr<xla::PjRtCompiler> compiler =
-      std::make_unique<xla::cpu::CpuPjRtCompiler>();
-  PjRtRegisterDefaultCompiler(xla::CpuName(), std::move(compiler));
-});
+// Doesn't use STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER to ensure it is
+// always registered.
+struct RegisterPjRtCpuCompiler {
+  RegisterPjRtCpuCompiler() {
+    std::unique_ptr<xla::PjRtCompiler> compiler =
+        std::make_unique<xla::cpu::CpuPjRtCompiler>();
+    PjRtRegisterDefaultCompiler(xla::CpuName(), std::move(compiler));
+  }
+};
+
+static RegisterPjRtCpuCompiler registration;

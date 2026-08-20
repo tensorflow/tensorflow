@@ -26,8 +26,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "xla/autotune_cache.pb.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
+#include "xla/backends/autotuner/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_orchestrator.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -82,6 +84,8 @@ class ConfigRunner {
 
     std::string ToString(bool verbose = false) const;
     AutotuneResult ToProto() const;
+    autotuner::ConfigProfile ToConfigProfileProto() const;
+    autotuner::FailedConfigs ToFailedConfigsProto() const;
   };
 
   static absl::StatusOr<std::unique_ptr<ConfigRunner>> Create(
