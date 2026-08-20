@@ -1,5 +1,5 @@
 diff --git a/src/common/utils.hpp b/src/common/utils.hpp
-index be34002d19..ead90efa67 100644
+index be34002d19..490cb1e6f5 100644
 --- a/src/common/utils.hpp
 +++ b/src/common/utils.hpp
 @@ -713,17 +713,41 @@ static constexpr bool is_dev_mode() {
@@ -13,10 +13,9 @@ index be34002d19..ead90efa67 100644
  
  public:
      constexpr setting_t() : value_ {}, initialized_ {false} {}
--    constexpr setting_t(const T init) : value_ {init}, initialized_ {false} {}
+     constexpr setting_t(const T init) : value_ {init}, initialized_ {false} {}
 -    bool initialized() { return initialized_; }
 -    T get() { return value_; }
-+    constexpr setting_t(const T init) : value_ {init}, initialized_ {true} {}
 +    bool initialized() const { return initialized_.load(std::memory_order_acquire); }
 +    T get() const {
 +        return value_.load(std::memory_order_relaxed);
@@ -38,7 +37,7 @@ index be34002d19..ead90efa67 100644
 +
 +public:
 +    setting_t() : value_ {}, initialized_ {false} {}
-+    setting_t(const std::string &init) : value_ {init}, initialized_ {true} {}
++    setting_t(const std::string &init) : value_ {init}, initialized_ {false} {}
 +    bool initialized() const { return initialized_.load(std::memory_order_acquire); }
 +    std::string get() const {
 +        return value_;
