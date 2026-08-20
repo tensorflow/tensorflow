@@ -1407,7 +1407,10 @@ xla_test(
 
 xla_test(
     name = "collective_ops_ffi_test",
-    srcs = ["collective_ops_ffi_test.cc"],
+    srcs = ["collective_ops_ffi_test.cc"] + if_cuda_is_configured(
+        ["collective_ops_ffi_communicator_cuda.cc"],
+        ["collective_ops_ffi_communicator_default.cc"],
+    ),
     backend_tags = {
         "gpu": [
             "multi_gpu",
@@ -1437,8 +1440,10 @@ xla_test(
         "//xla/core/collectives:rank_id",
         "//xla/core/collectives:reduction_kind",
         "//xla/ffi",
+        "//xla/ffi:collectives_ffi",
         "//xla/ffi:ffi_api",
         "//xla/ffi/api:c_api",
+        "//xla/ffi/api:collectives_api",
         "//xla/runtime:device_id",
         "//xla/service:collective_ops_utils",
         "//xla/service:rendezvous",
@@ -1464,6 +1469,9 @@ xla_test(
         "@com_google_absl//absl/types:span",
     ] + if_cuda_is_configured([
         ":collective_ops_ffi_kernels_cuda",
+        "@com_google_absl//absl/base",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_nccl//:nccl",
     ]),
 )
 
