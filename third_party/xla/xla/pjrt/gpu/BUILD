@@ -767,6 +767,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+        "@riegeli//riegeli/base:any",
+        "@riegeli//riegeli/bytes:reader",
     ],
 )
 
@@ -855,6 +857,8 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@llvm-project//mlir:IR",
+        "@riegeli//riegeli/base:any",
+        "@riegeli//riegeli/bytes:reader",
     ] + if_rocm([
         ":se_gpu_pjrt_compiler_rocm_registration",
     ]) + if_sycl([

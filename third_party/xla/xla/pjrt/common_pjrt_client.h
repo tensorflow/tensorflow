@@ -501,6 +501,23 @@ class CommonPjRtClient : public PjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       MaybeOwningMlirModule mlir_module, CompileOptions options) override;
 
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+      absl::string_view serialized,
+      std::optional<CompileOptions> options) override;
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+      const absl::Cord& serialized,
+      std::optional<CompileOptions> options) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+  LoadSerializedExecutable(absl::string_view serialized,
+                           std::optional<CompileOptions> options,
+                           const LoadOptions& load_options) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+  LoadSerializedExecutable(const absl::Cord& serialized,
+                           std::optional<CompileOptions> options,
+                           const LoadOptions& load_options) override;
+
  protected:
   // Returns the required alignment for device memory addresses when slicing.
   virtual absl::StatusOr<size_t> GetDeviceAddressAlignment() const {

@@ -30,6 +30,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "riegeli/base/any.h"
+#include "riegeli/bytes/reader.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -463,6 +465,15 @@ StreamExecutorGpuCompiler::DeserializePjRtTopologyDescription(
         "Failed to parse StreamExecutorGpuTopologyDescription from string.");
   }
   return StreamExecutorGpuTopologyDescription::FromProto(proto);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>>
+StreamExecutorGpuCompiler::DeserializeExecutable(
+    const PjRtTopologyDescription& topology,
+    riegeli::Any<riegeli::Reader*> reader,
+    std::optional<CompileOptions>&& options) {
+  return StreamExecutorExecutable::Deserialize(std::move(reader), topology,
+                                               std::move(options));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>>

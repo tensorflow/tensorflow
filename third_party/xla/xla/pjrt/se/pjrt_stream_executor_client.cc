@@ -2115,33 +2115,6 @@ PjRtStreamExecutorRawClient::CrossCompile(
                          topology, target_topology, options);
 }
 
-absl::StatusOr<std::unique_ptr<PjRtExecutable>>
-PjRtStreamExecutorClient::DeserializeExecutable(
-    std::unique_ptr<riegeli::Reader> reader,
-    std::optional<CompileOptions> options) {
-  tsl::profiler::TraceMe traceme(
-      "PjRtStreamExecutorClient::DeserializeExecutable");
-  VLOG(1) << "PjRtStreamExecutorClient::DeserializeExecutable";
-
-  return StreamExecutorExecutable::Deserialize(std::move(reader), topology(),
-                                               std::move(options));
-}
-
-absl::StatusOr<std::unique_ptr<PjRtExecutable>>
-PjRtStreamExecutorClient::DeserializeExecutable(
-    absl::string_view serialized, std::optional<CompileOptions> options) {
-  return DeserializeExecutable(
-      std::make_unique<riegeli::StringReader<>>(serialized),
-      std::move(options));
-}
-
-absl::StatusOr<std::unique_ptr<PjRtExecutable>>
-PjRtStreamExecutorClient::DeserializeExecutable(
-    const absl::Cord& serialized, std::optional<CompileOptions> options) {
-  return DeserializeExecutable(
-      std::make_unique<riegeli::CordReader<>>(&serialized), std::move(options));
-}
-
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtStreamExecutorClient::LoadSerializedExecutable(
     absl::string_view serialized, std::optional<CompileOptions> options,
