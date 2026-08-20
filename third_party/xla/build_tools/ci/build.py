@@ -788,7 +788,7 @@ Build(
 Build(
     type_=BuildType.JAX_LINUX_X86_CPU_BZLMOD_GITHUB_ACTIONS,
     repo="google/jax",
-    configs=("rbe_linux_x86_64", "bzlmod"),
+    configs=("rbe_linux_x86_64",),
     target_patterns=(
         "//tests:cpu_tests",
         "//tests:backend_independent_tests",
