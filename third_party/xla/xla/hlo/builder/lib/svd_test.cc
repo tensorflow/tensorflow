@@ -29,6 +29,8 @@ limitations under the License.
 #include "xla/hlo/builder/lib/matrix.h"
 #include "xla/hlo/builder/lib/slicing.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
@@ -132,6 +134,61 @@ TEST_F(SVDTest, Simple2D) {
 
   ComputeAndCompareR2<float>(&builder, simple_2d_4x4_, {&a_data},
                              ErrorSpec(1e-3, 1e-3));
+}
+
+TEST_F(SVDTest, ZeroColumnMatrix) {
+  // Regression test for https://github.com/openxla/xla/issues/45972: SVD on
+  // a matrix with a zero-sized dimension failed to build with "Slice dim
+  // size 1 greater than dynamic slice dimension: 0".
+  XlaBuilder builder(TestName());
+
+  Array2D<float> a_4x0(4, 0);
+  XlaOp a;
+  auto a_data = CreateR2Parameter<float>(a_4x0, 0, "a", &builder, &a);
+  auto result = SVD(a, 100, 1e-6);
+  Tuple(&builder, {result.d, result.u, result.v});
+
+  const Literal expected = LiteralUtil::MakeTupleOwned(
+      LiteralUtil::CreateR1<float>({}),
+      LiteralUtil::CreateR2<float>(
+          {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}),
+      LiteralUtil::CreateR2FromArray2D<float>(Array2D<float>(0, 0)));
+  ComputeAndCompareTuple(&builder, expected, {&a_data});
+}
+
+TEST_F(SVDTest, ZeroRowMatrix) {
+  // Same as ZeroColumnMatrix, with the zero-sized dimension in front.
+  XlaBuilder builder(TestName());
+
+  Array2D<float> a_0x4(0, 4);
+  XlaOp a;
+  auto a_data = CreateR2Parameter<float>(a_0x4, 0, "a", &builder, &a);
+  auto result = SVD(a, 100, 1e-6);
+  Tuple(&builder, {result.d, result.u, result.v});
+
+  const Literal expected = LiteralUtil::MakeTupleOwned(
+      LiteralUtil::CreateR1<float>({}),
+      LiteralUtil::CreateR2FromArray2D<float>(Array2D<float>(0, 0)),
+      LiteralUtil::CreateR2<float>(
+          {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}));
+  ComputeAndCompareTuple(&builder, expected, {&a_data});
+}
+
+TEST_F(SVDTest, BatchedZeroColumnMatrix) {
+  // Batched variant of ZeroColumnMatrix.
+  XlaBuilder builder(TestName());
+
+  Array3D<float> a_2x3x0(2, 3, 0);
+  XlaOp a;
+  auto a_data = CreateR3Parameter<float>(a_2x3x0, 0, "a", &builder, &a);
+  auto result = SVD(a, 100, 1e-6);
+  Tuple(&builder, {result.d, result.u, result.v});
+
+  const Literal expected = LiteralUtil::MakeTupleOwned(
+      LiteralUtil::CreateR2FromArray2D<float>(Array2D<float>(2, 0)),
+      LiteralUtil::CreateR3FromArray3D<float>(GetUnitMatrix3D(2, 3)),
+      LiteralUtil::CreateR3FromArray3D<float>(Array3D<float>(2, 0, 0)));
+  ComputeAndCompareTuple(&builder, expected, {&a_data});
 }
 
 TEST_F(SVDTest, Test_VWVt_EQ_A_2x4x5) {
