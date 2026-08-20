@@ -42,6 +42,7 @@ cc_library(
         "//xla/stream_executor/host:host_platform_id",
         "//xla/tools:hlo_decomposer_lib",
         "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
