@@ -129,7 +129,7 @@ class SparseTensor(internal.NativeObject, composite_tensor.CompositeTensor):
     """
     with ops.name_scope(None, "SparseTensor", [indices, values, dense_shape]):
       if (tensor_util.is_tf_type(indices) and
-          indices.dtype != dtypes.int64):
+          indices.dtype.base_dtype != dtypes.int64):
         raise TypeError(
             "`indices` must be a Tensor of dtype int64. "
             f"Received dtype={indices.dtype}.")
