@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -38,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
@@ -464,7 +466,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   EXPECT_LT(compute_idx, a2a_done_idx);
 }
 
-TEST_F(GpuLatencyHidingSchedulerBaseTest, CollectiveDomainsPreventRankOverlap) {
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       CollectiveDomainsPreventDeviceOverlap) {
   absl::string_view kFdoProfile = R"pb(
     costs { name: "add_0" cost_us: 100000.0 }
     costs { name: "ar_0" cost_us: 10.0 }
@@ -495,6 +498,7 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest, CollectiveDomainsPreventRankOverlap) {
   )";
 
   HloModuleConfig config = GetModuleConfig(kFdoProfile);
+  config.set_replica_count(2);
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(kHloModule, config));
   HloInstruction* all_reduce_start = FindInstruction(module.get(), "ar_0");
@@ -1109,7 +1113,7 @@ ENTRY main {
 }
 
 TEST_F(GpuLatencyHidingSchedulerBaseTest,
-       ExplicitCollectivesGroupUsesCollectiveResource) {
+       ExplicitCollectivesGroupUsesDomainResource) {
   absl::string_view kHloModule = R"(
 HloModule test, is_scheduled=true
 
@@ -1159,7 +1163,7 @@ ENTRY main {
   EXPECT_EQ(done_resources[0].first, collective_resource);
   EXPECT_EQ(done_resources[0].second, ResourceUsageType::kResourceOccupy);
 
-  // A scale-up domain changes stream placement, not LHS accounting.
+  // A scale-up domain uses an independent LHS resource.
   for (HloInstruction* instruction : {group_start, group_done}) {
     ASSERT_OK_AND_ASSIGN(GpuBackendConfig backend_config,
                          instruction->backend_config<GpuBackendConfig>());
@@ -1168,24 +1172,63 @@ ENTRY main {
     ASSERT_OK(instruction->set_backend_config(backend_config));
   }
 
-  EXPECT_EQ(async_tracker.GetResourcesFromInstruction(*group_start),
-            start_resources);
-  EXPECT_EQ(async_tracker.GetResourcesFromInstruction(*group_done),
-            done_resources);
-  EXPECT_EQ(async_tracker.GetNumResourcesPerInstruction(collective_resource,
-                                                        *group_start),
+  GpuAsyncTracker scale_up_async_tracker(sched_config);
+  int64_t scale_up_resource =
+      ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamScaleUpCollectives);
+  auto scale_up_start_resources =
+      scale_up_async_tracker.GetResourcesFromInstruction(*group_start);
+  ASSERT_EQ(scale_up_start_resources.size(), 1);
+  EXPECT_EQ(scale_up_start_resources[0].first, scale_up_resource);
+  EXPECT_EQ(scale_up_start_resources[0].second,
+            ResourceUsageType::kResourceRelease);
+
+  auto scale_up_done_resources =
+      scale_up_async_tracker.GetResourcesFromInstruction(*group_done);
+  ASSERT_EQ(scale_up_done_resources.size(), 1);
+  EXPECT_EQ(scale_up_done_resources[0].first, scale_up_resource);
+  EXPECT_EQ(scale_up_done_resources[0].second,
+            ResourceUsageType::kResourceOccupy);
+  EXPECT_EQ(scale_up_async_tracker.GetResourceName(scale_up_resource),
+            "kGpuAsyncStreamScaleUpCollectives");
+
+  EXPECT_EQ(scale_up_async_tracker.GetNumResourcesPerInstruction(
+                collective_resource, *group_done),
             0);
-  EXPECT_EQ(async_tracker.GetNumResourcesPerInstruction(collective_resource,
-                                                        *group_done),
+  EXPECT_EQ(scale_up_async_tracker.GetNumResourcesPerInstruction(
+                scale_up_resource, *group_start),
+            0);
+  EXPECT_EQ(scale_up_async_tracker.GetNumResourcesPerInstruction(
+                scale_up_resource, *group_done),
             1);
 
   auto start_resource_counts =
-      async_tracker.GetNumResourcesPerInstruction(*group_start);
+      scale_up_async_tracker.GetNumResourcesPerInstruction(*group_start);
   EXPECT_TRUE(start_resource_counts.empty());
   auto done_resource_counts =
-      async_tracker.GetNumResourcesPerInstruction(*group_done);
+      scale_up_async_tracker.GetNumResourcesPerInstruction(*group_done);
   ASSERT_EQ(done_resource_counts.size(), 1);
-  EXPECT_EQ(done_resource_counts.at(collective_resource), 1);
+  EXPECT_EQ(done_resource_counts.at(scale_up_resource), 1);
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       ScaleUpCollectiveResourceUsesConfiguredCapacity) {
+  int64_t scale_up_resource =
+      ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamScaleUpCollectives);
+
+  SchedulerConfig config =
+      MakeGPUSchedulerConfig(UINT64_MAX, /*overlap_limit=*/1,
+                             /*scale_up_overlap_limit=*/3,
+                             /*async_compute_limit=*/2);
+  GpuAsyncTracker async_tracker(config);
+  EXPECT_EQ(async_tracker.GetNumAvailableResources(scale_up_resource), 3);
+
+  SchedulerConfig unlimited_config =
+      MakeGPUSchedulerConfig(UINT64_MAX, /*overlap_limit=*/1,
+                             /*scale_up_overlap_limit=*/0,
+                             /*async_compute_limit=*/2);
+  GpuAsyncTracker unlimited_async_tracker(unlimited_config);
+  EXPECT_EQ(unlimited_async_tracker.GetNumAvailableResources(scale_up_resource),
+            std::numeric_limits<int64_t>::max());
 }
 
 TEST_F(GpuLatencyHidingSchedulerBaseTest,
@@ -1317,7 +1360,7 @@ ENTRY main {
 }
 
 TEST_F(GpuLatencyHidingSchedulerBaseTest,
-       ExplicitCollectivesGroupOverlapsNativeWithOneSharedRank) {
+       CollectiveDomainsOverlapWithOneSharedDevice) {
   absl::string_view kFdoProfile = R"pb(
     costs { name: "add" cost_us: 100000.0 }
   )pb";
@@ -1351,12 +1394,25 @@ ENTRY main {
 })";
 
   HloModuleConfig config = GetModuleConfig(kFdoProfile);
+  config.set_replica_count(4);
+  DeviceAssignment device_assignment(/*replica_count=*/4,
+                                     /*computation_count=*/1);
+  device_assignment(0, 0) = 10;
+  device_assignment(1, 0) = 20;
+  device_assignment(2, 0) = 30;
+  device_assignment(3, 0) = 40;
+  config.set_static_device_assignment(device_assignment);
+
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(kHloModule, config));
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_experimental_enable_collective_multi_streaming(true);
-  ASSERT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2,
+  HloInstruction* group_start = FindInstruction(module.get(), "group-start");
+  ASSERT_OK_AND_ASSIGN(GpuBackendConfig backend_config,
+                       group_start->backend_config<GpuBackendConfig>());
+  backend_config.mutable_collective_backend_config()->set_communication_domain(
+      kScaleUpFabricCollectiveDomain);
+  ASSERT_OK(group_start->set_backend_config(backend_config));
+
+  ASSERT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1,
                            DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
 
   const HloSchedule& schedule = module->schedule();
@@ -1372,8 +1428,8 @@ ENTRY main {
       GetIndexByName(instruction_sequence, "native-done");
   const int add_index = GetIndexByName(instruction_sequence, "add");
 
-  // Every native subgroup shares at most one rank with the group's
-  // collective-permute, so the collectives can overlap.
+  // Every native subgroup shares at most one global device with the group's
+  // collective-permute, so the two communication domains can overlap.
   EXPECT_TRUE((group_start_index < native_start_index &&
                native_start_index < group_done_index) ||
               (native_start_index < group_start_index &&
@@ -1841,6 +1897,7 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
 
   SchedulerConfig config =
       MakeGPUSchedulerConfig(UINT64_MAX, /*overlap_limit=*/2,
+                             /*scale_up_overlap_limit=*/1,
                              /*async_compute_limit=*/2);
   config.top_down_scheduling = true;
   // Exercise the early-target hook when it is above memory pressure.

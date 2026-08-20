@@ -669,6 +669,30 @@ struct RewriteFpToIPattern : public mlir::OpRewritePattern<Op> {
   }
 };
 
+template <typename Op>
+struct RewriteMinMaxFPattern : public mlir::OpRewritePattern<Op> {
+  using mlir::OpRewritePattern<Op>::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      Op op, mlir::PatternRewriter& rewriter) const override {
+    using FloatValue = mlir::TypedValue<mlir::FloatType>;
+    auto lhs = mlir::dyn_cast<FloatValue>(op.getLhs());
+    auto rhs = mlir::dyn_cast<FloatValue>(op.getRhs());
+    if (!lhs || !rhs) {
+      return rewriter.notifyMatchFailure(op, "not a scalar float");
+    }
+    if (lhs.getType().getWidth() > 8) {
+      return rewriter.notifyMatchFailure(op, "not an 8 bit (or less) float");
+    }
+    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    auto lhs_f32 = EmitFloatConversion(lhs, b.getF32Type(), b);
+    auto rhs_f32 = EmitFloatConversion(rhs, b.getF32Type(), b);
+    auto max_f32 = Op::create(b, lhs_f32, rhs_f32, op.getFastmathAttr());
+    rewriter.replaceOp(op, EmitFloatConversion(max_f32, lhs.getType(), b));
+    return mlir::success();
+  }
+};
+
 class ExpandFloatOpsPass
     : public impl::ExpandFloatOpsPassBase<ExpandFloatOpsPass> {
  public:
@@ -679,7 +703,11 @@ class ExpandFloatOpsPass
                  RewriteF8Cst, RewriteIToFpPattern<ma::SIToFPOp>,
                  RewriteIToFpPattern<ma::UIToFPOp>,
                  RewriteFpToIPattern<ma::FPToSIOp>,
-                 RewriteFpToIPattern<ma::FPToUIOp>>(&getContext());
+                 RewriteFpToIPattern<ma::FPToUIOp>,
+                 RewriteMinMaxFPattern<ma::MaximumFOp>,
+                 RewriteMinMaxFPattern<ma::MinimumFOp>,
+                 RewriteMinMaxFPattern<ma::MaxNumFOp>,
+                 RewriteMinMaxFPattern<ma::MinNumFOp>>(&getContext());
     if (approximate_tanh_) {
       mlir::populatePolynomialApproximateTanhPattern(patterns);
     }

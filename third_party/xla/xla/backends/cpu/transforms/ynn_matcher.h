@@ -129,14 +129,6 @@ class YnnMatcher : public LibraryMatcher {
     return fuse_eltwise_ && instr->IsElementwise();
   }
 
-  PrimitiveType LibraryOpOutputType(const HloInstruction* instr) override {
-    auto out_type = instr->shape().element_type();
-    if (instr->opcode() != HloOpcode::kDot) {
-      return out_type;
-    }
-    return out_type == BF16 ? F32 : out_type;
-  }
-
   // Returns a prefix string for the fusion op's name.
   std::string fusion_prefix() const override { return "ynn_"; }
 
