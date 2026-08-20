@@ -3022,6 +3022,44 @@ TEST_F(LiteralUtilTest, DynamicBroadcast) {
   EXPECT_EQ(broadcasted_literal.GetDynamicSize(1), 1);
 }
 
+TEST_F(LiteralUtilTest, BroadcastScalarToDynamicShape) {
+  Literal literal = LiteralUtil::CreateR0<int32_t>(9);
+  ASSERT_OK_AND_ASSIGN(
+      Literal broadcasted_literal,
+      literal.Broadcast(
+          /*result_shape=*/ShapeUtil::MakeShape(S32, {64}, {true}),
+          /*dimensions=*/{}));
+  EXPECT_EQ(broadcasted_literal.GetDynamicSize(0), 64);
+  EXPECT_EQ(broadcasted_literal.Get<int32_t>({0}), 9);
+  EXPECT_EQ(broadcasted_literal.Get<int32_t>({63}), 9);
+}
+
+TEST_F(LiteralUtilTest, BroadcastVectorToMatrixWithUnmappedDynamicDim) {
+  Literal literal = LiteralUtil::CreateR1<int64_t>({1, 2});
+  ASSERT_OK_AND_ASSIGN(
+      Literal broadcasted_literal,
+      literal.Broadcast(
+          /*result_shape=*/ShapeUtil::MakeShape(S64, {8, 2}, {true, false}),
+          /*dimensions=*/{1}));
+  EXPECT_EQ(broadcasted_literal.GetDynamicSize(0), 8);
+  EXPECT_EQ(broadcasted_literal.Get<int64_t>({0, 0}), 1);
+  EXPECT_EQ(broadcasted_literal.Get<int64_t>({7, 1}), 2);
+}
+
+TEST_F(LiteralUtilTest, BroadcastDynamicVectorToDynamicMatrix) {
+  Literal literal = LiteralUtil::CreateR1<int64_t>({1, 2});
+  literal.SetDynamicSize(0, 1);
+  ASSERT_OK_AND_ASSIGN(
+      Literal broadcasted_literal,
+      literal.Broadcast(
+          /*result_shape=*/ShapeUtil::MakeShape(S64, {8, 2}, {true, true}),
+          /*dimensions=*/{1}));
+  // The unmapped dimension gets its bound; the mapped dimension keeps the
+  // source's actual size.
+  EXPECT_EQ(broadcasted_literal.GetDynamicSize(0), 8);
+  EXPECT_EQ(broadcasted_literal.GetDynamicSize(1), 1);
+}
+
 TEST_F(LiteralUtilTest, GetAsScalarInt64) {
   auto scalar1 = LiteralUtil::CreateR0<int32_t>(12);
   EXPECT_EQ(LiteralUtil::LiteralAsScalarInt64(scalar1).value(), (int64_t)12);

@@ -12,7 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <atomic>
 #include <string>
+#include <thread>  // NOLINT
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -89,6 +91,32 @@ TEST(StableAbiDelegateProviderTest, CreateDelegateFailedWithBlankSettingsPath) {
   auto delegates = CreateDelegates("");
 
   EXPECT_EQ(0, delegates.size());
+}
+
+TEST(StableAbiDelegateProviderTest, ConcurrentCreateDelegates) {
+  constexpr int kNumThreads = 50;
+  constexpr int kIterations = 100;
+  std::atomic<bool> start{false};
+  std::vector<std::thread> threads;
+  threads.reserve(kNumThreads);
+
+  for (int i = 0; i < kNumThreads; ++i) {
+    threads.emplace_back([&start, i]() {
+      while (!start.load(std::memory_order_acquire)) {
+      }
+      for (int iter = 0; iter < kIterations; ++iter) {
+        std::string path = "nonexistent_settings_" + std::to_string(i) + "_" +
+                           std::to_string(iter) + ".json";
+        auto delegates = CreateDelegates(path);
+        EXPECT_EQ(0, delegates.size());
+      }
+    });
+  }
+
+  start.store(true, std::memory_order_release);
+  for (auto& t : threads) {
+    t.join();
+  }
 }
 
 }  // namespace
