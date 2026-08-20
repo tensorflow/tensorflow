@@ -27,9 +27,15 @@ DTYPE_MAPPING = {
     "bf16": jnp.bfloat16,
     "f16": jnp.float16,
     "f32": jnp.float32,
+    "f8e4m3fn": jnp.float8_e4m3fn,
+    "f8e5m2": jnp.float8_e5m2,
+    "s2": jnp.int2,
+    "s4": jnp.int4,
     "s8": jnp.int8,
     "s16": jnp.int16,
     "s32": jnp.int32,
+    "u2": jnp.uint2,
+    "u4": jnp.uint4,
     "u8": jnp.uint8,
     "u16": jnp.uint16,
     "u32": jnp.uint32,
@@ -63,10 +69,10 @@ def make_inputs(
 
   def _generate(dtype, shape):
     if jnp.issubdtype(dtype, jnp.floating):
-      arr = rng.normal(size=shape).astype(dtype)
+      arr = rng.normal(size=shape)
     else:
-      arr = rng.integers(127, size=shape).astype(dtype)
-    return jnp.asarray(arr)
+      arr = rng.integers(127, size=shape)
+    return jnp.asarray(arr, dtype=dtype)
 
   lhs = _generate(lhs_dtype, (b, m, k))
   rhs = _generate(rhs_dtype, (b, k, n))
@@ -84,7 +90,7 @@ def run_matmul_jax(
     repeat: int,
     runs: int,
     use_random_data: bool,
-) -> None:
+) -> jax_profiler_utils.JaxProfilerResult | None:
   """Runs the JAX matmul benchmark."""
   logging.info(
       "Running Matmul configuration: B=%d, M=%d, K=%d, N=%d", b, m, k, n
@@ -107,8 +113,9 @@ def run_matmul_jax(
         "--runs was 0 or less, so we will only compile the matmul but not"
         " run it."
     )
-    return
+    return None
 
+  last_profiler_result = None
   for _ in range(runs):
     with jax_profiler_utils.JaxProfiler(kernel_name) as profiler:
       res = f_compiled(lhs, rhs)
@@ -121,5 +128,8 @@ def run_matmul_jax(
       logging.info(
           "Profiler results:\n%s", profiler.result.as_dataframe().to_string()
       )
+      last_profiler_result = profiler.result
     else:
       logging.warning("No profiler results found.")
+
+  return last_profiler_result

@@ -879,6 +879,123 @@ TEST_F(IsSolLatencyEstimatorEnabledTest, DisabledForHopperWithHostOffloaded) {
       SolLatencyEstimator::IsSupportedForModule(*module, gpu_device_info_));
 }
 
+TEST_F(IsSolLatencyEstimatorEnabledTest, EnabledBySolEstimatorFlagOnGfx950) {
+  HloModuleConfig config;
+  config.mutable_debug_options()
+      .set_xla_gpu_enable_analytical_sol_latency_estimator(true);
+  gpu_device_info_.set_rocm_compute_capability("gfx950");
+
+  auto module = CreateTestModule(config);
+  AddAllReduce(module.get());
+
+  EXPECT_TRUE(
+      SolLatencyEstimator::IsSupportedForModule(*module, gpu_device_info_));
+}
+
+TEST_F(IsSolLatencyEstimatorEnabledTest, DisabledIfFlagIsOffOnGfx950) {
+  HloModuleConfig config;
+  config.mutable_debug_options()
+      .set_xla_gpu_enable_analytical_sol_latency_estimator(false);
+  gpu_device_info_.set_rocm_compute_capability("gfx950");
+
+  auto module = CreateTestModule(config);
+  AddAllReduce(module.get());
+
+  EXPECT_FALSE(
+      SolLatencyEstimator::IsSupportedForModule(*module, gpu_device_info_));
+}
+
+TEST_F(IsSolLatencyEstimatorEnabledTest, DisabledForUnsupportedRocmArch) {
+  HloModuleConfig config;
+  config.mutable_debug_options()
+      .set_xla_gpu_enable_analytical_sol_latency_estimator(true);
+  auto module = CreateTestModule(config);
+  AddAllReduce(module.get());
+
+  for (absl::string_view architecture : {"gfx942", "gfx90a"}) {
+    gpu_device_info_.set_rocm_compute_capability(std::string(architecture));
+    EXPECT_FALSE(
+        SolLatencyEstimator::IsSupportedForModule(*module, gpu_device_info_));
+  }
+}
+
+TEST_F(IsSolLatencyEstimatorEnabledTest,
+       DisabledForGfx950WithUnsupportedCollective) {
+  HloModuleConfig config;
+  config.mutable_debug_options()
+      .set_xla_gpu_enable_analytical_sol_latency_estimator(true);
+  gpu_device_info_.set_rocm_compute_capability("gfx950");
+
+  auto module = CreateTestModule(config);
+  AddCollectiveBcast(module.get());
+
+  EXPECT_FALSE(
+      SolLatencyEstimator::IsSupportedForModule(*module, gpu_device_info_));
+}
+
+TEST_F(IsSolLatencyEstimatorEnabledTest, DisabledForGfx950WithHostOffloaded) {
+  HloModuleConfig config;
+  config.mutable_debug_options()
+      .set_xla_gpu_enable_analytical_sol_latency_estimator(true);
+  gpu_device_info_.set_rocm_compute_capability("gfx950");
+
+  auto module = CreateTestModule(config);
+  ASSERT_OK(AddHostOffloaded(module.get()));
+
+  EXPECT_FALSE(
+      SolLatencyEstimator::IsSupportedForModule(*module, gpu_device_info_));
+}
+
+TEST_F(IsSolLatencyEstimatorEnabledTest, CreatesEstimatorWithGfx950Profiles) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule m, num_partitions=8
+
+    add {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      ROOT sum = f32[] add(x, y)
+    }
+
+    ENTRY main {
+      lhs = f32[256,256] parameter(0)
+      rhs = f32[256,256] parameter(1)
+      dot = f32[256,256] dot(lhs, rhs),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      p = f32[256] parameter(2)
+      ar-start = f32[256] all-reduce-start(p), to_apply=add,
+        replica_groups=[1,8]<=[8], channel_id=1, use_global_device_ids=true
+      ar-done = f32[256] all-reduce-done(ar-start)
+      ROOT result = (f32[256,256], f32[256]) tuple(dot, ar-done)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  gpu_device_info_ = TestGpuDeviceInfo::AMDMI210DeviceInfo();
+  gpu_device_info_.set_rocm_compute_capability("gfx950");
+
+  SchedulerConfig scheduler_config;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<SolLatencyEstimator> estimator,
+      SolLatencyEstimator::Create(
+          scheduler_config, std::make_unique<DummyLatencyEstimator>(),
+          gpu_device_info_, HloCostAnalysis::DefaultShapeSize,
+          module->entry_computation()));
+
+  HloInstruction* dot =
+      module->entry_computation()->GetInstructionWithName("dot");
+  HloInstruction* all_reduce_start =
+      module->entry_computation()->GetInstructionWithName("ar-start");
+  HloInstruction* all_reduce_done =
+      module->entry_computation()->GetInstructionWithName("ar-done");
+  ASSERT_NE(dot, nullptr);
+  ASSERT_NE(all_reduce_start, nullptr);
+  ASSERT_NE(all_reduce_done, nullptr);
+  EXPECT_GT(estimator->NodeCost(dot), 0);
+  EXPECT_GT(estimator->GetLatencyBetween(
+                HloGraphNode(all_reduce_start, /*original_position=*/-1),
+                HloGraphNode(all_reduce_done, /*original_position=*/-1)),
+            0);
+}
+
 // ---- Triton collective scheduler integration tests -----------------------
 //
 // These tests verify that SolLatencyEstimator correctly uses the NVLink-based
