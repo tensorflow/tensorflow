@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <map>
+#include <mutex>  // NOLINT
 #include <string>
 #include <utility>
 #include <vector>
@@ -72,12 +73,14 @@ class StableDelegatePluginLoader {
   const CacheEntry* LoadStableDelegatePlugin(
       const std::string& json_settings_file_path);
 
+  std::mutex mutex_;
   std::map<std::string /*settings_file_path*/, CacheEntry> cache_;
 };
 
 const StableDelegatePluginLoader::CacheEntry*
 StableDelegatePluginLoader::LoadStableDelegatePlugin(
     const std::string& json_settings_file_path) {
+  std::lock_guard<std::mutex> lock(mutex_);
   auto it = cache_.find(json_settings_file_path);
   if (it != cache_.end()) {
     return &it->second;
@@ -174,6 +177,9 @@ TfLiteDelegatePtr StableAbiDelegateProvider::CreateTfLiteDelegate(
 #if !defined(_WIN32)
   std::string stable_delegate_settings_file =
       params.Get<std::string>("stable_delegate_settings_file");
+  if (stable_delegate_settings_file.empty()) {
+    return CreateNullDelegate();
+  }
   return CreateStableDelegate(stable_delegate_settings_file);
 #else   // !defined(_WIN32)
   return CreateNullDelegate();
