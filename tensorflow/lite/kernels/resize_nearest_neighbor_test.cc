@@ -405,6 +405,44 @@ TEST_P(ResizeNearestNeighborOpTest, ThreeDimensionalResizeInt16) {
                                           10, 12, 10, 12, -14, 16,  //
                                       })));
 }
+
+TEST_P(ResizeNearestNeighborOpTest, ModelWithZeroDimensionInputIsRejected) {
+#if GTEST_HAS_DEATH_TEST
+  class ResizeNearestNeighborOpModelInvalidDim : public SingleOpModel {
+   public:
+    explicit ResizeNearestNeighborOpModelInvalidDim(
+        const std::vector<int>& shape, TestType test_type) {
+      input_ = AddInput({TensorType_FLOAT32, shape});
+      if (test_type == TestType::kConst) {
+        size_ = AddConstInput(TensorType_INT32, {3, 3}, {2});
+      } else {
+        size_ = AddInput({TensorType_INT32, {2}});
+      }
+      output_ = AddOutput(TensorType_FLOAT32);
+      SetBuiltinOp(BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
+                   BuiltinOptions_ResizeNearestNeighborOptions,
+                   CreateResizeNearestNeighborOptions(builder_, false, false)
+                       .Union());
+      if (test_type == TestType::kConst) {
+        BuildInterpreter({GetShape(input_)});
+      } else {
+        BuildInterpreter({GetShape(input_), GetShape(size_)});
+        PopulateTensor(size_, {3, 3});
+      }
+    }
+
+   private:
+    int input_;
+    int size_;
+    int output_;
+  };
+  EXPECT_DEATH(ResizeNearestNeighborOpModelInvalidDim({1, 0, 2, 1}, GetParam()),
+               "Cannot allocate tensors");
+  EXPECT_DEATH(ResizeNearestNeighborOpModelInvalidDim({1, 2, 0, 1}, GetParam()),
+               "Cannot allocate tensors");
+#endif
+}
+
 INSTANTIATE_TEST_SUITE_P(ResizeNearestNeighborOpTest,
                          ResizeNearestNeighborOpTest,
                          testing::Values(TestType::kConst, TestType::kDynamic));
