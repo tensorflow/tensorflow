@@ -518,16 +518,6 @@ absl::StatusOr<HloInstruction*> AssignConvKind(
     }
   }
 
-  // cuDNN graph API does not have engine execution plans for INT8 convolutions
-  // on pre-Ampere GPUs.
-  if ((primitive_util::Is8BitIntegralType(element_type) ||
-       primitive_util::Is8BitIntegralType(
-           conv->operand(0)->shape().element_type())) &&
-      cc.cuda_compute_capability() != nullptr &&
-      !cc.cuda_compute_capability()->IsAtLeastAmpere()) {
-    return nullptr;
-  }
-
   if (ConvolutionMatch m = MatchBackwardInput(conv)) {
     conv = CreateGpuConv(CONVOLUTION_KIND_DGRAD, conv, conv->mutable_operand(0),
                          *m);
