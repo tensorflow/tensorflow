@@ -810,7 +810,9 @@ absl::StatusOr<bool> ReduceWindowRewriter::RunImpl(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
 
-  if (base_length_ == 0) {
+  // If base_length_ <= 1, tree reduction makes zero progress and would loop
+  // infinitely in HloPassFix.
+  if (base_length_ <= 1) {
     return false;
   }
 
@@ -839,6 +841,12 @@ absl::StatusOr<bool> ReduceWindowRewriter::RunImpl(
 absl::StatusOr<bool> AssociativeScanRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  // base_length_ == 0 decomposes all scans into a single reduce-window.
+  // base_length_ == 1 cannot make progress with tree reduction, so skip.
+  if (base_length_ == 1) {
+    return false;
+  }
+
   bool changed = false;
   for (const auto& computation : module->computations(execution_threads)) {
     if (computation->IsFusionComputation()) {
