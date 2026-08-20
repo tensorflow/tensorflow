@@ -4125,7 +4125,7 @@ absl::Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
           convolution->feature_group_count(), convolution->batch_group_count(),
           new_window, new_dim_numbers, convolution->precision_config(),
           /*preferred_element_type=*/convolution->shape().element_type(),
-          /*sparsity_config=*/SparsityConfig(), &convolution->metadata(),
+          convolution->sparsity_config(), &convolution->metadata(),
           &convolution->frontend_attributes()));
   convolution->SetupDerivedInstruction(new_conv);
 

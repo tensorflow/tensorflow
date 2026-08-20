@@ -35,7 +35,8 @@ class FpTrunc : public Intrinsic<FpTrunc> {
   static constexpr absl::string_view kName = "fptrunc";
   static constexpr bool kLastArgIsReturnType = true;
   static constexpr int8_t kNumArgs = 2;  // Second arg is the return type.
-  static std::vector<std::vector<Type>> SupportedVectorTypes() {
+  static std::vector<std::vector<Type>> SupportedVectorTypes(
+      absl::string_view features = "") {
     std::vector<std::vector<Type>> supported_types = {
         {Type::S(xla::F32), Type::S(xla::BF16)},
         {Type::V(xla::F32, 2), Type::V(xla::BF16, 2)},
