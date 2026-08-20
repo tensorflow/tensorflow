@@ -54,7 +54,7 @@ llvm::Function* CreateFunction(llvm::Module* module, Type from, Type to) {
       to.to_ir_type(context), {from.to_ir_type(context)},
       /*isVarArg=*/false);
   llvm::Function* func = llvm::dyn_cast<llvm::Function>(
-      module->getOrInsertFunction(FpTrunc::Name(from, to), function_type)
+      module->getOrInsertFunction(FpTrunc::Name({from, to}), function_type)
           .getCallee());
   func->getArg(0)->setName("arg");
   return func;

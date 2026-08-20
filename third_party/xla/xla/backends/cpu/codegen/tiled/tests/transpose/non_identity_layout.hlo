@@ -1,0 +1,25 @@
+// RUN: fusion_to_xtile %s | fusion_compiler_opt \
+// RUN:   --xtile-cpu-new-xtile-to-vector --xla-simplify-arith \
+// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
+// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering=true
+
+fusion {
+  p0 = f32[100,3,70]{0,1,2} parameter(0)
+  ROOT transpose = f32[3,100,70]{0,2,1} transpose(p0), dimensions={1,0,2}
+}
+
+ENTRY main {
+  p0 = f32[100,3,70]{0,1,2} parameter(0)
+  ROOT fusion = f32[3,100,70]{0,2,1} fusion(p0), kind=kLoop, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["16", "8", "4"]}],
+          "num_ctas":"1"
+        }
+      }
+    }
+}
+// NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl(
+// NEW-VECTOR-SAME:    %[[ARG0:[^:]+]]: memref<100x3x70xf32, #xtile.layout<[0, 1, 2]>>,
+// NEW-VECTOR-SAME:    %[[ARG1:[^:]+]]: memref<3x100x70xf32, #xtile.layout<[0, 2, 1]>>,
