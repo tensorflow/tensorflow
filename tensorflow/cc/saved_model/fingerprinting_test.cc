@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
@@ -204,6 +205,21 @@ TEST(FingerprintingTest, TestSingleprint) {
                         fingerprint_pb.saved_object_graph_hash(),
                         fingerprint_pb.checkpoint_hash()),
             const_singleprint);
+}
+
+TEST(FingerprintingTest, CreateFingerprintDefPbEmptyMetaGraphsReturnsError) {
+  const std::string model_dir =
+      io::JoinPath(::testing::TempDir(), "empty_metagraphs_model");
+  TF_ASSERT_OK(Env::Default()->RecursivelyCreateDir(model_dir));
+  const std::string pb_file = io::JoinPath(model_dir, "saved_model.pb");
+  SavedModel saved_model;
+  TF_ASSERT_OK(WriteBinaryProto(Env::Default(), pb_file, saved_model));
+
+  absl::StatusOr<FingerprintDef> result = CreateFingerprintDef(model_dir);
+  EXPECT_FALSE(result.ok());
+  EXPECT_EQ(result.status().code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(result.status().message(),
+            "SavedModel (.pb) contains no MetaGraphs.");
 }
 
 }  // namespace
