@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/transforms/collectives/async_collective_replacer.h"
 
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -25,8 +26,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/transforms/collectives/convert_async_collectives_to_sync.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
@@ -37,37 +38,29 @@ namespace {
 
 bool ShouldBeReplaced(const AsyncCollectiveReplacer::Config& config,
                       const HloInstruction* instruction) {
-  if (instruction->opcode() == HloOpcode::kAllReduceStart) {
+  HloOpcode op = instruction->opcode();
+  std::optional<HloOpcode> wrapped_op =
+      (op == HloOpcode::kAsyncStart)
+          ? std::make_optional(instruction->async_wrapped_opcode())
+          : std::nullopt;
+
+  if (op == HloOpcode::kAllReduceStart || wrapped_op == HloOpcode::kAllReduce) {
     return config.convert_all_reduce(instruction);
   }
-  if (instruction->opcode() == HloOpcode::kAllGatherStart) {
+  if (op == HloOpcode::kAllGatherStart || wrapped_op == HloOpcode::kAllGather) {
     return config.convert_all_gather(instruction);
   }
-  if (instruction->opcode() == HloOpcode::kCollectivePermuteStart) {
+  if (op == HloOpcode::kCollectivePermuteStart ||
+      wrapped_op == HloOpcode::kCollectivePermute) {
     return config.convert_collective_permute(instruction);
   }
-  if (instruction->opcode() == HloOpcode::kAsyncStart &&
-      instruction->async_wrapped_opcode() == HloOpcode::kAllReduce) {
-    return config.convert_all_reduce(instruction);
-  }
-  if (instruction->opcode() == HloOpcode::kAsyncStart &&
-      instruction->async_wrapped_opcode() == HloOpcode::kAllGather) {
-    return config.convert_all_gather(instruction);
-  }
-  if (instruction->opcode() == HloOpcode::kAsyncStart &&
-      instruction->async_wrapped_opcode() == HloOpcode::kCollectivePermute) {
-    return config.convert_collective_permute(instruction);
-  }
-  if (instruction->opcode() == HloOpcode::kAsyncStart &&
-      instruction->async_wrapped_opcode() == HloOpcode::kCollectiveBroadcast) {
+  if (wrapped_op == HloOpcode::kCollectiveBroadcast) {
     return config.convert_collective_broadcast(instruction);
   }
-  if (instruction->opcode() == HloOpcode::kAsyncStart &&
-      instruction->async_wrapped_opcode() == HloOpcode::kAllToAll) {
+  if (wrapped_op == HloOpcode::kAllToAll) {
     return config.convert_all_to_all(instruction);
   }
-  if (instruction->opcode() == HloOpcode::kAsyncStart &&
-      instruction->async_wrapped_opcode() == HloOpcode::kReduceScatter) {
+  if (wrapped_op == HloOpcode::kReduceScatter) {
     return config.convert_reduce_scatter(instruction);
   }
   return false;
@@ -103,20 +96,12 @@ absl::StatusOr<bool> AsyncCollectiveReplacer::RunImpl(
       }
 
       // Mark the async pair for replacement.
-      std::vector<HloInstruction*> real_users;
-      for (HloInstruction* user : inst->users()) {
-        if (user->opcode() == HloOpcode::kCustomCall &&
-            user->custom_call_target() == "control_dep") {
-          continue;
-        }
-        real_users.push_back(user);
-      }
-      if (real_users.size() != 1) {
+      HloInstruction* done = hlo_instruction_utils::async::FindAsyncDone(inst);
+      if (done == nullptr) {
         return Internal(
-            "Expected exactly one user for async start op %s, but found %d",
-            inst->name(), real_users.size());
+            "Expected to find matching async done op for %s, but found none",
+            inst->name());
       }
-      HloInstruction* done = real_users[0];
       async_pairs.push_back({inst, done});
       changed = true;
 
@@ -125,14 +110,12 @@ absl::StatusOr<bool> AsyncCollectiveReplacer::RunImpl(
       // TODO(mwhittaker): We can keep some of the control_dep calls. For now,
       // we delete all of them.
       for (HloInstruction* user : inst->users()) {
-        if (user->opcode() == HloOpcode::kCustomCall &&
-            user->custom_call_target() == "control_dep") {
+        if (user->IsCustomCall("control_dep")) {
           control_deps_to_remove.push_back(user);
         }
       }
       for (HloInstruction* user : done->users()) {
-        if (user->opcode() == HloOpcode::kCustomCall &&
-            user->custom_call_target() == "control_dep") {
+        if (user->IsCustomCall("control_dep")) {
           control_deps_to_remove.push_back(user);
         }
       }
