@@ -428,14 +428,15 @@ class HloInstruction {
       HloComputation* map_computation);
 
   // Creates a convolution op, where rhs is the convolutional filter
-  // and window describes how the filter is applied to lhs.
+  // and window describes how the filter is applied to lhs. Additionally,
+  // it supports structured sparsity and block scaling.
   static std::unique_ptr<HloInstruction> CreateConvolve(
-      const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
       int64_t feature_group_count, int64_t batch_group_count,
       const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
       const PrecisionConfig& precision_config,
-      const SparsityConfig& sparsity_config = {},
+      const SparsityConfig& sparsity_config = SparsityConfig(),
       ConvolutionKind convolution_kind = CONVOLUTION_KIND_UNSET);
 
   // Creates an FFT op, of the type indicated by fft_type.
@@ -1721,6 +1722,15 @@ class HloInstruction {
   bool IsCustomCall(absl::string_view target) const;
   bool IsCustomCall(absl::Span<const absl::string_view> targets) const;
 
+  // Returns true if this instruction is an allowed async intermediary custom
+  // call (e.g. Sharding, LocalToGlobalShape, GlobalToLocalShape, xla.sdy.*).
+  bool IsAllowedAsyncIntermediaryCustomCall() const;
+
+  // Returns true if this instruction is an allowed async intermediary (e.g.
+  // tuple, get-tuple-element, optimization barrier, copy, or allowed async
+  // intermediary custom-call).
+  bool IsAllowedAsyncIntermediary() const;
+
   // Returns the sharding applied to this operator.
   // REQUIRES: has_sharding() is true.
   const HloSharding& sharding() const {
@@ -2516,26 +2526,22 @@ class HloInstruction {
   // async-done.
   bool IsAsynchronous() const { return HloOpcodeIsAsync(opcode_); }
 
-  // Delagates to HloAsyncInstruction::async_chain_start().
+  // Delegates to HloAsyncInstruction::async_chain_start().
   HloInstruction* async_chain_start() const;
 
-  // Traces backward from an instruction to find the matching async producer.
-  static HloInstruction* FindAsyncProducer(HloInstruction* instr);
-  static const HloInstruction* FindAsyncProducer(const HloInstruction* instr);
-
-  // Delagates to HloAsyncInstruction::async_chain_next().
-  HloInstruction* async_chain_next() const;
-
-  // Delagates to HloAsyncInstruction::async_done().
+  // Delegates to HloAsyncInstruction::async_chain_done().
   HloInstruction* async_chain_done() const;
 
-  // Returns the computation that will executed asynchronously.
+  // Delegates to HloAsyncInstruction::async_chain_next().
+  HloInstruction* async_chain_next() const;
+
+  // Returns the computation that will be executed asynchronously.
   HloComputation* async_wrapped_computation() const;
 
-  // Delagates to HloAsyncInstruction::async_wrapped_instruction().
+  // Delegates to HloAsyncInstruction::async_wrapped_instruction().
   HloInstruction* async_wrapped_instruction() const;
 
-  // Delagates to HloAsyncInstruction::async_wrapped_opcode().
+  // Delegates to HloAsyncInstruction::async_wrapped_opcode().
   HloOpcode async_wrapped_opcode() const;
 
   // Delegates to HloAsyncInstruction::async_execution_thread().
@@ -2543,6 +2549,28 @@ class HloInstruction {
 
   // Delegates to HloAsyncInstruction::set_async_execution_thread().
   void set_async_execution_thread(absl::string_view async_execution_thread);
+
+  // Returns true if this instruction is an asynchronous producer
+  // (AsyncStart, AsyncUpdate, AllGatherStart, AllReduceStart,
+  // CollectivePermuteStart) - representing any op that produces an async
+  // context.
+  bool IsAsyncProducer() const;
+
+  // Returns true if this instruction is a root asynchronous start
+  // (AsyncStart, AllGatherStart, AllReduceStart, CollectivePermuteStart) -
+  // representing root async start ops.
+  bool IsAsyncStart() const;
+
+  // Returns true if this instruction is a terminal asynchronous done op
+  // (AsyncDone, AllGatherDone, AllReduceDone, CollectivePermuteDone) -
+  // representing terminal async done ops.
+  bool IsAsyncDone() const;
+
+  // Returns true if this instruction is an asynchronous consumer
+  // (AsyncUpdate, AsyncDone, AllGatherDone, AllReduceDone,
+  // CollectivePermuteDone) - representing any op that consumes an async
+  // context.
+  bool IsAsyncConsumer() const;
 
   // Delegates to
   // HloCallableInstruction::RecursivelySetComputationsThreadName().

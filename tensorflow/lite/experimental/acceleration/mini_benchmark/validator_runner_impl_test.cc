@@ -332,6 +332,51 @@ TEST_F(ValidatorRunnerImplTest, FailIfCannotEmbedInputData) {
             kMinibenchmarkValidationSubgraphBuildFailed);
 }
 
+TEST_F(ValidatorRunnerImplTest,
+       DetachedThreadSurvivesValidatorRunnerDestruction) {
+  if (!should_perform_test_) {
+    std::cerr << "Skipping test";
+    return;
+  }
+  int batch_size = 3;
+  custom_validation_embedder_ = std::make_unique<CustomValidationEmbedder>(
+      batch_size, std::vector<std::vector<uint8_t>>{
+                      std::vector<uint8_t>(batch_size * 224 * 224 * 3, 1)});
+  options_.model_path = plain_model_path_;
+  AlwaysTrueEvaluator evaluator;
+  options_.benchmark_result_evaluator = &evaluator;
+
+  {
+    ValidatorRunnerImpl validator = CreateValidator();
+    ASSERT_EQ(validator.Init(), kMinibenchmarkSuccess);
+
+    std::vector<flatbuffers::FlatBufferBuilder> tflite_settings(1);
+    tflite_settings[0].Finish(CreateTFLiteSettings(tflite_settings[0]));
+
+    validator.TriggerValidationAsync(std::move(tflite_settings),
+                                     options_.storage_path);
+  }
+
+  // ValidatorRunnerImpl is destroyed. Wait for detached thread to complete
+  // and verify no use-after-free occurs when accessing entrypoint name.
+  FlatbufferStorage<BenchmarkEvent> storage(options_.storage_path,
+                                            options_.error_reporter);
+  int completed_count = 0;
+  while (completed_count < 1) {
+    storage.Read();
+    completed_count = 0;
+    for (int i = 0; i < storage.Count(); i++) {
+      const BenchmarkEvent* event = storage.Get(i);
+      if (event->event_type() == BenchmarkEventType_ERROR ||
+          (event->event_type() == BenchmarkEventType_END && event->result())) {
+        completed_count++;
+      }
+    }
+    usleep(absl::ToInt64Microseconds(kWaitBetweenRefresh));
+  }
+  EXPECT_GE(completed_count, 1);
+}
+
 }  // namespace
 }  // namespace acceleration
 }  // namespace tflite
