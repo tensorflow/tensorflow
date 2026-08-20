@@ -197,6 +197,28 @@ TEST(FillOpTest, FillString) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
 }
 
+TEST(FillOpTest, FillStringMultiDimensional) {
+  FillOpModel<int32_t, std::string> m(TensorType_INT32, {2}, {2, 3}, "XYZ",
+                                      TestType::kDynamic);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({"XYZ", "XYZ", "XYZ", "XYZ", "XYZ", "XYZ"}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
+}
+
+// Tests that large dimensions that cause integer overflow are safely rejected.
+TEST(FillOpTest, FillStringOverflow) {
+  FillOpModel<int32_t, std::string> m(TensorType_INT32, {2}, {65536, 65536},
+                                      "AB", TestType::kDynamic);
+  EXPECT_NE(m.Invoke(), kTfLiteOk);
+}
+
+TEST(FillOpTest, FillStringOverflowInt64Dims) {
+  FillOpModel<int64_t, std::string> m(TensorType_INT64, {2}, {65536, 65536},
+                                      "AB", TestType::kDynamic);
+  EXPECT_NE(m.Invoke(), kTfLiteOk);
+}
+
 TEST_P(FillOpTest, FillInt8) {
   FillOpModel<int64_t, int8_t> m(TensorType_INT64, {3}, {2, 2, 2}, 5,
                                  GetParam());
