@@ -419,6 +419,7 @@ cuda_library(
     ]),
     deps = [
         "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:typed_kernel_factory",
         "//xla/stream_executor/gpu:gpu_semaphore",
         "@com_google_absl//absl/status:status_macros",
@@ -3277,6 +3278,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":cuda_elf_utils",
         "//xla/stream_executor:kernel_spec",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
@@ -3289,6 +3291,44 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "cuda_fatbin",
+    hdrs = ["cuda_fatbin.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+)
+
+cc_library(
+    name = "cuda_elf_utils",
+    srcs = ["cuda_elf_utils.cc"],
+    hdrs = ["cuda_elf_utils.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":cuda_fatbin",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "cuda_elf_utils_test",
+    srcs = ["cuda_elf_utils_test.cc"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":cuda_elf_utils",
+        ":cuda_fatbin",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

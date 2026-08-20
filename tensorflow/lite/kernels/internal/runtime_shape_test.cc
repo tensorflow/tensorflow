@@ -16,6 +16,7 @@ limitations under the License.
 // LINT.IfChange
 
 #include "tensorflow/lite/kernels/internal/runtime_shape.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -410,6 +411,11 @@ INSTANTIATE_TEST_SUITE_P(BigSmall, RuntimeShapeTest,
                          [](const testing::TestParamInfo<int>& info) {
                            return info.param == kSmallSize ? "Small" : "Big";
                          });
+
+TEST(RuntimeShapeTest, ArithmeticParamsBroadcastShapeIs64Bit) {
+  ArithmeticParams params;
+  EXPECT_EQ(sizeof(params.broadcast_shape[0]), 8);
+}
 
 }  // namespace
 }  // namespace tflite

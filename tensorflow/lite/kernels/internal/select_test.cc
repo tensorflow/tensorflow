@@ -13,12 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h"
 #include "tensorflow/lite/kernels/internal/reference/select.h"
 
 #include <cstddef>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
 
 namespace tflite {
 namespace reference_ops {
@@ -31,16 +33,15 @@ namespace {
 // declared tensor shapes for a Select/SelectV2 op -- wrote one element past
 // each array. Same bug class and same fix (absl::InlinedVector, sized to
 // the real rank) as broadcast_loop.h's rank-9 regression test.
-TEST(SelectTest, SupportsRankGreaterThanInlineRank) {
-  // x alternates 1/2 across all 9 dimensions; cond/y/output are constant 2.
+TEST(SelectTest, SupportsMaxRank) {
+  // x alternates 1/2 across all 8 dimensions; cond/y/output are constant 2.
   // This broadcasting pattern prevents BroadcastSelectSimple's loop-fusion
   // optimization from collapsing the dimensions, forcing next_dim_idx to
-  // increment on (almost) every one of the 9 dimensions -- walking one past
-  // the previously fixed-size 8-element arrays.
-  const RuntimeShape cond_shape({2, 2, 2, 2, 2, 2, 2, 2, 2});
-  const RuntimeShape x_shape({1, 2, 1, 2, 1, 2, 1, 2, 1});
-  const RuntimeShape y_shape({2, 2, 2, 2, 2, 2, 2, 2, 2});
-  const RuntimeShape output_shape({2, 2, 2, 2, 2, 2, 2, 2, 2});
+  // increment on (almost) every one of the 8 dimensions.
+  const RuntimeShape cond_shape({2, 2, 2, 2, 2, 2, 2, 2});
+  const RuntimeShape x_shape({1, 2, 1, 2, 1, 2, 1, 2});
+  const RuntimeShape y_shape({2, 2, 2, 2, 2, 2, 2, 2});
+  const RuntimeShape output_shape({2, 2, 2, 2, 2, 2, 2, 2});
 
   const size_t cond_size = cond_shape.FlatSize();
   const size_t x_size = x_shape.FlatSize();
@@ -53,8 +54,6 @@ TEST(SelectTest, SupportsRankGreaterThanInlineRank) {
   std::vector<float> output_data(output_size, 0.0f);
   for (size_t i = 0; i < x_size; ++i) x_data[i] = static_cast<float>(i);
 
-  // Must not read or write outside the five metadata arrays regardless of
-  // rank; ASan/stack-protector builds catch a regression here.
   BroadcastSelectSimple(cond_shape, cond_data.data(), x_shape, x_data.data(),
                         y_shape, y_data.data(), output_shape,
                         output_data.data());
@@ -93,6 +92,47 @@ TEST(SelectTest, SupportsRankGreaterThanInlineRank) {
     EXPECT_EQ(output_data[output_index], expected)
         << "output index " << output_index;
   }
+}
+
+#if GTEST_HAS_DEATH_TEST
+TEST(SelectTest, RankGreaterThanMaxRankDies) {
+  const RuntimeShape cond_shape({2, 2, 2, 2, 2, 2, 2, 2, 2});
+  const RuntimeShape x_shape({1, 2, 1, 2, 1, 2, 1, 2, 1});
+  const RuntimeShape y_shape({2, 2, 2, 2, 2, 2, 2, 2, 2});
+  const RuntimeShape output_shape({2, 2, 2, 2, 2, 2, 2, 2, 2});
+
+  std::vector<uint8_t> cond_data(cond_shape.FlatSize(), 1);
+  std::vector<float> x_data(x_shape.FlatSize(), 1.0f);
+  std::vector<float> y_data(y_shape.FlatSize(), 2.0f);
+  std::vector<float> output_data(output_shape.FlatSize(), 0.0f);
+
+  EXPECT_DEATH(BroadcastSelectSimple(cond_shape, cond_data.data(), x_shape,
+                                     x_data.data(), y_shape, y_data.data(),
+                                     output_shape, output_data.data()),
+               "");
+}
+#endif  // GTEST_HAS_DEATH_TEST
+
+TEST(SelectTest, NoIntegerOverflowWithLargeDimensions) {
+  const RuntimeShape shape0({65536, 32768, 2});
+  const RuntimeShape shape1({65536, 32768, 1});
+  ArithmeticParams params;
+  EXPECT_TRUE(ProcessBroadcastShapes(shape0, shape1, &params));
+  EXPECT_EQ(params.broadcast_category,
+            BroadcastableOpCategory::kSecondInputBroadcastsFast);
+  EXPECT_EQ(params.broadcast_shape[2], 2147483648LL);
+  EXPECT_GT(params.broadcast_shape[2], 0);
+}
+
+TEST(SelectTest, NoIntegerOverflowOuterDimension) {
+  const RuntimeShape shape0({8, 0x20000000, 2});
+  const RuntimeShape shape1({8, 0x20000000, 1});
+  ArithmeticParams params;
+  EXPECT_TRUE(ProcessBroadcastShapes(shape0, shape1, &params));
+  EXPECT_EQ(params.broadcast_category,
+            BroadcastableOpCategory::kSecondInputBroadcastsFast);
+  EXPECT_EQ(params.broadcast_shape[2], 4294967296LL);
+  EXPECT_GT(params.broadcast_shape[2], 0);
 }
 
 }  // namespace

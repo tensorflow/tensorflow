@@ -158,17 +158,17 @@ inline void BroadcastSubFiveFold(const ArithmeticParams& unswitched_params,
   // The flatsize for each inputs are as below.
   // input1.shape.FlatSize = y0 * y1 * y2 * y4,
   // input2.shape.FlatSize = y0 * y2 * y3 * y4.
-  const int y0 = params.broadcast_shape[0];
-  const int y1 = params.broadcast_shape[1];
-  const int y2 = params.broadcast_shape[2];
-  const int y3 = params.broadcast_shape[3];
-  const int y4 = params.broadcast_shape[4];
-  for (int i0 = 0; i0 < y0; ++i0) {
+  const int64_t y0 = params.broadcast_shape[0];
+  const int64_t y1 = params.broadcast_shape[1];
+  const int64_t y2 = params.broadcast_shape[2];
+  const int64_t y3 = params.broadcast_shape[3];
+  const int64_t y4 = params.broadcast_shape[4];
+  for (int64_t i0 = 0; i0 < y0; ++i0) {
     const int16_t* input2_data_ptr = nullptr;
-    for (int i1 = 0; i1 < y1; ++i1) {
+    for (int64_t i1 = 0; i1 < y1; ++i1) {
       input2_data_ptr = input2_data_reset;
-      for (int i2 = 0; i2 < y2; ++i2) {
-        for (int i3 = 0; i3 < y3; ++i3) {
+      for (int64_t i2 = 0; i2 < y2; ++i2) {
+        for (int64_t i3 = 0; i3 < y3; ++i3) {
           if (use_unswitched) {
             SubElementwiseInt16(y4, params, input1_data_ptr, input2_data_ptr,
                                 output_data_ptr);
