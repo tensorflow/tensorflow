@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 
-#include "xla/tsl/python/lib/core/numpy.h"
+#include "numpy/arrayobject.h"
 #include "pybind11/chrono.h"  // from @pybind11
 #include "pybind11/complex.h"  // from @pybind11
 #include "pybind11/functional.h"  // from @pybind11
@@ -113,21 +113,16 @@ static py::object CheckpointReader_GetTensor(
   tensorflow::MaybeRaiseFromStatus(
       tensorflow::TensorToNdarray(*tensor, &py_obj));
 
-  py::object result = tensorflow::PyoOrThrow(py_obj);
-  if (result.attr("ndim").cast<int>() == 0) {
-    return result.attr("__getitem__")(py::tuple());
-  }
-  return result;
+  return tensorflow::PyoOrThrow(
+      PyArray_Return(reinterpret_cast<PyArrayObject*>(py_obj)));
 }
 
 }  // namespace tensorflow
 
 PYBIND11_MODULE(_pywrap_checkpoint_reader, m,
                   py::mod_gil_not_used()) {
-  // Initialize TensorFlow's shared NumPy C API table.  TensorToNdarray()
-  // is implemented in a different translation unit and uses the
-  // PY_ARRAY_UNIQUE_SYMBOL provided by tsl's NumPy wrapper.
-  tsl::ImportNumpy();
+  // Initialization code to use numpy types in the type casters.
+  import_array1();
   py::class_<tensorflow::checkpoint::CheckpointReader> checkpoint_reader_class(
       m, "CheckpointReader");
   checkpoint_reader_class
