@@ -197,7 +197,6 @@ bool FillStringBufferWithPyArray(PyObject* value,
 
   PyArrayObject* array = reinterpret_cast<PyArrayObject*>(value);
   switch (PyArray_TYPE(array)) {
-    case NPY_OBJECT:
     case NPY_STRING:
     case NPY_UNICODE: {
       if (PyArray_NDIM(array) == 0) {
@@ -205,6 +204,20 @@ bool FillStringBufferWithPyArray(PyObject* value,
                                   PyArray_NBYTES(array));
         return true;
       }
+      UniquePyObjectRef iter(PyArray_IterNew(value));
+      while (PyArray_ITER_NOTDONE(iter.get())) {
+        UniquePyObjectRef item(PyArray_GETITEM(
+            array, reinterpret_cast<char*>(PyArray_ITER_DATA(iter.get()))));
+
+        if (!FillStringBufferFromPyString(item.get(), dynamic_buffer)) {
+          return false;
+        }
+
+        PyArray_ITER_NEXT(iter.get());
+      }
+      return true;
+    }
+    case NPY_OBJECT: {
       UniquePyObjectRef iter(PyArray_IterNew(value));
       while (PyArray_ITER_NOTDONE(iter.get())) {
         UniquePyObjectRef item(PyArray_GETITEM(

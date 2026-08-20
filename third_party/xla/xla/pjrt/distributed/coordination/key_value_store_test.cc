@@ -229,5 +229,12 @@ TEST(KeyValueStore, IncrementByWithInvalidValueFails) {
               StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
+TEST(KeyValueStore, NormalizeKey) {
+  EXPECT_EQ(KeyValueStore::NormalizeKey("foo"), "foo");
+  EXPECT_EQ(KeyValueStore::NormalizeKey("/foo/bar/"), "foo/bar");
+  EXPECT_EQ(KeyValueStore::NormalizeKey("/a/b/c/"), "a/b/c");
+  EXPECT_EQ(KeyValueStore::NormalizeKey("/"), "");
+}
+
 }  // namespace
 }  // namespace xla

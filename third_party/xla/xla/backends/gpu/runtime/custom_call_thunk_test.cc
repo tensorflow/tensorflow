@@ -889,7 +889,7 @@ absl::Status AddI32FfiHandler(ffi::RecordContext record_ctx,
     auto cmd_or = record_ctx.CreateLaunch(
         "AddI32", ptx.data(), ptx.size(), ffi::SourceFormat::kPtx,
         /*launch_dims=*/{{1, 1, 1}, {1, 1, 1}},
-        /*shared_mem_bytes=*/0, args);
+        /*shared_mem_bytes=*/0, /*uses_pdl=*/false, args);
     if (!cmd_or.ok()) {
       return cmd_or.status();
     }
@@ -1085,7 +1085,7 @@ absl::Status AddI32WithBarrierFfiHandler(ffi::RecordExtension::Type record_ctx,
     auto cmd_a_or = record_ctx.CreateLaunch(
         "AddI32", ptx.data(), ptx.size(), ffi::SourceFormat::kPtx,
         /*launch_dims=*/{{1, 1, 1}, {1, 1, 1}},
-        /*shared_mem_bytes=*/0, args);
+        /*shared_mem_bytes=*/0, /*uses_pdl=*/false, args);
     if (!cmd_a_or.ok()) {
       return cmd_a_or.status();
     }
@@ -1094,7 +1094,7 @@ absl::Status AddI32WithBarrierFfiHandler(ffi::RecordExtension::Type record_ctx,
     auto cmd_b_or = record_ctx.CreateLaunch(
         "AddI32", ptx.data(), ptx.size(), ffi::SourceFormat::kPtx,
         /*launch_dims=*/{{1, 1, 1}, {1, 1, 1}},
-        /*shared_mem_bytes=*/0, args);
+        /*shared_mem_bytes=*/0, /*uses_pdl=*/false, args);
     if (!cmd_b_or.ok()) {
       return cmd_b_or.status();
     }

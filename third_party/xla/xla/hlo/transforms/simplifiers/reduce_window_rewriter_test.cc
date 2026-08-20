@@ -582,5 +582,45 @@ ENTRY entry (arg: f32[128]) -> f32[128] {
   )");
 }
 
+TEST_F(ReduceWindowRewriterTest, BaseLengthOneDoesNotRewrite) {
+  const char* hlo = R"(
+HloModule scan
+
+add_float {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY entry (arg: f32[128]) -> f32[128] {
+  arg = f32[128]{0} parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce-window = f32[128]{0} reduce-window(f32[128]{0} %arg, f32[] %constant), window={size=128 pad=127_0}, to_apply=%add_float
+})";
+
+  RunAndFilecheckHloRewrite(hlo, ReduceWindowRewriter{1}, std::nullopt);
+}
+
+TEST_F(ReduceWindowRewriterTest, AssociativeScanBaseLengthOneDoesNotRewrite) {
+  const char* hlo = R"(
+HloModule scan
+
+add_float {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  add = f32[] add(lhs, rhs)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+
+ENTRY entry (arg: f32[128]) -> f32[128] {
+  arg = f32[128]{0} parameter(0)
+  constant = f32[] constant(0)
+  scan = (f32[128]{0}, f32[]) scan(f32[128]{0} %arg, f32[] %constant), dimensions={0}, num_carries=1, to_apply=%add_float, is_associative=true
+  ROOT result = f32[128]{0} get-tuple-element(scan), index=0
+})";
+
+  RunAndFilecheckHloRewrite(hlo, AssociativeScanRewriter{1}, std::nullopt);
+}
+
 }  // namespace
 }  // namespace xla

@@ -2756,8 +2756,7 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       });
       VLOG(1) << "Executing multi page buffer assignment";
       return std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
-          page_size, alignment,
-          GlobalDecreasingSizeBestFitHeap<HloValue>::kSpatial);
+          page_size, alignment, opts_.multi_page_strategy);
     }
 
     if (heap_buffer_interval_compare) {
