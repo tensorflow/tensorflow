@@ -23,7 +23,7 @@ from xla.benchmarks.jax_microbenchmarks import jax_profiler_utils  # pylint: dis
 
 class JaxProfilerUtilsTest(absltest.TestCase):
 
-  def test_profiler_returns_dataframe(self):
+  def _run_test(self, use_profiler: bool):
     kernel_name = "test_matmul"
 
     def matmul_fn(x, y):
@@ -38,16 +38,28 @@ class JaxProfilerUtilsTest(absltest.TestCase):
     # Warmup
     matmul_jit(x, y).block_until_ready()
 
-    with jax_profiler_utils.JaxProfiler(kernel_name) as profiler:
+    with jax_profiler_utils.JaxProfiler(
+        kernel_name, enable_profiling=use_profiler
+    ) as profiler:
       with jax.profiler.TraceAnnotation(kernel_name):
         matmul_jit(x, y).block_until_ready()
 
+    return profiler
+
+  def test_profiler_returns_dataframe(self):
+    profiler = self._run_test(use_profiler=True)
     self.assertIsNotNone(profiler.result)
     df = profiler.result.as_dataframe()
     self.assertIsNotNone(df)
     self.assertIn("runtime_us", df.columns)
     self.assertIn("flops", df.columns)
     self.assertNotEmpty(df)
+
+  def test_profiler_with_profiling_disabled(self):
+    profiler = self._run_test(use_profiler=False)
+    self.assertIsNotNone(profiler.result)
+    self.assertEmpty(profiler.result.runtimes_us)
+    self.assertEqual(profiler.result.flops, 0.0)
 
 
 if __name__ == "__main__":

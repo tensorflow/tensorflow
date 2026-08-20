@@ -21,15 +21,18 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/test.h"
+#include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -45,6 +48,8 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+using ::absl_testing::IsOkAndHolds;
 
 namespace op = xla::testing::opcode_matchers;
 namespace m = xla::match;
@@ -1398,6 +1403,259 @@ TEST_F(HloConstantFoldingTest, LateOptionsDontFoldGteWithControlDependency) {
   ASSERT_OK_AND_ASSIGN(bool result,
                        RunHloPass(&constant_folding, module.get()));
   EXPECT_FALSE(result);
+}
+
+TEST_F(HloConstantFoldingTest, ComputationCalledTwiceOnDifferentConstants) {
+  const std::string hlo_string = R"(
+    HloModule test
+
+    // CHECK-LABEL: %subcomp (
+    // CHECK: constant({15, 15})
+
+    // CHECK-LABEL: %subcomp.clone (
+    // CHECK: constant({25, 25})
+    subcomp {
+      p0 = s32[2] parameter(0)
+      p1 = s32[2] parameter(1)
+      c = s32[2] constant({5, 5})
+      add0 = s32[2] add(p0, c)
+      ROOT add1 = s32[2] add(p1, add0)
+    }
+
+    // CHECK-LABEL: ENTRY %entry (
+    // CHECK: %call1 = s32[2]{0} call(%c10, %p0.1), to_apply=%subcomp
+    // CHECK: %call2 = s32[2]{0} call(%c20, %p1.1), to_apply=%subcomp.clone
+    // CHECK: ROOT %out = s32[2]{0} add(%call1, %call2)
+    ENTRY entry {
+      p0.1 = s32[2] parameter(0)
+      p1.1 = s32[2] parameter(1)
+      c10 = s32[2] constant({10, 10})
+      c20 = s32[2] constant({20, 20})
+      call1 = s32[2] call(c10, p0.1), to_apply=subcomp
+      call2 = s32[2] call(c20, p1.1), to_apply=subcomp
+      ROOT out = s32[2] add(call1, call2)
+    })";
+
+  {
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+    HloConstantFolding constant_folding;
+    EXPECT_THAT(constant_folding.Run(module.get()), IsOkAndHolds(false));
+  }
+
+  {
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+    FlattenCallGraph flatten;
+    EXPECT_THAT(flatten.Run(module.get()), IsOkAndHolds(true));
+
+    HloConstantFolding constant_folding;
+    EXPECT_THAT(constant_folding.Run(module.get()), IsOkAndHolds(true));
+    EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string),
+                IsOkAndHolds(true));
+  }
+}
+
+TEST_F(HloConstantFoldingTest,
+       ComputationCalledTwiceOnDifferentConstantsSingleArgument) {
+  const std::string hlo_string = R"(
+    HloModule test
+
+    // CHECK-LABEL: %subcomp (
+    // CHECK: constant({5, 5})
+    subcomp {
+      p0 = s32[2] parameter(0)
+      c = s32[2] constant({5, 5})
+      add0 = s32[2] add(p0, c)
+      ROOT add1 = s32[2] add(add0, add0)
+    }
+
+    // CHECK-LABEL: ENTRY %entry (
+    // CHECK: ROOT {{.*}} = s32[2]{0} constant({80, 80})
+    ENTRY entry {
+      c10 = s32[2] constant({10, 10})
+      c20 = s32[2] constant({20, 20})
+      call1 = s32[2] call(c10), to_apply=subcomp
+      call2 = s32[2] call(c20), to_apply=subcomp
+      ROOT out = s32[2] add(call1, call2)
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloConstantFolding constant_folding;
+  EXPECT_THAT(constant_folding.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(HloConstantFoldingTest,
+       ComputationCalledTwiceOnConstantAndOnNonConstant) {
+  const std::string hlo_string = R"(
+    HloModule test
+
+    // CHECK-LABEL: %subcomp (
+    // CHECK: constant({15, 15})
+
+    // CHECK-LABEL: %subcomp.clone (
+    // CHECK: constant({5, 5})
+    subcomp {
+      p0 = s32[2] parameter(0)
+      p1 = s32[2] parameter(1)
+      c = s32[2] constant({5, 5})
+      add0 = s32[2] add(p0, c)
+      ROOT add1 = s32[2] add(p1, add0)
+    }
+
+    // CHECK-LABEL: ENTRY %entry (
+    // CHECK: %call1 = s32[2]{0} call(%c10, %p0.1), to_apply=%subcomp
+    // CHECK: %call2 = s32[2]{0} call(%p0.1, %p1.1), to_apply=%subcomp.clone
+    // CHECK: ROOT %out = s32[2]{0} add(%call1, %call2)
+    ENTRY entry {
+      p0.1 = s32[2] parameter(0)
+      p1.1 = s32[2] parameter(1)
+      c10 = s32[2] constant({10, 10})
+      call1 = s32[2] call(c10, p0.1), to_apply=subcomp
+      call2 = s32[2] call(p0.1, p1.1), to_apply=subcomp
+      ROOT out = s32[2] add(call1, call2)
+    })";
+
+  {
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+    HloConstantFolding constant_folding;
+    EXPECT_THAT(constant_folding.Run(module.get()), IsOkAndHolds(false));
+  }
+  {
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+    FlattenCallGraph flatten;
+    EXPECT_THAT(flatten.Run(module.get()), IsOkAndHolds(true));
+
+    HloConstantFolding constant_folding;
+    EXPECT_THAT(constant_folding.Run(module.get()), IsOkAndHolds(true));
+    EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string),
+                IsOkAndHolds(true));
+  }
+}
+
+TEST_F(HloConstantFoldingTest,
+       ComputationCalledTwiceOnConstantAndOnNonConstantSingleArgument) {
+  const std::string hlo_string = R"(
+    HloModule test
+
+    // CHECK-LABEL: %subcomp (
+    // CHECK: constant({5, 5})
+    subcomp {
+      p0 = s32[2] parameter(0)
+      c = s32[2] constant({5, 5})
+      add0 = s32[2] add(p0, c)
+      ROOT add1 = s32[2] add(add0, add0)
+    }
+
+    // CHECK-LABEL: ENTRY %entry (
+    // CHECK: %constant = s32[2]{0} constant({30, 30})
+    // CHECK: %call2 = s32[2]{0} call(%p0.1), to_apply=%subcomp
+    // CHECK: ROOT %out = s32[2]{0} add(%constant, %call2)
+    ENTRY entry {
+      p0.1 = s32[2] parameter(0)
+      c10 = s32[2] constant({10, 10})
+      call1 = s32[2] call(c10), to_apply=subcomp
+      call2 = s32[2] call(p0.1), to_apply=subcomp
+      ROOT out = s32[2] add(call1, call2)
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloConstantFolding constant_folding;
+  EXPECT_THAT(constant_folding.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(HloConstantFoldingTest, ComputationCalledTwiceOnSameConstants) {
+  const std::string hlo_string = R"(
+    HloModule test
+
+    // CHECK-LABEL: %subcomp (
+    // CHECK: constant({15, 15})
+    subcomp {
+      p0 = s32[2] parameter(0)
+      p1 = s32[2] parameter(1)
+      c = s32[2] constant({5, 5})
+      add0 = s32[2] add(p0, c)
+      ROOT add1 = s32[2] add(p1, add0)
+    }
+
+    // CHECK-LABEL: ENTRY %entry (
+    // CHECK: %call1 = s32[2]{0} call(%c10, %p0.1), to_apply=%subcomp
+    // CHECK: %call2 = s32[2]{0} call(%c10, %p1.1), to_apply=%subcomp
+    // CHECK: ROOT %out = s32[2]{0} add(%call1, %call2)
+    ENTRY entry {
+      p0.1 = s32[2] parameter(0)
+      p1.1 = s32[2] parameter(1)
+      c10 = s32[2] constant({10, 10})
+      call1 = s32[2] call(c10, p0.1), to_apply=subcomp
+      call2 = s32[2] call(c10, p1.1), to_apply=subcomp
+      ROOT out = s32[2] add(call1, call2)
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloConstantFolding constant_folding;
+  EXPECT_THAT(constant_folding.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(HloConstantFoldingTest,
+       ComputationCalledTwiceOnSameConstantsSingleArgument) {
+  const std::string hlo_string = R"(
+    HloModule test
+
+    // CHECK-LABEL: %subcomp (
+    // CHECK: constant({5, 5})
+    subcomp {
+      p0 = s32[2] parameter(0)
+      c = s32[2] constant({5, 5})
+      add0 = s32[2] add(p0, c)
+      ROOT add1 = s32[2] add(add0, add0)
+    }
+
+    // CHECK-LABEL: ENTRY %entry (
+    // CHECK: ROOT {{.*}} = s32[2]{0} constant({60, 60})
+    ENTRY entry {
+      p0.1 = s32[2] parameter(0)
+      c10 = s32[2] constant({10, 10})
+      call1 = s32[2] call(c10), to_apply=subcomp
+      call2 = s32[2] call(c10), to_apply=subcomp
+      ROOT out = s32[2] add(call1, call2)
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloConstantFolding constant_folding;
+  EXPECT_THAT(constant_folding.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(HloConstantFoldingTest, ComputationCalledOnceOnConstants) {
+  const std::string hlo_string = R"(
+    HloModule test
+
+    // CHECK-LABEL: %subcomp (
+    // CHECK: constant({15, 15})
+    subcomp {
+      p0 = s32[2] parameter(0)
+      p1 = s32[2] parameter(1)
+      c = s32[2] constant({5, 5})
+      add0 = s32[2] add(p0, c)
+      ROOT add1 = s32[2] add(p1, add0)
+    }
+
+    // CHECK-LABEL: ENTRY %entry (
+    // CHECK: %call1 = s32[2]{0} call(%c10, %p0.1), to_apply=%subcomp
+    // CHECK: ROOT %out = s32[2]{0} negate(%call1)
+    ENTRY entry {
+      p0.1 = s32[2] parameter(0)
+      p1.1 = s32[2] parameter(1)
+      c10 = s32[2] constant({10, 10})
+      call1 = s32[2] call(c10, p0.1), to_apply=subcomp
+      ROOT out = s32[2] negate(call1)
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloConstantFolding constant_folding;
+  EXPECT_THAT(constant_folding.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
 }
 
 }  // namespace
