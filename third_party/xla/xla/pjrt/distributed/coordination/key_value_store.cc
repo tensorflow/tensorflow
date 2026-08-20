@@ -144,4 +144,32 @@ void KeyValueStore::NotifyCallbacksForKey(
   }
 }
 
+std::string KeyValueStore::NormalizeKey(absl::string_view key) {
+  std::string norm_key = std::string(key);
+  const char* src = norm_key.c_str();
+  std::string::iterator dst = norm_key.begin();
+
+  // Parse all characters
+  while (*src) {
+    // Skip leading slashes
+    while (*src == '/') {
+      src++;
+    }
+    // Copy over all non-slash characters
+    while (*src && *src != '/') {
+      *dst++ = *src++;
+    }
+    // Allow one slash at the end of current directory
+    if (*src) {
+      *dst++ = *src++;
+    }
+  }
+  // If ending with slash, remove the trailing slash
+  if (dst > norm_key.begin() && *(dst - 1) == '/') {
+    dst--;
+  }
+  norm_key.resize(dst - norm_key.begin());
+  return norm_key;
+}
+
 }  // namespace xla

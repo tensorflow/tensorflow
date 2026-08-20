@@ -75,6 +75,7 @@ void Free(TfLiteContext* context, void* buffer) {
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const auto* params = reinterpret_cast<TfLiteSVDFParams*>(node->builtin_data);
+  TF_LITE_ENSURE(context, params != nullptr);
   OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
   int scratch_tensor_index = op_data->scratch_tensor_index;
 
@@ -94,22 +95,27 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context,
                  input->type == kTfLiteFloat32 || input->type == kTfLiteInt8);
 
+  TF_LITE_ENSURE_EQ(context, NumDimensions(input), 2);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(weights_feature), 2);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(weights_time), 2);
+
   // Check all the parameters of tensor match within themselves and match the
   // input configuration.
   const int rank = params->rank;
-  const int batch_size = input->dims->data[0];
-  const int num_filters = weights_feature->dims->data[0];
-  TF_LITE_ENSURE(context, rank != 0);
+  const int batch_size = SizeOfDimension(input, 0);
+  const int num_filters = SizeOfDimension(weights_feature, 0);
+  TF_LITE_ENSURE(context, rank > 0);
   TF_LITE_ENSURE_EQ(context, num_filters % rank, 0);
   const int num_units = num_filters / rank;
-  const int memory_size = weights_time->dims->data[1];
-  TF_LITE_ENSURE_EQ(context, input->dims->data[1],
-                    weights_feature->dims->data[1]);
-  TF_LITE_ENSURE_EQ(context, weights_time->dims->data[0], num_filters);
+  const int memory_size = SizeOfDimension(weights_time, 1);
+  TF_LITE_ENSURE_EQ(context, SizeOfDimension(input, 1),
+                    SizeOfDimension(weights_feature, 1));
+  TF_LITE_ENSURE_EQ(context, SizeOfDimension(weights_time, 0), num_filters);
 
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   if (bias) {
-    TF_LITE_ENSURE_EQ(context, bias->dims->data[0], num_units);
+    TF_LITE_ENSURE_EQ(context, NumDimensions(bias), 1);
+    TF_LITE_ENSURE_EQ(context, SizeOfDimension(bias, 0), num_units);
   }
 
   const TfLiteTensor* state;
@@ -134,6 +140,37 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // The weights are of consistent type, so it suffices to check one.
   const bool is_hybrid_op = IsHybridOp(input, weights_feature);
   const bool is_full_integer = input->type == kTfLiteInt8;
+
+  if (is_hybrid_op) {
+    TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteFloat32);
+    TF_LITE_ENSURE(context, weights_feature->type == kTfLiteUInt8 ||
+                                weights_feature->type == kTfLiteInt8);
+    TF_LITE_ENSURE(context, weights_time->type == kTfLiteUInt8 ||
+                                weights_time->type == kTfLiteInt8);
+    TF_LITE_ENSURE_TYPES_EQ(context, state->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteFloat32);
+    if (bias != nullptr) {
+      TF_LITE_ENSURE_TYPES_EQ(context, bias->type, kTfLiteFloat32);
+    }
+  } else if (is_full_integer) {
+    TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteInt8);
+    TF_LITE_ENSURE_TYPES_EQ(context, weights_feature->type, kTfLiteInt8);
+    TF_LITE_ENSURE_TYPES_EQ(context, weights_time->type, kTfLiteInt16);
+    TF_LITE_ENSURE_TYPES_EQ(context, state->type, kTfLiteInt16);
+    TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteInt8);
+    if (bias != nullptr) {
+      TF_LITE_ENSURE_TYPES_EQ(context, bias->type, kTfLiteInt32);
+    }
+  } else {
+    TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_TYPES_EQ(context, weights_feature->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_TYPES_EQ(context, weights_time->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_TYPES_EQ(context, state->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteFloat32);
+    if (bias != nullptr) {
+      TF_LITE_ENSURE_TYPES_EQ(context, bias->type, kTfLiteFloat32);
+    }
+  }
 
   // Resize scratch.
   TfLiteIntArrayFree(node->temporaries);
@@ -261,20 +298,41 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE(context, input->quantization.type != kTfLiteNoQuantization);
     auto* input_params =
         reinterpret_cast<TfLiteAffineQuantization*>(input->quantization.params);
+    TF_LITE_ENSURE(context, input_params != nullptr &&
+                                input_params->scale != nullptr &&
+                                input_params->scale->size > 0 &&
+                                input_params->zero_point != nullptr &&
+                                input_params->zero_point->size > 0);
     TF_LITE_ENSURE(context,
                    weights_feature->quantization.type != kTfLiteNoQuantization);
     auto* weights_feature_params = reinterpret_cast<TfLiteAffineQuantization*>(
         weights_feature->quantization.params);
+    TF_LITE_ENSURE(context, weights_feature_params != nullptr &&
+                                weights_feature_params->scale != nullptr &&
+                                weights_feature_params->scale->size > 0);
     TF_LITE_ENSURE(context, state->quantization.type != kTfLiteNoQuantization);
     auto* state_params =
         reinterpret_cast<TfLiteAffineQuantization*>(state->quantization.params);
+    TF_LITE_ENSURE(context, state_params != nullptr &&
+                                state_params->scale != nullptr &&
+                                state_params->scale->size > 0 &&
+                                state_params->scale->data[0] > 0.0f);
     TF_LITE_ENSURE(context,
                    weights_time->quantization.type != kTfLiteNoQuantization);
     auto* weight_time_params = reinterpret_cast<TfLiteAffineQuantization*>(
         weights_time->quantization.params);
+    TF_LITE_ENSURE(context, weight_time_params != nullptr &&
+                                weight_time_params->scale != nullptr &&
+                                weight_time_params->scale->size > 0);
     TF_LITE_ENSURE(context, output->quantization.type != kTfLiteNoQuantization);
     auto* output_params = reinterpret_cast<TfLiteAffineQuantization*>(
         output->quantization.params);
+    TF_LITE_ENSURE(context, output_params != nullptr &&
+                                output_params->scale != nullptr &&
+                                output_params->scale->size > 0 &&
+                                output_params->scale->data[0] > 0.0f &&
+                                output_params->zero_point != nullptr &&
+                                output_params->zero_point->size > 0);
     const double effective_scale_1 = input_params->scale->data[0] *
                                      weights_feature_params->scale->data[0] /
                                      state_params->scale->data[0];

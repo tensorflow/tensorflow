@@ -282,20 +282,19 @@ class HloAsyncInstruction : public HloInstruction {
 
   // Returns async-start instruction of the async chain.
   HloAsyncInstruction* async_chain_start() const;
-  // Returns the next async instruction in the async chain.
-  HloAsyncInstruction* async_chain_next() const { return async_chain_next_; }
   // Returns async-done instruction of the async chain.
   HloAsyncInstruction* async_chain_done() const;
+  // Returns the next async instruction in the async chain, or nullptr if this
+  // is async-done.
+  HloAsyncInstruction* async_chain_next() const;
   // Returns the chain of async op referencing this computation,
-  // where *begin(GetAsyncChain()) is the async-start op and
-  // *end(GetAsyncChain()) is the async-done op.
+  // where GetAsyncChain().front() is the async-start op and
+  // GetAsyncChain().back() is the async-done op.
   std::vector<HloAsyncInstruction*> GetAsyncChain() const;
 
   bool HasSideEffect() const override {
     return async_wrapped_instruction()->HasSideEffect();
   }
-
-  void UpdateAsyncChain();
 
   // Updates all future instructions in the async chain to match the shape of
   // the current instruction.
@@ -2021,7 +2020,7 @@ class HloOutfeedInstruction : public HloInstruction {
 class HloConvolutionInstruction : public HloInstruction {
  public:
   explicit HloConvolutionInstruction(
-      const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
       int64_t feature_group_count, int64_t batch_group_count,
       const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
@@ -2101,6 +2100,7 @@ class HloConvolutionInstruction : public HloInstruction {
   PrecisionConfig precision_config_;
   // The sparsity configuration used for the convolution.
   SparsityConfig sparsity_config_;
+  // Convolution block scaling config.
   // Conv type (fprop, dgrad, wgrad)
   ConvolutionKind convolution_kind_ = CONVOLUTION_KIND_UNSET;
 };
