@@ -281,6 +281,8 @@ ConfigAssigner::Options GetConfigAssignerOptions(
       debug_options.xla_gpu_require_complete_aot_autotune_results();
   options.dump_hlos = debug_options.xla_gpu_dump_autotuned_gemm_fusions() ||
                       debug_options.xla_gpu_dump_autotuned_instructions();
+  options.use_new_cache_format =
+      debug_options.xla_gpu_use_new_autotune_cache_format();
 
   return options;
 }

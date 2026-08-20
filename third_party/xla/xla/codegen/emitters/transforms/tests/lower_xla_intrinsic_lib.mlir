@@ -117,7 +117,7 @@ module {
 
 // CHECK-LABEL: @erf64
 // CHECK-NOT: math.erf
-// CHECK: %[[ERF_CALL:.*]] = call @erf
+// CHECK: %[[ERF_CALL:.*]] = call @xla.erf.f64
 // CHECK: return %[[ERF_CALL]]
 
 
@@ -132,7 +132,7 @@ module {
 
 // CHECK-LABEL: @erf64_vector
 // CHECK-NOT: math.erf
-// CHECK-COUNT-4: call @erf
+// CHECK-COUNT-4: call @xla.erf.f64
 
 // -----
 
