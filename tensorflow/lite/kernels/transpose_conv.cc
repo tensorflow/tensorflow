@@ -406,6 +406,29 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
   } else {
     TF_LITE_ENSURE_STATUS(ResizeTensor(context, output_shape, output));
+    TF_LITE_ENSURE_EQ(context, NumDimensions(output), 4);
+    TF_LITE_ENSURE_EQ(context, SizeOfDimension(input, 0),
+                      SizeOfDimension(output, 0));
+    TF_LITE_ENSURE(context, SizeOfDimension(output, 1) > 0);
+    TF_LITE_ENSURE(context, SizeOfDimension(output, 2) > 0);
+    TF_LITE_ENSURE_EQ(context, SizeOfDimension(output, 3),
+                      SizeOfDimension(weights, 0));
+
+    // Get height and width of the output image.
+    const int width = SizeOfDimension(output, 2);
+    const int height = SizeOfDimension(output, 1);
+    const int filter_width = SizeOfDimension(weights, 2);
+    const int filter_height = SizeOfDimension(weights, 1);
+
+    int computed_input_height, computed_input_width;
+    TF_LITE_ENSURE_OK(context, ComputePaddingHeightWidthChecked(
+                                   params->stride_height, params->stride_width, 1,
+                                   1, height, width, filter_height, filter_width,
+                                   params->padding, &computed_input_height,
+                                   &computed_input_width, &data->padding));
+    TF_LITE_ENSURE_EQ(context, computed_input_height, SizeOfDimension(input, 1));
+    TF_LITE_ENSURE_EQ(context, computed_input_width, SizeOfDimension(input, 2));
+
     if (data->has_col2im) {
       TF_LITE_ENSURE_STATUS(
           ResizeCol2ImTensor(context, output_shape, weights, input, col2im));
@@ -875,11 +898,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, SizeOfDimension(output, 2) > 0);
   TF_LITE_ENSURE_EQ(context, SizeOfDimension(output, 3),
                     SizeOfDimension(weights, 0));
-  if (data->has_col2im && IsDynamicTensor(col2im)) {
-    TF_LITE_ENSURE_OK(context, ResizeCol2ImTensor(context, output_shape,
-                                                  weights, input, col2im));
-  }
-
   // Get height and width of the output image.
   const int width = SizeOfDimension(output, 2);
   const int height = SizeOfDimension(output, 1);
@@ -894,6 +912,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                  &computed_input_width, &data->padding));
   TF_LITE_ENSURE_EQ(context, computed_input_height, SizeOfDimension(input, 1));
   TF_LITE_ENSURE_EQ(context, computed_input_width, SizeOfDimension(input, 2));
+
+  if (data->has_col2im && IsDynamicTensor(col2im)) {
+    TF_LITE_ENSURE_OK(context, ResizeCol2ImTensor(context, output_shape,
+                                                  weights, input, col2im));
+  }
 
   // Currently support float32, uint8, int8, int16.
   switch (input->type) {
