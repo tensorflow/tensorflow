@@ -61,6 +61,7 @@ pybind_extension(
     wrap_py_init = True,
     deps = [
         ":metrics_wrapper_lib",
+        "@com_google_absl//absl/synchronization",
         "//tensorflow/python/lib/core:pybind11_lib",
         "@com_google_protobuf//:protobuf",
         "@pybind11",
