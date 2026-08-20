@@ -52,7 +52,7 @@ limitations under the License.
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
