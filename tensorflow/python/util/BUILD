@@ -261,7 +261,6 @@ tf_python_pybind_extension(
     name = "_pywrap_checkpoint_reader",
     srcs = ["py_checkpoint_reader_wrapper.cc"],
     hdrs = [
-        "@xla//xla/tsl/python/lib/core:numpy_hdr",
         "//tensorflow/c:checkpoint_reader_hdrs",
         "//tensorflow/c:headers",
         "//tensorflow/c:safe_ptr_hdr",
@@ -292,7 +291,6 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/synchronization",
         "//third_party/py/numpy:headers",
         "@pybind11",
-        "@xla//xla/tsl/python/lib/core:numpy",
         "@xla//third_party/python_runtime:headers",
     ] + if_pywrap(["@com_google_absl//absl/strings"]),
 )

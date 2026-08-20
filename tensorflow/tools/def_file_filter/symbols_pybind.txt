@@ -317,7 +317,6 @@ tensorflow::Graph::IsControlEdge
 
 [//external/xla/xla/tsl/python/lib/core:numpy] # tf_session
 tsl::ImportNumpy
-_xla_numpy_api
 _tsl_numpy_api
 
 [//tensorflow/python/client:tf_session_helper] # tf_session
