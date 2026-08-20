@@ -25,51 +25,43 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
+#include "absl/log/die_if_null.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/evaluator/hlo_evaluator.h"
+#include "xla/hlo/evaluator/hlo_evaluator_interface.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_pipeline.h"
-#include "xla/hlo/transforms/expanders/cholesky_expander.h"
-#include "xla/hlo/transforms/expanders/convolution_type_canonicalizer.h"
-#include "xla/hlo/transforms/expanders/dynamic_index_splitter.h"
-#include "xla/hlo/transforms/expanders/eigh_expander.h"
-#include "xla/hlo/transforms/expanders/qr_expander.h"
 #include "xla/layout.h"
-#include "xla/layout_util.h"
 #include "xla/literal.h"
-#include "xla/pjrt/layout_mode.h"
+#include "xla/literal_util.h"
+#include "xla/pjrt/interpreter/interpreter_executable.h"
+#include "xla/pjrt/interpreter/interpreter_topology_description.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
-#include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/utils.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/batchnorm_expander.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/custom_call_target_registry.h"
-#include "xla/service/dynamic_dimension_inference.h"
-#include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_module_util.h"
-#include "xla/service/layout_assignment.h"
-#include "xla/service/topk_rewriter.h"
-#include "xla/service/triangular_solve_expander.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -82,10 +74,6 @@ bool ShapesMatch(const Shape& expected_shape, const Shape& actual_shape) {
   }
   return Shape::Equal().MinorToMajorOnlyInLayout()(expected_shape,
                                                    actual_shape);
-}
-
-absl::StatusOr<Shape> ChooseCompactLayoutForShape(const Shape& shape) {
-  return LayoutUtil::GetWithDefaultLayout(shape);
 }
 
 // Handles custom_call ops during evaluation by routing them through the global
@@ -153,21 +141,13 @@ ExtractInterpreterInputLiteralsFromBuffers(
   // Re-tuple input arguments. PjRt is commonly used in a mode where the input
   // tuple (if present) is flattened and passed as a vector of argument
   // buffers. The HloEvaluator expects the input to be tupled in these cases.
-  //
-  // This process invalidates the input literals and thus the input buffers
-  // themselves.
-  std::vector<Shape> shapes;
-  shapes.reserve(literals.size());
+  std::vector<const Literal*> literal_ptrs;
+  literal_ptrs.reserve(literals.size());
   for (const Literal* literal : literals) {
-    shapes.push_back(literal->shape());
+    literal_ptrs.push_back(literal);
   }
   auto tupled_arg_literal =
-      std::make_unique<Literal>(ShapeUtil::MakeTupleShape(shapes),
-                                /*allocate_arrays=*/false);
-  for (int i = 0; i < literals.size(); ++i) {
-    ABSL_RETURN_IF_ERROR(tupled_arg_literal->MoveFrom(std::move(*literals[i]),
-                                                 /*dest_shape_index=*/{i}));
-  }
+      std::make_unique<Literal>(LiteralUtil::MakeTuple(literal_ptrs));
 
   // Replace arg literals with the tupled literal.
   literals.clear();
@@ -175,18 +155,76 @@ ExtractInterpreterInputLiteralsFromBuffers(
   return std::make_tuple(std::move(literals), std::move(tupled_arg_literal));
 }
 
-// The interpreter is a 1 replica, 1 partition = 1 device system.
-inline DeviceAssignment MakeInterpreterDeviceAssignment() {
-  DeviceAssignment assignment(1, 1);
-  assignment(0, 0) = 0;
-  return assignment;
-}
 }  // namespace
 
-const InterpreterDescription& InterpreterDescription::Singleton() {
-  static const InterpreterDescription* const singleton =
-      new InterpreterDescription;
-  return *singleton;
+InterpreterLoadedExecutable::InterpreterLoadedExecutable(
+    PjRtClient* absl_nonnull client,
+    std::shared_ptr<InterpreterExecutable> executable,
+    std::unique_ptr<HloEvaluatorInterface> hlo_evaluator,
+    std::shared_ptr<DeviceAssignment> device_assignment,
+    std::vector<LogicalDeviceIds> addressable_device_logical_ids,
+    std::vector<PjRtDevice*> addressable_devices)
+    : client_(ABSL_DIE_IF_NULL(client)),
+      name_(ABSL_DIE_IF_NULL(executable)->name()),
+      executable_(std::move(executable)),
+      hlo_evaluator_(std::move(hlo_evaluator)),
+      device_assignment_(std::move(device_assignment)),
+      addressable_device_logical_ids_(
+          std::move(addressable_device_logical_ids)),
+      addressable_devices_(std::move(addressable_devices)) {
+  if (executable_ && executable_->dynamic_dimension_inference().has_value()) {
+    hlo_evaluator_->set_dynamic_dimension_inference(
+        &executable_->dynamic_dimension_inference().value());
+  }
+}
+
+InterpreterExecutable* InterpreterLoadedExecutable::GetExecutable() const {
+  absl::MutexLock lock(mutex_);
+  return executable_.get();
+}
+
+int InterpreterLoadedExecutable::num_replicas() const {
+  absl::MutexLock lock(mutex_);
+  return executable_ ? executable_->num_replicas() : 1;
+}
+
+int InterpreterLoadedExecutable::num_partitions() const {
+  absl::MutexLock lock(mutex_);
+  return executable_ ? executable_->num_partitions() : 1;
+}
+
+absl::string_view InterpreterLoadedExecutable::name() const { return name_; }
+
+absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
+InterpreterLoadedExecutable::GetHloModules() const {
+  absl::MutexLock lock(mutex_);
+  if (!executable_) {
+    return std::vector<std::shared_ptr<HloModule>>{};
+  }
+  return executable_->GetHloModules();
+}
+
+absl::StatusOr<CompileOptions> InterpreterLoadedExecutable::GetCompileOptions()
+    const {
+  absl::MutexLock lock(mutex_);
+  if (!executable_) {
+    return absl::InternalError("Executable was deleted.");
+  }
+  return executable_->GetCompileOptions();
+}
+
+void InterpreterLoadedExecutable::Delete() {
+  absl::MutexLock lock(mutex_);
+  if (hlo_evaluator_ != nullptr) {
+    hlo_evaluator_->set_dynamic_dimension_inference(nullptr);
+    hlo_evaluator_ = nullptr;
+  }
+  executable_ = nullptr;
+}
+
+bool InterpreterLoadedExecutable::IsDeleted() const {
+  absl::MutexLock lock(mutex_);
+  return executable_ == nullptr;
 }
 
 absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
@@ -207,9 +245,8 @@ InterpreterLoadedExecutable::Execute(
   }
   if (addressable_devices_.size() != 1) {
     return absl::InvalidArgumentError(
-        absl::StrFormat("Attempted to execute with %d devices, but interpreter "
-                        "only supports single device execution.",
-                        addressable_devices_.size()));
+        "Attempted to execute with multiple devices, but interpreter "
+        "only supports single device execution.");
   }
 
   std::optional<Future<>> returned_future;
@@ -237,23 +274,34 @@ InterpreterLoadedExecutable::ExecuteSharded(
     return absl::InvalidArgumentError(
         "ExecuteSharded expects a non-null device_assignment");
   }
+  std::shared_ptr<InterpreterExecutable> executable;
+  {
+    absl::MutexLock lock(mutex_);
+    if (!executable_ || !executable_->hlo_module()) {
+      return absl::InternalError("Executable was deleted.");
+    }
+    executable = executable_;
+  }
   // Since there is only one device, the device should always be the same. Check
   // anyways just to be sure.
-  if (!absl::c_any_of(
+  if (device == nullptr ||
+      !absl::c_any_of(
           addressable_devices_,
           [needle = device](PjRtDevice* const d) { return d == needle; })) {
     return absl::InvalidArgumentError(absl::StrFormat(
-        "ExecuteShard attempted to execute on device id %d, which is not "
+        "ExecuteSharded attempted to execute on device %s, which is not "
         "addressable by this client.",
-        device->global_device_id().value()));
+        device != nullptr
+            ? absl::StrCat("id ", device->global_device_id().value())
+            : "null"));
   }
 
   // Apply the ExecuteOptions to the module being executed. The HloEvaluator
-  // expects to find the seed in the HloModuleConfig.
-  const HloModule* hlo_module_to_execute = hlo_module_.get();
+  // expects to find the seed in the `HloModuleConfig`.
+  const HloModule* hlo_module_to_execute = executable->hlo_module().get();
   std::unique_ptr<HloModule> updated_hlo_module = nullptr;
   if (options.seed != 0) {
-    updated_hlo_module = hlo_module_->Clone("");
+    updated_hlo_module = executable->hlo_module()->Clone("");
     updated_hlo_module->mutable_config().set_seed(options.seed);
     hlo_module_to_execute = updated_hlo_module.get();
   }
@@ -261,14 +309,15 @@ InterpreterLoadedExecutable::ExecuteSharded(
   // Extract the literals from the arguments.
   const HloComputation& computation =
       *hlo_module_to_execute->entry_computation();
-  ABSL_ASSIGN_OR_RETURN(const auto literals_and_storage,
-                   ExtractInterpreterInputLiteralsFromBuffers(
-                       argument_handles, computation,
-                       compile_options_.parameter_is_tupled_arguments));
+  ABSL_ASSIGN_OR_RETURN(
+      const auto literals_and_storage,
+      ExtractInterpreterInputLiteralsFromBuffers(
+          argument_handles, computation,
+          executable->compile_options().parameter_is_tupled_arguments));
   const absl::Span<const Literal* const> literals =
       std::get<0>(literals_and_storage);
   if (computation.num_parameters() != literals.size()) {
-    return absl::InternalError(absl::StrFormat(
+    return absl::InvalidArgumentError(absl::StrFormat(
         "Mismatch between argument count (%d) and graph parameter count (%d).",
         literals.size(), computation.num_parameters()));
   }
@@ -330,7 +379,10 @@ absl::StatusOr<Literal> InterpreterLoadedExecutable::Evaluate(
     const HloComputation& computation,
     absl::Span<const Literal* const> arg_literals,
     const ExecuteOptions& options) const {
-  absl::MutexLock lock(hlo_evaluator_lock_);
+  absl::MutexLock lock(mutex_);
+  if (!hlo_evaluator_) {
+    return absl::InternalError("Executable was deleted.");
+  }
   if (!options.hlo_output_callbacks.empty()) {
     absl::flat_hash_map<int64_t, const HloOutputCallback*> cb_map;
     for (const auto& cb : options.hlo_output_callbacks) {
@@ -358,6 +410,19 @@ absl::StatusOr<Literal> InterpreterLoadedExecutable::Evaluate(
   return result;
 }
 
+InterpreterClient::InterpreterClient()
+    : InterpreterClient([]() { return std::make_unique<HloEvaluator>(); }) {}
+
+InterpreterClient::InterpreterClient(
+    absl::AnyInvocable<std::unique_ptr<HloEvaluatorInterface>() const>
+        hlo_evaluator_factory)
+    : hlo_evaluator_factory_(std::move(hlo_evaluator_factory)),
+      topology_(std::make_unique<InterpreterTopologyDescription>()),
+      interpreter_device_{this},
+      interpreter_memory_space_{this},
+      devices_({&interpreter_device_}),
+      memory_spaces_({&interpreter_memory_space_}) {}
+
 std::optional<PjRtPluginAttributes> InterpreterClient::plugin_attributes()
     const {
   PjRtPluginAttributes attributes =
@@ -368,208 +433,89 @@ std::optional<PjRtPluginAttributes> InterpreterClient::plugin_attributes()
 
 absl::StatusOr<DeviceAssignment> InterpreterClient::GetDefaultDeviceAssignment(
     int num_replicas, int num_partitions) const {
-  if (num_replicas != 1 || num_partitions != 1) {
-    return absl::UnimplementedError(
-        "Interpreter only supports num_replicas=1 and num_partitions=1.");
-  }
-  return MakeInterpreterDeviceAssignment();
+  return topology_->GetDefaultDeviceAssignment(
+      /*process_index=*/0, num_replicas,
+      /*num_replicas_per_slice=*/std::nullopt, num_partitions,
+      /*multi_slice_config=*/nullptr);
+}
+
+absl::StatusOr<DeviceAssignment> InterpreterClient::GetDefaultDeviceAssignment(
+    int num_replicas, std::optional<int> num_replicas_per_slice,
+    int num_partitions, const MultiSliceConfig* multi_slice_config) const {
+  return topology_->GetDefaultDeviceAssignment(
+      /*process_index=*/0, num_replicas, num_replicas_per_slice, num_partitions,
+      multi_slice_config);
 }
 
 absl::StatusOr<Layout> InterpreterClient::GetDefaultLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims) {
-  // This is all the GenericTransferManager::ChooseCompactLayoutForShape does.
-  Shape shape = ShapeUtil::MakeShape(element_type, dims);
-  LayoutUtil::SetToDefaultLayout(&shape);
-  return shape.layout();
+  return topology_->GetDefaultLayout(element_type, dims);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> InterpreterClient::Compile(
+    const XlaComputation& computation, CompileOptions options) {
+  ABSL_ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
+                   GetTopologyDescription());
+  return PjRtCompile(options, computation, *topology, this);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> InterpreterClient::Compile(
+    MaybeOwningMlirModule module, CompileOptions options) {
+  ABSL_ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
+                   GetTopologyDescription());
+  return PjRtCompile(options, std::move(module), *topology, this);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 InterpreterClient::CompileAndLoad(const XlaComputation& computation,
                                   CompileOptions options) {
-  std::vector<const Shape*> argument_layout_pointers;
-  const ExecutableBuildOptions& build_options =
-      options.executable_build_options;
-  const bool allow_auto_layout =
-      build_options.has_debug_options() &&
-      build_options.debug_options().xla_pjrt_allow_auto_layout_in_hlo();
-  ABSL_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
-      computation,
-      [allow_auto_layout](Shape shape) -> absl::StatusOr<Shape> {
-        if (allow_auto_layout && !shape.has_layout()) {
-          return shape;
-        }
-        return ChooseCompactLayoutForShape(shape);
-      },
-      options.argument_layouts, &options.executable_build_options,
-      &argument_layout_pointers));
-  return CompileInternal(computation, argument_layout_pointers,
-                         /*layout_canonicalization_callback=*/nullptr, options);
+  ABSL_ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
+                   GetTopologyDescription());
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
+                   PjRtCompile(options, computation, *topology, this));
+  return Load(std::move(executable), LoadOptions());
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 InterpreterClient::CompileAndLoad(MaybeOwningMlirModule module,
                                   CompileOptions options) {
-  XlaComputation xla_computation;
-  ExecutableBuildOptions& exec_build_options = options.executable_build_options;
-  ABSL_RETURN_IF_ERROR(MlirToXlaComputation(
-      module.mlir_module(), xla_computation,
-      /*use_tuple_args=*/options.parameter_is_tupled_arguments,
-      /*return_tuple=*/false, &exec_build_options));
-
-  // If the compile options specify argument layout, then let's
-  // fall back to using the options to determine layouts.
-  if (options.argument_layouts) {
-    return CompileAndLoad(xla_computation, options);
-  }
-
-  ABSL_ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
-                   GetArgLayoutModes(module.mlir_module()));
-  ABSL_ASSIGN_OR_RETURN(std::vector<LayoutMode> out_layout_modes,
-                   GetOutputLayoutModes(module.mlir_module()));
-  ABSL_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> arg_memory_spaces,
-                   GetArgMemoryKinds(module.mlir_module()));
-  ABSL_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
-                   GetOutputMemoryKinds(module.mlir_module()));
-
-  // MLIR module no longer required - release any memory if owned.
-  module = MaybeOwningMlirModule();
-
-  // If auto-sharding modifies shapes of arguments and/or result,
-  // we get a callback to restore the layouts. Let us restore the layouts
-  // according to the attributes we parsed from MLIR.
-  auto layout_callback = [&arg_layout_modes, &out_layout_modes,
-                          &arg_memory_spaces,
-                          &out_memory_spaces](const HloModule& module)
-      -> absl::StatusOr<std::pair<std::vector<Shape>, Shape>> {
-    XlaComputation xla_computation(XlaComputation(module.ToProto()));
-    return LayoutModesToXlaShapes(
-        xla_computation, arg_layout_modes, out_layout_modes, arg_memory_spaces,
-        out_memory_spaces, ChooseCompactLayoutForShape);
-  };
-
-  // This call will update result_layout in options.executable_build_options.
-  ABSL_ASSIGN_OR_RETURN(
-      auto arg_layouts_and_pointers,
-      LayoutModesToXla(xla_computation, arg_layout_modes, out_layout_modes,
-                       arg_memory_spaces, out_memory_spaces,
-                       ChooseCompactLayoutForShape,
-                       options.executable_build_options));
-  return CompileInternal(xla_computation, arg_layouts_and_pointers.second,
-                         layout_callback, options);
+  ABSL_ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
+                   GetTopologyDescription());
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
+                   PjRtCompile(options, std::move(module), *topology, this));
+  return Load(std::move(executable), LoadOptions());
 }
 
-absl::StatusOr<std::unique_ptr<PjRtBuffer>>
-InterpreterClient::BufferFromHostLiteral(const LiteralSlice& literal,
-                                         PjRtMemorySpace* memory_space,
-                                         const Layout* device_layout) {
-  if (device_layout == nullptr) {
-    return std::make_unique<InterpreterLiteralWrapperBuffer>(
-        memory_space->client(), memory_space, literal);
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> InterpreterClient::Load(
+    std::shared_ptr<PjRtExecutable> executable,
+    const LoadOptions& load_options) {
+  if (executable == nullptr) {
+    return absl::InvalidArgumentError("executable cannot be null");
   }
-  Literal device_literal = literal.Relayout(*device_layout);
-  return std::make_unique<InterpreterLiteralWrapperBuffer>(
-      memory_space->client(), memory_space, std::move(device_literal));
-}
-
-absl::StatusOr<PjRtDevice*> InterpreterClient::LookupDevice(
-    GlobalDeviceId global_device_id) const {
-  if (global_device_id.value() > 0) {
-    return InvalidArgument("No matching device found for device_id %d",
-                           global_device_id.value());
+  auto* interpreter_executable =
+      dynamic_cast<InterpreterExecutable*>(executable.get());
+  if (interpreter_executable == nullptr) {
+    return absl::InvalidArgumentError(
+        "InterpreterClient::Load expects an InterpreterExecutable");
   }
-  return devices_[global_device_id.value()];
-}
+  auto shared_interpreter_executable =
+      std::dynamic_pointer_cast<InterpreterExecutable>(executable);
 
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-InterpreterClient::CompileInternal(
-    const XlaComputation& computation,
-    const std::vector<const Shape*>& argument_shapes,
-    LayoutCanonicalizationCallback layout_canonicalization_callback,
-    CompileOptions options) {
-  CompileOptions input_options = options;
-  ABSL_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
-  if (layout_canonicalization_callback != nullptr) {
-    options.executable_build_options.set_layout_canonicalization_callback(
-        layout_canonicalization_callback);
-  }
-
-  ABSL_ASSIGN_OR_RETURN(ProgramShape program_shape, computation.GetProgramShape());
-
-  const ExecutableBuildOptions& build_options =
-      options.executable_build_options;
-  ExecutionOptions execution_options =
-      CreateExecutionOptions(build_options, &program_shape);
-
-  // Unoptimized HloModuleConfig.
-  ABSL_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModuleConfig> hlo_module_config,
-      CreateModuleConfig(program_shape, argument_shapes, &execution_options,
-                         execution_options.num_replicas(),
-                         /*num_threads=*/std::nullopt,
-                         /*aot_options=*/nullptr));
-  // Unoptimized HloModule.
-  ABSL_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> hlo_module,
-      HloModule::CreateFromProto(computation.proto(), *hlo_module_config));
-
-  if (build_options.num_partitions() != 1) {
-    return absl::UnimplementedError(
-        "For the time being, only num_partitions=1 is supported.");
-  }
-
-  if (!build_options.run_backend_only()) {
-    ABSL_ASSIGN_OR_RETURN(hlo_module, RunHloPasses(std::move(hlo_module)));
-  }
-
-  return RunBackend(std::move(hlo_module), options);
-}
-
-absl::StatusOr<std::unique_ptr<HloModule>> InterpreterClient::RunHloPasses(
-    std::unique_ptr<HloModule> hlo_module) {
-  HloPassPipeline pipeline("Interpreter");
-
-  // The TopkDecomposer generates a compare op with type=TOTALORDER and must
-  // run before the ComparisonExpander which rewrites such comparisons.
-  pipeline.AddPass<TopkDecomposer>();
-  pipeline.AddPass<DynamicIndexSplitter>();
-  pipeline.AddPass<CholeskyExpander>();
-  pipeline.AddPass<QrExpander>();
-  pipeline.AddPass<EighExpander>();
-  pipeline.AddPass<TriangularSolveExpander>();
-  pipeline.AddPass<BatchNormExpander>(
-      /*rewrite_training_op=*/true,
-      /*rewrite_inference_op=*/true,
-      /*rewrite_grad_op=*/true);
-  pipeline.AddPass<LayoutAssignment>(
-      hlo_module->mutable_entry_computation_layout());
-  pipeline.AddPass<ConvolutionTypeCanonicalizer>();
-
-  ABSL_RETURN_IF_ERROR(pipeline.Run(hlo_module.get()).status());
-  return hlo_module;
-}
-
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-InterpreterClient::RunBackend(std::unique_ptr<HloModule> hlo_module,
-                              CompileOptions& options) {
-  ABSL_ASSIGN_OR_RETURN(
-      DynamicDimensionInference dynamic_dimension_inference,
-      DynamicDimensionInference::Run(
-          hlo_module.get(),
-          /*op_supports_dynamism_handler=*/[&](HloInstruction* hlo) {
-            return OpDynamismSupport::kOptional;
-          }));
   auto evaluator = hlo_evaluator_factory_();
-  evaluator->set_use_fast_path(
-      hlo_module->config().debug_options().xla_hlo_evaluator_use_fast_path());
+  if (interpreter_executable->hlo_module()) {
+    evaluator->set_use_fast_path(interpreter_executable->hlo_module()
+                                     ->config()
+                                     .debug_options()
+                                     .xla_hlo_evaluator_use_fast_path());
+  }
   evaluator->set_custom_call_handler(HandleEvaluatorCustomCall);
 
   std::shared_ptr<DeviceAssignment> device_assignment = nullptr;
-  std::vector<PjRtLoadedExecutable::LogicalDeviceIds>
-      addressable_device_logical_ids;
-  std::vector<PjRtDevice*> addressable_devices;
   int num_replicas = 0, num_partitions = 0;
+  CompileOptions compile_options = interpreter_executable->compile_options();
   ABSL_RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
-      options.compile_portable_executable, &options.executable_build_options,
+      compile_options.compile_portable_executable,
+      &compile_options.executable_build_options,
       [this](int num_replicas, int num_partitions) {
         return GetDefaultDeviceAssignment(num_replicas, num_partitions);
       },
@@ -583,6 +529,9 @@ InterpreterClient::RunBackend(std::unique_ptr<HloModule> hlo_module,
                         "num_replicas: %d, num_partitions: %d",
                         num_replicas, num_partitions));
   }
+  std::vector<PjRtLoadedExecutable::LogicalDeviceIds>
+      addressable_device_logical_ids;
+  std::vector<PjRtDevice*> addressable_devices;
   PjRtLoadedExecutable::LogicalDeviceIds logical_device_ids;
   logical_device_ids.replica = 0;
   logical_device_ids.partition = 0;
@@ -590,10 +539,62 @@ InterpreterClient::RunBackend(std::unique_ptr<HloModule> hlo_module,
   addressable_devices.push_back(&interpreter_device_);
 
   return std::make_unique<InterpreterLoadedExecutable>(
-      this, std::move(hlo_module), std::move(evaluator),
-      dynamic_dimension_inference, std::move(device_assignment), options,
-      std::move(addressable_device_logical_ids),
+      this, std::move(shared_interpreter_executable), std::move(evaluator),
+      std::move(device_assignment), std::move(addressable_device_logical_ids),
       std::move(addressable_devices));
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>>
+InterpreterClient::DeserializeExecutable(
+    absl::string_view serialized, std::optional<CompileOptions> options) {
+  return InterpreterExecutable::Deserialize(serialized, *topology_,
+                                            std::move(options));
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+InterpreterClient::LoadSerializedExecutable(
+    absl::string_view serialized, std::optional<CompileOptions> options,
+    const LoadOptions& load_options) {
+  ABSL_ASSIGN_OR_RETURN(auto executable,
+                   DeserializeExecutable(serialized, std::move(options)));
+  return Load(std::move(executable), load_options);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>>
+InterpreterClient::BufferFromHostLiteral(const LiteralSlice& literal,
+                                         PjRtMemorySpace* memory_space,
+                                         const Layout* device_layout) {
+  if (memory_space == nullptr) {
+    memory_space = &interpreter_memory_space_;
+  }
+  if (device_layout == nullptr) {
+    return std::make_unique<InterpreterLiteralWrapperBuffer>(
+        memory_space->client(), memory_space, literal);
+  }
+  Literal device_literal = literal.Relayout(*device_layout);
+  return std::make_unique<InterpreterLiteralWrapperBuffer>(
+      memory_space->client(), memory_space, std::move(device_literal));
+}
+
+absl::StatusOr<PjRtDevice*> InterpreterClient::LookupDevice(
+    GlobalDeviceId global_device_id) const {
+  if (global_device_id.value() < 0 ||
+      global_device_id.value() >= devices_.size()) {
+    return InvalidArgument("No matching device found for device_id %d",
+                           global_device_id.value());
+  }
+  return devices_[global_device_id.value()];
+}
+
+absl::StatusOr<PjRtDevice*> InterpreterClient::LookupAddressableDevice(
+    LocalDeviceId local_device_id) const {
+  if (local_device_id.value() < 0 ||
+      local_device_id.value() >= addressable_devices().size()) {
+    return InvalidArgument(
+        "No matching addressable device found for local_device_id %d",
+        local_device_id.value());
+  }
+  return addressable_devices()[local_device_id.value()];
 }
 
 }  // namespace xla
