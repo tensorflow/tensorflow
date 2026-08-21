@@ -184,6 +184,25 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
   TF_LITE_ENSURE_EQ(context, SizeOfDimension(input, 4),
                     SizeOfDimension(filter, 4));
 
+  // Filter dimensions must be greater than 0.
+  for (int i = 0; i < 5; ++i) {
+    TF_LITE_ENSURE(context, SizeOfDimension(filter, i) > 0);
+  }
+  // Input spatial and channel dimensions must be greater than 0.
+  for (int i = 1; i < 5; ++i) {
+    TF_LITE_ENSURE(context, SizeOfDimension(input, i) > 0);
+  }
+
+  // Validate stride values.
+  TF_LITE_ENSURE(context, params->stride_depth > 0);
+  TF_LITE_ENSURE(context, params->stride_height > 0);
+  TF_LITE_ENSURE(context, params->stride_width > 0);
+
+  // Validate dilation values.
+  TF_LITE_ENSURE(context, params->dilation_depth_factor > 0);
+  TF_LITE_ENSURE(context, params->dilation_height_factor > 0);
+  TF_LITE_ENSURE(context, params->dilation_width_factor > 0);
+
   // Check types.
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteFloat32);
   TF_LITE_ENSURE_TYPES_EQ(context, filter->type, kTfLiteFloat32);
@@ -297,6 +316,10 @@ TfLiteStatus Eval(KernelType kernel_type, TfLiteContext* context,
     TF_LITE_ENSURE_OK(context, ResizeOutputAndTemporaryTensors(
                                    context, opdata, params, output_shape,
                                    filter, input, col2im, output));
+  }
+
+  if (NumElements(output) == 0) {
+    return kTfLiteOk;
   }
 
   // GenericOptimized kernel currently doesn't support dilation.

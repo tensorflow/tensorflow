@@ -229,6 +229,24 @@ TEST(Conv3dTransposePrepareSecurityTest, RejectsMismatchedOutputChannels) {
   EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
 }
 
+TEST(Conv3dTransposePrepareSecurityTest, RejectsInvalidStrideOrDilation) {
+  PrepareOnlyConv3dTransposeOpModel m(
+      {1, 1, 1, 1, 1}, {TensorType_FLOAT32, {1, 1, 1, 1, 1}},
+      {TensorType_FLOAT32, {1, 1, 1, 1, 1}}, {TensorType_FLOAT32, {}},
+      Padding_SAME, /*stride_depth=*/0);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(Conv3dTransposePrepareSecurityTest, RejectsZeroFilterOutputChannelsDynamic) {
+  PrepareOnlyConv3dTransposeOpModel m(
+      {1, 3, 1, 1, 0}, {TensorType_FLOAT32, {1, 1, 1, 0, 1}},
+      {TensorType_FLOAT32, {1, 1, 1, 1, 1}}, {TensorType_FLOAT32, {}},
+      Padding_SAME);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
 TEST_P(Conv3dTransposeOpTest, SimpleFloat32Test) {
   Conv3dTransposeOpModel m(
       {1, 3, 3, 5, 2}, {TensorType_FLOAT32, {2, 2, 2, 2, 2}},
