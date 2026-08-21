@@ -298,5 +298,61 @@ TEST_F(MemorySpaceAssignmentCostAnalysisTest, ExcludeNonMainThreadComputation) {
             0.0f);
 }
 
+TEST_F(MemorySpaceAssignmentCostAnalysisTest,
+       AlternateMemoryBenefitBoundedByCompute) {
+  // Test that the alternate memory benefit of an instruction is bounded by its
+  // compute time. When placing tensors in alternate memory reduces memory
+  // elapsed time below compute elapsed time, the instruction becomes compute
+  // bound, so the effective runtime cannot drop below the compute cost.
+  //
+  // For the f32[2,4] add operation:
+  // - 2 inputs + 1 output of f32[2,4] = 3 * 8 * 4 = 96 bytes accessed.
+  // - Default memory bandwidth = 32 B/s -> memory elapsed = 96 / 32 = 3.0s.
+  // - 8 FLOPs at 8 FLOPs/s (min latency 1.0s) -> compute elapsed = 1.0s.
+  // The instruction in default memory is memory-bound (3.0s memory > 1.0s
+  // compute).
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY Entry {
+    param0 = f32[2,4] parameter(0)
+    param1 = f32[2,4] parameter(1)
+    ROOT add = f32[2,4] add(param0, param1)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK(Initialize(module.get()));
+
+  const HloInstruction* add = module->entry_computation()->root_instruction();
+  const float compute_elapsed =
+      cost_analysis_->GetInstructionElapsedDueToCompute(*add);
+  const float memory_elapsed =
+      cost_analysis_->GetInstructionElapsedDueToMemory(*add);
+  EXPECT_EQ(compute_elapsed, 1.0f);
+  EXPECT_EQ(memory_elapsed, 3.0f);
+
+  // Case 1: Alternate memory elapsed time (0.5s) is less than compute elapsed
+  // time (1.0s). The benefit should be bounded by the compute elapsed time:
+  // benefit = memory_elapsed - max(alt_mem_elapsed, compute_elapsed)
+  //         = 3.0s - max(0.5s, 1.0s) = 2.0s (rather than 3.0s - 0.5s = 2.5s).
+  EXPECT_EQ(cost_analysis_->GetAlternateMemoryBenefit(
+                *add, /*elapsed_time_due_to_alternate_mem=*/0.5f),
+            2.0f);
+
+  // Case 2: Alternate memory elapsed time (1.5s) is greater than compute
+  // elapsed time (1.0s). The operation remains memory-bound, so the benefit is:
+  // benefit = 3.0s - max(1.5s, 1.0s) = 3.0s - 1.5s = 1.5s.
+  EXPECT_EQ(cost_analysis_->GetAlternateMemoryBenefit(
+                *add, /*elapsed_time_due_to_alternate_mem=*/1.5f),
+            1.5f);
+
+  // Case 3: Alternate memory elapsed time is 0.0s. Benefit is capped at
+  // 3.0s - 1.0s = 2.0s.
+  EXPECT_EQ(cost_analysis_->GetAlternateMemoryBenefit(
+                *add, /*elapsed_time_due_to_alternate_mem=*/0.0f),
+            2.0f);
+}
+
 }  // namespace
 }  // namespace xla

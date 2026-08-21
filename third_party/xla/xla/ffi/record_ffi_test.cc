@@ -63,7 +63,7 @@ TEST(FfiTest, RecordStageCreateAndUpdateCommands) {
   XLA_FFI_RecordApi dummy_record_api = {
       /*create_launch=*/+[](XLA_FFI_RecordContext* ctx, const char*,
                             const void*, int64_t, XLA_FFI_SourceFormat,
-                            XLA_FFI_LaunchDims, uint32_t,
+                            XLA_FFI_LaunchDims, uint32_t, int32_t,
                             const XLA_FFI_KernelArgs*,
                             const XLA_FFI_Command* const*, uint32_t,
                             const XLA_FFI_Command** out_command)
@@ -110,9 +110,9 @@ TEST(FfiTest, RecordStageCreateAndUpdateCommands) {
         RecordAction action = ctx.action();
         if (action == RecordAction::kCreate) {
           XLA_FFI_LaunchDims dims{{1, 1, 1}, {1, 1, 1}};
-          auto launch_cmd =
-              ctx.CreateLaunch("dummy_kernel", nullptr, 0, SourceFormat::kPtx,
-                               dims, 0, std::initializer_list<KernelArg>{});
+          auto launch_cmd = ctx.CreateLaunch(
+              "dummy_kernel", nullptr, 0, SourceFormat::kPtx, dims, 0,
+              /*uses_pdl=*/false, std::initializer_list<KernelArg>{});
           EXPECT_THAT(launch_cmd, IsOkAndHolds(Eq(state.launch_cmd)));
           state.launch_created = true;
 
