@@ -2276,12 +2276,12 @@ TEST_P(QuantizedFullyConnectedOpTest, RejectsHybridUint8WeightsWithZeroPoint) {
 // weights. The weights are constant if `packed_weights` isn't empty.
 class BlockwiseFullyConnectedOpModel : public SingleOpModel {
  public:
-  BlockwiseFullyConnectedOpModel(TfLiteRegistration* registration, int units,
-                                 int batches, int input_size, int block_size,
-                                 TensorType weights_type,
-                                 const std::vector<float>& scales,
-                                 const std::vector<int64_t>& zero_points,
-                                 const std::vector<uint8_t>& packed_weights) {
+  BlockwiseFullyConnectedOpModel(
+      TfLiteRegistration* registration, int units, int batches, int input_size,
+      int block_size, TensorType weights_type, const std::vector<float>& scales,
+      const std::vector<int64_t>& zero_points,
+      const std::vector<uint8_t>& packed_weights,
+      ActivationFunctionType activation = ActivationFunctionType_NONE) {
     input_ = AddInput({TensorType_FLOAT32, {batches, input_size}});
     TensorData weights(weights_type, {units, input_size});
     weights.per_channel_quantization_scales = scales;
@@ -2295,10 +2295,9 @@ class BlockwiseFullyConnectedOpModel : public SingleOpModel {
     }
     bias_ = AddInput({TensorType_FLOAT32, {units}});
     output_ = AddOutput({TensorType_FLOAT32});
-    SetBuiltinOp(
-        BuiltinOperator_FULLY_CONNECTED, BuiltinOptions_FullyConnectedOptions,
-        CreateFullyConnectedOptions(builder_, ActivationFunctionType_NONE)
-            .Union());
+    SetBuiltinOp(BuiltinOperator_FULLY_CONNECTED,
+                 BuiltinOptions_FullyConnectedOptions,
+                 CreateFullyConnectedOptions(builder_, activation).Union());
     resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_FULLY_CONNECTED, registration);
     BuildInterpreter({GetShape(input_), GetShape(weights_), GetShape(bias_)},
@@ -2352,15 +2351,41 @@ const std::vector<float>& BlockwiseTestScales() {
   return *scales;
 }
 
-TEST(BlockwiseFullyConnectedOpTest, MatchesFloatWithZeroZeroPoints) {
+// The float reference of the fused activations.
+float ApplyReferenceActivation(ActivationFunctionType activation, float x) {
+  switch (activation) {
+    case ActivationFunctionType_NONE:
+      return x;
+    case ActivationFunctionType_RELU:
+      return std::max(x, 0.0f);
+    case ActivationFunctionType_RELU_N1_TO_1:
+      return std::clamp(x, -1.0f, 1.0f);
+    case ActivationFunctionType_RELU6:
+      return std::clamp(x, 0.0f, 6.0f);
+    case ActivationFunctionType_TANH:
+      return std::tanh(x);
+    case ActivationFunctionType_SIGN_BIT:
+      return std::signbit(x);
+  }
+  ADD_FAILURE() << "Unknown activation " << activation;
+  return x;
+}
+
+class BlockwiseFullyConnectedActivationTest
+    : public ::testing::TestWithParam<ActivationFunctionType> {};
+
+// Checks the blockwise kernel against a float reference that dequantizes the
+// weights block by block.
+TEST_P(BlockwiseFullyConnectedActivationTest, MatchesFloatWithZeroZeroPoints) {
+  const ActivationFunctionType activation = GetParam();
   const std::vector<int8_t> weights = BlockwiseTestWeights();
   const std::vector<float>& scales = BlockwiseTestScales();
   BlockwiseFullyConnectedOpModel m(
       ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT(), kBlockwiseTestUnits,
       /*batches=*/1, kBlockwiseTestInputSize, kBlockwiseTestBlockSize,
       TensorType_INT4, scales,
-      /*zero_points=*/std::vector<int64_t>(scales.size(), 0),
-      PackInt4(weights));
+      /*zero_points=*/std::vector<int64_t>(scales.size(), 0), PackInt4(weights),
+      activation);
   ASSERT_EQ(m.AllocateTensors(), kTfLiteOk);
 
   std::vector<float> input(kBlockwiseTestInputSize);
@@ -2391,11 +2416,24 @@ TEST(BlockwiseFullyConnectedOpTest, MatchesFloatWithZeroZeroPoints) {
       expected += w * input[k];
       sum_abs_weights += std::abs(w);
     }
-    EXPECT_NEAR(output[n], expected,
+    EXPECT_NEAR(output[n], ApplyReferenceActivation(activation, expected),
                 sum_abs_weights * max_abs_input / 127.0f + 1e-4f)
         << "output " << n;
   }
 }
+
+// The outputs before the activation are about 8.25, 1.1, -6.05 and -4.575, so
+// every activation changes some of them.
+INSTANTIATE_TEST_SUITE_P(
+    BlockwiseFullyConnectedActivationTest,
+    BlockwiseFullyConnectedActivationTest,
+    ::testing::Values(ActivationFunctionType_NONE, ActivationFunctionType_RELU,
+                      ActivationFunctionType_RELU_N1_TO_1,
+                      ActivationFunctionType_RELU6, ActivationFunctionType_TANH,
+                      ActivationFunctionType_SIGN_BIT),
+    [](const ::testing::TestParamInfo<ActivationFunctionType>& info) {
+      return std::string(EnumNameActivationFunctionType(info.param));
+    });
 
 TEST(BlockwiseFullyConnectedOpTest, RejectsNonZeroZeroPoints) {
   // The blockwise kernel doesn't apply zero points, so it would silently
