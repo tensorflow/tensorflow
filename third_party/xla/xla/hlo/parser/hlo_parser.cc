@@ -1664,7 +1664,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
   }
   if (frontend_attributes) {
     instruction->set_frontend_attributes(*frontend_attributes);
-    if (instruction->IsAsynchronous()) {
+    if (instruction->IsAsynchronous() &&
+        instruction->async_wrapped_instruction() != nullptr) {
       instruction->async_wrapped_instruction()->set_frontend_attributes(
           *frontend_attributes);
     }
