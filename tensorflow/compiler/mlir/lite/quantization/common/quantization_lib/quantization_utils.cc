@@ -488,6 +488,12 @@ Type GetUniformQuantizedTypeForWeight(
   // Computes the effective min/max values of the attribute values.
   ExtractMinMaxFromAttr(fp, /*dim_size=*/1, /*slice_size=*/1, symmetric, mins,
                         maxs);
+  // Avoid quantization crashes from scales evaluating to infinity when JAX
+  // bounding values like `-jnp.inf` get captured in DRQ export ops.
+  auto is_not_finite = [](double val) { return !std::isfinite(val); };
+  if (llvm::any_of(mins, is_not_finite) || llvm::any_of(maxs, is_not_finite)) {
+    return {};
+  }
 
   const auto type =
       GetQuantizedType(builder, attr.getType(), mins[0], maxs[0],
@@ -520,6 +526,10 @@ Type GetUniformQuantizedPerAxisTypeForWeight(
 
   // Computes the effective min/max values of the attribute values.
   ExtractMinMaxFromAttr(fp, dim_size, slice_size, symmetric, mins, maxs);
+  auto is_not_finite = [](double val) { return !std::isfinite(val); };
+  if (llvm::any_of(mins, is_not_finite) || llvm::any_of(maxs, is_not_finite)) {
+    return {};
+  }
 
   const auto type = GetQuantizedType(
       builder, attr.getType(), mins, maxs, quant_dim, num_bits, narrow_range,
@@ -740,6 +750,11 @@ quant::QuantizedType DownCastScale(QuantizedType type,
   for (int i = 0; i < mins.size(); ++i) {
     scales[i] = (static_cast<float>(maxs[i]) - static_cast<float>(mins[i])) /
                 (type.getStorageTypeMax() - type.getStorageTypeMin());
+    // Guard against boundless evaluations resulting in non-finite values which
+    // crash fake quant bounds.
+    if (scales[i] == 0.0 || !std::isfinite(scales[i])) {
+      return {};
+    }
     if (type.getStorageTypeMax() != -type.getStorageTypeMin()) {
       // Only applies for asymmetric quantized range with original scale.
       const float zero_point_from_min =
