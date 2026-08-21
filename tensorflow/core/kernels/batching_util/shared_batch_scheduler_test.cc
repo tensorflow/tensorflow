@@ -3300,6 +3300,106 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, RemoveTaskSkipsCancelledTask) {
 }
 
 TEST_P(SharedBatchSchedulerPriorityAwareTest,
+       ScheduleBatchReturnsNullptrWhenAllTasksLazyCancelled) {
+  absl::Notification block_thread, thread_blocked;
+  absl::Notification live_batch_processed;
+  const int kBlockerTaskSize = 10;
+  const int kExpiredTaskSize = 3;
+  const int kCancelledTaskSize = 2;
+  const int kLiveTaskSize = 4;
+
+  int processed_empty_batch_count = 0;
+
+  auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+    if (batch->size() == kBlockerTaskSize && batch->num_tasks() == 1) {
+      // Blocker task
+      thread_blocked.Notify();
+      block_thread.WaitForNotification();
+    } else if (batch->empty()) {
+      processed_empty_batch_count++;
+    } else {
+      EXPECT_TRUE(batch->IsClosed());
+      EXPECT_EQ(batch->num_tasks(), 1);
+      EXPECT_EQ(batch->task(0).size(), kLiveTaskSize);
+      live_batch_processed.Notify();
+    }
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Scheduler> scheduler,
+                          CreateSharedBatchScheduler(/*num_batch_threads=*/1));
+
+  QueueOptions options = CreatePriorityAwareQueueOptions(
+      /*max_execution_batch_size=*/10,
+      /*batch_timeout_micros=*/1000 * 1000, /*max_queue_depth=*/60);
+  options.priority_aware_scheduler_options.enable_lazy_cancellation_filtering =
+      true;
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Queue> queue,
+                          CreateQueue(scheduler, options, callback));
+
+  CellReader<int64_t> cancelled_task_count_reader(
+      "/tensorflow/serving/batching/lazy_cancelled_task_count");
+  CellReader<int64_t> cancelled_task_size_reader(
+      "/tensorflow/serving/batching/lazy_cancelled_task_size");
+
+  // 1. Block thread
+  TF_ASSERT_OK(ScheduleTask(kBlockerTaskSize, queue.get(),
+                            tsl::criticality::Criticality::kCritical));
+  thread_blocked.WaitForNotification();
+
+  // 2. Schedule an expired task and a cancelled task.
+  auto done_notification1 = std::make_shared<absl::Notification>();
+  auto status1 = std::make_shared<absl::Status>();
+  auto task1 = std::make_unique<FakeTask>(
+      kExpiredTaskSize, tsl::criticality::Criticality::kCriticalPlus,
+      done_notification1, status1);
+  task1->set_deadline(absl::Now() - absl::Seconds(1));  // Expired
+  TF_ASSERT_OK(queue->Schedule(&task1));
+
+  auto done_notification2 = std::make_shared<absl::Notification>();
+  auto status2 = std::make_shared<absl::Status>();
+  auto task2 = std::make_unique<FakeTask>(
+      kCancelledTaskSize, tsl::criticality::Criticality::kCriticalPlus,
+      done_notification2, status2);
+  task2->set_cancelled(true);
+  TF_ASSERT_OK(queue->Schedule(&task2));
+
+  // 3. Unblock
+  block_thread.Notify();
+
+  // Verify FinishTask was called on both tasks with appropriate errors.
+  done_notification1->WaitForNotification();
+  EXPECT_THAT(*status1,
+              absl_testing::StatusIs(absl::StatusCode::kDeadlineExceeded,
+                                     HasSubstr("RPC deadline exceeded")));
+
+  done_notification2->WaitForNotification();
+  EXPECT_THAT(*status2, absl_testing::StatusIs(absl::StatusCode::kCancelled,
+                                               HasSubstr("RPC is cancelled")));
+
+  // Verify cancellation metrics were incremented.
+  EXPECT_EQ(cancelled_task_count_reader.Delta(
+                std::string(kLazyCancellationReasonDeadlineExceeded)),
+            1);
+  EXPECT_EQ(cancelled_task_size_reader.Delta(
+                std::string(kLazyCancellationReasonDeadlineExceeded)),
+            kExpiredTaskSize);
+  EXPECT_EQ(cancelled_task_count_reader.Delta(
+                std::string(kLazyCancellationReasonRpcCancelled)),
+            1);
+  EXPECT_EQ(cancelled_task_size_reader.Delta(
+                std::string(kLazyCancellationReasonRpcCancelled)),
+            kCancelledTaskSize);
+
+  // 4. Verify thread remains healthy and can process subsequent live tasks.
+  TF_ASSERT_OK(ScheduleTask(kLiveTaskSize, queue.get(),
+                            tsl::criticality::Criticality::kCriticalPlus));
+  live_batch_processed.WaitForNotification();
+  // Verify that no empty batches were processed.
+  EXPECT_EQ(processed_empty_batch_count, 0);
+}
+
+TEST_P(SharedBatchSchedulerPriorityAwareTest,
        RemoveTaskDoesNotLazyFilterWhenDisabled) {
   // Verify that expired/cancelled tasks are delivered normally when
   // enable_lazy_cancellation_filtering is false (the default).
