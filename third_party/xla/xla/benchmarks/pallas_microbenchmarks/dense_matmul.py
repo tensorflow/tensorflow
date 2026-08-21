@@ -138,6 +138,18 @@ def main(_):
   lhs_mem = mem_spaces[lhs_mem]
   rhs_mem = mem_spaces[rhs_mem]
   out_mem = mem_spaces[out_mem]
+
+  subblock_m = _SUBBLOCK_M.value
+  if subblock_m is None:
+    # Choose a subblock size that utilizes all accumulators.
+    pinfo = platform_info.get_platform_info()
+    num_accumulators = pinfo.num_accumulators
+    if num_accumulators > 0:
+      # Each accumulator can hold `num_sublanes` rows of results.
+      num_sublanes, _ = pinfo.vreg_size
+      subblock_m = num_sublanes * num_accumulators
+      logging.info("Using subblock_m size: %s", subblock_m)
+
   internal_scratch_in_bytes = (
       platform_info.get_default_internal_scratch_bytes()
   )
@@ -162,6 +174,7 @@ def main(_):
         rhs_dtype,
         out_dtype,
         acc_dtype,
+        subblock_m=subblock_m,
     ).select_window(
         vmem_limit_bytes,
         p_state,
@@ -182,17 +195,6 @@ def main(_):
     raise ValueError("Repeat must be at least 1.")
   if _RUNS.value < 1:
     raise ValueError("Runs must be at least 1.")
-
-  subblock_m = _SUBBLOCK_M.value
-  if subblock_m is None:
-    # Choose a subblock size that utilizes all accumulators.
-    pinfo = platform_info.get_platform_info()
-    num_accumulators = pinfo.num_accumulators
-    if num_accumulators > 0:
-      # Each accumulator can hold `num_sublanes` rows of results.
-      num_sublanes, _ = pinfo.vreg_size
-      subblock_m = num_sublanes * num_accumulators
-      logging.info("Using subblock_m size: %s", subblock_m)
 
   kernel_name = _KERNEL_NAME_TEMPLATE.format(
       m=m,

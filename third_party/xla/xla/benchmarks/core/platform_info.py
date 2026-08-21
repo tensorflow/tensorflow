@@ -14,6 +14,7 @@
 
 """Architecture info for TPU platforms."""
 
+from collections.abc import Mapping
 import dataclasses
 
 import immutabledict
@@ -95,6 +96,62 @@ class PlatformInfo:
   def num_accumulators(self) -> int:
     """Returns the number of accumulators on the TPU platform."""
     return self._tpu_info.num_accumulators
+
+  def get_emulated_dtype(
+      self, dtype: jnp.dtype, supported_dtypes: Mapping[jnp.dtype, int]
+  ) -> jnp.dtype:
+    """Returns the emulated dtype for the given dtype."""
+    if dtype in supported_dtypes:
+      return dtype
+    dtype_bits = jax.dtypes.itemsize_bits(dtype)
+    if dtype_bits < 8 and jnp.float8_e4m3fn in supported_dtypes:
+      return jnp.float8_e4m3fn
+    elif dtype_bits == 8 and jnp.bfloat16 in supported_dtypes:
+      return jnp.bfloat16
+    else:
+      return jnp.float32
+
+  def get_matmul_cadence_cycles(self, lhs_dtype: jnp.dtype) -> int:
+    """Returns the number of cycles between each matmul on a single MXU.
+
+    Args:
+      lhs_dtype: The dtype of the LHS operand.
+    Returns:
+      The number of cycles between each matmul on a single MXU, taking into
+      account the actual matmul type on the hardware.
+    """
+    emulated_dtype = self.get_emulated_dtype(
+        lhs_dtype, self.matmul_cadence_cycles_by_dtype
+    )
+    return self.matmul_cadence_cycles_by_dtype[emulated_dtype]
+
+  def get_matmul_latency_cycles(self, lhs_dtype: jnp.dtype) -> int:
+    """Returns the number of cycles of matmul latency for the given LHS dtype.
+
+    Args:
+      lhs_dtype: The dtype of the LHS operand.
+    Returns:
+      The number of cycles of matmul latency for the given LHS dtype, taking
+      into account the actual matmul type on the hardware.
+    """
+    emulated_dtype = self.get_emulated_dtype(
+        lhs_dtype, self.matmul_latency_cycles_by_dtype
+    )
+    return self.matmul_latency_cycles_by_dtype[emulated_dtype]
+
+  def get_latch_cadence_cycles(self, rhs_dtype: jnp.dtype) -> int:
+    """Returns the number of cycles between each latch operation.
+
+    Args:
+      rhs_dtype: The dtype of the RHS operand.
+    Returns:
+      The number of cycles between each latch operation, taking into account
+      the actual latch type on the hardware.
+    """
+    emulated_dtype = self.get_emulated_dtype(
+        rhs_dtype, self.latch_cadence_cycles_by_dtype
+    )
+    return self.latch_cadence_cycles_by_dtype[emulated_dtype]
 
   def mxu_size_by_dtype(self, lhs_dtype: jnp.dtype) -> tuple[int, int]:
     """Returns the MXU size for the given LHS dtype."""
