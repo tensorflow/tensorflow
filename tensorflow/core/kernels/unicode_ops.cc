@@ -372,7 +372,7 @@ class UnicodeDecodeBaseOp : public OpKernel {
   }
 
   void Decode(OpKernelContext* ctx, std::vector<UChar32>* char_values,
-              std::vector<SPLITS_TYPE>* offset_values, int* current_offset,
+              std::vector<int64_t>* offset_values, int64_t* current_offset,
               SPLITS_TYPE* next_row_split, UChar32 char_value, int char_length,
               bool found_any_format_error) {
     if (error_options_.error_on_malformatting && found_any_format_error) {
@@ -416,7 +416,7 @@ class UnicodeDecodeBaseOp : public OpKernel {
                     input_encoding_));
 
     std::vector<UChar32> char_values;
-    std::vector<SPLITS_TYPE> offset_values;
+    std::vector<int64_t> offset_values;
 
     Tensor* output_row_splits;
     OP_REQUIRES_OK(ctx, ctx->allocate_output("row_splits",
@@ -433,7 +433,7 @@ class UnicodeDecodeBaseOp : public OpKernel {
       // the fields needed to construct a RaggedTensor.
       out_row_splits(row_split_index) = next_row_split;
       row_split_index++;
-      int current_offset = 0;
+      int64_t current_offset = 0;
       IterateUnicodeString(
           input, input_encoder.converter_,
           std::bind(&UnicodeDecodeBaseOp::Decode, this, ctx, &char_values,
@@ -454,7 +454,7 @@ class UnicodeDecodeBaseOp : public OpKernel {
     Tensor* output_char_values;
     OP_REQUIRES_OK(
         ctx, ctx->allocate_output(
-                 "char_values", {static_cast<SPLITS_TYPE>(char_values.size())},
+                 "char_values", {static_cast<int64_t>(char_values.size())},
                  &output_char_values));
     auto out_char_values = output_char_values->vec<int32_t>();
     if (generate_offsets_) {
@@ -469,9 +469,9 @@ class UnicodeDecodeBaseOp : public OpKernel {
       Tensor* output_offset_values;
       OP_REQUIRES_OK(ctx, ctx->allocate_output(
                               "char_to_byte_starts",
-                              {static_cast<SPLITS_TYPE>(offset_values.size())},
+                              {static_cast<int64_t>(offset_values.size())},
                               &output_offset_values));
-      auto out_offset_values = output_offset_values->vec<SPLITS_TYPE>();
+      auto out_offset_values = output_offset_values->vec<int64_t>();
 
       // Load output tensors from intermediate value arrays.
       for (size_t i = 0; i < char_values.size(); ++i) {
