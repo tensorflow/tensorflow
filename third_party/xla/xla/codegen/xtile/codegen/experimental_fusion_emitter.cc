@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/codegen/xtile/codegen/experimental_fusion_emitter.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
@@ -23,6 +25,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -58,12 +61,14 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/tiling/experimental/reshape_analysis.h"
 #include "xla/codegen/tiling/experimental/scheduling.h"
+#include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/xtile/codegen/dot_algorithms.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/ir/transforms/passes.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"  // IWYU pragma: keep
 #include "xla/hlo/analysis/interval.h"
@@ -78,6 +83,7 @@ limitations under the License.
 #include "xla/hlo/translate/hlo_to_mhlo/attribute_importer.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -109,6 +115,9 @@ namespace ge = ::xla::gpu::experimental;
 absl::StatusOr<std::vector<TensorValue>> EmitTiledComputation(
     EmitterContext& emitter_ctx, const ge::TiledHloRegion& region,
     absl::Span<const ge::TiledHloInstruction* const> roots);
+
+absl::StatusOr<TensorValue> EmitTiledHloInstruction(
+    EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo);
 
 Value MakeIndex(mlir::ImplicitLocOpBuilder& b, int64_t value) {
   return arith::ConstantIndexOp::create(b, value);
@@ -560,6 +569,496 @@ absl::StatusOr<TensorValue> EmitScaledDot(
     result = Cast(b, result, scaled_dot_output_type);
   }
   return mlir::cast<TensorValue>(result);
+}
+
+// Emits a kRaggedDot instruction.
+//
+// kRaggedNonContracting (G is kSequential outer loop):
+//   Output (M_total, N).  For each group g in [0, G):
+//     - Load group_size_g from group_sizes[g] (1-element tile at G-loop IV).
+//     - Check if this M tile (pid_M * BLOCK_M) belongs to group g.
+//     - If yes, emit K-loop and accumulate partial dot into output.
+//   Loop-carried: accumulator (M, N) and last_m (prefix sum of group sizes).
+//
+// kRaggedContracting: Grid = G × K × N. Prefix-sum per program to find start_m.
+absl::StatusOr<TensorValue> EmitRaggedDot(
+    EmitterContext& emitter_ctx,
+    const ge::TiledHloInstruction& tiled_ragged_dot) {
+  auto& b = emitter_ctx.b();
+  const auto* ragged_dot_instr =
+      ::xla::Cast<HloRaggedDotInstruction>(tiled_ragged_dot.hlo());
+  const RaggedDotDimensionNumbers& ragged_dims =
+      ragged_dot_instr->ragged_dot_dimension_numbers();
+  const DotDimensionNumbers& dot_dims = ragged_dims.dot_dimension_numbers();
+
+  const int64_t lhs_ragged_dim = ragged_dims.lhs_ragged_dimensions(0);
+  const bool is_contracting =
+      absl::c_count(dot_dims.lhs_contracting_dimensions(), lhs_ragged_dim) > 0;
+  const bool is_batch =
+      absl::c_count(dot_dims.lhs_batch_dimensions(), lhs_ragged_dim) > 0;
+
+  TF_RET_CHECK(tiled_ragged_dot.hlo_regions().size() == 1);
+
+  ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> padded_tile_sizes,
+                   tiled_ragged_dot.tile().GetStaticTileSizes());
+
+  const ge::TilingSpace& tiling_space = tiled_ragged_dot.tile().tiling_space();
+  const int64_t output_rank =
+      static_cast<int64_t>(tiled_ragged_dot.hlo()->shape().dimensions().size());
+
+  // Accumulator type: derived from the ragged dot's precision config so that
+  // user-specified algorithms (e.g. ALG_DOT_BF16_BF16_F32) are respected,
+  // mirroring the regular EmitDot path.
+  ABSL_ASSIGN_OR_RETURN(const Type acc_type,
+                   xtile::GetDotAccumulatorType(b, *ragged_dot_instr));
+  TensorValue accumulator = CreateConst(b, acc_type, 0.0f, padded_tile_sizes);
+
+  // Helper to emit a tiled operand and its transitive deps within the region.
+  auto emit_operand = [&](const ge::TiledHloInstruction* operand_t)
+      -> absl::StatusOr<TensorValue> {
+    absl::flat_hash_set<const ge::TiledHloInstruction*> deps;
+    std::function<void(const ge::TiledHloInstruction*)> collect;
+    collect = [&](const ge::TiledHloInstruction* t) {
+      if (!deps.insert(t).second) {
+        return;
+      }
+      for (const ge::TiledHloInstruction* op : t->operands()) {
+        for (const auto& ri :
+             tiled_ragged_dot.hlo_regions().front().instructions()) {
+          if (ri.get() == op) {
+            collect(op);
+            break;
+          }
+        }
+      }
+    };
+    collect(operand_t);
+    TensorValue result;
+    for (const auto& region_instr :
+         tiled_ragged_dot.hlo_regions().front().instructions()) {
+      if (!deps.count(region_instr.get())) {
+        continue;
+      }
+      ABSL_ASSIGN_OR_RETURN(TensorValue v,
+                       EmitTiledHloInstruction(emitter_ctx, *region_instr));
+      emitter_ctx.MapTiledHloToTensorValue(region_instr.get(), v);
+      if (region_instr.get() == operand_t) {
+        result = v;
+      }
+    }
+    TF_RET_CHECK(result) << "operand_t not found in its own dep set";
+    return result;
+  };
+
+  if (is_batch) {
+    return absl::UnimplementedError("kRaggedBatch: not yet implemented");
+  }
+
+  // Helper to emit group_sizes and any transitively required instructions
+  // (e.g. a scalar constant that gets broadcast-simplified) using only the
+  // dependency chain of gs_tiled within the region.
+  auto emit_gs =
+      [&](const ge::TiledHloInstruction* gs_t) -> absl::StatusOr<TensorValue> {
+    // Collect gs_tiled's transitive dependencies that live in the region.
+    absl::flat_hash_set<const ge::TiledHloInstruction*> gs_deps;
+    std::function<void(const ge::TiledHloInstruction*)> collect;
+    collect = [&](const ge::TiledHloInstruction* t) {
+      if (!gs_deps.insert(t).second) {
+        return;
+      }
+      for (const ge::TiledHloInstruction* op : t->operands()) {
+        for (const auto& ri :
+             tiled_ragged_dot.hlo_regions().front().instructions()) {
+          if (ri.get() == op) {
+            collect(op);
+            break;
+          }
+        }
+      }
+    };
+    collect(gs_t);
+
+    // Emit each dep in def-before-use (region) order.
+    TensorValue gs_tile;
+    for (const auto& region_instr :
+         tiled_ragged_dot.hlo_regions().front().instructions()) {
+      if (!gs_deps.count(region_instr.get())) {
+        continue;
+      }
+      ABSL_ASSIGN_OR_RETURN(TensorValue result,
+                       EmitTiledHloInstruction(emitter_ctx, *region_instr));
+      emitter_ctx.MapTiledHloToTensorValue(region_instr.get(), result);
+      if (region_instr.get() == gs_t) {
+        gs_tile = result;
+      }
+    }
+    TF_RET_CHECK(gs_tile) << "gs_tiled not found in its own dep set";
+    return gs_tile;
+  };
+
+  if (!is_contracting) {
+    // --- kRaggedNonContracting ---
+    // TilingSpace layout:
+    //   dim[output_rank+0]: G  kSequential (tile_size=1, outer group loop)
+    //   dim[output_rank+1]: K  kSequential (tile_size=BLOCK_K, inner K-loop)
+    // Operands in the region: [lhs, rhs, group_sizes]
+
+    const ge::TilingSpace::DimensionInfo& g_dim_info =
+        tiling_space.GetDimensionInfo(*ragged_dot_instr, output_rank);
+    const ge::TilingSpace::DimensionInfo& k_dim_info =
+        tiling_space.GetDimensionInfo(*ragged_dot_instr, output_rank + 1);
+
+    const int64_t G = g_dim_info.dimension_size;
+    CHECK(k_dim_info.tile_size.has_value())
+        << "K tile size must be set before emitting ragged dot.";
+    const int64_t K_tiles =
+        CeilOfRatio(k_dim_info.dimension_size, *k_dim_info.tile_size);
+
+    const ge::TiledHloInstruction* lhs_tiled = tiled_ragged_dot.operand(0);
+    const ge::TiledHloInstruction* rhs_tiled = tiled_ragged_dot.operand(1);
+    const ge::TiledHloInstruction* gs_tiled = tiled_ragged_dot.operand(2);
+
+    // M is at output dim `num_batch_dims` (after any batch dims).
+    // `lhs_ragged_dim` is also the M dim index in the LHS tile shape.
+    const int64_t num_batch_dims = dot_dims.lhs_batch_dimensions_size();
+
+    // Compute tile_m_abs BEFORE registering G so M's parallel dim is
+    // evaluated cleanly without any sequential dim interference
+    // (especially important when the M/N schedule swap is active).
+    const int64_t BLOCK_M = padded_tile_sizes[num_batch_dims];
+    const ge::DimTile& m_output_dim_pre =
+        tiled_ragged_dot.tile().dim_tiles()[num_batch_dims];
+    ABSL_ASSIGN_OR_RETURN(
+        SmallVector<Value> m_abs_pre,
+        emitter_ctx.EvaluateTilingParameters({m_output_dim_pre.offset}));
+    Value tile_m_abs = m_abs_pre[0];  // index, computed before G IV registered
+    Value tile_m_i32_cmp = Cast(b, tile_m_abs, b.getI32Type());
+    Value tile_end_i32 = arith::AddIOp::create(
+        b, tile_m_i32_cmp, CreateConst(b, b.getI32Type(), BLOCK_M));
+
+    // Outer G-loop: iter_args = (accumulator, last_m=0).
+    auto g_for_op = mlir::scf::ForOp::create(
+        b, MakeIndex(b, 0), MakeIndex(b, G), MakeIndex(b, 1),
+        mlir::ValueRange{accumulator, MakeIndex(b, 0)});
+
+    {
+      mlir::OpBuilder::InsertionGuard g_guard(b);
+      b.setInsertionPointToStart(g_for_op.getBody());
+      Value g_iv = g_for_op.getInductionVar();
+      Value last_m = g_for_op.getRegionIterArgs()[1];
+      TensorValue acc_in =
+          mlir::cast<TensorValue>(g_for_op.getRegionIterArgs()[0]);
+
+      // Register G sequential dim so EvaluateTilingParameters can resolve
+      // RTVar offsets that depend on the G loop IV.
+      CHECK(emitter_ctx.MapSymbolIdToSequentialDimValue(g_dim_info.id, g_iv,
+                                                        Interval{0, G - 1}));
+
+      // Emit group_sizes tile (G-scoped).
+      // Uses emit_gs which handles any HLO form:  parameter, inlined constant,
+      // broadcast of scalar constant, or any other op-defined group_sizes.
+      ABSL_ASSIGN_OR_RETURN(TensorValue gs_tile, emit_gs(gs_tiled));
+
+      // Extract group_size_g from gs_tile.
+      // gs_tile is tensor<1xi{32|64}>; XTile/Triton's tensor.extract requires
+      // a rank-0 tensor — reshape to tensor<elem_type> (rank-0) first.
+      auto gs_elem_type = gs_tile.getType().getElementType();
+      TensorValue gs_tile_scalar = mlir::cast<TensorValue>(
+          stablehlo::ReshapeOp::create(
+              b, mlir::RankedTensorType::get({}, gs_elem_type), gs_tile)
+              .getResult());
+      Value gs_raw = mlir::tensor::ExtractOp::create(b, gs_tile_scalar);
+      Value group_size_g =
+          mlir::arith::IndexCastOp::create(b, b.getIndexType(), gs_raw);
+
+      // Determine whether this program's M tile OVERLAPS with group g.
+      // tile_m_abs was computed before the G-loop to avoid interference
+      // from the G sequential dim registration (see comment above).
+      Value last_m_plus_gs =
+          mlir::arith::AddIOp::create(b, last_m, group_size_g);
+      // Signed overlap check in i32 (works for all schedule permutations):
+      //   tile_m_abs_i32 < last_m_plus_gs_i32  AND
+      //   tile_end_i32   > last_m_i32
+      Value last_m_i32_cmp = Cast(b, last_m, b.getI32Type());
+      Value last_m_plus_i32_cmp = Cast(b, last_m_plus_gs, b.getI32Type());
+      Value overlaps = mlir::arith::AndIOp::create(
+          b,
+          mlir::arith::CmpIOp::create(b, mlir::arith::CmpIPredicate::slt,
+                                      tile_m_i32_cmp, last_m_plus_i32_cmp),
+          mlir::arith::CmpIOp::create(b, mlir::arith::CmpIPredicate::sgt,
+                                      tile_end_i32, last_m_i32_cmp));
+
+      // Conditional: run K-loop if this M tile overlaps group g at all.
+      auto if_op = mlir::scf::IfOp::create(b, acc_in.getType(), overlaps,
+                                           /*hasElse=*/true);
+
+      {  // Then block: K-loop accumulation.
+        mlir::OpBuilder::InsertionGuard if_guard(b);
+        b.setInsertionPointToStart(if_op.thenBlock());
+
+        auto k_for_op =
+            mlir::scf::ForOp::create(b, MakeIndex(b, 0), MakeIndex(b, K_tiles),
+                                     MakeIndex(b, 1), mlir::ValueRange{acc_in});
+
+        {  // K-loop body.
+          mlir::OpBuilder::InsertionGuard k_guard(b);
+          b.setInsertionPointToStart(k_for_op.getBody());
+          Value k_iv = k_for_op.getInductionVar();
+          TensorValue acc_k_in =
+              mlir::cast<TensorValue>(k_for_op.getRegionIterArgs()[0]);
+
+          // Register K sequential dim IV.
+          CHECK(emitter_ctx.MapSymbolIdToSequentialDimValue(
+              k_dim_info.id, k_iv, Interval{0, K_tiles - 1}));
+
+          // Emit LHS and RHS tiles (K-scoped).
+          // emit_operand handles the full instruction chain (parameter,
+          // bitcast, transpose, etc.) that layout normalization may insert
+          // inside the fusion for non-standard memory layouts.
+          ABSL_ASSIGN_OR_RETURN(TensorValue lhs_tensor, emit_operand(lhs_tiled));
+          ABSL_ASSIGN_OR_RETURN(TensorValue rhs_tensor, emit_operand(rhs_tiled));
+
+          // Mask LHS rows that are outside group g.
+          // Row r (0..BLOCK_M-1) is valid iff:
+          //   tile_m_abs + r >= last_m  AND  tile_m_abs + r < last_m_plus_gs
+          // Build an i32 mask over [BLOCK_M] rows, then broadcast to [M, K].
+          {
+            auto lhs_shape = lhs_tensor.getType().getShape();
+            // lhs_ragged_dim is the M dimension in the LHS tile shape.
+            // For no-batch: lhs_ragged_dim=0 → lhs_shape[0]=BLOCK_M.
+            // For batched:  lhs_ragged_dim=1 → lhs_shape[1]=BLOCK_M.
+            int64_t lhs_m_tile_size = lhs_shape[lhs_ragged_dim];  // == BLOCK_M
+            int64_t lhs_m_dim = lhs_m_tile_size;
+            // iota over M rows: 0..BLOCK_M-1
+            TensorValue row_iota = Iota(b, static_cast<int32_t>(lhs_m_dim));
+            // abs_m[r] = tile_m_abs_i32 + r
+            // Use pre-computed tile_m_i32_cmp (avoids re-evaluating M offset
+            // inside G-loop where sequential dims are registered).
+            TensorValue tile_m_splat =
+                xtile::Splat(b, tile_m_i32_cmp, {lhs_m_dim});
+            Value abs_m = arith::AddIOp::create(b, row_iota, tile_m_splat);
+            // last_m and last_m_plus_gs in i32 (already computed above).
+            TensorValue lm_splat = xtile::Splat(b, last_m_i32_cmp, {lhs_m_dim});
+            TensorValue lmp_splat =
+                xtile::Splat(b, last_m_plus_i32_cmp, {lhs_m_dim});
+            Value mask_lo = arith::CmpIOp::create(b, arith::CmpIPredicate::sge,
+                                                  abs_m, lm_splat);
+            Value mask_hi = arith::CmpIOp::create(b, arith::CmpIPredicate::slt,
+                                                  abs_m, lmp_splat);
+            Value row_mask = arith::AndIOp::create(b, mask_lo, mask_hi);
+            // Broadcast [BLOCK_M] mask along the M dim of the LHS tile.
+            row_mask =
+                xtile::BroadcastInDims(b, mlir::cast<TensorValue>(row_mask),
+                                       lhs_shape, {lhs_ragged_dim});
+            ABSL_ASSIGN_OR_RETURN(Type lhs_elem_ty,
+                             PrimitiveTypeToMlirType(
+                                 b, lhs_tiled->hlo()->shape().element_type()));
+            TensorValue lhs_zero = CreateConst(b, lhs_elem_ty, 0.0f, lhs_shape);
+            lhs_tensor = mlir::cast<TensorValue>(
+                arith::SelectOp::create(b, row_mask, lhs_tensor, lhs_zero)
+                    .getResult());
+          }
+
+          // The RHS tile has shape [...batch..., G_tile=1, K_tile, N].
+          // Squeeze out the G dimension (at rhs_group_dim) so the inner
+          // dot sees [...batch..., K_tile, N].
+          const int64_t rhs_group_dim_orig =
+              ragged_dims.rhs_group_dimensions(0);
+          auto rhs_full_shape = rhs_tensor.getType().getShape();
+          llvm::SmallVector<int64_t> rhs_squeezed_shape;
+          for (int64_t i = 0; i < static_cast<int64_t>(rhs_full_shape.size());
+               ++i) {
+            if (i != rhs_group_dim_orig) {
+              rhs_squeezed_shape.push_back(rhs_full_shape[i]);
+            }
+          }
+          rhs_tensor = mlir::cast<TensorValue>(
+              stablehlo::ReshapeOp::create(
+                  b,
+                  mlir::RankedTensorType::get(
+                      rhs_squeezed_shape,
+                      rhs_tensor.getType().getElementType()),
+                  rhs_tensor)
+                  .getResult());
+
+          // After squeezing G, the K contracting dim shifts:
+          //   If K_orig > rhs_group_dim → k_idx decreases by 1
+          //   Otherwise stays the same.
+          const int64_t rhs_k_orig = dot_dims.rhs_contracting_dimensions(0);
+          const int64_t rhs_k_dim_after_squeeze =
+              (rhs_k_orig > rhs_group_dim_orig) ? rhs_k_orig - 1 : rhs_k_orig;
+
+          // Mask LHS at K-boundary (same as EmitDot).
+          Value k_iv_i32 = Cast(b, k_iv, b.getI32Type());
+          {
+            ABSL_ASSIGN_OR_RETURN(Type lhs_k_elem_ty,
+                             PrimitiveTypeToMlirType(
+                                 b, lhs_tiled->hlo()->shape().element_type()));
+            Value lhs_k_zero = CreateConst(b, lhs_k_elem_ty, 0.0f);
+            ABSL_ASSIGN_OR_RETURN(lhs_tensor,
+                             MaskOperand(b, *lhs_tiled, lhs_tensor, k_iv_i32,
+                                         dot_dims.lhs_contracting_dimensions(0),
+                                         lhs_k_zero));
+          }
+
+          // Mask squeezed RHS at K-boundary inline (MaskDotOperand reads the
+          // pre-squeeze HLO shape, so we replicate its logic here with the
+          // squeezed shape).
+          {
+            int64_t K = rhs_tiled->hlo()->shape().dimensions(rhs_k_orig);
+            int64_t tile_k = rhs_squeezed_shape[rhs_k_dim_after_squeeze];
+            if (K % tile_k != 0) {
+              Value tile_size_value = CreateConst(b, b.getI32Type(), tile_k);
+              Value num_full_tiles = arith::DivSIOp::create(
+                  b, CreateConst(b, b.getI32Type(), K), tile_size_value);
+              auto cond = arith::CmpIOp::create(b, arith::CmpIPredicate::sge,
+                                                k_iv_i32, num_full_tiles);
+              auto if_mask = mlir::scf::IfOp::create(b, rhs_tensor.getType(),
+                                                     cond, /*withElse=*/true);
+              {
+                mlir::OpBuilder::InsertionGuard mg(b);
+                b.setInsertionPointToStart(if_mask.thenBlock());
+                Value tile_offset =
+                    arith::MulIOp::create(b, k_iv_i32, tile_size_value);
+                TensorValue range = Iota(b, tile_k);
+                TensorValue bcast_off = xtile::Splat(b, tile_offset, {tile_k});
+                Value indices = arith::AddIOp::create(b, range, bcast_off);
+                Value boundary = CreateConst(b, b.getI32Type(), K, {tile_k});
+                Value mask = arith::CmpIOp::create(b, arith::CmpIPredicate::slt,
+                                                   indices, boundary);
+                llvm::ArrayRef<int64_t> tile_shape =
+                    rhs_tensor.getType().getShape();
+                mask = xtile::BroadcastInDims(b, mlir::cast<TensorValue>(mask),
+                                              tile_shape,
+                                              {rhs_k_dim_after_squeeze});
+                ABSL_ASSIGN_OR_RETURN(
+                    Type elem_ty,
+                    PrimitiveTypeToMlirType(
+                        b, rhs_tiled->hlo()->shape().element_type()));
+                TensorValue zero = CreateConst(b, elem_ty, 0.0f, tile_shape);
+                Value masked =
+                    arith::SelectOp::create(b, mask, rhs_tensor, zero);
+                mlir::scf::YieldOp::create(b, masked);
+              }
+              {
+                mlir::OpBuilder::InsertionGuard mg(b);
+                b.setInsertionPointToStart(if_mask.elseBlock());
+                mlir::scf::YieldOp::create(b, rhs_tensor);
+              }
+              b.setInsertionPointAfter(if_mask);
+              rhs_tensor = mlir::cast<TensorValue>(if_mask.getResult(0));
+            }
+          }
+
+          // For batched ragged dot (num_batch_dims > 0), the lhs/rhs/acc have
+          // leading batch dims of size 1 (one batch element per tile). Triton's
+          // tt.dot operates on 2D tensors. Squeeze those size-1 batch dims
+          // before the dot, then unsqueeze the result.
+          //
+          // Non-batched path (num_batch_dims == 0) is unchanged.
+          auto lhs_type = lhs_tensor.getType();
+          auto acc_type_cast =
+              mlir::cast<mlir::RankedTensorType>(acc_k_in.getType());
+          auto acc_shape_ref = acc_type_cast.getShape();
+
+          // Compute 2-D (squeezed) shapes by dropping batch dims.
+          llvm::SmallVector<int64_t> lhs_2d_shape(
+              lhs_type.getShape().begin() + num_batch_dims,
+              lhs_type.getShape().end());
+          llvm::SmallVector<int64_t> rhs_2d_shape(
+              rhs_squeezed_shape.begin() + num_batch_dims,
+              rhs_squeezed_shape.end());
+          llvm::SmallVector<int64_t> acc_2d_shape(
+              acc_shape_ref.begin() + num_batch_dims, acc_shape_ref.end());
+
+          TensorValue dot_lhs = lhs_tensor;
+          TensorValue dot_rhs = rhs_tensor;
+          Value dot_acc = acc_k_in;
+          if (num_batch_dims > 0) {
+            dot_lhs = mlir::cast<TensorValue>(
+                stablehlo::ReshapeOp::create(
+                    b,
+                    mlir::RankedTensorType::get(lhs_2d_shape,
+                                                lhs_type.getElementType()),
+                    lhs_tensor)
+                    .getResult());
+            dot_rhs = mlir::cast<TensorValue>(
+                stablehlo::ReshapeOp::create(
+                    b,
+                    mlir::RankedTensorType::get(
+                        rhs_2d_shape, rhs_tensor.getType().getElementType()),
+                    rhs_tensor)
+                    .getResult());
+            dot_acc = stablehlo::ReshapeOp::create(
+                          b,
+                          mlir::RankedTensorType::get(
+                              acc_2d_shape, acc_type_cast.getElementType()),
+                          acc_k_in)
+                          .getResult();
+          }
+
+          // Build inner dot dimension numbers.
+          // When batch dims are squeezed out, contracting dim indices decrease
+          // by num_batch_dims (the batch dims occupied the leading positions).
+          DotDimensionNumbers inner_dot_dims;
+          inner_dot_dims.add_lhs_contracting_dimensions(
+              dot_dims.lhs_contracting_dimensions(0) - num_batch_dims);
+          inner_dot_dims.add_rhs_contracting_dimensions(
+              rhs_k_dim_after_squeeze - num_batch_dims);
+
+          // Partial dot: LHS [M, K] × RHS [K, N] → acc [M, N].
+          ABSL_ASSIGN_OR_RETURN(
+              Value acc_next_2d,
+              xtile::EmitSingleTileDot(
+                  b, *ragged_dot_instr, inner_dot_dims,
+                  xtile::DotOperands{dot_lhs, dot_rhs,
+                                     mlir::cast<TensorValue>(dot_acc)}));
+
+          // Unsqueeze batch dims back if they were squeezed.
+          Value acc_next = acc_next_2d;
+          if (num_batch_dims > 0) {
+            acc_next = stablehlo::ReshapeOp::create(
+                           b,
+                           mlir::RankedTensorType::get(
+                               llvm::SmallVector<int64_t>(acc_shape_ref.begin(),
+                                                          acc_shape_ref.end()),
+                               acc_type_cast.getElementType()),
+                           acc_next_2d)
+                           .getResult();
+          }
+          mlir::scf::YieldOp::create(b, acc_next);
+        }
+        b.setInsertionPointAfter(k_for_op);
+        mlir::scf::YieldOp::create(b, k_for_op.getResult(0));
+      }
+
+      {  // Else block: accumulator unchanged.
+        mlir::OpBuilder::InsertionGuard else_guard(b);
+        b.setInsertionPointToStart(if_op.elseBlock());
+        mlir::scf::YieldOp::create(b, acc_in);
+      }
+      b.setInsertionPointAfter(if_op);
+
+      // Update last_m for next G iteration.
+      Value last_m_next = mlir::arith::AddIOp::create(b, last_m, group_size_g);
+      mlir::scf::YieldOp::create(
+          b, mlir::ValueRange{if_op.getResult(0), last_m_next});
+    }
+    b.setInsertionPointAfter(g_for_op);
+
+    TensorValue result = mlir::cast<TensorValue>(g_for_op.getResult(0));
+
+    // Cast accumulator to the declared output element type if needed.
+    ABSL_ASSIGN_OR_RETURN(Type out_type,
+                     PrimitiveTypeToMlirType(
+                         b, tiled_ragged_dot.hlo()->shape().element_type()));
+    if (out_type != acc_type) {
+      result = mlir::cast<TensorValue>(Cast(b, result, out_type));
+    }
+    return result;
+  }
+
+  return absl::UnimplementedError("kRaggedContracting: not yet implemented");
 }
 
 absl::StatusOr<TensorValue> EmitIota(
@@ -1339,6 +1838,9 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
   if (hlo->opcode() == HloOpcode::kReduce) {
     return EmitReduce(emitter_ctx, tiled_hlo);
   }
+  if (hlo->opcode() == HloOpcode::kRaggedDot) {
+    return EmitRaggedDot(emitter_ctx, tiled_hlo);
+  }
   if (hlo->opcode() == HloOpcode::kConcatenate) {
     return EmitConcatenate(emitter_ctx, tiled_hlo);
   }
@@ -1495,6 +1997,184 @@ void EmitFullyTiledSequentialDimensions(
   }
 }
 
+// Applies L2 tile reordering to the flat tile_id for kRaggedNonContracting and
+// kRaggedContracting ragged-dot fusions that set
+// BlockLevelFusionConfig.group_size > 1.
+//
+// kRaggedNonContracting: reorders the (M, N) tile enumeration so that
+// `group_size` consecutive M-tiles share the same N-tile before the next
+// N-tile group begins, keeping the RHS column block hot in L2:
+//
+//   num_pid_in_group = group_size * num_pid_n
+//   group_id         = pid // num_pid_in_group
+//   first_pid_m      = group_id * group_size
+//   group_size_m     = min(num_pid_m - first_pid_m, group_size)
+//   pid_m            = first_pid_m + (pid % num_pid_in_group) % group_size_m
+//   pid_n            = (pid % num_pid_in_group) // group_size_m
+//   remapped_pid     = pid_m * num_pid_n + pid_n
+//
+// kRaggedContracting: applies the same algorithm over the 3-D grid
+// (G × K_tiles × N_tiles), grouping G-slices so that `group_size` consecutive
+// G programs share the same (K_tile, N_tile) pair, keeping the RHS block hot
+// in L2 across groups.  G plays the role of M and
+// KN_tiles = K_tiles * N_tiles plays the role of N:
+//
+//   num_pid_in_group = group_size * KN_tiles
+//   group_id         = pid // num_pid_in_group
+//   first_pid_g      = group_id * group_size
+//   group_size_g     = min(num_pid_g - first_pid_g, group_size)
+//   pid_g            = first_pid_g + (pid % num_pid_in_group) % group_size_g
+//   pid_kn           = (pid % num_pid_in_group) // group_size_g
+//   remapped_pid     = pid_g * KN_tiles + pid_kn
+//
+// Returns `raw_tile_id` unchanged when the fusion does not qualify (batch dims
+// present, group_size <= 1, or non-3D kRaggedContracting output tile).
+Value ApplyGroupSizeTileIdRemapping(ImplicitLocOpBuilder& b,
+                                    const HloFusionInstruction& fusion,
+                                    Value raw_tile_id) {
+  // Read group_size from the fusion backend config.
+  auto gpu_config_or = fusion.backend_config<xla::gpu::GpuBackendConfig>();
+  if (!gpu_config_or.ok()) {
+    return raw_tile_id;
+  }
+  const xla::gpu::GpuBackendConfig& gpu_config = *gpu_config_or;
+  if (!gpu_config.fusion_backend_config().has_block_level_fusion_config()) {
+    return raw_tile_id;
+  }
+  const xla::xtile::BlockLevelFusionConfig& blk_cfg =
+      gpu_config.fusion_backend_config().block_level_fusion_config();
+  const int gs = std::max(1, blk_cfg.group_size());
+  if (gs <= 1) {
+    return raw_tile_id;
+  }
+
+  // Find the kRaggedDot inside the fusion.
+  const HloComputation* comp = fusion.fused_instructions_computation();
+  const HloRaggedDotInstruction* rd = nullptr;
+  for (const HloInstruction* instr : comp->instructions()) {
+    if (instr->opcode() == HloOpcode::kRaggedDot) {
+      rd = ::xla::Cast<HloRaggedDotInstruction>(instr);
+      break;
+    }
+  }
+  if (rd == nullptr) {
+    return raw_tile_id;
+  }
+
+  const auto& rdims = rd->ragged_dot_dimension_numbers();
+  const auto& ddims = rdims.dot_dimension_numbers();
+  const int64_t ragged_lhs = rdims.lhs_ragged_dimensions(0);
+  const bool is_contracting =
+      absl::c_count(ddims.lhs_contracting_dimensions(), ragged_lhs) > 0;
+  const bool is_batch =
+      absl::c_count(ddims.lhs_batch_dimensions(), ragged_lhs) > 0;
+
+  // Batch variants are not supported for either remapping.
+  if (is_batch) {
+    return raw_tile_id;
+  }
+
+  if (!is_contracting) {
+    // ---- kRaggedNonContracting: (M, N) 2-D grid grouping ----
+    // Only handle the no-batch, 2-D grid case ([M, N] output tile).
+    if (blk_cfg.output_tiles_size() < 1 ||
+        blk_cfg.output_tiles(0).sizes_size() != 2) {
+      return raw_tile_id;
+    }
+
+    // Grid dimensions: num_pid_m × num_pid_n programs.
+    const int64_t BLOCK_M = blk_cfg.output_tiles(0).sizes(0);
+    const int64_t BLOCK_N = blk_cfg.output_tiles(0).sizes(1);
+    const int64_t M_total = rd->shape().dimensions(0);
+    const int64_t N_total = rd->shape().dimensions(1);
+    const int64_t num_pid_m = (M_total + BLOCK_M - 1) / BLOCK_M;
+    const int64_t num_pid_n = (N_total + BLOCK_N - 1) / BLOCK_N;
+
+    if (num_pid_m <= 1 || num_pid_n <= 0) {
+      return raw_tile_id;  // Nothing to reorder.
+    }
+
+    // Cast pid to i32 for arithmetic (Triton program IDs are 32-bit).
+    Value pid = Cast(b, raw_tile_id, b.getI32Type());
+    auto ci = [&](int64_t v) { return CreateConst(b, b.getI32Type(), v); };
+    Value G = ci(gs);
+    Value npm = ci(num_pid_m);
+    Value npn = ci(num_pid_n);
+    // num_pid_in_group = group_size * num_pid_n
+    Value g_npn = arith::MulIOp::create(b, G, npn);
+    // group_id = pid / (group_size * num_pid_n)
+    Value group_id = arith::DivSIOp::create(b, pid, g_npn);
+    // first_pid_m = group_id * group_size
+    Value first_pid_m = arith::MulIOp::create(b, group_id, G);
+    // rem_in_group = pid % (group_size * num_pid_n)
+    Value rem = arith::RemSIOp::create(b, pid, g_npn);
+    // group_size_m = min(num_pid_m - first_pid_m, group_size)
+    Value npm_minus_first = arith::SubIOp::create(b, npm, first_pid_m);
+    Value group_size_m = arith::MinSIOp::create(b, npm_minus_first, G);
+    // pid_m = first_pid_m + (rem % group_size_m)
+    Value pid_m = arith::AddIOp::create(
+        b, first_pid_m, arith::RemSIOp::create(b, rem, group_size_m));
+    // pid_n = rem / group_size_m
+    Value pid_n = arith::DivSIOp::create(b, rem, group_size_m);
+    // remapped flat index = pid_m * num_pid_n + pid_n
+    Value remapped =
+        arith::AddIOp::create(b, arith::MulIOp::create(b, pid_m, npn), pid_n);
+    // Cast back to index type for EmitterContext.
+    return arith::IndexCastOp::create(b, b.getIndexType(), remapped);
+  }
+
+  // ---- kRaggedContracting: (G, KN) 3-D grid grouping.
+  // Output tile = [G=1, BLOCK_K, BLOCK_N] → sizes_size() == 3.
+  if (blk_cfg.output_tiles_size() < 1 ||
+      blk_cfg.output_tiles(0).sizes_size() != 3) {
+    return raw_tile_id;
+  }
+
+  // Grid: G × K_tiles × N_tiles programs.
+  // G plays the role of M, KN_tiles = K_tiles * N_tiles plays the role of N.
+  // rd->shape() = (G, K_output, N_output).
+  const int64_t BLOCK_K = blk_cfg.output_tiles(0).sizes(1);
+  const int64_t BLOCK_N = blk_cfg.output_tiles(0).sizes(2);
+  const int64_t num_pid_g = rd->shape().dimensions(0);
+  const int64_t K_output = rd->shape().dimensions(1);
+  const int64_t N_output = rd->shape().dimensions(2);
+  const int64_t K_tiles = (K_output + BLOCK_K - 1) / BLOCK_K;
+  const int64_t N_tiles = (N_output + BLOCK_N - 1) / BLOCK_N;
+  const int64_t num_pid_kn = K_tiles * N_tiles;
+
+  if (num_pid_g <= 1 || num_pid_kn <= 0) {
+    return raw_tile_id;  // Nothing to reorder.
+  }
+
+  // Cast pid to i32 for arithmetic (Triton program IDs are 32-bit).
+  Value pid = Cast(b, raw_tile_id, b.getI32Type());
+  auto ci = [&](int64_t v) { return CreateConst(b, b.getI32Type(), v); };
+  Value GS = ci(gs);
+  Value npg = ci(num_pid_g);
+  Value npkn = ci(num_pid_kn);
+  // num_pid_in_group = group_size * num_pid_kn
+  Value gs_npkn = arith::MulIOp::create(b, GS, npkn);
+  // group_id = pid / (group_size * num_pid_kn)
+  Value group_id = arith::DivSIOp::create(b, pid, gs_npkn);
+  // first_pid_g = group_id * group_size
+  Value first_pid_g = arith::MulIOp::create(b, group_id, GS);
+  // rem_in_group = pid % (group_size * num_pid_kn)
+  Value rem = arith::RemSIOp::create(b, pid, gs_npkn);
+  // group_size_g = min(num_pid_g - first_pid_g, group_size)
+  Value npg_minus_first = arith::SubIOp::create(b, npg, first_pid_g);
+  Value group_size_g = arith::MinSIOp::create(b, npg_minus_first, GS);
+  // pid_g = first_pid_g + (rem % group_size_g)
+  Value pid_g = arith::AddIOp::create(
+      b, first_pid_g, arith::RemSIOp::create(b, rem, group_size_g));
+  // pid_kn = rem / group_size_g
+  Value pid_kn = arith::DivSIOp::create(b, rem, group_size_g);
+  // remapped flat index = pid_g * num_pid_kn + pid_kn
+  Value remapped =
+      arith::AddIOp::create(b, arith::MulIOp::create(b, pid_g, npkn), pid_kn);
+  // Cast back to index type for EmitterContext.
+  return arith::IndexCastOp::create(b, b.getIndexType(), remapped);
+}
+
 absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
                          const HloFusionInstruction& fusion,
                          const ge::TiledHloComputation& tiled_computation,
@@ -1534,6 +2214,13 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
     tile_id = for_op.getInductionVar();
     b.setInsertionPointToStart(for_op.getBody());
   }
+  // Apply GROUP_SIZE L2 tile reordering for kRaggedNonContracting and
+  // kRaggedContracting ragged-dot fusions where
+  // BlockLevelFusionConfig.group_size > 1.  The remapping transforms the flat
+  // tile id to an L2-friendly tile coordinate before EmitterContext is
+  // constructed, so that all EvaluateTilingParameters calls automatically yield
+  // the reordered tile coordinates.
+  tile_id = ApplyGroupSizeTileIdRemapping(b, fusion, tile_id);
   EmitterContext emitter_ctx{b,        &fusion, program_id,       tile_id,
                              schedule, fn,      tiled_computation};
 
