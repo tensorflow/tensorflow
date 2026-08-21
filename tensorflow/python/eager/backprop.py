@@ -976,6 +976,11 @@ class GradientTape:
     >>> g.gradient(y, x)
     <tf.RaggedTensor [[2.0, 4.0], [6.0]]>
 
+    Operations must connect `target` and `sources` within the tape scope. If
+    `target` is built after exiting the context (for example, reducing an
+    intermediate tensor outside the tape), the gradient can be unconnected and
+    `gradient` returns `None` by default.
+
     Args:
       target: a list or nested structure of Tensors or Variables or
         CompositeTensors to be differentiated.
