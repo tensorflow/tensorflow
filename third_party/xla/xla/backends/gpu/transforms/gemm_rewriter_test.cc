@@ -1911,6 +1911,10 @@ TEST_F(CublasLtGemmRewriteTest,
   if (IsRocm()) {
     GTEST_SKIP() << "TODO: Unsupported blas-lt epilogue on ROCM";
   }
+  if (IsSycl()) {
+    GTEST_SKIP()
+        << "TODO: Unsupported blas-lt epilogue not yet supported on SYCL";
+  }
   const char* hlo_text = R"(
 HloModule test
 
@@ -1978,6 +1982,10 @@ TEST_F(CublasLtGemmRewriteTest,
        ApproxGeluActivationWithAuxAndBitcastAndExtraDotUser) {
   if (IsRocm()) {
     GTEST_SKIP() << "TODO: Unsupported blas-lt epilogue on ROCM";
+  }
+  if (IsSycl()) {
+    GTEST_SKIP()
+        << "TODO: Unsupported blas-lt epilogue not yet supported on SYCL";
   }
   const char* hlo_text = R"(
 HloModule test

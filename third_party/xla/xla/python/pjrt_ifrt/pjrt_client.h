@@ -37,7 +37,6 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
-#include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -72,6 +71,10 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+
+class CoordinationServiceAgent;
+class DistributedRuntimeClient;
+
 namespace ifrt {
 
 class PjRtCompatibleArray;

@@ -2334,6 +2334,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();
     }
 
+    // TODO(intel-tf): will be removed when oneDNN supports aux output for GELU.
+    // SYCL (OneAPI) backend: Do not fuse activation if aux output is required.
+    if (has_aux && gpu_version_.IsOneAPI()) {
+      return absl::OkStatus();
+    }
+
     ABSL_ASSIGN_OR_RETURN(auto gpu_config, gemm->backend_config<GpuBackendConfig>());
     GemmBackendConfig& config = GetMutableGemmBackendConfig(gpu_config);
 
@@ -2412,6 +2418,13 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // For grouped GEMM (Hipblaslt), aux output is not supported yet.
     // Do not fuse activation if aux output is required.
     if (has_aux && IsCublasLtGroupedMatmul(*gemm) && gpu_version_.IsRocm()) {
+      return absl::OkStatus();
+    }
+
+    // TODO(intel-tf): will be removed when oneDNN supports aux output for
+    // Swish. SYCL (OneAPI) backend: Do not fuse activation if aux output is
+    // required.
+    if (has_aux && gpu_version_.IsOneAPI()) {
       return absl::OkStatus();
     }
 
