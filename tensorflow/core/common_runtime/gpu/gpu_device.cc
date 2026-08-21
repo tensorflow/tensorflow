@@ -192,7 +192,7 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
     void* ret = allocator_->AllocateRaw(32 /* alignment */, num_bytes);
     if (ret == nullptr) {
       if (context_) {
-        context_->SetStatus(errors::ResourceExhausted(
+        context_->SetStatus(absl::ResourceExhaustedError(
             strings::StrCat("Ran out of GPU memory when allocating ", num_bytes,
                             " bytes for ", operation_)));
       } else {
@@ -238,12 +238,12 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
 
  private:
   struct AsyncFreeData {
-    AsyncFreeData(::tensorflow::Allocator* a, void* p, const string& o,
+    AsyncFreeData(::tensorflow::Allocator* a, void* p, const std::string& o,
                   const int64_t s)
         : allocator_(a), address_(p), operation_(o), step_id_(s) {}
     ::tensorflow::Allocator* allocator_;
     void* address_;
-    const string operation_;
+    const std::string operation_;
     const int64_t step_id_;
   };
 
@@ -263,7 +263,7 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
     delete data;
   }
 
-  string operation_;
+  std::string operation_;
   int64_t step_id_;
   gpuStream_t stream_;                  // Not owned.
   const gpuDeviceProp_t* device_prop_;  // Not owned.
@@ -442,10 +442,11 @@ class BaseGPUDevice::StreamGroupFactory {
   void operator=(const StreamGroupFactory&) = delete;
 };
 
-BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
-                             Bytes memory_limit, const DeviceLocality& locality,
+BaseGPUDevice::BaseGPUDevice(const SessionOptions& options,
+                             const std::string& name, Bytes memory_limit,
+                             const DeviceLocality& locality,
                              tsl::TfDeviceId tf_device_id,
-                             const string& physical_device_desc,
+                             const std::string& physical_device_desc,
                              Allocator* gpu_allocator, Allocator* cpu_allocator,
                              bool sync_every_op)
     : LocalDevice(options, Device::BuildDeviceAttributes(name, DEVICE_GPU,
@@ -481,7 +482,7 @@ BaseGPUDevice::~BaseGPUDevice() {
 }
 
 // This should be idempotent if already initialized.
-Status BaseGPUDevice::InitScratchBuffers() {
+absl::Status BaseGPUDevice::InitScratchBuffers() {
   mutex_lock l(scratch_init_mutex_);
   if (!scratch_) {
     DCHECK(stream_);
@@ -490,9 +491,9 @@ Status BaseGPUDevice::InitScratchBuffers() {
     void* scratch_buffer = gpu_allocator_->AllocateRaw(
         Allocator::kAllocatorAlignment, scratch_buffer_size);
     if (scratch_buffer == nullptr) {
-      return errors::FailedPrecondition(
-          "Failed to allocate scratch buffer for device ",
-          tf_device_id_.value());
+      return absl::FailedPreconditionError(
+          absl::StrCat("Failed to allocate scratch buffer for device ",
+                       tf_device_id_.value()));
     }
     stream_executor::DeviceAddress<char> mem(stream_executor::DeviceAddressBase(
         scratch_buffer, scratch_buffer_size));
@@ -500,20 +501,21 @@ Status BaseGPUDevice::InitScratchBuffers() {
         &mem, Eigen::kGpuScratchSize + sizeof(unsigned int)));
     scratch_ = static_cast<char*>(scratch_buffer);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #ifdef TF_GPU_USE_PJRT
-Status BaseGPUDevice::Init(const SessionOptions& options,
-                           xla::LocalDeviceState* xla_local_device_state) {
+absl::Status BaseGPUDevice::Init(
+    const SessionOptions& options,
+    xla::LocalDeviceState* xla_local_device_state) {
 #else
 Status BaseGPUDevice::Init(const SessionOptions& options) {
 #endif  // TF_GPU_USE_PJRT
   auto executor_status = DeviceIdUtil::ExecutorForTfDeviceId(
       DEVICE_GPU, se::GPUMachineManager(), tf_device_id_);
   if (!executor_status.status().ok()) {
-    return errors::Internal("Failed to get StreamExecutor for device ",
-                            tf_device_id_.value());
+    return absl::InternalError(absl::StrCat(
+        "Failed to get StreamExecutor for device ", tf_device_id_.value()));
   }
 
   executor_ = executor_status.value();
@@ -616,7 +618,7 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
   //          thread-pool. This is currently the default.
   //   * gpu_private: GPU uses threads dedicated to this device.
   //   * gpu_shared: All GPUs share a dedicated thread pool.
-  string gpu_thread_mode;
+  std::string gpu_thread_mode;
   TF_RETURN_IF_ERROR(
       ReadStringFromEnvVar("TF_GPU_THREAD_MODE", "global", &gpu_thread_mode));
   gpu_thread_mode = absl::AsciiStrToLower(gpu_thread_mode);
@@ -634,22 +636,22 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
       thread_pool_.reset(new thread::ThreadPool(
           options.env, ThreadOptions(),
           absl::StrCat("gpu_private_", tf_device_id_.value()),
-          static_cast<int32>(gpu_thread_count),
+          static_cast<int32_t>(gpu_thread_count),
           !options.config.experimental().disable_thread_spinning(),
           /*allocator=*/nullptr));
       set_tensorflow_device_thread_pool(thread_pool_.get());
     } else if (gpu_thread_mode == "gpu_shared") {
       static thread::ThreadPool* thread_pool = new thread::ThreadPool(
           options.env, ThreadOptions(), "gpu_shared",
-          static_cast<int32>(gpu_thread_count),
+          static_cast<int32_t>(gpu_thread_count),
           !options.config.experimental().disable_thread_spinning(),
           /*allocator=*/nullptr);
       set_tensorflow_device_thread_pool(thread_pool);
     } else {
-      string error_message =
+      std::string error_message =
           absl::StrCat("Invalid gpu_thread_mode: ", gpu_thread_mode);
       LOG(WARNING) << error_message;
-      return errors::InvalidArgument(error_message);
+      return absl::InvalidArgumentError(error_message);
     }
   }
 
@@ -660,11 +662,11 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
     LOG(INFO) << "Writing NodeDefs to file: " << node_file_writer_->filename();
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-string BaseGPUDevice::ComputeOpKernelDebugString(const OpKernel& op_kernel,
-                                                 const int& stream_id) {
+std::string BaseGPUDevice::ComputeOpKernelDebugString(const OpKernel& op_kernel,
+                                                      const int& stream_id) {
   return strings::StrCat(op_kernel.name(), " op ", op_kernel.type_string(),
                          " on GPU ", tf_device_id_.value(), " stream[",
                          stream_id, "]");
@@ -820,7 +822,7 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
     if (kernel_tracker_) {
       GPUKernelTracker* tracker = kernel_tracker_.get();
       DCHECK(tracker);
-      uint64 queued_count = tracker->MaybeQueue(context);
+      uint64_t queued_count = tracker->MaybeQueue(context);
       if (queued_count > 0) {
         em_->ThenExecute(stream, [tracker, queued_count]() {
           tracker->RecordTerminated(queued_count);
@@ -828,7 +830,8 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
       }
     }
     if (node_file_writer_) {
-      Status s = node_file_writer_->RecordNodeExecution(op_kernel, context);
+      absl::Status s =
+          node_file_writer_->RecordNodeExecution(op_kernel, context);
       if (!s.ok()) {
         LOG(ERROR) << s;
         context->SetStatus(s);
@@ -842,7 +845,7 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   }
 }
 
-Status BaseGPUDevice::Sync() {
+absl::Status BaseGPUDevice::Sync() {
   DCHECK_NE(stream_, nullptr);
 
   // Device::Sync is supposed to block until all operations queued on the device
@@ -886,23 +889,23 @@ void BaseGPUDevice::ComputeAsync(AsyncOpKernel* op_kernel,
   op_kernel->ComputeAsync(context, std::move(done));
 }
 
-Status BaseGPUDevice::MaybeCopyTensorToGPU(
+absl::Status BaseGPUDevice::MaybeCopyTensorToGPU(
     const AllocatorAttributes& alloc_attrs, const Tensor& from, Tensor* to,
     StatusCallback done) {
   if (alloc_attrs.on_host()) {
     *to = from;
-    done(OkStatus());
-    return OkStatus();
+    done(absl::OkStatus());
+    return absl::OkStatus();
   } else {
     if (!DMAHelper::CanUseDMA(&from)) {
-      Status err = errors::Internal("GPU copy from non-DMA ",
-                                    DataTypeString(from.dtype()), " tensor");
+      absl::Status err = absl::InternalError(absl::StrCat(
+          "GPU copy from non-DMA ", DataTypeString(from.dtype()), " tensor"));
       done(err);
       return err;
     }
     AllocationAttributes allocation_attr;
-    uint64 safe_alloc_frontier = 0;
-    std::function<uint64()> freed_by_func = [this, &safe_alloc_frontier]() {
+    uint64_t safe_alloc_frontier = 0;
+    std::function<uint64_t()> freed_by_func = [this, &safe_alloc_frontier]() {
       safe_alloc_frontier = SafeAllocFrontier(safe_alloc_frontier);
       return safe_alloc_frontier;
     };
@@ -915,14 +918,15 @@ Status BaseGPUDevice::MaybeCopyTensorToGPU(
     // If the tensor is not initialized, we likely ran out of memory.
     if (!copy->IsInitialized()) {
       delete copy;
-      Status err = errors::ResourceExhausted(
+      absl::Status err = absl::ResourceExhaustedError(absl::StrCat(
           "OOM when allocating tensor of shape ", from.shape().DebugString(),
-          " and type ", DataTypeString(from.dtype()));
+          " and type ", DataTypeString(from.dtype())));
       done(err);
       return err;
     }
 
-    auto wrapped_done = [to, copy, done = std::move(done)](const Status& s) {
+    auto wrapped_done = [to, copy,
+                         done = std::move(done)](const absl::Status& s) {
       if (s.ok()) {
         *to = std::move(*copy);
       }
@@ -934,21 +938,21 @@ Status BaseGPUDevice::MaybeCopyTensorToGPU(
     device_context_->CopyCPUTensorToDevice(
         &from, this, copy, std::move(wrapped_done),
         !timestamped_allocator_ /*sync_dst_compute*/);
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 
-Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
-                                          const AllocatorAttributes alloc_attrs,
-                                          Tensor* tensor) {
+absl::Status BaseGPUDevice::MakeTensorFromProto(
+    const TensorProto& tensor_proto, const AllocatorAttributes alloc_attrs,
+    Tensor* tensor) {
   AllocatorAttributes attr;
   attr.set_on_host(true);
   attr.set_gpu_compatible(true);
   Allocator* host_alloc = GetAllocator(attr);
   Tensor parsed(tensor_proto.dtype());
   if (!parsed.FromProto(host_alloc, tensor_proto)) {
-    return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                   tensor_proto.DebugString());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Cannot parse tensor from proto: ", tensor_proto.DebugString()));
   }
 
   tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(
@@ -961,7 +965,7 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
     Variant* copy_variant = copy.flat<Variant>().data();
 
     std::list<absl::Notification> notifications;
-    Status copy_status;
+    absl::Status copy_status;
     auto copier = [this, &alloc_attrs, &notifications, &copy_status](
                       const Tensor& from, Tensor* to) {
       // Copier isn't run in a multithreaded environment, so we don't
@@ -969,14 +973,14 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
       notifications.emplace_back();
       absl::Notification& n = *notifications.rbegin();
       return MaybeCopyTensorToGPU(alloc_attrs, from, to,
-                                  [&n, &copy_status](const Status& s) {
+                                  [&n, &copy_status](const absl::Status& s) {
                                     if (copy_status.ok()) {
                                       copy_status.Update(s);
                                     }
                                     n.Notify();
                                   });
     };
-    Status s;
+    absl::Status s;
     for (int64_t ix = 0; ix < parsed.NumElements(); ++ix) {
       s = VariantDeviceCopy(VariantDeviceCopyDirection::HOST_TO_DEVICE,
                             from[ix], &copy_variant[ix], copier);
@@ -994,12 +998,12 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
     return copy_status;
   } else {
     absl::Notification n;
-    Status status;
-    TF_RETURN_IF_ERROR(MaybeCopyTensorToGPU(alloc_attrs, parsed, tensor,
-                                            [&n, &status](const Status& s) {
-                                              status = s;
-                                              n.Notify();
-                                            }));
+    absl::Status status;
+    TF_RETURN_IF_ERROR(MaybeCopyTensorToGPU(
+        alloc_attrs, parsed, tensor, [&n, &status](const absl::Status& s) {
+          status = s;
+          n.Notify();
+        }));
     n.WaitForNotification();
     return status;
   }
@@ -1044,7 +1048,7 @@ const Eigen::GpuDevice& ConcretePerOpGpuDevice::device() const {
 
 namespace {
 
-Status VerifyVirtualDeviceSettings(
+absl::Status VerifyVirtualDeviceSettings(
     const size_t num_gpus_to_use, const GPUOptions& gpu_options,
     const std::vector<tsl::PlatformDeviceId>& visible_gpu_order,
     const std::vector<tsl::PlatformDeviceId>& valid_platform_device_ids,
@@ -1052,39 +1056,39 @@ Status VerifyVirtualDeviceSettings(
   const auto& virtual_devices = gpu_options.experimental().virtual_devices();
   CHECK(!virtual_devices.empty());
   if (gpu_options.per_process_gpu_memory_fraction() > 0) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "It's invalid to set per_process_gpu_memory_fraction when "
         "virtual_devices is set.");
   }
   if (num_gpus_to_use < virtual_devices.size()) {
-    return errors::Unknown(
+    return absl::UnknownError(absl::StrCat(
         "Not enough GPUs to create virtual devices."
         " num_gpus_to_use: ",
-        num_gpus_to_use, " #virtual_devices: ", virtual_devices.size());
+        num_gpus_to_use, " #virtual_devices: ", virtual_devices.size()));
   }
   if (!gpu_options.visible_device_list().empty() &&
       visible_gpu_order.size() != virtual_devices.size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "The number of GPUs in visible_device_list doesn't match the number "
         "of elements in the virtual_devices list.",
         " #GPUs in visible_device_list: ", visible_gpu_order.size(),
-        " virtual_devices.size(): ", virtual_devices.size());
+        " virtual_devices.size(): ", virtual_devices.size()));
   }
   if (valid_platform_device_ids.size() != virtual_devices.size()) {
-    return errors::Unknown(
+    return absl::UnknownError(absl::StrCat(
         "The number of valid GPUs doesn't match the number of elements in "
         "the virtual_devices list.",
         " #valid GPUs: ", valid_platform_device_ids.size(),
-        " virtual_devices.size(): ", virtual_devices.size());
+        " virtual_devices.size(): ", virtual_devices.size()));
   }
   for (int i = 0; i < virtual_devices.size(); ++i) {
     // Compares against the first virtual_device list.
     if (virtual_devices.Get(0).device_ordinal().empty() !=
         virtual_devices.Get(i).device_ordinal().empty()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Device ordinals must be set for all virtual devices or none. But "
           "the device_ordinal is specified for ",
-          i, " while previous devices didn't have any set.");
+          i, " while previous devices didn't have any set."));
     }
   }
   if (!virtual_devices.Get(0).device_ordinal().empty()) {
@@ -1094,11 +1098,11 @@ Status VerifyVirtualDeviceSettings(
       const size_t device_ordinal_size =
           virtual_devices.Get(i).device_ordinal().size();
       if (memory_limit_mb_size != device_ordinal_size) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Number of virtual device ordinals specified doesn't "
             "match with number of memory_limit_mb specified for GPU# ",
             i, " memory_limit_mb size: ", memory_limit_mb_size,
-            " and device_ordinal size: ", device_ordinal_size);
+            " and device_ordinal size: ", device_ordinal_size));
       }
     }
   }
@@ -1113,44 +1117,44 @@ Status VerifyVirtualDeviceSettings(
     // Either it's set for all or none.
     if (!priority_exists) {
       if (!priority.empty()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Priority must be set for all virtual devices or none. But the "
             "priority is specified for ",
             i,
             " while previous devices didn't "
-            "have any set.");
+            "have any set."));
       }
     }
     if (priority_exists && memory_limit_mb.size() != priority.size()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Number of virtual device priorities specified doesn't "
           "match with number of memory_limit_mb specified for GPU# ",
           i, " memory_limit_mb size: ", memory_limit_mb.size(),
-          " and priority size: ", priority.size());
+          " and priority size: ", priority.size()));
     }
     const int gpu_id = valid_platform_device_ids[i].value();
     auto it = supported_priority_ranges.find(gpu_id);
     if (it == supported_priority_ranges.end()) {
-      return errors::Internal(
-          "Failed to find supported priority range for GPU"
-          " device ",
-          gpu_id);
+      return absl::InternalError(
+          absl::StrCat("Failed to find supported priority range for GPU"
+                       " device ",
+                       gpu_id));
     }
     const std::pair<int, int>& priority_range = it->second;
     for (int p : priority) {
       if (p > priority_range.first || p < priority_range.second) {
-        return errors::InvalidArgument(
-            "Priority ", p,
-            " is outside the range of supported priorities "
-            "[",
-            priority_range.second, ",", priority_range.first,
-            "] for virtual device ", i, " on GPU# ", gpu_id);
+        return absl::InvalidArgumentError(
+            absl::StrCat("Priority ", p,
+                         " is outside the range of supported priorities "
+                         "[",
+                         priority_range.second, ",", priority_range.first,
+                         "] for virtual device ", i, " on GPU# ", gpu_id));
       }
     }
   }
 #endif
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int64_t MinSystemMemory(int64_t available_memory, int cc_major) {
@@ -1201,17 +1205,18 @@ int64_t MinSystemMemory(int64_t available_memory, int cc_major) {
 // Get the memory limit for the virtual device being created on GPU with
 // 'platform_device_id', when that virtual device is the only virtual device
 // being created on that GPU.
-Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
-                                      tsl::PlatformDeviceId platform_device_id,
-                                      int64_t* memory_limit) {
+absl::Status SingleVirtualDeviceMemoryLimit(
+    const GPUOptions& gpu_options, tsl::PlatformDeviceId platform_device_id,
+    int64_t* memory_limit) {
   int64_t total_memory = 0;
   int64_t available_memory = 0;
   se::StreamExecutor* se = se::GPUMachineManager()
                                ->ExecutorForDevice(platform_device_id.value())
                                .value();
   if (!se->DeviceMemoryUsage(&available_memory, &total_memory)) {
-    return errors::Unknown("Failed to query available memory for GPU ",
-                           platform_device_id.value());
+    return absl::UnknownError(
+        absl::StrCat("Failed to query available memory for GPU ",
+                     platform_device_id.value()));
   }
 
   int64_t allocated_memory = 0;
@@ -1222,7 +1227,7 @@ Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
   if ((per_process_gpu_memory_fraction > 1.0 ||
        gpu_options.experimental().use_unified_memory()) &&
       !cc.IsAtLeast(se::CudaComputeCapability::kPascal)) {
-    return errors::Internal(
+    return absl::InternalError(
         "Unified memory on GPUs with compute capability lower than 6.0 "
         "(pre-Pascal class GPUs) does not support oversubscription.");
   }
@@ -1277,7 +1282,7 @@ Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
     }
   }
   *memory_limit = allocated_memory;
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -1298,10 +1303,10 @@ PerOpGpuDevice* BaseGPUDevice::MakeGpuDevice() {
   return new ConcretePerOpGpuDevice();
 }
 
-Status BaseGPUDevice::ReinitializeGpuDevice(OpKernelContext* context,
-                                            PerOpGpuDevice* device,
-                                            DeviceContext* dc,
-                                            Allocator* allocator) {
+absl::Status BaseGPUDevice::ReinitializeGpuDevice(OpKernelContext* context,
+                                                  PerOpGpuDevice* device,
+                                                  DeviceContext* dc,
+                                                  Allocator* allocator) {
   TF_RETURN_IF_ERROR(InitScratchBuffers());
   if (dc) {
     const GPUDeviceContext* gpu_dc = static_cast<GPUDeviceContext*>(dc);
@@ -1313,7 +1318,7 @@ Status BaseGPUDevice::ReinitializeGpuDevice(OpKernelContext* context,
   } else {
     ReinitializeDevice(context, device, 0, allocator);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Allocator* BaseGPUDevice::GetScopedAllocator(AllocatorAttributes attr,
@@ -1330,52 +1335,54 @@ Allocator* BaseGPUDevice::GetScopedAllocator(AllocatorAttributes attr,
 const int BaseGPUDeviceFactory::InterconnectMap::kSameDeviceStrength = 1000;
 const int BaseGPUDeviceFactory::InterconnectMap::kStreamExecutorStrength = 1;
 
-Status BaseGPUDeviceFactory::CacheDeviceIds() {
+absl::Status BaseGPUDeviceFactory::CacheDeviceIds() {
   if (!cached_device_ids_.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   TF_RETURN_IF_ERROR(se::ValidateGPUMachineManager());
   se::Platform* gpu_manager = se::GPUMachineManager();
   if (gpu_manager == nullptr) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   int device_count = gpu_manager->VisibleDeviceCount();
   if (device_count <= 0) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::vector<tsl::PlatformDeviceId> visible_gpu_order(device_count);
   std::iota(visible_gpu_order.begin(), visible_gpu_order.end(), 0);
   TF_RETURN_IF_ERROR(GetValidDeviceIds(visible_gpu_order, &cached_device_ids_));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status BaseGPUDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
+absl::Status BaseGPUDeviceFactory::ListPhysicalDevices(
+    std::vector<std::string>* devices) {
   TF_RETURN_IF_ERROR(CacheDeviceIds());
   for (tsl::PlatformDeviceId platform_device_id : cached_device_ids_) {
-    const string device_name =
+    const std::string device_name =
         absl::StrCat("/physical_device:GPU:", platform_device_id.value());
     devices->push_back(device_name);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status BaseGPUDeviceFactory::GetDeviceDetails(
-    int device_index, std::unordered_map<string, string>* details) {
+absl::Status BaseGPUDeviceFactory::GetDeviceDetails(
+    int device_index, std::unordered_map<std::string, std::string>* details) {
   TF_RETURN_IF_ERROR(CacheDeviceIds());
 
   if (device_index < 0 || device_index > cached_device_ids_.size()) {
-    return errors::Internal("Invalid device index: ", device_index);
+    return absl::InternalError(
+        absl::StrCat("Invalid device index: ", device_index));
   }
   tsl::PlatformDeviceId platform_device_id = cached_device_ids_[device_index];
 
   TF_RETURN_IF_ERROR(se::ValidateGPUMachineManager());
   se::Platform* gpu_manager = se::GPUMachineManager();
   if (gpu_manager == nullptr) {
-    return errors::Internal("Cannot get GPUMachineManager");
+    return absl::InternalError("Cannot get GPUMachineManager");
   }
   auto desc_status =
       gpu_manager->DescriptionForDevice(platform_device_id.value());
@@ -1391,16 +1398,16 @@ Status BaseGPUDeviceFactory::GetDeviceDetails(
   (*details)["compute_capability"] =
       desc->cuda_compute_capability().WithoutAnyFeatureExtension().ToString();
 #endif  // GOOGLE_CUDA
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status BaseGPUDeviceFactory::CreateDevices(
-    const SessionOptions& options, const string& name_prefix,
+absl::Status BaseGPUDeviceFactory::CreateDevices(
+    const SessionOptions& options, const std::string& name_prefix,
     std::vector<std::unique_ptr<Device>>* devices) {
   TF_RETURN_IF_ERROR(se::ValidateGPUMachineManager());
   se::Platform* gpu_manager = se::GPUMachineManager();
   if (gpu_manager == nullptr) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // This has to be checked first because calling `VisibleDeviceCount()` may
@@ -1417,7 +1424,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
   const auto& virtual_devices = gpu_options.experimental().virtual_devices();
   if (num_gpus_to_use == 0) {
     if (virtual_devices.empty()) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     // The verification below will obviously fail. Use this function to reuse
     // the same error messages as when num_gpus_to_use is not zero.
@@ -1427,7 +1434,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
 
   // If there are no GPUs visible, do nothing.
   if (gpu_manager->VisibleDeviceCount() <= 0) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   bool populate_pjrt_gpu_client_creation_info =
@@ -1493,8 +1500,8 @@ Status BaseGPUDeviceFactory::CreateDevices(
 #if GOOGLE_CUDA
     cudaError_t err = cudaGetDevice(&original_device);
     if (err != cudaSuccess) {
-      return errors::Internal("cudaGetDevice() failed. Status: ",
-                              cudaGetErrorString(err));
+      return absl::InternalError(absl::StrCat(
+          "cudaGetDevice() failed. Status: ", cudaGetErrorString(err)));
     }
 #elif TENSORFLOW_USE_ROCM
     hipError_t err = hipGetDevice(&original_device);
@@ -1510,16 +1517,16 @@ Status BaseGPUDeviceFactory::CreateDevices(
 #if GOOGLE_CUDA
       err = cudaSetDevice(platform_device_id.value());
       if (err != cudaSuccess) {
-        return errors::Internal(
-            "cudaSetDevice() on GPU:", platform_device_id.value(),
-            " failed. Status: ", cudaGetErrorString(err));
+        return absl::InternalError(
+            absl::StrCat("cudaSetDevice() on GPU:", platform_device_id.value(),
+                         " failed. Status: ", cudaGetErrorString(err)));
       }
       int priority_low, priority_high;
       cudaDeviceGetStreamPriorityRange(&priority_low, &priority_high);
       if (err != cudaSuccess) {
-        return errors::Internal(
+        return absl::InternalError(absl::StrCat(
             "cudaDeviceGetStreamPriorityRange() on GPU:", original_device,
-            " failed. Status: ", cudaGetErrorString(err));
+            " failed. Status: ", cudaGetErrorString(err)));
       }
       VLOG(1) << "Cuda stream priority range on GPU(" << original_device
               << "): " << priority_high << "," << priority_low;
@@ -1563,8 +1570,9 @@ Status BaseGPUDeviceFactory::CreateDevices(
 #if GOOGLE_CUDA
     err = cudaSetDevice(original_device);
     if (err != cudaSuccess) {
-      return errors::Internal("cudaSetDevice() on GPU:", original_device,
-                              " failed. Status: ", cudaGetErrorString(err));
+      return absl::InternalError(
+          absl::StrCat("cudaSetDevice() on GPU:", original_device,
+                       " failed. Status: ", cudaGetErrorString(err)));
     }
 #elif TENSORFLOW_USE_ROCM
     err = hipSetDevice(original_device);
@@ -1592,7 +1600,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
   for (const InterconnectMap& im : interconnect_maps) {
     VLOG(1) << "Device interconnect " << im.name << " with strength "
             << im.strength << " edge matrix:";
-    string line_buf = "     ";
+    std::string line_buf = "     ";
     for (int i = 0; i < visible_gpu_order.size(); ++i) {
       absl::StrAppend(&line_buf, visible_gpu_order[i].value(), " ");
     }
@@ -1624,7 +1632,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
   }
 
   if (num_gpus_to_use == 0) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   struct TfDeviceSpec {
@@ -1790,8 +1798,9 @@ Status BaseGPUDeviceFactory::CreateDevices(
 
     auto it = device_localities.find(tf_device_id);
     if (it == device_localities.end()) {
-      return errors::Internal("Failed to find DeviceLocality for GPU device ",
-                              tf_device_id.value());
+      return absl::InternalError(
+          absl::StrCat("Failed to find DeviceLocality for GPU device ",
+                       tf_device_id.value()));
     }
 
 #ifdef TF_GPU_USE_PJRT
@@ -1867,7 +1876,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
 
   // No GPU device is created. This is an allowed behavior.
   if (local_device_states.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (should_create_new_pjrt_client || populate_pjrt_gpu_client_creation_info) {
@@ -1945,7 +1954,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
            "with GPU computations, file a bug. (But if this occurs in a "
            "test environment that doesn't actually perform GPU "
            "computations, this might not be a problem.)";
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     return obtained_pjrt_client.status();
   }
@@ -1958,7 +1967,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
 #endif  // TF_GPU_USE_PJRT
 }
 
-static string GetShortDeviceDescription(
+static std::string GetShortDeviceDescription(
     tsl::PlatformDeviceId platform_device_id,
     const se::DeviceDescription& desc) {
 #if GOOGLE_CUDA
@@ -1976,8 +1985,8 @@ static string GetShortDeviceDescription(
 }
 
 #ifdef TF_GPU_USE_PJRT
-Status BaseGPUDeviceFactory::CreateGPUDevice(
-    const SessionOptions& options, const string& name_prefix,
+absl::Status BaseGPUDeviceFactory::CreateGPUDevice(
+    const SessionOptions& options, const std::string& name_prefix,
     tsl::TfDeviceId tf_device_id, const DeviceLocality& dev_locality,
     xla::LocalDeviceState* xla_local_device_state, Allocator* gpu_allocator,
     std::vector<std::unique_ptr<Device>>* devices) {
@@ -1988,7 +1997,7 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
     Allocator* gpu_allocator, std::vector<std::unique_ptr<Device>>* devices) {
 #endif  // TF_GPU_USE_PJRT
   CHECK_GE(tf_device_id.value(), 0);
-  const string device_name =
+  const std::string device_name =
       absl::StrCat(name_prefix, "/device:GPU:", tf_device_id.value());
   tsl::CheckValidTfDeviceId(
       DEVICE_GPU, se::GPUMachineManager()->VisibleDeviceCount(), tf_device_id);
@@ -2033,7 +2042,7 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
       gpu_device->compute_stream()->platform_specific_handle().stream);
 
   devices->push_back(std::move(gpu_device));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -2061,7 +2070,7 @@ GetPeerAccessMap(se::Platform* platform,
 
 }  // namespace
 
-Status BaseGPUDeviceFactory::GetInterconnectMaps(
+absl::Status BaseGPUDeviceFactory::GetInterconnectMaps(
     const std::vector<tsl::PlatformDeviceId>& visible_gpu_order,
     se::Platform* gpu_manager, std::vector<InterconnectMap>* maps) {
   // The default interconnect map is obtained from the StreamExecutor.
@@ -2078,10 +2087,10 @@ Status BaseGPUDeviceFactory::GetInterconnectMaps(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status BaseGPUDeviceFactory::GetDeviceLocalities(
+absl::Status BaseGPUDeviceFactory::GetDeviceLocalities(
     int num_tf_gpus, const std::vector<InterconnectMap>& interconnects,
     LocalityMap* localities) {
   std::vector<tsl::TfDeviceId> all_tf_device_ids;
@@ -2160,7 +2169,7 @@ Status BaseGPUDeviceFactory::GetDeviceLocalities(
             << " pci: " << desc->pci_bus_id()
             << " DeviceLocality: " << dev_locality.DebugString();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static int GetDefaultMinGPUMultiprocessorCount(
@@ -2221,12 +2230,12 @@ se::CudaComputeCapability ComputeCapabilityFromString(
     const std::string& version_name) {
   int major_part, minor_part;
   size_t dot_pos = version_name.find('.');
-  CHECK(dot_pos != string::npos)
+  CHECK(dot_pos != std::string::npos)
       << "Illegal version name: [" << version_name << "]";
-  string major_str = version_name.substr(0, dot_pos);
+  std::string major_str = version_name.substr(0, dot_pos);
   CHECK(absl::SimpleAtoi(major_str, &major_part))
       << "Illegal version name: [" << version_name << "]";
-  string minor_str = version_name.substr(dot_pos + 1);
+  std::string minor_str = version_name.substr(dot_pos + 1);
   CHECK(absl::SimpleAtoi(minor_str, &minor_part))
       << "Illegal version name: [" << version_name << "]";
   return se::CudaComputeCapability{major_part, minor_part};
@@ -2256,7 +2265,7 @@ std::vector<se::CudaComputeCapability> GetSupportedCudaComputeCapabilities() {
 
 }  // namespace
 
-Status BaseGPUDeviceFactory::EnablePeerAccess(
+absl::Status BaseGPUDeviceFactory::EnablePeerAccess(
     const std::vector<tsl::PlatformDeviceId>& visible_gpu_order) {
   se::Platform* gpu_manager = se::GPUMachineManager();
   int possible_peer_count = 0;
@@ -2291,14 +2300,15 @@ Status BaseGPUDeviceFactory::EnablePeerAccess(
   // successful.  This is to catch possible system misconfigurations
   // or more fundamental issues.
   if (possible_peer_count > 0 && enabled_peer_count == 0) {
-    return errors::Internal(possible_peer_count,
-                            " potential peer access pairs were reported by the "
-                            "driver, but no peering could be enabled.");
+    return absl::InternalError(
+        absl::StrCat(possible_peer_count,
+                     " potential peer access pairs were reported by the "
+                     "driver, but no peering could be enabled."));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status BaseGPUDeviceFactory::GetValidDeviceIds(
+absl::Status BaseGPUDeviceFactory::GetValidDeviceIds(
     const std::vector<tsl::PlatformDeviceId>& visible_gpu_order,
     std::vector<tsl::PlatformDeviceId>* ids) {
   se::Platform* gpu_manager = se::GPUMachineManager();
@@ -2349,14 +2359,14 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
                     "download and setup the required libraries for your "
                     "platform.\nSkipping registering "
                     "GPU devices...";
-    return OkStatus();
+    return absl::OkStatus();
   }
 #endif
 
 #if GOOGLE_CUDA
   auto cuda_supported_capabilities = GetSupportedCudaComputeCapabilities();
   if (cuda_supported_capabilities.empty()) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "No supported cuda capabilities in binary.");
   }
   se::CudaComputeCapability min_supported_capability = *std::min_element(
@@ -2453,10 +2463,10 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     VLOG(1) << "Adding visible gpu devices: " << absl::StrJoin(raw_ids, ", ");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-uint64 BaseGPUDevice::SafeAllocFrontier(uint64 old_value) {
+uint64_t BaseGPUDevice::SafeAllocFrontier(uint64_t old_value) {
   if (timestamped_allocator_) {
     return kernel_tracker_->LastTerminatedCount(old_value);
   } else {
@@ -2475,7 +2485,7 @@ void BaseGPUDevice::TestOnlyReset() {
   StreamGroupFactory::Global().TestOnlyReset();
 }
 
-uint64 GPUKernelTracker::MaybeQueue(OpKernelContext* ctx) {
+uint64_t GPUKernelTracker::MaybeQueue(OpKernelContext* ctx) {
   mutex_lock l(mu_);
   ++ops_since_last_;
   int64_t mem_used =
@@ -2496,12 +2506,12 @@ uint64 GPUKernelTracker::MaybeQueue(OpKernelContext* ctx) {
     mem_since_last_ = 0;
     ops_since_last_ = 0;
   }
-  uint64 queued_count = timing_counter_->next();
+  uint64_t queued_count = timing_counter_->next();
   RecordQueued(queued_count, weight);
   return queued_count;
 }
 
-void GPUKernelTracker::RecordQueued(uint64 queued_count, int weight) {
+void GPUKernelTracker::RecordQueued(uint64_t queued_count, int weight) {
   VLOG(2) << "RecordQueued queued_count=" << queued_count
           << " first_available_=" << first_available_
           << " last_completed_=" << last_completed_
@@ -2551,14 +2561,14 @@ void GPUKernelTracker::RecordQueued(uint64 queued_count, int weight) {
 void GPUKernelTracker::MaybeQueueProgressEvent() {
   mutex_lock l(mu_);
   if (num_pending_ == 0) {
-    uint64 new_count = timing_counter_->next();
+    uint64_t new_count = timing_counter_->next();
     RecordQueued(new_count, 1);
     em_->ThenExecute(stream_,
                      [this, new_count]() { RecordTerminated(new_count); });
   }
 }
 
-void GPUKernelTracker::RecordTerminated(uint64 queued_count) {
+void GPUKernelTracker::RecordTerminated(uint64_t queued_count) {
   mutex_lock l(mu_);
   VLOG(2) << this << " RecordTerminated queued_count=" << queued_count
           << " first_available_=" << first_available_
