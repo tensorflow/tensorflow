@@ -186,6 +186,10 @@ absl::Status Allocation::UpdateUses(HloComputation* computation,
                                     const HloLiveRange& hlo_live_range,
                                     const HloAliasAnalysis& alias_analysis) {
   for (const HloUse& use : uses()) {
+    if (use.instruction->IsDead() || use.instruction->parent() == nullptr ||
+        use.instruction->operand_count() <= use.operand_number) {
+      continue;
+    }
     HloInstruction* replacement_instruction = producing_instruction;
     const Shape& operand_shape =
         use.instruction->operand(use.operand_number)->shape();
@@ -505,6 +509,7 @@ absl::Status CopyAllocation::Process(const BitcastSplitFn& bitcast_split_fn,
   if (sync_mem_op_ != nullptr && sync_mem_op_->opcode() != HloOpcode::kCopy) {
     if (sync_mem_op_->opcode() == HloOpcode::kSlice ||
         sync_mem_op_->opcode() == HloOpcode::kDynamicSlice ||
+        sync_mem_op_->opcode() == HloOpcode::kDynamicUpdateSlice ||
         sync_mem_op_->IsCustomFusion()) {
       ABSL_ASSIGN_OR_RETURN(copy_done_,
                        computation->CreateAsyncInstructions(
@@ -512,6 +517,10 @@ absl::Status CopyAllocation::Process(const BitcastSplitFn& bitcast_split_fn,
                            HloInstruction::kMainExecutionThread, false));
     } else {
       return Internal("Sync mem op is not a copy, slice, or dynamic slice.");
+    }
+    if (memory_space() == MemorySpace::kDefault) {
+      copy_done_->clear_backend_config();
+      copy_done_->mutable_operand(0)->clear_backend_config();
     }
     copy_start_ = copy_done_->mutable_operand(0);
     // If the shape of the copy start operand is not compatible with the
@@ -545,6 +554,13 @@ absl::Status CopyAllocation::Process(const BitcastSplitFn& bitcast_split_fn,
   // Update the allocation position with the copy complete instruction, so that
   // if there are further copies from it, they can find the correct position.
   set_original_defining_position(HloPosition{copy_done_, {}});
+  if (sync_mem_op_ != nullptr &&
+      sync_mem_op_->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    VLOG(4) << "Replacing all uses of sync DUS " << sync_mem_op_->name()
+            << " with copy_done " << copy_done_->name();
+    ABSL_RETURN_IF_ERROR(sync_mem_op_->ReplaceAllUsesWith(copy_done_));
+    return absl::OkStatus();
+  }
   return UpdateUses(computation, copy_done_, bitcast_split_fn, hlo_live_range,
                     alias_analysis);
 }
