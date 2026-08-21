@@ -1646,6 +1646,90 @@ TEST_F(AlgebraicSimplifierTest, ReduceOfNegate) {
       GmockMatch(m::Negate(m::Reduce(m::Parameter(0), m::ConstantScalar(0)))));
 }
 
+TEST_F(AlgebraicSimplifierTest, ReduceOfMultiplyWithInvariantBroadcast) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    add_f32 {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p0, p1)
+    }
+
+    ENTRY test {
+      p0 = f32[15,7] parameter(0)
+      p1 = f32[15] parameter(1)
+      b = f32[15,7] broadcast(p1), dimensions={0}
+      mul = f32[15,7] multiply(p0, b)
+      ROOT reduce = f32[15] reduce(mul, f32[] constant(0)), dimensions={1}, to_apply=add_f32
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_floats_are_real(true);
+  ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Multiply(m::Reduce(m::Parameter(0), m::ConstantScalar(0)),
+                             m::Parameter(1))));
+}
+
+TEST_F(AlgebraicSimplifierTest,
+       ReduceOfMultiplyWithNestedInvariantAndNonInvariantBroadcast) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    add_f32 {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p0, p1)
+    }
+
+    ENTRY test {
+      a = f32[16,8,4] parameter(0)
+      b = f32[16,8] parameter(1)
+      c = f32[4] parameter(2)
+      b_bcast = f32[16,8,4] broadcast(b), dimensions={0,1}
+      c_bcast = f32[16,8,4] broadcast(c), dimensions={2}
+      mul1 = f32[16,8,4] multiply(b_bcast, c_bcast)
+      mul2 = f32[16,8,4] multiply(a, mul1)
+      ROOT reduce = f32[16,8] reduce(mul2, f32[] constant(0)), dimensions={2}, to_apply=add_f32
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_floats_are_real(true);
+  ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Multiply(
+          m::Reduce(m::Multiply(m::Parameter(0), m::Broadcast(m::Parameter(2))),
+                    m::ConstantScalar(0)),
+          m::Parameter(1))));
+}
+
+TEST_F(AlgebraicSimplifierTest,
+       ReduceOfMultiplyWithNonInvariantBroadcastNotSimplified) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    add_f32 {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p0, p1)
+    }
+
+    ENTRY test {
+      p0 = f32[15,7] parameter(0)
+      p1 = f32[7] parameter(1)
+      b = f32[15,7] broadcast(p1), dimensions={1}
+      mul = f32[15,7] multiply(p0, b)
+      ROOT reduce = f32[15] reduce(mul, f32[] constant(0)), dimensions={1}, to_apply=add_f32
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_floats_are_real(true);
+  ASSERT_FALSE(AlgebraicSimplifier(options).Run(m.get()).value());
+}
+
 TEST_F(AlgebraicSimplifierTest, ReduceBroadcastOfScalar) {
   // Test Reduce(Broadcast(x), a, Max)
   constexpr absl::string_view kModuleStrForMax = R"(
