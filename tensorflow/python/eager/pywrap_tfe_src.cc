@@ -1870,14 +1870,15 @@ class AccumulatorSet {
     return true;
   }
 
-  void erase(TFE_Py_ForwardAccumulator* element) {
+  bool erase(TFE_Py_ForwardAccumulator* element) {
     MapType::iterator existing = map_.find(element);
     if (existing == map_.end()) {
-      return;
+      return false;
     }
     ListType::iterator list_position = existing->second;
     map_.erase(existing);
     ordered_.erase(list_position);
+    return true;
   }
 
   bool empty() const { return ordered_.empty(); }
@@ -2379,6 +2380,10 @@ void TFE_Py_TapeVariableAccessed(PyObject* variable) {
 }
 
 void TFE_Py_TapeWatchVariable(PyObject* tape, PyObject* variable) {
+  if (!PyObject_TypeCheck(tape, &TFE_Py_Tape_Type)) {
+    PyErr_SetString(PyExc_TypeError, "Expected a TFE_Py_Tape object");
+    return;
+  }
   if (!CouldBackprop()) {
     return;
   }
@@ -2386,6 +2391,10 @@ void TFE_Py_TapeWatchVariable(PyObject* tape, PyObject* variable) {
 }
 
 PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape) {
+  if (!PyObject_TypeCheck(tape, &TFE_Py_Tape_Type)) {
+    PyErr_SetString(PyExc_TypeError, "Expected a TFE_Py_Tape object");
+    return nullptr;
+  }
   return reinterpret_cast<TFE_Py_Tape*>(tape)->tape->GetVariablesAsPyTuple();
 }
 
@@ -2410,11 +2419,23 @@ PyObject* TFE_Py_VariableWatcherNew() {
 }
 
 void TFE_Py_VariableWatcherRemove(PyObject* variable_watcher) {
+  if (!PyObject_TypeCheck(variable_watcher, &TFE_Py_VariableWatcher_Type)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "Expected a TFE_Py_VariableWatcher object");
+    return;
+  }
   auto* stack = GetVariableWatcherSet();
-  stack->erase(reinterpret_cast<TFE_Py_VariableWatcher*>(variable_watcher));
+  bool erased = false;
+  if (stack != nullptr) {
+    auto* vw = reinterpret_cast<TFE_Py_VariableWatcher*>(variable_watcher);
+    erased = stack->erase(vw) > 0;
+  }
   // We kept a reference to the variable watcher in the set to ensure it
   // wouldn't get deleted under us; cleaning it up here.
-  Py_DECREF(variable_watcher);
+  // We only decref if the variable watcher was actually erased from the set.
+  if (erased) {
+    Py_DECREF(variable_watcher);
+  }
 }
 
 void TFE_Py_VariableWatcherVariableAccessed(PyObject* variable) {
@@ -2424,6 +2445,11 @@ void TFE_Py_VariableWatcherVariableAccessed(PyObject* variable) {
 }
 
 PyObject* TFE_Py_VariableWatcherWatchedVariables(PyObject* variable_watcher) {
+  if (!PyObject_TypeCheck(variable_watcher, &TFE_Py_VariableWatcher_Type)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "Expected a TFE_Py_VariableWatcher object");
+    return nullptr;
+  }
   return reinterpret_cast<TFE_Py_VariableWatcher*>(variable_watcher)
       ->variable_watcher->GetVariablesAsPyTuple();
 }
@@ -2908,6 +2934,10 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
                               PyObject* sources_raw,
                               PyObject* unconnected_gradients,
                               TF_Status* status) {
+  if (!PyObject_TypeCheck(tape, &TFE_Py_Tape_Type)) {
+    PyErr_SetString(PyExc_TypeError, "Expected a TFE_Py_Tape object");
+    return nullptr;
+  }
   TFE_Py_Tape* tape_obj = reinterpret_cast<TFE_Py_Tape*>(tape);
   if (!tape_obj->tape->IsPersistent()) {
     auto* tape_set = GetTapeSet();
@@ -3042,6 +3072,11 @@ PyObject* TFE_Py_ForwardAccumulatorNew(bool use_batch) {
 }
 
 PyObject* TFE_Py_ForwardAccumulatorSetAdd(PyObject* accumulator) {
+  if (!PyObject_TypeCheck(accumulator, &TFE_Py_ForwardAccumulator_Type)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "Expected a TFE_Py_ForwardAccumulator object");
+    return nullptr;
+  }
   TFE_Py_ForwardAccumulator* c_accumulator(
       reinterpret_cast<TFE_Py_ForwardAccumulator*>(accumulator));
   c_accumulator->nesting_id = tape_nesting_id_counter.fetch_add(1);
@@ -3058,16 +3093,29 @@ PyObject* TFE_Py_ForwardAccumulatorSetAdd(PyObject* accumulator) {
 }
 
 void TFE_Py_ForwardAccumulatorSetRemove(PyObject* accumulator) {
+  if (!PyObject_TypeCheck(accumulator, &TFE_Py_ForwardAccumulator_Type)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "Expected a TFE_Py_ForwardAccumulator object");
+    return;
+  }
   auto* accumulator_set = GetAccumulatorSet();
+  bool erased = false;
   if (accumulator_set != nullptr) {
-    accumulator_set->erase(
+    erased = accumulator_set->erase(
         reinterpret_cast<TFE_Py_ForwardAccumulator*>(accumulator));
   }
-  Py_DECREF(accumulator);
+  if (erased) {
+    Py_DECREF(accumulator);
+  }
 }
 
 void TFE_Py_ForwardAccumulatorWatch(PyObject* accumulator, PyObject* tensor,
-                                    PyObject* tangent) {
+                                     PyObject* tangent) {
+  if (!PyObject_TypeCheck(accumulator, &TFE_Py_ForwardAccumulator_Type)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "Expected a TFE_Py_ForwardAccumulator object");
+    return;
+  }
   int64_t tensor_id = FastTensorId(tensor);
   reinterpret_cast<TFE_Py_ForwardAccumulator*>(accumulator)
       ->accumulator->Watch(tensor_id, tangent);
@@ -3077,6 +3125,11 @@ void TFE_Py_ForwardAccumulatorWatch(PyObject* accumulator, PyObject* tensor,
 // Returns a new reference to the JVP Tensor.
 PyObject* TFE_Py_ForwardAccumulatorJVP(PyObject* accumulator,
                                        PyObject* tensor) {
+  if (!PyObject_TypeCheck(accumulator, &TFE_Py_ForwardAccumulator_Type)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "Expected a TFE_Py_ForwardAccumulator object");
+    return nullptr;
+  }
   PyObject* jvp = reinterpret_cast<TFE_Py_ForwardAccumulator*>(accumulator)
                       ->accumulator->FetchJVP(FastTensorId(tensor));
   if (jvp == nullptr) {
