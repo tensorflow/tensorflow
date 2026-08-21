@@ -143,6 +143,60 @@ class TensorArrayOpsTest(test.TestCase):
 
     self.assertAllEqual(fn(), 2)
 
+  @test_util.run_v2_only
+  def test_gather_symbolic_indices_on_captured_eager_tensor_array(self):
+    values = tensor_array_ops.TensorArray(
+        dtypes.int32, size=2, clear_after_read=False)
+    values = values.write(0, 1).write(1, 2)
+
+    @def_function.function
+    def fn(indices):
+      return values.gather(indices)
+
+    with self.assertRaisesRegex(NotImplementedError,
+                                'construct a new TensorArray inside'):
+      fn(constant_op.constant([0, 1], dtypes.int32))
+
+  @test_util.run_v2_only
+  def test_gather_python_indices_on_captured_eager_tensor_array(self):
+    values = tensor_array_ops.TensorArray(
+        dtypes.int32, size=2, clear_after_read=False)
+    values = values.write(0, 1).write(1, 2)
+
+    @def_function.function
+    def fn():
+      return values.gather([0, 1])
+
+    self.assertAllEqual(fn(), [1, 2])
+
+  @test_util.run_v2_only
+  def test_scatter_symbolic_indices_on_captured_eager_tensor_array(self):
+    values = tensor_array_ops.TensorArray(
+        dtypes.int32, size=2, clear_after_read=False, element_shape=[1])
+
+    @def_function.function
+    def fn(indices):
+      return values.scatter(indices, constant_op.constant([[3], [4]],
+                                                          dtypes.int32))
+
+    with self.assertRaisesRegex(NotImplementedError,
+                                'construct a new TensorArray inside'):
+      fn(constant_op.constant([0, 1], dtypes.int32))
+
+  @test_util.run_v2_only
+  def test_split_on_captured_eager_tensor_array(self):
+    values = tensor_array_ops.TensorArray(
+        dtypes.int32, size=2, clear_after_read=False)
+
+    @def_function.function
+    def fn():
+      return values.split(constant_op.constant([1, 2, 3, 4], dtypes.int32),
+                          [2, 2])
+
+    with self.assertRaisesRegex(NotImplementedError,
+                                'construct a new TensorArray inside'):
+      fn()
+
 
 if __name__ == '__main__':
   test.main()

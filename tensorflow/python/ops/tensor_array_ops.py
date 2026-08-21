@@ -672,6 +672,14 @@ class _GraphTensorArrayV2:
 # pylint: enable=protected-access
 
 
+# Advice shared by the errors raised when an eager-mode TensorArray is used
+# while a graph is being built.
+_EAGER_TENSOR_ARRAY_IN_GRAPH_ADVICE = (
+    "This is not currently supported. You may be attempting to capture a "
+    "TensorArray inside a tf.function or tf.data map function. Instead, "
+    "construct a new TensorArray inside the function.")
+
+
 class _EagerTensorArray:
   """Eager-compatible implementation of TensorArray."""
 
@@ -769,29 +777,28 @@ class _EagerTensorArray:
         "gradient implementation does not use/need this function to compute "
         "gradients of operations that use TensorArrays.")
 
-  def _check_symbolic_index(self, index, method_name):
-    """Checks that `index` is usable as a Python value.
+  def _check_symbolic_input(self, value, method_name, argument_name):
+    """Checks that `value` is usable as a Python value.
 
     An `_EagerTensorArray` is only created while executing eagerly, so a
-    symbolic `index` means an eager-mode TensorArray was captured by a
-    `tf.function` or a `tf.data` map function. Without this check `index` is
-    compared against Python values below, which fails with a confusing
-    "Using a symbolic `tf.Tensor` as a Python `bool` is not allowed" error.
+    symbolic `value` means an eager-mode TensorArray was captured by a
+    `tf.function` or a `tf.data` map function. Without this check `value` is
+    used as a Python value below, which fails with a confusing error such as
+    "Using a symbolic `tf.Tensor` as a Python `bool` is not allowed".
 
     Args:
-      index: the index passed to `method_name`.
+      value: the argument passed to `method_name`.
       method_name: name of the `TensorArray` method being called.
+      argument_name: name of the argument `value` was passed as.
 
     Raises:
-      NotImplementedError: if a graph is being built and `index` is symbolic.
+      NotImplementedError: if a graph is being built and `value` is symbolic.
     """
-    if not context.executing_eagerly() and tensor_util.is_tf_type(index):
+    if not context.executing_eagerly() and tensor_util.is_tf_type(value):
       raise NotImplementedError(
-          "Attempting to call TensorArray.%s() with a symbolic index on an "
-          "eager-mode TensorArray. This is not currently supported. You may "
-          "be attempting to capture a TensorArray inside a tf.function or "
-          "tf.data map function. Instead, construct a new TensorArray inside "
-          "the function." % method_name)
+          "Attempting to call TensorArray.%s() with a symbolic `%s` on an "
+          "eager-mode TensorArray. %s" %
+          (method_name, argument_name, _EAGER_TENSOR_ARRAY_IN_GRAPH_ADVICE))
 
   def read(self, index, name=None):
     """See TensorArray."""
@@ -800,7 +807,7 @@ class _EagerTensorArray:
     if isinstance(index, ops.EagerTensor):
       index = index.numpy()
 
-    self._check_symbolic_index(index, "read")
+    self._check_symbolic_input(index, "read", "index")
 
     if index < 0:
       raise errors_impl.OutOfRangeError(
@@ -845,7 +852,7 @@ class _EagerTensorArray:
     if isinstance(index, ops.EagerTensor):
       index = index.numpy()
 
-    self._check_symbolic_index(index, "write")
+    self._check_symbolic_input(index, "write", "index")
 
     if index < 0:
       raise errors_impl.OutOfRangeError(
@@ -911,6 +918,9 @@ class _EagerTensorArray:
     del name  # not meaningful when executing eagerly.
     if isinstance(indices, ops.EagerTensor):
       indices = indices.numpy()
+
+    self._check_symbolic_input(indices, "gather", "indices")
+
     return array_ops_stack.stack([self._maybe_zero(i) for i in indices])
 
   def concat(self, name=None):
@@ -947,12 +957,24 @@ class _EagerTensorArray:
     del name  # not meaningful when executing eagerly.
     if isinstance(indices, ops.EagerTensor):
       indices = indices.numpy()
+
+    self._check_symbolic_input(indices, "scatter", "indices")
+
     for index, val in zip(indices, array_ops_stack.unstack(value)):
       self._write(index, val)  # pylint: disable=protected-access
     return self.parent()
 
   def split(self, value, lengths, name=None):
     """See TensorArray."""
+    if not context.executing_eagerly():
+      # `lengths` is converted to a tensor below and then read as a Python
+      # value, which is not possible while a graph is being built. This holds
+      # even for a `lengths` that was passed as a Python value.
+      raise NotImplementedError(
+          "Attempting to call TensorArray.split() on an eager-mode "
+          "TensorArray while building a graph. %s" %
+          _EAGER_TENSOR_ARRAY_IN_GRAPH_ADVICE)
+
     # TODO(b/129870929): Fix after all callers provide proper init dtype.
     value = ops.convert_to_tensor(
         value, preferred_dtype=self._dtype, name="value")
