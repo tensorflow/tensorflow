@@ -908,9 +908,25 @@ class TensorListScatterIntoExistingList : public OpKernel {
               "non-negative; got ",
               *minmax.first)));
       max_index = *minmax.second;
+      // Also honor the list's declared capacity. TensorListPushBack already
+      // enforces `size() < max_num_elements`; mirror it here so a scatter
+      // cannot silently grow the list past its cap. This also bounds the
+      // resize below by an attacker-controlled index.
+      OP_REQUIRES(
+          c,
+          output_list->max_num_elements == -1 ||
+              max_index < output_list->max_num_elements,
+          absl::InvalidArgumentError(absl::StrCat(
+              "TensorListScatterIntoExistingList: index ", max_index,
+              " is beyond the list's max_num_elements ",
+              output_list->max_num_elements)));
     }
-    if (max_index + 1 > output_list->tensors().size()) {
-      output_list->tensors().resize(max_index + 1);
+    // Compute the required size as size_t: max_index is >= 0 here, but
+    // max_index == INT32_MAX would overflow the signed `max_index + 1`
+    // (undefined behavior) before the comparison/resize below.
+    const size_t needed = static_cast<size_t>(max_index) + 1;
+    if (needed > output_list->tensors().size()) {
+      output_list->tensors().resize(needed);
     }
 
     // Scatter the values.
