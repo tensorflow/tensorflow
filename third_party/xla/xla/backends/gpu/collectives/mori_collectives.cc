@@ -162,7 +162,7 @@ MoriCollectives::CreateCommunicatorsWithCancel(
           << "; fingerprint(id)=" << clique_ids->fingerprint();
 
   const auto& gpu_config =
-      tsl::down_cast<const GpuCollectives::Config&>(config);
+      absl::down_cast<const GpuCollectives::Config&>(config);
   if (!gpu_config.blocking_communicators && !gpu_config.async_execution) {
     return FailedPrecondition(
         "GpuCollectives::Config blocking_communicators is false, but "
@@ -177,7 +177,7 @@ MoriCollectives::CreateCommunicatorsWithCancel(
             << " of " << clique_key.num_devices()
             << "; fingerprint(id)=" << clique_ids->fingerprint()
             << "; size(id)=" << clique_ids->data().size();
-    auto* device = tsl::down_cast<GpuCollectives::Device*>(ranks[i].device);
+    auto* device = absl::down_cast<GpuCollectives::Device*>(ranks[i].device);
     // TF_RET_CHECK(device != nullptr);
 
     // When MORI was already initialized eagerly (see InitializeTopology), we
