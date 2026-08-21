@@ -20,10 +20,13 @@ import tempfile
 
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test as test_lib
+import sys
+import unittest
 from tensorflow.tools.compatibility import ast_edits
 from tensorflow.tools.compatibility import tf_upgrade
 
 
+@unittest.skipIf(sys.version_info >= (3, 14), "pasta is broken on Python 3.14+")
 class TestUpgrade(test_util.TensorFlowTestCase):
   """Test various APIs that have been changed in 1.0.
 
