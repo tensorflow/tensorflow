@@ -86,6 +86,21 @@ def _infer_fft_length_for_irfft(input_tensor, fft_rank):
   return _ops.convert_to_tensor(fft_length, _dtypes.int32)
 
 
+def _validate_nonnegative_fft_length(fft_length):
+  """Raises if a statically known FFT length is negative."""
+  fft_length_static = _tensor_util.constant_value(fft_length)
+  if fft_length_static is None:
+    return None
+  # Flatten the constant value so multi-dimensional shapes like [[0]]
+  # are handled correctly and each scalar can be validated.
+  for fft_length_i in np.asarray(fft_length_static).flat:
+    if int(fft_length_i) < 0:
+      raise ValueError(
+          f'`fft_length` must be non-negative, got {fft_length_i}.'
+      )
+  return fft_length_static
+
+
 def _validate_static_irfft_fft_length(fft_length_static, fft_rank):
   if fft_length_static is None:
     return
@@ -175,9 +190,9 @@ def _rfft_wrapper(fft_fn, fft_rank, default_name):
         fft_length = _infer_fft_length_for_rfft(input_tensor, fft_rank)
       else:
         fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
+      fft_length_static = _validate_nonnegative_fft_length(fft_length)
       input_tensor = _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length)
 
-      fft_length_static = _tensor_util.constant_value(fft_length)
       if fft_length_static is not None:
         fft_length = fft_length_static
       return fft_fn(input_tensor, fft_length, Tcomplex=complex_dtype, name=name)
@@ -243,9 +258,9 @@ def _fftn_wrapper(fft_n, default_name):
         fft_length = _infer_fft_length_for_fftn(input_tensor)
       else:
         fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
+      fft_length_static = _validate_nonnegative_fft_length(fft_length)
       input_tensor = _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length)
 
-      fft_length_static = _tensor_util.constant_value(fft_length)
       if fft_length_static is not None:
         fft_length = fft_length_static
       if norm is None:
@@ -283,9 +298,9 @@ def _ifftn_wrapper(ifft_n, default_name):
         fft_length = _infer_fft_length_for_fftn(input_tensor)
       else:
         fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
+      fft_length_static = _validate_nonnegative_fft_length(fft_length)
       input_tensor = _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length)
 
-      fft_length_static = _tensor_util.constant_value(fft_length)
       if fft_length_static is not None:
         fft_length = fft_length_static
       if norm is None:
@@ -334,9 +349,9 @@ def _rfftn_wrapper(rfft_n, default_name):
         fft_length = _infer_fft_length_for_fftn(input_tensor)
       else:
         fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
+      fft_length_static = _validate_nonnegative_fft_length(fft_length)
       input_tensor = _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length)
 
-      fft_length_static = _tensor_util.constant_value(fft_length)
       if fft_length_static is not None:
         fft_length = fft_length_static
       if norm is None:
