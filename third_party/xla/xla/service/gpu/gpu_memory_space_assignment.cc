@@ -197,8 +197,8 @@ bool HasMosaicInstruction(const HloValue& input_alias,
   return predicate(*ABSL_DIE_IF_NULL(input_alias.instruction()));
 }
 
-bool HasMosaicWithMultimemInstruction(const HloValue& input_alias) {
-  return HasMosaicInstruction(input_alias, IsMosaicWithMultimem);
+bool HasMosaicWithSymmetricParameter(const HloValue& input_alias) {
+  return HasMosaicInstruction(input_alias, IsMosaicWithSymmetricParameter);
 }
 
 // Returns the memory space requested for the given custom call use, or
@@ -315,17 +315,17 @@ absl::StatusOr<BufferValue::Color> DetermineBufferColor(
     }
 
     // Collective/Mosaic Candidates
-    // TODO(479768130): Mark only buffers used with multimem instructions
-    // instead of marking all buffers.
+    // TODO(479768130): Mark only buffers which requires symmetric memory.
     // TODO(508106498): We need to start to respect replica groups once
     // mosaic will support them.
-    const bool is_mosaic_with_multimem =
-        HasMosaicWithMultimemInstruction(*value);
+    const bool is_mosaic_with_symmetric_parameter =
+        HasMosaicWithSymmetricParameter(*value);
 
-    if (is_mosaic_with_multimem) {
+    if (is_mosaic_with_symmetric_parameter) {
       VLOG(1) << "Assigning color kCollective to value of instruction "
               << value->instruction()->ToShortString()
-              << " is_mosaic_with_multimem " << is_mosaic_with_multimem;
+              << " is_mosaic_with_symmetric_parameter "
+              << is_mosaic_with_symmetric_parameter;
       // This is a temporary solution until a separate BFC
       // allocator will be added for the symmetric memory space.
       candidates.push_back(

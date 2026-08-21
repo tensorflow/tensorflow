@@ -2477,8 +2477,8 @@ bool RequiresCollectiveInput(const HloUse& use, const DebugOptions& opts) {
     return true;
   }
 
-  // Check Mosaic with multimem_parameters attribute
-  if (IsMosaicWithMultimem(*user)) {
+  // Check Mosaic with symmetric_memory_parameters attribute
+  if (IsMosaicWithSymmetricParameter(*user)) {
     return true;
   }
 
@@ -2513,8 +2513,8 @@ bool RequiresCollectiveOutput(const HloValue* value, const DebugOptions& opts) {
     return true;
   }
 
-  // Check Mosaic with multimem_parameters attribute
-  if (IsMosaicWithMultimem(*def)) {
+  // Check Mosaic with symmetric_memory_parameters attribute
+  if (IsMosaicWithSymmetricParameter(*def)) {
     return true;
   }
 

@@ -163,11 +163,16 @@ bool IsCustomCallToMosaicGpu(const HloInstruction& hlo) {
           hlo.custom_call_target() == "mosaic_gpu_v2");
 }
 
+bool IsMosaicWithSymmetricParameter(const HloInstruction& hlo) {
+  if (!IsCustomCallToMosaicGpu(hlo)) {
+    return false;
+  }
 
-bool IsMosaicWithMultimem(const HloInstruction& hlo) {
-  return IsCustomCallToMosaicGpu(hlo) &&
-         absl::StrContains(hlo.raw_backend_config_string(),
-                           "multimem_parameters");
+  const std::string& backend_config = hlo.raw_backend_config_string();
+  // TODO(b/546817872): Remove multimem_parameters check once backward
+  // compatibility period is over.
+  return absl::StrContains(backend_config, "symmetric_memory_parameters") ||
+         absl::StrContains(backend_config, "multimem_parameters");
 }
 
 bool IsMosaicWithCollectiveMetadata(const HloInstruction& hlo) {
@@ -177,7 +182,7 @@ bool IsMosaicWithCollectiveMetadata(const HloInstruction& hlo) {
 }
 
 bool IsCollectiveMosaicGpuInstruction(const HloInstruction& hlo) {
-  return IsMosaicWithMultimem(hlo);
+  return IsMosaicWithSymmetricParameter(hlo);
 }
 
 static bool IsContiguousSlice(
