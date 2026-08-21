@@ -308,16 +308,23 @@ absl::Status RunAutotuning(const std::vector<std::string>& hlo_files,
     }
     return !autotuner_cache->Lookup(&instr).has_value();
   };
+  absl::Status combined_status = absl::OkStatus();
 
   for (const auto& hlo_file : hlo_files) {
     LOG(INFO) << "Autotuning " << hlo_file;
     absl::Time start_time = absl::Now();
     ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                      LoadModuleFromFile(hlo_file));
-    ABSL_ASSIGN_OR_RETURN(std::vector<Autotuner::TuningResult> results,
-                     env.autotuner->TuneConfigs(*module, should_autotune));
+    absl::StatusOr<std::vector<Autotuner::TuningResult>> results =
+        env.autotuner->TuneConfigs(*module, should_autotune);
+    if (!results.ok()) {
+      LOG(ERROR) << "Failed to autotune " << module->name() << ": "
+                 << results.status();
+      combined_status.Update(results.status());
+      continue;
+    }
     absl::Duration autotune_duration = absl::Now() - start_time;
-    for (const auto& result : results) {
+    for (const auto& result : *results) {
       AutotunerCacheInterface::Config cached_config;
       cached_config.codegen_backend = result.config.codegen_backend->backend();
       cached_config.backend_config = *result.config.backend_config;
@@ -331,7 +338,7 @@ absl::Status RunAutotuning(const std::vector<std::string>& hlo_files,
               << " (with cache update: " << duration_with_cache_update
               << " total)";
   }
-  return absl::OkStatus();
+  return combined_status;
 }
 
 }  // namespace gpu
