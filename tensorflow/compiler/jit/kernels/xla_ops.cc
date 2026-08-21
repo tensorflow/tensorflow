@@ -637,6 +637,7 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
       xla::gpu::GpuExecutableRunOptions gpu_options;
       xla::DeviceAssignment device_assignment;
       xla::ExecutableRunOptions run_options;
+      run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
       if (compilation_result->collective_info.has_value()) {
         OP_REQUIRES_OK_ASYNC(ctx,
                              ResolveDeviceAssignment(
@@ -964,6 +965,7 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
   }
 
   xla::ExecutableRunOptions run_options;
+  run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
 
   // Host callbacks used for HLO send/recv.
   xla::SendDeviceMemoryFunction send_function =
