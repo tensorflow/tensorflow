@@ -108,6 +108,7 @@ use_repo(
     "cpuinfo",
     "cudnn_frontend_archive",
     "cutlass_archive",
+    "cutlass_cutedsl_runtime",
     "dlpack",
     "ducc",
     "eigen_archive",
