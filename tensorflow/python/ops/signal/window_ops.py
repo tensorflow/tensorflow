@@ -199,6 +199,62 @@ def hamming_window(window_length, periodic=True, dtype=dtypes.float32,
                                dtype, 0.54, 0.46)
 
 
+@tf_export('signal.blackman_window')
+@dispatch.add_dispatch_support
+def blackman_window(window_length, periodic=True, dtype=dtypes.float32,
+                    name=None):
+  """Generate a [Blackman][blackman] window.
+
+  Args:
+    window_length: A scalar `Tensor` indicating the window length to generate.
+    periodic: A bool `Tensor` indicating whether to generate a periodic or
+      symmetric window. Periodic windows are typically used for spectral
+      analysis while symmetric windows are typically used for digital
+      filter design.
+    dtype: The data type to produce. Must be a floating point type.
+    name: An optional name for the operation.
+
+  Returns:
+    A `Tensor` of shape `[window_length]` of type `dtype`.
+
+  Raises:
+    ValueError: If `dtype` is not a floating point type.
+
+  [blackman]:
+    https://en.wikipedia.org/wiki/Window_function#Blackman_window
+  """
+  if not dtype.is_floating:
+    raise ValueError('dtype must be a floating point type. Found %s' % dtype)
+
+  with ops.name_scope(name, 'blackman_window', [window_length, periodic]):
+    window_length = ops.convert_to_tensor(window_length, dtype=dtypes.int32,
+                                          name='window_length')
+    window_length.shape.assert_has_rank(0)
+    window_length_const = tensor_util.constant_value(window_length)
+    if window_length_const == 1:
+      return array_ops.ones([1], dtype=dtype)
+    periodic = math_ops.cast(
+        ops.convert_to_tensor(periodic, dtype=dtypes.bool, name='periodic'),
+        dtypes.int32)
+    periodic.shape.assert_has_rank(0)
+    even = 1 - math_ops.mod(window_length, 2)
+
+    def _compute_window():
+      n = math_ops.cast(window_length + periodic * even - 1, dtype=dtype)
+      count = math_ops.cast(math_ops.range(window_length), dtype)
+      cos_arg = constant_op.constant(2 * np.pi, dtype=dtype) * count / n
+      return math_ops.cast(
+          0.42 - 0.5 * math_ops.cos(cos_arg) + 0.08 * math_ops.cos(2 * cos_arg),
+          dtype=dtype)
+
+    if window_length_const is not None:
+      return _compute_window()
+    return cond.cond(
+        math_ops.equal(window_length, 1),
+        lambda: array_ops.ones([window_length], dtype=dtype),
+        _compute_window)
+
+
 def _raised_cosine_window(name, default_name, window_length, periodic,
                           dtype, a, b):
   """Helper function for computing a raised cosine window.
@@ -236,13 +292,15 @@ def _raised_cosine_window(name, default_name, window_length, periodic,
     periodic.shape.assert_has_rank(0)
     even = 1 - math_ops.mod(window_length, 2)
 
-    n = math_ops.cast(window_length + periodic * even - 1, dtype=dtype)
-    count = math_ops.cast(math_ops.range(window_length), dtype)
-    cos_arg = constant_op.constant(2 * np.pi, dtype=dtype) * count / n
+    def _compute_window():
+      n = math_ops.cast(window_length + periodic * even - 1, dtype=dtype)
+      count = math_ops.cast(math_ops.range(window_length), dtype)
+      cos_arg = constant_op.constant(2 * np.pi, dtype=dtype) * count / n
+      return math_ops.cast(a - b * math_ops.cos(cos_arg), dtype=dtype)
 
     if window_length_const is not None:
-      return math_ops.cast(a - b * math_ops.cos(cos_arg), dtype=dtype)
+      return _compute_window()
     return cond.cond(
         math_ops.equal(window_length, 1),
         lambda: array_ops.ones([window_length], dtype=dtype),
-        lambda: math_ops.cast(a - b * math_ops.cos(cos_arg), dtype=dtype))
+        _compute_window)
