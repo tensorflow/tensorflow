@@ -13,16 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_AUTOTUNING_AUTOTUNER_PASS_H_
-#define XLA_SERVICE_GPU_AUTOTUNING_AUTOTUNER_PASS_H_
+#ifndef XLA_SERVICE_GPU_AUTOTUNING_CONFIG_ASSIGNER_PASS_H_
+#define XLA_SERVICE_GPU_AUTOTUNING_CONFIG_ASSIGNER_PASS_H_
 
 #include <functional>
 #include <memory>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/autotuner.h"
@@ -65,28 +68,28 @@ Autotuner::Options GetAutotunerOptions(const DebugOptions& debug_options,
 ProfileOptions GetProfileOptions(const DebugOptions& debug_options,
                                  bool is_buffer_check_supported = true);
 
-InstructionFilterFn GetShouldAutotuneInstructionFn(
+InstructionFilterFn GetShouldAssignConfigToInstructionFn(
     const DebugOptions& debug_options,
     const se::GpuComputeCapability& gpu_version);
 
-// HloModulePass that runs the autotuner.
-class AutotunerPass : public HloModulePass {
+// HloModulePass that assigns backend configurations.
+class ConfigAssignerPass : public HloModulePass {
  public:
   using GetBackendsFn = std::function<
       absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>()>;
 
   static absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
-  GetGpuAutotunerBackends(se::StreamExecutor* stream_exec,
-                          se::DeviceAddressAllocator* device_allocator,
-                          const Compiler::GpuTargetConfig* target_config,
-                          const AliasInfo* alias_info,
-                          const DebugOptions& debug_options,
-                          mlir::MLIRContext* mlir_context,
-                          HloCostAnalysis::ShapeSizeFunction shape_size_fn,
-                          Compiler* compiler, se::PlatformId platform_id);
+  GetEnabledBackends(se::StreamExecutor* stream_exec,
+                     se::DeviceAddressAllocator* device_allocator,
+                     const Compiler::GpuTargetConfig* target_config,
+                     const AliasInfo* alias_info,
+                     const DebugOptions& debug_options,
+                     mlir::MLIRContext* mlir_context,
+                     HloCostAnalysis::ShapeSizeFunction shape_size_fn,
+                     Compiler* compiler, se::PlatformId platform_id);
 
   // Note: the target_config must outlive the pass.
-  static absl::StatusOr<std::unique_ptr<AutotunerPass>> Create(
+  static absl::StatusOr<std::unique_ptr<ConfigAssignerPass>> Create(
       GetBackendsFn get_backends_fn, const DebugOptions& debug_options,
       const se::GpuComputeCapability& gpu_version,
       se::StreamExecutor* stream_executor, tsl::thread::ThreadPool* thread_pool,
@@ -96,7 +99,23 @@ class AutotunerPass : public HloModulePass {
       se::DeviceAddressAllocator* allocator = nullptr,
       MultiProcessKeyValueStore key_value_store = MultiProcessKeyValueStore());
 
-  absl::string_view name() const override { return "autotuner"; }
+  absl::string_view name() const override {
+    // If the user targets "autotuner" in disabling/enabling/dumping,
+    // dynamically pretend our name is "autotuner".
+    if (absl::c_linear_search(debug_options_.xla_disable_hlo_passes(),
+                              "autotuner") ||
+        absl::c_linear_search(debug_options_.xla_enable_hlo_passes_only(),
+                              "autotuner") ||
+        absl::StrContains(debug_options_.xla_dump_hlo_pass_re(), "autotuner") ||
+        absl::StrContains(debug_options_.xla_run_hlo_passes_starting_from(),
+                          "autotuner")) {
+      LOG_FIRST_N(WARNING, 4)
+          << "The autotuner pass has been renamed to config-assigner. "
+             "Please update your flags to use config-assigner.";
+      return "autotuner";
+    }
+    return "config-assigner";
+  }
 
  protected:
   absl::StatusOr<bool> RunImpl(
@@ -104,22 +123,26 @@ class AutotunerPass : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  explicit AutotunerPass(std::unique_ptr<ConfigAssigner> config_assigner,
-                         InstructionFilterFn should_autotune,
-                         MultiProcessKeyValueStore key_value_store,
-                         bool enable_sharding)
-      : config_assigner_(std::move(config_assigner)),
-        should_autotune_(std::move(should_autotune)),
+  explicit ConfigAssignerPass(const DebugOptions& debug_options,
+                              std::unique_ptr<ConfigAssigner> config_assigner,
+                              InstructionFilterFn should_assign_config_to,
+                              MultiProcessKeyValueStore key_value_store,
+                              bool enable_sharding)
+      : debug_options_(debug_options),
+        config_assigner_(std::move(config_assigner)),
+        should_assign_config_to_(std::move(should_assign_config_to)),
         key_value_store_(std::move(key_value_store)),
         enable_sharding_(enable_sharding) {}
 
+  DebugOptions debug_options_;
   std::unique_ptr<ConfigAssigner> config_assigner_;
-  InstructionFilterFn should_autotune_;
+  InstructionFilterFn should_assign_config_to_;
   MultiProcessKeyValueStore key_value_store_;
   bool enable_sharding_ = false;
 };
 
+
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_AUTOTUNING_AUTOTUNER_PASS_H_
+#endif  // XLA_SERVICE_GPU_AUTOTUNING_CONFIG_ASSIGNER_PASS_H_

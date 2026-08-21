@@ -155,7 +155,7 @@ absl::Status ConfigAssigner::AssignConfigs(
     MultiProcessKeyValueStore& sharding_kv_store) {
   // Sharding the instructions only makes sense if we can have different
   // configs for different shards, which only happens due to online tuning.
-  if (options_.select_first_config) {
+  if (!options_.allow_autotuning) {
     VLOG(1) << "Falling back to non-sharded config assignment as online "
                "tuning is disabled.";
     return AssignConfigs(module, should_assign_config);
@@ -312,7 +312,7 @@ tsl::Future<ConfigAssigner::Config> ConfigAssigner::GetConfig(
 
   // TODO (b/446870267): Improve the cache fallback logic as we move to offline
   // autotuning.
-  if (options_.select_first_config) {
+  if (!options_.allow_autotuning) {
     absl::StatusOr<std::vector<Config>> supported_configs =
         orchestrator_->GetSupportedConfigs(*instr);
 
@@ -452,11 +452,11 @@ std::string ConfigAssigner::Options::ToString() const {
   return absl::StrFormat(
       R"json({
   "expect_all_instructions_in_cache": %v,
-  "select_first_config": %v,
+  "allow_autotuning": %v,
   "dump_hlos": %v,
   "use_new_cache_format": %v
 })json",
-      expect_all_instructions_in_cache, select_first_config, dump_hlos,
+      expect_all_instructions_in_cache, allow_autotuning, dump_hlos,
       use_new_cache_format);
 }
 

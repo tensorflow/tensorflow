@@ -39,13 +39,17 @@ package_group(
 )
 
 xla_test(
-    name = "autotuner_pass_test",
-    srcs = ["autotuner_pass_test.cc"],
-    backends = ["gpu"],
+    name = "config_assigner_pass_test",
+    srcs = ["config_assigner_pass_test.cc"],
+    backends = [
+        "a100",
+        "h100",
+        "b200",
+    ],
     tags = ["cuda-only"],
     deps = [
         ":autotuner_cache",
-        ":autotuner_pass",
+        ":config_assigner_pass",
         "//xla:shape_util",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:backends_proto_cc",
@@ -271,11 +275,11 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "autotuner_pass",
+    name = "config_assigner_pass",
     srcs = [
-        "autotuner_pass.cc",
+        "config_assigner_pass.cc",
     ],
-    hdrs = ["autotuner_pass.h"],
+    hdrs = ["config_assigner_pass.h"],
     tags = ["gpu"],
     deps = [
         "//xla:util",
@@ -323,4 +327,9 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:IR",
     ],
+)
+
+test_suite(
+    name = "autotuner_pass_test",
+    tests = [":config_assigner_pass_test"],
 )
