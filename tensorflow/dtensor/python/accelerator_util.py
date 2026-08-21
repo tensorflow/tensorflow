@@ -14,6 +14,7 @@
 # ==============================================================================
 """Utility for working with accelerator systems."""
 
+import os
 from typing import List, Optional
 
 from absl import logging
@@ -82,8 +83,28 @@ def initialize_multi_client_cluster(job_name: str,
       use_nccl_communication=gpu_use_nccl_communication,
       collective_leader=collective_leader)
   if enable_coordination_service:
+    heartbeat_timeout_ms = 0
+    if "TF_COORDINATION_SERVICE_HEARTBEAT_TIMEOUT_MS" in os.environ:
+      heartbeat_timeout_ms = int(
+          os.environ["TF_COORDINATION_SERVICE_HEARTBEAT_TIMEOUT_MS"]
+      )
+    elif "TF_COORDINATION_SERVICE_HEARTBEAT_TIMEOUT_SECS" in os.environ:
+      heartbeat_timeout_ms = (
+          int(os.environ["TF_COORDINATION_SERVICE_HEARTBEAT_TIMEOUT_SECS"])
+          * 1000
+      )
+    elif "DTENSOR_HEARTBEAT_TIMEOUT_MS" in os.environ:
+      heartbeat_timeout_ms = int(os.environ["DTENSOR_HEARTBEAT_TIMEOUT_MS"])
+    elif "DTENSOR_HEARTBEAT_TIMEOUT_SECS" in os.environ:
+      heartbeat_timeout_ms = (
+          int(os.environ["DTENSOR_HEARTBEAT_TIMEOUT_SECS"]) * 1000
+      )
     context.context().configure_coordination_service(
-        service_type="standalone", service_leader=collective_leader)
+        service_type="standalone",
+        service_leader=collective_leader,
+        enable_health_check=config.heartbeat_enabled(),
+        heartbeat_timeout_in_ms=heartbeat_timeout_ms,
+    )
 
   config_proto = context.get_config()
 
