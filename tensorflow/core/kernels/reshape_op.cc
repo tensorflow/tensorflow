@@ -19,32 +19,53 @@ namespace tensorflow {
 
 REGISTER_KERNEL_BUILDER(Name("Reshape")
                             .Device(DEVICE_CPU)
+                            .HostMemory("tensor")
                             .HostMemory("shape")
-                            .TypeConstraint<int32_t>("Tshape"),
+                            .HostMemory("output")
+                            .TypeConstraint<int32>("Tshape"),
                         ReshapeOp);
+
 REGISTER_KERNEL_BUILDER(Name("Reshape")
                             .Device(DEVICE_CPU)
+                            .HostMemory("tensor")
                             .HostMemory("shape")
+                            .HostMemory("output")
                             .TypeConstraint<int64_t>("Tshape"),
                         ReshapeOp);
+
+#define REGISTER_DEFAULT_KERNEL(type)                               \
+  REGISTER_KERNEL_BUILDER(Name("Reshape")                           \
+                              .Device(DEVICE_DEFAULT)               \
+                              .HostMemory("shape")                  \
+                              .TypeConstraint<type>("T")            \
+                              .TypeConstraint<int32>("Tshape"),     \
+                          ReshapeOp);                               \
+  REGISTER_KERNEL_BUILDER(Name("Reshape")                           \
+                              .Device(DEVICE_DEFAULT)               \
+                              .HostMemory("shape")                  \
+                              .TypeConstraint<type>("T")            \
+                              .TypeConstraint<int64_t>("Tshape"),   \
+                          ReshapeOp);
+
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_DEFAULT_KERNEL);
+TF_CALL_bool(REGISTER_DEFAULT_KERNEL);
+#undef REGISTER_DEFAULT_KERNEL
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER_KERNEL_BUILDER(Name("Reshape")
                             .Device(DEVICE_GPU)
+                            .HostMemory("tensor")
                             .HostMemory("shape")
-                            .TypeConstraint<int32_t>("Tshape"),
+                            .HostMemory("output")
+                            .TypeConstraint<int32>("Tshape"),
                         ReshapeOp);
+
 REGISTER_KERNEL_BUILDER(Name("Reshape")
                             .Device(DEVICE_GPU)
+                            .HostMemory("tensor")
                             .HostMemory("shape")
+                            .HostMemory("output")
                             .TypeConstraint<int64_t>("Tshape"),
-                        ReshapeOp);
-#endif
-
-#if TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("Reshape")
-                            .Device(DEVICE_SYCL)
-                            .HostMemory("shape"),
                         ReshapeOp);
 #endif
 
