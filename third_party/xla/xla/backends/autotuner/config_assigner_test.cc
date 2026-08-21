@@ -143,7 +143,8 @@ absl::StatusOr<std::unique_ptr<ConfigAssigner>> CreateConfigAssigner(
   }
 
   return ConfigAssigner::Create(assigner_options, std::move(cache),
-                                std::move(orchestrator), std::move(autotuner));
+                                std::move(orchestrator), std::move(autotuner),
+                                thread_pool);
 }
 
 absl::StatusOr<std::unique_ptr<ConfigAssigner>>
@@ -390,6 +391,44 @@ TEST_F(ConfigAssignerTest,
   auto dummy_instr = module->entry_computation()->root_instruction();
   EXPECT_THAT(config_assigner->AssignConfig(dummy_instr),
               StatusIs(absl::StatusCode::kInternal));
+}
+
+TEST_F(ConfigAssignerTest, AutotuningDisabledCompilesAllSupportedConfigs) {
+  config_.allow_autotuning = false;
+  config_.compile_all_supported_configs = true;
+
+  std::vector<std::unique_ptr<BackendConfig>> configs;
+  configs.push_back(GetTestConfig("test_config_1"));
+  configs.push_back(GetTestConfig("test_config_2"));
+
+  auto backend = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*backend, GetSupportedConfigs(_))
+      .WillOnce(Return(std::move(configs)));
+
+  EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_1")))
+      .WillOnce(Return(absl::InternalError("test error")));
+  EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_2")))
+      .WillOnce(Return(std::unique_ptr<Executable>()));
+
+  EXPECT_CALL(*backend, ApplyConfig(_, ConfigMatcher("test_config_2")))
+      .Times(1)
+      .WillRepeatedly(Return(absl::OkStatus()));
+
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend));
+
+  auto profiler = std::make_unique<MockProfiler>();
+
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_pool", 2);
+
+  ASSERT_OK_AND_ASSIGN(
+      auto config_assigner,
+      CreateConfigAssigner(std::move(backends), std::move(profiler), config_,
+                           nullptr, std::nullopt, &thread_pool));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  auto dummy_instr = module->entry_computation()->root_instruction();
+  EXPECT_THAT(config_assigner->AssignConfig(dummy_instr), absl_testing::IsOk());
 }
 
 class MockKeyValueStore : public KeyValueStoreInterface {
@@ -686,7 +725,8 @@ TEST(ConfigAssignerOptionsTest, ToString) {
       "  \"expect_all_instructions_in_cache\": false,\n"
       "  \"allow_autotuning\": false,\n"
       "  \"dump_hlos\": false,\n"
-      "  \"use_new_cache_format\": false\n"
+      "  \"use_new_cache_format\": false,\n"
+      "  \"compile_all_supported_configs\": false\n"
       "}";
   EXPECT_EQ(config.ToString(), expected);
 }

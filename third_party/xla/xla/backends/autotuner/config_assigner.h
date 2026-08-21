@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -56,6 +57,9 @@ class ConfigAssigner {
     // TODO(b/545120488): Remove when xla_gpu_use_new_autotune_cache_format flag
     // is removed.
     bool use_new_cache_format = false;
+    // When autotuning is disabled, if true, compiles all supported configs in
+    // parallel before returning the first successful one.
+    bool compile_all_supported_configs = false;
 
     std::string ToString() const;
   };
@@ -67,7 +71,8 @@ class ConfigAssigner {
       absl_nonnull std::unique_ptr<AutotunerCacheInterface>
           optimal_config_cache,
       absl_nonnull std::unique_ptr<CodegenOrchestrator> orchestrator,
-      absl_nullable std::unique_ptr<Autotuner> autotuner);
+      absl_nullable std::unique_ptr<Autotuner> autotuner,
+      tsl::thread::ThreadPool* thread_pool = nullptr);
 
   // Online module-level entry point.
   absl::Status AssignConfigs(HloModule* module,
@@ -87,11 +92,13 @@ class ConfigAssigner {
   ConfigAssigner(Options options,
                  absl_nonnull std::unique_ptr<AutotunerCacheInterface> cache,
                  absl_nonnull std::unique_ptr<CodegenOrchestrator> orchestrator,
-                 absl_nullable std::unique_ptr<Autotuner> autotuner)
+                 absl_nullable std::unique_ptr<Autotuner> autotuner,
+                 tsl::thread::ThreadPool* thread_pool)
       : options_(options),
         optimal_config_cache_(std::move(cache)),
         orchestrator_(std::move(orchestrator)),
-        autotuner_(std::move(autotuner)) {}
+        autotuner_(std::move(autotuner)),
+        thread_pool_(thread_pool) {}
 
   using InstructionGroup = std::vector<HloInstruction*>;
 
@@ -110,6 +117,10 @@ class ConfigAssigner {
   // Tuned config is updated in the cache if it is provided.
   tsl::Future<Config> GetConfig(const HloInstruction* instr);
 
+  // Gets the first compilable config under the supported configurations for the
+  // given HLO instruction.
+  absl::StatusOr<Config> GetFirstSupportedAndCompilableConfig(
+      const HloInstruction* instr);
 
   // Returns the cached config for the given HLO instruction, if any.
   // Otherwise, returns std::nullopt.
@@ -124,6 +135,7 @@ class ConfigAssigner {
   absl_nonnull std::unique_ptr<AutotunerCacheInterface> optimal_config_cache_;
   absl_nonnull std::unique_ptr<CodegenOrchestrator> orchestrator_;
   absl_nullable std::unique_ptr<Autotuner> autotuner_;
+  tsl::thread::ThreadPool* thread_pool_ = nullptr;
   int dump_counter_ = 0;
 };
 

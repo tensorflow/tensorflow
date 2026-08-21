@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/fingerprint.h"
 
 namespace xla {
@@ -114,10 +115,11 @@ absl::StatusOr<std::unique_ptr<ConfigAssigner>> ConfigAssigner::Create(
     Options options,
     std::unique_ptr<AutotunerCacheInterface> absl_nonnull cache,
     std::unique_ptr<CodegenOrchestrator> absl_nonnull orchestrator,
-    std::unique_ptr<Autotuner> absl_nullable autotuner) {
-  return absl::WrapUnique(
-      new ConfigAssigner(std::move(options), std::move(cache),
-                         std::move(orchestrator), std::move(autotuner)));
+    std::unique_ptr<Autotuner> absl_nullable autotuner,
+    tsl::thread::ThreadPool* thread_pool) {
+  return absl::WrapUnique(new ConfigAssigner(
+      std::move(options), std::move(cache), std::move(orchestrator),
+      std::move(autotuner), thread_pool));
 }
 
 absl::Status ConfigAssigner::AssignConfigs(
@@ -313,17 +315,10 @@ tsl::Future<ConfigAssigner::Config> ConfigAssigner::GetConfig(
   // TODO (b/446870267): Improve the cache fallback logic as we move to offline
   // autotuning.
   if (!options_.allow_autotuning) {
-    absl::StatusOr<std::vector<Config>> supported_configs =
-        orchestrator_->GetSupportedConfigs(*instr);
-
-    if (supported_configs.ok()) {
-      for (Config& config : *supported_configs) {
-        auto executable = orchestrator_->Compile(*instr, config);
-        if (executable.ok()) {
-          VLOG(1) << "Using first compilable config: " << config.ToString();
-          return std::move(config);
-        }
-      }
+    absl::StatusOr<Config> supported_config =
+        GetFirstSupportedAndCompilableConfig(instr);
+    if (supported_config.ok()) {
+      return supported_config;
     }
 
     absl::StatusOr<Config> default_config =
@@ -336,7 +331,7 @@ tsl::Future<ConfigAssigner::Config> ConfigAssigner::GetConfig(
     VLOG(1) << "Failed to get default config: " << default_config.status();
     return absl::InternalError(absl::StrCat(
         "No supported config found for HLO: ", instr->ToString(),
-        ". Supported configs status: ", supported_configs.status().ToString(),
+        ". Supported configs status: ", supported_config.status().ToString(),
         "; Default config status: ", default_config.status().ToString()));
   }
 
@@ -351,6 +346,43 @@ tsl::Future<ConfigAssigner::Config> ConfigAssigner::GetConfig(
       });
 }
 
+absl::StatusOr<ConfigAssigner::Config>
+ConfigAssigner::GetFirstSupportedAndCompilableConfig(
+    const HloInstruction* instr) {
+  absl::StatusOr<std::vector<Config>> supported_configs =
+      orchestrator_->GetSupportedConfigs(*instr);
+  if (!supported_configs.ok()) {
+    return supported_configs.status();
+  }
+
+  if (options_.compile_all_supported_configs) {
+    tsl::Future<std::vector<CodegenOrchestrator::MaybeExecutableCandidate>>
+        maybe_candidates = orchestrator_->CompileAll(
+            *instr, std::move(*supported_configs), thread_pool_);
+    ABSL_ASSIGN_OR_RETURN(
+        std::vector<CodegenOrchestrator::MaybeExecutableCandidate> candidates,
+        std::move(maybe_candidates).Await());
+    for (auto& candidate : candidates) {
+      if (candidate.executable.ok()) {
+        VLOG(1) << "Using first compilable config after compiling all supported"
+                   " configs: "
+                << candidate.config.ToString();
+        return std::move(candidate.config);
+      }
+    }
+  } else {
+    for (Config& config : *supported_configs) {
+      auto executable = orchestrator_->Compile(*instr, config);
+      if (executable.ok()) {
+        VLOG(1) << "Using first compilable config: " << config.ToString();
+        return std::move(config);
+      }
+    }
+  }
+
+  return absl::NotFoundError(
+      "All supported configs failed to compile for HLO.");
+}
 
 std::optional<ConfigAssigner::Config> ConfigAssigner::LookUp(
     const HloInstruction* instr) const {
@@ -454,10 +486,11 @@ std::string ConfigAssigner::Options::ToString() const {
   "expect_all_instructions_in_cache": %v,
   "allow_autotuning": %v,
   "dump_hlos": %v,
-  "use_new_cache_format": %v
+  "use_new_cache_format": %v,
+  "compile_all_supported_configs": %v
 })json",
       expect_all_instructions_in_cache, allow_autotuning, dump_hlos,
-      use_new_cache_format);
+      use_new_cache_format, compile_all_supported_configs);
 }
 
 AutotunerCacheInterface::CacheStats ConfigAssigner::GetCacheStats() const {

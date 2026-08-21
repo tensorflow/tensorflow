@@ -481,6 +481,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_use_new_autotune_cache_format(false);
 
+  opts.set_xla_compile_all_supported_configs(false);
+
   opts.set_xla_gpu_experimental_autotune_cache_mode(
       DebugOptions::AUTOTUNE_CACHE_MODE_UPDATE);
 
@@ -2988,6 +2990,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_use_new_autotune_cache_format(),
       "Whether to use the new protos for the autotune cache"
       " (xla.autotuner.AutotuneCache rather than xla.AutotuneResults."));
+
+  flag_list->push_back(tsl::Flag(
+      "xla_compile_all_supported_configs",
+      bool_setter_for(&DebugOptions::set_xla_compile_all_supported_configs),
+      debug_options->xla_compile_all_supported_configs(),
+      "When autotuning is disabled, if true, compiles all supported configs"
+      " in parallel before returning the first successful one."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_autotune_backends",
       SetterForRepeatedEnum<autotuner::Backend>(

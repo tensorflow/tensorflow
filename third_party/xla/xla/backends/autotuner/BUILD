@@ -228,6 +228,7 @@ cc_library(
         "//xla/tools:hlo_decomposer_lib",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/lib/math:math_util",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:nullability",

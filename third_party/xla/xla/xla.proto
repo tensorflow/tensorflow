@@ -1818,7 +1818,13 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 539
+  // Is this flag is set and autotuning is disabled, the config assigner still
+  // compiles all supported configs for each instruction before assigning the
+  // first successful one.
+  // Gives more compilation test coverage but might increase compilation time.
+  optional bool xla_compile_all_supported_configs = 539;
+
+  // Next id: 540
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

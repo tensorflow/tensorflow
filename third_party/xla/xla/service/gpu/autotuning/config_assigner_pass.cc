@@ -284,6 +284,8 @@ ConfigAssigner::Options GetConfigAssignerOptions(
                       debug_options.xla_gpu_dump_autotuned_instructions();
   options.use_new_cache_format =
       debug_options.xla_gpu_use_new_autotune_cache_format();
+  options.compile_all_supported_configs =
+      debug_options.xla_compile_all_supported_configs();
 
   return options;
 }
@@ -480,10 +482,10 @@ absl::StatusOr<std::unique_ptr<ConfigAssignerPass>> ConfigAssignerPass::Create(
 
   VLOG(1) << "ConfigAssigner options: " << assigner_options.ToString();
 
-  ABSL_ASSIGN_OR_RETURN(
-      auto config_assigner,
-      ConfigAssigner::Create(assigner_options, std::move(cache),
-                             std::move(orchestrator), std::move(autotuner)));
+  ABSL_ASSIGN_OR_RETURN(auto config_assigner,
+                   ConfigAssigner::Create(assigner_options, std::move(cache),
+                                          std::move(orchestrator),
+                                          std::move(autotuner), thread_pool));
 
   return absl::WrapUnique(new ConfigAssignerPass(
       debug_options, std::move(config_assigner),
