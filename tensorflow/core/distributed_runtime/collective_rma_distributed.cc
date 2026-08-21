@@ -14,9 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/distributed_runtime/collective_rma_distributed.h"
 
+#include <cstdint>
+#include <cstring>
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/base_collective_executor.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
