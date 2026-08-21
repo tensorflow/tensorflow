@@ -391,6 +391,11 @@ void EventNode::PropagateGroupId(int64_t group_id,
         if (seen.contains(child)) {
           continue;
         }
+        if (node->GetEventVisitor().Name() == kThreadpoolListenerRegion &&
+            child->GetEventVisitor().Type() ==
+                HostEventType::kExecutorStateProcess) {
+          continue;
+        }
         nodes.push(child);
         seen.insert(child);
       }

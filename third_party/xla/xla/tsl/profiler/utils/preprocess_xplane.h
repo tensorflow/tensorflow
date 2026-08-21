@@ -529,8 +529,10 @@ class ThreadpoolLineMutatorFactory : public XplaneEventMutatorFactory {
         XEventBuilder region = line.AddEvent(*thread_pool_metadata_);
         region.SetTimestampPs(event_metadata.start_region_timestamp_ps);
         region.SetEndTimestampPs(event_metadata.end_region_timestamp_ps);
-        // TODO: b/510930307 - Set consumer stat value for the region event and
-        // properly address the grouping issue described above.
+        region.SetOrAddStatValue(*consumer_, event_metadata.region_id);
+        region.SetOrAddStatValue(
+            *consumer_type_,
+            static_cast<int64_t>(ContextType::kThreadpoolEvent));
       }
       if (!event_metadata.empty()) {
         SortXLine(line.GetLine());
