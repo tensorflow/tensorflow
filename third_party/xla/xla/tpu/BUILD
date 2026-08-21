@@ -27,6 +27,7 @@ package(
         "//learning/brain/research/pjrt:__subpackages__",
         "//learning/brain/tfrc/executor:__subpackages__",
         "//learning/brain/tfrt/tpu_plugin:__subpackages__",
+        "//quality/brain/universal/urb_model:__subpackages__",
         "//tensorflow/compiler/jit:__subpackages__",
         "//tensorflow/compiler/mlir:__subpackages__",
         "//xla:__subpackages__",
