@@ -243,6 +243,10 @@ int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis);
 int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis,
                             const Shape& shape);
 
+// Returns whether the instruction is a scan or, in the case of a fusion,
+// contains a scan operation.
+bool ContainsScan(const HloInstruction& instr);
+
 }  // namespace gpu
 }  // namespace xla
 

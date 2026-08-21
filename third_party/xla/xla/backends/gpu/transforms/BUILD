@@ -2400,7 +2400,6 @@ xla_cc_test(
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:IR",
     ],
 )
 
