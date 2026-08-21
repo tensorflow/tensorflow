@@ -266,7 +266,7 @@ limitations under the License.
 #include "xla/service/gather_expander.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/autotuning/autotuner_cache.h"
-#include "xla/service/gpu/autotuning/autotuner_pass.h"
+#include "xla/service/gpu/autotuning/config_assigner_pass.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/conv_layout_normalization.h"
 #include "xla/service/gpu/cublas_cudnn.h"
@@ -1971,7 +1971,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
     HloPassPipeline pipeline("autotuner", compilation_stats);
     pipeline.AddPass<FusionWrapper>(
         gpu_topology.gpu_target_config().device_description);
-    ABSL_RETURN_IF_ERROR(AddAutotunerPass(
+    ABSL_RETURN_IF_ERROR(AddConfigAssignerPass(
         &pipeline, hlo_module, gpu_version, options, thread_pool.get_mutable(),
         stream_exec, &gpu_topology.gpu_target_config(), alias_info,
         mlir_context, ShapeSizeBytesFunction(), options.key_value_store));
@@ -3451,7 +3451,7 @@ GpuCompiler::LoadAotCompilationResult(
       "format is no longer supported).");
 }
 
-absl::Status GpuCompiler::AddAutotunerPass(
+absl::Status GpuCompiler::AddConfigAssignerPass(
     HloPassPipeline* pipeline, HloModule* hlo_module,
     const se::GpuComputeCapability& gpu_version, const CompileOptions& options,
     tsl::thread::ThreadPool* thread_pool, se::StreamExecutor* stream_exec,
@@ -3462,18 +3462,18 @@ absl::Status GpuCompiler::AddAutotunerPass(
   const DebugOptions& debug_options = hlo_module->config().debug_options();
   auto get_backends_fn =
       [&]() -> absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>> {
-    return AutotunerPass::GetGpuAutotunerBackends(
+    return ConfigAssignerPass::GetEnabledBackends(
         stream_exec, options.device_allocator, target_config, alias_info,
         debug_options, mlir_context, shape_size_fn, this, PlatformId());
   };
 
   ABSL_ASSIGN_OR_RETURN(
-      std::unique_ptr<AutotunerPass> autotuner_pass,
-      AutotunerPass::Create(get_backends_fn, debug_options, gpu_version,
-                            stream_exec, thread_pool, target_config, alias_info,
-                            mlir_context, shape_size_fn,
-                            options.device_allocator, key_value_store));
-  pipeline->AddPass(std::move(autotuner_pass));
+      std::unique_ptr<ConfigAssignerPass> config_assigner_pass,
+      ConfigAssignerPass::Create(get_backends_fn, debug_options, gpu_version,
+                                 stream_exec, thread_pool, target_config,
+                                 alias_info, mlir_context, shape_size_fn,
+                                 options.device_allocator, key_value_store));
+  pipeline->AddPass(std::move(config_assigner_pass));
   // Post autotuning transformations needed after autotuning happens.
   pipeline->AddPass<ConvertTritonGemmConfig>(target_config->device_description,
                                              mlir_context);

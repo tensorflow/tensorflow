@@ -50,7 +50,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
-#include "xla/service/gpu/autotuning/autotuner_pass.h"
+#include "xla/service/gpu/autotuning/config_assigner_pass.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/platform_util.h"
@@ -252,7 +252,7 @@ absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
 
   ABSL_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<CodegenBackend>> autotuner_backends,
-      AutotunerPass::GetGpuAutotunerBackends(
+      ConfigAssignerPass::GetEnabledBackends(
           stream_executor_0, allocator.get(), target_config.get(),
           alias_info.get(), debug_options, mlir_context.get(),
           compiler->ShapeSizeBytesFunction(), compiler.get(), platform->id()));
@@ -297,13 +297,14 @@ absl::Status RunAutotuning(const std::vector<std::string>& hlo_files,
     autotuner_cache = std::make_unique<PrintingAutotunerCache>();
   }
 
-  InstructionFilterFn should_autotune_instr = GetShouldAutotuneInstructionFn(
-      debug_options,
-      env.target_config->device_description.gpu_compute_capability());
+  InstructionFilterFn should_assign_config_to_instr =
+      GetShouldAssignConfigToInstructionFn(
+          debug_options,
+          env.target_config->device_description.gpu_compute_capability());
 
-  auto should_autotune = [&autotuner_cache, &should_autotune_instr](
+  auto should_autotune = [&autotuner_cache, &should_assign_config_to_instr](
                              const xla::HloInstruction& instr) {
-    if (!should_autotune_instr(instr)) {
+    if (!should_assign_config_to_instr(instr)) {
       return false;
     }
     return !autotuner_cache->Lookup(&instr).has_value();

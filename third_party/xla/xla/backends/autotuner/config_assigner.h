@@ -44,7 +44,11 @@ class ConfigAssigner {
   // TODO(b/519057668): Consolidate cache fallback options for better
   // readability.
   struct Options {
-    bool select_first_config = false;
+    // If false, the config-assigner will not perform autotuning and only rely
+    // on cache or fallback options. This can lead to suboptimal performance.
+    // Fallback options include first supported config, default config or best
+    // config estimated by by cost-model if enabled.
+    bool allow_autotuning = true;
     bool expect_all_instructions_in_cache = false;
     // If true, the config-assigner will dump HLO modules before and after
     // applying the best config.

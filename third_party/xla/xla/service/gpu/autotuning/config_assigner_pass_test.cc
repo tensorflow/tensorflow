@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/autotuning/autotuner_pass.h"
+#include "xla/service/gpu/autotuning/config_assigner_pass.h"
 
 #include <memory>
 #include <string>
@@ -77,18 +77,42 @@ se::StreamExecutor* GpuExecutor() {
   return platform->ExecutorForDevice(0).value();
 }
 
-class AutotunerPassTest : public HloHardwareIndependentTestBase {
+class ConfigAssignerPassTest : public HloHardwareIndependentTestBase {
  protected:
-  AutotunerPassTest()
+  ConfigAssignerPassTest()
       : stream_executor_(GpuExecutor()),
         allocator_(
             std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
                 stream_executor_)) {}
 
+  absl::StatusOr<std::unique_ptr<ConfigAssignerPass>> CreatePass(
+      const DebugOptions& debug_options) {
+    std::vector<std::unique_ptr<CodegenBackend>> backends;
+    GpuCompiler::GpuTargetConfig target_config(stream_executor_);
+    backends.push_back(std::make_unique<CublasLtBackend>(
+        stream_executor_, &debug_options, &compiler_, &target_config));
+
+    auto get_backends_fn =
+        [backends =
+             std::make_shared<std::vector<std::unique_ptr<CodegenBackend>>>(
+                 std::move(backends))]() mutable {
+          return std::move(*backends);
+        };
+    return ConfigAssignerPass::Create(
+        std::move(get_backends_fn), debug_options,
+        target_config.device_description.gpu_compute_capability(),
+        /*stream_executor=*/nullptr, /*thread_pool=*/nullptr, &target_config,
+        /*alias_info=*/nullptr, /*mlir_context=*/nullptr,
+        /*shape_size_fn=*/[](const Shape& shape) { return 0; },
+        allocator_.get());
+  }
+
   se::StreamExecutor* stream_executor_;
   std::unique_ptr<se::DeviceAddressAllocator> allocator_;
   NVPTXCompiler compiler_;
 };
+
+using AutotunerPassTest = ConfigAssignerPassTest;
 
 const char kCublasCustomCallHlo[] = R"(
 HloModule module, entry_computation_layout={(f32[100,100]{1,0}, f32[100,100]{1,0})->f32[100,100]{1,0}}
@@ -112,9 +136,97 @@ ENTRY %main (arg0: f32[100,100], arg1: f32[100,100]) -> f32[100,100] {
   ROOT %get-tuple-element = f32[100,100]{1,0} get-tuple-element(%custom-call.1), index=0
 })";
 
-TEST_F(AutotunerPassTest, CublasGemmIsAutotuned) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
+TEST_F(ConfigAssignerPassTest, NameReturnsConfigAssignerByDefault) {
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ConfigAssignerPass> pass,
+                       CreatePass(debug_options));
+  EXPECT_EQ(pass->name(), "config-assigner");
+}
+
+TEST_F(ConfigAssignerPassTest,
+       NameReturnsAutotunerWhenPassDisabledAsAutotuner) {
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.add_xla_disable_hlo_passes("autotuner");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ConfigAssignerPass> pass,
+                       CreatePass(debug_options));
+
+  absl::ScopedMockLog log;
+  EXPECT_CALL(
+      log, Log(absl::LogSeverity::kWarning, testing::_,
+               testing::HasSubstr(
+                   "The autotuner pass has been renamed to config-assigner")))
+      .Times(testing::AtLeast(1));
+  log.StartCapturingLogs();
+  EXPECT_EQ(pass->name(), "autotuner");
+  log.StopCapturingLogs();
+}
+
+TEST_F(ConfigAssignerPassTest, NameReturnsAutotunerWhenPassEnabledAsAutotuner) {
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.add_xla_enable_hlo_passes_only("autotuner");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ConfigAssignerPass> pass,
+                       CreatePass(debug_options));
+
+  absl::ScopedMockLog log;
+  EXPECT_CALL(
+      log, Log(absl::LogSeverity::kWarning, testing::_,
+               testing::HasSubstr(
+                   "The autotuner pass has been renamed to config-assigner")))
+      .Times(testing::AtLeast(1));
+  log.StartCapturingLogs();
+  EXPECT_EQ(pass->name(), "autotuner");
+  log.StopCapturingLogs();
+}
+
+TEST_F(ConfigAssignerPassTest,
+       NameReturnsAutotunerWhenDumpPassReContainsAutotuner) {
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_dump_hlo_pass_re(".*autotuner.*");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ConfigAssignerPass> pass,
+                       CreatePass(debug_options));
+
+  absl::ScopedMockLog log;
+  EXPECT_CALL(
+      log, Log(absl::LogSeverity::kWarning, testing::_,
+               testing::HasSubstr(
+                   "The autotuner pass has been renamed to config-assigner")))
+      .Times(testing::AtLeast(1));
+  log.StartCapturingLogs();
+  EXPECT_EQ(pass->name(), "autotuner");
+  log.StopCapturingLogs();
+}
+
+TEST_F(ConfigAssignerPassTest,
+       NameReturnsAutotunerWhenPassStartingFromAutotuner) {
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_run_hlo_passes_starting_from("autotuner");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ConfigAssignerPass> pass,
+                       CreatePass(debug_options));
+
+  absl::ScopedMockLog log;
+  EXPECT_CALL(
+      log, Log(absl::LogSeverity::kWarning, testing::_,
+               testing::HasSubstr(
+                   "The autotuner pass has been renamed to config-assigner")))
+      .Times(testing::AtLeast(1));
+  log.StartCapturingLogs();
+  EXPECT_EQ(pass->name(), "autotuner");
+  log.StopCapturingLogs();
+}
+
+TEST_F(ConfigAssignerPassTest,
+       NameReturnsConfigAssignerWhenPassDisabledAsConfigAssigner) {
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.add_xla_disable_hlo_passes("config-assigner");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ConfigAssignerPass> pass,
+                       CreatePass(debug_options));
+
+  EXPECT_EQ(pass->name(), "config-assigner");
+}
+
+TEST_F(ConfigAssignerPassTest, CublasGemmIsAutotuned) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
 
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
                                       /*num_threads=*/4);
@@ -128,9 +240,9 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotuned) {
       [backends =
            std::make_shared<std::vector<std::unique_ptr<CodegenBackend>>>(
                std::move(backends))]() mutable { return std::move(*backends); };
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<AutotunerPass> pass,
-      AutotunerPass::Create(
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ConfigAssignerPass> pass,
+      ConfigAssignerPass::Create(
           std::move(get_backends_fn), module->config().debug_options(),
           target_config.device_description.gpu_compute_capability(),
           stream_executor_, &thread_pool, &target_config,
@@ -142,15 +254,15 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotuned) {
   // Verify that the backend config has been updated in the HLO.
   auto gemm =
       module->entry_computation()->GetInstructionWithName("custom-call.1");
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_backend_config_after_first_run,
-                          gemm->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_backend_config_after_first_run,
+                       gemm->backend_config<GpuBackendConfig>());
   ASSERT_TRUE(gpu_backend_config_after_first_run.gemm_backend_config()
                   .has_selected_algorithm());
 }
 
-TEST_F(AutotunerPassTest, CublasGemmIsAutotunedAndCached) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
+TEST_F(ConfigAssignerPassTest, CublasGemmIsAutotunedAndCached) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
 
   // Create a temporary directory for the cache.
   std::string cache_dir = ::testing::TempDir();
@@ -175,9 +287,9 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedAndCached) {
                  std::move(backends))]() mutable {
           return std::move(*backends);
         };
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<AutotunerPass> pass,
-        AutotunerPass::Create(
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<ConfigAssignerPass> pass,
+        ConfigAssignerPass::Create(
             std::move(get_backends_fn), module->config().debug_options(),
             target_config.device_description.gpu_compute_capability(),
             stream_executor_, &thread_pool, &target_config,
@@ -191,7 +303,7 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedAndCached) {
   // Verify that the backend config has been updated in the HLO.
   const HloInstruction* custom_call_after_first_run =
       module->entry_computation()->GetInstructionWithName("custom-call.1");
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto gpu_backend_config_after_first_run,
       custom_call_after_first_run->backend_config<GpuBackendConfig>());
   LOG(INFO) << "GPU Backend config after first run: "
@@ -202,8 +314,8 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedAndCached) {
   // Run the pass on the same original HLO reusing the cache
   // Make sure it hits the cache by setting
   // xla_gpu_require_complete_aot_autotune_results to true.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_2,
-                          ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_2,
+                       ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
 
   module_2->mutable_config()
       .mutable_debug_options()
@@ -223,9 +335,9 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedAndCached) {
                  std::move(backends2))]() mutable {
           return std::move(*backends2);
         };
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<AutotunerPass> pass2,
-        AutotunerPass::Create(
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<ConfigAssignerPass> pass2,
+        ConfigAssignerPass::Create(
             std::move(get_backends_fn2), module_2->config().debug_options(),
             target_config.device_description.gpu_compute_capability(),
             stream_executor_, &thread_pool, &target_config,
@@ -250,9 +362,9 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedAndCached) {
   // logged that the cache was hit, which is the main purpose of this test.
 }
 
-TEST_F(AutotunerPassTest, CublasGemmIsAutotunedWithCacheOnly) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
+TEST_F(ConfigAssignerPassTest, CublasGemmIsAutotunedWithCacheOnly) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
 
   std::string cache_dir = ::testing::TempDir();
   module->mutable_config()
@@ -276,9 +388,9 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedWithCacheOnly) {
                  std::move(backends))]() mutable {
           return std::move(*backends);
         };
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<AutotunerPass> pass,
-        AutotunerPass::Create(
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<ConfigAssignerPass> pass,
+        ConfigAssignerPass::Create(
             std::move(get_backends_fn), module->config().debug_options(),
             target_config.device_description.gpu_compute_capability(),
             stream_executor_, &thread_pool, &target_config,
@@ -290,8 +402,8 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedWithCacheOnly) {
   }
 
   // Run the pass on the same original HLO with cache_only=true.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_2,
-                          ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_2,
+                       ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
 
   module_2->mutable_config()
       .mutable_debug_options()
@@ -309,9 +421,9 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedWithCacheOnly) {
                  std::move(backends2))]() mutable {
           return std::move(*backends2);
         };
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<AutotunerPass> pass2,
-        AutotunerPass::Create(
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<ConfigAssignerPass> pass2,
+        ConfigAssignerPass::Create(
             std::move(get_backends_fn2), module_2->config().debug_options(),
             target_config.device_description.gpu_compute_capability(),
             /*stream_executor=*/nullptr, &thread_pool, &target_config,
@@ -325,16 +437,16 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedWithCacheOnly) {
   // Verify that the backend config in the HLO matches the cache.
   const HloInstruction* gemm =
       module_2->entry_computation()->GetInstructionWithName("custom-call.1");
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_gpu_backend_config,
-                          gemm->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto hlo_gpu_backend_config,
+                       gemm->backend_config<GpuBackendConfig>());
   const GemmBackendConfig& hlo_backend_config =
       hlo_gpu_backend_config.gemm_backend_config();
   EXPECT_TRUE(hlo_backend_config.has_selected_algorithm());
 }
 
-TEST_F(AutotunerPassTest, DevicelessUsesDefaultConfigIfNoCache) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
+TEST_F(ConfigAssignerPassTest, DevicelessUsesDefaultConfigIfNoCache) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
 
   std::string cache_dir = ::testing::TempDir();
   module->mutable_config()
@@ -354,9 +466,9 @@ TEST_F(AutotunerPassTest, DevicelessUsesDefaultConfigIfNoCache) {
       [backends =
            std::make_shared<std::vector<std::unique_ptr<CodegenBackend>>>(
                std::move(backends))]() mutable { return std::move(*backends); };
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<AutotunerPass> pass,
-      AutotunerPass::Create(
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ConfigAssignerPass> pass,
+      ConfigAssignerPass::Create(
           std::move(get_backends_fn), module->config().debug_options(),
           target_config.device_description.gpu_compute_capability(),
           /*stream_executor=*/nullptr, &thread_pool, &target_config,
@@ -370,13 +482,13 @@ TEST_F(AutotunerPassTest, DevicelessUsesDefaultConfigIfNoCache) {
   // config.
   auto gemm =
       module->entry_computation()->GetInstructionWithName("custom-call.1");
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_backend_config,
-                          gemm->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_backend_config,
+                       gemm->backend_config<GpuBackendConfig>());
   ASSERT_TRUE(
       gpu_backend_config.gemm_backend_config().has_selected_algorithm());
 }
 
-TEST_F(AutotunerPassTest, CublasGemmInNonDefaultStreamIsAutotuned) {
+TEST_F(ConfigAssignerPassTest, CublasGemmInNonDefaultStreamIsAutotuned) {
   const char kCublasCustomNonDefaultStreamCallHlo[] = R"""(
 HloModule module, entry_computation_layout={(f32[100,100]{1,0}, f32[100,100]{1,0})->f32[100,100]{1,0}}
 ENTRY %main (arg0: f32[100,100], arg1: f32[100,100]) -> f32[100,100] {
@@ -399,7 +511,7 @@ ENTRY %main (arg0: f32[100,100], arg1: f32[100,100]) -> f32[100,100] {
   ROOT %get-tuple-element = f32[100,100]{1,0} get-tuple-element(%custom-call.1), index=0
 }
 )""";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(kCublasCustomNonDefaultStreamCallHlo));
 
@@ -416,9 +528,9 @@ ENTRY %main (arg0: f32[100,100], arg1: f32[100,100]) -> f32[100,100] {
       [backends =
            std::make_shared<std::vector<std::unique_ptr<CodegenBackend>>>(
                std::move(backends))]() mutable { return std::move(*backends); };
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<AutotunerPass> pass,
-      AutotunerPass::Create(
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ConfigAssignerPass> pass,
+      ConfigAssignerPass::Create(
           std::move(get_backends_fn), module->config().debug_options(),
           target_config.device_description.gpu_compute_capability(),
           stream_executor_, &thread_pool, &target_config,
@@ -431,7 +543,7 @@ ENTRY %main (arg0: f32[100,100], arg1: f32[100,100]) -> f32[100,100] {
 
 struct AutotuneLevelParams {
   int autotune_level;
-  bool expected_select_first_config;
+  bool expected_allow_autotuning;
   bool expected_check_buffers;
   bool expected_should_init_buffers;
   int expected_redzone_padding_bytes;
@@ -448,8 +560,8 @@ TEST_P(AutotunerFlagsTest, AutotuneLevel) {
 
   xla::ConfigAssigner::Options config_assigner_options =
       GetConfigAssignerOptions(debug_options);
-  EXPECT_EQ(config_assigner_options.select_first_config,
-            params.expected_select_first_config);
+  EXPECT_EQ(config_assigner_options.allow_autotuning,
+            params.expected_allow_autotuning);
 
   ProfileOptions profile_options = GetProfileOptions(debug_options);
   EXPECT_EQ(profile_options.should_init_buffers,
@@ -461,11 +573,11 @@ TEST_P(AutotunerFlagsTest, AutotuneLevel) {
 INSTANTIATE_TEST_SUITE_P(
     AutotuneLevelTests, AutotunerFlagsTest,
     ::testing::ValuesIn<AutotuneLevelParams>({
-        {0, true, false, false, 0},
-        {1, false, false, false, 0},
-        {2, false, false, false, 0},
-        {3, false, false, false, 0},
-        {4, false, true, true, 8 * 1024 * 1024},
+        {0, false, false, false, 0},
+        {1, true, false, false, 0},
+        {2, true, false, false, 0},
+        {3, true, false, false, 0},
+        {4, true, true, true, 8 * 1024 * 1024},
     }),
     [](const ::testing::TestParamInfo<AutotunerFlagsTest::ParamType>& info) {
       return std::to_string(info.param.autotune_level);
@@ -508,22 +620,22 @@ INSTANTIATE_TEST_SUITE_P(
                           info.param.fail_on_spill_flag);
     });
 
-TEST_F(AutotunerFlagsTest, DevicelessUsesFirstConfig) {
+TEST_F(AutotunerFlagsTest, DevicelessDisallowsAutotuning) {
   DebugOptions debug_options = GetDebugOptionsForTest();
-  EXPECT_TRUE(GetConfigAssignerOptions(debug_options, /*is_deviceless=*/true)
-                  .select_first_config);
+  EXPECT_FALSE(GetConfigAssignerOptions(debug_options, /*is_deviceless=*/true)
+                   .allow_autotuning);
 }
 
-TEST_F(AutotunerFlagsTest, DeterministicAutotuningSetsSelectFirstConfig) {
+TEST_F(AutotunerFlagsTest, DeterministicOpsDisallowAutotuning) {
   DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.set_xla_gpu_deterministic_ops(true);
-  EXPECT_EQ(GetConfigAssignerOptions(debug_options).select_first_config, true);
+  EXPECT_FALSE(GetConfigAssignerOptions(debug_options).allow_autotuning);
   debug_options.set_xla_gpu_deterministic_ops(false);
   debug_options.set_xla_gpu_exclude_nondeterministic_ops(true);
-  EXPECT_EQ(GetConfigAssignerOptions(debug_options).select_first_config, true);
+  EXPECT_FALSE(GetConfigAssignerOptions(debug_options).allow_autotuning);
 }
 
-TEST_F(AutotunerFlagsTest, GetGpuAutotunerBackendsRespectsDeterminism) {
+TEST_F(AutotunerFlagsTest, GetEnabledBackendsRespectsDeterminism) {
   DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.set_xla_gpu_exclude_nondeterministic_ops(true);
 
@@ -533,7 +645,7 @@ TEST_F(AutotunerFlagsTest, GetGpuAutotunerBackendsRespectsDeterminism) {
   RegisterSymbolicExprStorage(&mlir_context);
 
   ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<CodegenBackend>> backends,
-                       AutotunerPass::GetGpuAutotunerBackends(
+                       ConfigAssignerPass::GetEnabledBackends(
                            stream_executor_, allocator_.get(), &target_config,
                            &alias_info, debug_options, &mlir_context,
                            /*shape_size_fn=*/[](const Shape&) { return 0; },
@@ -546,7 +658,7 @@ TEST_F(AutotunerFlagsTest, GetGpuAutotunerBackendsRespectsDeterminism) {
   }
 }
 
-TEST_F(AutotunerPassTest, CublasLtSelectFirstConfig) {
+TEST_F(ConfigAssignerPassTest, CublasLtSelectFirstConfig) {
   absl::SetVLogLevel("config_assigner*", 10);
   AutotunerCache::ClearAutotuneResults();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -578,9 +690,9 @@ TEST_F(AutotunerPassTest, CublasLtSelectFirstConfig) {
       [backends =
            std::make_shared<std::vector<std::unique_ptr<CodegenBackend>>>(
                std::move(backends))]() mutable { return std::move(*backends); };
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<AutotunerPass> pass,
-      AutotunerPass::Create(
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ConfigAssignerPass> pass,
+      ConfigAssignerPass::Create(
           std::move(get_backends_fn), module->config().debug_options(),
           target_config.device_description.gpu_compute_capability(),
           stream_executor_, &thread_pool, &target_config,
@@ -608,7 +720,7 @@ TEST_F(AutotunerPassTest, CublasLtSelectFirstConfig) {
             expected_config->gemm().algorithm());
 }
 
-TEST_F(AutotunerPassTest, TritonSelectFirstConfig) {
+TEST_F(ConfigAssignerPassTest, TritonSelectFirstConfig) {
   absl::SetVLogLevel("config_assigner*", 10);
   const char kTritonGemmFusionHlo[] = R"hlo(
     HloModule module
@@ -665,9 +777,9 @@ TEST_F(AutotunerPassTest, TritonSelectFirstConfig) {
            std::make_shared<std::vector<std::unique_ptr<CodegenBackend>>>(
                std::move(backends))]() mutable { return std::move(*backends); };
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<AutotunerPass> pass,
-      AutotunerPass::Create(
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ConfigAssignerPass> pass,
+      ConfigAssignerPass::Create(
           std::move(get_backends_fn), module->config().debug_options(),
           target_config.device_description.gpu_compute_capability(),
           stream_executor_, &thread_pool, &target_config, &alias_info,
@@ -697,7 +809,7 @@ TEST_F(AutotunerPassTest, TritonSelectFirstConfig) {
       EqualsProto(expected_config->triton()));
 }
 
-TEST_F(AutotunerPassTest, CudnnSelectFirstConfig) {
+TEST_F(ConfigAssignerPassTest, CudnnSelectFirstConfig) {
   absl::SetVLogLevel("config_assigner*", 10);
   const char kCudnnConvForwardHlo[] = R"hlo(
     HloModule TestModule
@@ -712,13 +824,15 @@ TEST_F(AutotunerPassTest, CudnnSelectFirstConfig) {
   )hlo";
 
   AutotunerCache::ClearAutotuneResults();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kCudnnConvForwardHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kCudnnConvForwardHlo));
 
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
                                       /*num_threads=*/4);
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   GpuCompiler::GpuTargetConfig target_config(stream_executor_);
+  target_config.device_description.set_gpu_compute_capability(
+      se::GpuComputeCapability{se::CudaComputeCapability::Ampere()});
 
   auto cudnn_backend = std::make_unique<CudnnBackend>(
       stream_executor_, &module->config().debug_options(), &compiler_,
@@ -740,9 +854,9 @@ TEST_F(AutotunerPassTest, CudnnSelectFirstConfig) {
       [backends =
            std::make_shared<std::vector<std::unique_ptr<CodegenBackend>>>(
                std::move(backends))]() mutable { return std::move(*backends); };
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<AutotunerPass> pass,
-      AutotunerPass::Create(
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ConfigAssignerPass> pass,
+      ConfigAssignerPass::Create(
           std::move(get_backends_fn), module->config().debug_options(),
           target_config.device_description.gpu_compute_capability(),
           stream_executor_, &thread_pool, &target_config,
@@ -782,7 +896,7 @@ TEST_F(AutotunerPassTest, CudnnSelectFirstConfig) {
             expected_config->algorithm().algo_id());
 }
 
-TEST_F(AutotunerPassTest, CublasLtFissionAllowsSpills) {
+TEST_F(ConfigAssignerPassTest, CublasLtFissionAllowsSpills) {
   auto options = GetCodegenOrchestratorOptions(GetDebugOptionsForTest());
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
@@ -796,7 +910,7 @@ TEST_F(AutotunerPassTest, CublasLtFissionAllowsSpills) {
       *instr, autotuner::Backend::CUBLASLT_FISSION));
 }
 
-TEST_F(AutotunerPassTest, CublasLtGemmCustomCallForbidsSpills) {
+TEST_F(ConfigAssignerPassTest, CublasLtGemmCustomCallForbidsSpills) {
   auto options = GetCodegenOrchestratorOptions(GetDebugOptionsForTest());
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
@@ -814,7 +928,7 @@ TEST_F(AutotunerPassTest, CublasLtGemmCustomCallForbidsSpills) {
       options.allow_reg_spills_fn(*instr, autotuner::Backend::CUBLASLT));
 }
 
-TEST_F(AutotunerPassTest, CudnnConvCustomCallForbidsSpills) {
+TEST_F(ConfigAssignerPassTest, CudnnConvCustomCallForbidsSpills) {
   auto options = GetCodegenOrchestratorOptions(GetDebugOptionsForTest());
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
@@ -830,7 +944,7 @@ TEST_F(AutotunerPassTest, CudnnConvCustomCallForbidsSpills) {
   EXPECT_FALSE(options.allow_reg_spills_fn(*instr, autotuner::Backend::CUDNN));
 }
 
-TEST_F(AutotunerPassTest, TritonGemmFusionForbidsSpills) {
+TEST_F(ConfigAssignerPassTest, TritonGemmFusionForbidsSpills) {
   auto options = GetCodegenOrchestratorOptions(GetDebugOptionsForTest());
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
@@ -853,7 +967,7 @@ TEST_F(AutotunerPassTest, TritonGemmFusionForbidsSpills) {
   EXPECT_FALSE(options.allow_reg_spills_fn(*instr, autotuner::Backend::TRITON));
 }
 
-TEST_F(AutotunerPassTest, CudnnFusionForbidsSpills) {
+TEST_F(ConfigAssignerPassTest, CudnnFusionForbidsSpills) {
   auto options = GetCodegenOrchestratorOptions(GetDebugOptionsForTest());
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
@@ -872,7 +986,7 @@ TEST_F(AutotunerPassTest, CudnnFusionForbidsSpills) {
   EXPECT_FALSE(options.allow_reg_spills_fn(*instr, autotuner::Backend::CUDNN));
 }
 
-TEST_F(AutotunerPassTest, CustomFusionForbidsSpills) {
+TEST_F(ConfigAssignerPassTest, CustomFusionForbidsSpills) {
   auto options = GetCodegenOrchestratorOptions(GetDebugOptionsForTest());
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
@@ -891,7 +1005,7 @@ TEST_F(AutotunerPassTest, CustomFusionForbidsSpills) {
   EXPECT_FALSE(options.allow_reg_spills_fn(*instr, autotuner::Backend::TRITON));
 }
 
-TEST_F(AutotunerPassTest, LoopFusionAllowsSpills) {
+TEST_F(ConfigAssignerPassTest, LoopFusionAllowsSpills) {
   auto options = GetCodegenOrchestratorOptions(GetDebugOptionsForTest());
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
@@ -910,7 +1024,7 @@ TEST_F(AutotunerPassTest, LoopFusionAllowsSpills) {
       options.allow_reg_spills_fn(*instr, autotuner::Backend::NATIVE_EMITTER));
 }
 
-TEST_F(AutotunerPassTest, OtherOpcodeAllowsSpills) {
+TEST_F(ConfigAssignerPassTest, OtherOpcodeAllowsSpills) {
   auto options = GetCodegenOrchestratorOptions(GetDebugOptionsForTest());
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
