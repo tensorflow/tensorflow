@@ -115,6 +115,12 @@ class RaggedFeatureTest(test.TestCase):
     ):
       parsing_config.RaggedFeature(dtype=dtypes.int64, partitions=partitions)
 
+  def test_ragged_feature_default_validate(self):
+    """Tests RaggedFeature constructor validate defaults to True."""
+    feature = parsing_config.RaggedFeature(dtype=dtypes.int64)
+    self.assertTrue(feature.validate)
+
 
 if __name__ == "__main__":
   test.main()
+

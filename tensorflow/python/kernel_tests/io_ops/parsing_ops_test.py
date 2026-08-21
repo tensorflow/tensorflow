@@ -114,6 +114,50 @@ class ParseExampleTest(test.TestCase):
           self.assertEqual(out[k].values.shape.as_list(), [None])
           self.assertEqual(out[k].dense_shape.shape.as_list(), [2])
 
+  def testRaggedFeatureRowLengthsValidation(self):
+    """Test that RaggedFeature with mismatched RowLengths raises InvalidArgumentError."""
+    original = [
+        example_pb2.Example(
+            features=feature_pb2.Features(
+                feature={
+                    "rt_values": feature_pb2.Feature(
+                        float_list=feature_pb2.FloatList(
+                            value=[1.0, 2.0, 3.0, 4.0, 5.0]
+                        )
+                    ),
+                    "rt_lengths": feature_pb2.Feature(
+                        int64_list=feature_pb2.Int64List(value=[5])
+                    ),
+                }
+            )
+        ),
+        example_pb2.Example(
+            features=feature_pb2.Features(
+                feature={
+                    "rt_values": feature_pb2.Feature(
+                        float_list=feature_pb2.FloatList(
+                            value=[6.0, 7.0, 8.0, 9.0, 10.0]
+                        )
+                    ),
+                    "rt_lengths": feature_pb2.Feature(
+                        int64_list=feature_pb2.Int64List(value=[10])
+                    ),
+                }
+            )
+        ),
+    ]
+    serialized = [m.SerializeToString() for m in original]
+    test_features = {
+        "rt": parsing_ops.RaggedFeature(
+            value_key="rt_values",
+            partitions=[parsing_ops.RaggedFeature.RowLengths("rt_lengths")],
+            dtype=dtypes.float32,
+        )
+    }
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      res = parsing_ops.parse_example(serialized, test_features)
+      self.evaluate(res["rt"].values)
+
   def testEmptySerializedWithAllDefaults(self):
     sparse_name = "st_a"
     a_name = "a"
@@ -2600,3 +2644,5 @@ class ParseTensorVariantRegressionTest(test_util.TensorFlowTestCase):
 
 if __name__ == "__main__":
   test.main()
+
+
