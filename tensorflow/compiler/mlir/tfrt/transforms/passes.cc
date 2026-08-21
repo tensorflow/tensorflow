@@ -155,6 +155,7 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
           options.enable_priority_aware_batch_scheduler,
       .enable_priority_aware_batch_scheduler_resplit =
           options.enable_priority_aware_batch_scheduler_resplit,
+      .batch_timeout_multipliers = options.batch_timeout_multipliers,
       .enable_batching_task_lazy_cancellation =
           options.enable_batching_task_lazy_cancellation,
   }));

@@ -166,6 +166,9 @@ struct TfrtCompileOptions {
   // scheduler.
   bool enable_batching_task_lazy_cancellation = false;
 
+  // A list of batch timeout multipliers for each criticality level.
+  std::vector<double> batch_timeout_multipliers;
+
   // The policy used by a BatchScheduler to pad (or split) batches.
   std::string batch_padding_policy;
 
