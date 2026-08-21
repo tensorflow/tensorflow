@@ -318,8 +318,10 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
   if (memory_kind.has_value()) {
     // Use an empty string to indicate the default memory kind.
     // OSS requires explicit string conversion
-    // NOLINTNEXTLINE(*-redundant-string-conversions)
-    req->set_memory_kind(std::string(memory_kind->memory_kind().value_or("")));
+    if (!memory_kind->is_default()) {
+      // NOLINTNEXTLINE(*-redundant-string-conversions)
+      req->set_memory_kind(std::string(memory_kind->value()));
+    }
   }
   req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
 
@@ -334,7 +336,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
     std::shared_ptr<const xla::PjRtLayout> layout;
     bool force_default_layout = false;
     if (memory_kind.has_value() &&
-        memory_kind->memory_kind() == xla::UnpinnedHostMemorySpace::kKind) {
+        memory_kind->value() == xla::UnpinnedHostMemorySpace::kKind) {
       // "unpinned_host" memory only supports the default layout.
       force_default_layout = true;
     } else if (devices.has_value() &&
@@ -509,8 +511,10 @@ Client::GetDefaultPjRtLayout(xla::ifrt::DType dtype,
   }
   req->set_device_id(device->Id().value());
   // OSS requires explicit string conversion
-  // NOLINTNEXTLINE(*-redundant-string-conversions)
-  req->set_memory_kind(std::string(memory_kind.memory_kind().value_or("")));
+  if (!memory_kind.is_default()) {
+    // NOLINTNEXTLINE(*-redundant-string-conversions)
+    req->set_memory_kind(std::string(memory_kind.value()));
+  }
 
   auto future = rpc_helper_->GetDefaultLayout(std::move(req));
   ABSL_ASSIGN_OR_RETURN(auto response, future.Await());

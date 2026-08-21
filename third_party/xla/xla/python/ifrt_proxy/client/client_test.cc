@@ -189,7 +189,7 @@ TEST_P(ClientTest, Init) {
   ASSERT_THAT(device0->Memories(), SizeIs(1));
   auto* const memory0 = device0->Memories()[0];
   EXPECT_EQ(memory0->Id(), 0);
-  EXPECT_EQ(memory0->Kind().memory_kind(), "mock");
+  EXPECT_EQ(memory0->Kind().value(), "mock");
   EXPECT_THAT(memory0->Devices(), UnorderedElementsAre(device0));
   EXPECT_THAT(device0->DefaultMemory(), absl_testing::IsOkAndHolds(memory0));
 
@@ -203,7 +203,7 @@ TEST_P(ClientTest, Init) {
   ASSERT_THAT(device1->Memories(), SizeIs(1));
   auto* const memory1 = device1->Memories()[0];
   EXPECT_EQ(memory1->Id(), 1);
-  EXPECT_EQ(memory1->Kind().memory_kind(), "mock");
+  EXPECT_EQ(memory1->Kind().value(), "mock");
   EXPECT_THAT(memory1->Devices(), UnorderedElementsAre(device1));
   EXPECT_THAT(device1->DefaultMemory(), absl_testing::IsOkAndHolds(memory1));
 

@@ -903,7 +903,7 @@ TEST_P(IfrtBackendHandlerTest, CopyArrays) {
   }
   // OSS requires explicit string conversion
   // NOLINTNEXTLINE(*-redundant-string-conversions)
-  copy_arrays_request->set_memory_kind(std::string(*memory_kind.memory_kind()));
+  copy_arrays_request->set_memory_kind(std::string(memory_kind.value()));
   copy_arrays_request->set_copy_semantics(
       proto::ARRAY_COPY_SEMANTICS_ALWAYS_COPY);
   copy_arrays_request->add_result_handles(1);
