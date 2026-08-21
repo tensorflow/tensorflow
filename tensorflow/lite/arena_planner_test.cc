@@ -481,6 +481,47 @@ TEST_F(ArenaPlannerTest, SimpleGraphWithChainOfInplaceOps) {
   EXPECT_EQ(GetOffset(2), GetOffset(7));
 }
 
+TEST_F(ArenaPlannerTest, InplaceOpFailsWhenIntermediateAliasHasConsumers) {
+  TestGraph graph(
+      {0, 1},
+      {
+          /* in, out, tmp */
+          {{0}, {2}, {}},  // Op 0 produces tensor 2
+          {{2, 3},
+           {4},
+           {},
+           kTfLiteBuiltinReshape,
+           kTfLiteInplaceOpInput0Shared |
+               kTfLiteInplaceOpDataUnmodified},  // Op 1 produces 4 (aliases 2)
+          {{4, 3},
+           {5},
+           {},
+           kTfLiteBuiltinReshape,
+           kTfLiteInplaceOpInput0Shared |
+               kTfLiteInplaceOpDataUnmodified},  // Op 2 produces 5 (aliases 2)
+          {{5, 3},
+           {6},
+           {},
+           kTfLiteBuiltinAdd,
+           kTfLiteInplaceOpInput0Shared},  // Op 3 modifies 5 in-place
+          {{4}, {7}, {}, kTfLiteBuiltinAdd, kTfLiteInplaceOpNone},  // Op 4
+          {{6}, {8}, {}, kTfLiteBuiltinAdd, kTfLiteInplaceOpNone},  // Op 5
+      },
+      {7, 8});
+  (*graph.tensors())[2].bytes = 24;
+  (*graph.tensors())[4].bytes = 24;
+  (*graph.tensors())[5].bytes = 24;
+  (*graph.tensors())[6].bytes = 24;
+  (*graph.tensors())[7].bytes = 24;
+  (*graph.tensors())[8].bytes = 24;
+  SetGraph(&graph);
+  Execute(0, graph.nodes().size() - 1);
+
+  // Tensor 6 cannot share memory in-place with tensor 5/2 because tensor 4
+  // (an intermediate alias) is still consumed by Op 4.
+  EXPECT_NE(GetOffset(6), GetOffset(4));
+}
+
 TEST_F(ArenaPlannerTest, SimpleGraphsWithReshapeInputOutput) {
   TestGraph graph(
       {0, 1},
