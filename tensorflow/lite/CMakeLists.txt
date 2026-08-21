@@ -424,14 +424,14 @@ if(TFLITE_ENABLE_GPU)
     enable_language(OBJCXX)
     list(APPEND TFLITE_DELEGATES_METAL_SRCS
       ${TFLITE_SOURCE_DIR}/delegates/gpu/metal_delegate.mm
-      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/buffer.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/buffer.mm
       ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/buffer_convert.mm
       ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/common.mm
-      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/compute_task.cc
-      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/inference_context.cc
-      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/metal_arguments.cc
-      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/metal_device.cc
-      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/metal_spatial_tensor.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/compute_task.mm
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/inference_context.mm
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/metal_arguments.mm
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/metal_device.mm
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/metal_spatial_tensor.mm
     )
     add_library(metal_delegate STATIC
       ${TFLITE_DELEGATES_METAL_SRCS}
@@ -464,30 +464,17 @@ if(TFLITE_ENABLE_GPU)
     #
     # supplementary libraries for libmetal_delegate
     #
-    list(APPEND CC_SRCS
-        buffer
-        compute_task
-        inference_context
-        metal_arguments
-        metal_device
-        metal_spatial_tensor
-    )
    SET(METAL_DELEGATE_PATH ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/)
 
-   foreach(lib_name ${CC_SRCS})
-     set_source_files_properties(${METAL_DELEGATE_PATH}${lib_name}.cc  PROPERTIES LANGUAGE OBJCXX)
-     add_library("${lib_name}" STATIC ${METAL_DELEGATE_PATH}${lib_name}.cc)
-     target_include_directories("${lib_name}" PUBLIC
-       ${CMAKE_BINARY_DIR}/abseil-cpp
-       ${CMAKE_BINARY_DIR}/flatbuffers/include
-     )
-     set_target_properties(${lib_name} PROPERTIES LINKER_LANGUAGE OBJCXX)
-     target_link_libraries(${lib_name})
-   endforeach()
-
    list(APPEND MM_SRCS
+     buffer
      buffer_convert
      common
+     compute_task
+     inference_context
+     metal_arguments
+     metal_device
+     metal_spatial_tensor
    )
    foreach(lib_name ${MM_SRCS})
      add_library("${lib_name}" STATIC ${METAL_DELEGATE_PATH}${lib_name}.mm)
