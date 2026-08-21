@@ -54,7 +54,6 @@ cc_library(
         "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:OrcShared",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:mlir_c_runner_utils",
     ],
 )
 
@@ -64,6 +63,15 @@ cc_library(
     hdrs = ["builtin_fp16.h"],
     visibility = internal_visibility([":friends"]),
     deps = ["@com_google_absl//absl/base:core_headers"],
+)
+
+xla_cc_test(
+    name = "builtin_fp16_test",
+    srcs = ["builtin_fp16_test.cc"],
+    deps = [
+        ":builtin_fp16",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_library(
@@ -746,6 +754,7 @@ cc_library(
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/codegen/emitters:loop_kernel_emitter",
         "//xla/codegen/emitters/ir:xla",
+        "//xla/codegen/xtile:block_level_parameters",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/runtime:work_cluster",
@@ -756,7 +765,6 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/service/cpu:backend_config_proto_cc",
         "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/gpu/model:block_level_parameters",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",

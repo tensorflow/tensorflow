@@ -45,6 +45,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":block_level_parameters",
         ":xtile_config_proto_cc",
         "//xla:status_macros",
         "//xla:util",
@@ -54,7 +55,6 @@ cc_library(
         "//xla/codegen/tiling/experimental:tiling_space_utils",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/gpu/model:block_level_parameters",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -70,6 +70,7 @@ xla_cc_test(
     name = "tiling_from_block_parameters_test",
     srcs = ["tiling_from_block_parameters_test.cc"],
     deps = [
+        ":block_level_parameters",
         ":tiling_from_block_parameters",
         ":xtile_config_proto_cc",
         "//xla:status_macros",
@@ -82,7 +83,6 @@ xla_cc_test(
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/gpu/model:block_level_parameters",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
@@ -91,5 +91,28 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "block_level_parameters",
+    hdrs = [
+        "block_level_parameters.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":xtile_config_proto_cc",
+        "//xla/service/gpu:backend_configs_cc",
+    ],
+)
+
+xla_cc_test(
+    name = "block_level_parameters_test",
+    srcs = ["block_level_parameters_test.cc"],
+    deps = [
+        ":block_level_parameters",
+        ":xtile_config_proto_cc",
+        "//xla/service/gpu:backend_configs_cc",
+        "@com_google_googletest//:gtest_main",
     ],
 )

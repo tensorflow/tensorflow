@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_MODEL_BLOCK_LEVEL_PARAMETERS_H_
-#define XLA_SERVICE_GPU_MODEL_BLOCK_LEVEL_PARAMETERS_H_
+#ifndef XLA_CODEGEN_XTILE_BLOCK_LEVEL_PARAMETERS_H_
+#define XLA_CODEGEN_XTILE_BLOCK_LEVEL_PARAMETERS_H_
 
 #include <algorithm>
 #include <cstdint>
@@ -23,8 +23,7 @@ limitations under the License.
 #include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::xtile {
 
 // A container for block-level parameters. Currently only used for Triton
 // fusions.
@@ -82,7 +81,6 @@ struct BlockLevelParameters {
   }
 };
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::xtile
 
-#endif  // XLA_SERVICE_GPU_MODEL_BLOCK_LEVEL_PARAMETERS_H_
+#endif  // XLA_CODEGEN_XTILE_BLOCK_LEVEL_PARAMETERS_H_

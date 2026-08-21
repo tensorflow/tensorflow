@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // IWYU pragma: keep
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/codegen/xtile/ir/transforms/passes.h"  // IWYU pragma: keep
+#include "xla/codegen/xtile/ir/xtile_attrs.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 
 namespace xla {
@@ -96,9 +97,21 @@ Type GetExpandedType(Type type) {
                                  complex_type.getElementType());
   }
   if (auto memref_type = mlir::dyn_cast<MemRefType>(type)) {
+    mlir::MemRefLayoutAttrInterface layout;
+    if (auto xtile_layout =
+            mlir::dyn_cast<xtile::LayoutAttr>(memref_type.getLayout())) {
+      SmallVector<int64_t> new_minor_to_major;
+      new_minor_to_major.push_back(memref_type.getRank());
+      for (int64_t dim : xtile_layout.getMinorToMajor().asArrayRef()) {
+        new_minor_to_major.push_back(dim);
+      }
+      layout = xtile::LayoutAttr::get(
+          memref_type.getContext(),
+          mlir::DenseI64ArrayAttr::get(memref_type.getContext(),
+                                       new_minor_to_major));
+    }
     return MemRefType::get(ExpandShape(shaped_type.getShape()),
-                           complex_type.getElementType(),
-                           /*layout=*/mlir::MemRefLayoutAttrInterface(),
+                           complex_type.getElementType(), layout,
                            memref_type.getMemorySpace());
   }
   return type;
