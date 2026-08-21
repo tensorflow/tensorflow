@@ -23,6 +23,7 @@ from absl.testing import parameterized
 import numpy as np
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.data.ops import debug_mode
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
@@ -69,6 +70,15 @@ class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.evaluate(dataset.save(self._test_dir))
     dataset2 = dataset_ops.Dataset.load(self._test_dir, dataset.element_spec)
     self.assertEqual(self.evaluate(dataset2.cardinality()), 42)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testSaveInDebugModeWithoutShardFunction(self):
+    debug_mode.toggle_debug_mode(True)
+    self.addCleanup(debug_mode.toggle_debug_mode, False)
+    dataset = dataset_ops.Dataset.range(42)
+    self.evaluate(dataset.save(self._test_dir))
+    dataset2 = dataset_ops.Dataset.load(self._test_dir, dataset.element_spec)
+    self.assertDatasetProduces(dataset2, range(42))
 
   @combinations.generate(test_base.default_test_combinations())
   def testCustomShardFunction(self):
