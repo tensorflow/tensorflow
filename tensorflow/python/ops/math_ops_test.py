@@ -1394,6 +1394,20 @@ class RangeTest(test_util.TensorFlowTestCase):
     actual = math_ops.range(start, end, step)
     self.assertAllEqual(expected, self.evaluate(actual))
 
+  def testExcessiveFloatAllocation(self):
+    # Regression test for https://github.com/tensorflow/tensorflow/issues/122746
+    # Must use float64: these magnitudes overflow float32 to Inf, which then
+    # produces a NaN size (Inf/Inf) instead of exercising the allocation cap.
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        "Requires Range output size in bytes"):
+      self.evaluate(
+          math_ops.range(
+              -0.5,
+              2.6623919835808085e+307,
+              1.0162754537078317e+295,
+              dtype=dtypes.float64))
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class ErfcinvTest(test_util.TensorFlowTestCase):
