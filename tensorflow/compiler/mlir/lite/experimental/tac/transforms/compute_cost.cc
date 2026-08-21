@@ -41,14 +41,14 @@ namespace TFL {
 namespace tac {
 namespace {
 
-// We will caculate the total compute cost for each Func Op.
+// We will calculate the total compute cost for each Func Op.
 //
 // The compute cost is simply an add-up of the costs of all the operations
 // within the FuncOp. (Excluding const ops since they're just "data".)
 // We will ignore quant/dequant/requant costs within the Func Op as well,
 // intuition:
 //
-// The assumpution is that quant/dequant/requant will only happen at the begin
+// The assumption is that quant/dequant/requant will only happen at the beginning
 // and the end of the FuncOp (basically the "boundaries" of the subgraph).
 // So we can imagine if multiple "same-inference-typed" graph are presented at
 // the same time, the quant/dequant ops pair can be squashed:

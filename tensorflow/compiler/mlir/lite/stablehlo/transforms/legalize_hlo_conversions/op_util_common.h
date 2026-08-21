@@ -51,7 +51,7 @@ class Layout {
   // there are more than 2 special dims.
   int64_t SpecialDim1() const { return special_dim1_; }
 
-  // Conveniance accesor for getting the dimension size of the first
+  // Convenience accessor for getting the dimension size of the first
   // special dimension from a shape.
   int64_t SpecialDim1(llvm::ArrayRef<int64_t> shape) const {
     return shape[special_dim1_];
@@ -65,7 +65,7 @@ class Layout {
     return shape[special_dim2_];
   }
 
-  // Conveniance method for equality checking special dims.
+  // Convenience method for equality checking special dims.
   bool HasSpecialDims(int64_t special_dim1, int64_t special_dim2) const;
 
   // Determines if the spatial dimensions are all adjacent and in
@@ -79,7 +79,7 @@ class Layout {
   llvm::SmallVector<int64_t, 4> GetPermForReLayout(
       const Layout& to_layout) const;
 
-  // Permutes given shape based on the permutaion implied to take this Layout to
+  // Permutes given shape based on the permutation implied to take this Layout to
   // the given one.
   llvm::SmallVector<int64_t, 4> PermuteShape(const Layout& to_layout,
                                              ArrayRef<int64_t> shape) const;
