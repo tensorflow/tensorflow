@@ -347,10 +347,36 @@ class CSRSparseMatrix {
     Tensor col_indices(p.tensors_[3]);
     Tensor values(p.tensors_[4]);
 
+    // ValidateTypesAndShapes and the value checks below read dense_shape and
+    // the index arrays directly on the host (e.g. dense_shape.vec<int64_t>()).
+    // A crafted or custom-pipeline variant could hand us device-resident
+    // tensors, so reject them up front rather than dereference device memory
+    // from host.
+    auto on_device = [](const Tensor& t) {
+      return t.NumElements() > 0 && t.IsInitialized() &&
+             t.GetMemoryType() == AllocatorMemoryType::kDevice;
+    };
+    if (on_device(dense_shape) || on_device(batch_pointers) ||
+        on_device(row_pointers) || on_device(col_indices)) {
+      return false;
+    }
+
     // Check that the validated bool is consistent with the data.
     absl::Status s = ValidateTypesAndShapes(dtype, dense_shape, batch_pointers,
                                             row_pointers, col_indices, values);
     if (s.ok() != validated) return false;
+
+    // ValidateTypesAndShapes only checks the dtypes and sizes of the index
+    // arrays, not their contents. A matrix decoded from an untrusted variant
+    // can therefore carry out-of-range col_indices or non-monotonic
+    // batch/row pointers while still reporting validated == true, which the
+    // consuming ops use directly as read/write offsets. The tensors here are
+    // always host-resident, so validate the CSR structure before accepting it.
+    if (validated) {
+      absl::Status values_status = ValidateComponentValues(
+          dense_shape, batch_pointers, row_pointers, col_indices);
+      if (!values_status.ok()) return false;
+    }
 
     // Save to this object.
     metadata_ = metadata;
@@ -423,6 +449,16 @@ class CSRSparseMatrix {
     row_pointers_vec_.reset();
     col_indices_vec_.reset();
   }
+
+  // Validates the contents (not just the shapes) of the host-resident CSR
+  // index arrays: batch_pointers and per-batch row_pointers must start at 0,
+  // be non-decreasing, and end at the batch's non-zero count, and every
+  // col_indices entry must fall in [0, num_cols). Used by Decode() to reject
+  // structurally invalid matrices coming from untrusted variants.
+  static absl::Status ValidateComponentValues(const Tensor& dense_shape,
+                                              const Tensor& batch_pointers,
+                                              const Tensor& row_pointers,
+                                              const Tensor& col_indices);
 
   static absl::Status ValidateTypesAndShapes(DataType dtype,
                                              const Tensor& dense_shape,
