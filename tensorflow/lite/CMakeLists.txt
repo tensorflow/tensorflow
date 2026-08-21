@@ -440,6 +440,7 @@ if(TFLITE_ENABLE_GPU)
       ${CMAKE_BINARY_DIR}/abseil-cpp
       ${CMAKE_BINARY_DIR}/flatbuffers/include
       PRIVATE ${TENSORFLOW_SOURCE_DIR}
+      PRIVATE ${PROJECT_BINARY_DIR}
     )
     #
     # generate flatbuffers header for inference_context
@@ -449,16 +450,20 @@ if(TFLITE_ENABLE_GPU)
     else()
       set(FLATC flatc)
     endif()
+    set(METAL_GENERATED_DIR ${PROJECT_BINARY_DIR}/tensorflow/lite/delegates/gpu/metal)
     add_custom_command(
-        OUTPUT ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/inference_context_generated.h
+        OUTPUT ${METAL_GENERATED_DIR}/inference_context_generated.h
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${METAL_GENERATED_DIR}
         COMMAND ${FLATC} --scoped-enums
         -I ${TENSORFLOW_SOURCE_DIR}
-        -o ${TFLITE_SOURCE_DIR}/delegates/gpu/metal
+        -o ${METAL_GENERATED_DIR}
         -c ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/inference_context.fbs
+        DEPENDS ${FLATC_TARGET}
+                ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/inference_context.fbs
     )
     add_custom_target(
         inference_context_cc_fbs
-        DEPENDS ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/inference_context_generated.h
+        DEPENDS ${METAL_GENERATED_DIR}/inference_context_generated.h
     )
     add_dependencies(metal_delegate inference_context_cc_fbs)
     #
