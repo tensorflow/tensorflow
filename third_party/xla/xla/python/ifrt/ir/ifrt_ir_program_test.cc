@@ -24,7 +24,7 @@ limitations under the License.
 #include "xla/client/executable_build_options.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/ir/ifrt_ir_compile_options.pb.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
