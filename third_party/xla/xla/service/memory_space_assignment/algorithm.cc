@@ -103,16 +103,38 @@ namespace xla {
 namespace memory_space_assignment {
 namespace {
 
+bool IsSliceLikeInstruction(const HloInstruction* instruction) {
+  return instruction->opcode() == HloOpcode::kSlice ||
+         instruction->opcode() == HloOpcode::kDynamicSlice;
+}
+
+// Returns true if the instruction is a trivial instruction.
+bool IsTrivialInstruction(const HloInstruction* inst) {
+  return inst->opcode() == HloOpcode::kGetTupleElement ||
+         inst->opcode() == HloOpcode::kTuple ||
+         inst->opcode() == HloOpcode::kBitcast;
+}
+
+// Returns true if the position is a trivial position.
 bool IsTrivialPosition(HloPosition position) {
-  return position.instruction->opcode() == HloOpcode::kGetTupleElement ||
-         position.instruction->opcode() == HloOpcode::kTuple ||
-         position.instruction->opcode() == HloOpcode::kBitcast;
+  return IsTrivialInstruction(position.instruction);
+}
+
+// All trivial uses that are non root do not require a separate allocation.
+// - They are are no ops, freely movable and we can even discard them and add
+//   them back later.
+// - We do not need to extend the allocation for these uses, so we can just skip
+//   them.
+// If they are a root instruction we need to extend the allocation till the root
+// instruction so the uses outside the computation can use it.
+// Returns true if the use is a trivial but non-root instruction.
+bool IsUseTrivialNonRoot(HloUse use) {
+  return IsTrivialInstruction(use.instruction) &&
+         use.instruction != use.instruction->parent()->root_instruction();
 }
 
 HloPosition GetNonTrivialSourcePosition(HloPosition position) {
-  while (position.instruction->opcode() == HloOpcode::kGetTupleElement ||
-         position.instruction->opcode() == HloOpcode::kTuple ||
-         position.instruction->opcode() == HloOpcode::kBitcast) {
+  while (IsTrivialPosition(position)) {
     if (position.instruction->opcode() == HloOpcode::kGetTupleElement) {
       int64_t tuple_index = position.instruction->tuple_index();
       position.instruction = position.instruction->mutable_operand(0);
@@ -1697,21 +1719,6 @@ bool MsaAlgorithm::IsAsyncConversionCopyCandidate(
   }
   return true;
 }
-
-namespace {
-
-bool IsTrivialInstruction(const HloInstruction* instruction) {
-  return instruction->opcode() == HloOpcode::kGetTupleElement ||
-         instruction->opcode() == HloOpcode::kTuple ||
-         instruction->opcode() == HloOpcode::kBitcast;
-}
-
-bool IsSliceLikeInstruction(const HloInstruction* instruction) {
-  return instruction->opcode() == HloOpcode::kSlice ||
-         instruction->opcode() == HloOpcode::kDynamicSlice;
-}
-
-}  // namespace
 
 MsaAlgorithm::AsyncConversionResult
 MsaAlgorithm::IsAsyncCustomFusionConversionCandidate(
@@ -3328,6 +3335,10 @@ MsaAlgorithm::ComputeBlockPrefetchCandidateUseAnalysis(
       if (it == instruction_schedule.end()) {
         continue;
       }
+      // Skip trivial uses that are not the root instruction.
+      if (IsUseTrivialNonRoot(use)) {
+        continue;
+      }
       if (!options_.is_use_allowed_in_alternate_mem_fn(use)) {
         analysis.all_uses_allowed_in_alternate_memory = false;
         break;
@@ -3338,8 +3349,10 @@ MsaAlgorithm::ComputeBlockPrefetchCandidateUseAnalysis(
         break;
       }
       int64_t corrected_use_time = GetCorrectedUseTime(use);
-      analysis.first_use_time =
-          std::min(analysis.first_use_time, corrected_use_time);
+      if (corrected_use_time < analysis.first_use_time) {
+        analysis.first_use_time = corrected_use_time;
+        analysis.first_use_instruction = use.instruction;
+      }
     }
     if (!analysis.all_uses_allowed_in_alternate_memory) {
       break;
@@ -3452,6 +3465,9 @@ MsaAlgorithm::BuildBlockPrefetchingContextHelper(
       BlockPrefetchCandidateUseAnalysis use_analysis =
           ComputeBlockPrefetchCandidateUseAnalysis(
               buffer, instruction_schedule, async_conv_candidate_instructions);
+      VLOG(3) << "First use time for buffer " << buffer->ToString() << " is "
+              << use_analysis.first_use_time << " at instruction "
+              << use_analysis.first_use_instruction->name();
       buffer_to_first_use_time[buffer] = use_analysis.first_use_time;
     }
   }
@@ -5347,13 +5363,8 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
       bool is_processed_allocation_value_live_throughout_a_conditional =
           already_processed_allocation_values_inside_a_conditional.contains(
               &allocation_value);
-      // Bitcasts don't define buffers and don't directly consume buffers.
-      // Skip allocating buffers for bitcast uses (unless they are the root
-      // instruction). The uses that feed from bitcasts will be handled
-      // specially.
-      if ((use.hlo_use.instruction->opcode() != HloOpcode::kBitcast ||
-           use.hlo_use.instruction ==
-               use.hlo_use.instruction->parent()->root_instruction()) &&
+      // Skip trivial uses that are not the root instruction.
+      if (!IsUseTrivialNonRoot(use.hlo_use) &&
           !is_processed_allocation_value_live_throughout_a_conditional) {
         UpdateRequestWithAlternateMemoryColoringRequirements(request);
         UpdateRequestWithDefaultMemoryColoringRequirements(request);

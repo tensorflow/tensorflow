@@ -36,7 +36,7 @@ static PyMethodDef traceme_method_def = {"traceme_enabled", traceme_enabled,
                                          METH_NOARGS,
                                          "Returns true if TraceMe is enabled."};
 
-PYBIND11_MODULE(_pywrap_traceme, m) {
+PYBIND11_MODULE(_pywrap_traceme, m, pybind11::mod_gil_not_used()) {
   py::class_<TraceMeWrapper>(m, "TraceMe", py::module_local())
       .def(py::init<const py::str&, const py::kwargs&>())
       .def("SetMetadata", &TraceMeWrapper::SetMetadata)
