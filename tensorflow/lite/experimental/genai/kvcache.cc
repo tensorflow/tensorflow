@@ -121,6 +121,10 @@ TfLiteStatus KVCachePrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, GetTensorShape(key).Dims(0) == 1);
   TF_LITE_ENSURE(context, HaveSameShapes(key, value));
 
+  const int64_t num_slots_needed = GetTensorShape(key).Dims(1);
+  TF_LITE_ENSURE(context, num_slots_needed > 0);
+  TF_LITE_ENSURE(context, num_slots_needed <= op_data->max_num_entries);
+
   // Create the key and value caches. Currently statically sized.
   TfLiteTensor* kfull;
   TfLiteTensor* vfull;
@@ -277,6 +281,28 @@ TfLiteStatus KVCacheEval(TfLiteContext* context, TfLiteNode* node) {
 
   // Compute the span of the inputs.
   const int64_t input_first_idx = position->data.i64[0];
+  if (input_first_idx < 0) {
+    TF_LITE_KERNEL_LOG(context,
+                       "input_first_idx (%lld) can not be negative",
+                       static_cast<long long>(input_first_idx));
+    return kTfLiteError;
+  }
+
+  if (num_slots_needed <= 0 || num_slots_needed > max_num_entries) {
+    TF_LITE_KERNEL_LOG(
+        context,
+        "num_slots_needed (%lld) must be positive and <= max_num_entries"
+        " (%lld)",
+        static_cast<long long>(num_slots_needed),
+        static_cast<long long>(max_num_entries));
+    return kTfLiteError;
+  }
+
+  if (input_first_idx > INT64_MAX - num_slots_needed) {
+    TF_LITE_KERNEL_LOG(context, "Position index overflow");
+    return kTfLiteError;
+  }
+
   const int64_t input_last_idx = input_first_idx + num_slots_needed - 1;
 
   // Compute the span of the cache.
@@ -328,6 +354,16 @@ TfLiteStatus KVCacheEval(TfLiteContext* context, TfLiteNode* node) {
 
   // Recompute the first slot in case any shifting occurred.
   first_slot = input_first_idx - op_data->first_slot_index;
+  if (first_slot < 0 || first_slot + num_slots_needed > max_num_entries) {
+    TF_LITE_KERNEL_LOG(
+        context,
+        "Invalid cache slot offset: first_slot=%lld, num_slots_needed=%lld, "
+        "max_num_entries=%lld",
+        static_cast<long long>(first_slot),
+        static_cast<long long>(num_slots_needed),
+        static_cast<long long>(max_num_entries));
+    return kTfLiteError;
+  }
   const int64_t bytes_offset_for_cache = first_slot * num_bytes_per_tensor;
 
   // 4. Put the key and value in their respective caches.
