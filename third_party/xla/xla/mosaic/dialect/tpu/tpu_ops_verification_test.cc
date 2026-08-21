@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/ValueRange.h"
+#include "mlir/IR/Verifier.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/mosaic/dialect/tpu/tpu_dialect.h"
@@ -75,7 +76,7 @@ class TpuOpsVerificationTest : public ::testing::Test {
   template <typename OpTy>
   absl::Status VerifyOp(OpTy op) {
     BaseScopedDiagnosticHandler diag(&context_);
-    if (op.verify().succeeded()) {
+    if (succeeded(verify(op))) {
       return absl::OkStatus();
     }
     return diag.ConsumeStatus();
@@ -102,6 +103,13 @@ class TpuOpsVerificationTest : public ::testing::Test {
   Value AllocaSemaphore() {
     return Create<tpu::AllocaSemaphoreOp>(
                GetMemRefType({}, SemaphoreType::get(builder_.getContext()),
+                             MemorySpace::kSemaphoreMem))
+        .getResult();
+  }
+
+  Value AllocaDMASemaphore() {
+    return Create<tpu::AllocaSemaphoreOp>(
+               GetMemRefType({}, DMASemaphoreType::get(builder_.getContext()),
                              MemorySpace::kSemaphoreMem))
         .getResult();
   }
@@ -374,8 +382,8 @@ TEST_F(TpuOpsVerificationTest, UnpackSubelementsInvalidIndex) {
 
 TEST_F(TpuOpsVerificationTest, VectorLoadIdxVerificationWorks) {
   Value memref = AllocaI32({8}, MemorySpace::kVmem);
-  Value indices = ConstantIndexVector(/*shape=*/{8},
-                                      /*values=*/{0, 1, 2, 3, 4, 5, 6, 7});
+  Value indices = ConstantI32Vector(/*shape=*/{8},
+                                    /*values=*/{0, 1, 2, 3, 4, 5, 6, 7});
   auto vl = Create<VectorLoadIdxOp>(
       /*result=*/VectorType::get({8}, i32()),
       /*base=*/memref,
@@ -387,8 +395,8 @@ TEST_F(TpuOpsVerificationTest, VectorLoadIdxVerificationWorks) {
 
 TEST_F(TpuOpsVerificationTest, VectorLoadIdxInvalidMemorySpace) {
   Value memref = AllocaI32({8}, MemorySpace::kHbm);
-  Value indices = ConstantIndexVector(/*shape=*/{8},
-                                      /*values=*/{0, 1, 2, 3, 4, 5, 6, 7});
+  Value indices = ConstantI32Vector(/*shape=*/{8},
+                                    /*values=*/{0, 1, 2, 3, 4, 5, 6, 7});
   auto vl = Create<VectorLoadIdxOp>(
       /*result=*/VectorType::get({8}, i32()),
       /*base=*/memref,
@@ -404,8 +412,8 @@ TEST_F(TpuOpsVerificationTest, VectorLoadIdxInvalidElementType) {
       Create<memref::AllocaOp>(
           GetMemRefType({8}, builder().getF32Type(), MemorySpace::kVmem))
           .getMemref();
-  Value indices = ConstantIndexVector(/*shape=*/{8},
-                                      /*values=*/{0});
+  Value indices = ConstantI32Vector(/*shape=*/{8},
+                                    /*values=*/{0});
   auto vl = Create<VectorLoadIdxOp>(
       /*result=*/VectorType::get({8}, i32()),
       /*base=*/memref,
@@ -420,8 +428,8 @@ TEST_F(TpuOpsVerificationTest, VectorLoadIdxInvalidElementType) {
 
 TEST_F(TpuOpsVerificationTest, VectorLoadIdxInvalidIndicesDimension) {
   Value memref = AllocaI32({8}, MemorySpace::kVmem);
-  Value indices = ConstantIndexVector(/*shape=*/{4, 1},
-                                      /*values=*/{0});
+  Value indices = ConstantI32Vector(/*shape=*/{4, 1},
+                                    /*values=*/{0});
   auto vl = Create<VectorLoadIdxOp>(
       /*result=*/VectorType::get({8}, i32()),
       /*base=*/memref,
@@ -436,10 +444,10 @@ TEST_F(TpuOpsVerificationTest, VectorLoadIdxInvalidIndicesDimension) {
 
 TEST_F(TpuOpsVerificationTest, VectorLoadIdxValidMask) {
   Value memref = AllocaI32({8}, MemorySpace::kVmem);
-  Value indices = ConstantIndexVector(/*shape=*/{8},
-                                      /*values=*/{0});
-  Value mask = ConstantI32Vector(/*shape=*/{8},
-                                 /*values=*/{1});
+  Value indices = ConstantI32Vector(/*shape=*/{8},
+                                    /*values=*/{0});
+  Value mask = ConstantI1Vector(/*shape=*/{8},
+                                /*values=*/{true});
   auto vl = Create<VectorLoadIdxOp>(
       /*result=*/VectorType::get({8}, i32()),
       /*base=*/memref,
@@ -451,10 +459,10 @@ TEST_F(TpuOpsVerificationTest, VectorLoadIdxValidMask) {
 
 TEST_F(TpuOpsVerificationTest, VectorLoadIdxInvalidMaskShape) {
   Value memref = AllocaI32({8}, MemorySpace::kVmem);
-  Value indices = ConstantIndexVector(/*shape=*/{8},
-                                      /*values=*/{0});
-  Value mask = ConstantI32Vector(/*shape=*/{4, 2},
-                                 /*values=*/{1});
+  Value indices = ConstantI32Vector(/*shape=*/{8},
+                                    /*values=*/{0});
+  Value mask = ConstantI1Vector(/*shape=*/{4, 2},
+                                /*values=*/{true});
   auto vl = Create<VectorLoadIdxOp>(
       /*result=*/VectorType::get({8}, i32()),
       /*base=*/memref,
@@ -473,8 +481,8 @@ TEST_F(TpuOpsVerificationTest, VectorStoreIdxVerificationWorks) {
   Value vector_to_store =
       ConstantI32Vector(/*shape=*/{8},
                         /*values=*/{1, 1, 1, 1, 1, 1, 1, 1});
-  Value indices = ConstantIndexVector(/*shape=*/{8},
-                                      /*values=*/{0, 1, 2, 3, 4, 5, 6, 7});
+  Value indices = ConstantI32Vector(/*shape=*/{8},
+                                    /*values=*/{0, 1, 2, 3, 4, 5, 6, 7});
   auto vl = Create<VectorStoreIdxOp>(
       /*vectorToStore=*/vector_to_store,
       /*base=*/memref,
@@ -490,8 +498,8 @@ TEST_F(TpuOpsVerificationTest, VectorStoreIdxInvalidMemorySpace) {
   Value vector_to_store =
       ConstantI32Vector(/*shape=*/{8},
                         /*values=*/{1, 1, 1, 1, 1, 1, 1, 1});
-  Value indices = ConstantIndexVector(/*shape=*/{8},
-                                      /*values=*/{0, 1, 2, 3, 4, 5, 6, 7});
+  Value indices = ConstantI32Vector(/*shape=*/{8},
+                                    /*values=*/{0, 1, 2, 3, 4, 5, 6, 7});
   auto vl = Create<VectorStoreIdxOp>(
       /*vectorToStore=*/vector_to_store,
       /*base=*/memref,
@@ -510,8 +518,8 @@ TEST_F(TpuOpsVerificationTest, VectorStoreIdxInvalidElementType) {
           .getMemref();
   Value vector_to_store = ConstantI32Vector(/*shape=*/{8},
                                             /*values=*/{1});
-  Value indices = ConstantIndexVector(/*shape=*/{8},
-                                      /*values=*/{0});
+  Value indices = ConstantI32Vector(/*shape=*/{8},
+                                    /*values=*/{0});
   auto vl = Create<VectorStoreIdxOp>(
       /*vectorToStore=*/vector_to_store,
       /*base=*/memref,
@@ -529,8 +537,8 @@ TEST_F(TpuOpsVerificationTest, VectorStoreIdxInvalidIndicesDimension) {
   Value memref = AllocaI32({8}, MemorySpace::kVmem);
   Value vector_to_store = ConstantI32Vector(/*shape=*/{8},
                                             /*values=*/{1});
-  Value indices = ConstantIndexVector(/*shape=*/{4, 1},
-                                      /*values=*/{0});
+  Value indices = ConstantI32Vector(/*shape=*/{4, 1},
+                                    /*values=*/{0});
   auto vl = Create<VectorStoreIdxOp>(
       /*vectorToStore=*/vector_to_store,
       /*base=*/memref,
@@ -548,10 +556,10 @@ TEST_F(TpuOpsVerificationTest, VectorStoreIdxValidMask) {
   Value memref = AllocaI32({8}, MemorySpace::kVmem);
   Value vector_to_store = ConstantI32Vector(/*shape=*/{8},
                                             /*values=*/{1});
-  Value indices = ConstantIndexVector(/*shape=*/{8},
-                                      /*values=*/{0});
-  Value mask = ConstantI32Vector(/*shape=*/{8},
-                                 /*values=*/{1});
+  Value indices = ConstantI32Vector(/*shape=*/{8},
+                                    /*values=*/{0});
+  Value mask = ConstantI1Vector(/*shape=*/{8},
+                                /*values=*/{true});
   auto vl = Create<VectorStoreIdxOp>(
       /*vectorToStore=*/vector_to_store,
       /*base=*/memref,
@@ -566,10 +574,10 @@ TEST_F(TpuOpsVerificationTest, VectorStoreIdxInvalidMaskShape) {
   Value memref = AllocaI32({8}, MemorySpace::kVmem);
   Value vector_to_store = ConstantI32Vector(/*shape=*/{8},
                                             /*values=*/{1});
-  Value indices = ConstantIndexVector(/*shape=*/{8},
-                                      /*values=*/{0});
-  Value mask = ConstantI32Vector(/*shape=*/{4, 2},
-                                 /*values=*/{1});
+  Value indices = ConstantI32Vector(/*shape=*/{8},
+                                    /*values=*/{0});
+  Value mask = ConstantI1Vector(/*shape=*/{4, 2},
+                                /*values=*/{true});
   auto vl = Create<VectorStoreIdxOp>(
       /*vectorToStore=*/vector_to_store,
       /*base=*/memref,
@@ -629,7 +637,7 @@ TEST_F(TpuOpsVerificationTest, ScanOnUnsupportedCore) {
 TEST_F(TpuOpsVectorSubcoreVerificationTest,
        ScanVerificationInvalidOutputTypeWithI1Input) {
   Value src = ConstantI1Vector(/*shape=*/{8}, /*values=*/{true});
-  Type dst = VectorType::get(/*shape=*/{8}, /*type=*/builder().getI1Type());
+  Type dst = VectorType::get(/*shape=*/{8}, /*type=*/builder().getF32Type());
   Value mask = ConstantI1Vector(/*shape=*/{8}, /*values=*/{true});
 
   ASSERT_THAT(
@@ -805,7 +813,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
       /*source=*/AllocaI32({1024, 256, 128}, MemorySpace::kHbm),
       /*target=*/AllocaI32({64, 256, 128}, MemorySpace::kVmem),
       /*offsets=*/AllocaI32({64}, MemorySpace::kVmem),
-      /*semaphore=*/AllocaSemaphore(),
+      /*semaphore=*/AllocaDMASemaphore(),
       /*offset_filter=*/nullptr,
       /*add=*/false);
 
@@ -818,7 +826,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
       /*source=*/AllocaI32({1024, 256, 128}, MemorySpace::kVmemShared),
       /*target=*/AllocaI32({64, 256, 128}, MemorySpace::kVmem),
       /*offsets=*/AllocaI32({64}, MemorySpace::kVmem),
-      /*semaphore=*/AllocaSemaphore(),
+      /*semaphore=*/AllocaDMASemaphore(),
       /*offset_filter=*/nullptr,
       /*add=*/false);
 
@@ -831,7 +839,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
       /*source=*/AllocaI32({1024, 128}, MemorySpace::kHbm),
       /*target=*/AllocaI32({64, 128}, MemorySpace::kVmem),
       /*offsets=*/AllocaI32({64}, MemorySpace::kVmem),
-      /*semaphore=*/AllocaSemaphore(),
+      /*semaphore=*/AllocaDMASemaphore(),
       /*offset_filter=*/nullptr,
       /*add=*/false);
 
@@ -844,7 +852,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
       /*source=*/AllocaI32({1024}, MemorySpace::kHbm),
       /*target=*/AllocaI32({128}, MemorySpace::kVmem),
       /*offsets=*/AllocaI32({128}, MemorySpace::kVmem),
-      /*semaphore=*/AllocaSemaphore(),
+      /*semaphore=*/AllocaDMASemaphore(),
       /*offset_filter=*/nullptr,
       /*add=*/false);
 
@@ -860,7 +868,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
       /*source=*/AllocaI32({1024, 128}, MemorySpace::kHbm),
       /*target=*/AllocaI32({64, 128}, MemorySpace::kVmem),
       /*offsets=*/AllocaI32({64}, MemorySpace::kVmem),
-      /*semaphore=*/AllocaSemaphore(),
+      /*semaphore=*/AllocaDMASemaphore(),
       /*offset_filter=*/offset_filter,
       /*add=*/false);
 
@@ -876,7 +884,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
       /*source=*/AllocaI32({1024, 32, 128}, MemorySpace::kHbm),
       /*target=*/AllocaI32({8, 32, 128}, MemorySpace::kVmem),
       /*offsets=*/vector_of_offsets,
-      /*semaphore=*/AllocaSemaphore(),
+      /*semaphore=*/AllocaDMASemaphore(),
       /*offset_filter=*/nullptr,
       /*add=*/false);
 
@@ -889,7 +897,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
       /*source=*/AllocaI32({64, 128}, MemorySpace::kVmem),
       /*target=*/AllocaI32({1024, 128}, MemorySpace::kHbm),
       /*offsets=*/AllocaI32({64}, MemorySpace::kVmem),
-      /*semaphore=*/AllocaSemaphore(),
+      /*semaphore=*/AllocaDMASemaphore(),
       /*offset_filter=*/nullptr,
       /*add=*/false);
 
@@ -902,7 +910,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
       /*source=*/AllocaI32({64, 128}, MemorySpace::kVmem),
       /*target=*/AllocaI32({1024, 128}, MemorySpace::kVmemShared),
       /*offsets=*/AllocaI32({64}, MemorySpace::kVmem),
-      /*semaphore=*/AllocaSemaphore(),
+      /*semaphore=*/AllocaDMASemaphore(),
       /*offset_filter=*/nullptr,
       /*add=*/false);
 
@@ -915,7 +923,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
       /*source=*/AllocaI32({1, 128}, MemorySpace::kVmem),
       /*target=*/AllocaI32({1, 1024}, MemorySpace::kHbm),
       /*offsets=*/AllocaI32({1, 128}, MemorySpace::kVmem),
-      /*semaphore=*/AllocaSemaphore(),
+      /*semaphore=*/AllocaDMASemaphore(),
       /*offset_filter=*/nullptr,
       /*add=*/false);
 
@@ -931,7 +939,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
       /*source=*/AllocaI32({16, 32, 128}, MemorySpace::kVmem),
       /*target=*/AllocaI32({1024, 32, 128}, MemorySpace::kHbm),
       /*offsets=*/vector_of_offsets,
-      /*semaphore=*/AllocaSemaphore(),
+      /*semaphore=*/AllocaDMASemaphore(),
       /*offset_filter=*/nullptr,
       /*add=*/false);
 
@@ -944,7 +952,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
       /*source=*/AllocaI32({64, 128}, MemorySpace::kVmem),
       /*target=*/AllocaI32({1024, 128}, MemorySpace::kHbm),
       /*offsets=*/AllocaI32({64}, MemorySpace::kVmem),
-      /*semaphore=*/AllocaSemaphore(),
+      /*semaphore=*/AllocaDMASemaphore(),
       /*offset_filter=*/nullptr,
       /*add=*/true);
 
@@ -965,7 +973,7 @@ TEST_F(TpuOpsVerificationTest, IndirectDmaOnUnsupportedCore) {
         /*source=*/AllocaI32({1024, 256, 128}, MemorySpace::kHbm),
         /*target=*/AllocaI32({64, 32, 128}, MemorySpace::kVmem),
         /*offsets=*/AllocaI32({64, 32}, MemorySpace::kVmem),
-        /*semaphore=*/AllocaSemaphore(),
+        /*semaphore=*/AllocaDMASemaphore(),
         /*offset_filter=*/nullptr,
         /*add=*/false);
 
@@ -986,7 +994,7 @@ TEST_F(TpuOpsVerificationTest, IndirectDmaOnUnsupportedTc) {
       /*source=*/AllocaI32({1024, 256, 128}, MemorySpace::kHbm),
       /*target=*/AllocaI32({64, 32, 128}, MemorySpace::kVmem),
       /*offsets=*/AllocaI32({64, 32}, MemorySpace::kVmem),
-      /*semaphore=*/AllocaSemaphore(),
+      /*semaphore=*/AllocaDMASemaphore(),
       /*offset_filter=*/nullptr,
       /*add=*/false);
 
@@ -1005,7 +1013,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
                                              MemorySpace::kVmem))
           .getMemref(),
       /*offsets=*/AllocaI32({64, 32}, MemorySpace::kVmem),
-      /*semaphore=*/AllocaSemaphore(),
+      /*semaphore=*/AllocaDMASemaphore(),
       /*offset_filter=*/nullptr,
       /*add=*/false);
 
@@ -1019,7 +1027,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest, IndirectDmaWithoutLocalMem) {
       /*source=*/AllocaI32({1024, 256, 128}, MemorySpace::kHbm),
       /*target=*/AllocaI32({64, 32, 128}, MemorySpace::kHbm),
       /*offsets=*/AllocaI32({64, 32}, MemorySpace::kVmem),
-      /*semaphore=*/AllocaSemaphore(),
+      /*semaphore=*/AllocaDMASemaphore(),
       /*offset_filter=*/nullptr,
       /*add=*/false);
 
@@ -1034,7 +1042,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest, IndirectDmaOffsetsNotInVmem) {
       /*source=*/AllocaI32({1024, 256, 128}, MemorySpace::kHbm),
       /*target=*/AllocaI32({64, 32, 128}, MemorySpace::kVmem),
       /*offsets=*/AllocaI32({64, 32}, MemorySpace::kHbm),
-      /*semaphore=*/AllocaSemaphore(),
+      /*semaphore=*/AllocaDMASemaphore(),
       /*offset_filter=*/nullptr,
       /*add=*/false);
 
@@ -1049,7 +1057,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest, IndirectDma1DSemaphore) {
       /*offsets=*/AllocaI32({64, 32}, MemorySpace::kVmem),
       /*semaphore=*/
       Create<tpu::AllocaSemaphoreOp>(
-          GetMemRefType({1}, SemaphoreType::get(builder().getContext()),
+          GetMemRefType({1}, DMASemaphoreType::get(builder().getContext()),
                         MemorySpace::kSemaphoreMem))
           .getResult(),
       /*offset_filter=*/nullptr,
@@ -1065,7 +1073,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
       /*source=*/AllocaI32({1024, 128}, MemorySpace::kHbm),
       /*target=*/AllocaI32({16, 128}, MemorySpace::kVmem),
       /*offsets=*/AllocaI32({}, MemorySpace::kVmem),
-      /*semaphore=*/AllocaSemaphore(),
+      /*semaphore=*/AllocaDMASemaphore(),
       /*offset_filter=*/nullptr,
       /*add=*/false);
 
@@ -1080,7 +1088,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
       /*source=*/AllocaI32({1024, 128}, MemorySpace::kHbm),
       /*target=*/AllocaI32({1, 64, 32, 128}, MemorySpace::kVmem),
       /*offsets=*/AllocaI32({1, 64, 32}, MemorySpace::kVmem),
-      /*semaphore=*/AllocaSemaphore(),
+      /*semaphore=*/AllocaDMASemaphore(),
       /*offset_filter=*/nullptr,
       /*add=*/false);
 
@@ -1096,7 +1104,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
       /*source=*/AllocaI32({1024, 128}, MemorySpace::kHbm),
       /*target=*/AllocaI32({64, 32, 128}, MemorySpace::kVmem),
       /*offsets=*/AllocaI32({64, 32}, MemorySpace::kVmem),
-      /*semaphore=*/AllocaSemaphore(),
+      /*semaphore=*/AllocaDMASemaphore(),
       /*offset_filter=*/nullptr,
       /*add=*/false);
 
@@ -1112,7 +1120,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
       /*source=*/AllocaI32({64, 128}, MemorySpace::kHbm),
       /*target=*/AllocaI32({1, 32, 128}, MemorySpace::kVmem),
       /*offsets=*/AllocaI32({1, 32}, MemorySpace::kVmem),
-      /*semaphore=*/AllocaSemaphore(),
+      /*semaphore=*/AllocaDMASemaphore(),
       /*offset_filter=*/nullptr,
       /*add=*/false);
 
@@ -1128,7 +1136,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
       /*source=*/AllocaI32({1024, 128}, MemorySpace::kHbm),
       /*target=*/AllocaI32({512, 128}, MemorySpace::kVmem),
       /*offsets=*/AllocaI32({64}, MemorySpace::kVmem),
-      /*semaphore=*/AllocaSemaphore(),
+      /*semaphore=*/AllocaDMASemaphore(),
       /*offset_filter=*/nullptr,
       /*add=*/false);
 
@@ -1148,7 +1156,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
       /*source=*/AllocaI32({1024, 32, 128}, MemorySpace::kHbm),
       /*target=*/AllocaI32({512, 32, 128}, MemorySpace::kVmem),
       /*offsets=*/vector_of_offsets,
-      /*semaphore=*/AllocaSemaphore(),
+      /*semaphore=*/AllocaDMASemaphore(),
       /*offset_filter=*/nullptr,
       /*add=*/false);
 
@@ -1165,7 +1173,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
       /*source=*/AllocaI32({1024, 512}, MemorySpace::kHbm),
       /*target=*/AllocaI32({64, 128}, MemorySpace::kVmem),
       /*offsets=*/AllocaI32({64}, MemorySpace::kVmem),
-      /*semaphore=*/AllocaSemaphore(),
+      /*semaphore=*/AllocaDMASemaphore(),
       /*offset_filter=*/nullptr,
       /*add=*/false);
 
@@ -1184,7 +1192,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
       /*source=*/AllocaI32({512, 128}, MemorySpace::kVmem),
       /*target=*/AllocaI32({1024, 128}, MemorySpace::kHbm),
       /*offsets=*/AllocaI32({64}, MemorySpace::kVmem),
-      /*semaphore=*/AllocaSemaphore(),
+      /*semaphore=*/AllocaDMASemaphore(),
       /*offset_filter=*/nullptr,
       /*add=*/false);
 
@@ -1201,7 +1209,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
       /*source=*/AllocaI32({64, 128}, MemorySpace::kVmem),
       /*target=*/AllocaI32({1024, 512}, MemorySpace::kHbm),
       /*offsets=*/AllocaI32({64}, MemorySpace::kVmem),
-      /*semaphore=*/AllocaSemaphore(),
+      /*semaphore=*/AllocaDMASemaphore(),
       /*offset_filter=*/nullptr,
       /*add=*/false);
 
@@ -1223,7 +1231,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
       /*source=*/AllocaI32({8, 32, 128}, MemorySpace::kVmem),
       /*target=*/AllocaI32({1024, 96, 512}, MemorySpace::kHbm),
       /*offsets=*/vector_of_offsets,
-      /*semaphore=*/AllocaSemaphore(),
+      /*semaphore=*/AllocaDMASemaphore(),
       /*offset_filter=*/nullptr,
       /*add=*/false);
 
@@ -1250,7 +1258,7 @@ TEST_F(TpuOpsVerificationTest, IndirectDmaWaitOnUnsupportedCoreInvalid) {
         CoreTypeAttr::get(builder().getContext(), unsupported_core));
     builder().setInsertionPointToStart(func_op.addEntryBlock());
     auto wait = Create<WaitIndirectDMAOp>(
-        /*semaphore=*/AllocaSemaphore(),
+        /*semaphore=*/AllocaDMASemaphore(),
         /*src=*/AllocaI32({1024, 256, 128}, MemorySpace::kHbm),
         /*dst=*/AllocaI32({64, 256, 128}, MemorySpace::kVmem));
 
@@ -1263,7 +1271,7 @@ TEST_F(TpuOpsVerificationTest, IndirectDmaWaitOnUnsupportedCoreInvalid) {
 TEST_F(TpuOpsVectorSubcoreVerificationTest,
        IndirectDmaWaitGatherVerificationWorks) {
   auto wait = Create<WaitIndirectDMAOp>(
-      /*semaphore=*/AllocaSemaphore(),
+      /*semaphore=*/AllocaDMASemaphore(),
       /*src=*/AllocaI32({1024, 256, 128}, MemorySpace::kHbm),
       /*dst=*/AllocaI32({64, 256, 128}, MemorySpace::kVmem));
 
@@ -1332,7 +1340,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest, SortResultTypeMismatch) {
 TEST_F(TpuOpsVectorSubcoreVerificationTest,
        IndirectDmaWaitScatterVerificationWorks) {
   auto wait = Create<WaitIndirectDMAOp>(
-      /*semaphore=*/AllocaSemaphore(),
+      /*semaphore=*/AllocaDMASemaphore(),
       /*source=*/AllocaI32({64, 32, 128}, MemorySpace::kVmem),
       /*target=*/AllocaI32({1024, 256, 128}, MemorySpace::kVmemShared));
 
@@ -1342,7 +1350,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
 TEST_F(TpuOpsVectorSubcoreVerificationTest,
        IndirectDmaWaitWithoutLocalMemInvalid) {
   auto wait = Create<WaitIndirectDMAOp>(
-      /*semaphore=*/AllocaSemaphore(),
+      /*semaphore=*/AllocaDMASemaphore(),
       /*src=*/AllocaI32({1024, 256, 128}, MemorySpace::kHbm),
       /*dst=*/AllocaI32({64, 256, 128}, MemorySpace::kHbm));
 
@@ -1356,7 +1364,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
        IndirectDmaWaitInvalidSemaphoreRank) {
   auto wait = Create<WaitIndirectDMAOp>(
       /*semaphore=*/Create<tpu::AllocaSemaphoreOp>(
-          GetMemRefType({8}, SemaphoreType::get(builder().getContext()),
+          GetMemRefType({8}, DMASemaphoreType::get(builder().getContext()),
                         MemorySpace::kSemaphoreMem))
           .getResult(),
       /*source=*/AllocaI32({64, 32, 128}, MemorySpace::kVmem),
