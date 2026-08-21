@@ -331,29 +331,29 @@ class Conv2DTransposeTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testConv2DTransposeUnknownOutputShapeRank(self):
-    with self.session():
+    with self.session() as sess:
       output_shape = array_ops.placeholder(dtypes.int32, shape=None)
       op = nn_ops.conv2d_transpose(
           input=np.ones((1, 1, 1, 1)),
           filters=np.ones((1, 1, 1, 1)),
           output_shape=output_shape,
           strides=[1])
-      self.evaluate(op, feed_dict={output_shape: [1, 1, 1, 1]})
+      sess.run(op, feed_dict={output_shape: [1, 1, 1, 1]})
       with self.assertRaises(errors.InvalidArgumentError):
-        self.evaluate(op, feed_dict={output_shape: [[1, 1, 1, 1]]})
+        sess.run(op, feed_dict={output_shape: [[1, 1, 1, 1]]})
 
   @test_util.run_deprecated_v1
   def testConv2DTransposeUnknownOutputShapeSize(self):
-    with self.session():
+    with self.session() as sess:
       output_shape = array_ops.placeholder(dtypes.int32, shape=[None])
       op = nn_ops.conv2d_transpose(
           input=np.ones((1, 1, 1, 1)),
           filters=np.ones((1, 1, 1, 1)),
           output_shape=output_shape,
           strides=[1])
-      self.evaluate(op, feed_dict={output_shape: [1, 1, 1, 1]})
+      sess.run(op, feed_dict={output_shape: [1, 1, 1, 1]})
       with self.assertRaises(errors.InvalidArgumentError):
-        self.evaluate(op, feed_dict={output_shape: [1, 1, 1]})
+        sess.run(op, feed_dict={output_shape: [1, 1, 1]})
 
   def testConv2DTransposeLargeOutputShape(self):
     # On GPU, this test does try to allocate the output tensor and OOMs.
