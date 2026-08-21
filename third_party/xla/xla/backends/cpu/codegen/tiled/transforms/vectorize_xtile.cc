@@ -989,6 +989,7 @@ class VectorizeXTilePass
       mm::Atan2Op, mm::AtanhOp,
       mm::CbrtOp,
       mm::CeilOp,
+      mm::CopySignOp,
       mm::CosOp, mm::CoshOp,
       mm::ErfOp,
       mm::ExpM1Op,
