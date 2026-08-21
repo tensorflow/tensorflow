@@ -148,8 +148,7 @@ xla_cc_test(
     srcs = ["hlo_opcode_test.cc"],
     deps = [
         ":hlo",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -569,10 +568,9 @@ xla_cc_test(
     srcs = ["collective_op_group_mode_test.cc"],
     deps = [
         ":collective_op_group_mode",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
