@@ -189,6 +189,8 @@ TEST(IfrtRestoreTensorRegistryTest, FeezeTensorRegistry) {
   TF_ASSERT_OK_AND_ASSIGN(tensorflow::Tensor retrieved,
                           registry.GetRestoredTensor("input_tensor_2").Await());
   test::ExpectEqual(retrieved, input_tensor);
+  EXPECT_TRUE(registry.GetUsedByHostNames().contains("input_tensor_2"));
+  EXPECT_FALSE(registry.GetUsedByHostNames().contains("input_tensor_1"));
 }
 }  // namespace
 }  // namespace ifrt_serving
