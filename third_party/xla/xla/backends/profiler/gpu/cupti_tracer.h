@@ -68,6 +68,10 @@ struct CuptiTracerOptions {
   // This currently can not run second session with HES enabled, so do not turn
   // on this. TODO(b/466437495): Remove this comment once the bug is fixed.
   bool enable_activity_hardware_tracing = false;
+  // Whether to enable scope range tracking. Can be disabled to save CPU and
+  // memory overhead when hierarchical scope trees are not needed (e.g., during
+  // aggregated tracing).
+  bool enable_scope_range_tracking = true;
 };
 
 class CuptiTracer;
@@ -100,6 +104,9 @@ class CuptiTracer {
   // Only one profile session can be live in the same time.
   bool IsAvailable() const;
   bool NeedRootAccess() const { return need_root_access_; }
+  bool IsScopeRangeTrackingEnabled() const {
+    return !option_.has_value() || option_->enable_scope_range_tracking;
+  }
 
   // Enables the CUPTI tracer. XPlanes vector is optional and only needed when
   // PM sampling is enabled to store sample metrics.

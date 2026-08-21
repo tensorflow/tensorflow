@@ -1018,8 +1018,11 @@ absl::Status AddDriverApiCallbackEvent(
     return absl::OkStatus();
   }
   tracer->IncCallbackEventCount();
-  absl::Span<const int64_t> range_ids = AnnotationStack::GetScopeRangeIds();
-  guarded_annotations_and_events.AddScopeRangeIdSequence(range_ids);
+  absl::Span<const int64_t> range_ids;
+  if (tracer->IsScopeRangeTrackingEnabled()) {
+    range_ids = AnnotationStack::GetScopeRangeIds();
+    guarded_annotations_and_events.AddScopeRangeIdSequence(range_ids);
+  }
   CuptiTracerEvent event{};
   event.correlation_id = cbdata->correlationId;
   event.annotation = annotation;
