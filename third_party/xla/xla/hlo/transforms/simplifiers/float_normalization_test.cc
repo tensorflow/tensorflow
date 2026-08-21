@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -167,14 +168,24 @@ INSTANTIATE_TEST_SUITE_P(FloatNormalizationExcessPrecisionTestSuite,
                          FloatNormalizationExcessPrecisionTest,
                          ::testing::Bool());
 
-class FloatNormalizationF8Test
+class FloatNormalizationF8ExcessPrecisionTest
     : public FloatNormalizationTest,
-      public ::testing::WithParamInterface<PrimitiveType> {};
+      public ::testing::WithParamInterface<std::tuple<PrimitiveType, bool>> {
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_allow_excess_precision(std::get<1>(GetParam()));
+    return debug_options;
+  }
+};
 
-INSTANTIATE_TEST_SUITE_P(FloatNormalizationF8Suite, FloatNormalizationF8Test,
-                         ::testing::Values(F4E2M1FN, F8E3M4, F8E4M3,
-                                           F8E4M3B11FNUZ, F8E4M3FN, F8E4M3FNUZ,
-                                           F8E5M2, F8E5M2FNUZ, F8E8M0FNU));
+INSTANTIATE_TEST_SUITE_P(
+    FloatNormalizationF8ExcessPrecisionSuite,
+    FloatNormalizationF8ExcessPrecisionTest,
+    ::testing::Combine(::testing::Values(F4E2M1FN, F8E3M4, F8E4M3,
+                                         F8E4M3B11FNUZ, F8E4M3FN, F8E4M3FNUZ,
+                                         F8E5M2, F8E5M2FNUZ, F8E8M0FNU),
+                       ::testing::Bool()));
 
 TEST_F(FloatNormalizationTest, NoopIfSupported) {
   auto builder = HloComputation::Builder(TestName());
@@ -204,7 +215,7 @@ TEST_F(FloatNormalizationTest, NoopIfSupported) {
   EXPECT_EQ(add1->shape().element_type(), F32);
 }
 
-TEST_F(FloatNormalizationTest, ResolveIfUnsupportedBF16) {
+TEST_P(FloatNormalizationExcessPrecisionTest, ResolveIfUnsupportedBF16) {
   constexpr absl::string_view kHlo = R"(
 HloModule main
 
@@ -220,20 +231,35 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
 
   EXPECT_TRUE(Normalize(module.get()));
-  EXPECT_THAT(RunFileCheck(module->ToString(), R"(
-  // CHECK: ENTRY %main
-  // CHECK: %[[b:.+]] = bf16{{.+}} parameter(1)
-  // CHECK: %[[b_f32:.+]] = f32{{.+}} convert(%[[b]])
-  // CHECK: %[[mul0:.+]] = f32{{.+}} multiply({{.+}}, %[[b_f32]])
-  // CHECK: %[[mul0_bf16:.+]] = bf16{{.+}} convert(%[[mul0]])
-  // CHECK: %[[mul0_f32:.+]] = f32{{.+}} convert(%[[mul0_bf16]])
-  // CHECK: %[[mul1:.+]] = f32{{.+}} multiply(%[[mul0_f32]], {{.+}})
-  // CHECK: ROOT {{.+}} = bf16{{.+}} convert(%[[mul1]])
-  )"),
-              IsOkAndHolds(true));
+
+  bool allow_excess_precision = GetParam();
+  if (allow_excess_precision) {
+    EXPECT_THAT(RunFileCheck(module->ToString(), R"(
+      // CHECK: ENTRY %main
+      // CHECK: %[[b:.+]] = bf16{{.+}} parameter(1)
+      // CHECK: %[[b_f32:.+]] = f32{{.+}} convert(%[[b]])
+      // CHECK: %[[mul0:.+]] = f32{{.+}} multiply({{.+}}, %[[b_f32]])
+      // CHECK: %[[mul1:.+]] = f32{{.+}} multiply(%[[mul0]], {{.+}})
+      // CHECK: ROOT {{.+}} = bf16{{.+}} convert(%[[mul1]])
+      )"),
+                IsOkAndHolds(true));
+  } else {
+    EXPECT_THAT(RunFileCheck(module->ToString(), R"(
+      // CHECK: ENTRY %main
+      // CHECK: %[[b:.+]] = bf16{{.+}} parameter(1)
+      // CHECK: %[[b_f32:.+]] = f32{{.+}} convert(%[[b]])
+      // CHECK: %[[mul0:.+]] = f32{{.+}} multiply({{.+}}, %[[b_f32]])
+      // CHECK: %[[mul0_bf16:.+]] = bf16{{.+}} convert(%[[mul0]])
+      // CHECK: %[[mul0_f32:.+]] = f32{{.+}} convert(%[[mul0_bf16]])
+      // CHECK: %[[mul1:.+]] = f32{{.+}} multiply(%[[mul0_f32]], {{.+}})
+      // CHECK: ROOT {{.+}} = bf16{{.+}} convert(%[[mul1]])
+      )"),
+                IsOkAndHolds(true));
+  }
 }
 
-TEST_F(FloatNormalizationTest, ResolveIfUnsupportedBF16CalledComputation) {
+TEST_P(FloatNormalizationExcessPrecisionTest,
+       ResolveIfUnsupportedBF16CalledComputation) {
   constexpr absl::string_view kHlo = R"(
 HloModule main
 
@@ -253,20 +279,35 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
 
   EXPECT_TRUE(Normalize(module.get()));
-  EXPECT_THAT(RunFileCheck(module->ToString(), R"(
-  // CHECK: %[[arg1:.+]] = bf16{{.+}} parameter(1)
-  // CHECK: %[[arg1_f32:.+]] = f32{{.+}} convert(%[[arg1]])
-  // CHECK: %[[mul0:.+]] = f32{{.+}} multiply({{.+}}, %[[arg1_f32]])
-  // CHECK: %[[mul0_bf16:.+]] = bf16{{.+}} convert(%[[mul0]])
-  // CHECK: %[[mul0_f32:.+]] = f32{{.+}} convert(%[[mul0_bf16]])
-  // CHECK: %[[mul1:.+]] = f32{{.+}} multiply(%[[mul0_f32]], {{.+}})
-  // CHECK: ROOT {{.+}} = bf16{{.+}} convert(%[[mul1]])
-  // CHECK: ENTRY %main
-  )"),
-              IsOkAndHolds(true));
+
+  bool allow_excess_precision = GetParam();
+  if (allow_excess_precision) {
+    EXPECT_THAT(RunFileCheck(module->ToString(), R"(
+      // CHECK: %[[arg1:.+]] = bf16{{.+}} parameter(1)
+      // CHECK: %[[arg1_f32:.+]] = f32{{.+}} convert(%[[arg1]])
+      // CHECK: %[[mul0:.+]] = f32{{.+}} multiply({{.+}}, %[[arg1_f32]])
+      // CHECK: %[[mul1:.+]] = f32{{.+}} multiply(%[[mul0]], {{.+}})
+      // CHECK: ROOT {{.+}} = bf16{{.+}} convert(%[[mul1]])
+      // CHECK: ENTRY %main
+      )"),
+                IsOkAndHolds(true));
+  } else {
+    EXPECT_THAT(RunFileCheck(module->ToString(), R"(
+      // CHECK: %[[arg1:.+]] = bf16{{.+}} parameter(1)
+      // CHECK: %[[arg1_f32:.+]] = f32{{.+}} convert(%[[arg1]])
+      // CHECK: %[[mul0:.+]] = f32{{.+}} multiply({{.+}}, %[[arg1_f32]])
+      // CHECK: %[[mul0_bf16:.+]] = bf16{{.+}} convert(%[[mul0]])
+      // CHECK: %[[mul0_f32:.+]] = f32{{.+}} convert(%[[mul0_bf16]])
+      // CHECK: %[[mul1:.+]] = f32{{.+}} multiply(%[[mul0_f32]], {{.+}})
+      // CHECK: ROOT {{.+}} = bf16{{.+}} convert(%[[mul1]])
+      // CHECK: ENTRY %main
+      )"),
+                IsOkAndHolds(true));
+  }
 }
 
-TEST_F(FloatNormalizationTest, ResolveIfUnsupportedBF16AsyncComputation) {
+TEST_P(FloatNormalizationExcessPrecisionTest,
+       ResolveIfUnsupportedBF16AsyncComputation) {
   constexpr absl::string_view kHlo = R"(
 HloModule main
 
@@ -289,20 +330,34 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
 
   EXPECT_TRUE(Normalize(module.get()));
-  EXPECT_THAT(RunFileCheck(module->ToString(), R"(
-  // CHECK: %[[arg1:.+]] = bf16{{.+}} parameter(1)
-  // CHECK: %[[arg1_f32:.+]] = f32{{.+}} convert(%[[arg1]])
-  // CHECK: %[[mul0:.+]] = f32{{.+}} multiply({{.+}}, %[[arg1_f32]])
-  // CHECK: %[[mul0_bf16:.+]] = bf16{{.+}} convert(%[[mul0]])
-  // CHECK: %[[mul0_f32:.+]] = f32{{.+}} convert(%[[mul0_bf16]])
-  // CHECK: %[[mul1:.+]] = f32{{.+}} multiply(%[[mul0_f32]], {{.+}})
-  // CHECK: ROOT {{.+}} = bf16{{.+}} convert(%[[mul1]])
-  // CHECK: ENTRY %main
-  )"),
-              IsOkAndHolds(true));
+  bool allow_excess_precision = GetParam();
+  if (allow_excess_precision) {
+    EXPECT_THAT(RunFileCheck(module->ToString(), R"(
+      // CHECK: %[[arg1:.+]] = bf16{{.+}} parameter(1)
+      // CHECK: %[[arg1_f32:.+]] = f32{{.+}} convert(%[[arg1]])
+      // CHECK: %[[mul0:.+]] = f32{{.+}} multiply({{.+}}, %[[arg1_f32]])
+      // CHECK: %[[mul1:.+]] = f32{{.+}} multiply(%[[mul0]], {{.+}})
+      // CHECK: ROOT {{.+}} = bf16{{.+}} convert(%[[mul1]])
+      // CHECK: ENTRY %main
+      )"),
+                IsOkAndHolds(true));
+  } else {
+    EXPECT_THAT(RunFileCheck(module->ToString(), R"(
+      // CHECK: %[[arg1:.+]] = bf16{{.+}} parameter(1)
+      // CHECK: %[[arg1_f32:.+]] = f32{{.+}} convert(%[[arg1]])
+      // CHECK: %[[mul0:.+]] = f32{{.+}} multiply({{.+}}, %[[arg1_f32]])
+      // CHECK: %[[mul0_bf16:.+]] = bf16{{.+}} convert(%[[mul0]])
+      // CHECK: %[[mul0_f32:.+]] = f32{{.+}} convert(%[[mul0_bf16]])
+      // CHECK: %[[mul1:.+]] = f32{{.+}} multiply(%[[mul0_f32]], {{.+}})
+      // CHECK: ROOT {{.+}} = bf16{{.+}} convert(%[[mul1]])
+      // CHECK: ENTRY %main
+      )"),
+                IsOkAndHolds(true));
+  }
 }
 
-TEST_F(FloatNormalizationTest, ResolveUnsupportedMixedPrecisionSubtraction) {
+TEST_P(FloatNormalizationExcessPrecisionTest,
+       ResolveUnsupportedMixedPrecisionSubtraction) {
   constexpr absl::string_view kHlo = R"(
 HloModule main
 
@@ -317,17 +372,30 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
 
   EXPECT_TRUE(Normalize(module.get()));
-  EXPECT_THAT(RunFileCheck(module->ToString(), R"(
-  // CHECK: ENTRY %main
-  // CHECK: %[[b:.+]] = bf16{{.+}} parameter(1)
-  // CHECK: %[[b_f32:.+]] = f32{{.+}} convert(%[[b]])
-  // CHECK: %[[sub0:.+]] = f32{{.+}} subtract({{.+}}, %[[b_f32]])
-  // CHECK: %[[sub0_bf16:.+]] = bf16{{.+}} convert(%[[sub0]])
-  // CHECK: %[[sub0_f32:.+]] = f32{{.+}} convert(%[[sub0_bf16]])
-  // CHECK: %[[sub1:.+]] = f32{{.+}} subtract(%[[sub0_f32]], {{.+}})
-  // CHECK: ROOT {{.+}} = bf16{{.+}} convert(%[[sub1]])
-  )"),
-              IsOkAndHolds(true));
+  bool allow_excess_precision = GetParam();
+  if (allow_excess_precision) {
+    EXPECT_THAT(RunFileCheck(module->ToString(), R"(
+      // CHECK: ENTRY %main
+      // CHECK: %[[b:.+]] = bf16{{.+}} parameter(1)
+      // CHECK: %[[b_f32:.+]] = f32{{.+}} convert(%[[b]])
+      // CHECK: %[[sub0:.+]] = f32{{.+}} subtract({{.+}}, %[[b_f32]])
+      // CHECK: %[[sub1:.+]] = f32{{.+}} subtract(%[[sub0]], {{.+}})
+      // CHECK: ROOT {{.+}} = bf16{{.+}} convert(%[[sub1]])
+      )"),
+                IsOkAndHolds(true));
+  } else {
+    EXPECT_THAT(RunFileCheck(module->ToString(), R"(
+      // CHECK: ENTRY %main
+      // CHECK: %[[b:.+]] = bf16{{.+}} parameter(1)
+      // CHECK: %[[b_f32:.+]] = f32{{.+}} convert(%[[b]])
+      // CHECK: %[[sub0:.+]] = f32{{.+}} subtract({{.+}}, %[[b_f32]])
+      // CHECK: %[[sub0_bf16:.+]] = bf16{{.+}} convert(%[[sub0]])
+      // CHECK: %[[sub0_f32:.+]] = f32{{.+}} convert(%[[sub0_bf16]])
+      // CHECK: %[[sub1:.+]] = f32{{.+}} subtract(%[[sub0_f32]], {{.+}})
+      // CHECK: ROOT {{.+}} = bf16{{.+}} convert(%[[sub1]])
+      )"),
+                IsOkAndHolds(true));
+  }
 }
 
 TEST_F(FloatNormalizationTest, ResolveUnsupportedMixedPrecisionReduce) {
@@ -549,8 +617,8 @@ TEST_F(FloatNormalizationTest, ResolveMixedPrecisionTupleSortRoot) {
   }
 }
 
-// Tests that the normalization should not cause unsupported mixed precision due
-// to resolving unsupported BF16 operand.
+// Tests that the normalization should not cause unsupported mixed precision
+// due to resolving unsupported BF16 operand.
 TEST_F(FloatNormalizationTest, DoNotAddUnsupportedMixedPrecision) {
   auto builder = HloComputation::Builder(TestName());
   Shape bf16_shape = ShapeUtil::MakeShape(BF16, {4, 4});
@@ -613,8 +681,8 @@ m {
   EXPECT_FALSE(Normalize(module.get(), S4));
 }
 
-TEST_P(FloatNormalizationF8Test, ResolveIfUnsupportedF8) {
-  PrimitiveType f8_type = GetParam();
+TEST_P(FloatNormalizationF8ExcessPrecisionTest, ResolveIfUnsupportedF8) {
+  PrimitiveType f8_type = std::get<0>(GetParam());
   constexpr absl::string_view kHlo = R"(
 HloModule main
 
@@ -633,19 +701,35 @@ ENTRY main {
       ParseAndReturnVerifiedModule(absl::Substitute(kHlo, f8_type_name)));
 
   EXPECT_TRUE(Normalize(module.get(), f8_type, F16));
-  absl::string_view kCheck = R"(
-  // CHECK: ENTRY %main
-  // CHECK: %[[b:.+]] = $0{{.+}} parameter(1)
-  // CHECK: %[[b_f16:.+]] = f16{{.+}} convert(%[[b]])
-  // CHECK: %[[mul0:.+]] = f16{{.+}} multiply({{.+}}, %[[b_f16]])
-  // CHECK: %[[mul0_f8:.+]] = $0{{.+}} convert(%[[mul0]])
-  // CHECK: %[[mul0_f16:.+]] = f16{{.+}} convert(%[[mul0_f8]])
-  // CHECK: %[[mul1:.+]] = f16{{.+}} multiply(%[[mul0_f16]], {{.+}})
-  // CHECK: ROOT {{.+}} = $0{{.+}} convert(%[[mul1]])
-  )";
-  EXPECT_THAT(
-      RunFileCheck(module->ToString(), absl::Substitute(kCheck, f8_type_name)),
-      IsOkAndHolds(true));
+
+  bool allow_excess_precision = std::get<1>(GetParam());
+  if (allow_excess_precision) {
+    absl::string_view kCheck = R"(
+      // CHECK: ENTRY %main
+      // CHECK: %[[b:.+]] = $0{{.+}} parameter(1)
+      // CHECK: %[[b_f16:.+]] = f16{{.+}} convert(%[[b]])
+      // CHECK: %[[mul0:.+]] = f16{{.+}} multiply({{.+}}, %[[b_f16]])
+      // CHECK: %[[mul1:.+]] = f16{{.+}} multiply(%[[mul0]], {{.+}})
+      // CHECK: ROOT {{.+}} = $0{{.+}} convert(%[[mul1]])
+      )";
+    EXPECT_THAT(RunFileCheck(module->ToString(),
+                             absl::Substitute(kCheck, f8_type_name)),
+                IsOkAndHolds(true));
+  } else {
+    absl::string_view kCheck = R"(
+      // CHECK: ENTRY %main
+      // CHECK: %[[b:.+]] = $0{{.+}} parameter(1)
+      // CHECK: %[[b_f16:.+]] = f16{{.+}} convert(%[[b]])
+      // CHECK: %[[mul0:.+]] = f16{{.+}} multiply({{.+}}, %[[b_f16]])
+      // CHECK: %[[mul0_f8:.+]] = $0{{.+}} convert(%[[mul0]])
+      // CHECK: %[[mul0_f16:.+]] = f16{{.+}} convert(%[[mul0_f8]])
+      // CHECK: %[[mul1:.+]] = f16{{.+}} multiply(%[[mul0_f16]], {{.+}})
+      // CHECK: ROOT {{.+}} = $0{{.+}} convert(%[[mul1]])
+      )";
+    EXPECT_THAT(RunFileCheck(module->ToString(),
+                             absl::Substitute(kCheck, f8_type_name)),
+                IsOkAndHolds(true));
+  }
 }
 
 class FloatNormalizationNoComputeSupportTest : public FloatNormalizationTest {
@@ -666,6 +750,21 @@ class FloatNormalizationNoComputeSupportTest : public FloatNormalizationTest {
     return result.value();
   }
 };
+
+class FloatNormalizationNoComputeSupportExcessPrecisionTest
+    : public FloatNormalizationNoComputeSupportTest,
+      public ::testing::WithParamInterface<bool> {
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_allow_excess_precision(GetParam());
+    return debug_options;
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    FloatNormalizationNoComputeSupportExcessPrecisionTestSuite,
+    FloatNormalizationNoComputeSupportExcessPrecisionTest, ::testing::Bool());
 
 TEST_F(FloatNormalizationNoComputeSupportTest,
        NoNormalizationForToApplyMultiOutputAllReduce) {
@@ -708,7 +807,7 @@ TEST_F(FloatNormalizationNoComputeSupportTest,
   EXPECT_EQ(ShapeUtil::GetSubshape(crs->shape(), {1}).element_type(), BF16);
 }
 
-TEST_F(FloatNormalizationNoComputeSupportTest,
+TEST_P(FloatNormalizationNoComputeSupportExcessPrecisionTest,
        NormalizationClonesSharedApplyAllReduceAndReduce) {
   absl::string_view kHlo = R"(
 HloModule main
@@ -735,20 +834,36 @@ ENTRY %main {
   // Verify that the shared computation was cloned, the all-reduce instruction
   // got the unchanged bf16 add, while the reduction was promoted to f32
   // together with its called computation.
-  EXPECT_THAT(RunFileCheck(module->ToString(), R"(
-  // CHECK: %[[allreduce_comp:.+]] ({{.*}}) -> bf16{{.*}} {
-  // CHECK: ROOT {{.+}} = bf16{{.+}} add({{.+}}, {{.+}})
-  // CHECK: %[[reduce_comp:.+]] ({{.*}}) -> f32{{.*}} {
-  // CHECK: %[[add:.+]] = f32{{.+}} add({{.+}})
-  // CHECK: %[[add_bf16:.+]] = bf16{{.+}} convert(%[[add]])
-  // CHECK: ROOT {{.+}} = f32{{.+}} convert(%[[add_bf16]])
-  // CHECK: ENTRY %main
-  // CHECK: %[[allreduce:.+]] = bf16{{.+}} all-reduce({{.+}})
-  // CHECK-SAME: to_apply=%[[allreduce_comp]]
-  // CHECK: %[[reduce:.+]] = f32{{.+}} reduce({{.+}}, {{.+}})
-  // CHECK-SAME: to_apply=%[[reduce_comp]]
-  )"),
-              IsOkAndHolds(true));
+  bool allow_excess_precision = GetParam();
+  if (allow_excess_precision) {
+    EXPECT_THAT(RunFileCheck(module->ToString(), R"(
+      // CHECK: %[[allreduce_comp:.+]] ({{.*}}) -> bf16{{.*}} {
+      // CHECK: ROOT {{.+}} = bf16{{.+}} add({{.+}}, {{.+}})
+      // CHECK: %[[reduce_comp:.+]] ({{.*}}) -> f32{{.*}} {
+      // CHECK: ROOT {{.+}} = f32{{.+}} add({{.+}})
+      // CHECK: ENTRY %main
+      // CHECK: %[[allreduce:.+]] = bf16{{.+}} all-reduce({{.+}})
+      // CHECK-SAME: to_apply=%[[allreduce_comp]]
+      // CHECK: %[[reduce:.+]] = f32{{.+}} reduce({{.+}}, {{.+}})
+      // CHECK-SAME: to_apply=%[[reduce_comp]]
+      )"),
+                IsOkAndHolds(true));
+  } else {
+    EXPECT_THAT(RunFileCheck(module->ToString(), R"(
+      // CHECK: %[[allreduce_comp:.+]] ({{.*}}) -> bf16{{.*}} {
+      // CHECK: ROOT {{.+}} = bf16{{.+}} add({{.+}}, {{.+}})
+      // CHECK: %[[reduce_comp:.+]] ({{.*}}) -> f32{{.*}} {
+      // CHECK: %[[add:.+]] = f32{{.+}} add({{.+}})
+      // CHECK: %[[add_bf16:.+]] = bf16{{.+}} convert(%[[add]])
+      // CHECK: ROOT {{.+}} = f32{{.+}} convert(%[[add_bf16]])
+      // CHECK: ENTRY %main
+      // CHECK: %[[allreduce:.+]] = bf16{{.+}} all-reduce({{.+}})
+      // CHECK-SAME: to_apply=%[[allreduce_comp]]
+      // CHECK: %[[reduce:.+]] = f32{{.+}} reduce({{.+}}, {{.+}})
+      // CHECK-SAME: to_apply=%[[reduce_comp]]
+      )"),
+                IsOkAndHolds(true));
+  }
 }
 
 TEST_F(FloatNormalizationNoComputeSupportTest,
