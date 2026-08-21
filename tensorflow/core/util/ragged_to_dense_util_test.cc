@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/ragged_to_dense_util.h"
 
+#include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
