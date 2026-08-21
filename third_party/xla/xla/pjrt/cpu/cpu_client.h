@@ -412,10 +412,8 @@ class PjRtCpuExecutable final : public PjRtExecutable {
     return cpu_executable_->SizeOfGeneratedCodeInBytes();
   }
 
-  absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
-      const override {
-    return std::vector<std::shared_ptr<HloModule>>{
-        cpu_executable_->shared_module()};
+  absl::StatusOr<std::shared_ptr<HloModule>> GetHloModule() const override {
+    return cpu_executable_->shared_module();
   }
 
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
