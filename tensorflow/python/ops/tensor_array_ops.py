@@ -769,12 +769,38 @@ class _EagerTensorArray:
         "gradient implementation does not use/need this function to compute "
         "gradients of operations that use TensorArrays.")
 
+  def _check_symbolic_index(self, index, method_name):
+    """Checks that `index` is usable as a Python value.
+
+    An `_EagerTensorArray` is only created while executing eagerly, so a
+    symbolic `index` means an eager-mode TensorArray was captured by a
+    `tf.function` or a `tf.data` map function. Without this check `index` is
+    compared against Python values below, which fails with a confusing
+    "Using a symbolic `tf.Tensor` as a Python `bool` is not allowed" error.
+
+    Args:
+      index: the index passed to `method_name`.
+      method_name: name of the `TensorArray` method being called.
+
+    Raises:
+      NotImplementedError: if a graph is being built and `index` is symbolic.
+    """
+    if not context.executing_eagerly() and tensor_util.is_tf_type(index):
+      raise NotImplementedError(
+          "Attempting to call TensorArray.%s() with a symbolic index on an "
+          "eager-mode TensorArray. This is not currently supported. You may "
+          "be attempting to capture a TensorArray inside a tf.function or "
+          "tf.data map function. Instead, construct a new TensorArray inside "
+          "the function." % method_name)
+
   def read(self, index, name=None):
     """See TensorArray."""
     del name  # not meaningful when executing eagerly.
 
     if isinstance(index, ops.EagerTensor):
       index = index.numpy()
+
+    self._check_symbolic_index(index, "read")
 
     if index < 0:
       raise errors_impl.OutOfRangeError(
@@ -813,10 +839,13 @@ class _EagerTensorArray:
       errors_impl.InvalidArgumentError: `value` dtype does not match dtype.
       errors_impl.OutOfRangeError: `index` is out of bounds.
       ValueError: shape of `value` is not consistent with inferred shape.
+      NotImplementedError: a graph is being built and `index` is symbolic.
     """
 
     if isinstance(index, ops.EagerTensor):
       index = index.numpy()
+
+    self._check_symbolic_index(index, "write")
 
     if index < 0:
       raise errors_impl.OutOfRangeError(

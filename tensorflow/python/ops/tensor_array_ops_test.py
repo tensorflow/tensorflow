@@ -22,6 +22,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -87,6 +88,60 @@ class TensorArrayOpsTest(test.TestCase):
     new_arr = arr.write(0, np.ones((2, 3)))
     self.assertEqual(new_arr.stack().shape, (4, 2, 3))
     self.assertEqual(new_arr.concat().shape, (8, 3))
+
+  @test_util.run_v2_only
+  def test_write_symbolic_index_on_captured_eager_tensor_array(self):
+    values = tensor_array_ops.TensorArray(
+        dtypes.int32, size=0, dynamic_size=True, clear_after_read=False)
+
+    @def_function.function
+    def fn(index):
+      return values.write(index, 1)
+
+    with self.assertRaisesRegex(NotImplementedError,
+                                'construct a new TensorArray inside'):
+      fn(constant_op.constant(0, dtypes.int32))
+
+  @test_util.run_v2_only
+  def test_write_variable_index_on_captured_eager_tensor_array(self):
+    values = tensor_array_ops.TensorArray(
+        dtypes.int32, size=0, dynamic_size=True, clear_after_read=False)
+    index = variables.Variable(0, dtype=dtypes.int32)
+
+    @def_function.function
+    def fn():
+      return values.write(index, 1)
+
+    with self.assertRaisesRegex(NotImplementedError,
+                                'construct a new TensorArray inside'):
+      fn()
+
+  @test_util.run_v2_only
+  def test_read_symbolic_index_on_captured_eager_tensor_array(self):
+    values = tensor_array_ops.TensorArray(
+        dtypes.int32, size=2, clear_after_read=False)
+    values = values.write(0, 1).write(1, 2)
+
+    @def_function.function
+    def fn(index):
+      return values.read(index)
+
+    with self.assertRaisesRegex(NotImplementedError,
+                                'construct a new TensorArray inside'):
+      fn(constant_op.constant(1, dtypes.int32))
+
+  @test_util.run_v2_only
+  def test_read_python_index_on_captured_eager_tensor_array(self):
+    # A concrete index still resolves to a Python value, so this keeps working.
+    values = tensor_array_ops.TensorArray(
+        dtypes.int32, size=2, clear_after_read=False)
+    values = values.write(0, 1).write(1, 2)
+
+    @def_function.function
+    def fn():
+      return values.read(1)
+
+    self.assertAllEqual(fn(), 2)
 
 
 if __name__ == '__main__':
