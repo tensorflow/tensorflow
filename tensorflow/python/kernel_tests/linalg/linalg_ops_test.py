@@ -677,6 +677,24 @@ class EighTridiagonalTest(test.TestCase, parameterized.TestCase):
         self.assertAllClose(
             eigvals_all[first:(last + 1)], eigvals_value, atol=atol)
 
+  @parameterized.parameters("i", "v")
+  def test_select_range_required(self, select):
+    # Regression test for GitHub issue 113321: both of these select modes
+    # index into select_range, so omitting it surfaced as a TypeError from
+    # subscripting None rather than naming the missing argument.
+    alpha = np.array([1.0, 2.0, 3.0], np.float32)
+    beta = np.array([0.5, 0.5], np.float32)
+    with self.assertRaisesRegex(ValueError, "select_range must be specified"):
+      linalg.eigh_tridiagonal(alpha, beta, select=select)
+
+  def test_select_range_not_required_for_a(self):
+    # select='a' ignores select_range and must keep working without it.
+    alpha = np.array([1.0, 2.0, 3.0], np.float32)
+    beta = np.array([0.5, 0.5], np.float32)
+    self.assertAllEqual(
+        [3], linalg.eigh_tridiagonal(alpha, beta, select="a").shape
+    )
+
   @parameterized.parameters((np.float32), (np.float64), (np.complex64),
                             (np.complex128))
   def test_extreme_eigenvalues_test(self, dtype):

@@ -1296,6 +1296,14 @@ def eigh_tridiagonal(alpha,
 
   """
   with ops.name_scope(name or 'eigh_tridiagonal'):
+    if select in ('i', 'v') and select_range is None:
+      # Both of these select modes index into select_range below. Reject the
+      # missing value here rather than letting it surface as a TypeError from
+      # subscripting None.
+      raise ValueError(
+          f"select_range must be specified when select is '{select}'; it is "
+          "only optional for select='a'."
+      )
 
     def _compute_eigenvalues(alpha, beta):
       """Computes all eigenvalues of a Hermitian tridiagonal matrix."""
