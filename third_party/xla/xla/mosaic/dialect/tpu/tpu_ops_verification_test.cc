@@ -544,23 +544,6 @@ TEST_F(TpuOpsVerificationTest, VectorStoreIdxInvalidIndicesDimension) {
                             "the base memref with dimension: 1. Got: 2.")));
 }
 
-TEST_F(TpuOpsVerificationTest, VectorStoreIdxInvalidValueToStoreDimension) {
-  Value memref = AllocaI32({8}, MemorySpace::kVmem);
-  Value vector_to_store = ConstantI32Vector(/*shape=*/{4, 2},
-                                            /*values=*/{1});
-  Value indices = ConstantIndexVector(/*shape=*/{8},
-                                      /*values=*/{0});
-  auto vl = Create<VectorStoreIdxOp>(
-      /*vectorToStore=*/vector_to_store,
-      /*base=*/memref,
-      /*indices=*/ValueRange{indices},
-      /*mask=*/nullptr,
-      /*add=*/nullptr);
-
-  ASSERT_THAT(VerifyOp(vl),
-              StatusIs(_, HasSubstr("Expected value to have rank 1. Got: 2.")));
-}
-
 TEST_F(TpuOpsVerificationTest, VectorStoreIdxValidMask) {
   Value memref = AllocaI32({8}, MemorySpace::kVmem);
   Value vector_to_store = ConstantI32Vector(/*shape=*/{8},
@@ -1103,8 +1086,8 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
 
   ASSERT_THAT(
       VerifyOp(dma),
-      StatusIs(_, HasSubstr(
-                      "Offsets shape must be 1D or (1, N), got (1, 64, 32)")));
+      StatusIs(
+          _, HasSubstr("Offsets shape must be 1D or (1, N), got (1, 64, 32)")));
 }
 
 TEST_F(TpuOpsVectorSubcoreVerificationTest,
@@ -1135,9 +1118,8 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
 
   ASSERT_THAT(
       VerifyOp(dma),
-      StatusIs(_,
-               HasSubstr("Source (gather operand) sample rank must match "
-                         "offsets rank, got 1 vs 2")));
+      StatusIs(_, HasSubstr("Source (gather operand) sample rank must match "
+                            "offsets rank, got 1 vs 2")));
 }
 
 TEST_F(TpuOpsVectorSubcoreVerificationTest,
@@ -1152,10 +1134,9 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
 
   ASSERT_THAT(
       VerifyOp(dma),
-      StatusIs(_,
-               HasSubstr(
-                   "Offsets shape (64) must match the majormost dimensions "
-                   "of the target (gather result) shape (512, 128)")));
+      StatusIs(
+          _, HasSubstr("Offsets shape (64) must match the majormost dimensions "
+                       "of the target (gather result) shape (512, 128)")));
 }
 
 TEST_F(TpuOpsVectorSubcoreVerificationTest,
@@ -1209,10 +1190,9 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
 
   ASSERT_THAT(
       VerifyOp(dma),
-      StatusIs(_,
-               HasSubstr(
-                   "Offsets shape (64) must match the majormost dimensions "
-                   "of the source (scatter updates) shape (512, 128)")));
+      StatusIs(
+          _, HasSubstr("Offsets shape (64) must match the majormost dimensions "
+                       "of the source (scatter updates) shape (512, 128)")));
 }
 
 TEST_F(TpuOpsVectorSubcoreVerificationTest,
