@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/experimental/tac/transforms/device_transform.h"
 
+#include <cstdint>
 #include <string>
 #include <utility>
 
+#include "absl/base/casts.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
