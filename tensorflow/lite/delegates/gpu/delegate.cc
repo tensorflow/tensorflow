@@ -1597,6 +1597,7 @@ TfLiteDelegate* TfLiteGpuDelegateV2CreateAsync(
 #endif  // defined(__ANDROID__)
 
 void TfLiteGpuDelegateV2Delete(TfLiteDelegate* delegate) {
+  if (delegate == nullptr) return;
   delete tflite::gpu::GetDelegate(delegate);
 }
 
