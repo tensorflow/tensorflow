@@ -242,6 +242,7 @@ xla_cc_test(
     srcs = ["tiled_emitter_constraints_test.cc"],
     deps = [
         ":tiled_emitter_constraints",
+        "//xla:xla_proto_cc",
         "//xla/codegen/tiling:symbolic_tile_analysis",
         "//xla/codegen/tiling:tiling_specification",
         "//xla/hlo/analysis:symbolic_map",
