@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/codegen/experimental_fusion_emitter.h"
 #include "xla/codegen/xtile/codegen/fusion_emitter.h"
@@ -72,7 +73,6 @@ limitations under the License.
 #include "xla/runtime/work_dimensions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/cpu_options.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -83,6 +83,8 @@ namespace xla::cpu {
 namespace {
 
 using llvm::SmallVector;
+using ::xla::xtile::BlockLevelParameters;
+
 namespace ge = ::xla::gpu::experimental;
 
 constexpr int64_t kCacheLineSize = 64;
@@ -405,7 +407,7 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> CreateTiledKernelDefinition(
 
 absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
-    std::optional<gpu::BlockLevelParameters> block_level_parameters) {
+    std::optional<BlockLevelParameters> block_level_parameters) {
   ABSL_RETURN_IF_ERROR(VerifyTensorRanks(fusion));
 
   std::unique_ptr<HloFusionAdaptor> fusion_adaptor =
@@ -554,7 +556,7 @@ TiledEmissionResult EmitTiledFusionKernel(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, absl::string_view name,
     int64_t num_work_groups,
-    std::optional<gpu::BlockLevelParameters> block_level_parameters) {
+    std::optional<BlockLevelParameters> block_level_parameters) {
   VLOG(2) << "EmitTiledFusionKernel called for fusion: " << fusion.name();
   bool use_new_xtile_lowering = fusion.GetModule()
                                     ->config()

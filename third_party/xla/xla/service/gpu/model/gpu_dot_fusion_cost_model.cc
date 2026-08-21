@@ -33,11 +33,11 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
@@ -50,9 +50,12 @@ limitations under the License.
 
 namespace xla::gpu::gpu_dot_fusion_cost_model {
 
+using ::xla::xtile::BlockLevelParameters;
+
 namespace detail {
 
 namespace {
+
 using ::xla::primitive_util::BitWidth;
 
 // Lookup table entry mapping DMA transfer size to fractional saturation
