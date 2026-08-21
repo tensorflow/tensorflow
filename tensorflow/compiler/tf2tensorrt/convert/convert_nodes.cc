@@ -1255,10 +1255,9 @@ Status Converter::BuildCudaEngine(
     TRTInt8Calibrator* calibrator, TrtShapeOptimizationProfile* profiles) {
   tensorflow::profiler::AnnotatedTraceMe activity(
       [&]() {
-        return tensorflow::profiler::TraceMeOpOverride("TRTEngineOp",
-                                                       "BuildEngine");
+        return tsl::profiler::TraceMeOpOverride("TRTEngineOp", "BuildEngine");
       },
-      tensorflow::profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
 
   if (AbortCudaEngineBuild()) {
     return errors::Aborted(
@@ -6036,20 +6035,20 @@ Status ConvertSegmentToGraphDef(
     const Graph* graph, const grappler::GraphProperties& graph_properties,
     const std::vector<const Node*>& subgraph_nodes,  // In topological order
     EngineInfo* engine_info) {
-  tensorflow::profiler::TraceMe activity(
-      "ConvertSegmentToGraphDef", tensorflow::profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("ConvertSegmentToGraphDef",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   std::vector<EngineConnection>* connections = &engine_info->connections;
   GraphDef* segment_def = &engine_info->segment_graph_def;
   std::set<string> marker_nodes;
   // Update connection shapes/data types and add corresponding input/output
   // nodes in the segment graphdef.
   for (size_t i = 0; i < connections->size(); ++i) {
-    tensorflow::profiler::TraceMe activity(
+    tsl::profiler::TraceMe activity(
         [&] {
           return StrCat("Constructing TRTEngine IO: ", i + 1, "/",
                         connections->size());
         },
-        tensorflow::profiler::TraceMeLevel::kInfo);
+        tsl::profiler::TraceMeLevel::kInfo);
     auto& connection = connections->at(i);
     if (connection.is_control_edge()) continue;
     auto outside_node = graph->FindNodeId(connection.outside_id);
@@ -6126,12 +6125,12 @@ Status ConvertSegmentToGraphDef(
   string local_scope = subgraph_nodes.front()->name();
   int i = 0;
   for (const Node* node : subgraph_nodes) {
-    tensorflow::profiler::TraceMe activity(
+    tsl::profiler::TraceMe activity(
         [&] {
           return StrCat("Copy Node to Subgraph: ", ++i, "/",
                         subgraph_nodes.size());
         },
-        tensorflow::profiler::TraceMeLevel::kInfo);
+        tsl::profiler::TraceMeLevel::kInfo);
     local_scope = GetCommonNameScope(local_scope, node->name());
     old_to_new_id_map[node->id()] = segment_def->node_size();
     auto snode = segment_def->add_node();
@@ -6140,12 +6139,12 @@ Status ConvertSegmentToGraphDef(
   }
   // Update the inputs of the new input nodes to point to placeholder nodes.
   for (int i = 0; i < connections->size(); ++i) {
-    tensorflow::profiler::TraceMe activity(
+    tsl::profiler::TraceMe activity(
         [&] {
           return StrCat("Updating Subgraph Input: ", i + 1, "/",
                         connections->size());
         },
-        tensorflow::profiler::TraceMeLevel::kInfo);
+        tsl::profiler::TraceMeLevel::kInfo);
 
     auto& connection = connections->at(i);
     if (connection.is_control_edge() || !connection.is_input_edge) continue;
@@ -6161,9 +6160,8 @@ Status ConvertSegmentToGraphDef(
 
   std::set<string> subgraph_node_names;
   {
-    tensorflow::profiler::TraceMe activity(
-        "Constructing subgraph_node_names set: ",
-        tensorflow::profiler::TraceMeLevel::kInfo);
+    tsl::profiler::TraceMe activity("Constructing subgraph_node_names set: ",
+                                    tsl::profiler::TraceMeLevel::kInfo);
 
     for (const Node* node : subgraph_nodes) {
       subgraph_node_names.insert(node->name());
@@ -6172,12 +6170,12 @@ Status ConvertSegmentToGraphDef(
 
   // Remove control inputs that are not inside the segment.
   for (int i = 0; i < segment_def->node_size(); ++i) {
-    tensorflow::profiler::TraceMe activity(
+    tsl::profiler::TraceMe activity(
         [&] {
           return StrCat("Removing outside to subgraph control inputs: ", i + 1,
                         "/", segment_def->node_size());
         },
-        tensorflow::profiler::TraceMeLevel::kInfo);
+        tsl::profiler::TraceMeLevel::kInfo);
     auto snode = segment_def->mutable_node(i);
     const int input_size = snode->input_size();
     int input_idx = 0;
