@@ -743,8 +743,7 @@ bool DebugFileIO::requestDiskByteUsage(uint64_t bytes) {
         strlen(env_tfdbg_disk_bytes_limit) == 0) {
       global_disk_bytes_limit_ = kDefaultGlobalDiskBytesLimit;
     } else {
-      strings::safe_strtou64(string(env_tfdbg_disk_bytes_limit),
-                             &global_disk_bytes_limit_);
+      absl::SimpleAtoi(env_tfdbg_disk_bytes_limit, &global_disk_bytes_limit_);
     }
   }
 
