@@ -69,6 +69,12 @@ struct MaskFor<::xla::bfloat16> {
   static constexpr type kStartBits = 0x3C00;  // bfloat16: 1/128
 };
 
+template <>
+struct MaskFor<uint64_t> {
+  using type = uint64_t;
+  static constexpr type kStartBits = 1000;  // uint64_t: arbitrary point
+};
+
 // Fills vector with unique values using bit patterns starting from kStartBits
 template <typename T>
 void append_unique_numbers(size_t count, std::vector<T>& arr) {
@@ -152,5 +158,7 @@ TEST(RaftSelectKExecTest, SelectKFloat) { RunSelectKTest<float>(); }
 TEST(RaftSelectKExecTest, SelectKBFloat16) {
   RunSelectKTest<::xla::bfloat16>();
 }
+
+TEST(RaftSelectKExecTest, SelectKUint64) { RunSelectKTest<uint64_t>(); }
 
 }  // namespace xla::gpu

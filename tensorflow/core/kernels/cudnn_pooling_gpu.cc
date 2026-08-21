@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/conv_3d.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/numeric_options_utils.h"
 
 typedef Eigen::GpuDevice GPUDevice;
@@ -196,6 +197,15 @@ void DnnPooling3dGradImpl(
   // If input is empty, we are done.
   if (tensor_in_shape.num_elements() == 0) {
     return;
+  }
+
+  // If output size has 0, we can skip as well to avoid CUDNN errors.
+  for (int64_t dim : output_size) {
+    if (dim == 0) {
+      functor::SetZeroFunctor<GPUDevice, T>()(
+          context->eigen_device<GPUDevice>(), input_backprop->flat<T>());
+      return;
+    }
   }
 
   const int64_t in_batch = GetTensorDim(tensor_in_shape, data_format, 'N');

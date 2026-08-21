@@ -201,6 +201,7 @@ tf_class {
   member_method {
     name: "from_config"
     argspec: "args=[\'cls\', \'config\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "get_config"
@@ -253,6 +254,7 @@ tf_class {
   member_method {
     name: "with_name_scope"
     argspec: "args=[\'cls\', \'method\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "zero_state"

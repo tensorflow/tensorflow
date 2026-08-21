@@ -87,7 +87,7 @@ class PadV2OpConstModel : public PadOpModel<T1, T2> {
     this->paddings_ =
         this->AddConstInput(GetTensorType<T2>(), paddings, paddings_shape);
     this->constant_values_ =
-        this->AddConstInput(GetTensorType<T1>(), {constant_values}, {1});
+        this->AddConstInput(input.type, {constant_values}, {1});
 
     this->output_ = this->AddOutput(output);
 
@@ -120,8 +120,8 @@ class PadV2OpConstModel : public PadOpModel<T1, T2> {
 //    PadOpDynamicModel m(input_shape, paddings_shape, paddings_data);
 //    m.SetInput(input_data);
 //    m.Invoke();
-template <typename T>
-class PadOpConstModel : public PadOpModel<float, T> {
+template <typename T, typename RegularInputOutput = float>
+class PadOpConstModel : public PadOpModel<RegularInputOutput, T> {
  public:
   PadOpConstModel(const TensorData& input,
                   std::initializer_list<int> paddings_shape,
@@ -137,6 +137,27 @@ class PadOpConstModel : public PadOpModel<float, T> {
     this->BuildInterpreter({input.shape});
   }
 };
+
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+void TestFloat8Pad(TensorType tensor_type) {
+  PadOpConstModel<int32_t, uint8_t> pad({tensor_type, {2}}, {1, 2}, {1, 1},
+                                        {tensor_type});
+  pad.SetInput({0x38, 0xbc});
+  ASSERT_EQ(pad.Invoke(), kTfLiteOk);
+  EXPECT_THAT(pad.GetOutput(), ElementsAreArray({0x00, 0x38, 0xbc, 0x00}));
+
+  PadV2OpConstModel<uint8_t, int32_t> pad_v2({tensor_type, {2}}, {1, 2}, {1, 1},
+                                             0x7e, {tensor_type});
+  pad_v2.SetInput({0x38, 0xbc});
+  ASSERT_EQ(pad_v2.Invoke(), kTfLiteOk);
+  EXPECT_THAT(pad_v2.GetOutput(), ElementsAreArray({0x7e, 0x38, 0xbc, 0x7e}));
+}
+
+TEST(Float8PadOpTest, PadAndPadV2) {
+  TestFloat8Pad(TensorType_FLOAT8_E4M3FN);
+  TestFloat8Pad(TensorType_FLOAT8_E5M2);
+}
+#endif
 
 // Test case where paddings is a non-const tensor.
 template <typename RegularInputOutput, typename PaddingIntegerType>

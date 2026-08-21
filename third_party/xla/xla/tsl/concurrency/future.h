@@ -29,6 +29,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/base/call_once.h"
 #include "absl/base/no_destructor.h"
 #include "absl/base/nullability.h"
 #include "absl/base/optimization.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "absl/functional/bind_front.h"
 #include "absl/meta/type_traits.h"
 #include "absl/status/status.h"
+#include "absl/status/status_builder.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/tsl/concurrency/async_value.h"
@@ -630,6 +632,9 @@ using map_result_t = typename MapResult<R>::T;  // NOLINT
 template <typename T>
 class PromiseMaker;
 
+template <typename T>
+class PromiseOnceMaker;
+
 }  // namespace internal
 
 // Future<T> is a simple future that is returned by  APIs that enqueue
@@ -1125,6 +1130,102 @@ template <int&... ExplicitParameterBarrier, typename F,
           typename R = std::invoke_result_t<F>>
 [[nodiscard]] auto MakeFutureOn(Executor& executor, F&& f) {
   return MakeFutureOn<internal::map_result_t<R>>(executor, std::forward<F>(f));
+}
+
+// Wrapper over `tsl::Promise<T>` that takes the value from the first `Set` call
+// and ignores all subsequent calls.
+template <typename T = void>
+class [[nodiscard]] PromiseOnce {
+ public:
+  PromiseOnce() = default;
+
+  explicit operator bool() const { return rep_ != nullptr; }
+
+  // Returns true if this promise is the unique reference to the promise. See
+  // `Promise<T>::IsUniqueReference()` for more details.
+  bool IsUniqueReference() {
+    return rep_ != nullptr && rep_->promise.IsUniqueReference();
+  }
+
+  // Fulfills the promise with a given value upon the first call. All subsequent
+  // calls are ignored. Returns true if the promise was fulfilled by this call.
+  template <typename U>
+  bool Set(U&& value) {
+    bool set = false;
+    if (rep_ != nullptr) {
+      absl::call_once(rep_->once, [&]() {
+        rep_->promise.Set(std::forward<U>(value));
+        set = true;
+      });
+    }
+    return set;
+  }
+
+  // Fulfills the promise with an OK status upon the first call. All subsequent
+  // calls are ignored. Returns true if the promise was fulfilled by this call.
+  template <typename = std::enable_if<std::is_void_v<T>>>
+  bool Set() {
+    return Set(absl::OkStatus());
+  }
+
+  // Returns a future associated with the promise.
+  [[nodiscard]] Future<T> future(
+      FutureHelpers::OnBlockStart on_block_start = nullptr,
+      FutureHelpers::OnBlockEnd on_block_end = nullptr) const {
+    return rep_->promise.future(std::move(on_block_start),
+                                std::move(on_block_end));
+  }
+
+ private:
+  friend class internal::PromiseOnceMaker<T>;
+
+  struct Rep {
+    explicit Rep(tsl::Promise<T> promise) : promise(std::move(promise)) {}
+
+    ~Rep() {
+      absl::call_once(once, [&]() {
+        if (!promise.IsUniqueReference()) {
+          promise.Set(
+              absl::InternalError("PromiseOnce destroyed without being set"));
+        }
+      });
+    }
+
+    absl::once_flag once;
+    Promise<T> promise;
+  };
+
+  explicit PromiseOnce(std::shared_ptr<Rep> rep) : rep_(std::move(rep)) {}
+
+  absl_nullable std::shared_ptr<Rep> rep_;
+};
+
+namespace internal {
+
+// Helper class to access private PromiseOnce constructor.
+template <typename T>
+class PromiseOnceMaker {
+ public:
+  static std::pair<PromiseOnce<T>, Future<T>> Make(
+      FutureHelpers::OnBlockStart on_block_start,
+      FutureHelpers::OnBlockEnd on_block_end) {
+    auto [promise, future] =
+        tsl::MakePromise<T>(std::move(on_block_start), std::move(on_block_end));
+    return {
+        PromiseOnce<T>(
+            std::make_shared<typename PromiseOnce<T>::Rep>(std::move(promise))),
+        std::move(future),
+    };
+  }
+};
+
+}  // namespace internal
+
+// Constructs a pair of connected `PromiseOnce<T>` and `tsl::Future<T>`. Setting
+// the returned promise will fulfill the connected future.
+template <typename T = void>
+std::pair<PromiseOnce<T>, tsl::Future<T>> MakePromiseOnce() {
+  return ::tsl::internal::PromiseOnceMaker<T>::Make(nullptr, nullptr);
 }
 
 //===----------------------------------------------------------------------===//

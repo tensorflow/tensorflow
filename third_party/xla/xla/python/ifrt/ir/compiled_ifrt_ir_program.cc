@@ -25,9 +25,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -89,7 +89,7 @@ class FutureExecutor : public tsl::Executor {
 
 absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> BuildDefaultLayout(
     const ArraySpec& arg_spec, Client* client) {
-  ASSIGN_OR_RETURN(auto shard_shape,
+  ABSL_ASSIGN_OR_RETURN(auto shard_shape,
                    arg_spec.sharding->GetShardShape(arg_spec.shape));
   return client->GetDefaultPjRtLayout(
       arg_spec.dtype, shard_shape.dims(),
@@ -109,7 +109,7 @@ GetParameterLayoutFromLoadedExecutable(
   auto atom_program_name = loaded_exec_op.getSymName().str();
   auto exec_it = atom_program_executables.find(atom_program_name);
   if (exec_it != atom_program_executables.end()) {
-    ASSIGN_OR_RETURN(auto exec_layouts, exec_it->second->GetParameterLayouts());
+    ABSL_ASSIGN_OR_RETURN(auto exec_layouts, exec_it->second->GetParameterLayouts());
     return std::move(exec_layouts[param_operand_number]);
   }
   return absl::FailedPreconditionError(
@@ -129,7 +129,7 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module, Client* client,
     std::shared_ptr<const xla::PjRtLayout> parameter_layout;
     if (arg.use_empty()) {
       // The argument is not used. Return device default layout.
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           parameter_layout,
           BuildDefaultLayout(in_specs[arg.getArgNumber()], client));
     } else {
@@ -155,7 +155,7 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module, Client* client,
               OperationToString(use.getOwner(), mlir::OpPrintingFlags())));
         }
         auto call_op = llvm::cast<ifrt::CallLoadedExecutableOp>(use.getOwner());
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             std::shared_ptr<const xla::PjRtLayout> consumer_layout,
             GetParameterLayoutFromLoadedExecutable(
                 client, atom_program_executables, in_specs, out_specs,
@@ -176,7 +176,7 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module, Client* client,
       }
       if (parameter_layout && found_copy_arrays_user) {
         // Need to check if the layout is compatible with the CopyArraysOp.
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             std::shared_ptr<const xla::PjRtLayout> default_layout,
             BuildDefaultLayout(in_specs[arg.getArgNumber()], client));
         if (*parameter_layout != *default_layout) {
@@ -191,7 +191,7 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module, Client* client,
       }
       if (!parameter_layout) {
         // The argument was skipped above, meaning only used by ReturnOp.
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             parameter_layout,
             BuildDefaultLayout(in_specs[arg.getArgNumber()], client));
       }
@@ -217,7 +217,7 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module, Client* client,
       auto atom_program_name = loaded_exec_op.getSymName().str();
       auto exec_it = atom_program_executables.find(atom_program_name);
       if (exec_it != atom_program_executables.end()) {
-        ASSIGN_OR_RETURN(auto exec_layouts,
+        ABSL_ASSIGN_OR_RETURN(auto exec_layouts,
                          exec_it->second->GetOutputLayouts());
         // Since this method is a temporary solution, we are ok with calling
         // GetOutputLayouts for an executable multiple times. In this way, we
@@ -231,7 +231,7 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module, Client* client,
     } else if (llvm::isa<ifrt::CopyArraysOp>(op_result.getOwner())) {
       // The output is produced by a CopyArraysOp. Must be device
       // default layout.
-      ASSIGN_OR_RETURN(out_spec.layout, BuildDefaultLayout(out_spec, client));
+      ABSL_ASSIGN_OR_RETURN(out_spec.layout, BuildDefaultLayout(out_spec, client));
     } else {
       return absl::FailedPreconditionError(absl::StrFormat(
           "Layouts are supported only for programs that have outputs produced "
@@ -258,7 +258,7 @@ CompiledIfrtIrProgram::Create(
   std::shared_ptr<IfrtIRCompileOptions> compile_options =
       std::move(ifrt_ir_compile_options);
 
-  ASSIGN_OR_RETURN(DeviceListRef device_list,
+  ABSL_ASSIGN_OR_RETURN(DeviceListRef device_list,
                    LookUpDevices(client, compile_options->device_assignments));
 
   mlir::ModuleOp mlir_module = ifrt_ir_program->mlir_module;
@@ -294,7 +294,7 @@ CompiledIfrtIrProgram::Create(
       compile_pipeline_options.platform_names.push_back(
           std::string(device->PlatformName()));
     }
-    RETURN_IF_ERROR(createOutlinedAtomProgramsToCompiledPipeline(
+    ABSL_RETURN_IF_ERROR(createOutlinedAtomProgramsToCompiledPipeline(
         pm, std::move(atom_program_compiler), compile_pipeline_options,
         compile_options, atom_executable_future_map,
         std::move(bound_executable_map)));
@@ -315,7 +315,7 @@ CompiledIfrtIrProgram::Create(
   if (ifrt_ir_program->OwnsMlirContext()) {
     auto context = std::make_unique<mlir::MLIRContext>(
         mlir::MLIRContext::Threading::DISABLED);
-    ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> cloned_module,
+    ABSL_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> cloned_module,
                      CloneModuleIntoContext(mlir_module, *context));
     ifrt_ir_program = std::make_unique<xla::ifrt::IfrtIRProgram>(
         std::move(context), std::move(cloned_module));
@@ -327,14 +327,14 @@ CompiledIfrtIrProgram::Create(
   std::vector<ArraySpec> in_specs;
   in_specs.reserve(main_func.getNumArguments());
   for (const mlir::Type arg_type : main_func.getArgumentTypes()) {
-    ASSIGN_OR_RETURN(ArraySpec spec,
+    ABSL_ASSIGN_OR_RETURN(ArraySpec spec,
                      ArraySpecFromMlirType(arg_type, client, device_list));
     in_specs.push_back(std::move(spec));
   }
   std::vector<ArraySpec> out_specs;
   out_specs.reserve(main_func.getNumResults());
   for (const mlir::Type result_type : main_func.getResultTypes()) {
-    ASSIGN_OR_RETURN(ArraySpec spec,
+    ABSL_ASSIGN_OR_RETURN(ArraySpec spec,
                      ArraySpecFromMlirType(result_type, client, device_list));
     out_specs.push_back(std::move(spec));
   }
@@ -364,7 +364,7 @@ CompiledIfrtIrProgram::Create(
     auto atom_executable_map = std::make_shared<AtomExecutableMap>();
     for (const auto& [key, exec] : *atom_executable_future_map) {
       CHECK(exec.IsReady());
-      ASSIGN_OR_RETURN(LoadedExecutableRef executable, exec.Await());
+      ABSL_ASSIGN_OR_RETURN(LoadedExecutableRef executable, exec.Await());
       atom_executable_map->insert({key, std::move(executable)});
     }
 
@@ -380,11 +380,11 @@ CompiledIfrtIrProgram::Create(
       }
     }
 
-    ASSIGN_OR_RETURN(auto interpreter,
+    ABSL_ASSIGN_OR_RETURN(auto interpreter,
                      ProgramInterpreter::Create(
                          client, program_name, ifrt_ir_program->mlir_module,
                          atom_executable_map, device_list));
-    ASSIGN_OR_RETURN(auto execute_fn, interpreter->BuildExecuteFn());
+    ABSL_ASSIGN_OR_RETURN(auto execute_fn, interpreter->BuildExecuteFn());
 
     return std::make_shared<CompiledIfrtIrProgram>(CompiledIfrtIrProgram{
         /*program_name=*/std::move(program_name),

@@ -924,6 +924,12 @@ class BufferAssigner {
             buffer_assignment::
                 AssignmentAlgorithmForComputationsWithoutOrderingProto::DEFAULT;
 
+    // Color of "view" buffers that are pointer stand-ins aliasing into another
+    // allocation (see memory_space_assignment::Options::dus_view_color for the
+    // definition of views). Buffers of this color are skipped during
+    // assignment: they get no allocation of their own. std::nullopt disables
+    // the behavior.
+    std::optional<BufferValue::Color> dus_view_color;
     BufferOrder buffer_order = BufferOrder::kBiggestFirst;
 
     buffer_assignment::BufferAssignmentAlgorithmProto::Value

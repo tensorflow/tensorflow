@@ -27,6 +27,8 @@ limitations under the License.
 
 namespace xla {
 
+class HloInstruction;
+
 // A pass that identifies non-inlineable computations, extracts them into
 // separate modules, and replaces calls in the main module with kCustomCall
 // instructions.
@@ -36,6 +38,9 @@ class HloModuleSplitter : public HloModulePass {
   ~HloModuleSplitter() override = default;
 
   absl::string_view name() const override { return "hlo-module-splitter"; }
+
+  // Returns true if the instruction is a call that should trigger splitting.
+  static bool ShouldSplitCall(const HloInstruction* instruction);
 
   // Returns the submodules extracted by this pass.
   std::vector<std::unique_ptr<HloModule>>& submodules() { return submodules_; }

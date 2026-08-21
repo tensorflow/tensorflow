@@ -67,7 +67,6 @@ class CollectiveKernelThunk : public TracedCommand {
   CollectiveKernelThunk(
       ThunkInfo info, CollectiveConfig collective_config,  //
       CollectiveKernelSpec kernel_spec,                    //
-      bool is_async,                                       //
       std::vector<CollectiveThunk::Buffer> buffers,        //
       bool is_collective_kernel_enabled,                   //
       absl::string_view kernel_name,                       //
@@ -77,7 +76,6 @@ class CollectiveKernelThunk : public TracedCommand {
       bool use_pdl = false)
       : TracedCommand{Thunk::kCollectiveKernel, info},
         collective_kernel_enabled_(is_collective_kernel_enabled),
-        is_async_(is_async),
         collective_config_(std::move(collective_config)),
         kernel_spec_(std::move(kernel_spec)),
         launch_dimensions_(launch_dimensions),
@@ -96,7 +94,6 @@ class CollectiveKernelThunk : public TracedCommand {
   absl::string_view kernel_name() const { return kernel_name_; }
 
   bool collective_kernel_enabled() const { return collective_kernel_enabled_; }
-  bool is_async() const { return is_async_; }
   LaunchDimensions launch_dimensions() const { return launch_dimensions_; }
 
   bool use_pdl() const { return use_pdl_; }
@@ -163,8 +160,6 @@ class CollectiveKernelThunk : public TracedCommand {
 
   // Whether the one-shot kernel is enabled.
   const bool collective_kernel_enabled_;
-  // Whether the collective is run on an async stream.
-  const bool is_async_;
   // Collective config being used. Copied over to avoid lifetime issues.
   const CollectiveConfig collective_config_;
   // Operation specific parameters.

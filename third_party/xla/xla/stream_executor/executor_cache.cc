@@ -20,10 +20,10 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -43,7 +43,7 @@ absl::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
   }
 
   VLOG(2) << "building executor";
-  ASSIGN_OR_RETURN(std::unique_ptr<StreamExecutor> result, factory());
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<StreamExecutor> result, factory());
   absl::MutexLock lock(mutex_);
   auto [it, inserted] = cache_.emplace(ordinal, std::move(result));
   return it->second.get();

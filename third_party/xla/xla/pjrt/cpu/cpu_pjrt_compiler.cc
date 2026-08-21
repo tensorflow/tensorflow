@@ -22,9 +22,9 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
@@ -52,10 +52,10 @@ absl::StatusOr<const CpuTopologyDescription*> GetCpuTopology(
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> CpuPjRtCompiler::Compile(
     CompileOptions options, const XlaComputation& computation,
     const PjRtTopologyDescription& topology, PjRtClient* client) {
-  ASSIGN_OR_RETURN(const CpuTopologyDescription* cpu_topology,
+  ABSL_ASSIGN_OR_RETURN(const CpuTopologyDescription* cpu_topology,
                    GetCpuTopology(topology));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto executable,
       CompileCpuExecutable(computation, std::move(options), *cpu_topology));
   return std::unique_ptr<PjRtExecutable>(std::move(executable));
@@ -64,10 +64,10 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> CpuPjRtCompiler::Compile(
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> CpuPjRtCompiler::Compile(
     CompileOptions options, MaybeOwningMlirModule module,
     const PjRtTopologyDescription& topology, PjRtClient* client) {
-  ASSIGN_OR_RETURN(const CpuTopologyDescription* cpu_topology,
+  ABSL_ASSIGN_OR_RETURN(const CpuTopologyDescription* cpu_topology,
                    GetCpuTopology(topology));
 
-  ASSIGN_OR_RETURN(auto executable,
+  ABSL_ASSIGN_OR_RETURN(auto executable,
                    CompileCpuExecutable(std::move(module), std::move(options),
                                         *cpu_topology));
   return std::unique_ptr<PjRtExecutable>(std::move(executable));

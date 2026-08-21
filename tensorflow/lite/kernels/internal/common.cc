@@ -15,10 +15,22 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/common.h"
 
+#include "tensorflow/lite/core/macros.h"
+
 namespace tflite {
+
+// Note on TFLITE_NO_SANITIZE_INTEGER_OVERFLOW below:
+//
+// These MultiplyByQuantizedMultiplier overloads do not intentionally wrap, so
+// they deliberately do NOT use WrappingMul/WrappingAdd. Under their documented
+// input contract (asserted below) the arithmetic does not overflow; the
+// attribute only silences UBSan reports at the contract's boundaries. Using
+// wrapping here would be wrong -- it would mask a contract violation (a real
+// bug) instead of letting it surface.
 
 // Single-rounding MultiplyByQuantizedMultiplier
 #if TFLITE_SINGLE_ROUNDING
+TFLITE_NO_SANITIZE_INTEGER_OVERFLOW
 int32_t MultiplyByQuantizedMultiplier(int32_t x, int32_t quantized_multiplier,
                                       int shift) {
   TFLITE_DCHECK(quantized_multiplier >= 0);
@@ -34,6 +46,7 @@ int32_t MultiplyByQuantizedMultiplier(int32_t x, int32_t quantized_multiplier,
   return static_cast<int32_t>(result);
 }
 
+TFLITE_NO_SANITIZE_INTEGER_OVERFLOW
 int32_t MultiplyByQuantizedMultiplier(int64_t x, int32_t quantized_multiplier,
                                       int shift) {
   // Inputs:
@@ -64,6 +77,7 @@ int32_t MultiplyByQuantizedMultiplier(int64_t x, int32_t quantized_multiplier,
 }
 // Double-rounding MultiplyByQuantizedMultiplier
 #else
+TFLITE_NO_SANITIZE_INTEGER_OVERFLOW
 int32_t MultiplyByQuantizedMultiplier(int32_t x, int32_t quantized_multiplier,
                                       int shift) {
   using gemmlowp::RoundingDivideByPOT;
@@ -75,6 +89,7 @@ int32_t MultiplyByQuantizedMultiplier(int32_t x, int32_t quantized_multiplier,
                              right_shift);
 }
 
+TFLITE_NO_SANITIZE_INTEGER_OVERFLOW
 int32_t MultiplyByQuantizedMultiplier(int64_t x, int32_t quantized_multiplier,
                                       int shift) {
   // Inputs:

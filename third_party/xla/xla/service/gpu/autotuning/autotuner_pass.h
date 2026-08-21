@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/codegen_orchestrator.h"
 #include "xla/backends/autotuner/config_assigner.h"
@@ -54,9 +55,15 @@ ConfigAssigner::Options GetConfigAssignerOptions(
 CodegenOrchestrator::Options GetCodegenOrchestratorOptions(
     const DebugOptions& debug_options);
 
-ProfileOptions GetProfileOptions(
-    const DebugOptions& debug_options,
-    const ConfigAssigner::Options& config_assigner_options);
+// Deduce autotuner settings from DebugOptions, if the device doesn't support
+// buffer checking, explicitly set is_buffer_check_supported to false.
+Autotuner::Options GetAutotunerOptions(const DebugOptions& debug_options,
+                                       bool is_buffer_check_supported = true);
+
+// Deduce profile options from DebugOptions, if the device doesn't support
+// buffer checking, explicitly set is_buffer_check_supported to false.
+ProfileOptions GetProfileOptions(const DebugOptions& debug_options,
+                                 bool is_buffer_check_supported = true);
 
 InstructionFilterFn GetShouldAutotuneInstructionFn(
     const DebugOptions& debug_options,

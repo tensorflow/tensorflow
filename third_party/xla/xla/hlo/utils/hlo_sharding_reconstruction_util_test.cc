@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -58,8 +58,8 @@ TEST(HloShardingReconstructionUtilTest, FactorManualShardingTiled) {
       {1, literal1},
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(ManualShardingInfo info,
-                          FactorManualSharding(shards, sharding));
+  ASSERT_OK_AND_ASSIGN(ManualShardingInfo info,
+                       FactorManualSharding(shards, sharding));
 
   EXPECT_THAT(info.manual_shard_groups, UnorderedElementsAre(Key(0)));
   EXPECT_EQ(info.unshard_sharding, sharding);
@@ -78,8 +78,8 @@ TEST(HloShardingReconstructionUtilTest, FactorManualShardingPureManual) {
       {1, literal1},
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(ManualShardingInfo info,
-                          FactorManualSharding(shards, sharding));
+  ASSERT_OK_AND_ASSIGN(ManualShardingInfo info,
+                       FactorManualSharding(shards, sharding));
 
   EXPECT_THAT(info.manual_shard_groups, UnorderedElementsAre(Key(0), Key(1)));
   EXPECT_TRUE(info.has_manual_sharding);
@@ -104,8 +104,8 @@ TEST(HloShardingReconstructionUtilTest, FactorManualShardingNamedManual) {
       {3, dummy},
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(ManualShardingInfo info,
-                          FactorManualSharding(shards, sharding));
+  ASSERT_OK_AND_ASSIGN(ManualShardingInfo info,
+                       FactorManualSharding(shards, sharding));
 
   EXPECT_THAT(info.manual_shard_groups, UnorderedElementsAre(Key(0), Key(1)));
   EXPECT_THAT(info.manual_shard_groups.at(0),
@@ -140,8 +140,8 @@ TEST(HloShardingReconstructionUtilTest, FactorManualShardingNamedNoManual) {
       {3, dummy},
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(ManualShardingInfo info,
-                          FactorManualSharding(shards, sharding));
+  ASSERT_OK_AND_ASSIGN(ManualShardingInfo info,
+                       FactorManualSharding(shards, sharding));
 
   EXPECT_THAT(info.manual_shard_groups, UnorderedElementsAre(Key(0)));
   EXPECT_THAT(info.manual_shard_groups.at(0), SizeIs(4));
@@ -168,8 +168,8 @@ TEST(HloShardingReconstructionUtilTest,
       {4, dummy},
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(ManualShardingInfo info,
-                          FactorManualSharding(shards, sharding));
+  ASSERT_OK_AND_ASSIGN(ManualShardingInfo info,
+                       FactorManualSharding(shards, sharding));
 
   // Only shard 0 should be processed. Shard 4 should be skipped.
   EXPECT_THAT(info.manual_shard_groups, UnorderedElementsAre(Key(0)));
@@ -198,8 +198,8 @@ TEST(HloShardingReconstructionUtilTest, FactorManualShardingSubgroupMixed) {
   // x=0: y=0 (device 0), y=1 (device 1)  -> manual_id 0
   // x=1: y=0 (device 2), y=1 (device 3)  -> manual_id 1
 
-  TF_ASSERT_OK_AND_ASSIGN(ManualShardingInfo info,
-                          FactorManualSharding(shards, sharding));
+  ASSERT_OK_AND_ASSIGN(ManualShardingInfo info,
+                       FactorManualSharding(shards, sharding));
 
   EXPECT_THAT(info.manual_shard_groups, UnorderedElementsAre(Key(0), Key(1)));
   EXPECT_THAT(info.manual_shard_groups.at(0),
@@ -223,8 +223,8 @@ TEST(HloShardingReconstructionUtilTest, UnshardLiteralReplicated) {
       std::make_shared<Literal>(LiteralUtil::CreateR1<float>({1.0f, 2.0f}));
   std::vector<ShardTensor> shards = {{0, lit}};
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal result,
-                          UnshardLiteral(shards, sharding, unsharded_shape));
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       UnshardLiteral(shards, sharding, unsharded_shape));
 
   EXPECT_EQ(result.Get<float>({0}), 1.0f);
   EXPECT_EQ(result.Get<float>({1}), 2.0f);
@@ -247,8 +247,8 @@ TEST(HloShardingReconstructionUtilTest, UnshardLiteralTiled) {
       {3, create_shard(3.0f)},
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal result,
-                          UnshardLiteral(shards, sharding, unsharded_shape));
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       UnshardLiteral(shards, sharding, unsharded_shape));
 
   EXPECT_EQ(result.Get<float>({0, 0}), 0.0f);
   EXPECT_EQ(result.Get<float>({0, 2}), 1.0f);
@@ -277,16 +277,16 @@ TEST(HloShardingReconstructionUtilTest, FullReconstructionFlow) {
   shards.push_back({2, create_shard(2, 2.0f)});
   shards.push_back({3, create_shard(3, 3.0f)});
 
-  TF_ASSERT_OK_AND_ASSIGN(ManualShardingInfo info,
-                          FactorManualSharding(shards, sharding));
+  ASSERT_OK_AND_ASSIGN(ManualShardingInfo info,
+                       FactorManualSharding(shards, sharding));
 
   Shape grouped_unsharded_shape = ShapeUtil::MakeShape(F32, {4});
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal group0_lit,
       UnshardLiteral(info.manual_shard_groups.at(0), info.unshard_sharding,
                      grouped_unsharded_shape));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal group1_lit,
       UnshardLiteral(info.manual_shard_groups.at(1), info.unshard_sharding,
                      grouped_unsharded_shape));
@@ -316,8 +316,8 @@ TEST(HloShardingReconstructionUtilTest, FactorManualShardingSubAxis) {
     shards.push_back({i, dummy});
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(ManualShardingInfo info,
-                          FactorManualSharding(shards, sharding));
+  ASSERT_OK_AND_ASSIGN(ManualShardingInfo info,
+                       FactorManualSharding(shards, sharding));
 
   EXPECT_THAT(info.manual_shard_groups, UnorderedElementsAre(Key(0), Key(1)));
   // manual_id 0: x=0 (shard 0), x=2 (shard 2)
@@ -338,8 +338,8 @@ TEST(HloShardingReconstructionUtilTest, FactorManualShardingSubAxis) {
 TEST(HloShardingReconstructionUtilTest, FactorManualShardingEmptyShards) {
   HloSharding sharding = HloSharding::IotaTile({2});
   std::vector<ShardTensor> shards;
-  TF_ASSERT_OK_AND_ASSIGN(ManualShardingInfo info,
-                          FactorManualSharding(shards, sharding));
+  ASSERT_OK_AND_ASSIGN(ManualShardingInfo info,
+                       FactorManualSharding(shards, sharding));
   EXPECT_THAT(info.manual_shard_groups, SizeIs(1));
   EXPECT_THAT(info.manual_shard_groups.at(0), IsEmpty());
 }
@@ -356,8 +356,8 @@ TEST(HloShardingReconstructionUtilTest, FactorManualShardingSubgroupV2) {
     shards.push_back({i, dummy});
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(ManualShardingInfo info,
-                          FactorManualSharding(shards, sharding));
+  ASSERT_OK_AND_ASSIGN(ManualShardingInfo info,
+                       FactorManualSharding(shards, sharding));
 
   EXPECT_THAT(info.manual_shard_groups, UnorderedElementsAre(Key(0), Key(1)));
   EXPECT_THAT(info.manual_shard_groups.at(0),
@@ -421,8 +421,8 @@ TEST(HloShardingReconstructionUtilTest, UnshardLiteralPadded) {
       {1, create_shard(2.0f, 2)},
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal result,
-                          UnshardLiteral(shards, sharding, unsharded_shape));
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       UnshardLiteral(shards, sharding, unsharded_shape));
 
   EXPECT_EQ(result.Get<float>({0}), 1.0f);
   EXPECT_EQ(result.Get<float>({1}), 1.0f);
@@ -449,13 +449,53 @@ TEST(HloShardingReconstructionUtilTest, UnshardLiteralManualSubgroup) {
       {3, create_shard(4.0f)},
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal result,
-                          UnshardLiteral(shards, sharding, unsharded_shape));
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       UnshardLiteral(shards, sharding, unsharded_shape));
 
   EXPECT_EQ(result.Get<float>({0}), 1.0f);
   EXPECT_EQ(result.Get<float>({1}), 1.0f);
   EXPECT_EQ(result.Get<float>({2}), 3.0f);
   EXPECT_EQ(result.Get<float>({3}), 3.0f);
+}
+
+TEST(HloShardingReconstructionUtilTest, GetLogicalDeviceIdsTest) {
+  // 1. Tiled sharding V1/V2
+  {
+    HloSharding sharding = HloSharding::IotaTile({2, 3});
+    absl::flat_hash_set<int64_t> device_ids = GetLogicalDeviceIds(sharding);
+    EXPECT_THAT(device_ids, testing::UnorderedElementsAre(0, 1, 2, 3, 4, 5));
+  }
+
+  // 2. Replicated sharding: should return empty (since it does not partition)
+  {
+    HloSharding sharding = HloSharding::Replicate();
+    absl::flat_hash_set<int64_t> device_ids = GetLogicalDeviceIds(sharding);
+    EXPECT_TRUE(device_ids.empty());
+  }
+
+  // 3. NamedSharding / V3
+  {
+    Mesh mesh({2, 2}, {"x", "y"});
+    NamedSharding ns(
+        mesh,
+        {NamedSharding::DimensionSharding({AxisRef(1)}, /*is_closed=*/true),
+         NamedSharding::DimensionSharding({}, /*is_closed=*/true)},
+        /*replicated_axes=*/{}, /*unreduced_axes=*/{},
+        /*manual_axes=*/{AxisRef(0)});
+    HloSharding sharding(ns);
+    absl::flat_hash_set<int64_t> device_ids = GetLogicalDeviceIds(sharding);
+    EXPECT_THAT(device_ids, testing::UnorderedElementsAre(0, 1, 2, 3));
+  }
+
+  // 4. Tuple sharding: collects from elements
+  {
+    HloSharding sharding = HloSharding::Tuple(
+        ShapeUtil::MakeTupleShape(
+            {ShapeUtil::MakeShape(F32, {2}), ShapeUtil::MakeShape(F32, {4})}),
+        {HloSharding::IotaTile({2}), HloSharding::IotaTile({3})});
+    absl::flat_hash_set<int64_t> device_ids = GetLogicalDeviceIds(sharding);
+    EXPECT_THAT(device_ids, testing::UnorderedElementsAre(0, 1, 2));
+  }
 }
 
 }  // namespace

@@ -2001,8 +2001,9 @@ inline void MulElementwise(int32_t n, const ArithmeticParams& params,
 
   // This will handle leftovers when n is not aligned to 4 elements.
   for (; i < n; ++i) {
-    out[i] = ActivationFunctionWithMinMax(lhs[i] * rhs[i], activation_min_val,
-                                          activation_max_val);
+    out[i] =
+        ActivationFunctionWithMinMax(WrappingMul<int32_t>(lhs[i], rhs[i]),
+                                     activation_min_val, activation_max_val);
   }
 }
 
@@ -4986,7 +4987,7 @@ void Col2im(const T* col_data, const int depth, const int height,
           if (ih >= 0 && ih < height && iw >= 0 && iw < width) {
             // TODO(andydavis) Vectorize this loop (if compiler does not).
             for (int i = 0; i < depth; ++i) {
-              im_patch_data[i] += col_data[i];
+              im_patch_data[i] = WrappingAdd<T>(im_patch_data[i], col_data[i]);
             }
           }
           im_patch_data += depth;
@@ -5010,7 +5011,7 @@ void BiasAdd(T* im_data, const T* bias_data, const int batch_size,
       for (int h = 0; h < height; ++h) {
         for (int w = 0; w < width; ++w) {
           for (int d = 0; d < depth; ++d) {
-            im_data[d] += bias_data[d];
+            im_data[d] = WrappingAdd<T>(im_data[d], bias_data[d]);
           }
           im_data += depth;
         }
@@ -7328,8 +7329,11 @@ inline void BroadcastMinimumDispatch(const ArithmeticParams& params,
 }
 
 template <typename T>
-void CumsumImpl(const T* input_data, const RuntimeShape& shape, int axis,
-                bool exclusive, bool reverse, T* output_data) {
+TFLITE_NO_SANITIZE_INTEGER_OVERFLOW void CumsumImpl(const T* input_data,
+                                                    const RuntimeShape& shape,
+                                                    int axis, bool exclusive,
+                                                    bool reverse,
+                                                    T* output_data) {
   Eigen::array<Eigen::DenseIndex, 3> dims = {1, 1, 1};
 
   for (int i = 0; i < axis; ++i) {
@@ -7360,8 +7364,10 @@ void CumsumImpl(const T* input_data, const RuntimeShape& shape, int axis,
 }
 
 template <typename T>
-void CumSum(const T* input_data, const RuntimeShape& shape, int axis,
-            bool exclusive, bool reverse, T* output_data) {
+TFLITE_NO_SANITIZE_INTEGER_OVERFLOW void CumSum(const T* input_data,
+                                                const RuntimeShape& shape,
+                                                int axis, bool exclusive,
+                                                bool reverse, T* output_data) {
   const int dim = shape.DimensionsCount();
   TFLITE_DCHECK_GE(dim, 1);
   CumsumImpl<T>(input_data, shape, axis, exclusive, reverse, output_data);
@@ -7953,7 +7959,8 @@ void Col2im(const T* col_data, const int channel, const int planes,
               if (ip >= 0 && ip < planes && ih >= 0 && ih < height && iw >= 0 &&
                   iw < width) {
                 for (int i = 0; i < channel; ++i) {
-                  im_patch_data[i] += col_data[i];
+                  im_patch_data[i] =
+                      WrappingAdd<T>(im_patch_data[i], col_data[i]);
                 }
               }
               im_patch_data += channel;
@@ -8030,7 +8037,7 @@ inline void Conv3DTranspose(
 
   const int spatial_dim_1_padding_before = params.padding_values.depth;
   const int spatial_dim_1_padding_after =
-      params.padding_values.height + params.padding_values.depth_offset;
+      params.padding_values.depth + params.padding_values.depth_offset;
   const int spatial_dim_2_padding_before = params.padding_values.height;
   const int spatial_dim_2_padding_after =
       params.padding_values.height + params.padding_values.height_offset;

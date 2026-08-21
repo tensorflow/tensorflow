@@ -297,6 +297,31 @@ ENTRY entry (arg: f32[46592]) -> f32[46592] {
   CheckScanRewrite(hlo, std::nullopt);
 }
 
+TEST_F(ReduceWindowRewriterTest, NoOptimizeScanWithUsedCarry) {
+  // The reduce-window rewrite drops the final carry, so a scan whose carry
+  // is read must keep its other lowerings.
+  const char* hlo = R"(
+HloModule scan
+
+add_float {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  add = f32[] add(lhs, rhs)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+
+ENTRY entry (arg: f32[46592]) -> (f32[46592], f32[]) {
+  arg = f32[46592]{0} parameter(0)
+  constant = f32[] constant(0)
+  scan = (f32[46592]{0}, f32[]) scan(f32[46592]{0} %arg, f32[] %constant), dimensions={0}, num_carries=1, to_apply=%add_float, is_associative=true
+  out = f32[46592]{0} get-tuple-element(scan), index=0
+  carry = f32[] get-tuple-element(scan), index=1
+  ROOT result = (f32[46592]{0}, f32[]) tuple(out, carry)
+})";
+
+  CheckScanRewrite(hlo, std::nullopt);
+}
+
 TEST_F(ReduceWindowRewriterTest, OptimizeVariadicAssociativeScan) {
   const char* hlo = R"(
 HloModule scan

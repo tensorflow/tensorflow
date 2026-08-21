@@ -29,10 +29,13 @@ class SequentialTensorWriter<string> {
       : input_(input), output_(output) {}
   ~SequentialTensorWriter() { buffer_.WriteToTensor(output_, nullptr); }
 
-  void Write(int position) { this->WriteN(position, 1); }
-  void WriteN(int position, int len) {
+  void Write(int64_t position) { this->WriteN(position, 1); }
+  void WriteN(int64_t position, int len) {
     for (int i = 0; i < len; i++) {
-      buffer_.AddString(GetString(input_, position + i));
+      // String tensors index into an int32-counted buffer, so the position
+      // always fits in an int; the int64_t parameter only keeps the interface
+      // in sync with the numeric SequentialTensorWriter specialization.
+      buffer_.AddString(GetString(input_, static_cast<int>(position + i)));
     }
   }
 

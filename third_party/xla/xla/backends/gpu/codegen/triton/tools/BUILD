@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # Tools for Triton GPU backend.
 
 load("//xla:xla.default.bzl", "xla_cc_binary")
@@ -11,8 +26,8 @@ package(
 )
 
 xla_cc_binary(
-    name = "hlo_to_xtileir",
-    srcs = ["hlo_to_xtileir.cc"],
+    name = "fusion_to_triton",
+    srcs = ["fusion_to_triton.cc"],
     # We want to use this tool for lit tests. Due to hermetic cuda, we need to
     # set linkopts in such a way that dynamic libraries are found, which are
     # symlinked from the lit_lib directory.
@@ -31,10 +46,10 @@ xla_cc_binary(
         "//xla/service/gpu/model:block_level_parameters",
         "//xla/stream_executor:device_description",
         "//xla/tools:hlo_module_loader",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

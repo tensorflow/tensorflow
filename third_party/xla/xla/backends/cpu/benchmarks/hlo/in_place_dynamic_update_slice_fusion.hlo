@@ -1,0 +1,396 @@
+HloModule jit_f, entry_computation_layout={(f32[100000]{0})->(s32[], f32[100000]{0})}, allow_spmd_sharding_propagation_to_parameters={true}, allow_spmd_sharding_propagation_to_output={true,true}
+// HLO taken from reproducer in b/440866103
+
+%clip.30 (Arg_0.25: s32[], Arg_1.26: s32[], Arg_2.27: s32[]) -> s32[] {
+  %Arg_2.27 = s32[] parameter(2)
+  %Arg_1.26 = s32[] parameter(1)
+  %Arg_0.25 = s32[] parameter(0)
+  %max.28 = s32[] maximum(%Arg_1.26, %Arg_0.25)
+  ROOT %min.29 = s32[] minimum(%Arg_2.27, %max.28)
+}
+
+%clip_0.38 (Arg_0.33: s32[], Arg_1.34: s32[], Arg_2.35: s32[]) -> s32[] {
+  %Arg_2.35 = s32[] parameter(2)
+  %Arg_1.34 = s32[] parameter(1)
+  %Arg_0.33 = s32[] parameter(0)
+  %max.36 = s32[] maximum(%Arg_1.34, %Arg_0.33)
+  ROOT %min.37 = s32[] minimum(%Arg_2.35, %max.36)
+}
+
+%closed_call.137 (Arg_0.77: s32[], Arg_1.78: u32[2], Arg_2.79: u32[2], Arg_3.80: u32[], Arg_4.81: u32[], Arg_5.82: u32[], Arg_6.83: u32[4], Arg_7.84: u32[4]) -> (s32[], u32[2], u32[2], u32[], u32[], /*index=5*/u32[], u32[4], u32[4]) {
+  %Arg_0.77 = s32[] parameter(0)
+  %constant.86 = s32[] constant(1)
+  %add.87 = s32[] add(%Arg_0.77, %constant.86)
+  %Arg_1.78 = u32[2]{0} parameter(1)
+  %Arg_2.79 = u32[2]{0} parameter(2)
+  %add.90 = u32[2]{0} add(%Arg_1.78, %Arg_2.79)
+  %Arg_6.83 = u32[4]{0} parameter(6)
+  %slice.88 = u32[1]{0} slice(%Arg_6.83), slice={[0:1]}
+  %squeeze.89 = u32[] reshape(%slice.88)
+  %shift_left.91 = u32[2]{0} broadcast(%squeeze.89), dimensions={}
+  %shift_left.92 = u32[2]{0} shift-left(%Arg_2.79, %shift_left.91)
+  %constant.85 = u32[] constant(32)
+  %sub.93 = u32[] subtract(%constant.85, %squeeze.89)
+  %shift_right_logical.94 = u32[2]{0} broadcast(%sub.93), dimensions={}
+  %shift_right_logical.95 = u32[2]{0} shift-right-logical(%Arg_2.79, %shift_right_logical.94)
+  %or.96 = u32[2]{0} or(%shift_left.92, %shift_right_logical.95)
+  %xor.97 = u32[2]{0} xor(%add.90, %or.96)
+  %add.100 = u32[2]{0} add(%add.90, %xor.97)
+  %slice.98 = u32[1]{0} slice(%Arg_6.83), slice={[1:2]}
+  %squeeze.99 = u32[] reshape(%slice.98)
+  %shift_left.101 = u32[2]{0} broadcast(%squeeze.99), dimensions={}
+  %shift_left.102 = u32[2]{0} shift-left(%xor.97, %shift_left.101)
+  %sub.103 = u32[] subtract(%constant.85, %squeeze.99)
+  %shift_right_logical.104 = u32[2]{0} broadcast(%sub.103), dimensions={}
+  %shift_right_logical.105 = u32[2]{0} shift-right-logical(%xor.97, %shift_right_logical.104)
+  %or.106 = u32[2]{0} or(%shift_left.102, %shift_right_logical.105)
+  %xor.107 = u32[2]{0} xor(%add.100, %or.106)
+  %add.110 = u32[2]{0} add(%add.100, %xor.107)
+  %slice.108 = u32[1]{0} slice(%Arg_6.83), slice={[2:3]}
+  %squeeze.109 = u32[] reshape(%slice.108)
+  %shift_left.111 = u32[2]{0} broadcast(%squeeze.109), dimensions={}
+  %shift_left.112 = u32[2]{0} shift-left(%xor.107, %shift_left.111)
+  %sub.113 = u32[] subtract(%constant.85, %squeeze.109)
+  %shift_right_logical.114 = u32[2]{0} broadcast(%sub.113), dimensions={}
+  %shift_right_logical.115 = u32[2]{0} shift-right-logical(%xor.107, %shift_right_logical.114)
+  %or.116 = u32[2]{0} or(%shift_left.112, %shift_right_logical.115)
+  %xor.117 = u32[2]{0} xor(%add.110, %or.116)
+  %add.120 = u32[2]{0} add(%add.110, %xor.117)
+  %Arg_3.80 = u32[] parameter(3)
+  %add.128 = u32[2]{0} broadcast(%Arg_3.80), dimensions={}
+  %add.129 = u32[2]{0} add(%add.120, %add.128)
+  %slice.118 = u32[1]{0} slice(%Arg_6.83), slice={[3:4]}
+  %squeeze.119 = u32[] reshape(%slice.118)
+  %shift_left.121 = u32[2]{0} broadcast(%squeeze.119), dimensions={}
+  %shift_left.122 = u32[2]{0} shift-left(%xor.117, %shift_left.121)
+  %sub.123 = u32[] subtract(%constant.85, %squeeze.119)
+  %shift_right_logical.124 = u32[2]{0} broadcast(%sub.123), dimensions={}
+  %shift_right_logical.125 = u32[2]{0} shift-right-logical(%xor.117, %shift_right_logical.124)
+  %or.126 = u32[2]{0} or(%shift_left.122, %shift_right_logical.125)
+  %xor.127 = u32[2]{0} xor(%add.120, %or.126)
+  %Arg_4.81 = u32[] parameter(4)
+  %add.130 = u32[2]{0} broadcast(%Arg_4.81), dimensions={}
+  %add.131 = u32[2]{0} add(%xor.127, %add.130)
+  %add.132 = s32[] add(%Arg_0.77, %constant.86)
+  %convert_element_type.133 = u32[] convert(%add.132)
+  %add.134 = u32[2]{0} broadcast(%convert_element_type.133), dimensions={}
+  %add.135 = u32[2]{0} add(%add.131, %add.134)
+  %Arg_5.82 = u32[] parameter(5)
+  %Arg_7.84 = u32[4]{0} parameter(7)
+  ROOT %tuple.136 = (s32[], u32[2]{0}, u32[2]{0}, u32[], u32[], /*index=5*/u32[], u32[4]{0}, u32[4]{0}) tuple(%add.87, %add.129, %add.135, %Arg_4.81, %Arg_5.82, /*index=5*/%Arg_3.80, %Arg_7.84, %Arg_6.83)
+}
+
+%region_1.149 (arg_tuple.66: (s32[], s32[], u32[2], u32[2], u32[], /*index=5*/u32[], u32[], u32[4], u32[4])) -> (s32[], s32[], u32[2], u32[2], u32[], /*index=5*/u32[], u32[], u32[4], u32[4]) {
+  %arg_tuple.66 = (s32[], s32[], u32[2]{0}, u32[2]{0}, u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) parameter(0)
+  %get-tuple-element.67 = s32[] get-tuple-element(%arg_tuple.66), index=0
+  %constant.76 = s32[] constant(1)
+  %add.147 = s32[] add(%get-tuple-element.67, %constant.76)
+  %get-tuple-element.68 = s32[] get-tuple-element(%arg_tuple.66), index=1
+  %get-tuple-element.69 = u32[2]{0} get-tuple-element(%arg_tuple.66), index=2
+  %get-tuple-element.70 = u32[2]{0} get-tuple-element(%arg_tuple.66), index=3
+  %get-tuple-element.71 = u32[] get-tuple-element(%arg_tuple.66), index=4
+  %get-tuple-element.72 = u32[] get-tuple-element(%arg_tuple.66), index=5
+  %get-tuple-element.73 = u32[] get-tuple-element(%arg_tuple.66), index=6
+  %get-tuple-element.74 = u32[4]{0} get-tuple-element(%arg_tuple.66), index=7
+  %get-tuple-element.75 = u32[4]{0} get-tuple-element(%arg_tuple.66), index=8
+  %closed_call.138 = (s32[], u32[2]{0}, u32[2]{0}, u32[], u32[], /*index=5*/u32[], u32[4]{0}, u32[4]{0}) call(%get-tuple-element.68, %get-tuple-element.69, %get-tuple-element.70, %get-tuple-element.71, %get-tuple-element.72, /*index=5*/%get-tuple-element.73, %get-tuple-element.74, %get-tuple-element.75), to_apply=%closed_call.137
+  %closed_call.139 = s32[] get-tuple-element(%closed_call.138), index=0
+  %closed_call.140 = u32[2]{0} get-tuple-element(%closed_call.138), index=1
+  %closed_call.141 = u32[2]{0} get-tuple-element(%closed_call.138), index=2
+  %closed_call.142 = u32[] get-tuple-element(%closed_call.138), index=3
+  %closed_call.143 = u32[] get-tuple-element(%closed_call.138), index=4
+  %closed_call.144 = u32[] get-tuple-element(%closed_call.138), index=5
+  %closed_call.145 = u32[4]{0} get-tuple-element(%closed_call.138), index=6
+  %closed_call.146 = u32[4]{0} get-tuple-element(%closed_call.138), index=7
+  ROOT %tuple.148 = (s32[], s32[], u32[2]{0}, u32[2]{0}, u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) tuple(%add.147, %closed_call.139, %closed_call.140, %closed_call.141, %closed_call.142, /*index=5*/%closed_call.143, %closed_call.144, %closed_call.145, %closed_call.146)
+}
+
+%region_2.162 (arg_tuple.150: (s32[], s32[], u32[2], u32[2], u32[], /*index=5*/u32[], u32[], u32[4], u32[4])) -> pred[] {
+  %arg_tuple.150 = (s32[], s32[], u32[2]{0}, u32[2]{0}, u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) parameter(0)
+  %get-tuple-element.152 = s32[] get-tuple-element(%arg_tuple.150), index=1
+  %get-tuple-element.153 = u32[2]{0} get-tuple-element(%arg_tuple.150), index=2
+  %get-tuple-element.154 = u32[2]{0} get-tuple-element(%arg_tuple.150), index=3
+  %get-tuple-element.155 = u32[] get-tuple-element(%arg_tuple.150), index=4
+  %get-tuple-element.156 = u32[] get-tuple-element(%arg_tuple.150), index=5
+  %get-tuple-element.157 = u32[] get-tuple-element(%arg_tuple.150), index=6
+  %get-tuple-element.158 = u32[4]{0} get-tuple-element(%arg_tuple.150), index=7
+  %get-tuple-element.159 = u32[4]{0} get-tuple-element(%arg_tuple.150), index=8
+  %get-tuple-element.151 = s32[] get-tuple-element(%arg_tuple.150), index=0
+  %constant.160 = s32[] constant(5)
+  ROOT %lt.161 = pred[] compare(%get-tuple-element.151, %constant.160), direction=LT
+}
+
+%threefry2x32.175 (main__locals__f__locals__body.52: u32[], main__locals__f__locals__body.53: u32[], main__locals__f__locals__body.54: u32[2], main__locals__f__locals__body.55: u32[2]) -> (u32[2], u32[2]) {
+  %constant.56 = s32[] constant(0)
+  %main__locals__f__locals__body.54 = u32[2]{0} parameter(2)
+  %main__locals__f__locals__body.52 = u32[] parameter(0)
+  %add.62 = u32[2]{0} broadcast(%main__locals__f__locals__body.52), dimensions={}
+  %add.63 = u32[2]{0} add(%main__locals__f__locals__body.54, %add.62)
+  %main__locals__f__locals__body.55 = u32[2]{0} parameter(3)
+  %main__locals__f__locals__body.53 = u32[] parameter(1)
+  %add.64 = u32[2]{0} broadcast(%main__locals__f__locals__body.53), dimensions={}
+  %add.65 = u32[2]{0} add(%main__locals__f__locals__body.55, %add.64)
+  %xor.60 = u32[] xor(%main__locals__f__locals__body.52, %main__locals__f__locals__body.53)
+  %constant.57 = u32[] constant(466688986)
+  %xor.61 = u32[] xor(%xor.60, %constant.57)
+  %constant.58 = u32[4]{0} constant({13, 15, 26, 6})
+  %constant.59 = u32[4]{0} constant({17, 29, 16, 24})
+  %while.163 = (s32[], s32[], u32[2]{0}, u32[2]{0}, u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) tuple(%constant.56, %constant.56, %add.63, %add.65, %main__locals__f__locals__body.53, /*index=5*/%xor.61, %main__locals__f__locals__body.52, %constant.58, %constant.59)
+  %while.164 = (s32[], s32[], u32[2]{0}, u32[2]{0}, u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) while(%while.163), condition=%region_2.162, body=%region_1.149
+  %while.165 = s32[] get-tuple-element(%while.164), index=0
+  %while.166 = s32[] get-tuple-element(%while.164), index=1
+  %while.169 = u32[] get-tuple-element(%while.164), index=4
+  %while.170 = u32[] get-tuple-element(%while.164), index=5
+  %while.171 = u32[] get-tuple-element(%while.164), index=6
+  %while.172 = u32[4]{0} get-tuple-element(%while.164), index=7
+  %while.173 = u32[4]{0} get-tuple-element(%while.164), index=8
+  %while.167 = u32[2]{0} get-tuple-element(%while.164), index=2
+  %while.168 = u32[2]{0} get-tuple-element(%while.164), index=3
+  ROOT %tuple.174 = (u32[2]{0}, u32[2]{0}) tuple(%while.167, %while.168)
+}
+
+%_threefry_split.182 (Arg_0.41: u32[2]) -> u32[2,2] {
+  %Arg_0.41 = u32[2]{0} parameter(0)
+  %slice.44 = u32[1]{0} slice(%Arg_0.41), slice={[0:1]}
+  %squeeze.45 = u32[] reshape(%slice.44)
+  %slice.46 = u32[1]{0} slice(%Arg_0.41), slice={[1:2]}
+  %squeeze.47 = u32[] reshape(%slice.46)
+  %iota_2x32_shape.48 = u64[2]{0} iota(), iota_dimension=0
+  %constant.42 = u64[] constant(32)
+  %broadcast.43 = u64[2]{0} broadcast(%constant.42), dimensions={}
+  %iota_2x32_shape.49 = u64[2]{0} shift-right-logical(%iota_2x32_shape.48, %broadcast.43)
+  %iota_2x32_shape.51 = u32[2]{0} convert(%iota_2x32_shape.49)
+  %iota_2x32_shape.50 = u32[2]{0} convert(%iota_2x32_shape.48)
+  %main__locals__f__locals__body.176 = (u32[2]{0}, u32[2]{0}) call(%squeeze.45, %squeeze.47, %iota_2x32_shape.51, %iota_2x32_shape.50), to_apply=%threefry2x32.175
+  %main__locals__f__locals__body.177 = u32[2]{0} get-tuple-element(%main__locals__f__locals__body.176), index=0
+  %broadcast_in_dim.179 = u32[2,1]{1,0} reshape(%main__locals__f__locals__body.177)
+  %main__locals__f__locals__body.178 = u32[2]{0} get-tuple-element(%main__locals__f__locals__body.176), index=1
+  %broadcast_in_dim.180 = u32[2,1]{1,0} reshape(%main__locals__f__locals__body.178)
+  ROOT %concatenate.181 = u32[2,2]{1,0} concatenate(%broadcast_in_dim.179, %broadcast_in_dim.180), dimensions={1}
+}
+
+%closed_call_23.264 (Arg_0.215: s32[], Arg_1.216: u32[], Arg_2.217: u32[], Arg_3.218: u32[], Arg_4.219: u32[], Arg_5.220: u32[], Arg_6.221: u32[4], Arg_7.222: u32[4]) -> (s32[], u32[], u32[], u32[], u32[], /*index=5*/u32[], u32[4], u32[4]) {
+  %Arg_0.215 = s32[] parameter(0)
+  %constant.224 = s32[] constant(1)
+  %add.225 = s32[] add(%Arg_0.215, %constant.224)
+  %Arg_1.216 = u32[] parameter(1)
+  %Arg_2.217 = u32[] parameter(2)
+  %add.228 = u32[] add(%Arg_1.216, %Arg_2.217)
+  %Arg_6.221 = u32[4]{0} parameter(6)
+  %slice.226 = u32[1]{0} slice(%Arg_6.221), slice={[0:1]}
+  %squeeze.227 = u32[] reshape(%slice.226)
+  %shift_left.229 = u32[] shift-left(%Arg_2.217, %squeeze.227)
+  %constant.223 = u32[] constant(32)
+  %sub.230 = u32[] subtract(%constant.223, %squeeze.227)
+  %shift_right_logical.231 = u32[] shift-right-logical(%Arg_2.217, %sub.230)
+  %or.232 = u32[] or(%shift_left.229, %shift_right_logical.231)
+  %xor.233 = u32[] xor(%add.228, %or.232)
+  %add.236 = u32[] add(%add.228, %xor.233)
+  %slice.234 = u32[1]{0} slice(%Arg_6.221), slice={[1:2]}
+  %squeeze.235 = u32[] reshape(%slice.234)
+  %shift_left.237 = u32[] shift-left(%xor.233, %squeeze.235)
+  %sub.238 = u32[] subtract(%constant.223, %squeeze.235)
+  %shift_right_logical.239 = u32[] shift-right-logical(%xor.233, %sub.238)
+  %or.240 = u32[] or(%shift_left.237, %shift_right_logical.239)
+  %xor.241 = u32[] xor(%add.236, %or.240)
+  %add.244 = u32[] add(%add.236, %xor.241)
+  %slice.242 = u32[1]{0} slice(%Arg_6.221), slice={[2:3]}
+  %squeeze.243 = u32[] reshape(%slice.242)
+  %shift_left.245 = u32[] shift-left(%xor.241, %squeeze.243)
+  %sub.246 = u32[] subtract(%constant.223, %squeeze.243)
+  %shift_right_logical.247 = u32[] shift-right-logical(%xor.241, %sub.246)
+  %or.248 = u32[] or(%shift_left.245, %shift_right_logical.247)
+  %xor.249 = u32[] xor(%add.244, %or.248)
+  %add.252 = u32[] add(%add.244, %xor.249)
+  %Arg_3.218 = u32[] parameter(3)
+  %add.258 = u32[] add(%add.252, %Arg_3.218)
+  %slice.250 = u32[1]{0} slice(%Arg_6.221), slice={[3:4]}
+  %squeeze.251 = u32[] reshape(%slice.250)
+  %shift_left.253 = u32[] shift-left(%xor.249, %squeeze.251)
+  %sub.254 = u32[] subtract(%constant.223, %squeeze.251)
+  %shift_right_logical.255 = u32[] shift-right-logical(%xor.249, %sub.254)
+  %or.256 = u32[] or(%shift_left.253, %shift_right_logical.255)
+  %xor.257 = u32[] xor(%add.252, %or.256)
+  %Arg_4.219 = u32[] parameter(4)
+  %add.259 = u32[] add(%xor.257, %Arg_4.219)
+  %add.260 = s32[] add(%Arg_0.215, %constant.224)
+  %convert_element_type.261 = u32[] convert(%add.260)
+  %add.262 = u32[] add(%add.259, %convert_element_type.261)
+  %Arg_5.220 = u32[] parameter(5)
+  %Arg_7.222 = u32[4]{0} parameter(7)
+  ROOT %tuple.263 = (s32[], u32[], u32[], u32[], u32[], /*index=5*/u32[], u32[4]{0}, u32[4]{0}) tuple(%add.225, %add.258, %add.262, %Arg_4.219, %Arg_5.220, /*index=5*/%Arg_3.218, %Arg_7.222, %Arg_6.221)
+}
+
+%region_3.276 (arg_tuple.204: (s32[], s32[], u32[], u32[], u32[], /*index=5*/u32[], u32[], u32[4], u32[4])) -> (s32[], s32[], u32[], u32[], u32[], /*index=5*/u32[], u32[], u32[4], u32[4]) {
+  %arg_tuple.204 = (s32[], s32[], u32[], u32[], u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) parameter(0)
+  %get-tuple-element.205 = s32[] get-tuple-element(%arg_tuple.204), index=0
+  %constant.214 = s32[] constant(1)
+  %add.274 = s32[] add(%get-tuple-element.205, %constant.214)
+  %get-tuple-element.206 = s32[] get-tuple-element(%arg_tuple.204), index=1
+  %get-tuple-element.207 = u32[] get-tuple-element(%arg_tuple.204), index=2
+  %get-tuple-element.208 = u32[] get-tuple-element(%arg_tuple.204), index=3
+  %get-tuple-element.209 = u32[] get-tuple-element(%arg_tuple.204), index=4
+  %get-tuple-element.210 = u32[] get-tuple-element(%arg_tuple.204), index=5
+  %get-tuple-element.211 = u32[] get-tuple-element(%arg_tuple.204), index=6
+  %get-tuple-element.212 = u32[4]{0} get-tuple-element(%arg_tuple.204), index=7
+  %get-tuple-element.213 = u32[4]{0} get-tuple-element(%arg_tuple.204), index=8
+  %closed_call.265 = (s32[], u32[], u32[], u32[], u32[], /*index=5*/u32[], u32[4]{0}, u32[4]{0}) call(%get-tuple-element.206, %get-tuple-element.207, %get-tuple-element.208, %get-tuple-element.209, %get-tuple-element.210, /*index=5*/%get-tuple-element.211, %get-tuple-element.212, %get-tuple-element.213), to_apply=%closed_call_23.264
+  %closed_call.266 = s32[] get-tuple-element(%closed_call.265), index=0
+  %closed_call.267 = u32[] get-tuple-element(%closed_call.265), index=1
+  %closed_call.268 = u32[] get-tuple-element(%closed_call.265), index=2
+  %closed_call.269 = u32[] get-tuple-element(%closed_call.265), index=3
+  %closed_call.270 = u32[] get-tuple-element(%closed_call.265), index=4
+  %closed_call.271 = u32[] get-tuple-element(%closed_call.265), index=5
+  %closed_call.272 = u32[4]{0} get-tuple-element(%closed_call.265), index=6
+  %closed_call.273 = u32[4]{0} get-tuple-element(%closed_call.265), index=7
+  ROOT %tuple.275 = (s32[], s32[], u32[], u32[], u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) tuple(%add.274, %closed_call.266, %closed_call.267, %closed_call.268, %closed_call.269, /*index=5*/%closed_call.270, %closed_call.271, %closed_call.272, %closed_call.273)
+}
+
+%region_4.289 (arg_tuple.277: (s32[], s32[], u32[], u32[], u32[], /*index=5*/u32[], u32[], u32[4], u32[4])) -> pred[] {
+  %arg_tuple.277 = (s32[], s32[], u32[], u32[], u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) parameter(0)
+  %get-tuple-element.279 = s32[] get-tuple-element(%arg_tuple.277), index=1
+  %get-tuple-element.280 = u32[] get-tuple-element(%arg_tuple.277), index=2
+  %get-tuple-element.281 = u32[] get-tuple-element(%arg_tuple.277), index=3
+  %get-tuple-element.282 = u32[] get-tuple-element(%arg_tuple.277), index=4
+  %get-tuple-element.283 = u32[] get-tuple-element(%arg_tuple.277), index=5
+  %get-tuple-element.284 = u32[] get-tuple-element(%arg_tuple.277), index=6
+  %get-tuple-element.285 = u32[4]{0} get-tuple-element(%arg_tuple.277), index=7
+  %get-tuple-element.286 = u32[4]{0} get-tuple-element(%arg_tuple.277), index=8
+  %get-tuple-element.278 = s32[] get-tuple-element(%arg_tuple.277), index=0
+  %constant.287 = s32[] constant(5)
+  ROOT %lt.288 = pred[] compare(%get-tuple-element.278, %constant.287), direction=LT
+}
+
+%threefry2x32_19.302 (main__locals__f__locals__body.192: u32[], main__locals__f__locals__body.193: u32[], main__locals__f__locals__body.194: u32[], main__locals__f__locals__body.195: u32[]) -> (u32[], u32[]) {
+  %constant.196 = s32[] constant(0)
+  %main__locals__f__locals__body.194 = u32[] parameter(2)
+  %main__locals__f__locals__body.192 = u32[] parameter(0)
+  %add.202 = u32[] add(%main__locals__f__locals__body.194, %main__locals__f__locals__body.192)
+  %main__locals__f__locals__body.195 = u32[] parameter(3)
+  %main__locals__f__locals__body.193 = u32[] parameter(1)
+  %add.203 = u32[] add(%main__locals__f__locals__body.195, %main__locals__f__locals__body.193)
+  %xor.200 = u32[] xor(%main__locals__f__locals__body.192, %main__locals__f__locals__body.193)
+  %constant.197 = u32[] constant(466688986)
+  %xor.201 = u32[] xor(%xor.200, %constant.197)
+  %constant.198 = u32[4]{0} constant({13, 15, 26, 6})
+  %constant.199 = u32[4]{0} constant({17, 29, 16, 24})
+  %while.290 = (s32[], s32[], u32[], u32[], u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) tuple(%constant.196, %constant.196, %add.202, %add.203, %main__locals__f__locals__body.193, /*index=5*/%xor.201, %main__locals__f__locals__body.192, %constant.198, %constant.199)
+  %while.291 = (s32[], s32[], u32[], u32[], u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) while(%while.290), condition=%region_4.289, body=%region_3.276
+  %while.292 = s32[] get-tuple-element(%while.291), index=0
+  %while.293 = s32[] get-tuple-element(%while.291), index=1
+  %while.296 = u32[] get-tuple-element(%while.291), index=4
+  %while.297 = u32[] get-tuple-element(%while.291), index=5
+  %while.298 = u32[] get-tuple-element(%while.291), index=6
+  %while.299 = u32[4]{0} get-tuple-element(%while.291), index=7
+  %while.300 = u32[4]{0} get-tuple-element(%while.291), index=8
+  %while.294 = u32[] get-tuple-element(%while.291), index=2
+  %while.295 = u32[] get-tuple-element(%while.291), index=3
+  ROOT %tuple.301 = (u32[], u32[]) tuple(%while.294, %while.295)
+}
+
+%_randint.333 (Arg_0.17: u32[2], Arg_1.18: s32[], Arg_2.19: s32[]) -> s32[] {
+  %Arg_1.18 = s32[] parameter(1)
+  %constant.24 = s32[] constant(-2147483648)
+  %constant.23 = s32[] constant(2147483647)
+  %jit_clip_.39 = s32[] call(%Arg_1.18, %constant.24, %constant.23), to_apply=%clip_0.38
+  %Arg_0.17 = u32[2]{0} parameter(0)
+  %jit__threefry_split_.183 = u32[2,2]{1,0} call(%Arg_0.17), to_apply=%_threefry_split.182
+  %slice.184 = u32[1,2]{1,0} slice(%jit__threefry_split_.183), slice={[0:1], [0:2]}
+  %squeeze.185 = u32[2]{0} reshape(%slice.184)
+  %slice.188 = u32[1]{0} slice(%squeeze.185), slice={[0:1]}
+  %squeeze.189 = u32[] reshape(%slice.188)
+  %slice.190 = u32[1]{0} slice(%squeeze.185), slice={[1:2]}
+  %squeeze.191 = u32[] reshape(%slice.190)
+  %constant.22 = u32[] constant(0)
+  %call.303 = (u32[], u32[]) call(%squeeze.189, %squeeze.191, %constant.22, %constant.22), to_apply=%threefry2x32_19.302
+  %get-tuple-element.304 = u32[] get-tuple-element(%call.303), index=0
+  %get-tuple-element.305 = u32[] get-tuple-element(%call.303), index=1
+  %xor.306 = u32[] xor(%get-tuple-element.304, %get-tuple-element.305)
+  %Arg_2.19 = s32[] parameter(2)
+  %jit_clip_.31 = s32[] call(%constant.23, %constant.24, %constant.23), to_apply=%clip.30
+  %gt.32 = pred[] compare(%Arg_2.19, %jit_clip_.31), direction=GT
+  %jit_clip_.40 = s32[] call(%Arg_2.19, %constant.24, %constant.23), to_apply=%clip_0.38
+  %gt.319 = pred[] compare(%jit_clip_.40, %jit_clip_.39), direction=GT
+  %and.320 = pred[] and(%gt.32, %gt.319)
+  %le.317 = pred[] compare(%jit_clip_.40, %jit_clip_.39), direction=LE
+  %constant.21 = u32[] constant(1)
+  %sub.315 = s32[] subtract(%jit_clip_.40, %jit_clip_.39)
+  %convert_element_type.316 = u32[] convert(%sub.315)
+  %select_n.318 = u32[] select(%le.317, %constant.21, %convert_element_type.316)
+  %add.321 = u32[] add(%select_n.318, %constant.21)
+  %select_n.322 = u32[] select(%and.320, %add.321, %select_n.318)
+  %rem.326 = u32[] remainder(%xor.306, %select_n.322)
+  %constant.20 = u32[] constant(65536)
+  %rem.323 = u32[] remainder(%constant.20, %select_n.322)
+  %mul.324 = u32[] multiply(%rem.323, %rem.323)
+  %rem.325 = u32[] remainder(%mul.324, %select_n.322)
+  %mul.327 = u32[] multiply(%rem.326, %rem.325)
+  %slice.186 = u32[1,2]{1,0} slice(%jit__threefry_split_.183), slice={[1:2], [0:2]}
+  %squeeze.187 = u32[2]{0} reshape(%slice.186)
+  %slice.307 = u32[1]{0} slice(%squeeze.187), slice={[0:1]}
+  %squeeze.308 = u32[] reshape(%slice.307)
+  %slice.309 = u32[1]{0} slice(%squeeze.187), slice={[1:2]}
+  %squeeze.310 = u32[] reshape(%slice.309)
+  %call.311 = (u32[], u32[]) call(%squeeze.308, %squeeze.310, %constant.22, %constant.22), to_apply=%threefry2x32_19.302
+  %get-tuple-element.312 = u32[] get-tuple-element(%call.311), index=0
+  %get-tuple-element.313 = u32[] get-tuple-element(%call.311), index=1
+  %xor.314 = u32[] xor(%get-tuple-element.312, %get-tuple-element.313)
+  %rem.328 = u32[] remainder(%xor.314, %select_n.322)
+  %add.329 = u32[] add(%mul.327, %rem.328)
+  %rem.330 = u32[] remainder(%add.329, %select_n.322)
+  %convert_element_type.331 = s32[] convert(%rem.330)
+  ROOT %add.332 = s32[] add(%jit_clip_.39, %convert_element_type.331)
+}
+
+%region_5.346 (scatter.344: f32[], scatter.345: f32[]) -> f32[] {
+  %scatter.344 = f32[] parameter(0)
+  ROOT %scatter.345 = f32[] parameter(1)
+}
+
+%region_0.350 (arg_tuple.3: (s32[], f32[100000])) -> (s32[], f32[100000]) {
+  %arg_tuple.3 = (s32[], f32[100000]{0}) parameter(0)
+  %get-tuple-element.4 = s32[] get-tuple-element(%arg_tuple.3), index=0
+  %constant.6 = s32[] constant(1)
+  %add.348 = s32[] add(%get-tuple-element.4, %constant.6)
+  %get-tuple-element.5 = f32[100000]{0} get-tuple-element(%arg_tuple.3), index=1
+  %constant.9 = s32[] constant(0)
+  %lt.340 = pred[] compare(%get-tuple-element.4, %constant.9), direction=LT
+  %constant.7 = s32[] constant(100000)
+  %add.341 = s32[] add(%get-tuple-element.4, %constant.7)
+  %select_n.342 = s32[] select(%lt.340, %add.341, %get-tuple-element.4)
+  %broadcast_in_dim.343 = s32[1]{0} reshape(%select_n.342)
+  %constant.10 = s32[] constant(32)
+  %shift_right_logical.11 = s32[] shift-right-logical(%get-tuple-element.4, %constant.10)
+  %convert_element_type.12 = u32[] convert(%shift_right_logical.11)
+  %broadcast_in_dim.13 = u32[1]{0} reshape(%convert_element_type.12)
+  %convert_element_type.14 = u32[] convert(%get-tuple-element.4)
+  %broadcast_in_dim.15 = u32[1]{0} reshape(%convert_element_type.14)
+  %concatenate.16 = u32[2]{0} concatenate(%broadcast_in_dim.13, %broadcast_in_dim.15), dimensions={0}
+  %constant.8 = s32[] constant(2)
+  %jit__randint_.334 = s32[] call(%concatenate.16, %constant.9, %constant.8), to_apply=%_randint.333
+  %lt.335 = pred[] compare(%jit__randint_.334, %constant.9), direction=LT
+  %add.336 = s32[] add(%jit__randint_.334, %constant.7)
+  %select_n.337 = s32[] select(%lt.335, %add.336, %jit__randint_.334)
+  %dynamic_slice.338 = f32[1]{0} dynamic-slice(%get-tuple-element.5, %select_n.337), dynamic_slice_sizes={1}
+  %squeeze.339 = f32[] reshape(%dynamic_slice.338)
+  %scatter.347 = f32[100000]{0} scatter(%get-tuple-element.5, %broadcast_in_dim.343, %squeeze.339), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_5.346
+  ROOT %tuple.349 = (s32[], f32[100000]{0}) tuple(%add.348, %scatter.347)
+}
+
+%region_6.356 (arg_tuple.351: (s32[], f32[100000])) -> pred[] {
+  %arg_tuple.351 = (s32[], f32[100000]{0}) parameter(0)
+  %get-tuple-element.353 = f32[100000]{0} get-tuple-element(%arg_tuple.351), index=1
+  %get-tuple-element.352 = s32[] get-tuple-element(%arg_tuple.351), index=0
+  %constant.354 = s32[] constant(100000)
+  ROOT %lt.355 = pred[] compare(%get-tuple-element.352, %constant.354), direction=LT
+}
+
+ENTRY %main.362 (init_xs.1: f32[100000]) -> (s32[], f32[100000]) {
+  %constant.2 = s32[] constant(0)
+  %init_xs.1 = f32[100000]{0} parameter(0)
+  %while.357 = (s32[], f32[100000]{0}) tuple(%constant.2, %init_xs.1)
+  %while.358 = (s32[], f32[100000]{0}) while(%while.357), condition=%region_6.356, body=%region_0.350
+  %while.359 = s32[] get-tuple-element(%while.358), index=0
+  %while.360 = f32[100000]{0} get-tuple-element(%while.358), index=1
+  ROOT %tuple.361 = (s32[], f32[100000]{0}) tuple(%while.359, %while.360)
+}

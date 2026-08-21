@@ -29,13 +29,13 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/Argument.h"
@@ -364,7 +364,7 @@ absl::Status CallNestedComputation(llvm::IRBuilderBase* builder,
                                    llvm::Value* output) {
   TF_RET_CHECK(computation.num_parameters() > 0);
 
-  ASSIGN_OR_RETURN(llvm::Function * emitted_function,
+  ABSL_ASSIGN_OR_RETURN(llvm::Function * emitted_function,
                    IrEmitter(&ir_emitter_context, llvm_module,
                              /*is_nested=*/true)
                        .CodegenNestedComputation(computation));
@@ -461,7 +461,7 @@ absl::StatusOr<llvm::Function*> IrEmitter::CodegenNestedComputation(
     return function;
   }
 
-  RETURN_IF_ERROR(EmitConstants(module_, nested_computation));
+  ABSL_RETURN_IF_ERROR(EmitConstants(module_, nested_computation));
   std::vector<const HloInstruction*> io_hlos;
   std::vector<llvm::Type*> argument_types;
   std::vector<int64_t> argument_dereferenceable_bytes;
@@ -521,7 +521,7 @@ absl::StatusOr<llvm::Function*> IrEmitter::CodegenNestedComputation(
   }
   bindings_.EmitBasePointersForHlos(io_hlos, non_io_hlos);
 
-  RETURN_IF_ERROR(nested_computation.root_instruction()->Accept(this));
+  ABSL_RETURN_IF_ERROR(nested_computation.root_instruction()->Accept(this));
   b_.SetInsertPoint(ret_instr);
 
   // Function epilogue: copy the output value back.
@@ -575,7 +575,7 @@ absl::Status IrEmitter::EmitTargetElementLoop(
   if (hlo.shape().IsTuple()) {
     std::vector<llvm_ir::IrArray> target_arrays =
         ConstructIrArrayForOutputs(hlo);
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         llvm_ir::LoopEmitter(element_generator, target_arrays, &b_).EmitLoop());
     llvm_ir::EmitTuple(GetIrArray(hlo, hlo), target_arrays, &b_);
     return absl::OkStatus();
@@ -682,7 +682,7 @@ absl::StatusOr<LlvmKernelSource> EmitModuleForBitonicSortStage(
       is_fusion ? sort->parent()->FusionInstruction() : sort;
   std::string suggested_kernel_name(hlo_with_buffers->name());
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       llvm::Function * kernel,
       BuildKernelPrototype(
           llvm_module.get(), ir_emitter_context->gpu_device_info(),
@@ -701,7 +701,7 @@ absl::StatusOr<LlvmKernelSource> EmitModuleForBitonicSortStage(
 
   auto* comparator = sort->called_computations().front();
   auto* builder = ir_emitter.builder();
-  RETURN_IF_ERROR(llvm_ir::EmitSortInPlace(
+  ABSL_RETURN_IF_ERROR(llvm_ir::EmitSortInPlace(
       sort, output_arrays_span, emit_iota_operands, llvm_ir::IrName(op_name),
       xor_masks, ir_emitter.module(), ir_emitter.builder(), launch_dimensions,
       num_iterations_in_sort_dim, tile_size, kBitonicSortUnrollFactor,
@@ -887,12 +887,12 @@ AsyncThunkSequence EmitBitonicSortLLVMIR(const HloSortInstruction* sort,
         is_fusion ? sort->parent()->FusionInstruction() : sort;
     std::string sanitized_kernel_name =
         ir_emitter_context->GetSanitizedUniqueName(op_name);
-    ASSIGN_OR_RETURN(auto kernel_arguments,
+    ABSL_ASSIGN_OR_RETURN(auto kernel_arguments,
                      emitters::KernelArguments::Create(
                          ir_emitter_context->buffer_assignment(),
                          GetDefaultBufferAlignment(), hlo_with_buffers));
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         LlvmKernelSource llvm_kernel_source,
         EmitModuleForBitonicSortStage(
             sort, ir_emitter_context, sanitized_kernel_name, kernel_arguments,
@@ -920,17 +920,17 @@ AsyncThunkSequence EmitBitonicSortLLVMIR(const HloSortInstruction* sort,
       }
       if (xor_mask >= tile_size) {
         if (!xor_masks.empty()) {
-          RETURN_IF_ERROR(emit_thunk(xor_masks));
+          ABSL_RETURN_IF_ERROR(emit_thunk(xor_masks));
           xor_masks.clear();
         }
-        RETURN_IF_ERROR(emit_thunk({xor_mask}));
+        ABSL_RETURN_IF_ERROR(emit_thunk({xor_mask}));
       } else {
         xor_masks.push_back(xor_mask);
       }
     }
   }
   if (!xor_masks.empty()) {
-    RETURN_IF_ERROR(emit_thunk(xor_masks));
+    ABSL_RETURN_IF_ERROR(emit_thunk(xor_masks));
   }
   return tsl::JoinFutures(absl::MakeSpan(thunks))
       .Map([](std::vector<std::unique_ptr<Thunk>> thunks) {
@@ -960,7 +960,7 @@ absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitPadToStaticLLVMIR(
   std::string sanitized_kernel_name =
       ir_emitter_context->GetSanitizedUniqueName(op_name);
 
-  ASSIGN_OR_RETURN(llvm::Function * kernel,
+  ABSL_ASSIGN_OR_RETURN(llvm::Function * kernel,
                    BuildKernelPrototype(
                        llvm_module.get(), ir_emitter_context->gpu_device_info(),
                        op_name, sanitized_kernel_name, kernel_arguments,
@@ -1083,12 +1083,12 @@ absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitPadToStaticLLVMIR(
   };
 
   const Shape& data_shape = hlo->shape().tuple_shapes(0);
-  RETURN_IF_ERROR(ParallelLoopEmitter(body_generator, data_shape,
+  ABSL_RETURN_IF_ERROR(ParallelLoopEmitter(body_generator, data_shape,
                                       launch_dimensions, ir_emitter.builder(),
                                       kUnrollFactor)
                       .EmitLoop(op_name, index_ty));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       KernelSpec kernel_spec,
       emitters::GetKernelSpec(sanitized_kernel_name, *hlo,
                               &ir_emitter_context->buffer_assignment(),
@@ -1122,7 +1122,7 @@ absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitSliceToDynamicLLVMIR(
   std::string sanitized_kernel_name =
       ir_emitter_context->GetSanitizedUniqueName(op_name);
 
-  ASSIGN_OR_RETURN(llvm::Function * kernel,
+  ABSL_ASSIGN_OR_RETURN(llvm::Function * kernel,
                    BuildKernelPrototype(
                        llvm_module.get(), ir_emitter_context->gpu_device_info(),
                        op_name, sanitized_kernel_name, kernel_arguments,
@@ -1234,12 +1234,12 @@ absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitSliceToDynamicLLVMIR(
     return absl::OkStatus();
   };
 
-  RETURN_IF_ERROR(ParallelLoopEmitter(body_generator, data_shape,
+  ABSL_RETURN_IF_ERROR(ParallelLoopEmitter(body_generator, data_shape,
                                       launch_dimensions, ir_emitter.builder(),
                                       kUnrollFactor)
                       .EmitLoop(op_name, index_ty));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       KernelSpec kernel_spec,
       emitters::GetKernelSpec(sanitized_kernel_name, *hlo,
                               &ir_emitter_context->buffer_assignment(),
@@ -1270,7 +1270,7 @@ EmitRngGetAndUpdateStateLLVMIR(
   std::string sanitized_kernel_name =
       ir_emitter_context->GetSanitizedUniqueName(op_name);
 
-  ASSIGN_OR_RETURN(llvm::Function * kernel,
+  ABSL_ASSIGN_OR_RETURN(llvm::Function * kernel,
                    BuildKernelPrototype(
                        llvm_module.get(), ir_emitter_context->gpu_device_info(),
                        op_name, sanitized_kernel_name, kernel_arguments,
@@ -1286,7 +1286,7 @@ EmitRngGetAndUpdateStateLLVMIR(
       &b, "rng_state_address");
   b.CreateStore(old_state, output_address);
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       KernelSpec kernel_spec,
       emitters::GetKernelSpec(sanitized_kernel_name, *hlo,
                               &ir_emitter_context->buffer_assignment(),

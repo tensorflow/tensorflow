@@ -26,13 +26,14 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
+#include "xla/pjrt/pjrt_compiler_variant.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/proto/pjrt_partial_program.pb.h"
 
@@ -104,7 +105,7 @@ absl::StatusOr<PjRtCompiler*> PjRtCompilerRegistry::GetOrCreateCompiler(
   }
 
   // Create the compiler using the factory.
-  ASSIGN_OR_RETURN(std::unique_ptr<PjRtCompiler> compiler, factory());
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtCompiler> compiler, factory());
   auto* compiler_ptr = compiler.get();
 
   {
@@ -138,7 +139,7 @@ absl::Status PjRtCompilerRegistry::InitializeAllVariants() {
   }
 
   for (const auto& key : keys) {
-    RETURN_IF_ERROR(InitializeVariant(key.platform_name, key.variant_name));
+    ABSL_RETURN_IF_ERROR(InitializeVariant(key.platform_name, key.variant_name));
   }
   return absl::OkStatus();
 }
@@ -148,6 +149,29 @@ void PjRtRegisterCompilerFactory(absl::string_view platform_name,
                                  PjRtCompilerFactory factory) {
   CHECK_OK(PjRtCompilerRegistry::Global().RegisterFactory(
       platform_name, variant_name, std::move(factory)));
+}
+
+void PjRtCompilerRegistry::RegisterVariantPicker(
+    absl::string_view platform_name, PjRtCompilerVariantPicker picker,
+    bool is_weak) {
+  absl::MutexLock lock(compiler_mutex_);
+  auto it = variant_pickers_.find(platform_name);
+  if (it != variant_pickers_.end()) {
+    if (is_weak && !it->second.is_weak) {
+      return;
+    }
+  }
+  variant_pickers_[platform_name] = {std::move(picker), is_weak};
+}
+
+std::optional<PjRtCompilerVariantPicker> PjRtCompilerRegistry::GetVariantPicker(
+    absl::string_view platform_name) {
+  absl::MutexLock lock(compiler_mutex_);
+  auto it = variant_pickers_.find(platform_name);
+  if (it == variant_pickers_.end()) {
+    return std::nullopt;
+  }
+  return it->second.picker;
 }
 
 absl::Status PjRtInitializeCompilerVariant(absl::string_view platform_name,
@@ -167,6 +191,13 @@ void PjRtRegisterDefaultCompiler(absl::string_view platform_name,
       /*variant_name=*/"", std::move(compiler)));
 }
 
+void PjRtRegisterCompilerVariantPicker(absl::string_view platform_name,
+                                       PjRtCompilerVariantPicker picker,
+                                       bool is_weak) {
+  PjRtCompilerRegistry::Global().RegisterVariantPicker(
+      platform_name, std::move(picker), is_weak);
+}
+
 absl::StatusOr<PjRtCompiler*> GetDefaultPjRtCompiler(
     absl::string_view platform_name) {
   return PjRtCompilerRegistry::Global().GetCompiler(platform_name,
@@ -175,7 +206,7 @@ absl::StatusOr<PjRtCompiler*> GetDefaultPjRtCompiler(
 
 absl::StatusOr<PjRtPhaseCompiler*> GetDefaultPjRtPhaseCompiler(
     absl::string_view platform) {
-  ASSIGN_OR_RETURN(PjRtCompiler * compiler, GetDefaultPjRtCompiler(platform));
+  ABSL_ASSIGN_OR_RETURN(PjRtCompiler * compiler, GetDefaultPjRtCompiler(platform));
   PjRtPhaseCompiler* phase_compiler = compiler->AsPhaseCompiler();
   if (phase_compiler == nullptr) {
     return absl::InvalidArgumentError(
@@ -202,10 +233,13 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
   }
 
   auto platform_name = topology.platform_name();
-  auto compiler_variant = options.compiler_variant.value_or("");
-  std::pair<std::string, std::string> key{std::string(platform_name),
-                                          std::string(compiler_variant)};
-  ASSIGN_OR_RETURN(PjRtCompiler * compiler,
+  std::string compiler_variant;
+  if (auto picker =
+          PjRtCompilerRegistry::Global().GetVariantPicker(platform_name)) {
+    ABSL_ASSIGN_OR_RETURN(compiler_variant, (*picker)());
+  }
+
+  ABSL_ASSIGN_OR_RETURN(PjRtCompiler * compiler,
                    GetPjRtCompiler(platform_name, compiler_variant));
   return compiler->Compile(std::move(options), computation, topology, client);
 }
@@ -217,9 +251,51 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     return (*topology_compiler)
         ->Compile(std::move(options), std::move(module), topology, client);
   }
+
   auto platform_name = topology.platform_name();
-  auto compiler_variant = options.compiler_variant.value_or("");
-  ASSIGN_OR_RETURN(PjRtCompiler * compiler,
+  std::string compiler_variant;
+  if (auto picker =
+          PjRtCompilerRegistry::Global().GetVariantPicker(platform_name)) {
+    ABSL_ASSIGN_OR_RETURN(compiler_variant, (*picker)());
+  }
+
+  ABSL_ASSIGN_OR_RETURN(PjRtCompiler * compiler,
+                   GetPjRtCompiler(platform_name, compiler_variant));
+  return compiler->Compile(std::move(options), std::move(module), topology,
+                           client);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
+    CompileOptions options, const XlaComputation& computation,
+    const PjRtTopologyDescription& topology, PjRtCompilerVariant variant,
+    PjRtClient* client) {
+  auto topology_compiler = topology.compiler();
+  if (topology_compiler.has_value()) {
+    return (*topology_compiler)
+        ->Compile(std::move(options), computation, topology, client);
+  }
+
+  auto platform_name = topology.platform_name();
+  std::string compiler_variant = CompilerVariantToString(variant);
+  compiler_variant = compiler_variant == kLinkedVariant ? "" : compiler_variant;
+  ABSL_ASSIGN_OR_RETURN(PjRtCompiler * compiler,
+                   GetPjRtCompiler(platform_name, compiler_variant));
+  return compiler->Compile(std::move(options), computation, topology, client);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
+    CompileOptions options, MaybeOwningMlirModule module,
+    const PjRtTopologyDescription& topology, PjRtCompilerVariant variant,
+    PjRtClient* client) {
+  if (std::optional<PjRtCompiler*> topology_compiler = topology.compiler()) {
+    return (*topology_compiler)
+        ->Compile(std::move(options), std::move(module), topology, client);
+  }
+
+  auto platform_name = topology.platform_name();
+  std::string compiler_variant = CompilerVariantToString(variant);
+  compiler_variant = compiler_variant == kLinkedVariant ? "" : compiler_variant;
+  ABSL_ASSIGN_OR_RETURN(PjRtCompiler * compiler,
                    GetPjRtCompiler(platform_name, compiler_variant));
   return compiler->Compile(std::move(options), std::move(module), topology,
                            client);

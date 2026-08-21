@@ -206,6 +206,39 @@ class PythonObjectToProtoVisitorTest(googletest.TestCase):
     self.assertEqual(methods['class_method'].method_kind, MethodKind.CLASS)
     self.assertEqual(methods['static_method'].method_kind, MethodKind.STATIC)
 
+  def test_inherited_method_kind(self):
+    try:
+      from tensorflow.python import ops
+    except ImportError:
+      self.skipTest('Skipping test because ops is not available.')
+
+    class Base:
+      __module__ = ops.__name__
+
+      @classmethod
+      def class_method(cls):
+        pass
+
+      @staticmethod
+      def static_method():
+        pass
+
+    class Derived(Base):
+      __module__ = ops.__name__
+
+    children = [
+        ('class_method', Derived.class_method),
+        ('static_method', Derived.static_method),
+    ]
+
+    visitor = visitor_lib.PythonObjectToProtoVisitor()
+    visitor('ops.Derived', Derived, children)
+
+    proto = visitor.GetProtos()['tensorflow.ops.Derived']
+    methods = {m.name: m for m in proto.tf_class.member_method}
+    self.assertEqual(methods['class_method'].method_kind, MethodKind.CLASS)
+    self.assertEqual(methods['static_method'].method_kind, MethodKind.STATIC)
+
 
 if __name__ == '__main__':
   googletest.main()

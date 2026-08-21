@@ -25,16 +25,18 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
+#include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
@@ -119,8 +121,8 @@ BasicStringArray::BasicStringArray(Client* client, Shape shape,
                                    tsl::Future<> ready_future,
                                    OnDoneWithBuffer on_done_with_buffer)
     : client_(client),
-      shape_(std::move(shape)),
-      sharding_(std::move(sharding)),
+      array_spec_(xla::ifrt::ArraySpec{DType(DType::kString), std::move(shape),
+                                       std::move(sharding)}),
       user_context_(UserContextScope::current()),
       buffers_(std::move(buffers)),
       ready_future_(std::move(ready_future)),
@@ -150,7 +152,8 @@ void BasicStringArray::DeleteInternal() {
 }
 
 absl::StatusOr<std::optional<int64_t>> BasicStringArray::ByteSize() const {
-  return xla::ifrt::Layout::ByteSize(dtype(), shape_, sharding_, LayoutRef());
+  return xla::ifrt::Layout::ByteSize(array_spec_.dtype, array_spec_.shape,
+                                     array_spec_.sharding, LayoutRef());
 }
 
 tsl::Future<> BasicStringArray::GetReadyFuture() const {
@@ -169,11 +172,11 @@ BasicStringArray::DisassembleIntoSingleDeviceArrays(
     SingleDeviceShardSemantics single_device_shard_semantics) {
   DCHECK(this);
   if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards &&
-      !sharding_->devices()->IsFullyAddressable()) {
+      !array_spec_.sharding->devices()->IsFullyAddressable()) {
     return InvalidArgument(
         "All shards are requested but the sharding has non-addressable "
         "devices: %v",
-        *sharding_->devices());
+        *array_spec_.sharding->devices());
   }
 
   absl::MutexLock lock(mu_);
@@ -181,9 +184,9 @@ BasicStringArray::DisassembleIntoSingleDeviceArrays(
     return absl::FailedPreconditionError("Array has already been deleted");
   }
 
-  ASSIGN_OR_RETURN(
-      auto shapes_and_shadings,
-      sharding_->Disassemble(shape_, single_device_shard_semantics));
+  ABSL_ASSIGN_OR_RETURN(auto shapes_and_shadings,
+                   array_spec_.sharding->Disassemble(
+                       array_spec_.shape, single_device_shard_semantics));
   const int num_shards = shapes_and_shadings.size();
 
   // For each single device array we are going to pre-make:
@@ -255,7 +258,7 @@ BasicStringArray::DisassembleIntoSingleDeviceArrays(
   std::vector<ArrayRef> arrays;
   arrays.reserve(num_shards);
   for (int i = 0; i < num_shards; ++i) {
-    ASSIGN_OR_RETURN(auto array,
+    ABSL_ASSIGN_OR_RETURN(auto array,
                      BasicStringArray::Create(
                          client_, std::move(shapes_and_shadings[i].first),
                          std::move(shapes_and_shadings[i].second),
@@ -276,11 +279,11 @@ tsl::Future<> BasicStringArray::CopyToHostBuffer(
         absl::FailedPreconditionError("Array has already been deleted"));
   }
 
-  if (sharding_->devices()->size() != 1) {
+  if (array_spec_.sharding->devices()->size() != 1) {
     return tsl::Future<>(absl::InvalidArgumentError(absl::StrFormat(
         "CopyToHostBuffer only supports single device string arrays. This "
         "array has been sharded over %d devices.",
-        sharding_->devices()->size())));
+        array_spec_.sharding->devices()->size())));
   }
 
   auto [copy_completion_promise, copy_completion_future] = tsl::MakePromise<>();
@@ -312,13 +315,14 @@ absl::StatusOr<ArrayRef> BasicStringArray::Copy(
     return absl::FailedPreconditionError("Array has already been deleted");
   }
 
-  ASSIGN_OR_RETURN(auto new_sharding, sharding().WithDeviceAssignment(
+  ABSL_ASSIGN_OR_RETURN(auto new_sharding, sharding().WithDeviceAssignment(
                                           std::move(devices), memory_kind));
-  if (new_sharding->devices()->size() != sharding_->devices()->size()) {
+  if (new_sharding->devices()->size() !=
+      array_spec_.sharding->devices()->size()) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Number of devices in new sharding: ", new_sharding->devices()->size(),
         " does not match the number of devices in the current sharding: ",
-        sharding_->devices()->size()));
+        array_spec_.sharding->devices()->size()));
   }
 
   struct StringStore {
@@ -353,9 +357,9 @@ absl::StatusOr<ArrayRef> BasicStringArray::Copy(
     buffers_promise.Set(std::move(buffers));
   };
   buffers_.OnReady(std::move(copier));
-  return BasicStringArray::Create(client_, shape_, std::move(new_sharding),
-                                  std::move(buffers_future),
-                                  std::move(on_done_with_buffer));
+  return BasicStringArray::Create(
+      client_, array_spec_.shape, std::move(new_sharding),
+      std::move(buffers_future), std::move(on_done_with_buffer));
 }
 
 // Makes a single sharded BasicStringArray from the first shard.
@@ -407,9 +411,9 @@ absl::StatusOr<ArrayRef> BasicStringArray::FullyReplicatedShard(
   buffers_.OnReady(std::move(copier));
 
   return BasicStringArray::Create(
-      client_, shape_,
-      SingleDeviceSharding::Create(sharding_->devices()->devices().front(),
-                                   MemoryKind()),
+      client_, array_spec_.shape,
+      SingleDeviceSharding::Create(
+          array_spec_.sharding->devices()->devices().front(), MemoryKind()),
       std::move(buffers_future), std::move(on_done_with_buffer));
 }
 
@@ -424,7 +428,7 @@ std::string BasicStringArray::DebugString() const {
   DCHECK(this);
   return absl::StrFormat(
       "BasicStringArray(shape=%v; sharding=%v; layout=major-to-minor-dense)",
-      shape_, sharding_);
+      array_spec_.shape, array_spec_.sharding);
 }
 
 }  // namespace ifrt

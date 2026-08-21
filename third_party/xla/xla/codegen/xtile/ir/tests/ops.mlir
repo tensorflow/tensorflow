@@ -23,8 +23,7 @@ xtile.entry_func @happy_path(%input: memref<1024x4xf32>, %output: memref<128x102
 // -----
 
 xtile.entry_func @with_attributes(
-  %input: memref<1024xf32> {xla.some_attr = 1},
-  %tile_id: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count:10, tiles_per_workgroup:5>} {
+  %input: memref<1024xf32> {xla.some_attr = 1}, %tile_id: index) {
   xtile.return
 }
 

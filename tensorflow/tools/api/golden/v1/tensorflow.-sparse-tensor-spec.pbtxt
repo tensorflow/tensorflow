@@ -46,10 +46,12 @@ tf_class {
   member_method {
     name: "experimental_from_proto"
     argspec: "args=[\'cls\', \'proto\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "experimental_type_proto"
     argspec: "args=[\'cls\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "flatten"

@@ -28,10 +28,10 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -70,7 +70,7 @@ inline absl::Status Despecialize(HloModule* module) {
 // a given HloModule.
 inline absl::Status RemoveBF16AndDespecialize(HloModule* module) {
   BFloat16MixedPrecisionRemoval remover;
-  RETURN_IF_ERROR(remover.Run(module).status());
+  ABSL_RETURN_IF_ERROR(remover.Run(module).status());
   Despecializer despecializer;
   return despecializer.Run(module).status();
 }
@@ -192,12 +192,12 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   absl::StatusOr<std::pair<const HloModule*, std::unique_ptr<OpaqueExecutable>>>
   GetOptimizedModuleForExecutable(absl::string_view hlo_text,
                                   const HloModuleConfig& config) {
-    ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                      ParseAndReturnVerifiedModule(hlo_text, config));
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<OpaqueExecutable> executable,
         CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
-    ASSIGN_OR_RETURN(const HloModule* optimized_module,
+    ABSL_ASSIGN_OR_RETURN(const HloModule* optimized_module,
                      test_runner_->HloModuleFromWrapped(executable.get()));
     return {{optimized_module, std::move(executable)}};
   }
@@ -206,7 +206,7 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   // optimized HloModule.
   absl::StatusOr<std::unique_ptr<HloModule>> GetOptimizedModule(
       absl::string_view hlo_text, const HloModuleConfig& config) {
-    ASSIGN_OR_RETURN(auto module_and_executable,
+    ABSL_ASSIGN_OR_RETURN(auto module_and_executable,
                      GetOptimizedModuleForExecutable(hlo_text, config));
     return module_and_executable.first->Clone();
   }

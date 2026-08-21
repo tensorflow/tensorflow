@@ -2577,33 +2577,42 @@ absl::Status ParseStablehloGather(const Operator* op,
       op->builtin_options_2_as_StablehloGatherOptions();
 
   if (schema_params != nullptr) {
-    TFL_FILE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-        /*max_size_of_buffer=*/schema_params->offset_dims()->size() *
-            sizeof(int64_t),
-        /*flat_vector=*/schema_params->offset_dims(),
-        /*buffer=*/params->offset_dims,
-        /*op_name=*/"stablehlo_gather"));
-    params->num_offset_dims = schema_params->offset_dims()->size();
+    if (schema_params->offset_dims()) {
+      TFL_FILE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
+          /*max_size_of_buffer=*/schema_params->offset_dims()->size() *
+              sizeof(int64_t),
+          /*flat_vector=*/schema_params->offset_dims(),
+          /*buffer=*/params->offset_dims,
+          /*op_name=*/"stablehlo_gather"));
+      params->num_offset_dims = schema_params->offset_dims()->size();
+    }
 
-    TFL_FILE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-        schema_params->collapsed_slice_dims()->size() * sizeof(int64_t),
-        schema_params->collapsed_slice_dims(), params->collapsed_slice_dims,
-        "stablehlo_gather"));
-    params->num_collapsed_slice_dims =
-        schema_params->collapsed_slice_dims()->size();
+    if (schema_params->collapsed_slice_dims()) {
+      TFL_FILE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
+          schema_params->collapsed_slice_dims()->size() * sizeof(int64_t),
+          schema_params->collapsed_slice_dims(), params->collapsed_slice_dims,
+          "stablehlo_gather"));
+      params->num_collapsed_slice_dims =
+          schema_params->collapsed_slice_dims()->size();
+    }
 
-    TFL_FILE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-        schema_params->start_index_map()->size() * sizeof(int64_t),
-        schema_params->start_index_map(), params->start_index_map,
-        "stablehlo_gather"));
-    params->num_start_index_map = schema_params->start_index_map()->size();
+    if (schema_params->start_index_map()) {
+      TFL_FILE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
+          schema_params->start_index_map()->size() * sizeof(int64_t),
+          schema_params->start_index_map(), params->start_index_map,
+          "stablehlo_gather"));
+      params->num_start_index_map = schema_params->start_index_map()->size();
+    }
 
     params->index_vector_dim = schema_params->index_vector_dim();
 
-    TFL_FILE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
-        schema_params->slice_sizes()->size() * sizeof(int64_t),
-        schema_params->slice_sizes(), params->slice_sizes, "stablehlo_gather"));
-    params->num_slice_sizes = schema_params->slice_sizes()->size();
+    if (schema_params->slice_sizes()) {
+      TFL_FILE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
+          schema_params->slice_sizes()->size() * sizeof(int64_t),
+          schema_params->slice_sizes(), params->slice_sizes,
+          "stablehlo_gather"));
+      params->num_slice_sizes = schema_params->slice_sizes()->size();
+    }
 
     params->indices_are_sorted = schema_params->indices_are_sorted();
   } else {

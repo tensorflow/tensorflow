@@ -69,7 +69,7 @@ limitations under the License.
 
 // API notes:
 // PjRt stands for "Pretty much Just another RunTime".
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 
 namespace xla {
@@ -705,6 +705,13 @@ class PjRtClient {
         "Deserializing serialized executable not supported.");
   }
 
+  // A variant of `DeserializeExecutable` that accepts a Cord.
+  virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+      const absl::Cord& serialized, std::optional<CompileOptions> options) {
+    return DeserializeExecutable(absl::Cord(serialized).Flatten(),
+                                 std::move(options));
+  }
+
   // LoadSerializedExecutable takes the serialized output of PjRtExecutable. The
   // returned executable is loaded by this client. The same checks are made as
   // in Load that the serialized executable is compatible with the client.
@@ -717,6 +724,15 @@ class PjRtClient {
                            const LoadOptions& load_options) {
     return absl::UnimplementedError(
         "Loading serialized executable not supported.");
+  }
+
+  // A variant of `LoadSerializedExecutable` that accepts a Cord.
+  virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+  LoadSerializedExecutable(const absl::Cord& serialized,
+                           std::optional<CompileOptions> options,
+                           const LoadOptions& load_options) {
+    return LoadSerializedExecutable(absl::Cord(serialized).Flatten(),
+                                    std::move(options), load_options);
   }
 
   // Loads the executable returns aa PjRtLoadedExecutable runnable by this
@@ -1135,7 +1151,7 @@ class PjRtBuffer {
   // Since this method actually acquires locks and communicate with the device,
   // it does not have the const qualifier, similar to what ToLiteral does.
   virtual absl::StatusOr<std::vector<int64_t>> logical_dimensions() {
-    ASSIGN_OR_RETURN(Shape logical_shape, logical_on_device_shape());
+    ABSL_ASSIGN_OR_RETURN(Shape logical_shape, logical_on_device_shape());
     absl::Span<const int64_t> dims = logical_shape.dimensions();
     return std::vector<int64_t>(dims.begin(), dims.end());
   }

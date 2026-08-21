@@ -25,11 +25,11 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/base/nullability.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/collective_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
@@ -74,7 +74,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
         symbol_resolver = std::nullopt) {
   ThunkSequenceProto thunk_sequence_proto;
   *thunk_sequence_proto.add_thunks() = thunk_proto;
-  ASSIGN_OR_RETURN(ThunkSequence sequence,
+  ABSL_ASSIGN_OR_RETURN(ThunkSequence sequence,
                    DeserializeThunkSequenceProto(
                        thunk_sequence_proto, buffer_allocations, hlo_module,
                        platform_name, gpu_compute_capability, symbol_resolver));
@@ -952,12 +952,14 @@ TEST(ThunkProtoDeserializationTest, CublasLtGroupedMatmulThunk) {
         }
       )pb");
 
+  // Allocation #4 must cover the grouped-matmul B operand f32[2,407,400]
+  // (2 * 407 * 400 * sizeof(float) = 1302400), not the non-grouped 651200 size.
   std::vector<BufferAllocation> allocations = {
       BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0),  // UNUSED
       BufferAllocation(/*index=*/1, /*size=*/4, /*color=*/0),  // UNUSED
       BufferAllocation(/*index=*/2, /*size=*/4, /*color=*/0),  // UNUSED
       BufferAllocation(/*index=*/3, /*size=*/164428, /*color=*/0),
-      BufferAllocation(/*index=*/4, /*size=*/651200, /*color=*/0),
+      BufferAllocation(/*index=*/4, /*size=*/1302400, /*color=*/0),
       BufferAllocation(/*index=*/5, /*size=*/161600, /*color=*/0),
       BufferAllocation(/*index=*/6, /*size=*/8, /*color=*/0),
   };
@@ -1499,7 +1501,6 @@ TEST(ThunkProtoDeserializationTest, CollectiveKernelThunk) {
             }
             invocation_count_increment: 1
           }
-          is_async: false
           buffers {
             element_count: 64
             source_buffer {

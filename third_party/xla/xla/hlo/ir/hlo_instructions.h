@@ -282,6 +282,8 @@ class HloAsyncInstruction : public HloInstruction {
 
   // Returns async-start instruction of the async chain.
   HloAsyncInstruction* async_chain_start() const;
+  // Returns the next async instruction in the async chain.
+  HloAsyncInstruction* async_chain_next() const { return async_chain_next_; }
   // Returns async-done instruction of the async chain.
   HloAsyncInstruction* async_chain_done() const;
   // Returns the chain of async op referencing this computation,
@@ -301,13 +303,10 @@ class HloAsyncInstruction : public HloInstruction {
 
  protected:
   // Helper to constructs async-{start,update,done}.
-  HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
-                      absl::Span<HloInstruction* const> operands,
-                      HloOpcode async_wrapped_opcode);
-
-  // Constructs async-{update,done}.
-  HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
-                      HloInstruction* operand);
+  HloAsyncInstruction(
+      HloOpcode opcode, const Shape& shape,
+      absl::Span<HloInstruction* const> operands,
+      std::optional<HloOpcode> async_wrapped_opcode = std::nullopt);
 
  private:
   // async-{update,done} inherit all their attributes from async-start,
@@ -377,6 +376,39 @@ class HloAsyncStartInstruction : public HloAsyncInstruction,
       HloCloneContext* context) const override;
 
   std::string async_execution_thread_ = kMainExecutionThread;
+};
+
+// Creates async-update.
+class HloAsyncUpdateInstruction : public HloAsyncInstruction,
+                                  public HloAliasible {
+ public:
+  using HloAliasible::output_to_operand_aliasing;
+  using HloAliasible::set_output_to_operand_aliasing;
+  HloAsyncUpdateInstruction(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      std::optional<HloOpcode> async_wrapped_opcode = std::nullopt);
+
+  void ToProto(HloInstructionProto* proto) const override;
+
+  static bool ClassOf(const HloInstruction* hlo) {
+    switch (hlo->opcode()) {
+      case HloOpcode::kAsyncUpdate:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+ private:
+  void PrintExtraAttributesImpl(AttributePrinter& printer,
+                                const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
+          eq_computations) const override;
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
 };
 
 class HloCopyStartInstruction : public HloInstruction {

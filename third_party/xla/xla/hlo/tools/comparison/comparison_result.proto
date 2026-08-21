@@ -1,0 +1,194 @@
+/* Copyright 2026 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+// This file defines protobuf messages for XLA compiler's numeric comparison
+// tool. These messages are used to store tensor summaries and comparison
+// results, facilitating debugging of numerical divergences between different
+// XLA compilations or hardware targets.
+
+edition = "2023";
+
+package xla.numerics.comparison;
+
+import "xla/xla_data.proto";
+
+// Represents one frame in the computation call stack, corresponding to an HLO
+// call or loop instruction.
+message ScopeInstructionProto {
+  // The name of the HLO instruction, e.g., 'while.1', 'fusion.3'.
+  string instruction_name = 1;
+  // The iteration index if the instruction is inside a loop, or -1 to
+  // indicate matching any iteration (e.g. for loop-invariant values).
+  int64 iteration_index = 2;
+}
+
+// Identifies a tensor within a computation graph, by the HLO instruction name
+// that produced it and a shape index if the output is a tuple.
+message TensorKeyProto {
+  // The name of the HLO instruction that produced this tensor.
+  string instruction_name = 1;
+  // If the instruction's output is a tuple, this identifies the tensor's index
+  // within the tuple. If the output is not a tuple, this is empty.
+  repeated int64 shape_index = 2;
+}
+
+// Uniquely identifies a specific tensor instance produced during execution. It
+// consists of a TensorKeyProto and a representation of the call stack.
+message AbsoluteScopedTensorKeyProto {
+  // Identifies the tensor-producing instruction and output index.
+  TensorKeyProto tensor_key = 1;
+  // The call stack at the point of tensor creation, from the outermost scope
+  // (entry computation) to the innermost scope. Note that the entry computation
+  // is not included in this list. So instructions in the entry computation have
+  // an empty scope_instructions list.
+  repeated ScopeInstructionProto scope_instructions = 2;
+}
+
+// Contains statistical summaries of a tensor's values, potentially broken down
+// into blocks for more granular comparison.
+message TensorSummaryProto {
+  // Statistical summary of one block of tensor values. A tensor may be
+  // split into multiple blocks according to `split_spec`.
+  message BlockSummaryProto {
+    // The multi-dimensional index of this block within the logical tensor grid
+    // defined by `split_spec`.
+    repeated int64 block_indices = 1;
+    // Minimum value in the block.
+    float min = 2;
+    // Maximum value in the block.
+    float max = 3;
+    // Mean of the values in the block.
+    float mean = 4;
+    // Standard deviation of the values in the block.
+    float stddev = 5;
+    // Total count of elements in the block, excluding NaNs and infinities.
+    float count = 6;
+    // Count of NaN values in the block.
+    float nan_count = 7;
+    // Count of positive infinity values in the block.
+    float pos_inf_count = 8;
+    // Count of negative infinity values in the block.
+    float neg_inf_count = 9;
+    // Count of zero values in the block.
+    float zero_count = 10;
+  }
+  // Summaries for each block of the tensor.
+  repeated BlockSummaryProto block_summaries = 1;
+
+  // Defines how a tensor dimension is split into blocks for summarization.
+  message DimSplitSpecProto {
+    // The dimension index that this split specification applies to.
+    int64 dim_index = 1;
+    // The number of blocks this dimension is split into.
+    int64 block_count = 2;
+  }
+
+  // A list of dimension split specifications. Together, they define a
+  // multi-dimensional blocking of the tensor for summarization.
+  repeated DimSplitSpecProto split_spec = 2;
+}
+
+// Represents the result of comparing tensor summaries between a baseline and a
+// target run for a single tensor.
+message ComparisonResultProto {
+  // The replica ID in which this comparison took place, used in data-parallel
+  // computations. For jax users, this identifies the shard when using
+  // `jax.shard_map`.
+  int32 replica_id = 1;
+  // Chain of pending transformations to be applied to the tensor summary to
+  // recover the original tensor shape and layout as seen in the HLO graph.
+  // These are transformations common to both baseline and target that were not
+  // applied before comparison. The first transformation in the chain is the
+  // first transformation to be applied if one wants to recover the summaries of
+  // the original tensor from the summaries in this proto.
+  repeated TensorTransformationProto pending_transformation = 2;
+  // Key identifying the tensor in the baseline run's original HLO graph.
+  AbsoluteScopedTensorKeyProto baseline_tensor_key = 3;
+  // Summaries for the baseline tensor. This is repeated for data parallelism
+  // with manual sharding (aka jax.shard_map); each element is a summary for one
+  // manual subgroup. The elements are aligned with `target_tensor_summaries`.
+  repeated TensorSummaryProto baseline_tensor_summaries = 4;
+  // Key identifying the tensor in the target run's original HLO graph.
+  AbsoluteScopedTensorKeyProto target_tensor_key = 5;
+  // Summaries for the target tensor. This is repeated for data parallelism
+  // with manual sharding (aka jax.shard_map); each element is a summary for one
+  // manual subgroup. The elements are aligned with `baseline_tensor_summaries`.
+  repeated TensorSummaryProto target_tensor_summaries = 6;
+  // A score quantifying the difference between baseline and target summaries.
+  // A score of 0 indicates numeric match. Higher scores indicate greater
+  // divergence. A score of -1.0 indicates that comparison could not be
+  // performed (e.g., due to inability to reconstruct or align summaries).
+  double diff_score = 7;
+}
+
+// Describes a transformation operation that needs to be conceptually
+// applied to a tensor in the optimized graph to recover the shape and data
+// layout of the corresponding tensor in the original graph.
+message TensorTransformationProto {
+  // Represents a reshape operation to recover the original shape.
+  message Reshape {
+    // The dimensions of the tensor after the reshape operation.
+    repeated int64 output_dimensions = 1;
+  }
+  // Represents a broadcast operation to recover the original shape.
+  message Broadcast {
+    // The dimensions of the tensor after the broadcast operation.
+    repeated int64 output_dimensions = 1;
+    // The dimensions of the input tensor that were broadcast.
+    repeated int64 broadcast_dimensions = 2;
+  }
+  // Represents an unsharding operation to recover the original tensor from
+  // device shards.
+  message Unshard {
+    // The dimensions of the tensor after unsharding (i.e., the shape of the
+    // original, unsharded tensor).
+    repeated int64 original_dimensions = 1;
+    // The HLO sharding specification used to perform the unshard.
+    xla.OpSharding sharding = 2;
+  }
+  // The transformation to be applied.
+  oneof transformation {
+    // A reshape transformation.
+    Reshape reshape = 1;
+    // A broadcast transformation.
+    Broadcast broadcast = 2;
+    // An unsharding transformation.
+    Unshard unshard = 3;
+  }
+}
+
+// Represents the summary of a tensor recovered from a single XLA job run,
+// in the context of the original HLO graph.
+message RecoveredTensorSummaryProto {
+  // Key identifying the tensor in the original HLO graph.
+  AbsoluteScopedTensorKeyProto tensor_key = 1;
+  // Chain of pending transformations to be applied to `original_tensor_summary`
+  // to fully recover the tensor's shape and layout as seen in the HLO graph.
+  // The first transformation in the chain is the first to be applied.
+  repeated TensorTransformationProto pending_transformation = 2;
+
+  // Encapsulates summaries for a single logical tensor instance, which might
+  // be composed of multiple summaries if manual sharding is used.
+  message OriginalTensorSummaryProto {
+    // The logical dimensions (shape) of this tensor instance.
+    repeated int64 dimensions = 1;
+    // Summaries for the tensor. This field is repeated for data parallelism
+    // with manual sharding; each element is a summary for one manual subgroup.
+    repeated TensorSummaryProto summaries = 2;
+  }
+
+  // The recovered summary for this tensor instance.
+  OriginalTensorSummaryProto original_tensor_summary = 3;
+}

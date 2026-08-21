@@ -22,11 +22,10 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/transforms/algebraic_simplifier.h"
 #include "xla/backends/gpu/transforms/conv_padding_legalization.h"
 #include "xla/backends/gpu/transforms/conv_rewriter.h"
@@ -55,6 +54,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/llvm_gpu_backend/amdgpu_backend.h"
 #include "xla/service/gpu/target_constants.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/stream_executor/device_description.h"
@@ -63,8 +63,6 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -170,7 +168,7 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   // CudnnConvPadForTensorCores may add instructions which can be simplified
   // by constant folding.
   pipeline.AddPass<HloConstantFolding>();
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       pipeline
           .Run(hlo_module,
                /*execution_threads=*/{HloInstruction::kMainExecutionThread})
@@ -195,7 +193,7 @@ void AMDGPUCompiler::AddPaddingForGpublasGemms(
 
 absl::Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
-    const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
+    const CompileOptions& options, const GpuTopology& gpu_topology,
     const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool,
     CompilationStats* compilation_stats, mlir::MLIRContext* mlir_context) {
   HloPassPipeline pre_pipeline("AMDGPU post-layout_assignment part 1",
@@ -203,15 +201,15 @@ absl::Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
 
   pre_pipeline.AddPass<DotDimensionMerger>();
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       pre_pipeline
           .Run(hlo_module,
                /*execution_threads=*/{HloInstruction::kMainExecutionThread})
           .status());
 
-  RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
-      hlo_module, stream_exec, options, gpu_target_config, alias_info,
-      thread_pool, compilation_stats, mlir_context));
+  ABSL_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
+      hlo_module, stream_exec, options, gpu_topology, alias_info, thread_pool,
+      compilation_stats, mlir_context));
 
   HloPassPipeline post_pipeline("AMDGPU post-layout_assignment part 2",
                                 compilation_stats);
@@ -220,7 +218,7 @@ absl::Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
   // memory.
   post_pipeline.AddPass<TriangularSolveRewriter>();
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       post_pipeline
           .Run(hlo_module,
                /*execution_threads=*/{HloInstruction::kMainExecutionThread})
@@ -252,7 +250,7 @@ AMDGPUCompiler::CompileTargetBinary(
     // NODE: module_config.compilation_cache_key() is not used in the current
     // implementation of CompileToHsaco since it invalidates the persistent
     // file cache.
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         hsaco_result,
         amdgpu::CompileToHsaco(llvm_module,
                                device_description.gpu_compute_capability(),

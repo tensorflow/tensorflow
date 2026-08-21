@@ -114,10 +114,10 @@ TEST(RunHloModule, DeterminismWithSeed) {
   options.run_test_hlo_passes = false;
 
   auto run_once = [&]() -> absl::StatusOr<Literal> {
-    ASSIGN_OR_RETURN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+    ABSL_ASSIGN_OR_RETURN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
     RunHloModuleIterationLiterals iteration_literals;
     std::minstd_rand0 engine;
-    RETURN_IF_ERROR(RunAndCompare(std::move(module), nullptr, &runner, nullptr,
+    ABSL_RETURN_IF_ERROR(RunAndCompare(std::move(module), nullptr, &runner, nullptr,
                                   &engine, options, &iteration_literals));
     return Literal::CreateFromProto(iteration_literals.result());
   };
@@ -147,10 +147,10 @@ TEST(RunHloModule, NonDeterminismWithoutSeed) {
   options.run_test_hlo_passes = false;
 
   auto run_once = [&]() -> absl::StatusOr<Literal> {
-    ASSIGN_OR_RETURN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+    ABSL_ASSIGN_OR_RETURN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
     RunHloModuleIterationLiterals iteration_literals;
     std::minstd_rand0 engine;
-    RETURN_IF_ERROR(RunAndCompare(std::move(module), nullptr, &runner, nullptr,
+    ABSL_RETURN_IF_ERROR(RunAndCompare(std::move(module), nullptr, &runner, nullptr,
                                   &engine, options, &iteration_literals));
     return Literal::CreateFromProto(iteration_literals.result());
   };

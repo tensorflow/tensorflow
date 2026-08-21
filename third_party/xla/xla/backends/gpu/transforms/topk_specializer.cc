@@ -48,8 +48,7 @@ namespace xla::gpu {
 namespace {
 
 absl::StatusOr<HloInstruction*> SmallBufferOptimization(
-    HloCustomCallInstruction* topk, bool is_cuda,
-    bool xla_gpu_experimental_use_raft_select_k) {
+    HloCustomCallInstruction* topk, bool is_cuda) {
   Shape data_shape = topk->operand(0)->shape();
   auto dtype = data_shape.element_type();
   auto supported_dtypes = {F32, BF16};
@@ -79,9 +78,6 @@ absl::StatusOr<HloInstruction*> SmallBufferOptimization(
   }
   // Enable RAFT if TopK is_stable = false.
   bool use_raft = !hlo_instruction_utils::IsTopKStable(topk);
-  // TODO(b/473829358): Remove use_raft_select_k flag after transition period.
-  // Enable RAFT if explicitly flagged.
-  use_raft |= xla_gpu_experimental_use_raft_select_k;
 
   if (is_cuda && use_raft) {
     // The heuristic for deciding when to use Raft select_k versus Sort + Slice
@@ -136,12 +132,7 @@ class SpecializeTopkVisitor : public DfsHloRewriteVisitor {
     TF_RET_CHECK(topk->operand_count() == 1);
     bool is_cuda = compute_capability_.IsCuda();
 
-    if (auto small_topk = SmallBufferOptimization(
-            topk, is_cuda,
-            inst->GetModule()
-                ->config()
-                .debug_options()
-                .xla_gpu_experimental_use_raft_select_k());
+    if (auto small_topk = SmallBufferOptimization(topk, is_cuda);
         small_topk.ok()) {
       return ReplaceInstruction(topk, *small_topk);
     } else {  // NOLINT(readability-else-after-return)

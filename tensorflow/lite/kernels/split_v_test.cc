@@ -237,5 +237,22 @@ TYPED_SPLIT_V_TEST(SplitVOpTypedTest, NegativeAxis) {
                    });
 }
 
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+void TestFloat8SplitV(TensorType tensor_type) {
+  SplitVOpModel model({tensor_type, {4}}, {TensorType_INT32, {2}},
+                      /*num_splits=*/2, /*axis=*/0,
+                      /*size_splits_data=*/{2, 2});
+  model.SetInput<uint8_t>({0x00, 0x38, 0xbc, 0x7e});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutput<uint8_t>(0), ElementsAreArray({0x00, 0x38}));
+  EXPECT_THAT(model.GetOutput<uint8_t>(1), ElementsAreArray({0xbc, 0x7e}));
+}
+
+TEST(SplitVOpTest, Float8) {
+  TestFloat8SplitV(TensorType_FLOAT8_E4M3FN);
+  TestFloat8SplitV(TensorType_FLOAT8_E5M2);
+}
+#endif
+
 }  // namespace
 }  // namespace tflite

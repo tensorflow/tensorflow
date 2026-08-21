@@ -52,10 +52,12 @@ tf_class {
   member_method {
     name: "experimental_from_proto"
     argspec: "args=[\'cls\', \'proto\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "experimental_type_proto"
     argspec: "args=[\'cls\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "flatten"
@@ -68,6 +70,7 @@ tf_class {
   member_method {
     name: "from_value"
     argspec: "args=[\'cls\', \'value\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "is_compatible_with"

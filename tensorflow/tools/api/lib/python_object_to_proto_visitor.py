@@ -109,6 +109,9 @@ _EXCLUDED_DUNDERS = frozenset(vars(object)) - {
     # in tensorflow/python/ops/numpy_ops/np_array_ops.py, so we exclude it
     # to keep API generation deterministic.
     '__round__',
+    # Python 3.14 deferred annotations
+    '__annotate__',
+    '__annotate_func__',
 }
 
 
@@ -376,7 +379,7 @@ class PythonObjectToProtoVisitor:
           new_method = proto.member_method.add()
           new_method.name = member_name
           if isinstance(parent, type):
-            raw = parent.__dict__.get(member_name)
+            raw = inspect.getattr_static(parent, member_name, None)
             if isinstance(raw, classmethod):
               new_method.method_kind = (
                   api_objects_pb2.TFAPIMethod.CLASS

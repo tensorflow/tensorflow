@@ -22,9 +22,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -108,7 +108,7 @@ absl::StatusOr<DeviceDescription> DeviceDescription::FromProto(
   device_description.clock_rate_ghz_ = proto.clock_rate_ghz();
 
   if (proto.has_cuda_compute_capability()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         device_description.gpu_compute_capability_,
         CudaComputeCapability::FromProto(proto.cuda_compute_capability()));
   }
@@ -124,42 +124,42 @@ absl::StatusOr<DeviceDescription> DeviceDescription::FromProto(
   device_description.fpus_per_core_ = proto.fpus_per_core();
 
   if (proto.has_scalar_unit_description()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         device_description.scalar_unit_description_,
         ExecutionUnitDescription::FromProto(proto.scalar_unit_description()));
   }
   if (proto.has_matrix_unit_description()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         device_description.matrix_unit_description_,
         ExecutionUnitDescription::FromProto(proto.matrix_unit_description()));
   }
   if (!proto.driver_version().empty()) {
-    ASSIGN_OR_RETURN(device_description.driver_version_,
+    ABSL_ASSIGN_OR_RETURN(device_description.driver_version_,
                      SemanticVersion::ParseFromString(proto.driver_version()));
   }
   if (!proto.kernel_mode_driver_version().empty()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         device_description.kernel_mode_driver_version_,
         SemanticVersion::ParseFromString(proto.kernel_mode_driver_version()));
   }
   if (!proto.runtime_version().empty()) {
-    ASSIGN_OR_RETURN(device_description.runtime_version_,
+    ABSL_ASSIGN_OR_RETURN(device_description.runtime_version_,
                      SemanticVersion::ParseFromString(proto.runtime_version()));
   }
   if (!proto.compile_time_toolkit_version().empty()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         device_description.compile_time_toolkit_version_,
         SemanticVersion::ParseFromString(proto.compile_time_toolkit_version()));
   }
   if (!proto.dnn_version().empty()) {
-    ASSIGN_OR_RETURN(device_description.dnn_version_,
+    ABSL_ASSIGN_OR_RETURN(device_description.dnn_version_,
                      SemanticVersion::ParseFromString(proto.dnn_version()));
   }
   if (!proto.cub_version().empty()) {
-    ASSIGN_OR_RETURN(device_description.cub_version_,
+    ABSL_ASSIGN_OR_RETURN(device_description.cub_version_,
                      SemanticVersion::ParseFromString(proto.cub_version()));
   }
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       device_description.interconnect_info_,
       DeviceInterconnectInfo::FromProto(proto.device_interconnect_info()));
 
@@ -415,7 +415,7 @@ GpuComputeCapabilityProto GpuComputeCapability::ToProto() const {
 absl::StatusOr<GpuComputeCapability> GpuComputeCapability::FromProto(
     const GpuComputeCapabilityProto& proto) {
   if (proto.has_cuda_compute_capability()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         CudaComputeCapability cuda_compute_capability,
         CudaComputeCapability::FromProto(proto.cuda_compute_capability()));
     return GpuComputeCapability(cuda_compute_capability);

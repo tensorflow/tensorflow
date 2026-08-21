@@ -1,0 +1,68 @@
+// RUN: fusion_to_xtile %s | fusion_compiler_opt --canonicalize -cse \
+// RUN:   | FileCheck %s
+// RUN: fusion_to_xtile %s | fusion_compiler_opt --xtile-cpu-xtile-to-vector \
+// RUN:   | FileCheck %s --check-prefix=CHECK-VECTOR
+// RUN: fusion_to_xtile %s | fusion_compiler_opt --xtile-cpu-xtile-to-vector \
+// RUN:   --xtile-cpu-vector-to-llvm | FileCheck %s --check-prefix=CHECK-LLVM
+// RUN: test_correctness %s
+
+// RUN: fusion_to_xtile %s | fusion_compiler_opt \
+// RUN:   --xtile-cpu-new-xtile-to-vector --xla-simplify-arith \
+// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
+// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering=true
+
+fusion {
+  p0 = f32[128,256] parameter(0)
+  ROOT reshape = f32[32768] reshape(p0)
+}
+// CHECK:      #indexing_map = #xla.indexing_map<"(pid, tid) -> (pid * 32 + tid / 64), domain: pid in [0, 3], tid in [0, 2047]">
+// CHECK:      #indexing_map1 = #xla.indexing_map<"(tid) -> ((tid mod 64) * 4), domain: tid in [0, 2047]">
+// CHECK:      #indexing_map2 = #xla.indexing_map<"(pid, tid) -> (pid * 8192 + tid * 4), domain: pid in [0, 3], tid in [0, 2047]">
+
+// CHECK:        xtile.entry_func @wrapped_fusion(
+// CHECK-SAME:     %[[ARG:[^:]+]]: memref<128x256xf32>,
+// CHECK-SAME:     %[[OUT:[^:]+]]: memref<32768xf32>,
+// CHECK-SAME:     %[[PID:[^:]+]]: index)
+// CHECK-SAME:     attributes {num_opaque_args = 0 : i32}
+
+// CHECK:  %[[C0:.*]] = arith.constant 0 : index
+// CHECK:  %[[C1:.*]] = arith.constant 1 : index
+// CHECK:  %[[LIMIT:.*]] = arith.constant 2048 : index
+// CHECK:  scf.for %[[TID:.*]] = %[[C0]] to %[[LIMIT]] step %[[C1]] {
+// CHECK:    %[[IDX_0:.*]] = xla.apply_indexing #indexing_map(%[[PID]], %[[TID]])
+// CHECK:    %[[IDX_1:.*]] = xla.apply_indexing #indexing_map1(%[[TID]])
+// CHECK:    %[[T_0:.*]] = xtile.extract %[[ARG]][%[[IDX_0]], %[[IDX_1]]] [1, 4] [1, 1]
+// CHECK:    %[[RESHAPE:.*]] = stablehlo.reshape %[[T_0]] : (tensor<1x4xf32>) -> tensor<4xf32>
+// CHECK:    %[[IDX_2:.*]] = xla.apply_indexing #indexing_map2(%[[PID]], %[[TID]])
+// CHECK:    xtile.insert %[[RESHAPE]] into %[[OUT]][%[[IDX_2]]] [4] [1]
+// CHECK:  }
+// CHECK:  xtile.return
+
+// CHECK-VECTOR-LABEL: func.func @wrapped_fusion_impl
+// CHECK-VECTOR:         %[[ALLOCA_0:.*]] = memref.alloca() : memref<1x4xf32>
+// CHECK-VECTOR:         %[[ALLOCA_1:.*]] = memref.alloca() : memref<1x4xf32>
+// CHECK-VECTOR:         memref.copy %{{.*}}, %[[ALLOCA_0]]
+
+// NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl
+// NEW-VECTOR-SAME:    %[[ARG0:.*]]: memref<128x256xf32>, %[[ARG1:.*]]: memref<32768xf32>
+// NEW-VECTOR:         %[[PAD:.*]] = arith.constant 0.000000e+00 : f32
+// NEW-VECTOR:         scf.for
+// NEW-VECTOR-NOT:     scf.if
+// NEW-VECTOR:         %[[R0:.*]] = vector.transfer_read %[[ARG0]][%{{.*}}, %{{.*}}], %[[PAD]] {in_bounds = [true, true]} : memref<128x256xf32>, vector<1x4xf32>
+// NEW-VECTOR:         %[[RESHAPE:.*]] = vector.shape_cast %[[R0]] : vector<1x4xf32> to vector<4xf32>
+// NEW-VECTOR:         vector.transfer_write %[[RESHAPE]], %[[ARG1]][%{{.*}}] {in_bounds = [true]} : vector<4xf32>, memref<32768xf32>
+
+// CHECK-LLVM: llvm.intr.memcpy
+
+ENTRY main {
+  p0 = f32[128,256] parameter(0)
+  ROOT fusion = f32[32768] fusion(p0), kind=kLoop, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["4"]}],
+          "num_ctas":"4"
+        }
+      }
+    }
+}

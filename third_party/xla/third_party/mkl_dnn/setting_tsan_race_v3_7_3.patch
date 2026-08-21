@@ -1,0 +1,52 @@
+diff --git a/src/common/utils.hpp b/src/common/utils.hpp
+index be34002d19..ead90efa67 100644
+--- a/src/common/utils.hpp
++++ b/src/common/utils.hpp
+@@ -713,17 +713,41 @@ static constexpr bool is_dev_mode() {
+ template <typename T>
+ struct setting_t {
+ private:
+-    T value_;
+-    bool initialized_;
++    std::atomic<T> value_;
++    std::atomic<bool> initialized_ {false};
+ 
+ public:
+     constexpr setting_t() : value_ {}, initialized_ {false} {}
+-    constexpr setting_t(const T init) : value_ {init}, initialized_ {false} {}
+-    bool initialized() { return initialized_; }
+-    T get() { return value_; }
++    constexpr setting_t(const T init) : value_ {init}, initialized_ {true} {}
++    bool initialized() const { return initialized_.load(std::memory_order_acquire); }
++    T get() const {
++        return value_.load(std::memory_order_relaxed);
++    }
+     void set(T new_value) {
++        value_.store(new_value, std::memory_order_relaxed);
++        initialized_.store(true, std::memory_order_release);
++    }
++    DNNL_DISALLOW_COPY_AND_ASSIGN(setting_t);
++};
++
++// To avoid atomic<std::string>, because setting_t<std::string> usage is already
++// guarded by a mutex.
++template <>
++struct setting_t<std::string> {
++private:
++    std::string value_;
++    std::atomic<bool> initialized_ {false};
++
++public:
++    setting_t() : value_ {}, initialized_ {false} {}
++    setting_t(const std::string &init) : value_ {init}, initialized_ {true} {}
++    bool initialized() const { return initialized_.load(std::memory_order_acquire); }
++    std::string get() const {
++        return value_;
++    }
++    void set(const std::string &new_value) {
+         value_ = new_value;
+-        initialized_ = true;
++        initialized_.store(true, std::memory_order_release);
+     }
+     DNNL_DISALLOW_COPY_AND_ASSIGN(setting_t);
+ };

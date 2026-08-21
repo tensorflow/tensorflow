@@ -135,7 +135,7 @@ class RocmTraceCollector {
   virtual void SetGpuAgents(std::vector<rocprofiler_agent_v0_t> /*agents*/) {}
   virtual void AddEvent(RocmTracerEvent&& event, bool is_auxiliary) = 0;
   virtual void OnEventsDropped(const std::string& reason,
-                               uint32_t num_events) = 0;
+                               uint64_t num_events) = 0;
   virtual void Flush() = 0;
   virtual void Export(tsl::profiler::XSpace* space) = 0;
   virtual void SetScopeRangeIdTree(ScopeRangeIdTree tree) {}
@@ -200,7 +200,7 @@ class RocmTraceCollectorImpl : public RocmTraceCollector {
   }
 
   void OnEventsDropped(const std::string& reason,
-                       uint32_t correlation_id) override {
+                       uint64_t correlation_id) override {
     VLOG(2) << "RocmTracerEvent dropped (correlation_id=" << correlation_id
             << ",) : " << reason << ".";
   }
@@ -214,18 +214,18 @@ class RocmTraceCollectorImpl : public RocmTraceCollector {
   std::vector<rocprofiler_agent_v0_t> gpu_agents_;
 
   absl::Mutex event_maps_mutex_;
-  absl::flat_hash_map<uint32_t, RocmTracerEvent> api_events_map_
+  absl::flat_hash_map<uint64_t, RocmTracerEvent> api_events_map_
       ABSL_GUARDED_BY(event_maps_mutex_);
 
   /* Some apis such as MEMSETD32 (based on an observation with ResNet50),
    trigger multiple HIP ops domain activities. We keep them in a vector and
    merge them with api activities at flush time.
  */
-  absl::flat_hash_map<uint32_t, std::vector<RocmTracerEvent>>
+  absl::flat_hash_map<uint64_t, std::vector<RocmTracerEvent>>
       activity_ops_events_map_ ABSL_GUARDED_BY(event_maps_mutex_);
   // This is for the APIs that we track because we need some information from
   // them to populate the corresponding activity that we actually track.
-  absl::flat_hash_map<uint32_t, RocmTracerEvent> auxiliary_api_events_map_
+  absl::flat_hash_map<uint64_t, RocmTracerEvent> auxiliary_api_events_map_
       ABSL_GUARDED_BY(event_maps_mutex_);
 
   std::vector<RocmTracerEvent> ApiActivityInfoExchange()

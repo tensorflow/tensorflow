@@ -49,6 +49,7 @@ class AsyncCollectiveCreator : public HloModulePass {
     HloPredicate convert_all_to_all = HloPredicateFalse;
     HloPredicate convert_reduce_scatter = HloPredicateFalse;
     HloPredicate convert_ragged_all_to_all = HloPredicateFalse;
+    HloPredicate should_ignore_size_check = HloPredicateFalse;
     ContextShapeQuery get_context_shapes = [](const HloInstruction*) {
       return std::vector<Shape>{};
     };

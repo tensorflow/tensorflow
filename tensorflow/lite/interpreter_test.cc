@@ -1183,6 +1183,67 @@ TEST_F(InterpreterTest, SubgraphNumbering) {
   EXPECT_THAT(subgraph_indices, ElementsAre(0, 1, 2, 3, 4, 5));
 }
 
+TEST_F(InterpreterTest, ModifyGraphWithDelegateUsesActiveSubgraphs) {
+  AddSubgraphs(2);
+
+  std::vector<int> prepared_subgraphs;
+  TfLiteDelegate delegate = TfLiteDelegateCreate();
+  delegate.data_ = &prepared_subgraphs;
+  delegate.Prepare = [](TfLiteContext* context,
+                        TfLiteDelegate* delegate) -> TfLiteStatus {
+    auto* prepared_subgraphs = static_cast<std::vector<int>*>(delegate->data_);
+    prepared_subgraphs->push_back(
+        reinterpret_cast<Subgraph*>(context->impl_)->GetSubgraphIndex());
+    return kTfLiteOk;
+  };
+
+  EXPECT_EQ(interpreter_->ModifyGraphWithDelegate(
+                &delegate, /*active_subgraph_indices=*/{2, 0, 2}),
+            kTfLiteOk);
+  EXPECT_THAT(prepared_subgraphs, ElementsAre(0, 2));
+}
+
+TEST_F(InterpreterTest, ModifyGraphWithDelegateCanSkipMainSubgraph) {
+  AddSubgraphs(2);
+
+  std::vector<int> prepared_subgraphs;
+  TfLiteDelegate delegate = TfLiteDelegateCreate();
+  delegate.data_ = &prepared_subgraphs;
+  delegate.Prepare = [](TfLiteContext* context,
+                        TfLiteDelegate* delegate) -> TfLiteStatus {
+    auto* prepared_subgraphs = static_cast<std::vector<int>*>(delegate->data_);
+    prepared_subgraphs->push_back(
+        reinterpret_cast<Subgraph*>(context->impl_)->GetSubgraphIndex());
+    return kTfLiteOk;
+  };
+
+  EXPECT_EQ(interpreter_->ModifyGraphWithDelegate(
+                &delegate, /*active_subgraph_indices=*/{2}),
+            kTfLiteOk);
+  EXPECT_THAT(prepared_subgraphs, ElementsAre(2));
+}
+
+TEST_F(InterpreterTest,
+       ModifyGraphWithDelegateValidatesActiveSubgraphsBeforeDelegation) {
+  AddSubgraphs(2);
+
+  std::vector<int> prepared_subgraphs;
+  TfLiteDelegate delegate = TfLiteDelegateCreate();
+  delegate.data_ = &prepared_subgraphs;
+  delegate.Prepare = [](TfLiteContext* context,
+                        TfLiteDelegate* delegate) -> TfLiteStatus {
+    auto* prepared_subgraphs = static_cast<std::vector<int>*>(delegate->data_);
+    prepared_subgraphs->push_back(
+        reinterpret_cast<Subgraph*>(context->impl_)->GetSubgraphIndex());
+    return kTfLiteOk;
+  };
+
+  EXPECT_NE(interpreter_->ModifyGraphWithDelegate(
+                &delegate, /*active_subgraph_indices=*/{0, 3}),
+            kTfLiteOk);
+  EXPECT_THAT(prepared_subgraphs, IsEmpty());
+}
+
 struct TestExternalContext : public TfLiteExternalContext {
   static constexpr TfLiteExternalContextType kType = kTfLiteGemmLowpContext;
 

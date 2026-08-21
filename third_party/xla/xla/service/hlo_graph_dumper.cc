@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "sqlite3.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/service/simple_viewer_html.h"
 #include "xla/service/viewer_html.h"
 #include "xla/service/viewer_server.h"
 #include "xla/shape.h"
@@ -72,6 +73,7 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/util.h"
+#include "tsl/platform/base64.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/thread_annotations.h"
 
@@ -604,27 +606,32 @@ stylesheet=<
   //  - Nodes come before their in- and out-edges in the SVG.  We need this
   //    because the "X ~ Y" CSS selector finds a sibling of X that *comes
   //    after X in the DOM* and matches Y.
-  std::vector<std::string> edge_css_rules;
-  std::string kBlue = "#1976d2";
-  std::string kRed = "#d32f2f";
+  //
+  // Browsers require URI-encoding the data URI ('#' as "%23"); the rules
+  // are emitted with the encoding already applied.
+  std::string edge_css_rules;
+  edge_css_rules.reserve(edge_ids_.size() * 512);
+  constexpr absl::string_view kBlue = "%231976d2";  // "#1976d2"
+  constexpr absl::string_view kRed = "%23d32f2f";   // "#d32f2f"
   for (const auto& kv : edge_ids_) {
     const HloInstruction* from_node = kv.first.first;
     const HloInstruction* to_node = kv.first.second;
     int64_t edge_id = kv.second;
 
-    auto add_hover_css_rule = [&](std::string elem_type, int64_t elem_id,
-                                  std::string color) {
-      // One could imagine other ways of writing this CSS rule that involve
-      // less duplication, but this way seems to be relatively performant.
-      edge_css_rules.push_back(
-          StrFormat("  #%s%d:hover ~ #edge%d text { fill: %s; }\n"
-                    "  #%s%d:hover ~ #edge%d path { "
-                    "stroke: %s; stroke-width: .2em; }\n"
-                    "  #%s%d:hover ~ #edge%d polygon { "
-                    "fill: %s; stroke: %s; stroke-width: .2em; }\n",
-                    elem_type, elem_id, edge_id, color,  //
-                    elem_type, elem_id, edge_id, color,  //
-                    elem_type, elem_id, edge_id, color, color));
+    auto add_hover_css_rule = [&](absl::string_view elem_type, int64_t elem_id,
+                                  absl::string_view color) {
+      // Extra newline between rules (historically a StrJoin separator).
+      if (!edge_css_rules.empty()) {
+        absl::StrAppend(&edge_css_rules, "\n");
+      }
+      absl::StrAppend(&edge_css_rules,  //
+                      "  %23", elem_type, elem_id, ":hover ~ %23edge", edge_id,
+                      " text { fill: ", color, "; }\n",  //
+                      "  %23", elem_type, elem_id, ":hover ~ %23edge", edge_id,
+                      " path { stroke: ", color, "; stroke-width: .2em; }\n",
+                      "  %23", elem_type, elem_id, ":hover ~ %23edge", edge_id,
+                      " polygon { fill: ", color, "; stroke: ", color,
+                      "; stroke-width: .2em; }\n");
     };
 
     // The "to_node" value may be a NULL, indicating that this points to the
@@ -671,12 +678,7 @@ stylesheet=<
     }
   }
 
-  // Browsers require that we URI-encode the contents of our data URI.  (It
-  // seems this was a relatively recent change?) In practice, this means that we
-  // need to escape '#'.
-  return StrFormat(
-      fmt, graph_label,
-      absl::StrReplaceAll(StrJoin(edge_css_rules, "\n"), {{"#", "%23"}}));
+  return StrFormat(fmt, graph_label, edge_css_rules);
 }
 
 std::string HloDotDumper::Footer() {
@@ -2018,9 +2020,9 @@ static absl::StatusOr<std::string> Compress(absl::string_view input) {
   auto gz_opts = tsl::io::ZlibCompressionOptions::GZIP();
   tsl::io::ZlibOutputBuffer gz_file(&f, gz_opts.input_buffer_size,
                                     gz_opts.output_buffer_size, gz_opts);
-  RETURN_IF_ERROR(gz_file.Init());
-  RETURN_IF_ERROR(gz_file.Append(input));
-  RETURN_IF_ERROR(gz_file.Close());
+  ABSL_RETURN_IF_ERROR(gz_file.Init());
+  ABSL_RETURN_IF_ERROR(gz_file.Append(input));
+  ABSL_RETURN_IF_ERROR(gz_file.Close());
 
   return compressed;
 }
@@ -2067,20 +2069,20 @@ static absl::Status CreateSqliteDb(
       "CREATE TABLE frames (id INTEGER PRIMARY KEY, label TEXT, graph_id "
       "INTEGER, to_highlight TEXT);";
 
-  RETURN_IF_ERROR(RunSql(db.get(), create_metadata_table,
+  ABSL_RETURN_IF_ERROR(RunSql(db.get(), create_metadata_table,
                          "Failed to create metadata table"));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       RunSql(db.get(), create_graphs_table, "Failed to create graphs table"));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       RunSql(db.get(), create_frames_table, "Failed to create frames table"));
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       RunSql(db.get(), "BEGIN TRANSACTION;", "Failed to begin transaction"));
 
   // Insert title into metadata
   const char* insert_metadata_sql =
       "INSERT INTO metadata (key, value) VALUES ('title', ?);";
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       Sqlite3StmtPtr metadata_stmt,
       PrepareStatement(db.get(), insert_metadata_sql,
                        "Failed to prepare metadata insert statement"));
@@ -2094,13 +2096,13 @@ static absl::Status CreateSqliteDb(
 
   const char* insert_graph_sql =
       "INSERT INTO graphs (id, content) VALUES (?, ?);";
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       Sqlite3StmtPtr graph_stmt,
       PrepareStatement(db.get(), insert_graph_sql,
                        "Failed to prepare graph insert statement"));
 
   for (int i = 0; i < visualizer_progress.dot_graphs.size(); ++i) {
-    ASSIGN_OR_RETURN(std::string compressed,
+    ABSL_ASSIGN_OR_RETURN(std::string compressed,
                      Compress(visualizer_progress.dot_graphs[i]));
     sqlite3_bind_int(graph_stmt.get(), 1, i);
     sqlite3_bind_blob(graph_stmt.get(), 2, compressed.data(), compressed.size(),
@@ -2115,7 +2117,7 @@ static absl::Status CreateSqliteDb(
   const char* insert_frame_sql =
       "INSERT INTO frames (id, label, graph_id, to_highlight) VALUES (?, ?, ?, "
       "?);";
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       Sqlite3StmtPtr frame_stmt,
       PrepareStatement(db.get(), insert_frame_sql,
                        "Failed to prepare frame insert statement"));
@@ -2135,7 +2137,7 @@ static absl::Status CreateSqliteDb(
     sqlite3_reset(frame_stmt.get());
   }
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       RunSql(db.get(), "COMMIT TRANSACTION;", "Failed to commit transaction"));
 
   return absl::OkStatus();
@@ -2154,28 +2156,28 @@ absl::StatusOr<std::string> WrapFusionExplorer(
   auto cleanup = absl::MakeCleanup(
       [&db_path] { tsl::Env::Default()->DeleteFile(db_path).IgnoreError(); });
 
-  RETURN_IF_ERROR(CreateSqliteDb(visualizer_progress, graph_title, db_path));
+  ABSL_RETURN_IF_ERROR(CreateSqliteDb(visualizer_progress, graph_title, db_path));
 
   std::string zip_data = "#!/usr/bin/env python3\n";
 
   {
     auto file = std::make_unique<WritableStringFile>(&zip_data);
-    ASSIGN_OR_RETURN(tsl::io::ZipWriter zip_writer,
+    ABSL_ASSIGN_OR_RETURN(tsl::io::ZipWriter zip_writer,
                      tsl::io::ZipWriter::Create(std::move(file)));
 
-    RETURN_IF_ERROR(zip_writer.AddFile("__main__.py", kPythonServerCode));
-    RETURN_IF_ERROR(zip_writer.AddFile("viewer.html", kViewerHtmlCode));
+    ABSL_RETURN_IF_ERROR(zip_writer.AddFile("__main__.py", kPythonServerCode));
+    ABSL_RETURN_IF_ERROR(zip_writer.AddFile("viewer.html", kViewerHtmlCode));
 
     // Stream SQLite DB file directly into zip_writer to prevent buffering
     // a large string in memory.
     std::unique_ptr<tsl::ReadOnlyMemoryRegion> region;
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         tsl::Env::Default()->NewReadOnlyMemoryRegionFromFile(db_path, &region));
     absl::string_view db_view(static_cast<const char*>(region->data()),
                               region->length());
-    RETURN_IF_ERROR(zip_writer.AddFile("fusions.db", db_view));
+    ABSL_RETURN_IF_ERROR(zip_writer.AddFile("fusions.db", db_view));
 
-    RETURN_IF_ERROR(std::move(zip_writer).Finish());
+    ABSL_RETURN_IF_ERROR(std::move(zip_writer).Finish());
   }
 
   return zip_data;
@@ -2193,11 +2195,33 @@ absl::StatusOr<std::string> WrapFusionExplorer(
   return WrapFusionExplorer(visualizer_progress, GraphTitle(computation));
 }
 
-static absl::StatusOr<std::string> WrapDotInHtml(absl::string_view dot,
-                                                 absl::string_view title) {
-  FusionVisualizerProgress progress;
-  progress.AddState(dot, title, std::nullopt);
-  return WrapFusionExplorer(progress, title);
+static std::string EscapeJSONString(absl::string_view raw) {
+  return absl::StrCat(
+      "\"",
+      absl::StrReplaceAll(raw, {{"\n", "\\n"}, {"\"", "\\\""}, {"\\", "\\\\"}}),
+      "\"");
+}
+
+static absl::StatusOr<std::string> EncodeBase64(absl::string_view input) {
+  std::string encoded;
+  ABSL_RETURN_IF_ERROR(tsl::Base64Encode(input, &encoded));
+  return absl::StrReplaceAll(encoded, {{"_", "/"}, {"-", "+"}});
+}
+
+absl::StatusOr<std::string> WrapDotInHtml(absl::string_view dot,
+                                          absl::string_view title) {
+  std::string dot_graph = absl::StrFormat("[%s]", EscapeJSONString(dot));
+  std::string frames = absl::StrFormat("[0, %s, %s]", EscapeJSONString(title),
+                                       EscapeJSONString(""));
+  ABSL_ASSIGN_OR_RETURN(std::string compressed_dot_graph, Compress(dot_graph));
+  ABSL_ASSIGN_OR_RETURN(std::string encoded_dot_graph,
+                   EncodeBase64(compressed_dot_graph));
+  return absl::StrReplaceAll(kSimpleViewerHtmlCode,
+                             {
+                                 {"$TITLE", title},
+                                 {"$DOTS", encoded_dot_graph},
+                                 {"$FRAMES", frames},
+                             });
 }
 
 // Precondition: (url_renderer != nullptr || format != kUrl).
@@ -2219,6 +2243,10 @@ static absl::StatusOr<std::string> WrapDotInFormat(
     case RenderedGraphFormat::kDot:
       return std::string(dot);
   }
+}
+
+std::string GraphRenderingTitle(const HloComputation& computation) {
+  return GraphTitle(computation);
 }
 
 void RegisterGraphToURLRenderer(
@@ -2272,16 +2300,33 @@ absl::StatusOr<std::string> RenderGraph(
     HloRenderOptions hlo_render_options,
     std::optional<absl::flat_hash_map<const HloInstruction*, ColorStats>>
         color_map) {
-  absl::MutexLock lock(url_renderer_mu);
-  if (format == RenderedGraphFormat::kUrl && url_renderer == nullptr) {
-    return Unavailable("Can't render as URL; no URL renderer was registered.");
+  // Only the URL renderer needs the global lock; dot/html rendering is
+  // pure and may run concurrently.
+  if (format == RenderedGraphFormat::kUrl) {
+    absl::MutexLock lock(url_renderer_mu);
+    if (url_renderer == nullptr) {
+      return Unavailable(
+          "Can't render as URL; no URL renderer was registered.");
+    }
+    std::string rendered_dot =
+        HloDotDumper(&computation, label, debug_options, hlo_render_options,
+                     NodeFilter(), color_map)
+            .Dump();
+    return WrapDotInFormat(computation, rendered_dot, format);
   }
 
   std::string rendered_dot =
       HloDotDumper(&computation, label, debug_options, hlo_render_options,
                    NodeFilter(), color_map)
           .Dump();
-  return WrapDotInFormat(computation, rendered_dot, format);
+  switch (format) {
+    case RenderedGraphFormat::kUrl:
+      return Internal("Unreachable");
+    case RenderedGraphFormat::kHtml:
+      return WrapDotInHtml(rendered_dot, GraphTitle(computation));
+    case RenderedGraphFormat::kDot:
+      return std::string(rendered_dot);
+  }
 }
 
 absl::StatusOr<std::string> RenderAllComputationsToHtml(

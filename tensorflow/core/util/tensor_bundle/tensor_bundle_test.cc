@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/tsl/platform/errors.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -433,6 +434,38 @@ TEST(TensorBundleTest, SwapBytes) {
 
   TF_EXPECT_OK(ByteSwapTensor(&forward_complex128));
   test::ExpectTensorEqual<complex128>(forward_complex128, swapped_complex128);
+}
+
+// ByteSwapTensorProto reaches ByteSwapBuffer with num_of_elem == -1, so the
+// element count is derived from the byte size. For complex dtypes that count
+// already covers both components, so it must not be doubled again or the swap
+// runs past the end of the tensor_content buffer.
+TEST(TensorBundleTest, ByteSwapTensorProtoComplex) {
+  Tensor forward_complex64 =
+      Constant_2x3<complex64>(std::complex<float>(1.5f, -2.5f));
+  Tensor forward_complex128 =
+      Constant_2x3<complex128>(std::complex<double>(3.5, -4.5));
+
+  for (const Tensor* forward : {&forward_complex64, &forward_complex128}) {
+    TensorProto proto;
+    forward->AsProtoTensorContent(&proto);
+    const size_t content_size = proto.tensor_content().size();
+
+    // Swapping twice must restore the original bytes without overrunning the
+    // content buffer (an out-of-bounds write is caught here under ASAN).
+    TF_EXPECT_OK(ByteSwapTensorProto(&proto));
+    EXPECT_EQ(proto.tensor_content().size(), content_size);
+    TF_EXPECT_OK(ByteSwapTensorProto(&proto));
+    EXPECT_EQ(proto.tensor_content().size(), content_size);
+
+    Tensor roundtrip(forward->dtype());
+    ASSERT_TRUE(roundtrip.FromProto(proto));
+    if (forward->dtype() == DT_COMPLEX64) {
+      test::ExpectTensorEqual<complex64>(roundtrip, *forward);
+    } else {
+      test::ExpectTensorEqual<complex128>(roundtrip, *forward);
+    }
+  }
 }
 
 // Basic test of alternate-endianness support. Generates a bundle in

@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -27,15 +26,13 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/layout.h"
-#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
-#include "xla/pjrt/utils.h"
+#include "xla/runtime/device_id.h"
 #include "xla/shape.h"
 
 namespace xla {
@@ -98,6 +95,10 @@ class CpuTopologyDescription : public PjRtTopologyDescription {
 
   absl::StatusOr<uint64_t> Fingerprint() const override;
 
+  absl::StatusOr<std::pair<ProcessId, int>>
+  ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType(
+      GlobalDeviceId device_id) const override;
+
   absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
   ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
       GlobalDeviceId device_id) const override;
@@ -126,6 +127,11 @@ class CpuTopologyDescription : public PjRtTopologyDescription {
 
   static absl::StatusOr<std::unique_ptr<CpuTopologyDescription>> FromProto(
       const xla::PjRtTopologyDescriptionProto& proto);
+
+  absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+      int process_index, int num_replicas,
+      std::optional<int> num_replicas_per_slice, int num_partitions,
+      const MultiSliceConfig* multi_slice_config) const override;
 
  private:
   const PjRtPlatformId platform_id_;

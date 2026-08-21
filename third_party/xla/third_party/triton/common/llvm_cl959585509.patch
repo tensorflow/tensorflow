@@ -1,0 +1,12 @@
+--- a/test/TritonGPU/amd/accelerate-amd-matmul-wmma-gfx1250.mlir
++++ b/test/TritonGPU/amd/accelerate-amd-matmul-wmma-gfx1250.mlir
+@@ -461,7 +461,7 @@
+     // CHECK: %[[SCALE0:.+]] = ttg.convert_layout {{.*}} : tensor<32x4xi8, {{.*}}> -> tensor<32x4xi8, #[[$SCALE0_LAYOUT]]>
+     // CHECK: tt.dot_scaled %[[A]] scale %[[SCALE0]], %[[B]] scale %[[SCALE1]], %[[C]] lhs = e2m1 rhs = e2m1
+     %cst = arith.constant dense<0.000000e+00> : tensor<32x32xf32, #blocked3>
+-    %1 = tt.dot_scaled %arg0 scale %arg2, %arg1, %cst lhs = e2m1 rhs = e2m1 {fastMath = false} : tensor<32x64xi8, #blocked>, tensor<32x4xi8, #blocked2> * tensor<64x32xi8, #blocked1>, tensor<32x4xi8, #blocked2> -> tensor<32x32xf32, #blocked3>
++    %1 = tt.dot_scaled %arg0 scale %arg2, %arg1, %cst lhs = e2m1 rhs = e2m1 {fastMath = false} : tensor<32x64xi8, #blocked>, tensor<32x4xi8, #blocked2> * tensor<64x32xi8, #blocked1> -> tensor<32x32xf32, #blocked3>
+     tt.store %arg3, %1 : tensor<32x32x!tt.ptr<f32>, #blocked3>
+     tt.return
+   }
+

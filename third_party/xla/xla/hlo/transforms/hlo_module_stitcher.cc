@@ -22,10 +22,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -81,7 +81,7 @@ absl::StatusOr<bool> HloModuleStitcher::RunImpl(
           return absl::InternalError("sub_module is null");
         }
         // Resolve all nested custom calls in the submodule first recursively.
-        RETURN_IF_ERROR(Run(sub_module).status());
+        ABSL_RETURN_IF_ERROR(Run(sub_module).status());
         HloComputation* sub_entry = sub_module->entry_computation();
 
         if (inst->operand_count() != sub_entry->num_parameters()) {
@@ -134,8 +134,8 @@ absl::StatusOr<bool> HloModuleStitcher::RunImpl(
               inst->shape(), HloOpcode::kCopy, call));
         }
 
-        RETURN_IF_ERROR(inst->ReplaceAllUsesWith(replacement));
-        RETURN_IF_ERROR(comp->RemoveInstruction(inst));
+        ABSL_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(replacement));
+        ABSL_RETURN_IF_ERROR(comp->RemoveInstruction(inst));
         changed = true;
       }
     }

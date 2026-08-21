@@ -36,7 +36,7 @@ namespace stream_executor::gpu {
 // ROCm/HIP implementation of DeviceAddressVmmAllocator.
 //
 // Uses hipMemCreate/hipMemAddressReserve for physical and virtual memory
-// management, and hipStreamWriteValue64 for GPU timeline-based deferred
+// management, and hipStreamWriteValue64 for batched GPU timeline-based deferred
 // deallocation. Requires ROCm >= 6.0 for HIP VMM API support.
 //
 // The timeline counter is allocated as signal memory via
@@ -46,11 +46,14 @@ namespace stream_executor::gpu {
 // Use the Create() factories to obtain an instance.
 class RocmDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
  public:
+  ~RocmDeviceAddressVmmAllocator() override;
+
   // Creates an allocator supporting multiple devices.
   //
   // Precondition: all entries in `devices` have distinct device ordinals.
   static absl::StatusOr<std::unique_ptr<RocmDeviceAddressVmmAllocator>> Create(
-      const Platform* platform, absl::Span<const DeviceConfig> devices);
+      const Platform* platform, absl::Span<const DeviceConfig> devices,
+      std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt);
 
   // Creates an allocator supporting multiple devices, computing the pa_budget
   // for each device by querying DeviceMemoryUsage and applying memory_fraction.
@@ -60,19 +63,20 @@ class RocmDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
   static absl::StatusOr<std::unique_ptr<RocmDeviceAddressVmmAllocator>> Create(
       const Platform* platform, double memory_fraction,
       std::optional<int64_t> gpu_system_memory_size,
-      absl::Span<const std::pair<StreamExecutor*, Stream*>> devices);
+      absl::Span<const std::pair<StreamExecutor*, Stream*>> devices,
+      std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt);
 
   // Creates an allocator for a single device.
   //
   // Parameters:
   //   executor:  StreamExecutor for this device. Must outlive the allocator.
-  //   stream:    Stream used for deferred deallocation. Must outlive the
-  //              allocator.
+  //   stream:    Stream used for deferred deallocation. Must remain valid for
+  //              allocator operations other than destruction.
   //   pa_budget: Maximum bytes of physical memory that may be simultaneously
   //              allocated on this device. Defaults to unlimited.
   static absl::StatusOr<std::unique_ptr<RocmDeviceAddressVmmAllocator>> Create(
-      StreamExecutor* executor, Stream* stream,
-      uint64_t pa_budget = UINT64_MAX);
+      StreamExecutor* executor, Stream* stream, uint64_t pa_budget = UINT64_MAX,
+      std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt);
 
  protected:
   // Allocates signal memory via hipExtMallocWithFlags(hipMallocSignalMemory)
@@ -89,12 +93,15 @@ class RocmDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
       StreamExecutor* executor, uint64_t size) override;
 
   // Enqueues a hipStreamWriteValue64 on the device's stream to write `seqno`
-  // to the signal memory timeline when the GPU reaches this point.
+  // to the signal memory timeline when the GPU reaches this batched
+  // deallocation point in the stream.
   absl::Status EnqueueDeferredDeallocation(PerDeviceState& state,
                                            uint64_t seqno) override;
 
  private:
-  explicit RocmDeviceAddressVmmAllocator(const Platform* platform);
+  explicit RocmDeviceAddressVmmAllocator(
+      const Platform* platform,
+      std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt);
 };
 
 }  // namespace stream_executor::gpu

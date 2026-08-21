@@ -44,6 +44,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   switch (params->type) {
     case kTfLiteBFloat16:
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+    case kTfLiteFloat8E4M3FN:
+    case kTfLiteFloat8E5M2:
+#endif
     case kTfLiteFloat16:
     case kTfLiteFloat32:
     case kTfLiteUInt8:

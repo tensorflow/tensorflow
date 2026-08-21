@@ -149,6 +149,12 @@ class StreamExecutor {
   // Releases any state associated with the previously loaded kernel.
   virtual void UnloadKernel(const Kernel* kernel) {}
 
+  // Updates the dynamic shared memory limit for the given kernel.
+  virtual absl::Status UpdateMaxDynamicSharedMemoryBytes(
+      const Kernel* kernel, int32_t shared_memory_bytes) {
+    return absl::UnimplementedError("Not Implemented");
+  }
+
   // Unloads the module with handle `module_handle`.
   virtual bool UnloadModule(ModuleHandle module_handle) { return false; }
 

@@ -24,13 +24,13 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "include/dlpack/dlpack.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "dlpack/dlpack.h"
 #include "mlir/Support/LLVM.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/ndarray.h"
@@ -83,7 +83,7 @@ inline Py_hash_t AbslHashToPythonHash(size_t h) {
 
 absl::StatusOr<nb::dlpack::dtype> PrimitiveTypeToNbDLDataType(
     xla::PrimitiveType type) {
-  ASSIGN_OR_RETURN(DLDataType dl_type, PrimitiveTypeToDLDataType(type));
+  ABSL_ASSIGN_OR_RETURN(DLDataType dl_type, PrimitiveTypeToDLDataType(type));
 
   nb::dlpack::dtype nb_type;
   nb_type.lanes = dl_type.lanes;
@@ -122,20 +122,20 @@ absl::StatusOr<std::shared_ptr<HloModule>> HloModuleFromSerializedProto(
   if (!proto.ParseFromString(absl::string_view(bytes.c_str(), bytes.size()))) {
     return InvalidArgument("Failed to deserialize HloModuleProto");
   }
-  ASSIGN_OR_RETURN(const HloModuleConfig module_config,
+  ABSL_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
                    HloModule::CreateModuleConfigFromProto(
                        proto, GetDebugOptionsFromFlags()));
-  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                    HloModule::CreateFromProto(proto, module_config));
   return std::shared_ptr<HloModule>(std::move(module));
 }
 
 absl::StatusOr<std::shared_ptr<HloModule>> GetHloModule(
     const XlaComputation& computation) {
-  ASSIGN_OR_RETURN(const HloModuleConfig module_config,
+  ABSL_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
                    HloModule::CreateModuleConfigFromProto(
                        computation.proto(), GetDebugOptionsFromFlags()));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       HloModule::CreateFromProto(computation.proto(), module_config));
   return std::shared_ptr<HloModule>(std::move(module));
@@ -144,7 +144,7 @@ absl::StatusOr<std::shared_ptr<HloModule>> GetHloModule(
 // Converts a computation to textual HLO form.
 absl::StatusOr<std::string> GetComputationHloText(
     const XlaComputation& computation, bool print_large_constants = false) {
-  ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
+  ABSL_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
                    GetHloModule(computation));
   HloPrintOptions options;
   options = HloPrintOptions::ShortParsable();
@@ -155,7 +155,7 @@ absl::StatusOr<std::string> GetComputationHloText(
 // Converts a computation to HLO dot graph form.
 absl::StatusOr<std::string> GetComputationHloDotGraph(
     const XlaComputation& computation) {
-  ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
+  ABSL_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
                    GetHloModule(computation));
   return RenderGraph(*hlo_module->entry_computation(), /*label=*/"",
                      hlo_module->config().debug_options(),
@@ -164,7 +164,7 @@ absl::StatusOr<std::string> GetComputationHloDotGraph(
 
 // Hashes the HLO module.
 absl::StatusOr<uint64_t> HashComputation(const XlaComputation& computation) {
-  ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
+  ABSL_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
                    GetHloModule(computation));
   return absl::HashOf(*hlo_module);
 }
@@ -177,15 +177,15 @@ absl::StatusOr<Shape> MakeShapeWithDenseLayout(
     std::optional<const std::vector<bool>> dynamic_dimensions) {
   Shape shape;
   if (dynamic_dimensions) {
-    ASSIGN_OR_RETURN(shape,
+    ABSL_ASSIGN_OR_RETURN(shape,
                      ShapeUtil::MakeValidatedShape(element_type, dims,
                                                    dynamic_dimensions.value()));
   } else {
-    ASSIGN_OR_RETURN(shape, ShapeUtil::MakeValidatedShape(element_type, dims));
+    ABSL_ASSIGN_OR_RETURN(shape, ShapeUtil::MakeValidatedShape(element_type, dims));
   }
   if (minor_to_major) {
     *shape.mutable_layout() = LayoutUtil::MakeLayout(*minor_to_major);
-    RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(shape.layout(), shape));
+    ABSL_RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(shape.layout(), shape));
   }
 
   return shape;
@@ -1248,7 +1248,7 @@ NB_MODULE(_hlo, m) {
                 -> absl::StatusOr<std::shared_ptr<HloModule>> {
               auto hlo_module =
                   xla::ParseAndReturnUnverifiedModule(hlo_module_text);
-              RETURN_IF_ERROR(hlo_module.status());
+              ABSL_RETURN_IF_ERROR(hlo_module.status());
               std::shared_ptr<HloModule> result(std::move(*hlo_module));
               return result;
             }));

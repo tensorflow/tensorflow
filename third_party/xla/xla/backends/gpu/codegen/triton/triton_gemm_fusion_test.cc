@@ -23,12 +23,12 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/MLIRContext.h"
@@ -109,10 +109,10 @@ class TritonTest : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {
   // single GEMM fusion.
   absl::StatusOr<ModuleAndNestedFusionMetadata>
   GetModuleAndNestedFusionMetadata(absl::string_view hlo_text) {
-    ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                      ParseAndReturnVerifiedModule(hlo_text));
-    RETURN_IF_ERROR(HoistFusedBitcasts().Run(module.get()).status());
-    ASSIGN_OR_RETURN(bool converted, ConvertTritonGemmConfig(
+    ABSL_RETURN_IF_ERROR(HoistFusedBitcasts().Run(module.get()).status());
+    ABSL_ASSIGN_OR_RETURN(bool converted, ConvertTritonGemmConfig(
                                          device_description(), &mlir_context_)
                                          .Run(module.get()));
     if (!converted) {
@@ -1678,6 +1678,34 @@ ENTRY e {
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonGemmTest, BatchMajorSlicedBatchDimensionProducesCorrectResults) {
+  constexpr absl::string_view kHloText = R"(
+ENTRY e {
+  p0 = f16[4,32,256] parameter(0)
+  p1 = f16[4,256,32] parameter(1)
+  ROOT d = f16[4,32,32] dot(p0, p1),
+    lhs_batch_dims={0}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={1}
+})";
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonGemmTest, DegenerateBatchDimensionProducesCorrectResults) {
+  constexpr absl::string_view kHloText = R"(
+ENTRY e {
+  p0 = f16[1,32,256] parameter(0)
+  p1 = f16[1,256,32] parameter(1)
+  ROOT d = f16[1,32,32] dot(p0, p1),
+    lhs_batch_dims={0}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={1}
+})";
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be

@@ -71,6 +71,8 @@ class CpuTrackedDeviceEventPromise : public PjRtDeviceEventPromise {
 tsl::AsyncValueRef<CpuEvent> AfterAllCpuEvents(
     absl::Span<const PjRtDeviceEventRef> events);
 
+PjRtDeviceEventRef ToCpuEvent(tsl::Future<void> future);
+
 class CpuRawBuffer : public CommonPjRtRawBufferImpl {
  public:
   CpuRawBuffer(PjRtMemorySpace* memory_space,

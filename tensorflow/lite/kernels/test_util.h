@@ -953,7 +953,13 @@ class SingleOpModel {
     }
 
     const T* v = interpreter_->typed_tensor<T>(index);
-    if (!v && tensor->type == kTfLiteInt4 && std::is_same<T, uint8_t>::value) {
+    if (!v && std::is_same_v<T, uint8_t> &&
+        (tensor->type == kTfLiteInt4
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+         || tensor->type == kTfLiteFloat8E4M3FN ||
+         tensor->type == kTfLiteFloat8E5M2
+#endif
+         )) {
       v = reinterpret_cast<const T*>(tensor->data.raw);
     }
     ABSL_CHECK(v) << "Could not extract vector at index: " << index;
@@ -1260,7 +1266,12 @@ class SingleOpModel {
       ABSL_CHECK(t) << "No tensor with index " << index << ".";
       ABSL_CHECK(t->data.raw)
           << "Empty data for tensor with index " << index << ".";
-      if (t->type == kTfLiteInt4 && std::is_same<T, uint8_t>::value) {
+      if (std::is_same_v<T, uint8_t> &&
+          (t->type == kTfLiteInt4
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+           || t->type == kTfLiteFloat8E4M3FN || t->type == kTfLiteFloat8E5M2
+#endif
+           )) {
         v = reinterpret_cast<T*>(t->data.raw);
       } else {
         ABSL_CHECK_EQ(t->type, typeToTfLiteType<T>())

@@ -22,10 +22,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -76,7 +76,7 @@ bool AreCompatible(const HloAllReduceInstruction* ar0,
   // AllReduceKey tuple except the element_type
   return key0 && key1 && kind0 &&
          AreAllreduceKeysEqual(*key0, *key1, ignore_element_type) &&
-         kind0 == op_kind;
+         kind0 == op_kind && HaveCompatibleCollectiveGroupKeys(*ar0, *ar1);
 }
 
 // Look-through some formatting operations that might be in front of the
@@ -190,8 +190,6 @@ absl::StatusOr<bool> AllReduceReassociate::RunImpl(
     return false;
   }
 
-  int64_t next_channel_id = hlo_query::NextChannelId(*module);
-
   bool changed = false;
   for (auto computation : module->computations(execution_threads)) {
     for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
@@ -235,12 +233,12 @@ absl::StatusOr<bool> AllReduceReassociate::RunImpl(
       // Check Dynamic-slice pattern is identical
       if (lhs->opcode() == HloOpcode::kDynamicSlice) {
         HloInstruction* original_rhs_operand = rhs->mutable_operand(0);
-        RETURN_IF_ERROR(rhs->ReplaceOperandWith(0, lhs->mutable_operand(0)));
+        ABSL_RETURN_IF_ERROR(rhs->ReplaceOperandWith(0, lhs->mutable_operand(0)));
         if (!lhs->Identical(*rhs)) {
-          RETURN_IF_ERROR(rhs->ReplaceOperandWith(0, original_rhs_operand));
+          ABSL_RETURN_IF_ERROR(rhs->ReplaceOperandWith(0, original_rhs_operand));
           continue;
         }
-        RETURN_IF_ERROR(rhs->ReplaceOperandWith(0, original_rhs_operand));
+        ABSL_RETURN_IF_ERROR(rhs->ReplaceOperandWith(0, original_rhs_operand));
         ar0 = Cast<HloAllReduceInstruction>(lhs->mutable_operand(0));
         ar1 = Cast<HloAllReduceInstruction>(rhs->mutable_operand(0));
         reduce_scatter_pattern_match = true;
@@ -299,12 +297,12 @@ absl::StatusOr<bool> AllReduceReassociate::RunImpl(
       HloInstruction* new_op_operand1 = ar1->mutable_operand(0);
       if (convert0) {
         HloInstruction* ar0_operand = ar0->mutable_operand(0);
-        RETURN_IF_ERROR(convert0->ReplaceOperandWith(0, ar0_operand));
+        ABSL_RETURN_IF_ERROR(convert0->ReplaceOperandWith(0, ar0_operand));
         new_op_operand0 = convert0;
       }
       if (convert1) {
         HloInstruction* ar1_operand = ar1->mutable_operand(0);
-        RETURN_IF_ERROR(convert1->ReplaceOperandWith(0, ar1_operand));
+        ABSL_RETURN_IF_ERROR(convert1->ReplaceOperandWith(0, ar1_operand));
         new_op_operand1 = convert1;
       }
 
@@ -325,16 +323,12 @@ absl::StatusOr<bool> AllReduceReassociate::RunImpl(
       } else if (reduce_scatter_pattern_match) {
         new_ar_out_shape = ar0->shape();
       } else {
-        RETURN_IF_ERROR(ar0->ReplaceAllUsesWith(ar0->mutable_operand(0)));
-        RETURN_IF_ERROR(ar1->ReplaceAllUsesWith(ar1->mutable_operand(0)));
+        ABSL_RETURN_IF_ERROR(ar0->ReplaceAllUsesWith(ar0->mutable_operand(0)));
+        ABSL_RETURN_IF_ERROR(ar1->ReplaceAllUsesWith(ar1->mutable_operand(0)));
       }
 
       HloInstruction* new_ar = computation->AddInstruction(
           ar0->CloneWithNewOperands(new_ar_out_shape, {new_op}));
-      // Do not reuse channel_id from the existing instruction.
-      if (new_ar->channel_id()) {
-        new_ar->set_channel_id(next_channel_id++);
-      }
 
       if (should_promote_ar) {
         HloComputation* to_apply = new_ar->to_apply();
@@ -352,32 +346,32 @@ absl::StatusOr<bool> AllReduceReassociate::RunImpl(
         HloComputation* to_apply_promoted =
             inst->GetModule()->AddEmbeddedComputation(promoted.Build());
         new_ar->set_to_apply(to_apply_promoted);
-        RETURN_IF_ERROR(inst->ReplaceAllUsesWith(new_ar));
+        ABSL_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(new_ar));
       } else if (reduce_scatter_pattern_match) {
         auto dyn_slice_operands = lhs->mutable_operands();
         dyn_slice_operands[0] = new_ar;
         HloInstruction* new_dyn_slice = inst->parent()->AddInstruction(
             lhs->CloneWithNewOperands(inst->shape(), dyn_slice_operands));
-        RETURN_IF_ERROR(inst->ReplaceUsesWith(op_users, new_dyn_slice));
+        ABSL_RETURN_IF_ERROR(inst->ReplaceUsesWith(op_users, new_dyn_slice));
       } else {
-        RETURN_IF_ERROR(inst->ReplaceUsesWith(op_users, new_ar));
+        ABSL_RETURN_IF_ERROR(inst->ReplaceUsesWith(op_users, new_ar));
       }
 
       // Note that RemoveInstructionAndUnusedOperands may not remove the 2
       // all-reduce operands of `inst` if they are not safe to remove otherwise,
       // so manually these instructions.
       if (should_promote_ar || reduce_scatter_pattern_match) {
-        RETURN_IF_ERROR(computation->RemoveInstruction(inst));
+        ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(inst));
       }
       if (reduce_scatter_pattern_match) {
-        RETURN_IF_ERROR(computation->RemoveInstruction(lhs));
+        ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(lhs));
         if (lhs != rhs) {
-          RETURN_IF_ERROR(computation->RemoveInstruction(rhs));
+          ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(rhs));
         }
       }
-      RETURN_IF_ERROR(computation->RemoveInstruction(ar0));
+      ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(ar0));
       if (ar0 != ar1) {
-        RETURN_IF_ERROR(computation->RemoveInstruction(ar1));
+        ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(ar1));
       }
       changed = true;
     }

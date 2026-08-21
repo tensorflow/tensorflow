@@ -129,7 +129,7 @@ bool UndonatableCommonPjRtBuffer::IsOnCpu() const {
 // Lifecycle & Readiness
 
 Future<> UndonatableCommonPjRtBuffer::GetReadyFuture() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (definition_future_) {
     return definition_future_;
   }

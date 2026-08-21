@@ -45,6 +45,8 @@ class FusionCompiler {
     int32_t verification_level;
     bool fast_min_max;
     llvm::FastMathFlags fast_math_flags;
+    bool use_new_xtile_lowering = false;
+    bool msan_enabled = false;
   };
 
   FusionCompiler(mlir::MLIRContext* context, Options options,
@@ -64,8 +66,7 @@ class FusionCompiler {
   // compiling an XLA:CPU fusion. If `register_pass_pipelines` is true, this
   // will also register the pass pipelines for the compiler, typically to be
   // used in tests.
-  static mlir::DialectRegistry CreateDialectRegistry(
-      bool register_pass_pipelines = false);
+  static mlir::DialectRegistry CreateDialectRegistry();
 
  private:
   Options options_;
@@ -76,6 +77,13 @@ class FusionCompiler {
   mlir::PassManager scalar_pass_manager_;
   mlir::PassManager tiled_pass_manager_;
 };
+
+// Xtile CPU pipeline contains two stages, the first is the conversion from
+// Xtile to the vector dialect, the second is the conversion from the vector
+// dialect to LLVM.
+void AddXtileToVectorPasses(mlir::OpPassManager& pm, bool msan_enabled);
+void AddNewXtileToVectorPasses(mlir::OpPassManager& pm);
+void AddVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max);
 
 }  // namespace xla::cpu
 

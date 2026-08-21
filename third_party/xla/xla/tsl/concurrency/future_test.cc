@@ -25,10 +25,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
@@ -190,7 +190,7 @@ TEST(FutureTest, ValueImplicitConversion) {
 
 TEST(FutureTest, StatusMacro) {
   auto f = [&](absl::StatusOr<int> value) -> tsl::Future<int> {
-    ASSIGN_OR_RETURN(const int x, value);
+    ABSL_ASSIGN_OR_RETURN(const int x, value);
     return x;
   };
 
@@ -1753,6 +1753,36 @@ TEST(FutureTest, DetachStatefulOnThreadPoolExecutor) {
 
   EXPECT_EQ(JoinFutures(mapped).Await(), absl::OkStatus());
   EXPECT_EQ(counter, 100);
+}
+
+TEST(PromiseOnceTest, SetMultipleTimes) {
+  auto [promise, future] = MakePromiseOnce();
+
+  EXPECT_TRUE(promise.Set(absl::OkStatus()));
+  EXPECT_FALSE(promise.Set());
+  EXPECT_FALSE(promise.Set(absl::InternalError("error")));
+
+  EXPECT_OK(future.Await());
+  EXPECT_OK(promise.future().Await());
+}
+
+TEST(PromiseOnceTest, MoveOnly) {
+  auto [promise, future] = MakePromiseOnce<std::unique_ptr<int32_t>>();
+
+  EXPECT_TRUE(promise.Set(std::make_unique<int32_t>(42)));
+  EXPECT_FALSE(promise.Set(std::make_unique<int32_t>(43)));
+
+  EXPECT_THAT(future.Await(), IsOkAndHolds(Pointee(42)));
+}
+
+TEST(PromiseOnceTest, Copyable) {
+  auto [promise, future] = MakePromiseOnce<int32_t>();
+
+  EXPECT_TRUE(promise.Set(42));
+  EXPECT_FALSE(promise.Set(43));
+
+  EXPECT_THAT(future.Await(), IsOkAndHolds(42));
+  EXPECT_THAT(promise.future().Await(), IsOkAndHolds(42));
 }
 
 //===----------------------------------------------------------------------===//

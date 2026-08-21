@@ -147,10 +147,6 @@ class GpuCompiler : public LLVMCompiler {
       AlgebraicSimplifierMode mode, const DebugOptions& debug_options,
       bool is_rocm);
 
-  absl::StatusOr<std::unique_ptr<Executable>> LoadExecutableFromLegacyAotResult(
-      const CompiledModule& aot_result,
-      const se::DeviceDescription& device_description) override;
-
   // Returns the LLVM command line options that we use for compilation.
   // THey need to be set globally whenever we call into LLVM.
   virtual std::vector<std::string> GetLLVMCommandLineOptions(
@@ -191,7 +187,7 @@ class GpuCompiler : public LLVMCompiler {
   // thread_pool is used to speed up compilation during autotuning.
   virtual absl::Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
+      const CompileOptions& options, const GpuTopology& gpu_topology,
       const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool,
       CompilationStats* compilation_stats, mlir::MLIRContext* mlir_context);
 
@@ -286,16 +282,6 @@ class GpuCompiler : public LLVMCompiler {
       std::unique_ptr<HloModule> hlo_module,
       se::StreamExecutor* absl_nullable executor,
       const CompileOptions& compile_options);
-
-  // New AOT compilation which compiles up the the Thunk generation stage.
-  absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
-  NewCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
-                        se::StreamExecutor* executor,
-                        const CompileOptions& compile_options);
-  // Legacy AOT compilation.
-  absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
-  LegacyCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
-                           const AotCompilationOptions& options);
 
   se::Platform::Id platform_id_;
 

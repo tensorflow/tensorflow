@@ -42,7 +42,7 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
      defined(__ppc__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)) || \
     (defined(__s390x__))
 /* static */ uint64 CpuUtils::GetCycleCounterFrequency() {
-  static const uint64 cpu_frequency = GetCycleCounterFrequencyImpl();
+  static const uint64_t cpu_frequency = GetCycleCounterFrequencyImpl();
   return cpu_frequency;
 }
 #else
