@@ -131,14 +131,6 @@ class CudnnFusedConvRewriterTest
     return device_description().runtime_version();
   }
 
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloInterpreterReferenceMixin<
-        GpuPjRtCodegenTest>::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_use_runtime_fusion(true);
-    debug_options.set_xla_gpu_experimental_enable_conv_fusion(false);
-    return debug_options;
-  }
-
  protected:
   std::string GetOptimizedHlo(absl::string_view hlo_string) {
     // cudnn_vectorize_convolutions transforms convolutions, making it hard to
@@ -149,6 +141,7 @@ class CudnnFusedConvRewriterTest
     HloModuleConfig config = GetModuleConfigForTest();
     DebugOptions debug_opts = config.debug_options();
     debug_opts.add_xla_disable_hlo_passes("cudnn_vectorize_convolutions");
+    debug_opts.set_xla_gpu_use_runtime_fusion(true);
     config.set_debug_options(debug_opts);
 
     auto result = GetOptimizedModule(hlo_string, config);
@@ -176,6 +169,9 @@ class CudnnFusedConvRewriterTest
 
       ASSERT_OK_AND_ASSIGN(auto module,
                            ParseAndReturnVerifiedModule(hlo_with_new_type));
+      DebugOptions debug_opts = module->config().debug_options();
+      debug_opts.set_xla_gpu_use_runtime_fusion(true);
+      module->mutable_config().set_debug_options(debug_opts);
       EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{0.01}))
           << optimized_hlo_string;
     }
@@ -843,9 +839,9 @@ TEST_F(CudnnFusedConvRewriterTest, PreservesMetadata) {
       ROOT relu = f32[1,32,9,9] maximum(zeros, conv)
     })";
 
-  HloModuleConfig config = GetModuleConfigForTest();
-  ASSERT_OK_AND_ASSIGN(auto optimized_module,
-                       GetOptimizedModule(kHloString, config));
+  ASSERT_OK_AND_ASSIGN(
+      auto optimized_module,
+      GetOptimizedModule(kHloString, GetModuleConfigForTest()));
   const HloInstruction* custom_call = hlo_query::GetFirstInstructionWithOpcode(
       *optimized_module->entry_computation(), HloOpcode::kCustomCall);
   ASSERT_THAT(custom_call, NotNull()) << optimized_module->ToString();
