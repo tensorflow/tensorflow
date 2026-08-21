@@ -496,10 +496,11 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
           &out_height, &out_width, &data->padding));
 
   int output_spatial_elements = 0;
-  TF_LITE_ENSURE_MSG(context,
-                     CheckedNumElements({out_height, out_width},
-                                        output_spatial_elements) == kTfLiteOk,
-                     "%s", "Conv output spatial dimensions overflow.");
+  TF_LITE_ENSURE_MSG(
+      context,
+      CheckedNumElements({batches, out_height, out_width},
+                         output_spatial_elements) == kTfLiteOk,
+      "%s", "Conv output spatial dimensions overflow.");
 
   size_t im2col_type_size;
   TF_LITE_ENSURE_STATUS(GetSizeOfType(context, input->type, &im2col_type_size));
