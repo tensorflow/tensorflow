@@ -33,7 +33,14 @@ load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_library",
 )
-
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+)
+load(
+    "//third_party/KDNN:build_defs.bzl",
+    "if_enable_kdnn",
+)
 # A lot of packages try to minimize binary size by depending on individual ops,\
 # so they need access here.
 package(
@@ -108,6 +115,7 @@ tf_gen_op_libs(
         "sync_ops",
         "summary_ops",
         "training_ops",
+        "kdnn_nn_ops",
     ],
     sub_directory = "",
     deps = [
@@ -372,6 +380,8 @@ cc_library(
     }) + if_mkl([
         ":mkl_array_ops_op_lib",
         ":mkl_nn_ops_op_lib",
+    ]) + if_enable_kdnn([
+        ":kdnn_nn_ops_op_lib",
     ]),
     alwayslink = 1,
 )
