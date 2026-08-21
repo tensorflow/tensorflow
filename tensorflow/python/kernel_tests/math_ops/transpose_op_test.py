@@ -27,6 +27,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -518,6 +519,60 @@ class TransposeTest(test.TestCase):
       x = constant_op.constant([], dtype=dtypes.float32, shape=[1, 4, 0])
       xt = array_ops.transpose(x, [0, 2, 1])
       self.assertAllEqual(xt.shape, (1, 0, 4))
+
+  def testConcatScalarRankDynamic(self):
+    """Regression test for GitHub issue #124017.
+
+    When tf.rank() returns a 0-D scalar tensor at graph/function build time
+    (i.e. the static rank is unknown) and the user builds a permutation via
+    tf.concat([[num_dims - 1], tf.range(num_dims - 1)], axis=0), the
+    autopacking of [num_dims - 1] previously failed on GPU with:
+      "ConcatOp: Can't concatenate scalars (use tf.stack instead)"
+    because the GPU Pack kernel does not support 0-D inputs.
+
+    The fix ensures that scalar tensors inside a Python list are reshaped to
+    [1] before being concatenated, making the operation device-agnostic.
+    """
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32),
+    ])
+    def move_channel_first(image):
+      """Move the last axis to the front (channels-first transform)."""
+      # tf.rank returns a 0-D scalar when static rank is unknown.
+      num_dims = array_ops.rank(image)
+      # Building perm with a scalar in a Python list triggers autopacking.
+      perm = array_ops.concat(
+          [[num_dims - 1], math_ops.range(num_dims - 1)],
+          axis=0,
+      )
+      return array_ops.transpose(image, perm)
+
+    # 4-D input: [batch, H, W, C] -> [C, batch, H, W]
+    image = constant_op.constant(
+        [[[[1.0, 2.0], [3.0, 4.0]],
+          [[5.0, 6.0], [7.0, 8.0]]]])  # shape (1, 2, 2, 2)
+    result = move_channel_first(image)
+    # channel dim (size 2) should now be first
+    self.assertAllEqual(result.shape[-3:], (1, 2, 2))
+    self.assertEqual(result.shape[0], 2)
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32),
+    ])
+    def move_channel_last(image):
+      """Move the first axis to the end (channels-last transform)."""
+      num_dims = array_ops.rank(image)
+      inverse_perm = array_ops.concat(
+          [math_ops.range(1, num_dims), [0]],
+          axis=0,
+      )
+      return array_ops.transpose(image, inverse_perm)
+
+    # Verify round-trip: channels-first -> channels-last gives original shape.
+    channels_first = move_channel_first(image)    # (2, 1, 2, 2)
+    restored = move_channel_last(channels_first)  # (1, 2, 2, 2)
+    self.assertAllEqual(restored, image)
 
   def testScalar(self):
     with self.cached_session():
