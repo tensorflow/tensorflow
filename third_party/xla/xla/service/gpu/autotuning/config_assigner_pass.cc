@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/autotuning/autotuner_pass.h"
+#include "xla/service/gpu/autotuning/config_assigner_pass.h"
 
 #include <algorithm>
 #include <memory>
@@ -112,9 +112,9 @@ AutotuneDecision AllowRegSpillsForGpuInstruction(
   return AutotuneDecision::Allow();
 }
 
-AutotuneDecision ShouldAutotuneCustomCall(bool do_not_autotune_cublas,
-                                          bool do_not_autotune_cudnn,
-                                          const HloInstruction& instruction) {
+AutotuneDecision ShouldAssignConfigToCustomCall(
+    bool do_not_autotune_cublas, bool do_not_autotune_cudnn,
+    const HloInstruction& instruction) {
   auto gpu_config = instruction.backend_config<GpuBackendConfig>();
   if (IsCublasLtGemm(instruction)) {
     if (do_not_autotune_cublas) {
@@ -149,7 +149,8 @@ AutotuneDecision ShouldAutotuneCustomCall(bool do_not_autotune_cublas,
       "Instruction is not a supported custom call (GEMM or Conv)");
 }
 
-AutotuneDecision ShouldAutotuneGemmFusion(const HloInstruction& instruction) {
+AutotuneDecision ShouldAssignConfigToGemmFusion(
+    const HloInstruction& instruction) {
   auto gpu_config = instruction.backend_config<GpuBackendConfig>();
   if (!gpu_config.ok()) {
     return AutotuneDecision::Forbid(absl::StrCat(
@@ -181,8 +182,8 @@ AutotuneDecision ShouldAutotuneGemmFusion(const HloInstruction& instruction) {
       "Fusion kind is not supported for GEMM autotuning");
 }
 
-AutotuneDecision ShouldAutotunGenericFusion(bool enable_fusion_autotuner,
-                                            const HloInstruction& instruction) {
+AutotuneDecision ShouldAssignConfigToGenericFusion(
+    bool enable_fusion_autotuner, const HloInstruction& instruction) {
   if (!enable_fusion_autotuner) {
     return AutotuneDecision::Forbid("Fusion autotuner is disabled");
   }
@@ -198,14 +199,13 @@ AutotuneDecision ShouldAutotunGenericFusion(bool enable_fusion_autotuner,
   return AutotuneDecision::Allow();
 }
 
-AutotuneDecision ShouldAutotuneInstruction(bool do_not_autotune_cublas,
-                                           bool do_not_autotune_cudnn,
-                                           bool enable_fusion_autotuner,
-                                           const HloInstruction& instruction) {
+AutotuneDecision ShouldAssignConfigToInstruction(
+    bool do_not_autotune_cublas, bool do_not_autotune_cudnn,
+    bool enable_fusion_autotuner, const HloInstruction& instruction) {
   // 1. Custom calls.
   if (instruction.opcode() == HloOpcode::kCustomCall) {
-    return ShouldAutotuneCustomCall(do_not_autotune_cublas,
-                                    do_not_autotune_cudnn, instruction);
+    return ShouldAssignConfigToCustomCall(do_not_autotune_cublas,
+                                          do_not_autotune_cudnn, instruction);
   }
   if (instruction.opcode() == HloOpcode::kFusion) {
     // 2. GEMM fusions.
@@ -219,10 +219,11 @@ AutotuneDecision ShouldAutotuneInstruction(bool do_not_autotune_cublas,
     if (backend_config.kind() == kTritonGemmFusionKind ||
         backend_config.kind() == kCuDnnFusionKind ||
         backend_config.kind() == kCustomFusionKind) {
-      return ShouldAutotuneGemmFusion(instruction);
+      return ShouldAssignConfigToGemmFusion(instruction);
     }
     // 3. Generic fusions.
-    return ShouldAutotunGenericFusion(enable_fusion_autotuner, instruction);
+    return ShouldAssignConfigToGenericFusion(enable_fusion_autotuner,
+                                             instruction);
   }
   return AutotuneDecision::Forbid(
       "Instruction is neither custom call nor fusion");
@@ -272,10 +273,10 @@ std::unique_ptr<AutotunerCacheInterface> CreateAutotunerCache(
 ConfigAssigner::Options GetConfigAssignerOptions(
     const DebugOptions& debug_options, bool is_deviceless) {
   ConfigAssigner::Options options;
-  options.select_first_config =
-      debug_options.xla_gpu_deterministic_ops() ||
-      debug_options.xla_gpu_exclude_nondeterministic_ops() ||
-      debug_options.xla_gpu_autotune_level() == 0 || is_deviceless;
+  options.allow_autotuning =
+      !debug_options.xla_gpu_deterministic_ops() &&
+      !debug_options.xla_gpu_exclude_nondeterministic_ops() &&
+      debug_options.xla_gpu_autotune_level() > 0 && !is_deviceless;
 
   options.expect_all_instructions_in_cache =
       debug_options.xla_gpu_require_complete_aot_autotune_results();
@@ -341,7 +342,7 @@ Autotuner::Options GetAutotunerOptions(const DebugOptions& debug_options,
   return autotuner_options;
 }
 
-InstructionFilterFn GetShouldAutotuneInstructionFn(
+InstructionFilterFn GetShouldAssignConfigToInstructionFn(
     const DebugOptions& debug_options,
     const se::GpuComputeCapability& gpu_version) {
   bool do_not_autotune_cublas =
@@ -359,11 +360,11 @@ InstructionFilterFn GetShouldAutotuneInstructionFn(
 
   return [do_not_autotune_cublas, do_not_autotune_cudnn,
           enable_fusion_autotuner](const HloInstruction& instruction) -> bool {
-    AutotuneDecision decision =
-        ShouldAutotuneInstruction(do_not_autotune_cublas, do_not_autotune_cudnn,
-                                  enable_fusion_autotuner, instruction);
+    AutotuneDecision decision = ShouldAssignConfigToInstruction(
+        do_not_autotune_cublas, do_not_autotune_cudnn, enable_fusion_autotuner,
+        instruction);
     if (!decision) {
-      VLOG(3) << "Not autotuning " << instruction.name() << ": "
+      VLOG(3) << "Not assigning configs to " << instruction.name() << ": "
               << decision.Explain();
     }
     return decision.IsAllowed();
@@ -371,7 +372,7 @@ InstructionFilterFn GetShouldAutotuneInstructionFn(
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
-AutotunerPass::GetGpuAutotunerBackends(
+ConfigAssignerPass::GetEnabledBackends(
     se::StreamExecutor* stream_exec,
     se::DeviceAddressAllocator* device_allocator,
     const Compiler::GpuTargetConfig* target_config, const AliasInfo* alias_info,
@@ -425,8 +426,8 @@ AutotunerPass::GetGpuAutotunerBackends(
   return backends;
 }
 
-absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
-    AutotunerPass::GetBackendsFn get_backends_fn,
+absl::StatusOr<std::unique_ptr<ConfigAssignerPass>> ConfigAssignerPass::Create(
+    ConfigAssignerPass::GetBackendsFn get_backends_fn,
     const DebugOptions& debug_options,
     const se::GpuComputeCapability& gpu_version,
     se::StreamExecutor* stream_executor, tsl::thread::ThreadPool* thread_pool,
@@ -438,8 +439,8 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
   ABSL_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<CodegenBackend>> backends,
                    get_backends_fn());
 
-  InstructionFilterFn should_autotune =
-      GetShouldAutotuneInstructionFn(debug_options, gpu_version);
+  InstructionFilterFn should_assign_config_to =
+      GetShouldAssignConfigToInstructionFn(debug_options, gpu_version);
 
   bool is_deviceless = stream_executor == nullptr;
   ConfigAssigner::Options assigner_options =
@@ -484,26 +485,28 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
       ConfigAssigner::Create(assigner_options, std::move(cache),
                              std::move(orchestrator), std::move(autotuner)));
 
-  return absl::WrapUnique(new AutotunerPass(
-      std::move(config_assigner), std::move(should_autotune),
-      std::move(key_value_store), debug_options.xla_gpu_shard_autotuning()));
+  return absl::WrapUnique(new ConfigAssignerPass(
+      debug_options, std::move(config_assigner),
+      std::move(should_assign_config_to), std::move(key_value_store),
+      debug_options.xla_gpu_shard_autotuning()));
 }
 
-absl::StatusOr<bool> AutotunerPass::RunImpl(
+absl::StatusOr<bool> ConfigAssignerPass::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_SCOPED_LOGGING_TIMER("AutotunerPass");
-  VLOG(1) << "Running Autotuner Pass";
+  XLA_SCOPED_LOGGING_TIMER("ConfigAssignerPass");
+  VLOG(1) << "Running Config Assigner Pass";
 
   bool shard_autotuning =
       enable_sharding_ && key_value_store_.process_count > 1;
   if (shard_autotuning) {
-    ABSL_RETURN_IF_ERROR(config_assigner_->AssignConfigs(module, should_autotune_,
-                                                    key_value_store_));
+    ABSL_RETURN_IF_ERROR(config_assigner_->AssignConfigs(
+        module, should_assign_config_to_, key_value_store_));
   } else {
-    ABSL_RETURN_IF_ERROR(config_assigner_->AssignConfigs(module, should_autotune_));
+    ABSL_RETURN_IF_ERROR(
+        config_assigner_->AssignConfigs(module, should_assign_config_to_));
   }
-  VLOG(1) << "Autotuner cache stats: hits="
+  VLOG(1) << "Config assigner cache stats: hits="
           << config_assigner_->GetCacheStats().hits
           << ", misses=" << config_assigner_->GetCacheStats().misses;
   return true;

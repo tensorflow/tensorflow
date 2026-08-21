@@ -264,8 +264,8 @@ TEST_F(ConfigAssignerTest, ExpectAllInstructionsInCache) {
               StatusIs(absl::StatusCode::kNotFound));
 }
 
-TEST_F(ConfigAssignerTest, SelectFirstConfig) {
-  config_.select_first_config = true;
+TEST_F(ConfigAssignerTest, AutotuningDisabledSelectsFirstConfig) {
+  config_.allow_autotuning = false;
 
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.push_back(GetTestConfig("test_config_1"));
@@ -294,8 +294,8 @@ TEST_F(ConfigAssignerTest, SelectFirstConfig) {
   EXPECT_THAT(config_assigner->AssignConfig(dummy_instr), absl_testing::IsOk());
 }
 
-TEST_F(ConfigAssignerTest, SelectFirstConfigPicksFirstCompilable) {
-  config_.select_first_config = true;
+TEST_F(ConfigAssignerTest, AutotuningDisabledPicksFirstCompilable) {
+  config_.allow_autotuning = false;
 
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.push_back(GetTestConfig("test_config_1"));
@@ -328,8 +328,8 @@ TEST_F(ConfigAssignerTest, SelectFirstConfigPicksFirstCompilable) {
 }
 
 TEST_F(ConfigAssignerTest,
-       SelectFirstConfigFallsBackToDefaultIfNoSupportedConfigCompiles) {
-  config_.select_first_config = true;
+       AutotuningDisabledFallsBackToDefaultIfNoSupportedConfigCompiles) {
+  config_.allow_autotuning = false;
 
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.push_back(GetTestConfig("test_config_1"));
@@ -364,8 +364,8 @@ TEST_F(ConfigAssignerTest,
 }
 
 TEST_F(ConfigAssignerTest,
-       SelectFirstConfigFailsWhenNothingCompilesAndNoDefault) {
-  config_.select_first_config = true;
+       AutotuningDisabledFailsWhenNothingCompilesAndNoDefault) {
+  config_.allow_autotuning = false;
 
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.push_back(GetTestConfig("test_config_1"));
@@ -677,14 +677,14 @@ TEST(ConfigAssignerOptionsTest, ToString) {
   ConfigAssigner::Options config;
   config.expect_all_instructions_in_cache = false;
 
-  config.select_first_config = true;
+  config.allow_autotuning = false;
   config.dump_hlos = false;
   config.use_new_cache_format = false;
 
   std::string expected =
       "{\n"
       "  \"expect_all_instructions_in_cache\": false,\n"
-      "  \"select_first_config\": true,\n"
+      "  \"allow_autotuning\": false,\n"
       "  \"dump_hlos\": false,\n"
       "  \"use_new_cache_format\": false\n"
       "}";
