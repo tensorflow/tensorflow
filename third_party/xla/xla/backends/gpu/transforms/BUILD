@@ -410,7 +410,6 @@ xla_cc_test(
         "//xla/hlo/utils:hlo_query",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -2714,7 +2713,6 @@ xla_cc_test(
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -3051,9 +3049,9 @@ xla_test(
         "//xla:shape_util",
         "//xla/hlo/testlib:test",
         "//xla/tests:hlo_pjrt_test_base",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -3455,7 +3453,6 @@ xla_test(
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "//xla/tests:hlo_pjrt_test_base",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -3473,7 +3470,6 @@ xla_test(
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "//xla/tests:hlo_pjrt_test_base",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -3494,7 +3490,6 @@ xla_cc_test(
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
 )

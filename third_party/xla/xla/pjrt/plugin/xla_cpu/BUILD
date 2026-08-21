@@ -42,7 +42,7 @@ xla_cc_test(
         ":xla_cpu_pjrt_client",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/cpu:cpu_client",
-        "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:statusor",
         "@tsl//tsl/platform:test",
     ],

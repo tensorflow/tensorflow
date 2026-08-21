@@ -42,9 +42,8 @@ xla_cc_test(
     srcs = ["myplugin_cpp_pjrt_test.cc"],
     deps = [
         ":myplugin_cpp_pjrt",
-        "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/status:status_matchers",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -102,8 +101,7 @@ xla_cc_test(
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/c:pjrt_c_api_helpers",
         "//xla/pjrt/extensions/example:example_extension",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:path",
     ],
 )

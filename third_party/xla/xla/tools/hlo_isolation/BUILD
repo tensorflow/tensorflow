@@ -109,7 +109,6 @@ xla_cc_test(
         "//xla/tests:pjrt_client_registry",  # fixdeps: keep
         "//xla/tests:pjrt_interpreter_client_registry",
         "//xla/tests:test_utils",
-        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tools/hlo_dump:hlo_dump_utils",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
@@ -123,7 +122,7 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:path",
     ],
 )
@@ -137,10 +136,9 @@ xla_cc_test(
         "//xla:literal_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
-        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

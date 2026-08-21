@@ -103,9 +103,8 @@ xla_cc_test(
         ":tpu_static_registration",
         ":xla_tpu_pjrt_client",
         "//xla/pjrt:pjrt_common",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )

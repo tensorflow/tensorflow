@@ -631,9 +631,8 @@ xla_cc_test(
         ":xla_data_proto_cc",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test_helpers",
-        "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

@@ -75,14 +75,13 @@ xla_cc_test(
         "//xla/backends/cpu/codegen:target_machine_test_base",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

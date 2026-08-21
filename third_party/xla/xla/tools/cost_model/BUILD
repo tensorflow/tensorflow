@@ -25,7 +25,6 @@ xla_cc_test(
     srcs = ["gpu_bandwidth_benchmark_test.cc"],
     deps = [
         ":gpu_bandwidth_benchmark",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
