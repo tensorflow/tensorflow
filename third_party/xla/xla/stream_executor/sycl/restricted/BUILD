@@ -44,8 +44,8 @@ xla_test(
     deps = [
         "//xla/stream_executor/gpu:gpu_blas_lt",
         "//xla/stream_executor/sycl:sycl_blas_lt_plugin",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tests/restricted:hlo_test_base_legacy",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

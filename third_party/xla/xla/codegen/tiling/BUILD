@@ -179,8 +179,7 @@ xla_cc_test(
     deps = [
         ":affine_map_evaluator",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
         "@tsl//tsl/platform:test",
     ],
@@ -211,9 +210,8 @@ xla_cc_test(
         ":constraint_expression",
         "//xla/hlo/analysis:indexing_test_utils",
         "//xla/hlo/analysis:symbolic_map",
-        "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -264,10 +262,9 @@ xla_cc_test(
         "//xla/hlo/analysis:indexing_test_utils",
         "//xla/hlo/analysis:interval",
         "//xla/hlo/analysis:symbolic_map",
-        "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

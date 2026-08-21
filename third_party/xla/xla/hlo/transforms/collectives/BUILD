@@ -40,7 +40,6 @@ xla_cc_test(
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/hlo/utils:hlo_matchers",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",  # fixdeps: keep
     ],
 )
@@ -206,7 +205,6 @@ xla_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:statusor",
     ],
@@ -433,7 +431,6 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_matchers",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:statusor",
     ],
@@ -480,7 +477,6 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
-        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -518,7 +514,6 @@ xla_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:statusor",
     ],
@@ -550,11 +545,10 @@ xla_cc_test(
         ":collective_permute_cse",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -634,7 +628,6 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_matchers",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",  # fixdeps: keep
         "@tsl//tsl/platform:statusor",
     ],

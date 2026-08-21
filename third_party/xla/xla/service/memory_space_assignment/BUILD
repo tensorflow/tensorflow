@@ -123,7 +123,6 @@ xla_test(
         "//xla/service/heap_simulator",
         "//xla/service/heap_simulator:allocation_block",
         "//xla/tests:test_utils",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
@@ -139,7 +138,7 @@ xla_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:protobuf",
     ],
 )
@@ -763,10 +762,9 @@ xla_cc_test(
         "//xla:comparison_util",
         "//xla/service/heap_simulator",
         "//xla/service/heap_simulator:allocation_block",
-        "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:test",
     ],
 )

@@ -91,9 +91,9 @@ onednn_cc_test(
         "//xla/hlo/testlib:test",
         "//xla/service:cpu_plugin",
         "//xla/service/cpu:onednn_util",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tests/restricted:hlo_test_base_legacy",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -117,9 +117,9 @@ onednn_cc_test(
         "//xla/service:cpu_plugin",
         "//xla/service/cpu:onednn_contraction_rewriter",
         "//xla/service/cpu:onednn_util",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tests/restricted:hlo_test_base_legacy",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:platform_port",
     ],
 )
@@ -139,8 +139,8 @@ onednn_cc_test(
         "//xla/hlo/testlib:test",
         "//xla/service:cpu_plugin",
         "//xla/service/cpu:onednn_util",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tests/restricted:hlo_test_base_legacy",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -166,10 +166,10 @@ onednn_cc_test(
         "//xla/service/cpu:onednn_config_proto_cc",
         "//xla/service/cpu:onednn_ops_rewriter",
         "//xla/service/cpu:onednn_util",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tests/restricted:hlo_test_base_legacy",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

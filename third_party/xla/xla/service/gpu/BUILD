@@ -71,11 +71,10 @@ xla_cc_test(
         ":backend_configs_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -279,11 +278,11 @@ xla_cc_test(
         "//xla/hlo/testlib:test_helpers",
         "//xla/service:copy_insertion",
         "//xla/stream_executor:device_description",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -337,8 +336,7 @@ xla_cc_test(
     deps = [
         ":target_util",
         "//xla:xla_data_proto_cc",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TargetParser",
@@ -634,10 +632,9 @@ xla_cc_test(
     srcs = ["kernel_call_test.cc"],
     deps = [
         ":kernel_call",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -661,8 +658,7 @@ xla_cc_test(
     srcs = ["triton_call_test.cc"],
     deps = [
         ":triton_call",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -690,8 +686,7 @@ xla_cc_test(
     deps = [
         ":buffer_allocations",
         "//xla/stream_executor:device_address",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -942,7 +937,6 @@ xla_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1048,8 +1042,7 @@ xla_cc_test(
         "//xla:literal",
         "//xla:literal_util",
         "//xla:types",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1102,13 +1095,12 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_traversal",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1140,9 +1132,8 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1218,8 +1209,7 @@ xla_cc_test(
         ":triton_tiling_propagation",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1260,12 +1250,11 @@ xla_cc_test(
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
-        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1316,11 +1305,10 @@ xla_cc_test(
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test",
-        "//xla/tests:xla_internal_test_main",  # build_cleaner: keep
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1474,9 +1462,8 @@ xla_cc_test(
         "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/hlo/testlib:test",
         "//xla/service:pattern_matcher",
-        "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:statusor",
     ],
 )
@@ -1515,7 +1502,6 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test",
         "//xla/hlo/testlib:verified_hlo_module",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
@@ -1524,7 +1510,7 @@ xla_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -2407,11 +2393,10 @@ xla_test(
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:statusor",
     ],
 )
@@ -2428,10 +2413,9 @@ xla_test(
         "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/service:hlo_module_config",
         "//xla/service:pattern_matcher",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tests/restricted:hlo_test_base_legacy",
         "@com_google_absl//absl/log",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:logging",
     ],
 )
@@ -2591,14 +2575,13 @@ xla_test(
         "//xla/service:logical_buffer",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -2635,7 +2618,6 @@ xla_test(
         "//xla/stream_executor/cuda:ptx_compilation_method",
         "//xla/stream_executor/cuda:ptx_compiler_support",
         "//xla/stream_executor/cuda:ptx_linking_method",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tests/restricted:hlo_test_base_legacy",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
@@ -2647,7 +2629,7 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Object",
         "@llvm-project//llvm:Support",
         "@tsl//tsl/platform:path",
@@ -2689,12 +2671,11 @@ xla_cc_test(
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tests:literal_test_util",
-        "//xla/tests:xla_internal_test_main",  # build_cleaner: keep
         "//xla/tests/restricted:hlo_test_base_legacy",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@tsl//tsl/platform:statusor",
@@ -2722,12 +2703,11 @@ xla_test(
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tests:hlo_pjrt_test_base",
-        "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -2930,7 +2910,6 @@ xla_test(
         "//xla/service:hlo_proto_cc",
         "//xla/stream_executor:device_description",
         "//xla/tests:test_utils",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tests/restricted:hlo_test_base_legacy",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:logging",
@@ -2943,7 +2922,7 @@ xla_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@com_google_protobuf//:protobuf",
         "@llvm-project//mlir:IR",
         "@tsl//tsl/profiler/protobuf:profiled_instructions_proto_cc",
@@ -3010,11 +2989,10 @@ xla_cc_test(
         "//xla/service:hlo_module_config",
         "//xla/service/spmd/shardy:constants",
         "//xla/stream_executor:device_description",
-        "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:status_macros",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:errors",
         "@tsl//tsl/platform:statusor",
     ],
@@ -3035,7 +3013,7 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test",
-        "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -3123,8 +3101,7 @@ xla_cc_test(
     deps = [
         ":gpu_asm_opts_util",
         "//xla:xla_proto_cc",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:test",
     ],
 )
@@ -3167,9 +3144,8 @@ xla_cc_test(
         "//xla/hlo/utils:hlo_traversal",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/util/proto:proto_matchers",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -3205,8 +3181,8 @@ xla_cc_test(
         "//xla/hlo/testlib:test_helpers",
         "//xla/service:copy_insertion",
         "//xla/stream_executor:device_description",
-        "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/log:check",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -3237,8 +3213,8 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test",
         "//xla/stream_executor:device_description",
-        "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/log:check",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -3298,12 +3274,12 @@ xla_cc_test(
         "//xla/service:instruction_fusion",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -3323,9 +3299,8 @@ xla_test(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
-        "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -3440,10 +3415,9 @@ xla_cc_test(
     ],
     deps = [
         ":metrics",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/monitoring:collected_metrics",
         "//xla/tsl/lib/monitoring:collection_registry",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:test",
     ],
 )
@@ -3470,10 +3444,9 @@ xla_cc_test(
         ":hlo_fusion_stats",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -3502,9 +3475,8 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:hlo_proto_cc",
         "//xla/service:shape_inference",
-        "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/log:check",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -3547,10 +3519,9 @@ xla_test(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/cuda:cuda_compute_capability",
-        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -3593,7 +3564,6 @@ xla_cc_test(
     deps = [
         ":kernel_reuse_cache",
         ":kernel_reuse_cache_proto_cc",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
@@ -3601,7 +3571,7 @@ xla_cc_test(
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -3739,7 +3709,6 @@ xla_cc_test(
         "//xla/service:latency_hiding_scheduler",
         "//xla/service:profile_guided_latency_estimator",
         "//xla/stream_executor:device_description",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
@@ -3749,7 +3718,7 @@ xla_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest",  # fixdeps: keep
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
     ],
 )
