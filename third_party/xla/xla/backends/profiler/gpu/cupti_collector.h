@@ -20,11 +20,14 @@ limitations under the License.
 #include <cstdint>
 #include <list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
@@ -124,7 +127,15 @@ class CuptiTraceCollector {
 
   virtual uint64_t GetProfileStartTimeNs() const { return 0; }
 
-  uint64_t GetTracingEndTimeNs() const { return tracing_end_time_ns_; }
+  // Returns an error rather than a sentinel timestamp when tracing did not
+  // record a valid end time.
+  absl::StatusOr<uint64_t> GetTracingEndTimeNs() const {
+    if (!tracing_end_time_ns_.has_value()) {
+      return absl::FailedPreconditionError(
+          "CUPTI tracing end timestamp is unavailable");
+    }
+    return *tracing_end_time_ns_;
+  }
 
   AnnotationMap* annotation_map() { return &annotation_map_; }
 
@@ -140,7 +151,7 @@ class CuptiTraceCollector {
 
  private:
   AnnotationMap annotation_map_;
-  uint64_t tracing_end_time_ns_ = 0;
+  std::optional<uint64_t> tracing_end_time_ns_;
 
   CuptiTraceCollector(const CuptiTraceCollector&) = delete;
   void operator=(const CuptiTraceCollector&) = delete;

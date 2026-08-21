@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/tools/hlo_dump/hlo_dump_utils.h"
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -760,6 +761,100 @@ TEST(HloDumpUtilsTest, ConvertHloToHtmlCompactGte) {
 
   // Verify that the link is correctly sanitized to point to the GTE
   EXPECT_TRUE(absl::StrContains(html, "href=\"#instr_p0_0\""));
+}
+
+TEST(HloDumpUtilsTest, PopulateMismatchGraphData_RuntimeNanMismatch) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule test_runtime_nan
+ENTRY main {
+  p0 = f32[10] parameter(0)
+  p1 = f32[10] parameter(1)
+  ROOT div = f32[10] divide(p0, p1)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+
+  MismatchDetails nan_mismatch;
+  nan_mismatch.target_instruction_name = "div";
+  nan_mismatch.actual = std::numeric_limits<double>::quiet_NaN();
+  nan_mismatch.expected = 1.0;
+  nan_mismatch.rel_error = std::numeric_limits<double>::quiet_NaN();
+
+  auto graph_data = PopulateMismatchGraphData(*module, {nan_mismatch});
+  absl::flat_hash_map<std::string, double> scores;
+  for (const auto& node : graph_data.nodes) {
+    scores[node.key] = node.diff_score;
+  }
+
+  EXPECT_EQ(scores["div"], kNanInfMismatchDiffScore);
+  EXPECT_EQ(scores["p0"], 0.0);
+  EXPECT_EQ(scores["p1"], 0.0);
+}
+
+TEST(HloDumpUtilsTest, PopulateMismatchGraphData_RuntimeInfMismatch) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule test_runtime_inf
+ENTRY main {
+  p0 = f32[10] parameter(0)
+  p1 = f32[10] parameter(1)
+  ROOT div = f32[10] divide(p0, p1)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+
+  MismatchDetails inf_mismatch;
+  inf_mismatch.target_instruction_name = "div";
+  inf_mismatch.actual = std::numeric_limits<double>::infinity();
+  inf_mismatch.expected = 1.0;
+  inf_mismatch.rel_error = std::numeric_limits<double>::infinity();
+
+  auto graph_data = PopulateMismatchGraphData(*module, {inf_mismatch});
+  absl::flat_hash_map<std::string, double> scores;
+  for (const auto& node : graph_data.nodes) {
+    scores[node.key] = node.diff_score;
+  }
+
+  EXPECT_EQ(scores["div"], kNanInfMismatchDiffScore);
+  EXPECT_EQ(scores["p0"], 0.0);
+  EXPECT_EQ(scores["p1"], 0.0);
+}
+
+TEST(HloDumpUtilsTest, PopulateMismatchGraphData_RuntimeNanMismatchInFusion) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule test_fusion_nan
+%fused_comp (p0: f32[10]) -> f32[10] {
+  %p0 = f32[10] parameter(0)
+  %c = f32[] constant(0.0)
+  %b = f32[10] broadcast(%c), dimensions={}
+  ROOT %div = f32[10] divide(%p0, %b)
+}
+
+ENTRY main {
+  %p0 = f32[10] parameter(0)
+  ROOT %fusion = f32[10] fusion(%p0), kind=kCustom, calls=%fused_comp
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+
+  MismatchDetails nan_mismatch;
+  nan_mismatch.target_instruction_name = "div";
+  nan_mismatch.actual = std::numeric_limits<double>::quiet_NaN();
+  nan_mismatch.expected = 1.0;
+  nan_mismatch.rel_error = std::numeric_limits<double>::quiet_NaN();
+
+  auto graph_data = PopulateMismatchGraphData(*module, {nan_mismatch});
+  absl::flat_hash_map<std::string, double> scores;
+  for (const auto& node : graph_data.nodes) {
+    scores[node.key] = node.diff_score;
+  }
+
+  EXPECT_EQ(scores["fusion"], 0.0);
+  EXPECT_EQ(scores["fusion/div"], kNanInfMismatchDiffScore);
+  EXPECT_EQ(scores["fusion/c"], 0.0);
+  EXPECT_EQ(scores["p0"], 0.0);
 }
 
 TEST(HloDumpUtilsTest, PopulateMismatchAnnotations_NonTupleOpInsideFusion) {
