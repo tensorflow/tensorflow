@@ -2659,6 +2659,120 @@ TEST(ConvPrepareSecurityTest, RejectsShapeOverflow) {
   registration->free(&context, node.user_data);
 }
 
+TfLiteStatus DummyResizeTensorSuccess(TfLiteContext* context,
+                                      TfLiteTensor* tensor,
+                                      TfLiteIntArray* new_size) {
+  auto& state = *static_cast<DirectPrepareTestContextState*>(context->impl_);
+  state.resize_tensor_called = true;
+  TfLiteIntArrayFree(new_size);
+  return kTfLiteOk;
+}
+
+TEST(ConvPerChannelIntegerOverflowTest, RejectsOutputColsOverflow) {
+  constexpr int kHeight = 40000;
+  constexpr int kWidth = 50000;
+  constexpr int kBatches = 2;
+
+  IntArrayUniquePtr input_dims =
+      BuildTfLiteArray<int>({kBatches, kHeight, kWidth, 1});
+  IntArrayUniquePtr filter_dims = BuildTfLiteArray<int>({1, 1, 1, 1});
+  IntArrayUniquePtr bias_dims = BuildTfLiteArray<int>({1});
+  IntArrayUniquePtr output_dims = BuildTfLiteArray<int>(0);
+
+  TfLiteAffineQuantization input_quant = {};
+  TfLiteFloatArray* input_scale_array = TfLiteFloatArrayCreate(1);
+  input_scale_array->data[0] = 1.0f;
+  TfLiteIntArray* input_zero_point_array = TfLiteIntArrayCreate(1);
+  input_zero_point_array->data[0] = 0;
+  input_quant.scale = input_scale_array;
+  input_quant.zero_point = input_zero_point_array;
+
+  TfLiteTensor tensors[4] = {};
+  tensors[0].type = kTfLiteInt8;
+  tensors[0].dims = input_dims.get();
+  tensors[0].params.scale = 1.0f;
+  tensors[0].params.zero_point = 0;
+  tensors[0].quantization.type = kTfLiteAffineQuantization;
+  tensors[0].quantization.params = &input_quant;
+
+  TfLiteAffineQuantization filter_quant = {};
+  TfLiteFloatArray* scale_array = TfLiteFloatArrayCreate(1);
+  scale_array->data[0] = 1.0f;
+  TfLiteIntArray* zero_point_array = TfLiteIntArrayCreate(1);
+  zero_point_array->data[0] = 0;
+  filter_quant.scale = scale_array;
+  filter_quant.zero_point = zero_point_array;
+  filter_quant.quantized_dimension = 0;
+
+  tensors[1].type = kTfLiteInt8;
+  tensors[1].dims = filter_dims.get();
+  tensors[1].params.scale = 1.0f;
+  tensors[1].params.zero_point = 0;
+  tensors[1].quantization.type = kTfLiteAffineQuantization;
+  tensors[1].quantization.params = &filter_quant;
+
+  tensors[2].type = kTfLiteInt32;
+  tensors[2].dims = bias_dims.get();
+  tensors[2].params.scale = 1.0f;
+  tensors[2].params.zero_point = 0;
+
+  TfLiteAffineQuantization output_quant = {};
+  TfLiteFloatArray* output_scale_array = TfLiteFloatArrayCreate(1);
+  output_scale_array->data[0] = 1.0f;
+  TfLiteIntArray* output_zero_point_array = TfLiteIntArrayCreate(1);
+  output_zero_point_array->data[0] = 0;
+  output_quant.scale = output_scale_array;
+  output_quant.zero_point = output_zero_point_array;
+
+  tensors[3].type = kTfLiteInt8;
+  tensors[3].dims = output_dims.get();
+  tensors[3].params.scale = 1.0f;
+  tensors[3].params.zero_point = 0;
+  tensors[3].quantization.type = kTfLiteAffineQuantization;
+  tensors[3].quantization.params = &output_quant;
+
+  IntArrayUniquePtr inputs = BuildTfLiteArray<int>({0, 1, 2});
+  IntArrayUniquePtr outputs = BuildTfLiteArray<int>({3});
+  TfLiteConvParams params = {};
+  params.padding = kTfLitePaddingSame;
+  params.stride_width = 1;
+  params.stride_height = 1;
+  params.dilation_width_factor = 1;
+  params.dilation_height_factor = 1;
+  params.activation = kTfLiteActNone;
+  params.quantized_bias_type = kTfLiteNoType;
+
+  DirectPrepareTestContextState state;
+  TfLiteContext context = {};
+  context.tensors_size = 4;
+  context.tensors = tensors;
+  context.impl_ = &state;
+  context.ResizeTensor = DummyResizeTensorSuccess;
+  context.ReportError = SilentReportError;
+  context.AddTensors = AddTensorsShouldNotBeCalled;
+  context.GetExternalContext = GetExternalContext;
+  context.SetExternalContext = SetExternalContext;
+
+  TfLiteNode node = {};
+  node.inputs = inputs.get();
+  node.outputs = outputs.get();
+  node.builtin_data = &params;
+
+  TfLiteRegistration* registration =
+      ops::builtin::Register_CONVOLUTION_REF();
+  node.user_data = registration->init(&context, nullptr, 0);
+  ASSERT_EQ(registration->prepare(&context, &node), kTfLiteError);
+  ASSERT_FALSE(state.resize_tensor_called);
+  ASSERT_FALSE(state.add_tensors_called);
+  registration->free(&context, node.user_data);
+  TfLiteFloatArrayFree(input_scale_array);
+  TfLiteIntArrayFree(input_zero_point_array);
+  TfLiteFloatArrayFree(scale_array);
+  TfLiteIntArrayFree(zero_point_array);
+  TfLiteFloatArrayFree(output_scale_array);
+  TfLiteIntArrayFree(output_zero_point_array);
+}
+
 INSTANTIATE_TEST_SUITE_P(
     ConvolutionOpTest, ConvolutionOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
