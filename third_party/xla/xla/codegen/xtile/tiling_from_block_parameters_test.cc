@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -42,12 +43,10 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla::xtile {
-using ::xla::gpu::BlockLevelParameters;
 namespace {
 
 using ::absl_testing::IsOkAndHolds;

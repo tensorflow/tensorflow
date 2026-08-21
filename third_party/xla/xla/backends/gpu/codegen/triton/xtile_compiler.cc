@@ -96,6 +96,7 @@ limitations under the License.
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/codegen/experimental_fusion_emitter.h"
 #include "xla/codegen/xtile/codegen/fusion_emitter.h"
@@ -116,7 +117,6 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_libdevice_path.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/instruction_fusion.h"
@@ -237,6 +237,7 @@ using ::llvm::SmallVector;
 using ::mlir::MLIRContext;
 
 using ::xla::gpu::ir_emitter_triton_internal::GetModuleIrString;
+using ::xla::xtile::BlockLevelParameters;
 using ::xla::xtile::GetTilingSpaceConcreteSizes;
 using ::xla::xtile::TilingFromAnnotatedFusion;
 

@@ -13,15 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/block_level_parameters.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::xtile {
 namespace {
 
 using ::testing::ElementsAre;
@@ -80,5 +79,4 @@ TEST(BlockLevelParametersTest,
 }
 
 }  // namespace
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::xtile

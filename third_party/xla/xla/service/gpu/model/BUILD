@@ -222,13 +222,13 @@ cc_library(
     srcs = ["gpu_cost_model_stats_collection.cc"],
     hdrs = ["gpu_cost_model_stats_collection.h"],
     deps = [
-        ":block_level_parameters",
         ":fusion_analysis_cache",
         ":gpu_dot_fusion_cost_model",
         ":gpu_hlo_cost_analysis",
         ":gpu_indexing_performance_model",
         ":gpu_performance_model",
         ":gpu_performance_model_base",
+        "//xla/codegen/xtile:block_level_parameters",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/utils:hlo_query",
@@ -489,12 +489,12 @@ cc_library(
     srcs = ["gpu_dot_fusion_cost_model.cc"],
     hdrs = ["gpu_dot_fusion_cost_model.h"],
     deps = [
-        ":block_level_parameters",
         ":gpu_performance_model_base",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/codegen/xtile:block_level_parameters",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/stream_executor:device_description",
@@ -518,9 +518,9 @@ xla_cc_test(
     name = "gpu_dot_fusion_cost_model_test",
     srcs = ["gpu_dot_fusion_cost_model_test.cc"],
     deps = [
-        ":block_level_parameters",
         ":gpu_dot_fusion_cost_model",
         ":gpu_performance_model_base",
+        "//xla/codegen/xtile:block_level_parameters",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test_helpers",
@@ -564,7 +564,6 @@ cc_library(
     srcs = ["gpu_indexing_performance_model.cc"],
     hdrs = ["gpu_indexing_performance_model.h"],
     deps = [
-        ":block_level_parameters",
         ":coalescing_analysis",
         ":fusion_analysis_cache",
         ":gpu_dot_fusion_cost_model",
@@ -580,6 +579,7 @@ cc_library(
         "//xla/codegen/tiling:tiling_specification",
         "//xla/codegen/tiling/experimental:tile",
         "//xla/codegen/tiling/experimental:tiled_hlo",
+        "//xla/codegen/xtile:block_level_parameters",
         "//xla/codegen/xtile:tiling_from_block_parameters",
         "//xla/codegen/xtile/codegen:emitter_helpers",
         "//xla/hlo/ir:hlo",
@@ -612,7 +612,6 @@ xla_cc_test(
     name = "gpu_indexing_performance_model_test",
     srcs = ["gpu_indexing_performance_model_test.cc"],
     deps = [
-        ":block_level_parameters",
         ":fusion_analysis_cache",
         ":gpu_dot_fusion_cost_model",
         ":gpu_hlo_cost_analysis",
@@ -625,6 +624,7 @@ xla_cc_test(
         "//xla/codegen/tiling:tiling_specification",
         "//xla/codegen/tiling/experimental:tile",
         "//xla/codegen/tiling/experimental:tiled_hlo",
+        "//xla/codegen/xtile:block_level_parameters",
         "//xla/codegen/xtile/codegen:emitter_helpers",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
@@ -641,29 +641,6 @@ xla_cc_test(
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:IR",
-    ],
-)
-
-cc_library(
-    name = "block_level_parameters",
-    hdrs = [
-        "block_level_parameters.h",
-    ],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "//xla/codegen/xtile:xtile_config_proto_cc",
-        "//xla/service/gpu:backend_configs_cc",
-    ],
-)
-
-xla_cc_test(
-    name = "block_level_parameters_test",
-    srcs = ["block_level_parameters_test.cc"],
-    deps = [
-        ":block_level_parameters",
-        "//xla/codegen/xtile:xtile_config_proto_cc",
-        "//xla/service/gpu:backend_configs_cc",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 

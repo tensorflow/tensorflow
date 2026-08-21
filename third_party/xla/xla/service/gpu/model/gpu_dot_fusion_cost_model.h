@@ -22,8 +22,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
@@ -40,7 +40,8 @@ absl::StatusOr<int64_t> ExtractBlockK(const HloDotInstruction* dot);
 // parameters.
 // Flops with tile and wave quant.
 absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
-    const HloDotInstruction* dot, const BlockLevelParameters& block_params,
+    const HloDotInstruction* dot,
+    const xla::xtile::BlockLevelParameters& block_params,
     const se::DeviceDescription& device_info,
     std::optional<int64_t> block_k = std::nullopt);
 

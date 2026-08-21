@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/backends/gpu/codegen/triton/triton_wrapper_result.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -48,7 +49,6 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/target_constants.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -65,6 +65,7 @@ namespace {
 
 using ::testing::HasSubstr;
 using ::testing::Not;
+using ::xla::xtile::BlockLevelParameters;
 
 // Returns true if the given `opcode` supports the given `type` with respect to
 // HLO semantics. This is completely independent of the what Triton supports or

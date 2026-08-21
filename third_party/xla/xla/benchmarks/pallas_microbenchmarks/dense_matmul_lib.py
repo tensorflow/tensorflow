@@ -163,8 +163,10 @@ def dense_matmul_kernel(
   def _target_fn(lhs, rhs):
     if lhs_mem == pltpu.VMEM:
       lhs = memory_utils.copy_to_vmem(lhs)
+    lhs = memory_utils.with_large_2nd_minor_layout(lhs)
     if rhs_mem == pltpu.VMEM:
       rhs = memory_utils.copy_to_vmem(rhs)
+    rhs = memory_utils.with_large_2nd_minor_layout(rhs)
     return pallas_func(lhs, rhs)
 
   return _target_fn.lower(
