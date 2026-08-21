@@ -36,6 +36,7 @@ package(
         "//tensorflow:internal",
         "//tensorflow/core:__subpackages__",
         "//tensorflow_models:__subpackages__",
+        "//waymo/ml/deploy:__subpackages__",
     ],
     features = if_google(["-parse_headers"]),
     licenses = ["notice"],

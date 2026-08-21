@@ -18,10 +18,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/tsl/platform/errors.h"
@@ -43,7 +43,7 @@ absl::StatusOr<bool> FusionWrapperBase::RunImpl(
       for (auto* computation : instruction->called_computations()) {
         for (auto* inner_instruction :
              computation->MakeInstructionPostOrder()) {
-          RETURN_IF_ERROR(handle_instruction(inner_instruction));
+          ABSL_RETURN_IF_ERROR(handle_instruction(inner_instruction));
         }
       }
       return absl::OkStatus();
@@ -67,16 +67,16 @@ absl::StatusOr<bool> FusionWrapperBase::RunImpl(
       module->schedule().replace_instruction(computation, instruction,
                                              fusion_instruction);
     }
-    RETURN_IF_ERROR(fusion_instruction->CopyAllControlDepsFrom(instruction));
-    RETURN_IF_ERROR(instruction->DropAllControlDeps());
-    RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(fusion_instruction));
-    RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
+    ABSL_RETURN_IF_ERROR(fusion_instruction->CopyAllControlDepsFrom(instruction));
+    ABSL_RETURN_IF_ERROR(instruction->DropAllControlDeps());
+    ABSL_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(fusion_instruction));
+    ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
     changed = true;
     return absl::OkStatus();
   };
 
   for (auto* instruction : instructions) {
-    RETURN_IF_ERROR(handle_instruction(instruction));
+    ABSL_RETURN_IF_ERROR(handle_instruction(instruction));
   }
   return changed;
 }

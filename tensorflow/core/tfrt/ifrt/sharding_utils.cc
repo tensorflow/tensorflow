@@ -16,8 +16,6 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
-
 #include <algorithm>
 #include <cstdint>
 #include <memory>
@@ -33,7 +31,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
-#include "llvm/Support/Casting.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/array.h"
@@ -45,6 +42,7 @@ limitations under the License.
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
@@ -62,6 +60,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_tensor_utils.h"
+#include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tensorflow/core/tpu/kernels/sharding_utils.h"
 
 namespace tensorflow {
@@ -698,13 +697,13 @@ absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
   VLOG(1) << "Hlo sharding: " << sharding;
   VLOG(1) << "Device list size: " << device_list->size();
   // Fast path for single device sharding.
-  if (llvm::isa<const xla::ifrt::SingleDeviceSharding>(sharding.get())) {
+  if (xla::ifrt::isa<const xla::ifrt::SingleDeviceSharding>(sharding.get())) {
     return CreateArrayFromHostTensorForSingleDevice(ifrt_client, input_tensor,
                                                     xla_input_layout, sharding);
   }
 
   const xla::ifrt::HloSharding* ifrt_hlo_sharding =
-      llvm::dyn_cast<const xla::ifrt::HloSharding>(sharding.get());
+      xla::ifrt::dyn_cast<const xla::ifrt::HloSharding>(sharding.get());
   if (!ifrt_hlo_sharding) {
     return absl::InvalidArgumentError("Cannot cast sharding to HloSharding.");
   }

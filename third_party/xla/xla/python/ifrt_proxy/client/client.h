@@ -31,7 +31,6 @@
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
@@ -46,6 +45,7 @@
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
@@ -64,7 +64,7 @@ namespace ifrt {
 namespace proxy {
 
 // Implementation of the xla::ifrt::Client interface.
-class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
+class Client final : public RTTIExtends<Client, xla::ifrt::Client> {
  public:
   static absl::StatusOr<std::unique_ptr<Client>> Create(
       std::shared_ptr<RpcHelper> rpc_helper, InitResponse init_response);
@@ -194,7 +194,7 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
         "client.");
   }
 
-  // For llvm::RTTIExtends.
+  // For RTTIExtends.
   static char ID;  // NOLINT
 
  private:

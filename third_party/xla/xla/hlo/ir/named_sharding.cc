@@ -29,12 +29,12 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_op_metadata.h"
 #include "xla/hlo/ir/mesh_and_axis.h"
 #include "xla/tsl/platform/errors.h"
@@ -216,8 +216,6 @@ DimensionSharding DimensionSharding::FromProto(
 }
 
 std::string NamedSharding::ToString(bool include_metadata) const {
-  std::string result = "{";
-
   std::string metadata_str;
   if (include_metadata && !metadata_.empty()) {
     metadata_str = ", metadata={";
@@ -230,53 +228,41 @@ std::string NamedSharding::ToString(bool include_metadata) const {
     absl::StrAppend(&metadata_str, "}");
   }
 
+  // Special cases: fully replicated or unreduced shardings do not require
+  // meshes in their string representation.
+  if (IsReplicated() && num_dimensions() == 0 && replicated_axes_.empty()) {
+    return absl::StrCat("{replicated", metadata_str, "}");
+  }
+
+  if (IsUnreduced() && num_dimensions() == 0) {
+    std::string unreduced_str = "unreduced";
+    if (reduction_op_ != ReductionOp::kSum) {
+      absl::StrAppend(&unreduced_str, "=");
+      switch (reduction_op_) {
+        case ReductionOp::kMax:
+          absl::StrAppend(&unreduced_str, "max");
+          break;
+        case ReductionOp::kMin:
+          absl::StrAppend(&unreduced_str, "min");
+          break;
+        default:
+          break;
+      }
+    }
+    return absl::StrCat("{", unreduced_str, metadata_str, "}");
+  }
+
+  std::string result = "{";
   absl::StrAppend(&result, mesh_.ToString());
 
-  // Special cases.
-  if (IsReplicated() && num_dimensions() == 0 && replicated_axes_.empty()) {
-    absl::StrAppend(&result, ", replicated");
+  if (IsManual() && num_dimensions() == 0) {
+    absl::StrAppend(&result, ", manual");
     absl::StrAppend(&result, metadata_str);
     absl::StrAppend(&result, "}");
     return result;
   }
 
   if (IsSingleDevice()) {
-    absl::StrAppend(&result, metadata_str);
-    absl::StrAppend(&result, "}");
-    return result;
-  }
-
-  if (IsUnreduced() && num_dimensions() == 0) {
-    absl::StrAppend(&result, ", unreduced");
-    if (reduction_op_ != ReductionOp::kSum) {
-      absl::StrAppend(&result, "=");
-      switch (reduction_op_) {
-        case ReductionOp::kMax:
-          absl::StrAppend(&result, "max");
-          break;
-        case ReductionOp::kMin:
-          absl::StrAppend(&result, "min");
-          break;
-        default:
-          break;
-      }
-    }
-    if (!unreduced_axes_.empty() && unreduced_axes_.size() < mesh_.num_axes()) {
-      absl::StrAppend(&result, "{");
-      absl::StrAppend(
-          &result, absl::StrJoin(unreduced_axes_, ", ",
-                                 [&](std::string* out, const AxisRef& axis) {
-                                   absl::StrAppend(out, axis.ToString(&mesh_));
-                                 }));
-      absl::StrAppend(&result, "}");
-    }
-    absl::StrAppend(&result, metadata_str);
-    absl::StrAppend(&result, "}");
-    return result;
-  }
-
-  if (IsManual() && num_dimensions() == 0) {
-    absl::StrAppend(&result, ", manual");
     absl::StrAppend(&result, metadata_str);
     absl::StrAppend(&result, "}");
     return result;
@@ -579,7 +565,7 @@ namespace {
 absl::Status VerifyAndTrack(
     const AxisRef& axis, const Mesh& mesh,
     absl::flat_hash_map<int64_t, std::vector<AxisRef>>& seen_axes) {
-  RETURN_IF_ERROR(axis.Validate(mesh));
+  ABSL_RETURN_IF_ERROR(axis.Validate(mesh));
   auto& axes_on_dim = seen_axes[axis.mesh_axis_index()];
   for (const AxisRef& other : axes_on_dim) {
     if (!axis.CanCoexistWithoutOverlap(other)) {
@@ -600,7 +586,7 @@ absl::Status VerifySortedAxes(
                      "sub-axis pre-size."));
   }
   for (auto it = axes.begin(); it != axes.end(); ++it) {
-    RETURN_IF_ERROR(VerifyAndTrack(*it, mesh, seen_axes));
+    ABSL_RETURN_IF_ERROR(VerifyAndTrack(*it, mesh, seen_axes));
     if (it != axes.begin() && std::prev(it)->CanMerge(*it)) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Adjacent axes in ", name, " axes can be merged: ",
@@ -619,7 +605,7 @@ absl::Status VerifyDimShardings(
       continue;
     }
     for (auto it = ds.axes().begin(); it != ds.axes().end(); ++it) {
-      RETURN_IF_ERROR(VerifyAndTrack(*it, mesh, seen_axes));
+      ABSL_RETURN_IF_ERROR(VerifyAndTrack(*it, mesh, seen_axes));
       if (it != ds.axes().begin() && std::prev(it)->CanMerge(*it)) {
         return absl::InvalidArgumentError(absl::StrCat(
             "Adjacent axes in dimension sharding can be merged: ",
@@ -635,13 +621,13 @@ absl::Status VerifyDimShardings(
 absl::Status VerifyNamedSharding(const NamedSharding& named_sharding) {
   absl::flat_hash_map<int64_t, std::vector<AxisRef>> seen_axes;
   const Mesh& mesh = named_sharding.mesh();
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       VerifyDimShardings(named_sharding.dim_shardings(), mesh, seen_axes));
-  RETURN_IF_ERROR(VerifySortedAxes(named_sharding.replicated_axes(),
+  ABSL_RETURN_IF_ERROR(VerifySortedAxes(named_sharding.replicated_axes(),
                                    "Replicated", mesh, seen_axes));
-  RETURN_IF_ERROR(VerifySortedAxes(named_sharding.unreduced_axes(), "Unreduced",
+  ABSL_RETURN_IF_ERROR(VerifySortedAxes(named_sharding.unreduced_axes(), "Unreduced",
                                    mesh, seen_axes));
-  RETURN_IF_ERROR(VerifySortedAxes(named_sharding.manual_axes(), "Manual", mesh,
+  ABSL_RETURN_IF_ERROR(VerifySortedAxes(named_sharding.manual_axes(), "Manual", mesh,
                                    seen_axes));
   return absl::OkStatus();
 }

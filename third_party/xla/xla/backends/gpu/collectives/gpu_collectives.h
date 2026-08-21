@@ -21,6 +21,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -52,6 +53,12 @@ class GpuCollectives : public Collectives {
  public:
   // Returns the default collectives implementation for the given platform.
   static GpuCollectives* Default(absl::string_view platform_name);
+
+  // Returns the collectives implementation for the given platform  and
+  // implementation name or the default implementation if not specified.
+  static GpuCollectives* Resolve(
+      absl::string_view platform_name,
+      std::optional<std::string> impl = std::nullopt);
 
   // A callback to get a unique clique ids.
   using CliqueIdCallback =  // NOLINT

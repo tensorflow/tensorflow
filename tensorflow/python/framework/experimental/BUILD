@@ -49,6 +49,8 @@ tf_python_pybind_extension(
         "//tensorflow/core/platform:refcount",
         "//tensorflow/python:unified_api_pywrap_required_headers",
         "//tensorflow/python/lib/core:pybind11_lib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@pybind11",
     ],
@@ -128,6 +130,7 @@ tf_python_pybind_extension(
         "//tensorflow/core/lib/llvm_rtti",
         "//tensorflow/python:unified_api_pywrap_required_headers",
         "//tensorflow/python/lib/core:pybind11_lib",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
         "@pybind11",
     ] + if_pywrap(

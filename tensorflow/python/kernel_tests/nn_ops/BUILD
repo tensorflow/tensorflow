@@ -903,6 +903,13 @@ cuda_py_strict_test(
     name = "xent_op_test",
     size = "small",
     srcs = ["xent_op_test.py"],
+    env = {
+        "TF_FORCE_GPU_ALLOW_GROWTH": "true",
+        "XLA_PYTHON_CLIENT_PREALLOCATE": "false",
+    },
+    tags = [
+        "exclusive-if-local",
+    ],
     deps = [
         ":xent_op_test_base",
         "//tensorflow/python/client:session",

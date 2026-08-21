@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -43,12 +44,12 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-const char kAttrInputSrc[] = "input_source_";
-const char kAttrSrcDevice[] = "send_device";
-const char kAttrDstDevice[] = "recv_device";
-const char kAttrTensorName[] = "tensor_name";
-const char kChannelDevice[] = "Channel";
-const char kStreaming[] = "_streaming";
+ABSL_CONST_INIT const char kAttrInputSrc[] = "input_source_";
+ABSL_CONST_INIT const char kAttrSrcDevice[] = "send_device";
+ABSL_CONST_INIT const char kAttrDstDevice[] = "recv_device";
+ABSL_CONST_INIT const char kAttrTensorName[] = "tensor_name";
+ABSL_CONST_INIT const char kChannelDevice[] = "Channel";
+ABSL_CONST_INIT const char kStreaming[] = "_streaming";
 
 namespace {
 

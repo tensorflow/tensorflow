@@ -24,16 +24,16 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/proto/pjrt_abi_version.pb.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 
 namespace xla {
 
 // IFRT SerDes implementation for XlaExecutableAbiVersion on GPU.
 class GpuXlaExecutableAbiVersionSerDes
-    : public llvm::RTTIExtends<GpuXlaExecutableAbiVersionSerDes,
+    : public ifrt::RTTIExtends<GpuXlaExecutableAbiVersionSerDes,
                                xla::ifrt::SerDes> {
  public:
   using FactoryFunction = std::function<

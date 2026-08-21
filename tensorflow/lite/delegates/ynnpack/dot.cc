@@ -46,7 +46,7 @@ TfLiteStatus DefineQuantizedDot(
     uint32_t a_zp_id, uint32_t b_id, uint32_t b_scale_id, uint32_t b_zp_id,
     uint32_t bias_id, int bias_rank, uint32_t out_scale_id, uint32_t out_zp_id,
     bool is_per_channel, bool is_conv, ynn_type output_ynn_type,
-    uint32_t* output_id) {
+    uint32_t* output_id, uint32_t dot_flags) {
   TF_LITE_ENSURE_EQ(context, a_reduce_axes.size(), b_reduce_axes.size());
   int num_k_dims = a_reduce_axes.size();
   // We assume a_id and b_id are quantized (int8 or uint8).
@@ -106,8 +106,8 @@ TfLiteStatus DefineQuantizedDot(
 
   // Now define the dot product.
   uint32_t accum_id = YNN_INVALID_VALUE_ID;
-  TF_LITE_ENSURE_YNN_STATUS(ynn_define_dot(subgraph, num_k_dims, a_id, b_id,
-                                           accum_init_id, &accum_id, 0));
+  TF_LITE_ENSURE_YNN_STATUS(ynn_define_dot(
+      subgraph, num_k_dims, a_id, b_id, accum_init_id, &accum_id, dot_flags));
 
   uint32_t accum_scale_id = dot_scale_id;
 
@@ -239,12 +239,19 @@ TfLiteStatus DefineMatMul(TfLiteContext* context, ynn_subgraph_t subgraph,
                                                   &dot_output_id));
     }
 
+    uint32_t dot_flags = 0;
+    if (input_b_tensor.type == kTfLiteInt8 && IsConstant(input_b_tensor)) {
+      // In TFlite, quantized int8 weights are in the range [-127, 127] (see
+      // quantization_spec.md for reference).
+      dot_flags |= YNN_NODE_FLAG_SYMMETRIC_B;
+    }
+
     TF_LITE_ENSURE_STATUS(DefineQuantizedDot(
         context, subgraph, rank_a, rank_b, {rank_a - 1}, {rank_b - 2},
         current_a_id, a_scale_id, a_zp_id, current_b_id, b_scale_id, b_zp_id,
         is_dynamically_quantized ? YNN_INVALID_VALUE_ID : broadcasted_bias_id,
         rank_a - 1, out_scale_id, out_zp_id, is_per_channel, /*is_conv=*/false,
-        GetYnnType(output_tensor.type), &dot_output_id));
+        GetYnnType(output_tensor.type), &dot_output_id, dot_flags));
 
     if (is_dynamically_quantized && bias_id != YNN_INVALID_VALUE_ID) {
       TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(
@@ -499,78 +506,6 @@ TfLiteStatus DefineBatchMatMulNode(TfLiteContext* context,
   return kTfLiteOk;
 }
 
-namespace {
-
-flexbuffers::Map GetFlexBufferMap(const TfLiteRegistration* reg,
-                                  const TfLiteNode* node) {
-  if (node == nullptr) {
-    return flexbuffers::Map::EmptyMap();
-  }
-  if (reg != nullptr && reg->builtin_code == kTfLiteBuiltinStablehloComposite &&
-      node->builtin_data != nullptr) {
-    const auto* composite_params =
-        static_cast<const TfLiteStablehloCompositeParams*>(node->builtin_data);
-    if (composite_params->attributes != nullptr &&
-        composite_params->attributes_size > 0) {
-      return flexbuffers::GetRoot(composite_params->attributes,
-                                  composite_params->attributes_size)
-          .AsMap();
-    }
-  }
-  if (node->custom_initial_data != nullptr &&
-      node->custom_initial_data_size > 0) {
-    return flexbuffers::GetRoot(
-               reinterpret_cast<const uint8_t*>(node->custom_initial_data),
-               node->custom_initial_data_size)
-        .AsMap();
-  }
-  return flexbuffers::Map::EmptyMap();
-}
-
-// Find a dummy input we can use for a particular runtime_bmm op. Often, many
-// runtime_bmm ops use the same params tensor, which can share a dummy input.
-TfLiteStatus GetOrCreateDummyInput(TfLiteContext* context,
-                                   ynn_subgraph_t subgraph,
-                                   uint32_t& next_external_id,
-                                   std::vector<DummyInputInfo>& dummy_inputs,
-                                   int param_tensor_index, int seq_axis,
-                                   size_t rank, const size_t* full_dims,
-                                   ynn_type type, uint32_t* dummy_val_id_out) {
-  for (const auto& dummy : dummy_inputs) {
-    if (dummy.param_tensor_index == param_tensor_index &&
-        dummy.seq_axis == seq_axis && dummy.rank == rank) {
-      bool dims_match = true;
-      for (size_t i = 0; i < rank; ++i) {
-        if (dummy.full_dims[i] != full_dims[i]) {
-          dims_match = false;
-          break;
-        }
-      }
-      if (dims_match) {
-        *dummy_val_id_out = dummy.dummy_val_id;
-        return kTfLiteOk;
-      }
-    }
-  }
-
-  uint32_t dummy_val_id = next_external_id++;
-  TF_LITE_ENSURE_YNN_STATUS(ynn_define_tensor(
-      subgraph, type, rank, /*dims=*/nullptr, /*data=*/nullptr,
-      YNN_VALUE_FLAG_EXTERNAL_INPUT, &dummy_val_id));
-
-  DummyInputInfo dummy_info;
-  dummy_info.param_tensor_index = param_tensor_index;
-  dummy_info.dummy_val_id = dummy_val_id;
-  dummy_info.seq_axis = seq_axis;
-  dummy_info.rank = rank;
-  std::copy_n(full_dims, rank, dummy_info.full_dims);
-  dummy_inputs.push_back(dummy_info);
-
-  *dummy_val_id_out = dummy_val_id;
-  return kTfLiteOk;
-}
-
-}  // namespace
 
 TfLiteStatus DefineRuntimeBatchedMatMulNode(
     TfLiteContext* context, ynn_subgraph_t subgraph,
@@ -1090,6 +1025,13 @@ TfLiteStatus DefineConv(TfLiteContext* context, ynn_subgraph_t subgraph,
     std::iota(a_reduce_axes, a_reduce_axes + 3, groups == 1 ? 3 : 5);
     std::iota(b_reduce_axes, b_reduce_axes + 3, groups == 1 ? 0 : 1);
 
+    uint32_t dot_flags = 0;
+    if (filter_tensor.type == kTfLiteInt8 && IsConstant(filter_tensor)) {
+      // In TFlite, quantized int8 weights are in the range [-127, 127] (see
+      // quantization_spec.md for reference).
+      dot_flags |= YNN_NODE_FLAG_SYMMETRIC_B;
+    }
+
     TF_LITE_ENSURE_STATUS(DefineQuantizedDot(
         context, subgraph,
         /*rank_a=*/(groups == 1) ? 6 : 8,
@@ -1097,7 +1039,8 @@ TfLiteStatus DefineConv(TfLiteContext* context, ynn_subgraph_t subgraph,
         current_input_id, a_scale_id, a_zp_id, transposed_filter_id,
         current_b_scale_id, current_b_zp_id, current_bias_id,
         (groups == 1) ? 1 : 3, out_scale_id, out_zp_id, is_per_channel,
-        /*is_conv=*/true, GetYnnType(output_tensor.type), &dot_output_id));
+        /*is_conv=*/true, GetYnnType(output_tensor.type), &dot_output_id,
+        dot_flags));
   } else {
     TF_LITE_ENSURE_YNN_STATUS(
         ynn_define_dot(subgraph, 3, current_input_id, transposed_filter_id,

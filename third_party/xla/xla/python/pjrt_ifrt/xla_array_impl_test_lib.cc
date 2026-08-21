@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/layout_util.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
@@ -48,6 +49,9 @@ TEST_P(XlaArrayImplHashTest, HashValuesDifferentLayouts) {
   ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   if (client->addressable_devices().size() < 2) {
     GTEST_SKIP() << "This test needs at least 2 devices";
+  }
+  if (client->platform_id() == xla::CpuId()) {
+    GTEST_SKIP() << "PjRt CPU does not support custom layouts";
   }
   Client::HashMode hash_mode = GetParam();
 

@@ -18,7 +18,10 @@ limitations under the License.
 #include <cstddef>
 #include <initializer_list>
 #include <memory>
+#include <optional>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -108,6 +111,84 @@ TEST_F(AllReduceFolderTest, PreservesFrontendAttributes) {
       module->entry_computation()->root_instruction()->frontend_attributes();
   EXPECT_EQ(attributes.map().at("pipeline"), "stage0,stage1");
   EXPECT_EQ(attributes.map().at("shared"), "value");
+}
+
+TEST_F(AllReduceFolderTest, KeyedAndUnkeyedCollectivesAreFolded) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule m
+
+    sum {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT add.2 = f32[] add(a, b)
+    }
+
+    ENTRY main {
+      p0 = f32[8] parameter(0)
+      ar0 = f32[8] all-reduce(p0), replica_groups={{0,1},{2,3}},
+        to_apply=sum, frontend_attributes={collective_group_key="g0"}
+      ROOT ar1 = f32[8] all-reduce(ar0),
+        replica_groups={{0,2},{1,3}}, to_apply=sum
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(
+      auto module, RunAndCheckHloRewrite(kHloModule, AllReduceFolder(), true));
+  ExpectOneAllReduce(module.get(), "replica_groups={{0,1,2,3}}");
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->get_frontend_attribute("collective_group_key"), "g0");
+}
+
+TEST_F(AllReduceFolderTest, MatchingCollectiveGroupKeysAllowFolding) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule m
+
+    sum {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT add.2 = f32[] add(a, b)
+    }
+
+    ENTRY main {
+      p0 = f32[8] parameter(0)
+      ar0 = f32[8] all-reduce(p0), replica_groups={{0,1},{2,3}},
+        to_apply=sum, frontend_attributes={collective_group_key="g0"}
+      ROOT ar1 = f32[8] all-reduce(ar0), replica_groups={{0,2},{1,3}},
+        to_apply=sum, frontend_attributes={collective_group_key="g0"}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(
+      auto module, RunAndCheckHloRewrite(kHloModule, AllReduceFolder(), true));
+  ExpectOneAllReduce(module.get(), "replica_groups={{0,1,2,3}}");
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->get_frontend_attribute("collective_group_key"), "g0");
+}
+
+TEST_F(AllReduceFolderTest, ConflictingCollectiveGroupKeysAreDropped) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule m
+
+    sum {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT add.2 = f32[] add(a, b)
+    }
+
+    ENTRY main {
+      p0 = f32[8] parameter(0)
+      ar0 = f32[8] all-reduce(p0), replica_groups={{0,1},{2,3}},
+        to_apply=sum, frontend_attributes={collective_group_key="g0"}
+      ROOT ar1 = f32[8] all-reduce(ar0), replica_groups={{0,2},{1,3}},
+        to_apply=sum, frontend_attributes={collective_group_key="g1"}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(
+      auto module, RunAndCheckHloRewrite(kHloModule, AllReduceFolder(), true));
+  ExpectOneAllReduce(module.get(), "replica_groups={{0,1,2,3}}");
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->get_frontend_attribute("collective_group_key"), std::nullopt);
 }
 
 TEST_F(AllReduceFolderTest, BothEmptyReplicaGroups_NotTransformed) {

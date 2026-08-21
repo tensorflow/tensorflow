@@ -86,6 +86,13 @@ TEST(DebugOptions, CommandBufferUpdateModeDefaultsToAlwaysUpdate) {
       DebugOptions::ALWAYS_UPDATE);
 }
 
+TEST(DebugOptions, SchedulerMemoryFencingDefaultsToDisabled) {
+  EXPECT_EQ(
+      DefaultDebugOptionsIgnoringFlags()
+          .xla_gpu_experimental_scheduler_memory_fencing_threshold_bytes(),
+      -1);
+}
+
 TEST(DebugOptions, CommandBufferUpdateModesParseFromFlags) {
   for (const auto& [name, expected] : std::vector<
            std::pair<const char*, DebugOptions::CommandBufferUpdateMode>>{

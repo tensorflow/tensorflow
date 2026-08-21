@@ -40,6 +40,10 @@ class InputSpec:
 
 def get_random_array(shape: tuple[int, ...], dtype: np.dtype) -> np.ndarray:
   rng = np.random.default_rng()
+  if np.issubdtype(dtype, np.complexfloating):
+    real = rng.uniform(low=-5, high=5, size=shape)
+    imag = rng.uniform(low=-5, high=5, size=shape)
+    return (real + 1j * imag).astype(dtype)
   return rng.uniform(low=-5, high=5, size=shape).astype(dtype)
 
 
@@ -68,6 +72,11 @@ def compare_kernel(
       return (
           np.arange(np.prod(spec.shape), dtype=np.int8).reshape(spec.shape) % 2
       )
+    if np.issubdtype(dtype, np.complexfloating):
+      prod = np.prod(spec.shape)
+      real = np.arange(prod, dtype=np.float32).reshape(spec.shape) + 1.0
+      imag = np.arange(prod, dtype=np.float32).reshape(spec.shape) + 0.5
+      return (real + 1j * imag).astype(dtype)
     return np.arange(np.prod(spec.shape), dtype=dtype).reshape(spec.shape)
 
   inputs = [get_input(spec) for spec in input_specs]
@@ -83,7 +92,11 @@ def compare_kernel(
   runner.call(input_tensors + [output_tensor])
 
   output_np = np.asarray(output_tensor)
-  if maxulp is None:
+  if np.issubdtype(expected_output_np.dtype, np.inexact):
+    np.testing.assert_allclose(
+        output_np, expected_output_np, rtol=1e-5, atol=1e-5
+    )
+  elif maxulp is None:
     np.testing.assert_array_equal(output_np, expected_output_np)
   else:
     np.testing.assert_array_max_ulp(
@@ -100,7 +113,7 @@ class XtileLoweringTest(absltest.TestCase):
         xtile.entry_func @tiled_slice(
             %input: memref<5x5xf32>,
             %output: memref<5x5xf32>,
-            %tile_id: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count:1, tiles_per_workgroup:1>} {
+            %tile_id: index) {
           %offset = arith.constant 0 : index
           %input_tile = xtile.extract %input[%offset, %offset][64, 64][1, 1] : memref<5x5xf32> -> tensor<64x64xf32>
           %transposed_tile = stablehlo.transpose %input_tile, dims = [1, 0] : (tensor<64x64xf32>) -> tensor<64x64xf32>
@@ -126,7 +139,7 @@ class XtileLoweringTest(absltest.TestCase):
         xtile.entry_func @tiled_slice(
             %input: memref<64x64xf32>,
             %output: memref<4x32xf32>,
-            %tile_id: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count:1, tiles_per_workgroup:1>} {
+            %tile_id: index) {
           %input_tile = xtile.extract %input[%tile_id, %tile_id][4, 32][21, 2] : memref<64x64xf32> -> tensor<4x32xf32>
           xtile.insert %input_tile into %output[%tile_id, %tile_id][4, 32][1, 1] : tensor<4x32xf32> -> memref<4x32xf32>
           xtile.return
@@ -150,7 +163,7 @@ class XtileLoweringTest(absltest.TestCase):
         xtile.entry_func @tiled_transpose(
             %input: memref<4096x4096xf32>,
             %output: memref<4096x4096xf32>,
-            %tile_id: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count:262144, tiles_per_workgroup:32768>} {
+            %tile_id: index) {
           %offset_0 = xla.apply_indexing #xla.indexing_map<"(tid) -> ((tid mod 512) * 8), domain: tid in [0, 262144]">(%tile_id)
           %offset_1 = xla.apply_indexing #xla.indexing_map<"(tid) -> ((tid / 512) * 8), domain: tid in [0, 262144]">(%tile_id)
           %input_tile = xtile.extract %input[%offset_0, %offset_1][8, 8][1, 1] : memref<4096x4096xf32> -> tensor<8x8xf32>
@@ -164,7 +177,7 @@ class XtileLoweringTest(absltest.TestCase):
     compare_kernel(
         ir,
         "tiled_transpose",
-        8,
+        262144,
         [InputSpec((4096, 4096))],
         (4096, 4096),
         np.float32,
@@ -177,7 +190,7 @@ class XtileLoweringTest(absltest.TestCase):
         xtile.entry_func @add_tranpose(
             %input: memref<4096x4096xf32>,
             %output: memref<4096x4096xf32>,
-            %tile_id: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count:262144, tiles_per_workgroup:32768>} {
+            %tile_id: index) {
           %offset_0 = xla.apply_indexing #xla.indexing_map<"(tid) -> ((tid mod 512) * 8), domain: tid in [0, 262144]">(%tile_id)
           %offset_1 = xla.apply_indexing #xla.indexing_map<"(tid) -> ((tid / 512) * 8), domain: tid in [0, 262144]">(%tile_id)
           %input_tile_0 = xtile.extract %input[%offset_0, %offset_1][8, 8][1, 1] : memref<4096x4096xf32> -> tensor<8x8xf32>
@@ -193,7 +206,7 @@ class XtileLoweringTest(absltest.TestCase):
     compare_kernel(
         ir,
         "add_tranpose",
-        8,
+        262144,
         [InputSpec((4096, 4096))],
         (4096, 4096),
         np.float32,
@@ -207,7 +220,7 @@ class XtileLoweringTest(absltest.TestCase):
             %lhs: memref<8x16xf32>,
             %rhs: memref<16x8xf32>,
             %output: memref<8x8xf32>,
-            %tile_id: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count:1, tiles_per_workgroup:1>} {
+            %tile_id: index) {
           %offset = arith.constant 0 : index
           %lhs_tile = xtile.extract %lhs[%offset, %offset][8, 16][1, 1] : memref<8x16xf32> -> tensor<8x16xf32>
           %rhs_tile = xtile.extract %rhs[%offset, %offset][16, 8][1, 1] : memref<16x8xf32> -> tensor<16x8xf32>
@@ -236,7 +249,7 @@ class XtileLoweringTest(absltest.TestCase):
             %lhs: memref<8x16xf32>,
             %rhs: memref<16x8xf32>,
             %output: memref<f32>,
-            %tile_id: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count:1, tiles_per_workgroup:1>} {
+            %tile_id: index) {
           %offset = arith.constant 0 : index
           %lhs_tile = xtile.extract %lhs[%offset, %offset][8, 16][1, 1] : memref<8x16xf32> -> tensor<8x16xf32>
           %rhs_tile = xtile.extract %rhs[%offset, %offset][16, 8][1, 1] : memref<16x8xf32> -> tensor<16x8xf32>
@@ -266,7 +279,7 @@ class XtileLoweringTest(absltest.TestCase):
             %lhs_1: memref<8x16xf32>,
             %rhs: memref<16x1xf32>,
             %output: memref<8x1xf32>,
-            %tile_id: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count:1, tiles_per_workgroup:1>} {
+            %tile_id: index) {
           %offset = arith.constant 0 : index
           %lhs_0_tile = xtile.extract %lhs_0[%offset, %offset][8, 16][1, 1] : memref<8x16xf32> -> tensor<8x16xf32>
           %lhs_1_tile = xtile.extract %lhs_1[%offset, %offset][8, 16][1, 1] : memref<8x16xf32> -> tensor<8x16xf32>
@@ -302,7 +315,7 @@ class XtileLoweringTest(absltest.TestCase):
             %input: memref<1024x32xf32>,
             %init: memref<f32>,
             %output: memref<1024xf32>,
-            %tile_id: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count:128, tiles_per_workgroup:32>} {
+            %tile_id: index) {
           %c_0 = arith.constant 0 : index
           %c_8 = arith.constant 8 : index
           %init_tile = xtile.extract %init[][][] : memref<f32> -> tensor<f32>
@@ -320,7 +333,7 @@ class XtileLoweringTest(absltest.TestCase):
     compare_kernel(
         ir,
         "reduction_add_inner",
-        4,
+        128,
         [InputSpec((1024, 32)), InputSpec((1,))],
         (1024,),
         np.int32,
@@ -334,7 +347,7 @@ class XtileLoweringTest(absltest.TestCase):
             %input: memref<1024x32xf32>,
             %init: memref<f32>,
             %output: memref<32xf32>,
-            %tile_id: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count:4, tiles_per_workgroup:1>} {
+            %tile_id: index) {
           %c_0 = arith.constant 0 : index
           %c_8 = arith.constant 8 : index
           %init_tile = xtile.extract %init[][][] : memref<f32> -> tensor<f32>
@@ -370,7 +383,7 @@ class XtileLoweringTest(absltest.TestCase):
             %input: memref<8x4x2xf32>,
             %init: memref<f32>,
             %output: memref<8x2xf32>,
-            %tile_id: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count:1, tiles_per_workgroup:1>} {
+            %tile_id: index) {
           %init_val = xtile.extract %init[][][] : memref<f32> -> tensor<f32>
           %input_tile = xtile.extract %input[%tile_id, %tile_id, %tile_id][8, 4, 2][1, 1, 1] : memref<8x4x2xf32> -> tensor<8x4x2xf32>
           %result = stablehlo.reduce(%input_tile init: %init_val)
@@ -403,7 +416,7 @@ class XtileLoweringTest(absltest.TestCase):
             %input: memref<8x4x2xf32>,
             %init: memref<f32>,
             %output: memref<4xf32>,
-            %tile_id: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count:1, tiles_per_workgroup:1>} {
+            %tile_id: index) {
           %init_val = xtile.extract %init[][][] : memref<f32> -> tensor<f32>
           %input_tile = xtile.extract %input[%tile_id, %tile_id, %tile_id][8, 4, 2][1, 1, 1] : memref<8x4x2xf32> -> tensor<8x4x2xf32>
           %result = stablehlo.reduce(%input_tile init: %init_val)
@@ -436,7 +449,7 @@ class XtileLoweringTest(absltest.TestCase):
             %input: memref<1024x32xui32>,
             %init: memref<ui32>,
             %output: memref<1024xui32>,
-            %tile_id: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count:128, tiles_per_workgroup:32>} {
+            %tile_id: index) {
           %c_0 = arith.constant 0 : index
           %c_8 = arith.constant 8 : index
           %init_tile = xtile.extract %init[][][] : memref<ui32> -> tensor<ui32>
@@ -454,7 +467,7 @@ class XtileLoweringTest(absltest.TestCase):
     compare_kernel(
         ir,
         "reduction_unsigned_add",
-        4,
+        128,
         [InputSpec((1024, 32)), InputSpec((1,))],
         (1024,),
         np.uint32,
@@ -467,7 +480,7 @@ class XtileLoweringTest(absltest.TestCase):
         xtile.entry_func @broadcast_in_dim_inner(
             %input: memref<4xf32>,
             %output: memref<32x4xf32>,
-            %tile_id: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count:1, tiles_per_workgroup:1>} {
+            %tile_id: index) {
           %input_tile = xtile.extract %input[%tile_id][4][1] : memref<4xf32> -> tensor<4xf32>
           %result = stablehlo.broadcast_in_dim %input_tile, dims = [1] : (tensor<4xf32>) -> tensor<32x4xf32>
           xtile.insert %result into %output[%tile_id, %tile_id][32,4][1,1] : tensor<32x4xf32> -> memref<32x4xf32>
@@ -492,7 +505,7 @@ class XtileLoweringTest(absltest.TestCase):
         xtile.entry_func @broadcast_in_dim_outer(
             %input: memref<4xf32>,
             %output: memref<4x32xf32>,
-            %tile_id: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count:1, tiles_per_workgroup:1>} {
+            %tile_id: index) {
           %input_tile = xtile.extract %input[%tile_id][4][1] : memref<4xf32> -> tensor<4xf32>
           %result = stablehlo.broadcast_in_dim %input_tile, dims = [0] : (tensor<4xf32>) -> tensor<4x32xf32>
           xtile.insert %result into %output[%tile_id, %tile_id][4,32][1,1] : tensor<4x32xf32> -> memref<4x32xf32>
@@ -516,7 +529,7 @@ class XtileLoweringTest(absltest.TestCase):
       module @__compute_module_bitcast_copy_fusion {
         xtile.entry_func @bitcast_copy_fusion(
             %arg0: memref<2x3xi8>, %arg1: memref<2x3x1xi8>,
-            %arg2: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count : 1, tiles_per_workgroup : 1>} {
+            %arg2: index) {
           %c0 = arith.constant 0 : index
           %1 = xtile.extract %arg0[%c0, %c0] [2, 4] [1, 1] : memref<2x3xi8> -> tensor<2x4xi8>
           %cst = arith.constant dense<0> : tensor<2x4xi8>
@@ -600,7 +613,7 @@ class OpsWithUnsignedIntegersTest(parameterized.TestCase):
     ir = f"""
       #indexing_map = #xla.indexing_map<"(pid_0) -> (pid_0 * 16), domain: pid_0 in [0, 9]">
       module {{
-        xtile.entry_func @unsigned_integer_test(%arg0: memref<150xui32>, %arg1: memref<150xui32>, %arg2: memref<150xui32>, %arg3: index) attributes {{xtile.tiling_info = #xtile.tiling_info<tile_count:10, tiles_per_workgroup:10>}} {{
+        xtile.entry_func @unsigned_integer_test(%arg0: memref<150xui32>, %arg1: memref<150xui32>, %arg2: memref<150xui32>, %arg3: index) {{
           %0 = xla.apply_indexing #indexing_map(%arg3)
           %1 = xtile.extract %arg0[%0] [16] [1] : memref<150xui32> -> tensor<16xui32>
           %2 = xtile.extract %arg1[%0] [16] [1] : memref<150xui32> -> tensor<16xui32>
@@ -615,7 +628,7 @@ class OpsWithUnsignedIntegersTest(parameterized.TestCase):
     compare_kernel(
         ir,
         "unsigned_integer_test",
-        1,
+        10,
         [InputSpec((150)), InputSpec((150))],
         (150),
         np.uint32,
@@ -652,7 +665,7 @@ class OpsWithUnsignedIntegersTest(parameterized.TestCase):
     ir = f"""
       #indexing_map = #xla.indexing_map<"(pid_0) -> (pid_0 * 16), domain: pid_0 in [0, 9]">
       module {{
-        xtile.entry_func @convert_test(%arg0: memref<150x{from_type}>, %arg1: memref<150x{to_type}>, %arg2: index) attributes {{xtile.tiling_info = #xtile.tiling_info<tile_count:10, tiles_per_workgroup:10>}} {{
+        xtile.entry_func @convert_test(%arg0: memref<150x{from_type}>, %arg1: memref<150x{to_type}>, %arg2: index) {{
           %0 = xla.apply_indexing #indexing_map(%arg2)
           %1 = xtile.extract %arg0[%0] [16] [1] : memref<150x{from_type}> -> tensor<16x{from_type}>
           %3 = stablehlo.convert %1 : (tensor<16x{from_type}>) -> tensor<16x{to_type}>
@@ -677,11 +690,127 @@ class OpsWithUnsignedIntegersTest(parameterized.TestCase):
     compare_kernel(
         ir,
         "convert_test",
-        1,
+        10,
         [InputSpec((150))],
         (150),
         from_dtype,
         lambda input: input.astype(to_dtype),
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="add",
+          stablehlo_op="stablehlo.add",
+          expected_output=lambda a, b: a + b,
+      ),
+      dict(
+          testcase_name="multiply",
+          stablehlo_op="stablehlo.multiply",
+          expected_output=lambda a, b: a * b,
+      ),
+      dict(
+          testcase_name="divide",
+          stablehlo_op="stablehlo.divide",
+          expected_output=lambda a, b: a / b,
+      ),
+  )
+  def test_complex_binary_op(
+      self,
+      stablehlo_op: str,
+      expected_output: Callable[[np.ndarray, ...], np.ndarray],
+  ):
+    ir = f"""
+      #indexing_map = #xla.indexing_map<"(pid_0) -> (pid_0 * 16), domain: pid_0 in [0, 9]">
+      module {{
+        xtile.entry_func @complex_binary_test(%arg0: memref<150xcomplex<f32>>, %arg1: memref<150xcomplex<f32>>, %arg2: memref<150xcomplex<f32>>, %arg3: index) {{
+          %0 = xla.apply_indexing #indexing_map(%arg3)
+          %1 = xtile.extract %arg0[%0] [16] [1] : memref<150xcomplex<f32>> -> tensor<16xcomplex<f32>>
+          %2 = xtile.extract %arg1[%0] [16] [1] : memref<150xcomplex<f32>> -> tensor<16xcomplex<f32>>
+          %3 = {stablehlo_op} %1, %2 : tensor<16xcomplex<f32>>
+          %4 = xla.apply_indexing #indexing_map(%arg3)
+          xtile.insert %3 into %arg2[%4] [16] [1] : tensor<16xcomplex<f32>> -> memref<150xcomplex<f32>>
+          xtile.return
+        }}
+      }}
+    """
+
+    compare_kernel(
+        ir,
+        "complex_binary_test",
+        10,
+        [InputSpec((150)), InputSpec((150))],
+        (150),
+        np.complex64,
+        expected_output,
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="abs",
+          stablehlo_op="stablehlo.abs",
+          expected_output=np.abs,
+      ),
+      dict(
+          testcase_name="real",
+          stablehlo_op="stablehlo.real",
+          expected_output=np.real,
+      ),
+      dict(
+          testcase_name="imag",
+          stablehlo_op="stablehlo.imag",
+          expected_output=np.imag,
+      ),
+  )
+  def test_complex_unary_op(
+      self,
+      stablehlo_op: str,
+      expected_output: Callable[[np.ndarray], np.ndarray],
+  ):
+    ir = f"""
+      #indexing_map = #xla.indexing_map<"(pid_0) -> (pid_0 * 16), domain: pid_0 in [0, 9]">
+      module {{
+        xtile.entry_func @complex_unary_test(%arg0: memref<150xcomplex<f32>>, %arg1: memref<150xf32>, %arg2: index) {{
+          %0 = xla.apply_indexing #indexing_map(%arg2)
+          %1 = xtile.extract %arg0[%0] [16] [1] : memref<150xcomplex<f32>> -> tensor<16xcomplex<f32>>
+          %2 = {stablehlo_op} %1 : (tensor<16xcomplex<f32>>) -> tensor<16xf32>
+          %3 = xla.apply_indexing #indexing_map(%arg2)
+          xtile.insert %2 into %arg1[%3] [16] [1] : tensor<16xf32> -> memref<150xf32>
+          xtile.return
+        }}
+      }}
+    """
+
+    compare_kernel(
+        ir,
+        "complex_unary_test",
+        10,
+        [InputSpec((150))],
+        (150),
+        np.complex64,
+        expected_output,
+    )
+
+  def test_complex_constant(self):
+    ir = """
+      #indexing_map = #xla.indexing_map<"(pid_0) -> (pid_0 * 16), domain: pid_0 in [0, 9]">
+      module {
+        xtile.entry_func @complex_constant_test(%arg0: memref<150xcomplex<f32>>, %arg1: index) {
+          %c = stablehlo.constant dense<(1.5, 2.5)> : tensor<16xcomplex<f32>>
+          %0 = xla.apply_indexing #indexing_map(%arg1)
+          xtile.insert %c into %arg0[%0] [16] [1] : tensor<16xcomplex<f32>> -> memref<150xcomplex<f32>>
+          xtile.return
+        }
+      }
+    """
+
+    compare_kernel(
+        ir,
+        "complex_constant_test",
+        10,
+        [],
+        (150),
+        np.complex64,
+        lambda: np.full((150,), 1.5 + 2.5j, dtype=np.complex64),
     )
 
 

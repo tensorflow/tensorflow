@@ -77,11 +77,8 @@ GetCollectiveBlockLevelFusionConfig(
 
 // Sets the BlockLevelFusionConfig for a collective op inside the
 // GpuBackendConfig for the fusion instruction.
-// Returns true if the collective op is supported and the config is set.
-// Returns false if the collective op is not supported. No backend config is set
-// in this case.
-// Returns an error in case of an internal error or invalid arguments.
-absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
+// Returns an error in case the collective configuration cannot be set.
+absl::Status TrySetGpuBackendConfigForCollective(
     const GpuTopology& gpu_topology, HloFusionInstruction* fusion_instr,
     const DeviceAssignment* device_assignment = nullptr);
 

@@ -17,6 +17,10 @@
 
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load(
+    "@xla//xla/tsl:tsl.bzl",
+    "internal_visibility",
+)
+load(
     "//tensorflow:tensorflow.bzl",
     "if_libtpu",
     "if_windows",
@@ -26,11 +30,11 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
+    default_visibility = internal_visibility([
         "//tensorflow/compiler/mlir/tf2xla:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/dtensor:__subpackages__",
-    ],
+    ]),
     licenses = ["notice"],
 )
 

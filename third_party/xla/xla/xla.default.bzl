@@ -72,17 +72,17 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = [
     Label("//xla/stream_executor:stream_executor_impl"),
     Label("//xla/stream_executor/cuda:cuda_compute_capability_proto_cc_impl"),
     Label("//xla/backends/cpu/runtime:thunk_proto_cc_impl"),
-    "//xla/tsl/framework:allocator_registry_impl",
-    "//xla/tsl/framework:allocator",
-    "//xla/tsl/platform:env_impl",
-    "//xla/tsl/profiler/backends/cpu:annotation_stack_impl",
-    "//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",
+    Label("//xla/tsl/framework:allocator_registry_impl"),
+    Label("//xla/tsl/framework:allocator"),
+    "@tsl//tsl/platform:env_impl",
+    Label("//xla/tsl/profiler/backends/cpu:annotation_stack_impl"),
+    Label("//xla/tsl/profiler/backends/cpu:traceme_recorder_impl"),
     "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc_impl",
     "@tsl//tsl/profiler/protobuf:xplane_proto_cc_impl",
-    "//xla/tsl/profiler/utils:time_utils_impl",
-    "//xla/tsl/protobuf:protos_all_cc_impl",
+    Label("//xla/tsl/profiler/utils:time_utils_impl"),
+    Label("//xla/tsl/protobuf:protos_all_cc_impl"),
 ] + if_rocm_is_configured([
-    "//xla/tsl/util:determinism",
+    Label("//xla/tsl/util:determinism"),
 ])
 
 def xla_cc_binary(deps = [], copts = tsl_copts(), **kwargs):

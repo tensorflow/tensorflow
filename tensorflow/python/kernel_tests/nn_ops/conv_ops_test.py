@@ -3098,23 +3098,6 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
               strides=[1, 1, 1, 1],
               padding=[[0, 0], [2, 2], [2, 2], [0, 0]]))
 
-  @test_util.run_deprecated_v1
-  def testFilterLargerThanInputShape(self):
-    # Shape inference must accept what the kernels accept, otherwise the same
-    # op is refused with static shapes and allowed with unknown ones
-    # (b/195689143).
-    input_t = array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3])
-    for filter_shape, expected in (([20, 21, 3, 2], [32, 1, 0, 2]),
-                                   ([21, 20, 3, 2], [32, 0, 1, 2])):
-      filter_t = array_ops.placeholder(dtypes.float32, shape=filter_shape)
-      out = nn_ops.conv2d(
-          input_t, filter_t, strides=[1, 1, 1, 1], padding="VALID")
-      self.assertEqual(out.shape.as_list(), expected)
-
-    with self.assertRaisesRegex(ValueError, "Negative dimension size"):
-      filter_t = array_ops.placeholder(dtypes.float32, shape=[22, 20, 3, 2])
-      nn_ops.conv2d(input_t, filter_t, strides=[1, 1, 1, 1], padding="VALID")
-
     # Filter dimensions must be greater than 0.
     with self.assertRaisesRegex(
         errors_impl.InvalidArgumentError, "filter must not have zero elements"
@@ -3149,6 +3132,48 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
               out_backprop_val,
               strides=[1, 1, 1, 1],
               padding=[[0, 0], [-1, 0], [0, 0], [0, 0]]))
+
+  @test_util.run_deprecated_v1
+  def testFilterLargerThanInputShape(self):
+    # Shape inference must accept what the kernels accept, otherwise the same
+    # op is refused with static shapes and allowed with unknown ones
+    # (b/195689143).
+    input_t = array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3])
+    for filter_shape, expected in (([20, 21, 3, 2], [32, 1, 0, 2]),
+                                   ([21, 20, 3, 2], [32, 0, 1, 2])):
+      filter_t = array_ops.placeholder(dtypes.float32, shape=filter_shape)
+      out = nn_ops.conv2d(
+          input_t, filter_t, strides=[1, 1, 1, 1], padding="VALID")
+      self.assertEqual(out.shape.as_list(), expected)
+
+    with self.assertRaisesRegex(ValueError, "Negative dimension size"):
+      filter_t = array_ops.placeholder(dtypes.float32, shape=[22, 20, 3, 2])
+      nn_ops.conv2d(input_t, filter_t, strides=[1, 1, 1, 1], padding="VALID")
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFilterLargerThanInputGradient(self):
+    for device in ("CPU:0", "GPU:0"):
+      if device == "GPU:0" and not test.is_gpu_available():
+        continue
+      with ops.device(device):
+        input_t = array_ops.ones((1, 1, 1, 1))
+        filter_t = array_ops.ones((2, 2, 1, 1))
+        out = nn_ops.conv2d(
+            input_t, filter_t, strides=[1, 1, 1, 1], padding="VALID")
+        filter_grad = nn_ops.conv2d_backprop_filter(
+            input_t, filter_t.shape, array_ops.zeros_like(out),
+            strides=[1, 1, 1, 1], padding="VALID")
+      self.assertAllEqual(
+          self.evaluate(filter_grad), np.zeros((2, 2, 1, 1)))
+
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError),
+        "out_backprop|output depth|computed"):
+      self.evaluate(
+          nn_ops.conv2d_backprop_filter(
+              array_ops.ones((1, 3, 3, 1)), [2, 2, 1, 1],
+              array_ops.zeros((1, 0, 0, 1)), strides=[1, 1, 1, 1],
+              padding="VALID"))
 
   def testConvOpEdgeCases(self):
     # Illegal strides.
@@ -3405,6 +3430,27 @@ class SeparableConv2DTest(test.TestCase):
 
   def testSeparableConv2D(self):
     self._testSeparableConv2D("NHWC")
+
+  def testSeparableConv2DStrideOutOfInt32Range(self):
+    input_tensor = random_ops.random_normal([2, 32, 32, 3])
+    depthwise_filter = constant_op.constant(1.0, shape=[1, 1, 3, 1])
+    pointwise_filter = random_ops.random_normal([1, 1, 3, 4])
+
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError),
+        "out of range for an int32",
+    ):
+      self.evaluate(
+          nn_impl.separable_conv2d(
+              input_tensor,
+              depthwise_filter,
+              pointwise_filter,
+              strides=[1, 9223372036854775807, 1, 1],
+              padding="VALID",
+              data_format="NHWC",
+              dilations=[1, 1],
+          )
+      )
 
   def disabledtestSeparableConv2DNCHW(self):
     if not test.is_gpu_available():

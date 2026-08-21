@@ -17,6 +17,7 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
+load("//tensorflow/lite:build_def.bzl", "tflite_exec_properties")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
@@ -105,6 +106,7 @@ py_test(
         ":test_data",
         "//tensorflow/lite:testdata/multi_add.bin",
     ],
+    exec_properties = tflite_exec_properties(),
     strict_deps = True,
     tags = ["no_oss"],
     deps = [

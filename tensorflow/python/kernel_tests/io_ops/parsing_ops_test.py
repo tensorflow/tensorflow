@@ -2567,5 +2567,36 @@ class ParseTensorOpTest(test.TestCase):
         tensor.eval(feed_dict={serialized: ["bogus"]})
 
 
+class ParseTensorVariantRegressionTest(test_util.TensorFlowTestCase):
+
+  def testMalformedVariantTensorListDoesNotCrash(self):
+    """Regression test: malformed TensorList Variant must raise clean error.
+
+    A TensorProto with dtype=DT_VARIANT wrapping a tensorflow::TensorList
+    with empty metadata previously caused a SIGSEGV in PyErr_Occurred() via
+    pybind11 exception translation instead of raising InvalidArgumentError.
+    Confirmed in TF 2.21.0 in fresh isolated containers.
+
+    Root cause: FromProtoField<Variant> in tensor.cc called buf->Unref()
+    with data[0..i] holding partially-decoded Variant objects after
+    DecodeUnaryVariant returned false, corrupting Python thread state.
+    """
+    from tensorflow.core.framework import tensor_pb2
+
+    outer = tensor_pb2.TensorProto()
+    outer.dtype = dtypes.variant.as_datatype_enum
+    outer.tensor_shape.dim.add().size = 1
+    v = outer.variant_val.add()
+    v.type_name = "tensorflow::TensorList"
+    leaf = v.tensors.add()
+    leaf.dtype = dtypes.float32.as_datatype_enum
+    leaf.tensor_shape.dim.add().size = 1
+    serialized = outer.SerializeToString()
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(
+          parsing_ops.parse_tensor(serialized, out_type=dtypes.variant)
+      )
+
+
 if __name__ == "__main__":
   test.main()

@@ -566,8 +566,11 @@ dtensor_test(
     env = {
         "DTENSOR_GPU_USE_NCCL_COMMUNICATION": "1",
         "NCCL_P2P_DISABLE": "1",  # FIXME(b/251183104): p2p detection in cuda 10.1+ is broken.
+        "TF_FORCE_GPU_ALLOW_GROWTH": "true",
+        "XLA_PYTHON_CLIENT_PREALLOCATE": "false",
     },
     tags = [
+        "exclusive-if-local",
         "no_windows",
         "nosan",  # b/195537906
     ],
@@ -612,8 +615,11 @@ dtensor_test(
         "DTENSOR_GPU_USE_NCCL_COMMUNICATION": "1",
         "NCCL_P2P_DISABLE": "1",  # FIXME(b/251183104): p2p detection in cuda 10.1+ is broken.
         "NCCL_CUMEM_HOST_ENABLE": "0",  # TODO(b/414413290): workaround for cuda 12.8.1 failure.
+        "TF_FORCE_GPU_ALLOW_GROWTH": "true",
+        "XLA_PYTHON_CLIENT_PREALLOCATE": "false",
     },
     tags = [
+        "exclusive-if-local",
         "no_windows",
         "nosan",  # b/195537906
     ],

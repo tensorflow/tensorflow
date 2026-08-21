@@ -49,16 +49,6 @@ package(
 )
 
 cc_library(
-    name = "casts",
-    hdrs = ["casts.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-)
-
-cc_library(
     name = "context",
     hdrs = ["@tsl//tsl/platform:context.h"],
     tags = [
@@ -188,7 +178,6 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:threadpool_interface",
         "//xla/tsl/platform:types",
@@ -200,6 +189,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
@@ -290,8 +280,8 @@ cc_library(
     ],
     deps = [
         "//xla/tsl/platform:logging",
-        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log:check",
+        "@grpc//:grpc++",
     ],
 )
 
@@ -566,34 +556,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "status",
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-    textual_hdrs = ["status.h"],
-    visibility = internal_visibility(["//tensorflow:__subpackages__"]),
-)
-
-cc_library(
-    name = "statusor",
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-    textual_hdrs = ["statusor.h"],
-    visibility = internal_visibility(["//tensorflow:__subpackages__"]),
-    deps = [
-        "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:status",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/status:statusor",
-    ],
-)
-
 bzl_library(
     name = "cuda_build_defs_bzl",
     srcs = ["cuda_build_defs.bzl"],
@@ -669,12 +631,9 @@ filegroup(
 filegroup(
     name = "mobile_hdrs_no_runtime",
     srcs = [
-        "casts.h",
         "context.h",
         "posix_file_system.h",
         "stacktrace.h",
-        "status.h",
-        "statusor.h",
         "tracing_impl.h",
         "//xla/tsl/platform/profile_utils:cpu_utils.h",
         "//xla/tsl/platform/profile_utils:i_cpu_utils_helper.h",
@@ -699,7 +658,6 @@ filegroup(
 filegroup(
     name = "mobile_hdrs_only_runtime",
     srcs = [
-        "casts.h",
         "unbounded_work_queue.h",
     ] + if_not_fuchsia([
         "subprocess.h",

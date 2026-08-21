@@ -114,6 +114,7 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
       mt::gpu::createTritonGPUOptimizeDotOperands({cuda_cc.IsAtLeastAmpere()}));
   pm->addPass(mt::gpu::createTritonGPUCoalesceAsyncCopy());
   pm->addPass(ttng::createTritonNvidiaGPUOptimizeTMemLayoutsPass());
+  pm->addPass(ttng::createTritonNvidiaGPUFuseTMEMLoadReducePass());
   if (cuda_cc.IsAtLeastHopper()) {
     pm->addPass(ttng::createTritonNvidiaGPUTMALoweringPass());
   }

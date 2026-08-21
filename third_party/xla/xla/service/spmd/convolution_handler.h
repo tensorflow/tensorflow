@@ -19,8 +19,8 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/functional/function_ref.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -67,13 +67,13 @@ class CreateShardedConvolutionFunctor final
     HloInstruction* r = rr.hlo();
     if (dims_info_.conv_spatial_dims.empty() &&
         conv_->feature_group_count() == 1 && conv_->batch_group_count() == 1) {
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           auto sharded_conv,
           dot_as_convolution_util::CreateShardedConvForDotGeneralConvolution(
               *conv_, dims_info_, l, r));
       return b->AddInstruction(std::move(sharded_conv));
     } else {
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           auto sharded_conv,
           CreateShardedConvolution(*conv_, dims_info_, l, r, conv_window));
       return b->AddInstruction(std::move(sharded_conv));

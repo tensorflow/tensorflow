@@ -1082,8 +1082,8 @@ def graph(graph_data):
 
   @tf.function
   def f():
-    x = constant_op.constant(2)
-    y = constant_op.constant(3)
+    x = tf.constant(2)
+    y = tf.constant(3)
     return x**y
 
   with writer.as_default():

@@ -20,6 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/platform.h"
@@ -27,7 +29,8 @@ limitations under the License.
 
 namespace xla {
 
-StreamPool::Ptr StreamPool::BorrowStream(se::StreamPriority priority) {
+absl::StatusOr<StreamPool::Ptr> StreamPool::BorrowStream(
+    se::StreamPriority priority) {
   std::unique_ptr<se::Stream> stream = nullptr;
 
   {
@@ -55,7 +58,7 @@ StreamPool::Ptr StreamPool::BorrowStream(se::StreamPriority priority) {
 
   if (!stream) {
     // Create a new stream.
-    stream = executor_->CreateStream(priority).value();
+    ABSL_ASSIGN_OR_RETURN(stream, executor_->CreateStream(priority));
     stream->SetName(absl::StrFormat("%s pool stream",
                                     se::StreamPriorityToString(priority)));
     VLOG(1) << absl::StrFormat("Created new stream (%p) with priority = %s",

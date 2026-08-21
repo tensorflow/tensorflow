@@ -21,6 +21,8 @@ limitations under the License.
 # pylint: disable=missing-function-docstring
 # pylint: disable=missing-class-docstring
 # pylint: disable=protected-access
+# pylint: disable=too-many-function-args
+# pylint: disable=invalid-unary-operand-type
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -2458,7 +2460,7 @@ class BroadcastToTest(test_util.TensorFlowTestCase):
   @test_util.run_deprecated_v1
   def testBroadcastScalarToNonScalar(self):
     with self.session(use_gpu=True):
-      x = np.array(1.0, dtype=np.float)
+      x = np.array(1.0, dtype=np.float64)
       v_tf = array_ops.broadcast_to(
           constant_op.constant(1.0), [2, 3, 4, 1, 1, 1]
       )
@@ -3860,7 +3862,7 @@ class Relu6Test(test.TestCase):
   def testNumbersGPU(self):
     if not test.is_gpu_available():
       self.skipTest("No GPU available")
-    for t in [np.float16, np.float, np.double]:
+    for t in [np.float16, np.float32, np.double]:
       print(t)
       self._testRelu6(
           np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t)
@@ -5341,8 +5343,8 @@ class SelectOpTest(test.TestCase):
         # care is taken with choosing the inputs and the delta. This is
         # a weaker check (in particular, it does not test the op itself,
         # only its gradient), but it's much better than nothing.
-        self._compareGradientX(fn, c, xt, yt, np.float)
-        self._compareGradientY(fn, c, xt, yt, np.float)
+        self._compareGradientX(fn, c, xt, yt, np.float64)
+        self._compareGradientY(fn, c, xt, yt, np.float64)
       else:
         self._compareGradientX(fn, c, xt, yt)
         self._compareGradientY(fn, c, xt, yt)
@@ -5835,7 +5837,7 @@ class MpsTest(test.TestCase):
         jacob_t, _ = gradient_checker.compute_gradient(
             inx, s, y, s, x_init_value=x
         )
-        xf = x.astype(np.float)
+        xf = x.astype(np.float64)
         inxf = ops.convert_to_tensor(xf)
         yf = tf_func(inxf)
         _, jacob_n = gradient_checker.compute_gradient(

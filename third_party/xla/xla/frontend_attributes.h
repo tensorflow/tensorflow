@@ -23,7 +23,7 @@ namespace xla {
 // Attribute which indicates that an in-place instruction has disjoint read
 // and write regions w.r.t aliased input/output buffers.
 inline constexpr char kXlaDisjointReadWriteRegions[] =
-    "_xla_disjoint_read_write_regions";
+    "xla_disjoint_read_write_regions";
 
 // Set frontend attribute on 'instruction' which indices that in-place
 // 'instruction' has disjoint read/write buffer regions.
@@ -31,7 +31,7 @@ void SetDisjointReadWriteRegionsAttr(HloInstruction* instruction);
 
 // Returns 'true' if in-place 'instruction' has the kXlaDisjointReadWriteRegions
 // frontend attribute set (returns false otherwise).
-bool HasDisjointReadWriteRegionsAttr(HloInstruction* instruction);
+bool HasDisjointReadWriteRegionsAttr(const HloInstruction* instruction);
 
 // Indicates that an operation issues PDL launch.
 inline constexpr absl::string_view kXlaPdlLaunch = "xla.pdl_launch";
@@ -48,16 +48,23 @@ inline constexpr absl::string_view kXlaNoInvariantOperands =
 absl::flat_hash_set<int> NonInvariantOperands(const HloInstruction&);
 
 // Attribute which indicates that copy insertion should avoid inserting copies
-// for while loops. Can be set as a frontend attribute on kWhile instructions,
-// via xla_backend_extra_options in DebugOptions, or via environment variable.
+// for while loops. Can be set as a frontend attribute on kWhile instructions
+// or via xla_backend_extra_options in DebugOptions.
 inline constexpr char kXlaDisableWhileLoopCopies[] =
-    "_xla_disable_while_loop_copies";
-inline constexpr char kXlaDisableWhileLoopCopiesNoUnderscore[] =
     "xla_disable_while_loop_copies";
 
 // Returns 'true' if while loop copies should be disabled for 'instruction'.
 bool HasDisableWhileLoopCopiesAttr(const HloInstruction* instruction);
 
+// Attribute which indicates that dead code elimination / tuple pruning should
+// avoid modifying while loops. Can be set as a frontend attribute on kWhile
+// instructions or via xla_backend_extra_options in DebugOptions.
+inline constexpr char kXlaDisableWhileLoopDce[] = "xla_disable_while_loop_dce";
+inline constexpr char kXlaPreserveTupleIndices[] = "xla_preserve_tuple_indices";
+
+// Returns 'true' if while loop DCE / tuple pruning should be disabled for
+// 'instruction'.
+bool HasDisableWhileLoopDceAttr(const HloInstruction* instruction);
 }  // namespace xla
 
 #endif  // XLA_FRONTEND_ATTRIBUTES_H_

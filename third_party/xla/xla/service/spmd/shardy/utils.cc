@@ -494,20 +494,43 @@ mlir::sdy::AxisRefAttr toSdyAxisRefAttr(const AxisRef& axisRef,
 }
 
 mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
-    const HloSharding& hloSharding, mlir::MLIRContext* context) {
+    const HloSharding& hloSharding, int64_t rank,
+    mlir::sdy::MeshOp globalMeshOp, mlir::MLIRContext* context) {
   CHECK(!hloSharding.IsTuple());
 
-  // Replicated HloShardingV1/V2 are treated as placeholder shardings, allowing
-  // modification. Since these are often added post JAX -> HLO lowering without
-  // frontend attributes, they are simply ignored by Shardy import. To match
-  // this behavior we handle them explicity in HloShardingV3 case.
+  mlir::sdy::MeshAttr globalMesh =
+      globalMeshOp ? globalMeshOp.getMeshAttr() : nullptr;
+
   if (!hloSharding.UseNamedShardingLeaf()) {
-    CHECK(hloSharding.IsReplicated())
+    CHECK(hloSharding.IsReplicated() || hloSharding.IsUnreduced())
         << "Expected HloShardingV3 during Shardy import when "
            "'xla_enable_hlo_sharding_v3' flag is enabled, but got "
-           "non-replicated HloShardingV2 <<"
+           "non-replicated/unreduced HloShardingV2: "
         << hloSharding
         << ". Please contact OpenXLA/Shardy team if you encounter this error.";
+    mlir::Attribute meshOrRef =
+        globalMeshOp ? mlir::Attribute(mlir::FlatSymbolRefAttr::get(
+                           globalMeshOp.getSymNameAttr()))
+                     : mlir::Attribute(mlir::sdy::MeshAttr::get(context, {}));
+    if (hloSharding.IsReplicated()) {
+      return mlir::sdy::TensorShardingAttr::getFullyReplicated(
+          context, rank, meshOrRef, /*isClosed=*/false);
+    }
+    if (hloSharding.IsUnreduced()) {
+      llvm::SmallVector<mlir::sdy::AxisRefAttr> unreducedAxes;
+      if (globalMesh) {
+        for (auto axis : globalMesh.getAxes()) {
+          unreducedAxes.push_back(
+              mlir::sdy::AxisRefAttr::get(context, axis.getName()));
+        }
+      }
+      llvm::SmallVector<mlir::sdy::DimensionShardingAttr> dimShardings(
+          rank, mlir::sdy::DimensionShardingAttr::get(context, {},
+                                                      /*closed=*/false));
+      return mlir::sdy::TensorShardingAttr::get(
+          context, meshOrRef, dimShardings, /*replicatedAxes=*/{},
+          unreducedAxes);
+    }
     return nullptr;
   }
 
@@ -520,6 +543,10 @@ mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
   }
 
   mlir::sdy::MeshAttr meshAttr = toSdyMeshAttr(namedSharding.mesh(), context);
+  mlir::Attribute meshOrRef = meshAttr;
+  if (globalMeshOp && meshAttr == globalMesh) {
+    meshOrRef = mlir::FlatSymbolRefAttr::get(globalMeshOp.getSymNameAttr());
+  }
 
   SmallVector<mlir::sdy::DimensionShardingAttr> dimShardings;
   for (const auto& dimSharding : namedSharding.dim_shardings()) {
@@ -556,24 +583,36 @@ mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
       break;
   }
 
-  return mlir::sdy::TensorShardingAttr::get(context, meshAttr, dimShardings,
+  return mlir::sdy::TensorShardingAttr::get(context, meshOrRef, dimShardings,
                                             replicatedAxes, unreducedAxes,
                                             reductionOp);
 }
 
 mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(
-    const HloSharding& hloSharding, mlir::MLIRContext* context) {
+    const HloSharding& hloSharding, mlir::TypeRange types,
+    mlir::sdy::MeshOp globalMeshOp, mlir::MLIRContext* context) {
   if (hloSharding.IsTuple()) {
-    SmallVector<TensorShardingAttr> sdyShardings;
-    for (const HloSharding& elementSharding : hloSharding.tuple_elements()) {
-      sdyShardings.push_back(
-          convertToSdyShardingAttr(elementSharding, context));
+    llvm::SmallVector<TensorShardingAttr> sdyShardings;
+    CHECK_EQ(hloSharding.tuple_elements().size(), types.size());
+    for (int i = 0; i < types.size(); ++i) {
+      sdyShardings.push_back(convertToSdyShardingAttr(
+          hloSharding.tuple_elements()[i], mlir::sdy::getTensorRank(types[i]),
+          globalMeshOp, context));
     }
     return TensorShardingPerValueAttr::get(context, sdyShardings);
   }
 
+  if (types.empty()) {
+    return TensorShardingPerValueAttr::get(
+        context, convertToSdyShardingAttr(hloSharding, /*rank=*/0, globalMeshOp,
+                                          context));
+  }
+
+  CHECK_EQ(types.size(), 1);
   return TensorShardingPerValueAttr::get(
-      context, convertToSdyShardingAttr(hloSharding, context));
+      context, convertToSdyShardingAttr(hloSharding,
+                                        mlir::sdy::getTensorRank(types.front()),
+                                        globalMeshOp, context));
 }
 
 bool isManualComputation(CallOp callOp) {

@@ -19,6 +19,7 @@ limitations under the License.
 #include <stddef.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -49,6 +50,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/batching_util/batch_stats.h"
 #include "tensorflow/core/kernels/batching_util/periodic_function.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
@@ -331,6 +333,10 @@ class SharedBatchScheduler
       // If true, the batch scheduler lazily filters tasks whose RPC deadline
       // has expired or were cancelled before they are sent for execution.
       bool enable_lazy_cancellation_filtering = false;
+      // A map of criticality to batch timeout in micros.
+      // Requires: if nonempty, specifies a timeout for each criticality.
+      absl::flat_hash_map<tsl::criticality::Criticality, int64_t>
+          criticality_batch_timeout_micros;
     };
 
     PriorityAwareSchedulerOptions priority_aware_scheduler_options;
@@ -426,9 +432,11 @@ class PriorityTaskQueue {
           split_input_task_func,
       bool enable_large_batch_splitting, bool enable_task_resplit,
       bool enable_lazy_cancellation_filtering, size_t max_execution_batch_size,
-      int64_t batch_timeout_micros, bool disable_padding,
-      ModelBatchStats* model_batch_stats, Env* env)
-      : start_times_(batch_timeout_micros),
+      int64_t batch_timeout_micros,
+      const absl::flat_hash_map<tsl::criticality::Criticality, int64_t>&
+          criticality_batch_timeout_micros,
+      bool disable_padding, ModelBatchStats* model_batch_stats, Env* env)
+      : start_times_(batch_timeout_micros, criticality_batch_timeout_micros),
         allowed_batch_sizes_(allowed_batch_sizes),
         batch_padding_policy_(batch_padding_policy),
         max_queue_depth_(max_queue_depth),
@@ -609,6 +617,17 @@ class PriorityTaskQueue {
            start_times_.HasTimedOutRequest(env_->NowMicros());
   }
 
+  // Returns the current number of enqueued tasks with the given criticality.
+  int num_tasks(tsl::criticality::Criticality criticality) const {
+    return gtl::FindWithDefault(num_tasks_by_criticality_, criticality, 0);
+  }
+
+  // Returns the current summed size (sum of task sizes) of all enqueued tasks
+  // with the given criticality.
+  size_t size(tsl::criticality::Criticality criticality) const {
+    return gtl::FindWithDefault(size_by_criticality_, criticality, size_t{0});
+  }
+
   // Returns a batch of tasks from the queue if the batch is ready to be
   // executed. Otherwise, returns nullptr.
   // BatchPaddingPolicy is applied to determine the optimal batch size.
@@ -652,8 +671,11 @@ class PriorityTaskQueue {
   // Requires: all time arguments are provided in micros.
   class StartTimes {
    public:
-    explicit StartTimes(int64_t batch_timeout)
-        : batch_timeout_(batch_timeout) {}
+    StartTimes(int64_t default_batch_timeout,
+               const absl::flat_hash_map<tsl::criticality::Criticality,
+                                         int64_t>& criticality_batch_timeouts)
+        : default_batch_timeout_(default_batch_timeout),
+          criticality_batch_timeouts_(criticality_batch_timeouts) {}
 
     void Insert(tsl::criticality::Criticality criticality,
                 uint64_t start_time) {
@@ -673,7 +695,9 @@ class PriorityTaskQueue {
            start_times_by_criticality_) {
         if (start_times.empty()) continue;
         uint64_t earliest_start_time = *start_times.begin();
-        if (now >= earliest_start_time + batch_timeout_) {
+        int64_t effective_timeout = gtl::FindWithDefault(
+            criticality_batch_timeouts_, criticality, default_batch_timeout_);
+        if (now >= earliest_start_time + effective_timeout) {
           return true;
         }
       }
@@ -684,7 +708,9 @@ class PriorityTaskQueue {
     absl::flat_hash_map<tsl::criticality::Criticality,
                         absl::btree_multiset<uint64_t>>
         start_times_by_criticality_;
-    const int64_t batch_timeout_;
+    const int64_t default_batch_timeout_;
+    const absl::flat_hash_map<tsl::criticality::Criticality, int64_t>
+        criticality_batch_timeouts_;
   };
 
   tsl::criticality::Criticality GetCriticality(const TaskType& task) const {
@@ -696,6 +722,8 @@ class PriorityTaskQueue {
 
   void AddEntryInternal(QueueEntry entry) {
     current_queue_size_ += entry.task->size();
+    num_tasks_by_criticality_[entry.criticality] += 1;
+    size_by_criticality_[entry.criticality] += entry.task->size();
     start_times_.Insert(entry.criticality, entry.start_time_micros);
     tasks_.insert(std::move(entry));
   }
@@ -705,6 +733,8 @@ class PriorityTaskQueue {
     auto node = tasks_.extract(it);
     QueueEntry& entry = node.value();
     current_queue_size_ -= entry.task->size();
+    num_tasks_by_criticality_[entry.criticality] -= 1;
+    size_by_criticality_[entry.criticality] -= entry.task->size();
     start_times_.Erase(entry.criticality, entry.start_time_micros);
     return std::move(entry);
   }
@@ -723,6 +753,16 @@ class PriorityTaskQueue {
   std::multiset<QueueEntry> tasks_;
   StartTimes start_times_;
   size_t current_queue_size_ = 0;
+
+  // Per-criticality bookkeeping for the currently-enqueued tasks. Maintained
+  // incrementally by AddEntryInternal/RemoveEntryInternal so that queue state
+  // can be exported as tfstreamz metrics without scanning the multiset. A
+  // criticality that has never been enqueued is absent; read these through the
+  // num_tasks()/size() accessors, which treat a missing key as zero.
+  absl::flat_hash_map<tsl::criticality::Criticality, int>
+      num_tasks_by_criticality_;
+  absl::flat_hash_map<tsl::criticality::Criticality, size_t>
+      size_by_criticality_;
 
   const std::vector<int32_t> allowed_batch_sizes_;
   const std::string batch_padding_policy_;
@@ -804,6 +844,12 @@ class Queue {
   // Returns the queue capacity, with the same semantics as
   // BatchScheduler::SchedulingCapacity().
   size_t SchedulingCapacity() const;
+
+  // Returns a snapshot of the per-criticality priority queue state, or nullopt
+  // when `enable_priority_aware_batch_scheduler` is false (in which case there
+  // is no priority-aware queue to report on). See PriorityQueueState in
+  // batch_scheduler.h.
+  std::optional<PriorityQueueState> GetPriorityQueueState() const;
 
   // Returns the maximum allowed size of tasks submitted to the queue.
   size_t max_task_size() const { return options_.input_batch_size_limit; }
@@ -1042,6 +1088,10 @@ class QueueHandle : public BatchScheduler<TaskType> {
 
   size_t max_task_size() const override { return queue_->max_task_size(); }
 
+  std::optional<PriorityQueueState> GetPriorityQueueState() const override {
+    return queue_->GetPriorityQueueState();
+  }
+
  private:
   // The scheduler that owns 'queue_'.
   std::shared_ptr<SharedBatchScheduler<TaskType>> scheduler_;
@@ -1160,6 +1210,28 @@ absl::Status SharedBatchScheduler<TaskType>::AddQueueAfterRewritingOptions(
   }
 
   if (options.enable_priority_aware_batch_scheduler) {
+    const auto& criticality_timeouts = options.priority_aware_scheduler_options
+                                           .criticality_batch_timeout_micros;
+    for (const auto& [criticality, timeout] : criticality_timeouts) {
+      if (timeout < 0) {
+        return absl::InvalidArgumentError(
+            absl::StrFormat("criticality_batch_timeout_micros must contain "
+                            "nonnegative values; found negative timeout %d for "
+                            "criticality %d.",
+                            timeout, static_cast<int>(criticality)));
+      }
+    }
+    if (!criticality_timeouts.empty()) {
+      for (const auto criticality :
+           tsl::criticality::kAllCriticalitiesDescending) {
+        if (!criticality_timeouts.contains(criticality)) {
+          return absl::InvalidArgumentError(absl::StrFormat(
+              "criticality_batch_timeout_micros must specify timeouts for each "
+              "criticality, but criticality %d is missing.",
+              static_cast<int>(criticality)));
+        }
+      }
+    }
     if (options.mixed_priority_batching_policy !=
         MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize) {
       LOG(WARNING)
@@ -1374,6 +1446,8 @@ Queue<TaskType>::Queue(
           options.priority_aware_scheduler_options
               .enable_lazy_cancellation_filtering,
           GetMaxExecutionBatchSize(options), options.batch_timeout_micros,
+          options.priority_aware_scheduler_options
+              .criticality_batch_timeout_micros,
           options.disable_padding, options.model_batch_stats, env),
       options_(options),
       env_(env),
@@ -1627,6 +1701,26 @@ size_t Queue<TaskType>::NumEnqueuedTasks() const {
   }
   return num_enqueued_tasks + low_priority_tasks_.num_tasks() +
          warmup_tasks_.num_tasks();
+}
+
+template <typename TaskType>
+std::optional<PriorityQueueState> Queue<TaskType>::GetPriorityQueueState()
+    const {
+  if (!options_.enable_priority_aware_batch_scheduler) {
+    return std::nullopt;
+  }
+  PriorityQueueState state;
+  mutex_lock l(mu_);
+  // Every band is populated, including empty ones, so that consumers exporting
+  // one gauge cell per criticality reset idle bands to zero instead of leaving
+  // them at their last non-zero value.
+  for (const tsl::criticality::Criticality criticality :
+       tsl::criticality::kAllCriticalitiesDescending) {
+    state.num_tasks[criticality] = tasks_priority_queue_.num_tasks(criticality);
+    state.size[criticality] = tasks_priority_queue_.size(criticality);
+  }
+  state.max_queue_depth = tasks_priority_queue_.max_queue_depth();
+  return state;
 }
 
 template <typename TaskType>

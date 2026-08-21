@@ -25,10 +25,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/all_reduce_key.h"
 #include "xla/service/collective_combiner_utils.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -223,9 +224,26 @@ absl::StatusOr<bool> AllReduceFolder::RunImpl(
       new_ar->set_frontend_attributes(
           MergeFrontendAttributes(folded_all_reduces));
 
-      RETURN_IF_ERROR(ar1->ReplaceAllUsesWith(new_ar));
-      RETURN_IF_ERROR(computation->RemoveInstruction(ar1));
-      RETURN_IF_ERROR(computation->RemoveInstruction(ar0));
+      // Folding a serial chain does not combine independent collective
+      // buffers, so group keys do not gate this optimization. Preserve the key
+      // when it has one unambiguous representative; otherwise
+      // drop it instead of creating a synthetic comma-separated key.
+      const bool ar0_is_keyed = HasCollectiveGroupKey(*ar0);
+      const bool ar1_is_keyed = HasCollectiveGroupKey(*ar1);
+      if (ar0_is_keyed && !ar1_is_keyed) {
+        CopyCollectiveGroupKey(*ar0, *new_ar);
+      } else if (!ar0_is_keyed && ar1_is_keyed) {
+        CopyCollectiveGroupKey(*ar1, *new_ar);
+      } else if (ar0_is_keyed &&
+                 HaveCompatibleCollectiveGroupKeys(*ar0, *ar1)) {
+        CopyCollectiveGroupKey(*ar0, *new_ar);
+      } else if (ar0_is_keyed) {
+        ClearCollectiveGroupKey(*new_ar);
+      }
+
+      ABSL_RETURN_IF_ERROR(ar1->ReplaceAllUsesWith(new_ar));
+      ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(ar1));
+      ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(ar0));
       changed = true;
     }
   }

@@ -970,8 +970,9 @@ inline void SegmentSum(const RuntimeShape& input_shape, const T* input_data,
   for (int i = 0; i < input_shape.Dims(0); i++) {
     int output_index = segment_ids_data[i];
     for (int j = 0; j < segment_flat_size; ++j) {
-      output_data[output_index * segment_flat_size + j] +=
-          input_data[i * segment_flat_size + j];
+      output_data[output_index * segment_flat_size + j] =
+          WrappingAdd<T>(output_data[output_index * segment_flat_size + j],
+                         input_data[i * segment_flat_size + j]);
     }
   }
 }
@@ -983,6 +984,11 @@ inline void UnsortedSegmentRef(const RuntimeShape& input_shape,
                                const int32_t* segment_ids_data,
                                const RuntimeShape& output_shape,
                                T* output_data) {
+  // Avoid calling FlatSize() for zero-element outputs: FlatSize() multiplies
+  // dimensions in int and can overflow before reaching a later zero dimension.
+  if (output_shape.HasZeroDimension()) {
+    return;
+  }
   for (int i = 0; i < output_shape.FlatSize(); ++i) {
     output_data[i] = Op<T>::kInitialValue;
   }
@@ -991,7 +997,9 @@ inline void UnsortedSegmentRef(const RuntimeShape& input_shape,
   for (int i = 1; i < output_shape.DimensionsCount(); ++i) {
     segment_flat_size *= output_shape.Dims(i);
   }
-  for (int i = 0; i < segment_ids_shape.FlatSize(); i++) {
+  const int segment_ids_flat_size =
+      segment_ids_shape.HasZeroDimension() ? 0 : segment_ids_shape.FlatSize();
+  for (int i = 0; i < segment_ids_flat_size; i++) {
     int output_index = segment_ids_data[i];
     if (output_index < 0) continue;
     for (int j = 0; j < segment_flat_size; ++j) {

@@ -27,9 +27,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command.h"
@@ -125,7 +125,7 @@ class NoOpCollectiveBroadcastThunk : public CollectiveBroadcastThunk {
     se::DeviceAddressBase dst =
         execute_params.buffer_allocations->GetDeviceAddress(
             buffers()[0].destination_buffer.slice);
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<se::CommandBuffer> nested_cmd,
         se::TraceCommandBufferFactory::Create(
             execute_params.stream->parent(),
@@ -137,7 +137,7 @@ class NoOpCollectiveBroadcastThunk : public CollectiveBroadcastThunk {
                                                 create->dependencies);
     }
     if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           command_buffer->UpdateChildCommand(update->command, *nested_cmd));
       return update->command;
     }

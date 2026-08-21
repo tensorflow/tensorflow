@@ -23,8 +23,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -33,10 +35,9 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla.pb.h"
@@ -50,7 +51,7 @@ using ::testing::Gt;
 using ::testing::SizeIs;
 using ::tsl::proto_testing::EqualsProto;
 
-const char kCudnnFusionHlo[] = R"(
+absl::string_view kCudnnFusionHlo = R"hlo(
   fusion1 {
     p0 = f32[3,28,32] parameter(0)
     p1 = f32[3,28,32] parameter(1)
@@ -64,9 +65,9 @@ const char kCudnnFusionHlo[] = R"(
     p1 = f32[3,28,32] parameter(1)
     ROOT _ = f32[3,32,32] fusion(p0, p1), kind=kCustom, calls=fusion1,
       backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
-  })";
+  })hlo";
 
-const char kCudnnConvolutionFusionHlo[] = R"(
+absl::string_view kCudnnConvolutionFusionHlo = R"hlo(
   fusion1 {
     p0 = f32[16,56,56,16] parameter(0)
     p1 = f32[16,3,3,16] parameter(1)
@@ -85,9 +86,9 @@ const char kCudnnConvolutionFusionHlo[] = R"(
           "kind": "__cudnn$fusion",
         }
       }
-  })";
+  })hlo";
 
-const char kTritonGemmFusionHlo[] = R"(
+absl::string_view kTritonGemmFusionHlo = R"hlo(
   fusion1 {
     p0 = f32[3,28,32] parameter(0)
     p1 = f32[3,28,32] parameter(1)
@@ -101,9 +102,9 @@ const char kTritonGemmFusionHlo[] = R"(
     p1 = f32[3,28,32] parameter(1)
     _ = f32[3,32,32] fusion(p0, p1), kind=kCustom, calls=fusion1,
       backend_config={"fusion_backend_config": {kind: "__triton_gemm"}}
-  })";
+  })hlo";
 
-const char kScaledDotGemmFusionHlo[] = R"(
+absl::string_view kScaledDotGemmFusionHlo = R"hlo(
   block_scaled_dot {
     lhs = f8e4m3fn[256,128] parameter(0)
     rhs = f8e4m3fn[384,128] parameter(1)
@@ -121,9 +122,9 @@ const char kScaledDotGemmFusionHlo[] = R"(
     ROOT result = f32[256,384] fusion(lhs, rhs, lhs_scale, rhs_scale),
         kind=kCustom, calls=block_scaled_dot,
         backend_config={"fusion_backend_config":{kind:"__triton_gemm"}}
-  })";
+  })hlo";
 
-const char kCudnnCustomCallHlo[] = R"(
+absl::string_view kCudnnCustomCallHlo = R"hlo(
   HloModule module
 
   ENTRY %main {
@@ -142,9 +143,9 @@ const char kCudnnCustomCallHlo[] = R"(
         },
       }
     ROOT %get-tuple-element = f32[54,54,16,64]{1,0,3,2} get-tuple-element(%cudnn-conv), index=0
-  })";
+  })hlo";
 
-const char kUnsupportedHlo[] = R"(
+absl::string_view kUnsupportedHlo = R"hlo(
   computation {
     p0 = s2[3,3] parameter(0)
     p1 = s2[3,3] parameter(1)
@@ -158,7 +159,7 @@ const char kUnsupportedHlo[] = R"(
     fusion = s2[3,3] fusion(p0, p1),
       kind=kCustom, calls=computation,
       backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
-  })";
+  })hlo";
 
 class CudnnBackendTest : public HloHardwareIndependentTestBase {
  protected:
@@ -258,8 +259,8 @@ TEST_F(CudnnBackendTest,
        GetSupportedConfigsReturnsErrorForConvolutionWithNullStreamExecutor) {
   CudnnBackend backend_without_stream_executor(nullptr, &debug_options_,
                                                &compiler_, &target_config_);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(kCudnnCustomCallHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kCudnnCustomCallHlo));
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_without_stream_executor.GetSupportedConfigs(
@@ -293,16 +294,39 @@ TEST_F(CudnnBackendTest, GetDefaultConfigFromCudnnCustomCall) {
   EXPECT_EQ(algorithm_config.algo_id(), -1);
 }
 
-TEST_F(CudnnBackendTest, GetDefaultConfigFailsWithNullStreamExecutor) {
-  CudnnBackend backend_without_stream_executor(nullptr, &debug_options_,
-                                               &compiler_, &target_config_);
+TEST_F(CudnnBackendTest, GetDefaultConfigSucceedsWithNullStreamExecutor) {
+  ASSERT_OK_AND_ASSIGN(stream_executor::GpuTargetConfigProto proto,
+                       GetGpuTargetConfig(GpuModel::H100_SXM));
+  ASSERT_OK_AND_ASSIGN(Compiler::GpuTargetConfig target_config,
+                       Compiler::GpuTargetConfig::FromProto(proto));
+  debug_options_.set_xla_gpu_cudnn_deviceless_compilation_mode(
+      DebugOptions::CUDNN_DEVICELESS_COMPILATION_AUTO);
+  CudnnBackend backend_without_stream_executor(
+      /*stream_executor=*/nullptr, &debug_options_, &compiler_, &target_config);
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                        ParseAndReturnVerifiedModule(kCudnnFusionHlo));
 
-  absl::StatusOr<std::unique_ptr<BackendConfig>> config =
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BackendConfig> config,
       backend_without_stream_executor.GetDefaultConfig(
-          (*hlo_module->entry_computation()->root_instruction()));
-  EXPECT_THAT(config,
+          (*hlo_module->entry_computation()->root_instruction())));
+  ASSERT_TRUE(config->has_algorithm());
+}
+
+TEST_F(CudnnBackendTest, CudnnDevicelessCompilationDisabledFails) {
+  ASSERT_OK_AND_ASSIGN(stream_executor::GpuTargetConfigProto proto,
+                       GetGpuTargetConfig(GpuModel::H100_SXM));
+  ASSERT_OK_AND_ASSIGN(Compiler::GpuTargetConfig target_config,
+                       Compiler::GpuTargetConfig::FromProto(proto));
+  debug_options_.set_xla_gpu_cudnn_deviceless_compilation_mode(
+      DebugOptions::CUDNN_DEVICELESS_COMPILATION_DISABLED);
+  CudnnBackend backend_without_stream_executor(
+      /*stream_executor=*/nullptr, &debug_options_, &compiler_, &target_config);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kCudnnFusionHlo));
+
+  EXPECT_THAT(backend_without_stream_executor.GetDefaultConfig(
+                  (*hlo_module->entry_computation()->root_instruction())),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 

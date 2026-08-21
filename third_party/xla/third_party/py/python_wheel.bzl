@@ -237,9 +237,11 @@ def _collect_data_files_impl(ctx):
     for symlink_dep in ctx.attr.symlink_deps:
         for f in symlink_dep[FilePathInfo].files.to_list():
             files[f] = True
-    return [DefaultInfo(files = depset(
-        files.keys(),
-    ))]
+    files_depset = depset(files.keys())
+    return [DefaultInfo(
+        files = files_depset,
+        runfiles = ctx.runfiles(transitive_files = files_depset),
+    )]
 
 collect_data_files = rule(
     implementation = _collect_data_files_impl,

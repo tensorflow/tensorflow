@@ -80,12 +80,10 @@ absl::StatusOr<llvm::Function*> Log1p::CreateDefinition(llvm::Module* module,
   // accurate than the Taylor series.
   auto for_large_x = llvm_ir::EmitCallToIntrinsic(
       llvm::Intrinsic::log, {builder.CreateFAdd(x, one)}, {type}, &builder);
-  // When x is small, (defined to be less than sqrt(2) / 2), use a rational
-  // approximation. The approximation below is based on one from the Cephes
-  // Mathematical Library.
-  //
-  // sqrt(2) - 1.
-  const auto kAntilogarithmIsSmallThreshold = 0.41421356237309504880;
+  // The rational approximation below is based on one from the Cephes
+  // Mathematical Library. For F16 and F32, use it when
+  // abs(x) < sqrt(2) - 1. F64 uses the narrower range defined below.
+  constexpr double kApproxRangeThreshold = 0.41421356237309504880;
 
   static const std::array<double, 7> kDenominatorCoeffs{
       1.,
@@ -116,10 +114,21 @@ absl::StatusOr<llvm::Function*> Log1p::CreateDefinition(llvm::Module* module,
 
   auto abs_x = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs,
                                             {input_value}, {type}, &builder);
-  auto x_is_small = builder.CreateFCmpOLT(
-      abs_x, llvm::ConstantFP::get(type, kAntilogarithmIsSmallThreshold));
+  auto x_in_approx_range = builder.CreateFCmpOLT(
+      abs_x, llvm::ConstantFP::get(type, kApproxRangeThreshold));
+  if (intrinsic_type.element_type() == F64) {
+    // For F64, use the approximation only when
+    // 1 / sqrt(2) <= 1 + x <= sqrt(2).
+    constexpr double kF64ApproxLowerBound = -0.29289321881345247560;
+    auto x_is_above_lower_bound = builder.CreateFCmpOGE(
+        x, llvm::ConstantFP::get(type, kF64ApproxLowerBound));
+    auto x_is_below_upper_bound = builder.CreateFCmpOLE(
+        x, llvm::ConstantFP::get(type, kApproxRangeThreshold));
+    x_in_approx_range =
+        builder.CreateAnd(x_is_above_lower_bound, x_is_below_upper_bound);
+  }
   llvm::Value* result =
-      builder.CreateSelect(x_is_small, for_small_x, for_large_x);
+      builder.CreateSelect(x_in_approx_range, for_small_x, for_large_x);
 
   builder.CreateRet(result);
 

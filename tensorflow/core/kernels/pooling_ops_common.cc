@@ -29,6 +29,7 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/cast_op.h"
 #include "tensorflow/core/kernels/conv_2d.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/kernels/numeric_options_utils.h"
 #if TENSORFLOW_USE_ROCM
@@ -238,17 +239,19 @@ void DnnPoolingImpl(OpKernelContext* context, se::dnn::PoolingMode pooling_mode,
                     TensorFormat data_format, const Tensor& tensor_in,
                     const TensorShape& tensor_out_shape, bool propagate_nans,
                     Tensor* tensor_out) {
-  // cuDNN rejects a zero-sized window descriptor, and there is nothing to
-  // compute for an empty input or an empty output anyway.
-  if (tensor_in.shape().num_elements() == 0 ||
-      tensor_out_shape.num_elements() == 0) {
+  if (tensor_in.shape().num_elements() == 0) {
     return;
   }
 
   PoolParameters params{
       context,           size,        stride,           padding,
       explicit_paddings, data_format, tensor_in.shape()};
+
   if (!context->status().ok()) {
+    return;
+  }
+
+  if (params.out_height == 0 || params.out_width == 0) {
     return;
   }
 
@@ -541,9 +544,17 @@ void DnnPoolingGradImpl(OpKernelContext* context,
 
   PoolParameters params{context,           size,        stride,         padding,
                         explicit_paddings, data_format, tensor_in_shape};
+
   if (!context->status().ok()) {
     return;
   }
+
+  if (params.out_height == 0 || params.out_width == 0) {
+    functor::SetZeroFunctor<GPUDevice, T>()(context->eigen_device<GPUDevice>(),
+                                            input_backprop->flat<T>());
+    return;
+  }
+
   if (tensor_out) {
     TensorShape params_forward_output_shape;
     OP_REQUIRES_OK(context,

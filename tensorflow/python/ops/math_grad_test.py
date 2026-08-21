@@ -28,6 +28,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_grad
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -280,8 +281,7 @@ class EuclideanNormGradientTest(test.TestCase):
         y = math_ops.reduce_euclidean_norm(x)
 
       dx = tape.gradient(y, x)
-      dx_answer = constant_op.constant(
-          [float("NaN"), float("NaN")], dtype=dtype)
+      dx_answer = constant_op.constant([0.0, 0.0], dtype=dtype)
       self.assertAllClose(dx, dx_answer)
 
   def test2D_1(self):
@@ -351,6 +351,43 @@ class EuclideanNormGradientTest(test.TestCase):
           lambda x: math_ops.reduce_euclidean_norm(x, 2), [x])
       err = gradient_checker_v2.max_error(*grads)
       self.assertLess(err, 2e-3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class LinalgNormGradientTest(test.TestCase):
+
+  def testZeroGrad(self):
+    for dtype in [
+        dtypes.float32,
+        dtypes.float64,
+        dtypes.complex64,
+        dtypes.complex128,
+    ]:
+      x = constant_op.constant([0.0, 0.0], dtype=dtype)
+
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = linalg_ops.norm_v2(x)
+
+      dx = tape.gradient(y, x)
+      self.assertAllClose(dx, [0.0, 0.0])
+
+  def testNonZeroGrad(self):
+    for dtype in [
+        dtypes.float32,
+        dtypes.float64,
+        dtypes.complex64,
+        dtypes.complex128,
+    ]:
+      x = constant_op.constant([3.0, 4.0], dtype=dtype)
+
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = linalg_ops.norm_v2(x)
+
+      dx = tape.gradient(y, x)
+      # Expected: x / norm(x) = [3/5, 4/5]
+      self.assertAllClose(dx, [0.6, 0.8])
 
 
 class SegmentMinOrMaxGradientTest(test.TestCase):
@@ -875,6 +912,22 @@ class IgammaGradTest(test.TestCase):
       self.assertAllClose(
           np.array([-np.inf, -1.0, 0.0, 0.0], dtype=dtype.as_numpy_dtype), xgrad
       )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testIgammaGradNumericalJacobian(self):
+    # d/dx igamma(1, x) tends to e^-x near the singular boundary x=0. Compare
+    # the analytic x-gradient against a numerical Jacobian at a small positive
+    # x. The step must stay below x: the central difference evaluates igamma at
+    # x - delta, and igamma is NaN for negative x, so a larger step would leave
+    # the valid domain.
+    for dtype in [dtypes.float32, dtypes.float64]:
+      a = constant_op.constant(1.0, dtype=dtype)
+      x = constant_op.constant([1e-6], dtype=dtype)
+      grad = gradient_checker_v2.compute_gradient(
+          lambda x: math_ops.igamma(a, x), [x], delta=1e-7
+      )  # pylint: disable=cell-var-from-loop
+      err = gradient_checker_v2.max_error(*grad)
+      self.assertLess(err, 1e-3)
 
 
 if __name__ == "__main__":

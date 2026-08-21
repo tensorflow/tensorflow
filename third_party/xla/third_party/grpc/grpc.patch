@@ -17,6 +17,16 @@ diff --git a/bazel/cc_grpc_library.bzl b/bazel/cc_grpc_library.bzl
              **kwargs
          )
 
+diff --git a/bazel/grpc_python_deps.bzl b/bazel/grpc_python_deps.bzl
+--- a/bazel/grpc_python_deps.bzl
++++ b/bazel/grpc_python_deps.bzl
+@@ -32,1 +32,1 @@
+-        build_file = "@com_github_grpc_grpc//third_party:typing_extensions.BUILD",
++        build_file = "@grpc//third_party:typing_extensions.BUILD",
+@@ -41,1 +41,1 @@
+-            build_file = "@com_github_grpc_grpc//third_party:cython.BUILD",
++            build_file = "@grpc//third_party:cython.BUILD",
+
 diff --git a/src/core/lib/promise/party.h b/src/core/lib/promise/party.h
 --- a/src/core/lib/promise/party.h
 +++ b/src/core/lib/promise/party.h

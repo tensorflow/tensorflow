@@ -790,6 +790,10 @@ TEST(CommonShapeFnsTest, Conv2DFilterLargerThanInputTest) {
   INFER_OK(op, "[32,20,20,3];[21,20,3,2]", "[d0_0,0,1,d1_3]");
   INFER_ERROR("Negative dimension size", op, "[4,6,6,64];[8,8,64,128]");
 
+  // The zero-boundary handling must not overflow a maximal valid dimension.
+  INFER_OK(op, "[1,9223372036854775807,1,1];[1,1,1,1]",
+           "[d0_0,9223372036854775807,1,d1_3]");
+
   // An overhang of exactly `stride` is the last valid one.
   set_op(/*strides=*/{{1, 4, 4, 1}});
   INFER_OK(op, "[4,4,4,3];[8,8,3,2]", "[d0_0,0,0,d1_3]");

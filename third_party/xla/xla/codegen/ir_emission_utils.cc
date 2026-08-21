@@ -24,9 +24,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/codegen/hlo_fusion_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -275,10 +275,10 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlace(
         root_index = {i};
       }
       // Get output buffer for the fusion root.
-      ASSIGN_OR_RETURN(BufferAllocation::Slice output_buffer,
+      ABSL_ASSIGN_OR_RETURN(BufferAllocation::Slice output_buffer,
                        get_allocation_slice(fusion, root_index));
 
-      ASSIGN_OR_RETURN(BufferAllocation::Slice lhs_buffer,
+      ABSL_ASSIGN_OR_RETURN(BufferAllocation::Slice lhs_buffer,
                        get_allocation_slice(&operand.instruction(), {}));
       if (lhs_buffer != output_buffer) {
         return false;

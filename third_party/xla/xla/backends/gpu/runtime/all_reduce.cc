@@ -25,11 +25,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/bit.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
@@ -108,7 +108,7 @@ absl::Status LaunchTypedKernel(
   static constexpr bool kIsTwoShot =
       TagType::kAllReduceStrategy == AllReduceStrategy::kTwoShot;
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto kernel,
       (se::gpu::GpuKernelRegistry::GetGlobalRegistry()
            .LoadKernel<
@@ -349,7 +349,7 @@ absl::StatusOr<AllReduceInfo> BuildAllReduceInfo(
       num_elements * primitive_util::ByteWidth(element_type);
   const AllReduceStrategy strategy =
       GetAllReduceStrategy(byte_size, is_multimem_enabled);
-  ASSIGN_OR_RETURN(const CollectiveOpGroupMode group_mode,
+  ABSL_ASSIGN_OR_RETURN(const CollectiveOpGroupMode group_mode,
                    GetCollectiveOpGroupMode(all_reduce));
   const bool is_local = IsAllReplicasLocal(
       gpu_topology.num_devices_per_process(), all_reduce->replica_groups(),
@@ -359,7 +359,7 @@ absl::StatusOr<AllReduceInfo> BuildAllReduceInfo(
         "Collective kernels are only supported on devices with NVLink/UALink "
         "support.");
   }
-  RETURN_IF_ERROR(IsAllReduceKernelSupported(is_collective_kernel_enabled,  //
+  ABSL_RETURN_IF_ERROR(IsAllReduceKernelSupported(is_collective_kernel_enabled,  //
                                              device_info,                   //
                                              num_operands,                  //
                                              reduction_kind,                //
@@ -394,7 +394,7 @@ absl::Status RunAllReduceKernel(
     se::DeviceAddressBase symmetric_signal_buffer,  //
     uint32_t signal_value,                          //
     se::DeviceAddressBase metadata) {
-  RETURN_IF_ERROR(IsAllReduceKernelSupported(num_ranks, num_elements,
+  ABSL_RETURN_IF_ERROR(IsAllReduceKernelSupported(num_ranks, num_elements,
                                              element_type, reduction_kind,
                                              all_reduce_strategy));
   const auto launch_kernel_impl = [&](auto tag) -> absl::Status {

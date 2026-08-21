@@ -56,8 +56,8 @@ REGISTER_OP("PrintV2")
       if (!c->RankKnown(c->input(0))) return absl::OkStatus();
       // Make sure that the input is a scalar.
       if (c->Rank(c->input(0)) != 0) {
-        return errors::InvalidArgument("input must be a scalar, but has rank: ",
-                                       c->Rank(c->input(0)));
+        return absl::InvalidArgumentError(absl::StrCat(
+            "input must be a scalar, but has rank: ", c->Rank(c->input(0))));
       }
       return absl::OkStatus();
     });

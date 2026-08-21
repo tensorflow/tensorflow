@@ -34,10 +34,10 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/array.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
@@ -2141,7 +2141,7 @@ class XlaBuilder {
   // absl::StatusOr similar to absl::StatusOr.
   template <typename InstructionType>
   absl::StatusOr<InstructionType> LookUpInstructionInternal(XlaOp op) const {
-    RETURN_IF_ERROR(CheckOpBuilder(op));
+    ABSL_RETURN_IF_ERROR(CheckOpBuilder(op));
     return LookUpInstructionByHandleInternal<InstructionType>(op.handle());
   }
 

@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cassert>
-#include <memory>
-#include <string>
 #include <utility>
 
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"

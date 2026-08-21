@@ -45,6 +45,6 @@ bazel --bazelrc="$SCRIPT_DIR/rocm_xla_ci.bazelrc" test \
     --flaky_test_attempts=3 \
     --nokeep_going \
     --test_env=TF_TESTS_PER_GPU=1 \
-    --action_env=XLA_FLAGS="--xla_gpu_force_compilation_parallelism=16" \
+    --action_env=XLA_FLAGS="--xla_gpu_force_compilation_parallelism=16 --xla_gpu_blas_max_algorithms=8" \
     --test_output=errors \
     "$@"

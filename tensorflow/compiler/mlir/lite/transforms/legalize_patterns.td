@@ -70,6 +70,9 @@ def ExtractSingleElementAsInt32 : NativeCodeCall<
 def CreateTFCastToInt32Op : NativeCodeCall<
   "CreateCastToInt32($0, $_loc, $_builder)">;
 
+def CreateStridedSliceIndexToInt32 : NativeCodeCall<
+  "CreateStridedSliceIndexToInt32($0, $_loc, $_builder)">;
+
 def CreateInt32ConstOrCast : NativeCodeCall<
   "CreateInt32ConstOrCast($0, $_loc, $_builder)">;
 
@@ -608,8 +611,10 @@ def LegalizeStridedSlice : Pat<
     $input, $begin, $end, $strides, $begin_mask, $end_mask,
     $ellipsis_mask, $new_axis_mask, $shrink_axis_mask),
   (TFL_StridedSliceOp $input,
-    (CreateTFCastToInt32Op $begin), (CreateTFCastToInt32Op $end),
-    (CreateTFCastToInt32Op $strides), (convertIntAttrTo32Bit $begin_mask),
+    (CreateStridedSliceIndexToInt32 $begin),
+    (CreateStridedSliceIndexToInt32 $end),
+    (CreateStridedSliceIndexToInt32 $strides),
+    (convertIntAttrTo32Bit $begin_mask),
     (convertIntAttrTo32Bit $end_mask), (convertIntAttrTo32Bit $ellipsis_mask),
     (convertIntAttrTo32Bit $new_axis_mask),
     (convertIntAttrTo32Bit $shrink_axis_mask),

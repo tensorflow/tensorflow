@@ -227,6 +227,16 @@ def tflite_jni_linkopts():
     """Defines linker flags for linking TFLite binary with JNI."""
     return tflite_jni_linkopts_unstripped() + tflite_symbol_opts() + tflite_pagesize_linkopts()
 
+def tflite_exec_properties(memory = "20g"):
+    """Defines exec_properties for TFLite targets."""
+    return if_oss(
+        None,
+        select({
+            "@bazel_tools//tools/cpp:asan_build": {"cpp_link.mem": memory},
+            "//conditions:default": None,
+        }),
+    )
+
 def tflite_jni_binary(
         name,
         copts = tflite_copts(),

@@ -19,8 +19,8 @@ limitations under the License.
 
 #include "oneapi/ccl.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_format.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/oneccl_errors.h"
 #include "xla/backends/gpu/collectives/single_threaded_executor.h"
 #include "xla/future.h"
@@ -33,17 +33,17 @@ absl::StatusOr<std::unique_ptr<OnecclCommunicator>> OnecclCommunicator::Create(
     absl::AnyInvocable<absl::StatusOr<onecclComm_t>()> make_comm, bool is_async,
     tsl::Env& env) {
   auto f = [&make_comm]() -> absl::StatusOr<onecclComm_t> {
-    ASSIGN_OR_RETURN(onecclComm_t comm, make_comm());
+    ABSL_ASSIGN_OR_RETURN(onecclComm_t comm, make_comm());
     // There is no need for PollUntilDone here since oneccl comm creation is
     // blocking.
     return comm;
   };
   if (!is_async) {
-    ASSIGN_OR_RETURN(onecclComm_t comm, f());
+    ABSL_ASSIGN_OR_RETURN(onecclComm_t comm, f());
     return absl::WrapUnique(new OnecclCommunicator(comm, nullptr));
   }
   auto executor = std::make_unique<SingleThreadedExecutor>(env);
-  ASSIGN_OR_RETURN(onecclComm_t comm, MakeFutureOn(*executor, f).Await());
+  ABSL_ASSIGN_OR_RETURN(onecclComm_t comm, MakeFutureOn(*executor, f).Await());
   return absl::WrapUnique(new OnecclCommunicator(comm, std::move(executor)));
 }
 
