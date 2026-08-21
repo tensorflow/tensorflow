@@ -46,7 +46,7 @@ def _get_ops_from_ops_list(input_file):
   ops = set()
   ops_list_str = gfile.GFile(input_file, 'r').read()
   if not ops_list_str:
-    raise Exception('Input file should not be empty')
+    raise ValueError('Input file should not be empty')
   ops_list = json.loads(ops_list_str)
   for op, kernel in ops_list:
     op_and_kernel = (op, kernel if kernel else None)
