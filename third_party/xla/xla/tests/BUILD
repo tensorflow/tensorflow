@@ -54,6 +54,7 @@ cc_library(
     name = "xla_internal_test_main",
     testonly = True,
     srcs = ["xla_internal_test_main.cc"],
+    visibility = internal_visibility(["//xla:__subpackages__"]),
     deps = [
         "//xla:debug_options_flags",
         "@com_google_absl//absl/flags:flag",
