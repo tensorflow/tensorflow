@@ -102,7 +102,7 @@ llvm::SmallVector<Value> AccumulateResultsDefinedWithin(
   return values_for_results;
 }
 
-// Compute signature for raised func from arugments and outputs of
+// Compute signature for raised func from arguments and outputs of
 // Operation partition.
 llvm::SmallVector<Type> TypesFromValues(
     const llvm::SmallVector<Value>& values) {
