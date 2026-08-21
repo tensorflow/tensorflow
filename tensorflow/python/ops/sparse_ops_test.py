@@ -17,6 +17,7 @@
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -33,6 +34,7 @@ from tensorflow.python.ops import math_ops
 # Need sparse_grad to register gradient for SparseToDense.
 from tensorflow.python.ops import sparse_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import sqrt_ops
 from tensorflow.python.platform import googletest
 
 
@@ -149,6 +151,23 @@ class SparseOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(result_value.indices, st.indices)
     self.assertAllClose(result_value.values, expected)
     self.assertAllEqual(result_value.dense_shape, st.dense_shape)
+
+  def testSqrtSparseDispatchUsesFloat64Fallback(self):
+    values = constant_op.constant(
+        [np.nextafter(0.0, 1.0), 4.0], dtype=dtypes.float64
+    )
+    st = sparse_tensor.SparseTensor(
+        indices=[[0], [2]], values=values, dense_shape=[3]
+    )
+    with backprop.GradientTape() as tape:
+      tape.watch(values)
+      result = sqrt_ops.sqrt(st)
+    actual = tape.gradient(result.values, values)
+
+    self.assertIsInstance(result, sparse_tensor.SparseTensor)
+    self.assertAllClose(
+        [2.2494568972715982e161, 0.25], self.evaluate(actual), rtol=1e-14
+    )
 
   def testSparseToDenseGradient(self):
 

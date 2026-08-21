@@ -244,6 +244,7 @@ py_library(
         "//tensorflow/python/ops:map_fn",
         "//tensorflow/python/ops:map_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:sqrt_ops",
         "//tensorflow/python/ops:metrics",
         "//tensorflow/python/ops:nccl_ops",
         "//tensorflow/python/ops:nn",

@@ -31,6 +31,7 @@ from tensorflow.python.ops import gradients
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_grad
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import sqrt_ops
 from tensorflow.python.platform import test
 
 
@@ -869,6 +870,174 @@ class NextAfterTest(test.TestCase):
             *gradient_checker_v2.compute_gradient(
                 lambda x: math_ops.nextafter(x, x2), [x1]))  # pylint: disable=cell-var-from-loop
         self.assertLess(err, 1e-3)
+
+
+class SqrtGradTest(test.TestCase):
+
+  def testCustomGradientWrapperIsFloat64Only(self):
+    with ops.Graph().as_default():
+      float32_result = sqrt_ops.sqrt(
+          constant_op.constant(4.0, dtype=dtypes.float32)
+      )
+      float64_input = constant_op.constant(4.0, dtype=dtypes.float64)
+      float64_result = sqrt_ops.sqrt(float64_input)
+      gradients.gradients(float64_result, float64_input)
+      float64_op_types = [
+          op.type for op in ops.get_default_graph().get_operations()
+      ]
+      math_ops_float64_result = math_ops.sqrt(
+          constant_op.constant(4.0, dtype=dtypes.float64)
+      )
+
+    self.assertEqual(float32_result.op.type, "Sqrt")
+    self.assertEqual(float64_result.op.type, "IdentityN")
+    self.assertNotIn("OnesLike", float64_op_types)
+    self.assertEqual(math_ops_float64_result.op.type, "IdentityN")
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFloat64PositiveSubnormalGradient(self):
+    tiny = np.finfo(np.float64).tiny
+    values = np.array(
+        [
+            np.nextafter(0.0, 1.0),
+            tiny / 2.0,
+            np.nextafter(tiny, 0.0),
+            tiny,
+            1.0,
+            0.0,
+            -1.0,
+            np.inf,
+            np.nan,
+        ],
+        dtype=np.float64,
+    )
+    upstream = np.array(
+        [1.0, 2.0, -0.5, 3.0, -4.0, 1.0, 2.0, 5.0, 6.0],
+        dtype=np.float64,
+    )
+
+    with ops.device("/CPU:0"):
+      x = constant_op.constant(values, dtype=dtypes.float64)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = sqrt_ops.sqrt(x)
+      actual = self.evaluate(tape.gradient(y, x, output_gradients=upstream))
+
+    bits = values.view(np.int64)
+    expected = np.empty_like(values)
+    is_positive_subnormal = np.logical_and(bits > 0, bits < 1 << 52)
+    expected[is_positive_subnormal] = (
+        float(2**536) / np.sqrt(bits[is_positive_subnormal].astype(np.float64))
+    )
+    with np.errstate(divide="ignore", invalid="ignore"):
+      expected[~is_positive_subnormal] = (
+          0.5 / np.sqrt(values[~is_positive_subnormal])
+      )
+    expected *= upstream
+
+    not_nan = ~np.isnan(expected)
+    self.assertAllEqual(~not_nan, np.isnan(actual))
+    self.assertAllClose(
+        expected[not_nan],
+        actual[not_nan],
+        rtol=1e-14,
+    )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFloat64PositiveSubnormalHigherOrderGradients(self):
+    expected_derivative = 2.2494568972715982e161
+    with ops.device("/CPU:0"):
+      x = constant_op.constant(
+          [np.nextafter(0.0, 1.0), np.nextafter(0.0, 1.0), 0.0, 4.0],
+          dtype=dtypes.float64,
+      )
+      upstream = constant_op.constant(
+          [-2.0, 0.0, 2.0, -2.0], dtype=dtypes.float64
+      )
+      with backprop.GradientTape() as third_order_tape:
+        third_order_tape.watch(x)
+        with backprop.GradientTape() as outer_tape:
+          outer_tape.watch((x, upstream))
+          with backprop.GradientTape() as inner_tape:
+            inner_tape.watch(x)
+            y = sqrt_ops.sqrt(x)
+          first_derivative = inner_tape.gradient(
+              y, x, output_gradients=upstream
+          )
+        second_derivative, upstream_derivative = outer_tape.gradient(
+            first_derivative, (x, upstream)
+        )
+      third_derivative = third_order_tape.gradient(
+          second_derivative, x
+      )
+
+    self.assertAllClose(
+        [-2.0 * expected_derivative, 0.0, np.inf, -0.5],
+        self.evaluate(first_derivative),
+        rtol=1e-14,
+    )
+    self.assertAllEqual(
+        [np.inf, 0.0, -np.inf, 0.0625], self.evaluate(second_derivative)
+    )
+    self.assertAllEqual(
+        [-np.inf, 0.0, np.inf, -0.0234375],
+        self.evaluate(third_derivative),
+    )
+    self.assertAllClose(
+        [expected_derivative, expected_derivative, np.inf, 0.25],
+        self.evaluate(upstream_derivative),
+        rtol=1e-14,
+    )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFloat64SubnormalHigherOrderGradientsWithSmallUpstream(self):
+    with ops.device("/CPU:0"):
+      x = constant_op.constant(
+          np.nextafter(0.0, 1.0), dtype=dtypes.float64
+      )
+      upstream = constant_op.constant(np.ldexp(1.0, -600), dtypes.float64)
+      with backprop.GradientTape() as outer_tape:
+        outer_tape.watch(x)
+        with backprop.GradientTape() as inner_tape:
+          inner_tape.watch(x)
+          y = sqrt_ops.sqrt(x)
+        first_derivative = inner_tape.gradient(
+            y, x, output_gradients=upstream
+        )
+      second_derivative = outer_tape.gradient(first_derivative, x)
+
+    self.assertAllEqual(np.ldexp(1.0, -64), self.evaluate(first_derivative))
+    self.assertAllEqual(-np.ldexp(1.0, 1009), self.evaluate(second_derivative))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFloat64SubnormalMixedGradientWithSmallUpstream(self):
+    with ops.device("/CPU:0"):
+      x = constant_op.constant(
+          np.nextafter(0.0, 1.0), dtype=dtypes.float64
+      )
+      upstream = constant_op.constant(1.0, dtype=dtypes.float64)
+      with backprop.GradientTape() as derivative_tape:
+        derivative_tape.watch(x)
+        with backprop.GradientTape() as outer_tape:
+          outer_tape.watch((x, upstream))
+          with backprop.GradientTape() as inner_tape:
+            inner_tape.watch(x)
+            y = sqrt_ops.sqrt(x)
+          first_derivative = inner_tape.gradient(
+              y, x, output_gradients=upstream
+          )
+        _, upstream_derivative = outer_tape.gradient(
+            first_derivative, (x, upstream)
+        )
+      mixed_derivative = derivative_tape.gradient(
+          upstream_derivative,
+          x,
+          output_gradients=constant_op.constant(
+              np.ldexp(1.0, -600), dtype=dtypes.float64
+          ),
+      )
+
+    self.assertAllEqual(-np.ldexp(1.0, 1009), self.evaluate(mixed_derivative))
 
 
 class IgammaGradTest(test.TestCase):

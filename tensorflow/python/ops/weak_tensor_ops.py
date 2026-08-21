@@ -32,6 +32,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import sqrt_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_math_ops
@@ -250,6 +251,7 @@ math_ops.ndtri = weak_tensor_unary_op_wrapper(math_ops.ndtri)
 math_ops.erfcinv = weak_tensor_unary_op_wrapper(math_ops.erfcinv)
 math_ops.ceil = weak_tensor_unary_op_wrapper(math_ops.ceil)
 math_ops.sqrt = weak_tensor_unary_op_wrapper(math_ops.sqrt)
+sqrt_ops.sqrt = weak_tensor_unary_op_wrapper(sqrt_ops.sqrt)
 math_ops.exp = weak_tensor_unary_op_wrapper(math_ops.exp)
 math_ops.rsqrt = weak_tensor_unary_op_wrapper(math_ops.rsqrt)
 math_ops.acos = weak_tensor_unary_op_wrapper(math_ops.acos)

@@ -22,6 +22,7 @@ from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import special_math_ops
+from tensorflow.python.ops import sqrt_ops
 from tensorflow.python.ops import string_ops
 
 
@@ -71,6 +72,7 @@ UNARY_FLOAT_OPS = [
     math_ops.sinh,
     math_ops.softplus,
     math_ops.sqrt,
+    sqrt_ops.sqrt,
     math_ops.square,
     math_ops.tan,
     math_ops.tanh,
