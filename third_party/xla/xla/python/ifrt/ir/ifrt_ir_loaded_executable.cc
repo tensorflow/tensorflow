@@ -313,14 +313,7 @@ IfrtIrLoadedExecutable::GetOutputMemoryKinds() const {
       []() { return "IfrtIrLoadedExecutable::GetOutputMemoryKinds"; });
   std::vector<absl::string_view> output_memory_kinds;
   for (const auto& [idx, spec] : llvm::enumerate(program_->out_specs)) {
-    if (!spec.sharding->memory_kind().memory_kind().has_value()) {
-      return absl::FailedPreconditionError(
-          absl::StrFormat("IfrtIrLoadedExecutable %s does not have memory kind "
-                          "set for its output # %d.",
-                          name(), idx));
-    }
-    output_memory_kinds.push_back(
-        spec.sharding->memory_kind().memory_kind().value());
+    output_memory_kinds.push_back(spec.sharding->memory_kind().value());
   }
   // Pretend that the MPMD executable is a SPMD executable and return a
   // single array. We do not return per-SPMD program memory kinds because the

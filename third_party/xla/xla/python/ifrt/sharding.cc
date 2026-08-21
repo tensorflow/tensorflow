@@ -54,15 +54,6 @@ namespace ifrt {
 
 namespace {
 
-// Returns a canonicalized memory kind for the given devices.
-// REQUIRES: !devices->devices().empty()
-MemoryKind CanonicalizeMemoryKindWithDevices(const MemoryKind& memory_kind,
-                                             const DeviceListRef& devices) {
-  CHECK(devices != nullptr);
-  CHECK(!devices->devices().empty());
-  return CanonicalizeMemoryKind(memory_kind, devices->devices().front());
-}
-
 // Returns if `sharding_param` indicates a fully replicated sharding.
 bool ComputeIsFullyReplicated(const ShardingParam& sharding_param) {
   return absl::c_all_of(sharding_param.dim_shards(),
@@ -208,7 +199,6 @@ std::unique_ptr<SingleDeviceSharding> SingleDeviceSharding::Create(
   absl::StatusOr<DeviceListRef> device_list =
       device->client()->MakeDeviceList({device});
   CHECK_OK(device_list);
-  memory_kind = CanonicalizeMemoryKind(memory_kind, device);
   return std::unique_ptr<SingleDeviceSharding>(
       new SingleDeviceSharding(*std::move(device_list), memory_kind));
 }
@@ -306,7 +296,8 @@ void SingleDeviceSharding::Hash(absl::HashState state) const {
 
 std::unique_ptr<OpaqueSharding> OpaqueSharding::Create(DeviceListRef devices,
                                                        MemoryKind memory_kind) {
-  memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
+  CHECK(devices != nullptr);
+  CHECK(!devices->devices().empty());
   return std::unique_ptr<OpaqueSharding>(
       new OpaqueSharding(std::move(devices), memory_kind));
 }
@@ -385,7 +376,8 @@ std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
     DeviceListRef devices, MemoryKind memory_kind, Shape shape,
     std::vector<Shape> shard_shapes,
     std::optional<std::vector<xla::ifrt::IndexDomain>> index_domains) {
-  memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
+  CHECK(devices != nullptr);
+  CHECK(!devices->devices().empty());
   return std::unique_ptr<ConcreteSharding>(
       new ConcreteSharding(std::move(devices), memory_kind, std::move(shape),
                            std::move(shard_shapes), std::move(index_domains)));
@@ -394,7 +386,8 @@ std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
 std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
     DeviceListRef devices, MemoryKind memory_kind, DynamicShape dynamic_shape,
     std::vector<DynamicShape> shard_dynamic_shapes) {
-  memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
+  CHECK(devices != nullptr);
+  CHECK(!devices->devices().empty());
   return std::unique_ptr<ConcreteSharding>(new ConcreteSharding(
       std::move(devices), memory_kind, std::move(dynamic_shape),
       std::move(shard_dynamic_shapes)));
@@ -638,7 +631,8 @@ void ConcreteSharding::Hash(absl::HashState state) const {
 std::unique_ptr<ConcreteEvenSharding> ConcreteEvenSharding::Create(
     DeviceListRef devices, MemoryKind memory_kind, Shape shape,
     Shape shard_shape, bool is_fully_replicated) {
-  memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
+  CHECK(devices != nullptr);
+  CHECK(!devices->devices().empty());
   return std::unique_ptr<ConcreteEvenSharding>(new ConcreteEvenSharding(
       std::move(devices), memory_kind, std::move(shape), std::move(shard_shape),
       is_fully_replicated));
@@ -775,7 +769,8 @@ void ConcreteEvenSharding::Hash(absl::HashState state) const {
 absl::StatusOr<std::unique_ptr<ShardingParamSharding>>
 ShardingParamSharding::Create(ShardingParam sharding_param,
                               DeviceListRef devices, MemoryKind memory_kind) {
-  memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
+  CHECK(devices != nullptr);
+  CHECK(!devices->devices().empty());
   int64_t device_count =
       absl::c_accumulate(sharding_param.minor_to_major().axis_sizes, 1,
                          std::multiplies<int64_t>());
