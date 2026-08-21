@@ -363,9 +363,14 @@ class PjRtExecutable {
   // Unique name for this executable, e.g., HloModule name.
   virtual absl::string_view name() const = 0;
 
+  // Return HloModule (optimized).
+  virtual absl::StatusOr<std::shared_ptr<HloModule>> GetHloModule() const {
+    return absl::UnimplementedError("GetHloModule is not implemented");
+  }
+
   // Return an array of HloModule (optimized) per partition.
   virtual absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
-  GetHloModules() const = 0;
+  GetHloModules() const;
 
   // Returns an output Shape per program, the size should be equal to
   // `GetHloModules()`.

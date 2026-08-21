@@ -178,11 +178,13 @@ xla_cc_test(
     srcs = ["stream_executor_executable_test.cc"],
     deps = [
         ":stream_executor_executable",
+        "//xla/hlo/ir:hlo",
         "//xla/pjrt:pjrt_abi_version",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/proto:pjrt_abi_version_proto_cc",
         "//xla/service:compiled_module",
+        "//xla/service:hlo_module_config",
         "//xla/service:mock_compiled_module",
         "//xla/stream_executor/abi:executable_abi_version",
         "//xla/stream_executor/abi:executable_abi_version_proto_cc",
