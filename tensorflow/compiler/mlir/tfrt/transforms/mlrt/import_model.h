@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_MLRT_IMPORT_MODEL_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_MLRT_IMPORT_MODEL_H_
 
+#include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
