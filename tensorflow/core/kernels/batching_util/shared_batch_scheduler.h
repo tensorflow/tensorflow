@@ -643,6 +643,13 @@ class PriorityTaskQueue {
     std::vector<std::unique_ptr<TaskType>> tasks =
         RemoveTask(tasks_to_schedule);
 
+    // If batching down yielded no tasks (e.g. the head task is unsplittable and
+    // larger than tasks_to_schedule), fall back to initial candidate_size to
+    // avoid livelock.
+    if (tasks.empty() && tasks_to_schedule < candidate_size) {
+      tasks = RemoveTask(candidate_size);
+    }
+
     // If no tasks could be dequeued (e.g. all tasks were filtered out by lazy
     // cancellation), return nullptr to avoid scheduling an empty batch.
     if (tasks.empty()) {
