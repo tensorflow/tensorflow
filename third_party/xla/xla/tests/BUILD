@@ -3045,6 +3045,47 @@ xla_test(
 )
 
 xla_test(
+    name = "local_client_stream_error_test",
+    srcs = ["local_client_stream_error_test.cc"],
+    backends = [
+        "gpu",
+    ],
+    tags = [
+        "gpu",
+    ],
+    use_legacy_runtime = True,
+    deps = [
+        ":local_client_test_base",
+        "//xla:executable_run_options",
+        "//xla:shape_util",
+        "//xla/backends/gpu:ffi",
+        "//xla/client:executable_build_options",
+        "//xla/client:local_client",
+        "//xla/ffi",
+        "//xla/ffi:execution_context",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/service:executable",
+        "//xla/service:hlo_module_config",
+        "//xla/service:maybe_owning_device_address",
+        "//xla/service/gpu:launch_dimensions",
+        "//xla/service/gpu:stream_executor_util",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_address_allocator",
+        "//xla/stream_executor:kernel",
+        "//xla/stream_executor:stream",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
     name = "outfeed_in_nested_computation_test",
     srcs = ["outfeed_in_nested_computation_test.cc"],
     backends = [
