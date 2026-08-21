@@ -249,7 +249,7 @@ def initialize_accelerator_system(
         client_id=config.client_id(),
         collective_leader=config.full_job_name(task_id=0),
         gpu_use_nccl_communication=config.gpu_use_nccl_communication(),
-        enable_coordination_service=enable_coordination_service)
+        enable_coordination_service=enable_coordination_service)  # pyrefly: ignore[bad-argument-type]
   else:
     if device_type == "GPU":
       # Enables Nccl on local mode.
