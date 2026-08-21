@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include <cstdint>
 #include <string>
 #include <tuple>
@@ -58,13 +57,14 @@ xla::BitGeneratorTy GetBitGeneratorForDevice(
       // part (bits 64-127).
       xla::XlaBuilder* builder = key.builder();
       xla::XlaOp zero_u64 = xla::ConstantR0WithType(builder, xla::U64, 0);
-      xla::XlaOp philox_state =
-          xla::ConcatInDim(builder,
-                           {xla::Reshape(key, {1}), xla::Reshape(zero_u64, {1}),
-                            xla::Reshape(state, {1})},
-                           0);
-      xla::XlaOp result = xla::RngBitGenerator(xla::RandomAlgorithm::RNG_PHILOX,
-                                               philox_state, shape);
+
+      xla::XlaOp philox_state = xla::ConcatInDim(
+          builder, {xla::Reshape(key, {1}), xla::Reshape(zero_u64, {1}),
+                    xla::Reshape(state, {1})},
+          0);
+      xla::XlaOp result = xla::RngBitGenerator(
+          xla::RandomAlgorithm::RNG_PHILOX, philox_state, shape);
+
       return xla::RngOutput{/*value=*/xla::GetTupleElement(result, 1),
                             /*state=*/xla::GetTupleElement(result, 0)};
     };
@@ -119,8 +119,11 @@ std::pair<xla::XlaOp, xla::XlaOp> MixSeedsForEagerCompatibility(
 
   // Generate 4 x U32 mixed output words via one Philox round.
   xla::Shape mix_shape = xla::ShapeUtil::MakeShape(xla::U32, {4});
-  xla::XlaOp mix_result = xla::RngBitGenerator(xla::RandomAlgorithm::RNG_PHILOX,
-                                               philox_state, mix_shape);
+
+  xla::XlaOp mix_result =
+      xla::RngBitGenerator(xla::RandomAlgorithm::RNG_PHILOX, philox_state,
+                           mix_shape);
+
   xla::XlaOp mixed = xla::GetTupleElement(mix_result, 1);
 
   // Reassemble mixed words into key and counter U64 values.
