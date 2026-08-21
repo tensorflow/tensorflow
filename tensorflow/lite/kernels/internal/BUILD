@@ -259,6 +259,17 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "im2col_utils_test",
+    size = "small",
+    srcs = ["optimized/im2col_utils_test.cc"],
+    deps = [
+        ":optimized_base",
+        ":types",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "legacy_optimized_base",
     srcs = [],
