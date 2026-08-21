@@ -16,6 +16,7 @@
 
 from collections.abc import Mapping
 import dataclasses
+import enum
 from typing import Any, Generic, TypeVar, cast
 
 import immutabledict
@@ -25,6 +26,14 @@ import jax.numpy as jnp
 
 immutabledict = immutabledict.immutabledict
 _V = TypeVar("_V")
+
+
+class XluOp(enum.Enum):
+  """Cross-lane unit (XLU) operations with distinct cadences and latencies."""
+
+  # Cross-lane reduction over the lanes of a vreg (e.g. `vadd.xlane.*`,
+  # `vmax.xlane.*`, etc.).
+  XLANE_REDUCE = "xlane_reduce"
 
 
 class DtypeDict(immutabledict[jnp.dtype, _V], Generic[_V]):
@@ -85,6 +94,12 @@ class PlatformInfo:
     default_vmem_limit_kib: The default VMEM limit in KiB for the TPU platform.
     num_alus: The number of ALUs on the TPU platform.
     num_xlus: The number of XLUs on the TPU platform.
+    xlu_cadence_cycles_by_op: A mapping from XLU op to a mapping from dtype to
+      the number of cycles between each issue of that op on a given XLU (i.e.
+      the issue cycle plus any cycles the XLU path is reserved afterwards).
+    xlu_latency_cycles_by_op: A mapping from XLU op to a mapping from dtype to
+      the number of cycles between issuing that op on an XLU and the result
+      being available.
   """
 
   chip_version: pltpu.ChipVersion
@@ -100,6 +115,8 @@ class PlatformInfo:
   default_vmem_limit_kib: int
   num_alus: int
   num_xlus: int
+  xlu_cadence_cycles_by_op: immutabledict[XluOp, DtypeDict[int]]
+  xlu_latency_cycles_by_op: immutabledict[XluOp, DtypeDict[int]]
   _tpu_info: pltpu.TpuInfo = dataclasses.field(init=False, repr=False)
 
   def __post_init__(self):
@@ -152,13 +169,13 @@ class PlatformInfo:
       return target_dtype
     if (
         target_dtype == jnp.dtype(jnp.float8_e4m3fn)
-        and jnp.float8_e4m3b11fnuz in supported_dtypes
+        and jnp.dtype(jnp.float8_e4m3b11fnuz) in supported_dtypes
     ):
       return jnp.dtype(jnp.float8_e4m3b11fnuz)
     dtype_bits = jax.dtypes.itemsize_bits(target_dtype)
-    if dtype_bits < 8 and jnp.float8_e4m3fn in supported_dtypes:
+    if dtype_bits < 8 and jnp.dtype(jnp.float8_e4m3fn) in supported_dtypes:
       return jnp.dtype(jnp.float8_e4m3fn)
-    elif dtype_bits == 8 and jnp.bfloat16 in supported_dtypes:
+    elif dtype_bits <= 8 and jnp.dtype(jnp.bfloat16) in supported_dtypes:
       return jnp.dtype(jnp.bfloat16)
     else:
       return jnp.dtype(jnp.float32)
@@ -206,6 +223,52 @@ class PlatformInfo:
         rhs_dtype, self.latch_cadence_cycles_by_dtype
     )
     return self.latch_cadence_cycles_by_dtype[emulated_dtype]
+
+  def get_xlu_dtype(self, op: XluOp, dtype: jax.typing.DTypeLike) -> jnp.dtype:
+    """Returns the dtype the XLU uses to execute `op` on `dtype` inputs.
+
+    Args:
+      op: The XLU operation.
+      dtype: The dtype of the input to the XLU operation.
+
+    Returns:
+      The dtype natively supported by the XLU for `op`, falling back to an
+      emulated dtype (e.g. bf16 or f32) if `dtype` is not natively supported.
+    """
+    return self.get_emulated_dtype(dtype, self.xlu_cadence_cycles_by_op[op])
+
+  def get_xlu_cadence_cycles(
+      self, op: XluOp, dtype: jax.typing.DTypeLike
+  ) -> int:
+    """Returns the number of cycles between each issue of `op` on a single XLU.
+
+    Args:
+      op: The XLU operation.
+      dtype: The dtype of the input to the XLU operation.
+
+    Returns:
+      The number of cycles between each issue of `op` on a single XLU, taking
+      into account the actual dtype used on the hardware.
+    """
+    resolved_dtype = self.get_xlu_dtype(op, dtype)
+    return self.xlu_cadence_cycles_by_op[op][resolved_dtype]
+
+  def get_xlu_latency_cycles(
+      self, op: XluOp, dtype: jax.typing.DTypeLike
+  ) -> int:
+    """Returns the number of cycles of XLU latency for `op` on `dtype` inputs.
+
+    Args:
+      op: The XLU operation.
+      dtype: The dtype of the input to the XLU operation.
+
+    Returns:
+      The number of cycles between issuing `op` and its result being
+      available, taking into account the actual dtype used on the hardware.
+    """
+    latency_by_dtype = self.xlu_latency_cycles_by_op[op]
+    resolved_dtype = self.get_emulated_dtype(dtype, latency_by_dtype)
+    return latency_by_dtype[resolved_dtype]
 
   def mxu_size_by_dtype(
       self, lhs_dtype: jax.typing.DTypeLike
@@ -267,6 +330,16 @@ _PLATFORM_INFOS = (
         default_vmem_limit_kib=16 * 1024,
         num_alus=4,
         num_xlus=3,
+        xlu_cadence_cycles_by_op=immutabledict({
+            XluOp.XLANE_REDUCE: DtypeDict({
+                jnp.float32: 8,
+            }),
+        }),
+        xlu_latency_cycles_by_op=immutabledict({
+            XluOp.XLANE_REDUCE: DtypeDict({
+                jnp.float32: 115,
+            }),
+        }),
     ),
     PlatformInfo(
         chip_version=pltpu.ChipVersion.TPU_V5P,
@@ -312,6 +385,16 @@ _PLATFORM_INFOS = (
         default_vmem_limit_kib=16 * 1024,
         num_alus=4,
         num_xlus=3,
+        xlu_cadence_cycles_by_op=immutabledict({
+            XluOp.XLANE_REDUCE: DtypeDict({
+                jnp.float32: 8,
+            }),
+        }),
+        xlu_latency_cycles_by_op=immutabledict({
+            XluOp.XLANE_REDUCE: DtypeDict({
+                jnp.float32: 115,
+            }),
+        }),
     ),
     PlatformInfo(
         chip_version=pltpu.ChipVersion.TPU_V6E,
@@ -357,6 +440,18 @@ _PLATFORM_INFOS = (
         default_vmem_limit_kib=32 * 1024,
         num_alus=4,
         num_xlus=2,
+        xlu_cadence_cycles_by_op=immutabledict({
+            XluOp.XLANE_REDUCE: DtypeDict({
+                jnp.bfloat16: 8,
+                jnp.float32: 4,
+            }),
+        }),
+        xlu_latency_cycles_by_op=immutabledict({
+            XluOp.XLANE_REDUCE: DtypeDict({
+                jnp.bfloat16: 141,
+                jnp.float32: 137,
+            }),
+        }),
     ),
     PlatformInfo(
         chip_version=pltpu.ChipVersion.TPU_7X,
@@ -396,6 +491,18 @@ _PLATFORM_INFOS = (
         default_vmem_limit_kib=32 * 1024,
         num_alus=4,
         num_xlus=2,
+        xlu_cadence_cycles_by_op=immutabledict({
+            XluOp.XLANE_REDUCE: DtypeDict({
+                jnp.bfloat16: 8,
+                jnp.float32: 4,
+            }),
+        }),
+        xlu_latency_cycles_by_op=immutabledict({
+            XluOp.XLANE_REDUCE: DtypeDict({
+                jnp.bfloat16: 145,
+                jnp.float32: 141,
+            }),
+        }),
     ),
     PlatformInfo(
         chip_version=pltpu.ChipVersion.TPU_8I,
@@ -436,6 +543,18 @@ _PLATFORM_INFOS = (
         default_vmem_limit_kib=96 * 1024,
         num_alus=4,
         num_xlus=2,
+        xlu_cadence_cycles_by_op=immutabledict({
+            XluOp.XLANE_REDUCE: DtypeDict({
+                jnp.bfloat16: 8,
+                jnp.float32: 4,
+            }),
+        }),
+        xlu_latency_cycles_by_op=immutabledict({
+            XluOp.XLANE_REDUCE: DtypeDict({
+                jnp.bfloat16: 154,
+                jnp.float32: 150,
+            }),
+        }),
     ),
     PlatformInfo(
         chip_version=pltpu.ChipVersion.TPU_8T,
@@ -478,6 +597,18 @@ _PLATFORM_INFOS = (
         default_vmem_limit_kib=32 * 1024,
         num_alus=3,
         num_xlus=3,
+        xlu_cadence_cycles_by_op=immutabledict({
+            XluOp.XLANE_REDUCE: DtypeDict({
+                jnp.bfloat16: 16,
+                jnp.float32: 8,
+            }),
+        }),
+        xlu_latency_cycles_by_op=immutabledict({
+            XluOp.XLANE_REDUCE: DtypeDict({
+                jnp.bfloat16: 171,
+                jnp.float32: 163,
+            }),
+        }),
     ),
 )
 

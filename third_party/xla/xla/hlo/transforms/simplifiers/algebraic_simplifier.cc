@@ -2897,20 +2897,32 @@ AlgebraicSimplifierVisitor::RemoveTransposesFromDotOperands(
     return false;
   }
 
+  const int64_t num_batch_dims = dnums.lhs_batch_dimensions_size();
+  DotDimensionNumbers new_dnums = dnums;
+  DimensionVector outer_permutation(rank);
+  for (int64_t i = 0; i < num_batch_dims; ++i) {
+    new_dnums.set_lhs_batch_dimensions(i, i);
+    new_dnums.set_rhs_batch_dimensions(i, i);
+    outer_permutation[i] = permutation[dnums.lhs_batch_dimensions(i)];
+  }
+  outer_permutation[rank - 2] = permutation[rank - 2];
+  outer_permutation[rank - 1] = permutation[rank - 1];
+
   HloInstruction* new_lhs =
       reorder_operands ? rhs->mutable_operand(0) : lhs->mutable_operand(0);
   HloInstruction* new_rhs =
       reorder_operands ? lhs->mutable_operand(0) : rhs->mutable_operand(0);
   auto new_dot = dot->AddInstruction(HloInstruction::CreateDot(
-      ShapeUtil::PermuteDimensions(permutation, dot->shape()), new_lhs, new_rhs,
-      dnums,
+      ShapeUtil::PermuteDimensions(InversePermutation(outer_permutation),
+                                   dot->shape()),
+      new_lhs, new_rhs, new_dnums,
       reorder_operands
           ? SwapOperandsInDotPrecisionConfig(dot->precision_config())
           : dot->precision_config()));
   dot->SetupDerivedInstruction(new_dot);
   ABSL_RETURN_IF_ERROR(ReplaceWithNewInstruction(
-      dot,
-      HloInstruction::CreateTranspose(dot->shape(), new_dot, permutation)));
+      dot, HloInstruction::CreateTranspose(dot->shape(), new_dot,
+                                           outer_permutation)));
   return true;
 }
 

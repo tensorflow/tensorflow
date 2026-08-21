@@ -71,9 +71,9 @@ def with_large_2nd_minor_layout(arr: jax.Array) -> jax.Array:
   lanes = pltpu.get_tpu_info().num_lanes
   sublanes = pltpu.get_tpu_info().num_sublanes
   large_second_minor = elems_per_word * sublanes
-  if arr.ndim < 2 or arr.shape[-2] < large_second_minor:
-    # No-op if the array is less than 2D or the second minor is too small to
-    # adopt the large 2nd minor layout.
+  if arr.ndim < 2 or arr.shape[-2] < large_second_minor or elems_per_word <= 1:
+    # No-op if the array is less than 2D, the second minor is too small to
+    # adopt the large 2nd minor layout, or elements are not packed.
     return arr
   return layout.with_layout_constraint(
       arr,

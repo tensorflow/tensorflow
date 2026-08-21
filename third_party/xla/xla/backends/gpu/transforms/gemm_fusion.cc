@@ -718,10 +718,13 @@ bool AllowedInGemmFusion(const HloInstruction& instr) {
     // the moment. Includes kFusion, kReduce, kAllReduce, etc.
     return false;
   }
+  // Collectives need runtime collective parameters, so keep them separate.
+  if (hlo_query::IsCollectiveCommunicationOp(instr.opcode())) {
+    return false;
+  }
   return HloPredicateIsNotOp<HloOpcode::kDot, HloOpcode::kScaledDot,
-                             HloOpcode::kParameter, HloOpcode::kAllGather,
-                             HloOpcode::kAllGatherStart,
-                             HloOpcode::kAllGatherDone>(&instr);
+                             HloOpcode::kParameter, HloOpcode::kAllGatherDone>(
+      &instr);
 }
 
 // Returns true if we should consider fusing the instruction into the GEMM

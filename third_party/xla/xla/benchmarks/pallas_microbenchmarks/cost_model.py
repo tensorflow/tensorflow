@@ -529,6 +529,16 @@ class CostModel:
     """Returns the throughput and latency of output fusions."""
     return PipelineStageCost()
 
+  def _xlu_cycles(
+      self,
+      num_ops: int | float | np.ndarray,
+      op: platform_info.XluOp,
+      dtype: jax.typing.DTypeLike,
+  ) -> np.ndarray:
+    """Returns XLU cycles for `num_ops` of `op` on `dtype` inputs."""
+    cadence = self._platform_info.get_xlu_cadence_cycles(op, dtype)
+    return (num_ops * cadence) / self._platform_info.num_xlus
+
   def _compute_latency_ns_per_iteration(
       self, p_state: int | None
   ) -> np.ndarray:
@@ -807,3 +817,318 @@ class CostModel:
 
 class DenseCostModel(CostModel):
   """Cost model specialized for Pallas dense matmul benchmarks."""
+
+
+class SubchannelCostModel(CostModel):
+  """Cost model specialized for Pallas subchannel quantized matmul benchmarks.
+
+  Models:
+  - Core matmul using `lhs_quantized_dtype` and `rhs_quantized_dtype`.
+  - Additional scale operands: `rhs_scales` (and `lhs_scales` when
+    `pre_quantize_lhs=True`).
+  - Input fusion: on-the-fly LHS quantization (`quantize`) when
+    `pre_quantize_lhs=False` (combining VPU intra-lane operations and XLU
+    cross-lane reductions), plus any VPU conversion spill for emulated or
+    sub-byte `lhs_quantized_dtype`.
+  - Output fusion: per-subblock dequantization (`result * x_safe_scales *
+    y_safe_scales`) and outer accumulation (`acc_ref += ...`).
+  """
+
+  # All ALU ops modeled below have a latency of 2 cycles, except vsel which has
+  # a latency of 1 cycle. We correct for this by using 3.5 quantize ops below.
+  _ALU_LATENCY_CYCLES = 2
+
+  # Number of ALU ops per VREG for dynamic LHS quantization (intra-lane
+  # vmaxabs, scale multiply, clipping, and vpack cast).
+  _NUM_QUANTIZE_ALU_OPS = 3.5
+  # Number of ALU ops per VREG for converting bf16 inputs to f32 on platforms
+  # where all ALU and XLU ops must be done in float32 (vunpack.c.l and
+  # vunpack.c.u).
+  _NUM_CONVERT_BF16_TO_F32_ALU_OPS = 1
+  # Number of ALU ops per VREG for unpacking an emulated quantized dtype (e.g.
+  # s4 -> f8e4m3fn via vunpack.c.l, vunpack.c.u, and vcvt).
+  _NUM_UNPACK_ALU_OPS = 3
+  # Number of ALU ops per VREG for subchannel output dequantization (vpack, 2x
+  # vmul) and accumulation (vadd).
+  _NUM_DEQUANT_ACCUM_ALU_OPS = 4
+  _MAX_COMPUTE_TILE_N = 2048
+
+  def __init__(
+      self,
+      m: int,
+      k: int,
+      n: int,
+      lhs_mem: pltpu.MemorySpace,
+      rhs_mem: pltpu.MemorySpace,
+      out_mem: pltpu.MemorySpace,
+      lhs_dtype: jax.typing.DTypeLike,
+      rhs_dtype: jax.typing.DTypeLike,
+      out_dtype: jax.typing.DTypeLike,
+      outer_acc_dtype: jax.typing.DTypeLike,
+      lhs_quantized_dtype: jax.typing.DTypeLike,
+      rhs_quantized_dtype: jax.typing.DTypeLike,
+      *,
+      inner_acc_dtype: jax.typing.DTypeLike = jnp.dtype(jnp.float32),
+      subchannel_size: int = 1024,
+      pre_quantize_lhs: bool = False,
+      chip_version: pltpu.ChipVersion | None = None,
+  ):
+    self.unquantized_lhs_dtype = jnp.dtype(lhs_dtype)
+    self.rhs_scales_dtype = jnp.dtype(rhs_dtype)
+    self.inner_acc_dtype = jnp.dtype(inner_acc_dtype)
+    self.outer_acc_dtype = jnp.dtype(outer_acc_dtype)
+    self.lhs_quantized_dtype = jnp.dtype(lhs_quantized_dtype)
+    self.rhs_quantized_dtype = jnp.dtype(rhs_quantized_dtype)
+    self.subchannel_size = subchannel_size
+    self.pre_quantize_lhs = pre_quantize_lhs
+    self._bits_lhs_scales = jax.dtypes.itemsize_bits(self.unquantized_lhs_dtype)
+    self._bits_rhs_scales = jax.dtypes.itemsize_bits(self.rhs_scales_dtype)
+    self._bits_inner_acc = jax.dtypes.itemsize_bits(self.inner_acc_dtype)
+
+    operand_lhs_dtype = (
+        self.lhs_quantized_dtype
+        if pre_quantize_lhs
+        else self.unquantized_lhs_dtype
+    )
+    pinfo = platform_info.get_platform_info(chip_version)
+    if jnp.issubdtype(
+        self.lhs_quantized_dtype, jnp.floating
+    ) and jnp.issubdtype(self.rhs_quantized_dtype, jnp.integer):
+      supported_latch_dtypes = platform_info.DtypeDict({
+          dt: cycles
+          for dt, cycles in pinfo.latch_cadence_cycles_by_dtype.items()
+          if jnp.issubdtype(dt, jnp.floating)
+      })
+      matmul_rhs_dtype = pinfo.get_emulated_dtype(
+          self.rhs_quantized_dtype, supported_latch_dtypes
+      )
+    else:
+      matmul_rhs_dtype = self.rhs_quantized_dtype
+    super().__init__(
+        m=m,
+        k=k,
+        n=n,
+        lhs_mem=lhs_mem,
+        rhs_mem=rhs_mem,
+        out_mem=out_mem,
+        lhs_dtype=operand_lhs_dtype,
+        rhs_dtype=self.rhs_quantized_dtype,
+        out_dtype=out_dtype,
+        acc_dtype=self.outer_acc_dtype,
+        matmul_lhs_dtype=self.lhs_quantized_dtype,
+        matmul_rhs_dtype=matmul_rhs_dtype,
+        chip_version=chip_version,
+    )
+
+  def _get_tile_sizes(self) -> tuple[int, int, int]:
+    m_tile_size, k_tile_size, n_tile_size = super()._get_tile_sizes()
+    return m_tile_size, max(k_tile_size, self.subchannel_size), n_tile_size
+
+  def _get_additional_operands(self) -> Sequence[Operand]:
+    subblocks_per_tile = self._block_k // self.subchannel_size
+    rhs_scales_bytes = (
+        subblocks_per_tile * self._block_n * self._bits_rhs_scales // 8
+    )
+    operands = [
+        Operand(rhs_scales_bytes, (Axis.K, Axis.N), is_output=False),
+    ]
+    if self.pre_quantize_lhs:
+      lhs_scales_bytes = (
+          self._block_m * subblocks_per_tile * self._bits_lhs_scales // 8
+      )
+      operands.append(
+          Operand(lhs_scales_bytes, (Axis.M, Axis.K), is_output=False)
+      )
+    return operands
+
+  def _get_input_fusion_vmem_usage_bytes(self) -> int | np.ndarray:
+    vmem_bytes = self._get_lhs_conversion_vmem_usage_bytes(
+        k_dim=self.subchannel_size
+    )
+    if not self.pre_quantize_lhs:
+      # Dynamically quantized x_q_block of shape (block_m, subchannel_size) is
+      # reused across steps_n in the inner loop. Avoid double-counting when
+      # _get_lhs_conversion_vmem_usage_bytes already accounts for it.
+      x_q_vmem_bytes = (
+          self._block_m * self.subchannel_size * self._bits_matmul_lhs // 8
+      )
+      vmem_bytes = np.maximum(vmem_bytes, x_q_vmem_bytes)
+    return vmem_bytes
+
+  def _get_output_fusion_vmem_usage_bytes(self) -> int | np.ndarray:
+    compute_tile_n = np.minimum(self._block_n, self._MAX_COMPUTE_TILE_N)
+    subblock_acc_bits = max(self._bits_inner_acc, self._bits_acc)
+    return self._block_m * compute_tile_n * subblock_acc_bits // 8
+
+  def _get_input_fusion_dtype(self) -> jnp.dtype:
+    """Returns the precision for input fusion VPU and XLU ops."""
+    if self._platform_info.chip_version in (
+        pltpu.ChipVersion.TPU_V5E,
+        pltpu.ChipVersion.TPU_V5P,
+    ):
+      return jnp.dtype(jnp.float32)
+    if jnp.dtype(self.unquantized_lhs_dtype) == jnp.dtype(jnp.float32):
+      return jnp.dtype(jnp.float32)
+    return jnp.dtype(jnp.bfloat16)
+
+  def _get_output_fusion_dtype(self) -> jnp.dtype:
+    """Returns the precision for output fusion VPU ops."""
+    if self._platform_info.chip_version in (
+        pltpu.ChipVersion.TPU_V5E,
+        pltpu.ChipVersion.TPU_V5P,
+    ):
+      return jnp.dtype(jnp.float32)
+    if jnp.dtype(self.outer_acc_dtype) == jnp.dtype(jnp.float32):
+      return jnp.dtype(jnp.float32)
+    return jnp.dtype(jnp.bfloat16)
+
+  def _num_vregs(
+      self,
+      rows: int | float | np.ndarray,
+      cols: int | float | np.ndarray,
+      dtype: jax.typing.DTypeLike,
+  ) -> np.ndarray:
+    """Returns the number of VREGs for a (rows, cols) tile with precision `dtype`."""
+    sublane_count, lane_count = self._platform_info.vreg_size
+    bitwidth = jax.dtypes.itemsize_bits(dtype)
+    rows_per_vreg = sublane_count * (32 // bitwidth)
+    return np.ceil(rows / rows_per_vreg) * np.ceil(cols / lane_count)
+
+  def _alu_cycles(
+      self,
+      rows: int | float | np.ndarray,
+      cols: int | float | np.ndarray,
+      num_ops: int | float,
+      dtype: jax.typing.DTypeLike,
+  ) -> np.ndarray:
+    """Returns unnormalized ALU throughput cycles for `num_ops` on a (rows, cols) tile."""
+    return (
+        self._num_vregs(rows, cols, dtype) * num_ops * self._ALU_LATENCY_CYCLES
+    )
+
+  def _alu_latency_cycles(
+      self,
+      rows: int | float | np.ndarray,
+      cols: int | float | np.ndarray,
+      num_ops: int | float,
+      dtype: jax.typing.DTypeLike,
+  ) -> np.ndarray:
+    """Returns latency cycles to execute `num_ops` on a (rows, cols) tile across ALUs."""
+    return (
+        self._alu_cycles(rows, cols, num_ops, dtype)
+        / self._platform_info.num_alus
+    )
+
+  def _get_input_fusion_stage_cost(self) -> PipelineStageCost:
+    mxu_contracting_dim, mxu_non_contracting_dim = self._get_mxu_size()
+    # Rows of LHS fed to the first MXU op (block_m may be smaller than a full
+    # vmatmul for narrow LHS dtypes).
+    first_op_rows = np.minimum(self._block_m, self._get_rows_per_vmatmul())
+    input_dtype = self._get_input_fusion_dtype()
+    # VPU ops share the VALUs, so their throughput cycles add up (including
+    # with the output fusion's VPU work). The XLU is a separate functional unit
+    # that pipelines against the VPU; units are balanced against each other in
+    # `_compute_latency_ns_per_iteration`.
+    alu_cycles: float | np.ndarray = 0.0
+    xlu_cycles: float | np.ndarray = 0.0
+    latency_cycles: float | np.ndarray = 0.0
+    if not self.pre_quantize_lhs:
+      # The per-subchannel maxabs (`jnp.max(jnp.abs(x))` in the unquantized LHS
+      # dtype) is an intra-lane maxabs on the VPU followed by one xlane reduce
+      # max per vreg on the XLU.
+      xlu_op = platform_info.XluOp.XLANE_REDUCE
+      xlu_dtype = self._platform_info.get_xlu_dtype(xlu_op, input_dtype)
+      sublane_count, _ = self._platform_info.vreg_size
+      rows_per_xlu_op = sublane_count * (
+          32 // jax.dtypes.itemsize_bits(xlu_dtype)
+      )
+      subblocks_per_tile = self._block_k // self.subchannel_size
+      alu_cycles = alu_cycles + self._alu_cycles(
+          self._block_m, self._block_k, self._NUM_QUANTIZE_ALU_OPS, input_dtype
+      )
+      num_xlu_ops = subblocks_per_tile * np.ceil(
+          self._block_m / rows_per_xlu_op
+      )
+      xlu_cadence = self._platform_info.get_xlu_cadence_cycles(
+          xlu_op, xlu_dtype
+      )
+      xlu_cycles = xlu_cycles + num_xlu_ops * xlu_cadence
+      first_op_xlu_ops = np.ceil(first_op_rows / rows_per_xlu_op)
+      # The scale depends on the amax over a full subchannel, so the first MXU
+      # op has to wait for the quantization of a full subchannel of its rows,
+      # including an xlane reduce max through the XLU pipeline.
+      latency_cycles = (
+          latency_cycles
+          + self._alu_latency_cycles(
+              first_op_rows,
+              self.subchannel_size,
+              self._NUM_QUANTIZE_ALU_OPS,
+              input_dtype,
+          )
+          + (first_op_xlu_ops * xlu_cadence) / self._platform_info.num_xlus
+          + self._platform_info.get_xlu_latency_cycles(xlu_op, xlu_dtype)
+      )
+      if self._platform_info.chip_version in (
+          pltpu.ChipVersion.TPU_V5E,
+          pltpu.ChipVersion.TPU_V5P,
+      ) and self.unquantized_lhs_dtype == jnp.dtype(jnp.bfloat16):
+        alu_cycles = alu_cycles + self._alu_cycles(
+            self._block_m,
+            self._block_k,
+            self._NUM_CONVERT_BF16_TO_F32_ALU_OPS,
+            input_dtype,
+        )
+        latency_cycles = latency_cycles + self._alu_latency_cycles(
+            first_op_rows,
+            self.subchannel_size,
+            self._NUM_CONVERT_BF16_TO_F32_ALU_OPS,
+            input_dtype,
+        )
+    if self.lhs_quantized_dtype != self.matmul_lhs_dtype:
+      alu_cycles = alu_cycles + self._alu_cycles(
+          self._block_m, self._block_k, self._NUM_UNPACK_ALU_OPS, input_dtype
+      )
+      latency_cycles = latency_cycles + self._alu_latency_cycles(
+          first_op_rows,
+          mxu_contracting_dim,
+          self._NUM_UNPACK_ALU_OPS,
+          input_dtype,
+      )
+    if self.rhs_quantized_dtype != self.matmul_rhs_dtype:
+      alu_cycles = alu_cycles + self._alu_cycles(
+          self._block_k, self._block_n, self._NUM_UNPACK_ALU_OPS, input_dtype
+      )
+      latency_cycles = latency_cycles + self._alu_latency_cycles(
+          mxu_contracting_dim,
+          mxu_non_contracting_dim,
+          self._NUM_UNPACK_ALU_OPS,
+          input_dtype,
+      )
+    return PipelineStageCost(
+        alu_cycles=alu_cycles,
+        xlu_cycles=xlu_cycles,
+        latency_cycles=latency_cycles,
+    )
+
+  def _get_output_fusion_stage_cost(self) -> PipelineStageCost:
+    _, mxu_non_contracting_dim = self._get_mxu_size()
+    subblocks_per_tile = self._block_k // self.subchannel_size
+    output_dtype = self._get_output_fusion_dtype()
+    total_cycles = subblocks_per_tile * self._alu_cycles(
+        self._block_m,
+        self._block_n,
+        self._NUM_DEQUANT_ACCUM_ALU_OPS,
+        output_dtype,
+    )
+    # Draining the pipeline requires dequantizing and accumulating the result
+    # tile of the last MXU op.
+    last_op_rows = np.minimum(self._block_m, self._get_rows_per_vmatmul())
+    return PipelineStageCost(
+        alu_cycles=total_cycles,
+        latency_cycles=self._alu_latency_cycles(
+            last_op_rows,
+            mxu_non_contracting_dim,
+            self._NUM_DEQUANT_ACCUM_ALU_OPS,
+            output_dtype,
+        ),
+    )

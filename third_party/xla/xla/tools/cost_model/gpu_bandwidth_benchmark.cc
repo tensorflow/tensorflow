@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "xla/tools/cost_model/gpu_bandwidth_benchmark.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -33,6 +35,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
 
 namespace xla::gpu {
@@ -49,23 +52,8 @@ using ::stream_executor::Stream;
 using ::stream_executor::StreamExecutor;
 using ::stream_executor::StreamExecutorAddressAllocator;
 
-absl::StatusOr<absl::Duration> TimeD2dMemcpy(
-    int64_t size_bytes, int warmup_runs, int measurement_runs, Stream& stream,
-    DeviceAddressBase& src, DeviceAddressBase& dst) {
-  ABSL_RETURN_IF_ERROR(stream.MemZero(&src, size_bytes));
-  ABSL_RETURN_IF_ERROR(stream.MemZero(&dst, size_bytes));
-
-  for (int w = 0; w < warmup_runs; ++w) {
-    ABSL_RETURN_IF_ERROR(stream.Memcpy(&dst, src, size_bytes));
-  }
-
-  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<EventBasedTimer> timer,
-                   stream.CreateEventBasedTimer(/*use_delay_kernel=*/true));
-  for (int r = 0; r < measurement_runs; ++r) {
-    ABSL_RETURN_IF_ERROR(stream.Memcpy(&dst, src, size_bytes));
-  }
-  return timer->GetElapsedDuration();
-}
+// Minimum L2 flush buffer size in case the device does not report L2 size.
+constexpr int64_t kMinL2FlushSizeBytes = int64_t{64} << 20;  // 64 MiB
 
 }  // namespace
 
@@ -84,48 +72,69 @@ absl::StatusOr<double> GetPeakBandwidthBytesPerSec(int ordinal) {
   return static_cast<double>(bandwidth);
 }
 
-absl::StatusOr<double> MeasureD2dBandwidthBytesPerSec(int ordinal,
-                                                      int64_t size_bytes,
-                                                      int warmup_runs,
-                                                      int measurement_runs) {
-  if (ordinal < 0) {
-    return absl::InvalidArgumentError(
-        absl::StrFormat("Invalid ordinal: %d. Must be >= 0.", ordinal));
-  }
-  if (size_bytes <= 0) {
-    return absl::InvalidArgumentError(
-        absl::StrFormat("Invalid size_bytes: %d. Must be > 0.", size_bytes));
-  }
-  if (warmup_runs < 0 || measurement_runs <= 0) {
-    return absl::InvalidArgumentError(
-        absl::StrFormat("Invalid warmup (%d) or measurement (%d) run count.",
-                        warmup_runs, measurement_runs));
+absl::StatusOr<std::vector<BandwidthEntry>> MeasureBandwidthTable(
+    int ordinal, int min_exp, int max_exp, int warmup_runs,
+    int measurement_runs) {
+  if (ordinal < 0 || min_exp <= 0 || max_exp < min_exp || max_exp >= 62 ||
+      warmup_runs < 0 || measurement_runs <= 0) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "Invalid arguments: ordinal=%d, exp=[%d, %d], warmup=%d, "
+        "measurement=%d.",
+        ordinal, min_exp, max_exp, warmup_runs, measurement_runs));
   }
 
+  ABSL_ASSIGN_OR_RETURN(const double peak_bytes_per_sec,
+                   GetPeakBandwidthBytesPerSec(ordinal));
   ABSL_ASSIGN_OR_RETURN(Platform * platform,
                    PlatformManager::PlatformWithName(GpuPlatformName()));
   ABSL_ASSIGN_OR_RETURN(StreamExecutor * executor,
                    platform->ExecutorForDevice(ordinal));
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<Stream> stream, executor->CreateStream());
 
+  const int64_t max_size = int64_t{1} << max_exp;
+  const int64_t flush_size =
+      std::max(2 * executor->GetDeviceDescription().l2_cache_size(),
+               kMinL2FlushSizeBytes);
   StreamExecutorAddressAllocator allocator(executor);
-  ABSL_ASSIGN_OR_RETURN(ScopedDeviceAddress<uint8_t> src,
-                   allocator.Allocate(ordinal, size_bytes));
-  ABSL_ASSIGN_OR_RETURN(ScopedDeviceAddress<uint8_t> dst,
-                   allocator.Allocate(ordinal, size_bytes));
+  ABSL_ASSIGN_OR_RETURN(ScopedDeviceAddress<uint8_t> target,
+                   allocator.Allocate(ordinal, max_size));
+  ABSL_ASSIGN_OR_RETURN(ScopedDeviceAddress<uint8_t> l2_flush_buf,
+                   allocator.Allocate(ordinal, flush_size));
 
-  ABSL_ASSIGN_OR_RETURN(absl::Duration elapsed,
-                   TimeD2dMemcpy(size_bytes, warmup_runs, measurement_runs,
-                                 *stream, *src.ptr(), *dst.ptr()));
+  std::vector<BandwidthEntry> entries;
+  entries.reserve(max_exp - min_exp + 1);
+  for (int exp = min_exp; exp <= max_exp; ++exp) {
+    const int64_t size_bytes = int64_t{1} << exp;
+    DeviceAddressBase target_slice = target->GetByteSlice(0, size_bytes);
+    for (int w = 0; w < warmup_runs; ++w) {
+      ABSL_RETURN_IF_ERROR(stream->MemZero(&target_slice, size_bytes));
+    }
 
-  const double elapsed_sec = absl::ToDoubleSeconds(elapsed);
-  if (elapsed_sec <= 0.0) {
-    return absl::InternalError("EventBasedTimer reported non-positive time.");
+    absl::Duration total_elapsed = absl::ZeroDuration();
+    for (int r = 0; r < measurement_runs; ++r) {
+      // Flush the L2 cache before each timed MemZero so runs do not hit L2.
+      ABSL_RETURN_IF_ERROR(stream->MemZero(l2_flush_buf.ptr(), flush_size));
+      // No delay kernel needed since the L2 flush keeps the stream busy.
+      ABSL_ASSIGN_OR_RETURN(
+          std::unique_ptr<EventBasedTimer> timer,
+          stream->CreateEventBasedTimer(/*use_delay_kernel=*/false));
+      ABSL_RETURN_IF_ERROR(stream->MemZero(&target_slice, size_bytes));
+      ABSL_ASSIGN_OR_RETURN(absl::Duration run_duration,
+                       timer->GetElapsedDuration());
+      total_elapsed += run_duration;
+    }
+
+    const double mean_sec =
+        absl::ToDoubleSeconds(total_elapsed) / measurement_runs;
+    if (mean_sec <= 0.0) {
+      return absl::InternalError("EventBasedTimer reported non-positive time.");
+    }
+    const double bytes_per_sec = size_bytes / mean_sec;
+    const float fraction =
+        std::min(1.0f, static_cast<float>(bytes_per_sec / peak_bytes_per_sec));
+    entries.push_back(BandwidthEntry{size_bytes, fraction});
   }
-  const double avg_sec = elapsed_sec / measurement_runs;
-  // A D2D memcpy reads `size_bytes` from the source buffer and writes
-  // `size_bytes` to the destination buffer, totaling 2 * size_bytes traversed.
-  return (2.0 * static_cast<double>(size_bytes)) / avg_sec;
+  return entries;
 }
 
 std::string FormatBandwidthTable(absl::Span<const BandwidthEntry> entries) {

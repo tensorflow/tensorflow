@@ -2319,8 +2319,10 @@ absl::StatusOr<SymmetricMemoryType> GetSymmetricMemoryType(
 }
 
 absl::StatusOr<CollectiveKernelSpec> CreateCollectiveKernelSpec(
-    const HloInstruction* instr, const LaunchDimensions& launch_dimensions,
-    SymmetricMemoryType scratch_memory_type) {
+    const GpuTopology& gpu_topology, const HloInstruction* instr,
+    const LaunchDimensions& launch_dimensions,
+    SymmetricMemoryType scratch_memory_type,
+    const DeviceAssignment* device_assignment) {
   const HloInstruction* collective = instr;
   if (instr->opcode() == HloOpcode::kFusion) {
     collective = GetCollectiveHero(instr->fused_instructions_computation());
@@ -2329,8 +2331,9 @@ absl::StatusOr<CollectiveKernelSpec> CreateCollectiveKernelSpec(
   }
   switch (collective->opcode()) {
     case HloOpcode::kAllReduce:
-      return CreateAllReduceKernelSpec(collective, launch_dimensions,
-                                       scratch_memory_type);
+      return CreateAllReduceKernelSpec(
+          gpu_topology, Cast<HloAllReduceInstruction>(collective),
+          launch_dimensions, scratch_memory_type, device_assignment);
     case HloOpcode::kAllGather:
       return CreateAllGatherKernelSpec(collective, launch_dimensions,
                                        scratch_memory_type);
