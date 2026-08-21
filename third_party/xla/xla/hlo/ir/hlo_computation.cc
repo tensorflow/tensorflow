@@ -152,8 +152,9 @@ std::unique_ptr<HloComputation> HloComputation::Builder::Build(
 HloComputation::HloComputation(
     const std::string& name, int parameter_count,
     std::vector<std::unique_ptr<HloInstruction>>* instructions,
-    HloInstruction* root_instruction, bool preserve_instruction_ids)
-    : unique_id_(-1),
+    HloInstruction* root_instruction, bool preserve_instruction_ids,
+    int64_t unique_id)
+    : unique_id_(unique_id),
       root_instruction_(root_instruction),
       instruction_count_(0),
       name_(NameUniquer::GetSanitizedName(name)) {
@@ -1433,8 +1434,8 @@ HloComputation::CreateFromProto(
   // instructions[instruction->local_id_] == instruction.
   auto computation = absl::WrapUnique(
       new HloComputation(proto.name(), parameter_count, &instructions, root,
-                         /*preserve_instruction_ids=*/true));
-  computation->SetUniqueIdHelper(proto.id());
+                         /*preserve_instruction_ids=*/true,
+                         /*unique_id=*/proto.id()));
   if (!proto.execution_thread().empty()) {
     computation->SetExecutionThread(proto.execution_thread());
   }
@@ -2287,6 +2288,9 @@ void HloComputation::SetUniqueId(int64_t id) {
 }
 
 void HloComputation::SetUniqueIdHelper(int64_t id) {
+  if (unique_id_ == id) {
+    return;
+  }
   // The caller/callee computations are ordered by unique ID, so we need to
   // remove and readd them to our neighbor's data structures.
   for (auto& [computation, count] : caller_computations_) {

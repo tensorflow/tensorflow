@@ -1017,7 +1017,8 @@ class HloComputation {
   explicit HloComputation(
       const std::string& name, int parameter_count,
       std::vector<std::unique_ptr<HloInstruction>>* instructions,
-      HloInstruction* root_instruction, bool preserve_instruction_ids = false);
+      HloInstruction* root_instruction, bool preserve_instruction_ids = false,
+      int64_t unique_id = -1);
 
   // Internal helper for adding instructions. Only assigns a unique id if it is
   // not already set.
