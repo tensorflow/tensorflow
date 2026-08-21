@@ -22,7 +22,6 @@ limitations under the License.
 #include <cstdint>
 #include <ios>
 #include <limits>
-#include <list>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -31,8 +30,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/const_init.h"
 #include "absl/base/no_destructor.h"
 #include "absl/base/optimization.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -60,7 +61,6 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_utils.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/profiler/backends/cpu/annotation_stack.h"
 #include "xla/tsl/profiler/utils/per_thread.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
@@ -1121,13 +1121,6 @@ const char* GetCuptiErrorString(CuptiInterface* cupti_interface,
   return err_str;
 }
 
-bool& IsCuptiHardwareEventSystemEnabled() {
-  // This flag can not flip to true once per process. Once enabled, it will stay
-  // enabled until the process is terminated.
-  static bool is_enabled = false;
-  return is_enabled;
-}
-
 }  // namespace
 
 CuptiTracer::CuptiTracer(CuptiInterface* cupti_interface)
@@ -1680,31 +1673,6 @@ absl::Status CuptiTracer::EnableActivityTracing() {
                      << err;
       }
     }
-    if (option_->enable_activity_hardware_tracing) {
-      if (IsCuptiHardwareEventSystemEnabled()) {
-        LOG(INFO) << "CUPTI activity HW trace already enabled.";
-      } else {
-        auto err = cupti_interface_->ActivityEnableHWTrace(true);
-        if (err == CUPTI_ERROR_NOT_SUPPORTED) {
-          LOG(INFO)
-              << "CUPTI activity HW trace not enabled due to not supported on "
-                 "this platform!";
-        } else if (err != CUPTI_SUCCESS) {
-          LOG(WARNING)
-              << "Fail to enable CUPTI activity HW trace, CUPTI ERROR CODE:"
-              << err << " (" << GetCuptiErrorString(cupti_interface_, err)
-              << ")";
-        } else {
-          LOG(INFO) << "CUPTI activity HW trace successfully enabled.";
-          IsCuptiHardwareEventSystemEnabled() = true;
-        }
-      }
-    } else {
-      if (IsCuptiHardwareEventSystemEnabled()) {
-        LOG(INFO)
-            << "CUPTI activity HW trace already enabled, continue with it.";
-      }
-    }
 
     if (using_v2_subscriber_api_) {
       RETURN_IF_CUPTI_ERROR(ActivityRegisterCallbacksV2(
@@ -2072,6 +2040,66 @@ absl::Status CuptiTracer::ProcessActivityBuffer(CUcontext context,
         "Insufficient privilege to run libcupti (you need root permission).");
   }
   return "";
+}
+
+/*static*/ absl::Status CuptiTracer::EnableHES() {
+  static absl::Mutex mu(absl::kConstInit);
+  static bool is_hes_enabled ABSL_GUARDED_BY(mu) = false;
+
+  absl::MutexLock lock(mu);
+  if (is_hes_enabled) {
+    LOG(INFO) << "CUPTI activity HW trace already enabled.";
+    return absl::OkStatus();
+  }
+
+  CUresult cu_err = cuInit(0);
+  if (cu_err != CUDA_SUCCESS) {
+    return absl::InternalError(absl::StrCat(
+        "cuInit(0) failed with error code: ", static_cast<int>(cu_err)));
+  }
+
+  CUcontext ctx = nullptr;
+  if (cuCtxGetCurrent(&ctx) == CUDA_SUCCESS && ctx != nullptr) {
+    return absl::FailedPreconditionError(
+        "Cannot enable HES: a CUDA context is already active on the current "
+        "thread.");
+  }
+
+  int gpu_count = NumGpus();
+  for (int i = 0; i < gpu_count; ++i) {
+    CUdevice dev;
+    if (cuDeviceGet(&dev, i) == CUDA_SUCCESS) {
+      unsigned int flags = 0;
+      int active = 0;
+      if (cuDevicePrimaryCtxGetState(dev, &flags, &active) == CUDA_SUCCESS &&
+          active) {
+        return absl::FailedPreconditionError(absl::StrCat(
+            "Cannot enable HES: active primary CUDA context found on device ",
+            i));
+      }
+    }
+  }
+
+  CuptiInterface* cupti_interface = GetCuptiInterface();
+  auto err = cupti_interface->ActivityEnableHWTrace(true);
+  if (err == CUPTI_ERROR_NOT_SUPPORTED) {
+    LOG(INFO)
+        << "CUPTI activity HW trace not enabled due to not supported on this "
+           "platform!";
+    return absl::UnimplementedError(
+        "CUPTI activity HW trace not supported on this platform.");
+  }
+  if (err != CUPTI_SUCCESS) {
+    LOG(WARNING) << "Fail to enable CUPTI activity HW trace, CUPTI ERROR CODE: "
+                 << err << " (" << GetCuptiErrorString(cupti_interface, err)
+                 << ")";
+    return absl::InternalError(
+        absl::StrCat("Fail to enable CUPTI activity HW trace: ",
+                     GetCuptiErrorString(cupti_interface, err)));
+  }
+  LOG(INFO) << "CUPTI activity HW trace successfully enabled.";
+  is_hes_enabled = true;
+  return absl::OkStatus();
 }
 
 std::vector<CallbackAnnotationsAndEvents>
