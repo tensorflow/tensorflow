@@ -466,29 +466,6 @@ if(TFLITE_ENABLE_GPU)
         DEPENDS ${METAL_GENERATED_DIR}/inference_context_generated.h
     )
     add_dependencies(metal_delegate inference_context_cc_fbs)
-    #
-    # supplementary libraries for libmetal_delegate
-    #
-   SET(METAL_DELEGATE_PATH ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/)
-
-   list(APPEND MM_SRCS
-     buffer
-     buffer_convert
-     common
-     compute_task
-     inference_context
-     metal_arguments
-     metal_device
-     metal_spatial_tensor
-   )
-   foreach(lib_name ${MM_SRCS})
-     add_library("${lib_name}" STATIC ${METAL_DELEGATE_PATH}${lib_name}.mm)
-     target_include_directories("${lib_name}" PUBLIC
-       ${CMAKE_BINARY_DIR}/abseil-cpp
-       ${CMAKE_BINARY_DIR}/flatbuffers/include
-     )
-     target_link_libraries(${lib_name})
-   endforeach()
 endif()
   list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DCL_DELEGATE_NO_GL" "-DEGL_NO_X11")
   list(APPEND TFLITE_TARGET_DEPENDENCIES
