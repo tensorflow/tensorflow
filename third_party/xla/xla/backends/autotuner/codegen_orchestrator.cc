@@ -40,6 +40,17 @@ limitations under the License.
 #include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
+namespace {
+
+absl::Status MakeCombinedConfigError(absl::Span<const absl::Status> errors) {
+  std::string combined_error = "All backends failed to find supported configs:";
+  for (const auto& err : errors) {
+    absl::StrAppend(&combined_error, "\n - ", err.ToString());
+  }
+  return absl::InternalError(combined_error);
+}
+
+}  // namespace
 
 absl::StatusOr<std::unique_ptr<CodegenOrchestrator>>
 CodegenOrchestrator::Create(
@@ -71,15 +82,42 @@ CodegenOrchestrator::GetSupportedConfigs(const HloInstruction& instr) const {
     VLOG(3) << "Found " << per_backend_configs->size()
             << " supported configs for backend " << codegen_backend->name();
     for (auto& config : *per_backend_configs) {
-      configs.push_back({codegen_backend.get(), std::move(config)});
+      configs.push_back(Config{codegen_backend.get(), std::move(config)});
     }
   }
   if (configs.empty() && !errors.empty()) {
-    std::string combined_error = "All backends failed to get configs: ";
-    for (const auto& err : errors) {
-      absl::StrAppend(&combined_error, "\n - ", err.ToString());
+    return MakeCombinedConfigError(errors);
+  }
+  return configs;
+}
+
+absl::StatusOr<std::vector<CodegenOrchestrator::EstimatedConfig>>
+CodegenOrchestrator::GetSupportedConfigsWithEstimates(
+    const HloInstruction& instr) const {
+  std::vector<EstimatedConfig> configs;
+  std::vector<absl::Status> errors;
+  for (auto& codegen_backend : codegen_backends_) {
+    absl::StatusOr<std::vector<CodegenBackend::EstimatedConfig>>
+        per_backend_configs =
+            codegen_backend->GetSupportedConfigsWithEstimates(instr);
+    if (!per_backend_configs.ok()) {
+      errors.push_back(per_backend_configs.status());
+      VLOG(3) << "Failed to get supported configs with estimates for backend "
+              << codegen_backend->name() << ": "
+              << per_backend_configs.status();
+      continue;
     }
-    return absl::InternalError(combined_error);
+    VLOG(3) << "Found " << per_backend_configs->size()
+            << " supported configs with estimates for backend "
+            << codegen_backend->name();
+    for (auto& config : *per_backend_configs) {
+      configs.push_back(EstimatedConfig{
+          Config{codegen_backend.get(), std::move(config.config)},
+          config.estimated_runtime});
+    }
+  }
+  if (configs.empty() && !errors.empty()) {
+    return MakeCombinedConfigError(errors);
   }
   return configs;
 }

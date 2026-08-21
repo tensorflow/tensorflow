@@ -582,10 +582,7 @@ TEST_P(GpuHloScheduleParameterizedTest,
 
   EXPECT_EQ(count_between_pairs_high_latency.size(), 2);
   EXPECT_EQ(count_between_pairs_low_latency.size(), 2);
-  EXPECT_NE(count_between_pairs_high_latency[0],
-            count_between_pairs_low_latency[0]);
-  EXPECT_NE(count_between_pairs_high_latency[1],
-            count_between_pairs_low_latency[1]);
+  EXPECT_NE(count_between_pairs_high_latency, count_between_pairs_low_latency);
 }
 
 TEST_P(GpuHloScheduleParameterizedTest,

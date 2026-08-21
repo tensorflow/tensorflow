@@ -257,10 +257,6 @@ cc_library(
     deps = [
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:memory_allocation",
-        "//xla/stream_executor:stream_executor_h",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@tsl//tsl/platform:statusor",
     ],
 )
 
