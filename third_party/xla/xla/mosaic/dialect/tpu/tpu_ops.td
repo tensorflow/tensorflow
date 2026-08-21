@@ -1291,6 +1291,22 @@ def TPU_EraseLayoutOp : TPU_Op<"erase_memref_layout", [Pure]> {
   let hasVerifier = 1;
 }
 
+def TPU_AnnotateOp : TPU_Op<"annotate", [Pure, SameOperandsAndResultType]> {
+  let summary = "Annotates a memref with memory annotations.";
+  let arguments = (ins
+    AnyMemRef:$operand,
+    DefaultValuedAttr<BoolAttr, "false">:$no_store,
+    DefaultValuedAttr<BoolAttr, "false">:$no_bank_conflict,
+    DefaultValuedAttr<BoolAttr, "false">:$no_hazard,
+    DefaultValuedAttr<BoolAttr, "false">:$no_hazard_no_deps
+  );
+  let results = (outs AnyMemRef:$result);
+  let assemblyFormat = [{
+    $operand attr-dict `:` type($operand)
+  }];
+  let hasVerifier = 1;
+}
+
 // Returns the ID of the current device.
 //
 // On the input to the compiler the return value is a logical ID in the XLA

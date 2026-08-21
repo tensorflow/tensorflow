@@ -994,6 +994,19 @@ LogicalResult EraseLayoutOp::verify() {
   return success();
 }
 
+LogicalResult AnnotateOp::verify() {
+  if (getNoStore() + getNoHazard() + getNoHazardNoDeps() > 1) {
+    return emitOpError(
+        "At most one of no_store, no_hazard, or no_hazard_no_deps can be set");
+  }
+  auto memref_ty = cast<MemRefType>(getOperand().getType());
+  if ((getNoHazard() || getNoHazardNoDeps()) &&
+      !HasMemorySpace(memref_ty, MemorySpace::kVmem)) {
+    return emitOpError("Hazard overrides are only valid for VMEM allocations");
+  }
+  return success();
+}
+
 LogicalResult DynamicRotateOp::verify() {
   auto vty = getResult().getType();
   if (vty.getRank() <= getDimension() || getDimension() < 0) {
