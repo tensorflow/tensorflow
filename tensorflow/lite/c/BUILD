@@ -487,7 +487,6 @@ cc_test(
 
 cc_library_with_tflite_with_c_headers_test(
     name = "test_util",
-    testonly = True,
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
     generate_opaque_delegate_target = True,
