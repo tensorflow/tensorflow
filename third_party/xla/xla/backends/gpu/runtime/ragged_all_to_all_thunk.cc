@@ -399,7 +399,7 @@ absl::Status RunNcclFallbackRaggedAllToAll(
       << device_ordinal;
   ABSL_ASSIGN_OR_RETURN(int32_t num_ranks, comm.NumRanks());
 
-  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
+  auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
   if (gpu_comm->gxl_communicator() != nullptr) {
     GxlCommunicator* gxl_nccl_comm = gpu_comm->gxl_communicator();
     return gxl_nccl_comm->RunRaggedAllToAllGxl(
@@ -931,7 +931,7 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
     state = per_stream_states_[stream.parent()].get();
   }
 
-  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
+  auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
   if (UsesDeviceKernel() && gpu_comm->SupportsDeviceComm() &&
       params.collective_memory != nullptr && state->lsa_size.has_value()) {
     auto [input_sym, input_offset] =
