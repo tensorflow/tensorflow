@@ -653,6 +653,192 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsAndCopyToHostBuffer) {
   }
 }
 
+TEST(ArrayImplTest, CopyArraysToHostBufferShardsSingleDevice) {
+  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+
+  DType dtype(DType::kF32);
+  Shape shape({2, 3});
+  Shape shard_shape = shape;
+  std::vector<float> data0(6);
+  absl::c_iota(data0, 0);
+  std::vector<float> data1(6);
+  absl::c_iota(data1, 10);
+
+  ShardingRef sharding = SingleDeviceSharding::Create(
+      client->addressable_devices()[0], MemoryKind());
+
+  std::vector<Client::MakeArraysFromHostBufferShardsSpec> make_specs;
+  make_specs.push_back({
+      /*buffers=*/{
+          {{0},
+           {data0.data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
+            /*on_done_with_host_buffer=*/nullptr}}},
+      /*array_spec=*/{dtype, shape, sharding, /*layout=*/nullptr},
+  });
+  make_specs.push_back({
+      /*buffers=*/{
+          {{0},
+           {data1.data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
+            /*on_done_with_host_buffer=*/nullptr}}},
+      /*array_spec=*/{dtype, shape, sharding, /*layout=*/nullptr},
+  });
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<ArrayRef> arrays,
+      client->MakeArraysFromHostBufferShards(
+          absl::MakeSpan(make_specs),
+          Client::HostBufferSemantics::kImmutableOnlyDuringCall));
+  ASSERT_THAT(arrays, SizeIs(2));
+
+  std::vector<float> out0(6, 0.0f);
+  std::vector<float> out1(6, 0.0f);
+
+  std::vector<Client::CopyArraysToHostBufferShardsSpec> copy_specs;
+  copy_specs.push_back({
+      /*array=*/arrays[0],
+      /*buffers=*/
+      {{{0}, {out0.data(), dtype, shape, /*byte_strides=*/std::nullopt}}},
+  });
+  copy_specs.push_back({
+      /*array=*/arrays[1],
+      /*buffers=*/
+      {{{0}, {out1.data(), dtype, shape, /*byte_strides=*/std::nullopt}}},
+  });
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<tsl::Future<>> futures,
+      client->CopyArraysToHostBufferShards(absl::MakeSpan(copy_specs),
+                                           ArrayCopySemantics::kAlwaysCopy));
+  ASSERT_THAT(futures, SizeIs(2));
+
+  EXPECT_OK(futures[0].Await());
+  EXPECT_OK(futures[1].Await());
+  EXPECT_THAT(out0, ElementsAre(0, 1, 2, 3, 4, 5));
+  EXPECT_THAT(out1, ElementsAre(10, 11, 12, 13, 14, 15));
+}
+
+TEST(ArrayImplTest, CopyArraysToHostBufferShardsMultiDevice) {
+  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  if (client->addressable_devices().size() < 2) {
+    GTEST_SKIP() << "This test is relevant only for clients with devices that "
+                    "have at least 2 devices";
+  }
+
+  DType dtype(DType::kF32);
+  Shape shape({2, 3});
+  Shape shard_shape({1, 3});
+  std::vector<float> data0(3);
+  absl::c_iota(data0, 0);
+  std::vector<float> data1(3);
+  absl::c_iota(data1, 3);
+  absl::Span<Device* const> devices =
+      client->addressable_devices().subspan(0, 2);
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                       client->MakeDeviceList(devices));
+  ShardingRef sharding =
+      ConcreteEvenSharding::Create(device_list, MemoryKind(), shape,
+                                   shard_shape, /*is_fully_replicated=*/false);
+
+  std::vector<Client::MakeArraysFromHostBufferShardsSpec> make_specs;
+  make_specs.push_back({
+      /*buffers=*/{
+          {{0},
+           {data0.data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
+            /*on_done_with_host_buffer=*/nullptr}},
+          {{1},
+           {data1.data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
+            /*on_done_with_host_buffer=*/nullptr}}},
+      /*array_spec=*/{dtype, shape, sharding, /*layout=*/nullptr},
+  });
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<ArrayRef> arrays,
+      client->MakeArraysFromHostBufferShards(
+          absl::MakeSpan(make_specs),
+          Client::HostBufferSemantics::kImmutableOnlyDuringCall));
+  ASSERT_THAT(arrays, SizeIs(1));
+
+  std::vector<float> out_shard0(3, 0.0f);
+  std::vector<float> out_shard1(3, 0.0f);
+
+  std::vector<Client::CopyArraysToHostBufferShardsSpec> copy_specs;
+  copy_specs.push_back({
+      /*array=*/arrays[0],
+      /*buffers=*/
+      {{{0},
+        {out_shard0.data(), dtype, shard_shape,
+         /*byte_strides=*/std::nullopt}},
+       {{1},
+        {out_shard1.data(), dtype, shard_shape,
+         /*byte_strides=*/std::nullopt}}},
+  });
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<tsl::Future<>> futures,
+      client->CopyArraysToHostBufferShards(absl::MakeSpan(copy_specs),
+                                           ArrayCopySemantics::kAlwaysCopy));
+  ASSERT_THAT(futures, SizeIs(1));
+
+  EXPECT_OK(futures[0].Await());
+  EXPECT_THAT(out_shard0, ElementsAre(0, 1, 2));
+  EXPECT_THAT(out_shard1, ElementsAre(3, 4, 5));
+}
+
+TEST(ArrayImplTest, CopyArraysToHostBufferShardsReplicated) {
+  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  if (client->addressable_devices().size() < 2) {
+    GTEST_SKIP() << "This test is relevant only for clients with devices that "
+                    "have at least 2 devices";
+  }
+
+  DType dtype(DType::kF32);
+  Shape shape({2, 3});
+  Shape shard_shape = shape;
+  std::vector<float> data(6);
+  absl::c_iota(data, 0);
+  absl::Span<Device* const> devices =
+      client->addressable_devices().subspan(0, 2);
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                       client->MakeDeviceList(devices));
+  ShardingRef sharding =
+      ConcreteEvenSharding::Create(device_list, MemoryKind(), shape,
+                                   shard_shape, /*is_fully_replicated=*/true);
+
+  std::vector<Client::MakeArraysFromHostBufferShardsSpec> make_specs;
+  make_specs.push_back({
+      /*buffers=*/{
+          {{0, 1},
+           {data.data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
+            /*on_done_with_host_buffer=*/nullptr}}},
+      /*array_spec=*/{dtype, shape, sharding, /*layout=*/nullptr},
+  });
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<ArrayRef> arrays,
+      client->MakeArraysFromHostBufferShards(
+          absl::MakeSpan(make_specs),
+          Client::HostBufferSemantics::kImmutableOnlyDuringCall));
+  ASSERT_THAT(arrays, SizeIs(1));
+
+  std::vector<float> out(6, 0.0f);
+
+  std::vector<Client::CopyArraysToHostBufferShardsSpec> copy_specs;
+  copy_specs.push_back({
+      /*array=*/arrays[0],
+      /*buffers=*/
+      {{{0, 1}, {out.data(), dtype, shape, /*byte_strides=*/std::nullopt}}},
+  });
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<tsl::Future<>> futures,
+      client->CopyArraysToHostBufferShards(absl::MakeSpan(copy_specs),
+                                           ArrayCopySemantics::kAlwaysCopy));
+  ASSERT_THAT(futures, SizeIs(1));
+
+  EXPECT_OK(futures[0].Await());
+  EXPECT_THAT(out, ElementsAre(0, 1, 2, 3, 4, 5));
+}
+
 TEST(ArrayImplTest, MakeArraysFromHostBufferShardsWithDifferentDevices) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   if (client->addressable_devices().size() < 2) {
