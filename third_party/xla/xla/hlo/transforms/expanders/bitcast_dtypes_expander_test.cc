@@ -319,4 +319,75 @@ ENTRY entry {
 }
 
 }  // namespace
+
+TEST_F(BitcastDtypesExpanderTest, S32toS8Tiled) {
+  absl::string_view hlo_string = R"(
+HloModule bitcast_to_smaller
+
+ENTRY main {
+  p = s32[10]{0:T(256)} parameter(0)
+  ROOT out = s8[10,4]{0,1:T(2,128)} bitcast-convert(p)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  BitcastDtypesExpander expander;
+  ASSERT_OK_AND_ASSIGN(bool changed, expander.Run(module.get()));
+
+  EXPECT_TRUE(changed);
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+// CHECK-LABEL: ENTRY %main (p: s32[10]) -> s8[10,4] {
+// CHECK: %[[P:.*]] = s32[10]{0:T(256)} parameter(0)
+// CHECK: %[[BROADCAST:.*]] = s32[10,4]{0,1:T(2,128)} broadcast(%[[P]]), dimensions={0}
+// CHECK: %[[BITCAST_CONVERT:.*]] = u32[10,4]{0,1:T(2,128)} bitcast-convert(%[[BROADCAST]])
+// CHECK: %[[SHIFT_RIGHT:.*]] = u32[10,4]{0,1:T(2,128)} shift-right-logical(%[[BITCAST_CONVERT]],
+// CHECK: %[[AND:.*]] = u32[10,4]{0,1:T(2,128)} and(%[[SHIFT_RIGHT]],
+// CHECK: %[[CONVERT:.*]] = u8[10,4]{0,1:T(2,128)} convert(%[[AND]])
+// CHECK: ROOT %[[OUT:.*]] = s8[10,4]{0,1:T(2,128)} bitcast-convert(%[[CONVERT]])
+)"));
+}
+
+TEST_F(BitcastDtypesExpanderTest, S8toS32Tiled) {
+  absl::string_view hlo_string = R"(
+HloModule bitcast_to_larger
+
+ENTRY main {
+  p = s8[10,4]{0,1:T(2,128)} parameter(0)
+  ROOT out = s32[10]{0:T(256)} bitcast-convert(p)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  BitcastDtypesExpander expander;
+  ASSERT_OK_AND_ASSIGN(bool changed, expander.Run(module.get()));
+
+  EXPECT_TRUE(changed);
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+// CHECK-LABEL: ENTRY %main (p: s8[10,4]) -> s32[10] {
+// CHECK: %[[P:.*]] = s8[10,4]{0,1:T(2,128)} parameter(0)
+// CHECK: %[[RESHAPE:.*]] = s8[40]{0} reshape(%[[P]])
+// CHECK: %[[SLICE_0:.*]] = s8[10]{0:T(256)} slice(%[[RESHAPE]]), slice={[0:37:4]}
+// CHECK: %[[BITCAST_CONVERT_0:.*]] = u8[10]{0:T(256)} bitcast-convert(%[[SLICE_0]])
+// CHECK: %[[CONVERT_0:.*]] = u32[10]{0:T(256)} convert(%[[BITCAST_CONVERT_0]])
+// CHECK: %[[SLICE_1:.*]] = s8[10]{0:T(256)} slice(%[[RESHAPE]]), slice={[1:38:4]}
+// CHECK: %[[BITCAST_CONVERT_1:.*]] = u8[10]{0:T(256)} bitcast-convert(%[[SLICE_1]])
+// CHECK: %[[CONVERT_1:.*]] = u32[10]{0:T(256)} convert(%[[BITCAST_CONVERT_1]])
+// CHECK: %[[SHIFT_LEFT_1:.*]] = u32[10]{0:T(256)} shift-left(%[[CONVERT_1]],
+// CHECK: %[[OR_1:.*]] = u32[10]{0:T(256)} or(%[[CONVERT_0]], %[[SHIFT_LEFT_1]])
+// CHECK: %[[SLICE_2:.*]] = s8[10]{0:T(256)} slice(%[[RESHAPE]]), slice={[2:39:4]}
+// CHECK: %[[BITCAST_CONVERT_2:.*]] = u8[10]{0:T(256)} bitcast-convert(%[[SLICE_2]])
+// CHECK: %[[CONVERT_2:.*]] = u32[10]{0:T(256)} convert(%[[BITCAST_CONVERT_2]])
+// CHECK: %[[SHIFT_LEFT_2:.*]] = u32[10]{0:T(256)} shift-left(%[[CONVERT_2]],
+// CHECK: %[[OR_2:.*]] = u32[10]{0:T(256)} or(%[[OR_1]], %[[SHIFT_LEFT_2]])
+// CHECK: %[[SLICE_3:.*]] = s8[10]{0:T(256)} slice(%[[RESHAPE]]), slice={[3:40:4]}
+// CHECK: %[[BITCAST_CONVERT_3:.*]] = u8[10]{0:T(256)} bitcast-convert(%[[SLICE_3]])
+// CHECK: %[[CONVERT_3:.*]] = u32[10]{0:T(256)} convert(%[[BITCAST_CONVERT_3]])
+// CHECK: %[[SHIFT_LEFT_3:.*]] = u32[10]{0:T(256)} shift-left(%[[CONVERT_3]],
+// CHECK: %[[OR_3:.*]] = u32[10]{0:T(256)} or(%[[OR_2]], %[[SHIFT_LEFT_3]])
+// CHECK: ROOT %[[OUT:.*]] = s32[10]{0:T(256)} bitcast-convert
+)"));
+}
+
 }  // namespace xla
