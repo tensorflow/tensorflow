@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/hlo_phi_graph.h"
 
 #include <queue>
+#include <vector>
 
 namespace xla {
 HloValue::Id PhiGraph::GetOptimizedId(const HloValue& value) {
@@ -38,6 +39,19 @@ bool PhiGraph::InputsEqualTo(const HloValue& value,
     new_set.insert(input->id());
   }
   return existing_set == new_set;
+}
+
+std::vector<HloValue::Id> PhiGraph::GetInputs(const HloValue& value) const {
+  auto iter = value_id_to_node_.find(value.id());
+  if (iter == value_id_to_node_.end()) {
+    return {};
+  }
+  std::vector<HloValue::Id> inputs;
+  inputs.reserve(iter->second->operands.size());
+  for (Node* operand : iter->second->operands) {
+    inputs.push_back(operand->value_id);
+  }
+  return inputs;
 }
 
 HloValue::Id PhiGraph::FindOptimizedValue(const HloValue::Id id) {

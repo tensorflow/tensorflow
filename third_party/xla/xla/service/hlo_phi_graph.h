@@ -50,6 +50,9 @@ class PhiGraph {
   bool InputsEqualTo(const HloValue& value,
                      absl::Span<const HloValue* const> inputs);
 
+  // Returns the input value IDs for the given hlo value.
+  std::vector<HloValue::Id> GetInputs(const HloValue& value) const;
+
   // Given `id`, returns the new id that `id` should be replaced with. If the
   // node is not optimized, returns the same value.
   HloValue::Id FindOptimizedValue(const HloValue::Id id);
