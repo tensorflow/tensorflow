@@ -7493,6 +7493,14 @@ build_test(
     targets = [":portable_tensorflow_kernels"],
 )
 
+# KDNN kernels - support for KDNN optimized operators
+# Currently supports: sigmoid
+# Note: KDNN is mutually exclusive with MKL/oneDNN
+alias(
+    name = "kdnn_kernels",
+    actual = "//tensorflow/core/kernels/kdnn:kdnn_kernels",
+)
+
 cc_library(
     name = "android_whole_file_read_ops",
     srcs = if_android(["whole_file_read_ops.cc"]),
