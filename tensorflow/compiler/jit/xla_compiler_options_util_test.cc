@@ -39,9 +39,10 @@ limitations under the License.
 #include "xla/client/local_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/device.h"
@@ -233,7 +234,10 @@ TEST_F(XlaCompilerOptionsTest, XlaOptions) {
   device_setup_.AddDevicesAndSetUp({DEVICE_XLA_GPU});
   Device* device = device_setup_.GetDevice(DEVICE_XLA_GPU);
 
-  xla::LocalClient* client = xla::ClientLibrary::LocalClientOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(xla::se::Platform * platform,
+                          se::PlatformManager::PlatformWithName("CUDA"));
+  TF_ASSERT_OK_AND_ASSIGN(xla::LocalClient * client,
+                          xla::ClientLibrary::GetOrCreateLocalClient(platform));
   DeviceType device_type = DeviceType(DEVICE_XLA_GPU);
   DeviceType compilation_device_type = DeviceType(DEVICE_GPU_XLA_JIT);
 
@@ -273,7 +277,10 @@ TEST_F(XlaCompilerOptionsTest, XlaOptionsHasRefVarsNoXlaDeviceMetadata) {
   device_setup_.AddDevicesAndSetUp({DEVICE_CPU});
   Device* device = device_setup_.GetDevice(DEVICE_CPU);
 
-  xla::LocalClient* client = xla::ClientLibrary::LocalClientOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(xla::se::Platform * platform,
+                          se::PlatformManager::PlatformWithName("Host"));
+  TF_ASSERT_OK_AND_ASSIGN(xla::LocalClient * client,
+                          xla::ClientLibrary::GetOrCreateLocalClient(platform));
   DeviceType device_type = DeviceType(DEVICE_CPU);
   DeviceType compilation_device_type = DeviceType(DEVICE_CPU_XLA_JIT);
 
@@ -317,7 +324,10 @@ TEST_F(XlaCompilerOptionsTest, TfRtTpuOptions) {
   device_setup_.AddDevicesAndSetUp({DEVICE_TPU_NODE});
 
   // Just use the default local client for testing purposes.
-  xla::LocalClient* client = xla::ClientLibrary::LocalClientOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(xla::se::Platform * platform,
+                          se::PlatformManager::PlatformWithName("Host"));
+  TF_ASSERT_OK_AND_ASSIGN(xla::LocalClient * client,
+                          xla::ClientLibrary::GetOrCreateLocalClient(platform));
   DeviceType compilation_device_type = DeviceType(DEVICE_TPU_XLA_JIT);
 
   auto xla_device_compiler =

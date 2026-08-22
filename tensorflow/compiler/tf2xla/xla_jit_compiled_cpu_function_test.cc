@@ -24,6 +24,11 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function_thunks.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/testlib/test.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/service/compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
@@ -356,6 +361,50 @@ TEST(XlaJitCompiledCpuFunction, CanCompileWithAdditionalPlatform) {
       std::unique_ptr<XlaJitCompiledCpuFunction> jit,
       XlaJitCompiledCpuFunction::Compile(graph_def, config,
                                          xla::ExecutableBuildOptions()));
+}
+
+TEST(XlaJitCompiledCpuFunction, SumCompileOptions) {
+  GraphDef graph_def = SumGraph();
+  tf2xla::Config config = SumConfig();
+
+  xla::CompileOptions options;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<XlaJitCompiledCpuFunction> jit,
+      XlaJitCompiledCpuFunction::Compile(graph_def, config, options));
+  XlaCompiledCpuFunctionThunks function(jit->StaticData());
+  ASSERT_EQ(function.num_args(), 2);
+  ASSERT_EQ(function.num_results(), 1);
+
+  *static_cast<int32_t*>(function.arg_data(0)) = 15;
+  *static_cast<int32_t*>(function.arg_data(1)) = 27;
+  EXPECT_TRUE(function.Run());
+  EXPECT_EQ(function.error_msg(), "");
+  EXPECT_EQ(*static_cast<int32_t*>(function.result_data(0)), 42);
+}
+
+TEST(XlaJitCompiledCpuFunction, SumExplicitCompilerAndClient) {
+  GraphDef graph_def = SumGraph();
+  tf2xla::Config config = SumConfig();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          xla::GetXlaPjrtCpuClient(xla::CpuClientOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(auto* compiler,
+                          xla::GetDefaultPjRtCompiler(xla::CpuName()));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<XlaJitCompiledCpuFunction> jit,
+                          XlaJitCompiledCpuFunction::Compile(
+                              graph_def, config, xla::ExecutableBuildOptions(),
+                              compiler, client.get()));
+  EXPECT_NE(&jit->pjrt_executable(), nullptr);
+  XlaCompiledCpuFunctionThunks function(jit->StaticData());
+  ASSERT_EQ(function.num_args(), 2);
+  ASSERT_EQ(function.num_results(), 1);
+
+  *static_cast<int32_t*>(function.arg_data(0)) = 20;
+  *static_cast<int32_t*>(function.arg_data(1)) = 22;
+  EXPECT_TRUE(function.Run());
+  EXPECT_EQ(function.error_msg(), "");
+  EXPECT_EQ(*static_cast<int32_t*>(function.result_data(0)), 42);
 }
 
 }  // namespace
