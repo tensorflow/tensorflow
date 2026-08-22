@@ -588,12 +588,12 @@ class ExportBufferStorage {
           hash_(hash),
           byte_size_hint_(byte_size_hint) {}
 
-    inline absl::Status ApplyData(
+    absl::Status ApplyData(
         ExportBufferStorage::ApplyDataFuncT apply_data_func) {
       return apply_(item_, apply_data_func);
     }
 
-    inline std::string GetData() {
+    std::string GetData() {
       std::string data;
       data.reserve(32);
       auto status = ApplyData([&data](absl::string_view chunk) {
@@ -618,15 +618,15 @@ class ExportBufferStorage {
     uint64_t byte_size_hint_ = 0;
   };
 
-  inline void Insert(KeyT key, ItemT item,
-                     ExportBufferStorage::ApplyDataFromBufferFuncT apply,
-                     uint64_t hash, uint64_t byte_size_hint = 0) {
+  void Insert(KeyT key, ItemT item,
+              ExportBufferStorage::ApplyDataFromBufferFuncT apply,
+              uint64_t hash, uint64_t byte_size_hint = 0) {
     auto export_buffer = std::make_unique<ExportBuffer>(
         std::move(item), std::move(apply), hash, byte_size_hint);
     buffers_[key] = std::move(export_buffer);
   }
 
-  inline void Insert(KeyT key, std::unique_ptr<ExportBuffer> buffer) {
+  void Insert(KeyT key, std::unique_ptr<ExportBuffer> buffer) {
     buffers_[key] = std::move(buffer);
   }
 
