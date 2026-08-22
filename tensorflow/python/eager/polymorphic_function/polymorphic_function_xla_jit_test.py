@@ -1256,6 +1256,39 @@ class FunctionTest(xla_test.XLATestCase):
       x, y = constant_op.constant([2, 3]), constant_op.constant([2, 3])
       self._compareTwoMethodsCompilerIROutput(f, [x, y], {})
 
+  def testDevicePlacementValidationWithJitCompile(self):
+    """Test that jit_compile=True validates tf.device() constraints.
+
+    When using tf.device() with a non-existent device (e.g., GPU on CPU-only
+    machine), eager execution and autoclustering correctly fail with
+    "Could not satisfy device specification". This test ensures jit_compile=True
+    also validates device constraints instead of silently ignoring them.
+    """
+    # Use a device specification that doesn't exist on this machine.
+    # The test runs on CPU, so GPU device should fail.
+    invalid_device = '/job:worker/replica:0/task:0/device:GPU:0'
+
+    def compute(x):
+      with ops.device(invalid_device):
+        return math_ops.add(x, x)
+
+    x = constant_op.constant([1.0, 2.0])
+
+    # Eager execution should fail
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                 'Could not satisfy device specification'):
+      compute(x).numpy()
+
+    # jit_compile=True should also fail (this is the fix for #124880)
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                 'Could not satisfy device specification'):
+      polymorphic_function.function(compute, jit_compile=True)(x).numpy()
+
+    # Autoclustering (jit_compile=False with XLA auto-jit) should also fail
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                 'Could not satisfy device specification'):
+      polymorphic_function.function(compute)(x).numpy()
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

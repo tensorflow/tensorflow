@@ -74,6 +74,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
+#include "tensorflow/core/common_runtime/placer.h"
+#include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
@@ -1547,6 +1549,20 @@ absl::Status XlaCompiler::CompileGraph(
 
   // Report the error here if initialization failed.
   TF_RETURN_IF_ERROR(initialization_status_);
+
+  // Run the placer to validate device constraints before XLA compilation.
+  // This ensures that tf.device() constraints are validated even for
+  // XLA-compiled functions (jit_compile=True).
+  {
+    DeviceSet device_set;
+    for (Device* device : device_mgr_->ListDevices()) {
+      device_set.AddDevice(device);
+    }
+    Placer placer(graph.get(), name, options_.flib_def, &device_set,
+                  device_.get(), /*allow_soft_placement=*/true,
+                  /*log_device_placement=*/false);
+    TF_RETURN_IF_ERROR(placer.Run());
+  }
 
   // Detect invalid nodes.
   // FunctionalizeControlFlow may remove some nodes from the graph.
