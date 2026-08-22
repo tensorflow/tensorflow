@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/gpu/conv_utils.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
