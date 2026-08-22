@@ -770,6 +770,21 @@ absl::Status LayoutAssignment::AddInstructionLayoutConstraints(
       case HloOpcode::kParameter:
         ABSL_RETURN_IF_ERROR(AddParameterConstraints(instruction, constraints));
         break;
+      case HloOpcode::kCustomCall:
+        if (IsLayoutConstrainedCustomCall(instruction) &&
+            !instruction->IsCustomCall("LayoutConstraint")) {
+          const auto* custom_call = Cast<HloCustomCallInstruction>(instruction);
+          ABSL_RETURN_IF_ERROR(SetInstructionLayout(custom_call->shape(),
+                                               custom_call,
+                                               /*mandatory=*/true, /*dfs=*/true,
+                                               /*allow_alias=*/true));
+          for (int64_t i = 0; i < custom_call->operand_count(); ++i) {
+            ABSL_RETURN_IF_ERROR(SetOperandLayout(
+                custom_call->operand_shapes_with_layout()[i], custom_call, i,
+                /*mandatory=*/true, /*dfs=*/true));
+          }
+        }
+        break;
       default:
         if (IsLayoutConstrainedCollective(instruction)) {
           ABSL_RETURN_IF_ERROR(AddCollectiveConstraints(instruction));

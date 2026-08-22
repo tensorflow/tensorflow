@@ -1298,10 +1298,46 @@ ENTRY %CustomCallWithLayoutConstraints (p0: f32[4,4], p1: f32[2,3]) -> f32[1,2,3
   // because of the layout mismatches.
   ASSERT_THAT(
       m->entry_computation()->root_instruction(),
-      GmockMatch(m::Copy(m::Exp(m::CustomCall(m::Copy(), m::Parameter())))));
+      GmockMatch(m::Exp(m::Copy(m::CustomCall(m::Copy(), m::Parameter())))));
 
   const HloInstruction* custom_call =
       m->entry_computation()->root_instruction()->operand(0)->operand(0);
+  ExpectLayoutIs(custom_call->shape(), {3, 2, 0, 1});
+  ExpectLayoutIs(custom_call->operand(0)->shape(), {0, 1});
+  ExpectLayoutIs(custom_call->operand(1)->shape(), {1, 0});
+}
+
+TEST_F(LayoutAssignmentTest,
+       CustomCallLayoutConstrainedMandatoryInstructionLayout) {
+  const char* module_str = R"(
+HloModule CustomCallLayoutConstrainedMandatoryInstructionLayout
+
+ENTRY %CustomCallMandatory (p0: f32[4,4], p1: f32[2,3]) -> f32[1,2,3,4] {
+  %p0 = f32[4,4]{1,0} parameter(0)
+  %p1 = f32[2,3]{1,0} parameter(1)
+  ROOT %custom-call = f32[1,2,3,4]{3,2,0,1} custom-call(f32[4,4]{1,0} %p0, f32[2,3]{1,0} %p1), custom_call_target="radb2", operand_layout_constraints={f32[4,4]{0,1}, f32[2,3]{1,0}}
+}
+)";
+  auto module_or =
+      ParseAndReturnVerifiedModule(module_str, GetModuleConfigForTest());
+  ASSERT_TRUE(module_or.ok());
+  if (!module_or.ok()) {
+    return;
+  }
+  std::unique_ptr<VerifiedHloModule> m = std::move(*module_or);
+  ComputationLayout computation_layout = m->entry_computation_layout();
+  *computation_layout.mutable_parameter_layout(0) =
+      ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(F32, {4, 4}, {1, 0}));
+  *computation_layout.mutable_parameter_layout(1) =
+      ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 3}, {1, 0}));
+  *computation_layout.mutable_result_layout() = ShapeLayout(
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 2, 3, 4}, {3, 2, 0, 1}));
+  AssignLayouts(m.get(), &computation_layout);
+
+  const HloInstruction* custom_call =
+      m->entry_computation()->root_instruction();
+  ASSERT_THAT(custom_call,
+              GmockMatch(m::CustomCall(m::Copy(), m::Parameter())));
   ExpectLayoutIs(custom_call->shape(), {3, 2, 0, 1});
   ExpectLayoutIs(custom_call->operand(0)->shape(), {0, 1});
   ExpectLayoutIs(custom_call->operand(1)->shape(), {1, 0});
