@@ -473,6 +473,43 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, compute_f32(np.vectorize(math.erf)), math_ops.erf)
     self._compareBoth(x, compute_f32(np.vectorize(math.erfc)), math_ops.erfc)
     self._compareBoth(x, compute_f32(np.square), math_ops.square)
+    self._compareBoth(x, compute_f32(self._sigmoid), math_ops.sigmoid)
+
+  def testBFloat16SigmoidMonotonicityAndRounding(self):
+    # Test values near the rounding threshold where sigmoid was non-monotonic
+    # and incorrectly rounded in eager/graph mode on CPU.
+<<<<<<< HEAD
+    # Ref values near 1: 0.99609375 (0x3F7F), 1.0 (0x3F80)
+    # - exact sigmoid(5.5)  = 0.9959299... -> rounds to 0.99609375
+    # - exact sigmoid(5.75) = 0.9968171... -> rounds to 0.99609375
+    # - exact sigmoid(6.0)  = 0.9975274... -> rounds to 0.99609375
+    # - exact sigmoid(6.25) = 0.9980757... -> rounds to 1.0
+=======
+    # Reference:
+    # exact sigmoid(5.5)  = 0.9959299... -> correctly rounded bfloat16: 0.99609375
+    # exact sigmoid(5.75) = 0.9968171... -> correctly rounded bfloat16: 0.99609375
+    # exact sigmoid(6.0)  = 0.9975274... -> correctly rounded bfloat16: 0.99609375
+    # exact sigmoid(6.25) = 0.9980757... -> correctly rounded bfloat16: 1.0
+>>>>>>> ee0805775e04b8b744d75c5d993de13b1bf052af
+    bfloat16 = dtypes_lib.bfloat16.as_numpy_dtype
+    x_val = np.array([5.5, 5.75, 6.0, 6.25], dtype=bfloat16)
+    x = constant_op.constant(x_val, dtype=dtypes_lib.bfloat16)
+    
+    # Calculate using tf.sigmoid
+    y = math_ops.sigmoid(x)
+    y_val = self.evaluate(y)
+    
+    # Assert correctness
+<<<<<<< HEAD
+    expected = np.array(
+        [0.99609375, 0.99609375, 0.99609375, 1.0], dtype=bfloat16)
+=======
+    expected = np.array([0.99609375, 0.99609375, 0.99609375, 1.0], dtype=bfloat16)
+>>>>>>> ee0805775e04b8b744d75c5d993de13b1bf052af
+    self.assertAllClose(y_val, expected)
+    
+    # Assert monotonicity: y[0] <= y[1] <= y[2] <= y[3]
+    self.assertTrue(np.all(y_val[:-1] <= y_val[1:]))
 
   def testInt8Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int8)
