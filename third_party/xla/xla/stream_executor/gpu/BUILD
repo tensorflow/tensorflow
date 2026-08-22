@@ -182,11 +182,9 @@ cc_library(
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_common",
         "//xla/stream_executor:stream_executor_h",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/synchronization",
     ],
 )
 
