@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include <functional>
+#include <limits>
 #include <memory>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -159,6 +161,22 @@ TEST_F(GatherOpTest, Simple_TwoD64) {
   Tensor expected(allocator(), DT_FLOAT, TensorShape({4, 3}));
   test::FillValues<float>(&expected, {0, 1, 2, 12, 13, 14, 0, 1, 2, 6, 7, 8});
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+}
+
+TEST_F(GatherOpTest, Error_AxisInt64Min) {
+  MakeOp(DT_FLOAT, DT_INT64);
+
+  AddInputFromArray<float>(TensorShape({1}), {0});
+  AddInputFromArray<int64_t>(TensorShape({}), {0});
+  AddInputFromArray<int64_t>(TensorShape({}),
+                             {std::numeric_limits<int64_t>::min()});
+  absl::Status s = RunOpKernel();
+
+  EXPECT_EQ(s.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_TRUE(absl::StrContains(
+      s.message(),
+      "axis must be greater than std::numeric_limits<int64_t>::min()"))
+      << s;
 }
 
 TEST_F(GatherOpTest, HighRank) {
