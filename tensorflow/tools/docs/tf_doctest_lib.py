@@ -106,9 +106,11 @@ class TfDoctestOutputChecker(doctest.OutputChecker, object):
     self.float_size_good = None
 
   _ADDRESS_RE = re.compile(r'\bat 0x[0-9a-f]*?>')
-  # TODO(yashkatariya): Add other tensor's string substitutions too.
-  # tf.RaggedTensor doesn't need one.
-  _NUMPY_OUTPUT_RE = re.compile(r'<tf.Tensor.*?numpy=(.*?)>', re.DOTALL)
+  # Normalize the `numpy=...` field in eager `*Tensor` reprs.
+  # tf.RaggedTensor doesn't need this normalization.
+  _NUMPY_OUTPUT_RE = re.compile(
+      r'<tf\.(?!RaggedTensor)(?:[A-Za-z0-9_]*Tensor).*?numpy=(.*?)>',
+      re.DOTALL)
 
   def _allclose(self, want, got, rtol=1e-3, atol=1e-3):
     return np.allclose(want, got, rtol=rtol, atol=atol)

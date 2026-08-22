@@ -197,6 +197,10 @@ class TfDoctestOutputCheckerTest(parameterized.TestCase):
           ('<tf.RaggedTensor:... shape=(2, 2), numpy=1>', False)
       ],
       [
+          '<tf.SparseTensor: shape=(2, 2), dtype=float32, numpy=1>',
+          ('1', True)
+      ],
+      [
           """<tf.Tensor: shape=(2, 2), dtype=int32, numpy=
               array([[2, 2],
                      [3, 5]], dtype=int32)>""",
