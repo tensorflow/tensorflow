@@ -52,7 +52,7 @@ inline void Add(const ArithmeticParams& params,
 // is 32-bit for both cases. The overflow does not happen due to the
 // choice of the shift (20 or 15, accordingly - see add.cc for more comments).
 template <typename T>
-inline void AddElementwise(int size, const ArithmeticParams& params,
+inline void AddElementwise(int64_t size, const ArithmeticParams& params,
                            const T* input1_data, const T* input2_data,
                            T* output_data) {
   TFLITE_DCHECK_GT(params.input1_offset, -std::numeric_limits<T>::max());
@@ -60,7 +60,7 @@ inline void AddElementwise(int size, const ArithmeticParams& params,
   TFLITE_DCHECK_LT(params.input1_offset, std::numeric_limits<T>::max());
   TFLITE_DCHECK_LT(params.input2_offset, std::numeric_limits<T>::max());
 
-  for (int i = 0; i < size; ++i) {
+  for (int64_t i = 0; i < size; ++i) {
     const int32_t input1_val = params.input1_offset + input1_data[i];
     const int32_t input2_val = params.input2_offset + input2_data[i];
     const int32_t shifted_input1_val = input1_val * (1 << params.left_shift);
@@ -86,7 +86,7 @@ inline void AddElementwise(int size, const ArithmeticParams& params,
 // Scalar-broadcast add that can be used for inner loop of more general
 // broadcast add, so that, for example, scalar-broadcast with batch will still
 // be fast.
-inline void AddScalarBroadcast(int size, const ArithmeticParams& params,
+inline void AddScalarBroadcast(int64_t size, const ArithmeticParams& params,
                                uint8_t input1_data, const uint8_t* input2_data,
                                uint8_t* output_data) {
   TFLITE_DCHECK_GT(params.input1_offset, -256);
@@ -99,7 +99,7 @@ inline void AddScalarBroadcast(int size, const ArithmeticParams& params,
   const int32_t scaled_input1_val =
       MultiplyByQuantizedMultiplierSmallerThanOneExp(
           shifted_input1_val, params.input1_multiplier, params.input1_shift);
-  for (int i = 0; i < size; ++i) {
+  for (int64_t i = 0; i < size; ++i) {
     const int32_t input2_val = params.input2_offset + input2_data[i];
     const int32_t shifted_input2_val = input2_val * (1 << params.left_shift);
     const int32_t scaled_input2_val =
@@ -369,20 +369,20 @@ inline void BroadcastAddFivefold(const ArithmeticParams& unswitched_params,
   // Put another way,
   // input1.shape.FlatSize = y0 * y1 * y2 * y4,
   // input2.shape.FlatSize = y0 * y2 * y3 * y4.
-  int y0 = params.broadcast_shape[0];
-  int y1 = params.broadcast_shape[1];
-  int y2 = params.broadcast_shape[2];
-  int y3 = params.broadcast_shape[3];
-  int y4 = params.broadcast_shape[4];
+  int64_t y0 = params.broadcast_shape[0];
+  int64_t y1 = params.broadcast_shape[1];
+  int64_t y2 = params.broadcast_shape[2];
+  int64_t y3 = params.broadcast_shape[3];
+  int64_t y4 = params.broadcast_shape[4];
   if (y4 > 1) {
     // General fivefold pattern, with y4 > 1 so there is a non-broadcast inner
     // dimension.
-    for (int i0 = 0; i0 < y0; ++i0) {
+    for (int64_t i0 = 0; i0 < y0; ++i0) {
       const uint8_t* input2_data_ptr;
-      for (int i1 = 0; i1 < y1; ++i1) {
+      for (int64_t i1 = 0; i1 < y1; ++i1) {
         input2_data_ptr = input2_data_reset;
-        for (int i2 = 0; i2 < y2; ++i2) {
-          for (int i3 = 0; i3 < y3; ++i3) {
+        for (int64_t i2 = 0; i2 < y2; ++i2) {
+          for (int64_t i3 = 0; i3 < y3; ++i3) {
             AddElementwise(y4, params, input1_data_ptr, input2_data_ptr,
                            output_data_ptr);
             input2_data_ptr += y4;
@@ -406,11 +406,11 @@ inline void BroadcastAddFivefold(const ArithmeticParams& unswitched_params,
     // NOTE The process is the same as the above general case except simplified
     // for y4 == 1 and the loop over y3 is contained within the
     // AddScalarBroadcast function.
-    for (int i0 = 0; i0 < y0; ++i0) {
+    for (int64_t i0 = 0; i0 < y0; ++i0) {
       const uint8_t* input2_data_ptr;
-      for (int i1 = 0; i1 < y1; ++i1) {
+      for (int64_t i1 = 0; i1 < y1; ++i1) {
         input2_data_ptr = input2_data_reset;
-        for (int i2 = 0; i2 < y2; ++i2) {
+        for (int64_t i2 = 0; i2 < y2; ++i2) {
           AddScalarBroadcast(y3, params, *input1_data_ptr, input2_data_ptr,
                              output_data_ptr);
           input2_data_ptr += y3;

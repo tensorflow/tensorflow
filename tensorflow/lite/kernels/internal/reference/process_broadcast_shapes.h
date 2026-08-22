@@ -103,26 +103,26 @@ inline bool ProcessBroadcastShapes(const RuntimeShape& shape0,
   // y_0 is greedy: include dims if both or neither equal 1: in other words,
   // test for equality rather than (shape_a->Dims(i) != 1).
   while (i >= 0 && shape_a->Dims(i) == shape_b->Dims(i)) {
-    params->broadcast_shape[4] *= shape_b->Dims(i);
+    params->broadcast_shape[4] *= static_cast<int64_t>(shape_b->Dims(i));
     --i;
   }
   // Here either input_a or input_b has dim of 1 (if i >= 0).  If it is input_b
   // that has the unit dimension, the next two loops are not entered.
   while (i >= 0 && shape_a->Dims(i) == 1) {
-    params->broadcast_shape[3] *= shape_b->Dims(i);
+    params->broadcast_shape[3] *= static_cast<int64_t>(shape_b->Dims(i));
     --i;
   }
   while (i >= 0 && shape_a->Dims(i) == shape_b->Dims(i)) {
-    params->broadcast_shape[2] *= shape_a->Dims(i);
+    params->broadcast_shape[2] *= static_cast<int64_t>(shape_a->Dims(i));
     --i;
   }
   // Here either input_a or input_b has dim of 1 (if i >= 0).
   while (i >= 0 && shape_b->Dims(i) == 1) {
-    params->broadcast_shape[1] *= shape_a->Dims(i);
+    params->broadcast_shape[1] *= static_cast<int64_t>(shape_a->Dims(i));
     --i;
   }
   while (i >= 0 && shape_a->Dims(i) == shape_b->Dims(i)) {
-    params->broadcast_shape[0] *= shape_b->Dims(i);
+    params->broadcast_shape[0] *= static_cast<int64_t>(shape_b->Dims(i));
     --i;
   }
 
