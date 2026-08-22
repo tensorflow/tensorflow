@@ -429,6 +429,15 @@ config_setting(
 )
 
 config_setting(
+    name = "windows_aarch64",
+    constraint_values = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:windows",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "no_tensorflow_py_deps",
     define_values = {"no_tensorflow_py_deps": "true"},
     visibility = ["//visibility:public"],
