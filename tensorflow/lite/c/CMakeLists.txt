@@ -90,3 +90,57 @@ endif()
 target_link_libraries(tensorflowlite_c
   tensorflow-lite
 )
+
+if(TFLITE_ENABLE_INSTALL)
+  install(
+    TARGETS tensorflowlite_c
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  )
+  set(TFLITE_C_PUBLIC_HDRS
+    builtin_op_data.h
+    c_api.h
+    c_api_experimental.h
+    c_api_opaque.h
+    c_api_types.h
+    common.h
+    ${TFLITE_SOURCE_DIR}/core/c/builtin_op_data.h
+    ${TFLITE_SOURCE_DIR}/core/c/c_api.h
+    ${TFLITE_SOURCE_DIR}/core/c/c_api_experimental.h
+    ${TFLITE_SOURCE_DIR}/core/c/c_api_opaque.h
+    ${TFLITE_SOURCE_DIR}/core/c/c_api_types.h
+    ${TFLITE_SOURCE_DIR}/core/c/common.h
+    ${TFLITE_SOURCE_DIR}/core/c/operator.h
+    ${TFLITE_SOURCE_DIR}/core/async/c/types.h
+    ${TFLITE_SOURCE_DIR}/builtin_ops.h
+    ${TF_SOURCE_DIR}/tensorflow/compiler/mlir/lite/core/c/tflite_types.h
+    ${TF_SOURCE_DIR}/tensorflow/compiler/mlir/lite/core/c/builtin_op_data.h
+  )
+  foreach(hdr ${TFLITE_C_PUBLIC_HDRS})
+    get_filename_component(hdr_abs ${hdr} ABSOLUTE)
+    get_filename_component(hdr_dir ${hdr_abs} DIRECTORY)
+    file(RELATIVE_PATH rel_dir "${TF_SOURCE_DIR}/tensorflow" "${hdr_dir}")
+    install(
+      FILES ${hdr_abs}
+      DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/tensorflow/${rel_dir}"
+    )
+  endforeach()
+
+  if(DEFINED TF_MAJOR_VERSION AND DEFINED TF_MINOR_VERSION AND DEFINED TF_PATCH_VERSION)
+    set(TFLITE_C_PC_VERSION "${TF_MAJOR_VERSION}.${TF_MINOR_VERSION}.${TF_PATCH_VERSION}")
+  else()
+    set(TFLITE_C_PC_VERSION "2.21.0")
+  endif()
+
+  configure_file(
+    tensorflowlite_c.pc.in
+    ${CMAKE_CURRENT_BINARY_DIR}/tensorflowlite_c.pc
+    @ONLY
+  )
+
+  install(
+    FILES ${CMAKE_CURRENT_BINARY_DIR}/tensorflowlite_c.pc
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
+  )
+endif()
