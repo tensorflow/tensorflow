@@ -4782,7 +4782,8 @@ def gather(params,
   must be an integer tensor of any dimension (often 1-D).
 
   `Tensor.__getitem__` works for scalars, `tf.newaxis`, and
-  [python slices](https://numpy.org/doc/stable/reference/arrays.indexing.html#basic-slicing-and-indexing)
+  [python
+  slices](https://numpy.org/doc/stable/reference/arrays.indexing.html#basic-slicing-and-indexing)
 
   `tf.gather` extends indexing to handle tensors of indices.
 
@@ -4949,10 +4950,11 @@ def gather(params,
       `int64`. The values must be in range `[0, params.shape[axis])`.
     validate_indices: Deprecated, does nothing. Indices are always validated on
       CPU, never validated on GPU.
-
-      Caution: On CPU, if an out of bound index is found, an error is raised.
-      On GPU, if an out of bound index is found, a 0 is stored in the
-      corresponding output value.
+      Caution: On CPU, if an out of bound index is found, an error is raised. On
+        GPU, if an out of bound index is found, a 0 is stored in the
+        corresponding output value. Under XLA compilation (e.g.
+        `tf.function(jit_compile=True)`), out of bound indices are not checked
+        and result in implementation-defined behavior.
     axis: A `Tensor`. Must be one of the following types: `int32`, `int64`. The
       `axis` in `params` to gather `indices` from. Must be greater than or equal
       to `batch_dims`.  Defaults to the first non-batch dimension. Supports
