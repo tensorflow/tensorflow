@@ -567,14 +567,22 @@ OpInfo::OpInfo(const OpDef& graph_op_def, const ApiDef& api_def,
     const auto& api_def_arg = *FindInputArg(api_def.arg_order(i), api_def);
     arg_types.push_back(
         absl::StrCat("::tensorflow::", ArgIsList(arg) ? "InputList" : "Input"));
-    arg_names.push_back(AvoidCPPKeywords(api_def_arg.rename_to()));
+    // rename_to() comes from ApiDef, a separate message from the OpDef
+    // arg/attr names validated by ValidateOpDef/ValidateArg. It is spliced
+    // as a raw C++ identifier (parameter name) below, so fall back to the
+    // already-validated original arg name if it isn't a safe identifier.
+    const std::string safe_input_name =
+        tensorflow::IsValidAttrOrArgName(api_def_arg.rename_to())
+            ? api_def_arg.rename_to()
+            : arg.name();
+    arg_names.push_back(AvoidCPPKeywords(safe_input_name));
 
     // TODO(keveman): Include input type information.
     absl::string_view description = api_def_arg.description();
     if (!description.empty()) {
       ConsumeEquals(&description);
-      absl::StrAppend(&comment, "* ", AvoidCPPKeywords(api_def_arg.rename_to()),
-                      ": ", api_def_arg.description(), "\n");
+      absl::StrAppend(&comment, "* ", AvoidCPPKeywords(safe_input_name), ": ",
+                      api_def_arg.description(), "\n");
     }
   }
 
@@ -593,7 +601,14 @@ OpInfo::OpInfo(const OpDef& graph_op_def, const ApiDef& api_def,
     const auto entry = AttrTypeName(attr.type());
     const auto attr_type_name = entry.first;
     const bool use_const = entry.second;
-    std::string attr_name = AvoidCPPKeywords(api_def_attr.rename_to());
+    // See the safe_input_name comment above: rename_to() is unvalidated
+    // ApiDef data spliced as a raw C++ identifier here, so fall back to the
+    // already-validated original attr name if it isn't a safe identifier.
+    const std::string safe_attr_name =
+        tensorflow::IsValidAttrOrArgName(api_def_attr.rename_to())
+            ? api_def_attr.rename_to()
+            : attr.name();
+    std::string attr_name = AvoidCPPKeywords(safe_attr_name);
 
     std::string attr_comment;
     if (!api_def_attr.description().empty()) {

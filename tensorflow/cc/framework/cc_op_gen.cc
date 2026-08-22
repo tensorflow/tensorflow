@@ -241,8 +241,9 @@ std::string GetConstructorBody(const OpInfo& op_info) {
         api_def_attr.has_default_value()
             ? absl::StrCat("attrs.", api_def_attr.rename_to(), "_")
             : AvoidCPPKeywords(api_def_attr.rename_to());
-    strings::StrAppend(&body, spaces, ".Attr(\"", graph_attr.name(), "\", ",
-                       attr_name, ")\n");
+    strings::StrAppend(&body, spaces, ".Attr(\"",
+                       absl::CEscape(graph_attr.name()), "\", ", attr_name,
+                       ")\n");
   }
   absl::StrAppend(&body, "  ;\n");
   absl::StrAppend(&body, "  ", scope_str, ".UpdateBuilder(&builder);\n");
