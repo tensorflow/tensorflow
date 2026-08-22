@@ -2142,6 +2142,11 @@ absl::Status IrEmitter::HandleFusion(HloInstruction* fusion) {
     CpuElementalIrEmitter elemental_emitter = ElementalIrEmmiterFactory();
     FusedIrEmitter fused_emitter(elemental_emitter);
     BindFusionArguments(fusion, &fused_emitter);
+    if (llvm_ir::CanEmitFusedDynamicUpdateSliceInPlace(fusion, assignment_)) {
+      ABSL_RETURN_IF_ERROR(EmitTargetAddressForOp(fusion));
+      return llvm_ir::EmitFusedDynamicUpdateSliceInPlace(
+          fusion, GetIrArrayFor(fusion), &fused_emitter, b());
+    }
     ABSL_ASSIGN_OR_RETURN(auto generator, fused_emitter.GetGenerator(
                                          *fusion->fused_expression_root()));
     return EmitTargetElementLoop(fusion, "kLoop_fusion", generator,
