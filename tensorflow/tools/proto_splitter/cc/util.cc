@@ -801,5 +801,12 @@ absl::StatusOr<bool> OnlyContainsPb(absl::string_view prefix) {
   return false;
 }
 
+absl::Status ValidateChunkIndex(uint64_t chunk_index, size_t chunks_size) {
+  if (chunk_index < chunks_size) return absl::OkStatus();
+  return absl::FailedPreconditionError(absl::StrCat(
+      "Chunk index ", chunk_index, " is out of range for ", chunks_size,
+      " chunks."));
+}
+
 }  // namespace tools::proto_splitter
 }  // namespace tensorflow
