@@ -138,6 +138,13 @@ class ContinueCanonicalizationTransformer(converter.Base):
     node.orelse = self._visit_non_loop_body(node.orelse)
     return node
 
+  def visit_match_case(self, node):
+    node.pattern = self.visit(node.pattern)
+    if node.guard is not None:
+      node.guard = self.visit(node.guard)
+    node.body = self._visit_non_loop_body(node.body)
+    return node
+
   def visit_With(self, node):
     node.items = self.visit_block(node.items)
     node.body = self._visit_non_loop_body(node.body)
