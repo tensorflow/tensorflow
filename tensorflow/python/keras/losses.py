@@ -34,6 +34,7 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -1629,11 +1630,23 @@ def categorical_crossentropy(y_true,
   Returns:
     Categorical crossentropy loss value.
   """
+  if (isinstance(label_smoothing, (int, float)) and
+      not 0 <= label_smoothing <= 1):
+    raise ValueError(
+        f'`label_smoothing` must be in [0, 1], got {label_smoothing}')
   y_pred = tensor_conversion.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   label_smoothing = tensor_conversion.convert_to_tensor_v2_with_dispatch(
-      label_smoothing, dtype=backend.floatx()
-  )
+      label_smoothing)
+  label_smoothing = math_ops.cast(label_smoothing, y_pred.dtype)
+  with ops.control_dependencies([
+      check_ops.assert_greater_equal(
+          label_smoothing, 0.0,
+          message='`label_smoothing` must be in [0, 1]'),
+      check_ops.assert_less_equal(
+          label_smoothing, 1.0,
+          message='`label_smoothing` must be in [0, 1]')]):
+    label_smoothing = array_ops.identity(label_smoothing)
 
   def _smooth_labels():
     num_classes = math_ops.cast(array_ops.shape(y_true)[-1], y_pred.dtype)
@@ -1770,11 +1783,23 @@ def binary_crossentropy(y_true,
   Returns:
     Binary crossentropy loss value. shape = `[batch_size, d0, .. dN-1]`.
   """
+  if (isinstance(label_smoothing, (int, float)) and
+      not 0 <= label_smoothing <= 1):
+    raise ValueError(
+        f'`label_smoothing` must be in [0, 1], got {label_smoothing}')
   y_pred = tensor_conversion.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   label_smoothing = tensor_conversion.convert_to_tensor_v2_with_dispatch(
-      label_smoothing, dtype=backend.floatx()
-  )
+      label_smoothing)
+  label_smoothing = math_ops.cast(label_smoothing, y_pred.dtype)
+  with ops.control_dependencies([
+      check_ops.assert_greater_equal(
+          label_smoothing, 0.0,
+          message='`label_smoothing` must be in [0, 1]'),
+      check_ops.assert_less_equal(
+          label_smoothing, 1.0,
+          message='`label_smoothing` must be in [0, 1]')]):
+    label_smoothing = array_ops.identity(label_smoothing)
 
   def _smooth_labels():
     return y_true * (1.0 - label_smoothing) + 0.5 * label_smoothing
