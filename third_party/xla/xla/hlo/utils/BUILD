@@ -554,6 +554,7 @@ xla_cc_test(
         ":hlo_sharding_reconstruction_util",
         "//xla:literal",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test",
