@@ -202,5 +202,27 @@ TEST(TensorPjRtBufferUtilTest, GetPjRtCApiClientSuccess) {
   EXPECT_THAT(pjrt_client_get, NotNull());
 }
 
+class FakeOpaqueTensorBuffer : public TensorBuffer {
+ public:
+  explicit FakeOpaqueTensorBuffer(void* ptr) : TensorBuffer(ptr) {}
+  size_t size() const override { return 100; }
+  TensorBuffer* root_buffer() override { return this; }
+  void FillAllocationDescription(AllocationDescription* proto) const override {}
+  bool AllocatesOpaqueHandle() const override { return true; }
+};
+
+TEST(TensorPjRtBufferUtilTest, GetPjRtCBufferFromSlicedOpaqueTensor) {
+  auto* fake_buf = new FakeOpaqueTensorBuffer(reinterpret_cast<void*>(0x1000));
+  tensorflow::Tensor parent_tensor(DT_UINT8, TensorShape({100}), fake_buf);
+  fake_buf->Unref();
+  tensorflow::Tensor sliced_tensor = parent_tensor.Slice(1, 10);
+
+  EXPECT_THAT(
+      GetPjRtCBufferFromTensor(&sliced_tensor),
+      absl_testing::StatusIs(
+          error::INTERNAL,
+          HasSubstr("Input tensor does not have PjRtBuffer")));
+}
+
 }  // namespace
 }  // namespace tensorflow
