@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -1161,6 +1160,39 @@ TEST(FloatPoolingOpTest, MaxPoolWithZeroStride) {
                             /*output=*/{TensorType_FLOAT32, {}},
                             /*padding=*/Padding_VALID,
                             /*stride_w=*/0, /*stride_h=*/0),
+      "Cannot allocate tensors");
+}
+
+TEST(FloatPoolingOpTest, MaxPoolWithNegativeFilter) {
+  EXPECT_DEATH(
+      FloatPoolingOpModel m(BuiltinOperator_MAX_POOL_2D,
+                            /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}},
+                            /*filter_width=*/-1, /*filter_height=*/2,
+                            /*output=*/{TensorType_FLOAT32, {}},
+                            /*padding=*/Padding_VALID,
+                            /*stride_w=*/1, /*stride_h=*/1),
+      "Cannot allocate tensors");
+}
+
+TEST(FloatPoolingOpTest, AveragePoolWithNegativeFilter) {
+  EXPECT_DEATH(
+      FloatPoolingOpModel m(BuiltinOperator_AVERAGE_POOL_2D,
+                            /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}},
+                            /*filter_width=*/2, /*filter_height=*/-1,
+                            /*output=*/{TensorType_FLOAT32, {}},
+                            /*padding=*/Padding_VALID,
+                            /*stride_w=*/1, /*stride_h=*/1),
+      "Cannot allocate tensors");
+}
+
+TEST(FloatPoolingOpTest, MaxPoolWithOverflowingDimensions) {
+  EXPECT_DEATH(
+      FloatPoolingOpModel m(BuiltinOperator_MAX_POOL_2D,
+                            /*input=*/{TensorType_FLOAT32, {1, 2, 1073741824, 1}},
+                            /*filter_width=*/1, /*filter_height=*/1,
+                            /*output=*/{TensorType_FLOAT32, {}},
+                            /*padding=*/Padding_VALID,
+                            /*stride_w=*/1, /*stride_h=*/1),
       "Cannot allocate tensors");
 }
 #endif
