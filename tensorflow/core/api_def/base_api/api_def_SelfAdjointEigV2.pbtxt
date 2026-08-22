@@ -18,14 +18,16 @@ END
   out_arg {
     name: "v"
     description: <<END
-Eigenvectors. Shape is `[N, N]`.
+Eigenvectors. Shape is `[N, N]` if `compute_v` is `True`. Otherwise `v` is
+an empty tensor.
 END
   }
   attr {
     name: "compute_v"
     description: <<END
 If `True` then eigenvectors will be computed and returned in `v`.
-Otherwise, only the eigenvalues will be computed.
+Otherwise, only the eigenvalues will be computed and `v` will be an empty
+tensor.
 END
   }
   summary: "Computes the eigen decomposition of one or more square self-adjoint matrices."
@@ -39,7 +41,7 @@ are sorted in non-decreasing order.
 # e is a tensor of eigenvalues.
 # v is a tensor of eigenvectors.
 e, v = self_adjoint_eig(a)
-e = self_adjoint_eig(a, compute_v=False)
+e, _ = self_adjoint_eig(a, compute_v=False)
 ```
 END
 }
