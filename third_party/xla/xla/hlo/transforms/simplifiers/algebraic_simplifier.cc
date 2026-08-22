@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <iterator>
@@ -8604,130 +8603,6 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
   // Try to reorder reduce(dot(A, B)) to dot(A, reduce(B))
   if (ReorderReduceDotToDotReduce(arg, init_value, function, reduce)) {
     return absl::OkStatus();
-  }
-
-  // Optimize reduce(add, multiply(A, broadcast(B))) to multiply(reduce(add, A),
-  // B) when B does not depend on the reduction dimensions (distributive law of
-  // multiplication over addition). Only enabled when we don't worry about
-  // overflow/underflow, and the multiplication has a single user.
-  if ((ShapeUtil::ElementIsIntegral(reduce->shape()) ||
-       options_.enable_floats_are_real() || options_.enable_fast_math()) &&
-      Match(function->root_instruction(),
-            m::AddAnyOrder(m::Parameter(0), m::Parameter(1))) &&
-      arg->opcode() == HloOpcode::kMultiply && arg->user_count() == 1) {
-    absl::flat_hash_set<int64_t> reduce_dims_set(reduce->dimensions().begin(),
-                                                 reduce->dimensions().end());
-
-    // Helper to check if an operand is invariant with respect to the reduction
-    // dimensions (i.e. it has identical values along all reduction axes).
-    auto is_invariant_factor = [&](HloInstruction* inst) -> bool {
-      // If `inst` is a broadcast, it is invariant across the reduction
-      // dimensions if none of its source broadcast dimensions overlap with the
-      // reduction dimensions.
-      if (inst->opcode() == HloOpcode::kBroadcast) {
-        for (int64_t bcast_dim : inst->dimensions()) {
-          if (reduce_dims_set.contains(bcast_dim)) {
-            return false;
-          }
-        }
-        return true;
-      }
-      // Scalar constants are trivially invariant across all dimensions.
-      if (inst->IsConstant() && ShapeUtil::IsScalar(inst->shape())) {
-        return true;
-      }
-      return false;
-    };
-
-    // Flatten nested multiplications into a list of leaf factors, e.g., A * (B
-    // * C) -> [A, B, C], only if each multiplication has a single user.
-    std::vector<HloInstruction*> factors;
-    std::vector<HloInstruction*> stack = {arg};
-    while (!stack.empty()) {
-      HloInstruction* current = stack.back();
-      stack.pop_back();
-      if (current->opcode() == HloOpcode::kMultiply &&
-          current->user_count() == 1) {
-        stack.push_back(current->mutable_operand(1));
-        stack.push_back(current->mutable_operand(0));
-      } else {
-        factors.push_back(current);
-      }
-    }
-
-    // Partition factors into invariant and non-invariant factors.
-    std::vector<HloInstruction*> invariant_factors;
-    std::vector<HloInstruction*> non_invariant_factors;
-    for (HloInstruction* factor : factors) {
-      if (is_invariant_factor(factor)) {
-        invariant_factors.push_back(factor);
-      } else {
-        non_invariant_factors.push_back(factor);
-      }
-    }
-
-    // If there are invariant factors that can be factored out, rewrite the
-    // reduction.
-    if (!invariant_factors.empty() && !non_invariant_factors.empty()) {
-      // Multiply all non-invariant factors together before the reduction.
-      HloInstruction* non_invariant_prod = non_invariant_factors[0];
-      for (size_t i = 1; i < non_invariant_factors.size(); ++i) {
-        non_invariant_prod =
-            reduce->AddInstruction(HloInstruction::CreateBinary(
-                non_invariant_prod->shape(), HloOpcode::kMultiply,
-                non_invariant_prod, non_invariant_factors[i]));
-      }
-
-      // Create a new reduction that operates only on the non-invariant product.
-      HloInstruction* new_reduce =
-          reduce->AddInstruction(HloInstruction::CreateReduce(
-              reduce_result_shape, non_invariant_prod, init_value,
-              reduce->dimensions(), function));
-
-      // Multiply the reduced result with all invariant factors in the output
-      // space.
-      HloInstruction* accumulated_result = new_reduce;
-      for (HloInstruction* inv : invariant_factors) {
-        HloInstruction* inv_in_result_shape = nullptr;
-        if (inv->opcode() == HloOpcode::kBroadcast) {
-          // Adjust the broadcast dimensions for the reduced output rank by
-          // subtracting the number of eliminated preceding reduction
-          // dimensions.
-          std::vector<int64_t> new_broadcast_dims;
-          new_broadcast_dims.reserve(inv->dimensions().size());
-          for (int64_t d : inv->dimensions()) {
-            int64_t shift = 0;
-            for (int64_t r : reduce->dimensions()) {
-              if (r < d) {
-                ++shift;
-              }
-            }
-            new_broadcast_dims.push_back(d - shift);
-          }
-          HloInstruction* base = inv->mutable_operand(0);
-          // If the base tensor already has the exact output shape, use it
-          // directly without broadcasting.
-          if (ShapeUtil::Compatible(base->shape(), reduce_result_shape)) {
-            inv_in_result_shape = base;
-          } else {
-            inv_in_result_shape =
-                reduce->AddInstruction(HloInstruction::CreateBroadcast(
-                    reduce_result_shape, base, new_broadcast_dims));
-          }
-        } else {
-          // Broadcast scalar constant to the reduction result shape.
-          inv_in_result_shape = reduce->AddInstruction(
-              HloInstruction::CreateBroadcast(reduce_result_shape, inv, {}));
-        }
-        // Elementwise multiply the running result with the invariant factor.
-        accumulated_result =
-            reduce->AddInstruction(HloInstruction::CreateBinary(
-                reduce_result_shape, HloOpcode::kMultiply, accumulated_result,
-                inv_in_result_shape));
-      }
-      // Replace all uses of the original reduce with the transformed product.
-      return ReplaceInstruction(reduce, accumulated_result);
-    }
   }
 
   // TODO(b/131122694): Most of those optimizations below can be done for
