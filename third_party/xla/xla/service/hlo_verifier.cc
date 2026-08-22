@@ -726,7 +726,8 @@ absl::Status ShapeVerifier::HandleRaggedAllToAll(HloInstruction* hlo) {
       return Internal("RaggedAllToAll operand %d must be rank 1 or 2: %s",
                       i - 1, hlo->ToString());
     }
-    if (!ShapeUtil::Equal(*operand_shapes[i - 1], *operand_shapes[i])) {
+    if (!Shape::Equal().IgnoreMemorySpaceInLayout()(*operand_shapes[i - 1],
+                                                    *operand_shapes[i])) {
       return Internal(
           "RaggedAllToAll operands have different shapes (%d, %d): %s", i - 1,
           i, hlo->ToString());
