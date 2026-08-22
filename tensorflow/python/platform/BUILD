@@ -390,6 +390,10 @@ tf_py_strict_test(
     size = "small",
     srcs = ["self_check_test.py"],
     main = "self_check_test.py",
+    tags = [
+        "no_pip",
+        "notap",
+    ],
     deps = [
         ":client_testlib",
         ":self_check",
