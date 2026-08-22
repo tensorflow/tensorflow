@@ -20,6 +20,7 @@ from absl import logging
 from jax.experimental.pallas import tpu as pltpu
 import jax.numpy as jnp
 
+from xla.benchmarks.core import flag_utils
 from xla.benchmarks.core import platform_info
 from xla.benchmarks.pallas_microbenchmarks import cost_model as pallas_cost_model
 from xla.benchmarks.pallas_microbenchmarks import dense_matmul_lib
@@ -154,14 +155,18 @@ def main(_):
       platform_info.get_default_internal_scratch_bytes()
   )
   if _WINDOW.value is None:
-    vmem_limit_kib = FLAGS.xla_tpu_scoped_vmem_limit_kib
+    vmem_limit_kib = flag_utils.get_flag_value(
+        "xla_tpu_scoped_vmem_limit_kib", default=-1, flag_type=int
+    )
     if vmem_limit_kib == -1:
       vmem_limit_kib = platform_info.get_default_vmem_limit_kib()
     vmem_limit_bytes = vmem_limit_kib * 1024 - internal_scratch_in_bytes
 
-    p_state = FLAGS.xla_tpu_dvfs_p_state
+    p_state = flag_utils.get_flag_value(
+        "xla_tpu_dvfs_p_state", default=None, flag_type=int
+    )
     if p_state == -1:
-      # Cost mode will use the default P-state for the platform.
+      # Cost model will use the default P-state for the platform.
       p_state = None
     block_m, block_k, block_n = pallas_cost_model.CostModel(
         m,
