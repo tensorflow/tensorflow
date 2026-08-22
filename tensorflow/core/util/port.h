@@ -66,6 +66,9 @@ bool IsMklEnabled();
 // Returns true if TF_ENABLE_ZENDNN_OPTS is set to 1
 bool IsZenDnnEnabled();
 
+// Returns true if TF_ENABLE_KDNN_OPTS is set to 1.
+bool IsKDNNEnabled();
+
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_PORT_H_

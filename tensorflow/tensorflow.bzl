@@ -42,6 +42,7 @@ load(
     "if_onednn_async",
     "onednn_v3_define",
 )
+load("//third_party/KDNN:build_defs.bzl", "if_enable_kdnn")  # copybara:comment_replace load("//third_party/tensorflow/third_party/KDNN:build_defs.bzl", "if_enable_kdnn")
 load("//tensorflow:tf_version.bzl", "TF_VERSION")
 
 #
@@ -492,6 +493,9 @@ def tf_copts(
         onednn_v3_define() +
         if_mkldnn_aarch64_acl(["-DDNNL_AARCH64_USE_ACL=1"]) +
         if_zendnn(["-DAMD_ZENDNN"]) +
+        # Define this for every TF C++ compilation, including mobile targets
+        # that compile port.cc through source filegroups instead of :port.
+        if_enable_kdnn(["-DENABLE_KDNN=true"], ["-DENABLE_KDNN=false"]) +
         if_enable_acl(["-DXLA_CPU_USE_ACL=1", "-fexceptions"]) +
         if_llvm_aarch32_available(["-DTF_LLVM_AARCH32_AVAILABLE=1"]) +
         if_llvm_aarch64_available(["-DTF_LLVM_AARCH64_AVAILABLE=1"]) +
