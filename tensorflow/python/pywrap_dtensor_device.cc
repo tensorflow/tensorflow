@@ -109,7 +109,8 @@ void ConvertToTensor(TFE_Context* ctx, PyObject* input,
   output_handle->reset(EagerTensorFromHandle(handle));
 }
 
-PYBIND11_MODULE(_pywrap_dtensor_device, m) {
+PYBIND11_MODULE(
+    _pywrap_dtensor_device, m, pybind11::mod_gil_not_used()) {
   pybind11_protobuf::ImportNativeProtoCasters();
   m.def("Allocate", [](const std::string& name, bool is_async,
                        int in_flight_nodes_limit) {
@@ -251,8 +252,25 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
     py_eager_tensor_handles.resize(len);
 
     for (Py_ssize_t i = 0; i < len; ++i) {
-      PyObject* elem = PyList_GetItem(input_tensors.ptr(), i);
-      ConvertToTensor(ctx, elem, &py_eager_tensor_handles[i], status.get());
+#if PY_VERSION_HEX >= 0x030D0000
+      tensorflow::Safe_PyObjectPtr elem(
+          PyList_GetItemRef(input_tensors.ptr(), i));
+      if (!elem) {
+        throw py::error_already_set();
+      }
+#else
+      PyObject* borrowed_elem = PyList_GetItem(input_tensors.ptr(), i);
+      if (!borrowed_elem) {
+        throw py::error_already_set();
+      }
+      Py_INCREF(borrowed_elem);
+      tensorflow::Safe_PyObjectPtr elem(borrowed_elem);
+#endif
+      if (!elem) {
+        throw py::error_already_set();
+      }
+      ConvertToTensor(ctx, elem.get(), &py_eager_tensor_handles[i],
+                      status.get());
 
       if (tensorflow::MaybeRaiseExceptionFromTFStatus(status.get(), nullptr))
         return tensorflow::PyoOrThrow(nullptr);
@@ -287,11 +305,7 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
     if (tensorflow::MaybeRaiseExceptionFromTFStatus(status.get(), nullptr))
       return tensorflow::PyoOrThrow(nullptr);
     // Convert c++ packed tensor handle into a python eager tensor object.
-    tensorflow::Safe_PyObjectPtr flat_result(PyList_New(1));
-    PyList_SET_ITEM(flat_result.get(), 0, EagerTensorFromHandle(packed_tensor));
-    auto* result = PyList_GET_ITEM(flat_result.get(), 0);
-    Py_INCREF(result);
-    return tensorflow::PyoOrThrow(result);
+    return tensorflow::PyoOrThrow(EagerTensorFromHandle(packed_tensor));
   });
   m.def("Unpack", [](const py::handle& context,
                      const py::handle& dtensor_handle,
