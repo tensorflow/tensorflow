@@ -4210,6 +4210,7 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["nn_grad_test.py"],
     main = "nn_grad_test.py",
+    tags = ["requires-gpu-sm80"],
     deps = [
         ":array_ops",
         ":gradient_checker",

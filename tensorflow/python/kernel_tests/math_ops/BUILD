@@ -49,7 +49,10 @@ cuda_py_strict_test(
 cuda_py_strict_test(
     name = "approx_topk_test",
     srcs = ["approx_topk_test.py"],
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+        "requires-gpu-sm80",
+    ],
     xla_enable_strict_auto_jit = True,
     xla_enabled = True,
     deps = [
@@ -127,7 +130,10 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["batch_matmul_op_test.py"],
     shard_count = 20,
-    tags = ["no_mac_arm64"],
+    tags = [
+        "no_mac_arm64",
+        "requires-gpu-sm80",
+    ],
     deps = [
         "//tensorflow/python:tf2",
         "//tensorflow/python/client:session",

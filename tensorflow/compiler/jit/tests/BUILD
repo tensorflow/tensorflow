@@ -107,7 +107,6 @@ tf_cc_test(
     tags = [
         "config-cuda-only",
         "no_oss",  # This test only runs with GPU.
-        "requires-gpu-nvidia",
         "xla",
     ],
     deps = [
@@ -126,7 +125,6 @@ tf_cc_test(
     tags = [
         "config-cuda-only",
         "no_oss",  # This test only runs with GPU.
-        "requires-gpu-nvidia",
         "xla",
     ],
     deps = [

@@ -48,7 +48,7 @@ xla_cc_test(
     tags = [
         "cuda-only",
         "gpu",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":sm_bw_kernels",

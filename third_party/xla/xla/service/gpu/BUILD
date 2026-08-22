@@ -2663,7 +2663,7 @@ xla_cc_test(
         "gpu",
         "no_oss",
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = if_cuda_is_configured([
         ":nvptx_compiler_impl",

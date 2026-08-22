@@ -127,7 +127,6 @@ py_library(
 #         "gpu",
 #         "no_pip",
 #         "notap",  # b/294137902
-#         "requires-gpu-nvidia",
 #     ],
 #     deps = [
 #         ":extensions",
@@ -225,7 +224,6 @@ py_test(
         "exclusive-if-local",
         "gpu",
         "no_pip",
-        "requires-gpu-nvidia",
     ],
     deps = [
         ":config",
@@ -288,7 +286,6 @@ py_test(
     tags = [
         "gpu",
         "no_pip",
-        "requires-gpu-nvidia",
     ],
     deps = [
         ":config",

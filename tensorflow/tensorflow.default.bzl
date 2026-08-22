@@ -49,6 +49,7 @@ load(
     _tf_cc_shared_library = "tf_cc_shared_library",
     _tf_cuda_cc_test = "tf_cuda_cc_test",
     _tf_cuda_cc_tests = "tf_cuda_cc_tests",
+    _tf_cuda_only_cc_test = "tf_cuda_only_cc_test",
     _tf_custom_op_py_library = "tf_custom_op_py_library",
     _tf_disable_ptxas_warning_flags = "tf_disable_ptxas_warning_flags",
     _tf_external_workspace_visible = "tf_external_workspace_visible",
@@ -88,6 +89,7 @@ cuda_py_test = _cuda_py_test
 cuda_py_strict_test = _cuda_py_test
 tf_cuda_cc_test = _tf_cuda_cc_test
 tf_cuda_cc_tests = _tf_cuda_cc_tests
+tf_cuda_only_cc_test = _tf_cuda_only_cc_test
 tf_py_build_info_genrule = _tf_py_build_info_genrule
 tf_version_info_genrule = _tf_version_info_genrule
 tf_custom_op_py_library = _tf_custom_op_py_library

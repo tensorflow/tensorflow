@@ -45,10 +45,11 @@ cc_test(
     name = "gpu_model_test",
     srcs = ["gpu_model_test.cc"],
     tags = [
+        "gpu",
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         "//tensorflow/lite/delegates/gpu/cl/kernels:cl_test",

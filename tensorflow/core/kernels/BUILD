@@ -533,7 +533,10 @@ tf_cuda_only_cc_test(
     name = "gpu_prim_helpers_test",
     srcs = ["gpu_prim_helpers_test.cu.cc"],
     features = if_cuda(["-layering_check"]),
-    tags = ["no_cuda_asan"],  # TODO(b/183963619)
+    tags = [
+        "no_cuda_asan",  # TODO(b/183963619)
+        "requires-gpu-sm80",
+    ],
     deps = [
         ":gpu_prim_helpers",
         ":ops_testutil",
@@ -4724,7 +4727,7 @@ tf_cuda_cc_test(
     ],
 )
 
-tf_cuda_cc_test(
+tf_cuda_only_cc_test(
     name = "nn_ops_gpu_test",
     srcs = ["nn_ops_gpu_test.cc"],
     tags = tf_cuda_tests_tags() + [

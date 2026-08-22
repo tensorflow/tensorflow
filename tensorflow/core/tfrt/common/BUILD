@@ -18,7 +18,12 @@ load(
     "@xla//xla/tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_cc_test")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+    "tf_cuda_cc_test",
+    "tf_cuda_only_cc_test",
+)
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -218,10 +223,10 @@ tf_cc_test(
     ],
 )
 
-tf_cuda_cc_test(
+tf_cuda_only_cc_test(
     name = "create_pjrt_client_util_test",
     srcs = ["create_pjrt_client_util_test.cc"],
-    tags = tf_cuda_tests_tags() + [
+    tags = [
         "noasan",
         "nomsan",
         "notsan",

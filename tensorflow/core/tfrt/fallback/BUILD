@@ -18,13 +18,12 @@ load(
     "if_mobile",
     "if_not_mobile",
     "tf_cc_test",
+    "tf_cuda_only_cc_test",
 )
-load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
-    "tf_cuda_tests_tags",
 )
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
@@ -181,11 +180,10 @@ tf_cc_test(
     ],
 )
 
-tf_cuda_cc_test(
+tf_cuda_only_cc_test(
     name = "op_kernel_runner_test",
     size = "small",
     srcs = ["op_kernel_runner_test.cc"],
-    tags = tf_cuda_tests_tags(),
     deps = [
         ":fallback_state",
         ":op_kernel_runner",

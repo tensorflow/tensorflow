@@ -266,7 +266,10 @@ cuda_py_strict_test(
     name = "math_test",
     srcs = ["math_test.py"],
     shard_count = 5,
-    tags = ["optonly"],  # Too slow in non-opt mode
+    tags = [
+        "optonly",  # Too slow in non-opt mode
+        "requires-gpu-sm80",
+    ],
     deps = [
         ":control_flow_ops",
         ":test_util",

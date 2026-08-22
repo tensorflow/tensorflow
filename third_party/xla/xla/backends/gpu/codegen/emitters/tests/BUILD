@@ -25,9 +25,35 @@ package(
     licenses = ["notice"],
 )
 
+# go/keep-sorted start
+deviceless_tests = [
+    "reduce_column_small/f32_32_v2.hlo",
+    "reduce_column_small/s8_f32_32_v4.hlo",
+    "scatter/sorted_indices_large.hlo",
+]
+# go/keep-sorted end
+
+lit_test_suite(
+    name = "deviceless_tests",
+    srcs = deviceless_tests,
+    cfg = "//xla:lit.cfg.py",
+    default_tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    tools = [
+        "//xla/backends/gpu/codegen/tools:fusion_to_mlir",
+        "//xla/codegen/tools:emitters_opt",
+        "@llvm-project//llvm:FileCheck",
+    ],
+)
+
 lit_test_suite(
     name = "tests",
-    srcs = glob(["**/*.hlo"]),
+    srcs = glob(
+        include = ["**/*.hlo"],
+        exclude = deviceless_tests,
+    ),
     cfg = "//xla:lit.cfg.py",
     default_tags = tf_cuda_tests_tags(),
     exec_properties = tf_exec_properties({"tags": tf_cuda_tests_tags()}),
