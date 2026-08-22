@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -1142,7 +1143,11 @@ bool NcclSymmetricBuffersSpec::IsEnabled(const HloInstruction& inst) const {
 }
 
 bool IsNcclSymmetricBuffersEnabledForCollective(
-    const HloInstruction* instruction, const DebugOptions& opts) {
+    const HloInstruction* instruction, const DebugOptions& opts,
+    const stream_executor::GpuComputeCapability* gpu_version) {
+  if (gpu_version != nullptr && !gpu_version->IsCuda()) {
+    return false;
+  }
   if (opts.xla_gpu_experimental_enable_nccl_symmetric_buffers()) {
     return true;
   }

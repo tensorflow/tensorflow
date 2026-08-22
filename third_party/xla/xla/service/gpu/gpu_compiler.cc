@@ -2448,13 +2448,15 @@ bool DefinesCollectiveMemorySpaceFrontendAttr(const HloValue* value) {
   return false;
 }
 
-bool RequiresCollectiveInput(const HloUse& use, const DebugOptions& opts) {
+bool RequiresCollectiveInput(
+    const HloUse& use, const DebugOptions& opts,
+    const se::GpuComputeCapability* gpu_version = nullptr) {
   HloInstruction* user = use.instruction;
 
   // Handle standard non-fusion/fusion collectives under NCCL user buffers
   if (IsCollective(user) &&
       (opts.xla_gpu_enable_nccl_user_buffers() ||
-       IsNcclSymmetricBuffersEnabledForCollective(user, opts))) {
+       IsNcclSymmetricBuffersEnabledForCollective(user, opts, gpu_version))) {
     return true;
   }
   // Handle one-shot RaggedAllToAll with NCCL enabled.
@@ -2485,13 +2487,15 @@ bool RequiresCollectiveInput(const HloUse& use, const DebugOptions& opts) {
   return false;
 }
 
-bool RequiresCollectiveOutput(const HloValue* value, const DebugOptions& opts) {
+bool RequiresCollectiveOutput(
+    const HloValue* value, const DebugOptions& opts,
+    const se::GpuComputeCapability* gpu_version = nullptr) {
   HloInstruction* def = value->defining_instruction();
 
   // Handle standard non-fusion/fusion collectives under NCCL user buffers
   if (IsCollective(def) &&
       (opts.xla_gpu_enable_nccl_user_buffers() ||
-       IsNcclSymmetricBuffersEnabledForCollective(def, opts))) {
+       IsNcclSymmetricBuffersEnabledForCollective(def, opts, gpu_version))) {
     return true;
   }
   // Handle one-shot RaggedAllToAll with NCCL enabled.
@@ -2523,7 +2527,8 @@ bool RequiresCollectiveOutput(const HloValue* value, const DebugOptions& opts) {
 
 void GpuCollectiveBufferAnalysis(
     HloModule* module, const HloAliasAnalysis& alias_analysis,
-    std::function<void(HloInstruction*, const ShapeIndex&)> add_index_to_copy) {
+    std::function<void(HloInstruction*, const ShapeIndex&)> add_index_to_copy,
+    const se::GpuComputeCapability* gpu_version = nullptr) {
   const auto& opts = module->config().debug_options();
   VLOG(2) << "Running unified GPU Custom Buffer Analysis for collective memory "
              "spaces";
@@ -2549,7 +2554,7 @@ void GpuCollectiveBufferAnalysis(
       // Check if this buffer value is used by an op which requires collective
       // input memory space.
       for (const HloUse& use : value->GetUses()) {
-        if (RequiresCollectiveInput(use, opts)) {
+        if (RequiresCollectiveInput(use, opts, gpu_version)) {
           used_by_collective = true;
           break;
         }
@@ -2560,7 +2565,7 @@ void GpuCollectiveBufferAnalysis(
         live_out_values.push_back(value);
       }
 
-      if (RequiresCollectiveOutput(value, opts)) {
+      if (RequiresCollectiveOutput(value, opts, gpu_version)) {
         defined_by_collective = true;
       }
     }
@@ -2633,8 +2638,9 @@ void GpuCollectiveBufferAnalysis(
   }
 }
 
-absl::Status RunPostSchedulingCopyInsertion(HloModule* module,
-                                            const GpuAliasInfo* alias_info) {
+absl::Status RunPostSchedulingCopyInsertion(
+    HloModule* module, const GpuAliasInfo* alias_info,
+    const se::GpuComputeCapability* gpu_version = nullptr) {
   // We run a separate pass of copy elision here because the sequential ordering
   // from the HLO schedule potentially allows for more copies to be eliminated.
   constexpr int64_t kRegionBasedLiveRangeAnalysisLimit = -1;
@@ -2662,10 +2668,11 @@ absl::Status RunPostSchedulingCopyInsertion(HloModule* module,
   ABSL_RETURN_IF_ERROR(copy_insertion.CopyInsertion::AddSpecialCaseCopies(
       module, /*execution_threads=*/{},
       /*custom_buffer_analysis=*/
-      [](HloModule* mod, const HloAliasAnalysis& alias_analysis,
-         std::function<void(HloInstruction*, const ShapeIndex&)>
-             add_index_to_copy) {
-        GpuCollectiveBufferAnalysis(mod, alias_analysis, add_index_to_copy);
+      [gpu_version](HloModule* mod, const HloAliasAnalysis& alias_analysis,
+                    std::function<void(HloInstruction*, const ShapeIndex&)>
+                        add_index_to_copy) {
+        GpuCollectiveBufferAnalysis(mod, alias_analysis, add_index_to_copy,
+                                    gpu_version);
       }));
 
   ABSL_RETURN_IF_ERROR(HloDCE().Run(module).status());
@@ -3278,7 +3285,11 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
     const GpuTopology& gpu_topology, const GpuAliasInfo* alias_info,
     mlir::MLIRContext* mlir_context) {
   tsl::profiler::TraceMe traceme("RunPostSchedulingPipelines");
-  ABSL_RETURN_IF_ERROR(RunPostSchedulingCopyInsertion(module, alias_info));
+  const se::GpuComputeCapability gpu_version =
+      gpu_topology.gpu_target_config()
+          .device_description.gpu_compute_capability();
+  ABSL_RETURN_IF_ERROR(
+      RunPostSchedulingCopyInsertion(module, alias_info, &gpu_version));
   {
     HloPassPipeline post_scheduler_pipeline("post-scheduler-xla-transforms");
     post_scheduler_pipeline.AddPass<ApplyXlaTransforms>(
