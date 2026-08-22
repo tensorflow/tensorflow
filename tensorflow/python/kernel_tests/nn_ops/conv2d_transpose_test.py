@@ -332,5 +332,27 @@ class Conv2DTransposeTest(test.TestCase):
             filters=[[[[1]]]])
         self.evaluate(op)
 
+  def testConv2DTransposeInvalidFilterRank(self):
+    with self.session():
+      with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+        op = nn_ops.conv2d_transpose(
+            input=constant_op.constant(1.0, shape=[1, 3, 3, 8]),
+            filters=8,
+            output_shape=(2, 2),
+            strides=(2, 2),
+            padding="SAME")
+        self.evaluate(op)
+
+  def testConv2DTransposeInvalidOutputShapeRank(self):
+    with self.session():
+      with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+        op = nn_ops.conv2d_transpose(
+            input=constant_op.constant(1.0, shape=[1, 4, 4, 3]),
+            filters=constant_op.constant(1.0, shape=[3, 3, 3, 3]),
+            output_shape=(2, 4, 2),
+            strides=[1, 2, 2, 1],
+            padding="SAME")
+        self.evaluate(op)
+
 if __name__ == "__main__":
   test.main()
