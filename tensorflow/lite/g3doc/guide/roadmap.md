@@ -93,7 +93,7 @@ roadmap and provide us feedback in the
 
     *   Combine configurable training-time (pruning + quantization-aware
         training) APIs.
-    *   Increase sparity application on TF Model Garden models.
+    *   Increase sparsity application on TF Model Garden models.
     *   Sparse model execution support in TensorFlow Lite.
 
 ## Portability
