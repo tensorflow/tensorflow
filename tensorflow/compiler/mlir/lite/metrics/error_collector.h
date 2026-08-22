@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/mlir/lite/metrics/converter_error_data.pb.h"
 #include "tensorflow/compiler/mlir/lite/metrics/types_util.h"
 
@@ -33,14 +34,31 @@ class ErrorCollector {
                          ConverterErrorDataComparison>;
 
  public:
-  const ConverterErrorDataSet &CollectedErrors() { return collected_errors_; }
+  ConverterErrorDataSet CollectedErrors() const {
+    absl::MutexLock lock(&mu_);
+    return collected_errors_;
+  }
 
-  void ReportError(const ConverterErrorData &error) {
+  void ReportError(const ConverterErrorData& error) {
+    absl::MutexLock lock(&mu_);
     collected_errors_.insert(error);
   }
 
   // Clear the set of collected errors.
-  void Clear() { collected_errors_.clear(); }
+  void Clear() {
+    absl::MutexLock lock(&mu_);
+    collected_errors_.clear();
+  }
+
+  // Atomically returns all currently collected errors and clears the set.
+  ConverterErrorDataSet TakeCollectedErrors() {
+    absl::MutexLock lock(&mu_);
+
+    ConverterErrorDataSet result;
+    result.swap(collected_errors_);
+
+    return result;
+  }
 
   // Returns the global instance of ErrorCollector.
   static ErrorCollector* GetErrorCollector();
@@ -48,9 +66,8 @@ class ErrorCollector {
  private:
   ErrorCollector() = default;
 
+  mutable absl::Mutex mu_;
   ConverterErrorDataSet collected_errors_;
-
-  static ErrorCollector* error_collector_instance_;
 };
 
 }  // namespace TFL
