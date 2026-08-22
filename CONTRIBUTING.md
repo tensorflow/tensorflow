@@ -172,10 +172,10 @@ Bazel BUILD files also need to include a license section, e.g.,
 Changes to TensorFlow C++ code should conform to
 [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html).
 
-Use `clang-tidy` to check your C/C++ changes. To install `clang-tidy` on ubuntu:16.04, do:
+Use `clang-format` to check your C/C++ changes. To install `clang-format` on Ubuntu, do:
 
 ```bash
-apt-get install -y clang-tidy
+sudo apt-get install -y clang-format
 ```
 
 You can check a C/C++ file by doing:
