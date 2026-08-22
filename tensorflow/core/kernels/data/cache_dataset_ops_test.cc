@@ -84,6 +84,9 @@ class CacheDatasetOpTest : public DatasetOpsTestBase {
   }
 
   ~CacheDatasetOpTest() override {
+    // Release iterator first to close open file handles on Windows.
+    iterator_.reset();
+
     if (!cache_filename_.empty()) {
       std::vector<std::string> cache_files;
       absl::Status s = device_->env()->GetMatchingPaths(
@@ -93,7 +96,15 @@ class CacheDatasetOpTest : public DatasetOpsTestBase {
                      << "* : " << s;
       }
       for (const std::string& path : cache_files) {
+#ifdef _WIN32
+        for (int i = 0; i < 50; ++i) {
+          s = device_->env()->DeleteFile(path);
+          if (s.ok() || s.code() == absl::StatusCode::kNotFound) break;
+          device_->env()->SleepForMicroseconds(100 * 1000);
+        }
+#else
         s = device_->env()->DeleteFile(path);
+#endif
         if (!s.ok()) {
           LOG(WARNING) << "Failed to delete " << path << " : " << s;
         }
