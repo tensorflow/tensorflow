@@ -198,6 +198,48 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
   virtual absl::StatusOr<std::vector<ArrayRef>> MakeErrorArrays(
       const absl::Status& error, absl::Span<const ArraySpec> array_specs) = 0;
 
+  // Represents a mutable destination host buffer shard.
+  struct MutableHostBuffer {
+    // `data` points to the backing array of the host buffer. Caution:
+    // `byte_strides` are allowed to be negative, in which case `data` may need
+    // to point to the interior of the buffer, not necessarily its start.
+    void* data;
+
+    DType dtype;
+    Shape shape;
+
+    using ByteStrides = std::vector<int64_t>;
+    std::optional<ByteStrides> byte_strides;
+  };
+
+  // Represents the specification of copying an array to host buffer shards.
+  //
+  // `buffers` is a list of pairs of addressable shard indices and a destination
+  // mutable host buffer.
+  //
+  // For replicated or partially-replicated arrays, multiple shard indices that
+  // hold the same shard data can be passed in `ShardIndices`. The runtime
+  // implementation can choose which shard index (or combination of shard
+  // indices) to copy the data to the host buffer from.
+  struct CopyArraysToHostBufferShardsSpec {
+    using ShardIndices = absl::InlinedVector<int64_t, 1>;
+    using Buffers =
+        absl::InlinedVector<std::pair<ShardIndices, MutableHostBuffer>, 1>;
+    ArrayRef array;
+    Buffers buffers;
+  };
+
+  // Copies arrays' shards into the provided destination host buffers.
+  //
+  // All source arrays should use the same device list.
+  //
+  // Returns a vector of futures, one for each spec, that will be fulfilled
+  // when all host buffer shards for that spec have been filled.
+  virtual absl::StatusOr<std::vector<tsl::Future<>>>
+  CopyArraysToHostBufferShards(
+      absl::Span<CopyArraysToHostBufferShardsSpec> specs,
+      ArrayCopySemantics semantics) = 0;
+
   // Builds a larger array out of individual per-device shards.
   // TODO(hyeontaek): Replace this API with the version that takes
   // `SingleDeviceShardSemantics` and `dtype`.

@@ -98,6 +98,9 @@ NativeRefT HostErfInv(NativeRefT x) {
 // different implementation from the one in math.cc.
 template <typename NativeRefT>
 NativeRefT HostDigamma(NativeRefT x) {
+  if (x == 0.0) {
+    return -std::numeric_limits<double>::infinity();
+  }
   // Euler-Mascheroni constant
   const double gamma_constant = 0.57721566490153286061;
 
