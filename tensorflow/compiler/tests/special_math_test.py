@@ -26,12 +26,15 @@ import scipy.special as sps
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gradient_checker_v2
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
-
 flags.DEFINE_bool('vary_seed', False,
                   ('Whether to vary the PRNG seed unpredictably.  '
                    'With --runs_per_test=N, produces N iid runs.'))
@@ -617,6 +620,47 @@ class IgammacTest(xla_test.XLATestCase, parameterized.TestCase):
       with self.test_scope():
         actual = sess.run(_igammac(a, x))
     self.assertAllClose(expected_values, actual, atol=atol, rtol=rtol)
+
+
+
+class DynamicShapeEqualityTest(xla_test.XLATestCase, parameterized.TestCase):
+
+  def _test_op_with_dynamic_shapes(self, op_fn, dtype):
+    random_seed.set_random_seed(3994)
+    t = math_ops.abs(random_ops.random_normal([1, 32], dtype=dtype)) + 1.0
+
+    def model(t):
+      a = math_ops.log(math_ops.exp(t) + math_ops.exp(t))
+      b = math_ops.linspace(a, a, 6)
+      c = linalg_ops.matrix_solve_ls(t, b)
+      d = math_ops.pow(b, t)
+      return op_fn(a=c, x=d)
+
+    eager_out = model(t)
+    xla_out = def_function.function(model, jit_compile=True)(t)
+    self.assertAllClose(eager_out, xla_out, rtol=1e-5, atol=1e-5)
+
+  @parameterized.parameters(dtypes.float32, dtypes.float64)
+  def testIgammaDynamicShape(self, dtype):
+    if self.device not in ['XLA_GPU', 'XLA_CPU'] and dtype == dtypes.float64:
+      self.skipTest(
+          'Skipping test because some F64 operations not supported on TPU.')
+    self._test_op_with_dynamic_shapes(gen_math_ops.igamma, dtype)
+
+  @parameterized.parameters(dtypes.float32, dtypes.float64)
+  def testIgammacDynamicShape(self, dtype):
+    if self.device not in ['XLA_GPU', 'XLA_CPU'] and dtype == dtypes.float64:
+      self.skipTest(
+          'Skipping test because some F64 operations not supported on TPU.')
+    self._test_op_with_dynamic_shapes(gen_math_ops.igammac, dtype)
+
+  @parameterized.parameters(dtypes.float32, dtypes.float64)
+  def testZetaDynamicShape(self, dtype):
+    if self.device not in ['XLA_GPU', 'XLA_CPU'] and dtype == dtypes.float64:
+      self.skipTest(
+          'Skipping test because some F64 operations not supported on TPU.')
+    self._test_op_with_dynamic_shapes(
+        lambda a, x: gen_math_ops.zeta(x=a, q=x), dtype)
 
 
 if __name__ == '__main__':
