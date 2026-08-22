@@ -13,6 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// tf_tfl_passes.cc constructs the MLIR pass pipeline used by the TFLite
+// converter. It instantiates mlir::TFL::ConverterPassOptionsSetter (see
+// transforms/converter_pass_options_setter.h) and calls its SetOptions
+// overloads via virtual dispatch through PassOptionsSetter::ApplyOptionsVisitor.
+//
+// CONTRACT: this file must only call SetOptions overloads that are
+// declared in converter_pass_options_setter.h AND defined in
+// converter_pass_options_setter.cc. If a Windows link fails with
+// "undefined symbol: ?SetOptions@ConverterPassOptionsSetter@...", the
+// most likely cause is a stale Bazel cache (`bazel clean --expunge`).
+// The next-most-likely cause is that tf_tfl_passes.obj was built from a
+// source tree whose converter_pass_options_setter.h declared an overload
+// that has since been removed or renamed without rebuilding.
+
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 
 #include <memory>

@@ -22,6 +22,7 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_enable_kdnn",
     "tf_cc_test",
 )
 load(
@@ -84,6 +85,7 @@ tf_gen_op_libs(
         "mkl_nn_ops",
         "nccl_ops",
         "nn_ops",
+        "kdnn_nn_ops",
         "no_op",
         "optional_ops",
         "parsing_ops",
@@ -372,6 +374,8 @@ cc_library(
     }) + if_mkl([
         ":mkl_array_ops_op_lib",
         ":mkl_nn_ops_op_lib",
+    ]) + if_enable_kdnn([
+        ":kdnn_nn_ops_op_lib",
     ]),
     alwayslink = 1,
 )
