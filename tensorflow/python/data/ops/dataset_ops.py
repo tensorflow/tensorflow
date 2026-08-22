@@ -1102,13 +1102,16 @@ class DatasetV2(
     >>> c = tf.data.Dataset.zip((a, b))
     >>> a.concatenate(c)
     Traceback (most recent call last):
-    TypeError: Two datasets to concatenate have different types
-    <dtype: 'int64'> and (tf.int64, tf.int64)
+    TypeError: Incompatible dataset elements:
+      TensorSpec(shape=(), dtype=tf.int64, name=None) vs.
+      (TensorSpec(shape=(), dtype=tf.int64, name=None),
+      TensorSpec(shape=(), dtype=tf.int64, name=None))
     >>> d = tf.data.Dataset.from_tensor_slices(["a", "b", "c"])
     >>> a.concatenate(d)
     Traceback (most recent call last):
-    TypeError: Two datasets to concatenate have different types
-    <dtype: 'int64'> and <dtype: 'string'>
+    TypeError: Incompatible dataset elements:
+      TensorSpec(shape=(), dtype=tf.int64, name=None) vs.
+      TensorSpec(shape=(), dtype=tf.string, name=None)
 
     Args:
       dataset: `Dataset` to be concatenated.
