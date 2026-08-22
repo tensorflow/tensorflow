@@ -845,8 +845,8 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           return async_done.getOperation();
         }
       }
-      ABSL_ASSIGN_OR_RETURN(FuncOp function,
-                       ImportAsFunc(*called_computation, /*is_main=*/false));
+      ABSL_ASSIGN_OR_RETURN(FuncOp function, ImportAsFunc(*called_computation,
+                                                     /*is_main=*/false));
       attributes.push_back(builder_->getNamedAttr(
           "called_computation",
           mlir::FlatSymbolRefAttr::get(builder_->getContext(),
@@ -1748,6 +1748,38 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     case HloOpcode::kAllReduceDone: {
       return ImportAsyncOpDone(instruction, loc, operands, attributes,
                                result_type, func_builder);
+    }
+    case HloOpcode::kCollectiveReduce: {
+      auto collective_reduce =
+          Cast<HloCollectiveReduceInstruction>(instruction);
+      auto result_tuple_ty = mlir::dyn_cast<mlir::TupleType>(result_type);
+
+      llvm::SmallVector<Type> result_types = {result_type};
+      if (result_tuple_ty) {
+        result_types = llvm::to_vector(result_tuple_ty.getTypes());
+      }
+
+      attributes.push_back(ConvertReplicaGroups(collective_reduce,
+                                                &symbol_table_, func_builder));
+      if (collective_reduce->channel_id().has_value()) {
+        attributes.push_back(stablehlo::ConvertChannelHandle(
+            collective_reduce->channel_id().value(), builder_));
+      }
+      if (collective_reduce->use_global_device_ids()) {
+        attributes.push_back(ConvertUseGlobalDeviceIds(builder_));
+      }
+      if (collective_reduce->has_dynamic_root()) {
+        attributes.push_back(builder_->getNamedAttr("has_dynamic_root",
+                                                    builder_->getUnitAttr()));
+      }
+      auto collective_reduce_op = mlir::stablehlo::CollectiveReduceOp::create(
+          *func_builder, loc, result_types, operands, attributes);
+      ABSL_RETURN_IF_ERROR(ImportAsRegion(*collective_reduce->to_apply(),
+                                     &collective_reduce_op.getComputation()));
+      if (result_tuple_ty) {
+        return WrapInTuple(func_builder, collective_reduce_op);
+      }
+      return collective_reduce_op.getOperation();
     }
     case HloOpcode::kAllToAll: {
       auto all_to_all = Cast<HloAllToAllInstruction>(instruction);

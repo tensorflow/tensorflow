@@ -177,6 +177,7 @@ bool IsNonFusionCollective(const HloInstruction* instruction) {
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kCollectivePermuteDone:
+    case HloOpcode::kCollectiveReduce:
     case HloOpcode::kRaggedAllToAll:
     case HloOpcode::kReduceScatter:
       return true;
@@ -218,6 +219,7 @@ absl::StatusOr<bool> IsAsyncCollective(const HloInstruction* instruction) {
       case HloOpcode::kAllToAll:
       case HloOpcode::kCollectiveBroadcast:
       case HloOpcode::kCollectivePermute:
+      case HloOpcode::kCollectiveReduce:
       case HloOpcode::kRaggedAllToAll:
       case HloOpcode::kReduceScatter:
         return true;
@@ -243,6 +245,7 @@ absl::StatusOr<bool> IsAsyncCollective(const HloInstruction* instruction) {
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectiveBroadcast:
     case HloOpcode::kCollectivePermute:
+    case HloOpcode::kCollectiveReduce:
     case HloOpcode::kRaggedAllToAll:
     case HloOpcode::kReduceScatter:
       return false;
@@ -1056,6 +1059,8 @@ std::optional<DebugOptions::CollectiveOpType> GetCollectiveOpType(
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kCollectivePermuteDone:
       return DebugOptions::COLLECTIVEPERMUTE;
+    case HloOpcode::kCollectiveReduce:
+      return DebugOptions::ALLREDUCE;
     case HloOpcode::kRaggedAllToAll:
       return DebugOptions::RAGGEDALLTOALL;
     default:
