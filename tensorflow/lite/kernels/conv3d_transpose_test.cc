@@ -449,6 +449,15 @@ TEST_P(Conv3dTransposeOpTest, BiasTest) {
            -1, -80, 3, 84, 0,  43,  2, 1,  -1, 6,   3, 42, 0,  -43, 2, 47}));
 }
 
+TEST_P(Conv3dTransposeOpTest, OutputShapeOverflowTest) {
+  Conv3dTransposeOpModel m({1, 46341, 46341, 3, 0},
+                           {TensorType_FLOAT32, {1, 1, 1, 1, 1}},
+                           {TensorType_FLOAT32, {1, 1, 1, 1, 1}},
+                           {TensorType_FLOAT32, {}},
+                           Conv3dTransposeOpTest::GetParam());
+  EXPECT_NE(m.Invoke(), kTfLiteOk);
+}
+
 INSTANTIATE_TEST_SUITE_P(Conv3dTransposeOpTest, Conv3dTransposeOpTest,
                          ::testing::Values(TestType::kConst,
                                            TestType::kDynamic));
