@@ -32,6 +32,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "riegeli/base/any.h"
+#include "riegeli/bytes/reader.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
@@ -524,6 +526,18 @@ class PjRtCompiler {
         "GetTargetRuntimeAbiVersion is not implemented.");
   }
 
+  // Deserializes a serialized executable as produced by
+  // PjRtExecutable::SerializeExecutable(). `serialized` must have been
+  // produced by a compiler of the same platform and version as this one.
+  virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+      const PjRtTopologyDescription& topology,
+      riegeli::Any<riegeli::Reader*> reader,
+      std::optional<CompileOptions>&& options) {
+    return absl::UnimplementedError(
+        absl::StrCat("DeserializeExecutable is not implemented for: ",
+                     topology.platform_name(), "."));
+  }
+
   // Allow fallible downcasting to PjRtPhaseCompiler.
   virtual PjRtPhaseCompiler* AsPhaseCompiler() { return nullptr; }
   virtual const PjRtPhaseCompiler* AsPhaseCompiler() const { return nullptr; }
@@ -565,6 +579,14 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, MaybeOwningMlirModule module,
     const PjRtTopologyDescription& topology, PjRtCompilerVariant variant,
     PjRtClient* client = nullptr);
+
+// Deserializes a serialized executable as produced by
+// PjRtExecutable::SerializeExecutable(). `serialized` must have been
+// produced by a compiler of the same platform and version as this one.
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtDeserializeExecutable(
+    const PjRtTopologyDescription& topology,
+    riegeli::Any<riegeli::Reader*> reader,
+    std::optional<CompileOptions> options = std::nullopt);
 
 // Stores a compilation phase's compiler and validator functions.
 // This struct bundles the essential functional components required to define
