@@ -991,6 +991,29 @@ class AutomaticControlDependenciesTest(test.TestCase):
     self.assertIn(input2, writes3)
     self.assertNotIn(input0, writes3)
 
+  def testResourceReadAndWriteOverlap(self):
+    from tensorflow.python.framework import auto_control_deps_utils as acd_utils
+    from unittest import mock
+
+    input0 = mock.MagicMock()
+    input0.dtype = dtypes.resource
+
+    op = mock.MagicMock()
+    op.type = "SomeOp"
+    op.inputs = [input0, input0]
+    op.get_attr.side_effect = (
+        lambda name: [0]
+        if name == acd_utils.READ_ONLY_RESOURCE_INPUTS_ATTR
+        else None
+    )
+
+    reads, writes = acd_utils.get_read_write_resource_inputs(op)
+    self.assertIn(input0, reads)
+    self.assertIn(input0, writes)
+
+    resource_inputs = list(acd._get_resource_inputs(op))
+    self.assertEqual(resource_inputs, [(input0, acd.ResourceType.READ_WRITE)])
+
 
 if __name__ == "__main__":
   ops.enable_eager_execution()
