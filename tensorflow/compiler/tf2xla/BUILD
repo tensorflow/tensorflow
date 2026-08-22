@@ -656,6 +656,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:ops",
+        "//tensorflow/core/common_runtime:placer",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/core/util:overflow",
