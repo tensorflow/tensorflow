@@ -19,6 +19,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/synchronization/mutex.h"
+
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/status.h"
@@ -72,6 +74,10 @@ class CheckpointReader {
 
   std::unique_ptr<TensorSliceReader::VarToShapeMap> var_to_shape_map_;
   std::unique_ptr<TensorSliceReader::VarToDataTypeMap> var_to_data_type_map_;
+
+  // BundleReader and TensorSliceReader do not provide same-instance
+  // concurrent access guarantees. Serialize runtime reader operations.
+  mutable absl::Mutex reader_mu_;
 
   CheckpointReader(const CheckpointReader&) = delete;
   void operator=(const CheckpointReader&) = delete;
