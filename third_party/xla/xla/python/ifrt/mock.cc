@@ -146,11 +146,6 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
                             absl::Span<const ArraySpec> array_specs) {
         return delegated_->MakeErrorArrays(error, array_specs);
       });
-  ON_CALL(*this, CopyArraysToHostBufferShards)
-      .WillByDefault([this](absl::Span<CopyArraysToHostBufferShardsSpec> specs,
-                            ArrayCopySemantics semantics) {
-        return delegated_->CopyArraysToHostBufferShards(specs, semantics);
-      });
   ON_CALL(*this, AssembleArrayFromSingleDeviceArrays(_, _, _, _, _, _))
       .WillByDefault(
           [this](DType dtype, Shape shape, ShardingRef sharding,

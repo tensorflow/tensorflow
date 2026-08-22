@@ -177,11 +177,6 @@ class MockClient : public RTTIExtends<MockClient, Client> {
               (const absl::Status& error,
                absl::Span<const ArraySpec> array_specs),
               (final));
-  MOCK_METHOD((absl::StatusOr<std::vector<tsl::Future<>>>),
-              CopyArraysToHostBufferShards,
-              (absl::Span<CopyArraysToHostBufferShardsSpec> specs,
-               ArrayCopySemantics semantics),
-              (final));
   MOCK_METHOD(absl::StatusOr<ArrayRef>, AssembleArrayFromSingleDeviceArrays,
               (DType dtype, Shape shape, ShardingRef sharding,
                absl::Span<ArrayRef> arrays,

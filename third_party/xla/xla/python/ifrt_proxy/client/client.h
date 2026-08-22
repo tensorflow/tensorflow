@@ -84,9 +84,6 @@ class Client final : public RTTIExtends<Client, xla::ifrt::Client> {
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> MakeErrorArrays(
       const absl::Status& error,
       absl::Span<const ArraySpec> array_specs) override;
-  absl::StatusOr<std::vector<tsl::Future<>>> CopyArraysToHostBufferShards(
-      absl::Span<CopyArraysToHostBufferShardsSpec> specs,
-      ArrayCopySemantics semantics) override;
   absl::StatusOr<xla::ifrt::ArrayRef> AssembleArrayFromSingleDeviceArrays(
       DType dtype, Shape shape, ShardingRef sharding,
       absl::Span<xla::ifrt::ArrayRef> arrays,

@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/tsl/concurrency/future.h"
 
 namespace xla {
 namespace ifrt {
@@ -40,16 +39,6 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
     Client* client,
     absl::Span<Client::MakeArraysFromHostBufferShardsSpec> specs,
     Client::HostBufferSemantics semantics);
-
-// Portable adapter for `CopyArraysToHostBufferShards`. It breaks down
-// requests into `DisassembleIntoSingleDeviceArrays` calls followed by
-// per-shard `CopyToHostBuffer`.
-//
-// TODO(spetrovic): Remove this adapter once all major IFRT implementations
-// natively support `CopyArraysToHostBufferShards`.
-absl::StatusOr<std::vector<tsl::Future<>>> ClientCopyArraysToHostBufferShards(
-    Client* client, absl::Span<Client::CopyArraysToHostBufferShardsSpec> specs,
-    ArrayCopySemantics semantics);
 
 // Portable adapter of `LoadedExecutable::ExecuteBundle` that unpacks bundles,
 // calls `Execute` with individual arrays, and repacks the outputs into a

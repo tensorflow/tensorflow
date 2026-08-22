@@ -132,10 +132,6 @@ class NanoIfrtClient
       const absl::Status& error,
       absl::Span<const ifrt::ArraySpec> array_specs) override;
 
-  absl::StatusOr<std::vector<tsl::Future<>>> CopyArraysToHostBufferShards(
-      absl::Span<CopyArraysToHostBufferShardsSpec> specs,
-      ifrt::ArrayCopySemantics semantics) override;
-
   // Assembles a sharded array from a list of single device arrays. If the
   // provided sharding is specific enough to assemble a dense array, this method
   // will actually return an assembled array that pretends it is sharded.
