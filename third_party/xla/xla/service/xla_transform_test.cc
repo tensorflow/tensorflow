@@ -778,8 +778,8 @@ TEST_F(XlaTransformTest, GetHloPassPipelineTrace) {
   EXPECT_GT(args.trace.serialized_trace_size, 0);
 
   xla::HloModuleMetadataProto metadata_proto;
-  ASSERT_TRUE(metadata_proto.ParseFromArray(args.trace.serialized_trace,
-                                            args.trace.serialized_trace_size));
+  ASSERT_TRUE(metadata_proto.ParseFromString(absl::string_view(
+      args.trace.serialized_trace, args.trace.serialized_trace_size)));
 
   LOG(INFO) << "=== Captured HLO Pass Pipeline Trace ===";
   LOG(INFO) << "Module ID: " << metadata_proto.canonical_module_id();
