@@ -1647,6 +1647,35 @@ ENTRY %PreserveMemorySpaceOnConflict {
               ElementsAre(1, 0));
 }
 
+TEST_F(LayoutAssignmentTest, PreserveMemorySpaceOnlyLayout) {
+  const char* module_str = R"(
+HloModule test_module
+
+ENTRY %PreserveMemorySpaceOnlyLayout {
+  %param0 = f32[8,1024]{:S(5)} parameter(0)
+  ROOT %copy = f32[8,1024] copy(%param0)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> m,
+      ParseAndReturnVerifiedModule(module_str, GetModuleConfigForTest()));
+  EXPECT_IS_OK(AssignLayoutsAndVerifyHlo(
+      m.get(), m->mutable_entry_computation_layout()));
+
+  // Layout should be set now (minor_to_major assigned).
+  EXPECT_TRUE(m->entry_computation_layout().parameter_layout(0).LayoutIsSet());
+  EXPECT_TRUE(m->entry_computation_layout()
+                  .parameter_layout(0)
+                  .NonMemorySpaceLayoutIsSet());
+  // Memory space should be preserved in the module's entry computation layout.
+  EXPECT_EQ(m->entry_computation_layout()
+                .parameter_layout(0)
+                .shape()
+                .layout()
+                .memory_space(),
+            Layout::kHostMemorySpace);
+}
+
 TEST_F(LayoutAssignmentTest, OverwriteDiamondShapedConstraintsX) {
   // Check that we handle a diamond-shaped graph correctly.
   //      transpose

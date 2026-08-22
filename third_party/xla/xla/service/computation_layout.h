@@ -82,6 +82,8 @@ class ComputationLayout {
   bool LayoutIsSet() const;
   // Returns true if any layouts (parameters and result) have been set.
   bool AnyLayoutSet() const;
+  bool NonMemorySpaceLayoutIsSet() const;
+  bool AnyNonMemorySpaceLayoutSet() const;
 
   // Returns a list of each parameter's layout. If the parameters are tupled,
   // returns an untupled list. Must only be called if all parameters have

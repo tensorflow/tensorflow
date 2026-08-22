@@ -81,6 +81,8 @@ class ShapeLayout {
   // is, every array has a layout.
   bool LayoutIsSet() const;
   bool AnyLayoutIsSet() const;
+  bool NonMemorySpaceLayoutIsSet() const;
+  bool AnyNonMemorySpaceLayoutIsSet() const;
 
   // Resets the layout on the shape to the provided layout. Shape must not be a
   // tuple.

@@ -135,6 +135,8 @@ class LayoutUtil {
   // returned only if all elements have layouts.
   static bool HasLayout(const Shape& shape);
   static bool HasAnyLayout(const Shape& shape);
+  static bool HasNonMemorySpaceLayout(const Shape& shape);
+  static bool HasAnyNonMemorySpaceLayout(const Shape& shape);
 
   // Returns whether all Shapes within the given ProgramShape have layouts.
   static bool HasLayout(const ProgramShape& program_shape);

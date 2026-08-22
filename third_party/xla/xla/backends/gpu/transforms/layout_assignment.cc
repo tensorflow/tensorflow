@@ -422,6 +422,66 @@ bool ChainEndsWithAutoLayout(const HloInstruction* instruction,
   }
 }
 
+const HloInstruction* TraceToParameter(const HloInstruction* instr,
+                                       ShapeIndex& shape_index) {
+  std::vector<int64_t> reverse_index;
+  const HloInstruction* op = instr;
+  while (op->opcode() == HloOpcode::kGetTupleElement) {
+    reverse_index.push_back(op->tuple_index());
+    op = op->operand(0);
+  }
+  if (op->opcode() == HloOpcode::kParameter) {
+    shape_index = ShapeIndex(reverse_index.rbegin(), reverse_index.rend());
+    return op;
+  }
+  return nullptr;
+}
+
+bool FindResultIndex(const HloInstruction* current,
+                     const HloInstruction* target, ShapeIndex& index) {
+  if (current == target) {
+    return true;
+  }
+  if (current->opcode() == HloOpcode::kTuple) {
+    for (int64_t i = 0; i < current->operand_count(); ++i) {
+      index.push_back(i);
+      if (FindResultIndex(current->operand(i), target, index)) {
+        return true;
+      }
+      index.pop_back();
+    }
+  }
+  return false;
+}
+
+bool IsEntryComputationParameterWithAutoLayout(
+    const HloInstruction* instr,
+    const ComputationLayout& entry_computation_layout) {
+  ShapeIndex shape_index;
+  const HloInstruction* param = TraceToParameter(instr, shape_index);
+  if (param == nullptr) {
+    return false;
+  }
+  const ShapeLayout& param_layout =
+      entry_computation_layout.parameter_layout(param->parameter_number());
+  const Shape& subshape =
+      ShapeUtil::GetSubshape(param_layout.shape(), shape_index);
+  return !subshape.has_layout() || subshape.layout().minor_to_major().empty();
+}
+
+bool IsEntryComputationResultWithAutoLayout(
+    const HloInstruction* instr,
+    const ComputationLayout& entry_computation_layout,
+    const HloInstruction* root) {
+  ShapeIndex index;
+  if (!FindResultIndex(root, instr, index)) {
+    return false;
+  }
+  const ShapeLayout& result_layout = entry_computation_layout.result_layout();
+  const Shape& subshape = ShapeUtil::GetSubshape(result_layout.shape(), index);
+  return !subshape.has_layout() || subshape.layout().minor_to_major().empty();
+}
+
 }  // namespace
 
 absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
@@ -700,10 +760,28 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
     } else if (IsCustomCallToMemoryPlacement(instruction)) {
       // Make sure that host memory buffers use the default layout so that
       // the compiler does not insert transposes on host memory buffers.
-      Shape operand_shape = instruction->operand(0)->shape();
-      LayoutUtil::SetToDefaultLayout(&operand_shape);
-      ABSL_RETURN_IF_ERROR(SetOperandLayout(operand_shape, instruction, 0));
-      ABSL_RETURN_IF_ERROR(SetInstructionLayout(operand_shape, instruction));
+      //
+      // However, if the host memory custom call is on an entry computation
+      // parameter or result that has AUTO layout (no minor-to-major layout
+      // specified), we do not constrain it.
+      bool skip_constraint = false;
+      if (instruction->parent()->IsEntryComputation()) {
+        const ComputationLayout& entry_layout =
+            saved_entry_computation_layout();
+        if (IsEntryComputationParameterWithAutoLayout(instruction->operand(0),
+                                                      entry_layout) ||
+            IsEntryComputationResultWithAutoLayout(
+                instruction, entry_layout,
+                instruction->parent()->root_instruction())) {
+          skip_constraint = true;
+        }
+      }
+      if (!skip_constraint) {
+        Shape operand_shape = instruction->operand(0)->shape();
+        LayoutUtil::SetToDefaultLayout(&operand_shape);
+        ABSL_RETURN_IF_ERROR(SetOperandLayout(operand_shape, instruction, 0));
+        ABSL_RETURN_IF_ERROR(SetInstructionLayout(operand_shape, instruction));
+      }
     } else if (instruction->opcode() == HloOpcode::kAsyncStart) {
       HloComputation* called_computation =
           instruction->async_wrapped_computation();
