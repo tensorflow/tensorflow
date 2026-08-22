@@ -4956,6 +4956,69 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest,
   stop_teardown.Notify();
 }
 
+// Tests that when an unsplittable task of size > batch_down_size is at the
+// head of the queue with kMinimizeTpuCostPerRequestPolicy, batching down to
+// the smaller size is skipped and the scheduler falls back to candidate_size,
+// avoiding empty-batch spin loop.
+TEST_P(SharedBatchSchedulerPriorityAwareTest,
+       MinimizeTpuCostPerRequestUnsplittableTaskFallsBackToCandidateSize) {
+  test_util::FakeClockEnv env(Env::Default());
+  absl::Notification start_teardown, stop_teardown;
+  std::unique_ptr<Thread> teardown_thread =
+      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
+
+  {
+    // Set up ModelBatchStats so that batch-down is cheaper per request.
+    // With allowed_batch_sizes={2, 4, 8} and candidate_size=3:
+    //   pad_up_size=4, batch_down_size=2
+    //   cost_per_request(pad_up)  = cost(4) / candidate_size = 3.1s / 3 ≈ 1.03s
+    //   cost_per_request(batch_down) = cost(2) / batch_down_size = 2.0s / 2
+    //   = 1.0s
+    // Since 1.0s < 1.03s, the policy should batch down to size 2.
+    ModelBatchStats model_batch_stats;
+    model_batch_stats.batch_size(2).tpu_cost().Register(absl::Seconds(2));
+    model_batch_stats.batch_size(4).tpu_cost().Register(absl::Seconds(3.1));
+
+    absl::Notification batch_processed;
+    auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+      EXPECT_TRUE(batch->IsClosed());
+      // Candidate size 3 with cost model prefers batch-down size 2.
+      // Since task size 3 > 2 is unsplittable, trimming is skipped and the
+      // batch is processed at candidate_size 3.
+      EXPECT_EQ(batch->size(), 3);
+      batch_processed.Notify();
+    };
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::shared_ptr<Scheduler> scheduler,
+        CreateSharedBatchScheduler(/*num_batch_threads=*/1, &env));
+
+    QueueOptions options = CreatePriorityAwareQueueOptions(
+        /*max_execution_batch_size=*/8,
+        /*batch_timeout_micros=*/1000, /*max_queue_depth=*/10);
+    options.allowed_batch_sizes = {2, 4, 8};
+    options.batch_padding_policy = kMinimizeTpuCostPerRequestPolicy;
+    options.model_batch_stats = &model_batch_stats;
+    // Disable large batch splitting to ensure the task is considered
+    // unsplittable.
+    options.enable_large_batch_splitting = false;
+
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Queue> queue,
+                            CreateQueue(scheduler, options, callback));
+
+    // Schedule 1 task of size 3.
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/3, queue.get(),
+                              tsl::criticality::Criticality::kCritical));
+
+    // Trigger batch timeout.
+    env.AdvanceByMicroseconds(1001);
+    batch_processed.WaitForNotification();
+
+    start_teardown.Notify();
+  }
+  stop_teardown.Notify();
+}
+
 INSTANTIATE_TEST_SUITE_P(Parameter, SharedBatchSchedulerPriorityAwareTest,
                          ::testing::Bool());
 
