@@ -72,7 +72,7 @@ absl::Status _GetOpPerformanceDataAndRunTime(
   if (!status.ok()) return status;
 
   tensorflow::RunMetadata run_metadata;
-  tsl::MaybeRaiseRegisteredFromStatus(
+  tsl::MaybeRaiseRegisteredFromStatusWithGIL(
       cost_measure->PredictCosts(item.graph, &run_metadata, costs));
 
   if (op_performance_data) {
@@ -107,7 +107,7 @@ PYBIND11_MODULE(
           cluster->SetNumWarmupSteps(10);
           absl::Status provision_status = cluster->Provision();
           lifecycle_lock.unlock();
-          tsl::MaybeRaiseRegisteredFromStatus(provision_status);
+          tsl::MaybeRaiseRegisteredFromStatusWithGIL(provision_status);
           return cluster.release();
         });
 
@@ -151,7 +151,7 @@ PYBIND11_MODULE(
   m.def("TF_ListDevices",
         [](tensorflow::grappler::Cluster* cluster) -> std::vector<py::bytes> {
           if (cluster == nullptr) {
-            tsl::MaybeRaiseRegisteredFromStatus(
+            tsl::MaybeRaiseRegisteredFromStatusWithGIL(
                 absl::InvalidArgumentError("Cluster cannot be None."));
             return {};
           }
@@ -190,7 +190,7 @@ PYBIND11_MODULE(
          tensorflow::grappler::GrapplerItem* item)
           -> std::unordered_map<std::string, std::vector<std::string>> {
         if (cluster == nullptr || item == nullptr) {
-          tsl::MaybeRaiseRegisteredFromStatus(absl::Status(
+          tsl::MaybeRaiseRegisteredFromStatusWithGIL(absl::Status(
               absl::InternalError("You need both a cluster and an "
                                   "item to get supported devices.")));
         }
@@ -293,7 +293,7 @@ PYBIND11_MODULE(
            tensorflow::grappler::Cluster* cluster, bool generate_timeline)
             -> std::tuple<std::vector<py::bytes>, double, py::bytes> {
           if (cluster == nullptr || item == nullptr) {
-            tsl::MaybeRaiseRegisteredFromStatus(absl::InvalidArgumentError(
+            tsl::MaybeRaiseRegisteredFromStatusWithGIL(absl::InvalidArgumentError(
                 "You need both a cluster and an item to measure costs."));
             return {};
           }
@@ -315,7 +315,7 @@ PYBIND11_MODULE(
           tensorflow::StepStats step_stats;
           if (generate_timeline) {
             tensorflow::RunMetadata metadata;
-            tsl::MaybeRaiseRegisteredFromStatus(
+            tsl::MaybeRaiseRegisteredFromStatusWithGIL(
                 cluster->Run(item->graph, item->feed, item->fetch, &metadata));
             step_stats = metadata.step_stats();
           }
@@ -342,7 +342,7 @@ PYBIND11_MODULE(
           -> std::unordered_map<std::string,
                                 std::tuple<int64_t, std::vector<MemoryUsage>>> {
         if (item == nullptr || cluster == nullptr) {
-          tsl::MaybeRaiseRegisteredFromStatus(absl::Status(absl::InternalError(
+          tsl::MaybeRaiseRegisteredFromStatusWithGIL(absl::Status(absl::InternalError(
               "You need both a cluster and an item to determine peak "
               "memory usage.")));
         }
@@ -351,9 +351,9 @@ PYBIND11_MODULE(
         tensorflow::grappler::GraphMemory memory(*item);
 
         if (cluster->DetailedStatsEnabled()) {
-          tsl::MaybeRaiseRegisteredFromStatus(memory.InferDynamically(cluster));
+          tsl::MaybeRaiseRegisteredFromStatusWithGIL(memory.InferDynamically(cluster));
         } else {
-          tsl::MaybeRaiseRegisteredFromStatus(
+          tsl::MaybeRaiseRegisteredFromStatusWithGIL(
               memory.InferStatically(cluster->GetDevices()));
         }
 
