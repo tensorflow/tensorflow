@@ -30,7 +30,11 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/MLIRContext.h"
+#include "third_party/py/jax/jaxlib/gpu/triton.pb.h"
+#include "third_party/py/jax/jaxlib/gpu/triton_kernels.h"
+#include "third_party/py/jax/jaxlib/gpu/triton_utils.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
+#include "xla/ffi/ffi.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -279,6 +283,182 @@ TEST_F(GpuAotCompilationTest, ExportAndLoadExecutableWithTriton) {
 
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::MakeTuple({&literal_2, &literal_3}), result));
+}
+
+namespace {
+
+// Escapes non-printable binary bytes into 2-digit uppercase hex (\XX) and
+// quotes/slashes as required by the MLIR string attribute lexer rules.
+std::string MlirEscapeString(absl::string_view s) {
+  std::string result;
+  result.reserve(s.size() * 3);
+  for (unsigned char c : s) {
+    if (c == '\\') {
+      result += "\\\\";
+    } else if (c == '"') {
+      result += "\\\"";
+    } else if (c >= 0x20 && c <= 0x7e) {
+      result += c;
+    } else {
+      absl::StrAppendFormat(&result, "\\%02X", c);
+    }
+  }
+  return result;
+}
+
+std::string CreateTritonKernelPtxBackendConfig(
+    se::StreamExecutor* stream_exec) {
+  int cc_major = 8, cc_minor = 0;
+  auto compute_capability =
+      stream_exec->GetDeviceDescription().gpu_compute_capability();
+  if (auto* cuda_cc = compute_capability.cuda_compute_capability()) {
+    cc_major = cuda_cc->major;
+    cc_minor = cuda_cc->minor;
+  }
+  int cc_int = cc_major * 10 + cc_minor;
+
+  jax_triton::TritonAnyKernelCall any_call_proto;
+  auto* kernel_call = any_call_proto.mutable_kernel_call();
+  auto* kernel = kernel_call->mutable_kernel();
+  kernel->set_kernel_name("add_kernel");
+  kernel->set_num_warps(4);
+  kernel->set_shared_mem_bytes(0);
+  kernel->set_ptx(absl::StrFormat(R"(
+    .version 7.0
+    .target sm_%d
+    .address_size 64
+
+    .visible .entry add_kernel(
+        .param .u64 p0,
+        .param .u64 p1,
+        .param .u64 p2
+    ) {
+        .reg .b64 %%rd<8>;
+        .reg .f32 %%f<4>;
+        .reg .b32 %%r<2>;
+
+        ld.param.u64 %%rd1, [p0];
+        ld.param.u64 %%rd2, [p1];
+        ld.param.u64 %%rd3, [p2];
+
+        mov.u32 %%r1, %%ctaid.x;
+        mul.wide.u32 %%rd4, %%r1, 4;
+
+        add.s64 %%rd5, %%rd1, %%rd4;
+        add.s64 %%rd6, %%rd2, %%rd4;
+        add.s64 %%rd7, %%rd3, %%rd4;
+
+        ld.global.f32 %%f1, [%%rd5];
+        ld.global.f32 %%f2, [%%rd6];
+        add.f32 %%f3, %%f1, %%f2;
+        st.global.f32 [%%rd7], %%f3;
+
+        ret;
+}
+)",
+                                  cc_int));
+  kernel->set_compute_capability(cc_int);
+
+  kernel_call->set_grid_0(1024);
+  kernel_call->set_grid_1(1);
+  kernel_call->set_grid_2(1);
+
+  // Parameter 0: array (p0)
+  auto* p0 = kernel_call->add_parameters();
+  p0->mutable_array()->set_bytes_to_zero(0);
+  p0->mutable_array()->set_ptr_divisibility(16);
+
+  // Parameter 1: array (p1)
+  auto* p1 = kernel_call->add_parameters();
+  p1->mutable_array()->set_bytes_to_zero(0);
+  p1->mutable_array()->set_ptr_divisibility(16);
+
+  // Parameter 2: array (result)
+  auto* p2 = kernel_call->add_parameters();
+  p2->mutable_array()->set_bytes_to_zero(0);
+  p2->mutable_array()->set_ptr_divisibility(16);
+
+  std::string compressed_opaque =
+      jax::JAX_GPU_NAMESPACE::ZlibCompress(any_call_proto.SerializeAsString())
+          .value();
+  return absl::StrFormat(R"({opaque = "%s"})",
+                         MlirEscapeString(compressed_opaque));
+}
+}  // namespace
+
+TEST_F(GpuAotCompilationTest, TritonKernelCallFfiAot) {
+  XLA_FFI_Handler_Bundle bundle = {
+      /*instantiate=*/jax::JAX_GPU_NAMESPACE::kTritonKernelCallFfiInstantiate,
+      /*prepare=*/nullptr,
+      /*initialize=*/jax::JAX_GPU_NAMESPACE::kTritonKernelCallFfiInitialize,
+      /*execute=*/jax::JAX_GPU_NAMESPACE::kTritonKernelCallFfi,
+  };
+  if (auto* error = xla::ffi::Ffi::RegisterStaticHandler(
+          xla::ffi::GetXlaFfiApi(), "triton_kernel_call_ffi", "CUDA", bundle)) {
+    FAIL() << "RegisterStaticHandler failed";
+  }
+
+  auto compiler = backend().compiler();
+  auto platform_name =
+      absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName(platform_name));
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
+                       platform->ExecutorForDevice(0));
+
+  std::string backend_config_str =
+      CreateTritonKernelPtxBackendConfig(stream_exec);
+
+  std::string hlo_string = absl::StrFormat(R"hlo(
+    HloModule test
+
+    ENTRY main {
+      p0 = f32[1024]{0} parameter(0)
+      p1 = f32[1024]{0} parameter(1)
+      ROOT res = f32[1024]{0} custom-call(p0, p1),
+        custom_call_target="triton_kernel_call_ffi",
+        api_version=API_VERSION_TYPED_FFI,
+        backend_config="%s"
+    }
+)hlo",
+                                           absl::CEscape(backend_config_str));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  AotCompilationOptions aot_options(compiler->PlatformId());
+  aot_options.set_executor(stream_exec);
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<CompiledModule>> aot_results,
+      compiler->CompileAheadOfTime(std::move(module), aot_options));
+
+  ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
+                       aot_results[0]->SerializeAsString());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CompiledModule> aot_result,
+      compiler->LoadAotCompilationResult(serialized_aot_result));
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      std::move(*aot_result)
+          .LoadExecutable(compiler->PlatformId(),
+                          stream_exec->GetDeviceDescription(), debug_options_));
+  std::unique_ptr<OpaqueExecutable> wrapped_executable =
+      test_runner_as_hlo_runner().WrapExecutable(std::move(executable));
+
+  std::vector<float> data_a(1024, 1.0f);
+  std::vector<float> data_b(1024, 2.0f);
+  const xla::Literal literal_a = xla::LiteralUtil::CreateR1<float>(data_a);
+  const xla::Literal literal_b = xla::LiteralUtil::CreateR1<float>(data_b);
+
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       test_runner_as_hlo_runner().ExecuteWithExecutable(
+                           wrapped_executable.get(), {&literal_a, &literal_b}));
+
+  std::vector<float> expected(1024, 3.0f);
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(LiteralUtil::CreateR1<float>(expected), result));
 }
 
 }  // namespace gpu
