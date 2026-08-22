@@ -54,7 +54,6 @@ cc_library(
         "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:OrcShared",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:mlir_c_runner_utils",
     ],
 )
 
@@ -64,6 +63,15 @@ cc_library(
     hdrs = ["builtin_fp16.h"],
     visibility = internal_visibility([":friends"]),
     deps = ["@com_google_absl//absl/base:core_headers"],
+)
+
+xla_cc_test(
+    name = "builtin_fp16_test",
+    srcs = ["builtin_fp16_test.cc"],
+    deps = [
+        ":builtin_fp16",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_library(

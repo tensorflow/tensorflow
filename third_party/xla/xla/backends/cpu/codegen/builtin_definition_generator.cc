@@ -99,21 +99,14 @@ extern "C" void __chkstk(void);
 #endif
 #endif
 
-extern "C" {
-// Provided by compiler-rt and MLIR.
-// Converts an F32 value to a BF16.
-uint16_t __truncsfbf2(float);
-// Converts an F64 value to a BF16.
-uint16_t __truncdfbf2(double);
-
 #ifdef __APPLE__
+extern "C" {
 // Converts an F32 value to a F16.
 uint16_t __truncsfhf2(float);
 
 float __extendhfsf2(uint16_t a);
-#endif  // __APPLE__
-
 }  // extern "C"
+#endif  // __APPLE__
 
 // MSVC does not have sincos[f].
 #ifdef _MSC_VER
