@@ -664,11 +664,25 @@ py_library(
     name = "pywrap_tensorflow",
     srcs = [
         "pywrap_tensorflow.py",
-    ] + if_static(
-        ["pywrap_dlopen_global_flags.py"],
-        # Import will fail, indicating no global dlopen flags
-        otherwise = [],
-    ),  # b/153585257
+    ] + select({
+        # Shared-object builds (default pip wheels: framework_shared_object=true)
+        # must NOT ship pywrap_dlopen_global_flags.py. That module forces
+        # RTLD_GLOBAL when loading _pywrap_tensorflow_internal, which leaks
+        # TF's statically linked LLVM/MLIR into the process global symbol
+        # table and can SIGSEGV later imports that ship their own LLVM
+        # (notably triton>=3.7). See tensorflow/tensorflow#124205 and the
+        # historical modular-op design in 5c7f9e31.
+        #
+        # Do not use if_static() here: under USE_PYWRAP_RULES=True it always
+        # takes the static branch (b/356020232), which reintroduced this file
+        # into shared wheels starting in TF 2.20 despite
+        # framework_shared_object still being true.
+        #
+        # Monolithic builds (--config=monolithic, framework_shared_object
+        # unset/false) still need RTLD_GLOBAL for custom-op symbol lookup.
+        "//tensorflow:framework_shared_object": [],
+        "//conditions:default": ["pywrap_dlopen_global_flags.py"],
+    }),
     strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
