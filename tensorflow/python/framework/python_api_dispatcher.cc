@@ -324,6 +324,7 @@ std::string PythonAPIDispatcher::DebugString() const {
                     target_str ? PyUnicode_AsUTF8(target_str.get()) : "?");
     sep = ", ";
   }
+  absl::StrAppend(&out, ">");
   return out;
 }
 
@@ -340,6 +341,7 @@ PySignatureChecker::PySignatureChecker(
 
 bool PySignatureChecker::CheckCanonicalizedArgs(
     absl::Span<PyObject*> canon_args) const {
+  DCheckPyGilState();
   bool matched_dispatchable_type = false;
   for (auto& c : positional_parameter_checkers_) {
     int index = c.first;
@@ -347,7 +349,11 @@ bool PySignatureChecker::CheckCanonicalizedArgs(
     if (index >= canon_args.size()) {
       return false;
     }
-    switch (param_checker->Check(canon_args[index])) {
+    PyObject* arg = canon_args[index];
+    if (arg == nullptr) {
+      return false;
+    }
+    switch (param_checker->Check(arg)) {
       case PyTypeChecker::MatchType::NO_MATCH:
         return false;
       case PyTypeChecker::MatchType::MATCH_DISPATCHABLE:
@@ -538,6 +544,7 @@ std::string PyListChecker::DebugString() const {
 }
 
 PyTypeChecker::MatchType PyUnionChecker::Check(PyObject* value) {
+  DCheckPyGilState();
   MatchType result = MatchType::NO_MATCH;
   for (auto& type_option : options_) {
     switch (type_option->Check(value)) {
