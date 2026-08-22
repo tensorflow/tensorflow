@@ -1086,5 +1086,17 @@ int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis,
   return unroll_factor;
 }
 
+bool ContainsScan(const HloInstruction& instr) {
+  if (instr.opcode() == HloOpcode::kScan) {
+    return true;
+  }
+  if (instr.opcode() != HloOpcode::kFusion) {
+    return false;
+  }
+  return absl::c_any_of(
+      instr.fused_instructions_computation()->instructions(),
+      [](const HloInstruction* node) { return ContainsScan(*node); });
+}
+
 }  // namespace gpu
 }  // namespace xla
