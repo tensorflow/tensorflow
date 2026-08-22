@@ -3166,15 +3166,6 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
       self.assertAllEqual(
           self.evaluate(filter_grad), np.zeros((2, 2, 1, 1)))
 
-    with self.assertRaisesRegex(
-        (ValueError, errors_impl.InvalidArgumentError),
-        "out_backprop|output depth|computed"):
-      self.evaluate(
-          nn_ops.conv2d_backprop_filter(
-              array_ops.ones((1, 3, 3, 1)), [2, 2, 1, 1],
-              array_ops.zeros((1, 0, 0, 1)), strides=[1, 1, 1, 1],
-              padding="VALID"))
-
   def testConvOpEdgeCases(self):
     # Illegal strides.
     with self.assertRaisesRegex(

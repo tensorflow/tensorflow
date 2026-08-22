@@ -18,9 +18,20 @@ limitations under the License.
 #include <array>
 
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/math/math_util.h"
 
 namespace tensorflow {
+namespace {
+
+// Rounds towards negative infinity. Plain division truncates towards zero, so
+// a filter overhanging the input by more than `stride` would give an output
+// size of 0 instead of a negative one and escape the check below.
+int64_t FloorDiv(int64_t numerator, int64_t denominator) {
+  const int64_t quotient = numerator / denominator;
+  return (numerator < 0 && numerator % denominator != 0) ? quotient - 1
+                                                         : quotient;
+}
+
+}  // namespace
 
 absl::Status GetWindowedOutputSizeVerbose(
     int64_t input_size, int64_t filter_size, int64_t dilation_rate,
@@ -39,16 +50,14 @@ absl::Status GetWindowedOutputSizeVerbose(
   int64_t effective_filter_size = (filter_size - 1) * dilation_rate + 1;
   switch (padding_type) {
     case Padding::VALID:
-      // Floor, not truncation, so a too-large filter stays negative below.
-      *output_size = MathUtil::FloorOfRatio(
-          input_size - effective_filter_size + stride, stride);
+      *output_size =
+          FloorDiv(input_size - effective_filter_size + stride, stride);
       *padding_before = *padding_after = 0;
       break;
     case Padding::EXPLICIT:
-      *output_size = MathUtil::FloorOfRatio(
-          input_size + *padding_before + *padding_after -
-              effective_filter_size + stride,
-          stride);
+      *output_size = FloorDiv(input_size + *padding_before + *padding_after -
+                                  effective_filter_size + stride,
+                              stride);
       break;
     case Padding::SAME:
       *output_size = (input_size + stride - 1) / stride;
