@@ -275,6 +275,9 @@ PYBIND11_MODULE(
       .def("append",
            [](py::object self_obj, absl::string_view data) {
              auto* self = self_obj.cast<WritableFile*>();
+             if (self == nullptr) {
+               throw py::value_error("WritableFile is not initialized");
+             }
              const auto status = RunFileObjectMethod(
                  self_obj, /*release_gil=*/false,
                  [&]() { return self->Append(data); });
@@ -283,6 +286,9 @@ PYBIND11_MODULE(
       .def("tell",
            [](py::object self_obj) {
              auto* self = self_obj.cast<WritableFile*>();
+             if (self == nullptr) {
+               throw py::value_error("WritableFile is not initialized");
+             }
              int64_t pos = -1;
              const auto status = RunFileObjectMethod(
                  self_obj, /*release_gil=*/true,
@@ -293,6 +299,9 @@ PYBIND11_MODULE(
       .def("flush",
            [](py::object self_obj) {
              auto* self = self_obj.cast<WritableFile*>();
+             if (self == nullptr) {
+               throw py::value_error("WritableFile is not initialized");
+             }
              const auto status = RunFileObjectMethod(
                  self_obj, /*release_gil=*/true,
                  [&]() { return self->Flush(); });
@@ -300,6 +309,9 @@ PYBIND11_MODULE(
            })
       .def("close", [](py::object self_obj) {
         auto* self = self_obj.cast<WritableFile*>();
+        if (self == nullptr) {
+          throw py::value_error("WritableFile is not initialized");
+        }
         const auto status = RunFileObjectMethod(
             self_obj, /*release_gil=*/true,
             [&]() { return self->Close(); });
@@ -329,6 +341,9 @@ PYBIND11_MODULE(
       .def("read",
            [](py::object self_obj, int64_t bytes_to_read) {
              auto* self = self_obj.cast<BufferedInputStream*>();
+             if (self == nullptr) {
+               throw py::value_error("BufferedInputStream is not initialized");
+             }
              tensorflow::tstring result;
 
              const auto status = RunFileObjectMethod(
@@ -345,6 +360,9 @@ PYBIND11_MODULE(
       .def("readline",
            [](py::object self_obj) {
              auto* self = self_obj.cast<BufferedInputStream*>();
+             if (self == nullptr) {
+               throw py::value_error("BufferedInputStream is not initialized");
+             }
 
              auto output = RunFileObjectMethod(
                  self_obj, /*release_gil=*/true,
@@ -355,6 +373,9 @@ PYBIND11_MODULE(
       .def("seek",
            [](py::object self_obj, int64_t pos) {
              auto* self = self_obj.cast<BufferedInputStream*>();
+             if (self == nullptr) {
+               throw py::value_error("BufferedInputStream is not initialized");
+             }
 
              const auto status = RunFileObjectMethod(
                  self_obj, /*release_gil=*/true,
@@ -364,6 +385,9 @@ PYBIND11_MODULE(
            })
       .def("tell", [](py::object self_obj) {
         auto* self = self_obj.cast<BufferedInputStream*>();
+        if (self == nullptr) {
+          throw py::value_error("BufferedInputStream is not initialized");
+        }
 
         return RunFileObjectMethod(
             self_obj, /*release_gil=*/true,
