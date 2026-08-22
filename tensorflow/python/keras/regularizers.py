@@ -20,14 +20,24 @@ import math
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import math_ops
 
 
 def _check_penalty_number(x):
   """check penalty number availability, raise ValueError if failed."""
+  if tensor_util.is_tf_type(x):
+    return  # Skip static validation for dynamic Tensors
+
   if not isinstance(x, (float, int)):
     raise ValueError(('Value: {} is not a valid regularization penalty number, '
                       'expected an int or float value').format(x))
+
+  if x < 0:
+    raise ValueError(
+        ('Value: {} is not a valid regularization penalty number, '
+         'expected a non-negative value').format(x)
+    )
 
   if math.isinf(x) or math.isnan(x):
     raise ValueError(
