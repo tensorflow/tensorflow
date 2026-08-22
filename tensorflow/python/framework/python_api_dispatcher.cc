@@ -330,12 +330,12 @@ std::string PythonAPIDispatcher::DebugString() const {
 PySignatureChecker::PySignatureChecker(
     std::vector<ParamChecker> parameter_checkers)
     : positional_parameter_checkers_(std::move(parameter_checkers)) {
-  // Check less expensive parameters first.
-  std::sort(positional_parameter_checkers_.begin(),
-            positional_parameter_checkers_.end(),
-            [](ParamChecker a, ParamChecker b) {
-              return a.second->cost() < b.second->cost();
-            });
+  // Check less expensive parameters first, preserving argument order for equal costs.
+  std::stable_sort(positional_parameter_checkers_.begin(),
+                   positional_parameter_checkers_.end(),
+                   [](const ParamChecker& a, const ParamChecker& b) {
+                     return a.second->cost() < b.second->cost();
+                   });
 }
 
 bool PySignatureChecker::CheckCanonicalizedArgs(
