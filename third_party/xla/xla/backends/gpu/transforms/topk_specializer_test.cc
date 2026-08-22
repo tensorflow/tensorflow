@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/service/topk_rewriter.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -205,6 +206,158 @@ TEST_F(TopkTest, PreservesBackendConfig) {
   const HloInstruction* custom_call = root->operand(0)->operand(0);
   EXPECT_EQ(custom_call->custom_call_target(), "__gpu$TopK");
   EXPECT_EQ(custom_call->raw_backend_config_string(), "{is_stable = false}");
+}
+
+TEST_F(TopkTest, RewriteStableTopKF32ToUint64) {
+  const char* hlo = R"(
+    HloModule m
+
+    %compare-gt.1 {
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      p.0.lhs = f32[] parameter(0)
+      p.0.rhs = f32[] parameter(1)
+      ROOT compare = pred[] compare(p.0.lhs, p.0.rhs), direction=GT, type=TOTALORDER
+    }
+
+    ENTRY top_k {
+      arg = f32[8,1024] parameter(0)
+      ROOT result = (f32[8,32], s32[8,32]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = true}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+
+  if (!device_description().gpu_compute_capability().IsCuda()) {
+    GTEST_SKIP() << "RAFT is CUDA-only.";
+  }
+
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      TopkSpecializer(device_description().gpu_compute_capability())
+          .Run(module.get()));
+  ASSERT_TRUE(changed);
+
+  const char* check_pattern = R"(
+// CHECK-LABEL: ENTRY %top_k
+// CHECK: %[[ARG:[^ ]+]] = f32[8,1024]{{.*}} parameter(0)
+
+// 1. Bitcast to U32 and S32
+// CHECK: %[[VAL_U32:[^ ]+]] = u32[8,1024]{{.*}} bitcast-convert(%[[ARG]])
+// CHECK: %[[VAL_S32:[^ ]+]] = s32[8,1024]{{.*}} bitcast-convert(%[[ARG]])
+
+// 2. Pure Bitwise Radix Flip (F32 -> U32)
+// CHECK: %[[SRA:[^ ]+]] = s32[8,1024]{{.*}} shift-right-arithmetic(%[[VAL_S32]], {{.*}})
+// CHECK: %[[SRA_U32:[^ ]+]] = u32[8,1024]{{.*}} bitcast-convert(%[[SRA]])
+// CHECK: %[[MASK:[^ ]+]] = u32[8,1024]{{.*}} or(%[[SRA_U32]], {{.*}})
+// CHECK: %[[RADIX_KEY:[^ ]+]] = u32[8,1024]{{.*}} xor(%[[VAL_U32]], %[[MASK]])
+
+// 3. Pack into U64
+// CHECK: %[[KEY_U64:[^ ]+]] = u64[8,1024]{{.*}} convert(%[[RADIX_KEY]])
+// CHECK: %[[SHIFT_LEFT:[^ ]+]] = u64[8,1024]{{.*}} shift-left(%[[KEY_U64]], {{.*}})
+// CHECK: %[[IOTA:[^ ]+]] = u32[8,1024]{{.*}} iota(), iota_dimension=1
+// CHECK: %[[SUBTRACT:[^ ]+]] = u32[8,1024]{{.*}} subtract({{.*}}, %[[IOTA]])
+// CHECK: %[[PACKED:[^ ]+]] = u64[8,1024]{{.*}} or(%[[SHIFT_LEFT]], {{.*}})
+
+// 4. CustomCall (__gpu$TopK)
+// CHECK: %[[CUSTOM_CALL:[^ ]+]] = (u64[8,32]{{.*}}, s32[8,32]{{.*}}) custom-call(%[[PACKED]]), custom_call_target="__gpu$TopK", api_version=API_VERSION_TYPED_FFI, {{.*}} backend_config={is_stable = false}
+
+// 5. Unpack U64 -> U32
+// CHECK: %[[SRL:[^ ]+]] = u64[8,32]{{.*}} shift-right-logical(%[[CUSTOM_CALL]]#0, {{.*}})
+// CHECK: %[[UNPACK_U32:[^ ]+]] = u32[8,32]{{.*}} convert(%[[SRL]])
+
+// 6. Pure Bitwise Radix Unflip (U32 -> F32)
+// CHECK: %[[MSB:[^ ]+]] = u32[8,32]{{.*}} shift-right-logical(%[[UNPACK_U32]], {{.*}})
+// CHECK: %[[MSB_MINUS_ONE:[^ ]+]] = u32[8,32]{{.*}} subtract(%[[MSB]], {{.*}})
+// CHECK: %[[UNMASK:[^ ]+]] = u32[8,32]{{.*}} or(%[[MSB_MINUS_ONE]], {{.*}})
+// CHECK: %[[UNFLIPPED:[^ ]+]] = u32[8,32]{{.*}} xor(%[[UNPACK_U32]], %[[UNMASK]])
+// CHECK: %[[F32_OUT:[^ ]+]] = f32[8,32]{{.*}} bitcast-convert(%[[UNFLIPPED]])
+
+// 7. Tuple output
+// CHECK: ROOT {{.*}} tuple({{.*}}%[[F32_OUT]], {{.*}}%[[CUSTOM_CALL]]#1)
+  )";
+
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(), check_pattern));
+  EXPECT_TRUE(filecheck_matched);
+}
+
+TEST_F(TopkTest, RewriteStableTopKBF16ToUint64) {
+  const char* hlo = R"(
+    HloModule m
+
+    %compare-gt.1 {
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      p.0.lhs = bf16[] parameter(0)
+      p.0.rhs = bf16[] parameter(1)
+      ROOT compare = pred[] compare(p.0.lhs, p.0.rhs), direction=GT, type=TOTALORDER
+    }
+
+    ENTRY top_k {
+      arg = bf16[8,65540] parameter(0)
+      ROOT result = (bf16[8,32], s32[8,32]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = true}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+
+  if (!device_description().gpu_compute_capability().IsCuda()) {
+    GTEST_SKIP() << "RAFT is CUDA-only.";
+  }
+
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      TopkSpecializer(device_description().gpu_compute_capability())
+          .Run(module.get()));
+  ASSERT_TRUE(changed);
+
+  const char* check_pattern = R"(
+// CHECK-LABEL: ENTRY %top_k
+// CHECK: %[[ARG:[^ ]+]] = bf16[8,65540]{{.*}} parameter(0)
+
+// 1. Convert BF16 -> F32, then Bitcast to U32 and S32
+// CHECK: %[[F32_VAL:[^ ]+]] = f32[8,65540]{{.*}} convert(%[[ARG]])
+// CHECK: %[[VAL_U32:[^ ]+]] = u32[8,65540]{{.*}} bitcast-convert(%[[F32_VAL]])
+// CHECK: %[[VAL_S32:[^ ]+]] = s32[8,65540]{{.*}} bitcast-convert(%[[F32_VAL]])
+
+// 2. Pure Bitwise Radix Flip (F32 -> U32)
+// CHECK: %[[SRA:[^ ]+]] = s32[8,65540]{{.*}} shift-right-arithmetic(%[[VAL_S32]], {{.*}})
+// CHECK: %[[SRA_U32:[^ ]+]] = u32[8,65540]{{.*}} bitcast-convert(%[[SRA]])
+// CHECK: %[[MASK:[^ ]+]] = u32[8,65540]{{.*}} or(%[[SRA_U32]], {{.*}})
+// CHECK: %[[RADIX_KEY:[^ ]+]] = u32[8,65540]{{.*}} xor(%[[VAL_U32]], %[[MASK]])
+
+// 3. Pack into U64
+// CHECK: %[[KEY_U64:[^ ]+]] = u64[8,65540]{{.*}} convert(%[[RADIX_KEY]])
+// CHECK: %[[SHIFT_LEFT:[^ ]+]] = u64[8,65540]{{.*}} shift-left(%[[KEY_U64]], {{.*}})
+// CHECK: %[[IOTA:[^ ]+]] = u32[8,65540]{{.*}} iota(), iota_dimension=1
+// CHECK: %[[SUBTRACT:[^ ]+]] = u32[8,65540]{{.*}} subtract({{.*}}, %[[IOTA]])
+// CHECK: %[[PACKED:[^ ]+]] = u64[8,65540]{{.*}} or(%[[SHIFT_LEFT]], {{.*}})
+
+// 4. CustomCall (__gpu$TopK)
+// CHECK: %[[CUSTOM_CALL:[^ ]+]] = (u64[8,32]{{.*}}, s32[8,32]{{.*}}) custom-call(%[[PACKED]]), custom_call_target="__gpu$TopK", api_version=API_VERSION_TYPED_FFI, {{.*}} backend_config={is_stable = false}
+
+// 5. Unpack U64 -> U32
+// CHECK: %[[SRL:[^ ]+]] = u64[8,32]{{.*}} shift-right-logical(%[[CUSTOM_CALL]]#0, {{.*}})
+// CHECK: %[[UNPACK_U32:[^ ]+]] = u32[8,32]{{.*}} convert(%[[SRL]])
+
+// 6. Pure Bitwise Radix Unflip (U32 -> F32)
+// CHECK: %[[MSB:[^ ]+]] = u32[8,32]{{.*}} shift-right-logical(%[[UNPACK_U32]], {{.*}})
+// CHECK: %[[MSB_MINUS_ONE:[^ ]+]] = u32[8,32]{{.*}} subtract(%[[MSB]], {{.*}})
+// CHECK: %[[UNMASK:[^ ]+]] = u32[8,32]{{.*}} or(%[[MSB_MINUS_ONE]], {{.*}})
+// CHECK: %[[UNFLIPPED:[^ ]+]] = u32[8,32]{{.*}} xor(%[[UNPACK_U32]], %[[UNMASK]])
+// CHECK: %[[F32_OUT:[^ ]+]] = f32[8,32]{{.*}} bitcast-convert(%[[UNFLIPPED]])
+
+// 7. Convert F32 -> BF16 and Tuple output
+// CHECK: %[[BF16_OUT:[^ ]+]] = bf16[8,32]{{.*}} convert(%[[F32_OUT]])
+// CHECK: ROOT {{.*}} tuple({{.*}}%[[BF16_OUT]], {{.*}}%[[CUSTOM_CALL]]#1)
+  )";
+
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(), check_pattern));
+  EXPECT_TRUE(filecheck_matched);
 }
 
 }  // namespace
