@@ -53,6 +53,7 @@ load(
     "//tensorflow/security/fuzzing:tf_fuzzing.bzl",
     "tf_cc_fuzz_test",
 )
+load("//third_party/KDNN:build_defs.bzl", "if_enable_kdnn")  # copybara:comment_replace load("//tensorflow/third_party/KDNN:build_defs.bzl", "if_enable_kdnn")
 
 default_package_visibility = [
     "//tensorflow:internal",
@@ -1528,6 +1529,32 @@ cc_library(
     alwayslink = 1,
 )
 
+# KDNN layout pass library
+# KDNN is a Linux ARM64-only alternative path to oneDNN/MKL.
+# Enable via: bazel build --define=enable_kdnn=true
+cc_library(
+    name = "kdnn_layout_pass",
+    srcs = if_enable_kdnn(["kdnn_layout_pass.cc"]),
+    hdrs = if_enable_kdnn(["kdnn_layout_pass.h"]),
+    copts = tf_copts(),
+    deps = [
+        ":function_utils",
+        ":graph_optimizer",
+        ":optimization_registry",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:session_options",
+        "//tensorflow/core/util:port",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = 1,
+)
+
 cc_library(
     name = "node_file_writer",
     srcs = ["node_file_writer.cc"],
@@ -2240,7 +2267,9 @@ tf_cuda_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-    ] + if_macos(
+    ] + if_enable_kdnn([
+        ":kdnn_layout_pass",
+    ]) + if_macos(
         [],
         [":replicate_constants_pass"],  # TODO(b/301469885): Remove.
     ),

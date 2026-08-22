@@ -23,6 +23,7 @@ load(
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
+    "tf_copts_exec",
 )
 load(
     "//tensorflow:tensorflow.default.bzl",
@@ -33,7 +34,7 @@ load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_library",
 )
-
+load("//third_party/KDNN:build_defs.bzl", "if_enable_kdnn")  # copybara:comment_replace load("//tensorflow/third_party/KDNN:build_defs.bzl", "if_enable_kdnn")
 # A lot of packages try to minimize binary size by depending on individual ops,\
 # so they need access here.
 package(
@@ -115,6 +116,24 @@ tf_gen_op_libs(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
     ],
+)
+
+# KDNN op registrations are available only for ARM64 KDNN builds. Keep the
+# target name available to existing aggregate aliases, but do not compile the
+# registration source on other architectures.
+cc_library(
+    name = "kdnn_nn_ops_op_lib",
+    copts = tf_copts_exec(is_external = False),
+    srcs = if_enable_kdnn(["kdnn_nn_ops.cc"]),
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core:framework",
+    ],
+    visibility = ["//visibility:public"],
+    alwayslink = 1,
+    linkstatic = 1,
 )
 
 tf_gen_op_libs(
@@ -372,6 +391,8 @@ cc_library(
     }) + if_mkl([
         ":mkl_array_ops_op_lib",
         ":mkl_nn_ops_op_lib",
+    ]) + if_enable_kdnn([
+        ":kdnn_nn_ops_op_lib",
     ]),
     alwayslink = 1,
 )
