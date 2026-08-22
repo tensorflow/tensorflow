@@ -243,6 +243,9 @@ py_library(
         ":backend",
         "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/keras/utils:engine_utils",
+        "//tensorflow/python/keras/utils:generic_utils",
+        "//tensorflow/python/keras/utils:tf_utils",
+        "//tensorflow/python/ops:check_ops",
         "//tensorflow/python/ops:cond",
         "//tensorflow/python/util:dispatch",
     ],
@@ -255,6 +258,8 @@ py_test(
     srcs_version = "PY3",
     deps = [
         ":losses",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
