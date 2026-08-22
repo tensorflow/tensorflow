@@ -1418,13 +1418,6 @@ absl::StatusOr<std::vector<ifrt::ArrayRef>> NanoIfrtClient::MakeErrorArrays(
       "NanoIfrtClient does not support MakeErrorArrays.");
 }
 
-absl::StatusOr<std::vector<tsl::Future<>>>
-NanoIfrtClient::CopyArraysToHostBufferShards(
-    absl::Span<CopyArraysToHostBufferShardsSpec> specs,
-    ifrt::ArrayCopySemantics semantics) {
-  return ifrt::ClientCopyArraysToHostBufferShards(this, specs, semantics);
-}
-
 absl::StatusOr<ifrt::ArrayRef>
 NanoIfrtClient::AssembleArrayFromSingleDeviceArrays(
     ifrt::DType dtype, ifrt::Shape shape, ifrt::ShardingRef sharding,
