@@ -28,7 +28,7 @@ from tensorflow.python.util import module_wrapper
 # cannot use the LazyLoader defined by tensorflow at
 # tensorflow/python/util/lazy_loader.py as to use that we would already need to
 # import tensorflow. Hence, we define it inline.
-class _LazyLoader(_types.ModuleType):
+class _LazyLoader(_types.Module_Type):
   """Lazily import a module so that we can forward it."""
 
   # The lint error here is incorrect.
