@@ -612,8 +612,214 @@ LogicalResult RewriteBroadcastInDimOp(shlo::BroadcastInDimOp op,
   return mlir::success();
 }
 
-// Follows DivOpConversion in ComplexToStandard.cpp upstream for
-// ComplexRangeFlags::basic.
+// Follows convertDivToStandardUsingRangeReduction in DivisionConverter.cpp
+// upstream for Smith's range reduction method and corner case handling.
+//
+// Smith's Range Reduction Formula for Complex Division
+// ============================================================================
+// Fulfills complex division: (a + b*i) / (c + d*i) = (x + y*i)
+//
+// To prevent spurious underflow or overflow during intermediate squaring
+// operations (c^2 + d^2), the values are scaled dynamically:
+//
+// 1) If |c| >= |d|:
+//    r = d / c
+//    den = c + d * r
+//    x = (a + b * r) / den
+//    y = (b - a * r) / den
+//
+// 2) If |c| < |d|:
+//    r = c / d
+//    den = c * r + d
+//    x = (a * r + b) / den
+//    y = (b * r - a) / den
+//
+// Note that we drop the fastmath flags, because their support is pretty sparse
+// and incomplete in MLIR passes.
+Value ComputeDivide(Value a, Value b, Value c, Value d, Location loc,
+                    PatternRewriter& rewriter) {
+  auto tensor_type = mlir::cast<RankedTensorType>(a.getType());
+
+  Value rhs_real_imag_ratio = ma::DivFOp::create(rewriter, loc, c, d);
+  Value rhs_real_imag_denom = ma::AddFOp::create(
+      rewriter, loc, d,
+      ma::MulFOp::create(rewriter, loc, rhs_real_imag_ratio, c));
+  Value real_numerator1 = ma::AddFOp::create(
+      rewriter, loc, ma::MulFOp::create(rewriter, loc, a, rhs_real_imag_ratio),
+      b);
+  Value result_real1 =
+      ma::DivFOp::create(rewriter, loc, real_numerator1, rhs_real_imag_denom);
+  Value imag_numerator1 = ma::SubFOp::create(
+      rewriter, loc, ma::MulFOp::create(rewriter, loc, b, rhs_real_imag_ratio),
+      a);
+  Value result_imag1 =
+      ma::DivFOp::create(rewriter, loc, imag_numerator1, rhs_real_imag_denom);
+
+  Value rhs_imag_real_ratio = ma::DivFOp::create(rewriter, loc, d, c);
+  Value rhs_imag_real_denom = ma::AddFOp::create(
+      rewriter, loc, c,
+      ma::MulFOp::create(rewriter, loc, rhs_imag_real_ratio, d));
+  Value real_numerator2 = ma::AddFOp::create(
+      rewriter, loc, a,
+      ma::MulFOp::create(rewriter, loc, b, rhs_imag_real_ratio));
+  Value result_real2 =
+      ma::DivFOp::create(rewriter, loc, real_numerator2, rhs_imag_real_denom);
+  Value imag_numerator2 = ma::SubFOp::create(
+      rewriter, loc, b,
+      ma::MulFOp::create(rewriter, loc, a, rhs_imag_real_ratio));
+  Value result_imag2 =
+      ma::DivFOp::create(rewriter, loc, imag_numerator2, rhs_imag_real_denom);
+
+  // Consider corner cases.
+  // Case 1. Zero denominator, numerator contains at most one NaN value.
+  Value zero = GetConstant(rewriter, loc, tensor_type, 0.0);
+  Value rhs_real_abs = mm::AbsFOp::create(rewriter, loc, c);
+  Value rhs_real_is_zero = ma::CmpFOp::create(
+      rewriter, loc, ma::CmpFPredicate::OEQ, rhs_real_abs, zero);
+  Value rhs_imag_abs = mm::AbsFOp::create(rewriter, loc, d);
+  Value rhs_imag_is_zero = ma::CmpFOp::create(
+      rewriter, loc, ma::CmpFPredicate::OEQ, rhs_imag_abs, zero);
+  Value lhs_real_is_not_nan =
+      ma::CmpFOp::create(rewriter, loc, ma::CmpFPredicate::ORD, a, zero);
+  Value lhs_imag_is_not_nan =
+      ma::CmpFOp::create(rewriter, loc, ma::CmpFPredicate::ORD, b, zero);
+  Value lhs_contains_not_nan_value = ma::OrIOp::create(
+      rewriter, loc, lhs_real_is_not_nan, lhs_imag_is_not_nan);
+  Value rhs_is_zero =
+      ma::AndIOp::create(rewriter, loc, rhs_real_is_zero, rhs_imag_is_zero);
+  Value result_is_infinity = ma::AndIOp::create(
+      rewriter, loc, lhs_contains_not_nan_value, rhs_is_zero);
+  Value inf = GetInfConstant(rewriter, loc, tensor_type);
+  Value inf_with_sign_of_rhs_real =
+      mm::CopySignOp::create(rewriter, loc, inf, c);
+  Value infinity_result_real =
+      ma::MulFOp::create(rewriter, loc, inf_with_sign_of_rhs_real, a);
+  Value infinity_result_imag =
+      ma::MulFOp::create(rewriter, loc, inf_with_sign_of_rhs_real, b);
+
+  // Case 2. Infinite numerator, finite denominator.
+  Value rhs_real_finite = ma::CmpFOp::create(
+      rewriter, loc, ma::CmpFPredicate::ONE, rhs_real_abs, inf);
+  Value rhs_imag_finite = ma::CmpFOp::create(
+      rewriter, loc, ma::CmpFPredicate::ONE, rhs_imag_abs, inf);
+  Value rhs_finite =
+      ma::AndIOp::create(rewriter, loc, rhs_real_finite, rhs_imag_finite);
+  Value lhs_real_abs = mm::AbsFOp::create(rewriter, loc, a);
+  Value lhs_real_infinite = ma::CmpFOp::create(
+      rewriter, loc, ma::CmpFPredicate::OEQ, lhs_real_abs, inf);
+  Value lhs_imag_abs = mm::AbsFOp::create(rewriter, loc, b);
+  Value lhs_imag_infinite = ma::CmpFOp::create(
+      rewriter, loc, ma::CmpFPredicate::OEQ, lhs_imag_abs, inf);
+  Value lhs_infinite =
+      ma::OrIOp::create(rewriter, loc, lhs_real_infinite, lhs_imag_infinite);
+  Value inf_num_finite_denom =
+      ma::AndIOp::create(rewriter, loc, lhs_infinite, rhs_finite);
+  Value one = GetConstant(rewriter, loc, tensor_type, 1.0);
+  Value lhs_real_is_inf_with_sign = mm::CopySignOp::create(
+      rewriter, loc,
+      ma::SelectOp::create(rewriter, loc, lhs_real_infinite, one, zero), a);
+  Value lhs_imag_is_inf_with_sign = mm::CopySignOp::create(
+      rewriter, loc,
+      ma::SelectOp::create(rewriter, loc, lhs_imag_infinite, one, zero), b);
+  Value lhs_real_is_inf_with_sign_times_rhs_real =
+      ma::MulFOp::create(rewriter, loc, lhs_real_is_inf_with_sign, c);
+  Value lhs_imag_is_inf_with_sign_times_rhs_imag =
+      ma::MulFOp::create(rewriter, loc, lhs_imag_is_inf_with_sign, d);
+  Value result_real3 = ma::MulFOp::create(
+      rewriter, loc, inf,
+      ma::AddFOp::create(rewriter, loc,
+                         lhs_real_is_inf_with_sign_times_rhs_real,
+                         lhs_imag_is_inf_with_sign_times_rhs_imag));
+  Value lhs_real_is_inf_with_sign_times_rhs_imag =
+      ma::MulFOp::create(rewriter, loc, lhs_real_is_inf_with_sign, d);
+  Value lhs_imag_is_inf_with_sign_times_rhs_real =
+      ma::MulFOp::create(rewriter, loc, lhs_imag_is_inf_with_sign, c);
+  Value result_imag3 = ma::MulFOp::create(
+      rewriter, loc, inf,
+      ma::SubFOp::create(rewriter, loc,
+                         lhs_imag_is_inf_with_sign_times_rhs_real,
+                         lhs_real_is_inf_with_sign_times_rhs_imag));
+
+  // Case 3: Finite numerator, infinite denominator.
+  Value lhs_real_finite = ma::CmpFOp::create(
+      rewriter, loc, ma::CmpFPredicate::ONE, lhs_real_abs, inf);
+  Value lhs_imag_finite = ma::CmpFOp::create(
+      rewriter, loc, ma::CmpFPredicate::ONE, lhs_imag_abs, inf);
+  Value lhs_finite =
+      ma::AndIOp::create(rewriter, loc, lhs_real_finite, lhs_imag_finite);
+  Value rhs_real_infinite = ma::CmpFOp::create(
+      rewriter, loc, ma::CmpFPredicate::OEQ, rhs_real_abs, inf);
+  Value rhs_imag_infinite = ma::CmpFOp::create(
+      rewriter, loc, ma::CmpFPredicate::OEQ, rhs_imag_abs, inf);
+  Value rhs_infinite =
+      ma::OrIOp::create(rewriter, loc, rhs_real_infinite, rhs_imag_infinite);
+  Value finite_num_infinite_denom =
+      ma::AndIOp::create(rewriter, loc, lhs_finite, rhs_infinite);
+  Value rhs_real_is_inf_with_sign = mm::CopySignOp::create(
+      rewriter, loc,
+      ma::SelectOp::create(rewriter, loc, rhs_real_infinite, one, zero), c);
+  Value rhs_imag_is_inf_with_sign = mm::CopySignOp::create(
+      rewriter, loc,
+      ma::SelectOp::create(rewriter, loc, rhs_imag_infinite, one, zero), d);
+  Value rhs_real_is_inf_with_sign_times_lhs_real =
+      ma::MulFOp::create(rewriter, loc, a, rhs_real_is_inf_with_sign);
+  Value rhs_imag_is_inf_with_sign_times_lhs_imag =
+      ma::MulFOp::create(rewriter, loc, b, rhs_imag_is_inf_with_sign);
+  Value result_real4 = ma::MulFOp::create(
+      rewriter, loc, zero,
+      ma::AddFOp::create(rewriter, loc,
+                         rhs_real_is_inf_with_sign_times_lhs_real,
+                         rhs_imag_is_inf_with_sign_times_lhs_imag));
+  Value rhs_real_is_inf_with_sign_times_lhs_imag =
+      ma::MulFOp::create(rewriter, loc, b, rhs_real_is_inf_with_sign);
+  Value rhs_imag_is_inf_with_sign_times_lhs_real =
+      ma::MulFOp::create(rewriter, loc, a, rhs_imag_is_inf_with_sign);
+  Value result_imag4 = ma::MulFOp::create(
+      rewriter, loc, zero,
+      ma::SubFOp::create(rewriter, loc,
+                         rhs_real_is_inf_with_sign_times_lhs_imag,
+                         rhs_imag_is_inf_with_sign_times_lhs_real));
+
+  Value real_abs_smaller_than_imag_abs = ma::CmpFOp::create(
+      rewriter, loc, ma::CmpFPredicate::OLT, rhs_real_abs, rhs_imag_abs);
+  Value result_real5 =
+      ma::SelectOp::create(rewriter, loc, real_abs_smaller_than_imag_abs,
+                           result_real1, result_real2);
+  Value result_imag5 =
+      ma::SelectOp::create(rewriter, loc, real_abs_smaller_than_imag_abs,
+                           result_imag1, result_imag2);
+  Value result_real_special_case3 = ma::SelectOp::create(
+      rewriter, loc, finite_num_infinite_denom, result_real4, result_real5);
+  Value result_imag_special_case3 = ma::SelectOp::create(
+      rewriter, loc, finite_num_infinite_denom, result_imag4, result_imag5);
+  Value result_real_special_case2 =
+      ma::SelectOp::create(rewriter, loc, inf_num_finite_denom, result_real3,
+                           result_real_special_case3);
+  Value result_imag_special_case2 =
+      ma::SelectOp::create(rewriter, loc, inf_num_finite_denom, result_imag3,
+                           result_imag_special_case3);
+  Value result_real_special_case1 =
+      ma::SelectOp::create(rewriter, loc, result_is_infinity,
+                           infinity_result_real, result_real_special_case2);
+  Value result_imag_special_case1 =
+      ma::SelectOp::create(rewriter, loc, result_is_infinity,
+                           infinity_result_imag, result_imag_special_case2);
+
+  Value result_real_is_nan = ma::CmpFOp::create(
+      rewriter, loc, ma::CmpFPredicate::UNO, result_real5, zero);
+  Value result_imag_is_nan = ma::CmpFOp::create(
+      rewriter, loc, ma::CmpFPredicate::UNO, result_imag5, zero);
+  Value result_is_nan =
+      ma::AndIOp::create(rewriter, loc, result_real_is_nan, result_imag_is_nan);
+
+  Value final_real = ma::SelectOp::create(
+      rewriter, loc, result_is_nan, result_real_special_case1, result_real5);
+  Value final_imag = ma::SelectOp::create(
+      rewriter, loc, result_is_nan, result_imag_special_case1, result_imag5);
+
+  return ConcatRealAndImag(final_real, final_imag, loc, rewriter);
+}
+
 LogicalResult RewriteDivOp(shlo::DivOp op, PatternRewriter& rewriter) {
   auto tensor_type = mlir::dyn_cast<RankedTensorType>(op.getType());
   if (!tensor_type || !mlir::isa<ComplexType>(tensor_type.getElementType())) {
@@ -628,22 +834,7 @@ LogicalResult RewriteDivOp(shlo::DivOp op, PatternRewriter& rewriter) {
   Value c = ExtractReal(rhs, loc, rewriter);
   Value d = ExtractImag(rhs, loc, rewriter);
 
-  Value c_sq = shlo::MulOp::create(rewriter, loc, c, c);
-  Value d_sq = shlo::MulOp::create(rewriter, loc, d, d);
-  Value denom = shlo::AddOp::create(rewriter, loc, c_sq, d_sq);
-
-  Value ac = shlo::MulOp::create(rewriter, loc, a, c);
-  Value bd = shlo::MulOp::create(rewriter, loc, b, d);
-  Value real_num = shlo::AddOp::create(rewriter, loc, ac, bd);
-
-  Value bc = shlo::MulOp::create(rewriter, loc, b, c);
-  Value ad = shlo::MulOp::create(rewriter, loc, a, d);
-  Value imag_num = shlo::SubtractOp::create(rewriter, loc, bc, ad);
-
-  Value real = shlo::DivOp::create(rewriter, loc, real_num, denom);
-  Value imag = shlo::DivOp::create(rewriter, loc, imag_num, denom);
-
-  Value combined = ConcatRealAndImag(real, imag, loc, rewriter);
+  Value combined = ComputeDivide(a, b, c, d, loc, rewriter);
   auto cast_to_orig_type =
       UnrealizedConversionCastOp::create(rewriter, loc, tensor_type, combined);
   rewriter.replaceOp(op, cast_to_orig_type.getResult(0));
