@@ -446,6 +446,26 @@ class RaggedCrossOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           out_values_type=dtypes.string,
           out_row_splits_type=dtypes.int64))
 
+  def testSparseIndicesAndValuesRowCountMustMatch(self):
+    # A sparse input whose values are longer than its indices matrix used to
+    # walk the indices tensor out of bounds while building the row splits.
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        'Expected size of values'):
+      self.evaluate(gen_ragged_array_ops.RaggedCross(
+          ragged_values=[],
+          ragged_row_splits=[],
+          sparse_indices=[[[0, 0]]],
+          sparse_values=[['a', 'b', 'c']],
+          sparse_shape=[[1, 10]],
+          dense_inputs=[],
+          input_order='S',
+          hashed_output=False,
+          num_buckets=0,
+          hash_key=2,
+          out_values_type=dtypes.string,
+          out_row_splits_type=dtypes.int64))
+
   def testRaggedValuesAndSplitsMustMatch(self):
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError),
