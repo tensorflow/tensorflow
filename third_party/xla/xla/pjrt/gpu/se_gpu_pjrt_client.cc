@@ -146,6 +146,7 @@ limitations under the License.
 
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM) || \
     defined(TENSORFLOW_USE_SYCL)
+#include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/pjrt/gpu/gpu_metrics.h"
@@ -2203,10 +2204,15 @@ absl::Status ExchangeEmptyStreamExecutorGpuTopology(
     defined(TENSORFLOW_USE_SYCL)
 
 static absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunGpuAsync(
-    LocalExecutable& exec, LocalDeviceState* local_device_state,
+    LocalExecutable& exec, PjRtStreamExecutorRawClient* raw_client,
+    LocalDeviceState* local_device_state,
     absl::Span<const PjRtRawBufferRef> flat_arguments,
     absl::Span<const PjRtRawBufferRef> results,
+    absl::Span<PjRtDeviceEventPromiseRef> result_definition_event_promises,
     ExecutableRunOptions run_options_inp, bool parameter_is_tupled_arguments) {
+  TF_RET_CHECK(result_definition_event_promises.empty() ||
+               result_definition_event_promises.size() == results.size());
+
   std::vector<const Shape*> argument_shapes;
   if (exec.executable() != nullptr) {
     const auto& layout = exec.executable()->module().entry_computation_layout();
@@ -2306,11 +2312,23 @@ static absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunGpuAsync(
   XLA_VLOG_DEVICE(3, device_ordinal)
       << "Buffer allocations: " << buffer_allocations.ToString();
 
+  // Definition callbacks identify allocations. Map them to result leaves so
+  // one event can define all results sharing an allocation.
+  absl::flat_hash_map<BufferAllocation::Index, absl::InlinedVector<size_t, 1>>
+      result_indices_by_allocation;
+
+  // Device addresses retained as live outputs when temporary allocations are
+  // torn down.
   std::set<se::DeviceAddressBase> buffers_in_result;
 
   auto set_result = [&](const ShapeIndex& index, int i) -> absl::Status {
     const gpu::GpuExecutable::OutputInfo& output_info =
         gpu_exec->output_info().at(index);
+    if (!result_definition_event_promises.empty() &&
+        result_definition_event_promises[i]) {
+      result_indices_by_allocation[output_info.allocation_index].push_back(i);
+    }
+
     const BufferAllocation* allocation =
         allocations[output_info.allocation_index];
     se::DeviceAddressBase result_buffer;
@@ -2377,6 +2395,63 @@ static absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunGpuAsync(
     }
   } else {
     ABSL_RETURN_IF_ERROR(set_result({}, 0));
+  }
+
+  // Record a pre-launch compute-stream boundary. Any sync point captured by a
+  // result allocation resolves to this event; result definition is separate.
+  if (!result_definition_event_promises.empty() &&
+      local_device_state->allocation_model() ==
+          LocalDeviceState::kComputeSynchronized) {
+    ABSL_ASSIGN_OR_RETURN(BufferSequencingEventRef allocation_event,
+                     local_device_state->GetEventForComputeStreamSyncPoint(
+                         local_device_state->GetNextComputeStreamSyncPoint(),
+                         raw_client->async_work_runner()));
+    DCHECK(allocation_event);
+  }
+
+  auto definition_callback =
+      [&](se::Stream* stream,
+          absl::Span<const BufferAllocation::Index> indices) -> absl::Status {
+    std::vector<size_t> result_indices;
+    for (BufferAllocation::Index index : indices) {
+      if (auto it = result_indices_by_allocation.find(index);
+          it != result_indices_by_allocation.end()) {
+        result_indices.insert(result_indices.end(), it->second.begin(),
+                              it->second.end());
+      }
+    }
+
+    if (result_indices.empty()) {
+      return absl::OkStatus();
+    }
+
+    XLA_VLOG_DEVICE(3, device_ordinal)
+        << "Recording definition event for buffer allocations ["
+        << absl::StrJoin(indices, ", ") << "] and results ["
+        << absl::StrJoin(result_indices, ", ") << "] on stream " << stream;
+
+    auto event = BufferSequencingEvent::Create(raw_client->async_work_runner());
+    event->AddErrorContext("executable_name", std::string(gpu_exec->name()));
+
+    ABSL_RETURN_IF_ERROR(raw_client->AllocateAndRecordEvent(
+        event, local_device_state, stream,
+        "RunGpuAsync::ResultBufferDefinition"));
+
+    PjRtDeviceEventRef event_ref(event);
+    for (size_t result_index : result_indices) {
+      if (PjRtDeviceEventPromiseRef promise =
+              std::move(result_definition_event_promises[result_index])) {
+        promise.Set(event_ref);
+      }
+    }
+    return absl::OkStatus();
+  };
+
+  std::optional<gpu::ThunkExecutor::ScopedDefinitionTracker> definition_tracker;
+  if (!result_indices_by_allocation.empty()) {
+    ABSL_ASSIGN_OR_RETURN(definition_tracker,
+                     gpu::InstallDefinitionTracker(gpu_exec->definition_plan(),
+                                                   definition_callback));
   }
 
   absl::Status execute_status = allocation_scope->ExecuteWithBufferAllocations(

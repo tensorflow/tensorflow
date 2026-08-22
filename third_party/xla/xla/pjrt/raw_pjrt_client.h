@@ -17,8 +17,11 @@ limitations under the License.
 #define XLA_PJRT_RAW_PJRT_CLIENT_H_
 
 #include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
@@ -28,7 +31,9 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/future.h"
 #include "xla/pjrt/device_event.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -42,10 +47,24 @@ class PjRtRawLoadedExecutable {
   virtual ~PjRtRawLoadedExecutable() = default;
 
   struct RawExecuteResult {
+    // Returns the event that defines the result buffer at `result_index`. Raw
+    // clients can provide an event for each result to make it available before
+    // the executable finishes. Results without an individual event fall back to
+    // `primary_execute_event`, which is sequenced after the whole executable.
+    PjRtDeviceEventRef definition_event(size_t result_index) const {
+      if (result_index < result_definition_events.size() &&
+          result_definition_events[result_index]) {
+        return result_definition_events[result_index];
+      }
+      return primary_execute_event;
+    }
+
     std::optional<tsl::Future<>> future;
     PjRtDeviceEventRef primary_execute_event;
+    std::vector<PjRtDeviceEventRef> result_definition_events;
     absl::Status inline_status;
   };
+
   virtual RawExecuteResult Execute(const ExecuteOptions& options,
                                    absl::Span<const PjRtRawBufferRef> inputs,
                                    absl::Span<const PjRtRawBufferRef> results,

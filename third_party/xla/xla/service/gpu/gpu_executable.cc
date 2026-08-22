@@ -472,6 +472,7 @@ GpuExecutable::GpuExecutable(
       dnn_compiled_graphs_(std::move(dnn_compiled_graphs)),
       gpu_version_(device_description.gpu_compute_capability()),
       thunk_executor_(std::move(executable)),
+      definition_plan_(ThunkExecutor::BuildDefinitionPlan(*thunk_executor_)),
       num_additional_streams_(
           GetNumAdditionalStreams(*thunk_executor_, debug_options)),
       module_name_(std::move(module_name)),

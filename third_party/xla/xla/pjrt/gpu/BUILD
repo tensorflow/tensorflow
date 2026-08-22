@@ -224,6 +224,7 @@ cc_library(
         "@tsl//tsl/profiler/lib:traceme",
     ] + if_cuda_or_rocm([
         # keep sorted
+        "//xla/backends/gpu/runtime:thunk_executor",
         "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu:gpu_executable",
         "//xla/service/gpu:gpu_executable_buffer_allocator",
@@ -240,6 +241,7 @@ cc_library(
         "@local_config_rocm//rocm:rocm_headers",
     ]) + if_sycl([
         # keep sorted
+        "//xla/backends/gpu/runtime:thunk_executor",
         "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu:gpu_executable",
         "//xla/service/gpu:gpu_executable_buffer_allocator",
@@ -385,6 +387,7 @@ xla_test(
         "//xla:literal_util",
         "//xla:parse_flags_from_env",
         "//xla:shape_util",
+        "//xla:status_macros",
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -394,6 +397,7 @@ xla_test(
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:test",
+        "//xla/pjrt:common_pjrt_client",
         "//xla/pjrt:device_event",
         "//xla/pjrt:host_memory_allocator",
         "//xla/pjrt:host_memory_spaces",
@@ -428,6 +432,7 @@ xla_test(
         "//xla/util/split_proto:split_executable_and_options_writer",
         "//xla/util/split_proto:split_proto_reader",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -438,6 +443,7 @@ xla_test(
         "@com_google_absl//absl/log:globals",
         "@com_google_absl//absl/log:scoped_mock_log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

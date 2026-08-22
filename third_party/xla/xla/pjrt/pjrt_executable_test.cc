@@ -40,6 +40,7 @@ TEST(CompileOptionsTest, Serialization) {
   src.compile_portable_executable = true;
   src.parameter_is_tupled_arguments = true;
   src.profile_version = 1;
+  src.individually_defined_output_indices = {4, 0};
   src.argument_layouts = {ShapeUtil::MakeShape(S32, {1})};
   src.matrix_unit_operand_precision = PrecisionConfig::HIGHEST;
   src.allow_in_place_mlir_modification = true;
@@ -50,9 +51,13 @@ TEST(CompileOptionsTest, Serialization) {
   TF_ASSERT_OK_AND_ASSIGN(CompileOptionsProto proto, src.ToProto());
   TF_ASSERT_OK_AND_ASSIGN(CompileOptions output,
                           CompileOptions::FromProto(proto));
-  TF_ASSERT_OK_AND_ASSIGN(CompileOptionsProto output_proto, src.ToProto());
+  ASSERT_OK_AND_ASSIGN(CompileOptionsProto output_proto, output.ToProto());
 
+  EXPECT_THAT(proto.individually_defined_output_indices(),
+              ::testing::ElementsAre(0, 4));
   EXPECT_EQ(proto.SerializeAsString(), output_proto.SerializeAsString());
+  EXPECT_EQ(src.individually_defined_output_indices,
+            output.individually_defined_output_indices);
 }
 
 TEST(CompileOptionsTest, DeserializeSerializedMultiSliceConfig) {

@@ -457,10 +457,11 @@ class CommonPjRtClient : public PjRtClient {
       absl::Span<const int> output_memory_space_kind_ids,
       const ExecuteOptions& options);
 
+  // Creates output buffers using each result's definition event.
   std::vector<std::unique_ptr<PjRtBuffer>> CreateOutputs(
       const std::shared_ptr<const Shape>& output_device_shape,
-      PjRtDeviceEventRef definition_event, PjRtDevice* device,
-      absl::Span<const int> output_memory_space_kind_ids,
+      const PjRtRawLoadedExecutable::RawExecuteResult& execute_result,
+      PjRtDevice* device, absl::Span<const int> output_memory_space_kind_ids,
       absl::InlinedVector<PjRtRawBufferRef, 4> output_leaf_buffers,
       bool is_predetermined_error);
 

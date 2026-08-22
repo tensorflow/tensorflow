@@ -70,6 +70,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/pjrt/raw_pjrt_client.h"
 #include "xla/pjrt/staging_buffer.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/undonatable_common_pjrt_buffer.h"
@@ -1986,8 +1987,8 @@ static std::unique_ptr<PjRtBuffer> CreateOutputLeafBuffer(
 
 std::vector<std::unique_ptr<PjRtBuffer>> CommonPjRtClient::CreateOutputs(
     const std::shared_ptr<const Shape>& output_device_shape,
-    PjRtDeviceEventRef definition_event, PjRtDevice* device,
-    absl::Span<const int> output_memory_space_kind_ids,
+    const PjRtRawLoadedExecutable::RawExecuteResult& execute_result,
+    PjRtDevice* device, absl::Span<const int> output_memory_space_kind_ids,
     absl::InlinedVector<PjRtRawBufferRef, 4> output_leaf_buffers,
     bool is_predetermined_error) {
   tsl::profiler::TraceMe t1("CommonPjRtClient::CreateOutputs");
@@ -2004,21 +2005,21 @@ std::vector<std::unique_ptr<PjRtBuffer>> CommonPjRtClient::CreateOutputs(
       auto leaf_shape =
           std::shared_ptr<const Shape>(output_device_shape, &tuple_shapes[i]);
       res.push_back(CreateOutputLeafBuffer(
-          std::move(leaf_shape), definition_event, this, device, get_buffer(i),
-          output_memory_space_kind_ids[i]));
+          std::move(leaf_shape), execute_result.definition_event(i), this,
+          device, get_buffer(i), output_memory_space_kind_ids[i]));
     }
   } else if (!output_device_shape->IsTuple() &&
              output_leaf_buffers.size() == 1) {
     // Share the shape directly from the executable.
     res.push_back(CreateOutputLeafBuffer(
-        output_device_shape, std::move(definition_event), this, device,
+        output_device_shape, execute_result.definition_event(0), this, device,
         std::move(output_leaf_buffers[0]), output_memory_space_kind_ids[0]));
   } else {
     CHECK(is_predetermined_error)
         << "Nontuple results must have a single result buffer.";
     res.push_back(CreateOutputLeafBuffer(
-        output_device_shape, std::move(definition_event), this, device, {},
-        output_memory_space_kind_ids[0]));
+        output_device_shape, execute_result.definition_event(0), this, device,
+        {}, output_memory_space_kind_ids[0]));
   }
   return res;
 }
@@ -2236,13 +2237,13 @@ CommonPjRtLoadedExecutable::ExecuteLaunch(ExecuteLaunchArgs& launch_args,
 
   ABSL_RETURN_IF_ERROR(results.inline_status);
 
-  return PjRtLoadedExecutable::Result(
-      {/*future=*/std::move(results.future),
-       /*buffers=*/client()->CreateOutputs(
-           output_device_shape_, std::move(results.primary_execute_event),
-           launch_args.device, output_memory_space_kind_ids_,
-           std::move(launch_args.output_leaf_buffers),
-           launch_args.is_predetermined_error)});
+  auto outputs = client()->CreateOutputs(
+      output_device_shape_, results, launch_args.device,
+      output_memory_space_kind_ids_, std::move(launch_args.output_leaf_buffers),
+      launch_args.is_predetermined_error);
+
+  return PjRtLoadedExecutable::Result({/*future=*/std::move(results.future),
+                                       /*buffers=*/std::move(outputs)});
 }
 
 absl::Status CommonPjRtLoadedExecutable::ExecutePrepareWithOomRetries(
