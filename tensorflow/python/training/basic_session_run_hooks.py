@@ -830,7 +830,9 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
     self._scaffold = scaffold
     self._timer = SecondOrStepTimer(
         every_secs=save_secs, every_steps=save_steps)
-    # TODO(mdan): Throw an error if output_dir and summary_writer are None.
+    if output_dir is None and summary_writer is None:
+      raise ValueError(
+          "At least one of output_dir or summary_writer must be provided.")
 
   def begin(self):
     if self._summary_writer is None and self._output_dir:
