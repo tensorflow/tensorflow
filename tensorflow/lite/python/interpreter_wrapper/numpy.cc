@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
+#include "tensorflow/lite/string_util.h"
 
 namespace tflite {
 namespace python {
@@ -36,6 +37,7 @@ struct PyObjectDereferencer {
 };
 using UniquePyObjectRef = std::unique_ptr<PyObject, PyObjectDereferencer>;
 
+// NOLINTBEGIN(misc-include-cleaner)
 int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type) {
   switch (tf_lite_type) {
     case kTfLiteFloat32:
@@ -90,7 +92,7 @@ int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type) {
       // Avoid default so compiler errors created when new types are made.
   }
   return NPY_NOTYPE;
-}  // NOLINT(direct import ndarraytypes.h cannot be used here)
+}  // NOLINT(misc-include-cleaner)
 
 TfLiteType TfLiteTypeFromPyType(int py_type) {
   switch (py_type) {
@@ -132,7 +134,8 @@ TfLiteType TfLiteTypeFromPyType(int py_type) {
       return kTfLiteBFloat16;
   }
   return kTfLiteNoType;
-}  // NOLINT(direct import ndarraytypes.h cannot be used here)
+}  // NOLINT(misc-include-cleaner)
+// NOLINTEND(misc-include-cleaner)
 
 TfLiteType TfLiteTypeFromPyArray(PyArrayObject* array) {
   int pyarray_type = PyArray_TYPE(array);
@@ -172,6 +175,10 @@ bool FillStringBufferFromPyUnicode(PyObject* value,
 
 bool FillStringBufferFromPyString(PyObject* value,
                                   DynamicBuffer* dynamic_buffer) {
+  if (value == nullptr) {
+    PyErr_SetString(PyExc_ValueError, "Array item is null.");
+    return false;
+  }
   if (PyUnicode_Check(value)) {
     return FillStringBufferFromPyUnicode(value, dynamic_buffer);
   }
@@ -197,14 +204,15 @@ bool FillStringBufferWithPyArray(PyObject* value,
 
   PyArrayObject* array = reinterpret_cast<PyArrayObject*>(value);
   switch (PyArray_TYPE(array)) {
-    case NPY_OBJECT:
     case NPY_STRING:
-    case NPY_UNICODE: {
       if (PyArray_NDIM(array) == 0) {
         dynamic_buffer->AddString(static_cast<char*>(PyArray_DATA(array)),
                                   PyArray_NBYTES(array));
         return true;
       }
+      [[fallthrough]];
+    case NPY_OBJECT:
+    case NPY_UNICODE: {
       UniquePyObjectRef iter(PyArray_IterNew(value));
       while (PyArray_ITER_NOTDONE(iter.get())) {
         UniquePyObjectRef item(PyArray_GETITEM(

@@ -277,6 +277,25 @@ class InterpreterTest(test_util.TensorFlowTestCase):
     test_input_tensor = interpreter.get_tensor(input_details[0]['index'])
     self.assertEqual(len(data), len(test_input_tensor.item(0)))
 
+  def testStringZeroDimObject(self):
+    interpreter = interpreter_wrapper.Interpreter(
+        model_path=resource_loader.get_path_to_datafile(
+            'testdata/gather_string_0d.tflite'))
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+
+    # 1. 0D object array containing non-string object should fail with ValueError.
+    arr_non_string = np.array({'foo': 'bar'}, dtype=object)
+    with self.assertRaises(ValueError):
+      interpreter.set_tensor(input_details[0]['index'], arr_non_string)
+
+    # 2. 0D object array containing a string should be converted to UTF-8 bytes.
+    arr_string = np.array('hello', dtype=object)
+    interpreter.set_tensor(input_details[0]['index'], arr_string)
+    test_input_tensor = interpreter.get_tensor(input_details[0]['index'])
+    self.assertEqual(b'hello', test_input_tensor.item(0))
+
   def testPerChannelParams(self):
     interpreter = interpreter_wrapper.Interpreter(
         model_path=resource_loader.get_path_to_datafile('testdata/pc_conv.bin'))
