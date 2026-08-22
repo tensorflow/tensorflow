@@ -25,6 +25,8 @@ limitations under the License.
 // automatically move <Python.h> before <locale>.
 #include <Python.h>
 
+#include "absl/synchronization/mutex.h"
+
 // We forward declare TFLite classes here to avoid exposing them to SWIG.
 namespace tensorflow {
 namespace monitoring {
@@ -49,6 +51,7 @@ class MetricsWrapper {
  private:
   explicit MetricsWrapper(std::unique_ptr<MetricsExporter> exporter);
 
+  absl::Mutex exporter_mu_;
   const std::unique_ptr<MetricsExporter> exporter_;
 };
 

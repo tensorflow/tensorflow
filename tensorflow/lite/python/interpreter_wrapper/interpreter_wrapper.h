@@ -27,6 +27,7 @@ limitations under the License.
 // automatically move <Python.h> before <locale>.
 #include <Python.h>
 
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/lite/core/interpreter.h"
 
 struct TfLiteDelegate;
@@ -157,6 +158,12 @@ class InterpreterWrapper {
   // The public functions which creates `InterpreterWrapper` should ensure all
   // these member variables are initialized successfully. Otherwise it should
   // report the error and return `nullptr`.
+  // Serializes access to the mutable TFLite Interpreter owned by this wrapper.
+  //
+  // The lock must remain held across Invoke(), including while Invoke()
+  // temporarily detaches from the Python thread state.
+  mutable absl::Mutex interpreter_mu_;
+
   const std::unique_ptr<Model> model_;
   const std::unique_ptr<PythonErrorReporter> error_reporter_;
   const std::unique_ptr<tflite::MutableOpResolver> resolver_;

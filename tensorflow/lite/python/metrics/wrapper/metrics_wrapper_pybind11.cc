@@ -24,7 +24,8 @@ limitations under the License.
 namespace py = pybind11;
 using tflite::metrics_wrapper::MetricsWrapper;
 
-PYBIND11_MODULE(_pywrap_tensorflow_lite_metrics_wrapper, m) {
+PYBIND11_MODULE(_pywrap_tensorflow_lite_metrics_wrapper, m,
+                  py::mod_gil_not_used()) {
   m.doc() = R"pbdoc(
     _pywrap_tensorflow_lite_metrics_wrapper
     -----

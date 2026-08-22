@@ -44,6 +44,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "@com_google_absl//absl/synchronization",
         ":numpy",
         ":python_error_reporter",
         ":python_utils",
@@ -115,6 +116,7 @@ pybind_extension(
     wrap_py_init = True,
     deps = [
         ":interpreter_wrapper_lib",
+        "@com_google_absl//absl/synchronization",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/python/lib/core:pybind11_lib",

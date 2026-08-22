@@ -18,7 +18,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/lite/python/analyzer_wrapper/model_analyzer.h"
 
-PYBIND11_MODULE(_pywrap_analyzer_wrapper, m) {
+PYBIND11_MODULE(_pywrap_analyzer_wrapper, m, pybind11::mod_gil_not_used()) {
   m.def(
       "ModelAnalyzer",
       [](const std::string& model_path, bool input_is_filepath,
