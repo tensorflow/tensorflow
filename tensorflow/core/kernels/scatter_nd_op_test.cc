@@ -152,6 +152,20 @@ TEST_F(TensorScatterUpdateOpTest, Error_IndexOutOfRange) {
       << s;
 }
 
+TEST_F(TensorScatterUpdateOpTest, Error_MalformedIndicesShape) {
+  MakeOp(DT_INT32, DT_INT32);
+
+  // tensor: shape [8], indices: shape [1,1,1], updates: shape [1].
+  // The indices have more outer dimensions than updates has dimensions,
+  // which previously triggered a fatal CHECK(d < dims()) crash.
+  AddInputFromArray<int32_t>(TensorShape({8}), {0, 0, 0, 0, 0, 0, 0, 0});
+  AddInputFromArray<int32_t>(TensorShape({1, 1, 1}), {4});
+  AddInputFromArray<int32_t>(TensorShape({1}), {3});
+  absl::Status s = RunOpKernel();
+  EXPECT_FALSE(s.ok());
+  EXPECT_TRUE(absl::StrContains(s.ToString(), "Outer dimensions")) << s;
+}
+
 class TensorScatterUpdateOpErrorOnBadIndicesTest : public OpsTestBase {
  protected:
   void MakeOp(DataType variable_type, DataType index_type) {
