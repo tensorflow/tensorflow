@@ -112,6 +112,9 @@ NativeRefT HostDigamma(NativeRefT x) {
   if (x <= 0) {
     double floor = std::floor(x);
     if (x == floor) {
+      if (x == 0) {
+        return -std::numeric_limits<double>::infinity();
+      }
       return std::numeric_limits<double>::quiet_NaN();
     }
     // Compute reflection term, pi * cot(pi * x).
