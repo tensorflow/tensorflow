@@ -418,6 +418,7 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:protobuf",
         "@eigen_archive//:eigen3",
         "@pybind11",
     ],
@@ -754,6 +755,7 @@ py_library(
         ":_op_def_registry",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/core/platform:protobuf",
     ],
 )
 
