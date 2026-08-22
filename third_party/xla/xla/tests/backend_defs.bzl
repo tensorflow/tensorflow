@@ -60,6 +60,8 @@ DEFAULT_DISABLED_BACKENDS = []
 
 ALL_HARDWARE_BACKENDS = ["cpu"] + GPU_BACKENDS + list(plugins.keys())
 
+ALL_TENSOR_CORE_HARDWARE_BACKENDS = ALL_HARDWARE_BACKENDS
+
 ALL_BACKENDS = ["interpreter"] + ALL_HARDWARE_BACKENDS
 
 # buildifier: disable=function-docstring
