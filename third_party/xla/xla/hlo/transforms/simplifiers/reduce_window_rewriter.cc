@@ -616,6 +616,12 @@ static absl::StatusOr<bool> TryOptimizeCumSumOrProd(
   const int64_t scan_dim = non_trivial_window_dimensions.front();
   const int64_t scan_length = operand_shape.dimensions(scan_dim);
 
+  // Tiling reshapes the scan dimension, which DynamicDimensionInference
+  // cannot track exactly for dynamic sizes.
+  if (operand_shape.is_dynamic_dimension(scan_dim)) {
+    return false;
+  }
+
   // Early checks to avoid unnecessary work.
   if (scan_length <= base_length) {
     return false;
@@ -733,8 +739,11 @@ static absl::StatusOr<bool> TryOptimizeAssociativeScan(
     return false;
   }
 
+  // Dynamic scan dimensions cannot use the tree rewrite (it reshapes the
+  // scan dimension); keep the single reduce-window form.
   const bool use_single_reduce_window =
-      base_length == 0 || scan_length <= base_length;
+      base_length == 0 || scan_length <= base_length ||
+      operand_shape.is_dynamic_dimension(scan_dim);
   if (!use_single_reduce_window && !IsTreeRewriteSafeInit(scan, init_source)) {
     // The tree rewrite folds the init into both tree levels, which is only
     // correct when the extra fold is a no-op (an identity, idempotent, or

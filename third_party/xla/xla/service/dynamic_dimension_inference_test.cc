@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -991,6 +993,101 @@ TEST_F(DynamicDimensionInferenceTest, ReduceWindowBatchTest) {
   SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(reduce_window, {}, 0), size_param);
+}
+
+TEST_F(DynamicDimensionInferenceTest, ReduceWindowScanPaddingTest) {
+  // Regression test for https://github.com/openxla/xla/issues/44944: the
+  // inferred size of a scan-style reduce-window must equal its input size.
+  auto builder = HloComputation::Builder(TestName());
+  constexpr int64_t kWindowSize = 8;
+  auto input_shape = ShapeUtil::MakeShape(F32, {kWindowSize});
+  auto dynamic_shape = ShapeUtil::MakeShape(F32, {kWindowSize}, {true});
+
+  Window window;
+  WindowDimension* dim = window.add_dimensions();
+  dim->set_size(kWindowSize);
+  dim->set_stride(1);
+  dim->set_padding_low(kWindowSize - 1);
+  dim->set_padding_high(0);
+  dim->set_window_dilation(1);
+  dim->set_base_dilation(1);
+
+  auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/0, input_shape, "A"));
+  // A constant size keeps the size expression evaluable below.
+  auto* size_const = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(3)));
+
+  a_param = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
+      dynamic_shape, a_param, size_const, 0));
+
+  auto init = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0)));
+
+  auto* reduce_window =
+      builder.AddInstruction(HloInstruction::CreateReduceWindow(
+          dynamic_shape, a_param, init, window, GetAdd()));
+
+  module_->AddEntryComputation(builder.Build());
+
+  SCOPED_TRACE(module_->ToString());
+  ASSERT_OK(RunInference());
+  HloInstruction* dynamic_size =
+      inference_->GetDynamicSize(reduce_window, {}, 0);
+  ASSERT_NE(dynamic_size, nullptr);
+  // Was size - (window_size - 1) = -4 before the fix.
+  ASSERT_OK_AND_ASSIGN(Literal size_literal,
+                       HloEvaluator().Evaluate(
+                           dynamic_size, /*precomputed_analyses=*/{},
+                           /*recursively_evaluate_nonconstant_operands=*/true));
+  EXPECT_EQ(size_literal.Get<int32_t>({}), 3);
+}
+
+TEST_F(DynamicDimensionInferenceTest, ReduceWindowOutputSizeClampedAtZero) {
+  // The inferred size must clamp at zero when the window exceeds the padded
+  // runtime input.
+  auto builder = HloComputation::Builder(TestName());
+  constexpr int64_t kWindowSize = 8;
+  auto input_shape = ShapeUtil::MakeShape(F32, {kWindowSize});
+  auto dynamic_shape = ShapeUtil::MakeShape(F32, {kWindowSize}, {true});
+
+  Window window;
+  WindowDimension* dim = window.add_dimensions();
+  dim->set_size(kWindowSize);
+  dim->set_stride(1);
+  dim->set_padding_low(1);
+  dim->set_padding_high(0);
+  dim->set_window_dilation(1);
+  dim->set_base_dilation(1);
+
+  auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/0, input_shape, "A"));
+  auto* size_const = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0)));
+
+  a_param = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
+      dynamic_shape, a_param, size_const, 0));
+
+  auto init = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0)));
+
+  auto* reduce_window = builder.AddInstruction(
+      HloInstruction::CreateReduceWindow(ShapeUtil::MakeShape(F32, {2}, {true}),
+                                         a_param, init, window, GetAdd()));
+
+  module_->AddEntryComputation(builder.Build());
+
+  SCOPED_TRACE(module_->ToString());
+  ASSERT_OK(RunInference());
+  HloInstruction* dynamic_size =
+      inference_->GetDynamicSize(reduce_window, {}, 0);
+  ASSERT_NE(dynamic_size, nullptr);
+  // Without the clamp this evaluated to 0 + 1 - 8 + 1 = -6.
+  ASSERT_OK_AND_ASSIGN(Literal size_literal,
+                       HloEvaluator().Evaluate(
+                           dynamic_size, /*precomputed_analyses=*/{},
+                           /*recursively_evaluate_nonconstant_operands=*/true));
+  EXPECT_EQ(size_literal.Get<int32_t>({}), 0);
 }
 
 TEST_F(DynamicDimensionInferenceTest, SelectAndScatterTest) {

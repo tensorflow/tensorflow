@@ -1125,6 +1125,42 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
+TEST_F(ExecutionTest, DynamicCumulativeProductScan) {
+  // Regression test for https://github.com/openxla/xla/issues/44944: a
+  // cumprod scan over a dynamic dimension used to crash the CPU executable.
+  const std::string hlo_text = R"(
+HloModule DynamicScan
+
+mul_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT mul = s32[] multiply(lhs, rhs)
+}
+
+ENTRY main {
+  param = s32[8] parameter(0)
+  size = s32[] constant(3)
+  param_dynamic = s32[<=8] set-dimension-size(param, size), dimensions={0}
+  init = s32[] constant(1)
+  ROOT cumprod = s32[<=8] reduce-window(param_dynamic, init), window={size=8 pad=7_0}, to_apply=mul_s32
+}
+)";
+
+  // Input has upper bound of 8, dynamic size is 3; the rest is garbage.
+  Literal operand =
+      LiteralUtil::CreateR1<int32_t>({2, 3, 4, -1, -1, -1, -1, -1});
+  auto module = GetHloModule(hlo_text);
+
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       PadAndExecute(std::move(module), {&operand}, false));
+  result.SetDynamicSize(0, 3);
+
+  // Cumulative products of the valid prefix {2, 3, 4}.
+  Literal expected = LiteralUtil::CreateR1<int32_t>({2, 6, 24});
+
+  EXPECT_EQ(result, expected);
+}
+
 TEST_F(ExecutionTest, DynamicConcat) {
   // Concatting a list of {dynamic_operand, static_operand, dynamic_operand}.
   const std::string hlo_text = R"(
