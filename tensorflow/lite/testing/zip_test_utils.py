@@ -522,9 +522,13 @@ def make_zip_of_tests(options,
         output_details = interpreter.get_output_details()
         output_values = {}
         for output_detail in output_details:
+          if np.prod(output_detail["shape"]) == 0:
+            out_val = np.empty(
+                output_detail["shape"], dtype=output_detail["dtype"])
+          else:
+            out_val = interpreter.get_tensor(output_detail["index"])
           output_values.update({
-              _normalize_output_name(output_detail["name"]):
-                  interpreter.get_tensor(output_detail["index"])
+              _normalize_output_name(output_detail["name"]): out_val
           })
 
         return input_values, output_values
