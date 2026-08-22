@@ -728,6 +728,7 @@ std::string TransposePlan::Loop::ToString() const {
 
 bool TransposePlan::Loop::operator==(const Loop& other) const {
   return dim_in_a == other.dim_in_a && tile_interior == other.tile_interior &&
+         is_tile_interior == other.is_tile_interior &&
          dim_size == other.dim_size && tile_size == other.tile_size &&
          lda == other.lda && ldb == other.ldb &&
          is_inner_dim_in_a == other.is_inner_dim_in_a &&
@@ -1132,6 +1133,13 @@ absl::Status TransposePlan::Initialize() {
   }
 
   b_dims_ = Permute(a_dims_, permutation_);
+  is_identity_permutation_ = true;
+  for (int i = 0; i < permutation_.size(); ++i) {
+    if (permutation_[i] != i) {
+      is_identity_permutation_ = false;
+      break;
+    }
+  }
   ComputeStrides(elem_size_in_bytes_, b_dims_, b_tiling_, ldb_, ldb_tile_);
 
   // Find the innermost dimension of B that is stride 1 element. We know such a
@@ -1209,6 +1217,7 @@ absl::Status TransposePlan::Initialize() {
     loop_order.push_back(loop);
 
     if (tile_size > 1) {
+      loop.is_tile_interior = true;
       loop.tile_interior = has_partial_tile;
       if (!has_partial_tile) {
         loop.dim_size = tile_size;
@@ -1394,8 +1403,19 @@ void TransposePlan::ChooseLoopOrder(std::vector<Loop>& loop_order) const {
         // consecutive writes and consecutive reads, we would prefer consecutive
         // writes.
         constexpr double kPenalty = 1.01;
-        stride = std::min<double>(a_stride * kPenalty, b_stride);
-        return std::make_tuple(l.contiguity, -stride);
+        // For identity layouts (pure tile packing), or when either stride is
+        // within an L1 cache line (64B), prioritize intra-cacheline spatial
+        // locality with min(). If both strides exceed a cache line in a
+        // permuted transpose, rank by total combined stride to place large
+        // strides in outer loops.
+        constexpr int64_t kCacheLineSize = 64;
+        if (is_identity_permutation_ || l.is_tile_interior ||
+            a_stride <= kCacheLineSize || b_stride <= kCacheLineSize) {
+          stride = std::min<double>(a_stride * kPenalty, b_stride);
+        } else {
+          stride = a_stride * kPenalty + b_stride;
+        }
+        return std::make_tuple(0, -stride);
     }
   };
 
@@ -1428,6 +1448,7 @@ void TransposePlan::ChooseLoopOrder(std::vector<Loop>& loop_order) const {
     loop_order.push_back(std::move(remaining[best_idx]));
     remaining.erase(remaining.begin() + best_idx);
   }
+
   VLOG(5) << "After loop ordering sort: "
           << absl::StrJoin(loop_order, ", ",
                            [](std::string* out, const Loop& l) {
