@@ -116,6 +116,23 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
     )
     self.assertCountEqual([0, 1, 2], self.evaluate(exported_values_tensor))
 
+  def testExportSignatureMismatch(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
+    table = self.getHashTable()(
+        lookup_ops.KeyValueTensorInitializer(
+            constant_op.constant([0], dtype=dtypes.int64),
+            constant_op.constant([1], dtype=dtypes.int64)),
+        -1,
+        experimental_is_anonymous=is_anonymous)
+    self.initialize_table(table)
+    with self.assertRaises((errors_impl.InvalidArgumentError, ValueError)):
+      self.evaluate(
+          gen_lookup_ops.lookup_table_export_v2(
+              table.resource_handle,
+              Tkeys=dtypes.string,
+              Tvalues=dtypes.string))
+
   def testStaticHashTableFindHighRank(self, is_anonymous):
     if is_anonymous and not tf2.enabled():
       self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
