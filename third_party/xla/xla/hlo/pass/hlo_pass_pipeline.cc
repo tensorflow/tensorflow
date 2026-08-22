@@ -180,9 +180,13 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
     }};
     VLOG(1) << "  HLO pass " << pass_name;
     std::optional<size_t> hash_before = std::nullopt;
+    std::optional<std::string> fingerprint_before = std::nullopt;
     if (verify_pass_changed_report || VLOG_IS_ON(2)) {
       hash_before = absl::HashOf(*hlo);
       VLOG(2) << "  Module hash " << hash_before.value();
+    }
+    if (!dump_regex.empty() && dump_regex == ".*") {
+      fingerprint_before = hlo->GetFingerprint128();
     }
     VLOG(2) << "  Number of instructions: " << hlo->instruction_count();
     tsl::profiler::TraceMe traceme(pass->name());
@@ -200,7 +204,11 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
       VerifyPassChangedReport<HloT>(hlo, pass_changed, debug_options, pass_name,
                                     pipeline_name, hash_before.value());
     }
-    if (!dump_regex.empty() && (pass_changed || dump_regex != ".*")) {
+    bool should_dump = pass_changed;
+    if (should_dump && fingerprint_before.has_value()) {
+      should_dump = (hlo->GetFingerprint128() != fingerprint_before.value());
+    }
+    if (!dump_regex.empty() && (should_dump || dump_regex != ".*")) {
       MaybeDumpHloAndSaveFilenames(*hlo,
                                    /*after_pass_name=*/pass_name,
                                    /*before_pass_name=*/i + 1 >= passes.size()
