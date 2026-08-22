@@ -2469,6 +2469,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
     ],
     alwayslink = 1,
@@ -6130,6 +6131,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:types_proto_cc",
     ],
 )
 
