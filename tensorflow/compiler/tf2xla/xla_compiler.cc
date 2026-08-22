@@ -1553,7 +1553,7 @@ absl::Status XlaCompiler::CompileGraph(
   // Run the placer to validate device constraints before XLA compilation.
   // This ensures that tf.device() constraints are validated even for
   // XLA-compiled functions (jit_compile=True).
-  {
+  if (device_mgr_ != nullptr) {
     DeviceSet device_set;
     for (Device* device : device_mgr_->ListDevices()) {
       device_set.AddDevice(device);
