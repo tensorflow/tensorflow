@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/arena.h"
 
+#include <cstddef>
+#include <cstring>
+
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/test.h"
 
