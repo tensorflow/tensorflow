@@ -53,6 +53,7 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@pybind11",
+        "@xla//third_party/python_runtime:headers",
     ],
 )
 

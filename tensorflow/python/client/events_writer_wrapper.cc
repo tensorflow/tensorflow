@@ -70,32 +70,52 @@ PYBIND11_MODULE(
       .def("InitWithSuffix",
            [](py::object self_obj, const std::string& suffix) {
              auto* self = self_obj.cast<tensorflow::EventsWriter*>();
+             if (self == nullptr) {
+               throw py::value_error("EventsWriter is not initialized");
+             }
              return RunEventsWriterMethod(
                  self_obj, [&]() { return self->InitWithSuffix(suffix); });
            })
       .def("FileName", [](py::object self_obj) {
         auto* self = self_obj.cast<tensorflow::EventsWriter*>();
+        if (self == nullptr) {
+          throw py::value_error("EventsWriter is not initialized");
+        }
         return RunEventsWriterMethod(
             self_obj, [&]() { return self->FileName(); });
       })
       .def("_WriteSerializedEvent",
            [](py::object self_obj, const std::string& event_str) {
              auto* self = self_obj.cast<tensorflow::EventsWriter*>();
+             if (self == nullptr) {
+               throw py::value_error("EventsWriter is not initialized");
+             }
              RunEventsWriterMethod(
                  self_obj, [&]() { self->WriteSerializedEvent(event_str); });
            })
       .def("Flush", [](py::object self_obj) {
         auto* self = self_obj.cast<tensorflow::EventsWriter*>();
+        if (self == nullptr) {
+          throw py::value_error("EventsWriter is not initialized");
+        }
         return RunEventsWriterMethod(
             self_obj, [&]() { return self->Flush(); });
       })
       .def("Close", [](py::object self_obj) {
         auto* self = self_obj.cast<tensorflow::EventsWriter*>();
+        if (self == nullptr) {
+          throw py::value_error("EventsWriter is not initialized");
+        }
         return RunEventsWriterMethod(
             self_obj, [&]() { return self->Close(); });
       })
       .def("WriteEvent",
            [](py::object self_obj, const py::object obj) {
+             auto* self = self_obj.cast<tensorflow::EventsWriter*>();
+             if (self == nullptr) {
+               throw py::value_error("EventsWriter is not initialized");
+             }
+
              tensorflow::CheckProtoType(obj, "tensorflow.Event");
 
              // Python conversion must happen outside the native object's
@@ -104,7 +124,6 @@ PYBIND11_MODULE(
              std::string serialized_event =
                  obj.attr("SerializeToString")().cast<std::string>();
 
-             auto* self = self_obj.cast<tensorflow::EventsWriter*>();
              RunEventsWriterMethod(self_obj, [&]() {
                self->WriteSerializedEvent(serialized_event);
              });
