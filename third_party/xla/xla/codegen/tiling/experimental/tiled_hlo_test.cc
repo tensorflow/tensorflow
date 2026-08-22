@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu::experimental {
 namespace {
