@@ -115,6 +115,7 @@ bool FunctionParameterCanonicalizer::Canonicalize(
     // critical section, then process them after releasing it.
     using OwnedKwarg = std::pair<Safe_PyObjectPtr, Safe_PyObjectPtr>;
     std::vector<OwnedKwarg> kwargs_snapshot;
+    kwargs_snapshot.reserve(PyDict_Size(kwargs));
 
     Py_BEGIN_CRITICAL_SECTION(kwargs);
 

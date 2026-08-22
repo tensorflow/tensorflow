@@ -476,10 +476,10 @@ PyTypeChecker::MatchType PyListChecker::Check(PyObject* value) {
   std::vector<Safe_PyObjectPtr> elements;
 
   if (PyList_Check(seq.get())) {
-    Py_BEGIN_CRITICAL_SECTION(seq.get());
-
     const Py_ssize_t size = PyList_GET_SIZE(seq.get());
     elements.reserve(size);
+
+    Py_BEGIN_CRITICAL_SECTION(seq.get());
 
     for (Py_ssize_t i = 0; i < size; ++i) {
       PyObject* item = PyList_GET_ITEM(seq.get(), i);
