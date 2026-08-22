@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
+
 #include "absl/base/casts.h"
 #include "third_party/nccl/nccl.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
