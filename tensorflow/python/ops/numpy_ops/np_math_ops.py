@@ -331,8 +331,8 @@ def cross(a, b, axisa=-1, axisb=-1, axisc=-1, axis=None):  # pylint: disable=mis
       # Prefer the statically-known dimension so that the padding and output
       # selection below resolve at trace time; a dynamic size turns them into
       # tf.cond branches whose output shapes XLA cannot infer.
-      if a.shape.rank is not None:
-        static_size = a.shape.dims[-1].value
+      if hasattr(a, 'shape') and a.shape.rank:
+        static_size = a.shape.as_list()[-1]
         if static_size is not None:
           return static_size
       return np_utils.getitem(array_ops.shape(a), -1)

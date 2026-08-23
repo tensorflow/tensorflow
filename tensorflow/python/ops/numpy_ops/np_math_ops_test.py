@@ -23,6 +23,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_math_ops
@@ -379,6 +380,8 @@ class MathTest(test.TestCase, parameterized.TestCase):
     # resolve from the static last dimension rather than through tf.cond,
     # otherwise XLA cannot infer the shape of the Cross operands and fails
     # to compile even though the input is a valid 3-element vector.
+    if not test_util.is_xla_enabled():
+      self.skipTest('XLA JIT compiler is not enabled in this test environment.')
     a = np.arange(6, dtype=np.float32).reshape(2, 3)
     b = np.arange(6, 12, dtype=np.float32).reshape(2, 3)
 
@@ -406,7 +409,10 @@ class MathTest(test.TestCase, parameterized.TestCase):
     )
     self.match(compiled_cross_2(a2, b2), np.cross(a2, b2), check_dtype=False)
 
+  def testCrossDynamicUnknownBatchDim(self):
     # A fully dynamic shape still works outside of jit compilation.
+    a = np.arange(6, dtype=np.float32).reshape(2, 3)
+    b = np.arange(6, 12, dtype=np.float32).reshape(2, 3)
     dynamic_cross = def_function.function(
         np_math_ops.cross,
         input_signature=[
