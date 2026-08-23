@@ -15,6 +15,8 @@
 """Discrete Cosine Transform ops."""
 import math as _math
 
+import numpy as _np
+
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.framework import smart_cond
@@ -28,6 +30,12 @@ from tensorflow.python.util.tf_export import tf_export
 
 def _validate_dct_arguments(input_tensor, dct_type, n, axis, norm):
   """Checks that DCT/IDCT arguments are compatible and well formed."""
+  # The transform runs over the last dimension, so a scalar has nothing to
+  # transform. Without this check the shape lookups, here and in the transform
+  # itself, fail with an IndexError from tensor_shape instead of reporting
+  # anything the caller can act on.
+  if _np.ndim(input_tensor) == 0:
+    raise ValueError("Input must have rank at least 1. Got a scalar.")
   if axis != -1:
     raise NotImplementedError("axis must be -1. Got: %s" % axis)
   if n is not None and n < 1:

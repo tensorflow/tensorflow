@@ -219,6 +219,13 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
 
   def test_error(self):
     signals = np.random.rand(10)
+    # A scalar has no dimension to transform. Every type, and idct, used to
+    # fail with an IndexError from tensor_shape here.
+    for dct_type in (1, 2, 3, 4):
+      with self.assertRaises(ValueError):
+        dct_ops.dct(np.float32(2.0), type=dct_type)
+      with self.assertRaises(ValueError):
+        dct_ops.idct(np.float32(2.0), type=dct_type)
     # Unsupported type.
     with self.assertRaises(ValueError):
       dct_ops.dct(signals, type=5)
