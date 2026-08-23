@@ -268,3 +268,15 @@ tf_cc_fuzz_test(
         "@xla//xla/tsl/platform:env",
     ],
 )
+
+tf_cc_fuzz_test(
+    name = "tflite_runtime_input_fuzz",
+    srcs = [
+        "model_bytes.h",
+        "tflite_runtime_input_fuzz.cc",
+    ],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:builtin_ops",
+    ],
+)
