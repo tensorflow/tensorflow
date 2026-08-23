@@ -596,6 +596,14 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.assertFalse(np_math_ops.isneginf(x1))
     self.assertFalse(np_math_ops.isneginf(x2))
 
+  def testCountNonzeroKeepdims(self):
+    x = np_array_ops.array([[0, 1], [1, 1]])
+    self.assertAllEqual(
+        np_math_ops.count_nonzero(x, axis=0, keepdims=True), [[1, 2]])
+    self.assertAllEqual(
+        np_math_ops.count_nonzero(x, axis=-1, keepdims=True), [[1], [2]])
+    self.assertAllEqual(np_math_ops.count_nonzero(x, keepdims=True), [[3]])
+
 if __name__ == '__main__':
   tensor.enable_tensor_equality()
   ops.enable_eager_execution()

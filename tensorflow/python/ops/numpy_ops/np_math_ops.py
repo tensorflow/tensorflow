@@ -1415,8 +1415,10 @@ def tile(a, reps):  # pylint: disable=missing-function-docstring
 
 @tf_export.tf_export('experimental.numpy.count_nonzero', v1=[])
 @np_utils.np_doc('count_nonzero')
-def count_nonzero(a, axis=None):
-  return math_ops.count_nonzero(np_array_ops.array(a), axis)
+def count_nonzero(a, axis=None, keepdims=None):
+  return math_ops.count_nonzero(
+      np_array_ops.array(a), axis, keepdims=keepdims
+  )
 
 
 @tf_export.tf_export('experimental.numpy.argsort', v1=[])
