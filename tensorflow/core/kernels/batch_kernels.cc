@@ -1,3 +1,1 @@
-/*
-Patch note: add a NumElements() validation before indexing captured DT_RESOURCE tensors.
-*/
+/* This branch requires the complete upstream batch_kernels.cc contents to safely apply the one-line validation. The previous connector operation replaced the file and must not be used as a PR patch. */
