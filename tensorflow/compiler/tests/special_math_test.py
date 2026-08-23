@@ -627,18 +627,22 @@ class DynamicShapeEqualityTest(xla_test.XLATestCase, parameterized.TestCase):
 
   def _test_op_with_dynamic_shapes(self, op_fn, dtype):
     random_seed.set_random_seed(3994)
-    t = math_ops.abs(random_ops.random_normal([1, 32], dtype=dtype)) + 1.0
+    with self.session() as sess:
+      t = math_ops.abs(random_ops.random_normal([1, 32], dtype=dtype)) + 1.0
 
-    def model(t):
-      a = math_ops.log(math_ops.exp(t) + math_ops.exp(t))
-      b = math_ops.linspace(a, a, 6)
-      c = linalg_ops.matrix_solve_ls(t, b)
-      d = math_ops.pow(b, t)
-      return op_fn(a=c, x=d)
+      def model(t):
+        a = math_ops.log(math_ops.exp(t) + math_ops.exp(t))
+        b = math_ops.linspace(a, a, 6)
+        c = linalg_ops.matrix_solve_ls(t, b)
+        d = math_ops.pow(b, t)
+        return op_fn(a=c, x=d)
 
-    eager_out = model(t)
-    xla_out = def_function.function(model, jit_compile=True)(t)
-    self.assertAllClose(eager_out, xla_out, rtol=1e-5, atol=1e-5)
+      eager_out_tensor = model(t)
+      with self.test_scope():
+        xla_out_tensor = def_function.function(model, jit_compile=True)(t)
+      
+      eager_out, xla_out = sess.run([eager_out_tensor, xla_out_tensor])
+      self.assertAllClose(eager_out, xla_out, rtol=1e-5, atol=1e-5)
 
   @parameterized.parameters(dtypes.float32, dtypes.float64)
   def testIgammaDynamicShape(self, dtype):
