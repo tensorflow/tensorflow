@@ -67,7 +67,17 @@ triangular_solve = linalg_ops.matrix_triangular_solve
 @tf_export('linalg.logdet')
 @dispatch.add_dispatch_support
 def logdet(matrix, name=None):
-  """Computes log of the determinant of a matrix.
+  """Computes log of the determinant of a square matrix.
+
+  This uses LU decomposition internally, so it works for general square
+  matrices and not just hermitian positive definite ones:
+
+  * positive determinant: returns `log(det(matrix))`.
+  * singular matrix (determinant = 0): returns `-inf`.
+  * negative determinant: returns `NaN`, since the log is not real valued.
+
+  For complex matrices the test above is applied to the real part of the
+  determinant, i.e. `NaN` is returned when `cos(arg(det(matrix))) < 0`.
 
   ```python
   # Compute the determinant of a matrix while reducing the chance of over- or
@@ -82,19 +92,29 @@ def logdet(matrix, name=None):
     name:  A name to give this `Op`.  Defaults to `logdet`.
 
   Returns:
-    The natural log of the absolute value of the determinant of `matrix`.
-    For a singular matrix (determinant = 0), returns -inf.
+    The natural log of the absolute value of the determinant of `matrix`,
+    `-inf` for a singular matrix (determinant = 0), and `NaN` where the
+    determinant is negative.
 
   @compatibility(numpy)
-  Equivalent to np.linalg.slogdet, returning only the log of the absolute
-  determinant without the sign.
+  Equivalent to numpy.linalg.slogdet, except that no sign is returned; inputs
+  whose determinant has a negative real part yield `NaN` instead.
   @end_compatibility
   """
-  # Uses slogdet which handles singular matrices correctly.
-  # For a singular matrix, returns -inf instead of NaN.
+  # Use LU decomposition via slogdet to support general square matrices,
+  # not just hermitian positive definite ones.
   with ops.name_scope(name, 'logdet', [matrix]):
-    _, log_abs_det = gen_linalg_ops.log_matrix_determinant(matrix)
-    return log_abs_det
+    sign, log_abs_det = gen_linalg_ops.log_matrix_determinant(matrix)
+    # `sign` is 0 for a singular matrix, -1 or 1 for a real non-singular one,
+    # and exp(1j * arg(det)) for a complex one. Keep log(|det|) when the
+    # determinant is positive or zero and return NaN when it is negative. Only
+    # the real part is tested, so no exact comparison is made against the
+    # rounding error that a complex `sign` accumulates.
+    is_not_negative = math_ops.real(sign) >= 0
+    return array_ops.where_v2(
+        is_not_negative,
+        log_abs_det,
+        math_ops.cast(float('nan'), log_abs_det.dtype))
 
 
 @tf_export('linalg.adjoint')
