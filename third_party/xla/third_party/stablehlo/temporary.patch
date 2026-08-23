@@ -53,6 +53,40 @@ diff --ruN a/stablehlo/docs/spec.md b/stablehlo/docs/spec.md
  * `is_type_name(x: Value | Placeholder | Type) -> Value`. Available for all
  types. For example, `is_float(x)` returns `true` if `x` is a `FloatType`.
  If `x` is a value or placeholder, this function is a shortcut for
+diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
+--- stablehlo/stablehlo/dialect/Base.cpp
++++ stablehlo/stablehlo/dialect/Base.cpp
+@@ -671,6 +671,7 @@
+   StringRef f32 = Float32Type::name;
+   StringRef f64 = Float64Type::name;
+   StringRef tf32 = FloatTF32Type::name;
++  StringRef f8e4m3fn = Float8E4M3FNType::name;
+   std::map<std::tuple<StringRef, StringRef, StringRef, int64_t>,
+            KnownDotAlgorithm>
+       knownDotAlgorithms{
+@@ -679,6 +680,10 @@
+           {{bf16, bf16, bf16, 1}, KnownDotAlgorithm::BF16_BF16_BF16},
+           {{bf16, bf16, f32, 1}, KnownDotAlgorithm::BF16_BF16_F32},
+           {{bf16, bf16, f32, 3}, KnownDotAlgorithm::BF16_BF16_F32_X3},
++          {{f8e4m3fn, f8e4m3fn, f32, 3},
++           KnownDotAlgorithm::F8E4M3FN_F8E4M3FN_F32_X3},
++          {{f8e4m3fn, f8e4m3fn, f32, 4},
++           KnownDotAlgorithm::F8E4M3FN_F8E4M3FN_F32_X4},
+           {{bf16, bf16, f32, 6}, KnownDotAlgorithm::BF16_BF16_F32_X6},
+           {{bf16, bf16, f32, 9}, KnownDotAlgorithm::BF16_BF16_F32_X9},
+           {{tf32, tf32, f32, 1}, KnownDotAlgorithm::TF32_TF32_F32},
+diff --ruN a/stablehlo/stablehlo/dialect/Base.h b/stablehlo/stablehlo/dialect/Base.h
+--- stablehlo/stablehlo/dialect/Base.h
++++ stablehlo/stablehlo/dialect/Base.h
+@@ -264,6 +264,8 @@
+   F32_F32_F32 = 11,
+   F64_F64_F64 = 12,
+   BF16_BF16_F32_X9 = 13,
++  F8E4M3FN_F8E4M3FN_F32_X3 = 14,
++  F8E4M3FN_F8E4M3FN_F32_X4 = 15,
+ };
+ 
+ FailureOr<KnownDotAlgorithm> getKnownDotAlgorithm(
 diff --ruN a/stablehlo/stablehlo/dialect/Serialization.cpp b/stablehlo/stablehlo/dialect/Serialization.cpp
 --- stablehlo/stablehlo/dialect/Serialization.cpp
 +++ stablehlo/stablehlo/dialect/Serialization.cpp
