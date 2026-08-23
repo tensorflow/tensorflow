@@ -16,6 +16,7 @@
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -23,6 +24,10 @@ from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
+
+
+def _softsign_grad_grad(activation):
+  return -2 * np.sign(activation) / (1 + np.abs(activation))**3
 
 
 class SoftsignTest(test.TestCase):
@@ -81,6 +86,24 @@ class SoftsignTest(test.TestCase):
           TypeError,
           "'features' has DataType int32 not in list of allowed values"):
         nn_ops.softsign(constant_op.constant(7)).eval()
+
+  def testGradGrad(self):
+    with self.cached_session():
+
+      def f(x):
+        with backprop.GradientTape(persistent=True) as tape:
+          tape.watch(x)
+          y = nn_ops.softsign(x)
+          dy = tape.gradient(y, x)
+        return tape.gradient(dy, x)
+
+      x = np.asarray(
+          [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
+          dtype=np.float64,
+          order="F")
+      got = self.evaluate(f(constant_op.constant(x)))
+      want = _softsign_grad_grad(x)
+      self.assertAllClose(got, want)
 
 
 if __name__ == "__main__":

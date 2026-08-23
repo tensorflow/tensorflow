@@ -40,6 +40,12 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
         `tf.image.adjust_contrast` can now be differentiated with
         `GradientTape`. Fixes
         [#126083](https://github.com/tensorflow/tensorflow/issues/126083).
+*   `tf.nn.softsign`
+
+    *   Fixes second-order gradients of `tf.nn.softsign`. Differentiating twice
+        previously failed with a lookup error because the `SoftsignGrad`
+        backward op had no registered Python gradient.
+
 
 *   `tf.experimental.numpy`
 
