@@ -2362,7 +2362,23 @@ def ensure_shape(x, shape, name=None):
     of `x`.
   """
   if not isinstance(shape, tensor_shape.TensorShape):
-    shape = tensor_shape.TensorShape(shape)
+    if tensor_util.is_tf_type(shape):
+      # Resolve tensor inputs through their values so that dimension sizes
+      # outside the signed 64-bit range are caught below instead of causing
+      # an obscure failure inside op construction.
+      shape = tensor_shape.TensorShape(
+          [int(dim) for dim in tuple(shape.numpy())])
+    else:
+      shape = tensor_shape.TensorShape(shape)
+
+  # Dimension sizes are stored as int64 attributes; reject larger values here
+  # so callers get a clear error instead of an obscure failure deep inside op
+  # construction.
+  if shape.rank is not None:
+    for dim in shape.as_list():
+      if dim is not None and dim > dtypes.int64.max:
+        raise ValueError(
+            f'Dimension size must be at most {dtypes.int64.max}; got {dim}.')
 
   return array_ops.ensure_shape(x, shape, name=name)
 

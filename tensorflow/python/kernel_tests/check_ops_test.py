@@ -1012,6 +1012,16 @@ class EnsureShapeTest(test.TestCase):
     expected = [[1.0], [1.0]]
     self.assertAllEqual(gradient_values, expected)
 
+  def testRaisesErrorWhenDimensionSizeTooLarge(self):
+    x = constant_op.constant([1., 2.])
+    shape = constant_op.constant(
+        [18446743219011059112, 1], dtype=dtypes.uint64)
+    with self.assertRaisesRegex(ValueError, 'Dimension size must be at most'):
+      self.evaluate(check_ops.ensure_shape(x, shape))
+    with self.assertRaisesRegex(ValueError, 'Dimension size must be at most'):
+      def_function.function(
+          lambda: check_ops.ensure_shape(x, shape))()
+
 
 class EnsureShapeBenchmark(test.Benchmark):
 
