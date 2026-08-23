@@ -18,6 +18,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import debug_mode
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import gen_dataset_ops
 
 
@@ -39,6 +40,13 @@ class _PrefetchDataset(dataset_ops.UnaryUnchangedStructureDataset):
     self._buffer_size = ops.convert_to_tensor(
         buffer_size, dtype=dtypes.int64, name="buffer_size")
     self._name = name
+    # `legacy_autotune` must be a Python bool, so decide from the statically
+    # known value of the converted `buffer_size`; it is None for symbolic
+    # tensors, which then use the non-legacy path.
+    buffer_size_constant = tensor_util.constant_value(self._buffer_size)
+    legacy_autotune = (
+        buffer_size_constant is not None
+        and int(buffer_size_constant) == dataset_ops.AUTOTUNE)
     # pylint: disable=protected-access
     # We colocate the prefetch dataset with its input as this collocation only
     # happens automatically in graph mode.
@@ -47,6 +55,6 @@ class _PrefetchDataset(dataset_ops.UnaryUnchangedStructureDataset):
           input_dataset._variant_tensor,
           buffer_size=self._buffer_size,
           slack_period=slack_period,
-          legacy_autotune=(buffer_size == dataset_ops.AUTOTUNE),
+          legacy_autotune=legacy_autotune,
           **self._common_args)
     super().__init__(input_dataset, variant_tensor)
