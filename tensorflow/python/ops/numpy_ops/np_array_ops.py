@@ -753,7 +753,7 @@ def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: d
         )
       n = math_ops.cast(n - ddof, input_tensor.dtype)
 
-      return math_ops.cast(math_ops.divide(squared_deviations, n), dtype)
+      return math_ops.divide(squared_deviations, n)
 
   else:
     reduce_fn = math_ops.reduce_variance
