@@ -733,9 +733,11 @@ def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: d
       means = math_ops.reduce_mean(input_tensor, axis=axis, keepdims=True)
       centered = input_tensor - means
       if input_tensor.dtype in (dtypes.complex64, dtypes.complex128):
+        # The variance of a complex tensor is real; keep the real dtype like
+        # math_ops.reduce_variance and NumPy do.
         centered = math_ops.cast(
             math_ops.real(centered * math_ops.conj(centered)),
-            input_tensor.dtype,
+            input_tensor.dtype.real_dtype,
         )
       else:
         centered = math_ops.square(centered)
@@ -751,7 +753,7 @@ def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: d
         n = math_ops.reduce_prod(
             array_ops.gather(array_ops.shape(input_tensor), axis)
         )
-      n = math_ops.cast(n - ddof, input_tensor.dtype)
+      n = math_ops.cast(n - ddof, squared_deviations.dtype)
 
       return math_ops.divide(squared_deviations, n)
 
