@@ -3837,6 +3837,7 @@ py_test(
     deps = [
         ":array_ops",
         ":tensor_array_ops",
+        ":variables",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
