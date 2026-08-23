@@ -342,7 +342,46 @@ template <typename T>
 class ErrorOr : public Expected<T, Error> {
  public:
   using Expected<T, Error>::Expected;
+
+  // Match the construction protocol of status-or types: an error status can
+  // be used directly to construct an error result.
+  ErrorOr(Error error)  // NOLINT
+      : Expected<T, Error>(Unexpected<Error>(std::move(error))) {
+    assert(this->error().failure() &&
+           "ErrorOr cannot be constructed from a successful Error");
+  }
 };
+
+//===----------------------------------------------------------------------===//
+// Error policy
+//===----------------------------------------------------------------------===//
+
+namespace internal {
+
+// Error policy for external, header-only FFI handlers.
+struct ErrorPolicy {
+  using Status = xla::ffi::Error;
+
+  template <typename T>
+  using StatusOr = xla::ffi::ErrorOr<T>;
+
+  static Status Ok() { return Status::Success(); }
+
+  static Status FromErrorCode(XLA_FFI_Error_Code errc,
+                              std::string_view message) {
+    return Status(errc, std::string(message));
+  }
+
+  static Status TakeError(const XLA_FFI_Api* api, XLA_FFI_Error* error) {
+    assert(error != nullptr);
+    ErrorDetails details = GetErrorDetails(api, error);
+    std::string message = details.message;
+    DestroyError(api, error);
+    return Status(details.errc, std::move(message));
+  }
+};
+
+}  // namespace internal
 
 //===----------------------------------------------------------------------===//
 // Future
@@ -611,7 +650,7 @@ class AnyBuffer {
   }
 
  private:
-  friend struct match::internal::BufferCast;
+  friend struct internal::BufferCast;
 
   const XLA_FFI_Buffer* buf_;
 };
@@ -745,7 +784,7 @@ class Buffer {
   }
 
  private:
-  friend struct match::internal::BufferCast;
+  friend struct internal::BufferCast;
 
   const XLA_FFI_Buffer* buf_;
 };
@@ -804,7 +843,6 @@ template <DataType dtype> using ResultBufferR4 = ResultBuffer<dtype, 4>;
 // Buffer Matching
 //===----------------------------------------------------------------------===//
 
-namespace match {
 namespace internal {
 
 struct BufferCast {
@@ -815,6 +853,8 @@ struct BufferCast {
 };
 
 }  // namespace internal
+
+namespace match {
 
 // A buffer-matching pattern specialized to the external `DataType` enum.
 template <typename DTypes = DTypeSet<DataType>, typename Ranks = RankSet<>>
@@ -836,10 +876,7 @@ inline BufferPattern<> Buffer() { return {}; }
 template <typename BufferType, typename DTypes, typename Ranks>
 Error Verify(std::string_view name, BufferType buffer,
              const match::BufferPattern<DTypes, Ranks>& pattern) {
-  if (auto error = internal::MatchBuffer(name, buffer, pattern)) {
-    return Error::InvalidArgument(std::move(*error));
-  }
-  return Error::Success();
+  return internal::VerifyBuffer<internal::ErrorPolicy>(name, buffer, pattern);
 }
 
 // Matches an AnyBuffer and returns the concrete buffer type specified by a
@@ -849,20 +886,18 @@ ErrorOr<Buffer<dtype, rank>> Match(
     std::string_view name, AnyBuffer buffer,
     const match::BufferPattern<match::DTypeSet<DataType, dtype>,
                                match::RankSet<rank>>& pattern) {
-  if (auto error = internal::MatchBuffer(name, buffer, pattern)) {
-    return Unexpected(Error::InvalidArgument(std::move(*error)));
-  }
-  return match::internal::BufferCast::Cast<Buffer<dtype, rank>>(buffer);
+  return internal::MatchBuffer<internal::ErrorPolicy, Buffer<dtype, rank>>(
+      name, buffer, pattern, [](AnyBuffer buffer) {
+        return internal::BufferCast::Cast<Buffer<dtype, rank>>(buffer);
+      });
 }
 
 template <DataType dtype, size_t rank, typename DTypes, typename Ranks>
 ErrorOr<Buffer<dtype, rank>> Match(
     std::string_view name, Buffer<dtype, rank> buffer,
     const match::BufferPattern<DTypes, Ranks>& pattern) {
-  if (Error error = Verify(name, buffer, pattern); error.failure()) {
-    return Unexpected(std::move(error));
-  }
-  return buffer;
+  return internal::MatchBuffer<internal::ErrorPolicy, Buffer<dtype, rank>>(
+      name, buffer, pattern, [](Buffer<dtype, rank> buffer) { return buffer; });
 }
 
 namespace internal {
@@ -1248,7 +1283,7 @@ struct CtxDecoding<Context> {
 
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<Context> Decode(const XLA_FFI_Api* api,
-                                       XLA_FFI_ExecutionContext* ctx,
+                                       XLA_FFI_InvokeContext* ctx,
                                        DiagnosticEngine&) {
     return Context(api, ctx);
   }
@@ -1280,7 +1315,7 @@ template <ExecutionStage stage>
 struct ResultEncoding<stage, Error> {
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static XLA_FFI_Error* Encode(const XLA_FFI_Api* api,
-                               XLA_FFI_ExecutionContext* ctx, Error error) {
+                               XLA_FFI_InvokeContext* ctx, Error error) {
     if (XLA_FFI_PREDICT_TRUE(error.success())) {
       return nullptr;
     }
@@ -1302,7 +1337,7 @@ struct ResultEncoding<stage, ErrorOr<std::unique_ptr<T>>> {
 
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static XLA_FFI_Error* Encode(const XLA_FFI_Api* api,
-                               XLA_FFI_ExecutionContext* ctx,
+                               XLA_FFI_InvokeContext* ctx,
                                ErrorOr<std::unique_ptr<T>> state) {
     if (XLA_FFI_PREDICT_TRUE(state.has_value())) {
       XLA_FFI_State_Set_Args args;
@@ -1324,7 +1359,7 @@ template <ExecutionStage stage>
 struct ResultEncoding<stage, Future> {
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static std::variant<XLA_FFI_Error*, XLA_FFI_Future*> Encode(
-      const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx, Future future) {
+      const XLA_FFI_Api* api, XLA_FFI_InvokeContext* ctx, Future future) {
     // Create XLA_FFI_Future object that will signal completion to the runtime.
     XLA_FFI_Future_Create_Args args;
     args.struct_size = XLA_FFI_Future_Create_Args_STRUCT_SIZE;
@@ -1396,7 +1431,7 @@ struct CtxDecoding<PlatformStream<T>> {
 
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
+                                    XLA_FFI_InvokeContext* ctx,
                                     DiagnosticEngine& diagnostic) {
     XLA_FFI_Stream_Get_Args args;
     args.struct_size = XLA_FFI_Stream_Get_Args_STRUCT_SIZE;
@@ -1437,7 +1472,7 @@ class ScratchAllocator {
  private:
   friend struct CtxDecoding<ScratchAllocator>;
 
-  ScratchAllocator(const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
+  ScratchAllocator(const XLA_FFI_Api* api, XLA_FFI_InvokeContext* ctx,
                    DiagnosticEngine& diagnostic);
 
   struct Allocation {
@@ -1446,7 +1481,7 @@ class ScratchAllocator {
   };
 
   const XLA_FFI_Api* api_;
-  XLA_FFI_ExecutionContext* ctx_;
+  XLA_FFI_InvokeContext* ctx_;
 
   DiagnosticEngine& diagnostic_;
   std::vector<Allocation> allocations_;
@@ -1461,7 +1496,7 @@ struct CtxDecoding<ScratchAllocator> {
   using Type = ScratchAllocator;
 
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Type> Decode(
-      const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
+      const XLA_FFI_Api* api, XLA_FFI_InvokeContext* ctx,
       DiagnosticEngine& diagnostic) {
     return ScratchAllocator(api, ctx, diagnostic);
   }
@@ -1487,7 +1522,7 @@ inline std::optional<void*> ScratchAllocator::Allocate(size_t size,
 }
 
 inline ScratchAllocator::ScratchAllocator(const XLA_FFI_Api* api,
-                                          XLA_FFI_ExecutionContext* ctx,
+                                          XLA_FFI_InvokeContext* ctx,
                                           DiagnosticEngine& diagnostic)
     : api_(api), ctx_(ctx), diagnostic_(diagnostic) {}
 
@@ -1563,11 +1598,11 @@ class ThreadPool {
  private:
   friend struct CtxDecoding<ThreadPool>;
 
-  ThreadPool(const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
+  ThreadPool(const XLA_FFI_Api* api, XLA_FFI_InvokeContext* ctx,
              DiagnosticEngine& diagnostic);
 
   const XLA_FFI_Api* api_;
-  XLA_FFI_ExecutionContext* ctx_;
+  XLA_FFI_InvokeContext* ctx_;
   DiagnosticEngine& diagnostic_;
 };
 
@@ -1580,14 +1615,14 @@ struct CtxDecoding<ThreadPool> {
   using Type = ThreadPool;
 
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Type> Decode(
-      const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
+      const XLA_FFI_Api* api, XLA_FFI_InvokeContext* ctx,
       DiagnosticEngine& diagnostic) {
     return ThreadPool(api, ctx, diagnostic);
   }
 };
 
 inline ThreadPool::ThreadPool(const XLA_FFI_Api* api,
-                              XLA_FFI_ExecutionContext* ctx,
+                              XLA_FFI_InvokeContext* ctx,
                               DiagnosticEngine& diagnostic)
     : api_(api), ctx_(ctx), diagnostic_(diagnostic) {}
 
@@ -1642,10 +1677,10 @@ struct CtxDecoding<UserData<T>> {
                 "UserData type must have a static `TypeId id` field");
 
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Type> Decode(
-      const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
+      const XLA_FFI_Api* api, XLA_FFI_InvokeContext* ctx,
       DiagnosticEngine& diagnostic) {
-    XLA_FFI_ExecutionContext_Get_Args args;
-    args.struct_size = XLA_FFI_ExecutionContext_Get_Args_STRUCT_SIZE;
+    XLA_FFI_InvokeContext_Get_Args args;
+    args.struct_size = XLA_FFI_InvokeContext_Get_Args_STRUCT_SIZE;
     args.extension_start = nullptr;
     args.ctx = ctx;
     args.type_id = &T::id;
@@ -1653,7 +1688,7 @@ struct CtxDecoding<UserData<T>> {
 
     assert(args.type_id->type_id > 0 && "type must be registered with XLA FFI");
 
-    if (XLA_FFI_Error* err = api->XLA_FFI_ExecutionContext_Get(&args); err) {
+    if (XLA_FFI_Error* err = api->XLA_FFI_InvokeContext_Get(&args); err) {
       diagnostic.Emit("Failed to get user data from execution context: ")
           << internal::GetErrorMessage(api, err);
       internal::DestroyError(api, err);
@@ -1690,7 +1725,7 @@ struct CtxDecoding<State<T, stage>> {
                 "State type must have a static `TypeId id` field");
 
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Type> Decode(
-      const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
+      const XLA_FFI_Api* api, XLA_FFI_InvokeContext* ctx,
       DiagnosticEngine& diagnostic) {
     XLA_FFI_State_Get_Args args;
     args.struct_size = XLA_FFI_State_Get_Args_STRUCT_SIZE;
@@ -1730,10 +1765,10 @@ struct CtxDecoding<RunId> {
   using Type = RunId;
 
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Type> Decode(
-      const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
+      const XLA_FFI_Api* api, XLA_FFI_InvokeContext* ctx,
       DiagnosticEngine& diagnostic) {
     XLA_FFI_RunId_Get_Args args;
-    args.struct_size = XLA_FFI_ExecutionContext_Get_Args_STRUCT_SIZE;
+    args.struct_size = XLA_FFI_InvokeContext_Get_Args_STRUCT_SIZE;
     args.extension_start = nullptr;
     args.ctx = ctx;
     args.run_id = 0;
@@ -1764,7 +1799,7 @@ struct CtxDecoding<DeviceOrdinal> {
   using Type = int32_t;
 
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Type> Decode(
-      const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
+      const XLA_FFI_Api* api, XLA_FFI_InvokeContext* ctx,
       DiagnosticEngine& diagnostic) {
     XLA_FFI_DeviceOrdinal_Get_Args args;
     args.struct_size = XLA_FFI_DeviceOrdinal_Get_Args_STRUCT_SIZE;

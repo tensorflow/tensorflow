@@ -91,6 +91,10 @@ struct CompileOptions {
   // tuple and passed as a single parameter.
   bool parameter_is_tupled_arguments = false;
 
+  // Flattened output indices that should use individual definition events when
+  // supported. Other outputs use the primary execute event.
+  absl::flat_hash_set<int> individually_defined_output_indices;
+
   // XLA's compilation time options.
   ExecutableBuildOptions executable_build_options;
 
@@ -135,9 +139,6 @@ struct CompileOptions {
 
   absl::Status ApplyOptionFromString(
       const tsl::protobuf::FieldDescriptor* field, const std::string& value);
-
-  // Compiler variant to indicate which compiler is invoked.
-  std::optional<std::string> compiler_variant = std::nullopt;
 
   static absl::StatusOr<EnvironmentOptionOverrides> LoadEnvOptionOverrides(
       const google::protobuf::Map<std::string, xla::OptionOverrideProto>&

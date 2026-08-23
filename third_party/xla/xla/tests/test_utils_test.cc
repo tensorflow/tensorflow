@@ -535,6 +535,26 @@ ENTRY main {
   });
 }
 
+TEST_F(TestUtilsTest, MakeDataflowConstrainedArgumentsForLogConvert) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = s32[8,128] parameter(0)
+  convert = f32[8,128] convert(param_0)
+  ROOT log = f32[8,128] log(convert)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> args,
+      MakeDataflowConstrainedArguments(module.get(),
+                                       /*engine=*/nullptr,
+                                       /*use_large_range=*/false));
+  ASSERT_EQ(args.size(), 1);
+  args[0].EachCell<int32_t>([](absl::Span<int64_t const> indices,
+                               int32_t value) { EXPECT_GE(value, 1); });
+}
+
 // Probabilistic test to verify that we are randomly sampling the whole
 // range for small bitwidth floats like f4e2m1. The chance of not getting
 // all 16 possible values in 1024 trials is astronomically small.

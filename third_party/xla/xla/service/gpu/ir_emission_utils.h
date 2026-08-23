@@ -22,11 +22,11 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Type.h"
@@ -71,6 +71,18 @@ absl::StatusOr<bool> IsCublasSupportedMatMul(
 // Returns true if the given instruction is supported by gpuBLASLt
 // GroupedMatMul.
 bool IsGpublasLtSupportedGroupedMatMul(const HloInstruction& instr);
+
+// Returns true if the ragged-dot instruction can be lowered by the Triton
+// XTile backend.  Criteria:
+//   - Exactly one LHS ragged dimension.
+//   - Tiling propagation enabled
+//   (xla_gpu_experimental_enable_tiling_propagation).
+//   - Element types supported by the xtile emitter: F16, BF16, F32, F64,
+//     F8E5M2, F8E4M3FN; nanoo FP8 types (F8E4M3FNUZ, F8E5M2FNUZ) on ROCm only.
+//     Complex types (C64, C128) are not supported.
+bool IsTritonSupportedRaggedDot(
+    const se::GpuComputeCapability& gpu_compute_capability,
+    const HloInstruction& instr);
 
 constexpr int64_t WarpSize(const se::DeviceDescription& gpu_device_info) {
   return gpu_device_info.threads_per_warp();
@@ -141,10 +153,9 @@ bool IsCustomCallToTopK(const HloInstruction& hlo);
 // implementation.
 bool IsCustomCallToPtxKernel(const HloInstruction& hlo);
 
-
 // Returns true if `hlo` will be implemented as a call to a Mosaic GPU kernel
-// with multimem.
-bool IsMosaicWithMultimem(const HloInstruction& hlo);
+// with parameter uses symmetric memory.
+bool IsMosaicWithSymmetricParameter(const HloInstruction& hlo);
 
 // Returns true if `hlo` will be implemented as a call to a Mosaic GPU kernel
 // with collective metadata.
@@ -304,8 +315,8 @@ absl::StatusOr<std::string> GetProtoFingerprint(
 template <typename ConfigType>
 absl::StatusOr<std::string> FingerprintWithBackendConfig(
     const HloInstruction& hlo) {
-  ASSIGN_OR_RETURN(const auto config, hlo.backend_config<ConfigType>());
-  ASSIGN_OR_RETURN(const std::string fingerprint, GetProtoFingerprint(config));
+  ABSL_ASSIGN_OR_RETURN(const auto config, hlo.backend_config<ConfigType>());
+  ABSL_ASSIGN_OR_RETURN(const std::string fingerprint, GetProtoFingerprint(config));
   return absl::StrCat(hlo.ToString(HloPrintOptions::Fingerprint()),
                       ", backend_config_fingerprint=", fingerprint);
 }

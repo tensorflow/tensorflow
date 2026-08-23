@@ -2143,5 +2143,42 @@ TEST_F(WhileLoopSimplifierTest, TwoWhileBodiesCallFooOneBailsOneNot) {
               absl_testing::IsOkAndHolds(true));
 }
 
+TEST_F(WhileLoopSimplifierTest, SimplifierWithDisabledWhileLoopDceAttr) {
+  const std::string hlo_string = R"(
+  HloModule simplifier_disabled
+
+  while_cond {
+    state = (s32[], f32[100], f32[100]) parameter(0)
+    i = s32[] get-tuple-element(state), index=0
+    limit = s32[] constant(10)
+    ROOT cond = pred[] compare(i, limit), direction=LT
+  }
+
+  while_body {
+    state = (s32[], f32[100], f32[100]) parameter(0)
+    i = s32[] get-tuple-element(state), index=0
+    acc = f32[100] get-tuple-element(state), index=1
+    dead = f32[100] get-tuple-element(state), index=2
+    one = s32[] constant(1)
+    next_i = s32[] add(i, one)
+    ROOT next_state = (s32[], f32[100], f32[100]) tuple(next_i, acc, dead)
+  }
+
+  ENTRY main {
+    base = f32[100] parameter(0)
+    input = f32[100] parameter(1)
+    i_0 = s32[] constant(0)
+    init = (s32[], f32[100], f32[100]) tuple(i_0, base, input)
+    ROOT loop = (s32[], f32[100], f32[100]) while(init), condition=while_cond, body=while_body, frontend_attributes={xla_disable_while_loop_dce="true"}
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          WhileLoopSimplifier().Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
 }  // namespace
 }  // namespace xla

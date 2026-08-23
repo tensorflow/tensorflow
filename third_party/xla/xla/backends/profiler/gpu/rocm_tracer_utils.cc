@@ -89,7 +89,7 @@ const char* GetRocmTracerEventTypeName(const RocmTracerEventType& type) {
   return "";
 }
 
-void AnnotationMap::Add(uint32_t correlation_id, const std::string& annotation,
+void AnnotationMap::Add(uint64_t correlation_id, const std::string& annotation,
                         absl::Span<const int64_t> scope_range_ids) {
   if (annotation.empty()) {
     return;
@@ -115,13 +115,13 @@ void AnnotationMap::Add(uint32_t correlation_id, const std::string& annotation,
   }
 }
 
-absl::string_view AnnotationMap::LookUp(uint32_t correlation_id) {
+absl::string_view AnnotationMap::LookUp(uint64_t correlation_id) {
   absl::MutexLock lock(map_.mutex);
   auto it = map_.correlation_map.find(correlation_id);
   return it != map_.correlation_map.end() ? it->second : absl::string_view();
 }
 
-int64_t AnnotationMap::LookUpScopeRangeId(uint32_t correlation_id) {
+int64_t AnnotationMap::LookUpScopeRangeId(uint64_t correlation_id) {
   absl::MutexLock lock(map_.mutex);
   auto it = map_.scope_range_id_map.find(correlation_id);
   return it != map_.scope_range_id_map.end() ? it->second : 0;

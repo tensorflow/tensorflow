@@ -183,6 +183,32 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
 
 class ReduceOpPrecisionTest(xla_test.XLATestCase):
 
+  def testChainedReduceSumF32(self):
+    """Tests that chained large reductions do not accumulate excessive error."""
+
+    if self.device != 'XLA_CPU':
+      self.skipTest('This test covers the CPU reduction implementation.')
+
+    shape = (20, 32, 24, 38)
+    values = (3.14, 2.72, 2.07, 0.58)
+    inputs = [np.full(shape, value, dtype=np.float32) for value in values]
+
+    with self.session() as sess:
+      with self.test_scope():
+        placeholders = [
+            array_ops.placeholder(dtypes.float32, shape=shape) for _ in values
+        ]
+        sums = [math_ops.reduce_sum(value) for value in placeholders]
+        result = (sums[0] + sums[1]) + (sums[2] + sums[3])
+
+      actual = sess.run(result, dict(zip(placeholders, inputs)))
+
+    element_count = np.prod(shape, dtype=np.int64)
+    expected = sum(
+        np.float64(np.float32(value)) * element_count for value in values
+    )
+    self.assertAllClose(actual, expected, rtol=1e-5, atol=1e-4)
+
   def _testReduceSum(self,
                      expected_result,
                      dtype,

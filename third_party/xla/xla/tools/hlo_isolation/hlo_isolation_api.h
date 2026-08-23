@@ -106,12 +106,12 @@ absl::StatusOr<std::vector<HloIsolationTestResult>> RunIsolationPipeline(
 
 absl::Status DefuseModule(HloModule* module);
 
-// Extracts numeric mismatch statistics from the comparison error status
-// message, enriches them with HLO module context (e.g. root instruction
-// name, reduction info), and converts them into MismatchDetails structs for
-// HLO debug visualization.
+// Extracts numeric mismatch statistics from an HloIsolationTestResult
+// (including both parent check mismatches and FusionDebugger:<op_name> checks)
+// and converts them into MismatchDetails structs for unified HTML
+// visualization.
 std::vector<numerics::debug_info::MismatchDetails> ExtractMismatchDetails(
-    const HloModule& module, const absl::Status& compare_status);
+    const HloModule& module, const HloIsolationTestResult& result);
 
 absl::StatusOr<std::vector<NumericMismatch>> ExtractAndEnrichTopMismatches(
     std::string error_message, const HloModule* module);
@@ -131,6 +131,7 @@ bool ModuleContainsLargeKeyValueSort(const HloModule& module);
 bool ModuleTestsFloatsForEquality(const HloModule& module);
 bool ComputationHasRng(const HloComputation* computation);
 bool LiteralContainsInfOrNan(const LiteralSlice& literal);
+bool ModuleContainsConstantInfOrNan(const HloModule& module);
 
 std::string GetFusionDebuggerDir();
 std::string GetFusionDebuggerFilePath(absl::string_view op_name);

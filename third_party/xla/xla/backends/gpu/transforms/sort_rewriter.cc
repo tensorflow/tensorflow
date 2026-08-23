@@ -26,12 +26,12 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/libraries/cub/cub_scratch_size_deviceless_lookup.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/sort_utils.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/cublas_cudnn.h"
@@ -82,64 +83,6 @@ struct SortComputationAnalysis {
   std::optional<PrimitiveType> value_type;
 };
 
-bool MatchConstNan(const HloInstruction* op) {
-  const auto const_nan = DynCast<HloConstantInstruction>(op);
-  if (const_nan == nullptr) {
-    return false;
-  }
-  return const_nan->literal().GetAsString({}) == "nan";
-}
-
-// Matches the HLO pattern used to ensure Numpy sort order. This is how JAX
-// lowers `lax.sort` to HLO comparators.
-int ParamNumberOfCanonicalizedZerosAndNans(const HloInstruction* select) {
-  const HloInstruction* param = nullptr;
-  const HloInstruction* maybe_const_nan;
-  if (!Match(select,
-             m::Select(
-                 m::Compare(m::Parameter(&param), m::Parameter(&param))
-                     .WithComparisonDirection(ComparisonDirection::kNe),
-                 m::Constant(&maybe_const_nan),
-                 m::Select(
-                     m::Compare(m::Parameter(&param),
-                                m::ConstantEffectiveScalar(0))
-                         .WithComparisonDirection(ComparisonDirection::kEq),
-                     m::ConstantEffectiveScalar(0), m::Parameter(&param))))) {
-    return -1;
-  }
-  if (!MatchConstNan(maybe_const_nan)) {
-    return -1;
-  }
-  return param->parameter_number();
-}
-
-// Returns numbers of the parameters used in a comparator for Numpy sort order.
-std::pair<int64_t, int64_t> ParamNumberOfNumpySortComparator(
-    const HloCompareInstruction* cmp_op) {
-  const HloInstruction *select0, *select1;
-  if (!Match(cmp_op, m::Compare(m::Op(&select0), m::Op(&select1)))) {
-    return std::pair<int64_t, int64_t>(-1, -1);
-  }
-  return std::pair<int64_t, int64_t>(
-      ParamNumberOfCanonicalizedZerosAndNans(select0),
-      ParamNumberOfCanonicalizedZerosAndNans(select1));
-}
-
-// Returns numbers of the parameters used in a simple comparator.
-std::pair<int64_t, int64_t> ParamNumberOfSimpleSortComparator(
-    const HloCompareInstruction* cmp_op) {
-  if (cmp_op == nullptr) {
-    return std::pair<int64_t, int64_t>(-1, -1);
-  }
-  const HloParameterInstruction* param0 =
-      DynCast<HloParameterInstruction>(cmp_op->operand(0));
-  const HloParameterInstruction* param1 =
-      DynCast<HloParameterInstruction>(cmp_op->operand(1));
-  return (param0 && param1) ? std::make_pair(param0->parameter_number(),
-                                             param1->parameter_number())
-                            : std::pair<int64_t, int64_t>(-1, -1);
-}
-
 // Returns sort info on compatible compare instructions. The instruction may
 // belong to a computation that has 2 or 4 operands. If this is the root
 // instruction of a computation with 4 parameters only succeeds in cases where
@@ -158,14 +101,14 @@ std::optional<SortComputationAnalysis> AnalyzeCompareOp(
   SortOrderType sort_order;
   int64_t index0, index1;
   auto [simple_sort_index0, simple_sort_index1] =
-      ParamNumberOfSimpleSortComparator(compare);
+      MatchSimpleSortComparator(compare);
   if (simple_sort_index0 != -1 && simple_sort_index1 != -1) {
     sort_order = SortOrderType::kDefaultOrder;
     index0 = simple_sort_index0;
     index1 = simple_sort_index1;
   } else {
     auto [numpy_sort_index0, numpy_sort_index1] =
-        ParamNumberOfNumpySortComparator(compare);
+        MatchNumpySortComparator(compare);
     if (numpy_sort_index0 != -1 && numpy_sort_index1 != -1) {
       sort_order = SortOrderType::kNumpyOrder;
       index0 = numpy_sort_index0;
@@ -743,7 +686,7 @@ absl::StatusOr<DevicelessLookupParams> GetDevicelessLookupParams(
 
 absl::StatusOr<bool> DevicelessTableHasDataForSort(
     const DevicelessLookupParams& params) {
-  ASSIGN_OR_RETURN(const CubScratchSizeDevicelessLookup& lookup,
+  ABSL_ASSIGN_OR_RETURN(const CubScratchSizeDevicelessLookup& lookup,
                    CubScratchSizeDevicelessLookup::GetInstance());
   return lookup.CanLookup(params.cub_version, params.device_name,
                           params.key_type_size, params.value_type_size,
@@ -805,12 +748,12 @@ absl::StatusOr<bool> ShouldRewriteSort(
   // When compiling CUB sorts we need to determine the scratch size needed. The
   // CUB API to do so requires a device, so we need to differentiate between
   // deviceless and non-deviceless compilation here.
-  ASSIGN_OR_RETURN(DevicelessLookupParams lookup_params,
+  ABSL_ASSIGN_OR_RETURN(DevicelessLookupParams lookup_params,
                    GetDevicelessLookupParams(device_description, sort));
 
   if (deviceless_cub_mode ==
       DebugOptions::DEVICELESS_CUB_FORCE_ON_NO_FALLBACK) {
-    ASSIGN_OR_RETURN(bool has_deviceless_data,
+    ABSL_ASSIGN_OR_RETURN(bool has_deviceless_data,
                      DevicelessTableHasDataForSort(lookup_params));
     if (!has_deviceless_data) {
       return absl::NotFoundError(absl::StrFormat(
@@ -836,7 +779,7 @@ absl::StatusOr<bool> ShouldRewriteSort(
     return false;
   }
 
-  ASSIGN_OR_RETURN(bool has_deviceless_data,
+  ABSL_ASSIGN_OR_RETURN(bool has_deviceless_data,
                    DevicelessTableHasDataForSort(lookup_params));
   if (has_deviceless_data) {
     return true;
@@ -926,7 +869,7 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
   // MLIR dictionary attributes when rewriting to the final FFI target.
   SortOptions sort_options;
   sort_options.set_descending(sort_analysis.descending);
-  RETURN_IF_ERROR(custom_call->set_backend_config(sort_options));
+  ABSL_RETURN_IF_ERROR(custom_call->set_backend_config(sort_options));
 
   // Build the replacement instruction.
   HloInstruction* replacement;
@@ -949,7 +892,7 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
   }
 
   // Replace sort operation with custom call followed by GTE.
-  RETURN_IF_ERROR(sort_op->parent()->ReplaceInstruction(sort_op, replacement));
+  ABSL_RETURN_IF_ERROR(sort_op->parent()->ReplaceInstruction(sort_op, replacement));
   return true;
 }
 
@@ -963,7 +906,7 @@ absl::StatusOr<bool> SortRewriter::RunOnComputation(
     if (sort == nullptr) {
       continue;
     }
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         bool should_rewrite,
         ShouldRewriteSort(device_description_, *sort, is_deviceless_,
                           is_early_exit_with_layouts_, deviceless_cub_mode));
@@ -974,7 +917,7 @@ absl::StatusOr<bool> SortRewriter::RunOnComputation(
 
   bool changed = false;
   for (auto* sort : sort_ops) {
-    ASSIGN_OR_RETURN(bool result, RunOnInstruction(sort));
+    ABSL_ASSIGN_OR_RETURN(bool result, RunOnInstruction(sort));
     changed |= result;
   }
   return changed;
@@ -996,7 +939,7 @@ absl::StatusOr<bool> SortRewriter::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    ASSIGN_OR_RETURN(bool result,
+    ABSL_ASSIGN_OR_RETURN(bool result,
                      RunOnComputation(computation, deviceless_cub_mode));
     changed |= result;
   }

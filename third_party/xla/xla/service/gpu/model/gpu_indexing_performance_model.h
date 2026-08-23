@@ -24,9 +24,9 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
@@ -41,7 +41,7 @@ namespace gpu {
 // Contains informations about block level parameters and run time of a fusion.
 struct TiledRunTimeData {
   EstimateRunTimeData runtime_data;
-  BlockLevelParameters block_level_parameters;
+  xla::xtile::BlockLevelParameters block_level_parameters;
 };
 
 using TiledRunTimeDataOrError = std::variant<TiledRunTimeData, FusionDecision>;
@@ -57,7 +57,8 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
       const se::DeviceDescription* device_info,
       HloFusionAnalysisCache* fusion_analysis_cache,
       HloCostAnalysis::ShapeSizeFunction shape_size,
-      mlir::MLIRContext* mlir_context, bool use_experimental_tiling)
+      mlir::MLIRContext* mlir_context, bool use_experimental_tiling,
+      bool enable_same_shape_multi_output_fusion)
       : hlo_op_profile_(&HloOpProfiles::Singleton().GetProfile(*device_info)),
         device_info_(device_info),
         fusion_analysis_cache_(fusion_analysis_cache),
@@ -69,7 +70,9 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
                                         /*count_multiple_input_accesses=*/true},
             *device_info_),
         mlir_context_(mlir_context),
-        use_experimental_tiling_(use_experimental_tiling) {}
+        use_experimental_tiling_(use_experimental_tiling),
+        enable_same_shape_multi_output_fusion_(
+            enable_same_shape_multi_output_fusion) {}
 
   // Returns the number of warps for the given tiled HLO computation.
   static int64_t EstimateNumWarps(
@@ -82,7 +85,7 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
   absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputation(
       const HloFusionAdaptor& fusion_adaptor,
       const TiledHloComputation& tiled_hlo_computation,
-      const BlockLevelParameters& block_level_parameters);
+      const xla::xtile::BlockLevelParameters& block_level_parameters);
 
   // Estimate the run time of the fusion with the given launch dimensions and
   // output tile sizes.
@@ -92,13 +95,13 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
   // access and computation.
   absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledFusion(
       const HloFusionAdaptor& fusion_adaptor,
-      const BlockLevelParameters& block_level_parameters);
+      const xla::xtile::BlockLevelParameters& block_level_parameters);
 
   // Estimate the run time of an Hlo instruction assuming it is emitted by
   // Triton.
   absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTriton(
       const HloInstruction* instr,
-      const BlockLevelParameters* block_level_parameters = nullptr);
+      const xla::xtile::BlockLevelParameters* block_level_parameters = nullptr);
 
   // Estimates the best tile sizes for the given fusion. Iterates over all the
   // good tile sizes provided by SymbolicTileAnalysis, estimates the run time
@@ -128,6 +131,7 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
   GpuHloCostAnalysis cost_analysis_;
   mlir::MLIRContext* mlir_context_;
   bool use_experimental_tiling_;
+  bool enable_same_shape_multi_output_fusion_;
 };
 
 }  // namespace gpu

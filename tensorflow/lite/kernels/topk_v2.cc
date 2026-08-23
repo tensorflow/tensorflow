@@ -15,6 +15,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <algorithm>
+#include <cmath>
 #include <iterator>
 #include <limits>
 #include <vector>
@@ -203,6 +204,13 @@ class TopContainer {
   // (notice the inversion of direction, not a typo); ties (==) are broken in
   // favor of earlier elements (i.e., a < b).
   bool compare_fun(Tidx a, Tidx b) const {
+    const bool a_isnan = std::isnan(values_[a]);
+    const bool b_isnan = std::isnan(values_[b]);
+    if (a_isnan != b_isnan) {
+      // Consistently order NaNs after non-NaN numbers (treating NaN as smaller
+      // than any float value).
+      return b_isnan;
+    }
     if (values_[b] < values_[a]) {
       return true;
     } else if (values_[b] > values_[a]) {

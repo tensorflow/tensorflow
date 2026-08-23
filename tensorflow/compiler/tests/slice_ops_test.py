@@ -311,5 +311,20 @@ class StridedSliceTest(xla_test.XLATestCase):
 
         self.assertAllEqual([3, 4, 5], result)
 
+  # Regression for #124950. On a bounded-dynamic input (here tf.where's
+  # output), strided_slice with a negative begin used to compute a
+  # negative runtime dimension size and pass it to SetDimensionSize. The
+  # resulting fused XLA:CPU kernel then segfaulted on launch. The fix
+  # clamps the runtime size to zero (`strided_slice_op.cc`), matching
+  # the sibling dynamic-index branch's pattern.
+  def testStridedSliceOnDynamicInputWithDegenerateBoundsDoesNotCrash(self):
+    with self.session() as sess:
+      inp = array_ops.placeholder(dtypes.bool, shape=[3])
+      with self.test_scope():
+        result = array_ops.strided_slice(array_ops.where(inp), [-1, 0], [0, 3])
+      out = sess.run(result, feed_dict={inp: [True, False, True]})
+      self.assertEqual(tensor_shape.TensorShape((0, 1)), out.shape)
+
+
 if __name__ == "__main__":
   googletest.main()

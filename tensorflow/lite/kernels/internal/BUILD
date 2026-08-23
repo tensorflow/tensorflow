@@ -259,6 +259,17 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "im2col_utils_test",
+    size = "small",
+    srcs = ["optimized/im2col_utils_test.cc"],
+    deps = [
+        ":optimized_base",
+        ":types",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "legacy_optimized_base",
     srcs = [],
@@ -745,6 +756,7 @@ cc_library(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
+        "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
         "@gemmlowp",
         "@ruy//ruy/profiler:instrumentation",
@@ -926,6 +938,18 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite:util",
+    ],
+)
+
+cc_library(
+    name = "reshape_utils",
+    hdrs = ["reshape_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    deps = [
+        ":runtime_shape",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -1360,6 +1384,7 @@ cc_test(
     deps = [
         ":avx2_quantization_utils",
         ":common",
+        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1369,6 +1394,26 @@ cc_test(
     srcs = ["optimized/reduce_utils_test.cc"],
     deps = [
         ":reduce_utils",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "broadcast_loop_test",
+    srcs = ["broadcast_loop_test.cc"],
+    deps = [
+        ":reference_comparisons",
+        ":runtime_shape",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "select_test",
+    srcs = ["select_test.cc"],
+    deps = [
+        ":reference_base",
+        ":runtime_shape",
         "@com_google_googletest//:gtest_main",
     ],
 )

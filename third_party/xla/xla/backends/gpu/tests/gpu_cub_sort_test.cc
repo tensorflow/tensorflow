@@ -21,11 +21,11 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/libraries/cub/cub_scratch_size_deviceless_lookup.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/backends/gpu/transforms/sort_rewriter.h"
@@ -56,7 +56,7 @@ class CubSortTestBase
   }
 
   absl::StatusOr<bool> IsRewrittenToUseCubSort(absl::string_view hlo_text) {
-    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
                      GetOptimizedModule(hlo_text));
 
     for (const auto& pass_metadata :

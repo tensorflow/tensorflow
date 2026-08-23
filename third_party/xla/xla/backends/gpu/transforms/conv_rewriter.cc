@@ -29,11 +29,13 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
@@ -44,8 +46,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -103,9 +104,9 @@ absl::Status CheckTypes(HloInstruction* conv, const se::GpuComputeCapability cc,
     return absl::OkStatus();
   };
 
-  RETURN_IF_ERROR(valid_shape(conv->shape()));
-  RETURN_IF_ERROR(valid_shape(conv->operand(0)->shape()));
-  RETURN_IF_ERROR(valid_shape(conv->operand(1)->shape()));
+  ABSL_RETURN_IF_ERROR(valid_shape(conv->shape()));
+  ABSL_RETURN_IF_ERROR(valid_shape(conv->operand(0)->shape()));
+  ABSL_RETURN_IF_ERROR(valid_shape(conv->operand(1)->shape()));
   return absl::OkStatus();
 }
 
@@ -816,7 +817,7 @@ CudnnConvBackendConfig GetDefaultBackendConfig() {
 static absl::StatusOr<HloInstruction*> CreateCustomCallHelper(
     HloInstruction* conv, const se::GpuComputeCapability& cc,
     const se::dnn::VersionInfo& dnn_version) {
-  RETURN_IF_ERROR(CheckTypes(conv, cc, dnn_version));
+  ABSL_RETURN_IF_ERROR(CheckTypes(conv, cc, dnn_version));
   if (ConvolutionMatch m = MatchBackwardInput(conv)) {
     auto& [window, dnums, rhs] = *m;
     return CreateGpuConv(kCudnnConvBackwardInputCallTarget, conv->shape(),
@@ -855,7 +856,14 @@ absl::StatusOr<bool> RunOnInstruction(HloInstruction* conv,
                                       const se::dnn::VersionInfo& dnn_version) {
   CHECK_EQ(conv->opcode(), HloOpcode::kConvolution);
 
-  ASSIGN_OR_RETURN(HloInstruction * custom_call,
+  // If a convolution kind is already assigned (by ConvKindAssignment for cuDNN
+  // graph API / ConvFusionRewriter), do not rewrite it to legacy custom calls.
+  if (Cast<HloConvolutionInstruction>(conv)->convolution_kind() !=
+      CONVOLUTION_KIND_UNSET) {
+    return false;
+  }
+
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * custom_call,
                    CreateCustomCallHelper(conv, cc, dnn_version));
   if (custom_call == nullptr) {
     return false;
@@ -864,14 +872,14 @@ absl::StatusOr<bool> RunOnInstruction(HloInstruction* conv,
   GpuBackendConfig gpu_backend_config;
   *gpu_backend_config.mutable_cudnn_conv_backend_config() =
       GetDefaultBackendConfig();
-  RETURN_IF_ERROR(custom_call->set_backend_config(gpu_backend_config));
+  ABSL_RETURN_IF_ERROR(custom_call->set_backend_config(gpu_backend_config));
 
   VLOG(1) << "Replacing convolution " << conv->ToString() << " with "
           << custom_call->ToString();
 
   // The CustomCall returns a tuple (conv_result, scratch_memory).  Extract
   // out the conv result and replace `conv` with it.
-  RETURN_IF_ERROR(conv->parent()->ReplaceWithNewInstruction(
+  ABSL_RETURN_IF_ERROR(conv->parent()->ReplaceWithNewInstruction(
       conv,
       HloInstruction::CreateGetTupleElement(conv->shape(), custom_call, 0)));
   return true;
@@ -892,7 +900,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation,
 
   bool changed = false;
   for (HloInstruction* conv : convs) {
-    ASSIGN_OR_RETURN(bool result, RunOnInstruction(conv, cc, dnn_version));
+    ABSL_ASSIGN_OR_RETURN(bool result, RunOnInstruction(conv, cc, dnn_version));
     changed |= result;
   }
   return changed;
@@ -906,7 +914,7 @@ absl::StatusOr<bool> ConvRewriter::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         bool result,
         RunOnComputation(computation, compute_capability_, dnn_version_));
     changed |= result;

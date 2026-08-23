@@ -1,6 +1,6 @@
 --- a/lib/Target/LLVMIR/LLVMDILocalVariable.cpp
 +++ b/lib/Target/LLVMIR/LLVMDILocalVariable.cpp
-@@ -242,7 +242,7 @@
+@@ -242,7 +242,7 @@ struct LLVMDILocalVariablePass
        LLVM::DITypeAttr typeAttr;
      };
      llvm::SmallVector<ArgInfo> argInfos;

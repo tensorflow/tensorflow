@@ -36,8 +36,8 @@ class ExecutionStreamAssignment {
     // Number of additional compute execution streams for round-robin
     // assignment of async compute operations.
     int number_of_compute_execution_streams = 4;
-    // Number of additional communication execution streams for round-robin
-    // assignment of async communication operations.
+    // Number of additional communication execution streams in each
+    // collective-domain pool for round-robin assignment.
     int number_of_communication_execution_streams = 1;
   };
 

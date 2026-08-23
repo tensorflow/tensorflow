@@ -176,6 +176,10 @@ class GpuCommunicator : public Communicator {
   // network transfers to remote (non-LSA) peers.
   virtual bool SupportsGin() const { return false; }
 
+  // Returns the size of the load/store accessible communication domain (LSA).
+  // If LSA is not supported, returns std::nullopt.
+  virtual std::optional<int> LsaSize() const { return std::nullopt; }
+
   // Returns the StreamExecutor (and thus the device) this communicator runs on,
   // or nullptr if not backed by a StreamExecutor.
   virtual stream_executor::StreamExecutor* stream_executor() const {

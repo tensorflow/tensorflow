@@ -572,7 +572,17 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
     kFastMerge,
     // Faster variant that splits the memory space for buffers with colocations
     // and buffers without colocations.
-    kFastSplit
+    kFastSplit,
+    // Sort buffers by start time (ascending). For multi-page (Virtual HBM)
+    // allocation this packs each page with a temporally local cohort of buffers
+    // instead of globally-largest buffers, so a page's active lifespan stays
+    // confined to a phase of the schedule. That temporal locality lets the
+    // runtime pager keep a small working set resident and reduces page faults.
+    kPhaseWindow,
+    // Like kPhaseWindow but orders by END time, grouping buffers that expire
+    // together onto the same page so whole pages become dead at once (which the
+    // pager can then evict or discard cheaply).
+    kPhaseWindowEnd
   };
 
   // BufferInterval stores a buffer's size and time interval.
@@ -1012,6 +1022,14 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // live range. Live range is defined as in GetTemporalBufferIntervalCompare.
   BufferIntervalCompare GetColocationStartTimeBufferIntervalCompare() const;
 
+  // Return a BufferIntervalCompare function that sorts by the END time of the
+  // colocated live range (ascending). For multi-page (Virtual HBM) packing this
+  // groups buffers that become dead at the same time onto the same page, so a
+  // page's contents expire together. That lets the pager evict (or, for stack
+  // temporaries, discard without write-back) a whole page at once, reducing
+  // both page faults and eviction traffic.
+  BufferIntervalCompare GetColocationEndTimeBufferIntervalCompare() const;
+
   SliceTimePermutationIterator::Ty slice_time_permutation_iterator_type() const;
 
   absl::flat_hash_map<const BufferType*, BufferInterval> buffer_intervals_;
@@ -1020,6 +1038,22 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   BufferIntervalTree interval_tree_;
 
  private:
+  // Computes the same free chunks as MakeFreeChunks, but returns a reference to
+  // the reused scratch storage `free_chunks_list_` (invalidated by the next
+  // call to MakeFreeChunks or MakeFreeChunksList) instead of materializing the
+  // FreeChunks map. Used by the unsliced fast path in FindChunkCandidates to
+  // avoid per query container construction.
+  const std::vector<std::pair<int64_t, int64_t>>& MakeFreeChunksList(
+      const BufferInterval& buffer_interval, int64_t max_colocation_size) const;
+
+  // Fast path of FindChunkCandidates for an unsliced (num_slices() == 1)
+  // interval: computes the best fit chunk directly from the merged free chunk
+  // list, skipping the SlicedAllocationFinder containers. Returns exactly what
+  // FindChunkCandidates returns; see the implementation comment.
+  std::vector<Chunk> FindUnslicedChunkCandidates(
+      const SlicedBufferInterval& sliced_buffer_interval,
+      int64_t max_colocation_size, int64_t preferred_offset) const;
+
   int64_t alignment_;
 
   // The current time represented as an integer. It increments by 1 at each

@@ -30,14 +30,15 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/ffi.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/executable_run_options.h"
+#include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/call_frame.h"
@@ -255,7 +256,7 @@ TEST(FfiTest, RunId) {
   auto handler = Ffi::Bind().Ctx<RunId>().Ctx().To(
       [&](RunId run_id, Context context) -> absl::Status {
         EXPECT_EQ(run_id.ToInt(), 42);
-        ASSIGN_OR_RETURN(RunId run_id_from_context, context.get<RunId>());
+        ABSL_ASSIGN_OR_RETURN(RunId run_id_from_context, context.get<RunId>());
         EXPECT_EQ(run_id_from_context.ToInt(), 42);
         return absl::OkStatus();
       });
@@ -265,6 +266,102 @@ TEST(FfiTest, RunId) {
 
   auto status = Invoke(Api(), *handler, call_frame, context);
   TF_ASSERT_OK(status);
+}
+
+struct MyCExtension {
+  XLA_FFI_Extension extension_base;
+  int32_t my_data;
+};
+
+// Context is a wrapper around the C API extension.
+struct MyContext {
+  const MyCExtension* ext;
+};
+
+struct MyExtension {
+  using Type = MyContext;
+  using CExtension = MyCExtension;
+
+  static constexpr auto kName = "MyExtension";
+  static constexpr int64_t kExtensionType = 1234;
+  static constexpr int32_t kMajorVersion = 1;
+  static constexpr int32_t kMinorVersion = 2;
+
+  static bool Support(int32_t major_version, int32_t minor_version) {
+    return major_version == kMajorVersion && minor_version <= kMinorVersion;
+  }
+
+  static Type Create(const XLA_FFI_Api*, const CExtension* ext) {
+    return Type{ext};
+  }
+};
+
+struct AnotherExtension : public MyExtension {
+  static constexpr auto kName = "AnotherExtension";
+  static constexpr int64_t kExtensionType = 1236;
+  static constexpr int32_t kMajorVersion = 3;
+  static constexpr int32_t kMinorVersion = 2;
+};
+
+TEST(FfiTest, DecodeExtension) {
+  MyCExtension test_ext;
+  test_ext.extension_base = MakeExtensionHeader<MyExtension>();
+  test_ext.my_data = 42;
+
+  bool handler_called = false;
+
+  auto handler = Ffi::Bind().Ctx<Extension<MyExtension>>().To(
+      [&](const MyExtension::Type ctx) -> absl::Status {
+        EXPECT_NE(ctx.ext, nullptr);
+        EXPECT_EQ(ctx.ext->my_data, 42);
+        EXPECT_EQ(ctx.ext->extension_base.id.major_version,
+                  MyExtension::kMajorVersion);
+        EXPECT_EQ(ctx.ext->extension_base.id.minor_version,
+                  MyExtension::kMinorVersion);
+        handler_called = true;
+        return absl::OkStatus();
+      });
+
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  auto call_frame = builder.Build();
+
+  InvokeContext context;
+  context.extension_start = reinterpret_cast<XLA_FFI_Extension*>(&test_ext);
+
+  auto status = Invoke(Api(), *handler, call_frame, context);
+  EXPECT_TRUE(handler_called);
+  ASSERT_OK(status);
+
+  // Check that version mismatch causes an error.
+  test_ext.extension_base.id.major_version = 5;
+  test_ext.extension_base.id.minor_version = 0;
+  status = Invoke(Api(), *handler, call_frame, context);
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("Extension version mismatch"));
+}
+
+TEST(FfiTest, DecodeExtensionNotFound) {
+  MyCExtension test_ext;
+  test_ext.extension_base = MakeExtensionHeader<MyExtension>();
+  test_ext.my_data = 42;
+  bool handler_called = false;
+
+  auto handler = Ffi::Bind().Ctx<Extension<AnotherExtension>>().To(
+      [&](const AnotherExtension::Type ext) -> absl::Status {
+        handler_called = true;
+        return absl::OkStatus();
+      });
+
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  auto call_frame = builder.Build();
+
+  InvokeContext context;
+  context.extension_start = reinterpret_cast<XLA_FFI_Extension*>(&test_ext);
+
+  auto status = Invoke(Api(), *handler, call_frame, context);
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("Extension not found in context"));
+  EXPECT_FALSE(handler_called);
 }
 
 TEST(FfiTest, BuiltinAttributes) {

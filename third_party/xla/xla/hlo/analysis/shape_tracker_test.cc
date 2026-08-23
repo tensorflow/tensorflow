@@ -1850,5 +1850,59 @@ TEST(ShapeTrackerTest, ZipInvertCommutativityWithReshape) {
                    inverted_zipped_val.GetSteps());
 }
 
+TEST(ShapeTrackerMapsToOneStrideTest, NoChangeIsContiguous) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+  EXPECT_TRUE(tracker.MapsToOneStride({0, 1, 2}));
+  EXPECT_TRUE(tracker.MapsToOneStride({1, 2}));
+  EXPECT_TRUE(tracker.MapsToOneStride({0}));
+}
+
+TEST(ShapeTrackerMapsToOneStrideTest, RealSwapIsNonContiguous) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+  ASSERT_TRUE(tracker.AppendTranspose({0, 2, 1}).ok());
+  EXPECT_FALSE(tracker.MapsToOneStride({1, 2}));
+  EXPECT_TRUE(tracker.MapsToOneStride({0}));
+}
+
+TEST(ShapeTrackerMapsToOneStrideTest, IdentityTransposeIsContiguous) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+  ASSERT_TRUE(tracker.AppendTranspose({0, 1, 2}).ok());
+  EXPECT_TRUE(tracker.MapsToOneStride({1, 2}));
+}
+
+TEST(ShapeTrackerMapsToOneStrideTest, Size1TransposeIsContiguous) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 1, 4});
+  ShapeTracker tracker(shape);
+  ASSERT_TRUE(tracker.AppendTranspose({0, 2, 1}).ok());
+  EXPECT_TRUE(tracker.MapsToOneStride({1, 2}));
+}
+
+TEST(ShapeTrackerMapsToOneStrideTest, SwapWithReshapeIsNonContiguous) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 4});
+  ShapeTracker tracker(shape);
+  ASSERT_TRUE(tracker.AppendReshape({2, 2, 2}).ok());
+  ASSERT_TRUE(tracker.AppendTranspose({0, 2, 1}).ok());
+  EXPECT_FALSE(tracker.MapsToOneStride({1}));
+}
+
+TEST(ShapeTrackerMapsToOneStrideTest, NoOpTransposeWithReshapeIsContiguous) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  ShapeTracker tracker(shape);
+  ASSERT_TRUE(tracker.AppendReshape({2, 2, 1}).ok());
+  ASSERT_TRUE(tracker.AppendTranspose({0, 2, 1}).ok());
+  EXPECT_TRUE(tracker.MapsToOneStride({1}));
+}
+
+TEST(ShapeTrackerMapsToOneStrideTest, ContiguousTransposeReshapeIsContiguous) {
+  Shape shape = ShapeUtil::MakeShape(F32, {4, 2, 3, 2});
+  ShapeTracker tracker(shape);
+  ASSERT_TRUE(tracker.AppendTranspose({3, 1, 2, 0}).ok());
+  ASSERT_TRUE(tracker.AppendReshape({2, 6, 4}).ok());
+  EXPECT_TRUE(tracker.MapsToOneStride({1, 2}));
+}
+
 }  // namespace
 }  // namespace xla

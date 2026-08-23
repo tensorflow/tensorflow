@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -24,19 +25,20 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/codegen_orchestrator.h"
-#include "xla/backends/autotuner/config_assigner.h"
 #include "xla/backends/autotuner/directory_store.h"
 #include "xla/backends/autotuner/hlo_extractor.h"
 #include "xla/backends/autotuner/in_memory_store.h"
@@ -48,16 +50,19 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
-#include "xla/service/gpu/autotuning/autotuner_pass.h"
+#include "xla/service/gpu/autotuning/config_assigner_pass.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_address_allocator.h"
+#include "xla/stream_executor/integrations/device_mem_allocator.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tools/hlo_module_loader.h"
+#include "xla/tsl/framework/bfc_allocator.h"
+#include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/command_line_flags.h"
@@ -120,7 +125,7 @@ absl::StatusOr<std::vector<std::string>> GetHloFiles(
   std::vector<std::string> hlo_files;
   for (const auto& pattern : hlo_files_patterns) {
     std::vector<std::string> matched_files;
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         tsl::Env::Default()->GetMatchingPaths(pattern, &matched_files))
         << "Failed to match pattern: " << pattern;
     if (matched_files.empty()) {
@@ -138,6 +143,8 @@ struct AutotunerEnvironment {
   std::unique_ptr<mlir::MLIRContext> mlir_context;
   std::unique_ptr<AliasInfo> alias_info;
   std::unique_ptr<Compiler::GpuTargetConfig> target_config;
+  // For profiling.
+  std::vector<std::unique_ptr<se::Stream>> streams;
   std::unique_ptr<se::DeviceAddressAllocator> allocator;
   // For cache
   AutotuneCacheContext cache_ctx;
@@ -147,36 +154,73 @@ struct AutotunerEnvironment {
   std::unique_ptr<Autotuner> autotuner;
 };
 
+absl::StatusOr<std::unique_ptr<se::DeviceAddressAllocator>>
+CreateMultiDeviceAllocator(se::Platform* platform,
+                           se::StreamExecutor* stream_executor_0,
+                           std::vector<std::unique_ptr<se::Stream>>& streams) {
+  int device_count = platform->VisibleDeviceCount();
+  std::vector<se::MultiDeviceAdapter::AllocatorInfo> allocator_infos;
+  allocator_infos.reserve(device_count);
+
+  for (int i = 0; i < device_count; ++i) {
+    ABSL_ASSIGN_OR_RETURN(se::StreamExecutor * stream_executor,
+                     platform->ExecutorForDevice(i));
+    TF_RET_CHECK(stream_executor->GetDeviceDescription().name() ==
+                 stream_executor_0->GetDeviceDescription().name())
+        << "Devices are not the same: device 0 is "
+        << stream_executor_0->GetDeviceDescription().name() << ", device " << i
+        << " is " << stream_executor->GetDeviceDescription().name();
+
+    int64_t free_memory;
+    int64_t total_memory;
+    TF_RET_CHECK(
+        stream_executor->DeviceMemoryUsage(&free_memory, &total_memory));
+
+    auto sub_allocator = std::make_unique<se::DeviceMemAllocator>(
+        stream_executor, tsl::PlatformDeviceId(i));
+    tsl::BFCAllocator::Options opts;
+    opts.allow_growth = true;
+    auto bfc_allocator = std::make_shared<tsl::BFCAllocator>(
+        std::move(sub_allocator), total_memory,
+        absl::StrCat("gpu_profiler_", i, "_bfc"), opts);
+
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
+                     stream_executor->CreateStream());
+    se::Stream* stream_ptr = stream.get();
+    streams.push_back(std::move(stream));
+
+    allocator_infos.push_back(
+        {std::move(bfc_allocator), stream_ptr, /*memory_space=*/0, i});
+  }
+
+  return std::make_unique<se::MultiDeviceAdapter>(platform,
+                                                  std::move(allocator_infos));
+}
+
 absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
     const DebugOptions& debug_options) {
-  ConfigAssigner::Options assigner_options =
-      GetConfigAssignerOptions(debug_options);
   CodegenOrchestrator::Options orchestrator_options =
       GetCodegenOrchestratorOptions(debug_options);
-  ASSIGN_OR_RETURN(std::string platform_name,
+  ABSL_ASSIGN_OR_RETURN(std::string platform_name,
                    PlatformUtil::CanonicalPlatformName("gpu"));
 
-  ASSIGN_OR_RETURN(se::Platform * platform,
+  ABSL_ASSIGN_OR_RETURN(se::Platform * platform,
                    se::PlatformManager::PlatformWithName(
                        absl::AsciiStrToUpper(platform_name)));
   if (platform->VisibleDeviceCount() == 0) {
     return absl::InternalError("No devices found");
   }
 
-  ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler_base,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler_base,
                    xla::Compiler::GetForPlatform(platform->id()));
   auto compiler = std::unique_ptr<GpuCompiler>(
       absl::down_cast<GpuCompiler*>(compiler_base.release()));
-  ASSIGN_OR_RETURN(se::StreamExecutor * stream_executor_0,
+  ABSL_ASSIGN_OR_RETURN(se::StreamExecutor * stream_executor_0,
                    platform->ExecutorForDevice(0));
   auto alias_info =
       compiler->GetAliasInfo(stream_executor_0->GetDeviceDescription());
   auto target_config =
       std::make_unique<Compiler::GpuTargetConfig>(stream_executor_0);
-
-  std::unique_ptr<se::DeviceAddressAllocator> allocator =
-      std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
-          stream_executor_0);
 
   auto mlir_context = std::make_unique<mlir::MLIRContext>();
   xla::RegisterSymbolicExprStorage(mlir_context.get());
@@ -184,30 +228,31 @@ absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
   auto thread_pool = std::make_unique<tsl::thread::ThreadPool>(
       tsl::Env::Default(), "autotuner", tsl::port::MaxParallelism());
 
-  std::vector<std::unique_ptr<Profiler>> autotuner_profilers;
-
   int device_count = platform->VisibleDeviceCount();
+  std::vector<std::unique_ptr<se::Stream>> streams;
+  streams.reserve(device_count);
+
+  ABSL_ASSIGN_OR_RETURN(
+      std::unique_ptr<se::DeviceAddressAllocator> allocator,
+      CreateMultiDeviceAllocator(platform, stream_executor_0, streams));
+
+  std::vector<std::unique_ptr<Profiler>> autotuner_profilers;
   autotuner_profilers.reserve(device_count);
 
   for (int i = 0; i < device_count; ++i) {
-    ASSIGN_OR_RETURN(se::StreamExecutor * stream_executor,
+    ABSL_ASSIGN_OR_RETURN(se::StreamExecutor * stream_executor,
                      platform->ExecutorForDevice(i));
-    TF_RET_CHECK(stream_executor->GetDeviceDescription().name() ==
-                 stream_executor_0->GetDeviceDescription().name())
-        << "Devices are not the same: device 0 is "
-        << stream_executor_0->GetDeviceDescription().name() << ", device " << i
-        << " is " << stream_executor->GetDeviceDescription().name();
-    auto profiler = GpuProfiler::Create(
-        stream_executor, GetProfileOptions(debug_options, assigner_options));
+    std::unique_ptr<Profiler> profiler = GpuProfiler::Create(
+        stream_executor, GetProfileOptions(debug_options), allocator.get());
     TF_RET_CHECK(profiler != nullptr)
         << "Failed to create profiler for device " << i;
 
     autotuner_profilers.push_back(std::move(profiler));
   }
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<CodegenBackend>> autotuner_backends,
-      AutotunerPass::GetGpuAutotunerBackends(
+      ConfigAssignerPass::GetEnabledBackends(
           stream_executor_0, allocator.get(), target_config.get(),
           alias_info.get(), debug_options, mlir_context.get(),
           compiler->ShapeSizeBytesFunction(), compiler.get(), platform->id()));
@@ -215,30 +260,21 @@ absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
   AutotuneCacheContext ctx = AutotuneCacheContext::Create(
       target_config->device_description, autotuner_backends);
 
-  ASSIGN_OR_RETURN(
-      auto autotuner_orchestrator,
-      CodegenOrchestrator::Create(std::move(autotuner_backends),
-                                  orchestrator_options, thread_pool.get()));
+  ABSL_ASSIGN_OR_RETURN(auto autotuner_orchestrator,
+                   CodegenOrchestrator::Create(std::move(autotuner_backends),
+                                               orchestrator_options));
 
-  Autotuner::Options autotuner_options;
-  autotuner_options.scratch_bytes_window_size_us =
-      assigner_options.scratch_bytes_window_size_us;
-  autotuner_options.correctness_check_options.enable_correctness_check =
-      assigner_options.check_buffers;
-  autotuner_options.correctness_check_options.relative_tolerance =
-      assigner_options.relative_tolerance;
-  autotuner_options.correctness_check_options.crash_on_failure =
-      assigner_options.crash_on_check_failure;
-
-  ASSIGN_OR_RETURN(auto autotuner,
+  Autotuner::Options autotuner_options = GetAutotunerOptions(debug_options);
+  autotuner_options.cache_context = ctx;
+  ABSL_ASSIGN_OR_RETURN(auto autotuner,
                    Autotuner::Create(std::move(autotuner_orchestrator),
                                      std::move(autotuner_profilers),
                                      autotuner_options, thread_pool.get()));
 
-  return AutotunerEnvironment{std::move(compiler),    std::move(mlir_context),
-                              std::move(alias_info),  std::move(target_config),
-                              std::move(allocator),   std::move(ctx),
-                              std::move(thread_pool), std::move(autotuner)};
+  return AutotunerEnvironment{
+      std::move(compiler),      std::move(mlir_context), std::move(alias_info),
+      std::move(target_config), std::move(streams),      std::move(allocator),
+      std::move(ctx),           std::move(thread_pool),  std::move(autotuner)};
 }
 
 }  // namespace
@@ -246,7 +282,7 @@ absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
 absl::Status RunAutotuning(const std::vector<std::string>& hlo_files,
                            const DebugOptions& debug_options,
                            absl::string_view cache_dir) {
-  ASSIGN_OR_RETURN(AutotunerEnvironment env,
+  ABSL_ASSIGN_OR_RETURN(AutotunerEnvironment env,
                    CreateAutotunerEnvironment(debug_options));
 
   std::unique_ptr<AutotunerCacheInterface> autotuner_cache;
@@ -261,13 +297,14 @@ absl::Status RunAutotuning(const std::vector<std::string>& hlo_files,
     autotuner_cache = std::make_unique<PrintingAutotunerCache>();
   }
 
-  InstructionFilterFn should_autotune_instr = GetShouldAutotuneInstructionFn(
-      debug_options,
-      env.target_config->device_description.gpu_compute_capability());
+  InstructionFilterFn should_assign_config_to_instr =
+      GetShouldAssignConfigToInstructionFn(
+          debug_options,
+          env.target_config->device_description.gpu_compute_capability());
 
-  auto should_autotune = [&autotuner_cache, &should_autotune_instr](
+  auto should_autotune = [&autotuner_cache, &should_assign_config_to_instr](
                              const xla::HloInstruction& instr) {
-    if (!should_autotune_instr(instr)) {
+    if (!should_assign_config_to_instr(instr)) {
       return false;
     }
     return !autotuner_cache->Lookup(&instr).has_value();
@@ -275,20 +312,25 @@ absl::Status RunAutotuning(const std::vector<std::string>& hlo_files,
 
   for (const auto& hlo_file : hlo_files) {
     LOG(INFO) << "Autotuning " << hlo_file;
-    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+    absl::Time start_time = absl::Now();
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                      LoadModuleFromFile(hlo_file));
-    ASSIGN_OR_RETURN(
-        std::vector<Autotuner::TuningResult> results,
-        env.autotuner->TuneConfigs(*module, should_autotune,
-                                   /*tolerate_no_supported_configs=*/true));
+    ABSL_ASSIGN_OR_RETURN(std::vector<Autotuner::TuningResult> results,
+                     env.autotuner->TuneConfigs(*module, should_autotune));
+    absl::Duration autotune_duration = absl::Now() - start_time;
     for (const auto& result : results) {
       AutotunerCacheInterface::Config cached_config;
       cached_config.codegen_backend = result.config.codegen_backend->backend();
       cached_config.backend_config = *result.config.backend_config;
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           autotuner_cache->Insert(result.instruction, cached_config));
     }
     env.compiler->ClearMlirContextPool();
+    absl::Duration duration_with_cache_update = absl::Now() - start_time;
+    LOG(INFO) << "Autotuning " << module->name() << " took "
+              << autotune_duration
+              << " (with cache update: " << duration_with_cache_update
+              << " total)";
   }
   return absl::OkStatus();
 }

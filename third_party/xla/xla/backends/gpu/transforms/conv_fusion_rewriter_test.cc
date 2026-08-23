@@ -262,6 +262,123 @@ TEST_F(ConvFusionRewriterUnitTest, ConvertPrologueNotFusedOnVolta) {
       /*run_algebraic_simplifier=*/false, volta_device);
 }
 
+TEST_F(ConvFusionRewriterUnitTest, ConvertEpilogueBf16NotFusedOnVolta) {
+  // Conversions from f32 to bf16 in the epilogue should not be fused on Volta
+  // GPUs because cuDNN only supports BF16 conversions starting from Ampere.
+  se::DeviceDescription volta_device;
+  volta_device.set_gpu_compute_capability(se::CudaComputeCapability::Volta());
+
+  RunAndMatch(
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+      input_f32 = f32[4,48,96,64] parameter(0)
+      filter_f32 = f32[128,3,3,64] parameter(1)
+      conv = f32[4,24,48,128] convolution(input_f32, filter_f32),
+               window={size=3x3 stride=2x2 pad=0_1x0_1},
+               dim_labels=b01f_o01i->b01f
+      ROOT convert_out = bf16[4,24,48,128] convert(conv)
+    })",
+      m::Convert(m::Fusion(m::Parameter(0), m::Parameter(1))
+                     .WithFusionKind(HloInstruction::FusionKind::kCustom)
+                     .WithShape(F32, {4, 24, 48, 128})),
+      /*run_algebraic_simplifier=*/false, volta_device);
+}
+
+TEST_F(ConvFusionRewriterUnitTest, ConvertEpilogueBf16FusedOnAmpere) {
+  // Conversions from f32 to bf16 in the epilogue should be fused on Ampere
+  // GPUs.
+  se::DeviceDescription ampere_device;
+  ampere_device.set_gpu_compute_capability(se::CudaComputeCapability::Ampere());
+
+  RunAndMatch(
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+      input_f32 = f32[4,48,96,64] parameter(0)
+      filter_f32 = f32[128,3,3,64] parameter(1)
+      conv = f32[4,24,48,128] convolution(input_f32, filter_f32),
+               window={size=3x3 stride=2x2 pad=0_1x0_1},
+               dim_labels=b01f_o01i->b01f
+      ROOT convert_out = bf16[4,24,48,128] convert(conv)
+    })",
+      m::Fusion(m::Parameter(0), m::Parameter(1))
+          .WithFusionKind(HloInstruction::FusionKind::kCustom)
+          .WithShape(BF16, {4, 24, 48, 128}),
+      /*run_algebraic_simplifier=*/false, ampere_device);
+}
+
+TEST_F(ConvFusionRewriterUnitTest, ConvertS32ToF32PrologueNotFused) {
+  // Conversions from s32 to f32 before an f32 convolution should not be fused
+  // into the cuDNN prologue because cuDNN does not support s32 inputs for
+  // single-precision convolutions.
+  RunAndMatch(
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+      input_s32 = s32[4,48,96,64] parameter(0)
+      input_f32 = f32[4,48,96,64] convert(input_s32)
+      filter_s32 = s32[128,3,3,64] parameter(1)
+      filter_f32 = f32[128,3,3,64] convert(filter_s32)
+      ROOT conv = f32[4,24,48,128] convolution(input_f32, filter_f32),
+                    window={size=3x3 stride=2x2 pad=0_1x0_1},
+                    dim_labels=b01f_o01i->b01f
+    })",
+      m::Fusion(m::Convert(m::Parameter(0)), m::Convert(m::Parameter(1)))
+          .WithFusionKind(HloInstruction::FusionKind::kCustom)
+          .WithShape(F32, {4, 24, 48, 128}),
+      /*run_algebraic_simplifier=*/false);
+}
+
+TEST_F(ConvFusionRewriterUnitTest, ConvertS8ToF32PrologueNotFused) {
+  // Conversions from s8 to f32 before an f32 convolution should not be fused
+  // into the cuDNN prologue because cuDNN only supports s8 inputs with s32
+  // convolution compute.
+  RunAndMatch(
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+      input_s8 = s8[4,48,96,64] parameter(0)
+      input_f32 = f32[4,48,96,64] convert(input_s8)
+      filter_s8 = s8[128,3,3,64] parameter(1)
+      filter_f32 = f32[128,3,3,64] convert(filter_s8)
+      ROOT conv = f32[4,24,48,128] convolution(input_f32, filter_f32),
+                    window={size=3x3 stride=2x2 pad=0_1x0_1},
+                    dim_labels=b01f_o01i->b01f
+    })",
+      m::Fusion(m::Convert(m::Parameter(0)), m::Convert(m::Parameter(1)))
+          .WithFusionKind(HloInstruction::FusionKind::kCustom)
+          .WithShape(F32, {4, 24, 48, 128}),
+      /*run_algebraic_simplifier=*/false);
+}
+
+TEST_F(ConvFusionRewriterUnitTest,
+       ConvertF16ToF32WithoutDowncastPrologueNotFused) {
+  // Conversions from f16 to f32 before an f32 convolution should not be fused
+  // into the cuDNN prologue if the conv output remains f32 (no downcast).
+  RunAndMatch(
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+      input_f16 = f16[4,48,96,64] parameter(0)
+      input_f32 = f32[4,48,96,64] convert(input_f16)
+      filter_f16 = f16[128,3,3,64] parameter(1)
+      filter_f32 = f32[128,3,3,64] convert(filter_f16)
+      ROOT conv = f32[4,24,48,128] convolution(input_f32, filter_f32),
+                    window={size=3x3 stride=2x2 pad=0_1x0_1},
+                    dim_labels=b01f_o01i->b01f
+    })",
+      m::Fusion(m::Convert(m::Parameter(0)), m::Convert(m::Parameter(1)))
+          .WithFusionKind(HloInstruction::FusionKind::kCustom)
+          .WithShape(F32, {4, 24, 48, 128}),
+      /*run_algebraic_simplifier=*/false);
+}
+
 TEST_F(ConvFusionRewriterUnitTest, TestConvInt8ToInt8BiasSideInput) {
   MAYBE_SKIP_TEST("I8");
   RunAndMatch(R"(
@@ -282,7 +399,7 @@ TEST_F(ConvFusionRewriterUnitTest, TestConvInt8ToInt8BiasSideInput) {
                                               add(add(conv_f32, bias), side_input),
                                               f32[1,9,9,32] broadcast(f32[] constant(127))))
     })",
-              m::Fusion(m::Parameter(0), m::Parameter(1), m::Broadcast(),
+              m::Fusion(m::Parameter(0), m::Parameter(1), m::Parameter(2),
                         m::Parameter(3))
                   .WithFusionKind(HloInstruction::FusionKind::kCustom)
                   .WithShape(S8, {1, 9, 9, 32}),
@@ -308,7 +425,7 @@ TEST_F(ConvFusionRewriterUnitTest,
       conv_f32 = f32[1,9,9,32] convert(conv)
       ROOT root = s8[1,9,9,32] convert(add(add(conv_f32, bias), side_input))
     })",
-              m::Fusion(m::Parameter(0), m::Parameter(1), m::Broadcast(),
+              m::Fusion(m::Parameter(0), m::Parameter(1), m::Parameter(2),
                         m::Parameter(3))
                   .WithFusionKind(HloInstruction::FusionKind::kCustom)
                   .WithShape(S8, {1, 9, 9, 32}),
@@ -363,7 +480,7 @@ TEST_F(ConvFusionRewriterUnitTest, TestConvInt8ToFloatBiasSideInput) {
       sum1 = add(conv_f32, bias_broadcast)
       ROOT sum2 = add(sum1, side_input_f32)
     })",
-              m::Fusion(m::Parameter(0), m::Parameter(1), m::Broadcast(),
+              m::Fusion(m::Parameter(0), m::Parameter(1), m::Parameter(2),
                         m::Parameter(3))
                   .WithFusionKind(HloInstruction::FusionKind::kCustom)
                   .WithShape(F32, {1, 9, 9, 32}),
@@ -406,9 +523,54 @@ TEST_F(ConvFusionRewriterUnitTest, TestConvAddFused) {
                dim_labels=b01f_o01i->b01f
       ROOT sum = add(conv, bias_broadcast)
     })",
-              m::Fusion(m::Parameter(0), m::Parameter(1), m::Broadcast())
+              m::Fusion(m::Parameter(0), m::Parameter(1), m::Parameter(2))
                   .WithFusionKind(HloInstruction::FusionKind::kCustom)
                   .WithShape(F32, {1, 9, 9, 32}));
+}
+
+TEST_F(ConvFusionRewriterUnitTest, Test1DBiasBroadcastFusedWithRelu) {
+  RunAndMatch(R"(
+    HloModule Test
+
+    ENTRY Test {
+      // NHWC layout (implied by b01f) enables epilogue fusion.
+      input = f32[1,9,9,17] parameter(0)
+      filter = f32[32,3,3,17] parameter(1)
+      bias = f32[32] parameter(2)
+      bias_broadcast = f32[1,9,9,32] broadcast(bias), dimensions={3}
+      zero = f32[] constant(0)
+      zeros = f32[1,9,9,32] broadcast(zero), dimensions={}
+
+      conv = f32[1,9,9,32] convolution(input, filter),
+               window={size=3x3 pad=1_1x1_1},
+               dim_labels=b01f_o01i->b01f
+      sum = add(conv, bias_broadcast)
+      ROOT relu = maximum(sum, zeros)
+    })",
+              m::Fusion(m::Parameter(0), m::Parameter(1), m::Parameter(2))
+                  .WithFusionKind(HloInstruction::FusionKind::kCustom)
+                  .WithShape(F32, {1, 9, 9, 32}));
+}
+
+TEST_F(ConvFusionRewriterUnitTest, Test1DBiasBroadcastFusedF16) {
+  RunAndMatch(R"(
+    HloModule Test
+
+    ENTRY Test {
+      // NHWC layout (implied by b01f) enables epilogue fusion.
+      input = f16[1,9,9,17] parameter(0)
+      filter = f16[32,3,3,17] parameter(1)
+      bias = f16[32] parameter(2)
+      bias_broadcast = f16[1,9,9,32] broadcast(bias), dimensions={3}
+
+      conv = f16[1,9,9,32] convolution(input, filter),
+               window={size=3x3 pad=1_1x1_1},
+               dim_labels=b01f_o01i->b01f
+      ROOT sum = add(conv, bias_broadcast)
+    })",
+              m::Fusion(m::Parameter(0), m::Parameter(1), m::Parameter(2))
+                  .WithFusionKind(HloInstruction::FusionKind::kCustom)
+                  .WithShape(F16, {1, 9, 9, 32}));
 }
 
 TEST_F(ConvFusionRewriterUnitTest, FuseAlpha) {
@@ -454,7 +616,7 @@ TEST_F(ConvFusionRewriterUnitTest, FuseRelu) {
       sum = add(conv, bias_broadcast)
       ROOT relu = maximum(sum, zeros)
     })",
-              m::Fusion(m::Parameter(0), m::Parameter(1), m::Broadcast())
+              m::Fusion(m::Parameter(0), m::Parameter(1), m::Parameter(2))
                   .WithFusionKind(HloInstruction::FusionKind::kCustom)
                   .WithShape(F32, {1, 9, 9, 32}));
 }
@@ -509,8 +671,40 @@ TEST_F(ConvFusionRewriterUnitTest, StrengthReduceF32ToF16) {
       ROOT conv_f16 = f16[1,9,9,32] convert(sum2)
     })",
               m::Fusion(m::Parameter(0), m::Parameter(1), m::Parameter(3),
-                        m::Broadcast())
+                        m::Parameter(2))
                   .WithShape(F16, {1, 9, 9, 32}));
+}
+
+TEST_F(ConvFusionRewriterUnitTest, NoopIfConvKindNotAssigned) {
+  absl::string_view hlo_string = R"(
+    HloModule Test
+
+    ENTRY Test {
+      // NHWC layout (implied by b01f) enables epilogue fusion.
+      input = f32[1,9,9,17] parameter(0)
+      filter = f32[32,3,3,17] parameter(1)
+      bias = f32[32] parameter(2)
+      bias_broadcast = f32[1,9,9,32] broadcast(bias), dimensions={3}
+
+      conv = f32[1,9,9,32] convolution(input, filter),
+               window={size=3x3 pad=1_1x1_1},
+               dim_labels=b01f_o01i->b01f
+      ROOT sum = add(conv, bias_broadcast)
+    })";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+
+  se::DeviceDescription default_device;
+  default_device.set_gpu_compute_capability(
+      se::CudaComputeCapability::Ampere());
+  const se::DeviceDescription& effective_device_info =
+      GetCudaComputeCapability().IsAtLeastAmpere() ? device_description()
+                                                   : default_device;
+
+  ConvFusionRewriter rewriter(effective_device_info);
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&rewriter, m.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Add(m::Convolution(), m::Broadcast())));
 }
 
 // This class performs end-to-end integration testing of the ConvFusionRewriter.
@@ -575,8 +769,8 @@ class ConvFusionRewriterIntegrationTest
       std::string optimized_hlo_string = GetOptimizedHlo(hlo_with_new_type);
       EXPECT_THAT(optimized_hlo_string, HasSubstr(kCuDnnFusionKind));
 
-      TF_ASSERT_OK_AND_ASSIGN(auto module,
-                              ParseAndReturnVerifiedModule(hlo_with_new_type));
+      ASSERT_OK_AND_ASSIGN(auto module,
+                           ParseAndReturnVerifiedModule(hlo_with_new_type));
       DebugOptions debug_opts = module->config().debug_options();
       debug_opts.set_xla_gpu_use_runtime_fusion(true);
       debug_opts.set_xla_gpu_experimental_enable_conv_fusion(true);
@@ -591,8 +785,8 @@ class ConvFusionRewriterIntegrationTest
     std::string optimized_hlo_string = GetOptimizedHlo(pre_hlo_string);
     EXPECT_THAT(optimized_hlo_string, HasSubstr(kCuDnnFusionKind));
 
-    TF_ASSERT_OK_AND_ASSIGN(auto module,
-                            ParseAndReturnVerifiedModule(pre_hlo_string));
+    ASSERT_OK_AND_ASSIGN(auto module,
+                         ParseAndReturnVerifiedModule(pre_hlo_string));
     DebugOptions debug_opts = module->config().debug_options();
     debug_opts.set_xla_gpu_experimental_enable_conv_fusion(true);
     module->mutable_config().set_debug_options(debug_opts);
@@ -634,8 +828,8 @@ class ConvFusionRewriterIntegrationTest
       EXPECT_THAT(optimized_hlo_string, Not(HasSubstr("Convert")));
       EXPECT_THAT(optimized_hlo_string, HasSubstr(kCuDnnFusionKind));
 
-      TF_ASSERT_OK_AND_ASSIGN(auto module,
-                              ParseAndReturnVerifiedModule(pre_hlo_string));
+      ASSERT_OK_AND_ASSIGN(auto module,
+                           ParseAndReturnVerifiedModule(pre_hlo_string));
       DebugOptions debug_opts = module->config().debug_options();
       debug_opts.set_xla_gpu_experimental_enable_conv_fusion(true);
       module->mutable_config().set_debug_options(debug_opts);
@@ -676,6 +870,34 @@ class ConvFusionRewriterIntegrationTest
     }
   }
 };
+
+// TODO(b/542582954): Re-enable once cuDNN supports FP32 convolution with
+// highest precision.
+TEST_F(ConvFusionRewriterIntegrationTest,
+       DISABLED_FP32ConvolutionHighestPrecision) {
+  MAYBE_SKIP_TEST("F32");
+  const char* hlo_text = R"(
+HloModule TestModule
+
+ENTRY %conv_computation (x: f32[16,40,40,64], y: f32[3,3,64,64]) -> f32[16,40,40,64] {
+  %x = f32[16,40,40,64] parameter(0)
+  %y = f32[3,3,64,64] parameter(1)
+  ROOT %result = f32[16,40,40,64] convolution(x, y), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, operand_precision={highest, highest}
+}
+)";
+
+  std::string optimized_hlo_string = GetOptimizedHlo(hlo_text);
+  EXPECT_THAT(optimized_hlo_string, HasSubstr(kCuDnnFusionKind));
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  DebugOptions debug_opts = module->config().debug_options();
+  debug_opts.set_xla_gpu_use_runtime_fusion(true);
+  debug_opts.set_xla_gpu_experimental_enable_conv_fusion(true);
+  module->mutable_config().set_debug_options(debug_opts);
+
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-4, 1e-4}))
+      << optimized_hlo_string;
+}
 
 // TODO(b/485220832) Re-enable this test once e2e conv fusion pipeline is
 // finalized.

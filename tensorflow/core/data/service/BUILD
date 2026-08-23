@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
+load("@grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",

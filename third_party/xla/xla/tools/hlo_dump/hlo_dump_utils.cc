@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -664,10 +665,6 @@ TokenAnnotationMapping GetTokenAnnotationMapping(
                 // Deeper shape index (longer path) wins for background/border.
                 mapping.token_to_annotation.insert({abs_token_idx, annotation});
                 shape_tokens_indices[sid].push_back(abs_token_idx);
-                if (annotation->stack_frame_id) {
-                  mapping.token_stack_frame_ids[abs_token_idx] =
-                      *annotation->stack_frame_id;
-                }
               }
             }
           }
@@ -699,11 +696,56 @@ std::string GenerateHloHtmlContent(
     absl::flat_hash_map<std::string, std::string>& tooltip_data) {
   std::string parts;
   int tt_counter = 0;
-  absl::flat_hash_map<const TensorAnnotation*, std::string> ann_to_id;
+  absl::flat_hash_map<std::string, std::string> tooltip_str_to_id;
+  bool in_block = false;
+  int line_count = 0;
+  constexpr int kLinesPerBlock = 50;
+
+  auto open_block_if_needed = [&]() {
+    if (!in_block) {
+      absl::StrAppend(&parts, "<div class=\"hlo-block\">");
+      in_block = true;
+      line_count = 0;
+    }
+  };
+
+  auto close_block_if_open = [&]() {
+    if (in_block) {
+      absl::StrAppend(&parts, "</div>");
+      in_block = false;
+      line_count = 0;
+    }
+  };
+
   for (size_t i = 0; i < tokens.size(); ++i) {
     if (mapping.tokens_to_skip.count(i)) {
       continue;
     }
+
+    if (tokens[i].kind == TokKind::kText &&
+        absl::StrContains(tokens[i].value, '\n')) {
+      std::string val = tokens[i].value;
+      size_t pos = 0;
+      while (pos < val.size()) {
+        size_t nl_pos = val.find('\n', pos);
+        if (nl_pos == std::string::npos) {
+          open_block_if_needed();
+          absl::StrAppend(&parts, HtmlEscape(val.substr(pos)));
+          break;
+        }
+        open_block_if_needed();
+        absl::StrAppend(&parts, HtmlEscape(val.substr(pos, nl_pos - pos)),
+                        "\n");
+        line_count++;
+        if (line_count >= kLinesPerBlock) {
+          close_block_if_open();
+        }
+        pos = nl_pos + 1;
+      }
+      continue;
+    }
+
+    open_block_if_needed();
 
     if (mapping.span_starts.count(i)) {
       for (const auto* ann : mapping.span_starts.at(i)) {
@@ -714,12 +756,12 @@ std::string GenerateHloHtmlContent(
         std::string tooltip_attr;
         if (ann->tooltip_data) {
           std::string tt_id;
-          auto it = ann_to_id.find(ann);
-          if (it != ann_to_id.end()) {
+          auto it = tooltip_str_to_id.find(*ann->tooltip_data);
+          if (it != tooltip_str_to_id.end()) {
             tt_id = it->second;
           } else {
             tt_id = absl::StrCat("tt", tt_counter++);
-            ann_to_id[ann] = tt_id;
+            tooltip_str_to_id[*ann->tooltip_data] = tt_id;
             tooltip_data[tt_id] = *ann->tooltip_data;
           }
           tooltip_attr = absl::StrCat(" data-tooltip-id=\"", tt_id, "\"");
@@ -773,9 +815,19 @@ std::string GenerateHloHtmlContent(
                       anchor_attr, extra_attrs, style_attr, ">",
                       HtmlEscape(tokens[i].value), "</span>");
     } else {
-      const char* css_class = TokKindToClass(tokens[i].kind);
-      if (css_class[0] != '\0' || !anchor_attr.empty() ||
-          !extra_attrs.empty()) {
+      bool needs_span = !anchor_attr.empty() || !extra_attrs.empty() ||
+                        mapping.token_links.count(i) > 0;
+      if (!needs_span) {
+        TokKind kind = tokens[i].kind;
+        if (kind == TokKind::kComment || kind == TokKind::kCommentSpecial ||
+            kind == TokKind::kString || kind == TokKind::kKeyword ||
+            kind == TokKind::kKeywordType || kind == TokKind::kNameFunction ||
+            kind == TokKind::kNameComputation || kind == TokKind::kNumber) {
+          needs_span = true;
+        }
+      }
+      if (needs_span) {
+        const char* css_class = TokKindToClass(tokens[i].kind);
         absl::StrAppend(&parts, "<span class=\"", css_class, "\"", anchor_attr,
                         extra_attrs, ">", HtmlEscape(tokens[i].value),
                         "</span>");
@@ -794,6 +846,7 @@ std::string GenerateHloHtmlContent(
       }
     }
   }
+  close_block_if_open();
   return parts;
 }
 
@@ -1011,7 +1064,8 @@ absl::flat_hash_map<TensorKey, TensorAnnotation> PopulateMismatchAnnotations(
     const HloInstruction* target_instr = it->second;
     TensorKey key;
     key.instruction_name = target_instr->name();
-    if (mismatch.output_shape_index.has_value()) {
+    if (target_instr->shape().IsTuple() &&
+        mismatch.output_shape_index.has_value()) {
       key.shape_index.push_back(*mismatch.output_shape_index);
     }
 
@@ -1053,19 +1107,7 @@ absl::flat_hash_map<TensorKey, TensorAnnotation> PopulateMismatchAnnotations(
 
     ann.tooltip_data = absl::StrCat(
         "\"", JsStringEscape(absl::StrJoin(tooltip_parts, "<br/>")), "\"");
-    std::optional<std::string> tooltip_data = ann.tooltip_data;
     annotations[key] = std::move(ann);
-
-    const HloInstruction* cur = target_instr;
-    while (cur->opcode() == HloOpcode::kFusion) {
-      cur = cur->fused_instructions_computation()->root_instruction();
-      TensorKey inner_key = TensorKey::Create(cur->name(), ShapeIndex{});
-      TensorAnnotation inner_ann;
-      inner_ann.anchor_id = absl::StrCat("step", cur->unique_id());
-      inner_ann.background_color = "pink";
-      inner_ann.tooltip_data = tooltip_data;
-      annotations[inner_key] = std::move(inner_ann);
-    }
   }
 
   return annotations;
@@ -1074,9 +1116,6 @@ absl::flat_hash_map<TensorKey, TensorAnnotation> PopulateMismatchAnnotations(
 GraphData PopulateMismatchGraphData(
     const HloModule& module, absl::Span<const MismatchDetails> mismatches) {
   GraphData graph_data;
-
-  const HloComputation* entry = module.entry_computation();
-  const HloInstruction* root = entry ? entry->root_instruction() : nullptr;
 
   absl::flat_hash_map<const HloComputation*, const HloInstruction*>
       comp_to_fusion;
@@ -1095,26 +1134,40 @@ GraphData PopulateMismatchGraphData(
     }
   }
 
-  double root_score = 100.0;
-  if (!mismatches.empty()) {
-    double max_rel = 0.0;
-    for (const auto& m : mismatches) {
-      if (m.rel_error > max_rel) {
-        max_rel = m.rel_error;
-      }
-    }
-    if (max_rel > 0.0) {
-      root_score = max_rel * 100.0;
+  absl::flat_hash_map<std::string, const HloInstruction*> name_to_instr;
+  for (const HloComputation* comp : module.computations()) {
+    for (const HloInstruction* instr : comp->instructions()) {
+      name_to_instr[instr->name()] = instr;
     }
   }
 
-  absl::flat_hash_set<const HloInstruction*> root_instrs;
-  if (root != nullptr) {
-    const HloInstruction* cur = root;
-    root_instrs.insert(cur);
-    while (cur->opcode() == HloOpcode::kFusion) {
-      cur = cur->fused_instructions_computation()->root_instruction();
-      root_instrs.insert(cur);
+  absl::flat_hash_map<const HloInstruction*, double> instr_to_score;
+  auto update_score = [&](const HloInstruction* instr, double score) {
+    auto [it, inserted] = instr_to_score.try_emplace(instr, score);
+    if (!inserted) {
+      if (score == kNanInfMismatchDiffScore ||
+          it->second == kNanInfMismatchDiffScore) {
+        it->second = kNanInfMismatchDiffScore;
+      } else {
+        it->second = std::max(it->second, score);
+      }
+    }
+  };
+
+  for (const MismatchDetails& m : mismatches) {
+    double score = 100.0;
+    if (std::isnan(m.actual) || std::isinf(m.actual) ||
+        std::isnan(m.expected) || std::isinf(m.expected)) {
+      score = kNanInfMismatchDiffScore;
+    } else if (m.rel_error > 0.0) {
+      score = m.rel_error * 100.0;
+    }
+
+    const HloInstruction* target_instr = nullptr;
+    auto it = name_to_instr.find(m.target_instruction_name);
+    if (it != name_to_instr.end()) {
+      target_instr = it->second;
+      update_score(target_instr, score);
     }
   }
 
@@ -1165,7 +1218,10 @@ GraphData PopulateMismatchGraphData(
     double y = next_y;
     next_y += 2.0;
 
-    double score = root_instrs.contains(instr) ? root_score : 0.0;
+    double score = 0.0;
+    if (auto it = instr_to_score.find(instr); it != instr_to_score.end()) {
+      score = it->second;
+    }
 
     std::vector<std::string> scopes;
     const HloComputation* cur_comp = instr->parent();

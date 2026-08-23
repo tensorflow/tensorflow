@@ -2334,6 +2334,60 @@ ENTRY main {
                        HasSubstr("not divisible by tile size")));
 }
 
+TEST_F(SymbolicTileAnalysisTest,
+       NestedConcatenateOperandsAreProvidedCorrectTilingBounds) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+concatenate {
+  p0 = s32[64,128] parameter(0)
+  p1 = s32[64,128] parameter(1)
+  p2 = s32[64,128] parameter(2)
+  concat0 = s32[64,256] concatenate(p0, p1), dimensions={1}
+  ROOT concat1 = s32[64,384] concatenate(concat0, p2), dimensions={1}
+}
+
+ENTRY main {
+  p0 = s32[64,128] parameter(0)
+  p1 = s32[64,128] parameter(1)
+  p2 = s32[64,128] parameter(2)
+  ROOT fusion = s32[64,384] fusion(p0, p1, p2), kind=kCustom, calls=concatenate
+})"));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+  const HloInstruction* fusion_root =
+      module->entry_computation()->root_instruction()->fused_expression_root();
+
+  ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_hlo_computation,
+                       analysis->ComputeTiledComputation(
+                           Tiling({{fusion_root, FlatTiling({16, 32})}}),
+                           default_schedule_builder_,
+                           /*constraints_are_known_satisfied=*/false,
+                           /*compute_all_tile_offset_indexing_maps=*/true));
+
+  const TiledHloInstruction* concat1 = GetFirstRoot(tiled_hlo_computation);
+  const TiledHloInstruction* concat0 = concat1->operand(0);
+  const TiledHloInstruction* p0 = concat0->operand(0);
+  EXPECT_THAT(*p0, MatchTiledHloInstruction(
+                       /*tile_sizes=*/{16, 32}, /*tile_strides=*/{1, 1},
+                       /*tile_offsets_indexing=*/
+                       "(pid_0) -> ((pid_0 / 12) * 16, (pid_0 mod 12) * 32), "
+                       "domain: pid_0 in [0, 47], pid_0 mod 12 in [0, 3]"));
+  const TiledHloInstruction* p1 = concat0->operand(1);
+  EXPECT_THAT(*p1,
+              MatchTiledHloInstruction(
+                  /*tile_sizes=*/{16, 32}, /*tile_strides=*/{1, 1},
+                  /*tile_offsets_indexing=*/
+                  "(pid_0) -> ((pid_0 / 12) * 16, (pid_0 mod 12) * 32 - "
+                  "128), domain: pid_0 in [0, 47], pid_0 mod 12 in [4, 7]"));
+  const TiledHloInstruction* p2 = concat1->operand(1);
+  EXPECT_THAT(*p2,
+              MatchTiledHloInstruction(
+                  /*tile_sizes=*/{16, 32}, /*tile_strides=*/{1, 1},
+                  /*tile_offsets_indexing=*/
+                  "(pid_0) -> ((pid_0 / 12) * 16, (pid_0 mod 12) * 32 - "
+                  "256), domain: pid_0 in [0, 47], pid_0 mod 12 in [8, 11]"));
+}
+
 TEST_F(SymbolicTileAnalysisTest, SinglePointDimensionsArePreservedForPad) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(

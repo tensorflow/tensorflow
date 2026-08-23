@@ -136,7 +136,19 @@ TEST_P(UnsortedSegmentTest, NegativeNumSegmentsRejected) {
   model.PopulateTensor<int32_t>(model.data(), {1});
   model.PopulateTensor<int32_t>(model.segment_ids(), {-1});
   model.PopulateTensor<int32_t>(model.num_segments(), {-1});
-  EXPECT_EQ(model.Invoke(), kTfLiteError);
+}
+
+TEST_P(UnsortedSegmentTest, ZeroOutputWithHugeNumSegmentsReturnsOk) {
+  UnsortedSegmentModel<int32_t> model =
+      getModel({TensorType_INT32, {2, 1, 0, 2, 1, 0}}, {TensorType_INT32, {}},
+               {TensorType_INT32, {1}});
+  model.PopulateTensor<int32_t>(model.segment_ids(), {0});
+  model.PopulateTensor<int32_t>(model.num_segments(),
+                                {std::numeric_limits<int32_t>::max()});
+  EXPECT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(),
+              testing::ElementsAreArray(
+                  {std::numeric_limits<int32_t>::max(), 2, 1, 0, 2, 1, 0}));
 }
 
 TEST_P(UnsortedSegmentTest, IntermediateSuffixProductOverflowRejected) {

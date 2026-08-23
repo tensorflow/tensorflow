@@ -30,10 +30,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/analysis/hlo_replication_analysis.h"
 #include "xla/hlo/analysis/while_loop_analysis.h"
@@ -307,12 +307,16 @@ std::optional<MovableAllReduceContext> MatchDynamicUpdateSliceContext(
   };
 
   // Do not hoist all-reduce ops if the resulting all-reduce is too large.
-  // The threshold value is chosen arbitrarily.
-  constexpr int64_t kAllReduceMaxSizeBytes = 10240;
-  if ((*loop_bound + 1) * ShapeUtil::ArraySize(all_reduce->shape()) >
-      kAllReduceMaxSizeBytes) {
+  const int64_t all_reduce_max_size_bytes =
+      all_reduce->GetModule()
+          ->config()
+          .debug_options()
+          .xla_while_loop_all_reduce_dus_code_motion_max_size_bytes();
+  const int64_t all_reduce_size_bytes =
+      (*loop_bound + 1) * ShapeUtil::ArraySize(all_reduce->shape());
+  if (all_reduce_size_bytes > all_reduce_max_size_bytes) {
     VLOG(5) << "Resulting all-reduce exceeds the size threshold: "
-            << kAllReduceMaxSizeBytes;
+            << all_reduce_size_bytes << " > " << all_reduce_max_size_bytes;
     return std::nullopt;
   }
 
@@ -395,8 +399,9 @@ std::optional<MovableAllReduceContext> MatchDynamicUpdateSliceContext(
                "loop output at the same tuple index.";
     return std::nullopt;
   }
-  if (gte->user_count() != 1 || hlo_query::CountGteInstructionsWithIndex(
-                                    hlo->parent(), gte->tuple_index()) != 1) {
+  if (gte->user_count() != 1 ||
+      hlo_query::GetUniqueGteInstruction(gte->operand(0), gte->tuple_index()) ==
+          nullptr) {
     VLOG(5) << "DUS operand must have no users in the loop body.";
     return std::nullopt;
   }
@@ -1107,7 +1112,7 @@ absl::Status ChangeAccumulatorShapesInLoopBodies(
           HloInstruction* pred =
               body->AddInstruction(HloInstruction::CreateBroadcast(
                   pred_shape, scalar_predicate, {}));
-          RETURN_IF_ERROR(user->ReplaceOperandWithDifferentShape(0, pred));
+          ABSL_RETURN_IF_ERROR(user->ReplaceOperandWithDifferentShape(0, pred));
           HloInstruction *new_operand_1, *new_operand_2;
           if (user->operand_index(loop_reduce_scatter) == 1) {
             new_operand_1 = loop_reduce_scatter->mutable_operand(0);
@@ -1116,9 +1121,9 @@ absl::Status ChangeAccumulatorShapesInLoopBodies(
             new_operand_1 = zero;
             new_operand_2 = loop_reduce_scatter->mutable_operand(0);
           }
-          RETURN_IF_ERROR(
+          ABSL_RETURN_IF_ERROR(
               user->ReplaceOperandWithDifferentShape(1, new_operand_1));
-          RETURN_IF_ERROR(
+          ABSL_RETURN_IF_ERROR(
               user->ReplaceOperandWithDifferentShape(2, new_operand_2));
           *user->mutable_shape() = accumulation_shape;
         } else {
@@ -1175,6 +1180,8 @@ absl::flat_hash_map<int, HloInstruction*> CreateSinkedAllReduces(
             while_parent->AddInstruction(HloInstruction::CreateConvert(
                 all_reduce_shape, accumulation_buffer));
       }
+      int64_t channel_id = loop_all_reduce->channel_id().value_or(
+          HloCollectiveInstruction::GetDefaultChannelId());
       HloInstruction* all_reduced_delta;
       if (loop_all_reduce->opcode() == HloOpcode::kAllReduce) {
         auto* old_all_reduce = Cast<HloAllReduceInstruction>(loop_all_reduce);
@@ -1184,8 +1191,7 @@ absl::flat_hash_map<int, HloInstruction*> CreateSinkedAllReduces(
                 all_reduce_operand->shape(), {all_reduce_operand},
                 old_all_reduce->called_computations()[0],
                 old_all_reduce->device_list(),
-                old_all_reduce->constrain_layout(),
-                hlo_query::NextChannelId(*(while_parent->parent())),
+                old_all_reduce->constrain_layout(), channel_id,
                 old_all_reduce->use_global_device_ids()));
       } else {
         auto* old_reduce_scatter =
@@ -1195,14 +1201,13 @@ absl::flat_hash_map<int, HloInstruction*> CreateSinkedAllReduces(
                 old_reduce_scatter->shape(), {all_reduce_operand},
                 old_reduce_scatter->called_computations()[0],
                 old_reduce_scatter->device_list(),
-                old_reduce_scatter->constrain_layout(),
-                hlo_query::NextChannelId(*(while_parent->parent())),
+                old_reduce_scatter->constrain_layout(), channel_id,
                 old_reduce_scatter->use_global_device_ids(),
                 old_reduce_scatter->scatter_dimension()));
       }
       // The recreated collective has the same opcode, so preserve its metadata,
       // sharding, frontend attributes, and backend config. Channel IDs are not
-      // derived state, so the newly allocated channel ID remains intact.
+      // derived state, so the channel ID remains intact.
       loop_all_reduce->SetupDerivedInstruction(all_reduced_delta);
 
       if (!ShapeUtil::SameElementType(all_reduced_delta->shape(),
@@ -1225,9 +1230,12 @@ absl::flat_hash_map<int, HloInstruction*> CreateSinkedAllReduces(
   return tuple_index_to_new_buffer;
 }
 
-// Creates a tuple which is equivalent to the original while instruction's
-// output.
-HloInstruction* CreateNewWhileResult(
+// Builds a tuple equivalent to the original while instruction's output,
+// replaces all uses of `old_while_instruction` with it, and then forwards any
+// GTE users of that tuple to the corresponding tuple operands. If the tuple
+// has no remaining users, it is removed.
+absl::Status InsertNewWhileResult(
+    HloInstruction* old_while_instruction,
     HloInstruction* new_while_instruction,
     const absl::flat_hash_map<int, HloInstruction*>&
         tuple_index_to_new_buffer) {
@@ -1235,9 +1243,10 @@ HloInstruction* CreateNewWhileResult(
   CHECK(new_while_instruction->shape().IsTuple());
   std::vector<HloInstruction*> new_while_result_elements(
       new_while_instruction->shape().tuple_shapes().size(), nullptr);
-  for (int i = 0; i < new_while_result_elements.size(); i++) {
-    if (ContainsKey(tuple_index_to_new_buffer, i)) {
-      new_while_result_elements[i] = tuple_index_to_new_buffer.at(i);
+  for (int64_t i = 0; i < new_while_result_elements.size(); ++i) {
+    if (auto it = tuple_index_to_new_buffer.find(i);
+        it != tuple_index_to_new_buffer.end()) {
+      new_while_result_elements[i] = it->second;
     } else {
       HloInstruction* gte =
           while_parent->AddInstruction(HloInstruction::CreateGetTupleElement(
@@ -1248,7 +1257,25 @@ HloInstruction* CreateNewWhileResult(
   }
   HloInstruction* new_while_result = while_parent->AddInstruction(
       HloInstruction::CreateTuple(new_while_result_elements));
-  return new_while_result;
+  ABSL_RETURN_IF_ERROR(while_parent->ReplaceInstruction(old_while_instruction,
+                                                   new_while_result));
+
+  // Forward GTE(tuple, i) to the corresponding tuple operand so nested while
+  // hoisting can see through the reconstructed packing.
+  std::vector<HloInstruction*> users(new_while_result->users());
+  for (HloInstruction* user : users) {
+    if (user->opcode() != HloOpcode::kGetTupleElement) {
+      continue;
+    }
+    const int64_t index =
+        Cast<HloGetTupleElementInstruction>(user)->tuple_index();
+    // This will also automatically clean up `new_while_result` if `user` was
+    // the last user.
+    ABSL_RETURN_IF_ERROR(while_parent->ReplaceInstruction(
+        user, new_while_result_elements[index]));
+  }
+
+  return absl::OkStatus();
 }
 
 // Creates the sinked all-reduce instructions for all accumulation buffers.
@@ -1270,7 +1297,7 @@ absl::Status AddSinkedAllReducesAndReplaceWhile(
 
   // For reduce-scatter, we need to adjust all the accumulator shapes to use
   // the pre-scatter shape.
-  RETURN_IF_ERROR(ChangeAccumulatorShapesInLoopBodies(
+  ABSL_RETURN_IF_ERROR(ChangeAccumulatorShapesInLoopBodies(
       while_instruction, all_reduce_to_accumulations));
 
   // Step 2) create the new while instruction.
@@ -1284,12 +1311,10 @@ absl::Status AddSinkedAllReducesAndReplaceWhile(
   absl::flat_hash_map<int, HloInstruction*> tuple_index_to_new_buffer =
       CreateSinkedAllReduces(new_while_instruction, all_reduce_to_accumulations,
                              new_while_init_context.tuple_index_to_old_buffer);
-  // Step 4) create the tuple and replace the old while instruction for all of
-  // its uses.
-  HloInstruction* new_while_result =
-      CreateNewWhileResult(new_while_instruction, tuple_index_to_new_buffer);
-  RETURN_IF_ERROR(while_instruction->parent()->ReplaceInstruction(
-      while_instruction, new_while_result));
+  // Step 4) create the tuple, replace the old while instruction for all of
+  // its uses, and forward GTE users of the reconstructed tuple.
+  ABSL_RETURN_IF_ERROR(InsertNewWhileResult(while_instruction, new_while_instruction,
+                                       tuple_index_to_new_buffer));
   return absl::OkStatus();
 }
 
@@ -1380,11 +1405,10 @@ absl::StatusOr<HloInstruction*> AddSinkedAllReducesAndReplaceWhile(
     tuple_index_to_new_buffer[context.param_tuple_index] = update;
   }
 
-  // Replace the old while instruction with the new one.
-  HloInstruction* new_while_result =
-      CreateNewWhileResult(new_while_instruction, tuple_index_to_new_buffer);
-  RETURN_IF_ERROR(
-      while_parent->ReplaceInstruction(while_instruction, new_while_result));
+  // Replace the old while instruction with the reconstructed result and
+  // forward GTE users of the reconstructed tuple.
+  ABSL_RETURN_IF_ERROR(InsertNewWhileResult(while_instruction, new_while_instruction,
+                                       tuple_index_to_new_buffer));
   return new_while_instruction;
 }
 
@@ -1397,6 +1421,11 @@ absl::StatusOr<bool> WhileLoopAllReduceCodeMotion::RunImpl(
   std::unique_ptr<CallGraph> call_graph =
       CallGraph::Build(module, execution_threads);
 
+  // Bail out early if the call graph is non-flat on control-flow.
+  if (require_flat_control_flow_ && !call_graph->IsFlatOnControlFlow()) {
+    return false;
+  }
+
   // In case of MPMD, all-reduces might be cross-module and should preserve
   // their channel ID. Do not move all-reduces in this case since the channel
   // ID might be changed.
@@ -1408,7 +1437,7 @@ absl::StatusOr<bool> WhileLoopAllReduceCodeMotion::RunImpl(
   if (module->config().replica_count() > 1) {
     VLOG(5) << "num_replicas: " << module->config().replica_count()
             << " run HloReplicationAnalysis across replicas";
-    ASSIGN_OR_RETURN(cross_replica_replication_analysis,
+    ABSL_ASSIGN_OR_RETURN(cross_replica_replication_analysis,
                      HloReplicationAnalysis::RunWithPartialReplication(
                          module, /*cross_partition_spmd=*/false));
   }
@@ -1417,7 +1446,7 @@ absl::StatusOr<bool> WhileLoopAllReduceCodeMotion::RunImpl(
       module->config().num_partitions() > 1) {
     VLOG(5) << "num_partitions: " << module->config().num_partitions()
             << " run HloReplicationAnalysis across partitions";
-    ASSIGN_OR_RETURN(cross_partition_replication_analysis,
+    ABSL_ASSIGN_OR_RETURN(cross_partition_replication_analysis,
                      HloReplicationAnalysis::RunWithPartialReplication(
                          module, /*cross_partition_spmd=*/true));
   }
@@ -1431,7 +1460,7 @@ absl::StatusOr<bool> WhileLoopAllReduceCodeMotion::RunImpl(
     }
     pipeline.AddPass<ReorderConvertReduceAdd>(
         /*enable_reduce_scatter=*/enable_reduce_scatter_);
-    RETURN_IF_ERROR(pipeline.Run(module, execution_threads).status());
+    ABSL_RETURN_IF_ERROR(pipeline.Run(module, execution_threads).status());
   }
 
   // The while instruction's parent could be a while body for another while
@@ -1510,14 +1539,14 @@ absl::StatusOr<bool> WhileLoopAllReduceCodeMotion::RunImpl(
       // For each while instruction calling this computation, create the
       // corresponding all-reduces after the while loop.
       for (auto& while_instruction : while_caller_instructions) {
-        ASSIGN_OR_RETURN(while_instruction,
+        ABSL_ASSIGN_OR_RETURN(while_instruction,
                          AddSinkedAllReducesAndReplaceWhile(
                              while_instruction, all_reduce_to_update_slices));
       }
       // Remove all-reduce instructions in the loop body.
       for (const auto& [all_reduce, _] : all_reduce_to_update_slices) {
         ++count_all_reduce;
-        RETURN_IF_ERROR(computation->ReplaceInstruction(
+        ABSL_RETURN_IF_ERROR(computation->ReplaceInstruction(
             all_reduce, all_reduce->mutable_operand(0)));
       }
       is_changed = true;
@@ -1526,7 +1555,7 @@ absl::StatusOr<bool> WhileLoopAllReduceCodeMotion::RunImpl(
       // For each while instruction calling this computation, create the
       // corresponding all-reduces after the while loop.
       for (HloInstruction* while_instruction : while_caller_instructions) {
-        RETURN_IF_ERROR(AddSinkedAllReducesAndReplaceWhile(
+        ABSL_RETURN_IF_ERROR(AddSinkedAllReducesAndReplaceWhile(
             while_instruction, all_reduce_to_accumulations));
       }
       // At last, remove the old all-reduce instructions in the while body.
@@ -1538,7 +1567,7 @@ absl::StatusOr<bool> WhileLoopAllReduceCodeMotion::RunImpl(
         } else {
           ++count_reduce_scatter;
         }
-        RETURN_IF_ERROR(computation->ReplaceInstructionWithDifferentShape(
+        ABSL_RETURN_IF_ERROR(computation->ReplaceInstructionWithDifferentShape(
             all_reduce, all_reduce->mutable_operand(0)));
       }
       is_changed = true;

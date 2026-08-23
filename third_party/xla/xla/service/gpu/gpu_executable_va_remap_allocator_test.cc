@@ -27,9 +27,9 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/executable_run_options.h"
@@ -241,6 +241,7 @@ class GpuExecutableVaRemapAllocatorTest : public ::testing::Test {
  protected:
   void SetUp() override {
     ON_CALL(executor_, device_ordinal()).WillByDefault(Return(0));
+    ON_CALL(executor_, SynchronizeAllActivity()).WillByDefault(Return(true));
     ON_CALL(stream_, parent()).WillByDefault(Return(&executor_));
     run_options_.set_stream(&stream_);
     service_run_options_ = ServiceExecutableRunOptions(run_options_);
@@ -268,16 +269,16 @@ class GpuExecutableVaRemapAllocatorTest : public ::testing::Test {
       absl::Span<const BufferAllocation* const> allocations_to_tear_down = {}) {
     GpuExecutableBufferAllocator::BufferAllocToDeviceMemoryMap globals;
     ExecutionResult result;
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<GpuExecutableBufferAllocator::ExecutionScope> scope,
         allocator.CreateExecutionScope(&service_run_options_, vmm_allocator,
                                        /*device_ordinal=*/0));
     result.va_remap_enabled = scope->va_remap_enabled();
-    ASSIGN_OR_RETURN(BufferAllocations buffer_allocations,
+    ABSL_ASSIGN_OR_RETURN(BufferAllocations buffer_allocations,
                      scope->GenerateBufferAllocations(
                          &service_run_options_, get_parameter_buffer, &globals,
                          vmm_allocator, /*device_ordinal=*/0));
-    RETURN_IF_ERROR(scope->ExecuteWithBufferAllocations(
+    ABSL_RETURN_IF_ERROR(scope->ExecuteWithBufferAllocations(
         buffer_allocations, /*device_ordinal=*/0,
         [&](const BufferAllocations& execution_buffers,
             std::optional<absl::Span<const BufferAllocation::Index>>
@@ -293,7 +294,7 @@ class GpuExecutableVaRemapAllocatorTest : public ::testing::Test {
         buffer_allocations.GetDeviceAddress(0);
     if (!allocations_to_tear_down.empty()) {
       std::set<se::DeviceAddressBase> no_live_addresses;
-      RETURN_IF_ERROR(buffer_allocations.TearDown(no_live_addresses,
+      ABSL_RETURN_IF_ERROR(buffer_allocations.TearDown(no_live_addresses,
                                                   allocations_to_tear_down));
     }
     return result;
@@ -496,7 +497,7 @@ TEST_F(GpuExecutableVaRemapAllocatorTest,
 }
 
 TEST_F(GpuExecutableVaRemapAllocatorTest,
-       ExecutionScopeRetriesFailedAliasRelease) {
+       ExecutionScopeAliasReleaseRetriesFailedBatchFlush) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<TestVmmAllocator> vmm_allocator,
                        CreateAllocator());
 
@@ -543,15 +544,23 @@ TEST_F(GpuExecutableVaRemapAllocatorTest,
          std::optional<absl::Span<const BufferAllocation::Index>>) {
         return absl::OkStatus();
       });
-  EXPECT_FALSE(status.ok());
+  // Deferred teardown is batched, so the alias release only queues the unmap
+  // and does not enqueue a timeline write. The injected failure is therefore
+  // not consumed here and the release itself succeeds.
+  EXPECT_TRUE(status.ok()) << status;
   ASSERT_NE(vmm_allocator->last_reservation(), nullptr);
+  // The mapping stays alive as stale state until the pending unmap completes.
   EXPECT_EQ(vmm_allocator->last_reservation()->active_mapping_count(), 1);
   EXPECT_EQ(buffer_allocations.GetDeviceAddress(0).opaque(),
             param_buffer.cref().opaque());
 
-  // ReleaseStepAliases retains the failed alias. Destroying the execution
-  // scope retries UnMap after the one-shot injected failure.
   scope.reset();
+  // The first flush is what enqueues the batch marker, so this is where the
+  // one-shot injected failure surfaces. A failed flush leaves the batch open
+  // with its entries still pending rather than dropping them.
+  EXPECT_FALSE(
+      vmm_allocator->SynchronizePendingOperations(/*device_ordinal=*/0).ok());
+  // Retrying flushes the same batch and drains it.
   ASSERT_OK(vmm_allocator->SynchronizePendingOperations(/*device_ordinal=*/0));
   EXPECT_EQ(vmm_allocator->last_reservation()->active_mapping_count(), 0);
 }

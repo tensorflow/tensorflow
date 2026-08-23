@@ -145,14 +145,14 @@ class Compiler {
 
     MultiProcessKeyValueStore key_value_store;
 
-    // The number of devices in a fast-interconnect domain.
-    int64_t slice_size = 0;
-
     // Embed HLO module in the executable. Only used on GPU at the moment.
     bool embed_hlo_module = true;
 
     // If true, the compiler will exit after the layout assignment pass.
     bool early_exit_with_layouts = false;
+
+    // If true, indicates this compilation is ahead-of-time (AOT).
+    bool is_aot_compile = false;
   };
 
   virtual ~Compiler() = default;

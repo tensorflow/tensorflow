@@ -52,14 +52,15 @@ HloRunnerAgnosticTestBaseOptions BuildOptions(HloTestBaseOptions options) {
 }  // namespace
 
 HloTestBase::HloTestBase(HloTestBaseOptions options)
-    : HloTestBase(GetPjRtClientForTest().release(), std::move(options)) {}
+    : HloTestBase(GetPjRtClientForTest(), std::move(options)) {}
 
-HloTestBase::HloTestBase(PjRtClient* client, HloTestBaseOptions options)
+HloTestBase::HloTestBase(std::unique_ptr<PjRtClient> client,
+                         HloTestBaseOptions options)
     : HloTestBase(
           GetGlobalPjRtClientTestFactory().GetDeviceShapeRepresentationFn(
-              client),
-          GetGlobalPjRtClientTestFactory().GetDeviceShapeSizeFn(client),
-          absl::WrapUnique(client), std::move(options)) {}
+              client.get()),
+          GetGlobalPjRtClientTestFactory().GetDeviceShapeSizeFn(client.get()),
+          std::move(client), std::move(options)) {}
 
 HloTestBase::HloTestBase(
     DeviceShapeRepresentationFn device_shape_representation_fn,

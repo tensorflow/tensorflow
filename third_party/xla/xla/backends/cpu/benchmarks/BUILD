@@ -99,7 +99,6 @@ cc_library(
         "//xla/tools:run_hlo_module_proto_cc",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_benchmark",
         "@com_google_absl//absl/base",
@@ -107,6 +106,7 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
@@ -334,6 +334,7 @@ cc_library(
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/flags:parse",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
@@ -617,6 +618,26 @@ xla_cc_test(
 )
 
 xla_cc_test(
+    name = "sort_benchmark_test",
+    srcs = ["sort_benchmark_test.cc"],
+    fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
+    fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+    deps = [
+        ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
     name = "pad_benchmark_test",
     srcs = ["pad_benchmark_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
@@ -836,17 +857,23 @@ hlo_test_suite(
 hlo_test_suite(
     name = "memory_intensive_hlo_tests",
     hlo_files = MEMORY_INTENSIVE_HLO_FILES,
-    tags = if_google([
+    tags = [
+        "no_oss",
+    ] + if_google([
         "requires-mem:24g",
     ]),
 )
 
 hlo_test_suite(
     name = "huge_hlo_tests",
+    timeout = "long",
     hlo_files = HUGE_HLO_FILES,
     pkg = "//xla/backends/cpu/benchmarks/huge_hlo",
-    tags = if_google([
+    tags = [
+        "no_oss",
+    ] + if_google([
         "notap",
-        "requires-mem:32g",
+        "local",
+        "requires-mem:28g",
     ]),
 )

@@ -127,6 +127,15 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
 
   // Check input channels matching filter.
   TF_LITE_ENSURE_EQ(context, input->dims->data[4], filter->dims->data[3]);
+  TF_LITE_ENSURE(context, input->dims->data[1] > 0);
+  TF_LITE_ENSURE(context, input->dims->data[2] > 0);
+  TF_LITE_ENSURE(context, input->dims->data[3] > 0);
+  TF_LITE_ENSURE(context, input->dims->data[4] > 0);
+  TF_LITE_ENSURE(context, filter->dims->data[0] > 0);
+  TF_LITE_ENSURE(context, filter->dims->data[1] > 0);
+  TF_LITE_ENSURE(context, filter->dims->data[2] > 0);
+  TF_LITE_ENSURE(context, filter->dims->data[3] > 0);
+  TF_LITE_ENSURE(context, filter->dims->data[4] > 0);
 
   // Check types.
   TfLiteType input_type = input->type;
@@ -140,6 +149,16 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
     TF_LITE_ENSURE_TYPES_EQ(context, bias->type, input_type);
     TF_LITE_ENSURE_EQ(context, NumElements(bias), SizeOfDimension(filter, 4));
   }
+
+  // Validate stride values.
+  TF_LITE_ENSURE(context, params->stride_depth > 0);
+  TF_LITE_ENSURE(context, params->stride_height > 0);
+  TF_LITE_ENSURE(context, params->stride_width > 0);
+
+  // Validate dilation values.
+  TF_LITE_ENSURE(context, params->dilation_depth_factor > 0);
+  TF_LITE_ENSURE(context, params->dilation_height_factor > 0);
+  TF_LITE_ENSURE(context, params->dilation_width_factor > 0);
 
   // Filter has shape of [filter_depth, filter_height, filter_width,
   // in_channels, out_channels].
@@ -161,6 +180,12 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
       params->dilation_depth_factor, height, width, depth, filter_height,
       filter_width, filter_depth, params->padding, &out_height, &out_width,
       &out_depth);
+
+  int output_spatial_elements = 0;
+  TF_LITE_ENSURE_MSG(context,
+                     CheckedNumElements({out_depth, out_height, out_width},
+                                        output_spatial_elements) == kTfLiteOk,
+                     "%s", "Conv3D output spatial dimensions overflow.");
 
   std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> output_size(
       TfLiteIntArrayCreate(5), TfLiteIntArrayFree);

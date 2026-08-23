@@ -221,9 +221,4 @@ gpu_device_info {
   dnn_version: "8.9.2"
 }
 platform_name: "CUDA"
-dnn_version_info {
-  major: 8
-  minor: 9
-  patch: 2
-}
 device_description_str: "NVIDIA H100 PCIe"

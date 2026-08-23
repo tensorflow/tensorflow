@@ -94,6 +94,31 @@ class LogdetTest(test.TestCase):
           logdet_tf = linalg.logdet(matrix)
           self.assertAllClose(logdet_np, self.evaluate(logdet_tf), atol=atol)
 
+  def test_singular_matrices_return_neg_inf(self):
+    """Test that singular matrices return -inf instead of NaN."""
+    for np_dtype in [np.float32, np.float64, np.complex64, np.complex128]:
+      with self.subTest(np_dtype=np_dtype):
+        # Rank-1 singular matrix (determinant = 0)
+        matrix = np.ones((8, 8), dtype=np_dtype)
+        _, logdet_np = np.linalg.slogdet(matrix)
+        with self.session():
+          logdet_tf = linalg.logdet(matrix)
+          result = self.evaluate(logdet_tf)
+          self.assertEqual(result, logdet_np)
+          self.assertEqual(result, -np.inf)
+
+  def test_singular_matrices_batch(self):
+    """Test that batches of singular matrices return -inf."""
+    for np_dtype in [np.float32, np.float64]:
+      with self.subTest(np_dtype=np_dtype):
+        # Batch of singular matrices
+        matrices = np.ones((2, 4, 4), dtype=np_dtype)
+        with self.session():
+          logdet_tf = linalg.logdet(matrices)
+          result = self.evaluate(logdet_tf)
+          # All should be -inf for rank-1 singular matrices
+          np.testing.assert_array_equal(result, [-np.inf, -np.inf])
+
 
 class SlogdetTest(test.TestCase):
 
@@ -651,6 +676,24 @@ class EighTridiagonalTest(test.TestCase, parameterized.TestCase):
             select_range=(eigvals_all[first], eigvals_all[last]))
         self.assertAllClose(
             eigvals_all[first:(last + 1)], eigvals_value, atol=atol)
+
+  @parameterized.parameters("i", "v")
+  def test_select_range_required(self, select):
+    # Regression test for GitHub issue 113321: both of these select modes
+    # index into select_range, so omitting it surfaced as a TypeError from
+    # subscripting None rather than naming the missing argument.
+    alpha = np.array([1.0, 2.0, 3.0], np.float32)
+    beta = np.array([0.5, 0.5], np.float32)
+    with self.assertRaisesRegex(ValueError, "select_range must be specified"):
+      linalg.eigh_tridiagonal(alpha, beta, select=select)
+
+  def test_select_range_not_required_for_a(self):
+    # select='a' ignores select_range and must keep working without it.
+    alpha = np.array([1.0, 2.0, 3.0], np.float32)
+    beta = np.array([0.5, 0.5], np.float32)
+    self.assertAllEqual(
+        [3], linalg.eigh_tridiagonal(alpha, beta, select="a").shape
+    )
 
   @parameterized.parameters((np.float32), (np.float64), (np.complex64),
                             (np.complex128))

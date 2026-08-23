@@ -32,26 +32,26 @@ absl::Status TensorListBinaryAdd(
                                const Tensor& b, Tensor* out)>
         binary_add_func) {
   if (a.element_dtype != b.element_dtype) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Trying to add two lists of tensors of different dtypes. One is ",
         DataTypeString(a.element_dtype), " and the other is ",
-        DataTypeString(b.element_dtype));
+        DataTypeString(b.element_dtype)));
   }
   out->element_dtype = a.element_dtype;
   if (!a.element_shape.IsCompatibleWith(b.element_shape)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Trying to add two lists of tensors with incompatible element shapes. "
         "One is ",
         a.element_shape.DebugString(), " and the other is ",
-        b.element_shape.DebugString());
+        b.element_shape.DebugString()));
   }
 
   TF_RETURN_IF_ERROR(
       a.element_shape.MergeWith(b.element_shape, &out->element_shape));
   if (a.tensors().size() != b.tensors().size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Trying to add two lists of tensors with different lengths. One is ",
-        a.tensors().size(), " and the other is ", b.tensors().size());
+        a.tensors().size(), " and the other is ", b.tensors().size()));
   }
   out->tensors().reserve(a.tensors().size());
   for (int i = 0; i < a.tensors().size(); ++i) {

@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/gpu/abi_helpers.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -61,7 +61,7 @@ GetTestExecutableAbiVersion(
 absl::StatusOr<std::unique_ptr<xla::PjRtRuntimeAbiVersion>> GetPjrtAbiVersion(
     const stream_executor::RuntimeAbiVersion& abi) {
   xla::PjRtRuntimeAbiVersionProto proto;
-  ASSIGN_OR_RETURN(auto abi_proto, abi.ToProto());
+  ABSL_ASSIGN_OR_RETURN(auto abi_proto, abi.ToProto());
   proto.set_version(abi_proto.SerializeAsString());
   proto.set_platform(xla::CudaId());
   return xla::gpu::PjRtRuntimeAbiVersionFromProto(proto);

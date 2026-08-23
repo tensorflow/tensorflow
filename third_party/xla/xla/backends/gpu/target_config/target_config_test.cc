@@ -52,20 +52,6 @@ TEST_P(GetGpuTargetConfigTest, TestProtoRetrieval) {
     ASSERT_THAT(config, absl_testing::IsOk());
     EXPECT_TRUE(config->has_gpu_device_info());
     EXPECT_GT(config->gpu_device_info().threads_per_block_limit(), 0);
-
-    stream_executor::SemanticVersion top_level_version(
-        static_cast<unsigned>(config->dnn_version_info().major()),
-        static_cast<unsigned>(config->dnn_version_info().minor()),
-        static_cast<unsigned>(config->dnn_version_info().patch()));
-
-    stream_executor::SemanticVersion device_version(0, 0, 0);
-    if (!config->gpu_device_info().dnn_version().empty()) {
-      ASSERT_OK_AND_ASSIGN(device_version,
-                           stream_executor::SemanticVersion::ParseFromString(
-                               config->gpu_device_info().dnn_version()));
-    }
-
-    EXPECT_EQ(top_level_version, device_version);
   } else {
     EXPECT_THAT(config,
                 absl_testing::StatusIs(absl::StatusCode::kNotFound,
@@ -102,7 +88,6 @@ TEST(TargetConfigTest, CompareEqualFromSameProto) {
   ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(
       R"pb(
         platform_name: "platform"
-        dnn_version_info { major: 2 }
         runtime_version { major: 12 }
         gpu_device_info { threads_per_block_limit: 5 }
         device_description_str: "foo"

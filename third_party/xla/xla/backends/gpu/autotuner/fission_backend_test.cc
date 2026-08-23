@@ -62,7 +62,10 @@ namespace {
 
 using absl_testing::IsOk;
 using absl_testing::IsOkAndHolds;
+using absl_testing::StatusIs;
 using ::testing::HasSubstr;
+using ::testing::IsEmpty;
+using ::testing::Not;
 
 const char kTritonFusionHlo[] = R"(
   HloModule module
@@ -307,7 +310,8 @@ TEST_P(FissionTest, GetDefaultConfig) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(GetParam().hlo_string));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
-  EXPECT_THAT(fission_backend_->GetDefaultConfig(*fusion), IsOk());
+  EXPECT_THAT(fission_backend_->GetDefaultConfig(*fusion),
+              StatusIs(absl::StatusCode::kUnimplemented));
 }
 
 TEST_P(FissionTest, Compile) {
@@ -320,11 +324,12 @@ TEST_P(FissionTest, Compile) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(GetParam().hlo_string));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
-                       fission_backend_->GetDefaultConfig(*fusion));
+  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                       fission_backend_->GetSupportedConfigs(*fusion));
 
+  ASSERT_THAT(configs, Not(IsEmpty()));
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
-                       fission_backend_->Compile(*fusion, *config));
+                       fission_backend_->Compile(*fusion, *configs[0]));
   EXPECT_NE(executable, nullptr);
 }
 
@@ -338,9 +343,10 @@ TEST_P(FissionTest, ApplyConfig) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(GetParam().hlo_string));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
-                       fission_backend_->GetDefaultConfig(*fusion));
-  EXPECT_THAT(fission_backend_->ApplyConfig(*fusion, *config), IsOk());
+  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                       fission_backend_->GetSupportedConfigs(*fusion));
+  ASSERT_THAT(configs, Not(IsEmpty()));
+  EXPECT_THAT(fission_backend_->ApplyConfig(*fusion, *configs[0]), IsOk());
   std::string module_str = module->ToString();
   for (const std::string& expected_substr :
        GetParam().expected_module_substrings_fn(device_description_)) {
@@ -433,9 +439,10 @@ TEST_F(CublasFissionBackendTest, ApplyConfigReplacesFusionWithControlDeps) {
       backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
   })"));
   HloInstruction& fusion = *module->entry_computation()->root_instruction();
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
-                       fission_backend_->GetDefaultConfig(fusion));
-  EXPECT_OK(fission_backend_->ApplyConfig(fusion, *config));
+  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                       fission_backend_->GetSupportedConfigs(fusion));
+  ASSERT_THAT(configs, Not(IsEmpty()));
+  EXPECT_OK(fission_backend_->ApplyConfig(fusion, *configs[0]));
   EXPECT_THAT(module->ToString(), testing::Not(HasSubstr("__triton_gemm")));
 }
 
@@ -444,9 +451,10 @@ TEST_F(CublasFissionBackendTest, ApplyConfigRemovesComputation) {
                        ParseAndReturnVerifiedModule(kTritonFusionHlo));
   EXPECT_EQ(module->computation_count(), 2);
   HloInstruction* fusion = module->entry_computation()->root_instruction();
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
-                       fission_backend_->GetDefaultConfig(*fusion));
-  EXPECT_THAT(fission_backend_->ApplyConfig(*fusion, *config), IsOk());
+  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                       fission_backend_->GetSupportedConfigs(*fusion));
+  ASSERT_THAT(configs, Not(IsEmpty()));
+  EXPECT_THAT(fission_backend_->ApplyConfig(*fusion, *configs[0]), IsOk());
   EXPECT_EQ(module->computation_count(), 1);
 }
 

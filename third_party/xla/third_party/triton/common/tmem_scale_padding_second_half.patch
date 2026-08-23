@@ -5,11 +5,9 @@ a zero second-half offset. This patch applies an alternative fix that works
 with CUDA 12.8. It can be removed once the upstream Triton fix is enabled in
 XLA.
 
-diff --git a/lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp b/lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp
-index e40a1bcd2c3f..4f337df50658 100644
 --- a/lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp
 +++ b/lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp
-@@ -84,6 +84,10 @@ TMemAllocation getTmemAllocSizes(MemDescType memDescType) {
+@@ -101,6 +101,10 @@
    if (ll.getBasis(kRow, llvm::Log2_32(16)) == ArrayRef{0, 0}) {
      nRow /= 2;
    }
@@ -20,11 +18,10 @@ index e40a1bcd2c3f..4f337df50658 100644
    // If multibuffering is present, we need to allocate more cols
    if (memDescType.getRank() > 2) {
      assert(memDescType.getRank() == 3);
-diff --git a/lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp b/lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp
-index b4bf8e13c3d3..3a6d247b7dca 100644
+
 --- a/lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp
 +++ b/lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp
-@@ -238,8 +238,10 @@ lowerTMemLdSt(const LinearLayout &cvt, int maxnreg, int bitwidth, bool isScales,
+@@ -237,8 +237,10 @@
        secondHalfOffset = (row << 16) | col;
        if (*secondHalfOffset == 0) {
          // Workaround for ptxas bug, we cannot use secondHalfOffset = 0 to write
@@ -37,7 +34,7 @@ index b4bf8e13c3d3..3a6d247b7dca 100644
          if (!isScales) {
            if (emitError) {
              emitError()
-@@ -247,7 +249,7 @@ lowerTMemLdSt(const LinearLayout &cvt, int maxnreg, int bitwidth, bool isScales,
+@@ -246,7 +248,7 @@
            }
            return failure();
          }
@@ -47,16 +44,3 @@ index b4bf8e13c3d3..3a6d247b7dca 100644
        // We "quotient it out", meaning we remove the last basis from reps
        auto basis = reps.getBases();
 
-diff --git a/test/Conversion/tritongpu_to_llvm_blackwell.mlir b/test/Conversion/tritongpu_to_llvm_blackwell.mlir
-index 28cbccdf4e3c..1458e0be21ff 100644
---- a/test/Conversion/tritongpu_to_llvm_blackwell.mlir
-+++ b/test/Conversion/tritongpu_to_llvm_blackwell.mlir
-@@ -1091,7 +1091,7 @@
- // CHECK-LABEL: @load_store_16x2_scales_uses_zero_second_half
- tt.func private @load_store_16x2_scales_uses_zero_second_half(%arg0: !ttg.memdesc<16x2xi8, #tmem_scales, #ttng.tensor_memory, mutable>, %arg1: tensor<16x2xi8, #linear>) {
-   %true = arith.constant true
--  // CHECK: @$0 tcgen05.st.sync.aligned.16x32bx2.x1.unpack::16b.b32 [$1 + 0], 1, {$2}
-+  // CHECK: @$0 tcgen05.st.sync.aligned.16x32bx2.x1.unpack::16b.b32 [$1 + 0], 2, {$2}
-   // CHECK: llvm.return
-   ttng.tmem_store %arg1, %arg0, %true : tensor<16x2xi8, #linear> -> !ttg.memdesc<16x2xi8, #tmem_scales, #ttng.tensor_memory, mutable>
-   tt.return

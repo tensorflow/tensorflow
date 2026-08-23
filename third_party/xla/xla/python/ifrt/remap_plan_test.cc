@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "llvm/Support/Casting.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
@@ -40,6 +39,7 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.pb.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
@@ -958,7 +958,7 @@ TEST_P(RemapPlanSerDesTest, ToFromProto) {
     EXPECT_EQ(spec.dtype, DType(DType::kF32));
     EXPECT_EQ(spec.shape, shape);
     const auto* sharding_copy =
-        llvm::dyn_cast<ConcreteEvenSharding>(spec.sharding.get());
+        dyn_cast<ConcreteEvenSharding>(spec.sharding.get());
     ASSERT_NE(sharding_copy, nullptr);
     EXPECT_EQ(*sharding_copy->devices(), *devices);
     EXPECT_EQ(sharding_copy->shape(), shape);
@@ -968,7 +968,7 @@ TEST_P(RemapPlanSerDesTest, ToFromProto) {
     EXPECT_EQ(spec.dtype, DType(DType::kF32));
     EXPECT_EQ(spec.shape, shape);
     const auto* sharding_copy =
-        llvm::dyn_cast<ConcreteEvenSharding>(spec.sharding.get());
+        dyn_cast<ConcreteEvenSharding>(spec.sharding.get());
     ASSERT_NE(sharding_copy, nullptr);
     EXPECT_EQ(*sharding_copy->devices(), *devices);
     EXPECT_EQ(sharding_copy->shape(), shape);

@@ -1,3 +1,18 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// =============================================================================
+
 // RUN: emitters_opt %s -split-input-file \
 // RUN:   -xla-lower-to-llvm-gpu="gpu_device_info='rocm_compute_capability {gcn_arch_name: \"gfx1250\"}'" \
 // RUN:   | FileCheck %s
@@ -15,6 +30,27 @@ module {
 // CHECK-LABEL: llvm.func @exp2_bf16
 // CHECK: llvm.call_intrinsic "llvm.amdgcn.exp2"({{.*}}) : (bf16) -> bf16
 // CHECK-NOT: __ocml_exp2_f32
+
+// -----
+
+// A plain bf16 exp is rewritten to exp2(x * log2(e)) computed in f32 on
+// gfx1250: the input is widened to f32, scaled by an f32 log2(e), passed to the
+// native f32 exp2 (llvm.amdgcn.exp2), then rounded back to bf16. Computing in
+// f32 avoids rounding the scaled exponent to bf16, which loses accuracy and can
+// overflow to inf (why the native bf16 exp path is not used).
+module {
+  func.func @exp_bf16(%arg0: bf16) -> bf16 {
+    %0 = math.exp %arg0 : bf16
+    return %0 : bf16
+  }
+}
+
+// CHECK-LABEL: llvm.func @exp_bf16
+// CHECK: llvm.fpext {{.*}} : bf16 to f32
+// CHECK: llvm.fmul {{.*}} : f32
+// CHECK: llvm.call_intrinsic "llvm.amdgcn.exp2"({{.*}}) : (f32) -> f32
+// CHECK: llvm.fptrunc {{.*}} : f32 to bf16
+// CHECK-NOT: __ocml
 
 // -----
 
@@ -79,7 +115,11 @@ module {
 // -----
 
 // A plain bf16 log is rewritten to log2(x) * ln(2) on gfx1250 so it also uses
-// the native instruction.
+// the native transcendental. The whole computation is done in f32: the bf16
+// input is widened to f32, log2 is evaluated with the native f32 instruction,
+// multiplied by an f32 ln(2), then rounded once back to bf16. Using the f32
+// log2 (rather than the lower-precision native bf16 log2) keeps the result
+// close to correctly-rounded.
 module {
   func.func @log_bf16(%arg0: bf16) -> bf16 {
     %0 = math.log %arg0 : bf16
@@ -88,6 +128,8 @@ module {
 }
 
 // CHECK-LABEL: llvm.func @log_bf16
-// CHECK: llvm.call_intrinsic "llvm.amdgcn.log"({{.*}}) : (bf16) -> bf16
-// CHECK: llvm.fmul
+// CHECK: llvm.fpext {{.*}} : bf16 to f32
+// CHECK: llvm.call_intrinsic "llvm.amdgcn.log"({{.*}}) : (f32) -> f32
+// CHECK: llvm.fmul {{.*}} : f32
+// CHECK: llvm.fptrunc {{.*}} : f32 to bf16
 // CHECK-NOT: __ocml

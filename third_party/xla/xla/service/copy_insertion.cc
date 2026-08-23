@@ -31,10 +31,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/frontend_attributes.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
@@ -98,6 +98,31 @@ struct SpecialCaseCopyPolicy {
   bool copy_parameters_and_constants = false;
 };
 
+// Returns true if any conditional instruction calling `node` defines a new Phi
+// value at `index`. If the conditional simply passes through reaching values at
+// `index` without merging, no replicated root copies are needed.
+bool ShouldCopyConditionalRootAt(const CallGraphNode& node,
+                                 const HloAliasAnalysis& alias_analysis,
+                                 const ShapeIndex& index) {
+  const HloDataflowAnalysis& dataflow = alias_analysis.dataflow_analysis();
+  for (const CallSite& caller_callsite : node.caller_callsites()) {
+    if (caller_callsite.instruction()->opcode() == HloOpcode::kConditional) {
+      if (!ShapeUtil::IndexIsValid(caller_callsite.instruction()->shape(),
+                                   index)) {
+        return true;  // Conservatively copy if index is out of bounds.
+      }
+      const HloValueSet& value_set =
+          dataflow.GetValueSet(caller_callsite.instruction(), index);
+      if (absl::c_any_of(value_set.values(), [](const HloValue* value) {
+            return value->is_phi();
+          })) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 SpecialCaseCopyPolicy GetSpecialCaseCopyPolicy(const CallGraphNode& node,
                                                HloModule* module,
                                                HloComputation* computation) {
@@ -113,6 +138,34 @@ bool ShouldCopyRootValue(const HloValue& value,
                          const SpecialCaseCopyPolicy& policy) {
   if (policy.copy_parameters_and_constants) {
     return ValueIsReadOnly(value);
+  }
+  return false;
+}
+
+bool IsWhileLoopCopyDisabled(const HloInstruction* instruction,
+                             const CallGraph& call_graph) {
+  if (instruction == nullptr || instruction->parent() == nullptr) {
+    return false;
+  }
+  absl::flat_hash_set<const HloComputation*> visited;
+  std::vector<const HloComputation*> worklist = {instruction->parent()};
+  while (!worklist.empty()) {
+    const HloComputation* curr = worklist.back();
+    worklist.pop_back();
+    if (!visited.insert(curr).second) {
+      continue;
+    }
+    const CallGraphNode& node = call_graph.GetNode(curr);
+    for (const CallSite& callsite : node.caller_callsites()) {
+      const HloInstruction* caller = callsite.instruction();
+      if (caller != nullptr && caller->opcode() == HloOpcode::kWhile &&
+          HasDisableWhileLoopCopiesAttr(caller)) {
+        return true;
+      }
+      if (caller != nullptr && caller->parent() != nullptr) {
+        worklist.push_back(caller->parent());
+      }
+    }
   }
   return false;
 }
@@ -166,12 +219,12 @@ DeepCopyAndAddControlEdges(HloInstruction* from, HloInstruction* to,
   // false) have nullptr at that index.
   ShapeTree<HloInstruction*> from_copy_tree(from->shape(),
                                             /*init_value=*/nullptr);
-  ASSIGN_OR_RETURN(HloInstruction * from_deep_copy,
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * from_deep_copy,
                    from->parent()->DeepCopyInstruction(from, &indices_to_copy,
                                                        &from_copy_tree));
 
   ShapeTree<HloInstruction*> to_copy_tree(to->shape(), /*init_value=*/nullptr);
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloInstruction * to_deep_copy,
       to->parent()->DeepCopyInstruction(to, &indices_to_copy, &to_copy_tree));
 
@@ -185,7 +238,7 @@ DeepCopyAndAddControlEdges(HloInstruction* from, HloInstruction* to,
       continue;
     }
     TF_RET_CHECK(to_copy != nullptr);
-    RETURN_IF_ERROR(from_copy->AddControlDependencyTo(to_copy));
+    ABSL_RETURN_IF_ERROR(from_copy->AddControlDependencyTo(to_copy));
   }
 
   return std::make_pair(from_deep_copy, to_deep_copy);
@@ -395,6 +448,12 @@ absl::Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
   VLOG(2) << "Adding copies for kWhile instruction " << xla_while->name();
   TF_RET_CHECK(xla_while->opcode() == HloOpcode::kWhile);
 
+  if (HasDisableWhileLoopCopiesAttr(xla_while)) {
+    VLOG(2) << "While loop copy insertion disabled via frontend attribute for "
+            << xla_while->name();
+    return absl::OkStatus();
+  }
+
   ShapeTree<bool> indices_to_copy(xla_while->shape());
   if (!IndicesToCopyForWhile(alias_analysis.dataflow_analysis(), xla_while,
                              &indices_to_copy)) {
@@ -412,10 +471,10 @@ absl::Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
 
   // Deep copy init.
   HloInstruction* while_init = xla_while->mutable_operand(0);
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloInstruction * while_init_copy,
       xla_while->parent()->DeepCopyInstruction(while_init, &indices_to_copy));
-  RETURN_IF_ERROR(while_init->ReplaceUseWith(xla_while, while_init_copy));
+  ABSL_RETURN_IF_ERROR(while_init->ReplaceUseWith(xla_while, while_init_copy));
 
   // Deep copy the parameter and the root. Extend a control edge from the copy
   // of the parameter value to the corresponding copy value of the root.
@@ -432,14 +491,14 @@ absl::Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
   // deep copy).
   std::vector<HloInstruction*> param_users = param->users();
 
-  ASSIGN_OR_RETURN(auto pair,
+  ABSL_ASSIGN_OR_RETURN(auto pair,
                    DeepCopyAndAddControlEdges(param, root, indices_to_copy));
 
   HloInstruction* param_copy = pair.first;
   HloInstruction* root_copy = pair.second;
 
   for (HloInstruction* user : param_users) {
-    RETURN_IF_ERROR(param->ReplaceUseWith(user, param_copy));
+    ABSL_RETURN_IF_ERROR(param->ReplaceUseWith(user, param_copy));
   }
 
   body->set_root_instruction(root_copy);
@@ -453,9 +512,9 @@ absl::Status AddCopiesForInPlaceOperation(
     int64_t operand_number) {
   VLOG(2) << "Adding copies for in-place operation " << in_place_op->name();
   HloInstruction* operand = in_place_op->mutable_operand(operand_number);
-  ASSIGN_OR_RETURN(HloInstruction * deep_copy,
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * deep_copy,
                    in_place_op->parent()->DeepCopyInstruction(operand));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       operand->ReplaceUseWith(in_place_op, operand_number, deep_copy));
   return absl::OkStatus();
 }
@@ -506,7 +565,7 @@ absl::Status AddCopiesForAliasedInputOutputs(
     std::vector<HloInstruction*> users = param->users();
     ShapeTree<HloInstruction*> param_copy_tree(param->shape(),
                                                /*init_value=*/nullptr);
-    ASSIGN_OR_RETURN(HloInstruction * copied,
+    ABSL_ASSIGN_OR_RETURN(HloInstruction * copied,
                      entry->DeepCopyInstruction(param, &param_indices_to_copy,
                                                 &param_copy_tree));
     if (param == root) {
@@ -514,7 +573,7 @@ absl::Status AddCopiesForAliasedInputOutputs(
       root = copied;
     }
     for (HloInstruction* user : users) {
-      RETURN_IF_ERROR(param->ReplaceUseWith(user, copied));
+      ABSL_RETURN_IF_ERROR(param->ReplaceUseWith(user, copied));
     }
 
     copied_parameters[param->parameter_number()] = param_copy_tree;
@@ -528,12 +587,12 @@ absl::Status AddCopiesForAliasedInputOutputs(
   ShapeTree<HloInstruction*> output_copy_tree(root->shape(),
                                               /*init_value=*/nullptr);
 
-  ASSIGN_OR_RETURN(HloInstruction * root_copied,
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * root_copied,
                    root->parent()->DeepCopyInstruction(
                        root, &output_indices_to_copy, &output_copy_tree));
 
   // Add control dependencies between the input/output copies.
-  RETURN_IF_ERROR(module->input_output_alias_config().ForEachAliasWithStatus(
+  ABSL_RETURN_IF_ERROR(module->input_output_alias_config().ForEachAliasWithStatus(
       [&](const ShapeIndex& output_index,
           const HloInputOutputAliasConfig::Alias& alias) -> absl::Status {
         if (!copied_parameters[alias.parameter_number]) {
@@ -546,7 +605,7 @@ absl::Status AddCopiesForAliasedInputOutputs(
 
         TF_RET_CHECK(from != nullptr);
         TF_RET_CHECK(to != nullptr);
-        RETURN_IF_ERROR(from->AddControlDependencyTo(to));
+        ABSL_RETURN_IF_ERROR(from->AddControlDependencyTo(to));
         return absl::OkStatus();
       }));
 
@@ -558,12 +617,12 @@ absl::Status AddCopiesForAliasedInputOutputs(
 // Removes any control dependencies to or from the given instruction.
 absl::Status StripControlDependenciesFrom(HloInstruction* instruction) {
   while (!instruction->control_successors().empty()) {
-    RETURN_IF_ERROR(instruction->RemoveControlDependencyTo(
+    ABSL_RETURN_IF_ERROR(instruction->RemoveControlDependencyTo(
         instruction->control_successors().front()));
   }
 
   while (!instruction->control_predecessors().empty()) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         instruction->control_predecessors().front()->RemoveControlDependencyTo(
             instruction));
   }
@@ -591,10 +650,10 @@ absl::Status CopyInsertion::AddCopiesForConditional(
   for (HloComputation* computation : conditional->branch_computations()) {
     HloInstruction* root = computation->root_instruction();
     std::vector<HloInstruction*> users = root->users();
-    ASSIGN_OR_RETURN(HloInstruction * deep_copy,
+    ABSL_ASSIGN_OR_RETURN(HloInstruction * deep_copy,
                      computation->DeepCopyInstruction(root, &indices_to_copy));
     for (HloInstruction* user : users) {
-      RETURN_IF_ERROR(root->ReplaceUseWith(user, deep_copy));
+      ABSL_RETURN_IF_ERROR(root->ReplaceUseWith(user, deep_copy));
     }
     computation->set_root_instruction(deep_copy);
   }
@@ -892,13 +951,13 @@ absl::Status AddCopiesForNonCopyableTransitionsRotatedCase(
     VLOG(2) << "Transition from copyable to non-copyable:  copy "
             << operand->ToString() << " for " << start_op->ToString()
             << " output_index ";
-    RETURN_IF_ERROR(operand->ReplaceUseWith(start_op, copied_operand));
-    RETURN_IF_ERROR(end_op->AddControlDependencyTo(copied_operand));
+    ABSL_RETURN_IF_ERROR(operand->ReplaceUseWith(start_op, copied_operand));
+    ABSL_RETURN_IF_ERROR(end_op->AddControlDependencyTo(copied_operand));
   }
 
   // Add a control dependency from the rotated end_op of the chain to the
   // start_op of the chain guarantee disjoint live times of the buffer.
-  RETURN_IF_ERROR(end_op->AddControlDependencyTo(start_op));
+  ABSL_RETURN_IF_ERROR(end_op->AddControlDependencyTo(start_op));
 
   // Insert copies for the result produced by the end_op of the chain where we
   // transition from non-copyable to copyable.
@@ -911,7 +970,7 @@ absl::Status AddCopiesForNonCopyableTransitionsRotatedCase(
   if (!end_op->shape().IsTuple()) {
     HloInstruction* copy = while_body->AddInstruction(
         HloInstruction::CreateUnary(end_op->shape(), HloOpcode::kCopy, end_op));
-    RETURN_IF_ERROR(copy->AddControlDependencyTo(start_op));
+    ABSL_RETURN_IF_ERROR(copy->AddControlDependencyTo(start_op));
     return end_op->ReplaceAllUsesWith(copy);
   }
 
@@ -925,8 +984,8 @@ absl::Status AddCopiesForNonCopyableTransitionsRotatedCase(
               << user->ToString() << " for all users";
       HloInstruction* copy = while_body->AddInstruction(
           HloInstruction::CreateUnary(user->shape(), HloOpcode::kCopy, user));
-      RETURN_IF_ERROR(copy->AddControlDependencyTo(start_op));
-      RETURN_IF_ERROR(user->ReplaceAllUsesWith(copy));
+      ABSL_RETURN_IF_ERROR(copy->AddControlDependencyTo(start_op));
+      ABSL_RETURN_IF_ERROR(user->ReplaceAllUsesWith(copy));
     }
   }
 
@@ -960,7 +1019,7 @@ absl::Status CopyInsertion::AddCopiesForExplicitNonCopyableTransitions(
     HloInstruction* copied_operand =
         parent->AddInstruction(HloInstruction::CreateUnary(
             operand->shape(), HloOpcode::kCopy, operand));
-    RETURN_IF_ERROR(operand->ReplaceUseWith(chain_start, copied_operand));
+    ABSL_RETURN_IF_ERROR(operand->ReplaceUseWith(chain_start, copied_operand));
   }
 
   return absl::OkStatus();
@@ -1017,15 +1076,15 @@ absl::Status AddCopiesForNonCopyableTransitionsRotatedCase(
     HloInstruction* copied_operand =
         while_body->AddInstruction(HloInstruction::CreateUnary(
             operand->shape(), HloOpcode::kCopy, operand));
-    RETURN_IF_ERROR(operand->ReplaceUseWith(chain_start, copied_operand));
-    RETURN_IF_ERROR(chain_end->AddControlDependencyTo(copied_operand));
+    ABSL_RETURN_IF_ERROR(operand->ReplaceUseWith(chain_start, copied_operand));
+    ABSL_RETURN_IF_ERROR(chain_end->AddControlDependencyTo(copied_operand));
   }
 
   // The chain_end is rotated and semantically paired with the chain_start of
   // the previous iteration. We add a control dependency from the chain_end to
   // the chain_start to in the same lexical iteration guarantee disjoint live
   // times of the buffers involved.
-  RETURN_IF_ERROR(chain_end->AddControlDependencyTo(chain_start));
+  ABSL_RETURN_IF_ERROR(chain_end->AddControlDependencyTo(chain_start));
 
   // If chain_end has users, insert copies for the result produced by the
   // chain_end with aliasing input and output buffers, where we transition from
@@ -1035,16 +1094,16 @@ absl::Status AddCopiesForNonCopyableTransitionsRotatedCase(
     return absl::OkStatus();
   }
   ShapeTree<HloInstruction*> copies_added(chain_end->shape());
-  ASSIGN_OR_RETURN(HloInstruction * copy,
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * copy,
                    while_body->DeepCopyInstruction(
                        chain_end, /*indices_to_copy=*/nullptr, &copies_added));
   for (auto [shape_index, instr] : copies_added) {
     if (instr != nullptr) {
-      RETURN_IF_ERROR(instr->AddControlDependencyTo(chain_start));
+      ABSL_RETURN_IF_ERROR(instr->AddControlDependencyTo(chain_start));
     }
   }
   for (HloInstruction* it : users) {
-    RETURN_IF_ERROR(chain_end->ReplaceUseWith(it, copy));
+    ABSL_RETURN_IF_ERROR(chain_end->ReplaceUseWith(it, copy));
   }
   return absl::OkStatus();
 }
@@ -1097,7 +1156,7 @@ absl::Status CopyInsertion::AddCopiesForNonCopyableTransitions(
   if (!IsImplicitNonCopyable(chain_start)) {
     if (chain_start->IsCustomCall(kPinCustomCallTarget) ||
         chain_start->IsCustomCall(kCreateBufferCustomCallTarget)) {
-      RETURN_IF_ERROR(AddCopiesForExplicitNonCopyableTransitions(alias_analysis,
+      ABSL_RETURN_IF_ERROR(AddCopiesForExplicitNonCopyableTransitions(alias_analysis,
                                                                  chain_start));
     }
     return absl::OkStatus();
@@ -1132,7 +1191,7 @@ absl::Status CopyInsertion::AddCopiesForNonCopyableTransitions(
     HloInstruction* copied_operand =
         parent->AddInstruction(HloInstruction::CreateUnary(
             operand->shape(), HloOpcode::kCopy, operand));
-    RETURN_IF_ERROR(operand->ReplaceUseWith(chain_start, copied_operand));
+    ABSL_RETURN_IF_ERROR(operand->ReplaceUseWith(chain_start, copied_operand));
     return absl::OkStatus();
   }
 
@@ -1158,7 +1217,7 @@ absl::Status CopyInsertion::AddCopiesForNonCopyableTransitions(
 absl::Status CopyInsertion::AddCopiesToResolveInterference(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                    HloAliasAnalysis::Run(module, alias_info_));
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
@@ -1168,13 +1227,13 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       if (instruction->opcode() == HloOpcode::kWhile) {
-        RETURN_IF_ERROR(AddCopiesForWhile(*alias_analysis, instruction));
+        ABSL_RETURN_IF_ERROR(AddCopiesForWhile(*alias_analysis, instruction));
       } else if (instruction->opcode() == HloOpcode::kConditional) {
-        RETURN_IF_ERROR(AddCopiesForConditional(*alias_analysis, instruction));
+        ABSL_RETURN_IF_ERROR(AddCopiesForConditional(*alias_analysis, instruction));
       } else if (IsNonCopyable(instruction)) {
         // We currently assume that we don't have a custom-call with
         // output-to-operand aliases for both buffers and non-buffers.
-        RETURN_IF_ERROR(
+        ABSL_RETURN_IF_ERROR(
             AddCopiesForNonCopyableTransitions(*alias_analysis, instruction));
       } else {
         // When an operand is a tuple, we avoid copying the operand multiple
@@ -1251,7 +1310,8 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
               absl::c_all_of(
                   instruction->operand(operand_index_in_this_intr)->users(),
                   [&instruction](const HloInstruction* user) {
-                    return user == instruction;
+                    return user == instruction ||
+                           HasDisjointReadWriteRegionsAttr(user);
                   })) {
             continue;
           }
@@ -1261,14 +1321,14 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
             continue;
           }
           copied_operands.insert(operand_index_in_this_intr);
-          RETURN_IF_ERROR(AddCopiesForInPlaceOperation(
+          ABSL_RETURN_IF_ERROR(AddCopiesForInPlaceOperation(
               *alias_analysis, instruction, operand_index_in_this_intr));
         }
       }
     }
   }
 
-  RETURN_IF_ERROR(AddCopiesForAliasedInputOutputs(module, execution_threads));
+  ABSL_RETURN_IF_ERROR(AddCopiesForAliasedInputOutputs(module, execution_threads));
   return absl::OkStatus();
 }
 
@@ -1285,14 +1345,18 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
     const CallGraph& call_graph,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     HloModule* module, CustomBufferAnalysisFn custom_buffer_analysis) {
-  ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                    HloAliasAnalysis::Run(module, alias_info_));
 
   // Identify which shape indices of which instructions need to be copied. Store
   // these results in 'instructions_to_copy'.
   HloInstructionMap<ShapeTree<bool>> instructions_to_copy;
-  auto add_index_to_copy = [&instructions_to_copy](HloInstruction* instruction,
-                                                   const ShapeIndex& index) {
+  auto add_index_to_copy = [&instructions_to_copy, &call_graph](
+                               HloInstruction* instruction,
+                               const ShapeIndex& index) {
+    if (IsWhileLoopCopyDisabled(instruction, call_graph)) {
+      return;
+    }
     // Buffers are non-copyable and needed copies are added to transition
     // in and out non-copyable values.
     if (ShapeUtil::GetSubshape(instruction->shape(), index).IsBuffer()) {
@@ -1384,7 +1448,6 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
       continue;
     }
     TF_RET_CHECK(node.context() == CallContext::kControlFlow);
-
     SpecialCaseCopyPolicy policy =
         GetSpecialCaseCopyPolicy(node, module, computation);
     HloInstruction* root = computation->root_instruction();
@@ -1393,6 +1456,9 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
     absl::flat_hash_map<const HloBuffer*, ShapeIndex> seen;
     ShapeUtil::ForEachSubshape(
         root->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+          bool copy_replicated =
+              policy.copy_root_replicated_buffers ||
+              ShouldCopyConditionalRootAt(node, *alias_analysis, index);
           std::vector<const HloBuffer*> buffers_at_index =
               alias_analysis->ComputeBuffersAt(root, index);
           bool buffer_seen_before = false;
@@ -1400,7 +1466,7 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
             buffer_seen_before |= !seen.emplace(buffer, index).second;
           }
 
-          if (buffer_seen_before && policy.copy_root_replicated_buffers &&
+          if (buffer_seen_before && copy_replicated &&
               computation == module->entry_computation() &&
               module->input_output_alias_config().OutputHasAlias(index) &&
               buffers_at_index.size() == 1) {
@@ -1416,7 +1482,7 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
           }
 
           if (buffers_at_index.size() > 1 ||
-              (buffer_seen_before && policy.copy_root_replicated_buffers)) {
+              (buffer_seen_before && copy_replicated)) {
             VLOG(2) << "Index " << index << " of computation "
                     << computation->name() << " (" << root->name()
                     << ") has ambiguous or non-distinct buffer. Copying.";
@@ -1447,11 +1513,11 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
 
     ShapeTree<HloInstruction*> copies_added(indices_to_copy.shape());
     std::vector<HloInstruction*> users = instruction->users();
-    ASSIGN_OR_RETURN(HloInstruction * deep_copy,
+    ABSL_ASSIGN_OR_RETURN(HloInstruction * deep_copy,
                      instruction->parent()->DeepCopyInstruction(
                          instruction, &indices_to_copy, &copies_added));
     for (HloInstruction* user : users) {
-      RETURN_IF_ERROR(instruction->ReplaceUseWith(user, deep_copy));
+      ABSL_RETURN_IF_ERROR(instruction->ReplaceUseWith(user, deep_copy));
     }
     if (instruction == instruction->parent()->root_instruction()) {
       instruction->parent()->set_root_instruction(deep_copy);
@@ -1491,7 +1557,7 @@ absl::Status CopyInsertion::RemoveUnnecessaryCopies(
     ordering = std::make_unique<DependencyHloOrdering>(module);
   }
 
-  ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                    HloAliasAnalysis::Run(module, alias_info_));
   CopyRemover copy_remover(*module, *alias_analysis, alias_info_,
                            ordering.get(), execution_threads);
@@ -1535,8 +1601,8 @@ absl::Status CopyInsertion::RemoveUnnecessaryCopies(
                 insert_post_scheduling_control_dependencies,
                 should_skip_removal_)) {
           changed = true;
-          RETURN_IF_ERROR(StripControlDependenciesFrom(instruction));
-          RETURN_IF_ERROR(
+          ABSL_RETURN_IF_ERROR(StripControlDependenciesFrom(instruction));
+          ABSL_RETURN_IF_ERROR(
               instruction->ReplaceAllUsesWith(instruction->mutable_operand(0)));
           VLOG(3) << "Copy removed successfully: " << instruction->ToString();
           XLA_VLOG_LINES(
@@ -1590,7 +1656,7 @@ absl::StatusOr<bool> CopyInsertion::RunImpl(
 
   int64_t num_copies_before = GetNumExistingCopies(module, execution_threads);
 
-  RETURN_IF_ERROR(AddCopiesToResolveInterference(module, execution_threads));
+  ABSL_RETURN_IF_ERROR(AddCopiesToResolveInterference(module, execution_threads));
 
   // Simplify the tuple structures introduced by the deep copies. This should be
   // done before removing copies (RemoveUnnecessaryCopies) because tuple
@@ -1599,21 +1665,21 @@ absl::StatusOr<bool> CopyInsertion::RunImpl(
   // instructions introduced by tuple simplification.
   TupleSimplifier tuple_simplifier;
   HloDCE dce;
-  RETURN_IF_ERROR(tuple_simplifier.Run(module, execution_threads).status());
-  RETURN_IF_ERROR(dce.Run(module, execution_threads).status());
+  ABSL_RETURN_IF_ERROR(tuple_simplifier.Run(module, execution_threads).status());
+  ABSL_RETURN_IF_ERROR(dce.Run(module, execution_threads).status());
   DumpHloModuleDuringPassIfEnabled(
       name(), "after adding copies to resolve interference", *module);
 
-  RETURN_IF_ERROR(RemoveUnnecessaryCopies(module, execution_threads));
+  ABSL_RETURN_IF_ERROR(RemoveUnnecessaryCopies(module, execution_threads));
   DumpHloModuleDuringPassIfEnabled(name(), "after removing unnecessary copies",
                                    *module);
-  RETURN_IF_ERROR(AddSpecialCaseCopies(*call_graph, execution_threads, module,
+  ABSL_RETURN_IF_ERROR(AddSpecialCaseCopies(*call_graph, execution_threads, module,
                                        /*custom_buffer_analysis=*/nullptr));
   DumpHloModuleDuringPassIfEnabled(name(), "after adding special-case copies",
                                    *module);
 
-  RETURN_IF_ERROR(tuple_simplifier.Run(module, execution_threads).status());
-  RETURN_IF_ERROR(dce.Run(module, execution_threads).status());
+  ABSL_RETURN_IF_ERROR(tuple_simplifier.Run(module, execution_threads).status());
+  ABSL_RETURN_IF_ERROR(dce.Run(module, execution_threads).status());
 
   VLOG(1) << "Num copies before copy-insertion: " << num_copies_before;
   VLOG(1) << "Num copies after copy-insertion: "

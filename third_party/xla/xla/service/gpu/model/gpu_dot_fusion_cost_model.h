@@ -22,8 +22,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
@@ -40,7 +40,8 @@ absl::StatusOr<int64_t> ExtractBlockK(const HloDotInstruction* dot);
 // parameters.
 // Flops with tile and wave quant.
 absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
-    const HloDotInstruction* dot, const BlockLevelParameters& block_params,
+    const HloDotInstruction* dot,
+    const xla::xtile::BlockLevelParameters& block_params,
     const se::DeviceDescription& device_info,
     std::optional<int64_t> block_k = std::nullopt);
 
@@ -107,14 +108,26 @@ absl::Duration CalculatePipelinedLoopTime(int64_t num_stages,
 absl::Duration CalculatePipelinedLoopTimeWithLaunchWaves(
     int64_t num_stages, int64_t k_loop_iterations, int64_t threadblock_count,
     absl::Duration compute_time, const HbmEstimates& hbm_timing,
-    int64_t shared_memory_per_block_bytes, int num_warps,
+    int64_t shared_memory_per_block_bytes, int64_t num_warps,
     const se::DeviceDescription& device_info);
+
+// Represents the occupancy of a single Streaming Multiprocessor (SM) for a
+// given kernel launch configuration.
+struct SmOccupancy {
+  int64_t active_blocks_per_sm = 0;
+  int64_t active_warps_per_sm = 0;
+};
+
+// Calculates the SM occupancy based on shared memory and thread limits.
+SmOccupancy CalculateSmOccupancy(int64_t shared_memory_per_block_bytes,
+                                 int64_t num_warps,
+                                 const se::DeviceDescription& device_info);
 
 // Calculates the estimated number of hardware launch waves required to execute
 // the threadblocks.
 int64_t CalculateHardwareLaunchWaves(int64_t threadblock_count,
                                      int64_t shared_memory_per_block_bytes,
-                                     int num_warps,
+                                     int64_t num_warps,
                                      const se::DeviceDescription& device_info);
 
 // Calculates the bytes read from HBM for one inner loop iteration.
@@ -145,6 +158,26 @@ struct ComputeAndFlops {
 absl::StatusOr<ComputeAndFlops> CalculateComputeTimeWithTileAndWaveQuantization(
     const DotProblemInfo& dot, const DotTileSize& dot_tile,
     const se::DeviceDescription& device_info);
+
+// Calculates the effective flops for a GPU DOT operation as a function of the
+// tile size (excludes clock throttling). Not all tile sizes are equally able to
+// extract utilization on the same generation GPUs even if the workload is
+// compute bound. GEMM performance is sensitive to the tensor core
+// instruction throughputs that the programming model exposes.
+double GetEffectiveFlopsPerNsForTileSize(
+    int64_t tile_m, const se::DeviceDescription& device_info,
+    PrimitiveType element_type);
+
+// Calculates Compute Utilization. Expected to be in the range [0.0, 1.0], but
+// may exceed 1.0 if the underlying time estimates are inaccurate.
+double CalculateComputeUtilization(const EstimateRunTimeData& estimates,
+                                   const se::DeviceDescription& device_info,
+                                   PrimitiveType output_element_type);
+
+// Calculates Memory Utilization. Expected to be in the range [0.0, 1.0], but
+// may exceed 1.0 if the underlying time estimates are inaccurate.
+double CalculateMemoryUtilization(const EstimateRunTimeData& estimates,
+                                  const se::DeviceDescription& device_info);
 
 }  // namespace detail
 

@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/service/source_target_pairs.h"
 
-#include <memory>
-#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>

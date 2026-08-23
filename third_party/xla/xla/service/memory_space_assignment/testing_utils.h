@@ -22,9 +22,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -48,9 +48,9 @@ class FakeCostAnalysis : public CostAnalysis {
       OpCostManager& op_cost_manager, const HloModule& module,
       const CostAnalysisOptions& options) {
     auto alias_info = std::make_unique<AliasInfo>();
-    ASSIGN_OR_RETURN(auto alias_analysis,
+    ABSL_ASSIGN_OR_RETURN(auto alias_analysis,
                      HloAliasAnalysis::Run(&module, alias_info.get()));
-    ASSIGN_OR_RETURN(auto hlo_live_range,
+    ABSL_ASSIGN_OR_RETURN(auto hlo_live_range,
                      HloLiveRange::Run(module.schedule(), *alias_analysis,
                                        module.entry_computation()));
     auto call_graph = CallGraph::Build(&module);

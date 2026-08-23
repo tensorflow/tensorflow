@@ -126,10 +126,10 @@ TEST(CuDnnThunkTest, TestSerializationDeserialization) {
 //===----------------------------------------------------------------------===//
 
 absl::StatusOr<se::StreamExecutor*> GpuExecutor() {
-  ASSIGN_OR_RETURN(std::string canonical_name,
+  ABSL_ASSIGN_OR_RETURN(std::string canonical_name,
                    PlatformUtil::CanonicalPlatformName("gpu"));
   std::string name = absl::AsciiStrToUpper(canonical_name);
-  ASSIGN_OR_RETURN(auto* platform, se::PlatformManager::PlatformWithName(name));
+  ABSL_ASSIGN_OR_RETURN(auto* platform, se::PlatformManager::PlatformWithName(name));
   return platform->ExecutorForDevice(0);
 }
 

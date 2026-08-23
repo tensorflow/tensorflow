@@ -28,12 +28,12 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -54,12 +54,14 @@ limitations under the License.
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/codegen/experimental_fusion_emitter.h"
 #include "xla/codegen/xtile/codegen/fusion_emitter.h"
 #include "xla/codegen/xtile/codegen/tiled_emitter_constraints.h"
 #include "xla/codegen/xtile/ir/xtile_attrs.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
+#include "xla/codegen/xtile/tiling_from_block_parameters.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -71,8 +73,6 @@ limitations under the License.
 #include "xla/runtime/work_dimensions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/cpu_options.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
-#include "xla/service/gpu/model/tiling_from_block_parameters.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -83,6 +83,8 @@ namespace xla::cpu {
 namespace {
 
 using llvm::SmallVector;
+using ::xla::xtile::BlockLevelParameters;
+
 namespace ge = ::xla::gpu::experimental;
 
 constexpr int64_t kCacheLineSize = 64;
@@ -240,7 +242,20 @@ bool IsSupportedShape(const Shape& shape) {
   return is_supported;
 }
 
-bool IsSupportedInstruction(const HloInstruction& inst) {
+bool HasComplexType(const HloInstruction& inst) {
+  if (primitive_util::IsComplexType(inst.shape().element_type())) {
+    return true;
+  }
+  for (const HloInstruction* operand : inst.operands()) {
+    if (primitive_util::IsComplexType(operand->shape().element_type())) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool IsSupportedInstruction(const HloInstruction& inst,
+                            bool use_new_xtile_lowering) {
   HloOpcode opcode = inst.opcode();
   switch (opcode) {
     case HloOpcode::kConvert: {
@@ -280,11 +295,12 @@ bool IsSupportedInstruction(const HloInstruction& inst) {
       return true;
     case HloOpcode::kConstant:
       return ShapeUtil::IsEffectiveScalar(inst.shape());
+    case HloOpcode::kBroadcast:
+    case HloOpcode::kDot:
+    case HloOpcode::kReduce:
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kMap:
     case HloOpcode::kPopulationCount:
-    case HloOpcode::kReal:
-    case HloOpcode::kImag:
     case HloOpcode::kSign:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRoundNearestEven:
@@ -296,7 +312,29 @@ bool IsSupportedInstruction(const HloInstruction& inst) {
       return false;
       break;
     default:
-      return inst.IsElementwise();
+      if (inst.IsElementwise()) {
+        if (HasComplexType(inst)) {
+          switch (opcode) {
+            case HloOpcode::kAdd:
+            case HloOpcode::kComplex:
+            case HloOpcode::kImag:
+            case HloOpcode::kReal:
+            case HloOpcode::kSubtract:
+            case HloOpcode::kMultiply:
+            case HloOpcode::kDivide:
+            case HloOpcode::kPower:
+            case HloOpcode::kAbs:
+            case HloOpcode::kNegate:
+            case HloOpcode::kSelect:
+            case HloOpcode::kCompare:
+              return true;
+            default:
+              return false;
+          }
+        }
+        return true;
+      }
+      return false;
   }
 }
 
@@ -317,7 +355,8 @@ absl::Status VerifyTensorRanks(const HloFusionInstruction& fusion) {
   return absl::OkStatus();
 }
 
-absl::Status IsSupportedTiledFusion(const HloFusionInstruction& fusion) {
+absl::Status IsSupportedTiledFusion(const HloFusionInstruction& fusion,
+                                    bool use_new_xtile_lowering) {
   // TODO(willfroom): Support multi-output fusions.
   if (!fusion.shape().IsArray()) {
     return Internal(
@@ -336,7 +375,7 @@ absl::Status IsSupportedTiledFusion(const HloFusionInstruction& fusion) {
           "tiled CPU emitter.",
           inst->ToString());
     }
-    if (!IsSupportedInstruction(*inst)) {
+    if (!IsSupportedInstruction(*inst, use_new_xtile_lowering)) {
       return Internal(
           "Instruction %s is not supported by the tiled CPU emitter.",
           inst->ToString());
@@ -359,7 +398,7 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> CreateTiledKernelDefinition(
 
   WorkDimensions work_dimensions;
   work_dimensions.num_work_groups.x = num_work_groups;
-  ASSIGN_OR_RETURN(KernelSpec kernel_spec,
+  ABSL_ASSIGN_OR_RETURN(KernelSpec kernel_spec,
                    emitters::GetKernelSpec(name, fusion, buffer_assignment,
                                            work_dimensions));
   return KernelDefinition<MlirKernelSource>(
@@ -368,27 +407,34 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> CreateTiledKernelDefinition(
 
 absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
-    std::optional<gpu::BlockLevelParameters> block_level_parameters) {
-  RETURN_IF_ERROR(VerifyTensorRanks(fusion));
+    std::optional<BlockLevelParameters> block_level_parameters) {
+  ABSL_RETURN_IF_ERROR(VerifyTensorRanks(fusion));
 
   std::unique_ptr<HloFusionAdaptor> fusion_adaptor =
       HloFusionAdaptor::ForInstruction(&fusion);
-  ASSIGN_OR_RETURN(std::unique_ptr<ge::TilingSpace> tiling_space,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<ge::TilingSpace> tiling_space,
                    ge::TilingSpace::Create(*fusion_adaptor, &context));
   using ValidTilings = std::vector<SmallVector<int64_t, 4>>;
   ValidTilings candidates;
+
+  const bool enable_same_shape_multi_output_fusion =
+      fusion.GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_experimental_enable_same_shape_multi_output_fusion();
   if (block_level_parameters.has_value()) {
-    ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> tile_sizes,
-                     gpu::GetTilingSpaceConcreteSizes(*tiling_space,
-                                                      *block_level_parameters));
+    ABSL_ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> tile_sizes,
+                     xtile::GetTilingSpaceConcreteSizes(
+                         *tiling_space, *block_level_parameters,
+                         enable_same_shape_multi_output_fusion));
     candidates.push_back(
         SmallVector<int64_t, 4>(tile_sizes.begin(), tile_sizes.end()));
   } else {
-    ASSIGN_OR_RETURN(candidates, tiling_space->GetValidTilings());
+    ABSL_ASSIGN_OR_RETURN(candidates, tiling_space->GetValidTilings());
   }
 
   // 1. Construct the Symbolic Graph EXACTLY ONCE on the stack/heap.
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       ge::TiledHloComputation symbolic_computation,
       ge::TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
 
@@ -397,6 +443,10 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
 
   // 2. Evaluate all candidates by substituting concrete tile sizes into the
   // symbolic tiles of roots and operands.
+  bool use_new_xtile_lowering = fusion.GetModule()
+                                    ->config()
+                                    .debug_options()
+                                    .xla_cpu_use_new_xtile_lowering();
   struct Candidate {
     SmallVector<int64_t, 4> padded_tile_sizes;
     int64_t cost;
@@ -405,6 +455,13 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
   evaluated_candidates.reserve(candidates.size());
   for (const auto& tile_sizes : candidates) {
     auto padded_tile_sizes = xla::xtile::GetPaddedTileSizes(tile_sizes);
+    // For the new tiling lowering, we skip large tiles, because we tile to the
+    // vector level.
+    if (!block_level_parameters.has_value() && use_new_xtile_lowering &&
+        Product(padded_tile_sizes) > 512 &&
+        llvm::any_of(tile_sizes, [](int64_t size) { return size > 8; })) {
+      continue;
+    }
     int64_t cost =
         EvaluateSymbolicCost(symbolic_computation, padded_tile_sizes, operands);
     VLOG(2) << "Candidate: {" << absl::StrJoin(tile_sizes, ", ")
@@ -426,7 +483,7 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
     VLOG(2) << "Trying candidate " << i << ": {"
             << absl::StrJoin(candidate.padded_tile_sizes, ", ")
             << "} cost: " << candidate.cost;
-    ASSIGN_OR_RETURN(std::unique_ptr<ge::TilingSpace> winning_tiling_space,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<ge::TilingSpace> winning_tiling_space,
                      ge::TilingSpace::Create(*fusion_adaptor, &context));
     if (const absl::Status status =
             winning_tiling_space->AssignTileSizes(candidate.padded_tile_sizes);
@@ -463,7 +520,7 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitTiledFusionKernelImpl(
   }
   VLOG(2) << "num_parallel_tiles: " << num_parallel_tiles;
   VLOG(2) << "num_work_groups: " << num_work_groups;
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> module,
       xtile::EmitXTileModule(name, fusion, tiled_computation, context,
                              /*opaque_args_types=*/{},
@@ -486,10 +543,6 @@ bool IsSupportedTilingType(PrimitiveType type) {
     return false;
   }
 
-  if (primitive_util::IsComplexType(type)) {
-    return false;
-  }
-
   // Some f8 types are not supported by the emitter, just don't support any of
   // them for now.
   if (primitive_util::IsF8Type(type) || primitive_util::IsF6Type(type) ||
@@ -503,14 +556,23 @@ TiledEmissionResult EmitTiledFusionKernel(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, absl::string_view name,
     int64_t num_work_groups,
-    std::optional<gpu::BlockLevelParameters> block_level_parameters) {
+    std::optional<BlockLevelParameters> block_level_parameters) {
   VLOG(2) << "EmitTiledFusionKernel called for fusion: " << fusion.name();
-  auto supported_status = IsSupportedTiledFusion(fusion);
-  VLOG(2) << "  IsSupportedTiledFusion: " << supported_status;
-  if (!supported_status.ok()) {
-    return {absl::UnimplementedError(
-                "Fusion is not supported by the tiled CPU emitter."),
-            /*tiling_succeeded=*/false};
+  bool use_new_xtile_lowering = fusion.GetModule()
+                                    ->config()
+                                    .debug_options()
+                                    .xla_cpu_use_new_xtile_lowering();
+  // If the block level params are set, we assume that the caller has already
+  // verified that the fusion is supported by the tiled emitter.
+  if (!block_level_parameters.has_value()) {
+    auto supported_status =
+        IsSupportedTiledFusion(fusion, use_new_xtile_lowering);
+    VLOG(2) << "  IsSupportedTiledFusion: " << supported_status;
+    if (!supported_status.ok()) {
+      return {absl::UnimplementedError(
+                  "Fusion is not supported by the tiled CPU emitter."),
+              /*tiling_succeeded=*/false};
+    }
   }
   absl::StatusOr<ge::TiledHloComputation> tiled_computation =
       GetTiledHloComputation(context, fusion, block_level_parameters);

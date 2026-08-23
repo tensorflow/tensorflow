@@ -65,7 +65,9 @@ TEST(GpuTopologyTest, FromProto) {
       ->mutable_cuda_compute_capability()
       ->set_feature_extension(
           stream_executor::CudaComputeCapabilityProto::NONE);
-  gpu_topology_proto.mutable_gpu_target_config()->mutable_dnn_version_info();
+  gpu_topology_proto.mutable_gpu_target_config()
+      ->mutable_gpu_device_info()
+      ->set_dnn_version("9.0.0");
   gpu_topology_proto.mutable_gpu_target_config()->mutable_runtime_version();
   *gpu_topology_proto.mutable_host_target_machine_options() =
       xla::cpu::TargetMachineOptionsProto();

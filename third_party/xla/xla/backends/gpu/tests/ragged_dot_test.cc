@@ -28,7 +28,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using RaggedDotTest = HloInterpreterReferenceMixin<HloPjRtTestBase>;
+using RaggedDotTest = HloInterpreterReferenceMixin<HloTestBase>;
 
 TEST_F(RaggedDotTest, NonContracting) {
   const char* hlo_text = R"(

@@ -25,6 +25,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/status/status_matchers.h"
 #include "absl/time/time.h"
 #include "mlir/IR/MLIRContext.h"
 #include "google/protobuf/map.h"
@@ -45,8 +46,10 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
 using ::testing::ElementsAre;
 using ::testing::UnorderedElementsAre;
+
 namespace detail = cost_model_config_optimization_detail;
 
 class CostModelConfigOptimizationHloTest
@@ -363,6 +366,47 @@ TEST_F(CostModelConfigOptimizationHloTest, FilterRemovesInvalidConfigs) {
                               h100_device_info, debug_options, &mlir_context_));
 
   EXPECT_THAT(optimized, UnorderedElementsAre(valid_config));
+}
+
+TEST_F(CostModelConfigOptimizationHloTest,
+       SortConfigsWithCostModelSortsFastestFirst) {
+  const se::DeviceDescription h100_device_info =
+      TestGpuDeviceInfo::H100SXMDeviceInfo();
+
+  auto [module, dot] = GetHloModuleAndDot_F32_1024_1024_1024();
+
+  const TritonGemmConfig config_32(32, 32, 32, 1, 4, 1, false);
+  const TritonGemmConfig config_64(64, 64, 64, 1, 4, 1, false);
+  const TritonGemmConfig config_128(128, 128, 128, 1, 4, 1, false);
+
+  std::vector<TritonGemmConfig> configs = {config_32, config_64, config_128};
+
+  EXPECT_THAT(SortConfigsWithCostModel(dot, configs, h100_device_info,
+                                       module->config().debug_options(),
+                                       &mlir_context_),
+              // Larger tiles are known to be more optimal for this module.
+              IsOkAndHolds(ElementsAre(config_128, config_64, config_32)));
+}
+
+TEST_F(CostModelConfigOptimizationHloTest,
+       SortConfigsWithCostModelKeepsInvalidConfigsAtEnd) {
+  const se::DeviceDescription h100_device_info =
+      TestGpuDeviceInfo::H100SXMDeviceInfo();
+
+  auto [module, dot] = GetHloModuleAndDot_F32_1024_1024_1024();
+
+  TritonGemmConfig valid_config_1(32, 32, 32, 1, 4, 1, false);
+  TritonGemmConfig valid_config_2(128, 128, 128, 1, 4, 1, false);
+  TritonGemmConfig invalid_config(33, 33, 33, 1, 4, 1, false);
+
+  std::vector<TritonGemmConfig> configs = {valid_config_1, invalid_config,
+                                           valid_config_2};
+
+  EXPECT_THAT(SortConfigsWithCostModel(dot, configs, h100_device_info,
+                                       module->config().debug_options(),
+                                       &mlir_context_),
+              IsOkAndHolds(
+                  ElementsAre(valid_config_2, valid_config_1, invalid_config)));
 }
 
 }  // namespace

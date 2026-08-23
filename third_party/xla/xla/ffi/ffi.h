@@ -41,15 +41,16 @@ limitations under the License.
 #include "absl/base/optimization.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
+#include "xla/ffi/ffi_interop.h"
 #include "xla/ffi/type_registry.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/primitive_util.h"
@@ -76,6 +77,33 @@ struct CalledComputation {};  // binds `HloComputation*`
 // must be linked into the target process exactly once, or it is possible to
 // have multiple global static registries of FFI handlers and types.
 const XLA_FFI_Api* GetXlaFfiApi();
+
+//===----------------------------------------------------------------------===//
+// Error policy
+//===----------------------------------------------------------------------===//
+
+namespace internal {
+
+// Error policy for internal FFI handlers statically linked into XLA.
+struct ErrorPolicy {
+  using Status = absl::Status;
+
+  template <typename T>
+  using StatusOr = absl::StatusOr<T>;
+
+  static Status Ok() { return absl::OkStatus(); }
+
+  static Status FromErrorCode(XLA_FFI_Error_Code errc,
+                              absl::string_view message) {
+    return Status(static_cast<absl::StatusCode>(errc), message);
+  }
+
+  static Status TakeError(const XLA_FFI_Api*, XLA_FFI_Error* error) {
+    return xla::ffi::TakeError(error);
+  }
+};
+
+}  // namespace internal
 
 //===----------------------------------------------------------------------===//
 // Arguments
@@ -154,7 +182,7 @@ class AnyBuffer {
   }
 
  private:
-  friend struct match::internal::BufferCast;
+  friend struct internal::BufferCast;
 
   const XLA_FFI_Buffer* buf_;
 };
@@ -201,7 +229,7 @@ class Buffer {
   }
 
  private:
-  friend struct match::internal::BufferCast;
+  friend struct internal::BufferCast;
 
   const XLA_FFI_Buffer* buf_;
 };
@@ -273,7 +301,6 @@ TypeRegistry::TypeId GetTypeId(const XLA_FFI_Api* api) {
 // Buffer Matching
 //===----------------------------------------------------------------------===//
 
-namespace match {
 namespace internal {
 
 struct BufferCast {
@@ -296,6 +323,8 @@ struct ValuePrinter<PrimitiveType> {
 
 }  // namespace internal
 
+namespace match {
+
 // A buffer-matching pattern specialized to the internal `PrimitiveType` enum.
 template <typename DTypes = DTypeSet<PrimitiveType>, typename Ranks = RankSet<>>
 using BufferPattern = internal::BufferPatternBase<DTypes, Ranks>;
@@ -317,10 +346,7 @@ inline BufferPattern<> Buffer() { return {}; }
 template <typename BufferType, typename DTypes, typename Ranks>
 absl::Status Verify(absl::string_view name, BufferType buffer,
                     const match::BufferPattern<DTypes, Ranks>& pattern) {
-  if (auto error = internal::MatchBuffer(name, buffer, pattern)) {
-    return absl::InvalidArgumentError(std::move(*error));
-  }
-  return absl::OkStatus();
+  return internal::VerifyBuffer<internal::ErrorPolicy>(name, buffer, pattern);
 }
 
 // Matches an AnyBuffer and returns the concrete buffer type specified by a
@@ -330,23 +356,25 @@ absl::StatusOr<Buffer<dtype, rank>> Match(
     absl::string_view name, AnyBuffer buffer,
     const match::BufferPattern<match::DTypeSet<PrimitiveType, dtype>,
                                match::RankSet<rank>>& pattern) {
-  RETURN_IF_ERROR(Verify(name, buffer, pattern));
-  return match::internal::BufferCast::Cast<Buffer<dtype, rank>>(buffer);
+  return internal::MatchBuffer<internal::ErrorPolicy, Buffer<dtype, rank>>(
+      name, buffer, pattern, [](AnyBuffer buffer) {
+        return internal::BufferCast::Cast<Buffer<dtype, rank>>(buffer);
+      });
 }
 
 template <PrimitiveType dtype, size_t rank, typename DTypes, typename Ranks>
 absl::StatusOr<Buffer<dtype, rank>> Match(
     absl::string_view name, Buffer<dtype, rank> buffer,
     const match::BufferPattern<DTypes, Ranks>& pattern) {
-  RETURN_IF_ERROR(Verify(name, buffer, pattern));
-  return buffer;
+  return internal::MatchBuffer<internal::ErrorPolicy, Buffer<dtype, rank>>(
+      name, buffer, pattern, [](Buffer<dtype, rank> buffer) { return buffer; });
 }
 
 namespace internal {
 
 template <typename Buffer>
 absl::StatusOr<Result<Buffer>> WrapResult(absl::StatusOr<Buffer> buffer) {
-  ASSIGN_OR_RETURN(Buffer matched, std::move(buffer));
+  ABSL_ASSIGN_OR_RETURN(Buffer matched, std::move(buffer));
   return Result<Buffer>(std::move(matched));
 }
 
@@ -665,7 +693,7 @@ struct CtxDecoding<Context> {
 
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<Context> Decode(const XLA_FFI_Api* api,
-                                       XLA_FFI_ExecutionContext* ctx,
+                                       XLA_FFI_InvokeContext* ctx,
                                        DiagnosticEngine&) {
     return Context(api, ctx);
   }
@@ -681,7 +709,7 @@ namespace internal {
 // `func` and name for error reporting.
 template <typename T, typename F>
 static std::optional<T> DecodeInternalCtx(const XLA_FFI_Api* api,
-                                          XLA_FFI_ExecutionContext* ctx,
+                                          XLA_FFI_InvokeContext* ctx,
                                           DiagnosticEngine& diagnostic, F func,
                                           const char* name) {
   void* result = nullptr;
@@ -701,7 +729,7 @@ struct CtxDecoding<DeviceOrdinal> {
   using Type = int32_t;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
+                                    XLA_FFI_InvokeContext* ctx,
                                     DiagnosticEngine&) {
     return api->internal_api->XLA_FFI_INTERNAL_DeviceOrdinal_Get(ctx);
   }
@@ -712,7 +740,7 @@ struct CtxDecoding<CalledComputation> {
   using Type = const HloComputation*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
+                                    XLA_FFI_InvokeContext* ctx,
                                     DiagnosticEngine&) {
     void* ptr = api->internal_api->XLA_FFI_INTERNAL_CalledComputation_Get(ctx);
     return reinterpret_cast<Type>(ptr);
@@ -724,7 +752,7 @@ struct CtxDecoding<RunId> {
   using Type = RunId;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
+                                    XLA_FFI_InvokeContext* ctx,
                                     DiagnosticEngine& diagnostic) {
     return RunId{api->internal_api->XLA_FFI_INTERNAL_RunId_Get(ctx)};
   }
@@ -743,7 +771,7 @@ struct CtxDecoding<UserData<T>> {
   using Type = T*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
+                                    XLA_FFI_InvokeContext* ctx,
                                     DiagnosticEngine& diagnostic) {
     auto* execution_context = reinterpret_cast<const ExecutionContext*>(
         api->internal_api->XLA_FFI_INTERNAL_ExecutionContext_Get(ctx));
@@ -782,7 +810,7 @@ struct CtxDecoding<State<T, stage>> {
   using Type = T*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
+                                    XLA_FFI_InvokeContext* ctx,
                                     DiagnosticEngine& diagnostic) {
     auto* execution_state = reinterpret_cast<const ExecutionState*>(
         api->internal_api->XLA_FFI_INTERNAL_ExecutionState_Get(
@@ -811,7 +839,7 @@ struct CtxDecoding<State<T, stage>> {
 template <ExecutionStage stage>
 struct ResultEncoding<stage, absl::Status> {
   static XLA_FFI_Error* Encode(const XLA_FFI_Api* api,
-                               XLA_FFI_ExecutionContext* ctx,
+                               XLA_FFI_InvokeContext* ctx,
                                absl::Status status) {
     if (ABSL_PREDICT_TRUE(status.ok())) {
       return nullptr;
@@ -830,7 +858,7 @@ struct ResultEncoding<stage, absl::StatusOr<std::unique_ptr<T>>> {
   }
 
   static XLA_FFI_Error* Encode(const XLA_FFI_Api* api,
-                               XLA_FFI_ExecutionContext* ctx,
+                               XLA_FFI_InvokeContext* ctx,
                                absl::StatusOr<std::unique_ptr<T>> state) {
     if (ABSL_PREDICT_TRUE(state.ok())) {
       auto* execution_state = reinterpret_cast<ExecutionState*>(
@@ -855,7 +883,7 @@ struct ResultEncoding<stage, absl::StatusOr<std::unique_ptr<T>>> {
 template <ExecutionStage stage>
 struct ResultEncoding<stage, tsl::AsyncValueRef<tsl::Chain>> {
   static XLA_FFI_Future* Encode(const XLA_FFI_Api* api,
-                                XLA_FFI_ExecutionContext* ctx,
+                                XLA_FFI_InvokeContext* ctx,
                                 tsl::AsyncValueRef<tsl::Chain> async_value) {
     return api->internal_api->XLA_FFI_INTERNAL_Future_Forward(
         async_value.release());

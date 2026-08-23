@@ -885,5 +885,54 @@ ENTRY cluster {
   EXPECT_EQ(cc->raw_backend_config_string(), "{is_stable = false}");
 }
 
+TEST_F(TopkRewriterTest, RewriteNonZeroStartSlice) {
+  const std::string hlo_string = R"(
+HloModule module
+)" + getComparator() + R"(
+ENTRY cluster {
+  %arg_tuple.1 = f32[8,1234567] parameter(0)
+  %iota.4 = s32[8,1234567] iota(), iota_dimension=1
+  %sort.27 = (f32[8,1234567], s32[8,1234567]) sort(%arg_tuple.1, %iota.4),
+    dimensions={1}, is_stable=true, to_apply=%compare
+  %get-tuple-element.28 = f32[8,1234567] get-tuple-element(%sort.27), index=0
+  %slice.29 = f32[8,1] slice(%get-tuple-element.28), slice={[0:8], [4:5]}
+  %get-tuple-element.30 = s32[8,1234567] get-tuple-element(%sort.27), index=1
+  %slice.31 = s32[8,1] slice(%get-tuple-element.30), slice={[0:8], [4:5]}
+  ROOT %tuple.32 = (f32[8,1], s32[8,1]) tuple(%slice.29, %slice.31)
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  EXPECT_TRUE(changed);
+  const HloInstruction* cc = module->entry_computation()
+                                 ->root_instruction()
+                                 ->operand(0)
+                                 ->operand(0)
+                                 ->operand(0);
+  EXPECT_EQ(cc->custom_call_target(), "TopK");
+}
+
+TEST_F(TopkRewriterTest, NoRewriteStridedNonZeroStartSlice) {
+  const std::string hlo_string = R"(
+HloModule module
+%compare {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %cmp = pred[] compare(%p0, %p1), direction=GT
+}
+ENTRY cluster {
+  %arg.1 = f32[8,1234567] parameter(0)
+  %sort.2 = f32[8,1234567] sort(%arg.1), dimensions={1}, is_stable=true, to_apply=%compare
+  ROOT %slice.3 = f32[8,4] slice(%sort.2), slice={[0:8:1], [2:10:2]}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
 }  // namespace
 }  // namespace xla

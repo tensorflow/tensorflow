@@ -310,12 +310,10 @@ At this moment the list of co-maintainers from our partner teams is:
 
 ![img](./images/comaintainers.png)
 
-| Percentile | Target for **t<sub>Google Review</sub>** |
+| Percentile | Target for **t<sub>Google Review</sub>** (co-maintainer approval to PR merged) |
 | --- | --- |
-| 50 percentile | 3 business days |
-| 80 percentile | 4 business days |
-| 90 percentile | 5 business days |
-| 95 percentile | 6 business days |
+| 50 percentile of PRs | 3 business days |
+| 80 percentile of PRs | 5 business days |
 
 When Google reviews the PR, it may fail due to an internal test. In this case,
 Google will try to generate a reproducer and share it with the partner. In other

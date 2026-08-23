@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu::experimental {
 namespace {
@@ -120,7 +121,7 @@ absl::StatusOr<Tile> CreateTile(absl::Span<const int64_t> sizes,
 absl::StatusOr<Tile> RunPropagation(const HloInstruction& reshape,
                                     const Tile& input_tile,
                                     TilingSpace& tiling_space) {
-  ASSIGN_OR_RETURN(Tiles output_tiles,
+  ABSL_ASSIGN_OR_RETURN(Tiles output_tiles,
                    PropagateTileToOutput(tiling_space, reshape, input_tile, 0));
   TF_RET_CHECK(output_tiles.size() == 1)
       << "Expected exactly one output tile, got " << output_tiles.size();

@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/IR/Attributes.h"
@@ -167,7 +167,7 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitPadHostKernel(
     const HloInstruction* pad) {
   VLOG(2) << "Emit Pad host kernel.";
 
-  ASSIGN_OR_RETURN(KernelPrototype kernel_prototype, EmitKernelPrototype(pad));
+  ABSL_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype, EmitKernelPrototype(pad));
 
   llvm_ir::IrArray operand_array = kernel_prototype.arguments[0];
   llvm_ir::IrArray padvalue_array = kernel_prototype.arguments[1];
@@ -178,11 +178,9 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitPadHostKernel(
   auto builder_overwrite = nested_ir_emitter_->WithBuilder(b);
 
   nested_ir_emitter_->PushComputeFunction(
-      &b, module_,
-      /*num_dynamic_loop_bounds=*/0, kernel_prototype.function,
-      /*dynamic_loop_bounds_arg=*/nullptr, kernel_prototype.return_block);
+      &b, module_, kernel_prototype.function, kernel_prototype.return_block);
 
-  RETURN_IF_ERROR(nested_ir_emitter_->HandlePad(
+  ABSL_RETURN_IF_ERROR(nested_ir_emitter_->HandlePad(
       const_cast<HloInstruction*>(pad), operand_array, padvalue_array,
       output_array));
 
@@ -206,7 +204,7 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
                     fusion->ToString());
   }
 
-  ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
+  ABSL_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
                    EmitKernelPrototype(fusion));
 
   llvm::IRBuilder<> b(module_->getContext());
@@ -215,7 +213,7 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
   IrEmitter::IRBuilderGuard builder_guard = nested_ir_emitter_->WithBuilder(b);
 
   HloComputation* nested_computation = fusion->fused_instructions_computation();
-  RETURN_IF_ERROR(nested_ir_emitter_
+  ABSL_RETURN_IF_ERROR(nested_ir_emitter_
                       ->EmitNestedComputation(*nested_computation,
                                               llvm_ir::IrName(fusion), false)
                       .status());
@@ -231,11 +229,11 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
   }
 
   // Emit plain elemental loops for the fusion operation.
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto element_generator,
       fused_emitter.GetGenerator(*fusion->fused_expression_root()));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       se::ThreadDim thread_dims,
       EmitElementalLoops(b, fusion, kernel_prototype, element_generator));
 
@@ -291,7 +289,7 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitDotFusionHostKernel(
   int64_t dot_rhs_pnum = dot->operand(1)->parameter_number();
   int64_t addend_pnum = add->operand(addend_op_index)->parameter_number();
 
-  ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
+  ABSL_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
                    EmitKernelPrototype(fusion));
 
   llvm::IRBuilder<> b(module_->getContext());
@@ -302,7 +300,7 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitDotFusionHostKernel(
   llvm_ir::IrArray addend_array = kernel_prototype.arguments[addend_pnum];
   llvm_ir::IrArray target_array = kernel_prototype.results[0];
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       DotOpWorkGroupDim num_workgroups,
       EmitDotOperation(
           *dot, target_array, lhs_array, rhs_array, &addend_array,
@@ -320,7 +318,7 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitSliceToDynamicHostKernel(
     const HloInstruction* instr) {
   VLOG(2) << "Emit slice-to-dynamic host kernel: " << instr->name();
 
-  ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
+  ABSL_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
                    EmitKernelPrototype(instr));
   llvm::IRBuilder<> ir_builder(module_->getContext());
   ir_builder.SetInsertPoint(
@@ -328,7 +326,7 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitSliceToDynamicHostKernel(
 
   llvm_ir::IrArray output_array = kernel_prototype.results[0];
   auto guard = nested_ir_emitter_->WithBuilder(ir_builder);
-  RETURN_IF_ERROR(nested_ir_emitter_->EmitSliceToDynamic(
+  ABSL_RETURN_IF_ERROR(nested_ir_emitter_->EmitSliceToDynamic(
       instr, kernel_prototype.arguments, output_array));
   return kernels_.emplace_back(
       KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
@@ -341,7 +339,7 @@ absl::StatusOr<IrEmitter2::ComparatorInfo> IrEmitter2::EmitSortComparator(
   if (hlo_module_.config()
           .debug_options()
           .xla_cpu_generate_unique_c_style_kernel_entry_points()) {
-    ASSIGN_OR_RETURN(comparator_name,
+    ABSL_ASSIGN_OR_RETURN(comparator_name,
                      ConvertToCName(absl::StrCat(comparator->parent()->name(),
                                                  "_", comparator->name())));
   }
@@ -358,7 +356,7 @@ absl::StatusOr<IrEmitter2::ComparatorInfo> IrEmitter2::EmitSortComparator(
 
   // Emit LLVM IR for comparator function. We emit it as a top-level computation
   // to set external linkage and to get a pointer to compiled function later.
-  ASSIGN_OR_RETURN(llvm::Function * comparator_function,
+  ABSL_ASSIGN_OR_RETURN(llvm::Function * comparator_function,
                    nested_ir_emitter_->EmitComputation(
                        comparator, comparator_name,
                        /*is_top_level_computation=*/true, schedule,
@@ -489,7 +487,7 @@ absl::StatusOr<se::ThreadDim> IrEmitter2::EmitElementalLoops(
 
   // TODO(ezhulenev): Support multiple results for parallel loops.
   if (multiple_results) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         llvm_ir::LoopEmitter(element_generator, kernel_prototype.results, &b)
             .EmitLoop(llvm_ir::IrName(instr)));
     return se::ThreadDim();
@@ -502,7 +500,7 @@ absl::StatusOr<se::ThreadDim> IrEmitter2::EmitElementalLoops(
   if (has_parallel_config) {
     ParallelPartitionBounds parallel_bounds = EmitParallelPartitionBounds(
         b, kernel_prototype, *parallel_config, instr->shape(), instr->name());
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         ParallelLoopEmitter(element_generator, result, &parallel_bounds, &b)
             .EmitLoop(llvm_ir::IrName(instr)));
     return se::ThreadDim(ShapePartitionAssigner::GetTotalPartitionCount(
@@ -510,7 +508,7 @@ absl::StatusOr<se::ThreadDim> IrEmitter2::EmitElementalLoops(
   }
 
   // Emit a whole loop for the instruction.
-  RETURN_IF_ERROR(llvm_ir::LoopEmitter(element_generator, result, &b)
+  ABSL_RETURN_IF_ERROR(llvm_ir::LoopEmitter(element_generator, result, &b)
                       .EmitLoop(llvm_ir::IrName(instr)));
   return se::ThreadDim();
 }

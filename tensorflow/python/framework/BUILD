@@ -362,6 +362,7 @@ py_library(
         "constant_op.py",
         "constant_tensor_conversion.py",
     ],
+    lazy_imports = True,
     strict_deps = True,
     visibility = visibility + [
         "//tensorflow:internal",
@@ -425,6 +426,7 @@ tf_python_pybind_extension(
 py_library(
     name = "dtypes",
     srcs = ["dtypes.py"],
+    lazy_imports = True,
     strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = visibility + [
@@ -1129,6 +1131,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
     alwayslink = 1,
@@ -1424,6 +1427,7 @@ pytype_strict_library(
 py_library(
     name = "tensor_conversion_registry",
     srcs = ["tensor_conversion_registry.py"],
+    lazy_imports = True,
     strict_deps = True,
     # TODO(b/266747022): remove extra visibility
     visibility = visibility + ["//learning/brain/experimental:__subpackages__"],

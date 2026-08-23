@@ -107,19 +107,31 @@ CustomCallOp dynCastX64CombineCustomCall(Operation* op) {
   return customCallOp;
 }
 
+CustomCallOp getX64CombineUser(Operation* op) {
+  for (Operation* user : op->getUsers()) {
+    if (auto combineOp = dynCastX64CombineCustomCall(user)) {
+      return combineOp;
+    }
+  }
+  return nullptr;
+}
+
 CustomCallOp getX64CombineOnFuncResultSharding(
     CustomCallOp funcResultSharding) {
-  if (funcResultSharding.getNumResults() != 2 ||
-      !funcResultSharding.getResult(0).hasOneUse() ||
-      !funcResultSharding.getResult(1).hasOneUse()) {
-    return nullptr;
+  if (auto combineOp = getX64CombineUser(funcResultSharding)) {
+    return combineOp;
   }
-  Operation* lhsUser = *funcResultSharding.getResult(0).user_begin();
-  Operation* rhsUser = *funcResultSharding.getResult(1).user_begin();
-  if (lhsUser != rhsUser) {
-    return nullptr;
+  for (Operation* user : funcResultSharding->getUsers()) {
+    auto tupleOp = mlir::dyn_cast<stablehlo::TupleOp>(user);
+    if (!tupleOp) continue;
+    for (Operation* gteOp : tupleOp->getUsers()) {
+      if (!mlir::isa<stablehlo::GetTupleElementOp>(gteOp)) continue;
+      if (auto combineOp = getX64CombineUser(gteOp)) {
+        return combineOp;
+      }
+    }
   }
-  return dynCastX64CombineCustomCall(lhsUser);
+  return nullptr;
 }
 
 // TODO(kostiantynl): b/448858211 when API is fixed, use
@@ -149,15 +161,12 @@ bool handleFuncResultSharding(
 
   auto resultUses = funcResultSharding->getUses();
   bool anyChanged = false;
-  auto x64CombineOp = getX64CombineOnFuncResultSharding(funcResultSharding);
-  if (x64CombineOp) {
-    // X64Rewriter pass will pass through the two split 32-bit operands to
-    // the `xla.sdy.FuncResultSharding`, which will return two 32-bit results,
-    // that would then be passed to a `X64Combine` custom-call. Therefore, we
-    // need to look at the uses of the `X64Combine` instead to find the
-    // corresponding `func.return` op.
-    mlir::sdy::setShardings(x64CombineOp, shardingPerValueAttr);
-    resultUses = x64CombineOp->getUses();
+  if (CustomCallOp combineOp =
+          getX64CombineOnFuncResultSharding(funcResultSharding)) {
+    resultUses = combineOp->getUses();
+    if (!combineOp->hasAttr(kShardingAttr)) {
+      combineOp->setAttr(kShardingAttr, shardingPerValueAttr);
+    }
   } else if (auto* defOp = funcResultSharding.getOperand(0).getDefiningOp();
              defOp && funcResultSharding->use_empty()) {
     // It `funcResultSharding` has no uses, it is likely because it has a
@@ -180,7 +189,7 @@ bool handleFuncResultSharding(
       hasNonFuncReturnUses = true;
     }
   }
-  if (hasNonFuncReturnUses && !x64CombineOp) {
+  if (hasNonFuncReturnUses) {
     // If there are users that are not the func return op, which might happen
     // due to inlined func ops that originally had result shardings, we replace
     // the `xla.sdy.FuncResultSharding` with a `ShardingConstraintOp` to
@@ -198,12 +207,15 @@ bool handleFuncResultSharding(
 }
 
 // The sharding information is in the `kXlaShardingAttr` attribute.
-void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
+void convertShardyAttrsWithHloShardingV3(FuncOp funcOp,
+                                         mlir::sdy::MeshOp globalMeshOp) {
   for (auto [argNum, argType] : llvm::enumerate(funcOp.getArgumentTypes())) {
     if (auto oldSharding =
             funcOp.getArgAttrOfType<StringAttr>(argNum, kXlaShardingAttr)) {
-      if (auto sdySharding = convertToSdyShardingAttr(
-              parseShardingFromString(oldSharding), funcOp.getContext())) {
+      if (auto sdySharding =
+              convertToSdyShardingAttr(parseShardingFromString(oldSharding),
+                                       mlir::sdy::getTensorRank(argType),
+                                       globalMeshOp, funcOp.getContext())) {
         funcOp.setArgAttr(argNum, kShardingAttr, sdySharding);
       }
     }
@@ -214,7 +226,9 @@ void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
     if (auto oldSharding =
             funcOp.getResultAttrOfType<StringAttr>(resNum, kXlaShardingAttr)) {
       if (auto sdySharding = convertToSdyShardingAttr(
-              parseShardingFromString(oldSharding), funcOp.getContext())) {
+              parseShardingFromString(oldSharding),
+              mlir::sdy::getTensorRank(funcOp.getResultTypes()[resNum]),
+              globalMeshOp, funcOp.getContext())) {
         funcOp.setResultAttr(resNum, kShardingAttr, sdySharding);
       }
     }
@@ -251,6 +265,7 @@ void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
             op)) {
       op->setAttr(kShardingAttr,
                   convertToSdySharding(parseShardingFromString(shardingAttr),
+                                       op->getResultTypes(), globalMeshOp,
                                        op->getContext()));
     } else if (auto customCallOp = mlir::dyn_cast<CustomCallOp>(op)) {
       StringRef targetName = customCallOp.getCallTargetName();
@@ -260,6 +275,7 @@ void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
         customCallOp->setAttr(
             kShardingAttr,
             convertToSdySharding(parseShardingFromString(shardingAttr),
+                                 customCallOp->getResultTypes(), globalMeshOp,
                                  customCallOp->getContext()));
       }
     }
@@ -401,9 +417,10 @@ void convertShardyAttrsWithoutHloShardingV3(FuncOp funcOp,
 // This should happen after the meshes were created from the `ModuleOp` attrs
 // (see `SdyRoundTripImportShardyAttrsPass`).
 void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter,
-                        bool enableHloShardingV3) {
+                        bool enableHloShardingV3,
+                        mlir::sdy::MeshOp globalMeshOp) {
   if (enableHloShardingV3) {
-    convertShardyAttrsWithHloShardingV3(funcOp);
+    convertShardyAttrsWithHloShardingV3(funcOp, globalMeshOp);
   } else {
     convertShardyAttrsWithoutHloShardingV3(funcOp, rewriter);
   }
@@ -584,22 +601,20 @@ class SdyRoundTripImportShardyAttrsPass
     // sharding. If there is no `kMeshesRoundTripAttr, there were no meshes in
     // the original Shardy model.
 
-    if (!enableHloShardingV3) {
-      // Insert the meshes before any functions.
-      rewriter.setInsertionPointToStart(moduleOp.getBody());
-      std::optional<DictionaryAttr> meshesAttr =
-          tryGetFrontendAttr<DictionaryAttr>(moduleOp, kMeshesRoundTripAttr);
-      mlir::ArrayRef<NamedAttribute> sdyMeshes =
-          meshesAttr.has_value() ? meshesAttr->getValue()
-                                 : mlir::ArrayRef<NamedAttribute>();
+    // Insert the meshes before any functions.
+    rewriter.setInsertionPointToStart(moduleOp.getBody());
+    std::optional<DictionaryAttr> meshesAttr =
+        tryGetFrontendAttr<DictionaryAttr>(moduleOp, kMeshesRoundTripAttr);
+    mlir::ArrayRef<NamedAttribute> sdyMeshes =
+        meshesAttr.has_value() ? meshesAttr->getValue()
+                               : mlir::ArrayRef<NamedAttribute>();
 
-      for (NamedAttribute mesh : sdyMeshes) {
-        auto meshAttr = mlir::cast<MeshAttr>(mesh.getValue());
-        symbolTable.insert(mlir::sdy::MeshOp::create(
-            rewriter, moduleOp.getLoc(), mesh.getName(), meshAttr));
-      }
-      removeFrontendAttribute(moduleOp, kMeshesRoundTripAttr);
+    for (NamedAttribute mesh : sdyMeshes) {
+      auto meshAttr = mlir::cast<MeshAttr>(mesh.getValue());
+      symbolTable.insert(mlir::sdy::MeshOp::create(rewriter, moduleOp.getLoc(),
+                                                   mesh.getName(), meshAttr));
     }
+    removeFrontendAttribute(moduleOp, kMeshesRoundTripAttr);
 
     // TODO (b/485486745): Remove kInTupleShardings and kOutTupleShardings
     // frontend attributes added directly at tf2xla level
@@ -625,8 +640,14 @@ class SdyRoundTripImportShardyAttrsPass
       }
     }
 
+    mlir::sdy::MeshOp globalMeshOp = nullptr;
+    auto meshOps = moduleOp.getOps<mlir::sdy::MeshOp>();
+    if (meshOps.begin() != meshOps.end()) {
+      globalMeshOp = *meshOps.begin();
+    }
+
     for (auto funcOp : moduleOp.getOps<FuncOp>()) {
-      convertShardyAttrs(funcOp, rewriter, enableHloShardingV3);
+      convertShardyAttrs(funcOp, rewriter, enableHloShardingV3, globalMeshOp);
     }
 
     llvm::DenseSet<FuncOp> modifiedCallees;

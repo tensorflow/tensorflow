@@ -29,10 +29,10 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
-#include "xla/codegen/tiling/experimental/tiling_space_utils.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_dot_fusion_cost_model.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
@@ -60,6 +59,7 @@ namespace gpu {
 namespace {
 
 using ::testing::ElementsAre;
+using ::xla::xtile::BlockLevelParameters;
 
 class GpuIndexingPerformanceModelTest
     : public HloHardwareIndependentTestBase,
@@ -77,8 +77,12 @@ class GpuIndexingPerformanceModelTest
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
   HloFusionAnalysisCache fusion_analysis_cache_{device_info_};
   GpuPerformanceModelWithIndexingAnalysis indexing_cost_model_{
-      &device_info_, &fusion_analysis_cache_, HloCostAnalysis::DefaultShapeSize,
-      &mlir_context_, use_experimental_tiling()};
+      &device_info_,
+      &fusion_analysis_cache_,
+      HloCostAnalysis::DefaultShapeSize,
+      &mlir_context_,
+      use_experimental_tiling(),
+      /*enable_same_shape_multi_output_fusion=*/false};
 
   size_t WarpSize() const { return ::xla::gpu::WarpSize(device_info_); }
 
@@ -272,9 +276,11 @@ ENTRY e {
       indexing_cost_model_.EstimateRunTimeForTriton(root, nullptr));
 
   const int64_t approx_total_bytes = 2 /*BF16*/ * (4096 + 4 * 2) * 4096;
+  const float approx_hbm_bandwidth =
+      gpu_dot_fusion_cost_model::detail::GetEffectiveHbmBandwidth(
+          approx_total_bytes, device_info_);
   const absl::Duration approx_hbm_time =
-      absl::Seconds(1.0f * approx_total_bytes /
-                    device_info_.memory_bandwidth()) +
+      absl::Seconds(1.0f * approx_total_bytes / approx_hbm_bandwidth) +
       gpu_dot_fusion_cost_model::detail::kLoopLatencyTax;
 
   // For pipelined loops, execution time is bounded by the dominant cost (memory
@@ -551,8 +557,15 @@ ENTRY main {
   EXPECT_EQ(tiled_runtime_data.block_level_parameters.output_tile_sizes.size(),
             1);
 
-  EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[0],
-              ElementsAre(4, 911));
+  // Experimental tiling uses padded tile sizes, while the symbolic tiling does
+  // not.
+  if (use_experimental_tiling()) {
+    EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[0],
+                ElementsAre(4, 1024));
+  } else {
+    EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[0],
+                ElementsAre(4, 911));
+  }
   EXPECT_EQ(tiled_runtime_data.block_level_parameters.num_warps, 4);
 
   EXPECT_EQ(tiled_runtime_data.runtime_data.bytes_read, kExpectedBytesRead);
@@ -944,7 +957,8 @@ ENTRY main {
         std::unique_ptr<experimental::TilingSpace> tiling_space,
         experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_));
 
-    EXPECT_OK(tiling_space->AssignTileSizes(output_tile_sizes));
+    EXPECT_OK(tiling_space->AssignTileSizes(
+        xla::xtile::GetPaddedTileSizes(output_tile_sizes)));
 
     ASSERT_OK_AND_ASSIGN(
         experimental::TiledHloComputation tiled_hlo_computation,

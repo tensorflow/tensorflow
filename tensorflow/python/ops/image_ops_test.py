@@ -4831,6 +4831,18 @@ class PngTest(test_util.TensorFlowTestCase):
         image = constant_op.constant(np.zeros(shape, dtype=np.uint8))
         image_ops.encode_png(image)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testRawOpsEmptyImage(self):
+    # Verifies that gen_image_ops.encode_png (tf.raw_ops.EncodePng) raises
+    # InvalidArgumentError on zero spatial dimensions rather than aborting with
+    # SIGABRT from CHECK_NOTNULL(image). See GitHub issue #113068.
+    for shape in [(0, 0, 1), (2, 0, 3), (0, 2, 3), (5, 0, 10, 3)]:
+      with self.assertRaisesRegex(
+          (errors.InvalidArgumentError, ValueError), "must be > 0"
+      ):
+        image = constant_op.constant(np.zeros(shape, dtype=np.uint8))
+        self.evaluate(gen_image_ops.encode_png(image))
+
   def testShape(self):
     # Shape function requires placeholders and a graph.
     with ops.Graph().as_default():

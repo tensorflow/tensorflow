@@ -29,6 +29,7 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
 
 * `BatchFunction Operator`
     * Adds the `num_warmup_batch_threads` op attribute to support a separate thread pool for processing warmup requests.
+    * Adds the `per_criticality_batch_timeout_micros` op attribute to support different batch timeouts for different criticality levels.
 * `TensorFlow API`
     * Exports `__new__` in public API golden files for subclasses of `tuple` (like `tf.io.FixedLenFeature`) to fix false positives during static type checking.>
 * `tf.data`
@@ -41,6 +42,21 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
         arithmetic; combining integer inputs with floating-point tolerances
         (including the defaults) now raises an error unless automatic type
         promotion is enabled, which keeps the cost of promotion opt-in.
+
+*   oneDNN (MKL) convolution and transpose kernels
+
+    *   Raises `InvalidArgumentError` instead of aborting the process for a
+        rank-mismatched `Conv3DBackpropFilterV2` input and for
+        `ConjugateTranspose` on a scalar. Fixes
+        [#118340](https://github.com/tensorflow/tensorflow/issues/118340) and
+        [#118345](https://github.com/tensorflow/tensorflow/issues/118345).
+
+*   `tf.image.non_max_suppression`
+
+    *   Fixes a segmentation fault under `jit_compile=True` when `boxes` and
+        `scores` are empty. The XLA lowering now returns an empty selection,
+        matching the non-XLA kernels. Fixes
+        [#117245](https://github.com/tensorflow/tensorflow/issues/117245).
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>

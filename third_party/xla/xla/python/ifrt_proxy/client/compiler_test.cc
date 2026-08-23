@@ -27,14 +27,13 @@
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "google/protobuf/text_format.h"
 #include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
@@ -61,13 +60,13 @@ using ::testing::Optional;
 using ::testing::Return;
 using ::tsl::protobuf::TextFormat;
 
-struct TestProgram : llvm::RTTIExtends<TestProgram, Program> {
+struct TestProgram : RTTIExtends<TestProgram, Program> {
   static char ID;  // NOLINT
 };
 
 [[maybe_unused]] char TestProgram::ID = 0;  // NOLINT
 
-class TestProgramSerDes : public llvm::RTTIExtends<TestProgramSerDes, SerDes> {
+class TestProgramSerDes : public RTTIExtends<TestProgramSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::proxy::TestProgram";
@@ -76,7 +75,7 @@ class TestProgramSerDes : public llvm::RTTIExtends<TestProgramSerDes, SerDes> {
   absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions>) override {
-    CHECK(llvm::isa<TestProgram>(serializable));
+    CHECK(isa<TestProgram>(serializable));
     return absl::Cord();
   }
 
@@ -91,15 +90,14 @@ class TestProgramSerDes : public llvm::RTTIExtends<TestProgramSerDes, SerDes> {
 
 [[maybe_unused]] char TestProgramSerDes::ID = 0;  // NOLINT
 
-struct TestCompileOptions
-    : llvm::RTTIExtends<TestCompileOptions, CompileOptions> {
+struct TestCompileOptions : RTTIExtends<TestCompileOptions, CompileOptions> {
   static char ID;  // NOLINT
 };
 
 [[maybe_unused]] char TestCompileOptions::ID = 0;  // NOLINT
 
 class TestCompileOptionsSerDes
-    : public llvm::RTTIExtends<TestCompileOptionsSerDes, SerDes> {
+    : public RTTIExtends<TestCompileOptionsSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::proxy::TestCompileOptions";
@@ -108,7 +106,7 @@ class TestCompileOptionsSerDes
   absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions>) override {
-    CHECK(llvm::isa<TestCompileOptions>(serializable));
+    CHECK(isa<TestCompileOptions>(serializable));
     return absl::Cord();
   }
 
