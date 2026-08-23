@@ -76,6 +76,10 @@ inline const char* TpuName() {
   static constexpr char kTpuName[] = "tpu";
   return kTpuName;
 }
+inline const char* InterpreterName() {
+  static constexpr char kInterpreterName[] = "interpreter";
+  return kInterpreterName;
+}
 inline PjRtPlatformId CpuId() {
   static const PjRtPlatformId kCpuId = tsl::Fingerprint64(CpuName());
   return kCpuId;
@@ -100,6 +104,11 @@ inline PjRtPlatformId SyclId() { return OneapiId(); }
 inline PjRtPlatformId TpuId() {
   static const PjRtPlatformId kTpuId = tsl::Fingerprint64(TpuName());
   return kTpuId;
+}
+inline PjRtPlatformId InterpreterId() {
+  static const PjRtPlatformId kInterpreterId =
+      tsl::Fingerprint64(InterpreterName());
+  return kInterpreterId;
 }
 
 class PjRtCompiler;
@@ -478,6 +487,11 @@ inline bool IsCpuId(PjRtPlatformId platform_id) {
   return platform_id == xla::CpuId();
 }
 
+// Returns true if it's Interpreter id.
+inline bool IsInterpreterId(PjRtPlatformId platform_id) {
+  return platform_id == xla::InterpreterId();
+}
+
 class PjRtPhaseCompiler;
 
 // Abstract interface that all registered compilers must implement.
@@ -564,8 +578,13 @@ struct CompilationPhaseFunctions {
   // `PjRtTopologyDescription` describing the target hardware. It transforms the
   // input programs based on the phase's logic and returns a vector of
   // `PjRtPartialProgramProto` or an error status if compilation fails.
+  //
+  // The inputs are taken as rvalue-ref to allow the `compiler` function to
+  // clear the inputs to reclaim memory. Typically, these inputs are
+  // transformed into a typed object and then no longer needed in their
+  // PjRtPartialProgramProto form.
   std::function<absl::StatusOr<std::vector<PjRtPartialProgramProto>>(
-      CompileOptions, const std::vector<PjRtPartialProgramProto>&,
+      CompileOptions, std::vector<PjRtPartialProgramProto>&&,
       const PjRtTopologyDescription&)>
       compiler;
 
@@ -601,7 +620,7 @@ class PjRtPhaseCompiler : public PjRtCompiler {
   // or an error status if any validation or compilation step fails.
   virtual absl::StatusOr<std::vector<PjRtPartialProgramProto>> RunPhases(
       CompileOptions options,
-      const std::vector<PjRtPartialProgramProto>& input_programs,
+      std::vector<PjRtPartialProgramProto>&& input_programs,
       const PjRtTopologyDescription& topology,
       const std::vector<std::string>& phases_to_run);
 

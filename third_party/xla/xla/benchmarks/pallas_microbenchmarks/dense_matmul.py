@@ -20,6 +20,7 @@ from absl import logging
 from jax.experimental.pallas import tpu as pltpu
 import jax.numpy as jnp
 
+from xla.benchmarks.core import flag_utils
 from xla.benchmarks.core import platform_info
 from xla.benchmarks.pallas_microbenchmarks import cost_model as pallas_cost_model
 from xla.benchmarks.pallas_microbenchmarks import dense_matmul_lib
@@ -40,6 +41,11 @@ _MEM = flags.DEFINE_list(
     ["0", "0", "0"],
     "comma-separated list of memory space IDs (ex: 0,0,3). "
     "0 is HBM, 3 is CMEM, 1 is VMEM, 2 is Sync flag.",
+)
+_SUBBLOCK_M = flags.DEFINE_integer(
+    "subblock_m",
+    None,
+    "Subblock size in the m dimension on which the matmuls are emitted.",
 )
 _WINDOW = flags.DEFINE_list(
     "window",
@@ -133,18 +139,34 @@ def main(_):
   lhs_mem = mem_spaces[lhs_mem]
   rhs_mem = mem_spaces[rhs_mem]
   out_mem = mem_spaces[out_mem]
+
+  subblock_m = _SUBBLOCK_M.value
+  if subblock_m is None:
+    # Choose a subblock size that utilizes all accumulators.
+    pinfo = platform_info.get_platform_info()
+    num_accumulators = pinfo.num_accumulators
+    if num_accumulators > 0:
+      # Each accumulator can hold `num_sublanes` rows of results.
+      num_sublanes, _ = pinfo.vreg_size
+      subblock_m = num_sublanes * num_accumulators
+      logging.info("Using subblock_m size: %s", subblock_m)
+
   internal_scratch_in_bytes = (
       platform_info.get_default_internal_scratch_bytes()
   )
   if _WINDOW.value is None:
-    vmem_limit_kib = FLAGS.xla_tpu_scoped_vmem_limit_kib
+    vmem_limit_kib = flag_utils.get_flag_value(
+        "xla_tpu_scoped_vmem_limit_kib", default=-1, flag_type=int
+    )
     if vmem_limit_kib == -1:
       vmem_limit_kib = platform_info.get_default_vmem_limit_kib()
     vmem_limit_bytes = vmem_limit_kib * 1024 - internal_scratch_in_bytes
 
-    p_state = FLAGS.xla_tpu_dvfs_p_state
+    p_state = flag_utils.get_flag_value(
+        "xla_tpu_dvfs_p_state", default=None, flag_type=int
+    )
     if p_state == -1:
-      # Cost mode will use the default P-state for the platform.
+      # Cost model will use the default P-state for the platform.
       p_state = None
     block_m, block_k, block_n = pallas_cost_model.CostModel(
         m,
@@ -157,6 +179,7 @@ def main(_):
         rhs_dtype,
         out_dtype,
         acc_dtype,
+        subblock_m=subblock_m,
     ).select_window(
         vmem_limit_bytes,
         p_state,
@@ -201,6 +224,7 @@ def main(_):
       rhs_dtype=rhs_dtype,
       out_dtype=out_dtype,
       acc_dtype=acc_dtype,
+      subblock_m=subblock_m,
   )
   bm = dense_matmul_lib.DenseMatmulBenchmark(
       cfg,

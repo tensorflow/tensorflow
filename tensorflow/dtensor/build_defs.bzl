@@ -71,7 +71,7 @@ def _get_configurations(
             dict(
                 suffix = GPU_2DEVS_BACKEND,
                 backend = GPU_2DEVS_BACKEND,
-                tags = ["requires-gpu:2", "gpu"],
+                tags = ["requires-gpu:2", "gpu", "manual"],
                 flags = [],
                 env = {
                 },

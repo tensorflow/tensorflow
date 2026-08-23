@@ -103,16 +103,38 @@ namespace xla {
 namespace memory_space_assignment {
 namespace {
 
+bool IsSliceLikeInstruction(const HloInstruction* instruction) {
+  return instruction->opcode() == HloOpcode::kSlice ||
+         instruction->opcode() == HloOpcode::kDynamicSlice;
+}
+
+// Returns true if the instruction is a trivial instruction.
+bool IsTrivialInstruction(const HloInstruction* inst) {
+  return inst->opcode() == HloOpcode::kGetTupleElement ||
+         inst->opcode() == HloOpcode::kTuple ||
+         inst->opcode() == HloOpcode::kBitcast;
+}
+
+// Returns true if the position is a trivial position.
 bool IsTrivialPosition(HloPosition position) {
-  return position.instruction->opcode() == HloOpcode::kGetTupleElement ||
-         position.instruction->opcode() == HloOpcode::kTuple ||
-         position.instruction->opcode() == HloOpcode::kBitcast;
+  return IsTrivialInstruction(position.instruction);
+}
+
+// All trivial uses that are non root do not require a separate allocation.
+// - They are are no ops, freely movable and we can even discard them and add
+//   them back later.
+// - We do not need to extend the allocation for these uses, so we can just skip
+//   them.
+// If they are a root instruction we need to extend the allocation till the root
+// instruction so the uses outside the computation can use it.
+// Returns true if the use is a trivial but non-root instruction.
+bool IsUseTrivialNonRoot(HloUse use) {
+  return IsTrivialInstruction(use.instruction) &&
+         use.instruction != use.instruction->parent()->root_instruction();
 }
 
 HloPosition GetNonTrivialSourcePosition(HloPosition position) {
-  while (position.instruction->opcode() == HloOpcode::kGetTupleElement ||
-         position.instruction->opcode() == HloOpcode::kTuple ||
-         position.instruction->opcode() == HloOpcode::kBitcast) {
+  while (IsTrivialPosition(position)) {
     if (position.instruction->opcode() == HloOpcode::kGetTupleElement) {
       int64_t tuple_index = position.instruction->tuple_index();
       position.instruction = position.instruction->mutable_operand(0);
@@ -1698,21 +1720,6 @@ bool MsaAlgorithm::IsAsyncConversionCopyCandidate(
   return true;
 }
 
-namespace {
-
-bool IsTrivialInstruction(const HloInstruction* instruction) {
-  return instruction->opcode() == HloOpcode::kGetTupleElement ||
-         instruction->opcode() == HloOpcode::kTuple ||
-         instruction->opcode() == HloOpcode::kBitcast;
-}
-
-bool IsSliceLikeInstruction(const HloInstruction* instruction) {
-  return instruction->opcode() == HloOpcode::kSlice ||
-         instruction->opcode() == HloOpcode::kDynamicSlice;
-}
-
-}  // namespace
-
 MsaAlgorithm::AsyncConversionResult
 MsaAlgorithm::IsAsyncCustomFusionConversionCandidate(
     const HloInstruction* instruction) const {
@@ -2714,14 +2721,10 @@ absl::Status MsaAlgorithm::AllocateAndScheduleExistingBlockPrefetches(
 
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
 
-  // Compute the live ranges for each block prefetched value. When view
-  // sources stay in default memory their storage is permanent, so no
-  // extension is needed (mirrors GetExtendedUseTimeIfUseIsView).
+  // Compute the live ranges for each block prefetched value.
   absl::flat_hash_map<const HloValue*, UseInterval> value_to_use_intervals =
       GetUseIntervals(block_prefetched_values, instruction_schedule,
-                      options_.view_source_default_memory_only
-                          ? std::nullopt
-                          : options_.dus_view_color);
+                      options_.dus_view_color);
 
   // Erase all the values from block_prefetched_values that have been finalized.
   block_prefetched_values.erase(
@@ -3332,6 +3335,10 @@ MsaAlgorithm::ComputeBlockPrefetchCandidateUseAnalysis(
       if (it == instruction_schedule.end()) {
         continue;
       }
+      // Skip trivial uses that are not the root instruction.
+      if (IsUseTrivialNonRoot(use)) {
+        continue;
+      }
       if (!options_.is_use_allowed_in_alternate_mem_fn(use)) {
         analysis.all_uses_allowed_in_alternate_memory = false;
         break;
@@ -3342,8 +3349,10 @@ MsaAlgorithm::ComputeBlockPrefetchCandidateUseAnalysis(
         break;
       }
       int64_t corrected_use_time = GetCorrectedUseTime(use);
-      analysis.first_use_time =
-          std::min(analysis.first_use_time, corrected_use_time);
+      if (corrected_use_time < analysis.first_use_time) {
+        analysis.first_use_time = corrected_use_time;
+        analysis.first_use_instruction = use.instruction;
+      }
     }
     if (!analysis.all_uses_allowed_in_alternate_memory) {
       break;
@@ -3456,6 +3465,9 @@ MsaAlgorithm::BuildBlockPrefetchingContextHelper(
       BlockPrefetchCandidateUseAnalysis use_analysis =
           ComputeBlockPrefetchCandidateUseAnalysis(
               buffer, instruction_schedule, async_conv_candidate_instructions);
+      VLOG(3) << "First use time for buffer " << buffer->ToString() << " is "
+              << use_analysis.first_use_time << " at instruction "
+              << use_analysis.first_use_instruction->name();
       buffer_to_first_use_time[buffer] = use_analysis.first_use_time;
     }
   }
@@ -5351,13 +5363,8 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
       bool is_processed_allocation_value_live_throughout_a_conditional =
           already_processed_allocation_values_inside_a_conditional.contains(
               &allocation_value);
-      // Bitcasts don't define buffers and don't directly consume buffers.
-      // Skip allocating buffers for bitcast uses (unless they are the root
-      // instruction). The uses that feed from bitcasts will be handled
-      // specially.
-      if ((use.hlo_use.instruction->opcode() != HloOpcode::kBitcast ||
-           use.hlo_use.instruction ==
-               use.hlo_use.instruction->parent()->root_instruction()) &&
+      // Skip trivial uses that are not the root instruction.
+      if (!IsUseTrivialNonRoot(use.hlo_use) &&
           !is_processed_allocation_value_live_throughout_a_conditional) {
         UpdateRequestWithAlternateMemoryColoringRequirements(request);
         UpdateRequestWithDefaultMemoryColoringRequirements(request);
@@ -5643,19 +5650,11 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
     use_time = GetCorrectedUseTime(hlo_use);
   }
 
-  const bool is_view_use_requiring_default_memory =
-      options_.view_source_default_memory_only &&
-      options_.dus_view_color.has_value() && hlo_use.operand_number == 0 &&
-      hlo_use.instruction->shape().has_layout() &&
-      hlo_use.instruction->shape().layout().memory_space() ==
-          *options_.dus_view_color;
-
   // Add a required assignment in default memory if the use not allowed in
   // alternate memory.
   if (IsWhileLoopUseRequiredInDefaultMemory(hlo_use) ||
       !IsUseAllowedInAlternateMemory(hlo_use) ||
-      !IsWhileLoopUseBeneficialInAlternateMemory(hlo_use) ||
-      is_view_use_requiring_default_memory) {
+      !IsWhileLoopUseBeneficialInAlternateMemory(hlo_use)) {
     if (require_no_copy_alternate_mem_allocation) {
       LOG(WARNING) << "The value "
                    << allocation_value_to_update.value()->ToShortString()
@@ -7005,13 +7004,6 @@ int64_t MsaAlgorithm::GetExtendedUseTimeIfUseIsView(const HloUse& use) const {
   const absl::flat_hash_map<const HloInstruction*, int64_t>& schedule =
       hlo_live_range_.instruction_schedule();
   int64_t use_time = schedule.at(use.instruction);
-  // When view sources are kept in default memory, their storage is permanent,
-  // so a view reads valid data at any later consumer time without extending the
-  // reservation. Skip the extension entirely (it exists only to keep an
-  // alternate-memory copy of the source alive across the view's consumers).
-  if (options_.view_source_default_memory_only) {
-    return use_time;
-  }
   // Only the viewed value itself (operand 0 of the view, on both the read
   // and write sides) needs its reservation extended; a view's start index
   // operands are consumed at the view's own time.

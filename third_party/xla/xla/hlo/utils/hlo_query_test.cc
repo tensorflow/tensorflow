@@ -310,5 +310,29 @@ TEST_F(HloQueryTest, GetFirstInstructionWithOpcodeListTest) {
             nullptr);
 }
 
+TEST_F(HloQueryTest, IsCollectiveCommunicationOpCollectiveReduce) {
+  const char* const kHloString = R"(
+  HloModule test, replica_count=2
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY entry {
+    input = f32[8]{0} parameter(0)
+    ROOT cr = f32[8]{0} collective-reduce(input), replica_groups={{0,1}},
+                        to_apply=add, has_dynamic_root=false
+  })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHloString));
+  const HloInstruction* cr =
+      module->entry_computation()->GetInstructionWithName("cr");
+  ASSERT_NE(cr, nullptr);
+  EXPECT_EQ(cr->opcode(), HloOpcode::kCollectiveReduce);
+  EXPECT_TRUE(hlo_query::IsCollectiveCommunicationOp(cr->opcode()));
+}
+
 }  // namespace
 }  // namespace xla

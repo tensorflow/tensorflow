@@ -736,6 +736,10 @@ def shape_internal(input, name=None, optimize=True, out_type=None):
           if not out_type:
             return constant_op._tensor_shape_tensor_conversion_function(  # pylint: disable=protected-access
                 input_shape)
+          if out_type not in (dtypes.int32, dtypes.int64):
+            raise ValueError(
+                f"Argument `out_type` must be int32 or int64; got {out_type!r}"
+            )
           return constant(input_shape.as_list(), out_type, name=name)
       if not out_type:
         out_type = dtypes.int32
@@ -4778,7 +4782,8 @@ def gather(params,
   must be an integer tensor of any dimension (often 1-D).
 
   `Tensor.__getitem__` works for scalars, `tf.newaxis`, and
-  [python slices](https://numpy.org/doc/stable/reference/arrays.indexing.html#basic-slicing-and-indexing)
+  [python
+  slices](https://numpy.org/doc/stable/reference/arrays.indexing.html#basic-slicing-and-indexing)
 
   `tf.gather` extends indexing to handle tensors of indices.
 
@@ -4945,10 +4950,11 @@ def gather(params,
       `int64`. The values must be in range `[0, params.shape[axis])`.
     validate_indices: Deprecated, does nothing. Indices are always validated on
       CPU, never validated on GPU.
-
-      Caution: On CPU, if an out of bound index is found, an error is raised.
-      On GPU, if an out of bound index is found, a 0 is stored in the
-      corresponding output value.
+      Caution: On CPU, if an out of bound index is found, an error is raised. On
+        GPU, if an out of bound index is found, a 0 is stored in the
+        corresponding output value. Under XLA compilation (e.g.
+        `tf.function(jit_compile=True)`), out of bound indices are not checked
+        and result in implementation-defined behavior.
     axis: A `Tensor`. Must be one of the following types: `int32`, `int64`. The
       `axis` in `params` to gather `indices` from. Must be greater than or equal
       to `batch_dims`.  Defaults to the first non-batch dimension. Supports

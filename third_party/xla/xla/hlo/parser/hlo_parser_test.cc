@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -2496,6 +2497,64 @@ ENTRY CollectiveBroadcast {
   input = f32[128,32]{0,1} parameter(0)
   root = f32[1]{0} parameter(1)
   ROOT cb = f32[128,32]{0,1} collective-broadcast(input, root), replica_groups={{1,0},{2,3}}, has_dynamic_root=true
+}
+
+)",
+/*replica_count=*/4,
+},
+// collective-reduce
+{
+"CollectiveReduce",
+R"(HloModule CR, entry_computation_layout={(f32[8]{0})->f32[8]{0}}, replica_count=4
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CR {
+  input = f32[8]{0} parameter(0)
+  ROOT cr = f32[8]{0} collective-reduce(input), replica_groups={{0,1},{2,3}}, has_dynamic_root=false, to_apply=add
+}
+
+)",
+/*replica_count=*/4,
+},
+// collective-reduce with channel_id and use_global_device_ids
+{
+"CollectiveReduceWithChannelId",
+R"(HloModule CR, entry_computation_layout={(f32[8]{0})->f32[8]{0}}, replica_count=2
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CR {
+  input = f32[8]{0} parameter(0)
+  ROOT cr = f32[8]{0} collective-reduce(input), channel_id=1, replica_groups={{0,1}}, use_global_device_ids=true, has_dynamic_root=false, to_apply=add
+}
+
+)",
+/*replica_count=*/2,
+},
+// collective-reduce with has_dynamic_root (single data operand)
+{
+"CollectiveReduceDynamicRoot",
+R"(HloModule CR, entry_computation_layout={(f32[8]{0}, s32[1]{0})->f32[8]{0}}, replica_count=4
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CR {
+  input = f32[8]{0} parameter(0)
+  root = s32[1]{0} parameter(1)
+  ROOT cr = f32[8]{0} collective-reduce(input, root), replica_groups={{0,1},{2,3}}, has_dynamic_root=true, to_apply=add
 }
 
 )",
@@ -6592,6 +6651,84 @@ ENTRY AsyncDoneZeroOperandsRejected {
       absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
                              HasSubstr("No operand found for AsyncUpdate and "
                                        "AsyncDone")));
+}
+
+TEST_F(HloParserTest, AsyncDoneAsOperandToAsyncUpdateRejected) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  ROOT custom-call = f32[3,2] custom-call(p0), custom_call_target="foo"
+}
+
+ENTRY AsyncDoneAsOperandToAsyncUpdateRejected {
+  p0 = f32[2,3] parameter(0)
+  async-start = ((f32[2,3]), f32[3,2], s32[]) async-start(p0), calls=async_computation
+  async-done = f32[3,2] async-done(async-start)
+  ROOT async-update = ((f32[2,3]), f32[3,2], s32[]) async-update(async-done)
+}
+  )";
+  EXPECT_THAT(
+      ParseAndReturnUnverifiedModule(hlo_string).status(),
+      absl_testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr(
+              "AsyncUpdate and AsyncDone cannot have AsyncDone as operand.")));
+}
+
+TEST_F(HloParserTest, AsyncDoneAsOperandToAsyncDoneRejected) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  ROOT custom-call = f32[3,2] custom-call(p0), custom_call_target="foo"
+}
+
+ENTRY AsyncDoneAsOperandToAsyncDoneRejected {
+  p0 = f32[2,3] parameter(0)
+  async-start = ((f32[2,3]), f32[3,2], s32[]) async-start(p0), calls=async_computation
+  async-done.0 = f32[3,2] async-done(async-start)
+  ROOT async-done.1 = f32[3,2] async-done(async-done.0)
+}
+  )";
+  EXPECT_THAT(
+      ParseAndReturnUnverifiedModule(hlo_string).status(),
+      absl_testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr(
+              "AsyncUpdate and AsyncDone cannot have AsyncDone as operand.")));
+}
+
+TEST_F(HloParserTest, AsyncDoneWithTransparentIntermediaries) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  ROOT custom-call = f32[3,2] custom-call(p0), custom_call_target="foo"
+}
+
+ENTRY AsyncDoneWithTransparentIntermediaries {
+  p0 = f32[2,3] parameter(0)
+  async-start = ((f32[2,3]), f32[3,2], s32[]) async-start(p0), calls=async_computation
+  barrier = ((f32[2,3]), f32[3,2], s32[]) opt-barrier(async-start)
+  tup = (((f32[2,3]), f32[3,2], s32[])) tuple(barrier)
+  gte = ((f32[2,3]), f32[3,2], s32[]) get-tuple-element(tup), index=0
+  copy = ((f32[2,3]), f32[3,2], s32[]) copy(gte)
+  ROOT async-done = f32[3,2] async-done(copy)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  HloInstruction* done = module->entry_computation()->root_instruction();
+  EXPECT_EQ(done->opcode(), HloOpcode::kAsyncDone);
+  const HloInstruction* producer =
+      hlo_instruction_utils::async::FindAsyncProducer(done->operand(0));
+  ASSERT_NE(producer, nullptr);
+  EXPECT_EQ(producer->opcode(), HloOpcode::kAsyncStart);
+  EXPECT_EQ(hlo_instruction_utils::async::FindAsyncStart(done), producer);
 }
 
 TEST_F(HloParserTest, AsyncUpdateWithSyntaxSugarWrongOp) {

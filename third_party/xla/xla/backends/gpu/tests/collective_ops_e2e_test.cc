@@ -1579,8 +1579,11 @@ TEST_P(AsyncCollectiveOps, MatmulReplicated) {
   const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
 
-  ASSERT_OK_AND_ASSIGN(auto ref_module,
-                       ParseAndReturnVerifiedModule(kModuleSingleStr, config));
+  HloModuleConfig ref_config = GetModuleConfigForTest(/*replica_count=*/1);
+  ref_config.mutable_debug_options().set_xla_gpu_enable_cublaslt(
+      enable_cublaslt);
+  ASSERT_OK_AND_ASSIGN(auto ref_module, ParseAndReturnVerifiedModule(
+                                            kModuleSingleStr, ref_config));
   ASSERT_OK_AND_ASSIGN(auto ref_exec,
                        CreateExecutable(std::move(ref_module), true));
 

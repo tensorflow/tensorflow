@@ -128,7 +128,7 @@ std::string MoriCommunicator::ToString() const {
 absl::StatusOr<se::Stream*> MoriCommunicator::ToStream(
     const Executor& executor) {
   if (auto* gpu_executor =
-          tsl::down_cast<const GpuCollectives::Executor*>(&executor)) {
+          absl::down_cast<const GpuCollectives::Executor*>(&executor)) {
     return gpu_executor->stream();
   }
   return InvalidArgument("Communicator executor is not a GPU executor");

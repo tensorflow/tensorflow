@@ -133,7 +133,7 @@ def current_source_info_metadata(op_type=None, op_name=None, skip_frames=1):
   frame = inspect.stack()[skip_frames]
   filename = os.path.basename(frame.filename)
   if hasattr(frame, 'positions'):
-    lineno, end_lineno, column, end_column = frame.positions
+    lineno, end_lineno, column, end_column = frame.positions  # pyrefly: ignore[not-iterable]
     return OpMetadata(op_type=op_type, op_name=op_name, source_file=filename,
                       source_line=lineno, source_end_line=end_lineno,
                       source_column=column, source_end_column=end_column)

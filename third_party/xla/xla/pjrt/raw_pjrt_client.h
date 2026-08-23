@@ -17,8 +17,11 @@ limitations under the License.
 #define XLA_PJRT_RAW_PJRT_CLIENT_H_
 
 #include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
@@ -28,7 +31,9 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/future.h"
 #include "xla/pjrt/device_event.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -42,10 +47,24 @@ class PjRtRawLoadedExecutable {
   virtual ~PjRtRawLoadedExecutable() = default;
 
   struct RawExecuteResult {
+    // Returns the event that defines the result buffer at `result_index`. Raw
+    // clients can provide an event for each result to make it available before
+    // the executable finishes. Results without an individual event fall back to
+    // `primary_execute_event`, which is sequenced after the whole executable.
+    PjRtDeviceEventRef definition_event(size_t result_index) const {
+      if (result_index < result_definition_events.size() &&
+          result_definition_events[result_index]) {
+        return result_definition_events[result_index];
+      }
+      return primary_execute_event;
+    }
+
     std::optional<tsl::Future<>> future;
     PjRtDeviceEventRef primary_execute_event;
+    std::vector<PjRtDeviceEventRef> result_definition_events;
     absl::Status inline_status;
   };
+
   virtual RawExecuteResult Execute(const ExecuteOptions& options,
                                    absl::Span<const PjRtRawBufferRef> inputs,
                                    absl::Span<const PjRtRawBufferRef> results,
@@ -87,6 +106,8 @@ class PjRtExecutableLoadState
 class PjRtRawClient {
  public:
   virtual ~PjRtRawClient() = default;
+
+  virtual AsyncWorkRunner* async_work_runner() const = 0;
 
   using PjRtFulfillAliasRawBufferCallback =
       absl::AnyInvocable<absl::Status(absl::StatusOr<PjRtRawBufferRef>) &&>;
@@ -158,10 +179,58 @@ class PjRtRawClient {
     return absl::UnimplementedError("DmaUnmap is not supported.");
   }
 
+  virtual void UpdateGlobalProcessInfo(
+      absl::Span<xla::coordination::TaskInfo> infos) {
+    LOG(WARNING) << "UpdateGlobalProcessInfo is not supported.";
+  }
+
   // Imports foreign memory as a raw buffer.
   virtual absl::StatusOr<PjRtRawBufferRef> ImportForeignMemory(
       PjRtMemorySpace* memory_space, void* device_ptr, size_t size,
       absl::AnyInvocable<void() &&> on_delete_callback, bool is_mutable) = 0;
+
+  virtual absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>>
+  RuntimeAbiVersion() const {
+    return absl::UnimplementedError("RuntimeAbiVersion is not supported.");
+  }
+
+  virtual void ScheduleRemoteSend(PjRtMemorySpace* memory_space,
+                                  PjRtRawBufferRef raw_buffer,
+                                  PjRtDeviceEventRefVector definition_events,
+                                  PjRtDeviceEventPromiseRef usage_event_promise,
+                                  Future<std::string> serialized_descriptor,
+                                  PjRtBuffer::RemoteSendCallback on_done);
+
+  // Similar to PjRtClient::MakeCrossHostReceiveBuffers, but uses PjRtRawBuffer
+  // instead of PjRtBuffer.
+  // Takes raw buffers, a notifier, and the transfer dependency AVs that must
+  // be ready before the receive can complete. Returns a vector of definition
+  // events that will be fulfilled once the receive operation completes.
+  virtual absl::StatusOr<PjRtDeviceEventRefVector> CrossHostReceiveBuffersInto(
+      absl::Span<const PjRtRawBufferRef> buffers,
+      PjRtCrossHostRecvNotifier notifier,
+      PjRtDeviceEventSpan transfer_dependency_avs) {
+    return absl::UnimplementedError(
+        "CrossHostReceiveBuffersInto is not implemented.");
+  }
+
+  // Similar to PjRtClient::CrossHost{Send/Receive}Buffers, but uses
+  // PjRtRawBuffer instead of PjRtBuffer.
+  // Takes in a vector of transfer dependencies and transfer specs, and launches
+  // the data transfers specified by the transfer specs so that they occur after
+  // all transfer dependencies are complete.
+  struct CrossHostTransferSpec {
+    GlobalDeviceId src_global_device_id;
+    GlobalDeviceId dst_global_device_id;
+    PjRtRawBufferRef raw_buffer;
+  };
+
+  virtual absl::StatusOr<PjRtDeviceEventRefVector> CrossHostTransferBuffers(
+      PjRtDeviceEventRefVector transfer_dependencies,
+      std::vector<CrossHostTransferSpec> transfer_specs) {
+    return absl::UnimplementedError(
+        "CrossHostTransferBuffers is not implemented.");
+  }
 };
 
 }  // namespace xla
