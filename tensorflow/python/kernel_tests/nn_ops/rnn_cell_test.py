@@ -1471,20 +1471,27 @@ class LSTMTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testBlockLSTMSeqLenMaxBounds(self):
     timelen, batch_size, input_size, cell_size = 4, 2, 3, 5
-    x = constant_op.constant(0.1, shape=[timelen, batch_size, input_size], dtype=dtypes.float32)
-    cs_prev = constant_op.constant(0.1, shape=[batch_size, cell_size], dtype=dtypes.float32)
-    h_prev = constant_op.constant(0.1, shape=[batch_size, cell_size], dtype=dtypes.float32)
-    w = constant_op.constant(0.1, shape=[input_size + cell_size, 4 * cell_size], dtype=dtypes.float32)
+    x = constant_op.constant(
+        0.1, shape=[timelen, batch_size, input_size], dtype=dtypes.float32)
+    cs_prev = constant_op.constant(
+        0.1, shape=[batch_size, cell_size], dtype=dtypes.float32)
+    h_prev = constant_op.constant(
+        0.1, shape=[batch_size, cell_size], dtype=dtypes.float32)
+    w = constant_op.constant(
+        0.1, shape=[input_size + cell_size, 4 * cell_size], 
+        dtype=dtypes.float32)
     wci = constant_op.constant(0.1, shape=[cell_size], dtype=dtypes.float32)
     wcf = constant_op.constant(0.1, shape=[cell_size], dtype=dtypes.float32)
     wco = constant_op.constant(0.1, shape=[cell_size], dtype=dtypes.float32)
-    b = constant_op.constant(0.1, shape=[4 * cell_size], dtype=dtypes.float32)
+    b = constant_op.constant(
+        0.1, shape=[4 * cell_size], dtype=dtypes.float32)
 
     # Valid boundary cases: seq_len_max == 0 and seq_len_max == timelen
     for valid_seq_len_max in [0, 2, timelen]:
       res = self.evaluate(
           gen_rnn_ops.BlockLSTM(
-              seq_len_max=constant_op.constant(valid_seq_len_max, dtype=dtypes.int64),
+              seq_len_max=constant_op.constant(
+                  valid_seq_len_max, dtype=dtypes.int64),
               x=x,
               cs_prev=cs_prev,
               h_prev=h_prev,
@@ -1508,7 +1515,8 @@ class LSTMTest(test.TestCase):
       ):
         self.evaluate(
             gen_rnn_ops.BlockLSTM(
-                seq_len_max=constant_op.constant(invalid_seq_len_max, dtype=dtypes.int64),
+                seq_len_max=constant_op.constant(
+                    invalid_seq_len_max, dtype=dtypes.int64),
                 x=x,
                 cs_prev=cs_prev,
                 h_prev=h_prev,
@@ -1526,29 +1534,45 @@ class LSTMTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testBlockLSTMGradSeqLenMaxBounds(self):
     timelen, batch_size, input_size, cell_size = 4, 2, 3, 5
-    x = constant_op.constant(0.1, shape=[timelen, batch_size, input_size], dtype=dtypes.float32)
-    cs_prev = constant_op.constant(0.1, shape=[batch_size, cell_size], dtype=dtypes.float32)
-    h_prev = constant_op.constant(0.1, shape=[batch_size, cell_size], dtype=dtypes.float32)
-    w = constant_op.constant(0.1, shape=[input_size + cell_size, 4 * cell_size], dtype=dtypes.float32)
+    x = constant_op.constant(
+        0.1, shape=[timelen, batch_size, input_size], dtype=dtypes.float32)
+    cs_prev = constant_op.constant(
+        0.1, shape=[batch_size, cell_size], dtype=dtypes.float32)
+    h_prev = constant_op.constant(
+        0.1, shape=[batch_size, cell_size], dtype=dtypes.float32)
+    w = constant_op.constant(
+        0.1, shape=[input_size + cell_size, 4 * cell_size], 
+        dtype=dtypes.float32)
     wci = constant_op.constant(0.1, shape=[cell_size], dtype=dtypes.float32)
     wcf = constant_op.constant(0.1, shape=[cell_size], dtype=dtypes.float32)
     wco = constant_op.constant(0.1, shape=[cell_size], dtype=dtypes.float32)
-    b = constant_op.constant(0.1, shape=[4 * cell_size], dtype=dtypes.float32)
-    i = constant_op.constant(0.1, shape=[timelen, batch_size, cell_size], dtype=dtypes.float32)
-    cs = constant_op.constant(0.1, shape=[timelen, batch_size, cell_size], dtype=dtypes.float32)
-    f = constant_op.constant(0.1, shape=[timelen, batch_size, cell_size], dtype=dtypes.float32)
-    o = constant_op.constant(0.1, shape=[timelen, batch_size, cell_size], dtype=dtypes.float32)
-    ci = constant_op.constant(0.1, shape=[timelen, batch_size, cell_size], dtype=dtypes.float32)
-    co = constant_op.constant(0.1, shape=[timelen, batch_size, cell_size], dtype=dtypes.float32)
-    h = constant_op.constant(0.1, shape=[timelen, batch_size, cell_size], dtype=dtypes.float32)
-    cs_grad = constant_op.constant(0.1, shape=[timelen, batch_size, cell_size], dtype=dtypes.float32)
-    h_grad = constant_op.constant(0.1, shape=[timelen, batch_size, cell_size], dtype=dtypes.float32)
+    b = constant_op.constant(
+        0.1, shape=[4 * cell_size], dtype=dtypes.float32)
+    i = constant_op.constant(
+        0.1, shape=[timelen, batch_size, cell_size], dtype=dtypes.float32)
+    cs = constant_op.constant(
+        0.1, shape=[timelen, batch_size, cell_size], dtype=dtypes.float32)
+    f = constant_op.constant(
+        0.1, shape=[timelen, batch_size, cell_size], dtype=dtypes.float32)
+    o = constant_op.constant(
+        0.1, shape=[timelen, batch_size, cell_size], dtype=dtypes.float32)
+    ci = constant_op.constant(
+        0.1, shape=[timelen, batch_size, cell_size], dtype=dtypes.float32)
+    co = constant_op.constant(
+        0.1, shape=[timelen, batch_size, cell_size], dtype=dtypes.float32)
+    h = constant_op.constant(
+        0.1, shape=[timelen, batch_size, cell_size], dtype=dtypes.float32)
+    cs_grad = constant_op.constant(
+        0.1, shape=[timelen, batch_size, cell_size], dtype=dtypes.float32)
+    h_grad = constant_op.constant(
+        0.1, shape=[timelen, batch_size, cell_size], dtype=dtypes.float32)
 
     # Valid boundary cases: seq_len_max == 0 and seq_len_max == timelen
     for valid_seq_len_max in [0, 2, timelen]:
       res = self.evaluate(
           gen_rnn_ops.BlockLSTMGrad(
-              seq_len_max=constant_op.constant(valid_seq_len_max, dtype=dtypes.int64),
+              seq_len_max=constant_op.constant(
+                  valid_seq_len_max, dtype=dtypes.int64),
               x=x,
               cs_prev=cs_prev,
               h_prev=h_prev,
@@ -1579,7 +1603,8 @@ class LSTMTest(test.TestCase):
       ):
         self.evaluate(
             gen_rnn_ops.BlockLSTMGrad(
-                seq_len_max=constant_op.constant(invalid_seq_len_max, dtype=dtypes.int64),
+                seq_len_max=constant_op.constant(
+                    invalid_seq_len_max, dtype=dtypes.int64),
                 x=x,
                 cs_prev=cs_prev,
                 h_prev=h_prev,
