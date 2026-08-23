@@ -296,6 +296,16 @@ def arange(start, stop=None, step=1, dtype=None):
     return array([], dtype=dtype)
   # TODO(srbs): There are some bugs when start or stop is float type and dtype
   # is integer type.
+  if dtypes.as_dtype(dtype).is_floating:
+    # Build the range at the resolved precision so the values follow NumPy;
+    # handing the Python scalars to tf.range directly computes them as
+    # float32 even when the output dtype is float64.
+    limit = None if stop is None else ops.convert_to_tensor(stop, dtype=dtype)
+    return math_ops.range(
+        ops.convert_to_tensor(start, dtype=dtype),
+        limit=limit,
+        delta=ops.convert_to_tensor(step, dtype=dtype),
+    )
   return math_ops.cast(
       math_ops.range(start, limit=stop, delta=step), dtype=dtype
   )

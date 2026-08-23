@@ -380,6 +380,18 @@ class ArrayCreationTest(test.TestCase):
           np_array_ops.ascontiguousarray(a, dtype=dtype),
           np.ascontiguousarray(a, dtype=dtype))
 
+  def testARangeFloatStep(self):
+    for args, kwargs in [
+        ((0., 1.), dict(step=0.3)),
+        ((0., 5.), dict(step=1.5)),
+        ((2., -3.), dict(step=-0.75)),
+    ]:
+      self.assertAllEqual(
+          np_array_ops.arange(*args, **kwargs), np.arange(*args, **kwargs))
+    self.assertAllEqual(
+        np_array_ops.arange(2., -3., step=-0.75, dtype=np.float32),
+        np.arange(2., -3., step=-0.75, dtype=np.float32))
+
   def testARange(self):
     int_values = np.arange(-3, 3).tolist()
     float_values = np.arange(-3.5, 3.5).tolist()
