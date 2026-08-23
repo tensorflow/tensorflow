@@ -280,3 +280,40 @@ tf_cc_fuzz_test(
         "//tensorflow/lite/kernels:builtin_ops",
     ],
 )
+
+# Add to tensorflow/security/fuzzing/cc/BUILD
+tf_cc_fuzz_test(
+    name = "tflite_readvar_fuzz",
+    srcs = [
+        "model_bytes_readvar.h",
+        "tflite_readvar_fuzz.cc",
+    ],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:builtin_ops",
+    ],
+)
+
+tf_cc_fuzz_test(
+    name = "tflite_transpose_dupperm_fuzz",
+    srcs = [
+        "model_bytes_transpose_dupperm.h",
+        "tflite_transpose_dupperm_fuzz.cc",
+    ],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:builtin_ops",
+    ],
+)
+
+tf_cc_fuzz_test(
+    name = "tflite_rfft2d_fuzz",
+    srcs = [
+        "model_bytes_rfft2d.h",
+        "tflite_rfft2d_fuzz.cc",
+    ],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:builtin_ops",
+    ],
+)
