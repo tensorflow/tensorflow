@@ -753,6 +753,22 @@ TYPED_TEST(IntegerAddOpTest, OverflowWrapping) {
   }
 }
 
+TYPED_TEST(IntegerAddOpTest, OverflowWrappingBroadcast) {
+  if (std::is_same<TypeParam, int32_t>::value ||
+      std::is_same<TypeParam, int64_t>::value) {
+    IntegerAddOpModel m(GetTensorType<TypeParam>(), {1, 2}, {2, 1},
+                        ActivationFunctionType_NONE);
+    m.PopulateTensor<TypeParam>(m.input1(),
+                                {std::numeric_limits<TypeParam>::max(), 5});
+    m.PopulateTensor<TypeParam>(m.input2(), {1, 1});
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetOutput<TypeParam>(),
+                ElementsAreArray<TypeParam>(
+                    {std::numeric_limits<TypeParam>::min(), 6,
+                     std::numeric_limits<TypeParam>::min(), 6}));
+  }
+}
+
 template <typename QuantizedType>
 void TestQuantizedBroadcast(QuantizedAddOpModel& m,
                             const std::vector<int>& input1_shape,
