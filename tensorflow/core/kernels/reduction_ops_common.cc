@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/reduction_ops_common.h"
 
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 
@@ -99,6 +100,24 @@ absl::Status ReductionHelper::Simplify(const Tensor& data, const Tensor& axis,
       // same number of dimensions, so we set the dimension of i to
       // '1'.
       out_shape_.push_back(1);
+    }
+  }
+
+  // `out_shape_` is later turned into a TensorShape with TensorShape::AddDim,
+  // which fatally checks that the running element count stays non-negative.
+  // A shape is only rejected when a prefix of it overflows, so an input that
+  // has a zero dimension ahead of its large ones is accepted even though the
+  // product of the remaining dimensions does not fit in an int64. Reducing
+  // that zero dimension away then asks for an output shape that cannot be
+  // represented, which used to abort the process. Reject it here so the op
+  // fails with an error instead.
+  int64_t out_num_elements = 1;
+  for (const int64_t dim : out_shape_) {
+    out_num_elements = MultiplyWithoutOverflow(out_num_elements, dim);
+    if (out_num_elements < 0) {
+      return errors::InvalidArgument(
+          "Reducing input of shape ", data.shape().DebugString(),
+          " would produce an output with more than 2**63 - 1 elements");
     }
   }
 
