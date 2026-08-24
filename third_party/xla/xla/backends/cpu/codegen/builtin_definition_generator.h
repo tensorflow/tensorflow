@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_CODEGEN_BUILTIN_DEFINITION_GENERATOR_H_
 
 #include "llvm/ExecutionEngine/Orc/Core.h"
+#include "llvm/ExecutionEngine/Orc/SymbolLookupSet.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/Support/Error.h"
 
