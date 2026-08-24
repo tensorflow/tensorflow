@@ -50,7 +50,8 @@ namespace {
 
 namespace m = ::xla::match;
 
-constexpr se::CudaComputeCapability kDefaultCC;
+constexpr se::CudaComputeCapability kDefaultCC =
+    se::CudaComputeCapability::Volta();
 
 class ConvKindAssignmentTest : public HloHardwareIndependentTestBase {
  public:

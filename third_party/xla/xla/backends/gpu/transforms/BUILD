@@ -544,11 +544,13 @@ xla_cc_test(
     deps = [
         ":conv_padding_legalization",
         "//xla:shape_util",
+        "//xla:window_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/hlo/testlib:test",
+        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service:pattern_matcher",
         "//xla/service/gpu:cublas_cudnn",
         "@com_google_googletest//:gtest_main",

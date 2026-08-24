@@ -46,8 +46,14 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
 namespace {
+
+bool IsWindowCanonical(const Window& window) {
+  return window_util::HasSymmetricPadding(window) &&
+         !window_util::HasNegativePadding(window) &&
+         !window_util::HasBaseDilation(window);
+}
+
 absl::StatusOr<std::optional<CudnnConvKind>> GetCudnnConvKindForInstruction(
     const HloInstruction* instr) {
   if (instr->opcode() == HloOpcode::kCustomCall) {
@@ -82,9 +88,7 @@ bool IsForwardConvolutionCanonical(const HloInstruction& conv) {
   } else {
     CHECK(conv.opcode() == HloOpcode::kConvolution);
   }
-  return window_util::HasSymmetricPadding(conv.window()) &&
-         !window_util::HasNegativePadding(conv.window()) &&
-         !window_util::HasBaseDilation(conv.window());
+  return IsWindowCanonical(conv.window());
 }
 
 // If the (positive and negative) padding on the input operand of a convolution
@@ -208,9 +212,7 @@ bool ConvPaddingLegalization::CanonicalizeForwardConvolution(
 
   bool has_window_dilation = window_util::HasWindowDilation(conv->window());
   bool preserve_window_dilation =
-      has_window_dilation && window_util::HasSymmetricPadding(conv->window()) &&
-      !window_util::HasNegativePadding(conv->window()) &&
-      !window_util::HasBaseDilation(conv->window());
+      has_window_dilation && IsWindowCanonical(conv->window());
 
   // Insert slices and/or pads between the convolution and its input and/or
   // kernel operand.
@@ -265,64 +267,21 @@ bool ConvPaddingLegalization::CanonicalizeBackwardFilterConvolution(
   CHECK_OK(kind_or);
   CHECK(kind_or.value().has_value());
   CHECK(*(kind_or.value()) == CudnnConvKind::kBackwardFilter);
-  if (window_util::HasSymmetricPadding(backward_conv->window())) {
+  if (IsWindowCanonical(backward_conv->window())) {
     return false;
   }
 
-  // A backward filter convolution with uneven padding can be canonicalized to
-  // one with even padding by padding the activations (input) beforehand. For
-  // example,
-  //   BackwardFilterConv(ABCD, xyz, padding_low=1, padding_high=2)
-  // is equivalent to
-  //   ABCD0 = Pad(ABCD, padding_high=1)
-  //   BackwardFilterConv(ABCD0, xyz, padding_low=padding_high=1)
-  // We choose the lesser of padding_low and padding_high as the new padding.
-  HloInstruction* input = backward_conv->mutable_operand(0);
   Window new_backward_conv_window = backward_conv->window();
-  // input_padding_config is the config of the kPad to be inserted.
-  PaddingConfig input_padding_config =
-      MakeNoPaddingConfig(input->shape().dimensions().size());
-  ConvolutionDimensionNumbers backward_conv_dnums =
-      backward_conv->convolution_dimension_numbers();
-  for (size_t i = 0; i < backward_conv->window().dimensions_size(); ++i) {
-    int64_t padding_low = backward_conv->window().dimensions(i).padding_low();
-    int64_t padding_high = backward_conv->window().dimensions(i).padding_high();
-    if (padding_low < 0 || padding_high < 0) {
-      // TODO(b/32744257): The following canonicalization wouldn't remove
-      // negative padding in a backward convolution, and would therefore cause
-      // cuDNN convolution (which doesn't support negative padding) to fail.
-      return false;
-    }
-    // Compute the new, even padding for the backward conv operation.
-    int64_t new_conv_padding = std::min(padding_low, padding_high);
-    int64_t dim = backward_conv_dnums.input_spatial_dimensions(i);
-    input_padding_config.mutable_dimensions(dim)->set_edge_padding_low(
-        padding_low - new_conv_padding);
-    input_padding_config.mutable_dimensions(dim)->set_edge_padding_high(
-        padding_high - new_conv_padding);
-
-    // Since we move some padding from the backward convolution to the kPad, we
-    // need to accordingly reduce the padding amount of the backward convolution
-    // and its inner forward convolution.
-    auto* new_dim = new_backward_conv_window.mutable_dimensions(i);
-    new_dim->set_padding_low(new_conv_padding);
-    new_dim->set_padding_high(new_conv_padding);
-  }
+  HloInstruction* new_input = MaybePaddedAndSlicedInput(
+      &new_backward_conv_window, backward_conv->convolution_dimension_numbers(),
+      backward_conv->mutable_operand(0));
 
   // Create a new backward convolution replacing the old one.
   HloComputation* computation = backward_conv->parent();
   HloInstruction* output = backward_conv->mutable_operand(1);
-  HloInstruction* padding =
-      computation->AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::Zero(input->shape().element_type())));
-  HloInstruction* padded_input =
-      MakePadHlo(input, padding, input_padding_config).value();
-
-  // The shape of the backward_conv CustomCall is a tuple (conv_result,
-  // scratch_buffer).  Extract out the shape of conv_result.
   HloInstruction* new_backward_conv =
       computation->AddInstruction(backward_conv->CloneWithNewOperands(
-          backward_conv->shape(), {padded_input, output}));
+          backward_conv->shape(), {new_input, output}));
   new_backward_conv->set_window(new_backward_conv_window);
 
   VLOG(1) << "Canonicalizing backward filter conv";
