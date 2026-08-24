@@ -805,6 +805,36 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
             nn_ops.max_pool(t, ksize=[1, 1, 2, 1], strides=1, padding="VALID"))
 
   @test_util.run_in_graph_and_eager_modes
+  def testMaxPool1DOversizedWindowRaises(self):
+    # Regression for GitHub issue 125509: VALID MaxPool1D with pool_size larger
+    # than the temporal length must raise on CPU and GPU instead of aborting
+    # (floating-point exception) or silently succeeding.
+    input_data = constant_op.constant(
+        [[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]], dtype=dtypes.float32)
+    for device in ("/CPU:0", "/GPU:0") if test.is_gpu_available() else ("/CPU:0",):
+      with ops.device(device):
+        with self.assertRaisesRegex(
+            (errors_impl.InvalidArgumentError, ValueError, errors_impl.UnknownError),
+            r"Negative dimension size|zero-sized spatial output|ksize dimension"):
+          self.evaluate(
+              nn_ops.max_pool1d(
+                  input_data, ksize=3, strides=1, padding="VALID"))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testMaxPoolOversizedWindowRaises(self):
+    # Same oversized-window case expressed as MaxPool after the 1D expand used
+    # by MaxPool1D / Keras MaxPooling1D (NHWC: H=2, window_H=3, W=1, window_W=1).
+    t = constant_op.constant(1.0, shape=[1, 2, 1, 3])
+    for device in ("/CPU:0", "/GPU:0") if test.is_gpu_available() else ("/CPU:0",):
+      with ops.device(device):
+        with self.assertRaisesRegex(
+            (errors_impl.InvalidArgumentError, ValueError, errors_impl.UnknownError),
+            r"Negative dimension size|zero-sized spatial output|ksize dimension"):
+          self.evaluate(
+              nn_ops.max_pool(
+                  t, ksize=[1, 3, 1, 1], strides=[1, 1, 1, 1], padding="VALID"))
+
+  @test_util.run_in_graph_and_eager_modes
   def testMaxPoolWithArgmaxKsizeOverflow(self):
     with self.assertRaisesRegex(
         (ValueError, errors_impl.InvalidArgumentError),
