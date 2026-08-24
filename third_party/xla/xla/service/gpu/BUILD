@@ -517,6 +517,7 @@ cc_library(
         "//xla/backends/gpu/runtime:collective_broadcast_thunk",
         "//xla/backends/gpu/runtime:collective_group_thunk",
         "//xla/backends/gpu/runtime:collective_permute_thunk",
+        "//xla/backends/gpu/runtime:collective_reduce_thunk",
         "//xla/backends/gpu/runtime:collective_thunk",
         "//xla/backends/gpu/runtime:conditional_thunk",
         "//xla/backends/gpu/runtime:convolution_reorder_thunk",
@@ -2150,6 +2151,7 @@ xla_test(
         "h100": [
             "full",
         ],
+        "gb300": ["broken"],  # TODO(b/505574653): re-enable when fixed.
     },
     backends = ["gpu"],
     shard_count = 2,

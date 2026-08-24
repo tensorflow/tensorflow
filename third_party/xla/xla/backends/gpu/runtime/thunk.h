@@ -104,6 +104,7 @@ class Thunk {
     kCollectiveKernel,
     kCollectiveMetadata,
     kCollectivePermute,
+    kCollectiveReduce,
     kCommand,
     kCommandBuffer,
     kConditional,

@@ -75,6 +75,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_broadcast_thunk.h"
 #include "xla/backends/gpu/runtime/collective_group_thunk.h"
 #include "xla/backends/gpu/runtime/collective_permute_thunk.h"
+#include "xla/backends/gpu/runtime/collective_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/convolution_reorder_thunk.h"
@@ -304,6 +305,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::DispatchAsyncDone(
     case HloOpcode::kRaggedAllToAll:
     case HloOpcode::kCollectiveBroadcast:
     case HloOpcode::kCollectivePermute:
+    case HloOpcode::kCollectiveReduce:
       return EmitAsyncDone(instr, instr->operand(0));
 
     // Complete a fusion or call wrapped in generic async start/done.
@@ -2072,6 +2074,15 @@ Future<ThunkSequence> ThunkEmitter::EmitCollective(
           Thunk::kCollectiveBroadcast,
           Cast<HloCollectiveBroadcastInstruction>(collective), std::nullopt);
 
+    case HloOpcode::kCollectiveReduce: {
+      auto* collective_reduce =
+          Cast<HloCollectiveReduceInstruction>(collective);
+      return EmitCollective<CollectiveReduceThunk,
+                            HloCollectiveReduceInstruction>(
+          Thunk::kCollectiveReduce, collective_reduce,
+          collective_reduce->use_global_device_ids());
+    }
+
     default:
       return Internal("Unsupported collective instruction: %s",
                       collective->ToString());
@@ -2102,11 +2113,13 @@ Future<ThunkSequence> ThunkEmitter::EmitCollective(
           << "; partition count: " << partition_count
           << "; operand count: " << operand_count;
 
-  // A collective-broadcast may select its root rank at runtime, in which case
-  // the last operand is a root-rank vector rather than data to broadcast.
+  // A collective-broadcast or collective-reduce may select its root rank at run
+  // time, in which case the last operand is an S32 root-rank vector rather than
+  // data being broadcast/reduced.
   const bool has_dynamic_root = [](const HloInstType* inst) {
     if constexpr (std::is_same_v<HloInstType,
-                                 HloCollectiveBroadcastInstruction>) {
+                                 HloCollectiveBroadcastInstruction> ||
+                  std::is_same_v<HloInstType, HloCollectiveReduceInstruction>) {
       return inst->has_dynamic_root();
     }
     return false;
@@ -2192,6 +2205,14 @@ Future<ThunkSequence> ThunkEmitter::EmitCollective(
                                       CollectiveBroadcastThunk>) {
     // CollectiveBroadcastThunk needs the dynamic-root flag so it can treat
     // the trailing root-rank buffer specially at run time.
+    thunks = ThunkSequence::Of<CollectiveThunkType>(
+        info, inst, /*buffers=*/std::move(buffers),
+        ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p(),
+        has_dynamic_root);
+  } else if constexpr (std::is_same_v<CollectiveThunkType,
+                                      CollectiveReduceThunk>) {
+    // CollectiveReduceThunk needs the dynamic-root flag so it can treat the
+    // trailing root-rank buffer specially at run time.
     thunks = ThunkSequence::Of<CollectiveThunkType>(
         info, inst, /*buffers=*/std::move(buffers),
         ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p(),
@@ -2715,6 +2736,7 @@ Future<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectiveBroadcast:
+    case HloOpcode::kCollectiveReduce:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kRaggedAllToAll:
     case HloOpcode::kReduceScatter:
