@@ -63,14 +63,13 @@ single_version_override(
 # TODO: Upstream those patch?
 single_version_override(
     module_name = "abseil-cpp",
-    version = "20260526.0",
     patch_strip = 1,
     patches = [
         "//third_party/absl:btree.patch",
-        "//third_party/absl:build_dll.patch",
         "//third_party/absl:endian.patch",
         "//third_party/absl:raw_hash_set.patch",
     ],
+    version = "20260526.0",
 )
 
 single_version_override(
@@ -104,6 +103,7 @@ third_party = use_extension("//third_party/extensions:third_party.bzl", "third_p
 use_repo(
     third_party,
     "FXdiv",
+    "KleidiAI",
     "XNNPACK",
     "cpuinfo",
     "cudnn_frontend_archive",
@@ -119,7 +119,6 @@ use_repo(
     "highwayhash",
     "hwloc",
     "implib_so",
-    "KleidiAI",
     "llvm-raw",
     "llvm_openmp",
     "mkl_dnn_acl_compatible",
