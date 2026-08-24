@@ -522,6 +522,32 @@ int64_t CalculateSharedMemoryPerBlockBytes(const DotProblemInfo& dot_info,
   return (lhs_tile_bytes + rhs_tile_bytes) * num_stages;
 }
 
+int CalculateRegistersPerThread(const DotProblemInfo& dot_info,
+                                const DotTileSize& dot_tile,
+                                const BlockLevelParameters& block_params,
+                                const se::DeviceDescription& device_info) {
+  const int64_t num_warps = block_params.num_warps;
+  const int64_t threads_per_warp = device_info.threads_per_warp();
+  constexpr int kBitsPerRegister = 32;
+  const int64_t total_threads = num_warps * threads_per_warp;
+  if (total_threads <= 0 || dot_tile.m <= 0 || dot_tile.n <= 0) {
+    return 0;
+  }
+
+  const int64_t acc_bitwidth = BitWidth(dot_info.output_element_type);
+  // Safe to cast: The numerator represents the total bits for the accumulator
+  // tile, which will always fit in an int due to hardware limits on tile size.
+  const int accumulator_regs = static_cast<int>(
+      CeilOfRatio<int64_t>(dot_tile.m * dot_tile.n * acc_bitwidth,
+                           total_threads * kBitsPerRegister));
+
+  // Base register overhead in generated GEMM kernels for loop induction
+  // variables, pointer arithmetic, and barrier synchronization handles.
+  constexpr int kBaseStateRegs = 24;
+
+  return accumulator_regs + kBaseStateRegs;
+}
+
 double CalculateComputeUtilization(const EstimateRunTimeData& estimates,
                                    const se::DeviceDescription& device_info,
                                    xla::PrimitiveType output_element_type) {
@@ -721,6 +747,8 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   // Assuming perfect overlap between compute and memory for the rest,
   // but main loop is now modeled precisely.
   estimates.exec_time = std::max({pipelined_loop_time, l2_time});
+  estimates.registers_per_thread = detail::CalculateRegistersPerThread(
+      dot_info, dot_tile, block_params, device_info);
   estimates.compute_utilization = detail::CalculateComputeUtilization(
       estimates, device_info, dot_info.output_element_type);
   estimates.memory_utilization =

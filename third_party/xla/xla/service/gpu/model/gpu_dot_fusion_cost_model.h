@@ -139,6 +139,13 @@ int64_t CalculateSharedMemoryPerBlockBytes(const DotProblemInfo& dot_info,
                                            const DotTileSize& dot_tile,
                                            int64_t num_stages);
 
+// Estimates physical PTX register usage per thread for a GPU dot fusion kernel,
+// accounting for output accumulator registers and base state overhead.
+int CalculateRegistersPerThread(const DotProblemInfo& dot_info,
+                                const DotTileSize& dot_tile,
+                                const xtile::BlockLevelParameters& block_params,
+                                const se::DeviceDescription& device_info);
+
 // Calculates the L2 time for a GPU DOT operation.
 absl::StatusOr<absl::Duration> CalculateL2Time(
     int64_t dot_k, int64_t tile_k, const se::DeviceDescription& device_info,

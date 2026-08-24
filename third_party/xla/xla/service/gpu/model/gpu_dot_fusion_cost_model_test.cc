@@ -45,6 +45,7 @@ using gpu_dot_fusion_cost_model::detail::CalculateHardwareLaunchWaves;
 using gpu_dot_fusion_cost_model::detail::CalculateLoopIterBytes;
 using gpu_dot_fusion_cost_model::detail::
     CalculatePipelinedLoopTimeWithLaunchWaves;
+using gpu_dot_fusion_cost_model::detail::CalculateRegistersPerThread;
 using gpu_dot_fusion_cost_model::detail::CalculateSharedMemoryPerBlockBytes;
 using gpu_dot_fusion_cost_model::detail::CalculateSmOccupancy;
 using gpu_dot_fusion_cost_model::detail::ComputeAndFlops;
@@ -748,6 +749,79 @@ TEST_F(GpuDotFusionCostModelTest, BlackwellTileMDerate) {
   ASSERT_GT(flops_full, 0);
   // tile_m < 64: 63% derate.
   EXPECT_NEAR(flops_small / flops_full, 0.63, 1e-4);
+}
+
+DotProblemInfo CreateDotInfo(PrimitiveType output_type) {
+  DotProblemInfo dot_info;
+  dot_info.lhs_element_type = output_type;
+  dot_info.rhs_element_type = output_type;
+  dot_info.output_element_type = output_type;
+  return dot_info;
+}
+
+BlockLevelParameters CreateBlockParams(int64_t num_warps) {
+  BlockLevelParameters params;
+  params.num_warps = num_warps;
+  return params;
+}
+
+TEST_F(GpuDotFusionCostModelTest,
+       CalculateRegistersPerThreadIncreasesWithTileSize) {
+  const DotProblemInfo dot_info = CreateDotInfo(PrimitiveType::F32);
+  const BlockLevelParameters block_params = CreateBlockParams(/*num_warps=*/4);
+
+  const int regs_small_tile = CalculateRegistersPerThread(
+      dot_info, DotTileSize{/*m=*/64, /*n=*/64, /*k=*/32, /*b=*/1},
+      block_params, ddh100_);
+  const int regs_large_tile = CalculateRegistersPerThread(
+      dot_info, DotTileSize{/*m=*/128, /*n=*/128, /*k=*/32, /*b=*/1},
+      block_params, ddh100_);
+
+  EXPECT_GT(regs_large_tile, regs_small_tile);
+}
+
+TEST_F(GpuDotFusionCostModelTest,
+       CalculateRegistersPerThreadDecreasesWithMoreWarps) {
+  const DotProblemInfo dot_info = CreateDotInfo(PrimitiveType::F32);
+  const DotTileSize tile{/*m=*/128, /*n=*/128, /*k=*/32, /*b=*/1};
+
+  const int regs_4_warps = CalculateRegistersPerThread(
+      dot_info, tile, CreateBlockParams(/*num_warps=*/4), ddh100_);
+  const int regs_8_warps = CalculateRegistersPerThread(
+      dot_info, tile, CreateBlockParams(/*num_warps=*/8), ddh100_);
+
+  EXPECT_LT(regs_8_warps, regs_4_warps);
+}
+
+TEST_F(GpuDotFusionCostModelTest,
+       CalculateRegistersPerThreadIncreasesWithOutputBitWidth) {
+  const DotTileSize tile{/*m=*/128, /*n=*/128, /*k=*/32, /*b=*/1};
+  const BlockLevelParameters block_params = CreateBlockParams(/*num_warps=*/4);
+
+  const int regs_f16 = CalculateRegistersPerThread(
+      CreateDotInfo(PrimitiveType::F16), tile, block_params, ddh100_);
+  const int regs_f32 = CalculateRegistersPerThread(
+      CreateDotInfo(PrimitiveType::F32), tile, block_params, ddh100_);
+  const int regs_f64 = CalculateRegistersPerThread(
+      CreateDotInfo(PrimitiveType::F64), tile, block_params, ddh100_);
+
+  EXPECT_GT(regs_f32, regs_f16);
+  EXPECT_GT(regs_f64, regs_f32);
+}
+
+TEST_F(GpuDotFusionCostModelTest,
+       CalculateRegistersPerThreadWithinRealisticBounds) {
+  const DotProblemInfo dot_info = CreateDotInfo(PrimitiveType::F32);
+  const BlockLevelParameters block_params = CreateBlockParams(/*num_warps=*/4);
+  const DotTileSize tile{/*m=*/128, /*n=*/128, /*k=*/64, /*b=*/1};
+
+  const int regs =
+      CalculateRegistersPerThread(dot_info, tile, block_params, ddh100_);
+
+  // Estimates must be strictly above base overhead (24) and within GPU hardware
+  // max (255).
+  EXPECT_GT(regs, 24);
+  EXPECT_LE(regs, 255);
 }
 
 }  // namespace
