@@ -50,6 +50,7 @@ limitations under the License.
 #include "google/protobuf/text_format.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/debug_options_parsers.h"
+#include "xla/hlo/pass/hlo_pass_filter.h"
 #include "xla/parse_flags_from_env.h"
 #include "xla/service/collective_utils.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
@@ -764,6 +765,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       [debug_options](std::string comma_separated_values) {
         for (const auto& passname : std::vector<std::string>(
                  absl::StrSplit(comma_separated_values, ','))) {
+          if (absl::Status status = HloPassFilter::ValidateEntry(passname);
+              !status.ok()) {
+            LOG(ERROR) << "Invalid --xla_disable_hlo_passes entry: "
+                       << status.message();
+            return false;
+          }
           debug_options->add_xla_disable_hlo_passes(passname);
         }
         return true;
@@ -774,6 +781,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       [debug_options](std::string comma_separated_values) {
         for (const auto& passname : std::vector<std::string>(
                  absl::StrSplit(comma_separated_values, ','))) {
+          if (absl::Status status = HloPassFilter::ValidateEntry(passname);
+              !status.ok()) {
+            LOG(ERROR) << "Invalid --xla_enable_hlo_passes_only entry: "
+                       << status.message();
+            return false;
+          }
           debug_options->add_xla_enable_hlo_passes_only(passname);
         }
         return true;
@@ -1437,8 +1450,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Numerical optimization level for the XLA compiler backend."));
   flag_list->push_back(tsl::Flag(
       "xla_disable_hlo_passes", setter_for_xla_disable_hlo_passes, "",
-      "Comma-separated list of hlo passes to be disabled. These names must "
-      "exactly match the passes' names; no whitespace around commas."));
+      "Comma-separated list of hlo passes to be disabled (no whitespace around "
+      "commas). Each entry may be: a plain pass name ('algsimp', matches every "
+      "invocation); a name with a 0-based occurrence index ('algsimp:2', the "
+      "3rd invocation in the module); a name scoped to its immediate parent "
+      "pipeline ('simplification/algsimp'); a scoped name with a 0-based index "
+      "within that pipeline ('simplification/algsimp:2'); or a 0-based raw "
+      "pass_id ('@42')."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_hlo_custom_call_allowlist",
       setter_for_xla_gpu_hlo_custom_call_allowlist, "",
@@ -1450,9 +1468,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "ignored."));
   flag_list->push_back(tsl::Flag(
       "xla_enable_hlo_passes_only", setter_for_xla_enable_hlo_passes_only, "",
-      "Comma-separated list of hlo passes to be enabled. These names must "
-      "exactly match the passes' names; no whitespace around commas. The "
-      "unspecified passes are all disabled."));
+      "Comma-separated list of hlo passes to be enabled; all unspecified "
+      "passes are disabled (no whitespace around commas). Entries accept the "
+      "same syntax as xla_disable_hlo_passes: plain name ('algsimp'), "
+      "occurrence ('algsimp:2'), pipeline scope ('simplification/algsimp'), "
+      "scoped occurrence ('simplification/algsimp:2'), or raw pass_id "
+      "('@42')."));
   flag_list->push_back(tsl::Flag(
       "xla_disable_all_hlo_passes",
       bool_setter_for(&DebugOptions::set_xla_disable_all_hlo_passes), false,
