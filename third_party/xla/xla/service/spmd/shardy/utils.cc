@@ -591,6 +591,15 @@ mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
 mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(
     const HloSharding& hloSharding, mlir::TypeRange types,
     mlir::sdy::MeshOp globalMeshOp, mlir::MLIRContext* context) {
+  if (types.empty()) {
+    const HloSharding& leafSharding = hloSharding.IsTuple()
+                                          ? hloSharding.tuple_elements().front()
+                                          : hloSharding;
+    return TensorShardingPerValueAttr::get(
+        context, convertToSdyShardingAttr(leafSharding, /*rank=*/0,
+                                          globalMeshOp, context));
+  }
+
   if (hloSharding.IsTuple()) {
     llvm::SmallVector<TensorShardingAttr> sdyShardings;
     CHECK_EQ(hloSharding.tuple_elements().size(), types.size());
@@ -600,12 +609,6 @@ mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(
           globalMeshOp, context));
     }
     return TensorShardingPerValueAttr::get(context, sdyShardings);
-  }
-
-  if (types.empty()) {
-    return TensorShardingPerValueAttr::get(
-        context, convertToSdyShardingAttr(hloSharding, /*rank=*/0, globalMeshOp,
-                                          context));
   }
 
   CHECK_EQ(types.size(), 1);
