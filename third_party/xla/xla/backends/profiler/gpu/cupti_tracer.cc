@@ -1185,6 +1185,13 @@ absl::Status CuptiTracer::Enable(
   cupti_driver_api_hook_ = std::make_unique<CuptiDriverApiHookWithActivityApi>(
       *option_, cupti_interface_, this);
 
+  absl::Cleanup enable_cleanup = [&] {
+    collector_ = nullptr;
+    option_.reset();
+    cupti_driver_api_hook_.reset();
+    subscriber_prepared_for_current_session_ = false;
+  };
+
   absl::Cleanup api_tracing_cleanup = [&] {
     if (cupti_interface_->Disabled()) {
       api_tracing_enabled_ = false;
@@ -1215,6 +1222,7 @@ absl::Status CuptiTracer::Enable(
     } else {
       DisableActivityTracing().IgnoreError();
     }
+    activity_buffers_.reset();
   };
   ABSL_RETURN_IF_ERROR(EnableActivityTracing());
 
@@ -1247,6 +1255,7 @@ absl::Status CuptiTracer::Enable(
         CreatePmSampler(num_gpus_requested, option_->pm_sampler_options));
     absl::Cleanup pm_sampler_cleanup = [&] {
       cupti_pm_sampler_->Deinitialize().IgnoreError();
+      cupti_pm_sampler_.reset();
     };
     ABSL_RETURN_IF_ERROR(cupti_pm_sampler_->StartSampler());
     pm_sampling_enabled_ = true;
@@ -1256,10 +1265,15 @@ absl::Status CuptiTracer::Enable(
   std::move(annotation_cleanup).Cancel();
   std::move(activity_tracing_cleanup).Cancel();
   std::move(api_tracing_cleanup).Cancel();
+  std::move(enable_cleanup).Cancel();
   return absl::OkStatus();
 }
 
 void CuptiTracer::Disable() {
+  if (collector_ == nullptr) {
+    return;
+  }
+
   // Disables the PM Sampling before Cupti Tracer is disabled.
   if (pm_sampling_enabled_) {
     if (absl::Status status = cupti_pm_sampler_->StopSampler(); !status.ok()) {
