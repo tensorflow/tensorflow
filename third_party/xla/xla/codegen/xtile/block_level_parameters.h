@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "xla/codegen/xtile/xtile_config.pb.h"
@@ -78,6 +79,15 @@ struct BlockLevelParameters {
       config.set_num_tiles_per_pid(num_tiles_per_pid);
     }
     return config;
+  }
+
+  std::string ToString() const {
+    return ToBlockLevelFusionConfig().ShortDebugString();
+  }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const BlockLevelParameters& params) {
+    sink.Append(params.ToString());
   }
 };
 

@@ -2922,6 +2922,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_use_memcpy_local_p2p(),
       "Whether to use memcpy for local p2p communication."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_dump_cost_model_top_k_candidates_to",
+      string_setter_for(
+          &DebugOptions::set_xla_gpu_dump_cost_model_top_k_candidates_to),
+      debug_options->xla_gpu_dump_cost_model_top_k_candidates_to(),
+      "File to write cost model top-k candidates to."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_collective_permute_connected_components",
       bool_setter_for(
           &DebugOptions::set_xla_gpu_collective_permute_connected_components),
