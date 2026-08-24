@@ -304,7 +304,6 @@ def _tf_repositories():
         tf_http_archive,
         name = "com_google_protobuf",
         patch_file = [
-            "//third_party/protobuf:protobuf.patch",
             "//third_party/protobuf:protobuf_arena.patch",
         ],
         sha256 = "61e5e5b7f29c4a719d9691b97c2b8937b8bd5ab1b6b7586f3f55934011806280",
