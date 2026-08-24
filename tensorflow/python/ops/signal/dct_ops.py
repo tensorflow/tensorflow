@@ -15,8 +15,6 @@
 """Discrete Cosine Transform ops."""
 import math as _math
 
-import numpy as _np
-
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.framework import smart_cond
