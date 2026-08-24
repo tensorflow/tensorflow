@@ -38,6 +38,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -46,7 +48,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
@@ -59,6 +60,9 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
+
+using ::xla::xtile::BlockLevelParameters;
+
 namespace cost_model_config_optimization_detail {
 
 // Helper struct for fields always used together.
@@ -74,11 +78,11 @@ absl::StatusOr<absl::Duration> EstimateRunTimeWithConfig(
     GpuPerformanceModelWithIndexingAnalysis& cost_model,
     mlir::MLIRContext* mlir_context) {
   // Save the old backend config to restore later.
-  ABSL_ASSIGN_OR_RETURN(Tile old_backend_config,
-                   context.dot->backend_config<Tile>());
+  ABSL_ASSIGN_OR_RETURN(xla::xtile::Tile old_backend_config,
+                   context.dot->backend_config<xla::xtile::Tile>());
 
   // Set the contracting dimension tile size.
-  Tile tile_config;
+  xla::xtile::Tile tile_config;
   tile_config.add_sizes(config.block_k);
   ABSL_RETURN_IF_ERROR(context.dot->set_backend_config(tile_config));
 

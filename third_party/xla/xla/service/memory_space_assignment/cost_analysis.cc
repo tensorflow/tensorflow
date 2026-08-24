@@ -22,10 +22,12 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
@@ -39,6 +41,7 @@ limitations under the License.
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
+#include "xla/service/memory_space_assignment/utils.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 
@@ -342,8 +345,12 @@ namespace {
 // Returns true on async instructions since we assume they are already
 // efficiently scheduled such that they are not in the critical path and appear
 // to take no time.
-bool ExcludeInstructionFromElapsed(const HloInstruction& instruction) {
-  return instruction.opcode() == HloOpcode::kAllGatherStart ||
+bool ExcludeInstructionFromElapsed(
+    const HloInstruction& instruction,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  return !MemorySpaceAssignmentUtils::IsInstructionOnConfiguredExecThread(
+             instruction, execution_threads) ||
+         instruction.opcode() == HloOpcode::kAllGatherStart ||
          instruction.opcode() == HloOpcode::kAllGatherDone ||
          instruction.opcode() == HloOpcode::kAllReduceStart ||
          instruction.opcode() == HloOpcode::kAllReduceDone ||
@@ -358,7 +365,7 @@ bool ExcludeInstructionFromElapsed(const HloInstruction& instruction) {
 
 float CostAnalysis::GetInstructionElapsedDueToCompute(
     const HloInstruction& instruction) const {
-  if (ExcludeInstructionFromElapsed(instruction)) {
+  if (ExcludeInstructionFromElapsed(instruction, options_.execution_threads)) {
     return 0.0f;
   }
   return op_cost_manager_.ComputeSeconds(instruction);
@@ -368,7 +375,7 @@ float CostAnalysis::GetInstructionElapsedDueToMemory(
     const HloInstruction& instruction,
     absl::Span<const std::pair<int64_t, ShapeIndex>> operands_in_alternate_mem,
     absl::Span<const ShapeIndex> outputs_in_alternate_mem) const {
-  if (ExcludeInstructionFromElapsed(instruction)) {
+  if (ExcludeInstructionFromElapsed(instruction, options_.execution_threads)) {
     return 0.0f;
   }
   float total_bytes_accessed = op_cost_manager_.TotalBytesAccessed(instruction);
@@ -397,7 +404,7 @@ float CostAnalysis::GetInstructionElapsedDueToMemory(
 float CostAnalysis::GetInstructionElapsedDueToMemory(
     const HloInstruction& instruction,
     IsInAlternateMemoryFun is_in_alternate_mem) const {
-  if (ExcludeInstructionFromElapsed(instruction)) {
+  if (ExcludeInstructionFromElapsed(instruction, options_.execution_threads)) {
     return 0.0f;
   }
   float total_bytes_accessed = op_cost_manager_.TotalBytesAccessed(instruction);
@@ -447,7 +454,7 @@ float CostAnalysis::GetInstructionElapsedDueToMemory(
 
 float CostAnalysis::GetInstructionElapsed(
     const HloInstruction& instruction) const {
-  if (ExcludeInstructionFromElapsed(instruction)) {
+  if (ExcludeInstructionFromElapsed(instruction, options_.execution_threads)) {
     return 0.0f;
   }
   float overhead = GetDefaultMemoryAccessOverhead(instruction);
@@ -459,7 +466,7 @@ float CostAnalysis::GetInstructionElapsedInAlternateMemory(
     const HloInstruction& instruction,
     absl::Span<const std::pair<int64_t, ShapeIndex>> operands_in_alternate_mem,
     absl::Span<const ShapeIndex> outputs_in_alternate_mem) const {
-  if (ExcludeInstructionFromElapsed(instruction)) {
+  if (ExcludeInstructionFromElapsed(instruction, options_.execution_threads)) {
     return 0.0f;
   }
   float overhead = GetDefaultMemoryAccessOverhead(
@@ -474,7 +481,7 @@ float CostAnalysis::GetInstructionElapsedInAlternateMemory(
 float CostAnalysis::GetInstructionElapsedInAlternateMemory(
     const HloInstruction& instruction,
     IsInAlternateMemoryFun is_in_alternate_mem) const {
-  if (ExcludeInstructionFromElapsed(instruction)) {
+  if (ExcludeInstructionFromElapsed(instruction, options_.execution_threads)) {
     return 0.0f;
   }
   return std::max(

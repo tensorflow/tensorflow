@@ -155,12 +155,12 @@ inline void BroadcastSelectSimple(const RuntimeShape& cond_shape,
       output_shape.DimensionsCount(),
       std::max(cond_shape.DimensionsCount(),
                std::max(x_shape.DimensionsCount(), y_shape.DimensionsCount())));
+  TFLITE_CHECK_LE(dims_count, kMaxRank);
+
   if (dims_count <= 0) {
     *output_data = *cond_data ? *x_data : *y_data;
     return;
   }
-
-  TFLITE_DCHECK_LE(dims_count, kMaxRank);
 
   const RuntimeShape extended_output_shape =
       RuntimeShape::ExtendedShape(dims_count, output_shape);
@@ -237,10 +237,11 @@ void BroadcastSelect5DSlow(const RuntimeShape& input_condition_shape,
                            const T* input_y_data,
                            const RuntimeShape& output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("Select/BroadcastSelectSlow");
-  TFLITE_DCHECK_LE(input_condition_shape.DimensionsCount(), 8);
-  TFLITE_DCHECK_LE(input_x_shape.DimensionsCount(), 8);
-  TFLITE_DCHECK_LE(input_y_shape.DimensionsCount(), 8);
-  TFLITE_DCHECK_LE(output_shape.DimensionsCount(), 8);
+
+  TFLITE_CHECK_LE(input_condition_shape.DimensionsCount(), 8);
+  TFLITE_CHECK_LE(input_x_shape.DimensionsCount(), 8);
+  TFLITE_CHECK_LE(input_y_shape.DimensionsCount(), 8);
+  TFLITE_CHECK_LE(output_shape.DimensionsCount(), 8);
 
   BroadcastSelectSimple(input_condition_shape, input_condition_data,
                         input_x_shape, input_x_data, input_y_shape,

@@ -43,7 +43,7 @@ void IntelGpuCompiler::AddPaddingForGpublasGemms(
   // Stub for Intel GPUs
 }
 
-absl::Status IntelGpuCompiler::AddAutotunerPass(
+absl::Status IntelGpuCompiler::AddConfigAssignerPass(
     HloPassPipeline* pipeline, HloModule* hlo_module,
     const se::GpuComputeCapability& gpu_version, const CompileOptions& options,
     tsl::thread::ThreadPool* thread_pool,

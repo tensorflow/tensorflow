@@ -104,9 +104,8 @@ void AddNegativeValuesMaybeRemoveZero(std::vector<T>& values) {
   }
 }
 
-class ArrayElementwiseOpTest
-    : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloTestBase>> {
+class ArrayElementwiseOpTest : public ClientLibraryTestRunnerMixin<
+                                   HloInterpreterReferenceMixin<HloTestBase>> {
  public:
   static constexpr float kEpsF32 = std::numeric_limits<float>::epsilon();
   static constexpr double kEpsF64 = std::numeric_limits<double>::epsilon();
@@ -1342,7 +1341,7 @@ TEST_F(ArrayElementwiseOpTest, CompareEqF32s) {
 
 template <typename T>
 class TotalOrderTest : public ClientLibraryTestRunnerMixin<
-                           HloPjRtInterpreterReferenceMixin<HloTestBase>> {
+                           HloInterpreterReferenceMixin<HloTestBase>> {
  public:
   void DoIt(ComparisonDirection direction) {
     this->SetFastMathDisabled(true);

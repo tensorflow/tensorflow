@@ -696,6 +696,12 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::GlobalDecreasingSizeBestFitHeap(
   } else if (packing_strategy == kFastSplit) {
     buffer_interval_compare_ = GetSpatialBufferIntervalCompare();
     CHECK(buffer_interval_compare == nullptr);
+  } else if (packing_strategy == kPhaseWindow) {
+    buffer_interval_compare_ = GetColocationStartTimeBufferIntervalCompare();
+    CHECK(buffer_interval_compare == nullptr);
+  } else if (packing_strategy == kPhaseWindowEnd) {
+    buffer_interval_compare_ = GetColocationEndTimeBufferIntervalCompare();
+    CHECK(buffer_interval_compare == nullptr);
   } else {
     CHECK(packing_strategy == kCustom);
     CHECK(buffer_interval_compare != nullptr);
@@ -723,6 +729,18 @@ GlobalDecreasingSizeBestFitHeap<
   return LessThanByKey([](const BufferInterval& x) {
     // Sort by start time (ascending), size (descending), buffer (ascending).
     return std::make_tuple(x.min_colocation_start_time, -x.size,
+                           std::cref(*x.buffer));
+  });
+}
+
+template <typename BufferType>
+typename GlobalDecreasingSizeBestFitHeap<BufferType>::BufferIntervalCompare
+GlobalDecreasingSizeBestFitHeap<
+    BufferType>::GetColocationEndTimeBufferIntervalCompare() const {
+  return LessThanByKey([](const BufferInterval& x) {
+    // Sort by end time (ascending), size (descending), buffer (ascending) so
+    // buffers that expire together are packed onto the same page.
+    return std::make_tuple(x.max_colocation_end_time, -x.size,
                            std::cref(*x.buffer));
   });
 }
@@ -2876,6 +2894,8 @@ ConstrainedGlobalDecreasingSizeBestFitHeap::Finish() {
     case kSpatial:
     case kTemporal:
     case kCustom:
+    case kPhaseWindow:
+    case kPhaseWindowEnd:
       return FinishBestOfSpatialTemporal();
     case kFastMerge:
       return FinishFastMerge();

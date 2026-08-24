@@ -379,7 +379,7 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   if (splitting_enabled) {
     CHECK_EQ(options_.sliced_prefetch_options.max_slices(), 0)
         << "TODO(b/167392593): Support sliced prefetches for split shapes.";
-    CHECK(!options_.enable_window_prefetch)
+    CHECK(!options_.IsOpSpanExposureEnabled())
         << "TODO(b/167392593): Support split shapes for window "
            "prefetches.";
   }

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/tools/hlo_dump/hlo_dump_utils.h"
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -571,11 +572,8 @@ ENTRY main {
   auto outer_key = TensorKey::Create("fusion", ShapeIndex{});
   auto inner_key = TensorKey::Create("add.1", ShapeIndex{});
   ASSERT_TRUE(annotations.contains(outer_key));
-  ASSERT_TRUE(annotations.contains(inner_key));
+  ASSERT_FALSE(annotations.contains(inner_key));
   EXPECT_EQ(annotations[outer_key].background_color, "pink");
-  EXPECT_EQ(annotations[inner_key].background_color, "pink");
-  EXPECT_EQ(annotations[outer_key].tooltip_data,
-            annotations[inner_key].tooltip_data);
 
   bool found_fusion = false;
   bool found_add1 = false;
@@ -585,7 +583,7 @@ ENTRY main {
       EXPECT_EQ(node.diff_score, 25.0);
     } else if (node.key == "fusion/add.1") {
       found_add1 = true;
-      EXPECT_EQ(node.diff_score, 25.0);
+      EXPECT_EQ(node.diff_score, 0.0);
     }
   }
   EXPECT_TRUE(found_fusion);
@@ -598,7 +596,8 @@ HloModule nested_fusion_module
 
 fused_comp_0 {
   p0.2 = f32[10] parameter(0)
-  ROOT add.1 = f32[10] add(p0.2, p0.2)
+  mul = f32[10] multiply(p0.2, p0.2)
+  ROOT add.1 = f32[10] add(mul, p0.2)
 }
 
 fused_comp_1 {
@@ -615,7 +614,7 @@ ENTRY main {
                        ParseAndReturnUnverifiedModule(hlo_string));
 
   MismatchDetails details;
-  details.target_instruction_name = "outer_fusion";
+  details.target_instruction_name = "mul";
   details.actual = 1.0;
   details.expected = 2.0;
   details.rel_error = 0.25;
@@ -627,26 +626,87 @@ ENTRY main {
 
   auto outer_key = TensorKey::Create("outer_fusion", ShapeIndex{});
   auto inner_key = TensorKey::Create("add.1", ShapeIndex{});
-  ASSERT_TRUE(annotations.contains(outer_key));
-  ASSERT_TRUE(annotations.contains(inner_key));
-  EXPECT_EQ(annotations[outer_key].background_color, "pink");
-  EXPECT_EQ(annotations[inner_key].background_color, "pink");
-  EXPECT_EQ(annotations[outer_key].tooltip_data,
-            annotations[inner_key].tooltip_data);
+  auto mul_key = TensorKey::Create("mul", ShapeIndex{});
+  ASSERT_FALSE(annotations.contains(outer_key));
+  ASSERT_FALSE(annotations.contains(inner_key));
+  ASSERT_TRUE(annotations.contains(mul_key));
 
   bool found_outer = false;
   bool found_add1 = false;
+  bool found_mul = false;
   for (const auto& node : graph_data.nodes) {
     if (node.key == "outer_fusion") {
       found_outer = true;
-      EXPECT_EQ(node.diff_score, 25.0);
+      EXPECT_EQ(node.diff_score, 0.0);
     } else if (node.key == "outer_fusion/inner_fusion/add.1") {
       found_add1 = true;
+      EXPECT_EQ(node.diff_score, 0.0);
+    } else if (node.key == "outer_fusion/inner_fusion/mul") {
+      found_mul = true;
       EXPECT_EQ(node.diff_score, 25.0);
     }
   }
   EXPECT_TRUE(found_outer);
   EXPECT_TRUE(found_add1);
+  EXPECT_TRUE(found_mul);
+}
+
+TEST(HloDumpUtilsTest, PopulateMismatchGraphData_SingleOpInNestedFusion) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule nested_fusion_module
+
+fused_comp_0 {
+  p0.2 = f32[10] parameter(0)
+  mul = f32[10] multiply(p0.2, p0.2)
+  ROOT add.1 = f32[10] add(mul, p0.2)
+}
+
+fused_comp_1 {
+  p0.1 = f32[10] parameter(0)
+  ROOT inner_fusion = f32[10] fusion(p0.1), kind=kLoop, calls=fused_comp_0
+}
+
+ENTRY main {
+  p0 = f32[10] parameter(0)
+  ROOT outer_fusion = f32[10] fusion(p0), kind=kLoop, calls=fused_comp_1
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+
+  MismatchDetails details;
+  details.target_instruction_name = "mul";
+  details.actual = 1.0;
+  details.expected = 2.0;
+  details.rel_error = 0.25;
+  details.percentage_of_elems_exceeding_abs_error = 50.0;
+  details.percentage_of_elems_exceeding_rel_error = 50.0;
+
+  auto annotations = PopulateMismatchAnnotations(*module, {details});
+  auto graph_data = PopulateMismatchGraphData(*module, {details});
+
+  auto mul_key = TensorKey::Create("mul", ShapeIndex{});
+  auto outer_key = TensorKey::Create("outer_fusion", ShapeIndex{});
+  auto inner_key = TensorKey::Create("inner_fusion", ShapeIndex{});
+  auto add_key = TensorKey::Create("add.1", ShapeIndex{});
+
+  ASSERT_TRUE(annotations.contains(mul_key));
+  EXPECT_EQ(annotations[mul_key].background_color, "pink");
+  EXPECT_FALSE(annotations.contains(outer_key));
+  EXPECT_FALSE(annotations.contains(inner_key));
+  EXPECT_FALSE(annotations.contains(add_key));
+
+  bool found_mul = false;
+  for (const auto& node : graph_data.nodes) {
+    if (node.key == "outer_fusion/inner_fusion/mul") {
+      found_mul = true;
+      EXPECT_EQ(node.diff_score, 25.0);
+    } else if (node.key == "outer_fusion" ||
+               node.key == "outer_fusion/inner_fusion/add.1") {
+      EXPECT_EQ(node.diff_score, 0);
+    }
+  }
+  EXPECT_TRUE(found_mul);
 }
 
 TEST(HloDumpUtilsTest, PopulateMismatchGraphData_ZeroRelError) {
@@ -696,11 +756,141 @@ TEST(HloDumpUtilsTest, ConvertHloToHtmlCompactGte) {
   // Verify that the tooltip data is correctly injected
   EXPECT_TRUE(absl::StrContains(html, "my compact GTE tooltip"));
 
-  // Verify that the color lightgreen is associated with the element
+  // Verify that the color light green is associated with the element
   EXPECT_TRUE(absl::StrContains(html, "bg-lightgreen"));
 
   // Verify that the link is correctly sanitized to point to the GTE
   EXPECT_TRUE(absl::StrContains(html, "href=\"#instr_p0_0\""));
+}
+
+TEST(HloDumpUtilsTest, PopulateMismatchGraphData_RuntimeNanMismatch) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule test_runtime_nan
+ENTRY main {
+  p0 = f32[10] parameter(0)
+  p1 = f32[10] parameter(1)
+  ROOT div = f32[10] divide(p0, p1)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+
+  MismatchDetails nan_mismatch;
+  nan_mismatch.target_instruction_name = "div";
+  nan_mismatch.actual = std::numeric_limits<double>::quiet_NaN();
+  nan_mismatch.expected = 1.0;
+  nan_mismatch.rel_error = std::numeric_limits<double>::quiet_NaN();
+
+  auto graph_data = PopulateMismatchGraphData(*module, {nan_mismatch});
+  absl::flat_hash_map<std::string, double> scores;
+  for (const auto& node : graph_data.nodes) {
+    scores[node.key] = node.diff_score;
+  }
+
+  EXPECT_EQ(scores["div"], kNanInfMismatchDiffScore);
+  EXPECT_EQ(scores["p0"], 0.0);
+  EXPECT_EQ(scores["p1"], 0.0);
+}
+
+TEST(HloDumpUtilsTest, PopulateMismatchGraphData_RuntimeInfMismatch) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule test_runtime_inf
+ENTRY main {
+  p0 = f32[10] parameter(0)
+  p1 = f32[10] parameter(1)
+  ROOT div = f32[10] divide(p0, p1)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+
+  MismatchDetails inf_mismatch;
+  inf_mismatch.target_instruction_name = "div";
+  inf_mismatch.actual = std::numeric_limits<double>::infinity();
+  inf_mismatch.expected = 1.0;
+  inf_mismatch.rel_error = std::numeric_limits<double>::infinity();
+
+  auto graph_data = PopulateMismatchGraphData(*module, {inf_mismatch});
+  absl::flat_hash_map<std::string, double> scores;
+  for (const auto& node : graph_data.nodes) {
+    scores[node.key] = node.diff_score;
+  }
+
+  EXPECT_EQ(scores["div"], kNanInfMismatchDiffScore);
+  EXPECT_EQ(scores["p0"], 0.0);
+  EXPECT_EQ(scores["p1"], 0.0);
+}
+
+TEST(HloDumpUtilsTest, PopulateMismatchGraphData_RuntimeNanMismatchInFusion) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule test_fusion_nan
+%fused_comp (p0: f32[10]) -> f32[10] {
+  %p0 = f32[10] parameter(0)
+  %c = f32[] constant(0.0)
+  %b = f32[10] broadcast(%c), dimensions={}
+  ROOT %div = f32[10] divide(%p0, %b)
+}
+
+ENTRY main {
+  %p0 = f32[10] parameter(0)
+  ROOT %fusion = f32[10] fusion(%p0), kind=kCustom, calls=%fused_comp
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+
+  MismatchDetails nan_mismatch;
+  nan_mismatch.target_instruction_name = "div";
+  nan_mismatch.actual = std::numeric_limits<double>::quiet_NaN();
+  nan_mismatch.expected = 1.0;
+  nan_mismatch.rel_error = std::numeric_limits<double>::quiet_NaN();
+
+  auto graph_data = PopulateMismatchGraphData(*module, {nan_mismatch});
+  absl::flat_hash_map<std::string, double> scores;
+  for (const auto& node : graph_data.nodes) {
+    scores[node.key] = node.diff_score;
+  }
+
+  EXPECT_EQ(scores["fusion"], 0.0);
+  EXPECT_EQ(scores["fusion/div"], kNanInfMismatchDiffScore);
+  EXPECT_EQ(scores["fusion/c"], 0.0);
+  EXPECT_EQ(scores["p0"], 0.0);
+}
+
+TEST(HloDumpUtilsTest, PopulateMismatchAnnotations_NonTupleOpInsideFusion) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule test_fusion_annotation
+%fused_comp (p0: f32[10]) -> f32[10] {
+  %p0 = f32[10] parameter(0)
+  ROOT %sin.0 = f32[10] sine(%p0)
+}
+
+ENTRY main {
+  %p0 = f32[10] parameter(0)
+  ROOT %fusion = f32[10] fusion(%p0), kind=kLoop, calls=%fused_comp
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+
+  MismatchDetails mismatch;
+  mismatch.target_instruction_name = "sin.0";
+  mismatch.output_shape_index = 0;  // Default shape index for non-tuple
+  mismatch.actual = 1.0;
+  mismatch.expected = 2.0;
+  mismatch.rel_error = 0.5;
+
+  auto annotations = PopulateMismatchAnnotations(*module, {mismatch});
+  TensorKey expected_key = TensorKey::Create("sin.0", ShapeIndex{});
+  ASSERT_TRUE(annotations.contains(expected_key));
+  EXPECT_EQ(annotations[expected_key].background_color, "pink");
+  EXPECT_TRUE(annotations[expected_key].tooltip_data.has_value());
+
+  std::string html =
+      ConvertHloToHtml(module->name(), module->ToString(), annotations);
+  EXPECT_TRUE(absl::StrContains(html, "bg-pink"));
+  EXPECT_TRUE(absl::StrContains(html, "Numeric Mismatch:"));
+  EXPECT_TRUE(absl::StrContains(html, "sin.0"));
 }
 
 }  // namespace

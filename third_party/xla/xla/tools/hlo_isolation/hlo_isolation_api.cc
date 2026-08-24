@@ -110,30 +110,15 @@ absl::Status InitIsolatorOptions(ModuleIsolationOptions& options) {
       auto* env = tsl::Env::Default();
       std::string outdir;
       std::string filename;
-      std::string html_filename;
       if (tsl::io::GetTestUndeclaredOutputsDir(&outdir)) {
         filename = tsl::io::JoinPath(
             outdir, absl::StrCat("failed-module-", module.name(), ".txt"));
-        html_filename = tsl::io::JoinPath(
-            outdir, absl::StrCat("failed-module-", module.name(), ".html"));
       } else {
         filename = tsl::io::GetTempFilename(
             absl::StrCat("failed-module-", module.name(), ".txt"));
-        html_filename = tsl::io::GetTempFilename(
-            absl::StrCat("failed-module-", module.name(), ".html"));
       }
       CHECK_OK(tsl::WriteStringToFile(env, filename, module.ToString()));
       LOG(INFO) << "Wrote failed HLO module to " << filename;
-
-      std::vector<numerics::debug_info::MismatchDetails> mismatch_details =
-          ExtractMismatchDetails(module, compare_status);
-      auto html_path_or =
-          numerics::debug_info::DumpHloModuleMismatchWithGraphData(
-              module, mismatch_details,
-              absl::StrCat("failed-module-", module.name(), ".html"));
-      if (html_path_or.ok()) {
-        LOG(INFO) << "Wrote failed HLO module HTML to " << *html_path_or;
-      }
     };
   }
   if (!options.make_fake_arguments_fn) {
@@ -445,13 +430,13 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
 
             if (!matched.ok()) {
               std::string error_message = absl::StrFormat(
-                  "FusionDebugger: Mismatch found in op %s within fusion "
-                  "%s\n%s",
+                  "FusionDebugger: Mismatch found in op \"%s\" within fusion "
+                  "\"%s\"\n%s",
                   op_name, module_name, matched.message());
               ADD_FAILURE() << error_message;
               LOG(ERROR) << error_message;
 
-              absl::MutexLock lock(*result_mutex.get());
+              absl::MutexLock lock(*result_mutex);
               NumericCheck* numeric_check = test_result->add_numeric_checks();
               numeric_check->set_name(absl::StrCat("FusionDebugger:", op_name));
               numeric_check->set_expected_contains_inf_or_nan(
@@ -760,6 +745,19 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
 
   result.set_state(State::FAILURE);
   result.set_reason("NUMERIC_MISMATCH");
+
+  std::vector<numerics::debug_info::MismatchDetails> all_mismatch_details =
+      ExtractMismatchDetails(module, result);
+  if (!all_mismatch_details.empty()) {
+    auto html_path_or =
+        numerics::debug_info::DumpHloModuleMismatchWithGraphData(
+            module, all_mismatch_details,
+            absl::StrCat("failed-module-", module.name(), ".html"));
+    if (html_path_or.ok()) {
+      LOG(INFO) << "Wrote failed HLO module HTML to " << *html_path_or;
+    }
+  }
+
   return result;
 }
 
@@ -1121,51 +1119,93 @@ absl::StatusOr<std::vector<bool>> DetectReducesInModuleOutput(
   return reduce_in_output;
 }
 
+namespace {
+
+numerics::debug_info::MismatchDetails ConvertToMismatchDetails(
+    absl::string_view target_instruction_name, const NumericMismatch& m,
+    bool is_tuple) {
+  numerics::debug_info::MismatchDetails details;
+  details.target_instruction_name = std::string(target_instruction_name);
+  if (is_tuple && m.has_output_shape_index()) {
+    details.output_shape_index = m.output_shape_index();
+  }
+  details.actual = m.actual();
+  details.expected = m.expected();
+  details.rel_error = m.rel_error();
+  if (m.has_percentage_of_elems_exceeding_abs_error()) {
+    details.percentage_of_elems_exceeding_abs_error =
+        m.percentage_of_elems_exceeding_abs_error();
+  }
+  if (m.has_percentage_of_elems_exceeding_rel_error()) {
+    details.percentage_of_elems_exceeding_rel_error =
+        m.percentage_of_elems_exceeding_rel_error();
+  }
+  if (m.has_percentage_of_elems_exceeding_both_errors()) {
+    details.percentage_of_elems_exceeding_both_errors =
+        m.percentage_of_elems_exceeding_both_errors();
+  }
+  if (m.has_result_of_reduce()) {
+    details.result_of_reduce = m.result_of_reduce();
+  }
+  return details;
+}
+
+}  // namespace
+
 std::vector<numerics::debug_info::MismatchDetails> ExtractMismatchDetails(
-    const HloModule& module, const absl::Status& compare_status) {
-  absl::StatusOr<std::vector<NumericMismatch>> top_mismatches =
-      ExtractAndEnrichTopMismatches(std::string(compare_status.message()),
-                                    &module);
-  if (!top_mismatches.ok()) {
-    return {};
+    const HloModule& module, const HloIsolationTestResult& result) {
+  std::vector<numerics::debug_info::MismatchDetails> all_details;
+  bool is_tuple = module.result_shape().IsTuple();
+
+  // 1. Extract parent fusion mismatch details from primary parent check
+  // (prefer TPU_VS_INTERPRETER, fallback to TPU_VS_DEFUSED_TPU).
+  const NumericCheck* parent_check = nullptr;
+  for (const auto& check : result.numeric_checks()) {
+    if (check.name() == "TPU_VS_INTERPRETER") {
+      parent_check = &check;
+      break;
+    }
+    if (check.name() == "TPU_VS_DEFUSED_TPU" && parent_check == nullptr) {
+      parent_check = &check;
+    }
   }
 
-  std::string target_name;
+  std::string root_name;
   if (const HloComputation* entry = module.entry_computation()) {
     if (const HloInstruction* root = entry->root_instruction()) {
-      target_name = root->name();
+      root_name = root->name();
     }
   }
 
-  std::vector<numerics::debug_info::MismatchDetails> mismatch_details;
-  mismatch_details.reserve(top_mismatches->size());
-  for (const auto& m : *top_mismatches) {
-    numerics::debug_info::MismatchDetails details;
-    details.target_instruction_name = target_name;
-    if (module.result_shape().IsTuple()) {
-      details.output_shape_index = m.output_shape_index();
+  if (parent_check != nullptr && !root_name.empty()) {
+    for (const auto& m : parent_check->top_mismatches()) {
+      all_details.push_back(ConvertToMismatchDetails(root_name, m, is_tuple));
     }
-    details.actual = m.actual();
-    details.expected = m.expected();
-    details.rel_error = m.rel_error();
-    if (m.has_percentage_of_elems_exceeding_abs_error()) {
-      details.percentage_of_elems_exceeding_abs_error =
-          m.percentage_of_elems_exceeding_abs_error();
-    }
-    if (m.has_percentage_of_elems_exceeding_rel_error()) {
-      details.percentage_of_elems_exceeding_rel_error =
-          m.percentage_of_elems_exceeding_rel_error();
-    }
-    if (m.has_percentage_of_elems_exceeding_both_errors()) {
-      details.percentage_of_elems_exceeding_both_errors =
-          m.percentage_of_elems_exceeding_both_errors();
-    }
-    if (m.has_result_of_reduce()) {
-      details.result_of_reduce = m.result_of_reduce();
-    }
-    mismatch_details.push_back(std::move(details));
   }
-  return mismatch_details;
+
+  // 2. Extract Fusion Debugger sub-instruction mismatches.
+  absl::flat_hash_map<std::string, const HloInstruction*> name_to_instr;
+  for (const HloComputation* comp : module.computations()) {
+    for (const HloInstruction* instr : comp->instructions()) {
+      name_to_instr[instr->name()] = instr;
+    }
+  }
+
+  for (const auto& check : result.numeric_checks()) {
+    if (absl::StartsWith(check.name(), "FusionDebugger:")) {
+      std::string op_name(absl::StripPrefix(check.name(), "FusionDebugger:"));
+      bool is_op_tuple = false;
+      if (auto it = name_to_instr.find(op_name); it != name_to_instr.end()) {
+        is_op_tuple = it->second->shape().IsTuple();
+      }
+      for (const auto& m : check.top_mismatches()) {
+        all_details.push_back(
+            ConvertToMismatchDetails(op_name, m, is_op_tuple));
+      }
+    }
+  }
+
+  return all_details;
 }
 
 absl::StatusOr<std::vector<NumericMismatch>> ExtractAndEnrichTopMismatches(

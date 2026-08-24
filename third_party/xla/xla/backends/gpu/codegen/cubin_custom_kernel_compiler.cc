@@ -38,13 +38,15 @@ limitations under the License.
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
+
+using ::xla::xtile::BlockLevelParameters;
 
 xla::Future<std::unique_ptr<Thunk>> CubinCustomKernelCompiler::Compile(
     Thunk::ThunkInfo thunk_info, LlvmKernelSource kernel_source,

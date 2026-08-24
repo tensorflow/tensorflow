@@ -123,6 +123,7 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/eigh_expander.h"
 #include "xla/hlo/transforms/expanders/logistic_expander.h"
 #include "xla/hlo/transforms/expanders/optimization_barrier_expander.h"
+#include "xla/hlo/transforms/expanders/permutation_sort_expander.h"
 #include "xla/hlo/transforms/expanders/qr_expander.h"
 #include "xla/hlo/transforms/expanders/reduce_decomposer.h"
 #include "xla/hlo/transforms/expanders/reshape_decomposer.h"
@@ -758,6 +759,10 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     return instr->opcode() == HloOpcode::kTopK;
   });
 
+  // Replaces sort with scatter where possible. Needs to run before
+  // ComparisonExpander, as this rewrite requires a simple less-than comparator.
+  pipeline.AddPass<PermutationSortExpander>();
+
   pipeline.AddPass<ComparisonExpander>();
   pipeline.AddPass<CholeskyExpander>();
   pipeline.AddPass<QrExpander>();
@@ -1086,7 +1091,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
       options::UseExperimentalLoopFusion(module->config());
   bool use_tiled_emitter = options::EnableTiledEmitter(module->config());
   pipeline.AddPass<FusionWrapper>(use_experimental_loop_fusion,
-                                  use_tiled_emitter);
+                                  use_tiled_emitter, target_machine_features);
 
   if (use_multi_output_fusion) {
     pipeline.AddPass<CpuMultiOutputFusion>(&alias_info);
@@ -1180,7 +1185,9 @@ absl::Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
                                        const CompileOptions& compile_options) {
   TargetMachineFeatures target_machine_features(target_machine);
 
-  bool has_uploader = GetGlobalSymbolUploaderRegistry().uploader() != nullptr;
+  const bool has_uploader =
+      GetGlobalSymbolUploaderRegistry().uploader() != nullptr &&
+      module->config().debug_options().xla_enable_hlo_modules_upload();
   TargetMachineOptionsProto target_machine_options_proto;
   std::optional<std::string> unoptimized_fingerprint;
 
@@ -1359,7 +1366,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
                                        target_machine_options));
   }
 
-  ABSL_RETURN_IF_ERROR(RunHloPasses(module.get(), /*is_aot_compile=*/false,
+  ABSL_RETURN_IF_ERROR(RunHloPasses(module.get(), options.is_aot_compile,
                                jit_target_machine.get(),
                                /*compile_options=*/options));
   return std::move(module);
@@ -2188,7 +2195,7 @@ absl::StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
 
   ThunkEmitter::Options thunk_emitter_options = {
       /*compile_copy_as_llvm_kernel=*/false,
-      /*is_aot_compilation=*/false};
+      /*is_aot_compilation=*/options.is_aot_compile};
 
   auto ir_compiler = IrCompiler::Create(CompilerTargetOptions(module->config()),
                                         std::move(ir_compiler_options), {});

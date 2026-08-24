@@ -230,8 +230,12 @@ absl::StatusOr<bool> HaulAnnotationToFusionInstruction(
     std::function<bool(HloInstruction*)> keep_sync_annotation) {
   bool changed = false;
   for (HloComputation* computation : module->computations(execution_threads)) {
-    if (!computation->IsFusionComputation() ||
-        !keep_sync_annotation(computation->FusionInstruction()) ||
+    if (!computation->IsFusionComputation()) {
+      continue;
+    }
+    // Verify that fusion computations are not shared across multiple fusions.
+    CHECK_EQ(computation->caller_instructions(HloOpcode::kFusion).size(), 1);
+    if (!keep_sync_annotation(computation->FusionInstruction()) ||
         instruction_to_annotation.contains(computation->FusionInstruction())) {
       continue;
     }

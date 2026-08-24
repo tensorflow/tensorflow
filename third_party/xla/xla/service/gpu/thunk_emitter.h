@@ -29,10 +29,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
+#include "xla/backends/gpu/libraries/native_custom_call_thunks/native_custom_call_handler_registry.h"
 #include "xla/backends/gpu/runtime/async_execution.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/host_send_recv_thunk.h"
-#include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/future.h"
@@ -50,6 +50,7 @@ limitations under the License.
 
 namespace xla::gpu {
 
+class NativeCustomCallEmitterContextImpl;
 struct DynamicSliceCopyFusion;
 struct StaticSliceCopyFusion;
 
@@ -75,6 +76,8 @@ struct StaticSliceCopyFusion;
 // initializers in generated code have empty content.
 class ThunkEmitter {
  public:
+  friend class NativeCustomCallEmitterContextImpl;
+
   absl::string_view platform_name() const {
     return ir_emitter_context_->platform_name();
   }
@@ -249,6 +252,14 @@ class ThunkEmitter {
 
   absl::StatusOr<ThunkSequence> EmitGenericCustomCall(
       const HloCustomCallInstruction* instr);
+
+  // Emits the thunk sequence produced by a registered thunk-folding handler
+  // (see native_custom_call_handler_registry.h). Builds a
+  // NativeCustomCallEmitterContext from `ir_emitter_context_` and invokes
+  // `handler`, folding its ThunkSequence directly into the graph.
+  absl::StatusOr<ThunkSequence> EmitNativeCustomCallThunks(
+      const HloCustomCallInstruction* instr,
+      NativeCustomCallHandlerRef handler);
 
   Future<ThunkSequence> EmitFusion(const HloFusionInstruction* instr);
 

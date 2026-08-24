@@ -33,6 +33,28 @@ cc_library(
 )
 
 cc_library(
+    name = "sort_utils",
+    srcs = ["sort_utils.cc"],
+    hdrs = ["sort_utils.h"],
+    deps = [
+        "//xla:comparison_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:pattern_matcher",
+    ],
+)
+
+xla_cc_test(
+    name = "sort_utils_test",
+    srcs = ["sort_utils_test.cc"],
+    deps = [
+        ":sort_utils",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "hlo_longest_prefix",
     srcs = ["hlo_longest_prefix.cc"],
     hdrs = ["hlo_longest_prefix.h"],
@@ -432,6 +454,43 @@ xla_cc_test(
     ],
 )
 
+cc_library(
+    name = "hlo_original_value_grouper",
+    srcs = ["hlo_original_value_grouper.cc"],
+    hdrs = ["hlo_original_value_grouper.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":hlo_original_value_analysis",
+        ":hlo_original_value_analyzer_utils",
+        ":hlo_sharding_reconstruction_util",
+        "//xla:literal",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_original_value_grouper_test",
+    srcs = ["hlo_original_value_grouper_test.cc"],
+    deps = [
+        ":hlo_original_value_analysis",
+        ":hlo_original_value_analyzer_utils",
+        ":hlo_original_value_grouper",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 xla_cc_test(
     name = "hlo_traversal_test",
     srcs = ["hlo_traversal_test.cc"],
@@ -495,6 +554,7 @@ xla_cc_test(
         ":hlo_sharding_reconstruction_util",
         "//xla:literal",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test",

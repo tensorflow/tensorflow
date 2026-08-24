@@ -31,6 +31,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/base/log_severity.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/log/scoped_mock_log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
@@ -68,6 +70,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/parse_flags_from_env.h"
+#include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/host_memory_allocator.h"
@@ -93,6 +96,7 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/tsl/platform/env.h"
 #if GOOGLE_CUDA
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -137,6 +141,164 @@ using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::Pair;
 using ::testing::SizeIs;
+
+absl::StatusOr<PjRtDeviceEventPtr::DefinitionStreamInfo>
+GetDefinitionStreamInfo(PjRtBuffer* buffer) {
+  ABSL_RETURN_IF_ERROR(buffer->GetReadyFuture().Await());
+
+  auto* common_buffer = dynamic_cast<CommonPjRtBuffer*>(buffer);
+  TF_RET_CHECK(common_buffer != nullptr);
+  auto hold =
+      common_buffer->GetBufferWithHold(CommonPjRtBuffer::ScopedHold::kUsage);
+  ABSL_RETURN_IF_ERROR(hold.status());
+
+  absl::Span<const PjRtDeviceEventRef> definition_events =
+      hold.buffer()->definition_events();
+  TF_RET_CHECK(definition_events.size() == 1);
+  auto stream_info = definition_events.front().ptr().GetDefinitionStream();
+  TF_RET_CHECK(stream_info.has_value());
+  return *stream_info;
+}
+
+TEST(StreamExecutorGpuClientTest, ResultsHaveIndividualDefinitionEvents) {
+  constexpr absl::string_view kProgram = R"(
+    HloModule IndividualResultDefinitionEvents
+
+    ENTRY main {
+      p = s32[4]{0} parameter(0)
+      negate = s32[4]{0} negate(p)
+      add = s32[4]{0} add(p, p)
+      ROOT tuple = (s32[4]{0}, s32[4]{0}) tuple(negate, add)
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto input, CreateDeviceBufferForTest(client.get()));
+  CompileOptions compile_options;
+  compile_options.individually_defined_output_indices = {0, 1};
+  ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      CompileExecutable(kProgram, *client, std::move(compile_options)));
+  ASSERT_OK_AND_ASSIGN(auto results,
+                       executable->Execute({{input.get()}}, ExecuteOptions()));
+  ASSERT_EQ(results.size(), 1);
+  ASSERT_EQ(results[0].size(), 2);
+
+  ASSERT_OK_AND_ASSIGN(auto first,
+                       GetDefinitionStreamInfo(results[0][0].get()));
+  ASSERT_OK_AND_ASSIGN(auto second,
+                       GetDefinitionStreamInfo(results[0][1].get()));
+  EXPECT_EQ(first.stream, second.stream);
+  EXPECT_NE(first.sequence_id, second.sequence_id);
+}
+
+TEST(StreamExecutorGpuClientTest, AsyncResultDefinitionEventUsesAsyncStream) {
+  constexpr absl::string_view kProgram = R"(
+    HloModule AsyncResultDefinitionEvent
+
+    async_computation {
+      p = s32[4]{0} parameter(0)
+      ROOT add = s32[4]{0} add(p, p)
+    }
+
+    ENTRY main {
+      p = s32[4]{0} parameter(0)
+      call-start = ((s32[4]{0}), s32[4]{0}) call-start(p),
+        to_apply=async_computation,
+        frontend_attributes={_xla_stream_annotation="1"}
+      ROOT call-done = s32[4]{0} call-done(call-start),
+        frontend_attributes={_xla_stream_annotation="1"}
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto input, CreateDeviceBufferForTest(client.get()));
+  CompileOptions compile_options;
+  compile_options.individually_defined_output_indices = {0};
+  auto* debug_options =
+      compile_options.executable_build_options.mutable_debug_options();
+  debug_options->set_xla_gpu_experimental_stream_annotation(true);
+  debug_options->clear_xla_gpu_enable_command_buffer();
+  ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      CompileExecutable(kProgram, *client, std::move(compile_options)));
+  ASSERT_OK_AND_ASSIGN(auto results,
+                       executable->Execute({{input.get()}}, ExecuteOptions()));
+  ASSERT_EQ(results.size(), 1);
+  ASSERT_EQ(results[0].size(), 1);
+
+  ASSERT_OK_AND_ASSIGN(auto definition,
+                       GetDefinitionStreamInfo(results[0][0].get()));
+  auto* se_device = absl::down_cast<PjRtStreamExecutorDevice*>(
+      client->addressable_devices().front());
+  intptr_t compute_stream =
+      reinterpret_cast<intptr_t>(se_device->local_device_state()
+                                     ->compute_stream()
+                                     ->platform_specific_handle()
+                                     .stream);
+  EXPECT_NE(definition.stream, compute_stream);
+
+  ASSERT_OK_AND_ASSIGN(auto literal, results[0][0]->ToLiteral().Await());
+  EXPECT_THAT(literal->data<int32_t>(), ElementsAre(2, 4, 6, 8));
+}
+
+TEST(StreamExecutorGpuClientTest,
+     IndividualDefinitionEventsWithPredeterminedError) {
+  constexpr absl::string_view kProgram = R"(
+    HloModule PredeterminedError
+
+    ENTRY main {
+      p = f32[4]{0} parameter(0)
+      negate = f32[4]{0} negate(p)
+      add = f32[4]{0} add(p, p)
+      ROOT tuple = (f32[4]{0}, f32[4]{0}) tuple(negate, add)
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  absl::Status input_error = absl::InvalidArgumentError("input error");
+  ASSERT_OK_AND_ASSIGN(
+      auto input,
+      client->CreateErrorBuffer(
+          input_error, ShapeUtil::MakeShape(F32, {4}),
+          *client->addressable_devices()[0]->default_memory_space()));
+
+  CompileOptions compile_options;
+  compile_options.individually_defined_output_indices = {0, 1};
+  ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      CompileExecutable(kProgram, *client, std::move(compile_options)));
+  ASSERT_OK_AND_ASSIGN(auto results,
+                       executable->Execute({{input.get()}}, ExecuteOptions()));
+  ASSERT_EQ(results.size(), 1);
+  ASSERT_EQ(results[0].size(), 2);
+
+  // With a predetermined error there are no result buffers to define; all
+  // outputs must propagate the error via the primary execute event.
+  for (const auto& result : results[0]) {
+    EXPECT_THAT(result->GetReadyFuture().Await(),
+                StatusIs(input_error.code(), HasSubstr(input_error.message())));
+  }
+}
+
+TEST(StreamExecutorGpuClientTest,
+     IndividuallyDefinedOutputIndexOutOfRangeIsAnError) {
+  constexpr absl::string_view kProgram = R"(
+    HloModule OutOfRangeIndex
+
+    ENTRY main {
+      p = s32[4]{0} parameter(0)
+      ROOT negate = s32[4]{0} negate(p)
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  CompileOptions compile_options;
+  compile_options.individually_defined_output_indices = {1};
+  EXPECT_THAT(
+      CompileExecutable(kProgram, *client, std::move(compile_options)),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("out of range")));
+}
 
 TEST(StreamExecutorGpuClientTest, MemorySpace) {
   TF_ASSERT_OK_AND_ASSIGN(

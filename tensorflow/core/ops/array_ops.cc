@@ -199,29 +199,49 @@ absl::Status SetOutputShapeForReshape(InferenceContext* c) {
     c->set_output(0, out);
     return absl::OkStatus();
   }
-  if (c->RankKnown(in)) {
-    // We don't know the number of output elements, but we can try to infer
-    // the missing dimension.
-    bool too_many_unknown = false;
-    int32_t out_unknown_idx = -1;
 
-    DimensionHandle known_out_elems = c->NumElements(out);
-    if (!c->ValueKnown(known_out_elems)) {
-      known_out_elems = c->MakeDim(1);
-      for (int32_t i = 0; i < c->Rank(out); ++i) {
-        DimensionHandle dim = c->Dim(out, i);
-        if (!c->ValueKnown(dim)) {
-          if (out_unknown_idx >= 0) {
-            too_many_unknown = true;
-            break;
-          }
-          out_unknown_idx = i;
-        } else {
-          TF_RETURN_IF_ERROR(
-              c->Multiply(known_out_elems, dim, &known_out_elems));
-        }
+  const Tensor* new_shape_tensor = c->input_tensor(1);
+  int32_t literal_neg_one_count = 0;
+  if (new_shape_tensor != nullptr) {
+    const int64_t num_elements = new_shape_tensor->NumElements();
+    if (new_shape_tensor->dtype() == DT_INT32) {
+      auto vec = new_shape_tensor->vec<int32_t>();
+      for (int64_t i = 0; i < num_elements; ++i) {
+        if (vec(i) == -1) ++literal_neg_one_count;
+      }
+    } else if (new_shape_tensor->dtype() == DT_INT64) {
+      auto vec = new_shape_tensor->vec<int64_t>();
+      for (int64_t i = 0; i < num_elements; ++i) {
+        if (vec(i) == -1) ++literal_neg_one_count;
       }
     }
+  }
+
+  int32_t out_unknown_idx = -1;
+  bool out_too_many_unknown = false;
+  DimensionHandle known_out_elems = c->NumElements(out);
+  if (!c->ValueKnown(known_out_elems)) {
+    known_out_elems = c->MakeDim(1);
+    for (int32_t i = 0; i < c->Rank(out); ++i) {
+      DimensionHandle dim = c->Dim(out, i);
+      if (!c->ValueKnown(dim)) {
+        if (out_unknown_idx >= 0) {
+          if (literal_neg_one_count >= 2) {
+            return absl::InvalidArgumentError(
+                absl::StrCat("Only one input size may be -1, not both ",
+                             out_unknown_idx, " and ", i));
+          }
+          out_too_many_unknown = true;
+        }
+        out_unknown_idx = i;
+      } else {
+        TF_RETURN_IF_ERROR(c->Multiply(known_out_elems, dim, &known_out_elems));
+      }
+    }
+  }
+
+  if (c->RankKnown(in)) {
+    bool too_many_unknown = false;
     int32_t in_unknown_idx = -1;
     DimensionHandle known_in_elems = c->NumElements(in);
     if (!c->ValueKnown(known_in_elems)) {
@@ -250,7 +270,7 @@ absl::Status SetOutputShapeForReshape(InferenceContext* c) {
               c->DebugString(known_out_elems), " elements)"));
         }
       } else if (in_unknown_idx < 0 && out_unknown_idx >= 0 &&
-                 c->Value(known_out_elems) > 0) {
+                 !out_too_many_unknown && c->Value(known_out_elems) > 0) {
         // Input fully known, infer the one missing output dim
         DimensionHandle inferred_dim;
         TF_RETURN_IF_ERROR(c->Divide(known_in_elems, c->Value(known_out_elems),
@@ -269,7 +289,8 @@ absl::Status SetOutputShapeForReshape(InferenceContext* c) {
         DimensionHandle unknown_in_dim = c->Dim(in, in_unknown_idx);
         TF_RETURN_IF_ERROR(
             c->Merge(unknown_in_dim, inferred_dim, &unknown_in_dim));
-      } else if (in_unknown_idx >= 0 && out_unknown_idx >= 0) {
+      } else if (in_unknown_idx >= 0 && out_unknown_idx >= 0 &&
+                 !out_too_many_unknown) {
         // Exactly one unknown dimension in both input and output. These 2 are
         // equal iff the known elements are equal.
         if (c->Value(known_in_elems) == c->Value(known_out_elems)) {
@@ -2636,24 +2657,26 @@ REGISTER_OP("ExtractImagePatches")
             rates.size()));
       }
 
-      int32_t ksize_rows = ksizes[1];
-      int32_t ksize_cols = ksizes[2];
+      int64_t ksize_rows = ksizes[1];
+      int64_t ksize_cols = ksizes[2];
 
-      int32_t stride_rows = strides[1];
-      int32_t stride_cols = strides[2];
+      int64_t stride_rows = strides[1];
+      int64_t stride_cols = strides[2];
 
-      int32_t rate_rows = rates[1];
-      int32_t rate_cols = rates[2];
+      int64_t rate_rows = rates[1];
+      int64_t rate_cols = rates[2];
 
-      int32_t ksize_rows_eff = ksize_rows + (ksize_rows - 1) * (rate_rows - 1);
-      int32_t ksize_cols_eff = ksize_cols + (ksize_cols - 1) * (rate_cols - 1);
+      int64_t ksize_rows_eff = ksize_rows + (ksize_rows - 1) * (rate_rows - 1);
+      int64_t ksize_cols_eff = ksize_cols + (ksize_cols - 1) * (rate_cols - 1);
 
       DimensionHandle batch_size_dim = c->Dim(input_shape, 0);
       DimensionHandle in_rows_dim = c->Dim(input_shape, 1);
       DimensionHandle in_cols_dim = c->Dim(input_shape, 2);
-      DimensionHandle output_depth_dim;
-      TF_RETURN_IF_ERROR(c->Multiply(
-          c->Dim(input_shape, 3), ksize_rows * ksize_cols, &output_depth_dim));
+      DimensionHandle output_depth_dim = c->Dim(input_shape, 3);
+      TF_RETURN_IF_ERROR(
+          c->Multiply(output_depth_dim, ksize_rows, &output_depth_dim));
+      TF_RETURN_IF_ERROR(
+          c->Multiply(output_depth_dim, ksize_cols, &output_depth_dim));
 
       if (!c->ValueKnown(in_rows_dim) || !c->ValueKnown(in_cols_dim)) {
         ShapeHandle output_shape =
@@ -2731,33 +2754,36 @@ REGISTER_OP("ExtractVolumePatches")
       }
       */
 
-      int32_t ksize_planes = ksizes[1];
-      int32_t ksize_rows = ksizes[2];
-      int32_t ksize_cols = ksizes[3];
+      int64_t ksize_planes = ksizes[1];
+      int64_t ksize_rows = ksizes[2];
+      int64_t ksize_cols = ksizes[3];
 
-      int32_t stride_planes = strides[1];
-      int32_t stride_rows = strides[2];
-      int32_t stride_cols = strides[3];
+      int64_t stride_planes = strides[1];
+      int64_t stride_rows = strides[2];
+      int64_t stride_cols = strides[3];
 
       /*
-      int32 rate_planes = rates[1];
-      int32 rate_rows = rates[2];
-      int32 rate_cols = rates[3];
+      int64_t rate_planes = rates[1];
+      int64_t rate_rows = rates[2];
+      int64_t rate_cols = rates[3];
 
-      int32 ksize_planes_eff = ksize_planes +
+      int64_t ksize_planes_eff = ksize_planes +
                                (ksize_planes - 1) * (rate_planes - 1);
-      int32 ksize_rows_eff = ksize_rows + (ksize_rows - 1) * (rate_rows - 1);
-      int32 ksize_cols_eff = ksize_cols + (ksize_cols - 1) * (rate_cols - 1);
+      int64_t ksize_rows_eff = ksize_rows + (ksize_rows - 1) * (rate_rows - 1);
+      int64_t ksize_cols_eff = ksize_cols + (ksize_cols - 1) * (rate_cols - 1);
       */
 
       DimensionHandle batch_size_dim = c->Dim(input_shape, 0);
       DimensionHandle in_planes_dim = c->Dim(input_shape, 1);
       DimensionHandle in_rows_dim = c->Dim(input_shape, 2);
       DimensionHandle in_cols_dim = c->Dim(input_shape, 3);
-      DimensionHandle output_depth_dim;
-      TF_RETURN_IF_ERROR(c->Multiply(c->Dim(input_shape, 4),
-                                     ksize_planes * ksize_rows * ksize_cols,
-                                     &output_depth_dim));
+      DimensionHandle output_depth_dim = c->Dim(input_shape, 4);
+      TF_RETURN_IF_ERROR(
+          c->Multiply(output_depth_dim, ksize_planes, &output_depth_dim));
+      TF_RETURN_IF_ERROR(
+          c->Multiply(output_depth_dim, ksize_rows, &output_depth_dim));
+      TF_RETURN_IF_ERROR(
+          c->Multiply(output_depth_dim, ksize_cols, &output_depth_dim));
 
       if (!c->ValueKnown(in_planes_dim) || !c->ValueKnown(in_rows_dim) ||
           !c->ValueKnown(in_cols_dim)) {

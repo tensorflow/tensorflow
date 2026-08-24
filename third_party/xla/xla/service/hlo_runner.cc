@@ -55,7 +55,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/computation_layout.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
@@ -325,10 +325,6 @@ absl::StatusOr<CompileOptions> HloRunner::GenerateDefaultCompileOptions(
       std::vector<int64_t>(
           module->config().auto_spmd_partitioning_mesh_ids().begin(),
           module->config().auto_spmd_partitioning_mesh_ids().end()));
-  compile_options.executable_build_options.set_exec_time_optimization_effort(
-      module->config().exec_time_optimization_effort());
-  compile_options.executable_build_options.set_memory_fitting_effort(
-      module->config().memory_fitting_effort());
   compile_options.executable_build_options.set_optimization_level(
       module->config().optimization_level());
   compile_options.executable_build_options.set_memory_fitting_level(

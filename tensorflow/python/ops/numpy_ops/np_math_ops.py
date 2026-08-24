@@ -915,7 +915,13 @@ def angle(z, deg=False):  # pylint: disable=missing-function-docstring
   def f(x):
     if x.dtype in _tf_float_types:
       # Workaround for b/147515503
-      return array_ops.where_v2(x < 0, np.pi, 0)
+      # `np.pi` and `0` are Python scalars, which would make the result
+      # float32 whatever `x` is, so build them in `x`'s dtype instead.
+      return array_ops.where_v2(
+          x < 0,
+          constant_op.constant(np.pi, dtype=x.dtype),
+          constant_op.constant(0, dtype=x.dtype),
+      )
     else:
       return math_ops.angle(x)
 

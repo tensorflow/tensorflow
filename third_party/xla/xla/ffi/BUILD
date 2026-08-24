@@ -235,6 +235,7 @@ cc_library(
         "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:stream",
         "//xla/tsl/concurrency:async_value",
+        "@com_google_absl//absl/base:config",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -255,6 +256,15 @@ cc_library(
         ":api",
         ":ffi",
         "//xla/ffi/api:c_api",
+    ],
+)
+
+cc_library(
+    name = "collectives_ffi",
+    hdrs = ["collectives_ffi.h"],
+    deps = [
+        ":ffi",
+        "//xla/ffi/api:collectives_api",
     ],
 )
 
@@ -477,6 +487,24 @@ xla_cc_test(
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_cc_test(
+    name = "collectives_ffi_test",
+    srcs = ["collectives_ffi_test.cc"],
+    deps = [
+        ":call_frame",
+        ":collectives_ffi",
+        ":ffi",
+        ":ffi_api",  # buildcleaner: keep
+        ":invoke",
+        "//xla/ffi/api:c_api",
+        "//xla/ffi/api:collectives_api",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest",
     ],
 )

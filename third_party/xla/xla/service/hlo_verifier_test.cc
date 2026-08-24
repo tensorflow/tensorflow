@@ -1264,6 +1264,142 @@ TEST_F(HloVerifierTestLayoutSensitive,
                         "with shapes that match the prefix"));
 }
 
+TEST_F(HloVerifierTestLayoutSensitive,
+       VerifyAsyncUpdateAliasConfigLayoutMismatch) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  async_computation {
+    p0 = f32[32,32]{0,1} parameter(0)
+    ROOT custom-call = (f32[32,32]{0,1}) custom-call(p0),
+        custom_call_target="foo"
+  }
+
+  ENTRY main {
+    p = f32[32,32]{0,1} parameter(0)
+    async-start =
+        ((f32[32,32]{0,1}), (f32[32,32]{0,1}), f32[32,32]{0,1}) async-start(p),
+        calls=async_computation
+    async-update =
+        ((f32[32,32]{0,1}), (f32[32,32]{0,1}), f32[32,32]{1,0})
+        async-update(async-start),
+        output_to_operand_aliasing={{2}: (0, {2})}
+    ROOT async-done = (f32[32,32]{0,1}) async-done(async-update)
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr(
+          "Different aliasing shapes: f32[32,32]{0,1} vs f32[32,32]{1,0}"));
+}
+
+TEST_F(HloVerifierTest, VerifyAsyncUpdateAliasConfigValid) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  async_computation {
+    p0 = f32[32,32] parameter(0)
+    ROOT custom-call = (f32[32,32]) custom-call(p0), custom_call_target="foo"
+  }
+
+  ENTRY main {
+    p = f32[32,32] parameter(0)
+    async-start =
+        ((f32[32,32]), (f32[32,32]), s32[]) async-start(p),
+        calls=async_computation
+    async-update =
+        ((f32[32,32]), (f32[32,32]), s32[]) async-update(async-start),
+        output_to_operand_aliasing={{2}: (0, {2})}
+    ROOT async-done = (f32[32,32]) async-done(async-update)
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTest, VerifyAsyncUpdateAliasConfigInvalidOperandNumber) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  async_computation {
+    p0 = f32[32,32] parameter(0)
+    ROOT custom-call = (f32[32,32]) custom-call(p0), custom_call_target="foo"
+  }
+
+  ENTRY main {
+    p = f32[32,32] parameter(0)
+    async-start =
+        ((f32[32,32]), (f32[32,32]), s32[]) async-start(p),
+        calls=async_computation
+    async-update =
+        ((f32[32,32]), (f32[32,32]), s32[]) async-update(async-start),
+        output_to_operand_aliasing={{2}: (1, {2})}
+    ROOT async-done = (f32[32,32]) async-done(async-update)
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("Invalid operand number in async-update aliasing config"));
+}
+
+TEST_F(HloVerifierTest, VerifyAsyncUpdateAliasConfigInvalidOperandShapeIndex) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  async_computation {
+    p0 = f32[32,32] parameter(0)
+    ROOT custom-call = (f32[32,32]) custom-call(p0), custom_call_target="foo"
+  }
+
+  ENTRY main {
+    p = f32[32,32] parameter(0)
+    async-start =
+        ((f32[32,32]), (f32[32,32]), s32[]) async-start(p),
+        calls=async_computation
+    async-update =
+        ((f32[32,32]), (f32[32,32]), s32[]) async-update(async-start),
+        output_to_operand_aliasing={{2}: (0, {0})}
+    ROOT async-done = (f32[32,32]) async-done(async-update)
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("Invalid operand shape index in async-update aliasing config"));
+}
+
+TEST_F(HloVerifierTest, VerifyAsyncUpdateAliasConfigInvalidOutputShapeIndex) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  async_computation {
+    p0 = f32[32,32] parameter(0)
+    ROOT custom-call = (f32[32,32]) custom-call(p0), custom_call_target="foo"
+  }
+
+  ENTRY main {
+    p = f32[32,32] parameter(0)
+    async-start =
+        ((f32[32,32]), (f32[32,32]), s32[]) async-start(p),
+        calls=async_computation
+    async-update =
+        ((f32[32,32]), (f32[32,32]), s32[]) async-update(async-start),
+        output_to_operand_aliasing={{0}: (0, {2})}
+    ROOT async-done = (f32[32,32]) async-done(async-update)
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("Invalid output shape index in async-update aliasing config"));
+}
+
 TEST_F(HloVerifierTest, AsyncStartAndAsyncDoneWrongType) {
   const char* const hlo_string = R"(
   HloModule Module
@@ -2395,6 +2531,79 @@ TEST_F(HloVerifierTest, AllReduce_FlattenedID_Valid) {
       auto module,
       MakeAllReduceComputation({{0, 1}, {2, 3}}, 2, 2,
                                "channel_id=1, use_global_device_ids=true"));
+  ASSERT_OK(verifier().Run(module.get()).status());
+}
+
+absl::StatusOr<std::unique_ptr<HloModule>> MakeCollectiveReduceComputation(
+    std::vector<std::vector<int64_t>> replica_groups,
+    std::optional<int64_t> replica_count = std::nullopt,
+    std::optional<int64_t> num_partitions = std::nullopt,
+    absl::string_view other_attributes = "") {
+  const char* kTemplate = R"(
+  HloModule test
+  add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT add = f32[] add(x, y)
+  }
+  ENTRY entry {
+    p = f32[128]{0} parameter(0)
+    cr = f32[128]{0} collective-reduce(p), to_apply=add, replica_groups=REPLICA_GROUPS
+                                           OTHER_ATTRIBUTES
+  })";
+  return MakeCollectiveCommOpComputation(replica_groups, replica_count,
+                                         num_partitions, other_attributes,
+                                         kTemplate);
+}
+
+TEST_F(HloVerifierTest, CollectiveReduce_NoReplicaGroupsOK) {
+  ASSERT_OK_AND_ASSIGN(auto module, MakeCollectiveReduceComputation({}));
+  ASSERT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, CollectiveReduce_EmptyReplicaGroup) {
+  ASSERT_OK_AND_ASSIGN(auto module, MakeCollectiveReduceComputation({{0}, {}}));
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
+              HasSubstr("empty replica group"));
+}
+
+TEST_F(HloVerifierTest, CollectiveReduce_RepeatedReplicaId) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module, MakeCollectiveReduceComputation({{0, 1}, {2, 3}, {4, 0}}));
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
+              HasSubstr("Replica 0 is repeated"));
+}
+
+TEST_F(HloVerifierTest, CollectiveReduce_CrossReplicaAndPartition_Valid) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module,
+      MakeCollectiveReduceComputation({{0, 1}, {2, 3}}, 4, 1, "channel_id=1"));
+  ASSERT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, CollectiveReduce_FlattenedID_Valid) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module,
+      MakeCollectiveReduceComputation(
+          {{0, 1}, {2, 3}}, 2, 2, "channel_id=1, use_global_device_ids=true"));
+  ASSERT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, CollectiveReduce_DynamicRootValid) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT add = f32[] add(x, y)
+  }
+  ENTRY entry {
+    p0 = f32[128]{0} parameter(0)
+    roots = s32[1]{0} parameter(1)
+    ROOT cr = f32[128]{0} collective-reduce(p0, roots), replica_groups={},
+                          has_dynamic_root=true, to_apply=add
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
   ASSERT_OK(verifier().Run(module.get()).status());
 }
 

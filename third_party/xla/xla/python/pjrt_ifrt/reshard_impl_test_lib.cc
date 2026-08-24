@@ -111,9 +111,10 @@ absl::StatusOr<std::vector<ArrayRef>> ReshardArrays(
   }
 }
 
-absl::StatusOr<ArrayRef> MakeArrayFromLiteral(Client* absl_nonnull client,
-                                              const xla::LiteralBase& literal,
-                                              const ShardingRef& sharding) {
+absl::StatusOr<ArrayRef> MakeArrayFromLiteral(
+    Client* absl_nonnull client, const xla::LiteralBase& literal,
+    const ShardingRef& sharding,
+    std::shared_ptr<const xla::PjRtLayout> layout = nullptr) {
   ABSL_ASSIGN_OR_RETURN(const DType dtype, ToDType(literal.shape().element_type()));
   const Shape shape(literal.shape().dimensions());
 
@@ -128,6 +129,7 @@ absl::StatusOr<ArrayRef> MakeArrayFromLiteral(Client* absl_nonnull client,
           /*dtype=*/dtype,
           /*shape=*/shape,
           /*sharding=*/sharding,
+          /*layout=*/std::move(layout),
       },
   };
   for (int i = 0; i < index_domains.size(); ++i) {
@@ -497,6 +499,95 @@ TEST_P(ReshardTest, DifferentDestinationLayout) {
   TF_ASSERT_OK_AND_ASSIGN(const auto dst_layout, dst_array->pjrt_layout());
   ASSERT_NE(dst_layout, nullptr);
   EXPECT_EQ(dst_layout->xla_layout(), dst_array_spec.layout->xla_layout());
+
+  EXPECT_THAT(CopyArrayToLiteral(dst_array),
+              absl_testing::IsOkAndHolds(Eq(std::cref(literal))));
+}
+
+TEST_P(ReshardTest, DifferentSourceLayout) {
+  if (client_->platform_id() == xla::CpuId()) {
+    GTEST_SKIP() << "PjRt CPU does not support custom layouts";
+  }
+
+  const ReshardMethod method = GetParam();
+  ASSERT_OK_AND_ASSIGN(const xla::Literal literal,
+                       CreateIotaLiteral(xla::PrimitiveType::S32, {4, 8}));
+
+  ASSERT_OK_AND_ASSIGN(const DeviceListRef src_device_list,
+                       client_->MakeDeviceList(client_->devices()));
+
+  xla::Layout layout = xla::LayoutUtil::MakeAscendingLayout(2);
+  if (auto ifrt_topology = client_->GetTopologyForDevices(src_device_list);
+      ifrt_topology.ok()) {
+    const xla::PjRtTopologyDescription* topology =
+        (*ifrt_topology)->description().get();
+    ASSERT_OK_AND_ASSIGN(
+        xla::Shape shape,
+        topology->MakeCanonicalShapeForMemorySpace(
+            topology->GetDefaultMemorySpaceKindId(),
+            xla::ShapeUtil::MakeShape(xla::PrimitiveType::S32,
+                                      literal.shape().dimensions()),
+            &layout));
+    layout = shape.layout();
+  }
+  auto src_layout = std::make_shared<const xla::PjRtLayout>(std::move(layout));
+
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef src_array,
+      MakeArrayFromLiteral(client_.get(), literal,
+                           HloSharding::Create(src_device_list, MemoryKind(),
+                                               xla::HloSharding::Replicate()),
+                           src_layout));
+
+  ASSERT_OK_AND_ASSIGN(const DeviceListRef dst_device_list,
+                       client_->MakeDeviceList(client_->devices()));
+
+  ArraySpec dst_array_spec = {
+      /*dtype=*/src_array->dtype(),
+      /*shape=*/src_array->shape(),
+      /*sharding=*/
+      HloSharding::Create(dst_device_list, MemoryKind(),
+                          xla::HloSharding::Replicate()),
+      /*layout=*/nullptr,
+  };
+
+  // Make sure that the source layout is actually different from the destination
+  // layout in order to ensure the test coverage.
+  ASSERT_OK_AND_ASSIGN(const auto actual_src_layout, src_array->pjrt_layout());
+  ASSERT_NE(actual_src_layout, nullptr);
+  EXPECT_EQ(actual_src_layout->xla_layout(), src_layout->xla_layout());
+
+  ASSERT_OK_AND_ASSIGN(
+      Shape shard_shape,
+      dst_array_spec.sharding->GetShardShape(dst_array_spec.shape));
+  ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<const xla::PjRtLayout> default_dst_layout,
+      client_->GetDefaultPjRtLayout(
+          dst_array_spec.dtype, shard_shape.dims(),
+          dst_array_spec.sharding->devices()->devices().front(),
+          dst_array_spec.sharding->memory_kind()));
+  ASSERT_NE(actual_src_layout->xla_layout(), default_dst_layout->xla_layout());
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<ArrayRef> dst_arrays,
+      ReshardArrays(method, client_.get(), absl::MakeSpan(&src_array, 1),
+                    {dst_array_spec}, ArrayCopySemantics::kDonateInput));
+  ASSERT_EQ(dst_arrays.size(), 1);
+
+  const ArrayRef& dst_array = dst_arrays[0];
+  EXPECT_EQ(dst_array->sharding(), *dst_array_spec.sharding);
+
+  // Verify that the destination array is created with the default layout.
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> dst_layout,
+                       dst_array->pjrt_layout());
+  if (dst_layout == nullptr) {
+    ASSERT_OK_AND_ASSIGN(dst_layout,
+                         client_->GetDefaultPjRtLayout(
+                             dst_array->dtype(), shard_shape.dims(),
+                             dst_array->sharding().devices()->devices().front(),
+                             dst_array->sharding().memory_kind()));
+  }
+  EXPECT_EQ(dst_layout->xla_layout(), default_dst_layout->xla_layout());
 
   EXPECT_THAT(CopyArrayToLiteral(dst_array),
               absl_testing::IsOkAndHolds(Eq(std::cref(literal))));

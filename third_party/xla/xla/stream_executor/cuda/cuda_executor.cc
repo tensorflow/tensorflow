@@ -1011,45 +1011,39 @@ absl::StatusOr<bool> CudaExecutor::DelayKernelIsSupported() {
 absl::StatusOr<ModuleHandle> CudaExecutor::LoadModuleFromCuBin(
     const char* cubin) {
   ModuleHandle module_handle{cubin};
-  uint64_t module_refcount;
-  CUmodule module;
-  std::tie(module, module_refcount) = gpu_binary_to_module_[module_handle];
+  LoadedModule& loaded_module = gpu_binary_to_module_[module_handle];
 
-  if (module == nullptr) {
-    ABSL_ASSIGN_OR_RETURN(module, LoadCubin(cuda_context_, cubin));
-    module_refcount = 1;
+  if (loaded_module.module == nullptr) {
+    ABSL_ASSIGN_OR_RETURN(loaded_module.module, LoadCubin(cuda_context_, cubin));
+    loaded_module.refcount = 1;
     XLA_VLOG_DEVICE(3, device_ordinal())
         << "Loaded CUBIN " << static_cast<const void*>(cubin) << " as module "
-        << module;
+        << loaded_module.module;
   } else {
-    ++module_refcount;
+    ++loaded_module.refcount;
     XLA_VLOG_DEVICE(3, device_ordinal())
         << "CUBIN " << static_cast<const void*>(cubin)
-        << " is already loaded as module " << module;
+        << " is already loaded as module " << loaded_module.module;
   }
-  gpu_binary_to_module_[module_handle] = {module, module_refcount};
   return module_handle;
 }
 
 absl::StatusOr<ModuleHandle> CudaExecutor::LoadModuleFromPtx(const char* ptx) {
   ModuleHandle module_handle{ptx};
-  uint64_t module_refcount;
-  CUmodule module;
-  std::tie(module, module_refcount) = gpu_binary_to_module_[module_handle];
+  LoadedModule& loaded_module = gpu_binary_to_module_[module_handle];
 
-  if (module == nullptr) {
-    ABSL_ASSIGN_OR_RETURN(module, LoadPtx(cuda_context_, ptx));
+  if (loaded_module.module == nullptr) {
+    ABSL_ASSIGN_OR_RETURN(loaded_module.module, LoadPtx(cuda_context_, ptx));
+    loaded_module.refcount = 1;
     XLA_VLOG_DEVICE(3, device_ordinal())
         << "Loaded PTX " << static_cast<const void*>(ptx) << " as module "
-        << module;
-    module_refcount = 1;
+        << loaded_module.module;
   } else {
-    ++module_refcount;
+    ++loaded_module.refcount;
     XLA_VLOG_DEVICE(3, device_ordinal())
         << "PTX " << static_cast<const void*>(ptx)
-        << " is already loaded as module " << module;
+        << " is already loaded as module " << loaded_module.module;
   }
-  gpu_binary_to_module_[module_handle] = {module, module_refcount};
   return module_handle;
 }
 
@@ -1065,7 +1059,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
     ABSL_ASSIGN_OR_RETURN(ModuleHandle module_handle, LoadModuleFromCuBin(cubin));
     kernel_to_gpu_binary_[cuda_kernel.get()] = module_handle;
 
-    CUmodule module = gpu_binary_to_module_.at(module_handle).first;
+    CUmodule module = gpu_binary_to_module_.at(module_handle).module;
     XLA_VLOG_DEVICE(2, device_ordinal())
         << "getting function " << kernel_name << " from module " << module;
     ABSL_ASSIGN_OR_RETURN(
@@ -1084,7 +1078,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
     ABSL_ASSIGN_OR_RETURN(ModuleHandle module_handle, LoadModuleFromPtx(ptx));
     kernel_to_gpu_binary_[cuda_kernel.get()] = module_handle;
 
-    CUmodule module = gpu_binary_to_module_.at(module_handle).first;
+    CUmodule module = gpu_binary_to_module_.at(module_handle).module;
     XLA_VLOG_DEVICE(2, device_ordinal())
         << "getting function " << kernel_name << " from module " << module;
     ABSL_ASSIGN_OR_RETURN(
@@ -1167,13 +1161,14 @@ bool CudaExecutor::UnloadGpuBinary(ModuleHandle gpu_binary) {
         << "No loaded CUDA module for " << gpu_binary;
     return false;
   }
-  auto& module = module_it->second.first;
-  auto& refcount = module_it->second.second;
+  auto& loaded_module = module_it->second;
   XLA_VLOG_DEVICE(3, device_ordinal())
-      << "Found CUDA module " << module << " with refcount " << refcount;
-  if (--refcount == 0) {
-    XLA_VLOG_DEVICE(3, device_ordinal()) << "Unloading CUDA module " << module;
-    UnloadCudaModule(cuda_context_, module);
+      << "Found CUDA module " << loaded_module.module << " with refcount "
+      << loaded_module.refcount;
+  if (--loaded_module.refcount == 0) {
+    XLA_VLOG_DEVICE(3, device_ordinal())
+        << "Unloading CUDA module " << loaded_module.module;
+    UnloadCudaModule(cuda_context_, loaded_module.module);
     gpu_binary_to_module_.erase(module_it);
   }
   return true;
@@ -1200,6 +1195,57 @@ void CudaExecutor::UnloadKernel(const Kernel* kernel) {
       << " has loaded GPU code " << gpu_binary_it->second;
   UnloadGpuBinary(gpu_binary_it->second);
   kernel_to_gpu_binary_.erase(gpu_binary_it);
+}
+
+absl::Status CudaExecutor::UpdateMaxDynamicSharedMemoryBytes(
+    const Kernel* kernel, int32_t shared_memory_bytes) {
+  // This function updates the maximum dynamic shared memory bytes for a given
+  // kernel. Setting this attribute can be quite expensive which is why we
+  // only do it if the requested value is greater than the current value and we
+  // maintain a cache of previously set values.
+  // This cache lives here in CudaExecutor because we might have more than one
+  // instance of CudaKernel wrapping the same CUfunction, so they need to share
+  // the same limit.
+
+  absl::MutexLock lock(in_memory_modules_mu_);
+  auto it = loaded_kernels_.find(kernel);
+  if (it == loaded_kernels_.end()) {
+    return absl::NotFoundError("Kernel not loaded in this executor.");
+  }
+  const auto* cuda_kernel = static_cast<const CudaKernel*>(*it);
+  CUfunction gpu_function = cuda_kernel->gpu_function();
+
+  int32_t* current_max_bytes = nullptr;
+  auto gpu_binary_it = kernel_to_gpu_binary_.find(kernel);
+  if (gpu_binary_it != kernel_to_gpu_binary_.end()) {
+    auto module_it = gpu_binary_to_module_.find(gpu_binary_it->second);
+    if (module_it != gpu_binary_to_module_.end()) {
+      current_max_bytes =
+          &module_it->second.max_dynamic_shared_memory_bytes[gpu_function];
+    }
+  }
+  if (current_max_bytes == nullptr) {
+    current_max_bytes =
+        &in_process_max_dynamic_shared_memory_bytes_[gpu_function];
+  }
+
+  if (shared_memory_bytes > *current_max_bytes) {
+    XLA_VLOG_DEVICE(2, device_ordinal())
+        << "Raising max dynamic shared memory for kernel " << kernel->name()
+        << " (CUfunction " << gpu_function << ") from " << *current_max_bytes
+        << " to " << shared_memory_bytes << " bytes";
+    std::unique_ptr<ActivateContext> scoped_activation = Activate();
+    ABSL_RETURN_IF_ERROR(cuda::ToStatus(
+        cuFuncSetAttribute(gpu_function,
+                           CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+                           shared_memory_bytes),
+        "Failed to set CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES"));
+    ABSL_RETURN_IF_ERROR(cuda::ToStatus(
+        cuFuncSetCacheConfig(gpu_function, CU_FUNC_CACHE_PREFER_SHARED),
+        "Failed to set CU_FUNC_CACHE_PREFER_SHARED"));
+    *current_max_bytes = shared_memory_bytes;
+  }
+  return absl::OkStatus();
 }
 
 absl::StatusOr<ModuleHandle> CudaExecutor::LoadModule(
@@ -1536,7 +1582,7 @@ absl::StatusOr<DeviceAddressBase> CudaExecutor::GetSymbol(
     auto it = gpu_binary_to_module_.find(module_handle);
     CHECK(it != gpu_binary_to_module_.end());
 
-    CUmodule gpu_module_handle = it->second.first;
+    CUmodule gpu_module_handle = it->second.module;
     CHECK(gpu_module_handle != nullptr);
     ABSL_RETURN_IF_ERROR(
         GetModuleSymbol(cuda_context_, gpu_module_handle, symbol_name.c_str(),

@@ -649,6 +649,16 @@ message DebugOptions {
   // Maximum number of instructions to be combined in collective combiners.
   optional int64 xla_gpu_collective_combine_threshold_count = 461;
 
+  // Comma-separated list of collective communication domains to assign
+  // automatically.
+  //
+  // scale_up_fabric: uses the fast-interconnect partition size from GpuTopology
+  //   and assigns the domain when every participant group is contained in one
+  //   topology partition.
+  //
+  // An empty string disables automatic assignment.
+  optional string xla_gpu_collective_domain_assignment = 536;
+
   // Inflate collective cost by running each collective multiple times.
   optional int32 xla_gpu_collective_inflation_factor = 205;
 
@@ -1079,6 +1089,11 @@ message DebugOptions {
   //   coll.2-done = collective(coll.2-start)
   optional int32 xla_gpu_experimental_parallel_collective_overlap_limit = 336;
 
+  // Controls how many scale-up-fabric collectives the latency-hiding scheduler
+  // can keep in flight. A value of 0 means unlimited.
+  optional int32
+      xla_gpu_experimental_parallel_scale_up_collective_overlap_limit = 538;
+
   optional PipelineParallelismOptLevel
       xla_gpu_experimental_pipeline_parallelism_opt_level = 351;
 
@@ -1125,8 +1140,6 @@ message DebugOptions {
 
   // Enable flush-to-zero semantics in the GPU backend.
   optional bool xla_gpu_ftz = 62;
-
-  optional bool xla_gpu_fused_attention_use_cudnn_rng = 235;
 
   // Maximum number of candidate configs considered during autotuning non-gemm
   // fusions.
@@ -1314,6 +1327,10 @@ message DebugOptions {
   // collective metadata in XProf annotation names and structured payloads. NVTX
   // names remain compact.
   optional int32 xla_gpu_trace_annotation_level = 530;
+
+  // Enables CUPTI V2 multi-subscriber APIs for GPU profiling when available.
+  // Allows XLA profiling to coexist with tools such as Nsight Systems.
+  optional bool xla_gpu_enable_cupti_multi_subscriber = 534;
 
   // Creates triton fusion for all supported gemms.
   // To make sure only triton gemm is chosen by the autotuner run with
@@ -1791,14 +1808,31 @@ message DebugOptions {
   // kCollectiveBroadcast hardware support).
   optional bool xla_spmd_enable_dynamic_slice_collective_broadcast = 520;
 
+  // Opt-in allowlist of FFI custom-call target names permitted for this module.
+  // When non-empty, creating an FFI CustomCallThunk for a custom-call target
+  // that is not on this list fails compilation.Empty (the default) disables the
+  // check. Scope is FFI-only: legacy custom calls and custom calls lowered to
+  // custom kernels (e.g. PTX) are not gated.
+  repeated string xla_gpu_hlo_custom_call_allowlist = 537;
+
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 534
+  // Is this flag is set and autotuning is disabled, the config assigner still
+  // compiles all supported configs for each instruction before assigning the
+  // first successful one.
+  // Gives more compilation test coverage but might increase compilation time.
+  optional bool xla_compile_all_supported_configs = 539;
+
+  // Next id: 540
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
   map<string, string> xla_backend_extra_options = 500;
+
+  // Google: Enables uploads of HLO to a repository. Can be disabled for
+  // dynamic/eager workloads where the overhead is undesirable.
+  optional bool xla_enable_hlo_modules_upload = 535;
 
   reserved "hlo_reduce_precision_options";
   reserved "legacy_command_buffer_custom_call_targets";
@@ -1883,6 +1917,7 @@ message DebugOptions {
   reserved "xla_gpu_experimental_ragged_all_to_all_use_barrier";
   reserved "xla_gpu_experimental_use_autotuner_pass";
   reserved "xla_gpu_experimental_use_raft_select_k";
+  reserved "xla_gpu_fused_attention_use_cudnn_rng";
   reserved "xla_gpu_graph_eviction_timeout_seconds";
   reserved "xla_gpu_graph_level";
   reserved "xla_gpu_graph_num_runs_to_instantiate";
@@ -1926,11 +1961,11 @@ message DebugOptions {
       158, 160, 161, 162, 165, 167, 168, 169, 171, 172, 173, 176, 177, 178, 179,
       180, 183, 184, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202,
       204, 206, 207, 211, 214, 217, 218, 220, 221, 226, 227, 229, 230, 231, 233,
-      234, 238, 239, 241, 242, 243, 249, 263, 264, 266, 270, 271, 275, 276, 278,
-      279, 281, 282, 286, 298, 299, 300, 302, 303, 309, 313, 314, 319, 320, 325,
-      326, 332, 346, 352, 354, 355, 358, 361, 367, 369, 371, 376, 385, 388, 389,
-      394, 396, 398, 402, 413, 420, 423, 430, 435, 443, 446, 450, 458, 464, 477,
-      480;
+      234, 235, 238, 239, 241, 242, 243, 249, 263, 264, 266, 270, 271, 275, 276,
+      278, 279, 281, 282, 286, 298, 299, 300, 302, 303, 309, 313, 314, 319, 320,
+      325, 326, 332, 346, 352, 354, 355, 358, 361, 367, 369, 371, 376, 385, 388,
+      389, 394, 396, 398, 402, 413, 420, 423, 430, 435, 443, 446, 450, 458, 464,
+      477, 480;
 }
 
 // Contains flags which affects the GPU compilation result.
@@ -2008,18 +2043,23 @@ message ExecutionOptions {
   // use_auto_spmd_partitioning=true.
   repeated int64 auto_spmd_partitioning_mesh_ids = 17;
 
-  // The amount of effort to spend on optimizing for minimizing program
-  // execution time, as a value in [-1.0, +1.0]. The baseline is 0.0, which
-  // strongly prioritizes execution time at the cost of longer compile times,
-  // suitable for production workloads. A value of -0.5 would be appropriate for
-  // research use cases that prefer faster compilations to iterate more quickly.
-  // Positive values, on the other hand, might enable costly optimizations that
-  // are off by default.
-  // DEPRECATED: Use optimization_level instead.
+  // TODO(b/460116597): Delete this field when cl/821862460 is submitted -
+  // go/proto3#deleting
+  // The amount of effort to spend on optimizing for
+  // minimizing program execution time, as a value in [-1.0, +1.0]. The baseline
+  // is 0.0, which strongly prioritizes execution time at the cost of longer
+  // compile times, suitable for production workloads. A value of -0.5 would be
+  // appropriate for research use cases that prefer faster compilations to
+  // iterate more quickly. Positive values, on the other hand, might enable
+  // costly optimizations that are off by default. DEPRECATED: Use
+  // optimization_level instead.
   float exec_time_optimization_effort = 25 [deprecated = true];
 
-  // The amount of effort to spend on making the program fit in memory (where
-  // "fit in memory" here has a backend-dependent meaning), as a value in
+  // TODO(b/460116597): Delete this field when cl/821862460 is submitted -
+  // go/proto3#deleting
+  // The amount of effort to spend on making the program fit
+  // in memory (where "fit in memory" here has a backend-dependent meaning), as
+  // a value in
   // [-1.0,+1.0]. The baseline is 0.0, which expends significant effort on
   // attempting to make the program fit. A value of -1.0 would be appropriate
   // for use cases that wish to spend minimal effort here and fail as quickly as

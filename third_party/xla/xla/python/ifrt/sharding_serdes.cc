@@ -68,8 +68,9 @@ class SingleDeviceShardingSerDes
     SingleDeviceShardingProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
     proto.set_device_id(sharding.devices()->devices().front()->Id().value());
-    if (sharding.memory_kind().memory_kind().has_value()) {
-      proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
+    if (!sharding.memory_kind().is_default()) {
+      // NOLINTNEXTLINE(*-readability-redundant-string-conversions)
+      proto.set_memory_kind(std::string(sharding.memory_kind().value()));
     }
     return proto.SerializeAsCord();
   }
@@ -128,8 +129,9 @@ class OpaqueShardingSerDes : public RTTIExtends<OpaqueShardingSerDes, SerDes> {
     OpaqueShardingProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
     sharding.devices()->ToProto(*proto.mutable_devices(), version);
-    if (sharding.memory_kind().memory_kind().has_value()) {
-      proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
+    if (!sharding.memory_kind().is_default()) {
+      // NOLINTNEXTLINE(*-readability-redundant-string-conversions)
+      proto.set_memory_kind(std::string(sharding.memory_kind().value()));
     }
     return proto.SerializeAsCord();
   }
@@ -189,8 +191,9 @@ class ConcreteShardingSerDes
     ConcreteShardingProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
     sharding.devices()->ToProto(*proto.mutable_devices(), version);
-    if (sharding.memory_kind().memory_kind().has_value()) {
-      proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
+    if (!sharding.memory_kind().is_default()) {
+      // NOLINTNEXTLINE(*-readability-redundant-string-conversions)
+      proto.set_memory_kind(std::string(sharding.memory_kind().value()));
     }
     if (sharding.has_static_shape()) {
       sharding.shape().ToProto(*proto.mutable_shape(), version);
@@ -290,8 +293,9 @@ class ConcreteEvenShardingSerDes
     ConcreteEvenShardingProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
     sharding.devices()->ToProto(*proto.mutable_devices(), version);
-    if (sharding.memory_kind().memory_kind().has_value()) {
-      proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
+    if (!sharding.memory_kind().is_default()) {
+      // NOLINTNEXTLINE(*-readability-redundant-string-conversions)
+      proto.set_memory_kind(std::string(sharding.memory_kind().value()));
     }
     sharding.shape().ToProto(*proto.mutable_shape(), version);
     sharding.shard_shape().ToProto(*proto.mutable_shard_shape(), version);
@@ -358,8 +362,9 @@ class ShardingParamShardingSerDes
     ShardingParamShardingProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
     sharding.devices()->ToProto(*proto.mutable_devices(), version);
-    if (sharding.memory_kind().memory_kind().has_value()) {
-      proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
+    if (!sharding.memory_kind().is_default()) {
+      // NOLINTNEXTLINE(*-readability-redundant-string-conversions)
+      proto.set_memory_kind(std::string(sharding.memory_kind().value()));
     }
     ABSL_RETURN_IF_ERROR(sharding.sharding_param().ToProto(
         *proto.mutable_sharding_param(), version));

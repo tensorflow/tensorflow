@@ -1093,21 +1093,52 @@ TEST_F(TilePropagationTest, CanPropagateToInputOfScanOp) {
 
   // Create a tile for a scalar carry output (output_index = 1)
   Tile tile_carry = GetTestTile(*tiling_space, {});
-  ASSERT_OK_AND_ASSIGN(
-      auto tiled_operands_carry,
-      PropagateTileToInput(*tiling_space, *scan, tile_carry, 1));
+  EXPECT_THAT(PropagateTileToInput(*tiling_space, *scan, tile_carry, 1),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
 
-  EXPECT_THAT(tiled_operands_carry, MatchToString(R"(
-    0) (tid_0)
-         -> offsets []
-            sizes []
-            strides []
-            upper bounds []
-    1) (tid_0)
-         -> offsets []
-            sizes []
-            strides []
-            upper bounds []
+TEST_F(TilePropagationTest, CanPropagateToInputOfScanOp2D) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+
+    scan_add {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      add1 = f32[4] add(p0, p1)
+      ROOT tuple = (f32[4], f32[4]) tuple(add1, add1)
+    }
+
+    ENTRY e {
+      p0 = f32[4, 8] parameter(0)
+      p1 = f32[4] parameter(1)
+      scan = (f32[4, 8], f32[4]) scan(p0, p1), dimensions={1}, num_carries=1, to_apply=scan_add
+      ROOT gte = f32[4, 8] get-tuple-element(scan), index=0
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  const HloInstruction* scan = root->operand(0);
+
+  // Create a tile for a 2D array output (output_index = 0)
+  Tile tile_arr = GetTestTile(*tiling_space, {4, 8});
+  ASSERT_OK_AND_ASSIGN(auto tiled_operands_arr,
+                       PropagateTileToInput(*tiling_space, *scan, tile_arr, 0));
+
+  // operand 0 gets the full 2D tile, operand 1 (carry) gets a 1D tile with
+  // the scan dimension (dim 1) sliced away.
+  EXPECT_THAT(tiled_operands_arr, MatchToString(R"(
+    0) (tid_0, tid_1)
+         -> offsets [tid_0 * ts_0, tid_1 * ts_1]
+            sizes [ts_0, ts_1]
+            strides [1, 2]
+            upper bounds [4, 8]
+    1) (tid_0, tid_1)
+         -> offsets [tid_0 * ts_0]
+            sizes [ts_0]
+            strides [1]
+            upper bounds [4]
   )"));
 }
 
@@ -1158,6 +1189,52 @@ TEST_F(TilePropagationTest, CanPropagateToOutputOfScanOp) {
   Tile tile_carry = GetTestTile(*tiling_space, {});
   EXPECT_THAT(PropagateTileToOutput(*tiling_space, *scan, tile_carry, 1),
               StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(TilePropagationTest, CanPropagateToOutputOfScanOp2D) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+
+    scan_add {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      add1 = f32[4] add(p0, p1)
+      ROOT tuple = (f32[4], f32[4]) tuple(add1, add1)
+    }
+
+    ENTRY e {
+      p0 = f32[4, 8] parameter(0)
+      p1 = f32[4] parameter(1)
+      scan = (f32[4, 8], f32[4]) scan(p0, p1), dimensions={1}, num_carries=1, to_apply=scan_add
+      ROOT gte = f32[4, 8] get-tuple-element(scan), index=0
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  const HloInstruction* scan = root->operand(0);
+
+  // Create a tile for a 2D array input (input_index = 0)
+  Tile tile_arr = GetTestTile(*tiling_space, {4, 8});
+  ASSERT_OK_AND_ASSIGN(
+      auto output_tiles,
+      PropagateTileToOutput(*tiling_space, *scan, tile_arr, 0));
+
+  // output 0 gets the full 2D tile, output 1 (carry) gets a 1D tile with
+  // the scan dimension (dim 1) sliced away.
+  EXPECT_THAT(output_tiles, MatchToString(R"(
+    0) (tid_0, tid_1)
+         -> offsets [tid_0 * ts_0, tid_1 * ts_1]
+            sizes [ts_0, ts_1]
+            strides [1, 2]
+            upper bounds [4, 8]
+    1) (tid_0, tid_1)
+         -> offsets [tid_0 * ts_0]
+            sizes [ts_0]
+            strides [1]
+            upper bounds [4]
+  )"));
 }
 
 TEST_F(TilePropagationTest, CanPropagateToGetTupleElementOp) {
@@ -1232,6 +1309,185 @@ TEST_F(TilePropagationTest, FailsToPropagateToConcatenateThroughBitcast) {
             sizes [1, 1, 2]
             strides [1, 1, 1]
             upper bounds [10, tid_1 / 256, (tid_1 mod 256) * 2 + 2]
+  )"));
+}
+
+// ============================================================
+// kRaggedDot tile propagation tests
+// ============================================================
+
+// kRaggedNonContracting: LHS (M=256,K=128) × RHS (G=8,K=128,N=64)
+//   × group_sizes (G=8) → output (M=256, N=64).
+// lhs_ragged_dims={0}, rhs_group_dims={0},
+// lhs_contracting_dims={1}, rhs_contracting_dims={1}.
+//
+// TilingSpace dimensions (ids 0..3):
+//   dim 0: M=256 kParallel   (output dim 0)
+//   dim 1: N=64  kParallel   (output dim 1)
+//   dim 2: G=8   kSequential (ProcessRaggedDot, outer group loop)
+//   dim 3: K=128 kSequential (ProcessRaggedDot, inner K contraction)
+// RTVars:
+//   rt_0: group_size[g], bounds=[0,256]
+TEST_F(TilePropagationTest, CanPropagateToInputsOfRaggedDotOpNonContracting) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      lhs = f32[256,128] parameter(0)
+      rhs = f32[8,128,64] parameter(1)
+      gs  = s32[8] parameter(2)
+      ROOT rd = f32[256,64] ragged-dot(lhs, rhs, gs),
+          lhs_contracting_dims={1}, rhs_contracting_dims={1},
+          lhs_ragged_dims={0}, rhs_group_dims={0}
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      auto tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+
+  // Verify TilingSpace structure.
+  EXPECT_EQ(tiling_space->num_dimensions(), 4);
+  EXPECT_EQ(tiling_space->num_parallel_dimensions(), 2);
+  EXPECT_EQ(tiling_space->num_rt_vars(), 1);
+
+  // Symbolic propagation using the root tile.
+  const Tile& root_tile = tiling_space->tiled_roots()[0];
+  ASSERT_OK_AND_ASSIGN(
+      auto tiled_operands,
+      PropagateTileToInput(*tiling_space, *root, root_tile, 0));
+  ASSERT_EQ(tiled_operands.size(), 3);  // lhs, rhs, group_sizes
+
+  // Symbolic case: tile sizes are still symbols (ts_i), RTVar is rt_0.
+  EXPECT_THAT(tiled_operands, MatchToString(R"(
+    0) (tid_0, tid_1, tid_2, tid_3){rt_0}
+         -> offsets [tid_0 * ts_0, tid_3 * ts_3]
+            sizes [ts_0, ts_3]
+            strides [1, 1]
+            upper bounds [rt_0, 128]
+    1) (tid_0, tid_1, tid_2, tid_3){rt_0}
+         -> offsets [tid_2 * ts_2, tid_3 * ts_3, tid_1 * ts_1]
+            sizes [ts_2, ts_3, ts_1]
+            strides [1, 1, 1]
+            upper bounds [8, 128, 64]
+    2) (tid_0, tid_1, tid_2, tid_3){rt_0}
+         -> offsets [tid_2 * ts_2]
+            sizes [ts_2]
+            strides [1]
+            upper bounds [8]
+  )"));
+
+  // Concrete case: tile_M=32, tile_N=32, tile_G=1 (one group/iter), tile_K=32.
+  ASSERT_OK(tiling_space->AssignTileSizes({32, 32, 1, 32}));
+  ASSERT_OK_AND_ASSIGN(auto concrete_tiled_operands,
+                       PropagateTileToInput(*tiling_space, *root,
+                                            tiling_space->tiled_roots()[0], 0));
+
+  EXPECT_THAT(concrete_tiled_operands, MatchToString(R"(
+    0) (tid_0, tid_1, tid_2, tid_3){rt_0}
+         -> offsets [tid_0 * 32, tid_3 * 32]
+            sizes [32, 32]
+            strides [1, 1]
+            upper bounds [rt_0, 128]
+    1) (tid_0, tid_1, tid_2, tid_3){rt_0}
+         -> offsets [tid_2, tid_3 * 32, tid_1 * 32]
+            sizes [1, 32, 32]
+            strides [1, 1, 1]
+            upper bounds [8, 128, 64]
+    2) (tid_0, tid_1, tid_2, tid_3){rt_0}
+         -> offsets [tid_2]
+            sizes [1]
+            strides [1]
+            upper bounds [8]
+  )"));
+}
+
+// kRaggedContracting: LHS (K=128,M=256) × RHS (M=256,N=64)
+//   × group_sizes (G=8) → output (G=8, K=128, N=64).
+// lhs_ragged_dims={1} (M, contracting), lhs_contracting_dims={1},
+// rhs_contracting_dims={0}.
+//
+// TilingSpace dimensions (ids 0..3):
+//   dim 0: G=8   kParallel   (output dim 0)
+//   dim 1: K=128 kParallel   (output dim 1)
+//   dim 2: N=64  kParallel   (output dim 2)
+//   dim 3: M=256 kSequential (ProcessRaggedDot, inner M accumulation)
+// RTVars:
+//   rt_0: group_size[g], bounds=[0,256]  (operand_id=2)
+//   rt_1: start_m[g],    bounds=[0,256]  (sentinel operand_id=-1)
+TEST_F(TilePropagationTest, CanPropagateToInputsOfRaggedDotOpContracting) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      lhs = f32[128,256] parameter(0)
+      rhs = f32[256,64] parameter(1)
+      gs  = s32[8] parameter(2)
+      ROOT rd = f32[8,128,64] ragged-dot(lhs, rhs, gs),
+          lhs_contracting_dims={1}, rhs_contracting_dims={0},
+          lhs_ragged_dims={1}
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      auto tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+
+  // Verify TilingSpace structure.
+  EXPECT_EQ(tiling_space->num_dimensions(), 4);
+  EXPECT_EQ(tiling_space->num_parallel_dimensions(), 3);  // G, K, N
+  EXPECT_EQ(tiling_space->num_rt_vars(), 2);  // group_size + start_m
+
+  // Symbolic propagation using the root tile.
+  const Tile& root_tile = tiling_space->tiled_roots()[0];
+  ASSERT_OK_AND_ASSIGN(
+      auto tiled_operands,
+      PropagateTileToInput(*tiling_space, *root, root_tile, 0));
+  ASSERT_EQ(tiled_operands.size(), 3);  // lhs, rhs, group_sizes
+
+  // Symbolic case: M offset is relative (d[m]*BLOCK_M, no start_m).
+  // The tile header shows {rt_0, rt_1} because Tile::ToString lists all RTVars
+  // in the tiling space regardless of whether they appear in the expressions.
+  // rt_1 (start_m) is a synthetic prefix-sum RTVar added manually by the
+  // emitter via ExtractTileOp. The upper_bound = rt_0 (group_size only).
+  EXPECT_THAT(tiled_operands, MatchToString(R"(
+    0) (tid_0, tid_1, tid_2, tid_3){rt_0, rt_1}
+         -> offsets [tid_1 * ts_1, tid_3 * ts_3]
+            sizes [ts_1, ts_3]
+            strides [1, 1]
+            upper bounds [128, rt_0]
+    1) (tid_0, tid_1, tid_2, tid_3){rt_0, rt_1}
+         -> offsets [tid_3 * ts_3, tid_2 * ts_2]
+            sizes [ts_3, ts_2]
+            strides [1, 1]
+            upper bounds [rt_0, 64]
+    2) (tid_0, tid_1, tid_2, tid_3){rt_0, rt_1}
+         -> offsets [tid_0 * ts_0]
+            sizes [ts_0]
+            strides [1]
+            upper bounds [8]
+  )"));
+
+  // Concrete case: tile_G=1, tile_K=32, tile_N=32, tile_M=32.
+  ASSERT_OK(tiling_space->AssignTileSizes({1, 32, 32, 32}));
+  ASSERT_OK_AND_ASSIGN(auto concrete_tiled_operands,
+                       PropagateTileToInput(*tiling_space, *root,
+                                            tiling_space->tiled_roots()[0], 0));
+
+  EXPECT_THAT(concrete_tiled_operands, MatchToString(R"(
+    0) (tid_0, tid_1, tid_2, tid_3){rt_0, rt_1}
+         -> offsets [tid_1 * 32, tid_3 * 32]
+            sizes [32, 32]
+            strides [1, 1]
+            upper bounds [128, rt_0]
+    1) (tid_0, tid_1, tid_2, tid_3){rt_0, rt_1}
+         -> offsets [tid_3 * 32, tid_2 * 32]
+            sizes [32, 32]
+            strides [1, 1]
+            upper bounds [rt_0, 64]
+    2) (tid_0, tid_1, tid_2, tid_3){rt_0, rt_1}
+         -> offsets [tid_0]
+            sizes [1]
+            strides [1]
+            upper bounds [8]
   )"));
 }
 

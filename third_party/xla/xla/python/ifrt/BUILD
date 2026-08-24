@@ -1,3 +1,4 @@
+# copybara:uncomment load("//devtools/c/portability/clang_verify:cc_clang_verify_test.bzl", "cc_clang_verify_test")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/python/ifrt:ifrt.bzl", "ifrt_package_groups")
@@ -55,6 +56,9 @@ cc_library(
         "client.h",
         "compiler.h",
         "remap_plan.h",
+        # TODO(hyeontaek): Remove from `ifrt` target and explicitly use the
+        # `rtti` target once all users are migrated to use the new `xla::ifrt`
+        # namespace.
         "rtti.h",
         "device.h",
         "device_list.h",
@@ -113,7 +117,7 @@ cc_library(
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt/ir:sharding_param",
-        "//xla/service:computation_placer_hdr",
+        "//xla/service:device_assignment",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/lib/core:bitmap",
@@ -123,6 +127,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -144,7 +149,6 @@ cc_library(
         "@highwayhash",
         "@highwayhash//:arch_specific",
         "@highwayhash//:hh_types",
-        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -259,7 +263,10 @@ cc_library(
         ":rtti",
         ":value_util",
         "//xla/python/pjrt_ifrt:pjrt_layout",
+        "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
@@ -410,6 +417,7 @@ xla_cc_test(
     srcs = ["memory_test.cc"],
     deps = [
         ":ifrt",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
@@ -589,6 +597,7 @@ cc_library(
 
 cc_library(
     name = "rtti",
+    srcs = ["rtti.cc"],
     hdrs = ["rtti.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([
@@ -597,9 +606,35 @@ cc_library(
         ":users",
     ]),
     deps = [
-        "@llvm-project//llvm:Support",
+        ":ref_wrapper",
+        "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/log:check",
     ],
 )
+
+xla_cc_test(
+    name = "rtti_test",
+    size = "small",
+    srcs = ["rtti_test.cc"],
+    deps = [
+        ":ref_wrapper",
+        ":rtti",
+        "//xla/tsl/concurrency:ref_count",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+# copybara:uncomment_begin
+# cc_clang_verify_test(
+#     name = "rtti_nc_test",
+#     srcs = ["rtti_nc_test.cc"],
+#     deps = [
+#         ":rtti",
+#         "@com_google_googletest//:gtest_main",
+#     ],
+# )
+# copybara:uncomment_end
 
 cc_library(
     name = "user_context_test_util",

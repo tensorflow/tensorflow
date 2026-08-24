@@ -160,6 +160,36 @@ ENTRY main {
   auto pairs_update = alias_info.GetInPlaceInputOutputPairs(update);
   EXPECT_THAT(pairs_update, IsEmpty());
 }
+
+// Tests that the alias info is computed correctly when the async up context is
+// aliased.
+TEST_F(GetInPlaceInputOutputPairsTest, AsyncContextAliasing) {
+  const char* const kHlo = R"(
+HloModule test
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  ROOT abs = f32[2,3] abs(p0)
+}
+ENTRY main {
+  p0 = f32[2,3] parameter(0)
+  start = ((), (), s32[]) call-start(),
+    to_apply=async_computation
+  update = ((f32[2,3]), f32[2,3], s32[]) async-update(start, p0),
+    output_to_operand_aliasing={{2}: (0, {2})}
+  ROOT done = f32[2,3] call-done(update)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  const HloInstruction* start = FindInstruction(module.get(), "start");
+  AliasInfo alias_info;
+  auto pairs_start = alias_info.GetInPlaceInputOutputPairs(start);
+  EXPECT_TRUE(pairs_start.empty());
+  const HloInstruction* update = FindInstruction(module.get(), "update");
+  auto pairs_update = alias_info.GetInPlaceInputOutputPairs(update);
+  EXPECT_THAT(pairs_update, ElementsAre(std::pair<HloOperandIndex, ShapeIndex>{
+                                HloOperandIndex{0, {2}}, {2}}));
+}
+
 // Verifies that a dynamic-update-slice instruction can compute in-place
 // with its first operand (the array being updated).
 TEST_F(GetInPlaceInputOutputPairsTest, DUS) {

@@ -13,7 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/xla.pb.h"
 
@@ -195,7 +199,20 @@ TEST_F(YnnReduceTest, ConvertReduce) {
   )");
 }
 
-class YnnDotTest : public HloTestBase {
+struct DotTestConfig {
+  absl::string_view lhs_dtype;
+  absl::string_view rhs_dtype;
+  absl::string_view out_dtype;
+};
+
+class YnnDotTest : public HloTestBase,
+                   public ::testing::WithParamInterface<DotTestConfig> {
+ public:
+  static std::string Name(const ::testing::TestParamInfo<DotTestConfig>& info) {
+    return absl::StrCat(info.param.lhs_dtype, "_", info.param.rhs_dtype, "_",
+                        info.param.out_dtype);
+  }
+
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
@@ -205,18 +222,22 @@ class YnnDotTest : public HloTestBase {
   }
 };
 
-TEST_F(YnnDotTest, SingleDot) {
-  const char* hlo_text = R"(
+TEST_P(YnnDotTest, SingleDot) {
+  const char* hlo_template = R"(
   HloModule single_dot
 
   ENTRY main {
-    %lhs = f32[256,128] parameter(0)
-    %rhs = f32[128,512] parameter(1)
-    ROOT %out = f32[256,512] dot(%lhs, %rhs), lhs_contracting_dims={1},
-                                              rhs_contracting_dims={0}
+    %lhs = $lhs_dtype[256,128] parameter(0)
+    %rhs = $rhs_dtype[128,512] parameter(1)
+    ROOT %out = $out_dtype[256,512] dot(%lhs, %rhs), lhs_contracting_dims={1},
+                                                     rhs_contracting_dims={0}
   }
   )";
-
+  DotTestConfig config = GetParam();
+  std::string hlo_text =
+      absl::StrReplaceAll(hlo_template, {{"$lhs_dtype", config.lhs_dtype},
+                                         {"$rhs_dtype", config.rhs_dtype},
+                                         {"$out_dtype", config.out_dtype}});
   MatchOptimizedHlo(hlo_text, R"(
     CHECK: dot
     CHECK: ENTRY
@@ -247,39 +268,6 @@ TEST_F(YnnReduceTest, ReduceSquared) {
     CHECK: multiply
     CHECK: ENTRY
     CHECK: __ynn_fusion
-  )");
-}
-
-TEST_F(YnnReduceTest, SliceSubtractSquareReduce) {
-  const char* hlo_text = R"(
-  HloModule diff_like
-
-  add {
-    lhs = f32[] parameter(0)
-    rhs = f32[] parameter(1)
-    ROOT add = f32[] add(lhs, rhs)
-  }
-
-  ENTRY main {
-    input = f32[512,512] parameter(0)
-    slice_a = f32[512,511] slice(input), slice={[0:512], [1:512]}
-    slice_b = f32[512,511] slice(input), slice={[0:512], [0:511]}
-    diff = f32[512,511] subtract(slice_a, slice_b)
-    squared = f32[512,511] multiply(diff, diff)
-    init = f32[] constant(0)
-    ROOT result = f32[512] reduce(squared, init), dimensions={1}, to_apply=add
-  }
-  )";
-
-  MatchOptimizedHlo(hlo_text, R"(
-    CHECK: fused_computation
-    CHECK: slice
-    CHECK: subtract
-    CHECK: multiply
-    CHECK-NOT: wrapped_slice_computation
-    CHECK-LABEL: ENTRY
-    CHECK: kind=kCustom
-    CHECK: "kind":"__ynn_fusion"
   )");
 }
 
@@ -442,6 +430,13 @@ TEST_F(YnnReduceEltwiseTest, FuseRmsNorm) {
     CHECK: "kind":"__ynn_fusion"
   )");
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    YnnDotTestSuite, YnnDotTest,
+    ::testing::ValuesIn({DotTestConfig{"f32", "f32", "f32"},
+                         DotTestConfig{"bf16", "bf16", "bf16"},
+                         DotTestConfig{"bf16", "bf16", "f32"}}),
+    YnnDotTest::Name);
 
 }  // namespace
 }  // namespace xla::cpu

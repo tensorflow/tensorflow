@@ -234,7 +234,7 @@ class EmbeddingUnshardToShardCallback(checkpoint_adapter.ReshardCallback):
         checkpoint_key,
         shape_and_slice_spec,
     )
-    for i, layout in enumerate(self._to_shard_layout):
+    for i, layout in enumerate(self._to_shard_layout):  # pyrefly: ignore[bad-argument-type]
       sub_checkpoint_key = checkpoint_key.replace(
           self._main_checkpoint_name, self._checkpoint_local_names[i]
       )
@@ -269,7 +269,7 @@ class EmbeddingUnshardToShardCallback(checkpoint_adapter.ReshardCallback):
       The resharded tensor slice.
     """
     return _shard_from_cpu_to_sc(
-        checkpoint_values, shape_and_slice, self._to_shard_layout
+        checkpoint_values, shape_and_slice, self._to_shard_layout  # pyrefly: ignore[bad-argument-type]
     )
 
 

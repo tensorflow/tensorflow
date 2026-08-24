@@ -69,7 +69,7 @@ def TPU_TiledLayoutAttr
     ArrayRefParameter<"int64_t", "">:$tile_strides
   );
   let extraClassDeclaration = [{
-    static ::llvm::SmallVector<int64_t> getDefaultTileStrides(::llvm::ArrayRef<::xla::Tile> tiles, ::llvm::ArrayRef<int64_t> shape);
+    static ::llvm::SmallVector<int64_t> getContiguousTileStrides(::llvm::ArrayRef<::xla::Tile> tiles, ::llvm::ArrayRef<int64_t> shape);
     static TiledLayoutAttr getContiguous(::mlir::MLIRContext* context, ::llvm::ArrayRef<::xla::Tile> tiles, ::llvm::ArrayRef<int64_t> shape);
 
     // Returns the number of trailing dimensions where tiles can be statically
@@ -101,6 +101,10 @@ def TPU_TiledLayoutAttr
 
     ::llvm::SmallVector<int64_t> getExpandedShape(::llvm::ArrayRef<int64_t> shape) const;
     ::llvm::SmallVector<int64_t> getExpandedStrides() const;
+
+    // Returns true if any of the tile strides are dynamic.
+    bool hasDynamicStrides() const;
+    int64_t getNumDynamicStrides() const;
   }];
 
   let hasCustomAssemblyFormat = 1;
@@ -146,6 +150,35 @@ def TPU_ReduceIndexOp : TPU_Op<"reduce_index", [Pure]> {
   );
   let results = (outs VectorOfNonZeroRankOf<[I16, I32]>:$output);
   let assemblyFormat = [{ $input attr-dict `:` type($input) `->` type($output) }];
+  let hasVerifier = 1;
+}
+
+def TPU_ReduceOp : TPU_Op<"reduce", [Pure, SameOperandsAndResultRank]> {
+  let summary = "Multi-dimensional reduction operation";
+  let description = [{
+    Reduces an n-D vector into an n-D vector with reduced dimensions set to 1.
+
+    This operation is similar to MLIR's `vector.multi_reduction` operation, but
+    the reduced dimensions are kept and set to 1, instead of being removed.
+    There is also no accumulator operand.
+
+    For example, the following operation
+
+    ```
+    %output = tpu.reduce <sum>, %input [0] : vector<2x2xi32> -> vector<1x2xi32>
+    ```
+
+    might reduce `%input` = [[1, 2], [3, 4]] to `%output` = [[4, 6]].
+  }];
+  let arguments = (ins
+    AnyVectorOfNonZeroRank:$input,
+    DenseI64ArrayAttr:$dimensions,
+    TPU_ReductionKindAttr:$kind
+  );
+  let results = (outs AnyVectorOfNonZeroRank:$output);
+  let assemblyFormat = [{
+    $kind `,` $input $dimensions attr-dict `:` type($input) `->` type($output)
+  }];
   let hasVerifier = 1;
 }
 
@@ -386,9 +419,8 @@ def TPU_VectorLoadIdxOp :TPU_Op<"vector_load_idx", [DefaultMemRead, AttrSizedOpe
 //   indices = [[idx0, idx1, ...], [idxn, idxn+1, ...]]
 // where [idx0, idxn] is the offset of the first vector element.
 //
-// When multiple vector elements have the same index to store to, the data from
-// the highest lane will be the one stored. If add is true, then the data will
-// be added from the lowest lane to the highest lane.
+// When multiple vector elements have the same index to store to, the order of
+// (read-modify-)writes is not guaranteed.
 //
 //  valueToStore: Vector to be stored.
 //  base        : Memref specifying the base address.
@@ -854,6 +886,46 @@ def TPU_MatmulOp : TPU_Op<"matmul", [Pure]> {
   let hasVerifier = 1;
 }
 
+def TPU_ConvOp : TPU_Op<"conv", [Pure]> {
+  let summary = "N-D General Convolution operation on TPU";
+  let description = [{
+    The `tpu.conv` operation performs an N-D general convolution over vector
+    registers and TPU Matrix Units (MXU).
+
+    It accepts input tensor `lhs`, kernel tensor `rhs`, and an initial accumulator
+    tensor `acc` (which may be passed in with zeros or prior partial sums).
+
+    Attributes:
+    - `dimension_numbers`: Defines the batch, feature, and spatial dimension
+      mappings for input, kernel, and output tensors.
+    - `window_strides`: Strides for sliding the kernel window across each spatial
+      dimension (defaults to 1).
+    - `padding`: Explicit low and high padding pairs for each spatial dimension.
+    - `lhs_dilation`: Dilation factor for the input (defaults to 1).
+    - `rhs_dilation`: Dilation factor for the kernel/filter (defaults to 1).
+    - `window_reversal`: Boolean flags indicating whether to reverse the kernel
+      window along each spatial dimension.
+    - `precision`: Optional contraction precision mode for TPU matrix multiplication.
+  }];
+  let arguments = (ins
+    AnyVectorOfNonZeroRank:$lhs,
+    AnyVectorOfNonZeroRank:$rhs,
+    AnyVectorOfNonZeroRank:$acc,
+    TPU_ConvDimensionNumbersAttr:$dimension_numbers,
+    DenseI64ArrayAttr:$window_strides,
+    DenseI64ArrayAttr:$padding,
+    DenseI64ArrayAttr:$lhs_dilation,
+    DenseI64ArrayAttr:$rhs_dilation,
+    DenseBoolArrayAttr:$window_reversal,
+    OptionalAttr<TPU_ContractPrecisionEnum>:$precision
+  );
+  let results = (outs AnyVectorOfNonZeroRank:$result);
+  let assemblyFormat = [{
+    $lhs `,` $rhs `,` $acc attr-dict `:` type($lhs) `,` type($rhs) `,` type($acc) `->` type($result)
+  }];
+  let hasVerifier = 1;
+}
+
 def TPU_MatmulPushRhsOp : TPU_Op<"matmul_push_rhs"> {
   let arguments = (ins
     AnyVectorOfNonZeroRank:$rhs,
@@ -996,6 +1068,28 @@ def TPU_StochasticConvertElementwiseOp : TPU_Op<"stochastic_convert_elementwise"
   let results = (outs VectorOfNonZeroRankOf<[I32]>:$output);
   let assemblyFormat = [{ $input `,` $random attr-dict `:` type($input) `,` type($random) `->` type($output) }];
   let hasVerifier = 1;
+}
+
+def TPU_ReducePrecisionOp : TPU_Op<"reduce_precision", [Pure, ElementwiseMappable, SameOperandsAndResultType]> {
+  let summary = "Reduces the precision of a floating-point value.";
+
+  let description = [{
+    Performs element-wise conversion of operand to another floating-point value
+    that uses `exponent_bits` and `mantissa_bits`, rounding to nearest even, and
+    back to the original floating-point type and produces an output value.
+  }];
+
+  let arguments = (ins
+    VectorOfNonZeroRankOf<[F32, BF16]>:$input,
+    I32Attr:$exponent_bits,
+    I32Attr:$mantissa_bits
+  );
+  let results = (outs VectorOfNonZeroRankOf<[F32, BF16]>:$output);
+  let assemblyFormat = [{
+    $input attr-dict `:` type($input) `->` type($output)
+  }];
+
+  let hasFolder = 1;
 }
 
 def TPU_RollVectorsOp : TPU_Op<"roll_vectors", [Pure]> {
@@ -1154,15 +1248,16 @@ def TPU_ReinterpretCastOp : TPU_Op<"reinterpret_cast", [Pure, AttrSizedOperandSe
     // NOTE: The size of the shift must be a multiple of the memory space word
     // size for lowering to succeed.
     Optional<I32>:$dynamic_offset,
-    Variadic<I32>:$dynamic_sizes
+    Variadic<I32>:$dynamic_sizes,
+    Variadic<I32>:$dynamic_strides
   );
   let results = (outs AnyMemRef:$result);
   let assemblyFormat = [{
-    $input ($dynamic_offset^)? (`<` $dynamic_sizes^ `>`)? attr-dict `:` type($input) `->` type($result)
+    $input ($dynamic_offset^)? (`<` $dynamic_sizes^ `>`)? (`[` $dynamic_strides^ `]`)? attr-dict `:` type($input) `->` type($result)
   }];
   let skipDefaultBuilders = 1;
   let builders = [
-    OpBuilder<(ins "::mlir::Type":$result_type, "::mlir::Value":$input, CArg<"::mlir::Value", "nullptr">:$dynamic_offset, CArg<"::mlir::ValueRange", "{}">:$dynamic_sizes)>
+    OpBuilder<(ins "::mlir::Type":$result_type, "::mlir::Value":$input, CArg<"::mlir::Value", "nullptr">:$dynamic_offset, CArg<"::mlir::ValueRange", "{}">:$dynamic_sizes, CArg<"::mlir::ValueRange", "{}">:$dynamic_strides)>
   ];
   let hasVerifier = 1;
 }

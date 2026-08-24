@@ -629,7 +629,7 @@ cc_library(
         "@tsl//tsl/platform:str_util",
         "@tsl//tsl/platform:strcat",
         "@tsl//tsl/platform:thread_annotations",
-    ] + tf_platform_deps("status"),
+    ],
 )
 
 tsl_cc_test(
@@ -673,9 +673,11 @@ cc_library(
         ":status",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "//xla/tsl/protobuf:status_proto_cc",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
-    ] + tf_platform_deps("status"),
+        "@com_google_absl//absl/types:source_location",
+    ],
 )
 
 cc_library(
@@ -687,12 +689,13 @@ cc_library(
         ":macros",
         ":status",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform",
-    ] + tf_platform_deps("statusor"),
+    ],
 )
 
 tsl_cc_test(
@@ -799,18 +802,6 @@ cc_library(
         "@tsl//tsl/platform:tstring",
     ] + tf_platform_deps("types"),
 )
-
-# copybara:comment_begin(oss-only)
-cc_library(
-    name = "status_macros",
-    hdrs = ["status_macros.h"],
-    compatible_with = get_compatible_with_portable(),
-    visibility = internal_visibility([]),  # The header should be used only in OSS.
-    deps = [
-        "@com_google_absl//absl/status:status_macros",
-    ],
-)
-# copybara:comment_end
 
 cc_library(
     name = "byte_order",
@@ -999,6 +990,33 @@ tsl_cc_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "sha256",
+    srcs = ["sha256.cc"],
+    hdrs = ["sha256.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//visibility:public",
+    ],
+    deps = [
+        "@boringssl//:crypto",
+        "@com_google_absl//absl/strings:string_view",
+        "@tsl//tsl/platform",
+    ],
+)
+
+tsl_cc_test(
+    name = "sha256_test",
+    srcs = ["sha256_test.cc"],
+    deps = [
+        ":sha256",
+        ":test",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )

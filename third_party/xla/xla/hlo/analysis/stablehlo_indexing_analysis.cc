@@ -236,6 +236,12 @@ Shape GetShape(Value value) {
     input_constraints[key.ReplaceDims(replacement_dims, current_num_dims,
                                       new_num_dims, num_symbols)] = val;
   }
+  std::vector<Interval> bounds = input_spatial_indexing.GetDimensionBounds();
+  for (int i = 0; i < spatial_rank; ++i) {
+    if (bounds[i].lower > 0 || bounds[i].upper < output_spatial_sizes[i] - 1) {
+      input_constraints[replacement_dims[i]] = bounds[i];
+    }
+  }
 
   SmallVector<bool> window_reversal;
   if (auto window_reversal_attr = conv.getWindowReversal()) {
@@ -311,10 +317,7 @@ Shape GetShape(Value value) {
       SymbolicMap::Get(context, rank, input_symbols.size(), input_exprs),
       DimVarsFromTensorSizes(output_shape.dimensions()), input_symbols,
       /*rt_vars=*/{}, input_constraints);
-  // We may need to simplify and remove unused symbols again, as the input
-  // feature dimension size may be trivial.
   inputs_indexing.Simplify();
-  inputs_indexing.RemoveUnusedSymbols();
 
   // Indexing map for the kernel value.
   IndexingMap kernel_indexing(
@@ -322,7 +325,19 @@ Shape GetShape(Value value) {
       DimVarsFromTensorSizes(output_shape.dimensions()), kernel_symbols,
       /*rt_vars=*/{});
   kernel_indexing.Simplify();
-  kernel_indexing.RemoveUnusedSymbols();
+
+  llvm::SmallBitVector input_unused =
+      GetUnusedSymbolsBitVector(inputs_indexing.GetSymbolicMap());
+  llvm::SmallBitVector kernel_unused =
+      GetUnusedSymbolsBitVector(kernel_indexing.GetSymbolicMap());
+  llvm::SmallBitVector common_unused = input_unused;
+  common_unused.resize(kernel_unused.size());
+  common_unused &= kernel_unused;
+  common_unused.resize(inputs_indexing.GetSymbolCount(), false);
+
+  inputs_indexing.CompressVars(/*unused_dims=*/{}, common_unused);
+  common_unused.resize(kernel_indexing.GetSymbolCount());
+  kernel_indexing.CompressVars(/*unused_dims=*/{}, common_unused);
 
   HloInstructionIndexing indexing;
   indexing.indexing_maps.resize(2);
@@ -753,6 +768,7 @@ Shape GetShape(Value value) {
       reduce_window.getWindowStrides().value_or(
           reduce_window.getWindowDimensions()),
       window_dilations, base_dilations, padding_flat, context);
+  inputs_indexing.RemoveUnusedSymbols();
 
   // Indexing map for the init value
   IndexingMap inits_indexing_map =

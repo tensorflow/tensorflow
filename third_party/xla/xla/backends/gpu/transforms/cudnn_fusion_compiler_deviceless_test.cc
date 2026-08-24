@@ -242,7 +242,9 @@ TEST_F(CudnnFusionCompilerDevicelessTest, PlainF32ConvAllKindsSupported) {
         std::unique_ptr<VerifiedHloModule> module,
         BuildConvFusionModule(
             kind_case.hlo, construction_config.device_description,
-            construction_config.dnn_version_info, kind_case.kind));
+            se::dnn::VersionInfo(
+                construction_config.device_description.dnn_version()),
+            kind_case.kind));
     const HloFusionInstruction* fusion = FindCudnnFusion(*module);
     ASSERT_NE(fusion, nullptr);
     for (GpuModel model : {GpuModel::H100_SXM, GpuModel::V100}) {
@@ -337,7 +339,9 @@ TEST_F(CudnnFusionCompilerDevicelessTest, Fp8ConvVerdictTracksTargetGpu) {
         std::unique_ptr<VerifiedHloModule> module,
         BuildConvFusionModule(
             graph_case.hlo, construction_config.device_description,
-            construction_config.dnn_version_info, CONVOLUTION_KIND_FPROP));
+            se::dnn::VersionInfo(
+                construction_config.device_description.dnn_version()),
+            CONVOLUTION_KIND_FPROP));
     const HloFusionInstruction* fusion = FindCudnnFusion(*module);
     ASSERT_NE(fusion, nullptr);
     for (const auto& [model, expected] :
@@ -362,11 +366,12 @@ TEST_F(CudnnFusionCompilerDevicelessTest, Fp8ConvVerdictTracksTargetGpu) {
 TEST_F(CudnnFusionCompilerDevicelessTest, GroupedFp8ConvDeliversVerdict) {
   ASSERT_OK_AND_ASSIGN(GpuTargetConfig target_config,
                        DevicelessTargetConfig(GpuModel::H100_SXM));
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                       BuildConvFusionModule(kGroupedFp8ConvHlo,
-                                             target_config.device_description,
-                                             target_config.dnn_version_info,
-                                             CONVOLUTION_KIND_FPROP));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> module,
+      BuildConvFusionModule(
+          kGroupedFp8ConvHlo, target_config.device_description,
+          se::dnn::VersionInfo(target_config.device_description.dnn_version()),
+          CONVOLUTION_KIND_FPROP));
   const HloFusionInstruction* fusion = FindCudnnFusion(*module);
   ASSERT_NE(fusion, nullptr);
   EXPECT_NE(CuDnnFusionCompiler::SupportsFusionDeviceless(

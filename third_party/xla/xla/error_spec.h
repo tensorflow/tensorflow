@@ -51,6 +51,13 @@ struct ErrorSpec {
   // appears not to be.)
   bool fewer_infs_ok = false;
 
+  // If this is true, then integer comparisons in Near() allow a maximum
+  // difference of 1 between expected and actual values. This accounts for
+  // differences between round-to-nearest semantics in fused hardware
+  // operations (e.g. cuDNN fused convolutions) and standard round-to-zero
+  // (truncation) semantics in reference evaluation.
+  bool allow_integer_rounding_difference = false;
+
   struct LowPrecisionFPErrorSpec {
     // Type of low precision floating point to use for error bound calculations.
     // We can't infer this type from the result because the lower precision

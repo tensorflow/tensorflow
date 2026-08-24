@@ -69,7 +69,7 @@ limitations under the License.
 #include "xla/printer.h"
 #include "xla/service/compilation_environments.h"
 #include "xla/service/computation_layout.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/mapped_ptr_container_sorter.h"
@@ -1222,10 +1222,6 @@ absl::StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
     module_config.set_auto_spmd_partitioning_mesh_ids(std::vector<int64_t>(
         execution_options->auto_spmd_partitioning_mesh_ids().begin(),
         execution_options->auto_spmd_partitioning_mesh_ids().end()));
-    module_config.set_exec_time_optimization_effort(
-        execution_options->exec_time_optimization_effort());
-    module_config.set_memory_fitting_effort(
-        execution_options->memory_fitting_effort());
     module_config.set_optimization_level(
         execution_options->optimization_level());
     module_config.set_memory_fitting_level(

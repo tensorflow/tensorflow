@@ -29,6 +29,7 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
 
 * `BatchFunction Operator`
     * Adds the `num_warmup_batch_threads` op attribute to support a separate thread pool for processing warmup requests.
+    * Adds the `per_criticality_batch_timeout_micros` op attribute to support different batch timeouts for different criticality levels.
 * `TensorFlow API`
     * Exports `__new__` in public API golden files for subclasses of `tuple` (like `tf.io.FixedLenFeature`) to fix false positives during static type checking.>
 * `tf.data`

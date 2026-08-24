@@ -7314,9 +7314,9 @@ absl::StatusOr<bool> SpmdPartitioner::RunImpl(
     // update the layout. Otherwise, do not update the pre-set layout in the
     // old global shape unless allow_module_layout_signature_change is true.
     auto update_layout = [&](Shape* new_local_shape,
-                             const Shape& old_global_shape) {
-      TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(old_global_shape,
-                                                             new_local_shape));
+                             const Shape& old_global_shape) -> absl::Status {
+      ABSL_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(old_global_shape,
+                                                          new_local_shape));
       ShapeUtil::ForEachMutableSubshape(
           new_local_shape, [&](Shape* subshape, const xla::ShapeIndex& index) {
             if (subshape->IsArray() && subshape->has_layout() &&

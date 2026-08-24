@@ -37,7 +37,7 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_pjrt_client.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
@@ -153,7 +153,10 @@ DebugOptions CollectiveOpsWithFlagsBase::GetDebugOptionsForTest() const {
       CollectiveOpsE2ETestBase::GetDebugOptionsForTest();
 
   // Enable or disable all async collectives based on test parameter.
-  if (!enable_async_) {
+  if (enable_async_) {
+    debug_options.add_xla_disable_hlo_passes(
+        "gpu-convert-async-collectives-to-sync");
+  } else {
     for (auto option :
          {DebugOptions::NOOP, DebugOptions::ALLREDUCE, DebugOptions::ALLGATHER,
           DebugOptions::REDUCESCATTER, DebugOptions::COLLECTIVEBROADCAST,
@@ -169,8 +172,6 @@ DebugOptions CollectiveOpsWithFlagsBase::GetDebugOptionsForTest() const {
     filter->set_collective(DebugOptions::ALLCOLLECTIVES);
   }
 
-  debug_options.add_xla_disable_hlo_passes(
-      "gpu-convert-async-collectives-to-sync");
   if (enable_p2p_memcpy_) {
     debug_options.set_xla_gpu_use_memcpy_local_p2p(true);
   }

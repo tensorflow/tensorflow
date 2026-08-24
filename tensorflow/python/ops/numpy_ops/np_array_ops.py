@@ -1660,7 +1660,13 @@ def take_along_axis(arr, indices, axis):  # pylint: disable=missing-docstring
   if axis is None:
     return take_along_axis(arr.ravel(), indices, 0)
 
-  rank = array_ops.rank(arr)
+  # Prefer the static rank so that `axis` and the branch predicate below stay
+  # Python values. With a tensor predicate the conditional further down is
+  # emitted as a real op whose two branches have different shapes, which XLA
+  # rejects.
+  rank = arr.shape.rank
+  if rank is None:
+    rank = array_ops.rank(arr)
   axis = axis + rank if axis < 0 else axis
 
   # Broadcast shapes to match, ensure that the axis of interest is not
@@ -1691,7 +1697,11 @@ def take_along_axis(arr, indices, axis):  # pylint: disable=missing-docstring
 
   swapaxes_ = lambda t: swapaxes(t, axis, -1)
 
-  dont_move_axis_to_end = math_ops.equal(axis, np_utils.subtract(rank, 1))
+  if isinstance(rank, int):
+    # Resolved at trace time, so only the taken branch is built.
+    dont_move_axis_to_end = axis == rank - 1
+  else:
+    dont_move_axis_to_end = math_ops.equal(axis, np_utils.subtract(rank, 1))
   arr = np_utils.cond(
       dont_move_axis_to_end, lambda: arr, lambda: swapaxes_(arr)
   )

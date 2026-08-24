@@ -10043,7 +10043,11 @@ TEST_F(MemorySpaceAssignmentTest,
   ASSERT_EQ(cross_program_prefetches.size(), 1);
 }
 
-TEST_F(MemorySpaceAssignmentTest, WindowPrefetch) {
+// The test verifies the allocation of exposed operand span buffers (window
+// prefetch mode set to kAllocationOnly). It ensures that the buffers are
+// allocated at the use time and the fusion instruction operands are updated,
+// without scheduling prefetches ahead of time.
+TEST_F(MemorySpaceAssignmentTest, OpSpanExposureAllocationOnly) {
   absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
@@ -10066,7 +10070,7 @@ entry {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   Options options = DefaultMemorySpaceOptions();
-  options.enable_window_prefetch = true;
+  options.window_prefetch_mode = WindowPrefetchMode::kAllocationOnly;
   options.op_span_size_fn =
       [&](HloInstruction* original_hlo, HloInstruction* cloned_hlo,
           int64_t operand_index) -> int64_t { return 32; };
@@ -10076,7 +10080,7 @@ entry {
                     /*min_prefetch_interval=*/0);
   const HloInstruction* fusion = FindInstruction(module.get(), "fusion");
   // The fusion instruction should have 9 operands: the 3 original operands
-  // plus 3 window prefetch buffers, plus 3 sync flags.
+  // plus 3 exposed operand span buffers, plus 3 sync flags.
   EXPECT_EQ(fusion->operand_count(), 9);
 
   // The added operands are GetTupleElements of WindowPrefetch custom calls.
@@ -10139,7 +10143,7 @@ entry {
       };
 
   Options options = DefaultMemorySpaceOptions();
-  options.enable_window_prefetch = true;
+  options.window_prefetch_mode = WindowPrefetchMode::kPrefetch;
   options.op_span_size_fn = op_span_size_fn;
   options.window_prefetch_min_span_size = 2;
   options.reserved_scoped_memory_fn = reserved_scoped_memory_fn;
@@ -14528,9 +14532,7 @@ ENTRY %main.13 (Arg_0.1: f32[8,128]) -> (f32[8,128], f32[8,128]) {
   memory_space_options.extend_async_copies_limit_for_sync_mem_op_conversion = 0;
   memory_space_options.inefficient_use_to_copy_ratio = 0.5;
   memory_space_options.always_spill_to_default_memory = false;
-  memory_space_options.enable_window_prefetch = false;
-  memory_space_options.window_prefetch_mode =
-      WindowPrefetchMode::kWindowExposure;
+  memory_space_options.window_prefetch_mode = WindowPrefetchMode::kNone;
   memory_space_options.expanded_scoped_alternate_memory_mode =
       ExpandedScopedAlternateMemoryMode::DISABLED;
   memory_space_options.post_module_scoped_alternate_memory_size_in_bytes = 0;
@@ -14657,9 +14659,7 @@ ENTRY %main.28_spmd (param.1: bf16[1024,512], param.2: bf16[2,512,4096], param: 
   memory_space_options.extend_async_copies_limit_for_sync_mem_op_conversion = 0;
   memory_space_options.inefficient_use_to_copy_ratio = 0.5;
   memory_space_options.always_spill_to_default_memory = false;
-  memory_space_options.enable_window_prefetch = false;
-  memory_space_options.window_prefetch_mode =
-      WindowPrefetchMode::kWindowExposure;
+  memory_space_options.window_prefetch_mode = WindowPrefetchMode::kNone;
   memory_space_options.expanded_scoped_alternate_memory_mode =
       ExpandedScopedAlternateMemoryMode::DISABLED;
   memory_space_options.post_module_scoped_alternate_memory_size_in_bytes = 0;
@@ -18517,6 +18517,92 @@ TEST_F(MemorySpaceAssignmentTest,
   CheckOperandOpcodeAndMemorySpaceForInstructionNames(
       module.get(), {"tuple", "add0"}, 0, kAlternateMemorySpace,
       HloOpcode::kTanh);
+}
+
+TEST_F(MemorySpaceAssignmentTest, TestBlockPrefetchingBitcastUses) {
+  // Test block prefetching with two program inputs that can be block prefetched
+  // sequentially if bitcasts are not considered as an HLO use when computing
+  // first use times.
+  //
+  // p0 and p1 have size 24 bytes (equal to block prefetch limit of 24 bytes).
+  // p2 has size 48 bytes (larger than block prefetch limit of 24 bytes).
+  // bitcast(p0) and bitcast(p1) are scheduled early at the beginning.
+  //
+  // Because bitcasts are no-ops and skipped when finding first use times:
+  // - p2 is not prefetched because its size exceeds the limit.
+  // - p1 is prefetched and used at negate_p1_0.
+  // - p0 is prefetched after p1's live range ends and used at negate_p0_0.
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = f32[2,3]{1,0} parameter(1)
+  p2 = f32[4,3]{1,0} parameter(2)
+  bitcast_p0 = f32[6]{0} bitcast(p0)
+  bitcast_p1 = f32[6]{0} bitcast(p1)
+  negate_p2_0 = f32[4,3]{1,0} negate(p2)
+  negate_p2_1 = f32[4,3]{1,0} negate(negate_p2_0)
+  negate_p2_2 = f32[4,3]{1,0} negate(negate_p2_1)
+  negate_p1_0 = f32[6]{0} negate(bitcast_p1)
+  negate_p1_1 = f32[6]{0} negate(negate_p1_0)
+  negate_p1_2 = f32[6]{0} negate(negate_p1_1)
+  negate_p0_0 = f32[6]{0} negate(bitcast_p0)
+  negate_p0_1 = f32[6]{0} negate(negate_p0_0)
+  negate_p0_2 = f32[6]{0} negate(negate_p0_1)
+  ROOT tuple = (f32[4,3]{1,0}, f32[6]{0}, f32[6]{0}) tuple(negate_p2_2, negate_p1_2, negate_p0_2)
+})hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 24;
+  memory_space_options.reserved_bytes_for_block_prefetches = 24;
+  memory_space_options.max_outstanding_block_prefetches = 10;
+  memory_space_options.max_outstanding_prefetches = 0;
+
+  memory_space_options.block_prefetched_positions = GetHloPositions(
+      /*module=*/module.get(),
+      /*instruction_names=*/{"p0", "p1", "p2"});
+
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+
+  // p2 exceeds the block prefetch limit, so negate_p2_0 reads p2 from default
+  // memory.
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/{"negate_p2_0"},
+      /*operand_number=*/0, /*operand_memory_space=*/kDefaultMemorySpace,
+      /*operand_opcode=*/HloOpcode::kParameter);
+
+  // negate_p0_0 and negate_p1_0 should read from bitcast in alternate memory.
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(),
+      /*instruction_names=*/{"negate_p0_0", "negate_p1_0"},
+      /*operand_number=*/0, /*operand_memory_space=*/kAlternateMemorySpace,
+      /*operand_opcode=*/HloOpcode::kBitcast);
+
+  // Verify that the bitcast operands read from CopyDone in alternate memory.
+  HloInstruction* negate_p1_0 = FindInstruction(module.get(), "negate_p1_0");
+  ASSERT_NE(negate_p1_0, nullptr);
+  const HloInstruction* bitcast_p1 = negate_p1_0->operand(0);
+  EXPECT_EQ(bitcast_p1->opcode(), HloOpcode::kBitcast);
+  EXPECT_EQ(bitcast_p1->shape().layout().memory_space(), kAlternateMemorySpace);
+  const HloInstruction* copy_done_p1 = bitcast_p1->operand(0);
+  EXPECT_EQ(copy_done_p1->opcode(), HloOpcode::kCopyDone);
+  EXPECT_EQ(copy_done_p1->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+
+  HloInstruction* negate_p0_0 = FindInstruction(module.get(), "negate_p0_0");
+  ASSERT_NE(negate_p0_0, nullptr);
+  const HloInstruction* bitcast_p0 = negate_p0_0->operand(0);
+  EXPECT_EQ(bitcast_p0->opcode(), HloOpcode::kBitcast);
+  EXPECT_EQ(bitcast_p0->shape().layout().memory_space(), kAlternateMemorySpace);
+  const HloInstruction* copy_done_p0 = bitcast_p0->operand(0);
+  EXPECT_EQ(copy_done_p0->opcode(), HloOpcode::kCopyDone);
+  EXPECT_EQ(copy_done_p0->shape().layout().memory_space(),
+            kAlternateMemorySpace);
 }
 
 }  // namespace

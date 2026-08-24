@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/analysis/hlo_dfs_reachability.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -661,7 +662,7 @@ absl::Status SetDynamicSliceFusionBackendConfig(HloInstruction* fusion) {
   FusionBackendConfig& backend_config =
       *gpu_config.mutable_fusion_backend_config();
   backend_config.set_kind("__custom_fusion");
-  CustomFusionConfig config;
+  xtile::CustomFusionConfig config;
   config.set_name(std::string(kDynamicSliceFusionConfigName));
   *backend_config.mutable_custom_fusion_config() = config;
   return fusion->set_backend_config(std::move(gpu_config));

@@ -1645,8 +1645,9 @@ class Subgraph {
           resource_id = *GetTensorData<int>(&resource_tensor);
         }
 
-        resource::CreateResourceVariableIfNotAvailable(
-            &this_subgraph->resources(), resource_id);
+        TF_LITE_ENSURE_OK(context,
+                          resource::CreateResourceVariableIfNotAvailable(
+                              &this_subgraph->resources(), resource_id));
         tflite::resource::ResourceVariable* variable =
             resource::GetResourceVariable(&this_subgraph->resources(),
                                           resource_id);
@@ -5010,7 +5011,8 @@ class Subgraph {
 
     bool dynamically_quantized =
         (!delegate.disable_dynamically_quantized_ops() &&
-         (input_tensor.type == kTfLiteFloat32 &&
+         ((input_tensor.type == kTfLiteFloat32 ||
+           input_tensor.type == kTfLiteFloat16) &&
           (filter_tensor.type == kTfLiteInt2 ||
            filter_tensor.type == kTfLiteInt4 ||
            filter_tensor.type == kTfLiteInt8)));

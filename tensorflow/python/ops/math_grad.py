@@ -54,7 +54,7 @@ def _EuclideanNormGrad(op: ops.Operation, grad):
     output = array_ops.reshape(output, output_shape_kept_dims)
     grad = array_ops.reshape(grad, output_shape_kept_dims)
 
-  return math_ops.truediv(op.inputs[0], output / grad), None
+  return math_ops.div_no_nan(op.inputs[0], output) * grad, None
 
 
 def SmartBroadcastGradientArgs(x, y, grad=None):

@@ -551,6 +551,10 @@ def multiply(x, y, name=None):
    * InvalidArgumentError: When `x` and `y` have incompatible shapes or types.
   """
 
+  if not tensor_util.is_tf_type(x) and tensor_util.is_tf_type(y):
+    x = ops.convert_to_tensor(x, dtype=y.dtype.base_dtype, name="x")
+  elif tensor_util.is_tf_type(x) and not tensor_util.is_tf_type(y):
+    y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype, name="y")
   return gen_math_ops.mul(x, y, name)
 
 
@@ -720,6 +724,10 @@ def pow(x, y, name=None):  # pylint: disable=redefined-builtin
     A `Tensor`.
   """
   with ops.name_scope(name, "Pow", [x]) as name:
+    if not tensor_util.is_tf_type(x) and tensor_util.is_tf_type(y):
+      x = ops.convert_to_tensor(x, dtype=y.dtype.base_dtype, name="x")
+    elif tensor_util.is_tf_type(x) and not tensor_util.is_tf_type(y):
+      y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype, name="y")
     return gen_math_ops._pow(x, y, name=name)
 
 
@@ -2160,6 +2168,25 @@ def _may_reduce_to_scalar(keepdims, axis, output):
   return output
 
 
+def _check_keepdims(keepdims):
+  """Validate and normalize the keepdims argument.
+
+  Args:
+    keepdims: The keepdims value to validate.
+
+  Returns:
+    A bool value for keepdims.
+
+  Raises:
+    TypeError: If keepdims is not None or a bool.
+  """
+  if keepdims is None:
+    return False
+  if not isinstance(keepdims, (bool, np.bool_)):
+    raise TypeError(f"Expected bool for argument 'keepdims' not {keepdims}.")
+  return bool(keepdims)
+
+
 @tf_export(v1=["math.reduce_sum", "reduce_sum"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_args(None,
@@ -2312,7 +2339,7 @@ def reduce_sum_with_dims(input_tensor,
                          keepdims=False,
                          name=None,
                          dims=None):
-  keepdims = False if keepdims is None else bool(keepdims)
+  keepdims = _check_keepdims(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops._sum(input_tensor, dims, keepdims, name=name))
@@ -2355,7 +2382,7 @@ def reduce_euclidean_norm(input_tensor, axis=None, keepdims=False, name=None):
   Returns:
     The reduced tensor, of the same dtype as the input_tensor.
   """
-  keepdims = bool(keepdims)
+  keepdims = _check_keepdims(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops.euclidean_norm(
@@ -2636,7 +2663,7 @@ def reduce_mean(input_tensor, axis=None, keepdims=False, name=None):
 
   @end_compatibility
   """
-  keepdims = False if keepdims is None else bool(keepdims)
+  keepdims = _check_keepdims(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops.mean(
@@ -2799,7 +2826,7 @@ def reduce_prod(input_tensor, axis=None, keepdims=False, name=None):
   Equivalent to np.prod
   @end_compatibility
   """
-  keepdims = False if keepdims is None else bool(keepdims)
+  keepdims = _check_keepdims(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops.prod(
@@ -2990,7 +3017,7 @@ def reduce_min(input_tensor, axis=None, keepdims=False, name=None):
   Equivalent to np.min
   @end_compatibility
   """
-  keepdims = False if keepdims is None else bool(keepdims)
+  keepdims = _check_keepdims(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops._min(
@@ -3121,7 +3148,7 @@ def reduce_max_with_dims(input_tensor,
                          keepdims=False,
                          name=None,
                          dims=None):
-  keepdims = False if keepdims is None else bool(keepdims)
+  keepdims = _check_keepdims(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops._max(input_tensor, dims, keepdims, name=name))
@@ -3225,7 +3252,7 @@ def reduce_all(input_tensor, axis=None, keepdims=False, name=None):
   Equivalent to np.all
   @end_compatibility
   """
-  keepdims = False if keepdims is None else bool(keepdims)
+  keepdims = _check_keepdims(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops._all(
@@ -3331,7 +3358,7 @@ def reduce_any(input_tensor, axis=None, keepdims=False, name=None):
   Equivalent to np.any
   @end_compatibility
   """
-  keepdims = False if keepdims is None else bool(keepdims)
+  keepdims = _check_keepdims(keepdims)
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops._any(
@@ -5569,6 +5596,11 @@ def polyval(coeffs, x, name=None):
     p = coeffs[0]
     for c in coeffs[1:]:
       p = c + p * x
+    # For single-coefficient polynomials, the loop above never executes,
+    # so x is unused. Add x*0 to broadcast against x's shape and
+    # propagate NaN, matching numpy.polyval behavior.
+    if len(coeffs) == 1:
+      p = p + x * 0
     return p
 
 

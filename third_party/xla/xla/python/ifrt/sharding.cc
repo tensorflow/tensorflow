@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -34,8 +35,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -55,19 +54,10 @@ namespace ifrt {
 
 namespace {
 
-// Returns a canonicalized memory kind for the given devices.
-// REQUIRES: !devices->devices().empty()
-MemoryKind CanonicalizeMemoryKindWithDevices(const MemoryKind& memory_kind,
-                                             const DeviceListRef& devices) {
-  CHECK(devices != nullptr);
-  CHECK(!devices->devices().empty());
-  return CanonicalizeMemoryKind(memory_kind, devices->devices().front());
-}
-
 // Returns if `sharding_param` indicates a fully replicated sharding.
 bool ComputeIsFullyReplicated(const ShardingParam& sharding_param) {
-  return llvm::all_of(sharding_param.dim_shards(),
-                      [](auto shards) { return shards == 1; });
+  return absl::c_all_of(sharding_param.dim_shards(),
+                        [](auto shards) { return shards == 1; });
 }
 
 // Iterates the major-to-minor Cartesian product of a Span of containers of the
@@ -209,7 +199,6 @@ std::unique_ptr<SingleDeviceSharding> SingleDeviceSharding::Create(
   absl::StatusOr<DeviceListRef> device_list =
       device->client()->MakeDeviceList({device});
   CHECK_OK(device_list);
-  memory_kind = CanonicalizeMemoryKind(memory_kind, device);
   return std::unique_ptr<SingleDeviceSharding>(
       new SingleDeviceSharding(*std::move(device_list), memory_kind));
 }
@@ -307,7 +296,8 @@ void SingleDeviceSharding::Hash(absl::HashState state) const {
 
 std::unique_ptr<OpaqueSharding> OpaqueSharding::Create(DeviceListRef devices,
                                                        MemoryKind memory_kind) {
-  memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
+  CHECK(devices != nullptr);
+  CHECK(!devices->devices().empty());
   return std::unique_ptr<OpaqueSharding>(
       new OpaqueSharding(std::move(devices), memory_kind));
 }
@@ -386,7 +376,8 @@ std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
     DeviceListRef devices, MemoryKind memory_kind, Shape shape,
     std::vector<Shape> shard_shapes,
     std::optional<std::vector<xla::ifrt::IndexDomain>> index_domains) {
-  memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
+  CHECK(devices != nullptr);
+  CHECK(!devices->devices().empty());
   return std::unique_ptr<ConcreteSharding>(
       new ConcreteSharding(std::move(devices), memory_kind, std::move(shape),
                            std::move(shard_shapes), std::move(index_domains)));
@@ -395,7 +386,8 @@ std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
 std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
     DeviceListRef devices, MemoryKind memory_kind, DynamicShape dynamic_shape,
     std::vector<DynamicShape> shard_dynamic_shapes) {
-  memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
+  CHECK(devices != nullptr);
+  CHECK(!devices->devices().empty());
   return std::unique_ptr<ConcreteSharding>(new ConcreteSharding(
       std::move(devices), memory_kind, std::move(dynamic_shape),
       std::move(shard_dynamic_shapes)));
@@ -462,7 +454,8 @@ bool ConcreteSharding::HasSamePartitioning(const Sharding& other) const {
     return false;
   }
   return shape_ == other_concrete_sharding->shape_ &&
-         shard_shapes_ == other_concrete_sharding->shard_shapes_;
+         shard_shapes_ == other_concrete_sharding->shard_shapes_ &&
+         index_domains_ == other_concrete_sharding->index_domains_;
 }
 
 absl::StatusOr<std::unique_ptr<Sharding>>
@@ -478,7 +471,7 @@ ConcreteSharding::WithDeviceAssignment(
   if (has_static_shape()) {
     return Create(devices.value_or(devices_),
                   memory_kind.value_or(memory_kind_), std::get<Shape>(shape_),
-                  std::get<std::vector<Shape>>(shard_shapes_));
+                  std::get<std::vector<Shape>>(shard_shapes_), index_domains_);
   }
   return Create(devices.value_or(devices_), memory_kind.value_or(memory_kind_),
                 std::get<DynamicShape>(shape_),
@@ -632,13 +625,14 @@ std::string ConcreteSharding::DebugString() const {
 
 void ConcreteSharding::Hash(absl::HashState state) const {
   absl::HashState::combine(std::move(state), devices_, memory_kind_, shape_,
-                           shard_shapes_);
+                           shard_shapes_, index_domains_);
 }
 
 std::unique_ptr<ConcreteEvenSharding> ConcreteEvenSharding::Create(
     DeviceListRef devices, MemoryKind memory_kind, Shape shape,
     Shape shard_shape, bool is_fully_replicated) {
-  memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
+  CHECK(devices != nullptr);
+  CHECK(!devices->devices().empty());
   return std::unique_ptr<ConcreteEvenSharding>(new ConcreteEvenSharding(
       std::move(devices), memory_kind, std::move(shape), std::move(shard_shape),
       is_fully_replicated));
@@ -775,7 +769,8 @@ void ConcreteEvenSharding::Hash(absl::HashState state) const {
 absl::StatusOr<std::unique_ptr<ShardingParamSharding>>
 ShardingParamSharding::Create(ShardingParam sharding_param,
                               DeviceListRef devices, MemoryKind memory_kind) {
-  memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
+  CHECK(devices != nullptr);
+  CHECK(!devices->devices().empty());
   int64_t device_count =
       absl::c_accumulate(sharding_param.minor_to_major().axis_sizes, 1,
                          std::multiplies<int64_t>());
@@ -836,8 +831,9 @@ absl::StatusOr<Shape> ShardingParamSharding::GetShardShape(
   }
   std::vector<int64_t> dims;
   dims.reserve(shape.dims().size());
-  for (const auto [dim, dim_shards] :
-       llvm::zip(shape.dims(), sharding_param_.dim_shards())) {
+  for (int i = 0; i < shape.dims().size(); ++i) {
+    const int64_t dim = shape.dims()[i];
+    const int dim_shards = sharding_param_.dim_shards()[i];
     if (dim % dim_shards != 0) {
       return absl::InvalidArgumentError(absl::StrFormat(
           "Uneven shard is not supported. dim: %d, dim_shards: %d", dim,
@@ -919,9 +915,10 @@ absl::StatusOr<std::vector<IndexDomain>> ShardingParamSharding::IndexDomains(
   // Calculate the device assignments.
   // `origins[i]` should go to `device_list[i]`.
   static constexpr int kInvalidIndex = -1;
-  llvm::SmallVector<int, 4> device_list;
+  absl::InlinedVector<int, 4> device_list;
   sharding_param_.minor_to_major().ToDeviceList(device_list);
-  std::vector<int> device_to_index(device_list.size(), kInvalidIndex);
+  absl::InlinedVector<int, 4> device_to_index(device_list.size(),
+                                              kInvalidIndex);
   for (int i = 0; i < device_list.size(); ++i) {
     device_to_index[device_list[i]] = i;
   }

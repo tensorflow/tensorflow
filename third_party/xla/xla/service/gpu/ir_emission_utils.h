@@ -72,6 +72,18 @@ absl::StatusOr<bool> IsCublasSupportedMatMul(
 // GroupedMatMul.
 bool IsGpublasLtSupportedGroupedMatMul(const HloInstruction& instr);
 
+// Returns true if the ragged-dot instruction can be lowered by the Triton
+// XTile backend.  Criteria:
+//   - Exactly one LHS ragged dimension.
+//   - Tiling propagation enabled
+//   (xla_gpu_experimental_enable_tiling_propagation).
+//   - Element types supported by the xtile emitter: F16, BF16, F32, F64,
+//     F8E5M2, F8E4M3FN; nanoo FP8 types (F8E4M3FNUZ, F8E5M2FNUZ) on ROCm only.
+//     Complex types (C64, C128) are not supported.
+bool IsTritonSupportedRaggedDot(
+    const se::GpuComputeCapability& gpu_compute_capability,
+    const HloInstruction& instr);
+
 constexpr int64_t WarpSize(const se::DeviceDescription& gpu_device_info) {
   return gpu_device_info.threads_per_warp();
 }
@@ -141,10 +153,9 @@ bool IsCustomCallToTopK(const HloInstruction& hlo);
 // implementation.
 bool IsCustomCallToPtxKernel(const HloInstruction& hlo);
 
-
 // Returns true if `hlo` will be implemented as a call to a Mosaic GPU kernel
-// with multimem.
-bool IsMosaicWithMultimem(const HloInstruction& hlo);
+// with parameter uses symmetric memory.
+bool IsMosaicWithSymmetricParameter(const HloInstruction& hlo);
 
 // Returns true if `hlo` will be implemented as a call to a Mosaic GPU kernel
 // with collective metadata.

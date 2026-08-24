@@ -1089,24 +1089,26 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     std::optional<Literal> decompressed_rhs;
     const Literal* rhs_literal_ptr = &parent_->GetEvaluatedLiteralFor(rhs);
 
-    if (conv->sparsity_config().has_lhs() && lhs->shape().IsTuple()) {
-      ABSL_ASSIGN_OR_RETURN(
-          decompressed_lhs,
-          xla::MaterializeSparseOperand(LiteralSlice(*lhs_literal_ptr, {0}),
-                                        LiteralSlice(*lhs_literal_ptr, {1}),
-                                        conv->sparsity_config().lhs()));
+    if (conv->sparsity_config().has_lhs()) {
+      auto lhs_indices_op = conv->operand(conv->sparsity_config().lhs().idx());
+      const Literal* lhs_indices =
+          &parent_->GetEvaluatedLiteralFor(lhs_indices_op);
+      ABSL_ASSIGN_OR_RETURN(decompressed_lhs, xla::MaterializeSparseOperand(
+                                             *lhs_literal_ptr, *lhs_indices,
+                                             conv->sparsity_config().lhs()));
       lhs_literal_ptr = &decompressed_lhs.value();
       lhs_shape = lhs_literal_ptr->shape();
     } else {
       lhs_shape = GetShapeWithLayout(lhs->shape());
     }
 
-    if (conv->sparsity_config().has_rhs() && rhs->shape().IsTuple()) {
-      ABSL_ASSIGN_OR_RETURN(
-          decompressed_rhs,
-          xla::MaterializeSparseOperand(LiteralSlice(*rhs_literal_ptr, {0}),
-                                        LiteralSlice(*rhs_literal_ptr, {1}),
-                                        conv->sparsity_config().rhs()));
+    if (conv->sparsity_config().has_rhs()) {
+      auto rhs_indices_op = conv->operand(conv->sparsity_config().rhs().idx());
+      const Literal* rhs_indices =
+          &parent_->GetEvaluatedLiteralFor(rhs_indices_op);
+      ABSL_ASSIGN_OR_RETURN(decompressed_rhs, xla::MaterializeSparseOperand(
+                                             *rhs_literal_ptr, *rhs_indices,
+                                             conv->sparsity_config().rhs()));
       rhs_literal_ptr = &decompressed_rhs.value();
       rhs_shape = rhs_literal_ptr->shape();
     } else {
@@ -2010,21 +2012,18 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                          /*operand_shape=*/pad->operand(0)->shape(),
                          /*padding_value_shape=*/pad->operand(1)->shape(),
                          /*padding_config=*/pad->padding_config()));
-    // Try to convert the element type if the inferred type is not compatible.
-    bool convert_element_type =
-        pad->shape().element_type() != inferred_return_shape.element_type();
-    if (convert_element_type) {
-      inferred_return_shape.set_element_type(pad->shape().element_type());
-    }
-    CHECK(ShapeUtil::Compatible(pad->shape(), inferred_return_shape))
+    CHECK(ShapeUtil::CompatibleIgnoringElementType(pad->shape(),
+                                                   inferred_return_shape))
         << "return shape is set to: " << ShapeUtil::HumanString(pad->shape())
         << " but is inferred to be: "
         << ShapeUtil::HumanString(inferred_return_shape);
     ReturnT scalar;
-    if (convert_element_type) {
+    PrimitiveType result_type = pad->shape().element_type();
+    PrimitiveType padding_type = pad->operand(1)->shape().element_type();
+    if (padding_type != result_type) {
       ABSL_ASSIGN_OR_RETURN(auto literal,
                        parent_->GetEvaluatedLiteralFor(pad->operand(1))
-                           .Convert(inferred_return_shape.element_type()));
+                           .Convert(result_type));
       scalar = literal.Get<ReturnT>({});
     } else {
       scalar =
@@ -2036,8 +2035,17 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     ABSL_RETURN_IF_ERROR(result.PopulateLinearParallel<ReturnT>(
         [&scalar](int64_t linear_index, int) { return scalar; }));
 
+    Literal converted_operand;
+    PrimitiveType operand_type = pad->operand(0)->shape().element_type();
+    if (operand_type != result_type) {
+      ABSL_ASSIGN_OR_RETURN(converted_operand,
+                       parent_->GetEvaluatedLiteralFor(pad->operand(0))
+                           .Convert(result_type));
+    }
     const Literal& evaluated_operand =
-        parent_->GetEvaluatedLiteralFor(pad->operand(0));
+        operand_type != result_type
+            ? converted_operand
+            : parent_->GetEvaluatedLiteralFor(pad->operand(0));
 
     std::vector<int64_t> target_index(result.shape().dimensions().size(), 0);
 

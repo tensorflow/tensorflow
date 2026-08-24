@@ -22,8 +22,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
@@ -40,7 +40,8 @@ absl::StatusOr<int64_t> ExtractBlockK(const HloDotInstruction* dot);
 // parameters.
 // Flops with tile and wave quant.
 absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
-    const HloDotInstruction* dot, const BlockLevelParameters& block_params,
+    const HloDotInstruction* dot,
+    const xla::xtile::BlockLevelParameters& block_params,
     const se::DeviceDescription& device_info,
     std::optional<int64_t> block_k = std::nullopt);
 
@@ -157,6 +158,15 @@ struct ComputeAndFlops {
 absl::StatusOr<ComputeAndFlops> CalculateComputeTimeWithTileAndWaveQuantization(
     const DotProblemInfo& dot, const DotTileSize& dot_tile,
     const se::DeviceDescription& device_info);
+
+// Calculates the effective flops for a GPU DOT operation as a function of the
+// tile size (excludes clock throttling). Not all tile sizes are equally able to
+// extract utilization on the same generation GPUs even if the workload is
+// compute bound. GEMM performance is sensitive to the tensor core
+// instruction throughputs that the programming model exposes.
+double GetEffectiveFlopsPerNsForTileSize(
+    int64_t tile_m, const se::DeviceDescription& device_info,
+    PrimitiveType element_type);
 
 // Calculates Compute Utilization. Expected to be in the range [0.0, 1.0], but
 // may exceed 1.0 if the underlying time estimates are inaccurate.

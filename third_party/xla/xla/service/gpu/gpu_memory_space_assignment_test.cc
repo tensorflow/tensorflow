@@ -431,12 +431,13 @@ TEST_F(GpuMemorySpaceAssignmentTest,
   EXPECT_EQ(get_color("ar_large"), (int)MemorySpaceColor::kCollective);
 }
 
-TEST_F(GpuMemorySpaceAssignmentTest, TestMultimemMosaicMemorySpaceAssignment) {
+TEST_F(GpuMemorySpaceAssignmentTest,
+       TestSymmetricalMemoryMosaicMemorySpaceAssignment) {
   constexpr absl::string_view kHloModule = R"(
     HloModule m
 
     ENTRY main {
-      ROOT %custom-call.9 = (f16[8], f16[8]) custom-call(), custom_call_target="mosaic_gpu_v2", backend_config={"xla_multimem_parameters"}
+      ROOT %custom-call.9 = (f16[8], f16[8]) custom-call(), custom_call_target="mosaic_gpu_v2", backend_config={"xla_symmetric_memory_parameters"}
     }
   )";
 

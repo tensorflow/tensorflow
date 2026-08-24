@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -32,11 +33,11 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
@@ -49,56 +50,107 @@ limitations under the License.
 
 namespace xla::gpu::gpu_dot_fusion_cost_model {
 
+using ::xla::xtile::BlockLevelParameters;
+
 namespace detail {
 
 namespace {
+
 using ::xla::primitive_util::BitWidth;
 
+// Lookup table entry mapping DMA transfer size to fractional saturation
+// of peak bandwidth in [0.0, 1.0].
 struct BandwidthEntry {
   int64_t dma_size_bytes;
-  float bandwidth_gbps;
+  float bandwidth_fraction;
 };
+
+constexpr int kHbmBandwidthTableEntries = 21;
+
+// TODO(b/547746872): Add tooling to measure and generate bandwidth derate
+// tables in a reproducible manner.
+// Empirical HBM bandwidth scaling tables mapping transfer size in bytes to
+// fraction of peak bandwidth [0.0, 1.0].
+constexpr std::array<BandwidthEntry, kHbmBandwidthTableEntries>
+    kAmpereScaledHbmBandwidthTable = {
+        {{8192, 0.00043418f},       {16384, 0.00092645f},
+         {32768, 0.00184066f},      {65536, 0.00359877f},
+         {131072, 0.00724035f},     {262144, 0.01447766f},
+         {524288, 0.02830100f},     {1048576, 0.05448203f},
+         {2097152, 0.10550455f},    {4194304, 0.19454216f},
+         {8388608, 0.32555948f},    {16777216, 0.48194352f},
+         {33554432, 0.60084187f},   {67108864, 0.71295513f},
+         {134217728, 0.79326842f},  {268435456, 0.83355906f},
+         {536870912, 0.89447866f},  {1073741824, 0.93435348f},
+         {2147483648, 0.94308240f}, {4294967296, 0.94739100f},
+         {8589934592, 0.94989600f}}};
+
+constexpr std::array<BandwidthEntry, kHbmBandwidthTableEntries>
+    kHopperScaledHbmBandwidthTable = {
+        {{8192, 0.00042359f},       {16384, 0.00090385f},
+         {32768, 0.00179577f},      {65536, 0.00351100f},
+         {131072, 0.00706376f},     {262144, 0.01412455f},
+         {524288, 0.02761073f},     {1048576, 0.05341375f},
+         {2097152, 0.10343583f},    {4194304, 0.19072761f},
+         {8388608, 0.31917596f},    {16777216, 0.47249365f},
+         {33554432, 0.58906066f},   {67108864, 0.69897562f},
+         {134217728, 0.78541428f},  {268435456, 0.82530600f},
+         {536870912, 0.88562244f},  {1073741824, 0.93248850f},
+         {2147483648, 0.94120000f}, {4294967296, 0.94550000f},
+         {8589934592, 0.94800000f}}};
+
+constexpr std::array<BandwidthEntry, kHbmBandwidthTableEntries>
+    kBlackwellScaledHbmBandwidthTable = {
+        {{8192, 0.00041057f},       {16384, 0.00080983f},
+         {32768, 0.00159736f},      {65536, 0.00315074f},
+         {131072, 0.00621472f},     {262144, 0.01009557f},
+         {524288, 0.01892165f},     {1048576, 0.03517364f},
+         {2097152, 0.06441370f},    {4194304, 0.11489171f},
+         {8388608, 0.19611710f},    {16777216, 0.31310696f},
+         {33554432, 0.45727190f},   {67108864, 0.60433204f},
+         {134217728, 0.72808478f},  {268435456, 0.81644540f},
+         {536870912, 0.87240125f},  {1073741824, 0.90518887f},
+         {2147483648, 0.92353306f}, {4294967296, 0.93353170f},
+         {8589934592, 0.93890402f}}};
+
+absl::Span<const BandwidthEntry> GetScaledHbmBandwidthTable(
+    se::CudaComputeCapability cuda_compute_capability) {
+  if (cuda_compute_capability.IsAtLeastBlackwell()) {
+    return kBlackwellScaledHbmBandwidthTable;
+  }
+  if (cuda_compute_capability.IsHopper()) {
+    return kHopperScaledHbmBandwidthTable;
+  }
+  return kAmpereScaledHbmBandwidthTable;
+}
 
 struct MemoryBandwidthSpec {
   double l2_cache_bandwidth_bytes_per_sec;
-  absl::Span<const BandwidthEntry> hbm_bandwidth_table_gbps;
+  absl::Span<const BandwidthEntry> hbm_bandwidth_table;
 };
 
 MemoryBandwidthSpec GetMemoryBandwidthSpec(
-    const se::DeviceDescription& /*device_info*/) {
-  // Reference H100 SXM empirical HBM bandwidth table (dma_size -> GB/s),
-  // microbenchmarked on H100 SXM.
-  static constexpr std::array<BandwidthEntry, 18> kH100HbmBandwidthTable = {
-      {{8192, 1.42f},
-       {16384, 3.03f},
-       {32768, 6.02f},
-       {65536, 11.77f},
-       {131072, 23.68f},
-       {262144, 47.35f},
-       {524288, 92.56f},
-       {1048576, 179.06f},
-       {2097152, 346.75f},
-       {4194304, 639.38f},
-       {8388608, 1069.98f},
-       {16777216, 1583.95f},
-       {33554432, 1974.72f},
-       {67108864, 2343.19f},
-       {134217728, 2632.96f},
-       {268435456, 2766.69f},
-       {536870912, 2968.89f},
-       {1073741824, 3126.0f}}};
+    const se::DeviceDescription& device_info) {
+  double device_memory_bandwidth_bytes_per_sec =
+      static_cast<double>(device_info.memory_bandwidth());
 
-  // Default L2 cache bandwidth (measured at 6.65 TB/s on H100 SXM).
+  // L2 cache bandwidth scales proportionally to memory bandwidth relative to
+  // H100 SXM (measured at 6.65 TB/s on H100 SXM).
   // TODO(maniananth): L2 bandwidth has been hardcoded for H100 based on
   // microbenchmarking L2 bandwidth within a partition, but we should add this
   // to the device info and extend for more GPUs.
   constexpr double kH100L2CacheBandwidthBytesPerSec = 6.65 * 1e12;
+  // Peak memory bandwidth of H100 SXM in bytes/s (3352.32 GB/s) from
+  // xla/backends/gpu/target_config/specs/h100_sxm.txtpb:L26.
+  constexpr double kH100SxmPeakMemoryBandwidthBytesPerSec = 3352.32 * 1e9;
+  double bandwidth_scale = device_memory_bandwidth_bytes_per_sec /
+                           kH100SxmPeakMemoryBandwidthBytesPerSec;
 
-  // TODO(karupayun): Add explicit microbenchmarked tables for Blackwell
-  // (B200/GB200) and other architectures here as they are measured.
   return MemoryBandwidthSpec{
-      /*l2_cache_bandwidth_bytes_per_sec=*/kH100L2CacheBandwidthBytesPerSec,
-      /*hbm_bandwidth_table_gbps=*/absl::MakeSpan(kH100HbmBandwidthTable),
+      /*l2_cache_bandwidth_bytes_per_sec=*/kH100L2CacheBandwidthBytesPerSec *
+          bandwidth_scale,
+      /*hbm_bandwidth_table=*/
+      GetScaledHbmBandwidthTable(device_info.cuda_compute_capability()),
   };
 }
 
@@ -124,51 +176,6 @@ int64_t CalculateNumWaves(int64_t threadblock_count,
 int64_t CalculateTileFlops(const DotTileSize& dot_tile, int64_t problem_k) {
   return /*2 FLOPs per MAC*/ 2 * dot_tile.b * dot_tile.m * dot_tile.n *
          problem_k;
-}
-
-// Calculates the effective flops for a GPU DOT operation as a function of the
-// tile size (excludes clock throttling). Not all tile sizes are equally able to
-// extract utilization on the same generation GPUs even if the workload is
-// compute bound. GEMM performance is sensitive to the tensor core
-// instruction throughputs that the programming model exposes.
-double GetEffectiveFlopsPerNsForTileSize(
-    const int64_t tile_m, const se::DeviceDescription& device_info,
-    xla::PrimitiveType element_type) {
-  se::CudaComputeCapability cuda_compute_capability =
-      device_info.cuda_compute_capability();
-
-  // Peak flops per ns for device.
-  int64_t peak_flops_per_ns =
-      GpuPerformanceModelBase::CalculatePeakMatrixOpsPerNs(device_info,
-                                                           element_type);
-
-  // Final flops derate factor.
-  double flops_derate = 1.0;
-
-  if (cuda_compute_capability.IsBlackwell()) {
-    if (tile_m < 128) {
-      // TODO(maniananth): Update this derate once we have more data from
-      // actual measurements on Blackwell. For now, we are applying a 50%
-      // derate to account for smaller M shapes.
-      flops_derate = 0.5;
-    }
-  } else if (cuda_compute_capability.IsHopper()) {
-    if (tile_m < 64) {
-      // Having a tile size M < 64 will lead to not being able to use the H100
-      // tensor core instructions (wgmma). Defaulting to wmma instructions from
-      // A100 can result in a 63% derate in flops as benchmarked by HazyResearch
-      // as part of ThunderKittens work.
-      // (https://hazyresearch.stanford.edu/blog/2024-05-12-tk)
-      flops_derate = 0.63;
-    }
-  } else if (cuda_compute_capability.IsAmpere()) {
-    if (tile_m < 16) {
-      // A100 tensor core instructions are effective at tile_m >= 16. We're
-      // applying a 50% derate to account for this.
-      flops_derate = 0.5;
-    }
-  }
-  return peak_flops_per_ns * flops_derate;
 }
 
 int64_t CalculateL2Bytes(const DotProblemInfo& dot, const DotTileSize& out_tile,
@@ -205,6 +212,46 @@ int64_t CalculateL2Bytes(const DotProblemInfo& dot, const DotTileSize& out_tile,
 }
 
 }  // namespace
+
+double GetEffectiveFlopsPerNsForTileSize(
+    int64_t tile_m, const se::DeviceDescription& device_info,
+    PrimitiveType element_type) {
+  se::CudaComputeCapability cuda_compute_capability =
+      device_info.cuda_compute_capability();
+
+  // Peak flops per ns for device.
+  int64_t peak_flops_per_ns =
+      GpuPerformanceModelBase::CalculatePeakMatrixOpsPerNs(device_info,
+                                                           element_type);
+
+  // Final flops derate factor.
+  double flops_derate = 1.0;
+
+  if (cuda_compute_capability.IsBlackwell()) {
+    if (tile_m < 128) {
+      // TODO(maniananth): Update this derate once we have more data from
+      // actual measurements on Blackwell. For now, we are applying a 50%
+      // derate to account for smaller M shapes.
+      flops_derate = 0.5;
+    }
+  } else if (cuda_compute_capability.IsHopper()) {
+    if (tile_m < 64) {
+      // Having a tile size M < 64 will lead to not being able to use the H100
+      // tensor core instructions (wgmma). Defaulting to wmma instructions from
+      // A100 can result in a 63% derate in flops as benchmarked by HazyResearch
+      // as part of ThunderKittens work.
+      // (https://hazyresearch.stanford.edu/blog/2024-05-12-tk)
+      flops_derate = 0.63;
+    }
+  } else if (cuda_compute_capability.IsAmpere()) {
+    if (tile_m < 32) {
+      // A100 tensor core instructions are not effective for small M shapes.
+      // They exhibit a ~50% empirical FLOPS derate on small M shapes (M < 32).
+      flops_derate = 0.5;
+    }
+  }
+  return peak_flops_per_ns * flops_derate;
+}
 
 DotProblemInfo::DotProblemInfo(const HloDotInstruction& dot) {
   const Shape& lhs_shape = dot.operand(0)->shape();
@@ -285,30 +332,30 @@ absl::StatusOr<absl::Duration> CalculateL2Time(
 // dma_size is the total amount of data transferred to/from HBM in bytes.
 float GetEffectiveHbmBandwidth(int64_t dma_size,
                                const se::DeviceDescription& device_info) {
-  constexpr float kBytesPerGigabyte = 1 << 30;
-  absl::Span<const BandwidthEntry> hbm_bandwidth_table_gbps =
-      GetMemoryBandwidthSpec(device_info).hbm_bandwidth_table_gbps;
+  MemoryBandwidthSpec spec = GetMemoryBandwidthSpec(device_info);
+  absl::Span<const BandwidthEntry> hbm_bandwidth_table =
+      spec.hbm_bandwidth_table;
+  float peak_hbm_bandwidth = static_cast<float>(device_info.memory_bandwidth());
 
-  if (dma_size <= hbm_bandwidth_table_gbps.front().dma_size_bytes) {
-    return hbm_bandwidth_table_gbps.front().bandwidth_gbps * kBytesPerGigabyte;
+  if (dma_size <= hbm_bandwidth_table.front().dma_size_bytes) {
+    return hbm_bandwidth_table.front().bandwidth_fraction * peak_hbm_bandwidth;
   }
-  if (dma_size >= hbm_bandwidth_table_gbps.back().dma_size_bytes) {
-    return hbm_bandwidth_table_gbps.back().bandwidth_gbps * kBytesPerGigabyte;
+  if (dma_size >= hbm_bandwidth_table.back().dma_size_bytes) {
+    return hbm_bandwidth_table.back().bandwidth_fraction * peak_hbm_bandwidth;
   }
 
   auto it2 = std::lower_bound(
-      hbm_bandwidth_table_gbps.begin(), hbm_bandwidth_table_gbps.end(),
-      dma_size,
+      hbm_bandwidth_table.begin(), hbm_bandwidth_table.end(), dma_size,
       [](const BandwidthEntry& a, int64_t b) { return a.dma_size_bytes < b; });
   auto it1 = it2 - 1;
 
   // Linear interpolation between the two entries in the lookup table. std::lerp
   // is not used as it is only available since C++20.
-  float a = it1->bandwidth_gbps;
-  float b = it2->bandwidth_gbps;
+  float a = it1->bandwidth_fraction;
+  float b = it2->bandwidth_fraction;
   float t = (dma_size - it1->dma_size_bytes) /
             static_cast<float>(it2->dma_size_bytes - it1->dma_size_bytes);
-  return (a + t * (b - a)) * kBytesPerGigabyte;
+  return (a + t * (b - a)) * peak_hbm_bandwidth;
 }
 
 HbmEstimates CalculateHbmTime(const DotProblemInfo& dot,
@@ -585,7 +632,7 @@ absl::StatusOr<int64_t> ExtractBlockK(const HloDotInstruction* dot) {
     return absl::FailedPreconditionError(
         "Dot instruction must have a backend config with tiling sizes.");
   }
-  ABSL_ASSIGN_OR_RETURN(auto tile_config, dot->backend_config<xla::gpu::Tile>());
+  ABSL_ASSIGN_OR_RETURN(auto tile_config, dot->backend_config<xla::xtile::Tile>());
   TF_RET_CHECK(tile_config.sizes_size() > 0)
       << "Tile backend config must have sizes.";
   return tile_config.sizes(0);

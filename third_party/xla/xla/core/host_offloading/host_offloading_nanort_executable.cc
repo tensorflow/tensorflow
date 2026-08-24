@@ -207,10 +207,17 @@ HostOffloadingNanoRtExecutable::LoadFromProto(
       bool needs_layout_conversion,
       HostOffloadingLayoutAnalysis::NeedsLayoutConversion(hlo_module.get()));
 
+  // Evaluate `executable->program_shape()` before the constructor call below:
+  // `std::move(executable)` initializes the constructor's by-value unique_ptr
+  // parameter, and argument evaluation order is unspecified (right-to-left on
+  // the MSVC ABI), so reading `executable` in another argument of the same
+  // call would dereference an already moved-from (null) pointer.
+  ProgramShape executable_program_shape = executable->program_shape()
+                                              ? *executable->program_shape()
+                                              : std::move(program_shape);
+
   return absl::WrapUnique(new HostOffloadingNanoRtExecutable(
-      hlo_module_proto.name(),
-      executable->program_shape() ? *executable->program_shape()
-                                  : program_shape,
+      hlo_module_proto.name(), std::move(executable_program_shape),
       std::move(alias_config), std::move(executable), needs_layout_conversion,
       std::move(device_assignment)));
 }

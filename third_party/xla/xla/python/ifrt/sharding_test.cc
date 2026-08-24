@@ -404,6 +404,34 @@ TEST_P(ConcreteShardingTest, HasSamePartitioning) {
         device_list1, MemoryKind(), Shape({30}), shard_shapes1);
     EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding1));
   }
+  // With index domains.
+  {
+    std::vector<IndexDomain> index_domains0 = {
+        IndexDomain(Index({0}), Shape({10})),
+        IndexDomain(Index({10}), Shape({20})),
+    };
+    ShardingRef sharding_with_index_domains0 = ConcreteSharding::Create(
+        device_list0, MemoryKind(), Shape({30}), shard_shapes0, index_domains0);
+
+    EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding_with_index_domains0));
+    EXPECT_FALSE(sharding_with_index_domains0->HasSamePartitioning(*sharding0));
+
+    auto device_list1 = GetDevices({2, 3});
+    ShardingRef sharding_with_index_domains1 = ConcreteSharding::Create(
+        device_list1, MemoryKind(), Shape({30}), shard_shapes0, index_domains0);
+    EXPECT_TRUE(sharding_with_index_domains0->HasSamePartitioning(
+        *sharding_with_index_domains1));
+
+    std::vector<IndexDomain> index_domains1 = {
+        IndexDomain(Index({5}), Shape({10})),
+        IndexDomain(Index({15}), Shape({20})),
+    };
+    ShardingRef sharding_with_different_index_domains =
+        ConcreteSharding::Create(device_list1, MemoryKind(), Shape({30}),
+                                 shard_shapes0, index_domains1);
+    EXPECT_FALSE(sharding_with_index_domains0->HasSamePartitioning(
+        *sharding_with_different_index_domains));
+  }
 }
 
 TEST_P(ConcreteShardingTest, WithDeviceAssignment) {
@@ -426,6 +454,24 @@ TEST_P(ConcreteShardingTest, WithDeviceAssignment) {
                                                 device_list1,
                                                 /*memory_kind=*/std::nullopt));
     EXPECT_EQ(*new_sharding, *sharding1);
+  }
+  {
+    std::vector<IndexDomain> index_domains = {
+        IndexDomain(Index({0}), Shape({10})),
+        IndexDomain(Index({10}), Shape({20})),
+    };
+    ShardingRef sharding_with_index_domains = ConcreteSharding::Create(
+        device_list0, MemoryKind(), Shape({30}), shard_shapes0, index_domains);
+    auto device_list1 = GetDevices({2, 3});
+    ASSERT_OK_AND_ASSIGN(auto new_sharding,
+                         sharding_with_index_domains->WithDeviceAssignment(
+                             device_list1, /*memory_kind=*/std::nullopt));
+    EXPECT_TRUE(
+        sharding_with_index_domains->HasSamePartitioning(*new_sharding));
+    EXPECT_THAT(
+        new_sharding->IndexDomains(
+            Shape({30}), SingleDeviceShardSemantics::kAddressableShards),
+        IsOkAndHolds(testing::ElementsAreArray(index_domains)));
   }
   {
     auto device_list1 = GetDevices({0, 1, 2, 3});
@@ -628,9 +674,21 @@ TEST_P(ConcreteShardingTest, Hash) {
   ASSERT_OK_AND_ASSIGN(
       auto dynamic_shape,
       DynamicShape::Create(Shape({30}), BoundedDynamicShapeTag({true})));
+  std::vector<IndexDomain> index_domains0 = {
+      IndexDomain(Index({0}), Shape({10})),
+      IndexDomain(Index({10}), Shape({20})),
+  };
+  std::vector<IndexDomain> index_domains1 = {
+      IndexDomain(Index({5}), Shape({10})),
+      IndexDomain(Index({15}), Shape({20})),
+  };
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
       *ConcreteSharding::Create(GetDevices({0, 1}), MemoryKind(), Shape({30}),
                                 {Shape({10}), Shape({20})}),
+      *ConcreteSharding::Create(GetDevices({0, 1}), MemoryKind(), Shape({30}),
+                                {Shape({10}), Shape({20})}, index_domains0),
+      *ConcreteSharding::Create(GetDevices({0, 1}), MemoryKind(), Shape({30}),
+                                {Shape({10}), Shape({20})}, index_domains1),
       *ConcreteSharding::Create(GetDevices({0, 1}), MemoryKind(), dynamic_shape,
                                 {dynamic_shape, dynamic_shape}),
   }));

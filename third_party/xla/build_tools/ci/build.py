@@ -327,7 +327,7 @@ def nvidia_gpu_build_with_compute_capability(
         nvidia_only_multi_gpu_filters
         + _tag_filters_only_for_compute_capability(compute_capability)
     )
-    repo_env["REMOTE_GPU_TESTING"] = 0
+    repo_env["REMOTE_GPU_TESTING"] = 0  # pyrefly: ignore[bad-assignment]
   else:
     options = {
         "run_under": "//build_tools/ci:parallel_gpu_execute",
@@ -690,8 +690,6 @@ Build(
     },
     repo_env={
         "TF_CUDA_COMPUTE_CAPABILITIES": "10",
-        "HERMETIC_CUDA_VERSION": "12.8.0",
-        "HERMETIC_CUDNN_VERSION": "9.8.0",
     },
     extra_setup_commands=(["nvidia-smi"],),
     subcommand="build",
@@ -713,8 +711,6 @@ Build(
     },
     repo_env={
         "TF_CUDA_COMPUTE_CAPABILITIES": "10",
-        "HERMETIC_CUDA_VERSION": "12.8.0",
-        "HERMETIC_CUDNN_VERSION": "9.8.0",
     },
     extra_setup_commands=(["nvidia-smi"],),
     subcommand="build",
@@ -792,7 +788,7 @@ Build(
 Build(
     type_=BuildType.JAX_LINUX_X86_CPU_BZLMOD_GITHUB_ACTIONS,
     repo="google/jax",
-    configs=("rbe_linux_x86_64", "bzlmod"),
+    configs=("rbe_linux_x86_64",),
     target_patterns=(
         "//tests:cpu_tests",
         "//tests:backend_independent_tests",
@@ -849,7 +845,7 @@ Build(
 Build(
     type_=BuildType.JAX_LINUX_X86_GPU_L4_GITHUB_ACTIONS,
     repo="google/jax",
-    configs=("rbe_linux_x86_64_cuda",),
+    configs=("rbe_linux_x86_64_cuda13",),
     target_patterns=(
         "//tests:gpu_tests",
         "//tests:backend_independent_tests",

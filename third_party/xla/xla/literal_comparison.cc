@@ -79,7 +79,22 @@ bool CompareFloatsBitwiseEqual(FloatT lhs, FloatT rhs,
 // default gunit implementation).
 template <typename NativeT>
 bool CompareEqual(NativeT lhs, NativeT rhs,
-                  absl::Span<const int64_t> multi_index) {
+                  absl::Span<const int64_t> multi_index,
+                  bool allow_rounding_difference = false) {
+  if constexpr (is_specialized_integral_v<NativeT>) {
+    if (allow_rounding_difference) {
+      if constexpr (std::is_signed_v<NativeT>) {
+        // Avoid overflow for signed subtraction.
+        if (lhs == rhs) {
+          return true;
+        }
+        return std::max(lhs, rhs) - 1 == std::min(lhs, rhs);
+      } else {
+        return (std::max(lhs, rhs) - std::min(lhs, rhs)) <= 1;
+      }
+    }
+    return lhs == rhs;
+  }
   // Specializations for floating types that do bitwise comparisons when
   // equality comparison is requested.
   if constexpr (is_specialized_floating_point_v<NativeT>) {
@@ -142,12 +157,13 @@ absl::Status MakeErrorStatus(NativeT lhs, NativeT rhs,
 template <typename NativeT>
 absl::Status Equal(LiteralSlice expected, LiteralSlice actual,
                    absl::Span<int64_t> multi_index, int64_t dimension,
-                   Literal* mismatched = nullptr) {
+                   Literal* mismatched = nullptr,
+                   bool allow_rounding_difference = false) {
   if (dimension == expected.shape().dimensions().size()) {
     NativeT expected_value = expected.Get<NativeT>(multi_index);
     NativeT actual_value = actual.Get<NativeT>(multi_index);
-    bool result =
-        CompareEqual<NativeT>(expected_value, actual_value, multi_index);
+    bool result = CompareEqual<NativeT>(expected_value, actual_value,
+                                        multi_index, allow_rounding_difference);
     if (mismatched) {
       mismatched->Set<bool>(multi_index, !result);
     }
@@ -168,10 +184,11 @@ absl::Status Equal(LiteralSlice expected, LiteralSlice actual,
     multi_index[dimension] = i;
     if (mismatched != nullptr) {
       result.Update(Equal<NativeT>(expected, actual, multi_index, dimension + 1,
-                                   mismatched));
+                                   mismatched, allow_rounding_difference));
     } else {
       ABSL_RETURN_IF_ERROR(Equal<NativeT>(expected, actual, multi_index,
-                                     dimension + 1, mismatched));
+                                     dimension + 1, mismatched,
+                                     allow_rounding_difference));
     }
   }
   return result;
@@ -773,7 +790,8 @@ class NearComparator {
 absl::Status EqualHelper(const LiteralSlice& expected,
                          const LiteralSlice& actual,
                          const ShapeIndex& shape_index,
-                         const MiscompareCallback& miscompare_callback) {
+                         const MiscompareCallback& miscompare_callback,
+                         bool allow_integer_rounding_difference = false) {
   if (expected.shape().is_static() && actual.shape().is_static()) {
     ABSL_RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
   } else {
@@ -785,9 +803,9 @@ absl::Status EqualHelper(const LiteralSlice& expected,
     ShapeIndex next_index = shape_index;
     for (int i = 0; i < ShapeUtil::TupleElementCount(expected.shape()); ++i) {
       next_index.push_back(i);
-      absl::Status tuple_result =
-          EqualHelper(LiteralSlice(expected, {i}), LiteralSlice(actual, {i}),
-                      next_index, miscompare_callback);
+      absl::Status tuple_result = EqualHelper(
+          LiteralSlice(expected, {i}), LiteralSlice(actual, {i}), next_index,
+          miscompare_callback, allow_integer_rounding_difference);
       if (miscompare_callback) {
         result.Update(tuple_result);
       } else {
@@ -814,8 +832,8 @@ absl::Status EqualHelper(const LiteralSlice& expected,
           if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
             using NativeT =
                 primitive_util::NativeTypeOf<primitive_type_constant>;
-            result =
-                Equal<NativeT>(expected, actual, index, 0, miscompared_ptr);
+            result = Equal<NativeT>(expected, actual, index, 0, miscompared_ptr,
+                                    allow_integer_rounding_difference);
             return;
           }
           if constexpr (primitive_type_constant == TOKEN) {
@@ -905,7 +923,8 @@ absl::Status NearHelper(const LiteralSlice& expected,
   }
 
   // Non-floating point, non-tuple literal.
-  return EqualHelper(expected, actual, shape_index, miscompare_callback);
+  return EqualHelper(expected, actual, shape_index, miscompare_callback,
+                     error.allow_integer_rounding_difference);
 }
 
 }  // namespace

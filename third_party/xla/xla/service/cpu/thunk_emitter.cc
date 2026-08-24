@@ -90,7 +90,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/utils/sort_utils.h"
 #include "xla/layout_util.h"
+#include "xla/primitive_util.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
@@ -741,31 +743,23 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConvolutionThunk(
       /*supported_types=*/
       {PRED, S8, U8, S16, U16, S32, U32, S64, U64, F16, F32, F64, C64, C128}));
 
-  // TODO(tonywy): Add PotentiallyImplementedAsMKLConvolution to support
-  // different data layouts.
-  if (PotentiallyImplementedAsEigenConvolution(*instruction,
-                                               target_machine_features_)) {
+  if (CanUseEigenConvolution(*instruction, target_machine_features_)) {
     const Shape& input_shape = input->shape();
     const Shape& kernel_shape = kernel->shape();
     const Shape& output_shape = instruction->shape();
 
-    // The input, kernel and output agree with respect to layout.
-    if (LayoutUtil::IsMonotonicWithDim0Major(input_shape.layout()) &&
-        LayoutUtil::IsMonotonicWithDim0Major(kernel_shape.layout()) &&
-        LayoutUtil::IsMonotonicWithDim0Major(output_shape.layout())) {
-      ABSL_ASSIGN_OR_RETURN(auto input_buffer, GetAllocationSlice(input));
+    ABSL_ASSIGN_OR_RETURN(auto input_buffer, GetAllocationSlice(input));
 
-      ABSL_ASSIGN_OR_RETURN(auto kernel_buffer, GetAllocationSlice(kernel));
+    ABSL_ASSIGN_OR_RETURN(auto kernel_buffer, GetAllocationSlice(kernel));
 
-      ABSL_ASSIGN_OR_RETURN(auto output_buffer, GetAllocationSlice(instruction));
+    ABSL_ASSIGN_OR_RETURN(auto output_buffer, GetAllocationSlice(instruction));
 
-      ConvolutionThunk::Options options;
-      return ThunkSequence::Of<ConvolutionThunk>(
-          ThunkInfo(instruction), options, input_buffer, input_shape,
-          kernel_buffer, kernel_shape, output_buffer, output_shape,
-          instruction->convolution_dimension_numbers(), instruction->window(),
-          instruction->feature_group_count());
-    }
+    ConvolutionThunk::Options options;
+    return ThunkSequence::Of<ConvolutionThunk>(
+        ThunkInfo(instruction), options, input_buffer, input_shape,
+        kernel_buffer, kernel_shape, output_buffer, output_shape,
+        instruction->convolution_dimension_numbers(), instruction->window(),
+        instruction->feature_group_count());
   }
 
   // This is a completely un-optimized version of convolution just to
@@ -1270,46 +1264,68 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceThunk(
   return EmitElementalKernelThunk(instruction);
 }
 
-// Parse the sort comparator to determine the sort direction. Comparator is
-// expected to be an HloOpcode::kCompare with two parameters.
+// Parse the sort comparator to determine the sort direction.
 std::optional<SortThunk::SortDirection> ThunkEmitter::MatchSortDirection(
     const HloComputation* hlo_comparator) const {
-  namespace m = match;
-  std::optional<SortThunk::SortDirection> direction = std::nullopt;
+  if (hlo_comparator->num_parameters() < 2 ||
+      hlo_comparator->num_parameters() % 2 != 0) {
+    return std::nullopt;
+  }
 
-  // TODO(tsilytskyi): Handle more than two input parameters.
-  if (hlo_comparator->root_instruction()->opcode() == HloOpcode::kCompare &&
-      hlo_comparator->root_instruction()->operand(0)->opcode() ==
-          HloOpcode::kParameter &&
-      hlo_comparator->root_instruction()->operand(1)->opcode() ==
-          HloOpcode::kParameter &&
-      hlo_comparator->num_parameters() == 2) {
-    auto* compare =
-        Cast<HloCompareInstruction>(hlo_comparator->root_instruction());
+  const HloInstruction* root = hlo_comparator->root_instruction();
+  const auto* compare = DynCast<HloCompareInstruction>(root);
+  if (compare == nullptr ||
+      compare->comparison_direction() == ComparisonDirection::kEq ||
+      compare->comparison_direction() == ComparisonDirection::kNe) {
+    return std::nullopt;
+  }
 
-    // Take into account the order of the parameters. If they are swapped,
-    // the sort direction will be reversed.
-    const bool expected_param_order =
-        (Match(compare, m::Op()
-                            .WithOperand(0, m::Parameter(0))
-                            .WithOperand(1, m::Parameter(1))));
-    switch (compare->comparison_direction()) {
-      case ComparisonDirection::kGe:
-        direction = (expected_param_order)
-                        ? SortThunk::SortDirection::kDescending
-                        : SortThunk::SortDirection::kAscending;
-        break;
-      case ComparisonDirection::kLt:
-        direction = (expected_param_order)
-                        ? SortThunk::SortDirection::kAscending
-                        : SortThunk::SortDirection::kDescending;
-        break;
-      default:
-        break;
+  int64_t index0 = -1;
+  int64_t index1 = -1;
+
+  auto [simple_idx0, simple_idx1] = MatchSimpleSortComparator(compare);
+  if (simple_idx0 != -1 && simple_idx1 != -1) {
+    // For simple parameter comparisons:
+    // If the comparison is explicitly TOTALORDER on floating point types, do
+    // not map to the inlined NumPy comparator because raw TotalOrder
+    // distinguishes -0.0 < +0.0 and sorts -NaN first.
+    // Standard float comparisons (kPartial order) are mapped to the NumPy
+    // comparator to guarantee strict weak ordering for NaNs.
+    if (compare->order() == ComparisonOrder::kTotal &&
+        primitive_util::IsFloatingPointType(
+            compare->operand(0)->shape().element_type())) {
+      return std::nullopt;
+    }
+    index0 = simple_idx0;
+    index1 = simple_idx1;
+  } else {
+    auto [numpy_idx0, numpy_idx1] = MatchNumpySortComparator(compare);
+    if (numpy_idx0 != -1 && numpy_idx1 != -1) {
+      index0 = numpy_idx0;
+      index1 = numpy_idx1;
+    } else {
+      return std::nullopt;
     }
   }
 
-  return direction;
+  const bool expected_param_order = (index0 == 0 && index1 == 1);
+  const bool reverse_param_order = (index0 == 1 && index1 == 0);
+  if (!expected_param_order && !reverse_param_order) {
+    return std::nullopt;
+  }
+
+  switch (compare->comparison_direction()) {
+    case ComparisonDirection::kGt:
+    case ComparisonDirection::kGe:
+      return (expected_param_order) ? SortThunk::SortDirection::kDescending
+                                    : SortThunk::SortDirection::kAscending;
+    case ComparisonDirection::kLt:
+    case ComparisonDirection::kLe:
+      return (expected_param_order) ? SortThunk::SortDirection::kAscending
+                                    : SortThunk::SortDirection::kDescending;
+    default:
+      return std::nullopt;
+  }
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSortThunk(
