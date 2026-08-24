@@ -455,7 +455,6 @@ xla_test(
         "//xla/backends/gpu:ffi",
         "//xla/backends/gpu/runtime:while_loop",
         "//xla/ffi",
-        "//xla/hlo/ir:hlo",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:stream",
         "//xla/tests:literal_test_util",
