@@ -289,7 +289,10 @@ xla_test(
         "gb200": ["broken"],
     },
     backends = ["gpu"],
-    tags = ["cuda-only"],
+    tags = [
+        "cuda-only",
+        "nozapfhahn",
+    ],
     deps = [
         ":hlo_pjrt_gpu_test_base",
         "//xla:error_spec",
