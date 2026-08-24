@@ -7,7 +7,7 @@ XLA.
 
 --- a/lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp
 +++ b/lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp
-@@ -101,6 +101,10 @@
+@@ -102,6 +102,10 @@ TMemAllocation getTmemAllocSizes(MemDescType memDescType) {
    if (ll.getBasis(kRow, llvm::Log2_32(16)) == ArrayRef{0, 0}) {
      nRow /= 2;
    }
@@ -21,7 +21,7 @@ XLA.
 
 --- a/lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp
 +++ b/lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp
-@@ -237,8 +237,10 @@
+@@ -229,8 +229,10 @@ lowerTMemLdSt(const LinearLayout &cvt, int maxnreg, int bitwidth, bool isScales,
        secondHalfOffset = (row << 16) | col;
        if (*secondHalfOffset == 0) {
          // Workaround for ptxas bug, we cannot use secondHalfOffset = 0 to write
@@ -34,7 +34,7 @@ XLA.
          if (!isScales) {
            if (emitError) {
              emitError()
-@@ -246,7 +248,7 @@
+@@ -238,7 +240,7 @@ lowerTMemLdSt(const LinearLayout &cvt, int maxnreg, int bitwidth, bool isScales,
            }
            return failure();
          }

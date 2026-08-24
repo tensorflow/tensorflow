@@ -1,0 +1,42 @@
+Fix Use-After-Free (UAF) in RewriteTensorDescriptorToPointer pass.
+
+In `RewriteStorePattern` and `RewriteScatterPattern`, `rewriter.replaceOpWithNewOp<triton::StoreOp>`
+was called before reading `op->getAttrs()`. Since `replaceOpWithNewOp` immediately destroys and erases
+`op` from the MLIR context, the subsequent call to `op->getAttrs()` accesses deallocated memory,
+causing an illegal instruction (`SIGILL`) in `Operation::getAttrDictionary`.
+
+This patch creates the replacement `triton::StoreOp` first using `create()`, sets its attributes
+while `op` is still alive, and then calls `rewriter.replaceOp(op, newStore)`.
+
+--- a/lib/Dialect/Triton/Transforms/RewriteTensorDescriptorToPointer.cpp
++++ b/lib/Dialect/Triton/Transforms/RewriteTensorDescriptorToPointer.cpp
+@@ -364,11 +364,12 @@
+     auto desc = unpackDescriptor(descTy, adaptor.getDesc());
+     auto offsets = castToI64(rewriter, op.getIndices());
+ 
+-    auto newStore = rewriter.replaceOpWithNewOp<triton::StoreOp>(
+-        op, generatePtr(rewriter, loc, blockShape, desc, offsets), op.getSrc(),
+-        generateMask(rewriter, loc, blockShape, desc, offsets),
++    auto newStore = triton::StoreOp::create(
++        rewriter, loc, generatePtr(rewriter, loc, blockShape, desc, offsets),
++        op.getSrc(), generateMask(rewriter, loc, blockShape, desc, offsets),
+         triton::CacheModifier::NONE, triton::EvictionPolicy::NORMAL);
+     newStore->setAttrs(filterSegmentSizes(op->getAttrs()));
++    rewriter.replaceOp(op, newStore);
+ 
+     return llvm::success();
+   }
+@@ -440,10 +441,11 @@
+     auto desc = unpackDescriptor(descTy, adaptor.getDesc());
+     auto [ptr, mask] = generateGatherScatterPtrMask(
+         rewriter, loc, blockShape, desc, op.getXOffsets(), op.getYOffset());
+-    auto newStore = rewriter.replaceOpWithNewOp<triton::StoreOp>(
+-        op, ptr, op.getSrc(), mask, triton::CacheModifier::NONE,
++    auto newStore = triton::StoreOp::create(
++        rewriter, loc, ptr, op.getSrc(), mask, triton::CacheModifier::NONE,
+         triton::EvictionPolicy::NORMAL);
+     newStore->setAttrs(filterSegmentSizes(op->getAttrs()));
++    rewriter.replaceOp(op, newStore);
+ 
+     return llvm::success();
+   }
