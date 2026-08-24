@@ -593,6 +593,39 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         expected=[13.0, 14.0, 15.0, 16.0, 17.0, 18.0],
         **kwargs)
 
+  @test_util.disable_xla("XLA MaxPool does not propagate NaN")
+  def testMaxPoolNanPropagatesForAllDepths(self):
+    # Regression test for GitHub issue 125965. The reduction runs over the
+    # depth dimension, which Eigen vectorizes, so a depth that is not a
+    # multiple of the packet size left its trailing channels on a scalar path
+    # that dropped NaN. Identical channels then disagreed, producing results
+    # such as [nan, nan, 3] for three copies of the same channel. The depths
+    # below straddle the packet size for both float32 and float64.
+    for dtype in (np.float32, np.float64):
+      for depth in (1, 2, 3, 4, 5, 8):
+        message = "dtype=%s depth=%d" % (np.dtype(dtype).name, depth)
+        one_channel = np.array([[[[np.nan], [1.0]], [[3.0], [2.0]]]],
+                               dtype=dtype)
+        with self.cached_session(use_gpu=False):
+          tensor_in = constant_op.constant(
+              np.repeat(one_channel, repeats=depth, axis=-1))
+          pooled = self.evaluate(
+              nn_ops.max_pool(
+                  tensor_in,
+                  ksize=[1, 2, 2, 1],
+                  strides=[1, 1, 1, 1],
+                  padding="VALID"))
+          pooled_v2 = self.evaluate(
+              gen_nn_ops.max_pool_v2(
+                  tensor_in,
+                  ksize=[1, 2, 2, 1],
+                  strides=[1, 1, 1, 1],
+                  padding="VALID"))
+        expected = np.ones([depth], dtype=bool)
+        self.assertAllEqual(expected, np.isnan(pooled).reshape(-1), msg=message)
+        self.assertAllEqual(
+            expected, np.isnan(pooled_v2).reshape(-1), msg=message)
+
   @parameterized.parameters(
       GetTestConfigsDicts(nn_ops.max_pool, nn_ops.max_pool_v2))
   @test_util.xla_allow_fallback("XLA doesn't support explicit padding")
