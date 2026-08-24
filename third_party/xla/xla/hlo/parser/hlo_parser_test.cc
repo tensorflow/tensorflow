@@ -8457,5 +8457,15 @@ ENTRY main {
   EXPECT_EQ(aliasing[0].second.first, 0);                 // operand 0
   EXPECT_EQ(aliasing[0].second.second, ShapeIndex({2}));  // index 2
 }
+
+TEST_F(HloParserTest, AsyncDoneWithFrontendAttributes) {
+  const char* const hlo_string =
+      R"(%all-to-all-done.3 = bf16[1,2,4,1,1024]{4,2,3,0,1:T(4,128)(2,1)S(1)} async-done(((bf16[1,2,4,1,1024]{4,2,3,0,1:T(4,128)(2,1)}), bf16[1,2,4,1,1024]{4,2,3,0,1:T(4,128)(2,1)S(1)}, u32[]{:S(2)}, u32[]{:S(2)}) %all-to-all-start.3), frontend_attributes={is_spmd_generated="true"})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kAsyncDone);
+  EXPECT_EQ(root->frontend_attributes().map_size(), 1);
+  EXPECT_EQ(root->frontend_attributes().map().at("is_spmd_generated"), "true");
+}
 }  // namespace
 }  // namespace xla
