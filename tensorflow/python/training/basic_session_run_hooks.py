@@ -819,6 +819,7 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
 
     Raises:
       ValueError: Exactly one of scaffold or summary_op should be set.
+      ValueError: If both output_dir and summary_writer are `None`.
     """
     if ((scaffold is None and summary_op is None) or
         (scaffold is not None and summary_op is not None)):
