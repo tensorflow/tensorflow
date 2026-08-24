@@ -470,7 +470,6 @@ absl::Status DebugEventsWriter::Close() {
     metadata_writer_.reset();
   }
 
-  TF_RETURN_IF_ERROR(FlushNonExecutionFilesLocked());
   if (source_files_writer_ != nullptr) {
     if (!source_files_writer_->Close().ok()) {
       failed_to_close_files.push_back(source_files_writer_->FileName());
@@ -490,7 +489,7 @@ absl::Status DebugEventsWriter::Close() {
     graphs_writer_.reset();
   }
 
-  TF_RETURN_IF_ERROR(FlushExecutionFilesLocked());
+  FlushExecutionFilesLocked().IgnoreError();
   if (execution_writer_ != nullptr) {
     if (!execution_writer_->Close().ok()) {
       failed_to_close_files.push_back(execution_writer_->FileName());
