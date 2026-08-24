@@ -539,8 +539,14 @@ struct scalar_round_half_to_even_op {
   }
 };
 
-template <typename Scalar>
-struct scalar_round_half_to_even_op<Scalar, true, false> {
+// Integer types are already rounded, so rounding is the identity. This holds
+// regardless of whether the packet traits advertise rounding support, so the
+// specialization must match any value of the HasRint template parameter.
+// Otherwise integer types whose packet_traits report HasRound == true
+// instantiate as <Scalar, true, true>, miss this specialization, fall through
+// to the floating-point primary template, and produce zeros (issue #74789).
+template <typename Scalar, bool HasRint>
+struct scalar_round_half_to_even_op<Scalar, true, HasRint> {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& x) const {
     return x;
@@ -747,46 +753,6 @@ struct functor_traits<scalar_erfinv_op<T>> {
   enum {
     Cost = functor_traits<scalar_ndtri_op<T>>::Cost + NumTraits<T>::AddCost,
     PacketAccess = packet_traits<T>::HasNdtri,
-  };
-};
-template <typename Scalar>
-struct digamma_op {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
-  operator()(const Scalar& x) const {
-    if (x < Scalar(0.)) {
-      Scalar floor_x = Eigen::numext::floor(x);
-      if (x == floor_x) {
-        return Eigen::NumTraits<Scalar>::quiet_NaN();
-      }
-    }
-    if (x == Scalar(0.)) {
-      return -Eigen::NumTraits<Scalar>::infinity();
-    }
-    return Eigen::internal::scalar_digamma_op<Scalar>()(x);
-  }
-  template <typename Packet>
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
-    Packet zeros = pzero(x);
-    Packet is_zero = pcmp_eq(x, zeros);
-    Packet is_lt_zero = pcmp_lt(x, zeros);
-    Packet is_integer = pcmp_eq(x, pfloor(x));
-    Packet is_negative_integer = pand(is_lt_zero, is_integer);
-
-    Packet infs = pset1<Packet>(-Eigen::NumTraits<Scalar>::infinity());
-    Packet nans = pset1<Packet>(Eigen::NumTraits<Scalar>::quiet_NaN());
-    Packet digamma_x = Eigen::internal::scalar_digamma_op<Scalar>().packetOp(x);
-    
-    Packet result = pselect(is_negative_integer, nans, digamma_x);
-    return pselect(is_zero, infs, result);
-  }
-};
-
-template <typename Scalar>
-struct functor_traits<digamma_op<Scalar>> {
-  enum {
-    Cost = functor_traits<scalar_digamma_op<Scalar>>::Cost +
-           Eigen::NumTraits<Scalar>::AddCost,
-    PacketAccess = functor_traits<scalar_digamma_op<Scalar>>::PacketAccess
   };
 };
 
@@ -1021,7 +987,7 @@ template <typename T>
 struct lgamma : base<T, Eigen::internal::scalar_lgamma_op<T>> {};
 
 template <typename T>
-struct digamma : base<T, Eigen::internal::digamma_op<T>> {};
+struct digamma : base<T, Eigen::internal::scalar_digamma_op<T>> {};
 
 template <typename T>
 struct erf : base<T, Eigen::internal::scalar_erf_op<T>> {};
