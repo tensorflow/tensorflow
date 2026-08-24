@@ -317,8 +317,6 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallTypedFFI(
       arguments.push_back(
           params.buffer_allocations->GetDeviceAddressUnchecked(slice));
     }
-    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(arguments[i].opaque(),
-                                        arguments[i].size());
     VLOG(3) << absl::StreamFormat(
         "  arg: %s in slice %s (%p)",
         op_buffers_.arguments_shapes[i].ToString(true), slice.ToString(),

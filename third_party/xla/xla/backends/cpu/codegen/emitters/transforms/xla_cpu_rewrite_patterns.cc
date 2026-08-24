@@ -269,12 +269,14 @@ struct RewriteFunctionSignatures : mlir::OpRewritePattern<mlir::func::FuncOp> {
     op.getArgument(0).replaceAllUsesExcept(cast.getResult(0), cast);
     op.setFunctionType(rewriter.getFunctionType(new_operands, {ptr}));
 
-    // Annotations for the kernel call frame. Must match the annotations in
-    // KernelApiIrBuilder::SetKernelFunctionAttributes.
+    // Annotations for the kernel call frame and the returned error. Must match
+    // the annotations in KernelApiIrBuilder::SetKernelFunctionAttributes.
     op.setArgAttr(0, mlir::LLVM::LLVMDialect::getNoUndefAttrName(),
                   rewriter.getUnitAttr());
     op.setArgAttr(0, mlir::LLVM::LLVMDialect::getNonNullAttrName(),
                   rewriter.getUnitAttr());
+    op.setResultAttr(0, mlir::LLVM::LLVMDialect::getNoUndefAttrName(),
+                     rewriter.getUnitAttr());
 
     auto& entry = op->getRegion(0).front();
     for (auto [arg, arg_type] : llvm::zip(entry.getArguments(), new_operands)) {
@@ -462,6 +464,10 @@ class WrapComparatorWithDataArray
     // harmless. Emit it unconditionally so the C declaration is matched on
     // every target that needs it.
     comparator_func.setResultAttr(0, mlir::LLVM::LLVMDialect::getZExtAttrName(),
+                                  builder.getUnitAttr());
+    // Clang marks `bool` return values noundef too; msan relies on it.
+    comparator_func.setResultAttr(0,
+                                  mlir::LLVM::LLVMDialect::getNoUndefAttrName(),
                                   builder.getUnitAttr());
 
     mlir::Value params_ptr = comparator_func.getArgument(0);

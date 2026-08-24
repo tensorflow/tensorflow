@@ -151,7 +151,7 @@ TEST_F(KernelApiIrBuilderTest, BuildKernelPrototype) {
   // clang-format off
   ASSERT_TRUE(*RunFileCheck(DumpToString(),
                             absl::StrCat(R"(
-    CHECK: define ptr @test(ptr noundef nonnull %0) #0 {
+    CHECK: define noundef ptr @test(ptr noundef nonnull %0) #0 {
 
     CHECK-NEXT: getelementptr inbounds nuw i8, ptr %0, i64 0
     CHECK:      %[[NUM_WORKGROUPS:.+]] = load ptr
@@ -366,7 +366,7 @@ TEST_F(KernelApiIrBuilderTestNoBufferValidation, PartialOverlap) {
   // clang-format off
   ASSERT_TRUE(*RunFileCheck(DumpToString(),
                             absl::StrCat(R"(
-    CHECK: define ptr @test(ptr noundef nonnull %0) #0 {
+    CHECK: define noundef ptr @test(ptr noundef nonnull %0) #0 {
 
     CHECK-NEXT: getelementptr inbounds nuw i8, ptr %0, i64 0
     CHECK:      %[[NUM_WORKGROUPS:.+]] = load ptr

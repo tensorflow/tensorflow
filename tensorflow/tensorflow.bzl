@@ -3629,6 +3629,9 @@ def tfcompile_dfsan_enabled():
 def tfcompile_dfsan_abilists():
     return []
 
+def tfcompile_msan_flags():
+    return []
+
 def tfcompile_friends():
     return ["public"]
 

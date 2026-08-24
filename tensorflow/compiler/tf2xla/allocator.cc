@@ -89,8 +89,9 @@ void* MallocContiguousBuffers(
   if (total > 0) {
     contiguous = aligned_malloc(total, xla::cpu::Align());
     if (annotate_initialized) {
-      // Since the memory for temp buffers is written to by JITed code, msan has
-      // no way of knowing the memory was initialized, so explicitly mark it.
+      // Code that isn't msan-instrumented (e.g. compiled by tfcompile without
+      // --sanitize_memory) writes to these buffers without msan knowing, so
+      // explicitly mark the memory as initialized.
       ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(contiguous, total);
     }
   }
