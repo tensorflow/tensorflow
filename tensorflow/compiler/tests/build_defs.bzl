@@ -35,10 +35,12 @@ def tf_xla_py_test(
         main = None,
         enabled_backends = None,
         disabled_backends = None,
+        backend_tags = {},
+        backend_args = {},
+        backend_data = {},
         use_xla_device = True,
         enable_mlir_bridge = True,
         test_rule = py_test,
-        backend_tags = {},
         **kwargs):
     """Generates py_test targets, one per XLA backend.
 
@@ -65,11 +67,15 @@ def tf_xla_py_test(
         values include "cpu" and "gpu". If not specified, defaults to None.
       disabled_backends: A list of backends that should not be tested. Supported
         values include "cpu" and "gpu". If not specified, defaults to None.
+      backend_tags: A dict of backend name to tags to apply to the generated target.
+      backend_args: A dict of backend name to args to apply to the generated target.
+      backend_data: A dict of backend name to data to apply to the generated target.
       use_xla_device: If true then the --test_device argument is set to XLA_CPU
         and XLA_GPU for the CPU and GPU tests.  Otherwise it is set to CPU and
         GPU.
       enable_mlir_bridge: If true, then runs the test with and without mlir
         bridge enabled.
+      test_rule: Rule to generate test targets (defaults to py_test).
       **kwargs: keyword arguments passed onto the generated py_test() rules.
     """
     if enabled_backends == None:
@@ -98,29 +104,29 @@ def tf_xla_py_test(
     for backend in backends:
         test_name = "{}_{}".format(name, backend)
         this_backend_tags = ["tf_xla_{}".format(backend)] + backend_tags.get(backend, [])
-        backend_args = []
-        backend_deps = []
-        backend_data = []
+        this_backend_args = backend_args.get(backend, [])
+        this_backend_deps = []
+        this_backend_data = backend_data.get(backend, [])
         if backend == "cpu":
-            backend_args += [
+            this_backend_args += [
                 "--test_device=" + cpu_xla_device,
                 "--types=DT_HALF,DT_FLOAT,DT_DOUBLE,DT_UINT8,DT_QUINT8,DT_INT8,DT_QINT8,DT_INT32,DT_QINT32,DT_INT64,DT_BOOL,DT_COMPLEX64,DT_COMPLEX128",
             ]
         elif backend in ("gpu", "gpu_a100", "gpu_h100"):
-            backend_args += [
+            this_backend_args += [
                 "--test_device=" + gpu_xla_device,
                 "--types=DT_HALF,DT_FLOAT,DT_DOUBLE,DT_UINT8,DT_QUINT8,DT_INT8,DT_QINT8,DT_INT32,DT_QINT32,DT_INT64,DT_BOOL,DT_COMPLEX64,DT_COMPLEX128,DT_BFLOAT16",
             ]
             this_backend_tags += tf_cuda_tests_tags()
         elif backend in plugins:
-            backend_args += [
+            this_backend_args += [
                 "--test_device=" + plugins[backend]["device"],
                 "--types=" + plugins[backend]["types"],
             ]
             this_backend_tags += plugins[backend]["tags"]
-            backend_args += plugins[backend]["args"]
-            backend_deps += plugins[backend]["deps"]
-            backend_data += plugins[backend]["data"]
+            this_backend_args += plugins[backend]["args"]
+            this_backend_deps += plugins[backend]["deps"]
+            this_backend_data += plugins[backend]["data"]
         else:
             fail("Unknown backend {}".format(backend))
 
@@ -162,10 +168,10 @@ def tf_xla_py_test(
                 name = updated_name,
                 srcs = srcs,
                 srcs_version = "PY3",
-                args = backend_args,
+                args = this_backend_args,
                 main = "{}.py".format(name) if main == None else main,
-                data = data + backend_data,
-                deps = deps + backend_deps + extra_dep + [name + "_lib"],
+                data = data + this_backend_data,
+                deps = deps + this_backend_deps + extra_dep + [name + "_lib"],
                 tags = test_tags + extra_tag,
                 exec_properties = tf_exec_properties({"tags": test_tags}),
                 **kwargs

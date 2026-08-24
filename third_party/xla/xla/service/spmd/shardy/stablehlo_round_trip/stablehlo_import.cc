@@ -622,13 +622,20 @@ LogicalResult importShardings(
         flatHloSharding = hloSharding.tuple_elements();
       }
       SmallVector<TensorShardingAttr> newShardings;
-      newShardings.reserve(op->getNumResults());
-      for (const auto& [resHloSharding, resType] :
-           llvm::zip_equal(flatHloSharding, op->getResultTypes())) {
+      if (op->getNumResults() == 0) {
+        const xla::HloSharding& leafSharding = flatHloSharding.front();
         newShardings.push_back(convertToSdySharding(
-            resHloSharding, globalMesh, deviceIdToMaximalMeshName,
-            mlir::sdy::getTensorRank(resType),
-            /*openDims=*/false, inlineMesh));
+            leafSharding, globalMesh, deviceIdToMaximalMeshName,
+            /*rank=*/0, /*openDims=*/false, inlineMesh));
+      } else {
+        newShardings.reserve(op->getNumResults());
+        for (const auto& [resHloSharding, resType] :
+             llvm::zip_equal(flatHloSharding, op->getResultTypes())) {
+          newShardings.push_back(convertToSdySharding(
+              resHloSharding, globalMesh, deviceIdToMaximalMeshName,
+              mlir::sdy::getTensorRank(resType),
+              /*openDims=*/false, inlineMesh));
+        }
       }
       mlir::sdy::setShardings(op, newShardings);
       op->removeAttr(kXlaShardingAttr);

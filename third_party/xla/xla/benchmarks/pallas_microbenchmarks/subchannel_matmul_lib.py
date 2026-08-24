@@ -19,7 +19,6 @@ import math
 from typing import Any, Callable, Sequence
 
 import jax
-from jax.experimental import layout
 from jax.experimental import pallas as pl
 from jax.experimental.pallas import tpu as pltpu
 import jax.numpy as jnp
@@ -254,20 +253,12 @@ def subchannel_matmul_kernel(
       lhs = memory_utils.copy_to_vmem(lhs)
       if lhs_scales is not None:
         lhs_scales = memory_utils.copy_to_vmem(lhs_scales)
-    elems_per_word = 32 // lhs_bits
-    lanes = pltpu.get_tpu_info().num_lanes
-    sublanes = pltpu.get_tpu_info().num_sublanes
-    lhs = layout.with_layout_constraint(
-        lhs,
-        layout.Layout(
-            major_to_minor=tuple(range(0, lhs.ndim)),
-            tiling=((elems_per_word * sublanes, lanes), (elems_per_word, 1)),
-        ),
-    )
+    lhs = memory_utils.with_large_2nd_minor_layout(lhs)
     if rhs_mem == pltpu.VMEM:
       rhs = memory_utils.copy_to_vmem(rhs)
       if rhs_scales is not None:
         rhs_scales = memory_utils.copy_to_vmem(rhs_scales)
+    rhs = memory_utils.with_large_2nd_minor_layout(rhs)
     return pallas_func(lhs, rhs, lhs_scales, rhs_scales)
 
   return _target_fn

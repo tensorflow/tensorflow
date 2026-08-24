@@ -639,6 +639,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
     int64_t first_use_time = std::numeric_limits<int64_t>::max();
     bool all_uses_allowed_in_alternate_memory = true;
     bool all_uses_are_synchronous = true;
+    const HloInstruction* first_use_instruction = nullptr;
   };
 
   // Encapsulates the block prefetch scheduling state that is maintained across

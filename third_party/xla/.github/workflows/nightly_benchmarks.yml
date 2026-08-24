@@ -30,8 +30,8 @@ concurrency:
 jobs:
   run_benchmarks:
     name: Run XLA Nightly Benchmarks
-    uses: google-ml-infra/bap/.github/workflows/run-benchmarks.yaml@fd37d1f65a06f0124d9d2022d97efa8dc8812557 # main
+    uses: google-ml-infra/bap/.github/workflows/run-benchmarks.yaml@aa854ba7bdb77966a9cc1a013417f1c1a208c4c0 # main
     with:
       registry_file: "xla/tools/benchmarks/benchmark_registry.pbtxt"
       tag_filter: "scheduled"
-      bap_ref: "fd37d1f65a06f0124d9d2022d97efa8dc8812557"
+      bap_ref: "aa854ba7bdb77966a9cc1a013417f1c1a208c4c0"

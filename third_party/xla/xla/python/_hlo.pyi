@@ -158,197 +158,199 @@ class HloOpcode(enum.Enum):
 
   kCollectivePermuteStart = 36
 
-  kCompare = 37
+  kCollectiveReduce = 37
 
-  kComplex = 38
+  kCompare = 38
 
-  kConcatenate = 39
+  kComplex = 39
 
-  kConditional = 40
+  kConcatenate = 40
 
-  kConstant = 41
+  kConditional = 41
 
-  kConvert = 42
+  kConstant = 42
 
-  kConvolution = 43
+  kConvert = 43
 
-  kCopy = 44
+  kConvolution = 44
 
-  kCopyDone = 45
+  kCopy = 45
 
-  kCopyStart = 46
+  kCopyDone = 46
 
-  kCos = 47
+  kCopyStart = 47
 
-  kCosh = 48
+  kCos = 48
 
-  kCustomCall = 49
+  kCosh = 49
 
-  kDivide = 50
+  kCustomCall = 50
 
-  kDomain = 51
+  kDivide = 51
 
-  kDot = 52
+  kDomain = 52
 
-  kDynamicReshape = 53
+  kDot = 53
 
-  kDynamicSlice = 54
+  kDynamicReshape = 54
 
-  kDynamicUpdateSlice = 55
+  kDynamicSlice = 55
 
-  kErf = 56
+  kDynamicUpdateSlice = 56
 
-  kExp = 57
+  kErf = 57
 
-  kExpm1 = 58
+  kExp = 58
 
-  kFft = 59
+  kExpm1 = 59
 
-  kFloor = 60
+  kFft = 60
 
-  kFusion = 61
+  kFloor = 61
 
-  kGather = 62
+  kFusion = 62
 
-  kGetDimensionSize = 63
+  kGather = 63
 
-  kGetTupleElement = 64
+  kGetDimensionSize = 64
 
-  kImag = 65
+  kGetTupleElement = 65
 
-  kInfeed = 66
+  kImag = 66
 
-  kIota = 67
+  kInfeed = 67
 
-  kIsFinite = 68
+  kIota = 68
 
-  kLog = 69
+  kIsFinite = 69
 
-  kLog1p = 70
+  kLog = 70
 
-  kLogistic = 71
+  kLog1p = 71
 
-  kMap = 72
+  kLogistic = 72
 
-  kMaximum = 73
+  kMap = 73
 
-  kMinimum = 74
+  kMaximum = 74
 
-  kMulhi = 75
+  kMinimum = 75
 
-  kMultiply = 76
+  kMulhi = 76
 
-  kNegate = 77
+  kMultiply = 77
 
-  kNot = 78
+  kNegate = 78
 
-  kOptimizationBarrier = 79
+  kNot = 79
 
-  kOr = 80
+  kOptimizationBarrier = 80
 
-  kOutfeed = 81
+  kOr = 81
 
-  kPad = 82
+  kOutfeed = 82
 
-  kParameter = 83
+  kPad = 83
 
-  kPartitionId = 84
+  kParameter = 84
 
-  kPopulationCount = 85
+  kPartitionId = 85
 
-  kPower = 86
+  kPopulationCount = 86
 
-  kRaggedAllToAll = 87
+  kPower = 87
 
-  kRaggedDot = 88
+  kRaggedAllToAll = 88
 
-  kReal = 89
+  kRaggedDot = 89
 
-  kRecv = 90
+  kReal = 90
 
-  kRecvDone = 91
+  kRecv = 91
 
-  kReduce = 92
+  kRecvDone = 92
 
-  kReducePrecision = 93
+  kReduce = 93
 
-  kReduceScatter = 94
+  kReducePrecision = 94
 
-  kReduceWindow = 95
+  kReduceScatter = 95
 
-  kRemainder = 96
+  kReduceWindow = 96
 
-  kReplicaId = 97
+  kRemainder = 97
 
-  kReshape = 98
+  kReplicaId = 98
 
-  kReverse = 99
+  kReshape = 99
 
-  kRng = 100
+  kReverse = 100
 
-  kRngBitGenerator = 101
+  kRng = 101
 
-  kRngGetAndUpdateState = 102
+  kRngBitGenerator = 102
 
-  kRoundNearestAfz = 103
+  kRngGetAndUpdateState = 103
 
-  kRoundNearestEven = 104
+  kRoundNearestAfz = 104
 
-  kRsqrt = 105
+  kRoundNearestEven = 105
 
-  kScaledDot = 106
+  kRsqrt = 106
 
-  kScan = 107
+  kScaledDot = 107
 
-  kScatter = 108
+  kScan = 108
 
-  kSelect = 109
+  kScatter = 109
 
-  kSelectAndScatter = 110
+  kSelect = 110
 
-  kSend = 111
+  kSelectAndScatter = 111
 
-  kSendDone = 112
+  kSend = 112
 
-  kSetDimensionSize = 113
+  kSendDone = 113
 
-  kShiftLeft = 114
+  kSetDimensionSize = 114
 
-  kShiftRightArithmetic = 115
+  kShiftLeft = 115
 
-  kShiftRightLogical = 116
+  kShiftRightArithmetic = 116
 
-  kSign = 117
+  kShiftRightLogical = 117
 
-  kSin = 118
+  kSign = 118
 
-  kSinh = 119
+  kSin = 119
 
-  kSlice = 120
+  kSinh = 120
 
-  kSort = 121
+  kSlice = 121
 
-  kSqrt = 122
+  kSort = 122
 
-  kStochasticConvert = 123
+  kSqrt = 123
 
-  kSubtract = 124
+  kStochasticConvert = 124
 
-  kTan = 125
+  kSubtract = 125
 
-  kTanh = 126
+  kTan = 126
 
-  kTopK = 127
+  kTanh = 127
 
-  kTranspose = 128
+  kTopK = 128
 
-  kTriangularSolve = 129
+  kTranspose = 129
 
-  kTuple = 130
+  kTriangularSolve = 130
 
-  kWhile = 131
+  kTuple = 131
 
-  kXor = 132
+  kWhile = 132
+
+  kXor = 133
 
 class Layout:
   @overload
@@ -357,6 +359,7 @@ class Layout:
   def __init__(
       self, arg0: Sequence[int], arg1: Sequence[tuple[int, ...]], arg2: int, /
   ) -> None: ...
+
   def minor_to_major(self) -> tuple[int, ...]: ...
   def element_size_in_bits(self) -> int: ...
   def tiling(self) -> list[tuple[int, ...]]: ...
@@ -394,6 +397,7 @@ class Shape:
 
   @staticmethod
   def token_shape() -> Shape: ...
+
   @overload
   @staticmethod
   def scalar_shape(type: PrimitiveType) -> Shape: ...
@@ -459,70 +463,87 @@ class HloPrintOptions:
   def canonical() -> HloPrintOptions: ...
   @staticmethod
   def fingerprint() -> HloPrintOptions: ...
+
   @property
   def print_large_constants(self) -> bool: ...
   @print_large_constants.setter
   def print_large_constants(self, arg: bool, /) -> HloPrintOptions: ...
+
   @property
   def print_metadata(self) -> bool: ...
   @print_metadata.setter
   def print_metadata(self, arg: bool, /) -> HloPrintOptions: ...
+
   @property
   def print_backend_config(self) -> bool: ...
   @print_backend_config.setter
   def print_backend_config(self, arg: bool, /) -> HloPrintOptions: ...
+
   @property
   def print_result_shape(self) -> bool: ...
   @print_result_shape.setter
   def print_result_shape(self, arg: bool, /) -> HloPrintOptions: ...
+
   @property
   def print_operand_shape(self) -> bool: ...
   @print_operand_shape.setter
   def print_operand_shape(self, arg: bool, /) -> HloPrintOptions: ...
+
   @property
   def print_operand_names(self) -> bool: ...
   @print_operand_names.setter
   def print_operand_names(self, arg: bool, /) -> HloPrintOptions: ...
+
   @property
   def print_ids(self) -> bool: ...
   @print_ids.setter
   def print_ids(self, arg: bool, /) -> HloPrintOptions: ...
+
   @property
   def print_extra_attributes(self) -> bool: ...
   @print_extra_attributes.setter
   def print_extra_attributes(self, arg: bool, /) -> HloPrintOptions: ...
+
   @property
   def print_program_shape(self) -> bool: ...
   @print_program_shape.setter
   def print_program_shape(self, arg: bool, /) -> HloPrintOptions: ...
+
   @property
   def print_percent(self) -> bool: ...
   @print_percent.setter
   def print_percent(self, arg: bool, /) -> HloPrintOptions: ...
+
   @property
   def print_control_dependencies(self) -> bool: ...
   @print_control_dependencies.setter
   def print_control_dependencies(self, arg: bool, /) -> HloPrintOptions: ...
+
   @property
   def compact_operands(self) -> bool: ...
   @compact_operands.setter
   def compact_operands(self, arg: bool, /) -> HloPrintOptions: ...
+
   @property
   def include_layout_in_shapes(self) -> bool: ...
   @include_layout_in_shapes.setter
   def include_layout_in_shapes(self, arg: bool, /) -> HloPrintOptions: ...
+
   @property
   def canonicalize_instruction_names(self) -> bool: ...
   @canonicalize_instruction_names.setter
   def canonicalize_instruction_names(self, arg: bool, /) -> HloPrintOptions: ...
+
   @property
   def canonicalize_computations(self) -> bool: ...
   @canonicalize_computations.setter
   def canonicalize_computations(self, arg: bool, /) -> HloPrintOptions: ...
+
   @property
   def indent_amount(self) -> int: ...
   @indent_amount.setter
   def indent_amount(self, arg: int, /) -> HloPrintOptions: ...
+
   @property
   def is_in_nested_computation(self) -> int: ...
   @is_in_nested_computation.setter
@@ -610,50 +631,62 @@ class OpSharding:
 
   def __getstate__(self) -> tuple: ...
   def __setstate__(self, arg: tuple, /) -> None: ...
+
   @property
   def type(self) -> OpSharding_Type: ...
   @type.setter
   def type(self, arg: OpSharding_Type, /) -> None: ...
+
   @property
   def replicate_on_last_tile_dim(self) -> bool: ...
   @replicate_on_last_tile_dim.setter
   def replicate_on_last_tile_dim(self, arg: bool, /) -> None: ...
+
   @property
   def is_shard_group(self) -> bool: ...
   @is_shard_group.setter
   def is_shard_group(self, arg: bool, /) -> None: ...
+
   @property
   def shard_group_id(self) -> int: ...
   @shard_group_id.setter
   def shard_group_id(self, arg: int, /) -> None: ...
+
   @property
   def shard_group_type(self) -> OpSharding_ShardGroupType: ...
   @shard_group_type.setter
   def shard_group_type(self, arg: OpSharding_ShardGroupType, /) -> None: ...
+
   def __repr__(self) -> str: ...
   def ParseFromString(self, arg: bytes, /) -> None: ...
   def SerializeToString(self) -> bytes: ...
   def clone(self) -> OpSharding: ...
+
   @property
   def tile_assignment_dimensions(self) -> list[int]: ...
   @tile_assignment_dimensions.setter
   def tile_assignment_dimensions(self, arg: Sequence[int], /) -> None: ...
+
   @property
   def tile_assignment_devices(self) -> list[int]: ...
   @tile_assignment_devices.setter
   def tile_assignment_devices(self, arg: Sequence[int], /) -> None: ...
+
   @property
   def iota_reshape_dims(self) -> list[int]: ...
   @iota_reshape_dims.setter
   def iota_reshape_dims(self, arg: Sequence[int], /) -> None: ...
+
   @property
   def iota_transpose_perm(self) -> list[int]: ...
   @iota_transpose_perm.setter
   def iota_transpose_perm(self, arg: Sequence[int], /) -> None: ...
+
   @property
   def tuple_shardings(self) -> list[OpSharding]: ...
   @tuple_shardings.setter
   def tuple_shardings(self, arg: Sequence[OpSharding], /) -> None: ...
+
   @property
   def last_tile_dims(self) -> list[int]: ...
   @last_tile_dims.setter

@@ -1124,6 +1124,11 @@ absl::Status HloCostAnalysis::HandleCollectiveBroadcast(
   return absl::OkStatus();
 }
 
+absl::Status HloCostAnalysis::HandleCollectiveReduce(
+    const HloInstruction* /*hlo*/) {
+  return absl::OkStatus();
+}
+
 absl::Status HloCostAnalysis::HandleCollectivePermute(
     const HloInstruction* /*hlo*/) {
   return absl::OkStatus();

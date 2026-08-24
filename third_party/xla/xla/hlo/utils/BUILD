@@ -33,6 +33,28 @@ cc_library(
 )
 
 cc_library(
+    name = "sort_utils",
+    srcs = ["sort_utils.cc"],
+    hdrs = ["sort_utils.h"],
+    deps = [
+        "//xla:comparison_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:pattern_matcher",
+    ],
+)
+
+xla_cc_test(
+    name = "sort_utils_test",
+    srcs = ["sort_utils_test.cc"],
+    deps = [
+        ":sort_utils",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "hlo_longest_prefix",
     srcs = ["hlo_longest_prefix.cc"],
     hdrs = ["hlo_longest_prefix.h"],
@@ -532,6 +554,7 @@ xla_cc_test(
         ":hlo_sharding_reconstruction_util",
         "//xla:literal",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test",

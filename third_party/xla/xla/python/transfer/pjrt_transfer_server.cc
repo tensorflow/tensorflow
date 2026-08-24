@@ -69,11 +69,9 @@ namespace {
 absl::StatusOr<xla::PjRtMemorySpace*> GetMemorySpace(
     std::optional<MemoryKind> memory_kind, xla::ifrt::Device* device) {
   if (memory_kind.has_value()) {
-    xla::ifrt::MemoryKind canonical_memory_kind =
-        CanonicalizeMemoryKind(*memory_kind, device);
     xla::ifrt::Memory* memory = nullptr;
     for (xla::ifrt::Memory* ms : device->Memories()) {
-      if (ms->Kind() == canonical_memory_kind) {
+      if (ms->Kind() == *memory_kind) {
         memory = ms;
         break;
       }
@@ -81,10 +79,10 @@ absl::StatusOr<xla::PjRtMemorySpace*> GetMemorySpace(
     if (memory == nullptr) {
       return absl::InvalidArgumentError(absl::StrFormat(
           "Invalid memory kind: %s; available memory kinds: %s",
-          *canonical_memory_kind.memory_kind(),
+          memory_kind->value(),
           absl::StrJoin(device->Memories(), ", ",
                         [](std::string* out, xla::ifrt::Memory* ms) {
-                          absl::StrAppend(out, *ms->Kind().memory_kind());
+                          absl::StrAppend(out, ms->Kind().value());
                         })));
     }
     return absl::down_cast<PjRtMemory*>(memory)->pjrt_memory();

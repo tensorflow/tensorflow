@@ -26,12 +26,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/compilation_stats.h"
-#include "xla/types.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -104,11 +102,6 @@ class HloPassPipeline : public HloPassInterface {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  // Returns the set of passes which are enabled. DebugOptions can selectively
-  // disable passes via --xla_disable_hlo_passes flag.
-  std::vector<HloPassInterface*> GetEnabledPasses(
-      const DebugOptions& debug_options);
-
   // Maybe dumps the given module depending on flag values contained in
   // DebugOptions of module config. If it is dumped, saves the filenames of the
   // dumps into module metadata.

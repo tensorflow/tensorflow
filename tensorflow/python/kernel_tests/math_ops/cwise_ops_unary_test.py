@@ -118,8 +118,8 @@ class UnaryOpTest(test.TestCase):
         self.assertAllClose(jacob_t, jacob_n, rtol=grad_rtol, atol=grad_atol)
 
   def _check(self, result_tensor, result_np, input_sp_t, tol):
-    self.assertTrue(isinstance(result_tensor, sparse_tensor.SparseTensor))
-    self.assertTrue(isinstance(input_sp_t, sparse_tensor.SparseTensor))
+    self.assertIsInstance(result_tensor, sparse_tensor.SparseTensor)
+    self.assertIsInstance(input_sp_t, sparse_tensor.SparseTensor)
     self.assertAllEqual(input_sp_t.indices, result_tensor.indices)
     self.assertAllEqual(input_sp_t.dense_shape, result_tensor.dense_shape)
     if tol is None:
@@ -506,6 +506,8 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.negative, _NEG)
     self._compareBoth(x, np.square, math_ops.square)
     self._compareCpu(x, np.sign, math_ops.sign)
+    self._compareBoth(x, np.round, math_ops.round)
+    self._compareBoth(x, np.round, gen_math_ops.round)
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
     self._compareBothSparse(x, np.negative, math_ops.negative)
@@ -523,6 +525,8 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, np.negative, math_ops.negative)
     self._compareCpu(x, np.negative, _NEG)
     self._compareCpu(x, np.sign, math_ops.sign)
+    self._compareBoth(x, np.round, math_ops.round)
+    self._compareBoth(x, np.round, gen_math_ops.round)
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
     self._compareBothSparse(x, np.negative, math_ops.negative)
@@ -532,6 +536,17 @@ class UnaryOpTest(test.TestCase):
     x = np.arange(-6 << 20, 6 << 20, 2 << 20).reshape(1, 3, 2).astype(np.int64)
     self._compareCpu(x, np.square, math_ops.square)
     self._compareBothSparse(x, np.square, math_ops.square)
+
+  def testRoundIntIsIdentity(self):
+    # Rounding an integer tensor must be the identity. Regression test for
+    # https://github.com/tensorflow/tensorflow/issues/74789, where the CPU
+    # Round kernel returned all zeros for integer inputs. gen_math_ops.round
+    # is used directly because math_ops.round short-circuits integer dtypes in
+    # Python and would not exercise the kernel.
+    for dtype in (np.int32, np.int64):
+      x = np.array([[-3, -2, -1], [0, 1, 2]], dtype=dtype)
+      with test_util.force_cpu():
+        self.assertAllEqual(x, self.evaluate(gen_math_ops.round(x)))
 
   def testUInt64Basic(self):
     x = np.arange(6).reshape(1, 3, 2).astype(np.uint64)

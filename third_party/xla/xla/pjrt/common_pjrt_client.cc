@@ -64,11 +64,13 @@ limitations under the License.
 #include "xla/pjrt/device_event_utils.h"
 #include "xla/pjrt/dynamic_shapes.h"
 #include "xla/pjrt/host_callback.h"
+#include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/host_to_device_transfer_manager.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/pjrt/raw_pjrt_client.h"
 #include "xla/pjrt/staging_buffer.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/undonatable_common_pjrt_buffer.h"
@@ -669,6 +671,15 @@ absl::StatusOr<xla::Shape> CommonPjRtClient::GetCopyDestinationShape(
   }
   if (shape.IsToken()) {
     return shape;
+  }
+  if (this == dst_memory_space->client()) {
+    if (IsCpuId(platform_id()) ||
+        (src_memory_space->kind_id() == UnpinnedHostMemorySpace::kKindId) ==
+            (dst_memory_space->kind_id() == UnpinnedHostMemorySpace::kKindId)) {
+      return MakeDefaultShapeForMemorySpace(
+          dst_memory_space, shape,
+          shape.has_layout() ? &shape.layout() : nullptr);
+    }
   }
   return other_client->MakeDefaultShapeForMemorySpace(
       dst_memory_space,
@@ -1489,6 +1500,12 @@ CommonPjRtClient::AllocateOutputBuffersWithInputReuse(
   for (int i = 0; i < output_leaf_shapes.size(); ++i) {
     std::optional<HloInputOutputAliasConfig::Alias> alias = get_alias(i);
     if (should_allocate_new_buffer(alias)) {
+      if (alias.has_value() && alias->must_alias()) {
+        return InvalidArgument(
+            "An input was configured to be must-alias at compile time but not "
+            "donated at runtime: %s",
+            alias->ToString());
+      }
       const Shape& leaf_shape = output_leaf_shapes[i];
       const auto& current_anno =
           tsl::profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation();
@@ -1970,8 +1987,8 @@ static std::unique_ptr<PjRtBuffer> CreateOutputLeafBuffer(
 
 std::vector<std::unique_ptr<PjRtBuffer>> CommonPjRtClient::CreateOutputs(
     const std::shared_ptr<const Shape>& output_device_shape,
-    PjRtDeviceEventRef definition_event, PjRtDevice* device,
-    absl::Span<const int> output_memory_space_kind_ids,
+    const PjRtRawLoadedExecutable::RawExecuteResult& execute_result,
+    PjRtDevice* device, absl::Span<const int> output_memory_space_kind_ids,
     absl::InlinedVector<PjRtRawBufferRef, 4> output_leaf_buffers,
     bool is_predetermined_error) {
   tsl::profiler::TraceMe t1("CommonPjRtClient::CreateOutputs");
@@ -1988,21 +2005,21 @@ std::vector<std::unique_ptr<PjRtBuffer>> CommonPjRtClient::CreateOutputs(
       auto leaf_shape =
           std::shared_ptr<const Shape>(output_device_shape, &tuple_shapes[i]);
       res.push_back(CreateOutputLeafBuffer(
-          std::move(leaf_shape), definition_event, this, device, get_buffer(i),
-          output_memory_space_kind_ids[i]));
+          std::move(leaf_shape), execute_result.definition_event(i), this,
+          device, get_buffer(i), output_memory_space_kind_ids[i]));
     }
   } else if (!output_device_shape->IsTuple() &&
              output_leaf_buffers.size() == 1) {
     // Share the shape directly from the executable.
     res.push_back(CreateOutputLeafBuffer(
-        output_device_shape, std::move(definition_event), this, device,
+        output_device_shape, execute_result.definition_event(0), this, device,
         std::move(output_leaf_buffers[0]), output_memory_space_kind_ids[0]));
   } else {
     CHECK(is_predetermined_error)
         << "Nontuple results must have a single result buffer.";
     res.push_back(CreateOutputLeafBuffer(
-        output_device_shape, std::move(definition_event), this, device, {},
-        output_memory_space_kind_ids[0]));
+        output_device_shape, execute_result.definition_event(0), this, device,
+        {}, output_memory_space_kind_ids[0]));
   }
   return res;
 }
@@ -2066,7 +2083,7 @@ absl::Status CommonPjRtLoadedExecutable::ExecutePrepare(
 
   bool is_error = false;
   ABSL_RETURN_IF_ERROR(CommonPjRtClient::PrepareArguments(
-      options, argument_handles, ParametersThatMustBeDonated(),
+      options, argument_handles, ParametersThatMayBeDonated(),
       launch_args.extra_deps, launch_args.control_deps,
       launch_args.input_buffers, launch_args.device_buffers, device, replica,
       partition, parameter_device_shapes_, is_error,
@@ -2096,9 +2113,9 @@ absl::Status CommonPjRtLoadedExecutable::ExecutePrepare(
   return absl::OkStatus();
 }
 
-absl::Span<int const> CommonPjRtLoadedExecutable::ParametersThatMustBeDonated()
+absl::Span<int const> CommonPjRtLoadedExecutable::ParametersThatMayBeDonated()
     const {
-  return parameters_that_must_be_donated_;
+  return parameters_that_may_be_donated_;
 }
 
 absl::Status CommonPjRtLoadedExecutable::CheckBufferCompatibilities(
@@ -2220,13 +2237,13 @@ CommonPjRtLoadedExecutable::ExecuteLaunch(ExecuteLaunchArgs& launch_args,
 
   ABSL_RETURN_IF_ERROR(results.inline_status);
 
-  return PjRtLoadedExecutable::Result(
-      {/*future=*/std::move(results.future),
-       /*buffers=*/client()->CreateOutputs(
-           output_device_shape_, std::move(results.primary_execute_event),
-           launch_args.device, output_memory_space_kind_ids_,
-           std::move(launch_args.output_leaf_buffers),
-           launch_args.is_predetermined_error)});
+  auto outputs = client()->CreateOutputs(
+      output_device_shape_, results, launch_args.device,
+      output_memory_space_kind_ids_, std::move(launch_args.output_leaf_buffers),
+      launch_args.is_predetermined_error);
+
+  return PjRtLoadedExecutable::Result({/*future=*/std::move(results.future),
+                                       /*buffers=*/std::move(outputs)});
 }
 
 absl::Status CommonPjRtLoadedExecutable::ExecutePrepareWithOomRetries(
@@ -3726,6 +3743,74 @@ bool CommonPjRtClient::RequiresRuntimeShapeMetadata(
   PjRtShapeAndMetadataTransferRequirements requirements =
       PjRtShapeAndMetadataTransferRequirements::Get(shape, layout_kind);
   return requirements.metadata_size > 0;
+}
+
+CommonPjRtClientImpl::CommonPjRtClientImpl(
+    PjRtPlatformId platform_id, std::string platform_name,
+    std::string platform_version, int process_index,
+    std::shared_ptr<const xla::PjRtTopologyDescription> topology,
+    std::unique_ptr<PjRtRawClient> raw_client,
+    std::shared_ptr<KeyValueStoreInterface> kv_store,
+    std::optional<PjRtPluginAttributes> plugin_attributes)
+    : platform_id_(platform_id),
+      platform_name_(std::move(platform_name)),
+      platform_version_(std::move(platform_version)),
+      topology_(std::move(topology)),
+      process_index_(process_index),
+      plugin_attributes_(std::move(plugin_attributes)),
+      kv_store_(std::move(kv_store)),
+      raw_client_(std::move(raw_client)) {
+  CHECK(topology_) << " topology is required.";
+}
+
+void CommonPjRtClientImpl::AttachDevices(
+    std::vector<std::unique_ptr<PjRtDevice>> devices,
+    std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces) {
+  owned_devices_ = std::move(devices);
+  owned_memory_spaces_ = std::move(memory_spaces);
+
+  for (const std::unique_ptr<PjRtDevice>& device : owned_devices_) {
+    devices_.push_back(device.get());
+    CHECK(id_to_device_.insert({device->id(), device.get()}).second)
+        << "Duplicate device id: " << device->id();
+
+    if (device->IsAddressable()) {
+      addressable_devices_.push_back(device.get());
+    }
+  }
+  // TODO(phawkins): we don't really promise anything about the order of
+  // these devices, but users may be depending on the current order. Sort into
+  // device ordinal order, which is the historical order these values have
+  // appeared.
+  absl::c_sort(addressable_devices_,
+               [](const PjRtDevice* a, const PjRtDevice* b) {
+                 return a->local_device_id() < b->local_device_id();
+               });
+
+  for (const std::unique_ptr<PjRtMemorySpace>& memory_space :
+       owned_memory_spaces_) {
+    memory_spaces_.push_back(memory_space.get());
+  }
+}
+
+absl::StatusOr<PjRtDevice*> CommonPjRtClientImpl::LookupAddressableDevice(
+    xla::LocalDeviceId local_device_id) const {
+  for (auto* device : addressable_devices_) {
+    if (local_device_id == device->local_device_id()) {
+      return device;
+    }
+  }
+  return InvalidArgument("No matching device found for local_device_id %d",
+                         local_device_id.value());
+}
+
+absl::Span<PjRtMemorySpace* const> CommonPjRtClientImpl::memory_spaces() const {
+  return memory_spaces_;
+}
+
+absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>>
+CommonPjRtClientImpl::RuntimeAbiVersion() const {
+  return raw_client_->RuntimeAbiVersion();
 }
 
 }  // namespace xla

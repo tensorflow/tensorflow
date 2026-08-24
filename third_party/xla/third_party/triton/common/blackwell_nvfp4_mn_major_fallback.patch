@@ -1,25 +1,24 @@
 Backport of https://github.com/triton-lang/triton/pull/11245.
 
+Support Blackwell NVFP4 MMA with MN-major operand fallback and validate scale formats.
+mxf4/mxf4nvf4 instructions do not support MN-major operands, so FP4 x FP4 falls back
+to mxf8f6f4 if either operand is not K-packed. However, mxf4nvf4 supports UE4M3/UE5M3
+scales while the mxf8f6f4 fallback only supports E8M0 scales; this patch adds validation
+to disallow unsupported scale formats with MN-major operands and configures FP4 padding.
+
 --- a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
-@@ -877,11 +877,6 @@ public:
-     bool isFp4MMA = isAFP4 && isBFP4;
-     bool requiresFp4Padding =
-         nvidia_gpu::TargetFeatures(computeCapability).requiresFp4Padding();
--    // mxf4/mxf4nvf4 do not support MN-major operands, so FP4 x FP4 uses
--    // mxf8f6f4 if either operand is not K-packed. The mxf8f6f4 shared-memory
--    // packing format requires padding for every FP4 operand.
--    bool isFp4MMAUsingMxf8f6f4 =
--        isFp4MMA && (!dotOp.getLhsKPack() || !dotOp.getRhsKPack());
- 
-     // On Blackwell, if we use mixed-precision MMA we need to pad the fp4
-     // operand
-@@ -893,11 +888,33 @@ public:
+@@ -887,18 +887,34 @@
      // MMA_K = 64 is also not supported when BLOCK_M = 64.
      auto blockK = dotOp.getA().getType().getShape().back() * (isAFP4 ? 2 : 1);
      auto blockM = dotOp.getA().getType().getShape()[0];
+-    // mxf4/mxf4nvf4 do not support MN-major operands, so fp4 x fp4 falls
+-    // back to mxf8f6f4 if either operand is not K-packed. The mxf8f6f4
+-    // shared-memory packing format requires padding for every fp4 operand,
+-    // even if the operand is K packed.
+-    bool isFp4MMAUsingMxf8f6f4 =
 +    bool hasMNMajorFp4Operand =
-+        isFp4MMA && (!dotOp.getLhsKPack() || !dotOp.getRhsKPack());
+         isFp4MMA && (!dotOp.getLhsKPack() || !dotOp.getRhsKPack());
 +    auto aScaleType = dotOp.getAScale().getType();
 +    auto bScaleType = dotOp.getBScale().getType();
 +    auto aScaleElemType = aScaleType.getElementType();
@@ -41,13 +40,47 @@ Backport of https://github.com/triton-lang/triton/pull/11245.
 +    // packing format requires padding for every fp4 operand, even if the
 +    // operand is K packed.
      bool isMMAv5Fp4PaddedLhs =
--        isFp4MMAUsingMxf8f6f4 || // fp4  x fp4 using mxf8f6f4
+-        isFp4MMAUsingMxf8f6f4 ||
 +        hasMNMajorFp4Operand ||
          (IsAMixedPrecFp4 && (requiresFp4Padding || blockM == 64 ||
                               blockK == 32 || !dotOp.getLhsKPack()));
      bool isMMAv5Fp4PaddedRhs =
--        isFp4MMAUsingMxf8f6f4 || // fp4  x fp4 using mxf8f6f4
+-        isFp4MMAUsingMxf8f6f4 ||
 +        hasMNMajorFp4Operand ||
          (IsBMixedPrecFp4 &&
           (requiresFp4Padding || blockK == 32 || !dotOp.getRhsKPack()));
  
+
+--- a/python/test/conftest.py
++++ b/python/test/conftest.py
+@@ -1,4 +1,15 @@
++import multiprocessing
+ import pytest
++import sys
++import tempfile
++
++if not sys.executable:
++    sys.executable = sys.argv[0]
++if hasattr(multiprocessing, "set_executable") and sys.argv[0]:
++    try:
++        multiprocessing.set_executable(sys.argv[0])
++    except Exception:
++        pass
+ 
+ 
+ def pytest_configure(config):
+
+--- a/python/test/unit/language/test_warp_specialization.py
++++ b/python/test/unit/language/test_warp_specialization.py
+@@ -7,6 +7,10 @@
+ 
+ from triton._internal_testing import is_compile_warmup, is_hip, is_hopper, is_blackwell
+ from triton.tools.tensor_descriptor import TensorDescriptor
++
++# Attempts to dlopen cuBLAS, prevent this path
++# TODO: b/436154455 - Re-enable once we can link in cuBLAS properly
++cublas = None
+ 
+ pytestmark = pytest.mark.enable_warmup(min_capability=9)
+ 
+

@@ -217,9 +217,9 @@ TEST_F(CustomCallTest, CustomCallR2F32Reduce) {
   LiteralTestUtil::ExpectR0Near<float>(10.0f, result, kDefaultErrorSpec);
 }
 
-class CustomCallClientAPITest
-    : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloTestBase>> {};
+class CustomCallClientAPITest : public ClientLibraryTestRunnerMixin<
+                                    HloInterpreterReferenceMixin<HloTestBase>> {
+};
 
 // When using the client API, CustomCall targets can't begin with '$' -- these
 // are reserved for internal use.

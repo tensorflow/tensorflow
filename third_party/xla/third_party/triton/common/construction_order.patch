@@ -12,7 +12,7 @@
  
      // ------------------------------------------------------------------------
  
-@@ -391,7 +391,7 @@ struct TMEMAref {
+@@ -396,7 +396,7 @@ struct TMEMAref {
    enum Kind { PUT, GET };
  
    TMEMAref(Value aref, Value origBuffer, Value replToken)

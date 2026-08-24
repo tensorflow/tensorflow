@@ -49,9 +49,11 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/utils.h"
+#include "xla/service/computation_layout.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_shardings.h"
+#include "xla/shape.h"
+#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -109,11 +111,11 @@ absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo> InferDispatchInfo(
       result.output_memory_space_kind_ids.push_back(kind);
     }
   }
-  // Initializes information about which arguments to which executables must
+  // Initializes information about which arguments to which executables may
   // be donated due to aliases that were specified by the computation.
   ABSL_ASSIGN_OR_RETURN(
-      result.parameters_that_must_be_donated,
-      ComputeParametersThatMustBeDonated(
+      result.parameters_that_may_be_donated,
+      ComputeParametersThatMayBeDonated(
           alias_config, result.parameter_device_shapes.size(), tuple_inputs));
   result.input_buffer_sizes_in_bytes.reserve(
       result.parameter_device_shapes.size());
@@ -126,6 +128,8 @@ absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo> InferDispatchInfo(
   }
   return result;
 }
+
+namespace {
 
 absl::StatusOr<std::vector<int64_t>> GetShardShape(
     const xla::HloSharding& sharding, llvm::ArrayRef<int64_t> shape,
@@ -146,15 +150,16 @@ absl::StatusOr<std::vector<int64_t>> GetShardShape(
         "HloSharding %d",
         shape.size(), sharding.TiledDataRank()));
   }
-  const absl::Span<const int64_t> tile_assignment_dims =
-      sharding.tile_assignment().dimensions();
+  const absl::Span<const int64_t> sharding_dims = sharding.dimensions();
   std::vector<int64_t> tile_shape;
   tile_shape.reserve(shape.size());
   for (int64_t i = 0; i < shape.size(); ++i) {
-    tile_shape.push_back(xla::CeilOfRatio(shape[i], tile_assignment_dims[i]));
+    tile_shape.push_back(xla::CeilOfRatio(shape[i], sharding_dims[i]));
   }
   return tile_shape;
 }
+
+}  // namespace
 
 absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo> InferDispatchInfo(
     CommonPjRtClient* client, mlir::ModuleOp mlir_module,
