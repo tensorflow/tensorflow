@@ -1324,21 +1324,21 @@ class BlockLSTMGradOp : public OpKernel {
     const Tensor* h_grad = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("h_grad", &h_grad));
 
-    OP_REQUIRES(ctx, cs_grad->dims() == 3,
-                absl::InvalidArgumentError(absl::StrCat(
-                    "cs_grad must be rank 3. Received: ", cs_grad->dims())));
-    OP_REQUIRES(ctx, h_grad->dims() == 3,
-                absl::InvalidArgumentError(absl::StrCat(
-                    "h_grad must be rank 3. Received: ", h_grad->dims())));
-
     // `timelen`, `batch_size` and `cell_size` are taken from x and w, and every
     // other input is sliced with them below. A tensor whose dimensions
     // disagree is read out of bounds rather than failing the op: a zero batch
     // on one side and a non-zero batch on the other crashes, and a shorter
     // time dimension trips a fatal check while slicing. LSTMBlockCellGradOp
-    // already validates its own inputs this way.
+    // already validates its own inputs this way. The rank is checked here as
+    // well so that the dimension lookups below are valid for any caller.
     const auto check_dims = [&](const Tensor* t, const char* name,
                                 bool has_time) -> absl::Status {
+      const int expected_dims = has_time ? 3 : 2;
+      if (t->dims() != expected_dims) {
+        return absl::InvalidArgumentError(
+            absl::StrCat(name, " must be rank ", expected_dims,
+                         " but is rank ", t->dims()));
+      }
       const int batch_dim = has_time ? 1 : 0;
       if (has_time && t->dim_size(0) != timelen) {
         return absl::InvalidArgumentError(
