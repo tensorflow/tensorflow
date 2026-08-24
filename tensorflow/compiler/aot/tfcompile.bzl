@@ -70,8 +70,6 @@ def _tfcompile_model_library_rule_impl(ctx):
     ]
 
     additional_xla_flags = ctx.attr.xla_flags
-    if "msan" in ctx.features:
-        additional_xla_flags += " --xla_backend_extra_options=xla_cpu_enable_msan=true"
 
     tfcompile_env = {
         "XLA_FLAGS": ("--xla_cpu_enable_fast_math=true " +
@@ -82,7 +80,7 @@ def _tfcompile_model_library_rule_impl(ctx):
                       "--xla_cpu_enable_fast_min_max=true " +
                       "--xla_cpu_experimental_ynn_fusion_type= " +
                       additional_xla_flags + " " +
-                      "$${XLA_FLAGS:-} "),
+                      "$${XLA_FLAGS:-}' "),
         "CUDA_VISIBLE_DEVICES": "",
     }
 
@@ -358,6 +356,7 @@ def _tf_library(
             "@xla//xla/backends/cpu/runtime:sort_lib",
             "@xla//xla/backends/cpu/runtime:topk_lib",
             "@xla//xla/backends/cpu/runtime:convolution_lib",
+            "@xla//xla/backends/cpu/runtime:msan_emulated_tls",
             "@xla//xla/service/cpu:runtime_matmul",
             "@xla//xla/service/cpu:runtime_single_threaded_matmul",
             "@eigen_archive//:eigen3",
