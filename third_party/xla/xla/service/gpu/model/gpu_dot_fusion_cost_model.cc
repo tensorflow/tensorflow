@@ -228,11 +228,8 @@ double GetEffectiveFlopsPerNsForTileSize(
   double flops_derate = 1.0;
 
   if (cuda_compute_capability.IsBlackwell()) {
-    if (tile_m < 128) {
-      // TODO(maniananth): Update this derate once we have more data from
-      // actual measurements on Blackwell. For now, we are applying a 50%
-      // derate to account for smaller M shapes.
-      flops_derate = 0.5;
+    if (tile_m < 64) {
+      flops_derate = 0.63;
     }
   } else if (cuda_compute_capability.IsHopper()) {
     if (tile_m < 64) {

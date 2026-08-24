@@ -741,13 +741,13 @@ TEST_F(GpuDotFusionCostModelTest, HopperTileMDerate) {
 
 TEST_F(GpuDotFusionCostModelTest, BlackwellTileMDerate) {
   double flops_small = GetEffectiveFlopsPerNsForTileSize(
-      /*tile_m=*/127, ddb200_, PrimitiveType::BF16);
+      /*tile_m=*/63, ddb200_, PrimitiveType::BF16);
   double flops_full = GetEffectiveFlopsPerNsForTileSize(
-      /*tile_m=*/128, ddb200_, PrimitiveType::BF16);
+      /*tile_m=*/64, ddb200_, PrimitiveType::BF16);
 
   ASSERT_GT(flops_full, 0);
-  // tile_m < 128: 50% derate.
-  EXPECT_NEAR(flops_small / flops_full, 0.50, 1e-4);
+  // tile_m < 64: 63% derate.
+  EXPECT_NEAR(flops_small / flops_full, 0.63, 1e-4);
 }
 
 }  // namespace
