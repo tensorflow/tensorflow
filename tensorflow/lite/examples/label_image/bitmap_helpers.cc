@@ -92,6 +92,13 @@ bool ValidateBmpAndGetPixelOffset(const std::vector<uint8_t>& img_bytes,
   const int parsed_channels = bpp / 8;
   const int64_t abs_height = parsed_height < 0 ? -static_cast<int64_t>(parsed_height)
                                                : static_cast<int64_t>(parsed_height);
+  const uint64_t total_output_bytes = static_cast<uint64_t>(parsed_width) *
+                                      static_cast<uint64_t>(abs_height) *
+                                      static_cast<uint64_t>(parsed_channels);
+  if (total_output_bytes > static_cast<uint64_t>(std::numeric_limits<int>::max())) {
+    LOG(ERROR) << "Decoded BMP size exceeds maximum supported size";
+    return false;
+  }
   const int64_t bits_per_row = static_cast<int64_t>(bpp) * parsed_width;
   if (bits_per_row > (std::numeric_limits<int>::max() - 31)) {
     LOG(ERROR) << "BMP row size overflow";
@@ -126,19 +133,23 @@ bool ValidateBmpAndGetPixelOffset(const std::vector<uint8_t>& img_bytes,
 
 std::vector<uint8_t> decode_bmp(const uint8_t* input, int row_size, int width,
                                 int height, int channels, bool top_down) {
-  std::vector<uint8_t> output(height * width * channels);
+  std::vector<uint8_t> output(static_cast<size_t>(height) *
+                              static_cast<size_t>(width) *
+                              static_cast<size_t>(channels));
   for (int i = 0; i < height; i++) {
-    int src_pos;
-    int dst_pos;
+    size_t src_pos;
+    size_t dst_pos;
 
     for (int j = 0; j < width; j++) {
       if (!top_down) {
-        src_pos = ((height - 1 - i) * row_size) + j * channels;
+        src_pos = static_cast<size_t>(height - 1 - i) * row_size +
+                  static_cast<size_t>(j) * channels;
       } else {
-        src_pos = i * row_size + j * channels;
+        src_pos = static_cast<size_t>(i) * row_size +
+                  static_cast<size_t>(j) * channels;
       }
 
-      dst_pos = (i * width + j) * channels;
+      dst_pos = (static_cast<size_t>(i) * width + j) * channels;
 
       switch (channels) {
         case 1:

@@ -117,9 +117,83 @@ TEST(LabelImageTest, RejectsShortPixelData) {
 }
 
 TEST(LabelImageTest, RejectsRowSizeOverflow) {
-  std::vector<uint8_t> bytes =
-      ValidBmpHeader(54, std::numeric_limits<int32_t>::max(), 1, 32);
+  // Output size (width * height * channels) fits in int, but the padded
+  // row size in bits (bpp * width) overflows.
+  std::vector<uint8_t> bytes = ValidBmpHeader(54, 100000000, 1, 32);
   const std::string filename = WriteTestBmp(bytes, "row_size_overflow");
+  int height, width, channels;
+  Settings s;
+  auto result = read_bmp(filename, &width, &height, &channels, &s);
+  EXPECT_TRUE(result.empty());
+}
+
+TEST(LabelImageTest, RejectsZeroWidth) {
+  std::vector<uint8_t> bytes = ValidBmpHeader(54, 0, 1, 24);
+  const std::string filename = WriteTestBmp(bytes, "zero_width");
+  int height, width, channels;
+  Settings s;
+  auto result = read_bmp(filename, &width, &height, &channels, &s);
+  EXPECT_TRUE(result.empty());
+}
+
+TEST(LabelImageTest, RejectsNegativeWidth) {
+  std::vector<uint8_t> bytes = ValidBmpHeader(54, -1, 1, 24);
+  const std::string filename = WriteTestBmp(bytes, "negative_width");
+  int height, width, channels;
+  Settings s;
+  auto result = read_bmp(filename, &width, &height, &channels, &s);
+  EXPECT_TRUE(result.empty());
+}
+
+TEST(LabelImageTest, RejectsZeroHeight) {
+  std::vector<uint8_t> bytes = ValidBmpHeader(54, 1, 0, 24);
+  const std::string filename = WriteTestBmp(bytes, "zero_height");
+  int height, width, channels;
+  Settings s;
+  auto result = read_bmp(filename, &width, &height, &channels, &s);
+  EXPECT_TRUE(result.empty());
+}
+
+TEST(LabelImageTest, RejectsInt32MinHeight) {
+  std::vector<uint8_t> bytes =
+      ValidBmpHeader(54, 1, std::numeric_limits<int32_t>::min(), 24);
+  const std::string filename = WriteTestBmp(bytes, "int32_min_height");
+  int height, width, channels;
+  Settings s;
+  auto result = read_bmp(filename, &width, &height, &channels, &s);
+  EXPECT_TRUE(result.empty());
+}
+
+TEST(LabelImageTest, RejectsPixelOffsetInsideHeader) {
+  std::vector<uint8_t> bytes = ValidBmpHeader(10, 1, 1, 24);
+  const std::string filename = WriteTestBmp(bytes, "pixel_offset_in_header");
+  int height, width, channels;
+  Settings s;
+  auto result = read_bmp(filename, &width, &height, &channels, &s);
+  EXPECT_TRUE(result.empty());
+}
+
+TEST(LabelImageTest, RejectsUnsupportedBpp4) {
+  std::vector<uint8_t> bytes = ValidBmpHeader(54, 1, 1, 4);
+  const std::string filename = WriteTestBmp(bytes, "bpp_4");
+  int height, width, channels;
+  Settings s;
+  auto result = read_bmp(filename, &width, &height, &channels, &s);
+  EXPECT_TRUE(result.empty());
+}
+
+TEST(LabelImageTest, RejectsUnsupportedBpp16) {
+  std::vector<uint8_t> bytes = ValidBmpHeader(54, 1, 1, 16);
+  const std::string filename = WriteTestBmp(bytes, "bpp_16");
+  int height, width, channels;
+  Settings s;
+  auto result = read_bmp(filename, &width, &height, &channels, &s);
+  EXPECT_TRUE(result.empty());
+}
+
+TEST(LabelImageTest, RejectsOutputSizeOverflow) {
+  std::vector<uint8_t> bytes = ValidBmpHeader(54, 65536, 65536, 24);
+  const std::string filename = WriteTestBmp(bytes, "output_size_overflow");
   int height, width, channels;
   Settings s;
   auto result = read_bmp(filename, &width, &height, &channels, &s);
