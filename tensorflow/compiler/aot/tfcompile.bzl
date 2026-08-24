@@ -39,7 +39,7 @@ load(
     "tf_cc_test",
     "tf_copts",
 )
-load("//tensorflow:tensorflow.default.bzl", "tfcompile_dfsan_abilists", "tfcompile_dfsan_enabled", "tfcompile_friends", "tfcompile_target_cpu")
+load("//tensorflow:tensorflow.default.bzl", "tfcompile_dfsan_abilists", "tfcompile_dfsan_enabled", "tfcompile_friends", "tfcompile_msan_enabled", "tfcompile_msan_track_origins", "tfcompile_target_cpu")
 
 visibility(tfcompile_friends())
 
@@ -70,8 +70,6 @@ def _tfcompile_model_library_rule_impl(ctx):
     ]
 
     additional_xla_flags = ctx.attr.xla_flags
-    if "msan" in ctx.features:
-        additional_xla_flags += " --xla_backend_extra_options=xla_cpu_enable_msan=true"
 
     tfcompile_env = {
         "XLA_FLAGS": ("--xla_cpu_enable_fast_math=true " +
@@ -81,6 +79,7 @@ def _tfcompile_model_library_rule_impl(ctx):
                       "--xla_cpu_fast_math_honor_division=false " +
                       "--xla_cpu_enable_fast_min_max=true " +
                       "--xla_cpu_experimental_ynn_fusion_type= " +
+                      "--xla_cpu_enable_concurrency_optimized_scheduler=false " +
                       additional_xla_flags + " " +
                       "$${XLA_FLAGS:-} "),
         "CUDA_VISIBLE_DEVICES": "",
@@ -97,6 +96,12 @@ def _tfcompile_model_library_rule_impl(ctx):
         ]
         dfsan_deps = ctx.files.dfsan_abilists
 
+    msan_flags = []
+    if ctx.attr.is_linux and ctx.attr.msan:
+        msan_flags = ["--sanitize_memory"]
+        if ctx.attr.msan_track_origins > 0:
+            msan_flags.append("--sanitize_memory_track_origins=%d" % ctx.attr.msan_track_origins)
+
     cpu_flags = ["--target_cpu=" + ctx.attr.target_cpu] if ctx.attr.target_cpu else []
 
     flags = [
@@ -105,7 +110,7 @@ def _tfcompile_model_library_rule_impl(ctx):
         "--entry_point=" + ctx.attr.entry_point,
         "--cpp_class=" + ctx.attr.cpp_class,
         "--target_triple=" + ctx.attr.target_triple,
-    ] + cpu_flags + output_flags + ctx.attr.extra_flags + dfsan_flags
+    ] + cpu_flags + output_flags + ctx.attr.extra_flags + dfsan_flags + msan_flags
 
     post_command = ""
     if ctx.attr.gen_compiler_log:
@@ -152,6 +157,8 @@ _tfcompile_model_library = rule(
         "extra_flags": attr.string_list(),
         "dfsan": attr.bool(default = False),
         "dfsan_abilists": attr.label_list(default = [], allow_files = True),
+        "msan": attr.bool(default = False),
+        "msan_track_origins": attr.int(default = 0),
         "is_linux": attr.bool(),
         "gen_compiler_log": attr.bool(),
         "xla_flags": attr.string(),
@@ -303,6 +310,8 @@ def _tf_library(
         extra_flags = debug_info_flags + profiling_flags + mlir_flags + traceme_flags,
         dfsan = tfcompile_dfsan_enabled(),
         dfsan_abilists = tfcompile_dfsan_abilists(),
+        msan = tfcompile_msan_enabled(),
+        msan_track_origins = tfcompile_msan_track_origins(),
         is_linux = select({
             "//tensorflow:linux_x86_64": True,
             "//conditions:default": False,
@@ -358,6 +367,7 @@ def _tf_library(
             "@xla//xla/backends/cpu/runtime:sort_lib",
             "@xla//xla/backends/cpu/runtime:topk_lib",
             "@xla//xla/backends/cpu/runtime:convolution_lib",
+            "@xla//xla/backends/cpu/runtime:msan_emulated_tls",
             "@xla//xla/service/cpu:runtime_matmul",
             "@xla//xla/service/cpu:runtime_single_threaded_matmul",
             "@eigen_archive//:eigen3",
