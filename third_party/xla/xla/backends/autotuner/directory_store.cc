@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -57,8 +58,8 @@ absl::StatusOr<std::vector<autotuner::AutotuneEntry>> DirectoryStore::Read(
 
   autotuner::AutotuneEntry entry;
   if (!entry.ParseFromString(content)) {
-    return absl::InternalError(
-        absl::StrCat("Failed to parse cache entry from file: ", path));
+    LOG(WARNING) << "Failed to parse cache entry from file: " << path;
+    return std::vector<autotuner::AutotuneEntry>{};
   }
 
   return std::vector<autotuner::AutotuneEntry>{entry};
@@ -82,13 +83,23 @@ absl::Status DirectoryStore::Write(const autotuner::AutotuneEntry& entry) {
 
   // Rename trick: Write to a temporary file, then rename it to the final file
   // to avoid mingled files when multiple threads are writing to the same file.
-  std::string tmp_dir = tsl::io::JoinPath(directory_path_, "tmp");
-  ABSL_RETURN_IF_ERROR(env->RecursivelyCreateDir(tmp_dir));
   std::string tmp_path = tsl::io::JoinPath(
-      tmp_dir, absl::StrCat("tmp_", absl::GetCurrentTimeNanos()));
+      dir, absl::StrCat(".tmp_", entry.key().target().hlo_fingerprint(), "_",
+                        env->GetProcessId(), "_", absl::GetCurrentTimeNanos()));
 
-  ABSL_RETURN_IF_ERROR(tsl::WriteStringToFile(env, tmp_path, content));
-  return env->RenameFile(tmp_path, path);
+  absl::Status status = tsl::WriteStringToFile(env, tmp_path, content);
+  if (!status.ok()) {
+    env->DeleteFile(tmp_path).IgnoreError();
+    return status;
+  }
+
+  status = env->RenameFile(tmp_path, path);
+  if (!status.ok()) {
+    env->DeleteFile(tmp_path).IgnoreError();
+    return status;
+  }
+
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::vector<autotuner::AutotuneEntry>>
