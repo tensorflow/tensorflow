@@ -52,8 +52,9 @@ def _update_forward_compatibility_date_number(date_to_override=None):
       date += datetime.timedelta(days=int(delta_days))
 
   if date < _FORWARD_COMPATIBILITY_HORIZON:
-    logging.warning("Trying to set the forward compatibility date to the past"
-                    " date %s. This will be ignored by TensorFlow." % (date))
+    logging.warning(
+        "Trying to set the forward compatibility date to the past"
+        " date %s. This will be ignored by TensorFlow.", date)
     return
   _FORWARD_COMPATIBILITY_DATE_NUMBER = _date_to_date_number(
       date.year, date.month, date.day)
@@ -84,14 +85,14 @@ def forward_compatible(year, month, day):
   wrapper - `tf.add`.  The Python wrapper implementation should change from
   something like:
 
-  ```python
+```python
   def add(inputs, name=None):
     return gen_math_ops.add(inputs, name)
-  ```
+```
 
   to:
 
-  ```python
+```python
   from tensorflow.python.compat import compat
 
   def add(inputs, name=None):
@@ -100,7 +101,7 @@ def forward_compatible(year, month, day):
       return gen_math_ops.my_new_awesome_add(inputs, name)
     # To maintain forward compatibility, use the old implementation.
     return gen_math_ops.add(inputs, name)
-  ```
+```
 
   Where `year`, `month`, and `day` specify the date beyond which binaries
   that consume a model are expected to have been updated to include the
@@ -133,24 +134,24 @@ def forward_compatibility_horizon(year, month, day):
   To ensure forward compatibility of generated graphs (see `forward_compatible`)
   with older binaries, new features can be gated with:
 
-  ```python
+```python
   if compat.forward_compatible(year=2018, month=08, day=01):
     generate_graph_with_new_features()
   else:
     generate_graph_so_older_binaries_can_consume_it()
-  ```
+```
 
   However, when adding new features, one may want to unittest it before
   the forward compatibility window expires. This context manager enables
   such tests. For example:
 
-  ```python
+```python
   from tensorflow.python.compat import compat
 
   def testMyNewFeature(self):
     with compat.forward_compatibility_horizon(2018, 08, 02):
        # Test that generate_graph_with_new_features() has an effect
-  ```
+```
 
   Args:
     year:  A year (e.g., 2018). Must be an `int`.
