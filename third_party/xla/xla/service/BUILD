@@ -4943,6 +4943,7 @@ xla_cc_test(
     name = "transpose_folding_test",
     srcs = ["transpose_folding_test.cc"],
     deps = [
+        ":hlo_proto_cc",
         ":shape_inference",
         ":transpose_folding",
         "//xla:literal_util",
