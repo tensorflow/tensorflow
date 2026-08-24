@@ -6501,7 +6501,7 @@ def fold(patches,
           "`tf.config.experimental.enable_op_determinism()`")
 
 
-# Get dimensions - extract dynamic shapes for the graph logic
+  # Get dimensions - extract dynamic shapes for the graph logic
   dynamic_shape = shape_internal(patches)
   batch_size = dynamic_shape[0]
   out_h = dynamic_shape[1]
