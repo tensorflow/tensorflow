@@ -140,8 +140,7 @@ struct div_no_nan_op;
 
 template <typename T>
 struct div_no_nan_op<T, /*IsComplex=*/false>
-    : public no_nan_op<T, scalar_quotient_op<T>> {
-};
+    : public no_nan_op<T, scalar_quotient_op<T>> {};
 
 template <typename T>
 struct functor_traits<div_no_nan_op<T, /*IsComplex=*/false>> {
@@ -191,8 +190,7 @@ struct functor_traits<div_no_nan_op<T, /*IsComplex=*/true>> {
 };
 
 template <typename T>
-struct mul_no_nan_op : public no_nan_op<T, scalar_product_op<T>> {
-};
+struct mul_no_nan_op : public no_nan_op<T, scalar_product_op<T>> {};
 
 template <typename T>
 struct functor_traits<mul_no_nan_op<T>> {
@@ -574,9 +572,10 @@ struct functor_traits<scalar_round_half_to_even_op<Scalar>> {
   enum {
     Cost = Eigen::NumTraits<Scalar>::IsInteger ? 0
                                                : 4 * NumTraits<Scalar>::AddCost,
-    PacketAccess = packet_traits<Scalar>::HasRound &&
-                   packet_traits<Scalar>::HasAdd &&
-                   packet_traits<Scalar>::HasMul,
+    PacketAccess =
+        Eigen::NumTraits<Scalar>::IsInteger ||
+        (packet_traits<Scalar>::HasRound && packet_traits<Scalar>::HasAdd &&
+         packet_traits<Scalar>::HasMul),
   };
 };
 

@@ -118,8 +118,8 @@ class UnaryOpTest(test.TestCase):
         self.assertAllClose(jacob_t, jacob_n, rtol=grad_rtol, atol=grad_atol)
 
   def _check(self, result_tensor, result_np, input_sp_t, tol):
-    self.assertTrue(isinstance(result_tensor, sparse_tensor.SparseTensor))
-    self.assertTrue(isinstance(input_sp_t, sparse_tensor.SparseTensor))
+    self.assertIsInstance(result_tensor, sparse_tensor.SparseTensor)
+    self.assertIsInstance(input_sp_t, sparse_tensor.SparseTensor)
     self.assertAllEqual(input_sp_t.indices, result_tensor.indices)
     self.assertAllEqual(input_sp_t.dense_shape, result_tensor.dense_shape)
     if tol is None:
@@ -506,6 +506,8 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.negative, _NEG)
     self._compareBoth(x, np.square, math_ops.square)
     self._compareCpu(x, np.sign, math_ops.sign)
+    self._compareBoth(x, np.round, math_ops.round)
+    self._compareBoth(x, np.round, gen_math_ops.round)
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
     self._compareBothSparse(x, np.negative, math_ops.negative)
@@ -523,6 +525,8 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, np.negative, math_ops.negative)
     self._compareCpu(x, np.negative, _NEG)
     self._compareCpu(x, np.sign, math_ops.sign)
+    self._compareBoth(x, np.round, math_ops.round)
+    self._compareBoth(x, np.round, gen_math_ops.round)
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
     self._compareBothSparse(x, np.negative, math_ops.negative)
