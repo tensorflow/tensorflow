@@ -156,6 +156,37 @@ class ReductionInvalidKeepdims(test.TestCase):
         reduction(x, axis=1, keepdims=good_value)
 
 
+class ReductionShapeOverflowTest(test.TestCase):
+
+  def testReducingZeroDimensionAwayRaises(self):
+    # Test case for GitHub issues 108921 and 108891. A shape is only rejected
+    # when a prefix of it overflows, so a zero dimension sitting ahead of the
+    # large ones keeps the input legal. Reducing that zero dimension away then
+    # asks for an output shape that cannot be represented, which used to abort
+    # the process instead of raising.
+    for reduction in (math_ops.reduce_sum, math_ops.reduce_mean,
+                      math_ops.reduce_prod, math_ops.reduce_max,
+                      math_ops.reduce_min):
+      x = array_ops.zeros((2, 2, 0, 2**63 - 2), dtype=dtypes.int64)
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "more than 2\\*\\*63 - 1 elements"):
+        self.evaluate(reduction(x, axis=2))
+
+  def testLeadingZeroDimensionRaises(self):
+    # The same overflow is reachable when the zero dimension comes first.
+    x = array_ops.zeros((0, 2**62, 2**62), dtype=dtypes.int64)
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "more than 2\\*\\*63 - 1 elements"):
+      self.evaluate(math_ops.reduce_max(x, axis=0))
+
+  def testRepresentableEmptyReductionStillWorks(self):
+    # Reducing a zero dimension away is fine whenever the resulting shape can
+    # be represented, and must keep working.
+    x = array_ops.zeros((2, 0, 3), dtype=dtypes.int64)
+    self.assertAllEqual([[0, 0, 0], [0, 0, 0]],
+                        self.evaluate(math_ops.reduce_sum(x, axis=1)))
+
+
 class BaseReductionTest(test.TestCase):
 
   def _tf_reduce(self, x, reduction_axes, keepdims):
