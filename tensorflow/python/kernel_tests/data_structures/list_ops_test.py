@@ -568,6 +568,28 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           )
       )
 
+  def testScatterIntoExistingListFailsWhenIndexBeyondMaxNumElements(self):
+    # Follow-up to the negative-index fix: scattering past the list's declared
+    # max_num_elements must raise instead of unbounded-growing the backing
+    # std::vector by an attacker-controlled index (a memory-exhaustion DoS,
+    # and at INT32_MAX a signed `max_index + 1` overflow). Mirrors
+    # TensorListPushBack, which already enforces this cap.
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32, element_shape=[], max_num_elements=3
+    )
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "is beyond the list's max_num_elements",
+    ):
+      self.evaluate(
+          list_ops.tensor_list_scatter(
+              tensor=[2.0, 3.0],
+              indices=[0, 5],
+              element_shape=[],
+              input_handle=l,
+          )
+      )
+
   def testScatterFailsWithInvalidNumElements(self):
     c0 = constant_op.constant([1.0, 2.0])
     with self.assertRaisesRegex(
