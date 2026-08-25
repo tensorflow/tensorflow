@@ -39,11 +39,6 @@ package(
     licenses = ["notice"],
 )
 
-package_group(
-    name = "friends",
-    packages = stream_executor_friends(),
-)
-
 cc_library(
     name = "rocm_compute_capability",
     hdrs = ["rocm_compute_capability.h"],
