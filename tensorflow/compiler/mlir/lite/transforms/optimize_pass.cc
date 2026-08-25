@@ -1690,6 +1690,17 @@ struct FuseMulAndFullyConnected
       if (multiplier_shape.getShape().size() != 1) return failure();
     }
 
+    // FC(Mul(x, s), W) -> FC(x, Mul(W, s)) is only valid when Mul does not
+    // change the shape of x. Expanding broadcasts (e.g. [..., 1] * [K] ->
+    // [..., K]) change the FC input feature size; folding the scale into W
+    // while feeding the original x produces an invalid graph
+    // (tensorflow/tensorflow#124103).
+    if (mul_op.getLhs().getType() != mul_op.getType()) {
+      return rewriter.notifyMatchFailure(
+          fc_op,
+          "Mul changes LHS shape; cannot fold into FullyConnected filter");
+    }
+
     // We rely on constant folding, implemented only for F32. Check types.
     if (!IsF32Value(mul_op.getRhs()) || !IsF32Value(fc_op.getFilter())) {
       return failure();
