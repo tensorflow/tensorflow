@@ -455,6 +455,8 @@ void AddVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max) {
 // first to the vector dialect and then to LLVM.
 void AddNewVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max) {
   pm.addPass(cpu::createVectorToScalarPass());
+  pm.addPass(cpu::createDropVectorUnitDimsPass());
+  pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(cpu::createMemrefCopyToLoopsPass());
   pm.addPass(cpu::createLowerToLLVMPass());
   pm.addPass(mlir::createConvertVectorToSCFPass(

@@ -2565,7 +2565,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHostExecuteStart(
     computation->SetExecutionThread(HloInstruction::kMainExecutionThread);
   }
 
-  absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> operand_slices;
+  absl::InlinedVector<ShapedSlice, 4> operand_slices;
   for (HloInstruction* operand : host_execute->operands()) {
     for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
       ABSL_ASSIGN_OR_RETURN(auto slice,
@@ -2575,7 +2575,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHostExecuteStart(
     }
   }
 
-  absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> result_slices;
+  absl::InlinedVector<ShapedSlice, 4> result_slices;
   for (auto& indexed : ShapeUtil::GetLeafShapes(host_execute->shape())) {
     ABSL_ASSIGN_OR_RETURN(auto slice,
                      ir_emitter_context_->buffer_assignment().GetUniqueSlice(

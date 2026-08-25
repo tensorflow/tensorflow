@@ -1013,14 +1013,6 @@ class VectorizeXTilePass
                                                   std::move(patterns)))) {
       signalPassFailure();
     }
-
-    mlir::RewritePatternSet drop_dims_patterns(context);
-    mlir::vector::populateCastAwayVectorLeadingOneDimPatterns(
-        drop_dims_patterns);
-    if (mlir::failed(mlir::applyPatternsGreedily(
-            getOperation(), std::move(drop_dims_patterns)))) {
-      signalPassFailure();
-    }
   }
 };
 
