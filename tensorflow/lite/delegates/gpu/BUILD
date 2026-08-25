@@ -389,6 +389,7 @@ cc_library(
 cc_test(
     name = "delegate_test",
     srcs = ["delegate_test.cc"],
+    tags = tf_gpu_tests_tags() + ["tflite_not_portable_ios"],
     deps = [
         ":delegate",
         "@com_google_googletest//:gtest_main",
