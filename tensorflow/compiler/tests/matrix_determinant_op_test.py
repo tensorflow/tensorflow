@@ -94,6 +94,7 @@ class DeterminantOpTest(xla_test.XLATestCase):
     self._verifyDeterminantReal(batch)
 
   def testEmpty(self):
+    self._verifyDeterminantReal(np.empty([0, 0]))
     self._verifyDeterminantReal(np.empty([0, 2, 2]))
     self._verifyDeterminantReal(np.empty([2, 0, 0]))
 
