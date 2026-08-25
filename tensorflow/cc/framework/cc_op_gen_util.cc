@@ -568,13 +568,19 @@ OpInfo::OpInfo(const OpDef& graph_op_def, const ApiDef& api_def,
     arg_types.push_back(
         absl::StrCat("::tensorflow::", ArgIsList(arg) ? "InputList" : "Input"));
     // rename_to() comes from ApiDef, a separate message from the OpDef
-    // arg/attr names validated by ValidateOpDef/ValidateArg. It is spliced
-    // as a raw C++ identifier (parameter name) below, so fall back to the
-    // already-validated original arg name if it isn't a safe identifier.
+    // arg/attr names. Both are spliced as a raw C++ identifier (parameter
+    // name) below: prefer rename_to() when it's a safe identifier, fall
+    // back to the original arg name when THAT is safe, and only sanitize
+    // as a last resort, since IsValidAttrOrArgName is not enforced at
+    // OpDef registration and a legitimately-registered op's argument name
+    // is not guaranteed to already be a safe identifier (e.g.
+    // TFLite_Detection_PostProcess's "raw_outputs/box_encodings").
     const std::string safe_input_name =
         tensorflow::IsValidAttrOrArgName(api_def_arg.rename_to())
             ? api_def_arg.rename_to()
-            : arg.name();
+        : tensorflow::IsValidAttrOrArgName(arg.name())
+            ? arg.name()
+            : tensorflow::SanitizeToIdentifier(arg.name());
     arg_names.push_back(AvoidCPPKeywords(safe_input_name));
 
     // TODO(keveman): Include input type information.
@@ -601,13 +607,17 @@ OpInfo::OpInfo(const OpDef& graph_op_def, const ApiDef& api_def,
     const auto entry = AttrTypeName(attr.type());
     const auto attr_type_name = entry.first;
     const bool use_const = entry.second;
-    // See the safe_input_name comment above: rename_to() is unvalidated
-    // ApiDef data spliced as a raw C++ identifier here, so fall back to the
-    // already-validated original attr name if it isn't a safe identifier.
+    // See the safe_input_name comment above: rename_to() and the original
+    // attr name are both unvalidated at OpDef-registration time and both
+    // get spliced as a raw C++ identifier here, so prefer rename_to() when
+    // safe, fall back to the original name when THAT is safe, and only
+    // sanitize as a last resort.
     const std::string safe_attr_name =
         tensorflow::IsValidAttrOrArgName(api_def_attr.rename_to())
             ? api_def_attr.rename_to()
-            : attr.name();
+        : tensorflow::IsValidAttrOrArgName(attr.name())
+            ? attr.name()
+            : tensorflow::SanitizeToIdentifier(attr.name());
     std::string attr_name = AvoidCPPKeywords(safe_attr_name);
 
     std::string attr_comment;

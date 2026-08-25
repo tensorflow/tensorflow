@@ -198,10 +198,6 @@ static absl::Status ValidateArg(const OpDef::ArgDef& arg, const OpDef& op_def,
   const std::string suffix =
       absl::StrCat(output ? " for output '" : " for input '", arg.name(), "'");
   VALIDATE(names->emplace(arg.name()).second, "Duplicate name: ", arg.name());
-  VALIDATE(IsValidAttrOrArgName(arg.name()), "Invalid argument name: ",
-           arg.name(),
-           " (must start with a letter or underscore and contain only "
-           "letters, digits, and underscores)");
   VALIDATE(HasAttrStyleType(arg), "Missing type", suffix);
 
   if (!arg.number_attr().empty()) {
@@ -273,12 +269,15 @@ bool IsValidOpName(absl::string_view sp) {
 }
 
 // Attribute and argument names are not restricted to CamelCase like op
-// names, but they are spliced verbatim (unescaped) into generated C++ and
-// Python wrapper source by tools such as cc_op_gen.cc and python_op_gen.cc.
-// To prevent a malicious attr/arg name from injecting arbitrary code into
-// that generated source (e.g. a name containing `", ), ;`), restrict these
-// names to a safe identifier character set: they must start with a letter
-// or underscore and contain only letters, digits, and underscores.
+// names. Some code generators, such as cc_op_gen.cc and python_op_gen.cc,
+// splice a name verbatim (unescaped) into generated C++ or Python wrapper
+// source as a raw identifier; this function tells such a call site whether
+// a given name is safe to use that way as-is. It is not, and must not be
+// used as, a runtime validity check on OpDef registration: legitimate,
+// already-registered ops can and do use argument names outside this safe
+// set for reasons unrelated to code generation (see SanitizeToIdentifier's
+// comment below for a concrete example), and rejecting them at
+// registration time breaks that legitimate usage.
 bool IsValidAttrOrArgName(absl::string_view sp) {
   if (sp.empty()) return false;
   if (sp[0] != '_' && !absl::ascii_isalpha(sp[0])) {
@@ -293,6 +292,41 @@ bool IsValidAttrOrArgName(absl::string_view sp) {
   return true;
 }
 
+// Converts `sp` into a safe identifier by replacing any character outside
+// IsValidAttrOrArgName's safe set with an underscore, and prefixing with an
+// underscore if the result would otherwise start with a digit or be empty.
+//
+// Some legitimate, already-registered OpDefs use argument names outside
+// that safe set for reasons unrelated to code generation -- for example
+// TFLite_Detection_PostProcess registers inputs like
+// "raw_outputs/box_encodings" and outputs like
+// "TFLite_Detection_PostProcess:1". Rejecting such an OpDef at
+// registration/validation time (as ValidateOpDef/ValidateArg once did)
+// breaks that legitimate usage; the actual splice-into-generated-source
+// risk IsValidAttrOrArgName exists for only applies where a name is used
+// as a raw identifier by a code generator such as cc_op_gen.cc or
+// python_op_gen.cc. This function gives those call sites a fallback that
+// is always a syntactically safe identifier, so they can sanitize instead
+// of rejecting -- callers should first check IsValidAttrOrArgName and use
+// the name as-is when it already passes, calling this only for a name
+// that doesn't.
+std::string SanitizeToIdentifier(absl::string_view sp) {
+  std::string result;
+  result.reserve(sp.size() + 1);
+  for (char c : sp) {
+    if (c == '_' || absl::ascii_isalnum(c)) {
+      result.push_back(c);
+    } else {
+      result.push_back('_');
+    }
+  }
+  if (result.empty() ||
+      (!absl::ascii_isalpha(result[0]) && result[0] != '_')) {
+    result.insert(result.begin(), '_');
+  }
+  return result;
+}
+
 absl::Status ValidateOpDef(const OpDef& op_def) {
   if (!absl::StartsWith(op_def.name(), "_")) {
     VALIDATE(IsValidOpName(op_def.name()), "Invalid name: ", op_def.name(),
@@ -305,10 +339,6 @@ absl::Status ValidateOpDef(const OpDef& op_def) {
     // Validate name
     VALIDATE(names.emplace(attr.name()).second,
              "Duplicate name: ", attr.name());
-    VALIDATE(IsValidAttrOrArgName(attr.name()), "Invalid attr name: ",
-             attr.name(),
-             " (must start with a letter or underscore and contain only "
-             "letters, digits, and underscores)");
     DataType dt;
     VALIDATE(!DataTypeFromString(attr.name(), &dt), "Attr can't have name ",
              attr.name(), " that matches a data type");

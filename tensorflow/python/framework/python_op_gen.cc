@@ -201,14 +201,20 @@ class ParamNames {
   // Create param based on Arg.
   //
   // rename_to comes from ApiDef, a separate message from the OpDef
-  // arg/attr names validated by ValidateOpDef/ValidateArg. It is spliced
-  // as a raw Python identifier (keyword argument name) below, so fall
-  // back to the already-validated original name if it isn't a safe
-  // identifier.
+  // arg/attr names. Both are spliced as a raw Python identifier (keyword
+  // argument name) below: prefer rename_to when it's a safe identifier,
+  // fall back to the original name when THAT is safe, and only sanitize
+  // as a last resort, since IsValidAttrOrArgName is not enforced at OpDef
+  // registration and a legitimately-registered op's argument name is not
+  // guaranteed to already be a safe identifier (e.g.
+  // TFLite_Detection_PostProcess's "raw_outputs/box_encodings").
   ParamNames(const std::string& name, const std::string& rename_to)
       : name_(name) {
     const std::string& safe_rename_to =
-        tensorflow::IsValidAttrOrArgName(rename_to) ? rename_to : name;
+        tensorflow::IsValidAttrOrArgName(rename_to) ? rename_to
+        : tensorflow::IsValidAttrOrArgName(name)
+            ? name
+            : tensorflow::SanitizeToIdentifier(name);
     rename_to_ = AvoidPythonReserved(safe_rename_to);
   }
 
