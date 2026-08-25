@@ -204,6 +204,33 @@ class BincountTest(test_util.TensorFlowTestCase):
 
 class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
+  @test_util.run_gpu_only
+  def test_gpu_negative(self):
+    # Test that negative inputs on GPU do not trigger illegal memory access
+    # but are safely ignored/handled.
+    with self.session():
+      # 1D binary output (binary_output=True) uses BincountFunctor<GPUDevice, Tidx, T, true>
+      inp_1d = np.array([1, 2, -1, 3], dtype=np.int32)
+      with test_util.use_gpu():
+        val_1d_binary = self.evaluate(
+            gen_math_ops.dense_bincount(
+                input=inp_1d, weights=[], size=4, binary_output=True))
+        self.assertAllEqual([0, 1, 1, 1], val_1d_binary)
+
+      # 2D reduce (binary output) uses BincountReduceFunctor<GPUDevice, Tidx, T, true>
+      inp_2d = np.array([[1, 2, -1], [0, -2, 2]], dtype=np.int32)
+      with test_util.use_gpu():
+        val_2d_binary = self.evaluate(
+            gen_math_ops.dense_bincount(
+                input=inp_2d, weights=[], size=3, binary_output=True))
+        self.assertAllEqual([[0, 1, 1], [1, 0, 1]], val_2d_binary)
+
+        # 2D reduce count uses BincountReduceFunctor<GPUDevice, Tidx, T, false>
+        val_2d_count = self.evaluate(
+            gen_math_ops.dense_bincount(
+                input=inp_2d, weights=[], size=3, binary_output=False))
+        self.assertAllEqual([[0, 1, 1], [1, 0, 1]], val_2d_count)
+
   @parameterized.parameters([{
       "dtype": np.int32,
   }, {
