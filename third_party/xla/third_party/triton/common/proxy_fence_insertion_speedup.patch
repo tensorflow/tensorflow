@@ -1,0 +1,171 @@
+--- a/include/triton/Analysis/BufferRegion.h
++++ b/include/triton/Analysis/BufferRegion.h
+@@ -53,6 +53,16 @@
+     return addresses == other.addresses;
+   }
+   bool operator<(const AddressSet &other) const {
++    if (addresses == other.addresses)
++      return false;
++    if (empty() != other.empty())
++      return empty();
++    int first = addresses.find_first();
++    int otherFirst = other.addresses.find_first();
++    if (first != otherFirst)
++      return first < otherFirst;
++    if (addresses.count() != other.addresses.count())
++      return addresses.count() < other.addresses.count();
+     auto lhs = begin();
+     auto rhs = other.begin();
+     while (lhs != end() && rhs != other.end()) {
+@@ -137,8 +147,9 @@
+ 
+ private:
+   auto key() const {
+-    return std::tie(allocationFrame, region, storageBase, affineOffset,
+-                    affinePartitionOffset, affineCTAOffset, partitionBases);
++    return std::tie(allocationFrame, storageBase, affineOffset,
++                    affinePartitionOffset, affineCTAOffset, partitionBases,
++                    region);
+   }
+ 
+ public:
+
+--- a/include/triton/Analysis/MemoryFrontier.h
++++ b/include/triton/Analysis/MemoryFrontier.h
+@@ -23,30 +23,53 @@
+     add(/*isWrite=*/true, std::move(access), scopes);
+   }
+ 
++  bool empty() const { return accesses[0].empty() && accesses[1].empty(); }
++
+   ScopedMemoryFrontier &join(const ScopedMemoryFrontier &other) {
+-    for (unsigned i = 0; i < accesses.size(); ++i)
++    if (this == &other)
++      return *this;
++    for (unsigned i = 0; i < accesses.size(); ++i) {
++      if (other.accesses[i].empty())
++        continue;
++      if (accesses[i].empty()) {
++        accesses[i] = other.accesses[i];
++        continue;
++      }
+       for (const auto &[access, scopes] : other.accesses[i])
+         accesses[i][access] |= scopes;
++    }
+     return *this;
+   }
+ 
+   void join(const ScopedMemoryFrontier &other, ScopeMaskT scopes) {
+-    for (unsigned i = 0; i < accesses.size(); ++i)
++    if (!scopes)
++      return;
++    for (unsigned i = 0; i < accesses.size(); ++i) {
++      if (other.accesses[i].empty())
++        continue;
+       for (const auto &[access, accessScopes] : other.accesses[i])
+         if (ScopeMaskT activeScopes = accessScopes & scopes)
+           accesses[i][access] |= activeScopes;
++    }
+   }
+ 
+   void eraseScopes(ScopeMaskT scopes) {
+-    for (AccessMap &map : accesses)
++    if (!scopes)
++      return;
++    for (AccessMap &map : accesses) {
++      if (map.empty())
++        continue;
+       for (auto it = map.begin(); it != map.end();)
+         if (it->second &= ~scopes)
+           ++it;
+         else
+           it = map.erase(it);
++    }
+   }
+ 
+   bool hasHazard(const ScopedMemoryFrontier &other, ScopeMaskT scope) const {
++    if (!scope || other.empty() || empty())
++      return false;
+     return intersects(other, /*lhsWrite=*/true, /*rhsWrite=*/false, scope) ||
+            intersects(other, /*lhsWrite=*/false, /*rhsWrite=*/true, scope) ||
+            intersects(other, /*lhsWrite=*/true, /*rhsWrite=*/true, scope);
+@@ -72,6 +95,8 @@
+ 
+   bool intersects(const ScopedMemoryFrontier &other, bool lhsWrite,
+                   bool rhsWrite, ScopeMaskT scope) const {
++    if (accesses[lhsWrite].empty() || other.accesses[rhsWrite].empty())
++      return false;
+     for (const auto &[left, leftScopes] : accesses[lhsWrite]) {
+       if (!(leftScopes & scope))
+         continue;
+
+--- a/lib/Dialect/TritonNvidiaGPU/Transforms/ProxyFenceInsertion.cpp
++++ b/lib/Dialect/TritonNvidiaGPU/Transforms/ProxyFenceInsertion.cpp
+@@ -44,7 +44,13 @@
+   // Scopes fenced on every path from the function entry.
+   uint8_t entryGenericFenced = 0;
+ 
++  bool empty() const {
++    return generic.empty() && async.empty() && entryGenericFenced == 0;
++  }
++
+   ProxyBlockInfo &join(const ProxyBlockInfo &other) {
++    if (this == &other)
++      return *this;
+     generic.join(other.generic);
+     async.join(other.async);
+     entryGenericFenced &= other.entryGenericFenced;
+@@ -139,7 +145,8 @@
+       effects.generic.addRead(scratch, scopes);
+       effects.generic.addWrite(std::move(scratch), scopes);
+     }
+-    applyEffects(op, effects, *state, *builder);
++    if (!effects.empty())
++      applyEffects(op, effects, *state, *builder);
+   }
+ 
+   FunctionOpInterface function;
+
+--- a/unittest/Analysis/UtilityTest.cpp
++++ b/unittest/Analysis/UtilityTest.cpp
+@@ -116,8 +116,37 @@
+       triton::AddressSet difference = lhs;
+       difference.subtract(rhs);
+       EXPECT_EQ(difference, fromMask(lhsMask & ~rhsMask));
+-    }
+-  }
++
++      if (lhs == rhs) {
++        EXPECT_FALSE(lhs < rhs);
++        EXPECT_FALSE(rhs < lhs);
++      } else {
++        EXPECT_NE(lhs < rhs, rhs < lhs);
++      }
++    }
++  }
++}
++
++TEST(Analysis, AddressSetOrdering) {
++  triton::AddressSet a = triton::AddressSet::fromRange(0, 10000);
++  triton::AddressSet b = triton::AddressSet::fromRange(0, 10000);
++  EXPECT_FALSE(a < b);
++  EXPECT_FALSE(b < a);
++
++  triton::AddressSet c = triton::AddressSet::fromRange(0, 5000);
++  EXPECT_TRUE(c < a || a < c);
++  EXPECT_NE(c < a, a < c);
++
++  triton::AddressSet d = triton::AddressSet::fromRange(100, 5000);
++  EXPECT_TRUE(a < d);
++  EXPECT_FALSE(d < a);
++
++  std::set<triton::AddressSet> set;
++  set.insert(a);
++  set.insert(b);
++  set.insert(c);
++  set.insert(d);
++  EXPECT_EQ(set.size(), 3);
+ }
+ 
+ TEST(Analysis, BufferRegionViewPreservesSubviewProvenance) {
+

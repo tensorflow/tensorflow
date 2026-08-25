@@ -19,7 +19,7 @@ diff --git b/BUILD b/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/BUILD
-@@ -0,0 +1,1302 @@
+@@ -0,0 +1,1318 @@
 +# This package imports OpenAI's Triton (https://github.com/triton-lang/triton).
 +
 +# copybara:uncomment load("@rules:copybara.bzl", "copybara_config_test")
@@ -173,6 +173,17 @@ new file mode 100644
 +    },
 +    tblgen = "@llvm-project//mlir:mlir-tblgen",
 +    td_file = "include/triton/Dialect/Triton/IR/TritonTypes.td",
++    deps = ["td_files"],
++)
++
++gentbl_cc_library(
++    name = "triton_type_enums_inc_gen",
++    tbl_outs = {
++        "include/triton/Dialect/Triton/IR/TypesEnums.h.inc": ["--gen-enum-decls"],
++        "include/triton/Dialect/Triton/IR/TypesEnums.cpp.inc": ["--gen-enum-defs"],
++    },
++    tblgen = "@llvm-project//mlir:mlir-tblgen",
++    td_file = "include/triton/Dialect/Triton/IR/TritonTypeEnums.td",
 +    deps = ["td_files"],
 +)
 +
@@ -629,6 +640,7 @@ new file mode 100644
 +        ":triton_nvidia_gpu_types_inc_gen",
 +        ":triton_op_interfaces_inc_gen",
 +        ":triton_ops_inc_gen",
++        ":triton_type_enums_inc_gen",
 +        ":triton_type_interfaces_inc_gen",
 +        ":triton_types_inc_gen",
 +        "@llvm-project//llvm:Support",
@@ -874,6 +886,7 @@ new file mode 100644
 +        "@llvm-project//mlir:Pass",
 +        "@llvm-project//mlir:Support",
 +        "@llvm-project//mlir:TransformUtils",
++        "@triton//third_party/nvidia:NVGPUDialect",
 +    ],
 +)
 +
@@ -895,6 +908,7 @@ new file mode 100644
 +        ":compiler_is_msvc": [],
 +        "//conditions:default": [
 +            "-Wno-unused-variable",
++            "-Wno-private-header",
 +        ],
 +    }),
 +    deps = [
@@ -908,6 +922,7 @@ new file mode 100644
 +        "@llvm-project//mlir:ArithDialect",
 +        "@llvm-project//mlir:IR",
 +        "@llvm-project//mlir:Pass",
++        "@llvm-project//mlir:SideEffectInterfaces",
 +        "@llvm-project//mlir:TransformUtils",
 +        "@llvm-project//mlir:Transforms",
 +    ],
@@ -969,6 +984,7 @@ new file mode 100644
 +        "@llvm-project//mlir:ControlFlowInterfaces",
 +        "@llvm-project//mlir:FunctionInterfaces",
 +        "@llvm-project//mlir:IR",
++        "@llvm-project//mlir:LoopLikeInterface",
 +        "@llvm-project//mlir:Pass",
 +        "@llvm-project//mlir:SCFDialect",
 +        "@llvm-project//mlir:Support",

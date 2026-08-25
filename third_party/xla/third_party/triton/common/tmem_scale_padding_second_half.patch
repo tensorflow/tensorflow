@@ -35,26 +35,25 @@ XLA.
 
 --- a/lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp
 +++ b/lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp
-@@ -229,8 +229,10 @@ lowerTMemLdSt(const LinearLayout &cvt, int maxnreg, int bitwidth, bool isScales,
+@@ -226,6 +226,21 @@ lowerTMemLdSt(const LinearLayout &cvt, int maxnreg, int bitwidth, bool isScales,
+       auto row = reps.getBasis(kLane, 4, kRow);
+       auto col = reps.getBasis(kLane, 4, kCol);
        secondHalfOffset = (row << 16) | col;
-       if (*secondHalfOffset == 0) {
-         // Workaround for ptxas bug, we cannot use secondHalfOffset = 0 to write
--        // only 16 elements. We use secondHalfOffset = 1 instead and we pad the
--        // allocation.
++      if (*secondHalfOffset == 0) {
++        // Workaround for ptxas bug, we cannot use secondHalfOffset = 0 to write
 +        // only 16 elements. For unpacked scale stores, each source register
 +        // spans two TMEM columns, so place the padded half at the next
 +        // two-column group. Scale TMEM allocations reserve at least four
 +        // columns for this padding.
-         if (!isScales) {
-           if (emitError) {
-             emitError()
-@@ -238,7 +240,7 @@ lowerTMemLdSt(const LinearLayout &cvt, int maxnreg, int bitwidth, bool isScales,
-           }
-           return failure();
-         }
--        secondHalfOffset = 1;
++        if (!isScales) {
++          if (emitError) {
++            emitError()
++                << "Only supported for scales as we pad the allocation.";
++          }
++          return failure();
++        }
 +        secondHalfOffset = unpacked ? 2 : 1;
-       }
++      }
        // We "quotient it out", meaning we remove the last basis from reps
        auto basis = reps.getBases();
-
+       basis[kLane][4] = {0, 0};

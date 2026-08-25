@@ -1,0 +1,48 @@
+--- a/third_party/amd/lib/Analysis/RangeAnalysis.cpp
++++ b/third_party/amd/lib/Analysis/RangeAnalysis.cpp
+@@ -314,13 +314,16 @@
+   // loop can run. Over-estimating is safe because extra backedges only widen
+   // loop carried values; under-estimating is not. Loops which may not run at
+   // all are handled by always propagating the init args.
+-  int64_t tripCount = llvm::divideCeilSigned(
+-      max.getSExtValue() - min.getSExtValue(), stepVal.getSExtValue());
+-  // A negative count means the subtraction above overflowed, i.e. we do not
+-  // have a usable bound on the number of iterations.
+-  if (tripCount < 0)
++  APInt diff = max.sext(width + 1) - min.sext(width + 1);
++  APInt stepSext = stepVal.sext(width + 1);
++  if (stepSext.isNegative())
+     return {};
+-  return tripCount;
++  APInt tripCount = diff.sdiv(stepSext);
++  if (!diff.srem(stepSext).isZero())
++    tripCount += 1;
++  if (tripCount.isNegative() || tripCount.getActiveBits() > 63)
++    return {};
++  return tripCount.getSExtValue();
+ }
+ 
+ bool isEmptyInitializedRange(ConstantIntRanges rv) {
+@@ -384,11 +387,16 @@
+ TritonIntegerRangeAnalysis::getTotalLoopTripCount(LoopLikeOpInterface loop) {
+   SmallVector<LoopLikeOpInterface> loops{loop};
+   getEnclosingLoops(*loop, loops);
+-  return std::accumulate(loops.begin(), loops.end(), (int64_t)1,
+-                         [this](int64_t accum, LoopLikeOpInterface loop) {
+-                           return accum * maybeGetTripCount(loop).value_or(
+-                                              kDefaultMaxTripCount + 1);
+-                         });
++  int64_t total = 1;
++  for (LoopLikeOpInterface l : loops) {
++    int64_t tripCount = maybeGetTripCount(l).value_or(kDefaultMaxTripCount + 1);
++    if (tripCount > kDefaultMaxTripCount)
++      return kDefaultMaxTripCount + 1;
++    total *= tripCount;
++    if (total > kDefaultMaxTripCount)
++      return kDefaultMaxTripCount + 1;
++  }
++  return total;
+ }
+ 
+ int64_t
+

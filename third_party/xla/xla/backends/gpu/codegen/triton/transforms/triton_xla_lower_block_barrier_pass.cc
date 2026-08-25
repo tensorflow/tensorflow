@@ -52,7 +52,7 @@ LogicalResult LowerBlockBarrierOp(BlockBarrierOp block_barrier,
       block_barrier.getSignalValue();
   const int32_t world_size = block_barrier.getWorldSize();
   // Triton magic constant.
-  constexpr int32_t kGlobalAddressSpace = 1;
+  constexpr auto kGlobalAddressSpace = mlir::triton::PtrAddrSpace::Global;
 
   const mlir::TypedValue<mlir::Type> world_size_op =
       mlir::arith::ConstantOp::create(builder,
@@ -94,11 +94,11 @@ LogicalResult LowerBlockBarrierOp(BlockBarrierOp block_barrier,
         // -----
         // Ops (-> implies return type of the op declared in the next line)
         // -----
-        // Triton seems to fail to do pointer arithmetic on pointer of
-        // pointers. So we cast the inner one to i64.
-        // -> !tt.ptr<i64>
-        auto signal_buffers_i64 = mlir::triton::BitcastOp::create(
-            builder, ptr_to_i64_type, signal_buffers_arg);
+        mlir::Value signal_buffers_i64 = signal_buffers_arg;
+        if (signal_buffers_arg.getType() != ptr_to_i64_type) {
+          signal_buffers_i64 = mlir::triton::BitcastOp::create(
+              builder, ptr_to_i64_type, signal_buffers_arg);
+        }
         // SignalBuffers[WorldSize][BlockSize][WorldSize]
         // -> tensor<world_size x !tt.ptr<i64>>
         auto signal_buffers_tensor = mlir::triton::SplatOp::create(

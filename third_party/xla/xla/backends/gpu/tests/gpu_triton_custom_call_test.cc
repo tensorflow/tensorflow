@@ -56,7 +56,7 @@ namespace {
 
 constexpr absl::string_view kMLIRText = R"(
 module {
-  tt.func public @add_one(%arg0: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg1: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg2: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg3: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}) {
+  tt.func public @add_one(%arg0: !tt.ptr<f32> {tt.divisibility = 32 : i32}, %arg1: !tt.ptr<f32> {tt.divisibility = 32 : i32}, %arg2: !tt.ptr<f32> {tt.divisibility = 32 : i32}, %arg3: !tt.ptr<f32> {tt.divisibility = 32 : i32}) {
     %0 = tt.get_program_id x : i32
     %1 = tt.load %arg0 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
     %2 = tt.load %arg1 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
@@ -228,10 +228,10 @@ TEST_F(GpuIrEmitterUnnestedTest,
 
   constexpr absl::string_view kMLIRTextWithTMAAttributes = R"(
     module {
-      tt.func public @add_one(%arg0: !tt.ptr<f32, 1> {tt.nv_tma_desc = 1 : i32},
-      %arg1: !tt.ptr<f32, 1> {tt.nv_tma_desc = 1 : i32},
-      %arg2: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32},
-      %arg3: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}) {
+      tt.func public @add_one(%arg0: !tt.ptr<f32> {tt.nv_tma_desc = 1 : i32},
+      %arg1: !tt.ptr<f32> {tt.nv_tma_desc = 1 : i32},
+      %arg2: !tt.ptr<f32> {tt.divisibility = 32 : i32},
+      %arg3: !tt.ptr<f32> {tt.divisibility = 32 : i32}) {
         %0 = tt.get_program_id x : i32
         %1 = tt.load %arg0 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
         %cst = arith.constant 1.000000e+00 : f32
@@ -281,7 +281,7 @@ TEST_F(GpuIrEmitterUnnestedTest, RunTritonCustomCallWithDeviceSideTMA) {
   // 3rd argument for the scratchpad.
   constexpr absl::string_view kTMAMLIRText = R"(
     module {
-      tt.func public @tma_kernel(%arg0: !tt.ptr<f16, 1> {tt.divisibility = 16 : i32}, %arg1: !tt.ptr<f16, 1> {tt.divisibility = 16 : i32}) {
+      tt.func public @tma_kernel(%arg0: !tt.ptr<f16> {tt.divisibility = 16 : i32}, %arg1: !tt.ptr<f16> {tt.divisibility = 16 : i32}) {
         %0 = tt.get_program_id x : i32
         %1 = tt.get_program_id y : i32
         %c128_i32 = arith.constant 128 : i32
