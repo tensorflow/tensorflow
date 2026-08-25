@@ -160,6 +160,25 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     self._testReduction(math_ops.reduce_mean, np.mean, np.complex64,
                         self.NONEMPTY_COMPLEX_DATA, index_dtype)
 
+  def testReduceMeanIntegerOverflow(self, index_dtype):
+    # Regression test for GitHub issue 125978. Mean accumulated in the element
+    # type, so a sum that overflowed wrapped before the division was applied
+    # and the mean of two copies of the largest value came back as -1 for
+    # int32, disagreeing with the eager kernel. The 8 and 16 bit types were
+    # already widened, so only the 32 bit ones were affected.
+    for dtype in (np.int32, np.uint32):
+      if dtype not in self.all_types:
+        continue
+      max_value = np.iinfo(dtype).max
+      test_input = np.array([[max_value, max_value]], dtype=dtype)
+      with self.session() as sess:
+        with self.test_scope():
+          a = array_ops.placeholder(dtype)
+          index = array_ops.placeholder(index_dtype)
+          out = math_ops.reduce_mean(a, index)
+        result = sess.run(out, {a: test_input, index: [1]})
+      self.assertAllEqual([max_value], result)
+
   def testReduceAll(self, index_dtype):
     self._testReduction(math_ops.reduce_all, np.all, np.bool_, self.BOOL_DATA,
                         index_dtype)
