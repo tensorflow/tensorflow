@@ -861,6 +861,23 @@ tf_xla_py_strict_test(
 )
 
 tf_xla_py_strict_test(
+    name = "unravel_index_op_test",
+    size = "small",
+    srcs = ["unravel_index_op_test.py"],
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/platform:test",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_xla_py_strict_test(
     name = "dynamic_stitch_test",
     size = "small",
     srcs = ["dynamic_stitch_test.py"],
