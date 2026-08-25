@@ -240,6 +240,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
         "@com_google_protobuf//:protobuf",
         "@com_google_protobuf//:protobuf_headers",
         "@flatbuffers//:runtime_cc",

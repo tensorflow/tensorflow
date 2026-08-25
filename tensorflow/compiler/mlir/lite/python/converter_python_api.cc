@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "google/protobuf/text_format.h"
 #include "tensorflow/c/kernels.h"
@@ -195,33 +196,51 @@ tflite::TensorType FromConverterFlagsToTfLiteDType(int inference_type) {
 int ToStringSet(PyObject* py_denylist,
                 absl::flat_hash_set<std::string>* string_set) {
   using mlirlite::python_utils::ConvertFromPyString;
-  // Ensure op_denylist is non null
+
   if (!py_denylist) {
     return 0;
   }
-  if (PyList_Check(py_denylist)) {
-    for (int i = 0; i < PyList_GET_SIZE(py_denylist); ++i) {
-      PyObject* value = PyList_GetItem(py_denylist, i);
-      char* str_buf;
-      Py_ssize_t length;
-      if (ConvertFromPyString(value, &str_buf, &length) == -1) {
-        return -1;
-      }
-      string_set->emplace(str_buf, length);
-    }
+
+  if (!PyList_Check(py_denylist) && !PySet_Check(py_denylist)) {
+    return 0;
   }
-  if (PySet_Check(py_denylist)) {
-    auto* tmp = PySet_New(py_denylist);
-    while (PySet_GET_SIZE(tmp)) {
-      PyObject* value = PySet_Pop(tmp);
-      char* str_buf;
-      Py_ssize_t length;
-      if (ConvertFromPyString(value, &str_buf, &length) == -1) {
-        return -1;
-      }
-      string_set->emplace(str_buf, length);
-    }
+
+  // Take a private snapshot before iterating. On free-threaded Python the
+  // original container may otherwise be mutated concurrently.
+  PyObject* snapshot = PySequence_List(py_denylist);
+  if (snapshot == nullptr) {
+    return -1;
   }
+
+  const Py_ssize_t size = PyList_Size(snapshot);
+  if (size < 0) {
+    Py_DECREF(snapshot);
+    return -1;
+  }
+
+  for (Py_ssize_t i = 0; i < size; ++i) {
+    PyObject* value = PyList_GetItem(snapshot, i);
+
+    if (value == nullptr) {
+      Py_DECREF(snapshot);
+      return -1;
+    }
+
+    char* str_buf;
+    Py_ssize_t length;
+
+    const int result = ConvertFromPyString(value, &str_buf, &length);
+
+    if (result == -1) {
+      Py_DECREF(snapshot);
+      return -1;
+    }
+
+    string_set->emplace(str_buf, length);
+  }
+
+  Py_DECREF(snapshot);
+
   return 0;
 }
 
@@ -360,61 +379,121 @@ PyObject* MlirSparsifyModel(PyObject* data) {
 PyObject* RegisterCustomOpdefs(PyObject* list) {
   if (!PyList_Check(list)) {
     PyErr_SetString(PyExc_TypeError, "Expected list in argument");
+
     return nullptr;
   }
 
-  int64_t size = PyList_Size(list);
-  for (int i = 0; i < size; ++i) {
-    // Get character array from Python object.
+  // Snapshot the Python list first. All Python-owned data is converted into
+  // native OpDefs before any global TensorFlow registry is modified.
+  PyObject* snapshot = PySequence_List(list);
+
+  if (snapshot == nullptr) {
+    return nullptr;
+  }
+
+  const Py_ssize_t size = PyList_Size(snapshot);
+
+  if (size < 0) {
+    Py_DECREF(snapshot);
+    return nullptr;
+  }
+
+  std::vector<tensorflow::OpDef> opdefs;
+  opdefs.reserve(size);
+
+  for (Py_ssize_t i = 0; i < size; ++i) {
+    PyObject* value = PyList_GetItem(snapshot, i);
+
+    if (value == nullptr) {
+      Py_DECREF(snapshot);
+      return nullptr;
+    }
+
     char* tf_opdefs;
     Py_ssize_t len;
-    if (mlirlite::python_utils::ConvertFromPyString(PyList_GetItem(list, i),
-                                                    &tf_opdefs, &len) == -1) {
+
+    const int conversion_result =
+        mlirlite::python_utils::ConvertFromPyString(value, &tf_opdefs, &len);
+
+    if (conversion_result == -1) {
+      Py_DECREF(snapshot);
+
       PyErr_Format(PyExc_ValueError,
-                   "Failed to convert Python string at index %d of custom op "
+                   "Failed to convert Python string at index %zd of custom op "
                    "defs argument",
                    i);
+
       return nullptr;
     }
 
-    // Parse op def from character array.
+    // Own the bytes before releasing the snapshot that backs them.
+    const std::string opdef_text(tf_opdefs, len);
+
     tensorflow::OpDef opdef;
-    if (!tensorflow::protobuf::TextFormat::ParseFromString(tf_opdefs, &opdef)) {
+
+    if (!tensorflow::protobuf::TextFormat::ParseFromString(opdef_text,
+                                                           &opdef)) {
+      Py_DECREF(snapshot);
+
       PyErr_Format(
           PyExc_ValueError,
-          "Failed to parse opdefs at index %d of custom op defs argument: %s",
-          i, tf_opdefs);
+          "Failed to parse opdefs at index %zd of custom op defs argument: %s",
+          i, opdef_text.c_str());
+
       return nullptr;
     }
 
-    // Register extra opdefs to TensorFlow global op registry.
+    opdefs.push_back(std::move(opdef));
+  }
+
+  Py_DECREF(snapshot);
+
+  // An OpDef registration and its corresponding fake-kernel registration are
+  // one logical operation. Serialize callers through this API so the pair
+  // cannot be interleaved by free-threaded Python callers.
+  static absl::Mutex* const registration_mu = new absl::Mutex();
+
+  absl::MutexLock registration_lock(registration_mu);
+
+  for (int i = 0; i < static_cast<int>(opdefs.size()); ++i) {
+    const tensorflow::OpDef& opdef = opdefs[i];
+
     tensorflow::OpRegistry::Global()->Register(
         [opdef](tensorflow::OpRegistrationData* op_reg_data) -> absl::Status {
           *op_reg_data = tensorflow::OpRegistrationData(opdef);
+
           return absl::OkStatus();
         });
 
-    // Register the corresponding fake op kernel.
     const char* node_name = opdef.name().c_str();
+
     const char* op_name = opdef.name().c_str();
+
     const char* device_name = "CPU";
+
     static auto fake_compute_func = [](void* kernel, TF_OpKernelContext* ctx) {
     };
 
     TF_KernelBuilder* builder =
-        TF_NewKernelBuilder(op_name, device_name, /*create_func=*/nullptr,
-                            fake_compute_func, /*delete_func=*/nullptr);
+        TF_NewKernelBuilder(op_name, device_name,
+                            /*create_func=*/nullptr, fake_compute_func,
+                            /*delete_func=*/nullptr);
 
     TF_Status* status = TF_NewStatus();
+
     TF_RegisterKernelBuilder(node_name, builder, status);
+
     if (TF_GetCode(status) != TF_OK) {
       TF_DeleteStatus(status);
+
       PyErr_Format(PyExc_ValueError,
                    "Failed to register fake op kernel at index %d of custom op "
                    "defs argument",
                    i);
+
       return nullptr;
     }
+
     TF_DeleteStatus(status);
   }
 
@@ -424,11 +503,16 @@ PyObject* RegisterCustomOpdefs(PyObject* list) {
 std::vector<std::string> RetrieveCollectedErrors() {
   mlir::TFL::ErrorCollector* collector =
       mlir::TFL::ErrorCollector::GetErrorCollector();
+
+  const auto error_snapshot = collector->TakeCollectedErrors();
+
   std::vector<std::string> collected_errors;
-  for (const auto& error_data : collector->CollectedErrors()) {
+  collected_errors.reserve(error_snapshot.size());
+
+  for (const auto& error_data : error_snapshot) {
     collected_errors.push_back(error_data.SerializeAsString());
   }
-  collector->Clear();
+
   return collected_errors;
 }
 

@@ -23,7 +23,7 @@ limitations under the License.
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(_pywrap_converter_api, m) {
+PYBIND11_MODULE(_pywrap_converter_api, m, py::mod_gil_not_used()) {
   m.def(
       "Convert",
       [](py::object model_flags_proto_txt_raw,
