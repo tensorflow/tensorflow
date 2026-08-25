@@ -166,7 +166,7 @@ class CostAnalysis {
       absl::Span<const ShapeIndex> outputs_in_alternate_mem = {}) const;
 
   // Returns the amount of time the default memory bandwidth is idle, while
-  // executing this instruction, in seconds.  This value can be multiplied with
+  // executing this instruction, in seconds. This value can be multiplied with
   // the default memory bandwidth to get the amount of bytes that are available
   // to be copied to/from default memory during the execution of this
   // instruction.
