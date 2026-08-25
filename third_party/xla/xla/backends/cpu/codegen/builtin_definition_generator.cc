@@ -37,6 +37,7 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/CoreContainers.h"
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorAddress.h"
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
+#include "llvm/ExecutionEngine/Orc/SymbolLookupSet.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/Support/Error.h"
 #include "xla/backends/cpu/codegen/builtin_fp16.h"
@@ -99,21 +100,14 @@ extern "C" void __chkstk(void);
 #endif
 #endif
 
-extern "C" {
-// Provided by compiler-rt and MLIR.
-// Converts an F32 value to a BF16.
-uint16_t __truncsfbf2(float);
-// Converts an F64 value to a BF16.
-uint16_t __truncdfbf2(double);
-
 #ifdef __APPLE__
+extern "C" {
 // Converts an F32 value to a F16.
 uint16_t __truncsfhf2(float);
 
 float __extendhfsf2(uint16_t a);
-#endif  // __APPLE__
-
 }  // extern "C"
+#endif  // __APPLE__
 
 // MSVC does not have sincos[f].
 #ifdef _MSC_VER

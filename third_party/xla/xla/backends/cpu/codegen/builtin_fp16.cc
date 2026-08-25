@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/builtin_fp16.h"
 
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 
@@ -53,6 +54,21 @@ class AliasedFloatInt {
  private:
   uint32_t value_;
 };
+
+// Constructs the 16-bit representation for a bfloat value from a float value.
+// This implementation is adapted from Eigen.
+uint16_t FloatToBfloat16(float float_value) {
+  if (std::isnan(float_value)) {
+    return std::signbit(float_value) ? 0xFFC0 : 0x7FC0;
+  }
+  AliasedFloatInt f = AliasedFloatInt::FromFloat(float_value);
+  uint32_t input = f.as_uint();
+  uint32_t lsb = (input >> 16) & 1;
+  uint32_t rounding_bias = 0x7fff + lsb;
+  input += rounding_bias;
+  return static_cast<uint16_t>(input >> 16);
+}
+
 }  // namespace
 
 // __gnu_f2h_ieee and __gnu_h2f_ieee are marked as weak symbols so if XLA is
@@ -143,4 +159,18 @@ XlaF16ABIType ABSL_ATTRIBUTE_WEAK __truncdfhf2(double d) {
   // This does a double rounding step, but it's precise enough for our use
   // cases.
   return __gnu_f2h_ieee(static_cast<float>(d));
+}
+
+XlaBF16ABIType ABSL_ATTRIBUTE_WEAK __truncsfbf2(float float_value) {
+  uint16_t bf = FloatToBfloat16(float_value);
+  // The output can be a float type, bitcast it from uint16_t.
+  XlaBF16ABIType ret = 0;
+  std::memcpy(&ret, &bf, sizeof(bf));
+  return ret;
+}
+
+XlaBF16ABIType ABSL_ATTRIBUTE_WEAK __truncdfbf2(double double_value) {
+  // This does a double rounding step, but it's precise enough for our use
+  // cases.
+  return __truncsfbf2(static_cast<float>(double_value));
 }

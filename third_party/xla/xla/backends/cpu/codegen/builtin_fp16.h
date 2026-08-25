@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_CODEGEN_BUILTIN_FP16_H_
 #define XLA_BACKENDS_CPU_CODEGEN_BUILTIN_FP16_H_
 
+#include <cstdint>
+
 // _Float16 always gets us the correct ABI type, so use that if available.
 // AArch64 GCC defines __FLT16_MANT_DIG__ even when _Float16 is not available.
 #if defined(__FLT16_MANT_DIG__) && \
@@ -32,6 +34,20 @@ using XlaF16ABIType = float;
 using XlaF16ABIType = uint16_t;
 #endif
 
+#if defined(__x86_64__) || defined(_M_X64)
+// On x86_64 bfloat16 is passed in SSE registers. Since both float and __bf16
+// are passed in the same register we can use the wider type and careful casting
+// to conform to x86_64 psABI. This only works with the assumption that we're
+// dealing with little-endian values passed in wider registers.
+using XlaBF16ABIType = float;
+#elif defined(__aarch64__) && \
+    (defined(__ARM_BF16_TYPES_SUPPORTED__) || defined(__clang__))
+using XlaBF16ABIType = __bf16;
+#else
+// Default to uint16_t if we have nothing else.
+using XlaBF16ABIType = uint16_t;
+#endif
+
 // Converts an F32 value to a F16.
 extern "C" XlaF16ABIType __gnu_f2h_ieee(float);
 
@@ -40,5 +56,11 @@ extern "C" float __gnu_h2f_ieee(XlaF16ABIType);
 
 // Converts an F64 value to a F16.
 extern "C" XlaF16ABIType __truncdfhf2(double);
+
+// Converts an F32 value to a BF16.
+extern "C" XlaBF16ABIType __truncsfbf2(float);
+
+// Converts an F64 value to a BF16.
+extern "C" XlaBF16ABIType __truncdfbf2(double);
 
 #endif  // XLA_BACKENDS_CPU_CODEGEN_BUILTIN_FP16_H_
