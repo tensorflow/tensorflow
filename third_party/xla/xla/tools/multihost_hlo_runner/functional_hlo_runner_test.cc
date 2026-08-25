@@ -371,6 +371,35 @@ TEST_F(FunctionalHloRunnerTest, GPUProfilerKeepXSpaceReturnsNonNullXSpace) {
   TF_EXPECT_OK(env->FileExists(profile_dump_path));
 }
 
+TEST_F(FunctionalHloRunnerTest, GPUProfilerMultipleSessionsSaveUniqueFiles) {
+  if (test::DeviceTypeIs(test::kCpu)) {
+    GTEST_SKIP() << "GPU-only test";
+  }
+  std::string profile_dump_path =
+      tsl::io::JoinPath(testing::TempDir(), "multi_xspace.pb");
+  std::string second_profile_dump_path =
+      tsl::io::JoinPath(testing::TempDir(), "multi_xspace_1.pb");
+  std::string third_profile_dump_path =
+      tsl::io::JoinPath(testing::TempDir(), "multi_xspace_2.pb");
+  tsl::Env* env = tsl::Env::Default();
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HLORunnerProfiler> profiler,
+      HLORunnerProfiler::Create(profile_dump_path, /*keep_xspace=*/false));
+
+  profiler->CreateSession();
+  profiler->UploadSession();
+  EXPECT_OK(env->FileExists(profile_dump_path));
+
+  profiler->CreateSession();
+  profiler->UploadSession();
+  EXPECT_OK(env->FileExists(second_profile_dump_path));
+
+  profiler->CreateSession();
+  profiler->UploadSession();
+  EXPECT_OK(env->FileExists(third_profile_dump_path));
+}
+
 TEST_F(FunctionalHloRunnerTest,
        SingleDeviceHloWithGPUProfilerSavesXSpaceToDisk) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,

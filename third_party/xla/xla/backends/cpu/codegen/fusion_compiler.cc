@@ -454,14 +454,16 @@ void AddVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max) {
 // The input IR is from the xtile dialect which uses tensors that are converted
 // first to the vector dialect and then to LLVM.
 void AddNewVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max) {
+  // Get rid of 0d vectors.
   pm.addPass(cpu::createVectorToScalarPass());
+  // Get rid of multi-dimensional vectors.
+  pm.addPass(cpu::createUnrollVectorsPass());
+  // Get rid of unit dimensions.
   pm.addPass(cpu::createDropVectorUnitDimsPass());
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(cpu::createMemrefCopyToLoopsPass());
-  pm.addPass(cpu::createLowerToLLVMPass());
   pm.addPass(mlir::createConvertVectorToSCFPass(
       mlir::VectorTransferToSCFOptions().enableFullUnroll(true)));
-  pm.addNestedPass<mlir::func::FuncOp>(cpu::createHoistAllocaPass());
+  pm.addPass(mlir::createCanonicalizerPass());
+
   pm.addPass(cpu::createUnpackSubByteVectorWritePass());
 
   mlir::ConvertVectorToLLVMPassOptions options;
@@ -471,10 +473,8 @@ void AddNewVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max) {
   options.vectorTransposeLowering =
       mlir::vector::VectorTransposeLowering::Shuffle16x16;
   pm.addPass(mlir::createConvertVectorToLLVMPass(options));
-
-  pm.addPass(mlir::createConvertComplexToStandardPass());
+  pm.addPass(cpu::createLowerToLLVMPass());
   pm.addPass(mlir::memref::createExpandStridedMetadataPass());
-
   pm.addPass(emitters::createSafeIntegerArithmeticPass());
 
   AddGenericLoweringPasses(pm, fast_min_max);
