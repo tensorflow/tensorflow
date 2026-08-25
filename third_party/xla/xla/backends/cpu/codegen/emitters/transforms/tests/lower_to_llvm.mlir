@@ -116,7 +116,7 @@ func.func private @wrap_entry(
       : tensor<2xi32>, tensor<21x12xi32>, index, index, index
 }
 
-// CHECK:  func.func @wrap_entry(%[[CALL_FRAME:.+]]: !llvm.ptr) -> !llvm.ptr attributes
+// CHECK:  func.func @wrap_entry(%[[CALL_FRAME:.+]]: !llvm.ptr {llvm.nonnull, llvm.noundef}) -> !llvm.ptr attributes
 // CHECK-SAME: frame_pointer = #llvm.framePointerKind<all>
 // CHECK-SAME: "prefer-vector-width", "128"
 // CHECK-SAME: uwtable_kind = #llvm.uwtableKind<async>

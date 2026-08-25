@@ -1,3 +1,17 @@
+# Copyright 2026 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 Disables 256-bit global load/store vectorization on Blackwell (sm_100+) to support older ptxas versions (such as PTXAS 8.7 in CUDA 12.8).
 
 On Blackwell architectures with PTX 8.8+, upstream Triton generates 256-bit global memory load and store instructions (e.g. ld.global.v8.b32, st.global.v8.b32, ld.global.v4.b64). Older ptxas toolchains fail to compile these 256-bit vector memory instructions. Capping maxVecBits at 128 bits avoids ptxas compilation failures and allows compilation with older toolchains.
