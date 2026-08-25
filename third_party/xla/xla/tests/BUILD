@@ -48,7 +48,9 @@ xla_test_friend_package_group(name = "friends")
 # Generate test_suites for all backends, named "${backend}_tests".
 generate_backend_suites()
 
-# Target to add main for tests. Do not link this target and
+# Target to add main for tests that pass XLA flags via args. Prefer to use
+# @com_google_googletest//:gtest_main and pass XLA flags via the env attribute
+# (XLA_FLAGS) over this target. Do not link this target and
 # @com_google_googletest//:gtest_main into the same target.
 cc_library(
     name = "xla_internal_test_main",
@@ -56,13 +58,13 @@ cc_library(
     srcs = ["xla_internal_test_main.cc"],
     deps = [
         "//xla:debug_options_flags",
-        "@com_google_absl//absl/flags:flag",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:globals",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_for_library",
-        "@tsl//tsl/platform:logging",
-        "@tsl//tsl/platform:test",
-        "@tsl//tsl/platform:test_benchmark",
     ],
     alwayslink = True,
 )
