@@ -97,13 +97,14 @@ class SoftsignTest(test.TestCase):
           dy = tape.gradient(y, x)
         return tape.gradient(dy, x)
 
-      x = np.asarray(
-          [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
-          dtype=np.float64,
-          order="F")
-      got = self.evaluate(f(constant_op.constant(x)))
-      want = _softsign_grad_grad(x)
-      self.assertAllClose(got, want)
+      for dtype in (np.float32, np.float64):
+        x = np.asarray(
+            [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
+            dtype=dtype,
+            order="F")
+        got = self.evaluate(f(constant_op.constant(x)))
+        want = _softsign_grad_grad(x.astype(np.float64)).astype(dtype)
+        self.assertAllClose(got, want)
 
 
 if __name__ == "__main__":
