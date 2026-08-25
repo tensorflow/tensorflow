@@ -603,6 +603,11 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(
         np_math_ops.count_nonzero(x, axis=-1, keepdims=True), [[1], [2]])
     self.assertAllEqual(np_math_ops.count_nonzero(x, keepdims=True), [[3]])
+    self.assertAllEqual(
+        np_math_ops.count_nonzero(x, axis=0, keepdims=False), [1, 2])
+    self.assertAllEqual(
+        np_math_ops.count_nonzero(x, axis=-1, keepdims=False), [1, 2])
+    self.assertAllEqual(np_math_ops.count_nonzero(x, keepdims=False), 3)
 
 if __name__ == '__main__':
   tensor.enable_tensor_equality()
