@@ -2250,7 +2250,7 @@ class Context:
     if self._inter_op_parallelism_threads == num_threads:
       return
 
-    if num_threads < 0:
+    if num_threads is not None and num_threads < 0:
       raise ValueError(
           "Inter op parallelism threads must be >= 0, but got %d" % num_threads
       )
