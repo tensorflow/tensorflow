@@ -383,6 +383,21 @@ class Tests(test.TestCase):
                                       shape, minval, maxval,
                                       "seed", seed)
 
+  def testTapeTypeValidation(self):
+    # Pass invalid objects to tape functions expecting TFE_Py_Tape
+    invalid_obj = object()
+    dummy_tensor = constant_op.constant(1.0)
+    with self.assertRaises(TypeError):
+      pywrap_tfe.TFE_Py_TapeSetAdd(invalid_obj)
+    with self.assertRaises(TypeError):
+      pywrap_tfe.TFE_Py_TapeSetRemove(invalid_obj)
+    with self.assertRaises(TypeError):
+      pywrap_tfe.TFE_Py_TapeWatch(invalid_obj, dummy_tensor)
+    with self.assertRaises(TypeError):
+      pywrap_tfe.TFE_Py_TapeWatchVariable(invalid_obj, dummy_tensor)
+    with self.assertRaises(TypeError):
+      pywrap_tfe.TFE_Py_TapeWatchedVariables(invalid_obj)
+
 
 if __name__ == "__main__":
   test.main()
