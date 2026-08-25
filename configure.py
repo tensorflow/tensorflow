@@ -914,7 +914,13 @@ def retrieve_clang_version(clang_executable):
 
   curr_version_split = curr_version.lower().split('clang version ')
   if len(curr_version_split) > 1:
-    curr_version = curr_version_split[1].split()[0].split('git')
+    tokens = curr_version_split[1].split()
+    if not tokens:
+      print('WARNING: current clang installation version unknown.\n')
+      return None
+    curr_version = tokens[0].split('git')
+  else:
+    curr_version = [curr_version]
 
   if len(curr_version) > 1:
     print('WARNING: current clang installation is not a release version.\n')
