@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn_ops
@@ -235,7 +236,6 @@ class Conv3DTransposeTest(test.TestCase):
       _ = self.evaluate(output)
 
   def testConv3DTransposeInvalidOutputShape(self):
-    from tensorflow.python.framework import errors
     with self.cached_session():
       x_shape = [2, 3, 4, 3, 2]
       f_shape = [3, 3, 3, 2, 2]
@@ -247,7 +247,7 @@ class Conv3DTransposeTest(test.TestCase):
       f = constant_op.constant(
           1.0, shape=f_shape, name="filter", dtype=dtypes.float32)
       with self.assertRaisesRegex(
-          errors.InvalidArgumentError,
+          errors_impl.InvalidArgumentError,
           "Size of out_backprop doesn't match computed"):
         output = nn_ops.conv3d_transpose(
             x, f, y_shape, strides=strides, padding="VALID")
