@@ -16,12 +16,11 @@
 
 import copy
 import itertools
-
-import numpy as np
 import sys
 
-from google.protobuf import json_format
+import numpy as np
 
+from google.protobuf import json_format
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python.eager import context
@@ -36,6 +35,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -78,6 +78,27 @@ def _compare_output_to_expected(tester, actual, expected):
 
 @test_util.run_all_in_graph_and_eager_modes
 class ParseExampleTest(test.TestCase):
+
+  def testRawParseExampleRejectsZeroVariableDenseDimension(self):
+    serialized = [example().SerializeToString()]
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r"dense_shapes\[0\].*greater than 0",
+    ):
+      outputs = gen_parsing_ops.parse_example_v2(
+          serialized=serialized,
+          names=[],
+          sparse_keys=[],
+          dense_keys=["k"],
+          ragged_keys=[],
+          dense_defaults=[constant_op.constant([], dtype=dtypes.float32)],
+          num_sparse=0,
+          sparse_types=[],
+          ragged_value_types=[],
+          ragged_split_types=[],
+          dense_shapes=[[0]],
+      )
+      self.evaluate(outputs)
 
   def _test(self, kwargs, expected_values=None, expected_err=None):
     if expected_err:
@@ -1193,6 +1214,23 @@ class ParseExampleTest(test.TestCase):
 @test_util.run_all_in_graph_and_eager_modes
 class ParseSingleExampleTest(test.TestCase):
 
+  def testRawParseSingleExampleRejectsZeroVariableDenseDimension(self):
+    serialized = example().SerializeToString()
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r"dense_shapes\[0\].*greater than 0",
+    ):
+      outputs = gen_parsing_ops.parse_single_example(
+          serialized=serialized,
+          dense_defaults=[constant_op.constant([], dtype=dtypes.float32)],
+          num_sparse=0,
+          sparse_keys=[],
+          dense_keys=["k"],
+          sparse_types=[],
+          dense_shapes=[[0]],
+      )
+      self.evaluate(outputs)
+
   def _test(self, kwargs, expected_values=None, expected_err=None):
     if expected_err:
       with self.assertRaisesWithPredicateMatch(expected_err[0],
@@ -1457,6 +1495,61 @@ class ParseSequenceExampleTest(test.TestCase):
       parsing_ops.FixedLenSequenceFeature(shape=[0], dtype=dtypes.float32)
     with self.assertRaisesRegex(ValueError, "Dimension -1 must be >= 0"):
       parsing_ops.FixedLenSequenceFeature(shape=[-1], dtype=dtypes.float32)
+
+  def testRawParseSequenceExampleRejectsZeroFeatureListDimension(self):
+    serialized = [sequence_example().SerializeToString()]
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r"feature_list_dense_shapes\[0\].*greater than 0",
+    ):
+      outputs = gen_parsing_ops.parse_sequence_example_v2(
+          serialized=serialized,
+          debug_name=[],
+          context_sparse_keys=[],
+          context_dense_keys=[],
+          context_ragged_keys=[],
+          feature_list_sparse_keys=[],
+          feature_list_dense_keys=["k"],
+          feature_list_ragged_keys=[],
+          feature_list_dense_missing_assumed_empty=[True],
+          context_dense_defaults=[],
+          Ncontext_sparse=0,
+          context_sparse_types=[],
+          context_ragged_value_types=[],
+          context_ragged_split_types=[],
+          context_dense_shapes=[],
+          Nfeature_list_sparse=0,
+          Nfeature_list_dense=1,
+          feature_list_dense_types=[dtypes.float32],
+          feature_list_sparse_types=[],
+          feature_list_ragged_value_types=[],
+          feature_list_ragged_split_types=[],
+          feature_list_dense_shapes=[[0]],
+      )
+      self.evaluate(outputs)
+
+  def testRawParseSingleSequenceExampleRejectsZeroFeatureListDimension(self):
+    serialized = sequence_example().SerializeToString()
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r"feature_list_dense_shapes\[0\].*greater than 0",
+    ):
+      outputs = gen_parsing_ops.parse_single_sequence_example(
+          serialized=serialized,
+          feature_list_dense_missing_assumed_empty=["k"],
+          context_sparse_keys=[],
+          context_dense_keys=[],
+          feature_list_sparse_keys=[],
+          feature_list_dense_keys=["k"],
+          context_dense_defaults=[],
+          debug_name="",
+          context_sparse_types=[],
+          feature_list_dense_types=[dtypes.float32],
+          context_dense_shapes=[],
+          feature_list_sparse_types=[],
+          feature_list_dense_shapes=[[0]],
+      )
+      self.evaluate(outputs)
 
   def _test(self,
             kwargs,

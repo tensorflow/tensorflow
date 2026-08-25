@@ -152,9 +152,9 @@ Tensor FeatureSparseCopy(std::size_t batch, const std::string& key,
 int64_t CopyIntoSparseTensor(const Tensor& in, int batch, int64_t offset,
                              Tensor* indices, Tensor* values);
 
-// Check that each dense_shape has known rank and inner dimensions; and
-// update variable_length (whether the outer dimension is None) and
-// elements_per_stride for each denes_shape.
+// Check that each dense_shape has known rank, known positive inner dimensions,
+// and a positive outer dimension or a variable-length outer dimension; and
+// update variable_length and elements_per_stride for each dense_shape.
 absl::Status GetDenseShapes(const std::vector<PartialTensorShape>& dense_shapes,
                             std::vector<bool>* variable_length,
                             std::vector<std::size_t>* elements_per_stride);
