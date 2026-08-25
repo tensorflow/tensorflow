@@ -636,7 +636,7 @@ func.func @test_extract_aligned(%arg0: memref<128xf32>, %arg1: index) -> tensor<
 // CHECK:   scf.yield %[[READ]] : vector<8xf32>
 // CHECK: } else {
 // CHECK:   %[[MASK:.*]] = vector.create_mask %{{.*}} : vector<8xi1>
-// CHECK:   %[[MASKED_READ:.*]] = vector.transfer_read %{{.*}}[%{{.*}}], %[[PAD]], %[[MASK]] {in_bounds = [true]} : memref<128xf32>, vector<8xf32>
+// CHECK:   %[[MASKED_READ:.*]] = vector.transfer_read %{{.*}}[%{{.*}}], %[[PAD]], %[[MASK]] : memref<128xf32>, vector<8xf32>
 // CHECK:   scf.yield %[[MASKED_READ]] : vector<8xf32>
 // CHECK: }
 
@@ -675,7 +675,7 @@ func.func @test_insert_aligned(%arg0: tensor<8xf32>, %arg1: memref<128xf32>) {
 // CHECK:   vector.transfer_write %{{.*}}, %{{.*}}[%{{.*}}] {in_bounds = [true]} : vector<8xf32>, memref<128xf32>
 // CHECK: } else {
 // CHECK:   %[[MASK:.*]] = vector.create_mask %{{.*}} : vector<8xi1>
-// CHECK:   vector.transfer_write %{{.*}}, %{{.*}}[%{{.*}}], %[[MASK]] {in_bounds = [true]} : vector<8xf32>, memref<128xf32>
+// CHECK:   vector.transfer_write %{{.*}}, %{{.*}}[%{{.*}}], %[[MASK]] : vector<8xf32>, memref<128xf32>
 // CHECK: }
 
 // -----
@@ -703,11 +703,11 @@ func.func @test_extract_strided(%arg0: memref<12x1xf64>, %arg1: index) -> tensor
   return %0 : tensor<2x1xf64>
 }
 // CHECK-LABEL: @test_extract_strided
-// CHECK-DAG: %[[C3:.*]] = arith.constant 3 : index
 // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
 // CHECK-DAG: %[[CST:.*]] = arith.constant dense<0.000000e+00> : vector<2x1xf64>
 // CHECK: %[[LOAD0:.*]] = memref.load %{{.*}}[%{{.*}}, %[[C0]]] : memref<12x1xf64>
 // CHECK: %[[INS0:.*]] = vector.insert %[[LOAD0]], %[[CST]] [0, 0] : f64 into vector<2x1xf64>
+// CHECK: %[[C3:.*]] = arith.constant 3 : index
 // CHECK: %[[OFF1:.*]] = arith.addi %{{.*}}, %[[C3]] : index
 // CHECK: %[[LOAD1:.*]] = memref.load %{{.*}}[%[[OFF1]], %[[C0]]] : memref<12x1xf64>
 // CHECK: %[[INS1:.*]] = vector.insert %[[LOAD1]], %[[INS0]] [1, 0] : f64 into vector<2x1xf64>
@@ -722,11 +722,11 @@ func.func @test_insert_strided(%arg0: tensor<2x1xf64>, %arg1: memref<12x1xf64>, 
   return
 }
 // CHECK-LABEL: @test_insert_strided
-// CHECK-DAG: %[[C3:.*]] = arith.constant 3 : index
 // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
 // CHECK-DAG: %[[CAST:.*]] = builtin.unrealized_conversion_cast %{{.*}} : tensor<2x1xf64> to vector<2x1xf64>
 // CHECK: %[[EXT0:.*]] = vector.extract %[[CAST]][0, 0] : f64 from vector<2x1xf64>
 // CHECK: memref.store %[[EXT0]], %{{.*}}[%{{.*}}, %[[C0]]] : memref<12x1xf64>
+// CHECK: %[[C3:.*]] = arith.constant 3 : index
 // CHECK: %[[OFF1:.*]] = arith.addi %{{.*}}, %[[C3]] : index
 // CHECK: %[[EXT1:.*]] = vector.extract %[[CAST]][1, 0] : f64 from vector<2x1xf64>
 // CHECK: memref.store %[[EXT1]], %{{.*}}[%[[OFF1]], %[[C0]]] : memref<12x1xf64>
@@ -784,7 +784,9 @@ func.func @test_broadcast(%arg0: tensor<16xf32>) -> tensor<8x16xf32> {
   return %0 : tensor<8x16xf32>
 }
 // CHECK-LABEL: @test_broadcast
-// CHECK: %[[BCAST:.*]] = vector.broadcast %{{.*}} : vector<16xf32> to vector<8x16xf32>
+// CHECK: %[[CAST:.*]] = builtin.unrealized_conversion_cast %{{.*}} : tensor<16xf32> to vector<16xf32>
+// CHECK: %[[SHAPE_CAST:.*]] = vector.shape_cast %[[CAST]] : vector<16xf32> to vector<1x16xf32>
+// CHECK: %[[BCAST:.*]] = vector.broadcast %[[SHAPE_CAST]] : vector<1x16xf32> to vector<8x16xf32>
 
 // -----
 
@@ -871,8 +873,9 @@ func.func @test_iota_f32() -> tensor<8xf32> {
   return %0 : tensor<8xf32>
 }
 // CHECK-LABEL: @test_iota_f32
-// CHECK: %[[CST:.*]] = arith.constant dense<[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00, 7.000000e+00]> : vector<8xf32>
-// CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[CST]] : vector<8xf32> to tensor<8xf32>
+// CHECK: %[[CST:.*]] = arith.constant dense<[0, 1, 2, 3, 4, 5, 6, 7]> : vector<8xi32>
+// CHECK: %[[CONV:.*]] = arith.sitofp %[[CST]] : vector<8xi32> to vector<8xf32>
+// CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[CONV]] : vector<8xf32> to tensor<8xf32>
 // CHECK: return %[[RET]]
 
 // -----
@@ -883,7 +886,8 @@ func.func @test_iota_2d() -> tensor<4x8xi32> {
 }
 // CHECK-LABEL: @test_iota_2d
 // CHECK: %[[CST:.*]] = arith.constant dense<[0, 1, 2, 3, 4, 5, 6, 7]> : vector<8xi32>
-// CHECK: %[[BCAST:.*]] = vector.broadcast %[[CST]] : vector<8xi32> to vector<4x8xi32>
+// CHECK: %[[SHAPE_CAST:.*]] = vector.shape_cast %[[CST]] : vector<8xi32> to vector<1x8xi32>
+// CHECK: %[[BCAST:.*]] = vector.broadcast %[[SHAPE_CAST]] : vector<1x8xi32> to vector<4x8xi32>
 // CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[BCAST]] : vector<4x8xi32> to tensor<4x8xi32>
 // CHECK: return %[[RET]]
 
