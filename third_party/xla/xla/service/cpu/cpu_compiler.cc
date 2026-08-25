@@ -1135,6 +1135,11 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
   }();
 
+  // Safeguard for late elemental instructions created during post-layout
+  // simplification.
+  pipeline.AddPass<FusionWrapper>(use_experimental_loop_fusion,
+                                  use_tiled_emitter, target_machine_features);
+
   // Outline ops in the entry computation into calls to subcomputations.
   if (!is_aot_compile) {
     // Run ParallelTaskAssigner to assign parallel tasks to HLOs in module.

@@ -450,6 +450,23 @@ xla_test(
 )
 
 xla_test(
+    name = "corpus_compile_test",
+    srcs = ["corpus_compile_test.cc"],
+    backends = ["cpu"],
+    data = ["//xla/backends/cpu/benchmarks/hlo:hlo_files"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tools:hlo_module_loader",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest",
+        "@tsl//tsl/platform:path",
+    ],
+)
+
+xla_test(
     name = "cpu_edge_cases_test",
     srcs = ["cpu_edge_cases_test.cc"],
     backends = ["cpu"],
