@@ -1022,6 +1022,15 @@ class EnsureShapeTest(test.TestCase):
       def_function.function(
           lambda: check_ops.ensure_shape(x, shape))()
 
+  def testSymbolicTensorInsideTfFunction(self):
+    @def_function.function
+    def f(val):
+      shape_tensor = constant_op.constant([2], dtype=dtypes.int32)
+      return check_ops.ensure_shape(val, shape_tensor)
+
+    x = constant_op.constant([1.0, 2.0])
+    self.assertAllEqual(f(x), [1.0, 2.0])
+
 
 class EnsureShapeBenchmark(test.Benchmark):
 

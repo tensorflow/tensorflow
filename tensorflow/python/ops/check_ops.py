@@ -2366,8 +2366,13 @@ def ensure_shape(x, shape, name=None):
       # Resolve tensor inputs through their values so that dimension sizes
       # outside the signed 64-bit range are caught below instead of causing
       # an obscure failure inside op construction.
+      shape_value = tensor_util.constant_value(shape)
+      if shape_value is None:
+        raise ValueError(
+            'The shape argument to ensure_shape must be statically known, '
+            f'but got a dynamic tensor: {shape}')
       shape = tensor_shape.TensorShape(
-          [int(dim) for dim in tuple(shape.numpy())])
+          [int(dim) for dim in tuple(shape_value)])
     else:
       shape = tensor_shape.TensorShape(shape)
 
