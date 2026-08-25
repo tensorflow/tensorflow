@@ -870,6 +870,11 @@ class ArrayMethodsTest(test.TestCase):
     run_test([[1, 2], [3, 4]], axis=-1)
     run_test([[1, 2], [3, 4]], axis=-2)
     run_test([[1, 2], [3, 4]], axis=(0, 1))
+    run_test([1.0, 2.0, 3.0], ddof=1)
+    run_test([1.0, 2.0, 3.0], ddof=1, dtype=np.float64)
+    run_test([[1.0, 2.0], [3.0, 4.0]], axis=-1, ddof=1, keepdims=True)
+    run_test([1.0j, 2.0, 3.0j], ddof=1)
+    run_test([[1.0j, 2.0], [3.0j, 4.0]], axis=0, ddof=1)
     run_test(np.arange(8).reshape((2, 2, 2)).tolist(), axis=(0, 2))
     run_test(
         np.arange(8).reshape((2, 2, 2)).tolist(), axis=(0, 2), keepdims=True)
