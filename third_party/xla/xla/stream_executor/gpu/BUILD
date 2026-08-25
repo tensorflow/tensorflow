@@ -57,11 +57,6 @@ package(
     licenses = ["notice"],
 )
 
-package_group(
-    name = "friends",
-    packages = stream_executor_gpu_friends(),
-)
-
 cc_library(
     name = "context",
     hdrs = ["context.h"],
