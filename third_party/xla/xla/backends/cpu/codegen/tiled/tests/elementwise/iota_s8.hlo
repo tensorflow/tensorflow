@@ -1,18 +1,13 @@
 // RUN: fusion_to_xtile %s | fusion_compiler_opt --canonicalize -cse \
 // RUN:   | FileCheck %s
-// RUN: fusion_to_xtile %s | fusion_compiler_opt --xtile-cpu-xtile-to-vector \
-// RUN:   | FileCheck %s --check-prefix=CHECK-VECTOR
-// RUN: fusion_to_xtile %s | fusion_compiler_opt --xtile-cpu-xtile-to-vector \
-// RUN:   --xtile-cpu-vector-to-llvm | FileCheck %s --check-prefix=CHECK-LLVM
-// RUN: test_correctness %s
 
 // RUN: fusion_to_xtile %s | fusion_compiler_opt \
-// RUN:   --xtile-cpu-new-xtile-to-vector --xla-simplify-arith \
-// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
+// RUN:   --xtile-cpu-xtile-to-vector --xla-simplify-arith \
+// RUN:   | FileCheck %s --check-prefix=CHECK-VECTOR
 // RUN: fusion_to_xtile %s | fusion_compiler_opt \
-// RUN:   --xtile-cpu-new-xtile-to-vector --xtile-cpu-new-vector-to-llvm \
-// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR-LLVM
-// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering=true
+// RUN:   --xtile-cpu-vector-to-llvm \
+// RUN:   | FileCheck %s --check-prefix=CHECK-LLVM
+// RUN: test_correctness %s
 
 fusion {
   ROOT iota = s8[128] iota(), iota_dimension=0
@@ -38,16 +33,8 @@ ENTRY main {
 // CHECK:        xtile.insert %{{.*}} into %[[OUT]][%{{.*}}] [32] [1] : tensor<32xi8> -> memref<128xi8>
 
 // CHECK-VECTOR-LABEL: func.func @wrapped_fusion_impl
-// CHECK-VECTOR:         %[[TRUNC:.*]] = arith.trunci %{{.*}} : vector<8xi32> to vector<8xi8>
+// CHECK-VECTOR:         %[[TRUNC:.*]] = arith.trunci %{{.*}} : vector<32xi32> to vector<32xi8>
 // CHECK-VECTOR:         vector.transfer_write %[[TRUNC]], %{{.*}}
 
 // CHECK-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
-// CHECK-LLVM:         %[[TRUNC:.*]] = llvm.trunc %{{.*}} : vector<8xi32> to vector<8xi8>
-// CHECK-LLVM:         llvm.store %[[TRUNC]], %{{.*}}
-
-// NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl
-// NEW-VECTOR:         %[[TRUNC:.*]] = arith.trunci %{{.*}} : vector<32xi32> to vector<32xi8>
-// NEW-VECTOR:         vector.transfer_write %[[TRUNC]], %{{.*}}
-
-// NEW-VECTOR-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
-// NEW-VECTOR-LLVM-NOT: llvm.alloc
+// CHECK-LLVM-NOT: llvm.alloc

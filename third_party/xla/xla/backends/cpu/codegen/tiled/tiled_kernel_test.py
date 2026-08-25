@@ -213,101 +213,6 @@ class XtileLoweringTest(absltest.TestCase):
         lambda arg: arg + arg.transpose(),
     )
 
-  def test_dot_single_tile(self):
-    ir = """
-      module @dot_single_tile {
-        xtile.entry_func @dot_single_tile(
-            %lhs: memref<8x16xf32>,
-            %rhs: memref<16x8xf32>,
-            %output: memref<8x8xf32>,
-            %tile_id: index) {
-          %offset = arith.constant 0 : index
-          %lhs_tile = xtile.extract %lhs[%offset, %offset][8, 16][1, 1] : memref<8x16xf32> -> tensor<8x16xf32>
-          %rhs_tile = xtile.extract %rhs[%offset, %offset][16, 8][1, 1] : memref<16x8xf32> -> tensor<16x8xf32>
-          %result = stablehlo.dot_general %lhs_tile, %rhs_tile, contracting_dims = [1] x [0] : (tensor<8x16xf32>, tensor<16x8xf32>) -> tensor<8x8xf32>
-          xtile.insert %result into %output[%offset, %offset][8, 8][1, 1] : tensor<8x8xf32> -> memref<8x8xf32>
-          xtile.return
-        }
-      }
-    """
-
-    compare_kernel(
-        ir,
-        "dot_single_tile",
-        1,
-        [InputSpec((8, 16)), InputSpec((16, 8))],
-        (8, 8),
-        np.float32,
-        lambda lhs, rhs: lhs @ rhs,
-        maxulp=5,
-    )
-
-  def test_dot_scalar_output(self):
-    ir = """
-      module @test_dot_scalar_output {
-        xtile.entry_func @test_dot_scalar_output(
-            %lhs: memref<8x16xf32>,
-            %rhs: memref<16x8xf32>,
-            %output: memref<f32>,
-            %tile_id: index) {
-          %offset = arith.constant 0 : index
-          %lhs_tile = xtile.extract %lhs[%offset, %offset][8, 16][1, 1] : memref<8x16xf32> -> tensor<8x16xf32>
-          %rhs_tile = xtile.extract %rhs[%offset, %offset][16, 8][1, 1] : memref<16x8xf32> -> tensor<16x8xf32>
-          %result = stablehlo.dot_general %lhs_tile, %rhs_tile, contracting_dims = [1, 0] x [0, 1] : (tensor<8x16xf32>, tensor<16x8xf32>) -> tensor<f32>
-          xtile.insert %result into %output[][][] : tensor<f32> -> memref<f32>
-          xtile.return
-        }
-      }
-    """
-
-    compare_kernel(
-        ir,
-        "test_dot_scalar_output",
-        1,
-        [InputSpec((8, 16)), InputSpec((16, 8))],
-        (),
-        np.float32,
-        lambda lhs, rhs: np.tensordot(lhs, rhs, axes=[[1, 0], [0, 1]]),
-        maxulp=8,
-    )
-
-  def test_dot_fusion_single_tile(self):
-    ir = """
-      module @dot_fusion_single_tile {
-        xtile.entry_func @dot_fusion_single_tile(
-            %lhs_0: memref<8x16xf32>,
-            %lhs_1: memref<8x16xf32>,
-            %rhs: memref<16x1xf32>,
-            %output: memref<8x1xf32>,
-            %tile_id: index) {
-          %offset = arith.constant 0 : index
-          %lhs_0_tile = xtile.extract %lhs_0[%offset, %offset][8, 16][1, 1] : memref<8x16xf32> -> tensor<8x16xf32>
-          %lhs_1_tile = xtile.extract %lhs_1[%offset, %offset][8, 16][1, 1] : memref<8x16xf32> -> tensor<8x16xf32>
-          %add_lhs = arith.addf %lhs_0_tile, %lhs_1_tile : tensor<8x16xf32>
-          %rhs_tile = xtile.extract %rhs[%offset, %offset][16, 1][1, 1] : memref<16x1xf32> -> tensor<16xf32>
-          %result = stablehlo.dot_general %add_lhs, %rhs_tile, contracting_dims = [1] x [0] : (tensor<8x16xf32>, tensor<16xf32>) -> tensor<8xf32>
-          %tanh_result = math.tanh %result : tensor<8xf32>
-          xtile.insert %tanh_result into %output[%offset, %offset][8, 1][1, 1] : tensor<8xf32> -> memref<8x1xf32>
-          xtile.return
-        }
-      }
-    """
-
-    compare_kernel(
-        ir,
-        "dot_fusion_single_tile",
-        1,
-        [
-            InputSpec((8, 16)),
-            InputSpec((8, 16)),
-            InputSpec((16, 1)),
-        ],
-        (8, 1),
-        np.float32,
-        lambda lhs_0, lhs_1, rhs: np.tanh((lhs_0 + lhs_1) @ rhs),
-        maxulp=5,
-    )
-
   def test_reduction_add_inner(self):
     ir = """
       module @reduction_add_inner {
@@ -795,7 +700,7 @@ class OpsWithUnsignedIntegersTest(parameterized.TestCase):
       #indexing_map = #xla.indexing_map<"(pid_0) -> (pid_0 * 16), domain: pid_0 in [0, 9]">
       module {
         xtile.entry_func @complex_constant_test(%arg0: memref<150xcomplex<f32>>, %arg1: index) {
-          %c = stablehlo.constant dense<(1.5, 2.5)> : tensor<16xcomplex<f32>>
+          %c = arith.constant dense<(1.5, 2.5)> : tensor<16xcomplex<f32>>
           %0 = xla.apply_indexing #indexing_map(%arg1)
           xtile.insert %c into %arg0[%0] [16] [1] : tensor<16xcomplex<f32>> -> memref<150xcomplex<f32>>
           xtile.return

@@ -26,67 +26,6 @@ def LowerXTileEntryPass : Pass<"xtile-cpu-lower-xtile-entry", "mlir::ModuleOp"> 
     "xla::xtile::XTileDialect"
   ];
 }
-
-def ShloToVectorPass : Pass<"xtile-cpu-shlo-to-vector", "mlir::ModuleOp"> {
-  let summary = "Lowering satble hlo ops to vector ops";
-
-  let dependentDialects = [
-    "mlir::arith::ArithDialect",
-    "mlir::bufferization::BufferizationDialect",
-    "mlir::memref::MemRefDialect",
-    "mlir::scf::SCFDialect",
-    "mlir::stablehlo::StablehloDialect",
-    "mlir::tensor::TensorDialect",
-    "mlir::vector::VectorDialect",
-  ];
-}
-
-def LinalgElementwiseToVectorPass : Pass<"xtile-cpu-linalg-elementwise-to-vector",
-                                       "mlir::ModuleOp"> {
-  let summary = "Convert elementwise linalg ops to vector ops";
-
-  let dependentDialects = [
-    "mlir::arith::ArithDialect",
-    "mlir::scf::SCFDialect",
-    "mlir::vector::VectorDialect",
-  ];
-}
-
-def TensorOpsToBufferizablePass : Pass<"xtile-cpu-tensor-ops-to-bufferizable",
-                                 "mlir::ModuleOp"> {
-  let summary = "Lowering tensor dialect ops to bufferizable ops";
-
-  let description = [{
-    Some tensor ops such as bitcast are not directly bufferizable. This pass
-    lowers such ops to ops that have bufferization support.
-  }];
-
-  let dependentDialects = [
-    "mlir::arith::ArithDialect",
-  ];
-}
-
-
-def MemrefCopyToLoopsPass : Pass<"xtile-cpu-memref-copy-to-loops",
-                                 "mlir::ModuleOp"> {
-  let summary = "Rewrite mmeref.copy to loops.";
-
-  let dependentDialects = [
-    "::mlir::scf::SCFDialect",
-    "::mlir::memref::MemRefDialect",
-  ];
-}
-
-def FuseElementwisePass : Pass<"xtile-cpu-fuse-elementwise"> {
-  let summary = "Fuse linalg elementwise ops.";
-
-  let description = [{
-    This pass fuses multiple linalg elementwise ops into linalg elementwise ops
-    that contain multiple instructions. This allows for fewer matrializations
-    and fewer temporary allocations in bufferization.
-  }];
-}
-
 def VectorToScalarPass : Pass<"xtile-cpu-vector-to-scalar"> {
   let summary = "Convert vector ops to scalar ops where possible.";
 
@@ -99,7 +38,6 @@ def VectorToScalarPass : Pass<"xtile-cpu-vector-to-scalar"> {
     "::mlir::vector::VectorDialect",
   ];
 }
-
 
 def UnpackSubByteVectorWritePass : Pass<"xtile-cpu-unpack-sub-byte-vector-write"> {
   let summary = "Unpacks sub-byte vector writes.";
@@ -115,34 +53,6 @@ def UnpackSubByteVectorWritePass : Pass<"xtile-cpu-unpack-sub-byte-vector-write"
   let dependentDialects = [
     "::mlir::memref::MemRefDialect",
     "::mlir::scf::SCFDialect",
-  ];
-}
-
-def InitializeAllocsPass : Pass<"xtile-cpu-initialize-allocs"> {
-  let summary = "Initializes allocations.";
-
-  let description = [{
-    We don't currently have the infrastructure to instrument JIT kernels fully
-    with msan, therefore to avoid false positives we initialize all allocated
-    memory to set values.
-
-    Integer values will be initialized with all high bits and floats with NaNs.
-
-    This pass will also add a call to __msan_unpoison for each allocation as
-    optimizations can remove the set values.
-  }];
-
-  let dependentDialects = [
-    "mlir::arith::ArithDialect",
-    "::mlir::scf::SCFDialect",
-    "::mlir::LLVM::LLVMDialect",
-  ];
-}
-
-def HoistAllocaPass : Pass<"xtile-cpu-hoist-alloca", "mlir::func::FuncOp"> {
-  let summary = "Hoist memref.alloca ops to the entry block of the function.";
-  let dependentDialects = [
-    "::mlir::memref::MemRefDialect"
   ];
 }
 

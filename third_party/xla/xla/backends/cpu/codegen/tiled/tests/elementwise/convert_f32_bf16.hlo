@@ -1,22 +1,17 @@
-// RUN: fusion_to_xtile %s | fusion_compiler_opt --xtile-cpu-xtile-to-vector \
-// RUN:   --xtile-cpu-vector-to-llvm | FileCheck %s --check-prefix=CHECK-LLVM
-// RUN: test_correctness %s
-
 // RUN: fusion_to_xtile %s | fusion_compiler_opt \
-// RUN:   --xtile-cpu-new-xtile-to-vector --xtile-cpu-new-vector-to-llvm \
-// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR-LLVM
-// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering=true
+// RUN:   --xtile-cpu-vector-to-llvm \
+// RUN:   | FileCheck %s --check-prefix=CHECK-LLVM
+// RUN: test_correctness %s
 
 fusion {
   p0 = f32[1, 16] parameter(0)
   ROOT convert = bf16[1, 16] convert(p0)
 }
-// CHECK-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
 
-// NEW-VECTOR-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
-// NEW-VECTOR-LLVM:         %[[LOAD:.*]] = llvm.load %{{.*}} {alignment = 4 : i64} : !llvm.ptr -> vector<16xf32>
-// NEW-VECTOR-LLVM-COUNT-2:   llvm.call @xla.fptrunc.v8f32.to.v8bf16(%{{.*}}) : (vector<8xf32>) -> vector<8xbf16>
-// NEW-VECTOR-LLVM:         llvm.store %{{.*}}, %{{.*}} {alignment = 2 : i64} : vector<16xbf16>, !llvm.ptr
+// CHECK-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
+// CHECK-LLVM:         %[[LOAD:.*]] = llvm.load %{{.*}} {alignment = 4 : i64} : !llvm.ptr -> vector<16xf32>
+// CHECK-LLVM-COUNT-2:   llvm.call @xla.fptrunc.v8f32.to.v8bf16(%{{.*}}) : (vector<8xf32>) -> vector<8xbf16>
+// CHECK-LLVM:         llvm.store %{{.*}}, %{{.*}} {alignment = 2 : i64} : vector<16xbf16>, !llvm.ptr
 
 ENTRY main {
   p0 = f32[1, 16] parameter(0)

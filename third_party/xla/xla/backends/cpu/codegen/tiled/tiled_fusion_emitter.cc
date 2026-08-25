@@ -256,8 +256,7 @@ bool HasComplexType(const HloInstruction& inst) {
   return false;
 }
 
-bool IsSupportedInstruction(const HloInstruction& inst,
-                            bool use_new_xtile_lowering) {
+bool IsSupportedInstruction(const HloInstruction& inst) {
   HloOpcode opcode = inst.opcode();
   switch (opcode) {
     case HloOpcode::kConvert: {
@@ -357,8 +356,7 @@ absl::Status VerifyTensorRanks(const HloFusionInstruction& fusion) {
   return absl::OkStatus();
 }
 
-absl::Status IsSupportedTiledFusion(const HloFusionInstruction& fusion,
-                                    bool use_new_xtile_lowering) {
+absl::Status IsSupportedTiledFusion(const HloFusionInstruction& fusion) {
   // TODO(willfroom): Support multi-output fusions.
   if (!fusion.shape().IsArray()) {
     return Internal(
@@ -377,7 +375,7 @@ absl::Status IsSupportedTiledFusion(const HloFusionInstruction& fusion,
           "tiled CPU emitter.",
           inst->ToString());
     }
-    if (!IsSupportedInstruction(*inst, use_new_xtile_lowering)) {
+    if (!IsSupportedInstruction(*inst)) {
       return Internal(
           "Instruction %s is not supported by the tiled CPU emitter.",
           inst->ToString());
@@ -445,10 +443,6 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
 
   // 2. Evaluate all candidates by substituting concrete tile sizes into the
   // symbolic tiles of roots and operands.
-  bool use_new_xtile_lowering = fusion.GetModule()
-                                    ->config()
-                                    .debug_options()
-                                    .xla_cpu_use_new_xtile_lowering();
   TargetMachineOptions target_machine_options(
       fusion.GetModule()->config().debug_options());
   bool has_avx512 = absl::c_any_of(
@@ -476,9 +470,8 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
   evaluated_candidates.reserve(candidates.size());
   for (const auto& tile_sizes : candidates) {
     auto padded_tile_sizes = xla::xtile::GetPaddedTileSizes(tile_sizes);
-    // For the new tiling lowering, we skip large tiles, because we tile to the
-    // vector level.
-    if (!block_level_parameters.has_value() && use_new_xtile_lowering &&
+    // We skip large tiles, because we tile to the vector level.
+    if (!block_level_parameters.has_value() &&
         (Product(padded_tile_sizes) > 512 ||
          llvm::any_of(padded_tile_sizes, [max_vector_tile_size](int64_t size) {
            return size > max_vector_tile_size;
@@ -581,15 +574,10 @@ TiledEmissionResult EmitTiledFusionKernel(
     int64_t num_work_groups,
     std::optional<BlockLevelParameters> block_level_parameters) {
   VLOG(2) << "EmitTiledFusionKernel called for fusion: " << fusion.name();
-  bool use_new_xtile_lowering = fusion.GetModule()
-                                    ->config()
-                                    .debug_options()
-                                    .xla_cpu_use_new_xtile_lowering();
   // If the block level params are set, we assume that the caller has already
   // verified that the fusion is supported by the tiled emitter.
   if (!block_level_parameters.has_value()) {
-    auto supported_status =
-        IsSupportedTiledFusion(fusion, use_new_xtile_lowering);
+    auto supported_status = IsSupportedTiledFusion(fusion);
     VLOG(2) << "  IsSupportedTiledFusion: " << supported_status;
     if (!supported_status.ok()) {
       return {absl::UnimplementedError(

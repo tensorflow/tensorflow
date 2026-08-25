@@ -1,13 +1,10 @@
 // RUN: fusion_to_xtile %s | fusion_compiler_opt --canonicalize -cse \
 // RUN:   | FileCheck %s
-// RUN: fusion_to_xtile %s | fusion_compiler_opt --xtile-cpu-xtile-to-vector \
-// RUN:   | FileCheck %s --check-prefix=CHECK-VECTOR
-// RUN: test_correctness %s
 
 // RUN: fusion_to_xtile %s | fusion_compiler_opt \
-// RUN:   --xtile-cpu-new-xtile-to-vector --xla-simplify-arith \
-// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
-// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering=true
+// RUN:   --xtile-cpu-xtile-to-vector --xla-simplify-arith \
+// RUN:   | FileCheck %s --check-prefix=CHECK-VECTOR
+// RUN: test_correctness %s
 
 fusion {
   p0 = pred[128,256] parameter(0)
@@ -32,19 +29,16 @@ fusion {
 // CHECK:       arith.select {{.*}}, %[[T_1]], %[[T_2]]
 
 // CHECK-VECTOR-LABEL: func.func @wrapped_fusion_impl(
-// CHECK-VECTOR:   arith.select
+// CHECK-VECTOR-SAME:    %[[COND:[^:]+]]: memref<128x256xi8>,
+// CHECK-VECTOR-SAME:    %[[ON_TRUE:[^:]+]]: memref<128x256x2xf32>,
+// CHECK-VECTOR-SAME:    %[[ON_FALSE:[^:]+]]: memref<128x256x2xf32>,
+// CHECK-VECTOR-SAME:    %[[OUT:[^:]+]]: memref<128x256x2xf32>,
+// CHECK-VECTOR-SAME:    %[[PID:[^:]+]]: index)
 
-// NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl(
-// NEW-VECTOR-SAME:    %[[COND:[^:]+]]: memref<128x256xi8>,
-// NEW-VECTOR-SAME:    %[[ON_TRUE:[^:]+]]: memref<128x256x2xf32>,
-// NEW-VECTOR-SAME:    %[[ON_FALSE:[^:]+]]: memref<128x256x2xf32>,
-// NEW-VECTOR-SAME:    %[[OUT:[^:]+]]: memref<128x256x2xf32>,
-// NEW-VECTOR-SAME:    %[[PID:[^:]+]]: index)
-
-// NEW-VECTOR:       vector.transfer_read %[[COND]]
-// NEW-VECTOR:       vector.transfer_read %[[ON_TRUE]]
-// NEW-VECTOR:       vector.transfer_read %[[ON_FALSE]]
-// NEW-VECTOR:       arith.select
+// CHECK-VECTOR:       vector.transfer_read %[[COND]]
+// CHECK-VECTOR:       vector.transfer_read %[[ON_TRUE]]
+// CHECK-VECTOR:       vector.transfer_read %[[ON_FALSE]]
+// CHECK-VECTOR:       arith.select
 
 ENTRY main {
   p0 = pred[128,256] parameter(0)

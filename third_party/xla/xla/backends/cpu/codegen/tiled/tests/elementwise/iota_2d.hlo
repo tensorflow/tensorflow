@@ -1,18 +1,13 @@
 // RUN: fusion_to_xtile %s | fusion_compiler_opt --canonicalize -cse \
 // RUN:   | FileCheck %s
-// RUN: fusion_to_xtile %s | fusion_compiler_opt --xtile-cpu-xtile-to-vector \
-// RUN:   | FileCheck %s --check-prefix=CHECK-VECTOR
-// RUN: fusion_to_xtile %s | fusion_compiler_opt --xtile-cpu-xtile-to-vector \
-// RUN:   --xtile-cpu-vector-to-llvm | FileCheck %s --check-prefix=CHECK-LLVM
-// RUN: test_correctness %s
 
 // RUN: fusion_to_xtile %s | fusion_compiler_opt \
-// RUN:   --xtile-cpu-new-xtile-to-vector --xla-simplify-arith \
-// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
+// RUN:   --xtile-cpu-xtile-to-vector --xla-simplify-arith \
+// RUN:   | FileCheck %s --check-prefix=CHECK-VECTOR
 // RUN: fusion_to_xtile %s | fusion_compiler_opt \
-// RUN:   --xtile-cpu-new-xtile-to-vector --xtile-cpu-new-vector-to-llvm \
-// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR-LLVM
-// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering=true
+// RUN:   --xtile-cpu-vector-to-llvm \
+// RUN:   | FileCheck %s --check-prefix=CHECK-LLVM
+// RUN: test_correctness %s
 
 fusion {
   ROOT iota = f32[128,256] iota(), iota_dimension=1
@@ -40,20 +35,8 @@ ENTRY main {
 
 // CHECK-VECTOR-LABEL: func.func @wrapped_fusion_impl
 // CHECK-VECTOR:         %[[SITOFP:.*]] = arith.sitofp %{{.*}} : vector<4xi32> to vector<4xf32>
-// CHECK-VECTOR:         vector.transfer_write %[[SITOFP]], %{{.*}} : vector<4xf32>, memref<4xf32>
-// CHECK-VECTOR:         %[[BCAST:.*]] = vector.broadcast %{{.*}} : vector<4xf32> to vector<8x4xf32>
-// CHECK-VECTOR:         vector.transfer_write %[[BCAST]], %{{.*}} : vector<8x4xf32>, memref<8x4xf32>
+// CHECK-VECTOR:         %[[BCAST:.*]] = vector.broadcast %[[SITOFP]] : vector<4xf32> to vector<8x4xf32>
+// CHECK-VECTOR:         vector.transfer_write %[[BCAST]], %{{.*}} : vector<8x4xf32>, memref<128x256xf32>
 
 // CHECK-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
-// CHECK-LLVM:         %[[SITOFP:.*]] = llvm.sitofp %{{.*}} : vector<4xi32> to vector<4xf32>
-// CHECK-LLVM:         llvm.store %[[SITOFP]], %{{.*}} : vector<4xf32>, !llvm.ptr
-// CHECK-LLVM:         %[[BCAST:.*]] = llvm.insertvalue %{{.*}}[7] : !llvm.array<8 x vector<4xf32>>
-// CHECK-LLVM:         llvm.store %[[BCAST]], %{{.*}} : !llvm.array<8 x vector<4xf32>>, !llvm.ptr
-
-// NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl
-// NEW-VECTOR:         %[[SITOFP:.*]] = arith.sitofp %{{.*}} : vector<4xi32> to vector<4xf32>
-// NEW-VECTOR:         %[[BCAST:.*]] = vector.broadcast %[[SITOFP]] : vector<4xf32> to vector<8x4xf32>
-// NEW-VECTOR:         vector.transfer_write %[[BCAST]], %{{.*}} : vector<8x4xf32>, memref<128x256xf32>
-
-// NEW-VECTOR-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
-// NEW-VECTOR-LLVM-NOT: llvm.alloc
+// CHECK-LLVM-NOT: llvm.alloc

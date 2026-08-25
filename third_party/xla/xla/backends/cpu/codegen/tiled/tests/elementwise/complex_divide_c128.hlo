@@ -1,5 +1,5 @@
 // RUN: test_correctness %s --abs_error_bound=1e-4
-// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering=true --abs_error_bound=1e-4
+// RUN: test_correctness %s --abs_error_bound=1e-4
 
 fusion {
   p0 = c128[128,256] parameter(0)
@@ -22,15 +22,15 @@ fusion {
 // CHECK-VECTOR-LABEL: func.func @wrapped_fusion_impl(
 // CHECK-VECTOR:   arith.divf
 
-// NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl(
-// NEW-VECTOR-SAME:    %[[LHS:[^:]+]]: memref<128x256x2xf64>,
-// NEW-VECTOR-SAME:    %[[RHS:[^:]+]]: memref<128x256x2xf64>,
-// NEW-VECTOR-SAME:    %[[OUT:[^:]+]]: memref<128x256x2xf64>,
-// NEW-VECTOR-SAME:    %[[PID:[^:]+]]: index)
+// CHECK-VECTOR-LABEL: func.func @wrapped_fusion_impl(
+// CHECK-VECTOR-SAME:    %[[LHS:[^:]+]]: memref<128x256x2xf64>,
+// CHECK-VECTOR-SAME:    %[[RHS:[^:]+]]: memref<128x256x2xf64>,
+// CHECK-VECTOR-SAME:    %[[OUT:[^:]+]]: memref<128x256x2xf64>,
+// CHECK-VECTOR-SAME:    %[[PID:[^:]+]]: index)
 
-// NEW-VECTOR:       vector.transfer_read %[[LHS]]
-// NEW-VECTOR:       vector.transfer_read %[[RHS]]
-// NEW-VECTOR:       arith.divf
+// CHECK-VECTOR:       vector.transfer_read %[[LHS]]
+// CHECK-VECTOR:       vector.transfer_read %[[RHS]]
+// CHECK-VECTOR:       arith.divf
 
 ENTRY main {
   p0 = c128[128,256] parameter(0)
