@@ -314,18 +314,27 @@ class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               input=inp, weights=[], size=size, binary_output=True))
     self.assertAllEqual(expected_out, out)
 
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
   @test_util.run_gpu_only
-  def test_col_reduce_shared_memory_with_negative_input(self):
+  def test_col_reduce_shared_memory_with_negative_input(self, dtype):
     # num_rows * size small enough to select BincountColReduceSharedKernel,
     # matching test_col_reduce_shared_memory below.
-    self._test_bincount_col_binary_with_negative_input(128, 27, 10, np.int32)
+    self._test_bincount_col_binary_with_negative_input(128, 27, 10, dtype)
 
+  @parameterized.parameters([{
+      "dtype": np.int32,
+  }, {
+      "dtype": np.int64,
+  }])
   @test_util.run_gpu_only
-  def test_col_reduce_global_memory_with_negative_input(self):
+  def test_col_reduce_global_memory_with_negative_input(self, dtype):
     # num_rows * size large enough to select BincountColReduceKernel,
     # matching test_col_reduce_global_memory below.
-    self._test_bincount_col_binary_with_negative_input(
-        128, 27, 1024, np.int32)
+    self._test_bincount_col_binary_with_negative_input(128, 27, 1024, dtype)
 
   def _test_bincount_col_count(self, num_rows, num_cols, size, dtype):
     np.random.seed(42)
