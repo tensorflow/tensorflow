@@ -221,7 +221,7 @@ def _needs_no_arguments(python_callable):
     if param.kind in (tf_inspect.Parameter.POSITIONAL_ONLY,
                       tf_inspect.Parameter.POSITIONAL_OR_KEYWORD,
                       tf_inspect.Parameter.KEYWORD_ONLY):
-      if param.default == tf_inspect.Parameter.empty:
+      if param.default is tf_inspect.Parameter.empty:
         return False
   return True
 
