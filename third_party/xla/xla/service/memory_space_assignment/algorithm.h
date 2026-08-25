@@ -392,6 +392,32 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
 
   absl::StatusOr<HeapSimulator::Result<HloValue>> Finish() override;
 
+  // Given an allocation sequence and an HloValue, returns the live allocation
+  // for that HloValue/HloBuffer at time with a preference towards allocations
+  // in alternate memory. Returns nullptr if no allocation for that HloValue is
+  // alive at that time.
+  Allocation* GetLiveAllocationForHloValueAt(
+      const AllocationSequence& allocations, const HloValue& hlo_value,
+      int64_t time) const;
+
+  // Given an AllocationValue, returns the live allocation for that
+  // AllocationValue at time with a preference towards allocations in alternate
+  // memory.
+  Allocation* GetLiveAllocationForHloValueAt(
+      const AllocationValue& allocation_value, int64_t time) const;
+
+  // Static overload that accepts an explicit HloAliasAnalysis for looking up
+  // buffer aliasing.
+  static Allocation* GetLiveAllocationForHloValueAt(
+      const AllocationSequence& allocations, const HloValue& hlo_value,
+      int64_t time, const HloAliasAnalysis& alias_analysis);
+
+  // Given an allocation sequence, returns the live allocation at time with a
+  // preference towards allocations in alternate memory. Returns nullptr if no
+  // allocation is alive at that time.
+  static Allocation* GetLiveAllocationAt(const AllocationSequence& allocations,
+                                         int64_t time);
+
   // Block prefetching is an MSA feature that allows processing all prefetches
   // in one pass within a block of memory space in the alternate memory. This
   // guarantees FIFO ordering of all prefetches and allows for more aggressive
@@ -1012,12 +1038,6 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // to ensure exact colocation across loop parameters, body roots, and callers.
   void RecordAliasedOffsetForAsyncPipelinedWhileLoop(
       const HloPosition& position, AliasedOffset* aliased_offset);
-
-  // Given an allocation sequence, returns the live allocation at time with a
-  // preference towards allocations in alternate memory. Returns nullptr if no
-  // allocation is alive at that time.
-  static Allocation* GetLiveAllocationAt(const AllocationSequence& allocations,
-                                         int64_t time);
 
   // Returns true if the use is allowed in the alternate memory (hard
   // constraints).

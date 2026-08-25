@@ -6280,7 +6280,7 @@ bool MsaAlgorithm::TryUpdateAllocationRequirementForUseAliases(
     const AllocationValue& allocation_value, const AllocationValue::Use& use,
     int64_t use_time) {
   Allocation* aliased_allocation =
-      GetLiveAllocationAt(*allocation_value.allocation_sequence(), use_time);
+      GetLiveAllocationForHloValueAt(allocation_value, use_time);
   VLOG(4) << "Aliased allocation at time " << use_time << ": "
           << (aliased_allocation ? aliased_allocation->ToString()
                                  : "couldn't find the aliased allocation");
@@ -6364,8 +6364,9 @@ void MsaAlgorithm::MaybeCreateMirroredParentAllocationForWhileUse(
   }
 
   Allocation* aliased_allocation =
-      GetLiveAllocationAt(*allocation_value.allocation_sequence(), use_time);
-  if (aliased_allocation->memory_space() != MemorySpace::kAlternate) {
+      GetLiveAllocationForHloValueAt(allocation_value, use_time);
+  if (aliased_allocation == nullptr ||
+      aliased_allocation->memory_space() != MemorySpace::kAlternate) {
     return;
   }
 
@@ -7174,6 +7175,77 @@ void MsaAlgorithm::RecordAliasedOffsetForAsyncPipelinedWhileLoop(
     pipelined_while_buffer_id_to_aliased_offset_[hlo_buffer.id()] =
         aliased_offset;
   }
+}
+
+/*static*/ Allocation* MsaAlgorithm::GetLiveAllocationForHloValueAt(
+    const AllocationSequence& allocations, const HloValue& hlo_value,
+    int64_t time, const HloAliasAnalysis& alias_analysis) {
+  const HloPosition target_pos = hlo_value.defining_position();
+  const int64_t target_buffer_id =
+      target_pos.instruction != nullptr
+          ? alias_analysis
+                .GetUniqueBufferAt(target_pos.instruction, target_pos.index)
+                .id()
+          : -1;
+
+  for (auto allocation_it = allocations.rbegin();
+       allocation_it != allocations.rend(); ++allocation_it) {
+    // The use case of GetLiveAllocationForHloValueAt is to find the allocation
+    // that corresponds to the buffer of the specific HloValue/HloBuffer. Window
+    // prefetched allocations allocate only partial buffers, and allocations
+    // belonging to a different buffer/HloValue (such as copy allocations for
+    // slices, dynamic slices, or successful sync data movement conversions) are
+    // filtered out.
+    if ((*allocation_it)->start_time() <= time &&
+        (*allocation_it)->end_time() >= time &&
+        !(*allocation_it)->is_window_prefetched_allocation()) {
+      HloPosition alloc_pos = (*allocation_it)->defining_position();
+      if ((*allocation_it)->is_copy_allocation()) {
+        const auto* copy_alloc =
+            dynamic_cast<const CopyAllocation*>(allocation_it->get());
+        if (copy_alloc != nullptr && copy_alloc->sync_mem_op() != nullptr) {
+          alloc_pos = HloPosition{
+              const_cast<HloInstruction*>(copy_alloc->sync_mem_op()), {}};
+        }
+      } else if ((*allocation_it)->is_sliced_copy_allocation()) {
+        const auto* sliced_copy_alloc =
+            dynamic_cast<const SlicedCopyAllocation*>(allocation_it->get());
+        if (sliced_copy_alloc != nullptr &&
+            sliced_copy_alloc->sync_mem_op() != nullptr) {
+          alloc_pos = HloPosition{
+              const_cast<HloInstruction*>(sliced_copy_alloc->sync_mem_op()),
+              {}};
+        }
+      }
+
+      if (alloc_pos == target_pos) {
+        return allocation_it->get();
+      }
+
+      if (alloc_pos.instruction != nullptr && target_buffer_id != -1) {
+        if (alias_analysis
+                .GetUniqueBufferAt(alloc_pos.instruction, alloc_pos.index)
+                .id() == target_buffer_id) {
+          return allocation_it->get();
+        }
+      }
+    }
+  }
+  return nullptr;
+}
+
+Allocation* MsaAlgorithm::GetLiveAllocationForHloValueAt(
+    const AllocationSequence& allocations, const HloValue& hlo_value,
+    int64_t time) const {
+  return GetLiveAllocationForHloValueAt(allocations, hlo_value, time,
+                                        alias_analysis_);
+}
+
+Allocation* MsaAlgorithm::GetLiveAllocationForHloValueAt(
+    const AllocationValue& allocation_value, int64_t time) const {
+  return GetLiveAllocationForHloValueAt(*allocation_value.allocation_sequence(),
+                                        *allocation_value.value(), time,
+                                        alias_analysis_);
 }
 
 /*static*/ Allocation* MsaAlgorithm::GetLiveAllocationAt(
@@ -8536,9 +8608,9 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
   // consumed multiple times by the same instruction. We can just find the
   // previous allocation and use that allocation.
   if (request.inclusive_start_time == request.end_time) {
-    Allocation* allocation = GetLiveAllocationAt(
+    Allocation* allocation = GetLiveAllocationForHloValueAt(
         *request.allocation_value_to_update->mutable_allocation_sequence(),
-        request.end_time);
+        *request.allocation_value_to_update->value(), request.end_time);
     CHECK_NE(allocation, nullptr);
     allocation->AddUse(request.use->hlo_use);
     return AllocationResult::kSuccess;
@@ -10487,7 +10559,7 @@ std::optional<MsaAlgorithm::Chunk> MsaAlgorithm::FindBestChunkCandidate(
   std::vector<Chunk> chunks = FindBestChunkCandidates(request, preferred_offset,
                                                       &sliced_buffer_interval);
   CHECK_LE(chunks.size(), 1);
-  if (chunks.empty() || chunks[0].chunk_end() > options_.max_size_in_bytes) {
+  if (chunks.empty()) {
     return std::nullopt;
   }
   return chunks[0];
@@ -10527,6 +10599,9 @@ std::vector<MsaAlgorithm::Chunk> MsaAlgorithm::FindBestChunkCandidates(
           alternate_mem_interval->UpdateEndTime(use);
           std::vector<Chunk> chunk_candidates =
               FindChunkCandidates(*alternate_mem_interval);
+          if (chunk_candidates.empty()) {
+            return false;
+          }
           int64_t max_chunk_end =
               absl::c_max_element(chunk_candidates, [](const Chunk& c1,
                                                        const Chunk& c2) {
@@ -10560,6 +10635,9 @@ std::vector<MsaAlgorithm::Chunk> MsaAlgorithm::FindBestChunkCandidates(
   alternate_mem_interval->UpdateEndTime(end_time);
   std::vector<Chunk> chunk_candidates =
       FindChunkCandidates(*alternate_mem_interval, preferred_offset->offset);
+  if (chunk_candidates.empty()) {
+    return {};
+  }
   int64_t candidates_start =
       absl::c_min_element(chunk_candidates, [](const Chunk& c1,
                                                const Chunk& c2) {
