@@ -142,6 +142,14 @@ class RGBToYIQTest(test_util.TensorFlowTestCase):
       self.assertAllClose(batch2, join2, rtol=1e-4, atol=1e-4)
       self.assertAllClose(batch2, inp, rtol=1e-4, atol=1e-4)
 
+  def testRejectsScalar(self):
+    # A scalar has no channel dimension to convert. Without a check this fails
+    # with an IndexError from inside tensordot.
+    err_msg = "must be at least one-dimensional"
+    for fn in [image_ops.rgb_to_yiq, image_ops.yiq_to_rgb]:
+      with self.assertRaisesRegex(ValueError, err_msg):
+        fn(constant_op.constant(2.0))
+
 
 class RGBToYUVTest(test_util.TensorFlowTestCase):
 
@@ -173,6 +181,12 @@ class RGBToYUVTest(test_util.TensorFlowTestCase):
       self.assertAllClose(batch1, join1, rtol=1e-4, atol=1e-4)
       self.assertAllClose(batch2, join2, rtol=1e-4, atol=1e-4)
       self.assertAllClose(batch2, inp, rtol=1e-4, atol=1e-4)
+
+  def testRejectsScalar(self):
+    err_msg = "must be at least one-dimensional"
+    for fn in [image_ops.rgb_to_yuv, image_ops.yuv_to_rgb]:
+      with self.assertRaisesRegex(ValueError, err_msg):
+        fn(constant_op.constant(2.0))
 
 
 class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
@@ -268,6 +282,11 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
       err_msg = "must be at least two-dimensional"
       with self.assertRaisesRegex(ValueError, err_msg):
         image_ops.grayscale_to_rgb(x_tf)
+
+  def testRGBToGrayscaleRejectsScalar(self):
+    err_msg = "must be at least one-dimensional"
+    with self.assertRaisesRegex(ValueError, err_msg):
+      image_ops.rgb_to_grayscale(constant_op.constant(2.0))
 
   def testShapeInference(self):
     # Shape function requires placeholders and a graph.
