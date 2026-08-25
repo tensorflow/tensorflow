@@ -128,6 +128,9 @@ class MajorToMinorIter {
 // For example, when `dim_shards` is {2, 3}, the result is
 //   {0, 0}, {0, 1}, {0, 2}, {1, 0}, {1, 1}, {1, 2}
 std::vector<Index> GetTileIndices(absl::Span<const int64_t> dim_shards) {
+  if (dim_shards.empty()) {
+    return {Index({})};
+  }
   std::vector<std::vector<int64_t>> indices;
   indices.reserve(dim_shards.size());
   for (const int64_t dim_shard : dim_shards) {

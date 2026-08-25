@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.115
+
+*   Added `PJRT_Extension_Type_Rma` and `PJRT_Rma_Extension` C API for Remote Memory Access (RMA).
+
 ## 0.114
 
 *   Added types F6E2M3FN and F6E3M2FN.
