@@ -937,7 +937,13 @@ def retrieve_clang_version(clang_executable):
 # offset of in the current version of ubp. See
 # https://github.com/protocolbuffers/upb/blob/9effcbcb27f0a665f9f345030188c0b291e32482/upb/upb.c#L183.
 def disable_clang_offsetof_extension(clang_version):
-  if int(clang_version.split('.')[0]) in (16, 17):
+  if not clang_version:
+    return
+  try:
+    clang_major_version = int(clang_version.split('.')[0])
+  except ValueError:
+    return
+  if clang_major_version in (16, 17):
     write_to_bazelrc('build --copt=-Wno-gnu-offsetof-extensions')
 
 
