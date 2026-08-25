@@ -3485,13 +3485,13 @@ xla_test(
     name = "batch_norm_training_test",
     srcs = ["batch_norm_training_test.cc"],
     deps = [
-        ":hlo_pjrt_test_base",
+        ":hlo_test_base",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:literal_util",
         "//xla/hlo/testlib:test",
         "//xla/tests:xla_test_backend_predicates",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest",
     ],
 )
 
