@@ -15,10 +15,22 @@ limitations under the License.
 
 #include "tensorflow/c/c_test_util.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <initializer_list>
+#include <utility>
+#include <vector>
+
+#include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
 #include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/public/session_options.h"
