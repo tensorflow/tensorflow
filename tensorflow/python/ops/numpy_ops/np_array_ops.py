@@ -735,10 +735,7 @@ def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: d
       if input_tensor.dtype in (dtypes.complex64, dtypes.complex128):
         # The variance of a complex tensor is real; keep the real dtype like
         # math_ops.reduce_variance and NumPy do.
-        centered = math_ops.cast(
-            math_ops.real(centered * math_ops.conj(centered)),
-            input_tensor.dtype.real_dtype,
-        )
+        centered = math_ops.real(centered * math_ops.conj(centered))
       else:
         centered = math_ops.square(centered)
       squared_deviations = math_ops.reduce_sum(
