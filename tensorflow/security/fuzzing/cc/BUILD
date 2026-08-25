@@ -281,7 +281,6 @@ tf_cc_fuzz_test(
     ],
 )
 
-# Add to tensorflow/security/fuzzing/cc/BUILD
 tf_cc_fuzz_test(
     name = "tflite_readvar_fuzz",
     srcs = [

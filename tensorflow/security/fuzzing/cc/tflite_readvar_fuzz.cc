@@ -39,11 +39,13 @@ limitations under the License.
 namespace {
 
 void FuzzTfliteReadvar(const std::vector<int32_t>& dims, uint32_t value_bits) {
-  std::unique_ptr<tflite::FlatBufferModel> model =
-      tflite::FlatBufferModel::VerifyAndBuildFromBuffer(
-          reinterpret_cast<const char*>(kCleanReadvarShrinkModel),
-          kCleanReadvarShrinkModelLen);
-  if (!model) return;  // Model is fixed/clean, but guard anyway.
+  static const tflite::FlatBufferModel* const model = []() {
+    return tflite::FlatBufferModel::VerifyAndBuildFromBuffer(
+               reinterpret_cast<const char*>(kCleanReadvarShrinkModel),
+               kCleanReadvarShrinkModelLen)
+        .release();
+  }();
+  if (!model) return;
 
   tflite::ops::builtin::BuiltinOpResolver resolver;
   std::unique_ptr<tflite::Interpreter> interpreter;

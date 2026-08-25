@@ -36,11 +36,13 @@ namespace {
 
 void FuzzTfliteRuntimeInput(const std::vector<int32_t>& seq_lengths,
                             const std::vector<float>& input_vals) {
-  std::unique_ptr<tflite::FlatBufferModel> model =
-      tflite::FlatBufferModel::VerifyAndBuildFromBuffer(
-          reinterpret_cast<const char*>(kCleanRevSeqModel),
-          kCleanRevSeqModelLen);
-  if (!model) return;  // Model is fixed/clean, but guard anyway.
+  static const tflite::FlatBufferModel* const model = []() {
+    return tflite::FlatBufferModel::VerifyAndBuildFromBuffer(
+               reinterpret_cast<const char*>(kCleanRevSeqModel),
+               kCleanRevSeqModelLen)
+        .release();
+  }();
+  if (!model) return;
 
   tflite::ops::builtin::BuiltinOpResolver resolver;
   std::unique_ptr<tflite::Interpreter> interpreter;

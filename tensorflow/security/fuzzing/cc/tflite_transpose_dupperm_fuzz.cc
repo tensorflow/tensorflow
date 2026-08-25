@@ -39,11 +39,13 @@ namespace {
 
 void FuzzTfliteTransposeDupPerm(const std::vector<int32_t>& perm,
                                 const std::vector<uint8_t>& input_bytes) {
-  std::unique_ptr<tflite::FlatBufferModel> model =
-      tflite::FlatBufferModel::VerifyAndBuildFromBuffer(
-          reinterpret_cast<const char*>(kCleanTransposeInt4DupPermModel),
-          kCleanTransposeInt4DupPermModelLen);
-  if (!model) return;  // Model is fixed/clean, but guard anyway.
+  static const tflite::FlatBufferModel* const model = []() {
+    return tflite::FlatBufferModel::VerifyAndBuildFromBuffer(
+               reinterpret_cast<const char*>(kCleanTransposeInt4DupPermModel),
+               kCleanTransposeInt4DupPermModelLen)
+        .release();
+  }();
+  if (!model) return;
 
   tflite::ops::builtin::BuiltinOpResolver resolver;
   std::unique_ptr<tflite::Interpreter> interpreter;

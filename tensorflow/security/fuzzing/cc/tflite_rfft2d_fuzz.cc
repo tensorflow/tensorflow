@@ -41,11 +41,13 @@ namespace {
 
 void FuzzTfliteRfft2d(const std::vector<int32_t>& fft_length,
                       const std::vector<uint32_t>& input_bits) {
-  std::unique_ptr<tflite::FlatBufferModel> model =
-      tflite::FlatBufferModel::VerifyAndBuildFromBuffer(
-          reinterpret_cast<const char*>(kCleanRfft2dRtlenModel),
-          kCleanRfft2dRtlenModelLen);
-  if (!model) return;  // Model is fixed/clean, but guard anyway.
+  static const tflite::FlatBufferModel* const model = []() {
+    return tflite::FlatBufferModel::VerifyAndBuildFromBuffer(
+               reinterpret_cast<const char*>(kCleanRfft2dRtlenModel),
+               kCleanRfft2dRtlenModelLen)
+        .release();
+  }();
+  if (!model) return;
 
   tflite::ops::builtin::BuiltinOpResolver resolver;
   std::unique_ptr<tflite::Interpreter> interpreter;
