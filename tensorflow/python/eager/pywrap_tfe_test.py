@@ -383,6 +383,55 @@ class Tests(test.TestCase):
                                       shape, minval, maxval,
                                       "seed", seed)
 
+  def testTapeAndAccumulatorTypeChecks(self):
+    ctx = context.context()
+    ctx.ensure_initialized()
+    dummy = object()
+    t = constant_op.constant(1.0)
+    with self.assertRaises(TypeError):
+      pywrap_tfe.TFE_Py_TapeSetAdd(dummy)
+    with self.assertRaises(TypeError):
+      pywrap_tfe.TFE_Py_TapeSetRemove(dummy)
+    with self.assertRaises(TypeError):
+      pywrap_tfe.TFE_Py_TapeWatch(dummy, t)
+    with self.assertRaises(TypeError):
+      pywrap_tfe.TFE_Py_TapeWatchVariable(dummy, dummy)
+    with self.assertRaises(TypeError):
+      pywrap_tfe.TFE_Py_TapeWatchedVariables(dummy)
+    with self.assertRaises(TypeError):
+      pywrap_tfe.TFE_Py_VariableWatcherRemove(dummy)
+    with self.assertRaises(TypeError):
+      pywrap_tfe.TFE_Py_VariableWatcherWatchedVariables(dummy)
+    with self.assertRaises(TypeError):
+      pywrap_tfe.TFE_Py_ForwardAccumulatorSetAdd(dummy)
+    with self.assertRaises(TypeError):
+      pywrap_tfe.TFE_Py_ForwardAccumulatorSetRemove(dummy)
+    with self.assertRaises(TypeError):
+      pywrap_tfe.TFE_Py_ForwardAccumulatorWatch(dummy, t, t)
+    with self.assertRaises(TypeError):
+      pywrap_tfe.TFE_Py_ForwardAccumulatorJVP(dummy, t)
+
+  def testTapeAndAccumulatorDoubleRemoveRefcount(self):
+    ctx = context.context()
+    ctx.ensure_initialized()
+    t = pywrap_tfe.TFE_Py_TapeSetNew(False, False)
+    ref_before = sys.getrefcount(t)
+    pywrap_tfe.TFE_Py_TapeSetRemove(t)
+    ref_after_first = sys.getrefcount(t)
+    self.assertEqual(ref_before - ref_after_first, 1)
+    pywrap_tfe.TFE_Py_TapeSetRemove(t)
+    ref_after_second = sys.getrefcount(t)
+    self.assertEqual(ref_after_first, ref_after_second)
+
+    w = pywrap_tfe.TFE_Py_VariableWatcherNew()
+    ref_before_w = sys.getrefcount(w)
+    pywrap_tfe.TFE_Py_VariableWatcherRemove(w)
+    ref_after_first_w = sys.getrefcount(w)
+    self.assertEqual(ref_before_w - ref_after_first_w, 1)
+    pywrap_tfe.TFE_Py_VariableWatcherRemove(w)
+    ref_after_second_w = sys.getrefcount(w)
+    self.assertEqual(ref_after_first_w, ref_after_second_w)
+
 
 if __name__ == "__main__":
   test.main()
