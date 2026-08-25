@@ -79,7 +79,8 @@ TEST_P(HloShardingTest, CreateWithBadDeviceList) {
   EXPECT_DEATH(
       HloSharding::Create(GetDevices({0}), MemoryKind(),
                           tiled_xla_hlo_sharding),
-      HasSubstr("sharding's tile count and device count does not match"));
+      HasSubstr("`num_shards` and `xla_hlo_sharding`'s `num_devices` does not "
+                "match"));
 }
 
 TEST_P(HloShardingTest, IsFullyReplicated) {
