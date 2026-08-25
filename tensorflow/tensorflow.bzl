@@ -180,10 +180,10 @@ def if_xla_available(if_true, if_false = []):
         "//conditions:default": if_false,
     })
 def tf_system_libs_linkopts():
-    """Returns linker flags for system libraries configuredd via TF_SYSTEM_LIBS. """
+    """Returns linker flags for system libraries configured via TF_SYSTEM_LIBS."""
     return (
         if_system_lib("boringssl", ["-lssl", "-lcrypto"]) +
-        if_system_lib("com_github_googlecloudplatform_google_cloud_cpp", ["-lgoogle_cloud_cpp_common", "-lgoogle_cloud_cpp_bigtable"]) +
+        if_system_lib("com_github_googlecloudplatform_google_cloud_cpp", ["-lgoogle_cloud_cpp_common", "-lgoogle_cloud_cpp_bigtable", "-lgoogle_cloud_cpp_storage"]) +
         if_system_lib("com_github_grpc_grpc", ["-lgrpc++", "-lgrpc", "-lgpr"]) +
         if_system_lib("com_google_protobuf", ["-lprotobuf"]) +
         if_system_lib("com_googlesource_code_re2", ["-lre2"]) +
@@ -967,8 +967,8 @@ def tf_cc_shared_library_opensource(
     )
     for name_os, name_os_major, name_os_full in names:
         soname = name_os_major.split("/")[-1]  # Uses major version for soname.
-        user_link_flags = linkopts+tf_system_libs_linkopts() + _rpath_user_link_flags(name_os_full) + select({
-             clean_dep("//tensorflow:ios"): [
+        user_link_flags = linkopts + tf_system_libs_linkopts() + _rpath_user_link_flags(name_os_full) + select({
+            clean_dep("//tensorflow:ios"): [
                 "-Wl,-install_name,@rpath/" + soname,
             ],
             clean_dep("//tensorflow:macos"): [
