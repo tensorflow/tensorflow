@@ -1136,6 +1136,32 @@ class ParseExampleTest(test.TestCase):
         "features": test_features
     }, expected_output)
 
+  def testSerializedContainingInvalidRaggedFeatureRowLengths(self):
+    """RaggedFeature with RowLengths exceeding feature values length."""
+    original = [
+        example(
+            features=features({
+                "rt_values": float_feature([1.0, 2.0]),
+                "rt_lengths": int64_feature([100]),
+            })),
+    ]
+    serialized = ops.convert_to_tensor(
+        [m.SerializeToString() for m in original])
+    test_features = {
+        "rt":
+            parsing_ops.RaggedFeature(
+                value_key="rt_values",
+                partitions=[parsing_ops.RaggedFeature.RowLengths("rt_lengths")],
+                dtype=dtypes.float32)
+    }
+    self._test(
+        dict(serialized=serialized, features=test_features),
+        expected_err=(
+            errors_impl.InvalidArgumentError,
+            "do not form a valid RaggedTensor|partition row lengths sum does not match",
+        ),
+    )
+
   def testSerializedContainingNestedRaggedFeature(self):
     """Test RaggedFeature with 3 partitions."""
     original = [
