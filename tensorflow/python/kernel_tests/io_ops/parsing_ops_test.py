@@ -2306,6 +2306,33 @@ class ParseSequenceExampleTest(test.TestCase):
             # Message for batch=false in eager mode:
             "|Incompatible shapes|required broadcastable shapes"))
 
+  def testBatchedRaggedFeatureDefaultValidate(self):
+    feature = parsing_ops.RaggedFeature(dtype=dtypes.float32)
+    self.assertTrue(feature.validate)
+
+  def testBatchedRaggedFeatureMismatchedRowLengths(self):
+    ex1 = example(features=features({
+        "v": float_feature([1.0, 2.0]),
+        "len": int64_feature([4]),
+    }))
+    ex2 = example(features=features({
+        "v": float_feature([3.0, 4.0, 5.0]),
+        "len": int64_feature([1]),
+    }))
+    serialized = ops.convert_to_tensor(
+        [ex1.SerializeToString(), ex2.SerializeToString()])
+    feature_spec = {
+        "rt": parsing_ops.RaggedFeature(
+            value_key="v",
+            partitions=[parsing_ops.RaggedFeature.RowLengths("len")],
+            dtype=dtypes.float32)
+    }
+    with self.assertRaisesWithPredicateMatch(
+        errors_impl.InvalidArgumentError,
+        "Feature rt: partition row lengths sum does not match value lengths"):
+      res = parsing_ops.parse_example(serialized, feature_spec)
+      self.evaluate(res["rt"])
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class DecodeRawTest(test.TestCase):

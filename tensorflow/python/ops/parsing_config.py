@@ -223,7 +223,7 @@ class RaggedFeature(
               value_key=None,
               partitions=(),
               row_splits_dtype=dtypes.int32,
-              validate=False):
+              validate=True):
     if value_key is not None:
       if not isinstance(value_key, str):
         raise ValueError(
@@ -940,46 +940,122 @@ def _add_batched_ragged_partition(rt, partition, tensor_dict, feature_key,
     partition_t = math_ops.cast(partition_t, rt.row_splits.dtype)
 
   checks = []
-  if outer_splits is not None:
-    if validate:
-      checks.append(check_ops.assert_equal(
-          outer_splits, partition_t.row_splits,
-          message="Feature %s: values and partitions are not aligned"
-          % feature_key))
-    partition_t = partition_t.values
+  if validate:
+    if outer_splits is not None:
+      checks.append(
+          check_ops.assert_equal(
+              outer_splits,
+              partition_t.row_splits,
+              message="Feature %s: values and partitions are not aligned"
+              % feature_key,
+          )
+      )
+    else:
+      checks.append(
+          check_ops.assert_equal(
+              array_ops.shape(rt.row_splits),
+              array_ops.shape(partition_t.row_splits),
+              message="Feature %s: values and partitions are not aligned"
+              % feature_key,
+          )
+      )
 
   with ops.control_dependencies(checks):
-    if isinstance(partition, (RaggedFeature.RowSplits,
-                              RaggedFeature.RowLimits)):
-      if isinstance(partition, RaggedFeature.RowSplits):
-        partition_t = partition_t[:, 1:]
-      adjusted_limits = partition_t.values + array_ops.repeat(
-          rt.row_starts(), partition_t.row_lengths())
-      return partition_t.with_values(
-          ragged_tensor.RaggedTensor.from_row_limits(
-              rt.values, adjusted_limits, validate=validate))
-    elif isinstance(partition, RaggedFeature.RowStarts):
-      adjusted_starts = partition_t.values + array_ops.repeat(
-          rt.row_starts(), partition_t.row_lengths())
-      return partition_t.with_values(
-          ragged_tensor.RaggedTensor.from_row_starts(
-              rt.values, adjusted_starts, validate=validate))
-    elif isinstance(partition, RaggedFeature.RowLengths):
-      return partition_t.with_values(
-          ragged_tensor.RaggedTensor.from_row_lengths(
-              rt.values, partition_t.values, validate=validate))
-    elif isinstance(partition, RaggedFeature.ValueRowIds):
-      nrows = math_ops.maximum(  # number of rows in each batch item
-          ragged_math_ops.reduce_max(partition_t + 1, axis=1), 0)
-      adjusted_rowids = partition_t.values + array_ops.repeat(
-          math_ops.cumsum(nrows, exclusive=True), partition_t.row_lengths())
-      return ragged_tensor.RaggedTensor.from_row_lengths(
-          ragged_tensor.RaggedTensor.from_value_rowids(
-              rt.values, adjusted_rowids, validate=validate),
-          nrows,
-          validate=validate)
+    if outer_splits is not None:
+      partition_t = partition_t.values
+    inner_checks = []
+    if validate:
+      if isinstance(partition, RaggedFeature.RowLengths):
+        inner_checks.append(
+            check_ops.assert_equal(
+                ragged_math_ops.reduce_sum(partition_t, axis=1),
+                rt.row_lengths(),
+                message=(
+                    f"Feature {feature_key}: partition row lengths sum does not"
+                    " match value lengths"
+                ),
+            )
+        )
+      elif isinstance(partition, RaggedFeature.ValueRowIds):
+        inner_checks.append(
+            check_ops.assert_equal(
+                partition_t.row_lengths(),
+                rt.row_lengths(),
+                message=(
+                    f"Feature {feature_key}: partition value_rowids length does"
+                    " not match value lengths"
+                ),
+            )
+        )
+      elif isinstance(partition, (RaggedFeature.RowSplits, RaggedFeature.RowLimits)):
+        safe_last_indices = math_ops.maximum(partition_t.row_splits[1:] - 1, 0)
+        last_limit_vals = array_ops.gather(partition_t.values, safe_last_indices)
+        last_limits = array_ops.where(
+            partition_t.row_lengths() > 0,
+            last_limit_vals,
+            array_ops.zeros_like(partition_t.row_lengths(), dtype=rt.row_splits.dtype),
+        )
+        inner_checks.append(
+            check_ops.assert_equal(
+                last_limits,
+                rt.row_lengths(),
+                message=(
+                    f"Feature {feature_key}: partition last limit does not"
+                    " match value lengths"
+                ),
+            )
+        )
+        if isinstance(partition, RaggedFeature.RowSplits):
+          safe_first_indices = math_ops.maximum(partition_t.row_splits[:-1], 0)
+          first_split_vals = array_ops.gather(partition_t.values, safe_first_indices)
+          first_splits = array_ops.where(
+              partition_t.row_lengths() > 0,
+              first_split_vals,
+              array_ops.zeros_like(partition_t.row_lengths(), dtype=rt.row_splits.dtype),
+          )
+          inner_checks.append(
+              check_ops.assert_equal(
+                  first_splits,
+                  math_ops.cast(0, rt.row_splits.dtype),
+                  message=(
+                      f"Feature {feature_key}: partition row splits first element"
+                      " must be 0"
+                  ),
+              )
+          )
 
-    raise ValueError(f"Unhandled partition type {partition!r}")
+    with ops.control_dependencies(inner_checks):
+      if isinstance(partition, (RaggedFeature.RowSplits,
+                                RaggedFeature.RowLimits)):
+        if isinstance(partition, RaggedFeature.RowSplits):
+          partition_t = partition_t[:, 1:]
+        adjusted_limits = partition_t.values + array_ops.repeat(
+            rt.row_starts(), partition_t.row_lengths())
+        return partition_t.with_values(
+            ragged_tensor.RaggedTensor.from_row_limits(
+                rt.values, adjusted_limits, validate=validate))
+      elif isinstance(partition, RaggedFeature.RowStarts):
+        adjusted_starts = partition_t.values + array_ops.repeat(
+            rt.row_starts(), partition_t.row_lengths())
+        return partition_t.with_values(
+            ragged_tensor.RaggedTensor.from_row_starts(
+                rt.values, adjusted_starts, validate=validate))
+      elif isinstance(partition, RaggedFeature.RowLengths):
+        return partition_t.with_values(
+            ragged_tensor.RaggedTensor.from_row_lengths(
+                rt.values, partition_t.values, validate=validate))
+      elif isinstance(partition, RaggedFeature.ValueRowIds):
+        nrows = math_ops.maximum(  # number of rows in each batch item
+            ragged_math_ops.reduce_max(partition_t + 1, axis=1), 0)
+        adjusted_rowids = partition_t.values + array_ops.repeat(
+            math_ops.cumsum(nrows, exclusive=True), partition_t.row_lengths())
+        return ragged_tensor.RaggedTensor.from_row_lengths(
+            ragged_tensor.RaggedTensor.from_value_rowids(
+                rt.values, adjusted_rowids, validate=validate),
+            nrows,
+            validate=validate)
+
+      raise ValueError(f"Unhandled partition type {partition!r}")
 
 
 def _build_ragged_tensors(serialized_shape,
