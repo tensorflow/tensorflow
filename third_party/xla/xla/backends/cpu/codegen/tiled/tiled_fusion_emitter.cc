@@ -455,7 +455,18 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
       target_machine_options.enabled_features(), [](absl::string_view feature) {
         return absl::StrContains(feature, "avx512");
       });
-  int64_t max_vector_tile_size = has_avx512 ? 16 : 8;
+  int64_t max_bit_width = 8;
+  for (const HloInstruction* instr :
+       fusion.fused_instructions_computation()->instructions()) {
+    ShapeUtil::ForEachSubshape(instr->shape(), [&](const Shape& subshape,
+                                                   const ShapeIndex& index) {
+      if (subshape.IsArray()) {
+        max_bit_width = std::max<int64_t>(
+            max_bit_width, primitive_util::BitWidth(subshape.element_type()));
+      }
+    });
+  }
+  int64_t max_vector_tile_size = (has_avx512 ? 512 : 256) / max_bit_width;
 
   struct Candidate {
     SmallVector<int64_t, 4> padded_tile_sizes;
