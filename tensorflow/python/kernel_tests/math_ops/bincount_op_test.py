@@ -273,6 +273,60 @@ class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               gen_math_ops.dense_bincount(
                   input=inp, weights=np_weight, size=size, binary_output=True)))
 
+  @test_util.run_gpu_only
+  def test_bincount_all_binary_with_negative_input_on_gpu(self):
+    # Regression test for https://github.com/tensorflow/tensorflow/issues/103995
+    # BincountReduceKernel only checked `bin < num_bins`, so a negative
+    # input value indexed before the start of the output buffer on GPU
+    # (an out-of-bounds write) instead of being skipped like the CPU
+    # kernel does.
+    size = 7
+    inp = np.array(
+        [-1737321568, 32584, 7, 4, 3, 7, 7, 2, 5, 4, 1, 7, 5, 1],
+        dtype=np.int32)
+    expected_out = np.zeros((size,))
+    for v in inp:
+      if 0 <= v < size:
+        expected_out[v] = 1
+    with ops.device("/GPU:0"):
+      out = self.evaluate(
+          gen_math_ops.dense_bincount(
+              input=inp, weights=[], size=size, binary_output=True))
+    self.assertAllEqual(expected_out, out)
+
+  def _test_bincount_col_binary_with_negative_input(self, num_rows, num_cols,
+                                                      size, dtype):
+    # Regression test for the same out-of-bounds write as above, but in
+    # BincountColReduceKernel / BincountColReduceSharedKernel, which had
+    # the identical missing lower-bound check.
+    np.random.seed(42)
+    inp = np.random.randint(0, size, (num_rows, num_cols), dtype=dtype)
+    inp[0, 0] = -1737321568
+    inp[num_rows - 1, num_cols - 1] = -1
+    expected_out = np.zeros((num_rows, size))
+    for row in range(num_rows):
+      for v in inp[row]:
+        if 0 <= v < size:
+          expected_out[row, v] = 1
+    with ops.device("/GPU:0"):
+      out = self.evaluate(
+          gen_math_ops.dense_bincount(
+              input=inp, weights=[], size=size, binary_output=True))
+    self.assertAllEqual(expected_out, out)
+
+  @test_util.run_gpu_only
+  def test_col_reduce_shared_memory_with_negative_input(self):
+    # num_rows * size small enough to select BincountColReduceSharedKernel,
+    # matching test_col_reduce_shared_memory below.
+    self._test_bincount_col_binary_with_negative_input(128, 27, 10, np.int32)
+
+  @test_util.run_gpu_only
+  def test_col_reduce_global_memory_with_negative_input(self):
+    # num_rows * size large enough to select BincountColReduceKernel,
+    # matching test_col_reduce_global_memory below.
+    self._test_bincount_col_binary_with_negative_input(
+        128, 27, 1024, np.int32)
+
   def _test_bincount_col_count(self, num_rows, num_cols, size, dtype):
     np.random.seed(42)
     inp = np.random.randint(0, size, (num_rows, num_cols), dtype=dtype)
