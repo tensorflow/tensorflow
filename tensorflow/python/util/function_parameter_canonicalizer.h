@@ -43,14 +43,14 @@ class FunctionParameterCanonicalizer {
   // It's written to `result`. Returns `true` if Canonicalization was
   // successful, and `false` otherwise. When it fails, it also sets CPython
   // error status.
-  // This function does not update reference counter of any Python objects.
-  // `PyObject*`s in `result` are borrowed references from `args`, `kwargs`, and
-  // possibly `defaults_`, and will be only valid if `args` and `kwargs` are
-  // still alive.
+  //
+  // On success, every populated entry in `result` owns a strong reference to
+  // the canonicalized Python argument. This keeps the result valid even if a
+  // caller concurrently mutates `kwargs` after canonicalization.
   ABSL_MUST_USE_RESULT
   ABSL_ATTRIBUTE_HOT
   bool Canonicalize(PyObject* args, PyObject* kwargs,
-                    absl::Span<PyObject*> result);
+                    absl::Span<Safe_PyObjectPtr> result);
 
  private:
   // Simple linear search of `name` in `interned_arg_names`. If found, returns
