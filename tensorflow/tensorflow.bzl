@@ -106,7 +106,10 @@ load(
     "use_pywrap_rules",
     _pybind_extension = "pybind_extension",
 )
-
+load(
+    "@local_config_syslibs//:build_defs.bzl",
+    "if_system_lib",
+)
 # Do not sort: copybara rule changes this
 def register_extension_info(**kwargs):
     pass  # buildifier: disable=out-of-order-load
@@ -176,7 +179,26 @@ def if_xla_available(if_true, if_false = []):
         clean_dep("//tensorflow:with_xla_support"): if_true,
         "//conditions:default": if_false,
     })
-
+def tf_system_libs_linkopts():
+    """Returns linker flags for system libraries configuredd via TF_SYSTEM_LIBS. """
+    return (
+        if_system_lib("boringssl", ["-lssl", "-lcrypto"]) +
+        if_system_lib("com_github_googlecloudplatform_google_cloud_cpp", ["-lgoogle_cloud_cpp_common", "-lgoogle_cloud_cpp_bigtable"]) +
+        if_system_lib("com_github_grpc_grpc", ["-lgrpc++", "-lgrpc", "-lgpr"]) +
+        if_system_lib("com_google_protobuf", ["-lprotobuf"]) +
+        if_system_lib("com_googlesource_code_re2", ["-lre2"]) +
+        if_system_lib("curl", ["-lcurl"]) +
+        if_system_lib("flatbuffers", ["-lflatbuffers"]) +
+        if_system_lib("gif", ["-lgif"]) +
+        if_system_lib("hwloc", ["-lhwloc"]) +
+        if_system_lib("icu", ["-licui18n", "-licuuc", "-licudata"]) +
+        if_system_lib("jsoncpp_git", ["-ljsoncpp"]) +
+        if_system_lib("libjpeg_turbo", ["-ljpeg"]) +
+        if_system_lib("org_sqlite", ["-lsqlite3"]) +
+        if_system_lib("png", ["-lpng"]) +
+        if_system_lib("snappy", ["-lsnappy"]) +
+        if_system_lib("zlib", ["-lz"])
+    )
 # Given a source file, generate a test name.
 # i.e. "common_runtime/direct_session_test.cc" becomes
 #      "common_runtime_direct_session_test"
@@ -945,8 +967,8 @@ def tf_cc_shared_library_opensource(
     )
     for name_os, name_os_major, name_os_full in names:
         soname = name_os_major.split("/")[-1]  # Uses major version for soname.
-        user_link_flags = linkopts + _rpath_user_link_flags(name_os_full) + select({
-            clean_dep("//tensorflow:ios"): [
+        user_link_flags = linkopts+tf_system_libs_linkopts() + _rpath_user_link_flags(name_os_full) + select({
+             clean_dep("//tensorflow:ios"): [
                 "-Wl,-install_name,@rpath/" + soname,
             ],
             clean_dep("//tensorflow:macos"): [

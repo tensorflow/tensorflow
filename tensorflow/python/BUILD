@@ -38,6 +38,7 @@ load(
     "tf_monitoring_python_deps",
     "tf_pybind_cc_library_wrapper",
     "tf_python_pybind_extension",
+    "tf_system_libs_linkopts",
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -1609,7 +1610,7 @@ pywrap_library(
                 "-ldl",
                 "-lm",
             ],
-        }),
+        }) + tf_system_libs_linkopts(),
         "tensorflow/tensorflow_cc": select({
             "//tensorflow:windows": [
                 "-DEFAULTLIB:ws2_32.lib",
@@ -1629,7 +1630,7 @@ pywrap_library(
                 "-ldl",
                 "-lm",
             ],
-        }),
+        }) + tf_system_libs_linkopts(),
     },
     # buildifier: disable=unsorted-dict-items
     # @unsorted-dict-items
