@@ -65,11 +65,12 @@ def _AdjustContrastGrad(op: ops.Operation, grad):
   images = op.inputs[0]
   factor = op.inputs[1]
   factor_t = math_ops.cast(factor, images.dtype)
-  rank = images.shape.rank
-  if rank is not None:
-    spatial_axes = list(range(rank - 3, rank - 1))
+  static_rank = images.shape.rank
+  if static_rank is not None:
+    spatial_axes = list(range(static_rank - 3, static_rank - 1))
   else:
-    spatial_axes = math_ops.range(rank - 3, rank - 1)
+    dynamic_rank = array_ops.rank(images)
+    spatial_axes = math_ops.range(dynamic_rank - 3, dynamic_rank - 1)
   mean = math_ops.reduce_mean(images, axis=spatial_axes, keepdims=True)
   grad_images = grad * factor_t + (1.0 - factor_t) * math_ops.reduce_mean(
       grad,
