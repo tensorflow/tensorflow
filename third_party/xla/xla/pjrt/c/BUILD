@@ -336,6 +336,16 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_c_api_rma_extension_hdrs",
+    hdrs = ["pjrt_c_api_rma_extension.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_raw_buffer_extension_hdrs",
+    ],
+)
+
+cc_library(
     name = "pjrt_c_api_raw_buffer_internal",
     srcs = ["pjrt_c_api_raw_buffer_internal.cc"],
     hdrs = ["pjrt_c_api_raw_buffer_internal.h"],
@@ -348,6 +358,42 @@ cc_library(
         ":pjrt_c_api_wrapper_impl",
         "//xla/pjrt:raw_buffer",
         "@com_google_absl//absl/status",
+    ],
+)
+
+cc_library(
+    name = "pjrt_c_api_rma_internal",
+    srcs = ["pjrt_c_api_rma_internal.cc"],
+    hdrs = ["pjrt_c_api_rma_internal.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_helpers",
+        ":pjrt_c_api_raw_buffer_extension_hdrs",
+        ":pjrt_c_api_rma_extension_hdrs",
+        ":pjrt_c_api_status_utils",
+        ":pjrt_c_api_wrapper_impl",
+        "//xla:future",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+xla_cc_test(
+    name = "pjrt_c_api_rma_test",
+    srcs = ["pjrt_c_api_rma_test.cc"],
+    deps = [
+        ":pjrt_c_api_device_event_hdrs",
+        ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_raw_buffer_extension_hdrs",
+        ":pjrt_c_api_rma_extension_hdrs",
+        ":pjrt_c_api_rma_internal",
+        ":pjrt_c_api_wrapper_impl",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

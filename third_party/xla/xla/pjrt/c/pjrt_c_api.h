@@ -84,6 +84,7 @@ typedef enum {
   PJRT_Extension_Type_MultiSlice,
   PJRT_Extension_Type_HostMemoryAllocator,
   PJRT_Extension_Type_XlaTransform,
+  PJRT_Extension_Type_Rma,
 } PJRT_Extension_Type;
 
 // PJRT_Extension_Base contains a type and a pointer to next
@@ -118,7 +119,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 114
+#define PJRT_API_MINOR 115
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
