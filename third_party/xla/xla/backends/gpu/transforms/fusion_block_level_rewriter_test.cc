@@ -389,5 +389,76 @@ ENTRY entry {
       absl_testing::IsOkAndHolds(false));
 }
 
+TEST_P(FusionBlockLevelRewriterTest, RewritesScanFusions) {
+  constexpr absl::string_view kHloText = R"(
+combiner {
+  in = f32[] parameter(0)
+  carry = f32[] parameter(1)
+  add = f32[] add(carry, in)
+  ROOT t = (f32[], f32[]) tuple(add, add)
+}
+
+fused_scan {
+  input = f32[100]{0} parameter(0)
+  init = f32[] parameter(1)
+  scan = (f32[100]{0}, f32[]) scan(input, init), dimensions={0}, num_carries=1, to_apply=combiner, is_associative=true
+  ROOT gte0 = f32[100]{0} get-tuple-element(scan), index=0
+}
+
+ENTRY entry {
+  input = f32[100]{0} parameter(0)
+  init = f32[] constant(0)
+  ROOT fusion = f32[100]{0} fusion(input, init), kind=kCustom, calls=fused_scan,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+
+  EXPECT_THAT(
+      FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize,
+                               &mlir_context_)
+          .Run(module.get()),
+      absl_testing::IsOkAndHolds(EnableTilingPropagation()));
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(HasTritonBlockLevelFusionConfig(root), EnableTilingPropagation());
+}
+
+TEST_P(FusionBlockLevelRewriterTest, DoesNotRewriteScanFusionWithCarryOutput) {
+  constexpr absl::string_view kHloText = R"(
+combiner {
+  in = f32[] parameter(0)
+  carry = f32[] parameter(1)
+  add = f32[] add(carry, in)
+  ROOT t = (f32[], f32[]) tuple(add, add)
+}
+
+fused_scan {
+  input = f32[100]{0} parameter(0)
+  init = f32[] parameter(1)
+  scan = (f32[100]{0}, f32[]) scan(input, init), dimensions={0}, num_carries=1, to_apply=combiner, is_associative=true
+  ROOT gte1 = f32[] get-tuple-element(scan), index=1
+}
+
+ENTRY entry {
+  input = f32[100]{0} parameter(0)
+  init = f32[] constant(0)
+  ROOT fusion = f32[] fusion(input, init), kind=kCustom, calls=fused_scan,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+
+  EXPECT_THAT(
+      FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize,
+                               &mlir_context_)
+          .Run(module.get()),
+      absl_testing::IsOkAndHolds(false));
+}
+
 }  // namespace
 }  // namespace xla::gpu
