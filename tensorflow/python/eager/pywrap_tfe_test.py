@@ -383,6 +383,22 @@ class Tests(test.TestCase):
                                       shape, minval, maxval,
                                       "seed", seed)
 
+  def testTapeWatchVariableTypeCheck(self):
+    dummy = 100
+    with backprop.GradientTape():
+      with self.assertRaises(TypeError):
+        pywrap_tfe.TFE_Py_TapeWatchVariable(dummy, None)
+
+  def testTapeWatchedVariablesTypeCheck(self):
+    dummy = 100
+    with self.assertRaises(TypeError):
+      pywrap_tfe.TFE_Py_TapeWatchedVariables(dummy)
+
+  def testTapeGradientTypeCheck(self):
+    dummy = 100
+    with self.assertRaises(TypeError):
+      pywrap_tfe.TFE_Py_TapeGradient(dummy, None, None, None, None, None, None)
+
 
 if __name__ == "__main__":
   test.main()
