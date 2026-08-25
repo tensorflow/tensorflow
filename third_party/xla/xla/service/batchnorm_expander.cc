@@ -38,7 +38,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -217,32 +217,34 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormTraining(
   HloComputation* add_reduce_computation =
       GetOrCreateScalarAddComputation(ptype);
 
+  // X^2.
+  auto operand_squared =
+      add_binary(operand_shape, HloOpcode::kMultiply, operand, operand);
   // Sum[X].
   auto sum = add(HloInstruction::CreateReduce(feature_shape, operand, zero,
                                               dimensions_without_feature,
                                               add_reduce_computation));
+
+  // Sum[X^2].
+  auto squared_sum = add(HloInstruction::CreateReduce(
+      feature_shape, operand_squared, zero, dimensions_without_feature,
+      add_reduce_computation));
 
   // E[X].
   auto mean = add(Mean(elements_per_feature, sum, add));
 
   auto mean_broadcasted = feature_broadcast(mean);
 
-  // X - E[X].
-  auto operand_minus_mean = add_binary(operand_shape, HloOpcode::kSubtract,
-                                       operand, mean_broadcasted);
+  // E[X^2].
+  auto square_mean = add(Mean(elements_per_feature, squared_sum, add));
 
-  // (X - E[X])^2.
-  auto operand_minus_mean_squared =
-      add_binary(operand_shape, HloOpcode::kMultiply, operand_minus_mean,
-                 operand_minus_mean);
+  // E^2[X].
+  auto mean_square =
+      add_binary(feature_shape, HloOpcode::kMultiply, mean, mean);
 
-  // Sum[(X - E[X])^2].
-  auto squared_diff_sum = add(HloInstruction::CreateReduce(
-      feature_shape, operand_minus_mean_squared, zero,
-      dimensions_without_feature, add_reduce_computation));
-
-  // Var[X] = E[(X - E[X])^2].
-  auto var = add(Mean(elements_per_feature, squared_diff_sum, add));
+  // Var[X].
+  auto var =
+      add_binary(feature_shape, HloOpcode::kSubtract, square_mean, mean_square);
 
   auto var_broadcasted = feature_broadcast(var);
 
@@ -252,6 +254,10 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormTraining(
 
   // 1 / Sqrt[Var[X] + epsilon].
   auto rsqrt_var_add_epsilon = add(Rsqrt(var_add_epsilon));
+
+  // X - E[X].
+  auto operand_minus_mean = add_binary(operand_shape, HloOpcode::kSubtract,
+                                       operand, mean_broadcasted);
 
   // (X - E[X]) / Sqrt[Var[X] + epsilon].
   auto normalized = add_binary(operand_shape, HloOpcode::kMultiply,
