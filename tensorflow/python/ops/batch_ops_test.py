@@ -276,6 +276,36 @@ class BatchOpsTest(test.TestCase):
               container="",
               shared_name="")
 
+  def testUnbatchInvalidDataRank(self):
+    # A scalar data tensor used to reach a dimension access with undefined
+    # behavior and crash the process on a downstream consistency check.
+    if context.executing_eagerly():
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "Expected at least a vector"):
+        batch_ops.unbatch(
+            batched_tensor=constant_op.constant(5.0),
+            batch_index=constant_op.constant([[0, 1, 0]], dtype=dtypes.int64),
+            id=constant_op.constant(0, dtype=dtypes.int64),
+            timeout_micros=0,
+            container="",
+            shared_name="")
+
+  def testUnbatchGradInvalidIndexRank(self):
+    # A batch_index that is not a rank-2 matrix was rejected only by way of
+    # an out-of-range dimension access whose result happened to fail a later
+    # size comparison. Validate the rank explicitly instead.
+    if context.executing_eagerly():
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          r"Expected a matrix of shape \[batch_size, 3\]"):
+        gen_batch_ops.unbatch_grad(
+            original_input=constant_op.constant([1.0, 2.0]),
+            batch_index=constant_op.constant(7, dtype=dtypes.int64),
+            grad=constant_op.constant([1.0, 2.0]),
+            id=constant_op.constant(0, dtype=dtypes.int64),
+            container="",
+            shared_name="")
+
   def testBatchDecoratedWithCapturedInput(self):
     """Tests that the batch_function decorator works."""
     if context.executing_eagerly():
