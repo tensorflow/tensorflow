@@ -1022,9 +1022,26 @@ def moveaxis(a, source, destination):  # pylint: disable=missing-docstring
   a_rank = np_utils._maybe_static(array_ops.rank(a))  # pylint: disable=protected-access
 
   def _correct_axis(axis, rank):
-    if axis < 0:
-      return axis + rank
-    return axis
+    if isinstance(rank, int):
+      normalized = axis + rank if axis < 0 else axis
+      if normalized < 0 or normalized >= rank:
+        raise ValueError(
+            f'Argument `axis` (received axis={axis}) is out of bounds '
+            f'for input {a} of rank {rank}.'
+        )
+      return normalized
+    # Rank is only known at runtime: assert the bounds dynamically so
+    # out-of-bounds axes are rejected consistently with `swapaxes`,
+    # instead of producing a perm with leftover negative entries.
+    rank_t = ops.convert_to_tensor(rank)
+    axis_t = ops.convert_to_tensor(axis)
+    control_flow_assert.Assert(
+        math_ops.reduce_all(
+            math_ops.logical_and(axis_t >= -rank_t, axis_t < rank_t)
+        ),
+        ['axis', axis_t, 'is out of bounds for array of dimension', rank_t],
+    )
+    return array_ops.where_v2(axis_t < 0, np_utils.add(axis_t, rank_t), axis_t)
 
   source = tuple(_correct_axis(axis, a_rank) for axis in source)
   destination = tuple(_correct_axis(axis, a_rank) for axis in destination)
