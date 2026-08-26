@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/transforms/collectives/infeed_token_propagation.h"
 
 #include <cstdint>
+#include <memory>
 #include <queue>
 #include <vector>
 
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
@@ -171,6 +173,10 @@ absl::StatusOr<HloInstruction*> InsertTokenIntoTuple(HloInstruction* tuple,
   // Trying to use tuple->ReplaceAllUsesWith(original_tuple) cause a cycle.
   std::vector<HloInstruction*> original_users = tuple->users();
   HloInstruction* original_tuple = TupleUtil::Duplicate(tuple);
+  if (tuple->original_value() &&
+      !tuple->original_value()->is_synthetic_call()) {
+    original_tuple->set_original_value(tuple->original_value());
+  }
   for (HloInstruction* original_user : original_users) {
     for (int64_t idx : original_user->operand_indices(tuple)) {
       // We expect the shape to be same, but checking that it is the same is
@@ -180,8 +186,18 @@ absl::StatusOr<HloInstruction*> InsertTokenIntoTuple(HloInstruction* tuple,
     }
   }
 
+  int64_t old_tuple_size = tuple->shape().tuple_shapes().size();
   // Append the token to the parameter tuple.
   *tuple->mutable_shape()->add_tuple_shapes() = ShapeUtil::MakeTokenShape();
+  if (tuple->original_value() &&
+      !tuple->original_value()->is_synthetic_call()) {
+    auto new_ov = std::make_shared<OriginalValue>(tuple->shape());
+    for (int64_t i = 0; i < old_tuple_size; ++i) {
+      new_ov->mutable_tree()->CopySubtreeFrom(tuple->original_value()->tree(),
+                                              {i}, {i});
+    }
+    tuple->set_original_value(new_ov);
+  }
   if (add_token_operand) {
     tuple->AppendOperand(
         computation->AddInstruction(HloInstruction::CreateToken()));
@@ -198,6 +214,25 @@ absl::StatusOr<HloInstruction*> InsertTokenIntoTuple(HloInstruction* tuple,
           tuple, tuple->shape().tuple_shapes().size() - 1));
   return input_token_gte;
 }
+
+void TuplifyInstructionShape(HloInstruction* instruction) {
+  if (instruction->shape().IsTuple()) {
+    return;
+  }
+  *instruction->mutable_shape() =
+      ShapeUtil::MakeTupleShape({instruction->shape()});
+  if (instruction->has_sharding()) {
+    instruction->set_sharding(
+        HloSharding::Tuple(instruction->shape(), {instruction->sharding()}));
+  }
+  if (instruction->original_value() &&
+      !instruction->original_value()->is_synthetic_call()) {
+    auto new_ov = std::make_shared<OriginalValue>(instruction->shape());
+    new_ov->mutable_tree()->CopySubtreeFrom(
+        instruction->original_value()->tree(), {}, {0});
+    instruction->set_original_value(new_ov);
+  }
+}
 }  // namespace
 
 absl::Status CanonicalizeConditionalInstruction(HloInstruction* conditional) {
@@ -207,15 +242,13 @@ absl::Status CanonicalizeConditionalInstruction(HloInstruction* conditional) {
     // Tuplify the branch parameter if needed.
     HloInstruction* parameter = branch->parameter_instruction(0);
     if (!parameter->shape().IsTuple()) {
-      *parameter->mutable_shape() =
-          ShapeUtil::MakeTupleShape({parameter->shape()});
-      if (parameter->has_sharding()) {
-        HloSharding sharding =
-            HloSharding::Tuple(parameter->shape(), {parameter->sharding()});
-        parameter->set_sharding(sharding);
-      }
+      TuplifyInstructionShape(parameter);
       HloInstruction* original = branch->AddInstruction(
           HloInstruction::CreateGetTupleElement(parameter, 0));
+      if (parameter->original_value()) {
+        original->set_original_value(
+            OriginalValue::CreateFromInstruction(original));
+      }
       ABSL_RETURN_IF_ERROR(parameter->ReplaceAllUsesWithDifferentShape(original));
     }
 
@@ -226,6 +259,10 @@ absl::Status CanonicalizeConditionalInstruction(HloInstruction* conditional) {
     if (!branch_tuple->shape().IsTuple()) {
       branch_tuple = conditional->parent()->AddInstruction(
           HloInstruction::CreateTuple({branch_tuple}));
+      if (branch_tuple->operand(0)->original_value()) {
+        branch_tuple->set_original_value(
+            OriginalValue::CreateFromInstruction(branch_tuple));
+      }
       ABSL_RETURN_IF_ERROR(conditional->ReplaceOperandWithDifferentShape(
           branch_operand_idx, branch_tuple));
     }
@@ -233,7 +270,11 @@ absl::Status CanonicalizeConditionalInstruction(HloInstruction* conditional) {
     // Explicitly disjoin computation parameters from branch inputs, so we can
     // insert tokens into the input tuple.
     if (branch_tuple->opcode() == HloOpcode::kParameter) {
+      HloInstruction* old_branch_tuple = branch_tuple;
       branch_tuple = TupleUtil::Duplicate(branch_tuple);
+      if (old_branch_tuple->original_value()) {
+        branch_tuple->set_original_value(old_branch_tuple->original_value());
+      }
       // We expect the shape to be same, but checking that it is the same is
       // expensive.
       ABSL_RETURN_IF_ERROR(conditional->ReplaceOperandWithDifferentShape(
@@ -243,7 +284,11 @@ absl::Status CanonicalizeConditionalInstruction(HloInstruction* conditional) {
     // Explicitly make the root of the branch a tuple.
     HloInstruction* root = branch->root_instruction();
     if (root->opcode() != HloOpcode::kTuple) {
+      HloInstruction* old_root = root;
       root = TupleUtil::Duplicate(root);
+      if (old_root->original_value()) {
+        root->set_original_value(old_root->original_value());
+      }
       branch->set_root_instruction(root);
     }
   }
@@ -255,7 +300,11 @@ absl::Status CanonicalizeConditionalInstruction(HloInstruction* conditional) {
   // Explicitly disjoin the conditional from being a computation root, so that
   // we can insert tokens into, while preserving the original computation shape.
   if (conditional->IsRoot()) {
+    HloInstruction* old_conditional = conditional;
     HloInstruction* new_root = TupleUtil::Duplicate(conditional);
+    if (old_conditional->original_value()) {
+      new_root->set_original_value(old_conditional->original_value());
+    }
     conditional->parent()->set_root_instruction(new_root);
   }
 
@@ -270,15 +319,13 @@ absl::Status CanonicalizeWhileInstruction(HloInstruction* loop) {
   // Tuplify the body parameter if needed.
   HloInstruction* body_parameter = body->parameter_instruction(0);
   if (!body_parameter->shape().IsTuple()) {
-    *body_parameter->mutable_shape() =
-        ShapeUtil::MakeTupleShape({body_parameter->shape()});
-    if (body_parameter->has_sharding()) {
-      HloSharding sharding = HloSharding::Tuple(body_parameter->shape(),
-                                                {body_parameter->sharding()});
-      body_parameter->set_sharding(sharding);
-    }
+    TuplifyInstructionShape(body_parameter);
     HloInstruction* original = body->AddInstruction(
         HloInstruction::CreateGetTupleElement(body_parameter, 0));
+    if (body_parameter->original_value()) {
+      original->set_original_value(
+          OriginalValue::CreateFromInstruction(original));
+    }
     ABSL_RETURN_IF_ERROR(body_parameter->ReplaceAllUsesWithDifferentShape(original));
   }
 
@@ -286,34 +333,34 @@ absl::Status CanonicalizeWhileInstruction(HloInstruction* loop) {
   HloInstruction* root = body->root_instruction();
   if (!root->shape().IsTuple()) {
     root = body->AddInstruction(HloInstruction::CreateTuple({root}));
+    if (root->operand(0)->original_value()) {
+      root->set_original_value(OriginalValue::CreateFromInstruction(root));
+    }
     body->set_root_instruction(root, /*accept_different_shape=*/true);
   }
 
   // Tuplify the condition parameter if needed.
   HloInstruction* cond_parameter = cond->parameter_instruction(0);
   if (!cond_parameter->shape().IsTuple()) {
-    *cond_parameter->mutable_shape() =
-        ShapeUtil::MakeTupleShape({cond_parameter->shape()});
-    if (cond_parameter->has_sharding()) {
-      HloSharding sharding = HloSharding::Tuple(cond_parameter->shape(),
-                                                {cond_parameter->sharding()});
-      cond_parameter->set_sharding(sharding);
-    }
+    TuplifyInstructionShape(cond_parameter);
     HloInstruction* original = cond->AddInstruction(
         HloInstruction::CreateGetTupleElement(cond_parameter, 0));
+    if (cond_parameter->original_value()) {
+      original->set_original_value(
+          OriginalValue::CreateFromInstruction(original));
+    }
     ABSL_RETURN_IF_ERROR(cond_parameter->ReplaceAllUsesWithDifferentShape(original));
   }
 
   // Tuplify the while instruction if needed.
   if (!loop->shape().IsTuple()) {
-    *loop->mutable_shape() = ShapeUtil::MakeTupleShape({loop->shape()});
-    if (loop->has_sharding()) {
-      HloSharding sharding =
-          HloSharding::Tuple(loop->shape(), {loop->sharding()});
-      loop->set_sharding(sharding);
-    }
+    TuplifyInstructionShape(loop);
     HloInstruction* original = loop->parent()->AddInstruction(
         HloInstruction::CreateGetTupleElement(loop, 0));
+    if (loop->original_value()) {
+      original->set_original_value(
+          OriginalValue::CreateFromInstruction(original));
+    }
     ABSL_RETURN_IF_ERROR(loop->ReplaceAllUsesWithDifferentShape(original));
   }
 
@@ -322,13 +369,21 @@ absl::Status CanonicalizeWhileInstruction(HloInstruction* loop) {
   if (!loop_tuple->shape().IsTuple()) {
     loop_tuple = loop->parent()->AddInstruction(
         HloInstruction::CreateTuple({loop_tuple}));
+    if (loop_tuple->operand(0)->original_value()) {
+      loop_tuple->set_original_value(
+          OriginalValue::CreateFromInstruction(loop_tuple));
+    }
     ABSL_RETURN_IF_ERROR(loop->ReplaceOperandWithDifferentShape(0, loop_tuple));
   }
 
   // Explicitly disjoin computation parameters from loop inputs, so we can
   // insert tokens into the input tuple.
   if (loop_tuple->opcode() == HloOpcode::kParameter) {
+    HloInstruction* old_loop_tuple = loop_tuple;
     loop_tuple = TupleUtil::Duplicate(loop_tuple);
+    if (old_loop_tuple->original_value()) {
+      loop_tuple->set_original_value(old_loop_tuple->original_value());
+    }
     // We expect the shape to be same, but checking that it is the same is
     // expensive.
     ABSL_RETURN_IF_ERROR(loop->ReplaceOperandWithDifferentShape(0, loop_tuple));
@@ -336,14 +391,22 @@ absl::Status CanonicalizeWhileInstruction(HloInstruction* loop) {
 
   // Explicitly make the root of the body a tuple.
   if (root->opcode() != HloOpcode::kTuple) {
+    HloInstruction* old_root = root;
     root = TupleUtil::Duplicate(root);
+    if (old_root->original_value()) {
+      root->set_original_value(old_root->original_value());
+    }
     body->set_root_instruction(root);
   }
 
   // Explicitly disjoin the loop from being a computation root, so that
   // we can insert tokens into, while preserving the original computation shape.
   if (loop->IsRoot()) {
+    HloInstruction* old_loop = loop;
     HloInstruction* new_root = TupleUtil::Duplicate(loop);
+    if (old_loop->original_value()) {
+      new_root->set_original_value(old_loop->original_value());
+    }
     loop->parent()->set_root_instruction(new_root);
   }
 
