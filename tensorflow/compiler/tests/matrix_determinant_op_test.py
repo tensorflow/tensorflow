@@ -57,6 +57,21 @@ class DeterminantOpTest(xla_test.XLATestCase):
     self.assertAllClose(np_recon, tf_recon, rtol=1e-3, atol=1e-3)
     self.assertShapeEqual(np_sign, sign)
     self.assertShapeEqual(np_log_abs, log_abs)
+    # Householder QR may return sign ±1 with a large negative log-abs-det for
+    # singular matrices (NumPy slogdet uses sign 0). Only compare components
+    # where NumPy reports a nonzero sign.
+    non_singular = np.abs(np_sign) > 0
+    if np.any(non_singular):
+      self.assertAllClose(
+          np.where(non_singular, sign_out, 0),
+          np.where(non_singular, np_sign, 0),
+          rtol=1e-3,
+          atol=1e-3)
+      self.assertAllClose(
+          np.where(non_singular, log_abs_out, 0),
+          np.where(non_singular, np_log_abs, 0),
+          rtol=1e-3,
+          atol=1e-3)
 
   def _verifyDeterminantReal(self, x):
     for np_type in self.float_types & {np.float32, np.float64}:
