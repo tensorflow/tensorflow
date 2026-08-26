@@ -566,7 +566,12 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
 
     // Sharding
     if (parameter_shardings.has_value()) {
-      *parameter_spec.mutable_op_sharding() = parameter_shardings->at(i);
+      ABSL_ASSIGN_OR_RETURN(auto hlo_sharding,
+                       xla::HloSharding::FromProto(parameter_shardings->at(i)));
+      if (hlo_sharding.UseNamedShardingLeaf()) {
+        hlo_sharding = xla::HloSharding::V3ToV2Sharding(hlo_sharding);
+      }
+      *parameter_spec.mutable_op_sharding() = hlo_sharding.ToProto();
     }
 
     // Donated input
