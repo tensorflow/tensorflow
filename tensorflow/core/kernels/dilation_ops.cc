@@ -55,7 +55,8 @@ void ParseAttributes(OpKernelConstruction* context,
                   "Stride is only supported across spatial dimensions."));
   OP_REQUIRES(
       context, (*strides)[1] >= 1 && (*strides)[2] >= 1,
-      absl::OutOfRangeError("Strides in the spatial dimensions must be >= 1."));
+      absl::InvalidArgumentError(
+          "Strides in the spatial dimensions must be >= 1."));
 
   OP_REQUIRES_OK(context, context->GetAttr("rates", rates));
   OP_REQUIRES(context, rates->size() == 4,
@@ -66,7 +67,8 @@ void ParseAttributes(OpKernelConstruction* context,
                   "Rate is only supported across spatial dimensions."));
   OP_REQUIRES(
       context, (*rates)[1] >= 1 && (*rates)[2] >= 1,
-      absl::OutOfRangeError("Rates in the spatial dimensions must be >= 1."));
+      absl::InvalidArgumentError(
+          "Rates in the spatial dimensions must be >= 1."));
 
   OP_REQUIRES_OK(context, context->GetAttr("padding", padding));
 }
