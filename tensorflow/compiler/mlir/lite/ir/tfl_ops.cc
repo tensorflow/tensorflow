@@ -4024,8 +4024,10 @@ OpFoldResult NegOp::fold(FoldAdaptor adaptor) {
 
   auto operands = adaptor.getOperands();
   Type result_type = getType();
-  // Only constant fold for tensor of f32 is implemented.
-  if (!IsF32ShapedType(result_type)) return nullptr;
+  // Only constant fold for tensor of f32/f16/bf16 is implemented.
+  if (!IsF32ShapedType(result_type) && !IsF16ShapedType(result_type) &&
+      !IsBF16ShapedType(result_type))
+    return nullptr;
 
   auto compute = [](APFloat value) -> APFloat { return llvm::neg(value); };
   return ConstFoldUnaryOp(result_type, operands[0], compute);
