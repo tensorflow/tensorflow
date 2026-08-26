@@ -2000,6 +2000,49 @@ TEST(HloModuleTest, BackendConfigDeduplicationAndRoundtrip) {
             &loaded_p1->raw_backend_config_string());
 }
 
+TEST(HloModuleTest, BackendConfigDeduplicationRespectsMinSize) {
+  const char* hlo_text = R"(
+    HloModule test_module
+    ENTRY comp {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    })";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnUnverifiedModule(hlo_text));
+  HloInstruction* p0 = m->entry_computation()->GetInstructionWithName("p0");
+  HloInstruction* p1 = m->entry_computation()->GetInstructionWithName("p1");
+
+  std::string small_config = "short";                // 5 bytes
+  std::string large_config = std::string(200, 'x');  // 200 bytes
+
+  p0->set_raw_backend_config_string(small_config);
+  p1->set_raw_backend_config_string(large_config);
+
+  // Threshold=128: only the large config should be deduplicated.
+  HloModuleProto proto = m->ToProto(HloProtoOptions{
+      /*deduplicate_backend_config=*/true, /*deduplicate_metadata=*/true,
+      /*min_backend_config_size=*/128});
+
+  ASSERT_EQ(proto.payloads_size(), 1);
+  EXPECT_EQ(proto.payloads(0), large_config);
+
+  const auto& instructions = proto.computations(0).instructions();
+  const auto* small = &instructions[0];
+  const auto* large = &instructions[1];
+  if (small->name() != "p0") {
+    std::swap(small, large);
+  }
+
+  // Small config stays inline.
+  EXPECT_EQ(small->backend_config(), small_config);
+  EXPECT_FALSE(small->has_backend_config_payload());
+
+  // Large config is deduplicated into a payload.
+  EXPECT_EQ(large->backend_config(), "");
+  EXPECT_TRUE(large->has_backend_config_payload());
+  EXPECT_EQ(large->backend_config_payload().id(), 0);
+}
+
 TEST(HloModuleTest, BackendConfigNoInternByDefault) {
   const char* hlo_text = R"(
     HloModule test_module

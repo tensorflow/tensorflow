@@ -2425,6 +2425,61 @@ ENTRY e {
 )");
 }
 
+TEST_P(GemmFusionTestV2, DoNotFuseConcatOnContractingDimension) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[128,8] parameter(0)
+  p1 = f32[128,8] parameter(1)
+  concat = f32[128,16] concatenate(p0, p1), dimensions={1}
+  p2 = f32[16,64] parameter(2)
+  ROOT d = f32[128,64] dot(concat, p2),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+
+  ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(m::Concatenate(), m::Parameter())));
+}
+
+TEST_P(GemmFusionTestV2, FuseConcatOnNonContractingDimension) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[64,16] parameter(0)
+  p1 = f32[64,16] parameter(1)
+  concat = f32[128,16] concatenate(p0, p1), dimensions={0}
+  p2 = f32[16,64] parameter(2)
+  ROOT d = f32[128,64] dot(concat, p2),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+
+  ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())));
+}
+
+TEST_P(GemmFusionTestV2, DoNotFuseIndivisibleConcat) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[65,16] parameter(0)
+  p1 = f32[64,16] parameter(1)
+  concat = f32[129,16] concatenate(p0, p1), dimensions={0}
+  p2 = f32[16,64] parameter(2)
+  ROOT d = f32[129,64] dot(concat, p2),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+
+  ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(m::Concatenate(), m::Parameter())));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

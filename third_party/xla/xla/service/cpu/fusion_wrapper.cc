@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/cpu/fusion_wrapper.h"
 
+#include "xla/backends/cpu/codegen/elemental/concatenate_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/tiled/tiled_fusion_emitter.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -106,18 +107,15 @@ bool FusionWrapper::MustWrapInstruction(const HloInstruction& instruction) {
         return false;
       }
 
-      if (use_tiled_emitter_) {
-        PrimitiveType type = instruction.shape().element_type();
-        return IsSupportedTilingType(type);
-      }
-      return false;
+      return IsSupportedTilingType(instruction.shape().element_type());
+    case HloOpcode::kConcatenate:
+      return !CanDoFastConcatenate(instruction).ok();
     case HloOpcode::kConvolution:
       return target_machine_features_ != nullptr &&
              !CanUseEigenConvolution(instruction, *target_machine_features_);
     // The following ops are supported but the performance is not as good as the
     // non-fusion path.
     // TODO(willfroom): Remove this once the performance is improved.
-    case HloOpcode::kConcatenate:
     case HloOpcode::kDot:
       return false;
     default:

@@ -17,10 +17,12 @@ limitations under the License.
 #define XLA_SERVICE_GPU_MODEL_GPU_INDEXING_PERFORMANCE_MODEL_H_
 
 #include <cstdint>
+#include <string>
 #include <variant>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
@@ -42,6 +44,16 @@ namespace gpu {
 struct TiledRunTimeData {
   EstimateRunTimeData runtime_data;
   xla::xtile::BlockLevelParameters block_level_parameters;
+
+  std::string ToString() const {
+    return absl::StrCat("block_config: {", block_level_parameters.ToString(),
+                        "}, ", runtime_data.ToString());
+  }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const TiledRunTimeData& data) {
+    sink.Append(data.ToString());
+  }
 };
 
 using TiledRunTimeDataOrError = std::variant<TiledRunTimeData, FusionDecision>;

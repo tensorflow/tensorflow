@@ -54,6 +54,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
+#include "xla/frontend_attributes.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
@@ -153,6 +154,19 @@ HloPosition GetNonTrivialSourcePosition(HloPosition position) {
   return position;
 }
 
+bool IsAsyncOperationStateDefinition(const HloInstruction* instruction) {
+  return HloDataflowAnalysis::IsAsynchronousOperationStart(
+             instruction->opcode()) ||
+         instruction->opcode() == HloOpcode::kAsyncUpdate;
+}
+
+bool IsAsyncOperationStateUse(const HloUse& use) {
+  return use.operand_number == 0 &&
+         (HloDataflowAnalysis::IsAsynchronousOperationDone(
+              use.instruction->opcode()) ||
+          use.instruction->opcode() == HloOpcode::kAsyncUpdate);
+}
+
 // Define a dummy chunk for chunks that will be allocated in the default memory
 // space and for keeping track of number of asynchronous copies.
 const HeapSimulator::Chunk kDummyChunk =
@@ -163,6 +177,45 @@ const float kCrossProgramPrefetchOccupyFreeingLimit = 0.6;
 
 int64_t GetAlignedOffset(int64_t offset, int64_t alignment) {
   return CeilOfRatio(offset, alignment) * alignment;
+}
+
+// Returns true if 'instruction' is a while loop configured with disabled loop
+// copies (e.g. for async while loop pipelining).
+bool IsAsyncPipelinedWhileLoop(const HloInstruction* instruction) {
+  return instruction != nullptr && instruction->opcode() == HloOpcode::kWhile &&
+         HasDisableWhileLoopCopiesAttr(instruction);
+}
+
+// Returns true if the module contains any while loops configured with disabled
+// loop copies (e.g. for async while loop pipelining).
+bool HasAsyncPipelinedWhileLoops(const HloModule& module) {
+  for (const HloComputation* computation : module.computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (IsAsyncPipelinedWhileLoop(instruction)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Returns true if 'buffer' is defined by or used by an async pipelined while
+// loop.
+bool IsBufferAliasedToAsyncPipelinedWhileLoop(const HloValue* buffer) {
+  if (buffer == nullptr) {
+    return false;
+  }
+  for (const HloPosition& pos : buffer->positions()) {
+    if (IsAsyncPipelinedWhileLoop(pos.instruction)) {
+      return true;
+    }
+  }
+  for (const HloUse& use : buffer->GetUses()) {
+    if (IsAsyncPipelinedWhileLoop(use.instruction)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 template <typename T>
@@ -456,6 +509,38 @@ HloInstruction* GetConditionalForBranchRoot(HloInstruction* branch_root) {
   return nullptr;
 }
 
+// Returns the while instruction that is the caller of the body computation of
+// which this instruction is the root, or nullptr if there is no such
+// instruction.
+HloInstruction* GetWhileForBodyRoot(HloInstruction* body_root) {
+  HloComputation* computation = body_root->parent();
+  if (computation->root_instruction() != body_root) {
+    return nullptr;
+  }
+  for (HloInstruction* caller : computation->caller_instructions()) {
+    if (caller->opcode() == HloOpcode::kWhile &&
+        caller->while_body() == computation) {
+      return caller;
+    }
+  }
+  return nullptr;
+}
+
+// Returns true if the computation is the body or condition of a while loop.
+bool IsWhileBodyOrConditionComputation(const HloComputation* computation) {
+  if (computation == nullptr) {
+    return false;
+  }
+  for (const HloInstruction* caller : computation->caller_instructions()) {
+    if (caller->opcode() == HloOpcode::kWhile &&
+        (caller->while_body() == computation ||
+         caller->while_condition() == computation)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 int64_t GetShapeSizeBytes(const CostAnalysis* cost_analysis,
                           const Shape& shape) {
   return cost_analysis ? cost_analysis->GetShapeSizeBytes(shape) : 0;
@@ -585,59 +670,124 @@ MsaAlgorithm::MsaAlgorithm(HloModule* module, AllocationSequence* allocations,
   eviction_async_copy_resource_ = AsynchronousCopyResource(initial_resources);
 }
 
+namespace {
+
+bool IsAsyncDynamicSliceOrDynamicUpdateSlice(
+    const HloInstruction* instruction) {
+  return instruction->IsAsynchronous() &&
+         (instruction->async_wrapped_opcode() == HloOpcode::kDynamicSlice ||
+          instruction->async_wrapped_opcode() ==
+              HloOpcode::kDynamicUpdateSlice);
+}
+
+// Finds the allocation value for operand 0 of async updates and dones. We make
+// sure these uses are associated with the AllocationValue whose position
+// is the direct source of the use.
+AllocationValue* FindAllocationValueForAsyncOperationStateUse(
+    const HloUse& use,
+    absl::Span<AllocationValue> candidate_allocation_values) {
+  CHECK_EQ(use.operand_number, 0);
+  for (AllocationValue& allocation_value : candidate_allocation_values) {
+    if (allocation_value.defining_instruction() ==
+            use.instruction->operand(0) &&
+        allocation_value.defining_position().index == use.operand_index) {
+      return &allocation_value;
+    }
+  }
+  return nullptr;
+}
+
+// Finds the latest valid AllocationValue defined before use_time in the same
+// computation as the use.
+//
+// candidate_allocation_values contains all AllocationValue objects created for
+// the non-trivial positions (excluding GTE, Tuple, and Bitcast) of the single
+// HloValue currently being processed, sorted chronologically by definition
+// time.
+//
+// For dataflow uses, we search backward to find the most recent definition
+// before use_time in the use's computation. If skip_async_state_definitions is
+// true, definitions from async start/update instructions are skipped because
+// they represent in-flight bundled async state that is only finalized when the
+// corresponding async-done executes.
+//
+// If we can't find a valid AllocationValue, returns nullptr.
+AllocationValue* FindLatestAllocationValueForUse(
+    absl::Span<AllocationValue> candidate_allocation_values, int64_t use_time,
+    HloComputation* use_computation,
+    const absl::flat_hash_map<const HloInstruction*, int64_t>&
+        instruction_schedule,
+    bool skip_async_state_definitions) {
+  for (auto it = candidate_allocation_values.rbegin();
+       it != candidate_allocation_values.rend(); ++it) {
+    AllocationValue* allocation_value = &(*it);
+    const HloInstruction* defining_instruction =
+        allocation_value->defining_instruction();
+
+    // Skip definitions from different computations.
+    if (allocation_value->computation() != use_computation) {
+      continue;
+    }
+
+    // Skip definitions that are after the use.
+    int64_t definition_time = instruction_schedule.at(defining_instruction);
+    if (definition_time >= use_time) {
+      continue;
+    }
+
+    // Async start/update instructions produce in-flight bundled async state
+    // that is not finalized until the corresponding async-done executes.
+    // Regular uses must not associate directly with these unfinalized state
+    // definitions.
+    if (skip_async_state_definitions &&
+        IsAsyncOperationStateDefinition(defining_instruction)) {
+      continue;
+    }
+
+    return allocation_value;
+  }
+  return nullptr;
+}
+
+}  // namespace
+
 // Finds the matching AllocationValue for a given HloUse.
 AllocationValue* MsaAlgorithm::FindAllocationValueForUse(
     const HloUse& use, absl::Span<AllocationValue> candidate_allocation_values,
     int64_t use_time) const {
-  if ((HloDataflowAnalysis::IsAsynchronousOperationDone(
-           use.instruction->opcode()) ||
-       use.instruction->opcode() == HloOpcode::kAsyncUpdate) &&
-      use.operand_number == 0) {
-    // Case A: uses in an async-chain: Find the AllocationValue
-    // defined by the previous async instruction in the chain.
-    for (AllocationValue& allocation_value : candidate_allocation_values) {
-      if (allocation_value.defining_instruction() ==
-              use.instruction->operand(0) &&
-          use.operand_index == allocation_value.defining_position().index) {
-        // Since defining_position() is unique among the candidates, there is
-        // at most one unique match, so we can return immediately.
-        return &allocation_value;
-      }
-    }
-  } else {
-    // Case B: uses outside async-chains.
-    // Find the latest valid AllocationValue before
-    // this use. Since AllocationValues in candidate_allocation_values are
-    // sorted by definition time, we iterate backwards.
-    HloComputation* use_computation = use.instruction->parent();
-    const absl::flat_hash_map<const HloInstruction*, int64_t>&
-        instruction_schedule = hlo_live_range_.instruction_schedule();
+  // Asynchronous DynamicSlice and DynamicUpdateSlice instructions have
+  // specialized liveness and buffer aliasing semantics that differ from
+  // communication async operations (such as AllReduce or AllGather). Do not
+  // restrict their uses to strict start/done pairs.
+  bool is_async_dus_done =
+      IsAsyncDynamicSliceOrDynamicUpdateSlice(use.instruction);
 
-    for (auto it = candidate_allocation_values.rbegin();
-         it != candidate_allocation_values.rend(); ++it) {
-      AllocationValue* allocation_value = &(*it);
-      int64_t definition_time = instruction_schedule.at(
-          allocation_value->defining_position().instruction);
-      // Skip definitions that are after the use.
-      if (definition_time >= use_time) {
-        continue;
-      }
-      // Skip definitions from async-start, async-update
-      if (HloDataflowAnalysis::IsAsynchronousOperationStart(
-              allocation_value->defining_instruction()->opcode()) ||
-          allocation_value->defining_instruction()->opcode() ==
-              HloOpcode::kAsyncUpdate) {
-        continue;
-      }
-      // Skip definitions from different computations.
-      if (allocation_value->computation() != use_computation) {
-        continue;
-      }
-      // Pick the closest allocation value preceding the use
-      return allocation_value;
-    }
+  if (IsAsyncOperationStateUse(use) && !is_async_dus_done) {
+    // Case A: Async operation state uses. Note, this case covers uses of
+    // bundled async state in traditional serial async chains and in pipelined
+    // while loops.
+    return FindAllocationValueForAsyncOperationStateUse(
+        use, candidate_allocation_values);
   }
-  return nullptr;
+
+  // Case B: All other uses. These uses use the latest allocation value for the
+  // operand, potentially skipping async state definitions.
+  const absl::flat_hash_map<const HloInstruction*, int64_t>&
+      instruction_schedule = hlo_live_range_.instruction_schedule();
+
+  bool is_pipelined_while_async_start_use =
+      has_async_pipelined_while_loops_ &&
+      (use.instruction->opcode() == HloOpcode::kWhile ||
+       (use.instruction->opcode() == HloOpcode::kTuple &&
+        GetWhileForBodyRoot(use.instruction) != nullptr));
+
+  bool allow_async_state_definitions =
+      is_async_dus_done || is_pipelined_while_async_start_use;
+
+  return FindLatestAllocationValueForUse(
+      candidate_allocation_values, use_time, use.instruction->parent(),
+      instruction_schedule,
+      /*skip_async_state_definitions=*/!allow_async_state_definitions);
 }
 
 void MsaAlgorithm::CreateAllocationValues(
@@ -705,27 +855,50 @@ void MsaAlgorithm::CreateAllocationValues(
   // operations, and logs all created allocation values.
   for (int i = beginning_idx; i < allocation_values.size(); ++i) {
     AllocationValue& allocation_value = allocation_values.at(i);
-    if (HloDataflowAnalysis::IsAsynchronousOperationStart(
-            allocation_value.defining_instruction()->opcode()) ||
-        allocation_value.defining_instruction()->opcode() ==
-            HloOpcode::kAsyncUpdate) {
-      CHECK_EQ(allocation_value.uses().size(), 1);
-      const AllocationValue::Use& use = allocation_value.uses().at(0);
-      HloInstruction* use_instruction = use.hlo_use.instruction;
-      CHECK(use_instruction->opcode() == HloOpcode::kAsyncUpdate ||
-            HloDataflowAnalysis::IsAsynchronousOperationDone(
-                use_instruction->opcode()));
-      // This ensures that buffers representing inputs and outputs to the
-      // async computation maintain temporal contiguity (preventing MSA from
-      // evicting them to default memory).
-      //
-      // However, this does not guarantee temporal contiguousness for temporary
-      // buffers created *inside* the async computation. Such buffers must be
-      // allocated outside the async operation and passed in as `kParameter`s to
-      // ensure they are handled correctly.
+    if (IsAsyncOperationStateDefinition(
+            allocation_value.defining_instruction())) {
+      for (const AllocationValue::Use& use : allocation_value.uses()) {
+        HloInstruction* use_instruction = use.hlo_use.instruction;
+        CHECK(use_instruction->opcode() == HloOpcode::kAsyncUpdate ||
+              HloDataflowAnalysis::IsAsynchronousOperationDone(
+                  use_instruction->opcode()) ||
+              HloDataflowAnalysis::IsAsynchronousOperationStart(
+                  use_instruction->opcode()) ||
+              use_instruction->opcode() == HloOpcode::kTuple ||
+              use_instruction->opcode() == HloOpcode::kGetTupleElement ||
+              use_instruction->opcode() == HloOpcode::kWhile ||
+              use_instruction->opcode() == HloOpcode::kConditional)
+            << "Unexpected use_instruction opcode: "
+            << HloOpcodeString(use_instruction->opcode()) << " ("
+            << use_instruction->ToString() << ") for async def: "
+            << allocation_value.defining_instruction()->ToString();
+      }
+    }
+    bool is_async_operation_state =
+        IsAsyncOperationStateDefinition(
+            allocation_value.defining_instruction()) ||
+        absl::c_any_of(allocation_value.uses(),
+                       [](const AllocationValue::Use& use) {
+                         return IsAsyncOperationStateUse(use.hlo_use);
+                       });
+    // Requiring contiguous allocation ensures that buffers representing inputs
+    // and outputs to the async computation maintain temporal contiguity
+    // (preventing MSA from evicting them to default memory).
+    //
+    // For async pipelined while loops where the async start/update is in the
+    // while loop body and the done is in the next iteration, the uses
+    // can include kTuple/kGetTupleElement passing the async state out of the
+    // while loop body, or kWhile/kConditional when unrolling or lowering.
+    //
+    // However, this does not guarantee temporal contiguousness for temporary
+    // buffers created *inside* the async computation. Such buffers must be
+    // allocated outside the async operation and passed in as `kParameter`s to
+    // ensure they are handled correctly.
+    if (is_async_operation_state) {
       VLOG(3) << "Mark " << allocation_value.ToShortString()
               << " to require contiguous allocation because it is an async "
-                 "start or async update operation.";
+                 "operation state (async start/update definition or async "
+                 "done/update use).";
       allocation_value.set_requires_contiguous_allocation(true);
     } else if (options_.position_requires_contiguous_allocation_fn(
                    allocation_value.defining_position())) {
@@ -751,6 +924,14 @@ void MsaAlgorithm::FindAliases(
     auto aliased_values_it = values_by_defining_inst.find(instruction);
     if (aliased_values_it != values_by_defining_inst.end()) {
       for (const AllocationValue* aliased_value : aliased_values_it->second) {
+        // When aliasing while loop boundaries, ensure that only matching tuple
+        // shape indexes are linked together as aliases.
+        if (use->hlo_use.instruction->opcode() == HloOpcode::kWhile &&
+            !aliased_value->defining_position().index.empty() &&
+            aliased_value->defining_position().index !=
+                use->hlo_use.operand_index) {
+          continue;
+        }
         if (absl::c_find(use->aliases, aliased_value->defining_position()) ==
             use->aliases.end()) {
           VLOG(3) << "Adding aliasing for use " << use->hlo_use.ToString()
@@ -840,6 +1021,32 @@ void MsaAlgorithm::FindAliases(
                 << conditional_output_position.ToString() << " to use "
                 << use.hlo_use.ToString();
         use.aliases.push_back(conditional_output_position);
+      }
+
+      // Special case for async pipelined while loops: an instruction
+      // producing a loop return operand that feeds into the body root tuple
+      // must alias with both the while body parameter(0) and the caller while
+      // instruction at the corresponding tuple index.
+      if (has_async_pipelined_while_loops_) {
+        HloInstruction* while_instruction =
+            GetWhileForBodyRoot(use.hlo_use.instruction);
+        if (while_instruction != nullptr &&
+            use.hlo_use.instruction->opcode() == HloOpcode::kTuple &&
+            while_instruction->while_body()->num_parameters() > 0) {
+          ShapeIndex index = use.hlo_use.operand_index;
+          index.push_front(use.hlo_use.operand_number);
+          HloInstruction* parameter_instruction =
+              while_instruction->while_body()->parameter_instruction(0);
+          HloPosition parameter_position{parameter_instruction, index};
+          HloPosition while_output_position{while_instruction, index};
+          VLOG(1)
+              << "Add use aliases for while body root position to parameter "
+              << parameter_position.ToString() << " and while output "
+              << while_output_position.ToString() << " for use "
+              << use.hlo_use.ToString();
+          use.aliases.push_back(parameter_position);
+          use.aliases.push_back(while_output_position);
+        }
       }
     }
   }
@@ -1207,10 +1414,10 @@ void MsaAlgorithm::AppendScopedAllocationBufferInfoDebugString(
     // Append the column names.
     absl::StrAppend(&debug_str, kBufferInfoColumnNames, "\n");
   }
-  const HloBuffer& buffer = alias_analysis_.GetUniqueBufferAt(instruction);
+  int64_t buffer_id = alias_analysis_.GetUniqueBufferAt(instruction).id();
 
   // As a convention, we use negative values for scoped allocations.
-  absl::StrAppend(&debug_str, -buffer.id(), ",");
+  absl::StrAppend(&debug_str, -buffer_id, ",");
   absl::StrAppend(&debug_str, "\"scoped allocation for ", instruction->name(),
                   "\",");
   absl::StrAppend(&debug_str, 0, ",");  // alt_mem_benefit
@@ -1236,12 +1443,17 @@ void MsaAlgorithm::AppendAllocationInfoDebugString(
   }
   if (allocation.memory_space() == MemorySpace::kAlternate) {
     const HloPosition& position = allocation.defining_position();
-    const HloBuffer& buffer =
-        alias_analysis_.GetUniqueBufferAt(position.instruction, position.index);
+    int64_t buffer_id = position.instruction->unique_id();
+    if (alias_analysis_.ComputeBuffersAt(position.instruction, position.index)
+            .size() == 1) {
+      buffer_id = alias_analysis_
+                      .GetUniqueBufferAt(position.instruction, position.index)
+                      .id();
+    }
     // As a convention, we use negative values for scoped allocations.
-    absl::StrAppend(
-        &debug_str,
-        allocation.is_scoped_allocation() ? -buffer.id() : buffer.id(), ",");
+    absl::StrAppend(&debug_str,
+                    allocation.is_scoped_allocation() ? -buffer_id : buffer_id,
+                    ",");
     absl::StrAppend(&debug_str, allocation.chunk().size, ",");
     absl::StrAppend(&debug_str, allocation.chunk().offset, ",");
     absl::StrAppend(&debug_str, allocation.start_time(), ",");
@@ -2197,6 +2409,9 @@ MsaAlgorithm::GetContiguousLiveRangesForBuffer(const HloBuffer* buffer) const {
   absl::flat_hash_map<HloPosition, std::vector<HloUse>>
       contiguous_positions_to_uses;
   for (const HloValue* value : buffer->values()) {
+    if (!value->shape().IsArray()) {
+      continue;
+    }
     for (const HloUse& use : value->GetUses()) {
       HloInstruction* operand =
           use.instruction->mutable_operand(use.operand_number);
@@ -2204,14 +2419,17 @@ MsaAlgorithm::GetContiguousLiveRangesForBuffer(const HloBuffer* buffer) const {
       HloPosition source_position =
           GetNonTrivialSourcePosition(HloPosition{operand, operand_index});
       if (options_.position_requires_contiguous_allocation_fn(
-              source_position)) {
+              source_position) ||
+          IsAsyncOperationStateDefinition(source_position.instruction) ||
+          IsAsyncOperationStateUse(use)) {
         VLOG(3) << "Adding use " << use.ToString() << " to contiguous position "
                 << source_position.ToString();
         contiguous_positions_to_uses[source_position].push_back(use);
       }
     }
     for (const HloPosition& position : value->positions()) {
-      if (options_.position_requires_contiguous_allocation_fn(position)) {
+      if (options_.position_requires_contiguous_allocation_fn(position) ||
+          IsAsyncOperationStateDefinition(position.instruction)) {
         if (!(contiguous_positions_to_uses.contains(position))) {
           LOG(WARNING) << "Position " << position.ToString()
                        << " is required to be contiguous but has no uses, "
@@ -2227,6 +2445,15 @@ MsaAlgorithm::GetContiguousLiveRangesForBuffer(const HloBuffer* buffer) const {
     int64_t start_time =
         hlo_live_range_.instruction_schedule().at(position.instruction);
     int64_t end_time = start_time;
+    if (uses.empty() &&
+        position.instruction->opcode() == HloOpcode::kParameter &&
+        position.instruction->parent() != nullptr &&
+        position.instruction->parent()->root_instruction() != nullptr &&
+        IsWhileBodyOrConditionComputation(position.instruction->parent())) {
+      end_time = std::max(
+          end_time, hlo_live_range_.instruction_schedule().at(
+                        position.instruction->parent()->root_instruction()));
+    }
     for (const HloUse& use : uses) {
       end_time = std::max(end_time, GetCorrectedUseTime(use));
     }
@@ -2295,13 +2522,11 @@ MsaAlgorithm::GetAltMemoryColoredIntervalsForBuffer(
                       "effort, might fail."
                    << coloring_site->ToString();
     }
-    if (memory_space_enum == MemorySpace::kDefault) {
-      AddIntervalForColoringTime(time_of_coloring, default_mem_intervals,
-                                 contiguous_live_ranges);
-    } else {
-      AddIntervalForColoringTime(time_of_coloring, alternate_mem_intervals,
-                                 contiguous_live_ranges);
-    }
+    std::vector<TimeInterval>& target_intervals =
+        (memory_space_enum == MemorySpace::kDefault) ? default_mem_intervals
+                                                     : alternate_mem_intervals;
+    AddIntervalForColoringTime(time_of_coloring, target_intervals,
+                               contiguous_live_ranges);
   }
   ABSL_ASSIGN_OR_RETURN(
       std::vector<TimeInterval> merged_default_mem_intervals,
@@ -2357,6 +2582,11 @@ MsaAlgorithm::GetHloBufferToColoringsMap() const {
     if (is_position) {
       HloPosition position =
           std::get<HloPosition>(buffer_coloring.buffer_position_or_use);
+      // Skip non-array shapes (e.g., tuples and tokens) since they do not
+      // consume physical alternate memory storage.
+      if (!position.shape().IsArray()) {
+        continue;
+      }
       const HloBuffer& hlo_buffer = alias_analysis_.GetUniqueBufferAt(
           position.instruction, position.index);
       buffer_to_colorings[&hlo_buffer].push_back(buffer_coloring);
@@ -2367,6 +2597,12 @@ MsaAlgorithm::GetHloBufferToColoringsMap() const {
       ShapeIndex operand_index = use.operand_index;
       const HloBuffer& hlo_buffer =
           alias_analysis_.GetUniqueBufferAt(operand, operand_index);
+      // Skip non-array shapes (e.g., tuples and tokens) since they do not
+      // consume physical alternate memory storage.
+      if (!hlo_buffer.values().empty() &&
+          !hlo_buffer.values().front()->shape().IsArray()) {
+        continue;
+      }
       buffer_to_colorings[&hlo_buffer].push_back(buffer_coloring);
     }
   }
@@ -2384,6 +2620,11 @@ absl::Status MsaAlgorithm::ProcessColoredBuffers() {
     CHECK(!buffer->values().empty())
         << "Colored buffer has no values: " << buffer->ToString();
     const HloValue* first_value = buffer->values().front();
+    // Skip non-array shapes (e.g., tuples and tokens) since they do not
+    // consume physical alternate memory storage.
+    if (!first_value->shape().IsArray()) {
+      continue;
+    }
     auto buffer_interval_it = buffer_intervals_.find(first_value);
     if (buffer_interval_it == buffer_intervals_.end() &&
         first_value->defining_instruction()->opcode() == HloOpcode::kConstant) {
@@ -4060,17 +4301,27 @@ MsaAlgorithm::GetPostProcessedSortedBufferIntervals() {
   struct BufferInfo {
     bool pre_colored = false;
     bool alt_mem_coloring = false;
+    bool async_pipelined_while_alias = false;
     int64_t definition_time = std::numeric_limits<int64_t>::min();
     int64_t last_use_time = std::numeric_limits<int64_t>::min();
   };
+
+  // Detect whether the module contains async pipelined while loops (marked with
+  // frontend attributes controlling while loop copy elimination) to enable
+  // precise alternate memory offset colocation.
+  has_async_pipelined_while_loops_ = HasAsyncPipelinedWhileLoops(*module_);
 
   // Precompute buffer info for each buffer in O(n) time instead of calling the
   // above functions repeatedly in the sort function.
   absl::flat_hash_map<const HloValue*, BufferInfo> buffer_info;
   buffer_info.reserve(sorted_buffer_intervals.size());
-  for (const MsaBufferInterval& interval : sorted_buffer_intervals) {
+  for (MsaBufferInterval& interval : sorted_buffer_intervals) {
     BufferInfo& info = buffer_info[interval.buffer];
     info.pre_colored = is_pre_colored(interval.buffer);
+    if (has_async_pipelined_while_loops_) {
+      info.async_pipelined_while_alias =
+          IsBufferAliasedToAsyncPipelinedWhileLoop(interval.buffer);
+    }
   }
 
   bool is_block_prefetching_enabled =
@@ -4139,6 +4390,16 @@ MsaAlgorithm::GetPostProcessedSortedBufferIntervals() {
                                                    const MsaBufferInterval& b) {
     BufferInfo& a_properties = buffer_info.at(a.buffer);
     BufferInfo& b_properties = buffer_info.at(b.buffer);
+    if (has_async_pipelined_while_loops_) {
+      int64_t a_size = a_properties.async_pipelined_while_alias ? a.size : 0;
+      int64_t b_size = b_properties.async_pipelined_while_alias ? b.size : 0;
+      return std::forward_as_tuple(
+                 a_properties.pre_colored, a_properties.alt_mem_coloring,
+                 a_properties.async_pipelined_while_alias, a_size) >
+             std::forward_as_tuple(
+                 b_properties.pre_colored, b_properties.alt_mem_coloring,
+                 b_properties.async_pipelined_while_alias, b_size);
+    }
     return std::forward_as_tuple(a_properties.pre_colored,
                                  a_properties.alt_mem_coloring) >
            std::forward_as_tuple(b_properties.pre_colored,
@@ -4496,7 +4757,12 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
       } else if ((result_is(result, AllocationResult::kFailOutOfMemory) ||
                   options_.repack_after_every_allocation) &&
                  num_repacks_ < options_.max_repacks && !repacked &&
-                 !RepackAllocationsIncludeConvertedSyncMemOp()) {
+                 !RepackAllocationsIncludeConvertedSyncMemOp() &&
+                 // Disable buffer repacking when async pipelined while loops
+                 // are present, as repacking can alter assigned physical
+                 // offsets and break required aliasing offset colocation across
+                 // loop boundaries.
+                 !has_async_pipelined_while_loops_) {
         UncommitPendingWork(absl::MakeSpan(proposal.allocation_values));
         ++num_repacks_;
         repacked = true;
@@ -4591,7 +4857,11 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
       << "operands_in_alternate_memory_map_ is not consistent with the "
          "finalizied allocations.";
 
-  if (options_.repack_after_every_allocation) {
+  // Skip post-allocation repacking when async pipelined while loops are
+  // present to prevent altering established alternate memory colocation
+  // offsets.
+  if (options_.repack_after_every_allocation &&
+      !has_async_pipelined_while_loops_) {
     if (!options_.repacker) {
       return absl::FailedPreconditionError("Repacker cannot be null.");
     }
@@ -5006,8 +5276,10 @@ void MsaAlgorithm::CreateAllocationValuesFromColocatedIntervals(
     for (int j = i + 1; j < new_allocation_values.size(); ++j) {
       const AllocationValue& allocation_value_1 = new_allocation_values[i];
       const AllocationValue& allocation_value_2 = new_allocation_values[j];
-      if (create_instruction_vector(allocation_value_1) ==
-          create_instruction_vector(allocation_value_2)) {
+      if (allocation_value_1.defining_position().index ==
+              allocation_value_2.defining_position().index &&
+          create_instruction_vector(allocation_value_1) ==
+              create_instruction_vector(allocation_value_2)) {
         VLOG(3) << "Allocation values " << allocation_value_1.ToShortString()
                 << " and " << allocation_value_2.ToShortString()
                 << " are equivalent, deleting the second one.";
@@ -5095,7 +5367,18 @@ void MsaAlgorithm::AssignDefaultMemIfNotAllowedInAlternateMem(
     AllocationValue& allocation_value, int64_t definition_time) {
   if (!options_.is_position_allowed_in_alternate_mem_fn(
           allocation_value.defining_position())) {
-    if (RequiresNoCopyAlternateMemAllocation(allocation_value)) {
+    std::optional<RequiredMemoryAssignment> existing_req =
+        RequiredMemoryAssignmentAt(allocation_value.value(), definition_time);
+    // If a value is pre-colored or already possesses an explicit alternate
+    // memory requirement, preserve that requirement and log a warning instead
+    // of forcing an incompatible assignment in default memory.
+    if (RequiresNoCopyAlternateMemAllocation(allocation_value) ||
+        IsPositionColoredInAlternateMemory(
+            allocation_value.defining_position()) ||
+        IsPositionColoredInAlternateMemoryAtTime(
+            allocation_value.defining_position(), definition_time) ||
+        (existing_req.has_value() &&
+         existing_req->memory_space == MemorySpace::kAlternate)) {
       LOG(WARNING) << "The value " << allocation_value.value()->ToShortString()
                    << " is pre-colored for alternate memory but the position "
                    << allocation_value.defining_position().ToString()
@@ -5235,6 +5518,51 @@ void MsaAlgorithm::AddOperandToAlternateMemoryMap(
       std::make_pair(operand_number, index));
 }
 
+bool MsaAlgorithm::GetUpdatedRequireNoCopyAlternateMemForAsyncPipelinedWhile(
+    bool require_no_copy_alt_mem,
+    const AllocationValue& allocation_value_to_update,
+    const AliasedOffset* preferred_offset,
+    const absl::flat_hash_set<int64_t>& default_req_buffer_ids) const {
+  // Check 1: leave normal MSA as is.
+  if (!has_async_pipelined_while_loops_) {
+    return require_no_copy_alt_mem;
+  }
+  if (!IsBufferAliasedToAsyncPipelinedWhileLoop(
+          allocation_value_to_update.value())) {
+    return require_no_copy_alt_mem;
+  }
+  // Check 2: we're only looking to override false -> true.
+  if (require_no_copy_alt_mem) {
+    return true;
+  }
+
+  // Check 3: we're only looking to override async DUS and async dynamic slice.
+  const HloPosition& def_pos = allocation_value_to_update.defining_position();
+  const HloInstruction* def_instr = def_pos.instruction;
+  if (def_instr->IsAsynchronous() &&
+      def_instr->async_wrapped_opcode() != HloOpcode::kDynamicUpdateSlice &&
+      def_instr->async_wrapped_opcode() != HloOpcode::kDynamicSlice) {
+    return false;
+  }
+
+  if (preferred_offset == nullptr) {
+    return false;
+  }
+
+  if (!options_.is_position_allowed_in_alternate_mem_fn(def_pos) ||
+      options_.size_fn(*allocation_value_to_update.value()) >
+          options_.max_size_in_bytes) {
+    return false;
+  }
+
+  int64_t buffer_id =
+      alias_analysis_
+          .GetUniqueBufferAt(
+              allocation_value_to_update.value()->defining_position())
+          .id();
+  return !default_req_buffer_ids.contains(buffer_id);
+}
+
 absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
     absl::Span<AllocationValue> allocation_values) {
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
@@ -5281,6 +5609,20 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
   // conditional.
   absl::flat_hash_set<AllocationValue*>
       already_processed_allocation_values_inside_a_conditional;
+
+  absl::flat_hash_set<int64_t> default_req_buffer_ids;
+  if (has_async_pipelined_while_loops_) {
+    // NOLINTNEXTLINE
+    for (const auto& [val, req_list] : required_assignments_) {
+      for (const auto& req : req_list) {
+        if (req.memory_space == MemorySpace::kDefault) {
+          default_req_buffer_ids.insert(
+              alias_analysis_.GetUniqueBufferAt(val->defining_position()).id());
+          break;
+        }
+      }
+    }
+  }
 
   AllocationResult result = AllocationResult::kSuccess;
   for (int alloc_value_idx = 0; alloc_value_idx < allocation_values.size();
@@ -5335,26 +5677,94 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
 
       if (!preferred_offset_for_allocation_value.contains(
               &allocation_value_to_update)) {
-        auto preferred_offset_it = preferred_offset_for_computation.find(
-            allocation_value_to_update.computation());
-        if (preferred_offset_it != preferred_offset_for_computation.end()) {
-          preferred_offset_for_allocation_value[&allocation_value_to_update] =
-              preferred_offset_it->second;
-        } else {
-          preferred_offset_for_allocation_value[&allocation_value_to_update] =
-              nullptr;
+        // Resolve the preferred alternate memory offset for this allocation
+        // value by inspecting the canonical HloBuffer alias set. This
+        // guarantees that all aliased positions across while loop boundaries
+        // (including loop input operands, loop parameters, and loop body root
+        // tuple elements) adopt identical starting offsets in alternate memory.
+        AliasedOffset* preferred_offset = nullptr;
+        auto is_while_tuple_position = [](const HloPosition& pos) {
+          if (pos.instruction->opcode() == HloOpcode::kParameter ||
+              pos.instruction->opcode() == HloOpcode::kWhile) {
+            return true;
+          }
+          HloComputation* comp = pos.instruction->parent();
+          if (comp != nullptr && pos.instruction == comp->root_instruction() &&
+              pos.instruction->opcode() == HloOpcode::kTuple) {
+            return true;
+          }
+          return false;
+        };
+        if (has_async_pipelined_while_loops_) {
+          const HloBuffer& hlo_buffer = alias_analysis_.GetUniqueBufferAt(
+              allocation_value_to_update.defining_position().instruction,
+              allocation_value_to_update.defining_position().index);
+          auto buf_it = pipelined_while_buffer_id_to_aliased_offset_.find(
+              hlo_buffer.id());
+          if (buf_it != pipelined_while_buffer_id_to_aliased_offset_.end()) {
+            preferred_offset = buf_it->second;
+          } else {
+            for (const HloPosition& position : hlo_buffer.ComputePositions()) {
+              if (!is_while_tuple_position(position)) {
+                continue;
+              }
+              HloComputation* comp = position.instruction->parent();
+              auto comp_it =
+                  pipelined_while_preferred_offset_for_computation_.find(comp);
+              if (comp_it !=
+                  pipelined_while_preferred_offset_for_computation_.end()) {
+                auto index_it = comp_it->second.find(position.index);
+                if (index_it != comp_it->second.end()) {
+                  preferred_offset = index_it->second;
+                  break;
+                }
+              }
+            }
+          }
         }
+        if (preferred_offset == nullptr) {
+          if (!has_async_pipelined_while_loops_) {
+            auto comp_it = preferred_offset_for_computation.find(
+                allocation_value_to_update.computation());
+            if (comp_it != preferred_offset_for_computation.end()) {
+              preferred_offset = comp_it->second;
+            }
+          } else if (is_while_tuple_position(
+                         allocation_value_to_update.defining_position())) {
+            auto comp_it =
+                pipelined_while_preferred_offset_for_computation_.find(
+                    allocation_value_to_update.computation());
+            if (comp_it !=
+                pipelined_while_preferred_offset_for_computation_.end()) {
+              auto index_it = comp_it->second.find(
+                  allocation_value_to_update.defining_position().index);
+              if (index_it != comp_it->second.end()) {
+                preferred_offset = index_it->second;
+              }
+            }
+          }
+        }
+        preferred_offset_for_allocation_value[&allocation_value_to_update] =
+            preferred_offset;
       }
       preferred_offset_for_allocation_value[&allocation_value_to_update] =
           CheckOrUpdatePreferredOffsetForUse(
               use, preferred_offset_for_allocation_value.at(
                        &allocation_value_to_update));
+      bool require_no_copy_alt_mem =
+          RequiresNoCopyAlternateMemAllocation(allocation_value_to_update);
+      require_no_copy_alt_mem =
+          GetUpdatedRequireNoCopyAlternateMemForAsyncPipelinedWhile(
+              require_no_copy_alt_mem, allocation_value_to_update,
+              preferred_offset_for_allocation_value.at(
+                  &allocation_value_to_update),
+              default_req_buffer_ids);
       AllocationRequest request = CreateAllocationRequest(
           allocation_value, allocation_value_to_update, use, previous_use,
           preferred_offset_for_allocation_value.at(&allocation_value_to_update),
           definition_time_for_allocation_value.at(&allocation_value_to_update),
-          RequiresNoCopyAlternateMemAllocation(allocation_value_to_update),
-          all_use_times, entry.only_extend_existing_allocation,
+          require_no_copy_alt_mem, all_use_times,
+          entry.only_extend_existing_allocation,
           allocation_values.subspan(0, alloc_value_idx), allocation_values,
           /*shape_override=*/std::nullopt);
       if (options_.allocation_request_modifier_testing_fn) {
@@ -5599,14 +6009,18 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
     // controlled successor of the sync mem op.
     for (const HloInstruction* control_successor :
          required_copy_allocation_for->control_successors()) {
-      int64_t successor_time = instruction_schedule.at(control_successor);
-      if (successor_time < required_copy_allocation_latest_time) {
-        VLOG(3) << "Updating the required replacement async mem op allocation "
-                   "latest time from "
-                << required_copy_allocation_latest_time << " to "
-                << successor_time << ", because of control successor "
-                << control_successor->ToString();
-        required_copy_allocation_latest_time = successor_time;
+      auto successor_it = instruction_schedule.find(control_successor);
+      if (successor_it != instruction_schedule.end()) {
+        int64_t successor_time = successor_it->second;
+        if (successor_time < required_copy_allocation_latest_time) {
+          VLOG(3)
+              << "Updating the required replacement async mem op allocation "
+                 "latest time from "
+              << required_copy_allocation_latest_time << " to "
+              << successor_time << ", because of control successor "
+              << control_successor->ToString();
+          required_copy_allocation_latest_time = successor_time;
+        }
       }
     }
 
@@ -5614,14 +6028,11 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
     // the latest operand of the sync mem op.
     for (const HloInstruction* operand :
          required_copy_allocation_for->operands()) {
-      int64_t operand_time = instruction_schedule.at(operand);
-      earliest_prefetch_time =
-          std::max(earliest_prefetch_time.value_or(-1), operand_time);
+      earliest_prefetch_time = std::max(earliest_prefetch_time.value_or(-1),
+                                        instruction_schedule.at(operand));
     }
   }
 
-  // GetExtendedUseTimeIfUseIsView() is used to bound request.end_time below,
-  // and must match the all-use-times list.
   int64_t use_time = GetExtendedUseTimeIfUseIsView(hlo_use);
   bool allow_no_copy_alternate_mem_allocation = true;
   bool allow_prefetch = true;
@@ -5629,11 +6040,7 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
   // TODO(b/318886791):  Rename boundary variables (here and other places)
   // like `latest_prefetch_time` and `earliest_prefetch_time` indicate
   // whether they are exclusive or inclusive boundaries.
-  //
-  // Bound the latest prefetch deadline by the instruction's schedule time. A
-  // materializing copy must execute before the use.
-  int64_t latest_prefetch_time =
-      std::min(use_time, instruction_schedule.at(hlo_use.instruction));
+  int64_t latest_prefetch_time = use_time;
 
   // Control flow  calls include kWhile, kCall, and kConditional opcodes.
   bool is_sequential_call =
@@ -5642,20 +6049,39 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
   if (is_sequential_call) {
     for (const HloComputation* called_computation :
          hlo_use.instruction->called_computations()) {
-      const HloLiveRange::LiveRangeBounds& computation_span =
-          hlo_live_range_.computation_span_times().at(called_computation);
-      latest_prefetch_time =
-          std::min(computation_span.start - 1, latest_prefetch_time);
+      auto called_computation_span_it =
+          hlo_live_range_.computation_span_times().find(called_computation);
+      if (called_computation_span_it !=
+          hlo_live_range_.computation_span_times().end()) {
+        latest_prefetch_time = std::min(
+            called_computation_span_it->second.start - 1, latest_prefetch_time);
+      }
     }
     use_time = GetCorrectedUseTime(hlo_use);
   }
 
   // Add a required assignment in default memory if the use not allowed in
   // alternate memory.
+  std::optional<RequiredMemoryAssignment> existing_req =
+      RequiredMemoryAssignmentAt(allocation_value_to_update.value(), use_time);
+  auto is_required_in_alt_mem = [&]() {
+    return require_no_copy_alternate_mem_allocation ||
+           IsPositionColoredInAlternateMemory(
+               allocation_value_to_update.defining_position()) ||
+           IsPositionColoredInAlternateMemoryAtTime(
+               allocation_value_to_update.defining_position(), use_time) ||
+           IsUseColoredInAlternateMemory(hlo_use) ||
+           (existing_req.has_value() &&
+            existing_req->memory_space == MemorySpace::kAlternate);
+  };
+
   if (IsWhileLoopUseRequiredInDefaultMemory(hlo_use) ||
       !IsUseAllowedInAlternateMemory(hlo_use) ||
       !IsWhileLoopUseBeneficialInAlternateMemory(hlo_use)) {
-    if (require_no_copy_alternate_mem_allocation) {
+    // Respect pre-existing alternate memory coloring or required assignments
+    // even if a while loop use would not otherwise be allowed or beneficial
+    // in alternate memory.
+    if (is_required_in_alt_mem()) {
       LOG(WARNING) << "The value "
                    << allocation_value_to_update.value()->ToShortString()
                    << " is pre-colored for alternate memory but the use "
@@ -5670,23 +6096,22 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
     }
   } else if (!IsConditionalUseBeneficialInAlternateMemory(
                  allocation_value_to_update, hlo_use)) {
-    std::optional<RequiredMemoryAssignment> existing_required_assignment =
-        RequiredMemoryAssignmentAt(allocation_value_to_update.value(),
-                                   use_time);
     // If there is an existing required assignment for the value in
     // alternate memory due to an aliased use, then it is okay to allow this
     // use alternate memory, otherwise force default memory allocation.
-    if (existing_required_assignment.has_value() &&
-        existing_required_assignment.value().memory_space ==
-            MemorySpace::kAlternate &&
-        existing_required_assignment.value().required_assignment_source ==
+    if (existing_req.has_value() &&
+        existing_req.value().memory_space == MemorySpace::kAlternate &&
+        existing_req.value().required_assignment_source ==
             RequiredMemoryAssignment::Source::kAliasedUse) {
       VLOG(1) << "Allowing use " << hlo_use.ToString()
               << " in alternate memory because of existing required"
                  " assignment due to aliased use: "
-              << existing_required_assignment.value().ToString()
-              << " for value: "
+              << existing_req.value().ToString() << " for value: "
               << allocation_value_to_update.value()->ToShortString();
+    } else if (is_required_in_alt_mem()) {
+      VLOG(1) << "Allowing conditional use " << hlo_use.ToString()
+              << " in alternate memory despite not being beneficial, due to "
+                 "coloring.";
     } else {
       RequiredMemoryAssignment::Source source =
           RequiredMemoryAssignment::Source::kUseNotAllowedInAlternateMemory;
@@ -5697,12 +6122,16 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
   } else if (IsEvictionRequiredForPreviousUseAtConditional(
                  allocation_value, use, previous_use, all_allocation_values)) {
     allow_no_copy_alternate_mem_allocation = false;
-    earliest_prefetch_time =
-        instruction_schedule.at(previous_use->hlo_use.instruction);
+    auto prev_it = instruction_schedule.find(previous_use->hlo_use.instruction);
+    if (prev_it != instruction_schedule.end()) {
+      earliest_prefetch_time = prev_it->second;
+    }
     VLOG(3) << "Previous use (" << previous_use->hlo_use.ToString()
             << ") of use (" << hlo_use.ToString()
             << ") is a conditional, the operand requires eviction. "
-            << "Earliest prefetch time = " << *earliest_prefetch_time;
+            << "Earliest prefetch time = "
+            << (earliest_prefetch_time.has_value() ? *earliest_prefetch_time
+                                                   : -1);
   }
 
   AllocationRequest request;
@@ -5745,10 +6174,9 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
                    copy_allocation->copy_done_schedule_before()) {
           effective_copy_start_time -= loop_optimized_allocation_info.loop_size;
         }
-        preferred_prefetch_time =
-            hlo_live_range_.instruction_schedule().at(hlo_use.instruction) -
-            loop_optimized_allocation_info.use_index +
-            effective_copy_start_time;
+        preferred_prefetch_time = use_time -
+                                  loop_optimized_allocation_info.use_index +
+                                  effective_copy_start_time;
         VLOG(3) << "Prefer prefetch at " << *preferred_prefetch_time
                 << " (effective: " << effective_copy_start_time << ")";
       } else if (allocation->memory_space() == MemorySpace::kDefault) {
@@ -5818,7 +6246,8 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
     request.latest_prefetch_time = latest_prefetch_time;
     request.size = allocation_value_to_update.size();
     request.prefer_no_copy_alternate_mem_allocation =
-        prefer_no_copy_alternate_mem_allocation;
+        prefer_no_copy_alternate_mem_allocation ||
+        require_no_copy_alternate_mem_allocation;
     request.allow_no_copy_alternate_mem_allocation =
         allow_no_copy_alternate_mem_allocation;
     request.allow_prefetch = allow_prefetch;
@@ -5958,11 +6387,16 @@ void MsaAlgorithm::MaybeCreateMirroredParentAllocationForWhileUse(
     if (prev_allocation_in_default_mem_it != allocation_sequence->rend()) {
       VLOG(3) << "Found a prev allocation in default mem for while use: "
               << (*prev_allocation_in_default_mem_it)->ToString();
+      // Safely match while loop parameters and outputs by exact tuple
+      // ShapeIndex using conditionals instead of rigid assertions, since
+      // unused return positions may not have active entries in
+      // allocation_values.
       auto body_allocation_value_it =
           absl::c_find_if(allocation_values, [&](const AllocationValue& value) {
             return value.computation() == hlo_use.instruction->while_body() &&
                    value.defining_instruction()->opcode() ==
-                       HloOpcode::kParameter;
+                       HloOpcode::kParameter &&
+                   value.defining_position().index == hlo_use.operand_index;
           });
       CHECK_NE(body_allocation_value_it, allocation_values.end());
       VLOG(3) << "Body allocation value: "
@@ -5981,7 +6415,8 @@ void MsaAlgorithm::MaybeCreateMirroredParentAllocationForWhileUse(
 
       auto after_while_allocation_value_it =
           absl::c_find_if(allocation_values, [&](const AllocationValue& value) {
-            return value.defining_instruction() == hlo_use.instruction;
+            return value.defining_instruction() == hlo_use.instruction &&
+                   value.defining_position().index == hlo_use.operand_index;
           });
       CHECK_NE(after_while_allocation_value_it, allocation_values.end());
       VLOG(3) << "After while allocation value: "
@@ -5998,8 +6433,48 @@ void MsaAlgorithm::MaybeCreateMirroredParentAllocationForWhileUse(
   }
   // Special case for while loops since the root offset must agree with
   // other offsets: remember the preferred offset for the while loop body.
-  preferred_offset_for_computation[hlo_use.instruction->while_body()] =
-      GetAliasedOffset(*aliased_allocation);
+  AliasedOffset* offset = GetAliasedOffset(*aliased_allocation);
+  if (has_async_pipelined_while_loops_) {
+    SynchronizeAliasedWhileLoopOffsets(hlo_use, *aliased_allocation, offset);
+  } else {
+    preferred_offset_for_computation[hlo_use.instruction->while_body()] =
+        offset;
+  }
+}
+
+void MsaAlgorithm::SynchronizeAliasedWhileLoopOffsets(
+    const HloUse& hlo_use, const Allocation& aliased_allocation,
+    AliasedOffset* offset) {
+  HloComputation* while_body = hlo_use.instruction->while_body();
+  pipelined_while_preferred_offset_for_computation_[while_body]
+                                                   [hlo_use.operand_index] =
+                                                       offset;
+
+  // Enforce strict aliasing synchronization across the loop parameter, body
+  // root, and external while instruction by recording the canonical
+  // AliasedOffset against all associated positions. In XLA HLO, a while loop
+  // body computation always takes a single tuple parameter (index 0)
+  // representing the entire loop state.
+  static constexpr int64_t kWhileLoopStateParameterNumber = 0;
+  HloInstruction* while_parameter =
+      while_body->parameter_instruction(kWhileLoopStateParameterNumber);
+  AddAliasedRequiredAssignment(while_parameter, hlo_use.operand_index,
+                               &aliased_allocation,
+                               RequiredMemoryAssignment::Source::kAliasedUse);
+  RecordAliasedOffsetForAsyncPipelinedWhileLoop(
+      {while_parameter, hlo_use.operand_index}, offset);
+
+  AddAliasedRequiredAssignment(while_body->root_instruction(),
+                               hlo_use.operand_index, &aliased_allocation,
+                               RequiredMemoryAssignment::Source::kAliasedUse);
+  RecordAliasedOffsetForAsyncPipelinedWhileLoop(
+      {while_body->root_instruction(), hlo_use.operand_index}, offset);
+
+  AddAliasedRequiredAssignment(hlo_use.instruction, hlo_use.operand_index,
+                               &aliased_allocation,
+                               RequiredMemoryAssignment::Source::kAliasedUse);
+  RecordAliasedOffsetForAsyncPipelinedWhileLoop(
+      {hlo_use.instruction, hlo_use.operand_index}, offset);
 }
 
 bool MsaAlgorithm::NeedsMirroredAllocation(
@@ -6689,6 +7164,16 @@ void MsaAlgorithm::MaybeCreateOrAddToAliasedOffset(
   CHECK_EQ(allocation.chunk().offset, aliased_offset->offset);
   CHECK(aliased_offset->allocations.insert(&allocation).second);
   aliased_offset_map_[&allocation] = aliased_offset;
+}
+
+void MsaAlgorithm::RecordAliasedOffsetForAsyncPipelinedWhileLoop(
+    const HloPosition& position, AliasedOffset* aliased_offset) {
+  if (aliased_offset != nullptr) {
+    const HloBuffer& hlo_buffer =
+        alias_analysis_.GetUniqueBufferAt(position.instruction, position.index);
+    pipelined_while_buffer_id_to_aliased_offset_[hlo_buffer.id()] =
+        aliased_offset;
+  }
 }
 
 /*static*/ Allocation* MsaAlgorithm::GetLiveAllocationAt(
@@ -7782,6 +8267,11 @@ void MsaAlgorithm::ClearPendingChunks() {
   pending_required_assignments_.clear();
   aliased_offset_map_.clear();
   aliased_offsets_.clear();
+  // Ensure auxiliary maps referencing raw AliasedOffset* pointers owned by
+  // aliased_offsets_ are cleared during uncommits to prevent dangling pointer
+  // segmentation faults upon subsequent allocation retries.
+  pipelined_while_preferred_offset_for_computation_.clear();
+  pipelined_while_buffer_id_to_aliased_offset_.clear();
   pending_deallocated_reserved_allocations_.clear();
 }
 
@@ -8201,7 +8691,6 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
       << OptionalRequiredMemoryAssignmentToString(required_assignment_at_end);
 
   FreeAlternateMemoryColoringReservedAllocations(request);
-
   AllocationResult allocation_result = AllocationResult::kSuccess;
   // First try keeping the allocation entirely in the alternate memory.
   if (!request.require_start_colored_in_default_memory &&
@@ -8227,7 +8716,9 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
   if (request.require_start_colored_in_alternate_memory) {
     // Since no-copy-allocation failed, continuous allocation is not possible in
     // the alternate memory.
-    CHECK(!request.allocation_value->requires_contiguous_allocation());
+    if (request.allocation_value->requires_contiguous_allocation()) {
+      return allocation_result;
+    }
     if (request.allocation_value->allocation_sequence()->empty()) {
       allocation_result = ForceAlternateMemoryAllocationForMinTime(request);
       // We only allocate in alternate memory for one logical time unit by
@@ -8658,6 +9149,17 @@ AllocationResult MsaAlgorithm::AllocateInAlternateMemoryNoCopy(
          !prev_allocation->is_window_prefetched_allocation());
   }
 
+  if (!can_eliminate_copy &&
+      (request.require_start_colored_in_alternate_memory ||
+       request.require_end_colored_in_alternate_memory) &&
+      (prev_allocation == nullptr ||
+       prev_allocation->memory_space() == MemorySpace::kAlternate)) {
+    // If it is explicitly colored in alternate memory and the previous
+    // allocation is already in alternate memory (or nullptr), we can place it
+    // there.
+    can_eliminate_copy = true;
+  }
+
   if (!can_eliminate_copy) {
     VLOG(3) << "Can't eliminate copy.";
     return AllocationResult::kFailPrevAllocationNotInAlternateMem;
@@ -8669,6 +9171,8 @@ AllocationResult MsaAlgorithm::AllocateInAlternateMemoryNoCopy(
   // duration checks.
   if (!request.require_no_copy_alternate_mem_allocation &&
       !request.prefer_no_copy_alternate_mem_allocation &&
+      !request.require_start_colored_in_alternate_memory &&
+      !request.require_end_colored_in_alternate_memory &&
       !options_.prefetch_interval_picker->CanAllocateInAlternateMemoryNoCopy(
           options_.cost_analysis ? options_.cost_analysis->GetShapeSizeBytes(
                                        defining_position.shape())
@@ -10061,18 +10565,15 @@ std::vector<MsaAlgorithm::Chunk> MsaAlgorithm::FindBestChunkCandidates(
                                                const Chunk& c2) {
         return c1.offset < c2.offset;
       })->offset;
-
-  if (candidates_start == preferred_offset->offset) {
-    int64_t max_chunk_end =
-        absl::c_max_element(chunk_candidates, [](const Chunk& c1,
-                                                 const Chunk& c2) {
-          return c1.chunk_end() < c2.chunk_end();
-        })->chunk_end();
-    if (max_chunk_end <= options_.max_size_in_bytes) {
-      return chunk_candidates;
-    }
+  int64_t max_chunk_end =
+      absl::c_max_element(chunk_candidates, [](const Chunk& c1,
+                                               const Chunk& c2) {
+        return c1.chunk_end() < c2.chunk_end();
+      })->chunk_end();
+  if (candidates_start == preferred_offset->offset &&
+      max_chunk_end <= options_.max_size_in_bytes) {
+    return chunk_candidates;
   }
-
   return {};
 }
 

@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -70,7 +72,9 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/util.h"
+#include "tsl/platform/path.h"
 
 namespace xla {
 namespace gpu {
@@ -566,6 +570,51 @@ absl::StatusOr<std::optional<TiledRunTimeData>> EstimateTiledRunTimeDataImpl(
   return TiledRunTimeData{estimate_run_time_data, block_level_parameters};
 }
 
+absl::Status DumpAndLogTopKCandidates(
+    const HloFusionAdaptor& fusion_adaptor,
+    absl::Span<const TiledRunTimeData> candidates) {
+  const HloInstruction& root = fusion_adaptor.GetRoots().front().instruction();
+  std::string dump_path;
+  if (const HloModule* module = root.GetModule()) {
+    dump_path = module->config()
+                    .debug_options()
+                    .xla_gpu_dump_cost_model_top_k_candidates_to();
+  }
+
+  if (!VLOG_IS_ON(2) && dump_path.empty()) {
+    return absl::OkStatus();
+  }
+
+  const std::string fusion_name =
+      root.ToString(HloPrintOptions::ShortParsable());
+
+  std::string dump_content;
+  if (!dump_path.empty()) {
+    absl::StrAppend(&dump_content, "=== Cost model top-", candidates.size(),
+                    " candidates for: ", fusion_name, " ===\n");
+  }
+  for (int i = 0; i < candidates.size(); ++i) {
+    std::string cand_str = absl::StrCat("Candidate #", i, ": ", candidates[i]);
+    VLOG(2) << "[" << fusion_name << "] " << cand_str;
+    if (!dump_path.empty()) {
+      absl::StrAppend(&dump_content, cand_str, "\n");
+    }
+  }
+
+  if (!dump_path.empty()) {
+    absl::StrAppend(&dump_content, "\n");
+    std::string resolved_path;
+    if (!tsl::io::ResolveTestPrefixes(dump_path, resolved_path)) {
+      return FailedPrecondition("Failed to resolve cost model dump path: %s",
+                                dump_path);
+    }
+    tsl::Env* env = tsl::Env::Default();
+    ABSL_RETURN_IF_ERROR(tsl::AppendStringToFile(env, resolved_path, dump_content));
+  }
+
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 int64_t GpuPerformanceModelWithIndexingAnalysis::FlopsPerElement(
@@ -873,6 +922,8 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
   if (candidates.size() > top_k) {
     candidates.resize(top_k);
   }
+
+  ABSL_RETURN_IF_ERROR(DumpAndLogTopKCandidates(fusion_adaptor, candidates));
 
   return candidates;
 }

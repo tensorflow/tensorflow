@@ -77,6 +77,33 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "hlo_pass_filter",
+    srcs = ["hlo_pass_filter.cc"],
+    hdrs = ["hlo_pass_filter.h"],
+    deps = [
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_protobuf//:protobuf_lite",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_pass_filter_test",
+    srcs = ["hlo_pass_filter_test.cc"],
+    deps = [
+        ":hlo_pass_filter",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_protobuf//:protobuf_lite",
+    ],
+)
+
+cc_library(
     name = "hlo_pass_pipeline",
     srcs = [
         "hlo_pass_pipeline.cc",
@@ -87,8 +114,8 @@ cc_library(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":hlo_pass",
+        ":hlo_pass_filter",
         "//xla:status_macros",
-        "//xla:types",
         "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -98,7 +125,7 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log:check",

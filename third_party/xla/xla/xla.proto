@@ -764,6 +764,9 @@ message DebugOptions {
   // Whether to dump llvm ir when compiling to ptx.
   optional bool xla_gpu_dump_llvmir = 155;
 
+  // File to write cost model top-k candidates to.
+  optional string xla_gpu_dump_cost_model_top_k_candidates_to = 540;
+
   // Combine all-gather ops with the same dimension or irrespective of their
   // dimension.
   optional bool xla_gpu_enable_all_gather_combine_by_dim = 254;
@@ -1792,8 +1795,8 @@ message DebugOptions {
   // fusions.
   map<string, string> xla_gpu_experimental_cost_model_gemm_tiling_options = 474;
 
-  // If true, uses the cost model to suggest default GEMM tilings when
-  // autotuning is disabled (e.g., in deviceless or deterministic mode).
+  // If true, uses the cost model to suggest default GEMM tilings instead of
+  // autotuning where possible.
   optional bool xla_gpu_experimental_cost_model_gemm_tiling_default = 531;
 
   // Enables SPMD partitioner to opportunistically materialize
@@ -1824,7 +1827,7 @@ message DebugOptions {
   // Gives more compilation test coverage but might increase compilation time.
   optional bool xla_compile_all_supported_configs = 539;
 
-  // Next id: 540
+  // Next id: 541
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

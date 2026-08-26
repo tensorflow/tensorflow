@@ -1,3 +1,17 @@
+# Copyright 2026 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 https://github.com/triton-lang/triton/pull/10321 fixes the second-half alignment
 of unpacked 16-row TMEM scale stores. The fix is present in XLA's Triton pin,
 but tmemfix.patch reverts it because XLA uses CUDA 12.8, where ptxas fails with
@@ -7,7 +21,7 @@ XLA.
 
 --- a/lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp
 +++ b/lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp
-@@ -101,6 +101,10 @@
+@@ -102,6 +102,10 @@ TMemAllocation getTmemAllocSizes(MemDescType memDescType) {
    if (ll.getBasis(kRow, llvm::Log2_32(16)) == ArrayRef{0, 0}) {
      nRow /= 2;
    }
@@ -21,7 +35,7 @@ XLA.
 
 --- a/lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp
 +++ b/lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp
-@@ -237,8 +237,10 @@
+@@ -229,8 +229,10 @@ lowerTMemLdSt(const LinearLayout &cvt, int maxnreg, int bitwidth, bool isScales,
        secondHalfOffset = (row << 16) | col;
        if (*secondHalfOffset == 0) {
          // Workaround for ptxas bug, we cannot use secondHalfOffset = 0 to write
@@ -34,7 +48,7 @@ XLA.
          if (!isScales) {
            if (emitError) {
              emitError()
-@@ -246,7 +248,7 @@
+@@ -238,7 +240,7 @@ lowerTMemLdSt(const LinearLayout &cvt, int maxnreg, int bitwidth, bool isScales,
            }
            return failure();
          }

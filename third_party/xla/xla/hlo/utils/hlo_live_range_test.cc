@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "xla/comparison_util.h"
@@ -979,6 +980,164 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
 
   EXPECT_EQ(inst_ranges["negate_0"], std::make_pair(2, 15));
   EXPECT_EQ(inst_ranges["negate_1"], std::make_pair(3, 15));
+}
+
+TEST_F(HloLiveRangeTest, ThreadedCall) {
+  std::string hlo_string = R"(
+HloModule ThreadedModule, is_scheduled=true
+
+%SubComp (param: f32[4]) -> f32[4] {
+  %param = f32[4] parameter(0)
+  ROOT %neg = f32[4] negate(%param)
+}, execution_thread="host"
+
+ENTRY %entry {
+  %p0 = f32[4] parameter(0)
+  %neg0 = f32[4] negate(%p0)
+  %call = f32[4] call(%neg0), to_apply=%SubComp
+  ROOT %copy = f32[4] copy(%call)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  const HloSchedule& schedule = module_->schedule();
+
+  ASSERT_OK_AND_ASSIGN(alias_analysis_,
+                       HloAliasAnalysis::Run(module_.get(), &alias_info_));
+  ASSERT_OK_AND_ASSIGN(hlo_live_range_,
+                       HloLiveRange::Run(schedule, *alias_analysis_,
+                                         module_->entry_computation(),
+                                         /*module_scoped_analysis=*/true,
+                                         /*execution_threads=*/{"main"}));
+
+  CheckSchedule();
+
+  // Verify that only instructions on "main" thread are in the schedule.
+  EXPECT_TRUE(absl::c_all_of(
+      hlo_live_range_->instruction_schedule(), [](const auto& inst_and_time) {
+        return inst_and_time.first->parent()->execution_thread() == "main";
+      }));
+
+  // Verify that entry instructions ARE in the schedule.
+  EXPECT_TRUE(hlo_live_range_->instruction_schedule().contains(
+      module_->entry_computation()->root_instruction()));
+
+  // Find instructions and verify live range of operand.
+  const HloInstruction* neg0 = FindInstruction(module_.get(), "neg0");
+  const HloInstruction* call = FindInstruction(module_.get(), "call");
+  ASSERT_NE(neg0, nullptr);
+  ASSERT_NE(call, nullptr);
+
+  const auto& inst_schedule = hlo_live_range_->instruction_schedule();
+  HloLiveRange::LogicalTime neg0_time = inst_schedule.at(neg0);
+  HloLiveRange::LogicalTime call_time = inst_schedule.at(call);
+
+  // Since SubComp is NOT flattened, neg0 live range should end at call_time.
+  EXPECT_EQ(LiveRangeAt(neg0), LiveRangeBounds({neg0_time, call_time}));
+}
+
+TEST_F(HloLiveRangeTest, ThreadedAsyncCall) {
+  std::string hlo_string = R"(
+HloModule ThreadedAsyncModule, is_scheduled=true
+
+%AsyncSubComp (param: f32[4]) -> f32[4] {
+  %param = f32[4] parameter(0)
+  ROOT %neg = f32[4] negate(%param)
+}, execution_thread="host"
+
+ENTRY %entry {
+  %p0 = f32[4] parameter(0)
+  %neg0 = f32[4] negate(%p0)
+  %async-start = ((f32[4]), f32[4], u32[]) async-start(%neg0),
+                 async_execution_thread="host", calls=%AsyncSubComp
+  %async-done = f32[4] async-done(%async-start), calls=%AsyncSubComp
+  ROOT %copy = f32[4] copy(%async-done)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  const HloSchedule& schedule = module_->schedule();
+
+  EXPECT_EQ(module_->entry_computation()->execution_thread(), "main");
+  HloComputation* async_sub_comp =
+      module_->GetComputationWithName("AsyncSubComp");
+  ASSERT_NE(async_sub_comp, nullptr);
+  EXPECT_EQ(async_sub_comp->execution_thread(), "host");
+
+  ASSERT_OK_AND_ASSIGN(alias_analysis_,
+                       HloAliasAnalysis::Run(module_.get(), &alias_info_));
+  ASSERT_OK_AND_ASSIGN(hlo_live_range_,
+                       HloLiveRange::Run(schedule, *alias_analysis_,
+                                         module_->entry_computation(),
+                                         /*module_scoped_analysis=*/true,
+                                         /*execution_threads=*/{"main"}));
+
+  CheckSchedule();
+
+  // Find instructions.
+  const HloInstruction* neg0 = FindInstruction(module_.get(), "neg0");
+  const HloInstruction* async_start =
+      FindInstruction(module_.get(), "async-start");
+  const HloInstruction* async_done =
+      FindInstruction(module_.get(), "async-done");
+  ASSERT_NE(neg0, nullptr);
+  ASSERT_NE(async_start, nullptr);
+  ASSERT_NE(async_done, nullptr);
+
+  // Get logical times.
+  const auto& inst_schedule = hlo_live_range_->instruction_schedule();
+  HloLiveRange::LogicalTime neg0_time = inst_schedule.at(neg0);
+  HloLiveRange::LogicalTime async_start_time = inst_schedule.at(async_start);
+  HloLiveRange::LogicalTime async_done_time = inst_schedule.at(async_done);
+
+  EXPECT_EQ(neg0_time, 1);
+  EXPECT_EQ(async_start_time, 2);
+  EXPECT_EQ(async_done_time, 3);
+
+  // Live range of neg0 should be extended to async_done_time.
+  EXPECT_EQ(LiveRangeAt(neg0), LiveRangeBounds({neg0_time, async_done_time}));
+}
+
+TEST_F(HloLiveRangeTest, WhileLoopInitLiveRangeWithScheduledBody) {
+  std::string hlo_string = R"(
+HloModule WhileModule, is_scheduled=true
+
+%WhileCond (param: f32[4]) -> pred[] {
+  %param = f32[4] parameter(0)
+  %c = f32[] constant(0)
+  ROOT %cmp = pred[] compare(%c, %c), direction=EQ
+}
+
+%WhileBody (param: f32[4]) -> f32[4] {
+  %param = f32[4] parameter(0)
+  %c = f32[] constant(1)
+  %b = f32[4] broadcast(%c), dimensions={}
+  ROOT %sub = f32[4] subtract(%param, %b)
+}
+
+ENTRY %entry {
+  %p0 = f32[4] parameter(0)
+  %neg0 = f32[4] negate(%p0)
+  ROOT %while = f32[4] while(%neg0), condition=%WhileCond, body=%WhileBody
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  const HloSchedule& schedule = module_->schedule();
+
+  ASSERT_OK_AND_ASSIGN(alias_analysis_,
+                       HloAliasAnalysis::Run(module_.get(), &alias_info_));
+  ASSERT_OK_AND_ASSIGN(hlo_live_range_,
+                       HloLiveRange::Run(schedule, *alias_analysis_,
+                                         module_->entry_computation(),
+                                         /*module_scoped_analysis=*/true,
+                                         /*execution_threads=*/{"main"}));
+
+  CheckSchedule();
+
+  const HloInstruction* neg0 = FindInstruction(module_.get(), "neg0");
+  ASSERT_NE(neg0, nullptr);
+  EXPECT_TRUE(hlo_live_range_->instruction_schedule().contains(neg0));
 }
 
 }  // namespace

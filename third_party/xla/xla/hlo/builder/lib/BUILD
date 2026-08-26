@@ -648,6 +648,9 @@ cc_library(
 xla_test(
     name = "self_adjoint_eig_test",
     srcs = ["self_adjoint_eig_test.cc"],
+    backend_tags = {
+        "v100": ["broken"],  # b/455498612
+    },
     backends = ALL_HARDWARE_BACKENDS,
     shard_count = 5,
     tags = ["optonly"],

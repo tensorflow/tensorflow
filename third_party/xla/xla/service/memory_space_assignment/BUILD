@@ -652,6 +652,7 @@ cc_library(
         ":tuning_utils",
         ":utils",
         "//xla:debug_options_flags",
+        "//xla:frontend_attributes",
         "//xla:shape_tree",
         "//xla:shape_util",
         "//xla:status_macros",
