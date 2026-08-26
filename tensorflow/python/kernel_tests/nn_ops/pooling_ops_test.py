@@ -2058,6 +2058,30 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
     self._testMaxPoolGradExplicitPadding_2()
     self._testMaxPoolGradExplicitPadding_3()
 
+  @test_util.run_deprecated_v1
+  def testMaxPoolGradEmptyOutputZeroGradient(self):
+    # MaxPool with VALID padding and a window larger than the spatial
+    # dimension produces an empty output, so the incoming gradient is
+    # legitimately empty while the original input is not. The pooling
+    # gradient then is all zeros with the original input's shape.
+    # Regression test for the oneDNN kernel's empty-gradient path, which
+    # used to read the float original input tensor as int32 shape data
+    # and abort. See
+    # https://github.com/tensorflow/tensorflow/issues/126128.
+    # Static shape inference rejects a window larger than the spatial
+    # dimension, so the input shape is only known at run time.
+    with self.session(use_gpu=False) as sess:
+      x = array_ops.placeholder(dtypes.float32, shape=None)
+      out = gen_nn_ops.max_pool(
+          x, ksize=[1, 2, 2, 1], strides=[1, 1, 1, 1], padding="VALID")
+      grad = array_ops.zeros_like(out)
+      input_backprop = gen_nn_ops.max_pool_grad(
+          x, out, grad,
+          ksize=[1, 2, 2, 1], strides=[1, 1, 1, 1], padding="VALID")
+      result = sess.run(
+          input_backprop, {x: np.ones([1, 1, 2, 2], dtype=np.float32)})
+      self.assertAllEqual(result, np.zeros([1, 1, 2, 2]))
+
   def _testMaxPoolGradGradValidPadding1_1(self, data_format, use_gpu):
     for pool_func in [gen_nn_ops.max_pool_v2, nn_ops.max_pool]:
       self._ConstructAndTestSecondGradient(
