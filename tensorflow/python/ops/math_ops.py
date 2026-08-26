@@ -2104,7 +2104,16 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
           dtypes.float32,
           dtypes.float64,
       ]
-      assert all(arg.dtype in dtype_hierarchy for arg in [start, limit, delta])
+      unsupported = [
+          arg.dtype
+          for arg in [start, limit, delta]
+          if arg.dtype not in dtype_hierarchy
+      ]
+      if unsupported:
+        raise TypeError(
+            f"Input dtype {unsupported[0].name} is not supported for range. "
+            f"Supported dtypes are: {[d.name for d in dtype_hierarchy]}."
+        )
       inferred_dtype = max([arg.dtype for arg in [start, limit, delta]],
                            key=dtype_hierarchy.index)
     else:
