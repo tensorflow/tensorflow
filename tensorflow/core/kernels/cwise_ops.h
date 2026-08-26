@@ -754,10 +754,21 @@ struct functor_traits<scalar_erfinv_op<T>> {
     PacketAccess = packet_traits<T>::HasNdtri,
   };
 };
+
+// digamma has poles at zero and at the negative integers. Eigen's
+// scalar_digamma_op returns NaN for all of them; TensorFlow returns -inf at
+// zero (the limit from the right) and NaN at the negative integers, matching
+// the XLA lowering in xla/hlo/builder/lib/math.cc.
 template <typename Scalar>
 struct digamma_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& x) const {
+    if (x < Scalar(0.)) {
+      Scalar floor_x = Eigen::numext::floor(x);
+      if (x == floor_x) {
+        return Eigen::NumTraits<Scalar>::quiet_NaN();
+      }
+    }
     if (x == Scalar(0.)) {
       return -Eigen::NumTraits<Scalar>::infinity();
     }
@@ -766,10 +777,20 @@ struct digamma_op {
   template <typename Packet>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
     Packet zeros = pzero(x);
-    Packet mask = pcmp_eq(x, zeros);
+    Packet is_zero = pcmp_eq(x, zeros);
+    Packet is_lt_zero = pcmp_lt(x, zeros);
+    Packet is_integer = pcmp_eq(x, pfloor(x));
+    Packet is_negative_integer = pand(is_lt_zero, is_integer);
+
+    Packet is_unsafe = por(is_zero, is_negative_integer);
+    Packet safe_x = pselect(is_unsafe, pset1<Packet>(Scalar(1.)), x);
+
     Packet infs = pset1<Packet>(-Eigen::NumTraits<Scalar>::infinity());
-    Packet digamma_x = Eigen::internal::scalar_digamma_op<Scalar>().packetOp(x);
-    return pselect(mask, infs, digamma_x);
+    Packet nans = pset1<Packet>(Eigen::NumTraits<Scalar>::quiet_NaN());
+    Packet digamma_x = Eigen::internal::scalar_digamma_op<Scalar>().packetOp(safe_x);
+
+    Packet result = pselect(is_negative_integer, nans, digamma_x);
+    return pselect(is_zero, infs, result);
   }
 };
 
