@@ -3,6 +3,7 @@ from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras import constraints
+from tensorflow.python.keras import activations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import math_ops
 from tensorflow.python.keras.engine.input_spec import InputSpec
@@ -34,7 +35,7 @@ class QuantizedDense(Layer):
         self.bits = int(bits)
         if self.bits not in [4, 8]:
             raise ValueError('Only 4-bit and 8-bit quantization are supported.')
-        self.activation = tf.keras.activations.get(activation)
+        self.activation = activations.get(activation)
         self.use_bias = use_bias
         self.kernel_initializer = initializers.get(kernel_initializer)
         self.bias_initializer = initializers.get(bias_initializer)
@@ -74,17 +75,22 @@ class QuantizedDense(Layer):
 
     def call(self, inputs):
         # Apply Fake Quantization to weights
-        min_val = tf.math.reduce_min(self.kernel)
-        max_val = tf.math.reduce_max(self.kernel)
+        # fake_quant_with_min_max_vars requires float32 inputs.
+        kernel = tf.cast(self.kernel, dtypes.float32)
+        min_val = tf.math.reduce_min(kernel)
+        max_val = tf.math.reduce_max(kernel)
+        # Ensure min_val and max_val are not equal to avoid division by zero or NaN gradients
+        max_val = tf.math.maximum(max_val, min_val + 1e-5)
         
         quant_bits = self.bits
         
         quantized_kernel = tf.quantization.fake_quant_with_min_max_vars(
-            self.kernel, 
+            kernel, 
             min_val, 
             max_val, 
             num_bits=quant_bits,
             narrow_range=True)
+        quantized_kernel = tf.cast(quantized_kernel, self.dtype)
             
         rank = inputs.shape.rank
         if rank == 2 or rank is None:
@@ -115,7 +121,7 @@ class QuantizedDense(Layer):
         config.update({
             'units': self.units,
             'bits': self.bits,
-            'activation': tf.keras.activations.serialize(self.activation),
+            'activation': activations.serialize(self.activation),
             'use_bias': self.use_bias,
             'kernel_initializer': initializers.serialize(self.kernel_initializer),
             'bias_initializer': initializers.serialize(self.bias_initializer),

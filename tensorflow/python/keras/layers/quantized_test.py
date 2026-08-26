@@ -5,6 +5,11 @@ from tensorflow.python.keras.layers.quantized import QuantizedDense
 
 class QuantizedDenseTest(test.TestCase):
 
+    def setUp(self):
+        super(QuantizedDenseTest, self).setUp()
+        tf.random.set_seed(0)
+        np.random.seed(0)
+
     def test_quantized_dense_basic(self):
         inputs = tf.random.uniform((32, 128))
         
