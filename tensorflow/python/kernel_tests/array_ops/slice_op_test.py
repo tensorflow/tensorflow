@@ -218,6 +218,10 @@ class SliceTest(test.TestCase):
     # with signed int64 addition, so for a large first dimension the sum could
     # wrap negative, pass the upper-bound check, and reach a fatal
     # `Tensor::Slice` invariant. It must raise instead.
+    if test_util.is_xla_enabled():
+      # XLA cannot compile the reshape to an INT64_MAX dimension, so the test
+      # cannot reach the Slice kernel under XLA.
+      self.skipTest("XLA does not support shapes whose element count overflows")
     i64_max = (1 << 63) - 1
     value = array_ops.reshape(
         constant_op.constant([], dtype=dtypes.float32),
