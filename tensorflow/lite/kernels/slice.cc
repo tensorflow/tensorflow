@@ -153,8 +153,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // `begin` and `size` are checked against the input. Fall through when the
   // input has an unspecified dimension so the output is marked dynamic and the
   // bounds are validated against the actual extent on every invocation.
-  if (!HasUnspecifiedDimension(output) && ShapeHasRank(output->dims) &&
-      !HasUnspecifiedDimension(input)) {
+  if (ShapeHasRank(output->dims) && !HasUnspecifiedDimension(output) &&
+      ShapeHasRank(input->dims) && !HasUnspecifiedDimension(input)) {
     return kTfLiteOk;
   }
   // Postpone allocation of output if any of the indexing tensors is not
