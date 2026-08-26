@@ -257,6 +257,11 @@ class MathTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.argsort(np_array_ops.array([[3, 1], [6, 5]]), axis=-3)
 
+    # NumPy treats 0-d inputs as 1-D of size 1, so axes -1 and 0 are
+    # valid on scalars.
+    self.assertAllEqual([0], np_math_ops.argsort(np_array_ops.array(5)))
+    self.assertAllEqual([0], np_math_ops.argsort(np_array_ops.array(5), axis=0))
+
     def testArgsortRaisesErrorForComplexDtypes(self):
       """Test that argsort raises TypeError for complex64 and complex128."""
       complex64_array = np.array([1 + 2j, 3 + 4j, 5 + 6j], dtype=np.complex64)

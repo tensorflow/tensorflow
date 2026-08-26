@@ -1487,10 +1487,12 @@ def count_nonzero(a, axis=None):
   a = np_array_ops.array(a)
   maybe_rank = a.shape.rank
   if axis is not None and maybe_rank is not None:
+    # NumPy accepts axis 0 (and -1) on 0-d inputs.
+    validation_rank = max(maybe_rank, 1)
     axes = axis if isinstance(axis, (tuple, list)) else (axis,)
     for ax in axes:
-      normalized = ax + maybe_rank if ax < 0 else ax
-      if normalized < 0 or normalized >= maybe_rank:
+      normalized = ax + validation_rank if ax < 0 else ax
+      if normalized < 0 or normalized >= validation_rank:
         raise ValueError(
             f'Argument `axis` (received axis={ax}) is out of bounds '
             f'for input {a} of rank {maybe_rank}.'
@@ -1522,8 +1524,11 @@ def argsort(a, axis=-1, kind='quicksort', order=None):  # pylint: disable=missin
 
   maybe_rank = a.shape.rank
   if axis is not None and maybe_rank is not None:
-    normalized = axis + maybe_rank if axis < 0 else axis
-    if normalized < 0 or normalized >= maybe_rank:
+    # NumPy treats 0-d inputs as 1-D of size 1 for axis validation, so
+    # axes -1 and 0 are valid on scalars.
+    validation_rank = max(maybe_rank, 1)
+    normalized = axis + validation_rank if axis < 0 else axis
+    if normalized < 0 or normalized >= validation_rank:
       raise ValueError(
           f'Argument `axis` (received axis={axis}) is out of bounds '
           f'for input {a} of rank {maybe_rank}.'
