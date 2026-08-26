@@ -773,6 +773,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
       {"Softplus"},
       {"SoftplusGrad"},
       {"Softsign"},
+      {"SoftsignGrad"},
       {"SpaceToBatch"},
       {"SpaceToBatchND"},
       {"SpaceToDepth"},
