@@ -40,13 +40,17 @@ class LargeMirrorPadOpTest(test.TestCase):
           [num_images, 256, 256, 1])
       padded = array_ops.pad(
           x, [[0, 0], [1, 1], [1, 1], [0, 0]], mode="SYMMETRIC")
+      # Probe images on both sides of the 2**31 element boundary, which
+      # falls inside image 2**31 // (256 * 256) = 32768. Gathering them
+      # into one tensor keeps this to a single evaluation of the padding
+      # even under a graph-mode harness.
+      probes = (0, 16000, 32767, 32768, 32999)
+      probed_images = array_ops.gather(padded, probes)
     self.assertEqual(padded.shape, [num_images, 258, 258, 1])
-    # Probe images on both sides of the 2**31 element boundary, which falls
-    # inside image 2**31 // (256 * 256) = 32768.
-    for i in (0, 16000, 32767, 32768, 32999):
-      image = self.evaluate(padded[i])
+    evaluated_probes = self.evaluate(probed_images)
+    for idx, i in enumerate(probes):
       self.assertAllEqual(
-          image,
+          evaluated_probes[idx],
           np.full([258, 258, 1], i % 251, dtype=np.uint8),
           msg="image %d" % i)
 
