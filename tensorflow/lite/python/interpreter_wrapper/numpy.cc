@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 
 #define TFLITE_IMPORT_NUMPY  // See numpy.h for explanation.
 #include "tensorflow/lite/core/c/c_api_types.h"
@@ -25,7 +26,12 @@ limitations under the License.
 namespace tflite {
 namespace python {
 
-void ImportNumpy() { import_array1(); }
+void ImportNumpy() {
+  static std::once_flag flag;
+  std::call_once(flag, []() {
+    import_array1();
+  });
+}
 
 }  // namespace python
 
