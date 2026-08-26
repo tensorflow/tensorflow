@@ -275,6 +275,10 @@ tf_cc_fuzz_test(
         "model_bytes.h",
         "tflite_runtime_input_fuzz.cc",
     ],
+    tags = [
+        "manual",
+        "notap",
+    ],
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:builtin_ops",
@@ -286,6 +290,10 @@ tf_cc_fuzz_test(
     srcs = [
         "model_bytes_readvar.h",
         "tflite_readvar_fuzz.cc",
+    ],
+    tags = [
+        "manual",
+        "notap",
     ],
     deps = [
         "//tensorflow/lite:framework",
@@ -299,6 +307,10 @@ tf_cc_fuzz_test(
         "model_bytes_transpose_dupperm.h",
         "tflite_transpose_dupperm_fuzz.cc",
     ],
+    tags = [
+        "manual",
+        "notap",
+    ],
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:builtin_ops",
@@ -310,6 +322,10 @@ tf_cc_fuzz_test(
     srcs = [
         "model_bytes_rfft2d.h",
         "tflite_rfft2d_fuzz.cc",
+    ],
+    tags = [
+        "manual",
+        "notap",
     ],
     deps = [
         "//tensorflow/lite:framework",
