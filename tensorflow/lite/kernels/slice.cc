@@ -75,7 +75,7 @@ TfLiteStatus CalculateOutputShapeVector(TfLiteContext* context,
         return kTfLiteError;
       }
       size_value = dim_size - begin_value;
-    } else if (begin_value + size_value > dim_size) {
+    } else if (size_value > dim_size - begin_value) {
       TF_LITE_KERNEL_LOG(context, "Invalid begin and size.");
       return kTfLiteError;
     }
