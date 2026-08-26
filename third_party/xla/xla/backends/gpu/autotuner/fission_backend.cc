@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tools/hlo_decomposer.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 

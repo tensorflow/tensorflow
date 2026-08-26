@@ -2150,11 +2150,14 @@ xla_test(
         "h100": [
             "full",
         ],
+        "gb300": ["broken"],  # TODO(b/505574653): re-enable when fixed.
     },
     backends = ["gpu"],
     shard_count = 2,
     deps = [
+        ":alias_info",
         ":backend_configs_cc",
+        ":gpu_compiler",
         ":gpu_executable",
         ":metrics",
         "//xla:autotune_cache_proto_cc",
@@ -2176,6 +2179,7 @@ xla_test(
         "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
         "//xla/ffi",
         "//xla/ffi/api:c_api",
+        "//xla/hlo/analysis:hlo_alias_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:filecheck",

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/service/gpu/gpu_compiler.h"
+
 #include <algorithm>
 #include <cstdint>
 #include <iostream>
@@ -56,6 +58,7 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/ffi.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -73,6 +76,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/autotuning/autotuner_cache.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_executable.h"
@@ -84,6 +88,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/xla_debug_info_manager.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
@@ -1745,25 +1750,30 @@ m {
 
 // Define a test-specific enum for expected TopK implementations.
 enum class TopKImpl {
-  kCustomKernel,  // Custom GPU kernel
-  kSelectK,       // raft::select_k
-  kSort           // Fallback Sort+Slice
+  kCustomKernel,           // Custom GPU kernel
+  kSelectK,                // raft::select_k
+  kSort,                   // Fallback Sort+Slice
+  kSelectKWithU64Adapter,  // pack_to_u64 + raft::select_k(u64) +
+                           // unpack_from_u64
+  kSortWithS32Adapter      // pack_to_s32 + Sort(s32)+Slice + unpack_from_s32
 };
 
 // Test fixture for verifying GPU TopK lowering to SelectK or custom kernel.
 class GpuCompilerSelectKTest
     : public GpuCompilerTest,
-      public ::testing::WithParamInterface<std::tuple<int, int, TopKImpl>> {};
+      public ::testing::WithParamInterface<
+          std::tuple<absl::string_view, int, int, bool, TopKImpl>> {};
 
 // Test lowering of TopK to different GPU implementations
 // (CustomKernel, raft::select_k, or Sort+Slice (LLVM/CUBSort)).
 TEST_P(GpuCompilerSelectKTest, SelectKOrCustomKernelThunk) {
-  auto [n, k, expected_impl] = GetParam();
+  auto [dtype, n, k, is_stable, expected_impl] = GetParam();
 
   bool is_rocm = device_description().gpu_compute_capability().IsRocm();
   bool is_oneapi = device_description().gpu_compute_capability().IsOneAPI();
 
-  if (is_rocm && expected_impl == TopKImpl::kSelectK) {
+  if (is_rocm && (expected_impl == TopKImpl::kSelectK ||
+                  expected_impl == TopKImpl::kSelectKWithU64Adapter)) {
     GTEST_SKIP() << "raft::select_k is not supported in ROCm.";
   }
   // TODO(intel-tf): Remove this check once TopK specialization for SYCL/oneAPI
@@ -1777,11 +1787,11 @@ TEST_P(GpuCompilerSelectKTest, SelectKOrCustomKernelThunk) {
 HloModule m
 
 ENTRY main {
-  p = f32[8,$0]{1,0} parameter(0)
-  ROOT t = (f32[8,$1]{1,0}, s32[8,$1]{1,0}) topk(p), k=$1, largest=true, is_stable=false
+  p = $0[8,$1]{1,0} parameter(0)
+  ROOT t = ($0[8,$2]{1,0}, s32[8,$2]{1,0}) topk(p), k=$2, largest=true, is_stable=$3
 }
 )",
-                                          n, k);
+                                          dtype, n, k, is_stable);
 
   // Configure module with debug options.
   HloModuleConfig config;
@@ -1833,6 +1843,12 @@ ENTRY main {
       if (kinds.size() == 1) {
         // LLVM
         EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kCommandBuffer));
+      } else if (kinds.size() == 4 && kinds[0] == Thunk::Kind::kCopy) {
+        // LLVM Bitonic sort (unbundled, with input copy)
+        EXPECT_THAT(kinds,
+                    ElementsAre(Thunk::Kind::kCopy, Thunk::Kind::kCustomKernel,
+                                Thunk::Kind::kCustomKernel,
+                                Thunk::Kind::kCustomKernel));
       } else if (kinds.size() == 4) {
         // CUB sort via FFI custom call
         EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kCustomKernel,
@@ -1842,6 +1858,19 @@ ENTRY main {
       } else {
         FAIL() << "Unexpected thunk sequence size: " << kinds.size();
       }
+      break;
+    }
+
+    case TopKImpl::kSelectKWithU64Adapter:
+      EXPECT_THAT(kinds,
+                  ElementsAre(Thunk::Kind::kCustomKernel, Thunk::Kind::kSelectK,
+                              Thunk::Kind::kCustomKernel));
+      break;
+
+    case TopKImpl::kSortWithS32Adapter: {
+      EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kCustomKernel,
+                                     Thunk::Kind::kCustomKernel,
+                                     Thunk::Kind::kCustomKernel));
       break;
     }
 
@@ -2575,16 +2604,52 @@ INSTANTIATE_TEST_SUITE_P(
     });
 
 auto SelectKTestParams() {
-  // Depending on N and K, XLA chooses different TopK implementations:
-  // CustomKernel, raft::select_k, or Sort+Slice.
+  // Depending on dtype, N, K and is_stable flag, XLA chooses different TopK
+  // implementations:
+  // CustomKernel, raft::select_k, select_k_with_u64_adapter, or Sort+Slice.
   // The heuristic for selecting between TopK CustomKernel and
   // raft::matrix::select_k was developed as part of the initial research
   // described in b/409009349.
-  return ::testing::Values(std::make_tuple(1023, 4, TopKImpl::kSelectK),
-                           std::make_tuple(1024, 4, TopKImpl::kCustomKernel),
-                           std::make_tuple(1024, 16, TopKImpl::kSelectK),
-                           std::make_tuple(8192, 24, TopKImpl::kSelectK),
-                           std::make_tuple(8192, 512, TopKImpl::kSort));
+  return ::testing::Values(
+      // dtype, n, k, is_stable, expected_impl
+      std::make_tuple("f32", 1023, 4, false, TopKImpl::kSelectK),
+      std::make_tuple("f32", 1023, 4, true, TopKImpl::kSort),
+      std::make_tuple("f32", 1024, 4, false, TopKImpl::kCustomKernel),
+      std::make_tuple("f32", 1024, 4, true, TopKImpl::kCustomKernel),
+      std::make_tuple("f32", 1024, 16, false, TopKImpl::kSelectK),
+      std::make_tuple("f32", 1024, 16, true, TopKImpl::kCustomKernel),
+      std::make_tuple("f32", 8192, 24, false, TopKImpl::kSelectK),
+      std::make_tuple("f32", 8192, 24, true, TopKImpl::kSelectKWithU64Adapter),
+      std::make_tuple("f32", 8192, 512, false, TopKImpl::kSort),
+      std::make_tuple("f32", 8192, 512, true, TopKImpl::kSort),
+      // f32: exact upper bound of max_k
+      std::make_tuple("f32", 8192, 128, false, TopKImpl::kSelectK),
+      std::make_tuple("f32", 8192, 128, true, TopKImpl::kSelectKWithU64Adapter),
+      // f32: just over the upper bound
+      std::make_tuple("f32", 8192, 129, false, TopKImpl::kSort),
+      std::make_tuple("f32", 8192, 129, true, TopKImpl::kSort),
+      // bf16 and size <= 2**16 - use sort(s32) + slice.
+      std::make_tuple("bf16", 1023, 4, false, TopKImpl::kSortWithS32Adapter),
+      std::make_tuple("bf16", 1023, 4, true, TopKImpl::kSortWithS32Adapter),
+      std::make_tuple("bf16", 1024, 4, false, TopKImpl::kSortWithS32Adapter),
+      std::make_tuple("bf16", 1024, 4, true, TopKImpl::kSortWithS32Adapter),
+      std::make_tuple("bf16", 1024, 16, false, TopKImpl::kSortWithS32Adapter),
+      std::make_tuple("bf16", 1024, 16, true, TopKImpl::kSortWithS32Adapter),
+      // bf16 and size > 2**16.
+      std::make_tuple("bf16", 65540, 16, false, TopKImpl::kSelectK),
+      std::make_tuple("bf16", 65540, 16, true, TopKImpl::kCustomKernel),
+      std::make_tuple("bf16", 65540, 24, false, TopKImpl::kSelectK),
+      std::make_tuple("bf16", 65540, 24, true,
+                      TopKImpl::kSelectKWithU64Adapter),
+      std::make_tuple("bf16", 65540, 512, false, TopKImpl::kSort),
+      std::make_tuple("bf16", 65540, 512, true, TopKImpl::kSort),
+      // bf16: exact upper bound of max_k for batch=8
+      std::make_tuple("bf16", 65540, 128, false, TopKImpl::kSelectK),
+      std::make_tuple("bf16", 65540, 128, true,
+                      TopKImpl::kSelectKWithU64Adapter),
+      // bf16: just over the upper bound
+      std::make_tuple("bf16", 65540, 129, false, TopKImpl::kSort),
+      std::make_tuple("bf16", 65540, 129, true, TopKImpl::kSort));
 }
 // Instantiate the test suite with (n, k, expected_kind) pairs.
 INSTANTIATE_TEST_SUITE_P(SelectKOrCustomKernel, GpuCompilerSelectKTest,
@@ -2803,6 +2868,210 @@ TEST_P(FrontendAttributesMemorySpaceTest, LoopUsage) {
                                                  .set_print_metadata(false)),
                   expected_check),
               absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(GpuCompilerTest,
+       GpuCollectiveBufferAnalysisSkipsS1AliasedEntryParameterAndRoot) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule test, input_output_alias={ {}: (0, {}) }
+
+    ENTRY test_computation {
+      p = f32[16]{0:S(1)} parameter(0)
+      ROOT cc = f32[16]{0:S(1)} custom-call(p),
+        custom_call_target="__xla_test_mock_custom_call_f32",
+        api_version=API_VERSION_TYPED_FFI,
+        frontend_attributes={
+          operands_memory_spaces="{0:1}",
+          results_memory_spaces="{0:1}"
+        }
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_enable_persistent_symmetric_memory(true);
+  GpuAliasInfo alias_info(device_description());
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
+
+  std::vector<std::pair<HloInstruction*, ShapeIndex>> copies_to_add;
+  auto add_index_to_copy = [&](HloInstruction* instr, const ShapeIndex& index) {
+    copies_to_add.emplace_back(instr, index);
+  };
+
+  GpuCollectiveBufferAnalysis(module.get(), *alias_analysis, add_index_to_copy);
+
+  // Since flag is enabled, module matches topology, and parameter(0)/ROOT
+  // are in S(1) and aliased, no copies should be added.
+  EXPECT_TRUE(copies_to_add.empty());
+
+  // Also test with explicit matching GpuTopology (1 device).
+  GpuTopology matching_topology("test", /*num_partitions=*/1,
+                                /*num_hosts_per_partition=*/1,
+                                /*num_devices_per_host=*/1);
+  copies_to_add.clear();
+  GpuCollectiveBufferAnalysis(module.get(), *alias_analysis, add_index_to_copy,
+                              &matching_topology);
+  EXPECT_TRUE(copies_to_add.empty());
+
+  // With mismatched GpuTopology (2 devices vs module's 1 device), copies
+  // must be added.
+  GpuTopology mismatched_topology("test", /*num_partitions=*/1,
+                                  /*num_hosts_per_partition=*/1,
+                                  /*num_devices_per_host=*/2);
+  copies_to_add.clear();
+  GpuCollectiveBufferAnalysis(module.get(), *alias_analysis, add_index_to_copy,
+                              &mismatched_topology);
+  EXPECT_EQ(copies_to_add.size(), 2);
+}
+
+TEST_F(GpuCompilerTest,
+       GpuCollectiveBufferAnalysisAddsCopiesForS1AliasedWhenFlagDisabled) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule test, input_output_alias={ {}: (0, {}) }
+
+    ENTRY test_computation {
+      p = f32[16]{0:S(1)} parameter(0)
+      ROOT cc = f32[16]{0:S(1)} custom-call(p),
+        custom_call_target="__xla_test_mock_custom_call_f32",
+        api_version=API_VERSION_TYPED_FFI,
+        frontend_attributes={
+          operands_memory_spaces="{0:1}",
+          results_memory_spaces="{0:1}"
+        }
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  // Persistent symmetric memory is disabled by default.
+  EXPECT_FALSE(module->config()
+                   .debug_options()
+                   .xla_gpu_enable_persistent_symmetric_memory());
+  GpuAliasInfo alias_info(device_description());
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
+
+  std::vector<std::pair<HloInstruction*, ShapeIndex>> copies_to_add;
+  auto add_index_to_copy = [&](HloInstruction* instr, const ShapeIndex& index) {
+    copies_to_add.emplace_back(instr, index);
+  };
+
+  GpuCollectiveBufferAnalysis(module.get(), *alias_analysis, add_index_to_copy);
+
+  // When flag is disabled, copies into/out of S(1) must be added even if
+  // aliased.
+  EXPECT_EQ(copies_to_add.size(), 2);
+  EXPECT_EQ(copies_to_add[0].first->opcode(), HloOpcode::kParameter);
+  EXPECT_EQ(copies_to_add[1].first->opcode(), HloOpcode::kCustomCall);
+}
+
+TEST_F(GpuCompilerTest,
+       GpuCollectiveBufferAnalysisAddsCopiesForS1NonAliasedParameterAndRoot) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule test
+
+    ENTRY test_computation {
+      p = f32[16]{0:S(1)} parameter(0)
+      ROOT cc = f32[16]{0:S(1)} custom-call(p),
+        custom_call_target="__xla_test_mock_custom_call_f32",
+        api_version=API_VERSION_TYPED_FFI,
+        frontend_attributes={
+          operands_memory_spaces="{0:1}",
+          results_memory_spaces="{0:1}"
+        }
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  GpuAliasInfo alias_info(device_description());
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
+
+  std::vector<std::pair<HloInstruction*, ShapeIndex>> copies_to_add;
+  auto add_index_to_copy = [&](HloInstruction* instr, const ShapeIndex& index) {
+    copies_to_add.emplace_back(instr, index);
+  };
+
+  GpuCollectiveBufferAnalysis(module.get(), *alias_analysis, add_index_to_copy);
+
+  // Since parameter(0) and ROOT are in S(1) but NOT aliased, copies must be
+  // added.
+  EXPECT_EQ(copies_to_add.size(), 2);
+  EXPECT_EQ(copies_to_add[0].first->opcode(), HloOpcode::kParameter);
+  EXPECT_EQ(copies_to_add[1].first->opcode(), HloOpcode::kCustomCall);
+}
+
+TEST_F(GpuCompilerTest,
+       GpuCollectiveBufferAnalysisAddsCopiesForS0AliasedParameterAndRoot) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule test, input_output_alias={ {}: (0, {}) }
+
+    ENTRY test_computation {
+      p = f32[16]{0} parameter(0)
+      ROOT cc = f32[16]{0} custom-call(p),
+        custom_call_target="__xla_test_mock_custom_call_f32",
+        api_version=API_VERSION_TYPED_FFI,
+        frontend_attributes={
+          operands_memory_spaces="{0:1}",
+          results_memory_spaces="{0:1}"
+        }
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  GpuAliasInfo alias_info(device_description());
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
+
+  std::vector<std::pair<HloInstruction*, ShapeIndex>> copies_to_add;
+  auto add_index_to_copy = [&](HloInstruction* instr, const ShapeIndex& index) {
+    copies_to_add.emplace_back(instr, index);
+  };
+
+  GpuCollectiveBufferAnalysis(module.get(), *alias_analysis, add_index_to_copy);
+
+  // Even though aliased, parameter and ROOT are in S(0), so copies into S(1)
+  // must be added.
+  EXPECT_EQ(copies_to_add.size(), 2);
+  EXPECT_EQ(copies_to_add[0].first->opcode(), HloOpcode::kParameter);
+  EXPECT_EQ(copies_to_add[1].first->opcode(), HloOpcode::kCustomCall);
+}
+
+TEST_F(GpuCompilerTest,
+       GpuCollectiveBufferAnalysisAddsCopiesForS0ParameterAndRoot) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule test
+
+    ENTRY test_computation {
+      p = f32[16]{0} parameter(0)
+      ROOT cc = f32[16]{0} custom-call(p),
+        custom_call_target="__xla_test_mock_custom_call_f32",
+        api_version=API_VERSION_TYPED_FFI,
+        frontend_attributes={
+          operands_memory_spaces="{0:1}",
+          results_memory_spaces="{0:1}"
+        }
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  GpuAliasInfo alias_info(device_description());
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
+
+  std::vector<std::pair<HloInstruction*, ShapeIndex>> copies_to_add;
+  auto add_index_to_copy = [&](HloInstruction* instr, const ShapeIndex& index) {
+    copies_to_add.emplace_back(instr, index);
+  };
+
+  GpuCollectiveBufferAnalysis(module.get(), *alias_analysis, add_index_to_copy);
+
+  // For S(0) parameter and ROOT without alias, both Case A and Case B copies
+  // must be added.
+  EXPECT_EQ(copies_to_add.size(), 2);
+  EXPECT_EQ(copies_to_add[0].first->opcode(), HloOpcode::kParameter);
+  EXPECT_EQ(copies_to_add[1].first->opcode(), HloOpcode::kCustomCall);
 }
 
 TEST_F(GpuCompilerTest, NonIotaStaticDeviceAssignment) {

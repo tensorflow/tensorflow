@@ -2522,12 +2522,26 @@ bool RequiresCollectiveOutput(const HloValue* value, const DebugOptions& opts) {
   return false;
 }
 
+}  // namespace
+
 void GpuCollectiveBufferAnalysis(
     HloModule* module, const HloAliasAnalysis& alias_analysis,
-    std::function<void(HloInstruction*, const ShapeIndex&)> add_index_to_copy) {
+    std::function<void(HloInstruction*, const ShapeIndex&)> add_index_to_copy,
+    const GpuTopology* gpu_topology) {
   const auto& opts = module->config().debug_options();
   VLOG(2) << "Running unified GPU Custom Buffer Analysis for collective memory "
              "spaces";
+
+  bool allow_persistent_symmetric_memory = false;
+  if (opts.xla_gpu_enable_persistent_symmetric_memory()) {
+    int64_t module_device_count =
+        module->config().replica_count() * module->config().num_partitions();
+    if (gpu_topology == nullptr ||
+        (gpu_topology->number_of_devices() > 0 &&
+         module_device_count == gpu_topology->number_of_devices())) {
+      allow_persistent_symmetric_memory = true;
+    }
+  }
 
   for (const HloBuffer& buffer : alias_analysis.buffers()) {
     // Entry inputs or constants contained in this buffer
@@ -2585,6 +2599,24 @@ void GpuCollectiveBufferAnalysis(
     // Special Copy Insertion Case A: Entry input
     if (is_hlo_buffer_s1 && !entry_input_values.empty()) {
       for (const HloValue* input_value : entry_input_values) {
+        if (allow_persistent_symmetric_memory &&
+            input_value->defining_instruction()->opcode() ==
+                HloOpcode::kParameter) {
+          const Shape& shape = input_value->shape();
+          int64_t param_no =
+              input_value->defining_instruction()->parameter_number();
+          if (shape.has_layout() &&
+              shape.layout().memory_space() ==
+                  static_cast<int64_t>(MemorySpaceColor::kCollective) &&
+              module->input_output_alias_config().ParameterHasAlias(
+                  param_no, input_value->defining_index())) {
+            VLOG(2)
+                << "Skipping Case A copy insertion for S1 aliased persistent "
+                   "parameter: "
+                << input_value->ToShortString();
+            continue;
+          }
+        }
         VLOG(2) << "Special Copy Insertion Case A: Entry input "
                 << input_value->ToShortString()
                 << " is associated with S1 HloBuffer. Inserting copy.";
@@ -2596,6 +2628,19 @@ void GpuCollectiveBufferAnalysis(
     // Special Copy Insertion Case B: Entry output
     if (is_hlo_buffer_s1 && !live_out_values.empty()) {
       for (const HloValue* live_out_value : live_out_values) {
+        const HloPosition& defining_pos = live_out_value->defining_position();
+        if (allow_persistent_symmetric_memory &&
+            defining_pos.shape().has_layout() &&
+            defining_pos.shape().layout().memory_space() ==
+                static_cast<int64_t>(MemorySpaceColor::kCollective) &&
+            module->input_output_alias_config().OutputHasAlias(
+                defining_pos.index)) {
+          VLOG(2) << "Skipping Case B copy insertion for S1 aliased live-out "
+                     "value: "
+                  << live_out_value->ToShortString();
+          continue;
+        }
+
         VLOG(2) << "Special Copy Insertion Case B: Live-out value is "
                 << "associated with S1 HloBuffer. Searching for entry-level "
                    "ROOT position for "
@@ -2611,6 +2656,18 @@ void GpuCollectiveBufferAnalysis(
               VLOG(2) << "Skipping ENTRY ROOT copy insertion because it is "
                          "already a copy instruction: "
                       << pos.instruction->name();
+              marked_for_copy = true;
+              continue;
+            }
+
+            if (allow_persistent_symmetric_memory && pos.shape().has_layout() &&
+                pos.shape().layout().memory_space() ==
+                    static_cast<int64_t>(MemorySpaceColor::kCollective) &&
+                module->input_output_alias_config().OutputHasAlias(pos.index)) {
+              VLOG(2)
+                  << "Skipping Case B copy insertion for S1 aliased entry ROOT "
+                     "at index "
+                  << pos.index.ToString();
               marked_for_copy = true;
               continue;
             }
@@ -2634,7 +2691,10 @@ void GpuCollectiveBufferAnalysis(
   }
 }
 
+namespace {
+
 absl::Status RunPostSchedulingCopyInsertion(HloModule* module,
+                                            const GpuTopology* gpu_topology,
                                             const GpuAliasInfo* alias_info) {
   // We run a separate pass of copy elision here because the sequential ordering
   // from the HLO schedule potentially allows for more copies to be eliminated.
@@ -2663,10 +2723,11 @@ absl::Status RunPostSchedulingCopyInsertion(HloModule* module,
   ABSL_RETURN_IF_ERROR(copy_insertion.CopyInsertion::AddSpecialCaseCopies(
       module, /*execution_threads=*/{},
       /*custom_buffer_analysis=*/
-      [](HloModule* mod, const HloAliasAnalysis& alias_analysis,
-         std::function<void(HloInstruction*, const ShapeIndex&)>
-             add_index_to_copy) {
-        GpuCollectiveBufferAnalysis(mod, alias_analysis, add_index_to_copy);
+      [gpu_topology](HloModule* mod, const HloAliasAnalysis& alias_analysis,
+                     std::function<void(HloInstruction*, const ShapeIndex&)>
+                         add_index_to_copy) {
+        GpuCollectiveBufferAnalysis(mod, alias_analysis, add_index_to_copy,
+                                    gpu_topology);
       }));
 
   ABSL_RETURN_IF_ERROR(HloDCE().Run(module).status());
@@ -3278,7 +3339,8 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
     const GpuTopology& gpu_topology, const GpuAliasInfo* alias_info,
     mlir::MLIRContext* mlir_context) {
   tsl::profiler::TraceMe traceme("RunPostSchedulingPipelines");
-  ABSL_RETURN_IF_ERROR(RunPostSchedulingCopyInsertion(module, alias_info));
+  ABSL_RETURN_IF_ERROR(
+      RunPostSchedulingCopyInsertion(module, &gpu_topology, alias_info));
   {
     HloPassPipeline post_scheduler_pipeline("post-scheduler-xla-transforms");
     post_scheduler_pipeline.AddPass<ApplyXlaTransforms>(
