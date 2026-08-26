@@ -536,10 +536,18 @@ TEST_F(HloShardingSpecTest, ToSharding) {
 
   ASSERT_OK_AND_ASSIGN(ShardingRef sharding,
                        spec->ToSharding(GetDevices({0, 1}), MemoryKind()));
-  EXPECT_EQ(*sharding->sharding_spec(), *spec);
+  EXPECT_EQ(sharding->sharding_spec(), spec);
 
   EXPECT_THAT(spec->ToSharding(GetDevices({0}), MemoryKind()),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+
+  // Non-shared_ptr instance fallback.
+  std::unique_ptr<HloShardingSpec> non_shared_spec =
+      HloShardingSpec::Create(2, xla_hlo_sharding);
+  ASSERT_OK_AND_ASSIGN(
+      ShardingRef non_shared_sharding,
+      non_shared_spec->ToSharding(GetDevices({0, 1}), MemoryKind()));
+  EXPECT_EQ(*non_shared_sharding->sharding_spec(), *non_shared_spec);
 }
 
 }  // namespace
