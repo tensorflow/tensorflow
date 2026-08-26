@@ -174,6 +174,7 @@ cc_library(
         ":uniform_quantized_ops",
         ":unique_op",
         ":unpack_op",
+        ":unravel_index_op",
         ":variable_ops",
         ":where_op",
         ":while_op",
@@ -3257,6 +3258,24 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@xla//xla/hlo/builder:xla_builder",
+    ],
+)
+
+tf_kernel_library(
+    name = "unravel_index_op",
+    srcs = ["unravel_index_op.cc"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_compilation_device",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_context",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/tf2xla:xla_resource",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
+        "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:xla_builder",
     ],
 )

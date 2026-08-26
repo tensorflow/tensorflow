@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_TRANSFORMS_CONV_OPERAND_CANONICALIZER_H_
-#define XLA_BACKENDS_GPU_TRANSFORMS_CONV_OPERAND_CANONICALIZER_H_
+#ifndef XLA_BACKENDS_GPU_TRANSFORMS_CONV_CANONICALIZER_H_
+#define XLA_BACKENDS_GPU_TRANSFORMS_CONV_CANONICALIZER_H_
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -25,7 +25,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Canonicalizes convolution operands.
+// Canonicalizes convolutions and convolution operands.
 //
 // 1. Transforms s32 constants -> s32 convert(s8 constant)
 // If a s32 constant is equivalent to an s8 constant, i.e. the constant contains
@@ -39,13 +39,11 @@ namespace gpu {
 // Commutes convert op over spatial operations (e.g. Reshape, Transpose,
 // Broadcast, Pad, Slice) and moves the convert to the convolution operand.
 
-class ConvOperandCanonicalizer : public HloModulePass {
+class ConvCanonicalizer : public HloModulePass {
  public:
-  ConvOperandCanonicalizer() = default;
+  ConvCanonicalizer() = default;
 
-  absl::string_view name() const override {
-    return "conv-operand-canonicalizer";
-  }
+  absl::string_view name() const override { return "conv-canonicalizer"; }
 
  protected:
   absl::StatusOr<bool> RunImpl(
@@ -56,4 +54,4 @@ class ConvOperandCanonicalizer : public HloModulePass {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_BACKENDS_GPU_TRANSFORMS_CONV_OPERAND_CANONICALIZER_H_
+#endif  // XLA_BACKENDS_GPU_TRANSFORMS_CONV_CANONICALIZER_H_

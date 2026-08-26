@@ -101,9 +101,9 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "conv_operand_canonicalizer",
-    srcs = ["conv_operand_canonicalizer.cc"],
-    hdrs = ["conv_operand_canonicalizer.h"],
+    name = "conv_canonicalizer",
+    srcs = ["conv_canonicalizer.cc"],
+    hdrs = ["conv_canonicalizer.h"],
     deps = [
         "//xla:literal",
         "//xla:shape_util",
@@ -118,10 +118,10 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "conv_operand_canonicalizer_test",
-    srcs = ["conv_operand_canonicalizer_test.cc"],
+    name = "conv_canonicalizer_test",
+    srcs = ["conv_canonicalizer_test.cc"],
     deps = [
-        ":conv_operand_canonicalizer",
+        ":conv_canonicalizer",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "@com_google_googletest//:gtest_main",
