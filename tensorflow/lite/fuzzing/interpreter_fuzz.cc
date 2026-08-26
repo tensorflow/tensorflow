@@ -81,10 +81,12 @@ void FuzzInterpreter(const std::string& model_bytes) {
         tensor->type == kTfLiteVariant) {
       return;
     }
-    total_bytes += tensor->bytes;
-    if (total_bytes > kMaxArenaBytes) {
+    // Check before accumulating so the sum itself cannot wrap.
+    if (tensor->bytes > kMaxArenaBytes ||
+        total_bytes > kMaxArenaBytes - tensor->bytes) {
       return;
     }
+    total_bytes += tensor->bytes;
     std::memset(tensor->data.raw, 1, tensor->bytes);
   }
 
