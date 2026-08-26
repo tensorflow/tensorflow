@@ -1795,8 +1795,8 @@ message DebugOptions {
   // fusions.
   map<string, string> xla_gpu_experimental_cost_model_gemm_tiling_options = 474;
 
-  // If true, uses the cost model to suggest default GEMM tilings when
-  // autotuning is disabled (e.g., in deviceless or deterministic mode).
+  // If true, uses the cost model to suggest default GEMM tilings instead of
+  // autotuning where possible.
   optional bool xla_gpu_experimental_cost_model_gemm_tiling_default = 531;
 
   // Enables SPMD partitioner to opportunistically materialize

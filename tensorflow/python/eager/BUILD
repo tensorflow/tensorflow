@@ -519,6 +519,8 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:sparse_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/ops:while_loop",
+        "//tensorflow/python/ops/linalg:linear_operator_identity",
+        "//tensorflow/python/ops/linalg:linear_operator_low_rank_update",
         "//tensorflow/python/training",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",

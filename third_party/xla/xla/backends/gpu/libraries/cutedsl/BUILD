@@ -32,7 +32,6 @@ package_group(
 
 cc_library(
     name = "ffi",
-    testonly = True,
     srcs = [
         "ffi.cc",
         "//xla/ffi/api:all_headers",

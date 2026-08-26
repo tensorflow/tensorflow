@@ -679,6 +679,21 @@ TEST_P(ShardingParamShardingSpecTest, IndexDomainWithReplication) {
   }
 }
 
+TEST_P(ShardingParamShardingSpecTest, IndexDomainZeroRank) {
+  ShardingParam param{/*dim_shards=*/{},
+                      {/*permutation=*/{0}, /*axis_sizes=*/{6}}};
+  ShardingSpecRef param_sharding = ShardingParamShardingSpec::Create(param);
+
+  ASSERT_OK_AND_ASSIGN(auto index_domains,
+                       param_sharding->IndexDomains(Shape({})));
+  EXPECT_THAT(index_domains, ElementsAre(IndexDomain(Index({}), Shape({})),
+                                         IndexDomain(Index({}), Shape({})),
+                                         IndexDomain(Index({}), Shape({})),
+                                         IndexDomain(Index({}), Shape({})),
+                                         IndexDomain(Index({}), Shape({})),
+                                         IndexDomain(Index({}), Shape({}))));
+}
+
 TEST_P(ShardingParamShardingSpecTest, Hash) {
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
       *ShardingParamShardingSpec::Create(

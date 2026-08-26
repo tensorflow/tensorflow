@@ -87,6 +87,7 @@ python_init_repositories(
         "3.12": "//:requirements_lock_3_12.txt",
         "3.13": "//:requirements_lock_3_13.txt",
         "3.14": "//:requirements_lock_3_14.txt",
+        "3.14-freethreaded": "//:requirements_lock_3_14_freethreaded.txt",
     },
 )
 

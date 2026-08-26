@@ -456,17 +456,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClientImpl {
     return executable.SerializeExecutable();
   }
 
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
-      absl::string_view serialized,
-      std::optional<CompileOptions> options) override;
-
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
-      const absl::Cord& serialized,
-      std::optional<CompileOptions> options) override;
-
-  // For PjRtStreamExecutorClient, `options` is mandatory.
-  // This function returns an InvalidArgument error if `std::nullopt` is passed.
-  // TODO(b/237720161): make it actually optional
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
   LoadSerializedExecutable(absl::string_view serialized,
                            std::optional<CompileOptions> options,
@@ -551,10 +540,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClientImpl {
  protected:
   friend class PjRtStreamExecutorRawBuffer;
   friend class PjRtStreamExecutorRawLoadedExecutable;
-
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
-      std::unique_ptr<riegeli::Reader> reader,
-      std::optional<CompileOptions> options);
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadInternal(
       std::shared_ptr<PjRtExecutable> executable, bool dump);

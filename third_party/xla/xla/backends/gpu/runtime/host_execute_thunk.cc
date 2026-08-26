@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/service/shaped_slice.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
@@ -118,10 +119,8 @@ class HostExecuteCallFrame {
   static absl::StatusOr<HostExecuteCallFrame> Create(
       se::Stream* device_to_host_stream, se::Stream* host_to_device_stream,
       const BufferAllocations* buffer_allocations,
-      HostOffloadingAllocator& allocator,
-      absl::Span<HostExecuteStartThunk::SliceAndShape> args,
-      absl::Span<HostExecuteStartThunk::SliceAndShape> results,
-      const ProgramShape& program_shape);
+      HostOffloadingAllocator& allocator, absl::Span<ShapedSlice> args,
+      absl::Span<ShapedSlice> results, const ProgramShape& program_shape);
 
   absl::Span<const ShapeTree<HostOffloadingBuffer>> parameters() const {
     return parameters_;
@@ -136,12 +135,11 @@ class HostExecuteCallFrame {
       const BufferAllocations* buffer_allocations,
       std::vector<ShapeTree<HostOffloadingBuffer>> parameters,
       ShapeTree<HostOffloadingBuffer> result,
-      absl::Span<HostExecuteStartThunk::SliceAndShape> result_slices,
+      absl::Span<ShapedSlice> result_slices,
       std::vector<std::unique_ptr<HostOffloadingAllocator::Buffer>> buffers);
 
   static absl::Status ValidateArgsAndResults(
-      absl::Span<const HostExecuteStartThunk::SliceAndShape> args,
-      absl::Span<const HostExecuteStartThunk::SliceAndShape> results,
+      absl::Span<const ShapedSlice> args, absl::Span<const ShapedSlice> results,
       const ProgramShape& program_shape);
 
  private:
@@ -151,7 +149,7 @@ class HostExecuteCallFrame {
   ShapeTree<HostOffloadingBuffer> result_;
 
   // This is where results will be published to.
-  absl::Span<HostExecuteStartThunk::SliceAndShape> result_slices_;
+  absl::Span<ShapedSlice> result_slices_;
 
   // Allocatations used for parameters and results.
   std::vector<std::unique_ptr<HostOffloadingAllocator::Buffer>>
@@ -159,8 +157,7 @@ class HostExecuteCallFrame {
 };
 
 absl::Status HostExecuteCallFrame::ValidateArgsAndResults(
-    absl::Span<const HostExecuteStartThunk::SliceAndShape> args,
-    absl::Span<const HostExecuteStartThunk::SliceAndShape> results,
+    absl::Span<const ShapedSlice> args, absl::Span<const ShapedSlice> results,
     const ProgramShape& program_shape) {
   tsl::profiler::TraceMe trace("HostExecuteCallFrame::ValidateArgsAndResults");
   if (args.size() != program_shape.parameters_size()) {
@@ -218,10 +215,8 @@ absl::Status HostExecuteCallFrame::ValidateArgsAndResults(
 absl::StatusOr<HostExecuteCallFrame> HostExecuteCallFrame::Create(
     se::Stream* device_to_host_stream, se::Stream* host_to_device_stream,
     const BufferAllocations* buffer_allocations,
-    HostOffloadingAllocator& allocator,
-    absl::Span<HostExecuteStartThunk::SliceAndShape> args,
-    absl::Span<HostExecuteStartThunk::SliceAndShape> results,
-    const ProgramShape& program_shape) {
+    HostOffloadingAllocator& allocator, absl::Span<ShapedSlice> args,
+    absl::Span<ShapedSlice> results, const ProgramShape& program_shape) {
   tsl::profiler::TraceMe trace("HostExecuteCallFrame::Create");
   ABSL_RETURN_IF_ERROR(ValidateArgsAndResults(args, results, program_shape));
 
@@ -292,7 +287,7 @@ HostExecuteCallFrame::HostExecuteCallFrame(
     const BufferAllocations* buffer_allocations,
     std::vector<ShapeTree<HostOffloadingBuffer>> parameters,
     ShapeTree<HostOffloadingBuffer> result,
-    absl::Span<HostExecuteStartThunk::SliceAndShape> result_slices,
+    absl::Span<ShapedSlice> result_slices,
     std::vector<std::unique_ptr<HostOffloadingAllocator::Buffer>> buffers)
     : host_to_device_stream_(host_to_device_stream),
       buffer_allocations_(buffer_allocations),
@@ -382,8 +377,8 @@ absl::StatusOr<std::unique_ptr<HostExecuteStartThunk>>
 HostExecuteStartThunk::Create(
     Thunk::ThunkInfo thunk_info,
     const HostOffloadingExecutableProto& host_offloading_executable_proto,
-    absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> args,
-    absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> results) {
+    absl::InlinedVector<ShapedSlice, 4> args,
+    absl::InlinedVector<ShapedSlice, 4> results) {
   auto thunk = std::make_unique<HostExecuteStartThunk>(
       std::move(thunk_info), host_offloading_executable_proto, std::move(args),
       std::move(results));
@@ -410,8 +405,8 @@ absl::Status HostExecuteStartThunk::LoadExecutable() {
 
 HostExecuteStartThunk::HostExecuteStartThunk(
     Thunk::ThunkInfo thunk_info, const HloModule& hlo_module,
-    absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> args,
-    absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> results)
+    absl::InlinedVector<ShapedSlice, 4> args,
+    absl::InlinedVector<ShapedSlice, 4> results)
     : HostAsyncThunk(Thunk::Kind::kHostExecuteStart, std::move(thunk_info)),
       args_(std::move(args)),
       results_(std::move(results)),
@@ -426,8 +421,8 @@ HostExecuteStartThunk::HostExecuteStartThunk(
 HostExecuteStartThunk::HostExecuteStartThunk(
     Thunk::ThunkInfo thunk_info,
     const HostOffloadingExecutableProto& host_offloading_executable_proto,
-    absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> args,
-    absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> results,
+    absl::InlinedVector<ShapedSlice, 4> args,
+    absl::InlinedVector<ShapedSlice, 4> results,
     std::shared_ptr<HostExecuteAsyncEvents> async_events)
     : HostAsyncThunk(Thunk::Kind::kHostExecuteStart, std::move(thunk_info)),
       args_(std::move(args)),
@@ -477,11 +472,11 @@ HostExecuteStartThunk::FromProto(
     ThunkInfo thunk_info, const HostExecuteStartThunkProto& proto,
     absl::Span<const BufferAllocation> buffer_allocations,
     HostExecuteAsyncEventsMap& async_events_map) {
-  absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> args, results;
+  absl::InlinedVector<ShapedSlice, 4> args, results;
   auto shaped_slice_from_proto =
       [&](const auto& shaped_slice_protos,
-          absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4>&
-              slices_and_shapes) -> absl::Status {
+          absl::InlinedVector<ShapedSlice, 4>& slices_and_shapes)
+      -> absl::Status {
     for (const auto& shaped_slice_proto : shaped_slice_protos) {
       ABSL_ASSIGN_OR_RETURN(auto slice,
                        BufferAllocation::Slice::FromProto(

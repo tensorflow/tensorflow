@@ -207,7 +207,7 @@ NSURL* createTemporaryFile() {
   _compiledModelFilePath = [compileUrl path];
 
   if (@available(iOS 12.0, *)) {
-    MLModelConfiguration* config = [MLModelConfiguration alloc];
+    MLModelConfiguration* config = [[MLModelConfiguration alloc] init];
     config.computeUnits = MLComputeUnitsAll;
     _model = [MLModel modelWithContentsOfURL:compileUrl configuration:config error:&error];
   } else {

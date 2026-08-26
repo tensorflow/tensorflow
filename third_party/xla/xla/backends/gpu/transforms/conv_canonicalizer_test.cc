@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/transforms/conv_operand_canonicalizer.h"
+#include "xla/backends/gpu/transforms/conv_canonicalizer.h"
 
 #include <memory>
 
@@ -25,9 +25,9 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-class ConvOperandCanonicalizerTest : public HloHardwareIndependentTestBase {};
+class ConvCanonicalizerTest : public HloHardwareIndependentTestBase {};
 
-TEST_F(ConvOperandCanonicalizerTest, CanonicalizesS32ConstantToS8) {
+TEST_F(ConvCanonicalizerTest, CanonicalizesS32ConstantToS8) {
   const char* hlo_text = R"hlo(
     HloModule test
 
@@ -40,7 +40,7 @@ TEST_F(ConvOperandCanonicalizerTest, CanonicalizesS32ConstantToS8) {
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   ASSERT_OK_AND_ASSIGN(auto pass_result,
-                       RunHloPass(ConvOperandCanonicalizer(), module.get()));
+                       RunHloPass(ConvCanonicalizer(), module.get()));
   EXPECT_TRUE(pass_result);
 
   const char* expected = R"(
@@ -53,7 +53,7 @@ TEST_F(ConvOperandCanonicalizerTest, CanonicalizesS32ConstantToS8) {
   EXPECT_TRUE(filecheck_matched);
 }
 
-TEST_F(ConvOperandCanonicalizerTest, CommutesSpatialOpsWithConvert) {
+TEST_F(ConvCanonicalizerTest, CommutesSpatialOpsWithConvert) {
   const char* hlo_text = R"hlo(
     HloModule test
 
@@ -68,7 +68,7 @@ TEST_F(ConvOperandCanonicalizerTest, CommutesSpatialOpsWithConvert) {
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   ASSERT_OK_AND_ASSIGN(auto pass_result,
-                       RunHloPass(ConvOperandCanonicalizer(), module.get()));
+                       RunHloPass(ConvCanonicalizer(), module.get()));
   EXPECT_TRUE(pass_result);
 
   const char* expected = R"(
@@ -82,7 +82,7 @@ TEST_F(ConvOperandCanonicalizerTest, CommutesSpatialOpsWithConvert) {
   EXPECT_TRUE(filecheck_matched);
 }
 
-TEST_F(ConvOperandCanonicalizerTest, SimplifiesRedundantConverts) {
+TEST_F(ConvCanonicalizerTest, SimplifiesRedundantConverts) {
   const char* hlo_text = R"hlo(
     HloModule test
 
@@ -97,7 +97,7 @@ TEST_F(ConvOperandCanonicalizerTest, SimplifiesRedundantConverts) {
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   ASSERT_OK_AND_ASSIGN(auto pass_result,
-                       RunHloPass(ConvOperandCanonicalizer(), module.get()));
+                       RunHloPass(ConvCanonicalizer(), module.get()));
   EXPECT_TRUE(pass_result);
 
   const char* expected = R"(

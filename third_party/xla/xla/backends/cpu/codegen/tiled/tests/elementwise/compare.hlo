@@ -54,11 +54,11 @@ fusion {
 // NEW-VECTOR:         %[[PAD:.*]] = arith.constant 0.000000e+00 : f32
 // NEW-VECTOR:         scf.for
 // NEW-VECTOR-NOT:     scf.if
-// NEW-VECTOR:         %[[R0:.*]] = vector.transfer_read %[[ARG0]][%{{.*}}, %{{.*}}], %[[PAD]] {in_bounds = [true]} : memref<128x256xf32>, vector<4xf32>
-// NEW-VECTOR:         %[[R1:.*]] = vector.transfer_read %[[ARG1]][%{{.*}}, %{{.*}}], %[[PAD]] {in_bounds = [true]} : memref<128x256xf32>, vector<4xf32>
-// NEW-VECTOR:         %[[CMP:.*]] = arith.cmpf olt, %[[R0]], %[[R1]] : vector<4xf32>
-// NEW-VECTOR:         %[[EXT:.*]] = arith.extui %[[CMP]] : vector<4xi1> to vector<4xi8>
-// NEW-VECTOR:         vector.transfer_write %[[EXT]], %[[ARG2]][%{{.*}}, %{{.*}}] {in_bounds = [true]} : vector<4xi8>, memref<128x256xi8>
+// NEW-VECTOR:         %[[R0:.*]] = vector.transfer_read %[[ARG0]][%{{.*}}, %{{.*}}], %[[PAD]] {in_bounds = [true, true]} : memref<128x256xf32>, vector<1x4xf32>
+// NEW-VECTOR:         %[[R1:.*]] = vector.transfer_read %[[ARG1]][%{{.*}}, %{{.*}}], %[[PAD]] {in_bounds = [true, true]} : memref<128x256xf32>, vector<1x4xf32>
+// NEW-VECTOR:         %[[CMP:.*]] = arith.cmpf olt, %[[R0]], %[[R1]] : vector<1x4xf32>
+// NEW-VECTOR:         %[[EXT:.*]] = arith.extui %[[CMP]] : vector<1x4xi1> to vector<1x4xi8>
+// NEW-VECTOR:         vector.transfer_write %[[EXT]], %[[ARG2]][%{{.*}}, %{{.*}}] {in_bounds = [true, true]} : vector<1x4xi8>, memref<128x256xi8>
 
 // CHECK-LLVM: llvm.intr.memcpy
 

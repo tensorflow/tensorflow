@@ -325,6 +325,7 @@ xla_cc_test(
     deps = [
         ":local_device_state",
         ":pjrt_stream_executor_client",
+        ":stream_executor_executable",
         ":stream_executor_platform_id_mapping",
         "//xla:debug_options_flags",
         "//xla:future",
@@ -367,6 +368,8 @@ xla_cc_test(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+        "@riegeli//riegeli/base:any",
+        "@riegeli//riegeli/bytes:reader",
         "@tsl//tsl/platform:casts",
         "@tsl//tsl/platform:path",
     ],

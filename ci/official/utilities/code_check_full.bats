@@ -322,7 +322,7 @@ EOF
 
 # See b/279852433 (internal).
 @test "Verify that it's possible to query every TensorFlow target without BUILD errors" {
-    bazel query --keep_going --deleted_packages=tensorflow/tools/toolchains/win/20240424,tensorflow/tools/toolchains/win/tf_win_05022023,tensorflow/tools/toolchains/win/bazel_211,tensorflow/tools/toolchains/win2022/20260322,tensorflow/tools/toolchains/win2022/20241118,tensorflow/tools/lib_package "deps(//tensorflow/... - attr(tags, 'manual|no_oss|gpu|metal|tflite|android|ios', //tensorflow/...) - //tensorflow/tools/pip_package:prebuilt_tf_py_import - //tensorflow/tools/pip_package:prebuilt_tf_py_import_unpacked_wheel)" > /dev/null
+    bazel query --keep_going --deleted_packages=tensorflow/tools/toolchains/win/20240424,tensorflow/tools/toolchains/win/tf_win_05022023,tensorflow/tools/toolchains/win/bazel_211,tensorflow/tools/toolchains/win2022/20260322,tensorflow/tools/toolchains/win2022/20241118,tensorflow/tools/toolchains/win2022/t20260812,tensorflow/tools/lib_package "deps(//tensorflow/... - attr(tags, 'manual|no_oss|gpu|metal|tflite|android|ios', //tensorflow/...) - //tensorflow/tools/pip_package:prebuilt_tf_py_import - //tensorflow/tools/pip_package:prebuilt_tf_py_import_unpacked_wheel)" > /dev/null
 }
 
 teardown_file() {

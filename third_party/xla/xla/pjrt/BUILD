@@ -253,6 +253,8 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
+        "@riegeli//riegeli/bytes:cord_reader",
+        "@riegeli//riegeli/bytes:string_reader",
         "@tsl//tsl/platform:casts",
         "@tsl//tsl/platform:context",
         "@tsl//tsl/profiler/lib:connected_traceme",
@@ -623,6 +625,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@riegeli//riegeli/base:any",
+        "@riegeli//riegeli/bytes:reader",
         "@tsl//tsl/platform:fingerprint",
     ],
 )

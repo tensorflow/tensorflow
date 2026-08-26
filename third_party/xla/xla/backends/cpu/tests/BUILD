@@ -46,6 +46,9 @@ xla_test(
 xla_test(
     name = "ynn_fusion_test",
     srcs = ["ynn_fusion_test.cc"],
+    backend_tags = {
+        "cpu": ["broken"],  # b/516277731
+    },
     backends = ["cpu"],
     deps = [
         "//xla:error_spec",

@@ -248,13 +248,8 @@ LogicalResult MemRefSliceOp::verify() {
   }
   // TODO(apaszke): Check that the result has a smaller shape.
   // TODO(apaszke): Check that strides are equivalent.
-  // Source and target memory spaces may be different before propagation is done
-  // by memory space specialization.
-  bool is_target_memory_space_provided = target_memory_space != nullptr;
-  if (is_target_memory_space_provided &&
-      target_memory_space != source_type.getMemorySpace()) {
-    return emitOpError(
-        "Memory spaces must match if the target memory space is provided.");
+  if (target_memory_space != source_type.getMemorySpace()) {
+    return emitOpError("Memory spaces do not match.");
   }
   if (isa<TiledLayoutAttr>(source_layout) !=
       isa<TiledLayoutAttr>(target_layout)) {
@@ -419,8 +414,7 @@ LogicalResult MemRefSqueezeOp::verify() {
   MemRefType source_type = getInput().getType();
   MemRefType target_type = getType();
 
-  if (target_type.getMemorySpace() != nullptr &&
-      target_type.getMemorySpace() != source_type.getMemorySpace()) {
+  if (target_type.getMemorySpace() != source_type.getMemorySpace()) {
     return emitOpError("Memory spaces do not match.");
   }
 
@@ -569,8 +563,7 @@ void MemRefSqueezeOp::getCanonicalizationPatterns(RewritePatternSet& results,
 LogicalResult MemRefReshapeOp::verify() {
   auto src_ty = getInput().getType();
   auto tgt_ty = getType();
-  if (tgt_ty.getMemorySpace() != nullptr &&
-      tgt_ty.getMemorySpace() != src_ty.getMemorySpace()) {
+  if (tgt_ty.getMemorySpace() != src_ty.getMemorySpace()) {
     return emitOpError("Memory spaces do not match.");
   }
   if (src_ty.getShape().size() < 2 || tgt_ty.getShape().size() < 2) {
@@ -673,10 +666,9 @@ LogicalResult TransposeOp::verify() {
 }
 
 LogicalResult MemRefBitcastOp::verify() {
-  auto src_ty = getMemRefType(getInput());
+  auto src_ty = getInput().getType();
   auto tgt_ty = getType();
-  if (tgt_ty.getMemorySpace() != nullptr &&
-      tgt_ty.getMemorySpace() != src_ty.getMemorySpace()) {
+  if (tgt_ty.getMemorySpace() != src_ty.getMemorySpace()) {
     return emitOpError("Memory spaces do not match.");
   }
   if (src_ty.getRank() != tgt_ty.getRank()) {
@@ -990,6 +982,19 @@ LogicalResult EraseLayoutOp::verify() {
   }
   if (operand_type.getLayout() == nullptr) {
     return emitOpError("Memref layout must be erased");
+  }
+  return success();
+}
+
+LogicalResult AnnotateOp::verify() {
+  if (getNoStore() + getNoHazard() + getNoHazardNoDeps() > 1) {
+    return emitOpError(
+        "At most one of no_store, no_hazard, or no_hazard_no_deps can be set");
+  }
+  auto memref_ty = cast<MemRefType>(getOperand().getType());
+  if ((getNoHazard() || getNoHazardNoDeps()) &&
+      !HasMemorySpace(memref_ty, MemorySpace::kVmem)) {
+    return emitOpError("Hazard overrides are only valid for VMEM allocations");
   }
   return success();
 }
@@ -1426,13 +1431,13 @@ LogicalResult MaskCastOp::verify() {
 }
 
 LogicalResult ScanOp::verify() {
-  CoreType issuing_core = GetCoreTypeOfParentOp(**this);
-  if (issuing_core != CoreType::kScVectorSubcore) {
-    return emitOpError("Scan is supported only on the SC vector subcore");
-  }
-
   VectorType input_ty = getInput().getType();
   VectorType output_ty = getOutput().getType();
+
+  const int64_t dimension = getDimension();
+  if (dimension < 0 || dimension >= input_ty.getRank()) {
+    return emitOpError("Dimension must be in [0, rank).");
+  }
 
   if (input_ty.getElementType().isInteger(1)) {
     if (!output_ty.getElementType().isInteger(32)) {
@@ -1451,10 +1456,6 @@ LogicalResult ScanOp::verify() {
            << output_ty.getShape() << ").";
   }
 
-  if (input_ty.getRank() > 2) {
-    return emitOpError("Input must be a rank 1 or 2 vector.");
-  }
-
   if (input_ty.getElementType().isInteger(1) &&
       getKind() != ReductionKind::kSum) {
     return emitOpError("Only sum reduction is supported for i1 vector inputs.");
@@ -1471,13 +1472,12 @@ LogicalResult ScanOp::verify() {
   }
 
   VectorType mask_ty = getMask().getType();
-  if (mask_ty.getRank() != 1) {
-    return emitOpError("Mask must be a rank 1 vector.");
-  }
-  if (mask_ty.getShape()[0] != input_ty.getShape()[input_ty.getRank() - 1]) {
+  // Enforced via VectorOfRankAndType in .td declaration:
+  CHECK_EQ(mask_ty.getRank(), 1);
+  if (mask_ty.getDimSize(0) != input_ty.getDimSize(dimension)) {
     return emitOpError("Mask and input mismatch. Expected mask of length: ")
-           << input_ty.getShape()[input_ty.getRank() - 1] << ", but got "
-           << mask_ty.getShape()[0] << ".";
+           << input_ty.getDimSize(dimension) << ", but got "
+           << mask_ty.getDimSize(0) << ".";
   }
 
   return success();
