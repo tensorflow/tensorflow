@@ -1743,6 +1743,7 @@ cc_library(
     deps = [
         ":alias_info",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu/transforms:alias_in_place_outputs",
         "//xla/backends/gpu/transforms:alias_passthrough_params",
         "//xla/backends/gpu/transforms:copy_fusion",
         "//xla/backends/gpu/transforms:sanitize_constant_names",
