@@ -535,27 +535,35 @@ int64_t CalculateSharedMemoryPerBlockBytes(const DotProblemInfo& dot_info,
   return (lhs_tile_bytes + rhs_tile_bytes) * num_stages;
 }
 
+namespace {
+
+int CalculateAccumulatorRegisters(const DotProblemInfo& dot_info,
+                                  const DotTileSize& dot_tile,
+                                  int64_t total_threads) {
+  // Hardware accumulates in at least 32-bit precision (64-bit for F64).
+  const int64_t acc_bitwidth =
+      std::max<int64_t>(32, BitWidth(dot_info.output_element_type));
+  constexpr int kBitsPerRegister = 32;
+  return static_cast<int>(
+      CeilOfRatio<int64_t>(dot_tile.m * dot_tile.n * acc_bitwidth,
+                           total_threads * kBitsPerRegister));
+}
+
+}  // namespace
+
 int CalculateRegistersPerThread(const DotProblemInfo& dot_info,
                                 const DotTileSize& dot_tile,
                                 const BlockLevelParameters& block_params,
                                 const se::DeviceDescription& device_info) {
   const int64_t num_warps = block_params.num_warps;
   const int64_t threads_per_warp = device_info.threads_per_warp();
-  constexpr int kBitsPerRegister = 32;
   const int64_t total_threads = num_warps * threads_per_warp;
   if (total_threads <= 0 || dot_tile.m <= 0 || dot_tile.n <= 0) {
     return 0;
   }
 
-  // Accumulator registers: hardware accumulates in at least 32-bit precision
-  // (64-bit for F64).
-  const int64_t acc_bitwidth =
-      std::max<int64_t>(32, BitWidth(dot_info.output_element_type));
-  // Safe to cast: The numerator represents the total bits for the accumulator
-  // tile, which will always fit in an int due to hardware limits on tile size.
-  const int accumulator_regs = static_cast<int>(
-      CeilOfRatio<int64_t>(dot_tile.m * dot_tile.n * acc_bitwidth,
-                           total_threads * kBitsPerRegister));
+  const int accumulator_regs =
+      CalculateAccumulatorRegisters(dot_info, dot_tile, total_threads);
 
   // Base register overhead in generated GEMM kernels for loop induction
   // variables, pointer arithmetic, and barrier synchronization handles.
