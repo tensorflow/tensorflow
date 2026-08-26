@@ -656,6 +656,16 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.match(
         np_math_ops.diff(np_array_ops.array([True, False, True])),
         np.diff(np.array([True, False, True])))
+    # Dtype and value parity for float inputs and n=0.
+    self.match(
+        np_math_ops.diff(np_array_ops.array([1.5, 2.5, 4.0], np.float32)),
+        np.diff(np.array([1.5, 2.5, 4.0], dtype=np.float32)))
+    self.match(
+        np_math_ops.diff(np_array_ops.array([1, 3, 6]), n=0),
+        np.diff(np.array([1, 3, 6], dtype=np.int32), n=0))
+    # NumPy raises ValueError for 0-d inputs too.
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.diff(np_array_ops.array(5))
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.diff(a, axis=2)
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
