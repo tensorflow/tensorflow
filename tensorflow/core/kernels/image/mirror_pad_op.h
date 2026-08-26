@@ -342,17 +342,23 @@ namespace functor {
 // values are replicated (offset == 0) or not replicated (offset == 1).
 template <typename Device, typename T, typename Tpaddings, int Dims>
 struct MirrorPad {
-  void operator()(const Device& device,
-                  typename TTypes<T, Dims, int32_t>::Tensor output,
-                  typename TTypes<T, Dims, int32_t>::ConstTensor input,
+  void operator()(const Device& device, typename TTypes<T, Dims>::Tensor output,
+                  typename TTypes<T, Dims>::ConstTensor input,
                   typename TTypes<Tpaddings>::ConstMatrix padding, int offset) {
-    Eigen::array<Eigen::IndexPair<int32_t>, Dims> padding_dims;
+    Eigen::array<Eigen::IndexPair<Tpaddings>, Dims> padding_dims;
 
     for (int i = 0; i < Dims; ++i) {
-      padding_dims[i] = Eigen::IndexPair<int32_t>(padding(i, 0), padding(i, 1));
+      padding_dims[i] =
+          Eigen::IndexPair<Tpaddings>(padding(i, 0), padding(i, 1));
     }
 
-    output.device(device) = MirrorPadOp(input, padding_dims, offset);
+    // 32-bit indexing silently corrupts the output for tensors with more
+    // than 2**31 - 1 elements, so it is only used where it is safe.
+    MaybeWith32BitIndexing<Device>(
+        [&](auto output_x, auto input_x) {
+          output_x.device(device) = MirrorPadOp(input_x, padding_dims, offset);
+        },
+        output, input);
   }
 
   template <typename PaddingDimensions, typename Derived>
@@ -369,74 +375,81 @@ struct MirrorPad {
 // values are replicated (offset == 0) or not replicated (offset == 1).
 template <typename Device, typename T, typename Tpaddings, int Dims>
 struct MirrorPadGrad {
-  void operator()(const Device& device,
-                  typename TTypes<T, Dims, int32_t>::Tensor output,
-                  typename TTypes<T, Dims, int32_t>::ConstTensor input,
+  void operator()(const Device& device, typename TTypes<T, Dims>::Tensor output,
+                  typename TTypes<T, Dims>::ConstTensor input,
                   typename TTypes<Tpaddings>::ConstMatrix paddings, int offset,
-                  typename TTypes<T, Dims, int32_t>::Tensor scratch) {
-    // Copy the gradient input into the scratch buffer.
-    scratch.device(device) = input;
+                  typename TTypes<T, Dims>::Tensor scratch) {
+    // 32-bit indexing silently corrupts the output for tensors with more
+    // than 2**31 - 1 elements, so it is only used where it is safe.
+    MaybeWith32BitIndexing<Device>(
+        [&](auto output_x, auto input_x, auto scratch_x) {
+          using IndexType = typename decltype(scratch_x)::Index;
 
-    Eigen::array<int32_t, Dims> lhs_offsets;
-    Eigen::array<int32_t, Dims> rhs_offsets;
-    Eigen::array<int32_t, Dims> extents;
-    Eigen::array<bool, Dims> reverses;
+          // Copy the gradient input into the scratch buffer.
+          scratch_x.device(device) = input_x;
 
-    for (int i = 0; i < Dims; ++i) {
-      lhs_offsets[i] = 0;
-      rhs_offsets[i] = 0;
-      extents[i] = scratch.dimension(i);
-      reverses[i] = false;
-    }
+          Eigen::array<IndexType, Dims> lhs_offsets;
+          Eigen::array<IndexType, Dims> rhs_offsets;
+          Eigen::array<IndexType, Dims> extents;
+          Eigen::array<bool, Dims> reverses;
 
-    // At this point, the central part (non-padded area) does not include the
-    // gradients back-propagated through padded areas. Those gradient components
-    // need be added to the central part.
-    //
-    // Note that a gradient input element falls into a padded area iff in at
-    // least one dimension i, the coordinate x(i) is in the range (python-style)
-    // [:paddings(i,0)] or [-paddings(i,1):].
+          for (int i = 0; i < Dims; ++i) {
+            lhs_offsets[i] = 0;
+            rhs_offsets[i] = 0;
+            extents[i] = scratch_x.dimension(i);
+            reverses[i] = false;
+          }
 
-    for (int i = 0; i < Dims; ++i) {
-      reverses[i] = true;
+          // At this point, the central part (non-padded area) does not include
+          // the gradients back-propagated through padded areas. Those gradient
+          // components need be added to the central part.
+          //
+          // Note that a gradient input element falls into a padded area iff in
+          // at least one dimension i, the coordinate x(i) is in the range
+          // (python-style) [:paddings(i,0)] or [-paddings(i,1):].
 
-      // This handles the case when coordinate in dimension i is in the range
-      // [:paddings(i,0)]. This portion is added to the range
-      // [paddings(i,0) + offset:2 * paddings(i,0) + offset].
-      if (paddings(i, 0) > 0) {
-        rhs_offsets[i] = 0;
-        lhs_offsets[i] = paddings(i, 0) + offset;
-        extents[i] = paddings(i, 0);
+          for (int i = 0; i < Dims; ++i) {
+            reverses[i] = true;
 
-        scratch.slice(lhs_offsets, extents).device(device) +=
-            scratch.slice(rhs_offsets, extents).reverse(reverses);
-      }
+            // This handles the case when coordinate in dimension i is in the
+            // range [:paddings(i,0)]. This portion is added to the range
+            // [paddings(i,0) + offset:2 * paddings(i,0) + offset].
+            if (paddings(i, 0) > 0) {
+              rhs_offsets[i] = 0;
+              lhs_offsets[i] = paddings(i, 0) + offset;
+              extents[i] = paddings(i, 0);
 
-      // This handles the case when coordinate in dimension i is in the range
-      // [-paddings(i,1):]. This portion is added to the range
-      // [-2 * paddings(i,1) - offset:-paddings(i,1) - offset].
-      if (paddings(i, 1) > 0) {
-        rhs_offsets[i] = scratch.dimension(i) - paddings(i, 1);
-        lhs_offsets[i] = rhs_offsets[i] - paddings(i, 1) - offset;
-        extents[i] = paddings(i, 1);
+              scratch_x.slice(lhs_offsets, extents).device(device) +=
+                  scratch_x.slice(rhs_offsets, extents).reverse(reverses);
+            }
 
-        scratch.slice(lhs_offsets, extents).device(device) +=
-            scratch.slice(rhs_offsets, extents).reverse(reverses);
-      }
+            // This handles the case when coordinate in dimension i is in the
+            // range [-paddings(i,1):]. This portion is added to the range
+            // [-2 * paddings(i,1) - offset:-paddings(i,1) - offset].
+            if (paddings(i, 1) > 0) {
+              rhs_offsets[i] = scratch_x.dimension(i) - paddings(i, 1);
+              lhs_offsets[i] = rhs_offsets[i] - paddings(i, 1) - offset;
+              extents[i] = paddings(i, 1);
 
-      reverses[i] = false;
-      lhs_offsets[i] = paddings(i, 0);
-      rhs_offsets[i] = paddings(i, 0);
-      extents[i] = output.dimension(i);
+              scratch_x.slice(lhs_offsets, extents).device(device) +=
+                  scratch_x.slice(rhs_offsets, extents).reverse(reverses);
+            }
 
-      // At this point, scratch buffer contains gradient input as if paddings
-      // for dimension k = 0,...,i are zeros. Therefore after the loop
-      // termination, the central part of the scratch buffer contains the folded
-      // gradients.
-    }
+            reverses[i] = false;
+            lhs_offsets[i] = paddings(i, 0);
+            rhs_offsets[i] = paddings(i, 0);
+            extents[i] = output_x.dimension(i);
 
-    // Copy the central part of the scratch buffer to the output.
-    output.device(device) = scratch.slice(rhs_offsets, extents);
+            // At this point, scratch buffer contains gradient input as if
+            // paddings for dimension k = 0,...,i are zeros. Therefore after
+            // the loop termination, the central part of the scratch buffer
+            // contains the folded gradients.
+          }
+
+          // Copy the central part of the scratch buffer to the output.
+          output_x.device(device) = scratch_x.slice(rhs_offsets, extents);
+        },
+        output, input, scratch);
   }
 };
 }  // namespace functor
