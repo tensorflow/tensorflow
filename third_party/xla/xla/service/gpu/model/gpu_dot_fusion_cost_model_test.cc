@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_dot_fusion_cost_model.h"
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 
 #include <gmock/gmock.h>
@@ -51,10 +52,12 @@ using gpu_dot_fusion_cost_model::detail::CalculateSmOccupancy;
 using gpu_dot_fusion_cost_model::detail::ComputeAndFlops;
 using gpu_dot_fusion_cost_model::detail::DotProblemInfo;
 using gpu_dot_fusion_cost_model::detail::DotTileSize;
+using gpu_dot_fusion_cost_model::detail::EvaluateHockneyBandwidthFraction;
 using gpu_dot_fusion_cost_model::detail::FactorWarpGrid;
 using gpu_dot_fusion_cost_model::detail::GetEffectiveFlopsPerNsForTileSize;
 using gpu_dot_fusion_cost_model::detail::GetEffectiveHbmBandwidth;
 using gpu_dot_fusion_cost_model::detail::HbmEstimates;
+using gpu_dot_fusion_cost_model::detail::HockneyBandwidthParams;
 using gpu_dot_fusion_cost_model::detail::kLoopLatencyTax;
 using gpu_dot_fusion_cost_model::detail::LaunchConfig;
 using gpu_dot_fusion_cost_model::detail::SmOccupancy;
@@ -656,9 +659,10 @@ TEST_F(GpuDotFusionCostModelTest,
 }
 
 // Verifies that normalized fractional bandwidth scales Ampere > Hopper >
-// Blackwell. Narrower memory buses with fewer pseudo-channels require less
-// in-flight concurrency to saturate memory pipelines, achieving higher
-// fractions of peak bandwidth at smaller transfer sizes.
+// Blackwell for small-to-medium transfer sizes (<= 32 MiB). Narrower memory
+// buses with fewer pseudo-channels require less in-flight concurrency to
+// saturate memory pipelines, achieving higher fractions of peak bandwidth at
+// smaller transfer sizes before asymptotic saturation takes over.
 TEST_F(GpuDotFusionCostModelTest,
        EffectiveHbmBandwidthFractionOrderingAcrossArchitectures) {
   constexpr int64_t kTransferSizes[] = {
@@ -667,7 +671,6 @@ TEST_F(GpuDotFusionCostModelTest,
       2 * 1024 * 1024,   // 2 MiB
       8 * 1024 * 1024,   // 8 MiB
       32 * 1024 * 1024,  // 32 MiB
-      128 * 1024 * 1024  // 128 MiB
   };
   for (int64_t dma_size : kTransferSizes) {
     float frac_a100 = GetEffectiveHbmBandwidth(dma_size, dda100_) /
@@ -698,60 +701,105 @@ TEST_F(GpuDotFusionCostModelTest,
 // 90% peak bandwidth) across architectures.
 TEST_F(GpuDotFusionCostModelTest,
        EffectiveHbmBandwidthAsymptoticTransferApproachesHardwareSaturation) {
-  constexpr int64_t k8GiB = 8LL * (1LL << 30);
+  constexpr int64_t k8GiB = 8LL << 30;
+  constexpr int64_t k16GiB = 16LL << 30;
   for (const se::DeviceDescription* dev : {&dda100_, &ddh100_, &ddb200_}) {
-    float last_frac =
-        GetEffectiveHbmBandwidth(k8GiB, *dev) / dev->memory_bandwidth();
-    EXPECT_GT(last_frac, 0.90f);
-    EXPECT_LE(last_frac, 1.0f);
+    float bw_8g = GetEffectiveHbmBandwidth(k8GiB, *dev);
+    float bw_16g = GetEffectiveHbmBandwidth(k16GiB, *dev);
+    float frac_16g = bw_16g / dev->memory_bandwidth();
+
+    EXPECT_GT(bw_16g, bw_8g);
+    EXPECT_GT(frac_16g, 0.90f);
+    EXPECT_LE(frac_16g, 1.0f);
   }
 }
 
 TEST_F(GpuDotFusionCostModelTest,
-       EffectiveHbmBandwidthClampsBelowMinimumTransferSize) {
-  // DMA sizes below minimum table entry (8 KiB) clamp to the minimum entry.
-  EXPECT_FLOAT_EQ(GetEffectiveHbmBandwidth(4096, ddh100_),
-                  GetEffectiveHbmBandwidth(8192, ddh100_));
-}
-
-TEST_F(GpuDotFusionCostModelTest,
-       EffectiveHbmBandwidthClampsAboveMaximumTransferSize) {
-  constexpr int64_t k8GiB = 8LL * (1LL << 30);
-  constexpr int64_t k16GiB = 16LL * (1LL << 30);
-  // DMA sizes above maximum table entry (8 GiB) clamp to the maximum entry.
-  EXPECT_FLOAT_EQ(GetEffectiveHbmBandwidth(k16GiB, ddh100_),
-                  GetEffectiveHbmBandwidth(k8GiB, ddh100_));
-}
-
-TEST_F(GpuDotFusionCostModelTest,
-       EffectiveHbmBandwidthLinearlyInterpolatesBetweenTableEntries) {
-  float bw_8k = GetEffectiveHbmBandwidth(8192, ddh100_);
-  float bw_16k = GetEffectiveHbmBandwidth(16384, ddh100_);
-  EXPECT_FLOAT_EQ(GetEffectiveHbmBandwidth(12288, ddh100_),
-                  (bw_8k + bw_16k) / 2.0f);
+       EffectiveHbmBandwidthScalesContinuouslyDownToZeroForSmallTransfers) {
+  for (const se::DeviceDescription* dev : {&dda100_, &ddh100_, &ddb200_}) {
+    EXPECT_FLOAT_EQ(GetEffectiveHbmBandwidth(0, *dev), 0.0f);
+    float bw_1k = GetEffectiveHbmBandwidth(1024, *dev);
+    float frac_1k = bw_1k / dev->memory_bandwidth();
+    float bw_2k = GetEffectiveHbmBandwidth(2048, *dev);
+    EXPECT_GT(bw_1k, 0.0f);
+    EXPECT_LT(frac_1k, 0.1f);
+    EXPECT_GT(bw_2k, bw_1k);
+  }
 }
 
 TEST_F(GpuDotFusionCostModelTest,
        EffectiveHbmBandwidthFallsBackToAmpereForOlderArchitectures) {
-  constexpr int64_t k128MiB = 128LL * (1LL << 20);
   se::DeviceDescription dd_volta = TestGpuDeviceInfo::RTXA6000DeviceInfo(
       se::GpuComputeCapability{se::CudaComputeCapability(7, 0)});
-  dd_volta.set_memory_bandwidth(900ULL * 1000 * 1000 * 1000);  // 900 GB/s
-  EXPECT_FLOAT_EQ(
-      GetEffectiveHbmBandwidth(k128MiB, dd_volta) / dd_volta.memory_bandwidth(),
-      GetEffectiveHbmBandwidth(k128MiB, dda100_) / dda100_.memory_bandwidth());
+  dd_volta.set_memory_bandwidth(dda100_.memory_bandwidth());
+  constexpr int64_t k128MiB = 128LL << 20;
+  EXPECT_FLOAT_EQ(GetEffectiveHbmBandwidth(k128MiB, dd_volta),
+                  GetEffectiveHbmBandwidth(k128MiB, dda100_));
 }
 
 TEST_F(GpuDotFusionCostModelTest,
        EffectiveHbmBandwidthFallsBackToBlackwellForFutureArchitectures) {
-  constexpr int64_t k128MiB = 128LL * (1LL << 20);
   se::DeviceDescription dd_future = TestGpuDeviceInfo::RTXA6000DeviceInfo(
       se::GpuComputeCapability{se::CudaComputeCapability(11, 0)});
-  dd_future.set_memory_bandwidth(10000ULL * 1000 * 1000 * 1000);  // 10 TB/s
+  dd_future.set_memory_bandwidth(ddb200_.memory_bandwidth());
+  constexpr int64_t k128MiB = 128LL << 20;
+  EXPECT_FLOAT_EQ(GetEffectiveHbmBandwidth(k128MiB, dd_future),
+                  GetEffectiveHbmBandwidth(k128MiB, ddb200_));
+}
+
+TEST_F(GpuDotFusionCostModelTest,
+       EvaluateHockneyBandwidthFractionReturnsZeroForNonPositiveInputs) {
+  constexpr HockneyBandwidthParams kParams{/*eta_max=*/0.95, /*t0_sec=*/4.0e-6};
+  constexpr double kPeakBandwidth = 2000.0 * 1e9;
+
+  EXPECT_FLOAT_EQ(EvaluateHockneyBandwidthFraction(0, kParams, kPeakBandwidth),
+                  0.0f);
   EXPECT_FLOAT_EQ(
-      GetEffectiveHbmBandwidth(k128MiB, dd_future) /
-          dd_future.memory_bandwidth(),
-      GetEffectiveHbmBandwidth(k128MiB, ddb200_) / ddb200_.memory_bandwidth());
+      EvaluateHockneyBandwidthFraction(-1024, kParams, kPeakBandwidth), 0.0f);
+  EXPECT_FLOAT_EQ(EvaluateHockneyBandwidthFraction(1024, kParams, 0.0), 0.0f);
+  EXPECT_FLOAT_EQ(EvaluateHockneyBandwidthFraction(1024, kParams, -100.0),
+                  0.0f);
+  EXPECT_FLOAT_EQ(
+      EvaluateHockneyBandwidthFraction(
+          1024, HockneyBandwidthParams{/*eta_max=*/0.0, /*t0_sec=*/4.0e-6},
+          kPeakBandwidth),
+      0.0f);
+  EXPECT_FLOAT_EQ(
+      EvaluateHockneyBandwidthFraction(
+          1024, HockneyBandwidthParams{/*eta_max=*/-0.5, /*t0_sec=*/4.0e-6},
+          kPeakBandwidth),
+      0.0f);
+  EXPECT_FLOAT_EQ(
+      EvaluateHockneyBandwidthFraction(
+          1024, HockneyBandwidthParams{/*eta_max=*/0.95, /*t0_sec=*/0.0},
+          kPeakBandwidth),
+      0.0f);
+  EXPECT_FLOAT_EQ(
+      EvaluateHockneyBandwidthFraction(
+          1024, HockneyBandwidthParams{/*eta_max=*/0.95, /*t0_sec=*/-1.0e-6},
+          kPeakBandwidth),
+      0.0f);
+  EXPECT_FLOAT_EQ(EvaluateHockneyBandwidthFraction(
+                      1024, kParams, std::numeric_limits<double>::quiet_NaN()),
+                  0.0f);
+}
+
+TEST_F(GpuDotFusionCostModelTest,
+       EvaluateHockneyBandwidthFractionMonotonicallyIncreasesWithTransferSize) {
+  constexpr HockneyBandwidthParams kParams{/*eta_max=*/0.95, /*t0_sec=*/4.0e-6};
+  constexpr double kPeakBandwidth = 2000.0 * 1e9;
+
+  float frac_1k =
+      EvaluateHockneyBandwidthFraction(1024, kParams, kPeakBandwidth);
+  float frac_1m =
+      EvaluateHockneyBandwidthFraction(1024 * 1024, kParams, kPeakBandwidth);
+  float frac_1g =
+      EvaluateHockneyBandwidthFraction(1LL << 30, kParams, kPeakBandwidth);
+
+  EXPECT_GT(frac_1k, 0.0f);
+  EXPECT_GT(frac_1m, frac_1k);
+  EXPECT_GT(frac_1g, frac_1m);
+  EXPECT_LE(frac_1g, kParams.eta_max);
 }
 
 TEST_F(GpuDotFusionCostModelTest, GpuDotComputeBoundA100Bf16) {
