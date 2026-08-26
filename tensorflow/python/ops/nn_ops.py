@@ -1263,15 +1263,21 @@ def convolution_internal(
         f"filters.shape={filters.shape} of rank {filters_rank} and "
         f"num_spatial_dims={num_spatial_dims}")
 
-  if inputs_rank:
-    num_batch_dims = inputs_rank - num_spatial_dims - 1  # Channel dimension.
-  else:
-    num_batch_dims = 1  # By default, assume single batch dimension.
-
   if num_spatial_dims not in {1, 2, 3}:
     raise ValueError(
         "`num_spatial_dims` must be 1, 2, or 3. "
         f"Received: num_spatial_dims={num_spatial_dims}.")
+
+  if inputs_rank is not None:
+    num_batch_dims = inputs_rank - num_spatial_dims - 1  # Channel dimension.
+    if num_batch_dims < 0:
+      raise ValueError(
+          f"`input` must have rank at least {num_spatial_dims + 1} "
+          f"({num_spatial_dims} spatial dimensions + 1 channel dimension). "
+          f"Received: input.shape={input.shape} of rank {inputs_rank}"
+      )
+  else:
+    num_batch_dims = 1  # By default, assume single batch dimension.
 
   if data_format is None or data_format in _CHANNELS_LAST_FORMATS:
     channel_index = num_batch_dims + num_spatial_dims
