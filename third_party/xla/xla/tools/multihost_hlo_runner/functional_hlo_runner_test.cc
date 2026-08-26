@@ -762,20 +762,24 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id) {
           .status());
   if (node_id == 0) {
     ABSL_ASSIGN_OR_RETURN(std::string backend_fp, GetExpectedBackendFingerprint());
+    bool use_new_format =
+        xla::GetDebugOptionsFromFlags().xla_gpu_use_new_autotune_cache_format();
+    std::string key_prefix =
+        use_new_format ? "autotune_cache_" : "autotune_results_";
     ABSL_ASSIGN_OR_RETURN(
         std::string results0,
         env.kv_store->Get(
-            absl::StrCat("autotune_results_fda6faffd312182b0b13b647233621fc_",
+            absl::StrCat(key_prefix, "fda6faffd312182b0b13b647233621fc_",
                          backend_fp, "_0"),
             absl::Seconds(1)));
-    CHECK(absl::StrContains(results0, "result"));
+    CHECK(!results0.empty());
     ABSL_ASSIGN_OR_RETURN(
         std::string results1,
         env.kv_store->Get(
-            absl::StrCat("autotune_results_fda6faffd312182b0b13b647233621fc_",
+            absl::StrCat(key_prefix, "fda6faffd312182b0b13b647233621fc_",
                          backend_fp, "_1"),
             absl::Seconds(1)));
-    CHECK(absl::StrContains(results1, "result"));
+    CHECK(!results1.empty());
     // The nodes autotune different fusions.
     CHECK_NE(results0, results1);
   }
