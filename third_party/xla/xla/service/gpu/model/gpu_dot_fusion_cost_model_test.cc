@@ -875,7 +875,8 @@ TEST_F(GpuDotFusionCostModelTest,
   const int regs_f64 = CalculateRegistersPerThread(
       CreateDotInfo(PrimitiveType::F64), tile, block_params, ddh100_);
 
-  EXPECT_GT(regs_f32, regs_f16);
+  // F16 and F32 use 32-bit hardware accumulators, while F64 uses 64-bit.
+  EXPECT_EQ(regs_f16, regs_f32);
   EXPECT_GT(regs_f64, regs_f32);
 }
 

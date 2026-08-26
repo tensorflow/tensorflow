@@ -547,7 +547,10 @@ int CalculateRegistersPerThread(const DotProblemInfo& dot_info,
     return 0;
   }
 
-  const int64_t acc_bitwidth = BitWidth(dot_info.output_element_type);
+  // Accumulator registers: hardware accumulates in at least 32-bit precision
+  // (64-bit for F64).
+  const int64_t acc_bitwidth =
+      std::max<int64_t>(32, BitWidth(dot_info.output_element_type));
   // Safe to cast: The numerator represents the total bits for the accumulator
   // tile, which will always fit in an int due to hardware limits on tile size.
   const int accumulator_regs = static_cast<int>(
