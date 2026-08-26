@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/common_pjrt_client.h"
 
 #include <atomic>
+#include <cinttypes>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -1476,10 +1477,86 @@ absl::Status CommonPjRtClient::PrepareArguments(
   return absl::OkStatus();
 }
 
-absl::StatusOr<absl::InlinedVector<PjRtRawBufferRef, 4>>
+// If the output leaf shape is unbounded dynamic and aliases a donated input
+// buffer with a concrete static shape, validates that the donated buffer is
+// compatible with the output requirements and updates
+// `output_device_shape_override` with the concrete shape.
+static absl::Status MaybeOverrideUnboundedDynamicOutputShape(
+    const CommonPjRtClient& client, const Shape& output_leaf_shape,
+    absl::Span<PjRtBuffer* const> argument_handles, size_t parameter_number,
+    const PjRtRawBufferRef& donated_raw_buffer,
+    int expected_memory_space_kind_id, const Shape& output_device_shape,
+    int output_index, std::optional<Shape>& output_device_shape_override) {
+  if (!output_leaf_shape.is_unbounded_dynamic()) {
+    return absl::OkStatus();
+  }
+  if (!donated_raw_buffer) {
+    return absl::OkStatus();
+  }
+  if (parameter_number >= argument_handles.size()) {
+    return absl::OkStatus();
+  }
+  const Shape& input_shape =
+      argument_handles[parameter_number]->on_device_shape();
+  if (!input_shape.is_static()) {
+    return absl::OkStatus();
+  }
+
+  if (output_leaf_shape.dimensions().size() !=
+          input_shape.dimensions().size() ||
+      output_leaf_shape.element_type() != input_shape.element_type()) {
+    return InvalidArgument(
+        "Cannot use donated input shape %s to describe incompatible unbounded "
+        "dynamic output %s (rank or element type mismatch)",
+        input_shape.ToString(true), output_leaf_shape.ToString(true));
+  }
+
+  for (int d = 0; d < output_leaf_shape.dimensions().size(); ++d) {
+    if (!output_leaf_shape.is_dynamic_dimension(d) &&
+        output_leaf_shape.dimensions(d) != input_shape.dimensions(d)) {
+      return InvalidArgument(
+          "Cannot use donated input shape %s to describe incompatible "
+          "unbounded dynamic output %s (dim %d mismatch)",
+          input_shape.ToString(true), output_leaf_shape.ToString(true), d);
+    }
+  }
+
+  if (donated_raw_buffer->memory_space()->kind_id() !=
+      expected_memory_space_kind_id) {
+    return InvalidArgument(
+        "Cannot use donated input in memory space '%s' for unbounded dynamic "
+        "output in memory space kind %d",
+        donated_raw_buffer->memory_space()->kind(),
+        expected_memory_space_kind_id);
+  }
+
+  ABSL_ASSIGN_OR_RETURN(int64_t expected_bytes,
+                   client.GetOnDeviceBytesCount(
+                       donated_raw_buffer->memory_space(), input_shape));
+  size_t actual_bytes = donated_raw_buffer->GetOnDeviceSizeInBytes();
+  if (expected_bytes < 0 ||
+      actual_bytes != static_cast<size_t>(expected_bytes)) {
+    return InvalidArgument(
+        "Donated input allocation has size %zu, but concrete output shape %s "
+        "requires %" PRId64 " bytes",
+        actual_bytes, input_shape.ToString(true), expected_bytes);
+  }
+
+  if (!output_device_shape_override.has_value()) {
+    output_device_shape_override = output_device_shape;
+  }
+  ShapeIndex output_index_path =
+      output_device_shape.IsTuple() ? ShapeIndex{output_index} : ShapeIndex{};
+  *ShapeUtil::GetMutableSubshape(&*output_device_shape_override,
+                                 output_index_path) = input_shape;
+  return absl::OkStatus();
+}
+
+absl::StatusOr<CommonPjRtClient::PreparedOutputBuffers>
 CommonPjRtClient::AllocateOutputBuffersWithInputReuse(
     const Shape& output_device_shape,
     absl::Span<const CommonPjRtBuffer::ScopedHold> input_device_buffer_holds,
+    absl::Span<PjRtBuffer* const> argument_handles,
     const HloInputOutputAliasConfig& alias_config, PjRtDevice* device,
     absl::Span<const int> output_memory_space_kind_ids,
     const ExecuteOptions& options) {
@@ -1488,9 +1565,10 @@ CommonPjRtClient::AllocateOutputBuffersWithInputReuse(
              "shape "
           << output_device_shape.ToString();
   absl::InlinedVector<PjRtRawBufferRef, 4> buffers;
+  std::optional<Shape> output_device_shape_override;
   if (output_device_shape.IsTuple() &&
       output_device_shape.tuple_shapes().empty()) {
-    return buffers;
+    return PreparedOutputBuffers{std::move(buffers)};
   }
   int num_input_pjrt_buffers = input_device_buffer_holds.size();
   absl::Span<const Shape> output_leaf_shapes =
@@ -1612,6 +1690,11 @@ CommonPjRtClient::AllocateOutputBuffersWithInputReuse(
           input_device_buffer_holds[parameter_number];
       CHECK(input_hold.ok());
       buffers[i] = input_hold.buffer()->raw_buffer();
+
+      ABSL_RETURN_IF_ERROR(MaybeOverrideUnboundedDynamicOutputShape(
+          *this, output_leaf_shapes[i], argument_handles, parameter_number,
+          buffers[i], output_memory_space_kind_ids[i], output_device_shape, i,
+          output_device_shape_override));
     }
   }
 
@@ -1654,7 +1737,8 @@ CommonPjRtClient::AllocateOutputBuffersWithInputReuse(
         << total_allocated_bytes
         << (options.use_output_arena ? " (using arena)" : "");
   }
-  return std::move(buffers);
+  return PreparedOutputBuffers{std::move(buffers),
+                               std::move(output_device_shape_override)};
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
@@ -2134,11 +2218,14 @@ absl::Status CommonPjRtLoadedExecutable::ExecutePrepare(
   if (!is_error || !client()->supports_predetermined_error()) {
     // Allocate output with input reuse. Any allocation errors are returned
     // immediately. Derived classes may use custom logic for allocation.
-    ABSL_ASSIGN_OR_RETURN(output_leaf_buffers,
+    ABSL_ASSIGN_OR_RETURN(CommonPjRtClient::PreparedOutputBuffers prepared,
                      client()->AllocateOutputBuffersWithInputReuse(
                          *output_device_shape_, launch_args.device_buffers,
-                         input_output_alias_config(), device,
+                         argument_handles, input_output_alias_config(), device,
                          output_memory_space_kind_ids_, options));
+    output_leaf_buffers = std::move(prepared.buffers);
+    launch_args.output_device_shape_override =
+        std::move(prepared.output_device_shape_override);
     VLOG(3) << "Created output buffer: " << output_device_shape_->ToString();
 
     ABSL_RETURN_IF_ERROR(CheckBufferCompatibilities(
@@ -2278,8 +2365,14 @@ CommonPjRtLoadedExecutable::ExecuteLaunch(ExecuteLaunchArgs& launch_args,
 
   ABSL_RETURN_IF_ERROR(results.inline_status);
 
+  std::shared_ptr<const Shape> output_device_shape = output_device_shape_;
+  if (launch_args.output_device_shape_override.has_value()) {
+    output_device_shape = std::make_shared<const Shape>(
+        std::move(*launch_args.output_device_shape_override));
+  }
+
   auto outputs = client()->CreateOutputs(
-      output_device_shape_, results, launch_args.device,
+      output_device_shape, results, launch_args.device,
       output_memory_space_kind_ids_, std::move(launch_args.output_leaf_buffers),
       launch_args.is_predetermined_error);
 
