@@ -12,10 +12,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <utility>
 
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/APFloat.h"
 #include "mlir/Conversion/LLVMCommon/LoweringOptions.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -70,13 +72,6 @@ namespace ci = ::xla::codegen::intrinsics;
 
 // TODO(talts): Add LowerMathOpPattern based on MathFunction instances.
 
-// Get the vectorized version of the given element type if `vector_type` is
-// present, else return the given element type.
-mlir::Type GetVectorType(mlir::VectorType vector_type,
-                         mlir::Type element_type) {
-  return vector_type ? vector_type.clone(element_type) : element_type;
-}
-
 struct TargetTypes {
   SmallVector<ci::Type, 2> vector_types;
   SmallVector<ci::Type, 2> scalar_types;
@@ -89,30 +84,56 @@ std::string GetCpuFeaturesStr(mlir::ModuleOp module_op) {
   return !features ? "" : features.getValue().str();
 }
 
-template <typename Intrinsic, typename Op>
-TargetTypes GetTargetTypes(Op& op) {
+bool NeedsUpcast(mlir::Type type) {
+  mlir::Type elem_type = mlir::getElementTypeOrSelf(type);
+  return elem_type.isBF16() || elem_type.isF16();
+}
+
+template <typename Op>
+PrimitiveType GetTargetPrimitiveType(mlir::Type type) {
+  mlir::Type elem_type = mlir::getElementTypeOrSelf(type);
+  if constexpr (!std::is_same_v<Op, ma::TruncFOp>) {
+    if (NeedsUpcast(elem_type)) {
+      return xla::F32;
+    }
+  }
+  return ConvertMlirTypeToPrimitiveType(elem_type);
+}
+
+template <typename Op>
+SmallVector<ci::Type, 2> GetVectorTargetTypes(Op op, int64_t num_elements) {
+  SmallVector<ci::Type, 2> vector_types;
+  for (mlir::Type type : TypeRange(op->getOperands())) {
+    vector_types.push_back(
+        ci::Type::V(GetTargetPrimitiveType<Op>(type), num_elements));
+  }
+  if constexpr (std::is_same_v<Op, ma::TruncFOp>) {
+    mlir::Type result_element_type = mlir::getElementTypeOrSelf(op.getType());
+    PrimitiveType result_target_type =
+        ConvertMlirTypeToPrimitiveType(result_element_type);
+    vector_types.push_back(ci::Type::V(result_target_type, num_elements));
+  }
+  return vector_types;
+}
+
+template <typename Op>
+TargetTypes GetTargetTypes(Op op) {
   TargetTypes target_types;
   auto vector_type = mlir::dyn_cast<mlir::VectorType>(op.getType());
   for (mlir::Type type : TypeRange(op->getOperands())) {
-    mlir::Type element_type = mlir::getElementTypeOrSelf(type);
-    PrimitiveType target_type;
-    if constexpr (!Intrinsic::kLastArgIsReturnType) {
-      if (element_type.isBF16() || element_type.isF16()) {
-        target_type = xla::F32;
+    if constexpr (!std::is_same_v<Op, ma::TruncFOp>) {
+      if (NeedsUpcast(type)) {
         target_types.needs_upcast = true;
-      } else {
-        target_type = ConvertMlirTypeToPrimitiveType(element_type);
       }
-    } else {
-      target_type = ConvertMlirTypeToPrimitiveType(element_type);
     }
+    PrimitiveType target_type = GetTargetPrimitiveType<Op>(type);
     if (vector_type) {
       target_types.vector_types.push_back(
           ci::Type::V(target_type, vector_type.getNumElements()));
     }
     target_types.scalar_types.push_back(ci::Type::S(target_type));
   }
-  if constexpr (Intrinsic::kLastArgIsReturnType) {
+  if constexpr (std::is_same_v<Op, ma::TruncFOp>) {
     mlir::Type result_element_type = mlir::getElementTypeOrSelf(op.getType());
     PrimitiveType result_target_type =
         ConvertMlirTypeToPrimitiveType(result_element_type);
@@ -125,6 +146,21 @@ TargetTypes GetTargetTypes(Op& op) {
   return target_types;
 }
 
+template <typename Intrinsic, typename Op>
+std::optional<int64_t> FindSupportedSubvectorSize(
+    Op op, absl::string_view features_str, int64_t total_elements) {
+  for (int64_t k = total_elements / 2; k >= 2; --k) {
+    if (total_elements % k != 0) {
+      continue;
+    }
+    SmallVector<ci::Type, 2> sub_vector_types = GetVectorTargetTypes<Op>(op, k);
+    if (Intrinsic::IsSupported(features_str, sub_vector_types)) {
+      return k;
+    }
+  }
+  return std::nullopt;
+}
+
 template <typename Intrinsic>
 mlir::func::FuncOp GetDeclaration(mlir::ImplicitLocOpBuilder& b,
                                   mlir::ModuleOp module_op,
@@ -132,26 +168,31 @@ mlir::func::FuncOp GetDeclaration(mlir::ImplicitLocOpBuilder& b,
   return Intrinsic::GetOrInsertDeclaration(b, module_op, types);
 }
 
+Value MaybeUpcastToF32(mlir::ImplicitLocOpBuilder& b, Value value,
+                       bool needs_upcast) {
+  if (!needs_upcast) {
+    return value;
+  }
+  if (auto vec_type = mlir::dyn_cast<mlir::VectorType>(value.getType())) {
+    return EmitFloatCast(value, vec_type.clone(b.getF32Type()), b);
+  }
+  return EmitFloatCast(value, b.getF32Type(), b);
+}
+
 template <typename Intrinsic, typename Op>
 Value CallIntrinsicFunc(mlir::ImplicitLocOpBuilder& b, Op op,
                         const TargetTypes& target_types,
                         mlir::VectorType vec_type, bool vector_supported,
-                        bool scalar_supported) {
+                        std::optional<int64_t> subvector_size) {
   auto module_op = op->template getParentOfType<mlir::ModuleOp>();
 
-  SmallVector<Value> compute_inputs;
-  compute_inputs.reserve(op->getNumOperands());
-  for (Value operand : op->getOperands()) {
-    mlir::Type elem_type = mlir::getElementTypeOrSelf(operand.getType());
-    if (target_types.needs_upcast &&
-        (elem_type.isF16() || elem_type.isBF16())) {
-      compute_inputs.push_back(
-          EmitFloatCast(operand, GetVectorType(vec_type, b.getF32Type()), b));
-    } else {
-      compute_inputs.push_back(operand);
-    }
-  }
   if (vector_supported) {
+    SmallVector<Value> compute_inputs;
+    compute_inputs.reserve(op->getNumOperands());
+    for (Value operand : op->getOperands()) {
+      compute_inputs.push_back(
+          MaybeUpcastToF32(b, operand, target_types.needs_upcast));
+    }
     auto intrinsic_decl =
         GetDeclaration<Intrinsic>(b, module_op, target_types.vector_types);
     Value compute_result =
@@ -161,15 +202,63 @@ Value CallIntrinsicFunc(mlir::ImplicitLocOpBuilder& b, Op op,
                : compute_result;
   }
 
+  if (subvector_size.has_value()) {
+    int64_t k = *subvector_size;
+    int64_t num_chunks = vec_type.getNumElements() / k;
+    SmallVector<ci::Type, 2> sub_vector_types = GetVectorTargetTypes<Op>(op, k);
+    auto sub_intrinsic_decl =
+        GetDeclaration<Intrinsic>(b, module_op, sub_vector_types);
+
+    mlir::VectorType sub_res_type =
+        mlir::VectorType::get({k}, vec_type.getElementType());
+    Value compute_result = ma::ConstantOp::create(b, op.getLoc(), op.getType(),
+                                                  b.getZeroAttr(op.getType()));
+
+    for (int64_t i = 0; i < num_chunks; ++i) {
+      SmallVector<Value> sub_inputs;
+      sub_inputs.reserve(op->getNumOperands());
+      for (Value operand : op->getOperands()) {
+        Value sub_input = operand;
+        if (mlir::isa<mlir::VectorType>(operand.getType())) {
+          sub_input = mv::ExtractStridedSliceOp::create(
+              b, operand,
+              /*offsets=*/llvm::ArrayRef<int64_t>{i * k},
+              /*sizes=*/llvm::ArrayRef<int64_t>{k},
+              /*strides=*/llvm::ArrayRef<int64_t>{1});
+        }
+        sub_inputs.push_back(
+            MaybeUpcastToF32(b, sub_input, target_types.needs_upcast));
+      }
+      Value sub_result =
+          mf::CallOp::create(b, sub_intrinsic_decl, sub_inputs).getResult(0);
+      if (target_types.needs_upcast) {
+        sub_result = EmitFloatCast(sub_result, sub_res_type, b);
+      }
+      compute_result = mv::InsertStridedSliceOp::create(
+          b, sub_result, compute_result,
+          /*offsets=*/llvm::ArrayRef<int64_t>{i * k},
+          /*strides=*/llvm::ArrayRef<int64_t>{1});
+    }
+
+    return compute_result;
+  }
+
   // Fallback to scalar.
   auto intrinsic_decl =
       GetDeclaration<Intrinsic>(b, module_op, target_types.scalar_types);
+
+  SmallVector<Value> compute_inputs;
+  compute_inputs.reserve(op->getNumOperands());
+  for (Value operand : op->getOperands()) {
+    compute_inputs.push_back(
+        MaybeUpcastToF32(b, operand, target_types.needs_upcast));
+  }
 
   if (!vec_type) {
     Value scalar_result =
         mf::CallOp::create(b, intrinsic_decl, compute_inputs).getResult(0);
     return target_types.needs_upcast
-               ? ma::TruncFOp::create(b, op.getType(), scalar_result)
+               ? EmitFloatCast(scalar_result, op.getType(), b)
                : scalar_result;
   }
 
@@ -189,14 +278,13 @@ Value CallIntrinsicFunc(mlir::ImplicitLocOpBuilder& b, Op op,
         mf::CallOp::create(b, intrinsic_decl, scalar_inputs).getResult(0);
     scalar_results.push_back(scalar_result);
   }
-  mlir::Type compute_type = target_types.needs_upcast
-                                ? GetVectorType(vec_type, b.getF32Type())
-                                : op.getType();
+  mlir::Type compute_type =
+      target_types.needs_upcast ? vec_type.clone(b.getF32Type()) : op.getType();
   Value compute_result =
       mv::FromElementsOp::create(b, compute_type, scalar_results);
 
   return target_types.needs_upcast
-             ? ma::TruncFOp::create(b, op.getType(), compute_result)
+             ? EmitFloatCast(compute_result, op.getType(), b)
              : compute_result;
 }
 
@@ -212,19 +300,24 @@ mlir::LogicalResult LowerIntrinsicPattern(Op op,
   }
 
   mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-  TargetTypes target_types = GetTargetTypes<Intrinsic>(op);
+  TargetTypes target_types = GetTargetTypes(op);
   auto module_op = op->template getParentOfType<mlir::ModuleOp>();
 
   std::string features_str = GetCpuFeaturesStr(module_op);
   bool vector_supported =
       Intrinsic::IsSupported(features_str, target_types.vector_types);
+  std::optional<int64_t> subvector_size;
+  if (vec_type && !vector_supported) {
+    subvector_size = FindSupportedSubvectorSize<Intrinsic>(
+        op, features_str, vec_type.getNumElements());
+  }
   bool scalar_supported =
       Intrinsic::IsSupported(features_str, target_types.scalar_types);
-  if (!vector_supported && !scalar_supported) {
+  if (!vector_supported && !subvector_size.has_value() && !scalar_supported) {
     return rewriter.notifyMatchFailure(op, "unsupported type");
   }
-  Value result = CallIntrinsicFunc<Intrinsic>(
-      b, op, target_types, vec_type, vector_supported, scalar_supported);
+  Value result = CallIntrinsicFunc<Intrinsic>(b, op, target_types, vec_type,
+                                              vector_supported, subvector_size);
   rewriter.replaceOp(op, result);
   return mlir::success();
 }

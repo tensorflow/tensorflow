@@ -373,17 +373,16 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
 
   absl::Status HandleNot(const HloInstruction* not_) override {
     if constexpr (std::is_arithmetic_v<ElementwiseT>) {
-      ABSL_ASSIGN_OR_RETURN(
-          Literal literal,
-          ElementWiseUnaryOp(not_, [](ElementwiseT elem_operand) {
-            if constexpr (std::is_floating_point_v<ElementwiseT> ||
-                          std::is_same_v<ElementwiseT, bool>) {
-              return !elem_operand;
-            } else {
-              static_assert(std::is_integral_v<ElementwiseT>);
-              return ~elem_operand;
-            }
-          }));
+      ABSL_ASSIGN_OR_RETURN(Literal literal,
+                       ElementWiseUnaryOp(not_, [](ElementwiseT elem_operand) {
+                         if constexpr (std::is_floating_point_v<ElementwiseT> ||
+                                       std::is_same_v<ElementwiseT, bool>) {
+                           return !elem_operand;
+                         } else {
+                           static_assert(std::is_integral_v<ElementwiseT>);
+                           return ~elem_operand;
+                         }
+                       }));
       parent_->SetEvaluatedLiteralFor(not_, std::move(literal));
       return absl::OkStatus();
     }
@@ -507,13 +506,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   }
 
   absl::Status HandleMultiply(const HloInstruction* multiply) override {
-    ABSL_ASSIGN_OR_RETURN(
-        Literal literal,
-        ElementWiseBinaryOp(
-            multiply, [](ElementwiseT lhs_elem, ElementwiseT rhs_elem) {
-              return ElementwiseT(ToArithmeticSafeType(lhs_elem) *
-                                  ToArithmeticSafeType(rhs_elem));
-            }));
+    ABSL_ASSIGN_OR_RETURN(Literal literal,
+                     ElementWiseBinaryOp(multiply, [](ElementwiseT lhs_elem,
+                                                      ElementwiseT rhs_elem) {
+                       return ElementwiseT(ToArithmeticSafeType(lhs_elem) *
+                                           ToArithmeticSafeType(rhs_elem));
+                     }));
     parent_->SetEvaluatedLiteralFor(multiply, std::move(literal));
     return absl::OkStatus();
   }
@@ -541,13 +539,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   }
 
   absl::Status HandleSubtract(const HloInstruction* subtract) override {
-    ABSL_ASSIGN_OR_RETURN(
-        Literal literal,
-        ElementWiseBinaryOp(
-            subtract, [](ElementwiseT lhs_elem, ElementwiseT rhs_elem) {
-              return ElementwiseT(ToArithmeticSafeType(lhs_elem) -
-                                  ToArithmeticSafeType(rhs_elem));
-            }));
+    ABSL_ASSIGN_OR_RETURN(Literal literal,
+                     ElementWiseBinaryOp(subtract, [](ElementwiseT lhs_elem,
+                                                      ElementwiseT rhs_elem) {
+                       return ElementwiseT(ToArithmeticSafeType(lhs_elem) -
+                                           ToArithmeticSafeType(rhs_elem));
+                     }));
     parent_->SetEvaluatedLiteralFor(subtract, std::move(literal));
     return absl::OkStatus();
   }
@@ -670,8 +667,13 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           } else if constexpr (std::is_integral_v<ElementwiseT>) {
             if constexpr (std::is_signed_v<ElementwiseT>) {
               if (rhs_el < static_cast<ElementwiseT>(0)) {
-                return static_cast<ElementwiseT>(
-                    lhs_el == static_cast<ElementwiseT>(1) ? 1 : 0);
+                if (lhs_el == static_cast<ElementwiseT>(1)) {
+                  return static_cast<ElementwiseT>(1);
+                }
+                if (lhs_el == static_cast<ElementwiseT>(-1)) {
+                  return static_cast<ElementwiseT>(rhs_el % 2 == 0 ? 1 : -1);
+                }
+                return static_cast<ElementwiseT>(0);
               }
             }
             return static_cast<ElementwiseT>(

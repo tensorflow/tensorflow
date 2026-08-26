@@ -4731,7 +4731,9 @@ void HloInstruction::ToProto(HloInstructionProto* proto) const {
 void HloInstruction::ToProto(HloInstructionProto* proto,
                              HloProtoOptions options) const {
   ToProto(proto);
-  if (options.deduplicate_backend_config && !backend_config_->empty()) {
+  if (options.deduplicate_backend_config && !backend_config_->empty() &&
+      backend_config_->GetRawString().size() >=
+          options.min_backend_config_size) {
     if (options.payload_deduplicator == nullptr) {
       LOG_FIRST_N(WARNING, 1)
           << "Backend config deduplication requested without a payload "

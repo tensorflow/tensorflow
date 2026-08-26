@@ -24,12 +24,14 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -43,6 +45,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/kernel_definition.h"
@@ -77,7 +80,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
-#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 namespace {
@@ -447,6 +449,25 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
                                     ->config()
                                     .debug_options()
                                     .xla_cpu_use_new_xtile_lowering();
+  TargetMachineOptions target_machine_options(
+      fusion.GetModule()->config().debug_options());
+  bool has_avx512 = absl::c_any_of(
+      target_machine_options.enabled_features(), [](absl::string_view feature) {
+        return absl::StrContains(feature, "avx512");
+      });
+  int64_t max_bit_width = 8;
+  for (const HloInstruction* instr :
+       fusion.fused_instructions_computation()->instructions()) {
+    ShapeUtil::ForEachSubshape(instr->shape(), [&](const Shape& subshape,
+                                                   const ShapeIndex& index) {
+      if (subshape.IsArray()) {
+        max_bit_width = std::max<int64_t>(
+            max_bit_width, primitive_util::BitWidth(subshape.element_type()));
+      }
+    });
+  }
+  int64_t max_vector_tile_size = (has_avx512 ? 512 : 256) / max_bit_width;
+
   struct Candidate {
     SmallVector<int64_t, 4> padded_tile_sizes;
     int64_t cost;
@@ -458,8 +479,10 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
     // For the new tiling lowering, we skip large tiles, because we tile to the
     // vector level.
     if (!block_level_parameters.has_value() && use_new_xtile_lowering &&
-        Product(padded_tile_sizes) > 512 &&
-        llvm::any_of(tile_sizes, [](int64_t size) { return size > 8; })) {
+        (Product(padded_tile_sizes) > 512 ||
+         llvm::any_of(padded_tile_sizes, [max_vector_tile_size](int64_t size) {
+           return size > max_vector_tile_size;
+         }))) {
       continue;
     }
     int64_t cost =

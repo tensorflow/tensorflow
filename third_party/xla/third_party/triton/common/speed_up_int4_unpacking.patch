@@ -1,10 +1,24 @@
+# Copyright 2026 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 b/376639863: Speed up int4 unpacking by using inline_asm with packed elements at
 an early stage on the XLA side with further optimizations from nVidia #24 and
 #25 on the Triton side.
 
 --- a/lib/Conversion/TritonGPUToLLVM/ViewOpToLLVM.cpp
 +++ b/lib/Conversion/TritonGPUToLLVM/ViewOpToLLVM.cpp
-@@ -198,6 +198,19 @@ struct JoinOpConversion : public ConvertOpToLLVMPattern<JoinOp> {
+@@ -199,6 +199,19 @@ struct JoinOpConversion : public ConvertOpToLLVMPattern<JoinOp> {
      assert(lhsVals.size() == rhsVals.size());
      SmallVector<Value> joinedVals;
      joinedVals.resize(lhsVals.size() * 2);
@@ -27,7 +41,7 @@ an early stage on the XLA side with further optimizations from nVidia #24 and
 
 --- a/lib/Dialect/TritonGPU/Transforms/Utility.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/Utility.cpp
-@@ -1140,6 +1140,39 @@ swizzleDotOperandLike(RankedTensorType type, ttg::CGAEncodingAttr cgaLayout) {
+@@ -1141,6 +1141,39 @@ swizzleDotOperandLike(RankedTensorType type, ttg::CGAEncodingAttr cgaLayout) {
        type.getElementTypeBitWidth(), false);
  }
  
@@ -67,7 +81,7 @@ an early stage on the XLA side with further optimizations from nVidia #24 and
  // If all the transitive uses of the given value have are used by a convert to
  // the same dot operand encoding, return the shared encoding that needs to be
  // used to be compatible with users' layouts. If there are incompatible shared
-@@ -1174,14 +1207,21 @@ getSharedEncIfAllUsersAreDotEnc(Value val, bool &incompatible) {
+@@ -1175,14 +1208,21 @@ getSharedEncIfAllUsersAreDotEnc(Value val, bool &incompatible) {
        auto CGALayout = isa<ttg::LinearEncodingAttr>(dstTy.getEncoding())
                             ? ttg::getCGALayout(srcTy.getEncoding())
                             : ttg::getCGALayout(dstTy.getEncoding());

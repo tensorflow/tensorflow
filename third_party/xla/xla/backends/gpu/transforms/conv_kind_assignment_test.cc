@@ -50,7 +50,8 @@ namespace {
 
 namespace m = ::xla::match;
 
-constexpr se::CudaComputeCapability kDefaultCC;
+constexpr se::CudaComputeCapability kDefaultCC =
+    se::CudaComputeCapability::Volta();
 
 class ConvKindAssignmentTest : public HloHardwareIndependentTestBase {
  public:
@@ -831,6 +832,67 @@ TEST_F(ConvKindAssignmentTest, TestInvalidTypes) {
                   absl::StatusCode::kUnimplemented,
                   ::testing::HasSubstr("The only FP8 types supported in "
                                        "convolutions are f8e5m2 and f8e4m3")));
+}
+
+TEST_F(ConvKindAssignmentTest, Int8ConvolutionPreAmpere) {
+  // cuDNN graph API does not have engine execution plans for INT8 convolutions
+  // on pre-Ampere GPUs. Verify that ConvKindAssignment does not assign a conv
+  // kind on pre-Ampere GPUs (e.g. Volta), but succeeds on Ampere.
+  const std::string kInt8ToInt8Module = R"(
+    HloModule Test
+
+    ENTRY Test {
+      input = s8[1,17,9,9] parameter(0)
+      filter = s8[3,3,17,32] parameter(1)
+      ROOT conv = s8[1,32,9,9] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+    })";
+
+  const std::string kInt8ToInt32Module = R"(
+    HloModule Test
+
+    ENTRY Test {
+      input = s8[1,17,9,9] parameter(0)
+      filter = s8[3,3,17,32] parameter(1)
+      ROOT conv = s32[1,32,9,9] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+    })";
+
+  const std::string kUInt8ToUInt8Module = R"(
+    HloModule Test
+
+    ENTRY Test {
+      input = u8[1,17,9,9] parameter(0)
+      filter = u8[3,3,17,32] parameter(1)
+      ROOT conv = u8[1,32,9,9] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+    })";
+
+  for (const std::string& module_str :
+       {kInt8ToInt8Module, kInt8ToInt32Module, kUInt8ToUInt8Module}) {
+    // Pre-Ampere GPU (e.g. Volta) -> conv kind should not be assigned.
+    {
+      ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+      ASSERT_OK_AND_ASSIGN(
+          bool changed,
+          ConvKindAssignment(se::CudaComputeCapability::Volta()).Run(m.get()));
+      EXPECT_FALSE(changed);
+      EXPECT_EQ(DynCast<HloConvolutionInstruction>(
+                    m->entry_computation()->root_instruction())
+                    ->convolution_kind(),
+                CONVOLUTION_KIND_UNSET);
+    }
+
+    // Ampere GPU -> conv kind should be assigned.
+    {
+      ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+      ASSERT_OK_AND_ASSIGN(
+          bool changed,
+          ConvKindAssignment(se::CudaComputeCapability::Ampere()).Run(m.get()));
+      EXPECT_TRUE(changed);
+      EXPECT_EQ(DynCast<HloConvolutionInstruction>(
+                    m->entry_computation()->root_instruction())
+                    ->convolution_kind(),
+                CONVOLUTION_KIND_FPROP);
+    }
+  }
 }
 
 }  // anonymous namespace

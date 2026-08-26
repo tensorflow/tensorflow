@@ -204,7 +204,9 @@ absl::StatusOr<std::string> AutotuneResultsToString(
     const AutotuneResults& results, bool as_textproto) {
   if (as_textproto) {
     std::string textproto;
-    if (tsl::protobuf::TextFormat::PrintToString(results, &textproto)) {
+    tsl::protobuf::TextFormat::Printer printer;
+    printer.SetExpandAny(true);
+    if (printer.PrintToString(results, &textproto)) {
       return textproto;
     }
     return Internal("Failed to serialize autotune results.");

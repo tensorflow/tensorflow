@@ -712,10 +712,17 @@ XlaOp Digamma(XlaOp input) {
         y - pi * Cos(pi * reduced_input) / Sin(pi * reduced_input);
     XlaOp real_result = Select(need_to_reflect, reflection, y);
 
-    // Digamma has poles at negative integers and zero; return nan for those.
-    return Select(And(Le(input, zero), Eq(input, Floor(input))),
+    // Digamma has poles at zero and at the negative integers. The two one-sided
+    // limits agree at zero, so return -inf there; at the negative integers they
+    // disagree, so return nan. This matches the eager CPU kernel in
+    // tensorflow/core/kernels/cwise_ops.h.
+    XlaOp is_negative_integer = And(Lt(input, zero), Eq(input, Floor(input)));
+    XlaOp result = Select(
+        Eq(input, zero),
+        FullLike(input, -std::numeric_limits<float>::infinity()), real_result);
+    return Select(is_negative_integer,
                   FullLike(input, std::numeric_limits<float>::quiet_NaN()),
-                  real_result);
+                  result);
   };
 
   auto& b = *input.builder();

@@ -82,7 +82,7 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test",
         "//xla/hlo/testlib:test_helpers",
-        "//xla/service:computation_placer",
+        "//xla/service:device_assignment",
         "//xla/service:hlo_module_config",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/container:flat_hash_map",

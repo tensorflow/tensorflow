@@ -1673,5 +1673,50 @@ TEST_F(PriorityFusionRocmMemoryBandwidthTest, MemoryBandwidthTipsReduceFusion) {
   EXPECT_EQ(RunAndCountFusions(kHlo, kFixedBandwidth), 2);
 }
 
+TEST_F(PriorityFusionTest, DoNotFuseScanEpilogue) {
+  const char* kHlo = R"(
+HloModule module
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  add = f32[] add(p0, p1)
+  ROOT t = (f32[], f32[]) tuple(add, add)
+}
+
+fused_computation {
+  p0 = f32[100] parameter(0)
+  p1 = f32[] parameter(1)
+  scan = (f32[100], f32[]) scan(p0, p1), to_apply=add, dimensions={0}, num_carries=1
+  ROOT get-tuple-element = f32[100] get-tuple-element(scan), index=0
+}
+
+ENTRY entry {
+  p0 = f32[100] parameter(0)
+  p1 = f32[] parameter(1)
+  scan_fusion = f32[100] fusion(p0, p1), kind=kCustom, calls=fused_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["100"]}],"num_warps":"1"}}}
+  c = f32[] constant(1.0)
+  bcast = f32[100] broadcast(c), dimensions={}
+  ROOT add = f32[100] add(scan_fusion, bcast)
+}
+  )";
+
+  GpuHloCostAnalysis::Options options;
+  options.count_multiple_input_accesses = true;
+  PriorityFusion priority_fusion(nullptr, device_info_, &alias_info_, options,
+                                 &mlir_context_);
+  HloModuleConfig config;
+  config.mutable_debug_options()
+      .set_xla_gpu_experimental_enable_triton_heroless_priority_fusion(true);
+
+  RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion), R"(
+CHECK: ENTRY
+CHECK: %[[SCAN_FUSION:.*]] = f32[100]{0} fusion(%{{.*}}, %{{.*}}), kind=kCustom
+CHECK: ROOT %[[EPILOGUE_FUSION:.*]] = f32[100]{0} fusion(%[[SCAN_FUSION]]), kind=kCustom
+      )",
+                            /*after_pass_checks=*/nullptr, &config);
+}
+
 }  // namespace gpu
 }  // namespace xla

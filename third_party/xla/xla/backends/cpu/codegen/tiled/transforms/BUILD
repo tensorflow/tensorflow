@@ -64,6 +64,7 @@ cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "drop_vector_unit_dims_pass.cc",
         "fuse_elementwise_pass.cc",
         "hoist_alloca.cc",
         "initialize_allocs.cc",

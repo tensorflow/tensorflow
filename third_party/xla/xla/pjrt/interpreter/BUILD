@@ -40,7 +40,7 @@ cc_library(
         "//xla/pjrt/proto:topology_description_proto_cc",
         "//xla/runtime:chip_id",
         "//xla/runtime:device_id",
-        "//xla/service:computation_placer_hdr",
+        "//xla/service:device_assignment",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

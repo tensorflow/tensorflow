@@ -306,6 +306,8 @@ absl::Status Autotuner::DumpTuningLogs() {
     return absl::OkStatus();
   }
   std::string textproto;
+  tsl::protobuf::TextFormat::Printer printer;
+  printer.SetExpandAny(true);
   if (options_.use_new_logging_format) {
     autotuner::AllRawConfigProfiles profiles_to_dump;
     {
@@ -318,8 +320,7 @@ absl::Status Autotuner::DumpTuningLogs() {
       }
       profiles_to_dump = std::move(raw_profiles_);
     }
-    if (!tsl::protobuf::TextFormat::PrintToString(profiles_to_dump,
-                                                  &textproto)) {
+    if (!printer.PrintToString(profiles_to_dump, &textproto)) {
       return absl::InternalError(
           "Failed to convert AllRawConfigProfiles to textproto.");
     }
@@ -332,7 +333,7 @@ absl::Status Autotuner::DumpTuningLogs() {
       }
       logs_to_dump = std::move(logs_);
     }
-    if (!tsl::protobuf::TextFormat::PrintToString(logs_to_dump, &textproto)) {
+    if (!printer.PrintToString(logs_to_dump, &textproto)) {
       return absl::InternalError(
           "Failed to convert AutotuningLogs to textproto.");
     }

@@ -661,6 +661,7 @@ def _impl(ctx):
                                 "/D_WIN32_WINNT=0x0601",
                                 "/D_CRT_SECURE_NO_DEPRECATE",
                                 "/D_CRT_SECURE_NO_WARNINGS",
+                                "/D__PRFCHWINTRIN_H",
                                 "/bigobj",
                                 "/Zm500",
                                 "/EHsc",

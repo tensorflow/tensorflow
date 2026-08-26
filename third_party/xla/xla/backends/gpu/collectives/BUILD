@@ -1038,6 +1038,7 @@ cc_library(
         "@oneccl//:libs",
         "@tsl//tsl/platform:casts",
     ],
+    alwayslink = True,  # registers collectives implementation
 )
 
 cc_library(

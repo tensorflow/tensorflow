@@ -91,7 +91,7 @@ class PyFunctionLibraryTrampoline : public PyFunctionLibrary {
 
 }  // namespace
 
-PYBIND11_MODULE(pywrap_function_lib, m) {
+PYBIND11_MODULE(pywrap_function_lib, m, py::mod_gil_not_used()) {
   py::class_<PyFunctionLibrary, PyFunctionLibraryTrampoline>(
       m, "PyFunctionLibrary")
       .def(py::init<>())

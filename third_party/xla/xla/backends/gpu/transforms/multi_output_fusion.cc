@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <iterator>
+#include <memory>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -142,6 +143,12 @@ FusionDecision LegalToFuse(const HloInstruction& instr1,
     return FusionDecision::Forbid("can't fuse multiple DUSs");
   }
 
+  if (ContainsScan(instr1, fusion_info_cache) ||
+      ContainsScan(instr2, fusion_info_cache)) {
+    return FusionDecision::Forbid(
+        "multi-output fusion for scan is not supported");
+  }
+
   // Do this check last, as it may be expensive.
   return FusionFitsInBudget(instr1, instr2, device_info,
                             /*is_consumer_producer_fusion=*/false,
@@ -202,6 +209,12 @@ FusionDecision ProducerCandidateIsFusible(
     const se::DeviceDescription& device_info,
     GpuPerformanceModel& gpu_performance_model,
     GpuHloCostAnalysis* cost_analysis) {
+  if (ContainsScan(producer, fusion_info_cache) ||
+      ContainsScan(consumer, fusion_info_cache)) {
+    return FusionDecision::Forbid(
+        "multi-output fusion for scan is not supported");
+  }
+
   if (!IsFusibleAsMultiOutputFusionRoot(consumer, device_info)) {
     return FusionDecision::Forbid(
         "consumer not eligible as multi-output fusion root.");
