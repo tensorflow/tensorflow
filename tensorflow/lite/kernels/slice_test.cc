@@ -119,7 +119,12 @@ class DynamicInputSliceOpModel : public SingleOpModel {
     output_ = AddOutput(output_data);
     SetBuiltinOp(BuiltinOperator_SLICE, BuiltinOptions_SliceOptions,
                  CreateSliceOptions(builder_).Union());
-    BuildInterpreter({input_data.shape, begin_shape, size_shape});
+    // Delegates are bypassed: a delegate that claims the SLICE node would set
+    // the output allocation type itself, so the assertions below would no
+    // longer describe the built-in CPU kernel.
+    BuildInterpreter({input_data.shape, begin_shape, size_shape},
+                     /*num_threads=*/-1, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false);
   }
 
   void SetInput(std::initializer_list<float> data) {
