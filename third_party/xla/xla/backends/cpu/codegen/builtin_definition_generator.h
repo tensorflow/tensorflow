@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/base/config.h"  // IWYU pragma: keep
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/ExecutionUtils.h"  // IWYU pragma: keep
 #include "llvm/IR/DataLayout.h"
