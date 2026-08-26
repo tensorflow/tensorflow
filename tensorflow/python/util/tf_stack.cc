@@ -104,7 +104,7 @@ class PyBindSourceMap {
     }
 
 #ifdef Py_GIL_DISABLED
-    absl::MutexLock lock(state_->mu);
+    absl::MutexLock lock(&state_->mu);
 #endif  // Py_GIL_DISABLED
     state_->source_map = std::move(updated);
   }
@@ -137,7 +137,7 @@ class PyBindFileSet {
     }
 
 #ifdef Py_GIL_DISABLED
-    absl::MutexLock lock(state_->mu);
+    absl::MutexLock lock(&state_->mu);
 #endif  // Py_GIL_DISABLED
     state_->file_set = std::move(updated);
   }
@@ -157,7 +157,7 @@ class PyBindGraphDebugInfoBuilder {
     // Convert Python-owned data before acquiring the native mutex.
     std::string debug_info_str = debug_info;
 #ifdef Py_GIL_DISABLED
-    absl::MutexLock lock(mu_);
+    absl::MutexLock lock(&mu_);
 #endif  // Py_GIL_DISABLED
     return builder_.AppendGraphDebugInfoStr(fn_name, debug_info_str);
   }
@@ -168,7 +168,7 @@ class PyBindGraphDebugInfoBuilder {
     auto frozen = std::make_shared<FrozenStackTrace>(trace.ToFrames());
 
 #ifdef Py_GIL_DISABLED
-    absl::MutexLock lock(mu_);
+    absl::MutexLock lock(&mu_);
 #endif  // Py_GIL_DISABLED
     builder_.AccumulateStackTrace(frozen, key);
   }
@@ -177,7 +177,7 @@ class PyBindGraphDebugInfoBuilder {
     std::string serialized;
 #ifdef Py_GIL_DISABLED
     {
-      absl::MutexLock lock(mu_);
+      absl::MutexLock lock(&mu_);
       serialized = builder_.ToGraphDebugInfoStr();
     }
 #else
@@ -259,11 +259,11 @@ class StackTraceWrapper : public AbstractStackTrace {
   void SnapshotTransforms(SourceMap* source_map, StringSet* filter) const {
 #ifdef Py_GIL_DISABLED
     {
-      absl::MutexLock lock(source_map_->mu);
+      absl::MutexLock lock(&source_map_->mu);
       *source_map = source_map_->source_map;
     }
     {
-      absl::MutexLock lock(filter_->mu);
+      absl::MutexLock lock(&filter_->mu);
       *filter = filter_->file_set;
     }
 #else
