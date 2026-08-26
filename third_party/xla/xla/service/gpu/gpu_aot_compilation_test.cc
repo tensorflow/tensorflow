@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
+#include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -41,11 +42,16 @@ limitations under the License.
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/platform_util.h"
+#include "xla/service/service_executable_run_options.h"
+#include "xla/service/shaped_buffer.h"
+#include "xla/service/transfer_manager.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -53,7 +59,7 @@ namespace gpu {
 using ::testing::IsEmpty;
 using ::testing::Not;
 
-class GpuAotCompilationTest : public HloTestBaseLegacy {
+class GpuAotCompilationTest : public HloTestBase {
  protected:
   void SetUp() override { debug_options_ = GetDebugOptionsForTest(); }
 
@@ -72,11 +78,13 @@ TEST_F(GpuAotCompilationTest, ExportAndLoadExecutable) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_string));
 
-  auto compiler = backend().compiler();
-  auto name =
-      absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
+  ASSERT_OK_AND_ASSIGN(std::string raw_platform_name,
+                       PlatformUtil::CanonicalPlatformName("gpu"));
+  std::string name = absl::AsciiStrToUpper(raw_platform_name);
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
                        se::PlatformManager::PlatformWithName(name));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
+                       Compiler::GetForPlatform(platform->id()));
   ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
                        platform->ExecutorForDevice(0));
 
@@ -120,11 +128,13 @@ TEST_F(GpuAotCompilationTest, AotCompilationWithoutGpuDevice) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_string));
 
-  auto compiler = backend().compiler();
-  auto name =
-      absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
+  ASSERT_OK_AND_ASSIGN(std::string raw_platform_name,
+                       PlatformUtil::CanonicalPlatformName("gpu"));
+  std::string name = absl::AsciiStrToUpper(raw_platform_name);
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
                        se::PlatformManager::PlatformWithName(name));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
+                       Compiler::GetForPlatform(platform->id()));
   ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
                        platform->ExecutorForDevice(0));
 
@@ -211,11 +221,18 @@ std::string CreateTritonCustomCallBackendConfig() {
 }  // namespace
 
 TEST_F(GpuAotCompilationTest, ExportAndLoadExecutableWithTriton) {
-  auto triton_support =
-      EnsureTritonSupportsComputeCapability(backend()
-                                                .default_stream_executor()
-                                                ->GetDeviceDescription()
-                                                .gpu_compute_capability());
+  ASSERT_OK_AND_ASSIGN(std::string raw_platform_name,
+                       PlatformUtil::CanonicalPlatformName("gpu"));
+  std::string name = absl::AsciiStrToUpper(raw_platform_name);
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName(name));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
+                       Compiler::GetForPlatform(platform->id()));
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
+                       platform->ExecutorForDevice(0));
+
+  auto triton_support = EnsureTritonSupportsComputeCapability(
+      stream_exec->GetDeviceDescription().gpu_compute_capability());
   if (!triton_support.ok()) {
     GTEST_SKIP() << triton_support;
   }
@@ -236,14 +253,6 @@ TEST_F(GpuAotCompilationTest, ExportAndLoadExecutableWithTriton) {
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_string));
-
-  auto compiler = backend().compiler();
-  auto platform_name =
-      absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
-  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName(platform_name));
-  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
-                       platform->ExecutorForDevice(0));
 
   // Compile AOT.
   AotCompilationOptions aot_options(compiler->PlatformId());
@@ -266,16 +275,47 @@ TEST_F(GpuAotCompilationTest, ExportAndLoadExecutableWithTriton) {
       std::move(*aot_result)
           .LoadExecutable(compiler->PlatformId(),
                           stream_exec->GetDeviceDescription(), debug_options_));
-  std::unique_ptr<OpaqueExecutable> wrapped_executable =
-      test_runner_as_hlo_runner().WrapExecutable(std::move(executable));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                       stream_exec->CreateStream());
+  ASSERT_OK_AND_ASSIGN(TransferManager * transfer_manager,
+                       TransferManager::GetForPlatform(platform));
+  se::StreamExecutorAddressAllocator allocator(stream_exec);
+
+  ExecutableRunOptions run_options;
+  run_options.set_stream(stream.get());
+  run_options.set_allocator(&allocator);
+  run_options.set_device_ordinal(stream_exec->device_ordinal());
+
+  ServiceExecutableRunOptions service_run_options(run_options);
 
   const xla::Literal literal_1 = xla::LiteralUtil::CreateR0<float>(1.0f);
   const xla::Literal literal_2 = xla::LiteralUtil::CreateR0<float>(2.0f);
   const xla::Literal literal_3 = xla::LiteralUtil::CreateR0<float>(3.0f);
 
-  ASSERT_OK_AND_ASSIGN(Literal result,
-                       test_runner_as_hlo_runner().ExecuteWithExecutable(
-                           wrapped_executable.get(), {&literal_1, &literal_3}));
+  ASSERT_OK_AND_ASSIGN(
+      ScopedShapedBuffer arg0_buffer,
+      transfer_manager->AllocateScopedShapedBuffer(
+          literal_1.shape(), &allocator, stream_exec->device_ordinal()));
+  ASSERT_OK(transfer_manager->TransferLiteralToDevice(stream.get(), literal_1,
+                                                      arg0_buffer));
+
+  ASSERT_OK_AND_ASSIGN(
+      ScopedShapedBuffer arg1_buffer,
+      transfer_manager->AllocateScopedShapedBuffer(
+          literal_3.shape(), &allocator, stream_exec->device_ordinal()));
+  ASSERT_OK(transfer_manager->TransferLiteralToDevice(stream.get(), literal_3,
+                                                      arg1_buffer));
+
+  std::vector<const ShapedBuffer*> arguments = {&arg0_buffer, &arg1_buffer};
+
+  ASSERT_OK_AND_ASSIGN(
+      ScopedShapedBuffer result_buffer,
+      executable->ExecuteOnStream(&service_run_options, arguments));
+
+  ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      transfer_manager->TransferLiteralFromDevice(stream.get(), result_buffer));
 
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::MakeTuple({&literal_2, &literal_3}), result));
