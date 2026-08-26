@@ -122,16 +122,15 @@ class SplitOpTest(test.TestCase):
     self.assertAllEqual(r[2], value[4:])
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla(
+      "XLA shape inference rejects the reshape to an INT64_MAX dimension, so "
+      "the test cannot reach the SplitV kernel under XLA")
   def testSizeSplitsOverflowRaises(self):
     # Regression test for GitHub issue 126126. The cumulative sum of
     # size_splits was computed with unchecked signed addition, so a wrapped
     # total could equal the input dimension, pass validation, and reach a
     # fatal `Tensor::Slice` invariant in the aligned slicing path. It must
     # raise instead.
-    if test_util.is_xla_enabled():
-      # XLA cannot compile the reshape to an INT64_MAX dimension, so the test
-      # cannot reach the SplitV kernel under XLA.
-      self.skipTest("XLA does not support shapes whose element count overflows")
     i64_max = (1 << 63) - 1
     value = array_ops.reshape(
         constant_op.constant([], dtype=dtypes.float32),
