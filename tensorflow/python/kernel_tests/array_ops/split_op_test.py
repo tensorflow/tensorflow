@@ -128,6 +128,10 @@ class SplitOpTest(test.TestCase):
     # total could equal the input dimension, pass validation, and reach a
     # fatal `Tensor::Slice` invariant in the aligned slicing path. It must
     # raise instead.
+    if test_util.is_xla_enabled():
+      # XLA cannot compile the reshape to an INT64_MAX dimension, so the test
+      # cannot reach the SplitV kernel under XLA.
+      self.skipTest("XLA does not support shapes whose element count overflows")
     i64_max = (1 << 63) - 1
     value = array_ops.reshape(
         constant_op.constant([], dtype=dtypes.float32),
