@@ -299,7 +299,6 @@ cc_library(
         "//visibility:public",
     ],
     deps = [
-        "@com_google_absl//absl/synchronization",
         ":flatbuffer_to_mlir",
         ":graphdef_to_tfl_flatbuffer",
         ":jax_to_tfl_flatbuffer",

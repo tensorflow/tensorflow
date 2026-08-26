@@ -1052,7 +1052,7 @@ PYBIND11_MODULE(
 #ifdef Py_GIL_DISABLED
           PyObject* shape_val;
           {
-            absl::MutexLock lock(data->shape_val_mu);
+            absl::MutexLock lock(&data->shape_val_mu);
             shape_val = data->shape_val.ptr();
             Py_XINCREF(shape_val);
           }
@@ -1066,7 +1066,7 @@ PYBIND11_MODULE(
 #ifdef Py_GIL_DISABLED
           py::object old_shape;
           {
-            absl::MutexLock lock(data->shape_val_mu);
+            absl::MutexLock lock(&data->shape_val_mu);
             old_shape = std::move(data->shape_val);
             data->shape_val = std::move(shape);
           }
