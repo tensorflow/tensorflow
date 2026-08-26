@@ -74,7 +74,9 @@ absl::string_view CpuTargetFromMaxFeature(CPUFeature max_feature) {
 }
 
 std::optional<CPUFeature> CpuFeatureFromString(absl::string_view cpu_feature) {
-  if (cpu_feature.empty()) return std::nullopt;
+  if (cpu_feature.empty()) {
+    return std::nullopt;
+  }
 
   // Non-exhaustive list of CPU features. (Only the ones we care about.)
   static auto* x86 = [] {
@@ -137,25 +139,34 @@ static bool ShouldEnableX86CpuFeature(absl::string_view feature,
       [[fallthrough]];
 
     case CPUFeature::AVX2:
-      if (absl::StartsWith(feature, "avx512") || feature == "evex512")
+      if (absl::StartsWith(feature, "avx512") || feature == "evex512") {
         return false;
+      }
       [[fallthrough]];
 
     case CPUFeature::AVX512F:
-      if (feature == "avx512vnni") return false;
+      if (feature == "avx512vnni") {
+        return false;
+      }
       [[fallthrough]];
 
     case CPUFeature::AVX512_VNNI:
-      if (feature == "avx512bf16") return false;
+      if (feature == "avx512bf16") {
+        return false;
+      }
       [[fallthrough]];
 
     case CPUFeature::AVX512_BF16:
-      if (absl::StartsWith(feature, "amx")) return false;
+      if (absl::StartsWith(feature, "amx")) {
+        return false;
+      }
       [[fallthrough]];
 
     case CPUFeature::AMX_INT8:
     case CPUFeature::AMX_BF16:
-      if (feature == "amx-fp16") return false;
+      if (feature == "amx-fp16") {
+        return false;
+      }
       [[fallthrough]];
 
     default:
@@ -175,11 +186,15 @@ static bool ShouldEnableAArch64CpuFeature(absl::string_view feature,
   //     than `max_feature` by falling through cases.
   switch (max_feature) {
     case CPUFeature::AARCH64_NEON:
-      if (feature == "sve") return false;
+      if (feature == "sve") {
+        return false;
+      }
       [[fallthrough]];
 
     case CPUFeature::AARCH64_SVE:
-      if (feature == "sve2") return false;
+      if (feature == "sve2") {
+        return false;
+      }
       [[fallthrough]];
 
     default:
