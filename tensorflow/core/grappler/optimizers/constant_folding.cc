@@ -2847,6 +2847,15 @@ bool ConstantFolding::IsReductionCandidateForSimplification(
       return false;
     }
   }
+  // Constructing a TensorShape fatally checks that the element count fits in
+  // an int64. An inferred shape can fail that even when every dimension is
+  // non-negative: reducing away a zero dimension that precedes very large
+  // ones yields an output whose remaining dimensions overflow. Such a node
+  // cannot be simplified here, and the kernel rejects it at execution time.
+  if (!TensorShape::IsValid(*input_tensor_shape) ||
+      !TensorShape::IsValid(*output_tensor_shape)) {
+    return false;
+  }
   const int input_num_elements =
       TensorShape(*input_tensor_shape).num_elements();
   const int output_num_elements =
