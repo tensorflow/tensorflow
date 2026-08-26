@@ -651,6 +651,9 @@ class CostModel:
     Returns:
       A tuple of (block_m, block_k, block_n) representing the window size.
     """
+    # Account for internal scratch bytes required by the compiler, which also
+    # comes from scoped VMEM.
+    vmem_limit_bytes -= self._platform_info.default_internal_scratch_bytes
     if p_state is None:
       # Note that p_state may still be None if the platform doesn't support
       # P-states.
@@ -666,7 +669,11 @@ class CostModel:
     )
     dma_latency_out = self._get_final_operand_transfer_latency()
     total_latency = dma_latency_in + loop_latency + dma_latency_out
-    within_mem_usage = self._vmem_usage_bytes <= vmem_limit_bytes
+    vmem_usage_arr = np.asarray(self._vmem_usage_bytes)
+    within_mem_usage = np.asarray(vmem_usage_arr <= vmem_limit_bytes)
+    if not within_mem_usage.any():
+      ind = int(np.argmin(vmem_usage_arr.ravel()))
+      return self._block_specs.reshape(-1, 3)[ind]
     ind = np.argmin(total_latency[within_mem_usage].ravel())
     min_latency = total_latency[within_mem_usage].ravel()[ind]
     min_block_spec = self._block_specs[within_mem_usage, :].reshape(-1, 3)[ind]

@@ -19,12 +19,9 @@ from absl import flags
 from absl import logging
 import immutabledict
 from jax.experimental.pallas import tpu as pltpu
-import jax.numpy as jnp
 
-from xla.benchmarks.core import flag_utils
-from xla.benchmarks.core import platform_info
-from xla.benchmarks.pallas_microbenchmarks import cost_model as pallas_cost_model
-from xla.benchmarks.pallas_microbenchmarks import subchannel_matmul_lib
+from xla.benchmarks.core import benchmark  # pylint: disable=g-direct-tensorflow-import
+from xla.benchmarks.pallas_microbenchmarks import subchannel_matmul_lib  # pylint: disable=g-direct-tensorflow-import
 
 immutabledict = immutabledict.immutabledict
 
@@ -107,37 +104,17 @@ FLAGS = flags.FLAGS
 
 FLAGS.mark_as_parsed()
 
-_KERNEL_NAME_TEMPLATE = "subchannel_matmul_{m}_{k}_{n}_{lhs_dtype}-{lhs_quantized_dtype}_{rhs_dtype}-{rhs_quantized_dtype}_{out_dtype}"
-
-_DTYPE_MAPPING = immutabledict({
-    "f32": jnp.float32,
-    "bf16": jnp.bfloat16,
-    "f8e4m3fn": jnp.float8_e4m3fn,
-    "f8e5m2": jnp.float8_e5m2,
-    "f4e2m1fn": jnp.float4_e2m1fn,
-    "s8": jnp.int8,
-    "s4": jnp.int4,
-    "int4": jnp.int4,
-    "int8": jnp.int8,
-})
-
-
-def _parse_dtype(dtype_str: str) -> jnp.dtype:
-  if dtype_str not in _DTYPE_MAPPING:
-    raise ValueError(f"Unsupported dtype: {dtype_str}")
-  return _DTYPE_MAPPING[dtype_str]
-
 
 def main(_):
   if len(_FMT.value) != 3:
     raise ValueError(f"Expected 3 formats, got {len(_FMT.value)}")
-  lhs_dtype = _parse_dtype(_FMT.value[0])
-  rhs_dtype = _parse_dtype(_FMT.value[1])
-  out_dtype = _parse_dtype(_FMT.value[2])
-  acc_dtype = _parse_dtype(_ACC_DTYPE.value)
+  lhs_dtype = benchmark.str_to_dtype(_FMT.value[0])
+  rhs_dtype = benchmark.str_to_dtype(_FMT.value[1])
+  out_dtype = benchmark.str_to_dtype(_FMT.value[2])
+  acc_dtype = benchmark.str_to_dtype(_ACC_DTYPE.value)
 
-  lhs_quantized_dtype = _parse_dtype(_LHS_QUANTIZED_DTYPE.value)
-  rhs_quantized_dtype = _parse_dtype(_RHS_QUANTIZED_DTYPE.value)
+  lhs_quantized_dtype = benchmark.str_to_dtype(_LHS_QUANTIZED_DTYPE.value)
+  rhs_quantized_dtype = benchmark.str_to_dtype(_RHS_QUANTIZED_DTYPE.value)
   pre_quantize_lhs = _PRE_QUANTIZE_LHS.value
   subchannel_size = _SUBCHANNEL_SIZE.value
 
@@ -161,39 +138,21 @@ def main(_):
   lhs_mem = mem_spaces[lhs_mem]
   rhs_mem = mem_spaces[rhs_mem]
   out_mem = mem_spaces[out_mem]
-  internal_scratch_in_bytes = (
-      platform_info.get_default_internal_scratch_bytes()
-  )
   if _WINDOW.value is None:
-    vmem_limit_kib = flag_utils.get_flag_value(
-        "xla_tpu_scoped_vmem_limit_kib", default=-1, flag_type=int
-    )
-    if vmem_limit_kib == -1:
-      vmem_limit_kib = platform_info.get_default_vmem_limit_kib()
-    vmem_limit_bytes = vmem_limit_kib * 1024 - internal_scratch_in_bytes
-
-    p_state = flag_utils.get_flag_value(
-        "xla_tpu_dvfs_p_state", default=None, flag_type=int
-    )
-    if p_state == -1:
-      # Cost model will use the default P-state for the platform.
-      p_state = None
-    cost_lhs_dtype = lhs_quantized_dtype if pre_quantize_lhs else lhs_dtype
-    cost_rhs_dtype = rhs_quantized_dtype
-    block_m, block_k, block_n = pallas_cost_model.CostModel(
-        m,
-        k,
-        n,
-        lhs_mem,
-        rhs_mem,
-        out_mem,
-        cost_lhs_dtype,
-        cost_rhs_dtype,
-        out_dtype,
-        acc_dtype,
-    ).select_window(
-        vmem_limit_bytes,
-        p_state,
+    block_m, block_k, block_n = subchannel_matmul_lib.select_window(
+        m=m,
+        k=k,
+        n=n,
+        lhs_mem=lhs_mem,
+        rhs_mem=rhs_mem,
+        out_mem=out_mem,
+        lhs_dtype=lhs_dtype,
+        rhs_dtype=rhs_dtype,
+        out_dtype=out_dtype,
+        acc_dtype=acc_dtype,
+        lhs_quantized_dtype=lhs_quantized_dtype,
+        rhs_quantized_dtype=rhs_quantized_dtype,
+        pre_quantize_lhs=pre_quantize_lhs,
     )
     logging.info(
         "Selected window size from Pallas cost model: %s, %s, %s",
@@ -211,17 +170,6 @@ def main(_):
     raise ValueError("Repeat must be at least 1.")
   if _RUNS.value < 1:
     raise ValueError("Runs must be at least 1.")
-
-  kernel_name = _KERNEL_NAME_TEMPLATE.format(
-      m=m,
-      k=k,
-      n=n,
-      lhs_dtype=_FMT.value[0],
-      lhs_quantized_dtype=_LHS_QUANTIZED_DTYPE.value,
-      rhs_dtype=_FMT.value[1],
-      rhs_quantized_dtype=_RHS_QUANTIZED_DTYPE.value,
-      out_dtype=_FMT.value[2],
-  )
 
   cfg = subchannel_matmul_lib.SubchannelMatmulConfig(
       m=m,
@@ -242,11 +190,7 @@ def main(_):
       rhs_quantized_dtype=rhs_quantized_dtype,
       pre_quantize_lhs=pre_quantize_lhs,
   )
-  bm = subchannel_matmul_lib.SubchannelMatmulBenchmark(
-      cfg,
-      internal_scratch_in_bytes,
-      kernel_name,
-  )
+  bm = cfg.get_benchmark()
   bm.run(
       repeat=_REPEAT.value,
       runs=_RUNS.value,

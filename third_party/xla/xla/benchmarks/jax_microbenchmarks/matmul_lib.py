@@ -14,122 +14,73 @@
 
 """Library for JAX matmul microbenchmarks."""
 
+from collections.abc import Callable, Sequence
+import dataclasses
 from typing import Any
 
-from absl import logging
 import jax
 import jax.numpy as jnp
-import numpy as np
 
-from xla.benchmarks.jax_microbenchmarks import jax_profiler_utils  # pylint: disable=g-direct-tensorflow-import
-
-DTYPE_MAPPING = {
-    "bf16": jnp.bfloat16,
-    "f16": jnp.float16,
-    "f32": jnp.float32,
-    "f8e4m3fn": jnp.float8_e4m3fn,
-    "f8e5m2": jnp.float8_e5m2,
-    "s2": jnp.int2,
-    "s4": jnp.int4,
-    "s8": jnp.int8,
-    "s16": jnp.int16,
-    "s32": jnp.int32,
-    "u2": jnp.uint2,
-    "u4": jnp.uint4,
-    "u8": jnp.uint8,
-    "u16": jnp.uint16,
-    "u32": jnp.uint32,
-}
+from xla.benchmarks.core import benchmark  # pylint: disable=g-direct-tensorflow-import
 
 
-def dtype_to_str(dtype: Any) -> str:
-  """Converts a JAX/NumPy dtype to its string representation."""
-  for k, v in DTYPE_MAPPING.items():
-    if v == dtype:
-      return k
-  return getattr(dtype, "name", str(dtype))
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class JaxMatmulConfig(benchmark.BenchmarkConfig):
+  """Config for JAX matmul benchmark.
+
+  Attributes:
+    b: Batch size.
+    m: The number of rows in the first operand.
+    k: The contraction dimension.
+    n: The number of columns in the second operand.
+    lhs_dtype: The dtype of the first operand.
+    rhs_dtype: The dtype of the second operand.
+    out_dtype: The dtype of the output.
+  """
+  b: int = 1
+  m: int = 1024
+  k: int = 1024
+  n: int = 1024
+  lhs_dtype: jnp.dtype = jnp.bfloat16
+  rhs_dtype: jnp.dtype = jnp.bfloat16
+  out_dtype: jnp.dtype = jnp.bfloat16
+
+  def get_benchmark(self) -> benchmark.Benchmark:
+    return JaxMatmulBenchmark(self)
 
 
-def make_inputs(
-    b: int,
-    m: int,
-    k: int,
-    n: int,
-    lhs_dtype: Any,
-    rhs_dtype: Any,
-    use_random_data: bool,
-) -> tuple[jax.Array, jax.Array]:
-  """Generates random or zero inputs for the matmul."""
-  if not use_random_data:
-    lhs = jnp.zeros((b, m, k), dtype=lhs_dtype)
-    rhs = jnp.zeros((b, k, n), dtype=rhs_dtype)
-    return lhs, rhs
+class JaxMatmulBenchmark(benchmark.Benchmark):
+  """JAX matmul benchmark subclassing core Benchmark."""
 
-  rng = np.random.default_rng(1234)
-
-  def _generate(dtype, shape):
-    if jnp.issubdtype(dtype, jnp.floating):
-      arr = rng.normal(size=shape)
-    else:
-      arr = rng.integers(127, size=shape)
-    return jnp.asarray(arr, dtype=dtype)
-
-  lhs = _generate(lhs_dtype, (b, m, k))
-  rhs = _generate(rhs_dtype, (b, k, n))
-  return lhs, rhs
-
-
-def run_matmul_jax(
-    b: int,
-    m: int,
-    k: int,
-    n: int,
-    lhs_dtype: Any,
-    rhs_dtype: Any,
-    out_dtype: Any,
-    repeat: int,
-    runs: int,
-    use_random_data: bool,
-) -> jax_profiler_utils.JaxProfilerResult | None:
-  """Runs the JAX matmul benchmark."""
-  logging.info(
-      "Running Matmul configuration: B=%d, M=%d, K=%d, N=%d", b, m, k, n
-  )
-  lhs, rhs = make_inputs(b, m, k, n, lhs_dtype, rhs_dtype, use_random_data)
-
-  lhs_str = dtype_to_str(lhs_dtype)
-  rhs_str = dtype_to_str(rhs_dtype)
-  out_str = dtype_to_str(out_dtype)
-  kernel_name = f"matmul_{m}_{k}_{n}_{lhs_str}_{rhs_str}_{out_str}"
-
-  def kernel_fn(lhs_in, rhs_in):
-    return jnp.matmul(lhs_in, rhs_in, preferred_element_type=out_dtype)
-
-  named_kernel_fn = jax.named_call(kernel_fn, name=kernel_name)
-  f_compiled = jax.jit(named_kernel_fn).lower(lhs, rhs).compile()
-
-  if runs <= 0:
-    logging.warning(
-        "--runs was 0 or less, so we will only compile the matmul but not"
-        " run it."
+  def __init__(
+      self,
+      cfg: JaxMatmulConfig,
+  ):
+    super().__init__()
+    self._cfg = cfg
+    lhs_str = benchmark.dtype_to_str(cfg.lhs_dtype)
+    rhs_str = benchmark.dtype_to_str(cfg.rhs_dtype)
+    out_str = benchmark.dtype_to_str(cfg.out_dtype)
+    self._kernel_name = (
+        f"matmul_{cfg.m}_{cfg.k}_{cfg.n}_{lhs_str}_{rhs_str}_{out_str}"
     )
-    return None
 
-  last_profiler_result = None
-  for _ in range(runs):
-    with jax_profiler_utils.JaxProfiler(kernel_name) as profiler:
-      res = f_compiled(lhs, rhs)
-      res.block_until_ready()
-      for _ in range(repeat - 1):
-        res = f_compiled(lhs, rhs)
-        res.block_until_ready()
+  def get_input_shapes_and_dtypes(self) -> Sequence[benchmark.InputSpec | None]:
+    cfg = self._cfg
+    return [
+        benchmark.InputSpec(shape=(cfg.b, cfg.m, cfg.k), dtype=cfg.lhs_dtype),
+        benchmark.InputSpec(shape=(cfg.b, cfg.k, cfg.n), dtype=cfg.rhs_dtype),
+    ]
 
-    if profiler.result is not None:
-      logging.info(
-          "Profiler results:\n%s", profiler.result.as_dataframe().to_string()
-      )
-      last_profiler_result = profiler.result
-    else:
-      logging.warning("No profiler results found.")
+  def target_fn(self) -> Callable[..., Any]:
+    cfg = self._cfg
+    out_dtype = cfg.out_dtype
 
-  return last_profiler_result
+    def kernel_fn(lhs_in, rhs_in):
+      return jnp.matmul(lhs_in, rhs_in, preferred_element_type=out_dtype)
+
+    named_kernel_fn = jax.named_call(kernel_fn, name=self._kernel_name)
+    return jax.jit(named_kernel_fn)
+
+  def kernel_name(self) -> str:
+    return self._kernel_name
