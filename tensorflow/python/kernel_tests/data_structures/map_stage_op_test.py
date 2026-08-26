@@ -663,7 +663,7 @@ class MapStageTest(test.TestCase):
     # tensor, because check_index() formats its error using
     # key.scalar<int64_t>()() and Tensor::scalar() requires a 1-element
     # tensor.
-    data_flow_ops.gen_data_flow_ops.map_stage(
+    stage_op = data_flow_ops.gen_data_flow_ops.map_stage(
         key=constant_op.constant([1], dtype=dtypes.int64),
         indices=constant_op.constant([0], dtype=dtypes.int32),
         values=[constant_op.constant([1.0], dtype=dtypes.float32)],
@@ -674,6 +674,7 @@ class MapStageTest(test.TestCase):
         shared_name='test_map_unstage_no_key_oob',
         name=None,
     )
+    self.evaluate(stage_op)
     with self.assertRaisesRegex(
         errors.InvalidArgumentError, 'out of bounds'
     ):
@@ -693,7 +694,7 @@ class MapStageTest(test.TestCase):
     # shares StagingMap::popitem() with MapUnstageNoKey via the
     # StagingMap<bool Ordered> template, so the same out-of-range-index
     # path must surface InvalidArgumentError rather than abort.
-    data_flow_ops.gen_data_flow_ops.ordered_map_stage(
+    stage_op = data_flow_ops.gen_data_flow_ops.ordered_map_stage(
         key=constant_op.constant([1], dtype=dtypes.int64),
         indices=constant_op.constant([0], dtype=dtypes.int32),
         values=[constant_op.constant([1.0], dtype=dtypes.float32)],
@@ -704,6 +705,7 @@ class MapStageTest(test.TestCase):
         shared_name='test_ordered_map_unstage_no_key_oob',
         name=None,
     )
+    self.evaluate(stage_op)
     with self.assertRaisesRegex(
         errors.InvalidArgumentError, 'out of bounds'
     ):
