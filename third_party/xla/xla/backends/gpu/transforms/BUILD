@@ -2140,6 +2140,32 @@ cc_library(
 )
 
 cc_library(
+    name = "sycl_gemm_workspace_pass",
+    srcs = ["sycl_gemm_workspace_pass.cc"],
+    hdrs = ["sycl_gemm_workspace_pass.h"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:cublas_cudnn",
+        "//xla/service/gpu:matmul_utils",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/sycl:sycl_matmul_utils",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
     name = "gemm_rewriter_test_lib",
     testonly = True,
     srcs = ["gemm_rewriter_test_lib.cc"],

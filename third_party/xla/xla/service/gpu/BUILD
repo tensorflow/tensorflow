@@ -3874,8 +3874,11 @@ cc_library(
     deps = [
         ":gpu_compiler",
         ":target_constants",
+        "//xla/backends/gpu/transforms:sycl_gemm_workspace_pass",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/service:dump",
+        "//xla/service:gpu_topology",
         "//xla/service/gpu/llvm_gpu_backend:spirv_backend",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream_executor_h",
@@ -3899,11 +3902,12 @@ xla_test(
         "nobuilder",
         "manual",
     ]),
-    use_legacy_runtime = True,
     deps = [
         ":intel_gpu_compiler",
+        ":matmul_utils",
+        "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
         "//xla/stream_executor/sycl:sycl_platform_id",
-        "//xla/tests/restricted:hlo_test_base_legacy",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )
