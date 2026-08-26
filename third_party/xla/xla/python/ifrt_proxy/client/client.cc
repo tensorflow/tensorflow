@@ -341,18 +341,23 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
     auto* proxy_array = cast<xla::ifrt::proxy::Array>(arrays[i].get());
     CHECK(proxy_array != nullptr);
     std::shared_ptr<const xla::PjRtLayout> layout;
-    bool force_default_layout = false;
+    bool propagate_layout = true;
     if (memory_kind.has_value() &&
         memory_kind->value() == xla::UnpinnedHostMemorySpace::kKind) {
       // "unpinned_host" memory only supports the default layout.
-      force_default_layout = true;
-    } else if (devices.has_value() &&
-               (*devices)->devices().front()->PlatformName() ==
-                   xla::CpuPlatformName()) {
-      // "cpu" device only supports the default layout.
-      force_default_layout = true;
+      propagate_layout = false;
+    } else if (devices.has_value()) {
+      absl::string_view src_platform =
+          arrays[i]->sharding().devices()->devices().front()->PlatformName();
+      absl::string_view dst_platform =
+          (*devices)->devices().front()->PlatformName();
+      if (src_platform != dst_platform) {
+        // Do not propagate the source layout if the device platforms differ
+        // (e.g. CPU -> TPU or TPU -> CPU).
+        propagate_layout = false;
+      }
     }
-    if (!force_default_layout) {
+    if (propagate_layout) {
       ABSL_ASSIGN_OR_RETURN(layout, proxy_array->pjrt_layout());
     }
     uint64_t result_handle = rpc_helper_->NextHandle();
