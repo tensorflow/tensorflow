@@ -1525,7 +1525,10 @@ class LSTMTest(test.TestCase):
 
   def testLSTMBlockCellGradInvalidRank(self):
     # Test case for GitHub issue 112746. A rank 1 x was indexed at dimension 1
-    # before any shape check ran, which aborted the process.
+    # before any shape check ran, which aborted the process. Eager execution
+    # reaches the kernel check ("x must be rank 2"), while graph construction
+    # is stopped earlier by the op's shape function ("Shape must be rank 2"),
+    # which surfaces as a ValueError, so both are accepted.
     batch_size, input_size, cell_size = 2, 4, 5
     def rand(*shape):
       return random_ops.random_uniform(list(shape), dtype=dtypes.float32)
@@ -1533,8 +1536,8 @@ class LSTMTest(test.TestCase):
     def per_step():
       return rand(batch_size, cell_size)
 
-    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
-                                "x must be rank 2"):
+    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
+                                "must be rank 2"):
       self.evaluate(
           gen_rnn_ops.LSTMBlockCellGrad(
               x=constant_op.constant([], dtype=dtypes.float32),
