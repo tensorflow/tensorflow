@@ -216,10 +216,12 @@ def TPU_ScanOp : TPU_Op<"scan"> {
 def TPU_SortOp : TPU_Op<"sort", [Pure]> {
   let summary = "Sorts key/value pairs based on keys.";
   let description = [{
-    tpu.sort performs a stable sort of key/value pairs in ascending or
-    descending order based on keys. Masked-out keys and values are placed at the
-    end of the output vectors. An output mask indicates which outputs
-    correspond to the valid inputs.
+    tpu.sort performs a stable sort of key/value pairs in the innermost
+    dimension in ascending or descending order based on keys. Duplicate keys
+    preserve their input order regardless of the sorting order. Masked-out keys
+    and values are placed at the end of the output vectors. Integer keys are
+    treated as unsigned. An output mask indicates which outputs correspond to
+    the valid inputs. 
   }];
   let arguments = (ins
     VectorOfNonZeroRankOf<[I32,F32]>:$keys,
