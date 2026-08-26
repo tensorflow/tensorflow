@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_LIST_KERNELS_H_
 #define TENSORFLOW_CORE_KERNELS_LIST_KERNELS_H_
 
+#include <limits>
+
 #define EIGEN_USE_THREADS
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
@@ -908,6 +910,14 @@ class TensorListScatterIntoExistingList : public OpKernel {
               "non-negative; got ",
               *minmax.first)));
       max_index = *minmax.second;
+      // TensorListLength returns int32, so max_index + 1 must be representable
+      // as int32 before the list is resized.
+      OP_REQUIRES(
+          c, max_index < std::numeric_limits<int32_t>::max(),
+          absl::InvalidArgumentError(absl::StrCat(
+              "TensorListScatterIntoExistingList: index ", max_index,
+              " would produce a list length that is not representable as "
+              "int32")));
       // Also honor the list's declared capacity. TensorListPushBack already
       // enforces `size() < max_num_elements`; mirror it here so a scatter
       // cannot silently grow the list past its cap. This also bounds the
