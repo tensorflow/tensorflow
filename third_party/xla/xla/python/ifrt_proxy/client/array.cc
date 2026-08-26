@@ -312,10 +312,10 @@ Array::MakeArraysFromHostBufferShards(
   for (int spec_idx = 0; spec_idx < specs.size(); ++spec_idx) {
     xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec& spec =
         specs[spec_idx];
-    arrays.push_back(tsl::MakeRef<Array>(
-        client, rpc_helper, spec.array_spec.dtype,
-        std::move(spec.array_spec.shape), std::move(spec.array_spec.sharding),
-        arr_handles[spec_idx], spec.array_spec.layout));
+    arrays.push_back(
+        tsl::MakeRef<Array>(client, rpc_helper, spec.array_spec.dtype(),
+                            spec.array_spec.shape(), spec.array_spec.sharding(),
+                            arr_handles[spec_idx], spec.array_spec.layout()));
   }
   return arrays;
 }
@@ -335,8 +335,8 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::MakeErrorArrays(
     ABSL_RETURN_IF_ERROR(array_spec.ToProto(*req->add_array_specs(),
                                        rpc_helper->ifrt_serdes_version()));
     arrays.push_back(tsl::MakeRef<Array>(
-        client, rpc_helper, array_spec.dtype, array_spec.shape,
-        array_spec.sharding, ArrayHandle{array_handle}, array_spec.layout));
+        client, rpc_helper, array_spec.dtype(), array_spec.shape(),
+        array_spec.sharding(), ArrayHandle{array_handle}, array_spec.layout()));
   }
   rpc_helper->MakeErrorArrays(std::move(req));
   return arrays;
@@ -351,8 +351,8 @@ absl::StatusOr<std::optional<int64_t>> Array::ByteSize() const {
   // locally computing it. The server-side backend may have an optimization that
   // computes the byte size efficiently, and it can be cheaper to bring the
   // calculation result to the client than to compute it on the client.
-  return xla::ifrt::Layout::ByteSize(array_spec_.dtype, array_spec_.shape,
-                                     array_spec_.sharding, layout_);
+  return xla::ifrt::Layout::ByteSize(array_spec_.dtype(), array_spec_.shape(),
+                                     array_spec_.sharding(), layout_);
 }
 
 tsl::Future<> Array::GetReadyFuture() const {
@@ -511,29 +511,29 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::RemapArrays(
                            rcref.get()));
     }
 
-    if (plan.input_specs()[i].dtype != arrays[i]->dtype()) {
+    if (plan.input_specs()[i].dtype() != arrays[i]->dtype()) {
       return absl::InvalidArgumentError(absl::StrFormat(
           "RemapArrays expects input #%d to have dtype %v, but got %v", i,
-          plan.input_specs()[i].dtype, arrays[i]->dtype()));
+          plan.input_specs()[i].dtype(), arrays[i]->dtype()));
     }
-    if (plan.input_specs()[i].shape != arrays[i]->shape()) {
+    if (plan.input_specs()[i].shape() != arrays[i]->shape()) {
       return absl::InvalidArgumentError(absl::StrFormat(
           "RemapArrays expects input #%d to have shape %v, but got %v", i,
-          plan.input_specs()[i].shape, arrays[i]->shape()));
+          plan.input_specs()[i].shape(), arrays[i]->shape()));
     }
     // Skip xla::ifrt::Sharding::HasSamePartitioning() check because RemapArrays
     // is currently called with input arrays with implicit sharding
     // reinterpretation. Such patterns should be fixed before enabling stricter
     // checking to avoid false positives.
-    if (*plan.input_specs()[i].sharding->devices() !=
+    if (*plan.input_specs()[i].sharding()->devices() !=
             *arrays[i]->sharding().devices() ||
-        plan.input_specs()[i].sharding->memory_kind() !=
+        plan.input_specs()[i].sharding()->memory_kind() !=
             arrays[i]->sharding().memory_kind()) {
       return absl::InvalidArgumentError(
           absl::StrFormat("RemapArrays expects input #%d to be on %v with "
                           "%v, but is on %v with %v",
-                          i, *plan.input_specs()[i].sharding->devices(),
-                          plan.input_specs()[i].sharding->memory_kind(),
+                          i, *plan.input_specs()[i].sharding()->devices(),
+                          plan.input_specs()[i].sharding()->memory_kind(),
                           *arrays[i]->sharding().devices(),
                           arrays[i]->sharding().memory_kind()));
     }
@@ -559,8 +559,8 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::RemapArrays(
     uint64_t h = rpc_helper->NextHandle();
     req->add_result_handles(h);
     result.push_back(xla::ifrt::ArrayRef(tsl::MakeRef<Array>(
-        client, rpc_helper, plan.output_specs()[i].dtype,
-        plan.output_specs()[i].shape, plan.output_specs()[i].sharding,
+        client, rpc_helper, plan.output_specs()[i].dtype(),
+        plan.output_specs()[i].shape(), plan.output_specs()[i].sharding(),
         ArrayHandle{h}, std::move(output_layouts[i]))));
   }
   rpc_helper->RemapArrays(std::move(req));
@@ -607,8 +607,8 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::BitcastArrays(
   for (int i = 0; i < arrays.size(); ++i) {
     uint64_t result_handle = rpc_helper->NextHandle();
     new_arrays.push_back(tsl::MakeRef<Array>(
-        client, rpc_helper, specs[i].dtype, specs[i].shape, specs[i].sharding,
-        ArrayHandle{result_handle}, specs[i].layout));
+        client, rpc_helper, specs[i].dtype(), specs[i].shape(),
+        specs[i].sharding(), ArrayHandle{result_handle}, specs[i].layout()));
     req->add_result_handles(result_handle);
   }
 
@@ -652,8 +652,8 @@ Array::DisassembleIntoSingleDeviceArrays(
       ToSingleDeviceShardSemanticsProto(single_device_shard_semantics));
 
   ABSL_ASSIGN_OR_RETURN(auto shape_and_shardings,
-                   array_spec_.sharding->Disassemble(
-                       array_spec_.shape,
+                   array_spec_.sharding()->Disassemble(
+                       array_spec_.shape(),
                        xla::ifrt::SingleDeviceShardSemantics::kAllShards));
 
   std::vector<xla::ifrt::ArrayRef> result;
@@ -662,7 +662,7 @@ Array::DisassembleIntoSingleDeviceArrays(
     uint64_t h = rpc_helper_->NextHandle();
     req->add_result_handles(h);
     result.push_back(xla::ifrt::ArrayRef(tsl::MakeRef<Array>(
-        client_, rpc_helper_, array_spec_.dtype,
+        client_, rpc_helper_, array_spec_.dtype(),
         std::move(shape_and_shardings[i].first),
         std::move(shape_and_shardings[i].second), ArrayHandle{h},
         layout_ == nullptr ? nullptr : layout_->pjrt_layout())));
@@ -694,11 +694,11 @@ absl::StatusOr<xla::ifrt::ArrayRef> Array::FullyReplicatedShard(
   // request an Array to be made out of a specific single shard.
   std::unique_ptr<xla::ifrt::SingleDeviceSharding> single_device_sharding =
       xla::ifrt::SingleDeviceSharding::Create(
-          array_spec_.sharding->devices()->devices().front(),
-          array_spec_.sharding->memory_kind());
+          array_spec_.sharding()->devices()->devices().front(),
+          array_spec_.sharding()->memory_kind());
 
   return xla::ifrt::ArrayRef(tsl::MakeRef<Array>(
-      client_, rpc_helper_, array_spec_.dtype, array_spec_.shape,
+      client_, rpc_helper_, array_spec_.dtype(), array_spec_.shape(),
       std::move(single_device_sharding), result_handle,
       layout_ == nullptr ? nullptr : layout_->pjrt_layout()));
 }
@@ -726,7 +726,7 @@ tsl::Future<> Array::CopyToStringHostBuffer(
                    host_buffer_store = rpc_helper_->host_buffer_store(),
                    host_buffer_handle,
                    dst_buffer = static_cast<absl::Cord*>(data),
-                   num_elements = array_spec_.shape.num_elements()](
+                   num_elements = array_spec_.shape().num_elements()](
                       absl::StatusOr<std::shared_ptr<CopyToHostBufferResponse>>
                           resp) mutable {
     if (!resp.ok()) {
@@ -766,17 +766,17 @@ tsl::Future<> Array::CopyToStringHostBuffer(
 tsl::Future<> Array::CopyToHostBuffer(
     void* data, std::optional<absl::Span<const int64_t>> byte_strides,
     ArrayCopySemantics semantics) {
-  if (array_spec_.dtype.kind() == DType::kString) {
+  if (array_spec_.dtype().kind() == DType::kString) {
     return CopyToStringHostBuffer(data, byte_strides, semantics);
   }
   tsl::profiler::TraceMe traceme("IfrtProxyEntrypointCopyToHostBuffer");
 
-  if (array_spec_.dtype.kind() == DType::kToken) {
+  if (array_spec_.dtype().kind() == DType::kToken) {
     return GetReadyFuture();
   }
 
   const auto mem_region = ArrayMemRegion::FromZerothElementPointer(
-      /*zeroth_element=*/data, array_spec_.dtype, array_spec_.shape,
+      /*zeroth_element=*/data, array_spec_.dtype(), array_spec_.shape(),
       byte_strides);
   if (!mem_region.ok()) {
     return tsl::Future<>(mem_region.status());

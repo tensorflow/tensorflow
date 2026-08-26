@@ -87,15 +87,11 @@ absl::StatusOr<ArrayRef> MakeShardedArray(Client* client,
       /*on_done=*/nullptr,
   };
 
-  ArraySpec array_spec{
-      /*dtype=*/dtype,
-      /*shape=*/shape,
-      /*sharding=*/sharding,
-  };
+  ArraySpec array_spec(dtype, shape, sharding, /*layout=*/nullptr);
 
   Client::MakeArraysFromHostBufferShardsSpec spec{
       /*buffers=*/{{std::move(shard_indices), std::move(host_buffer)}},
-      /*array_spec=*/std::move(array_spec),
+      std::move(array_spec),
   };
 
   ABSL_ASSIGN_OR_RETURN(std::vector<ArrayRef> arrays,

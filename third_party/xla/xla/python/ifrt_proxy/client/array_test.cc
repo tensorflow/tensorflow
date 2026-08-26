@@ -200,8 +200,8 @@ TEST_F(ArrayTest, MakeArraysFromHostBufferShardsSuccess) {
                                                DType(DType::Kind::kBF16),
                                                Shape({}),
                                            }}},
-      /*array_spec=*/xla::ifrt::ArraySpec{DType(DType::Kind::kBF16), Shape({}),
-                                          sharding_, kLayout1}};
+      xla::ifrt::ArraySpec(DType(DType::Kind::kBF16), Shape({}), sharding_,
+                           kLayout1)};
   xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec spec_2{
       /*buffers=*/{{/*shard_indices=*/{0},
                     /*host_buffer=*/xla::ifrt::Client::HostBuffer{
@@ -209,8 +209,8 @@ TEST_F(ArrayTest, MakeArraysFromHostBufferShardsSuccess) {
                         /*dtype=*/DType(DType::Kind::kBF16),
                         /*shape=*/Shape({}),
                     }}},
-      /*array_spec=*/xla::ifrt::ArraySpec{DType(DType::Kind::kBF16), Shape({}),
-                                          sharding_, kLayout2}};
+      xla::ifrt::ArraySpec(DType(DType::Kind::kBF16), Shape({}), sharding_,
+                           kLayout2)};
   specs.push_back(spec_1);
   specs.push_back(spec_2);
 
@@ -236,8 +236,8 @@ TEST_F(ArrayTest, MakeErrorArraysSuccess) {
               Enqueue(IfrtRequestOfType(IfrtRequest::kMakeErrorArraysRequest)))
       .WillOnce(MockClientSessionReturnResponse(response));
   std::vector<xla::ifrt::ArraySpec> specs;
-  specs.push_back(xla::ifrt::ArraySpec{DType(DType::Kind::kBF16), Shape({}),
-                                       sharding_, kLayout1});
+  specs.push_back(xla::ifrt::ArraySpec(DType(DType::Kind::kBF16), Shape({}),
+                                       sharding_, kLayout1));
 
   auto result = Array::MakeErrorArrays(mock_client_.get(), rpc_helper_,
                                        absl::InternalError("test error"),
@@ -331,15 +331,17 @@ TEST_F(ArrayTest, RemapArraysSuccess) {
   mappings.push_back({/*in_array=*/0, /*out_array=*/1});
   mappings.push_back({/*in_array=*/1, /*out_array=*/0});
   std::vector<xla::ifrt::ArraySpec> input_specs;
-  input_specs.push_back(xla::ifrt::ArraySpec{DType(DType::Kind::kBF16),
-                                             Shape({}), sharding_, kLayout1});
-  input_specs.push_back(xla::ifrt::ArraySpec{DType(DType::Kind::kBF16),
-                                             Shape({}), sharding_, kLayout2});
+  input_specs.push_back(xla::ifrt::ArraySpec(DType(DType::Kind::kBF16),
+                                             Shape({}), sharding_, kLayout1));
+  input_specs.push_back(xla::ifrt::ArraySpec(DType(DType::Kind::kBF16),
+                                             Shape({}), sharding_, kLayout2));
   std::vector<xla::ifrt::ArraySpec> output_specs;
-  output_specs.push_back(
-      xla::ifrt::ArraySpec{DType(DType::Kind::kBF16), Shape({}), sharding_});
-  output_specs.push_back(
-      xla::ifrt::ArraySpec{DType(DType::Kind::kBF16), Shape({}), sharding_});
+  output_specs.push_back(xla::ifrt::ArraySpec(DType(DType::Kind::kBF16),
+                                              Shape({}), sharding_,
+                                              /*layout=*/nullptr));
+  output_specs.push_back(xla::ifrt::ArraySpec(DType(DType::Kind::kBF16),
+                                              Shape({}), sharding_,
+                                              /*layout=*/nullptr));
   RemapPlan plan(std::move(input_specs), std::move(output_specs),
                  std::move(mappings));
 
@@ -372,8 +374,8 @@ TEST_F(ArrayTest, BitcastArraysSuccess) {
                                        sharding_, ArrayHandle{1234}, kLayout1);
   std::vector<tsl::RCReference<xla::ifrt::Array>> src_arrays{{src_array}};
 
-  std::vector<xla::ifrt::ArraySpec> specs = {xla::ifrt::ArraySpec{
-      DType(DType::Kind::kF32), Shape({1}), sharding_, kLayout2}};
+  std::vector<xla::ifrt::ArraySpec> specs = {xla::ifrt::ArraySpec(
+      DType(DType::Kind::kF32), Shape({1}), sharding_, kLayout2)};
 
   auto result = Array::BitcastArrays(mock_client_.get(), rpc_helper_,
                                      absl::MakeSpan(src_arrays), specs,

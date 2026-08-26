@@ -91,13 +91,11 @@ TEST_P(CustomCallProgramSerDesTest, RoundTrip) {
       /*devices=*/std::move(devices),
       /*input_specs=*/
       {
-          ArraySpec{/*dtype=*/DType(DType::kF32), /*shape=*/shape0,
-                    /*sharding=*/sharding0},
+          ArraySpec(DType(DType::kF32), shape0, sharding0, nullptr),
       },
       /*output_specs=*/
       {
-          ArraySpec{/*dtype=*/DType(DType::kF32), /*shape=*/shape1,
-                    /*sharding=*/sharding1},
+          ArraySpec(DType(DType::kF32), shape1, sharding1, nullptr),
       });
 
   auto serialize_options = std::make_unique<SerializeOptions>(version());
@@ -116,22 +114,22 @@ TEST_P(CustomCallProgramSerDesTest, RoundTrip) {
   EXPECT_EQ(*deserialized_program->devices, *orig.devices);
 
   ASSERT_THAT(deserialized_program->input_specs, SizeIs(1));
-  EXPECT_EQ(deserialized_program->input_specs.front().dtype,
+  EXPECT_EQ(deserialized_program->input_specs.front().dtype(),
             DType(DType::kF32));
-  EXPECT_EQ(deserialized_program->input_specs.front().shape, shape0);
+  EXPECT_EQ(deserialized_program->input_specs.front().shape(), shape0);
   const auto* deserialized_sharding0 = dyn_cast<ConcreteEvenSharding>(
-      deserialized_program->input_specs.front().sharding.get());
+      deserialized_program->input_specs.front().sharding().get());
   ASSERT_NE(deserialized_sharding0, nullptr);
   EXPECT_EQ(*deserialized_sharding0->devices(), *sharding0->devices());
   EXPECT_EQ(deserialized_sharding0->shape(), shape0);
   EXPECT_EQ(deserialized_sharding0->shard_shape(), shard_shape0);
 
   ASSERT_THAT(deserialized_program->output_specs, SizeIs(1));
-  EXPECT_EQ(deserialized_program->output_specs.front().dtype,
+  EXPECT_EQ(deserialized_program->output_specs.front().dtype(),
             DType(DType::kF32));
-  EXPECT_EQ(deserialized_program->output_specs.front().shape, shape1);
+  EXPECT_EQ(deserialized_program->output_specs.front().shape(), shape1);
   const auto* deserialized_sharding1 = dyn_cast<ConcreteEvenSharding>(
-      deserialized_program->output_specs.front().sharding.get());
+      deserialized_program->output_specs.front().sharding().get());
   ASSERT_NE(deserialized_sharding1, nullptr);
   EXPECT_EQ(*deserialized_sharding1->devices(), *sharding1->devices());
   EXPECT_EQ(deserialized_sharding1->shape(), shape1);

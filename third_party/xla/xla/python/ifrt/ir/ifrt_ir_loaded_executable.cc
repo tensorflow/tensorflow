@@ -217,7 +217,7 @@ IfrtIrLoadedExecutable::GetParameterShardings() const {
   std::vector<xla::OpSharding> parameter_shardings;
   for (const auto& [idx, spec] : llvm::enumerate(program_->in_specs)) {
     if (auto hlo_sharding =
-            dyn_cast_or_null<xla::ifrt::HloSharding>(spec.sharding.get())) {
+            dyn_cast_or_null<xla::ifrt::HloSharding>(spec.sharding().get())) {
       parameter_shardings.push_back(hlo_sharding->xla_hlo_sharding().ToProto());
     } else {
       LOG(ERROR) << "Failed to get sharding of parameter #" << idx
@@ -236,7 +236,7 @@ IfrtIrLoadedExecutable::GetOutputShardings() const {
   std::vector<xla::OpSharding> output_shardings;
   for (const auto& [idx, spec] : llvm::enumerate(program_->out_specs)) {
     if (auto hlo_sharding =
-            dyn_cast_or_null<xla::ifrt::HloSharding>(spec.sharding.get())) {
+            dyn_cast_or_null<xla::ifrt::HloSharding>(spec.sharding().get())) {
       output_shardings.push_back(hlo_sharding->xla_hlo_sharding().ToProto());
     } else {
       LOG(ERROR) << "Failed to get sharding of output #" << idx
@@ -256,7 +256,7 @@ IfrtIrLoadedExecutable::GetParameterLayouts() const {
   std::vector<std::shared_ptr<const xla::PjRtLayout>> parameter_layouts;
   parameter_layouts.reserve(program_->in_specs.size());
   for (const auto& spec : program_->in_specs) {
-    parameter_layouts.push_back(spec.layout);
+    parameter_layouts.push_back(spec.layout());
   }
   return parameter_layouts;
 }
@@ -269,7 +269,7 @@ IfrtIrLoadedExecutable::GetOutputLayouts() const {
   std::vector<std::shared_ptr<const xla::PjRtLayout>> output_layouts;
   output_layouts.reserve(program_->out_specs.size());
   for (const auto& spec : program_->out_specs) {
-    output_layouts.push_back(spec.layout);
+    output_layouts.push_back(spec.layout());
   }
   return output_layouts;
 }
@@ -313,7 +313,7 @@ IfrtIrLoadedExecutable::GetOutputMemoryKinds() const {
       []() { return "IfrtIrLoadedExecutable::GetOutputMemoryKinds"; });
   std::vector<absl::string_view> output_memory_kinds;
   for (const auto& [idx, spec] : llvm::enumerate(program_->out_specs)) {
-    output_memory_kinds.push_back(spec.sharding->memory_kind().value());
+    output_memory_kinds.push_back(spec.sharding()->memory_kind().value());
   }
   // Pretend that the MPMD executable is a SPMD executable and return a
   // single array. We do not return per-SPMD program memory kinds because the

@@ -41,11 +41,22 @@ class AbstractArraySpec;
 // Specification of an array that groups the static properties of an `Array`
 // together. Typically used for describing expected or requested static
 // properties of an input/output array of an operation.
-struct ArraySpec {
-  DType dtype;
-  Shape shape;
-  ShardingRef sharding;
-  absl_nullable std::shared_ptr<const xla::PjRtLayout> layout;
+class ArraySpec {
+ public:
+  ArraySpec(DType dtype, Shape shape, ShardingRef sharding,
+            absl_nullable std::shared_ptr<const xla::PjRtLayout> layout);
+
+  ArraySpec(const ArraySpec&) = default;
+  ArraySpec& operator=(const ArraySpec&) = default;
+  ArraySpec(ArraySpec&&) = default;
+  ArraySpec& operator=(ArraySpec&&) = default;
+
+  DType dtype() const { return dtype_; }
+  const Shape& shape() const { return shape_; }
+  const ShardingRef& sharding() const { return sharding_; }
+  const absl_nullable std::shared_ptr<const xla::PjRtLayout>& layout() const {
+    return layout_;
+  }
 
   bool operator==(const ArraySpec& other) const {
     auto are_pointees_equal = [](auto* lhs, auto* rhs) {
@@ -54,25 +65,25 @@ struct ArraySpec {
       }
       return lhs == rhs || *lhs == *rhs;
     };
-    return dtype == other.dtype && shape == other.shape &&
-           are_pointees_equal(sharding.get(), other.sharding.get()) &&
-           are_pointees_equal(layout.get(), other.layout.get());
+    return dtype_ == other.dtype_ && shape_ == other.shape_ &&
+           are_pointees_equal(sharding_.get(), other.sharding_.get()) &&
+           are_pointees_equal(layout_.get(), other.layout_.get());
   }
 
   bool operator!=(const ArraySpec& other) const { return !(*this == other); }
 
   template <typename H>
   friend H AbslHashValue(H h, const ArraySpec& value) {
-    h = H::combine(std::move(h), value.dtype, value.shape);
+    h = H::combine(std::move(h), value.dtype_, value.shape_);
     // The current implementation gracefully handles null sharding even if it's
     // invalid (see `absl_nonnull` annotation) since we don't enforce such
     // properties at ArraySpec creation time. Once we have a constructor that
     // crashes with a null sharding, we can remove this null check.
-    if (value.sharding != nullptr) {
-      h = H::combine(std::move(h), *value.sharding);
+    if (value.sharding_ != nullptr) {
+      h = H::combine(std::move(h), *value.sharding_);
     }
-    if (value.layout != nullptr) {
-      h = H::combine(std::move(h), *value.layout);
+    if (value.layout_ != nullptr) {
+      h = H::combine(std::move(h), *value.layout_);
     }
     return h;
   }
@@ -100,12 +111,18 @@ struct ArraySpec {
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const ArraySpec& array_spec) {
     sink.Append(absl::StrCat(
-        "ArraySpec(dtype=", array_spec.dtype, ",shape=", array_spec.shape,
-        ",sharding=", array_spec.sharding, ",layout=",
-        (array_spec.layout != nullptr ? array_spec.layout->ToString()
-                                      : "<nullptr>"),
+        "ArraySpec(dtype=", array_spec.dtype_, ",shape=", array_spec.shape_,
+        ",sharding=", array_spec.sharding_, ",layout=",
+        (array_spec.layout_ != nullptr ? array_spec.layout_->ToString()
+                                       : "<nullptr>"),
         ")"));
   }
+
+ private:
+  DType dtype_;
+  Shape shape_;
+  ShardingRef sharding_;
+  absl_nullable std::shared_ptr<const xla::PjRtLayout> layout_;
 };
 
 }  // namespace ifrt

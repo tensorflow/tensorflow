@@ -1901,11 +1901,11 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
           << "across invocations";
       for (int i = 0; i < result.outputs.size(); ++i) {
         CHECK_EQ(result.outputs[i]->dtype(),
-                 (*executable_info->output_spec)[i].dtype)
+                 (*executable_info->output_spec)[i].dtype())
             << "LoadedExecutable::Execute output " << i
             << "mismatched dtype across invocations";
         CHECK_EQ(result.outputs[i]->shape(),
-                 (*executable_info->output_spec)[i].shape)
+                 (*executable_info->output_spec)[i].shape())
             << "LoadedExecutable::Execute output " << i
             << "mismatched shape across invocations";
       }
@@ -1927,8 +1927,8 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
       executable_info->output_spec->reserve(result.outputs.size());
       for (const auto& output : result.outputs) {
         executable_info->output_spec->push_back(
-            ArraySpec{/*dtype=*/output->dtype(), /*shape=*/output->shape(),
-                      /*sharding=*/output->shared_ptr_sharding()});
+            ArraySpec(output->dtype(), output->shape(),
+                      output->shared_ptr_sharding(), /*layout=*/nullptr));
       }
       executable_info->donatable_indices =
           [&]() -> std::optional<absl::flat_hash_set<int>> {

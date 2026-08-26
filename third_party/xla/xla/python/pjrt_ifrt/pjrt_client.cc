@@ -1153,20 +1153,20 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
   std::vector<ArrayRef> arrays;
   arrays.reserve(array_specs.size());
   for (const auto& array_spec : array_specs) {
-    if (array_spec.dtype.kind() == DType::kString) {
+    if (array_spec.dtype().kind() == DType::kString) {
       ABSL_ASSIGN_OR_RETURN(arrays.emplace_back(),
                        BasicStringArray::Create(
-                           this, array_spec.shape, array_spec.sharding,
+                           this, array_spec.shape(), array_spec.sharding(),
                            tsl::Future<BasicStringArray::Buffers>(error),
                            /*on_done_with_buffer=*/[]() {}));
       continue;
     }
 
-    ABSL_ASSIGN_OR_RETURN(auto primitive_type, ToPrimitiveType(array_spec.dtype));
+    ABSL_ASSIGN_OR_RETURN(auto primitive_type, ToPrimitiveType(array_spec.dtype()));
     absl::Span<xla::ifrt::Device* const> ifrt_addressable_devices =
-        array_spec.sharding->devices()->AddressableDeviceList()->devices();
+        array_spec.sharding()->devices()->AddressableDeviceList()->devices();
     ABSL_ASSIGN_OR_RETURN(Shape shard_shape,
-                     array_spec.sharding->GetShardShape(array_spec.shape));
+                     array_spec.sharding()->GetShardShape(array_spec.shape()));
     xla::Shape xla_shape;
     if (primitive_type == xla::TOKEN) {
       xla_shape = xla::ShapeUtil::MakeTokenShape();
@@ -1182,7 +1182,7 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
       // and matches the sharding's memory_kind.
       Memory* memory = nullptr;
       for (Memory* ms : device->Memories()) {
-        if (ms->Kind() == array_spec.sharding->memory_kind()) {
+        if (ms->Kind() == array_spec.sharding()->memory_kind()) {
           memory = ms;
           break;
         }
@@ -1190,7 +1190,7 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
       if (memory == nullptr) {
         return absl::InvalidArgumentError(absl::StrFormat(
             "Invalid memory kind: %s; available memory kinds: %s",
-            array_spec.sharding->memory_kind().value(),
+            array_spec.sharding()->memory_kind().value(),
             absl::StrJoin(ifrt_addressable_devices.front()->Memories(), ", ",
                           [](std::string* out, Memory* ms) {
                             absl::StrAppend(out, ms->Kind().value());
@@ -1204,9 +1204,9 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
     }
     ABSL_ASSIGN_OR_RETURN(
         arrays.emplace_back(),
-        PjRtArray::Create(this, array_spec.dtype, std::move(shard_shape),
-                          array_spec.sharding, std::move(buffers),
-                          array_spec.layout));
+        PjRtArray::Create(this, array_spec.dtype(), std::move(shard_shape),
+                          array_spec.sharding(), std::move(buffers),
+                          array_spec.layout()));
   }
   return arrays;
 }
@@ -1792,12 +1792,12 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::BitcastArrays(
     new_buffers.reserve(buffers.size());
 
     ABSL_ASSIGN_OR_RETURN(PrimitiveType element_type,
-                     ToPrimitiveType(specs[i].dtype));
+                     ToPrimitiveType(specs[i].dtype()));
     ABSL_ASSIGN_OR_RETURN(const Shape& new_shard_shape,
-                     specs[i].sharding->GetShardShape(specs[i].shape));
+                     specs[i].sharding()->GetShardShape(specs[i].shape()));
     const xla::Layout* device_layout = nullptr;
-    if (specs[i].layout != nullptr) {
-      device_layout = &specs[i].layout->xla_layout();
+    if (specs[i].layout() != nullptr) {
+      device_layout = &specs[i].layout()->xla_layout();
     }
 
     for (const std::shared_ptr<PjRtBuffer>& buffer : buffers) {
@@ -1809,9 +1809,9 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::BitcastArrays(
 
     ABSL_ASSIGN_OR_RETURN(
         tsl::RCReference<PjRtArray> new_array,
-        PjRtArray::Create(this, specs[i].dtype, specs[i].shape,
-                          specs[i].sharding, std::move(new_buffers),
-                          specs[i].layout));
+        PjRtArray::Create(this, specs[i].dtype(), specs[i].shape(),
+                          specs[i].sharding(), std::move(new_buffers),
+                          specs[i].layout()));
     new_arrays.push_back(std::move(new_array));
   }
   for (ArrayRef& array : arrays) {

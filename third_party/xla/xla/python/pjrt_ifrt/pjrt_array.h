@@ -146,7 +146,7 @@ class PjRtArray final : public RTTIExtends<PjRtArray, PjRtCompatibleArray> {
 
   DType dtype() const override {
     DCHECK(this);
-    return array_spec_.dtype;
+    return array_spec_.dtype();
   }
 
   bool has_dynamic_shape() const {
@@ -161,7 +161,7 @@ class PjRtArray final : public RTTIExtends<PjRtArray, PjRtCompatibleArray> {
 
   const Shape& shape() const override {
     DCHECK(has_static_shape());
-    return array_spec_.shape;
+    return array_spec_.shape();
   }
 
   const DynamicShape& dynamic_shape() const {
@@ -171,11 +171,11 @@ class PjRtArray final : public RTTIExtends<PjRtArray, PjRtCompatibleArray> {
 
   const Sharding& sharding() const override {
     DCHECK(this);
-    return *array_spec_.sharding;
+    return *array_spec_.sharding();
   }
   ShardingRef shared_ptr_sharding() const override {
     DCHECK(this);
-    return array_spec_.sharding;
+    return array_spec_.sharding();
   }
 
   absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> pjrt_layout()

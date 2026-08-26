@@ -325,8 +325,8 @@ class LoadedExecutable::OutputSpecCache {
       ABSL_ASSIGN_OR_RETURN(auto shape, Shape::FromProto(output.shape()));
       ABSL_ASSIGN_OR_RETURN(auto sharding, Sharding::FromProto(parent_->client(),
                                                           output.sharding()));
-      data.push_back(ArraySpec{/*dtype=*/dtype, /*shape=*/std::move(shape),
-                               /*sharding=*/std::move(sharding)});
+      data.push_back(ArraySpec(dtype, std::move(shape), std::move(sharding),
+                               /*layout=*/nullptr));
     }
     {
       absl::MutexLock l(mu_);
@@ -791,13 +791,13 @@ LoadedExecutable::Execute(absl::Span<xla::ifrt::ArrayRef> args,
       uint64_t handle = rpc_helper_->NextHandle();
       if (layouts.ok()) {
         result.outputs.push_back(tsl::MakeRef<Array>(
-            client(), rpc_helper_, output_spec.dtype, output_spec.shape,
-            output_spec.sharding, ArrayHandle{handle},
+            client(), rpc_helper_, output_spec.dtype(), output_spec.shape(),
+            output_spec.sharding(), ArrayHandle{handle},
             /*layout=*/std::move((*layouts)[i])));
       } else {
         result.outputs.push_back(tsl::MakeRef<Array>(
-            client(), rpc_helper_, output_spec.dtype, output_spec.shape,
-            output_spec.sharding, ArrayHandle{handle}, /*layout=*/nullptr));
+            client(), rpc_helper_, output_spec.dtype(), output_spec.shape(),
+            output_spec.sharding(), ArrayHandle{handle}, /*layout=*/nullptr));
       }
       req->add_result_array_handle(handle);
     }
@@ -844,14 +844,14 @@ LoadedExecutable::Execute(absl::Span<xla::ifrt::ArrayRef> args,
     const auto& output_spec = output_specs[i];
     if (layouts.ok()) {
       result.outputs.push_back(tsl::MakeRef<Array>(
-          client(), rpc_helper_, output_spec.dtype, output_spec.shape,
-          output_spec.sharding,
+          client(), rpc_helper_, output_spec.dtype(), output_spec.shape(),
+          output_spec.sharding(),
           ArrayHandle{response->outputs()[i].array_handle()},
           /*layout=*/std::move((*layouts)[i])));
     } else {
       result.outputs.push_back(tsl::MakeRef<Array>(
-          client(), rpc_helper_, output_spec.dtype, output_spec.shape,
-          output_spec.sharding,
+          client(), rpc_helper_, output_spec.dtype(), output_spec.shape(),
+          output_spec.sharding(),
           ArrayHandle{response->outputs()[i].array_handle()},
           /*layout=*/nullptr));
     }

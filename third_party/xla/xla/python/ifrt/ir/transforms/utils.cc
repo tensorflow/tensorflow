@@ -420,11 +420,8 @@ absl::StatusOr<ArraySpec> ArraySpecFromMlirType(
   ABSL_ASSIGN_OR_RETURN(
       ShardingRef sharding,
       ShardingFromIfrtArrayType(ifrt_array_type, client, device_list));
-  return ArraySpec{
-      /*dtype=*/dtype,
-      /*shape=*/Shape(ifrt_array_type.getShape().getShape()),
-      /*sharding=*/std::move(sharding),
-  };
+  return ArraySpec(dtype, Shape(ifrt_array_type.getShape().getShape()),
+                   std::move(sharding), /*layout=*/nullptr);
 }
 
 xla::CompileOptions GetDefaultCompileOptions(CallOp call_op,

@@ -57,10 +57,10 @@ absl::Status CheckHostBuffer(
     const Client::MakeArraysFromHostBufferShardsSpec& spec,
     const Client::HostBuffer& host_buffer,
     const std::optional<xla::ifrt::Shape>& shard_shape) {
-  if (spec.array_spec.dtype != host_buffer.dtype) {
+  if (spec.array_spec.dtype() != host_buffer.dtype) {
     return absl::InvalidArgumentError(
         absl::StrCat("Host buffer dtype does not match array spec dtype: ",
-                     host_buffer.dtype, " vs. ", spec.array_spec.dtype));
+                     host_buffer.dtype, " vs. ", spec.array_spec.dtype()));
   }
   if (shard_shape.has_value() && *shard_shape != host_buffer.shape) {
     return absl::InvalidArgumentError(absl::StrCat(
@@ -75,7 +75,7 @@ absl::Status CheckHostBuffer(
 std::optional<xla::ifrt::Shape> TryToGetShardShape(
     const ArraySpec& array_spec) {
   if (auto shard_shape_from_sharding =
-          array_spec.sharding->GetShardShape(array_spec.shape);
+          array_spec.sharding()->GetShardShape(array_spec.shape());
       shard_shape_from_sharding.ok()) {
     return *std::move(shard_shape_from_sharding);
   }
@@ -88,10 +88,11 @@ bool CanUseMakeArrayFromHostBuffer(
     const Client::MakeArraysFromHostBufferShardsSpec& spec) {
   if (spec.buffers.size() == 1) {
     const auto& [addressable_shard_indices, _] = spec.buffers.front();
-    if (addressable_shard_indices.size() == spec.array_spec.sharding->devices()
+    if (addressable_shard_indices.size() == spec.array_spec.sharding()
+                                                ->devices()
                                                 ->AddressableDeviceList()
                                                 ->size() &&
-        spec.array_spec.sharding->IsFullyReplicated()) {
+        spec.array_spec.sharding()->IsFullyReplicated()) {
       return true;
     }
   }
@@ -106,21 +107,21 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
     Client::HostBufferSemantics semantics) {
   for (int i = 1; i < specs.size(); ++i) {
     const Client::MakeArraysFromHostBufferShardsSpec& spec = specs[i];
-    if (specs[0].array_spec.sharding->devices() !=
-        spec.array_spec.sharding->devices()) {
+    if (specs[0].array_spec.sharding()->devices() !=
+        spec.array_spec.sharding()->devices()) {
       return absl::InvalidArgumentError(absl::StrCat(
           "All arrays in MakeArraysFromHostBufferShards must have the "
           "same device list, but got ",
-          specs[0].array_spec.sharding->devices(), " vs. ",
-          spec.array_spec.sharding->devices()));
+          specs[0].array_spec.sharding()->devices(), " vs. ",
+          spec.array_spec.sharding()->devices()));
     }
-    if (specs[0].array_spec.sharding->memory_kind() !=
-        spec.array_spec.sharding->memory_kind()) {
+    if (specs[0].array_spec.sharding()->memory_kind() !=
+        spec.array_spec.sharding()->memory_kind()) {
       return absl::InvalidArgumentError(absl::StrCat(
           "All arrays in MakeArraysFromHostBufferShards must have the "
           "same memory kind, but got ",
-          specs[0].array_spec.sharding->memory_kind(), " vs. ",
-          spec.array_spec.sharding->memory_kind()));
+          specs[0].array_spec.sharding()->memory_kind(), " vs. ",
+          spec.array_spec.sharding()->memory_kind()));
     }
   }
 
@@ -140,14 +141,17 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
           ArrayRef array,
           client->MakeArrayFromHostBuffer(
               host_buffer.data, host_buffer.dtype, std::move(host_buffer.shape),
-              host_buffer.byte_strides, std::move(spec.array_spec.sharding),
+              host_buffer.byte_strides, spec.array_spec.sharding(),
               /*layout=*/nullptr, semantics, std::move(host_buffer.on_done)));
       arrays.push_back(std::move(array));
       continue;
     }
 
     absl::Span<xla::ifrt::Device* const> addressable_devices =
-        spec.array_spec.sharding->devices()->AddressableDeviceList()->devices();
+        spec.array_spec.sharding()
+            ->devices()
+            ->AddressableDeviceList()
+            ->devices();
 
     std::vector<ArrayRef> addressable_shards;
     addressable_shards.resize(addressable_devices.size());
@@ -184,10 +188,10 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
         }
         auto sharding = xla::ifrt::SingleDeviceSharding::Create(
             addressable_devices[addressable_shard_index],
-            spec.array_spec.sharding->memory_kind());
+            spec.array_spec.sharding()->memory_kind());
         LayoutRef layout;
-        if (spec.array_spec.layout != nullptr) {
-          layout = PjRtLayout::Create(spec.array_spec.layout);  // NOLINT
+        if (spec.array_spec.layout() != nullptr) {
+          layout = PjRtLayout::Create(spec.array_spec.layout());  // NOLINT
         }
         ABSL_ASSIGN_OR_RETURN(
             shard, client->MakeArrayFromHostBuffer(
@@ -208,9 +212,8 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
     ABSL_ASSIGN_OR_RETURN(
         ArrayRef array,
         client->AssembleArrayFromSingleDeviceArrays(
-            spec.array_spec.dtype, std::move(spec.array_spec.shape),
-            std::move(spec.array_spec.sharding),
-            absl::MakeSpan(addressable_shards),
+            spec.array_spec.dtype(), spec.array_spec.shape(),
+            spec.array_spec.sharding(), absl::MakeSpan(addressable_shards),
             ArrayCopySemantics::kDonateInput,
             SingleDeviceShardSemantics::kAddressableShards));
     arrays.push_back(std::move(array));

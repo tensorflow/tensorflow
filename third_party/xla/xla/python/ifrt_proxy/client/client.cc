@@ -416,7 +416,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::ReshardArrays(
     uint64_t result_handle = rpc_helper_->NextHandle();
     new_arrays.push_back(tsl::MakeRef<Array>(
         this, rpc_helper_, arrays[i]->dtype(), arrays[i]->shape(),
-        specs[i].sharding, ArrayHandle{result_handle}, specs[i].layout));
+        specs[i].sharding(), ArrayHandle{result_handle}, specs[i].layout()));
     req->add_result_handles(result_handle);
   }
 

@@ -600,7 +600,7 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsAndCopyToHostBuffer) {
           {{1},
            {data1->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
             /*on_done_with_host_buffer=*/nullptr}}},
-      /*array_spec=*/{dtype, shape, sharding, /*layout=*/nullptr},
+      ArraySpec(dtype, shape, sharding, /*layout=*/nullptr),
   });
   specs.push_back({
       /*buffers=*/{
@@ -610,7 +610,7 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsAndCopyToHostBuffer) {
           {{1},
            {data0->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
             /*on_done_with_host_buffer=*/nullptr}}},
-      /*array_spec=*/{dtype, shape, sharding, /*layout=*/nullptr},
+      ArraySpec(dtype, shape, sharding, /*layout=*/nullptr),
   });
 
   UserContextScope user_context_scope(test_util::MakeUserContext(100));
@@ -673,14 +673,14 @@ TEST(ArrayImplTest, CopyArraysToHostBufferShardsSingleDevice) {
           {{0},
            {data0.data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
             /*on_done_with_host_buffer=*/nullptr}}},
-      /*array_spec=*/{dtype, shape, sharding, /*layout=*/nullptr},
+      ArraySpec(dtype, shape, sharding, /*layout=*/nullptr),
   });
   make_specs.push_back({
       /*buffers=*/{
           {{0},
            {data1.data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
             /*on_done_with_host_buffer=*/nullptr}}},
-      /*array_spec=*/{dtype, shape, sharding, /*layout=*/nullptr},
+      ArraySpec(dtype, shape, sharding, /*layout=*/nullptr),
   });
 
   ASSERT_OK_AND_ASSIGN(
@@ -748,7 +748,7 @@ TEST(ArrayImplTest, CopyArraysToHostBufferShardsMultiDevice) {
           {{1},
            {data1.data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
             /*on_done_with_host_buffer=*/nullptr}}},
-      /*array_spec=*/{dtype, shape, sharding, /*layout=*/nullptr},
+      ArraySpec(dtype, shape, sharding, /*layout=*/nullptr),
   });
 
   ASSERT_OK_AND_ASSIGN(
@@ -810,7 +810,7 @@ TEST(ArrayImplTest, CopyArraysToHostBufferShardsReplicated) {
           {{0, 1},
            {data.data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
             /*on_done_with_host_buffer=*/nullptr}}},
-      /*array_spec=*/{dtype, shape, sharding, /*layout=*/nullptr},
+      ArraySpec(dtype, shape, sharding, /*layout=*/nullptr),
   });
 
   ASSERT_OK_AND_ASSIGN(
@@ -864,14 +864,14 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsWithDifferentDevices) {
           {{0},
            {data->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
             /*on_done_with_host_buffer=*/nullptr}}},
-      /*array_spec=*/{dtype, shape, sharding0, /*layout=*/nullptr},
+      ArraySpec(dtype, shape, sharding0, /*layout=*/nullptr),
   });
   specs.push_back({
       /*buffers=*/{
           {{0},
            {data->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
             /*on_done_with_host_buffer=*/nullptr}}},
-      /*array_spec=*/{dtype, shape, sharding1, /*layout=*/nullptr},
+      ArraySpec(dtype, shape, sharding1, /*layout=*/nullptr),
   });
 
   absl::Status status;
@@ -920,14 +920,14 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsWithDifferentMemoryKinds) {
           {{0},
            {data->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
             /*on_done_with_host_buffer=*/nullptr}}},
-      /*array_spec=*/{dtype, shape, sharding0, /*layout=*/nullptr},
+      ArraySpec(dtype, shape, sharding0, /*layout=*/nullptr),
   });
   specs.push_back({
       /*buffers=*/{
           {{0},
            {data->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
             /*on_done_with_host_buffer=*/nullptr}}},
-      /*array_spec=*/{dtype, shape, sharding1, /*layout=*/nullptr},
+      ArraySpec(dtype, shape, sharding1, /*layout=*/nullptr),
   });
 
   absl::Status status;
@@ -1277,11 +1277,8 @@ TEST(ArrayImplTest, HostBufferTokens) {
 
     {
       const absl::Status status = absl::InternalError("injected error");
-      const xla::ifrt::ArraySpec array_spec = {
-          /*dtype=*/dtype,
-          /*shape=*/shape,
-          /*sharding=*/sharding,
-      };
+      const xla::ifrt::ArraySpec array_spec(dtype, shape, sharding,
+                                            /*layout=*/nullptr);
       ASSERT_OK_AND_ASSIGN(auto arrays,
                            client->MakeErrorArrays(status, {array_spec}));
       ASSERT_EQ(arrays.size(), 1);
@@ -1302,14 +1299,12 @@ TEST(ArrayImplTest, MakeErrorArrays) {
       client->MakeDeviceList(client->addressable_devices()));
 
   Shape shape({2, 2});
-  ArraySpec array_spec = {
-      /*dtype=*/DType(DType::kS8),
-      /*shape=*/shape,
-      /*sharding=*/
+  ArraySpec array_spec(
+      DType(DType::kS8), shape,
       ConcreteEvenSharding::Create(device_list, MemoryKind(), shape,
                                    /*shard_shape=*/shape,
                                    /*is_fully_replicated=*/true),
-  };
+      /*layout=*/nullptr);
 
   const absl::Status error = absl::InternalError("injected error");
   UserContextScope user_context_scope(test_util::MakeUserContext(100));
@@ -1347,9 +1342,7 @@ TEST(ArrayImplTest, MakeErrorArraysWithAddressableAndNonAddressableDevice) {
       std::move(device_list), MemoryKind(), shape, /*shard_shape=*/shape,
       /*is_fully_replicated=*/true);
 
-  ArraySpec array_spec = {/*dtype=*/DType(DType::kS8),
-                          /*shape=*/shape,
-                          /*sharding=*/sharding};
+  ArraySpec array_spec(DType(DType::kS8), shape, sharding, /*layout=*/nullptr);
 
   const absl::Status error = absl::InternalError("injected error");
   UserContextScope user_context_scope(test_util::MakeUserContext(100));
@@ -1601,7 +1594,7 @@ TEST(ArrayImplTest, BitcastArrays) {
   ShardingRef new_sharding = ConcreteEvenSharding::Create(
       device_list, MemoryKind(), new_shape, new_shard_shape,
       /*is_fully_replicated=*/false);
-  ArraySpec new_array_spec = {dtype, new_shape, new_sharding};
+  ArraySpec new_array_spec(dtype, new_shape, new_sharding, /*layout=*/nullptr);
 
   auto new_arrays =
       client->BitcastArrays(absl::MakeSpan(&array, 1), {new_array_spec},
@@ -1626,13 +1619,13 @@ TEST(ArrayImplTest, BitcastArrays) {
   TF_ASSERT_OK(new_array_status);
 
   // If the bitcast was successful, the output array should have the new spec.
-  ASSERT_EQ(new_arrays->front()->dtype(), new_array_spec.dtype);
-  ASSERT_EQ(new_arrays->front()->shape(), new_array_spec.shape);
+  ASSERT_EQ(new_arrays->front()->dtype(), new_array_spec.dtype());
+  ASSERT_EQ(new_arrays->front()->shape(), new_array_spec.shape());
   ASSERT_EQ(new_arrays->front()->shared_ptr_sharding(),
-            new_array_spec.sharding);
+            new_array_spec.sharding());
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const PjRtLayout> actual_pjrt_layout,
                           new_arrays->front()->pjrt_layout());
-  ASSERT_EQ(actual_pjrt_layout, new_array_spec.layout);
+  ASSERT_EQ(actual_pjrt_layout, new_array_spec.layout());
 
   // The data in the new array should be retrievable using the new spec.
   TF_ASSERT_OK_AND_ASSIGN(
@@ -1968,11 +1961,8 @@ TEST(ArrayImplTest, PoisonedZeroSizedArrays) {
         /*shard_shape=*/shape, /*is_fully_replicated=*/true);
     TF_ASSERT_OK_AND_ASSIGN(
         std::vector<ArrayRef> arrays,
-        client->MakeErrorArrays(error, {{
-                                           /*dtype=*/dtype,
-                                           /*shape=*/shape,
-                                           /*sharding=*/sharding,
-                                       }}));
+        client->MakeErrorArrays(
+            error, {ArraySpec(dtype, shape, sharding, /*layout=*/nullptr)}));
     EXPECT_THAT(arrays[0]->GetReadyFuture().Await(),
                 StatusIs(error.code(), HasSubstr(error.message())));
 
@@ -2059,11 +2049,8 @@ TEST(ArrayImplTest, PoisonedTokenArrays) {
         /*shard_shape=*/shape, /*is_fully_replicated=*/true);
     TF_ASSERT_OK_AND_ASSIGN(
         std::vector<ArrayRef> arrays,
-        client->MakeErrorArrays(error, {{
-                                           /*dtype=*/dtype,
-                                           /*shape=*/shape,
-                                           /*sharding=*/sharding,
-                                       }}));
+        client->MakeErrorArrays(
+            error, {ArraySpec(dtype, shape, sharding, /*layout=*/nullptr)}));
     EXPECT_THAT(arrays[0]->GetReadyFuture().Await(),
                 StatusIs(error.code(), HasSubstr(error.message())));
 
@@ -2206,20 +2193,18 @@ TEST(ArrayImplTest, CopyPoisonedArray) {
                                   " -> ", dst_device->DebugString(), " ",
                                   dst_memory));
 
-        ArraySpec array_spec = {
-            /*dtype=*/DType(DType::kF32),
-            /*shape=*/Shape({2, 3}),
-            /*sharding=*/
+        ArraySpec array_spec(
+            DType(DType::kF32), Shape({2, 3}),
             SingleDeviceSharding::Create(src_device, src_memory->Kind()),
-        };
+            /*layout=*/nullptr);
 
         const absl::Status error = absl::InternalError("injected error");
         TF_ASSERT_OK_AND_ASSIGN(auto arrays,
                                 client->MakeErrorArrays(error, {array_spec}));
 
-        EXPECT_EQ(arrays.front()->dtype(), array_spec.dtype);
-        EXPECT_EQ(arrays.front()->shape(), array_spec.shape);
-        EXPECT_EQ(arrays.front()->sharding(), *array_spec.sharding);
+        EXPECT_EQ(arrays.front()->dtype(), array_spec.dtype());
+        EXPECT_EQ(arrays.front()->shape(), array_spec.shape());
+        EXPECT_EQ(arrays.front()->sharding(), *array_spec.sharding());
         ASSERT_THAT(arrays.front()->GetReadyFuture().Await(),
                     StatusIs(error.code(), HasSubstr(error.message())));
 
