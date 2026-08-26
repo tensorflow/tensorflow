@@ -1794,9 +1794,24 @@ void HLORunnerProfiler::UploadSession() {
 
   CHECK(!dump_path_.empty());
 
-  LOG(INFO) << "Saving xspace result to " << dump_path_;
+  std::string unique_dump_path = dump_path_;
+  if (session_index_ > 0) {
+    absl::string_view stem = dump_path_;
+    absl::string_view suffix = "";
+    const std::string::size_type dot_pos = dump_path_.rfind('.');
+    const std::string::size_type slash_pos = dump_path_.rfind('/');
+    if (dot_pos != std::string::npos &&
+        (slash_pos == std::string::npos || dot_pos > slash_pos)) {
+      suffix = stem.substr(dot_pos);
+      stem = stem.substr(0, dot_pos);
+    }
+    unique_dump_path = absl::StrCat(stem, "_", session_index_, suffix);
+  }
+  ++session_index_;
+
+  LOG(INFO) << "Saving xspace result to " << unique_dump_path;
   // Save in binary format to create xprof sessions and extract device stats.
-  CHECK_OK(WriteBinaryProto(tsl::Env::Default(), dump_path_, *xspace_.get()));
+  CHECK_OK(WriteBinaryProto(tsl::Env::Default(), unique_dump_path, *xspace_));
   if (!keep_xspace_) {
     xspace_ = nullptr;
   }
