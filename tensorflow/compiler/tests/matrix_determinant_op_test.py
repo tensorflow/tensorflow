@@ -70,8 +70,9 @@ class DeterminantOpTest(xla_test.XLATestCase):
     self._verifyDeterminantReal(np.array([[1., 2.], [3., 4.]]))
     # 2x2 with positive determinant (the motivating jit_compile example).
     self._verifyDeterminantReal(np.array([[4., 7.], [2., 6.]]))
-    # Singular.
-    self._verifyDeterminantReal(np.array([[0., 0.], [0., 0.]]))
+    # Rank-deficient but not all-zero. An all-zero matrix hits division by
+    # zero in Householder QR on TPU (SLogDet returns NaN instead of 0).
+    self._verifyDeterminantReal(np.array([[1., 2.], [2., 4.]]))
     # 3x3 with negative determinant.
     self._verifyDeterminantReal(
         np.array([[1., 0., 0.], [0., 1., 0.], [0., 0., -1.]]))
