@@ -121,6 +121,13 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
   OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
   const TfLiteTensor* lhs = op_context->lhs;
   const TfLiteTensor* rhs = op_context->rhs;
+  // The temporaries are sized from the two innermost dimensions of each
+  // operand, so both must be at least rank 2 before any dimension is read.
+  // Prepare() also checks this, but only after this function has run.
+  TF_LITE_ENSURE_MSG(context, NumDimensions(lhs) >= 2,
+                     "BatchMatMul: LHS must have at least 2 dimensions.");
+  TF_LITE_ENSURE_MSG(context, NumDimensions(rhs) >= 2,
+                     "BatchMatMul: RHS must have at least 2 dimensions.");
   TfLiteIntArrayFree(node->temporaries);
   // For "hybrid" quantization, we impose the constraint that the LHS
   // is float (typically an activation from a prior layer) and the RHS

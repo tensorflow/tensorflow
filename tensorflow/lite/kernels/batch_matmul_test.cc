@@ -84,6 +84,23 @@ class BatchMatMulOpModel : public SingleOpModel {
   int output_id_;
 };
 
+#if GTEST_HAS_DEATH_TEST
+// InitializeTemporaries sizes the scratch buffers from the two innermost
+// dimensions of each operand, so a rank-1 operand must be rejected before any
+// dimension is read.
+TEST(BatchMatMulOpTest, RejectsRankOneLhs) {
+  EXPECT_DEATH(BatchMatMulOpModel<float>({TensorType_FLOAT32, {4}},
+                                         {TensorType_FLOAT32, {4, 2}}),
+               "LHS must have at least 2 dimensions");
+}
+
+TEST(BatchMatMulOpTest, RejectsRankOneRhs) {
+  EXPECT_DEATH(BatchMatMulOpModel<float>({TensorType_FLOAT32, {2, 4}},
+                                         {TensorType_FLOAT32, {4}}),
+               "RHS must have at least 2 dimensions");
+}
+#endif  // GTEST_HAS_DEATH_TEST
+
 TEST(BatchMatMulOpTest, Float32Test_Ones) {
   BatchMatMulOpModel<float> model({TensorType_FLOAT32, {3, 2, 1, 4}},
                                   {TensorType_FLOAT32, {3, 1, 4, 1}});
