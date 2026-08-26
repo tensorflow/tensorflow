@@ -823,8 +823,11 @@ def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
   a = asarray(a)
   maybe_rank = a.shape.rank
   if axis is not None and maybe_rank is not None:
-    normalized = axis + maybe_rank if axis < 0 else axis
-    if normalized < 0 or normalized >= maybe_rank:
+    # NumPy accepts axes -1 and 0 on 0-d inputs (it flattens them to
+    # 1-D of size 1), so validate against max(rank, 1).
+    validation_rank = max(maybe_rank, 1)
+    normalized = axis + validation_rank if axis < 0 else axis
+    if normalized < 0 or normalized >= validation_rank:
       raise ValueError(
           f'Argument `axis` (received axis={axis}) is out of bounds '
           f'for input {a} of rank {maybe_rank}.'
