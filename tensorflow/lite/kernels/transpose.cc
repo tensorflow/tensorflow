@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
-#include <vector>
 
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
@@ -54,17 +53,23 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
   // `perm` must be a permutation of [0, dims), not merely a set of in-range
   // values: the output shape and the element offsets are both derived from it,
   // and a repeated entry makes them disagree with the input extent.
-  std::vector<bool> seen(dims, false);
+  // `dims` is bounded by kTransposeMaxDimensions, which Prepare() enforces
+  // before this function is reachable, so a 64-bit mask is sufficient and
+  // avoids a heap allocation in the kernel.
+  static_assert(kTransposeMaxDimensions <= 64,
+                "Permutation bitmask assumes at most 64 dimensions.");
+  uint64_t seen = 0;
   for (int idx = 0; idx < dims; ++idx) {
     TF_LITE_ENSURE_MSG(context,
                        (perm_data[idx] >= -dims && perm_data[idx] < dims),
                        "Transpose op permutations array is out of bounds.");
     new_perm_data[idx] = perm_data[idx];
     if (new_perm_data[idx] < 0) new_perm_data[idx] += dims;
+    const uint64_t bit = uint64_t{1} << new_perm_data[idx];
     TF_LITE_ENSURE_MSG(
-        context, !seen[new_perm_data[idx]],
+        context, (seen & bit) == 0,
         "Transpose op permutations array must not contain duplicate values.");
-    seen[new_perm_data[idx]] = true;
+    seen |= bit;
   }
 
   // Determine size of output tensor.
