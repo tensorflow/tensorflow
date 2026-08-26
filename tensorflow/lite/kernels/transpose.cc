@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
+#include <vector>
 
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
@@ -50,12 +51,20 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
   // Ensure validity of the permutations tensor as a 1D tensor.
   TF_LITE_ENSURE_EQ(context, NumDimensions(op_context->perm), 1);
   TF_LITE_ENSURE_EQ(context, op_context->perm->dims->data[0], dims);
+  // `perm` must be a permutation of [0, dims), not merely a set of in-range
+  // values: the output shape and the element offsets are both derived from it,
+  // and a repeated entry makes them disagree with the input extent.
+  std::vector<bool> seen(dims, false);
   for (int idx = 0; idx < dims; ++idx) {
     TF_LITE_ENSURE_MSG(context,
                        (perm_data[idx] >= -dims && perm_data[idx] < dims),
                        "Transpose op permutations array is out of bounds.");
     new_perm_data[idx] = perm_data[idx];
     if (new_perm_data[idx] < 0) new_perm_data[idx] += dims;
+    TF_LITE_ENSURE_MSG(
+        context, !seen[new_perm_data[idx]],
+        "Transpose op permutations array must not contain duplicate values.");
+    seen[new_perm_data[idx]] = true;
   }
 
   // Determine size of output tensor.
