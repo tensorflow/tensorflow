@@ -26,6 +26,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.test_util import TensorFlowTestCase
+from tensorflow.python.ops import array_ops
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
 from tensorflow.python.ops import gen_training_ops
 from tensorflow.python.ops import math_ops
@@ -651,37 +652,47 @@ class TrainingOpsTest(TensorFlowTestCase):
     # The narrower dtypes are the mixed-precision shape of the same bug, and
     # the one the two issues actually report: a float32 training op applied to
     # a half or bfloat16 variable.
-    for var_dtype, dtype_name in (
-        (np.float64, 'double'),
-        (dtypes.bfloat16.as_numpy_dtype, 'bfloat16'),
-        (np.float16, 'half'),
-    ):
-      var, accum = [
-          variables.Variable(np.ones((4, 2), var_dtype)) for _ in range(2)
-      ]
-      self.evaluate(variables.global_variables_initializer())
-      s = np.float32(0.1)
-      grad = np.zeros((4, 2), np.float32)
-      sparse_grad = np.zeros((1, 2), np.float32)
-      idx = constant_op.constant([0], dtypes.int32)
-      g = gen_training_ops
-      cases = [
-          lambda: g.resource_apply_gradient_descent(var.handle, s, grad),  # pylint: disable=cell-var-from-loop
-          lambda: g.resource_apply_adagrad(var.handle, accum.handle, s, grad),  # pylint: disable=cell-var-from-loop
-          lambda: g.resource_sparse_apply_adagrad(  # pylint: disable=cell-var-from-loop
-              var.handle, accum.handle, s, sparse_grad, idx
-          ),
-          lambda: g.resource_sparse_apply_momentum(  # pylint: disable=cell-var-from-loop
-              var.handle, accum.handle, s, sparse_grad, idx, s
-          ),
-      ]
-      for apply_op in cases:
-        with self.assertRaisesRegex(
-            errors.InvalidArgumentError,
-            'Trying to read a resource variable of dtype %s as float'
-            % dtype_name,
-        ):
-          self.evaluate(apply_op())
+    #
+    # Pinned to CPU, variables included: ResourceSparseApplyMomentum is
+    # registered only on DEVICE_CPU, so on a GPU runner eager mode places it on
+    # GPU and fails with a "no kernel registered" InvalidArgumentError before
+    # reaching the dtype check under test. Scoping the variables as well keeps
+    # the resource on the same device as the kernel that reads it.
+    with ops.device('/CPU:0'):
+      for var_dtype, dtype_name in (
+          (dtypes.float64, 'double'),
+          (dtypes.bfloat16, 'bfloat16'),
+          (dtypes.float16, 'half'),
+      ):
+        var = resource_variable_ops.ResourceVariable(
+            array_ops.ones((4, 2), dtype=var_dtype)
+        )
+        accum = resource_variable_ops.ResourceVariable(
+            array_ops.ones((4, 2), dtype=var_dtype)
+        )
+        self.evaluate(variables.global_variables_initializer())
+        s = np.float32(0.1)
+        grad = np.zeros((4, 2), np.float32)
+        sparse_grad = np.zeros((1, 2), np.float32)
+        idx = constant_op.constant([0], dtypes.int32)
+        g = gen_training_ops
+        cases = [
+            lambda: g.resource_apply_gradient_descent(var.handle, s, grad),  # pylint: disable=cell-var-from-loop
+            lambda: g.resource_apply_adagrad(var.handle, accum.handle, s, grad),  # pylint: disable=cell-var-from-loop
+            lambda: g.resource_sparse_apply_adagrad(  # pylint: disable=cell-var-from-loop
+                var.handle, accum.handle, s, sparse_grad, idx
+            ),
+            lambda: g.resource_sparse_apply_momentum(  # pylint: disable=cell-var-from-loop
+                var.handle, accum.handle, s, sparse_grad, idx, s
+            ),
+        ]
+        for apply_op in cases:
+          with self.assertRaisesRegex(
+              errors.InvalidArgumentError,
+              'Trying to read a resource variable of dtype %s as float'
+              % dtype_name,
+          ):
+            self.evaluate(apply_op())
 
 
 if __name__ == '__main__':
