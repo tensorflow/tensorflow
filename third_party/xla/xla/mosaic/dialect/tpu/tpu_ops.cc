@@ -248,13 +248,8 @@ LogicalResult MemRefSliceOp::verify() {
   }
   // TODO(apaszke): Check that the result has a smaller shape.
   // TODO(apaszke): Check that strides are equivalent.
-  // Source and target memory spaces may be different before propagation is done
-  // by memory space specialization.
-  bool is_target_memory_space_provided = target_memory_space != nullptr;
-  if (is_target_memory_space_provided &&
-      target_memory_space != source_type.getMemorySpace()) {
-    return emitOpError(
-        "Memory spaces must match if the target memory space is provided.");
+  if (target_memory_space != source_type.getMemorySpace()) {
+    return emitOpError("Memory spaces do not match.");
   }
   if (isa<TiledLayoutAttr>(source_layout) !=
       isa<TiledLayoutAttr>(target_layout)) {
@@ -419,8 +414,7 @@ LogicalResult MemRefSqueezeOp::verify() {
   MemRefType source_type = getInput().getType();
   MemRefType target_type = getType();
 
-  if (target_type.getMemorySpace() != nullptr &&
-      target_type.getMemorySpace() != source_type.getMemorySpace()) {
+  if (target_type.getMemorySpace() != source_type.getMemorySpace()) {
     return emitOpError("Memory spaces do not match.");
   }
 
@@ -569,8 +563,7 @@ void MemRefSqueezeOp::getCanonicalizationPatterns(RewritePatternSet& results,
 LogicalResult MemRefReshapeOp::verify() {
   auto src_ty = getInput().getType();
   auto tgt_ty = getType();
-  if (tgt_ty.getMemorySpace() != nullptr &&
-      tgt_ty.getMemorySpace() != src_ty.getMemorySpace()) {
+  if (tgt_ty.getMemorySpace() != src_ty.getMemorySpace()) {
     return emitOpError("Memory spaces do not match.");
   }
   if (src_ty.getShape().size() < 2 || tgt_ty.getShape().size() < 2) {
@@ -673,10 +666,9 @@ LogicalResult TransposeOp::verify() {
 }
 
 LogicalResult MemRefBitcastOp::verify() {
-  auto src_ty = getMemRefType(getInput());
+  auto src_ty = getInput().getType();
   auto tgt_ty = getType();
-  if (tgt_ty.getMemorySpace() != nullptr &&
-      tgt_ty.getMemorySpace() != src_ty.getMemorySpace()) {
+  if (tgt_ty.getMemorySpace() != src_ty.getMemorySpace()) {
     return emitOpError("Memory spaces do not match.");
   }
   if (src_ty.getRank() != tgt_ty.getRank()) {
@@ -990,6 +982,19 @@ LogicalResult EraseLayoutOp::verify() {
   }
   if (operand_type.getLayout() == nullptr) {
     return emitOpError("Memref layout must be erased");
+  }
+  return success();
+}
+
+LogicalResult AnnotateOp::verify() {
+  if (getNoStore() + getNoHazard() + getNoHazardNoDeps() > 1) {
+    return emitOpError(
+        "At most one of no_store, no_hazard, or no_hazard_no_deps can be set");
+  }
+  auto memref_ty = cast<MemRefType>(getOperand().getType());
+  if ((getNoHazard() || getNoHazardNoDeps()) &&
+      !HasMemorySpace(memref_ty, MemorySpace::kVmem)) {
+    return emitOpError("Hazard overrides are only valid for VMEM allocations");
   }
   return success();
 }

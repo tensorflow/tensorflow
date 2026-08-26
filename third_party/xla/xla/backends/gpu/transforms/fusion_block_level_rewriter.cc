@@ -155,6 +155,14 @@ bool ShouldRewriteReductionFusion(
   return true;
 }
 
+bool IsScanFusion(const HloFusionInstruction* fusion) {
+  const HloInstruction* root =
+      fusion->fused_instructions_computation()->root_instruction();
+  return root->opcode() == HloOpcode::kGetTupleElement &&
+         root->operand(0)->opcode() == HloOpcode::kScan &&
+         root->tuple_index() == 0;
+}
+
 absl::StatusOr<bool> ShouldTryRewriteFusion(
     const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_description) {
@@ -183,6 +191,12 @@ absl::StatusOr<bool> ShouldTryRewriteFusion(
     return false;
   }
 
+  // Scan fusions require the new tiling propagation infrastructure.
+  if (IsScanFusion(fusion) &&
+      !debug_options.xla_gpu_experimental_enable_tiling_propagation()) {
+    return false;
+  }
+
   if (debug_options.xla_gpu_experimental_enable_fusion_block_level_rewriter()) {
     return true;
   }
@@ -190,7 +204,8 @@ absl::StatusOr<bool> ShouldTryRewriteFusion(
   // TODO(b/370690811): ShouldRewriteLoopTransposeFusion rewrite may no longer
   // be necessary once MLIR emitters transposes are faster.
   return ShouldRewriteLoopTransposeFusion(fusion, device_description) ||
-         ShouldRewriteReductionFusion(fusion, device_description);
+         ShouldRewriteReductionFusion(fusion, device_description) ||
+         IsScanFusion(fusion);
 }
 
 absl::StatusOr<bool> ProcessFusionInstruction(

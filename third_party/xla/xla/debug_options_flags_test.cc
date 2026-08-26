@@ -410,5 +410,57 @@ TEST(DebugOptions, HloCustomCallAllowlistProtoRoundTrip) {
               ElementsAre("foo", "bar"));
 }
 
+// -------------------------------------------------------------------------
+// xla_disable_hlo_passes / xla_enable_hlo_passes_only flag setter tests
+// (feature: richer entry syntax with occurrence / scope / pass_id).
+// -------------------------------------------------------------------------
+
+// Helper that parses a single --xla_disable_hlo_passes value and returns the
+// parse result together with the resulting DebugOptions.
+std::pair<bool, DebugOptions> ParseDisableHloPassesFlag(
+    const std::string& value) {
+  DebugOptions opts;
+  std::vector<tsl::Flag> flags;
+  MakeDebugOptionsFlags(&flags, &opts);
+  std::vector<std::string> flag_args = {"--xla_disable_hlo_passes=" + value};
+  bool ok = tsl::Flags::Parse(flag_args, flags);
+  return {ok, opts};
+}
+
+std::pair<bool, DebugOptions> ParseEnableHloPassesOnlyFlag(
+    const std::string& value) {
+  DebugOptions opts;
+  std::vector<tsl::Flag> flags;
+  MakeDebugOptionsFlags(&flags, &opts);
+  std::vector<std::string> flag_args = {"--xla_enable_hlo_passes_only=" +
+                                        value};
+  bool ok = tsl::Flags::Parse(flag_args, flags);
+  return {ok, opts};
+}
+
+// All five supported entry formats parse successfully.
+TEST(DebugOptions, DisableHloPassesRichSyntaxIsAccepted) {
+  auto [ok, opts] = ParseDisableHloPassesFlag(
+      "algsimp,algsimp:2,simplification/algsimp,simplification/algsimp:2,@42");
+  EXPECT_TRUE(ok);
+  EXPECT_THAT(opts.xla_disable_hlo_passes(),
+              ElementsAre("algsimp", "algsimp:2", "simplification/algsimp",
+                          "simplification/algsimp:2", "@42"));
+}
+
+TEST(DebugOptions, EnableHloPassesOnlyRichSyntaxIsAccepted) {
+  auto [ok, opts] = ParseEnableHloPassesOnlyFlag("simplification/algsimp:2,@7");
+  EXPECT_TRUE(ok);
+  EXPECT_THAT(opts.xla_enable_hlo_passes_only(),
+              ElementsAre("simplification/algsimp:2", "@7"));
+}
+
+// Malformed entries are rejected at flag-parse time.
+TEST(DebugOptions, DisableHloPassesRejectsMalformedEntries) {
+  EXPECT_FALSE(ParseDisableHloPassesFlag("@notanumber").first);
+  EXPECT_FALSE(ParseDisableHloPassesFlag("algsimp:notanumber").first);
+  EXPECT_FALSE(ParseEnableHloPassesOnlyFlag("@").first);
+}
+
 }  // namespace
 }  // namespace xla

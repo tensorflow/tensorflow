@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/memory_space.h"
@@ -70,10 +71,10 @@ se::StreamExecutor* GpuExecutor() {
 }
 
 absl::StatusOr<std::unique_ptr<HostExecuteStartThunk>>
-CreateHostExecuteStartThunk(
-    Thunk::ThunkInfo thunk_info, const HloModule& hlo_module,
-    absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> args,
-    absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> results) {
+CreateHostExecuteStartThunk(Thunk::ThunkInfo thunk_info,
+                            const HloModule& hlo_module,
+                            absl::InlinedVector<ShapedSlice, 4> args,
+                            absl::InlinedVector<ShapedSlice, 4> results) {
   HostOffloadingExecutableProto host_offloading_executable_proto;
   *host_offloading_executable_proto.mutable_hlo_module() = hlo_module.ToProto();
   host_offloading_executable_proto.set_executable_type(

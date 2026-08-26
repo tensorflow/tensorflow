@@ -196,7 +196,9 @@ absl::Status InMemoryStore::DumpToFile(absl::string_view file_path) {
 
   std::string serialized;
   if (IsTextProtoPath(file_path)) {
-    if (!tsl::protobuf::TextFormat::PrintToString(cache, &serialized)) {
+    tsl::protobuf::TextFormat::Printer printer;
+    printer.SetExpandAny(true);
+    if (!printer.PrintToString(cache, &serialized)) {
       return absl::InternalError(absl::StrCat(
           "Failed to serialize AutotuneCache proto as textproto: ", file_path));
     }

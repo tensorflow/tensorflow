@@ -106,7 +106,7 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/service:compilation_environments",
-        "//xla/service:computation_placer",
+        "//xla/service:device_assignment",
         "//xla/service:gpu_topology",
         "//xla/service:test_compilation_environment_proto_cc",
         "//xla/tsl/lib/core:status_test_util",

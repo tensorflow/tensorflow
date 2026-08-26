@@ -33,10 +33,12 @@ limitations under the License.
 
 #include <Python.h>
 
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 #include "tensorflow/python/util/function_parameter_canonicalizer.h"
 
@@ -56,8 +58,9 @@ class PySignatureChecker;
 // checks if any registered target matches parameters, and if so, then calls
 // that target.
 //
-// This class is *not* thread-safe.  It is assumed that the Python Global
-// Interpreter Lock (GIL) will be held when any method is called.
+// This class supports concurrent use in free-threaded Python builds.
+// Internal mutable state is synchronized, and Python object lifetimes used
+// across concurrent operations are protected with owned references/snapshots.
 class PythonAPIDispatcher {
   // TODO(b/196369143) Add benchmarking for this class.
  public:
@@ -97,6 +100,10 @@ class PythonAPIDispatcher {
  private:
   // Name of the API.
   std::string api_name_;
+
+  // Protects access to targets_. Stored indirectly so the dispatcher remains
+  // movable when returned by value from the pybind constructor factory.
+  std::unique_ptr<absl::Mutex> targets_mu_;
 
   // Mapping from signature checkers to dispatch targets.
   std::vector<std::pair<PySignatureChecker, Safe_PyObjectPtr>> targets_;
@@ -207,15 +214,19 @@ class PyInstanceChecker : public PyTypeChecker {
   std::string DebugString() const override;
 
   // Size of the cache (for regression testing).
-  size_t cache_size() const { return py_class_cache_.size(); }
+  size_t cache_size() const {
+    absl::MutexLock lock(py_class_cache_mu_.get());
+    return py_class_cache_.size();
+  }
 
  private:
   // Python class to check values against.
   std::vector<Safe_PyObjectPtr> py_classes_;
 
-  // Cache to avoid having to call PyObject_IsInstance.  Note: we rely on the
-  // Python GIL (global interpreter lock) to avoid concurrent writes to this
-  // cache, since `Check()` is always called from Python (via pybind11).
+  // Protects access to py_class_cache_.
+  std::unique_ptr<absl::Mutex> py_class_cache_mu_;
+
+  // Cache to avoid having to call PyObject_IsInstance.
   absl::flat_hash_map<PyTypeObject*, MatchType> py_class_cache_;
 
   // Maximum cache size.  In typical user programs, the cache will never become

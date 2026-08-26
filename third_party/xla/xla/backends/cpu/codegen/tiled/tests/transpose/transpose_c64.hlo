@@ -50,9 +50,8 @@ fusion {
 
 // NEW-VECTOR: %[[PAD:.*]] = arith.constant 0.000000e+00 : f32
 // NEW-VECTOR: scf.for
-// NEW-VECTOR: vector.transfer_read %[[ARG0]][%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}], %[[PAD]] {{.*}} : memref<16x40x40x64x2xf32>, vector<16x1x1x16x2xf32>
 // NEW-VECTOR: %[[TRANSPOSE:.*]] = vector.transpose %{{.*}}, [3, 1, 2, 0, 4] : vector<16x1x1x16x2xf32> to vector<16x1x1x16x2xf32>
-// NEW-VECTOR: vector.transfer_write %[[TRANSPOSE]], %[[ARG1]][%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}] {{.*}} : vector<16x1x1x16x2xf32>, memref<64x40x40x16x2xf32>
+// NEW-VECTOR: vector.transfer_write %{{.*}}, %[[ARG1]][%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}] {{.*}} : vector<16x1x1x16x2xf32>, memref<64x40x40x16x2xf32>
 
 ENTRY main {
   p0 = c64[16,40,40,64]{3,2,1,0} parameter(0)

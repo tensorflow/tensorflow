@@ -1229,6 +1229,51 @@ struct TrackerInfo {
   int64_t dot_operand_index;
 };
 
+FusionDecision ShouldFuseConcat(const HloInstruction& concat,
+                                const HloInstruction& fusion,
+                                const TrackerInfo& tracker) {
+  constexpr int kMinConcatFragmentSize = 64;
+  if (absl::c_any_of(
+          concat.operands(), [&concat](const HloInstruction* operand) {
+            return operand->shape().dimensions(concat.concatenate_dimension()) %
+                       kMinConcatFragmentSize !=
+                   0;
+          })) {
+    return FusionDecision::Forbid(
+        "At least one operand of concatenation cannot be perfectly tiled.");
+  }
+
+  const HloInstruction* dot = hlo_query::FindInstruction(
+      fusion.fused_instructions_computation(), HloOpcode::kDot);
+  if (dot == nullptr) {
+    return FusionDecision::Forbid("Dot not found in fusion.");
+  }
+
+  int64_t concat_dim = concat.concatenate_dimension();
+  std::optional<std::vector<int64_t>> mapped_dims =
+      tracker.tracker.MapInputDimensionsToOutputUnordered({concat_dim});
+
+  if (!mapped_dims.has_value() || mapped_dims->size() != 1) {
+    return FusionDecision::Forbid(
+        "Failed to map concat dimension to dot operand dimension.");
+  }
+  int64_t mapped_dim = (*mapped_dims)[0];
+
+  auto dims = DotOperandDims::FromDotOperand(dot, tracker.dot_operand_index);
+  if (!dims.ok()) {
+    return FusionDecision::Forbid("Failed to get dot operand dims.");
+  }
+
+  absl::Span<const int64_t> contracting =
+      dims->Indices(DotOperandDims::kContracting);
+  if (absl::c_linear_search(contracting, mapped_dim)) {
+    return FusionDecision::Forbid(
+        "Not fusing concatenate along contracting dimension.");
+  }
+
+  return FusionDecision::Allow();
+}
+
 FusionDecision ShouldFuseTranspose(const HloInstruction& transpose,
                                    const HloInstruction& fusion,
                                    const TrackerInfo& tracker) {
@@ -1281,13 +1326,18 @@ FusionDecision ShouldFuseOperand(HloInstruction* operand,
   if (parameter_count > TritonFusionAnalysis::kMaxParameterPerDotOperand * 2) {
     return FusionDecision::Forbid("Too many parameters.");
   }
-
-  switch (original_operand.opcode()) {
+  switch (operand->opcode()) {
     case HloOpcode::kTranspose:
       if (!tracker.has_value()) {
         return FusionDecision::Forbid("No shape tracker found for transpose.");
       }
       return ShouldFuseTranspose(*operand, *fusion, *tracker);
+    case HloOpcode::kConcatenate:
+      if (!tracker.has_value()) {
+        return FusionDecision::Forbid(
+            "No shape tracker found for concatenate.");
+      }
+      return ShouldFuseConcat(*operand, *fusion, *tracker);
     default:
       break;
   }

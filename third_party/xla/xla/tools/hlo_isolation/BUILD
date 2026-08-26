@@ -102,7 +102,7 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
-        "//xla/service:computation_placer",
+        "//xla/service:device_assignment",
         "//xla/service:hlo_runner_interface",
         "//xla/tests:hlo_interpreter_reference_mixin",
         "//xla/tests:hlo_test_base",

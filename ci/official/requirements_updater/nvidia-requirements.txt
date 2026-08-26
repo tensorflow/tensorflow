@@ -7,7 +7,7 @@ nvidia-cuda-runtime-cu12>=12.5.82,<13.0
 # The upper bound is set for the CUDNN API compatibility.
 # See
 # https://docs.nvidia.com/deeplearning/cudnn/backend/latest/developer/forward-compatibility.html#cudnn-api-compatibility
-nvidia-cudnn-cu12>=9.3.0.75,<10.0
+nvidia-cudnn-cu12>=9.10.2.21,<10.0
 nvidia-cufft-cu12>=11.2.3.61,<12.0
 nvidia-curand-cu12>=10.3.6.82,<11.0
 nvidia-cusolver-cu12>=11.6.3.83,<12.0

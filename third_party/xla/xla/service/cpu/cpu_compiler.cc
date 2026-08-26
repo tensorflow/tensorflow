@@ -1135,6 +1135,11 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
   }();
 
+  // Safeguard for late elemental instructions created during post-layout
+  // simplification.
+  pipeline.AddPass<FusionWrapper>(use_experimental_loop_fusion,
+                                  use_tiled_emitter, target_machine_features);
+
   // Outline ops in the entry computation into calls to subcomputations.
   if (!is_aot_compile) {
     // Run ParallelTaskAssigner to assign parallel tasks to HLOs in module.
@@ -2268,6 +2273,9 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
       IrCompiler::GetCodeGenOptLevel(hlo_module->config());
   llvm::TargetOptions target_options =
       CompilerTargetOptions(hlo_module->config());
+  if (options.sanitize_memory()) {
+    target_options.EmulatedTLS = true;
+  }
   auto target_machine_builder = [&]() {
     return absl::WrapUnique(target->createTargetMachine(
         triple, options.cpu_name(), options.features(), target_options,
@@ -2345,6 +2353,8 @@ CpuCompiler::CompileAheadOfTimeThunks(
       options::DisableLoopUnrolling(module->config()),
       /*disable_platform_dependent_math=*/
       options::DisablePlatformDependentMath(module->config()) || fast_compile,
+      /*msan_enabled=*/aot_options.sanitize_memory(),
+      /*msan_track_origins=*/aot_options.sanitize_memory_track_origins(),
       /*dfsan_enabled=*/aot_options.sanitize_dataflow(),
       /*dfsan_abilists_enabled=*/aot_options.sanitize_abilists_dataflow()};
 

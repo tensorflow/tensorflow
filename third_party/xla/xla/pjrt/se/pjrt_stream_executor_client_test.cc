@@ -36,6 +36,8 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
+#include "riegeli/base/any.h"
+#include "riegeli/bytes/reader.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
@@ -54,6 +56,7 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
 #include "xla/pjrt/se/local_device_state.h"
+#include "xla/pjrt/se/stream_executor_executable.h"
 #include "xla/pjrt/se/stream_executor_platform_id_mapping.h"
 #include "xla/pjrt/thread_pool_async_work_runner.h"
 #include "xla/runtime/device_id.h"
@@ -78,9 +81,9 @@ namespace xla {
 
 class StreamExecutorCpuCompiler : public PjRtCompiler {
  public:
-  virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, const XlaComputation& computation,
-      const PjRtTopologyDescription& topology, PjRtClient* client) {
+      const PjRtTopologyDescription& topology, PjRtClient* client) override {
     PjRtStreamExecutorRawClient* raw_client = nullptr;
     if (auto* common_client = dynamic_cast<CommonPjRtClient*>(client)) {
       raw_client = dynamic_cast<PjRtStreamExecutorRawClient*>(
@@ -97,9 +100,9 @@ class StreamExecutorCpuCompiler : public PjRtCompiler {
         client->key_value_store(), local_topology, topology);
   }
 
-  virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, MaybeOwningMlirModule module,
-      const PjRtTopologyDescription& topology, PjRtClient* client) {
+      const PjRtTopologyDescription& topology, PjRtClient* client) override {
     PjRtStreamExecutorRawClient* raw_client = nullptr;
     if (auto* common_client = dynamic_cast<CommonPjRtClient*>(client)) {
       raw_client = dynamic_cast<PjRtStreamExecutorRawClient*>(
@@ -114,6 +117,14 @@ class StreamExecutorCpuCompiler : public PjRtCompiler {
     return raw_client->CrossCompile(
         std::move(module), std::move(options), client->process_index(),
         client->key_value_store(), local_topology, topology);
+  }
+
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+      const PjRtTopologyDescription& topology,
+      riegeli::Any<riegeli::Reader*> reader,
+      std::optional<CompileOptions>&& options) override {
+    return StreamExecutorExecutable::Deserialize(std::move(reader), topology,
+                                                 std::move(options));
   }
 };
 

@@ -221,7 +221,7 @@ EOF
     --@local_config_cuda//:enable_cuda \
     --@local_config_cuda//cuda:include_cuda_libs=false \
     --repo_env=HERMETIC_CUDA_VERSION="12.5.1" \
-    --repo_env=HERMETIC_CUDNN_VERSION="9.3.0" \
+    --repo_env=HERMETIC_CUDNN_VERSION="9.10.0" \
     --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5" \
     --repo_env=HERMETIC_NCCL_VERSION="2.29.7" \
     "somepath(//tensorflow/tools/pip_package:wheel, " \
@@ -247,7 +247,7 @@ EOF
     --@local_config_cuda//:enable_cuda \
     --@local_config_cuda//cuda:include_cuda_libs=false \
     --repo_env=HERMETIC_CUDA_VERSION="12.5.1" \
-    --repo_env=HERMETIC_CUDNN_VERSION="9.3.0" \
+    --repo_env=HERMETIC_CUDNN_VERSION="9.10.0" \
     --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5" \
     --repo_env=HERMETIC_NCCL_VERSION="2.29.7" \
     --define framework_shared_object=false \
@@ -322,7 +322,7 @@ EOF
 
 # See b/279852433 (internal).
 @test "Verify that it's possible to query every TensorFlow target without BUILD errors" {
-    bazel query --keep_going --deleted_packages=tensorflow/tools/toolchains/win/20240424,tensorflow/tools/toolchains/win/tf_win_05022023,tensorflow/tools/toolchains/win/bazel_211,tensorflow/tools/toolchains/win2022/20260322,tensorflow/tools/toolchains/win2022/20241118,tensorflow/tools/lib_package "deps(//tensorflow/... - attr(tags, 'manual|no_oss|gpu|metal|tflite|android|ios', //tensorflow/...) - //tensorflow/tools/pip_package:prebuilt_tf_py_import - //tensorflow/tools/pip_package:prebuilt_tf_py_import_unpacked_wheel)" > /dev/null
+    bazel query --keep_going --deleted_packages=tensorflow/tools/toolchains/win/20240424,tensorflow/tools/toolchains/win/tf_win_05022023,tensorflow/tools/toolchains/win/bazel_211,tensorflow/tools/toolchains/win2022/20260322,tensorflow/tools/toolchains/win2022/20241118,tensorflow/tools/toolchains/win2022/t20260812,tensorflow/tools/lib_package "deps(//tensorflow/... - attr(tags, 'manual|no_oss|gpu|metal|tflite|android|ios', //tensorflow/...) - //tensorflow/tools/pip_package:prebuilt_tf_py_import - //tensorflow/tools/pip_package:prebuilt_tf_py_import_unpacked_wheel)" > /dev/null
 }
 
 teardown_file() {

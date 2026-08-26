@@ -1303,6 +1303,7 @@ cc_library(
             ":xla_data_proto_cc",
             ":xla_proto_cc",
             "//xla/backends/autotuner:backends_proto_cc",
+            "//xla/hlo/pass:hlo_pass_filter",
             "//xla/service:collective_utils",
             "//xla/stream_executor/cuda:nvjitlink_support",
             "//xla/stream_executor/cuda:ptx_compiler_support",

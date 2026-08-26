@@ -24,6 +24,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_math_ops
@@ -374,6 +375,54 @@ class MathTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(error_types, error_pattern):
       compiled_close_fn(a, b)
 
+  def testCrossXlaUnknownBatchDim(self):
+    # The batch dimension is unknown at trace time while the last dimension
+    # is statically 3 (or 2). The padding and output selection in cross must
+    # resolve from the static last dimension rather than through tf.cond,
+    # otherwise XLA cannot infer the shape of the Cross operands and fails
+    # to compile even though the input is a valid 3-element vector.
+    if not test_util.is_xla_enabled():
+      self.skipTest('XLA JIT compiler is not enabled in this test environment.')
+    a = np.arange(6, dtype=np.float32).reshape(2, 3)
+    b = np.arange(6, 12, dtype=np.float32).reshape(2, 3)
+
+    compiled_cross = def_function.function(
+        np_math_ops.cross,
+        jit_compile=True,
+        input_signature=[
+            tensor.TensorSpec([None, 3], np.float32),
+            tensor.TensorSpec([None, 3], np.float32),
+        ],
+    )
+    self.match(compiled_cross(a, b), np.cross(a, b), check_dtype=False)
+
+    # A statically 2-element last dimension pads to 3 and returns the z
+    # component only.
+    a2 = np.arange(4, dtype=np.float32).reshape(2, 2)
+    b2 = np.arange(4, 8, dtype=np.float32).reshape(2, 2)
+    compiled_cross_2 = def_function.function(
+        np_math_ops.cross,
+        jit_compile=True,
+        input_signature=[
+            tensor.TensorSpec([None, 2], np.float32),
+            tensor.TensorSpec([None, 2], np.float32),
+        ],
+    )
+    self.match(compiled_cross_2(a2, b2), np.cross(a2, b2), check_dtype=False)
+
+  def testCrossDynamicUnknownBatchDim(self):
+    # A fully dynamic shape still works outside of jit compilation.
+    a = np.arange(6, dtype=np.float32).reshape(2, 3)
+    b = np.arange(6, 12, dtype=np.float32).reshape(2, 3)
+    dynamic_cross = def_function.function(
+        np_math_ops.cross,
+        input_signature=[
+            tensor.TensorSpec([None, None], np.float32),
+            tensor.TensorSpec([None, None], np.float32),
+        ],
+    )
+    self.match(dynamic_cross(a, b), np.cross(a, b), check_dtype=False)
+
   def testAverageWrongShape(self):
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError, r''):
       np_math_ops.average(np.ones([2, 3]), weights=np.ones([2, 4]))
@@ -609,6 +658,48 @@ class MathTest(test.TestCase, parameterized.TestCase):
     negative_zero = ops.convert_to_tensor(
         [-0.], dtype=dtypes.bfloat16)
     self.assertAllEqual(np_math_ops.signbit(negative_zero), [True])
+
+  def testIsInfFamilyNonFloatInputs(self):
+    # A non-floating input has no infinities, but the result must still be an
+    # elementwise boolean array shaped like the input, as numpy returns, and
+    # the argument must be converted before its dtype is inspected.
+    fns = [
+        (np_math_ops.isinf, np.isinf),
+        (np_math_ops.isposinf, np.isposinf),
+        (np_math_ops.isneginf, np.isneginf),
+    ]
+    args = [
+        [1, 2, 3],
+        np.array([1, 2, 3], dtype=np.int32),
+        np.array([1, 2, 3], dtype=np.int64),
+        np.array([[1, 2], [3, 4]], dtype=np.int32),
+        np.array([True, False]),
+        ops.convert_to_tensor([1, 2, 3]),
+    ]
+    for tf_fun, np_fun in fns:
+      for arg in args:
+        self.match(
+            tf_fun(arg),
+            np_fun(np.asarray(arg)),
+            msg='{}({})'.format(np_fun.__name__, arg),
+        )
+
+  def testIsInfFamilyFloatInputs(self):
+    fns = [
+        (np_math_ops.isinf, np.isinf),
+        (np_math_ops.isposinf, np.isposinf),
+        (np_math_ops.isneginf, np.isneginf),
+    ]
+    args = [
+        np.array([1.0, np.inf, -np.inf, np.nan], dtype=np.float64),
+        np.array([1.0, np.inf, -np.inf], dtype=np.float32),
+    ]
+    for tf_fun, np_fun in fns:
+      for arg in args:
+        self.match(
+            tf_fun(arg), np_fun(arg), msg='{}({})'.format(np_fun.__name__, arg)
+        )
+
 
 if __name__ == '__main__':
   tensor.enable_tensor_equality()
