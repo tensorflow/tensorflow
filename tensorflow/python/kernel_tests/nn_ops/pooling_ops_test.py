@@ -609,7 +609,12 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         message = "dtype=%s depth=%d" % (np.dtype(dtype).name, depth)
         one_channel = np.array([[[[np.nan], [1.0]], [[3.0], [2.0]]]],
                                dtype=dtype)
-        with self.cached_session(use_gpu=False):
+        # GetDeviceScope pins the ops to the CPU in eager mode as well;
+        # cached_session(use_gpu=False) does not constrain eager placement,
+        # and the GPU kernel under its default settings does not propagate
+        # NaN, so on GPU builds the test would not exercise the fixed
+        # Eigen kernel.
+        with GetDeviceScope(self, use_gpu=False):
           tensor_in = constant_op.constant(
               np.repeat(one_channel, repeats=depth, axis=-1))
           pooled = self.evaluate(
