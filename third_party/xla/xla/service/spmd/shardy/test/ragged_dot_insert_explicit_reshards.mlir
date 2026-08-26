@@ -33,7 +33,8 @@ func.func @ragged_dot_mode_non_contracting(
 
   // CHECK: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"c"} %[[RAGGED_DOT]] out_sharding=<@mesh_abcd, [{"a"}, {}, {"d"}]> : tensor<16x32x8xf32>
   // CHECK: %[[RESHARD3:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh_abcd, [{"a"}, {"b"}, {"c"}]> : tensor<16x32x8xf32>
-  // CHECK: return %[[RESHARD3]] : tensor<16x32x8xf32>
+  // CHECK: %[[RESHARD4:.*]] = sdy.reshard %[[RESHARD3]] <@mesh_abcd, [{}, {}, {}]> : tensor<16x32x8xf32>
+  // CHECK: return %[[RESHARD4]] : tensor<16x32x8xf32>
   %0 = "mhlo.ragged_dot"(%arg0, %arg1, %arg2) <{ragged_dot_dimension_numbers =
     #mhlo.ragged_dot<dot_dimension_numbers = #mhlo.dot<
       lhs_batching_dimensions = [0], rhs_batching_dimensions = [1],
@@ -59,7 +60,8 @@ func.func @ragged_dot_mode_contracting(
   // CHECK-SAME: {sdy.sharding = #sdy.sharding_per_value<[<@mesh_abcd, [{}, {"a"}, {"b"}, {"d"}]>]>
 
   // CHECK: %[[RESHARD3:.*]] = sdy.reshard %[[RAGGED_DOT]] <@mesh_abcd, [{"a"}, {"b"}, {"c"}, {"d"}]> : tensor<4x16x32x8xf32>
-  // CHECK: return %[[RESHARD3]] : tensor<4x16x32x8xf32>
+  // CHECK: %[[RESHARD4:.*]] = sdy.reshard %[[RESHARD3]] <@mesh_abcd, [{}, {}, {}, {}]> : tensor<4x16x32x8xf32>
+  // CHECK: return %[[RESHARD4]] : tensor<4x16x32x8xf32>
   %0 = "mhlo.ragged_dot"(%arg0, %arg1, %arg2) <{ragged_dot_dimension_numbers =
     #mhlo.ragged_dot<dot_dimension_numbers = #mhlo.dot<
     lhs_batching_dimensions = [0], rhs_batching_dimensions = [0],
@@ -81,7 +83,8 @@ func.func @ragged_dot_mode_batch(
   // CHECK: }>
   // CHECK-SAME: {sdy.sharding = #sdy.sharding_per_value<[<@mesh_abcd, [{"a"}, {"b"}, {"d"}]>]>
   // CHECK: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"c"} %[[RAGGED_DOT]] out_sharding=<@mesh_abcd, [{"a"}, {"b"}, {"d"}]> : tensor<16x32x8xf32>
-  // CHECK: return %[[ALL_REDUCE]] : tensor<16x32x8xf32>
+  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh_abcd, [{}, {}, {}]> : tensor<16x32x8xf32>
+  // CHECK: return %[[RESHARD1]] : tensor<16x32x8xf32>
   %0 = "mhlo.ragged_dot"(%arg0, %arg1, %arg2) <{ragged_dot_dimension_numbers =
     #mhlo.ragged_dot<dot_dimension_numbers = #mhlo.dot<
     lhs_batching_dimensions = [0], rhs_batching_dimensions = [0],
