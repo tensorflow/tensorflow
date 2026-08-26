@@ -119,7 +119,12 @@ void WriteClassDecl(const OpInfo& op_info, WritableFile* h) {
       const auto entry = AttrTypeName(attr.type());
       const auto attr_type_name = entry.first;
       const bool use_const = entry.second;
-      const std::string camel_case_name = ToCamelCase(api_def_attr.rename_to());
+      // See cc_op_gen_util.cc's GetOpAttrStruct: attr.name() and
+      // api_def_attr.rename_to() are both unvalidated at OpDef-registration
+      // time and both spliced as a raw C++ identifier below.
+      const std::string safe_attr_name =
+          SafeRenameTo(attr.name(), api_def_attr.rename_to());
+      const std::string camel_case_name = ToCamelCase(safe_attr_name);
       const std::string suffix =
           (camel_case_name == op_info.op_name || camel_case_name == "Attrs")
               ? "_"
@@ -212,10 +217,19 @@ std::string GetConstructorBody(const OpInfo& op_info) {
   for (int i = 0; i < op_info.graph_op_def.input_arg_size(); ++i) {
     const auto& arg(op_info.graph_op_def.input_arg(i));
     const auto& api_def_arg(op_info.api_def.in_arg(i));
+    // See cc_op_gen_util.cc's GetOpAttrStruct comment: arg.name() and
+    // api_def_arg.rename_to() are both unvalidated at OpDef-registration
+    // time. Spliced twice below -- once as the local variable name
+    // (`_<name>`), once via AvoidCPPKeywords as the argument reference --
+    // so both must agree with each other and with the corresponding
+    // .Input(_<name>) reference generated further down from the same
+    // (arg.name(), rename_to()) pair.
+    const std::string safe_arg_name =
+        SafeRenameTo(arg.name(), api_def_arg.rename_to());
     strings::StrAppend(
-        &body, "  auto _", api_def_arg.rename_to(), " = ::tensorflow::ops::",
+        &body, "  auto _", safe_arg_name, " = ::tensorflow::ops::",
         ArgIsList(arg) ? "AsNodeOutList" : "AsNodeOut", "(", scope_str, ", ",
-        AvoidCPPKeywords(api_def_arg.rename_to()), ");\n");
+        AvoidCPPKeywords(safe_arg_name), ");\n");
     absl::StrAppend(&body, "  ", return_on_error, "\n");
   }
 
@@ -228,7 +242,11 @@ std::string GetConstructorBody(const OpInfo& op_info) {
   const std::string spaces = "                     ";
   for (int i = 0; i < op_info.api_def.in_arg_size(); ++i) {
     const auto& arg(op_info.api_def.in_arg(i));
-    absl::StrAppend(&body, spaces, ".Input(_", arg.rename_to(), ")\n");
+    // Same (name, rename_to) pair as the declaration loop above, for the
+    // same index -- SafeRenameTo is pure, so this independently produces
+    // the identical identifier the declaration above already emitted.
+    const std::string safe_arg_name = SafeRenameTo(arg.name(), arg.rename_to());
+    absl::StrAppend(&body, spaces, ".Input(_", safe_arg_name, ")\n");
   }
   for (int i = 0; i < op_info.api_def.attr_size(); ++i) {
     const auto& graph_attr(op_info.graph_op_def.attr(i));
@@ -237,10 +255,15 @@ std::string GetConstructorBody(const OpInfo& op_info) {
         op_info.inferred_input_attrs.end()) {
       continue;
     }
+    // See above: graph_attr.name() and api_def_attr.rename_to() are both
+    // unvalidated, and both are spliced as a raw C++ identifier/field
+    // access below.
+    const std::string safe_attr_name =
+        SafeRenameTo(graph_attr.name(), api_def_attr.rename_to());
     const std::string attr_name =
         api_def_attr.has_default_value()
-            ? absl::StrCat("attrs.", api_def_attr.rename_to(), "_")
-            : AvoidCPPKeywords(api_def_attr.rename_to());
+            ? absl::StrCat("attrs.", safe_attr_name, "_")
+            : AvoidCPPKeywords(safe_attr_name);
     strings::StrAppend(&body, spaces, ".Attr(\"",
                        absl::CEscape(graph_attr.name()), "\", ", attr_name,
                        ")\n");
@@ -445,3 +468,4 @@ void WriteCCOps(const OpList& ops, const ApiDefMap& api_def_map,
 
 }  // namespace cc_op
 }  // namespace tensorflow
+
