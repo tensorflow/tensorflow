@@ -16,11 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_CODEGEN_BUILTIN_DEFINITION_GENERATOR_H_
 #define XLA_BACKENDS_CPU_CODEGEN_BUILTIN_DEFINITION_GENERATOR_H_
 
-#include <memory>
-#include <utility>
-
 #include "llvm/ExecutionEngine/Orc/Core.h"
-#include "llvm/ExecutionEngine/Orc/ExecutionUtils.h"  // IWYU pragma: keep
 #include "llvm/IR/DataLayout.h"
 #include "llvm/Support/Error.h"
 
@@ -48,9 +44,6 @@ class BuiltinDefinitionGenerator : public llvm::orc::DefinitionGenerator {
 
  private:
   llvm::DataLayout data_layout_;
-#ifdef ABSL_HAVE_MEMORY_SANITIZER
-  std::unique_ptr<llvm::orc::DynamicLibrarySearchGenerator> process_generator_;
-#endif
 };
 
 }  // namespace xla::cpu

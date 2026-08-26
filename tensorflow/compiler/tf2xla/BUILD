@@ -485,7 +485,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         ":encoded_buffer_allocation_info",
         "@xla//xla/service:custom_call_status_internal",
-        "@xla//xla/backends/cpu/runtime:msan_emulated_tls",
         "@xla//xla/backends/cpu/runtime:rng_state_lib",
         "@xla//xla/backends/cpu:alignment",
         "@xla//xla/backends/cpu:buffer_allocation_info",
