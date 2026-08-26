@@ -935,6 +935,21 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
               t, ksize=[1, 1, 1, 2], strides=[1, 1, 1, 2],
               padding="SAME").eval()
 
+  @test_util.disable_xla("b/123338077")  # Passes with XLA
+  def testDepthwiseAvgPoolInvalidConfigErrorMessage(self):
+    # The pooling parameter validation is shared between MaxPool and
+    # AvgPool, but its error message used to claim MaxPooling even when
+    # AvgPool was the op being run. The negative lookbehind rejects that
+    # old message. See https://github.com/tensorflow/tensorflow/issues/113187.
+    with self.cached_session(use_gpu=False):
+      t = constant_op.constant(1.0, shape=[1, 4, 4, 4])
+      with self.assertRaisesRegex(
+          errors_impl.UnimplementedError,
+          r"(?<!Max)Pooling supports exactly one of pooling across depth"):
+        self.evaluate(
+            nn_ops.avg_pool(
+                t, ksize=[1, 3, 3, 2], strides=[1, 2, 2, 2], padding="SAME"))
+
   # The following are tests that verify that the CPU and GPU implementations
   # produce the same results.
   def _CompareMaxPoolingFwd(self, input_shape, ksize, strides, padding):
