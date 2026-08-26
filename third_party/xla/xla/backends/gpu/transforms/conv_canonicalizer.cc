@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/transforms/conv_operand_canonicalizer.h"
+#include "xla/backends/gpu/transforms/conv_canonicalizer.h"
 
 #include <cstdint>
 #include <utility>
@@ -131,7 +131,7 @@ absl::StatusOr<HloInstruction*> CanonicalizeOperandToS8Convert(
 
 }  // namespace
 
-absl::StatusOr<bool> ConvOperandCanonicalizer::RunImpl(
+absl::StatusOr<bool> ConvCanonicalizer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
