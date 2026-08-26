@@ -484,6 +484,23 @@ class ArrayCreationTest(test.TestCase):
     run_test([1])
     run_test([1, 2])
 
+  def testDiagonal(self):
+    a = np.arange(24).reshape(2, 3, 4)
+    for fn in self.array_transforms:
+      arr = fn(a)
+      self.match(np_array_ops.diagonal(arr), np.diagonal(arr))
+      self.match(
+          np_array_ops.diagonal(arr, axis1=-1, axis2=-2),
+          np.diagonal(arr, axis1=-1, axis2=-2))
+    b = np.arange(6).reshape(2, 3)
+    for fn in self.array_transforms:
+      arr = fn(b)
+      self.match(np_array_ops.diagonal(arr), np.diagonal(arr))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.diagonal(a, axis1=-7, axis2=0)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.diagonal(a, axis1=0, axis2=5)
+
   def testDiagFlat(self):
     array_transforms = [
         lambda x: x,  # Identity,
@@ -1032,6 +1049,11 @@ class ArrayMethodsTest(test.TestCase):
     run_test([[1, 2], [3, 4]], [3, 2], axis=-1)
     run_test([[1, 2], [3, 4]], [3, 2], axis=-2)
 
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.repeat([[1, 2], [3, 4]], 2, axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.repeat([[1, 2], [3, 4]], 2, axis=-3)
+
   def testAround(self):
 
     def run_test(arr, *args, **kwargs):
@@ -1189,6 +1211,11 @@ class ArrayMethodsTest(test.TestCase):
     out_expected = np.take_along_axis(x, ind, axis=1)
     out = np_array_ops.take_along_axis(x, ind, axis=1)
     self.assertAllEqual(out, out_expected)
+
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.take_along_axis(x, ind, axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.take_along_axis(x, ind, axis=-3)
 
   def testTakeAlongAxisJitCompile(self):
     # Regression test for GitHub issue 62391: the axis-swapping branch was
