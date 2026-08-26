@@ -1338,6 +1338,12 @@ FusionDecision ShouldFuseOperand(HloInstruction* operand,
             "No shape tracker found for concatenate.");
       }
       return ShouldFuseConcat(*operand, *fusion, *tracker);
+    case HloOpcode::kPower:
+      if (original_operand.user_count() > 1) {
+        return FusionDecision::Forbid(
+            "Not fusing power op with multiple users.");
+      }
+      break;
     default:
       break;
   }
