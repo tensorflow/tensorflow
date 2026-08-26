@@ -601,6 +601,9 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
     # that dropped NaN. Identical channels then disagreed, producing results
     # such as [nan, nan, 3] for three copies of the same channel. The depths
     # below straddle the packet size for both float32 and float64.
+    if test_util.IsMklEnabled():
+      self.skipTest("oneDNN rewrites MaxPool to its own kernel, so the Eigen "
+                    "kernel under test does not run.")
     for dtype in (np.float32, np.float64):
       for depth in (1, 2, 3, 4, 5, 8):
         message = "dtype=%s depth=%d" % (np.dtype(dtype).name, depth)
