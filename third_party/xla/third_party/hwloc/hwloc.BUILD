@@ -137,7 +137,11 @@ _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS = {
     "#undef HAVE_X11_XLIB_H": "#define HAVE_X11_XLIB_H 1",
     "#undef HAVE_X11_XUTIL_H": "#define HAVE_X11_XUTIL_H 1",
     "#undef HAVE___PROGNAME": "#define HAVE___PROGNAME 1",
-    "#undef HWLOC_C_HAVE_VISIBILITY": "#define HWLOC_C_HAVE_VISIBILITY 1",
+    # Must stay 0. If this is 1, hwloc annotates public APIs with
+    # visibility("default"), which overrides -fvisibility=hidden and leaks
+    # hwloc_* from every DSO that statically links this library
+    # (libtensorflow_framework.so, _xla_ops.so, ...; tensorflow#125854).
+    "#undef HWLOC_C_HAVE_VISIBILITY": "#define HWLOC_C_HAVE_VISIBILITY 0",
     "#undef HWLOC_HAVE_ATTRIBUTE_ALIGNED": "#define HWLOC_HAVE_ATTRIBUTE_ALIGNED 1",
     "#undef HWLOC_HAVE_ATTRIBUTE_ALWAYS_INLINE": "#define HWLOC_HAVE_ATTRIBUTE_ALWAYS_INLINE 1",
     "#undef HWLOC_HAVE_ATTRIBUTE_COLD": "#define HWLOC_HAVE_ATTRIBUTE_COLD 1",
