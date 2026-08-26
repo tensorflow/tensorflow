@@ -214,6 +214,35 @@ TEST_P(SliceOpTest, SizeMinus1) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 3, 3, 5, 5, 5}));
 }
 
+// `begin` must lie in [0, dim_size]. Previously it was not validated: a
+// negative `begin` combined with `size == -1` produced `size = dim_size -
+// begin`, an output larger than the input, and the kernel then read outside the
+// input tensor and copied that memory into the output.
+TEST(SliceOpValidationTest, NegativeBeginWithSizeMinus1IsRejected) {
+  SliceOpModel<int32_t, int32_t> m({4}, {1}, {-1}, {1}, {-1}, TensorType_INT32,
+                                   TensorType_INT32, TestType::kDynamic);
+  m.SetInput({1, 2, 3, 4});
+  EXPECT_NE(m.Invoke(), kTfLiteOk);
+}
+
+TEST(SliceOpValidationTest, NegativeBeginWithExplicitSizeIsRejected) {
+  SliceOpModel<int32_t, int32_t> m({4}, {1}, {-1}, {1}, {2}, TensorType_INT32,
+                                   TensorType_INT32, TestType::kDynamic);
+  m.SetInput({1, 2, 3, 4});
+  EXPECT_NE(m.Invoke(), kTfLiteOk);
+}
+
+// Regression: begin = INT32_MAX with size = 1 previously wrapped when
+// `begin + size` was computed in the index type, satisfying the bounds check and
+// letting the kernel read far outside the input. It is now rejected.
+TEST(SliceOpValidationTest, BeginPlusSizeOverflowIsRejected) {
+  SliceOpModel<int32_t, int32_t> m({4}, {1}, {2147483647}, {1}, {1},
+                                   TensorType_INT32, TensorType_INT32,
+                                   TestType::kDynamic);
+  m.SetInput({1, 2, 3, 4});
+  EXPECT_NE(m.Invoke(), kTfLiteOk);
+}
+
 TEST_P(SliceOpTest, BeginNonZeroSizeMinus1Axis1) {
   SliceOpModel<int32_t, int32_t> m({3, 3, 2, 1}, {4}, {1, 1, 0, 0}, {4},
                                    {2, -1, 1, 1}, TensorType_INT32,
