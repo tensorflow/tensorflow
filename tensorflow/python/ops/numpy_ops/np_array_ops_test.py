@@ -500,6 +500,9 @@ class ArrayCreationTest(test.TestCase):
       np_array_ops.diagonal(a, axis1=-7, axis2=0)
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_array_ops.diagonal(a, axis1=0, axis2=5)
+    # NumPy raises for 0-d/1-d inputs too.
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.diagonal(np.array([1, 2, 3]))
 
   def testDiagFlat(self):
     array_transforms = [
@@ -1037,6 +1040,10 @@ class ArrayMethodsTest(test.TestCase):
               np.repeat(arr_arg, repeats_arg, *args, **kwargs))
 
     run_test(1, 2)
+    # NumPy treats 0-d inputs as 1-D of size 1, so axes -1 and 0 are
+    # valid on scalars.
+    run_test(5, 2, axis=0)
+    run_test(5, 2, axis=-1)
     run_test([1, 2], 2)
     run_test([1, 2], [2])
     run_test([1, 2], [1, 2])
@@ -1053,6 +1060,8 @@ class ArrayMethodsTest(test.TestCase):
       np_array_ops.repeat([[1, 2], [3, 4]], 2, axis=2)
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_array_ops.repeat([[1, 2], [3, 4]], 2, axis=-3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.repeat(np_array_ops.array(5), 2, axis=1)
 
   def testAround(self):
 
