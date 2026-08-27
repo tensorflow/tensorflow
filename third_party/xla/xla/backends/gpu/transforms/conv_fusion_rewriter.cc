@@ -89,7 +89,11 @@ std::vector<HloInstruction*> GetAllReachableAndFusible(
     const se::DeviceDescription& device_info) {
   std::vector<HloInstruction*> fusible_users;
   // cuDNN frontend fusions do not support grouped convolutions with epilogues.
-  if (convolution->feature_group_count() > 1) {
+  // TODO(b/553414095): Re-enable 1D convolution epilogue fusions once cuDNN
+  // fixes NaN corruption with dummy spatial dimensions.
+  if (convolution->feature_group_count() > 1 ||
+      convolution->convolution_dimension_numbers()
+              .input_spatial_dimensions_size() < 2) {
     fusion_outputs.push_back(convolution);
     return fusible_users;
   }
