@@ -100,6 +100,7 @@ objc_library(
         "metal_conv_ops.mm",
         "metal_depthwise_ops.mm",
         "metal_bincount_ops.mm",
+        "metal_crop_resize_ops.mm",
         "metal_dilation_ops.mm",
         "metal_maxpool_argmax_ops.mm",
         "metal_compare_ops.mm",

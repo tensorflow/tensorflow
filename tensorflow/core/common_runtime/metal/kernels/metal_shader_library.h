@@ -123,6 +123,24 @@ struct BincountParams {
   uint32_t padding2;
 };
 
+// Parameters for the crop-and-resize shaders. Layout must match the Metal
+// struct. `count` is the number of crop elements, which is what all three
+// shaders are dispatched over.
+struct CropResizeParams {
+  uint32_t batch;
+  uint32_t in_h;
+  uint32_t in_w;
+  uint32_t depth;
+  uint32_t num_boxes;
+  uint32_t crop_h;
+  uint32_t crop_w;
+  uint32_t method_nearest;
+  float extrapolation;
+  uint32_t count;
+  uint32_t padding0;
+  uint32_t padding1;
+};
+
 // Compute pipeline for one function in the backend's shader library.
 //
 // The Metal source is compiled from a string the first time any pipeline is

@@ -597,6 +597,186 @@ TF_METAL_BINCOUNT(tf_bincount_float_i32, int, float, atomic_float, 1.0f)
 TF_METAL_BINCOUNT(tf_bincount_float_i64, long, float, atomic_float, 1.0f)
 TF_METAL_BINCOUNT(tf_bincount_int_i32, int, int, atomic_int, 1)
 TF_METAL_BINCOUNT(tf_bincount_int_i64, long, int, atomic_int, 1)
+
+// ---- crop and resize ----
+
+struct CropResizeParams {
+  uint batch;
+  uint in_h;
+  uint in_w;
+  uint depth;
+  uint num_boxes;
+  uint crop_h;
+  uint crop_w;
+  uint method_nearest;
+  float extrapolation;
+  uint count;
+  uint pad0;
+  uint pad1;
+};
+
+// All three shaders walk the same geometry: one thread per element of the
+// crop, mapping it back to a fractional position in the source image. A box
+// may reach outside the image, and the region outside is not clamped but
+// filled with the extrapolation value, so the bounds test is part of the
+// definition rather than a safety check.
+#define TF_METAL_CROP_GEOMETRY()                                              \
+  const uint d = gid % params.depth;                                          \
+  const uint x = (gid / params.depth) % params.crop_w;                        \
+  const uint y = (gid / (params.depth * params.crop_w)) % params.crop_h;      \
+  const uint b = gid / (params.depth * params.crop_w * params.crop_h);        \
+  const int b_in = box_index[b];                                              \
+  const float y1 = boxes[b * 4 + 0];                                          \
+  const float x1 = boxes[b * 4 + 1];                                          \
+  const float y2 = boxes[b * 4 + 2];                                          \
+  const float x2 = boxes[b * 4 + 3];                                          \
+  const float height_ratio =                                                  \
+      params.crop_h > 1 ? float(params.in_h - 1) / float(params.crop_h - 1)   \
+                        : 0.0f;                                               \
+  const float width_ratio =                                                   \
+      params.crop_w > 1 ? float(params.in_w - 1) / float(params.crop_w - 1)   \
+                        : 0.0f;                                               \
+  const float in_y =                                                          \
+      params.crop_h > 1                                                       \
+          ? y1 * float(params.in_h - 1) + float(y) * ((y2 - y1) * height_ratio) \
+          : 0.5f * (y1 + y2) * float(params.in_h - 1);                        \
+  const float in_x =                                                          \
+      params.crop_w > 1                                                       \
+          ? x1 * float(params.in_w - 1) + float(x) * ((x2 - x1) * width_ratio) \
+          : 0.5f * (x1 + x2) * float(params.in_w - 1);                        \
+  const bool outside = b_in < 0 || b_in >= int(params.batch) || in_y < 0.0f || \
+                       in_y > float(params.in_h - 1) || in_x < 0.0f ||        \
+                       in_x > float(params.in_w - 1);
+
+#define TF_METAL_CROP_IMAGE_INDEX(YI, XI)                                     \
+  ((uint(b_in) * params.in_h + uint(YI)) * params.in_w + uint(XI)) *          \
+      params.depth + d
+
+kernel void tf_crop_and_resize_float(device const float* image [[buffer(0)]],
+                                     device const float* boxes [[buffer(1)]],
+                                     device const int* box_index [[buffer(2)]],
+                                     device float* out [[buffer(3)]],
+                                     constant CropResizeParams& params
+                                         [[buffer(4)]],
+                                     uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count) return;
+  TF_METAL_CROP_GEOMETRY()
+  if (outside) {
+    out[gid] = params.extrapolation;
+    return;
+  }
+  if (params.method_nearest != 0) {
+    // round() ties away from zero, which is what roundf does in the CPU
+    // kernel.
+    out[gid] = image[TF_METAL_CROP_IMAGE_INDEX(uint(round(in_y)),
+                                               uint(round(in_x)))];
+    return;
+  }
+  const uint top = uint(floor(in_y));
+  const uint bottom = uint(ceil(in_y));
+  const uint left = uint(floor(in_x));
+  const uint right = uint(ceil(in_x));
+  const float y_lerp = in_y - floor(in_y);
+  const float x_lerp = in_x - floor(in_x);
+  const float tl = image[TF_METAL_CROP_IMAGE_INDEX(top, left)];
+  const float tr = image[TF_METAL_CROP_IMAGE_INDEX(top, right)];
+  const float bl = image[TF_METAL_CROP_IMAGE_INDEX(bottom, left)];
+  const float br = image[TF_METAL_CROP_IMAGE_INDEX(bottom, right)];
+  const float t = tl + (tr - tl) * x_lerp;
+  const float bo = bl + (br - bl) * x_lerp;
+  out[gid] = t + (bo - t) * y_lerp;
+}
+
+// The image gradient is the transpose of that sampling: each crop element
+// pushes its gradient back into the four pixels it interpolated, weighted the
+// same way. Neighbouring crop elements share pixels, so the accumulation is
+// atomic.
+kernel void tf_crop_and_resize_grad_image_float(
+    device const float* grads [[buffer(0)]],
+    device const float* boxes [[buffer(1)]],
+    device const int* box_index [[buffer(2)]],
+    device atomic_float* out [[buffer(3)]],
+    constant CropResizeParams& params [[buffer(4)]],
+    uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count) return;
+  TF_METAL_CROP_GEOMETRY()
+  if (outside) return;
+  const float g = grads[gid];
+  if (params.method_nearest != 0) {
+    atomic_fetch_add_explicit(
+        &out[TF_METAL_CROP_IMAGE_INDEX(uint(round(in_y)), uint(round(in_x)))],
+        g, memory_order_relaxed);
+    return;
+  }
+  const uint top = uint(floor(in_y));
+  const uint bottom = uint(ceil(in_y));
+  const uint left = uint(floor(in_x));
+  const uint right = uint(ceil(in_x));
+  const float y_lerp = in_y - floor(in_y);
+  const float x_lerp = in_x - floor(in_x);
+  atomic_fetch_add_explicit(&out[TF_METAL_CROP_IMAGE_INDEX(top, left)],
+                            (1.0f - y_lerp) * (1.0f - x_lerp) * g,
+                            memory_order_relaxed);
+  atomic_fetch_add_explicit(&out[TF_METAL_CROP_IMAGE_INDEX(top, right)],
+                            (1.0f - y_lerp) * x_lerp * g,
+                            memory_order_relaxed);
+  atomic_fetch_add_explicit(&out[TF_METAL_CROP_IMAGE_INDEX(bottom, left)],
+                            y_lerp * (1.0f - x_lerp) * g,
+                            memory_order_relaxed);
+  atomic_fetch_add_explicit(&out[TF_METAL_CROP_IMAGE_INDEX(bottom, right)],
+                            y_lerp * x_lerp * g, memory_order_relaxed);
+}
+
+// The box gradient differentiates the sampling position rather than the
+// sampled value, so it needs the image itself. Bilinear only, which is what
+// TensorFlow defines: the nearest-neighbour position is piecewise constant and
+// its derivative is zero almost everywhere.
+kernel void tf_crop_and_resize_grad_boxes_float(
+    device const float* grads [[buffer(0)]],
+    device const float* image [[buffer(1)]],
+    device const float* boxes [[buffer(2)]],
+    device const int* box_index [[buffer(3)]],
+    device atomic_float* out [[buffer(4)]],
+    constant CropResizeParams& params [[buffer(5)]],
+    uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count) return;
+  TF_METAL_CROP_GEOMETRY()
+  if (outside) return;
+  const uint top = uint(floor(in_y));
+  const uint bottom = uint(ceil(in_y));
+  const uint left = uint(floor(in_x));
+  const uint right = uint(ceil(in_x));
+  const float y_lerp = in_y - floor(in_y);
+  const float x_lerp = in_x - floor(in_x);
+  const float tl = image[TF_METAL_CROP_IMAGE_INDEX(top, left)];
+  const float tr = image[TF_METAL_CROP_IMAGE_INDEX(top, right)];
+  const float bl = image[TF_METAL_CROP_IMAGE_INDEX(bottom, left)];
+  const float br = image[TF_METAL_CROP_IMAGE_INDEX(bottom, right)];
+  const float g = grads[gid];
+  const float grad_y =
+      ((1.0f - x_lerp) * (bl - tl) + x_lerp * (br - tr)) * g;
+  const float grad_x =
+      ((1.0f - y_lerp) * (tr - tl) + y_lerp * (br - bl)) * g;
+  float dy1, dy2, dx1, dx2;
+  if (params.crop_h > 1) {
+    dy1 = grad_y * (float(params.in_h - 1) - float(y) * height_ratio);
+    dy2 = grad_y * (float(y) * height_ratio);
+  } else {
+    dy1 = grad_y * 0.5f * float(params.in_h - 1);
+    dy2 = dy1;
+  }
+  if (params.crop_w > 1) {
+    dx1 = grad_x * (float(params.in_w - 1) - float(x) * width_ratio);
+    dx2 = grad_x * (float(x) * width_ratio);
+  } else {
+    dx1 = grad_x * 0.5f * float(params.in_w - 1);
+    dx2 = dx1;
+  }
+  atomic_fetch_add_explicit(&out[b * 4 + 0], dy1, memory_order_relaxed);
+  atomic_fetch_add_explicit(&out[b * 4 + 1], dx1, memory_order_relaxed);
+  atomic_fetch_add_explicit(&out[b * 4 + 2], dy2, memory_order_relaxed);
+  atomic_fetch_add_explicit(&out[b * 4 + 3], dx2, memory_order_relaxed);
+}
 )METAL";
 
 class ShaderLibrary {

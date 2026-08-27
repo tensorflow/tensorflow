@@ -127,6 +127,9 @@ void RegisterMetalMaxPoolArgmaxKernels();
 // QuantizeAndDequantize and its V2, V3 and V4 forms.
 void RegisterMetalQuantizeDequantizeKernels();
 
+// CropAndResize and its image and box gradients.
+void RegisterMetalCropResizeKernels();
+
 // Bincount and DenseBincount.
 void RegisterMetalBincountKernels();
 
