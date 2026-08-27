@@ -408,17 +408,6 @@ void MklPoolParameters::Init(OpKernelContext* context,
                 FastBoundsCheck(out_width, std::numeric_limits<int>::max()),
                 absl::InvalidArgumentError("output width is too large"));
 
-    // Keep CPU (oneDNN) behavior aligned with PoolParameters: zero-sized
-    // spatial outputs from VALID pooling with an oversized window should be
-    // InvalidArgument, not a process abort / floating-point exception.
-    OP_REQUIRES(
-        context, out_height > 0 && out_width > 0,
-        absl::InvalidArgumentError(absl::StrCat(
-            "Pooling would produce zero-sized spatial output. "
-            "input: ",
-            tensor_in_rows, "x", tensor_in_cols, " window: ", window_rows, "x",
-            window_cols, " stride: ", row_stride, "x", col_stride)));
-
     out_depth = depth;  // Output will have the same depth as the input.
   } else {              // We are pooling in the depth dimension.
     // Our current version of depthwise max pooling does not support

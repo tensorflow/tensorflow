@@ -97,6 +97,16 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
       this->InitMklPoolParameters(context, &pool_params, dnn_shape_input,
                                   input_tensor_shape);
       OP_REQUIRES_OK(context, context->status());
+      // Forward pooling only; grads may receive zero-sized spatial outputs.
+      OP_REQUIRES(
+          context, pool_params.out_height > 0 && pool_params.out_width > 0,
+          absl::InvalidArgumentError(absl::StrCat(
+              "Pooling would produce zero-sized spatial output. "
+              "input: ",
+              pool_params.tensor_in_rows, "x", pool_params.tensor_in_cols,
+              " window: ", pool_params.window_rows, "x",
+              pool_params.window_cols, " stride: ", pool_params.row_stride, "x",
+              pool_params.col_stride)));
 
       // Declare output tensor
       Tensor* output_tensor = nullptr;
