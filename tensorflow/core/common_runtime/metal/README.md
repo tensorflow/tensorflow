@@ -158,6 +158,7 @@ differently rather than fail.
 | `SpaceToDepth`, `DepthToSpace`, `L2Loss` | float32, float16 |
 | `Diag`, `DiagPart`, `LinSpace` | float32, float16 |
 | `ReverseV2`, `Split`, `SplitV` | float32, float16 |
+| `StridedSlice`, `StridedSliceGrad`, `TileGrad`, `Roll` | float32, float16 |
 | `Equal`, `NotEqual`, `Less`, `LessEqual`, `Greater`, `GreaterEqual` | float32, float16, int32, int64 |
 | `ApproximateEqual` | float32, float16 |
 | `LogicalAnd`, `LogicalOr`, `LogicalNot` | bool |

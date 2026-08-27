@@ -81,6 +81,9 @@ void RegisterMetalIndexKernels();
 // rearrangements.
 void RegisterMetalMatrixKernels();
 
+// StridedSlice and its gradient, TileGrad and Roll.
+void RegisterMetalStridedKernels();
+
 // Identity, which aliases its input when it can and blits when it cannot.
 void RegisterMetalIdentityKernels();
 
