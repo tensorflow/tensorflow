@@ -685,6 +685,91 @@ void SparseFillEmptyRowsGrad_ComputeImpl(ManipOp* op, TF_OpKernelContext* ctx,
   WriteFloats(ctx, 1, {}, {d_default}, status);
 }
 
+/*** RAGGED FILL EMPTY ROWS ***/
+
+// The ragged form of the same operation. A ragged tensor names each value's
+// row directly instead of through a coordinate matrix, so the only difference
+// is where the row comes from and that the number of rows is given rather
+// than taken from a dense shape.
+void RaggedFillEmptyRows_ComputeImpl(ManipOp* op, TF_OpKernelContext* ctx,
+                                     TF_Status* status) {
+  ScopedTensor rowids, values, nrows, default_value;
+  TF_GetInput(ctx, 0, rowids.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+  TF_GetInput(ctx, 1, values.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+  TF_GetInput(ctx, 2, nrows.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+  TF_GetInput(ctx, 3, default_value.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  SP_Stream stream = StreamForContext(ctx, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  WaitForStream(stream);
+
+  std::vector<int64_t> rows, row_count;
+  std::vector<float> data, fill;
+  if (!ReadInt64s(rowids.get(), &rows, status)) return;
+  if (!ReadFloats(values.get(), &data, status)) return;
+  if (!ReadInt64s(nrows.get(), &row_count, status)) return;
+  if (!ReadFloats(default_value.get(), &fill, status)) return;
+  if (row_count.empty() || fill.empty()) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: RaggedFillEmptyRows needs a row count and a "
+                 "default.");
+    return;
+  }
+  const int64_t total_rows = row_count[0];
+  const int64_t nnz = static_cast<int64_t>(data.size());
+
+  std::vector<char> occupied(
+      static_cast<size_t>(std::max<int64_t>(total_rows, 0)), 0);
+  std::vector<std::vector<int64_t>> per_row(
+      static_cast<size_t>(std::max<int64_t>(total_rows, 0)));
+  for (int64_t e = 0; e < nnz; ++e) {
+    const int64_t row = rows[static_cast<size_t>(e)];
+    if (row < 0 || row >= total_rows) continue;
+    occupied[static_cast<size_t>(row)] = 1;
+    per_row[static_cast<size_t>(row)].push_back(e);
+  }
+
+  std::vector<int64_t> out_rows;
+  std::vector<float> out_values;
+  std::vector<int64_t> reverse(static_cast<size_t>(nnz), 0);
+  for (int64_t row = 0; row < total_rows; ++row) {
+    if (per_row[static_cast<size_t>(row)].empty()) {
+      out_rows.push_back(row);
+      out_values.push_back(fill[0]);
+      continue;
+    }
+    for (int64_t e : per_row[static_cast<size_t>(row)]) {
+      reverse[static_cast<size_t>(e)] =
+          static_cast<int64_t>(out_values.size());
+      out_rows.push_back(row);
+      out_values.push_back(data[static_cast<size_t>(e)]);
+    }
+  }
+  const int64_t total = static_cast<int64_t>(out_values.size());
+
+  if (!WriteInt64s(ctx, 0, {total}, out_rows, status)) return;
+  if (!WriteFloats(ctx, 1, {total}, out_values, status)) return;
+  {
+    ScopedTensor indicator;
+    const std::vector<int64_t> shape = {total_rows};
+    indicator.reset(TF_AllocateOutput(ctx, 2, TF_BOOL, shape.data(), 1,
+                                      static_cast<size_t>(total_rows),
+                                      status));
+    if (TF_GetCode(status) != TF_OK) return;
+    char* out = static_cast<char*>(TF_TensorData(indicator.get()));
+    if (out != nullptr) {
+      for (int64_t row = 0; row < total_rows; ++row) {
+        out[row] = occupied[static_cast<size_t>(row)] ? 0 : 1;
+      }
+    }
+  }
+  WriteInt64s(ctx, 3, {nnz}, reverse, status);
+}
+
 #define METAL_MANIP_COMPUTE(NAME, IMPL)                                     \
   void NAME(void* kernel, TF_OpKernelContext* ctx) {                        \
     ScopedAutoreleasePool pool;                                             \
@@ -710,6 +795,8 @@ METAL_MANIP_COMPUTE(SparseFillEmptyRows_Compute,
                     SparseFillEmptyRows_ComputeImpl)
 METAL_MANIP_COMPUTE(SparseFillEmptyRowsGrad_Compute,
                     SparseFillEmptyRowsGrad_ComputeImpl)
+METAL_MANIP_COMPUTE(RaggedFillEmptyRows_Compute,
+                    RaggedFillEmptyRows_ComputeImpl)
 
 #undef METAL_MANIP_COMPUTE
 
@@ -748,6 +835,12 @@ void RegisterMetalSparseManipKernels() {
            "MetalSparseFillEmptyRows", true);
   Register("SparseFillEmptyRowsGrad", &SparseFillEmptyRowsGrad_Compute,
            "MetalSparseFillEmptyRowsGrad", true);
+  Register("RaggedFillEmptyRows", &RaggedFillEmptyRows_Compute,
+           "MetalRaggedFillEmptyRows", true);
+  // The ragged gradient is the sparse one: both are handed the same reverse
+  // index map and nothing else about them differs.
+  Register("RaggedFillEmptyRowsGrad", &SparseFillEmptyRowsGrad_Compute,
+           "MetalRaggedFillEmptyRowsGrad", true);
 }
 
 }  // namespace metal

@@ -153,6 +153,7 @@ differently rather than fail.
 | `Empty` | float32, int32 |
 | `SparseReshape`, `SparseReorder`, `SparseSlice`, `SparseSliceGrad` | float32 |
 | `SparseSplit`, `SparseConcat`, `SparseFillEmptyRows`, `SparseFillEmptyRowsGrad` | float32 |
+| `RaggedFillEmptyRows`, `RaggedFillEmptyRowsGrad` | float32 |
 | `SparseSegmentSum`, `SparseSegmentMean`, `SparseSegmentSqrtN` | float32 |
 | `SparseSegmentSumWithNumSegments`, `SparseSegmentMeanWithNumSegments`, `SparseSegmentSqrtNWithNumSegments` | float32 |
 | `SparseSegmentSumGrad`, `SparseSegmentMeanGrad`, `SparseSegmentSqrtNGrad` | float32 |
@@ -287,6 +288,55 @@ inherits when it has no kernel of its own.
   had no testing.
 * **`memset32`** with a pattern that is not four equal bytes runs on the host.
   A compute shader would be faster for large buffers.
+
+## Ops the CUDA build registers and this one does not
+
+Every op CUDA registers that performs a computation on tensors is registered
+here. What remains falls into groups that cannot be reached through the
+PluggableDevice kernel C API at all, or that mean nothing on a single Metal
+device. They are listed so that "not registered" can be told apart from
+"overlooked".
+
+* **Input pipelines: iterators, datasets and optionals** (`Iterator`,
+  `IteratorGetNext`, `MakeIterator`, `MapDataset`, `PrefetchDataset`,
+  `OptionsDataset`, `AnonymousIterator*`, `Optional*`, and the rest of that
+  family). Their kernels create and consume resource and variant tensors, and
+  the CUDA registrations exist so that a handle can be placed alongside the
+  device rather than to compute anything on it. The kernel C API exposes
+  neither resource creation nor variants.
+* **`TensorArray` and its twenty-odd operations.** Each one reads or writes a
+  TensorArray resource, which the kernel C API does not expose. The resource
+  variable interface it does expose covers variables, not these.
+* **Collectives** (`CollectiveReduce`, `CollectiveGather`, `NcclAllReduce`,
+  `NcclBroadcast`, the `_Nccl*` pairs). They reduce across devices; there is
+  one Metal device in a process.
+* **The cuDNN recurrent family** (`CudnnRNN`, its four gradients, and the
+  parameter conversions). These ops exist to expose cuDNN's own recurrent
+  implementation and its opaque parameter buffer. Nothing corresponds to that
+  buffer in Metal. `BlockLSTM`, `GRUBlockCell` and their gradients cover the
+  same models, and are registered.
+* **The CSR sparse matrix ops** (`SparseMatrixAdd`, `SparseMatrixMatMul`,
+  `SparseMatrixZeros`, `SparseTensorToCSRSparseMatrix`, the two conversions
+  out of it). They pass a `CSRSparseMatrix` variant between one another, and
+  variant tensors are not reachable through the kernel C API. The dense-input
+  sparse ops, including `SparseTensorDenseMatMul`, are registered.
+* **Reference variables** (`Assign`, `AssignAdd`, `AssignSub`, `RefSelect`,
+  `DebugGradientRefIdentity`). These take reference-typed inputs, which the
+  kernel C API has no notion of. Their resource equivalents,
+  `AssignVariableOp` and the rest, work.
+* **Variant-typed conversions** (`DeserializeSparse`,
+  `RaggedTensorFromVariant`), for the same reason as the CSR ops.
+* **Batching** (`Batch`, `Unbatch`, `UnbatchGrad`). These schedule work rather
+  than perform it.
+* **Test-only ops** (`TestGpuInclusivePrefixSum`, `TestGpuRadixSort`,
+  `TestGpuSegmentedSum`, `TestGpuSelectFlagged`). They exist to exercise CUDA's
+  own primitives from a test.
+* **`_TensorToHashBucketFast`** hashes strings, and a string tensor's contents
+  are host pointers rather than device memory.
+* **`DebugNumericSummaryV2`** would have to drain the stream and reduce on
+  every call, which is a cost worth paying only when someone is debugging;
+  it is left on the host, where the graph will place it.
+* **`Abort` and `CheckPinned`** do nothing a device could do.
 
 ## Files
 
