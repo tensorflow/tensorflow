@@ -657,10 +657,25 @@ class ShaderLibrary {
     }
 
     NSError* error = nil;
+    // Compiled without fast math, which Metal enables by default. Fast math
+    // lets the compiler contract a multiply and an add into a fused multiply
+    // and add, so a sum that is exact on the CPU comes back a fraction of a
+    // unit in the last place away on the GPU. Samplers decide which pixel to
+    // read by taking the floor of such a sum, so a value that should land
+    // exactly on an integer instead lands just below it, and the kernel reads
+    // the wrong pixel with a weight of nearly one. Correct results in the
+    // ordinary case are worth more than the optimisation.
+    MTLCompileOptions* options = [[MTLCompileOptions alloc] init];
+    if ([options respondsToSelector:@selector(setMathMode:)]) {
+      options.mathMode = MTLMathModeSafe;
+    } else {
+      options.fastMathEnabled = NO;
+    }
     library_ = [[device
         newLibraryWithSource:[NSString stringWithUTF8String:kShaderSource]
-                     options:nil
+                     options:options
                        error:&error] retain];
+    [options release];
     if (library_ == nil) {
       compile_failed_ = true;
       const char* reason = error.localizedDescription.UTF8String;
