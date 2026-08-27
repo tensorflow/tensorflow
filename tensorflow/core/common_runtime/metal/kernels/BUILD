@@ -56,6 +56,7 @@ objc_library(
     target_compatible_with = ["@platforms//os:macos"],
     deps = [
         "//tensorflow/c:tf_status_headers",
+        "//tensorflow/core/common_runtime/metal:metal_stream",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",

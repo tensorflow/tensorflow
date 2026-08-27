@@ -210,6 +210,7 @@ void DestroyStream(const SP_Device* device, SP_Stream stream) {
 
 void CreateStreamDependency(const SP_Device* device, SP_Stream dependent,
                             SP_Stream other, TF_Status* status) {
+  ScopedAutoreleasePool pool;
   if (StreamAlreadyFailed(other, status)) return;
 
   uint64_t other_value = 0;
@@ -278,6 +279,7 @@ SE_EventStatus GetEventStatus(const SP_Device* device, SP_Event event) {
 
 void RecordEvent(const SP_Device* device, SP_Stream stream, SP_Event event,
                  TF_Status* status) {
+  ScopedAutoreleasePool pool;
   if (StreamAlreadyFailed(stream, status)) return;
 
   uint64_t value = 0;
@@ -299,6 +301,7 @@ void RecordEvent(const SP_Device* device, SP_Stream stream, SP_Event event,
 
 void WaitForEvent(const SP_Device* const device, SP_Stream stream,
                   SP_Event event, TF_Status* const status) {
+  ScopedAutoreleasePool pool;
   if (StreamAlreadyFailed(stream, status)) return;
 
   uint64_t target = 0;
@@ -351,6 +354,7 @@ void DestroyTimer(const SP_Device* device, SP_Timer timer) { delete timer; }
 
 void StartTimer(const SP_Device* device, SP_Stream stream, SP_Timer timer,
                 TF_Status* status) {
+  ScopedAutoreleasePool pool;
   OrderedCommandBuffer buffer(stream);
   if (!buffer.ok()) {
     Fail(status, TF_RESOURCE_EXHAUSTED,
@@ -371,6 +375,7 @@ void StartTimer(const SP_Device* device, SP_Stream stream, SP_Timer timer,
 
 void StopTimer(const SP_Device* device, SP_Stream stream, SP_Timer timer,
                TF_Status* status) {
+  ScopedAutoreleasePool pool;
   OrderedCommandBuffer buffer(stream);
   if (!buffer.ok()) {
     Fail(status, TF_RESOURCE_EXHAUSTED,
@@ -406,6 +411,7 @@ uint64_t TimerNanoseconds(SP_Timer timer) {
 // buffer and second copy a blit-based implementation would require.
 void EnqueueHostCopy(SP_Stream stream, void* dst, const void* src,
                      uint64_t size, const char* what, TF_Status* status) {
+  ScopedAutoreleasePool pool;
   if (size == 0) {
     Ok(status);
     return;
@@ -516,6 +522,7 @@ void SynchronizeAllActivity(const SP_Device* device, TF_Status* status) {
 // natively over a whole buffer range, and it keeps large fills off the CPU.
 void EncodeFill(SP_Stream stream, SP_DeviceMemoryBase* location, uint8_t value,
                 uint64_t size, const char* what, TF_Status* status) {
+  ScopedAutoreleasePool pool;
   if (size == 0) {
     Ok(status);
     return;
@@ -565,6 +572,7 @@ void Memset(const SP_Device* device, SP_Stream stream,
 void Memset32(const SP_Device* device, SP_Stream stream,
               SP_DeviceMemoryBase* location, uint32_t pattern, uint64_t size,
               TF_Status* status) {
+  ScopedAutoreleasePool pool;
   if (size == 0) {
     Ok(status);
     return;
@@ -605,6 +613,7 @@ void Memset32(const SP_Device* device, SP_Stream stream,
 
 TF_Bool HostCallback(const SP_Device* device, SP_Stream stream,
                      SE_StatusCallbackFn callback_fn, void* callback_arg) {
+  ScopedAutoreleasePool pool;
   OrderedCommandBuffer buffer(stream);
   if (!buffer.ok()) return false;
   buffer.CommitWithHostCompletion(^{

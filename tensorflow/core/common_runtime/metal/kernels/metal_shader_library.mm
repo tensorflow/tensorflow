@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/core/common_runtime/metal/metal_stream.h"
 
 namespace tensorflow {
 namespace metal {
@@ -93,6 +94,7 @@ class ShaderLibrary {
   id<MTLComputePipelineState> PipelineFor(id<MTLDevice> device,
                                           const char* function_name,
                                           TF_Status* status) {
+    ScopedAutoreleasePool pool;
     absl::MutexLock lock(&mu_);
     if (!EnsureLibraryLocked(device, status)) return nil;
 

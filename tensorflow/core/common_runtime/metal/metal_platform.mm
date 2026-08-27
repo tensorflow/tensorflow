@@ -48,6 +48,7 @@ struct DeviceEntry {
 // stale data. Refusing such devices is the honest outcome.
 const std::vector<DeviceEntry>& UsableDevices() {
   static const std::vector<DeviceEntry>* devices = [] {
+    ScopedAutoreleasePool pool;
     auto* result = new std::vector<DeviceEntry>();
     NSArray<id<MTLDevice>>* all = MTLCopyAllDevices();
     for (id<MTLDevice> device in all) {

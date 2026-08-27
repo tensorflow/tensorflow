@@ -119,6 +119,26 @@ struct MetalDeviceState {
 // platform created.
 MetalDeviceState* StateOf(const SP_Device* device);
 
+// Drains autoreleased Objective-C objects at scope exit.
+//
+// TensorFlow executor threads are plain pthreads with no top-level autorelease
+// pool. Metal hands back autoreleased objects from routine calls
+// (-commandBuffer, -blitCommandEncoder, -computeCommandEncoder, and everything
+// MPS returns), so without a pool of our own those objects leak on every op.
+// Every entry point into this backend that touches Metal declares one of
+// these as its first statement.
+class ScopedAutoreleasePool {
+ public:
+  ScopedAutoreleasePool();
+  ~ScopedAutoreleasePool();
+
+  ScopedAutoreleasePool(const ScopedAutoreleasePool&) = delete;
+  ScopedAutoreleasePool& operator=(const ScopedAutoreleasePool&) = delete;
+
+ private:
+  void* pool_;
+};
+
 // A command buffer that participates in its stream's ordering.
 //
 // Construction reserves the next sequence number and encodes the wait for the

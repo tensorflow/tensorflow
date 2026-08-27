@@ -242,13 +242,9 @@ void MatMulOp_ComputeImpl(MatMulOp* op, TF_OpKernelContext* ctx,
 }
 
 void MatMulOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
+  ScopedAutoreleasePool pool;
   TF_Status* status = TF_NewStatus();
-  // MPS returns autoreleased objects; without a pool of our own they would
-  // accumulate until whatever pool the calling thread happens to have drains,
-  // and a TensorFlow executor thread may have none at all.
-  @autoreleasepool {
-    MatMulOp_ComputeImpl(static_cast<MatMulOp*>(kernel), ctx, status);
-  }
+  MatMulOp_ComputeImpl(static_cast<MatMulOp*>(kernel), ctx, status);
   if (TF_GetCode(status) != TF_OK) TF_OpKernelContext_Failure(ctx, status);
   TF_DeleteStatus(status);
 }

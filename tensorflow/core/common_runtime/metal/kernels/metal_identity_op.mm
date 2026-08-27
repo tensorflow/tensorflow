@@ -110,6 +110,7 @@ void IdentityOp_ComputeImpl(TF_OpKernelContext* ctx, TF_Status* status) {
 }
 
 void IdentityOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
+  ScopedAutoreleasePool pool;
   TF_Status* status = TF_NewStatus();
   IdentityOp_ComputeImpl(ctx, status);
   if (TF_GetCode(status) != TF_OK) TF_OpKernelContext_Failure(ctx, status);

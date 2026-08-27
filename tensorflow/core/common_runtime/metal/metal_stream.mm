@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/metal/metal_stream.h"
 
+#import <Foundation/Foundation.h>
+
 #include <algorithm>
 #include <cstdint>
 #include <vector>
@@ -90,6 +92,13 @@ void MetalDeviceState::BlockUntilIdle() {
 
 MetalDeviceState* StateOf(const SP_Device* device) {
   return static_cast<MetalDeviceState*>(device->ext);
+}
+
+ScopedAutoreleasePool::ScopedAutoreleasePool()
+    : pool_([[NSAutoreleasePool alloc] init]) {}
+
+ScopedAutoreleasePool::~ScopedAutoreleasePool() {
+  [static_cast<NSAutoreleasePool*>(pool_) drain];
 }
 
 OrderedCommandBuffer::OrderedCommandBuffer(SP_Stream stream)

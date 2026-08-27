@@ -243,6 +243,7 @@ void BinaryOp_ComputeImpl(BinaryOp* op, TF_OpKernelContext* ctx,
 }
 
 void BinaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
+  ScopedAutoreleasePool pool;
   TF_Status* status = TF_NewStatus();
   BinaryOp_ComputeImpl(static_cast<BinaryOp*>(kernel), ctx, status);
   if (TF_GetCode(status) != TF_OK) TF_OpKernelContext_Failure(ctx, status);
@@ -351,6 +352,7 @@ void CastOp_ComputeImpl(CastOp* op, TF_OpKernelContext* ctx,
 }
 
 void CastOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
+  ScopedAutoreleasePool pool;
   TF_Status* status = TF_NewStatus();
   CastOp_ComputeImpl(static_cast<CastOp*>(kernel), ctx, status);
   if (TF_GetCode(status) != TF_OK) TF_OpKernelContext_Failure(ctx, status);
