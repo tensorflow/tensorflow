@@ -19,6 +19,7 @@ namespace tensorflow {
 namespace metal {
 
 void RegisterAllMetalKernels() {
+  RegisterMetalActivationKernels();
   RegisterMetalArrayKernels();
   RegisterMetalBatchNormKernels();
   RegisterMetalCompareKernels();

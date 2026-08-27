@@ -86,6 +86,7 @@ int64_t ElementCount(const std::vector<int64_t>& shape) {
 
 enum class BinaryKind {
   kAdd, kSub, kMul, kDiv, kMaximum, kMinimum, kPow, kSquaredDifference,
+  kFloorDiv, kFloorMod, kMod,
 };
 
 const char* NameOf(BinaryKind k) {
@@ -98,6 +99,9 @@ const char* NameOf(BinaryKind k) {
     case BinaryKind::kMinimum: return "Minimum";
     case BinaryKind::kPow: return "Pow";
     case BinaryKind::kSquaredDifference: return "SquaredDifference";
+    case BinaryKind::kFloorDiv: return "FloorDiv";
+    case BinaryKind::kFloorMod: return "FloorMod";
+    case BinaryKind::kMod: return "Mod";
   }
   return "?";
 }
@@ -124,6 +128,17 @@ MPSGraphTensor* ApplyBinary(MPSGraph* g, BinaryKind k, MPSGraphTensor* a,
           [g subtractionWithPrimaryTensor:a secondaryTensor:b name:nil];
       return [g squareWithTensor:d name:nil];
     }
+    case BinaryKind::kFloorDiv: {
+      MPSGraphTensor* d =
+          [g divisionWithPrimaryTensor:a secondaryTensor:b name:nil];
+      return [g floorWithTensor:d name:nil];
+    }
+    case BinaryKind::kFloorMod:
+      // Floored modulo takes the sign of the divisor, which is what
+      // TensorFlow's FloorMod means and what Mod below does not.
+      return [g floorModuloWithPrimaryTensor:a secondaryTensor:b name:nil];
+    case BinaryKind::kMod:
+      return [g moduloWithPrimaryTensor:a secondaryTensor:b name:nil];
   }
   return nil;
 }
@@ -215,6 +230,8 @@ void Binary_ComputeImpl(DTypeOp* op, TF_OpKernelContext* ctx,
 
 enum class UnaryKind {
   kNeg, kSqrt, kRsqrt, kExp, kLog, kSquare, kTanh, kSigmoid, kAbs, kReciprocal,
+  kFloor, kCeil, kRound, kRint, kSign, kErf, kSoftplus, kElu, kSelu, kLog1p,
+  kExpm1,
 };
 
 const char* NameOf(UnaryKind k) {
@@ -229,11 +246,58 @@ const char* NameOf(UnaryKind k) {
     case UnaryKind::kSigmoid: return "Sigmoid";
     case UnaryKind::kAbs: return "Abs";
     case UnaryKind::kReciprocal: return "Reciprocal";
+    case UnaryKind::kFloor: return "Floor";
+    case UnaryKind::kCeil: return "Ceil";
+    case UnaryKind::kRound: return "Round";
+    case UnaryKind::kRint: return "Rint";
+    case UnaryKind::kSign: return "Sign";
+    case UnaryKind::kErf: return "Erf";
+    case UnaryKind::kSoftplus: return "Softplus";
+    case UnaryKind::kElu: return "Elu";
+    case UnaryKind::kSelu: return "Selu";
+    case UnaryKind::kLog1p: return "Log1p";
+    case UnaryKind::kExpm1: return "Expm1";
   }
   return "?";
 }
 
-MPSGraphTensor* ApplyUnary(MPSGraph* g, UnaryKind k, MPSGraphTensor* x) {
+// Softplus, written the stable way TensorFlow writes it:
+//   max(x, 0) + log(1 + exp(-|x|))
+// Rather than log(1 + exp(x)), which overflows for large positive x.
+MPSGraphTensor* Softplus(MPSGraph* g, MPSGraphTensor* x, MPSDataType t) {
+  MPSGraphTensor* zero = [g constantWithScalar:0.0 dataType:t];
+  MPSGraphTensor* one = [g constantWithScalar:1.0 dataType:t];
+  MPSGraphTensor* pos = [g maximumWithPrimaryTensor:x secondaryTensor:zero name:nil];
+  MPSGraphTensor* negabs =
+      [g negativeWithTensor:[g absoluteWithTensor:x name:nil] name:nil];
+  MPSGraphTensor* e = [g exponentWithTensor:negabs name:nil];
+  MPSGraphTensor* l =
+      [g logarithmWithTensor:[g additionWithPrimaryTensor:one
+                                         secondaryTensor:e
+                                                    name:nil]
+                        name:nil];
+  return [g additionWithPrimaryTensor:pos secondaryTensor:l name:nil];
+}
+
+// Elu: x for x > 0, exp(x) - 1 otherwise. Built from a select rather than a
+// clamp so the negative branch keeps its exact exponential shape.
+MPSGraphTensor* Elu(MPSGraph* g, MPSGraphTensor* x, MPSDataType t) {
+  MPSGraphTensor* zero = [g constantWithScalar:0.0 dataType:t];
+  MPSGraphTensor* one = [g constantWithScalar:1.0 dataType:t];
+  MPSGraphTensor* neg =
+      [g subtractionWithPrimaryTensor:[g exponentWithTensor:x name:nil]
+                      secondaryTensor:one
+                                 name:nil];
+  MPSGraphTensor* mask =
+      [g greaterThanWithPrimaryTensor:x secondaryTensor:zero name:nil];
+  return [g selectWithPredicateTensor:mask
+                  truePredicateTensor:x
+                 falsePredicateTensor:neg
+                                 name:nil];
+}
+
+MPSGraphTensor* ApplyUnary(MPSGraph* g, UnaryKind k, MPSGraphTensor* x,
+                           MPSDataType t) {
   switch (k) {
     case UnaryKind::kNeg: return [g negativeWithTensor:x name:nil];
     case UnaryKind::kSqrt: return [g squareRootWithTensor:x name:nil];
@@ -245,6 +309,54 @@ MPSGraphTensor* ApplyUnary(MPSGraph* g, UnaryKind k, MPSGraphTensor* x) {
     case UnaryKind::kSigmoid: return [g sigmoidWithTensor:x name:nil];
     case UnaryKind::kAbs: return [g absoluteWithTensor:x name:nil];
     case UnaryKind::kReciprocal: return [g reciprocalWithTensor:x name:nil];
+    case UnaryKind::kFloor: return [g floorWithTensor:x name:nil];
+    case UnaryKind::kCeil: return [g ceilWithTensor:x name:nil];
+    case UnaryKind::kRound: return [g roundWithTensor:x name:nil];
+    case UnaryKind::kRint: return [g rintWithTensor:x name:nil];
+    case UnaryKind::kSign: return [g signWithTensor:x name:nil];
+    case UnaryKind::kErf: return [g erfWithTensor:x name:nil];
+    case UnaryKind::kSoftplus: return Softplus(g, x, t);
+    case UnaryKind::kElu: return Elu(g, x, t);
+    case UnaryKind::kSelu: {
+      // The fixed constants from the self-normalising networks paper, which
+      // is what TensorFlow's Selu uses.
+      MPSGraphTensor* alpha =
+          [g constantWithScalar:1.6732632423543772 dataType:t];
+      MPSGraphTensor* scale =
+          [g constantWithScalar:1.0507009873554805 dataType:t];
+      MPSGraphTensor* zero = [g constantWithScalar:0.0 dataType:t];
+      MPSGraphTensor* one = [g constantWithScalar:1.0 dataType:t];
+      MPSGraphTensor* neg = [g
+          multiplicationWithPrimaryTensor:alpha
+                          secondaryTensor:
+                              [g subtractionWithPrimaryTensor:
+                                     [g exponentWithTensor:x name:nil]
+                                              secondaryTensor:one
+                                                         name:nil]
+                                     name:nil];
+      MPSGraphTensor* mask =
+          [g greaterThanWithPrimaryTensor:x secondaryTensor:zero name:nil];
+      MPSGraphTensor* branch = [g selectWithPredicateTensor:mask
+                                        truePredicateTensor:x
+                                       falsePredicateTensor:neg
+                                                       name:nil];
+      return [g multiplicationWithPrimaryTensor:scale
+                                secondaryTensor:branch
+                                           name:nil];
+    }
+    case UnaryKind::kLog1p: {
+      MPSGraphTensor* one = [g constantWithScalar:1.0 dataType:t];
+      return [g logarithmWithTensor:[g additionWithPrimaryTensor:x
+                                                secondaryTensor:one
+                                                           name:nil]
+                               name:nil];
+    }
+    case UnaryKind::kExpm1: {
+      MPSGraphTensor* one = [g constantWithScalar:1.0 dataType:t];
+      return [g subtractionWithPrimaryTensor:[g exponentWithTensor:x name:nil]
+                             secondaryTensor:one
+                                        name:nil];
+    }
   }
   return nil;
 }
@@ -284,7 +396,7 @@ void Unary_ComputeImpl(DTypeOp* op, TF_OpKernelContext* ctx,
                                                     dataType:mps_dtype
                                                         name:nil];
         [out->inputs addObject:x];
-        [out->outputs addObject:ApplyUnary(out->graph, kKind, x)];
+        [out->outputs addObject:ApplyUnary(out->graph, kKind, x, mps_dtype)];
       },
       status);
   if (cached == nullptr) return;
@@ -517,6 +629,11 @@ METAL_COMPUTE(Min_Compute, DTypeOp, Binary_ComputeImpl<BinaryKind::kMinimum>)
 METAL_COMPUTE(Pow_Compute, DTypeOp, Binary_ComputeImpl<BinaryKind::kPow>)
 METAL_COMPUTE(SqDiff_Compute, DTypeOp,
               Binary_ComputeImpl<BinaryKind::kSquaredDifference>)
+METAL_COMPUTE(FloorDiv_Compute, DTypeOp,
+              Binary_ComputeImpl<BinaryKind::kFloorDiv>)
+METAL_COMPUTE(FloorMod_Compute, DTypeOp,
+              Binary_ComputeImpl<BinaryKind::kFloorMod>)
+METAL_COMPUTE(Mod_Compute, DTypeOp, Binary_ComputeImpl<BinaryKind::kMod>)
 
 METAL_COMPUTE(Neg_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kNeg>)
 METAL_COMPUTE(Sqrt_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kSqrt>)
@@ -529,6 +646,18 @@ METAL_COMPUTE(Sigmoid_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kSigmoid>)
 METAL_COMPUTE(Abs_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kAbs>)
 METAL_COMPUTE(Recip_Compute, DTypeOp,
               Unary_ComputeImpl<UnaryKind::kReciprocal>)
+METAL_COMPUTE(Floor_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kFloor>)
+METAL_COMPUTE(Ceil_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kCeil>)
+METAL_COMPUTE(Round_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kRound>)
+METAL_COMPUTE(Rint_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kRint>)
+METAL_COMPUTE(Sign_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kSign>)
+METAL_COMPUTE(Erf_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kErf>)
+METAL_COMPUTE(Softplus_Compute, DTypeOp,
+              Unary_ComputeImpl<UnaryKind::kSoftplus>)
+METAL_COMPUTE(Elu_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kElu>)
+METAL_COMPUTE(Selu_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kSelu>)
+METAL_COMPUTE(Log1p_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kLog1p>)
+METAL_COMPUTE(Expm1_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kExpm1>)
 
 METAL_COMPUTE(TanhGrad_Compute, DTypeOp,
               UnaryGrad_ComputeImpl<UnaryGradKind::kTanh>)
@@ -582,6 +711,8 @@ void RegisterMetalElementwiseKernels() {
       {"AddV2", &Add_Compute},   {"Add", &Add_Compute},
       {"Sub", &Sub_Compute},     {"Mul", &Mul_Compute},
       {"Div", &Div_Compute},     {"RealDiv", &Div_Compute},
+      {"FloorDiv", &FloorDiv_Compute}, {"FloorMod", &FloorMod_Compute},
+      {"Mod", &Mod_Compute},
       {"Maximum", &Max_Compute}, {"Minimum", &Min_Compute},
       {"Pow", &Pow_Compute},     {"SquaredDifference", &SqDiff_Compute},
   };
@@ -596,6 +727,12 @@ void RegisterMetalElementwiseKernels() {
       {"Log", &Log_Compute},         {"Square", &Square_Compute},
       {"Tanh", &Tanh_Compute},       {"Sigmoid", &Sigmoid_Compute},
       {"Abs", &Abs_Compute},         {"Reciprocal", &Recip_Compute},
+      {"Floor", &Floor_Compute},     {"Ceil", &Ceil_Compute},
+      {"Round", &Round_Compute},     {"Rint", &Rint_Compute},
+      {"Sign", &Sign_Compute},       {"Erf", &Erf_Compute},
+      {"Softplus", &Softplus_Compute}, {"Elu", &Elu_Compute},
+      {"Selu", &Selu_Compute},       {"Log1p", &Log1p_Compute},
+      {"Expm1", &Expm1_Compute},
       {"TanhGrad", &TanhGrad_Compute},
       {"SigmoidGrad", &SigmoidGrad_Compute},
       {"SqrtGrad", &SqrtGrad_Compute},

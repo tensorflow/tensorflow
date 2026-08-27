@@ -132,7 +132,9 @@ differently rather than fail.
 | `MaxPool`, `MaxPoolGrad`, `AvgPool` | float32, float16 |
 | `FusedBatchNorm`, `FusedBatchNormV2`, `FusedBatchNormV3` | float32, float16 |
 | `FusedBatchNormGrad`, `FusedBatchNormGradV2`, `FusedBatchNormGradV3` | float32, float16 |
-| `Relu`, `ReluGrad` | float32, float16 |
+| `Relu`, `ReluGrad`, `LeakyRelu`, `LeakyReluGrad` | float32, float16 |
+| `Elu`, `EluGrad`, `Selu`, `SeluGrad`, `Softplus`, `SoftplusGrad` | float32, float16 |
+| `BatchMatMul`, `BatchMatMulV2`, `BatchMatMulV3` | float32, float16 |
 | `BiasAdd`, `BiasAddGrad` | float32, float16 |
 | `Softmax` | float32, float16 |
 | `SoftmaxCrossEntropyWithLogits` | float32, float16 |
@@ -141,6 +143,9 @@ differently rather than fail.
 | `Add`, `AddV2`, `Sub`, `Mul`, `Div`, `RealDiv` | float32, float16 |
 | `Maximum`, `Minimum`, `Pow`, `SquaredDifference` | float32, float16 |
 | `Neg`, `Abs`, `Square`, `Sqrt`, `Rsqrt`, `Reciprocal` | float32, float16 |
+| `Floor`, `Ceil`, `Round`, `Rint`, `Sign`, `Erf` | float32, float16 |
+| `Log1p`, `Expm1` | float32, float16 |
+| `FloorDiv`, `FloorMod`, `Mod` | float32, float16 |
 | `Exp`, `Log`, `Tanh`, `Sigmoid` | float32, float16 |
 | `TanhGrad`, `SigmoidGrad`, `SqrtGrad`, `RsqrtGrad` | float32, float16 |
 | `AddN`, `Transpose`, `Concat`, `ConcatV2`, `Tile` | float32, float16 |

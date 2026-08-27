@@ -67,6 +67,10 @@ void RegisterMetalBatchNormKernels();
 // an accuracy metric is built from.
 void RegisterMetalCompareKernels();
 
+// LeakyRelu, the activation gradients that carry an alpha or a scale, and
+// BatchMatMul v1 through v3.
+void RegisterMetalActivationKernels();
+
 // Identity, which aliases its input when it can and blits when it cannot.
 void RegisterMetalIdentityKernels();
 
