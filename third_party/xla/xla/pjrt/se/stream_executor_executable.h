@@ -78,12 +78,8 @@ class StreamExecutorExecutable : public PjRtExecutable {
   absl::StatusOr<CompileOptions> GetCompileOptions() const override {
     return compile_options_;
   }
-  absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
-      const override {
-    if (hlo_module_ == nullptr) {
-      return std::vector<std::shared_ptr<HloModule>>{};
-    }
-    return std::vector<std::shared_ptr<HloModule>>{hlo_module_};
+  absl::StatusOr<std::shared_ptr<HloModule>> GetHloModule() const override {
+    return hlo_module_;
   }
 
   const std::shared_ptr<HloModule>& hlo_module() const { return hlo_module_; }
