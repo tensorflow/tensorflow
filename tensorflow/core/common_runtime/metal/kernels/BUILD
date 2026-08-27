@@ -113,6 +113,7 @@ objc_library(
         "metal_image2_ops.mm",
         "metal_image_ops.mm",
         "metal_inplace_ops.mm",
+        "metal_linalg_ops.mm",
         "metal_index_ops.mm",
         "metal_kernels.mm",
         "metal_matrix_ops.mm",

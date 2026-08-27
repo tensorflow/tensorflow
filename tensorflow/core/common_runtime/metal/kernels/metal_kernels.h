@@ -145,6 +145,9 @@ void RegisterMetalDynamicKernels();
 // The two ops a parallel stack decomposes into.
 void RegisterMetalInplaceKernels();
 
+// MatrixTriangularSolve and its deprecated alias.
+void RegisterMetalLinalgKernels();
+
 // ExtractVolumePatches.
 void RegisterMetalVolumePatchKernels();
 
