@@ -121,6 +121,9 @@ void RegisterMetalExtraKernels();
 // ResourceGather and ResourceScatterUpdate.
 void RegisterMetalResourceKernels();
 
+// Dilation2D, grayscale morphological dilation.
+void RegisterMetalDilationKernels();
+
 // Identity, which aliases its input when it can and blits when it cannot.
 void RegisterMetalIdentityKernels();
 

@@ -134,6 +134,7 @@ differently rather than fail.
 | `MaxPool`, `MaxPoolGrad`, `AvgPool`, `AvgPoolGrad` | float32, float16 |
 | `MaxPoolV2`, `MaxPoolGradV2` | float32, float16 |
 | `DepthwiseConv2dNative`, `DepthwiseConv2dNativeBackpropInput`, `DepthwiseConv2dNativeBackpropFilter` | float32, float16 |
+| `Dilation2D` | float32, float16 |
 | `FusedBatchNorm`, `FusedBatchNormV2`, `FusedBatchNormV3` | float32, float16 |
 | `FusedBatchNormGrad`, `FusedBatchNormGradV2`, `FusedBatchNormGradV3` | float32, float16 |
 | `Relu`, `ReluGrad`, `LeakyRelu`, `LeakyReluGrad` | float32, float16 |

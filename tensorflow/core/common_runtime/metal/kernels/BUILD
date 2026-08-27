@@ -99,6 +99,7 @@ objc_library(
         "metal_conv3d_ops.mm",
         "metal_conv_ops.mm",
         "metal_depthwise_ops.mm",
+        "metal_dilation_ops.mm",
         "metal_compare_ops.mm",
         "metal_reduction_ops.mm",
         "metal_elementwise_ops.mm",
