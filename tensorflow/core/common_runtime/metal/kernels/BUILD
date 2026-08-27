@@ -118,6 +118,7 @@ objc_library(
         "metal_kernels.mm",
         "metal_matrix_ops.mm",
         "metal_matmul_op.mm",
+        "metal_nms_ops.mm",
         "metal_nn_ops.mm",
         "metal_pooling_ops.mm",
         "metal_pool_variant_ops.mm",

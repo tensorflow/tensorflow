@@ -148,6 +148,9 @@ void RegisterMetalInplaceKernels();
 // MatrixTriangularSolve and its deprecated alias.
 void RegisterMetalLinalgKernels();
 
+// Non-maximum suppression, V2 through V4.
+void RegisterMetalNmsKernels();
+
 // ExtractVolumePatches.
 void RegisterMetalVolumePatchKernels();
 
