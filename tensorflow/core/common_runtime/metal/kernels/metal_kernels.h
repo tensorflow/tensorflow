@@ -133,6 +133,9 @@ void RegisterMetalTransformKernels();
 // CropAndResize and its image and box gradients.
 void RegisterMetalCropResizeKernels();
 
+// ExtractVolumePatches.
+void RegisterMetalVolumePatchKernels();
+
 // ResizeBilinearGrad and ResizeNearestNeighborGrad.
 void RegisterMetalResizeGradKernels();
 

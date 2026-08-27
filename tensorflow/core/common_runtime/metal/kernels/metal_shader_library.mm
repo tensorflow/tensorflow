@@ -970,6 +970,67 @@ kernel void tf_resize_nearest_grad_float(
                params.channels + c],
       grads[gid], memory_order_relaxed);
 }
+
+// ---- volume patches ----
+
+struct VolumePatchParams {
+  uint batch;
+  uint in_d;
+  uint in_h;
+  uint in_w;
+  uint channels;
+  uint out_d;
+  uint out_h;
+  uint out_w;
+  uint kd;
+  uint kh;
+  uint kw;
+  uint stride_d;
+  uint stride_h;
+  uint stride_w;
+  int pad_d;
+  int pad_h;
+  int pad_w;
+  uint count;
+  uint pad0;
+  uint pad1;
+};
+
+// One thread per output element. The last axis packs the whole window, with
+// the channel varying fastest, then the width, the height and the depth, which
+// is the order TensorFlow lays a patch out in. Positions outside the volume
+// contribute zero, which is what padding means here.
+kernel void tf_extract_volume_patches_float(
+    device const float* in [[buffer(0)]],
+    device float* out [[buffer(1)]],
+    constant VolumePatchParams& params [[buffer(2)]],
+    uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count) return;
+  const uint patch = params.kd * params.kh * params.kw * params.channels;
+  const uint k = gid % patch;
+  const uint ox = (gid / patch) % params.out_w;
+  const uint oy = (gid / (patch * params.out_w)) % params.out_h;
+  const uint oz = (gid / (patch * params.out_w * params.out_h)) % params.out_d;
+  const uint b = gid / (patch * params.out_w * params.out_h * params.out_d);
+
+  const uint c = k % params.channels;
+  const uint kx = (k / params.channels) % params.kw;
+  const uint ky = (k / (params.channels * params.kw)) % params.kh;
+  const uint kz = k / (params.channels * params.kw * params.kh);
+
+  const int iz = int(oz * params.stride_d) - params.pad_d + int(kz);
+  const int iy = int(oy * params.stride_h) - params.pad_h + int(ky);
+  const int ix = int(ox * params.stride_w) - params.pad_w + int(kx);
+  if (iz < 0 || iz >= int(params.in_d) || iy < 0 || iy >= int(params.in_h) ||
+      ix < 0 || ix >= int(params.in_w)) {
+    out[gid] = 0.0f;
+    return;
+  }
+  const uint index =
+      (((b * params.in_d + uint(iz)) * params.in_h + uint(iy)) * params.in_w +
+       uint(ix)) * params.channels + c;
+  out[gid] = in[index];
+}
 )METAL";
 
 class ShaderLibrary {

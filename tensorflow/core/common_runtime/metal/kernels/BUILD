@@ -129,6 +129,7 @@ objc_library(
         "metal_slice_ops.mm",
         "metal_strided_ops.mm",
         "metal_transform_ops.mm",
+        "metal_volume_patch_ops.mm",
         "metal_training_ops.mm",
     ],
     hdrs = ["metal_kernels.h"],

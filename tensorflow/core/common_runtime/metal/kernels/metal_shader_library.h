@@ -177,6 +177,30 @@ struct ResizeGradParams {
   uint32_t padding0;
 };
 
+// Parameters for the volume-patch shader. Layout must match the Metal struct.
+struct VolumePatchParams {
+  uint32_t batch;
+  uint32_t in_d;
+  uint32_t in_h;
+  uint32_t in_w;
+  uint32_t channels;
+  uint32_t out_d;
+  uint32_t out_h;
+  uint32_t out_w;
+  uint32_t kd;
+  uint32_t kh;
+  uint32_t kw;
+  uint32_t stride_d;
+  uint32_t stride_h;
+  uint32_t stride_w;
+  int32_t pad_d;
+  int32_t pad_h;
+  int32_t pad_w;
+  uint32_t count;
+  uint32_t padding0;
+  uint32_t padding1;
+};
+
 // Compute pipeline for one function in the backend's shader library.
 //
 // The Metal source is compiled from a string the first time any pipeline is
