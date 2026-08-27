@@ -17,6 +17,7 @@
 #   Contains the Keras layers (internal TensorFlow version).
 
 load("@xla//third_party/rules_python/python:defs.bzl", "py_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -158,9 +159,10 @@ tf_py_test(
     srcs_version = "PY3",
     deps = [
         ":quantized",
+        "//tensorflow/python/framework:random_seed",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/platform:client_testlib",
-        "//third_party/py/numpy",
     ],
 )
 
