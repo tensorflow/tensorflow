@@ -1231,6 +1231,44 @@ kernel void tf_scatter_rows_u32(device const uint* data [[buffer(0)]],
   if (index < 0 || uint(index) >= params.limit) return;
   out[uint(index) * params.slice + word] = data[gid];
 }
+
+// ---- pivots to permutation ----
+
+struct PivotParams {
+  uint batch;
+  uint order;
+  uint pad0;
+  uint pad1;
+};
+
+// A factorisation returns its row interchanges the way LAPACK does: entry i
+// names the row that row i was swapped with, in order. TensorFlow wants the
+// permutation itself, so the swaps have to be replayed.
+//
+// One thread per matrix, looping over the order. That is deliberately serial:
+// the swaps are only meaningful in sequence, and a matrix small enough to
+// factorise is small enough for one thread to walk. Batches still run in
+// parallel, which is where the width is.
+#define TF_METAL_PIVOTS(NAME, IDX)                                            \
+  kernel void NAME(device const uint* pivots [[buffer(0)]],                   \
+                   device IDX* out [[buffer(1)]],                             \
+                   constant PivotParams& params [[buffer(2)]],                \
+                   uint gid [[thread_position_in_grid]]) {                    \
+    if (gid >= params.batch) return;                                          \
+    device const uint* p = pivots + gid * params.order;                       \
+    device IDX* result = out + gid * params.order;                            \
+    for (uint i = 0; i < params.order; ++i) result[i] = IDX(i);               \
+    for (uint i = 0; i < params.order; ++i) {                                 \
+      const uint j = p[i];                                                    \
+      if (j >= params.order) continue;                                        \
+      const IDX tmp = result[i];                                              \
+      result[i] = result[j];                                                  \
+      result[j] = tmp;                                                        \
+    }                                                                         \
+  }
+
+TF_METAL_PIVOTS(tf_pivots_to_permutation_i32, int)
+TF_METAL_PIVOTS(tf_pivots_to_permutation_i64, long)
 )METAL";
 
 class ShaderLibrary {

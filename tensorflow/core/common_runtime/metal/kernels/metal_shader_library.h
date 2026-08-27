@@ -249,6 +249,15 @@ struct RowMoveParams {
   uint32_t padding0;
 };
 
+// Parameters for turning LAPACK-style pivots into a permutation. Layout must
+// match the Metal struct.
+struct PivotParams {
+  uint32_t batch;
+  uint32_t order;
+  uint32_t padding0;
+  uint32_t padding1;
+};
+
 // Compute pipeline for one function in the backend's shader library.
 //
 // The Metal source is compiled from a string the first time any pipeline is

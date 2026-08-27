@@ -178,6 +178,7 @@ differently rather than fail.
 | `TopK`, `LowerBound`, `UpperBound`, `HistogramFixedWidth` | float32, float16 |
 | `ApproxTopK` | float32, float16 |
 | `MatrixTriangularSolve`, `BatchMatrixTriangularSolve` | float32 |
+| `Lu` | float32, with int32 or int64 permutation |
 | `NonMaxSuppressionV2`, `NonMaxSuppressionV3`, `NonMaxSuppressionV4` | float32 |
 | `_ParallelConcatStart`, `_ParallelConcatUpdate` | float32, float16, int32, int64 |
 | `Cumsum`, `Cumprod`, `ClipByValue` | float32, float16 |
