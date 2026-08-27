@@ -1269,6 +1269,180 @@ struct PivotParams {
 
 TF_METAL_PIVOTS(tf_pivots_to_permutation_i32, int)
 TF_METAL_PIVOTS(tf_pivots_to_permutation_i64, long)
+
+// ---- dense factorisations ----
+
+struct FactorParams {
+  uint batch;
+  uint rows;
+  uint cols;
+  uint k;
+  uint full_matrices;
+  uint compute_vectors;
+  uint pad0;
+  uint pad1;
+};
+
+// QR by Householder reflections, and the symmetric eigenproblem by Jacobi
+// rotations. Metal Performance Shaders has neither.
+//
+// One thread per matrix, working serially through its own scratch. That is not
+// a compromise for lack of a better shape: both algorithms are sweeps whose
+// every step depends on the one before, so the parallelism that exists is
+// across matrices, which is exactly what a thread per matrix uses. A single
+// large matrix will not go fast here, and a batch of small ones will.
+//
+// The scratch is passed in rather than declared: a thread's working copy is
+// larger than any thread-local allocation Metal offers, and it has to be
+// device memory for that reason.
+kernel void tf_qr_float(device const float* input [[buffer(0)]],
+                        device float* q_out [[buffer(1)]],
+                        device float* r_out [[buffer(2)]],
+                        device float* scratch [[buffer(3)]],
+                        constant FactorParams& params [[buffer(4)]],
+                        uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.batch) return;
+  const uint m = params.rows;
+  const uint n = params.cols;
+  const uint k = params.k;
+  const uint stride = m * n + m * m + m;
+  device float* work = scratch + gid * stride;
+  device float* q = work + m * n;
+  device float* v = q + m * m;
+
+  device const float* a = input + gid * m * n;
+  for (uint i = 0; i < m * n; ++i) work[i] = a[i];
+  for (uint i = 0; i < m; ++i)
+    for (uint j = 0; j < m; ++j) q[i * m + j] = (i == j) ? 1.0f : 0.0f;
+
+  for (uint step = 0; step < k; ++step) {
+    // The reflector that zeroes column `step` below the diagonal.
+    float norm = 0.0f;
+    for (uint i = step; i < m; ++i) {
+      const float x = work[i * n + step];
+      norm += x * x;
+    }
+    norm = sqrt(norm);
+    if (norm == 0.0f) continue;
+    const float head = work[step * n + step];
+    // Choosing the sign away from the head avoids cancellation, which is the
+    // whole reason Householder is preferred to Gram-Schmidt.
+    const float alpha = head >= 0.0f ? -norm : norm;
+    for (uint i = step; i < m; ++i) v[i] = work[i * n + step];
+    v[step] -= alpha;
+    float vnorm = 0.0f;
+    for (uint i = step; i < m; ++i) vnorm += v[i] * v[i];
+    if (vnorm == 0.0f) continue;
+    const float scale = 2.0f / vnorm;
+
+    for (uint j = step; j < n; ++j) {
+      float dot = 0.0f;
+      for (uint i = step; i < m; ++i) dot += v[i] * work[i * n + j];
+      dot *= scale;
+      for (uint i = step; i < m; ++i) work[i * n + j] -= dot * v[i];
+    }
+    // Q accumulates the reflectors from the right, so it ends up as the
+    // product that takes the factored form back to the input.
+    for (uint i = 0; i < m; ++i) {
+      float dot = 0.0f;
+      for (uint j = step; j < m; ++j) dot += q[i * m + j] * v[j];
+      dot *= scale;
+      for (uint j = step; j < m; ++j) q[i * m + j] -= dot * v[j];
+    }
+  }
+
+  const uint q_cols = params.full_matrices != 0u ? m : k;
+  const uint r_rows = params.full_matrices != 0u ? m : k;
+  device float* qd = q_out + gid * m * q_cols;
+  device float* rd = r_out + gid * r_rows * n;
+  for (uint i = 0; i < m; ++i)
+    for (uint j = 0; j < q_cols; ++j) qd[i * q_cols + j] = q[i * m + j];
+  for (uint i = 0; i < r_rows; ++i)
+    for (uint j = 0; j < n; ++j)
+      rd[i * n + j] = (j >= i) ? work[i * n + j] : 0.0f;
+}
+
+kernel void tf_selfadjoint_eig_float(device const float* input [[buffer(0)]],
+                                     device float* e_out [[buffer(1)]],
+                                     device float* v_out [[buffer(2)]],
+                                     device float* scratch [[buffer(3)]],
+                                     constant FactorParams& params
+                                         [[buffer(4)]],
+                                     uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.batch) return;
+  const uint n = params.rows;
+  const uint stride = 2u * n * n;
+  device float* work = scratch + gid * stride;
+  device float* vec = work + n * n;
+
+  device const float* a = input + gid * n * n;
+  // Symmetrised on the way in: the op promises to read one triangle, and
+  // averaging costs nothing and removes any question of which.
+  for (uint i = 0; i < n; ++i) {
+    for (uint j = 0; j < n; ++j) {
+      work[i * n + j] = 0.5f * (a[i * n + j] + a[j * n + i]);
+      vec[i * n + j] = (i == j) ? 1.0f : 0.0f;
+    }
+  }
+
+  for (uint sweep = 0; sweep < 60u; ++sweep) {
+    float off = 0.0f;
+    for (uint i = 0; i < n; ++i)
+      for (uint j = i + 1; j < n; ++j) off += work[i * n + j] * work[i * n + j];
+    if (off <= 1.0e-16f) break;
+    for (uint p = 0; p + 1 < n; ++p) {
+      for (uint q = p + 1; q < n; ++q) {
+        const float apq = work[p * n + q];
+        if (fabs(apq) < 1.0e-12f) continue;
+        // The rotation that zeroes this off-diagonal entry.
+        const float theta = (work[q * n + q] - work[p * n + p]) / (2.0f * apq);
+        const float t = (theta >= 0.0f ? 1.0f : -1.0f) /
+                        (fabs(theta) + sqrt(theta * theta + 1.0f));
+        const float c = 1.0f / sqrt(t * t + 1.0f);
+        const float s = t * c;
+        for (uint i = 0; i < n; ++i) {
+          const float aip = work[i * n + p];
+          const float aiq = work[i * n + q];
+          work[i * n + p] = c * aip - s * aiq;
+          work[i * n + q] = s * aip + c * aiq;
+        }
+        for (uint i = 0; i < n; ++i) {
+          const float api = work[p * n + i];
+          const float aqi = work[q * n + i];
+          work[p * n + i] = c * api - s * aqi;
+          work[q * n + i] = s * api + c * aqi;
+        }
+        for (uint i = 0; i < n; ++i) {
+          const float vip = vec[i * n + p];
+          const float viq = vec[i * n + q];
+          vec[i * n + p] = c * vip - s * viq;
+          vec[i * n + q] = s * vip + c * viq;
+        }
+      }
+    }
+  }
+
+  // TensorFlow returns the eigenvalues in ascending order, so the diagonal is
+  // sorted and the eigenvectors follow their own values.
+  device float* e = e_out + gid * n;
+  for (uint i = 0; i < n; ++i) e[i] = work[i * n + i];
+  for (uint i = 1; i < n; ++i) {
+    for (uint j = i; j > 0 && e[j - 1] > e[j]; --j) {
+      const float tmp = e[j - 1];
+      e[j - 1] = e[j];
+      e[j] = tmp;
+      for (uint r = 0; r < n; ++r) {
+        const float v0 = vec[r * n + j - 1];
+        vec[r * n + j - 1] = vec[r * n + j];
+        vec[r * n + j] = v0;
+      }
+    }
+  }
+  if (params.compute_vectors != 0u) {
+    device float* vd = v_out + gid * n * n;
+    for (uint i = 0; i < n * n; ++i) vd[i] = vec[i];
+  }
+}
 )METAL";
 
 class ShaderLibrary {

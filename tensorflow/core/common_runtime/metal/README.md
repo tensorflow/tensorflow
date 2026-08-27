@@ -179,6 +179,7 @@ differently rather than fail.
 | `ApproxTopK` | float32, float16 |
 | `MatrixTriangularSolve`, `BatchMatrixTriangularSolve` | float32 |
 | `Lu` | float32, with int32 or int64 permutation |
+| `Qr`, `SelfAdjointEigV2` | float32 |
 | `NonMaxSuppressionV2`, `NonMaxSuppressionV3`, `NonMaxSuppressionV4` | float32 |
 | `_ParallelConcatStart`, `_ParallelConcatUpdate` | float32, float16, int32, int64 |
 | `Cumsum`, `Cumprod`, `ClipByValue` | float32, float16 |

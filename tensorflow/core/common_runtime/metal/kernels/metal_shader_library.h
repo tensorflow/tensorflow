@@ -258,6 +258,19 @@ struct PivotParams {
   uint32_t padding1;
 };
 
+// Parameters for the dense factorisation shaders. Layout must match the Metal
+// struct. `k` is min(rows, columns).
+struct FactorParams {
+  uint32_t batch;
+  uint32_t rows;
+  uint32_t cols;
+  uint32_t k;
+  uint32_t full_matrices;
+  uint32_t compute_vectors;
+  uint32_t padding0;
+  uint32_t padding1;
+};
+
 // Compute pipeline for one function in the backend's shader library.
 //
 // The Metal source is compiled from a string the first time any pipeline is
