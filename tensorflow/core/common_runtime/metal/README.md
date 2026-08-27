@@ -5,10 +5,14 @@ installed as a separate plugin.
 
 ## Status
 
-Experimental, and deliberately narrow. This is the device and memory
-foundation plus a small set of kernels: enough to place tensors on the GPU,
-move data to and from it, and run an end-to-end computation. It is not yet
-enough to train a model. See [Limitations](#limitations).
+Experimental. The device and memory foundation, plus enough kernels to train a
+convolutional model end to end on the GPU: convolutions and their gradients,
+pooling, activations, softmax cross entropy, reductions, weight initialisation
+and the Adam and SGD updates.
+
+Coverage is still far from CUDA's. Anything not listed under
+[Supported ops](#supported-ops) falls back to the host, which is correct but
+slow. See [Limitations](#limitations).
 
 ## Building
 
@@ -98,28 +102,61 @@ Registered through the Kernel C API. Elementwise arithmetic and `Cast` are
 Metal compute shaders compiled at runtime from an embedded source string;
 `MatMul` uses `MPSMatrixMultiplication`.
 
-`MPSMatrix` rather than `MPSGraph` because `MPSMatrix`'s
-`initWithBuffer:offset:descriptor:` takes a byte offset, whereas
-`MPSGraphTensorData`'s `MTLBuffer` initialiser assumes the tensor starts at the
-beginning of the buffer. Given BFC sub-allocation, an `MPSGraph` path would
-have to copy every operand into a buffer of its own first.
+Convolutions, pooling, activations, softmax, the cross entropies and the
+reductions go through `MPSGraph`; `MatMul` uses `MPSMatrix` directly because a
+2-D multiply needs less machinery.
+
+The `MPSGraph` path is zero-copy in both directions, which is not obvious and
+is worth stating: `MPSGraphTensorData`'s `MTLBuffer` initialiser assumes a
+tensor starts at the beginning of its buffer, which BFC sub-allocation
+guarantees it does not. `MPSNDArray`'s `initWithBuffer:offset:descriptor:`
+aliases a buffer at a byte offset, and `MPSGraphTensorData` accepts an
+`MPSNDArray`, so operands are fed and results written in place with no staging
+buffer anywhere.
+
+Random number generation and the optimiser updates are compute shaders rather
+than `MPSGraph`. Graphs here are cached by shape, so a seed baked into a graph
+would make every call after the first return the same tensor; and MPSGraph
+parameterises Adam differently from TensorFlow, which would train subtly
+differently rather than fail.
 
 ## Supported ops
 
 | Op | dtypes |
 | --- | --- |
-| `Add`, `AddV2`, `Sub`, `Mul` | float32, float16 |
+| `Conv2D`, `Conv2DBackpropInput`, `Conv2DBackpropFilter` | float32, float16 |
+| `MaxPool`, `MaxPoolGrad` | float32, float16 |
+| `Relu`, `ReluGrad` | float32, float16 |
+| `BiasAdd`, `BiasAddGrad` | float32, float16 |
+| `Softmax` | float32, float16 |
+| `SoftmaxCrossEntropyWithLogits` | float32, float16 |
+| `SparseSoftmaxCrossEntropyWithLogits` | float32, float16; int32 or int64 labels |
 | `MatMul` | float32, float16 |
+| `Add`, `AddV2`, `Sub`, `Mul` | float32, float16 |
+| `Sum`, `Mean` | float32, float16 |
+| `Fill`, `ZerosLike`, `OnesLike` | float32, float16 |
+| `RandomUniform`, `RandomStandardNormal`, `TruncatedNormal` | float32 |
+| `ResourceApplyGradientDescent`, `ResourceApplyAdam` | float32 |
 | `Cast` | float32 <-> float16 |
 | `Identity` | float32, float16, int32, int64, bool |
 
+Resource variables (`VarHandleOp`, `ReadVariableOp`, `AssignVariableOp` and the
+rest), `Reshape`, `Const`, `Shape`, `StridedSlice` and `Pack` need no kernel
+here: TensorFlow registers them for `DEVICE_DEFAULT`, which any device type
+inherits when it has no kernel of its own.
+
 ## Limitations
 
-* **Op coverage is minimal.** No convolutions, pooling, normalisation,
-  reductions, activations or gradients, so no model trains on this yet.
-  Unsupported ops fall back to the host.
-* **Broadcasting** is limited to a scalar operand. Other shapes are rejected
-  with both shapes named rather than computed incorrectly.
+* **Op coverage is far short of CUDA's**, which has kernels for several
+  hundred ops. What is here covers a convolutional classifier; anything else
+  falls back to the host, which is correct but slow. Notably absent:
+  normalisation (`FusedBatchNorm`), recurrent layers, `AvgPool`, most
+  elementwise maths beyond add, subtract and multiply, and every optimiser
+  other than SGD and Adam.
+* **Broadcasting** in the elementwise ops is limited to a scalar operand.
+  Other shapes are rejected with both shapes named rather than computed
+  incorrectly.
+* **Random ops and optimisers are float32 only.**
 * **`MatMul`** takes rank-2 tensors only, and float16 requires an even column
   count, since an odd one produces a row stride MPS will not accept.
 * **No graph optimizer or profiler module.** The `TF_InitGraph` and
@@ -139,4 +176,6 @@ have to copy every operand into a buffer of its own first.
 | `metal_stream_executor.{h,mm}` | The `SP_StreamExecutor` callback table |
 | `metal_platform.{h,mm}` | `SP_Platform`, device discovery, plugin entry point |
 | `metal_plugin_registrar.cc` | Static registration with core |
-| `kernels/` | Op kernels and the shader library |
+| `kernels/metal_mps_graph.{h,mm}` | MPSGraph bridge, graph cache, zero-copy tensor aliasing |
+| `kernels/metal_shader_library.{h,mm}` | Embedded Metal source and pipeline cache |
+| `kernels/metal_*_ops.mm` | Op kernels, grouped by family |

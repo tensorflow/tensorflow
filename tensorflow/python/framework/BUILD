@@ -93,6 +93,8 @@ tf_py_strict_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/ops:random_ops",
         "//third_party/py/numpy",
     ],
 )

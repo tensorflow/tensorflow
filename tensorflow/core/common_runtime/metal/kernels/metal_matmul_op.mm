@@ -35,16 +35,17 @@ namespace tensorflow {
 namespace metal {
 namespace {
 
-// MPSMatrixMultiplication rather than a hand-written tiled shader, and rather
-// than MPSGraph.
+// MPSMatrixMultiplication rather than a hand-written tiled shader: MPS ships
+// kernels tuned per GPU generation, which no reasonable amount of shader work
+// would match.
 //
-// MPS supplies kernels tuned per GPU generation, which no reasonable amount of
-// hand-written shader work would match. The reason for MPSMatrix over
-// MPSGraph is more specific: MPSMatrix's initWithBuffer:offset:descriptor:
-// takes a byte offset, whereas MPSGraphTensorData's MTLBuffer initialiser
-// assumes the tensor starts at the beginning of the buffer. Since core's BFC
-// allocator places tensors at arbitrary offsets inside a shared allocation,
-// the MPSGraph path would need every operand copied into its own buffer first.
+// MPSMatrix rather than MPSGraph is now only a matter of directness. An
+// earlier version of this file justified the choice by claiming MPSGraph could
+// not address a tensor at an offset inside its allocation; that was wrong.
+// MPSNDArray's initWithBuffer:offset:descriptor: does exactly that, and
+// metal_mps_graph.h builds the whole MPSGraph path on it. A 2-D matrix
+// multiply maps onto MPSMatrix with less machinery, so it stays here, but
+// either would work.
 
 struct MatMulOp {
   bool transpose_a = false;
