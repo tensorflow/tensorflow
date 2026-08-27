@@ -237,6 +237,62 @@ bool ReadFftLength(TF_OpKernelContext* ctx, int axes,
   return true;
 }
 
+// Moves a tensor into a different shape of the same rank, cropping what does
+// not fit and padding the rest with zeros. `mode` also converts between the
+// real and complex layouts, which is what the real transforms need on the way
+// in and on the way out.
+bool ResizeInto(SP_Stream stream, const BufferSlice& input,
+                const std::vector<int64_t>& in_shape,
+                const BufferSlice& output,
+                const std::vector<int64_t>& out_shape, uint32_t mode,
+                TF_Status* status) {
+  if (in_shape.size() != out_shape.size() || in_shape.size() > 8) {
+    TF_SetStatus(status, TF_UNIMPLEMENTED,
+                 "Metal: a transform of this rank is not supported.");
+    return false;
+  }
+  ResizeParams params;
+  params.rank = static_cast<uint32_t>(in_shape.size());
+  params.count = static_cast<uint32_t>(ElementCount(out_shape));
+  params.mode = mode;
+  params.padding0 = 0;
+  for (int i = 0; i < 8; ++i) {
+    params.in_shape[i] = 1;
+    params.out_shape[i] = 1;
+  }
+  for (size_t i = 0; i < in_shape.size(); ++i) {
+    params.in_shape[i] = static_cast<uint32_t>(in_shape[i]);
+    params.out_shape[i] = static_cast<uint32_t>(out_shape[i]);
+  }
+  id<MTLComputePipelineState> pipeline =
+      PipelineFor(DeviceForStream(stream), "tf_fft_resize_float", status);
+  if (pipeline == nil) return false;
+  OrderedCommandBuffer command_buffer(stream);
+  if (!command_buffer.ok()) {
+    TF_SetStatus(status, TF_RESOURCE_EXHAUSTED,
+                 "Metal: could not create a command buffer for a transform.");
+    return false;
+  }
+  id<MTLComputeCommandEncoder> encoder =
+      [command_buffer.get() computeCommandEncoder];
+  [encoder setComputePipelineState:pipeline];
+  [encoder setBuffer:input.buffer offset:input.offset atIndex:0];
+  [encoder setBuffer:output.buffer offset:output.offset atIndex:1];
+  [encoder setBytes:&params length:sizeof(params) atIndex:2];
+  Dispatch1D(encoder, pipeline, params.count);
+  [encoder endEncoding];
+  command_buffer.Commit();
+  return true;
+}
+
+// The real transforms, over any number of trailing axes.
+//
+// Only the innermost axis is halved: a real signal's transform is
+// conjugate-symmetric along the axis it was real in, and the outer axes carry
+// full complex spectra. So the forward direction pads or crops every
+// transformed axis, transforms them all, and keeps half of the innermost; the
+// inverse completes the innermost half by symmetry, transforms, and keeps the
+// real part.
 void RealFft_ComputeImpl(FftOp* op, TF_OpKernelContext* ctx,
                          TF_Status* status) {
   ScopedTensor input;
@@ -251,30 +307,28 @@ void RealFft_ComputeImpl(FftOp* op, TF_OpKernelContext* ctx,
   }
   std::vector<int64_t> fft_length;
   if (!ReadFftLength(ctx, op->axes, &fft_length, status)) return;
-  // Only the innermost axis changes length between the real and the complex
-  // side; the others are transformed at their requested length.
-  if (op->axes != 1) {
-    TF_SetStatus(status, TF_UNIMPLEMENTED,
-                 "Metal: the real transforms are implemented over one axis.");
-    return;
-  }
-  const int64_t n = fft_length[0];
-  const int64_t half = n / 2 + 1;
-  int64_t rows = 1;
-  for (int i = 0; i + 1 < rank; ++i) rows *= in_shape[i];
-  const int64_t in_last = in_shape[rank - 1];
+  const int64_t last = fft_length.back();
+  const int64_t half = last / 2 + 1;
 
+  // The shape the complex transform runs on, and the shape it reports.
+  std::vector<int64_t> work_shape = in_shape;
   std::vector<int64_t> out_shape = in_shape;
-  out_shape[rank - 1] = op->inverse ? n : half;
-  ScopedTensor output;
+  for (int i = 0; i < op->axes; ++i) {
+    const int axis = rank - op->axes + i;
+    work_shape[axis] = fft_length[i];
+    out_shape[axis] = fft_length[i];
+  }
+  out_shape[rank - 1] = op->inverse ? last : half;
+
   const TF_DataType out_dtype = op->inverse ? TF_FLOAT : TF_COMPLEX64;
+  ScopedTensor output;
   output.reset(TF_AllocateOutput(
       ctx, 0, out_dtype, out_shape.data(), rank,
       static_cast<size_t>(ElementCount(out_shape)) *
           TF_DataTypeSize(out_dtype),
       status));
   if (TF_GetCode(status) != TF_OK) return;
-  if (rows == 0 || n == 0) return;
+  if (ElementCount(out_shape) == 0) return;
 
   SP_Stream stream = StreamForContext(ctx, status);
   if (TF_GetCode(status) != TF_OK) return;
@@ -282,59 +336,69 @@ void RealFft_ComputeImpl(FftOp* op, TF_OpKernelContext* ctx,
   if (!SliceForTensor(input.get(), &in_slice, status)) return;
   if (!SliceForTensor(output.get(), &out_slice, status)) return;
 
-  // The complex signal the transform actually runs on.
-  const std::vector<int64_t> work_shape = {rows * n * 2};
+  const std::vector<int64_t> work_bytes = {ElementCount(work_shape) * 2};
   ScopedTensor work;
   work.reset(
-      TF_AllocateTemp(ctx, TF_FLOAT, work_shape.data(), 1, nullptr, status));
+      TF_AllocateTemp(ctx, TF_FLOAT, work_bytes.data(), 1, nullptr, status));
   if (TF_GetCode(status) != TF_OK) return;
-  if (!ZeroTensor(stream, work.get(), status)) return;
   BufferSlice work_slice;
   if (!SliceForTensor(work.get(), &work_slice, status)) return;
 
-  FftParams params;
-  params.outer = static_cast<uint32_t>(rows);
-  params.n = static_cast<uint32_t>(n);
-  params.inner = static_cast<uint32_t>(op->inverse ? half : in_last);
-  params.count = static_cast<uint32_t>(rows);
-  params.inverse = op->inverse ? 1 : 0;
-  params.scale = op->inverse ? 1 : 0;
-  params.padding0 = 0;
-  params.padding1 = 0;
-
   if (op->inverse) {
-    // The half spectrum is completed by conjugate symmetry before the
-    // transform, and only its real part survives afterwards.
-    std::vector<BufferSlice> mirror = {in_slice, work_slice};
+    // The half spectrum has to be completed along the innermost axis before
+    // anything else, and the outer axes are cropped or padded as they are.
+    std::vector<int64_t> mirror_in = in_shape;
+    for (int i = 0; i + 1 < op->axes; ++i) {
+      mirror_in[rank - op->axes + i] = fft_length[i];
+    }
+    // Everything but the innermost axis first, so the mirror sees rows of the
+    // right length.
+    std::vector<int64_t> staged_shape = mirror_in;
+    ScopedTensor staged;
+    BufferSlice staged_slice = in_slice;
+    if (staged_shape != in_shape) {
+      const std::vector<int64_t> staged_bytes = {ElementCount(staged_shape) *
+                                                 2};
+      staged.reset(TF_AllocateTemp(ctx, TF_FLOAT, staged_bytes.data(), 1,
+                                   nullptr, status));
+      if (TF_GetCode(status) != TF_OK) return;
+      if (!SliceForTensor(staged.get(), &staged_slice, status)) return;
+      if (!ResizeInto(stream, in_slice, in_shape, staged_slice, staged_shape,
+                      0, status)) {
+        return;
+      }
+    }
+    int64_t rows = 1;
+    for (int i = 0; i + 1 < rank; ++i) rows *= staged_shape[i];
+    FftParams params;
+    params.outer = static_cast<uint32_t>(rows);
+    params.n = static_cast<uint32_t>(last);
+    params.inner = static_cast<uint32_t>(staged_shape[rank - 1]);
+    params.count = static_cast<uint32_t>(rows);
+    params.inverse = 1;
+    params.scale = 1;
+    params.padding0 = 0;
+    params.padding1 = 0;
+    std::vector<BufferSlice> mirror = {staged_slice, work_slice};
     if (!Dispatch(stream, "tf_fft_mirror_spectrum_float", mirror, params,
-                  static_cast<uint32_t>(rows * n), status)) {
+                  static_cast<uint32_t>(rows * last), status)) {
       return;
     }
   } else {
-    std::vector<BufferSlice> pack = {in_slice, work_slice};
-    if (!Dispatch(stream, "tf_fft_pack_real_float", pack, params,
-                  static_cast<uint32_t>(rows * n), status)) {
+    if (!ResizeInto(stream, in_slice, in_shape, work_slice, work_shape, 1,
+                    status)) {
       return;
     }
   }
 
-  const std::vector<int64_t> transform_shape = {rows, n};
-  if (!TransformAxes(ctx, stream, work_slice, transform_shape, 1, op->inverse,
-                     status)) {
+  if (!TransformAxes(ctx, stream, work_slice, work_shape, op->axes,
+                     op->inverse, status)) {
     return;
   }
 
-  if (op->inverse) {
-    params.inner = static_cast<uint32_t>(n);
-    std::vector<BufferSlice> unpack = {work_slice, out_slice};
-    Dispatch(stream, "tf_fft_unpack_real_float", unpack, params,
-             static_cast<uint32_t>(rows * n), status);
-  } else {
-    params.inner = static_cast<uint32_t>(half);
-    std::vector<BufferSlice> crop = {work_slice, out_slice};
-    Dispatch(stream, "tf_fft_crop_spectrum_float", crop, params,
-             static_cast<uint32_t>(rows * half), status);
-  }
+  // On the way out, keep half the innermost axis, or its real part.
+  ResizeInto(stream, work_slice, work_shape, out_slice, out_shape,
+             op->inverse ? 2 : 0, status);
 }
 
 #define METAL_FFT_COMPUTE(NAME, AXES, INVERSE, REAL)                        \
@@ -366,7 +430,11 @@ METAL_FFT_COMPUTE(Ifft1_Compute, 1, true, false)
 METAL_FFT_COMPUTE(Ifft2_Compute, 2, true, false)
 METAL_FFT_COMPUTE(Ifft3_Compute, 3, true, false)
 METAL_FFT_COMPUTE(Rfft1_Compute, 1, false, true)
+METAL_FFT_COMPUTE(Rfft2_Compute, 2, false, true)
+METAL_FFT_COMPUTE(Rfft3_Compute, 3, false, true)
 METAL_FFT_COMPUTE(Irfft1_Compute, 1, true, true)
+METAL_FFT_COMPUTE(Irfft2_Compute, 2, true, true)
+METAL_FFT_COMPUTE(Irfft3_Compute, 3, true, true)
 
 #undef METAL_FFT_COMPUTE
 
@@ -403,7 +471,11 @@ void RegisterMetalFftKernels() {
   Register("BatchIFFT2D", &Ifft2_Compute, "MetalBatchIFFT2D", false);
   Register("BatchIFFT3D", &Ifft3_Compute, "MetalBatchIFFT3D", false);
   Register("RFFT", &Rfft1_Compute, "MetalRFFT", true);
+  Register("RFFT2D", &Rfft2_Compute, "MetalRFFT2D", true);
+  Register("RFFT3D", &Rfft3_Compute, "MetalRFFT3D", true);
   Register("IRFFT", &Irfft1_Compute, "MetalIRFFT", true);
+  Register("IRFFT2D", &Irfft2_Compute, "MetalIRFFT2D", true);
+  Register("IRFFT3D", &Irfft3_Compute, "MetalIRFFT3D", true);
 }
 
 }  // namespace metal

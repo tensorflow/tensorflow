@@ -142,7 +142,7 @@ differently rather than fail.
 | `Bincount`, `DenseBincount` | float32, int32 |
 | `FFT`, `FFT2D`, `FFT3D`, `IFFT`, `IFFT2D`, `IFFT3D` | complex64 |
 | `BatchFFT`, `BatchFFT2D`, `BatchFFT3D`, `BatchIFFT`, `BatchIFFT2D`, `BatchIFFT3D` | complex64 |
-| `RFFT`, `IRFFT` | float32 and complex64 |
+| `RFFT`, `RFFT2D`, `RFFT3D`, `IRFFT`, `IRFFT2D`, `IRFFT3D` | float32 and complex64 |
 | `SparseSegmentSum`, `SparseSegmentMean`, `SparseSegmentSqrtN` | float32 |
 | `SparseSegmentSumWithNumSegments`, `SparseSegmentMeanWithNumSegments`, `SparseSegmentSqrtNWithNumSegments` | float32 |
 | `SparseSegmentSumGrad`, `SparseSegmentMeanGrad`, `SparseSegmentSqrtNGrad` | float32 |

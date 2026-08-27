@@ -1857,6 +1857,56 @@ kernel void tf_fft_mirror_spectrum_float(device const float2* input
                       : float2(0.0f, 0.0f);
   }
 }
+
+// ---- crop and pad between two shapes ----
+
+struct ResizeParams {
+  uint rank;
+  uint count;
+  uint mode;
+  uint pad0;
+  uint in_shape[8];
+  uint out_shape[8];
+};
+
+// Copies a tensor into a different shape of the same rank, taking what fits
+// and filling the rest with zeros. That is exactly what a transform length
+// does to its input: a shorter axis is padded, a longer one is cropped, and
+// the same operation serves both directions of the real transforms because it
+// also converts between the real and complex layouts.
+kernel void tf_fft_resize_float(device const float* input [[buffer(0)]],
+                                device float* output [[buffer(1)]],
+                                constant ResizeParams& params [[buffer(2)]],
+                                uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count) return;
+  uint remaining = gid;
+  uint in_index = 0u;
+  bool inside = true;
+  // Row-major, so the innermost axis moves fastest and the input's own
+  // strides are rebuilt on the way back out.
+  uint in_stride = 1u;
+  uint coords[8];
+  for (uint d = 0u; d < params.rank; ++d) {
+    const uint axis = params.rank - 1u - d;
+    coords[axis] = remaining % params.out_shape[axis];
+    remaining /= params.out_shape[axis];
+  }
+  for (uint d = 0u; d < params.rank; ++d) {
+    const uint axis = params.rank - 1u - d;
+    if (coords[axis] >= params.in_shape[axis]) inside = false;
+    in_index += coords[axis] * in_stride;
+    in_stride *= params.in_shape[axis];
+  }
+  if (params.mode == 1u) {
+    output[2u * gid] = inside ? input[in_index] : 0.0f;
+    output[2u * gid + 1u] = 0.0f;
+  } else if (params.mode == 2u) {
+    output[gid] = inside ? input[2u * in_index] : 0.0f;
+  } else {
+    output[2u * gid] = inside ? input[2u * in_index] : 0.0f;
+    output[2u * gid + 1u] = inside ? input[2u * in_index + 1u] : 0.0f;
+  }
+}
 )METAL";
 
 class ShaderLibrary {

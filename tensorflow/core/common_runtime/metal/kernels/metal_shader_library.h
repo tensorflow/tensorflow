@@ -314,6 +314,18 @@ struct FftParams {
   uint32_t padding1;
 };
 
+// Parameters for the crop-and-pad shader that moves a tensor between two
+// shapes of the same rank. Layout must match the Metal struct. `mode` is 0 for
+// complex to complex, 1 for real to complex and 2 for complex to real.
+struct ResizeParams {
+  uint32_t rank;
+  uint32_t count;
+  uint32_t mode;
+  uint32_t padding0;
+  uint32_t in_shape[8];
+  uint32_t out_shape[8];
+};
+
 // Compute pipeline for one function in the backend's shader library.
 //
 // The Metal source is compiled from a string the first time any pipeline is
