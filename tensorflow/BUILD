@@ -691,6 +691,14 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# Metal PluggableDevice backend for Apple Silicon. Only meaningful on
+# macos_arm64; enabled by --config=metal (see .bazelrc).
+config_setting(
+    name = "with_metal_support",
+    define_values = {"with_metal_support": "true"},
+    visibility = ["//visibility:public"],
+)
+
 # By default, XLA GPU is compiled into tensorflow when building with
 # --config=cuda even when `with_xla_support` is false. The config setting
 # here allows us to override the behavior if needed.
