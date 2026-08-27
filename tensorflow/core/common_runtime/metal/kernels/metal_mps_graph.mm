@@ -146,6 +146,31 @@ MPSGraphTensorData* TensorDataFor(const BufferSlice& slice,
     return nil;
   }
 
+  // By default MPSNDArray rounds the innermost dimension's row up to a
+  // multiple of 16 bytes and then rejects a tightly packed buffer as too
+  // small, with an assertion that takes the process down rather than an error
+  // that can be reported. TensorFlow tensors are always tightly packed, and
+  // three float32 channels is 12 bytes, so the very common RGB case would hit
+  // this on the first convolution. preferPackedRows tells MPS to use the tight
+  // stride, which is what keeps the alias valid and the path zero-copy.
+  const size_t element_size = TF_DataTypeSize(dtype);
+  const size_t innermost = shape.empty() ? 1 : static_cast<size_t>(shape.back());
+  const size_t row_bytes = innermost * element_size;
+  if ([descriptor respondsToSelector:@selector(setPreferPackedRows:)]) {
+    descriptor.preferPackedRows = YES;
+  } else if (row_bytes % 16 != 0) {
+    // preferPackedRows arrived in macOS 15. Older systems would assert inside
+    // MPS, so refuse here with something a user can act on.
+    TF_SetStatus(
+        status, TF_UNIMPLEMENTED,
+        ("Metal: a tensor whose innermost dimension is " +
+         std::to_string(innermost) + " elements (" + std::to_string(row_bytes) +
+         " bytes) cannot be aliased for MPSGraph on this macOS version; "
+         "packed MPSNDArray rows require macOS 15 or later.")
+            .c_str());
+    return nil;
+  }
+
   // The alias that makes the whole path zero-copy: the array points into the
   // existing allocation at the tensor's own offset, so neither inputs nor
   // outputs are ever staged through a separate buffer.
