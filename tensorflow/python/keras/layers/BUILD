@@ -148,7 +148,8 @@ py_library(
         "//tensorflow/python/keras/initializers",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:nn",
-        "//tensorflow/python/ops:quantized_ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:nn_ops",
     ],
 )
 
