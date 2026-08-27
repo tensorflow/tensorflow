@@ -114,6 +114,7 @@ objc_library(
         "metal_pooling_ops.mm",
         "metal_pool_variant_ops.mm",
         "metal_extra_ops.mm",
+        "metal_gather_scatter_ops.mm",
         "metal_misc_ops.mm",
         "metal_quant_ops.mm",
         "metal_random_ops.mm",

@@ -118,6 +118,9 @@ void RegisterMetalSearchKernels();
 // PopulationCount, CumulativeLogsumexp, LRNGrad and AdjustContrast.
 void RegisterMetalExtraKernels();
 
+// ResourceGather and ResourceScatterUpdate.
+void RegisterMetalResourceKernels();
+
 // Identity, which aliases its input when it can and blits when it cannot.
 void RegisterMetalIdentityKernels();
 
