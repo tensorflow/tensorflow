@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/log.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
@@ -178,6 +179,113 @@ void Random_ComputeImpl(RandomOp* op, TF_OpKernelContext* ctx,
   command_buffer.Commit();
 }
 
+// RandomUniformInt draws in [minval, maxval), both device scalars. Unlike the
+// float generators the bounds have to be known on the host to build the
+// modulus, so this one does drain the stream. Weight initialisation does not
+// use it; it appears in data pipelines and shuffles, where a drain per call is
+// acceptable and a wrong distribution would not be.
+void RandomUniformInt_ComputeImpl(RandomOp* op, TF_OpKernelContext* ctx,
+                                  TF_Status* status) {
+  ScopedTensor shape_tensor, lo_t, hi_t;
+  TF_GetInput(ctx, 0, shape_tensor.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+  TF_GetInput(ctx, 1, lo_t.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+  TF_GetInput(ctx, 2, hi_t.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  const int64_t rank = TF_TensorElementCount(shape_tensor.get());
+  const TF_DataType index_dtype = TF_TensorType(shape_tensor.get());
+  const void* shape_data = TF_TensorData(shape_tensor.get());
+  std::vector<int64_t> shape;
+  for (int64_t i = 0; i < rank; ++i) {
+    shape.push_back(index_dtype == TF_INT32
+                        ? static_cast<const int32_t*>(shape_data)[i]
+                        : static_cast<const int64_t*>(shape_data)[i]);
+  }
+  int64_t count = 1;
+  for (int64_t d : shape) count *= d;
+
+  ScopedTensor output;
+  output.reset(TF_AllocateOutput(
+      ctx, 0, TF_INT32, shape.data(), static_cast<int>(shape.size()),
+      static_cast<size_t>(count) * TF_DataTypeSize(TF_INT32), status));
+  if (TF_GetCode(status) != TF_OK) return;
+  if (count == 0) return;
+
+  SP_Stream stream = StreamForContext(ctx, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  // The bounds live on the device; the modulus needs them on the host.
+  uint64_t target = 0;
+  {
+    absl::MutexLock lock(&stream->mu);
+    target = stream->last_enqueued;
+  }
+  if (target > 0) {
+    [stream->order_event waitUntilSignaledValue:target timeoutMS:UINT64_MAX];
+  }
+  const int32_t* lo_p = static_cast<const int32_t*>(TF_TensorData(lo_t.get()));
+  const int32_t* hi_p = static_cast<const int32_t*>(TF_TensorData(hi_t.get()));
+  if (lo_p == nullptr || hi_p == nullptr) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: RandomUniformInt bounds have no data.");
+    return;
+  }
+  if (*hi_p <= *lo_p) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: RandomUniformInt needs maxval greater than minval.");
+    return;
+  }
+
+  id<MTLComputePipelineState> pipeline =
+      PipelineFor(DeviceForStream(stream), "tf_random_uniform_int", status);
+  if (pipeline == nil) return;
+
+  BufferSlice out_slice;
+  if (!SliceForTensor(output.get(), &out_slice, status)) return;
+
+  OrderedCommandBuffer command_buffer(stream);
+  if (!command_buffer.ok()) {
+    TF_SetStatus(status, TF_RESOURCE_EXHAUSTED,
+                 "Metal: could not create a command buffer for a random op.");
+    return;
+  }
+
+  RandomIntParams params;
+  params.count = static_cast<uint32_t>(count);
+  params.seed_lo = op->seed_lo;
+  params.seed_hi = op->seed_hi;
+  params.counter = op->counter.fetch_add(1, std::memory_order_relaxed);
+  params.lo = *lo_p;
+  params.span = static_cast<uint32_t>(*hi_p - *lo_p);
+  params.padding0 = 0;
+  params.padding1 = 0;
+
+  id<MTLComputeCommandEncoder> encoder =
+      [command_buffer.get() computeCommandEncoder];
+  [encoder setComputePipelineState:pipeline];
+  [encoder setBuffer:out_slice.buffer offset:out_slice.offset atIndex:0];
+  [encoder setBytes:&params length:sizeof(params) atIndex:1];
+  Dispatch1D(encoder, pipeline, params.count);
+  [encoder endEncoding];
+  command_buffer.Commit();
+}
+
+void RandomUniformInt_Compute(void* kernel, TF_OpKernelContext* ctx) {
+  ScopedAutoreleasePool pool;
+  TF_Status* status = TF_NewStatus();
+  auto* op = static_cast<RandomOp*>(kernel);
+  if (op == nullptr) {
+    TF_SetStatus(status, TF_INTERNAL,
+                 "Metal: RandomUniformInt kernel has no state.");
+  } else {
+    RandomUniformInt_ComputeImpl(op, ctx, status);
+  }
+  if (TF_GetCode(status) != TF_OK) TF_OpKernelContext_Failure(ctx, status);
+  TF_DeleteStatus(status);
+}
+
 #define METAL_DEFINE_RANDOM_COMPUTE(NAME, DIST)                               \
   void NAME(void* kernel, TF_OpKernelContext* ctx) {                          \
     ScopedAutoreleasePool pool;                                               \
@@ -238,6 +346,31 @@ void RegisterMetalRandomKernels() {
                        kIndexSuffixes[i]);
     RegisterRandom("TruncatedNormal", &TruncatedNormal_Compute, kIndexTypes[i],
                    std::string("MetalTruncatedNormal") + kIndexSuffixes[i]);
+    // RandomUniformInt's dtype constraint names the output, which is int32,
+    // so it cannot go through RegisterRandom's float32 constraint.
+    {
+      TF_Status* st = TF_NewStatus();
+      TF_KernelBuilder* b = TF_NewKernelBuilder(
+          "RandomUniformInt", kMetalDeviceType, &RandomOp_Create,
+          &RandomUniformInt_Compute, &RandomOp_Delete);
+      TF_KernelBuilder_TypeConstraint(b, "Tout", TF_INT32, st);
+      if (TF_GetCode(st) == TF_OK) {
+        TF_KernelBuilder_TypeConstraint(b, "T", kIndexTypes[i], st);
+      }
+      TF_KernelBuilder_HostMemory(b, "shape");
+      const std::string name =
+          std::string("MetalRandomUniformInt") + kIndexSuffixes[i];
+      if (TF_GetCode(st) == TF_OK) {
+        TF_RegisterKernelBuilder(name.c_str(), b, st);
+      } else {
+        TF_DeleteKernelBuilder(b);
+      }
+      if (TF_GetCode(st) != TF_OK) {
+        LOG(ERROR) << "Metal: could not register kernel " << name << ": "
+                   << TF_Message(st);
+      }
+      TF_DeleteStatus(st);
+    }
   }
 }
 

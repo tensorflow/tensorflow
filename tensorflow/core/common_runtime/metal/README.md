@@ -184,6 +184,7 @@ differently rather than fail.
 | `Any`, `All` | bool |
 | `Fill`, `ZerosLike`, `OnesLike` | float32, float16 |
 | `RandomUniform`, `RandomStandardNormal`, `TruncatedNormal` | float32 |
+| `RandomUniformInt` | int32 output |
 | `ResourceApplyGradientDescent`, `ResourceApplyAdam` | float32 |
 | `ResourceApplyMomentum`, `ResourceApplyKerasMomentum`, `ResourceApplyRMSProp` | float32 |
 | `Cast` | float32, float16, bfloat16, int32, int64 pairs |

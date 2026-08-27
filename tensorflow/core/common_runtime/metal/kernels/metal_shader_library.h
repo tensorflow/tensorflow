@@ -45,6 +45,19 @@ struct RandomParams {
   uint32_t counter;
 };
 
+// Parameters for the integer random shader. Layout must match the Metal
+// struct.
+struct RandomIntParams {
+  uint32_t count;
+  uint32_t seed_lo;
+  uint32_t seed_hi;
+  uint32_t counter;
+  int32_t lo;
+  uint32_t span;
+  uint32_t padding0;
+  uint32_t padding1;
+};
+
 // Parameters for the optimizer shaders. Layout must match the Metal structs;
 // both take an element count first, so one type covers them.
 struct OptimizerParams {

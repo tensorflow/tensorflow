@@ -168,6 +168,31 @@ kernel void tf_truncated_normal_float(device float* out [[buffer(0)]],
   out[gid] = clamp(value, -2.0f, 2.0f);
 }
 
+// Uniform integers in [lo, hi). Derived from the same Philox stream as the
+// float generator, but reduced by remainder rather than scaled, so the result
+// is exact rather than a rounded float.
+struct RandomIntParams {
+  uint count;
+  uint seed_lo;
+  uint seed_hi;
+  uint counter;
+  int lo;
+  uint span;
+  uint pad0;
+  uint pad1;
+};
+
+kernel void tf_random_uniform_int(device int* out [[buffer(0)]],
+                                  constant RandomIntParams& params
+                                      [[buffer(1)]],
+                                  uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count) return;
+  if (params.span == 0u) { out[gid] = params.lo; return; }
+  uint4 bits = tf_philox(uint4(gid, params.counter, 0u, 0u),
+                         uint2(params.seed_lo, params.seed_hi));
+  out[gid] = params.lo + int(bits.x % params.span);
+}
+
 // ---- optimizers ----
 
 struct SgdParams {
