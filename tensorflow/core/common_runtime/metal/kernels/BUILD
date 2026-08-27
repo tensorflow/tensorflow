@@ -90,6 +90,7 @@ objc_library(
 objc_library(
     name = "metal_kernels",
     srcs = [
+        "metal_conv_ops.mm",
         "metal_elementwise_ops.mm",
         "metal_identity_op.mm",
         "metal_kernels.mm",
@@ -100,10 +101,12 @@ objc_library(
     sdk_frameworks = [
         "Metal",
         "MetalPerformanceShaders",
+        "MetalPerformanceShadersGraph",
     ],
     target_compatible_with = ["@platforms//os:macos"],
     deps = [
         ":metal_kernel_util",
+        ":metal_mps_graph",
         ":metal_shader_library",
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:tf_datatype_hdrs",

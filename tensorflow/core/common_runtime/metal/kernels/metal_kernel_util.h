@@ -74,6 +74,35 @@ struct BufferSlice {
   size_t length = 0;
 };
 
+// Attributes shared by the spatial ops (convolution, pooling).
+//
+// TensorFlow expresses strides and dilations as one entry per dimension of the
+// data layout, with the batch and channel entries required to be 1; only the
+// two spatial entries carry information, which is what MPSGraph wants.
+struct SpatialParams {
+  int stride_h = 1;
+  int stride_w = 1;
+  int dilation_h = 1;
+  int dilation_w = 1;
+  // TensorFlow's SAME and VALID map exactly onto MPSGraph's TF_SAME and
+  // TF_VALID padding styles. EXPLICIT is rejected by the reader.
+  bool same_padding = false;
+  // NHWC, TensorFlow's default, versus NCHW.
+  bool nhwc = true;
+  TF_DataType dtype = TF_FLOAT;
+};
+
+// Reads strides, padding, data_format, T, and optionally dilations, from a
+// kernel's construction context. Fails `status` on anything unsupported,
+// naming the attribute at fault.
+bool ReadSpatialParams(TF_OpKernelConstruction* ctx, bool want_dilations,
+                       SpatialParams* out, TF_Status* status);
+
+// Index of the height and width entries in a 4-element per-dimension attribute
+// list, given the data format.
+inline int SpatialHeightIndex(bool nhwc) { return nhwc ? 1 : 2; }
+inline int SpatialWidthIndex(bool nhwc) { return nhwc ? 2 : 3; }
+
 // Resolves a device tensor's storage. Fails `status` with a diagnosable
 // message if the tensor's data does not lie in a live Metal allocation, which
 // would mean it was placed on the host rather than the device.

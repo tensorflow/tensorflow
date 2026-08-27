@@ -28,6 +28,10 @@ void RegisterMetalElementwiseKernels();
 // MatMul for float32 and float16, backed by MPSMatrixMultiplication.
 void RegisterMetalMatMulKernels();
 
+// Conv2D and its gradients with respect to the input and the filter, on
+// MPSGraph, for float32 and float16.
+void RegisterMetalConvKernels();
+
 // Identity, which aliases its input when it can and blits when it cannot.
 void RegisterMetalIdentityKernels();
 
