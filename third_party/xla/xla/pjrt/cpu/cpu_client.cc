@@ -1078,45 +1078,6 @@ bool PjRtCpuClient::BufferFromHostBufferSupportsZeroCopy(
       data, type, dims, byte_strides, shape);
 }
 
-absl::StatusOr<PjRtDeviceEventRef> PjRtCpuClient::LinearizeHostBufferInto(
-    const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-    std::optional<absl::Span<int64_t const>> byte_strides,
-    HostBufferSemantics host_buffer_semantics,
-    absl::AnyInvocable<void() &&> on_done_with_host_buffer,
-    const xla::Shape& device_shape, PjRtRawBufferRef raw_buffer) {
-  if (device_shape.IsToken()) {
-    return PjRtDeviceEventRef(tsl::MakeAvailableAsyncValueRef<CpuEvent>());
-  }
-  auto* cpp_buf = raw_buffer->down_cast<CpuRawBuffer>();
-  if (cpp_buf == nullptr) {
-    return absl::InvalidArgumentError("Not a CPU raw buffer");
-  }
-  return cpp_buf->CopyFromHostBuffer(
-      data, type, dims, byte_strides, host_buffer_semantics,
-      std::move(on_done_with_host_buffer), device_shape, async_work_runner(),
-      raw_client()->eigen_intraop_pool(),
-      raw_client()->max_transpose_threads());
-}
-
-absl::StatusOr<PjRtDeviceEventRef> PjRtCpuClient::LinearizeInto(
-    const LiteralSlice& literal, const xla::Shape& device_shape,
-    HostBufferSemantics host_buffer_semantics, PjRtRawBufferRef raw_buffer) {
-  if (host_buffer_semantics ==
-      PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall) {
-    return absl::UnimplementedError(
-        "ImmutableOnlyDuringCall semantics is not supported on CPU.");
-  }
-  if (device_shape.IsToken()) {
-    return PjRtDeviceEventRef(tsl::MakeAvailableAsyncValueRef<CpuEvent>());
-  }
-  auto* cpp_buf = raw_buffer->down_cast<CpuRawBuffer>();
-  if (cpp_buf == nullptr) {
-    return absl::InvalidArgumentError("Not a CPU raw buffer");
-  }
-  return cpp_buf->CopyFromLiteral(literal, device_shape.layout(),
-                                  async_work_runner());
-}
-
 absl::StatusOr<CompiledMemoryStats> PjRtCpuExecutable::GetCompiledMemoryStats()
     const {
   const auto& buffer_assignment = cpu_executable_->buffer_assignment();
