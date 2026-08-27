@@ -109,6 +109,9 @@ class TilingSpace {
   //
   // RTVarInfo are accessed by (user_hlo, operand_id), in this case it is
   // (dynamic-slice, 1).
+  //
+  // For ragged_dot group sizes, `hlo` points to the group_sizes operand
+  // (a rank-1 array).
   struct RTVarInfo {
     // Unique ID for the runtime variable within the tiling space.
     int64_t id;
@@ -178,6 +181,10 @@ class TilingSpace {
 
   void AppendDimension(const HloInstruction* hlo, int64_t dim_position,
                        int64_t dim_size, DimensionSemantics dim_type);
+
+  // Registers a runtime variable associated with (`hlo`, `operand_id`).
+  // `rt_var` is the HLO instruction whose value is the runtime variable.
+  // `upper_bound` is a compile-time upper bound on the variable's value.
   void AppendRTVar(const HloInstruction* hlo, int64_t operand_id,
                    const HloInstruction* rt_var, int64_t upper_bound);
 
@@ -201,6 +208,10 @@ class TilingSpace {
   void ProcessScan(const HloInstruction& hlo);
   void ProcessDynamicSlice(const HloInstruction& hlo);
   void ProcessGetTupleElement(const HloInstruction& hlo);
+  // Registers the sequential dimensions and RTVars for a kRaggedDot
+  // instruction.  Handles kRaggedNonContracting (G is a kSequential outer
+  // loop) and kRaggedContracting (G is kParallel, M is kSequential).
+  void ProcessRaggedDot(const HloInstruction& hlo);
   void ProcessInstruction(const HloInstruction& hlo);
 
   // Initializes cached indexing map variables. This is necessary to allow

@@ -24,17 +24,17 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
@@ -56,7 +56,7 @@ absl::StatusOr<std::optional<int64_t>> ComputeByteSize(
   if (!bit_size.has_value()) {
     return std::nullopt;
   }
-  ASSIGN_OR_RETURN(auto xla_primitive_type, ToPrimitiveType(dtype));
+  ABSL_ASSIGN_OR_RETURN(auto xla_primitive_type, ToPrimitiveType(dtype));
   auto xla_shape =
       xla::ShapeUtil::MakeShape(xla_primitive_type, shard_shape.dims());
   *xla_shape.mutable_layout() = pjrt_layout->xla_layout();
@@ -91,7 +91,7 @@ absl::StatusOr<std::optional<int64_t>> PjRtLayout::ByteSize(
   }
   if (pjrt_layout == nullptr) {
     Device* device = sharding->devices()->devices().front();
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         const std::shared_ptr<const xla::PjRtLayout>
             concrete_default_pjrt_layout,
         device->client()->GetDefaultPjRtLayout(
@@ -106,7 +106,7 @@ bool PjRtLayout::operator==(const Layout& other) const {
   if (this == &other) {
     return true;
   }
-  if (const auto* other_pjrt = llvm::dyn_cast<PjRtLayout>(&other);
+  if (const auto* other_pjrt = dyn_cast<PjRtLayout>(&other);
       other_pjrt != nullptr) {
     return *pjrt_layout_ == *other_pjrt->pjrt_layout_;
   }
@@ -120,11 +120,10 @@ std::string PjRtLayout::ToString() const {
 absl::StatusOr<absl_nonnull std::shared_ptr<const xla::PjRtLayout>>
 ToPjRtLayout(DType dtype, const Shape& shard_shape,
              const CustomLayoutRef& layout) {
-  if (const auto* pjrt_layout = llvm::dyn_cast<PjRtLayout>(layout.get())) {
+  if (const auto* pjrt_layout = dyn_cast<PjRtLayout>(layout.get())) {
     return pjrt_layout->pjrt_layout();
   }
-  if (const auto* compact_layout =
-          llvm::dyn_cast<CompactLayout>(layout.get())) {
+  if (const auto* compact_layout = dyn_cast<CompactLayout>(layout.get())) {
     xla::Layout layout;
     int num_dims = compact_layout->major_to_minor().size();
     layout.mutable_minor_to_major()->reserve(num_dims);

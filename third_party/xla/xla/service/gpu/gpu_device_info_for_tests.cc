@@ -52,6 +52,40 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::RTXA6000DeviceInfo(
   return b;
 }
 
+stream_executor::DeviceDescription TestGpuDeviceInfo::A100SXMDeviceInfo(
+    stream_executor::GpuComputeCapability cc) {
+  stream_executor::DeviceDescription b;
+  b.set_name("NVIDIA A100-SXM4-80GB");
+  b.set_gpu_compute_capability(cc);
+  b.set_threads_per_block_limit(1024);
+  b.set_threads_per_warp(32);
+  b.set_shared_memory_per_block(48 * 1024);
+  b.set_shared_memory_per_block_optin(163 * 1024);
+  b.set_shared_memory_per_core(164 * 1024);
+  b.set_threads_per_core_limit(2048);
+  b.set_core_count(108);
+  b.set_block_dim_limit_x(2'147'483'647);
+  b.set_block_dim_limit_y(65535);
+  b.set_block_dim_limit_z(65535);
+  b.set_memory_bandwidth(2'039'040'000'000);
+  b.set_l2_cache_size(40 * 1024 * 1024);
+  b.set_clock_rate_ghz(1.41);
+  b.set_device_memory_size(85'100'068'864);
+  b.set_registers_per_core_limit(65536);
+  b.set_registers_per_block_limit(65536);
+  b.set_runtime_version(stream_executor::SemanticVersion{12, 8, 0});
+  b.set_driver_version(stream_executor::SemanticVersion{12, 8, 0});
+
+  b.set_fpus_per_core(
+      stream_executor::gpu::GetFpusPerCore(*cc.cuda_compute_capability()));
+  stream_executor::DeviceInterconnectInfo interconnect_info;
+  interconnect_info.active_links = 12;
+  b.set_device_interconnect_info(std::move(interconnect_info));
+  stream_executor::gpu::FillExecutionUnitDesc(*cc.cuda_compute_capability(),
+                                              b.clock_rate_ghz(), b);
+  return b;
+}
+
 stream_executor::DeviceDescription TestGpuDeviceInfo::H100SXMDeviceInfo(
     stream_executor::GpuComputeCapability cc) {
   stream_executor::DeviceDescription b;
@@ -138,6 +172,33 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::AMDMI210DeviceInfo() {
   b.set_l2_cache_size(8 * 1024 * 1024);
   b.set_clock_rate_ghz(1.7);
   b.set_device_memory_size(67'628'957'696);
+  b.set_runtime_version(stream_executor::SemanticVersion{6, 0, 0});
+  b.set_driver_version(stream_executor::SemanticVersion{6, 0, 0});
+  return b;
+}
+
+stream_executor::DeviceDescription TestGpuDeviceInfo::AMDMI350DeviceInfo() {
+  stream_executor::DeviceDescription b;
+  b.set_gpu_compute_capability(stream_executor::GpuComputeCapability(
+      stream_executor::RocmComputeCapability("gfx950")));
+  b.set_threads_per_block_limit(1024);
+  b.set_threads_per_warp(64);
+  b.set_shared_memory_per_block(160 * 1024);
+  b.set_shared_memory_per_block_optin(160 * 1024);
+  b.set_shared_memory_per_core(160 * 1024);
+  b.set_threads_per_core_limit(2048);
+  b.set_core_count(256);
+  b.set_fpus_per_core(128);
+  b.set_block_dim_limit_x(2'147'483'647);
+  b.set_block_dim_limit_y(65536);
+  b.set_block_dim_limit_z(65536);
+  // Keep in sync with GetRocmMemoryBandwidth in rocm_memory_bandwidth.cc.
+  b.set_memory_bandwidth(6'810'000'000'000);
+  b.set_l2_cache_size(4 * 1024 * 1024);
+  b.set_clock_rate_ghz(2.2);
+  b.set_device_memory_size(270'566'162'432);
+  b.set_registers_per_core_limit(131072);
+  b.set_registers_per_block_limit(131072);
   b.set_runtime_version(stream_executor::SemanticVersion{6, 0, 0});
   b.set_driver_version(stream_executor::SemanticVersion{6, 0, 0});
   return b;

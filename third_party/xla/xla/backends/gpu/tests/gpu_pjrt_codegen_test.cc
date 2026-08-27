@@ -23,10 +23,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -113,7 +113,13 @@ std::string GpuPjRtCodegenTest::MakePlatformSpecificLlvm(
         IsBuiltWithRocm() ? "br i1 %[[LOGICAL_T2]]," : "br i1 %[[LOGICAL_T0]]"},
        {"STORE_v$0FLOAT", IsBuiltWithOneAPI()
                               ? "@llvm.spv.store.v$0f32.p1(<$0 x float>"
-                              : "store <$0 x float>"}});
+                              : "store <$0 x float>"},
+       {"LINEAR_GEP_IDX1",
+        IsBuiltWithOneAPI()
+            ? "@llvm.spv.gep.{{[a-z0-9.]+}}({{.*}}ptr"
+              "{{( addrspace\\([0-9]+\\))?}} {{.*}}i64 %[[idx1]]"
+            : "getelementptr {{.*}} ptr{{( addrspace\\([0-9]+\\))?}} "
+              "{{.*}}i64 %[[idx1]]"}});
 }
 
 absl::StatusOr<std::unique_ptr<Executable>>
@@ -138,7 +144,7 @@ absl::Status GpuPjRtCodegenTest::CompileAndVerifyIr(
     absl::string_view hlo_text, absl::string_view expected_llvm_ir,
     bool match_optimized_ir, bool run_optimization_passes,
     bool match_ir_from_hlo_passes) {
-  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                    ParseAndReturnVerifiedModule(hlo_text));
   return CompileAndVerifyIr(std::move(hlo_module), expected_llvm_ir,
                             match_optimized_ir, run_optimization_passes,

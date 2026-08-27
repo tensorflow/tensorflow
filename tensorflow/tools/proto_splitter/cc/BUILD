@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
+load("@xla//xla/tsl:tsl.bzl", "internal_visibility")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_oss",
@@ -25,13 +26,13 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
+    default_visibility = internal_visibility([
         "//learning/brain/tfrt/aot:__subpackages__",
         "//learning/brain/tfrt/tf_tpu:__subpackages__",
         "//tensorflow/cc/saved_model/image_format:__subpackages__",
         "//tensorflow/tools/proto_splitter:__subpackages__",
         "//waymo/ml/deploy:__subpackages__",
-    ],
+    ]),
     licenses = ["notice"],
 )
 

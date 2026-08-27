@@ -29,12 +29,12 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Metadata.h"
@@ -96,11 +96,13 @@ limitations under the License.
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/codegen/experimental_fusion_emitter.h"
 #include "xla/codegen/xtile/codegen/fusion_emitter.h"
 #include "xla/codegen/xtile/ir/transforms/passes.h"
 #include "xla/codegen/xtile/ir/xtile_dialect.h"
+#include "xla/codegen/xtile/tiling_from_block_parameters.h"
 #include "xla/frontend_attributes.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -115,8 +117,6 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_libdevice_path.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
-#include "xla/service/gpu/model/tiling_from_block_parameters.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/instruction_fusion.h"
@@ -137,6 +137,7 @@ limitations under the License.
 
 namespace xla::gpu {
 namespace {
+
 absl::Status CheckAtLeastAmpere(const se::GpuComputeCapability& gpu_cc) {
   if (auto* cuda_cc = gpu_cc.cuda_compute_capability();
       cuda_cc != nullptr && !cuda_cc->IsAtLeastAmpere()) {
@@ -236,6 +237,9 @@ using ::llvm::SmallVector;
 using ::mlir::MLIRContext;
 
 using ::xla::gpu::ir_emitter_triton_internal::GetModuleIrString;
+using ::xla::xtile::BlockLevelParameters;
+using ::xla::xtile::GetTilingSpaceConcreteSizes;
+using ::xla::xtile::TilingFromAnnotatedFusion;
 
 void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context) {
   mlir_context.loadDialect<
@@ -301,7 +305,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> TileAndEmitXTileModule(
     using experimental::TilingSpace;
 
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(&fusion);
-    ASSIGN_OR_RETURN(std::unique_ptr<TilingSpace> tiling_space,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<TilingSpace> tiling_space,
                      TilingSpace::Create(*fusion_adaptor, &mlir_context));
 
     VLOG(3) << "fusion instruction: " << fusion.ToString() << "\n";
@@ -312,14 +316,14 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> TileAndEmitXTileModule(
                           ExtractInstructionIntoNewModule(fusion)->ToString(
                               HloPrintOptions::ShortParsable())));
     }
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         llvm::SmallVector<int64_t> tile_sizes,
         GetTilingSpaceConcreteSizes(*tiling_space, block_level_parameters,
                                     enable_same_shape_multi_output_fusion));
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         tiling_space->AssignTileSizes(xtile::GetPaddedTileSizes(tile_sizes)));
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         TiledHloComputation tiled_computation,
         TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
     tiled_computation.Simplify();
@@ -352,7 +356,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> TileAndEmitXTileModule(
   const auto& symbolic_tile_analysis =
       std::get<SymbolicTileAnalysis>(symbolic_tile_analysis_or);
 
-  ASSIGN_OR_RETURN(Tiling tiling,
+  ABSL_ASSIGN_OR_RETURN(Tiling tiling,
                    TilingFromAnnotatedFusion(symbolic_tile_analysis,
                                              block_level_parameters));
 
@@ -367,7 +371,7 @@ absl::StatusOr<TritonKernelSource> CreateTritonModule(
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
     MLIRContext& mlir_context) {
-  RETURN_IF_ERROR(CheckAtLeastAmpere(device_info.gpu_compute_capability()));
+  ABSL_RETURN_IF_ERROR(CheckAtLeastAmpere(device_info.gpu_compute_capability()));
 
   const DebugOptions& debug_options =
       fusion.GetModule()->config().debug_options();
@@ -418,14 +422,14 @@ absl::StatusOr<TritonKernelSource> CreateTritonModule(
         mlir::StringAttr::get(&mlir_context, hlo_computation->name()));
     mlir::ImplicitLocOpBuilder b(loc, &mlir_context);
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         num_metadata_arguments,
         AddCollectiveMetadataArguments(opaque_args_types, b, hlo_computation));
   }
 
-  RETURN_IF_ERROR(ValidateComplexUseInTritonFusion(*hlo_computation));
-  RETURN_IF_ERROR(ValidateF4UseInTritonFusion(*hlo_computation));
-  ASSIGN_OR_RETURN(
+  ABSL_RETURN_IF_ERROR(ValidateComplexUseInTritonFusion(*hlo_computation));
+  ABSL_RETURN_IF_ERROR(ValidateF4UseInTritonFusion(*hlo_computation));
+  ABSL_ASSIGN_OR_RETURN(
       auto triton_module,
       TileAndEmitXTileModule(
           fn_name, fusion, device_info, block_level_parameters,
@@ -443,7 +447,7 @@ absl::StatusOr<TritonKernelSource> CreateTritonModule(
         ExtractInstructionIntoNewModule(fusion)->ToString());
   }
 
-  RETURN_IF_ERROR(ir_emitter_triton_internal::LowerXTileToTriton(
+  ABSL_RETURN_IF_ERROR(ir_emitter_triton_internal::LowerXTileToTriton(
       triton_module.get(), mlir_context, fusion, device_info,
       block_level_parameters));
 
@@ -477,7 +481,7 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
     const BlockLevelParameters& block_level_parameters,
     const llvm::Triple& target_triple, const std::string& data_layout,
     MLIRContext& mlir_context) {
-  ASSIGN_OR_RETURN(TritonKernelSource kernel_source,
+  ABSL_ASSIGN_OR_RETURN(TritonKernelSource kernel_source,
                    CreateTritonModule(fn_name, fusion, device_info,
                                       block_level_parameters, mlir_context));
 
@@ -503,7 +507,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   auto llvm_context = std::make_unique<llvm::LLVMContext>();
 
   const se::GpuComputeCapability& gpu_cc = device_info.gpu_compute_capability();
-  RETURN_IF_ERROR(CheckAtLeastAmpere(gpu_cc));
+  ABSL_RETURN_IF_ERROR(CheckAtLeastAmpere(gpu_cc));
   std::string arch_name = gpu_cc.ToString();
 
   const HloModuleConfig& hlo_config = hlo_module.config();
@@ -606,7 +610,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   std::vector<llvm::Metadata*> captured_nvvm_annotations;
   std::unique_ptr<llvm::Module> ll_triton_module;
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       ll_triton_module,
       TranslateLLVMToLLVMIR(llvm_context.get(), triton_source.module()));
 
@@ -648,9 +652,9 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
       << "Expected a single LLVMFuncOp in the module for the entry function.";
   mlir::LLVM::LLVMFuncOp func_op = func_ops[0];
 
-  ASSIGN_OR_RETURN(se::ThreadDim thread_dims,
+  ABSL_ASSIGN_OR_RETURN(se::ThreadDim thread_dims,
                    xgt::ExtractThreadDims(triton_source.module(), func_op));
-  ASSIGN_OR_RETURN(stream_executor::gpu::TmaMetadata tma_metadata,
+  ABSL_ASSIGN_OR_RETURN(stream_executor::gpu::TmaMetadata tma_metadata,
                    xgt::ExtractTmaMetadata(func_op));
 
   // Propagate the following extracted information from the Triton module:
@@ -694,7 +698,6 @@ absl::Status LowerXTileToTriton(
     pm.enableVerifier(/*enabled=*/false);
     pm.addPass(mlir::triton::xla::createTensorLowerToTritonPass());
     pm.addPass(xtile::createStablehloLowerToArithPass());
-    pm.addPass(xtile::createStablehloLowerToXtilePass());
     pm.addPass(mlir::triton::xla::createArithFP8ConversionToTritonPass());
     pm.addPass(xtile::createLegalizeUnsignedIntegersAsSignlessPass());
     mlir::triton::xla::StableHLOLowerToTritonPassOptions stablehlo_options;

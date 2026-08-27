@@ -29,12 +29,12 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
@@ -1221,7 +1221,7 @@ class ConvertToHloModule {
     // This is an invariant check as Run returns failure if there is no main
     // function and so the main proto shouldn't be consumed in that case.
     TF_RET_CHECK(main) << "requires module to have main function";
-    ASSIGN_OR_RETURN(xla::XlaComputation computation,
+    ABSL_ASSIGN_OR_RETURN(xla::XlaComputation computation,
                      module_builder_.Build(lowered_computation_[main]));
     return std::move(*computation.mutable_proto());
   }
@@ -2493,6 +2493,45 @@ LogicalResult ExportXlaOp(CollectiveBroadcastOp op, OpLoweringContext ctx) {
       operand, **replica_groups, Convert_channel_handle(op.getChannelHandle()));
   value_map[op->getResult(0)] = result;
 
+  return success();
+}
+
+LogicalResult ExportXlaOp(CollectiveReduceOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  // Unlike CollectiveBroadcast, CollectiveReduce carries a reduction region.
+  xla::XlaComputationId computation;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.getComputation(),
+                                                     computation))) {
+    return failure();
+  }
+
+  SmallVector<xla::XlaOp> operands;
+  if (failed(GetTuple(op.getOperation(), op.getOperands(), ctx, operands))) {
+    return failure();
+  }
+
+  auto replica_groups = Convert_replica_groups(op.getReplicaGroups(), op);
+  if (!replica_groups.ok()) {
+    return op.emitOpError(replica_groups.status().ToString());
+  }
+
+  auto result = xla::CollectiveReduceWithDeviceList(
+      operands, computation, **replica_groups,
+      Convert_channel_handle(op.getChannelHandle()),
+      Convert_use_global_device_ids(op.getUseGlobalDeviceIds()),
+      op.getHasDynamicRoot());
+
+  // A collective_reduce with more than one data operand produces a tuple.
+  mlir::FailureOr<xla::Shape> shape_or =
+      xla::ExtractXlaShape(op.getOperation());
+  if (failed(shape_or)) {
+    return failure();
+  }
+  if (shape_or->IsTuple()) {
+    BuildGetTupleElementsForTupleResults(op, result, ctx);
+  } else {
+    value_map[op->getResult(0)] = result;
+  }
   return success();
 }
 
@@ -6128,7 +6167,7 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
     return absl::InternalError("Unable to convert MHLO to StableHLO");
   }
 
-  RETURN_IF_ERROR(PrepareForExport(module));
+  ABSL_RETURN_IF_ERROR(PrepareForExport(module));
 
   mlir::BaseScopedDiagnosticHandler diag_handler(module.getContext());
   xla::XlaBuilder module_builder(kMain);
@@ -6136,7 +6175,7 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
   if (failed(converter.Run())) {
     return diag_handler.ConsumeStatus();
   }
-  ASSIGN_OR_RETURN(xla::HloModuleProto hlo_module,
+  ABSL_ASSIGN_OR_RETURN(xla::HloModuleProto hlo_module,
                    converter.ConsumeMainProto());
   StringRef module_name = module.getName() ? *module.getName() : kMain;
   hlo_module.set_name(module_name.str());
@@ -6227,11 +6266,11 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
 absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertMlirHloToHloModule(
     mlir::ModuleOp module, MlirToHloConversionOptions options) {
   xla::HloProto hlo_proto;
-  RETURN_IF_ERROR(ConvertMlirHloToHlo(module, &hlo_proto, options));
+  ABSL_RETURN_IF_ERROR(ConvertMlirHloToHlo(module, &hlo_proto, options));
 
   // Create default config.
   const xla::HloModuleProto& module_proto = hlo_proto.hlo_module();
-  ASSIGN_OR_RETURN(xla::HloModuleConfig config,
+  ABSL_ASSIGN_OR_RETURN(xla::HloModuleConfig config,
                    xla::HloModule::CreateModuleConfigFromProto(
                        module_proto, xla::GetDebugOptionsFromFlags()));
 
@@ -6246,7 +6285,7 @@ absl::Status BuildHloFromMlirHlo(mlir::ModuleOp& module,
                                  llvm::ArrayRef<xla::XlaOp> xla_params,
                                  std::vector<xla::XlaOp>& returns,
                                  MlirToHloConversionOptions options) {
-  RETURN_IF_ERROR(PrepareForExport(module));
+  ABSL_RETURN_IF_ERROR(PrepareForExport(module));
   mlir::func::FuncOp main = module.lookupSymbol<mlir::func::FuncOp>("main");
   mlir::Block& block = main.getRegion().front();
   // No tuple support in Builder converter API.

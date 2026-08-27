@@ -23,10 +23,10 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
@@ -92,7 +92,7 @@ absl::Status CollectiveBroadcastThunk::Initialize(
     // The last buffer holds the runtime-selected root ranks (one S32 per
     // broadcast); all other buffers are the data being broadcast.
     cb_metadata->num_roots = buffers().size() - 1;
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<se::MemoryAllocation> alloc,
         executor->HostMemoryAllocate(cb_metadata->num_roots * sizeof(int32_t)));
     cb_metadata->bcast_roots = std::move(alloc);
@@ -110,7 +110,7 @@ CollectiveBroadcastThunk::FromProto(
   std::vector<CollectiveThunk::Buffer> buffers;
   buffers.reserve(thunk_proto.buffers_size());
   for (const CollectiveBufferProto& proto : thunk_proto.buffers()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         CollectiveThunk::Buffer buffer,
         CollectiveThunk::Buffer::FromProto(proto, buffer_allocations));
     buffers.push_back(buffer);
@@ -129,7 +129,7 @@ absl::StatusOr<ThunkProto> CollectiveBroadcastThunk::ToProto() const {
       proto.mutable_collective_broadcast_thunk();
 
   for (const Buffer& buffer : buffers()) {
-    ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
+    ABSL_ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
   }
 
   *thunk_proto->mutable_collective_config() = config_.ToProto();
@@ -141,7 +141,7 @@ absl::StatusOr<ThunkProto> CollectiveBroadcastThunk::ToProto() const {
 absl::Status CollectiveBroadcastThunk::RunCollective(
     const ExecuteParams& params, const GpuCliqueKey& clique_key,
     se::Stream& stream, Communicator& comm) {
-  ASSIGN_OR_RETURN(std::vector<DeviceBufferPair> device_buffers,
+  ABSL_ASSIGN_OR_RETURN(std::vector<DeviceBufferPair> device_buffers,
                    ConvertToDeviceBuffers(params.buffer_allocations, buffers(),
                                           config_.operand_element_type));
   CollectiveBroadcastMetadata* cb_metadata = nullptr;
@@ -161,7 +161,7 @@ absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
   if (has_dynamic_root && cb_metadata) {
     DeviceBufferPair& roots_device_buffer = buffers.back();
     CHECK(cb_metadata->bcast_roots != nullptr);
-    RETURN_IF_ERROR(stream.Memcpy(cb_metadata->bcast_roots->address().opaque(),
+    ABSL_RETURN_IF_ERROR(stream.Memcpy(cb_metadata->bcast_roots->address().opaque(),
                                   roots_device_buffer.source_buffer,
                                   roots_device_buffer.source_buffer.size()));
     // Wait for the copies to complete.
@@ -189,7 +189,7 @@ absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
       }
       se::DeviceAddressBase src_addr = buffer.source_buffer;
       se::DeviceAddressBase dest_addr = buffer.destination_buffer;
-      RETURN_IF_ERROR(gpu_comm->LaunchBroadcast(
+      ABSL_RETURN_IF_ERROR(gpu_comm->LaunchBroadcast(
           // Always use rank 0 since we always broadcast from the first id
           // in replica_groups
           src_addr, dest_addr, buffer.element_type, buffer.element_count, root,

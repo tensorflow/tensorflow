@@ -24,8 +24,10 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
@@ -70,6 +72,12 @@ struct CostAnalysisOptions {
   // Used to get the layout size of a shape in bytes.
   std::function<int64_t(const Shape&)> shape_size_bytes_fn =
       [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); };
+
+  // The execution threads that cost analysis operates on. This is used to
+  // determine which flattened instructions should be included/excluded from
+  // cost analysis.
+  absl::flat_hash_set<absl::string_view> execution_threads = {
+      HloInstruction::kMainExecutionThread};
 };
 
 // A wrapper class around BaseCosts with additional knowledge about the

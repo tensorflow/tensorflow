@@ -26,9 +26,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/frontend_attributes.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -129,7 +129,7 @@ absl::StatusOr<ReplacedAsync> CreateAsyncCollectivePermute(
 absl::StatusOr<ReplacedAsync> CreateAsyncStartDone(
     HloInstruction* instruction, absl::Span<const Shape> context_shapes) {
   HloComputation* computation = instruction->parent();
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloInstruction * done,
       computation->CreateAsyncInstructions(instruction, context_shapes,
                                            HloInstruction::kMainExecutionThread,
@@ -185,11 +185,13 @@ std::vector<HloInstruction*> AsyncCollectiveCreator::MatchCollectives(
   for (HloInstruction* instruction : computation->instructions()) {
     const HloOpcode op = instruction->opcode();
 
-    // We only care about collective ops here.
-    if (op != HloOpcode::kAllReduce && op != HloOpcode::kAllGather &&
-        op != HloOpcode::kCollectiveBroadcast &&
-        op != HloOpcode::kCollectivePermute && op != HloOpcode::kAllToAll &&
-        op != HloOpcode::kReduceScatter && op != HloOpcode::kRaggedAllToAll) {
+    // We only care about collective ops and collective fusions here.
+    if (HloPredicateIsNotOp<HloOpcode::kAllReduce, HloOpcode::kAllGather,
+                            HloOpcode::kCollectiveBroadcast,
+                            HloOpcode::kCollectivePermute, HloOpcode::kAllToAll,
+                            HloOpcode::kReduceScatter,
+                            HloOpcode::kRaggedAllToAll, HloOpcode::kFusion>(
+            instruction)) {
       continue;
     }
 
@@ -237,6 +239,10 @@ std::vector<HloInstruction*> AsyncCollectiveCreator::MatchCollectives(
       bool convert = config_.convert_ragged_all_to_all(instruction);
       VLOG(2) << "kRaggedAllToAll: convert=" << convert;
       matched = convert;
+    } else if (op == HloOpcode::kFusion) {
+      bool convert = config_.convert_collective_fusion(instruction);
+      VLOG(2) << "kFusion: convert=" << convert;
+      matched = convert;
     }
 
     if (matched) {
@@ -278,13 +284,13 @@ absl::StatusOr<bool> AsyncCollectiveCreator::ReplaceCollectives(
     }
   };
   for (HloInstruction* instruction : supported_collectives) {
-    ASSIGN_OR_RETURN(auto maybe_async_pair,
+    ABSL_ASSIGN_OR_RETURN(auto maybe_async_pair,
                      handle_legacy_async_conversion(instruction));
     ReplacedAsync async_pair;
     if (maybe_async_pair.has_value()) {
       async_pair = *maybe_async_pair;
     } else {
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           async_pair,
           CreateAsyncStartDone(instruction,
                                config_.get_context_shapes(instruction)));
@@ -298,9 +304,9 @@ absl::StatusOr<bool> AsyncCollectiveCreator::ReplaceCollectives(
     }
 
     // Update control dependencies if present.
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         instruction->CopyAllControlDepsTo(async_pair.start, async_pair.done));
-    RETURN_IF_ERROR(instruction->DropAllControlDeps());
+    ABSL_RETURN_IF_ERROR(instruction->DropAllControlDeps());
 
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         computation->ReplaceInstruction(instruction, async_pair.done),
@@ -350,7 +356,7 @@ absl::StatusOr<bool> AsyncCollectiveCreator::RunImpl(
     if (supported_collectives.empty()) {
       continue;
     }
-    ASSIGN_OR_RETURN(bool comp_changed,
+    ABSL_ASSIGN_OR_RETURN(bool comp_changed,
                      ReplaceCollectives(computation, supported_collectives));
     collectives_replaced += supported_collectives.size();
     changed |= comp_changed;

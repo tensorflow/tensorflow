@@ -220,6 +220,15 @@ TEST(Conv3dTransposePrepareSecurityTest, RejectsZeroFilterOutputChannels) {
   EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
 }
 
+TEST(Conv3dTransposePrepareSecurityTest, RejectsMismatchedOutputChannels) {
+  PrepareOnlyConv3dTransposeOpModel m({4, 1, 1, 1, 4},
+                                      {TensorType_FLOAT32, {4, 8, 1, 2, 1}},
+                                      {TensorType_FLOAT32, {4, 1, 1, 1, 1}},
+                                      {TensorType_FLOAT32, {}}, Padding_SAME);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
 TEST_P(Conv3dTransposeOpTest, SimpleFloat32Test) {
   Conv3dTransposeOpModel m(
       {1, 3, 3, 5, 2}, {TensorType_FLOAT32, {2, 2, 2, 2, 2}},
@@ -307,6 +316,22 @@ TEST_P(Conv3dTransposeOpTest, PaddingSameTest) {
            -86, 2,   -90, 2,   -94, 2,   80,  82,  -18, 90,  -18, 94,  -18, 98,
            -18, 102, 100, 102, -18, 110, -18, 114, -18, 118, -18, 122, 120, 122,
            -18, 130, -18, 134, -18, 138, -18, 142}));
+}
+
+TEST_P(Conv3dTransposeOpTest, AsymmetricSamePaddingTest) {
+  Conv3dTransposeOpModel m(
+      {4, 1, 1, 1, 2}, {TensorType_FLOAT32, {4, 8, 1, 2, 1}},
+      {TensorType_FLOAT32, {4, 1, 1, 1, 1}}, {TensorType_FLOAT32, {}},
+      Conv3dTransposeOpTest::GetParam(), Padding_SAME,
+      /*stride_depth=*/1,
+      /*stride_width=*/4, /*stride_height=*/1);
+
+  m.SetInput({1, 2, 3, 4});
+  m.SetFilter(std::vector<float>(64, 1.0f));
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(4, 1, 1, 1, 2));
+  EXPECT_THAT(m.GetOutput(), ElementsAre(1, 1, 2, 2, 3, 3, 4, 4));
 }
 
 TEST_P(Conv3dTransposeOpTest, PaddingValidComplexTest) {

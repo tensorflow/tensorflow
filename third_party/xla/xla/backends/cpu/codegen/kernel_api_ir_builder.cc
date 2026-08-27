@@ -27,13 +27,14 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/IR/Attributes.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -235,9 +236,9 @@ absl::Status VerifyKernelParameters(
   // memory (or aliased memory). We conservatively do not emit noalias metadata
   // for buffers coming from parameter allocations.
 
-  RETURN_IF_ERROR(VerifyKernelArgumentsNonOverlapping(arguments));
-  RETURN_IF_ERROR(VerifyKernelResultsNonOverlapping(results));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(VerifyKernelArgumentsNonOverlapping(arguments));
+  ABSL_RETURN_IF_ERROR(VerifyKernelResultsNonOverlapping(results));
+  ABSL_RETURN_IF_ERROR(
       VerifyKernelResultsNonOverlappingWithArguments(arguments, results));
 
   return absl::OkStatus();
@@ -281,7 +282,7 @@ KernelApiIrBuilder::GetKernelArgumentsParameters(
 
   for (HloInstruction* operand : instruction->operands()) {
     for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           BufferAllocation::Slice slice,
           GetUniqueSlice(buffer_assignment, operand, indexed.index));
       arguments.push_back(KernelParameter{indexed.shape, slice});
@@ -296,7 +297,7 @@ KernelApiIrBuilder::GetKernelResultsParameters(
     const BufferAssignment* buffer_assignment) {
   std::vector<KernelParameter> results;
   for (auto& indexed : ShapeUtil::GetLeafShapes(instruction->shape())) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         BufferAllocation::Slice slice,
         GetUniqueSlice(buffer_assignment, instruction, indexed.index));
     results.push_back(KernelParameter{indexed.shape, slice});
@@ -331,12 +332,12 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
     const BufferAssignment* buffer_assignment,
     absl::string_view generating_emitter_name, absl::string_view suffix)
     -> absl::StatusOr<KernelPrototype> {
-  ASSIGN_OR_RETURN(std::vector<KernelParameter> arguments,
+  ABSL_ASSIGN_OR_RETURN(std::vector<KernelParameter> arguments,
                    GetKernelArgumentsParameters(instr, buffer_assignment));
-  ASSIGN_OR_RETURN(std::vector<KernelParameter> results,
+  ABSL_ASSIGN_OR_RETURN(std::vector<KernelParameter> results,
                    GetKernelResultsParameters(instr, buffer_assignment));
 
-  ASSIGN_OR_RETURN(std::string name, GetKernelName(instr, suffix));
+  ABSL_ASSIGN_OR_RETURN(std::string name, GetKernelName(instr, suffix));
 
   return EmitKernelPrototype(
       module, name, arguments, results,
@@ -366,7 +367,7 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
   }
 
   if (buffer_validation_ == BufferValidation::kDisjoint) {
-    RETURN_IF_ERROR(VerifyKernelParameters(arguments, results));
+    ABSL_RETURN_IF_ERROR(VerifyKernelParameters(arguments, results));
   }
 
   MemoryDependencyAnalyzer memory_dependency_analyzer(context_, name, results);
@@ -553,6 +554,14 @@ void KernelApiIrBuilder::SetKernelFunctionAttributes(llvm::Function* function) {
   // We use external linkage because we'll be resolving this function from the
   // XLA runtime.
   function->setCallingConv(llvm::CallingConv::C);
+
+  // Annotations for the kernel call frame.
+  // Noundef is needed for msan; the host (caller) can prove that the call frame
+  // is always defined, and therefore will elide annotating the corresponding
+  // shadow memory entry. The kernel must be ready for this by having noundef.
+  function->addParamAttr(0, llvm::Attribute::NoUndef);
+  // Non-null: simply a performance optimization. Not needed for sanitizers.
+  function->addParamAttr(0, llvm::Attribute::NonNull);
 
   // Generate unwind information so that GDB can crawl through the stack frames
   // created by the JIT compiled code.

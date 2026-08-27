@@ -27,6 +27,11 @@ package(
     licenses = ["notice"],
 )
 
+exports_files([
+    "webp_io.cc",
+    "webp_io.h",
+])
+
 filegroup(
     name = "hdrs",
     srcs = ["webp_io.h"],
@@ -34,7 +39,7 @@ filegroup(
 )
 
 cc_library(
-    name = "webp_io",
+    name = "webp_io_impl",
     srcs = ["webp_io.cc"],
     hdrs = ["webp_io.h"],
     features = ["-layering_check"],
@@ -53,6 +58,14 @@ cc_library(
 )
 
 alias(
+    name = "webp_io",
+    actual = if_google(
+        "//tensorflow/core/lib/webp/google:sandboxed_webp_io",
+        ":webp_io_impl",
+    ),
+)
+
+alias(
     name = "testdata",
     actual = "//tensorflow/core/lib/webp/testdata:webp_testdata",
     visibility = ["//tensorflow/core:__pkg__"],
@@ -68,12 +81,12 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:resource_loader",
-        "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/platform:test",
-        "//tensorflow/core/platform:test_benchmark",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_benchmark//:benchmark",
         "@com_google_googletest//:gtest",
         "@libwebp//:webp",
+        "@xla//xla/tsl/platform:test_benchmark",
     ],
 )

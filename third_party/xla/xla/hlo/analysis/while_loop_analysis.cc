@@ -50,7 +50,6 @@ limitations under the License.
 #include "xla/service/value_range.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tools/hlo_extractor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -98,42 +97,45 @@ static const HloInstruction* NonConstantOperand(const HloInstruction* instr) {
   return result;
 }
 
-// If all of instr's operands are either constants or have the form
-//   get-tuple-element(gte_operand, x),
-// then returns a vector of all such x. Otherwise, returns nullopt.
-static optional<absl::flat_hash_set<int64_t>> GetGTEOperandIndices(
-    const HloInstruction* instr, const HloInstruction* gte_operand) {
-  VLOG(2) << "GetGTEOperandIndices(" << instr->ToString()
-          << ", GTE Operand: " << gte_operand->ToString() << ")";
+namespace {
 
-  absl::flat_hash_set<int64_t> tuple_indices = {};
-  for (const HloInstruction* operand : instr->operands()) {
-    if (operand->opcode() == HloOpcode::kConstant) {
-      continue;
-    }
-    auto possibly_gte = operand;
+struct ReachingParameter {
+  int64_t parameter_number;
+  std::optional<int64_t> tuple_index;
 
-    if (operand->opcode() == HloOpcode::kCopy) {
-      possibly_gte = operand->operand(0);
-    }
-    if (possibly_gte->opcode() != HloOpcode::kGetTupleElement) {
-      return nullopt;
-    }
-    if (possibly_gte->operand(0) != gte_operand) {
-      return nullopt;
-    }
-
-    int64_t operand_tuple_idx = possibly_gte->tuple_index();
-    tuple_indices.insert(operand_tuple_idx);
+  template <typename H>
+  friend H AbslHashValue(H h, const ReachingParameter& p) {
+    return H::combine(std::move(h), p.parameter_number, p.tuple_index);
   }
-  return tuple_indices;
-}
+  friend bool operator==(const ReachingParameter& a,
+                         const ReachingParameter& b) {
+    return a.parameter_number == b.parameter_number &&
+           a.tuple_index == b.tuple_index;
+  }
+};
+
+struct HelperState {
+  const HloInstruction* instr;
+  std::optional<int64_t> tuple_index;
+
+  template <typename H>
+  friend H AbslHashValue(H h, const HelperState& s) {
+    return H::combine(std::move(h), s.instr, s.tuple_index);
+  }
+  friend bool operator==(const HelperState& a, const HelperState& b) {
+    return a.instr == b.instr && a.tuple_index == b.tuple_index;
+  }
+};
+
+}  // namespace
 
 // This function returns true if the operation is a simple scalar operation.
 // While loop analysis can execute such an operation at compile time without
 // incurring huge overheads.
 static bool IsScalarOp(const HloInstruction* op) {
-  if (IsCollective(op)) return false;
+  if (IsCollective(op)) {
+    return false;
+  }
   switch (op->opcode()) {
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
@@ -146,78 +148,149 @@ static bool IsScalarOp(const HloInstruction* op) {
   }
   for (const HloComputation* computation : op->called_computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
-      if (!IsScalarOp(instruction)) return false;
+      if (!IsScalarOp(instruction)) {
+        return false;
+      }
     }
   }
   return ShapeUtil::IsScalar(op->shape());
 }
 
-static std::optional<absl::flat_hash_set<int64_t>>
-GetGTEDependenceIndicesSlowPath(const HloInstruction* out,
-                                const HloInstruction* in) {
-  // Extracts the instruction `out` as a function of the instruction `in`.
-  // HloModule extracted
-  // ENTRY main {
-  //   in = parameter(0)
-  //   //... some calculations
-  //   ROOT out = ...
-  // }
-  std::unique_ptr<HloModule> extracted = ExtractModule(
-      /*instruction=*/out, /*height=*/-1, /*extract_selector=*/
-      [in](const HloInstruction* inst) -> bool { return inst != in; },
-      /*replace_type_selector=*/
-      [](const HloInstruction* inst) -> ReplaceType {
-        return ReplaceType::kReplaceParam;
-      },
-      /*cross_computation=*/false, /*inline_calls_and_fusions=*/true,
-      /*run_verifier=*/false);
-  HloComputation* entry = extracted->entry_computation();
+// Traces backward inside `computation` from an output (either a specific tuple
+// element if `output_tuple_idx` is set, or the scalar root otherwise) to find
+// which computation parameters contribute to that output.
+static std::optional<std::vector<ReachingParameter>> GetReachingParameters(
+    const HloComputation* computation, std::optional<int64_t> output_tuple_idx,
+    bool is_scalar_verified) {
+  absl::flat_hash_set<ReachingParameter> reaching_params_set;
+  absl::flat_hash_set<HelperState> visited;
+  std::vector<HelperState> worklist;
+  worklist.push_back({computation->root_instruction(), output_tuple_idx});
 
-  // Check that the extracted module takes nothing but `in` as input. If `out`
-  // does not depend on in, the extracted module will have some other shape for
-  // input.
-  if (entry->num_parameters() != 1 ||
-      entry->parameter_instruction(0)->shape() != in->shape()) {
-    return std::nullopt;
+  while (!worklist.empty()) {
+    HelperState state = worklist.back();
+    worklist.pop_back();
+    if (!visited.insert(state).second) {
+      continue;
+    }
+
+    const HloInstruction* instr = state.instr;
+    std::optional<int64_t> tuple_idx = state.tuple_index;
+
+    // Ensure the instruction shape aligns with whether we are tracing a tuple
+    // element or a scalar value.
+    if (tuple_idx.has_value() ? !instr->shape().IsTuple()
+                              : !ShapeUtil::IsScalar(instr->shape())) {
+      return std::nullopt;
+    }
+
+    // Base case: Reached an input parameter of this computation.
+    if (instr->opcode() == HloOpcode::kParameter) {
+      reaching_params_set.insert({instr->parameter_number(), tuple_idx});
+      continue;
+    }
+
+    // When tracing a tuple element, route backward to the corresponding operand
+    // in the tuple construction.
+    if (instr->opcode() == HloOpcode::kTuple) {
+      if (*tuple_idx < 0 || *tuple_idx >= instr->operand_count()) {
+        return std::nullopt;
+      }
+      worklist.push_back({instr->operand(*tuple_idx), std::nullopt});
+      continue;
+    }
+
+    // Transition from a scalar element backward to its parent tuple source.
+    if (instr->opcode() == HloOpcode::kGetTupleElement) {
+      worklist.push_back({instr->operand(0), instr->tuple_index()});
+      continue;
+    }
+
+    // Transparently forward through copy operations.
+    if (instr->opcode() == HloOpcode::kCopy) {
+      worklist.push_back({instr->operand(0), tuple_idx});
+      continue;
+    }
+
+    // Recursively resolve parameter dependencies inside called
+    // sub-computations.
+    if (instr->opcode() == HloOpcode::kFusion ||
+        instr->opcode() == HloOpcode::kCall) {
+      const HloComputation* callee =
+          (instr->opcode() == HloOpcode::kFusion)
+              ? instr->fused_instructions_computation()
+              : instr->to_apply();
+      std::optional<std::vector<ReachingParameter>> inner_params =
+          GetReachingParameters(callee, tuple_idx, is_scalar_verified);
+      if (!inner_params.has_value()) {
+        return std::nullopt;
+      }
+      for (const ReachingParameter& param : *inner_params) {
+        worklist.push_back(
+            {instr->operand(param.parameter_number), param.tuple_index});
+      }
+      continue;
+    }
+
+    // General scalar compute operations cannot produce tuples.
+    if (tuple_idx.has_value()) {
+      return std::nullopt;
+    }
+    // If `is_scalar_verified` is true, the calling fusion or call in the main
+    // traversal loop has already been verified via IsScalarOp (which
+    // recursively checks all instructions in called computations). We only need
+    // to invoke IsScalarOp when traversing inside a tuple-returning fusion or
+    // call, where the caller could not be verified via IsScalarOp due to its
+    // tuple shape.
+    if (!is_scalar_verified && !IsScalarOp(instr)) {
+      return std::nullopt;
+    }
+    for (const HloInstruction* operand : instr->operands()) {
+      worklist.push_back({operand, std::nullopt});
+    }
   }
-  HloInstruction* param = entry->parameter_instruction(0);
 
-  // If there are no users for the input `in`, it would mean that `out` does not
-  // depend on a get-tuple-element of `in`.
-  if (param->user_count() == 0) {
-    return nullopt;
+  return std::vector<ReachingParameter>(reaching_params_set.begin(),
+                                        reaching_params_set.end());
+}
+
+// Resolves parameters of a top-level calling instruction (fusion or call) that
+// reach the specified output, adding scalar operands to `worklist` and
+// recording get-tuple-element indices on `in` into `candidate_indices`.
+static bool ProcessCalledComputation(
+    const HloInstruction* caller, const HloInstruction* in,
+    std::optional<int64_t> output_tuple_idx, bool is_scalar_verified,
+    std::vector<const HloInstruction*>& worklist,
+    absl::flat_hash_set<int64_t>& candidate_indices) {
+  const HloComputation* callee = (caller->opcode() == HloOpcode::kFusion)
+                                     ? caller->fused_instructions_computation()
+                                     : caller->to_apply();
+  std::optional<std::vector<ReachingParameter>> reaching_params =
+      GetReachingParameters(callee, output_tuple_idx, is_scalar_verified);
+  if (!reaching_params.has_value()) {
+    return false;
   }
-
-  // If any of the users of the input `in` is not a get-tuple-element
-  // instruction, then that would mean that the output does not depend uniquely
-  // on a get-tuple-element of on `in`, instead it depends on some other
-  // calculations on `in`.
-  if (absl::c_any_of(param->users(), [](const HloInstruction* inst) -> bool {
-        return inst->opcode() != HloOpcode::kGetTupleElement;
-      })) {
-    return std::nullopt;
+  for (const ReachingParameter& param : *reaching_params) {
+    const HloInstruction* arg = caller->operand(param.parameter_number);
+    if (param.tuple_index.has_value()) {
+      while (arg->opcode() == HloOpcode::kCopy) {
+        arg = arg->operand(0);
+      }
+      if (arg == in) {
+        candidate_indices.insert(*param.tuple_index);
+      } else {
+        return false;
+      }
+    } else {
+      worklist.push_back(arg);
+    }
   }
-
-  // At this point we already know that the all the users are get-tuple-elements
-  // and that there is at least one user. Now, extract all indices of the users.
-  absl::flat_hash_set<int64_t> candidate_indices;
-  for (const HloInstruction* user : param->users()) {
-    candidate_indices.insert(user->tuple_index());
-  }
-
-  if (absl::c_any_of(
-          entry->instructions(), [](const HloInstruction* inst) -> bool {
-            return inst->opcode() != HloOpcode::kParameter && !IsScalarOp(inst);
-          })) {
-    return std::nullopt;
-  }
-
-  return candidate_indices;
+  return true;
 }
 
 // If `out` is a function of a some values in the tuple `in` and has no other
 // dependence, i.e. if `out=f(gte1(in), gte2(in),...)`, then this function will
-// return the all the get-tuple-element indices for the dependence.
+// return all the get-tuple-element indices for the dependence.
 //
 // For example, in the following HLO, this function will return `1`:
 //   in = (s32[], s32[], s32[]) tuple(a,b,c)
@@ -227,84 +300,93 @@ GetGTEDependenceIndicesSlowPath(const HloInstruction* out,
 // scalar shape.
 static std::optional<absl::flat_hash_set<int64_t>> GetGTEDependenceIndices(
     const HloInstruction* out, const HloInstruction* in) {
-  // Fast path : pattern matching.
-  std::optional<absl::flat_hash_set<int64_t>> tuple_idxs =
-      GetGTEOperandIndices(out, in);
-  if (tuple_idxs.has_value()) {
-    return tuple_idxs;
-  }
-
   if (out->parent() != in->parent() || !in->shape().IsTuple()) {
     return std::nullopt;
   }
 
-  // Compute reachability map for the parent computation. We do not propagate
-  // through `in` itself, since we don't care what happens "above" it.
-  const auto add_dependencies = [&in](const HloInstruction* hlo,
-                                      std::vector<HloInstruction*>* inputs) {
-    if (hlo != in) {
-      for (HloInstruction* operand : hlo->operands()) {
-        inputs->push_back(operand);
-      }
-    }
-  };
-
-  std::unique_ptr<HloReachabilityMap> reachability_map =
-      HloReachabilityMap::BuildWithRestrictions(
-          in->parent(),
-          absl::FunctionRef<void(const HloInstruction* hlo,
-                                 std::vector<HloInstruction*>* inputs)>(
-              add_dependencies));
-
-  // If there's a tuple-shaped fusion or call that's reachable from `in` and
-  // reached `out`, use the slow extractor path.
-  for (const HloInstruction* inst : in->parent()->instructions()) {
-    if ((inst->opcode() == HloOpcode::kFusion ||
-         inst->opcode() == HloOpcode::kCall) &&
-        inst->shape().IsTuple() && reachability_map->IsReachable(in, inst) &&
-        reachability_map->IsReachable(inst, out)) {
-      return GetGTEDependenceIndicesSlowPath(out, in);
-    }
-  }
-
-  // `out` must be reachable from `in`.
-  if (!reachability_map->IsReachable(in, out)) {
-    return std::nullopt;
-  }
-
-  // `out` may not be reachable from anything except "regular" scalar ops, with
-  // the exception of `in` itself.
-  for (HloInstruction* inst : out->parent()->instructions()) {
-    if (inst == in) {
-      continue;
-    }
-    if (!IsScalarOp(inst) && reachability_map->IsReachable(inst, out)) {
-      return std::nullopt;
-    }
-  }
-
-  // `out` may not be reachable from any parameter of `in->parent()` except
-  // possibly `in` itself.
-  for (HloInstruction* param : in->parent()->parameter_instructions()) {
-    if (param != in && reachability_map->IsReachable(param, out)) {
-      return std::nullopt;
-    }
-  }
-
-  // Categorize the users of `in` in two categories:
-  // 1. "Good" users: get-tuple-element instructions.
-  // 2. "Bad" users: all other instructions.
-  // We want to make sure that `out` is reachable from at least one "good" user,
-  // but no "bad" users, and collect the indices of the reachable "good" users.
   absl::flat_hash_set<int64_t> candidate_indices;
-  for (HloInstruction* user : in->users()) {
-    if (!reachability_map->IsReachable(user, out)) {
+  absl::flat_hash_set<const HloInstruction*> visited;
+  std::vector<const HloInstruction*> worklist;
+  worklist.push_back(out);
+
+  while (!worklist.empty()) {
+    const HloInstruction* instr = worklist.back();
+    worklist.pop_back();
+    if (!visited.insert(instr).second) {
       continue;
     }
-    if (user->opcode() == HloOpcode::kGetTupleElement) {
-      candidate_indices.insert(user->tuple_index());
-    } else {
+
+    // Reaching `in` directly means the tuple was consumed without extracting a
+    // scalar via get-tuple-element; reaching any other parameter means an
+    // illegal dependence on an external loop input.
+    if (instr == in || instr->opcode() == HloOpcode::kParameter) {
       return std::nullopt;
+    }
+
+    // Resolve get-tuple-element operands to their source tuple in the top-level
+    // computation by stripping intermediate copy operations.
+    if (instr->opcode() == HloOpcode::kGetTupleElement) {
+      if (!ShapeUtil::IsScalar(instr->shape())) {
+        return std::nullopt;
+      }
+      const HloInstruction* operand = instr->operand(0);
+      while (operand->opcode() == HloOpcode::kCopy) {
+        operand = operand->operand(0);
+      }
+      // Case 1: Directly indexes into the target input tuple.
+      if (operand == in) {
+        candidate_indices.insert(instr->tuple_index());
+        continue;
+      }
+      // Case 2: Indexes into a newly created tuple; check all inputs.
+      if (operand->opcode() == HloOpcode::kTuple) {
+        for (const HloInstruction* op : operand->operands()) {
+          worklist.push_back(op);
+        }
+        continue;
+      }
+      // Case 3: Indexes into a tuple-returning sub-computation (e.g.
+      // multi-output fusion or fused copy). Use helper to find which parameters
+      // reach this tuple output element and map them back to outer operands.
+      if (operand->opcode() == HloOpcode::kFusion ||
+          operand->opcode() == HloOpcode::kCall) {
+        if (!ProcessCalledComputation(operand, in, instr->tuple_index(),
+                                      /*is_scalar_verified=*/false, worklist,
+                                      candidate_indices)) {
+          return std::nullopt;
+        }
+        continue;
+      }
+      return std::nullopt;
+    }
+
+    // Forward through scalar copy operations.
+    if (instr->opcode() == HloOpcode::kCopy) {
+      worklist.push_back(instr->operand(0));
+      continue;
+    }
+
+    // For scalar-returning fusions and calls, check validity via IsScalarOp,
+    // then find reaching internal parameters and add their corresponding
+    // top-level scalar operands to the worklist.
+    if (instr->opcode() == HloOpcode::kFusion ||
+        instr->opcode() == HloOpcode::kCall) {
+      if (!IsScalarOp(instr) ||
+          !ProcessCalledComputation(instr, in, std::nullopt,
+                                    /*is_scalar_verified=*/true, worklist,
+                                    candidate_indices)) {
+        return std::nullopt;
+      }
+      continue;
+    }
+
+    // For basic scalar compute operations (e.g. add, compare), continue tracing
+    // backward through all operands.
+    if (!IsScalarOp(instr)) {
+      return std::nullopt;
+    }
+    for (const HloInstruction* operand : instr->operands()) {
+      worklist.push_back(operand);
     }
   }
 

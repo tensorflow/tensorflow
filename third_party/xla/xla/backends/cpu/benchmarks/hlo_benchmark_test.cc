@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/base/nullability.h"
 #include "absl/flags/flag.h"
+#include "absl/flags/parse.h"
 #include "absl/log/check.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -97,7 +98,7 @@ absl::Status RunBenchmark(benchmark::State* absl_nullable state,
                                       ? GetAotCompilationOptions()
                                       : nullptr;
 
-  ASSIGN_OR_RETURN(auto module_and_iteration_literals,
+  ABSL_ASSIGN_OR_RETURN(auto module_and_iteration_literals,
                    LoadHloModuleAndMaybeIterationLiterals(hlo_abs_path));
 
   std::unique_ptr<HloModule> hlo_module =
@@ -106,7 +107,7 @@ absl::Status RunBenchmark(benchmark::State* absl_nullable state,
   std::vector<Literal> args;
   args.reserve(module_and_iteration_literals.second->arguments_size());
   for (const auto& arg : module_and_iteration_literals.second->arguments()) {
-    ASSIGN_OR_RETURN(args.emplace_back(), Literal::CreateFromProto(arg));
+    ABSL_ASSIGN_OR_RETURN(args.emplace_back(), Literal::CreateFromProto(arg));
   }
 
   std::vector<Literal*> arg_ptrs;
@@ -178,6 +179,7 @@ GTEST_API_ int main(int argc, char** argv) {
   tsl::testing::InstallStacktraceHandler();
   ::benchmark::Initialize(&argc, argv);
   testing::InitGoogleTest(&argc, argv);
+  absl::ParseCommandLine(argc, argv);
   xla::cpu::Set_XLA_FLAGS();
   xla::cpu::RegisterBenchmarks();
   if (::benchmark::GetBenchmarkFilter().empty()) {

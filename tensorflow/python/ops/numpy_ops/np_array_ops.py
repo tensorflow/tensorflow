@@ -296,6 +296,16 @@ def arange(start, stop=None, step=1, dtype=None):
     return array([], dtype=dtype)
   # TODO(srbs): There are some bugs when start or stop is float type and dtype
   # is integer type.
+  if dtypes.as_dtype(dtype).is_floating:
+    # Build the range at the resolved precision so the values follow NumPy;
+    # handing the Python scalars to tf.range directly computes them as
+    # float32 even when the output dtype is float64.
+    limit = None if stop is None else ops.convert_to_tensor(stop, dtype=dtype)
+    return math_ops.range(
+        ops.convert_to_tensor(start, dtype=dtype),
+        limit=limit,
+        delta=ops.convert_to_tensor(step, dtype=dtype),
+    )
   return math_ops.cast(
       math_ops.range(start, limit=stop, delta=step), dtype=dtype
   )
@@ -733,10 +743,9 @@ def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: d
       means = math_ops.reduce_mean(input_tensor, axis=axis, keepdims=True)
       centered = input_tensor - means
       if input_tensor.dtype in (dtypes.complex64, dtypes.complex128):
-        centered = math_ops.cast(
-            math_ops.real(centered * math_ops.conj(centered)),
-            input_tensor.dtype,
-        )
+        # The variance of a complex tensor is real; keep the real dtype like
+        # math_ops.reduce_variance and NumPy do.
+        centered = math_ops.real(centered * math_ops.conj(centered))
       else:
         centered = math_ops.square(centered)
       squared_deviations = math_ops.reduce_sum(
@@ -751,9 +760,9 @@ def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: d
         n = math_ops.reduce_prod(
             array_ops.gather(array_ops.shape(input_tensor), axis)
         )
-      n = math_ops.cast(n - ddof, input_tensor.dtype)
+      n = math_ops.cast(n - ddof, squared_deviations.dtype)
 
-      return math_ops.cast(math_ops.divide(squared_deviations, n), dtype)
+      return math_ops.divide(squared_deviations, n)
 
   else:
     reduce_fn = math_ops.reduce_variance
@@ -1482,9 +1491,12 @@ def flip(m, axis=None):  # pylint: disable=missing-docstring
   if axis is None:
     return array_ops.reverse(m, math_ops.range(array_ops.rank(m)))
 
-  axis = np_utils._canonicalize_axis(axis, array_ops.rank(m))  # pylint: disable=protected-access
+  if np_utils.isscalar(axis):
+    axis = [axis]
 
-  return array_ops.reverse(m, [axis])
+  axis = np_utils._canonicalize_axes(axis, array_ops.rank(m))  # pylint: disable=protected-access
+
+  return array_ops.reverse(m, axis)
 
 
 @tf_export.tf_export('experimental.numpy.flipud', v1=[])
@@ -1657,7 +1669,13 @@ def take_along_axis(arr, indices, axis):  # pylint: disable=missing-docstring
   if axis is None:
     return take_along_axis(arr.ravel(), indices, 0)
 
-  rank = array_ops.rank(arr)
+  # Prefer the static rank so that `axis` and the branch predicate below stay
+  # Python values. With a tensor predicate the conditional further down is
+  # emitted as a real op whose two branches have different shapes, which XLA
+  # rejects.
+  rank = arr.shape.rank
+  if rank is None:
+    rank = array_ops.rank(arr)
   axis = axis + rank if axis < 0 else axis
 
   # Broadcast shapes to match, ensure that the axis of interest is not
@@ -1688,7 +1706,11 @@ def take_along_axis(arr, indices, axis):  # pylint: disable=missing-docstring
 
   swapaxes_ = lambda t: swapaxes(t, axis, -1)
 
-  dont_move_axis_to_end = math_ops.equal(axis, np_utils.subtract(rank, 1))
+  if isinstance(rank, int):
+    # Resolved at trace time, so only the taken branch is built.
+    dont_move_axis_to_end = axis == rank - 1
+  else:
+    dont_move_axis_to_end = math_ops.equal(axis, np_utils.subtract(rank, 1))
   arr = np_utils.cond(
       dont_move_axis_to_end, lambda: arr, lambda: swapaxes_(arr)
   )

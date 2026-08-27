@@ -36,6 +36,7 @@ message NetworkAddressMapping {
   int32 slice_id = 1;
   int32 host_id = 2;
   repeated HostNetworkAddress addresses = 3;
+  optional uint64 incarnation_id = 4;
 }
 
 // Holds the network address mapping of all endpoints (slice_id, host_id).

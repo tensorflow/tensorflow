@@ -25,11 +25,11 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/BasicBlock.h"
@@ -57,6 +57,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/Transforms/BufferDeallocationOpInterfaceImpl.h"
 #include "mlir/Dialect/Arith/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Bufferization/Pipelines/Passes.h"
+#include "mlir/Dialect/Bufferization/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Bufferization/Transforms/FuncBufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
@@ -359,11 +360,6 @@ void AddXtileToVectorPasses(mlir::OpPassManager& pm, bool msan_enabled) {
       mlir::stablehlo::createStablehloTargetIndependentOptimizationPass());
 
   pm.addPass(xtile::createStablehloLowerToArithPass());
-  // Has to run before legalize-to-linalg for specialized implementations of
-  // SHLO ops for XTile. It also has to run before
-  // legalize-unsigned-integers-as-signless, as we need to choose the right
-  // lowering for Convert based on unsigned type.
-  pm.addPass(xtile::createStablehloLowerToXtilePass());
   // This pass and the Canonicalizer pass need to run before ShloToVectorPass,
   // otherwise the LowerReduce pattern does not work due to
   // UnrealizedConversionCast in the reducer body.
@@ -404,7 +400,10 @@ void AddNewXtileToVectorPasses(mlir::OpPassManager& pm) {
 
   emitters::RegisterOptimizationPasses(pm);
 
+  pm.addPass(xtile::createExpandXtileComplexOpsPass());
   pm.addPass(xtile::createStablehloLowerToArithPass());
+  pm.addPass(xtile::createLegalizeUnsignedIntegersAsSignlessPass());
+  pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(cpu::createVectorizeXTilePass());
 
   pm.addPass(cpu::createLowerXTileEntryPass());
@@ -451,6 +450,36 @@ void AddVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max) {
   AddGenericLoweringPasses(pm, fast_min_max);
 }
 
+// Lowering passes for the new tiled emitter.
+// The input IR is from the xtile dialect which uses tensors that are converted
+// first to the vector dialect and then to LLVM.
+void AddNewVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max) {
+  // Get rid of 0d vectors.
+  pm.addPass(cpu::createVectorToScalarPass());
+  // Get rid of multi-dimensional vectors.
+  pm.addPass(cpu::createUnrollVectorsPass());
+  // Get rid of unit dimensions.
+  pm.addPass(cpu::createDropVectorUnitDimsPass());
+  pm.addPass(mlir::createConvertVectorToSCFPass(
+      mlir::VectorTransferToSCFOptions().enableFullUnroll(true)));
+  pm.addPass(mlir::createCanonicalizerPass());
+
+  pm.addPass(cpu::createUnpackSubByteVectorWritePass());
+
+  mlir::ConvertVectorToLLVMPassOptions options;
+
+  // If the tile size is 16x16 this will generate the most efficient code for
+  // avx512 platforms.
+  options.vectorTransposeLowering =
+      mlir::vector::VectorTransposeLowering::Shuffle16x16;
+  pm.addPass(mlir::createConvertVectorToLLVMPass(options));
+  pm.addPass(cpu::createLowerToLLVMPass());
+  pm.addPass(mlir::memref::createExpandStridedMetadataPass());
+  pm.addPass(emitters::createSafeIntegerArithmeticPass());
+
+  AddGenericLoweringPasses(pm, fast_min_max);
+}
+
 FusionCompiler::FusionCompiler(mlir::MLIRContext* context, Options options,
                                const HloModule* hlo_module)
     : options_(std::move(options)),
@@ -487,7 +516,11 @@ FusionCompiler::FusionCompiler(mlir::MLIRContext* context, Options options,
     tiled_pass_manager_.addPass(
         std::make_unique<ModuleCallbackPass>(hlo_module_, "post-optimization"));
   }
-  AddVectorToLLVMPasses(tiled_pass_manager_, options_.fast_min_max);
+  if (options_.use_new_xtile_lowering) {
+    AddNewVectorToLLVMPasses(tiled_pass_manager_, options_.fast_min_max);
+  } else {
+    AddVectorToLLVMPasses(tiled_pass_manager_, options_.fast_min_max);
+  }
   tiled_pass_manager_.enableVerifier(should_verify);
   tiled_pass_manager_.addInstrumentation(
       std::make_unique<TraceInstrumentation>());
@@ -539,7 +572,7 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
     pm.printAsTextualPipeline(log_stream);
     log_stream.write("\n\n", 2);
   }
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       RunPassPipeline(mlir_module, pm, nullptr, options_.verification_level));
 
   if (should_dump_mlir_passes) {
@@ -602,7 +635,7 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
 absl::StatusOr<LlvmKernelSource> FusionCompiler::Compile(
     MlirKernelSource mlir_kernel_source) {
   auto llvm_context = std::make_unique<llvm::LLVMContext>();
-  ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> llvm_module,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> llvm_module,
                    Compile(*llvm_context, mlir_kernel_source.module()));
   return LlvmKernelSource(std::move(llvm_context), std::move(llvm_module));
 }
@@ -643,6 +676,7 @@ mlir::DialectRegistry FusionCompiler::CreateDialectRegistry() {
   mlir::scf::registerBufferDeallocationOpInterfaceExternalModels(registry);
 
   mlir::arith::registerBufferizableOpInterfaceExternalModels(registry);
+  mlir::bufferization::registerBufferizableOpInterfaceExternalModels(registry);
   mlir::bufferization::func_ext::registerBufferizableOpInterfaceExternalModels(
       registry);
   mlir::linalg::registerBufferizableOpInterfaceExternalModels(registry);

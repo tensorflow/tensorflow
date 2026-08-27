@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <level_zero/ze_api.h>
 
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 
 constexpr int kMsecInSec = 1000;
 
@@ -55,7 +55,7 @@ absl::StatusOr<float> GetEventElapsedTime(StreamExecutor* executor,
   // milliseconds.
   // We assume that all SYCL devices have the same frequency and mask, so
   // we use kDefaultDeviceOrdinal.
-  ASSIGN_OR_RETURN(SyclTimerProperties timer_props,
+  ABSL_ASSIGN_OR_RETURN(SyclTimerProperties timer_props,
                    SyclGetTimerProperties(kDefaultDeviceOrdinal));
 
   const uint64_t kernel_start_time = start_timestamp.global.kernelStart;
@@ -90,8 +90,8 @@ absl::StatusOr<absl::Duration> SyclTimer::GetElapsedDuration() {
   if (is_timer_stopped_) {
     return absl::FailedPreconditionError("Measuring inactive timer");
   }
-  RETURN_IF_ERROR(stream_->RecordEvent(&stop_event_));
-  ASSIGN_OR_RETURN(float elapsed_milliseconds,
+  ABSL_RETURN_IF_ERROR(stream_->RecordEvent(&stop_event_));
+  ABSL_ASSIGN_OR_RETURN(float elapsed_milliseconds,
                    GetEventElapsedTime(executor_, start_event_.GetEvent(),
                                        stop_event_.GetEvent()));
   is_timer_stopped_ = true;
@@ -100,9 +100,9 @@ absl::StatusOr<absl::Duration> SyclTimer::GetElapsedDuration() {
 
 absl::StatusOr<SyclTimer> SyclTimer::Create(StreamExecutor* executor,
                                             Stream* stream) {
-  ASSIGN_OR_RETURN(SyclEvent start_event, SyclEvent::Create(executor));
-  ASSIGN_OR_RETURN(SyclEvent stop_event, SyclEvent::Create(executor));
-  RETURN_IF_ERROR(stream->RecordEvent(&start_event));
+  ABSL_ASSIGN_OR_RETURN(SyclEvent start_event, SyclEvent::Create(executor));
+  ABSL_ASSIGN_OR_RETURN(SyclEvent stop_event, SyclEvent::Create(executor));
+  ABSL_RETURN_IF_ERROR(stream->RecordEvent(&start_event));
   return SyclTimer(executor, std::move(start_event), std::move(stop_event),
                    stream);
 }

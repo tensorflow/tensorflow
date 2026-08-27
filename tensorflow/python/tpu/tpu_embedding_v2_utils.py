@@ -159,10 +159,10 @@ class _Optimizer(_WithSlotVariables):
           f"Received value {clipvalue} for argument `clipvalue`."
       )
     if clipvalue is None:
-      clipvalue = (None, None)
+      clipvalue = (None, None)  # pyrefly: ignore[bad-assignment]
     elif not isinstance(clipvalue, tuple):
       clipvalue = (-1.0 * clipvalue, clipvalue)
-    self.clip_gradient_min, self.clip_gradient_max = clipvalue
+    self.clip_gradient_min, self.clip_gradient_max = clipvalue  # pyrefly: ignore[not-iterable]
 
     self.weight_decay_factor = weight_decay_factor
     self.multiply_weight_decay_factor_by_learning_rate = (
@@ -202,7 +202,7 @@ class _Optimizer(_WithSlotVariables):
         parameters.multiply_weight_decay_factor_by_learning_rate = True
 
     parameters.low_dimensional_packing_status = (
-        self.low_dimensional_packing_status
+        self.low_dimensional_packing_status  # pyrefly: ignore[bad-assignment]
     )
 
   @abc.abstractmethod
@@ -329,7 +329,7 @@ class CustomOptimizer(_Optimizer):
         clip_weight_min=None,
         clip_weight_max=None,
         weight_decay_factor=None,
-        multiply_weight_decay_factor_by_learning_rate=None,
+        multiply_weight_decay_factor_by_learning_rate=None,  # pyrefly: ignore[bad-argument-type]
         clipvalue=None,
         slot_variable_creation_fn=None,
         low_dimensional_packing_status=False,
@@ -490,7 +490,7 @@ class SGD(_Optimizer):
         clip_weight_min,
         clip_weight_max,
         weight_decay_factor,
-        multiply_weight_decay_factor_by_learning_rate,
+        multiply_weight_decay_factor_by_learning_rate,  # pyrefly: ignore[bad-argument-type]
         clipvalue,
         None,
         low_dimensional_packing_status,
@@ -610,7 +610,7 @@ class Adagrad(_Optimizer):
         clip_weight_min,
         clip_weight_max,
         weight_decay_factor,
-        multiply_weight_decay_factor_by_learning_rate,
+        multiply_weight_decay_factor_by_learning_rate,  # pyrefly: ignore[bad-argument-type]
         clipvalue,
         slot_variable_creation_fn,
         low_dimensional_packing_status,
@@ -748,7 +748,7 @@ class AdagradMomentum(_Optimizer):
         clip_weight_min,
         clip_weight_max,
         weight_decay_factor,
-        multiply_weight_decay_factor_by_learning_rate,
+        multiply_weight_decay_factor_by_learning_rate,  # pyrefly: ignore[bad-argument-type]
         clipvalue,
         slot_variable_creation_fn,
         low_dimensional_packing_status,
@@ -917,7 +917,7 @@ class FTRL(_Optimizer):
         clip_weight_min,
         clip_weight_max,
         weight_decay_factor,
-        multiply_weight_decay_factor_by_learning_rate,
+        multiply_weight_decay_factor_by_learning_rate,  # pyrefly: ignore[bad-argument-type]
         clipvalue,
         slot_variable_creation_fn,
         low_dimensional_packing_status,
@@ -1081,7 +1081,7 @@ class Adam(_Optimizer):
         clip_weight_min,
         clip_weight_max,
         weight_decay_factor,
-        multiply_weight_decay_factor_by_learning_rate,
+        multiply_weight_decay_factor_by_learning_rate,  # pyrefly: ignore[bad-argument-type]
         clipvalue,
         slot_variable_creation_fn,
         low_dimensional_packing_status,
@@ -1360,7 +1360,7 @@ class TableConfig:
       optimizer: Optional[_Optimizer] = None,
       combiner: Union[Text, CustomCombiner] = "mean",
       name: Optional[Text] = None,
-      quantization_config: QuantizationConfig = None,
+      quantization_config: QuantizationConfig = None,  # pyrefly: ignore[bad-function-definition]
       # TODO(b/295372790): Change the type to SparseCoreTableLayout after it is
       # open sourced.
       layout: Optional[Any] = None,
@@ -1490,7 +1490,7 @@ class TableConfig:
       num_hosts: int,
       learning_rate_index: Dict[Callable[[], Any], int]):
     """Set the table descriptor from the table data."""
-    table_descriptor.name = self.name
+    table_descriptor.name = self.name  # pyrefly: ignore[bad-assignment]
 
     # For small tables, we pad to the number of hosts so that at least one
     # id will be assigned to each host.

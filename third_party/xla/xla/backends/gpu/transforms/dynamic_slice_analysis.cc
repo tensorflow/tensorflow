@@ -29,9 +29,9 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -147,7 +147,7 @@ static absl::StatusOr<Literal> EvaluateFunctionalOffset(
       if (!required_parameters[i]) {
         continue;
       }
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           Literal value,
           evaluator->Evaluate(caller->operand(i), {}, true, substitutions));
       next_parameter_values.emplace_back(callee->parameter_instruction(i),
@@ -173,8 +173,8 @@ static absl::StatusOr<int64_t> EvaluateByteOffsetAtIteration(
   int32_t first_offset_index = GetFirstOffsetOperandIndex(instr);
   int32_t rank = instr->operand(0)->shape().dimensions().size();
 
-  ASSIGN_OR_RETURN(Literal ivar_literal, Literal::Make(induction_var->shape()));
-  RETURN_IF_ERROR(ivar_literal.SetIntegralAsS64({}, ivar_value));
+  ABSL_ASSIGN_OR_RETURN(Literal ivar_literal, Literal::Make(induction_var->shape()));
+  ABSL_RETURN_IF_ERROR(ivar_literal.SetIntegralAsS64({}, ivar_value));
 
   absl::flat_hash_map<const HloInstruction*, const LiteralBase*> substitutions;
   substitutions[induction_var] = &ivar_literal;
@@ -206,11 +206,11 @@ static absl::StatusOr<int64_t> EvaluateByteOffsetAtIteration(
     Literal offset_literal;
     if (auto it = functional_dependencies.find(operand);
         it != functional_dependencies.end()) {
-      ASSIGN_OR_RETURN(offset_literal,
+      ABSL_ASSIGN_OR_RETURN(offset_literal,
                        EvaluateFunctionalOffset(operand, it->second,
                                                 &ivar_literal, &evaluator));
     } else {
-      ASSIGN_OR_RETURN(offset_literal,
+      ABSL_ASSIGN_OR_RETURN(offset_literal,
                        evaluator.Evaluate(operand, {}, true, substitutions));
     }
 
@@ -480,7 +480,7 @@ absl::StatusOr<std::optional<DynamicSliceDescriptor>> AnalyzeDynamicSlice(
 
   // Step 6: Read the loop's init/step/trip_count from WhileLoopBackendConfig
   // (set by WhileLoopTripCountAnnotator).
-  ASSIGN_OR_RETURN(auto loop_config,
+  ABSL_ASSIGN_OR_RETURN(auto loop_config,
                    while_loop->backend_config<WhileLoopBackendConfig>());
   if (!loop_config.has_known_init_step() ||
       !loop_config.has_known_trip_count()) {
@@ -507,7 +507,7 @@ absl::StatusOr<std::optional<DynamicSliceDescriptor>> AnalyzeDynamicSlice(
   std::vector<int64_t> offsets(trip_count);
   for (int64_t iter = 0; iter < trip_count; ++iter) {
     int64_t ivar = effective_init + iter * init_step.step;
-    ASSIGN_OR_RETURN(offsets[iter], EvaluateByteOffsetAtIteration(
+    ABSL_ASSIGN_OR_RETURN(offsets[iter], EvaluateByteOffsetAtIteration(
                                         instr, *strides, induction_var,
                                         functional_dependencies, ivar));
     VLOG(3) << instr->name() << ": iteration " << iter << " (ivar=" << ivar

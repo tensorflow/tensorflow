@@ -31,11 +31,11 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "rocm/include/rocprofiler-sdk/agent.h"
 #include "rocm/include/rocprofiler-sdk/buffer.h"
 #include "rocm/include/rocprofiler-sdk/buffer_tracing.h"
@@ -493,44 +493,44 @@ absl::Status RocmTracer::InitProfiling(void* tool_data) {
     }
   }
 
-  RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+  ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
       rocprofiler_create_context(&utility_context_)));
 
   auto code_object_ops = std::vector<rocprofiler_tracing_operation_t>{
       ROCPROFILER_CODE_OBJECT_DEVICE_KERNEL_SYMBOL_REGISTER};
 
-  RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+  ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
       rocprofiler_configure_callback_tracing_service(
           utility_context_, ROCPROFILER_CALLBACK_TRACING_CODE_OBJECT,
           code_object_ops.data(), code_object_ops.size(), code_object_callback,
           nullptr)));
 
-  RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+  ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
       rocprofiler_start_context(utility_context_)));
   VLOG(1) << "rocprofiler start utilityContext";
 
   constexpr auto buffer_size_bytes = 100 * 4096;
   constexpr auto buffer_watermark_bytes = 40 * 4096;
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       RocprofilerStatusToAbslStatus(rocprofiler_create_context(&context_)));
 
-  RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(rocprofiler_create_buffer(
+  ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(rocprofiler_create_buffer(
       context_, buffer_size_bytes, buffer_watermark_bytes,
       ROCPROFILER_BUFFER_POLICY_LOSSLESS, tool_tracing_callback, tool_data,
       &buffer_)));
 
-  RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+  ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
       rocprofiler_configure_buffer_tracing_service(
           context_, ROCPROFILER_BUFFER_TRACING_HIP_RUNTIME_API, nullptr, 0,
           buffer_)));
 
-  RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+  ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
       rocprofiler_configure_buffer_tracing_service(
           context_, ROCPROFILER_BUFFER_TRACING_KERNEL_DISPATCH, nullptr, 0,
           buffer_)));
 
-  RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+  ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
       rocprofiler_configure_buffer_tracing_service(
           context_, ROCPROFILER_BUFFER_TRACING_MEMORY_COPY, nullptr, 0,
           buffer_)));
@@ -543,7 +543,7 @@ absl::Status RocmTracer::InitProfiling(void* tool_data) {
         ROCPROFILER_EXTERNAL_CORRELATION_REQUEST_KERNEL_DISPATCH,
         ROCPROFILER_EXTERNAL_CORRELATION_REQUEST_MEMORY_COPY,
     };
-    RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+    ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
         rocprofiler_configure_external_correlation_id_request_service(
             context_, kinds, std::size(kinds),
             stream_external_correlation_callback, nullptr)));
@@ -556,15 +556,15 @@ absl::Status RocmTracer::InitProfiling(void* tool_data) {
   // Enable()/Disable(): the TLS stack must stay warm so that stream IDs are
   // correct from the very first dispatch after Enable(). The overhead when
   // profiling is off is negligible (push/pop on a small TLS vector).
-  RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+  ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
       rocprofiler_create_context(&hip_stream_ctx_)));
 
-  RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+  ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
       rocprofiler_configure_callback_tracing_service(
           hip_stream_ctx_, ROCPROFILER_CALLBACK_TRACING_HIP_STREAM, nullptr, 0,
           hip_stream_callback, nullptr)));
 
-  RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+  ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
       rocprofiler_start_context(hip_stream_ctx_)));
   VLOG(1) << "rocprofiler start hip_stream_ctx";
 
@@ -572,7 +572,7 @@ absl::Status RocmTracer::InitProfiling(void* tool_data) {
     const rocprofiler_tracing_operation_t* hip_ops = nullptr;
     size_t hip_ops_count = 0;
 
-    RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+    ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
         rocprofiler_configure_callback_tracing_service(
             context_, ROCPROFILER_CALLBACK_TRACING_HIP_RUNTIME_API, hip_ops,
             hip_ops_count,
@@ -593,13 +593,13 @@ absl::Status RocmTracer::InitProfiling(void* tool_data) {
   }
 
   auto client_thread = rocprofiler_callback_thread_t{};
-  RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+  ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
       rocprofiler_create_callback_thread(&client_thread)));
-  RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+  ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
       rocprofiler_assign_callback_thread(buffer_, client_thread)));
 
   int isValid = 0;
-  RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+  ABSL_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
       rocprofiler_context_is_valid(context_, &isValid)));
   if (isValid == 0) {
     context_.handle = 0;

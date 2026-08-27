@@ -27,13 +27,13 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
-#include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/ExtensibleRTTI.h"
+#include "absl/status/status_macros.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
@@ -83,7 +83,7 @@ enum class SingleDeviceShardSemantics : int {
 // common that an operation preserves the logical partitioning and only updates
 // devices (e.g., "copy to devices" and portable execution). This fine-grained
 // sharding design may help reduce overhead around these operations.
-class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
+class Sharding : public RTTIExtends<Sharding, Serializable> {
  public:
   using DeserializeOptions = DeserializeShardingOptions;
 
@@ -172,7 +172,7 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
   absl::StatusOr<ShardingProto> ToProto(
       SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
     ShardingProto proto;
-    RETURN_IF_ERROR(ToProto(proto, version));
+    ABSL_RETURN_IF_ERROR(ToProto(proto, version));
     return proto;
   }
 
@@ -221,7 +221,7 @@ std::ostream& operator<<(std::ostream& os, const Sharding& sharding);
 // large quantity. It may be useful for performance optimization to special-case
 // this sharding type rather than expressing it as a general `Sharding`.
 class SingleDeviceSharding final
-    : public llvm::RTTIExtends<SingleDeviceSharding, Sharding> {
+    : public RTTIExtends<SingleDeviceSharding, Sharding> {
  public:
   // Creates a single-device sharding.
   static std::unique_ptr<SingleDeviceSharding> Create(Device* device,
@@ -258,17 +258,22 @@ class SingleDeviceSharding final
   static char ID;  // NOLINT
 
  private:
-  explicit SingleDeviceSharding(DeviceListRef device_list,
-                                MemoryKind memory_kind);
+  friend class SingleDeviceShardingSpec;
+
+  SingleDeviceSharding(
+      DeviceListRef device_list, MemoryKind memory_kind,
+      std::shared_ptr<const SingleDeviceShardingSpec> sharding_spec);
 
   std::string DebugString() const override;
 
   void Hash(absl::HashState state) const override;
+
+  std::shared_ptr<const SingleDeviceShardingSpec> sharding_spec_;
 };
 
 // Opaque sharding that does not define a fixed semantics for conversion between
 // a logical shape and per-device shapes, and device placements.
-class OpaqueSharding : public llvm::RTTIExtends<OpaqueSharding, Sharding> {
+class OpaqueSharding : public RTTIExtends<OpaqueSharding, Sharding> {
  public:
   // Creates an opaque sharding. `Disassemble()` will fail.
   // REQUIRES: !devices.empty()
@@ -306,18 +311,23 @@ class OpaqueSharding : public llvm::RTTIExtends<OpaqueSharding, Sharding> {
   static char ID;  // NOLINT
 
  private:
-  explicit OpaqueSharding(DeviceListRef devices, MemoryKind memory_kind);
+  friend class OpaqueShardingSpec;
+
+  OpaqueSharding(DeviceListRef devices, MemoryKind memory_kind,
+                 std::shared_ptr<const OpaqueShardingSpec> sharding_spec);
 
   std::string DebugString() const override;
 
   void Hash(absl::HashState state) const override;
+
+  std::shared_ptr<const OpaqueShardingSpec> sharding_spec_;
 };
 
 // Opaque sharding that does not define a fixed semantics for conversion between
 // a logical shape and shard shapes, and device placements. It can disassemble a
 // certain shape into shard shapes that may not be identical. It is advised to
 // use `ConcreteEvenSharding` if all shard shapes are identical.
-class ConcreteSharding : public llvm::RTTIExtends<ConcreteSharding, Sharding> {
+class ConcreteSharding : public RTTIExtends<ConcreteSharding, Sharding> {
  public:
   // Creates a concrete sharding that may contain non-identical shard shapes.
   // REQUIRES: devices->AddressableDeviceList()->size() == shard_shapes.size()
@@ -338,42 +348,38 @@ class ConcreteSharding : public llvm::RTTIExtends<ConcreteSharding, Sharding> {
 
   bool has_dynamic_shape() const {
     DCHECK(this);
-    return std::holds_alternative<DynamicShape>(shape_) &&
-           std::holds_alternative<std::vector<DynamicShape>>(shard_shapes_);
+    return sharding_spec_->has_dynamic_shape();
   }
 
   bool has_static_shape() const {
     DCHECK(this);
-    return std::holds_alternative<Shape>(shape_) &&
-           std::holds_alternative<std::vector<Shape>>(shard_shapes_);
+    return sharding_spec_->has_static_shape();
   }
 
   const Shape& shape() const {
     DCHECK(has_static_shape());
-    return std::get<Shape>(shape_);
+    return sharding_spec_->shape();
   }
 
   const DynamicShape& dynamic_shape() const {
     DCHECK(has_dynamic_shape());
-    return std::get<DynamicShape>(shape_);
+    return sharding_spec_->dynamic_shape();
   }
 
   const std::vector<Shape>& shard_shapes() const {
     DCHECK(this);
-    DCHECK(std::holds_alternative<std::vector<Shape>>(shard_shapes_));
-    return std::get<std::vector<Shape>>(shard_shapes_);
+    return sharding_spec_->shard_shapes();
   }
 
   const std::vector<DynamicShape>& shard_dynamic_shapes() const {
     DCHECK(this);
-    DCHECK(std::holds_alternative<std::vector<DynamicShape>>(shard_shapes_));
-    return std::get<std::vector<DynamicShape>>(shard_shapes_);
+    return sharding_spec_->shard_dynamic_shapes();
   }
 
   const std::optional<std::vector<xla::ifrt::IndexDomain>>& index_domains()
       const {
     DCHECK(this);
-    return index_domains_;
+    return sharding_spec_->index_domains();
   }
 
   // Sharding implementation.
@@ -407,30 +413,23 @@ class ConcreteSharding : public llvm::RTTIExtends<ConcreteSharding, Sharding> {
   static char ID;  // NOLINT
 
  private:
-  ConcreteSharding(
-      DeviceListRef devices, MemoryKind memory_kind, Shape shape,
-      std::vector<Shape> shard_shapes,
-      std::optional<std::vector<xla::ifrt::IndexDomain>> index_domains);
+  friend class ConcreteShardingSpec;
 
   ConcreteSharding(DeviceListRef devices, MemoryKind memory_kind,
-                   DynamicShape dynamic_shape,
-                   std::vector<DynamicShape> shard_dynamic_shapes);
+                   std::shared_ptr<const ConcreteShardingSpec> sharding_spec);
 
   std::string DebugString() const override;
 
   void Hash(absl::HashState state) const override;
 
-  std::variant<Shape, DynamicShape> shape_;
-  std::variant<std::vector<Shape>, std::vector<DynamicShape>> shard_shapes_;
-  std::optional<Shape> shard_shape_;
-  std::optional<std::vector<xla::ifrt::IndexDomain>> index_domains_;
+  std::shared_ptr<const ConcreteShardingSpec> sharding_spec_;
 };
 
 // Opaque sharding that does not define a fixed semantics for conversion between
 // a logical shape and shard shapes, and device placements. It can disassemble a
 // certain shape into shard shapes that are identical.
 class ConcreteEvenSharding
-    : public llvm::RTTIExtends<ConcreteEvenSharding, Sharding> {
+    : public RTTIExtends<ConcreteEvenSharding, Sharding> {
  public:
   // Creates a concrete even sharding.
   // TODO(hyeontaek): Remove the default value of `is_fully_replicated` once all
@@ -442,11 +441,11 @@ class ConcreteEvenSharding
 
   Shape shape() const {
     DCHECK(this);
-    return shape_;
+    return sharding_spec_->shape();
   }
   const Shape& shard_shape() const {
     DCHECK(this);
-    return shard_shape_;
+    return sharding_spec_->shard_shape();
   }
 
   // Sharding implementation.
@@ -480,30 +479,38 @@ class ConcreteEvenSharding
   static char ID;  // NOLINT
 
  private:
-  ConcreteEvenSharding(DeviceListRef devices, MemoryKind memory_kind,
-                       Shape shape, Shape shard_shape,
-                       bool is_fully_replicated);
+  friend class ConcreteEvenShardingSpec;
+
+  ConcreteEvenSharding(
+      DeviceListRef devices, MemoryKind memory_kind,
+      std::shared_ptr<const ConcreteEvenShardingSpec> sharding_spec);
 
   std::string DebugString() const override;
 
   void Hash(absl::HashState state) const override;
 
-  Shape shape_;
-  Shape shard_shape_;
+  std::shared_ptr<const ConcreteEvenShardingSpec> sharding_spec_;
 };
 
 // Sharding derived from an IR ShardingParam.
 class ShardingParamSharding
-    : public llvm::RTTIExtends<ShardingParamSharding, Sharding> {
+    : public RTTIExtends<ShardingParamSharding, Sharding> {
  public:
   // REQUIRES: !devices.empty()
   static absl::StatusOr<std::unique_ptr<ShardingParamSharding>> Create(
       ShardingParam sharding_param, DeviceListRef devices,
       MemoryKind memory_kind);
 
-  const ShardingParam& sharding_param() const { return sharding_param_; }
+  const ShardingParam& sharding_param() const {
+    return sharding_spec_->sharding_param();
+  }
 
   ShardingSpecRef sharding_spec() const override;
+
+  using Sharding::Disassemble;
+  absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
+      const Shape& shape,
+      SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
   absl::StatusOr<Shape> GetShardShape(const Shape& shape) const override;
 
@@ -512,11 +519,6 @@ class ShardingParamSharding
   absl::StatusOr<std::unique_ptr<Sharding>> WithDeviceAssignment(
       std::optional<DeviceListRef> devices,
       std::optional<MemoryKind> memory_kind) const override;
-
-  using Sharding::Disassemble;
-  absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
-      const Shape& shape,
-      SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
   absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>> Disassemble(
       const DynamicShape& dynamic_shape,
@@ -530,20 +532,23 @@ class ShardingParamSharding
   static char ID;  // NOLINT
 
  private:
-  ShardingParamSharding(ShardingParam sharding_param, DeviceListRef devices,
-                        MemoryKind memory_kind);
+  friend class ShardingParamShardingSpec;
+
+  ShardingParamSharding(
+      DeviceListRef devices, MemoryKind memory_kind,
+      std::shared_ptr<const ShardingParamShardingSpec> sharding_spec);
 
   std::string DebugString() const override;
 
   void Hash(absl::HashState state) const override;
 
-  ShardingParam sharding_param_;
+  std::shared_ptr<const ShardingParamShardingSpec> sharding_spec_;
 };
 
 // Options for deserializing shardings. Function referenced by `lookup_device`
 // must remain valid during deserialization.
 struct DeserializeShardingOptions
-    : llvm::RTTIExtends<DeserializeShardingOptions, DeserializeOptions> {
+    : RTTIExtends<DeserializeShardingOptions, DeserializeOptions> {
   explicit DeserializeShardingOptions(Client* client) : client(client) {}
 
   static char ID;  // NOLINT

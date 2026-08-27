@@ -28,16 +28,15 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding_spec.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
@@ -100,7 +99,7 @@ std::unique_ptr<HloShardingSpec> HloShardingSpec::Create(
 
 HloShardingSpec::HloShardingSpec(int num_shards,
                                  xla::HloSharding xla_hlo_sharding)
-    : llvm::RTTIExtends<HloShardingSpec, XlaCompatibleShardingSpec>(
+    : RTTIExtends<HloShardingSpec, XlaCompatibleShardingSpec>(
           num_shards, /*is_fully_replicated=*/false),
       xla_hlo_sharding_(std::move(xla_hlo_sharding)) {
   is_fully_replicated_ =
@@ -116,8 +115,13 @@ absl::StatusOr<ShardingRef> HloShardingSpec::ToSharding(
         "HloShardingSpec requires %d devices, but received %d devices",
         num_shards(), devices->size()));
   }
-  return HloSharding::Create(std::move(devices), memory_kind,
-                             xla_hlo_sharding());
+  std::shared_ptr<const HloShardingSpec> spec =
+      std::static_pointer_cast<const HloShardingSpec>(weak_from_this().lock());
+  if (spec == nullptr) {
+    spec = HloShardingSpec::Create(num_shards(), xla_hlo_sharding());
+  }
+  return std::unique_ptr<HloSharding>(
+      new HloSharding(std::move(devices), memory_kind, std::move(spec)));
 }
 
 absl::StatusOr<Shape> HloShardingSpec::GetShardShape(const Shape& shape) const {
@@ -149,7 +153,7 @@ bool HloShardingSpec::HasSamePartitioning(const ShardingSpec& other) const {
   if (num_shards() != other.num_shards()) {
     return false;
   }
-  const auto* other_hlo_sharding_spec = llvm::dyn_cast<HloShardingSpec>(&other);
+  const auto* other_hlo_sharding_spec = dyn_cast<HloShardingSpec>(&other);
   if (!other_hlo_sharding_spec) {
     return false;
   }
@@ -185,7 +189,7 @@ HloShardingSpec::Disassemble(const Shape& shape) const {
   }
 
   if (is_even_sharding) {
-    ASSIGN_OR_RETURN(Shape shard_shape, GetShardShape(shape));
+    ABSL_ASSIGN_OR_RETURN(Shape shard_shape, GetShardShape(shape));
     std::vector<std::pair<Shape, ShardingSpecRef>> result;
     result.reserve(num_shards_);
     for (int i = 0; i < num_shards_; ++i) {
@@ -197,7 +201,7 @@ HloShardingSpec::Disassemble(const Shape& shape) const {
     return result;
   }
 
-  ASSIGN_OR_RETURN(std::vector<IndexDomain> index_domains, IndexDomains(shape));
+  ABSL_ASSIGN_OR_RETURN(std::vector<IndexDomain> index_domains, IndexDomains(shape));
   CHECK_EQ(index_domains.size(), num_shards_);
   std::vector<std::pair<Shape, ShardingSpecRef>> result;
   result.reserve(num_shards_);
@@ -252,11 +256,11 @@ absl::StatusOr<std::vector<IndexDomain>> HloShardingSpec::IndexDomains(
                         xla_hlo_sharding_.ToString()));
   }
 
-  ASSIGN_OR_RETURN(Shape tile_shape, GetShardShape(shape));
+  ABSL_ASSIGN_OR_RETURN(Shape tile_shape, GetShardShape(shape));
 
   const absl::Span<const int64_t> shape_dims = shape.dims();
   std::vector<std::optional<IndexDomain>> all(num_shards_);
-  RETURN_IF_ERROR(xla_hlo_sharding_.EachTile(
+  ABSL_RETURN_IF_ERROR(xla_hlo_sharding_.EachTile(
       shape_dims, [shape_dims, &all](int device_index,
                                      absl::Span<const int64_t> tile_offset,
                                      absl::Span<const int64_t> tile_limit) {

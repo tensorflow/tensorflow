@@ -27,10 +27,10 @@ limitations under the License.
 
 #include "absl/base/macros.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_statistics.h"
 #include "tsl/platform/cord.h"
@@ -492,7 +492,7 @@ class WritableFile {
   // \brief Append 'data' to the file.
   virtual absl::Status Append(const absl::Cord& cord) {
     for (absl::string_view chunk : cord.Chunks()) {
-      RETURN_IF_ERROR(Append(chunk));
+      ABSL_RETURN_IF_ERROR(Append(chunk));
     }
     return absl::OkStatus();
   }

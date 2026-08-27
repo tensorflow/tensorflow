@@ -37,11 +37,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
@@ -132,7 +132,7 @@ class HloComputation {
     absl::Status ForEachInstruction(
         absl::FunctionRef<absl::Status(const HloInstruction*)> func) const {
       for (const auto& instruction : instructions_) {
-        RETURN_IF_ERROR(func(instruction.get()));
+        ABSL_RETURN_IF_ERROR(func(instruction.get()));
       }
       return absl::OkStatus();
     }
@@ -862,7 +862,9 @@ class HloComputation {
 
   // Returns if this computation is an async computation.
   bool IsAsyncComputation() const {
-    return !caller_instructions(HloOpcode::kAsyncStart).empty();
+    return !caller_instructions(HloOpcode::kAsyncStart).empty() ||
+           !caller_instructions(HloOpcode::kAsyncDone).empty() ||
+           !caller_instructions(HloOpcode::kAsyncUpdate).empty();
   }
 
   // Returns true if this computation only contains send/recv instructions.
@@ -1226,7 +1228,7 @@ absl::Status HloComputation::Accept(
   for (HloInstruction* root : CollectUnreachableRoots()) {
     VLOG(3) << "Traversing unreachable root: " << root->ToString();
     // Call FinishVisit only at the end.
-    RETURN_IF_ERROR(root->Accept(visitor, /*call_finish_visit=*/false));
+    ABSL_RETURN_IF_ERROR(root->Accept(visitor, /*call_finish_visit=*/false));
   }
   // Visit the computation root instruction last.
   return root_instruction()->Accept(visitor, /*call_finish_visit=*/true);
@@ -1253,10 +1255,10 @@ absl::Status HloComputation::AcceptOrdered(
         << " appears more than once in order";
     HloInstruction* mutable_instruction =
         const_cast<HloInstruction*>(instruction);
-    RETURN_IF_ERROR(visitor->Preprocess(mutable_instruction));
-    RETURN_IF_ERROR(mutable_instruction->Visit(visitor));
+    ABSL_RETURN_IF_ERROR(visitor->Preprocess(mutable_instruction));
+    ABSL_RETURN_IF_ERROR(mutable_instruction->Visit(visitor));
     visitor->SetVisited(*mutable_instruction);
-    RETURN_IF_ERROR(visitor->Postprocess(mutable_instruction));
+    ABSL_RETURN_IF_ERROR(visitor->Postprocess(mutable_instruction));
     visited.insert(instruction);
   }
   return visitor->FinishVisit(root_instruction());

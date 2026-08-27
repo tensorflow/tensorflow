@@ -197,6 +197,51 @@ class WithDependenciesTestCase(test_util.TensorFlowTestCase):
     self.assertEqual(1, self.evaluate(counter))
 
 
+class TupleTestCase(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testNestedTupleRaisesTypeError(self):
+    a = constant_op.constant(1.0)
+    b = constant_op.constant(2.0)
+    c = constant_op.constant(3.0)
+    with self.assertRaises(TypeError):
+      control_flow_ops.tuple(((a, b), c))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testNestedListRaisesTypeError(self):
+    a = constant_op.constant(1.0)
+    b = constant_op.constant(2.0)
+    with self.assertRaises(TypeError):
+      control_flow_ops.tuple([[a, b]])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDictElementRaisesTypeError(self):
+    a = constant_op.constant(1.0)
+    b = constant_op.constant(2.0)
+    with self.assertRaises(TypeError):
+      control_flow_ops.tuple([{"x": a}, b])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFlatSequenceSucceeds(self):
+    a = constant_op.constant(1.0)
+    b = constant_op.constant(2.0)
+    res = control_flow_ops.tuple([a, b])
+    self.assertLen(res, 2)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testRepeatedVariableUnderTFFunction(self):
+    v = variables.Variable([10.0, 20.0])
+    self.evaluate(v.initializer)
+
+    @def_function.function
+    def compute():
+      return control_flow_ops.tuple([v, v, v])
+
+    result = self.evaluate(compute())
+    for t in result:
+      self.assertAllClose(t, [10.0, 20.0])
+
+
 class SwitchTestCase(test_util.TensorFlowTestCase):
 
   @test_util.run_deprecated_v1

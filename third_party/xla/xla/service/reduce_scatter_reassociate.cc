@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -95,8 +95,8 @@ absl::StatusOr<bool> ReduceScatterReassociate::RunImpl(
         VLOG(2) << "Reduce-Scatter operations have > 1 users";
         continue;
       }
-      ASSIGN_OR_RETURN(auto rs0_annotation, GetSchedulingAnnotation(rs0));
-      ASSIGN_OR_RETURN(auto rs1_annotation, GetSchedulingAnnotation(rs1));
+      ABSL_ASSIGN_OR_RETURN(auto rs0_annotation, GetSchedulingAnnotation(rs0));
+      ABSL_ASSIGN_OR_RETURN(auto rs1_annotation, GetSchedulingAnnotation(rs1));
       if (rs0_annotation.has_value() && rs1_annotation.has_value() &&
           *rs0_annotation != *rs1_annotation) {
         VLOG(2) << "If two reduce scatters have different scheduling group do "
@@ -122,14 +122,14 @@ absl::StatusOr<bool> ReduceScatterReassociate::RunImpl(
         new_rs->set_channel_id(next_channel_id++);
       }
 
-      RETURN_IF_ERROR(inst->ReplaceAllUsesWith(new_rs));
+      ABSL_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(new_rs));
       // Note that RemoveInstructionAndUnusedOperands may not remove the 2
       // reduce-scatter operands of `inst` if they are not safe to remove
       // otherwise, so manually these instructions.
-      RETURN_IF_ERROR(computation->RemoveInstruction(inst));
-      RETURN_IF_ERROR(computation->RemoveInstruction(rs0));
+      ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(inst));
+      ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(rs0));
       if (rs0 != rs1) {
-        RETURN_IF_ERROR(computation->RemoveInstruction(rs1));
+        ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(rs1));
       }
       changed = true;
     }

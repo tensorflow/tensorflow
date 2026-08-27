@@ -42,6 +42,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -779,7 +779,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromXprof(
   const std::optional<uint64_t> xprof_hlo_program_id_optional =
       xprof_hlo_program_id >= 0 ? std::make_optional(xprof_hlo_program_id)
                                 : std::nullopt;
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto hlo_module_proto,
       LoadHloModuleFromXprof(xprof_session_id, xprof_hlo_program_id_optional));
   return CreateModuleFromProto(hlo_module_proto, debug_options);

@@ -20,10 +20,9 @@ limitations under the License.
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/layout_serdes.pb.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_version.h"
 
@@ -32,8 +31,7 @@ namespace ifrt {
 namespace {
 
 // Serialization/deserialization for `CompactLayout`.
-class CompactLayoutSerDes
-    : public llvm::RTTIExtends<CompactLayoutSerDes, SerDes> {
+class CompactLayoutSerDes : public RTTIExtends<CompactLayoutSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::CompactLayout";
@@ -49,7 +47,7 @@ class CompactLayoutSerDes
                        " for CompactLayout serialization"));
     }
 
-    const auto* compact_layout = llvm::cast<CompactLayout>(&serializable);
+    const auto* compact_layout = cast<CompactLayout>(&serializable);
     const auto& major_to_minor = compact_layout->major_to_minor();
     CompactLayoutProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());

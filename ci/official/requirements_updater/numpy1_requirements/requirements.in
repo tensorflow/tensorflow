@@ -29,7 +29,7 @@ grpcio >= 1.68.1, < 2.0
 portpicker == 1.6.0
 # Scipy 15.x and above have misc.derivative removed, but we still use it
 scipy >= 1.13.0, < 1.15.0
-requests >= 2.31.0
+requests >= 2.33.0
 packaging==23.2
 setuptools==78.1.1
 jax==0.4.7

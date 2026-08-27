@@ -739,6 +739,7 @@ cc_library(
         "//tensorflow/core/kernels/batching_util:periodic_function_dynamic",
         "//tensorflow/core/kernels/batching_util:warmup",
         "//tensorflow/core/platform:numbers",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
@@ -5979,6 +5980,9 @@ tf_kernel_library(
     name = "string_ngrams_op",
     srcs = ["string_ngrams_op.cc"],
     deps = STRING_DEPS + [
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -5988,7 +5992,6 @@ tf_cc_test(
     srcs = ["string_ngrams_op_test.cc"],
     deps = [
         ":ops_testutil",
-        ":ops_util",
         ":string_ngrams_op",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -5996,6 +5999,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -6172,26 +6177,31 @@ tf_kernel_library(
     prefix = "parameterized_truncated_normal_op",
     deps = [
         ":stateless_random_ops",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
     ],
 )
 
 tf_cuda_cc_test(
     name = "parameterized_truncated_normal_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["parameterized_truncated_normal_op_test.cc"],
     deps = [
         ":host_constant_op",
-        ":ops_util",
         ":parameterized_truncated_normal_op",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/status",
+        "@com_google_benchmark//:benchmark",
+        "@xla//xla/tsl/platform:status",
     ],
 )
 
@@ -7838,6 +7848,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:status_matchers",
+        "@com_google_absl//absl/status",
     ],
 )
 

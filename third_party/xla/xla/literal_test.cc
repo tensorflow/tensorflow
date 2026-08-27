@@ -2195,6 +2195,86 @@ TEST_F(LiteralUtilTest, BitcastConvertBetweenInvalidTypes) {
       absl::StrContains(status.message(), "to a shape of different size"));
 }
 
+// Sub-byte types are stored unpacked in literals (one element per byte), but
+// bitcast-convert semantics are defined on the packed representation, with
+// element 0 in the low-order bits of each byte.
+TEST_F(LiteralUtilTest, BitcastConvertU8ToS4) {
+  Literal original = LiteralUtil::CreateR1<uint8_t>({0xE1});
+  ASSERT_OK_AND_ASSIGN(
+      Literal converted,
+      original.BitcastConvert(ShapeUtil::MakeShape(S4, {1, 2})));
+  EXPECT_EQ(converted, LiteralUtil::CreateR2<s4>({{s4(1), s4(-2)}}));
+}
+
+TEST_F(LiteralUtilTest, BitcastConvertS4ToU8) {
+  Literal original = LiteralUtil::CreateR2<s4>({{s4(1), s4(-2)}});
+  ASSERT_OK_AND_ASSIGN(Literal converted,
+                       original.BitcastConvert(ShapeUtil::MakeShape(U8, {1})));
+  EXPECT_EQ(converted, LiteralUtil::CreateR1<uint8_t>({0xE1}));
+}
+
+TEST_F(LiteralUtilTest, BitcastConvertU8ToS2) {
+  Literal original = LiteralUtil::CreateR1<uint8_t>({0xE1});
+  ASSERT_OK_AND_ASSIGN(
+      Literal converted,
+      original.BitcastConvert(ShapeUtil::MakeShape(S2, {1, 4})));
+  EXPECT_EQ(converted,
+            LiteralUtil::CreateR2<s2>({{s2(1), s2(0), s2(-2), s2(-1)}}));
+}
+
+TEST_F(LiteralUtilTest, BitcastConvertU16ToU4) {
+  Literal original = LiteralUtil::CreateR1<uint16_t>({0x4321});
+  ASSERT_OK_AND_ASSIGN(
+      Literal converted,
+      original.BitcastConvert(ShapeUtil::MakeShape(U4, {1, 4})));
+  EXPECT_EQ(converted,
+            LiteralUtil::CreateR2<u4>({{u4(1), u4(2), u4(3), u4(4)}}));
+}
+
+TEST_F(LiteralUtilTest, BitcastConvertU4ToS4) {
+  Literal original = LiteralUtil::CreateR1<u4>({u4(1), u4(14)});
+  ASSERT_OK_AND_ASSIGN(Literal converted,
+                       original.BitcastConvert(ShapeUtil::MakeShape(S4, {2})));
+  EXPECT_EQ(converted, LiteralUtil::CreateR1<s4>({s4(1), s4(-2)}));
+}
+
+TEST_F(LiteralUtilTest, BitcastConvertSubByteRoundTrip) {
+  Literal original = LiteralUtil::CreateR1<uint16_t>({0xE1F0, 0x1234});
+  ASSERT_OK_AND_ASSIGN(
+      Literal as_u4, original.BitcastConvert(ShapeUtil::MakeShape(U4, {2, 4})));
+  ASSERT_OK_AND_ASSIGN(Literal round_tripped,
+                       as_u4.BitcastConvert(ShapeUtil::MakeShape(U16, {2})));
+  EXPECT_EQ(round_tripped, original);
+}
+
+// Odd element counts exercise the partially-filled final packed byte.
+TEST_F(LiteralUtilTest, BitcastConvertSubByteOddElementCount) {
+  Literal original = LiteralUtil::CreateR1<s4>({s4(1), s4(-2), s4(7)});
+  ASSERT_OK_AND_ASSIGN(Literal converted,
+                       original.BitcastConvert(ShapeUtil::MakeShape(U4, {3})));
+  EXPECT_EQ(converted, LiteralUtil::CreateR1<u4>({u4(1), u4(14), u4(7)}));
+}
+
+TEST_F(LiteralUtilTest, BitcastConvertSubByteSizeMismatchRejected) {
+  Literal literal = LiteralUtil::CreateR1<uint8_t>({0xE1});
+  absl::Status status =
+      literal.BitcastConvert(ShapeUtil::MakeShape(S4, {3})).status();
+  EXPECT_NE(absl::OkStatus(), status);
+  EXPECT_TRUE(
+      absl::StrContains(status.message(), "to a shape of different size"));
+}
+
+// The result must not depend on whether the destination shape's layout
+// carries element_size_in_bits (set after layout assignment, stripped inside
+// literals).
+TEST_F(LiteralUtilTest, BitcastConvertToS4WithElementSizeInBitsLayout) {
+  Literal original = LiteralUtil::CreateR1<uint8_t>({0xE1});
+  Shape dest_shape = ShapeUtil::MakeShape(S4, {1, 2});
+  dest_shape.mutable_layout()->set_element_size_in_bits(4);
+  ASSERT_OK_AND_ASSIGN(Literal converted, original.BitcastConvert(dest_shape));
+  EXPECT_EQ(converted, LiteralUtil::CreateR2<s4>({{s4(1), s4(-2)}}));
+}
+
 // Sets the layout of the given ShapeProto to the default.
 void SetDefaultLayoutOnProto(ShapeProto* shape_proto) {
   CHECK(primitive_util::IsArrayType(shape_proto->element_type()));
@@ -2942,6 +3022,44 @@ TEST_F(LiteralUtilTest, DynamicBroadcast) {
   EXPECT_EQ(broadcasted_literal.GetDynamicSize(1), 1);
 }
 
+TEST_F(LiteralUtilTest, BroadcastScalarToDynamicShape) {
+  Literal literal = LiteralUtil::CreateR0<int32_t>(9);
+  ASSERT_OK_AND_ASSIGN(
+      Literal broadcasted_literal,
+      literal.Broadcast(
+          /*result_shape=*/ShapeUtil::MakeShape(S32, {64}, {true}),
+          /*dimensions=*/{}));
+  EXPECT_EQ(broadcasted_literal.GetDynamicSize(0), 64);
+  EXPECT_EQ(broadcasted_literal.Get<int32_t>({0}), 9);
+  EXPECT_EQ(broadcasted_literal.Get<int32_t>({63}), 9);
+}
+
+TEST_F(LiteralUtilTest, BroadcastVectorToMatrixWithUnmappedDynamicDim) {
+  Literal literal = LiteralUtil::CreateR1<int64_t>({1, 2});
+  ASSERT_OK_AND_ASSIGN(
+      Literal broadcasted_literal,
+      literal.Broadcast(
+          /*result_shape=*/ShapeUtil::MakeShape(S64, {8, 2}, {true, false}),
+          /*dimensions=*/{1}));
+  EXPECT_EQ(broadcasted_literal.GetDynamicSize(0), 8);
+  EXPECT_EQ(broadcasted_literal.Get<int64_t>({0, 0}), 1);
+  EXPECT_EQ(broadcasted_literal.Get<int64_t>({7, 1}), 2);
+}
+
+TEST_F(LiteralUtilTest, BroadcastDynamicVectorToDynamicMatrix) {
+  Literal literal = LiteralUtil::CreateR1<int64_t>({1, 2});
+  literal.SetDynamicSize(0, 1);
+  ASSERT_OK_AND_ASSIGN(
+      Literal broadcasted_literal,
+      literal.Broadcast(
+          /*result_shape=*/ShapeUtil::MakeShape(S64, {8, 2}, {true, true}),
+          /*dimensions=*/{1}));
+  // The unmapped dimension gets its bound; the mapped dimension keeps the
+  // source's actual size.
+  EXPECT_EQ(broadcasted_literal.GetDynamicSize(0), 8);
+  EXPECT_EQ(broadcasted_literal.GetDynamicSize(1), 1);
+}
+
 TEST_F(LiteralUtilTest, GetAsScalarInt64) {
   auto scalar1 = LiteralUtil::CreateR0<int32_t>(12);
   EXPECT_EQ(LiteralUtil::LiteralAsScalarInt64(scalar1).value(), (int64_t)12);
@@ -3673,6 +3791,15 @@ TEST_F(LiteralUtilTest, CopyFromProtoDynamicShapeMismatch) {
   EXPECT_FALSE(Literal::CreateFromProto(proto).ok());
 }
 
+TEST_F(LiteralUtilTest, MakeFakeLiteralF8E8M0FNU) {
+  ASSERT_OK_AND_ASSIGN(Literal literal,
+                       MakeFakeLiteral(ShapeUtil::MakeShape(F8E8M0FNU, {1024}),
+                                       /*pseudo_random=*/true));
+  for (tsl::float8_e8m0fnu value : literal.data<tsl::float8_e8m0fnu>()) {
+    EXPECT_FALSE(Eigen::numext::isnan(value));
+  }
+}
+
 template <typename FloatT>
 void VerifyMakeFakeLiteralInterval(const ConstraintInterval& interval,
                                    double expected_min, double expected_max,
@@ -3733,6 +3860,46 @@ TEST_F(LiteralUtilTest, MakeFakeLiteralIntervalBounds) {
   // Half-unconstrained: explicit bounds that cross the [-0.1, 0.2] defaults
   verify(ConstraintInterval(1.0, kMax, false), 1.0, 1.3);
   verify(ConstraintInterval(kMin, -5.0, false), -5.3, -5.0);
+}
+
+template <typename IntT>
+void VerifyMakeFakeLiteralLimit(std::pair<int64_t, int64_t> limit,
+                                IntT expected_min, IntT expected_max,
+                                int64_t num_elements = 100) {
+  std::minstd_rand0 engine;
+  Shape shape = ShapeUtil::MakeShape(
+      primitive_util::NativeToPrimitiveType<IntT>(), {num_elements});
+  ASSERT_OK_AND_ASSIGN(
+      Literal literal,
+      MakeFakeLiteral(shape, &engine, limit,
+                      /*is_sorted=*/false, /*no_duplicates=*/false,
+                      /*use_large_range=*/false,
+                      /*max_bits_of_precision=*/std::nullopt,
+                      /*index_alignment=*/std::nullopt,
+                      /*index_known_zeroes=*/std::nullopt,
+                      /*float_generator=*/nullptr));
+  for (IntT value : literal.data<IntT>()) {
+    EXPECT_GE(value, expected_min);
+    EXPECT_LE(value, expected_max);
+  }
+}
+
+TEST_F(LiteralUtilTest, MakeFakeLiteralIntegralBounds) {
+  // Unsigned 64-bit with negative lower bound and large upper bound
+  VerifyMakeFakeLiteralLimit<uint64_t>(
+      {-100, std::numeric_limits<int64_t>::max()}, 0,
+      std::numeric_limits<uint64_t>::max());
+
+  // Unsigned 32-bit with bound exceeding uint32 max
+  VerifyMakeFakeLiteralLimit<uint32_t>({5, 5000000000LL}, 5,
+                                       std::numeric_limits<uint32_t>::max());
+
+  // Signed 32-bit with int64 max
+  VerifyMakeFakeLiteralLimit<int32_t>({1, std::numeric_limits<int64_t>::max()},
+                                      1, std::numeric_limits<int32_t>::max());
+
+  // Signed 8-bit with out-of-range bounds
+  VerifyMakeFakeLiteralLimit<int8_t>({-500, 500}, -128, 127);
 }
 
 }  // namespace

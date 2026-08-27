@@ -1597,7 +1597,7 @@ def _load_variables_impl(
         # don't bloat graph by attaching this large string to each op.
         # We have num tables * num hosts of these so for models with a large
         # number of tables training on a large slice, this can be an issue.
-        config = None
+        config = None  # pyrefly: ignore[bad-assignment]
 
 
 @def_function.function
@@ -1642,7 +1642,7 @@ def _retrieve_variables_impl(
         # don't bloat graph by attaching this large string to each op.
         # We have num tables * num hosts of these so for models with a large
         # number of tables training on a large slice, this can be an issue.
-        config = None
+        config = None  # pyrefly: ignore[bad-assignment]
 
 
 def _save_callback(trackables, **unused_kwargs):

@@ -18,9 +18,9 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -40,7 +40,7 @@ namespace {
 
 absl::StatusOr<HloComputation*> BuildConditionComputation(
     HloScanInstruction* scan, const Shape& loop_state_shape) {
-  ASSIGN_OR_RETURN(int64_t scan_dim_size, scan->GetScanDimSize());
+  ABSL_ASSIGN_OR_RETURN(int64_t scan_dim_size, scan->GetScanDimSize());
 
   HloComputation::Builder builder(absl::StrCat(scan->name(), "_condition"));
   auto* param = builder.AddInstruction(
@@ -203,7 +203,7 @@ absl::StatusOr<HloInstruction*> ExpandLengthOneScan(HloScanInstruction* scan) {
 
   // Inline the combiner application like the loop expansion does, so the
   // expansion never depends on a later CallInliner run.
-  RETURN_IF_ERROR(CallInliner::Inline(call).status());
+  ABSL_RETURN_IF_ERROR(CallInliner::Inline(call).status());
   return result;
 }
 
@@ -219,7 +219,7 @@ absl::StatusOr<HloComputation*> BuildBodyComputation(
   } else {
     num_outputs = 1 - num_carries;
   }
-  ASSIGN_OR_RETURN(int64_t scan_dim_size, scan->GetScanDimSize());
+  ABSL_ASSIGN_OR_RETURN(int64_t scan_dim_size, scan->GetScanDimSize());
   Shape scalar_shape = ShapeUtil::MakeShape(S64, {});
 
   HloComputation::Builder builder(absl::StrCat(scan->name(), "_body"));
@@ -302,7 +302,7 @@ absl::StatusOr<HloComputation*> BuildBodyComputation(
       scan->parent()->parent()->AddEmbeddedComputation(builder.Build());
 
   // Inline the call instruction within body_computation
-  RETURN_IF_ERROR(CallInliner::Inline(call).status());
+  ABSL_RETURN_IF_ERROR(CallInliner::Inline(call).status());
   return body_computation;
 }
 
@@ -332,7 +332,7 @@ bool ScanExpander::InstructionMatchesPattern(HloInstruction* instruction) {
 absl::StatusOr<HloInstruction*> ScanExpander::ExpandInstruction(
     HloInstruction* instruction) {
   auto* scan = Cast<HloScanInstruction>(instruction);
-  ASSIGN_OR_RETURN(int64_t scan_dim_size, scan->GetScanDimSize());
+  ABSL_ASSIGN_OR_RETURN(int64_t scan_dim_size, scan->GetScanDimSize());
   if (scan_dim_size == 1) {
     return ExpandLengthOneScan(scan);
   }
@@ -369,10 +369,10 @@ absl::StatusOr<HloInstruction*> ScanExpander::ExpandInstruction(
   }
   Shape loop_state_shape = ShapeUtil::MakeTupleShape(loop_state_shapes);
 
-  ASSIGN_OR_RETURN(HloComputation * condition_computation,
+  ABSL_ASSIGN_OR_RETURN(HloComputation * condition_computation,
                    BuildConditionComputation(scan, loop_state_shape));
 
-  ASSIGN_OR_RETURN(HloComputation * body_computation,
+  ABSL_ASSIGN_OR_RETURN(HloComputation * body_computation,
                    BuildBodyComputation(scan, loop_state_shape));
 
   // 3. Build Init Loop State

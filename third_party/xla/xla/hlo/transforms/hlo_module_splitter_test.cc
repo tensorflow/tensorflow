@@ -19,9 +19,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
@@ -41,15 +41,15 @@ class HloModuleSplitterTest : public HloHardwareIndependentTestBase {
 
   absl::StatusOr<SplitResult> RunSplitter(absl::string_view hlo_string) {
     std::unique_ptr<HloModule> module;
-    ASSIGN_OR_RETURN(module, ParseAndReturnVerifiedModule(hlo_string));
+    ABSL_ASSIGN_OR_RETURN(module, ParseAndReturnVerifiedModule(hlo_string));
     HloModuleSplitter splitter;
     bool changed = false;
-    ASSIGN_OR_RETURN(changed, splitter.Run(module.get()));
+    ABSL_ASSIGN_OR_RETURN(changed, splitter.Run(module.get()));
     if (!changed) {
       return Internal("Expected splitter to run and change the module");
     }
     for (auto& submodule : splitter.submodules()) {
-      RETURN_IF_ERROR(HloVerifier(/*layout_sensitive=*/false,
+      ABSL_RETURN_IF_ERROR(HloVerifier(/*layout_sensitive=*/false,
                                   /*allow_mixed_precision=*/true)
                           .Run(submodule.get())
                           .status());

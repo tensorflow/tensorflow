@@ -105,12 +105,17 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshapeAndBroadcast) {
   // passes only during the initial module compilation (e.g., during autotuning
   // in HLO passes). Subsequent compilations hit the cache and skip optimization
   // passes, so we wan to capture the IR during HLO pass execution.
-  EXPECT_OK(CompileAndVerifyIr(std::move(module),
-                               R"(
+
+  // The GEP that consumes idx1 is emitted differently per backend:
+  //   - CUDA (NVPTX):    getelementptr ... ptr addrspace(1) ...
+  //   - ROCm (AMDGPU):   getelementptr ... ptr ...   (no addrspace(1))
+  //   - oneAPI (SPIR-V): the GEP lowers to a @llvm.spv.gep intrinsic call.
+  // MakePlatformSpecificLlvm substitutes LINEAR_GEP_IDX1 with the right form.
+  EXPECT_OK(CompileAndVerifyIr(std::move(module), MakePlatformSpecificLlvm(R"(
 ; CHECK: %[[urem1:.*]] = urem i{{[0-9]*}} %[[linear_index:.*]], 14
 ; CHECK: %[[idx1:.*]] = zext nneg i{{[0-9]*}} %[[urem1]] to i64
-; CHECK: getelementptr inbounds{{( nuw)?}} [4 x i8], ptr{{( addrspace\(1\))?}} %[[alloc:.*]], i64 %[[idx1]]
-      )",
+; CHECK: LINEAR_GEP_IDX1
+      )"),
                                /*match_optimized_ir=*/true,
                                /*run_optimization_passes=*/true,
                                /*match_ir_from_hlo_passes=*/true));

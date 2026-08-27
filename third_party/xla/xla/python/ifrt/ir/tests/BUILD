@@ -51,6 +51,7 @@ xla_cc_binary(
         "//xla/python/ifrt/ir/support:module_parsing",
         "//xla/python/ifrt/ir/transforms:passes",
         "//xla/tsl/concurrency:future",
+        "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log:check",

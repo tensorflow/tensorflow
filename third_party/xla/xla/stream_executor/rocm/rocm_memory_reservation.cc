@@ -21,8 +21,8 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/device_address.h"
@@ -40,7 +40,7 @@ RocmMemoryReservation::Create(StreamExecutor* executor, uint64_t size) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
 
   hipDevice_t device;
-  RETURN_IF_ERROR(ToStatus(hipDeviceGet(&device, executor->device_ordinal())));
+  ABSL_RETURN_IF_ERROR(ToStatus(hipDeviceGet(&device, executor->device_ordinal())));
 
   hipMemAllocationProp props = {};
   props.type = hipMemAllocationTypePinned;
@@ -49,13 +49,13 @@ RocmMemoryReservation::Create(StreamExecutor* executor, uint64_t size) {
   props.requestedHandleTypes = hipMemHandleTypeNone;
 
   size_t granularity = 0;
-  RETURN_IF_ERROR(ToStatus(hipMemGetAllocationGranularity(
+  ABSL_RETURN_IF_ERROR(ToStatus(hipMemGetAllocationGranularity(
       &granularity, &props, hipMemAllocationGranularityRecommended)));
 
   uint64_t padded_size = xla::RoundUpTo<uint64_t>(size, granularity);
 
   void* ptr = nullptr;
-  RETURN_IF_ERROR(ToStatus(
+  ABSL_RETURN_IF_ERROR(ToStatus(
       hipMemAddressReserve(&ptr, padded_size, granularity, nullptr, 0ULL)));
 
   return std::unique_ptr<RocmMemoryReservation>(new RocmMemoryReservation(
@@ -93,7 +93,7 @@ absl::Status RocmMemoryReservation::SetAccess(uint64_t reservation_offset,
   std::unique_ptr<ActivateContext> activation = executor_->Activate();
 
   int device_count = 0;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ToStatus(hipGetDeviceCount(&device_count), "hipGetDeviceCount"));
 
   for (int peer = 0; peer < device_count; ++peer) {
@@ -108,7 +108,7 @@ absl::Status RocmMemoryReservation::SetAccess(uint64_t reservation_offset,
       desc.location.type = hipMemLocationTypeDevice;
       desc.location.id = peer;
       desc.flags = hipMemAccessFlagsProtReadWrite;
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           ToStatus(hipMemSetAccess(ptr_ + reservation_offset, size, &desc, 1),
                    "hipMemSetAccess for peer device"));
     }
@@ -120,7 +120,7 @@ absl::Status RocmMemoryReservation::SetAccess(uint64_t reservation_offset,
   desc.location.type = hipMemLocationTypeDevice;
   desc.location.id = executor_->device_ordinal();
   desc.flags = hipMemAccessFlagsProtReadWrite;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ToStatus(hipMemSetAccess(ptr_ + reservation_offset, size, &desc, 1),
                "hipMemSetAccess for peer device"));
   return absl::OkStatus();

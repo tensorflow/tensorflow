@@ -28,12 +28,13 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/transforms/collectives/collective_domain.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -331,10 +332,10 @@ absl::Status CreateCollectivesGroup(
     }
     // Control predecessors of the member gate the whole group's start; control
     // successors wait on the group's done.
-    RETURN_IF_ERROR(c->CopyAllControlDepsTo(async_start, async_done));
-    RETURN_IF_ERROR(c->DropAllControlDeps());
-    RETURN_IF_ERROR(c->ReplaceAllUsesWith(replacement));
-    RETURN_IF_ERROR(computation->RemoveInstruction(c));
+    ABSL_RETURN_IF_ERROR(c->CopyAllControlDepsTo(async_start, async_done));
+    ABSL_RETURN_IF_ERROR(c->DropAllControlDeps());
+    ABSL_RETURN_IF_ERROR(c->ReplaceAllUsesWith(replacement));
+    ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(c));
   }
 
   return absl::OkStatus();
@@ -418,7 +419,10 @@ absl::StatusOr<bool> GroupCollectivesInComputation(
 
   // A btree_map keeps keys sorted, so groups are processed in a deterministic
   // order without a separate ordering vector.
-  absl::btree_map<std::string, std::vector<HloInstruction*>> key_to_collectives;
+  using DomainAwareGroupKey =
+      std::pair<std::string, CollectiveCommunicationDomain>;
+  absl::btree_map<DomainAwareGroupKey, std::vector<HloInstruction*>>
+      key_to_collectives;
   for (HloInstruction* instr : computation->instructions()) {
     if (!predicate(instr)) {
       continue;
@@ -427,7 +431,9 @@ absl::StatusOr<bool> GroupCollectivesInComputation(
     if (!key.has_value()) {
       continue;
     }
-    key_to_collectives[std::string(*key)].push_back(instr);
+    ABSL_ASSIGN_OR_RETURN(CollectiveCommunicationDomain domain,
+                     GetCollectiveCommunicationDomain(*instr));
+    key_to_collectives[{std::string(*key), domain}].push_back(instr);
   }
   if (key_to_collectives.empty()) {
     return false;
@@ -444,10 +450,11 @@ absl::StatusOr<bool> GroupCollectivesInComputation(
   // guarantees an invalid later key never leaves earlier keys half-transformed.
   std::vector<CollectiveGroup> groups_to_form;
   groups_to_form.reserve(key_to_collectives.size());
-  for (auto& [key, collectives] : key_to_collectives) {
+  for (auto& [group_key, collectives] : key_to_collectives) {
+    const auto& [key, domain] = group_key;
     if (collectives.size() <= 1) {
       LOG(WARNING) << "collective_group_key \"" << key << "\" ("
-                   << computation->name()
+                   << computation->name() << ", domain=" << domain
                    << ") has only one collective, skipping";
       continue;
     }
@@ -472,8 +479,7 @@ absl::StatusOr<bool> GroupCollectivesInComputation(
           return FailedPrecondition(
               "Collectives %s and %s share collective_group_key=%s but are not "
               "independent (one is reachable from the other).\n"
-              "Computation: %s\n"
-              "Reachability chain %s -> %s:\n%s",
+              "Computation: %s\n Reachability chain %s -> %s:\n%s",
               collectives[i]->name(), collectives[j]->name(), key,
               computation->name(), a->name(), b->name(), chain);
         }
@@ -493,14 +499,14 @@ absl::StatusOr<bool> GroupCollectivesInComputation(
     groups_to_form.push_back({key, std::move(collectives)});
   }
 
-  RETURN_IF_ERROR(ValidateGroupGraphIsAcyclic(groups_to_form, *reachability,
+  ABSL_RETURN_IF_ERROR(ValidateGroupGraphIsAcyclic(groups_to_form, *reachability,
                                               computation->name()));
 
   // Phase two: every group validated against a consistent, mutation-free map,
   // so it is now safe to form them.
   bool changed = false;
   for (const CollectiveGroup& group : groups_to_form) {
-    RETURN_IF_ERROR(CreateCollectivesGroup(computation, group.collectives,
+    ABSL_RETURN_IF_ERROR(CreateCollectivesGroup(computation, group.collectives,
                                            execution_thread));
     changed = true;
   }
@@ -521,7 +527,7 @@ absl::StatusOr<bool> GroupCollectivesByKey::RunImpl(
     if (comp->IsAsyncComputation()) {
       continue;
     }
-    ASSIGN_OR_RETURN(bool comp_changed,
+    ABSL_ASSIGN_OR_RETURN(bool comp_changed,
                      GroupCollectivesInComputation(comp, predicate_,
                                                    comp->execution_thread()));
     changed |= comp_changed;

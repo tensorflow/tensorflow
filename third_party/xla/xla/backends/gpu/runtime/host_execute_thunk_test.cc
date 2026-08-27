@@ -26,14 +26,15 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/nanort/nanort_client.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/core/host_offloading/host_offloading_executable.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/memory_space.h"
@@ -69,22 +71,22 @@ se::StreamExecutor* GpuExecutor() {
 }
 
 absl::StatusOr<std::unique_ptr<HostExecuteStartThunk>>
-CreateHostExecuteStartThunk(
-    Thunk::ThunkInfo thunk_info, const HloModule& hlo_module,
-    absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> args,
-    absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> results) {
+CreateHostExecuteStartThunk(Thunk::ThunkInfo thunk_info,
+                            const HloModule& hlo_module,
+                            absl::InlinedVector<ShapedSlice, 4> args,
+                            absl::InlinedVector<ShapedSlice, 4> results) {
   HostOffloadingExecutableProto host_offloading_executable_proto;
   *host_offloading_executable_proto.mutable_hlo_module() = hlo_module.ToProto();
   host_offloading_executable_proto.set_executable_type(
       HostOffloadingExecutableProto::EXECUTABLE_TYPE_NANORT);
 
-  xla::cpu::NanoRtClient client;
+  xla::cpu::NanoRtClient client(xla::SetHostOffloadingHloModuleConfig);
   XlaComputation host_computation(
       *host_offloading_executable_proto.mutable_hlo_module());
 
-  ASSIGN_OR_RETURN(std::unique_ptr<xla::cpu::NanoRtExecutable> executable,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<xla::cpu::NanoRtExecutable> executable,
                    client.Compile(host_computation));
-  ASSIGN_OR_RETURN(std::unique_ptr<CompiledModule> aot_compilation_result,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<CompiledModule> aot_compilation_result,
                    client.Export(executable.get()));
 
   xla::cpu::CpuAotCompilationResult* cpu_aot_compilation_result =
@@ -702,6 +704,36 @@ TEST(HostExecuteThunkTest, ProtoRoundTripPairing) {
   EXPECT_EQ(async_events_map.size(), 1);
   EXPECT_EQ(start_thunk->GetAsyncEventsUniqueId(),
             done_thunk->GetAsyncEventsUniqueId());
+}
+
+TEST(HostExecuteStartThunkTest, IsHostOffloadSet) {
+  static constexpr char const* kHloModule = R"(
+    HloModule module
+    ENTRY add_inplace {
+      p0 = s32[] parameter(0)
+      ROOT add = s32[] add(p0, p0)
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnUnverifiedModule(kHloModule, {}));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto thunk,
+      CreateHostExecuteStartThunk(Thunk::ThunkInfo(), *hlo_module, {}, {}));
+
+  const auto& proto = thunk->executable_proto();
+  ASSERT_TRUE(proto.has_aot_compilation_result());
+  const auto& aot_result = proto.aot_compilation_result();
+  ASSERT_TRUE(aot_result.has_hlo_module());
+  const auto& config = aot_result.hlo_module().config();
+  ASSERT_TRUE(config.has_debug_options());
+  const auto& debug_options = config.debug_options();
+
+  const auto& extra_options = debug_options.xla_backend_extra_options();
+  auto it = extra_options.find("xla_is_host_offload");
+  ASSERT_NE(it, extra_options.end());
+  EXPECT_EQ(it->second, "true");
 }
 
 }  // namespace

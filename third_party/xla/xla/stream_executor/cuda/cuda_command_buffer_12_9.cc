@@ -19,9 +19,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_command_buffer.h"
@@ -49,7 +49,7 @@ absl::Status CheckRuntimeVersion(const DeviceDescription& device_description) {
 absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateMovedChildNodeImpl(
     absl::Span<const GraphNodeHandle> dependencies,
     stream_executor::CommandBuffer* nested) {
-  RETURN_IF_ERROR(CheckRuntimeVersion(stream_exec_->GetDeviceDescription()));
+  ABSL_RETURN_IF_ERROR(CheckRuntimeVersion(stream_exec_->GetDeviceDescription()));
   auto* child_command_buffer = absl::down_cast<CudaCommandBuffer*>(nested);
   CHECK_EQ(child_command_buffer->parent_, nullptr)
       << "Nested command buffer's parent is not null";
@@ -67,7 +67,7 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateMovedChildNodeImpl(
   nodeParams.graph.ownership = CU_GRAPH_CHILD_GRAPH_OWNERSHIP_MOVE;
 
   CUgraphNode node_handle;
-  RETURN_IF_ERROR(cuda::ToStatus(
+  ABSL_RETURN_IF_ERROR(cuda::ToStatus(
       cuGraphAddNode_v2(&node_handle, graph_, deps.data(),
                         /*dependencyData=*/nullptr, deps.size(), &nodeParams),
       "Failed to create a child graph node and add it to a CUDA graph"));

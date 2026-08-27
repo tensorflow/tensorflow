@@ -24,10 +24,10 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -103,7 +103,7 @@ constexpr absl::string_view kMlirProgramWithAutoLayout = R"mlir(
 
 absl::StatusOr<xla::XlaComputation> GetXlaComputation(
     absl::string_view program) {
-  ASSIGN_OR_RETURN(auto hlo_module,
+  ABSL_ASSIGN_OR_RETURN(auto hlo_module,
                    xla::ParseAndReturnUnverifiedModule(program, {}));
 
   return XlaComputation(hlo_module->ToProto());
@@ -313,42 +313,6 @@ TEST(StreamExecutorGpuCompilerTest, GetTargetRuntimeAbiVersion) {
   EXPECT_OK(runtime_abi_version->IsCompatibleWith(*executable_abi_version));
 }
 
-TEST(StreamExecutorGpuCompilerTest, JITCompilation) {
-  auto mock_compiler = std::make_unique<MockCompiler>();
-  MockCompiler& mock_compiler_ref = *mock_compiler;
-
-  StreamExecutorGpuCompiler pjrt_compiler(CudaId(), std::move(mock_compiler));
-
-  // We create a GPU topology without a target config to indicate that we
-  // want JIT compilation.
-  auto gpu_topology =
-      std::make_shared<GpuTopology>(/*platform_version=*/"",
-                                    /*num_partitions=*/1,
-                                    /*num_hosts_per_partition=*/1,
-                                    /*num_devices_per_host=*/1,
-                                    /*gpu_target_config=*/std::nullopt);
-  StreamExecutorGpuTopologyDescription topology_description(
-      CudaId(), CudaName(), gpu_topology);
-
-  // We expect that the underlying compiler is not called.
-  EXPECT_CALL(mock_compiler_ref, Compile).Times(0);
-  EXPECT_CALL(mock_compiler_ref, CompileAheadOfTime).Times(0);
-
-  // We expect the compilation request to be forwarded to the PjRtClient.
-  MockPjRtClient mock_client;
-  EXPECT_CALL(mock_client, platform_id).WillRepeatedly(Return(CudaId()));
-  EXPECT_CALL(mock_client, Compile)
-      .Times(1)
-      .WillOnce(Return(std::unique_ptr<PjRtExecutable>(nullptr)));
-
-  ASSERT_OK_AND_ASSIGN(XlaComputation computation, GetXlaComputation(kProgram));
-  ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      pjrt_compiler.Compile(CompileOptions(), computation, topology_description,
-                            &mock_client));
-  EXPECT_EQ(executable, nullptr);
-}
-
 TEST(StreamExecutorGpuCompilerTest, DevicelessCompilation) {
   auto mock_compiler = std::make_unique<MockCompiler>();
   MockCompiler& mock_compiler_ref = *mock_compiler;
@@ -437,9 +401,9 @@ TEST(StreamExecutorGpuCompilerTest, CrossCompilation) {
 }
 
 absl::StatusOr<std::shared_ptr<GpuTopology>> GetSampleH100basedGpuTopology() {
-  ASSIGN_OR_RETURN(auto gpu_target_config_proto,
+  ABSL_ASSIGN_OR_RETURN(auto gpu_target_config_proto,
                    gpu::GetGpuTargetConfig(gpu::GpuModel::H100_SXM));
-  ASSIGN_OR_RETURN(auto gpu_target_config,
+  ABSL_ASSIGN_OR_RETURN(auto gpu_target_config,
                    gpu::GpuTargetConfig::FromProto(gpu_target_config_proto));
   cpu::TargetMachineOptions host_target_machine_options(
       "some_triple", "some_cpu", "+some_feature,-some_other_feature");
@@ -570,6 +534,103 @@ TEST(StreamExecutorGpuCompilerTest,
                                                   ::testing::IsFalse())))
       << "Expected no argument layouts on the following computation layout: "
       << hlo_module->entry_computation_layout().ToString();
+}
+
+TEST(StreamExecutorGpuCompilerTest, DisjointDeviceAssignmentCompile) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  if (client->platform_id() != CudaId()) {
+    GTEST_SKIP() << "Test requires CUDA GPU client";
+  }
+
+  StreamExecutorGpuCompiler pjrt_compiler(CudaId());
+
+  auto gpu_topology =
+      std::make_shared<GpuTopology>(/*platform_version=*/"",
+                                    /*num_partitions=*/1,
+                                    /*num_hosts_per_partition=*/2,
+                                    /*num_devices_per_host=*/1,
+                                    /*gpu_target_config=*/std::nullopt);
+  StreamExecutorGpuTopologyDescription topology(CudaId(), CudaName(),
+                                                gpu_topology);
+
+  xla::CompileOptions options;
+  xla::DeviceAssignment assignment(1, 1);
+  assignment(0, 0) = 1;
+  options.executable_build_options.set_device_assignment(assignment);
+
+  ASSERT_OK_AND_ASSIGN(XlaComputation computation, GetXlaComputation(kProgram));
+
+  EXPECT_THAT(
+      pjrt_compiler.Compile(options, computation, topology, client.get()),
+      absl_testing::IsOk());
+}
+
+TEST(StreamExecutorGpuCompilerTest, DeserializePjRtTopologyDescriptionSuccess) {
+  StreamExecutorGpuTopologyDescription topology(
+      CudaId(), CudaName(), GetGpuTopology(kFakeDeviceName, 1, 1, 2, 10));
+  ASSERT_OK_AND_ASSIGN(auto proto, topology.ToProto());
+
+  std::string serialized_proto;
+  ASSERT_TRUE(proto.SerializeToString(&serialized_proto));
+
+  StreamExecutorGpuCompiler compiler(CudaId());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtTopologyDescription> deserialized_topology,
+      compiler.DeserializePjRtTopologyDescription(serialized_proto));
+
+  EXPECT_EQ(deserialized_topology->platform_name(), topology.platform_name());
+  EXPECT_EQ(deserialized_topology->platform_id(), topology.platform_id());
+  EXPECT_EQ(deserialized_topology->DeviceDescriptions().size(),
+            topology.DeviceDescriptions().size());
+}
+
+TEST(StreamExecutorGpuCompilerTest, DeserializeInvalidProtobufPayloadFails) {
+  StreamExecutorGpuCompiler compiler(CudaId());
+  auto status_or = compiler.DeserializePjRtTopologyDescription(
+      "invalid_non_proto_binary_string");
+  EXPECT_THAT(status_or,
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  ::testing::HasSubstr(
+                      "Failed to parse StreamExecutorGpuTopologyDescription")));
+}
+
+TEST(StreamExecutorGpuCompilerTest, DeserializeMismatchedPlatformFails) {
+  PjRtTopologyDescriptionProto cpu_proto;
+  cpu_proto.set_platform_id(CpuId());
+  cpu_proto.set_platform_name(CpuName());
+
+  std::string serialized_cpu_proto;
+  ASSERT_TRUE(cpu_proto.SerializeToString(&serialized_cpu_proto));
+
+  StreamExecutorGpuCompiler compiler(CudaId());
+  auto status_or =
+      compiler.DeserializePjRtTopologyDescription(serialized_cpu_proto);
+  EXPECT_THAT(status_or,
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  ::testing::HasSubstr("The platform is not a GPU platform")));
+}
+
+TEST(StreamExecutorGpuCompilerTest,
+     DeserializeMissingPlatformSpecificTopologyFails) {
+  PjRtTopologyDescriptionProto missing_payload_proto;
+  missing_payload_proto.set_platform_id(CudaId());
+  missing_payload_proto.set_platform_name(CudaName());
+
+  std::string serialized_proto;
+  ASSERT_TRUE(missing_payload_proto.SerializeToString(&serialized_proto));
+
+  StreamExecutorGpuCompiler compiler(CudaId());
+  auto status_or =
+      compiler.DeserializePjRtTopologyDescription(serialized_proto);
+  EXPECT_THAT(
+      status_or,
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          ::testing::HasSubstr(
+              "The platform_specific_topology is not a GpuTopologyProto")));
 }
 
 }  // namespace

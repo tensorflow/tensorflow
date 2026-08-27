@@ -291,12 +291,21 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "rocm_core_libs",
+    data = glob(["%{rocm_root}/lib/librocm-core.so*"]),
+)
+
 rocm_lib_import(
     name = "miopen",
     data = glob([
         "%{rocm_root}/lib/libMIOpen.so*",
-        "%{rocm_root}/share/miopen/**",
-        "%{rocm_root}/lib/librocm-core.so*",
+    ]) + glob([
+        "%{rocm_root}/share/miopen/db/" + arch + "*"
+        for arch in rocm_gpu_architectures()
+    ]) + glob([
+        "%{rocm_root}/lib/libMIOpenCKGroupedConv_" + arch + ".so"
+        for arch in rocm_gpu_architectures()
     ]),
     interface_library = "%{rocm_root}/lib/libMIOpen.so",
     deps = [
@@ -305,6 +314,7 @@ rocm_lib_import(
         ":hipblaslt_libs",
         ":hiprtc_libs",
         ":rocblas_libs",
+        ":rocm_core_libs",
         ":roctx_libs",
         ":system_libs",
     ],
@@ -320,6 +330,7 @@ rocm_lib_import(
     deps = [
         ":amdsmi_libs",
         ":hip_runtime_libs",
+        ":rocm_core_libs",
         ":rocm_smi_libs",
         ":rocprofiler_register_libs",
         ":roctx_libs",
@@ -329,12 +340,28 @@ rocm_lib_import(
 cc_library(
     name = "amdsmi_libs",
     data = glob(["%{rocm_root}/lib/libamd_smi.so*"]),
+    deps = [
+        ":system_libs",
+    ],
 )
 
 rocm_lib_import(
     name = "rocm_smi",
     data = glob(["%{rocm_root}/lib/librocm_smi64.so*"]),
     interface_library = "%{rocm_root}/lib/librocm_smi64.so",
+    deps = [],
+)
+
+cc_import(
+    name = "hsakmt",
+    static_library = "%{rocm_root}/lib/libhsakmt.a",
+    visibility = ["//visibility:public"],
+)
+
+rocm_lib_import(
+    name = "hsa_runtime",
+    data = [":hsa_rocr_libs_data"],
+    interface_library = "%{rocm_root}/lib/libhsa-runtime64.so",
     deps = [],
 )
 
@@ -370,6 +397,7 @@ cc_library(
     ]),
     deps = [
         ":hip_runtime_libs",
+        ":rocblas_libs",
         ":roctx_libs",
     ],
 )
@@ -394,7 +422,10 @@ rocm_lib_import(
 
 rocm_lib_import(
     name = "rocprofiler_sdk",
-    data = glob(["%{rocm_root}/lib/librocprofiler-sdk*.so*"]),
+    data = glob([
+        "%{rocm_root}/lib/librocprofiler-sdk*.so*",
+        "%{rocm_root}/lib/libhsa-amd-aqlprofile64.so*",
+    ]),
     interface_library = "%{rocm_root}/lib/librocprofiler-sdk.so",
     deps = [
         ":amd_comgr_libs",
@@ -446,6 +477,7 @@ rocm_lib_import(
         [
             "%{rocm_root}/lib/libhipblaslt.so*",
             "%{rocm_root}/lib/librocroller.so*",
+            "%{rocm_root}/lib/liborigami.so*",
         ],
     ) + glob([
         pattern

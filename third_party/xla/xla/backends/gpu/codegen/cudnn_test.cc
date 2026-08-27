@@ -22,13 +22,14 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/backends/gpu/transforms/cudnn_fusion_compiler.h"
@@ -104,6 +105,10 @@ class CuDnnFusionTest
            version.major_version() > major_version;
   }
   bool IsAtLeastCuDnn91() { return IsAtLeastCuDnnVersion(9, 1); }
+  bool IsGB200() {
+    return get_cuda_cc().IsBlackwell() &&
+           absl::StrContains(device_description().name(), "GB200");
+  }
 
  protected:
   void SetUp() override {
@@ -130,7 +135,7 @@ class CuDnnFusionFileCheckTest : public CuDnnFusionTest {
 
   absl::StatusOr<bool> RunCuDnnFileCheck(absl::string_view hlo,
                                          absl::string_view pattern) {
-    ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                      ParseAndReturnVerifiedModule(hlo));
     const std::string root_name(
         module->entry_computation()->root_instruction()->name());
@@ -141,7 +146,7 @@ class CuDnnFusionFileCheckTest : public CuDnnFusionTest {
     // Run filecheck even if CuDnnFusionCompiler failed.
     cudnn_compiler.Run(module.get()).IgnoreError();
     std::string dump;
-    RETURN_IF_ERROR(tsl::ReadFileToString(
+    ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(
         tsl::Env::Default(),
         tsl::io::JoinPath(
             output_directory_,
@@ -207,23 +212,22 @@ CHECK:    },
 CHECK:    "tag": "MATMUL"
 CHECK:   }
 CHECK:  ],
-CHECK:  "tensors": {
+CHECK:  "tensors": [
 CHECK:   "data_type": "FLOAT",
 CHECK:   "dim": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*64[[:space:]]*}}],
 CHECK:   "name": "p0",
 CHECK:   "stride": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*1[[:space:]]*}}],
-CHECK:   "uid": 1,
+CHECK:   "uid": 1
 CHECK:   "data_type": "FLOAT",
 CHECK:   "dim": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*64[[:space:]]*}}],
 CHECK:   "name": "p1",
 CHECK:   "stride": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*1[[:space:]]*}}],
-CHECK:   "uid": 2,
+CHECK:   "uid": 2
 CHECK:   "data_type": "FLOAT",
 CHECK:   "dim": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*64[[:space:]]*}}],
 CHECK:   "name": "d",
 CHECK:   "stride": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*1[[:space:]]*}}],
-CHECK:   "uid": 3,
-CHECK:   "uid_assigned": true
+CHECK:   "uid": 3
 )"));
 }
 
@@ -1464,21 +1468,34 @@ CHECK: "nodes"
 CHECK: {
 CHECK: "block_size": [{{[[:space:]]*32[[:space:]]*}}]
 CHECK: "compute_data_type": "FLOAT"
+CHECK: "inputs": {
 CHECK: "X": 1
 CHECK: "scale": 3
-CHECK: "Y": "result_lhs_dq"
+CHECK: }
+CHECK: "outputs": {
+CHECK: "Y": 6
+CHECK: }
 CHECK: "tag": "BLOCK_SCALE_DEQUANTIZE"
 CHECK: {
 CHECK: "block_size": [{{[[:space:]]*32[[:space:]]*}}]
 CHECK: "compute_data_type": "FLOAT"
+CHECK: "inputs": {
 CHECK: "X": 2
 CHECK: "scale": 4
-CHECK: "Y": "result_rhs_dq"
+CHECK: }
+CHECK: "outputs": {
+CHECK: "Y": 7
+CHECK: }
 CHECK: "tag": "BLOCK_SCALE_DEQUANTIZE"
 CHECK: {
-CHECK: "A": "result_lhs_dq"
-CHECK: "B": "result_rhs_dq"
+CHECK: "compute_data_type": "FLOAT"
+CHECK: "inputs": {
+CHECK: "A": 6
+CHECK: "B": 7
+CHECK: }
+CHECK: "outputs": {
 CHECK: "C": 5
+CHECK: }
 CHECK: "tag": "MATMUL"
 CHECK: "tensors"
 CHECK: "dim": [{{[[:space:]]*1,[[:space:]]*256,[[:space:]]*128[[:space:]]*}}]
@@ -1500,12 +1517,20 @@ CHECK: "name": "result"
 CHECK: "stride": [{{[[:space:]]*1,[[:space:]]*384,[[:space:]]*1[[:space:]]*}}]
 CHECK: "is_virtual": true
 CHECK: "name": "result_lhs_dq"
+CHECK: "uid": 6
 CHECK: "is_virtual": true
 CHECK: "name": "result_rhs_dq"
+CHECK: "uid": 7
 )"));
 }
 
 TEST_F(CuDnnFusionFileCheckTest, ConvFpropGraphConvertedCorrectly) {
+  // Crashes on CUDA 12 + cuDNN 9.10. Works on CUDA 13 + cuDNN 9.23. It's
+  // unclear at which point between it got fixed. Conservatively skip on
+  // versions older than the oldest one confirmed to work.
+  if (IsGB200() && !IsAtLeastCuDnnVersion(9, 23)) {
+    GTEST_SKIP() << "Requires recent enough cuDNN to not crash on GB200 GPUs.";
+  }
   const std::string kHloText = R"(
 fusion {
   input = f32[2,9,9,17] parameter(0)
@@ -1540,7 +1565,7 @@ CHECK:   "stride": [{{[[:space:]]*1,[[:space:]]*1[[:space:]]*}}],
 CHECK:   "tag": "CONV_FPROP"
 CHECK:  }
 CHECK: ],
-CHECK:"tensors": {
+CHECK: "tensors": [
 CHECK:   "data_type": "FLOAT",
 CHECK:   "dim": [{{[[:space:]]*2,[[:space:]]*17,[[:space:]]*9,[[:space:]]*9[[:space:]]*}}],
 CHECK:   "name": "input",

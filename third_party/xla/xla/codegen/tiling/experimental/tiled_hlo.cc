@@ -34,11 +34,11 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
@@ -224,6 +224,16 @@ bool IsReductionLoopRequired(const TiledHloInstruction& tiled_hlo) {
       });
 }
 
+bool IsScanLoopRequired(const TiledHloInstruction& tiled_hlo) {
+  const auto* scan = Cast<HloScanInstruction>(tiled_hlo.hlo());
+  const TilingSpace& tiling_space = tiled_hlo.tile().tiling_space();
+  const auto& dim_info =
+      tiling_space.GetDimensionInfo(*scan, scan->scan_dimension());
+  return dim_info.type == TilingSpace::DimensionSemantics::kSequential &&
+         dim_info.tile_size.has_value() &&
+         *dim_info.tile_size < dim_info.dimension_size;
+}
+
 // Defines how the operands of a TiledHloInstruction are partitioned during
 // region reconstruction.
 //
@@ -275,13 +285,23 @@ RegionSchema GetRegionSchema(const TiledHloInstruction& tiled_hlo,
   };
   switch (opcode) {
     case HloOpcode::kDot:
-    case HloOpcode::kScaledDot: {
+    case HloOpcode::kScaledDot:
+    case HloOpcode::kRaggedDot: {
       return RegionSchema{/*region_roots=*/{iota(0, num_operands)},
                           /*operand_ids=*/{}};
     }
     case HloOpcode::kReduce: {
       if (IsReductionLoopRequired(tiled_hlo)) {
         int64_t num_inputs = num_operands / 2;
+        return RegionSchema{/*region_roots=*/{iota(0, num_inputs)},
+                            /*operand_ids=*/{iota(num_inputs, num_operands)}};
+      }
+      break;
+    }
+    case HloOpcode::kScan: {
+      if (IsScanLoopRequired(tiled_hlo)) {
+        const auto* scan = Cast<HloScanInstruction>(tiled_hlo.hlo());
+        int64_t num_inputs = scan->inputs().size();
         return RegionSchema{/*region_roots=*/{iota(0, num_inputs)},
                             /*operand_ids=*/{iota(num_inputs, num_operands)}};
       }
@@ -426,7 +446,7 @@ absl::StatusOr<TiledHloRegion> TiledHloComputation::CreateHloRegion(
       continue;
     }
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto operands_tiles,
         PropagateTileToInput(tiling_space, *hlo, tiled_hlo->tile(), 0));
 
@@ -451,7 +471,7 @@ absl::StatusOr<TiledHloRegion> TiledHloComputation::CreateHloRegion(
         region_roots.push_back(std::move(tiled_operands[id]));
       }
 
-      ASSIGN_OR_RETURN(TiledHloRegion res,
+      ABSL_ASSIGN_OR_RETURN(TiledHloRegion res,
                        CreateHloRegion(std::move(region_roots), fusion,
                                        tiling_space, rt_symbol_to_tiled_hlo));
       for (const auto& [i, id] : llvm::enumerate(region_root_ids)) {
@@ -503,7 +523,7 @@ absl::StatusOr<TiledHloRegion> TiledHloComputation::CreateHloRegion(
 
   absl::flat_hash_map<int64_t, std::pair<const TiledHloInstruction*, Interval>>
       rt_symbol_to_tiled_hlo;
-  ASSIGN_OR_RETURN(TiledHloRegion region,
+  ABSL_ASSIGN_OR_RETURN(TiledHloRegion region,
                    CreateHloRegion(std::move(tiled_roots), fusion,
                                    *tiling_space, rt_symbol_to_tiled_hlo));
 

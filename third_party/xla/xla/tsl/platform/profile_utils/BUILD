@@ -47,7 +47,6 @@ exports_files(srcs = [
 filegroup(
     name = "legacy_lib_internal_srcs",
     srcs = [
-        "android_armv7a_cpu_utils_helper.cc",
         "clock_cycle_profiler.cc",
     ],
     visibility = internal_visibility([
@@ -59,6 +58,7 @@ filegroup(
 cc_library(
     name = "profile_utils_cpu_utils",
     srcs = [
+        "android_armv7a_cpu_utils_helper.cc",
         "android_armv7a_cpu_utils_helper.h",
         "cpu_utils.cc",
     ],
@@ -72,6 +72,7 @@ cc_library(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings:str_format",
     ],
     alwayslink = 1,
 )

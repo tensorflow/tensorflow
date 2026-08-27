@@ -22,6 +22,10 @@ load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 
 load("@xla//xla:xla.default.bzl", "xla_py_proto_library")
 load("@xla//xla/service/cpu:build_defs.bzl", "runtime_copts")
+load(
+    "@xla//xla/tsl:tsl.bzl",
+    "internal_visibility",
+)
 load("@xla//xla/tsl/mkl:build_defs.bzl", "mkl_deps")
 load("@xla//xla/tsl/platform:build_config_root.bzl", "if_static")
 load(
@@ -45,16 +49,20 @@ package(
 
 package_group(
     name = "internal",
-    packages = [
-        "//tensorflow/compiler/aot/...",
-        "//tensorflow/compiler/jit/...",
-        "//tensorflow/compiler/mlir/...",
-        "//tensorflow/compiler/tests/...",
-        "//tensorflow/compiler/tf2xla/...",
-        "//tensorflow/core/tpu/...",
-        "//tensorflow/python/compiler/...",
-        "//tensorflow/python/util/...",
-    ],
+    packages = internal_visibility(
+        [
+            "//tensorflow/compiler/aot/...",
+            "//tensorflow/compiler/jit/...",
+            "//tensorflow/compiler/mlir/...",
+            "//tensorflow/compiler/tests/...",
+            "//tensorflow/compiler/tf2xla/...",
+            "//tensorflow/contrib/compiler/...",
+            "//tensorflow/core/tpu/...",
+            "//tensorflow/python/compiler/...",
+            "//tensorflow/python/util/...",
+        ],
+        ["public"],
+    ),
 )
 
 package_group(
@@ -680,7 +688,7 @@ cc_library(
         "@xla//xla/hlo/builder:xla_computation",
         "@xla//xla/hlo/ir:hlo",
         "@xla//xla/hlo/translate/mhlo_to_hlo:layout_util",
-        "@xla//xla/service:computation_placer_hdr",
+        "@xla//xla/service:device_assignment",
         "@xla//xla/service:hlo_proto_cc",
         "@xla//xla/service/spmd/shardy:constants",
         "@xla//xla/service/spmd/shardy:utils",
@@ -887,7 +895,7 @@ cc_library(
         "@xla//xla/hlo/builder:xla_computation",
         "@xla//xla/hlo/ir:hlo",
         "@xla//xla/hlo/translate/mhlo_to_hlo:layout_util",
-        "@xla//xla/service:computation_placer_hdr",
+        "@xla//xla/service:device_assignment",
         "@xla//xla/service/gpu:gpu_executable_run_options",
         "@xla//xla/stream_executor:stream",
         "@xla//xla/stream_executor:stream_executor_h",

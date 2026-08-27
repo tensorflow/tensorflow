@@ -20,10 +20,11 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/transforms/collectives/collective_domain.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -44,7 +45,7 @@ absl::Status AppendPipelinedInstruction(HloInstruction* instr,
   if (!IsCollective(instr)) {
     return absl::OkStatus();
   }
-  ASSIGN_OR_RETURN(auto config, instr->backend_config<gpu::GpuBackendConfig>());
+  ABSL_ASSIGN_OR_RETURN(auto config, instr->backend_config<gpu::GpuBackendConfig>());
   config.mutable_collective_backend_config()->set_is_pipelined(true);
   return instr->set_backend_config(config);
 }
@@ -98,24 +99,34 @@ bool EnableHeuristicCollectiveCombining(
 
 absl::Status MergeCollectiveBackendConfig(
     absl::Span<HloInstruction* const> to_combine, HloInstruction* combined) {
-  ASSIGN_OR_RETURN(auto config,
+  ABSL_ASSIGN_OR_RETURN(auto config,
                    combined->backend_config<gpu::GpuBackendConfig>());
   bool any_pipelined = false;
   bool any_spmd_generated = false;
+  CollectiveCommunicationDomain communication_domain =
+      kUnspecifiedCollectiveDomain;
 
   for (const HloInstruction* inst : to_combine) {
     auto src_config = inst->backend_config<GpuBackendConfig>();
     if (src_config.ok()) {
-      any_pipelined |= src_config->collective_backend_config().is_pipelined();
+      const CollectiveBackendConfig& collective_config =
+          src_config->collective_backend_config();
+      any_pipelined |= collective_config.is_pipelined();
+      ABSL_ASSIGN_OR_RETURN(
+          communication_domain,
+          JoinCollectiveCommunicationDomains(
+              communication_domain, collective_config.communication_domain()));
     }
     // IsSpmdGenerated checks both the frontend attribute (set by the SPMD
     // partitioner) and the backend config field (set on earlier combines).
     any_spmd_generated |= IsSpmdGenerated(*inst);
   }
 
-  config.mutable_collective_backend_config()->set_is_pipelined(any_pipelined);
-  config.mutable_collective_backend_config()->set_is_spmd_generated(
-      any_spmd_generated);
+  CollectiveBackendConfig* collective_config =
+      config.mutable_collective_backend_config();
+  collective_config->set_is_pipelined(any_pipelined);
+  collective_config->set_is_spmd_generated(any_spmd_generated);
+  collective_config->set_communication_domain(communication_domain);
 
   return combined->set_backend_config(config);
 }

@@ -206,6 +206,7 @@ EXPORTS
  ?AddDevices@DeviceFactory@tensorflow@@SA?AVStatus@lts_20260526@absl@@AEBUSessionOptions@2@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAV?$vector@V?$unique_ptr@VDevice@tensorflow@@U?$default_delete@VDevice@tensorflow@@@std@@@std@@V?$allocator@V?$unique_ptr@VDevice@tensorflow@@U?$default_delete@VDevice@tensorflow@@@std@@@std@@@2@@8@@Z
  ?AddMesh@dtensor@tensorflow@@YAXAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAX_NPEAUTSL_Status@@@Z
  ?AddRegisterer@gradients@tensorflow@@YAPEAVGradientFunction@12@AEBUForwardOperation@12@@Z
+ ?AddSourceLocationImpl@Status@lts_20260526@absl@@CA_K_KVSourceLocation@23@@Z
  ?AddStep@tfprof@tensorflow@@YAN_JPEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@11@Z
  ?AddTable@SparseCoreLayoutStacker@tpu@tensorflow@@QEAA?AVStatus@lts_20260526@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@_J1011@Z
  ?AddV2@ops@tensorflow@@YA?AVStatus@lts_20260526@absl@@PEAVAbstractContext@2@QEAVAbstractTensorHandle@2@1PEAPEAV72@PEBD3@Z
@@ -225,7 +226,7 @@ EXPORTS
  ?BatchShardedOnMesh@Layout@dtensor@tensorflow@@SA?AV123@AEBVMesh@23@HAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@H@Z
  ?BoundPort@GrpcDataServerBase@data@tensorflow@@QEAAHXZ
  ?Build@KernelDefBuilder@tensorflow@@QEAAPEBVKernelDef@2@XZ
- ?Canonicalize@FunctionParameterCanonicalizer@tensorflow@@QEAA_NPEAU_object@@0V?$Span@PEAU_object@@@lts_20260526@absl@@@Z
+ ?Canonicalize@FunctionParameterCanonicalizer@tensorflow@@QEAA_NPEAU_object@@0V?$Span@V?$unique_ptr@U_object@@UPyDecrefDeleter@detail@tensorflow@@@std@@@lts_20260526@absl@@@Z
  ?Capture@StackTrace@tensorflow@@SA?AV?$shared_ptr@VStackTrace@tensorflow@@@std@@H@Z
  ?CatPieces@strings_internal@lts_20260526@absl@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$initializer_list@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@5@@Z
  ?Check@PyListChecker@py_dispatch@tensorflow@@UEAA?AW4MatchType@PyTypeChecker@23@PEAU_object@@@Z

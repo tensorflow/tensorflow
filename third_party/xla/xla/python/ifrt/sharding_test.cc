@@ -25,13 +25,13 @@ limitations under the License.
 #include "absl/hash/hash_testing.h"
 #include "absl/status/status_matchers.h"
 #include "absl/types/span.h"
-#include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding_spec.h"
 #include "xla/tsl/platform/errors.h"
@@ -223,7 +223,7 @@ TEST_P(OpaqueShardingTest, GetShardShape) {
   ShardingRef sharding = OpaqueSharding::Create(device_list, MemoryKind());
   EXPECT_THAT(sharding->GetShardShape(Shape({10, 20})),
               StatusIs(tsl::error::INVALID_ARGUMENT,
-                       HasSubstr("OpaqueSharding does not have shard shape")));
+                       HasSubstr("does not have shard shape")));
 }
 
 TEST_P(OpaqueShardingTest, HasSamePartitioning) {
@@ -248,7 +248,7 @@ TEST_P(OpaqueShardingTest, WithDeviceAssignment) {
                                                 device_list1,
                                                 /*memory_kind=*/std::nullopt));
     // For OpaqueSharding, we cannot use an equality test.
-    ASSERT_TRUE(llvm::isa<OpaqueSharding>(*new_sharding));
+    ASSERT_TRUE(isa<OpaqueSharding>(*new_sharding));
     EXPECT_THAT(new_sharding->devices()->devices(),
                 ElementsAreArray(device_list1->devices()));
   }
@@ -343,11 +343,9 @@ TEST_P(ConcreteShardingTest, GetShardShapeFailure) {
   shard_shapes.push_back(Shape({20}));
   ShardingRef sharding = ConcreteSharding::Create(device_list, MemoryKind(),
                                                   Shape({30}), shard_shapes);
-  EXPECT_THAT(
-      sharding->GetShardShape(Shape({30})),
-      StatusIs(
-          tsl::error::INVALID_ARGUMENT,
-          HasSubstr("ConcreteSharding does not have a fixed shard shape")));
+  EXPECT_THAT(sharding->GetShardShape(Shape({30})),
+              StatusIs(tsl::error::INVALID_ARGUMENT,
+                       HasSubstr("does not have a fixed shard shape")));
 }
 
 TEST_P(ConcreteShardingTest, HasSamePartitioning) {
@@ -404,6 +402,34 @@ TEST_P(ConcreteShardingTest, HasSamePartitioning) {
         device_list1, MemoryKind(), Shape({30}), shard_shapes1);
     EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding1));
   }
+  // With index domains.
+  {
+    std::vector<IndexDomain> index_domains0 = {
+        IndexDomain(Index({0}), Shape({10})),
+        IndexDomain(Index({10}), Shape({20})),
+    };
+    ShardingRef sharding_with_index_domains0 = ConcreteSharding::Create(
+        device_list0, MemoryKind(), Shape({30}), shard_shapes0, index_domains0);
+
+    EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding_with_index_domains0));
+    EXPECT_FALSE(sharding_with_index_domains0->HasSamePartitioning(*sharding0));
+
+    auto device_list1 = GetDevices({2, 3});
+    ShardingRef sharding_with_index_domains1 = ConcreteSharding::Create(
+        device_list1, MemoryKind(), Shape({30}), shard_shapes0, index_domains0);
+    EXPECT_TRUE(sharding_with_index_domains0->HasSamePartitioning(
+        *sharding_with_index_domains1));
+
+    std::vector<IndexDomain> index_domains1 = {
+        IndexDomain(Index({5}), Shape({10})),
+        IndexDomain(Index({15}), Shape({20})),
+    };
+    ShardingRef sharding_with_different_index_domains =
+        ConcreteSharding::Create(device_list1, MemoryKind(), Shape({30}),
+                                 shard_shapes0, index_domains1);
+    EXPECT_FALSE(sharding_with_index_domains0->HasSamePartitioning(
+        *sharding_with_different_index_domains));
+  }
 }
 
 TEST_P(ConcreteShardingTest, WithDeviceAssignment) {
@@ -426,6 +452,24 @@ TEST_P(ConcreteShardingTest, WithDeviceAssignment) {
                                                 device_list1,
                                                 /*memory_kind=*/std::nullopt));
     EXPECT_EQ(*new_sharding, *sharding1);
+  }
+  {
+    std::vector<IndexDomain> index_domains = {
+        IndexDomain(Index({0}), Shape({10})),
+        IndexDomain(Index({10}), Shape({20})),
+    };
+    ShardingRef sharding_with_index_domains = ConcreteSharding::Create(
+        device_list0, MemoryKind(), Shape({30}), shard_shapes0, index_domains);
+    auto device_list1 = GetDevices({2, 3});
+    ASSERT_OK_AND_ASSIGN(auto new_sharding,
+                         sharding_with_index_domains->WithDeviceAssignment(
+                             device_list1, /*memory_kind=*/std::nullopt));
+    EXPECT_TRUE(
+        sharding_with_index_domains->HasSamePartitioning(*new_sharding));
+    EXPECT_THAT(
+        new_sharding->IndexDomains(
+            Shape({30}), SingleDeviceShardSemantics::kAddressableShards),
+        IsOkAndHolds(testing::ElementsAreArray(index_domains)));
   }
   {
     auto device_list1 = GetDevices({0, 1, 2, 3});
@@ -628,9 +672,21 @@ TEST_P(ConcreteShardingTest, Hash) {
   ASSERT_OK_AND_ASSIGN(
       auto dynamic_shape,
       DynamicShape::Create(Shape({30}), BoundedDynamicShapeTag({true})));
+  std::vector<IndexDomain> index_domains0 = {
+      IndexDomain(Index({0}), Shape({10})),
+      IndexDomain(Index({10}), Shape({20})),
+  };
+  std::vector<IndexDomain> index_domains1 = {
+      IndexDomain(Index({5}), Shape({10})),
+      IndexDomain(Index({15}), Shape({20})),
+  };
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
       *ConcreteSharding::Create(GetDevices({0, 1}), MemoryKind(), Shape({30}),
                                 {Shape({10}), Shape({20})}),
+      *ConcreteSharding::Create(GetDevices({0, 1}), MemoryKind(), Shape({30}),
+                                {Shape({10}), Shape({20})}, index_domains0),
+      *ConcreteSharding::Create(GetDevices({0, 1}), MemoryKind(), Shape({30}),
+                                {Shape({10}), Shape({20})}, index_domains1),
       *ConcreteSharding::Create(GetDevices({0, 1}), MemoryKind(), dynamic_shape,
                                 {dynamic_shape, dynamic_shape}),
   }));
@@ -674,10 +730,9 @@ TEST_P(ConcreteEvenShardingTest, GetShardShape) {
   EXPECT_THAT(sharding->GetShardShape(Shape({30})), IsOkAndHolds(Shape({15})));
   EXPECT_THAT(
       sharding->GetShardShape(Shape({45})),
-      StatusIs(
-          tsl::error::INVALID_ARGUMENT,
-          HasSubstr("ConcreteEvenSharding has a shard shape for shape [30], "
-                    "but was asked to get a shard shape for shape [45]")));
+      StatusIs(tsl::error::INVALID_ARGUMENT,
+               HasSubstr("has a shard shape for shape [30], "
+                         "but was asked to get a shard shape for shape [45]")));
 }
 
 TEST_P(ConcreteEvenShardingTest, HasSamePartitioning) {
@@ -1244,7 +1299,7 @@ TEST_P(OpaqueShardingTest, ShardingSpec) {
   ShardingSpecRef sharding_spec = sharding->sharding_spec();
   // `OpaqueShardingSpec` cannot use `HasSamePartitioning` for equality
   // comparison.
-  EXPECT_TRUE(llvm::isa<OpaqueShardingSpec>(sharding_spec.get()));
+  EXPECT_TRUE(isa<OpaqueShardingSpec>(sharding_spec.get()));
 }
 
 TEST_P(ConcreteShardingTest, ShardingSpec) {

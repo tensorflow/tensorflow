@@ -938,5 +938,467 @@ TEST_F(HloConstantFoldingTest, DontFoldGetRngSeed) {
   EXPECT_FALSE(result);
 }
 
+TEST_F(HloConstantFoldingTest, DontFoldOptimizationBarrier) {
+  const char* const kModuleStr = R"(
+    HloModule test
+    ENTRY entry {
+      c = u32[2]{0} constant({1, 2})
+      ROOT ob = u32[2]{0} opt-barrier(c)
+    })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&constant_folding, module.get()));
+  EXPECT_FALSE(result);
+}
+
+// Folding a call whose body contains an optimization barrier would delete
+// the barrier.
+TEST_F(HloConstantFoldingTest, DontFoldCallContainingOptimizationBarrier) {
+  const char* const kModuleStr = R"(
+    HloModule test
+
+    body {
+      p = u32[2]{0} parameter(0)
+      ROOT ob = u32[2]{0} opt-barrier(p)
+    }
+
+    ENTRY entry {
+      c = u32[2]{0} constant({1, 2})
+      ROOT call = u32[2]{0} call(c), to_apply=body
+    })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&constant_folding, module.get()));
+  EXPECT_FALSE(result);
+}
+
+// Sub-byte types are stored unpacked in literals, so width-changing bitcasts
+// of packed types must not fold: the raw byte copy would produce a constant
+// that differs from the backend result.
+TEST_F(HloConstantFoldingTest, DontFoldSubByteWidthChangingBitcasts) {
+  const char* const kModuleStr = R"(
+    HloModule test
+    ENTRY entry {
+      c32 = s32[4]{0} constant({305419896, -1, 0, 559038737})
+      bc = s4[4,8]{1,0:E(4)} bitcast-convert(c32)
+      c4 = s4[16]{0:E(4)} constant({0, 1, 2, 3, 4, 5, 6, 7, -8, -7, -6, -5, -4, -3, -2, -1})
+      b = s8[8]{0} bitcast(c4)
+      ROOT t = (s4[4,8]{1,0:E(4)}, s8[8]{0}) tuple(bc, b)
+    })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&constant_folding, module.get()));
+  EXPECT_FALSE(result);
+}
+
+// The evaluator returns default layouts for reshape/concatenate results;
+// folding must restore the full layout of the folded instruction, tiles
+// included, so post-layout pipelines can run the pass.
+TEST_F(HloConstantFoldingTest, FoldedConstantKeepsTiledLayout) {
+  const char* const kModuleStr = R"(
+    HloModule test
+    ENTRY entry {
+      c0 = u32[1]{0:T(128)} constant({1})
+      c1 = u32[1]{0:T(128)} constant({2})
+      cc = u32[2]{0:T(128)} concatenate(c0, c1), dimensions={0}
+      p0 = u32[2]{0:T(128)} parameter(0)
+      ROOT t = (u32[2]{0:T(128)}, u32[2]{0:T(128)}) tuple(cc, p0)
+    })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&constant_folding, module.get()));
+  EXPECT_TRUE(result);
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Tuple(op::Constant(), op::Parameter(0)));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(root->operand(0)->shape(), root->operand(1)->shape()));
+  EXPECT_EQ(root->operand(0)->literal().Get<uint32_t>({0}), 1);
+  EXPECT_EQ(root->operand(0)->literal().Get<uint32_t>({1}), 2);
+}
+
+// Options used by pipelines that fold late, after layout assignment.
+HloConstantFolding::Options LateFoldingOptions() {
+  HloConstantFolding::Options options;
+  options.fold_float_arithmetic = false;
+  options.is_layout_sensitive = true;
+  return options;
+}
+
+// A per-layer PRNG key derivation (tuple shaped unstack fusion of a constant,
+// xor of the halves) as exposed by post-layout passes. In layout sensitive
+// mode the fusion folds through get-tuple-element rewrites, never through a
+// tuple shaped constant.
+TEST_F(HloConstantFoldingTest, LateOptionsFoldUnstackFusionViaGteRewrite) {
+  const char* const kModuleStr = R"(
+    HloModule test
+
+    unstack_comp {
+      p = u32[2]{0} parameter(0)
+      sl_hi = u32[1]{0} slice(p), slice={[1:2]}
+      sl_lo = u32[1]{0} slice(p), slice={[0:1]}
+      ROOT t = (u32[1]{0}, u32[1]{0}) tuple(sl_hi, sl_lo)
+    }
+
+    ENTRY entry {
+      key = u32[2]{0} constant({305419896, 43981})
+      f = (u32[1]{0}, u32[1]{0}) fusion(key), kind=kLoop, calls=unstack_comp
+      g0 = u32[1]{0} get-tuple-element(f), index=0
+      g1 = u32[1]{0} get-tuple-element(f), index=1
+      r0 = u32[] reshape(g0)
+      r1 = u32[] reshape(g1)
+      x = u32[] xor(r0, r1)
+      p0 = u32[] parameter(0)
+      ROOT out = u32[] add(x, p0)
+    })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding(LateFoldingOptions());
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&constant_folding, module.get()));
+  EXPECT_TRUE(result);
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Add(op::Constant(), op::Parameter(0)));
+  // 0x12345678 ^ 0x0000ABCD == 0x1234FDB5.
+  EXPECT_EQ(root->operand(0)->literal().Get<uint32_t>({}), 0x1234FDB5u);
+  for (const HloComputation* computation : module->computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      EXPECT_NE(instruction->opcode(), HloOpcode::kFusion);
+      if (instruction->opcode() == HloOpcode::kConstant) {
+        EXPECT_FALSE(instruction->shape().IsTuple());
+      }
+    }
+  }
+}
+
+// Port of the production pattern with post-layout decorations: tiled
+// layouts, pinning frontend attributes, and bitcasts instead of reshapes.
+TEST_F(HloConstantFoldingTest, LateOptionsFoldProdDecoratedPattern) {
+  const char* const kModuleStr = R"(
+    HloModule test
+
+    unstack_comp {
+      p = u32[2]{0:T(128)} parameter(0)
+      sl_hi = u32[1]{0:T(128)} slice(p), slice={[1:2]}
+      sl_lo = u32[1]{0:T(128)} slice(p), slice={[0:1]}
+      ROOT t = (u32[1]{0:T(128)}, u32[1]{0:T(128)}) tuple(sl_hi, sl_lo)
+    }
+
+    ENTRY entry {
+      key = u32[2]{0:T(128)} constant({305419896, 43981}), frontend_attributes={xla_pinned_vmem="true"}
+      f = (u32[1]{0:T(128)}, u32[1]{0:T(128)}) fusion(key), kind=kLoop, calls=unstack_comp
+      g0 = u32[1]{0:T(128)} get-tuple-element(f), index=0
+      g1 = u32[1]{0:T(128)} get-tuple-element(f), index=1
+      b0 = u32[]{:T(128)} bitcast(g0)
+      b1 = u32[]{:T(128)} bitcast(g1)
+      x = u32[]{:T(128)} xor(b0, b1)
+      p0 = u32[]{:T(128)} parameter(0)
+      ROOT out = u32[]{:T(128)} add(x, p0)
+    })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
+  HloConstantFolding constant_folding(LateFoldingOptions());
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&constant_folding, module.get()));
+  EXPECT_TRUE(result);
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Add(op::Constant(), op::Parameter(0)));
+  EXPECT_EQ(root->operand(0)->literal().Get<uint32_t>({}), 0x1234FDB5u);
+  // The folded constant keeps the tiled scalar layout.
+  EXPECT_EQ(root->operand(0)->shape().layout().tiles().size(), 1);
+}
+
+TEST_F(HloConstantFoldingTest, LateOptionsDontFoldFloatArithmetic) {
+  const char* const kModuleStr = R"(
+    HloModule test
+    ENTRY entry {
+      c0 = f32[4]{0} constant({1, 2, 3, 4})
+      c1 = f32[4]{0} constant({5, 6, 7, 8})
+      a = f32[4]{0} add(c0, c1)
+      p0 = f32[4]{0} parameter(0)
+      ROOT out = f32[4]{0} add(a, p0)
+    })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding(LateFoldingOptions());
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&constant_folding, module.get()));
+  EXPECT_FALSE(result);
+}
+
+TEST_F(HloConstantFoldingTest, LateOptionsFoldFloatDataMovement) {
+  const char* const kModuleStr = R"(
+    HloModule test
+    ENTRY entry {
+      c = f32[4]{0} constant({1, 2, 3, 4})
+      s = f32[2]{0} slice(c), slice={[2:4]}
+      p0 = f32[2]{0} parameter(0)
+      ROOT out = f32[2]{0} add(s, p0)
+    })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding(LateFoldingOptions());
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&constant_folding, module.get()));
+  EXPECT_TRUE(result);
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Add(op::Constant(), op::Parameter(0)));
+  EXPECT_EQ(root->operand(0)->literal().Get<float>({0}), 3.0f);
+  EXPECT_EQ(root->operand(0)->literal().Get<float>({1}), 4.0f);
+}
+
+// Integer to integer converts fold; converts with a float operand must not.
+TEST_F(HloConstantFoldingTest, LateOptionsFoldIntButNotFloatOperandConvert) {
+  const char* const kModuleStr = R"(
+    HloModule test
+    ENTRY entry {
+      cf = f32[2]{0} constant({1.5, 2.5})
+      ci = s32[2]{0} constant({7, -3})
+      from_float = s32[2]{0} convert(cf)
+      narrowed = s8[2]{0} convert(ci)
+      widened = s32[2]{0} convert(narrowed)
+      p0 = s32[2]{0} parameter(0)
+      a = s32[2]{0} add(from_float, p0)
+      ROOT out = s32[2]{0} add(a, widened)
+    })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding(LateFoldingOptions());
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&constant_folding, module.get()));
+  EXPECT_TRUE(result);
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              op::Add(op::Add(op::Convert(op::Constant()), op::Parameter(0)),
+                      op::Constant()));
+  EXPECT_EQ(root->operand(1)->literal().Get<int32_t>({0}), 7);
+  EXPECT_EQ(root->operand(1)->literal().Get<int32_t>({1}), -3);
+}
+
+TEST_F(HloConstantFoldingTest, LateOptionsDontFoldFusionWithFloatArithmetic) {
+  const char* const kModuleStr = R"(
+    HloModule test
+
+    fused_comp {
+      p = f32[2]{0} parameter(0)
+      m = f32[2]{0} multiply(p, p)
+      ROOT cv = s32[2]{0} convert(m)
+    }
+
+    ENTRY entry {
+      c = f32[2]{0} constant({1.5, 2.5})
+      f = s32[2]{0} fusion(c), kind=kLoop, calls=fused_comp
+      p0 = s32[2]{0} parameter(0)
+      ROOT out = s32[2]{0} add(f, p0)
+    })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding(LateFoldingOptions());
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&constant_folding, module.get()));
+  EXPECT_FALSE(result);
+}
+
+// Pad, select, and dynamic-slice move bytes without arithmetic, so they fold
+// for float types too.
+TEST_F(HloConstantFoldingTest, LateOptionsFoldFloatPadSelectAndDynamicSlice) {
+  const char* const kModuleStr = R"(
+    HloModule test
+    ENTRY entry {
+      c = f32[4]{0} constant({1, 2, 3, 4})
+      z = f32[] constant(0)
+      pd = f32[6]{0} pad(c, z), padding=1_1
+      pr = pred[4]{0} constant({1, 0, 1, 0})
+      c2 = f32[4]{0} constant({5, 6, 7, 8})
+      sel = f32[4]{0} select(pr, c, c2)
+      i = s32[] constant(1)
+      ds = f32[2]{0} dynamic-slice(c2, i), dynamic_slice_sizes={2}
+      p0 = f32[6]{0} parameter(0)
+      p1 = f32[4]{0} parameter(1)
+      p2 = f32[2]{0} parameter(2)
+      a0 = f32[6]{0} add(pd, p0)
+      a1 = f32[4]{0} add(sel, p1)
+      a2 = f32[2]{0} add(ds, p2)
+      ROOT t = (f32[6]{0}, f32[4]{0}, f32[2]{0}) tuple(a0, a1, a2)
+    })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding(LateFoldingOptions());
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&constant_folding, module.get()));
+  EXPECT_TRUE(result);
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Tuple(op::Add(op::Constant(), op::Parameter(0)),
+                              op::Add(op::Constant(), op::Parameter(1)),
+                              op::Add(op::Constant(), op::Parameter(2))));
+  const Literal& pad_literal = root->operand(0)->operand(0)->literal();
+  EXPECT_EQ(pad_literal.Get<float>({0}), 0.0f);
+  EXPECT_EQ(pad_literal.Get<float>({1}), 1.0f);
+  const Literal& select_literal = root->operand(1)->operand(0)->literal();
+  EXPECT_EQ(select_literal.Get<float>({0}), 1.0f);
+  EXPECT_EQ(select_literal.Get<float>({1}), 6.0f);
+  const Literal& slice_literal = root->operand(2)->operand(0)->literal();
+  EXPECT_EQ(slice_literal.Get<float>({0}), 6.0f);
+  EXPECT_EQ(slice_literal.Get<float>({1}), 7.0f);
+}
+
+// The can_fold_shape filter skips instructions whose shapes it rejects.
+TEST_F(HloConstantFoldingTest, LateOptionsRespectCanFoldShapeFilter) {
+  const char* const kModuleStr = R"(
+    HloModule test
+    ENTRY entry {
+      c0 = u32[4]{0} constant({1, 2, 3, 4})
+      c1 = u32[4]{0} constant({5, 6, 7, 8})
+      x = u32[4]{0} xor(c0, c1)
+      ca = u32[] constant(6)
+      cb = u32[] constant(3)
+      xs = u32[] xor(ca, cb)
+      b = u32[4]{0} broadcast(xs), dimensions={}
+      ROOT out = u32[4]{0} add(x, b)
+    })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding::Options options = LateFoldingOptions();
+  options.can_fold_shape = [](const Shape& shape) {
+    return shape.dimensions().empty();  // Only allow scalar folds.
+  };
+  HloConstantFolding constant_folding(options);
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&constant_folding, module.get()));
+  EXPECT_TRUE(result);
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  // The vector xor is filtered out; the scalar xor folds.
+  EXPECT_THAT(root, op::Add(op::Xor(op::Constant(), op::Constant()),
+                            op::Broadcast(op::Constant())));
+}
+
+// A producer with a tuple shape and a non get-tuple-element user cannot be
+// folded in layout sensitive mode; materializing a tuple shaped constant is
+// not an option there.
+TEST_F(HloConstantFoldingTest, LateOptionsDontFoldTupleWithNonGteUser) {
+  const char* const kModuleStr = R"(
+    HloModule test
+
+    unstack_comp {
+      p = u32[2]{0} parameter(0)
+      sl_hi = u32[1]{0} slice(p), slice={[1:2]}
+      sl_lo = u32[1]{0} slice(p), slice={[0:1]}
+      ROOT t = (u32[1]{0}, u32[1]{0}) tuple(sl_hi, sl_lo)
+    }
+
+    ENTRY entry {
+      key = u32[2]{0} constant({305419896, 43981})
+      f = (u32[1]{0}, u32[1]{0}) fusion(key), kind=kLoop, calls=unstack_comp
+      ROOT cc = u32[1]{0} custom-call(f), custom_call_target="Consume"
+    })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding(LateFoldingOptions());
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&constant_folding, module.get()));
+  EXPECT_FALSE(result);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::CustomCall(op::Fusion()));
+}
+
+// A get-tuple-element of a nested tuple is itself tuple shaped and cannot be
+// rewritten to a constant.
+TEST_F(HloConstantFoldingTest, LateOptionsDontFoldNestedTupleGte) {
+  const char* const kModuleStr = R"(
+    HloModule test
+
+    nested_comp {
+      p = u32[2]{0} parameter(0)
+      a = u32[2]{0} add(p, p)
+      inner = (u32[2]{0}, u32[2]{0}) tuple(p, a)
+      ROOT outer = ((u32[2]{0}, u32[2]{0}), u32[2]{0}) tuple(inner, a)
+    }
+
+    ENTRY entry {
+      c = u32[2]{0} constant({1, 2})
+      f = ((u32[2]{0}, u32[2]{0}), u32[2]{0}) fusion(c), kind=kLoop, calls=nested_comp
+      g0 = (u32[2]{0}, u32[2]{0}) get-tuple-element(f), index=0
+      g1 = u32[2]{0} get-tuple-element(f), index=1
+      g00 = u32[2]{0} get-tuple-element(g0), index=0
+      ROOT r = u32[2]{0} add(g00, g1)
+    })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding(LateFoldingOptions());
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&constant_folding, module.get()));
+  EXPECT_FALSE(result);
+}
+
+// The evaluator produces tuple leaves in default layouts; the rewritten leaf
+// constants must match the replaced get-tuple-element's layout.
+TEST_F(HloConstantFoldingTest, LateOptionsRelayoutTupleLeavesToGteLayout) {
+  const char* const kModuleStr = R"(
+    HloModule test
+
+    add2 {
+      p0 = s32[] parameter(0)
+      p1 = s32[] parameter(1)
+      p2 = s32[] parameter(2)
+      p3 = s32[] parameter(3)
+      a0 = s32[] add(p0, p2)
+      a1 = s32[] add(p1, p3)
+      ROOT t = (s32[], s32[]) tuple(a0, a1)
+    }
+
+    ENTRY entry {
+      c0 = s32[2,2,2]{2,1,0} constant({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}})
+      c1 = s32[2,2,2]{2,1,0} constant({{{10, 20}, {30, 40}}, {{50, 60}, {70, 80}}})
+      z = s32[] constant(0)
+      r = (s32[2,2]{0,1}, s32[2,2]{0,1}) reduce(c0, c1, z, z), dimensions={0}, to_apply=add2
+      g0 = s32[2,2]{0,1} get-tuple-element(r), index=0
+      g1 = s32[2,2]{0,1} get-tuple-element(r), index=1
+      p0 = s32[2,2]{0,1} parameter(0)
+      a = s32[2,2]{0,1} add(g0, p0)
+      ROOT out = s32[2,2]{0,1} add(a, g1)
+    })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
+  HloConstantFolding constant_folding(LateFoldingOptions());
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&constant_folding, module.get()));
+  EXPECT_TRUE(result);
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root, op::Add(op::Add(op::Constant(), op::Parameter(0)), op::Constant()));
+  const HloInstruction* leaf0 = root->operand(0)->operand(0);
+  const HloInstruction* leaf1 = root->operand(1);
+  for (const HloInstruction* leaf : {leaf0, leaf1}) {
+    EXPECT_TRUE(LayoutUtil::Equal(leaf->shape().layout(),
+                                  LayoutUtil::MakeLayout({0, 1})));
+  }
+  EXPECT_EQ(leaf0->literal().Get<int32_t>({0, 0}), 6);
+  EXPECT_EQ(leaf0->literal().Get<int32_t>({1, 1}), 12);
+  EXPECT_EQ(leaf1->literal().Get<int32_t>({0, 0}), 60);
+  EXPECT_EQ(leaf1->literal().Get<int32_t>({1, 1}), 120);
+}
+
+// Rewriting a get-tuple-element that carries a control dependency to a
+// constant would drop the ordering edge.
+TEST_F(HloConstantFoldingTest, LateOptionsDontFoldGteWithControlDependency) {
+  const char* const kModuleStr = R"(
+    HloModule test
+
+    unstack_comp {
+      p = u32[2]{0} parameter(0)
+      sl_hi = u32[1]{0} slice(p), slice={[1:2]}
+      sl_lo = u32[1]{0} slice(p), slice={[0:1]}
+      ROOT t = (u32[1]{0}, u32[1]{0}) tuple(sl_hi, sl_lo)
+    }
+
+    ENTRY entry {
+      p0 = u32[1]{0} parameter(0)
+      key = u32[2]{0} constant({305419896, 43981})
+      gate = u32[1]{0} add(p0, p0)
+      f = (u32[1]{0}, u32[1]{0}) fusion(key), kind=kLoop, calls=unstack_comp
+      g0 = u32[1]{0} get-tuple-element(f), index=0
+      g1 = u32[1]{0} get-tuple-element(f), index=1, control-predecessors={gate}
+      x = u32[1]{0} xor(g0, g1)
+      ROOT out = u32[1]{0} add(x, gate)
+    })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding(LateFoldingOptions());
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&constant_folding, module.get()));
+  EXPECT_FALSE(result);
+}
+
 }  // namespace
 }  // namespace xla

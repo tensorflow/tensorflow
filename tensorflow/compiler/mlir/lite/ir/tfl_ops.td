@@ -2725,9 +2725,9 @@ def TFL_NegOp: TFL_Op<"neg", [
     Computes element-wise negation of input
   }];
 
-  let arguments = (ins TFL_TensorOf<[F32, I32, I64]>:$x);
+  let arguments = (ins TFL_TensorOf<[F32, F16, I32, I64]>:$x);
 
-  let results = (outs TFL_TensorOf<[F32, I32, I64]>:$y);
+  let results = (outs TFL_TensorOf<[F32, F16, I32, I64]>:$y);
 
   let hasOptions = 0b1;
 

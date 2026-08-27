@@ -81,7 +81,7 @@ class AsyncStartThunk : public Thunk {
   std::string ToString(int indent) const override;
 
  protected:
-  absl::Status WalkNested(Walker callback) override;
+  absl::Status WalkNested(Walker pre_order, Walker post_order) override;
   absl::Status TransformNested(Transformer callback) override;
 
  private:

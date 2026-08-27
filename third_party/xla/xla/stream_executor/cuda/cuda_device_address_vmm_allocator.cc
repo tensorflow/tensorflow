@@ -25,10 +25,10 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_device_allocator.h"
@@ -57,7 +57,7 @@ CudaDeviceAddressVmmAllocator::Create(
     std::optional<int64_t> reclaim_exempt_memory_space) {
   auto allocator = absl::WrapUnique(
       new CudaDeviceAddressVmmAllocator(platform, reclaim_exempt_memory_space));
-  RETURN_IF_ERROR(PopulateDevices(allocator.get(), devices));
+  ABSL_RETURN_IF_ERROR(PopulateDevices(allocator.get(), devices));
   return allocator;
 }
 
@@ -107,10 +107,10 @@ absl::Status CudaDeviceAddressVmmAllocator::InitializeDeviceState(
   // Verify that the device supports 64-bit stream memory operations
   // (cuStreamWriteValue64), which requires compute capability >= 7.0.
   CUdevice cu_device;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       cuda::ToStatus(cuDeviceGet(&cu_device, ordinal), "cuDeviceGet"));
   int supported = 0;
-  RETURN_IF_ERROR(cuda::ToStatus(
+  ABSL_RETURN_IF_ERROR(cuda::ToStatus(
       cuDeviceGetAttribute(&supported,
                            CU_DEVICE_ATTRIBUTE_CAN_USE_64_BIT_STREAM_MEM_OPS,
                            cu_device),
@@ -132,7 +132,7 @@ absl::Status CudaDeviceAddressVmmAllocator::InitializeDeviceState(
   CUdeviceptr dev_ptr = 0;
   {
     std::unique_ptr<ActivateContext> activation = state.executor->Activate();
-    RETURN_IF_ERROR(cuda::ToStatus(
+    ABSL_RETURN_IF_ERROR(cuda::ToStatus(
         cuMemHostAlloc(&host_ptr, sizeof(uint64_t), CU_MEMHOSTALLOC_PORTABLE),
         "cuMemHostAlloc for timeline counter"));
     *static_cast<volatile uint64_t*>(host_ptr) = 0;
@@ -146,7 +146,7 @@ absl::Status CudaDeviceAddressVmmAllocator::InitializeDeviceState(
     }
   }
 
-  ASSIGN_OR_RETURN(CudaDeviceAllocator::Options device_allocator_options,
+  ABSL_ASSIGN_OR_RETURN(CudaDeviceAllocator::Options device_allocator_options,
                    QueryDeviceAllocatorOptions(cu_device));
   CUmemAllocationProp alloc_props =
       BuildVmmAllocationProp(cu_device, device_allocator_options);

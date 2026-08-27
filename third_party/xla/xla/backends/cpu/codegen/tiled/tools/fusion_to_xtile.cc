@@ -26,12 +26,12 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/tiled/tiled_fusion_emitter.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/tools/hlo_module_loader.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/util/command_line_flags.h"
@@ -43,13 +43,15 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
+using ::xla::xtile::BlockLevelParameters;
+
 absl::Status RealMain(absl::string_view input_file) {
-  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                    xla::LoadModuleFromFile(std::string(input_file)));
 
   const HloInstruction& fusion =
       *hlo_module->entry_computation()->root_instruction();
-  ASSIGN_OR_RETURN(auto gpu_config, fusion.backend_config<GpuBackendConfig>());
+  ABSL_ASSIGN_OR_RETURN(auto gpu_config, fusion.backend_config<GpuBackendConfig>());
   const HloFusionInstruction* fusion_instr =
       Cast<HloFusionInstruction>(&fusion);
   const FusionBackendConfig& backend_config =

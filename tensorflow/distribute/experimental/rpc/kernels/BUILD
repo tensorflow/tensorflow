@@ -34,7 +34,7 @@ cc_library(
     deps = [
         "//tensorflow/distribute/experimental/rpc/proto:tf_rpc_service_cc_grpc_proto",
         "//tensorflow/distribute/experimental/rpc/proto:tf_rpc_service_proto_cc",
-        "@com_github_grpc_grpc//:grpc++",
+        "@grpc//:grpc++",
     ],
     alwayslink = 1,
 )
@@ -43,7 +43,7 @@ cc_library(
     name = "grpc_credentials",
     hdrs = ["grpc_credentials.h"],
     deps = [
-        "@com_github_grpc_grpc//:grpc++",
+        "@grpc//:grpc++",
     ] + grpc_credentials_dependency(),
 )
 
@@ -65,24 +65,24 @@ tf_kernel_library(
         ":grpc_credentials",
         ":grpc_rpc_service",
         ":rpc_ops_metadata",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/distributed_runtime/rpc:grpc_client_cq_tag",
         "//tensorflow/core/distributed_runtime/rpc:grpc_state",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
+        "//tensorflow/core/platform:refcount",
         "//tensorflow/distribute/experimental/rpc/proto:tf_rpc_service_cc_grpc_proto",
         "//tensorflow/distribute/experimental/rpc/proto:tf_rpc_service_proto_cc",
-        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+        "@grpc//:grpc++",
     ],
     alwayslink = 1,
 )

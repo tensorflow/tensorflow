@@ -70,10 +70,15 @@ class HloDataflowAnalysis {
   //   bitcast_defines_value : If true then the Bitcast HLO instruction defines
   //     a new HLO value in the analysis. If false then Bitcast forwards the
   //     value of its operand.
+  //
+  //   propagate_through_calls : If false, kCall instructions are treated as
+  //     opaque instructions that define their own output values, and dataflow
+  //     across kCall boundaries is ignored.
   static absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> Run(
       const HloModule& module, bool ssa_form = false,
       bool bitcast_defines_value = false,
-      absl::flat_hash_set<absl::string_view> execution_threads = {});
+      absl::flat_hash_set<absl::string_view> execution_threads = {},
+      bool propagate_through_calls = true);
 
   // Returns true if 'instruction' defines an HLO value at the given shape index
   // of its output.
@@ -203,7 +208,8 @@ class HloDataflowAnalysis {
 
   HloDataflowAnalysis(const HloModule& module, bool ssa_form,
                       bool bitcast_defines_value,
-                      absl::flat_hash_set<absl::string_view> execution_threads);
+                      absl::flat_hash_set<absl::string_view> execution_threads,
+                      bool propagate_through_calls = true);
 
   // Runs dataflow analysis on the module attached to this HloDataflowAnalysis.
   absl::Status RunImpl();
@@ -318,6 +324,7 @@ class HloDataflowAnalysis {
   const absl::flat_hash_set<absl::string_view> execution_threads_;
   const bool ssa_form_;
   const bool bitcast_defines_value_;
+  bool propagate_through_calls_ = true;
 
   std::unique_ptr<CallGraph> call_graph_;
 

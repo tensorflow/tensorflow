@@ -326,7 +326,43 @@ bool IsTritonSupportedElementwise(HloOpcode opcode, PrimitiveType element_type,
 CodegenDecision IsTritonSupportedInstructionImpl(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version);
 
-// Filters Reduces which can be handled using Triton.
+CodegenDecision CanTritonHandleScan(
+    const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
+  const HloScanInstruction& scan = *Cast<HloScanInstruction>(&instr);
+
+  if (!scan.shape().IsTuple()) {
+    return CodegenDecision::Forbid("Scan must return a tuple.");
+  }
+  if (scan.is_reverse()) {
+    return CodegenDecision::Forbid("Reverse scan is not supported in Triton.");
+  }
+  if (scan.inputs().size() != 1 || scan.num_carries() != 1) {
+    return CodegenDecision::Forbid(
+        "Only single-input, single-carry scans are supported in Triton.");
+  }
+
+  if (!IsTritonSupportedComputation(*scan.to_apply(), gpu_version)) {
+    return CodegenDecision::Forbid("Unsupported scan computation by Triton.");
+  }
+
+  if (scan.is_associative() != TRI_STATE_TRUE) {
+    return CodegenDecision::Forbid(
+        "Triton requires the scan combiner to be associative.");
+  }
+
+  switch (scan.shape().tuple_shapes(0).element_type()) {
+    case PrimitiveType::F8E4M3FN:
+    case PrimitiveType::F8E5M2:
+    case PrimitiveType::F8E5M2FNUZ:
+    case PrimitiveType::F8E4M3FNUZ:
+      // ScanOpConversion::emitFastScan doesn't support F8 types.
+      return CodegenDecision::Forbid("fp8 are not supported for scans.");
+    default:
+      break;
+  }
+  return CodegenDecision::Allow();
+}
+
 CodegenDecision CanTritonHandleReduce(
     const HloReduceInstruction& reduce,
     const se::GpuComputeCapability& gpu_version) {
@@ -350,11 +386,29 @@ CodegenDecision CanTritonHandleReduce(
         "Unsupported reduction computation by Triton.");
   }
 
-  if (reduce.dimensions().size() == 1 && reduce.operand_count() == 2) {
-    return CodegenDecision::Allow();
+  bool tiling_propagation_enabled =
+      reduce.GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_experimental_enable_tiling_propagation();
+
+  if (reduce.operand_count() != 2) {
+    return CodegenDecision::Forbid(
+        "Reduction is not a reduction of a single operand.");
   }
-  return CodegenDecision::Forbid(
-      "Reduction is not a row-reduction of a single operand.");
+
+  if (reduce.dimensions().empty()) {
+    return CodegenDecision::Forbid(
+        "Reduction must have at least one dimension.");
+  }
+
+  if (reduce.dimensions().size() > 1 && !tiling_propagation_enabled) {
+    return CodegenDecision::Forbid(
+        "Multi-dimension reductions are only supported when experimental "
+        "tiling propagation is enabled.");
+  }
+
+  return CodegenDecision::Allow();
 }
 
 CodegenDecision IsTritonSupportedAllReduce(
@@ -383,14 +437,6 @@ CodegenDecision IsTritonSupportedAllReduce(
   }
 
   return CodegenDecision::Allow();
-}
-
-bool IsInTritonNestedGemmFusion(const HloInstruction& hlo) {
-  if (!hlo.parent()->IsFusionComputation()) {
-    return false;
-  }
-  return IsGpuFusionKind(*hlo.parent()->FusionInstruction(),
-                         kTritonNestedGemmFusionKind);
 }
 
 absl::Status CheckSupportedCheckDotDimensions(const HloDotInstruction& dot) {
@@ -705,8 +751,20 @@ CodegenDecision IsTritonSupportedInstructionImpl(
       break;
   }
 
-  auto type = instr.shape().element_type();
-  auto output_type_is_supported = IsTritonSupportedDataType(type, gpu_version);
+  CodegenDecision output_type_is_supported = CodegenDecision::Allow();
+  if (instr.shape().IsTuple()) {
+    for (const auto& shape : instr.shape().tuple_shapes()) {
+      if (shape.IsTuple() || shape.IsToken()) {
+        return CodegenDecision::Forbid(
+            "Nested tuple or token shape is not supported.");
+      }
+      output_type_is_supported = output_type_is_supported.And(
+          IsTritonSupportedDataType(shape.element_type(), gpu_version));
+    }
+  } else {
+    output_type_is_supported =
+        IsTritonSupportedDataType(instr.shape().element_type(), gpu_version);
+  }
 
   if (!output_type_is_supported) {
     return CodegenDecision::Forbid(absl::StrCat(
@@ -750,7 +808,7 @@ CodegenDecision IsTritonSupportedInstructionImpl(
   // Const is technically an elementwise op, so this check must be before the
   // elementwise check.
   if (instr.opcode() == HloOpcode::kConstant) {
-    if (type == PrimitiveType::S4) {
+    if (instr.shape().element_type() == PrimitiveType::S4) {
       return CodegenDecision::Forbid("S4 is not supported.");
     }
     return CodegenDecision(ShapeUtil::IsEffectiveScalar(instr.shape()),
@@ -771,6 +829,8 @@ CodegenDecision IsTritonSupportedInstructionImpl(
   }
 
   switch (instr.opcode()) {
+    case HloOpcode::kScan:
+      return CanTritonHandleScan(instr, gpu_version);
     case HloOpcode::kReduce: {
       return CanTritonHandleReduce(*Cast<HloReduceInstruction>(&instr),
                                    gpu_version);
@@ -862,7 +922,6 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
     case HloOpcode::kMulhi:
     case HloOpcode::kRaggedDot:
     case HloOpcode::kReduceWindow:
-    case HloOpcode::kScan:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSetDimensionSize:
@@ -919,6 +978,13 @@ CodegenDecision IsTritonSupportedComputation(
       // supported for fusion roots.
       continue;
     }
+    if (instruction->opcode() == HloOpcode::kGetTupleElement &&
+        instruction->operand(0)->opcode() == HloOpcode::kScan &&
+        instruction->tuple_index() == 0) {
+      // While GetTupleElement is not generally supported by Triton codegen, it
+      // is supported for scan results.
+      continue;
+    }
     if (CodegenDecision can_codegen =
             IsTritonSupportedInstruction(*instruction, gpu_compute_capability);
         !can_codegen) {
@@ -933,9 +999,7 @@ bool IsTritonFusedComputation(const HloComputation& computation) {
       static_cast<HloFusionInstruction*>(computation.FusionInstruction());
   return fusion != nullptr &&
          fusion->fusion_kind() == HloInstruction::FusionKind::kCustom &&
-         fusion->backend_config<gpu::GpuBackendConfig>()
-                 ->fusion_backend_config()
-                 .kind() == kTritonGemmFusionKind;
+         IsGpuFusionKind(*fusion, kTritonGemmFusionKind);
 }
 
 bool IsTritonGemm(const HloInstruction& instr) {

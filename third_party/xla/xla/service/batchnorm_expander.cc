@@ -25,10 +25,10 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -38,7 +38,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -180,11 +180,11 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormTraining(
   const Shape feature_shape = scale->shape();
 
   auto zero_literal = LiteralUtil::CreateR0(0.0f);
-  ASSIGN_OR_RETURN(zero_literal, zero_literal.Convert(ptype));
+  ABSL_ASSIGN_OR_RETURN(zero_literal, zero_literal.Convert(ptype));
   auto zero = add(HloInstruction::CreateConstant(std::move(zero_literal)));
 
   auto epsilon_literal = LiteralUtil::CreateR0(batch_norm->epsilon());
-  ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
+  ABSL_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
   Shape scalar_broadcast_shape = ShapeUtil::MakeStaticShape(operand_shape);
   auto epsilon = add(HloInstruction::CreateBroadcast(
       scalar_broadcast_shape,
@@ -217,34 +217,32 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormTraining(
   HloComputation* add_reduce_computation =
       GetOrCreateScalarAddComputation(ptype);
 
-  // X^2.
-  auto operand_squared =
-      add_binary(operand_shape, HloOpcode::kMultiply, operand, operand);
   // Sum[X].
   auto sum = add(HloInstruction::CreateReduce(feature_shape, operand, zero,
                                               dimensions_without_feature,
                                               add_reduce_computation));
-
-  // Sum[X^2].
-  auto squared_sum = add(HloInstruction::CreateReduce(
-      feature_shape, operand_squared, zero, dimensions_without_feature,
-      add_reduce_computation));
 
   // E[X].
   auto mean = add(Mean(elements_per_feature, sum, add));
 
   auto mean_broadcasted = feature_broadcast(mean);
 
-  // E[X^2].
-  auto square_mean = add(Mean(elements_per_feature, squared_sum, add));
+  // X - E[X].
+  auto operand_minus_mean = add_binary(operand_shape, HloOpcode::kSubtract,
+                                       operand, mean_broadcasted);
 
-  // E^2[X].
-  auto mean_square =
-      add_binary(feature_shape, HloOpcode::kMultiply, mean, mean);
+  // (X - E[X])^2.
+  auto operand_minus_mean_squared =
+      add_binary(operand_shape, HloOpcode::kMultiply, operand_minus_mean,
+                 operand_minus_mean);
 
-  // Var[X].
-  auto var =
-      add_binary(feature_shape, HloOpcode::kSubtract, square_mean, mean_square);
+  // Sum[(X - E[X])^2].
+  auto squared_diff_sum = add(HloInstruction::CreateReduce(
+      feature_shape, operand_minus_mean_squared, zero,
+      dimensions_without_feature, add_reduce_computation));
+
+  // Var[X] = E[(X - E[X])^2].
+  auto var = add(Mean(elements_per_feature, squared_diff_sum, add));
 
   auto var_broadcasted = feature_broadcast(var);
 
@@ -254,10 +252,6 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormTraining(
 
   // 1 / Sqrt[Var[X] + epsilon].
   auto rsqrt_var_add_epsilon = add(Rsqrt(var_add_epsilon));
-
-  // X - E[X].
-  auto operand_minus_mean = add_binary(operand_shape, HloOpcode::kSubtract,
-                                       operand, mean_broadcasted);
 
   // (X - E[X]) / Sqrt[Var[X] + epsilon].
   auto normalized = add_binary(operand_shape, HloOpcode::kMultiply,
@@ -340,7 +334,7 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormInference(
   };
 
   auto epsilon_literal = LiteralUtil::CreateR0(batch_norm->epsilon());
-  ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
+  ABSL_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
   auto epsilon = add(HloInstruction::CreateBroadcast(
       scalar_broadcast_shape,
       add(HloInstruction::CreateConstant(std::move(epsilon_literal))), {}));
@@ -434,11 +428,11 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormGrad(
       add(DynamicElementCountPerFeature(activation, feature_index, add));
 
   auto zero_literal = LiteralUtil::CreateR0(0.0f);
-  ASSIGN_OR_RETURN(zero_literal, zero_literal.Convert(ptype));
+  ABSL_ASSIGN_OR_RETURN(zero_literal, zero_literal.Convert(ptype));
   auto zero = add(HloInstruction::CreateConstant(std::move(zero_literal)));
 
   auto epsilon_literal = LiteralUtil::CreateR0(batch_norm->epsilon());
-  ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
+  ABSL_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
   auto epsilon_scalar =
       add(HloInstruction::CreateConstant(std::move(epsilon_literal)));
   auto epsilon_activation = add(HloInstruction::CreateBroadcast(

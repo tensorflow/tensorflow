@@ -18,6 +18,7 @@ limitations under the License.
 #include <cassert>
 
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
+#include "xla/stream_executor/sycl/oneapi_compute_capability.h"
 
 namespace xla::gpu {
 
@@ -48,6 +50,7 @@ void CreateTritonXlaPipeline(
   pm->addPass(mlir::triton::xla::createTritonXLAFoldReshapeAroundForLoopPass());
 
   pm->addPass(emitters::createSafeIntegerArithmeticPass());
+  pm->addNestedPass<mlir::func::FuncOp>(emitters::createSimplifyArithPass());
   pm->addPass(mlir::triton::xla::createUnsupportedElementwiseToTritonPass());
 
   auto* cuda_cc = gpu_cc.cuda_compute_capability();
@@ -101,12 +104,21 @@ void CreateTritonRocmPipeline(
     const stream_executor::RocmComputeCapability& rocm_cc, int num_warps,
     int num_ctas, int num_stages);
 
+void CreateTritonOneAPIPipeline(
+    mlir::OpPassManager* pm,
+    const stream_executor::OneAPIComputeCapability& oneapi_cc, int num_warps,
+    int num_ctas, int num_stages);
+
 void CreateTritonPipeline(mlir::OpPassManager* pm,
                           const stream_executor::GpuComputeCapability& gpu_cc,
                           int num_warps, int num_ctas, int num_stages) {
   if (auto* cuda_cc = gpu_cc.cuda_compute_capability()) {
     return CreateTritonCudaPipeline(pm, *cuda_cc, num_warps, num_ctas,
                                     num_stages);
+  }
+  if (auto* oneapi_cc = gpu_cc.oneapi_compute_capability()) {
+    return CreateTritonOneAPIPipeline(pm, *oneapi_cc, num_warps, num_ctas,
+                                      num_stages);
   }
 
   CreateTritonRocmPipeline(pm, *gpu_cc.rocm_compute_capability(), num_warps,

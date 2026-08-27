@@ -22,9 +22,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "riegeli/base/maker.h"
 #include "riegeli/bytes/reader.h"
 #include "riegeli/bytes/std_io.h"
@@ -139,7 +139,7 @@ absl::Status RunMain(int argc, char** argv) {
     reader = CreateRiegeliFileReader(argv[2]);
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         reader->status(), absl::StrCat("Failed to open input file: ", argv[2]));
-    RETURN_IF_ERROR(reader->status());
+    ABSL_RETURN_IF_ERROR(reader->status());
   }
 
   std::unique_ptr<riegeli::Writer> writer;
@@ -172,22 +172,22 @@ absl::Status RunMain(int argc, char** argv) {
           "Flag --proto_type is required for pack subcommand.");
     }
 
-    RETURN_IF_ERROR(parse_format(input_format_str, &options.input_format));
+    ABSL_RETURN_IF_ERROR(parse_format(input_format_str, &options.input_format));
 
     status = Pack(std::move(reader), std::move(writer), options);
   } else if (subcommand == "unpack") {
     UnpackOptions options;
-    RETURN_IF_ERROR(parse_format(output_format_str, &options.output_format));
+    ABSL_RETURN_IF_ERROR(parse_format(output_format_str, &options.output_format));
 
     status = Unpack(std::move(reader), std::move(writer), options);
   } else if (subcommand == "pack-aot") {
     PackOptions options;
-    RETURN_IF_ERROR(parse_format(input_format_str, &options.input_format));
+    ABSL_RETURN_IF_ERROR(parse_format(input_format_str, &options.input_format));
 
     status = PackAot(std::move(reader), std::move(writer), options);
   } else if (subcommand == "unpack-aot") {
     UnpackOptions options;
-    RETURN_IF_ERROR(parse_format(output_format_str, &options.output_format));
+    ABSL_RETURN_IF_ERROR(parse_format(output_format_str, &options.output_format));
 
     status = UnpackAot(std::move(reader), std::move(writer), options);
   } else if (subcommand == "aot-info") {

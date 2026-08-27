@@ -19,13 +19,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/clock.h"
+#include "xla/autotune_cache.pb.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
-#include "xla/backends/autotuner/autotuning.pb.h"
 #include "xla/tsl/platform/env.h"
 #include "tsl/platform/path.h"
 
@@ -53,12 +54,12 @@ absl::StatusOr<std::vector<autotuner::AutotuneEntry>> DirectoryStore::Read(
   }
 
   std::string content;
-  RETURN_IF_ERROR(tsl::ReadFileToString(env, path, &content));
+  ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(env, path, &content));
 
   autotuner::AutotuneEntry entry;
   if (!entry.ParseFromString(content)) {
-    return absl::InternalError(
-        absl::StrCat("Failed to parse cache entry from file: ", path));
+    LOG(WARNING) << "Failed to parse cache entry from file: " << path;
+    return std::vector<autotuner::AutotuneEntry>{};
   }
 
   return std::vector<autotuner::AutotuneEntry>{entry};
@@ -73,7 +74,7 @@ absl::Status DirectoryStore::Write(const autotuner::AutotuneEntry& entry) {
   tsl::Env* env = tsl::Env::Default();
 
   std::string dir(tsl::io::Dirname(path));
-  RETURN_IF_ERROR(env->RecursivelyCreateDir(dir));
+  ABSL_RETURN_IF_ERROR(env->RecursivelyCreateDir(dir));
 
   std::string content;
   if (!entry.SerializeToString(&content)) {
@@ -82,13 +83,23 @@ absl::Status DirectoryStore::Write(const autotuner::AutotuneEntry& entry) {
 
   // Rename trick: Write to a temporary file, then rename it to the final file
   // to avoid mingled files when multiple threads are writing to the same file.
-  std::string tmp_dir = tsl::io::JoinPath(directory_path_, "tmp");
-  RETURN_IF_ERROR(env->RecursivelyCreateDir(tmp_dir));
   std::string tmp_path = tsl::io::JoinPath(
-      tmp_dir, absl::StrCat("tmp_", absl::GetCurrentTimeNanos()));
+      dir, absl::StrCat(".tmp_", entry.key().target().hlo_fingerprint(), "_",
+                        env->GetProcessId(), "_", absl::GetCurrentTimeNanos()));
 
-  RETURN_IF_ERROR(tsl::WriteStringToFile(env, tmp_path, content));
-  return env->RenameFile(tmp_path, path);
+  absl::Status status = tsl::WriteStringToFile(env, tmp_path, content);
+  if (!status.ok()) {
+    env->DeleteFile(tmp_path).IgnoreError();
+    return status;
+  }
+
+  status = env->RenameFile(tmp_path, path);
+  if (!status.ok()) {
+    env->DeleteFile(tmp_path).IgnoreError();
+    return status;
+  }
+
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::vector<autotuner::AutotuneEntry>>

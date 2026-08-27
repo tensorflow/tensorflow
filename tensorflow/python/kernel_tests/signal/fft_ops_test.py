@@ -498,6 +498,31 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
           feed_dict=feed_dict,
       )
 
+  def testIRFFTZeroOrNegativeLengthRaisesError(self):
+    x = array_ops.ones([1], dtype=dtypes.complex64)
+    with self.assertRaisesRegex(ValueError, r"fft_length\[-1\] must be > 0"):
+      fft_ops.irfft(x)
+
+    x = array_ops.ones([5], dtype=dtypes.complex64)
+    with self.assertRaisesRegex(ValueError, r"fft_length\[-1\] must be > 0"):
+      fft_ops.irfft(x, fft_length=[0])
+    with self.assertRaisesRegex(ValueError, r"fft_length\[-1\] must be > 0"):
+      fft_ops.irfft(x, fft_length=[-5])
+
+  def testIRFFTNDZeroOrNegativeLengthRaisesError(self):
+    x = array_ops.ones([5, 5], dtype=dtypes.complex64)
+    with self.assertRaisesRegex(ValueError, r"fft_length\[-1\] must be > 0"):
+      fft_ops.irfftnd(x, fft_length=[5, 0])
+    with self.assertRaisesRegex(ValueError, r"fft_length\[-1\] must be > 0"):
+      fft_ops.irfftnd(x, fft_length=[5, -3])
+
+  def testIRFFTWrongLengthRaisesBeforeNegativeLastLength(self):
+    x = array_ops.ones([5, 5], dtype=dtypes.complex64)
+    with self.assertRaisesRegex(ValueError, "Dimension must be 1 but is 2"):
+      fft_ops.irfft(x, fft_length=[-5, -5])
+    with self.assertRaisesRegex(ValueError, "Dimension must be 2 but is 1"):
+      fft_ops.irfftnd(x, fft_length=[-5])
+
   def _np_fftn(self, x, fft_length=None, axes=None, norm=None):
     return np.fft.rfftn(x, s=fft_length, axes=axes, norm=norm)
 

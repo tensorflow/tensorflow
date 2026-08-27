@@ -18,15 +18,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
 absl::StatusOr<std::string> GetRegisteredPluginName() {
-  ASSIGN_OR_RETURN(std::vector<std::string> pjrt_apis,
+  ABSL_ASSIGN_OR_RETURN(std::vector<std::string> pjrt_apis,
                    pjrt::GetRegisteredPjrtApis());
   if (pjrt_apis.size() != 1) {
     return absl::InvalidArgumentError(

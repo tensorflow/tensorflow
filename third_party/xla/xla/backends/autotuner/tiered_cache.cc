@@ -25,16 +25,15 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "xla/autotune_cache.pb.h"
 #include "xla/backends/autotuner/autotune_cache_store.h"
 #include "xla/backends/autotuner/autotune_fingerprint.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
-#include "xla/backends/autotuner/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_module_config.h"
@@ -44,11 +43,6 @@ limitations under the License.
 namespace xla {
 
 namespace {
-
-std::string ToString(tsl::Fprint128 fingerprint) {
-  return absl::StrCat(absl::Hex(fingerprint.high64, absl::kZeroPad16),
-                      absl::Hex(fingerprint.low64, absl::kZeroPad16));
-}
 
 // TODO(b/444398084): Use codegen options fingerprint when strict matching
 // is enabled. Ignoring it for now since the always changing debug options
@@ -96,7 +90,8 @@ autotuner::AutotuneTargetKey TieredCache::BuildTargetKey(
   autotuner::AutotuneTargetKey target_key;
   target_key.set_device(context_.device());
   target_key.set_explicit_version(context_.explicit_version());
-  target_key.set_hlo_fingerprint(ToString(GetHloFingerprint(instr)));
+  target_key.set_hlo_fingerprint(
+      xla::AutotuneFingerprintToString(GetHloFingerprint(instr)));
   return target_key;
 }
 
@@ -162,6 +157,7 @@ absl::Status TieredCache::MaybeWriteToStore(
       return store.Write(entry);
     }
     case CacheMode::kReadWrite:
+    case CacheMode::kWriteOnly:
       return store.Write(entry);
   }
   return absl::OkStatus();
@@ -191,7 +187,8 @@ std::optional<AutotunerCacheInterface::Config> TieredCache::Lookup(
                  << primary_entries.status();
   }
 
-  if (secondary_ == nullptr || !primary_entries.ok()) {
+  if (secondary_ == nullptr || !primary_entries.ok() ||
+      secondary_->GetMode() == CacheMode::kWriteOnly) {
     absl::MutexLock lock(stats_mutex_);
     stats_.misses++;
     return std::nullopt;
@@ -244,7 +241,7 @@ absl::StatusOr<std::string> TieredCache::Serialize(
   cache.set_explicit_version_scope(context_.explicit_version());
 
   if (instructions_to_serialize.empty()) {
-    ASSIGN_OR_RETURN(std::vector<autotuner::AutotuneEntry> all,
+    ABSL_ASSIGN_OR_RETURN(std::vector<autotuner::AutotuneEntry> all,
                      primary_->ReadAll());
     for (autotuner::AutotuneEntry& entry : all) {
       *cache.add_entries() = std::move(entry);
@@ -275,7 +272,7 @@ absl::Status TieredCache::Deserialize(absl::string_view serialized_cache) {
   }
   // Populate every tier so that subsequent lookups hit the hottest tier.
   for (const autotuner::AutotuneEntry& entry : cache.entries()) {
-    RETURN_IF_ERROR(primary_->Write(entry));
+    ABSL_RETURN_IF_ERROR(primary_->Write(entry));
   }
   return absl::OkStatus();
 }

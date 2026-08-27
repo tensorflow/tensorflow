@@ -60,9 +60,11 @@ namespace xla {
 class WhileLoopAllReduceCodeMotion : public HloModulePass {
  public:
   explicit WhileLoopAllReduceCodeMotion(bool enable_reduce_scatter = false,
-                                        bool run_setup_passes = false)
+                                        bool run_setup_passes = false,
+                                        bool require_flat_control_flow = false)
       : enable_reduce_scatter_(enable_reduce_scatter),
-        run_setup_passes_(run_setup_passes) {}
+        run_setup_passes_(run_setup_passes),
+        require_flat_control_flow_(require_flat_control_flow) {}
   ~WhileLoopAllReduceCodeMotion() override = default;
 
   static constexpr absl::string_view kName =
@@ -80,6 +82,9 @@ class WhileLoopAllReduceCodeMotion : public HloModulePass {
   // Whether to run passes that may setup the add(all-reduce/reduce-scatter,
   // accumulation_buffer) pattern.
   const bool run_setup_passes_;
+
+  // Whether to check and require that the call graph for control flow is flat.
+  const bool require_flat_control_flow_;
 };
 }  // namespace xla
 

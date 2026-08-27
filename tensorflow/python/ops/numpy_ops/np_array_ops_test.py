@@ -29,6 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
@@ -378,6 +379,20 @@ class ArrayCreationTest(test.TestCase):
       self.match(
           np_array_ops.ascontiguousarray(a, dtype=dtype),
           np.ascontiguousarray(a, dtype=dtype))
+
+  def testARangeFloatStep(self):
+    for args, kwargs in [
+        ((0.0, 1.0), dict(step=0.3)),
+        ((0.0, 5.0), dict(step=1.5)),
+        ((2.0, -3.0), dict(step=-0.75)),
+    ]:
+      self.assertAllEqual(
+          np_array_ops.arange(*args, **kwargs), np.arange(*args, **kwargs)
+      )
+    self.assertAllEqual(
+        np_array_ops.arange(2.0, -3.0, step=-0.75, dtype=np.float32),
+        np.arange(2.0, -3.0, step=-0.75, dtype=np.float32),
+    )
 
   def testARange(self):
     int_values = np.arange(-3, 3).tolist()
@@ -855,6 +870,11 @@ class ArrayMethodsTest(test.TestCase):
     run_test([[1, 2], [3, 4]], axis=-1)
     run_test([[1, 2], [3, 4]], axis=-2)
     run_test([[1, 2], [3, 4]], axis=(0, 1))
+    run_test([1.0, 2.0, 3.0], ddof=1)
+    run_test([1.0, 2.0, 3.0], ddof=1, dtype=np.float64)
+    run_test([[1.0, 2.0], [3.0, 4.0]], axis=-1, ddof=1, keepdims=True)
+    run_test([1.0j, 2.0, 3.0j], ddof=1)
+    run_test([[1.0j, 2.0], [3.0j, 4.0]], axis=0, ddof=1)
     run_test(np.arange(8).reshape((2, 2, 2)).tolist(), axis=(0, 2))
     run_test(
         np.arange(8).reshape((2, 2, 2)).tolist(), axis=(0, 2), keepdims=True)
@@ -1170,6 +1190,43 @@ class ArrayMethodsTest(test.TestCase):
     out = np_array_ops.take_along_axis(x, ind, axis=1)
     self.assertAllEqual(out, out_expected)
 
+  def testTakeAlongAxisJitCompile(self):
+    # Regression test for GitHub issue 62391: the axis-swapping branch was
+    # emitted as a real conditional whose branches have different shapes, so
+    # the result shape XLA computed disagreed with the shape set on the
+    # result and a following op saw the wrong dimension.
+    x = constant_op.constant(
+        np.random.default_rng(1).standard_normal((5, 3, 2)), dtypes.float32
+    )
+    ind = constant_op.constant([[[-1]]], dtype=dtypes.int32)
+
+    def f(x, ind):
+      taken = np_array_ops.take_along_axis(x, ind, axis=-2)
+      return array_ops.squeeze(taken, axis=-2)
+
+    expected = f(x, ind)
+    self.assertAllEqual((5, 2), expected.shape)
+    actual = def_function.function(f, jit_compile=True)(x, ind)
+    self.assertAllEqual((5, 2), actual.shape)
+    self.assertAllClose(expected, actual)
+
+  def testTakeAlongAxisUnknownRank(self):
+    # The tensor predicate is still used when the rank is not known
+    # statically.
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(None, dtypes.float32),
+            tensor_spec.TensorSpec(None, dtypes.int32),
+        ]
+    )
+    def f(x, ind):
+      return np_array_ops.take_along_axis(x, ind, axis=1)
+
+    rng = np.random.default_rng(2)
+    x = rng.standard_normal((4, 6)).astype(np.float32)
+    ind = rng.integers(0, 6, (4, 3)).astype(np.int32)
+    self.assertAllClose(np.take_along_axis(x, ind, axis=1), f(x, ind))
+
   def testWhere(self):
     self.assertAllEqual([[1.0, 1.0], [1.0, 1.0]],
                         np_array_ops.where([True], [1.0, 1.0],
@@ -1256,6 +1313,31 @@ class ArrayMethodsTest(test.TestCase):
     _test(a, tuple(range(6)), tuple(range(6)))
     _test(a, tuple(range(6)), tuple(reversed(range(6))))
     _test(a, (), ())
+
+  def testFlip(self):
+    np.random.seed(0)
+    random_seed.set_seed(0)
+
+    def _test(*args, **kwargs):
+      expected = np.flip(*args, **kwargs)
+      raw_ans = np_array_ops.flip(*args, **kwargs)
+
+      self.assertAllEqual(expected, raw_ans)
+
+    a = np.random.rand(2, 3, 4)
+
+    # No axis reverses every dimension.
+    _test(a)
+    # A single axis, including negative values.
+    _test(a, axis=0)
+    _test(a, axis=2)
+    _test(a, axis=-1)
+    # A tuple, list or range of axes, including negative values.
+    _test(a, axis=(0, 1))
+    _test(a, axis=(-1, -3))
+    _test(a, axis=[0, 2])
+    _test(a, axis=(0, 1, 2))
+    _test(a, axis=range(3))
 
   def testNdim(self):
     self.assertAllEqual(0, np_array_ops.ndim(0.5))

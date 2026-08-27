@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
 #include "tensorflow/core/tfrt/common/global_state.h"
 #include "tensorflow/core/tfrt/common/pjrt_state.h"
@@ -85,6 +86,7 @@ absl::Status ResetPjRtClient(const DeviceType& device_type) {
   PjRtState* pjrt_state;
   TF_RETURN_IF_ERROR(rmgr->Lookup(rmgr->default_container(),
                                   kPjRtStateResourceName, &pjrt_state));
+  core::ScopedUnref pjrt_state_ref(pjrt_state);
   TF_RETURN_IF_ERROR(pjrt_state->MovePjRtClientToUnused(device_type));
   return absl::OkStatus();
 }

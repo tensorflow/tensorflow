@@ -31,7 +31,6 @@
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "google/protobuf/repeated_field.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
@@ -40,6 +39,7 @@
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/remap_plan.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/tuple.h"
@@ -56,7 +56,7 @@ namespace ifrt {
 namespace proxy {
 
 // Implementation of the xla::ifrt::Array interface.
-class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
+class Array final : public RTTIExtends<Array, xla::ifrt::Array> {
  public:
   // `Array::MakeArrayFromHostBuffer()` implements
   // `Client::MakeArrayFromHostBuffer()`.

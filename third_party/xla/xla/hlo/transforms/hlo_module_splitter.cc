@@ -22,10 +22,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -132,7 +132,7 @@ absl::StatusOr<bool> HloModuleSplitter::RunImpl(
         // Replace call with custom-call.
         std::vector<HloInstruction*> operands;
         for (HloInstruction* operand : inst->operands()) {
-          ASSIGN_OR_RETURN(HloInstruction * copy,
+          ABSL_ASSIGN_OR_RETURN(HloInstruction * copy,
                            CreateBoundaryCopy(comp, operand));
           operands.push_back(copy);
         }
@@ -149,7 +149,7 @@ absl::StatusOr<bool> HloModuleSplitter::RunImpl(
         }
         custom_call->set_frontend_attributes(inst->frontend_attributes());
 
-        RETURN_IF_ERROR(comp->ReplaceInstruction(inst, custom_call));
+        ABSL_RETURN_IF_ERROR(comp->ReplaceInstruction(inst, custom_call));
         changed = true;
       }
       }

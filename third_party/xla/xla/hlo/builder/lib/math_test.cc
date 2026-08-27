@@ -50,7 +50,7 @@ namespace {
 constexpr ErrorSpec kErrorSpec{0.0001};
 
 using MathTest =
-    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
+    ClientLibraryTestRunnerMixin<HloInterpreterReferenceMixin<HloTestBase>>;
 
 // Write TYPED_TESTs within the class definition so that we don't have to litter
 // "this->" everywhere.
@@ -480,6 +480,27 @@ TEST_F(MathTest, Digamma) {
       static_cast<float>(137 / 60.0 - euler_mascheroni),
       static_cast<float>(363 / 140.0 - euler_mascheroni),
       static_cast<float>(761 / 280.0 - euler_mascheroni)};
+  ComputeAndCompareR1<float>(&builder, expected, {}, kErrorSpec);
+}
+
+TEST_F(MathTest, DigammaPoles) {
+  // digamma has a pole at zero and at every negative integer. The two one-sided
+  // limits agree at zero, so return -inf there (for -0.0 as well); at the
+  // negative integers they disagree, so return nan.
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(&builder, {0.0, -0.0, -1.0, -2.0, -10.0, -1.5});
+  Digamma(x);
+
+  constexpr double euler_mascheroni =
+      0.57721566490153286060651209008240243104215933593992;
+  std::vector<float> expected = {
+      -std::numeric_limits<float>::infinity(),
+      -std::numeric_limits<float>::infinity(),
+      std::numeric_limits<float>::quiet_NaN(),
+      std::numeric_limits<float>::quiet_NaN(),
+      std::numeric_limits<float>::quiet_NaN(),
+      // digamma(-1.5) = 2/3 + 2 - 2 * log(2) - euler_mascheroni.
+      static_cast<float>(2 / 3.0 + 2 - 2 * std::log(2) - euler_mascheroni)};
   ComputeAndCompareR1<float>(&builder, expected, {}, kErrorSpec);
 }
 

@@ -22,10 +22,10 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
@@ -79,8 +79,8 @@ absl::Status CollectiveGroupThunk::ExecuteOnStream(
           thunk->kind());
     }
 
-    ASSIGN_OR_RETURN(auto clique_key, collective_thunk->GetCliqueKey(params));
-    ASSIGN_OR_RETURN(GpuCommunicator * comm, params.collective_cliques->GetComm(
+    ABSL_ASSIGN_OR_RETURN(auto clique_key, collective_thunk->GetCliqueKey(params));
+    ABSL_ASSIGN_OR_RETURN(GpuCommunicator * comm, params.collective_cliques->GetComm(
                                                  clique_key, global_device_id));
     if (!absl::c_contains(comms, comm)) {
       comms.push_back(comm);
@@ -104,8 +104,9 @@ absl::Status CollectiveGroupThunk::ExecuteOnStream(
       comms, [&] { return executor_.ExecuteOnStream(params); });
 }
 
-absl::Status CollectiveGroupThunk::WalkNested(Walker callback) {
-  return executor_.thunks().WalkNested(callback);
+absl::Status CollectiveGroupThunk::WalkNested(Walker pre_order,
+                                              Walker post_order) {
+  return executor_.thunks().WalkNested(pre_order, post_order);
 }
 
 absl::Status CollectiveGroupThunk::TransformNested(Transformer callback) {
@@ -119,12 +120,12 @@ CollectiveGroupThunk::FromProto(
     const Deserializer& deserializer) {
   ThunkSequence thunk_sequence;
   for (const auto& sub_thunk_proto : thunk_proto.thunks()) {
-    ASSIGN_OR_RETURN(std::unique_ptr<Thunk> sub_thunk,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> sub_thunk,
                      deserializer(sub_thunk_proto));
     thunk_sequence.push_back(std::move(sub_thunk));
   }
 
-  ASSIGN_OR_RETURN(Thunk::Kind kind,
+  ABSL_ASSIGN_OR_RETURN(Thunk::Kind kind,
                    Thunk::KindFromProto(thunk_proto.thunk_kind()));
 
   return std::make_unique<CollectiveGroupThunk>(std::move(thunk_info), kind,
@@ -141,7 +142,7 @@ absl::StatusOr<ThunkProto> CollectiveGroupThunk::ToProto() const {
   thunk_proto->set_thunk_kind(Thunk::KindToProto(kind()));
 
   for (const auto& thunk : executor_.thunks()) {
-    ASSIGN_OR_RETURN(*thunk_proto->add_thunks(), thunk->ToProto());
+    ABSL_ASSIGN_OR_RETURN(*thunk_proto->add_thunks(), thunk->ToProto());
   }
 
   return proto;

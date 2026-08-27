@@ -57,7 +57,7 @@ jobs:
           {
             pool: "linux-x86-n2-16",
             container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
-            name: "XLA Linux x86 CPU Bzlmod",
+            name: "XLA Linux x86 CPU WORKSPACE",
             repo: "openxla/xla",
           },
           {
@@ -102,18 +102,6 @@ jobs:
             name: "JAX Linux x86 GPU L4",
             repo: "jax-ml/jax",
           },
-          {
-            pool: "linux-x86-n2-16",
-            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
-            name: "TensorFlow Linux x86 CPU",
-            repo: "tensorflow/tensorflow",
-          },
-          {
-            pool: "linux-x86-g2-16-l4-1gpu",
-            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
-            name: "TensorFlow Linux x86 GPU L4",
-            repo: "tensorflow/tensorflow",
-          },
         ]
     name: ${{ matrix.job_info.name }}
     runs-on: ${{ matrix.job_info.pool }}
@@ -134,6 +122,12 @@ jobs:
           repository: ${{ matrix.job_info.repo }}
           path: ${{ matrix.job_info.repo }}
           persist-credentials: false
+      - name: "Set Bazel version for JAX"
+        if: ${{ matrix.job_info.repo == 'jax-ml/jax' }}
+        shell: bash
+        run: |
+          BAZEL_VERSION=$(tr -d '\r\n' < "$GITHUB_WORKSPACE/jax-ml/jax/.bazelversion")
+          echo "USE_BAZEL_VERSION=${BAZEL_VERSION}" >> "$GITHUB_ENV"
       - name: "Wait For Connection"
         uses: google-ml-infra/actions/ci_connection@7f5ca0c263a81ed09ea276524c1b9192f1304e3c
         with:

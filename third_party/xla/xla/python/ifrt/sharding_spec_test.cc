@@ -250,6 +250,33 @@ TEST_P(ConcreteShardingSpecTest, HasSamePartitioning) {
         ConcreteShardingSpec::Create(Shape({30}), shard_shapes1);
     EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding1));
   }
+  // With index domains.
+  {
+    std::vector<IndexDomain> index_domains0 = {
+        IndexDomain(Index({0}), Shape({10})),
+        IndexDomain(Index({10}), Shape({20})),
+    };
+    ShardingSpecRef sharding_with_index_domains0 = ConcreteShardingSpec::Create(
+        Shape({30}), shard_shapes0, index_domains0);
+
+    EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding_with_index_domains0));
+    EXPECT_FALSE(sharding_with_index_domains0->HasSamePartitioning(*sharding0));
+
+    ShardingSpecRef sharding_with_index_domains1 = ConcreteShardingSpec::Create(
+        Shape({30}), shard_shapes0, index_domains0);
+    EXPECT_TRUE(sharding_with_index_domains0->HasSamePartitioning(
+        *sharding_with_index_domains1));
+
+    std::vector<IndexDomain> index_domains1 = {
+        IndexDomain(Index({5}), Shape({10})),
+        IndexDomain(Index({15}), Shape({20})),
+    };
+    ShardingSpecRef sharding_with_different_index_domains =
+        ConcreteShardingSpec::Create(Shape({30}), shard_shapes0,
+                                     index_domains1);
+    EXPECT_FALSE(sharding_with_index_domains0->HasSamePartitioning(
+        *sharding_with_different_index_domains));
+  }
 }
 
 TEST_P(ConcreteShardingSpecTest, Disassemble) {
@@ -348,8 +375,20 @@ TEST_P(ConcreteShardingSpecTest, Hash) {
   ASSERT_OK_AND_ASSIGN(
       auto dynamic_shape,
       DynamicShape::Create(Shape({30}), BoundedDynamicShapeTag({true})));
+  std::vector<IndexDomain> index_domains0 = {
+      IndexDomain(Index({0}), Shape({10})),
+      IndexDomain(Index({10}), Shape({20})),
+  };
+  std::vector<IndexDomain> index_domains1 = {
+      IndexDomain(Index({5}), Shape({10})),
+      IndexDomain(Index({15}), Shape({20})),
+  };
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
       *ConcreteShardingSpec::Create(Shape({30}), {Shape({10}), Shape({20})}),
+      *ConcreteShardingSpec::Create(Shape({30}), {Shape({10}), Shape({20})},
+                                    index_domains0),
+      *ConcreteShardingSpec::Create(Shape({30}), {Shape({10}), Shape({20})},
+                                    index_domains1),
       *ConcreteShardingSpec::Create(dynamic_shape,
                                     {dynamic_shape, dynamic_shape}),
   }));
@@ -640,6 +679,21 @@ TEST_P(ShardingParamShardingSpecTest, IndexDomainWithReplication) {
   }
 }
 
+TEST_P(ShardingParamShardingSpecTest, IndexDomainZeroRank) {
+  ShardingParam param{/*dim_shards=*/{},
+                      {/*permutation=*/{0}, /*axis_sizes=*/{6}}};
+  ShardingSpecRef param_sharding = ShardingParamShardingSpec::Create(param);
+
+  ASSERT_OK_AND_ASSIGN(auto index_domains,
+                       param_sharding->IndexDomains(Shape({})));
+  EXPECT_THAT(index_domains, ElementsAre(IndexDomain(Index({}), Shape({})),
+                                         IndexDomain(Index({}), Shape({})),
+                                         IndexDomain(Index({}), Shape({})),
+                                         IndexDomain(Index({}), Shape({})),
+                                         IndexDomain(Index({}), Shape({})),
+                                         IndexDomain(Index({}), Shape({}))));
+}
+
 TEST_P(ShardingParamShardingSpecTest, Hash) {
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
       *ShardingParamShardingSpec::Create(
@@ -656,10 +710,18 @@ TEST_P(SingleDeviceShardingSpecTest, ToSharding) {
 
   ASSERT_OK_AND_ASSIGN(ShardingRef sharding,
                        spec->ToSharding(GetDevices({0}), MemoryKind("device")));
-  EXPECT_EQ(*sharding->sharding_spec(), *spec);
+  EXPECT_EQ(sharding->sharding_spec(), spec);
 
   EXPECT_THAT(spec->ToSharding(GetDevices({0, 1}), MemoryKind("device")),
               StatusIs(absl::StatusCode::kInvalidArgument));
+
+  // Non-shared_ptr instance fallback.
+  std::unique_ptr<SingleDeviceShardingSpec> non_shared_spec =
+      SingleDeviceShardingSpec::Create();
+  ASSERT_OK_AND_ASSIGN(
+      ShardingRef non_shared_sharding,
+      non_shared_spec->ToSharding(GetDevices({0}), MemoryKind("device")));
+  EXPECT_EQ(*non_shared_sharding->sharding_spec(), *non_shared_spec);
 }
 
 TEST_P(OpaqueShardingSpecTest, ToSharding) {
@@ -668,10 +730,19 @@ TEST_P(OpaqueShardingSpecTest, ToSharding) {
   ASSERT_OK_AND_ASSIGN(
       ShardingRef sharding,
       spec->ToSharding(GetDevices({0, 1}), MemoryKind("device")));
-  EXPECT_EQ(sharding->sharding_spec()->num_shards(), spec->num_shards());
+  EXPECT_EQ(sharding->sharding_spec(), spec);
 
   EXPECT_THAT(spec->ToSharding(GetDevices({0}), MemoryKind("device")),
               StatusIs(absl::StatusCode::kInvalidArgument));
+
+  // Non-shared_ptr instance fallback.
+  std::unique_ptr<OpaqueShardingSpec> non_shared_spec =
+      OpaqueShardingSpec::Create(2);
+  ASSERT_OK_AND_ASSIGN(
+      ShardingRef non_shared_sharding,
+      non_shared_spec->ToSharding(GetDevices({0, 1}), MemoryKind("device")));
+  EXPECT_EQ(non_shared_sharding->sharding_spec()->num_shards(),
+            non_shared_spec->num_shards());
 }
 
 TEST_P(ConcreteShardingSpecTest, ToSharding) {
@@ -682,10 +753,20 @@ TEST_P(ConcreteShardingSpecTest, ToSharding) {
   ASSERT_OK_AND_ASSIGN(
       ShardingRef sharding,
       spec->ToSharding(GetDevices({0, 1, 2, 3}), MemoryKind("device")));
-  EXPECT_EQ(*sharding->sharding_spec(), *spec);
+  EXPECT_EQ(sharding->sharding_spec(), spec);
 
   EXPECT_THAT(spec->ToSharding(GetDevices({0, 1}), MemoryKind("device")),
               StatusIs(absl::StatusCode::kInvalidArgument));
+
+  // Non-shared_ptr instance fallback.
+  std::unique_ptr<ConcreteShardingSpec> non_shared_spec =
+      ConcreteShardingSpec::Create(
+          Shape({10, 20}),
+          {Shape({5, 20}), Shape({5, 20}), Shape({5, 20}), Shape({5, 20})});
+  ASSERT_OK_AND_ASSIGN(ShardingRef non_shared_sharding,
+                       non_shared_spec->ToSharding(GetDevices({0, 1, 2, 3}),
+                                                   MemoryKind("device")));
+  EXPECT_EQ(*non_shared_sharding->sharding_spec(), *non_shared_spec);
 }
 
 TEST_P(ConcreteEvenShardingSpecTest, ToSharding) {
@@ -695,10 +776,18 @@ TEST_P(ConcreteEvenShardingSpecTest, ToSharding) {
   ASSERT_OK_AND_ASSIGN(
       ShardingRef sharding,
       spec->ToSharding(GetDevices({0, 1, 2, 3}), MemoryKind("device")));
-  EXPECT_EQ(*sharding->sharding_spec(), *spec);
+  EXPECT_EQ(sharding->sharding_spec(), spec);
 
   EXPECT_THAT(spec->ToSharding(GetDevices({0, 1}), MemoryKind("device")),
               StatusIs(absl::StatusCode::kInvalidArgument));
+
+  // Non-shared_ptr instance fallback.
+  std::unique_ptr<ConcreteEvenShardingSpec> non_shared_spec =
+      ConcreteEvenShardingSpec::Create(4, Shape({10, 20}), Shape({5, 20}));
+  ASSERT_OK_AND_ASSIGN(ShardingRef non_shared_sharding,
+                       non_shared_spec->ToSharding(GetDevices({0, 1, 2, 3}),
+                                                   MemoryKind("device")));
+  EXPECT_EQ(*non_shared_sharding->sharding_spec(), *non_shared_spec);
 }
 
 TEST_P(ShardingParamShardingSpecTest, ToSharding) {
@@ -709,10 +798,19 @@ TEST_P(ShardingParamShardingSpecTest, ToSharding) {
   ASSERT_OK_AND_ASSIGN(
       ShardingRef sharding,
       spec->ToSharding(GetDevices({0, 1, 2, 3, 4, 5}), MemoryKind("device")));
-  EXPECT_EQ(*sharding->sharding_spec(), *spec);
+  EXPECT_EQ(sharding->sharding_spec(), spec);
 
   EXPECT_THAT(spec->ToSharding(GetDevices({0, 1, 2, 3}), MemoryKind("device")),
               StatusIs(absl::StatusCode::kInvalidArgument));
+
+  // Non-shared_ptr instance fallback.
+  std::unique_ptr<ShardingParamShardingSpec> non_shared_spec =
+      ShardingParamShardingSpec::Create(sharding_param);
+  ASSERT_OK_AND_ASSIGN(
+      ShardingRef non_shared_sharding,
+      non_shared_spec->ToSharding(GetDevices({0, 1, 2, 3, 4, 5}),
+                                  MemoryKind("device")));
+  EXPECT_EQ(*non_shared_sharding->sharding_spec(), *non_shared_spec);
 }
 
 INSTANTIATE_TEST_SUITE_P(NumShards, SingleDeviceShardingSpecTest,

@@ -583,7 +583,9 @@ class PackUnpackIntNTest : public testing::TestWithParam<int> {};
 
 TEST_P(PackUnpackIntNTest, RoundTrip) {
   const int bitwidth = GetParam();
-  for (int size : {7, 15, 63, 64, 127, 128, 1024}) {
+  for (int size : {0,   1,   2,   3,    5,    7,    8,    15,   16,   31,
+                   32,  63,  64,  65,   127,  128,  129,  255,  256,  257,
+                   511, 512, 513, 1023, 1024, 1025, 2048, 4096, 8192, 10000}) {
     std::vector<char> input(size);
 
     for (int i = 0; i < input.size(); ++i) {
@@ -596,6 +598,29 @@ TEST_P(PackUnpackIntNTest, RoundTrip) {
     UnpackIntN(bitwidth, packed, absl::MakeSpan(unpacked));
     for (size_t i = 0; i < input.size(); ++i) {
       EXPECT_EQ(unpacked[i], input[i])
+          << "Bitwidth: " << bitwidth << " Size: " << size << " i: " << i;
+    }
+  }
+}
+
+TEST_P(PackUnpackIntNTest, RoundTripWithDirtyHighBits) {
+  const int bitwidth = GetParam();
+  for (int size : {1, 7, 15, 33, 64, 127, 128, 256, 1024, 4096}) {
+    std::vector<char> input(size);
+    std::vector<char> expected(size);
+
+    for (int i = 0; i < input.size(); ++i) {
+      expected[i] = i & LsbMask<uint8_t>(bitwidth);
+      // Fill upper bits with garbage
+      input[i] = static_cast<char>(expected[i] | (0xF0 ^ (i * 17)));
+    }
+
+    std::vector<char> packed(CeilOfRatio<int64_t>(input.size(), 8 / bitwidth));
+    PackIntN(bitwidth, input, absl::MakeSpan(packed));
+    std::vector<char> unpacked(input.size());
+    UnpackIntN(bitwidth, packed, absl::MakeSpan(unpacked));
+    for (size_t i = 0; i < input.size(); ++i) {
+      EXPECT_EQ(unpacked[i], expected[i])
           << "Bitwidth: " << bitwidth << " Size: " << size << " i: " << i;
     }
   }

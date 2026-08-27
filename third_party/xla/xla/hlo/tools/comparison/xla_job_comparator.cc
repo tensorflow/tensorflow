@@ -58,7 +58,7 @@ XlaJobComparator::Create(
   comparators.resize(replica_count);
 
   CreationMetrics creation_metrics;
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       (auto [comparator, metrics, diff_results]),
       OriginalTensorSummaryComparator::Create(
           baseline_original_module, target_original_module,
@@ -127,7 +127,7 @@ XlaJobComparator::GetProcessingMetrics() const {
 
 absl::Status XlaJobComparator::FinishComparison() {
   for (auto& comparator : comparators_) {
-    RETURN_IF_ERROR(comparator->FinishComparison());
+    ABSL_RETURN_IF_ERROR(comparator->FinishComparison());
   }
   return absl::OkStatus();
 }

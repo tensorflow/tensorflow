@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/strings/cord.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
@@ -39,6 +38,7 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/user_context.h"
@@ -54,8 +54,7 @@ namespace ifrt {
 // and thus is not specific to any particular backend. However, it is currently
 // located in the pjrt_ifrt directory because we expect the main use of this
 // class is to implement IO Callable support in pjrt_ifrt.
-class BasicStringArray final
-    : public llvm::RTTIExtends<BasicStringArray, Array> {
+class BasicStringArray final : public RTTIExtends<BasicStringArray, Array> {
  public:
   // Must be in dense major to minor order.
   using Buffer = absl::Span<const absl::Cord>;

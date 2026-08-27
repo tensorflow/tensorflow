@@ -78,7 +78,7 @@ class OriginalTensorSummaryKeyMatcherTest : public ::testing::Test {
       absl::Span<const RecoveredTensorSummaryProto> target_summaries) {
     CHECK_OK(WriteSummaries(baseline_file_, baseline_summaries));
     CHECK_OK(WriteSummaries(target_file_, target_summaries));
-    ASSIGN_OR_RETURN(matcher_, OriginalTensorSummaryKeyMatcher::Create(
+    ABSL_ASSIGN_OR_RETURN(matcher_, OriginalTensorSummaryKeyMatcher::Create(
                                    bimap_, baseline_file_, target_file_));
     return absl::OkStatus();
   }
@@ -241,7 +241,7 @@ TEST_F(OriginalTensorSummaryKeyMatcherTest,
           bimap_,
           tsl::io::JoinPath(testing::TempDir(), "non_existent_baseline"),
           target_file_),
-      StatusIs(absl::StatusCode::kNotFound));
+      absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST_F(OriginalTensorSummaryKeyMatcherTest, CreateFailsWithNonExistentTarget) {
@@ -249,7 +249,7 @@ TEST_F(OriginalTensorSummaryKeyMatcherTest, CreateFailsWithNonExistentTarget) {
   EXPECT_THAT(OriginalTensorSummaryKeyMatcher::Create(
                   bimap_, baseline_file_,
                   tsl::io::JoinPath(testing::TempDir(), "non_existent_target")),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST_F(OriginalTensorSummaryKeyMatcherTest, CreateFailsWithInvalidBaseline) {
@@ -260,7 +260,7 @@ TEST_F(OriginalTensorSummaryKeyMatcherTest, CreateFailsWithInvalidBaseline) {
   ASSERT_OK(WriteSummaries(target_file_, {}));
   EXPECT_THAT(OriginalTensorSummaryKeyMatcher::Create(
                   bimap_, invalid_baseline_file, target_file_),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(OriginalTensorSummaryKeyMatcherTest, CreateFailsWithInvalidTarget) {
@@ -271,7 +271,7 @@ TEST_F(OriginalTensorSummaryKeyMatcherTest, CreateFailsWithInvalidTarget) {
   ASSERT_OK(WriteSummaries(baseline_file_, {}));
   EXPECT_THAT(OriginalTensorSummaryKeyMatcher::Create(bimap_, baseline_file_,
                                                       invalid_target_file),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 }  // namespace
 }  // namespace xla::numerics::comparison
