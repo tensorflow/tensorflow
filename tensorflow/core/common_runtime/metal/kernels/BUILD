@@ -116,6 +116,7 @@ objc_library(
         "metal_misc_ops.mm",
         "metal_quant_ops.mm",
         "metal_random_ops.mm",
+        "metal_search_ops.mm",
         "metal_slice_ops.mm",
         "metal_strided_ops.mm",
         "metal_training_ops.mm",
