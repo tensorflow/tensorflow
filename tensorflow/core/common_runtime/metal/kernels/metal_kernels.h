@@ -71,6 +71,9 @@ void RegisterMetalCompareKernels();
 // BatchMatMul v1 through v3.
 void RegisterMetalActivationKernels();
 
+// Slice, Pad, MirrorPad, ReverseV2, Split and SplitV over float tensors.
+void RegisterMetalSliceKernels();
+
 // Identity, which aliases its input when it can and blits when it cannot.
 void RegisterMetalIdentityKernels();
 

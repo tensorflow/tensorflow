@@ -133,6 +133,7 @@ differently rather than fail.
 | `FusedBatchNorm`, `FusedBatchNormV2`, `FusedBatchNormV3` | float32, float16 |
 | `FusedBatchNormGrad`, `FusedBatchNormGradV2`, `FusedBatchNormGradV3` | float32, float16 |
 | `Relu`, `ReluGrad`, `LeakyRelu`, `LeakyReluGrad` | float32, float16 |
+| `Relu6`, `Relu6Grad`, `Softsign`, `SoftsignGrad`, `LogSoftmax` | float32, float16 |
 | `Elu`, `EluGrad`, `Selu`, `SeluGrad`, `Softplus`, `SoftplusGrad` | float32, float16 |
 | `BatchMatMul`, `BatchMatMulV2`, `BatchMatMulV3` | float32, float16 |
 | `BiasAdd`, `BiasAddGrad` | float32, float16 |
@@ -149,6 +150,8 @@ differently rather than fail.
 | `Exp`, `Log`, `Tanh`, `Sigmoid` | float32, float16 |
 | `TanhGrad`, `SigmoidGrad`, `SqrtGrad`, `RsqrtGrad` | float32, float16 |
 | `AddN`, `Transpose`, `Concat`, `ConcatV2`, `Tile` | float32, float16 |
+| `Slice`, `Pad`, `PadV2`, `MirrorPad` | float32, float16 |
+| `ReverseV2`, `Split`, `SplitV` | float32, float16 |
 | `Equal`, `NotEqual`, `Less`, `LessEqual`, `Greater`, `GreaterEqual` | float32, float16, int32, int64 |
 | `LogicalAnd`, `LogicalOr`, `LogicalNot` | bool |
 | `Select`, `SelectV2` | float32, float16, int32, int64 |

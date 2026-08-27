@@ -78,7 +78,8 @@ void* AlphaOp_Create(TF_OpKernelConstruction* ctx) {
 void AlphaOp_Delete(void* kernel) { delete static_cast<AlphaOp*>(kernel); }
 
 enum class ActKind { kLeakyRelu, kLeakyReluGrad, kEluGrad, kSeluGrad,
-                     kSoftplusGrad };
+                     kSoftplusGrad, kRelu6, kRelu6Grad, kSoftsign,
+                     kSoftsignGrad, kLogSoftmax };
 
 const char* NameOf(ActKind k) {
   switch (k) {
@@ -87,11 +88,19 @@ const char* NameOf(ActKind k) {
     case ActKind::kEluGrad: return "EluGrad";
     case ActKind::kSeluGrad: return "SeluGrad";
     case ActKind::kSoftplusGrad: return "SoftplusGrad";
+    case ActKind::kRelu6: return "Relu6";
+    case ActKind::kRelu6Grad: return "Relu6Grad";
+    case ActKind::kSoftsign: return "Softsign";
+    case ActKind::kSoftsignGrad: return "SoftsignGrad";
+    case ActKind::kLogSoftmax: return "LogSoftmax";
   }
   return "?";
 }
 
-bool IsBinary(ActKind k) { return k != ActKind::kLeakyRelu; }
+bool IsBinary(ActKind k) {
+  return k != ActKind::kLeakyRelu && k != ActKind::kRelu6 &&
+         k != ActKind::kSoftsign && k != ActKind::kLogSoftmax;
+}
 
 MPSGraphTensor* ApplyAct(MPSGraph* g, ActKind k, MPSGraphTensor* a,
                          MPSGraphTensor* b, MPSDataType t, float alpha) {
@@ -153,6 +162,59 @@ MPSGraphTensor* ApplyAct(MPSGraph* g, ActKind k, MPSGraphTensor* a,
                                 secondaryTensor:[g sigmoidWithTensor:b
                                                                 name:nil]
                                            name:nil];
+    }
+    case ActKind::kRelu6:
+      return [g clampWithTensor:a
+                 minValueTensor:zero
+                 maxValueTensor:[g constantWithScalar:6.0 dataType:t]
+                           name:nil];
+    case ActKind::kRelu6Grad: {
+      // a = incoming gradient, b = forward input. The gradient passes only
+      // strictly inside the clamp; at either bound Relu6 is flat.
+      MPSGraphTensor* six = [g constantWithScalar:6.0 dataType:t];
+      MPSGraphTensor* lo =
+          [g greaterThanWithPrimaryTensor:b secondaryTensor:zero name:nil];
+      MPSGraphTensor* hi =
+          [g lessThanWithPrimaryTensor:b secondaryTensor:six name:nil];
+      MPSGraphTensor* inside =
+          [g logicalANDWithPrimaryTensor:lo secondaryTensor:hi name:nil];
+      return [g selectWithPredicateTensor:inside
+                      truePredicateTensor:a
+                     falsePredicateTensor:zero
+                                     name:nil];
+    }
+    case ActKind::kSoftsign: {
+      // x / (1 + |x|)
+      MPSGraphTensor* den =
+          [g additionWithPrimaryTensor:one
+                       secondaryTensor:[g absoluteWithTensor:a name:nil]
+                                  name:nil];
+      return [g divisionWithPrimaryTensor:a secondaryTensor:den name:nil];
+    }
+    case ActKind::kSoftsignGrad: {
+      // a = incoming gradient, b = forward input. d/dx = 1/(1+|x|)^2.
+      MPSGraphTensor* den =
+          [g additionWithPrimaryTensor:one
+                       secondaryTensor:[g absoluteWithTensor:b name:nil]
+                                  name:nil];
+      MPSGraphTensor* den2 = [g squareWithTensor:den name:nil];
+      return [g divisionWithPrimaryTensor:a secondaryTensor:den2 name:nil];
+    }
+    case ActKind::kLogSoftmax: {
+      // Written out rather than log(softMax(x)): a probability that underflows
+      // to zero would give -inf, which is the whole reason LogSoftmax exists
+      // as its own op.
+      MPSGraphTensor* mx = [g reductionMaximumWithTensor:a axis:-1 name:nil];
+      MPSGraphTensor* sh =
+          [g subtractionWithPrimaryTensor:a secondaryTensor:mx name:nil];
+      MPSGraphTensor* sm =
+          [g reductionSumWithTensor:[g exponentWithTensor:sh name:nil]
+                               axis:-1
+                               name:nil];
+      return [g subtractionWithPrimaryTensor:sh
+                             secondaryTensor:[g logarithmWithTensor:sm
+                                                               name:nil]
+                                        name:nil];
     }
   }
   return nil;
@@ -402,6 +464,13 @@ METAL_COMPUTE(EluGrad_Compute, AlphaOp, Act_ComputeImpl<ActKind::kEluGrad>)
 METAL_COMPUTE(SeluGrad_Compute, AlphaOp, Act_ComputeImpl<ActKind::kSeluGrad>)
 METAL_COMPUTE(SoftplusGrad_Compute, AlphaOp,
               Act_ComputeImpl<ActKind::kSoftplusGrad>)
+METAL_COMPUTE(Relu6_Compute, AlphaOp, Act_ComputeImpl<ActKind::kRelu6>)
+METAL_COMPUTE(Relu6Grad_Compute, AlphaOp, Act_ComputeImpl<ActKind::kRelu6Grad>)
+METAL_COMPUTE(Softsign_Compute, AlphaOp, Act_ComputeImpl<ActKind::kSoftsign>)
+METAL_COMPUTE(SoftsignGrad_Compute, AlphaOp,
+              Act_ComputeImpl<ActKind::kSoftsignGrad>)
+METAL_COMPUTE(LogSoftmax_Compute, AlphaOp,
+              Act_ComputeImpl<ActKind::kLogSoftmax>)
 METAL_COMPUTE(BatchMatMul_Compute, BatchMatMulOp, BatchMatMul_ComputeImpl)
 
 #undef METAL_COMPUTE
@@ -441,6 +510,11 @@ void RegisterMetalActivationKernels() {
       {"EluGrad", &EluGrad_Compute},
       {"SeluGrad", &SeluGrad_Compute},
       {"SoftplusGrad", &SoftplusGrad_Compute},
+      {"Relu6", &Relu6_Compute},
+      {"Relu6Grad", &Relu6Grad_Compute},
+      {"Softsign", &Softsign_Compute},
+      {"SoftsignGrad", &SoftsignGrad_Compute},
+      {"LogSoftmax", &LogSoftmax_Compute},
   };
 
   for (int i = 0; i < 2; ++i) {
