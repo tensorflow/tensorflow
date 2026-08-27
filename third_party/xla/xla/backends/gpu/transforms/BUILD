@@ -106,7 +106,9 @@ cc_library(
     hdrs = ["conv_canonicalizer.h"],
     deps = [
         "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "@com_google_absl//absl/container:flat_hash_set",
