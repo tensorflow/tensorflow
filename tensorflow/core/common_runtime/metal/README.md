@@ -129,6 +129,7 @@ differently rather than fail.
 | Op | dtypes |
 | --- | --- |
 | `Conv2D`, `Conv2DBackpropInput`, `Conv2DBackpropFilter` | float32, float16 |
+| `Conv` | float32, float16 |
 | `Conv3D`, `Conv3DBackpropInputV2`, `Conv3DBackpropFilterV2` | float32, float16 |
 | `Conv3DBackpropInput`, `Conv3DBackpropFilter` | float32, float16 |
 | `MaxPool`, `MaxPoolGrad`, `AvgPool`, `AvgPoolGrad` | float32, float16 |

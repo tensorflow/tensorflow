@@ -97,6 +97,7 @@ objc_library(
         "metal_batch_space_ops.mm",
         "metal_batch_norm_ops.mm",
         "metal_conv3d_ops.mm",
+        "metal_conv_generic_ops.mm",
         "metal_conv_ops.mm",
         "metal_depthwise_ops.mm",
         "metal_batch_norm_global_ops.mm",

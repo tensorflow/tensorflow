@@ -151,6 +151,9 @@ void RegisterMetalLinalgKernels();
 // Non-maximum suppression, V2 through V4.
 void RegisterMetalNmsKernels();
 
+// Conv, the rank-agnostic convolution.
+void RegisterMetalGenericConvKernels();
+
 // ExtractVolumePatches.
 void RegisterMetalVolumePatchKernels();
 
