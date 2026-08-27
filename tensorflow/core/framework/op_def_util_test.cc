@@ -68,6 +68,62 @@ void ExpectFailure(const absl::Status& status, const std::string& message) {
 }
 }  // namespace
 
+// IsValidAttrOrArgName and SanitizeToIdentifier are code-generator-facing
+// utilities, not a runtime validity constraint on OpDef registration --
+// ValidateOpDef/ValidateArg deliberately do not call them (see
+// OpDefValidAcceptsNonIdentifierNames below and the comment on
+// IsValidAttrOrArgName's definition for why).
+TEST(IsValidAttrOrArgNameTest, AcceptsSafeIdentifiers) {
+  EXPECT_TRUE(IsValidAttrOrArgName("dtype"));
+  EXPECT_TRUE(IsValidAttrOrArgName("T"));
+  EXPECT_TRUE(IsValidAttrOrArgName("num_threads_2"));
+  EXPECT_TRUE(IsValidAttrOrArgName("_internal"));
+}
+
+TEST(IsValidAttrOrArgNameTest, RejectsUnsafeNames) {
+  // The exact malicious payload from GHSA-2xp6-8g4h-qw72.
+  EXPECT_FALSE(
+      IsValidAttrOrArgName("evil\"); system(\"touch /tmp/PWNED\"); //"));
+  // A legitimate, already-registered op's argument name that is not a
+  // safe identifier for reasons unrelated to code generation.
+  EXPECT_FALSE(IsValidAttrOrArgName("raw_outputs/box_encodings"));
+  EXPECT_FALSE(IsValidAttrOrArgName("TFLite_Detection_PostProcess:1"));
+  EXPECT_FALSE(IsValidAttrOrArgName(""));
+  EXPECT_FALSE(IsValidAttrOrArgName("1abc"));
+}
+
+TEST(SanitizeToIdentifierTest, ProducesASafeIdentifierForAnyInput) {
+  // Every unsafe character becomes an underscore; the malicious payload
+  // that IsValidAttrOrArgName exists to reject becomes an inert, safe
+  // identifier string rather than being spliced verbatim.
+  EXPECT_EQ(SanitizeToIdentifier("evil\"); system(\"touch /tmp/PWNED\"); //"),
+            "evil____system__touch__tmp_PWNED______");
+  EXPECT_EQ(SanitizeToIdentifier("raw_outputs/box_encodings"),
+            "raw_outputs_box_encodings");
+  EXPECT_EQ(SanitizeToIdentifier("TFLite_Detection_PostProcess:1"),
+            "TFLite_Detection_PostProcess_1");
+  // A result that would start with a digit gets a leading underscore
+  // rather than becoming a syntactically invalid identifier.
+  EXPECT_EQ(SanitizeToIdentifier("123_invalid"), "_123_invalid");
+  EXPECT_EQ(SanitizeToIdentifier(""), "_");
+  // A name that is already safe is unaffected other than round-tripping
+  // through the same character-by-character pass.
+  EXPECT_EQ(SanitizeToIdentifier("already_safe"), "already_safe");
+}
+
+// The regression this fix closes: ValidateOpDef must accept an OpDef using
+// argument names outside IsValidAttrOrArgName's safe set, matching a real,
+// already-registered op (TFLite_Detection_PostProcess, registered in
+// tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.cc) that
+// broke under the runtime rejection this fix removes.
+TEST_F(ValidateOpDefTest, OpDefValidAcceptsNonIdentifierNames) {
+  TF_EXPECT_OK(TestProto(
+      "name: 'TFLite_Detection_PostProcess' "
+      "input_arg { name: 'raw_outputs/box_encodings' type: DT_FLOAT } "
+      "input_arg { name: 'raw_outputs/class_predictions' type: DT_FLOAT } "
+      "output_arg { name: 'TFLite_Detection_PostProcess:1' type: DT_FLOAT }"));
+}
+
 TEST_F(ValidateOpDefTest, OpDefValid) {
   TF_EXPECT_OK(TestBuilder(OpDefBuilder("X").Attr("a: int")));
   TF_EXPECT_OK(TestBuilder(OpDefBuilder("X").Input("a: int32")));
