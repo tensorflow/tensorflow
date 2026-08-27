@@ -487,7 +487,6 @@ cc_library(
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:test_helpers",
         "//xla/hlo/testlib:verified_hlo_module",
-        "//xla/service:computation_placer",
         "//xla/service:hlo_module_config",
         "//xla/service:platform_util",
         "//xla/service:shaped_buffer",
