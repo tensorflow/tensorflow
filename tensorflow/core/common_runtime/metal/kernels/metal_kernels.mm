@@ -20,6 +20,7 @@ namespace metal {
 
 void RegisterAllMetalKernels() {
   RegisterMetalArrayKernels();
+  RegisterMetalBatchNormKernels();
   RegisterMetalConvKernels();
   RegisterMetalReductionKernels();
   RegisterMetalElementwiseKernels();

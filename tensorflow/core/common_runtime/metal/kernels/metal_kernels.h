@@ -59,6 +59,10 @@ void RegisterMetalTrainingKernels();
 // first two generically for int32 in host memory only.
 void RegisterMetalArrayKernels();
 
+// FusedBatchNorm v1, v2 and v3 with their gradients, in both training and
+// inference mode.
+void RegisterMetalBatchNormKernels();
+
 // Identity, which aliases its input when it can and blits when it cannot.
 void RegisterMetalIdentityKernels();
 

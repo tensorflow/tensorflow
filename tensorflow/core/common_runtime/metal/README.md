@@ -102,8 +102,8 @@ Registered through the Kernel C API. Elementwise arithmetic and `Cast` are
 Metal compute shaders compiled at runtime from an embedded source string;
 `MatMul` uses `MPSMatrixMultiplication`.
 
-Convolutions, pooling, activations, softmax, the cross entropies and the
-reductions go through `MPSGraph`; `MatMul` uses `MPSMatrix` directly because a
+Convolutions, pooling, activations, softmax, the cross entropies, batch
+normalisation and the reductions go through `MPSGraph`; `MatMul` uses `MPSMatrix` directly because a
 2-D multiply needs less machinery.
 
 The `MPSGraph` path is zero-copy in both directions, which is not obvious and
@@ -130,6 +130,8 @@ differently rather than fail.
 | --- | --- |
 | `Conv2D`, `Conv2DBackpropInput`, `Conv2DBackpropFilter` | float32, float16 |
 | `MaxPool`, `MaxPoolGrad`, `AvgPool` | float32, float16 |
+| `FusedBatchNorm`, `FusedBatchNormV2`, `FusedBatchNormV3` | float32, float16 |
+| `FusedBatchNormGrad`, `FusedBatchNormGradV2`, `FusedBatchNormGradV3` | float32, float16 |
 | `Relu`, `ReluGrad` | float32, float16 |
 | `BiasAdd`, `BiasAddGrad` | float32, float16 |
 | `Softmax` | float32, float16 |
@@ -160,10 +162,7 @@ inherits when it has no kernel of its own.
   hundred ops. What is here covers a convolutional classifier and the
   arithmetic around it; anything else falls back to the host, which is correct
   but slow. Notably absent: recurrent layers, `Concat`, `Slice`, `Pad`,
-  `Tile`, and every optimiser other than SGD and Adam.
-* **No normalisation.** `FusedBatchNorm` and its gradient are not
-  implemented, so a model using BatchNormalization still falls back to the
-  host for those layers.
+  `Tile`, `DepthwiseConv2d`, and every optimiser other than SGD and Adam.
 * **Random ops and optimisers are float32 only.**
 * **`MatMul`** takes rank-2 tensors only, and float16 requires an even column
   count, since an odd one produces a row stride MPS will not accept.
