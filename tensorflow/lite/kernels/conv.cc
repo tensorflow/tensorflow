@@ -394,11 +394,15 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
 
   // Validate stride values
   TF_LITE_ENSURE(context, params->stride_height > 0);
+  TF_LITE_ENSURE(context, params->stride_height <= INT16_MAX);
   TF_LITE_ENSURE(context, params->stride_width > 0);
+  TF_LITE_ENSURE(context, params->stride_width <= INT16_MAX);
 
   // Validate dilation values
   TF_LITE_ENSURE(context, params->dilation_height_factor > 0);
+  TF_LITE_ENSURE(context, params->dilation_height_factor <= INT16_MAX);
   TF_LITE_ENSURE(context, params->dilation_width_factor > 0);
+  TF_LITE_ENSURE(context, params->dilation_width_factor <= INT16_MAX);
 
   const TfLiteTensor* bias = nullptr;
 
@@ -494,6 +498,7 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
           params->dilation_height_factor, params->dilation_width_factor,
           input_height, input_width, filter_height, filter_width, padding,
           &out_height, &out_width, &data->padding));
+  TF_LITE_ENSURE_STATUS(ValidatePaddingValuesForInt16(data->padding));
 
   int output_spatial_elements = 0;
   TF_LITE_ENSURE_MSG(context,

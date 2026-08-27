@@ -1649,7 +1649,6 @@ pywrap_library(
     # @unsorted-dict-items
     common_lib_version_scripts = {
         "tensorflow/tensorflow_cc": select({
-            "//tensorflow:windows": None,
             "//tensorflow:macos": "//tensorflow:tf_exported_symbols.lds",
             "//conditions:default": "//tensorflow:tf_version_script.lds",
         }),
