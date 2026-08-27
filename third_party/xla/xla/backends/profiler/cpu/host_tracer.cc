@@ -203,6 +203,9 @@ absl::Status HostTracer::Serialize(std::any data,
   uint64_t min_event_time_ns = 0;
   for (const auto& thread : chunk->events) {
     for (const auto& event : thread.events) {
+      if (!event.IsComplete()) {
+        continue;
+      }
       if (min_event_time_ns == 0 || event.start_time < min_event_time_ns) {
         min_event_time_ns = event.start_time;
       }

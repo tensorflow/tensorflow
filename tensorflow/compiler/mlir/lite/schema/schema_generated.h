@@ -5235,6 +5235,7 @@ struct BlockwiseQuantizationT : public ::flatbuffers::NativeTable {
   int32_t scales = 0;
   int32_t zero_points = 0;
   int32_t block_size = 0;
+  std::vector<int32_t> block_shape{};
 };
 
 struct BlockwiseQuantization FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
@@ -5243,7 +5244,8 @@ struct BlockwiseQuantization FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Ta
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_SCALES = 4,
     VT_ZERO_POINTS = 6,
-    VT_BLOCK_SIZE = 8
+    VT_BLOCK_SIZE = 8,
+    VT_BLOCK_SHAPE = 10
   };
   int32_t scales() const {
     return GetField<int32_t>(VT_SCALES, 0);
@@ -5254,12 +5256,17 @@ struct BlockwiseQuantization FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Ta
   int32_t block_size() const {
     return GetField<int32_t>(VT_BLOCK_SIZE, 0);
   }
+  const ::flatbuffers::Vector<int32_t> *block_shape() const {
+    return GetPointer<const ::flatbuffers::Vector<int32_t> *>(VT_BLOCK_SHAPE);
+  }
   template <bool B = false>
   bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_SCALES, 4) &&
            VerifyField<int32_t>(verifier, VT_ZERO_POINTS, 4) &&
            VerifyField<int32_t>(verifier, VT_BLOCK_SIZE, 4) &&
+           VerifyOffset(verifier, VT_BLOCK_SHAPE) &&
+           verifier.VerifyVector(block_shape()) &&
            verifier.EndTable();
   }
   BlockwiseQuantizationT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -5280,6 +5287,9 @@ struct BlockwiseQuantizationBuilder {
   void add_block_size(int32_t block_size) {
     fbb_.AddElement<int32_t>(BlockwiseQuantization::VT_BLOCK_SIZE, block_size, 0);
   }
+  void add_block_shape(::flatbuffers::Offset<::flatbuffers::Vector<int32_t>> block_shape) {
+    fbb_.AddOffset(BlockwiseQuantization::VT_BLOCK_SHAPE, block_shape);
+  }
   explicit BlockwiseQuantizationBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -5295,12 +5305,29 @@ inline ::flatbuffers::Offset<BlockwiseQuantization> CreateBlockwiseQuantization(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     int32_t scales = 0,
     int32_t zero_points = 0,
-    int32_t block_size = 0) {
+    int32_t block_size = 0,
+    ::flatbuffers::Offset<::flatbuffers::Vector<int32_t>> block_shape = 0) {
   BlockwiseQuantizationBuilder builder_(_fbb);
+  builder_.add_block_shape(block_shape);
   builder_.add_block_size(block_size);
   builder_.add_zero_points(zero_points);
   builder_.add_scales(scales);
   return builder_.Finish();
+}
+
+inline ::flatbuffers::Offset<BlockwiseQuantization> CreateBlockwiseQuantizationDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    int32_t scales = 0,
+    int32_t zero_points = 0,
+    int32_t block_size = 0,
+    const std::vector<int32_t> *block_shape = nullptr) {
+  auto block_shape__ = block_shape ? _fbb.CreateVector<int32_t>(*block_shape) : 0;
+  return tflite::CreateBlockwiseQuantization(
+      _fbb,
+      scales,
+      zero_points,
+      block_size,
+      block_shape__);
 }
 
 ::flatbuffers::Offset<BlockwiseQuantization> CreateBlockwiseQuantization(::flatbuffers::FlatBufferBuilder &_fbb, const BlockwiseQuantizationT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -17552,6 +17579,7 @@ inline void BlockwiseQuantization::UnPackTo(BlockwiseQuantizationT *_o, const ::
   { auto _e = scales(); _o->scales = _e; }
   { auto _e = zero_points(); _o->zero_points = _e; }
   { auto _e = block_size(); _o->block_size = _e; }
+  { auto _e = block_shape(); if (_e) { _o->block_shape.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->block_shape[_i] = _e->Get(_i); } } else { _o->block_shape.resize(0); } }
 }
 
 inline ::flatbuffers::Offset<BlockwiseQuantization> CreateBlockwiseQuantization(::flatbuffers::FlatBufferBuilder &_fbb, const BlockwiseQuantizationT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
@@ -17565,11 +17593,13 @@ inline ::flatbuffers::Offset<BlockwiseQuantization> BlockwiseQuantization::Pack(
   auto _scales = _o->scales;
   auto _zero_points = _o->zero_points;
   auto _block_size = _o->block_size;
+  auto _block_shape = _o->block_shape.size() ? _fbb.CreateVector(_o->block_shape) : 0;
   return tflite::CreateBlockwiseQuantization(
       _fbb,
       _scales,
       _zero_points,
-      _block_size);
+      _block_size,
+      _block_shape);
 }
 
 inline MultiAxisQuantizationT *MultiAxisQuantization::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
