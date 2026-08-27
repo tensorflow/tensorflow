@@ -241,6 +241,194 @@ void AddN_ComputeImpl(DTypeOp* op, TF_OpKernelContext* ctx,
   RunGraph(stream, *cached, feeds, @[ out_data ], status);
 }
 
+/*** CONCAT ***/
+
+// ConcatV2 puts the axis last and Concat puts it first; both hold it in host
+// memory. `kAxisFirst` selects which convention this instantiation reads.
+template <bool kAxisFirst>
+void Concat_ComputeImpl(DTypeOp* op, TF_OpKernelContext* ctx,
+                        TF_Status* status) {
+  const int total = TF_NumInputs(ctx);
+  if (total < 2) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: Concat needs at least one value and an axis.");
+    return;
+  }
+  const int first_value = kAxisFirst ? 1 : 0;
+  const int axis_index = kAxisFirst ? 0 : total - 1;
+  const int n = total - 1;
+
+  ScopedTensor axis_tensor;
+  TF_GetInput(ctx, axis_index, axis_tensor.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  std::vector<ScopedTensor> values(n);
+  for (int i = 0; i < n; ++i) {
+    TF_GetInput(ctx, first_value + i, values[i].address(), status);
+    if (TF_GetCode(status) != TF_OK) return;
+  }
+
+  const std::vector<int64_t> first_shape = ShapeOf(values[0].get());
+  const int rank = static_cast<int>(first_shape.size());
+  const void* axis_data = TF_TensorData(axis_tensor.get());
+  int64_t axis = TF_TensorType(axis_tensor.get()) == TF_INT32
+                     ? *static_cast<const int32_t*>(axis_data)
+                     : *static_cast<const int64_t*>(axis_data);
+  if (axis < 0) axis += rank;
+  if (axis < 0 || axis >= rank) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: Concat axis is out of range.");
+    return;
+  }
+
+  // Every value must agree on every axis but the concatenated one.
+  std::vector<int64_t> out_shape = first_shape;
+  out_shape[axis] = 0;
+  std::vector<std::vector<int64_t>> shapes(n);
+  for (int i = 0; i < n; ++i) {
+    shapes[i] = ShapeOf(values[i].get());
+    if (static_cast<int>(shapes[i].size()) != rank) {
+      TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                   "Metal: Concat inputs differ in rank.");
+      return;
+    }
+    for (int d = 0; d < rank; ++d) {
+      if (d != axis && shapes[i][d] != first_shape[d]) {
+        TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                     "Metal: Concat inputs differ outside the concat axis.");
+        return;
+      }
+    }
+    out_shape[axis] += shapes[i][axis];
+  }
+
+  const int64_t count = ElementCount(out_shape);
+  ScopedTensor output;
+  output.reset(TF_AllocateOutput(
+      ctx, 0, op->dtype, out_shape.data(), rank,
+      static_cast<size_t>(count) * TF_DataTypeSize(op->dtype), status));
+  if (TF_GetCode(status) != TF_OK) return;
+  if (count == 0) return;
+
+  SP_Stream stream = StreamForContext(ctx, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  id<MTLDevice> device = DeviceForStream(stream);
+
+  MPSDataType mps_dtype;
+  if (!MPSTypeFor(op->dtype, &mps_dtype, status)) return;
+
+  std::string key = "Concat/" + std::to_string(n) + "/a" + std::to_string(axis);
+  for (const auto& sh : shapes) AppendShapeToKey(sh, &key);
+  key.append("/t").append(std::to_string(static_cast<int>(op->dtype)));
+  const NSInteger mps_axis = static_cast<NSInteger>(axis);
+
+  const CachedGraph* cached = LookupOrBuildGraph(
+      key,
+      ^(CachedGraph* out) {
+        NSMutableArray<MPSGraphTensor*>* parts = [NSMutableArray array];
+        for (int i = 0; i < n; ++i) {
+          MPSGraphTensor* t = [out->graph placeholderWithShape:MPSShape(shapes[i])
+                                                      dataType:mps_dtype
+                                                          name:nil];
+          [out->inputs addObject:t];
+          [parts addObject:t];
+        }
+        [out->outputs addObject:[out->graph concatTensors:parts
+                                                dimension:mps_axis
+                                                     name:nil]];
+      },
+      status);
+  if (cached == nullptr) return;
+
+  NSMutableArray<MPSGraphTensorData*>* feeds = [NSMutableArray array];
+  for (int i = 0; i < n; ++i) {
+    MPSGraphTensorData* d =
+        TensorDataForTensor(values[i].get(), op->dtype, device, status);
+    if (d == nil) return;
+    [feeds addObject:d];
+  }
+  MPSGraphTensorData* out_data =
+      TensorDataForTensor(output.get(), op->dtype, device, status);
+  if (out_data == nil) return;
+  RunGraph(stream, *cached, feeds, @[ out_data ], status);
+}
+
+/*** TILE ***/
+
+void Tile_ComputeImpl(DTypeOp* op, TF_OpKernelContext* ctx,
+                      TF_Status* status) {
+  ScopedTensor input, multiples;
+  TF_GetInput(ctx, 0, input.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+  TF_GetInput(ctx, 1, multiples.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  const std::vector<int64_t> in_shape = ShapeOf(input.get());
+  const int rank = static_cast<int>(in_shape.size());
+  if (TF_TensorElementCount(multiples.get()) != rank) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: Tile multiples length does not match the rank.");
+    return;
+  }
+  const void* mult_data = TF_TensorData(multiples.get());
+  const bool is32 = TF_TensorType(multiples.get()) == TF_INT32;
+  std::vector<int64_t> mult(rank), out_shape(rank);
+  for (int i = 0; i < rank; ++i) {
+    mult[i] = is32 ? static_cast<const int32_t*>(mult_data)[i]
+                   : static_cast<const int64_t*>(mult_data)[i];
+    if (mult[i] < 0) {
+      TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                   "Metal: Tile multiples must not be negative.");
+      return;
+    }
+    out_shape[i] = in_shape[i] * mult[i];
+  }
+
+  const int64_t count = ElementCount(out_shape);
+  ScopedTensor output;
+  output.reset(TF_AllocateOutput(
+      ctx, 0, op->dtype, out_shape.data(), rank,
+      static_cast<size_t>(count) * TF_DataTypeSize(op->dtype), status));
+  if (TF_GetCode(status) != TF_OK) return;
+  if (count == 0) return;
+
+  SP_Stream stream = StreamForContext(ctx, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  id<MTLDevice> device = DeviceForStream(stream);
+
+  MPSDataType mps_dtype;
+  if (!MPSTypeFor(op->dtype, &mps_dtype, status)) return;
+
+  std::string key = "Tile";
+  AppendShapeToKey(in_shape, &key);
+  AppendShapeToKey(mult, &key);
+  key.append("/t").append(std::to_string(static_cast<int>(op->dtype)));
+  NSMutableArray<NSNumber*>* multiplier = [NSMutableArray array];
+  for (int64_t m : mult) [multiplier addObject:@(static_cast<NSInteger>(m))];
+
+  const CachedGraph* cached = LookupOrBuildGraph(
+      key,
+      ^(CachedGraph* out) {
+        MPSGraphTensor* x = [out->graph placeholderWithShape:MPSShape(in_shape)
+                                                    dataType:mps_dtype
+                                                        name:nil];
+        [out->inputs addObject:x];
+        [out->outputs addObject:[out->graph tileTensor:x
+                                        withMultiplier:multiplier
+                                                  name:nil]];
+      },
+      status);
+  if (cached == nullptr) return;
+
+  MPSGraphTensorData* in_data =
+      TensorDataForTensor(input.get(), op->dtype, device, status);
+  if (in_data == nil) return;
+  MPSGraphTensorData* out_data =
+      TensorDataForTensor(output.get(), op->dtype, device, status);
+  if (out_data == nil) return;
+  RunGraph(stream, *cached, @[ in_data ], @[ out_data ], status);
+}
+
 /*** AVERAGE POOLING ***/
 
 struct AvgPoolOp {
@@ -384,6 +572,9 @@ void AvgPool_ComputeImpl(AvgPoolOp* op, TF_OpKernelContext* ctx,
 METAL_COMPUTE(Transpose_Compute, DTypeOp, Transpose_ComputeImpl)
 METAL_COMPUTE(AddN_Compute, DTypeOp, AddN_ComputeImpl)
 METAL_COMPUTE(AvgPool_Compute, AvgPoolOp, AvgPool_ComputeImpl)
+METAL_COMPUTE(ConcatV2_Compute, DTypeOp, Concat_ComputeImpl<false>)
+METAL_COMPUTE(Concat_Compute, DTypeOp, Concat_ComputeImpl<true>)
+METAL_COMPUTE(Tile_Compute, DTypeOp, Tile_ComputeImpl)
 
 #undef METAL_COMPUTE
 
@@ -433,6 +624,14 @@ void RegisterMetalArrayKernels() {
              kDTypes[i], "MetalAddN" + suffix);
     Register("AvgPool", &AvgPoolOp_Create, &AvgPool_Compute, &AvgPoolOp_Delete,
              kDTypes[i], "MetalAvgPool" + suffix);
+    // The concat axis and the tile multiples are read on the host to size the
+    // output, so both stay off the device.
+    Register("ConcatV2", &DTypeOp_Create, &ConcatV2_Compute, &DTypeOp_Delete,
+             kDTypes[i], "MetalConcatV2" + suffix, "axis");
+    Register("Concat", &DTypeOp_Create, &Concat_Compute, &DTypeOp_Delete,
+             kDTypes[i], "MetalConcat" + suffix, "concat_dim");
+    Register("Tile", &DTypeOp_Create, &Tile_Compute, &DTypeOp_Delete,
+             kDTypes[i], "MetalTile" + suffix, "multiples");
   }
 }
 

@@ -202,6 +202,74 @@ struct AdamParams {
 //   var -= alpha * m / (sqrt(v) + epsilon)
 // The scalars arrive as one-element device buffers because that is how
 // TensorFlow places them.
+// TensorFlow's ResourceApplyMomentum:
+//   accum = accum * momentum + grad
+//   var  -= use_nesterov ? (grad*lr + accum*momentum*lr) : accum*lr
+kernel void tf_apply_momentum_float(device float* var [[buffer(0)]],
+                                    device float* accum [[buffer(1)]],
+                                    device const float* lr [[buffer(2)]],
+                                    device const float* grad [[buffer(3)]],
+                                    device const float* momentum [[buffer(4)]],
+                                    constant AdamParams& params [[buffer(5)]],
+                                    uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count) return;
+  const float g = grad[gid];
+  const float m = momentum[0];
+  const float a = accum[gid] * m + g;
+  accum[gid] = a;
+  var[gid] -= params.use_nesterov ? (g * lr[0] + a * m * lr[0]) : (a * lr[0]);
+}
+
+// TensorFlow's ResourceApplyKerasMomentum, which is NOT the same update as
+// ResourceApplyMomentum above. Keras folds the learning rate into the
+// accumulator and adds it, where the classic op keeps the rate outside and
+// subtracts:
+//   accum = accum * momentum - grad * lr
+//   var  += use_nesterov ? (accum*momentum - grad*lr) : accum
+// Sharing one kernel between the two would train subtly differently rather
+// than fail, which is why they are separate.
+kernel void tf_apply_keras_momentum_float(
+    device float* var [[buffer(0)]],
+    device float* accum [[buffer(1)]],
+    device const float* lr [[buffer(2)]],
+    device const float* grad [[buffer(3)]],
+    device const float* momentum [[buffer(4)]],
+    constant AdamParams& params [[buffer(5)]],
+    uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count) return;
+  const float g = grad[gid];
+  const float m = momentum[0];
+  const float a = accum[gid] * m - g * lr[0];
+  accum[gid] = a;
+  var[gid] += params.use_nesterov ? (a * m - g * lr[0]) : a;
+}
+
+// TensorFlow's ResourceApplyRMSProp:
+//   ms  += (grad^2 - ms) * (1 - rho)
+//   mom  = mom*momentum + grad*lr / sqrt(ms + epsilon)
+//   var -= mom
+// Note the epsilon sits inside the square root here, unlike Adam where it is
+// added to the root. Moving it changes the update.
+kernel void tf_apply_rms_prop_float(device float* var [[buffer(0)]],
+                                    device float* ms [[buffer(1)]],
+                                    device float* mom [[buffer(2)]],
+                                    device const float* lr [[buffer(3)]],
+                                    device const float* rho [[buffer(4)]],
+                                    device const float* momentum [[buffer(5)]],
+                                    device const float* epsilon [[buffer(6)]],
+                                    device const float* grad [[buffer(7)]],
+                                    constant AdamParams& params [[buffer(8)]],
+                                    uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count) return;
+  const float g = grad[gid];
+  const float ms_new = ms[gid] + (g * g - ms[gid]) * (1.0f - rho[0]);
+  ms[gid] = ms_new;
+  const float mom_new =
+      mom[gid] * momentum[0] + (g * lr[0]) / sqrt(ms_new + epsilon[0]);
+  mom[gid] = mom_new;
+  var[gid] -= mom_new;
+}
+
 kernel void tf_apply_adam_float(device float* var [[buffer(0)]],
                                 device float* m [[buffer(1)]],
                                 device float* v [[buffer(2)]],

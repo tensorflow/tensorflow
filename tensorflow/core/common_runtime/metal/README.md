@@ -143,15 +143,17 @@ differently rather than fail.
 | `Neg`, `Abs`, `Square`, `Sqrt`, `Rsqrt`, `Reciprocal` | float32, float16 |
 | `Exp`, `Log`, `Tanh`, `Sigmoid` | float32, float16 |
 | `TanhGrad`, `SigmoidGrad`, `SqrtGrad`, `RsqrtGrad` | float32, float16 |
-| `AddN`, `Transpose` | float32, float16 |
+| `AddN`, `Transpose`, `Concat`, `ConcatV2`, `Tile` | float32, float16 |
 | `Equal`, `NotEqual`, `Less`, `LessEqual`, `Greater`, `GreaterEqual` | float32, float16, int32, int64 |
 | `LogicalAnd`, `LogicalOr`, `LogicalNot` | bool |
 | `Select`, `SelectV2` | float32, float16, int32, int64 |
 | `ArgMax`, `ArgMin` | float32, float16; int32 or int64 output |
-| `Sum`, `Mean` | float32, float16 |
+| `Sum`, `Mean`, `Max`, `Min`, `Prod` | float32, float16 |
+| `Any`, `All` | bool |
 | `Fill`, `ZerosLike`, `OnesLike` | float32, float16 |
 | `RandomUniform`, `RandomStandardNormal`, `TruncatedNormal` | float32 |
 | `ResourceApplyGradientDescent`, `ResourceApplyAdam` | float32 |
+| `ResourceApplyMomentum`, `ResourceApplyKerasMomentum`, `ResourceApplyRMSProp` | float32 |
 | `Cast` | float32, float16, bfloat16, int32, int64 pairs |
 | `Identity` | float32, float16, int32, int64, bool |
 
@@ -165,8 +167,8 @@ inherits when it has no kernel of its own.
 * **Op coverage is far short of CUDA's**, which has kernels for several
   hundred ops. What is here covers a convolutional classifier and the
   arithmetic around it; anything else falls back to the host, which is correct
-  but slow. Notably absent: recurrent layers, `Concat`, `Slice`, `Pad`,
-  `Tile`, `DepthwiseConv2d`, and every optimiser other than SGD and Adam.
+  but slow. Notably absent: recurrent layers, `Slice`, `Pad`, `Gather`,
+  `DepthwiseConv2d`, and the sparse optimiser variants.
 * **Random ops and optimisers are float32 only.**
 * **`MatMul`** takes rank-2 tensors only, and float16 requires an even column
   count, since an odd one produces a row stride MPS will not accept.

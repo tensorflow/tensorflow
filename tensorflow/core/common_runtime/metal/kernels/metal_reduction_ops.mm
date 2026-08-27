@@ -44,7 +44,41 @@ namespace {
 // TensorFlow's DEVICE_DEFAULT registrations for these cover only int32 in host
 // memory, so a float reduction genuinely has to be provided here.
 
-enum class ReductionKind { kSum, kMean };
+enum class ReductionKind { kSum, kMean, kMax, kMin, kProd, kAny, kAll };
+
+const char* NameOf(ReductionKind k) {
+  switch (k) {
+    case ReductionKind::kSum: return "Sum";
+    case ReductionKind::kMean: return "Mean";
+    case ReductionKind::kMax: return "Max";
+    case ReductionKind::kMin: return "Min";
+    case ReductionKind::kProd: return "Prod";
+    case ReductionKind::kAny: return "Any";
+    case ReductionKind::kAll: return "All";
+  }
+  return "?";
+}
+
+MPSGraphTensor* ApplyReduction(MPSGraph* g, ReductionKind k, MPSGraphTensor* x,
+                               NSArray<NSNumber*>* axes) {
+  switch (k) {
+    case ReductionKind::kSum:
+      return [g reductionSumWithTensor:x axes:axes name:nil];
+    case ReductionKind::kMean:
+      return [g meanOfTensor:x axes:axes name:nil];
+    case ReductionKind::kMax:
+      return [g reductionMaximumWithTensor:x axes:axes name:nil];
+    case ReductionKind::kMin:
+      return [g reductionMinimumWithTensor:x axes:axes name:nil];
+    case ReductionKind::kProd:
+      return [g reductionProductWithTensor:x axes:axes name:nil];
+    case ReductionKind::kAny:
+      return [g reductionOrWithTensor:x axes:axes name:nil];
+    case ReductionKind::kAll:
+      return [g reductionAndWithTensor:x axes:axes name:nil];
+  }
+  return nil;
+}
 
 struct ReductionOp {
   TF_DataType dtype = TF_FLOAT;
@@ -169,7 +203,7 @@ void Reduction_ComputeImpl(ReductionOp* op, TF_OpKernelContext* ctx,
   MPSDataType mps_dtype;
   if (!MPSTypeFor(op->dtype, &mps_dtype, status)) return;
 
-  std::string key = kKind == ReductionKind::kSum ? "Sum" : "Mean";
+  std::string key = NameOf(kKind);
   AppendShapeToKey(in_shape, &key);
   AppendShapeToKey(out_shape, &key);
   key.push_back('/');
@@ -190,13 +224,7 @@ void Reduction_ComputeImpl(ReductionOp* op, TF_OpKernelContext* ctx,
                                         name:nil];
         MPSGraphTensor* reduced = source;
         if (!empty_axes) {
-          reduced = kKind == ReductionKind::kSum
-                        ? [out->graph reductionSumWithTensor:source
-                                                        axes:mps_axes
-                                                        name:nil]
-                        : [out->graph meanOfTensor:source
-                                              axes:mps_axes
-                                              name:nil];
+          reduced = ApplyReduction(out->graph, kKind, source, mps_axes);
         }
         MPSGraphTensor* shaped =
             [out->graph reshapeTensor:reduced
@@ -266,17 +294,36 @@ void RegisterMetalReductionKernels() {
   static constexpr TF_DataType kIndexTypes[] = {TF_INT32, TF_INT64};
   static constexpr const char* kIndexSuffixes[] = {"Int32", "Int64"};
 
+  struct Entry {
+    const char* op;
+    void (*compute)(void*, TF_OpKernelContext*);
+  };
+  static const Entry kNumeric[] = {
+      {"Sum", &Reduction_Compute<ReductionKind::kSum>},
+      {"Mean", &Reduction_Compute<ReductionKind::kMean>},
+      {"Max", &Reduction_Compute<ReductionKind::kMax>},
+      {"Min", &Reduction_Compute<ReductionKind::kMin>},
+      {"Prod", &Reduction_Compute<ReductionKind::kProd>},
+  };
+
   for (int i = 0; i < 2; ++i) {
     for (int j = 0; j < 2; ++j) {
-      RegisterReduction("Sum", &Reduction_Compute<ReductionKind::kSum>,
-                        kDTypes[i], kIndexTypes[j],
-                        std::string("MetalSum") + kSuffixes[i] +
-                            kIndexSuffixes[j]);
-      RegisterReduction("Mean", &Reduction_Compute<ReductionKind::kMean>,
-                        kDTypes[i], kIndexTypes[j],
-                        std::string("MetalMean") + kSuffixes[i] +
-                            kIndexSuffixes[j]);
+      for (const Entry& e : kNumeric) {
+        RegisterReduction(e.op, e.compute, kDTypes[i], kIndexTypes[j],
+                          std::string("Metal") + e.op + kSuffixes[i] +
+                              kIndexSuffixes[j]);
+      }
     }
+  }
+
+  // Any and All reduce bools, so they take no float instantiation.
+  for (int j = 0; j < 2; ++j) {
+    RegisterReduction("Any", &Reduction_Compute<ReductionKind::kAny>, TF_BOOL,
+                      kIndexTypes[j],
+                      std::string("MetalAny") + kIndexSuffixes[j]);
+    RegisterReduction("All", &Reduction_Compute<ReductionKind::kAll>, TF_BOOL,
+                      kIndexTypes[j],
+                      std::string("MetalAll") + kIndexSuffixes[j]);
   }
 }
 
