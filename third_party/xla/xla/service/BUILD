@@ -3702,16 +3702,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "computation_placer_hdr",
-    hdrs = ["computation_placer.h"],
-    deps = [
-        ":device_assignment",
-        "//xla/stream_executor:platform_id",
-        "@com_google_absl//absl/status:statusor",
-    ],
-)
-
-cc_library(
     name = "human_readable_profile_builder",
     srcs = ["human_readable_profile_builder.cc"],
     hdrs = ["human_readable_profile_builder.h"],
