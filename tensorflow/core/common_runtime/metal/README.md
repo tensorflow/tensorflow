@@ -140,6 +140,9 @@ differently rather than fail.
 | `DepthwiseConv2dNative`, `DepthwiseConv2dNativeBackpropInput`, `DepthwiseConv2dNativeBackpropFilter` | float32, float16 |
 | `BatchNormWithGlobalNormalization`, `BatchNormWithGlobalNormalizationGrad` | float32 |
 | `Bincount`, `DenseBincount` | float32, int32 |
+| `FFT`, `FFT2D`, `FFT3D`, `IFFT`, `IFFT2D`, `IFFT3D` | complex64 |
+| `BatchFFT`, `BatchFFT2D`, `BatchFFT3D`, `BatchIFFT`, `BatchIFFT2D`, `BatchIFFT3D` | complex64 |
+| `RFFT`, `IRFFT` | float32 and complex64 |
 | `SparseSegmentSum`, `SparseSegmentMean`, `SparseSegmentSqrtN` | float32 |
 | `SparseSegmentSumWithNumSegments`, `SparseSegmentMeanWithNumSegments`, `SparseSegmentSqrtNWithNumSegments` | float32 |
 | `SparseSegmentSumGrad`, `SparseSegmentMeanGrad`, `SparseSegmentSqrtNGrad` | float32 |

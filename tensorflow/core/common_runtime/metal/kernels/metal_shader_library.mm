@@ -1704,6 +1704,159 @@ TF_METAL_SEGMENT_GRAD(tf_sparse_segment_grad_i32_i32, int, int)
 TF_METAL_SEGMENT_GRAD(tf_sparse_segment_grad_i32_i64, int, long)
 TF_METAL_SEGMENT_GRAD(tf_sparse_segment_grad_i64_i32, long, int)
 TF_METAL_SEGMENT_GRAD(tf_sparse_segment_grad_i64_i64, long, long)
+
+// ---- discrete Fourier transform ----
+
+struct FftParams {
+  uint outer;
+  uint n;
+  uint inner;
+  uint count;
+  uint inverse;
+  uint scale;
+  uint pad0;
+  uint pad1;
+};
+
+static inline float2 tf_cmul(float2 a, float2 b) {
+  return float2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+}
+
+// One transform per thread, along one axis of the tensor.
+//
+// A multi-dimensional transform is this shader run once per axis, which is
+// what separability means and what makes it unnecessary to transpose anything:
+// the axis is addressed by a stride, so the second pass reads columns as
+// cheaply as the first read rows.
+//
+// Radix two when the length is a power of two, and the direct sum otherwise.
+// The direct sum is quadratic and is the honest fallback rather than a wrong
+// answer; the lengths that reach it are the ones a fast algorithm would need a
+// different decomposition for.
+kernel void tf_fft_axis_float(device float2* data [[buffer(0)]],
+                              device float2* scratch [[buffer(1)]],
+                              constant FftParams& params [[buffer(2)]],
+                              uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count) return;
+  const uint n = params.n;
+  if (n == 0u) return;
+  const uint outer = gid / params.inner;
+  const uint inner = gid % params.inner;
+  const uint base = outer * n * params.inner + inner;
+  device float2* work = scratch + gid * 2u * n;
+  device float2* other = work + n;
+
+  for (uint i = 0u; i < n; ++i) work[i] = data[base + i * params.inner];
+
+  const float direction = params.inverse != 0u ? 1.0f : -1.0f;
+  bool power_of_two = (n & (n - 1u)) == 0u;
+  if (power_of_two) {
+    uint bits = 0u;
+    while ((1u << bits) < n) ++bits;
+    for (uint i = 0u; i < n; ++i) {
+      uint r = 0u;
+      for (uint b = 0u; b < bits; ++b) {
+        if ((i & (1u << b)) != 0u) r |= 1u << (bits - 1u - b);
+      }
+      other[r] = work[i];
+    }
+    for (uint len = 2u; len <= n; len <<= 1u) {
+      const float angle = direction * 6.28318530718f / float(len);
+      // Not named `half`: that is a type in this language.
+      const uint span = len >> 1u;
+      for (uint start = 0u; start < n; start += len) {
+        for (uint j = 0u; j < span; ++j) {
+          const float theta = angle * float(j);
+          const float2 w = float2(cos(theta), sin(theta));
+          const float2 u = other[start + j];
+          const float2 v = tf_cmul(other[start + j + span], w);
+          other[start + j] = u + v;
+          other[start + j + span] = u - v;
+        }
+      }
+    }
+  } else {
+    for (uint k = 0u; k < n; ++k) {
+      float2 sum = float2(0.0f, 0.0f);
+      for (uint i = 0u; i < n; ++i) {
+        const float theta = direction * 6.28318530718f * float(i) * float(k) /
+                            float(n);
+        sum += tf_cmul(work[i], float2(cos(theta), sin(theta)));
+      }
+      other[k] = sum;
+    }
+  }
+
+  // The inverse transform carries the one over n, and only on the axis it is
+  // asked to scale, so a multi-axis inverse divides by each length once.
+  const float factor = params.scale != 0u ? 1.0f / float(n) : 1.0f;
+  for (uint i = 0u; i < n; ++i) {
+    data[base + i * params.inner] = other[i] * factor;
+  }
+}
+
+// Real input to half spectrum, and back. The transform itself is the complex
+// one above; these two only move between the packed real layout and the
+// complex one, and they crop or pad to the requested length while they do it,
+// which is what TensorFlow's fft_length argument means.
+kernel void tf_fft_pack_real_float(device const float* input [[buffer(0)]],
+                                   device float2* output [[buffer(1)]],
+                                   constant FftParams& params [[buffer(2)]],
+                                   uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count * params.n) return;
+  const uint row = gid / params.n;
+  const uint i = gid % params.n;
+  // params.inner carries the input's own length here, which may be shorter or
+  // longer than the transform.
+  output[gid] = i < params.inner
+                    ? float2(input[row * params.inner + i], 0.0f)
+                    : float2(0.0f, 0.0f);
+}
+
+kernel void tf_fft_unpack_real_float(device const float2* input [[buffer(0)]],
+                                     device float* output [[buffer(1)]],
+                                     constant FftParams& params [[buffer(2)]],
+                                     uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count * params.inner) return;
+  const uint row = gid / params.inner;
+  const uint i = gid % params.inner;
+  output[gid] = input[row * params.n + i].x;
+}
+
+// The half spectrum a real transform reports, and the full one it needs back.
+kernel void tf_fft_crop_spectrum_float(device const float2* input
+                                           [[buffer(0)]],
+                                       device float2* output [[buffer(1)]],
+                                       constant FftParams& params
+                                           [[buffer(2)]],
+                                       uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count * params.inner) return;
+  const uint row = gid / params.inner;
+  const uint i = gid % params.inner;
+  output[gid] = input[row * params.n + i];
+}
+
+kernel void tf_fft_mirror_spectrum_float(device const float2* input
+                                             [[buffer(0)]],
+                                         device float2* output [[buffer(1)]],
+                                         constant FftParams& params
+                                             [[buffer(2)]],
+                                         uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count * params.n) return;
+  const uint row = gid / params.n;
+  const uint i = gid % params.n;
+  // Beyond the half spectrum the values are the conjugates of their mirror
+  // images, which is the symmetry a real signal's transform has.
+  if (i < params.inner) {
+    output[gid] = input[row * params.inner + i];
+  } else {
+    const uint mirror = params.n - i;
+    output[gid] = mirror < params.inner
+                      ? float2(input[row * params.inner + mirror].x,
+                               -input[row * params.inner + mirror].y)
+                      : float2(0.0f, 0.0f);
+  }
+}
 )METAL";
 
 class ShaderLibrary {

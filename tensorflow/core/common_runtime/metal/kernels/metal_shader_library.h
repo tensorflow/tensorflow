@@ -299,6 +299,21 @@ struct SegmentParams {
   uint32_t padding1;
 };
 
+// Parameters for the Fourier transform shader. Layout must match the Metal
+// struct. One call transforms along a single axis, described by how many
+// elements precede it (`outer`), its own length (`n`) and the stride between
+// its elements (`inner`).
+struct FftParams {
+  uint32_t outer;
+  uint32_t n;
+  uint32_t inner;
+  uint32_t count;
+  uint32_t inverse;
+  uint32_t scale;
+  uint32_t padding0;
+  uint32_t padding1;
+};
+
 // Compute pipeline for one function in the backend's shader library.
 //
 // The Metal source is compiled from a string the first time any pipeline is

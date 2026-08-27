@@ -163,6 +163,9 @@ void RegisterMetalBoxProposalKernels();
 // The sparse segment reductions and their gradients.
 void RegisterMetalSparseSegmentKernels();
 
+// The Fourier transforms.
+void RegisterMetalFftKernels();
+
 // ExtractVolumePatches.
 void RegisterMetalVolumePatchKernels();
 
