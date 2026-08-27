@@ -131,7 +131,7 @@ differently rather than fail.
 | `Conv2D`, `Conv2DBackpropInput`, `Conv2DBackpropFilter` | float32, float16 |
 | `Conv` | float32, float16 |
 | `_FusedConv2D`, `_FusedMatMul` | float32, float16 |
-| `_FusedBatchNormEx` | float32, float16 |
+| `_FusedBatchNormEx`, `_FusedBatchNormGradEx` | float32, float16 |
 | `CTCLoss`, `CTCLossV2` | float32 |
 | `Conv3D`, `Conv3DBackpropInputV2`, `Conv3DBackpropFilterV2` | float32, float16 |
 | `Conv3DBackpropInput`, `Conv3DBackpropFilter` | float32, float16 |

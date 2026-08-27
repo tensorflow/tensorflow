@@ -453,6 +453,14 @@ void FusedBatchNormGrad_ComputeImpl(BatchNormOp* op, TF_OpKernelContext* ctx,
   if (TF_GetCode(status) != TF_OK) return;
   TF_GetInput(ctx, 4, saved_var.address(), status);
   if (TF_GetCode(status) != TF_OK) return;
+  // The Ex gradient is handed the activation's own output so it can undo it,
+  // at the end of the input list rather than among the statistics.
+  ScopedTensor activation_output;
+  const bool undo_relu = op->relu && TF_NumInputs(ctx) > 7;
+  if (undo_relu) {
+    TF_GetInput(ctx, 7, activation_output.address(), status);
+    if (TF_GetCode(status) != TF_OK) return;
+  }
 
   const std::vector<int64_t> x_shape = ShapeOf(x.get());
   if (x_shape.size() != 4) {
@@ -479,8 +487,22 @@ void FusedBatchNormGrad_ComputeImpl(BatchNormOp* op, TF_OpKernelContext* ctx,
   doffset.reset(TF_AllocateOutput(ctx, 2, op->param_dtype, vec_shape.data(), 1,
                                   vec_bytes, status));
   if (TF_GetCode(status) != TF_OK) return;
-  // reserve_space_4 and _5 exist only for the cuDNN path and stay empty.
+  // reserve_space_4 and _5 exist only for the cuDNN path and stay empty. The
+  // Ex form adds a sixth output, the side input's gradient, which is a real
+  // tensor rather than a placeholder.
+  const int side_output =
+      op->has_side_input && TF_NumOutputs(ctx) > 5 ? 5 : -1;
+  ScopedTensor dside;
   for (int i = 3; i < TF_NumOutputs(ctx); ++i) {
+    if (i == side_output) {
+      dside.reset(TF_AllocateOutput(
+          ctx, i, op->dtype, x_shape.data(), 4,
+          static_cast<size_t>(ElementCount(x_shape)) *
+              TF_DataTypeSize(op->dtype),
+          status));
+      if (TF_GetCode(status) != TF_OK) return;
+      continue;
+    }
     ScopedTensor dummy;
     dummy.reset(
         TF_AllocateOutput(ctx, i, op->param_dtype, nullptr, 0, 0, status));
@@ -503,11 +525,14 @@ void FusedBatchNormGrad_ComputeImpl(BatchNormOp* op, TF_OpKernelContext* ctx,
   key.append("/e").append(std::to_string(op->epsilon));
   key.append("/t").append(std::to_string(static_cast<int>(op->dtype)));
   key.append("/u").append(std::to_string(static_cast<int>(op->param_dtype)));
+  key.append(undo_relu ? "/relu" : "/linear");
+  key.append(op->has_side_input && TF_NumOutputs(ctx) > 5 ? "/side" : "/plain");
 
   const bool nhwc = op->nhwc;
   const bool training = op->is_training;
   const float epsilon = op->epsilon;
   const double inv_rest = rest > 0 ? 1.0 / static_cast<double>(rest) : 0.0;
+  const bool wants_side = side_output >= 0;
 
   const CachedGraph* cached = LookupOrBuildGraph(
       key,
@@ -536,9 +561,30 @@ void FusedBatchNormGrad_ComputeImpl(BatchNormOp* op, TF_OpKernelContext* ctx,
         [out->inputs addObject:mean_t];
         [out->inputs addObject:var_t];
 
+        // The rectifier's gradient is read off its own output: where the
+        // output is positive the input passed through, and elsewhere it did
+        // not. That is why the Ex gradient is given y at all.
+        MPSGraphTensor* dy_pre = dy_t;
+        if (undo_relu) {
+          MPSGraphTensor* y_t = [g placeholderWithShape:MPSShape(x_shape)
+                                               dataType:x_type
+                                                   name:nil];
+          [out->inputs addObject:y_t];
+          dy_pre = [g
+              selectWithPredicateTensor:[g greaterThanWithPrimaryTensor:y_t
+                                                       secondaryTensor:
+                                                           [g constantWithScalar:0.0
+                                                                        dataType:x_type]
+                                                                  name:nil]
+                    truePredicateTensor:dy_t
+                   falsePredicateTensor:[g constantWithScalar:0.0
+                                                     dataType:x_type]
+                                   name:nil];
+        }
+
         MPSGraphTensor* dyu = x_type == u_type
-                                  ? dy_t
-                                  : [g castTensor:dy_t toType:u_type name:nil];
+                                  ? dy_pre
+                                  : [g castTensor:dy_pre toType:u_type name:nil];
         MPSGraphTensor* xu = x_type == u_type
                                  ? x_t
                                  : [g castTensor:x_t toType:u_type name:nil];
@@ -623,6 +669,10 @@ void FusedBatchNormGrad_ComputeImpl(BatchNormOp* op, TF_OpKernelContext* ctx,
             addObject:[g reshapeTensor:dscale_t withShape:flat name:nil]];
         [out->outputs
             addObject:[g reshapeTensor:sum_dy withShape:flat name:nil]];
+        // A side input is added after the normalisation, so its gradient is
+        // whatever reached that addition: the gradient with the activation
+        // already undone, unchanged.
+        if (wants_side) [out->outputs addObject:dy_pre];
       },
       status);
   if (cached == nullptr) return;
@@ -658,9 +708,24 @@ void FusedBatchNormGrad_ComputeImpl(BatchNormOp* op, TF_OpKernelContext* ctx,
       TensorDataForTensor(doffset.get(), op->param_dtype, device, status);
   if (doffset_data == nil) return;
 
-  RunGraph(stream, *cached,
-           @[ dy_data, x_data, scale_data, mean_data, var_data ],
-           @[ dx_data, dscale_data, doffset_data ], status);
+  NSMutableArray<MPSGraphTensorData*>* feeds = [NSMutableArray
+      arrayWithObjects:dy_data, x_data, scale_data, mean_data, var_data, nil];
+  if (undo_relu) {
+    MPSGraphTensorData* y_data =
+        TensorDataForTensor(activation_output.get(), op->dtype, device,
+                            status);
+    if (y_data == nil) return;
+    [feeds addObject:y_data];
+  }
+  NSMutableArray<MPSGraphTensorData*>* results = [NSMutableArray
+      arrayWithObjects:dx_data, dscale_data, doffset_data, nil];
+  if (side_output >= 0) {
+    MPSGraphTensorData* dside_data =
+        TensorDataForTensor(dside.get(), op->dtype, device, status);
+    if (dside_data == nil) return;
+    [results addObject:dside_data];
+  }
+  RunGraph(stream, *cached, feeds, results, status);
 }
 
 /*** WRAPPERS AND REGISTRATION ***/
@@ -735,6 +800,9 @@ void RegisterMetalBatchNormKernels() {
     Register("FusedBatchNormGradV3", &FusedBatchNormGrad_Compute, kDTypes[i],
              true, TF_FLOAT,
              std::string("MetalFusedBatchNormGradV3") + kSuffixes[i]);
+    Register("_FusedBatchNormGradEx", &FusedBatchNormGrad_Compute, kDTypes[i],
+             true, TF_FLOAT,
+             std::string("Metal_FusedBatchNormGradEx") + kSuffixes[i]);
   }
 }
 
