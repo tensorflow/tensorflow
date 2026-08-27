@@ -115,6 +115,9 @@ void RegisterMetalImage2Kernels();
 // LowerBound, UpperBound, HistogramFixedWidth and TopK.
 void RegisterMetalSearchKernels();
 
+// PopulationCount, CumulativeLogsumexp, LRNGrad and AdjustContrast.
+void RegisterMetalExtraKernels();
+
 // Identity, which aliases its input when it can and blits when it cannot.
 void RegisterMetalIdentityKernels();
 

@@ -180,7 +180,10 @@ differently rather than fail.
 | `ReverseV2`, `Split`, `SplitV` | float32, float16 |
 | `Reverse`, `CheckNumerics`, `CheckNumericsV2` | float32, float16 |
 | `ExtractImagePatches` | float32, float16 |
-| `LRN` | float32 |
+| `LRN`, `LRNGrad` | float32 |
+| `PopulationCount` | int32, int64 |
+| `CumulativeLogsumexp` | float32, float16 |
+| `AdjustContrast` | float32 |
 | `StridedSlice`, `StridedSliceGrad`, `TileGrad`, `Roll` | float32, float16 |
 | `Equal`, `NotEqual`, `Less`, `LessEqual`, `Greater`, `GreaterEqual` | float32, float16, int32, int64 |
 | `ApproximateEqual` | float32, float16 |
