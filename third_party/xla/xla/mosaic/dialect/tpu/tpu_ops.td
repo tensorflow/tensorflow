@@ -1199,6 +1199,19 @@ def TPU_MemRefSliceOp : TPU_Op<"memref_slice", [Pure, AttrSizedOperandSegments]>
     std::optional<std::string> verifyOffsetAndSizeTileAlignment(
         std::array<int64_t, 2> tc_target_shape,
         MemRefType source_type_override = nullptr);
+
+    // Given a source shape size, a slice shape size, a source tile size, a
+    // result tile size and optionally a slice offset, the below functions
+    // returns a tri-state boolean (nullopt means "unknown") indicating whether
+    // the result tiles of the slice stride across or within the source tiles.
+    // The result tile should divide the source tile and the offset, if
+    // provided, should be divisible by the result tile size.
+    static std::optional<bool> sliceStridesAcrossSourceTiles(
+        int64_t source_size, int64_t slice_size, int64_t source_tile_size,
+        int64_t result_tile_size, Value offset);
+    static std::optional<bool> sliceStridesWithinSourceTiles(
+        int64_t source_size, int64_t slice_size, int64_t source_tile_size,
+        int64_t result_tile_size, Value offset);
   }];
   let hasVerifier = 1;
   let hasCanonicalizer = 1;
