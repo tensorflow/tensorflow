@@ -116,6 +116,15 @@ SP_Stream StreamForContext(TF_OpKernelContext* ctx, TF_Status* status);
 // The Metal device backing `stream`.
 id<MTLDevice> DeviceForStream(SP_Stream stream);
 
+// One dispatch of a one-dimensional shader over `count` elements.
+//
+// Uses dispatchThreadgroups: rather than dispatchThreads:, so the grid rounds
+// up to whole threadgroups and the call works regardless of GPU family. Every
+// shader in this backend bounds-checks against its element count, which is
+// what makes the rounding safe.
+void Dispatch1D(id<MTLComputeCommandEncoder> encoder,
+                id<MTLComputePipelineState> pipeline, uint32_t count);
+
 // Number of elements described by a tensor's shape.
 int64_t NumElements(TF_Tensor* tensor);
 

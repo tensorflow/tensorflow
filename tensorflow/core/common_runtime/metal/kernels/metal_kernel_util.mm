@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/metal/kernels/metal_kernel_util.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -161,6 +162,15 @@ SP_Stream StreamForContext(TF_OpKernelContext* ctx, TF_Status* status) {
 }
 
 id<MTLDevice> DeviceForStream(SP_Stream stream) { return stream->queue.device; }
+
+void Dispatch1D(id<MTLComputeCommandEncoder> encoder,
+                id<MTLComputePipelineState> pipeline, uint32_t count) {
+  const NSUInteger threads_per_group =
+      std::min<NSUInteger>(pipeline.maxTotalThreadsPerThreadgroup, count);
+  const NSUInteger groups = (count + threads_per_group - 1) / threads_per_group;
+  [encoder dispatchThreadgroups:MTLSizeMake(groups, 1, 1)
+          threadsPerThreadgroup:MTLSizeMake(threads_per_group, 1, 1)];
+}
 
 int64_t NumElements(TF_Tensor* tensor) {
   int64_t count = 1;

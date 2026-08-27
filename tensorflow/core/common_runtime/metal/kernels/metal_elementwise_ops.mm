@@ -36,20 +36,6 @@ namespace tensorflow {
 namespace metal {
 namespace {
 
-// One dispatch of a one-dimensional shader over `count` elements.
-//
-// Uses dispatchThreadgroups: rather than dispatchThreads:, so the grid rounds
-// up to whole threadgroups and the call works regardless of GPU family. The
-// shaders bounds-check against `count`, which is what makes the rounding safe.
-void Dispatch1D(id<MTLComputeCommandEncoder> encoder,
-                id<MTLComputePipelineState> pipeline, uint32_t count) {
-  const NSUInteger threads_per_group =
-      std::min<NSUInteger>(pipeline.maxTotalThreadsPerThreadgroup, count);
-  const NSUInteger groups = (count + threads_per_group - 1) / threads_per_group;
-  [encoder dispatchThreadgroups:MTLSizeMake(groups, 1, 1)
-          threadsPerThreadgroup:MTLSizeMake(threads_per_group, 1, 1)];
-}
-
 std::string DescribeShape(const std::vector<int64_t>& shape) {
   std::string text = "[";
   for (size_t i = 0; i < shape.size(); ++i) {
