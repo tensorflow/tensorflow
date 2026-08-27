@@ -40,26 +40,6 @@ namespace {
 // for it, every one of those nodes would be placed on the host and drag a
 // device-to-host and host-to-device round trip with it.
 
-class ScopedTensor {
- public:
-  ScopedTensor() = default;
-  ~ScopedTensor() {
-    if (tensor_ != nullptr) TF_DeleteTensor(tensor_);
-  }
-  ScopedTensor(const ScopedTensor&) = delete;
-  ScopedTensor& operator=(const ScopedTensor&) = delete;
-
-  TF_Tensor** address() { return &tensor_; }
-  TF_Tensor* get() const { return tensor_; }
-  void reset(TF_Tensor* tensor) {
-    if (tensor_ != nullptr) TF_DeleteTensor(tensor_);
-    tensor_ = tensor;
-  }
-
- private:
-  TF_Tensor* tensor_ = nullptr;
-};
-
 void IdentityOp_ComputeImpl(TF_OpKernelContext* ctx, TF_Status* status) {
   ScopedTensor input;
   TF_GetInput(ctx, 0, input.address(), status);

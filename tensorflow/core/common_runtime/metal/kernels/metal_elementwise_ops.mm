@@ -36,29 +36,6 @@ namespace tensorflow {
 namespace metal {
 namespace {
 
-// Deletes a TF_Tensor on scope exit. The C kernel API hands out owned tensors,
-// and with several early-return paths per kernel, leaking one leaks device
-// memory for the life of the process.
-class ScopedTensor {
- public:
-  ScopedTensor() = default;
-  ~ScopedTensor() {
-    if (tensor_ != nullptr) TF_DeleteTensor(tensor_);
-  }
-  ScopedTensor(const ScopedTensor&) = delete;
-  ScopedTensor& operator=(const ScopedTensor&) = delete;
-
-  TF_Tensor** address() { return &tensor_; }
-  TF_Tensor* get() const { return tensor_; }
-  void reset(TF_Tensor* tensor) {
-    if (tensor_ != nullptr) TF_DeleteTensor(tensor_);
-    tensor_ = tensor;
-  }
-
- private:
-  TF_Tensor* tensor_ = nullptr;
-};
-
 // One dispatch of a one-dimensional shader over `count` elements.
 //
 // Uses dispatchThreadgroups: rather than dispatchThreads:, so the grid rounds

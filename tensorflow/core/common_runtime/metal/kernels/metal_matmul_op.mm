@@ -46,26 +46,6 @@ namespace {
 // allocator places tensors at arbitrary offsets inside a shared allocation,
 // the MPSGraph path would need every operand copied into its own buffer first.
 
-class ScopedTensor {
- public:
-  ScopedTensor() = default;
-  ~ScopedTensor() {
-    if (tensor_ != nullptr) TF_DeleteTensor(tensor_);
-  }
-  ScopedTensor(const ScopedTensor&) = delete;
-  ScopedTensor& operator=(const ScopedTensor&) = delete;
-
-  TF_Tensor** address() { return &tensor_; }
-  TF_Tensor* get() const { return tensor_; }
-  void reset(TF_Tensor* tensor) {
-    if (tensor_ != nullptr) TF_DeleteTensor(tensor_);
-    tensor_ = tensor;
-  }
-
- private:
-  TF_Tensor* tensor_ = nullptr;
-};
-
 struct MatMulOp {
   bool transpose_a = false;
   bool transpose_b = false;
