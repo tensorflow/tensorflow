@@ -174,6 +174,7 @@ differently rather than fail.
 | `Slice`, `Pad`, `PadV2`, `MirrorPad`, `MirrorPadGrad` | float32, float16 |
 | `GatherV2`, `OneHot`, `TopKV2` | float32, float16 |
 | `ResourceGather`, `ResourceScatterUpdate` | float32, float16 |
+| `GatherNd`, `ResourceGatherNd` | float32, float16 |
 | `TopK`, `LowerBound`, `UpperBound`, `HistogramFixedWidth` | float32, float16 |
 | `Cumsum`, `Cumprod`, `ClipByValue` | float32, float16 |
 | `FakeQuantWithMinMaxArgs`, `FakeQuantWithMinMaxArgsGradient` | float32 |

@@ -190,6 +190,125 @@ void ResourceGather_ComputeImpl(ResourceOp* op, TF_OpKernelContext* ctx,
   RunGraph(stream, *cached, @[ p_data, i_data ], @[ o_data ], status);
 }
 
+/*** GATHER ND ***/
+
+// Indexes with a whole coordinate per entry rather than one along an axis:
+// the last dimension of `indices` names a position in the leading dimensions
+// of `params`, and everything past those dimensions comes along as a slice.
+//
+// `params` arrives either as a plain tensor or through a variable; the graph
+// is the same either way, which is why both ops share this.
+void GatherNd_Run(ResourceOp* op, TF_OpKernelContext* ctx, TF_Tensor* params,
+                  TF_Tensor* indices, TF_Status* status) {
+  const std::vector<int64_t> p_shape = ShapeOf(params);
+  const std::vector<int64_t> i_shape = ShapeOf(indices);
+  if (p_shape.empty() || i_shape.empty()) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: GatherNd needs a rank of at least 1 on both inputs.");
+    return;
+  }
+  const int64_t index_depth = i_shape.back();
+  if (index_depth < 1 || index_depth > static_cast<int64_t>(p_shape.size())) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: the last dimension of GatherNd indices must not "
+                 "exceed the rank of params.");
+    return;
+  }
+
+  std::vector<int64_t> out_shape;
+  for (size_t i = 0; i + 1 < i_shape.size(); ++i) {
+    out_shape.push_back(i_shape[i]);
+  }
+  for (size_t i = index_depth; i < p_shape.size(); ++i) {
+    out_shape.push_back(p_shape[i]);
+  }
+  // A full-depth index over a rank-1 params leaves nothing behind, and an
+  // empty shape is a scalar, which the allocator accepts as rank zero.
+  const int64_t count = ElementCount(out_shape);
+
+  ScopedTensor output;
+  output.reset(TF_AllocateOutput(
+      ctx, 0, op->dtype, out_shape.data(), static_cast<int>(out_shape.size()),
+      static_cast<size_t>(count) * TF_DataTypeSize(op->dtype), status));
+  if (TF_GetCode(status) != TF_OK) return;
+  if (count == 0) return;
+
+  SP_Stream stream = StreamForContext(ctx, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  id<MTLDevice> device = DeviceForStream(stream);
+  MPSDataType mps_dtype, idx_dtype;
+  if (!MPSTypeFor(op->dtype, &mps_dtype, status)) return;
+  const TF_DataType index_type = TF_TensorType(indices);
+  if (!MPSTypeFor(index_type, &idx_dtype, status)) return;
+
+  std::string key = "GatherNd";
+  AppendShapeToKey(p_shape, &key);
+  AppendShapeToKey(i_shape, &key);
+  key.append("/t").append(std::to_string(static_cast<int>(op->dtype)));
+  key.append("/i").append(std::to_string(static_cast<int>(index_type)));
+
+  const CachedGraph* cached = LookupOrBuildGraph(
+      key,
+      ^(CachedGraph* out) {
+        MPSGraph* g = out->graph;
+        MPSGraphTensor* p = [g placeholderWithShape:MPSShape(p_shape)
+                                           dataType:mps_dtype
+                                               name:nil];
+        MPSGraphTensor* i = [g placeholderWithShape:MPSShape(i_shape)
+                                           dataType:idx_dtype
+                                               name:nil];
+        [out->inputs addObject:p];
+        [out->inputs addObject:i];
+        // No batch dimensions: TensorFlow's GatherNd indexes from the front of
+        // params, and its batched behaviour is expressed by the caller instead.
+        [out->outputs addObject:[g gatherNDWithUpdatesTensor:p
+                                              indicesTensor:i
+                                            batchDimensions:0
+                                                       name:nil]];
+      },
+      status);
+  if (cached == nullptr) return;
+
+  MPSGraphTensorData* p_data =
+      TensorDataForTensor(params, op->dtype, device, status);
+  if (p_data == nil) return;
+  MPSGraphTensorData* i_data =
+      TensorDataForTensor(indices, index_type, device, status);
+  if (i_data == nil) return;
+  MPSGraphTensorData* o_data =
+      TensorDataForTensor(output.get(), op->dtype, device, status);
+  if (o_data == nil) return;
+  RunGraph(stream, *cached, @[ p_data, i_data ], @[ o_data ], status);
+}
+
+void GatherNd_ComputeImpl(ResourceOp* op, TF_OpKernelContext* ctx,
+                          TF_Status* status) {
+  ScopedTensor params, indices;
+  TF_GetInput(ctx, 0, params.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+  TF_GetInput(ctx, 1, indices.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+  // The plain form's type attribute is Tparams, not dtype, so it is taken
+  // from the tensor rather than from construction.
+  op->dtype = TF_TensorType(params.get());
+  GatherNd_Run(op, ctx, params.get(), indices.get(), status);
+}
+
+void ResourceGatherNd_ComputeImpl(ResourceOp* op, TF_OpKernelContext* ctx,
+                                  TF_Status* status) {
+  ScopedTensor params;
+  // Reading through the variable takes the same lock an assignment would, so
+  // a concurrent write cannot tear the read.
+  TF_GetInputTensorFromVariable(ctx, 0, /*lock_held=*/false,
+                                /*isVariantType=*/false, /*sparse=*/false,
+                                &CopyTensorOnDevice, params.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+  ScopedTensor indices;
+  TF_GetInput(ctx, 1, indices.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+  GatherNd_Run(op, ctx, params.get(), indices.get(), status);
+}
+
 /*** RESOURCE SCATTER UPDATE ***/
 
 // Writes updates into the variable at the given indices along axis 0. The
@@ -306,23 +425,26 @@ void ResourceScatterUpdate_ComputeImpl(ResourceOp* op, TF_OpKernelContext* ctx,
   }
 
 METAL_COMPUTE(ResourceGather_Compute, ResourceGather_ComputeImpl)
+METAL_COMPUTE(GatherNd_Compute, GatherNd_ComputeImpl)
+METAL_COMPUTE(ResourceGatherNd_Compute, ResourceGatherNd_ComputeImpl)
 METAL_COMPUTE(ResourceScatterUpdate_Compute, ResourceScatterUpdate_ComputeImpl)
 
 #undef METAL_COMPUTE
 
 void Register(const char* op_name,
               void (*compute)(void*, TF_OpKernelContext*), TF_DataType dtype,
-              TF_DataType index_dtype, const std::string& name) {
+              TF_DataType index_dtype, const std::string& name,
+              const char* type_attr = "dtype", bool resource_input = true) {
   TF_Status* status = TF_NewStatus();
   TF_KernelBuilder* builder =
       TF_NewKernelBuilder(op_name, kMetalDeviceType, &ResourceOp_Create,
                           compute, &ResourceOp_Delete);
-  TF_KernelBuilder_TypeConstraint(builder, "dtype", dtype, status);
+  TF_KernelBuilder_TypeConstraint(builder, type_attr, dtype, status);
   if (TF_GetCode(status) == TF_OK) {
     TF_KernelBuilder_TypeConstraint(builder, "Tindices", index_dtype, status);
   }
   // The variable handle is a resource and lives on the host.
-  TF_KernelBuilder_HostMemory(builder, "resource");
+  if (resource_input) TF_KernelBuilder_HostMemory(builder, "resource");
   if (TF_GetCode(status) == TF_OK) {
     TF_RegisterKernelBuilder(name.c_str(), builder, status);
   } else {
@@ -351,6 +473,13 @@ void RegisterMetalResourceKernels() {
       Register("ResourceScatterUpdate", &ResourceScatterUpdate_Compute,
                kDTypes[i], kIndexTypes[j],
                "MetalResourceScatterUpdate" + suffix);
+      Register("ResourceGatherNd", &ResourceGatherNd_Compute, kDTypes[i],
+               kIndexTypes[j], "MetalResourceGatherNd" + suffix);
+      // The plain form names its type Tparams and takes a tensor rather than
+      // a variable handle.
+      Register("GatherNd", &GatherNd_Compute, kDTypes[i], kIndexTypes[j],
+               "MetalGatherNd" + suffix, "Tparams",
+               /*resource_input=*/false);
     }
   }
 }
