@@ -36,6 +36,9 @@ void RegisterMetalConvKernels();
 // the gradients of each, on MPSGraph.
 void RegisterMetalNnKernels();
 
+// MaxPool and its gradient, on MPSGraph.
+void RegisterMetalPoolingKernels();
+
 // Identity, which aliases its input when it can and blits when it cannot.
 void RegisterMetalIdentityKernels();
 
