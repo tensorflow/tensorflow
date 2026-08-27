@@ -21,7 +21,7 @@ from jax import lax
 from jax.experimental import pallas as pl
 from jax.experimental.pallas import tpu as pltpu
 import jax.numpy as jnp
-from xla.benchmarks.dma_microbenchmarks import memory_base  # pylint: disable=g-direct-tensorflow-import
+from xla.benchmarks.dma_microbenchmarks import memory_base
 
 
 _NUMBER_OF_MEASUREMENTS = flags.DEFINE_integer(

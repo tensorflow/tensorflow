@@ -26,7 +26,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from xla.benchmarks.jax_microbenchmarks import jax_profiler_utils  # pylint: disable=g-direct-tensorflow-import
+from xla.benchmarks.jax_microbenchmarks import jax_profiler_utils
 
 
 _USE_PROFILER = flags.DEFINE_bool(
@@ -238,8 +238,22 @@ class Benchmark(abc.ABC):
     return profiler_results
 
 
+@dataclasses.dataclass(frozen=True)
 class BenchmarkConfig(abc.ABC):
   """Base class for benchmark configs."""
+
+  def as_dict(self) -> dict[str, Any]:
+    """Returns a dictionary representation of the config."""
+    return {
+        k: dtype_to_str(v) if isinstance(v, jnp.dtype) else v
+        for k, v in dataclasses.asdict(self).items()
+    }
+
+  def __repr__(self) -> str:
+    return (
+        f"{self.__class__.__name__}"
+        f"({', '.join(f'{k}={v!r}' for k, v in self.as_dict().items())})"
+    )
 
   @abc.abstractmethod
   def get_benchmark(self) -> Benchmark:

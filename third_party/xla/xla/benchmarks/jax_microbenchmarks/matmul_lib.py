@@ -21,7 +21,7 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 
-from xla.benchmarks.core import benchmark  # pylint: disable=g-direct-tensorflow-import
+from xla.benchmarks.core import benchmark
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
