@@ -67,6 +67,27 @@ struct OptimizerParams {
   uint32_t padding1;
 };
 
+// Parameters for the morphological dilation gradients. Layout must match the
+// Metal struct.
+struct DilationParams {
+  uint32_t batch;
+  uint32_t in_h;
+  uint32_t in_w;
+  uint32_t channels;
+  uint32_t out_h;
+  uint32_t out_w;
+  uint32_t kh;
+  uint32_t kw;
+  uint32_t stride_h;
+  uint32_t stride_w;
+  uint32_t rate_h;
+  uint32_t rate_w;
+  int32_t pad_top;
+  int32_t pad_left;
+  uint32_t count;
+  uint32_t padding0;
+};
+
 // Compute pipeline for one function in the backend's shader library.
 //
 // The Metal source is compiled from a string the first time any pipeline is

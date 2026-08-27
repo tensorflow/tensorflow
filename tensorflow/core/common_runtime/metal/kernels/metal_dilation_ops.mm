@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/common_runtime/metal/kernels/metal_kernel_util.h"
 #include "tensorflow/core/common_runtime/metal/kernels/metal_mps_graph.h"
+#include "tensorflow/core/common_runtime/metal/kernels/metal_shader_library.h"
 #include "tensorflow/core/common_runtime/metal/metal_platform.h"
 #include "tensorflow/core/common_runtime/metal/metal_stream.h"
 
@@ -299,6 +300,168 @@ void Dilation2D_Compute(void* kernel, TF_OpKernelContext* ctx) {
   TF_DeleteStatus(status);
 }
 
+/*** GRADIENTS ***/
+
+// Both gradients replay the forward argmax and scatter one output gradient
+// into the winning position. Several output positions routinely win the same
+// input or filter element, so this is a scatter-add, which MPSGraph has no
+// operation for at this shape; it runs as a shader with atomic accumulation
+// instead. That also means the destination has to start at zero, hence the
+// blit fill ahead of the dispatch, in the same command buffer so the ordering
+// is the queue's rather than the host's.
+
+bool DilationGeometry(DilationOp* op, const std::vector<int64_t>& in_shape,
+                      const std::vector<int64_t>& f_shape,
+                      const std::vector<int64_t>& out_shape,
+                      DilationParams* params, TF_Status* status) {
+  const int64_t kh = f_shape[0], kw = f_shape[1];
+  const int64_t eff_h = (kh - 1) * op->rate_h + 1;
+  const int64_t eff_w = (kw - 1) * op->rate_w + 1;
+  const int64_t pad_h =
+      op->same_padding
+          ? std::max<int64_t>(
+                0, (out_shape[1] - 1) * op->stride_h + eff_h - in_shape[1])
+          : 0;
+  const int64_t pad_w =
+      op->same_padding
+          ? std::max<int64_t>(
+                0, (out_shape[2] - 1) * op->stride_w + eff_w - in_shape[2])
+          : 0;
+  params->batch = static_cast<uint32_t>(in_shape[0]);
+  params->in_h = static_cast<uint32_t>(in_shape[1]);
+  params->in_w = static_cast<uint32_t>(in_shape[2]);
+  params->channels = static_cast<uint32_t>(in_shape[3]);
+  params->out_h = static_cast<uint32_t>(out_shape[1]);
+  params->out_w = static_cast<uint32_t>(out_shape[2]);
+  params->kh = static_cast<uint32_t>(kh);
+  params->kw = static_cast<uint32_t>(kw);
+  params->stride_h = static_cast<uint32_t>(op->stride_h);
+  params->stride_w = static_cast<uint32_t>(op->stride_w);
+  params->rate_h = static_cast<uint32_t>(op->rate_h);
+  params->rate_w = static_cast<uint32_t>(op->rate_w);
+  params->pad_top = static_cast<int32_t>(pad_h / 2);
+  params->pad_left = static_cast<int32_t>(pad_w / 2);
+  params->count = static_cast<uint32_t>(ElementCount(out_shape));
+  params->padding0 = 0;
+  if (f_shape[2] != in_shape[3]) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: Dilation2D filter and input channels differ.");
+    return false;
+  }
+  return true;
+}
+
+// `want_filter` selects which of the two tensors the gradient lands in; the
+// window search is identical either way.
+void DilationGrad_ComputeImpl(DilationOp* op, TF_OpKernelContext* ctx,
+                              bool want_filter, TF_Status* status) {
+  ScopedTensor input, filter, grad;
+  TF_GetInput(ctx, 0, input.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+  TF_GetInput(ctx, 1, filter.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+  TF_GetInput(ctx, 2, grad.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+  if (TF_NumDims(input.get()) != 4 || TF_NumDims(filter.get()) != 3 ||
+      TF_NumDims(grad.get()) != 4) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: the Dilation2D gradients expect a rank-4 input, a "
+                 "rank-3 filter and a rank-4 out_backprop.");
+    return;
+  }
+
+  const std::vector<int64_t> in_shape = ShapeOf(input.get());
+  const std::vector<int64_t> f_shape = ShapeOf(filter.get());
+  const std::vector<int64_t> out_shape = ShapeOf(grad.get());
+  DilationParams params;
+  if (!DilationGeometry(op, in_shape, f_shape, out_shape, &params, status)) {
+    return;
+  }
+
+  const std::vector<int64_t>& result_shape = want_filter ? f_shape : in_shape;
+  const int64_t result_count = ElementCount(result_shape);
+  ScopedTensor output;
+  output.reset(TF_AllocateOutput(
+      ctx, 0, op->dtype, result_shape.data(),
+      static_cast<int>(result_shape.size()),
+      static_cast<size_t>(result_count) * TF_DataTypeSize(op->dtype), status));
+  if (TF_GetCode(status) != TF_OK) return;
+  if (result_count == 0) return;
+
+  SP_Stream stream = StreamForContext(ctx, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  id<MTLComputePipelineState> pipeline = PipelineFor(
+      DeviceForStream(stream),
+      want_filter ? "tf_dilation_backprop_filter_float"
+                  : "tf_dilation_backprop_input_float",
+      status);
+  if (pipeline == nil) return;
+
+  BufferSlice in_slice, f_slice, g_slice, out_slice;
+  if (!SliceForTensor(input.get(), &in_slice, status)) return;
+  if (!SliceForTensor(filter.get(), &f_slice, status)) return;
+  if (!SliceForTensor(grad.get(), &g_slice, status)) return;
+  if (!SliceForTensor(output.get(), &out_slice, status)) return;
+
+  OrderedCommandBuffer command_buffer(stream);
+  if (!command_buffer.ok()) {
+    TF_SetStatus(status, TF_RESOURCE_EXHAUSTED,
+                 "Metal: could not create a command buffer for a Dilation2D "
+                 "gradient.");
+    return;
+  }
+
+  id<MTLBlitCommandEncoder> zero = [command_buffer.get() blitCommandEncoder];
+  [zero fillBuffer:out_slice.buffer
+             range:NSMakeRange(out_slice.offset,
+                               static_cast<NSUInteger>(result_count) *
+                                   TF_DataTypeSize(op->dtype))
+             value:0];
+  [zero endEncoding];
+
+  if (params.count > 0) {
+    id<MTLComputeCommandEncoder> encoder =
+        [command_buffer.get() computeCommandEncoder];
+    [encoder setComputePipelineState:pipeline];
+    [encoder setBuffer:in_slice.buffer offset:in_slice.offset atIndex:0];
+    [encoder setBuffer:f_slice.buffer offset:f_slice.offset atIndex:1];
+    [encoder setBuffer:g_slice.buffer offset:g_slice.offset atIndex:2];
+    [encoder setBuffer:out_slice.buffer offset:out_slice.offset atIndex:3];
+    [encoder setBytes:&params length:sizeof(params) atIndex:4];
+    Dispatch1D(encoder, pipeline, params.count);
+    [encoder endEncoding];
+  }
+  command_buffer.Commit();
+}
+
+void DilationBackpropInput_Compute(void* kernel, TF_OpKernelContext* ctx) {
+  ScopedAutoreleasePool pool;
+  TF_Status* status = TF_NewStatus();
+  auto* op = static_cast<DilationOp*>(kernel);
+  if (op == nullptr) {
+    TF_SetStatus(status, TF_INTERNAL,
+                 "Metal: Dilation2DBackpropInput kernel has no state.");
+  } else {
+    DilationGrad_ComputeImpl(op, ctx, /*want_filter=*/false, status);
+  }
+  if (TF_GetCode(status) != TF_OK) TF_OpKernelContext_Failure(ctx, status);
+  TF_DeleteStatus(status);
+}
+
+void DilationBackpropFilter_Compute(void* kernel, TF_OpKernelContext* ctx) {
+  ScopedAutoreleasePool pool;
+  TF_Status* status = TF_NewStatus();
+  auto* op = static_cast<DilationOp*>(kernel);
+  if (op == nullptr) {
+    TF_SetStatus(status, TF_INTERNAL,
+                 "Metal: Dilation2DBackpropFilter kernel has no state.");
+  } else {
+    DilationGrad_ComputeImpl(op, ctx, /*want_filter=*/true, status);
+  }
+  if (TF_GetCode(status) != TF_OK) TF_OpKernelContext_Failure(ctx, status);
+  TF_DeleteStatus(status);
+}
+
 }  // namespace
 
 void RegisterMetalDilationKernels() {
@@ -311,6 +474,33 @@ void RegisterMetalDilationKernels() {
                             &Dilation2D_Compute, &DilationOp_Delete);
     TF_KernelBuilder_TypeConstraint(builder, "T", kDTypes[i], status);
     const std::string name = std::string("MetalDilation2D") + kSuffixes[i];
+    if (TF_GetCode(status) == TF_OK) {
+      TF_RegisterKernelBuilder(name.c_str(), builder, status);
+    } else {
+      TF_DeleteKernelBuilder(builder);
+    }
+    if (TF_GetCode(status) != TF_OK) {
+      LOG(ERROR) << "Metal: could not register kernel " << name << ": "
+                 << TF_Message(status);
+    }
+    TF_DeleteStatus(status);
+  }
+
+  // Float32 only: the scatter-add is a Metal atomic, and Metal has no atomic
+  // add on half. Registering half here would silently accumulate wrong, so it
+  // is left to fall back rather than pretended.
+  struct { const char* op_name; void (*compute)(void*, TF_OpKernelContext*); }
+      grads[] = {
+          {"Dilation2DBackpropInput", &DilationBackpropInput_Compute},
+          {"Dilation2DBackpropFilter", &DilationBackpropFilter_Compute},
+      };
+  for (auto& g : grads) {
+    TF_Status* status = TF_NewStatus();
+    TF_KernelBuilder* builder =
+        TF_NewKernelBuilder(g.op_name, kMetalDeviceType, &DilationOp_Create,
+                            g.compute, &DilationOp_Delete);
+    TF_KernelBuilder_TypeConstraint(builder, "T", TF_FLOAT, status);
+    const std::string name = std::string("Metal") + g.op_name + "Float";
     if (TF_GetCode(status) == TF_OK) {
       TF_RegisterKernelBuilder(name.c_str(), builder, status);
     } else {

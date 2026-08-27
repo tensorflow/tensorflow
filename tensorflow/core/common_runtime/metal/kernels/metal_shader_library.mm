@@ -324,6 +324,103 @@ kernel void tf_apply_adam_float(device float* var [[buffer(0)]],
       params.use_nesterov ? (m_new * b1 + (1.0f - b1) * g) : m_new;
   var[gid] -= alpha * numerator / (sqrt(v_new) + epsilon[0]);
 }
+
+// ---- morphological dilation gradients ----
+
+struct DilationParams {
+  uint batch;
+  uint in_h;
+  uint in_w;
+  uint channels;
+  uint out_h;
+  uint out_w;
+  uint kh;
+  uint kw;
+  uint stride_h;
+  uint stride_w;
+  uint rate_h;
+  uint rate_w;
+  int pad_top;
+  int pad_left;
+  uint count;
+  uint pad0;
+};
+
+// Both dilation gradients replay the forward pass's argmax over the filter
+// window, then scatter one output gradient into the position that won. Many
+// output positions can win the same input or filter element, so the
+// accumulation has to be atomic.
+//
+// Ties go to the first position in scan order, and the comparison is strict
+// for that reason: >= would pick the last instead. Either is a valid
+// subgradient, but the CPU and CUDA kernels pick the first, and matching them
+// is what makes a numerical comparison against them meaningful.
+//
+// A window entirely outside the input leaves the maximum unset. The fallback
+// position is then the clamped window origin, which is what the CPU kernel
+// uses, so a zero-sized overlap still deposits its gradient in the same place.
+#define TF_METAL_DILATION_ARGMAX()                                             \
+  const uint c = gid % params.channels;                                        \
+  const uint ox = (gid / params.channels) % params.out_w;                      \
+  const uint oy = (gid / (params.channels * params.out_w)) % params.out_h;     \
+  const uint b = gid / (params.channels * params.out_w * params.out_h);        \
+  const int h_beg = int(oy * params.stride_h) - params.pad_top;                \
+  const int w_beg = int(ox * params.stride_w) - params.pad_left;               \
+  int h_max = max(h_beg, 0);                                                   \
+  int w_max = max(w_beg, 0);                                                   \
+  uint k_h_max = 0;                                                            \
+  uint k_w_max = 0;                                                            \
+  float cur = -INFINITY;                                                       \
+  for (uint ky = 0; ky < params.kh; ++ky) {                                    \
+    const int iy = h_beg + int(ky * params.rate_h);                            \
+    if (iy < 0 || iy >= int(params.in_h)) continue;                            \
+    for (uint kx = 0; kx < params.kw; ++kx) {                                  \
+      const int ix = w_beg + int(kx * params.rate_w);                          \
+      if (ix < 0 || ix >= int(params.in_w)) continue;                          \
+      const float v =                                                          \
+          in[((b * params.in_h + uint(iy)) * params.in_w + uint(ix)) *         \
+                 params.channels + c] +                                        \
+          flt[(ky * params.kw + kx) * params.channels + c];                    \
+      if (v > cur) {                                                           \
+        cur = v;                                                               \
+        h_max = iy;                                                            \
+        w_max = ix;                                                            \
+        k_h_max = ky;                                                          \
+        k_w_max = kx;                                                          \
+      }                                                                        \
+    }                                                                          \
+  }
+
+kernel void tf_dilation_backprop_input_float(
+    device const float* in [[buffer(0)]],
+    device const float* flt [[buffer(1)]],
+    device const float* grad [[buffer(2)]],
+    device atomic_float* in_backprop [[buffer(3)]],
+    constant DilationParams& params [[buffer(4)]],
+    uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count) return;
+  TF_METAL_DILATION_ARGMAX()
+  const uint index =
+      ((b * params.in_h + uint(h_max)) * params.in_w + uint(w_max)) *
+          params.channels + c;
+  atomic_fetch_add_explicit(&in_backprop[index], grad[gid],
+                            memory_order_relaxed);
+}
+
+kernel void tf_dilation_backprop_filter_float(
+    device const float* in [[buffer(0)]],
+    device const float* flt [[buffer(1)]],
+    device const float* grad [[buffer(2)]],
+    device atomic_float* filter_backprop [[buffer(3)]],
+    constant DilationParams& params [[buffer(4)]],
+    uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count) return;
+  TF_METAL_DILATION_ARGMAX()
+  const uint index =
+      (k_h_max * params.kw + k_w_max) * params.channels + c;
+  atomic_fetch_add_explicit(&filter_backprop[index], grad[gid],
+                            memory_order_relaxed);
+}
 )METAL";
 
 class ShaderLibrary {
