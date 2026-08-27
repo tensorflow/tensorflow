@@ -250,9 +250,16 @@ void DnnPoolingImpl(OpKernelContext* context, se::dnn::PoolingMode pooling_mode,
   if (!context->status().ok()) {
     return;
   }
-  // Forward cudnn pooling only (grads use DnnPoolingGradImpl).
-  RequirePositiveSpatialOutput(context, params);
-  if (!context->status().ok()) {
+
+  // Forward MaxPool only: oversized VALID windows must raise InvalidArgument.
+  if (pooling_mode == se::dnn::PoolingMode::kMaximum) {
+    RequirePositiveSpatialOutput(context, params);
+    if (!context->status().ok()) {
+      return;
+    }
+  }
+
+  if (params.out_height == 0 || params.out_width == 0) {
     return;
   }
 
