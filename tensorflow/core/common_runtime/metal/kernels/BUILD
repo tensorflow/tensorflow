@@ -65,6 +65,29 @@ objc_library(
 )
 
 objc_library(
+    name = "metal_mps_graph",
+    srcs = ["metal_mps_graph.mm"],
+    hdrs = ["metal_mps_graph.h"],
+    copts = METAL_COPTS,
+    sdk_frameworks = [
+        "Metal",
+        "MetalPerformanceShaders",
+        "MetalPerformanceShadersGraph",
+    ],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [
+        ":metal_kernel_util",
+        "//tensorflow/c:tf_datatype_hdrs",
+        "//tensorflow/c:tf_status_headers",
+        "//tensorflow/c:tf_tensor_hdrs",
+        "//tensorflow/core/common_runtime/metal:metal_stream",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+objc_library(
     name = "metal_kernels",
     srcs = [
         "metal_elementwise_ops.mm",

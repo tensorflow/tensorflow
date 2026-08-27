@@ -166,6 +166,20 @@ class OrderedCommandBuffer {
   // Commit() followed by waiting for the GPU to finish this buffer.
   void CommitAndWait();
 
+  // Hands responsibility for committing to the caller.
+  //
+  // Needed by the MPSGraph path. MPSGraph may call commitAndContinue, which
+  // commits the buffer we started with and carries on with a fresh one, so the
+  // ordering signal has to be encoded on whichever buffer is live at the end
+  // rather than the one this object was constructed with. The caller must
+  // encode a signal of `signal_value` on the stream's order_event and commit,
+  // exactly once, or the stream stalls forever.
+  struct ExternalCommit {
+    SP_Stream stream;
+    uint64_t signal_value;
+  };
+  ExternalCommit ReleaseForExternalCommit();
+
   // Commits without encoding the GPU-side ordering signal. Instead, once the
   // GPU work finishes, `on_complete` runs on a Metal callback thread and the
   // sequence is signalled from the host afterwards.

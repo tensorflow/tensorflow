@@ -161,6 +161,14 @@ void OrderedCommandBuffer::Commit() {
   [buffer_ commit];
 }
 
+OrderedCommandBuffer::ExternalCommit
+OrderedCommandBuffer::ReleaseForExternalCommit() {
+  // Marked committed so the destructor neither commits nor warns; the caller
+  // owns the signal from here.
+  committed_ = true;
+  return ExternalCommit{stream_, signal_value_};
+}
+
 void OrderedCommandBuffer::CommitWithHostCompletion(void (^on_complete)()) {
   if (buffer_ == nil || committed_) return;
   committed_ = true;
