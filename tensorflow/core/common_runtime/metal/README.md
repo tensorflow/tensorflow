@@ -150,6 +150,9 @@ differently rather than fail.
 | `SparseBincount`, `RaggedBincount` | float32, int32 |
 | `Betainc` | float32 |
 | `Snapshot` | float32, float16, int32, int64 |
+| `Assign`, `AssignAdd`, `AssignSub` | float32, float16, int32, int64 |
+| `NcclAllReduce`, `NcclBroadcast`, `NcclReduce` | float32, float16, float64, int32, int64 |
+| `_NcclBroadcastSend`, `_NcclBroadcastRecv`, `_NcclReduceSend`, `_NcclReduceRecv` | float32, float16, float64, int32, int64 |
 | `Empty` | float32, int32 |
 | `SparseReshape`, `SparseReorder`, `SparseSlice`, `SparseSliceGrad` | float32 |
 | `SparseSplit`, `SparseConcat`, `SparseFillEmptyRows`, `SparseFillEmptyRowsGrad` | float32 |

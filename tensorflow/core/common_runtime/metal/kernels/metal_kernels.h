@@ -175,6 +175,12 @@ void RegisterMetalSparseManipKernels();
 // Betainc, the sparse and ragged bin counts, Snapshot and Empty.
 void RegisterMetalMisc2Kernels();
 
+// Assign, AssignAdd and AssignSub on reference variables.
+void RegisterMetalRefVariableKernels();
+
+// The NCCL collectives, over one device.
+void RegisterMetalCollectiveKernels();
+
 // SparseToDense and SparseTensorDenseMatMul.
 void RegisterMetalSparseKernels();
 
