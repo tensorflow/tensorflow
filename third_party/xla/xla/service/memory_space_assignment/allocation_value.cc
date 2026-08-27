@@ -94,14 +94,18 @@ std::string AllocationRequest::ToString() const {
                     no_copy_chunk_inclusive_start_time.has_value()
                         ? absl::StrCat(*no_copy_chunk_inclusive_start_time)
                         : "nullopt"),
-       absl::StrCat("require_start_colored_in_alternate_memmory: ",
-                    require_start_colored_in_alternate_memory,
-                    "; require_end_colored_in_alternate_memory: ",
-                    require_end_colored_in_alternate_memory,
-                    "; require_start_colored_in_default_memory: ",
-                    require_start_colored_in_default_memory,
-                    "; require_end_colored_in_default_memory: ",
-                    require_end_colored_in_default_memory)},
+       absl::StrCat(
+           "require_start_colored_in_alternate_memmory: ",
+           require_start_colored_in_alternate_memory,
+           "; require_end_colored_in_alternate_memory: ",
+           require_end_colored_in_alternate_memory,
+           "; require_start_colored_in_default_memory: ",
+           require_start_colored_in_default_memory,
+           "; require_end_colored_in_default_memory: ",
+           require_end_colored_in_default_memory,
+           "; strict_timing: ", strict_timing,
+           "; fail_on_unsatisfied_override: ", fail_on_unsatisfied_override,
+           "; is_prefetch_override: ", is_prefetch_override)},
       "\n");
 }
 

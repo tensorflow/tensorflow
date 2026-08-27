@@ -113,7 +113,13 @@ message PreferredPrefetchOverrideOptions {
     // Preferred prefetch time is set to before the first instruction that
     // matches the filter.
     HloPositionMatcher before_instruction = 5;
+    // Preferred prefetch time set directly to a logical schedule time.
+    int64 logical_time = 6;
   }
+  // If true, the picker and allocator must ONLY attempt this exact time (no
+  // outward search). If it cannot be scheduled at this exact time, fail
+  // compilation.
+  optional bool strict_timing = 7;
 }
 
 // Filters operands in an HLO schedule and overrides preferred prefetch times
@@ -123,12 +129,16 @@ message PreferredPrefetchOverride {
   optional HloOperandFilter hlo_operand_filter = 1;
   optional xla.memory_space_assignment.PreferredPrefetchOverrideOptions
       override_options = 2;
+  // If true, any failure to fulfill the action results in a fatal error.
+  optional bool fail_on_unsatisfied_override = 3;
 }
 
 // Encloses chained override configs. The first config has highest precedence
 // and so on.
 message PreferredPrefetchOverrides {
   repeated PreferredPrefetchOverride overrides = 1;
+  // Global flag to fail compilation if any override is unsatisfied.
+  optional bool fail_on_unsatisfied_override = 2;
 }
 
 // Specifies details on how to randomally select HloPositions for perturbation.
@@ -211,6 +221,35 @@ message MsaSortOrderOverride {
 // and so on.
 message MsaSortOrderOverrides {
   repeated MsaSortOrderOverride overrides = 1;
+}
+
+// Action to pin a buffer in alternate memory across its entire lifetime.
+message PinInAlternateMemoryAction {}
+
+// Action to keep a buffer or operand use strictly in default memory (HBM).
+message KeepInDefaultMemoryAction {}
+
+// Unified override rule for tensor and operand placement and timing.
+message MsaTensorOverride {
+  // Target filter for operand use or buffer position.
+  optional HloOperandFilter hlo_operand_filter = 1;
+  optional HloPositionMatcher hlo_position_matcher = 2;
+
+  oneof action {
+    PreferredPrefetchOverrideOptions prefetch = 3;
+    PinInAlternateMemoryAction pin_in_alternate_memory = 4;
+    KeepInDefaultMemoryAction keep_in_default_memory = 5;
+  }
+
+  // If true, any failure to fulfill the action results in a fatal error.
+  optional bool fail_on_unsatisfied_override = 6;
+}
+
+// Encloses chained tensor override configs.
+message MsaTensorOverrides {
+  repeated MsaTensorOverride overrides = 1;
+  // Global flag to fail compilation if any override is unsatisfied.
+  optional bool fail_on_unsatisfied_override = 2;
 }
 
 // Expanded scoped alternate memory is a feature used at the end of MSA, in
