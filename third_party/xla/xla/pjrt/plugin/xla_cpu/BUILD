@@ -145,6 +145,7 @@ xla_cc_test(
     deps = [
         ":cpu_topology",
         ":cpu_topology_description",
+        "//xla:shape_util",
         "//xla/backends/cpu:target_machine_options",
         "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:pjrt_common",

@@ -298,18 +298,6 @@ class PjRtCpuClient final : public CommonPjRtClientImpl {
   absl::StatusOr<int> GetMemorySpaceKindForShape(
       const Shape& shape) const override;
 
-  absl::StatusOr<PjRtDeviceEventRef> LinearizeHostBufferInto(
-      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-      std::optional<absl::Span<int64_t const>> byte_strides,
-      HostBufferSemantics host_buffer_semantics,
-      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
-      const xla::Shape& device_shape, PjRtRawBufferRef raw_buffer) override;
-
-  absl::StatusOr<PjRtDeviceEventRef> LinearizeInto(
-      const LiteralSlice& literal, const xla::Shape& device_shape,
-      HostBufferSemantics host_buffer_semantics,
-      PjRtRawBufferRef raw_buffer) override;
-
   bool BufferFromHostBufferSupportsZeroCopy(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides, const Shape& shape,
