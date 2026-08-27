@@ -88,7 +88,12 @@ cc_library(
         "//learning/brain/tfrc/executor/api:__pkg__",
         "//net/grpc/internal/src/core/ext/xprof_profiler:__pkg__",
         "//third_party/py/torch_tpu/pjrt:__pkg__",
-    ]),
+    ]) + [
+        "//learning/brain/tpu/runtime/hal/xos:__pkg__",
+        "//learning/brain/tpu/runtime/hal/xos/client:__pkg__",
+        "//learning/brain/tpu/runtime/hal/xos/profiler:__pkg__",
+        "//learning/brain/tpu/runtime/hal/xos/server:__pkg__",
+    ],
     deps = [
         ":profiler_interface",
         "//tsl/profiler/protobuf:profiler_options_proto_cc",
@@ -145,7 +150,12 @@ cc_library(
         "@xla//xla/tsl/profiler:xla_profiler_backends",
         "//net/grpc/internal/src/core/ext/xprof_profiler:__pkg__",
         "//third_party/py/torch_tpu/pjrt:__pkg__",
-    ]),
+    ]) + [
+        "//learning/brain/tpu/runtime/hal/xos:__pkg__",
+        "//learning/brain/tpu/runtime/hal/xos/client:__pkg__",
+        "//learning/brain/tpu/runtime/hal/xos/profiler:__pkg__",
+        "//learning/brain/tpu/runtime/hal/xos/server:__pkg__",
+    ],
     deps = [
         "//tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/status",
