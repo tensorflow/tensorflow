@@ -136,16 +136,31 @@ py_library(
     name = "quantized",
     srcs = ["quantized.py"],
     srcs_version = "PY3",
-    strict_deps = False,
     deps = [
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/keras:activations",
-        "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:base_layer",
         "//tensorflow/python/keras:constraints",
         "//tensorflow/python/keras:regularizers",
         "//tensorflow/python/keras/engine:input_spec",
         "//tensorflow/python/keras/initializers",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn",
+        "//tensorflow/python/ops:quantized_ops",
+    ],
+)
+
+tf_py_test(
+    name = "quantized_test",
+    srcs = ["quantized_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":quantized",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
