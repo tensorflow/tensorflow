@@ -237,12 +237,11 @@ absl::StatusOr<FingerprintDef> CreateFingerprintDef(
   // At this point we have neither saved_model.pb nor saved_model.cpb.
   return CreateReducedFingerprintDef();  // Only sets the UUID.
 #else  // The following runs on Windows and Mac.
-  absl::StatusOr<FingerprintDef> fingerprint_def =
-      CreateFingerprintDefPb(export_dir, absl::StrCat(prefix, ".pb"));
-  if (!fingerprint_def.ok()) {
-    return CreateReducedFingerprintDef();
+  std::string pb_file = absl::StrCat(prefix, ".pb");
+  if (Env::Default()->FileExists(pb_file).ok()) {
+    return CreateFingerprintDefPb(export_dir, pb_file);
   }
-  return fingerprint_def;
+  return CreateReducedFingerprintDef();
 #endif
 }
 
