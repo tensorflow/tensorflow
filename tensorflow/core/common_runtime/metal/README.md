@@ -178,6 +178,7 @@ differently rather than fail.
 | `LogicalAnd`, `LogicalOr`, `LogicalNot` | bool |
 | `Select`, `SelectV2` | float32, float16, int32, int64 |
 | `ArgMax`, `ArgMin` | float32, float16; int32 or int64 output |
+| `InTopK`, `InTopKV2` | float32 predictions; int32 or int64 targets |
 | `Sum`, `Mean`, `Max`, `Min`, `Prod` | float32, float16 |
 | `EuclideanNorm` | float32, float16 |
 | `Any`, `All` | bool |

@@ -470,6 +470,178 @@ void Arg_ComputeImpl(ArgOp* op, TF_OpKernelContext* ctx, TF_Status* status) {
   RunGraph(stream, *cached, @[ in_data ], @[ out_data ], status);
 }
 
+/*** IN TOP K ***/
+
+// InTopK asks, per row, whether the target class is among the k highest
+// predictions. Rather than sorting, it counts how many entries strictly beat
+// the target: the target is in the top k exactly when fewer than k do. That
+// also gives TensorFlow's tie behaviour for free, since ties do not count as
+// beating.
+struct TopKOp {
+  TF_DataType dtype = TF_FLOAT;
+  TF_DataType index_dtype = TF_INT32;
+  int64_t k = 1;
+  bool k_from_attr = false;
+};
+
+void* TopKOp_Create(TF_OpKernelConstruction* ctx) {
+  TF_Status* status = TF_NewStatus();
+  auto* op = new TopKOp();
+  TF_OpKernelConstruction_GetAttrType(ctx, "T", &op->index_dtype, status);
+  if (TF_GetCode(status) != TF_OK) {
+    TF_SetStatus(status, TF_OK, "");
+    op->index_dtype = TF_INT32;
+  }
+  int64_t k = 1;
+  TF_OpKernelConstruction_GetAttrInt64(ctx, "k", &k, status);
+  if (TF_GetCode(status) == TF_OK) {
+    op->k = k;
+    op->k_from_attr = true;
+  } else {
+    TF_SetStatus(status, TF_OK, "");
+  }
+  TF_DeleteStatus(status);
+  return op;
+}
+
+void TopKOp_Delete(void* kernel) { delete static_cast<TopKOp*>(kernel); }
+
+void InTopK_ComputeImpl(TopKOp* op, TF_OpKernelContext* ctx,
+                        TF_Status* status) {
+  ScopedTensor predictions, targets;
+  TF_GetInput(ctx, 0, predictions.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+  TF_GetInput(ctx, 1, targets.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  int64_t k = op->k;
+  if (!op->k_from_attr) {
+    ScopedTensor k_t;
+    TF_GetInput(ctx, 2, k_t.address(), status);
+    if (TF_GetCode(status) != TF_OK) return;
+    const void* p = TF_TensorData(k_t.get());
+    if (p == nullptr) {
+      TF_SetStatus(status, TF_INVALID_ARGUMENT, "Metal: InTopKV2 k has no data.");
+      return;
+    }
+    k = TF_TensorType(k_t.get()) == TF_INT32
+            ? *static_cast<const int32_t*>(p)
+            : *static_cast<const int64_t*>(p);
+  }
+
+  const std::vector<int64_t> pred_shape = ShapeOf(predictions.get());
+  if (pred_shape.size() != 2) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: InTopK expects rank-2 predictions.");
+    return;
+  }
+  const int64_t batch = pred_shape[0];
+  const int64_t classes = pred_shape[1];
+  const std::vector<int64_t> out_shape = {batch};
+
+  ScopedTensor output;
+  output.reset(TF_AllocateOutput(
+      ctx, 0, TF_BOOL, out_shape.data(), 1,
+      static_cast<size_t>(batch) * TF_DataTypeSize(TF_BOOL), status));
+  if (TF_GetCode(status) != TF_OK) return;
+  if (batch == 0) return;
+
+  SP_Stream stream = StreamForContext(ctx, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  id<MTLDevice> device = DeviceForStream(stream);
+  MPSDataType mps_dtype;
+  if (!MPSTypeFor(TF_FLOAT, &mps_dtype, status)) return;
+  MPSDataType idx_dtype;
+  if (!MPSTypeFor(TF_TensorType(targets.get()), &idx_dtype, status)) return;
+
+  std::string key = "InTopK";
+  AppendShapeToKey(pred_shape, &key);
+  key.append("/k").append(std::to_string(k));
+  key.append("/i").append(
+      std::to_string(static_cast<int>(TF_TensorType(targets.get()))));
+  const std::vector<int64_t> target_shape = ShapeOf(targets.get());
+  const NSUInteger depth = static_cast<NSUInteger>(classes);
+
+  const CachedGraph* cached = LookupOrBuildGraph(
+      key,
+      ^(CachedGraph* out) {
+        MPSGraph* g = out->graph;
+        MPSGraphTensor* p = [g placeholderWithShape:MPSShape(pred_shape)
+                                           dataType:mps_dtype
+                                               name:nil];
+        MPSGraphTensor* t = [g placeholderWithShape:MPSShape(target_shape)
+                                           dataType:idx_dtype
+                                               name:nil];
+        // The target's own score, picked out with a one-hot mask.
+        MPSGraphTensor* hot =
+            [g oneHotWithIndicesTensor:[g castTensor:t
+                                              toType:MPSDataTypeInt32
+                                                name:nil]
+                                 depth:depth
+                                  axis:1
+                              dataType:mps_dtype
+                               onValue:1.0
+                              offValue:0.0
+                                  name:nil];
+        MPSGraphTensor* target_score =
+            [g reductionSumWithTensor:[g multiplicationWithPrimaryTensor:p
+                                                        secondaryTensor:hot
+                                                                   name:nil]
+                                 axis:1
+                                 name:nil];
+        // Strictly greater, so ties do not count against the target, which is
+        // what TensorFlow specifies.
+        MPSGraphTensor* beats =
+            [g greaterThanWithPrimaryTensor:p
+                            secondaryTensor:target_score
+                                       name:nil];
+        MPSGraphTensor* n_beats =
+            [g reductionSumWithTensor:[g castTensor:beats
+                                             toType:MPSDataTypeInt32
+                                               name:nil]
+                                 axis:1
+                                 name:nil];
+        MPSGraphTensor* in_top =
+            [g lessThanWithPrimaryTensor:n_beats
+                         secondaryTensor:[g constantWithScalar:(double)k
+                                                      dataType:MPSDataTypeInt32]
+                                    name:nil];
+        [out->inputs addObject:p];
+        [out->inputs addObject:t];
+        [out->outputs addObject:[g reshapeTensor:[g castTensor:in_top
+                                                        toType:MPSDataTypeBool
+                                                          name:nil]
+                                       withShape:MPSShape(out_shape)
+                                            name:nil]];
+      },
+      status);
+  if (cached == nullptr) return;
+
+  MPSGraphTensorData* p_data =
+      TensorDataForTensor(predictions.get(), TF_FLOAT, device, status);
+  if (p_data == nil) return;
+  MPSGraphTensorData* t_data = TensorDataForTensor(
+      targets.get(), TF_TensorType(targets.get()), device, status);
+  if (t_data == nil) return;
+  MPSGraphTensorData* o_data =
+      TensorDataForTensor(output.get(), TF_BOOL, device, status);
+  if (o_data == nil) return;
+  RunGraph(stream, *cached, @[ p_data, t_data ], @[ o_data ], status);
+}
+
+void InTopK_Compute(void* kernel, TF_OpKernelContext* ctx) {
+  ScopedAutoreleasePool pool;
+  TF_Status* status = TF_NewStatus();
+  auto* op = static_cast<TopKOp*>(kernel);
+  if (op == nullptr) {
+    TF_SetStatus(status, TF_INTERNAL, "Metal: InTopK kernel has no state.");
+  } else {
+    InTopK_ComputeImpl(op, ctx, status);
+  }
+  if (TF_GetCode(status) != TF_OK) TF_OpKernelContext_Failure(ctx, status);
+  TF_DeleteStatus(status);
+}
+
 /*** WRAPPERS AND REGISTRATION ***/
 
 #define METAL_COMPUTE(NAME, STATE, IMPL)                                      \
@@ -509,6 +681,26 @@ METAL_COMPUTE(ArgMin_Compute, ArgOp, Arg_ComputeImpl<false>)
 
 #undef METAL_COMPUTE
 
+void RegisterInTopK(const char* op_name, TF_DataType index_dtype,
+                    bool k_on_host, const std::string& name) {
+  TF_Status* status = TF_NewStatus();
+  TF_KernelBuilder* builder = TF_NewKernelBuilder(
+      op_name, kMetalDeviceType, &TopKOp_Create, &InTopK_Compute,
+      &TopKOp_Delete);
+  TF_KernelBuilder_TypeConstraint(builder, "T", index_dtype, status);
+  if (k_on_host) TF_KernelBuilder_HostMemory(builder, "k");
+  if (TF_GetCode(status) == TF_OK) {
+    TF_RegisterKernelBuilder(name.c_str(), builder, status);
+  } else {
+    TF_DeleteKernelBuilder(builder);
+  }
+  if (TF_GetCode(status) != TF_OK) {
+    LOG(ERROR) << "Metal: could not register kernel " << name << ": "
+               << TF_Message(status);
+  }
+  TF_DeleteStatus(status);
+}
+
 void Register(const char* op_name, void* (*create)(TF_OpKernelConstruction*),
               void (*compute)(void*, TF_OpKernelContext*), void (*destroy)(void*),
               const std::string& name, TF_DataType dtype, bool constrain_t,
@@ -537,6 +729,19 @@ void Register(const char* op_name, void* (*create)(TF_OpKernelConstruction*),
 }  // namespace
 
 void RegisterMetalCompareKernels() {
+  // InTopK's k is an attribute; InTopKV2 takes it as a host tensor. T here
+  // constrains the target index type, not the predictions, which are float.
+  {
+    static constexpr TF_DataType kIdx[] = {TF_INT32, TF_INT64};
+    static constexpr const char* kIdxName[] = {"Int32", "Int64"};
+    for (int j = 0; j < 2; ++j) {
+      RegisterInTopK("InTopK", kIdx[j], /*k_on_host=*/false,
+                     std::string("MetalInTopK") + kIdxName[j]);
+      RegisterInTopK("InTopKV2", kIdx[j], /*k_on_host=*/true,
+                     std::string("MetalInTopKV2") + kIdxName[j]);
+    }
+  }
+
   struct Entry {
     const char* op;
     void (*compute)(void*, TF_OpKernelContext*);
