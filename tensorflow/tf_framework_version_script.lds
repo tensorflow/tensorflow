@@ -2,8 +2,8 @@ tensorflow {
   global:
     *;
   local:
-    # Do not re-export bundled hwloc. Its objects also land in other DSOs
-    # (e.g. _xla_ops.so); hiding at compile time is the complete fix, this
-    # is extra protection for libtensorflow_framework.so (tensorflow#125854).
+    # Hide leftover unprefixed hwloc_* names. Bundled APIs are renamed
+    # tf_hwloc_* (HWLOC_SYM_TRANSFORM) so they do not interpose system hwloc
+    # and can still be shared across TF DSOs (tensorflow#125854).
     hwloc*;
 };
