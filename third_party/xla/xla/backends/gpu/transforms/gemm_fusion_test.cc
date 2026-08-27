@@ -2394,6 +2394,62 @@ ENTRY main {
                   GmockMatch(TransposeOrBitcastTranspose())));
 }
 
+TEST_P(GemmFusionTestV2, AllowTransposeSwappingBatch) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+ENTRY main {
+  p_lhs = s8[8,128,64]{2,1,0} parameter(0)
+  cvt_lhs = bf16[8,128,64]{2,1,0} convert(p_lhs)
+  p_rhs = bf16[2,4,1,16,128]{4,3,2,1,0} parameter(1)
+
+  trans = bf16[4,2,1,16,128]{4,3,2,1,0} transpose(p_rhs), dimensions={1,0,2,3,4}
+  bitcast = bf16[8,16,128]{2,1,0} bitcast(trans)
+
+  ROOT dot = bf16[8,64,16]{2,1,0} dot(cvt_lhs, bitcast),
+    lhs_batch_dims={0}, lhs_contracting_dims={1},
+    rhs_batch_dims={0}, rhs_contracting_dims={2}
+}
+)"));
+
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       GemmFusion(gpu_version_).Run(module.get()));
+  EXPECT_TRUE(changed);
+  auto* fusion = module->entry_computation()->root_instruction();
+  EXPECT_THAT(fusion, GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
+}
+
+TEST_P(GemmFusionProfitabilityTest, DisallowTransposeInterleavingBatch) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+ENTRY main {
+  p_lhs = s8[16,64,1024]{2,1,0} parameter(0)
+  cvt_lhs = bf16[16,64,1024]{2,1,0} convert(p_lhs)
+  p_rhs = bf16[4,16,4,64,32]{4,3,2,1,0} parameter(1)
+
+  trans = bf16[4,4,16,64,32]{4,3,2,1,0} transpose(p_rhs), dimensions={0,2,1,3,4}
+  bitcast = bf16[16,1024,32]{2,1,0} bitcast(trans)
+
+  ROOT dot = bf16[16,64,32]{2,1,0} dot(cvt_lhs, bitcast),
+    lhs_batch_dims={0}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={1}
+}
+)"));
+
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       GemmFusion(gpu_version_).Run(module.get()));
+  EXPECT_TRUE(changed);
+  auto* fusion = module->entry_computation()->root_instruction();
+  EXPECT_THAT(fusion, GmockMatch(m::Fusion()));
+  EXPECT_THAT(fusion->operands(),
+              ::testing::UnorderedElementsAre(
+                  GmockMatch(m::Parameter()),
+                  GmockMatch(TransposeOrBitcastTranspose())));
+}
+
 TEST_P(GemmFusionTestV2, ConcatResetTrackerCrash) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m

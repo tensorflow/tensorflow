@@ -1306,9 +1306,13 @@ FusionDecision ShouldFuseTranspose(const HloInstruction& transpose,
       dims->Indices(DotOperandDims::kContracting);
   absl::Span<const int64_t> non_contracting =
       dims->Indices(DotOperandDims::kNonContracting);
+  absl::Span<const int64_t> batch = dims->Indices(DotOperandDims::kBatch);
   if (!inverted_tracker->MapsToOneStride(contracting)) {
     return FusionDecision::Forbid(
         "Contracting dimension has non-contiguous section.");
+  }
+  if (!inverted_tracker->MapsToOneStride(batch, /*allow_swaps=*/true)) {
+    return FusionDecision::Forbid("Batch dimension splits other dimensions.");
   }
   if (operand_index == 1 &&
       !inverted_tracker->MapsToOneStride(non_contracting)) {

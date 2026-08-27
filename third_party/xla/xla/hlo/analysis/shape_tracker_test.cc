@@ -1904,5 +1904,13 @@ TEST(ShapeTrackerMapsToOneStrideTest, ContiguousTransposeReshapeIsContiguous) {
   EXPECT_TRUE(tracker.MapsToOneStride({1, 2}));
 }
 
+TEST(ShapeTrackerMapsToOneStrideTest, AllowSwapsSwappedIsContiguous) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+  ASSERT_TRUE(tracker.AppendTranspose({0, 2, 1}).ok());
+  EXPECT_FALSE(tracker.MapsToOneStride({1, 2}, /*allow_swaps=*/false));
+  EXPECT_TRUE(tracker.MapsToOneStride({1, 2}, /*allow_swaps=*/true));
+}
+
 }  // namespace
 }  // namespace xla
