@@ -28,9 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
-#include "xla/service/cpu/cpu_options.h"
 #include "xla/service/fusion_node_indexing_evaluation.h"
-#include "xla/service/hlo_module_config.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
@@ -148,24 +146,15 @@ bool IsCoupledReductionShiftExpProducer(const HloInstruction* instr) {
 }
 
 // Should we block the fusion of the subcomputation of the passed instruction?
-bool BlockSubcomputationFusion(const HloInstruction* instruction,
-                               const HloModuleConfig& config) {
+bool BlockSubcomputationFusion(const HloInstruction* instruction) {
   HloOpcode opcode = instruction->opcode();
   if (opcode == HloOpcode::kScatter) {
     return true;
   }
-  const bool use_experimental_fusion_emitters =
-      options::UseExperimentalLoopFusion(config);
-
   // If the instruction itself can be fused then the subcomputation should be
   // blocked as the fusion emitter can't emit fusion ops inside another
   // fusion.
-  if (use_experimental_fusion_emitters &&
-      emitters::IsSupportedElementalOp(opcode)) {
-    return true;
-  }
-
-  return false;
+  return emitters::IsSupportedElementalOp(opcode);
 }
 
 }  // namespace
@@ -385,7 +374,7 @@ void CpuInstructionFusion::ComputeInstructionsToSkip(
         for (HloInstruction* instr :
              callable->called_computation()->instructions())
           instructions_to_skip_.insert(instr);
-      } else if (BlockSubcomputationFusion(instruction, module->config())) {
+      } else if (BlockSubcomputationFusion(instruction)) {
         for (const auto* computation : instruction->called_computations()) {
           for (const auto* instr : computation->instructions()) {
             instructions_to_skip_.insert(instr);
