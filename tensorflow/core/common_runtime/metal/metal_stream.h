@@ -146,6 +146,20 @@ class OrderedCommandBuffer {
   // Commit() followed by waiting for the GPU to finish this buffer.
   void CommitAndWait();
 
+  // Commits without encoding the GPU-side ordering signal. Instead, once the
+  // GPU work finishes, `on_complete` runs on a Metal callback thread and the
+  // sequence is signalled from the host afterwards.
+  //
+  // This is what lets host-side copies take part in stream order. On a unified
+  // memory architecture the fastest host/device copy is a plain memcpy, but a
+  // memcpy issued from an ordinary completion handler would race the next
+  // command buffer: the GPU signal would already have released it. Signalling
+  // from the host after the copy closes that window.
+  //
+  // The sequence is signalled even if the command buffer failed, since leaving
+  // it unsignalled would wedge every later buffer on the stream.
+  void CommitWithHostCompletion(void (^on_complete)());
+
  private:
   void EncodeSignal();
 

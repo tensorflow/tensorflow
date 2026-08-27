@@ -38,6 +38,21 @@ SP_Event_st::~SP_Event_st() { [event release]; }
 namespace tensorflow {
 namespace metal {
 
+namespace {
+
+// Records the first command buffer failure on the stream, if any.
+void NoteFailure(SP_Stream stream, id<MTLCommandBuffer> completed) {
+  if (completed.error == nil) return;
+  absl::MutexLock lock(&stream->mu);
+  if (stream->failed) return;  // Keep the first failure, it is the useful one.
+  stream->failed = true;
+  const char* message = completed.error.localizedDescription.UTF8String;
+  stream->failure_message =
+      message != nullptr ? message : "unknown Metal command buffer error";
+}
+
+}  // namespace
+
 MetalDeviceState::MetalDeviceState(id<MTLDevice> mtl_device)
     : device([mtl_device retain]) {}
 
@@ -131,14 +146,29 @@ void OrderedCommandBuffer::Commit() {
   // Captured by value; the block outlives this object.
   SP_Stream stream = stream_;
   [buffer_ addCompletedHandler:^(id<MTLCommandBuffer> completed) {
-    if (completed.error == nil) return;
-    absl::MutexLock lock(&stream->mu);
-    if (stream->failed) return;  // Keep the first failure, it is the useful one.
-    stream->failed = true;
-    stream->failure_message =
-        completed.error.localizedDescription.UTF8String != nullptr
-            ? completed.error.localizedDescription.UTF8String
-            : "unknown Metal command buffer error";
+    NoteFailure(stream, completed);
+  }];
+
+  [buffer_ commit];
+}
+
+void OrderedCommandBuffer::CommitWithHostCompletion(void (^on_complete)()) {
+  if (buffer_ == nil || committed_) return;
+  committed_ = true;
+
+  SP_Stream stream = stream_;
+  const uint64_t signal_value = signal_value_;
+  // The block outlives this scope, so it has to be moved off the stack.
+  void (^work)() = [on_complete copy];
+
+  [buffer_ addCompletedHandler:^(id<MTLCommandBuffer> completed) {
+    NoteFailure(stream, completed);
+    if (completed.error == nil && work != nil) work();
+    // Signalled last, and unconditionally: the next command buffer on this
+    // stream is waiting on this value and must not start before the host work
+    // above has finished, nor stall forever if that work was skipped.
+    stream->order_event.signaledValue = signal_value;
+    [work release];
   }];
 
   [buffer_ commit];
