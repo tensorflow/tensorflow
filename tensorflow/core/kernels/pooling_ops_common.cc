@@ -214,19 +214,6 @@ PoolParameters::PoolParameters(OpKernelContext* context,
     pad_depth = 0;
     out_depth = depth / depth_window;
   }
-
-  // Reject zero-sized spatial outputs. GetWindowedOutputSizeVerbose allows
-  // output_size == 0 (e.g. VALID pooling when the window is larger than the
-  // input). Downstream CPU kernels (Eigen / oneDNN) can then abort with a
-  // floating-point exception, while GPU may silently succeed. Require a
-  // positive spatial output so CPU and GPU raise InvalidArgument consistently.
-  OP_REQUIRES(
-      context, out_height > 0 && out_width > 0,
-      absl::InvalidArgumentError(absl::StrCat(
-          "Pooling would produce zero-sized spatial output. "
-          "input: ",
-          tensor_in_rows, "x", tensor_in_cols, " window: ", window_rows, "x",
-          window_cols, " stride: ", row_stride, "x", col_stride)));
 }
 
 absl::Status PoolParameters::forward_output_shape(TensorShape* shape) {
@@ -260,6 +247,11 @@ void DnnPoolingImpl(OpKernelContext* context, se::dnn::PoolingMode pooling_mode,
       context,           size,        stride,           padding,
       explicit_paddings, data_format, tensor_in.shape()};
 
+  if (!context->status().ok()) {
+    return;
+  }
+  // Forward cudnn pooling only (grads use DnnPoolingGradImpl).
+  RequirePositiveSpatialOutput(context, params);
   if (!context->status().ok()) {
     return;
   }
