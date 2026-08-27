@@ -55,8 +55,15 @@ Windows)*:
  pip install tensorflow
 ```
 
-Other devices (DirectX and MacOS-metal) are supported using
+Other devices (DirectX) are supported using
 [Device Plugins](https://www.tensorflow.org/install/gpu_plugins#available_devices).
+
+GPU support on Apple silicon is built into TensorFlow and is enabled by
+building from source with `--config=metal`. It is experimental and covers a
+small set of ops so far; see
+[tensorflow/core/common_runtime/metal](tensorflow/core/common_runtime/metal/README.md).
+Apple's separate `tensorflow-metal` plugin, which this replaces, last released
+version 1.2.0 in January 2025 and publishes no wheels for Python 3.13.
 
 A smaller CPU-only TensorFlow package is also available:
 

@@ -18,6 +18,17 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
 
 ### Major Features and Improvements
 
+* Experimental GPU support for Apple silicon Macs through a built-in Metal
+  backend, enabled by building from source with `--config=metal`. Metal
+  devices are registered under the `GPU` device type and appear as
+  `/device:GPU:0`. Op coverage is currently limited to `Add`, `AddV2`, `Sub`,
+  `Mul`, `MatMul`, `Cast` and `Identity`, so this is not yet enough to train a
+  model; unsupported ops fall back to the host. Set `TF_DISABLE_METAL=1` to
+  turn the backend off at runtime. See
+  `tensorflow/core/common_runtime/metal/README.md`. This replaces Apple's
+  `tensorflow-metal` plugin, whose last release, 1.2.0 from January 2025,
+  publishes no wheels for Python 3.13.
+
 * `tf.lite`
     * Adds support for QUI4 (Quantized Unsigned 4-bit) in Dequantize operator.
     * Adds support for FP16 and BF16 in Unpack operator.
