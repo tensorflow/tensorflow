@@ -66,6 +66,26 @@ objc_library(
 )
 
 objc_library(
+    name = "metal_stream_executor",
+    srcs = ["metal_stream_executor.mm"],
+    hdrs = ["metal_stream_executor.h"],
+    copts = METAL_COPTS,
+    sdk_frameworks = ["Metal"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [
+        ":metal_buffer_registry",
+        ":metal_stream",
+        # Headers only. The TF_Status symbols resolve against the framework
+        # this plugin is linked into; depending on the implementation target
+        # from //tensorflow/core would invert the core -> c layering.
+        "//tensorflow/c:tf_status_headers",
+        "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+objc_library(
     name = "metal_buffer_registry_test_lib",
     testonly = 1,
     srcs = ["metal_buffer_registry_test.mm"],
