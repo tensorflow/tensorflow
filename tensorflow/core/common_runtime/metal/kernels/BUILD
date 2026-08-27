@@ -99,6 +99,7 @@ objc_library(
         "metal_matmul_op.mm",
         "metal_nn_ops.mm",
         "metal_pooling_ops.mm",
+        "metal_random_ops.mm",
     ],
     hdrs = ["metal_kernels.h"],
     copts = METAL_COPTS,

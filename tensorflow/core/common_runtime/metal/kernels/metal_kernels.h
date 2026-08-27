@@ -47,6 +47,10 @@ void RegisterMetalReductionKernels();
 // registers generically for int32 in host memory only.
 void RegisterMetalFillKernels();
 
+// RandomUniform, RandomStandardNormal and TruncatedNormal, which is what
+// initialises a model's weights before the first step.
+void RegisterMetalRandomKernels();
+
 // Identity, which aliases its input when it can and blits when it cannot.
 void RegisterMetalIdentityKernels();
 
