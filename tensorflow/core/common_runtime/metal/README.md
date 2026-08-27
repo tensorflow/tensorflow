@@ -141,6 +141,8 @@ differently rather than fail.
 | `CropAndResize`, `CropAndResizeGradImage`, `CropAndResizeGradBoxes` | float32 |
 | `ImageProjectiveTransformV2`, `ImageProjectiveTransformV3` | float32 |
 | `ExtractVolumePatches` | float32 |
+| `LSTMBlockCell`, `LSTMBlockCellGrad` | float32 |
+| `GRUBlockCell`, `GRUBlockCellGrad` | float32 |
 | `Dilation2D` | float32, float16 |
 | `Dilation2DBackpropInput`, `Dilation2DBackpropFilter` | float32 |
 | `FusedBatchNorm`, `FusedBatchNormV2`, `FusedBatchNormV3` | float32, float16 |

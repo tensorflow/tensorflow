@@ -126,6 +126,7 @@ objc_library(
         "metal_quantize_dequantize_ops.mm",
         "metal_random_dist_ops.mm",
         "metal_random_ops.mm",
+        "metal_rnn_ops.mm",
         "metal_search_ops.mm",
         "metal_slice_ops.mm",
         "metal_strided_ops.mm",

@@ -136,6 +136,9 @@ void RegisterMetalCropResizeKernels();
 // The parameterised random distributions and their stateless forms.
 void RegisterMetalRandomDistKernels();
 
+// The single-step recurrent cells and their gradients.
+void RegisterMetalRnnKernels();
+
 // ExtractVolumePatches.
 void RegisterMetalVolumePatchKernels();
 
