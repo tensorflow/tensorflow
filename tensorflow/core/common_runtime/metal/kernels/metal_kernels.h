@@ -160,6 +160,9 @@ void RegisterMetalCtcKernels();
 // GenerateBoundingBoxProposals.
 void RegisterMetalBoxProposalKernels();
 
+// The sparse segment reductions and their gradients.
+void RegisterMetalSparseSegmentKernels();
+
 // ExtractVolumePatches.
 void RegisterMetalVolumePatchKernels();
 

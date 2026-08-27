@@ -1593,6 +1593,117 @@ kernel void tf_ctc_loss_float(device const float* logits [[buffer(0)]],
   #undef TF_CTC_LABEL
   #undef TF_CTC_LOGY
 }
+
+// ---- sparse segment reductions ----
+
+struct SegmentParams {
+  uint num_indices;
+  uint inner;
+  uint num_segments;
+  uint data_rows;
+  uint mode;
+  uint count;
+  uint pad0;
+  uint pad1;
+};
+
+// A sparse segment reduction gathers rows named by `indices` and sums them
+// into the segment each one belongs to. Rows land in the same segment from
+// many threads, so the accumulation is atomic; the row count per segment is
+// gathered the same way, by the thread that happens to hold the first element
+// of a row.
+//
+// The mean and the square-root form differ only in what the sums are divided
+// by afterwards, so they share this and differ in one later pass.
+#define TF_METAL_SEGMENT_FORWARD(NAME, IDX, SEG)                              \
+  kernel void NAME(device const float* data [[buffer(0)]],                    \
+                   device const IDX* indices [[buffer(1)]],                   \
+                   device const SEG* segment_ids [[buffer(2)]],               \
+                   device atomic_float* out [[buffer(3)]],                    \
+                   device atomic_int* counts [[buffer(4)]],                   \
+                   constant SegmentParams& params [[buffer(5)]],              \
+                   uint gid [[thread_position_in_grid]]) {                    \
+    if (gid >= params.count) return;                                          \
+    const uint j = gid / params.inner;                                        \
+    const uint e = gid % params.inner;                                        \
+    const long segment = long(segment_ids[j]);                                \
+    if (segment < 0 || segment >= long(params.num_segments)) return;          \
+    const long row = long(indices[j]);                                        \
+    if (row < 0 || row >= long(params.data_rows)) return;                     \
+    atomic_fetch_add_explicit(&out[uint(segment) * params.inner + e],         \
+                              data[uint(row) * params.inner + e],             \
+                              memory_order_relaxed);                          \
+    if (e == 0u) {                                                            \
+      atomic_fetch_add_explicit(&counts[uint(segment)], 1, memory_order_relaxed); \
+    }                                                                         \
+  }
+
+TF_METAL_SEGMENT_FORWARD(tf_sparse_segment_forward_i32_i32, int, int)
+TF_METAL_SEGMENT_FORWARD(tf_sparse_segment_forward_i32_i64, int, long)
+TF_METAL_SEGMENT_FORWARD(tf_sparse_segment_forward_i64_i32, long, int)
+TF_METAL_SEGMENT_FORWARD(tf_sparse_segment_forward_i64_i64, long, long)
+
+// An empty segment stays at zero rather than becoming a division by zero,
+// which is what the CPU kernel produces for a segment nothing points at.
+kernel void tf_sparse_segment_normalise_float(
+    device float* out [[buffer(0)]],
+    device const int* counts [[buffer(1)]],
+    constant SegmentParams& params [[buffer(2)]],
+    uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count) return;
+  const int n = counts[gid / params.inner];
+  if (n <= 0) return;
+  out[gid] /= params.mode == 1u ? float(n) : sqrt(float(n));
+}
+
+// Counting on its own, for the gradients: they need the same divisor the
+// forward pass used, and they do not recompute the sums to get it.
+#define TF_METAL_SEGMENT_COUNTS(NAME, SEG)                                    \
+  kernel void NAME(device const SEG* segment_ids [[buffer(0)]],               \
+                   device atomic_int* counts [[buffer(1)]],                   \
+                   constant SegmentParams& params [[buffer(2)]],              \
+                   uint gid [[thread_position_in_grid]]) {                    \
+    if (gid >= params.num_indices) return;                                    \
+    const long segment = long(segment_ids[gid]);                              \
+    if (segment < 0 || segment >= long(params.num_segments)) return;          \
+    atomic_fetch_add_explicit(&counts[uint(segment)], 1, memory_order_relaxed); \
+  }
+
+TF_METAL_SEGMENT_COUNTS(tf_sparse_segment_counts_i32, int)
+TF_METAL_SEGMENT_COUNTS(tf_sparse_segment_counts_i64, long)
+
+// The transpose of the forward pass: each gathered row takes back the
+// gradient of the segment it went into, divided the same way.
+#define TF_METAL_SEGMENT_GRAD(NAME, IDX, SEG)                                 \
+  kernel void NAME(device const float* grad [[buffer(0)]],                    \
+                   device const IDX* indices [[buffer(1)]],                   \
+                   device const SEG* segment_ids [[buffer(2)]],               \
+                   device const int* counts [[buffer(3)]],                    \
+                   device atomic_float* out [[buffer(4)]],                    \
+                   constant SegmentParams& params [[buffer(5)]],              \
+                   uint gid [[thread_position_in_grid]]) {                    \
+    if (gid >= params.count) return;                                          \
+    const uint j = gid / params.inner;                                        \
+    const uint e = gid % params.inner;                                        \
+    const long segment = long(segment_ids[j]);                                \
+    if (segment < 0 || segment >= long(params.num_segments)) return;          \
+    const long row = long(indices[j]);                                        \
+    if (row < 0 || row >= long(params.data_rows)) return;                     \
+    float scale = 1.0f;                                                       \
+    if (params.mode != 0u) {                                                  \
+      const int n = counts[uint(segment)];                                    \
+      if (n <= 0) return;                                                     \
+      scale = params.mode == 1u ? 1.0f / float(n) : 1.0f / sqrt(float(n));    \
+    }                                                                         \
+    atomic_fetch_add_explicit(&out[uint(row) * params.inner + e],             \
+                              grad[uint(segment) * params.inner + e] * scale, \
+                              memory_order_relaxed);                          \
+  }
+
+TF_METAL_SEGMENT_GRAD(tf_sparse_segment_grad_i32_i32, int, int)
+TF_METAL_SEGMENT_GRAD(tf_sparse_segment_grad_i32_i64, int, long)
+TF_METAL_SEGMENT_GRAD(tf_sparse_segment_grad_i64_i32, long, int)
+TF_METAL_SEGMENT_GRAD(tf_sparse_segment_grad_i64_i64, long, long)
 )METAL";
 
 class ShaderLibrary {

@@ -140,6 +140,10 @@ differently rather than fail.
 | `DepthwiseConv2dNative`, `DepthwiseConv2dNativeBackpropInput`, `DepthwiseConv2dNativeBackpropFilter` | float32, float16 |
 | `BatchNormWithGlobalNormalization`, `BatchNormWithGlobalNormalizationGrad` | float32 |
 | `Bincount`, `DenseBincount` | float32, int32 |
+| `SparseSegmentSum`, `SparseSegmentMean`, `SparseSegmentSqrtN` | float32 |
+| `SparseSegmentSumWithNumSegments`, `SparseSegmentMeanWithNumSegments`, `SparseSegmentSqrtNWithNumSegments` | float32 |
+| `SparseSegmentSumGrad`, `SparseSegmentMeanGrad`, `SparseSegmentSqrtNGrad` | float32 |
+| `SparseSegmentSumGradV2`, `SparseSegmentMeanGradV2`, `SparseSegmentSqrtNGradV2` | float32 |
 | `Unique`, `UniqueWithCounts` | float32, int32, int64 |
 | `DynamicPartition`, `DynamicStitch`, `ParallelDynamicStitch` | float32, int32, int64 |
 | `CropAndResize`, `CropAndResizeGradImage`, `CropAndResizeGradBoxes` | float32 |

@@ -285,6 +285,20 @@ struct CtcParams {
   uint32_t padding2;
 };
 
+// Parameters for the sparse segment reductions. Layout must match the Metal
+// struct. `mode` is 0 for a plain sum, 1 for a mean and 2 for a square-root
+// normalisation.
+struct SegmentParams {
+  uint32_t num_indices;
+  uint32_t inner;
+  uint32_t num_segments;
+  uint32_t data_rows;
+  uint32_t mode;
+  uint32_t count;
+  uint32_t padding0;
+  uint32_t padding1;
+};
+
 // Compute pipeline for one function in the backend's shader library.
 //
 // The Metal source is compiled from a string the first time any pipeline is
