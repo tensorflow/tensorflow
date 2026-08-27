@@ -19,6 +19,7 @@ load(
     "VERSION_MAJOR",
     "check_deps",
     "if_google",
+    "if_metal",
     "if_oss",
     "if_xla_available",
     "pywrap_aware_tf_cc_shared_object",
@@ -1223,7 +1224,11 @@ tf_cc_shared_library(
         "@xla//xla/tsl/framework:bfc_allocator",
         "@xla//xla/tsl/framework:metrics",
         "//tensorflow/core/data:captured_function",
-    ] + tf_additional_binary_deps(),
+    ] + tf_additional_binary_deps() + if_metal([
+        # Static initializer that registers the Metal PluggableDevice. Empty
+        # unless the build was configured with --config=metal.
+        "//tensorflow/core/common_runtime/metal:metal_plugin_registrar",
+    ]),
     soversion = VERSION,
     static_deps = PACKAGE_STATIC_DEPS,
     visibility = ["//visibility:public"],
