@@ -29,59 +29,16 @@ namespace tensorflow {
 namespace metal {
 namespace {
 
-// Shader source for the backend's elementwise kernels.
+// Shader source for the kernels this backend does not express in MPSGraph:
+// fills, the random generators, and the optimizer updates. Arithmetic lives on
+// MPSGraph instead, which broadcasts natively and brings Apple's tuned kernels.
 //
-// ElementwiseParams here must stay layout-identical to the C++ struct in the
-// header. Broadcasting is deliberately limited to the scalar case: full
-// NumPy-style broadcasting needs stride arithmetic per operand, which belongs
-// with the wider op coverage rather than in this first set. Kernels that
-// receive shapes they cannot handle reject them on the host side with a clear
-// message instead of computing something wrong here.
-//
-// Every kernel bounds-checks against `count` so that a caller using
-// dispatchThreadgroups:, which rounds the grid up to whole threadgroups,
-// cannot write past the end of the output.
+// Every params struct here must stay layout-identical to its counterpart in
+// the header, and every kernel bounds-checks against `count`, since callers
+// use dispatchThreadgroups: and the grid rounds up to whole threadgroups.
 constexpr char kShaderSource[] = R"METAL(
 #include <metal_stdlib>
 using namespace metal;
-
-struct ElementwiseParams {
-  uint count;
-  uint lhs_is_scalar;
-  uint rhs_is_scalar;
-  uint padding;
-};
-
-#define TF_METAL_BINARY(NAME, T, EXPR)                                     \
-  kernel void NAME(device const T* lhs [[buffer(0)]],                      \
-                   device const T* rhs [[buffer(1)]],                      \
-                   device T* out [[buffer(2)]],                            \
-                   constant ElementwiseParams& params [[buffer(3)]],       \
-                   uint gid [[thread_position_in_grid]]) {                 \
-    if (gid >= params.count) return;                                       \
-    const T a = lhs[params.lhs_is_scalar ? 0 : gid];                       \
-    const T b = rhs[params.rhs_is_scalar ? 0 : gid];                       \
-    out[gid] = (EXPR);                                                     \
-  }
-
-TF_METAL_BINARY(tf_add_float, float, a + b)
-TF_METAL_BINARY(tf_add_half, half, a + b)
-TF_METAL_BINARY(tf_sub_float, float, a - b)
-TF_METAL_BINARY(tf_sub_half, half, a - b)
-TF_METAL_BINARY(tf_mul_float, float, a * b)
-TF_METAL_BINARY(tf_mul_half, half, a * b)
-
-#define TF_METAL_CAST(NAME, IN_T, OUT_T)                                   \
-  kernel void NAME(device const IN_T* in [[buffer(0)]],                    \
-                   device OUT_T* out [[buffer(1)]],                        \
-                   constant ElementwiseParams& params [[buffer(2)]],       \
-                   uint gid [[thread_position_in_grid]]) {                 \
-    if (gid >= params.count) return;                                       \
-    out[gid] = static_cast<OUT_T>(in[gid]);                                \
-  }
-
-TF_METAL_CAST(tf_cast_float_to_half, float, half)
-TF_METAL_CAST(tf_cast_half_to_float, half, float)
 
 // ---- fills ----
 

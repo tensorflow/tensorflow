@@ -27,15 +27,6 @@ limitations under the License.
 namespace tensorflow {
 namespace metal {
 
-// Parameters shared by the elementwise shaders. Must stay layout-identical to
-// the struct of the same name in the embedded Metal source.
-struct ElementwiseParams {
-  uint32_t count;
-  uint32_t lhs_is_scalar;
-  uint32_t rhs_is_scalar;
-  uint32_t padding;
-};
-
 // Parameters for the fill shaders. Layout must match the Metal struct.
 struct FillParams {
   uint32_t count;

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/metal/kernels/metal_kernels.h"
 
 #import <Metal/Metal.h>
+#import <MetalPerformanceShadersGraph/MetalPerformanceShadersGraph.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -28,7 +29,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/common_runtime/metal/kernels/metal_kernel_util.h"
-#include "tensorflow/core/common_runtime/metal/kernels/metal_shader_library.h"
+#include "tensorflow/core/common_runtime/metal/kernels/metal_mps_graph.h"
 #include "tensorflow/core/common_runtime/metal/metal_platform.h"
 #include "tensorflow/core/common_runtime/metal/metal_stream.h"
 
@@ -36,46 +37,104 @@ namespace tensorflow {
 namespace metal {
 namespace {
 
-std::string DescribeShape(const std::vector<int64_t>& shape) {
-  std::string text = "[";
-  for (size_t i = 0; i < shape.size(); ++i) {
-    if (i > 0) text += ",";
-    text += std::to_string(shape[i]);
+// Elementwise arithmetic on MPSGraph.
+//
+// An earlier version of this file used hand-written compute shaders and could
+// only broadcast a scalar operand. That is not a limitation real graphs
+// tolerate: gradients broadcast against reduced axes constantly. MPSGraph
+// applies NumPy broadcasting natively, so moving these ops onto it removes the
+// restriction rather than working around it, and brings the rest of the maths
+// library with it.
+
+// NumPy broadcasting: right-align the shapes, and each pair of extents must be
+// equal or one of them must be 1.
+bool BroadcastShape(const std::vector<int64_t>& lhs,
+                    const std::vector<int64_t>& rhs,
+                    std::vector<int64_t>* out, TF_Status* status) {
+  const size_t rank = std::max(lhs.size(), rhs.size());
+  out->assign(rank, 1);
+  for (size_t i = 0; i < rank; ++i) {
+    const int64_t a = i < rank - lhs.size() ? 1 : lhs[i - (rank - lhs.size())];
+    const int64_t b = i < rank - rhs.size() ? 1 : rhs[i - (rank - rhs.size())];
+    if (a != b && a != 1 && b != 1) {
+      auto describe = [](const std::vector<int64_t>& s) {
+        std::string t = "[";
+        for (size_t j = 0; j < s.size(); ++j) {
+          if (j > 0) t += ",";
+          t += std::to_string(s[j]);
+        }
+        return t + "]";
+      };
+      TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                   ("Metal: shapes " + describe(lhs) + " and " + describe(rhs) +
+                    " do not broadcast.")
+                       .c_str());
+      return false;
+    }
+    (*out)[i] = std::max(a, b);
   }
-  return text + "]";
+  return true;
 }
 
-/*** BINARY ELEMENTWISE ***/
+int64_t ElementCount(const std::vector<int64_t>& shape) {
+  int64_t n = 1;
+  for (int64_t d : shape) n *= d;
+  return n;
+}
 
-enum class BinaryKind { kAdd, kSub, kMul };
+/*** BINARY ***/
 
-// Per-instance kernel state, built once at construction from the node's "T"
-// attribute so that Compute does no attribute lookups.
-struct BinaryOp {
-  std::string function_name;
+enum class BinaryKind {
+  kAdd, kSub, kMul, kDiv, kMaximum, kMinimum, kPow, kSquaredDifference,
+};
+
+const char* NameOf(BinaryKind k) {
+  switch (k) {
+    case BinaryKind::kAdd: return "Add";
+    case BinaryKind::kSub: return "Sub";
+    case BinaryKind::kMul: return "Mul";
+    case BinaryKind::kDiv: return "Div";
+    case BinaryKind::kMaximum: return "Maximum";
+    case BinaryKind::kMinimum: return "Minimum";
+    case BinaryKind::kPow: return "Pow";
+    case BinaryKind::kSquaredDifference: return "SquaredDifference";
+  }
+  return "?";
+}
+
+MPSGraphTensor* ApplyBinary(MPSGraph* g, BinaryKind k, MPSGraphTensor* a,
+                            MPSGraphTensor* b) {
+  switch (k) {
+    case BinaryKind::kAdd:
+      return [g additionWithPrimaryTensor:a secondaryTensor:b name:nil];
+    case BinaryKind::kSub:
+      return [g subtractionWithPrimaryTensor:a secondaryTensor:b name:nil];
+    case BinaryKind::kMul:
+      return [g multiplicationWithPrimaryTensor:a secondaryTensor:b name:nil];
+    case BinaryKind::kDiv:
+      return [g divisionWithPrimaryTensor:a secondaryTensor:b name:nil];
+    case BinaryKind::kMaximum:
+      return [g maximumWithPrimaryTensor:a secondaryTensor:b name:nil];
+    case BinaryKind::kMinimum:
+      return [g minimumWithPrimaryTensor:a secondaryTensor:b name:nil];
+    case BinaryKind::kPow:
+      return [g powerWithPrimaryTensor:a secondaryTensor:b name:nil];
+    case BinaryKind::kSquaredDifference: {
+      MPSGraphTensor* d =
+          [g subtractionWithPrimaryTensor:a secondaryTensor:b name:nil];
+      return [g squareWithTensor:d name:nil];
+    }
+  }
+  return nil;
+}
+
+struct DTypeOp {
   TF_DataType dtype = TF_FLOAT;
 };
 
-const char* ShaderForBinary(BinaryKind kind, TF_DataType dtype) {
-  const bool is_half = dtype == TF_HALF;
-  switch (kind) {
-    case BinaryKind::kAdd:
-      return is_half ? "tf_add_half" : "tf_add_float";
-    case BinaryKind::kSub:
-      return is_half ? "tf_sub_half" : "tf_sub_float";
-    case BinaryKind::kMul:
-      return is_half ? "tf_mul_half" : "tf_mul_float";
-  }
-  return nullptr;
-}
-
-// A distinct instantiation per op kind, which is how the kind reaches Compute:
-// TF_NewKernelBuilder takes bare function pointers with no user data, so the
-// only way to carry per-registration information is a distinct function.
-template <BinaryKind kKind>
-void* BinaryOp_Create(TF_OpKernelConstruction* ctx) {
+void* DTypeOp_Create(TF_OpKernelConstruction* ctx) {
   TF_Status* status = TF_NewStatus();
-  auto* op = new BinaryOp();
+  auto* op = new DTypeOp();
   TF_OpKernelConstruction_GetAttrType(ctx, "T", &op->dtype, status);
   if (TF_GetCode(status) != TF_OK) {
     TF_OpKernelConstruction_Failure(ctx, status);
@@ -83,61 +142,15 @@ void* BinaryOp_Create(TF_OpKernelConstruction* ctx) {
     delete op;
     return nullptr;
   }
-  op->function_name = ShaderForBinary(kKind, op->dtype);
   TF_DeleteStatus(status);
   return op;
 }
 
-void BinaryOp_Delete(void* kernel) { delete static_cast<BinaryOp*>(kernel); }
+void DTypeOp_Delete(void* kernel) { delete static_cast<DTypeOp*>(kernel); }
 
-// Resolves the output shape for a binary op.
-//
-// Only two cases are accepted: identical shapes, and one operand being a
-// scalar. Full NumPy broadcasting needs per-operand stride arithmetic in the
-// shader and belongs with the wider op coverage. Anything else is rejected
-// here, naming both shapes, so a graph fails loudly rather than quietly
-// producing wrong numbers.
-bool ResolveBinaryShape(TF_Tensor* lhs, TF_Tensor* rhs,
-                        std::vector<int64_t>* out_shape, bool* lhs_is_scalar,
-                        bool* rhs_is_scalar, TF_Status* status) {
-  const std::vector<int64_t> lhs_shape = ShapeOf(lhs);
-  const std::vector<int64_t> rhs_shape = ShapeOf(rhs);
-
-  *lhs_is_scalar = false;
-  *rhs_is_scalar = false;
-
-  if (lhs_shape == rhs_shape) {
-    *out_shape = lhs_shape;
-    return true;
-  }
-  if (NumElements(lhs) == 1) {
-    *lhs_is_scalar = true;
-    *out_shape = rhs_shape;
-    return true;
-  }
-  if (NumElements(rhs) == 1) {
-    *rhs_is_scalar = true;
-    *out_shape = lhs_shape;
-    return true;
-  }
-
-  TF_SetStatus(
-      status, TF_UNIMPLEMENTED,
-      ("Metal: broadcasting " + DescribeShape(lhs_shape) + " against " +
-       DescribeShape(rhs_shape) +
-       " is not supported yet; only equal shapes or a scalar operand are.")
-          .c_str());
-  return false;
-}
-
-void BinaryOp_ComputeImpl(BinaryOp* op, TF_OpKernelContext* ctx,
-                          TF_Status* status) {
-  if (op == nullptr) {
-    TF_SetStatus(status, TF_INTERNAL,
-                 "Metal: binary kernel has no state; construction failed.");
-    return;
-  }
-
+template <BinaryKind kKind>
+void Binary_ComputeImpl(DTypeOp* op, TF_OpKernelContext* ctx,
+                        TF_Status* status) {
   ScopedTensor lhs;
   ScopedTensor rhs;
   TF_GetInput(ctx, 0, lhs.address(), status);
@@ -145,106 +158,277 @@ void BinaryOp_ComputeImpl(BinaryOp* op, TF_OpKernelContext* ctx,
   TF_GetInput(ctx, 1, rhs.address(), status);
   if (TF_GetCode(status) != TF_OK) return;
 
+  const std::vector<int64_t> lhs_shape = ShapeOf(lhs.get());
+  const std::vector<int64_t> rhs_shape = ShapeOf(rhs.get());
   std::vector<int64_t> out_shape;
-  bool lhs_is_scalar = false;
-  bool rhs_is_scalar = false;
-  if (!ResolveBinaryShape(lhs.get(), rhs.get(), &out_shape, &lhs_is_scalar,
-                          &rhs_is_scalar, status)) {
-    return;
-  }
-
-  int64_t count = 1;
-  for (int64_t dim : out_shape) count *= dim;
+  if (!BroadcastShape(lhs_shape, rhs_shape, &out_shape, status)) return;
 
   ScopedTensor output;
+  const int64_t count = ElementCount(out_shape);
   output.reset(TF_AllocateOutput(
       ctx, 0, op->dtype, out_shape.data(), static_cast<int>(out_shape.size()),
       static_cast<size_t>(count) * TF_DataTypeSize(op->dtype), status));
   if (TF_GetCode(status) != TF_OK) return;
-  // Nothing to compute, and a zero-sized dispatch is a Metal error rather than
-  // a no-op.
   if (count == 0) return;
 
   SP_Stream stream = StreamForContext(ctx, status);
   if (TF_GetCode(status) != TF_OK) return;
+  id<MTLDevice> device = DeviceForStream(stream);
 
-  id<MTLComputePipelineState> pipeline =
-      PipelineFor(DeviceForStream(stream), op->function_name.c_str(), status);
-  if (pipeline == nil) return;
+  MPSDataType mps_dtype;
+  if (!MPSTypeFor(op->dtype, &mps_dtype, status)) return;
 
-  BufferSlice lhs_slice;
-  BufferSlice rhs_slice;
-  BufferSlice out_slice;
-  if (!SliceForTensor(lhs.get(), &lhs_slice, status)) return;
-  if (!SliceForTensor(rhs.get(), &rhs_slice, status)) return;
-  if (!SliceForTensor(output.get(), &out_slice, status)) return;
+  std::string key = NameOf(kKind);
+  AppendShapeToKey(lhs_shape, &key);
+  AppendShapeToKey(rhs_shape, &key);
+  key.append("/t").append(std::to_string(static_cast<int>(op->dtype)));
 
-  OrderedCommandBuffer command_buffer(stream);
-  if (!command_buffer.ok()) {
-    TF_SetStatus(
-        status, TF_RESOURCE_EXHAUSTED,
-        "Metal: could not create a command buffer for an elementwise op.");
-    return;
-  }
+  const CachedGraph* cached = LookupOrBuildGraph(
+      key,
+      ^(CachedGraph* out) {
+        MPSGraphTensor* a = [out->graph placeholderWithShape:MPSShape(lhs_shape)
+                                                    dataType:mps_dtype
+                                                        name:nil];
+        MPSGraphTensor* b = [out->graph placeholderWithShape:MPSShape(rhs_shape)
+                                                    dataType:mps_dtype
+                                                        name:nil];
+        [out->inputs addObject:a];
+        [out->inputs addObject:b];
+        [out->outputs addObject:ApplyBinary(out->graph, kKind, a, b)];
+      },
+      status);
+  if (cached == nullptr) return;
 
-  ElementwiseParams params;
-  params.count = static_cast<uint32_t>(count);
-  params.lhs_is_scalar = lhs_is_scalar ? 1 : 0;
-  params.rhs_is_scalar = rhs_is_scalar ? 1 : 0;
-  params.padding = 0;
-
-  id<MTLComputeCommandEncoder> encoder =
-      [command_buffer.get() computeCommandEncoder];
-  [encoder setComputePipelineState:pipeline];
-  [encoder setBuffer:lhs_slice.buffer offset:lhs_slice.offset atIndex:0];
-  [encoder setBuffer:rhs_slice.buffer offset:rhs_slice.offset atIndex:1];
-  [encoder setBuffer:out_slice.buffer offset:out_slice.offset atIndex:2];
-  [encoder setBytes:&params length:sizeof(params) atIndex:3];
-  Dispatch1D(encoder, pipeline, params.count);
-  [encoder endEncoding];
-  command_buffer.Commit();
+  MPSGraphTensorData* a_data =
+      TensorDataForTensor(lhs.get(), op->dtype, device, status);
+  if (a_data == nil) return;
+  MPSGraphTensorData* b_data =
+      TensorDataForTensor(rhs.get(), op->dtype, device, status);
+  if (b_data == nil) return;
+  MPSGraphTensorData* out_data =
+      TensorDataForTensor(output.get(), op->dtype, device, status);
+  if (out_data == nil) return;
+  RunGraph(stream, *cached, @[ a_data, b_data ], @[ out_data ], status);
 }
 
-void BinaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
-  ScopedAutoreleasePool pool;
-  TF_Status* status = TF_NewStatus();
-  BinaryOp_ComputeImpl(static_cast<BinaryOp*>(kernel), ctx, status);
-  if (TF_GetCode(status) != TF_OK) TF_OpKernelContext_Failure(ctx, status);
-  TF_DeleteStatus(status);
+/*** UNARY ***/
+
+enum class UnaryKind {
+  kNeg, kSqrt, kRsqrt, kExp, kLog, kSquare, kTanh, kSigmoid, kAbs, kReciprocal,
+};
+
+const char* NameOf(UnaryKind k) {
+  switch (k) {
+    case UnaryKind::kNeg: return "Neg";
+    case UnaryKind::kSqrt: return "Sqrt";
+    case UnaryKind::kRsqrt: return "Rsqrt";
+    case UnaryKind::kExp: return "Exp";
+    case UnaryKind::kLog: return "Log";
+    case UnaryKind::kSquare: return "Square";
+    case UnaryKind::kTanh: return "Tanh";
+    case UnaryKind::kSigmoid: return "Sigmoid";
+    case UnaryKind::kAbs: return "Abs";
+    case UnaryKind::kReciprocal: return "Reciprocal";
+  }
+  return "?";
+}
+
+MPSGraphTensor* ApplyUnary(MPSGraph* g, UnaryKind k, MPSGraphTensor* x) {
+  switch (k) {
+    case UnaryKind::kNeg: return [g negativeWithTensor:x name:nil];
+    case UnaryKind::kSqrt: return [g squareRootWithTensor:x name:nil];
+    case UnaryKind::kRsqrt: return [g reciprocalSquareRootWithTensor:x name:nil];
+    case UnaryKind::kExp: return [g exponentWithTensor:x name:nil];
+    case UnaryKind::kLog: return [g logarithmWithTensor:x name:nil];
+    case UnaryKind::kSquare: return [g squareWithTensor:x name:nil];
+    case UnaryKind::kTanh: return [g tanhWithTensor:x name:nil];
+    case UnaryKind::kSigmoid: return [g sigmoidWithTensor:x name:nil];
+    case UnaryKind::kAbs: return [g absoluteWithTensor:x name:nil];
+    case UnaryKind::kReciprocal: return [g reciprocalWithTensor:x name:nil];
+  }
+  return nil;
+}
+
+template <UnaryKind kKind>
+void Unary_ComputeImpl(DTypeOp* op, TF_OpKernelContext* ctx,
+                       TF_Status* status) {
+  ScopedTensor input;
+  TF_GetInput(ctx, 0, input.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  const std::vector<int64_t> shape = ShapeOf(input.get());
+  const int64_t count = ElementCount(shape);
+
+  ScopedTensor output;
+  output.reset(TF_AllocateOutput(
+      ctx, 0, op->dtype, shape.data(), static_cast<int>(shape.size()),
+      static_cast<size_t>(count) * TF_DataTypeSize(op->dtype), status));
+  if (TF_GetCode(status) != TF_OK) return;
+  if (count == 0) return;
+
+  SP_Stream stream = StreamForContext(ctx, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  id<MTLDevice> device = DeviceForStream(stream);
+
+  MPSDataType mps_dtype;
+  if (!MPSTypeFor(op->dtype, &mps_dtype, status)) return;
+
+  std::string key = NameOf(kKind);
+  AppendShapeToKey(shape, &key);
+  key.append("/t").append(std::to_string(static_cast<int>(op->dtype)));
+
+  const CachedGraph* cached = LookupOrBuildGraph(
+      key,
+      ^(CachedGraph* out) {
+        MPSGraphTensor* x = [out->graph placeholderWithShape:MPSShape(shape)
+                                                    dataType:mps_dtype
+                                                        name:nil];
+        [out->inputs addObject:x];
+        [out->outputs addObject:ApplyUnary(out->graph, kKind, x)];
+      },
+      status);
+  if (cached == nullptr) return;
+
+  MPSGraphTensorData* in_data =
+      TensorDataForTensor(input.get(), op->dtype, device, status);
+  if (in_data == nil) return;
+  MPSGraphTensorData* out_data =
+      TensorDataForTensor(output.get(), op->dtype, device, status);
+  if (out_data == nil) return;
+  RunGraph(stream, *cached, @[ in_data ], @[ out_data ], status);
+}
+
+/*** UNARY GRADIENTS ***/
+
+// TensorFlow's *Grad ops take the forward output y and the incoming gradient
+// dy, not the forward input, so each formula is expressed in terms of y.
+enum class UnaryGradKind { kTanh, kSigmoid, kSqrt, kRsqrt };
+
+const char* NameOf(UnaryGradKind k) {
+  switch (k) {
+    case UnaryGradKind::kTanh: return "TanhGrad";
+    case UnaryGradKind::kSigmoid: return "SigmoidGrad";
+    case UnaryGradKind::kSqrt: return "SqrtGrad";
+    case UnaryGradKind::kRsqrt: return "RsqrtGrad";
+  }
+  return "?";
+}
+
+MPSGraphTensor* ApplyUnaryGrad(MPSGraph* g, UnaryGradKind k, MPSGraphTensor* y,
+                               MPSGraphTensor* dy, MPSDataType dtype) {
+  MPSGraphTensor* one = [g constantWithScalar:1.0 dataType:dtype];
+  switch (k) {
+    case UnaryGradKind::kTanh: {
+      // dy * (1 - y^2)
+      MPSGraphTensor* y2 = [g squareWithTensor:y name:nil];
+      MPSGraphTensor* t =
+          [g subtractionWithPrimaryTensor:one secondaryTensor:y2 name:nil];
+      return [g multiplicationWithPrimaryTensor:dy secondaryTensor:t name:nil];
+    }
+    case UnaryGradKind::kSigmoid: {
+      // dy * y * (1 - y)
+      MPSGraphTensor* t =
+          [g subtractionWithPrimaryTensor:one secondaryTensor:y name:nil];
+      MPSGraphTensor* u =
+          [g multiplicationWithPrimaryTensor:y secondaryTensor:t name:nil];
+      return [g multiplicationWithPrimaryTensor:dy secondaryTensor:u name:nil];
+    }
+    case UnaryGradKind::kSqrt: {
+      // dy * 0.5 / y
+      MPSGraphTensor* half = [g constantWithScalar:0.5 dataType:dtype];
+      MPSGraphTensor* t =
+          [g multiplicationWithPrimaryTensor:dy secondaryTensor:half name:nil];
+      return [g divisionWithPrimaryTensor:t secondaryTensor:y name:nil];
+    }
+    case UnaryGradKind::kRsqrt: {
+      // dy * -0.5 * y^3
+      MPSGraphTensor* mhalf = [g constantWithScalar:-0.5 dataType:dtype];
+      MPSGraphTensor* y2 = [g squareWithTensor:y name:nil];
+      MPSGraphTensor* y3 =
+          [g multiplicationWithPrimaryTensor:y2 secondaryTensor:y name:nil];
+      MPSGraphTensor* t =
+          [g multiplicationWithPrimaryTensor:dy secondaryTensor:mhalf name:nil];
+      return [g multiplicationWithPrimaryTensor:t secondaryTensor:y3 name:nil];
+    }
+  }
+  return nil;
+}
+
+template <UnaryGradKind kKind>
+void UnaryGrad_ComputeImpl(DTypeOp* op, TF_OpKernelContext* ctx,
+                           TF_Status* status) {
+  ScopedTensor y;
+  ScopedTensor dy;
+  TF_GetInput(ctx, 0, y.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+  TF_GetInput(ctx, 1, dy.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  const std::vector<int64_t> shape = ShapeOf(y.get());
+  const int64_t count = ElementCount(shape);
+
+  ScopedTensor output;
+  output.reset(TF_AllocateOutput(
+      ctx, 0, op->dtype, shape.data(), static_cast<int>(shape.size()),
+      static_cast<size_t>(count) * TF_DataTypeSize(op->dtype), status));
+  if (TF_GetCode(status) != TF_OK) return;
+  if (count == 0) return;
+
+  SP_Stream stream = StreamForContext(ctx, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  id<MTLDevice> device = DeviceForStream(stream);
+
+  MPSDataType mps_dtype;
+  if (!MPSTypeFor(op->dtype, &mps_dtype, status)) return;
+
+  std::string key = NameOf(kKind);
+  AppendShapeToKey(shape, &key);
+  key.append("/t").append(std::to_string(static_cast<int>(op->dtype)));
+
+  const CachedGraph* cached = LookupOrBuildGraph(
+      key,
+      ^(CachedGraph* out) {
+        MPSGraphTensor* a = [out->graph placeholderWithShape:MPSShape(shape)
+                                                    dataType:mps_dtype
+                                                        name:nil];
+        MPSGraphTensor* b = [out->graph placeholderWithShape:MPSShape(shape)
+                                                    dataType:mps_dtype
+                                                        name:nil];
+        [out->inputs addObject:a];
+        [out->inputs addObject:b];
+        [out->outputs
+            addObject:ApplyUnaryGrad(out->graph, kKind, a, b, mps_dtype)];
+      },
+      status);
+  if (cached == nullptr) return;
+
+  MPSGraphTensorData* y_data =
+      TensorDataForTensor(y.get(), op->dtype, device, status);
+  if (y_data == nil) return;
+  MPSGraphTensorData* dy_data =
+      TensorDataForTensor(dy.get(), op->dtype, device, status);
+  if (dy_data == nil) return;
+  MPSGraphTensorData* out_data =
+      TensorDataForTensor(output.get(), op->dtype, device, status);
+  if (out_data == nil) return;
+  RunGraph(stream, *cached, @[ y_data, dy_data ], @[ out_data ], status);
 }
 
 /*** CAST ***/
 
 struct CastOp {
-  std::string function_name;
-  TF_DataType dst_dtype = TF_FLOAT;
+  TF_DataType src = TF_FLOAT;
+  TF_DataType dst = TF_FLOAT;
 };
 
 void* CastOp_Create(TF_OpKernelConstruction* ctx) {
   TF_Status* status = TF_NewStatus();
   auto* op = new CastOp();
-  TF_DataType src_dtype = TF_FLOAT;
-  TF_OpKernelConstruction_GetAttrType(ctx, "SrcT", &src_dtype, status);
+  TF_OpKernelConstruction_GetAttrType(ctx, "SrcT", &op->src, status);
   if (TF_GetCode(status) == TF_OK) {
-    TF_OpKernelConstruction_GetAttrType(ctx, "DstT", &op->dst_dtype, status);
+    TF_OpKernelConstruction_GetAttrType(ctx, "DstT", &op->dst, status);
   }
   if (TF_GetCode(status) != TF_OK) {
-    TF_OpKernelConstruction_Failure(ctx, status);
-    TF_DeleteStatus(status);
-    delete op;
-    return nullptr;
-  }
-
-  if (src_dtype == TF_FLOAT && op->dst_dtype == TF_HALF) {
-    op->function_name = "tf_cast_float_to_half";
-  } else if (src_dtype == TF_HALF && op->dst_dtype == TF_FLOAT) {
-    op->function_name = "tf_cast_half_to_float";
-  } else {
-    // The type constraints below should prevent this, but a mismatch between
-    // the registration and the shader table would otherwise show up as a
-    // missing-function error deep in the pipeline cache.
-    TF_SetStatus(status, TF_UNIMPLEMENTED,
-                 "Metal: unsupported Cast type pair.");
     TF_OpKernelConstruction_Failure(ctx, status);
     TF_DeleteStatus(status);
     delete op;
@@ -256,114 +440,127 @@ void* CastOp_Create(TF_OpKernelConstruction* ctx) {
 
 void CastOp_Delete(void* kernel) { delete static_cast<CastOp*>(kernel); }
 
-void CastOp_ComputeImpl(CastOp* op, TF_OpKernelContext* ctx,
-                        TF_Status* status) {
-  if (op == nullptr) {
-    TF_SetStatus(status, TF_INTERNAL,
-                 "Metal: Cast kernel has no state; construction failed.");
-    return;
-  }
-
+void Cast_ComputeImpl(CastOp* op, TF_OpKernelContext* ctx, TF_Status* status) {
   ScopedTensor input;
   TF_GetInput(ctx, 0, input.address(), status);
   if (TF_GetCode(status) != TF_OK) return;
 
   const std::vector<int64_t> shape = ShapeOf(input.get());
-  const int64_t count = NumElements(input.get());
+  const int64_t count = ElementCount(shape);
 
   ScopedTensor output;
   output.reset(TF_AllocateOutput(
-      ctx, 0, op->dst_dtype, shape.data(), static_cast<int>(shape.size()),
-      static_cast<size_t>(count) * TF_DataTypeSize(op->dst_dtype), status));
+      ctx, 0, op->dst, shape.data(), static_cast<int>(shape.size()),
+      static_cast<size_t>(count) * TF_DataTypeSize(op->dst), status));
   if (TF_GetCode(status) != TF_OK) return;
   if (count == 0) return;
 
   SP_Stream stream = StreamForContext(ctx, status);
   if (TF_GetCode(status) != TF_OK) return;
+  id<MTLDevice> device = DeviceForStream(stream);
 
-  id<MTLComputePipelineState> pipeline =
-      PipelineFor(DeviceForStream(stream), op->function_name.c_str(), status);
-  if (pipeline == nil) return;
+  MPSDataType src_type;
+  MPSDataType dst_type;
+  if (!MPSTypeFor(op->src, &src_type, status)) return;
+  if (!MPSTypeFor(op->dst, &dst_type, status)) return;
 
-  BufferSlice in_slice;
-  BufferSlice out_slice;
-  if (!SliceForTensor(input.get(), &in_slice, status)) return;
-  if (!SliceForTensor(output.get(), &out_slice, status)) return;
+  std::string key = "Cast";
+  AppendShapeToKey(shape, &key);
+  key.append("/").append(std::to_string(static_cast<int>(op->src)));
+  key.append("->").append(std::to_string(static_cast<int>(op->dst)));
 
-  OrderedCommandBuffer command_buffer(stream);
-  if (!command_buffer.ok()) {
-    TF_SetStatus(status, TF_RESOURCE_EXHAUSTED,
-                 "Metal: could not create a command buffer for Cast.");
-    return;
+  const CachedGraph* cached = LookupOrBuildGraph(
+      key,
+      ^(CachedGraph* out) {
+        MPSGraphTensor* x = [out->graph placeholderWithShape:MPSShape(shape)
+                                                    dataType:src_type
+                                                        name:nil];
+        [out->inputs addObject:x];
+        [out->outputs addObject:[out->graph castTensor:x
+                                                toType:dst_type
+                                                  name:nil]];
+      },
+      status);
+  if (cached == nullptr) return;
+
+  MPSGraphTensorData* in_data =
+      TensorDataForTensor(input.get(), op->src, device, status);
+  if (in_data == nil) return;
+  MPSGraphTensorData* out_data =
+      TensorDataForTensor(output.get(), op->dst, device, status);
+  if (out_data == nil) return;
+  RunGraph(stream, *cached, @[ in_data ], @[ out_data ], status);
+}
+
+/*** WRAPPERS AND REGISTRATION ***/
+
+#define METAL_COMPUTE(NAME, STATE, IMPL)                                      \
+  void NAME(void* kernel, TF_OpKernelContext* ctx) {                          \
+    ScopedAutoreleasePool pool;                                               \
+    TF_Status* status = TF_NewStatus();                                       \
+    auto* op = static_cast<STATE*>(kernel);                                   \
+    if (op == nullptr) {                                                      \
+      TF_SetStatus(status, TF_INTERNAL, "Metal: kernel has no state.");       \
+    } else {                                                                  \
+      IMPL(op, ctx, status);                                                  \
+    }                                                                         \
+    if (TF_GetCode(status) != TF_OK) TF_OpKernelContext_Failure(ctx, status); \
+    TF_DeleteStatus(status);                                                  \
   }
 
-  ElementwiseParams params;
-  params.count = static_cast<uint32_t>(count);
-  params.lhs_is_scalar = 0;
-  params.rhs_is_scalar = 0;
-  params.padding = 0;
+METAL_COMPUTE(Add_Compute, DTypeOp, Binary_ComputeImpl<BinaryKind::kAdd>)
+METAL_COMPUTE(Sub_Compute, DTypeOp, Binary_ComputeImpl<BinaryKind::kSub>)
+METAL_COMPUTE(Mul_Compute, DTypeOp, Binary_ComputeImpl<BinaryKind::kMul>)
+METAL_COMPUTE(Div_Compute, DTypeOp, Binary_ComputeImpl<BinaryKind::kDiv>)
+METAL_COMPUTE(Max_Compute, DTypeOp, Binary_ComputeImpl<BinaryKind::kMaximum>)
+METAL_COMPUTE(Min_Compute, DTypeOp, Binary_ComputeImpl<BinaryKind::kMinimum>)
+METAL_COMPUTE(Pow_Compute, DTypeOp, Binary_ComputeImpl<BinaryKind::kPow>)
+METAL_COMPUTE(SqDiff_Compute, DTypeOp,
+              Binary_ComputeImpl<BinaryKind::kSquaredDifference>)
 
-  id<MTLComputeCommandEncoder> encoder =
-      [command_buffer.get() computeCommandEncoder];
-  [encoder setComputePipelineState:pipeline];
-  [encoder setBuffer:in_slice.buffer offset:in_slice.offset atIndex:0];
-  [encoder setBuffer:out_slice.buffer offset:out_slice.offset atIndex:1];
-  [encoder setBytes:&params length:sizeof(params) atIndex:2];
-  Dispatch1D(encoder, pipeline, params.count);
-  [encoder endEncoding];
-  command_buffer.Commit();
-}
+METAL_COMPUTE(Neg_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kNeg>)
+METAL_COMPUTE(Sqrt_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kSqrt>)
+METAL_COMPUTE(Rsqrt_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kRsqrt>)
+METAL_COMPUTE(Exp_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kExp>)
+METAL_COMPUTE(Log_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kLog>)
+METAL_COMPUTE(Square_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kSquare>)
+METAL_COMPUTE(Tanh_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kTanh>)
+METAL_COMPUTE(Sigmoid_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kSigmoid>)
+METAL_COMPUTE(Abs_Compute, DTypeOp, Unary_ComputeImpl<UnaryKind::kAbs>)
+METAL_COMPUTE(Recip_Compute, DTypeOp,
+              Unary_ComputeImpl<UnaryKind::kReciprocal>)
 
-void CastOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
-  ScopedAutoreleasePool pool;
+METAL_COMPUTE(TanhGrad_Compute, DTypeOp,
+              UnaryGrad_ComputeImpl<UnaryGradKind::kTanh>)
+METAL_COMPUTE(SigmoidGrad_Compute, DTypeOp,
+              UnaryGrad_ComputeImpl<UnaryGradKind::kSigmoid>)
+METAL_COMPUTE(SqrtGrad_Compute, DTypeOp,
+              UnaryGrad_ComputeImpl<UnaryGradKind::kSqrt>)
+METAL_COMPUTE(RsqrtGrad_Compute, DTypeOp,
+              UnaryGrad_ComputeImpl<UnaryGradKind::kRsqrt>)
+
+METAL_COMPUTE(Cast_Compute, CastOp, Cast_ComputeImpl)
+
+#undef METAL_COMPUTE
+
+void Register(const char* op_name, void* (*create)(TF_OpKernelConstruction*),
+              void (*compute)(void*, TF_OpKernelContext*), void (*destroy)(void*),
+              const char* attr, TF_DataType dtype, const std::string& name,
+              const char* attr2 = nullptr, TF_DataType dtype2 = TF_FLOAT) {
   TF_Status* status = TF_NewStatus();
-  CastOp_ComputeImpl(static_cast<CastOp*>(kernel), ctx, status);
-  if (TF_GetCode(status) != TF_OK) TF_OpKernelContext_Failure(ctx, status);
-  TF_DeleteStatus(status);
-}
-
-/*** REGISTRATION ***/
-
-using CreateFn = void* (*)(TF_OpKernelConstruction*);
-
-void RegisterBinary(const char* op_name, CreateFn create, TF_DataType dtype,
-                    const std::string& kernel_name) {
-  TF_Status* status = TF_NewStatus();
-  TF_KernelBuilder* builder = TF_NewKernelBuilder(
-      op_name, kMetalDeviceType, create, &BinaryOp_Compute, &BinaryOp_Delete);
-  TF_KernelBuilder_TypeConstraint(builder, "T", dtype, status);
+  TF_KernelBuilder* builder =
+      TF_NewKernelBuilder(op_name, kMetalDeviceType, create, compute, destroy);
+  TF_KernelBuilder_TypeConstraint(builder, attr, dtype, status);
+  if (TF_GetCode(status) == TF_OK && attr2 != nullptr) {
+    TF_KernelBuilder_TypeConstraint(builder, attr2, dtype2, status);
+  }
   if (TF_GetCode(status) == TF_OK) {
-    TF_RegisterKernelBuilder(kernel_name.c_str(), builder, status);
+    TF_RegisterKernelBuilder(name.c_str(), builder, status);
   } else {
     TF_DeleteKernelBuilder(builder);
   }
   if (TF_GetCode(status) != TF_OK) {
-    // Logged, not fatal: a kernel that fails to register leaves the op
-    // unplaceable on Metal, which core reports per graph, and that is a better
-    // outcome than refusing to import TensorFlow at all.
-    LOG(ERROR) << "Metal: could not register kernel " << kernel_name << ": "
-               << TF_Message(status);
-  }
-  TF_DeleteStatus(status);
-}
-
-void RegisterCast(TF_DataType src, TF_DataType dst,
-                  const std::string& kernel_name) {
-  TF_Status* status = TF_NewStatus();
-  TF_KernelBuilder* builder = TF_NewKernelBuilder(
-      "Cast", kMetalDeviceType, &CastOp_Create, &CastOp_Compute,
-      &CastOp_Delete);
-  TF_KernelBuilder_TypeConstraint(builder, "SrcT", src, status);
-  if (TF_GetCode(status) == TF_OK) {
-    TF_KernelBuilder_TypeConstraint(builder, "DstT", dst, status);
-  }
-  if (TF_GetCode(status) == TF_OK) {
-    TF_RegisterKernelBuilder(kernel_name.c_str(), builder, status);
-  } else {
-    TF_DeleteKernelBuilder(builder);
-  }
-  if (TF_GetCode(status) != TF_OK) {
-    LOG(ERROR) << "Metal: could not register kernel " << kernel_name << ": "
+    LOG(ERROR) << "Metal: could not register kernel " << name << ": "
                << TF_Message(status);
   }
   TF_DeleteStatus(status);
@@ -372,27 +569,65 @@ void RegisterCast(TF_DataType src, TF_DataType dst,
 }  // namespace
 
 void RegisterMetalElementwiseKernels() {
-  // AddV2 is what modern graphs emit; Add is kept for graphs still carrying
-  // the v1 op.
-  RegisterBinary("AddV2", &BinaryOp_Create<BinaryKind::kAdd>, TF_FLOAT,
-                 "MetalAddV2Float");
-  RegisterBinary("AddV2", &BinaryOp_Create<BinaryKind::kAdd>, TF_HALF,
-                 "MetalAddV2Half");
-  RegisterBinary("Add", &BinaryOp_Create<BinaryKind::kAdd>, TF_FLOAT,
-                 "MetalAddFloat");
-  RegisterBinary("Add", &BinaryOp_Create<BinaryKind::kAdd>, TF_HALF,
-                 "MetalAddHalf");
-  RegisterBinary("Sub", &BinaryOp_Create<BinaryKind::kSub>, TF_FLOAT,
-                 "MetalSubFloat");
-  RegisterBinary("Sub", &BinaryOp_Create<BinaryKind::kSub>, TF_HALF,
-                 "MetalSubHalf");
-  RegisterBinary("Mul", &BinaryOp_Create<BinaryKind::kMul>, TF_FLOAT,
-                 "MetalMulFloat");
-  RegisterBinary("Mul", &BinaryOp_Create<BinaryKind::kMul>, TF_HALF,
-                 "MetalMulHalf");
+  static constexpr TF_DataType kDTypes[] = {TF_FLOAT, TF_HALF};
+  static constexpr const char* kSuffixes[] = {"Float", "Half"};
 
-  RegisterCast(TF_FLOAT, TF_HALF, "MetalCastFloatToHalf");
-  RegisterCast(TF_HALF, TF_FLOAT, "MetalCastHalfToFloat");
+  struct BinaryEntry {
+    const char* op;
+    void (*compute)(void*, TF_OpKernelContext*);
+  };
+  // AddV2 is what modern graphs emit; Add is kept for graphs still carrying
+  // the v1 op. RealDiv and Div are the same operation on floating point.
+  static const BinaryEntry kBinaries[] = {
+      {"AddV2", &Add_Compute},   {"Add", &Add_Compute},
+      {"Sub", &Sub_Compute},     {"Mul", &Mul_Compute},
+      {"Div", &Div_Compute},     {"RealDiv", &Div_Compute},
+      {"Maximum", &Max_Compute}, {"Minimum", &Min_Compute},
+      {"Pow", &Pow_Compute},     {"SquaredDifference", &SqDiff_Compute},
+  };
+
+  struct UnaryEntry {
+    const char* op;
+    void (*compute)(void*, TF_OpKernelContext*);
+  };
+  static const UnaryEntry kUnaries[] = {
+      {"Neg", &Neg_Compute},         {"Sqrt", &Sqrt_Compute},
+      {"Rsqrt", &Rsqrt_Compute},     {"Exp", &Exp_Compute},
+      {"Log", &Log_Compute},         {"Square", &Square_Compute},
+      {"Tanh", &Tanh_Compute},       {"Sigmoid", &Sigmoid_Compute},
+      {"Abs", &Abs_Compute},         {"Reciprocal", &Recip_Compute},
+      {"TanhGrad", &TanhGrad_Compute},
+      {"SigmoidGrad", &SigmoidGrad_Compute},
+      {"SqrtGrad", &SqrtGrad_Compute},
+      {"RsqrtGrad", &RsqrtGrad_Compute},
+  };
+
+  for (int i = 0; i < 2; ++i) {
+    const TF_DataType dtype = kDTypes[i];
+    const std::string suffix = kSuffixes[i];
+    for (const BinaryEntry& e : kBinaries) {
+      Register(e.op, &DTypeOp_Create, e.compute, &DTypeOp_Delete, "T", dtype,
+               std::string("Metal") + e.op + suffix);
+    }
+    for (const UnaryEntry& e : kUnaries) {
+      Register(e.op, &DTypeOp_Create, e.compute, &DTypeOp_Delete, "T", dtype,
+               std::string("Metal") + e.op + suffix);
+    }
+  }
+
+  // Cast, over the pairs a mixed-precision or index-handling graph emits.
+  struct CastPair { TF_DataType src, dst; const char* name; };
+  static const CastPair kCasts[] = {
+      {TF_FLOAT, TF_HALF, "FloatToHalf"},   {TF_HALF, TF_FLOAT, "HalfToFloat"},
+      {TF_FLOAT, TF_BFLOAT16, "FloatToBf"}, {TF_BFLOAT16, TF_FLOAT, "BfToFloat"},
+      {TF_FLOAT, TF_INT32, "FloatToInt32"}, {TF_INT32, TF_FLOAT, "Int32ToFloat"},
+      {TF_INT32, TF_INT64, "Int32ToInt64"}, {TF_INT64, TF_INT32, "Int64ToInt32"},
+      {TF_FLOAT, TF_FLOAT, "FloatToFloat"},
+  };
+  for (const CastPair& c : kCasts) {
+    Register("Cast", &CastOp_Create, &Cast_Compute, &CastOp_Delete, "SrcT",
+             c.src, std::string("MetalCast") + c.name, "DstT", c.dst);
+  }
 }
 
 }  // namespace metal
