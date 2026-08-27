@@ -142,6 +142,7 @@ differently rather than fail.
 | `ImageProjectiveTransformV2`, `ImageProjectiveTransformV3` | float32 |
 | `ExtractVolumePatches` | float32 |
 | `LSTMBlockCell`, `LSTMBlockCellGrad` | float32 |
+| `BlockLSTM`, `BlockLSTMGrad`, `BlockLSTMV2`, `BlockLSTMGradV2` | float32 |
 | `GRUBlockCell`, `GRUBlockCellGrad` | float32 |
 | `Dilation2D` | float32, float16 |
 | `Dilation2DBackpropInput`, `Dilation2DBackpropFilter` | float32 |

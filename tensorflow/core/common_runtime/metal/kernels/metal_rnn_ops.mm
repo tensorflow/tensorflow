@@ -18,6 +18,7 @@ limitations under the License.
 #import <Metal/Metal.h>
 #import <MetalPerformanceShadersGraph/MetalPerformanceShadersGraph.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -131,6 +132,16 @@ void* RnnOp_Create(TF_OpKernelConstruction* ctx) {
 }
 
 void RnnOp_Delete(void* kernel) { delete static_cast<RnnOp*>(kernel); }
+
+// The V2 ops have no forget_bias attribute: their forget bias is zero, and
+// reading a missing attribute would silently leave the V1 default of one in
+// place, which shifts every forget gate.
+void* RnnOpV2_Create(TF_OpKernelConstruction* ctx) {
+  void* kernel = RnnOp_Create(ctx);
+  if (kernel != nullptr) static_cast<RnnOp*>(kernel)->forget_bias = 0.0f;
+  return kernel;
+}
+
 
 /*** LSTM BLOCK CELL ***/
 
@@ -502,6 +513,661 @@ void LSTMCellGrad_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
   RunGraph(stream, *cached, feeds, results, status);
 }
 
+/*** BLOCK LSTM: THE SEQUENCE FORMS ***/
+
+// BlockLSTM runs the same cell over a whole sequence. The loop is on the host
+// and each step is a graph run, which is what the shape of the problem allows:
+// step t depends on step t-1, so there is nothing to parallelise across time,
+// and the alternative would be a single graph with the length unrolled into
+// it, recompiled for every sequence length a model sees.
+//
+// Nothing crosses to the host inside the loop. Each step reads its previous
+// state straight out of the output tensors, at the byte offset of the previous
+// step, and writes into the current one. That is the same aliasing trick the
+// whole backend rests on: an MPSNDArray over an existing buffer at an offset.
+
+// One time step's slice of a [T, ...] tensor.
+BufferSlice StepSlice(const BufferSlice& base, int64_t step,
+                      int64_t elements_per_step) {
+  BufferSlice slice = base;
+  slice.offset += static_cast<size_t>(step) * elements_per_step * sizeof(float);
+  slice.length = static_cast<size_t>(elements_per_step) * sizeof(float);
+  return slice;
+}
+
+// Reads the scalar that bounds the loop.
+bool ReadSeqLenMax(TF_Tensor* t, int64_t* out, TF_Status* status) {
+  const void* data = TF_TensorData(t);
+  if (data == nullptr || TF_TensorElementCount(t) < 1) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: seq_len_max must be a scalar in host memory.");
+    return false;
+  }
+  *out = TF_TensorType(t) == TF_INT32
+             ? static_cast<const int32_t*>(data)[0]
+             : static_cast<const int64_t*>(data)[0];
+  return true;
+}
+
+// Fills a whole tensor with zeros on the stream.
+bool ZeroTensor(SP_Stream stream, TF_Tensor* tensor, TF_Status* status) {
+  BufferSlice slice;
+  if (!SliceForTensor(tensor, &slice, status)) return false;
+  const size_t bytes = TF_TensorByteSize(tensor);
+  if (bytes == 0) return true;
+  OrderedCommandBuffer command_buffer(stream);
+  if (!command_buffer.ok()) {
+    TF_SetStatus(status, TF_RESOURCE_EXHAUSTED,
+                 "Metal: could not create a command buffer to zero a tensor.");
+    return false;
+  }
+  id<MTLBlitCommandEncoder> encoder =
+      [command_buffer.get() blitCommandEncoder];
+  [encoder fillBuffer:slice.buffer
+                range:NSMakeRange(slice.offset, bytes)
+                value:0];
+  [encoder endEncoding];
+  command_buffer.Commit();
+  return true;
+}
+
+void BlockLSTM_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
+                           GateLayout layout, TF_Status* status) {
+  ScopedTensor in[9];
+  for (int i = 0; i < 9; ++i) {
+    TF_GetInput(ctx, i, in[i].address(), status);
+    if (TF_GetCode(status) != TF_OK) return;
+  }
+  int64_t seq_len_max = 0;
+  if (!ReadSeqLenMax(in[0].get(), &seq_len_max, status)) return;
+
+  const std::vector<int64_t> x_shape = ShapeOf(in[1].get());
+  const std::vector<int64_t> state_shape = ShapeOf(in[2].get());
+  if (x_shape.size() != 3 || state_shape.size() != 2) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: BlockLSTM expects a rank-3 input and rank-2 state.");
+    return;
+  }
+  const int64_t time_steps = x_shape[0];
+  CellShapes shapes;
+  shapes.batch = x_shape[1];
+  shapes.input_size = x_shape[2];
+  shapes.cell = state_shape[1];
+  const int64_t per_step = shapes.batch * shapes.cell;
+  const int64_t x_per_step = shapes.batch * shapes.input_size;
+  const std::vector<int64_t> out_shape = {time_steps, shapes.batch,
+                                          shapes.cell};
+
+  ScopedTensor outputs[7];
+  for (int i = 0; i < 7; ++i) {
+    outputs[i].reset(TF_AllocateOutput(
+        ctx, i, TF_FLOAT, out_shape.data(), 3,
+        static_cast<size_t>(time_steps * per_step) * sizeof(float), status));
+    if (TF_GetCode(status) != TF_OK) return;
+  }
+  if (time_steps * per_step == 0) return;
+
+  SP_Stream stream = StreamForContext(ctx, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  id<MTLDevice> device = DeviceForStream(stream);
+
+  // Steps past seq_len_max are defined to be zero, and zeroing up front also
+  // means an early exit leaves no uninitialised memory behind.
+  for (int i = 0; i < 7; ++i) {
+    if (!ZeroTensor(stream, outputs[i].get(), status)) return;
+  }
+  const int64_t steps = std::min(time_steps, std::max<int64_t>(seq_len_max, 0));
+  if (steps == 0) return;
+
+  const CachedGraph* cached = ForwardCellGraph(*op, layout, shapes, status);
+  if (cached == nullptr) return;
+
+  BufferSlice x_slice, w_slice, wci_slice, wcf_slice, wco_slice, b_slice;
+  BufferSlice cs_prev_slice, h_prev_slice;
+  if (!SliceForTensor(in[1].get(), &x_slice, status)) return;
+  if (!SliceForTensor(in[2].get(), &cs_prev_slice, status)) return;
+  if (!SliceForTensor(in[3].get(), &h_prev_slice, status)) return;
+  if (!SliceForTensor(in[4].get(), &w_slice, status)) return;
+  if (!SliceForTensor(in[5].get(), &wci_slice, status)) return;
+  if (!SliceForTensor(in[6].get(), &wcf_slice, status)) return;
+  if (!SliceForTensor(in[7].get(), &wco_slice, status)) return;
+  if (!SliceForTensor(in[8].get(), &b_slice, status)) return;
+  BufferSlice out_slices[7];
+  for (int i = 0; i < 7; ++i) {
+    if (!SliceForTensor(outputs[i].get(), &out_slices[i], status)) return;
+  }
+
+  const std::vector<int64_t> step_x_shape = shapes.x();
+  const std::vector<int64_t> step_state_shape = shapes.state();
+  for (int64_t t = 0; t < steps; ++t) {
+    // The previous state is the previous step's own output, read in place.
+    const BufferSlice cs_prev =
+        t == 0 ? cs_prev_slice : StepSlice(out_slices[1], t - 1, per_step);
+    const BufferSlice h_prev =
+        t == 0 ? h_prev_slice : StepSlice(out_slices[6], t - 1, per_step);
+
+    NSMutableArray<MPSGraphTensorData*>* feeds = [NSMutableArray array];
+    const BufferSlice feed_slices[8] = {
+        StepSlice(x_slice, t, x_per_step),
+        cs_prev,
+        h_prev,
+        w_slice,
+        wci_slice,
+        wcf_slice,
+        wco_slice,
+        b_slice};
+    const std::vector<int64_t> feed_shapes[8] = {
+        step_x_shape, step_state_shape, step_state_shape, shapes.w(),
+        shapes.peep(), shapes.peep(),   shapes.peep(),    shapes.b()};
+    for (int i = 0; i < 8; ++i) {
+      MPSGraphTensorData* data = TensorDataFor(feed_slices[i], feed_shapes[i],
+                                               TF_FLOAT, device, status);
+      if (data == nil) return;
+      [feeds addObject:data];
+    }
+    NSMutableArray<MPSGraphTensorData*>* results = [NSMutableArray array];
+    for (int i = 0; i < 7; ++i) {
+      MPSGraphTensorData* data =
+          TensorDataFor(StepSlice(out_slices[i], t, per_step),
+                        step_state_shape, TF_FLOAT, device, status);
+      if (data == nil) return;
+      [results addObject:data];
+    }
+    if (!RunGraph(stream, *cached, feeds, results, status)) return;
+  }
+}
+
+// One step of the backward pass, including the projection of the gate
+// gradients back through w. Inputs in order: w, wci, wcf, wco, cs_prev, i, cs,
+// f, o, ci, co, cs_grad, h_grad, carry_cs, carry_h. Outputs in order: dgates,
+// cs_prev_grad, h_prev_grad, x_grad.
+const CachedGraph* BackwardStepGraph(const RnnOp& op, GateLayout layout,
+                                     const CellShapes& shapes,
+                                     TF_Status* status) {
+  const int64_t cell = shapes.cell;
+  const int64_t input_size = shapes.input_size;
+  const std::vector<int64_t> state_shape = shapes.state();
+  const std::vector<int64_t> w_shape = shapes.w();
+  const std::vector<int64_t> p_shape = shapes.peep();
+
+  std::string key = "LSTMSeqBackwardStep";
+  AppendShapeToKey(shapes.x(), &key);
+  AppendShapeToKey(state_shape, &key);
+  key.append(op.use_peephole ? "/peep" : "/plain");
+  key.append(layout.ifco ? "/ifco" : "/icfo");
+
+  const bool use_peephole = op.use_peephole;
+  return LookupOrBuildGraph(
+      key,
+      ^(CachedGraph* out) {
+        MPSGraph* g = out->graph;
+        MPSGraphTensor* w = [g placeholderWithShape:MPSShape(w_shape)
+                                           dataType:MPSDataTypeFloat32
+                                               name:nil];
+        MPSGraphTensor* wci = [g placeholderWithShape:MPSShape(p_shape)
+                                             dataType:MPSDataTypeFloat32
+                                                 name:nil];
+        MPSGraphTensor* wcf = [g placeholderWithShape:MPSShape(p_shape)
+                                             dataType:MPSDataTypeFloat32
+                                                 name:nil];
+        MPSGraphTensor* wco = [g placeholderWithShape:MPSShape(p_shape)
+                                             dataType:MPSDataTypeFloat32
+                                                 name:nil];
+        MPSGraphTensor* state[10];
+        for (int i = 0; i < 10; ++i) {
+          state[i] = [g placeholderWithShape:MPSShape(state_shape)
+                                    dataType:MPSDataTypeFloat32
+                                        name:nil];
+        }
+        MPSGraphTensor* cs_prev = state[0];
+        MPSGraphTensor* i = state[1];
+        MPSGraphTensor* cs = state[2];
+        MPSGraphTensor* f = state[3];
+        MPSGraphTensor* o = state[4];
+        MPSGraphTensor* ci = state[5];
+        MPSGraphTensor* co = state[6];
+        MPSGraphTensor* cs_grad_in = state[7];
+        MPSGraphTensor* h_grad_in = state[8];
+        MPSGraphTensor* carry_cs = [g placeholderWithShape:MPSShape(state_shape)
+                                                  dataType:MPSDataTypeFloat32
+                                                      name:nil];
+        MPSGraphTensor* carry_h = state[9];
+
+        // The gradient arriving at this step is what the loss sends directly
+        // plus what the next step sent back.
+        MPSGraphTensor* h_grad = Add(g, h_grad_in, carry_h);
+        MPSGraphTensor* cs_grad = Add(g, cs_grad_in, carry_cs);
+
+        MPSGraphTensor* do_ =
+            Mul(g, Mul(g, Mul(g, o, OneMinus(g, o)), h_grad), co);
+        MPSGraphTensor* dcs =
+            Add(g, Mul(g, Mul(g, OneMinus(g, Mul(g, co, co)), h_grad), o),
+                cs_grad);
+        if (use_peephole) {
+          dcs = Add(g, dcs, Mul(g, do_, Broadcast(g, wco, cell)));
+        }
+        MPSGraphTensor* dci =
+            Mul(g, Mul(g, OneMinus(g, Mul(g, ci, ci)), dcs), i);
+        MPSGraphTensor* df =
+            Mul(g, Mul(g, Mul(g, f, OneMinus(g, f)), dcs), cs_prev);
+        MPSGraphTensor* di =
+            Mul(g, Mul(g, Mul(g, i, OneMinus(g, i)), dcs), ci);
+
+        NSArray<MPSGraphTensor*>* ordered =
+            layout.ifco ? @[ di, df, dci, do_ ] : @[ di, dci, df, do_ ];
+        MPSGraphTensor* dgates = [g concatTensors:ordered
+                                        dimension:1
+                                             name:nil];
+        MPSGraphTensor* cs_prev_grad = Mul(g, dcs, f);
+        if (use_peephole) {
+          cs_prev_grad =
+              Add(g, cs_prev_grad,
+                  Add(g, Mul(g, di, Broadcast(g, wci, cell)),
+                      Mul(g, df, Broadcast(g, wcf, cell))));
+        }
+        // The gate gradients project back through w onto [x, h_prev].
+        MPSGraphTensor* xh_grad = MatMul(g, dgates, Transpose(g, w));
+        MPSGraphTensor* x_grad =
+            [g sliceTensor:xh_grad
+                 dimension:1
+                     start:0
+                    length:static_cast<NSInteger>(input_size)
+                      name:nil];
+        MPSGraphTensor* h_prev_grad =
+            [g sliceTensor:xh_grad
+                 dimension:1
+                     start:static_cast<NSInteger>(input_size)
+                    length:static_cast<NSInteger>(cell)
+                      name:nil];
+
+        [out->inputs addObject:w];
+        [out->inputs addObject:wci];
+        [out->inputs addObject:wcf];
+        [out->inputs addObject:wco];
+        for (int k = 0; k < 9; ++k) [out->inputs addObject:state[k]];
+        [out->inputs addObject:carry_cs];
+        [out->inputs addObject:carry_h];
+        [out->outputs addObject:dgates];
+        [out->outputs addObject:cs_prev_grad];
+        [out->outputs addObject:h_prev_grad];
+        [out->outputs addObject:x_grad];
+      },
+      status);
+}
+
+// Everything the loop does not need to do step by step: the weight, bias and
+// peephole gradients are sums over the whole sequence, so they are one matrix
+// multiply and three reductions after the loop rather than an accumulation
+// inside it.
+const CachedGraph* BackwardReduceGraph(const RnnOp& op, GateLayout layout,
+                                       const CellShapes& shapes,
+                                       int64_t time_steps, TF_Status* status) {
+  const int64_t cell = shapes.cell;
+  const int64_t batch = shapes.batch;
+  const int64_t input_size = shapes.input_size;
+  const int64_t rows = time_steps * batch;
+  const std::vector<int64_t> x_all_shape = {time_steps, batch, input_size};
+  const std::vector<int64_t> state_all_shape = {time_steps, batch, cell};
+  const std::vector<int64_t> gates_all_shape = {time_steps, batch, 4 * cell};
+  const std::vector<int64_t> state_shape = shapes.state();
+  const std::vector<int64_t> p_shape = shapes.peep();
+
+  std::string key = "LSTMSeqBackwardReduce";
+  AppendShapeToKey(x_all_shape, &key);
+  AppendShapeToKey(state_all_shape, &key);
+  key.append(op.use_peephole ? "/peep" : "/plain");
+  key.append(layout.ifco ? "/ifco" : "/icfo");
+
+  const bool use_peephole = op.use_peephole;
+  return LookupOrBuildGraph(
+      key,
+      ^(CachedGraph* out) {
+        MPSGraph* g = out->graph;
+        MPSGraphTensor* x_all = [g placeholderWithShape:MPSShape(x_all_shape)
+                                               dataType:MPSDataTypeFloat32
+                                                   name:nil];
+        MPSGraphTensor* h_all =
+            [g placeholderWithShape:MPSShape(state_all_shape)
+                           dataType:MPSDataTypeFloat32
+                               name:nil];
+        MPSGraphTensor* h_prev = [g placeholderWithShape:MPSShape(state_shape)
+                                                dataType:MPSDataTypeFloat32
+                                                    name:nil];
+        MPSGraphTensor* cs_all =
+            [g placeholderWithShape:MPSShape(state_all_shape)
+                           dataType:MPSDataTypeFloat32
+                               name:nil];
+        MPSGraphTensor* cs_prev = [g placeholderWithShape:MPSShape(state_shape)
+                                                 dataType:MPSDataTypeFloat32
+                                                     name:nil];
+        MPSGraphTensor* dgates =
+            [g placeholderWithShape:MPSShape(gates_all_shape)
+                           dataType:MPSDataTypeFloat32
+                               name:nil];
+
+        // The state a step consumed is the previous step's output, so both
+        // state sequences are shifted by one and opened with the initial
+        // state.
+        NSArray<NSNumber*>* one_step = @[
+          @1, @(static_cast<NSInteger>(batch)), @(static_cast<NSInteger>(cell))
+        ];
+        MPSGraphTensor* h_head = [g reshapeTensor:h_prev
+                                        withShape:one_step
+                                             name:nil];
+        MPSGraphTensor* cs_head = [g reshapeTensor:cs_prev
+                                         withShape:one_step
+                                              name:nil];
+        MPSGraphTensor* h_shift = h_head;
+        MPSGraphTensor* cs_shift = cs_head;
+        if (time_steps > 1) {
+          h_shift = [g concatTensor:h_head
+                         withTensor:[g sliceTensor:h_all
+                                         dimension:0
+                                             start:0
+                                            length:static_cast<NSInteger>(
+                                                       time_steps - 1)
+                                              name:nil]
+                          dimension:0
+                               name:nil];
+          cs_shift = [g concatTensor:cs_head
+                          withTensor:[g sliceTensor:cs_all
+                                          dimension:0
+                                              start:0
+                                             length:static_cast<NSInteger>(
+                                                        time_steps - 1)
+                                               name:nil]
+                           dimension:0
+                                name:nil];
+        }
+
+        NSArray<NSNumber*>* rows_by_input = @[
+          @(static_cast<NSInteger>(rows)),
+          @(static_cast<NSInteger>(input_size))
+        ];
+        NSArray<NSNumber*>* rows_by_cell = @[
+          @(static_cast<NSInteger>(rows)), @(static_cast<NSInteger>(cell))
+        ];
+        NSArray<NSNumber*>* rows_by_gates = @[
+          @(static_cast<NSInteger>(rows)), @(static_cast<NSInteger>(4 * cell))
+        ];
+        MPSGraphTensor* xh = [g
+            concatTensor:[g reshapeTensor:x_all withShape:rows_by_input name:nil]
+              withTensor:[g reshapeTensor:h_shift
+                                withShape:rows_by_cell
+                                     name:nil]
+               dimension:1
+                    name:nil];
+        MPSGraphTensor* dg = [g reshapeTensor:dgates
+                                    withShape:rows_by_gates
+                                         name:nil];
+        MPSGraphTensor* w_grad = MatMul(g, Transpose(g, xh), dg);
+        MPSGraphTensor* b_grad = SumOverBatch(g, dg, 4 * cell);
+
+        MPSGraphTensor* wci_grad;
+        MPSGraphTensor* wcf_grad;
+        MPSGraphTensor* wco_grad;
+        if (use_peephole) {
+          MPSGraphTensor* cs_shift_flat = [g reshapeTensor:cs_shift
+                                                 withShape:rows_by_cell
+                                                      name:nil];
+          MPSGraphTensor* cs_flat = [g reshapeTensor:cs_all
+                                           withShape:rows_by_cell
+                                                name:nil];
+          MPSGraphTensor* di = Columns(g, dg, layout.i_offset(cell), cell);
+          MPSGraphTensor* df = Columns(g, dg, layout.f_offset(cell), cell);
+          MPSGraphTensor* do_ = Columns(g, dg, layout.o_offset(cell), cell);
+          wci_grad = SumOverBatch(g, Mul(g, di, cs_shift_flat), cell);
+          wcf_grad = SumOverBatch(g, Mul(g, df, cs_shift_flat), cell);
+          wco_grad = SumOverBatch(g, Mul(g, do_, cs_flat), cell);
+        } else {
+          MPSGraphTensor* zero = [g constantWithScalar:0.0
+                                                 shape:MPSShape(p_shape)
+                                              dataType:MPSDataTypeFloat32];
+          wci_grad = zero;
+          wcf_grad = zero;
+          wco_grad = zero;
+        }
+
+        [out->inputs addObject:x_all];
+        [out->inputs addObject:h_all];
+        [out->inputs addObject:h_prev];
+        [out->inputs addObject:cs_all];
+        [out->inputs addObject:cs_prev];
+        [out->inputs addObject:dgates];
+        [out->outputs addObject:w_grad];
+        [out->outputs addObject:b_grad];
+        [out->outputs addObject:wci_grad];
+        [out->outputs addObject:wcf_grad];
+        [out->outputs addObject:wco_grad];
+      },
+      status);
+}
+
+void BlockLSTMGrad_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
+                               GateLayout layout, TF_Status* status) {
+  ScopedTensor in[18];
+  for (int i = 0; i < 18; ++i) {
+    TF_GetInput(ctx, i, in[i].address(), status);
+    if (TF_GetCode(status) != TF_OK) return;
+  }
+  int64_t seq_len_max = 0;
+  if (!ReadSeqLenMax(in[0].get(), &seq_len_max, status)) return;
+
+  const std::vector<int64_t> x_shape = ShapeOf(in[1].get());
+  const std::vector<int64_t> state_shape_in = ShapeOf(in[2].get());
+  if (x_shape.size() != 3 || state_shape_in.size() != 2) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: BlockLSTMGrad expects a rank-3 input and rank-2 "
+                 "state.");
+    return;
+  }
+  const int64_t time_steps = x_shape[0];
+  CellShapes shapes;
+  shapes.batch = x_shape[1];
+  shapes.input_size = x_shape[2];
+  shapes.cell = state_shape_in[1];
+  const int64_t per_step = shapes.batch * shapes.cell;
+  const int64_t x_per_step = shapes.batch * shapes.input_size;
+  const int64_t gates_per_step = shapes.batch * 4 * shapes.cell;
+  const std::vector<int64_t> state_shape = shapes.state();
+  const std::vector<int64_t> gates_shape = shapes.gates();
+  const std::vector<int64_t> w_shape = shapes.w();
+  const std::vector<int64_t> b_shape = shapes.b();
+  const std::vector<int64_t> p_shape = shapes.peep();
+  const std::vector<int64_t> gates_all_shape = {time_steps, shapes.batch,
+                                                4 * shapes.cell};
+
+  ScopedTensor x_grad, cs_prev_grad, h_prev_grad, w_grad, wci_grad, wcf_grad,
+      wco_grad, b_grad;
+  x_grad.reset(TF_AllocateOutput(
+      ctx, 0, TF_FLOAT, x_shape.data(), 3,
+      static_cast<size_t>(time_steps * x_per_step) * sizeof(float), status));
+  if (TF_GetCode(status) != TF_OK) return;
+  cs_prev_grad.reset(TF_AllocateOutput(
+      ctx, 1, TF_FLOAT, state_shape.data(), 2,
+      static_cast<size_t>(per_step) * sizeof(float), status));
+  if (TF_GetCode(status) != TF_OK) return;
+  h_prev_grad.reset(TF_AllocateOutput(
+      ctx, 2, TF_FLOAT, state_shape.data(), 2,
+      static_cast<size_t>(per_step) * sizeof(float), status));
+  if (TF_GetCode(status) != TF_OK) return;
+  w_grad.reset(TF_AllocateOutput(
+      ctx, 3, TF_FLOAT, w_shape.data(), 2,
+      static_cast<size_t>(w_shape[0] * w_shape[1]) * sizeof(float), status));
+  if (TF_GetCode(status) != TF_OK) return;
+  ScopedTensor* peep[3] = {&wci_grad, &wcf_grad, &wco_grad};
+  for (int i = 0; i < 3; ++i) {
+    peep[i]->reset(TF_AllocateOutput(
+        ctx, i + 4, TF_FLOAT, p_shape.data(), 1,
+        static_cast<size_t>(shapes.cell) * sizeof(float), status));
+    if (TF_GetCode(status) != TF_OK) return;
+  }
+  b_grad.reset(TF_AllocateOutput(
+      ctx, 7, TF_FLOAT, b_shape.data(), 1,
+      static_cast<size_t>(4 * shapes.cell) * sizeof(float), status));
+  if (TF_GetCode(status) != TF_OK) return;
+  if (time_steps * per_step == 0) return;
+
+  SP_Stream stream = StreamForContext(ctx, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  id<MTLDevice> device = DeviceForStream(stream);
+
+  // The gate gradients for the whole sequence, which the reduction consumes.
+  // Steps past seq_len_max stay zero and so contribute nothing to the sums.
+  ScopedTensor dgates_all;
+  dgates_all.reset(TF_AllocateTemp(
+      ctx, TF_FLOAT, gates_all_shape.data(), 3, nullptr, status));
+  if (TF_GetCode(status) != TF_OK) return;
+  if (!ZeroTensor(stream, dgates_all.get(), status)) return;
+  if (!ZeroTensor(stream, x_grad.get(), status)) return;
+
+  // Two buffers for each carried gradient, alternated so a step never reads
+  // and writes the same storage.
+  ScopedTensor carry_cs[2], carry_h[2];
+  for (int i = 0; i < 2; ++i) {
+    carry_cs[i].reset(TF_AllocateTemp(ctx, TF_FLOAT, state_shape.data(), 2,
+                                      nullptr, status));
+    if (TF_GetCode(status) != TF_OK) return;
+    carry_h[i].reset(TF_AllocateTemp(ctx, TF_FLOAT, state_shape.data(), 2,
+                                     nullptr, status));
+    if (TF_GetCode(status) != TF_OK) return;
+    if (!ZeroTensor(stream, carry_cs[i].get(), status)) return;
+    if (!ZeroTensor(stream, carry_h[i].get(), status)) return;
+  }
+
+  const int64_t steps = std::min(time_steps, std::max<int64_t>(seq_len_max, 0));
+  if (steps > 0) {
+    const CachedGraph* step_graph =
+        BackwardStepGraph(*op, layout, shapes, status);
+    if (step_graph == nullptr) return;
+
+    BufferSlice w_s, wci_s, wcf_s, wco_s, cs_prev_s, x_grad_s, dgates_s;
+    if (!SliceForTensor(in[4].get(), &w_s, status)) return;
+    if (!SliceForTensor(in[5].get(), &wci_s, status)) return;
+    if (!SliceForTensor(in[6].get(), &wcf_s, status)) return;
+    if (!SliceForTensor(in[7].get(), &wco_s, status)) return;
+    if (!SliceForTensor(in[2].get(), &cs_prev_s, status)) return;
+    if (!SliceForTensor(x_grad.get(), &x_grad_s, status)) return;
+    if (!SliceForTensor(dgates_all.get(), &dgates_s, status)) return;
+    // i, cs, f, o, ci, co, cs_grad, h_grad, in the op's input order.
+    static constexpr int kSeqInput[8] = {9, 10, 11, 12, 13, 14, 16, 17};
+    BufferSlice seq_slices[8];
+    for (int i = 0; i < 8; ++i) {
+      if (!SliceForTensor(in[kSeqInput[i]].get(), &seq_slices[i], status)) {
+        return;
+      }
+    }
+    BufferSlice cs_all_s = seq_slices[1];
+    BufferSlice carry_cs_s[2], carry_h_s[2];
+    for (int i = 0; i < 2; ++i) {
+      if (!SliceForTensor(carry_cs[i].get(), &carry_cs_s[i], status)) return;
+      if (!SliceForTensor(carry_h[i].get(), &carry_h_s[i], status)) return;
+    }
+    BufferSlice cs_prev_grad_s, h_prev_grad_s;
+    if (!SliceForTensor(cs_prev_grad.get(), &cs_prev_grad_s, status)) return;
+    if (!SliceForTensor(h_prev_grad.get(), &h_prev_grad_s, status)) return;
+
+    int carry = 0;
+    for (int64_t t = steps - 1; t >= 0; --t) {
+      NSMutableArray<MPSGraphTensorData*>* feeds = [NSMutableArray array];
+      const BufferSlice fixed[4] = {w_s, wci_s, wcf_s, wco_s};
+      const std::vector<int64_t> fixed_shapes[4] = {w_shape, p_shape, p_shape,
+                                                    p_shape};
+      for (int i = 0; i < 4; ++i) {
+        MPSGraphTensorData* data = TensorDataFor(fixed[i], fixed_shapes[i],
+                                                 TF_FLOAT, device, status);
+        if (data == nil) return;
+        [feeds addObject:data];
+      }
+      // The state this step consumed is the previous step's output.
+      const BufferSlice cs_prev_for_step =
+          t == 0 ? cs_prev_s : StepSlice(cs_all_s, t - 1, per_step);
+      MPSGraphTensorData* cs_prev_data = TensorDataFor(
+          cs_prev_for_step, state_shape, TF_FLOAT, device, status);
+      if (cs_prev_data == nil) return;
+      [feeds addObject:cs_prev_data];
+      for (int i = 0; i < 8; ++i) {
+        MPSGraphTensorData* data =
+            TensorDataFor(StepSlice(seq_slices[i], t, per_step), state_shape,
+                          TF_FLOAT, device, status);
+        if (data == nil) return;
+        [feeds addObject:data];
+      }
+      MPSGraphTensorData* carry_cs_data = TensorDataFor(
+          carry_cs_s[carry], state_shape, TF_FLOAT, device, status);
+      if (carry_cs_data == nil) return;
+      MPSGraphTensorData* carry_h_data = TensorDataFor(
+          carry_h_s[carry], state_shape, TF_FLOAT, device, status);
+      if (carry_h_data == nil) return;
+      [feeds addObject:carry_cs_data];
+      [feeds addObject:carry_h_data];
+
+      // The last step of the loop is step zero, whose carried gradients are
+      // exactly the op's cs_prev and h_prev gradients, so it writes them
+      // straight into the outputs.
+      const BufferSlice next_cs =
+          t == 0 ? cs_prev_grad_s : carry_cs_s[1 - carry];
+      const BufferSlice next_h = t == 0 ? h_prev_grad_s : carry_h_s[1 - carry];
+
+      NSMutableArray<MPSGraphTensorData*>* results = [NSMutableArray array];
+      MPSGraphTensorData* dgates_data =
+          TensorDataFor(StepSlice(dgates_s, t, gates_per_step), gates_shape,
+                        TF_FLOAT, device, status);
+      if (dgates_data == nil) return;
+      MPSGraphTensorData* next_cs_data =
+          TensorDataFor(next_cs, state_shape, TF_FLOAT, device, status);
+      if (next_cs_data == nil) return;
+      MPSGraphTensorData* next_h_data =
+          TensorDataFor(next_h, state_shape, TF_FLOAT, device, status);
+      if (next_h_data == nil) return;
+      MPSGraphTensorData* x_grad_data =
+          TensorDataFor(StepSlice(x_grad_s, t, x_per_step), shapes.x(),
+                        TF_FLOAT, device, status);
+      if (x_grad_data == nil) return;
+      [results addObject:dgates_data];
+      [results addObject:next_cs_data];
+      [results addObject:next_h_data];
+      [results addObject:x_grad_data];
+
+      if (!RunGraph(stream, *step_graph, feeds, results, status)) return;
+      carry = 1 - carry;
+    }
+  } else {
+    // Nothing ran, so the carried gradients are the zeros they started as.
+    if (!ZeroTensor(stream, cs_prev_grad.get(), status)) return;
+    if (!ZeroTensor(stream, h_prev_grad.get(), status)) return;
+  }
+
+  const CachedGraph* reduce =
+      BackwardReduceGraph(*op, layout, shapes, time_steps, status);
+  if (reduce == nullptr) return;
+
+  // x, h, h_prev, cs, cs_prev, dgates.
+  static constexpr int kReduceInput[5] = {1, 15, 3, 10, 2};
+  NSMutableArray<MPSGraphTensorData*>* feeds = [NSMutableArray array];
+  for (int i = 0; i < 5; ++i) {
+    MPSGraphTensorData* data =
+        TensorDataForTensor(in[kReduceInput[i]].get(), TF_FLOAT, device,
+                            status);
+    if (data == nil) return;
+    [feeds addObject:data];
+  }
+  MPSGraphTensorData* dgates_data =
+      TensorDataForTensor(dgates_all.get(), TF_FLOAT, device, status);
+  if (dgates_data == nil) return;
+  [feeds addObject:dgates_data];
+
+  ScopedTensor* outs[5] = {&w_grad, &b_grad, &wci_grad, &wcf_grad, &wco_grad};
+  NSMutableArray<MPSGraphTensorData*>* results = [NSMutableArray array];
+  for (int i = 0; i < 5; ++i) {
+    MPSGraphTensorData* data =
+        TensorDataForTensor(outs[i]->get(), TF_FLOAT, device, status);
+    if (data == nil) return;
+    [results addObject:data];
+  }
+  RunGraph(stream, *reduce, feeds, results, status);
+}
+
 /*** GRU BLOCK CELL ***/
 
 void GRUCell_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
@@ -782,6 +1448,62 @@ void GRUCellGrad_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
     TF_DeleteStatus(status);                                                \
   }
 
+void BlockLSTM_Compute(void* kernel, TF_OpKernelContext* ctx) {
+  ScopedAutoreleasePool pool;
+  TF_Status* status = TF_NewStatus();
+  auto* op = static_cast<RnnOp*>(kernel);
+  if (op == nullptr) {
+    TF_SetStatus(status, TF_INTERNAL, "Metal: BlockLSTM has no state.");
+  } else {
+    BlockLSTM_ComputeImpl(op, ctx, GateLayout(), status);
+  }
+  if (TF_GetCode(status) != TF_OK) TF_OpKernelContext_Failure(ctx, status);
+  TF_DeleteStatus(status);
+}
+
+void BlockLSTMV2_Compute(void* kernel, TF_OpKernelContext* ctx) {
+  ScopedAutoreleasePool pool;
+  TF_Status* status = TF_NewStatus();
+  auto* op = static_cast<RnnOp*>(kernel);
+  if (op == nullptr) {
+    TF_SetStatus(status, TF_INTERNAL, "Metal: BlockLSTMV2 has no state.");
+  } else {
+    GateLayout layout;
+    layout.ifco = true;
+    BlockLSTM_ComputeImpl(op, ctx, layout, status);
+  }
+  if (TF_GetCode(status) != TF_OK) TF_OpKernelContext_Failure(ctx, status);
+  TF_DeleteStatus(status);
+}
+
+void BlockLSTMGrad_Compute(void* kernel, TF_OpKernelContext* ctx) {
+  ScopedAutoreleasePool pool;
+  TF_Status* status = TF_NewStatus();
+  auto* op = static_cast<RnnOp*>(kernel);
+  if (op == nullptr) {
+    TF_SetStatus(status, TF_INTERNAL, "Metal: BlockLSTMGrad has no state.");
+  } else {
+    BlockLSTMGrad_ComputeImpl(op, ctx, GateLayout(), status);
+  }
+  if (TF_GetCode(status) != TF_OK) TF_OpKernelContext_Failure(ctx, status);
+  TF_DeleteStatus(status);
+}
+
+void BlockLSTMGradV2_Compute(void* kernel, TF_OpKernelContext* ctx) {
+  ScopedAutoreleasePool pool;
+  TF_Status* status = TF_NewStatus();
+  auto* op = static_cast<RnnOp*>(kernel);
+  if (op == nullptr) {
+    TF_SetStatus(status, TF_INTERNAL, "Metal: BlockLSTMGradV2 has no state.");
+  } else {
+    GateLayout layout;
+    layout.ifco = true;
+    BlockLSTMGrad_ComputeImpl(op, ctx, layout, status);
+  }
+  if (TF_GetCode(status) != TF_OK) TF_OpKernelContext_Failure(ctx, status);
+  TF_DeleteStatus(status);
+}
+
 METAL_RNN_COMPUTE(LSTMCell_Compute, LSTMCell_ComputeImpl)
 METAL_RNN_COMPUTE(LSTMCellGrad_Compute, LSTMCellGrad_ComputeImpl)
 METAL_RNN_COMPUTE(GRUCell_Compute, GRUCell_ComputeImpl)
@@ -791,11 +1513,16 @@ METAL_RNN_COMPUTE(GRUCellGrad_Compute, GRUCellGrad_ComputeImpl)
 
 void Register(const char* op_name,
               void (*compute)(void*, TF_OpKernelContext*),
-              const std::string& name) {
+              const std::string& name,
+              void* (*create)(TF_OpKernelConstruction*) = &RnnOp_Create,
+              const std::vector<const char*>& host_inputs = {}) {
   TF_Status* status = TF_NewStatus();
   TF_KernelBuilder* builder = TF_NewKernelBuilder(
-      op_name, kMetalDeviceType, &RnnOp_Create, compute, &RnnOp_Delete);
+      op_name, kMetalDeviceType, create, compute, &RnnOp_Delete);
   TF_KernelBuilder_TypeConstraint(builder, "T", TF_FLOAT, status);
+  for (const char* input : host_inputs) {
+    TF_KernelBuilder_HostMemory(builder, input);
+  }
   if (TF_GetCode(status) == TF_OK) {
     TF_RegisterKernelBuilder(name.c_str(), builder, status);
   } else {
@@ -816,6 +1543,16 @@ void RegisterMetalRnnKernels() {
            "MetalLSTMBlockCellGrad");
   Register("GRUBlockCell", &GRUCell_Compute, "MetalGRUBlockCell");
   Register("GRUBlockCellGrad", &GRUCellGrad_Compute, "MetalGRUBlockCellGrad");
+
+  // seq_len_max bounds the loop on the host, so it is read there.
+  Register("BlockLSTM", &BlockLSTM_Compute, "MetalBlockLSTM", &RnnOp_Create,
+           {"seq_len_max"});
+  Register("BlockLSTMGrad", &BlockLSTMGrad_Compute, "MetalBlockLSTMGrad",
+           &RnnOp_Create, {"seq_len_max"});
+  Register("BlockLSTMV2", &BlockLSTMV2_Compute, "MetalBlockLSTMV2",
+           &RnnOpV2_Create, {"seq_len_max"});
+  Register("BlockLSTMGradV2", &BlockLSTMGradV2_Compute,
+           "MetalBlockLSTMGradV2", &RnnOpV2_Create, {"seq_len_max"});
 }
 
 }  // namespace metal
