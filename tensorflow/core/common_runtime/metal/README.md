@@ -175,6 +175,7 @@ differently rather than fail.
 | `Diag`, `DiagPart`, `LinSpace` | float32, float16 |
 | `ResizeBilinear`, `ResizeNearestNeighbor` | float32, float16 |
 | `RGBToHSV`, `HSVToRGB`, `AdjustContrastv2` | float32 |
+| `AdjustHue`, `AdjustSaturation` | float32 |
 | `ReverseV2`, `Split`, `SplitV` | float32, float16 |
 | `Reverse`, `CheckNumerics`, `CheckNumericsV2` | float32, float16 |
 | `ExtractImagePatches` | float32, float16 |
