@@ -1161,6 +1161,20 @@ def config_info_line(name, help_text):
   print('\t--config=%-12s\t# %s' % (name, help_text))
 
 
+def configure_metal(environ_cp):
+  """Configures the Metal PluggableDevice backend for Apple silicon."""
+  if not is_macos() or platform.machine() != 'arm64':
+    return
+  if not get_var(
+      environ_cp, 'TF_NEED_METAL', 'Metal GPU', False,
+      ('Do you wish to build TensorFlow with Metal GPU support? This uses the '
+       'Apple silicon GPU through Metal and is only available on this '
+       'platform.'), 'Metal GPU support will be enabled for TensorFlow.',
+      'No Metal GPU support will be enabled for TensorFlow.'):
+    return
+  write_to_bazelrc('build --config=metal')
+
+
 def configure_ios(environ_cp):
   """Configures TensorFlow for iOS builds."""
   if not is_macos():
@@ -1348,10 +1362,13 @@ def main():
   system_specific_test_config(environ_cp)
 
   configure_ios(environ_cp)
+  configure_metal(environ_cp)
 
   print('Preconfigured Bazel build configs. You can use any of the below by '
         'adding "--config=<>" to your build command. See .bazelrc for more '
         'details.')
+  config_info_line('metal',
+                   'Build with Apple silicon Metal GPU support.')
   config_info_line('mkl', 'Build with MKL support.')
   config_info_line(
       'mkl_aarch64',
