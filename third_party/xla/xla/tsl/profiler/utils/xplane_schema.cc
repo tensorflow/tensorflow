@@ -426,7 +426,9 @@ const StatTypeMap& GetStatTypeMap() {
        {"hbm_power_events", kHbmPowerEvents},
        {"transaction_with_chip_core_id", kTransactionWithChipCoreId},
        {"program_counter", kProgramCounter},
-       {"uses_ici", kUsesIci}});
+       {"uses_ici", kUsesIci},
+       {"dims", kDimensions},
+       {"type", kType}});
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
 }
