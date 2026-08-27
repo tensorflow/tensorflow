@@ -1031,6 +1031,161 @@ kernel void tf_extract_volume_patches_float(
        uint(ix)) * params.channels + c;
   out[gid] = in[index];
 }
+
+// ---- parameterised random distributions ----
+
+struct ParamTruncatedParams {
+  uint count;
+  uint seed_lo;
+  uint seed_hi;
+  uint counter;
+  uint samples_per_batch;
+  uint num_params;
+  uint pad0;
+  uint pad1;
+};
+
+struct MultinomialParams {
+  uint count;
+  uint seed_lo;
+  uint seed_hi;
+  uint counter;
+  uint batch;
+  uint classes;
+  uint samples;
+  uint pad0;
+};
+
+struct GammaParams {
+  uint count;
+  uint seed_lo;
+  uint seed_hi;
+  uint counter;
+  uint num_alphas;
+  uint pad0;
+  uint pad1;
+  uint pad2;
+};
+
+// A normal truncated to an arbitrary interval, per element of a batch.
+//
+// Rejection sampling rather than a clamp: clamping piles the rejected mass
+// onto the two endpoints, which is a different distribution and a visible one.
+// A bounded number of attempts keeps the thread from spinning on a very
+// narrow interval; the fallback is the clamp, which is wrong in the same way
+// but only for intervals so narrow that acceptance is hopeless.
+kernel void tf_parameterized_truncated_normal_float(
+    device float* out [[buffer(0)]],
+    device const float* means [[buffer(1)]],
+    device const float* stdevs [[buffer(2)]],
+    device const float* minvals [[buffer(3)]],
+    device const float* maxvals [[buffer(4)]],
+    constant ParamTruncatedParams& params [[buffer(5)]],
+    uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count) return;
+  const uint batch =
+      params.samples_per_batch > 0u ? gid / params.samples_per_batch : 0u;
+  const uint p = params.num_params == 1u ? 0u : batch;
+  const float mean = means[p];
+  const float stdev = stdevs[p];
+  const float lo = minvals[p];
+  const float hi = maxvals[p];
+
+  float value = mean;
+  for (uint attempt = 0u; attempt < 32u; ++attempt) {
+    const uint4 bits = tf_philox(uint4(gid, params.counter, attempt, 0u),
+                                 uint2(params.seed_lo, params.seed_hi));
+    value = mean + stdev * tf_box_muller(bits);
+    if (value >= lo && value <= hi) {
+      out[gid] = value;
+      return;
+    }
+  }
+  out[gid] = clamp(value, lo, hi);
+}
+
+// Categorical sampling by the Gumbel-max trick: adding a Gumbel variate to
+// each logit and taking the argmax draws exactly from the softmax of the
+// logits. It needs one pass over the classes and no normalisation, no
+// cumulative sum and no search, which is what a per-thread sampler wants.
+#define TF_METAL_MULTINOMIAL(NAME, IDX)                                       \
+  kernel void NAME(device const float* logits [[buffer(0)]],                  \
+                   device IDX* out [[buffer(1)]],                             \
+                   constant MultinomialParams& params [[buffer(2)]],          \
+                   uint gid [[thread_position_in_grid]]) {                    \
+    if (gid >= params.count) return;                                          \
+    const uint b = params.samples > 0u ? gid / params.samples : 0u;           \
+    device const float* row = logits + b * params.classes;                    \
+    float best = -INFINITY;                                                   \
+    uint best_class = 0u;                                                     \
+    for (uint c = 0u; c < params.classes; ++c) {                              \
+      /* One Philox call per class, indexed by the class, so the draw depends \
+         only on the seed and the position, not on any iteration order. */    \
+      const uint4 bits = tf_philox(uint4(gid, params.counter, c, 1u),         \
+                                   uint2(params.seed_lo, params.seed_hi));    \
+      const float u = max(tf_to_unit_float(bits.x), 1.0e-7f);                 \
+      const float score = row[c] + (-log(-log(u)));                           \
+      if (score > best) {                                                     \
+        best = score;                                                         \
+        best_class = c;                                                       \
+      }                                                                       \
+    }                                                                         \
+    out[gid] = IDX(best_class);                                               \
+  }
+
+TF_METAL_MULTINOMIAL(tf_multinomial_float, int)
+TF_METAL_MULTINOMIAL(tf_multinomial_float_i64, long)
+
+// Marsaglia and Tsang's gamma sampler, which is what TensorFlow uses.
+//
+// It is defined for a shape parameter of at least one; below that the
+// identity gamma(a) = gamma(a + 1) * u^(1/a) moves the draw into range, which
+// is the standard boost and is what the CPU kernel does as well.
+kernel void tf_random_gamma_float(device float* out [[buffer(0)]],
+                                  device const float* alphas [[buffer(1)]],
+                                  constant GammaParams& params [[buffer(2)]],
+                                  uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count) return;
+  const uint a_index = params.num_alphas > 0u ? gid % params.num_alphas : 0u;
+  const float alpha_in = alphas[a_index];
+  if (!(alpha_in > 0.0f)) {
+    out[gid] = 0.0f;
+    return;
+  }
+
+  const bool boost = alpha_in < 1.0f;
+  const float alpha = boost ? alpha_in + 1.0f : alpha_in;
+  const float d = alpha - 1.0f / 3.0f;
+  const float c = 1.0f / sqrt(9.0f * d);
+
+  float result = 0.0f;
+  for (uint attempt = 0u; attempt < 64u; ++attempt) {
+    const uint4 bits = tf_philox(uint4(gid, params.counter, attempt, 2u),
+                                 uint2(params.seed_lo, params.seed_hi));
+    const float x = tf_box_muller(bits);
+    const float v = 1.0f + c * x;
+    if (v <= 0.0f) continue;
+    const float v3 = v * v * v;
+    const float u = max(tf_to_unit_float(bits.z), 1.0e-7f);
+    const float x2 = x * x;
+    // The squeeze first, then the exact test, exactly as in the paper.
+    if (u < 1.0f - 0.0331f * x2 * x2) {
+      result = d * v3;
+      break;
+    }
+    if (log(u) < 0.5f * x2 + d * (1.0f - v3 + log(v3))) {
+      result = d * v3;
+      break;
+    }
+  }
+  if (boost) {
+    const uint4 bits = tf_philox(uint4(gid, params.counter, 99u, 3u),
+                                 uint2(params.seed_lo, params.seed_hi));
+    const float u = max(tf_to_unit_float(bits.x), 1.0e-7f);
+    result *= pow(u, 1.0f / alpha_in);
+  }
+  out[gid] = result;
+}
 )METAL";
 
 class ShaderLibrary {

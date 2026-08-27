@@ -210,6 +210,9 @@ differently rather than fail.
 | `Any`, `All` | bool |
 | `Fill`, `ZerosLike`, `OnesLike` | float32, float16 |
 | `RandomUniform`, `RandomStandardNormal`, `TruncatedNormal` | float32 |
+| `ParameterizedTruncatedNormal`, `StatelessParameterizedTruncatedNormal` | float32 |
+| `Multinomial`, `StatelessMultinomial` | float32 logits, int32 or int64 output |
+| `RandomGamma`, `StatelessRandomGammaV2`, `StatelessRandomGammaV3` | float32 |
 | `RandomUniformInt` | int32 output |
 | `ResourceApplyGradientDescent`, `ResourceApplyAdam` | float32 |
 | `ResourceApplyMomentum`, `ResourceApplyKerasMomentum`, `ResourceApplyRMSProp` | float32 |

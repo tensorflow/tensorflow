@@ -133,6 +133,9 @@ void RegisterMetalTransformKernels();
 // CropAndResize and its image and box gradients.
 void RegisterMetalCropResizeKernels();
 
+// The parameterised random distributions and their stateless forms.
+void RegisterMetalRandomDistKernels();
+
 // ExtractVolumePatches.
 void RegisterMetalVolumePatchKernels();
 

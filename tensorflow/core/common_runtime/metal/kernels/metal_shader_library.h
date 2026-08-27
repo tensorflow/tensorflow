@@ -201,6 +201,44 @@ struct VolumePatchParams {
   uint32_t padding1;
 };
 
+// Parameters for the parameterised truncated normal. Layout must match the
+// Metal struct. `num_params` is 1 when the four range vectors are scalars and
+// the batch size otherwise.
+struct ParamTruncatedParams {
+  uint32_t count;
+  uint32_t seed_lo;
+  uint32_t seed_hi;
+  uint32_t counter;
+  uint32_t samples_per_batch;
+  uint32_t num_params;
+  uint32_t padding0;
+  uint32_t padding1;
+};
+
+// Parameters for the categorical sampler. Layout must match the Metal struct.
+struct MultinomialParams {
+  uint32_t count;
+  uint32_t seed_lo;
+  uint32_t seed_hi;
+  uint32_t counter;
+  uint32_t batch;
+  uint32_t classes;
+  uint32_t samples;
+  uint32_t padding0;
+};
+
+// Parameters for the gamma sampler. Layout must match the Metal struct.
+struct GammaParams {
+  uint32_t count;
+  uint32_t seed_lo;
+  uint32_t seed_hi;
+  uint32_t counter;
+  uint32_t num_alphas;
+  uint32_t padding0;
+  uint32_t padding1;
+  uint32_t padding2;
+};
+
 // Compute pipeline for one function in the backend's shader library.
 //
 // The Metal source is compiled from a string the first time any pipeline is
