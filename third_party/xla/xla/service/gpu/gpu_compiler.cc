@@ -1992,11 +1992,8 @@ absl::Status GpuCompiler::OptimizeHloModule(
 absl::Status GpuCompiler::RunPreSchedulingCopyInsertion(
     HloModule& hlo_module, const se::DeviceDescription& device_description,
     const GpuAliasInfo* alias_info) {
-  ABSL_ASSIGN_OR_RETURN(BorrowedMlirContext borrowed_context,
-                   mlir_context_pool_.GetOrCreate());
-  mlir::MLIRContext* mlir_context = borrowed_context->get();
   return PreSchedulingCopyInsertionPipeline(hlo_module.config(), alias_info,
-                                            device_description, mlir_context)
+                                            device_description)
       .Run(&hlo_module, {HloInstruction::kMainExecutionThread})
       .status();
 }

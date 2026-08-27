@@ -183,45 +183,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "alias_in_place_outputs",
-    srcs = ["alias_in_place_outputs.cc"],
-    hdrs = ["alias_in_place_outputs.h"],
-    deps = [
-        "//xla:shape_util",
-        "//xla/hlo/analysis:hlo_reachability",
-        "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/analysis:symbolic_map",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "//xla/hlo/utils:hlo_traversal",
-        "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/gpu:cublas_cudnn",
-        "//xla/service/gpu:ir_emission_utils",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-xla_cc_test(
-    name = "alias_in_place_outputs_test",
-    srcs = ["alias_in_place_outputs_test.cc"],
-    deps = [
-        ":alias_in_place_outputs",
-        "//xla:shape_util",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-cc_library(
     name = "async_wrapper",
     srcs = ["async_wrapper.cc"],
     hdrs = ["async_wrapper.h"],
