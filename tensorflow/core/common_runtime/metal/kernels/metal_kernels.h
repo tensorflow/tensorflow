@@ -32,6 +32,10 @@ void RegisterMetalMatMulKernels();
 // MPSGraph, for float32 and float16.
 void RegisterMetalConvKernels();
 
+// Relu, BiasAdd, Softmax, the dense and sparse softmax cross entropies, and
+// the gradients of each, on MPSGraph.
+void RegisterMetalNnKernels();
+
 // Identity, which aliases its input when it can and blits when it cannot.
 void RegisterMetalIdentityKernels();
 
