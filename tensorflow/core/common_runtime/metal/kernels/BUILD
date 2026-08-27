@@ -104,6 +104,7 @@ objc_library(
         "metal_elementwise_ops.mm",
         "metal_fill_ops.mm",
         "metal_identity_op.mm",
+        "metal_image2_ops.mm",
         "metal_image_ops.mm",
         "metal_index_ops.mm",
         "metal_kernels.mm",

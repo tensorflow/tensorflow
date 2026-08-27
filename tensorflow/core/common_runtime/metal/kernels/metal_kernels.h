@@ -109,6 +109,9 @@ void RegisterMetalMiscKernels();
 // BiasAddV1, ConjugateTranspose and Bucketize.
 void RegisterMetalAliasKernels();
 
+// RGBToHSV and AdjustContrastv2.
+void RegisterMetalImage2Kernels();
+
 // Identity, which aliases its input when it can and blits when it cannot.
 void RegisterMetalIdentityKernels();
 
