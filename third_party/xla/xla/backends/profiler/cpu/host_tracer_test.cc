@@ -73,14 +73,28 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
         auto tracer = CreateHostTracer({});
 
         TF_ASSERT_OK(tracer->Start());
-        { TraceMe traceme("hello"); }
-        { TraceMe traceme("world"); }
-        { TraceMe traceme("contains#inside"); }
-        { TraceMe traceme("good#key1=value1#"); }
-        { TraceMe traceme("morning#key1=value1,key2=value2#"); }
-        { TraceMe traceme("incomplete#key1=value1,key2#"); }
+        {
+          TraceMe traceme("hello");
+        }
+        {
+          TraceMe traceme("world");
+        }
+        {
+          TraceMe traceme("contains#inside");
+        }
+        {
+          TraceMe traceme("good#key1=value1#");
+        }
+        {
+          TraceMe traceme("morning#key1=value1,key2=value2#");
+        }
+        {
+          TraceMe traceme("incomplete#key1=value1,key2#");
+        }
         // Special cases for tf.data
-        { TraceMe traceme("Iterator::XXX::YYY::ParallelMap"); }
+        {
+          TraceMe traceme("Iterator::XXX::YYY::ParallelMap");
+        }
         TF_ASSERT_OK(tracer->Stop());
 
         TF_ASSERT_OK(tracer->CollectData(&space));
@@ -344,6 +358,55 @@ TEST(HostTracerTest, SerializeOkWithEmptyEvents) {
   ASSERT_OK(tracer->Serialize(std::move(data_vector), &space));
   EXPECT_EQ(space.planes_size(),
             0);  // Should not create planes for empty events
+}
+
+TEST(HostTracerTest, SerializeIgnoresIncompleteEventsWhenPickingTheBaseline) {
+  // An unpaired ActivityStart/ActivityEnd encodes its activity id as a negative
+  // timestamp. Feeding that into the baseline computation wraps around in
+  // uint64 arithmetic and pushes every event in the plane to a nonsense offset,
+  // so the baseline scan must skip anything that is not a complete event.
+  constexpr int64_t kCompleteStartNs = 1'000'000'000;
+  constexpr int64_t kCompleteEndNs = 1'000'001'000;
+
+  tsl::profiler::TraceMeRecorder::Events events;
+  tsl::profiler::TraceMeRecorder::ThreadEvents thread_events;
+  thread_events.thread = {/*tid=*/1, /*name=*/"test_thread"};
+  // Unpaired end event: start_time is the negated activity id.
+  thread_events.events.push_back({/*name=*/"unpaired_end", /*start_time=*/-7,
+                                  /*end_time=*/kCompleteEndNs});
+  thread_events.events.push_back({/*name=*/"complete",
+                                  /*start_time=*/kCompleteStartNs,
+                                  /*end_time=*/kCompleteEndNs});
+  events.push_back(std::move(thread_events));
+
+  HostTracerChunk chunk;
+  // A start timestamp far in the past, so that if the baseline fell back to it
+  // the test would still distinguish that from the wrapped-around value.
+  chunk.start_timestamp_ns = kCompleteStartNs - 500;
+  chunk.events = std::move(events);
+
+  std::vector<std::any> data_vector;
+  data_vector.push_back(std::move(chunk));
+  data_vector.push_back(std::any());
+
+  auto tracer = CreateHostTracer({});
+  tensorflow::profiler::XSpace space;
+  ASSERT_OK(tracer->Serialize(std::move(data_vector), &space));
+
+  ASSERT_EQ(space.planes_size(), 1);
+  const auto& plane = space.planes(0);
+  ASSERT_EQ(plane.lines_size(), 1);
+  const auto& line = plane.lines(0);
+
+  // The baseline must be the complete event's start time, so the complete event
+  // lands at offset 0 rather than at some astronomically large offset.
+  ASSERT_GE(line.events_size(), 1);
+  for (const auto& event : line.events()) {
+    EXPECT_GE(event.offset_ps(), 0);
+    EXPECT_LT(event.offset_ps(), 1'000'000'000'000LL)
+        << "offset looks like an underflowed baseline";
+  }
+  EXPECT_EQ(static_cast<int64_t>(line.timestamp_ns()), kCompleteStartNs);
 }
 
 TEST(HostTracerTest, ConsumeAndSerializeHappyPath) {
