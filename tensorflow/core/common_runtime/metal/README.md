@@ -158,6 +158,7 @@ differently rather than fail.
 | `MatrixDiagV2`, `MatrixDiagV3`, `MatrixDiagPartV2`, `MatrixDiagPartV3` | float32, float16; main diagonal only |
 | `SpaceToDepth`, `DepthToSpace`, `L2Loss` | float32, float16 |
 | `Diag`, `DiagPart`, `LinSpace` | float32, float16 |
+| `ResizeBilinear`, `ResizeNearestNeighbor` | float32, float16 |
 | `ReverseV2`, `Split`, `SplitV` | float32, float16 |
 | `StridedSlice`, `StridedSliceGrad`, `TileGrad`, `Roll` | float32, float16 |
 | `Equal`, `NotEqual`, `Less`, `LessEqual`, `Greater`, `GreaterEqual` | float32, float16, int32, int64 |
@@ -188,6 +189,11 @@ inherits when it has no kernel of its own.
   but slow. Notably absent: recurrent layers, `Slice`, `Pad`, `Gather`,
   `DepthwiseConv2d`, and the sparse optimiser variants.
 * **Random ops and optimisers are float32 only.**
+* **The resize gradients are not implemented.** Every MPSGraph resize
+  gradient entry point aborts the process on the current SDK with a channel
+  mismatch assertion, for every shape and layout tried. Registering a kernel
+  that crashes is worse than leaving the gradient on the host, so the forward
+  resizes are provided and the gradients are not.
 * **`MatMul`** takes rank-2 tensors only, and float16 requires an even column
   count, since an odd one produces a row stride MPS will not accept.
 * **No graph optimizer or profiler module.** The `TF_InitGraph` and

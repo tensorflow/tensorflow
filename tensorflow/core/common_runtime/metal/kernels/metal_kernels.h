@@ -88,6 +88,9 @@ void RegisterMetalStridedKernels();
 // gradient.
 void RegisterMetalDepthwiseKernels();
 
+// Image resizing, bilinear and nearest, with both gradients.
+void RegisterMetalImageKernels();
+
 // Identity, which aliases its input when it can and blits when it cannot.
 void RegisterMetalIdentityKernels();
 
