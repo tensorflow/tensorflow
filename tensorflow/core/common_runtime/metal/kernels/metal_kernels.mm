@@ -28,6 +28,7 @@ void RegisterAllMetalKernels() {
   RegisterMetalNnKernels();
   RegisterMetalPoolingKernels();
   RegisterMetalRandomKernels();
+  RegisterMetalTrainingKernels();
 }
 
 }  // namespace metal

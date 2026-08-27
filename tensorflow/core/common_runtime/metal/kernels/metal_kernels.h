@@ -51,6 +51,10 @@ void RegisterMetalFillKernels();
 // initialises a model's weights before the first step.
 void RegisterMetalRandomKernels();
 
+// ResourceApplyGradientDescent and ResourceApplyAdam, the weight update that
+// closes a training step.
+void RegisterMetalTrainingKernels();
+
 // Identity, which aliases its input when it can and blits when it cannot.
 void RegisterMetalIdentityKernels();
 

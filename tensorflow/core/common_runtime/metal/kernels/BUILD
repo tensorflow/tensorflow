@@ -39,6 +39,7 @@ objc_library(
     sdk_frameworks = ["Metal"],
     target_compatible_with = ["@platforms//os:macos"],
     deps = [
+        "//tensorflow/c:kernels_experimental_hdrs",
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/c:tf_tensor_hdrs",
@@ -100,6 +101,7 @@ objc_library(
         "metal_nn_ops.mm",
         "metal_pooling_ops.mm",
         "metal_random_ops.mm",
+        "metal_training_ops.mm",
     ],
     hdrs = ["metal_kernels.h"],
     copts = METAL_COPTS,
