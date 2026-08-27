@@ -101,7 +101,7 @@ tsl_extension = use_extension("@xla//third_party/extensions:tsl.bzl", "tsl_exten
 use_repo(tsl_extension, tsl = "tsl")
 
 llvm = use_extension("@xla//third_party/extensions:llvm.bzl", "llvm_extension")
-use_repo(llvm, "llvm-project", llvm = "llvm-project")
+use_repo(llvm, "llvm-project")
 
 xla_third_party = use_extension("@xla//third_party/extensions:third_party.bzl", "third_party_ext")
 use_repo(

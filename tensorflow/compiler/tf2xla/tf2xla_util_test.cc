@@ -548,19 +548,19 @@ TEST(PropagateConstIntoFunctionalNodes, RepeatedWhileLoops) {
                  std::initializer_list<Input>{val0, val1}, cond_fn, body_fn);
   auto while_op1 =
       ops::While(scope.WithOpName("while1"),
-                 std::initializer_list<Input>{Output(while_op0, 0), Output(while_op0, 1)},
+                 std::initializer_list<Input>{while_op0.output[0], while_op0.output[1]},
                  cond_fn, body_fn);
   auto while_op2 =
       ops::While(scope.WithOpName("while2"),
-                 std::initializer_list<Input>{Output(while_op1, 0), Output(while_op1, 1)},
+                 std::initializer_list<Input>{while_op1.output[0], while_op1.output[1]},
                  cond_fn, body_fn);
                  
   Graph graph(OpRegistry::Global());
   TF_ASSERT_OK(scope.ToGraph(&graph));
 
   FunctionLibraryDefinition lookup_fld(fld);
-  TF_EXPECT_OK(PropagateConstIntoFunctionalNodes(&graph, &fld, &lookup_fld));
-  TF_EXPECT_OK(PropagateConstIntoFunctionalNodes(&graph, &fld, &lookup_fld));
+  TF_EXPECT_OK(PropagateConstIntoFunctionalNodes(&graph, &lookup_fld, &fld));
+  TF_EXPECT_OK(PropagateConstIntoFunctionalNodes(&graph, &lookup_fld, &fld));
 }
 
 }  // namespace
