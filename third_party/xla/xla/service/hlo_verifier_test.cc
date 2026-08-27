@@ -326,10 +326,133 @@ TEST_F(HloVerifierTest, CheckCallOperandOutputAliasing) {
       module->entry_computation()->GetInstructionWithName("mycall"))
       ->set_output_to_operand_aliasing({{{}, {0, {}}}});
 
+  EXPECT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, CheckCallTupleOperandOutputAliasing) {
+  constexpr absl::string_view hlo = R"(
+    HloModule Module
+
+    callme {
+      p0 = (s32[], f32[4]) parameter(0)
+      p1 = f32[4] parameter(1)
+      p0_0 = s32[] get-tuple-element(p0), index=0
+      ROOT result = (s32[], f32[4]) tuple(p0_0, p1)
+    }
+
+    ENTRY entry {
+      p0 = (s32[], f32[4]) parameter(0)
+      p1 = f32[4] parameter(1)
+      ROOT mycall = (s32[], f32[4]) call(p0, p1), to_apply=callme
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+
+  Cast<HloCallInstruction>(
+      module->entry_computation()->GetInstructionWithName("mycall"))
+      ->set_output_to_operand_aliasing({{{0}, {0, {0}}}, {{1}, {1, {}}}});
+
+  EXPECT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, CheckCallOperandOutputAliasingInvalidOperandIndex) {
+  constexpr absl::string_view hlo = R"(
+    HloModule Module
+
+    callme {
+      ROOT param = (s32[], f32[4]) parameter(0)
+    }
+
+    ENTRY entry {
+      p0 = (s32[], f32[4]) parameter(0)
+      ROOT mycall = (s32[], f32[4]) call(p0), to_apply=callme
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+
+  Cast<HloCallInstruction>(
+      module->entry_computation()->GetInstructionWithName("mycall"))
+      ->set_output_to_operand_aliasing({{{}, {1, {}}}});
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("Invalid aliasing operand index."));
+}
+
+TEST_F(HloVerifierTest,
+       CheckCallOperandOutputAliasingInvalidOperandShapeIndex) {
+  constexpr absl::string_view hlo = R"(
+    HloModule Module
+
+    callme {
+      ROOT param = (s32[], f32[4]) parameter(0)
+    }
+
+    ENTRY entry {
+      p0 = (s32[], f32[4]) parameter(0)
+      ROOT mycall = (s32[], f32[4]) call(p0), to_apply=callme
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+
+  Cast<HloCallInstruction>(
+      module->entry_computation()->GetInstructionWithName("mycall"))
+      ->set_output_to_operand_aliasing({{{0}, {0, {2}}}});
+
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
-              HasSubstr("may not have an output-to-operand aliasing set."));
+              HasSubstr("Invalid aliasing operand shape index."));
+}
+
+TEST_F(HloVerifierTest, CheckCallOperandOutputAliasingInvalidOutputShapeIndex) {
+  constexpr absl::string_view hlo = R"(
+    HloModule Module
+
+    callme {
+      ROOT param = (s32[], f32[4]) parameter(0)
+    }
+
+    ENTRY entry {
+      p0 = (s32[], f32[4]) parameter(0)
+      ROOT mycall = (s32[], f32[4]) call(p0), to_apply=callme
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+
+  Cast<HloCallInstruction>(
+      module->entry_computation()->GetInstructionWithName("mycall"))
+      ->set_output_to_operand_aliasing({{{2}, {0, {0}}}});
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("Invalid aliasing output shape index."));
+}
+
+TEST_F(HloVerifierTest, CheckCallOperandOutputAliasingShapeMismatch) {
+  constexpr absl::string_view hlo = R"(
+    HloModule Module
+
+    callme {
+      ROOT param = (s32[], f32[4]) parameter(0)
+    }
+
+    ENTRY entry {
+      p0 = (s32[], f32[4]) parameter(0)
+      ROOT mycall = (s32[], f32[4]) call(p0), to_apply=callme
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+
+  Cast<HloCallInstruction>(
+      module->entry_computation()->GetInstructionWithName("mycall"))
+      ->set_output_to_operand_aliasing({{{0}, {0, {1}}}});
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("Different aliasing shapes: f32[4] vs s32[]"));
 }
 
 TEST_F(HloVerifierTest, CheckCustomCallOperandOutputAliasing) {
@@ -1230,6 +1353,33 @@ TEST_F(HloVerifierTestLayoutSensitive,
     ROOT async-done = (f32[32,32]{1,0}) async-done(async-update)
   })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr(
+          "Different aliasing shapes: f32[32,32]{0,1} vs f32[32,32]{1,0}"));
+}
+
+TEST_F(HloVerifierTestLayoutSensitive, VerifyCallAliasConfigLayoutMismatch) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  callme {
+    p0 = f32[32,32]{0,1} parameter(0)
+    p1 = f32[32,32]{1,0} parameter(1)
+    ROOT tuple = (f32[32,32]{1,0}) tuple(p1)
+  }
+
+  ENTRY main {
+    p0 = f32[32,32]{0,1} parameter(0)
+    p1 = f32[32,32]{1,0} parameter(1)
+    ROOT call = (f32[32,32]{1,0}) call(p0, p1), to_apply=callme
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  Cast<HloCallInstruction>(
+      module->entry_computation()->GetInstructionWithName("call"))
+      ->set_output_to_operand_aliasing({{{0}, {0, {}}}});
   auto status = verifier().Run(module.get()).status();
   EXPECT_FALSE(status.ok());
   EXPECT_THAT(

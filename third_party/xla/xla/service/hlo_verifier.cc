@@ -4387,17 +4387,35 @@ absl::Status InstructionVerifier::HandleWhile(HloInstruction* xla_while) {
 
 absl::Status InstructionVerifier::HandleCall(HloInstruction* call) {
   if (opts_.verify_call_nested_computation_thread_name) {
-    return CheckCallableInstructionThreadName(call);
+    ABSL_RETURN_IF_ERROR(CheckCallableInstructionThreadName(call));
   }
-
-  // As opposed to other callable instructions, nothing respects input/output
-  // aliasing for call instructions, so make sure it's not set.
-  const HloCallableInstruction* callable =
-      DynCast<const HloCallableInstruction>(call);
-  TF_RET_CHECK(callable != nullptr);
-  TF_RET_CHECK(callable->output_to_operand_aliasing().empty())
-      << "Call instruction " << call->ToString()
-      << " may not have an output-to-operand aliasing set.";
+  const auto* callable = Cast<const HloCallableInstruction>(call);
+  for (const auto& pair : callable->output_to_operand_aliasing()) {
+    TF_RET_CHECK(pair.second.first < callable->operand_count())
+        << "Invalid aliasing operand index.";
+    TF_RET_CHECK(ShapeUtil::IndexIsValid(
+        callable->operand(pair.second.first)->shape(), pair.second.second))
+        << "Invalid aliasing operand shape index.";
+    TF_RET_CHECK(ShapeUtil::IndexIsValid(callable->shape(), pair.first))
+        << "Invalid aliasing output shape index.";
+    const Shape& output_subshape =
+        ShapeUtil::GetSubshape(callable->shape(), pair.first);
+    const Shape& operand_subshape = ShapeUtil::GetSubshape(
+        callable->operand(pair.second.first)->shape(), pair.second.second);
+    if (opts_.layout_sensitive) {
+      TF_RET_CHECK(Shape::Equal().IgnoreDynamicDimension()(operand_subshape,
+                                                           output_subshape))
+          << "Different aliasing shapes: "
+          << operand_subshape.ToString(/*print_layout=*/true) << " vs "
+          << output_subshape.ToString(/*print_layout=*/true);
+    } else {
+      TF_RET_CHECK(Shape::Equal().IgnoreDynamicDimension().IgnoreLayout()(
+          operand_subshape, output_subshape))
+          << "Different aliasing shapes: "
+          << operand_subshape.ToString(/*print_layout=*/false) << " vs "
+          << output_subshape.ToString(/*print_layout=*/false);
+    }
+  }
   return absl::OkStatus();
 }
 
