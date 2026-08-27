@@ -405,8 +405,12 @@ absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeIntoImpl(
                 HostBufferSemantics::kImmutableOnlyDuringCall,
             device_shape, byte_strides.value_or(absl::Span<const int64_t>()),
             raw_buffer));
+    // TODO(parkers): IsCpuId because the linearization pool shares with the
+    // execute pool on cpu, so we have potential deadlocks.
     if (host_buffer_semantics ==
-        HostBufferSemantics::kImmutableOnlyDuringCall) {
+            HostBufferSemantics::kImmutableOnlyDuringCall ||
+        IsCpuId(platform_id()) ||
+        memory_space->kind_id() == UnpinnedHostMemorySpace::kKindId) {
       if (!linearized.IsAvailable()) {
         tsl::BlockUntilReady(linearized.GetAsyncValue());
       }
