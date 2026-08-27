@@ -2137,6 +2137,99 @@ TF_METAL_RAGGED_BINCOUNT(tf_ragged_bincount_float_i64, long, float,
                          atomic_float, 1.0f)
 TF_METAL_RAGGED_BINCOUNT(tf_ragged_bincount_int_i32, int, int, atomic_int, 1)
 TF_METAL_RAGGED_BINCOUNT(tf_ragged_bincount_int_i64, long, int, atomic_int, 1)
+
+// ---- numeric summaries ----
+
+struct DebugParams {
+  uint count;
+  uint prefix_count;
+  uint pad0;
+  uint pad1;
+  float prefix[10];
+};
+
+// The summary's leading slots describe the tensor rather than its contents:
+// its identifier, its dtype, its rank, its size. The host knows all of them
+// and the device does not, so they are carried in and written out.
+kernel void tf_debug_prefix_float(device float* out [[buffer(0)]],
+                                  constant DebugParams& params [[buffer(1)]],
+                                  uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.prefix_count) return;
+  out[gid] = params.prefix[gid];
+}
+
+// Whether anything at all is not finite. One flag, so a store races only with
+// stores of the same value.
+kernel void tf_debug_curt_health_float(device const float* data [[buffer(0)]],
+                                       device atomic_float* out [[buffer(1)]],
+                                       constant DebugParams& params
+                                           [[buffer(2)]],
+                                       uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count) return;
+  const float v = data[gid];
+  if (isinf(v) || isnan(v)) {
+    atomic_store_explicit(&out[1], 1.0f, memory_order_relaxed);
+  }
+}
+
+// Counts of negative infinities, positive infinities and not-a-numbers. The
+// two tests are independent here, as they are in the kernel this mirrors: a
+// value cannot be both, but the code does not assume it.
+kernel void tf_debug_concise_health_float(
+    device const float* data [[buffer(0)]],
+    device atomic_float* out [[buffer(1)]],
+    constant DebugParams& params [[buffer(2)]],
+    uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count) return;
+  const float v = data[gid];
+  if (isinf(v)) {
+    atomic_fetch_add_explicit(&out[v < 0.0f ? 2 : 3], 1.0f,
+                              memory_order_relaxed);
+  }
+  if (isnan(v)) {
+    atomic_fetch_add_explicit(&out[4], 1.0f, memory_order_relaxed);
+  }
+}
+
+// The same counts plus the signs of everything finite. Here the tests are a
+// chain, so each value lands in exactly one of the six.
+kernel void tf_debug_full_health_float(device const float* data [[buffer(0)]],
+                                       device atomic_float* out [[buffer(1)]],
+                                       constant DebugParams& params
+                                           [[buffer(2)]],
+                                       uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count) return;
+  const float v = data[gid];
+  uint slot;
+  if (isinf(v)) {
+    slot = v < 0.0f ? 5u : 6u;
+  } else if (isnan(v)) {
+    slot = 7u;
+  } else if (v < 0.0f) {
+    slot = 8u;
+  } else if (v == 0.0f) {
+    slot = 9u;
+  } else {
+    slot = 10u;
+  }
+  atomic_fetch_add_explicit(&out[slot], 1.0f, memory_order_relaxed);
+}
+
+// Three slots that carry the offending value itself rather than a count, so
+// that a summary can be reduced further by taking the same three slots again.
+kernel void tf_debug_three_slots_float(device const float* data [[buffer(0)]],
+                                       device float* out [[buffer(1)]],
+                                       constant DebugParams& params
+                                           [[buffer(2)]],
+                                       uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count) return;
+  const float v = data[gid];
+  if (isinf(v)) {
+    if (v < 0.0f) out[0] = -INFINITY; else out[1] = INFINITY;
+  } else if (isnan(v)) {
+    out[2] = NAN;
+  }
+}
 )METAL";
 
 class ShaderLibrary {

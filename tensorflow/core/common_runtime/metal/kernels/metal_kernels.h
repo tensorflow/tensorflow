@@ -181,6 +181,9 @@ void RegisterMetalRefVariableKernels();
 // The NCCL collectives, over one device.
 void RegisterMetalCollectiveKernels();
 
+// DebugNumericSummaryV2 and _TensorToHashBucketFast.
+void RegisterMetalDebugKernels();
+
 // SparseToDense and SparseTensorDenseMatMul.
 void RegisterMetalSparseKernels();
 

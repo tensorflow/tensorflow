@@ -151,6 +151,8 @@ differently rather than fail.
 | `Betainc` | float32 |
 | `Snapshot` | float32, float16, int32, int64 |
 | `Assign`, `AssignAdd`, `AssignSub` | float32, float16, int32, int64 |
+| `DebugNumericSummaryV2` | float32 input and output |
+| `_TensorToHashBucketFast` | int8, int16, int32, int64 |
 | `NcclAllReduce`, `NcclBroadcast`, `NcclReduce` | float32, float16, float64, int32, int64 |
 | `_NcclBroadcastSend`, `_NcclBroadcastRecv`, `_NcclReduceSend`, `_NcclReduceRecv` | float32, float16, float64, int32, int64 |
 | `Empty` | float32, int32 |
@@ -206,6 +208,7 @@ differently rather than fail.
 | `NonMaxSuppressionV2`, `NonMaxSuppressionV3`, `NonMaxSuppressionV4` | float32 |
 | `GenerateBoundingBoxProposals` | float32 |
 | `_ParallelConcatStart`, `_ParallelConcatUpdate` | float32, float16, int32, int64 |
+| `ParallelConcat` | float32, float16, int32, int64; fails if reached, as on every device |
 | `Cumsum`, `Cumprod`, `ClipByValue` | float32, float16 |
 | `FakeQuantWithMinMaxArgs`, `FakeQuantWithMinMaxArgsGradient` | float32 |
 | `FakeQuantWithMinMaxVars`, `FakeQuantWithMinMaxVarsGradient` | float32 |
@@ -267,10 +270,10 @@ inherits when it has no kernel of its own.
   arithmetic around it; anything else falls back to the host, which is correct
   but slow. Notably absent: recurrent layers, `Slice`, `Pad`, `Gather`,
   `DepthwiseConv2d`, and the sparse optimiser variants.
-* **`ParallelConcat` is not registered, deliberately.** No device registers a
-  working kernel for it: CUDA registers one that fails on construction,
-  because the graph rewrite always replaces the op with an allocation and one
-  update per stacked value. Those two ops are provided instead.
+* **`ParallelConcat` is registered but always fails**, which is what every
+  device does, CUDA included: the graph rewrite replaces the op with an
+  allocation and one update per stacked value, so reaching the kernel means
+  the rewrite did not run. Both ops it is replaced by are implemented.
 * **Random ops and optimisers are float32 only.**
 * **`CheckNumerics` forwards its input without checking.** Detecting a
   non-finite value on device needs a readback of a reduction on every call,

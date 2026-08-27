@@ -216,6 +216,31 @@ METAL_INPLACE_COMPUTE(Update_Compute, Update_ComputeImpl)
 
 #undef METAL_INPLACE_COMPUTE
 
+// ParallelConcat itself, which is registered so that the op can be placed and
+// then always fails if it is ever reached. That is not a stub: it is what
+// every device does, CUDA included, because the graph rewrite replaces the op
+// before execution and reaching it means the rewrite did not run. Failing here
+// with that explanation is more useful than failing later somewhere else.
+void* ParallelConcat_Create(TF_OpKernelConstruction* ctx) {
+  TF_Status* status = TF_NewStatus();
+  TF_SetStatus(status, TF_INTERNAL,
+               "Found instance of parallel_stack which could not be properly "
+               "replaced during graph construction.");
+  TF_OpKernelConstruction_Failure(ctx, status);
+  TF_DeleteStatus(status);
+  return nullptr;
+}
+
+void ParallelConcat_Compute(void* kernel, TF_OpKernelContext* ctx) {
+  ScopedAutoreleasePool pool;
+  TF_Status* status = TF_NewStatus();
+  TF_SetStatus(status, TF_INTERNAL,
+               "Found instance of parallel_stack which could not be properly "
+               "replaced during graph construction.");
+  TF_OpKernelContext_Failure(ctx, status);
+  TF_DeleteStatus(status);
+}
+
 void Register(const char* op_name,
               void (*compute)(void*, TF_OpKernelContext*), const char* attr,
               TF_DataType dtype, const std::string& name) {
@@ -248,6 +273,28 @@ void RegisterMetalInplaceKernels() {
              std::string("Metal_ParallelConcatStart") + kSuffixes[i]);
     Register("_ParallelConcatUpdate", &Update_Compute, "T", kDTypes[i],
              std::string("Metal_ParallelConcatUpdate") + kSuffixes[i]);
+  }
+
+  // The op the rewrite replaces, registered so that the placement is possible
+  // and the failure, if it ever happens, says why.
+  for (int i = 0; i < 4; ++i) {
+    TF_Status* status = TF_NewStatus();
+    TF_KernelBuilder* builder = TF_NewKernelBuilder(
+        "ParallelConcat", kMetalDeviceType, &ParallelConcat_Create,
+        &ParallelConcat_Compute, &InplaceOp_Delete);
+    TF_KernelBuilder_TypeConstraint(builder, "T", kDTypes[i], status);
+    const std::string name =
+        std::string("MetalParallelConcat") + kSuffixes[i];
+    if (TF_GetCode(status) == TF_OK) {
+      TF_RegisterKernelBuilder(name.c_str(), builder, status);
+    } else {
+      TF_DeleteKernelBuilder(builder);
+    }
+    if (TF_GetCode(status) != TF_OK) {
+      LOG(ERROR) << "Metal: could not register kernel " << name << ": "
+                 << TF_Message(status);
+    }
+    TF_DeleteStatus(status);
   }
 }
 

@@ -350,6 +350,18 @@ struct BetaincParams {
   uint32_t x_is_scalar;
 };
 
+// Parameters for the numeric summary shaders. Layout must match the Metal
+// struct. `prefix` carries the values the summary reports about the tensor
+// rather than about its contents, which the host knows and the device does
+// not.
+struct DebugParams {
+  uint32_t count;
+  uint32_t prefix_count;
+  uint32_t padding0;
+  uint32_t padding1;
+  float prefix[10];
+};
+
 // Compute pipeline for one function in the backend's shader library.
 //
 // The Metal source is compiled from a string the first time any pipeline is

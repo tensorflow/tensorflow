@@ -100,6 +100,7 @@ objc_library(
         "metal_conv_generic_ops.mm",
         "metal_ctc_ops.mm",
         "metal_conv_ops.mm",
+        "metal_debug_ops.mm",
         "metal_depthwise_ops.mm",
         "metal_batch_norm_global_ops.mm",
         "metal_box_proposal_ops.mm",
@@ -167,6 +168,10 @@ objc_library(
         "//tensorflow/c:tf_tensor_hdrs",
         "//tensorflow/core/common_runtime/metal:metal_platform",
         "//tensorflow/core/common_runtime/metal:metal_stream",
+        # The hash bucket op calls the same fingerprint the host kernel calls,
+        # which is the only way its buckets can agree with the host's.
+        "//tensorflow/core/platform:fingerprint",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/synchronization",
     ],
 )
