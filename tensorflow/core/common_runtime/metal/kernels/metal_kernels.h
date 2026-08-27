@@ -25,6 +25,9 @@ namespace metal {
 // float16, implemented as Metal compute shaders.
 void RegisterMetalElementwiseKernels();
 
+// MatMul for float32 and float16, backed by MPSMatrixMultiplication.
+void RegisterMetalMatMulKernels();
+
 }  // namespace metal
 }  // namespace tensorflow
 

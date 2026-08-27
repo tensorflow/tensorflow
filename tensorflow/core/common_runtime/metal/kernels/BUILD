@@ -65,10 +65,16 @@ objc_library(
 
 objc_library(
     name = "metal_kernels",
-    srcs = ["metal_elementwise_ops.mm"],
+    srcs = [
+        "metal_elementwise_ops.mm",
+        "metal_matmul_op.mm",
+    ],
     hdrs = ["metal_kernels.h"],
     copts = METAL_COPTS,
-    sdk_frameworks = ["Metal"],
+    sdk_frameworks = [
+        "Metal",
+        "MetalPerformanceShaders",
+    ],
     target_compatible_with = ["@platforms//os:macos"],
     deps = [
         ":metal_kernel_util",
