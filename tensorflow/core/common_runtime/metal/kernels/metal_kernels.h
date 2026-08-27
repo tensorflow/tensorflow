@@ -133,6 +133,9 @@ void RegisterMetalTransformKernels();
 // CropAndResize and its image and box gradients.
 void RegisterMetalCropResizeKernels();
 
+// ResizeBilinearGrad and ResizeNearestNeighborGrad.
+void RegisterMetalResizeGradKernels();
+
 // BatchNormWithGlobalNormalization and its gradient.
 void RegisterMetalBatchNormGlobalKernels();
 

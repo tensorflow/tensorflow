@@ -187,6 +187,7 @@ differently rather than fail.
 | `ReverseSequence` | float32, float16 |
 | `Diag`, `DiagPart`, `LinSpace` | float32, float16 |
 | `ResizeBilinear`, `ResizeNearestNeighbor` | float32, float16 |
+| `ResizeBilinearGrad`, `ResizeNearestNeighborGrad` | float32 |
 | `RGBToHSV`, `HSVToRGB`, `AdjustContrastv2` | float32 |
 | `AdjustHue`, `AdjustSaturation` | float32 |
 | `ReverseV2`, `Split`, `SplitV` | float32, float16 |
@@ -237,11 +238,6 @@ inherits when it has no kernel of its own.
   run as shaders that scan the window and emit TensorFlow's index directly.
   The gradient accumulates with a Metal atomic, which exists for float and
   not for half.
-* **The resize gradients are not implemented.** Every MPSGraph resize
-  gradient entry point aborts the process on the current SDK with a channel
-  mismatch assertion, for every shape and layout tried. Registering a kernel
-  that crashes is worse than leaving the gradient on the host, so the forward
-  resizes are provided and the gradients are not.
 * **`MatMul`** takes rank-2 tensors only, and float16 requires an even column
   count, since an odd one produces a row stride MPS will not accept.
 * **No graph optimizer or profiler module.** The `TF_InitGraph` and

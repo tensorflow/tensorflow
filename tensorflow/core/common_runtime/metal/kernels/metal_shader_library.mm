@@ -880,6 +880,96 @@ kernel void tf_image_projective_transform_float(
   const float bottom = (xf + 1.0f - x) * v10 + (x - xf) * v11;
   out[gid] = (yf + 1.0f - y) * top + (y - yf) * bottom;
 }
+
+// ---- resize gradients ----
+
+struct ResizeGradParams {
+  uint batch;
+  uint in_h;
+  uint in_w;
+  uint channels;
+  uint out_h;
+  uint out_w;
+  float height_scale;
+  float width_scale;
+  uint half_pixel;
+  uint align_corners;
+  uint count;
+  uint pad0;
+};
+
+// TensorFlow's two scalers: the half-pixel one places sample centres between
+// pixels, the legacy one on them.
+static inline float tf_resize_scale(uint index, float scale, uint half_pixel) {
+  return half_pixel != 0u ? (float(index) + 0.5f) * scale - 0.5f
+                          : float(index) * scale;
+}
+
+// Both gradients are the transpose of a resize: every resized pixel pushes its
+// gradient back to the source pixels it read, with the same weights. Source
+// pixels are shared between neighbours, so the accumulation is atomic.
+kernel void tf_resize_bilinear_grad_float(
+    device const float* grads [[buffer(0)]],
+    device atomic_float* out [[buffer(1)]],
+    constant ResizeGradParams& params [[buffer(2)]],
+    uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count) return;
+  const uint c = gid % params.channels;
+  const uint x = (gid / params.channels) % params.in_w;
+  const uint y = (gid / (params.channels * params.in_w)) % params.in_h;
+  const uint b = gid / (params.channels * params.in_w * params.in_h);
+
+  const float in_y = tf_resize_scale(y, params.height_scale, params.half_pixel);
+  const float in_x = tf_resize_scale(x, params.width_scale, params.half_pixel);
+  // The corners are clamped independently, so a sample that falls off an edge
+  // pushes its whole weight onto the edge pixel rather than being dropped.
+  const int top = max(int(floor(in_y)), 0);
+  const int bottom = min(int(ceil(in_y)), int(params.out_h) - 1);
+  const int left = max(int(floor(in_x)), 0);
+  const int right = min(int(ceil(in_x)), int(params.out_w) - 1);
+  const float y_lerp = in_y - floor(in_y);
+  const float x_lerp = in_x - floor(in_x);
+  const float g = grads[gid];
+
+  const uint base = b * params.out_h;
+  atomic_fetch_add_explicit(
+      &out[((base + uint(top)) * params.out_w + uint(left)) * params.channels + c],
+      (1.0f - y_lerp) * (1.0f - x_lerp) * g, memory_order_relaxed);
+  atomic_fetch_add_explicit(
+      &out[((base + uint(top)) * params.out_w + uint(right)) * params.channels + c],
+      (1.0f - y_lerp) * x_lerp * g, memory_order_relaxed);
+  atomic_fetch_add_explicit(
+      &out[((base + uint(bottom)) * params.out_w + uint(left)) * params.channels + c],
+      y_lerp * (1.0f - x_lerp) * g, memory_order_relaxed);
+  atomic_fetch_add_explicit(
+      &out[((base + uint(bottom)) * params.out_w + uint(right)) * params.channels + c],
+      y_lerp * x_lerp * g, memory_order_relaxed);
+}
+
+kernel void tf_resize_nearest_grad_float(
+    device const float* grads [[buffer(0)]],
+    device atomic_float* out [[buffer(1)]],
+    constant ResizeGradParams& params [[buffer(2)]],
+    uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count) return;
+  const uint c = gid % params.channels;
+  const uint x = (gid / params.channels) % params.in_w;
+  const uint y = (gid / (params.channels * params.in_w)) % params.in_h;
+  const uint b = gid / (params.channels * params.in_w * params.in_h);
+
+  const float fy = tf_resize_scale(y, params.height_scale, params.half_pixel);
+  const float fx = tf_resize_scale(x, params.width_scale, params.half_pixel);
+  // Aligned corners round to the nearest source pixel; otherwise the source
+  // pixel is the one the sample falls inside, which is the floor.
+  int oy = params.align_corners != 0u ? int(round(fy)) : int(floor(fy));
+  int ox = params.align_corners != 0u ? int(round(fx)) : int(floor(fx));
+  oy = clamp(oy, 0, int(params.out_h) - 1);
+  ox = clamp(ox, 0, int(params.out_w) - 1);
+  atomic_fetch_add_explicit(
+      &out[((b * params.out_h + uint(oy)) * params.out_w + uint(ox)) *
+               params.channels + c],
+      grads[gid], memory_order_relaxed);
+}
 )METAL";
 
 class ShaderLibrary {

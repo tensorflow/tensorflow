@@ -159,6 +159,24 @@ struct TransformParams {
   uint32_t padding0;
 };
 
+// Parameters for the resize-gradient shaders. Layout must match the Metal
+// struct. `in_h` and `in_w` are the resized dimensions the gradient arrives
+// with; `out_h` and `out_w` are the original image's.
+struct ResizeGradParams {
+  uint32_t batch;
+  uint32_t in_h;
+  uint32_t in_w;
+  uint32_t channels;
+  uint32_t out_h;
+  uint32_t out_w;
+  float height_scale;
+  float width_scale;
+  uint32_t half_pixel;
+  uint32_t align_corners;
+  uint32_t count;
+  uint32_t padding0;
+};
+
 // Compute pipeline for one function in the backend's shader library.
 //
 // The Metal source is compiled from a string the first time any pipeline is
