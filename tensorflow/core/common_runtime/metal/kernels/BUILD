@@ -127,6 +127,7 @@ objc_library(
         "metal_pooling_ops.mm",
         "metal_pool_variant_ops.mm",
         "metal_extra_ops.mm",
+        "metal_fused_ops.mm",
         "metal_gather_scatter_ops.mm",
         "metal_misc_ops.mm",
         "metal_resize_grad_ops.mm",

@@ -166,6 +166,9 @@ void RegisterMetalSparseSegmentKernels();
 // The Fourier transforms.
 void RegisterMetalFftKernels();
 
+// The fused convolution and matrix multiply the optimiser produces.
+void RegisterMetalFusedKernels();
+
 // ExtractVolumePatches.
 void RegisterMetalVolumePatchKernels();
 
