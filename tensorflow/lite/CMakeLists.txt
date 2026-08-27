@@ -735,7 +735,6 @@ target_link_libraries(tensorflow-lite
     absl::strings
     absl::synchronization
     absl::variant
-    absl::log_internal_message
     farmhash
     fft2d_fftsg2d
     flatbuffers::flatbuffers
