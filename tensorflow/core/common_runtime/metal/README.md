@@ -157,7 +157,7 @@ differently rather than fail.
 | `Xdivy`, `Xlogy` | float32, float16 |
 | `TanhGrad`, `SigmoidGrad`, `SqrtGrad`, `RsqrtGrad` | float32, float16 |
 | `AddN`, `Transpose`, `Concat`, `ConcatV2`, `Tile` | float32, float16 |
-| `Slice`, `Pad`, `PadV2`, `MirrorPad` | float32, float16 |
+| `Slice`, `Pad`, `PadV2`, `MirrorPad`, `MirrorPadGrad` | float32, float16 |
 | `GatherV2`, `OneHot`, `TopKV2` | float32, float16 |
 | `TopK`, `LowerBound`, `UpperBound`, `HistogramFixedWidth` | float32, float16 |
 | `Cumsum`, `Cumprod`, `ClipByValue` | float32, float16 |

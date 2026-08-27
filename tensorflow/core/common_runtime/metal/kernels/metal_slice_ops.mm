@@ -80,6 +80,12 @@ bool ReadHostVector(TF_Tensor* t, std::vector<int64_t>* out,
   return true;
 }
 
+NSArray<NSNumber*>* ToNSArray(const std::vector<int64_t>& v) {
+  NSMutableArray<NSNumber*>* a = [NSMutableArray array];
+  for (int64_t x : v) [a addObject:@(static_cast<NSInteger>(x))];
+  return a;
+}
+
 struct DTypeOp {
   TF_DataType dtype = TF_FLOAT;
   int num_split = 1;
@@ -331,6 +337,157 @@ void Pad_ComputeImpl(DTypeOp* op, TF_OpKernelContext* ctx, TF_Status* status) {
   RunGraph(stream, *cached, @[ in_data ], @[ out_data ], status);
 }
 
+/*** MIRROR PAD GRADIENT ***/
+
+// The gradient of a mirror pad folds the reflected borders back onto the
+// interior: an element that was copied to the border accumulates the gradient
+// from both the copy and the original. REFLECT skips the edge row when
+// mirroring, SYMMETRIC includes it, and that one-element offset is the whole
+// difference between the two modes.
+void MirrorPadGrad_ComputeImpl(DTypeOp* op, TF_OpKernelContext* ctx,
+                               TF_Status* status) {
+  ScopedTensor grad, paddings;
+  TF_GetInput(ctx, 0, grad.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+  TF_GetInput(ctx, 1, paddings.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  const std::vector<int64_t> grad_shape = ShapeOf(grad.get());
+  const int rank = static_cast<int>(grad_shape.size());
+  std::vector<int64_t> flat;
+  if (!ReadHostVector(paddings.get(), &flat, status)) return;
+  if (static_cast<int>(flat.size()) != rank * 2) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: MirrorPadGrad expects a [rank, 2] paddings tensor.");
+    return;
+  }
+
+  std::vector<int64_t> left(rank), right(rank), out_shape(rank);
+  for (int i = 0; i < rank; ++i) {
+    left[i] = flat[i * 2];
+    right[i] = flat[i * 2 + 1];
+    out_shape[i] = grad_shape[i] - left[i] - right[i];
+    if (out_shape[i] < 1 || left[i] < 0 || right[i] < 0) {
+      TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                   "Metal: MirrorPadGrad paddings do not fit the gradient.");
+      return;
+    }
+  }
+  // REFLECT mirrors about the edge without repeating it, so it cannot pad by
+  // more than extent-1; SYMMETRIC repeats the edge and allows extent.
+  const int64_t edge_offset = op->pad_mode == MPSGraphPaddingModeReflect ? 1 : 0;
+  for (int i = 0; i < rank; ++i) {
+    const int64_t limit = out_shape[i] - edge_offset;
+    if (left[i] > limit || right[i] > limit) {
+      TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                   "Metal: MirrorPadGrad padding exceeds what the mode allows.");
+      return;
+    }
+  }
+
+  const int64_t count = ElementCount(out_shape);
+  ScopedTensor output;
+  output.reset(TF_AllocateOutput(
+      ctx, 0, op->dtype, out_shape.data(), rank,
+      static_cast<size_t>(count) * TF_DataTypeSize(op->dtype), status));
+  if (TF_GetCode(status) != TF_OK) return;
+  if (count == 0) return;
+
+  SP_Stream stream = StreamForContext(ctx, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  id<MTLDevice> device = DeviceForStream(stream);
+  MPSDataType mps_dtype;
+  if (!MPSTypeFor(op->dtype, &mps_dtype, status)) return;
+
+  std::string key = "MirrorPadGrad";
+  AppendShapeToKey(grad_shape, &key);
+  AppendShapeToKey(left, &key);
+  AppendShapeToKey(right, &key);
+  key.append("/m").append(std::to_string(static_cast<int>(op->pad_mode)));
+  key.append("/t").append(std::to_string(static_cast<int>(op->dtype)));
+
+  const CachedGraph* cached = LookupOrBuildGraph(
+      key,
+      ^(CachedGraph* out) {
+        MPSGraph* g = out->graph;
+        MPSGraphTensor* dy = [g placeholderWithShape:MPSShape(grad_shape)
+                                            dataType:mps_dtype
+                                                name:nil];
+        // Start from the interior, then fold each border back one axis at a
+        // time. Reversing the border slice puts each element opposite the
+        // interior position it was mirrored from.
+        MPSGraphTensor* acc = dy;
+        for (int i = 0; i < rank; ++i) {
+          const NSUInteger axis = static_cast<NSUInteger>(i);
+          MPSGraphTensor* interior =
+              [g sliceTensor:acc
+                   dimension:axis
+                       start:static_cast<NSInteger>(left[i])
+                      length:static_cast<NSInteger>(out_shape[i])
+                        name:nil];
+          if (left[i] > 0) {
+            MPSGraphTensor* head = [g sliceTensor:acc
+                                        dimension:axis
+                                            start:0
+                                           length:static_cast<NSInteger>(left[i])
+                                             name:nil];
+            MPSGraphTensor* folded =
+                [g reverseTensor:head axes:@[ @(static_cast<NSInteger>(i)) ]
+                            name:nil];
+            // The fold lands at offset edge_offset from the low edge.
+            std::vector<int64_t> pad_l(rank, 0), pad_r(rank, 0);
+            pad_l[i] = edge_offset;
+            pad_r[i] = out_shape[i] - left[i] - edge_offset;
+            interior = [g additionWithPrimaryTensor:interior
+                                    secondaryTensor:
+                                        [g padTensor:folded
+                                     withPaddingMode:MPSGraphPaddingModeConstant
+                                         leftPadding:ToNSArray(pad_l)
+                                        rightPadding:ToNSArray(pad_r)
+                                       constantValue:0.0
+                                                name:nil]
+                                               name:nil];
+          }
+          if (right[i] > 0) {
+            MPSGraphTensor* tail =
+                [g sliceTensor:acc
+                     dimension:axis
+                         start:static_cast<NSInteger>(left[i] + out_shape[i])
+                        length:static_cast<NSInteger>(right[i])
+                          name:nil];
+            MPSGraphTensor* folded =
+                [g reverseTensor:tail axes:@[ @(static_cast<NSInteger>(i)) ]
+                            name:nil];
+            std::vector<int64_t> pad_l(rank, 0), pad_r(rank, 0);
+            pad_l[i] = out_shape[i] - right[i] - edge_offset;
+            pad_r[i] = edge_offset;
+            interior = [g additionWithPrimaryTensor:interior
+                                    secondaryTensor:
+                                        [g padTensor:folded
+                                     withPaddingMode:MPSGraphPaddingModeConstant
+                                         leftPadding:ToNSArray(pad_l)
+                                        rightPadding:ToNSArray(pad_r)
+                                       constantValue:0.0
+                                                name:nil]
+                                               name:nil];
+          }
+          acc = interior;
+        }
+        [out->inputs addObject:dy];
+        [out->outputs addObject:acc];
+      },
+      status);
+  if (cached == nullptr) return;
+
+  MPSGraphTensorData* g_data =
+      TensorDataForTensor(grad.get(), op->dtype, device, status);
+  if (g_data == nil) return;
+  MPSGraphTensorData* o_data =
+      TensorDataForTensor(output.get(), op->dtype, device, status);
+  if (o_data == nil) return;
+  RunGraph(stream, *cached, @[ g_data ], @[ o_data ], status);
+}
+
 /*** REVERSE ***/
 
 void ReverseV2_ComputeImpl(DTypeOp* op, TF_OpKernelContext* ctx,
@@ -560,6 +717,7 @@ METAL_COMPUTE(Slice_Compute, Slice_ComputeImpl)
 METAL_COMPUTE(Pad_Compute, Pad_ComputeImpl<false>)
 METAL_COMPUTE(PadV2_Compute, Pad_ComputeImpl<true>)
 METAL_COMPUTE(ReverseV2_Compute, ReverseV2_ComputeImpl)
+METAL_COMPUTE(MirrorPadGrad_Compute, MirrorPadGrad_ComputeImpl)
 METAL_COMPUTE(Split_Compute, Split_ComputeImpl<false>)
 METAL_COMPUTE(SplitV_Compute, Split_ComputeImpl<true>)
 
@@ -615,6 +773,9 @@ void RegisterMetalSliceKernels() {
       Register("MirrorPad", &Pad_Compute, kDTypes[i],
                "MetalMirrorPad" + suffix + isuffix, {"paddings"}, "Tpaddings",
                kIndexTypes[j]);
+      Register("MirrorPadGrad", &MirrorPadGrad_Compute, kDTypes[i],
+               "MetalMirrorPadGrad" + suffix + isuffix, {"paddings"},
+               "Tpaddings", kIndexTypes[j]);
       Register("ReverseV2", &ReverseV2_Compute, kDTypes[i],
                "MetalReverseV2" + suffix + isuffix, {"axis"}, "Tidx",
                kIndexTypes[j]);
