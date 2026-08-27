@@ -1090,6 +1090,7 @@ cc_library(
         "//xla:status_macros",
         "//xla:util",
         "//xla/backends/cpu:target_machine_options",
+        "//xla/backends/gpu:ffi_collectives",
         "//xla/ffi",
         "//xla/ffi:attribute_map",
         "//xla/ffi:call_frame",
