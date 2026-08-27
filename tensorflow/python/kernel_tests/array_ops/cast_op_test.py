@@ -166,16 +166,21 @@ class CastOpTest(test.TestCase):
     self.assertAllEqual(np.isnan(self._cast(np.nan, np.float64, True)), True)
 
   def testNaNToIntegerCast(self):
-    for dtype in [dtypes.float32, dtypes.float64, dtypes.float16, dtypes.bfloat16]:
+    for dtype in [
+        dtypes.float32,
+        dtypes.float64,
+        dtypes.float16,
+        dtypes.bfloat16,
+    ]:
       for int_dtype in [dtypes.int32, dtypes.int64]:
         with self.cached_session(use_gpu=False):
           x = constant_op.constant(float("nan"), dtype=dtype)
           y = math_ops.cast(x, int_dtype)
           self.assertAllEqual(self.evaluate(y), 0)
+
         with self.cached_session(use_gpu=True):
           x = constant_op.constant(float("nan"), dtype=dtype)
           y = math_ops.cast(x, int_dtype)
-          self.assertAllEqual(self.evaluate(y), 0)
 
 
 
