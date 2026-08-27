@@ -16,6 +16,28 @@
 """TODO(jakeharmon): Write module docstring."""
 
 load("@rules_ml_toolchain//py/rules_pywrap:pywrap.default.bzl", "use_pywrap_rules")
+load("@local_config_syslibs//:build_defs.bzl", "if_system_lib")
+
+def tf_system_libs_linkopts():
+    """Returns linker flags for system libraries configured via TF_SYSTEM_LIBS."""
+    return (
+        if_system_lib("boringssl", ["-lssl", "-lcrypto"]) +
+        if_system_lib("com_github_googlecloudplatform_google_cloud_cpp", ["-lgoogle_cloud_cpp_common", "-lgoogle_cloud_cpp_bigtable", "-lgoogle_cloud_cpp_storage"]) +
+        if_system_lib("com_github_grpc_grpc", ["-lgrpc++", "-lgrpc", "-lgpr"]) +
+        if_system_lib("com_google_protobuf", ["-lprotobuf"]) +
+        if_system_lib("com_googlesource_code_re2", ["-lre2"]) +
+        if_system_lib("curl", ["-lcurl"]) +
+        if_system_lib("flatbuffers", ["-lflatbuffers"]) +
+        if_system_lib("gif", ["-lgif"]) +
+        if_system_lib("hwloc", ["-lhwloc"]) +
+        if_system_lib("icu", ["-licui18n", "-licuuc", "-licudata"]) +
+        if_system_lib("jsoncpp_git", ["-ljsoncpp"]) +
+        if_system_lib("libjpeg_turbo", ["-ljpeg"]) +
+        if_system_lib("org_sqlite", ["-lsqlite3"]) +
+        if_system_lib("png", ["-lpng"]) +
+        if_system_lib("snappy", ["-lsnappy"]) +
+        if_system_lib("zlib", ["-lz"])
+    )
 
 # unused in TSL
 def tf_additional_plugin_deps():

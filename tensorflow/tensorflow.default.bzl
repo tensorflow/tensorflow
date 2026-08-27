@@ -72,7 +72,6 @@ load(
     _tfcompile_dfsan_enabled = "tfcompile_dfsan_enabled",
     _tfcompile_friends = "tfcompile_friends",
     _tfcompile_target_cpu = "tfcompile_target_cpu",
-    _tf_system_libs_linkopts = "tf_system_libs_linkopts",
 )
 
 clean_dep = _clean_dep
@@ -130,4 +129,3 @@ pywrap_library = _pywrap_library
 pywrap_common_library = _pywrap_common_library
 stripped_cc_info = _stripped_cc_info
 pywrap_binaries = _pywrap_binaries
-tf_system_libs_linkopts = _tf_system_libs_linkopts
