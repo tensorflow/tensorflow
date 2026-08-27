@@ -79,6 +79,11 @@ struct MiscOp {
   float bias = 1.0f;
   float alpha = 1.0f;
   float beta = 0.5f;
+  // ExtractImagePatches
+  int patch_h = 1, patch_w = 1;
+  int patch_stride_h = 1, patch_stride_w = 1;
+  int patch_rate_h = 1, patch_rate_w = 1;
+  bool patch_same = false;
 };
 
 void* MiscOp_Create(TF_OpKernelConstruction* ctx) {
@@ -99,6 +104,30 @@ void* MiscOp_Create(TF_OpKernelConstruction* ctx) {
   if (TF_GetCode(status) != TF_OK) TF_SetStatus(status, TF_OK, "");
   TF_OpKernelConstruction_GetAttrFloat(ctx, "beta", &op->beta, status);
   if (TF_GetCode(status) != TF_OK) TF_SetStatus(status, TF_OK, "");
+
+  // ExtractImagePatches carries its window as four-element lists whose batch
+  // and channel entries must be 1.
+  struct { const char* name; int* h; int* w; } lists[] = {
+      {"ksizes", &op->patch_h, &op->patch_w},
+      {"strides", &op->patch_stride_h, &op->patch_stride_w},
+      {"rates", &op->patch_rate_h, &op->patch_rate_w},
+  };
+  for (auto& l : lists) {
+    int32_t v[4] = {1, 1, 1, 1};
+    TF_OpKernelConstruction_GetAttrInt32List(ctx, l.name, v, 4, status);
+    if (TF_GetCode(status) != TF_OK) {
+      TF_SetStatus(status, TF_OK, "");
+      continue;
+    }
+    *l.h = v[1];
+    *l.w = v[2];
+  }
+  char patch_padding[16] = {0};
+  TF_OpKernelConstruction_GetAttrString(ctx, "padding", patch_padding,
+                                        sizeof(patch_padding) - 1, status);
+  if (TF_GetCode(status) != TF_OK) TF_SetStatus(status, TF_OK, "");
+  op->patch_same = std::strcmp(patch_padding, "SAME") == 0;
+
   TF_DeleteStatus(status);
   return op;
 }
@@ -306,6 +335,136 @@ void LRN_ComputeImpl(MiscOp* op, TF_OpKernelContext* ctx, TF_Status* status) {
   RunGraph(stream, *cached, @[ in_data ], @[ o_data ], status);
 }
 
+/*** EXTRACT IMAGE PATCHES ***/
+
+// Each output position holds the flattened patch that a convolution would
+// have consumed there. Rather than a gather, this convolves with an identity
+// filter: a patch of ksize*ksize*C weights where exactly one entry is 1 picks
+// out exactly one input element, and stacking those filters across the output
+// channel axis reproduces the patch in TensorFlow's row-major order.
+void ExtractImagePatches_ComputeImpl(MiscOp* op, TF_OpKernelContext* ctx,
+                                     TF_Status* status) {
+  ScopedTensor input;
+  TF_GetInput(ctx, 0, input.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+  if (TF_NumDims(input.get()) != 4) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: ExtractImagePatches expects a rank-4 NHWC input.");
+    return;
+  }
+
+  const std::vector<int64_t> in_shape = ShapeOf(input.get());
+  const int64_t channels = in_shape[3];
+  const int kh = op->patch_h, kw = op->patch_w;
+  const int sh = op->patch_stride_h, sw = op->patch_stride_w;
+  const int rh = op->patch_rate_h, rw = op->patch_rate_w;
+  if (kh < 1 || kw < 1 || sh < 1 || sw < 1 || rh < 1 || rw < 1) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: ExtractImagePatches sizes must be positive.");
+    return;
+  }
+
+  const int64_t eff_h = (kh - 1) * rh + 1;
+  const int64_t eff_w = (kw - 1) * rw + 1;
+  std::vector<int64_t> out_shape(4);
+  out_shape[0] = in_shape[0];
+  if (op->patch_same) {
+    out_shape[1] = (in_shape[1] + sh - 1) / sh;
+    out_shape[2] = (in_shape[2] + sw - 1) / sw;
+  } else {
+    out_shape[1] = in_shape[1] < eff_h ? 0 : (in_shape[1] - eff_h) / sh + 1;
+    out_shape[2] = in_shape[2] < eff_w ? 0 : (in_shape[2] - eff_w) / sw + 1;
+  }
+  out_shape[3] = static_cast<int64_t>(kh) * kw * channels;
+
+  const int64_t count = ElementCount(out_shape);
+  ScopedTensor output;
+  output.reset(TF_AllocateOutput(
+      ctx, 0, op->dtype, out_shape.data(), 4,
+      static_cast<size_t>(count) * TF_DataTypeSize(op->dtype), status));
+  if (TF_GetCode(status) != TF_OK) return;
+  if (count == 0) return;
+
+  SP_Stream stream = StreamForContext(ctx, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  id<MTLDevice> device = DeviceForStream(stream);
+  MPSDataType mps_dtype;
+  if (!MPSTypeFor(op->dtype, &mps_dtype, status)) return;
+
+  // The identity filter, [kh, kw, C, kh*kw*C], with a single 1 per output
+  // channel placed so the patch comes out in TensorFlow's order.
+  const int64_t out_channels = out_shape[3];
+  std::vector<float> weights(static_cast<size_t>(kh) * kw * channels *
+                                 out_channels,
+                             0.0f);
+  for (int y = 0; y < kh; ++y) {
+    for (int x = 0; x < kw; ++x) {
+      for (int64_t c = 0; c < channels; ++c) {
+        const int64_t o = (static_cast<int64_t>(y) * kw + x) * channels + c;
+        const int64_t idx = (((static_cast<int64_t>(y) * kw + x) * channels) + c) *
+                                out_channels + o;
+        weights[idx] = 1.0f;
+      }
+    }
+  }
+  NSData* weight_data =
+      [NSData dataWithBytes:weights.data() length:weights.size() * sizeof(float)];
+  const std::vector<int64_t> filter_shape = {kh, kw, channels, out_channels};
+
+  std::string key = "ExtractImagePatches";
+  AppendShapeToKey(in_shape, &key);
+  key.append("/k").append(std::to_string(kh)).push_back('x');
+  key.append(std::to_string(kw));
+  key.append("/s").append(std::to_string(sh)).push_back('x');
+  key.append(std::to_string(sw));
+  key.append("/r").append(std::to_string(rh)).push_back('x');
+  key.append(std::to_string(rw));
+  key.append(op->patch_same ? "/SAME" : "/VALID");
+  key.append("/t").append(std::to_string(static_cast<int>(op->dtype)));
+  const bool same = op->patch_same;
+
+  const CachedGraph* cached = LookupOrBuildGraph(
+      key,
+      ^(CachedGraph* out) {
+        MPSGraph* g = out->graph;
+        MPSGraphTensor* x = [g placeholderWithShape:MPSShape(in_shape)
+                                           dataType:mps_dtype
+                                               name:nil];
+        MPSGraphTensor* w = [g constantWithData:weight_data
+                                          shape:MPSShape(filter_shape)
+                                       dataType:MPSDataTypeFloat32];
+        if (mps_dtype != MPSDataTypeFloat32) {
+          w = [g castTensor:w toType:mps_dtype name:nil];
+        }
+        MPSGraphConvolution2DOpDescriptor* d =
+            [MPSGraphConvolution2DOpDescriptor
+                descriptorWithStrideInX:static_cast<NSUInteger>(sw)
+                              strideInY:static_cast<NSUInteger>(sh)
+                        dilationRateInX:static_cast<NSUInteger>(rw)
+                        dilationRateInY:static_cast<NSUInteger>(rh)
+                                 groups:1
+                           paddingStyle:same ? MPSGraphPaddingStyleTF_SAME
+                                             : MPSGraphPaddingStyleTF_VALID
+                             dataLayout:MPSGraphTensorNamedDataLayoutNHWC
+                          weightsLayout:MPSGraphTensorNamedDataLayoutHWIO];
+        [out->inputs addObject:x];
+        [out->outputs addObject:[g convolution2DWithSourceTensor:x
+                                                   weightsTensor:w
+                                                      descriptor:d
+                                                            name:nil]];
+      },
+      status);
+  if (cached == nullptr) return;
+
+  MPSGraphTensorData* in_data =
+      TensorDataForTensor(input.get(), op->dtype, device, status);
+  if (in_data == nil) return;
+  MPSGraphTensorData* o_data =
+      TensorDataForTensor(output.get(), op->dtype, device, status);
+  if (o_data == nil) return;
+  RunGraph(stream, *cached, @[ in_data ], @[ o_data ], status);
+}
+
 /*** CHECK NUMERICS ***/
 
 // CheckNumerics is the identity plus a promise to fail on a non-finite value.
@@ -340,6 +499,7 @@ void CheckNumerics_ComputeImpl(MiscOp* op, TF_OpKernelContext* ctx,
 METAL_COMPUTE(Reverse_Compute, Reverse_ComputeImpl)
 METAL_COMPUTE(LRN_Compute, LRN_ComputeImpl)
 METAL_COMPUTE(CheckNumerics_Compute, CheckNumerics_ComputeImpl)
+METAL_COMPUTE(ExtractImagePatches_Compute, ExtractImagePatches_ComputeImpl)
 
 #undef METAL_COMPUTE
 
@@ -378,6 +538,10 @@ void RegisterMetalMiscKernels() {
              "MetalCheckNumerics" + s, {});
     Register("CheckNumericsV2", &CheckNumerics_Compute, t,
              "MetalCheckNumericsV2" + s, {});
+  }
+  for (int i = 0; i < 2; ++i) {
+    Register("ExtractImagePatches", &ExtractImagePatches_Compute, kDTypes[i],
+             std::string("MetalExtractImagePatches") + kSuffixes[i], {});
   }
   // LRN is defined for float32 only in practice.
   Register("LRN", &LRN_Compute, TF_FLOAT, "MetalLRNFloat", {});

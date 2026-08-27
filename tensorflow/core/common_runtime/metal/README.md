@@ -176,6 +176,7 @@ differently rather than fail.
 | `RGBToHSV`, `HSVToRGB`, `AdjustContrastv2` | float32 |
 | `ReverseV2`, `Split`, `SplitV` | float32, float16 |
 | `Reverse`, `CheckNumerics`, `CheckNumericsV2` | float32, float16 |
+| `ExtractImagePatches` | float32, float16 |
 | `LRN` | float32 |
 | `StridedSlice`, `StridedSliceGrad`, `TileGrad`, `Roll` | float32, float16 |
 | `Equal`, `NotEqual`, `Less`, `LessEqual`, `Greater`, `GreaterEqual` | float32, float16, int32, int64 |
