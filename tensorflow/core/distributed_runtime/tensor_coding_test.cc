@@ -180,6 +180,23 @@ TEST_F(TensorResponseTest, InitPartialOverflow) {
   EXPECT_TRUE(absl::IsInvalidArgument(s));
 }
 
+TEST_F(TensorResponseTest, NonEmptyTensorMissingContentRejected) {
+  RecvTensorResponse proto;
+  proto.set_is_dead(false);
+  proto.set_send_start_micros(123456);
+  TensorProto* tensor_proto = proto.mutable_tensor();
+  tensor_proto->set_dtype(DT_FLOAT);
+  tensor_proto->mutable_tensor_shape()->add_dim()->set_size(10);
+
+  std::string encoded;
+  proto.AppendToString(&encoded);
+  StringSource source(&encoded, 1024);
+  TensorResponse response;
+  DummyDevice cpu_device(Env::Default());
+  response.InitAlloc(&cpu_device, AllocatorAttributes());
+  EXPECT_FALSE(response.ParseFrom(&source).ok());
+}
+
 std::string MakeFloatTensorTestCase(int num_elems) {
   std::vector<int8_t> v(num_elems);
   for (int i = 0; i < num_elems; i++) {
