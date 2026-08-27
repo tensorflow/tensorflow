@@ -131,6 +131,7 @@ differently rather than fail.
 | `Conv2D`, `Conv2DBackpropInput`, `Conv2DBackpropFilter` | float32, float16 |
 | `Conv` | float32, float16 |
 | `_FusedConv2D`, `_FusedMatMul` | float32, float16 |
+| `_FusedBatchNormEx` | float32, float16 |
 | `CTCLoss`, `CTCLossV2` | float32 |
 | `Conv3D`, `Conv3DBackpropInputV2`, `Conv3DBackpropFilterV2` | float32, float16 |
 | `Conv3DBackpropInput`, `Conv3DBackpropFilter` | float32, float16 |
@@ -144,6 +145,7 @@ differently rather than fail.
 | `FFT`, `FFT2D`, `FFT3D`, `IFFT`, `IFFT2D`, `IFFT3D` | complex64 |
 | `BatchFFT`, `BatchFFT2D`, `BatchFFT3D`, `BatchIFFT`, `BatchIFFT2D`, `BatchIFFT3D` | complex64 |
 | `RFFT`, `RFFT2D`, `RFFT3D`, `IRFFT`, `IRFFT2D`, `IRFFT3D` | float32 and complex64 |
+| `FFTND`, `IFFTND`, `RFFTND`, `IRFFTND` | complex64, and float32 for the real pair |
 | `SparseToDense`, `SparseTensorDenseMatMul` | float32 |
 | `SparseBincount`, `RaggedBincount` | float32, int32 |
 | `Betainc` | float32 |

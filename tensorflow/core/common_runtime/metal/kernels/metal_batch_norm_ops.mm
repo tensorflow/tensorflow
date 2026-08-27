@@ -61,6 +61,11 @@ namespace {
 //               (dy - doffset/N - x_center * inv_std^2 * sum(dy*x_center)/N)
 
 struct BatchNormOp {
+  // _FusedBatchNormEx folds an optional side input and an optional activation
+  // into the same pass. Both are recorded here; everything else about the op
+  // is unchanged.
+  bool has_side_input = false;
+  bool relu = false;
   TF_DataType dtype = TF_FLOAT;       // T, the data tensor
   TF_DataType param_dtype = TF_FLOAT;  // U, the statistics
   float epsilon = 1e-4f;
@@ -110,6 +115,28 @@ void* BatchNormOp_Create(TF_OpKernelConstruction* ctx) {
   TF_OpKernelConstruction_GetAttrBool(ctx, "is_training", &is_training, status);
   if (TF_GetCode(status) != TF_OK) TF_SetStatus(status, TF_OK, "");
   op->is_training = is_training != 0;
+  int32_t side_inputs = 0;
+  TF_OpKernelConstruction_GetAttrInt32(ctx, "num_side_inputs", &side_inputs,
+                                       status);
+  if (TF_GetCode(status) == TF_OK) op->has_side_input = side_inputs > 0;
+  TF_SetStatus(status, TF_OK, "");
+  char activation[24] = {0};
+  TF_OpKernelConstruction_GetAttrString(ctx, "activation_mode", activation,
+                                        sizeof(activation) - 1, status);
+  if (TF_GetCode(status) == TF_OK && activation[0] != '\0') {
+    if (std::strcmp(activation, "Relu") == 0) {
+      op->relu = true;
+    } else if (std::strcmp(activation, "Identity") != 0) {
+      TF_SetStatus(status, TF_UNIMPLEMENTED,
+                   "Metal: the fused batch normalisation supports the "
+                   "Identity and Relu activations only.");
+      TF_OpKernelConstruction_Failure(ctx, status);
+      TF_DeleteStatus(status);
+      delete op;
+      return nullptr;
+    }
+  }
+  TF_SetStatus(status, TF_OK, "");
 
   TF_DeleteStatus(status);
   return op;
@@ -152,6 +179,11 @@ void FusedBatchNorm_ComputeImpl(BatchNormOp* op, TF_OpKernelContext* ctx,
   if (TF_GetCode(status) != TF_OK) return;
   TF_GetInput(ctx, 4, in_variance.address(), status);
   if (TF_GetCode(status) != TF_OK) return;
+  ScopedTensor side_input;
+  if (op->has_side_input) {
+    TF_GetInput(ctx, 5, side_input.address(), status);
+    if (TF_GetCode(status) != TF_OK) return;
+  }
 
   if (TF_NumDims(x.get()) != 4) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
@@ -218,11 +250,15 @@ void FusedBatchNorm_ComputeImpl(BatchNormOp* op, TF_OpKernelContext* ctx,
   key.append("/f").append(std::to_string(op->exponential_avg_factor));
   key.append("/t").append(std::to_string(static_cast<int>(op->dtype)));
   key.append("/u").append(std::to_string(static_cast<int>(op->param_dtype)));
+  key.append(op->has_side_input ? "/side" : "/plain");
+  key.append(op->relu ? "/relu" : "/linear");
 
   const bool training = op->is_training;
   const bool nhwc = op->nhwc;
   const float epsilon = op->epsilon;
   const float factor = op->exponential_avg_factor;
+  const bool has_side_input = op->has_side_input;
+  const bool relu = op->relu;
   const double bessel =
       rest > 1 ? static_cast<double>(rest) / static_cast<double>(rest - 1) : 1.0;
 
@@ -278,6 +314,21 @@ void FusedBatchNorm_ComputeImpl(BatchNormOp* op, TF_OpKernelContext* ctx,
                                                epsilon:epsilon
                                                   name:nil];
         if (x_type != u_type) yt = [g castTensor:yt toType:x_type name:nil];
+        // The folded pair, in the order the fusion defines: the side input is
+        // added to the normalised result, and the activation sees the sum.
+        if (has_side_input) {
+          MPSGraphTensor* side = [g placeholderWithShape:MPSShape(x_shape)
+                                                dataType:x_type
+                                                    name:nil];
+          [out->inputs addObject:side];
+          yt = [g additionWithPrimaryTensor:yt secondaryTensor:side name:nil];
+        }
+        if (relu) {
+          yt = [g maximumWithPrimaryTensor:yt
+                          secondaryTensor:[g constantWithScalar:0.0
+                                                       dataType:x_type]
+                                     name:nil];
+        }
 
         // The reported batch statistics. In training these are the new
         // estimates, with Bessel's correction on the variance and an optional
@@ -374,8 +425,16 @@ void FusedBatchNorm_ComputeImpl(BatchNormOp* op, TF_OpKernelContext* ctx,
       TensorDataForTensor(saved_var.get(), op->param_dtype, device, status);
   if (sv_data == nil) return;
 
-  RunGraph(stream, *cached,
-           @[ x_data, scale_data, offset_data, mean_data, var_data ],
+  NSMutableArray<MPSGraphTensorData*>* feeds = [NSMutableArray
+      arrayWithObjects:x_data, scale_data, offset_data, mean_data, var_data,
+                       nil];
+  if (op->has_side_input) {
+    MPSGraphTensorData* side_data =
+        TensorDataForTensor(side_input.get(), op->dtype, device, status);
+    if (side_data == nil) return;
+    [feeds addObject:side_data];
+  }
+  RunGraph(stream, *cached, feeds,
            @[ y_data, om_data, ov_data, sm_data, sv_data ], status);
 }
 
@@ -668,6 +727,11 @@ void RegisterMetalBatchNormKernels() {
     Register("FusedBatchNormGradV2", &FusedBatchNormGrad_Compute, kDTypes[i],
              true, TF_FLOAT,
              std::string("MetalFusedBatchNormGradV2") + kSuffixes[i]);
+    // The Ex form is the same pass with an optional side input and an
+    // optional activation folded in; the kernel reads both from its
+    // attributes, so it needs no separate compute.
+    Register("_FusedBatchNormEx", &FusedBatchNorm_Compute, kDTypes[i], true,
+             TF_FLOAT, std::string("Metal_FusedBatchNormEx") + kSuffixes[i]);
     Register("FusedBatchNormGradV3", &FusedBatchNormGrad_Compute, kDTypes[i],
              true, TF_FLOAT,
              std::string("MetalFusedBatchNormGradV3") + kSuffixes[i]);

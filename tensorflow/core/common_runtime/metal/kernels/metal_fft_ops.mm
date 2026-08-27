@@ -59,6 +59,9 @@ struct FftOp {
   int axes = 1;
   bool inverse = false;
   bool real = false;
+  // The ND forms name their axes and lengths in inputs rather than in the
+  // op's name.
+  bool axes_from_input = false;
 };
 
 void* FftOp_Create(TF_OpKernelConstruction* ctx) { return new FftOp(); }
@@ -164,54 +167,6 @@ bool TransformAxes(TF_OpKernelContext* ctx, SP_Stream stream,
   return true;
 }
 
-// The complex forms: the output has the input's shape and the transform runs
-// in place on a copy of it.
-void ComplexFft_ComputeImpl(FftOp* op, TF_OpKernelContext* ctx,
-                            TF_Status* status) {
-  ScopedTensor input;
-  TF_GetInput(ctx, 0, input.address(), status);
-  if (TF_GetCode(status) != TF_OK) return;
-  const std::vector<int64_t> shape = ShapeOf(input.get());
-  if (static_cast<int>(shape.size()) < op->axes) {
-    TF_SetStatus(status, TF_INVALID_ARGUMENT,
-                 "Metal: the input has fewer axes than the transform.");
-    return;
-  }
-  const int64_t count = ElementCount(shape);
-  ScopedTensor output;
-  output.reset(TF_AllocateOutput(
-      ctx, 0, TF_COMPLEX64, shape.data(), static_cast<int>(shape.size()),
-      static_cast<size_t>(count) * sizeof(float) * 2, status));
-  if (TF_GetCode(status) != TF_OK) return;
-  if (count == 0) return;
-
-  SP_Stream stream = StreamForContext(ctx, status);
-  if (TF_GetCode(status) != TF_OK) return;
-  BufferSlice in_slice, out_slice;
-  if (!SliceForTensor(input.get(), &in_slice, status)) return;
-  if (!SliceForTensor(output.get(), &out_slice, status)) return;
-
-  {
-    OrderedCommandBuffer command_buffer(stream);
-    if (!command_buffer.ok()) {
-      TF_SetStatus(status, TF_RESOURCE_EXHAUSTED,
-                   "Metal: could not create a command buffer for a "
-                   "transform.");
-      return;
-    }
-    id<MTLBlitCommandEncoder> encoder =
-        [command_buffer.get() blitCommandEncoder];
-    [encoder copyFromBuffer:in_slice.buffer
-               sourceOffset:in_slice.offset
-                   toBuffer:out_slice.buffer
-          destinationOffset:out_slice.offset
-                       size:static_cast<NSUInteger>(count) * sizeof(float) * 2];
-    [encoder endEncoding];
-    command_buffer.Commit();
-  }
-  TransformAxes(ctx, stream, out_slice, shape, op->axes, op->inverse, status);
-}
-
 // The requested transform length, which crops or zero-pads the input.
 bool ReadFftLength(TF_OpKernelContext* ctx, int axes,
                    std::vector<int64_t>* out, TF_Status* status) {
@@ -283,6 +238,68 @@ bool ResizeInto(SP_Stream stream, const BufferSlice& input,
   [encoder endEncoding];
   command_buffer.Commit();
   return true;
+}
+
+// The complex forms: the output has the input's shape and the transform runs
+// in place on a copy of it.
+void ComplexFft_ComputeImpl(FftOp* op, TF_OpKernelContext* ctx,
+                            TF_Status* status) {
+  ScopedTensor input;
+  TF_GetInput(ctx, 0, input.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+  const std::vector<int64_t> in_shape = ShapeOf(input.get());
+  const int rank = static_cast<int>(in_shape.size());
+  if (rank < op->axes) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: the input has fewer axes than the transform.");
+    return;
+  }
+  // The fixed-rank forms transform the input as it stands; the ND forms are
+  // told what length to use and crop or pad to it.
+  std::vector<int64_t> shape = in_shape;
+  if (op->axes_from_input) {
+    std::vector<int64_t> fft_length;
+    if (!ReadFftLength(ctx, op->axes, &fft_length, status)) return;
+    for (int i = 0; i < op->axes; ++i) {
+      shape[rank - op->axes + i] = fft_length[i];
+    }
+  }
+  const int64_t count = ElementCount(shape);
+  ScopedTensor output;
+  output.reset(TF_AllocateOutput(
+      ctx, 0, TF_COMPLEX64, shape.data(), static_cast<int>(shape.size()),
+      static_cast<size_t>(count) * sizeof(float) * 2, status));
+  if (TF_GetCode(status) != TF_OK) return;
+  if (count == 0) return;
+
+  SP_Stream stream = StreamForContext(ctx, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  BufferSlice in_slice, out_slice;
+  if (!SliceForTensor(input.get(), &in_slice, status)) return;
+  if (!SliceForTensor(output.get(), &out_slice, status)) return;
+
+  if (shape == in_shape) {
+    OrderedCommandBuffer command_buffer(stream);
+    if (!command_buffer.ok()) {
+      TF_SetStatus(status, TF_RESOURCE_EXHAUSTED,
+                   "Metal: could not create a command buffer for a "
+                   "transform.");
+      return;
+    }
+    id<MTLBlitCommandEncoder> encoder =
+        [command_buffer.get() blitCommandEncoder];
+    [encoder copyFromBuffer:in_slice.buffer
+               sourceOffset:in_slice.offset
+                   toBuffer:out_slice.buffer
+          destinationOffset:out_slice.offset
+                       size:static_cast<NSUInteger>(count) * sizeof(float) * 2];
+    [encoder endEncoding];
+    command_buffer.Commit();
+  } else if (!ResizeInto(stream, in_slice, in_shape, out_slice, shape, 0,
+                         status)) {
+    return;
+  }
+  TransformAxes(ctx, stream, out_slice, shape, op->axes, op->inverse, status);
 }
 
 // The real transforms, over any number of trailing axes.
@@ -401,6 +418,67 @@ void RealFft_ComputeImpl(FftOp* op, TF_OpKernelContext* ctx,
              op->inverse ? 2 : 0, status);
 }
 
+// The ND forms take the axes to transform and their lengths as inputs. Both
+// are read on the host, since the axes decide which passes run and the lengths
+// decide the output's shape.
+//
+// The axes handled are the trailing ones in increasing order, which is what
+// every caller of these ops passes and what the two- and three-dimensional
+// forms are by definition. A different set would need the tensor transposed
+// first, which is work this does not do rather than work it does badly.
+bool ReadAxes(TF_OpKernelContext* ctx, int rank, int* axes,
+              TF_Status* status) {
+  ScopedTensor t;
+  TF_GetInput(ctx, 2, t.address(), status);
+  if (TF_GetCode(status) != TF_OK) return false;
+  const void* data = TF_TensorData(t.get());
+  const int64_t count = TF_TensorElementCount(t.get());
+  if (data == nullptr || count < 1) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: axes must be a non-empty vector in host memory.");
+    return false;
+  }
+  std::vector<int> requested;
+  for (int64_t i = 0; i < count; ++i) {
+    int axis = static_cast<const int32_t*>(data)[i];
+    if (axis < 0) axis += rank;
+    requested.push_back(axis);
+  }
+  for (size_t i = 0; i < requested.size(); ++i) {
+    const int expected = rank - static_cast<int>(requested.size()) +
+                         static_cast<int>(i);
+    if (requested[i] != expected) {
+      TF_SetStatus(status, TF_UNIMPLEMENTED,
+                   "Metal: the N-dimensional transforms handle the trailing "
+                   "axes in increasing order.");
+      return false;
+    }
+  }
+  *axes = static_cast<int>(requested.size());
+  return true;
+}
+
+void FftNd_ComputeImpl(FftOp* op, TF_OpKernelContext* ctx, bool real,
+                       bool inverse, TF_Status* status) {
+  ScopedTensor input;
+  TF_GetInput(ctx, 0, input.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+  const int rank = static_cast<int>(ShapeOf(input.get()).size());
+  int axes = 1;
+  if (!ReadAxes(ctx, rank, &axes, status)) return;
+  op->axes = axes;
+  op->inverse = inverse;
+  op->real = real;
+  op->axes_from_input = true;
+  if (real) {
+    RealFft_ComputeImpl(op, ctx, status);
+  } else {
+    // The complex ND form is told its lengths too, and crops or pads to them
+    // before transforming, which the fixed-rank forms never have to do.
+    ComplexFft_ComputeImpl(op, ctx, status);
+  }
+}
+
 #define METAL_FFT_COMPUTE(NAME, AXES, INVERSE, REAL)                        \
   void NAME(void* kernel, TF_OpKernelContext* ctx) {                        \
     ScopedAutoreleasePool pool;                                             \
@@ -429,6 +507,58 @@ METAL_FFT_COMPUTE(Fft3_Compute, 3, false, false)
 METAL_FFT_COMPUTE(Ifft1_Compute, 1, true, false)
 METAL_FFT_COMPUTE(Ifft2_Compute, 2, true, false)
 METAL_FFT_COMPUTE(Ifft3_Compute, 3, true, false)
+void FftNd_Compute(void* kernel, TF_OpKernelContext* ctx) {
+  ScopedAutoreleasePool pool;
+  TF_Status* status = TF_NewStatus();
+  auto* op = static_cast<FftOp*>(kernel);
+  if (op == nullptr) {
+    TF_SetStatus(status, TF_INTERNAL, "Metal: FFTND has no state.");
+  } else {
+    FftNd_ComputeImpl(op, ctx, /*real=*/false, /*inverse=*/false, status);
+  }
+  if (TF_GetCode(status) != TF_OK) TF_OpKernelContext_Failure(ctx, status);
+  TF_DeleteStatus(status);
+}
+
+void IfftNd_Compute(void* kernel, TF_OpKernelContext* ctx) {
+  ScopedAutoreleasePool pool;
+  TF_Status* status = TF_NewStatus();
+  auto* op = static_cast<FftOp*>(kernel);
+  if (op == nullptr) {
+    TF_SetStatus(status, TF_INTERNAL, "Metal: IFFTND has no state.");
+  } else {
+    FftNd_ComputeImpl(op, ctx, /*real=*/false, /*inverse=*/true, status);
+  }
+  if (TF_GetCode(status) != TF_OK) TF_OpKernelContext_Failure(ctx, status);
+  TF_DeleteStatus(status);
+}
+
+void RfftNd_Compute(void* kernel, TF_OpKernelContext* ctx) {
+  ScopedAutoreleasePool pool;
+  TF_Status* status = TF_NewStatus();
+  auto* op = static_cast<FftOp*>(kernel);
+  if (op == nullptr) {
+    TF_SetStatus(status, TF_INTERNAL, "Metal: RFFTND has no state.");
+  } else {
+    FftNd_ComputeImpl(op, ctx, /*real=*/true, /*inverse=*/false, status);
+  }
+  if (TF_GetCode(status) != TF_OK) TF_OpKernelContext_Failure(ctx, status);
+  TF_DeleteStatus(status);
+}
+
+void IrfftNd_Compute(void* kernel, TF_OpKernelContext* ctx) {
+  ScopedAutoreleasePool pool;
+  TF_Status* status = TF_NewStatus();
+  auto* op = static_cast<FftOp*>(kernel);
+  if (op == nullptr) {
+    TF_SetStatus(status, TF_INTERNAL, "Metal: IRFFTND has no state.");
+  } else {
+    FftNd_ComputeImpl(op, ctx, /*real=*/true, /*inverse=*/true, status);
+  }
+  if (TF_GetCode(status) != TF_OK) TF_OpKernelContext_Failure(ctx, status);
+  TF_DeleteStatus(status);
+}
+
 METAL_FFT_COMPUTE(Rfft1_Compute, 1, false, true)
 METAL_FFT_COMPUTE(Rfft2_Compute, 2, false, true)
 METAL_FFT_COMPUTE(Rfft3_Compute, 3, false, true)
@@ -440,12 +570,15 @@ METAL_FFT_COMPUTE(Irfft3_Compute, 3, true, true)
 
 void Register(const char* op_name,
               void (*compute)(void*, TF_OpKernelContext*),
-              const std::string& name, bool host_length) {
+              const std::string& name, bool host_length,
+              bool host_axes = false) {
   TF_Status* status = TF_NewStatus();
   TF_KernelBuilder* builder = TF_NewKernelBuilder(
       op_name, kMetalDeviceType, &FftOp_Create, compute, &FftOp_Delete);
-  // The transform length sizes the output, so it is read on the host.
+  // The transform length sizes the output, so it is read on the host, and so
+  // are the axes when the op names them.
   if (host_length) TF_KernelBuilder_HostMemory(builder, "fft_length");
+  if (host_axes) TF_KernelBuilder_HostMemory(builder, "axes");
   TF_RegisterKernelBuilder(name.c_str(), builder, status);
   if (TF_GetCode(status) != TF_OK) {
     LOG(ERROR) << "Metal: could not register kernel " << name << ": "
@@ -476,6 +609,11 @@ void RegisterMetalFftKernels() {
   Register("IRFFT", &Irfft1_Compute, "MetalIRFFT", true);
   Register("IRFFT2D", &Irfft2_Compute, "MetalIRFFT2D", true);
   Register("IRFFT3D", &Irfft3_Compute, "MetalIRFFT3D", true);
+  // The axes are read on the host as well: they decide which passes run.
+  Register("FFTND", &FftNd_Compute, "MetalFFTND", true, true);
+  Register("IFFTND", &IfftNd_Compute, "MetalIFFTND", true, true);
+  Register("RFFTND", &RfftNd_Compute, "MetalRFFTND", true, true);
+  Register("IRFFTND", &IrfftNd_Compute, "MetalIRFFTND", true, true);
 }
 
 }  // namespace metal
