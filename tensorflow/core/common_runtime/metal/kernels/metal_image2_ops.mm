@@ -235,6 +235,137 @@ void RGBToHSV_ComputeImpl(ImageOp* op, TF_OpKernelContext* ctx,
   RunGraph(stream, *cached, @[ in_data ], @[ o_data ], status);
 }
 
+/*** HSV TO RGB ***/
+
+// The inverse of RGBToHSV, written the same way: the six hue sectors are all
+// evaluated and selected between, rather than branched on.
+void HSVToRGB_ComputeImpl(ImageOp* op, TF_OpKernelContext* ctx,
+                          TF_Status* status) {
+  ScopedTensor input;
+  TF_GetInput(ctx, 0, input.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  const std::vector<int64_t> shape = ShapeOf(input.get());
+  if (shape.empty() || shape.back() != 3) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: HSVToRGB needs a trailing channel axis of size 3.");
+    return;
+  }
+  const int64_t count = ElementCount(shape);
+  ScopedTensor output;
+  output.reset(TF_AllocateOutput(
+      ctx, 0, op->dtype, shape.data(), static_cast<int>(shape.size()),
+      static_cast<size_t>(count) * TF_DataTypeSize(op->dtype), status));
+  if (TF_GetCode(status) != TF_OK) return;
+  if (count == 0) return;
+
+  SP_Stream stream = StreamForContext(ctx, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  id<MTLDevice> device = DeviceForStream(stream);
+  MPSDataType mps_dtype;
+  if (!MPSTypeFor(op->dtype, &mps_dtype, status)) return;
+
+  std::string key = "HSVToRGB";
+  AppendShapeToKey(shape, &key);
+  key.append("/t").append(std::to_string(static_cast<int>(op->dtype)));
+  const NSUInteger axis = static_cast<NSUInteger>(shape.size()) - 1;
+
+  const CachedGraph* cached = LookupOrBuildGraph(
+      key,
+      ^(CachedGraph* out) {
+        MPSGraph* g = out->graph;
+        MPSGraphTensor* x = [g placeholderWithShape:MPSShape(shape)
+                                           dataType:mps_dtype
+                                               name:nil];
+        MPSGraphTensor *h, *s, *v;
+        SplitChannels(g, x, axis, &h, &s, &v);
+
+        MPSGraphTensor* six = [g constantWithScalar:6.0 dataType:mps_dtype];
+        MPSGraphTensor* one = [g constantWithScalar:1.0 dataType:mps_dtype];
+
+        // Sector index and the fractional position inside it.
+        MPSGraphTensor* scaled =
+            [g multiplicationWithPrimaryTensor:h secondaryTensor:six name:nil];
+        MPSGraphTensor* sector = [g floorWithTensor:scaled name:nil];
+        MPSGraphTensor* frac =
+            [g subtractionWithPrimaryTensor:scaled
+                            secondaryTensor:sector
+                                       name:nil];
+
+        MPSGraphTensor* p =
+            [g multiplicationWithPrimaryTensor:v
+                               secondaryTensor:
+                                   [g subtractionWithPrimaryTensor:one
+                                                   secondaryTensor:s
+                                                              name:nil]
+                                          name:nil];
+        MPSGraphTensor* q = [g
+            multiplicationWithPrimaryTensor:v
+                            secondaryTensor:
+                                [g subtractionWithPrimaryTensor:one
+                                                secondaryTensor:
+                                                    [g multiplicationWithPrimaryTensor:s
+                                                                       secondaryTensor:frac
+                                                                                  name:nil]
+                                                           name:nil]
+                                       name:nil];
+        MPSGraphTensor* t = [g
+            multiplicationWithPrimaryTensor:v
+                            secondaryTensor:
+                                [g subtractionWithPrimaryTensor:one
+                                                secondaryTensor:
+                                                    [g multiplicationWithPrimaryTensor:s
+                                                                       secondaryTensor:
+                                                                           [g subtractionWithPrimaryTensor:one
+                                                                                           secondaryTensor:frac
+                                                                                                      name:nil]
+                                                                                  name:nil]
+                                                           name:nil]
+                                       name:nil];
+
+        // Each sector picks a different (r, g, b) triple from v, p, q, t.
+        MPSGraphTensor* channels[3] = {nil, nil, nil};
+        MPSGraphTensor* table[6][3] = {
+            {v, t, p}, {q, v, p}, {p, v, t},
+            {p, q, v}, {t, p, v}, {v, p, q},
+        };
+        for (int c = 0; c < 3; ++c) {
+          MPSGraphTensor* acc = table[5][c];
+          // Built from the last sector backwards so each select tests one
+          // index, which keeps the chain shallow and readable.
+          for (int i = 4; i >= 0; --i) {
+            MPSGraphTensor* is_i =
+                [g equalWithPrimaryTensor:sector
+                          secondaryTensor:[g constantWithScalar:i
+                                                       dataType:mps_dtype]
+                                     name:nil];
+            acc = [g selectWithPredicateTensor:is_i
+                          truePredicateTensor:table[i][c]
+                         falsePredicateTensor:acc
+                                         name:nil];
+          }
+          channels[c] = acc;
+        }
+
+        [out->inputs addObject:x];
+        [out->outputs
+            addObject:[g concatTensors:@[ channels[0], channels[1],
+                                          channels[2] ]
+                             dimension:static_cast<NSInteger>(axis)
+                                  name:nil]];
+      },
+      status);
+  if (cached == nullptr) return;
+
+  MPSGraphTensorData* in_data =
+      TensorDataForTensor(input.get(), op->dtype, device, status);
+  if (in_data == nil) return;
+  MPSGraphTensorData* o_data =
+      TensorDataForTensor(output.get(), op->dtype, device, status);
+  if (o_data == nil) return;
+  RunGraph(stream, *cached, @[ in_data ], @[ o_data ], status);
+}
+
 /*** ADJUST CONTRAST ***/
 
 // AdjustContrastv2 moves each channel toward that channel's mean over the
@@ -332,6 +463,7 @@ void AdjustContrast_ComputeImpl(ImageOp* op, TF_OpKernelContext* ctx,
   }
 
 METAL_COMPUTE(RGBToHSV_Compute, RGBToHSV_ComputeImpl)
+METAL_COMPUTE(HSVToRGB_Compute, HSVToRGB_ComputeImpl)
 METAL_COMPUTE(AdjustContrast_Compute, AdjustContrast_ComputeImpl)
 
 #undef METAL_COMPUTE
@@ -359,6 +491,7 @@ void Register(const char* op_name,
 
 void RegisterMetalImage2Kernels() {
   Register("RGBToHSV", &RGBToHSV_Compute, TF_FLOAT, "MetalRGBToHSVFloat");
+  Register("HSVToRGB", &HSVToRGB_Compute, TF_FLOAT, "MetalHSVToRGBFloat");
   Register("AdjustContrastv2", &AdjustContrast_Compute, TF_FLOAT,
            "MetalAdjustContrastv2Float");
 }

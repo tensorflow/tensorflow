@@ -168,7 +168,7 @@ differently rather than fail.
 | `SpaceToBatchND`, `BatchToSpaceND` | float32, float16 |
 | `Diag`, `DiagPart`, `LinSpace` | float32, float16 |
 | `ResizeBilinear`, `ResizeNearestNeighbor` | float32, float16 |
-| `RGBToHSV`, `AdjustContrastv2` | float32 |
+| `RGBToHSV`, `HSVToRGB`, `AdjustContrastv2` | float32 |
 | `ReverseV2`, `Split`, `SplitV` | float32, float16 |
 | `Reverse`, `CheckNumerics`, `CheckNumericsV2` | float32, float16 |
 | `LRN` | float32 |
