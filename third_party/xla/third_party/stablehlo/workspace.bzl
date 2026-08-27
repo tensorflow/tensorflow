@@ -1,11 +1,26 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# =============================================================================
+
 """Provides the repository macro to import StableHLO."""
 
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 
 def repo():
     # LINT.IfChange
-    STABLEHLO_COMMIT = "e6f81ebd06b3509f2c7fa6175430aadbd4d724ca"
-    STABLEHLO_SHA256 = "ea872e1d496797e6ab1c9c1d0947d1469b4f3797c04aeeefd2c9bbdeb0dfa631"
+    STABLEHLO_COMMIT = "7b1b15781ccbd770f50c7eef4b0c3e03834649fd"
+    STABLEHLO_SHA256 = "d498ed1ba288eaf508369f76912e14d52d7f1f1a31ddaddd8ad4be40c8b7b4dc"
     # LINT.ThenChange(Google-internal path)
 
     tf_http_archive(

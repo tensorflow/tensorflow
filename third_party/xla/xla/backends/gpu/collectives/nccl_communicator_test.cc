@@ -106,7 +106,7 @@ TEST(NcclCommunicatorTest, AsyncApiCalls) {
       if (i > 0) {
         all_reduce_barriers[i - 1]->Block();
       }
-      ASSIGN_OR_RETURN(auto sym_mem, comms[rank]->CreateSymmetricMemory(
+      ABSL_ASSIGN_OR_RETURN(auto sym_mem, comms[rank]->CreateSymmetricMemory(
                                          sym_allocs[rank]->address()));
       registration_barriers[i]->Block();
     }
@@ -121,7 +121,7 @@ TEST(NcclCommunicatorTest, AsyncApiCalls) {
     GpuCollectives::Executor gpu_exec(stream);
     for (int i = 0; i < kNumIterations; ++i) {
       registration_barriers[i]->Block();
-      RETURN_IF_ERROR(comms[rank]
+      ABSL_RETURN_IF_ERROR(comms[rank]
                           ->AllReduce(send_allocs[rank]->address(),
                                       recv_allocs[rank]->address(), F32, 256,
                                       ReductionKind::SUM, gpu_exec)

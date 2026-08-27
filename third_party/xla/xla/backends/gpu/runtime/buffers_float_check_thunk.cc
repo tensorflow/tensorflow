@@ -27,9 +27,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log.pb.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
@@ -81,15 +81,11 @@ BuffersDebugFloatCheckThunk::BuffersDebugFloatCheckThunk(
 }
 absl::Status BuffersDebugFloatCheckThunk::Initialize(
     const InitializeParams& params) {
-  if (params.executor->GetPlatform()->id() != se::cuda::kCudaPlatformId) {
-    VLOG(1) << "Buffer float checking not supported on non-CUDA platforms, "
-               "skipping";
-    return absl::OkStatus();
-  }
-  if (!params.executor->GetDeviceDescription()
+  if (params.executor->GetPlatform()->id() == se::cuda::kCudaPlatformId &&
+      !params.executor->GetDeviceDescription()
            .cuda_compute_capability()
            .IsAtLeastPascal()) {
-    VLOG(1)
+    LOG_FIRST_N(WARNING, 1)
         << "Buffer float checking not supported on CUDA architectures older "
            "than Pascal due to missing atomic fetch_add with system scope, "
            "skipping";
@@ -101,23 +97,23 @@ absl::Status BuffersDebugFloatCheckThunk::Initialize(
     if (!kernels_.contains(params.executor)) {
       se::gpu::GpuKernelRegistry registry =
           se::gpu::GpuKernelRegistry::GetGlobalRegistry();
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           auto kernel_f32,
           registry.LoadKernel<se::gpu::BufferDebugFloatCheckF32Kernel>(
               params.executor));
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           auto kernel_bf16,
           registry.LoadKernel<se::gpu::BufferDebugFloatCheckBf16Kernel>(
               params.executor));
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           auto kernel_f16,
           registry.LoadKernel<se::gpu::BufferDebugFloatCheckF16Kernel>(
               params.executor));
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           auto kernel_f64,
           registry.LoadKernel<se::gpu::BufferDebugFloatCheckF64Kernel>(
               params.executor));
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           auto kernel_reduce,
           registry.LoadKernel<
               se::gpu::BufferDebugAppendReducedFloatCheckResultsKernel>(
@@ -176,12 +172,12 @@ absl::Status CheckFloatsAndLog(
       GetBlockDimForBuffer<T>(stream, buffer, tmp_ptr.ElementCount());
   const size_t num_blocks = block_dim.x * block_dim.y * block_dim.z;
 
-  RETURN_IF_ERROR(map_kernel.Launch(thread_dim, block_dim, stream, buffer,
+  ABSL_RETURN_IF_ERROR(map_kernel.Launch(thread_dim, block_dim, stream, buffer,
                                     buffer.ElementCount(), tmp_ptr,
                                     tmp_ptr.ElementCount()));
   // Operations on the same stream perform in sequence, so at this point the
   // results of the previous FloatCheck operation are available.
-  RETURN_IF_ERROR(reduce_append_kernel.Launch(
+  ABSL_RETURN_IF_ERROR(reduce_append_kernel.Launch(
       thread_dim, se::BlockDim(1, 1, 1), stream, tmp_ptr,
       std::min<uint64_t>(tmp_ptr.ElementCount(), num_blocks), entry_id,
       buffer_debug_log.GetDeviceHeader(), buffer_debug_log.GetDeviceEntries()));
@@ -240,19 +236,19 @@ absl::Status BuffersDebugFloatCheckThunk::ExecuteOnStream(
         params.buffer_allocations->GetDeviceAddress(buffer);
 
     if (buffer_type == PrimitiveType::F32) {
-      RETURN_IF_ERROR(CheckFloatsAndLog<float>(
+      ABSL_RETURN_IF_ERROR(CheckFloatsAndLog<float>(
           params.stream, entry_id, buffer_debug_log, device_buffer, tmp_ptr,
           kernels->f32, kernels->reduce));
     } else if (buffer_type == PrimitiveType::BF16) {
-      RETURN_IF_ERROR(CheckFloatsAndLog<Eigen::bfloat16>(
+      ABSL_RETURN_IF_ERROR(CheckFloatsAndLog<Eigen::bfloat16>(
           params.stream, entry_id, buffer_debug_log, device_buffer, tmp_ptr,
           kernels->bf16, kernels->reduce));
     } else if (buffer_type == PrimitiveType::F16) {
-      RETURN_IF_ERROR(CheckFloatsAndLog<Eigen::half>(
+      ABSL_RETURN_IF_ERROR(CheckFloatsAndLog<Eigen::half>(
           params.stream, entry_id, buffer_debug_log, device_buffer, tmp_ptr,
           kernels->f16, kernels->reduce));
     } else if (buffer_type == PrimitiveType::F64) {
-      RETURN_IF_ERROR(CheckFloatsAndLog<double>(
+      ABSL_RETURN_IF_ERROR(CheckFloatsAndLog<double>(
           params.stream, entry_id, buffer_debug_log, device_buffer, tmp_ptr,
           kernels->f64, kernels->reduce));
     } else {

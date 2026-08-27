@@ -677,7 +677,7 @@ __device__ inline Eigen::half GpuAtomicAdd(Eigen::half* ptr,
 }
 #endif
 
-#if (__CUDA_ARCH__ < 600) || TENSORFLOW_USE_ROCM
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 600)
 __device__ inline double GpuAtomicAdd(double* ptr, double value) {
   return detail::GpuAtomicCasHelper(ptr,
                                     [value](double a) { return a + value; });

@@ -125,6 +125,28 @@ TEST_F(CollectiveTransformationReordererTest, ReshapeAcrossShards) {
   EXPECT_FALSE(changed);
 }
 
+TEST_F(CollectiveTransformationReordererTest,
+       SizeOneAllGatherDimensionReshapeConsumesFullRank) {
+  // Regression test: when the all-gather dimension has size 1, the loop that
+  // maps strides onto the reshaped operand can consume the entire reshaped
+  // rank to reach the stride count, leaving the candidate reshaped all-gather
+  // dimension equal to the rank. The transformation must be rejected rather
+  // than performing an out-of-bounds dimensions() access on the reshape.
+  absl::string_view hlo_string = R"(
+  HloModule module
+  ENTRY entry {
+    param = bf16[4,2,1] parameter(0)
+    all-gather = bf16[4,2,1] all-gather(param), dimensions={2}, replica_groups={{0}}, channel_id=1
+    ROOT reshape = bf16[8] reshape(all-gather)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunCollectiveTransformationReorderer(module.get()));
+  EXPECT_FALSE(changed);
+}
+
 TEST_F(CollectiveTransformationReordererTest, MergeAllGatherDimensionWithNext) {
   absl::string_view hlo_string = R"(
   HloModule module

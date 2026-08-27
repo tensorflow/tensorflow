@@ -24,9 +24,12 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.lib.io import python_io
 from tensorflow.python.lib.io import tf_record
+from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
@@ -139,6 +142,22 @@ class TFRecordWriterTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertEqual(self.evaluate(get_next()), shard_filename)
       for j, r in enumerate(tf_record.tf_record_iterator(shard_filename)):
         self.assertAllEqual(self._record(i + 2*j), r)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testDatasetToTFRecordInvalidShape(self):
+    dataset = dataset_ops.Dataset.from_tensors(
+        constant_op.constant([], dtype=dtypes.string)
+    )
+    dataset = dataset_ops.to_variant(dataset)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "ToTFRecordOp currently only supports scalar elements"
+    ):
+      self.evaluate(
+          gen_experimental_dataset_ops.dataset_to_tf_record(
+              dataset, filename=self._outputFilename(), compression_type=""
+          )
+      )
 
 
 if __name__ == "__main__":

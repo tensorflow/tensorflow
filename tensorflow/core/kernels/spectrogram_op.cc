@@ -34,6 +34,11 @@ class AudioSpectrogramOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("stride", &stride_));
     OP_REQUIRES_OK(context,
                    context->GetAttr("magnitude_squared", &magnitude_squared_));
+    OP_REQUIRES(
+        context, window_size_ > 1,
+        errors::InvalidArgument("window_size must be > 1, got ", window_size_));
+    OP_REQUIRES(context, stride_ > 0,
+                errors::InvalidArgument("stride must be > 0, got ", stride_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -42,6 +47,9 @@ class AudioSpectrogramOp : public OpKernel {
         context, input.dims() == 2,
         absl::InvalidArgumentError(absl::StrCat("input must be 2-dimensional",
                                                 input.shape().DebugString())));
+    OP_REQUIRES(context, window_size_ > 1,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "window_size must be > 1, got ", window_size_)));
     Spectrogram spectrogram;
     OP_REQUIRES(context, spectrogram.Initialize(window_size_, stride_),
                 absl::InvalidArgumentError(absl::StrCat(

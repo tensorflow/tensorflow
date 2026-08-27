@@ -15,24 +15,24 @@ limitations under the License.
 
 // See docs in ../ops/linalg_ops.cc.
 
+#ifdef GOOGLE_CUDA
+
+#define EIGEN_USE_GPU
+
 #include <cstddef>
 #include <memory>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "tensorflow/core/framework/types.pb.h"
-#ifdef GOOGLE_CUDA
-
-#define EIGEN_USE_GPU
-
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/linalg/linalg_ops_common.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/cuda_sparse.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_solvers.h"

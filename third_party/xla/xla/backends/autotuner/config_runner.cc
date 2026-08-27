@@ -29,14 +29,17 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "xla/autotune_cache.pb.h"
 #include "xla/autotuning.pb.h"
+#include "xla/backends/autotuner/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/autotuner/codegen_orchestrator.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/shaped_buffer.h"
@@ -64,7 +67,7 @@ ConfigRunner::ProfileAll(
 
   absl::MutexLock lock(profiler_m_);
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<InputBuffers> input_buffers,
       profiler_->CreateInputBuffers(candidates[0].executable.get(), instr));
 
@@ -290,6 +293,52 @@ AutotuneResult ConfigRunner::ConfigProfile::ToProto() const {
   *result.mutable_run_time() = tsl::proto_utils::ToDurationProto(duration);
   result.set_scratch_bytes(scratch_bytes);
   return result;
+}
+
+namespace {
+
+autotuner::Config ToConfigProto(const CodegenOrchestrator::Config& config) {
+  autotuner::Config config_proto;
+  config_proto.set_backend(config.codegen_backend->backend());
+  if (config.backend_config != nullptr) {
+    *config_proto.mutable_backend_config() = *config.backend_config;
+  }
+  return config_proto;
+}
+
+}  // namespace
+
+autotuner::ConfigProfile ConfigRunner::ConfigProfile::ToConfigProfileProto()
+    const {
+  autotuner::ConfigProfile proto;
+  *proto.mutable_config() = ToConfigProto(config);
+  *proto.mutable_run_time() = tsl::proto_utils::ToDurationProto(duration);
+  proto.set_scratch_bytes(scratch_bytes);
+  return proto;
+}
+
+autotuner::FailedConfigs ConfigRunner::ConfigProfile::ToFailedConfigsProto()
+    const {
+  autotuner::FailedConfigs proto;
+  *proto.mutable_config() = ToConfigProto(config);
+  if (failure.has_value()) {
+    switch (failure->kind) {
+      case FailureKind::kCompilationFailed:
+        proto.set_kind(autotuner::FailedConfigs::COMPILATION_FAILED);
+        break;
+      case FailureKind::kExecutionFailed:
+        proto.set_kind(autotuner::FailedConfigs::EXECUTION_FAILED);
+        break;
+      case FailureKind::kRedzoneCheckFailed:
+        proto.set_kind(autotuner::FailedConfigs::REDZONE_CHECK_FAILED);
+        break;
+      case FailureKind::kWrongResults:
+        proto.set_kind(autotuner::FailedConfigs::WRONG_RESULTS);
+        break;
+    }
+    proto.set_message(failure->message);
+  }
+  return proto;
 }
 
 }  // namespace xla

@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_CODEGEN_TRITON_COLLECTIVE_EMITTER_H_
 
 #include <cstdint>
-#include <optional>
 #include <vector>
 
 #include "absl/base/nullability.h"
@@ -29,11 +28,14 @@ limitations under the License.
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/types.h"  // IWYU pragma: keep
 
 namespace xla {
@@ -68,18 +70,15 @@ llvm::SmallVector<int64_t> GreedyPowerOfTwoTiles(const Shape& output_shape,
 // For now only all-reduce is supported.
 // If an std::nullopt is returned, it implies that the collective kernel is
 // not supported and cannot be emitted.
-absl::StatusOr<std::optional<xla::gpu::BlockLevelFusionConfig>>
+absl::StatusOr<xla::xtile::BlockLevelFusionConfig>
 GetCollectiveBlockLevelFusionConfig(
     const GpuTopology& gpu_topology, const HloFusionInstruction* fusion_instr,
     const DeviceAssignment* device_assignment = nullptr);
 
 // Sets the BlockLevelFusionConfig for a collective op inside the
 // GpuBackendConfig for the fusion instruction.
-// Returns true if the collective op is supported and the config is set.
-// Returns false if the collective op is not supported. No backend config is set
-// in this case.
-// Returns an error in case of an internal error or invalid arguments.
-absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
+// Returns an error in case the collective configuration cannot be set.
+absl::Status TrySetGpuBackendConfigForCollective(
     const GpuTopology& gpu_topology, HloFusionInstruction* fusion_instr,
     const DeviceAssignment* device_assignment = nullptr);
 
@@ -100,6 +99,10 @@ absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
 // Rewrites stablehlo all-reduce op to a triton implementation.
 mlir::LogicalResult RewriteAllReduce(mlir::stablehlo::AllReduceOp op,
                                      mlir::PatternRewriter& rewriter);
+
+// Creates a CollectiveKernelSpec for a given collective or fusion instruction.
+absl::StatusOr<CollectiveKernelSpec> CreateCollectiveKernelSpec(
+    const HloInstruction* instr, const LaunchDimensions& launch_dimensions);
 
 }  // namespace xla::gpu
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_COLLECTIVE_EMITTER_H_

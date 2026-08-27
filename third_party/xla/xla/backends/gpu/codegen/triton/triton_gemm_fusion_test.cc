@@ -23,12 +23,12 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/MLIRContext.h"
@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/backends/gpu/tests/gpu_pjrt_codegen_test.h"
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
 #include "xla/backends/gpu/transforms/hoist_fused_bitcasts.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -52,7 +53,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/target_constants.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
@@ -69,6 +69,7 @@ namespace xla::gpu {
 namespace {
 
 namespace m = ::xla::match;
+using ::xla::xtile::BlockLevelParameters;
 
 struct ModuleAndNestedFusionMetadata {
   std::unique_ptr<VerifiedHloModule> module;
@@ -109,10 +110,10 @@ class TritonTest : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {
   // single GEMM fusion.
   absl::StatusOr<ModuleAndNestedFusionMetadata>
   GetModuleAndNestedFusionMetadata(absl::string_view hlo_text) {
-    ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                      ParseAndReturnVerifiedModule(hlo_text));
-    RETURN_IF_ERROR(HoistFusedBitcasts().Run(module.get()).status());
-    ASSIGN_OR_RETURN(bool converted, ConvertTritonGemmConfig(
+    ABSL_RETURN_IF_ERROR(HoistFusedBitcasts().Run(module.get()).status());
+    ABSL_ASSIGN_OR_RETURN(bool converted, ConvertTritonGemmConfig(
                                          device_description(), &mlir_context_)
                                          .Run(module.get()));
     if (!converted) {
@@ -326,7 +327,37 @@ ENTRY e {
   )"));
 }
 
-TEST_F(TritonGemmTest, DoNotUseTensorCoresWithNonDefaultPrecision) {
+TEST_F(TritonGemmTest, DoNotUseTensorCoresWithHighestPrecision) {
+  constexpr absl::string_view kHloText = R"(
+triton_gemm_r {
+  parameter_0 = s8[80,15]{1,0} parameter(0)
+  convert.3 = f32[80,15]{1,0} convert(parameter_0)
+  parameter_1 = f32[16,15]{1,0} parameter(1)
+  ROOT r.1 = f32[80,16]{1,0} dot(convert.3, parameter_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1},
+    operand_precision={HIGHEST, HIGHEST}
+}
+
+ENTRY e {
+  p1 = f32[16,15]{1,0} parameter(1)
+  p0 = s8[80,15]{1,0} parameter(0)
+  ROOT triton_gemm_r = f32[80,16]{1,0} fusion(p0, p1), kind=kCustom,
+    calls=triton_gemm_r,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm", triton_gemm_config:
+      {"block_m":32,"block_n":32,"block_k":32,
+       "num_stages":1,"num_warps":2,
+       "num_ctas":1}}}
+})";
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
+
+  CompileAndOptionallyVerifyPtx(std::move(module_and_metadata.module),
+                                R"(
+CHECK-NOT: mma
+)");
+}
+
+TEST_F(TritonGemmTest, UseTensorCoresWithHighPrecision) {
   constexpr absl::string_view kHloText = R"(
 triton_gemm_r {
   parameter_0 = s8[80,15]{1,0} parameter(0)
@@ -352,7 +383,7 @@ ENTRY e {
 
   CompileAndOptionallyVerifyPtx(std::move(module_and_metadata.module),
                                 R"(
-CHECK-NOT: mma
+CHECK: mma
 )");
 }
 
@@ -1648,6 +1679,34 @@ ENTRY e {
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonGemmTest, BatchMajorSlicedBatchDimensionProducesCorrectResults) {
+  constexpr absl::string_view kHloText = R"(
+ENTRY e {
+  p0 = f16[4,32,256] parameter(0)
+  p1 = f16[4,256,32] parameter(1)
+  ROOT d = f16[4,32,32] dot(p0, p1),
+    lhs_batch_dims={0}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={1}
+})";
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonGemmTest, DegenerateBatchDimensionProducesCorrectResults) {
+  constexpr absl::string_view kHloText = R"(
+ENTRY e {
+  p0 = f16[1,32,256] parameter(0)
+  p1 = f16[1,256,32] parameter(1)
+  ROOT d = f16[1,32,32] dot(p0, p1),
+    lhs_batch_dims={0}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={1}
+})";
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be

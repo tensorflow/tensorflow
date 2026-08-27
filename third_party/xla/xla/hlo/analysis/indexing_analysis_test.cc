@@ -2409,6 +2409,41 @@ TEST_P(IndexingAnalysisTest, ConvolutionOp_PaddingAndWindowStride) {
                           )"));
 }
 
+TEST_P(IndexingAnalysisTest, ConvolutionOp_WindowReversal) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[1,12,10,4] parameter(0)
+      p1 = f32[4,3,5,8] parameter(1)
+      ROOT conv = f32[1,10,6,8] convolution(p0, p1),
+        window={size=3x5 pad=0_0x0_0 rhs_reversal=1x0}, dim_labels=b01f_i01o->b01f
+    }
+  )");
+  auto input_indexing = GetOutputToInputIndexing(root);
+  EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
+                          operand id = 0
+                            (d0, d1, d2, d3)[s0, s1, s2] -> (0, d1 + s0, d2 + s1, s2),
+                            domain:
+                            d0 in [0, 0],
+                            d1 in [0, 9],
+                            d2 in [0, 5],
+                            d3 in [0, 7],
+                            s0 in [0, 2],
+                            s1 in [0, 4],
+                            s2 in [0, 3]
+                          operand id = 1
+                            (d0, d1, d2, d3)[s0, s1, s2] -> (s2, -s0 + 2, s1, d3),
+                            domain:
+                            d0 in [0, 0],
+                            d1 in [0, 9],
+                            d2 in [0, 5],
+                            d3 in [0, 7],
+                            s0 in [0, 2],
+                            s1 in [0, 4],
+                            s2 in [0, 3]
+                          )"));
+}
+
 TEST_P(IndexingAnalysisTest, ConvolutionOp_LhsDilation) {
   auto root = ParseAndGetRoot(R"(
     HloModule m

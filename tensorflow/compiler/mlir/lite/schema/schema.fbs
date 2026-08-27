@@ -77,6 +77,7 @@ table CustomQuantization {
 union QuantizationDetails {
   CustomQuantization,
   BlockwiseQuantization,
+  MultiAxisQuantization,
 }
 
 // Parameters for blockwise quantization.
@@ -89,6 +90,24 @@ table BlockwiseQuantization {
   zero_points: int;
   // The block size of the tensor.
   block_size: int;
+}
+
+table MultiAxisQuantization {
+  // index to the scale tensor, the tensor can be found in tensors array in
+  // subgraph.
+  scales: int;
+
+  // index to the zero point tensor. If zero_points is -1, the zero point is
+  // assumed to be 0, following the convention of optional tensors in tflite.
+  zero_points: int;
+
+  // The block size of the tensor if it's block-wise quantized.
+  // For per-channel, 0.
+  block_size: int;
+
+  // The quantized dimensions, same as the quantization_dimension field in
+  // QuantizationParameters, but supports multiple dimensions.
+  quantized_dimensions: [int];
 }
 
 // Parameters for converting a quantized tensor back to float.

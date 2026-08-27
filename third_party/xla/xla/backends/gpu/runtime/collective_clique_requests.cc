@@ -73,8 +73,8 @@ absl::Status CollectiveCliqueRequests::RequestClique(
     }
 
     if (requirements.barrier_reqs.has_value()) {
-      req.barrier_after_module_execution_requested |=
-          requirements.barrier_reqs->module_execution_barrier;
+      req.use_cross_device_barrier_requested |=
+          requirements.barrier_reqs->use_cross_device_barrier;
     }
 
     return absl::OkStatus();
@@ -91,8 +91,8 @@ absl::Status CollectiveCliqueRequests::RequestClique(
   }
 
   if (requirements.barrier_reqs.has_value()) {
-    req.barrier_after_module_execution_requested |=
-        requirements.barrier_reqs->module_execution_barrier;
+    req.use_cross_device_barrier_requested |=
+        requirements.barrier_reqs->use_cross_device_barrier;
   }
 
   cliques_.try_emplace(clique_key, std::move(req));
@@ -133,21 +133,5 @@ CollectiveCliqueRequests::OrderedRequestedCliques() const {
   return cliques;
 }
 
-absl::flat_hash_set<GlobalDeviceId>
-CollectiveCliqueRequests::GetDevicesRequiringBarrier() const {
-  absl::flat_hash_set<GlobalDeviceId> result;
-  for (const auto& [key, request] : cliques_) {
-    if (!request.barrier_after_module_execution_requested) {
-      continue;
-    }
-
-    for (const std::vector<GlobalDeviceId>& group : request.device_groups) {
-      for (GlobalDeviceId device : group) {
-        result.insert(device);
-      }
-    }
-  }
-  return result;
-}
 
 }  // namespace xla::gpu

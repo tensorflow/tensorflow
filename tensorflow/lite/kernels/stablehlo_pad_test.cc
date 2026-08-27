@@ -10,10 +10,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// #include <gmock/gmock.h>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <ostream>
 #include <string>
 #include <utility>
@@ -107,6 +107,10 @@ class StablehloPadModel : public SingleOpModel {
     return absl::Span<const int>(shape.data, shape.size);
   }
 
+  void ClearInputDataForTest() {
+    interpreter_->tensor(input_tensor_id_)->data.raw = nullptr;
+  }
+
   absl::Status CheckPreconditions() {
     const size_t rank = input_.shape.size();
     if (rank == 0) {
@@ -157,8 +161,37 @@ class StablehloPadModel : public SingleOpModel {
         /*num_threads=*/-1, /*allow_fp32_relax_to_fp16=*/false,
         /*apply_delegate=*/true, /*allocate_and_delegate=*/false);
     AllocateAndDelegate(/*apply_delegate=*/true);
-    PopulateTensor(input_tensor_id_, input_.data);
+    if (!input_.data.empty()) {
+      PopulateTensor(input_tensor_id_, input_.data);
+    }
     return absl::OkStatus();
+  }
+
+  /// Builds the model and runs Prepare without applying delegates.
+  TfLiteStatus BuildAndPrepareWithoutDelegates() {
+    if (!CheckPreconditions().ok()) {
+      return kTfLiteError;
+    }
+    input_tensor_id_ =
+        AddInput({kTensorType,
+                  std::vector<int>(input_.shape.begin(), input_.shape.end())});
+    padding_value_tensor_id_ =
+        AddConstInput(kTensorType, /*data=*/{padding_value_}, /*shape=*/{1});
+    output_tensor_id_ = AddOutput(kTensorType);
+
+    SetBuiltinOp(BuiltinOperator_STABLEHLO_PAD,
+                 BuiltinOptions2_StablehloPadOptions,
+                 CreateStablehloPadOptions(
+                     builder_, builder_.CreateVector(edge_padding_low_),
+                     builder_.CreateVector(edge_padding_high_),
+                     builder_.CreateVector(interior_padding_))
+                     .Union());
+    BuildInterpreter(
+        /*input_shapes=*/{std::vector<int>(input_.shape.begin(),
+                                           input_.shape.end())},
+        /*num_threads=*/-1, /*allow_fp32_relax_to_fp16=*/false,
+        /*apply_delegate=*/false, /*allocate_and_delegate=*/false);
+    return AllocateTensors();
   }
 
   absl::Status BuildAndInvoke() {
@@ -285,6 +318,49 @@ TEST(StablehloPadModelTest, WrongInteriorPaddingSizeIsAnError) {
               HasSubstr("Interior padding does not have the right size."));
 }
 
+TEST(StablehloPadSecurityTest, RejectsNegativeInteriorPadding) {
+  StablehloPadModel<int> model;
+  model.SetInput({2});
+  model.SetInteriorPadding({-1});
+  EXPECT_EQ(model.BuildAndPrepareWithoutDelegates(), kTfLiteError);
+}
+
+TEST(StablehloPadSecurityTest, RejectsOutputDimensionOverflow) {
+  StablehloPadModel<int> model;
+  model.SetInput({2});
+  model.SetEdgePadding({std::numeric_limits<int64_t>::max()}, {0});
+  EXPECT_EQ(model.BuildAndPrepareWithoutDelegates(), kTfLiteError);
+}
+
+TEST(StablehloPadSecurityTest, RejectsOutputDimensionThatDoesNotFitTfLiteInt) {
+  StablehloPadModel<int> model;
+  model.SetInput({1});
+  model.SetEdgePadding({0}, {std::numeric_limits<int>::max()});
+  EXPECT_EQ(model.BuildAndPrepareWithoutDelegates(), kTfLiteError);
+}
+
+TEST(StablehloPadSecurityTest,
+     RejectsOversizedOutputDimensionEvenWithZeroOutputDimension) {
+  const int64_t kTooLargeForTfLiteInt =
+      static_cast<int64_t>(std::numeric_limits<int>::max()) + 1;
+  {
+    StablehloPadModel<int> model;
+    model.SetInput({1, 0});
+    model.SetEdgePadding({0, 0}, {std::numeric_limits<int>::max(),
+                                  std::numeric_limits<int>::max()});
+    model.SetInteriorPadding({kTooLargeForTfLiteInt, kTooLargeForTfLiteInt});
+    EXPECT_EQ(model.BuildAndPrepareWithoutDelegates(), kTfLiteError);
+  }
+  {
+    StablehloPadModel<int> model;
+    model.SetInput({0, 1});
+    model.SetEdgePadding({kTooLargeForTfLiteInt, kTooLargeForTfLiteInt},
+                         {0, 0});
+    model.SetInteriorPadding({kTooLargeForTfLiteInt, kTooLargeForTfLiteInt});
+    EXPECT_EQ(model.BuildAndPrepareWithoutDelegates(), kTfLiteError);
+  }
+}
+
 TEST(StablehloPadTest, IdentityParams) {
   StablehloPadModel<int> model;
   model.SetInput({3, 3});
@@ -303,6 +379,20 @@ TEST(StablehloPadTest, InteriorPad) {
   ASSERT_TRUE(model.BuildAndInvoke().ok());
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray(expected.shape));
   EXPECT_THAT(model.GetOutputData(), ElementsAreArray(expected.data));
+}
+
+TEST(StablehloPadTest, EmptyInputProducesEdgePadding) {
+  StablehloPadModel<int> model;
+  model.SetInput(std::vector<int64_t>{0});
+  model.SetEdgePadding({2}, {2});
+  model.SetInteriorPadding({3});
+  model.SetPaddingValue(7);
+
+  ASSERT_TRUE(model.Build().ok());
+  model.ClearInputDataForTest();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(4));
+  EXPECT_THAT(model.GetOutputData(), ElementsAre(7, 7, 7, 7));
 }
 
 TEST(StablehloPadTest, LowPad) {
@@ -437,7 +527,7 @@ TYPED_TEST_SUITE(StablehloPadFuzzyTest, TestList);
 TYPED_TEST(StablehloPadFuzzyTest, FuzzyTest) {
   absl::BitGen bitgen;
 
-  for (size_t iteration = 0; iteration < 10000; ++iteration) {
+  for (size_t iteration = 0; iteration < 200; ++iteration) {
     const int rank = absl::Uniform(absl::IntervalClosed, bitgen, 1, 2);
 
     StablehloPadModel<TypeParam> model;

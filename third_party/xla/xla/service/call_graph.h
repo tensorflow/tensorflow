@@ -328,6 +328,12 @@ class CallGraph {
   // FlattenCallGraph.
   bool IsFlattened() const;
 
+  // Returns whether the call graph is flat for control flow (kWhile and
+  // kConditional). All called computations of control flow instructions must be
+  // called by exactly one control flow instruction, and each called computation
+  // of a control flow instruction should be separate from each other.
+  bool IsFlatOnControlFlow() const;
+
   // Returns a vector of instructions calling the passed computation.
   // (Often a vector of size 1.)
   std::vector<HloInstruction*> GetComputationCallers(

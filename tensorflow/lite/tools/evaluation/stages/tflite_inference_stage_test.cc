@@ -14,13 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/evaluation/stages/tflite_inference_stage.h"
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
@@ -36,13 +37,6 @@ constexpr absl::string_view kTfliteInferenceStageName =
 constexpr absl::string_view kModelPath =
     "tensorflow/lite/testdata/add_quantized.bin";
 constexpr int kTotalElements = 1 * 8 * 8 * 3;
-
-template <typename T>
-void SetValues(absl::Span<T> array, T value) {
-  for (T& element : array) {
-    element = value;
-  }
-}
 
 EvaluationStageConfig GetTfliteInferenceStageConfig() {
   EvaluationStageConfig config;
@@ -85,7 +79,7 @@ TEST(TfliteInferenceStage, NoInputData) {
   TfliteInferenceStage stage(config);
 
   // Initialize.
-  EXPECT_EQ(stage.Init(), kTfLiteOk);
+  ASSERT_EQ(stage.Init(), kTfLiteOk);
 
   // Run.
   EXPECT_EQ(stage.Run(), kTfLiteError);
@@ -97,7 +91,7 @@ TEST(TfliteInferenceStage, CorrectModelInfo) {
   TfliteInferenceStage stage(config);
 
   // Initialize.
-  EXPECT_EQ(stage.Init(), kTfLiteOk);
+  ASSERT_EQ(stage.Init(), kTfLiteOk);
 
   const TfLiteModelInfo* model_info = stage.GetModelInfo();
   // Verify Input
@@ -128,7 +122,7 @@ TEST(TfliteInferenceStage, TestResizeModel) {
   TfliteInferenceStage stage(config);
 
   // Initialize.
-  EXPECT_EQ(stage.Init(), kTfLiteOk);
+  ASSERT_EQ(stage.Init(), kTfLiteOk);
 
   // Resize.
   EXPECT_EQ(stage.ResizeInputs({{3, 8, 8, 3}}), kTfLiteOk);
@@ -162,13 +156,13 @@ TEST(TfliteInferenceStage, CorrectOutput) {
   TfliteInferenceStage stage(config);
 
   // Initialize.
-  EXPECT_EQ(stage.Init(), kTfLiteOk);
+  ASSERT_EQ(stage.Init(), kTfLiteOk);
 
   // Set input data.
-  uint8_t input_tensor[kTotalElements];
-  SetValues<uint8_t>(input_tensor, static_cast<uint8_t>(2));
+  std::array<uint8_t, kTotalElements> input_tensor;
+  input_tensor.fill(2);
   std::vector<void*> inputs;
-  inputs.push_back(input_tensor);
+  inputs.push_back(input_tensor.data());
   stage.SetInputs(inputs);
 
   // Run.
@@ -197,6 +191,49 @@ TEST(TfliteInferenceStage, CorrectOutput) {
       metrics.process_metrics().tflite_inference_metrics().num_inferences(), 2);
 }
 
+TEST(TfliteInferenceStage, InputSizeMismatch) {
+  // Create stage.
+  EvaluationStageConfig config = GetTfliteInferenceStageConfig();
+  TfliteInferenceStage stage(config);
+
+  // Initialize.
+  ASSERT_EQ(stage.Init(), kTfLiteOk);
+
+  // Set input data with mismatched size.
+  std::array<uint8_t, kTotalElements - 1> input_tensor;  // One byte too small
+  std::vector<void*> inputs;
+  inputs.push_back(input_tensor.data());
+
+  std::vector<size_t> buffer_sizes = {kTotalElements - 1};
+  stage.SetInputs(inputs, buffer_sizes);
+
+  // Run should fail.
+  EXPECT_EQ(stage.Run(), kTfLiteError);
+}
+
+TEST(TfliteInferenceStage, InputBufferSizesCopy) {
+  // Create stage.
+  EvaluationStageConfig config = GetTfliteInferenceStageConfig();
+  TfliteInferenceStage stage(config);
+
+  // Initialize.
+  ASSERT_EQ(stage.Init(), kTfLiteOk);
+
+  std::array<uint8_t, kTotalElements> input_tensor;
+  input_tensor.fill(2);
+  std::vector<void*> inputs;
+  inputs.push_back(input_tensor.data());
+
+  {
+    std::vector<size_t> buffer_sizes = {kTotalElements};
+    stage.SetInputs(inputs, buffer_sizes);
+    // buffer_sizes goes out of scope here.
+  }
+
+  // Run should still work because buffer_sizes should have been copied.
+  EXPECT_EQ(stage.Run(), kTfLiteOk);
+}
+
 TEST(TfliteInferenceStage, CustomDelegate) {
   // Create stage.
   EvaluationStageConfig config = GetTfliteInferenceStageConfig();
@@ -206,7 +243,7 @@ TEST(TfliteInferenceStage, CustomDelegate) {
 
   // Delegate application should only work after initialization of stage.
   EXPECT_NE(stage.ApplyCustomDelegate(std::move(test_delegate)), kTfLiteOk);
-  EXPECT_EQ(stage.Init(), kTfLiteOk);
+  ASSERT_EQ(stage.Init(), kTfLiteOk);
   Interpreter::TfLiteDelegatePtr test_delegate2 = CreateNNAPIDelegate();
   EXPECT_EQ(stage.ApplyCustomDelegate(std::move(test_delegate2)), kTfLiteOk);
 }

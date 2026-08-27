@@ -25,11 +25,8 @@ namespace tpu {
 TfTpu_ExecutorApiFn* ExecutorApiFn();
 void SetExecutorApiFn(const TfTpu_ExecutorApiFn* fn);
 
-// Backward-compatible overloads for TensorFlow calls.
-bool IsStreamExecutorEnabled(const TfTpu_ExecutorApiFn* executor_api_fn);
 bool IsInitialized(const TfTpu_ExecutorApiFn* executor_api_fn);
 
-bool IsStreamExecutorEnabled();
 bool IsInitialized();
 
 }  // namespace tpu

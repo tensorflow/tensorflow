@@ -21,9 +21,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/IR/Module.h"
 #include "llvm/TargetParser/Triple.h"
@@ -38,13 +38,15 @@ limitations under the License.
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
+
+using ::xla::xtile::BlockLevelParameters;
 
 xla::Future<std::unique_ptr<Thunk>> CubinCustomKernelCompiler::Compile(
     Thunk::ThunkInfo thunk_info, LlvmKernelSource kernel_source,
@@ -110,7 +112,7 @@ CubinCustomKernelCompiler::CompileToCubinImpl(LlvmKernelSource kernel_source) {
     pre_optimization_hook()(*llvm_module);
   }
 
-  ASSIGN_OR_RETURN(std::vector<uint8_t> cubin,
+  ABSL_ASSIGN_OR_RETURN(std::vector<uint8_t> cubin,
                    compiler_(*llvm_module, device_info_, debug_options_));
   return cubin;
 }
@@ -120,10 +122,10 @@ absl::StatusOr<std::unique_ptr<Thunk>> CubinCustomKernelCompiler::CompileImpl(
     const std::string& sanitized_kernel_name,
     const emitters::KernelArguments& kernel_arguments,
     const LaunchDimensions& launch_dimensions) {
-  ASSIGN_OR_RETURN(std::vector<uint8_t> cubin,
+  ABSL_ASSIGN_OR_RETURN(std::vector<uint8_t> cubin,
                    CompileToCubinImpl(std::move(kernel_source)));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       CustomKernel custom_kernel,
       kernel::CreateOwnedCubinCustomKernel(
           sanitized_kernel_name, std::move(cubin),

@@ -28,8 +28,8 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
-#include "xla/pjrt/pjrt_stream_executor_device_description.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
+#include "xla/pjrt/se/pjrt_stream_executor_device_description.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/xla_data.pb.h"
@@ -100,6 +100,10 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
     return 1;
   }
 
+  absl::StatusOr<std::pair<ProcessId, int>>
+  ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType(
+      GlobalDeviceId device_id) const override;
+
   absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
   ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
       GlobalDeviceId device_id) const override;
@@ -133,6 +137,11 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
 
   static absl::StatusOr<std::unique_ptr<StreamExecutorGpuTopologyDescription>>
   FromProto(const xla::PjRtTopologyDescriptionProto& proto);
+
+  absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+      int process_index, int num_replicas,
+      std::optional<int> num_replicas_per_slice, int num_partitions,
+      const MultiSliceConfig* multi_slice_config) const override;
 
  private:
   std::unique_ptr<PjRtStreamExecutorDeviceDescription> CreateDeviceDescription(

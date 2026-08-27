@@ -91,6 +91,10 @@ struct CompileOptions {
   // tuple and passed as a single parameter.
   bool parameter_is_tupled_arguments = false;
 
+  // Flattened output indices that should use individual definition events when
+  // supported. Other outputs use the primary execute event.
+  absl::flat_hash_set<int> individually_defined_output_indices;
+
   // XLA's compilation time options.
   ExecutableBuildOptions executable_build_options;
 
@@ -135,9 +139,6 @@ struct CompileOptions {
 
   absl::Status ApplyOptionFromString(
       const tsl::protobuf::FieldDescriptor* field, const std::string& value);
-
-  // Compiler variant to indicate which compiler is invoked.
-  std::optional<std::string> compiler_variant = std::nullopt;
 
   static absl::StatusOr<EnvironmentOptionOverrides> LoadEnvOptionOverrides(
       const google::protobuf::Map<std::string, xla::OptionOverrideProto>&
@@ -326,6 +327,12 @@ struct ExecuteOptions {
   // The PRNG seed to use for execution. A seed of 0 means that the seed is not
   // set and that the default seed (usually random) should be used.
   int64_t seed = 0;
+
+  // If true, use arena allocation for output buffers. When this is true, a
+  // single device buffer is allocated for all output buffers, and each output
+  // buffer is a sub-buffer of the arena. The allocated arena will be released
+  // only after all the sub-buffers are deleted.
+  bool use_output_arena = false;
 
   absl::StatusOr<ExecuteOptionsProto> ToProto() const;
   static absl::StatusOr<ExecuteOptions> FromProto(

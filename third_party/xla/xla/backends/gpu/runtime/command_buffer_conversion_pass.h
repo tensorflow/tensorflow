@@ -58,8 +58,6 @@ class CommandBufferConversionPass : public ThunkPassInterface {
     // Collective operations enabled to be executed in a command buffer.
     std::bitset<kMaxCollectiveOps> enabled_collectives;
     const se::DeviceDescription& device_description;
-    DebugOptions::CommandBufferUpdateMode update_mode =
-        DebugOptions::ALWAYS_UPDATE;
     bool enable_loop_unroll = false;
     // Number of devices in a fast-interconnect domain (host/node).
     // 0 means unknown.

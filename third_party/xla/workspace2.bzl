@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# =============================================================================
+
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
 load("@bazel_features//:deps.bzl", "bazel_features_deps")
@@ -16,8 +31,10 @@ load("//third_party/brotli:workspace.bzl", brotli = "repo")
 load("//third_party/clang_toolchain:cc_configure_clang.bzl", "cc_download_clang_toolchain")
 load("//third_party/compute_library:workspace.bzl", compute_library = "repo")
 load("//third_party/cpuinfo:workspace.bzl", cpuinfo = "repo")
+load("//third_party/cuda_tile:workspace.bzl", cuda_tile = "repo")
 load("//third_party/cudnn_frontend:workspace.bzl", cudnn_frontend = "repo")
 load("//third_party/cutlass:workspace.bzl", cutlass = "repo")
+load("//third_party/cutlass_cutedsl_runtime:workspace.bzl", cutlass_cutedsl_runtime = "repo")
 load("//third_party/dlpack:workspace.bzl", dlpack = "repo")
 load("//third_party/ducc:workspace.bzl", ducc = "repo")
 load("//third_party/eigen3:workspace.bzl", eigen3 = "repo")
@@ -33,6 +50,7 @@ load("//third_party/highway:workspace.bzl", highway = "repo")
 load("//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
 load("//third_party/hwloc:workspace.bzl", hwloc = "repo")
 load("//third_party/implib_so:workspace.bzl", implib_so = "repo")
+load("//third_party/kleidiai:workspace.bzl", kleidiai = "repo")
 load("//third_party/libdrm:workspace.bzl", libdrm = "repo")
 load("//third_party/llvm:workspace.bzl", llvm = "repo")
 load("//third_party/llvm_openmp:workspace.bzl", llvm_openmp = "repo")
@@ -52,14 +70,19 @@ load("//third_party/pybind11_abseil:workspace.bzl", pybind11_abseil = "repo")
 load("//third_party/pybind11_bazel:workspace.bzl", pybind11_bazel = "repo")
 load("//third_party/raft:workspace.bzl", raft = "xla_repo")
 load("//third_party/rapids_logger:workspace.bzl", rapids_logger = "xla_repo")
+load("//third_party/rdma_core:workspace.bzl", rdma_core = "repo")
 load("//third_party/riegeli:workspace.bzl", riegeli = "repo")
 load("//third_party/rmm:workspace.bzl", rmm = "xla_repo")
 load("//third_party/robin_map:workspace.bzl", robin_map = "repo")
+load("//third_party/roc_mori:workspace.bzl", roc_mori = "xla_repo")
 load("//third_party/rocm_device_libs:workspace.bzl", rocm_device_libs = "repo")
 load("//third_party/shardy:workspace.bzl", shardy = "repo")
 load("//third_party/slinky:workspace.bzl", slinky = "repo")
 load("//third_party/spdlog:workspace.bzl", spdlog = "repo")
+load("//third_party/sqlite:workspace.bzl", sqlite = "repo")
 load("//third_party/stablehlo:workspace.bzl", stablehlo = "repo")
+load("//third_party/system_libpci:workspace.bzl", system_libpci = "repo")
+load("//third_party/tensor_ir:workspace.bzl", tensor_ir = "repo")
 load("//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
 load("//third_party/tensorrt:workspace.bzl", tensorrt = "repo")
 load("//third_party/transformer_engine:workspace.bzl", transformer_engine = "repo")
@@ -96,6 +119,7 @@ def _initialize_third_party():
     highwayhash()
     hwloc()
     implib_so()
+    kleidiai()
     libdrm()
     llvm_openmp()
     ml_dtypes()
@@ -116,17 +140,24 @@ def _initialize_third_party():
     rapids_logger()
     rmm()
     robin_map()
+    rdma_core()
+    system_libpci()  # ROCm CI image's pciutils headers (used by @roc_mori//:libpci).
+    roc_mori()  # MORI: hermetic Bazel build from GitHub tarball + BUILD overlays.
     rocm_device_libs()
     shardy()
     slinky()
     spdlog()
+    sqlite()
     stablehlo()
+    tensor_ir()
     tensorrt()
     transformer_engine()
     triton()
     uv()
     xnnpack()
+    cuda_tile()
     cutlass()
+    cutlass_cutedsl_runtime()
 
     # copybara: tsl vendor
 
@@ -143,10 +174,10 @@ def _tf_toolchains():
     cc_download_clang_toolchain(name = "local_config_download_clang")
     tensorrt_configure(name = "local_config_tensorrt")
     python_configure(name = "local_config_python")
-    hipcc_configure(name = "config_rocm_hipcc")  # Must be before rocm_configure.
-    rocm_configure(
-        name = "local_config_rocm",
-        rocm_dist = "@config_rocm_hipcc//rocm:rocm_dist",
+    rocm_configure(name = "local_config_rocm")
+    hipcc_configure(
+        name = "config_rocm_hipcc",
+        rocm_dist = "@local_config_rocm//rocm:toolchain_data",
     )
 
     local_clang_configure(name = "local_config_clang")
@@ -187,13 +218,6 @@ def _tf_repositories():
     # b) get the sha256 hash of the commit by running:
     #    curl -L <url> | sha256sum
     # and update the sha256 with the result.
-
-    tf_http_archive(
-        name = "KleidiAI",
-        sha256 = "9b8d0df9bab42d1d19acb571337cbaa527027cae0efd361d75dfb9b10fd7dc4e",
-        strip_prefix = "kleidiai-51f7190558e51b7415d9ba24994fb477d7371446",
-        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/51f7190558e51b7415d9ba24994fb477d7371446.zip"),
-    )
 
     compute_library()
 
@@ -240,6 +264,13 @@ def _tf_repositories():
         repo_mapping = {
             "@abseil-cpp": "@com_google_absl",
         },
+    )
+
+    tf_http_archive(
+        name = "rules_foreign_cc",
+        sha256 = "476303bd0f1b04cc311fc258f1708a5f6ef82d3091e53fd1977fa20383425a6a",
+        strip_prefix = "rules_foreign_cc-0.10.1",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_foreign_cc/releases/download/0.10.1/rules_foreign_cc-0.10.1.tar.gz"),
     )
 
     tf_http_archive(
@@ -346,10 +377,13 @@ def _tf_repositories():
     )
 
     tf_http_archive(
-        name = "com_github_grpc_grpc",
+        name = "grpc",
         sha256 = "41b695614b26652ff9e97ce50cfd4a6c7a3d45a9fe598d1454407746499bbf2c",
         strip_prefix = "grpc-1.81.0",
         patch_file = ["//third_party/grpc:grpc.patch"],
+        repo_mapping = {
+            "@com_github_grpc_grpc": "@grpc",
+        },
         urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.81.0.tar.gz"),
     )
 

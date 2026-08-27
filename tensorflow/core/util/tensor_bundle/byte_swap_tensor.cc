@@ -93,17 +93,18 @@ absl::Status ByteSwapBuffer(char* buff, size_t size, DataType dtype,
       array_len = (array_len == -1) ? size / bytes_per_elem : array_len;
       break;
 
-    // Complex types need special handling
+    // Complex types have two components per element. When the count comes from
+    // num_of_elem it is an element count and must be doubled to reach the
+    // component count; when it is derived from size it already counts the
+    // bytes_per_elem-sized components, so doubling it would run off the buffer.
     case DT_COMPLEX64:
       bytes_per_elem = 4;
-      array_len = (array_len == -1) ? size / bytes_per_elem : array_len;
-      array_len *= 2;
+      array_len = (array_len == -1) ? size / bytes_per_elem : array_len * 2;
       break;
 
     case DT_COMPLEX128:
       bytes_per_elem = 8;
-      array_len = (array_len == -1) ? size / bytes_per_elem : array_len;
-      array_len *= 2;
+      array_len = (array_len == -1) ? size / bytes_per_elem : array_len * 2;
       break;
 
     // Types that ought to be supported in the future

@@ -82,6 +82,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteFloat32:
     case kTfLiteFloat16:
     case kTfLiteBFloat16:
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+    case kTfLiteFloat8E4M3FN:
+    case kTfLiteFloat8E5M2:
+#endif
     case kTfLiteUInt8:
     case kTfLiteInt4:
     case kTfLiteInt8:
@@ -101,12 +105,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
 
   int axis = params->axis;
+  TF_LITE_ENSURE(context, axis >= INT16_MIN && axis <= INT16_MAX);
   if (axis < 0) {
     axis += NumDimensions(input);
   }
   TF_LITE_ENSURE(context, 0 <= axis && axis < NumDimensions(input));
 
   int batch_dims = params->batch_dims;
+  TF_LITE_ENSURE(context, batch_dims >= INT16_MIN && batch_dims <= INT16_MAX);
   // batch_dims should be in range: [-rank(positions), rank(positions)].
   // Negative batch_dims is added with rank of positions.
   if (batch_dims < 0) {
@@ -159,9 +165,12 @@ TfLiteStatus Gather(TfLiteContext* context, const TfLiteGatherParams& params,
   }
   TF_LITE_ENSURE(context, indices_has_only_positive_elements);
 
+  TF_LITE_ENSURE(context, params.axis >= INT16_MIN && params.axis <= INT16_MAX);
+  TF_LITE_ENSURE(context, params.batch_dims >= INT16_MIN &&
+                              params.batch_dims <= INT16_MAX);
   tflite::GatherParams op_params;
-  op_params.axis = params.axis;
-  op_params.batch_dims = params.batch_dims;
+  op_params.axis = static_cast<int16_t>(params.axis);
+  op_params.batch_dims = static_cast<int16_t>(params.batch_dims);
   return optimized_ops::Gather(
       op_params, GetTensorShape(input), GetTensorData<InputT>(input),
       GetTensorShape(positions), GetTensorData<PositionsT>(positions),

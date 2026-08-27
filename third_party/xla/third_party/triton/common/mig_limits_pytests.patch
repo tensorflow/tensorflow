@@ -1,6 +1,20 @@
+# Copyright 2026 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 --- a/python/test/conftest.py
 +++ b/python/test/conftest.py
-@@ -3,6 +3,18 @@ import tempfile
+@@ -2,6 +2,18 @@ import pytest
  
  
  def pytest_configure(config):
@@ -22,7 +36,7 @@
 
 --- a/python/test/unit/language/test_core.py
 +++ b/python/test/unit/language/test_core.py
-@@ -1756,10 +1756,12 @@ def test_atomic_cas(sem, num_ctas, dtype_str, device):
+@@ -1949,11 +1949,12 @@ def test_atomic_cas(sem, num_ctas, dtype_str, device):
      if not is_cuda():
          return
      assert f"atom.global.{sem_str}" in h.asm["ptx"]
@@ -33,12 +47,13 @@
 -
 -@pytest.mark.skipif(not is_cuda() or torch.cuda.get_device_capability()[0] < 9,
 -                    reason="num_ctas > 1 requires NVIDIA SM90+ (Hopper)")
+-@pytest.mark.skipif(is_sm12x(), reason="scalar multi-CTA atomic_cas is not supported on sm120 (consumer Blackwell)")
 +@pytest.mark.skipif(True,
 +                    reason="num_ctas > 1 (Cluster Multi-CTA) is not supported internally on H100/B200 MIG slices")
  def test_scalar_atomic_cas_multicta_result(device):
  
      @triton.jit
-@@ -1775,8 +1777,8 @@ def test_scalar_atomic_cas_multicta_result(device):
+@@ -1969,8 +1970,8 @@ def test_scalar_atomic_cas_multicta_result(device):
      torch.testing.assert_close(output, torch.full_like(output, 7))
  
  
@@ -49,7 +64,7 @@
  @pytest.mark.parametrize("size", [1, 4, 16, 128, 512])
  def test_tensor_atomic_cas_multicta_result(size, device):
  
-@@ -1827,8 +1829,8 @@ def test_tensor_atomic_cas(sem, size, dtype_str, num_ctas, device):
+@@ -2021,8 +2022,8 @@ def test_tensor_atomic_cas(sem, size, dtype_str, num_ctas, device):
  
  
  @pytest.mark.interpreter

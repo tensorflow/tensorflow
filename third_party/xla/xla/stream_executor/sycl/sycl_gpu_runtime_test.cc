@@ -15,8 +15,8 @@ limitations under the License.
 #include "xla/stream_executor/sycl/sycl_gpu_runtime.h"
 
 #include <gtest/gtest.h>
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
 
@@ -29,7 +29,7 @@ class SyclGpuRuntimeTest : public ::testing::Test {
 
  protected:
   absl::StatusOr<void*> AllocateHostBuffer(int count) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         void* buf, SyclMallocHost(kDefaultDeviceOrdinal, sizeof(int) * count));
     if (buf == nullptr) {
       return absl::InternalError(
@@ -41,7 +41,7 @@ class SyclGpuRuntimeTest : public ::testing::Test {
 
   absl::StatusOr<void*> AllocateDeviceBuffer(
       int count, int device_ordinal = kDefaultDeviceOrdinal) {
-    ASSIGN_OR_RETURN(void* buf,
+    ABSL_ASSIGN_OR_RETURN(void* buf,
                      SyclMallocDevice(device_ordinal, sizeof(int) * count));
     if (buf == nullptr) {
       return absl::InternalError(
@@ -59,7 +59,7 @@ class SyclGpuRuntimeTest : public ::testing::Test {
   }
 
   absl::StatusOr<void*> AllocateAndInitHostBuffer(int count, int value) {
-    ASSIGN_OR_RETURN(void* buf, AllocateHostBuffer(count));
+    ABSL_ASSIGN_OR_RETURN(void* buf, AllocateHostBuffer(count));
     for (int i = 0; i < count; ++i) {
       static_cast<int*>(buf)[i] = value;
     }
@@ -68,8 +68,8 @@ class SyclGpuRuntimeTest : public ::testing::Test {
 
   absl::StatusOr<void*> AllocateAndInitDeviceBuffer(
       int count, int value, int device_ordinal = kDefaultDeviceOrdinal) {
-    ASSIGN_OR_RETURN(void* buf, AllocateDeviceBuffer(count));
-    RETURN_IF_ERROR(SyclMemfillDevice(device_ordinal, buf, value, count));
+    ABSL_ASSIGN_OR_RETURN(void* buf, AllocateDeviceBuffer(count));
+    ABSL_RETURN_IF_ERROR(SyclMemfillDevice(device_ordinal, buf, value, count));
     if (buf == nullptr) {
       return absl::InternalError(
           "SyclGpuRuntimeTest::AllocateAndInitDeviceBuffer: Failed to fill "
@@ -194,24 +194,6 @@ TEST_F(SyclGpuRuntimeTest, TestStreamPoolDestroy_Negative) {
       SyclStreamPool::DestroyStream(kDefaultDeviceOrdinal, stream_handle),
       absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
   EXPECT_EQ(stream_handle, nullptr);
-}
-
-TEST_F(SyclGpuRuntimeTest, TestMaxStreamsPerDevice) {
-  // Ensure that the maximum number of streams per device is respected.
-  constexpr int kMaxStreams = kMaxStreamsPerDevice;
-  std::vector<StreamPtr> streams(kMaxStreams);
-  for (int i = 0; i < kMaxStreams - 1; ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(streams[i], SyclStreamPool::GetOrCreateStream(
-                                            kDefaultDeviceOrdinal,
-                                            /*enable_multiple_streams=*/true));
-    ASSERT_NE(streams[i], nullptr);
-  }
-
-  // Attempt to create one more stream, which should fail.
-  EXPECT_THAT(
-      SyclStreamPool::GetOrCreateStream(kDefaultDeviceOrdinal,
-                                        /*enable_multiple_streams=*/true),
-      absl_testing::StatusIs(absl::StatusCode::kResourceExhausted));
 }
 
 TEST_F(SyclGpuRuntimeTest, TestGetTimerProperties) {

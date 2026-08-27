@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
@@ -53,6 +68,7 @@ xla_cc_binary(
 deviceless_tests = [
     "collectives/all_reduce.hlo",
     "collectives/all_gather.hlo",
+    "concat/concat_active_scalar_constant.hlo",
     "concat/concat_offset_not_a_multiple_of_tile_size.hlo",
     "constraints/max_tensor_elements_violation.hlo",
     "dot/duplicate_dot_operand.hlo",
@@ -63,7 +79,7 @@ lit_test_suite(
     srcs = deviceless_tests,
     cfg = "//xla:lit.cfg.py",
     tools = [
-        "//xla/backends/gpu/codegen/triton/tools:hlo_to_xtileir",
+        "//xla/backends/gpu/codegen/triton/tools:fusion_to_triton",
         "@llvm-project//llvm:FileCheck",
     ],
 )
@@ -82,20 +98,24 @@ lit_device_test(
         "//xla/backends/gpu/target_config:all_gpu_specs",
     ],
     tags_override = {
-        "dot/dot_unit_tile_sizes.hlo": ["nozapfhahn"],
         "dot/dot.hlo": ["nozapfhahn"],
+        "dot/dot_concat.hlo": ["nozapfhahn"],
+        "dot/dot_major_lhs_contract.hlo": ["nozapfhahn"],
+        "dot/dot_minor_rhs_contract.hlo": ["nozapfhahn"],
+        "dot/dot_transpose_tma.hlo": ["nozapfhahn"],
+        "dot/dot_unit_tile_sizes.hlo": ["nozapfhahn"],
         "dot/layout_021_201_210.hlo": ["nozapfhahn"],
         "dot/layout_201_012_201.hlo": ["nozapfhahn"],
         "dot/layout_210_210_102.hlo": ["nozapfhahn"],
         "dot/layout_210_210_210.hlo": ["nozapfhahn"],
-        "dot/dot_major_lhs_contract.hlo": ["nozapfhahn"],
-        "dot/dot_transpose_tma.hlo": ["nozapfhahn"],
+        "dot/masked_dot.hlo": ["nozapfhahn"],
         "dot/reshape_of_pad.hlo": ["nozapfhahn"],
-        "dot/scaled_dot.hlo": ["nozapfhahn"],
+        "normalization/generic_emitter_multi_tiled_dims.hlo": ["nozapfhahn"],
+        "scaled_dot/scaled_dot.hlo": ["nozapfhahn"],
     },
     tools = [
         ":triton_test_correctness",
-        "//xla/backends/gpu/codegen/triton/tools:hlo_to_xtileir",
+        "//xla/backends/gpu/codegen/triton/tools:fusion_to_triton",
         "//xla/tools:hlo-opt",
         "@llvm-project//llvm:FileCheck",
     ],
@@ -106,9 +126,12 @@ xla_cc_test(
     srcs = ["fusion_emitter_deviceless_test.cc"],
     tags = ["no_oss"],  # Doesn't pass in OSS when building with the `fusion_emitter_stub`.
     deps = [
+        "//xla:comparison_util",
+        "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen/triton:triton_kernel_source",
         "//xla/backends/gpu/codegen/triton:xtile_compiler",
+        "//xla/codegen/xtile:block_level_parameters",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
@@ -117,13 +140,13 @@ xla_cc_test(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:target_constants",
-        "//xla/service/gpu/model:block_level_parameters",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:TargetParser",
@@ -141,7 +164,7 @@ xla_test(
         "b200",
         "amdgpu_any",
     ],
-    shard_count = 10,
+    shard_count = 20,
     tags = ["no_mac"],
     deps = [
         "//xla:autotuning_proto_cc",
@@ -158,7 +181,8 @@ xla_test(
         "//xla/backends/gpu/codegen/triton:xtile_compiler",
         "//xla/backends/gpu/codegen/triton:xtile_test_base",
         "//xla/backends/gpu/tests:gpu_pjrt_codegen_test",
-        "//xla/hlo/analysis:symbolic_map",
+        "//xla/codegen/xtile:block_level_parameters",
+        "//xla/codegen/xtile:xtile_config_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -167,23 +191,24 @@ xla_test(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:target_constants",
-        "//xla/service/gpu/model:block_level_parameters",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/rocm:rocm_compute_capability",
-        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_interpreter_reference_mixin",
         "//xla/tests:test_utils",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/random:distributions",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
         "@llvm-project//llvm:TargetParser",
@@ -268,10 +293,10 @@ xla_cc_test(
     deps = [
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen/triton:xtile_test_base",
+        "//xla/codegen/xtile:block_level_parameters",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/service/gpu/model:block_level_parameters",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
@@ -298,9 +323,9 @@ xla_test(
         "//xla/hlo/testlib:filecheck",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/stream_executor:device_description",
-        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_interpreter_reference_mixin",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@tsl//tsl/platform:path",

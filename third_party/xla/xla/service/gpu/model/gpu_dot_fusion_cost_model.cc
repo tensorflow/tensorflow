@@ -19,24 +19,26 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
@@ -49,10 +51,109 @@ limitations under the License.
 
 namespace xla::gpu::gpu_dot_fusion_cost_model {
 
+using ::xla::xtile::BlockLevelParameters;
+
 namespace detail {
 
 namespace {
+
 using ::xla::primitive_util::BitWidth;
+
+// Lookup table entry mapping DMA transfer size to fractional saturation
+// of peak bandwidth in [0.0, 1.0].
+struct BandwidthEntry {
+  int64_t dma_size_bytes;
+  float bandwidth_fraction;
+};
+
+constexpr int kHbmBandwidthTableEntries = 21;
+
+// TODO(b/547746872): Add tooling to measure and generate bandwidth derate
+// tables in a reproducible manner.
+// Empirical HBM bandwidth scaling tables mapping transfer size in bytes to
+// fraction of peak bandwidth [0.0, 1.0].
+constexpr std::array<BandwidthEntry, kHbmBandwidthTableEntries>
+    kAmpereScaledHbmBandwidthTable = {
+        {{8192, 0.00043418f},       {16384, 0.00092645f},
+         {32768, 0.00184066f},      {65536, 0.00359877f},
+         {131072, 0.00724035f},     {262144, 0.01447766f},
+         {524288, 0.02830100f},     {1048576, 0.05448203f},
+         {2097152, 0.10550455f},    {4194304, 0.19454216f},
+         {8388608, 0.32555948f},    {16777216, 0.48194352f},
+         {33554432, 0.60084187f},   {67108864, 0.71295513f},
+         {134217728, 0.79326842f},  {268435456, 0.83355906f},
+         {536870912, 0.89447866f},  {1073741824, 0.93435348f},
+         {2147483648, 0.94308240f}, {4294967296, 0.94739100f},
+         {8589934592, 0.94989600f}}};
+
+constexpr std::array<BandwidthEntry, kHbmBandwidthTableEntries>
+    kHopperScaledHbmBandwidthTable = {
+        {{8192, 0.00042359f},       {16384, 0.00090385f},
+         {32768, 0.00179577f},      {65536, 0.00351100f},
+         {131072, 0.00706376f},     {262144, 0.01412455f},
+         {524288, 0.02761073f},     {1048576, 0.05341375f},
+         {2097152, 0.10343583f},    {4194304, 0.19072761f},
+         {8388608, 0.31917596f},    {16777216, 0.47249365f},
+         {33554432, 0.58906066f},   {67108864, 0.69897562f},
+         {134217728, 0.78541428f},  {268435456, 0.82530600f},
+         {536870912, 0.88562244f},  {1073741824, 0.93248850f},
+         {2147483648, 0.94120000f}, {4294967296, 0.94550000f},
+         {8589934592, 0.94800000f}}};
+
+constexpr std::array<BandwidthEntry, kHbmBandwidthTableEntries>
+    kBlackwellScaledHbmBandwidthTable = {
+        {{8192, 0.00041057f},       {16384, 0.00080983f},
+         {32768, 0.00159736f},      {65536, 0.00315074f},
+         {131072, 0.00621472f},     {262144, 0.01009557f},
+         {524288, 0.01892165f},     {1048576, 0.03517364f},
+         {2097152, 0.06441370f},    {4194304, 0.11489171f},
+         {8388608, 0.19611710f},    {16777216, 0.31310696f},
+         {33554432, 0.45727190f},   {67108864, 0.60433204f},
+         {134217728, 0.72808478f},  {268435456, 0.81644540f},
+         {536870912, 0.87240125f},  {1073741824, 0.90518887f},
+         {2147483648, 0.92353306f}, {4294967296, 0.93353170f},
+         {8589934592, 0.93890402f}}};
+
+absl::Span<const BandwidthEntry> GetScaledHbmBandwidthTable(
+    se::CudaComputeCapability cuda_compute_capability) {
+  if (cuda_compute_capability.IsAtLeastBlackwell()) {
+    return kBlackwellScaledHbmBandwidthTable;
+  }
+  if (cuda_compute_capability.IsHopper()) {
+    return kHopperScaledHbmBandwidthTable;
+  }
+  return kAmpereScaledHbmBandwidthTable;
+}
+
+struct MemoryBandwidthSpec {
+  double l2_cache_bandwidth_bytes_per_sec;
+  absl::Span<const BandwidthEntry> hbm_bandwidth_table;
+};
+
+MemoryBandwidthSpec GetMemoryBandwidthSpec(
+    const se::DeviceDescription& device_info) {
+  double device_memory_bandwidth_bytes_per_sec =
+      static_cast<double>(device_info.memory_bandwidth());
+
+  // L2 cache bandwidth scales proportionally to memory bandwidth relative to
+  // H100 SXM (measured at 6.65 TB/s on H100 SXM).
+  // TODO(maniananth): L2 bandwidth has been hardcoded for H100 based on
+  // microbenchmarking L2 bandwidth within a partition, but we should add this
+  // to the device info and extend for more GPUs.
+  constexpr double kH100L2CacheBandwidthBytesPerSec = 6.65 * 1e12;
+  // Peak memory bandwidth of H100 SXM in bytes/s (3352.32 GB/s) from
+  // xla/backends/gpu/target_config/specs/h100_sxm.txtpb:L26.
+  constexpr double kH100SxmPeakMemoryBandwidthBytesPerSec = 3352.32 * 1e9;
+  double bandwidth_scale = device_memory_bandwidth_bytes_per_sec /
+                           kH100SxmPeakMemoryBandwidthBytesPerSec;
+
+  return MemoryBandwidthSpec{
+      /*l2_cache_bandwidth_bytes_per_sec=*/kH100L2CacheBandwidthBytesPerSec *
+          bandwidth_scale,
+      /*hbm_bandwidth_table=*/
+      GetScaledHbmBandwidthTable(device_info.cuda_compute_capability()),
+  };
+}
 
 int64_t CalculateNumThreadblocks(const DotProblemInfo& dot,
                                  const DotTileSize& dot_tile) {
@@ -76,51 +177,6 @@ int64_t CalculateNumWaves(int64_t threadblock_count,
 int64_t CalculateTileFlops(const DotTileSize& dot_tile, int64_t problem_k) {
   return /*2 FLOPs per MAC*/ 2 * dot_tile.b * dot_tile.m * dot_tile.n *
          problem_k;
-}
-
-// Calculates the effective flops for a GPU DOT operation as a function of the
-// tile size (excludes clock throttling). Not all tile sizes are equally able to
-// extract utilization on the same generation GPUs even if the workload is
-// compute bound. GEMM performance is sensitive to the tensor core
-// instruction throughputs that the programming model exposes.
-double GetEffectiveFlopsPerNsForTileSize(
-    const int64_t tile_m, const se::DeviceDescription& device_info,
-    xla::PrimitiveType element_type) {
-  se::CudaComputeCapability cuda_compute_capability =
-      device_info.cuda_compute_capability();
-
-  // Peak flops per ns for device.
-  int64_t peak_flops_per_ns =
-      GpuPerformanceModelBase::CalculatePeakMatrixOpsPerNs(device_info,
-                                                           element_type);
-
-  // Final flops derate factor.
-  double flops_derate = 1.0;
-
-  if (cuda_compute_capability.IsBlackwell()) {
-    if (tile_m < 128) {
-      // TODO(maniananth): Update this derate once we have more data from
-      // actual measurements on Blackwell. For now, we are applying a 50%
-      // derate to account for smaller M shapes.
-      flops_derate = 0.5;
-    }
-  } else if (cuda_compute_capability.IsHopper()) {
-    if (tile_m < 64) {
-      // Having a tile size M < 64 will lead to not being able to use the H100
-      // tensor core instructions (wgmma). Defaulting to wmma instructions from
-      // A100 can result in a 63% derate in flops as benchmarked by HazyResearch
-      // as part of ThunderKittens work.
-      // (https://hazyresearch.stanford.edu/blog/2024-05-12-tk)
-      flops_derate = 0.63;
-    }
-  } else if (cuda_compute_capability.IsAmpere()) {
-    if (tile_m < 16) {
-      // A100 tensor core instructions are effective at tile_m >= 16. We're
-      // applying a 50% derate to account for this.
-      flops_derate = 0.5;
-    }
-  }
-  return peak_flops_per_ns * flops_derate;
 }
 
 int64_t CalculateL2Bytes(const DotProblemInfo& dot, const DotTileSize& out_tile,
@@ -157,6 +213,43 @@ int64_t CalculateL2Bytes(const DotProblemInfo& dot, const DotTileSize& out_tile,
 }
 
 }  // namespace
+
+double GetEffectiveFlopsPerNsForTileSize(
+    int64_t tile_m, const se::DeviceDescription& device_info,
+    PrimitiveType element_type) {
+  se::CudaComputeCapability cuda_compute_capability =
+      device_info.cuda_compute_capability();
+
+  // Peak flops per ns for device.
+  int64_t peak_flops_per_ns =
+      GpuPerformanceModelBase::CalculatePeakMatrixOpsPerNs(device_info,
+                                                           element_type);
+
+  // Final flops derate factor.
+  double flops_derate = 1.0;
+
+  if (cuda_compute_capability.IsBlackwell()) {
+    if (tile_m < 64) {
+      flops_derate = 0.63;
+    }
+  } else if (cuda_compute_capability.IsHopper()) {
+    if (tile_m < 64) {
+      // Having a tile size M < 64 will lead to not being able to use the H100
+      // tensor core instructions (wgmma). Defaulting to wmma instructions from
+      // A100 can result in a 63% derate in flops as benchmarked by HazyResearch
+      // as part of ThunderKittens work.
+      // (https://hazyresearch.stanford.edu/blog/2024-05-12-tk)
+      flops_derate = 0.63;
+    }
+  } else if (cuda_compute_capability.IsAmpere()) {
+    if (tile_m < 32) {
+      // A100 tensor core instructions are not effective for small M shapes.
+      // They exhibit a ~50% empirical FLOPS derate on small M shapes (M < 32).
+      flops_derate = 0.5;
+    }
+  }
+  return peak_flops_per_ns * flops_derate;
+}
 
 DotProblemInfo::DotProblemInfo(const HloDotInstruction& dot) {
   const Shape& lhs_shape = dot.operand(0)->shape();
@@ -213,11 +306,8 @@ absl::StatusOr<ComputeAndFlops> CalculateComputeTimeWithTileAndWaveQuantization(
 absl::StatusOr<absl::Duration> CalculateL2Time(
     int64_t dot_k, int64_t tile_k, const se::DeviceDescription& device_info,
     int64_t l2_bytes_read, bool is_tma_allowed) {
-  // TODO(maniananth): L2 bandwidth has been hardcoded for H100 based on
-  // microbenchmarking L2 bandwidth within a partition, but we should add this
-  // to the device info and extend for more GPUs.
-
-  double device_l2_bandwidth = 6.65 * 1e12;  // Measured H100 L2 bandwidth.
+  double l2_cache_bandwidth_bytes_per_sec =
+      GetMemoryBandwidthSpec(device_info).l2_cache_bandwidth_bytes_per_sec;
   int64_t num_k_iters = CeilOfRatio<int64_t>(dot_k, tile_k);
 
   // Empirical overheads per K-dimension iteration.
@@ -231,56 +321,39 @@ absl::StatusOr<absl::Duration> CalculateL2Time(
   double k_loop_overhead =
       is_tma_allowed ? kTmaLoopOverheadSeconds : kLegacyLoopOverheadSeconds;
 
-  double base_time_seconds = 1.0f * l2_bytes_read / device_l2_bandwidth;
+  double base_time_seconds =
+      1.0 * l2_bytes_read / l2_cache_bandwidth_bytes_per_sec;
   return absl::Seconds(base_time_seconds + num_k_iters * k_loop_overhead);
 }
 
 // Returns the effective HBM bandwidth in bytes per second for a given dma_size.
 // dma_size is the total amount of data transferred to/from HBM in bytes.
-float GetEffectiveHbmBandwidth(const int64_t dma_size,
+float GetEffectiveHbmBandwidth(int64_t dma_size,
                                const se::DeviceDescription& device_info) {
-  using HbmBandwidthLookupEntry =
-      std::pair</*dma_size*/ int64_t, /*measured bandwidth*/ float>;
-  std::array<HbmBandwidthLookupEntry, 18> hbm_bandwidth_GBps_lookup_h100 = {
-      {{8192, 1.42f},
-       {16384, 3.03f},
-       {32768, 6.02f},
-       {65536, 11.77f},
-       {131072, 23.68f},
-       {262144, 47.35f},
-       {524288, 92.56f},
-       {1048576, 179.06f},
-       {2097152, 346.75f},
-       {4194304, 639.38f},
-       {8388608, 1069.98f},
-       {16777216, 1583.95f},
-       {33554432, 1974.72f},
-       {67108864, 2343.19f},
-       {134217728, 2632.96f},
-       {268435456, 2766.69f},
-       {536870912, 2968.89f},
-       {1073741824, 3126.0f}}};
+  MemoryBandwidthSpec spec = GetMemoryBandwidthSpec(device_info);
+  absl::Span<const BandwidthEntry> hbm_bandwidth_table =
+      spec.hbm_bandwidth_table;
+  float peak_hbm_bandwidth = static_cast<float>(device_info.memory_bandwidth());
 
-  if (dma_size <= hbm_bandwidth_GBps_lookup_h100.front().first) {
-    return hbm_bandwidth_GBps_lookup_h100.front().second * (1 << 30);
+  if (dma_size <= hbm_bandwidth_table.front().dma_size_bytes) {
+    return hbm_bandwidth_table.front().bandwidth_fraction * peak_hbm_bandwidth;
   }
-  if (dma_size >= hbm_bandwidth_GBps_lookup_h100.back().first) {
-    return hbm_bandwidth_GBps_lookup_h100.back().second * (1 << 30);
+  if (dma_size >= hbm_bandwidth_table.back().dma_size_bytes) {
+    return hbm_bandwidth_table.back().bandwidth_fraction * peak_hbm_bandwidth;
   }
 
-  auto it2 = std::lower_bound(hbm_bandwidth_GBps_lookup_h100.begin(),
-                              hbm_bandwidth_GBps_lookup_h100.end(), dma_size,
-                              [](const std::pair<int64_t, float>& a,
-                                 const int64_t b) { return a.first < b; });
+  auto it2 = std::lower_bound(
+      hbm_bandwidth_table.begin(), hbm_bandwidth_table.end(), dma_size,
+      [](const BandwidthEntry& a, int64_t b) { return a.dma_size_bytes < b; });
   auto it1 = it2 - 1;
 
   // Linear interpolation between the two entries in the lookup table. std::lerp
   // is not used as it is only available since C++20.
-  auto a = it1->second;
-  auto b = it2->second;
-  auto t =
-      (dma_size - it1->first) / static_cast<float>(it2->first - it1->first);
-  return (a + t * (b - a)) * (1 << 30);
+  float a = it1->bandwidth_fraction;
+  float b = it2->bandwidth_fraction;
+  float t = (dma_size - it1->dma_size_bytes) /
+            static_cast<float>(it2->dma_size_bytes - it1->dma_size_bytes);
+  return (a + t * (b - a)) * peak_hbm_bandwidth;
 }
 
 HbmEstimates CalculateHbmTime(const DotProblemInfo& dot,
@@ -320,6 +393,126 @@ HbmEstimates CalculateHbmTime(const DotProblemInfo& dot,
   return result;
 }
 
+absl::Duration CalculatePipelinedLoopTime(int64_t num_stages,
+                                          int64_t k_loop_iterations,
+                                          absl::Duration compute_time,
+                                          const HbmEstimates& hbm_timing) {
+  if (num_stages <= 1 || k_loop_iterations <= 1) {
+    // Serial execution: Memory and compute are not overlapped.
+    return hbm_timing.total_time() + compute_time +
+           k_loop_iterations * kLoopLatencyTax;
+  }
+  // Pipelined execution: Calculate the compute and memory per loop iteration.
+  const absl::Duration iter_compute_time = compute_time / k_loop_iterations;
+  const absl::Duration iter_raw_mem_time =
+      hbm_timing.read_time / k_loop_iterations;
+  const absl::Duration iter_mem_time = iter_raw_mem_time + kLoopLatencyTax;
+
+  // In a perfect pipeline with infinite stages, the latency tax should
+  // disappear completely.
+  const absl::Duration theoretical_iter_time =
+      std::max(iter_raw_mem_time, iter_compute_time);
+  const absl::Duration iter_time_including_latency =
+      std::max(iter_mem_time, iter_compute_time);
+  // TODO(b/529318599): Perfect overlap between compute and memory is not
+  // always possible in practice. Here we should consider a deeper formula
+  // that takes into account num_warps, num_stages and possibly other
+  // parameters. I will investigate this further in a follow-up, but this
+  // formula works well in practice and is a good starting point.
+  const absl::Duration iter_time = std::max(
+      theoretical_iter_time, iter_time_including_latency / (num_stages - 1));
+
+  // During the first num_stages-1 iterations, only memory operations are
+  // executed.
+  const int64_t prologue_loops = std::min(num_stages - 1, k_loop_iterations);
+  const absl::Duration prologue_time = prologue_loops * iter_mem_time;
+
+  // During the overlap iterations, both compute and memory operations are
+  // executed.
+  const int64_t overlap_loops = k_loop_iterations - prologue_loops;
+  const absl::Duration overlap_time = overlap_loops * iter_time;
+
+  // During the last num_stages-1 iterations, only compute operations are
+  // executed.
+  const absl::Duration epilogue_time = prologue_loops * iter_compute_time;
+
+  return prologue_time + overlap_time + epilogue_time + hbm_timing.write_time;
+}
+
+SmOccupancy CalculateSmOccupancy(const LaunchConfig& config,
+                                 const se::DeviceDescription& device_info) {
+  const int64_t hardware_max_shmem = device_info.shared_memory_per_core();
+  const int64_t hardware_max_threads = device_info.threads_per_core_limit();
+  const int64_t hardware_max_registers = device_info.registers_per_core_limit();
+  const int64_t threads_per_block =
+      config.num_warps * device_info.threads_per_warp();
+
+  const int64_t max_blocks_by_shmem =
+      config.shared_memory_per_block_bytes > 0
+          ? hardware_max_shmem / config.shared_memory_per_block_bytes
+          : hardware_max_threads;
+  const int64_t max_blocks_by_threads =
+      threads_per_block > 0 ? hardware_max_threads / threads_per_block : 0;
+  const int64_t registers_per_block =
+      config.registers_per_thread * threads_per_block;
+  const int64_t max_blocks_by_registers =
+      (registers_per_block > 0 && hardware_max_registers > 0)
+          ? hardware_max_registers / registers_per_block
+          : hardware_max_threads;
+
+  int64_t active_blocks_per_sm =
+      std::max<int64_t>(1, std::min({max_blocks_by_shmem, max_blocks_by_threads,
+                                     max_blocks_by_registers}));
+
+  // Clamp to the physical limit of blocks per SM, if the device provides it.
+  if (device_info.max_blocks_per_multiprocessor() > 0) {
+    active_blocks_per_sm = std::min(
+        active_blocks_per_sm,
+        static_cast<int64_t>(device_info.max_blocks_per_multiprocessor()));
+  }
+
+  return SmOccupancy{active_blocks_per_sm,
+                     active_blocks_per_sm * config.num_warps};
+}
+
+int64_t CalculateHardwareLaunchWaves(const LaunchConfig& config,
+                                     const se::DeviceDescription& device_info) {
+  const SmOccupancy occupancy = CalculateSmOccupancy(config, device_info);
+
+  const int64_t total_gpu_capacity =
+      occupancy.active_blocks_per_sm * device_info.core_count();
+  // Prevent division by zero; returning max() safely saturates
+  // the absl::Duration arithmetic downstream to infinity.
+  if (total_gpu_capacity == 0) {
+    return std::numeric_limits<int64_t>::max();
+  }
+  return CeilOfRatio<int64_t>(config.threadblock_count, total_gpu_capacity);
+}
+
+absl::Duration CalculatePipelinedLoopTimeWithLaunchWaves(
+    const LaunchConfig& config, absl::Duration compute_time,
+    const HbmEstimates& hbm_timing, const se::DeviceDescription& device_info) {
+  if (config.threadblock_count == 0) {
+    return absl::ZeroDuration();
+  }
+
+  const int64_t launch_waves =
+      CalculateHardwareLaunchWaves(config, device_info);
+
+  // Evaluate the pipeline loop per-wave so the latency tax isn't diluted.
+  // The total execution time is then the cost of a single wave multiplied by
+  // the number of sequentially executed waves.
+  const absl::Duration single_wave_compute = compute_time / launch_waves;
+
+  HbmEstimates single_wave_hbm;
+  single_wave_hbm.read_time = hbm_timing.read_time / launch_waves;
+  single_wave_hbm.write_time = hbm_timing.write_time / launch_waves;
+
+  return CalculatePipelinedLoopTime(config.num_stages, config.k_loop_iterations,
+                                    single_wave_compute, single_wave_hbm) *
+         launch_waves;
+}
+
 int64_t CalculateLoopIterBytes(const DotProblemInfo& dot,
                                const DotTileSize& dot_tile) {
   int64_t lhs_iter_bytes = CeilOfRatio<int64_t>(
@@ -327,6 +520,105 @@ int64_t CalculateLoopIterBytes(const DotProblemInfo& dot,
   int64_t rhs_iter_bytes = CeilOfRatio<int64_t>(
       dot_tile.b * dot_tile.k * dot_tile.n * BitWidth(dot.rhs_element_type), 8);
   return lhs_iter_bytes + rhs_iter_bytes;
+}
+
+int64_t CalculateSharedMemoryPerBlockBytes(const DotProblemInfo& dot_info,
+                                           const DotTileSize& dot_tile,
+                                           int64_t num_stages) {
+  const int64_t lhs_tile_bytes =
+      dot_tile.m * dot_tile.k *
+      primitive_util::BitWidth(dot_info.lhs_element_type) / 8;
+  const int64_t rhs_tile_bytes =
+      dot_tile.n * dot_tile.k *
+      primitive_util::BitWidth(dot_info.rhs_element_type) / 8;
+
+  return (lhs_tile_bytes + rhs_tile_bytes) * num_stages;
+}
+
+namespace {
+
+int CalculateAccumulatorRegisters(const DotProblemInfo& dot_info,
+                                  const DotTileSize& dot_tile,
+                                  int64_t total_threads) {
+  // Hardware accumulates in at least 32-bit precision (64-bit for F64).
+  const int64_t acc_bitwidth =
+      std::max<int64_t>(32, BitWidth(dot_info.output_element_type));
+  constexpr int kBitsPerRegister = 32;
+  return static_cast<int>(
+      CeilOfRatio<int64_t>(dot_tile.m * dot_tile.n * acc_bitwidth,
+                           total_threads * kBitsPerRegister));
+}
+
+}  // namespace
+
+int CalculateRegistersPerThread(const DotProblemInfo& dot_info,
+                                const DotTileSize& dot_tile,
+                                const BlockLevelParameters& block_params,
+                                const se::DeviceDescription& device_info) {
+  const int64_t num_warps = block_params.num_warps;
+  const int64_t threads_per_warp = device_info.threads_per_warp();
+  const int64_t total_threads = num_warps * threads_per_warp;
+  if (total_threads <= 0 || dot_tile.m <= 0 || dot_tile.n <= 0) {
+    return 0;
+  }
+
+  const int accumulator_regs =
+      CalculateAccumulatorRegisters(dot_info, dot_tile, total_threads);
+
+  // Base register overhead in generated GEMM kernels for loop induction
+  // variables, pointer arithmetic, and barrier synchronization handles.
+  constexpr int kBaseStateRegs = 24;
+
+  return accumulator_regs + kBaseStateRegs;
+}
+
+double CalculateComputeUtilization(const EstimateRunTimeData& estimates,
+                                   const se::DeviceDescription& device_info,
+                                   xla::PrimitiveType output_element_type) {
+  const double total_estimated_sec = absl::ToDoubleSeconds(estimates.exec_time);
+  constexpr double kNsPerSecond = 1e9;
+  const double theoretical_flops_per_sec =
+      GpuPerformanceModelBase::CalculatePeakMatrixOpsPerNs(
+          device_info, output_element_type) *
+      kNsPerSecond;
+
+  if (total_estimated_sec == 0.0 || theoretical_flops_per_sec == 0.0) {
+    VLOG(2) << "Returning 0.0 compute utilization: total_estimated_sec="
+            << total_estimated_sec
+            << ", theoretical_flops_per_sec=" << theoretical_flops_per_sec;
+    return 0.0;
+  }
+  double utilization = (static_cast<double>(estimates.flops) /
+                        (theoretical_flops_per_sec * total_estimated_sec));
+
+  if (utilization > 1.0) {
+    VLOG(2) << "Compute utilization exceeded 1.0 in dot fusion cost model: "
+            << utilization;
+  }
+  return utilization;
+}
+
+double CalculateMemoryUtilization(const EstimateRunTimeData& estimates,
+                                  const se::DeviceDescription& device_info) {
+  const double total_estimated_sec = absl::ToDoubleSeconds(estimates.exec_time);
+  const double dram_bytes =
+      static_cast<double>(estimates.bytes_read + estimates.bytes_written);
+  const double peak_memory_bandwidth = device_info.memory_bandwidth();
+
+  if (total_estimated_sec == 0.0 || peak_memory_bandwidth == 0.0) {
+    VLOG(2) << "Returning 0.0 memory utilization: total_estimated_sec="
+            << total_estimated_sec
+            << ", peak_memory_bandwidth=" << peak_memory_bandwidth;
+    return 0.0;
+  }
+  double utilization =
+      dram_bytes / (peak_memory_bandwidth * total_estimated_sec);
+
+  if (utilization > 1.0) {
+    VLOG(2) << "Memory utilization exceeded 1.0 in dot fusion cost model: "
+            << utilization;
+  }
+  return utilization;
 }
 
 }  // namespace detail
@@ -359,7 +651,7 @@ absl::Status IsSupported(const HloDotInstruction* dot) {
         absl::StrJoin(dim_numbers.rhs_contracting_dimensions(), ","), "]"));
   }
 
-  // TODO: b/501002656 - Support downstream transposes by fixing dimension
+  // TODO(b/501002656): Support downstream transposes by fixing dimension
   // mapping.
   std::vector<const HloInstruction*> stack;
   absl::flat_hash_set<const HloInstruction*> visited;
@@ -387,7 +679,7 @@ absl::StatusOr<int64_t> ExtractBlockK(const HloDotInstruction* dot) {
     return absl::FailedPreconditionError(
         "Dot instruction must have a backend config with tiling sizes.");
   }
-  ASSIGN_OR_RETURN(auto tile_config, dot->backend_config<xla::gpu::Tile>());
+  ABSL_ASSIGN_OR_RETURN(auto tile_config, dot->backend_config<xla::xtile::Tile>());
   TF_RET_CHECK(tile_config.sizes_size() > 0)
       << "Tile backend config must have sizes.";
   return tile_config.sizes(0);
@@ -396,7 +688,7 @@ absl::StatusOr<int64_t> ExtractBlockK(const HloDotInstruction* dot) {
 absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
     const HloDotInstruction* dot, const BlockLevelParameters& block_params,
     const se::DeviceDescription& device_info, std::optional<int64_t> block_k) {
-  RETURN_IF_ERROR(IsSupported(dot));
+  ABSL_RETURN_IF_ERROR(IsSupported(dot));
   if (block_params.output_tile_sizes.size() != 1) {
     return absl::UnimplementedError(
         absl::StrCat("Only single tile size is supported, got ",
@@ -407,7 +699,7 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   if (block_k.has_value()) {
     block_k_val = *block_k;
   } else {
-    ASSIGN_OR_RETURN(block_k_val, ExtractBlockK(dot));
+    ABSL_ASSIGN_OR_RETURN(block_k_val, ExtractBlockK(dot));
   }
 
   detail::DotProblemInfo dot_info(*dot);
@@ -431,7 +723,7 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   EstimateRunTimeData estimates;
 
   // Calculate compute roofline with tile and wave quantization.
-  ASSIGN_OR_RETURN(detail::ComputeAndFlops compute_and_flops,
+  ABSL_ASSIGN_OR_RETURN(detail::ComputeAndFlops compute_and_flops,
                    detail::CalculateComputeTimeWithTileAndWaveQuantization(
                        dot_info, dot_tile, device_info));
   estimates.compute_time = compute_and_flops.compute_time;
@@ -445,21 +737,53 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   estimates.write_time = hbm_timing.write_time;
   estimates.bytes_read = hbm_timing.bytes_read;
   estimates.bytes_written = hbm_timing.bytes_written;
+  const int64_t num_stages = block_params.num_stages;
 
   int64_t threadblock_count =
       detail::CalculateNumThreadblocks(dot_info, dot_tile);
   estimates.l2_bytes_read =
       detail::CalculateL2Bytes(dot_info, dot_tile, threadblock_count);
 
+  estimates.shared_memory_per_block_bytes =
+      detail::CalculateSharedMemoryPerBlockBytes(dot_info, dot_tile,
+                                                 num_stages);
+  estimates.registers_per_thread = detail::CalculateRegistersPerThread(
+      dot_info, dot_tile, block_params, device_info);
+
   // Calculate L2 time.
-  ASSIGN_OR_RETURN(absl::Duration l2_time,
+  ABSL_ASSIGN_OR_RETURN(absl::Duration l2_time,
                    detail::CalculateL2Time(dot_info.k, dot_tile.k, device_info,
                                            estimates.l2_bytes_read,
                                            block_params.is_tma_allowed));
 
-  // Assuming perfect overlap between compute and memory.
-  estimates.exec_time = std::max(
-      {compute_and_flops.compute_time, hbm_timing.total_time(), l2_time});
+  TF_RET_CHECK(block_k_val > 0)
+      << "block_k_val must be strictly positive, got " << block_k_val;
+  TF_RET_CHECK(dot_info.k > 0)
+      << "dot_info.k must be strictly positive, got " << dot_info.k;
+  const int64_t k_loop_iterations =
+      CeilOfRatio<int64_t>(dot_info.k, block_k_val);
+
+  detail::LaunchConfig launch_config;
+  launch_config.num_stages = num_stages;
+  launch_config.num_warps = block_params.num_warps;
+  launch_config.k_loop_iterations = k_loop_iterations;
+  launch_config.threadblock_count = threadblock_count;
+  launch_config.shared_memory_per_block_bytes =
+      estimates.shared_memory_per_block_bytes;
+  launch_config.registers_per_thread = estimates.registers_per_thread;
+
+  absl::Duration pipelined_loop_time =
+      detail::CalculatePipelinedLoopTimeWithLaunchWaves(
+          launch_config, compute_and_flops.compute_time, hbm_timing,
+          device_info);
+
+  // Assuming perfect overlap between compute and memory for the rest,
+  // but main loop is now modeled precisely.
+  estimates.exec_time = std::max({pipelined_loop_time, l2_time});
+  estimates.compute_utilization = detail::CalculateComputeUtilization(
+      estimates, device_info, dot_info.output_element_type);
+  estimates.memory_utilization =
+      detail::CalculateMemoryUtilization(estimates, device_info);
 
   return estimates;
 }

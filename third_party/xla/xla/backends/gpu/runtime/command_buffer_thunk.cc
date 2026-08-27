@@ -16,19 +16,21 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 
 #include <algorithm>
-#include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/thread_annotations.h"
-#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
@@ -42,7 +44,6 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
-#include "xla/xla.pb.h"
 #include "tsl/profiler/lib/profiler_lock.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
@@ -60,17 +61,22 @@ CommandBufferThunk::ExecutorCommandBuffer::ExecutorCommandBuffer(
     std::unique_ptr<se::CommandBuffer> command_buffer)
     : command_buffer(std::move(command_buffer)) {}
 
+bool CommandBufferThunk::ExecutorCommandBuffer::HasDynamicAllocations(
+    const CommandExecutor& commands,
+    absl::Span<const BufferAllocation::Index> persistent_alloc_indices) {
+  DCHECK(absl::c_is_sorted(persistent_alloc_indices));
+  return !absl::c_includes(persistent_alloc_indices, commands.allocs_indices());
+}
+
 CommandBufferThunk::CommandBufferThunk(
     CommandExecutor commands, ThunkInfo thunk_info,
     std::unique_ptr<SequentialThunk> thunks,
-    bool enable_command_buffers_during_profiling,
-    DebugOptions::CommandBufferUpdateMode command_buffer_update_mode)
+    bool enable_command_buffers_during_profiling)
     : Thunk(Thunk::kCommandBuffer, std::move(thunk_info)),
       commands_(std::move(commands)),
       thunks_(std::move(thunks)),
       enable_command_buffers_during_profiling_(
           enable_command_buffers_during_profiling),
-      command_buffer_update_mode_(command_buffer_update_mode),
       state_(std::make_shared<State>()) {
   if (VLOG_IS_ON(5)) {
     absl::StatusOr<std::string> graph = commands_.RenderExecutionGraph();
@@ -100,13 +106,18 @@ CommandBufferThunk::CommandBufferThunk(
 
 std::vector<BufferAllocation::Index>
 CommandBufferThunk::ExecutorCommandBuffer::UpdateBufferAllocations(
-    const CommandExecutor& commands, const Thunk::ExecuteParams& params) {
+    const CommandExecutor& commands, const Thunk::ExecuteParams& params,
+    absl::Span<const BufferAllocation::Index> persistent_alloc_indices) {
   std::vector<BufferAllocation::Index> updated_allocs;
   const BufferAllocations* allocs = params.buffer_allocations;
+  std::vector<BufferAllocation::Index> dynamic_alloc_indices;
+
+  absl::c_set_difference(commands.allocs_indices(), persistent_alloc_indices,
+                         std::back_inserter(dynamic_alloc_indices));
 
   // We check only allocations referenced by commands in a cmd sequence, and
   // leave every other entry default initialized (nullptr device memory).
-  for (BufferAllocation::Index index : commands.allocs_indices()) {
+  for (BufferAllocation::Index index : dynamic_alloc_indices) {
     se::DeviceAddressBase alloc = allocs->GetDeviceAddress(index);
 
     if (recorded_allocs.size() <= index) {
@@ -133,7 +144,7 @@ absl::Status CommandBufferThunk::Prepare(const PrepareParams& params) {
   // Always prepare thunks if they are present so we are ready to fall back
   // on them if we detect profiling activity.
   if (thunks_) {
-    RETURN_IF_ERROR(thunks_->Prepare(params));
+    ABSL_RETURN_IF_ERROR(thunks_->Prepare(params));
   }
 
   // TODO(b/290773547): Disabled CUDA graphs when profiling is active because of
@@ -146,7 +157,7 @@ absl::Status CommandBufferThunk::Prepare(const PrepareParams& params) {
     return absl::OkStatus();
   }
 
-  RETURN_IF_ERROR(commands_.Prepare(params));
+  ABSL_RETURN_IF_ERROR(commands_.Prepare(params));
 
   return absl::OkStatus();
 }
@@ -159,12 +170,12 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   }
 
   // Initialize commands.
-  RETURN_IF_ERROR(commands_.Initialize(params));
+  ABSL_RETURN_IF_ERROR(commands_.Initialize(params));
 
   // Always initialize thunks if they are present so we are ready to fall back
   // on them if we detect profiling activity.
   if (thunks_) {
-    RETURN_IF_ERROR(thunks_->Initialize(params));
+    ABSL_RETURN_IF_ERROR(thunks_->Initialize(params));
   }
 
   // TODO(b/290773547): Disabled CUDA graphs when profiling is active because of
@@ -177,7 +188,17 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
     return absl::OkStatus();
   }
 
-  ASSIGN_OR_RETURN(std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,
+  // Command buffer lowering is enabled only when persistent allocation
+  // indices are available; until then the thunk executes its fallback thunk
+  // sequence, so there is no command buffer to initialize.
+  if (!params.persistent_alloc_indices.has_value()) {
+    VLOG(1) << "Skip command buffer initialization because persistent "
+               "allocation indices are not yet available (falling back to "
+               "thunk sequence)";
+    return absl::OkStatus();
+  }
+
+  ABSL_ASSIGN_OR_RETURN(std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,
                    GetOrCreateCommandBuffer(params.executor));
   absl::MutexLock lock(cmd_buffer->mutex);
 
@@ -198,7 +219,8 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
       /*send_device_memory_function=*/nullptr,
       /*recv_device_memory_function=*/nullptr, params.ffi_execution_context,
       /*additional_compute_streams=*/{}, params.execution_scoped_state,
-      /*mock_collectives=*/false);
+      /*mock_collectives=*/false, /*execution_id=*/0,
+      /*rng_seed=*/0, params.persistent_alloc_indices);
 
   if (!cmd_buffer->warmup_done) {
     return absl::OkStatus();
@@ -210,14 +232,16 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   // memory on device and this might lead to deadlocks when we have concurrent
   // NCCL operations in flight.
 
-  // If commands require initialization (and VA remapping is not enabled), we
-  // also record them into the command buffer before execution. This is required
-  // to guarantee that collective commands are recorded on all participating
-  // ranks to avoid deadlocks.
-  if (cmd_buffer->command_buffer->state() ==
-          se::CommandBuffer::State::kCreate ||
-      (command_buffer_update_mode_ != DebugOptions::NEVER_UPDATE &&
-       commands_.requires_initialization())) {
+  // If commands require an update during initialization (and VA remapping is
+  // not enabled), we also record them into the command buffer before execution.
+  // This is required to guarantee that collective commands are recorded on all
+  // participating ranks to avoid deadlocks.
+  bool has_dynamic_allocations = cmd_buffer->HasDynamicAllocations(
+      commands_, *params.persistent_alloc_indices);
+  bool is_first_record =
+      cmd_buffer->command_buffer->state() == se::CommandBuffer::State::kCreate;
+  if (is_first_record ||
+      (has_dynamic_allocations && commands_.requires_update_on_initialize())) {
     VLOG(3) << "Initialize command buffer on device #"
             << params.executor->device_ordinal()
             << " by recoding command buffer cmd sequence"
@@ -232,15 +256,14 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
     uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
     // Update recorded buffer allocations.
-    auto updated_allocs =
-        cmd_buffer->UpdateBufferAllocations(commands_, execute_params);
+    std::optional<std::vector<BufferAllocation::Index>> updated_allocs =
+        cmd_buffer->UpdateBufferAllocations(commands_, execute_params,
+                                            *params.persistent_alloc_indices);
 
     Command::RecordParams record_params = {cmd_buffer->state,
                                            std::move(updated_allocs),
-                                           /*is_initialization=*/true,
-                                           /*command_buffer_update_mode=*/
-                                           command_buffer_update_mode_};
-    RETURN_IF_ERROR(commands_.Record(execute_params, record_params,
+                                           /*is_initialization=*/true};
+    ABSL_RETURN_IF_ERROR(commands_.Record(execute_params, record_params,
                                      cmd_buffer->command_buffer.get()));
 
     uint64_t end_micros = tsl::Env::Default()->NowMicros();
@@ -271,8 +294,22 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
     return thunks_->ExecuteOnStream(params);
   }
 
+  // Command buffer lowering is enabled only when persistent allocation
+  // indices are available. Until then (e.g. during the VA remapping profiling
+  // window) execute the fallback thunk sequence in op-by-op mode.
+  if (!params.persistent_alloc_indices.has_value()) {
+    if (thunks_ == nullptr) {
+      return Internal(
+          "CommandBufferThunk requires either valid persistent allocation "
+          "indices or a fallback thunk sequence");
+    }
+    VLOG(2) << "Execute command buffer thunk as a regular thunk sequence "
+               "because persistent allocation indices are not yet available";
+    return thunks_->ExecuteOnStream(params);
+  }
+
   se::StreamExecutor* executor = params.stream->parent();
-  ASSIGN_OR_RETURN(std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,
+  ABSL_ASSIGN_OR_RETURN(std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,
                    GetOrCreateCommandBuffer(executor));
 
   absl::MutexLock lock(cmd_buffer->mutex);
@@ -280,25 +317,20 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   // warm up iteration, run through thunks if they are present.
   if (!cmd_buffer->warmup_done && thunks_) {
     VLOG(2) << "Executing warm up iteration of command buffer thunk";
-    RETURN_IF_ERROR(thunks_->ExecuteOnStream(params));
+    ABSL_RETURN_IF_ERROR(thunks_->ExecuteOnStream(params));
     cmd_buffer->warmup_done = true;
     return absl::OkStatus();
   }
 
-  auto updated_allocs = cmd_buffer->UpdateBufferAllocations(commands_, params);
-
-  // Determine whether to (re-)record the command buffer and whether this is a
-  // first-time initialization recording (VA remapping path).
   bool is_first_record =
-      command_buffer_update_mode_ == DebugOptions::NEVER_UPDATE &&
       cmd_buffer->command_buffer->state() == se::CommandBuffer::State::kCreate;
-  bool has_commands_requiring_update =
-      command_buffer_update_mode_ != DebugOptions::NEVER_UPDATE &&
-      commands_.requires_update();
+
+  bool has_dynamic_allocations = cmd_buffer->HasDynamicAllocations(
+      commands_, *params.persistent_alloc_indices);
+  auto updated_allocs = cmd_buffer->UpdateBufferAllocations(
+      commands_, params, *params.persistent_alloc_indices);
   bool needs_update =
-      (command_buffer_update_mode_ == DebugOptions::ALWAYS_UPDATE ||
-       command_buffer_update_mode_ == DebugOptions::CAPTURE_CMD_NEVER_UPDATE) &&
-      (has_commands_requiring_update || !updated_allocs.empty());
+      commands_.requires_update_on_execute() || !updated_allocs.empty();
 
   if (is_first_record || needs_update) {
     XLA_VLOG_DEVICE(3, executor->device_ordinal())
@@ -312,21 +344,18 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
 
     TraceMe trace([&] {
       cmd_buffer->mutex.AssertHeld();
-      return TraceMeEncode(needs_update
-                               ? "command_buffer::update"
-                               : "command_buffer::record_for_va_remapping",
-                           {{"device", executor->device_ordinal()},
-                            {"num_commands", commands_.size()}});
+      return TraceMeEncode(
+          is_first_record ? "command_buffer::record" : "command_buffer::update",
+          {{"device", executor->device_ordinal()},
+           {"num_commands", commands_.size()}});
     });
 
     uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
     Command::RecordParams record_params = {
         cmd_buffer->state, std::move(updated_allocs),
-        /*is_initialization=*/is_first_record,
-        /*command_buffer_update_mode=*/
-        command_buffer_update_mode_};
-    RETURN_IF_ERROR(commands_.Record(params, record_params,
+        /*is_initialization=*/is_first_record && !has_dynamic_allocations};
+    ABSL_RETURN_IF_ERROR(commands_.Record(params, record_params,
                                      cmd_buffer->command_buffer.get()));
 
     uint64_t end_micros = tsl::Env::Default()->NowMicros();
@@ -364,7 +393,7 @@ CommandBufferThunk::GetOrCreateCommandBuffer(se::StreamExecutor* executor) {
   }
 
   // Create a new empty command buffer.
-  ASSIGN_OR_RETURN(auto command_buffer, executor->CreateCommandBuffer(
+  ABSL_ASSIGN_OR_RETURN(auto command_buffer, executor->CreateCommandBuffer(
                                             se::CommandBuffer::Mode::kPrimary));
   auto emplaced = state_->command_buffers.emplace(
       executor,
@@ -428,9 +457,10 @@ void CommandBufferThunk::EvictCommandBuffers() {
   }
 }
 
-absl::Status CommandBufferThunk::WalkNested(Walker callback) {
+absl::Status CommandBufferThunk::WalkNested(Walker pre_order,
+                                            Walker post_order) {
   if (thunks_ != nullptr) {
-    RETURN_IF_ERROR(thunks_->Walk(callback));
+    ABSL_RETURN_IF_ERROR(thunks_->Walk(pre_order, post_order));
   }
   return absl::OkStatus();
 }

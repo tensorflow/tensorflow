@@ -26,12 +26,12 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/version.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/shape.h"
@@ -56,7 +57,7 @@ limitations under the License.
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/env.h"
 
@@ -71,20 +72,14 @@ using ::testing::HasSubstr;
 using ::testing::Not;
 using ::xla::ifrt::test_util::AssertPerShardData;
 
-ExecuteOptions ExecuteOptionsWithFillStatus() {
-  ExecuteOptions opts;
-  opts.fill_status = true;
-  return opts;
-}
-
 class IfrtIrLoadedExecutableTest
     : public xla::ifrt::test_util::IfrtIrLoadedExecutableTestBase {
  public:
   // Returns true if the test runs on TPU v4. This is a helper method called
   // from tests that require TPU v4.
   absl::StatusOr<bool> IsUsingTpuV4() {
-    ASSIGN_OR_RETURN(DeviceListRef devices, PickDevices(1));
-    ASSIGN_OR_RETURN(std::shared_ptr<Topology> topology,
+    ABSL_ASSIGN_OR_RETURN(DeviceListRef devices, PickDevices(1));
+    ABSL_ASSIGN_OR_RETURN(std::shared_ptr<Topology> topology,
                      client_->GetTopologyForDevices(devices));
     return topology->DeviceDescriptions().front()->device_kind() == "TPU v4";
   }
@@ -144,16 +139,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(
-      LoadedExecutableRef loaded_exec,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::make_unique<IfrtIRProgram>(*mlir_module),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef loaded_exec,
+                       CompileProgram(source, devices));
 
   std::vector<int> data0 = {0, 1};
   std::vector<int> data1 = {2, 3};
@@ -164,10 +152,7 @@ module {
                                    shard_shape, dtype, devices));
 
   ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
-                       loaded_exec->Execute(absl::MakeSpan(&input, 1),
-                                            ExecuteOptionsWithFillStatus(),
-                                            /*devices=*/std::nullopt));
-
+                       Execute(loaded_exec, absl::MakeSpan(&input, 1)));
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
@@ -194,16 +179,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(
-      LoadedExecutableRef loaded_exec,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::make_unique<IfrtIRProgram>(*mlir_module),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef loaded_exec,
+                       CompileProgram(source, devices));
 
   std::vector<int> data_shard0 = {0, 1};
   std::vector<int> data_shard1 = {2, 3};
@@ -215,8 +193,7 @@ module {
 
   ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
-      loaded_exec->Execute(absl::MakeSpan(&input, 1),
-                           ExecuteOptionsWithFillStatus(), devices));
+      Execute(loaded_exec, absl::MakeSpan(&input, 1), devices));
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
@@ -233,16 +210,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(
-      LoadedExecutableRef loaded_exec,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::make_unique<IfrtIRProgram>(*mlir_module),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef loaded_exec,
+                       CompileProgram(source, devices));
 
   std::vector<int> data0 = {0, 1};
   std::vector<int> data1 = {2, 3};
@@ -253,10 +223,7 @@ module {
                                    shard_shape, dtype, devices));
 
   ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
-                       loaded_exec->Execute(absl::MakeSpan(&input, 1),
-                                            ExecuteOptionsWithFillStatus(),
-                                            /*devices=*/std::nullopt));
-
+                       Execute(loaded_exec, absl::MakeSpan(&input, 1)));
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 2);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
@@ -286,16 +253,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(
-      LoadedExecutableRef loaded_exec,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::make_unique<IfrtIRProgram>(*mlir_module),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef loaded_exec,
+                       CompileProgram(source, devices));
 
   std::vector<int> data0 = {0, 1};
   std::vector<int> data1 = {2, 3};
@@ -318,10 +278,7 @@ module {
                                    /*shard_shape=*/shape, dtype, first_device));
   std::vector<ArrayRef> inputs = {input0, input1, input2};
   ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
-                       loaded_exec->Execute(absl::MakeSpan(inputs),
-                                            ExecuteOptionsWithFillStatus(),
-                                            /*devices=*/std::nullopt));
-
+                       Execute(loaded_exec, absl::MakeSpan(inputs)));
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 2);
   ASSERT_TRUE(input0->IsDeleted());
@@ -336,6 +293,39 @@ module {
       /*expected_per_shard_shape=*/shape, {{2, 3}}, second_device));
 }
 
+TEST_F(IfrtIrLoadedExecutableTest, ResultReturnedTwiceIsNotAliased) {
+  std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+module {
+  func.func @main(%arg0: !array) -> (!array, !array)
+      attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.CopyArrays(%arg0) : (!array) -> !array
+    return %0, %0 : !array, !array
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef loaded_exec,
+                       CompileProgram(source, devices));
+
+  std::vector<int> data0 = {0, 1};
+  std::vector<int> data1 = {2, 3};
+  Shape shard_shape({1, 2});
+  DType dtype(DType::kS32);
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
+                                   shard_shape, dtype, devices));
+
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       Execute(loaded_exec, absl::MakeSpan(&input, 1)));
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 2);
+  ASSERT_OK(result.outputs[0]->Delete().Await());
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[1], dtype, shard_shape, {{0, 1}, {2, 3}}, devices));
+}
+
 TEST_F(IfrtIrLoadedExecutableTest, CopyArrays) {
   std::string source = R"(
 !array0 = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
@@ -347,16 +337,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(
-      LoadedExecutableRef loaded_exec,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::make_unique<IfrtIRProgram>(*mlir_module),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef loaded_exec,
+                       CompileProgram(source, devices));
 
   std::vector<int> data = {1, 2};
   DType dtype(DType::kS32);
@@ -368,10 +351,7 @@ module {
                                    dtype, std::move(device_list0)));
 
   ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
-                       loaded_exec->Execute(absl::MakeSpan(&input, 1),
-                                            ExecuteOptionsWithFillStatus(),
-                                            /*devices=*/std::nullopt));
-
+                       Execute(loaded_exec, absl::MakeSpan(&input, 1)));
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_OK_AND_ASSIGN(DeviceListRef device_list1,
@@ -397,16 +377,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(
-      LoadedExecutableRef loaded_exec,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::make_unique<IfrtIRProgram>(*mlir_module),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef loaded_exec,
+                       CompileProgram(source, devices));
 
   std::vector<int> data = {0, 1, 2, 3};
   DType dtype(DType::kS32);
@@ -418,10 +391,7 @@ module {
                                    dtype, std::move(device_list0)));
 
   ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
-                       loaded_exec->Execute(absl::MakeSpan(&input, 1),
-                                            ExecuteOptionsWithFillStatus(),
-                                            /*devices=*/std::nullopt));
-
+                       Execute(loaded_exec, absl::MakeSpan(&input, 1)));
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 2);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
@@ -449,22 +419,12 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(
-      LoadedExecutableRef loaded_exec,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::make_unique<IfrtIRProgram>(*mlir_module),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef loaded_exec,
+                       CompileProgram(source, devices));
 
-  ASSERT_OK_AND_ASSIGN(
-      LoadedExecutable::ExecuteResult result,
-      loaded_exec->Execute(/*args=*/{}, ExecuteOptionsWithFillStatus(),
-                           /*devices=*/std::nullopt));
-
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       Execute(loaded_exec, /*args=*/{}));
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(
@@ -489,16 +449,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(
-      LoadedExecutableRef loaded_exec,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::make_unique<IfrtIRProgram>(*mlir_module),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef loaded_exec,
+                       CompileProgram(source, devices));
 
   std::vector<int> data0 = {0, 1};
   std::vector<int> data1 = {2, 3};
@@ -508,10 +461,7 @@ module {
                                    shard_shape, DType(DType::kS32), devices));
 
   ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
-                       loaded_exec->Execute(absl::MakeSpan(&input, 1),
-                                            ExecuteOptionsWithFillStatus(),
-                                            /*devices=*/std::nullopt));
-
+                       Execute(loaded_exec, absl::MakeSpan(&input, 1)));
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 0);
 }
@@ -535,16 +485,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(
-      LoadedExecutableRef loaded_exec,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::make_unique<IfrtIRProgram>(*mlir_module),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef loaded_exec,
+                       CompileProgram(source, devices));
 
   std::vector<int> data0 = {0, 1};
   std::vector<int> data1 = {2, 3};
@@ -555,9 +498,7 @@ module {
                                    shard_shape, dtype, devices));
 
   ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
-                       loaded_exec->Execute(absl::MakeSpan(&input, 1),
-                                            ExecuteOptionsWithFillStatus(),
-                                            /*devices=*/std::nullopt));
+                       Execute(loaded_exec, absl::MakeSpan(&input, 1)));
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
@@ -590,16 +531,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(
-      LoadedExecutableRef loaded_exec,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::make_unique<IfrtIRProgram>(*mlir_module),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef loaded_exec,
+                       CompileProgram(source, devices));
 
   std::vector<int> data0 = {0, 1};
   std::vector<int> data1 = {2, 3};
@@ -624,6 +558,66 @@ module {
                                                   {{0, 1}, {2, 3}}, devices));
 }
 
+TEST_F(IfrtIrLoadedExecutableTest, AliasingCopyArrays) {
+  std::string source = R"(
+!array0 = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
+module {
+  func.func @main(%arg0: !array0) -> !array0
+      attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.CopyArrays(%arg0) {reuse=true} : (!array0) -> !array0
+    return %0 : !array0
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(1));
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef loaded_exec,
+                       CompileProgram(source, devices));
+
+  std::vector<int> data = {1, 2};
+  DType dtype(DType::kS32);
+  Shape shape({2});
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef input,
+      CreateArray({data.data()}, shape, /*shard_shape=*/shape, dtype, devices));
+
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                       Execute(loaded_exec, absl::MakeSpan(&input, 1)));
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 1);
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(result.outputs[0], dtype,
+                                                  shape, {{1, 2}}, devices));
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, CrashOnProgramExecWithDonatedAliasedInput) {
+  std::string source = R"(
+!array = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
+module {
+  func.func @main(%arg0: !array {ifrt.donated}, %arg1: !array)
+      -> (!array, !array) attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.CopyArrays(%arg0) {donated=true} : (!array) -> !array
+    %1, %ctrl_1 = ifrt.CopyArrays(%arg1) : (!array) -> !array
+    return %0, %1 : !array, !array
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(1));
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef loaded_exec,
+                       CompileProgram(source, devices));
+
+  std::vector<int> data = {1, 2};
+  DType dtype(DType::kS32);
+  Shape shape({2});
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef input,
+      CreateArray({data.data()}, shape, /*shard_shape=*/shape, dtype, devices));
+
+  std::vector<ArrayRef> args = {input, input};
+  EXPECT_THAT(
+      loaded_exec->Execute(absl::MakeSpan(args), ExecuteOptionsWithFillStatus(),
+                           /*devices=*/std::nullopt),
+      Not(IsOk()));
+}
+
 TEST_F(IfrtIrLoadedExecutableTest, CopyArraysOpDonationOverride) {
   std::string source = R"(
 !array = !ifrt.array<tensor<2x2xi32>,
@@ -636,16 +630,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(
-      LoadedExecutableRef loaded_exec,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::make_unique<IfrtIRProgram>(*mlir_module),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef loaded_exec,
+                       CompileProgram(source, devices));
 
   std::vector<int> data0 = {0, 1};
   std::vector<int> data1 = {2, 3};
@@ -690,16 +677,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(
-      LoadedExecutableRef loaded_exec,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::make_unique<IfrtIRProgram>(*mlir_module),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef loaded_exec,
+                       CompileProgram(source, devices));
 
   std::vector<int> data_shard0 = {0, 1};
   std::vector<int> data_shard1 = {2, 3};
@@ -756,16 +736,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(
-      LoadedExecutableRef loaded_exec,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::make_unique<IfrtIRProgram>(*mlir_module),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef loaded_exec,
+                       CompileProgram(source, devices));
 
   std::vector<int> data0 = {0, 1};
   std::vector<int> data1 = {2, 3};
@@ -790,7 +763,7 @@ module {
   std::vector<ArrayRef> inputs = {input0, input1};
   ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
-      loaded_exec->Execute(absl::MakeSpan(inputs), options, devices));
+      Execute(loaded_exec, absl::MakeSpan(inputs), devices, options));
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
@@ -821,16 +794,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(
-      LoadedExecutableRef loaded_exec,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::make_unique<IfrtIRProgram>(*mlir_module),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef loaded_exec,
+                       CompileProgram(source, devices));
 
   std::vector<int> data_shard0 = {0, 1};
   std::vector<int> data_shard1 = {2, 3};
@@ -842,8 +808,7 @@ module {
 
   ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
-      loaded_exec->Execute(absl::MakeSpan(&input, 1),
-                           ExecuteOptionsWithFillStatus(), devices));
+      Execute(loaded_exec, absl::MakeSpan(&input, 1), devices));
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
@@ -869,16 +834,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(
-      LoadedExecutableRef loaded_exec,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::make_unique<IfrtIRProgram>(*mlir_module),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef loaded_exec,
+                       CompileProgram(source, devices));
 
   std::vector<int> data_shard0 = {0, 1};
   std::vector<int> data_shard1 = {2, 3};
@@ -890,8 +848,7 @@ module {
 
   ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
-      loaded_exec->Execute(absl::MakeSpan(&input, 1),
-                           ExecuteOptionsWithFillStatus(), devices));
+      Execute(loaded_exec, absl::MakeSpan(&input, 1), devices));
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 2);
   ASSERT_OK_AND_ASSIGN(DeviceListRef device_list0,
@@ -973,10 +930,7 @@ module {
                                    shard_shape, dtype, devices));
 
   ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
-                       loaded_exec->Execute(absl::MakeSpan(&input, 1),
-                                            ExecuteOptionsWithFillStatus(),
-                                            /*devices=*/std::nullopt));
-
+                       Execute(loaded_exec, absl::MakeSpan(&input, 1)));
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
@@ -1027,17 +981,8 @@ module {
   for (int i = 0; i < 100; ++i) {
     std::unique_ptr<tsl::Thread> thread =
         absl::WrapUnique(tsl::Env::Default()->StartThread(
-            tsl::ThreadOptions(), "compile", [&]() {
-              absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> mlir_module =
-                  LoadFromSource(source);
-              CHECK_OK(mlir_module);
-              CHECK_OK(client_->GetDefaultCompiler()
-                           ->CompileAndLoad(
-                               std::make_unique<IfrtIRProgram>(**mlir_module),
-                               std::make_unique<IfrtIRCompileOptions>(
-                                   GetDeviceIds(devices)))
-                           .Await());
-            }));
+            tsl::ThreadOptions(), "compile",
+            [&]() { CHECK_OK(CompileProgram(source, devices)); }));
     threads.push_back(std::move(thread));
   }
 }
@@ -1070,32 +1015,24 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
-  auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
-  ASSERT_OK_AND_ASSIGN(
-      program,
-      SerDeRoundTrip(std::move(program),
-                     xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(4));
-  ASSERT_OK_AND_ASSIGN(
-      auto ifrt_ir_executable,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::move(program),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef ifrt_ir_executable,
+                       CompileProgramWithSerDe(source, devices));
 
-  ASSERT_OK_AND_ASSIGN(std::string serialized_executable,
-                       ifrt_ir_executable->Serialize());
+  absl::StatusOr<std::string> serialized_executable =
+      ifrt_ir_executable->Serialize();
+  if (absl::IsUnimplemented(serialized_executable.status())) {
+    GTEST_SKIP() << "Serialization is not supported on this platform.";
+  }
+  ASSERT_OK(serialized_executable);
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<DeserializeIfrtIRProgramOptions> options,
                        GetDeserializeOptions(devices));
   ASSERT_OK_AND_ASSIGN(
       std::shared_ptr<LoadedExecutable> deserialized_executable,
       client_->GetDefaultCompiler()
-          ->DeserializeLoadedExecutable(serialized_executable,
-                                        std::move(options))
+          ->DeserializeLoadedExecutable(
+              absl::Cord(*std::move(serialized_executable)), std::move(options))
           .Await());
 }
 
@@ -1127,28 +1064,20 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
-  auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
-  ASSERT_OK_AND_ASSIGN(
-      program,
-      SerDeRoundTrip(std::move(program),
-                     xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(4));
-  ASSERT_OK_AND_ASSIGN(
-      auto ifrt_ir_executable,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::move(program),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef ifrt_ir_executable,
+                       CompileProgramWithSerDe(source, devices));
+
+  absl::StatusOr<std::shared_ptr<const ExecutableVersion>> executable_version =
+      ifrt_ir_executable->executable_version();
+  if (absl::IsUnimplemented(executable_version.status())) {
+    GTEST_SKIP() << "Serialization is not supported on this platform.";
+  }
+  ASSERT_OK(executable_version);
 
   ASSERT_OK_AND_ASSIGN(
-      std::shared_ptr<const ExecutableVersion> executable_version,
-      ifrt_ir_executable->executable_version());
-  ASSERT_OK_AND_ASSIGN(
       Serialized serialized_executable_version,
-      Serialize(*executable_version, std::make_unique<SerializeOptions>()));
+      Serialize(**executable_version, std::make_unique<SerializeOptions>()));
   std::string serialized_executable_version_str =
       serialized_executable_version.SerializeAsString();
 
@@ -1157,7 +1086,7 @@ module {
       DeserializeExecutableVersion(serialized_executable_version_str, devices));
 
   ASSERT_OK(deserialized_executable_version->IsCompatibleWith(
-      *client_, *executable_version));
+      *client_, **executable_version));
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, CallXlaWithDifferentDevices) {
@@ -1188,21 +1117,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
-  auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
-  ASSERT_OK_AND_ASSIGN(
-      program,
-      SerDeRoundTrip(std::move(program),
-                     xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(4));
-  ASSERT_OK_AND_ASSIGN(
-      auto ifrt_ir_executable,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::move(program),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef ifrt_ir_executable,
+                       CompileProgramWithSerDe(source, devices));
 
   std::vector<int> data1_shard0 = {0, 1};
   std::vector<int> data1_shard1 = {2, 3};
@@ -1229,8 +1146,7 @@ module {
   std::vector<ArrayRef> inputs = {input1, input2};
   ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
-      ifrt_ir_executable->Execute(absl::MakeSpan(inputs),
-                                  ExecuteOptionsWithFillStatus(), devices));
+      Execute(ifrt_ir_executable, absl::MakeSpan(inputs), devices));
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 2);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(result.outputs[0], dtype,
@@ -1267,23 +1183,11 @@ module @mjit_f {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
-  auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
-  ASSERT_OK_AND_ASSIGN(
-      program,
-      SerDeRoundTrip(std::move(program),
-                     xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK(client_->GetDefaultCompiler()
-                ->CompileAndLoad(std::move(program),
-                                 std::make_unique<IfrtIRCompileOptions>(
-                                     GetDeviceIds(devices)))
-                .Await()
-                .status());
+  ASSERT_OK(CompileProgramWithSerDe(source, devices).status());
 }
 
-TEST_F(IfrtIrLoadedExecutableTest, CopyArraysTpuToTpu) {
+TEST_F(IfrtIrLoadedExecutableTest, CopyArraysDeviceToDevice) {
   // Test that verifies that we can copy arrays between different devices.
   // Note that this test passes the same argument twice to CopyArrays in order
   // to verify that the array is not removed incorrectly from the IFRT IR
@@ -1302,21 +1206,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
-  auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
-  ASSERT_OK_AND_ASSIGN(
-      program,
-      SerDeRoundTrip(std::move(program),
-                     xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(
-      auto ifrt_ir_executable,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::move(program),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef ifrt_ir_executable,
+                       CompileProgramWithSerDe(source, devices));
 
   std::vector<int> data = {1, 2};
   DType dtype(DType::kS32);
@@ -1331,8 +1223,7 @@ module {
 
   ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
-      ifrt_ir_executable->Execute(absl::MakeSpan(&input, 1),
-                                  ExecuteOptionsWithFillStatus(), devices));
+      Execute(ifrt_ir_executable, absl::MakeSpan(&input, 1), devices));
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 2);
   for (int i = 0; i < result.outputs.size(); ++i) {
@@ -1341,7 +1232,7 @@ module {
   }
 }
 
-TEST_F(IfrtIrLoadedExecutableTest, CopyArraysCpuToTpu) {
+TEST_F(IfrtIrLoadedExecutableTest, CopyArraysCpuToDevice) {
   if (!PickDevices(1, "cpu").ok()) {
     GTEST_SKIP() << "Test requires at least one cpu device";
   }
@@ -1361,25 +1252,13 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
-  auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
-  ASSERT_OK_AND_ASSIGN(
-      program,
-      SerDeRoundTrip(std::move(program),
-                     xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
   ASSERT_OK_AND_ASSIGN(DeviceListRef device, PickDevices(1));
   ASSERT_OK_AND_ASSIGN(DeviceListRef cpu_device, PickDevices(1, "cpu"));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices,
                        client_->MakeDeviceList(
                            {device->devices()[0], cpu_device->devices()[0]}));
-  ASSERT_OK_AND_ASSIGN(
-      auto ifrt_ir_executable,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::move(program),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef ifrt_ir_executable,
+                       CompileProgramWithSerDe(source, devices));
 
   std::vector<int> data = {0, 1};
   DType dtype(DType::kS32);
@@ -1390,8 +1269,7 @@ module {
 
   ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
-      ifrt_ir_executable->Execute(absl::MakeSpan(&input, 1),
-                                  ExecuteOptionsWithFillStatus(), devices));
+      Execute(ifrt_ir_executable, absl::MakeSpan(&input, 1), devices));
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(result.outputs[0], dtype,
@@ -1541,7 +1419,7 @@ module {
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, UsingPartiallyDonatedArgThrowsError) {
-  if (client_->platform_name() != xla::TpuName()) {
+  if (client_->platform_id() != xla::TpuId()) {
     GTEST_SKIP() << "Test CHECK fails in pjrt_stream_executor_client.h.";
   }
   // Verifies that an error is thrown if a shard of an array is first aliased
@@ -1577,16 +1455,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(
-      auto ifrt_ir_executable,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::make_unique<IfrtIRProgram>(*mlir_module),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(auto ifrt_ir_executable,
+                       CompileProgram(source, devices));
 
   std::vector<int> data_shard0 = {0, 1};
   std::vector<int> data_shard1 = {2, 3};
@@ -1640,16 +1511,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(
-      auto ifrt_ir_executable,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::make_unique<IfrtIRProgram>(*mlir_module),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(auto ifrt_ir_executable,
+                       CompileProgram(source, devices));
 
   std::vector<int> data_shard0 = {0, 1};
   std::vector<int> data_shard1 = {2, 3};
@@ -1705,21 +1569,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
-  auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
-  ASSERT_OK_AND_ASSIGN(
-      program,
-      SerDeRoundTrip(std::move(program),
-                     xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(
-      auto ifrt_ir_executable,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::move(program),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef ifrt_ir_executable,
+                       CompileProgramWithSerDe(source, devices));
 
   std::vector<int> array_0_data = {0, 1};
   DType dtype(DType::kS32);
@@ -1741,8 +1593,7 @@ module {
   std::vector<ArrayRef> inputs = {input0, input1};
   ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
-      ifrt_ir_executable->Execute(absl::MakeSpan(inputs),
-                                  ExecuteOptionsWithFillStatus(), devices));
+      Execute(ifrt_ir_executable, absl::MakeSpan(inputs), devices));
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
@@ -1768,16 +1619,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(
-      LoadedExecutableRef executable,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::make_unique<IfrtIRProgram>(*mlir_module),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef executable,
+                       CompileProgram(source, devices));
 
   std::vector<int> data0 = {1};
   std::vector<int> data1 = {2};
@@ -1788,9 +1632,7 @@ module {
                   /*shard_shape=*/Shape({1}), dtype, devices));
 
   ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
-                       executable->Execute(absl::MakeSpan(&input, 1),
-                                           ExecuteOptionsWithFillStatus(),
-                                           /*devices=*/std::nullopt));
+                       Execute(executable, absl::MakeSpan(&input, 1)));
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
@@ -1812,16 +1654,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(
-      LoadedExecutableRef executable,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::make_unique<IfrtIRProgram>(*mlir_module),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef executable,
+                       CompileProgram(source, devices));
 
   std::vector<int> data0 = {1};
   std::vector<int> data1 = {2};
@@ -1832,9 +1667,7 @@ module {
                   /*shard_shape=*/Shape({1, 1}), dtype, devices));
 
   ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
-                       executable->Execute(absl::MakeSpan(&input, 1),
-                                           ExecuteOptionsWithFillStatus(),
-                                           /*devices=*/std::nullopt));
+                       Execute(executable, absl::MakeSpan(&input, 1)));
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
@@ -1863,16 +1696,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(
-      LoadedExecutableRef executable,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::make_unique<IfrtIRProgram>(*mlir_module),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef executable,
+                       CompileProgram(source, devices));
 
   std::vector<int> data = {1, 2};
   DType dtype(DType::kS32);
@@ -1938,16 +1764,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(
-      LoadedExecutableRef executable,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::make_unique<IfrtIRProgram>(*mlir_module),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef executable,
+                       CompileProgram(source, devices));
 
   std::vector<int> data0 = {0, 1};
   std::vector<int> data1 = {2, 3};
@@ -1958,10 +1777,7 @@ module {
                                    shard_shape, dtype, devices));
 
   ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
-                       executable->Execute(absl::MakeSpan(&input, 1),
-                                           ExecuteOptionsWithFillStatus(),
-                                           /*devices=*/std::nullopt));
-
+                       Execute(executable, absl::MakeSpan(&input, 1)));
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
@@ -2022,21 +1838,9 @@ module @auto_layout {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
-  auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
-  ASSERT_OK_AND_ASSIGN(
-      program,
-      SerDeRoundTrip(std::move(program),
-                     xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(4));
-  ASSERT_OK_AND_ASSIGN(
-      auto ifrt_ir_executable,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::move(program),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef ifrt_ir_executable,
+                       CompileProgramWithSerDe(source, devices));
   ASSERT_OK_AND_ASSIGN(auto parameter_layouts,
                        ifrt_ir_executable->GetParameterLayouts());
   // Note `GetDefaultPjRtLayout` takes a sharded shape.
@@ -2053,8 +1857,156 @@ module @auto_layout {
   ASSERT_EQ(output_layouts.size(), 4);
   ASSERT_EQ(*default_layout, *output_layouts[0]);
   ASSERT_EQ(*default_layout, *output_layouts[1]);
-  ASSERT_EQ("{0,1:T(1,128)}", output_layouts[2]->ToString());
+  if (client_->platform_id() == xla::TpuId()) {
+    ASSERT_EQ("{0,1:T(1,128)}", output_layouts[2]->ToString());
+  }
   ASSERT_EQ(*default_layout, *output_layouts[3]);
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, CustomLayoutPreservedWithCopyArrays) {
+  if (GetNumDevices() < 4) {
+    GTEST_SKIP() << "Insufficient devices to run this test.";
+  }
+  // Verifies that when an argument is used by both a CallLoadedExecutableOp
+  // with custom layout and a CopyArraysOp, the custom layout is preserved.
+  std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<2x2 to [0] on 4>, [0, 1, 2, 3]>
+module @custom_layout_copy_arrays {
+  func.func public @main(%arg0: !array)
+      -> (!array, !array) attributes {ifrt.function} {
+    %out_0, %ctrl_0 = ifrt.Call @transpose_w_custom_layout::@main(%arg0)
+      on devices [0, 1, 2, 3] : (!array) -> !array
+    %out_1, %ctrl_1 = ifrt.CopyArrays(%arg0) : (!array) -> !array
+    return %out_0, %out_1 : !array, !array
+  }
+  module @transpose_w_custom_layout attributes {sym_visibility = "private"} {
+    func.func public @main(%arg0: tensor<2x2xi32>
+        {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dim_replicate}"})
+        -> (tensor<2x2xi32> {mhlo.layout_mode = "auto"}) {
+      %0 = stablehlo.transpose %arg0, dims = [1, 0] : (tensor<2x2xi32>)
+        -> tensor<2x2xi32>
+      %1 = stablehlo.custom_call @Sharding(%0) {
+        backend_config = "",
+        mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dim_replicate}"}
+        : (tensor<2x2xi32>) -> tensor<2x2xi32>
+      %2 = stablehlo.custom_call @LayoutConstraint(%1) {
+        backend_config = "",
+        operand_layouts = [dense<[1, 0]> : tensor<2xindex>],
+        result_layouts = [dense<[0, 1]> : tensor<2xindex>]}
+        : (tensor<2x2xi32>) -> tensor<2x2xi32>
+      return %2 : tensor<2x2xi32>
+    }
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(4));
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef ifrt_ir_executable,
+                       CompileProgramWithSerDe(source, devices));
+  ASSERT_OK_AND_ASSIGN(auto parameter_layouts,
+                       ifrt_ir_executable->GetParameterLayouts());
+  ASSERT_EQ(parameter_layouts.size(), 1);
+  if (client_->platform_id() == xla::TpuId()) {
+    ASSERT_EQ("{1,0:T(1,128)}", parameter_layouts[0]->ToString());
+  }
+  ASSERT_OK_AND_ASSIGN(auto output_layouts,
+                       ifrt_ir_executable->GetOutputLayouts());
+  ASSERT_EQ(output_layouts.size(), 2);
+  if (client_->platform_id() == xla::TpuId()) {
+    ASSERT_EQ("{0,1:T(1,128)}", output_layouts[0]->ToString());
+    ASSERT_EQ("{1,0:T(1,128)}", output_layouts[1]->ToString());
+  }
+
+  std::vector<int> data_shard0 = {1};
+  std::vector<int> data_shard1 = {2};
+  std::vector<int> data_shard2 = {3};
+  std::vector<int> data_shard3 = {4};
+  DType dtype(DType::kS32);
+  Shape shard_shape({1, 1});
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data_shard0.data(), data_shard1.data(),
+                                    data_shard2.data(), data_shard3.data()},
+                                   Shape({2, 2}), shard_shape, dtype, devices));
+
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutable::ExecuteResult result,
+      Execute(ifrt_ir_executable, absl::MakeSpan(&input, 1), devices));
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 2);
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, shard_shape, {{1}, {3}, {2}, {4}}, devices));
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[1], dtype, shard_shape, {{1}, {2}, {3}, {4}}, devices));
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, CustomOutputLayoutPreservedWithCopyArrays) {
+  if (GetNumDevices() < 4) {
+    GTEST_SKIP() << "Insufficient devices to run this test.";
+  }
+  // Verifies that when an atom program output with custom layout is passed to a
+  // CopyArraysOp and returned, the custom output layout is preserved.
+  std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<2x2 to [0] on 4>, [0, 1, 2, 3]>
+module @custom_output_layout_copy_arrays {
+  func.func public @main(%arg0: !array)
+      -> (!array, !array) attributes {ifrt.function} {
+    %out_0, %ctrl_0 = ifrt.Call @transpose_w_custom_layout::@main(%arg0)
+      on devices [0, 1, 2, 3] : (!array) -> !array
+    %out_1, %ctrl_1 = ifrt.CopyArrays(%out_0) : (!array) -> !array
+    return %out_0, %out_1 : !array, !array
+  }
+  module @transpose_w_custom_layout attributes {sym_visibility = "private"} {
+    func.func public @main(%arg0: tensor<2x2xi32>
+        {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dim_replicate}"})
+        -> (tensor<2x2xi32> {mhlo.layout_mode = "auto"}) {
+      %0 = stablehlo.transpose %arg0, dims = [1, 0] : (tensor<2x2xi32>)
+        -> tensor<2x2xi32>
+      %1 = stablehlo.custom_call @Sharding(%0) {
+        backend_config = "",
+        mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dim_replicate}"}
+        : (tensor<2x2xi32>) -> tensor<2x2xi32>
+      %2 = stablehlo.custom_call @LayoutConstraint(%1) {
+        backend_config = "",
+        operand_layouts = [dense<[1, 0]> : tensor<2xindex>],
+        result_layouts = [dense<[0, 1]> : tensor<2xindex>]}
+        : (tensor<2x2xi32>) -> tensor<2x2xi32>
+      return %2 : tensor<2x2xi32>
+    }
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(4));
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef ifrt_ir_executable,
+                       CompileProgramWithSerDe(source, devices));
+  ASSERT_OK_AND_ASSIGN(auto output_layouts,
+                       ifrt_ir_executable->GetOutputLayouts());
+  ASSERT_EQ(output_layouts.size(), 2);
+  if (client_->platform_id() == xla::TpuId()) {
+    ASSERT_EQ("{0,1:T(1,128)}", output_layouts[0]->ToString());
+    ASSERT_EQ("{0,1:T(1,128)}", output_layouts[1]->ToString());
+  }
+
+  std::vector<int> data_shard0 = {1};
+  std::vector<int> data_shard1 = {2};
+  std::vector<int> data_shard2 = {3};
+  std::vector<int> data_shard3 = {4};
+  DType dtype(DType::kS32);
+  Shape shard_shape({1, 1});
+  ASSERT_OK_AND_ASSIGN(ArrayRef input,
+                       CreateArray({data_shard0.data(), data_shard1.data(),
+                                    data_shard2.data(), data_shard3.data()},
+                                   Shape({2, 2}), shard_shape, dtype, devices));
+
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutable::ExecuteResult result,
+      Execute(ifrt_ir_executable, absl::MakeSpan(&input, 1), devices));
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 2);
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, shard_shape, {{1}, {3}, {2}, {4}}, devices));
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[1], dtype, shard_shape, {{1}, {3}, {2}, {4}}, devices));
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, NonDonatablePinnedHostInput) {
@@ -2077,16 +2029,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(
-      LoadedExecutableRef loaded_exec,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::make_unique<IfrtIRProgram>(*mlir_module),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef loaded_exec,
+                       CompileProgram(source, devices));
 
   std::vector<int> data0 = {0, 1};
   std::vector<int> data1 = {2, 3};
@@ -2161,21 +2106,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
-  auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
-  ASSERT_OK_AND_ASSIGN(
-      program,
-      SerDeRoundTrip(std::move(program),
-                     xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(
-      auto ifrt_ir_executable,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::move(program),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef ifrt_ir_executable,
+                       CompileProgramWithSerDe(source, devices));
   std::vector<int> input_data = {1};
   Shape shape({1, 1});
   ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
@@ -2187,8 +2120,7 @@ module {
 
   ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
-      ifrt_ir_executable->Execute(absl::MakeSpan(&input, 1),
-                                  ExecuteOptionsWithFillStatus(), devices));
+      Execute(ifrt_ir_executable, absl::MakeSpan(&input, 1), devices));
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_OK(result.outputs[0]->GetReadyFuture().Await());
@@ -2256,21 +2188,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
-  auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
-  ASSERT_OK_AND_ASSIGN(
-      program,
-      SerDeRoundTrip(std::move(program),
-                     xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(1));
-  ASSERT_OK_AND_ASSIGN(
-      auto ifrt_ir_executable,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::move(program),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef ifrt_ir_executable,
+                       CompileProgramWithSerDe(source, devices));
 
   std::vector<int> data = {42};
   Shape shape({1, 1});
@@ -2279,8 +2199,7 @@ module {
                                    DType(DType::kS32), devices));
   ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
-      ifrt_ir_executable->Execute(absl::MakeSpan(&input, 1),
-                                  ExecuteOptionsWithFillStatus(), devices));
+      Execute(ifrt_ir_executable, absl::MakeSpan(&input, 1), devices));
   ASSERT_OK(result.status.Await());
   // Check that no OOM happens.
   ASSERT_OK(result.outputs[0]->GetReadyFuture().Await());
@@ -2356,21 +2275,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
-  auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
-  ASSERT_OK_AND_ASSIGN(
-      program,
-      SerDeRoundTrip(std::move(program),
-                     xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(1));
-  ASSERT_OK_AND_ASSIGN(
-      auto ifrt_ir_executable,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::move(program),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef ifrt_ir_executable,
+                       CompileProgramWithSerDe(source, devices));
 
   std::vector<int> data = {42};
   Shape shape({1, 1});
@@ -2379,8 +2286,7 @@ module {
                                    DType(DType::kS32), devices));
   ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
-      ifrt_ir_executable->Execute(absl::MakeSpan(&input, 1),
-                                  ExecuteOptionsWithFillStatus(), devices));
+      Execute(ifrt_ir_executable, absl::MakeSpan(&input, 1), devices));
   ASSERT_OK(result.status.Await());
   // Check that no OOM happens.
   ASSERT_OK(result.outputs[0]->GetReadyFuture().Await());
@@ -2456,21 +2362,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
-  auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
-  ASSERT_OK_AND_ASSIGN(
-      program,
-      SerDeRoundTrip(std::move(program),
-                     xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(1));
-  ASSERT_OK_AND_ASSIGN(
-      auto ifrt_ir_executable,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::move(program),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef ifrt_ir_executable,
+                       CompileProgramWithSerDe(source, devices));
 
   std::vector<int> data = {42};
   Shape shape({1, 1});
@@ -2479,8 +2373,7 @@ module {
                                    DType(DType::kS32), devices));
   ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
-      ifrt_ir_executable->Execute(absl::MakeSpan(&input, 1),
-                                  ExecuteOptionsWithFillStatus(), devices));
+      Execute(ifrt_ir_executable, absl::MakeSpan(&input, 1), devices));
   ASSERT_OK(result.status.Await());
   ASSERT_OK(result.outputs[0]->GetReadyFuture().Await());
   ASSERT_OK(result.outputs[1]->GetReadyFuture().Await());
@@ -2519,16 +2412,9 @@ module {
   }
 }
   )";
-  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                       LoadFromSource(source));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
-  ASSERT_OK_AND_ASSIGN(
-      LoadedExecutableRef loaded_exec,
-      client_->GetDefaultCompiler()
-          ->CompileAndLoad(
-              std::make_unique<IfrtIRProgram>(*mlir_module),
-              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef loaded_exec,
+                       CompileProgram(source, devices));
 
   std::vector<int> data0 = {0, 1};
   std::vector<int> data1 = {2, 3};
@@ -2539,10 +2425,7 @@ module {
                                    shard_shape, dtype, devices));
 
   ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
-                       loaded_exec->Execute(absl::MakeSpan(&input, 1),
-                                            ExecuteOptionsWithFillStatus(),
-                                            /*devices=*/std::nullopt));
-
+                       Execute(loaded_exec, absl::MakeSpan(&input, 1)));
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 2);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
@@ -2654,7 +2537,7 @@ module {
                        retrieved_outputs1.end());
 
     for (int i = 0; i < 3; ++i) {
-      auto* out_array = llvm::dyn_cast<Array>(all_outputs[i].get());
+      auto* out_array = dyn_cast<Array>(all_outputs[i].get());
       ASSERT_NE(out_array, nullptr);
       ArrayRef out_array_ref = tsl::FormRef(out_array);
 
@@ -2675,9 +2558,9 @@ module {
 
   // Test the execution after serialization and deserialization to verify that
   // `outputs_bundle_slice_sizes` is correctly applied across the roundtrip.
-  {
-    ASSERT_OK_AND_ASSIGN(std::string serialized_executable,
-                         loaded_exec->Serialize());
+  absl::StatusOr<std::string> serialized_executable = loaded_exec->Serialize();
+  if (!absl::IsUnimplemented(serialized_executable.status())) {
+    ASSERT_OK(serialized_executable);
 
     ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<DeserializeIfrtIRProgramOptions> options,
@@ -2685,7 +2568,8 @@ module {
     ASSERT_OK_AND_ASSIGN(std::shared_ptr<LoadedExecutable> deserialized_exec,
                          client_->GetDefaultCompiler()
                              ->DeserializeLoadedExecutable(
-                                 serialized_executable, std::move(options))
+                                 absl::Cord(*std::move(serialized_executable)),
+                                 std::move(options))
                              .Await());
 
     ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteBundleResult result,
@@ -2714,7 +2598,7 @@ module {
                        retrieved_outputs1.end());
 
     for (int i = 0; i < 3; ++i) {
-      auto* out_array = llvm::dyn_cast<Array>(all_outputs[i].get());
+      auto* out_array = dyn_cast<Array>(all_outputs[i].get());
       ASSERT_NE(out_array, nullptr);
       ArrayRef out_array_ref = tsl::FormRef(out_array);
 

@@ -20,7 +20,7 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-using UnknownCustomCallFails = HloPjRtTestBase;
+using UnknownCustomCallFails = HloTestBase;
 
 TEST_F(UnknownCustomCallFails, UnknownCustomCallFails) {
   const char* hlo_text = R"(
@@ -35,9 +35,9 @@ TEST_F(UnknownCustomCallFails, UnknownCustomCallFails) {
   EXPECT_FALSE(Run(hlo_text));
 }
 
-class MockedCustomCall : public HloPjRtTestBase {
+class MockedCustomCall : public HloTestBase {
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions opts = HloPjRtTestBase::GetDebugOptionsForTest();
+    DebugOptions opts = HloTestBase::GetDebugOptionsForTest();
     opts.set_xla_gpu_mock_custom_calls(true);
     return opts;
   }

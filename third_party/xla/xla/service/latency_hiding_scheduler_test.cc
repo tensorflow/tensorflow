@@ -27,6 +27,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -34,11 +35,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -47,7 +48,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/transforms/collectives/async_collective_creator.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/legalize_scheduling_annotations.h"
@@ -222,14 +223,14 @@ absl::StatusOr<bool> RunScheduler(
       /*convert_collective_permute=*/HloPredicateTrue};
   bool value = false;
   if (!skip_async_collective_creator) {
-    ASSIGN_OR_RETURN(value,
+    ABSL_ASSIGN_OR_RETURN(value,
                      AsyncCollectiveCreator(std::move(config)).Run(module));
   }
   if (!legalizer_config) {
     legalizer_config =
         std::make_unique<LegalizeSchedulingAnnotations::Config>();
   }
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       value,
       LegalizeSchedulingAnnotations(std::move(*legalizer_config)).Run(module));
   HloCostAnalysis::ShapeSizeFunction shape_size_bytes =
@@ -256,7 +257,7 @@ absl::StatusOr<bool> RunScheduler(
           &alias_info, shape_size_bytes);
   auto scheduler_core =
       std::make_unique<DefaultSchedulerCore>(scheduling_context, sched_config);
-  ASSIGN_OR_RETURN(value, LatencyHidingScheduler(scheduling_context,
+  ABSL_ASSIGN_OR_RETURN(value, LatencyHidingScheduler(scheduling_context,
                                                  std::move(scheduler_core))
                               .Run(module));
 
@@ -291,15 +292,17 @@ class LatencyHidingSchedulerTest : public HloHardwareIndependentTestBase {
                  SchedulerConfig sched_config = GetDefaultSchedConfig(),
                  std::unique_ptr<LatencyEstimator> latency_estimator =
                      std::make_unique<ApproximateLatencyEstimator>(),
-                 std::unique_ptr<AsyncTracker> async_tracker = nullptr) {
+                 std::unique_ptr<AsyncTracker> async_tracker = nullptr,
+                 DefaultSchedulerCore::TargetSchedulingRule
+                     target_scheduling_rule = nullptr) {
     AsyncCollectiveCreator::CollectiveCreatorConfig config{
         /*convert_all_reduce=*/HloPredicateTrue,
         /*convert_all_gather=*/HloPredicateTrue,
         /*convert_collective_broadcast=*/HloPredicateTrue,
         /*convert_collective_permute=*/HloPredicateTrue};
-    ASSIGN_OR_RETURN(bool value,
+    ABSL_ASSIGN_OR_RETURN(bool value,
                      AsyncCollectiveCreator(std::move(config)).Run(module));
-    ASSIGN_OR_RETURN(value, LegalizeSchedulingAnnotations(
+    ABSL_ASSIGN_OR_RETURN(value, LegalizeSchedulingAnnotations(
                                 LegalizeSchedulingAnnotations::Config())
                                 .Run(module));
 
@@ -311,7 +314,7 @@ class LatencyHidingSchedulerTest : public HloHardwareIndependentTestBase {
             module, std::move(latency_estimator), std::move(async_tracker),
             &alias_info_, ShapeSizeBytes);
     auto scheduler_core = std::make_shared<DefaultSchedulerCore>(
-        scheduling_context, sched_config);
+        scheduling_context, sched_config, std::move(target_scheduling_rule));
     auto scheduler = std::make_unique<LatencyHidingScheduler>(
         scheduling_context, scheduler_core);
     return std::make_pair(std::move(scheduler), std::move(scheduler_core));
@@ -329,6 +332,107 @@ class DirectionalLatencyHidingSchedulerTest
 INSTANTIATE_TEST_SUITE_P(DirectionalTests,
                          DirectionalLatencyHidingSchedulerTest,
                          ::testing::Bool());
+
+TEST_F(LatencyHidingSchedulerTest,
+       TargetSchedulingRuleReceivesLiveSchedulingState) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  a = f32[8] negate(p0)
+  b = f32[8] negate(p1)
+  ROOT result = (f32[8], f32[8]) tuple(a, b)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseHloText(hlo_string));
+
+  const DefaultSchedulerCore::SchedulingState* expected_state = nullptr;
+  int target_rule_invocations = 0;
+  auto target_rule = [&](DefaultSchedulerCore::ScheduleCandidate& a,
+                         DefaultSchedulerCore::ScheduleCandidate& b)
+      -> std::optional<DefaultSchedulerCore::CandidateResult> {
+    ++target_rule_invocations;
+    EXPECT_NE(a.scheduling_state, nullptr);
+    EXPECT_EQ(a.scheduling_state, b.scheduling_state);
+    EXPECT_EQ(a.scheduling_state, expected_state);
+    EXPECT_NE(a.scheduling_state->sched_graph, nullptr);
+    EXPECT_GT(a.scheduling_state->scheduled_count, 0);
+    return std::nullopt;
+  };
+
+  ASSERT_OK_AND_ASSIGN(
+      auto setup,
+      SetupScheduler(module.get(), GetDefaultSchedConfig(),
+                     std::make_unique<ApproximateLatencyEstimator>(), nullptr,
+                     std::move(target_rule)));
+  std::shared_ptr<SchedulerCore> scheduler_core = std::move(setup.second);
+  ASSERT_OK(scheduler_core->InitializeScheduler(module.get()));
+  ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<SchedulerCore::SchedulingState> state,
+      scheduler_core->MakeSchedulingState(module->entry_computation()));
+  expected_state =
+      dynamic_cast<DefaultSchedulerCore::SchedulingState*>(state.get());
+  ASSERT_NE(expected_state, nullptr);
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<HloInstruction*> sequence,
+      scheduler_core->ScheduleComputation(module->entry_computation(), state));
+  EXPECT_FALSE(sequence.empty());
+  EXPECT_GT(target_rule_invocations, 0);
+}
+
+TEST_F(LatencyHidingSchedulerTest,
+       MemoryPressureTakesPriorityOverTargetSchedulingRule) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY main {
+  p0 = f32[100] parameter(0)
+  large = f32[100] negate(p0)
+  small = f32[1] slice(p0), slice={[0:1]}
+  ROOT result = (f32[100], f32[1]) tuple(large, small)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseHloText(hlo_string));
+
+  bool target_rule_saw_large_small = false;
+  auto target_rule = [&](DefaultSchedulerCore::ScheduleCandidate& a,
+                         DefaultSchedulerCore::ScheduleCandidate& b)
+      -> std::optional<DefaultSchedulerCore::CandidateResult> {
+    const bool a_is_small = a.node->GetInstr().name() == "small";
+    const bool b_is_small = b.node->GetInstr().name() == "small";
+    const bool compares_large_and_small =
+        (a_is_small && b.node->GetInstr().name() == "large") ||
+        (b_is_small && a.node->GetInstr().name() == "large");
+    if (!compares_large_and_small) {
+      return std::nullopt;
+    }
+    target_rule_saw_large_small = true;
+    return DefaultSchedulerCore::ChooseBestCandidate(a_is_small, a, b_is_small,
+                                                     b, "kPreferSmallForTest");
+  };
+
+  SchedulerConfig sched_config = GetDefaultSchedConfig();
+  sched_config.memory_limit = 1;
+  ASSERT_OK_AND_ASSIGN(
+      auto setup,
+      SetupScheduler(module.get(), sched_config,
+                     std::make_unique<ApproximateLatencyEstimator>(), nullptr,
+                     std::move(target_rule)));
+  std::shared_ptr<SchedulerCore> scheduler_core = std::move(setup.second);
+  ASSERT_OK(scheduler_core->InitializeScheduler(module.get()));
+  ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<SchedulerCore::SchedulingState> state,
+      scheduler_core->MakeSchedulingState(module->entry_computation()));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<HloInstruction*> sequence,
+      scheduler_core->ScheduleComputation(module->entry_computation(), state));
+
+  EXPECT_FALSE(target_rule_saw_large_small);
+  EXPECT_LT(GetIndex(sequence, "small"), GetIndex(sequence, "large"));
+}
 
 TEST_F(LatencyHidingSchedulerTest, AllGatherAsyncSimple) {
   absl::string_view hlo_string = R"(
@@ -5002,11 +5106,17 @@ TEST_F(LatencyHidingSchedulerTest, ValidScheduleWithRandomPreferences) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto sched_state,
       scheduler_core->MakeSchedulingState(hlo_module->entry_computation()));
-  auto result = scheduler->ScheduleWithPreferences(
-      hlo_module.get(), random_preferences, computation, sched_state);
+  sched_state->graph_processing_hook =
+      [&random_preferences](HloScheduleGraph* graph) -> absl::Status {
+    graph->SetPreferences(random_preferences);
+    return absl::OkStatus();
+  };
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto new_schedule,
+      scheduler_core->ScheduleComputation(computation, sched_state));
 
   // Set the new schedule.
-  hlo_module->schedule().set_sequence(computation, result->first);
+  hlo_module->schedule().set_sequence(computation, new_schedule);
 
   // Even with random preferences values LHS will always produce a valid
   // schedule.
@@ -5068,21 +5178,49 @@ TEST_F(LatencyHidingSchedulerTest, MultipleAttemptsConsistentResults) {
   TF_ASSERT_OK_AND_ASSIGN(auto sched_state,
                           scheduler_core->MakeSchedulingState(computation));
 
+  auto set_preferences =
+      [&random_preferences](HloScheduleGraph* graph) -> absl::Status {
+    graph->SetPreferences(random_preferences);
+    return absl::OkStatus();
+  };
+
   // First attempt
-  auto result1 = scheduler->ScheduleWithPreferences(
-      hlo_module.get(), random_preferences, computation, sched_state);
-  TF_ASSERT_OK(result1.status());
+  sched_state->graph_processing_hook = set_preferences;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto new_schedule1,
+      scheduler_core->ScheduleComputation(computation, sched_state));
+
+  DefaultSchedulerCore::SchedulingState* default_sched_state =
+      dynamic_cast<DefaultSchedulerCore::SchedulingState*>(sched_state.get());
+  DefaultSchedulerCore* default_scheduler_core =
+      dynamic_cast<DefaultSchedulerCore*>(scheduler_core.get());
+
+  auto stats1 = LatencyHidingScheduler::LatencyHidingStatistics(
+      computation, new_schedule1, scheduler->scheduling_context(),
+      default_scheduler_core ? default_scheduler_core->GetModulePressureState()
+                             : nullptr,
+      default_sched_state ? &default_sched_state->memory_pressure_tracker
+                          : nullptr,
+      sched_state);
 
   // Second attempt with the SAME preferences and SAME sched_state
-  auto result2 = scheduler->ScheduleWithPreferences(
-      hlo_module.get(), random_preferences, computation, sched_state);
-  TF_ASSERT_OK(result2.status());
+  sched_state->graph_processing_hook = set_preferences;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto new_schedule2,
+      scheduler_core->ScheduleComputation(computation, sched_state));
+
+  auto stats2 = LatencyHidingScheduler::LatencyHidingStatistics(
+      computation, new_schedule2, scheduler->scheduling_context(),
+      default_scheduler_core ? default_scheduler_core->GetModulePressureState()
+                             : nullptr,
+      default_sched_state ? &default_sched_state->memory_pressure_tracker
+                          : nullptr,
+      sched_state);
 
   // Verify that both attempts produced identical schedules
-  EXPECT_EQ(result1->first, result2->first);
-  EXPECT_EQ(result1->second.peak_memory, result2->second.peak_memory);
-  EXPECT_EQ(result1->second.total_wasted_cycles,
-            result2->second.total_wasted_cycles);
+  EXPECT_EQ(new_schedule1, new_schedule2);
+  EXPECT_EQ(stats1.memory_pressure_peak, stats2.memory_pressure_peak);
+  EXPECT_EQ(stats1.GetTotalWastedCycles(), stats2.GetTotalWastedCycles());
 }
 
 // Check that "keep_original_sequence_order_in_group" frontend attribute takes
@@ -6102,6 +6240,85 @@ TEST_F(LatencyHidingSchedulerTest, NopBypassPreferenceInteraction) {
 
   EXPECT_LT(n_pos, a_pos)
       << "Expected bitcast.0 to be scheduled before negate.0";
+}
+
+TEST_F(LatencyHidingSchedulerTest, NoOOMWithManyComputationsAndBuffers) {
+  // Verifies that the memory tracking in LatencyHidingScheduler does not
+  // cause host OOM for a model with a large number of computations  and a large
+  // number of global buffers.
+  auto hlo_module = std::make_unique<VerifiedHloModule>(
+      "memory_explosion_module", GetModuleConfigForTest(),
+      /*verifier_layout_sensitive=*/false,
+      /*allow_mixed_precision_in_hlo_verifier=*/true, ShapeSizeBytes);
+
+  const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+
+  // Create kNumSubComputations sub-computations. Each sub-computation contains
+  // a parameter and a negate.
+  static constexpr int kNumSubComputations = 40000;
+  std::vector<HloComputation*> sub_computations;
+  sub_computations.reserve(kNumSubComputations);
+  for (int i = 0; i < kNumSubComputations; ++i) {
+    HloComputation::Builder sub_builder(absl::StrCat("sub_comp_", i));
+    HloInstruction* sub_param = sub_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "sub_param"));
+    HloInstruction* sub_negate =
+        sub_builder.AddInstruction(HloInstruction::CreateUnary(
+            scalar_shape, HloOpcode::kNegate, sub_param));
+    sub_computations.push_back(
+        hlo_module->AddEmbeddedComputation(sub_builder.Build(sub_negate)));
+  }
+
+  // Create entry computation.
+  HloComputation::Builder entry_builder("entry");
+  HloInstruction* param = entry_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "param"));
+
+  // Add a dummy custom call with force_delay to trigger the scheduler.
+  HloInstruction* custom_call = entry_builder.AddInstruction(
+      HloInstruction::CreateCustomCall(scalar_shape, {param}, "dummy_target"));
+  FrontendAttributes attributes;
+  (*attributes.mutable_map())["scheduler_hint"] = "force_delay";
+  custom_call->set_frontend_attributes(attributes);
+
+  // Create a flat chain of kNegate instructions to create kNumBuffers global
+  // values/buffers.
+  static constexpr int kNumBuffers = 200000;
+  HloInstruction* last_negate = custom_call;
+  for (int i = 0; i < kNumBuffers; ++i) {
+    last_negate = entry_builder.AddInstruction(HloInstruction::CreateUnary(
+        scalar_shape, HloOpcode::kNegate, last_negate));
+  }
+
+  HloInstruction* last_call = last_negate;
+  for (int i = 0; i < kNumSubComputations; ++i) {
+    last_call = entry_builder.AddInstruction(HloInstruction::CreateCall(
+        scalar_shape, {last_call}, sub_computations[i]));
+  }
+
+  hlo_module->AddEntryComputation(entry_builder.Build(last_call));
+
+  // Construct and set an initial valid HloSchedule on the module.
+  HloSchedule schedule(hlo_module.get());
+  for (HloComputation* comp : hlo_module->computations()) {
+    schedule.set_sequence(comp, comp->MakeInstructionPostOrder());
+  }
+  TF_ASSERT_OK(hlo_module->set_schedule(std::move(schedule)));
+
+  // Run the scheduler.
+  SchedulerConfig sched_config = GetDefaultSchedConfig();
+
+  absl::StatusOr<std::pair<std::unique_ptr<LatencyHidingScheduler>,
+                           std::shared_ptr<SchedulerCore>>>
+      scheduler_setup_or = SetupScheduler(hlo_module.get(), sched_config);
+  TF_ASSERT_OK(scheduler_setup_or.status());
+  std::pair<std::unique_ptr<LatencyHidingScheduler>,
+            std::shared_ptr<SchedulerCore>>
+      scheduler_setup = std::move(*scheduler_setup_or);
+  std::unique_ptr<LatencyHidingScheduler> scheduler =
+      std::move(scheduler_setup.first);
+
+  TF_EXPECT_OK(scheduler->Run(hlo_module.get()));
 }
 
 }  // namespace

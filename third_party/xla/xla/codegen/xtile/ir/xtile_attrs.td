@@ -25,17 +25,6 @@ class XTile_Attr<string name, list<Trait> traits = []> :
       AttrDef<XTileDialect, name, traits> {
 }
 
-def XTile_TilingInfoAttr : XTile_Attr<"TilingInfo"> {
-  let summary = "Contains auxillary information about how a program is tiled.";
-  let mnemonic = "tiling_info";
-  let parameters = (ins "int32_t":$tile_count, "int32_t":$tiles_per_workgroup);
-
-  let assemblyFormat = [{
-    `<` `tile_count` `:` $tile_count `,`
-    `tiles_per_workgroup` `:` $tiles_per_workgroup `>`
-  }];
-}
-
 def XTile_LayoutAttr : XTile_Attr<"Layout", [
     DeclareAttrInterfaceMethods<MemRefLayoutAttrInterface>]> {
   let mnemonic = "layout";

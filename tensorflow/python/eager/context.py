@@ -2229,6 +2229,11 @@ class Context:
     if self._intra_op_parallelism_threads == num_threads:
       return
 
+    if num_threads < 0:
+      raise ValueError(
+          "Intra op parallelism threads must be >= 0, but got %d" % num_threads
+      )
+
     if self._context_handle is not None:
       raise RuntimeError(
           "Intra op parallelism cannot be modified after initialization."
@@ -2244,6 +2249,11 @@ class Context:
   def inter_op_parallelism_threads(self, num_threads):
     if self._inter_op_parallelism_threads == num_threads:
       return
+
+    if num_threads is not None and num_threads < 0:
+      raise ValueError(
+          "Inter op parallelism threads must be >= 0, but got %d" % num_threads
+      )
 
     if self._context_handle is not None:
       raise RuntimeError(

@@ -156,7 +156,7 @@ LogicalResult LegalizeConv2D::matchAndRewrite(
   // padding
   //===-----
 
-  // Explicit and same padding should be handeled in upstream "prepare" phase.
+  // Explicit and same padding should be handled in upstream "prepare" phase.
   // Same padding will be fused in downstream "optimize" phase on tfl dialect.
   auto tfl_padding = rewriter.getStringAttr("VALID");
 
@@ -386,7 +386,7 @@ LogicalResult ConvertNonTrivialConvToTransposeConvOp::matchAndRewrite(
   // strides
   //===-----
 
-  // TFL::TravsposeConv2D applies strides on LHS. strides == lhs_dilation
+  // TFL::TransposeConv2D applies strides on LHS. strides == lhs_dilation
   auto strides = data.InputDilations();
   auto tfl_h_stride = rewriter.getI32IntegerAttr(strides[0]);
   auto tfl_w_stride = rewriter.getI32IntegerAttr(strides[1]);

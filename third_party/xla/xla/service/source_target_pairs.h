@@ -25,11 +25,11 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -71,7 +71,7 @@ class SourceTargetPairs {
 
   static absl::StatusOr<SourceTargetPairs> FromString(absl::string_view str) {
     // reusing replica groups parsing.
-    ASSIGN_OR_RETURN(std::vector<ReplicaGroup> groups,
+    ABSL_ASSIGN_OR_RETURN(std::vector<ReplicaGroup> groups,
                      ParseReplicaGroupsOnly(str));
     SourceTargetPairs res;
     for (const ReplicaGroup& group : groups) {
@@ -88,7 +88,7 @@ class SourceTargetPairs {
     auto source_target_pairs = instruction->frontend_attributes().map().find(
         kSendRecvSourceTargetPairsAttr);
     if (source_target_pairs != instruction->frontend_attributes().map().end()) {
-      ASSIGN_OR_RETURN(SourceTargetPairs res,
+      ABSL_ASSIGN_OR_RETURN(SourceTargetPairs res,
                        FromString(source_target_pairs->second));
       return res;
     }

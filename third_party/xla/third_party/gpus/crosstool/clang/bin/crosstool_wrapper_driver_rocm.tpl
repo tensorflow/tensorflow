@@ -22,18 +22,20 @@ import re
 import sys
 import shlex
 
-# Template values set by rocm_configure.bzl or environment
-AMDGPU_TARGETS = ('%{rocm_amdgpu_targets}')
+# Get paths from environment variables set by toolchain features
 CPU_COMPILER = os.environ.get('HOST_COMPILER', '/usr/bin/clang')
+HIPCC_PATH = os.environ.get('HIPCC_PATH', '/opt/rocm/bin/hipcc')
+ROCM_PATH = os.environ.get('ROCM_PATH', '/opt/rocm')
+AMDGPU_TARGETS = os.environ.get('AMDGPU_TARGETS', '')
+HIPCC_ENV = os.environ.get('HIPCC_ENV', '')
+ROCR_RUNTIME_LIBRARY = os.environ.get('ROCR_RUNTIME_LIBRARY', 'amdhip64')
+TMPDIR = '%{tmpdir}'
+VERBOSE = os.environ.get('CROSSTOOL_VERBOSE', '0') == '1'
 
-HIPCC_PATH = '%{rocm_root}/bin/hipcc'
-HIPCC_ENV = '%{hipcc_env}'
-HIP_RUNTIME_PATH = '%{rocm_root}/lib'
-HIP_RUNTIME_LIBRARY = '%{rocm_root}/lib'
-ROCR_RUNTIME_PATH = '%{rocm_root}/lib'
-ROCR_RUNTIME_LIBRARY = '%{rocr_runtime_library}'
-TMPDIR= '%{tmpdir}'
-VERBOSE = '%{crosstool_verbose}'=='1'
+# Derived paths
+HIP_RUNTIME_PATH = ROCM_PATH + '/lib'
+HIP_RUNTIME_LIBRARY = ROCM_PATH + '/lib'
+ROCR_RUNTIME_PATH = ROCM_PATH + '/lib'
 
 def Log(s):
   print('gpus/crosstool: {0}'.format(s))
@@ -205,7 +207,7 @@ def InvokeHipcc(argv, log=False):
   hipccopts += defines
   hipccopts += std_options
   hipccopts += m_options
-  hipccopts += ' --rocm-path="%{rocm_root}" '
+  hipccopts += ' --rocm-path="' + ROCM_PATH + '" '
 
   if depfiles:
     # Generate the dependency file

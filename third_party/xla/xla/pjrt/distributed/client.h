@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "grpcpp/channel.h"
+#include "grpcpp/security/credentials.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/runtime/device_id.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
@@ -67,6 +69,10 @@ class DistributedRuntimeClient
     // expires, then shutdown() reports an error and returns control.
     absl::Duration shutdown_timeout = absl::Minutes(5);
 
+    // Extra time added to `init_timeout` and `shutdown_timeout` so that errors
+    // reported by the service can arrive before the client's own deadline.
+    absl::Duration extra_error_propagation_time = absl::Seconds(5);
+
     // The duration after which the service concludes a client has vanished if
     // it hasn't received any heartbeats from the client.
     absl::Duration heartbeat_timeout = absl::Seconds(100);
@@ -98,6 +104,12 @@ class DistributedRuntimeClient
     // If true, a multi-controller JAX job can continue even if this client
     // fails. Otherwise, the job will fail when the task fails.
     bool recoverable = false;
+
+    // An optional gRPC channel credentials to use for the client.
+    absl_nullable std::shared_ptr<::grpc::ChannelCredentials> credentials;
+
+    // If true, crash if insecure credentials are used.
+    bool verify_secure_credentials = false;
   };
 
   virtual ~DistributedRuntimeClient() = default;

@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/AffineExpr.h"
@@ -105,7 +105,7 @@ InPlaceDynamicUpdateSliceFusion::CreateMLIRModule(
       GetDefaultBufferAlignment(), GetWorkDimensions(), entry_function_name,
       BackendKind::kGpu);
 
-  ASSIGN_OR_RETURN(auto kernel_definition, emitter.EmitKernelDefinition());
+  ABSL_ASSIGN_OR_RETURN(auto kernel_definition, emitter.EmitKernelDefinition());
   return std::move(kernel_definition).TakeSource().TakeModule();
 }
 

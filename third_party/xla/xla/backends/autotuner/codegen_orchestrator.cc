@@ -40,27 +40,40 @@ limitations under the License.
 #include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
+namespace {
+
+absl::Status MakeCombinedConfigError(absl::Span<const absl::Status> errors) {
+  std::string combined_error = "All backends failed to find supported configs:";
+  for (const auto& err : errors) {
+    absl::StrAppend(&combined_error, "\n - ", err.ToString());
+  }
+  return absl::InternalError(combined_error);
+}
+
+}  // namespace
 
 absl::StatusOr<std::unique_ptr<CodegenOrchestrator>>
 CodegenOrchestrator::Create(
     std::vector<std::unique_ptr<CodegenBackend>> codegen_backends,
-    Options options, tsl::thread::ThreadPool* thread_pool) {
+    Options options) {
   if (codegen_backends.empty()) {
     return absl::InvalidArgumentError(
         "CodegenOrchestrator initialization failed. No codegen backends "
         "provided.");
   }
-  return absl::WrapUnique(new CodegenOrchestrator(
-      std::move(codegen_backends), std::move(options), thread_pool));
+  return absl::WrapUnique(
+      new CodegenOrchestrator(std::move(codegen_backends), std::move(options)));
 }
 
 absl::StatusOr<std::vector<CodegenOrchestrator::Config>>
 CodegenOrchestrator::GetSupportedConfigs(const HloInstruction& instr) const {
   std::vector<Config> configs;
+  std::vector<absl::Status> errors;
   for (auto& codegen_backend : codegen_backends_) {
     absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
         per_backend_configs = codegen_backend->GetSupportedConfigs(instr);
     if (!per_backend_configs.ok()) {
+      errors.push_back(per_backend_configs.status());
       VLOG(3) << "Failed to get supported configs for backend "
               << codegen_backend->name() << ": "
               << per_backend_configs.status();
@@ -69,23 +82,63 @@ CodegenOrchestrator::GetSupportedConfigs(const HloInstruction& instr) const {
     VLOG(3) << "Found " << per_backend_configs->size()
             << " supported configs for backend " << codegen_backend->name();
     for (auto& config : *per_backend_configs) {
-      configs.push_back({codegen_backend.get(), std::move(config)});
+      configs.push_back(Config{codegen_backend.get(), std::move(config)});
     }
+  }
+  if (configs.empty() && !errors.empty()) {
+    return MakeCombinedConfigError(errors);
+  }
+  return configs;
+}
+
+absl::StatusOr<std::vector<CodegenOrchestrator::EstimatedConfig>>
+CodegenOrchestrator::GetSupportedConfigsWithEstimates(
+    const HloInstruction& instr) const {
+  std::vector<EstimatedConfig> configs;
+  std::vector<absl::Status> errors;
+  for (auto& codegen_backend : codegen_backends_) {
+    absl::StatusOr<std::vector<CodegenBackend::EstimatedConfig>>
+        per_backend_configs =
+            codegen_backend->GetSupportedConfigsWithEstimates(instr);
+    if (!per_backend_configs.ok()) {
+      errors.push_back(per_backend_configs.status());
+      VLOG(3) << "Failed to get supported configs with estimates for backend "
+              << codegen_backend->name() << ": "
+              << per_backend_configs.status();
+      continue;
+    }
+    VLOG(3) << "Found " << per_backend_configs->size()
+            << " supported configs with estimates for backend "
+            << codegen_backend->name();
+    for (auto& config : *per_backend_configs) {
+      configs.push_back(EstimatedConfig{
+          Config{codegen_backend.get(), std::move(config.config)},
+          config.estimated_runtime});
+    }
+  }
+  if (configs.empty() && !errors.empty()) {
+    return MakeCombinedConfigError(errors);
   }
   return configs;
 }
 
 absl::StatusOr<CodegenOrchestrator::Config>
 CodegenOrchestrator::GetDefaultConfig(const HloInstruction& instr) const {
+  std::vector<absl::Status> errors;
   for (auto& backend : codegen_backends_) {
     auto config = backend->GetDefaultConfig(instr);
     if (config.ok()) {
       return Config{backend.get(), std::move(*config)};
     }
+    errors.push_back(config.status());
   }
-  return absl::NotFoundError(
+  std::string combined_error =
       absl::StrCat("No backend with default config found for instruction: ",
-                   instr.ToString()));
+                   instr.ToString());
+  for (const auto& err : errors) {
+    absl::StrAppend(&combined_error, "\n - ", err.ToString());
+  }
+  return absl::NotFoundError(combined_error);
 }
 
 absl::StatusOr<std::unique_ptr<Executable>> CodegenOrchestrator::Compile(
@@ -101,7 +154,7 @@ absl::StatusOr<std::unique_ptr<Executable>> CodegenOrchestrator::Compile(
           << instr.ToString();
   absl::StatusOr<std::unique_ptr<Executable>> executable =
       config.codegen_backend->Compile(instr, *config.backend_config);
-  if (absl::Status status = IsValidExecutable(executable, instr);
+  if (absl::Status status = IsValidExecutable(executable, instr, config);
       !status.ok()) {
     return status;
   }
@@ -110,9 +163,10 @@ absl::StatusOr<std::unique_ptr<Executable>> CodegenOrchestrator::Compile(
 
 tsl::Future<std::vector<CodegenOrchestrator::MaybeExecutableCandidate>>
 CodegenOrchestrator::CompileAll(const HloInstruction& instr,
-                                std::vector<Config> configs) const {
-  tsl::Executor* executor = thread_pool_ != nullptr
-                                ? thread_pool_->AsExecutor()
+                                std::vector<Config> configs,
+                                tsl::thread::ThreadPool* thread_pool) const {
+  tsl::Executor* executor = thread_pool != nullptr
+                                ? thread_pool->AsExecutor()
                                 : &tsl::InlineExecutor::Instance();
 
   std::vector<tsl::Future<MaybeExecutableCandidate>> futures;
@@ -136,26 +190,27 @@ absl::Status CodegenOrchestrator::ApplyConfig(HloInstruction& instr,
 
 absl::Status CodegenOrchestrator::IsValidExecutable(
     const absl::StatusOr<std::unique_ptr<Executable>>& executable,
-    const HloInstruction& instr) const {
+    const HloInstruction& instr, const Config& config) const {
   if (!executable.ok()) {
     return tsl::errors::CreateWithUpdatedMessage(
         executable.status(),
         absl::StrCat("Compilation failed: ", executable.status().message()));
   }
 
-  bool allow_spills = false;
-  if (options_.allow_reg_spills_fn) {
-    allow_spills = options_.allow_reg_spills_fn(instr);
+  if (!*executable) {
+    return absl::OkStatus();
   }
 
-  if (!allow_spills && *executable) {
-    const auto spills_registers = [](const auto& pair) {
-      const KernelStats& kernel_stats = pair.second;
-      return kernel_stats.store_bytes_spilled > 0 ||
-             kernel_stats.load_bytes_spilled > 0;
-    };
-    ModuleStats module_stats = (*executable)->module_stats();
-    if (absl::c_any_of(module_stats, spills_registers)) {
+  if (options_.allow_reg_spills_fn &&
+      options_.allow_reg_spills_fn(instr, config.codegen_backend->backend())) {
+    return absl::OkStatus();
+  }
+
+  // Fail if any registers spilled.
+  ModuleStats module_stats = (*executable)->module_stats();
+  for (const auto& [kernel_name, kernel_stats] : module_stats) {
+    if (kernel_stats.store_bytes_spilled > 0 ||
+        kernel_stats.load_bytes_spilled > 0) {
       return absl::ResourceExhaustedError(
           "Discarding compilation due to register spilling.");
     }

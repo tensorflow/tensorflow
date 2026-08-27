@@ -81,6 +81,14 @@ common --@rules_python//python/config_settings:bootstrap_impl=script --repo_env=
 
 common --incompatible_default_to_explicit_init_py
 
+# Use a downloader config to mirror GitHub and Python package downloads.
+# We use the experimental_ name for better compatibility with different Bazel versions.
+build --experimental_downloader_config=bazel_downloader.cfg
+test --experimental_downloader_config=bazel_downloader.cfg
+fetch --experimental_downloader_config=bazel_downloader.cfg
+sync --experimental_downloader_config=bazel_downloader.cfg
+query --experimental_downloader_config=bazel_downloader.cfg
+
 # For local build, without dependency on rbe
 common:linux_cpu --config=avx_linux
 common:linux_cpu --linkopt=-lrt
@@ -157,6 +165,7 @@ common:macos --features=archive_param_file
 
 # Settings for MacOS on ARM CPUs.
 common:macos_arm64 --cpu=darwin_arm64
+common:macos_arm64 --platform_mappings=tools/toolchains/cross_compile/config/platform_mappings
 common:macos_arm64 --macos_minimum_os=11.0
 common:macos_arm64 --platforms=@build_bazel_apple_support//platforms:darwin_arm64
 
@@ -177,9 +186,9 @@ common:mkl_aarch64_threadpool -c opt
 common:mkl_aarch64 --config=mkl_aarch64_threadpool
 
 # Default CUDA, CUDNN, NCCL and NVSHMEM versions.
-common:cuda_version --repo_env=HERMETIC_CUDA_VERSION="12.9.1"
-common:cuda_version --repo_env=HERMETIC_CUDNN_VERSION="9.8.0"
-common:cuda_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
+common:cuda_version --repo_env=HERMETIC_CUDA_VERSION="13.2.0"
+common:cuda_version --repo_env=HERMETIC_CUDNN_VERSION="9.12.0"
+common:cuda_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.3.20"
 common:cuda_version --repo_env=HERMETIC_NCCL_VERSION="2.29.7"
 
 # CUDA: This config refers to building CUDA op kernels with nvcc.
@@ -211,7 +220,7 @@ common:cuda_clang --copt=-Qunused-arguments
 # release while SASS is only forward compatible inside the current
 # major release. Example: sm_80 kernels can run on sm_89 GPUs but
 # not on sm_90 GPUs. compute_80 kernels though can also run on sm_90 GPUs.
-common:cuda_clang --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_60,sm_70,sm_80,sm_89,compute_90"
+common:cuda_clang --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_75,sm_80,sm_90,sm_100,compute_120"
 # Permit newer CUDA versions than Clang is aware of
 common:cuda_clang --copt="-Wno-unknown-cuda-version"
 # Set lld as the linker.
@@ -285,7 +294,7 @@ common:rocm_clang_hermetic --@rules_ml_toolchain//common:enable_sycl=False
 common:rocm_clang_hermetic --@rules_ml_toolchain//common:enable_hermetic_cc=True
 common:rocm_clang_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
 common:rocm_clang_hermetic --strategy=CppLink=local
-common:rocm_clang_hermetic --@rules_ml_toolchain//common:static_libcxx=True
+common:rocm_clang_hermetic --@rules_ml_toolchain//common:static_libcxx=False
 
 common:rocm --config=rocm_clang_hermetic
 common:rocm_ci --config=rocm
@@ -294,7 +303,7 @@ common:rocm_ci --@local_config_rocm//rocm:rocm_path_type=hermetic
 common:rocm_ci_hermetic --dynamic_mode=off
 common:rocm_ci_hermetic --config=rocm_clang_hermetic
 common:rocm_ci_hermetic --repo_env=TF_ROCM_AMDGPU_TARGETS="gfx908,gfx90a"
-common:rocm_ci_hermetic --repo_env=ROCM_DISTRO_VERSION="rocm_7.12.0_gfx90a"
+common:rocm_ci_hermetic --repo_env=ROCM_DISTRO_VERSION="rocm_7.13.0_gfx90a"
 common:rocm_ci_hermetic --repo_env=SYSROOT_DIST=linux_glibc_2_31
 common:rocm_ci_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
 
@@ -302,6 +311,7 @@ common:rocm_ci_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
 # SYCL Configuration (non-hermetic)
 common:sycl --@rules_ml_toolchain//common:enable_sycl=True
 common:sycl --repo_env=TF_NEED_SYCL=1
+common:sycl --repo_env=ENABLE_INTEL_XPU_TRITON=1
 common:sycl --define=tensorflow_mkldnn_contraction_kernel=0
 common:sycl --cxxopt=-std=c++17
 common:sycl --host_cxxopt=-std=c++17
@@ -330,6 +340,8 @@ common:windows --host_copt=/W0
 
 # Linux ARM64 specific options
 common:linux_arm64 --copt="-mtune=generic" --copt="-march=armv8-a" --copt="-O3"
+common:linux_arm64 --define=ynn_enable_arm64_neonfp8=false
+
 
 
 # On Windows, `__cplusplus` is wrongly defined without this switch
@@ -435,8 +447,6 @@ common:avx_linux --copt=-mavx
 common:avx_linux --host_copt=-mavx
 common:avx_win --copt=/arch:AVX
 
-common:win_clang_base --@com_google_protobuf//build_defs:use_dlls=True
-common:win_clang_base --@com_google_absl//absl:use_dlls=True
 common:win_clang_base --linkopt=/demangle:no --host_linkopt=/demangle:no
 common:win_clang_base --linkopt=/errorlimit:0 --host_linkopt=/errorlimit:0
 common:win_clang_base --copt=/clang:-Weverything
@@ -625,6 +635,7 @@ common:release_macos_x86 --config=release_macos_base
 # Build with the AVX instruction set when on macOS x86
 common:release_macos_x86 --config=avx_linux
 common:release_macos_x86 --cpu=darwin
+common:release_macos_x86 --platform_mappings=tools/toolchains/cross_compile/config/platform_mappings
 common:release_macos_x86 --platforms=@build_bazel_apple_support//platforms:darwin_x86_64
 # Target Catalina as the minimum compatible OS version
 common:release_macos_x86 --macos_minimum_os=10.15
@@ -633,6 +644,7 @@ common:release_macos_x86 --macos_sdk_version=10.15
 # Build configs for macOS Arm64
 common:release_macos_arm64 --config=release_macos_base
 common:release_macos_arm64 --cpu=darwin_arm64
+common:release_macos_arm64 --platform_mappings=tools/toolchains/cross_compile/config/platform_mappings
 common:release_macos_arm64 --platforms=@build_bazel_apple_support//platforms:darwin_arm64
 common:release_macos_arm64 --define=tensorflow_mkldnn_contraction_kernel=0
 # Target Moneterey as the minimum compatible OS version
@@ -676,6 +688,9 @@ common:cross_compile_base --host_cpu=k8
 common:cross_compile_base --host_crosstool_top=//tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
 common:cross_compile_base --extra_execution_platforms=//tools/toolchains/cross_compile/config:linux_x86_64
 common:cross_compile_base --extra_toolchains=//tools/toolchains/cross_compile/cc:linux_x86_toolchain
+# Map XLA-owned cross-compile platforms to legacy --cpu values and vice versa
+# so platform-based selects remain compatible with legacy toolchain flags.
+common:cross_compile_base --platform_mappings=tools/toolchains/cross_compile/config/platform_mappings
 
 common:rbe_cross_compile_base --config=rbe_base
 common:rbe_cross_compile_base --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
@@ -695,6 +710,7 @@ common:cross_compile_linux_arm64 --platforms=//tools/toolchains/cross_compile/co
 common:cross_compile_linux_arm64 --cpu=aarch64
 common:cross_compile_linux_arm64 --crosstool_top=//tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
 common:cross_compile_linux_arm64 --extra_toolchains=//tools/toolchains/cross_compile/cc:linux_aarch64_toolchain
+common:cross_compile_linux_arm64 --define=ynn_enable_arm64_neonfp8=false
 
 # RBE cross-compile configs for Linux Aarch64
 common:rbe_cross_compile_linux_arm64 --config=cross_compile_linux_arm64
@@ -717,9 +733,6 @@ common:cross_compile_macos_x86 --crosstool_top=//tools/toolchains/cross_compile/
 # toolchain. Otherwise, oddly, RBE complains that a "docker container must be
 # specified".
 common:cross_compile_macos_x86 --extra_toolchains=//tools/toolchains/cross_compile/config:macos-x86-cross-compile-cc-toolchain
-# Map --platforms=darwin_x86_64 to --cpu=darwin and vice-versa to make selects()
-# and transistions that use these flags work.
-common:cross_compile_macos_x86 --platform_mappings=tools/toolchains/cross_compile/config/platform_mappings
 
 # RBE cross-compile configs for Darwin x86
 common:rbe_cross_compile_macos_x86 --config=cross_compile_macos_x86 --remote_download_minimal
@@ -741,7 +754,9 @@ build:pjrt_release -c opt --@local_config_cuda//cuda:include_cuda_libs=false
 build:pjrt_nightly -c opt --@local_config_cuda//cuda:include_cuda_libs=true
 
 build:pjrt_x86 --cpu=k8
+build:pjrt_x86 --platform_mappings=tools/toolchains/cross_compile/config/platform_mappings
 build:pjrt_aarch64 --cpu=aarch64
+build:pjrt_aarch64 --platform_mappings=tools/toolchains/cross_compile/config/platform_mappings
 
 build:pjrt_cuda12 --config=cuda_nvcc
 build:pjrt_cuda12 --repo_env=HERMETIC_CUDA_VERSION="12.9.1"
@@ -750,7 +765,7 @@ build:pjrt_cuda12 --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
 build:pjrt_cuda12 --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_50,sm_60,sm_70,sm_80,sm_90,sm_100,compute_120"
 
 build:pjrt_cuda13 --config=cuda_nvcc
-build:pjrt_cuda13 --repo_env=HERMETIC_CUDA_VERSION="13.0.0"
+build:pjrt_cuda13 --repo_env=HERMETIC_CUDA_VERSION="13.2.0"
 build:pjrt_cuda13 --repo_env=HERMETIC_CUDNN_VERSION="9.12.0"
 build:pjrt_cuda13 --repo_env=HERMETIC_NVSHMEM_VERSION="3.3.20"
 build:pjrt_cuda13 --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_75,sm_80,sm_90,sm_100,compute_120"

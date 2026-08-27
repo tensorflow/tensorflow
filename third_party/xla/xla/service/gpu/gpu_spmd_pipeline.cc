@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
@@ -124,18 +125,24 @@ void AddSPMDPasses(
             .debug_options()
             .xla_gpu_operand_bytes_threshold_for_windowed_einsum();
   }
-  spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
-      num_partitions, hlo_module->config().replica_count(),
-      hlo_module->config()
-          .debug_options()
-          .xla_gpu_threshold_for_windowed_einsum_mib(),
-      hlo_module->config()
-          .debug_options()
-          .xla_gpu_multi_streamed_windowed_einsum(),
-      /*skip_checking_windowed_einsum_users=*/true,
-      /*disable_ag_rewrite_for_multiple_consumers=*/true,
-      /*enable_partial_windowed_einsums=*/true, oper_size_threshold,
-      max_windowed_einsum_iteration);
+  {
+    const auto& debug_options = hlo_module->config().debug_options();
+    auto spmd_options = spmd::StatefulRngSpmdPartitioner::GetDefaultOptions();
+    spmd_options.threshold_for_windowed_einsum_mib =
+        debug_options.xla_gpu_threshold_for_windowed_einsum_mib();
+    spmd_options.unroll_windowed_einsum =
+        debug_options.xla_gpu_multi_streamed_windowed_einsum();
+    spmd_options.skip_checking_windowed_einsum_users = true;
+    spmd_options.disable_ag_rewrite_for_multiple_consumers = true;
+    spmd_options.partial_windowed_einsum = true;
+    spmd_options.total_bytes_windowed_einsum_threshold = oper_size_threshold;
+    spmd_options.max_windowed_einsum_iteration = max_windowed_einsum_iteration;
+    spmd_options.enable_dynamic_slice_collective_broadcast =
+        debug_options.xla_spmd_enable_dynamic_slice_collective_broadcast();
+    spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
+        num_partitions, hlo_module->config().replica_count(),
+        std::move(spmd_options));
+  }
   if (hlo_module->config().debug_options().xla_enable_enzyme_comms_opt()) {
     spmd_pipeline.AddPass<RecognizeReduceWindow>();
     spmd_pipeline.AddPass<CollectivePermuteCSE>();

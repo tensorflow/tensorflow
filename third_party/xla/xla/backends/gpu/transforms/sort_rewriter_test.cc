@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -513,6 +514,109 @@ ENTRY %main {
   ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
   ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
+}
+
+TEST_F(SortRewriterTest, BlackwellHeuristic) {
+  SortRewriter::SetSortModeForTestingOnly(SortRewriter::Mode::kAuto);
+  constexpr char kHloTmpl[] = R"(
+HloModule TestModule
+
+%compare {
+  %lhs = $1[] parameter(0)
+  %rhs = $1[] parameter(1)
+  ROOT %lt = pred[] compare(%lhs, %rhs), direction=LT
+}
+
+ENTRY %main {
+  %input = $1[$0,$2] parameter(0)
+  ROOT %sort = $1[$0,$2] sort(%input), dimensions={1}, to_apply=%compare
+})";
+
+  constexpr char kHloPairsTmpl[] = R"(
+HloModule TestModule
+
+%compare {
+  %lhs = $1[] parameter(0)
+  %rhs = $1[] parameter(1)
+  %lhs_v = s32[] parameter(2)
+  %rhs_v = s32[] parameter(3)
+  ROOT %lt = pred[] compare(%lhs, %rhs), direction=LT
+}
+
+ENTRY %main {
+  %keys = $1[$0,$2] parameter(0)
+  %values = s32[$0,$2] parameter(1)
+  ROOT %sort = ($1[$0,$2], s32[$0,$2]) sort(%keys, %values), dimensions={1}, to_apply=%compare
+})";
+
+  if (test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm)) {
+    GTEST_SKIP() << "Skipping CUDA-specific test";
+  }
+  auto pass = SortRewriter(TestGpuDeviceInfo::B200SXMDeviceInfo());
+
+  // Helper to run pass and check if rewrite occurred.
+  auto check_rewrite = [&](absl::string_view batch, absl::string_view size,
+                           absl::string_view dtype) -> bool {
+    std::string hlo = absl::Substitute(kHloTmpl, batch, dtype, size);
+    auto module_or_status = ParseAndReturnVerifiedModule(hlo);
+    EXPECT_OK(module_or_status.status());
+    if (!module_or_status.ok()) {
+      return false;
+    }
+    auto module = std::move(module_or_status).value();
+    auto run_status = RunHloPass(&pass, module.get());
+    EXPECT_OK(run_status.status());
+    if (!run_status.ok()) {
+      return false;
+    }
+    return run_status.value();
+  };
+
+  auto check_rewrite_pairs = [&](absl::string_view batch,
+                                 absl::string_view size,
+                                 absl::string_view dtype) -> bool {
+    std::string hlo = absl::Substitute(kHloPairsTmpl, batch, dtype, size);
+    auto module_or_status = ParseAndReturnVerifiedModule(hlo);
+    EXPECT_OK(module_or_status.status());
+    if (!module_or_status.ok()) {
+      return false;
+    }
+    auto module = std::move(module_or_status).value();
+    auto run_status = RunHloPass(&pass, module.get());
+    EXPECT_OK(run_status.status());
+    if (!run_status.ok()) {
+      return false;
+    }
+    return run_status.value();
+  };
+
+  // --- Test uint16 ---
+  // size=4096, batch=1 -> True
+  EXPECT_TRUE(check_rewrite("1", "4096", "u16"));
+  // size=4096, batch=256 -> True
+  EXPECT_TRUE(check_rewrite("256", "4096", "u16"));
+  // size=2048, batch=256 -> False
+  EXPECT_FALSE(check_rewrite("256", "2048", "u16"));
+
+  // --- Test int32 ---
+  // size=16384, batch=256 -> True
+  EXPECT_TRUE(check_rewrite("256", "16384", "s32"));
+  // size=4096, batch=64 -> False (Avoid regression on small batches)
+  EXPECT_FALSE(check_rewrite("64", "4096", "s32"));
+  // size=4096, batch=128 -> False (Regression avoidance)
+  EXPECT_FALSE(check_rewrite("128", "4096", "s32"));
+  // size=2048, batch=1 -> False
+  EXPECT_FALSE(check_rewrite("1", "2048", "s32"));
+
+  // --- Test int64 Key-Only ---
+  // size=16384, batch=16 -> True (CUB is faster for large key-only)
+  EXPECT_TRUE(check_rewrite("16", "16384", "s64"));
+  // size=2048, batch=16 -> False (Avoid regression)
+  EXPECT_FALSE(check_rewrite("16", "2048", "s64"));
+
+  // --- Test int64 Key-Value (Pairs) ---
+  // size=16384, batch=16 -> False (CUB offers no speedup for 64-bit K-V sort)
+  EXPECT_FALSE(check_rewrite_pairs("16", "16384", "s64"));
 }
 
 TEST_F(SortRewriterTest, A100Heuristic) {

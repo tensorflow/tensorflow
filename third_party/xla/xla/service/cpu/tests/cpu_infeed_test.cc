@@ -47,7 +47,7 @@ namespace xla {
 namespace {
 
 class InfeedTest : public ClientLibraryTestRunnerMixin<
-                       HloInterpreterReferenceMixin<HloPjRtTestBase>> {
+                       HloInterpreterReferenceMixin<HloTestBase>> {
  protected:
   // Transfers the given literal to the infeed interface of the device, and
   // check if the returned data from Infeed HLO is same as the literal.

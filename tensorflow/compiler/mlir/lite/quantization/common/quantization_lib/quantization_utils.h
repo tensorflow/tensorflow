@@ -440,7 +440,7 @@ class QuantizationPattern : public RewritePattern {
     CustomMap custom_map = quant_params_.quant_spec.custom_map;
 
     // Rewrite the floating-point ops to the quantized version, by fusing
-    // preceding dequantize ops and succeding quantize ops.
+    // preceding dequantize ops and succeeding quantize ops.
     for (mlir::Operation* quantizing_op : quantizing_ops) {
       // If it is requantize op, we shouldn't rewrite this op.
       if (llvm::isa<QuantizeOpT, DequantizeOpT>(quantizing_op)) {
@@ -490,6 +490,27 @@ class QuantizationPattern : public RewritePattern {
               (nodes_blocklist.find(sloc) != nodes_blocklist.end())) {
             return failure();
           }
+        } else if (auto fused_loc =
+                       llvm::dyn_cast<FusedLoc>(quantizing_op->getLoc())) {
+          llvm::SmallVector<mlir::Location, 4> stack;
+          stack.push_back(fused_loc);
+          bool blocked = false;
+          while (!stack.empty()) {
+            mlir::Location l = stack.pop_back_val();
+            if (auto name_loc = llvm::dyn_cast<NameLoc>(l)) {
+              std::string sloc = name_loc.getName().str();
+              if (!sloc.empty() &&
+                  (nodes_blocklist.find(sloc) != nodes_blocklist.end())) {
+                blocked = true;
+                break;
+              }
+            } else if (auto fused = llvm::dyn_cast<FusedLoc>(l)) {
+              for (auto child_loc : fused.getLocations()) {
+                stack.push_back(child_loc);
+              }
+            }
+          }
+          if (blocked) return failure();
         }
       }
 

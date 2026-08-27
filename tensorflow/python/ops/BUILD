@@ -1223,6 +1223,7 @@ py_library(
 py_library(
     name = "cond",
     srcs = ["cond.py"],
+    lazy_imports = True,
     strict_deps = True,
     deps = [
         ":array_ops",
@@ -1372,6 +1373,7 @@ py_library(
     srcs = [
         "cond_v2.py",
     ],
+    lazy_imports = True,
     strict_deps = True,
     deps = [
         ":array_ops",
@@ -1455,9 +1457,11 @@ py_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_conversion",
+        "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1470,11 +1474,13 @@ cuda_py_strict_test(
         ":count_ops_gen",
         ":sparse_ops",
         "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -1888,6 +1894,7 @@ py_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops/linalg:linalg_impl",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -2810,6 +2817,7 @@ cuda_py_strict_test(
         ":rnn_grad",
         ":rnn_ops_gen",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
@@ -3690,6 +3698,8 @@ cuda_py_strict_test(
         ":nn_grad",
         ":nn_impl",
         ":nn_ops_gen",
+        ":variables",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
@@ -4369,9 +4379,12 @@ py_library(
         ":nn_ops_gen",
         ":sparse_ops_gen",
         ":variables",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/platform:device_context",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
@@ -4461,6 +4474,7 @@ py_library(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:record",
+        "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:composite_tensor_gradient",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",

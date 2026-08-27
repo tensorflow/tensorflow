@@ -22,8 +22,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
@@ -40,11 +40,19 @@ absl::StatusOr<int64_t> ExtractBlockK(const HloDotInstruction* dot);
 // parameters.
 // Flops with tile and wave quant.
 absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
-    const HloDotInstruction* dot, const BlockLevelParameters& block_params,
+    const HloDotInstruction* dot,
+    const xla::xtile::BlockLevelParameters& block_params,
     const se::DeviceDescription& device_info,
     std::optional<int64_t> block_k = std::nullopt);
 
 namespace detail {
+
+// This tax models the static, fixed overhead incurred during each iteration of
+// the memory loop. The value 1300ns was measured using a small skinny GEMM
+// example with no pipelining. There is a deeper explanation in
+// b/503201785#comment21. TODO(b/529341369): Account for A100, TMA, and other
+// memory instruction pathways.
+inline constexpr absl::Duration kLoopLatencyTax = absl::Nanoseconds(1300);
 
 struct DotProblemInfo {
   int64_t b = 0;
@@ -81,14 +89,69 @@ struct HbmEstimates {
   int64_t bytes_read = 0;
   int64_t bytes_written = 0;
 
-  absl::Duration total_time() { return read_time + write_time; }
+  absl::Duration total_time() const { return read_time + write_time; }
 };
 HbmEstimates CalculateHbmTime(const DotProblemInfo& dot,
                               const se::DeviceDescription& device_info);
 
+// Estimates the execution time of the main loop and epilogue, accounting for
+// pipelining between memory and compute.
+absl::Duration CalculatePipelinedLoopTime(int64_t num_stages,
+                                          int64_t k_loop_iterations,
+                                          absl::Duration compute_time,
+                                          const HbmEstimates& hbm_timing);
+
+// Configuration parameters describing kernel launch dimensions and resource
+// footprints for wave and occupancy calculations.
+struct LaunchConfig {
+  int64_t num_stages = 1;
+  int64_t num_warps = 1;
+  int64_t k_loop_iterations = 0;
+  int64_t threadblock_count = 0;
+  int64_t shared_memory_per_block_bytes = 0;
+  int64_t registers_per_thread = 0;
+};
+
+// Estimates main loop and epilogue execution time, accounting for
+// memory/compute pipelining. Unlike CalculatePipelinedLoopTime, this restricts
+// pipeline overlap potential by evaluating latency overhead per hardware wave,
+// assuming discrete waves execute sequentially.
+absl::Duration CalculatePipelinedLoopTimeWithLaunchWaves(
+    const LaunchConfig& config, absl::Duration compute_time,
+    const HbmEstimates& hbm_timing, const se::DeviceDescription& device_info);
+
+// Represents the occupancy of a single Streaming Multiprocessor (SM) for a
+// given kernel launch configuration.
+struct SmOccupancy {
+  int64_t active_blocks_per_sm = 0;
+  int64_t active_warps_per_sm = 0;
+};
+
+// Calculates the SM occupancy based on shared memory, register, and thread
+// limits.
+SmOccupancy CalculateSmOccupancy(const LaunchConfig& config,
+                                 const se::DeviceDescription& device_info);
+
+// Calculates the estimated number of hardware launch waves required to execute
+// the threadblocks.
+int64_t CalculateHardwareLaunchWaves(const LaunchConfig& config,
+                                     const se::DeviceDescription& device_info);
+
 // Calculates the bytes read from HBM for one inner loop iteration.
 int64_t CalculateLoopIterBytes(const DotProblemInfo& dot,
                                const DotTileSize& dot_tile);
+
+// Calculates the shared memory per block in bytes.
+int64_t CalculateSharedMemoryPerBlockBytes(const DotProblemInfo& dot_info,
+                                           const DotTileSize& dot_tile,
+                                           int64_t num_stages);
+
+// Estimates physical PTX register usage per thread for a GPU dot fusion kernel,
+// accounting for output accumulator registers and base state overhead.
+int CalculateRegistersPerThread(const DotProblemInfo& dot_info,
+                                const DotTileSize& dot_tile,
+                                const xtile::BlockLevelParameters& block_params,
+                                const se::DeviceDescription& device_info);
 
 // Calculates the L2 time for a GPU DOT operation.
 absl::StatusOr<absl::Duration> CalculateL2Time(
@@ -109,6 +172,26 @@ struct ComputeAndFlops {
 absl::StatusOr<ComputeAndFlops> CalculateComputeTimeWithTileAndWaveQuantization(
     const DotProblemInfo& dot, const DotTileSize& dot_tile,
     const se::DeviceDescription& device_info);
+
+// Calculates the effective flops for a GPU DOT operation as a function of the
+// tile size (excludes clock throttling). Not all tile sizes are equally able to
+// extract utilization on the same generation GPUs even if the workload is
+// compute bound. GEMM performance is sensitive to the tensor core
+// instruction throughputs that the programming model exposes.
+double GetEffectiveFlopsPerNsForTileSize(
+    int64_t tile_m, const se::DeviceDescription& device_info,
+    PrimitiveType element_type);
+
+// Calculates Compute Utilization. Expected to be in the range [0.0, 1.0], but
+// may exceed 1.0 if the underlying time estimates are inaccurate.
+double CalculateComputeUtilization(const EstimateRunTimeData& estimates,
+                                   const se::DeviceDescription& device_info,
+                                   PrimitiveType output_element_type);
+
+// Calculates Memory Utilization. Expected to be in the range [0.0, 1.0], but
+// may exceed 1.0 if the underlying time estimates are inaccurate.
+double CalculateMemoryUtilization(const EstimateRunTimeData& estimates,
+                                  const se::DeviceDescription& device_info);
 
 }  // namespace detail
 

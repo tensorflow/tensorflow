@@ -33,7 +33,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_memory_allocator.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
@@ -67,6 +67,12 @@ template <>
 struct MaskFor<::xla::bfloat16> {
   using type = uint16_t;
   static constexpr type kStartBits = 0x3C00;  // bfloat16: 1/128
+};
+
+template <>
+struct MaskFor<uint64_t> {
+  using type = uint64_t;
+  static constexpr type kStartBits = 1000;  // uint64_t: arbitrary point
 };
 
 // Fills vector with unique values using bit patterns starting from kStartBits
@@ -152,5 +158,7 @@ TEST(RaftSelectKExecTest, SelectKFloat) { RunSelectKTest<float>(); }
 TEST(RaftSelectKExecTest, SelectKBFloat16) {
   RunSelectKTest<::xla::bfloat16>();
 }
+
+TEST(RaftSelectKExecTest, SelectKUint64) { RunSelectKTest<uint64_t>(); }
 
 }  // namespace xla::gpu

@@ -29,11 +29,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
@@ -62,6 +62,7 @@ limitations under the License.
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/remap_plan.pb.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/future.h"
@@ -136,15 +137,24 @@ struct Environment {
   // Policy that controls how `ExecuteOptions.fill_status` is passed to
   // `Execute()` calls.
   ProgramFillStatus program_fill_status;
+  // Execution stream ID for the program execution. Propagated to every atom
+  // program so that atom program executions within a program are serialized
+  // in the order the interpreter dispatches them. By contrast, distinct
+  // program executions with different stream IDs can execute concurrently or
+  // interleave.
+  int64_t execution_stream_id = 0;
   // Contains a future for each ifrt.CallOp that is a leaf (i.e., has no outputs
   // or all its outputs are returned from the program).
   std::vector<tsl::Future<>> leaf_call_op_futures;
+  // If true, the interpreter will create a new user context around each op,
+  // otherwise the outer user context will be used when interpreting each op.
+  bool set_op_user_contexts = false;
 };
 
 absl::StatusOr<std::unique_ptr<ProgramInterpreter>> ProgramInterpreter::Create(
     Client* client, absl::string_view program_name, mlir::ModuleOp mlir_module,
     std::shared_ptr<AtomExecutableMap> atom_program_executables,
-    DeviceListRef devices) {
+    DeviceListRef devices, bool set_op_user_contexts) {
   mlir::func::FuncOp main_func = GetMainFunction(mlir_module);
   if (!IsIfrtFunction(main_func)) {
     return absl::InvalidArgumentError(
@@ -153,7 +163,7 @@ absl::StatusOr<std::unique_ptr<ProgramInterpreter>> ProgramInterpreter::Create(
   }
   return std::unique_ptr<ProgramInterpreter>(new ProgramInterpreter(
       client, program_name, mlir_module, std::move(atom_program_executables),
-      std::move(devices), mlir::Liveness(main_func)));
+      std::move(devices), mlir::Liveness(main_func), set_op_user_contexts));
 }
 
 namespace {
@@ -161,6 +171,7 @@ namespace {
 struct ProgramInterpreterState {
   Client* client;
   std::string program_name;
+  bool set_op_user_contexts;
 
   std::vector<ArrayHandle> input_handles;
   absl::flat_hash_set<int> donated_input_indices;
@@ -193,7 +204,9 @@ struct ProgramInterpreterState {
     }
 
     Environment env;
+    env.set_op_user_contexts = set_op_user_contexts;
     env.client = client;
+    env.execution_stream_id = options.execution_stream_id;
     // TODO(icgog): Set default fill status to kFillLeafOps instead of kFillNone
     // when  options.fill_status is set.
     env.program_fill_status = options.fill_status
@@ -244,7 +257,7 @@ struct ProgramInterpreterState {
     }
 
     for (const auto& op_fn : op_fns) {
-      RETURN_IF_ERROR(op_fn(env));
+      ABSL_RETURN_IF_ERROR(op_fn(env));
     }
 
     VLOG(2) << "Finished interpreting program: " << program_name;
@@ -265,6 +278,7 @@ ProgramInterpreter::BuildExecuteFn() {
   tsl::profiler::TraceMe traceme("ProgramInterpreter::BuildExecuteFn");
 
   ProgramInterpreterState state;
+  state.set_op_user_contexts = set_op_user_contexts_;
   state.client = client_;
   state.program_name = program_name_;
 
@@ -346,12 +360,19 @@ struct CallLoadedExecutableOpState {
     });
     VLOG(3) << pretty_print;
 
+    ifrt::UserContextRef new_context =
+        env.set_op_user_contexts
+            ? ifrt::BasicUserContext::Create("Execute program op")
+            : ifrt::UserContextScope::current();
+    ifrt::UserContextScope context_scope(std::move(new_context));
+
     ExecuteOptions options = execute_options;
     if (env.program_fill_status == ProgramFillStatus::kFillAll ||
         (env.program_fill_status == ProgramFillStatus::kFillLeafOps &&
          is_leaf_op)) {
       options.fill_status = true;
     }
+    options.execution_stream_id = env.execution_stream_id;
 
     std::vector<ArrayHandle> arrays_to_remove;
     {
@@ -400,7 +421,7 @@ struct CallLoadedExecutableOpState {
       // TODO(b/401105456): Remove this CopyArrays call once non-donatable
       // pinned host inputs are supported.
       if (!non_donatable_pinned_host_inputs.empty()) {
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             std::vector<ArrayRef> copied_pinned_host_inputs,
             env.client->CopyArrays(
                 absl::MakeSpan(non_donatable_pinned_host_inputs),
@@ -424,7 +445,7 @@ struct CallLoadedExecutableOpState {
           env.handle_to_array.find(input_handles[idx])->second.array);
     }
 
-    ASSIGN_OR_RETURN(ExecuteResult result,
+    ABSL_ASSIGN_OR_RETURN(ExecuteResult result,
                      executable->Execute(absl::MakeSpan(inputs), options,
                                          /*devices=*/std::nullopt));
     TF_RET_CHECK(result.outputs.size() == output_handles.size())
@@ -543,8 +564,14 @@ struct RemapArraysOpState {
     });
     VLOG(3) << pretty_print;
 
+    ifrt::UserContextRef new_context =
+        env.set_op_user_contexts
+            ? ifrt::BasicUserContext::Create("RemapArrays program op")
+            : ifrt::UserContextScope::current();
+    ifrt::UserContextScope context_scope(std::move(new_context));
+
     std::vector<ArrayRef> inputs;
-    inputs.reserve(remap_plan.input_specs.size());
+    inputs.reserve(remap_plan.input_specs().size());
 
     std::vector<ArrayHandle> arrays_to_remove;
 
@@ -578,7 +605,7 @@ struct RemapArraysOpState {
                "happens only if the array has been marked as non-donatable at "
                "runtime."
             << pretty_print;
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             std::vector<ArrayRef> copied_arrays,
             env.client->CopyArrays(
                 absl::MakeSpan(&array, 1), /*devices=*/std::nullopt,
@@ -594,7 +621,7 @@ struct RemapArraysOpState {
     }
 
     // Apply the remap arrays operation.
-    ASSIGN_OR_RETURN(auto out_arrays,
+    ABSL_ASSIGN_OR_RETURN(auto out_arrays,
                      env.client->RemapArrays(
                          remap_plan, absl::MakeSpan(inputs),
                          remap_is_donated ? ArrayCopySemantics::kDonateInput
@@ -609,9 +636,9 @@ struct RemapArraysOpState {
     }
 
     // Store the result arrays in the environment.
-    TF_RET_CHECK(out_arrays.size() == remap_plan.output_specs.size())
+    TF_RET_CHECK(out_arrays.size() == remap_plan.output_specs().size())
         << "Got " << out_arrays.size() << " results, but op has "
-        << remap_plan.output_specs.size() << ". " << pretty_print;
+        << remap_plan.output_specs().size() << ". " << pretty_print;
     for (int i = 0; i < output_handles.size(); ++i) {
       const ArrayHandle handle = output_handles[i];
       if (handle != kArrayNotUsed) {
@@ -634,12 +661,12 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
   state.pretty_print = PrettyPrint(remap_op);
 
   // Construct the mappings of the remap plan.
-  auto mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
-  mappings->reserve(remap_op.getMappings().size());
+  std::vector<RemapPlan::Mapping> mappings;
+  mappings.reserve(remap_op.getMappings().size());
   for (const auto& array_mapping : remap_op.getMappings()) {
     const auto array_mapping_attr =
         llvm::cast<IfrtArrayMappingAttr>(array_mapping);
-    auto& mapping = mappings->emplace_back();
+    auto& mapping = mappings.emplace_back();
     mapping.in_array = array_mapping_attr.getInArrayIndex();
     mapping.out_array = array_mapping_attr.getOutArrayIndex();
     mapping.from.reserve(array_mapping_attr.getMappings().size());
@@ -660,7 +687,7 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
   input_specs.reserve(remap_op.getInputs().size());
   for (const mlir::Value input : remap_op.getInputs()) {
     state.input_handles.push_back(ToArrayHandle(input));
-    ASSIGN_OR_RETURN(ArraySpec spec,
+    ABSL_ASSIGN_OR_RETURN(ArraySpec spec,
                      ArraySpecFromMlirType(input.getType(), client_, devices_));
     input_specs.push_back(std::move(spec));
     if (liveness_.isDeadAfter(input, remap_op)) {
@@ -672,20 +699,16 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
   std::vector<ArraySpec> output_specs;
   output_specs.reserve(remap_op.getOutputs().size());
   for (const mlir::Value output : remap_op.getOutputs()) {
-    ASSIGN_OR_RETURN(ArraySpec spec, ArraySpecFromMlirType(output.getType(),
+    ABSL_ASSIGN_OR_RETURN(ArraySpec spec, ArraySpecFromMlirType(output.getType(),
                                                            client_, devices_));
     output_specs.push_back(std::move(spec));
   }
 
-  state.remap_plan = RemapPlan{
-      /*input_specs=*/std::move(input_specs),
-      /*output_specs=*/std::move(output_specs),
-      /*mappings=*/std::move(mappings),
-  };
+  ABSL_ASSIGN_OR_RETURN(
+      state.remap_plan,
+      RemapPlan::CreateOptimized(client_, std::move(input_specs),
+                                 std::move(output_specs), std::move(mappings)));
   state.remap_is_donated = remap_op.getDonated();
-
-  RETURN_IF_ERROR(state.remap_plan.ComputeInputDevicesForOutputMap(client_));
-  RETURN_IF_ERROR(state.remap_plan.Validate());
 
   for (const auto output : remap_op.getOutputs()) {
     const ArrayHandle handle =
@@ -713,6 +736,12 @@ struct BitcastArraysOpState {
                            {{"ifrt_ir_program", env.program_name}});
     });
     VLOG(3) << pretty_print;
+
+    ifrt::UserContextRef new_context =
+        env.set_op_user_contexts
+            ? ifrt::BasicUserContext::Create("BitcastArrays program op")
+            : ifrt::UserContextScope::current();
+    ifrt::UserContextScope context_scope(std::move(new_context));
 
     std::vector<ArrayRef> inputs;
     inputs.reserve(input_handles.size());
@@ -748,7 +777,7 @@ struct BitcastArraysOpState {
             << array->DebugString()
             << " (this warning is logged only at most 5 times)."
             << pretty_print;
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             std::vector<ArrayRef> copied_arrays,
             env.client->CopyArrays(
                 absl::MakeSpan(&array, 1), /*devices=*/std::nullopt,
@@ -763,7 +792,7 @@ struct BitcastArraysOpState {
       }
     }
 
-    ASSIGN_OR_RETURN(std::vector<ArrayRef> bitcast_arrays,
+    ABSL_ASSIGN_OR_RETURN(std::vector<ArrayRef> bitcast_arrays,
                      env.client->BitcastArrays(
                          absl::MakeSpan(inputs), absl::MakeSpan(output_specs),
                          bitcast_is_donated ? ArrayCopySemantics::kDonateInput
@@ -813,7 +842,7 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
     const ArrayHandle handle =
         output.use_empty() ? kArrayNotUsed : ToArrayHandle(output);
     state.output_handles.push_back(handle);
-    ASSIGN_OR_RETURN(ArraySpec spec, ArraySpecFromMlirType(output.getType(),
+    ABSL_ASSIGN_OR_RETURN(ArraySpec spec, ArraySpecFromMlirType(output.getType(),
                                                            client_, devices_));
     state.output_specs.push_back(std::move(spec));
   }
@@ -839,6 +868,12 @@ struct CopyArraysOpState {
                            {{"ifrt_ir_program", env.program_name}});
     });
     VLOG(3) << pretty_print;
+
+    ifrt::UserContextRef new_context =
+        env.set_op_user_contexts
+            ? ifrt::BasicUserContext::Create("CopyArrays program op")
+            : ifrt::UserContextScope::current();
+    ifrt::UserContextScope context_scope(std::move(new_context));
 
     std::vector<ArrayRef> inputs;
     inputs.reserve(input_handles.size());
@@ -891,7 +926,7 @@ struct CopyArraysOpState {
                              absl::StrAppend(out, array->DebugString());
                            })
           << " (this warning is logged only at most 5 times)." << pretty_print;
-      ASSIGN_OR_RETURN(std::vector<ArrayRef> copied_arrays,
+      ABSL_ASSIGN_OR_RETURN(std::vector<ArrayRef> copied_arrays,
                        env.client->CopyArrays(absl::MakeSpan(arrays_to_copy),
                                               /*devices=*/std::nullopt,
                                               /*memory_kind=*/std::nullopt,
@@ -903,7 +938,7 @@ struct CopyArraysOpState {
 
     // It is safe to get the devices and memory kind from the first output
     // because all outputs use the same devices and have the same memory kind.
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto copied_arrays,
         env.client->CopyArrays(absl::MakeSpan(inputs), new_sharding->devices(),
                                new_sharding->memory_kind(), copy_semantics));
@@ -959,7 +994,7 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
     state.copy_semantics = ArrayCopySemantics::kAlwaysCopy;
   }
 
-  ASSIGN_OR_RETURN(state.new_sharding,
+  ABSL_ASSIGN_OR_RETURN(state.new_sharding,
                    ShardingFromIfrtArrayType(
                        GetArrayType(copy_arrays_op.getOutputs().front()),
                        client_, devices_));

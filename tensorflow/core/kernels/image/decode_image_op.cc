@@ -710,8 +710,9 @@ class DecodeImageV2Op : public OpKernel {
       DecodeBMP(bmp_pixels, row_size, output->flat<uint8_t>().data(), width,
                 abs_height, requested_channels, img_channels, top_down);
     } else {
-      std::unique_ptr<uint8_t[]> buffer(
-          new uint8_t[abs_height * width * requested_channels]);
+      const int64_t buffer_size =
+          static_cast<int64_t>(abs_height) * width * requested_channels;
+      std::unique_ptr<uint8_t[]> buffer(new uint8_t[buffer_size]);
       DecodeBMP(bmp_pixels, row_size, buffer.get(), width, abs_height,
                 requested_channels, img_channels, top_down);
       TTypes<uint8_t, 3>::UnalignedConstTensor buf(buffer.get(), abs_height,
@@ -817,7 +818,7 @@ class DecodeImageV2Op : public OpKernel {
     const bool use_threads = (width * height > 1024 * 1024);
     uint8_t* buffer = webp::DecodeWebPAnimation(
         input,
-        [&](int num_frames, int width, int height, int channls) -> uint8_t* {
+        [&](int num_frames, int width, int height, int channels) -> uint8_t* {
           // If expand_animations is false, we want {height, width, channels}
           // otherwise, we want {num_frames, height, width, channels} even if
           // it's a single frame.

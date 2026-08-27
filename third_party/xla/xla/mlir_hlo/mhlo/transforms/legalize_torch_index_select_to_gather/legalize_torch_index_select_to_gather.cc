@@ -16,7 +16,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <limits>
-#include <memory>
 #include <utility>
 
 #include "llvm/ADT/SmallVector.h"
@@ -149,11 +148,6 @@ struct LegalizeTorchIndexSelectToGatherPass
 void populateTorchIndexSelectToGatherPatterns(mlir::MLIRContext *context,
                                               RewritePatternSet *patterns) {
   patterns->add<TorchIndexSelectIsGather>(context);
-}
-
-std::unique_ptr<OperationPass<func::FuncOp>>
-createLegalizeTorchIndexSelectToGatherPass() {
-  return std::make_unique<LegalizeTorchIndexSelectToGatherPass>();
 }
 
 }  // namespace mhlo

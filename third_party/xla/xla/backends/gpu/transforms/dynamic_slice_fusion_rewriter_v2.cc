@@ -28,12 +28,13 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -659,7 +660,7 @@ absl::Status SetDynamicSliceFusionBackendConfig(HloInstruction* fusion) {
   FusionBackendConfig& backend_config =
       *gpu_config.mutable_fusion_backend_config();
   backend_config.set_kind("__custom_fusion");
-  CustomFusionConfig config;
+  xtile::CustomFusionConfig config;
   config.set_name(std::string(kDynamicSliceFusionConfigName));
   *backend_config.mutable_custom_fusion_config() = config;
   return fusion->set_backend_config(std::move(gpu_config));
@@ -678,7 +679,7 @@ absl::StatusOr<bool> RewriteHero(
     return false;
   }
 
-  ASSIGN_OR_RETURN(HloComputation * fusion_body,
+  ABSL_ASSIGN_OR_RETURN(HloComputation * fusion_body,
                    CreateFusionBody(module, *plan, sliced_results, hero));
 
   HloComputation* parent = hero->parent();
@@ -687,7 +688,7 @@ absl::StatusOr<bool> RewriteHero(
                                    HloInstruction::FusionKind::kCustom,
                                    plan->external_operands, fusion_body));
   module->SetAndUniquifyInstrName(fusion, "dynamic_slice_fusion");
-  RETURN_IF_ERROR(SetDynamicSliceFusionBackendConfig(fusion));
+  ABSL_RETURN_IF_ERROR(SetDynamicSliceFusionBackendConfig(fusion));
 
   if (sliced_results.size() > 1) {
     bool any_result_replaced = false;
@@ -695,27 +696,27 @@ absl::StatusOr<bool> RewriteHero(
       auto* gte = parent->AddInstruction(
           HloInstruction::CreateGetTupleElement(fusion, i));
       if (sliced_results[i].update_slice != nullptr) {
-        RETURN_IF_ERROR(
+        ABSL_RETURN_IF_ERROR(
             parent->ReplaceInstruction(sliced_results[i].update_slice, gte));
         any_result_replaced = true;
       } else if (!sliced_results[i].noops.empty()) {
         HloInstruction* original_leaf = sliced_results[i].noops.back();
-        RETURN_IF_ERROR(parent->ReplaceInstruction(original_leaf, gte));
+        ABSL_RETURN_IF_ERROR(parent->ReplaceInstruction(original_leaf, gte));
         any_result_replaced = true;
       }
     }
     if (!any_result_replaced) {
-      RETURN_IF_ERROR(parent->ReplaceInstruction(hero, fusion));
+      ABSL_RETURN_IF_ERROR(parent->ReplaceInstruction(hero, fusion));
     }
   } else if (sliced_results.size() == 1) {
     if (sliced_results[0].update_slice != nullptr) {
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           parent->ReplaceInstruction(sliced_results[0].update_slice, fusion));
     } else {
-      RETURN_IF_ERROR(parent->ReplaceInstruction(hero, fusion));
+      ABSL_RETURN_IF_ERROR(parent->ReplaceInstruction(hero, fusion));
     }
   } else {
-    RETURN_IF_ERROR(parent->ReplaceInstruction(hero, fusion));
+    ABSL_RETURN_IF_ERROR(parent->ReplaceInstruction(hero, fusion));
   }
 
   return true;
@@ -756,7 +757,7 @@ absl::StatusOr<bool> DynamicSliceFusionRewriterV2::RunImpl(
                                                    options_.capture_slice);
       auto sliced_results =
           ResolveSlicedResults(hero, options_.capture_update_slice);
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           bool hero_changed,
           RewriteHero(module, hero, sliced_params, sliced_results));
       changed |= hero_changed;

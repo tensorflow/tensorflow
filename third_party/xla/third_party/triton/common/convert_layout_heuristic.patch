@@ -1,4 +1,18 @@
-This chanage prevents convert_layout propagation of slice layouts across
+# Copyright 2026 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+This change prevents convert_layout propagation of slice layouts across
 broadcast/expand_dims.
 
 It is generally a good idea, but it is especially important when running
@@ -6,14 +20,14 @@ triton-xla-squeeze-dims, which removes expand_dims ops. The expand_dims ops
 remove the slice layouts, so we need to prevent them from propagating
 further across broadcast ops which can cause large tensor materialization.
 
-See also b/422133176.
+See also b/422133176
 
 --- a/lib/Dialect/TritonGPU/Transforms/RemoveLayoutConversions.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/RemoveLayoutConversions.cpp
-@@ -321,6 +321,15 @@ SmallVector<Value> LayoutPropagation::propagateToUsers(Value value,
-         continue;
-       }
-     }
+@@ -344,6 +344,15 @@ SmallVector<Value> LayoutPropagation::propagateToUsers(Value value,
+     if (auto reshapeOp = dyn_cast<ReshapeOp>(user);
+         reshapeOp && reshapeOp.getEfficientLayout())
+       continue;
 +    // Heuristic: don't propagate slice layouts across broadcasts.
 +    // This can cause massive register pressure. It's better to convert to
 +    // blocked before the broadcast.

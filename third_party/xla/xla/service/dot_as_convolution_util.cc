@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "xla/service/dot_as_convolution_util.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <optional>
+#include <vector>
 
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/shape_inference.h"
@@ -169,7 +172,7 @@ CreateShardedConvForDotGeneralConvolution(
     wd->set_padding_high(wd->size() - 1);
     wd->set_padding_low(wd->size() - 1);
   }
-  ASSIGN_OR_RETURN(Shape sharded_conv_shape,
+  ABSL_ASSIGN_OR_RETURN(Shape sharded_conv_shape,
                    ShapeInference::InferConvolveShape(
                        sharded_lhs_hlo->shape(), sharded_rhs_hlo->shape(),
                        /*feature_group_count=*/conv.feature_group_count(),
@@ -177,9 +180,12 @@ CreateShardedConvForDotGeneralConvolution(
                        conv_dnums, conv.sparsity_config(),
                        /*preferred_element_type=*/conv.shape().element_type()));
   *sharded_conv_shape.mutable_layout() = conv.shape().layout();
-  CHECK(!conv.sparsity_config().has_lhs() && !conv.sparsity_config().has_rhs());
+  std::vector<HloInstruction*> operands(conv.operands().begin(),
+                                        conv.operands().end());
+  operands[0] = sharded_lhs_hlo;
+  operands[1] = sharded_rhs_hlo;
   return HloInstruction::CreateConvolve(
-      sharded_conv_shape, sharded_lhs_hlo, sharded_rhs_hlo,
+      sharded_conv_shape, operands,
       /*feature_group_count=*/conv.feature_group_count(),
       /*batch_group_count=*/conv.batch_group_count(), window, conv_dnums,
       conv.precision_config(), conv.sparsity_config());

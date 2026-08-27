@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -78,21 +79,16 @@ using HostExecuteAsyncEventsMap =
 
 class HostExecuteStartThunk : public HostAsyncThunk {
  public:
-  struct SliceAndShape {
-    BufferAllocation::Slice slice;
-    Shape shape;
-  };
-
   HostExecuteStartThunk(Thunk::ThunkInfo thunk_info,
                         const HloModule& hlo_module,
-                        absl::InlinedVector<SliceAndShape, 4> args,
-                        absl::InlinedVector<SliceAndShape, 4> results);
+                        absl::InlinedVector<ShapedSlice, 4> args,
+                        absl::InlinedVector<ShapedSlice, 4> results);
 
   static absl::StatusOr<std::unique_ptr<HostExecuteStartThunk>> Create(
       Thunk::ThunkInfo thunk_info,
       const HostOffloadingExecutableProto& host_offloading_executable_proto,
-      absl::InlinedVector<SliceAndShape, 4> args,
-      absl::InlinedVector<SliceAndShape, 4> results);
+      absl::InlinedVector<ShapedSlice, 4> args,
+      absl::InlinedVector<ShapedSlice, 4> results);
 
   HostExecuteStartThunk(const HostExecuteStartThunk&) = delete;
   HostExecuteStartThunk& operator=(const HostExecuteStartThunk&) = delete;
@@ -138,15 +134,15 @@ class HostExecuteStartThunk : public HostAsyncThunk {
   HostExecuteStartThunk(
       Thunk::ThunkInfo thunk_info,
       const HostOffloadingExecutableProto& host_offloading_executable_proto,
-      absl::InlinedVector<SliceAndShape, 4> args,
-      absl::InlinedVector<SliceAndShape, 4> results,
+      absl::InlinedVector<ShapedSlice, 4> args,
+      absl::InlinedVector<ShapedSlice, 4> results,
       std::shared_ptr<HostExecuteAsyncEvents> async_events = nullptr);
 
  private:
   absl::once_flag executable_init_flag_;
   std::unique_ptr<HostOffloadingExecutable> executable_;
-  absl::InlinedVector<SliceAndShape, 4> args_;
-  absl::InlinedVector<SliceAndShape, 4> results_;
+  absl::InlinedVector<ShapedSlice, 4> args_;
+  absl::InlinedVector<ShapedSlice, 4> results_;
   HostOffloadingExecutableProto executable_proto_;
   HostOffloadingAllocator* allocator_ = nullptr;
   std::shared_ptr<HostExecuteAsyncEvents> async_events_;

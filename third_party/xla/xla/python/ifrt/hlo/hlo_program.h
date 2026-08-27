@@ -26,17 +26,17 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/rtti.h"
 
 namespace xla {
 namespace ifrt {
 
-class HloProgram : public llvm::RTTIExtends<HloProgram, Program> {
+class HloProgram : public RTTIExtends<HloProgram, Program> {
  public:
   HloProgram() = default;
 

@@ -284,8 +284,21 @@ class WhileToMapFnPass
                   .getType());
         }
 
+        // If max_iterations was defined in another function (e.g., inside
+        // _tfrt_resource_init due to constant hoisting), using it directly as
+        // an operand in the current function would violate MLIR SSA scope
+        // rules. Create a local constant inside the current function instead.
+        mlir::Value max_iterations_val = loop_info.max_iterations;
+        if (max_iterations_val.getParentRegion()->getParentOp() !=
+            while_op->getParentOp()) {
+          DCHECK(loop_info.max_iterations_value.has_value());
+          max_iterations_val = builder.create<mlir::TF::ConstOp>(
+              while_op.getLoc(), builder.getI32IntegerAttr(
+                                     loop_info.max_iterations_value.value()));
+        }
+
         auto map_fn_op = tf_mlrt::TFMapFnOp::create(
-            builder, while_op.getLoc(), result_types, loop_info.max_iterations,
+            builder, while_op.getLoc(), result_types, max_iterations_val,
             tensor_list_operands, invariant_arguments,
             map_fn_body_func.getSymName(),
             loop_info.tensor_list_or_flow_in.size());
@@ -334,6 +347,30 @@ class WhileToMapFnPass
     for (auto tensor_list_index : loop_info.tensor_list_or_flow_in) {
       mlir::Operation *tensor_list_or_flow_in_defining_op =
           while_op.getOperand(tensor_list_index).getDefiningOp();
+      // If the tensor list or array was hoisted into a resource (e.g., in
+      // _tfrt_resource_init), unwrap the _TfrtGetResourceOp to find its
+      // underlying TensorListReserveOp or TensorArrayV3Op.
+      if (auto get_resource_op =
+              llvm::dyn_cast_or_null<mlir::TF::_TfrtGetResourceOp>(
+                  tensor_list_or_flow_in_defining_op)) {
+        auto indices_attr = get_resource_op.getIndices();
+        if (indices_attr.size() == 1) {
+          int64_t index =
+              llvm::cast<mlir::IntegerAttr>(indices_attr[0]).getInt();
+          auto init_func =
+              symbol_table.lookup<mlir::func::FuncOp>("_tfrt_resource_init");
+          if (init_func) {
+            init_func.walk([&](mlir::TF::_TfrtSetResourceOp set_op) {
+              if (set_op.getIndex() == index) {
+                tensor_list_or_flow_in_defining_op =
+                    set_op.getArg().getDefiningOp();
+                return mlir::WalkResult::interrupt();
+              }
+              return mlir::WalkResult::advance();
+            });
+          }
+        }
+      }
       if (tensor_list_or_flow_in_defining_op == nullptr) {
         return mlir::failure();
       }
@@ -460,8 +497,8 @@ class WhileToMapFnPass
           if (llvm::isa<mlir::TF::LessOp>(body_op)) {
             expecting_op = PredicateBodyExpectingOp::kExpectSecondLess;
             less_ops.push_back(&body_op);
-          } else if (!llvm::isa<mlir::TF::ConstOp, mlir::TF::IdentityOp>(
-                         body_op)) {
+          } else if (!llvm::isa<mlir::TF::ConstOp, mlir::TF::IdentityOp,
+                                mlir::TF::_TfrtGetResourceOp>(body_op)) {
             return mlir::failure();
           }
           break;
@@ -469,8 +506,8 @@ class WhileToMapFnPass
           if (llvm::isa<mlir::TF::LessOp>(body_op)) {
             expecting_op = PredicateBodyExpectingOp::kExpectLogicalAnd;
             less_ops.push_back(&body_op);
-          } else if (!llvm::isa<mlir::TF::ConstOp, mlir::TF::IdentityOp>(
-                         body_op)) {
+          } else if (!llvm::isa<mlir::TF::ConstOp, mlir::TF::IdentityOp,
+                                mlir::TF::_TfrtGetResourceOp>(body_op)) {
             return mlir::failure();
           }
           break;

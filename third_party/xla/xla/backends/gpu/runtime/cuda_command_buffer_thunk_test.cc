@@ -121,11 +121,14 @@ TEST(CommandBufferThunkTest, CuDnnCmd) {
     return graph;
   }());
   int64_t workspace_size = graph.Graph().get_workspace_size();
-  TF_ASSERT_OK(graph.Prepare(
-      dnn_support, se::EngineOptions{/*require_determinism=*/false,
-                                     /*allow_tf32=*/true,
-                                     /*require_command_buffer=*/true}));
-  TF_ASSERT_OK(graph.Build(dnn_support, /*plan_id=*/std::nullopt));
+  TF_ASSERT_OK(
+      graph.Prepare(&dnn_support, stream_executor->GetDeviceDescription(),
+                    se::EngineOptions{/*require_determinism=*/false,
+                                      /*allow_tf32=*/true,
+                                      /*require_command_buffer=*/true}));
+  TF_ASSERT_OK(graph.Build(&dnn_support,
+                           stream_executor->GetDeviceDescription(),
+                           /*plan_id=*/std::nullopt));
   EXPECT_THAT(graph.SupportsExplicitCommandBufferConstruction(),
               absl_testing::IsOkAndHolds(true));
 
@@ -205,13 +208,22 @@ TEST(CommandBufferThunkTest, CuDnnCmd) {
   stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations(operands, 0, &allocator);
 
-  Thunk::ExecuteParams params =
-      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
-                                   stream.get(), nullptr, nullptr, nullptr);
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr,
+      nullptr, /*additional_compute_streams=*/{},
+      /*execution_scoped_state=*/nullptr,
+      /*persistent_alloc_indices=*/absl::Span<const BufferAllocation::Index>());
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-  TF_ASSERT_OK(thunk.Initialize(
-      {stream_executor, source, &allocations, stream.get(), stream.get()}));
+  Thunk::InitializeParams initialize_params;
+  initialize_params.executor = stream_executor;
+  initialize_params.src = source;
+  initialize_params.buffer_allocations = &allocations;
+  initialize_params.stream = stream.get();
+  initialize_params.command_buffer_trace_stream = stream.get();
+  initialize_params.persistent_alloc_indices =
+      absl::Span<const BufferAllocation::Index>();
+  ASSERT_OK(thunk.Initialize(initialize_params));
 
   // Execute command buffer thunk and verify that it executed a GEMM.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));

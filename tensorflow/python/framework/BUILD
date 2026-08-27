@@ -362,6 +362,7 @@ py_library(
         "constant_op.py",
         "constant_tensor_conversion.py",
     ],
+    lazy_imports = True,
     strict_deps = True,
     visibility = visibility + [
         "//tensorflow:internal",
@@ -425,6 +426,7 @@ tf_python_pybind_extension(
 py_library(
     name = "dtypes",
     srcs = ["dtypes.py"],
+    lazy_imports = True,
     strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = visibility + [
@@ -629,6 +631,7 @@ py_library(
     # copybara:uncomment_begin(google-only)
     # visibility = visibility + [
     # "//learning/deepmind/deepfunc:__subpackages__",
+    # "//research/air/foundation/pterodactyl:__subpackages__",
     # "//tensorflow:internal",
     # ],
     # copybara:uncomment_end_and_comment_begin
@@ -879,13 +882,14 @@ cc_library(
         ":op_def_util_cc",
         ":python_api_info",
         ":python_tensor_converter",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//tensorflow/python/util:cpp_python_util",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
@@ -924,21 +928,45 @@ tf_python_pybind_extension(
     starlark_only = True,
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
+        "//tensorflow/compiler/tf2tensorrt:common_utils",
+        "//tensorflow/compiler/tf2tensorrt:trt_parameters",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:session_options",
+        "//tensorflow/core/common_runtime:composite_device",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+        "//tensorflow/core/common_runtime:device",
+        "//tensorflow/core/common_runtime:device_factory",
         "//tensorflow/core/config:flags_headers",
         "//third_party/py/numpy:headers",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:vlog_is_on",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
         "@pybind11",
+        "@tsl//tsl/platform:mutex",
         "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@xla//xla/tsl/platform:types",
     ] + if_pywrap(
         if_true = [
             ":python_api_parameter_converter",
@@ -997,6 +1025,8 @@ cc_library(
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//tensorflow/python/util:cpp_python_util",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
@@ -1041,9 +1071,11 @@ tf_python_pybind_extension(
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core/config:flags_headers",
         "//third_party/py/numpy:headers",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
@@ -1099,6 +1131,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
     alwayslink = 1,
@@ -1125,7 +1158,9 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/python/util:function_parameter_canonicalizer_hdrs",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@pybind11",
         "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ] + if_pywrap([":python_api_dispatcher"]),
@@ -1394,6 +1429,7 @@ pytype_strict_library(
 py_library(
     name = "tensor_conversion_registry",
     srcs = ["tensor_conversion_registry.py"],
+    lazy_imports = True,
     strict_deps = True,
     # TODO(b/266747022): remove extra visibility
     visibility = visibility + ["//learning/brain/experimental:__subpackages__"],
@@ -1878,6 +1914,7 @@ pytype_strict_library(
     srcs = ["type_spec_registry.py"],
     visibility = visibility + ["//third_party/py/tensorflow_gnn:__subpackages__"],
     deps = [
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/types:internal",
     ],
 )

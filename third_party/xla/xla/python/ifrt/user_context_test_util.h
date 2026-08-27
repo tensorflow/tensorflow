@@ -20,14 +20,14 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_cat.h"
-#include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
 
-class TestUserContext : public llvm::RTTIExtends<TestUserContext, UserContext> {
+class TestUserContext : public RTTIExtends<TestUserContext, UserContext> {
  public:
   static UserContextRef Create(UserContextId id) {
     return Create(id, absl::StrCat("TestUserContext(", id.value(), ")"));

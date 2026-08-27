@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/hlo_runner_interface.h"
+#include "xla/tools/hlo_dump/hlo_dump_utils.h"
 #include "xla/tools/hlo_isolation/hlo_isolation.pb.h"
 
 namespace xla {
@@ -105,6 +106,13 @@ absl::StatusOr<std::vector<HloIsolationTestResult>> RunIsolationPipeline(
 
 absl::Status DefuseModule(HloModule* module);
 
+// Extracts numeric mismatch statistics from an HloIsolationTestResult
+// (including both parent check mismatches and FusionDebugger:<op_name> checks)
+// and converts them into MismatchDetails structs for unified HTML
+// visualization.
+std::vector<numerics::debug_info::MismatchDetails> ExtractMismatchDetails(
+    const HloModule& module, const HloIsolationTestResult& result);
+
 absl::StatusOr<std::vector<NumericMismatch>> ExtractAndEnrichTopMismatches(
     std::string error_message, const HloModule* module);
 
@@ -123,6 +131,12 @@ bool ModuleContainsLargeKeyValueSort(const HloModule& module);
 bool ModuleTestsFloatsForEquality(const HloModule& module);
 bool ComputationHasRng(const HloComputation* computation);
 bool LiteralContainsInfOrNan(const LiteralSlice& literal);
+bool ModuleContainsConstantInfOrNan(const HloModule& module);
+
+std::string GetFusionDebuggerDir();
+std::string GetFusionDebuggerFilePath(absl::string_view op_name);
+void CleanUpAllFusionDebuggerFiles();
+std::vector<std::string> GetLeftoverFusionDebuggerFiles();
 
 }  // namespace hlo_isolation
 }  // namespace xla

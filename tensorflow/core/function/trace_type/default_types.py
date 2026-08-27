@@ -47,7 +47,7 @@ def is_nan(x):
   if isinstance(x, complex):
     return math.isnan(x.real) or math.isnan(x.imag)
   else:
-    return math.isnan(x)
+    return math.isnan(x)  # pyrefly: ignore[bad-argument-type]
 
 
 class Literal(trace.TraceType, serialization.Serializable):
@@ -439,7 +439,7 @@ class NamedTuple(trace.TraceType, serialization.Serializable):
   def experimental_from_proto(
       cls, proto: default_types_pb2.SerializedNamedTuple) -> "NamedTuple":
     return NamedTuple(
-        proto.type_name, tuple(proto.attribute_names),
+        proto.type_name, tuple(proto.attribute_names),  # pyrefly: ignore[bad-argument-type]
         Tuple.experimental_from_proto(proto.attributes).components)
 
   def experimental_as_proto(self) -> default_types_pb2.SerializedNamedTuple:
@@ -502,7 +502,7 @@ class NamedTuple(trace.TraceType, serialization.Serializable):
         casting_context,
     )
     if was_casted:
-      return self._placeholder_type(*casted_values)
+      return self._placeholder_type(*casted_values)  # pyrefly: ignore[not-callable]
     else:
       return value
 
@@ -582,7 +582,7 @@ class Attrs(trace.TraceType):
       cls, proto: default_types_pb2.SerializedAttrs) -> "Attrs":
     return Attrs(
         proto.named_attributes.type_name,
-        tuple(proto.named_attributes.attribute_names),
+        tuple(proto.named_attributes.attribute_names),  # pyrefly: ignore[bad-argument-type]
         Tuple.experimental_from_proto(
             proto.named_attributes.attributes).components)
 
@@ -643,7 +643,7 @@ class Attrs(trace.TraceType):
     )
 
     if was_casted:
-      return self._placeholder_type(*casted_values)
+      return self._placeholder_type(*casted_values)  # pyrefly: ignore[not-callable]
     else:
       return value
 
@@ -750,7 +750,7 @@ class Dict(trace.TraceType, serialization.Serializable):
   def to_tensors(self, value: Any):
     assert isinstance(value, collections.abc.Mapping)
     flattened_values = []
-    for key in sorted(self.mapping.keys()):
+    for key in sorted(self.mapping.keys()):  # pyrefly: ignore[bad-specialization]
       comp_value, comp_type = value[key], self.mapping[key]
       flattened_values.extend(comp_type.to_tensors(comp_value))
     return flattened_values
@@ -761,7 +761,7 @@ class Dict(trace.TraceType, serialization.Serializable):
 
     sorted_traversal = {
         key: self.mapping[key].from_tensors(tensors)
-        for key in sorted(self.mapping)
+        for key in sorted(self.mapping)  # pyrefly: ignore[bad-specialization]
     }
 
     if self._placeholder_type is collections.defaultdict:
@@ -774,7 +774,7 @@ class Dict(trace.TraceType, serialization.Serializable):
   def flatten(self) -> PythonList[trace.TraceType]:
     flattened_types = []
 
-    for key in sorted(self.mapping.keys()):
+    for key in sorted(self.mapping.keys()):  # pyrefly: ignore[bad-specialization]
       flattened_types.extend(self.mapping[key].flatten())
 
     return flattened_types
@@ -795,7 +795,7 @@ class Dict(trace.TraceType, serialization.Serializable):
     )
 
     if was_casted:
-      return self._placeholder_type(
+      return self._placeholder_type(  # pyrefly: ignore[not-callable]
           **{k: v for k, v in zip(self.mapping.keys(), casted_values)}
       )
     else:

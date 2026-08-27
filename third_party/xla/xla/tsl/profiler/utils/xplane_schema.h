@@ -44,8 +44,6 @@ TF_CONST_INIT extern const absl::string_view kVirtualDevicePlanePrefix;
 TF_CONST_INIT extern const char kTpuPlaneRegex[];
 // Regex for XPlanes that contain TPU Core planes.
 TF_CONST_INIT extern const char kSparseCorePlaneRegex[];
-// Regex for XPlanes that contain SparseCore CAE planes.
-TF_CONST_INIT extern const char kSparseCoreCAEPlaneRegex[];
 // Name prefix of XPlane that contains custom device events.
 TF_CONST_INIT extern const absl::string_view kCustomPlanePrefix;
 // Name prefix of XPlane that contains TPU non-core events such as HBM, ICI etc.
@@ -273,6 +271,7 @@ enum StatType {
   kDeduplicatedName,
   kHloCategory,
   kHloModule,
+  kUniqueHloOpId,
   kProgramId,
   kEquation,
   kIsEager,
@@ -408,11 +407,12 @@ enum StatType {
   kTransactionWithChipCoreId,
   // Program Counter in Oci Descriptors, etc
   kProgramCounter,
+  kUsesIci,
   // LINT.ThenChange(:last_stat_type)
 
   // LINT.IfChange(last_stat_type)
   // Change this to point to the last stat type when adding a new one.
-  kLastStatType = kProgramCounter,
+  kLastStatType = kUsesIci,
   // LINT.ThenChange(:stat_type_enum)
 };
 
@@ -441,8 +441,6 @@ enum MegaScaleStatType : uint8_t {
   kMegaScaleLoopIteration,
   kMegaScaleGraphProtos,
   kMegaScaleNetworkTransportLatency,
-  kMegaScaleTransmissionBudgetUs,
-  kMegaScaleDelayBudgetUs,
   kMegaScaleHloModule,
   kMegaScaleMultiSliceTopology,
   kMegaScaleActivationToNetworkReceiveDurationUs,

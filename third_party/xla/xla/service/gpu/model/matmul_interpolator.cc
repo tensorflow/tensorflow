@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/model/matmul_interpolator.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -28,11 +29,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -41,26 +42,35 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/model/default_matmul_perf_table.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/gpu/model/interpolator.h"
-#include "xla/service/gpu/model/matmul_interpolator_data.h"
 #include "xla/service/gpu/model/matmul_interpolator_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
 
+absl::string_view GetDefaultMatmulPerfTable() {
+  const struct FileToc* toc = config::default_matmul_perf_table_create();
+  for (size_t i = 0; i < config::default_matmul_perf_table_size(); ++i) {
+    if (absl::string_view(toc[i].name) == "default_matmul_perf_table.txtpb") {
+      return absl::string_view(toc[i].data, toc[i].size);
+    }
+  }
+  LOG(FATAL) << "Embedded file not found: default_matmul_perf_table.txtpb";
+}
+
 static const GemmPerfTable& Profile() {
   static const GemmPerfTable* profile = []() {
     auto* profile = new GemmPerfTable();
-    CHECK(tsl::protobuf::TextFormat::ParseFromString(kDefaultMatmulPTable,
-                                                     profile))
+    CHECK(tsl::protobuf::TextFormat::ParseFromString(
+        GetDefaultMatmulPerfTable(), profile))
         << "Cannot parse a default profile.";
     return profile;
   }();
@@ -130,12 +140,12 @@ absl::StatusOr<InterpolationSpecification> Spec(
         "Expected dot, got: ", profile.instruction().DebugString()));
   }
 
-  ASSIGN_OR_RETURN(Shape lhs_shape,
+  ABSL_ASSIGN_OR_RETURN(Shape lhs_shape,
                    Shape::FromProto(profile.operands(0).shape()));
-  ASSIGN_OR_RETURN(Shape rhs_shape,
+  ABSL_ASSIGN_OR_RETURN(Shape rhs_shape,
                    Shape::FromProto(profile.operands(1).shape()));
   DotDimensionNumbers dot_dims = profile.instruction().dot_dimension_numbers();
-  ASSIGN_OR_RETURN(Shape out_shape,
+  ABSL_ASSIGN_OR_RETURN(Shape out_shape,
                    Shape::FromProto(profile.instruction().shape()));
   return ExtractDotSpec(dot_dims, lhs_shape, rhs_shape, out_shape);
 }
@@ -232,7 +242,7 @@ MatmulInterpolator::Create(const HloInstructionProfileList& profiles,
                            const se::DeviceDescription& device_info) {
   auto interpolator = std::make_unique<EuclideanNNInterpolator<int64_t, 4>>();
   for (auto& profile : profiles.entries()) {
-    ASSIGN_OR_RETURN(InterpolationSpecification spec,
+    ABSL_ASSIGN_OR_RETURN(InterpolationSpecification spec,
                      Spec(profile, device_info));
     std::array<int64_t, 4> point = {
         spec.b,
@@ -251,7 +261,7 @@ MatmulInterpolator::Create(const HloInstructionProfileList& profiles,
 
 /*static*/ absl::StatusOr<std::unique_ptr<MatmulInterpolator>>
 MatmulInterpolator::Create(const se::DeviceDescription& device_info) {
-  ASSIGN_OR_RETURN(GemmPerfTableEntryValues table,
+  ABSL_ASSIGN_OR_RETURN(GemmPerfTableEntryValues table,
                    ReadDefaultProfile(device_info));
   absl::flat_hash_map<MatmulDTypeKey,
                       std::vector<InterpolationSpecificationFlops>>

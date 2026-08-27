@@ -13,31 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef XLA_SERVICE_CALL_MARKER_H_
+#define XLA_SERVICE_CALL_MARKER_H_
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/call_inliner.h"
 
-#ifndef XLA_SERVICE_CALL_MARKER_H_
-#define XLA_SERVICE_CALL_MARKER_H_
-
 namespace xla {
-
-// The target name of the custom call marking the beginning of an outlinable
-// block.
-inline constexpr absl::string_view kCallMarkerBeforeTarget =
-    "__xla_internal_call_marker_before";
-
-// The target name of the custom call marking the end of an outlinable block.
-inline constexpr absl::string_view kCallMarkerAfterTarget =
-    "__xla_internal_call_marker_after";
-
-// The key used in the frontend attributes of the call markers to store the name
-// of the computation that is being marked for outlining.
-inline constexpr absl::string_view kCallMarkedComputationAttribute =
-    "xla_call_marked_computation";
 
 // This pass marks the call instructions in the module by wrapping them with
 // custom call instructions, which will be used to identify the call

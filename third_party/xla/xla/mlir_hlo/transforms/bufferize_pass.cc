@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Bufferization/IR/BufferizationTypeInterfaces.h"
+#include "mlir/Dialect/Bufferization/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 #include "mlir/Dialect/Bufferization/Transforms/FuncBufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Bufferization/Transforms/OneShotAnalysis.h"
@@ -175,6 +176,7 @@ struct ComputeOpAndFuncBufferizePass
                     memref::MemRefDialect, mhlo::MhloDialect,
                     shape::ShapeDialect, vector::VectorDialect>();
     arith::registerBufferizableOpInterfaceExternalModels(registry);
+    bufferization::registerBufferizableOpInterfaceExternalModels(registry);
     mlir::bufferization::func_ext::
         registerBufferizableOpInterfaceExternalModels(registry);
     linalg::registerBufferizableOpInterfaceExternalModels(registry);
@@ -271,6 +273,7 @@ struct OneShotBufferizePass
                     memref::MemRefDialect, mhlo::MhloDialect, scf::SCFDialect,
                     shape::ShapeDialect, vector::VectorDialect>();
     arith::registerBufferizableOpInterfaceExternalModels(registry);
+    bufferization::registerBufferizableOpInterfaceExternalModels(registry);
     bufferization::func_ext::registerBufferizableOpInterfaceExternalModels(
         registry);
     linalg::registerBufferizableOpInterfaceExternalModels(registry);
@@ -367,7 +370,8 @@ struct FinalBufferizePass
     vector::registerBufferizableOpInterfaceExternalModels(registry);
     if (dialectsCallback) dialectsCallback(registry);
   }
-  // Default alignment_ specified in passes.td
+  using impl::FinalBufferizePassBase<
+      FinalBufferizePass>::FinalBufferizePassBase;
   FinalBufferizePass() = default;
 
   explicit FinalBufferizePass(uint64_t alignment) { alignment_ = alignment; }
@@ -443,20 +447,6 @@ struct FinalBufferizePass
 };
 
 }  // namespace
-
-namespace hlo {
-std::unique_ptr<OperationPass<ModuleOp>> createOneShotBufferizePass() {
-  return std::make_unique<OneShotBufferizePass>();
-}
-}  // namespace hlo
-
-std::unique_ptr<OperationPass<ModuleOp>> createComputeOpAndFuncBufferizePass() {
-  return std::make_unique<ComputeOpAndFuncBufferizePass>();
-}
-
-std::unique_ptr<OperationPass<ModuleOp>> createFinalBufferizePass() {
-  return std::make_unique<FinalBufferizePass>();
-}
 
 std::unique_ptr<OperationPass<ModuleOp>> createFinalBufferizePass(
     uint64_t alignment, BufferizeDialectsCallback dc,

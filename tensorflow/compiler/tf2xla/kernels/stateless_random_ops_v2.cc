@@ -167,6 +167,22 @@ class StatelessRandomUniformIntOp : public XlaOpKernel {
             "maxval must be scalar, got shape ", maxval_shape.DebugString())));
     xla::XlaOp minval = ctx->Input(minval_input_idx);
     xla::XlaOp maxval = ctx->Input(maxval_input_idx);
+
+    // When minval/maxval are compile-time constants, reject an empty range
+    // the same way the CPU/eager kernel does (StatelessRandomUniformIntOp
+    // in stateless_random_ops_v2.cc), instead of silently compiling a
+    // program that returns garbage. If they aren't compile-time constants
+    // (or are an unsigned dtype not supported by ConstantInputAsIntScalar),
+    // there's nothing to check here and we fall back to the prior behavior.
+    int64_t minval_const, maxval_const;
+    if (ctx->ConstantInputAsIntScalar(minval_input_idx, &minval_const).ok() &&
+        ctx->ConstantInputAsIntScalar(maxval_input_idx, &maxval_const).ok()) {
+      OP_REQUIRES(ctx, minval_const < maxval_const,
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Need minval < maxval, got ", minval_const,
+                                   " >= ", maxval_const)));
+    }
+
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype_, shape, &xla_shape));
 

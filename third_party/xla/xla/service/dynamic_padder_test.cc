@@ -24,11 +24,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -119,14 +119,14 @@ class DynamicPadderTest : public HloTestBase {
         std::move(op_supports_dynamism_handler);
     options.custom_call_handler = std::move(custom_call_handler);
     DynamicPadder padder(std::move(options));
-    ASSIGN_OR_RETURN(bool changed, RunHloPass(&padder, module_.get()));
+    ABSL_ASSIGN_OR_RETURN(bool changed, RunHloPass(&padder, module_.get()));
     if (!changed) return false;
     // Dynamic padder can add redundant tuple/get-tuple-element and copy
     // instructions.
     TupleSimplifier tuple_simplifier;
-    RETURN_IF_ERROR(RunHloPass(&tuple_simplifier, module_.get()).status());
+    ABSL_RETURN_IF_ERROR(RunHloPass(&tuple_simplifier, module_.get()).status());
     AlgebraicSimplifier alg_simplifier(AlgebraicSimplifierOptions{});
-    RETURN_IF_ERROR(RunHloPass(&alg_simplifier, module_.get()).status());
+    ABSL_RETURN_IF_ERROR(RunHloPass(&alg_simplifier, module_.get()).status());
     return true;
   }
 
@@ -151,8 +151,7 @@ class DynamicPadderTest : public HloTestBase {
   const Shape scalar_shape_ = ShapeUtil::MakeShape(S32, {});
 };
 
-class MemoryAlignmentTest
-    : public HloPjRtInterpreterReferenceMixin<HloTestBase> {};
+class MemoryAlignmentTest : public HloInterpreterReferenceMixin<HloTestBase> {};
 
 // Test that dynamic padder will not cause memory misalignment in CUDA
 // when the read or write address is not aligned with 32 bits.
@@ -217,6 +216,23 @@ TEST_F(DynamicPadderTest, ReduceTest) {
 
   ExpectPadded(reduce->operand(0));
   EXPECT_TRUE(module_->is_dynamic());
+}
+
+TEST_F(DynamicPadderTest, OptimizationBarrierTest) {
+  const std::string hlo_text = R"(
+HloModule OptimizationBarrierTest
+
+ENTRY %OptimizationBarrierTest (data_param: f32[1,2,2], size_param: s32[]) -> f32[1,2,<=2] {
+  %data_param = f32[1,2,2]{2,1,0} parameter(0)
+  %size_param = s32[] parameter(1)
+  %set-dimension-size = f32[1,2,<=2]{2,1,0} set-dimension-size(%data_param, %size_param), dimensions={2}
+  %opt-barrier = f32[1,2,<=2]{2,1,0} opt-barrier(%set-dimension-size)
+  ROOT %negate = f32[1,2,<=2]{2,1,0} negate(%opt-barrier)
+}
+)";
+
+  module_ = GetHloModule(hlo_text);
+  TF_ASSERT_OK(RunPadder().status());
 }
 
 TEST_F(DynamicPadderTest, DynamicLoweringTest) {
@@ -396,7 +412,7 @@ TEST_F(DynamicPadderTest, ConvolutionTest) {
       xy_shape_dynamic, a_param, size_param, 1));
 
   auto* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
-      zx_shape, a_param, b_param, /*feature_group_count=*/1,
+      zx_shape, {a_param, b_param}, /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
 
   module_->AddEntryComputation(builder.Build());
@@ -438,7 +454,7 @@ TEST_F(DynamicPadderTest, ConvolutionNoPad) {
   Window window;
 
   auto* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
-      zx_shape, a_param, b_param, /*feature_group_count=*/1,
+      zx_shape, {a_param, b_param}, /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
 
   module_->AddEntryComputation(builder.Build());
@@ -1105,6 +1121,42 @@ ENTRY main {
 
   // only first 3 elements will be reduced.
   Literal expected = LiteralUtil::CreateR0<int32_t>(6);
+
+  EXPECT_EQ(result, expected);
+}
+
+TEST_F(ExecutionTest, DynamicCumulativeProductScan) {
+  // Regression test for https://github.com/openxla/xla/issues/44944: a
+  // cumprod scan over a dynamic dimension used to crash the CPU executable.
+  const std::string hlo_text = R"(
+HloModule DynamicScan
+
+mul_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT mul = s32[] multiply(lhs, rhs)
+}
+
+ENTRY main {
+  param = s32[8] parameter(0)
+  size = s32[] constant(3)
+  param_dynamic = s32[<=8] set-dimension-size(param, size), dimensions={0}
+  init = s32[] constant(1)
+  ROOT cumprod = s32[<=8] reduce-window(param_dynamic, init), window={size=8 pad=7_0}, to_apply=mul_s32
+}
+)";
+
+  // Input has upper bound of 8, dynamic size is 3; the rest is garbage.
+  Literal operand =
+      LiteralUtil::CreateR1<int32_t>({2, 3, 4, -1, -1, -1, -1, -1});
+  auto module = GetHloModule(hlo_text);
+
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       PadAndExecute(std::move(module), {&operand}, false));
+  result.SetDynamicSize(0, 3);
+
+  // Cumulative products of the valid prefix {2, 3, 4}.
+  Literal expected = LiteralUtil::CreateR1<int32_t>({2, 6, 24});
 
   EXPECT_EQ(result, expected);
 }

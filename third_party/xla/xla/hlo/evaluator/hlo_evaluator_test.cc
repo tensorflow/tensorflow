@@ -459,6 +459,33 @@ TEST_F(HloEvaluatorTest, DoesMulhiS32Min) {
   TestBinaryOp(HloOpcode::kMulhi, std::move(expected_s32_2),
                std::move(lhs_s32_2), std::move(rhs_s32_2));
 }
+
+// Regression test: clz of a negative signed integer must be 0, not negative.
+// The evaluator used to sign extend to 64 bits, so clz(s32 0xC1A63AF0) gave
+// -32.
+TEST_F(HloEvaluatorTest, DoesCountLeadingZerosS32) {
+  auto input = LiteralUtil::CreateR1<int32_t>(
+      {0, 1, -1, -1046070544, std::numeric_limits<int32_t>::min(),
+       std::numeric_limits<int32_t>::max()});
+  auto expected = LiteralUtil::CreateR1<int32_t>({32, 31, 0, 0, 0, 1});
+  TestUnaryOp(HloOpcode::kClz, std::move(expected), std::move(input));
+}
+
+TEST_F(HloEvaluatorTest, DoesCountLeadingZerosU32) {
+  auto input = LiteralUtil::CreateR1<uint32_t>(
+      {0, 1, 0xFFFFFFFF, 0x80000000, 0x7FFFFFFF});
+  auto expected = LiteralUtil::CreateR1<uint32_t>({32, 31, 0, 0, 1});
+  TestUnaryOp(HloOpcode::kClz, std::move(expected), std::move(input));
+}
+
+// Narrow type: masks to the s8 width, not the 64 bit ElementwiseT width.
+TEST_F(HloEvaluatorTest, DoesCountLeadingZerosS8) {
+  auto input = LiteralUtil::CreateR1<int8_t>(
+      {0, 1, -1, std::numeric_limits<int8_t>::min(),
+       std::numeric_limits<int8_t>::max()});
+  auto expected = LiteralUtil::CreateR1<int8_t>({8, 7, 0, 0, 1});
+  TestUnaryOp(HloOpcode::kClz, std::move(expected), std::move(input));
+}
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise divide with 2 operands.
 TEST_F(HloEvaluatorTest, DoesDivideInt64) {
@@ -1055,6 +1082,78 @@ TEST_F(HloEvaluatorTest, Pad2DFloatArrayDifferentTypes) {
                                        {bf16_c, bf16_c},
                                        {bf16_c, bf16_c}}),
       result));
+}
+
+TEST_F(HloEvaluatorTest, PadDifferentOperandType) {
+  HloComputation::Builder b(TestName());
+  b.AddInstruction(HloInstruction::CreatePad(
+      ShapeUtil::MakeShape(F32, {4}),
+      /*operand=*/
+      b.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR1<bfloat16>({bfloat16(1.0f), bfloat16(2.0f)}))),
+      /*padding_value=*/
+      b.AddInstruction(
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(10.0f))),
+      CreatePaddingConfig({{{1, 1, 0}}})));
+  m_->AddEntryComputation(b.Build());
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR1<float>({10.0f, 1.0f, 2.0f, 10.0f}), result));
+}
+
+TEST_F(HloEvaluatorTest, PadDifferentPaddingType) {
+  HloComputation::Builder b(TestName());
+  b.AddInstruction(HloInstruction::CreatePad(
+      ShapeUtil::MakeShape(F32, {4}),
+      /*operand=*/
+      b.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR1<float>({1.0f, 2.0f}))),
+      /*padding_value=*/
+      b.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR0<bfloat16>(bfloat16(10.0f)))),
+      CreatePaddingConfig({{{1, 1, 0}}})));
+  m_->AddEntryComputation(b.Build());
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR1<float>({10.0f, 1.0f, 2.0f, 10.0f}), result));
+}
+
+TEST_F(HloEvaluatorTest, PadDifferentOperandAndPaddingType) {
+  HloComputation::Builder b(TestName());
+  b.AddInstruction(HloInstruction::CreatePad(
+      ShapeUtil::MakeShape(F32, {4}),
+      /*operand=*/
+      b.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR1<bfloat16>({bfloat16(1.0f), bfloat16(2.0f)}))),
+      /*padding_value=*/
+      b.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR0<bfloat16>(bfloat16(10.0f)))),
+      CreatePaddingConfig({{{1, 1, 0}}})));
+  m_->AddEntryComputation(b.Build());
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR1<float>({10.0f, 1.0f, 2.0f, 10.0f}), result));
+}
+
+TEST_F(HloEvaluatorTest, PadAllDistinctTypes) {
+  HloComputation::Builder b(TestName());
+  b.AddInstruction(HloInstruction::CreatePad(
+      ShapeUtil::MakeShape(F32, {4}),
+      /*operand=*/
+      b.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR1<bfloat16>({bfloat16(1.0f), bfloat16(2.0f)}))),
+      /*padding_value=*/
+      b.AddInstruction(
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0<double>(10.0))),
+      CreatePaddingConfig({{{1, 1, 0}}})));
+  m_->AddEntryComputation(b.Build());
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR1<float>({10.0f, 1.0f, 2.0f, 10.0f}), result));
 }
 
 TEST_F(HloEvaluatorTest, RaggedDotNonContracting) {
@@ -2525,7 +2624,7 @@ TEST_P(HloEvaluatorBf16Test, SimpleConv1D) {
 
   Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 3});
   b.AddInstruction(HloInstruction::CreateConvolve(
-      shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
+      shape, {lhs_instruction, rhs_instruction}, /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
   m_->AddEntryComputation(b.Build());
 
@@ -2580,7 +2679,7 @@ TEST_P(HloEvaluatorBf16Test, Simple4x4Conv2DWith2x2Kernel) {
 
   Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 4, 4});
   b.AddInstruction(HloInstruction::CreateConvolve(
-      shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
+      shape, {lhs_instruction, rhs_instruction}, /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
   m_->AddEntryComputation(b.Build());
 
@@ -2664,7 +2763,7 @@ TEST_P(HloEvaluatorBf16Test, Conv2DGeneralDimensionsReversed) {
 
   Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
   b.AddInstruction(HloInstruction::CreateConvolve(
-      shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
+      shape, {lhs_instruction, rhs_instruction}, /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
   m_->AddEntryComputation(b.Build());
 
@@ -2742,7 +2841,7 @@ TEST_P(HloEvaluatorBf16Test, Conv2DGeneralDimensions) {
 
   Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
   b.AddInstruction(HloInstruction::CreateConvolve(
-      shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
+      shape, {lhs_instruction, rhs_instruction}, /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
   m_->AddEntryComputation(b.Build());
 
@@ -2802,7 +2901,7 @@ TEST_P(HloEvaluatorBf16Test, DilatedBaseConv2DWithHighPadding) {
 
   Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 7, 7});
   b.AddInstruction(HloInstruction::CreateConvolve(
-      shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
+      shape, {lhs_instruction, rhs_instruction}, /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
   m_->AddEntryComputation(b.Build());
 
@@ -2866,7 +2965,7 @@ TEST_P(HloEvaluatorBf16Test, DilatedBaseConv2DWithLowAndHighPadding) {
 
   Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 8, 8});
   b.AddInstruction(HloInstruction::CreateConvolve(
-      shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
+      shape, {lhs_instruction, rhs_instruction}, /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
   m_->AddEntryComputation(b.Build());
 
@@ -2938,7 +3037,7 @@ TEST_P(HloEvaluatorBf16Test,
 
   Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 9, 3});
   b.AddInstruction(HloInstruction::CreateConvolve(
-      shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
+      shape, {lhs_instruction, rhs_instruction}, /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
   m_->AddEntryComputation(b.Build());
 
@@ -3009,7 +3108,7 @@ TEST_P(HloEvaluatorBf16Test, Conv2DGroupedConvolution) {
 
   Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 8});
   b.AddInstruction(HloInstruction::CreateConvolve(
-      shape, lhs_instruction, rhs_instruction,
+      shape, {lhs_instruction, rhs_instruction},
       /*feature_group_count=*/2, /*batch_group_count=*/1, window, dnums,
       DefaultPrecisionConfig(2)));
   m_->AddEntryComputation(b.Build());
@@ -6547,6 +6646,126 @@ TEST_F(HloEvaluatorTest, AsyncOpsWithLayout) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
+TEST_F(HloEvaluatorTest, LateBindingAsyncStartAndUpdate) {
+  const absl::string_view hlo_text = R"(
+  HloModule test
+
+  async_computation {
+    p0 = f32[4] parameter(0)
+    ROOT negate = f32[4] negate(p0)
+  }
+
+  ENTRY entry {
+    x = f32[4] constant({1.0, 2.0, 3.0, 4.0})
+    async-start = ((), (), s32[]) async-start(), calls=async_computation,
+                                  async_execution_thread="thread"
+    async-update = ((f32[4]), f32[4], s32[]) async-update(async-start, x)
+    ROOT async-done = f32[4] async-done(async-update)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected = LiteralUtil::CreateR1<float>({-1.0f, -2.0f, -3.0f, -4.0f});
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, LateBindingAsyncMultipleUpdates) {
+  const absl::string_view hlo_text = R"(
+  HloModule test
+
+  async_computation {
+    p0 = f32[4] parameter(0)
+    p1 = f32[4] parameter(1)
+    add = f32[4] add(p0, p1)
+    negate = f32[4] negate(p0)
+    ROOT tuple = (f32[4], f32[4]) tuple(add, negate)
+  }
+
+  ENTRY entry {
+    x = f32[4] constant({1.0, 2.0, 3.0, 4.0})
+    y = f32[4] constant({10.0, 20.0, 30.0, 40.0})
+    async-start = ((), (), s32[]) async-start(), calls=async_computation,
+                                  async_execution_thread="thread"
+    async-update0 = ((f32[4]), (), s32[]) async-update(async-start, x)
+    async-update1 = ((f32[4], f32[4]), (f32[4], f32[4]), s32[]) async-update(async-update0, y)
+    ROOT async-done = (f32[4], f32[4]) async-done(async-update1)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected_add =
+      LiteralUtil::CreateR1<float>({11.0f, 22.0f, 33.0f, 44.0f});
+  Literal expected_negate =
+      LiteralUtil::CreateR1<float>({-1.0f, -2.0f, -3.0f, -4.0f});
+  Literal expected = LiteralUtil::MakeTuple({&expected_add, &expected_negate});
+
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, LateBindingAsyncDone) {
+  const absl::string_view hlo_text = R"(
+  HloModule test
+
+  async_computation {
+    p0 = f32[4] parameter(0)
+    ROOT negate = f32[4] negate(p0)
+  }
+
+  ENTRY entry {
+    x = f32[4] constant({1.0, 2.0, 3.0, 4.0})
+    async-start = ((), (), s32[]) async-start(), calls=async_computation,
+                                  async_execution_thread="thread"
+    async-update = ((f32[4]), (), s32[]) async-update(async-start, x)
+    ROOT async-done = f32[4] async-done(async-update)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected = LiteralUtil::CreateR1<float>({-1.0f, -2.0f, -3.0f, -4.0f});
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, LateBindingAsyncOutputBoundFirst) {
+  const absl::string_view hlo_text = R"(
+  HloModule test
+
+  async_computation {
+    p0 = f32[4] parameter(0)
+    ROOT negate = f32[4] negate(p0)
+  }
+
+  ENTRY entry {
+    x = f32[4] constant({1.0, 2.0, 3.0, 4.0})
+    async-start = ((), f32[4], s32[]) async-start(), calls=async_computation,
+                                  async_execution_thread="thread"
+    async-update = ((f32[4]), f32[4], s32[]) async-update(async-start, x)
+    ROOT async-done = f32[4] async-done(async-update)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected = LiteralUtil::CreateR1<float>({-1.0f, -2.0f, -3.0f, -4.0f});
+  Literal start_literal;
+  HloEvaluator evaluator;
+  evaluator.set_eval_literal_handler(
+      [&](const HloInstruction* hlo, const LiteralSlice& literal) {
+        if (hlo->name() == "async-start") {
+          start_literal = literal.Clone();
+        }
+      });
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       evaluator.Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+
+  // Verify that back-propagation updated the outputs
+  // tuple component {1} of async-start:
+  EXPECT_EQ(start_literal.shape().tuple_shapes().size(), 3);
+  Literal start_output = start_literal.SubLiteral({1});
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, start_output));
+}
+
 TEST_F(HloEvaluatorTest, MapBF16) {
   const absl::string_view hlo_text = R"(
   HloModule test
@@ -6701,6 +6920,24 @@ TEST_F(HloEvaluatorTest, SortC64) {
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result, HloEvaluator().Evaluate(*m_->entry_computation(), {}));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+// Ordered comparisons are not defined for complex numbers. The evaluator
+// should return an error instead of crashing (see issue #44936).
+TEST_F(HloEvaluatorTest, OrderedCompareOnComplexReturnsError) {
+  const absl::string_view hlo_text = R"(
+  HloModule m
+
+  ENTRY main {
+    a = c128[2] constant({(1, 2), (3, 4)})
+    b = c128[2] constant({(5, 6), (7, 8)})
+    ROOT lt = pred[2] compare(a, b), direction=LT
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  absl::Status status = HloEvaluator().Evaluate(*m_, {}).status();
+  EXPECT_EQ(status.code(), ::tsl::error::UNIMPLEMENTED);
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("Unsupported comparison"));
 }
 
 TEST_F(HloEvaluatorTest, ConvertC128ToC64) {
@@ -7785,7 +8022,7 @@ TEST_F(HloEvaluatorTest, SimpleConvTraced) {
 
   Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 4, 4});
   b.AddInstruction(HloInstruction::CreateConvolve(
-      shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
+      shape, {lhs_instruction, rhs_instruction}, /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
   m_->AddEntryComputation(b.Build());
 

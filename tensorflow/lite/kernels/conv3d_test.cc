@@ -19,6 +19,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/array.h"
+#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/test_util.h"
@@ -136,6 +138,33 @@ std::vector<T> CreateRangeVector(int N) {
   return result;
 }
 
+struct DirectPrepareTestContextState {
+  bool resize_tensor_called = false;
+  bool add_tensors_called = false;
+};
+
+void SilentReportError(TfLiteContext* context, const char* msg, ...) {}
+
+TfLiteStatus ResizeTensorShouldNotBeCalled(TfLiteContext* context,
+                                           TfLiteTensor* tensor,
+                                           TfLiteIntArray* new_size) {
+  auto& state = *static_cast<DirectPrepareTestContextState*>(context->impl_);
+  state.resize_tensor_called = true;
+  TfLiteIntArrayFree(new_size);
+  return kTfLiteError;
+}
+
+TfLiteStatus AddTensorsShouldNotBeCalled(TfLiteContext* context,
+                                         int tensors_to_add,
+                                         int* first_new_tensor_index) {
+  auto& state = *static_cast<DirectPrepareTestContextState*>(context->impl_);
+  state.add_tensors_called = true;
+  if (first_new_tensor_index != nullptr) {
+    *first_new_tensor_index = -1;
+  }
+  return kTfLiteError;
+}
+
 TEST(Conv3dOpModel, InvalidInputDimsTest) {
   EXPECT_DEATH_IF_SUPPORTED(Conv3dOpModel m({TensorType_FLOAT32, {2, 2, 4, 1}},
                                             {TensorType_FLOAT32, {3, 2, 2, 1}},
@@ -165,6 +194,69 @@ TEST(Conv3dOpModel, MismatchBiasSizeTest) {
                       {TensorType_FLOAT32, {1, 3, 2, 2, 1}},
                       {TensorType_FLOAT32, {2}}, {TensorType_FLOAT32, {}}),
       "NumElements.bias. != SizeOfDimension.filter, 4.");
+}
+
+TEST(Conv3dOpModel, ZeroBatchAllowed) {
+  PrepareOnlyConv3dOpModel m({TensorType_FLOAT32, {0, 1, 1, 1, 1}},
+                             {TensorType_FLOAT32, {1, 1, 1, 1, 1}},
+                             {TensorType_FLOAT32, {}}, Padding_SAME);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteOk);
+}
+
+TEST(Conv3dOpModel, RejectsNonPositiveInputAndFilterDimensions) {
+  struct TestCase {
+    std::vector<int> input_shape;
+    std::vector<int> filter_shape;
+  };
+
+  for (const TestCase& test_case : std::vector<TestCase>{
+           {{1, 0, 1, 1, 1}, {1, 1, 1, 1, 1}},
+           {{1, 1, 0, 1, 1}, {1, 1, 1, 1, 1}},
+           {{1, 1, 1, 0, 1}, {1, 1, 1, 1, 1}},
+           {{1, 1, 1, 1, 0}, {1, 1, 1, 0, 1}},
+           {{1, 1, 1, 1, 1}, {0, 1, 1, 1, 1}},
+           {{1, 1, 1, 1, 1}, {1, 0, 1, 1, 1}},
+           {{1, 1, 1, 1, 1}, {1, 1, 0, 1, 1}},
+           {{1, 1, 1, 1, 0}, {1, 1, 1, 0, 1}},
+           {{1, 1, 1, 1, 1}, {1, 1, 1, 1, 0}},
+       }) {
+    PrepareOnlyConv3dOpModel m({TensorType_FLOAT32, test_case.input_shape},
+                               {TensorType_FLOAT32, test_case.filter_shape},
+                               {TensorType_FLOAT32, {}}, Padding_SAME);
+
+    EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+  }
+}
+
+TEST(Conv3dOpModel, RejectsNonPositiveStrideAndDilation) {
+  struct TestCase {
+    int32_t stride_depth;
+    int32_t stride_width;
+    int32_t stride_height;
+    int32_t dilation_depth;
+    int32_t dilation_width;
+    int32_t dilation_height;
+  };
+
+  for (const TestCase& test_case : std::vector<TestCase>{
+           {0, 1, 1, 1, 1, 1},
+           {1, 0, 1, 1, 1, 1},
+           {1, 1, 0, 1, 1, 1},
+           {1, 1, 1, 0, 1, 1},
+           {1, 1, 1, 1, 0, 1},
+           {1, 1, 1, 1, 1, 0},
+       }) {
+    PrepareOnlyConv3dOpModel m(
+        {TensorType_FLOAT32, {1, 1, 1, 1, 1}},
+        {TensorType_FLOAT32, {1, 1, 1, 1, 1}}, {TensorType_FLOAT32, {}},
+        Padding_SAME, test_case.stride_depth, test_case.stride_width,
+        test_case.stride_height, ActivationFunctionType_NONE,
+        test_case.dilation_depth, test_case.dilation_width,
+        test_case.dilation_height);
+
+    EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+  }
 }
 
 TEST(Conv3dPrepareSecurityTest, RejectsIm2ColDepthOverflow) {
@@ -301,6 +393,29 @@ TEST(Conv3dOpModel, DilationTest) {
                                 19880, 19248, 20392, 19728, 20904}));
 }
 
+// End-to-end correctness test for the dilated 3D im2col path when the spatial
+// depth D exceeds the channel count C (b/512611805). This complements the
+// memory-safety regression test in im2col_utils_test: the underlying overflow
+// there is a forward out-of-bounds write into the TFLite arena, which does not
+// change the visible Conv3D output, so this test only guards the functional
+// result of the D>C dilated-depth path (D=8, C=1, dilation_depth=2).
+TEST(Conv3dOpModel, DilatedDepthGreaterThanChannelsTest) {
+  Conv3dOpModel m({TensorType_FLOAT32, {1, 8, 1, 1, 1}},
+                  {TensorType_FLOAT32, {2, 1, 1, 1, 1}},
+                  {TensorType_FLOAT32, {}}, Padding_VALID, /*stride_depth=*/1,
+                  /*stride_width=*/1, /*stride_height=*/1,
+                  /*activation=*/ActivationFunctionType_NONE,
+                  /*dilation_depth=*/2, /*dilation_width=*/1,
+                  /*dilation_height=*/1);
+
+  m.SetInput({1, 2, 3, 4, 5, 6, 7, 8});
+  m.SetFilter({1, 1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 6, 1, 1, 1));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({4, 6, 8, 10, 12, 14}));
+}
+
 TEST(Conv3dOpModel, BiasTest) {
   Conv3dOpModel m({TensorType_FLOAT32, {2, 2, 3, 4, 2}},
                   {TensorType_FLOAT32, {2, 2, 2, 2, 2}},
@@ -334,6 +449,57 @@ TEST(Conv3dOpModel, NoIm2ColTensorTest) {
       ElementsAreArray({56,  62,  68,  74,  152, 174, 196, 218, 248, 286, 324,
                         362, 344, 398, 452, 506, 440, 510, 580, 650, 536, 622,
                         708, 794, 632, 734, 836, 938, 728, 846, 964, 1082}));
+}
+
+TEST(Conv3dPrepareSecurityTest, RejectsShapeOverflow) {
+  constexpr int kHugeDim = 46341;
+
+  IntArrayUniquePtr input_dims =
+      BuildTfLiteArray<int>({1, kHugeDim, kHugeDim, 1, 1});
+  IntArrayUniquePtr filter_dims = BuildTfLiteArray<int>({1, 1, 1, 1, 1});
+  IntArrayUniquePtr output_dims = BuildTfLiteArray<int>(0);
+
+  TfLiteTensor tensors[3] = {};
+  tensors[0].type = kTfLiteFloat32;
+  tensors[0].dims = input_dims.get();
+  tensors[1].type = kTfLiteFloat32;
+  tensors[1].dims = filter_dims.get();
+  tensors[2].type = kTfLiteFloat32;
+  tensors[2].dims = output_dims.get();
+
+  IntArrayUniquePtr inputs = BuildTfLiteArray<int>({0, 1});
+  IntArrayUniquePtr outputs = BuildTfLiteArray<int>({2});
+  TfLiteConv3DParams params = {};
+  params.padding = kTfLitePaddingSame;
+  params.stride_depth = 1;
+  params.stride_width = 1;
+  params.stride_height = 1;
+  params.dilation_depth_factor = 1;
+  params.dilation_width_factor = 1;
+  params.dilation_height_factor = 1;
+  params.activation = kTfLiteActNone;
+
+  DirectPrepareTestContextState state;
+  TfLiteContext context = {};
+  context.tensors_size = 3;
+  context.tensors = tensors;
+  context.impl_ = &state;
+  context.ResizeTensor = ResizeTensorShouldNotBeCalled;
+  context.ReportError = SilentReportError;
+  context.AddTensors = AddTensorsShouldNotBeCalled;
+
+  TfLiteNode node = {};
+  node.inputs = inputs.get();
+  node.outputs = outputs.get();
+  node.builtin_data = &params;
+
+  TfLiteRegistration* registration =
+      ops::builtin::Register_CONV_3D_GENERIC_OPT();
+  node.user_data = registration->init(&context, nullptr, 0);
+  EXPECT_EQ(registration->prepare(&context, &node), kTfLiteError);
+  EXPECT_FALSE(state.resize_tensor_called);
+  EXPECT_FALSE(state.add_tensors_called);
+  registration->free(&context, node.user_data);
 }
 
 }  // namespace

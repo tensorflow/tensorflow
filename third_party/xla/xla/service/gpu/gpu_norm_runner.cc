@@ -19,8 +19,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_norm_runner.pb.h"
@@ -48,9 +48,9 @@ absl::Status RunGpuNorm(const gpu::GpuNormConfig& config,
                         se::Stream* stream, RunNormOptions options) {
   se::dnn::LazyOpRunner<se::dnn::NormOp>* lazy_runner =
       options.norm_runner->AsNormRunner();
-  ASSIGN_OR_RETURN(se::dnn::NormOp::Config ln_config,
+  ABSL_ASSIGN_OR_RETURN(se::dnn::NormOp::Config ln_config,
                    config.AsDnnNormOpConfig());
-  ASSIGN_OR_RETURN(auto* runner,
+  ABSL_ASSIGN_OR_RETURN(auto* runner,
                    lazy_runner->GetOrCreateRunner(ln_config, stream));
 
   std::vector<se::DeviceAddressBase> operands;
@@ -113,35 +113,35 @@ absl::StatusOr<GpuNormDescriptor> GpuNormDescriptor::FromProto(
   GpuNormDescriptor descriptor;
   descriptor.backend_config = proto.backend_config();
 
-  ASSIGN_OR_RETURN(descriptor.x_shape, Shape::FromProto(proto.x_shape()));
-  ASSIGN_OR_RETURN(descriptor.scale_shape,
+  ABSL_ASSIGN_OR_RETURN(descriptor.x_shape, Shape::FromProto(proto.x_shape()));
+  ABSL_ASSIGN_OR_RETURN(descriptor.scale_shape,
                    Shape::FromProto(proto.scale_shape()));
   if (proto.has_bias_shape()) {
-    ASSIGN_OR_RETURN(descriptor.bias_shape,
+    ABSL_ASSIGN_OR_RETURN(descriptor.bias_shape,
                      Shape::FromProto(proto.bias_shape()));
   }
-  ASSIGN_OR_RETURN(descriptor.y_or_dx_shape,
+  ABSL_ASSIGN_OR_RETURN(descriptor.y_or_dx_shape,
                    Shape::FromProto(proto.y_or_dx_shape()));
   if (proto.has_expectation_shape()) {
-    ASSIGN_OR_RETURN(descriptor.expectation_shape,
+    ABSL_ASSIGN_OR_RETURN(descriptor.expectation_shape,
                      Shape::FromProto(proto.expectation_shape()));
   }
   if (proto.has_norm_factor_shape()) {
-    ASSIGN_OR_RETURN(descriptor.norm_factor_shape,
+    ABSL_ASSIGN_OR_RETURN(descriptor.norm_factor_shape,
                      Shape::FromProto(proto.norm_factor_shape()));
   }
   if (proto.has_dy_shape()) {
-    ASSIGN_OR_RETURN(descriptor.dy_shape, Shape::FromProto(proto.dy_shape()));
+    ABSL_ASSIGN_OR_RETURN(descriptor.dy_shape, Shape::FromProto(proto.dy_shape()));
   }
   if (proto.has_dscale_shape()) {
-    ASSIGN_OR_RETURN(descriptor.dscale_shape,
+    ABSL_ASSIGN_OR_RETURN(descriptor.dscale_shape,
                      Shape::FromProto(proto.dscale_shape()));
   }
   if (proto.has_dbias_shape()) {
-    ASSIGN_OR_RETURN(descriptor.dbias_shape,
+    ABSL_ASSIGN_OR_RETURN(descriptor.dbias_shape,
                      Shape::FromProto(proto.dbias_shape()));
   }
-  ASSIGN_OR_RETURN(descriptor.scratch_shape,
+  ABSL_ASSIGN_OR_RETURN(descriptor.scratch_shape,
                    Shape::FromProto(proto.scratch_shape()));
   return descriptor;
 }

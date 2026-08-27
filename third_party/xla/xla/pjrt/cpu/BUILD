@@ -23,8 +23,25 @@ xla_cc_test(
 )
 
 xla_cc_test(
-    name = "tracked_cpu_device_buffer_test",
-    srcs = ["tracked_cpu_device_buffer_test.cc"],
+    name = "pjrt_copy_to_memory_space_test",
+    srcs = ["pjrt_copy_to_memory_space_test.cc"],
+    deps = [
+        ":cpu_client",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla/pjrt:common_pjrt_client",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:raw_buffer",
+        "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
+        "//xla/tests:literal_test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "cpu_device_memory_test",
+    srcs = ["cpu_device_memory_test.cc"],
     deps = [
         ":abstract_cpu_buffer",
         ":cpu_client",
@@ -49,17 +66,49 @@ xla_cc_test(
     ],
 )
 
+xla_cc_test(
+    name = "abstract_tracked_device_buffer_cpu_test",
+    srcs = ["abstract_tracked_device_buffer_cpu_test.cc"],
+    deps = [
+        ":abstract_cpu_buffer",
+        ":cpu_client",
+        ":cpu_event",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla:util",
+        "//xla/pjrt:common_pjrt_client",
+        "//xla/pjrt:device_event",
+        "//xla/pjrt:pjrt_client",
+        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+    ],
+)
+
+alias(
+    name = "tracked_cpu_device_buffer_test",
+    actual = ":cpu_device_memory_test",
+)
+
 cc_library(
     name = "abstract_cpu_buffer",
     srcs = [
         "abstract_cpu_buffer.cc",
+        "cpu_device_memory.cc",
         "raw_buffer.cc",
-        "tracked_cpu_device_buffer.cc",
     ],
     hdrs = [
         "abstract_cpu_buffer.h",
+        "cpu_device_memory.h",
         "raw_buffer.h",
-        "tracked_cpu_device_buffer.h",
     ],
     visibility = internal_visibility(["//xla/pjrt/cpu:legacy_cpu_buffer_internal_users"]),
     deps = [
@@ -86,7 +135,6 @@ cc_library(
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
@@ -97,6 +145,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -145,8 +194,14 @@ cc_library(
 
 cc_library(
     name = "cpu_client",
-    srcs = ["cpu_client.cc"],
-    hdrs = ["cpu_client.h"],
+    srcs = [
+        "cpu_client.cc",
+        "cpu_pjrt_compiler.cc",
+    ],
+    hdrs = [
+        "cpu_client.h",
+        "cpu_pjrt_compiler.h",
+    ],
     visibility = internal_visibility(["//xla/pjrt/cpu:legacy_cpu_client_users"]),
     deps = [
         ":abstract_cpu_buffer",
@@ -161,7 +216,6 @@ cc_library(
         "//xla:literal_util",
         "//xla:shape_layout",
         "//xla:shape_util",
-        "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
@@ -192,9 +246,9 @@ cc_library(
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:raw_buffer",
+        "//xla/pjrt:raw_pjrt_client",
         "//xla/pjrt:semaphore",
         "//xla/pjrt:thread_pool_async_work_runner",
-        "//xla/pjrt:transpose",
         "//xla/pjrt:utils",
         "//xla/pjrt/dump",
         "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
@@ -208,7 +262,7 @@ cc_library(
         "//xla/service:compiled_module",
         "//xla/service:compiler",
         "//xla/service:computation_layout",
-        "//xla/service:computation_placer_hdr",
+        "//xla/service:device_assignment",
         "//xla/service:dump",
         "//xla/service:executable",
         "//xla/service:hlo_cost_analysis",
@@ -227,9 +281,6 @@ cc_library(
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/lib/strings:proto_serialization",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
@@ -241,6 +292,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -249,9 +301,11 @@ cc_library(
         "@eigen_archive//:eigen3",
         "@tsl//tsl/platform:denormal",
         "@tsl//tsl/platform:fingerprint",
+        "@tsl//tsl/platform:protobuf",
         "@tsl//tsl/platform:setround",
         "@tsl//tsl/profiler/lib:traceme",
     ],
+    alwayslink = True,
 )
 
 xla_cc_test(
@@ -259,6 +313,7 @@ xla_cc_test(
     srcs = ["cpu_client_test.cc"],
     deps = [
         ":cpu_client",
+        "//xla:future",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -270,6 +325,7 @@ xla_cc_test(
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/parser:hlo_parser",
         "//xla/mlir_hlo",
+        "//xla/pjrt:common_pjrt_client",
         "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:pjrt_client",
@@ -290,7 +346,7 @@ xla_cc_test(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
-        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:FuncDialect",
@@ -329,32 +385,17 @@ cc_library(
 
 cc_library(
     name = "cpu_pjrt_compiler",
-    srcs = ["cpu_pjrt_compiler.cc"],
+    srcs = [],
     hdrs = ["cpu_pjrt_compiler.h"],
     visibility = internal_visibility(["//xla/pjrt/cpu:legacy_cpu_client_users"]),
     deps = [
-        "//xla/backends/cpu/collectives:cpu_collectives",
-        "//xla/core/collectives:clique_id",
-        "//xla/core/collectives:clique_key",
-        "//xla/core/collectives:communicator",
+        ":cpu_client",
         "//xla/hlo/builder:xla_computation",
         "//xla/pjrt:maybe_owning_mlir_module",
-        "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
-        "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
         "//xla/pjrt/plugin/xla_cpu:cpu_topology_description",
-        "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
-        "//xla/stream_executor/platform:initialize",
-        "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//mlir:IR",
-        "@tsl//tsl/platform:casts",
     ],
     alwayslink = True,
 )
@@ -371,15 +412,21 @@ xla_cc_test(
         "//xla/hlo/transforms:hlo_module_stitcher",
         "//xla/mlir_hlo",
         "//xla/pjrt:maybe_owning_mlir_module",
+        "//xla/pjrt:mock_pjrt_client",
+        "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt/plugin/xla_cpu:cpu_client_options",  # buildcleaner: keep
         "//xla/pjrt/plugin/xla_cpu:cpu_topology",
         "//xla/pjrt/plugin/xla_cpu:cpu_topology_description",
+        "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",  # buildcleaner: keep
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/service/cpu:executable_proto_cc",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

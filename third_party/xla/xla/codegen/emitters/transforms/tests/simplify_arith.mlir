@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: emitters_opt %s -split-input-file -xla-simplify-arith -cse \
 // RUN:   -canonicalize | FileCheck %s
 
@@ -434,4 +448,38 @@ module {
 // CHECK-SAME: (%[[ARG0:.*]]: f32, %[[ARG1:.*]]: f32)
 // CHECK-NEXT: %[[MAX:.*]] = arith.minimumf %[[ARG0]], %[[ARG1]] : f32
 // CHECK-NEXT: return %[[MAX]] : f32
+
+// -----
+
+module {
+  func.func @pred_reduce_tensor(%in: tensor<16xi1>, %shuffled: tensor<16xi32>) -> tensor<16xi1> {
+    %0 = arith.trunci %shuffled : tensor<16xi32> to tensor<16xi1>
+    %1 = arith.ori %in, %0 : tensor<16xi1>
+    return %1 : tensor<16xi1>
+  }
+}
+
+// CHECK-LABEL: @pred_reduce_tensor
+// CHECK: %[[EXT:.*]] = arith.extui %arg0
+// CHECK-NEXT: %[[ORI:.*]] = arith.ori %[[EXT]], %arg1
+// CHECK-NEXT: %[[TRUNC:.*]] = arith.trunci %[[ORI]]
+// CHECK-NEXT: return %[[TRUNC]]
+
+// -----
+
+module {
+  func.func @both_range_tensor(%arg0: tensor<4xindex> {xla.range = [12 : index, 42 : index]},
+                               %arg1: tensor<4xindex> {xla.range = [63 : index, 100 : index]}) -> tensor<4xi1> {
+    %eq = arith.cmpi slt, %arg0, %arg1 : tensor<4xindex>
+    return %eq : tensor<4xi1>
+  }
+}
+
+// CHECK-LABEL: @both_range_tensor
+// CHECK-NEXT: %[[CST:.*]] = arith.constant dense<true> : tensor<4xi1>
+// CHECK-NEXT: return %[[CST]]
+
+
+
+
 

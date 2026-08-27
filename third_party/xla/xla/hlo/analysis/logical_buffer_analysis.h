@@ -51,19 +51,19 @@ class LogicalBufferAnalysis : public DfsHloVisitorWithDefault {
   static absl::StatusOr<std::unique_ptr<LogicalBufferAnalysis>> Run(
       const HloModule* module, bool alias_buffer_across_dataflow = false);
 
-  // Returns a reference to the `LogicalBuffer` with the given ID.
+  // Returns the `LogicalBuffer` with the given ID.
   //
-  // REQUIRES: The ID must be valid (less than `num_logical_buffers()`).
-  // Otherwise, this method will result in a crash.
-  LogicalBuffer& GetBuffer(LogicalBuffer::Id id) const;
+  // Returns an error status if the ID is invalid (not less than
+  // `num_logical_buffers()`).
+  absl::StatusOr<LogicalBuffer*> GetBuffer(LogicalBuffer::Id id) const;
 
-  // Returns a reference to the `LogicalBuffer` defined by the instruction at
+  // Returns the `LogicalBuffer` defined by the instruction at
   // the specified `ShapeIndex` in its output.
   //
-  // REQUIRES: The instruction must define a logical buffer at the given index.
-  // Otherwise, this method will result in a crash.
-  LogicalBuffer& GetBuffer(HloInstruction* instruction,
-                           const ShapeIndex& index) const;
+  // Returns an error status if the instruction does not define a
+  // logical buffer at the given index.
+  absl::StatusOr<LogicalBuffer*> GetBuffer(HloInstruction* instruction,
+                                           const ShapeIndex& index) const;
 
   // Returns a view list of all `LogicalBuffer`s created in the module.
   const std::vector<std::unique_ptr<LogicalBuffer>>& logical_buffers() const {
@@ -107,6 +107,8 @@ class LogicalBufferAnalysis : public DfsHloVisitorWithDefault {
   absl::Status HandleCustomCall(HloInstruction* custom_call) override;
   absl::Status HandleFusion(HloInstruction* fusion) override;
   absl::Status HandleAsyncStart(HloInstruction* async_start) override;
+  absl::Status HandleAsyncUpdate(HloInstruction* async_update) override;
+  absl::Status HandleAsyncDone(HloInstruction* async_done) override;
 
   // A collection of all logical buffers, indexed by their ID.
   std::vector<std::unique_ptr<LogicalBuffer>> logical_buffers_;

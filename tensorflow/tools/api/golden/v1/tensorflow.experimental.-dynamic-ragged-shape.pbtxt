@@ -34,20 +34,47 @@ tf_class {
     mtype: "<class \'property\'>"
   }
   member_method {
+    name: "__eq__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__getattr__"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__getitem__"
+    argspec: "args=[\'self\', \'index\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'row_partitions\', \'inner_shape\', \'dtype\', \'validate\', \'static_inner_shape\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
   }
   member_method {
+    name: "__ne__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__tf_tracing_type__"
+    argspec: "args=[\'self\', \'context\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__validate__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "from_lengths"
     argspec: "args=[\'cls\', \'lengths\', \'num_row_partitions\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'int64\'>\"], "
+    method_kind: CLASS
   }
   member_method {
     name: "from_row_partitions"
     argspec: "args=[\'cls\', \'row_partitions\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "from_tensor"
     argspec: "args=[\'cls\', \'t\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "is_uniform"

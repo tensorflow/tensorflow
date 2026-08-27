@@ -188,6 +188,20 @@ TEST(LRUCache, SharedLRUList) {
   EXPECT_EQ(2, cache1.GetOrCreateIfAbsent(2, [](int) { return 2; }));
 }
 
+TEST(LRUCache, SharedLRUListEvictOtherCache) {
+  LRUCache<int, int>::LRUList list(2);
+  LRUCache<int, int> cache1(&list);
+  LRUCache<int, int> cache2(&list);
+
+  cache1.GetOrCreateIfAbsent(0, [](int) { return 0; });
+  cache2.GetOrCreateIfAbsent(1, [](int) { return 1; });
+  cache1.GetOrCreateIfAbsent(0, [](int) { return 0; });
+  cache1.GetOrCreateIfAbsent(2, [](int) { return 2; });
+
+  EXPECT_EQ(cache1.Size(), 2);
+  EXPECT_EQ(cache2.Size(), 0);
+}
+
 TEST(LRUCache, RandomInsertions) {
   LRUCache<int, int>::LRUList list(7);
   LRUCache<int, int> cache(&list);

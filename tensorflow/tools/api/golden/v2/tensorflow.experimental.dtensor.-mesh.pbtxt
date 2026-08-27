@@ -24,6 +24,18 @@ tf_class {
     mtype: "<class \'property\'>"
   }
   member_method {
+    name: "__contains__"
+    argspec: "args=[\'self\', \'dim_name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__eq__"
+    argspec: "args=[\'self\', \'arg0\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__getitem__"
+    argspec: "args=[\'self\', \'dim_name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'dim_names\', \'global_device_ids\', \'local_device_ids\', \'local_devices\', \'mesh_name\', \'global_devices\', \'use_xla_spmd\'], varargs=None, keywords=None, defaults=[\'\', \'None\', \'False\'], "
   }
@@ -54,14 +66,17 @@ tf_class {
   member_method {
     name: "from_device"
     argspec: "args=[\'cls\', \'device\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "from_proto"
     argspec: "args=[\'cls\', \'proto\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "from_string"
     argspec: "args=[\'cls\', \'mesh_str\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "global_device_ids"

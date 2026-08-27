@@ -31,13 +31,13 @@
 #include "absl/log/log.h"
 #include "absl/log/log_sink_registry.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "grpc/support/time.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/create_channel.h"
@@ -238,7 +238,7 @@ class ClientAndServer {
     Queue* q = owned_queues_.back().get();
 
     auto req = std::make_unique<IfrtRequest>();
-    RETURN_IF_ERROR(client_session_->Enqueue(
+    ABSL_RETURN_IF_ERROR(client_session_->Enqueue(
         std::move(req), [q](absl::StatusOr<GrpcClientSession::Response> resp) {
           q->Push(resp.status());
         }));

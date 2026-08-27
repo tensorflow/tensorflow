@@ -1,8 +1,24 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// =============================================================================
+
 syntax = "proto3";
 
 package xla.gpu;
 
 import "xla/autotuning.proto";
+import "xla/codegen/xtile/xtile_config.proto";
 import "xla/tsl/protobuf/dnn.proto";
 import "xla/xla.proto";
 import "xla/xla_data.proto";
@@ -180,6 +196,14 @@ message CollectiveBackendConfig {
     KERNEL_STRATEGY_TRITON_TWO_SHOT = 2;
   }
   CollectiveKernelStrategy kernel_strategy = 7;
+
+  // Identifies the communication domain selected for this collective. The
+  // domain is independent of the collective backend and execution mechanism.
+  enum CollectiveCommunicationDomain {
+    COLLECTIVE_COMMUNICATION_DOMAIN_UNSPECIFIED = 0;
+    COLLECTIVE_COMMUNICATION_DOMAIN_SCALE_UP_FABRIC = 1;
+  }
+  CollectiveCommunicationDomain communication_domain = 9;
 }
 
 // Backend config for collective metadata operation.
@@ -208,52 +232,9 @@ message ReificationCost {
   string name = 5;
 }
 
-// Backend config for a custom fusion (pre-compiled device kernel implementing a
-// fusion computation).
-message CustomFusionConfig {
-  string name = 1;
-
-  // When a custom fusion has multiple kernels, this field specifies which
-  // kernel to use. Default value is to select the first kernel, i.e.
-  // kernel_index = 0.
-  int32 kernel_index = 2;
-}
-
 message CuDnnFusionConfig {
-  int64 plan_id = 1;
-}
-
-// Output tile sizes for a fusion root.
-message Tile {
-  // The output tile sizes of the associated fusion root. The length of this
-  // field is expected to be the rank of the root shape.
-  repeated int64 sizes = 1;
-}
-
-// Block-level parameters for a fusion.
-message BlockLevelFusionConfig {
-  reserved 1;  // Was output_tile_sizes
-
-  // The output tile sizes for each fusion root.
-  repeated Tile output_tiles = 3;
-
-  // The number of warps to use for the kernel.
-  int64 num_warps = 2;
-
-  // The number of CTAs to use for the kernel.
-  int32 num_ctas = 4;
-
-  // The number of stages to use for loop pipelining.
-  int32 num_stages = 5;
-
-  // Allow/disallow TMA usage for all arguments of the kernel (where possible).
-  bool is_tma_allowed = 6;
-
-  // Allow/disallow automatic warp specialization.
-  bool is_warp_specialization_allowed = 7;
-
-  // Number of waves per execution unit (0 = no restriction).
-  int32 waves_per_eu = 8;
+  optional int64 plan_id = 1;
+  PrecisionConfig precision_config = 2;
 }
 
 // A backend config for dynamic-slice and dynamic-update-slice instructions
@@ -300,10 +281,10 @@ message FusionBackendConfig {
 
   // Only valid when kind is "__triton" or "__triton_nested_gemm_fusion". Code
   // generation of such fusions will fail if this field is not set.
-  BlockLevelFusionConfig block_level_fusion_config = 6;
+  xla.xtile.BlockLevelFusionConfig block_level_fusion_config = 6;
 
   // Only valid when kind == "__custom_fusion".
-  CustomFusionConfig custom_fusion_config = 4;
+  xla.xtile.CustomFusionConfig custom_fusion_config = 4;
 
   // Cost model prediction.
 

@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/array.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/ffi/execution_context.h"
@@ -96,7 +96,7 @@ using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 
 class CustomCallTest : public ClientLibraryTestRunnerMixin<
-                           HloPjRtInterpreterReferenceMixin<HloTestBase>> {
+                           HloInterpreterReferenceMixin<HloTestBase>> {
  public:
   std::string PlatformName() {
     if (test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuCuda)) {
@@ -1006,14 +1006,14 @@ static absl::Status AddOne(se::Stream* stream, ffi::AnyBuffer src,
 
   int32_t data[2];
   se::DeviceAddressBase buffer_mem = ret->device_memory();
-  RETURN_IF_ERROR(stream->Memcpy(data, buffer_mem, sizeof(data)));
-  RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  ABSL_RETURN_IF_ERROR(stream->Memcpy(data, buffer_mem, sizeof(data)));
+  ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   data[0] += 1;
   data[1] += 1;
 
-  RETURN_IF_ERROR(stream->Memcpy(&buffer_mem, data, sizeof(data)));
-  RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  ABSL_RETURN_IF_ERROR(stream->Memcpy(&buffer_mem, data, sizeof(data)));
+  ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   return absl::OkStatus();
 }
@@ -1134,14 +1134,14 @@ absl::Status UpdateBufferImpl(se::Stream* stream, ffi::AnyBuffer src,
   }
   int32_t data[4];
   se::DeviceAddressBase buffer_mem = ret->device_memory();
-  RETURN_IF_ERROR(stream->Memcpy(data, buffer_mem, sizeof(data)));
-  RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  ABSL_RETURN_IF_ERROR(stream->Memcpy(data, buffer_mem, sizeof(data)));
+  ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   data[offset] += 1;
   data[offset + 1] += 1;
 
-  RETURN_IF_ERROR(stream->Memcpy(&buffer_mem, data, sizeof(data)));
-  RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  ABSL_RETURN_IF_ERROR(stream->Memcpy(&buffer_mem, data, sizeof(data)));
+  ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   return absl::OkStatus();
 }
@@ -1398,6 +1398,79 @@ TEST_F(CustomCallHloTest, InstantiateCanAccessTargetGpuComputeCapability) {
   } else {
     EXPECT_THAT(result.data<int32_t>(), ElementsAre(42, 24));
   }
+}
+
+//===----------------------------------------------------------------------===//
+// AOT allowlist enforcement (--xla_gpu_hlo_custom_call_allowlist) e2e tests.
+//===----------------------------------------------------------------------===//
+
+// IT-1: compiling a module whose FFI custom-call target is absent from a
+// non-empty allowlist fails with a FailedPrecondition naming the target and the
+// flag.
+TEST_F(CustomCallTest, AllowlistRejectsNonAllowlistedFfiTarget) {
+  xla::ffi::Ffi::RegisterStaticHandler(ffi::GetXlaFfiApi(),
+                                       "__xla_test$$allowlist_reject",
+                                       PlatformName(), kMemcpy);
+  mutable_debug_options()->add_xla_gpu_hlo_custom_call_allowlist(
+      "__xla_test$$some_other_allowed_target");
+
+  XlaBuilder b(TestName());
+  CustomCall(&b, "__xla_test$$allowlist_reject",
+             /*operands=*/{Broadcast(ConstantR0WithType(&b, F32, 42.0), {128})},
+             ShapeUtil::MakeShape(F32, {128}), /*opaque=*/"",
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  absl::Status status = ExecuteAndTransfer(&b, {}).status();
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kFailedPrecondition,
+                               HasSubstr("__xla_test$$allowlist_reject")));
+  EXPECT_THAT(status.message(), HasSubstr("xla_gpu_hlo_custom_call_allowlist"));
+}
+
+// IT-2: an allowlisted FFI target compiles and runs normally.
+TEST_F(CustomCallTest, AllowlistAllowsAllowlistedFfiTarget) {
+  xla::ffi::Ffi::RegisterStaticHandler(ffi::GetXlaFfiApi(),
+                                       "__xla_test$$allowlist_allow",
+                                       PlatformName(), kMemcpy);
+  mutable_debug_options()->add_xla_gpu_hlo_custom_call_allowlist(
+      "__xla_test$$allowlist_allow");
+
+  XlaBuilder b(TestName());
+  CustomCall(&b, "__xla_test$$allowlist_allow",
+             /*operands=*/{Broadcast(ConstantR0WithType(&b, F32, 42.0), {128})},
+             ShapeUtil::MakeShape(F32, {128}), /*opaque=*/"",
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
+  EXPECT_THAT(result.data<float>(), ::testing::Each(42));
+}
+
+// IT-3: with xla_gpu_mock_custom_calls=true the enforcement error is swallowed
+// (thunk_emitter returns the thunk sequence before surfacing the Create error),
+// so a non-allowlisted target does NOT fail compilation. This documents the
+// current, intended mock-mode bypass.
+TEST_F(CustomCallTest, AllowlistBypassedInMockMode) {
+  xla::ffi::Ffi::RegisterStaticHandler(ffi::GetXlaFfiApi(),
+                                       "__xla_test$$allowlist_mock",
+                                       PlatformName(), kMemcpy);
+  mutable_debug_options()->add_xla_gpu_hlo_custom_call_allowlist(
+      "__xla_test$$some_other_allowed_target");
+  mutable_debug_options()->set_xla_gpu_mock_custom_calls(true);
+
+  XlaBuilder b(TestName());
+  CustomCall(&b, "__xla_test$$allowlist_mock",
+             /*operands=*/{Broadcast(ConstantR0WithType(&b, F32, 42.0), {128})},
+             ShapeUtil::MakeShape(F32, {128}), /*opaque=*/"",
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  // The allowlist FailedPrecondition must not surface in mock mode.
+  absl::Status status = ExecuteAndTransfer(&b, {}).status();
+  EXPECT_FALSE(absl::IsFailedPrecondition(status)) << status;
 }
 
 }  // anonymous namespace

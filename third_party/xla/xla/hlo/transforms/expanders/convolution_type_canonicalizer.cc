@@ -27,7 +27,9 @@ namespace xla {
 bool ConvolutionTypeCanonicalizer::InstructionMatchesPattern(
     HloInstruction* instruction) {
   return (instruction->opcode() == HloOpcode::kDot ||
-          instruction->opcode() == HloOpcode::kConvolution) &&
+          instruction->opcode() == HloOpcode::kConvolution ||
+          instruction->opcode() == HloOpcode::kRaggedDot ||
+          instruction->opcode() == HloOpcode::kScaledDot) &&
          (primitive_util::IsFloatingPointType(
               instruction->operand(0)->shape().element_type()) &&
           primitive_util::IsFloatingPointType(
@@ -39,22 +41,9 @@ absl::StatusOr<HloInstruction*> ConvolutionTypeCanonicalizer::ExpandInstruction(
     HloInstruction* instruction) {
   auto original_shape = instruction->shape();
   auto new_shape = ShapeUtil::ChangeElementType(original_shape, F32);
-  HloInstruction* replacement_instruction;
-  if (instruction->opcode() == HloOpcode::kDot) {
-    replacement_instruction = instruction->parent()->AddInstruction(
-        HloInstruction::CreateDot(new_shape, instruction->mutable_operand(0),
-                                  instruction->mutable_operand(1),
-                                  instruction->dot_dimension_numbers(),
-                                  instruction->precision_config()));
-  } else {
-    replacement_instruction =
-        instruction->parent()->AddInstruction(HloInstruction::CreateConvolve(
-            new_shape, instruction->mutable_operand(0),
-            instruction->mutable_operand(1), instruction->feature_group_count(),
-            instruction->batch_group_count(), instruction->window(),
-            instruction->convolution_dimension_numbers(),
-            instruction->precision_config()));
-  }
+  HloInstruction* replacement_instruction =
+      instruction->parent()->AddInstruction(
+          instruction->CloneWithNewShape(new_shape));
   HloInstruction* output_cast = instruction->parent()->AddInstruction(
       HloInstruction::CreateConvert(original_shape, replacement_instruction));
   return output_cast;

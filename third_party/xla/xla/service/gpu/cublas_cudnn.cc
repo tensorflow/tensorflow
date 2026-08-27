@@ -18,9 +18,9 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -30,6 +30,10 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+namespace {
+constexpr absl::string_view kCuDnnFusionKind = "__cudnn$fusion";
+}  // namespace
 
 bool IsCublasLtGemm(const HloInstruction& hlo) {
   return IsCublasLtMatmul(hlo) || IsCublasLtMatmulF8(hlo) ||
@@ -82,9 +86,21 @@ bool IsTriangularSolve(const HloInstruction& hlo) {
          hlo.custom_call_target() == kTriangularSolveCallTarget;
 }
 
-// fMHA forward call targets.
+bool IsConvFusion(const HloInstruction& hlo) {
+  if (hlo.opcode() != HloOpcode::kFusion) {
+    return false;
+  }
 
-// fMHA backward call targets.
+  if (hlo.fusion_kind() != HloInstruction::FusionKind::kCustom) {
+    return false;
+  }
+
+  auto gpu_config = hlo.backend_config<GpuBackendConfig>();
+  if (gpu_config.ok()) {
+    return gpu_config->fusion_backend_config().kind() == kCuDnnFusionKind;
+  }
+  return false;
+}
 
 bool IsCustomCallToDnnConvolution(const HloInstruction& hlo) {
   if (hlo.opcode() != HloOpcode::kCustomCall) {
@@ -294,7 +310,7 @@ absl::StatusOr<std::string> GetFMHAInstructionPrefix(
 
 // Give fmha instruction a more useful name than "custom-call.42".
 absl::Status SetFMHAInstructionName(HloModule* module, HloInstruction* fmha) {
-  ASSIGN_OR_RETURN(std::string fmha_prefix,
+  ABSL_ASSIGN_OR_RETURN(std::string fmha_prefix,
                    GetFMHAInstructionPrefix(fmha->custom_call_target()));
   module->SetAndUniquifyInstrName(fmha, fmha_prefix);
   return absl::OkStatus();

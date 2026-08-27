@@ -83,6 +83,7 @@ class HloPrintOptions {
         print_frontend_attributes_(true),
         print_name_after_closing_brace_(false),
         print_full_replica_group_list_(false),
+        print_replica_groups_without_subaxes_(false),
         print_parameter_number_(true),
         print_channel_id_(true),
         print_inline_stack_frames_(false),
@@ -280,6 +281,11 @@ class HloPrintOptions {
     return *this;
   }
 
+  HloPrintOptions& set_print_replica_groups_without_subaxes(bool value) {
+    print_replica_groups_without_subaxes_ = value;
+    return *this;
+  }
+
   // If true, uses the async operation syntax sugar to print async-start,
   // async-update, and async-done HLOs. If the syntax sugar is enabled and the
   // async computation is trivial (i.e. only a single instruction taking
@@ -451,6 +457,9 @@ class HloPrintOptions {
   bool print_full_replica_group_list() const {
     return print_full_replica_group_list_;
   }
+  bool print_replica_groups_without_subaxes() const {
+    return print_replica_groups_without_subaxes_;
+  }
   bool print_parameter_number() const { return print_parameter_number_; }
   bool print_channel_id() const { return print_channel_id_; }
   bool print_inline_stack_frames() const { return print_inline_stack_frames_; }
@@ -488,6 +497,7 @@ class HloPrintOptions {
   bool print_frontend_attributes_;
   bool print_name_after_closing_brace_;
   bool print_full_replica_group_list_;
+  bool print_replica_groups_without_subaxes_;
   bool print_parameter_number_;
   bool print_channel_id_;
   bool print_inline_stack_frames_;

@@ -15,10 +15,13 @@ limitations under the License.
 // Note: This library is only used by python_api_parameter_converter_test.  It
 // is not meant to be used in other circumstances.
 
+#include "absl/types/span.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11
+#include "tensorflow/python/framework/python_api_info.h"
 #include "tensorflow/python/framework/python_api_parameter_converter.h"
+#include "tensorflow/python/framework/python_tensor_converter.h"
 
 namespace py = pybind11;
 
@@ -30,16 +33,68 @@ PythonAPIInfo::InferredAttributes Convert(
     const PythonTensorConverter& tensor_converter, py::handle arg_list) {
   PythonAPIInfo::InferredAttributes inferred_attrs;
 
-  PyObject* args_fast = PySequence_Fast(arg_list.ptr(), "Expected a list");
-  absl::Span<PyObject*> args_raw(PySequence_Fast_ITEMS(args_fast),
-                                 PySequence_Fast_GET_SIZE(args_fast));
+  Py_ssize_t size = PySequence_Size(arg_list.ptr());
+  if (size < 0) {
+    throw py::error_already_set();
+  }
+
+  std::vector<PyObject*> args_raw_vec(size);
+  for (Py_ssize_t i = 0; i < size; ++i) {
+    PyObject* item = PySequence_GetItem(arg_list.ptr(), i);
+    if (!item) {
+      for (Py_ssize_t j = 0; j < i; ++j) {
+        Py_XDECREF(args_raw_vec[j]);
+      }
+      throw py::error_already_set();
+    }
+    args_raw_vec[i] = item;
+  }
+
+  absl::Span<PyObject*> args_raw(args_raw_vec.data(), args_raw_vec.size());
+
+  int max_index = GetPythonAPIMaxIndex(api_info);
+  if (static_cast<int>(args_raw.size()) <= max_index) {
+    for (PyObject* item : args_raw_vec) {
+      Py_XDECREF(item);
+    }
+    PyErr_SetString(PyExc_ValueError,
+                    "Parameters span size is smaller than expected");
+    throw py::error_already_set();
+  }
 
   if (!CopyPythonAPITensorLists(api_info, args_raw)) {
+    for (PyObject* item : args_raw_vec) {
+      Py_XDECREF(item);
+    }
     throw py::error_already_set();
   }
   if (!ConvertPythonAPIParameters(api_info, tensor_converter, args_raw,
                                   &inferred_attrs)) {
+    for (PyObject* item : args_raw_vec) {
+      Py_XDECREF(item);
+    }
     throw py::error_already_set();
+  }
+
+  if (PyList_Check(arg_list.ptr())) {
+    for (Py_ssize_t i = 0; i < size; ++i) {
+      PyObject* new_item = args_raw_vec[i];
+
+      // Transfer the owned reference in args_raw_vec to the list.
+      // PyList_SetItem also releases the reference previously owned by
+      // the list at this index.
+      args_raw_vec[i] = nullptr;
+      if (PyList_SetItem(arg_list.ptr(), i, new_item) < 0) {
+        for (Py_ssize_t j = i + 1; j < size; ++j) {
+          Py_XDECREF(args_raw_vec[j]);
+        }
+        throw py::error_already_set();
+      }
+    }
+  } else {
+    for (Py_ssize_t i = 0; i < size; ++i) {
+      Py_DECREF(args_raw_vec[i]);
+    }
   }
 
   return inferred_attrs;
@@ -48,6 +103,7 @@ PythonAPIInfo::InferredAttributes Convert(
 }  // namespace
 }  // namespace tensorflow
 
-PYBIND11_MODULE(_pywrap_python_api_parameter_converter, m) {
+PYBIND11_MODULE(_pywrap_python_api_parameter_converter, m,
+                py::mod_gil_not_used()) {
   m.def("Convert", tensorflow::Convert);
 }

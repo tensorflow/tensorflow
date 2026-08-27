@@ -89,12 +89,15 @@ class DynamicSliceFusionV2Thunk : public Command {
       const Thunk::ExecuteParams& execute_params,
       const RecordParams& record_params, RecordAction record_action,
       se::CommandBuffer* command_buffer) override;
-  bool requires_initialization() const override;
-  bool requires_update() const override;
+  bool requires_update_on_initialize() const override;
+  bool requires_update_on_execute() const override;
   bool support_loop_unroll() const override;
 
   BufferUses buffer_uses() const override;
 
+  // Embedded thunks are an implementation detail and use a private synthetic
+  // allocation namespace. They are intentionally not exposed through generic
+  // Thunk::Walk or ThunkSequence::TransformNested traversal.
   const ThunkSequence& thunks() const { return executor_.thunks(); }
 
   absl::Span<const DynamicSliceFusion::Parameter> parameters() const {
@@ -125,10 +128,6 @@ class DynamicSliceFusionV2Thunk : public Command {
       ThunkInfo thunk_info, const DynamicSliceFusionThunkProto& proto,
       absl::Span<const BufferAllocation> buffer_allocations,
       const DeserializerWithCustomAllocations& deserializer);
-
- protected:
-  absl::Status WalkNested(Walker callback) override;
-  absl::Status TransformNested(Transformer callback) override;
 
  private:
   std::vector<se::DeviceAddressBase> BuildDynamicSliceBuffers(

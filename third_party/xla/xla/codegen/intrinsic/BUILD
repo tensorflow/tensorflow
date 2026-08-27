@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("//xla:xla.default.bzl", "xla_cc_test")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
@@ -29,8 +44,10 @@ cc_library(
         ":type",
         ":vec_name_mangler",
         "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:FuncDialect",
@@ -42,6 +59,7 @@ xla_cc_test(
     name = "intrinsic_test",
     srcs = ["intrinsic_test.cc"],
     deps = [
+        ":intrinsic",
         ":type",
         "//xla:xla_data_proto_cc",
         "//xla/tsl/lib/core:status_test_util",
@@ -62,11 +80,11 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
@@ -115,7 +133,7 @@ xla_cc_test(
         ":test_matchers",
         "//xla:xla_data_proto_cc",
         "@com_google_googletest//:gtest_main",
-        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:ir_headers",
     ],
 )
@@ -260,7 +278,7 @@ cc_library(
         "@llvm-project//llvm:Core",  # buildcleaner: keep
         "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:IPO",
-        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:Passes",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
@@ -296,7 +314,7 @@ xla_cc_test(
         ":test_matchers",
         "//xla:xla_data_proto_cc",
         "@com_google_googletest//:gtest_main",
-        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:ir_headers",
     ],
 )
@@ -312,7 +330,7 @@ xla_cc_test(
         ":test_matchers",
         "//xla:xla_data_proto_cc",
         "@com_google_googletest//:gtest_main",
-        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:ir_headers",
     ],
 )
@@ -361,7 +379,7 @@ xla_cc_test(
         ":test_matchers",
         "//xla:xla_data_proto_cc",
         "@com_google_googletest//:gtest_main",
-        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:ir_headers",
     ],
 )
@@ -380,7 +398,7 @@ xla_cc_test(
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
-        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TargetParser",
         "@llvm-project//llvm:ir_headers",
@@ -433,7 +451,7 @@ xla_cc_test(
         ":test_matchers",
         "//xla:xla_data_proto_cc",
         "@com_google_googletest//:gtest_main",
-        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:ir_headers",
     ],
 )

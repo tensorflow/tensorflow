@@ -22,19 +22,24 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/fake_quant_ops_functor.h"
 // Above is the related header but clang tidy doesn't recognize it.
+#include <type_traits>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/numeric_op.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/util/determinism.h"
 
 using tensorflow::BinaryElementWiseOp;
-using tensorflow::DEVICE_CPU;
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
-using tensorflow::DEVICE_GPU;
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 using tensorflow::OpKernel;
 using tensorflow::OpKernelConstruction;
@@ -43,7 +48,6 @@ using tensorflow::Tensor;
 using tensorflow::TensorShape;
 using tensorflow::TTypes;  // NOLINT This is needed in CUDA mode, do not remove.
 using tensorflow::UnaryElementWiseOp;
-using tensorflow::errors::InvalidArgument;
 
 namespace tensorflow {
 
@@ -165,8 +169,8 @@ typedef Eigen::GpuDevice GPUDevice;
 // Forward declarations for functor specializations for GPU.
 template <>
 void FakeQuantWithMinMaxArgsFunctor<GPUDevice>::operator()(
-    const GPUDevice& d, typename TTypes<float>::ConstFlat inputs,
-    const float min, const float max, const int quant_min, const int quant_max,
+    const GPUDevice& d, typename TTypes<float>::ConstFlat inputs, float min,
+    float max, int quant_min, int quant_max,
     typename TTypes<float>::Flat outputs);
 extern template struct FakeQuantWithMinMaxArgsFunctor<GPUDevice>;
 REGISTER_KERNEL_BUILDER(Name("FakeQuantWithMinMaxArgs").Device(DEVICE_GPU),
@@ -175,9 +179,8 @@ REGISTER_KERNEL_BUILDER(Name("FakeQuantWithMinMaxArgs").Device(DEVICE_GPU),
 template <>
 void FakeQuantWithMinMaxArgsGradientFunctor<GPUDevice>::operator()(
     const GPUDevice& d, typename TTypes<float>::ConstFlat gradients,
-    typename TTypes<float>::ConstFlat inputs, const float min, const float max,
-    const int quant_min, const int quant_max,
-    typename TTypes<float>::Flat backprops);
+    typename TTypes<float>::ConstFlat inputs, float min, float max,
+    int quant_min, int quant_max, typename TTypes<float>::Flat backprops);
 REGISTER_KERNEL_BUILDER(
     Name("FakeQuantWithMinMaxArgsGradient").Device(DEVICE_GPU),
     FakeQuantWithMinMaxArgsGradientOp<GPUDevice>);
@@ -247,7 +250,7 @@ class FakeQuantWithMinMaxVarsGradientOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("narrow_range", &narrow_range));
     quant_min_ = narrow_range ? 1 : 0;
     quant_max_ = (1 << num_bits) - 1;
-    if (std::is_same<Device, Eigen::GpuDevice>::value) {
+    if (std::is_same_v<Device, Eigen::GpuDevice>) {
       OP_REQUIRES(
           context, !OpDeterminismRequired(),
           absl::UnimplementedError(
@@ -309,8 +312,8 @@ template <>
 void FakeQuantWithMinMaxVarsFunctor<GPUDevice>::operator()(
     const GPUDevice& d, typename TTypes<float>::ConstFlat inputs,
     typename TTypes<float>::ConstScalar min,
-    typename TTypes<float>::ConstScalar max, const int quant_min,
-    const int quant_max, typename TTypes<float>::Flat output);
+    typename TTypes<float>::ConstScalar max, int quant_min, int quant_max,
+    typename TTypes<float>::Flat output);
 extern template struct FakeQuantWithMinMaxVarsFunctor<GPUDevice>;
 REGISTER_KERNEL_BUILDER(Name("FakeQuantWithMinMaxVars")
                             .Device(DEVICE_GPU)
@@ -323,8 +326,8 @@ void FakeQuantWithMinMaxVarsGradientFunctor<GPUDevice>::operator()(
     const GPUDevice& d, typename TTypes<float>::ConstFlat gradients,
     typename TTypes<float>::ConstFlat inputs,
     typename TTypes<float>::ConstScalar min,
-    typename TTypes<float>::ConstScalar max, const int quant_min,
-    const int quant_max, typename TTypes<float>::Flat backprops_wrt_input,
+    typename TTypes<float>::ConstScalar max, int quant_min, int quant_max,
+    typename TTypes<float>::Flat backprops_wrt_input,
     typename TTypes<float>::Scalar backprop_wrt_min,
     typename TTypes<float>::Scalar backprop_wrt_max);
 extern template struct FakeQuantWithMinMaxVarsGradientFunctor<GPUDevice>;
@@ -358,6 +361,8 @@ class FakeQuantWithMinMaxVarsPerChannelOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     CHECK_EQ(3, context->num_inputs());
     const Tensor& input = context->input(0);
+    OP_REQUIRES(context, input.dims() > 0,
+                absl::InvalidArgumentError("input must be at least rank 1"));
     const int depth = input.dim_size(input.dims() - 1);  // last dimension size.
     const Tensor& min = context->input(1);
     const Tensor& max = context->input(2);
@@ -409,7 +414,7 @@ class FakeQuantWithMinMaxVarsPerChannelGradientOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("narrow_range", &narrow_range));
     quant_min_ = narrow_range ? 1 : 0;
     quant_max_ = (1 << num_bits) - 1;
-    if (std::is_same<Device, Eigen::GpuDevice>::value) {
+    if (std::is_same_v<Device, Eigen::GpuDevice>) {
       OP_REQUIRES(
           context, !OpDeterminismRequired(),
           absl::UnimplementedError(
@@ -425,6 +430,8 @@ class FakeQuantWithMinMaxVarsPerChannelGradientOp : public OpKernel {
     OP_REQUIRES(
         context, input.IsSameSize(gradient),
         absl::InvalidArgumentError("gradient and input must be the same size"));
+    OP_REQUIRES(context, input.dims() > 0,
+                absl::InvalidArgumentError("input must be at least rank 1"));
     const int depth = input.dim_size(input.dims() - 1);  // last dimension size.
     const Tensor& min = context->input(2);
     OP_REQUIRES(context, TensorShapeUtils::IsVector(min.shape()),
@@ -482,8 +489,8 @@ template <>
 void FakeQuantWithMinMaxVarsPerChannelFunctor<GPUDevice>::operator()(
     const GPUDevice& d, typename TTypes<float>::ConstMatrix inputs,
     typename TTypes<float>::ConstFlat min,
-    typename TTypes<float>::ConstFlat max, const int quant_min,
-    const int quant_max, typename TTypes<float>::Matrix outputs);
+    typename TTypes<float>::ConstFlat max, int quant_min, int quant_max,
+    typename TTypes<float>::Matrix outputs);
 extern template struct FakeQuantWithMinMaxVarsPerChannelFunctor<GPUDevice>;
 
 REGISTER_KERNEL_BUILDER(Name("FakeQuantWithMinMaxVarsPerChannel")
@@ -497,7 +504,7 @@ void FakeQuantWithMinMaxVarsPerChannelGradientFunctor<GPUDevice>::operator()(
     const GPUDevice& d, typename TTypes<float>::ConstMatrix gradients,
     typename TTypes<float>::ConstMatrix inputs,
     typename TTypes<float>::ConstVec min, typename TTypes<float>::ConstVec max,
-    const int quant_min, const int quant_max,
+    int quant_min, int quant_max,
     typename TTypes<float>::Matrix backprops_wrt_input,
     typename TTypes<float>::Vec backprop_wrt_min,
     typename TTypes<float>::Vec backprop_wrt_max);

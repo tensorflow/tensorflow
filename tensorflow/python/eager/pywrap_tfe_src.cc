@@ -1471,15 +1471,15 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
     PyObject* seq =
         PySequence_Fast(py_result, "expected a sequence of gradients");
     if (seq == nullptr) {
-      return tensorflow::errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "gradient function did not return a list");
     }
     int len = PySequence_Fast_GET_SIZE(seq);
     if (len != result.size()) {
-      return tensorflow::errors::Internal(
-          "Recorded operation '", op_type,
-          "' returned too few gradients. Expected ", result.size(),
-          " but received ", len);
+      return absl::InternalError(
+          absl::StrCat("Recorded operation '", op_type,
+                       "' returned too few gradients. Expected ", result.size(),
+                       " but received ", len));
     }
     PyObject** seq_array = PySequence_Fast_ITEMS(seq);
     VLOG(1) << "Gradient length is " << len;
@@ -1524,9 +1524,8 @@ PyObject* TFE_Py_RegisterVSpace(PyObject* e) {
       // Accumulators reference py_vspace, so we can't swap it out while one is
       // active. This is unlikely to ever happen.
       MaybeRaiseExceptionFromStatus(
-          tensorflow::errors::Internal(
-              "Can't change the vspace implementation while a "
-              "forward accumulator is active."),
+          absl::InternalError("Can't change the vspace implementation while a "
+                              "forward accumulator is active."),
           nullptr);
     }
     delete py_vspace;
@@ -1871,14 +1870,15 @@ class AccumulatorSet {
     return true;
   }
 
-  void erase(TFE_Py_ForwardAccumulator* element) {
+  bool erase(TFE_Py_ForwardAccumulator* element) {
     MapType::iterator existing = map_.find(element);
     if (existing == map_.end()) {
-      return;
+      return false;
     }
     ListType::iterator list_position = existing->second;
     map_.erase(existing);
     ordered_.erase(list_position);
+    return true;
   }
 
   bool empty() const { return ordered_.empty(); }
@@ -2027,6 +2027,10 @@ PyObject* TFE_Py_TapeSetNew(PyObject* persistent,
 }
 
 void TFE_Py_TapeSetAdd(PyObject* tape) {
+  if (!PyObject_TypeCheck(tape, &TFE_Py_Tape_Type)) {
+    PyErr_SetString(PyExc_TypeError, "Expected a TFE_Py_Tape object");
+    return;
+  }
   Py_INCREF(tape);
   TFE_Py_Tape* tfe_tape = reinterpret_cast<TFE_Py_Tape*>(tape);
   if (!GetTapeSet()->insert(tfe_tape).second) {
@@ -2045,13 +2049,21 @@ PyObject* TFE_Py_TapeSetIsEmpty() {
 }
 
 void TFE_Py_TapeSetRemove(PyObject* tape) {
+  if (!PyObject_TypeCheck(tape, &TFE_Py_Tape_Type)) {
+    PyErr_SetString(PyExc_TypeError, "Expected a TFE_Py_Tape object");
+    return;
+  }
   auto* stack = GetTapeSet();
+  bool erased = false;
   if (stack != nullptr) {
-    stack->erase(reinterpret_cast<TFE_Py_Tape*>(tape));
+    erased = stack->erase(reinterpret_cast<TFE_Py_Tape*>(tape)) > 0;
   }
   // We kept a reference to the tape in the set to ensure it wouldn't get
   // deleted under us; cleaning it up here.
-  Py_DECREF(tape);
+  // We only decref if the tape was actually erased from the set.
+  if (erased) {
+    Py_DECREF(tape);
+  }
 }
 
 static std::vector<int64_t> MakeIntList(PyObject* list) {
@@ -2210,6 +2222,10 @@ PyObject* TFE_Py_TapeSetPossibleGradientTypes(PyObject* tensors) {
 }
 
 void TFE_Py_TapeWatch(PyObject* tape, PyObject* tensor) {
+  if (!PyObject_TypeCheck(tape, &TFE_Py_Tape_Type)) {
+    PyErr_SetString(PyExc_TypeError, "Expected a TFE_Py_Tape object");
+    return;
+  }
   if (!CouldBackprop()) {
     return;
   }
@@ -2364,6 +2380,10 @@ void TFE_Py_TapeVariableAccessed(PyObject* variable) {
 }
 
 void TFE_Py_TapeWatchVariable(PyObject* tape, PyObject* variable) {
+  if (!PyObject_TypeCheck(tape, &TFE_Py_Tape_Type)) {
+    PyErr_SetString(PyExc_TypeError, "Expected a TFE_Py_Tape object");
+    return;
+  }
   if (!CouldBackprop()) {
     return;
   }
@@ -2371,6 +2391,10 @@ void TFE_Py_TapeWatchVariable(PyObject* tape, PyObject* variable) {
 }
 
 PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape) {
+  if (!PyObject_TypeCheck(tape, &TFE_Py_Tape_Type)) {
+    PyErr_SetString(PyExc_TypeError, "Expected a TFE_Py_Tape object");
+    return nullptr;
+  }
   return reinterpret_cast<TFE_Py_Tape*>(tape)->tape->GetVariablesAsPyTuple();
 }
 
@@ -2395,11 +2419,23 @@ PyObject* TFE_Py_VariableWatcherNew() {
 }
 
 void TFE_Py_VariableWatcherRemove(PyObject* variable_watcher) {
+  if (!PyObject_TypeCheck(variable_watcher, &TFE_Py_VariableWatcher_Type)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "Expected a TFE_Py_VariableWatcher object");
+    return;
+  }
   auto* stack = GetVariableWatcherSet();
-  stack->erase(reinterpret_cast<TFE_Py_VariableWatcher*>(variable_watcher));
+  bool erased = false;
+  if (stack != nullptr) {
+    auto* vw = reinterpret_cast<TFE_Py_VariableWatcher*>(variable_watcher);
+    erased = stack->erase(vw) > 0;
+  }
   // We kept a reference to the variable watcher in the set to ensure it
   // wouldn't get deleted under us; cleaning it up here.
-  Py_DECREF(variable_watcher);
+  // We only decref if the variable watcher was actually erased from the set.
+  if (erased) {
+    Py_DECREF(variable_watcher);
+  }
 }
 
 void TFE_Py_VariableWatcherVariableAccessed(PyObject* variable) {
@@ -2409,6 +2445,11 @@ void TFE_Py_VariableWatcherVariableAccessed(PyObject* variable) {
 }
 
 PyObject* TFE_Py_VariableWatcherWatchedVariables(PyObject* variable_watcher) {
+  if (!PyObject_TypeCheck(variable_watcher, &TFE_Py_VariableWatcher_Type)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "Expected a TFE_Py_VariableWatcher object");
+    return nullptr;
+  }
   return reinterpret_cast<TFE_Py_VariableWatcher*>(variable_watcher)
       ->variable_watcher->GetVariablesAsPyTuple();
 }
@@ -2512,7 +2553,7 @@ bool TapeSetRecordForwardprop(
     if (PySequence_Fast_GET_SIZE(indices_fast.get()) !=
         accumulator_set.size()) {
       MaybeRaiseExceptionFromStatus(
-          tensorflow::errors::Internal(
+          absl::InternalError(
               "Accumulators were added or removed from the active set "
               "between packing and unpacking."),
           nullptr);
@@ -2590,7 +2631,7 @@ absl::Status ParseTangentOutputs(PyObject* user_output,
   tensorflow::Safe_PyObjectPtr fast_result(
       PySequence_Fast(user_output, "expected a sequence of forward gradients"));
   if (fast_result == nullptr) {
-    return tensorflow::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "forward gradient function did not return a sequence.");
   }
   int len = PySequence_Fast_GET_SIZE(fast_result.get());
@@ -2619,8 +2660,7 @@ absl::Status CallJVPFunction(PyObject* op_name, PyObject* attrs,
                              std::vector<PyObject*>* output_tangents,
                              bool use_batch) {
   if (forward_gradient_function == nullptr) {
-    return tensorflow::errors::Internal(
-        "No forward gradient function registered.");
+    return absl::InternalError("No forward gradient function registered.");
   }
   tensorflow::Safe_PyObjectPtr py_input_tangents(
       TangentsAsPyTuple(input_tangents));
@@ -2635,8 +2675,7 @@ absl::Status CallJVPFunction(PyObject* op_name, PyObject* attrs,
   tensorflow::Safe_PyObjectPtr py_result(
       PyObject_CallObject(forward_gradient_function, callback_args.get()));
   if (py_result == nullptr || PyErr_Occurred()) {
-    return tensorflow::errors::Internal(
-        "forward gradient function threw exceptions");
+    return absl::InternalError("forward gradient function threw exceptions");
   }
   return ParseTangentOutputs(py_result.get(), output_tangents);
 }
@@ -2653,8 +2692,7 @@ absl::Status CallOpSpecificJVPFunction(
   tensorflow::Safe_PyObjectPtr py_result(PyObject_CallObject(
       op_specific_forward_function, py_input_tangents.get()));
   if (py_result == nullptr || PyErr_Occurred()) {
-    return tensorflow::errors::Internal(
-        "forward gradient function threw exceptions");
+    return absl::InternalError("forward gradient function threw exceptions");
   }
   return ParseTangentOutputs(py_result.get(), output_tangents);
 }
@@ -2896,6 +2934,10 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
                               PyObject* sources_raw,
                               PyObject* unconnected_gradients,
                               TF_Status* status) {
+  if (!PyObject_TypeCheck(tape, &TFE_Py_Tape_Type)) {
+    PyErr_SetString(PyExc_TypeError, "Expected a TFE_Py_Tape object");
+    return nullptr;
+  }
   TFE_Py_Tape* tape_obj = reinterpret_cast<TFE_Py_Tape*>(tape);
   if (!tape_obj->tape->IsPersistent()) {
     auto* tape_set = GetTapeSet();
@@ -3021,7 +3063,7 @@ PyObject* TFE_Py_ForwardAccumulatorNew(bool use_batch) {
       PyObject_NEW(TFE_Py_ForwardAccumulator, &TFE_Py_ForwardAccumulator_Type);
   if (py_vspace == nullptr) {
     MaybeRaiseExceptionFromStatus(
-        tensorflow::errors::Internal(
+        absl::InternalError(
             "ForwardAccumulator requires a PyVSpace to be registered."),
         nullptr);
   }
@@ -3030,6 +3072,11 @@ PyObject* TFE_Py_ForwardAccumulatorNew(bool use_batch) {
 }
 
 PyObject* TFE_Py_ForwardAccumulatorSetAdd(PyObject* accumulator) {
+  if (!PyObject_TypeCheck(accumulator, &TFE_Py_ForwardAccumulator_Type)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "Expected a TFE_Py_ForwardAccumulator object");
+    return nullptr;
+  }
   TFE_Py_ForwardAccumulator* c_accumulator(
       reinterpret_cast<TFE_Py_ForwardAccumulator*>(accumulator));
   c_accumulator->nesting_id = tape_nesting_id_counter.fetch_add(1);
@@ -3038,7 +3085,7 @@ PyObject* TFE_Py_ForwardAccumulatorSetAdd(PyObject* accumulator) {
     Py_RETURN_NONE;
   } else {
     MaybeRaiseExceptionFromStatus(
-        tensorflow::errors::Internal(
+        absl::InternalError(
             "A ForwardAccumulator was added to the active set twice."),
         nullptr);
     return nullptr;
@@ -3046,16 +3093,29 @@ PyObject* TFE_Py_ForwardAccumulatorSetAdd(PyObject* accumulator) {
 }
 
 void TFE_Py_ForwardAccumulatorSetRemove(PyObject* accumulator) {
+  if (!PyObject_TypeCheck(accumulator, &TFE_Py_ForwardAccumulator_Type)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "Expected a TFE_Py_ForwardAccumulator object");
+    return;
+  }
   auto* accumulator_set = GetAccumulatorSet();
+  bool erased = false;
   if (accumulator_set != nullptr) {
-    accumulator_set->erase(
+    erased = accumulator_set->erase(
         reinterpret_cast<TFE_Py_ForwardAccumulator*>(accumulator));
   }
-  Py_DECREF(accumulator);
+  if (erased) {
+    Py_DECREF(accumulator);
+  }
 }
 
 void TFE_Py_ForwardAccumulatorWatch(PyObject* accumulator, PyObject* tensor,
                                     PyObject* tangent) {
+  if (!PyObject_TypeCheck(accumulator, &TFE_Py_ForwardAccumulator_Type)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "Expected a TFE_Py_ForwardAccumulator object");
+    return;
+  }
   int64_t tensor_id = FastTensorId(tensor);
   reinterpret_cast<TFE_Py_ForwardAccumulator*>(accumulator)
       ->accumulator->Watch(tensor_id, tangent);
@@ -3065,6 +3125,11 @@ void TFE_Py_ForwardAccumulatorWatch(PyObject* accumulator, PyObject* tensor,
 // Returns a new reference to the JVP Tensor.
 PyObject* TFE_Py_ForwardAccumulatorJVP(PyObject* accumulator,
                                        PyObject* tensor) {
+  if (!PyObject_TypeCheck(accumulator, &TFE_Py_ForwardAccumulator_Type)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "Expected a TFE_Py_ForwardAccumulator object");
+    return nullptr;
+  }
   PyObject* jvp = reinterpret_cast<TFE_Py_ForwardAccumulator*>(accumulator)
                       ->accumulator->FetchJVP(FastTensorId(tensor));
   if (jvp == nullptr) {

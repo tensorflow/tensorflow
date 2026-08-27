@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/runtime_intrinsics.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_buffer_debug_saver_inserter.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
@@ -53,8 +54,6 @@ limitations under the License.
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -190,10 +189,12 @@ TEST_F(ThunkBufferDebugPassTest, IsNoOpWhenHloModuleIsNull) {
   ThunkSequence thunks;
   thunks.push_back(std::move(fake_thunk));
 
-  ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kChecksum);
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, pass.Run(&thunks, debug_options,
-                             /*hlo_module=*/nullptr, device_info, allocator));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ThunkBufferDebugPass> pass,
+      ThunkBufferDebugPass::Create(ThunkBufferDebugPass::Mode::kChecksum, {}));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed, pass->Run(&thunks, debug_options,
+                              /*hlo_module=*/nullptr, device_info, allocator));
   EXPECT_FALSE(changed);
   EXPECT_THAT(thunks, ElementsAre(Pointer(fake_thunk_ptr)));
   EXPECT_THAT(allocator.allocs(), IsEmpty());
@@ -234,10 +235,12 @@ TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugChecksumThunks) {
   ThunkSequence thunks;
   thunks.push_back(std::move(fake_thunk));
 
-  ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kChecksum);
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, pass.Run(&thunks, debug_options, fake_hlo_module_.get(),
-                             device_info, allocator));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ThunkBufferDebugPass> pass,
+      ThunkBufferDebugPass::Create(ThunkBufferDebugPass::Mode::kChecksum, {}));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       pass->Run(&thunks, debug_options, fake_hlo_module_.get(),
+                                 device_info, allocator));
   EXPECT_TRUE(changed);
 
   // Expected thunk structure after the pass:
@@ -344,10 +347,12 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
   //       ]
   //    ]
 
-  ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kChecksum);
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, pass.Run(&thunks, debug_options, fake_hlo_module_.get(),
-                             device_info, allocator));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ThunkBufferDebugPass> pass,
+      ThunkBufferDebugPass::Create(ThunkBufferDebugPass::Mode::kChecksum, {}));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       pass->Run(&thunks, debug_options, fake_hlo_module_.get(),
+                                 device_info, allocator));
   EXPECT_TRUE(changed);
 
   // Each FakeThunk is supposed to be transformed into a SequentialThunk
@@ -511,10 +516,12 @@ TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugFloatCheckThunks) {
   ThunkSequence thunks;
   thunks.push_back(std::move(fake_thunk));
 
-  ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kFloatChecker);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ThunkBufferDebugPass> pass,
+                       ThunkBufferDebugPass::Create(
+                           ThunkBufferDebugPass::Mode::kFloatChecker, {}));
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
-      pass.Run(&thunks, debug_options, &hlo_module, device_info, allocator));
+      pass->Run(&thunks, debug_options, &hlo_module, device_info, allocator));
   EXPECT_TRUE(changed);
 
   // Expected thunk structure after the pass:
@@ -577,10 +584,12 @@ TEST_F(ThunkBufferDebugPassTest,
   ThunkSequence thunks;
   thunks.push_back(std::move(fake_thunk));
 
-  ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kFloatChecker);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ThunkBufferDebugPass> pass,
+                       ThunkBufferDebugPass::Create(
+                           ThunkBufferDebugPass::Mode::kFloatChecker, {}));
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
-      pass.Run(&thunks, debug_options, &hlo_module, device_info, allocator));
+      pass->Run(&thunks, debug_options, &hlo_module, device_info, allocator));
   EXPECT_TRUE(changed);
 
   EXPECT_THAT(thunks, SizeIs(3));
@@ -611,10 +620,12 @@ TEST_F(ThunkBufferDebugPassTest,
   ThunkSequence thunks;
   thunks.push_back(std::move(fake_thunk));
 
-  ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kFloatChecker, nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ThunkBufferDebugPass> pass,
+                       ThunkBufferDebugPass::Create(
+                           ThunkBufferDebugPass::Mode::kFloatChecker, {}));
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
-      pass.Run(&thunks, debug_options, &hlo_module, device_info, allocator));
+      pass->Run(&thunks, debug_options, &hlo_module, device_info, allocator));
   EXPECT_TRUE(changed);
 
   EXPECT_THAT(thunks, SizeIs(3));
@@ -646,10 +657,12 @@ TEST_F(ThunkBufferDebugPassTest,
   ThunkSequence thunks;
   thunks.push_back(std::move(fake_thunk));
 
-  ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kChecksum);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ThunkBufferDebugPass> pass,
+      ThunkBufferDebugPass::Create(ThunkBufferDebugPass::Mode::kChecksum, {}));
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
-      pass.Run(&thunks, debug_options, &hlo_module, device_info, allocator));
+      pass->Run(&thunks, debug_options, &hlo_module, device_info, allocator));
   EXPECT_TRUE(changed);
 
   EXPECT_THAT(thunks, SizeIs(3));
@@ -681,10 +694,12 @@ TEST_F(ThunkBufferDebugPassTest,
   ThunkSequence thunks;
   thunks.push_back(std::move(fake_thunk));
 
-  ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kChecksum, nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ThunkBufferDebugPass> pass,
+      ThunkBufferDebugPass::Create(ThunkBufferDebugPass::Mode::kChecksum, {}));
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
-      pass.Run(&thunks, debug_options, &hlo_module, device_info, allocator));
+      pass->Run(&thunks, debug_options, &hlo_module, device_info, allocator));
   EXPECT_TRUE(changed);
 
   EXPECT_THAT(thunks, SizeIs(3));
@@ -716,10 +731,12 @@ TEST_F(ThunkBufferDebugPassTest,
   ThunkSequence thunks;
   thunks.push_back(std::move(fake_thunk));
 
-  ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kBufferSaver);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ThunkBufferDebugPass> pass,
+                       ThunkBufferDebugPass::Create(
+                           ThunkBufferDebugPass::Mode::kBufferSaver, {}));
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
-      pass.Run(&thunks, debug_options, &hlo_module, device_info, allocator));
+      pass->Run(&thunks, debug_options, &hlo_module, device_info, allocator));
   EXPECT_TRUE(changed);
 
   EXPECT_THAT(thunks, SizeIs(1));
@@ -751,10 +768,12 @@ TEST_F(ThunkBufferDebugPassTest,
   ThunkSequence thunks;
   thunks.push_back(std::move(fake_thunk));
 
-  ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kBufferSaver, nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ThunkBufferDebugPass> pass,
+                       ThunkBufferDebugPass::Create(
+                           ThunkBufferDebugPass::Mode::kBufferSaver, {}));
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
-      pass.Run(&thunks, debug_options, &hlo_module, device_info, allocator));
+      pass->Run(&thunks, debug_options, &hlo_module, device_info, allocator));
   EXPECT_TRUE(changed);
 
   EXPECT_THAT(thunks, SizeIs(1));
@@ -783,7 +802,7 @@ TEST_F(ThunkBufferDebugPassTest, InsertsOutputFloatCheckThunkWhenFlagEnabled) {
   BufferAssigner::Options opts;
   opts.allocate_buffers_for_constants = true;
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto buffer_assignment,
       BufferAssigner::Run(
           &hlo_module, std::make_unique<DependencyHloOrdering>(&hlo_module),
@@ -801,11 +820,16 @@ TEST_F(ThunkBufferDebugPassTest, InsertsOutputFloatCheckThunkWhenFlagEnabled) {
   ThunkSequence thunks;
   thunks.push_back(std::move(fake_thunk));
 
-  ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kFloatChecker,
-                            buffer_assignment.get());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
+      auto output_slices,
+      GetOutputShapedBuffers(&hlo_module, buffer_assignment.get()));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ThunkBufferDebugPass> pass,
+      ThunkBufferDebugPass::Create(ThunkBufferDebugPass::Mode::kFloatChecker,
+                                   std::move(output_slices)));
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
-      pass.Run(&thunks, debug_options, &hlo_module, device_info, allocator));
+      pass->Run(&thunks, debug_options, &hlo_module, device_info, allocator));
   EXPECT_TRUE(changed);
 
   EXPECT_THAT(thunks, SizeIs(4));
@@ -847,7 +871,7 @@ TEST_F(ThunkBufferDebugPassTest,
   BufferAssigner::Options opts;
   opts.allocate_buffers_for_constants = true;
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto buffer_assignment,
       BufferAssigner::Run(
           &hlo_module, std::make_unique<DependencyHloOrdering>(&hlo_module),
@@ -876,11 +900,16 @@ TEST_F(ThunkBufferDebugPassTest,
   thunks.push_back(std::move(fake_thunk1));
   thunks.push_back(std::move(fake_thunk2));
 
-  ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kFloatChecker,
-                            buffer_assignment.get());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
+      auto output_slices,
+      GetOutputShapedBuffers(&hlo_module, buffer_assignment.get()));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ThunkBufferDebugPass> pass,
+      ThunkBufferDebugPass::Create(ThunkBufferDebugPass::Mode::kFloatChecker,
+                                   std::move(output_slices)));
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
-      pass.Run(&thunks, debug_options, &hlo_module, device_info, allocator));
+      pass->Run(&thunks, debug_options, &hlo_module, device_info, allocator));
   EXPECT_TRUE(changed);
 
   // Expected thunk structure:
@@ -923,8 +952,7 @@ TEST_F(ThunkBufferDebugPassTest, BufferSaverInserter) {
   Thunk::ThunkInfo fake_thunk_info;
   fake_thunk_info.thunk_id = kTestThunkId;
 
-  ThunkSequence thunks;
-  thunks.push_back(std::make_unique<FakeThunk>(
+  ThunkSequence thunks = ThunkSequence::Of<FakeThunk>(
       fake_thunk_info,
       Thunk::BufferUses{
           // Write is undefined on input, but defined on output.
@@ -932,14 +960,13 @@ TEST_F(ThunkBufferDebugPassTest, BufferSaverInserter) {
           // Unlike Consume, Read is supposed to preserve the contents of the
           // buffer, so we check it on input *and* output.
           BufferUse::Read(slice_io, arg_shape),
-      }));
+      });
 
   DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
   debug_options.set_xla_dump_to("/tmp/123");
   debug_options.set_xla_gpu_experimental_enable_buffer_saver_on_thunks(true);
 
-  TF_EXPECT_OK(
-      RunDebugSaverInserter(&thunks, debug_options, hlo_module, nullptr));
+  EXPECT_OK(RunDebugSaverInserter(&thunks, debug_options, hlo_module, {}));
 
   // Expected thunk structure after the pass:
   // 1. SequentialThunk
@@ -984,10 +1011,12 @@ TEST_F(ThunkBufferDebugPassTest, FiltersThunksByIdRanges) {
   thunks.push_back(std::move(fake_thunk1));
   thunks.push_back(std::move(fake_thunk2));
 
-  ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kChecksum);
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, pass.Run(&thunks, debug_options, fake_hlo_module_.get(),
-                             device_info, allocator));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ThunkBufferDebugPass> pass,
+      ThunkBufferDebugPass::Create(ThunkBufferDebugPass::Mode::kChecksum, {}));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       pass->Run(&thunks, debug_options, fake_hlo_module_.get(),
+                                 device_info, allocator));
   EXPECT_TRUE(changed);
 
   // Expected thunk structure after the pass:
@@ -1054,10 +1083,12 @@ TEST_F(ThunkBufferDebugPassTest, FiltersThunksByProfileAnnotationRegexes) {
   thunks.push_back(std::move(fake_thunk2));
   thunks.push_back(std::move(fake_thunk3));
 
-  ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kChecksum);
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, pass.Run(&thunks, debug_options, fake_hlo_module_.get(),
-                             device_info, allocator));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ThunkBufferDebugPass> pass,
+      ThunkBufferDebugPass::Create(ThunkBufferDebugPass::Mode::kChecksum, {}));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       pass->Run(&thunks, debug_options, fake_hlo_module_.get(),
+                                 device_info, allocator));
   EXPECT_TRUE(changed);
 
   // Expected thunk structure after the pass:
@@ -1142,10 +1173,12 @@ TEST_F(ThunkBufferDebugPassTest,
   thunks.push_back(std::move(fake_thunk2));
   thunks.push_back(std::move(fake_thunk3));
 
-  ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kChecksum);
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, pass.Run(&thunks, debug_options, fake_hlo_module_.get(),
-                             device_info, allocator));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ThunkBufferDebugPass> pass,
+      ThunkBufferDebugPass::Create(ThunkBufferDebugPass::Mode::kChecksum, {}));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       pass->Run(&thunks, debug_options, fake_hlo_module_.get(),
+                                 device_info, allocator));
   EXPECT_TRUE(changed);
 
   // Expected thunk structure after the pass:

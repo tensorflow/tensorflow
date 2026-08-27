@@ -14,11 +14,16 @@
 # =============================================================================
 """If possible, exports all symbols with RTLD_GLOBAL.
 
-Note that this file is only imported by pywrap_tensorflow.py if this is a static
-build (meaning there is no explicit framework cc_binary shared object dependency
-of _pywrap_tensorflow_internal.so). For regular (non-static) builds, RTLD_GLOBAL
-is not necessary, since the dynamic dependencies of custom/contrib ops are
-explicit.
+This module is packaged only for monolithic builds (framework_shared_object
+unset/false, e.g. --config=monolithic). Shared-object builds (default pip
+wheels) omit it on purpose so pywrap_tensorflow.py hits ImportError and loads
+with RTLD_LOCAL instead.
+
+RTLD_GLOBAL is required for monolithic Python loads so custom op shared objects
+can resolve TF symbols from the global table. It must NOT be used for shared
+wheels: TF links LLVM/MLIR, and leaking those symbols globally causes ABI
+clashes (SIGSEGV) when a later import (e.g. triton) brings its own LLVM. See
+tensorflow/tensorflow#124205.
 """
 
 import ctypes

@@ -78,9 +78,14 @@ template <typename Index>
 struct SliceIndexer {
   SliceIndexer(const Index split_dim_size, const Index num_split)
       : split_size_(split_dim_size / num_split),
-        residual_(split_dim_size % num_split) {}
+        residual_(split_dim_size % num_split),
+        split_dim_size_(split_dim_size),
+        num_split_(num_split) {}
 
   inline __device__ Index GetSliceIndex(const Index index) const {
+    if (index < 0 || index >= split_dim_size_) {
+      return num_split_;
+    }
     return tensorflow::functor::GetSliceIndex(index, split_size_, residual_);
   }
 
@@ -95,6 +100,8 @@ struct SliceIndexer {
  private:
   const Index split_size_;
   const Index residual_;
+  const Index split_dim_size_;
+  const Index num_split_;
 };
 
 template <typename Index>
@@ -264,12 +271,15 @@ struct SparseSplitFunctor<GPUDevice, T> {
       int* sorted_slice_indexes_ptr = sorted_slice_indexes.vec<int>().data();
       OP_REQUIRES_OK_ASYNC(
           context,
-          GpuRadixSort(context, /*size=*/input_nnz,
-                       /*keys_in=*/slice_indexes_ptr,
-                       /*keys_out=*/sorted_slice_indexes_ptr,
-                       /*indices_in=*/static_cast<const Index*>(nullptr),
-                       /*indices_out=*/sort_permutation_ptr,
-                       /*num_bits=*/Log2Ceiling(num_split)),
+          GpuRadixSort(
+              context, /*size=*/input_nnz,
+              /*keys_in=*/slice_indexes_ptr,
+              /*keys_out=*/sorted_slice_indexes_ptr,
+              /*indices_in=*/static_cast<const Index*>(nullptr),
+              /*indices_out=*/sort_permutation_ptr,
+              // GetSliceIndex can return num_split for out-of-bound indices,
+              // requiring bits to represent values in [0, num_split].
+              /*num_bits=*/Log2Ceiling(num_split + 1)),
           done);
 
       OP_REQUIRES_OK_ASYNC(context,

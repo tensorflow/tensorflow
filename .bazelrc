@@ -80,6 +80,14 @@ common --repo_env=ML_WHEEL_VERSION_SUFFIX=""
 
 common --incompatible_default_to_explicit_init_py
 
+# Use a downloader config to mirror GitHub and Python package downloads.
+# We use the experimental_ name for better compatibility with different Bazel versions.
+build --experimental_downloader_config=bazel_downloader.cfg
+test --experimental_downloader_config=bazel_downloader.cfg
+fetch --experimental_downloader_config=bazel_downloader.cfg
+sync --experimental_downloader_config=bazel_downloader.cfg
+query --experimental_downloader_config=bazel_downloader.cfg
+
 # For projects which use TensorFlow as part of a Bazel build process, putting
 # nothing in a bazelrc will default to a monolithic build. The following line
 # opts in to modular op registration support by default.
@@ -283,7 +291,7 @@ common:mkl_aarch64 --config=mkl_aarch64_threadpool
 
 # Default CUDA, CUDNN, NCCL and NVSHMEM versions.
 common:cuda12_version --repo_env=HERMETIC_CUDA_VERSION="12.5.1"
-common:cuda12_version --repo_env=HERMETIC_CUDNN_VERSION="9.3.0"
+common:cuda12_version --repo_env=HERMETIC_CUDNN_VERSION="9.10.0"
 common:cuda12_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
 common:cuda12_version --repo_env=HERMETIC_NCCL_VERSION="2.29.7"
 common:cuda12_version --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_60,sm_70,sm_80,sm_89,compute_90"
@@ -428,6 +436,8 @@ common:linux --copt="-Werror=switch"
 
 # Linux ARM64 specific options
 common:linux_arm64 --copt="-mtune=generic" --copt="-march=armv8-a" --copt="-O3"
+common:linux_arm64 --define=ynn_enable_arm64_neonfp8=false
+
 
 
 # On Windows, `__cplusplus` is wrongly defined without this switch
@@ -546,6 +556,8 @@ common:win_clang_base --linkopt=/demangle:no --host_linkopt=/demangle:no
 common:win_clang_base --linkopt=/errorlimit:0 --host_linkopt=/errorlimit:0
 common:win_clang_base --copt=/clang:-Weverything
 common:win_clang_base --host_copt=/clang:-Weverything
+common:win_clang_base --copt=/D__PRFCHWINTRIN_H
+common:win_clang_base --host_copt=/D__PRFCHWINTRIN_H
 common:win_clang_base --compiler=clang-cl
 common:win_clang_base --linkopt=/FORCE:MULTIPLE
 common:win_clang_base --host_linkopt=/FORCE:MULTIPLE
@@ -712,6 +724,8 @@ common:rbe_windows_x86_cpu_ml_actions --config=rbe_win_base
 common:rbe_windows_x86_cpu_ml_actions --config=win_clang_base
 common:rbe_windows_x86_cpu_ml_actions --copt=/D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH
 common:rbe_windows_x86_cpu_ml_actions --host_copt=/D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH
+common:rbe_windows_x86_cpu_ml_actions --copt=/D__PRFCHWINTRIN_H
+common:rbe_windows_x86_cpu_ml_actions --host_copt=/D__PRFCHWINTRIN_H
 common:rbe_windows_x86_cpu_ml_actions --jobs=200
 common:rbe_windows_x86_cpu_ml_actions --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
 common:rbe_windows_x86_cpu_ml_actions --incompatible_enable_cc_toolchain_resolution
@@ -720,7 +734,7 @@ common:rbe_windows_x86_cpu_ml_actions --bes_instance_name="ml-oss-rbe-general"
 common:rbe_windows_x86_cpu_ml_actions --host_platform="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang_ml_actions"
 common:rbe_windows_x86_cpu_ml_actions --extra_execution_platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang_ml_actions"
 common:rbe_windows_x86_cpu_ml_actions --platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang_ml_actions"
-common:rbe_windows_x86_cpu_ml_actions --extra_toolchains=@org_tensorflow//tensorflow/tools/toolchains/win2022/20260322:cc-toolchain-x64_windows-clang-cl
+common:rbe_windows_x86_cpu_ml_actions --extra_toolchains=@org_tensorflow//tensorflow/tools/toolchains/win2022/t20260812:cc-toolchain-x64_windows-clang-cl
 common:rbe_windows_x86_ml_actions --config=rbe_windows_x86_cpu_ml_actions
 test:rbe_windows_x86_cpu_ml_actions --flaky_test_attempts=3
 
@@ -1024,6 +1038,7 @@ common:cross_compile_linux_arm64 --cpu=aarch64
 common:cross_compile_linux_arm64 --crosstool_top=//tensorflow/tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
 common:cross_compile_linux_arm64 --extra_toolchains=//tensorflow/tools/toolchains/cross_compile/cc:linux_aarch64_toolchain
 common:cross_compile_linux_arm64 --define=linux_arm64_cross_compile=true
+common:cross_compile_linux_arm64 --define=ynn_enable_arm64_neonfp8=false
 
 # RBE cross-compile configs for Linux Aarch64
 common:rbe_cross_compile_linux_arm64 --config=cross_compile_linux_arm64

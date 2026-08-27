@@ -15,17 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/set_tpu_infeed_layout.h"
 
-#if !defined(_WIN32)
-#include <sys/sysmacros.h>
-#endif
-
 #include <algorithm>
 #include <cstdint>
 #include <numeric>
 #include <vector>
 
-#undef major
-#undef minor
+// Conditionally include sysmacros.h only on Linux
+#if defined(__linux__)
+#include <sys/sysmacros.h>
+#endif
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/Attributes.h"  // from @llvm-project

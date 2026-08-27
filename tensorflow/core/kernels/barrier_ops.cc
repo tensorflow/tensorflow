@@ -93,9 +93,9 @@ class Barrier : public ResourceBase {
     TensorShape element_shape = values.shape();
     OP_REQUIRES_ASYNC(
         ctx, keys.NumElements() == 0 || element_shape.num_elements() > 0,
-        errors::InvalidArgument("Tensors with no elements are not supported ",
-                                name_, ": received shape ",
-                                element_shape.DebugString()),
+        absl::InvalidArgumentError(
+            absl::StrCat("Tensors with no elements are not supported ", name_,
+                         ": received shape ", element_shape.DebugString())),
         callback);
     if (element_shape.dims() > 0) element_shape.RemoveDim(0);
     const std::size_t num_inserted = keys.NumElements();
@@ -143,9 +143,9 @@ class Barrier : public ResourceBase {
       // universe, but who knows?  Moore's law FTW.
       OP_REQUIRES_ASYNC(
           ctx, input_index_ != std::numeric_limits<int64_t>::max(),
-          errors::Internal(
+          absl::InternalError(absl::StrCat(
               "Barrier has had ", input_index_,
-              " insertions and can no longer keep track of new ones."),
+              " insertions and can no longer keep track of new ones.")),
           callback);
 
       if (ready_tuples.empty()) {
@@ -221,10 +221,10 @@ class Barrier : public ResourceBase {
         // If there are 0 available elements or less elements than the
         // number we can deliver, then we are done.
         if (available_elements < std::max(num_elements_to_deliver, 1)) {
-          ctx->SetStatus(errors::OutOfRange(
+          ctx->SetStatus(absl::OutOfRangeError(absl::StrCat(
               "Barrier '", name_, "' is closed and has ",
               "insufficient elements (requested ", num_elements_to_deliver,
-              ", total size ", available_elements, ")"));
+              ", total size ", available_elements, ")")));
           callback(Tensor(DT_INT64), Tensor(DT_STRING), Tuple());
           return;
         }
@@ -257,8 +257,8 @@ class Barrier : public ResourceBase {
     // We're allowed to close twice if the first close wasn't a
     // cancel but the second one is.
     if (closed_ && (cancel_pending_enqueues_ || !cancel_pending_enqueues)) {
-      ctx->SetStatus(
-          errors::Cancelled("Barrier '", name_, "' is already closed."));
+      ctx->SetStatus(absl::CancelledError(
+          absl::StrCat("Barrier '", name_, "' is already closed.")));
       callback();
       return;
     }
@@ -318,13 +318,12 @@ class Barrier : public ResourceBase {
     if (closed_) {
       element_ptr = gtl::FindOrNull(incomplete_, keys_vec(i));
       if (element_ptr == nullptr) {
-        return errors::Cancelled(
+        return absl::CancelledError(absl::StrCat(
             "Barrier ", name_,
             " is closed, but attempted to insert a brand new key: ",
-            keys_vec(i),
-            ".  Pending enqueues cancelled: ", cancel_pending_enqueues_,
-            ".  Insertion index: ", i,
-            ".  Number of incomplete keys: ", incomplete_.size(), ".");
+            keys_vec(i), ".  Pending enqueues cancelled: ",
+            cancel_pending_enqueues_, ".  Insertion index: ", i,
+            ".  Number of incomplete keys: ", incomplete_.size(), "."));
       }
     } else {
       element_ptr =
@@ -359,9 +358,9 @@ class Barrier : public ResourceBase {
     }
     const Tensor& component = element[1 + component_index];
     if (component.IsInitialized() && component.NumElements() > 0) {
-      return errors::InvalidArgument("Key ", keys_vec(i),
-                                     " already has a value for component ",
-                                     component_index, " in barrier ", name());
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Key ", keys_vec(i), " already has a value for component ",
+          component_index, " in barrier ", name()));
     }
 
     // Extract the slice corresponding to the value from the value Tensor,
@@ -448,13 +447,13 @@ class BarrierOp : public ResourceOpKernel<Barrier> {
                    context->GetAttr("shapes", &value_component_shapes_));
     OP_REQUIRES(context,
                 value_component_shapes_.size() == value_component_types_.size(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "All of the component shapes must be specified"));
 
     int32_t value_capacity;
     OP_REQUIRES_OK(context, context->GetAttr("capacity", &value_capacity));
     OP_REQUIRES(context, value_capacity == -1,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Barrier only accepts capacity=-1.  Feed the "
                     "inputs to your Barrier through a queue to enforce a "
                     "limited capacity."));
@@ -466,7 +465,7 @@ class BarrierOp : public ResourceOpKernel<Barrier> {
     *barrier = new Barrier(value_component_types_, value_component_shapes_,
                            cinfo_.name());
     if (*barrier == nullptr) {
-      return errors::ResourceExhausted("Failed to allocate barrier");
+      return absl::ResourceExhaustedError("Failed to allocate barrier");
     }
     return (*barrier)->Initialize();
   }
@@ -474,18 +473,18 @@ class BarrierOp : public ResourceOpKernel<Barrier> {
   absl::Status VerifyResource(Barrier* barrier) override
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (barrier->component_types() != value_component_types_) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Shared barrier '", cinfo_.name(), "' has component types ",
           DataTypeSliceString(barrier->component_types()),
           " but requested component types were ",
-          DataTypeSliceString(value_component_types_));
+          DataTypeSliceString(value_component_types_)));
     }
     if (barrier->component_shapes() != value_component_shapes_) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Shared barrier '", cinfo_.name(), "' has component shapes ",
           TensorShapeUtils::ShapeListString(barrier->component_shapes()),
           " but requested component shapes were ",
-          TensorShapeUtils::ShapeListString(value_component_shapes_));
+          TensorShapeUtils::ShapeListString(value_component_shapes_)));
     }
     return absl::OkStatus();
   }
@@ -533,9 +532,9 @@ class InsertManyOp : public BarrierOpKernel {
                     DoneCallback callback) override {
     OP_REQUIRES_ASYNC(
         ctx, component_index_ < barrier->num_components(),
-        errors::InvalidArgument("The component ID is out of range ",
-                                component_index_, " > num_components",
-                                " (= ", barrier->num_components(), ")"),
+        absl::InvalidArgumentError(absl::StrCat(
+            "The component ID is out of range ", component_index_,
+            " > num_components", " (= ", barrier->num_components(), ")")),
         callback);
     OP_REQUIRES_OK_ASYNC(
         ctx,
@@ -572,7 +571,7 @@ class TakeManyOp : public BarrierOpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("timeout_ms", &timeout_));
     // TODO(keveman): Enable timeout.
     OP_REQUIRES(context, timeout_ == -1,
-                errors::InvalidArgument("Timeout not supported yet."));
+                absl::InvalidArgumentError("Timeout not supported yet."));
 
     OP_REQUIRES_OK(context,
                    context->GetAttr("allow_small_batch", &allow_small_batch_));
@@ -584,9 +583,9 @@ class TakeManyOp : public BarrierOpKernel {
     const Tensor* Tnum_elements;
     OP_REQUIRES_OK_ASYNC(ctx, ctx->input("num_elements", &Tnum_elements),
                          callback);
-    OP_REQUIRES_ASYNC(ctx, TensorShapeUtils::IsScalar(Tnum_elements->shape()),
-                      errors::InvalidArgument("num_elements must be a scalar."),
-                      callback);
+    OP_REQUIRES_ASYNC(
+        ctx, TensorShapeUtils::IsScalar(Tnum_elements->shape()),
+        absl::InvalidArgumentError("num_elements must be a scalar."), callback);
     const int32_t num_elements = Tnum_elements->scalar<int32_t>()();
 
     DataTypeVector expected_inputs = {DT_STRING_REF, DT_INT32};

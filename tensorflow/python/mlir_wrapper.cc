@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 
-PYBIND11_MODULE(_pywrap_mlir, m) {
+PYBIND11_MODULE(_pywrap_mlir, m, pybind11::mod_gil_not_used()) {
   m.def("ImportGraphDef",
         [](const std::string &graphdef, const std::string &pass_pipeline,
            bool show_debug_info) {

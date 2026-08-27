@@ -20,15 +20,6 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 
-// Resource names in the ResourceMgr.
-//
-// Name of cache for compiled TPU ISA protos. CompilationCache is created by
-// ConfigureDistributedTpuOp, so only the master has a CompilationCache.
-ABSL_CONST_INIT extern const char kCompilationCacheResourceName[];
-// Name of base class allowing Execute Ops to look up ISA protos.
-// CompiledProtoCache is created by InitializeHostForDistributedTpuOp, so each
-// tpu_worker has a CompiledProtoCache.
-ABSL_CONST_INIT extern const char kCompiledProtoCacheResourceName[];
 // Name of cache unloader for compiled TPU ISA protos. Cache unloader should be
 // put into TPU_SYSTEM device resource manager. Inference may use it to unload
 // cache entries created during lifetime of a DirectSession.

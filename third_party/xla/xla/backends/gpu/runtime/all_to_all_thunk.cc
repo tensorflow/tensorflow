@@ -28,12 +28,12 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_execution.h"
@@ -104,7 +104,7 @@ AllToAllThunk::AllToAllThunk(ThunkInfo thunk_info,
     std::optional<uint64_t> split_dim = instr->split_dimension();
     for (HloInstruction* operand : instr->operands()) {
       Shape shape = operand->shape();
-      RETURN_IF_ERROR(IsValidOperand(shape, Thunk::kAllToAll));
+      ABSL_RETURN_IF_ERROR(IsValidOperand(shape, Thunk::kAllToAll));
       if (split_dim &&
           !ShapeUtil::IsEffectivelyMostMajorDimension(shape, *split_dim)) {
         return absl::UnimplementedError(absl::Substitute(
@@ -124,7 +124,7 @@ AllToAllThunk::AllToAllThunk(ThunkInfo thunk_info,
 }
 
 absl::Status AllToAllThunk::Initialize(const InitializeParams& params) {
-  RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
+  ABSL_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
   CHECK_GT(params.local_device_count, 0);
   XLA_VLOG_DEVICE(5, params.executor->device_ordinal())
       << "Local device count : " << params.local_device_count;
@@ -133,23 +133,23 @@ absl::Status AllToAllThunk::Initialize(const InitializeParams& params) {
                          config_.config.replica_groups,
                          config_.config.group_mode) &&
       p2p_memcpy_enabled_) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         GpuCliqueKey clique_key,
         GetGpuCliqueKey(*params.collective_params, config().replica_groups,
                         config().group_mode, communication_id()));
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         Communicator * comm,
         params.collective_cliques->GetComm(
             clique_key, params.collective_params->global_device_id));
 
-    ASSIGN_OR_RETURN(int32_t num_ranks, comm->NumRanks());
+    ABSL_ASSIGN_OR_RETURN(int32_t num_ranks, comm->NumRanks());
 
     se::StreamExecutor* executor = params.executor;
     {
       absl::MutexLock lock(pointer_maps_mutex_);
       if (!receive_pointer_maps_.count(executor)) {
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             std::unique_ptr<se::MemoryAllocation> alloc,
             executor->HostMemoryAllocate(num_ranks * sizeof(uint64_t)));
         bool inserted =
@@ -160,7 +160,7 @@ absl::Status AllToAllThunk::Initialize(const InitializeParams& params) {
     {
       absl::MutexLock lock(events_mutex_);
       if (!events_.count(executor)) {
-        ASSIGN_OR_RETURN(std::unique_ptr<se::Event> event,
+        ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::Event> event,
                          executor->CreateEvent());
         events_.insert({executor, std::move(event)});
       }
@@ -168,7 +168,7 @@ absl::Status AllToAllThunk::Initialize(const InitializeParams& params) {
     std::optional<RankId> rank =
         clique_key.rank(params.collective_params->global_device_id);
     size_t chunk_element_count = buffers()[0].element_count / num_ranks;
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::vector<DeviceBufferPair> device_buffers,
         ConvertToDeviceBuffers(params.buffer_allocations, buffers(),
                                config_.config.operand_element_type));
@@ -190,7 +190,7 @@ absl::Status AllToAllThunk::Initialize(const InitializeParams& params) {
         buffer_rendezvous_value.buffer = reinterpret_cast<uint64_t>(
             device_buffers[buffer_idx].destination_buffer.opaque());
       }
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           std::shared_ptr<std::vector<BufferRendezvousValue>>
               rendezvous_results,
           Rendezvous<std::vector<BufferRendezvousValue>>(
@@ -225,7 +225,7 @@ absl::Status AllToAllThunk::RunCollective(const ExecuteParams& params,
                                           const GpuCliqueKey& clique_key,
                                           se::Stream& stream,
                                           Communicator& comm) {
-  ASSIGN_OR_RETURN(std::vector<DeviceBufferPair> device_buffers,
+  ABSL_ASSIGN_OR_RETURN(std::vector<DeviceBufferPair> device_buffers,
                    ConvertToDeviceBuffers(params.buffer_allocations, buffers(),
                                           config_.config.operand_element_type));
 
@@ -267,7 +267,7 @@ absl::StatusOr<std::unique_ptr<AllToAllThunk>> AllToAllThunk::FromProto(
   std::vector<CollectiveThunk::Buffer> buffers;
   buffers.reserve(thunk_proto.buffers_size());
   for (const CollectiveBufferProto& proto : thunk_proto.buffers()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         CollectiveThunk::Buffer buffer,
         CollectiveThunk::Buffer::FromProto(proto, buffer_allocations));
     buffers.push_back(buffer);
@@ -289,7 +289,7 @@ absl::StatusOr<ThunkProto> AllToAllThunk::ToProto() const {
   AllToAllThunkProto* thunk_proto = proto.mutable_all_to_all_thunk();
 
   for (const Buffer& buffer : buffers()) {
-    ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
+    ABSL_ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
   }
 
   *thunk_proto->mutable_collective_config() = config_.config.ToProto();
@@ -308,7 +308,7 @@ absl::Status RunAllToAll(bool has_split_dimension,
   XLA_VLOG_DEVICE(3, device_ordinal)
       << "Performing all-to-all, has_split_dimension: " << has_split_dimension;
 
-  ASSIGN_OR_RETURN(int32_t num_ranks, comm.NumRanks());
+  ABSL_ASSIGN_OR_RETURN(int32_t num_ranks, comm.NumRanks());
 
   PrimitiveType element_type = buffers[0].element_type;
   int64_t element_count = buffers[0].element_count;
@@ -351,7 +351,7 @@ absl::Status RunAllToAll(bool has_split_dimension,
     auto future = comm.AllToAll(
         std::move(send_buffers), std::move(recv_buffers), element_type,
         chunk_element_count, GpuCollectives::On(stream));
-    RETURN_IF_ERROR(future.Await());
+    ABSL_RETURN_IF_ERROR(future.Await());
   } else {
     for (const DeviceBufferPair& buffer : buffers) {
       send_buffers.push_back(buffer.source_buffer);
@@ -361,7 +361,7 @@ absl::Status RunAllToAll(bool has_split_dimension,
     auto future =
         comm.AllToAll(std::move(send_buffers), std::move(recv_buffers),
                       element_type, element_count, GpuCollectives::On(stream));
-    RETURN_IF_ERROR(future.Await());
+    ABSL_RETURN_IF_ERROR(future.Await());
   }
 
   return absl::OkStatus();
@@ -373,20 +373,20 @@ absl::Status SyncProgress(absl::string_view name,
                           int64_t num_ranks, se::Stream& stream,
                           se::Event* event, std::vector<se::Event*>& events) {
   // Record event for this device.
-  RETURN_IF_ERROR(stream.RecordEvent(event));
+  ABSL_RETURN_IF_ERROR(stream.RecordEvent(event));
 
   // Rendezvous to make sure that all devices have called RecordEvent before any
   // device calls WaitFor on another stream.
   std::string finish_rendezvous_key =
       absl::StrFormat("finish %s for rank %d, clique %s", name, rank.value(),
                       clique_key.ToString());
-  RETURN_IF_ERROR(Rendezvous(/*name=*/finish_rendezvous_key,
+  ABSL_RETURN_IF_ERROR(Rendezvous(/*name=*/finish_rendezvous_key,
                              /*key=*/clique_key,
                              /*num_threads=*/num_ranks));
 
   // Wait for all devices to reach the corresponding events.
   for (se::Event* e : events) {
-    RETURN_IF_ERROR(stream.WaitFor(e));
+    ABSL_RETURN_IF_ERROR(stream.WaitFor(e));
   }
   return absl::OkStatus();
 }
@@ -400,8 +400,8 @@ absl::Status RunMemCpyAllToAll(bool has_split_dimension,
                                std::vector<se::Event*>& events) {
   int device_ordinal = stream.parent()->device_ordinal();
   XLA_VLOG_DEVICE(3, device_ordinal) << "Performing mem-copy-all-to-all";
-  ASSIGN_OR_RETURN(int32_t num_ranks, comm.NumRanks());
-  RETURN_IF_ERROR(SyncProgress("before memcpy all-to-all", clique_key, rank,
+  ABSL_ASSIGN_OR_RETURN(int32_t num_ranks, comm.NumRanks());
+  ABSL_RETURN_IF_ERROR(SyncProgress("before memcpy all-to-all", clique_key, rank,
                                num_ranks, stream, event, events));
 
   // AllToAll can operate in two modes. Either it specifies a split dimension,
@@ -420,7 +420,7 @@ absl::Status RunMemCpyAllToAll(bool has_split_dimension,
             peer * chunk_element_count, chunk_element_count);
         se::DeviceAddressBase dst_addr =
             se::DeviceAddressBase((void*)receive_pointer_map[peer]);
-        RETURN_IF_ERROR(
+        ABSL_RETURN_IF_ERROR(
             stream.MemcpyD2D(&dst_addr, send_slice, send_slice.size()));
       }
     }
@@ -433,13 +433,13 @@ absl::Status RunMemCpyAllToAll(bool has_split_dimension,
       // double buffer, exchange data with peer
       se::DeviceAddressBase dst_addr =
           se::DeviceAddressBase((void*)receive_pointer_map[peer]);
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           stream.MemcpyD2D(&dst_addr, buffers[buffer_idx].source_buffer,
                            buffers[buffer_idx].source_buffer.size()));
     }
   }
 
-  RETURN_IF_ERROR(SyncProgress("after memcpy all-to-all", clique_key, rank,
+  ABSL_RETURN_IF_ERROR(SyncProgress("after memcpy all-to-all", clique_key, rank,
                                num_ranks, stream, event, events));
 
   return absl::OkStatus();

@@ -832,6 +832,12 @@ class HloModule {
   bool hlo_passes_started() const { return hlo_passes_started_; }
   void set_hlo_passes_started(bool started) { hlo_passes_started_ = started; }
 
+  // Increment a per-pass-name invocation counter (returning the 0-based index
+  // of the current invocation). Used by tre --xla_disable_hlo_passes flag.
+  int64_t IncrementPassOccurrenceCount(const std::string& pass_name) {
+    return pass_occurrence_counts_[pass_name]++;
+  }
+
   // Moves (not copies) metadata from this HloModule to `module`. To be used
   // when metadata should be transferred out of a module before it's destroyed.
   void MoveMetadataToModule(HloModule* module) {
@@ -1035,6 +1041,10 @@ class HloModule {
   // - true: We have reached the starting pass and passes are run as normal.
   bool hlo_passes_started_ = false;
 
+  // Per-pass-name invocation counter for the xla_disable_hlo_passes runtime
+  // gate. Transient (not serialized).
+  absl::flat_hash_map<std::string, int64_t> pass_occurrence_counts_;
+
   // Optional compilation profile handle.
   int64_t profile_version_ = 0;
 
@@ -1080,6 +1090,26 @@ class HloModule {
       topological_sort_;
 
  public:
+  struct DebugAttributes {
+    enum class DebugLogMode {
+      // No debug log.
+      kNone,
+      // Log using TPU logging without perturbing the execution.
+      kDefault,
+      // Log using Fusion Debugger, without perturbing the execution.
+      kFusionDebugger,
+    };
+    DebugLogMode log_mode = DebugLogMode::kNone;
+    int64_t callback_id = 0;
+    // Whether to undo automatic sharding when logging the tensor.
+    bool partitioned = false;
+    // The operand index in the xla_debug_log custom call in the original HLO
+    // module that this tensor is associated with.
+    int64_t op_id = 0;
+
+    std::string ToString() const;
+  };
+
   class OriginalValueRecoveryTable {
    public:
     using Table = absl::flat_hash_map<
@@ -1196,7 +1226,19 @@ class HloModule {
         std::move(original_value_recovery_table.table_);
   }
 
+  void AddDebugAttributes(const OriginalArray& original_array,
+                          const DebugAttributes& debug_attributes) {
+    debug_attributes_[original_array].push_back(debug_attributes);
+  }
+
+  const absl::flat_hash_map<OriginalArray, std::vector<DebugAttributes>>&
+  debug_attributes() const {
+    return debug_attributes_;
+  }
+
  private:
+  absl::flat_hash_map<OriginalArray, std::vector<DebugAttributes>>
+      debug_attributes_;
   OriginalValueRecoveryTable original_value_recovery_table_;
 
   mutable absl::Mutex cache_mutex_;

@@ -73,6 +73,11 @@ if [ ${#xla_flags_array[@]} -gt 0 ]; then runner_command_array+=("${xla_flags_ar
 if $needs_xspace_dump_flag; then
    runner_command_array+=("--xla_gpu_dump_xspace_to=$XSPACE_FILE_PATH")
 fi
+if [[ "$HARDWARE_CATEGORY" == GPU* ]]; then
+   # Workaround to prevent fallback failure (CUPTI_ERROR_MULTIPLE_SUBSCRIBERS_NOT_SUPPORTED)
+   # Disable CUPTI V2 multi-subscriber profiling on CUDA 13.2 runners.
+   runner_command_array+=("--xla_gpu_enable_cupti_multi_subscriber=false")
+fi
 runner_command_array+=("$LOCAL_ARTIFACT_PATH")
 
 # --- Execute Runner ---

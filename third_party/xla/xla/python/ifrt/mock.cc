@@ -79,6 +79,9 @@ MockArray::MockArray(xla::ifrt::ArrayRef delegated)
   ON_CALL(*this, IsDeleted).WillByDefault([this]() {
     return delegated_->IsDeleted();
   });
+  ON_CALL(*this, array_spec).WillByDefault([this]() {
+    return delegated_->array_spec();
+  });
   ON_CALL(*this, dtype).WillByDefault([this]() { return delegated_->dtype(); });
   ON_CALL(*this, shape).WillByDefault([this]() -> const Shape& {
     return delegated_->shape();
@@ -142,6 +145,11 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
       .WillByDefault([this](const absl::Status& error,
                             absl::Span<const ArraySpec> array_specs) {
         return delegated_->MakeErrorArrays(error, array_specs);
+      });
+  ON_CALL(*this, CopyArraysToHostBufferShards)
+      .WillByDefault([this](absl::Span<CopyArraysToHostBufferShardsSpec> specs,
+                            ArrayCopySemantics semantics) {
+        return delegated_->CopyArraysToHostBufferShards(specs, semantics);
       });
   ON_CALL(*this, AssembleArrayFromSingleDeviceArrays(_, _, _, _, _, _))
       .WillByDefault(

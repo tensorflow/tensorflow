@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 
 namespace xla::gpu {
@@ -95,6 +97,52 @@ TEST_F(TritonTilingPropagationTest,
   EXPECT_NE(dim_spec_1, nullptr);
   EXPECT_EQ(dim_spec_1->size(), 1);
   EXPECT_EQ(dim_spec_1->at(0).count, 1);
+}
+
+TEST_F(TritonTilingPropagationTest,
+       IsInputWorthFusingSliceThroughSingleUserReshape) {
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[100,100] parameter(0)
+  p1 = f32[100,100] parameter(1)
+  add = f32[100,100] add(p0, p1)
+  neg = f32[100,100] negate(add)
+  reshape = f32[10000] reshape(add)
+  slice = f32[10] slice(reshape), slice={[0:10]}
+  ROOT root = tuple(slice, neg)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  const HloInstruction* slice =
+      module->entry_computation()->root_instruction()->operand(0);
+  EXPECT_TRUE(triton_fusion::IsInputWorthFusing(*slice));
+}
+
+TEST_F(TritonTilingPropagationTest,
+       IsInputWorthFusingSliceNotWorthThroughSharedNonElementwiseOperand) {
+  // `slice` reaches `ds` through a single-user reshape, but `ds` is a
+  // dynamic-slice shared with `keep0`. Fusing the slice would recompute `ds` in
+  // each consumer, so it is not worth fusing.
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  w = f32[4,2,512] parameter(0)
+  idx = s32[] parameter(1)
+  zero = s32[] constant(0)
+  ds = f32[1,2,512] dynamic-slice(w, idx, zero, zero), dynamic_slice_sizes={1,2,512}
+  keep0 = f32[1,1,512] slice(ds), slice={[0:1], [0:1], [0:512]}
+  reshape = f32[2,512] reshape(ds)
+  slice = f32[1,512] slice(reshape), slice={[1:2], [0:512]}
+  ROOT root = tuple(slice, keep0)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  const HloInstruction* slice =
+      module->entry_computation()->root_instruction()->operand(0);
+  EXPECT_FALSE(triton_fusion::IsInputWorthFusing(*slice));
 }
 
 }  // namespace

@@ -14,13 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
-#include <string>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/pjrt_ifrt/executable_metadata.pb.h"
@@ -31,19 +30,19 @@ namespace ifrt {
 namespace {
 
 class XlaExecutableVersionSerDes
-    : public llvm::RTTIExtends<XlaExecutableVersionSerDes, SerDes> {
+    : public RTTIExtends<XlaExecutableVersionSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::XlaExecutableVersion";
   }
 
-  absl::StatusOr<std::string> Serialize(
+  absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
     const SerDesVersion version = GetRequestedSerDesVersion(options.get());
 
     const XlaExecutableVersion& executable_version =
-        llvm::cast<XlaExecutableVersion>(serializable);
+        cast<XlaExecutableVersion>(serializable);
 
     absl::StatusOr<SerializedXlaExecutableVersion> executable_version_proto =
         executable_version.ToProto(version);
@@ -51,11 +50,11 @@ class XlaExecutableVersionSerDes
       return executable_version_proto.status();
     }
 
-    return executable_version_proto.value().SerializeAsString();
+    return executable_version_proto.value().SerializeAsCord();
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const std::string& serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     SerializedXlaExecutableVersion executable_version_proto;
     if (!executable_version_proto.ParseFromString(serialized)) {

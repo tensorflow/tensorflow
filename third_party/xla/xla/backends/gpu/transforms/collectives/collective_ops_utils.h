@@ -18,11 +18,14 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/computation_placer.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/device_assignment.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -97,6 +100,14 @@ bool IsAllReplicasLocal(int64_t gpus_per_host,
 // is_spmd_generated field in CollectiveBackendConfig (set when collectives
 // that carried the attribute are combined).
 bool IsSpmdGenerated(const HloInstruction& instr);
+
+// Returns true if the instruction is a Triton collective kernel.
+bool IsTritonCollectiveKernel(
+    CollectiveBackendConfig::CollectiveKernelStrategy kernel_strategy);
+
+// Returns the set of HloOpcodes that should be fused.
+absl::StatusOr<absl::flat_hash_set<HloOpcode>> OpcodesForTritonCollectives(
+    const DebugOptions& debug_options);
 
 }  // namespace gpu
 }  // namespace xla

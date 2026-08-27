@@ -5,7 +5,7 @@ diff --git b/BUILD b/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/BUILD
-@@ -0,0 +1,1289 @@
+@@ -0,0 +1,1302 @@
 +# This package imports OpenAI's Triton (https://github.com/triton-lang/triton).
 +
 +# copybara:uncomment load("@rules:copybara.bzl", "copybara_config_test")
@@ -70,9 +70,20 @@ new file mode 100644
 +# generate version.h for building TritonPluginUtils
 +genrule(
 +    name = "triton_version_h_gen",
-+    srcs = ["include/triton/Version.h.in"],
++    srcs = [
++        "include/triton/Version.h.in",
++        "@xla//third_party/triton:workspace",
++    ],
 +    outs = ["include/triton/Version.h"],
-+    cmd = "sed 's/@TRITON_VERSION@//g' $< > $@",
++    cmd = "TRITON_COMMIT=$$(sed -n 's/.*TRITON_COMMIT = \"\\(.*\\)\".*/\\1/p' $(location @xla//third_party/triton:workspace)) && " +
++          "sed \"s/@TRITON_VERSION@/$$TRITON_COMMIT/g\" $(location include/triton/Version.h.in) > $@",
++)
++
++cc_library(
++    name = "triton_version",
++    hdrs = ["include/triton/Version.h"],
++    strip_include_prefix = "include",
++    deps = [":triton_version_h_gen"],
 +)
 +
 +td_library(
@@ -622,6 +633,7 @@ new file mode 100644
 +        "@llvm-project//mlir:MathDialect",
 +        "@llvm-project//mlir:Pass",
 +        "@llvm-project//mlir:SCFDialect",
++        "@llvm-project//mlir:SideEffectInterfaces",
 +        "@llvm-project//mlir:Support",
 +        "@llvm-project//mlir:TensorDialect",
 +        "@llvm-project//mlir:TransformUtils",  # for Utility
@@ -795,9 +807,11 @@ new file mode 100644
 +        "@llvm-project//mlir:ArithDialect",
 +        "@llvm-project//mlir:ArithTransforms",
 +        "@llvm-project//mlir:ControlFlowDialect",
++        "@llvm-project//mlir:ControlFlowInterfaces",
 +        "@llvm-project//mlir:IR",
 +        "@llvm-project//mlir:InferTypeOpInterface",
 +        "@llvm-project//mlir:LLVMDialect",
++        "@llvm-project//mlir:LoopLikeInterface",
 +        "@llvm-project//mlir:Pass",
 +        "@llvm-project//mlir:SCFDialect",
 +        "@llvm-project//mlir:SCFTransforms",
@@ -1087,14 +1101,13 @@ new file mode 100644
 +    srcs = ["lib/Tools/PluginUtils.cpp"],
 +    hdrs = [
 +        "include/triton/Tools/PluginUtils.h",
-+        "include/triton/Version.h",
 +    ],
 +    copts = _no_unused_variable,
 +    includes = ["include"],
 +    deps = [
 +        ":Dump",
 +        ":GetEnv",
-+        ":triton_version_h_gen",
++        ":triton_version",
 +        "@llvm-project//llvm:Support",
 +        "@llvm-project//mlir:IR",
 +        "@llvm-project//mlir:Pass",
@@ -1265,7 +1278,7 @@ new file mode 100644
 +#         "@triton//:leakr_badwords.dic",
 +#         "@triton//patches:patch_files",
 +#         "//third_party/xla:copybara_library",
-+#         "//third_party/xla/third_party/triton:patch_files",
++#         "@xla//third_party/triton:patch_files",
 +#     ],
 +# )
 +# copybara:uncomment_end
@@ -1300,11 +1313,12 @@ diff --git b/python/BUILD b/python/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/python/BUILD
-@@ -0,0 +1,204 @@
+@@ -0,0 +1,214 @@
 +# NOTE: Do not depend on any targets from this directory,
 +# but use //third_party/py/triton instead.
 +
 +load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@xla//third_party/rules_python/python:py_extension.bzl", "py_extension")
 +load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 +load("@pybind11_bazel//:build_defs.bzl", "pybind_extension")
 +
@@ -1322,6 +1336,8 @@ new file mode 100644
 +    default_visibility = ["//visibility:public"],
 +    # copybara:comment_end
 +)
++
++exports_files(["conftest.py"])
 +
 +cc_library(
 +    name = "passes",
@@ -1357,7 +1373,8 @@ new file mode 100644
 +    includes = [".."],
 +    visibility = ["@triton//:__subpackages__"],
 +    deps = [
-+        "//third_party/pybind11",
++        "//third_party/nanobind",
++        "//third_party/python_runtime:headers",
 +    ],
 +)
 +
@@ -1415,7 +1432,7 @@ new file mode 100644
 +    ],
 +)
 +
-+pybind_extension(
++py_extension(
 +    name = "libtriton",
 +    srcs = [
 +        "src/gluon_ir.cc",
@@ -1428,9 +1445,11 @@ new file mode 100644
 +        "src/specialize.cc",
 +    ],
 +    copts = [
++        "-fexceptions",
 +        "-DTRITON_BACKENDS_TUPLE=(nvidia)",
 +        "-Wno-string-conversion",
 +    ],
++    features = ["-use_header_modules"],
 +    deps = [
 +        ":gsan",
 +        ":ir",
@@ -1449,6 +1468,7 @@ new file mode 100644
 +        "@llvm-project//llvm:Scalar",
 +        "@llvm-project//llvm:Support",
 +        "@llvm-project//llvm:Target",
++        "@llvm-project//llvm:config",
 +        "@llvm-project//mlir:BuiltinToLLVMIRTranslation",
 +        "@llvm-project//mlir:BytecodeWriter",
 +        "@llvm-project//mlir:ControlFlowDialect",
@@ -1466,6 +1486,8 @@ new file mode 100644
 +        "@llvm-project//mlir:ToLLVMIRTranslation",
 +        "@llvm-project//mlir:Transforms",
 +        "@llvm-project//mlir:UBDialect",
++        "//third_party/nanobind",
++        "//third_party/python_runtime:headers",
 +        "@triton//:AllPassesAndDialects",
 +        "@triton//:Dump",
 +        "@triton//:GetEnv",
@@ -1483,6 +1505,7 @@ new file mode 100644
 +        "@triton//:TritonToTritonGPUPasses",
 +        "@triton//:TritonTools",
 +        "@triton//:TritonTransforms",
++        "@triton//:triton_version",
 +        "@triton//third_party/amd:TDMUtility",
 +        "@triton//third_party/amd:TritonAMDGPU",
 +        "@triton//third_party/amd:TritonAMDGPUTransforms",
@@ -1510,7 +1533,7 @@ diff --git b/python/test/BUILD b/python/test/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/python/test/BUILD
-@@ -0,0 +1,434 @@
+@@ -0,0 +1,428 @@
 +load("//third_party/py/pytest:pytest_defs.bzl", "pytest_multi_tests", "pytest_test")
 +
 +package(
@@ -1541,6 +1564,11 @@ new file mode 100644
 +    {"@rules_cuda//cuda:is_enabled": []},
 +    no_match_error = "Requires --config=cuda",
 +)
++
++_conftest = [
++    "conftest.py",
++    "@triton//python:conftest.py",
++]
 +
 +_asan_needs_extra_link_memory = select({
 +    "//tools/cpp:asan_build": {"cpp_link.mem": "20g"},
@@ -1637,8 +1665,7 @@ new file mode 100644
 +pytest_multi_tests(
 +    name = "ampere",
 +    size = "large",
-+    srcs = [
-+        "conftest.py",
++    srcs = _conftest + [
 +        "unit/language/test_core.py",
 +        "unit/language/test_mxfp.py",
 +    ],
@@ -1664,8 +1691,7 @@ new file mode 100644
 +pytest_multi_tests(
 +    name = "hopper",
 +    size = "large",
-+    srcs = [
-+        "conftest.py",
++    srcs = _conftest + [
 +        "unit/language/test_core.py",
 +        "unit/language/test_mxfp.py",
 +    ],
@@ -1691,9 +1717,7 @@ new file mode 100644
 +pytest_test(
 +    name = "unit/language/test_core_h100",
 +    size = "large",
-+    srcs = [
-+        "conftest.py",
-+    ],
++    srcs = _conftest,
 +    exec_properties = _asan_needs_extra_link_memory,
 +    shard_count = 40,
 +    tags = _requires_gpu_sm90,
@@ -1709,9 +1733,7 @@ new file mode 100644
 +pytest_test(
 +    name = "unit/language/test_core_a100",
 +    size = "large",
-+    srcs = [
-+        "conftest.py",
-+    ],
++    srcs = _conftest,
 +    exec_properties = _asan_needs_extra_link_memory,
 +    shard_count = 40,
 +    tags = _requires_gpu_sm80,
@@ -1726,7 +1748,7 @@ new file mode 100644
 +pytest_test(
 +    name = "unit/runtime/test_driver_a100",
 +    size = "large",
-+    srcs = ["conftest.py"],
++    srcs = _conftest,
 +    exec_properties = _asan_needs_extra_link_memory,
 +    # Some of the test cases does not use the device and thus suite fails with go/forge-accel-or-fail.
 +    # We run it as a single shard to avoid this.
@@ -1743,7 +1765,7 @@ new file mode 100644
 +pytest_test(
 +    name = "unit/runtime/test_driver_h100",
 +    size = "large",
-+    srcs = ["conftest.py"],
++    srcs = _conftest,
 +    exec_properties = _asan_needs_extra_link_memory,
 +    # Some of the test cases does not use the device and thus suite fails with go/forge-accel-or-fail.
 +    # We run it as a single shard to avoid this.
@@ -1760,7 +1782,7 @@ new file mode 100644
 +pytest_test(
 +    name = "unit/runtime/test_driver_b200",
 +    size = "large",
-+    srcs = ["conftest.py"],
++    srcs = _conftest,
 +    exec_properties = _asan_needs_extra_link_memory,
 +    # Some of the test cases does not use the device and thus suite fails with go/forge-accel-or-fail.
 +    # We run it as a single shard to avoid this.
@@ -1777,7 +1799,7 @@ new file mode 100644
 +pytest_test(
 +    name = "unit/runtime/test_cache_determinism_a100",
 +    size = "large",
-+    srcs = ["conftest.py"],
++    srcs = _conftest,
 +    exec_properties = _asan_needs_extra_link_memory,
 +    shard_count = 1,
 +    tags = _requires_gpu_sm80,
@@ -1792,7 +1814,7 @@ new file mode 100644
 +pytest_test(
 +    name = "unit/runtime/test_cache_determinism_h100",
 +    size = "large",
-+    srcs = ["conftest.py"],
++    srcs = _conftest,
 +    exec_properties = _asan_needs_extra_link_memory,
 +    shard_count = 1,
 +    tags = _requires_gpu_sm90,
@@ -1807,7 +1829,7 @@ new file mode 100644
 +pytest_test(
 +    name = "unit/runtime/test_cache_determinism_b200",
 +    size = "large",
-+    srcs = ["conftest.py"],
++    srcs = _conftest,
 +    exec_properties = _asan_needs_extra_link_memory,
 +    shard_count = 1,
 +    tags = _requires_gpu_sm100,
@@ -1821,8 +1843,7 @@ new file mode 100644
 +
 +pytest_test(
 +    name = "deviceless",
-+    srcs = [
-+        "conftest.py",
++    srcs = _conftest + [
 +        "unit/plugins/custom_stages.py",
 +    ],
 +    exec_properties = _asan_needs_extra_link_memory,
@@ -1838,8 +1859,7 @@ new file mode 100644
 +pytest_multi_tests(
 +    name = "blackwell",
 +    size = "large",
-+    srcs = [
-+        "conftest.py",
++    srcs = _conftest + [
 +        "unit/language/test_core.py",
 +        "unit/language/test_mxfp.py",
 +    ],
@@ -1864,8 +1884,7 @@ new file mode 100644
 +pytest_multi_tests(
 +    name = "blackwell_full",
 +    size = "large",
-+    srcs = [
-+        "conftest.py",
++    srcs = _conftest + [
 +        "unit/language/test_core.py",
 +        "unit/language/test_mxfp.py",
 +    ],
@@ -1888,9 +1907,7 @@ new file mode 100644
 +pytest_test(
 +    name = "unit/language/test_core_b200",
 +    size = "large",
-+    srcs = [
-+        "conftest.py",
-+    ],
++    srcs = _conftest,
 +    exec_properties = _asan_needs_extra_link_memory,
 +    shard_count = 40,
 +    tags = _requires_gpu_sm100,
@@ -1906,7 +1923,7 @@ new file mode 100644
 +pytest_test(
 +    name = "unit/runtime/test_peer_access_h100_x2",
 +    size = "large",
-+    srcs = ["conftest.py"],
++    srcs = _conftest,
 +    exec_properties = _asan_needs_extra_link_memory,
 +    tags = [
 +        "config-cuda-only",
@@ -1924,7 +1941,7 @@ new file mode 100644
 +pytest_test(
 +    name = "unit/runtime/test_peer_access_b200_x2",
 +    size = "large",
-+    srcs = ["conftest.py"],
++    srcs = _conftest,
 +    exec_properties = _asan_needs_extra_link_memory,
 +    tags = [
 +        "config-cuda-only",
@@ -1951,8 +1968,8 @@ new file mode 100644
 --- /dev/null
 +++ b/python/tutorials/BUILD
 @@ -0,0 +1,193 @@
-+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
-+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
++load("@rules_python//python:defs.bzl", "py_library")
++load("@rules_python//python:defs.bzl", "py_test")
 +
 +package(
 +    default_applicable_licenses = ["@triton//:license"],
@@ -2274,7 +2291,7 @@ diff --git b/third_party/amd/BUILD b/third_party/amd/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/amd/BUILD
-@@ -0,0 +1,382 @@
+@@ -0,0 +1,383 @@
 +load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 +
@@ -2468,6 +2485,7 @@ new file mode 100644
 +            "-Wno-unused-variable",
 +            "-Wno-implicit-fallthrough",
 +            "-Wno-sometimes-uninitialized",
++            "-Wno-reorder-ctor",
 +        ],
 +    }),
 +    includes = [
@@ -2760,10 +2778,9 @@ diff --git b/third_party/nvidia/BUILD b/third_party/nvidia/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/nvidia/BUILD
-@@ -0,0 +1,558 @@
+@@ -0,0 +1,567 @@
 +load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-+# copybara:uncomment load("@pybind11_bazel//:build_defs.bzl", "pybind_library")
 +
 +package(
 +    # copybara:uncomment_begin
@@ -2781,20 +2798,26 @@ new file mode 100644
 +)
 +
 +# copybara:uncomment_begin
-+# pybind_library(
++# cc_library(
 +#     name = "cublas_headers",
 +#     hdrs = glob([
 +#         "include/*.h",
 +#     ]),
++#     copts = ["-fexceptions"],
++#     features = ["-use_header_modules"],
 +#     deps = ["@local_config_cuda//cuda:cuda_headers"],
 +# )
 +# 
-+# pybind_library(
++# cc_library(
 +#     name = "triton_nvidia",
 +#     srcs = [
 +#         "triton_nvidia.cc",
 +#     ],
-+#     copts = ["-Wno-sometimes-uninitialized"],
++#     copts = [
++#         "-fexceptions",
++#         "-Wno-sometimes-uninitialized",
++#     ],
++#     features = ["-use_header_modules"],
 +#     visibility = [
 +#         "@triton//python:__subpackages__",
 +#     ],
@@ -2811,6 +2834,8 @@ new file mode 100644
 +#         "@llvm-project//mlir:NVVMToLLVMIRTranslation",
 +#         "@llvm-project//mlir:Pass",
 +#         "@llvm-project//mlir:Transforms",
++#         "//third_party/nanobind",
++#         "//third_party/python_runtime:headers",
 +#         "@triton//:TritonDialects",
 +#         "@triton//:TritonGPUToLLVM",
 +#         "@triton//:TritonNvidiaGPUTransforms",
@@ -3217,6 +3242,7 @@ new file mode 100644
 +        "@llvm-project//mlir:ControlFlowInterfaces",
 +        "@llvm-project//mlir:GPUDialect",
 +        "@llvm-project//mlir:IR",
++        "@llvm-project//mlir:SCFDialect",
 +        "@llvm-project//mlir:TensorDialect",
 +        "@triton//:TritonDialects",
 +        "@triton//:TritonNvidiaGPUTransforms",
@@ -3256,6 +3282,7 @@ new file mode 100644
 +        "@llvm-project//mlir:InferIntRangeCommon",
 +        "@llvm-project//mlir:InferIntRangeInterface",
 +        "@llvm-project//mlir:LLVMDialect",
++        "@llvm-project//mlir:LoopLikeInterface",
 +        "@llvm-project//mlir:NVVMDialect",
 +        "@llvm-project//mlir:Pass",
 +        "@llvm-project//mlir:SCFDialect",
@@ -3404,10 +3431,10 @@ diff --git b/third_party/proton/BUILD b/third_party/proton/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/proton/BUILD
-@@ -0,0 +1,435 @@
+@@ -0,0 +1,452 @@
 +load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@xla//third_party/rules_python/python:py_extension.bzl", "py_extension")
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-+load("@pybind11_bazel//:build_defs.bzl", "pybind_extension")
 +
 +package(
 +    # copybara:uncomment_begin
@@ -3725,11 +3752,20 @@ new file mode 100644
 +    ],
 +)
 +
-+pybind_extension(
++genrule(
++    name = "fixed_triton_proton_cc",
++    srcs = ["Dialect/triton_proton.cc"],
++    outs = ["Dialect/triton_proton_fixed.cc"],
++    cmd = "sed -e 's/PYBIND11_MODULE/NB_MODULE/' -e 's/init_triton_proton(std::move(m))/init_triton_proton(m)/' $< > $@",
++)
++
++py_extension(
 +    name = "triton_proton",
 +    srcs = [
-+        "Dialect/triton_proton.cc",
++        ":fixed_triton_proton_cc",
 +    ],
++    copts = ["-fexceptions"],
++    features = ["-use_header_modules"],
 +    visibility = [
 +        "//third_party/py/triton:__subpackages__",
 +    ],
@@ -3742,6 +3778,8 @@ new file mode 100644
 +        ":ProtonToProtonGPU",
 +        "@llvm-project//mlir:IR",
 +        "@llvm-project//mlir:Pass",
++        "//third_party/nanobind",
++        "//third_party/python_runtime:headers",
 +        "@triton//python:ir",
 +        "@triton//python:passes",
 +    ],
@@ -3815,21 +3853,27 @@ new file mode 100644
 +        ":instrumentation_metadata_hdr",
 +        "@local_config_cuda//cuda:cuda_headers",
 +        "//third_party/json",
-+        "//third_party/pybind11",
++        "//third_party/nanobind",
 +        "//third_party/python_runtime:headers",
 +        "@triton//third_party/amd/backend:headers",
 +    ],
 +)
 +
-+pybind_extension(
++py_extension(
 +    name = "libproton",
 +    srcs = ["csrc/Proton.cpp"],
-+    copts = ["-Wno-pessimizing-move"],
++    copts = [
++        "-fexceptions",
++        "-Wno-pessimizing-move",
++    ],
++    features = ["-use_header_modules"],
 +    visibility = [
 +        "//third_party/py/triton:__subpackages__",
 +    ],
 +    deps = [
 +        ":proton_cxx",
++        "//third_party/nanobind",
++        "//third_party/python_runtime:headers",
 +    ],
 +)
 +
@@ -3918,7 +3962,7 @@ diff --git b/unittest/BUILD b/unittest/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/unittest/BUILD
-@@ -0,0 +1,158 @@
+@@ -0,0 +1,159 @@
 +load("@rules_cc//cc:cc_test.bzl", "cc_test")
 +load("//tools/build_defs/build_test:build_test.bzl", "build_test")
 +
@@ -3934,6 +3978,7 @@ new file mode 100644
 +    deps = [
 +        "@com_google_googletest//:gtest_main",
 +        "@llvm-project//llvm:Support",
++        "@llvm-project//mlir:Parser",
 +        "@triton//:TritonDialects",
 +        "@triton//:TritonNvidiaGPUTransforms",
 +        "@triton//:TritonTransforms",

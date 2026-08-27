@@ -17,7 +17,6 @@ limitations under the License.
 #include <array>
 #include <cassert>
 #include <cstddef>
-#include <memory>
 #include <tuple>
 #include <type_traits>
 #include <utility>

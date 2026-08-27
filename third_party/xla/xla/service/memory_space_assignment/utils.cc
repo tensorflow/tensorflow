@@ -23,10 +23,12 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/strings/string_view.h"
 #include "highwayhash/arch_specific.h"
 #include "highwayhash/hh_types.h"
 #include "highwayhash/highwayhash.h"
@@ -52,6 +54,13 @@ namespace {
 const int64_t kRandomFilterDefaultSeed = 1234;
 
 }  // namespace
+
+bool MemorySpaceAssignmentUtils::IsInstructionOnConfiguredExecThread(
+    const HloInstruction& instruction,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  return instruction.parent() == nullptr || execution_threads.empty() ||
+         execution_threads.contains(instruction.parent()->execution_thread());
+}
 
 bool MemorySpaceAssignmentUtils::IsValueAllowedInAlternateMemory(
     const HloValue* value, int64_t alternate_memory_space) {
@@ -316,7 +325,7 @@ MemorySpaceAssignmentUtils::GetPrefetchTimeAfterInstruction(
     const HloPositionMatcher& after_instruction,
     const absl::flat_hash_map<const xla::HloInstruction*,
                               xla::HloLiveRange::LogicalTime>& schedule) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto reference_instruction_time,
       GetScheduleTimeFromInstructionMatcher(after_instruction, schedule));
   return static_cast<std::optional<int64_t>>(reference_instruction_time);
@@ -327,7 +336,7 @@ MemorySpaceAssignmentUtils::GetPrefetchTimeBeforeInstruction(
     const HloPositionMatcher& before_instruction,
     const absl::flat_hash_map<const xla::HloInstruction*,
                               xla::HloLiveRange::LogicalTime>& schedule) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto reference_instruction_time,
       GetScheduleTimeFromInstructionMatcher(before_instruction, schedule));
   return static_cast<std::optional<int64_t>>(reference_instruction_time - 1);
@@ -372,7 +381,7 @@ MemorySpaceAssignmentUtils::GetOverriddenPreferredPrefetchTime(
             << hlo_use.operand_index.ToString() << " size " << operand_size
             << " live range (" << earliest_prefetch_time << ", "
             << latest_prefetch_time << ")";
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto prefetch_time,
         GetPrefetchTime(override.override_options(), earliest_prefetch_time,
                         latest_prefetch_time, instruction_schedule));

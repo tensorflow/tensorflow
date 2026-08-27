@@ -41,14 +41,16 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/backends/gpu/codegen/triton/triton_wrapper_result.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/target_constants.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
@@ -63,6 +65,7 @@ namespace {
 
 using ::testing::HasSubstr;
 using ::testing::Not;
+using ::xla::xtile::BlockLevelParameters;
 
 // Returns true if the given `opcode` supports the given `type` with respect to
 // HLO semantics. This is completely independent of the what Triton supports or
@@ -139,8 +142,10 @@ bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type) {
     case HloOpcode::kComplex:
       return type == F32 || type == F64;
     case HloOpcode::kDot:
-    case HloOpcode::kScaledDot:
       return type != PRED;
+    case HloOpcode::kScaledDot:
+      return type == F8E4M3FN || type == F4E2M1FN || type == F8E5M2 ||
+             type == BF16 || type == F8E8M0FNU || type == S8;
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
     case HloOpcode::kBatchNormGrad:
@@ -303,6 +308,18 @@ class SupportTest : public HloHardwareIndependentTestBase,
         std::move(ti), {std::move(output_tile_sizes)}, cc, failure_mode);
   }
 
+  static int64_t GetExpectedTileRank(const HloInstruction* instr,
+                                     const Shape& shape) {
+    int64_t rank = shape.dimensions().size();
+    // Scans are tiled only along non-scan (parallel) dimensions; the scan
+    // dimension is omitted from output_tile_sizes.
+    if (instr->opcode() == HloOpcode::kGetTupleElement &&
+        instr->operand(0)->opcode() == HloOpcode::kScan) {
+      return rank - 1;
+    }
+    return rank;
+  }
+
   void RunSupportTestMultipleOutputTiles(
       TestedInstruction ti, std::vector<std::vector<int64_t>> output_tile_sizes,
       se::GpuComputeCapability cc,
@@ -311,11 +328,13 @@ class SupportTest : public HloHardwareIndependentTestBase,
     // If that is not the case, codegen could fail for that reason---which
     // wouldn't give any valuable signal here. The check is only done for array
     // and tuple shapes (only one layer of nesting is supported for tuples).
+
     const auto& root_instruction = ti.TritonComputation().root_instruction();
     if (root_instruction->shape().IsArray()) {
       ASSERT_EQ(output_tile_sizes.size(), 1);
-      ASSERT_EQ(output_tile_sizes[0].size(),
-                root_instruction->shape().dimensions().size());
+      ASSERT_EQ(
+          output_tile_sizes[0].size(),
+          GetExpectedTileRank(root_instruction, root_instruction->shape()));
     } else if (root_instruction->shape().IsTuple()) {
       ASSERT_EQ(output_tile_sizes.size(),
                 root_instruction->shape().tuple_shapes().size());
@@ -326,7 +345,12 @@ class SupportTest : public HloHardwareIndependentTestBase,
                      // specify output tile sizes for them.
         }
         ASSERT_TRUE(shape.IsArray());
-        ASSERT_EQ(shape.dimensions().size(), output_tile_sizes[i].size());
+        const HloInstruction* elem_instr =
+            root_instruction->opcode() == HloOpcode::kTuple
+                ? root_instruction->operand(i)
+                : root_instruction;
+        ASSERT_EQ(output_tile_sizes[i].size(),
+                  GetExpectedTileRank(elem_instr, shape));
       }
     }
     BlockLevelParameters block_level_parameters =
@@ -410,11 +434,6 @@ TEST_P(SupportTestWithTilingParam, IsTritonSupportedComputationSkipsRootTuple) {
   EXPECT_TRUE(IsTritonSupportedComputation(
       *module->entry_computation(), se::CudaComputeCapability::Hopper()));
 }
-
-class SupportTestWithTypeAndOpcodeAndDeviceParam
-    : public SupportTest,
-      public ::testing::WithParamInterface<
-          std::tuple<PrimitiveType, HloOpcode, se::GpuComputeCapability>> {};
 
 class SupportTestWithTypeAndOpcodeAndDeviceAndTilingParam
     : public SupportTest,
@@ -925,9 +944,7 @@ ENTRY triton_computation {
                  DefaultDeviceForTesting());
 }
 
-TEST_P(
-    ReduceTest,
-    UnsupportedReduceWithMoreThanOneReduceDimensionsFailsGracefullyWithTriton) {
+TEST_P(ReduceTest, MultidimensionReductionIsSupported) {
   auto [data_type, opcode, cc, tiling] = GetParam();
   const std::string kHloTestTemplate = absl::Substitute(R"(
 add {
@@ -937,15 +954,22 @@ add {
 }
 
 ENTRY triton_computation {
-  parameter_0 = $$0[2,125,127] parameter(0)
+  parameter_0 = $$0[2,3,4,5] parameter(0)
   constant_0 = $$0[] constant($0)
-  ROOT reduce = $$0[2] reduce(parameter_0, constant_0),
-    dimensions={1,2}, to_apply=add
+  ROOT reduce = $$0[3] reduce(parameter_0, constant_0),
+    dimensions={0,2,3}, to_apply=add
 })",
                                                         init_value(data_type));
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+  if (!tiling) {
+    EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
+    return;
+  }
+  if (!IsTritonSupportedInstruction(ti.Instruction(), cc)) {
+    return;
+  }
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
 }
 
@@ -1120,6 +1144,150 @@ INSTANTIATE_TEST_SUITE_P(ReductionComputationTestSuite,
                                         {HloOpcode::kCompare})),
                          SupportTestTypeAndOpcodeAndDeviceAndTilingToString);
 
+class ScanTest
+    : public SupportTest,
+      public ::testing::WithParamInterface<
+          std::tuple<PrimitiveType, HloOpcode, se::GpuComputeCapability>> {
+ public:
+  bool EnableTilingPropagation() const override { return true; }
+};
+
+TEST_P(ScanTest, IsTritonSupportedScan) {
+  auto [data_type, opcode, cc] = GetParam();
+  const std::string kHloTestTemplate = absl::Substitute(R"(
+add {
+  Arg_0 = $$0[125] parameter(0)
+  Arg_1 = $$0[125] parameter(1)
+  add = $$0[125] add(Arg_0, Arg_1)
+  ROOT t = ($$0[125], $$0[125]) tuple(add, add)
+}
+
+ENTRY triton_computation {
+  parameter_0 = $$0[125,127] parameter(0)
+  constant_0 = $$0[125] broadcast($$0[] constant($0)), dimensions={}
+  $$1 = ($$0[125,127], $$0[125]) $$1(parameter_0, constant_0),
+    dimensions={1}, to_apply=add, num_carries=1, is_associative=true
+  ROOT get-tuple-element = $$0[125,127] get-tuple-element($$1), index=0
+})",
+                                                        init_value(data_type));
+  ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+  bool crashes_on_failure = data_type == PrimitiveType::F8E4M3FN ||
+                            data_type == PrimitiveType::F8E5M2;
+  if (cc.IsRocm()) {
+    crashes_on_failure |= data_type == PrimitiveType::F8E5M2FNUZ ||
+                          data_type == PrimitiveType::F8E4M3FNUZ;
+  }
+  RunSupportTest(
+      std::move(ti), /*output_tile_sizes=*/{1}, cc,
+      crashes_on_failure ? ExpectedFailMode::kCrash : ExpectedFailMode::kFail);
+}
+
+constexpr std::array kTestedOpsScan = {HloOpcode::kScan};
+
+INSTANTIATE_TEST_SUITE_P(ScanTestSuite, ScanTest,
+                         AllTestCombinationsForOpcodes(kTestedOpsScan),
+                         SupportTestTypeAndOpcodeAndDeviceToString);
+
+// Negative tests for CanTritonHandleScan forbid conditions.
+class ScanSupportTest : public SupportTest {
+ public:
+  bool EnableTilingPropagation() const override { return true; }
+
+  void ExpectScanNotSupported(absl::string_view entry_hlo,
+                              absl::string_view combiner_hlo = R"(
+  add {
+    Arg_0 = f32[] parameter(0)
+    Arg_1 = f32[] parameter(1)
+    ROOT add = f32[] add(Arg_0, Arg_1)
+  })") {
+    ASSERT_OK_AND_ASSIGN(auto module,
+                         xla::ParseAndReturnUnverifiedModule(
+                             absl::StrCat(combiner_hlo, "\n", entry_hlo)));
+    const HloInstruction* root =
+        module->entry_computation()->root_instruction();
+    const HloInstruction* scan =
+        root->opcode() == HloOpcode::kScan ? root : root->operand(0);
+    EXPECT_FALSE(IsTritonSupportedInstruction(
+        *scan, se::CudaComputeCapability::Hopper()));
+  }
+};
+
+TEST_F(ScanSupportTest, ScanMustReturnTuple) {
+  ExpectScanNotSupported(R"(
+  ENTRY main {
+    param = f32[10] parameter(0)
+    init = f32[] constant(0)
+    ROOT scan = f32[10] scan(param, init), dimensions={0}, to_apply=add,
+      num_carries=1, is_associative=true
+  })");
+}
+
+TEST_F(ScanSupportTest, ReverseScanNotSupported) {
+  ExpectScanNotSupported(R"(
+  ENTRY main {
+    param = f32[10] parameter(0)
+    init = f32[] constant(0)
+    scan = (f32[10], f32[]) scan(param, init), dimensions={0}, to_apply=add,
+      num_carries=1, is_associative=true, is_reverse=true
+    ROOT gte = f32[10] get-tuple-element(scan), index=0
+  })");
+}
+
+TEST_F(ScanSupportTest, MultiInputScanNotSupported) {
+  ExpectScanNotSupported(R"(
+  ENTRY main {
+    p0 = f32[10] parameter(0)
+    p1 = f32[10] parameter(1)
+    init = f32[] constant(0)
+    scan = (f32[10], f32[10], f32[]) scan(p0, p1, init), dimensions={0},
+      to_apply=add, num_carries=1, is_associative=true
+    ROOT gte = f32[10] get-tuple-element(scan), index=0
+  })",
+                         R"(
+  add {
+    Arg_0 = f32[] parameter(0)
+    Arg_1 = f32[] parameter(1)
+    Arg_2 = f32[] parameter(2)
+    add0 = f32[] add(Arg_0, Arg_2)
+    add1 = f32[] add(Arg_1, Arg_2)
+    ROOT t = (f32[], f32[], f32[]) tuple(add0, add1, add0)
+  })");
+}
+
+TEST_F(ScanSupportTest, MultiCarryScanNotSupported) {
+  ExpectScanNotSupported(R"(
+  ENTRY main {
+    p0 = f32[10] parameter(0)
+    init0 = f32[] constant(0)
+    init1 = f32[] constant(0)
+    scan = (f32[10], f32[], f32[]) scan(p0, init0, init1), dimensions={0},
+      to_apply=add, num_carries=2, is_associative=true
+    ROOT gte = f32[10] get-tuple-element(scan), index=0
+  })",
+                         R"(
+  add {
+    Arg_0 = f32[] parameter(0)
+    Arg_1 = f32[] parameter(1)
+    Arg_2 = f32[] parameter(2)
+    add0 = f32[] add(Arg_0, Arg_2)
+    add1 = f32[] add(Arg_1, Arg_2)
+    ROOT t = (f32[], f32[], f32[]) tuple(add0, add1, add0)
+  })");
+}
+
+TEST_F(ScanSupportTest, NonAssociativeScanNotSupported) {
+  ExpectScanNotSupported(R"(
+  ENTRY main {
+    param = f32[10] parameter(0)
+    init = f32[] constant(0)
+    scan = (f32[10], f32[]) scan(param, init), dimensions={0}, to_apply=add,
+      num_carries=1, is_associative=false
+    ROOT gte = f32[10] get-tuple-element(scan), index=0
+  })");
+}
+
 using TransposeTest = SupportTestWithTypeAndOpcodeAndDeviceAndTilingParam;
 
 TEST_P(TransposeTest, LoadTranspose3D) {
@@ -1258,6 +1426,22 @@ ENTRY triton_computation {
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 64, 1}, cc);
 }
 
+TEST_P(ConcatenateDeviceTest, TritonDoesNotSupportUnalignedConcatenate) {
+  auto [cc, tiling] = GetParam();
+  // Operand 0 has size 63 along concat dim (1), which is not divisible by 64.
+  // Operand 1 has size 128 (aligned).
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  p0 = $0[18,63,20] parameter(0)
+  p1 = $0[18,128,20] parameter(1)
+  ROOT concatenate = $0[18,191,20] concatenate(p0, p1), dimensions={1}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
+                          ParseTemplateAndGetInstruction(
+                              kHloTestTemplate, F32, HloOpcode::kConcatenate));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 64, 1}, cc);
+}
+
 INSTANTIATE_TEST_SUITE_P(
     ConcatenateTestSuite, ConcatenateDeviceTest,
     ::testing::Combine(::testing::ValuesIn(AllDevicesToTest()),
@@ -1341,66 +1525,6 @@ ENTRY triton_computation {
                                                     kHloTestTemplate, data_type,
                                                     HloOpcode::kAllReduce));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
-}
-
-TEST_P(CollectiveTest,
-       IsTritonSupportedAllReduceStartAndDoneWithNoReplicaGroups) {
-  // 'all-reduce-start' and 'all-reduce-done' need to be tested together, since
-  // the HLO verifier relies on one directly consuming the other.
-  auto [data_type, cc, tiling] = GetParam();
-  const std::string kHloTestTemplate = R"(
-apply_op {
-  x = $0[] parameter(0)
-  y = $0[] parameter(1)
-  ROOT apply_op = $0[] add(x, y)
-}
-
-ENTRY triton_computation {
-  input = $0[128,32] parameter(0)
-  all-reduce-start = $0[128,32] all-reduce-start(input), replica_groups={},
-      to_apply=apply_op
-  ROOT all-reduce-done = $0[128,32] all-reduce-done(all-reduce-start)
-})";
-  TF_ASSERT_OK_AND_ASSIGN(
-      TestedInstruction ti_start,
-      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
-                                     HloOpcode::kAllReduceStart));
-  TF_ASSERT_OK_AND_ASSIGN(
-      TestedInstruction ti_done,
-      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
-                                     HloOpcode::kAllReduceDone));
-  RunSupportTest(std::move(ti_start), /*output_tile_sizes=*/{2, 2}, cc);
-  RunSupportTest(std::move(ti_done), /*output_tile_sizes=*/{2, 2}, cc);
-}
-
-TEST_P(CollectiveTest,
-       IsTritonSupportedAllReduceStartAndDoneWithReplicaGroups) {
-  // 'all-reduce-start' and 'all-reduce-done' need to be tested together, since
-  // the HLO verifier relies on one directly consuming the other.
-  auto [data_type, cc, tiling] = GetParam();
-  const std::string kHloTestTemplate = R"(
-apply_op {
-  x = $0[] parameter(0)
-  y = $0[] parameter(1)
-  ROOT apply_op = $0[] add(x, y)
-}
-
-ENTRY triton_computation {
-  input = $0[128,32] parameter(0)
-  all-reduce-start = $0[128,32] all-reduce-start(input), replica_groups={{0,1}},
-      to_apply=apply_op
-  ROOT all-reduce-done = $0[128,32] all-reduce-done(all-reduce-start)
-})";
-  TF_ASSERT_OK_AND_ASSIGN(
-      TestedInstruction ti_start,
-      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
-                                     HloOpcode::kAllReduceStart));
-  TF_ASSERT_OK_AND_ASSIGN(
-      TestedInstruction ti_done,
-      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
-                                     HloOpcode::kAllReduceDone));
-  RunSupportTest(std::move(ti_start), /*output_tile_sizes=*/{2, 2}, cc);
-  RunSupportTest(std::move(ti_done), /*output_tile_sizes=*/{2, 2}, cc);
 }
 
 TEST_P(CollectiveTest, UnsupportedAllToAllFailsGracefullyWithTriton) {
@@ -1591,6 +1715,7 @@ constexpr std::array kTestedOpsCollectives = {
     HloOpcode::kCollectivePermute,
     HloOpcode::kCollectivePermuteDone,
     HloOpcode::kCollectivePermuteStart,
+    HloOpcode::kCollectiveReduce,
     HloOpcode::kPartitionId,
     HloOpcode::kRaggedAllToAll,
     HloOpcode::kReduceScatter,
@@ -2472,9 +2597,9 @@ TEST_P(ScaledDotTest, ScaledDotScaleTypes) {
 HloModule ScaledDotOperandTypes
 
 ENTRY triton_computation {
-  lhs = bf16[16, 32] parameter(0)
+  lhs = f8e4m3fn[16, 32] parameter(0)
   lhs_scale = $0[16, 1] parameter(1)
-  rhs = bf16[32, 16] parameter(2)
+  rhs = f8e4m3fn[32, 16] parameter(2)
   rhs_scale = $0[1, 16] parameter(3)
   ROOT dot = f32[16, 16] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
       lhs_contracting_dims={1},
@@ -3588,7 +3713,6 @@ constexpr std::array kUnsupportedOps = {
     HloOpcode::kMulhi,
     HloOpcode::kRaggedDot,
     HloOpcode::kReduceWindow,
-    HloOpcode::kScan,
     HloOpcode::kScatter,
     HloOpcode::kSelectAndScatter,
     HloOpcode::kSetDimensionSize,
@@ -3614,6 +3738,7 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.insert(kTestedOpsTernaryElementwise.begin(),
              kTestedOpsTernaryElementwise.end());
   ret.insert(kTestedOpsReduction.begin(), kTestedOpsReduction.end());
+  ret.insert(kTestedOpsScan.begin(), kTestedOpsScan.end());
   ret.insert(kTestedOpsSlice.begin(), kTestedOpsSlice.end());
   ret.insert(kTestedOpsConcatenate.begin(), kTestedOpsConcatenate.end());
   ret.insert(kTestedOpsTranspose.begin(), kTestedOpsTranspose.end());

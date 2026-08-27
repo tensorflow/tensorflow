@@ -16,12 +16,16 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 
+#include "absl/base/attributes.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "rocm/include/rocm_smi/rocm_smi.h"
 #include "xla/tsl/platform/logging.h"
 
 namespace stream_executor::gpu {
+
+ABSL_CONST_INIT absl::Mutex rocm_smi_mutex(absl::kConstInit);
 
 bool InitRocmSmi() {
   static bool initialized = []() {
