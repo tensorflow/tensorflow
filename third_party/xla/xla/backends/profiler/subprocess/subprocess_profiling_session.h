@@ -45,14 +45,25 @@ class SubprocessProfilingSession : public tsl::profiler::ProfilerInterface {
   SubprocessProfilingSession(const SubprocessProfilingSession&) = delete;
   SubprocessProfilingSession& operator=(const SubprocessProfilingSession&) =
       delete;
+  // Cancels and drains the Profile RPC if `Stop()` did not.
+  ~SubprocessProfilingSession() override;
 
   absl::Status Start() override;
   absl::Status Stop() override;
+  // Merges the subprocess's XSpace into `space`. If the Profile RPC did not
+  // complete successfully (never started, `Stop()` not called yet, RPC error or
+  // deadline), merges nothing and adds the reason to `space->errors()` instead.
+  // Returns OK unless `space` is null, so one subprocess cannot fail the other
+  // profilers.
   absl::Status CollectData(tensorflow::profiler::XSpace* space) override;
 
  private:
   SubprocessProfilingSession(const SubprocessInfo& subprocess_info,
                              const tensorflow::ProfileRequest& request);
+
+  // Waits for the Profile RPC started by `Start()` to finish. Returns false if
+  // the completion queue did not return the expected event.
+  bool WaitForProfileRpc();
 
   SubprocessInfo subprocess_info_;
   tensorflow::ProfileRequest request_;
@@ -62,6 +73,12 @@ class SubprocessProfilingSession : public tsl::profiler::ProfilerInterface {
   grpc::Status grpc_status_;
   std::unique_ptr<grpc::ClientAsyncResponseReader<tensorflow::ProfileResponse>>
       rpc_;
+  // True once the completion queue has returned the Profile RPC's event.
+  bool rpc_finished_ = false;
+  // Why the Profile RPC returned no data, or OK once it completed
+  // successfully. `CollectData()` adds it to `XSpace.errors` when it is not OK.
+  absl::Status profile_rpc_status_ =
+      absl::FailedPreconditionError("Profile RPC was not started.");
 };
 
 }  // namespace subprocess

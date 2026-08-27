@@ -16,6 +16,7 @@
 
 import hashlib
 import os
+import subprocess
 import tempfile
 from unittest import mock
 
@@ -23,42 +24,10 @@ from absl.testing import absltest
 from absl.testing import parameterized
 
 from build_tools.ci import bazel_diff
+from build_tools.ci import change_detector
 
 
 class BazelDiffTest(parameterized.TestCase):
-
-  @parameterized.parameters(
-      (["MODULE.bazel"], True),
-      (["REPO.bazel"], True),
-      (["WORKSPACE"], True),
-      (["WORKSPACE.bzlmod"], True),
-      ([".bazelrc"], True),
-      ([".bazelversion"], True),
-      (["xla/flags.bzl"], False),
-      (["third_party/tsl/tsl/platform/default/rules.bzl"], False),
-      (["third_party/tsl/REPO.bazel"], True),
-      (["third_party/tsl/tsl/BUILD"], False),
-      (["third_party/tsl/tsl/platform/denormal.cc"], False),
-      (["xla/service/cpu/cpu_compiler.cc"], False),
-      (["docs/overview.md", "xla/BUILD"], False),
-  )
-  def test_is_global_config_changed(self, changed_files, expected):
-    self.assertEqual(
-        bazel_diff.is_global_config_changed(changed_files), expected
-    )
-
-  @parameterized.parameters(
-      (["README.md", "docs/index.md"], True),
-      (["OWNERS", "LICENSE"], True),
-      ([".gitignore", ".vscode/settings.json"], True),
-      (["logo.png", "diagram.svg"], True),
-      (["README.md", "xla/service/hlo_parser.cc"], False),
-      ([], False),
-  )
-  def test_is_docs_or_metadata_only(self, changed_files, expected):
-    self.assertEqual(
-        bazel_diff.is_docs_or_metadata_only(changed_files), expected
-    )
 
   @parameterized.parameters(
       ("//xla/service:cpu_compiler", "//xla/service:cpu_compiler"),
@@ -156,6 +125,61 @@ class BazelDiffTest(parameterized.TestCase):
         )
     )
 
+  @mock.patch.object(bazel_diff.subprocess, "run", autospec=True, spec_set=True)
+  @mock.patch.object(
+      bazel_diff.change_detector, "get_diff_base", autospec=True, spec_set=True
+  )
+  def test_touches_build_keywords_sensitive(self, mock_base, mock_run):
+    mock_base.return_value = "base_sha"
+    mock_run.return_value = subprocess.CompletedProcess(
+        args=["git", "diff"],
+        returncode=0,
+        stdout=(
+            "+ label_flag(name = 'custom_flag', default = '//xla/pkg:target')\n"
+        ),
+    )
+    self.assertTrue(
+        bazel_diff._touches_build_keywords(
+            ["xla/flags.bzl"], "base_sha", "head_sha"
+        )
+    )
+
+  @mock.patch.object(bazel_diff.subprocess, "run", autospec=True, spec_set=True)
+  @mock.patch.object(
+      bazel_diff.change_detector, "get_diff_base", autospec=True, spec_set=True
+  )
+  def test_touches_build_keywords_benign_bzl(self, mock_base, mock_run):
+    mock_base.return_value = "base_sha"
+    mock_run.return_value = subprocess.CompletedProcess(
+        args=["git", "diff"],
+        returncode=0,
+        stdout=(
+            "+def my_macro(name, deps=[]):\n"
+            "+  native.cc_library(name='hlo_alias_analysis')\n"
+        ),
+    )
+    self.assertFalse(
+        bazel_diff._touches_build_keywords(
+            ["xla/service/custom.bzl"], "base_sha", "head_sha"
+        )
+    )
+    mock_run.assert_called_once_with(
+        [
+            "git",
+            "diff",
+            "-U0",
+            "--end-of-options",
+            "base_sha",
+            "head_sha",
+            "--",
+            "xla/service/custom.bzl",
+        ],
+        cwd=".",
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
   def test_filter_and_normalize_targets_with_patterns(self):
     raw_targets = [
         "//xla/service/gpu:gpu_compiler",
@@ -220,7 +244,9 @@ class BazelDiffTest(parameterized.TestCase):
     finally:
       os.unlink(summary_file)
 
-  @mock.patch.object(bazel_diff, "get_changed_files")
+  @mock.patch.object(
+      change_detector, "get_changed_files", autospec=True, spec_set=True
+  )
   def test_compute_impacted_targets_global_config_fallback(self, mock_changed):
     mock_changed.return_value = ["MODULE.bazel", "xla/service/cpu_compiler.cc"]
     build_mock = mock.MagicMock()
@@ -229,54 +255,6 @@ class BazelDiffTest(parameterized.TestCase):
     )
     self.assertEqual(decision.decision, bazel_diff.BazelDiffDecisionType.FULL)
     self.assertIn("Global Bazel configuration", decision.reason)
-
-  @mock.patch.object(bazel_diff.subprocess, "run")
-  @mock.patch.object(bazel_diff, "get_diff_base")
-  def test_touches_build_keywords_sensitive(self, mock_base, mock_run):
-    mock_base.return_value = "base_sha"
-    mock_run.return_value = mock.MagicMock(
-        returncode=0,
-        stdout=(
-            "+ label_flag(name = 'custom_flag', default = '//xla/pkg:target')\n"
-        ),
-    )
-    self.assertTrue(
-        bazel_diff.touches_build_keywords(
-            ["xla/flags.bzl"], "base_sha", "head_sha"
-        )
-    )
-
-  @mock.patch.object(bazel_diff.subprocess, "run")
-  @mock.patch.object(bazel_diff, "get_diff_base")
-  def test_touches_build_keywords_benign_bzl(self, mock_base, mock_run):
-    mock_base.return_value = "base_sha"
-    mock_run.return_value = mock.MagicMock(
-        returncode=0,
-        stdout=(
-            "+def my_macro(name, deps=[]):\n"
-            "+  native.cc_library(name='hlo_alias_analysis')\n"
-        ),
-    )
-    self.assertFalse(
-        bazel_diff.touches_build_keywords(
-            ["xla/service/custom.bzl"], "base_sha", "head_sha"
-        )
-    )
-    mock_run.assert_called_once_with(
-        [
-            "git",
-            "diff",
-            "-U0",
-            "base_sha",
-            "head_sha",
-            "--",
-            "xla/service/custom.bzl",
-        ],
-        cwd=".",
-        capture_output=True,
-        text=True,
-        check=True,
-    )
 
   def test_get_cquery_command_options(self):
     build_mock = mock.MagicMock()
@@ -328,8 +306,12 @@ class BazelDiffTest(parameterized.TestCase):
         args,
     )
 
-  @mock.patch.object(bazel_diff, "touches_build_keywords")
-  @mock.patch.object(bazel_diff, "get_changed_files")
+  @mock.patch.object(
+      bazel_diff, "_touches_build_keywords", autospec=True, spec_set=True
+  )
+  @mock.patch.object(
+      change_detector, "get_changed_files", autospec=True, spec_set=True
+  )
   def test_compute_impacted_targets_build_keywords_fallback(
       self, mock_changed, mock_keywords
   ):
@@ -342,17 +324,9 @@ class BazelDiffTest(parameterized.TestCase):
     self.assertEqual(decision.decision, bazel_diff.BazelDiffDecisionType.FULL)
     self.assertIn("label_flag, config_setting, or alias", decision.reason)
 
-  @mock.patch.object(bazel_diff, "get_changed_files")
-  def test_compute_impacted_targets_docs_only_skip(self, mock_changed):
-    mock_changed.return_value = ["README.md", "docs/architecture.md"]
-    build_mock = mock.MagicMock()
-    decision = bazel_diff.compute_impacted_targets(
-        build_mock, "base_sha", "head_sha"
-    )
-    self.assertEqual(decision.decision, bazel_diff.BazelDiffDecisionType.SKIP)
-    self.assertIn("Only documentation", decision.reason)
-
-  @mock.patch.object(bazel_diff, "get_changed_files")
+  @mock.patch.object(
+      change_detector, "get_changed_files", autospec=True, spec_set=True
+  )
   def test_compute_impacted_targets_git_fail_open(self, mock_changed):
     mock_changed.side_effect = OSError("git failure")
     build_mock = mock.MagicMock()
@@ -361,30 +335,6 @@ class BazelDiffTest(parameterized.TestCase):
     )
     self.assertEqual(decision.decision, bazel_diff.BazelDiffDecisionType.FULL)
     self.assertIn("Failed to get git changed files", decision.reason)
-
-  @mock.patch.object(bazel_diff.subprocess, "run")
-  def test_get_merge_base_success(self, mock_run):
-    mock_run.return_value = mock.MagicMock(returncode=0, stdout="base_commit\n")
-    self.assertEqual(bazel_diff.get_merge_base("base", "head"), "base_commit")
-
-  @mock.patch.object(bazel_diff.subprocess, "run")
-  def test_get_merge_base_failure(self, mock_run):
-    mock_run.return_value = mock.MagicMock(returncode=128, stdout="")
-    self.assertIsNone(bazel_diff.get_merge_base("base", "head"))
-
-  @mock.patch.object(bazel_diff, "get_merge_base")
-  def test_get_diff_base_with_merge_base(self, mock_mb):
-    mock_mb.return_value = "merge_base_sha"
-    self.assertEqual(
-        bazel_diff.get_diff_base("base_sha", "head_sha"), "merge_base_sha"
-    )
-
-  @mock.patch.object(bazel_diff, "get_merge_base")
-  def test_get_diff_base_fallback(self, mock_mb):
-    mock_mb.return_value = None
-    self.assertEqual(
-        bazel_diff.get_diff_base("base_sha", "head_sha"), "base_sha"
-    )
 
 
 if __name__ == "__main__":
