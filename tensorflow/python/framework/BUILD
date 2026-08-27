@@ -73,6 +73,31 @@ tf_cc_shared_object(
 )
 
 tf_py_strict_test(
+    name = "metal_device_test",
+    size = "small",
+    srcs = ["metal_device_test.py"],
+    main = "metal_device_test.py",
+    tags = [
+        # Skips itself unless a Metal device is present, so it is safe to run
+        # anywhere, but it only means anything on an Apple silicon machine
+        # with a --config=metal build.
+        "no_oss",
+        "notap",
+    ],
+    deps = [
+        ":config",
+        ":constant_op",
+        ":dtypes",
+        ":for_generated_wrappers",
+        ":test_lib",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_strict_test(
     name = "file_system_test",
     size = "small",
     srcs = ["file_system_test.py"],
