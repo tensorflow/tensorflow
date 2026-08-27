@@ -36,6 +36,33 @@ struct ElementwiseParams {
   uint32_t padding;
 };
 
+// Parameters for the fill shaders. Layout must match the Metal struct.
+struct FillParams {
+  uint32_t count;
+  float value;
+  uint32_t padding0;
+  uint32_t padding1;
+};
+
+// Parameters for the counter-based random shaders. Layout must match the Metal
+// struct. `counter` is bumped by the host on every call so that repeated runs
+// of the same op draw different numbers.
+struct RandomParams {
+  uint32_t count;
+  uint32_t seed_lo;
+  uint32_t seed_hi;
+  uint32_t counter;
+};
+
+// Parameters for the optimizer shaders. Layout must match the Metal structs;
+// both take an element count first, so one type covers them.
+struct OptimizerParams {
+  uint32_t count;
+  uint32_t use_nesterov;
+  uint32_t padding0;
+  uint32_t padding1;
+};
+
 // Compute pipeline for one function in the backend's shader library.
 //
 // The Metal source is compiled from a string the first time any pipeline is
