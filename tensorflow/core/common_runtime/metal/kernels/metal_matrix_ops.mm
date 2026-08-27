@@ -917,6 +917,17 @@ void RegisterMetalMatrixKernels() {
     // num_lower and num_upper are read on the host to key the graph.
     Register("MatrixBandPart", &MatrixBandPart_Compute, t,
              "MetalMatrixBandPart" + s, {"num_lower", "num_upper"});
+    // TensorFlow's pre-1.0 spelling of the same ops; still present in old
+    // graphs and identical in semantics, so they share the implementations
+    // rather than falling back to the host.
+    Register("BatchMatrixBandPart", &MatrixBandPart_Compute, t,
+             "MetalBatchMatrixBandPart" + s, {"num_lower", "num_upper"});
+    Register("BatchMatrixDiag", &MatrixDiag_Compute, t,
+             "MetalBatchMatrixDiag" + s, {});
+    Register("BatchMatrixDiagPart", &MatrixDiagPart_Compute, t,
+             "MetalBatchMatrixDiagPart" + s, {});
+    Register("BatchMatrixSetDiag", &MatrixSetDiag_Compute, t,
+             "MetalBatchMatrixSetDiag" + s, {});
     Register("MatrixDiag", &MatrixDiag_Compute, t, "MetalMatrixDiag" + s, {});
     Register("MatrixDiagPart", &MatrixDiagPart_Compute, t,
              "MetalMatrixDiagPart" + s, {});

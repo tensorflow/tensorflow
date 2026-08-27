@@ -92,6 +92,7 @@ objc_library(
     name = "metal_kernels",
     srcs = [
         "metal_activation_ops.mm",
+        "metal_alias_ops.mm",
         "metal_array_ops.mm",
         "metal_batch_space_ops.mm",
         "metal_batch_norm_ops.mm",

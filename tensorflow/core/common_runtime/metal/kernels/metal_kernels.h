@@ -106,6 +106,9 @@ void RegisterMetalQuantKernels();
 // Reverse, LRN and CheckNumerics.
 void RegisterMetalMiscKernels();
 
+// BiasAddV1, ConjugateTranspose and Bucketize.
+void RegisterMetalAliasKernels();
+
 // Identity, which aliases its input when it can and blits when it cannot.
 void RegisterMetalIdentityKernels();
 
