@@ -23,11 +23,13 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
   devices are registered under the `GPU` device type and appear as
   `/device:GPU:0`, so existing code, Keras and `tf.distribute` need no
   changes. Coverage is enough to train a convolutional model end to end:
-  `Conv2D` and its gradients, `MaxPool`, `Relu`, `BiasAdd`, `Softmax`, the
-  dense and sparse softmax cross entropies, `MatMul`, elementwise arithmetic,
-  `Sum`, `Mean`, `Fill`, the random initialisers, and the SGD and Adam
-  updates. It remains far short of the CUDA backend's several hundred ops;
-  anything unsupported falls back to the host. Set `TF_DISABLE_METAL=1` to
+  `Conv2D` and its gradients, `MaxPool`, `AvgPool`, `Relu`, `BiasAdd`,
+  `Softmax`, the dense and sparse softmax cross entropies, `MatMul`, a
+  broadcasting arithmetic and maths library with the matching gradient ops,
+  `Transpose`, `AddN`, `Sum`, `Mean`, `Fill`, the random initialisers, and the
+  SGD and Adam updates. It remains far short of the CUDA backend's several
+  hundred ops; anything unsupported, `FusedBatchNorm` among it, falls back to
+  the host. Set `TF_DISABLE_METAL=1` to
   turn the backend off at runtime. See
   `tensorflow/core/common_runtime/metal/README.md`. This replaces Apple's
   `tensorflow-metal` plugin, whose last release, 1.2.0 from January 2025,

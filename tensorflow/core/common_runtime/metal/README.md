@@ -114,6 +114,10 @@ aliases a buffer at a byte offset, and `MPSGraphTensorData` accepts an
 `MPSNDArray`, so operands are fed and results written in place with no staging
 buffer anywhere.
 
+Arithmetic goes through `MPSGraph` too, which is what gives it full NumPy
+broadcasting rather than the scalar-only broadcasting a hand-written shader
+would have to implement by hand.
+
 Random number generation and the optimiser updates are compute shaders rather
 than `MPSGraph`. Graphs here are cached by shape, so a seed baked into a graph
 would make every call after the first return the same tensor; and MPSGraph
@@ -125,19 +129,24 @@ differently rather than fail.
 | Op | dtypes |
 | --- | --- |
 | `Conv2D`, `Conv2DBackpropInput`, `Conv2DBackpropFilter` | float32, float16 |
-| `MaxPool`, `MaxPoolGrad` | float32, float16 |
+| `MaxPool`, `MaxPoolGrad`, `AvgPool` | float32, float16 |
 | `Relu`, `ReluGrad` | float32, float16 |
 | `BiasAdd`, `BiasAddGrad` | float32, float16 |
 | `Softmax` | float32, float16 |
 | `SoftmaxCrossEntropyWithLogits` | float32, float16 |
 | `SparseSoftmaxCrossEntropyWithLogits` | float32, float16; int32 or int64 labels |
 | `MatMul` | float32, float16 |
-| `Add`, `AddV2`, `Sub`, `Mul` | float32, float16 |
+| `Add`, `AddV2`, `Sub`, `Mul`, `Div`, `RealDiv` | float32, float16 |
+| `Maximum`, `Minimum`, `Pow`, `SquaredDifference` | float32, float16 |
+| `Neg`, `Abs`, `Square`, `Sqrt`, `Rsqrt`, `Reciprocal` | float32, float16 |
+| `Exp`, `Log`, `Tanh`, `Sigmoid` | float32, float16 |
+| `TanhGrad`, `SigmoidGrad`, `SqrtGrad`, `RsqrtGrad` | float32, float16 |
+| `AddN`, `Transpose` | float32, float16 |
 | `Sum`, `Mean` | float32, float16 |
 | `Fill`, `ZerosLike`, `OnesLike` | float32, float16 |
 | `RandomUniform`, `RandomStandardNormal`, `TruncatedNormal` | float32 |
 | `ResourceApplyGradientDescent`, `ResourceApplyAdam` | float32 |
-| `Cast` | float32 <-> float16 |
+| `Cast` | float32, float16, bfloat16, int32, int64 pairs |
 | `Identity` | float32, float16, int32, int64, bool |
 
 Resource variables (`VarHandleOp`, `ReadVariableOp`, `AssignVariableOp` and the
@@ -148,14 +157,13 @@ inherits when it has no kernel of its own.
 ## Limitations
 
 * **Op coverage is far short of CUDA's**, which has kernels for several
-  hundred ops. What is here covers a convolutional classifier; anything else
-  falls back to the host, which is correct but slow. Notably absent:
-  normalisation (`FusedBatchNorm`), recurrent layers, `AvgPool`, most
-  elementwise maths beyond add, subtract and multiply, and every optimiser
-  other than SGD and Adam.
-* **Broadcasting** in the elementwise ops is limited to a scalar operand.
-  Other shapes are rejected with both shapes named rather than computed
-  incorrectly.
+  hundred ops. What is here covers a convolutional classifier and the
+  arithmetic around it; anything else falls back to the host, which is correct
+  but slow. Notably absent: recurrent layers, `Concat`, `Slice`, `Pad`,
+  `Tile`, and every optimiser other than SGD and Adam.
+* **No normalisation.** `FusedBatchNorm` and its gradient are not
+  implemented, so a model using BatchNormalization still falls back to the
+  host for those layers.
 * **Random ops and optimisers are float32 only.**
 * **`MatMul`** takes rank-2 tensors only, and float16 requires an even column
   count, since an odd one produces a row stride MPS will not accept.
