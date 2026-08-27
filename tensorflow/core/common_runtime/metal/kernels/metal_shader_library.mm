@@ -1980,6 +1980,163 @@ TF_METAL_SPARSE_TO_DENSE(tf_sparse_to_dense_i64, long)
 
 TF_METAL_SPARSE_DENSE_MATMUL(tf_sparse_dense_matmul_i32, int)
 TF_METAL_SPARSE_DENSE_MATMUL(tf_sparse_dense_matmul_i64, long)
+
+// ---- regularised incomplete beta ----
+
+// Metal has no log-gamma, so here is Lanczos's, with the usual coefficients.
+// The incomplete beta only ever asks for it at positive arguments, which is
+// the half-plane this form is written for, so the reflection formula is not
+// needed and the function stays branch-free and non-recursive.
+static inline float tf_lgamma(float x) {
+  const float coefficients[9] = {
+      0.99999999999980993f,  676.5203681218851f,     -1259.1392167224028f,
+      771.32342877765313f,   -176.61502916214059f,   12.507343278686905f,
+      -0.13857109526572012f, 9.9843695780195716e-6f, 1.5056327351493116e-7f};
+  const float z = x - 1.0f;
+  float sum = coefficients[0];
+  for (uint i = 1u; i < 9u; ++i) sum += coefficients[i] / (z + float(i));
+  const float t = z + 7.5f;
+  return 0.5f * log(6.283185307179586f) + (z + 0.5f) * log(t) - t + log(sum);
+}
+
+// The continued fraction for the incomplete beta, evaluated by Lentz's
+// method, which is the standard way to get it without catastrophic
+// cancellation. The transform below keeps the argument on the side where the
+// fraction converges quickly.
+static inline float tf_betacf(float a, float b, float x) {
+  const float tiny = 1.0e-30f;
+  const float qab = a + b;
+  const float qap = a + 1.0f;
+  const float qam = a - 1.0f;
+  float c = 1.0f;
+  float d = 1.0f - qab * x / qap;
+  if (fabs(d) < tiny) d = tiny;
+  d = 1.0f / d;
+  float h = d;
+  for (uint m = 1u; m <= 200u; ++m) {
+    const float fm = float(m);
+    const float m2 = 2.0f * fm;
+    float aa = fm * (b - fm) * x / ((qam + m2) * (a + m2));
+    d = 1.0f + aa * d;
+    if (fabs(d) < tiny) d = tiny;
+    c = 1.0f + aa / c;
+    if (fabs(c) < tiny) c = tiny;
+    d = 1.0f / d;
+    h *= d * c;
+    aa = -(a + fm) * (qab + fm) * x / ((a + m2) * (qap + m2));
+    d = 1.0f + aa * d;
+    if (fabs(d) < tiny) d = tiny;
+    c = 1.0f + aa / c;
+    if (fabs(c) < tiny) c = tiny;
+    d = 1.0f / d;
+    const float delta = d * c;
+    h *= delta;
+    if (fabs(delta - 1.0f) < 1.0e-7f) break;
+  }
+  return h;
+}
+
+struct BetaincParams {
+  uint count;
+  uint a_is_scalar;
+  uint b_is_scalar;
+  uint x_is_scalar;
+};
+
+kernel void tf_betainc_float(device const float* a [[buffer(0)]],
+                             device const float* b [[buffer(1)]],
+                             device const float* x [[buffer(2)]],
+                             device float* out [[buffer(3)]],
+                             constant BetaincParams& params [[buffer(4)]],
+                             uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count) return;
+  // The three arguments broadcast against each other the way the op allows:
+  // any of them may be a single value standing for the whole tensor.
+  const float av = a[params.a_is_scalar != 0u ? 0u : gid];
+  const float bv = b[params.b_is_scalar != 0u ? 0u : gid];
+  const float xv = x[params.x_is_scalar != 0u ? 0u : gid];
+  if (!(xv > 0.0f)) { out[gid] = 0.0f; return; }
+  if (xv >= 1.0f) { out[gid] = 1.0f; return; }
+  const float front = exp(tf_lgamma(av + bv) - tf_lgamma(av) - tf_lgamma(bv) +
+                          av * log(xv) + bv * log(1.0f - xv));
+  // Below the mode the fraction converges from one side, above it from the
+  // other; the reflection is what makes both sides fast.
+  out[gid] = xv < (av + 1.0f) / (av + bv + 2.0f)
+                 ? front * tf_betacf(av, bv, xv) / av
+                 : 1.0f - front * tf_betacf(bv, av, 1.0f - xv) / bv;
+}
+
+// ---- bin counting with explicit rows ----
+
+// The sparse and ragged bin counts differ from the dense one only in how a
+// value's row is worked out: a sparse tensor names it in the first coordinate,
+// a ragged one implies it through the row splits. Neither needs the values to
+// leave the device.
+#define TF_METAL_SPARSE_BINCOUNT(NAME, IDX, T, ATOMIC, ONE)                   \
+  kernel void NAME(device const IDX* values [[buffer(0)]],                    \
+                   device const long* coords [[buffer(1)]],                   \
+                   device const T* weights [[buffer(2)]],                     \
+                   device ATOMIC* out [[buffer(3)]],                          \
+                   constant BincountParams& params [[buffer(4)]],             \
+                   uint gid [[thread_position_in_grid]]) {                    \
+    if (gid >= params.count) return;                                          \
+    const IDX v = values[gid];                                                \
+    if (v < 0 || ulong(v) >= ulong(params.size)) return;                      \
+    /* row_len carries the coordinate rank; a rank of one means every value   \
+       shares a single row. */                                                \
+    const uint row = params.row_len > 1u                                      \
+                         ? uint(coords[gid * params.row_len])                 \
+                         : 0u;                                                \
+    const uint index = row * params.size + uint(v);                           \
+    if (params.binary != 0u) {                                                \
+      atomic_store_explicit(&out[index], ONE, memory_order_relaxed);          \
+      return;                                                                 \
+    }                                                                         \
+    const T w = params.has_weights != 0u ? weights[gid] : ONE;                \
+    atomic_fetch_add_explicit(&out[index], w, memory_order_relaxed);          \
+  }
+
+TF_METAL_SPARSE_BINCOUNT(tf_sparse_bincount_float_i32, int, float,
+                         atomic_float, 1.0f)
+TF_METAL_SPARSE_BINCOUNT(tf_sparse_bincount_float_i64, long, float,
+                         atomic_float, 1.0f)
+TF_METAL_SPARSE_BINCOUNT(tf_sparse_bincount_int_i32, int, int, atomic_int, 1)
+TF_METAL_SPARSE_BINCOUNT(tf_sparse_bincount_int_i64, long, int, atomic_int, 1)
+
+// A ragged tensor's rows are the intervals between consecutive splits, so a
+// value's row is found by searching the splits for the interval that contains
+// its position.
+#define TF_METAL_RAGGED_BINCOUNT(NAME, IDX, T, ATOMIC, ONE)                   \
+  kernel void NAME(device const IDX* values [[buffer(0)]],                    \
+                   device const long* splits [[buffer(1)]],                   \
+                   device const T* weights [[buffer(2)]],                     \
+                   device ATOMIC* out [[buffer(3)]],                          \
+                   constant BincountParams& params [[buffer(4)]],             \
+                   uint gid [[thread_position_in_grid]]) {                    \
+    if (gid >= params.count) return;                                          \
+    const IDX v = values[gid];                                                \
+    if (v < 0 || ulong(v) >= ulong(params.size)) return;                      \
+    uint low = 0u;                                                            \
+    uint high = params.row_len;                                               \
+    while (low + 1u < high) {                                                 \
+      const uint mid = (low + high) / 2u;                                     \
+      if (ulong(splits[mid]) <= ulong(gid)) low = mid; else high = mid;       \
+    }                                                                         \
+    const uint index = low * params.size + uint(v);                           \
+    if (params.binary != 0u) {                                                \
+      atomic_store_explicit(&out[index], ONE, memory_order_relaxed);          \
+      return;                                                                 \
+    }                                                                         \
+    const T w = params.has_weights != 0u ? weights[gid] : ONE;                \
+    atomic_fetch_add_explicit(&out[index], w, memory_order_relaxed);          \
+  }
+
+TF_METAL_RAGGED_BINCOUNT(tf_ragged_bincount_float_i32, int, float,
+                         atomic_float, 1.0f)
+TF_METAL_RAGGED_BINCOUNT(tf_ragged_bincount_float_i64, long, float,
+                         atomic_float, 1.0f)
+TF_METAL_RAGGED_BINCOUNT(tf_ragged_bincount_int_i32, int, int, atomic_int, 1)
+TF_METAL_RAGGED_BINCOUNT(tf_ragged_bincount_int_i64, long, int, atomic_int, 1)
 )METAL";
 
 class ShaderLibrary {

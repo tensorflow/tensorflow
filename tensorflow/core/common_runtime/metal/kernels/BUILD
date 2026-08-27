@@ -130,6 +130,7 @@ objc_library(
         "metal_fused_ops.mm",
         "metal_gather_scatter_ops.mm",
         "metal_misc_ops.mm",
+        "metal_misc2_ops.mm",
         "metal_resize_grad_ops.mm",
         "metal_quant_ops.mm",
         "metal_quantize_dequantize_ops.mm",

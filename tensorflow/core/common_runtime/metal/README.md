@@ -145,6 +145,10 @@ differently rather than fail.
 | `BatchFFT`, `BatchFFT2D`, `BatchFFT3D`, `BatchIFFT`, `BatchIFFT2D`, `BatchIFFT3D` | complex64 |
 | `RFFT`, `RFFT2D`, `RFFT3D`, `IRFFT`, `IRFFT2D`, `IRFFT3D` | float32 and complex64 |
 | `SparseToDense`, `SparseTensorDenseMatMul` | float32 |
+| `SparseBincount`, `RaggedBincount` | float32, int32 |
+| `Betainc` | float32 |
+| `Snapshot` | float32, float16, int32, int64 |
+| `Empty` | float32, int32 |
 | `SparseReshape`, `SparseReorder`, `SparseSlice`, `SparseSliceGrad` | float32 |
 | `SparseSplit`, `SparseConcat`, `SparseFillEmptyRows`, `SparseFillEmptyRowsGrad` | float32 |
 | `SparseSegmentSum`, `SparseSegmentMean`, `SparseSegmentSqrtN` | float32 |

@@ -340,6 +340,16 @@ struct SparseParams {
   uint32_t shape[8];
 };
 
+// Parameters for the incomplete beta. Layout must match the Metal struct. Each
+// flag says whether that argument is a single value standing for the whole
+// tensor, which is the broadcast the op allows.
+struct BetaincParams {
+  uint32_t count;
+  uint32_t a_is_scalar;
+  uint32_t b_is_scalar;
+  uint32_t x_is_scalar;
+};
+
 // Compute pipeline for one function in the backend's shader library.
 //
 // The Metal source is compiled from a string the first time any pipeline is

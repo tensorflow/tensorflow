@@ -172,6 +172,9 @@ void RegisterMetalFusedKernels();
 // The sparse tensor manipulations.
 void RegisterMetalSparseManipKernels();
 
+// Betainc, the sparse and ragged bin counts, Snapshot and Empty.
+void RegisterMetalMisc2Kernels();
+
 // SparseToDense and SparseTensorDenseMatMul.
 void RegisterMetalSparseKernels();
 
