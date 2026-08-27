@@ -40,6 +40,7 @@ void RegisterAllMetalKernels() {
   RegisterMetalNnKernels();
   RegisterMetalPoolingKernels();
   RegisterMetalPoolVariantKernels();
+  RegisterMetalQuantKernels();
   RegisterMetalRandomKernels();
   RegisterMetalTrainingKernels();
 }

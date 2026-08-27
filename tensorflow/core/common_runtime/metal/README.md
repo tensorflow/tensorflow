@@ -159,6 +159,7 @@ differently rather than fail.
 | `Slice`, `Pad`, `PadV2`, `MirrorPad` | float32, float16 |
 | `GatherV2`, `OneHot`, `TopKV2` | float32, float16 |
 | `Cumsum`, `Cumprod`, `ClipByValue` | float32, float16 |
+| `FakeQuantWithMinMaxArgs`, `FakeQuantWithMinMaxArgsGradient` | float32 |
 | `MatrixBandPart`, `MatrixDiag`, `MatrixDiagPart`, `MatrixSetDiag` | float32, float16 |
 | `MatrixDiagV2`, `MatrixDiagV3`, `MatrixDiagPartV2`, `MatrixDiagPartV3` | float32, float16; main diagonal only |
 | `SpaceToDepth`, `DepthToSpace`, `L2Loss` | float32, float16 |
