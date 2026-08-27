@@ -21,7 +21,8 @@
 # configured with --config=metal (see if_metal() in tensorflow.bzl).
 
 load("@rules_cc//cc:objc_library.bzl", "objc_library")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_copts")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library", "cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -99,6 +100,24 @@ objc_library(
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
         "@com_google_absl//absl/log",
+    ],
+)
+
+# Entry point of the backend. Depend on this target (through if_metal) to pull
+# the Metal device into a binary; everything else here is reachable from it.
+cc_library(
+    name = "metal_plugin_registrar",
+    srcs = ["metal_plugin_registrar.cc"],
+    copts = tf_copts(),
+    target_compatible_with = ["@platforms//os:macos"],
+    # Nothing references this translation unit, so without alwayslink the
+    # linker would drop the static initializer that performs the registration.
+    alwayslink = 1,
+    deps = [
+        ":metal_platform",
+        "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_plugin_init",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
     ],
 )
 
