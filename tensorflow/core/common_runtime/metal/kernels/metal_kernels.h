@@ -103,6 +103,9 @@ void RegisterMetalBatchSpaceKernels();
 // FakeQuantWithMinMaxArgs and its gradient.
 void RegisterMetalQuantKernels();
 
+// Reverse, LRN and CheckNumerics.
+void RegisterMetalMiscKernels();
+
 // Identity, which aliases its input when it can and blits when it cannot.
 void RegisterMetalIdentityKernels();
 

@@ -167,6 +167,8 @@ differently rather than fail.
 | `Diag`, `DiagPart`, `LinSpace` | float32, float16 |
 | `ResizeBilinear`, `ResizeNearestNeighbor` | float32, float16 |
 | `ReverseV2`, `Split`, `SplitV` | float32, float16 |
+| `Reverse`, `CheckNumerics`, `CheckNumericsV2` | float32, float16 |
+| `LRN` | float32 |
 | `StridedSlice`, `StridedSliceGrad`, `TileGrad`, `Roll` | float32, float16 |
 | `Equal`, `NotEqual`, `Less`, `LessEqual`, `Greater`, `GreaterEqual` | float32, float16, int32, int64 |
 | `ApproximateEqual` | float32, float16 |
@@ -196,6 +198,10 @@ inherits when it has no kernel of its own.
   but slow. Notably absent: recurrent layers, `Slice`, `Pad`, `Gather`,
   `DepthwiseConv2d`, and the sparse optimiser variants.
 * **Random ops and optimisers are float32 only.**
+* **`CheckNumerics` forwards its input without checking.** Detecting a
+  non-finite value on device needs a readback of a reduction on every call,
+  which would serialise the stream. The values pass through unchanged; the
+  op does not raise.
 * **`MaxPoolWithArgmax` is not implemented.** MPSGraph returns the position
   within the pooling window rather than the flattened position in the image,
   and emitting indices in the wrong coordinate system would quietly corrupt
