@@ -129,7 +129,9 @@ differently rather than fail.
 | Op | dtypes |
 | --- | --- |
 | `Conv2D`, `Conv2DBackpropInput`, `Conv2DBackpropFilter` | float32, float16 |
+| `Conv3D`, `Conv3DBackpropInputV2`, `Conv3DBackpropFilterV2` | float32, float16 |
 | `MaxPool`, `MaxPoolGrad`, `AvgPool`, `AvgPoolGrad` | float32, float16 |
+| `MaxPoolV2`, `MaxPoolGradV2` | float32, float16 |
 | `DepthwiseConv2dNative`, `DepthwiseConv2dNativeBackpropInput`, `DepthwiseConv2dNativeBackpropFilter` | float32, float16 |
 | `FusedBatchNorm`, `FusedBatchNormV2`, `FusedBatchNormV3` | float32, float16 |
 | `FusedBatchNormGrad`, `FusedBatchNormGradV2`, `FusedBatchNormGradV3` | float32, float16 |
@@ -192,6 +194,10 @@ inherits when it has no kernel of its own.
   but slow. Notably absent: recurrent layers, `Slice`, `Pad`, `Gather`,
   `DepthwiseConv2d`, and the sparse optimiser variants.
 * **Random ops and optimisers are float32 only.**
+* **`MaxPoolWithArgmax` is not implemented.** MPSGraph returns the position
+  within the pooling window rather than the flattened position in the image,
+  and emitting indices in the wrong coordinate system would quietly corrupt
+  any model that unpools with them.
 * **The resize gradients are not implemented.** Every MPSGraph resize
   gradient entry point aborts the process on the current SDK with a channel
   mismatch assertion, for every shape and layout tried. Registering a kernel

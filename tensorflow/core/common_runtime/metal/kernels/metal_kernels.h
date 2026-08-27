@@ -91,6 +91,12 @@ void RegisterMetalDepthwiseKernels();
 // Image resizing, bilinear and nearest, with both gradients.
 void RegisterMetalImageKernels();
 
+// MaxPoolV2, MaxPoolGradV2 and MaxPoolWithArgmax.
+void RegisterMetalPoolVariantKernels();
+
+// Conv3D and its two gradients.
+void RegisterMetalConv3DKernels();
+
 // Identity, which aliases its input when it can and blits when it cannot.
 void RegisterMetalIdentityKernels();
 

@@ -24,6 +24,7 @@ void RegisterAllMetalKernels() {
   RegisterMetalBatchNormKernels();
   RegisterMetalCompareKernels();
   RegisterMetalConvKernels();
+  RegisterMetalConv3DKernels();
   RegisterMetalDepthwiseKernels();
   RegisterMetalImageKernels();
   RegisterMetalIndexKernels();
@@ -37,6 +38,7 @@ void RegisterAllMetalKernels() {
   RegisterMetalMatMulKernels();
   RegisterMetalNnKernels();
   RegisterMetalPoolingKernels();
+  RegisterMetalPoolVariantKernels();
   RegisterMetalRandomKernels();
   RegisterMetalTrainingKernels();
 }
