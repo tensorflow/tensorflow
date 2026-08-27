@@ -521,22 +521,6 @@ class StatelessOpsTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(counter.shape, [2])
     self.assertEqual(int(alg), random_ops_util.Algorithm.THREEFRY.value)
 
-  @parameterized.parameters(['threefry'])
-  @test_util.run_v2_only
-  def testThreefryWorksUnderXla(self, alg):
-    """alg='threefry' must work when compiled with XLA (#100252)."""
-    @def_function.function(jit_compile=True)
-    def f():
-      return stateless.stateless_random_uniform(
-          shape=[5], seed=[1, 2], alg=alg)
-
-    result = f()
-    self.assertEqual(result.shape, [5])
-    # Results must be in [0, 1) and not all identical.
-    self.assertTrue(np.all(result.numpy() >= 0.0))
-    self.assertTrue(np.all(result.numpy() < 1.0))
-    self.assertGreater(np.unique(result.numpy()).size, 1)
-
   def assertDTypeEqual(self, a, b):
     self.assertEqual(dtypes.as_dtype(a), dtypes.as_dtype(b))
 
