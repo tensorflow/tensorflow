@@ -1773,6 +1773,7 @@ AlgebraicSimplifierOptions GpuCompiler::GetAlgebraicSimplifierOptions(
 
   if (!is_rocm && debug_options.xla_gpu_experimental_enable_conv_fusion()) {
     opts.set_enable_folding_pad_into_convolution(false);
+    opts.set_enable_conv_operand_swap(false);
   }
 
   switch (mode) {
