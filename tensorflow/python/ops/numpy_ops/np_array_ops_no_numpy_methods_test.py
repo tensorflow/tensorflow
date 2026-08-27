@@ -85,23 +85,26 @@ class ArrayWithoutNumpyMethodsOnTensorTest(test.TestCase):
         atol=1e-6,
     )
 
-  def testIndexUpdateHelpersPreserveDtype(self):
-    # The `_with_index_*` helpers are attached to `Tensor` at import time,
-    # rather than by `enable_numpy_methods_on_tensor()`, so they must not
-    # require the opt-in either. They are attached as `functools.partial`
-    # objects, which are not descriptors, so the tensor is passed explicitly
-    # instead of being bound as `self`.
+  def testIndexUpdateHelperPreservesDtype(self):
+    # `_with_index_update_helper` backs the `_with_index_*` methods, which are
+    # attached to `Tensor` at import time rather than by
+    # `enable_numpy_methods_on_tensor()`, so it must not require the opt-in
+    # either. It is called directly here because the methods are attached as
+    # `functools.partial` objects, and whether those bind the tensor as their
+    # first argument differs between Python versions.
     tensor = constant_op.constant([1, 2, 3, 4], dtype='int32')
     updates = constant_op.constant([9, 9], dtype='int32')
     cases = [
-        ('update', tensor._with_index_update, np.array([9, 9, 3, 4])),
-        ('add', tensor._with_index_add, np.array([10, 11, 3, 4])),
+        (np_array_ops._UpdateMethod.UPDATE, np.array([9, 9, 3, 4])),
+        (np_array_ops._UpdateMethod.ADD, np.array([10, 11, 3, 4])),
     ]
-    for name, helper, expected in cases:
-      actual = helper(tensor, slice(0, 2), updates)
-      self.assertEqual(actual.dtype, tensor.dtype, msg=name)
+    for update_method, expected in cases:
+      actual = np_array_ops._with_index_update_helper(
+          update_method, tensor, slice(0, 2), updates
+      )
+      self.assertEqual(actual.dtype, tensor.dtype, msg=str(update_method))
       np.testing.assert_array_equal(
-          np.asarray(actual), expected, err_msg=name
+          np.asarray(actual), expected, err_msg=str(update_method)
       )
 
 
