@@ -552,6 +552,51 @@ kernel void tf_maxpool_gradgrad_float(device const float* in [[buffer(0)]],
   TF_METAL_POOL_ARGMAX(in)
   out[gid] = grad[offset];
 }
+
+// ---- bin counting ----
+
+struct BincountParams {
+  uint count;
+  uint size;
+  uint row_len;
+  uint binary;
+  uint has_weights;
+  uint pad0;
+  uint pad1;
+  uint pad2;
+};
+
+// One thread per input value, accumulating into the bin it names. Many values
+// land in the same bin, so the accumulation is atomic. Values outside
+// [0, size) are dropped, which is what the CPU kernel does; they are not an
+// error.
+//
+// The binary form stores one rather than accumulating, so repeated values
+// still leave a one. The dense two-dimensional form gives each row its own
+// stretch of bins, selected by `row_len`.
+#define TF_METAL_BINCOUNT(NAME, IDX, T, ATOMIC, ONE)                          \
+  kernel void NAME(device const IDX* values [[buffer(0)]],                    \
+                   device const T* weights [[buffer(1)]],                     \
+                   device ATOMIC* out [[buffer(2)]],                          \
+                   constant BincountParams& params [[buffer(3)]],             \
+                   uint gid [[thread_position_in_grid]]) {                    \
+    if (gid >= params.count) return;                                          \
+    const IDX v = values[gid];                                                \
+    if (v < 0 || ulong(v) >= ulong(params.size)) return;                      \
+    const uint row = params.row_len > 0 ? gid / params.row_len : 0;           \
+    const uint index = row * params.size + uint(v);                           \
+    if (params.binary != 0) {                                                 \
+      atomic_store_explicit(&out[index], ONE, memory_order_relaxed);          \
+      return;                                                                 \
+    }                                                                         \
+    const T w = params.has_weights != 0 ? weights[gid] : ONE;                 \
+    atomic_fetch_add_explicit(&out[index], w, memory_order_relaxed);          \
+  }
+
+TF_METAL_BINCOUNT(tf_bincount_float_i32, int, float, atomic_float, 1.0f)
+TF_METAL_BINCOUNT(tf_bincount_float_i64, long, float, atomic_float, 1.0f)
+TF_METAL_BINCOUNT(tf_bincount_int_i32, int, int, atomic_int, 1)
+TF_METAL_BINCOUNT(tf_bincount_int_i64, long, int, atomic_int, 1)
 )METAL";
 
 class ShaderLibrary {

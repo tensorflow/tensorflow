@@ -124,6 +124,9 @@ void RegisterMetalResourceKernels();
 // Max pooling with indices, and the second-order pooling gradients.
 void RegisterMetalMaxPoolArgmaxKernels();
 
+// Bincount and DenseBincount.
+void RegisterMetalBincountKernels();
+
 // Dilation2D, grayscale morphological dilation.
 void RegisterMetalDilationKernels();
 

@@ -29,6 +29,7 @@ void RegisterAllMetalKernels() {
   RegisterMetalConv3DKernels();
   RegisterMetalDepthwiseKernels();
   RegisterMetalDilationKernels();
+  RegisterMetalBincountKernels();
   RegisterMetalMaxPoolArgmaxKernels();
   RegisterMetalImageKernels();
   RegisterMetalImage2Kernels();

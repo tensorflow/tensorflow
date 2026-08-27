@@ -109,6 +109,20 @@ struct PoolIndexParams {
   uint32_t padding1;
 };
 
+// Parameters for the bin-counting shaders. Layout must match the Metal
+// struct. `row_len` is zero for a flat count and the row width for the dense
+// two-dimensional form.
+struct BincountParams {
+  uint32_t count;
+  uint32_t size;
+  uint32_t row_len;
+  uint32_t binary;
+  uint32_t has_weights;
+  uint32_t padding0;
+  uint32_t padding1;
+  uint32_t padding2;
+};
+
 // Compute pipeline for one function in the backend's shader library.
 //
 // The Metal source is compiled from a string the first time any pipeline is

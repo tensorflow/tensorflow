@@ -136,6 +136,7 @@ differently rather than fail.
 | `MaxPoolWithArgmax`, `MaxPoolGradWithArgmax`, `MaxPoolGradGradWithArgmax` | float32 |
 | `MaxPoolGradGrad`, `MaxPoolGradGradV2` | float32 |
 | `DepthwiseConv2dNative`, `DepthwiseConv2dNativeBackpropInput`, `DepthwiseConv2dNativeBackpropFilter` | float32, float16 |
+| `Bincount`, `DenseBincount` | float32, int32 |
 | `Dilation2D` | float32, float16 |
 | `Dilation2DBackpropInput`, `Dilation2DBackpropFilter` | float32 |
 | `FusedBatchNorm`, `FusedBatchNormV2`, `FusedBatchNormV3` | float32, float16 |
