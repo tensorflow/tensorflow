@@ -183,6 +183,7 @@ differently rather than fail.
 | `Lu` | float32, with int32 or int64 permutation |
 | `Qr`, `SelfAdjointEigV2` | float32 |
 | `NonMaxSuppressionV2`, `NonMaxSuppressionV3`, `NonMaxSuppressionV4` | float32 |
+| `GenerateBoundingBoxProposals` | float32 |
 | `_ParallelConcatStart`, `_ParallelConcatUpdate` | float32, float16, int32, int64 |
 | `Cumsum`, `Cumprod`, `ClipByValue` | float32, float16 |
 | `FakeQuantWithMinMaxArgs`, `FakeQuantWithMinMaxArgsGradient` | float32 |
@@ -245,6 +246,10 @@ inherits when it has no kernel of its own.
   arithmetic around it; anything else falls back to the host, which is correct
   but slow. Notably absent: recurrent layers, `Slice`, `Pad`, `Gather`,
   `DepthwiseConv2d`, and the sparse optimiser variants.
+* **`ParallelConcat` is not registered, deliberately.** No device registers a
+  working kernel for it: CUDA registers one that fails on construction,
+  because the graph rewrite always replaces the op with an allocation and one
+  update per stacked value. Those two ops are provided instead.
 * **Random ops and optimisers are float32 only.**
 * **`CheckNumerics` forwards its input without checking.** Detecting a
   non-finite value on device needs a readback of a reduction on every call,

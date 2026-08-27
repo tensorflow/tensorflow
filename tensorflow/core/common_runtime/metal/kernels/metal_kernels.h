@@ -157,6 +157,9 @@ void RegisterMetalGenericConvKernels();
 // CTCLoss and CTCLossV2.
 void RegisterMetalCtcKernels();
 
+// GenerateBoundingBoxProposals.
+void RegisterMetalBoxProposalKernels();
+
 // ExtractVolumePatches.
 void RegisterMetalVolumePatchKernels();
 

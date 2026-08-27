@@ -33,6 +33,7 @@ void RegisterAllMetalKernels() {
   RegisterMetalBatchNormGlobalKernels();
   RegisterMetalResizeGradKernels();
   RegisterMetalVolumePatchKernels();
+  RegisterMetalBoxProposalKernels();
   RegisterMetalCtcKernels();
   RegisterMetalGenericConvKernels();
   RegisterMetalNmsKernels();
