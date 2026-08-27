@@ -445,6 +445,90 @@ TEST_P(SortThunkTest, SortKeyValueStridedSlices) {
                 {{{2, 3}, {4, 5}, {0, 1}}, {{8, 9}, {10, 11}, {6, 7}}}));
 }
 
+TEST_P(SortThunkTest, SortKeyValueWithCustomComparator) {
+  bool is_stable = GetParam();
+
+  auto keys = LiteralUtil::CreateR1<float>({2.0f, 1.0f, 2.0f, 1.0f});
+  auto values = LiteralUtil::CreateR1<int32_t>({10, 20, 30, 40});
+
+  BufferAllocations allocations = CreateBufferAllocations(keys, values);
+  auto [alloc0, alloc1] = CreateBufferAllocation(keys, values);
+  auto [slice0, slice1] = CreateBufferAllocationSlice(alloc0, alloc1);
+
+  // Custom comparator using both operands: sort by key ascending, breaking
+  // ties by value descending.
+  auto custom_less_than = [](const void** data) {
+    auto* lhs_k = reinterpret_cast<const float*>(data[0]);
+    auto* rhs_k = reinterpret_cast<const float*>(data[1]);
+    auto* lhs_v = reinterpret_cast<const int32_t*>(data[2]);
+    auto* rhs_v = reinterpret_cast<const int32_t*>(data[3]);
+    if (*lhs_k != *rhs_k) {
+      return *lhs_k < *rhs_k;
+    }
+    return *lhs_v > *rhs_v;
+  };
+
+  ASSERT_OK_AND_ASSIGN(
+      auto thunk,
+      SortThunk::Create({"sort"},
+                        {{slice0, keys.shape()}, {slice1, values.shape()}},
+                        /*dimension=*/0, is_stable, custom_less_than,
+                        /*direction=*/std::nullopt));
+
+  Thunk::ExecuteParams params;
+  params.buffer_allocations = &allocations;
+
+  auto execute_event = thunk->Execute(params);
+  tsl::BlockUntilReady(execute_event);
+  ASSERT_FALSE(execute_event.IsError());
+
+  EXPECT_EQ(keys, LiteralUtil::CreateR1<float>({1.0f, 1.0f, 2.0f, 2.0f}));
+  EXPECT_EQ(values, LiteralUtil::CreateR1<int32_t>({40, 20, 30, 10}));
+}
+
+TEST_P(SortThunkTest, SortKeyValueStridedWithCustomComparator) {
+  bool is_stable = GetParam();
+
+  // Shape [2, 3, 2], sort along dimension 1 (inner_dim_size = 2, sort_dim_size
+  // = 3)
+  auto keys = LiteralUtil::CreateR3<float>(
+      {{{3.0f, 6.0f}, {1.0f, 4.0f}, {2.0f, 5.0f}},
+       {{9.0f, 12.0f}, {7.0f, 10.0f}, {8.0f, 11.0f}}});
+  auto values = LiteralUtil::CreateR3<int32_t>(
+      {{{0, 1}, {2, 3}, {4, 5}}, {{6, 7}, {8, 9}, {10, 11}}});
+
+  BufferAllocations allocations = CreateBufferAllocations(keys, values);
+  auto [alloc0, alloc1] = CreateBufferAllocation(keys, values);
+  auto [slice0, slice1] = CreateBufferAllocationSlice(alloc0, alloc1);
+
+  auto custom_less_than = [](const void** data) {
+    auto* lhs_k = reinterpret_cast<const float*>(data[0]);
+    auto* rhs_k = reinterpret_cast<const float*>(data[1]);
+    return *lhs_k < *rhs_k;
+  };
+
+  ASSERT_OK_AND_ASSIGN(
+      auto thunk,
+      SortThunk::Create({"sort"},
+                        {{slice0, keys.shape()}, {slice1, values.shape()}},
+                        /*dimension=*/1, is_stable, custom_less_than,
+                        /*direction=*/std::nullopt));
+
+  Thunk::ExecuteParams params;
+  params.buffer_allocations = &allocations;
+
+  auto execute_event = thunk->Execute(params);
+  tsl::BlockUntilReady(execute_event);
+  ASSERT_FALSE(execute_event.IsError());
+
+  EXPECT_EQ(keys, LiteralUtil::CreateR3<float>(
+                      {{{1.0f, 4.0f}, {2.0f, 5.0f}, {3.0f, 6.0f}},
+                       {{7.0f, 10.0f}, {8.0f, 11.0f}, {9.0f, 12.0f}}}));
+  EXPECT_EQ(values,
+            LiteralUtil::CreateR3<int32_t>(
+                {{{2, 3}, {4, 5}, {0, 1}}, {{8, 9}, {10, 11}, {6, 7}}}));
+}
+
 INSTANTIATE_TEST_SUITE_P(SortThunk, SortThunkTest, testing::Bool(),
                          testing::PrintToStringParamName());
 
