@@ -2581,13 +2581,21 @@ def _convert_ones_like(pfor_input: _PforInput):
 
 @RegisterPFor("Gather")
 @RegisterPFor("GatherV2")
+@RegisterPFor("ResourceGather")
 def _convert_gather(pfor_input: _PforInput):
-  param, param_stacked, _ = pfor_input.input(0)
+  op_type = pfor_input.op_type
+  if op_type == "ResourceGather":
+    # Resource handles are expected to be loop-invariant.
+    resource = pfor_input.unstacked_input(0)
+    dtype = pfor_input.get_attr("dtype")
+    param = None
+    param_stacked = False
+  else:
+    param, param_stacked, _ = pfor_input.input(0)
   indices, indices_stacked, _ = pfor_input.input(1)
   batch_dims = pfor_input.get_attr("batch_dims")
 
-  op_type = pfor_input.op_type
-  if op_type == "Gather":
+  if op_type in ("Gather", "ResourceGather"):
     validate_indices = pfor_input.get_attr("validate_indices")
     axis = 0
   else:
@@ -2598,6 +2606,8 @@ def _convert_gather(pfor_input: _PforInput):
     if axis_value is not None:
       axis = axis_value
   if indices_stacked and not param_stacked:
+    if op_type == "ResourceGather":
+      param = resource_variable_ops.read_variable_op(resource, dtype=dtype)
     if indices is pfor_input.pfor.all_indices and axis == 0:
       param_shape0 = tensor_shape.dimension_value(param.shape[0])
       indices_shape0 = tensor_shape.dimension_value(indices.shape[0])
@@ -2624,9 +2634,18 @@ def _convert_gather(pfor_input: _PforInput):
           math_ops.range(batch_dims_pos + 1, array_ops.rank(indices))], axis=0)
       indices = array_ops.transpose(indices, order)
 
-    output = array_ops.gather(
-        param, indices, validate_indices=validate_indices, axis=axis,
-        batch_dims=batch_dims)
+    if op_type == "ResourceGather":
+      output = array_ops.gather(
+          param, indices, axis=axis, batch_dims=batch_dims
+      )
+    else:
+      output = array_ops.gather(
+          param,
+          indices,
+          validate_indices=validate_indices,
+          axis=axis,
+          batch_dims=batch_dims,
+      )
     if axis != 0:
       axis = smart_cond.smart_cond(axis < 0,
                                    lambda: axis + array_ops.rank(param),
@@ -2650,10 +2669,42 @@ def _convert_gather(pfor_input: _PforInput):
     batch_dims = batch_dims + 1 if batch_dims >= 0 else batch_dims
     output = array_ops.gather(param, indices, axis=axis, batch_dims=batch_dims)
     return wrap(output, True)
+  if op_type == "ResourceGather":
+    output = resource_variable_ops.resource_gather(
+        resource,
+        indices,
+        dtype=dtype,
+        batch_dims=batch_dims,
+        validate_indices=validate_indices,
+    )
+  else:
+    output = array_ops.gather(
+        param,
+        indices,
+        validate_indices=validate_indices,
+        axis=axis,
+        batch_dims=batch_dims,
+    )
+  return wrap(output, False)
 
 
 @RegisterPFor("GatherNd")
+@RegisterPFor("ResourceGatherNd")
 def _convert_gather_nd(pfor_input: _PforInput):
+  op_type = pfor_input.op_type
+  if op_type == "ResourceGatherNd":
+    # Resource handles are expected to be loop-invariant.
+    resource = pfor_input.unstacked_input(0)
+    dtype = pfor_input.get_attr("dtype")
+    indices, indices_stacked, _ = pfor_input.input(1)
+    if indices_stacked:
+      params = resource_variable_ops.read_variable_op(resource, dtype=dtype)
+      stacked_result = array_ops.gather_nd(params, indices)
+      return wrap(stacked_result, True)
+    output = resource_variable_ops.resource_gather_nd(
+        resource, indices, dtype=dtype
+    )
+    return wrap(output, False)
   # TODO(jmenick): Add support for unstacked params.
   pfor_input.stack_inputs(stack_indices=[1])
   params = pfor_input.stacked_input(0)

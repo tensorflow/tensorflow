@@ -257,7 +257,9 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:nn",
         "//tensorflow/python/ops:random_ops",
+        "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:tensor_array_grad",
+        "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
