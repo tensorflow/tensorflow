@@ -406,4 +406,26 @@ REGISTER_CPU(complex128)
 
 #undef REGISTER_CPU
 
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
+// A pluggable device builds the matrix on the host and passes it on inside a
+// variant, which lives on the host by definition. Only the dense inputs cross
+// the boundary, so they are pinned and TensorFlow inserts the copies; the
+// tensors inside the matrix are then written and read by these kernels alone.
+#define REGISTER_PLUGGABLE(T)                                   \
+  REGISTER_KERNEL_BUILDER(Name("SparseTensorToCSRSparseMatrix") \
+                              .Device(DEVICE_DEFAULT)           \
+                              .TypeConstraint<T>("T")           \
+                              .HostMemory("indices")            \
+                              .HostMemory("values")             \
+                              .HostMemory("dense_shape"),       \
+                          SparseTensorToCSRSparseMatrixCPUOp<T>);
+
+REGISTER_PLUGGABLE(float)
+REGISTER_PLUGGABLE(double)
+REGISTER_PLUGGABLE(complex64)
+REGISTER_PLUGGABLE(complex128)
+
+#undef REGISTER_PLUGGABLE
+#endif  // PLUGGABLE_DEVICE_SUPPORTED_MACOS
+
 }  // namespace tensorflow

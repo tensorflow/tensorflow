@@ -83,6 +83,22 @@ absl::Status CSRSparseMatrixZerosLikeHelper(OpKernelContext* ctx,
 
 REGISTER(GPU)
 
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
+// A pluggable device builds the matrix through the host. The sparse matrix
+// ops pass their structure to one another inside a variant, which lives on
+// the host by definition, and the tensors it holds are written here and read
+// by the next of these kernels rather than by anything on the device. The
+// dense shape is already pinned; nothing else in this op touches device data.
+REGISTER_KERNEL_BUILDER(Name("SparseMatrixZeros")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("dense_shape"),
+                        CSRZerosOp<CPUDevice>);
+#endif  // PLUGGABLE_DEVICE_SUPPORTED_MACOS
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION(
     ZEROS_LIKE_VARIANT_UNARY_OP, DEVICE_GPU, CSRSparseMatrix,
     CSRSparseMatrixZerosLikeHelper<GPUDevice>);

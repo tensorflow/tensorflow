@@ -58,6 +58,26 @@ REGISTER_CPU(complex128)
 
 #undef REGISTER_CPU
 
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
+// The sparse operand arrives inside a variant, which is on the host; only the
+// dense operand and the result cross the boundary, so they are pinned and the
+// host implementation runs over host tensors throughout.
+#define REGISTER_PLUGGABLE(T)                                              \
+  REGISTER_KERNEL_BUILDER(Name("SparseMatrixMatMul")                       \
+                              .Device(DEVICE_DEFAULT)                      \
+                              .TypeConstraint<T>("T")                      \
+                              .HostMemory("b")                             \
+                              .HostMemory("output"),                       \
+                          CSRMatMulCPUOp<T>);
+
+REGISTER_PLUGGABLE(float)
+REGISTER_PLUGGABLE(double)
+REGISTER_PLUGGABLE(complex64)
+REGISTER_PLUGGABLE(complex128)
+
+#undef REGISTER_PLUGGABLE
+#endif  // PLUGGABLE_DEVICE_SUPPORTED_MACOS
+
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_GPU(T)                                                     \
