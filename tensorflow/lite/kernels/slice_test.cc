@@ -408,6 +408,14 @@ TEST_P(SliceOpTest, BeginNonZeroSizeMinus1Axis1BFloat16) {
                                 Eigen::bfloat16(8), Eigen::bfloat16(9)}));
 }
 
+TEST_P(SliceOpTest, RejectAsymmetricRank) {
+  EXPECT_DEATH(
+      (SliceOpModel<float, int32_t>({4, 1, 1, 1}, {1}, {1}, {1}, {1},
+                                    TensorType_INT32, TensorType_FLOAT32,
+                                    GetParam())),
+      "");
+}
+
 INSTANTIATE_TEST_SUITE_P(SliceOpTest, SliceOpTest,
                          ::testing::Values(TestType::kConst,
                                            TestType::kDynamic));
