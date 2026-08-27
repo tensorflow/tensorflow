@@ -56,6 +56,15 @@ tf_export.tf_export('experimental.numpy.inf', v1=[]).export_constant(
     __name__, 'inf'
 )
 
+# Floating-point types mapped to an integer type of the same size, so their
+# IEEE-754 sign bit can be checked with an integer comparison.
+_SIGN_BITCAST_DTYPES = {
+    dtypes.bfloat16: dtypes.int16,
+    dtypes.float16: dtypes.int16,
+    dtypes.float32: dtypes.int32,
+    dtypes.float64: dtypes.int64,
+}
+
 
 @tf_export.tf_export('experimental.numpy.dot', v1=[])
 @np_utils.np_doc_only('dot')
@@ -825,6 +834,11 @@ def signbit(x):
   def f(x):
     if x.dtype == dtypes.bool:
       return array_ops.fill(array_ops.shape(x), False)
+    if x.dtype in _SIGN_BITCAST_DTYPES:
+      # Check the IEEE-754 sign bit instead of comparing with zero, which
+      # cannot tell -0.0 from +0.0 or a negative NaN from a positive one.
+      bits = array_ops.bitcast(x, _SIGN_BITCAST_DTYPES[x.dtype])
+      return math_ops.less(bits, 0)
     return x < 0
 
   return _scalar(f, x)
