@@ -136,6 +136,7 @@ differently rather than fail.
 | `MaxPoolWithArgmax`, `MaxPoolGradWithArgmax`, `MaxPoolGradGradWithArgmax` | float32 |
 | `MaxPoolGradGrad`, `MaxPoolGradGradV2` | float32 |
 | `DepthwiseConv2dNative`, `DepthwiseConv2dNativeBackpropInput`, `DepthwiseConv2dNativeBackpropFilter` | float32, float16 |
+| `BatchNormWithGlobalNormalization`, `BatchNormWithGlobalNormalizationGrad` | float32 |
 | `Bincount`, `DenseBincount` | float32, int32 |
 | `CropAndResize`, `CropAndResizeGradImage`, `CropAndResizeGradBoxes` | float32 |
 | `ImageProjectiveTransformV2`, `ImageProjectiveTransformV3` | float32 |

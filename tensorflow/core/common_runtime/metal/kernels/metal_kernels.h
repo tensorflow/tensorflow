@@ -133,6 +133,9 @@ void RegisterMetalTransformKernels();
 // CropAndResize and its image and box gradients.
 void RegisterMetalCropResizeKernels();
 
+// BatchNormWithGlobalNormalization and its gradient.
+void RegisterMetalBatchNormGlobalKernels();
+
 // Bincount and DenseBincount.
 void RegisterMetalBincountKernels();
 
