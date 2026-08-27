@@ -51,6 +51,21 @@ objc_library(
 )
 
 objc_library(
+    name = "metal_stream",
+    srcs = ["metal_stream.mm"],
+    hdrs = ["metal_stream.h"],
+    copts = METAL_COPTS,
+    sdk_frameworks = ["Metal"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [
+        "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+objc_library(
     name = "metal_buffer_registry_test_lib",
     testonly = 1,
     srcs = ["metal_buffer_registry_test.mm"],
