@@ -422,6 +422,11 @@ void RegisterMetalConv3DKernels() {
              "MetalConv3DBackpropInputV2" + s, "input_sizes");
     Register("Conv3DBackpropFilterV2", &Conv3DFilterGrad_Compute, t,
              "MetalConv3DBackpropFilterV2" + s, "filter_sizes");
+    // The v1 spellings take the same inputs; only the op name differs.
+    Register("Conv3DBackpropInput", &Conv3DDataGrad_Compute, t,
+             "MetalConv3DBackpropInput" + s, "input_sizes");
+    Register("Conv3DBackpropFilter", &Conv3DFilterGrad_Compute, t,
+             "MetalConv3DBackpropFilter" + s, "filter_sizes");
   }
 }
 

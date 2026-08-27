@@ -933,6 +933,12 @@ void RegisterMetalMatrixKernels() {
              "MetalMatrixDiagPart" + s, {});
     Register("MatrixSetDiag", &MatrixSetDiag_Compute, t,
              "MetalMatrixSetDiag" + s, {});
+    // V2 and V3 add k and an alignment attribute; only the main diagonal is
+    // accepted, and the extra inputs stay on the host.
+    Register("MatrixSetDiagV2", &MatrixSetDiag_Compute, t,
+             "MetalMatrixSetDiagV2" + s, {"k"});
+    Register("MatrixSetDiagV3", &MatrixSetDiag_Compute, t,
+             "MetalMatrixSetDiagV3" + s, {"k"});
     // The V2 and V3 forms take k and a padding value in host memory; only the
     // main diagonal is accepted, and a non-zero k is refused at run time.
     Register("MatrixDiagV2", &MatrixDiag_Compute, t, "MetalMatrixDiagV2" + s,

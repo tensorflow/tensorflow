@@ -130,6 +130,7 @@ differently rather than fail.
 | --- | --- |
 | `Conv2D`, `Conv2DBackpropInput`, `Conv2DBackpropFilter` | float32, float16 |
 | `Conv3D`, `Conv3DBackpropInputV2`, `Conv3DBackpropFilterV2` | float32, float16 |
+| `Conv3DBackpropInput`, `Conv3DBackpropFilter` | float32, float16 |
 | `MaxPool`, `MaxPoolGrad`, `AvgPool`, `AvgPoolGrad` | float32, float16 |
 | `MaxPoolV2`, `MaxPoolGradV2` | float32, float16 |
 | `DepthwiseConv2dNative`, `DepthwiseConv2dNativeBackpropInput`, `DepthwiseConv2dNativeBackpropFilter` | float32, float16 |
@@ -162,11 +163,13 @@ differently rather than fail.
 | `FakeQuantWithMinMaxArgs`, `FakeQuantWithMinMaxArgsGradient` | float32 |
 | `MatrixBandPart`, `MatrixDiag`, `MatrixDiagPart`, `MatrixSetDiag` | float32, float16 |
 | `MatrixDiagV2`, `MatrixDiagV3`, `MatrixDiagPartV2`, `MatrixDiagPartV3` | float32, float16; main diagonal only |
+| `MatrixSetDiagV2`, `MatrixSetDiagV3` | float32, float16; main diagonal only |
 | `BatchMatrixBandPart`, `BatchMatrixDiag`, `BatchMatrixDiagPart`, `BatchMatrixSetDiag` | float32, float16 |
 | `BiasAddV1`, `ConjugateTranspose`, `Bucketize` | float32, float16 |
 | `Conj`, `Cross` | float32, float16 |
 | `SpaceToDepth`, `DepthToSpace`, `L2Loss` | float32, float16 |
 | `SpaceToBatchND`, `BatchToSpaceND` | float32, float16 |
+| `SpaceToBatch`, `BatchToSpace` | float32, float16 |
 | `ReverseSequence` | float32, float16 |
 | `Diag`, `DiagPart`, `LinSpace` | float32, float16 |
 | `ResizeBilinear`, `ResizeNearestNeighbor` | float32, float16 |

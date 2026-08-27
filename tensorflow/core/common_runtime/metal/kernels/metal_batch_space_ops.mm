@@ -80,6 +80,7 @@ struct BatchSpaceOp {
   TF_DataType dtype = TF_FLOAT;
   int64_t seq_dim = 0;
   int64_t batch_dim = 0;
+  int64_t block_size = 2;
 };
 
 void* BatchSpaceOp_Create(TF_OpKernelConstruction* ctx) {
@@ -100,6 +101,10 @@ void* BatchSpaceOp_Create(TF_OpKernelConstruction* ctx) {
   TF_OpKernelConstruction_GetAttrInt64(ctx, "batch_dim", &v, status);
   if (TF_GetCode(status) != TF_OK) TF_SetStatus(status, TF_OK, "");
   op->batch_dim = v;
+  int32_t block = 2;
+  TF_OpKernelConstruction_GetAttrInt32(ctx, "block_size", &block, status);
+  if (TF_GetCode(status) != TF_OK) TF_SetStatus(status, TF_OK, "");
+  op->block_size = block;
   TF_DeleteStatus(status);
   return op;
 }
@@ -365,6 +370,165 @@ void BatchToSpaceND_ComputeImpl(BatchSpaceOp* op, TF_OpKernelContext* ctx,
   RunGraph(stream, *cached, @[ in_data ], @[ o_data ], status);
 }
 
+/*** FIXED-BLOCK SPACE TO BATCH AND BACK ***/
+
+// SpaceToBatch and BatchToSpace are the pre-ND spellings: the block size is a
+// scalar attribute and the layout is fixed at NHWC, so they reduce to the ND
+// forms with a two-element block shape. The pad or crop tensor keeps the same
+// [2, 2] layout, so it is read the same way.
+template <bool kToBatch>
+void FixedBlock_ComputeImpl(BatchSpaceOp* op, TF_OpKernelContext* ctx,
+                            TF_Status* status) {
+  ScopedTensor input, edge_t;
+  TF_GetInput(ctx, 0, input.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+  TF_GetInput(ctx, 1, edge_t.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  if (op->block_size < 2) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: block_size must be at least 2.");
+    return;
+  }
+  const std::vector<int64_t> in_shape = ShapeOf(input.get());
+  if (in_shape.size() != 4) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: SpaceToBatch expects a rank-4 NHWC input.");
+    return;
+  }
+  std::vector<int64_t> edges;
+  if (!ReadHostVector(edge_t.get(), &edges, status)) return;
+  if (edges.size() != 4) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: the paddings or crops tensor must be [2, 2].");
+    return;
+  }
+
+  const int64_t b = op->block_size;
+  std::vector<int64_t> out_shape(4);
+  if (kToBatch) {
+    const int64_t ph = in_shape[1] + edges[0] + edges[1];
+    const int64_t pw = in_shape[2] + edges[2] + edges[3];
+    if (ph % b != 0 || pw % b != 0) {
+      TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                   "Metal: block_size must divide the padded extents.");
+      return;
+    }
+    out_shape = {in_shape[0] * b * b, ph / b, pw / b, in_shape[3]};
+  } else {
+    if (in_shape[0] % (b * b) != 0) {
+      TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                   "Metal: batch must divide by block_size squared.");
+      return;
+    }
+    const int64_t h = in_shape[1] * b - edges[0] - edges[1];
+    const int64_t w = in_shape[2] * b - edges[2] - edges[3];
+    if (h < 0 || w < 0) {
+      TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                   "Metal: crops exceed the extent.");
+      return;
+    }
+    out_shape = {in_shape[0] / (b * b), h, w, in_shape[3]};
+  }
+
+  const int64_t count = ElementCount(out_shape);
+  ScopedTensor output;
+  output.reset(TF_AllocateOutput(
+      ctx, 0, op->dtype, out_shape.data(), 4,
+      static_cast<size_t>(count) * TF_DataTypeSize(op->dtype), status));
+  if (TF_GetCode(status) != TF_OK) return;
+  if (count == 0) return;
+
+  SP_Stream stream = StreamForContext(ctx, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  id<MTLDevice> device = DeviceForStream(stream);
+  MPSDataType mps_dtype;
+  if (!MPSTypeFor(op->dtype, &mps_dtype, status)) return;
+
+  std::string key = kToBatch ? "SpaceToBatch" : "BatchToSpace";
+  AppendShapeToKey(in_shape, &key);
+  AppendShapeToKey(edges, &key);
+  key.append("/b").append(std::to_string(b));
+  key.append("/t").append(std::to_string(static_cast<int>(op->dtype)));
+
+  const CachedGraph* cached = LookupOrBuildGraph(
+      key,
+      ^(CachedGraph* out) {
+        MPSGraph* g = out->graph;
+        MPSGraphTensor* x = [g placeholderWithShape:MPSShape(in_shape)
+                                           dataType:mps_dtype
+                                               name:nil];
+        MPSGraphTensor* r;
+        if (kToBatch) {
+          std::vector<int64_t> left = {0, edges[0], edges[2], 0};
+          std::vector<int64_t> right = {0, edges[1], edges[3], 0};
+          MPSGraphTensor* p = [g padTensor:x
+                           withPaddingMode:MPSGraphPaddingModeConstant
+                               leftPadding:ToNS(left)
+                              rightPadding:ToNS(right)
+                             constantValue:0.0
+                                      name:nil];
+          const int64_t ph = in_shape[1] + edges[0] + edges[1];
+          const int64_t pw = in_shape[2] + edges[2] + edges[3];
+          std::vector<int64_t> split = {in_shape[0], ph / b, b,
+                                        pw / b,      b,     in_shape[3]};
+          MPSGraphTensor* rs = [g reshapeTensor:p
+                                      withShape:MPSShape(split)
+                                           name:nil];
+          // Block axes to the front, then batch, then the outer extents.
+          MPSGraphTensor* tr = [g transposeTensor:rs
+                                      permutation:@[ @2, @4, @0, @1, @3, @5 ]
+                                             name:nil];
+          r = [g reshapeTensor:tr withShape:MPSShape(out_shape) name:nil];
+        } else {
+          std::vector<int64_t> split = {b,
+                                        b,
+                                        in_shape[0] / (b * b),
+                                        in_shape[1],
+                                        in_shape[2],
+                                        in_shape[3]};
+          MPSGraphTensor* rs = [g reshapeTensor:x
+                                      withShape:MPSShape(split)
+                                           name:nil];
+          MPSGraphTensor* tr = [g transposeTensor:rs
+                                      permutation:@[ @2, @3, @0, @4, @1, @5 ]
+                                             name:nil];
+          std::vector<int64_t> merged = {in_shape[0] / (b * b), in_shape[1] * b,
+                                         in_shape[2] * b, in_shape[3]};
+          MPSGraphTensor* m = [g reshapeTensor:tr
+                                     withShape:MPSShape(merged)
+                                          name:nil];
+          if (edges[0] != 0 || edges[1] != 0) {
+            m = [g sliceTensor:m
+                     dimension:1
+                         start:static_cast<NSInteger>(edges[0])
+                        length:static_cast<NSInteger>(out_shape[1])
+                          name:nil];
+          }
+          if (edges[2] != 0 || edges[3] != 0) {
+            m = [g sliceTensor:m
+                     dimension:2
+                         start:static_cast<NSInteger>(edges[2])
+                        length:static_cast<NSInteger>(out_shape[2])
+                          name:nil];
+          }
+          r = m;
+        }
+        [out->inputs addObject:x];
+        [out->outputs addObject:r];
+      },
+      status);
+  if (cached == nullptr) return;
+
+  MPSGraphTensorData* in_data =
+      TensorDataForTensor(input.get(), op->dtype, device, status);
+  if (in_data == nil) return;
+  MPSGraphTensorData* o_data =
+      TensorDataForTensor(output.get(), op->dtype, device, status);
+  if (o_data == nil) return;
+  RunGraph(stream, *cached, @[ in_data ], @[ o_data ], status);
+}
+
 /*** REVERSE SEQUENCE ***/
 
 // ReverseSequence reverses the first seq_lengths[i] entries of row i along
@@ -508,6 +672,8 @@ void ReverseSequence_ComputeImpl(BatchSpaceOp* op, TF_OpKernelContext* ctx,
 METAL_COMPUTE(SpaceToBatchND_Compute, SpaceToBatchND_ComputeImpl)
 METAL_COMPUTE(BatchToSpaceND_Compute, BatchToSpaceND_ComputeImpl)
 METAL_COMPUTE(ReverseSequence_Compute, ReverseSequence_ComputeImpl)
+METAL_COMPUTE(SpaceToBatch_Compute, FixedBlock_ComputeImpl<true>)
+METAL_COMPUTE(BatchToSpace_Compute, FixedBlock_ComputeImpl<false>)
 
 #undef METAL_COMPUTE
 
@@ -550,6 +716,10 @@ void RegisterMetalBatchSpaceKernels() {
     // which are attributes, are needed on the host.
     Register("ReverseSequence", &ReverseSequence_Compute, t,
              "MetalReverseSequence" + s, {});
+    Register("SpaceToBatch", &SpaceToBatch_Compute, t, "MetalSpaceToBatch" + s,
+             {"paddings"});
+    Register("BatchToSpace", &BatchToSpace_Compute, t, "MetalBatchToSpace" + s,
+             {"crops"});
   }
 }
 
