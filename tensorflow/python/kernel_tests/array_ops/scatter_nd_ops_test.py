@@ -231,6 +231,21 @@ class StatefulScatterNdTest(test.TestCase):
       result = self.evaluate(scatter)
       self.assertAllClose(result, expected)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testRank3Int32IndicesUint8(self):
+    # CPU IXDIM=3 + int32 indices (issue 126136 op path) on a small tensor.
+    ref = resource_variable_ops.ResourceVariable(
+        array_ops.zeros([2, 3, 4], dtypes.uint8), dtype=dtypes.uint8)
+    indices = constant_op.constant([[1, 0, 2]], dtype=dtypes.int32)
+    updates = constant_op.constant([0xA5], dtype=dtypes.uint8)
+    scatter = state_ops.scatter_nd_update(ref, indices, updates)
+    expected = np.zeros([2, 3, 4], dtype=np.uint8)
+    expected[1, 0, 2] = 0xA5
+    with test_util.device(use_gpu=False):
+      self.evaluate(ref.initializer)
+      self.evaluate(scatter)
+      self.assertAllEqual(self.evaluate(ref), expected)
+
   def testVariableRankUpdate(self):
     self._VariableRankTests(_NumpyUpdate, state_ops.scatter_nd_update)
 

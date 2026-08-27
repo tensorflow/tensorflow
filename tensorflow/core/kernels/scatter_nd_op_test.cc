@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/kernels/scatter_nd_index.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -336,6 +338,41 @@ TEST_F(ScatterNdUpdateOpTest, Simple_OneD) {
   test::ExpectTensorEqual<float>(expected, params_tensor);
 }
 
+TEST_F(ScatterNdUpdateOpTest, ThreeD_Int32Indices) {
+  MakeOp(DT_FLOAT_REF, DT_INT32);
+
+  // IXDIM=3 / int32 path used by GitHub issue 126136, on a small shape so
+  // prefix strides still fit in int32. The overflow case is covered by
+  // ScatterNdIndexTest below without allocating an 8GiB tensor.
+  AddInputFromArray<float>(TensorShape({2, 3, 4}),
+                           {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
+  AddInputFromArray<int32_t>(TensorShape({1, 3}), {1, 0, 2});
+  AddInputFromArray<float>(TensorShape({1}), {9});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor params_tensor = *mutable_input(0).tensor;
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 3, 4}));
+  test::FillValues<float>(&expected, {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                                      0, 0, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0});
+  test::ExpectTensorEqual<float>(expected, params_tensor);
+}
+
+TEST_F(ScatterNdUpdateOpTest, ThreeD_Int32IndexOutOfRange) {
+  MakeOp(DT_FLOAT_REF, DT_INT32);
+
+  AddInputFromArray<float>(TensorShape({2, 3, 4}),
+                           {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
+  AddInputFromArray<int32_t>(TensorShape({1, 3}), {1, 0, 4});
+  AddInputFromArray<float>(TensorShape({1}), {9});
+  absl::Status s = RunOpKernel();
+  EXPECT_TRUE(absl::StrContains(
+      s.ToString(),
+      "indices[0] = [1, 0, 4] does not index into shape [2,3,4]"))
+      << s;
+}
+
 TEST_F(ScatterNdUpdateOpTest, HigherRank) {
   MakeOp(DT_FLOAT_REF, DT_INT32);
 
@@ -615,6 +652,101 @@ TEST_F(ScatterNdOpConstructionTest, Error_BadIndicesPolicyInvalid) {
                    .Attr("bad_indices_policy", "AN_UNRECOGNIZED_POLICY")
                    .Finalize(node_def()));
   EXPECT_NE(InitOp(), absl::OkStatus());
+}
+
+TEST(ScatterNdIndexTest, Int32PrefixStrideDoesNotWrap) {
+  // Repro from GitHub issue 126136: shape [2, 65536, 65535], int32 indices
+  // [[1, 0, 61440]]. Storing the prefix stride in int32 wraps 65535*65536
+  // and chips 4096 bytes before the buffer. int64 strides keep the in-range
+  // flat index.
+  Eigen::array<Eigen::DenseIndex, 3> prefix = {2, 65536, 65535};
+  Eigen::array<int64_t, 3> strides;
+  ASSERT_TRUE(scatter_nd_op::ComputeScatterNdBatchStrides<3>(prefix, &strides));
+  EXPECT_EQ(strides[2], 1);
+  EXPECT_EQ(strides[1], 65535);
+  EXPECT_EQ(strides[0], 4294901760LL);
+  // 65535*65536 modulo 2^32 is -65536; that plus 61440 is the ASan -4096.
+  EXPECT_EQ(strides[0] - (1LL << 32), -65536);
+
+  Eigen::array<int32_t, 3> coords = {1, 0, 61440};
+  const int64_t num_slices = 2LL * 65536LL * 65535LL;
+  int64_t flat = -1;
+  ASSERT_TRUE(scatter_nd_op::ComputeScatterNdFlatIndex<int32_t, 3>(
+      prefix, strides, coords, num_slices, &flat));
+  EXPECT_EQ(flat, 4294963200LL);
+  EXPECT_EQ(flat - (1LL << 32), -4096);
+}
+
+TEST(ScatterNdIndexTest, Int64IndicesSameFlatIndex) {
+  Eigen::array<Eigen::DenseIndex, 3> prefix = {2, 65536, 65535};
+  Eigen::array<int64_t, 3> strides;
+  ASSERT_TRUE(scatter_nd_op::ComputeScatterNdBatchStrides<3>(prefix, &strides));
+  Eigen::array<int64_t, 3> coords = {1, 0, 61440};
+  int64_t flat = -1;
+  ASSERT_TRUE(scatter_nd_op::ComputeScatterNdFlatIndex<int64_t, 3>(
+      prefix, strides, coords, /*num_slices=*/2LL * 65536LL * 65535LL, &flat));
+  EXPECT_EQ(flat, 4294963200LL);
+}
+
+TEST(ScatterNdIndexTest, TwoDimStrideExceedsInt32) {
+  Eigen::array<Eigen::DenseIndex, 2> prefix = {2, 3000000000LL};
+  Eigen::array<int64_t, 2> strides;
+  ASSERT_TRUE(scatter_nd_op::ComputeScatterNdBatchStrides<2>(prefix, &strides));
+  EXPECT_EQ(strides[1], 1);
+  EXPECT_EQ(strides[0], 3000000000LL);
+  Eigen::array<int32_t, 2> coords = {1, 0};
+  int64_t flat = -1;
+  ASSERT_TRUE(scatter_nd_op::ComputeScatterNdFlatIndex<int32_t, 2>(
+      prefix, strides, coords, /*num_slices=*/6000000000LL, &flat));
+  EXPECT_EQ(flat, 3000000000LL);
+}
+
+TEST(ScatterNdIndexTest, SmallThreeDMatchesChipLayout) {
+  Eigen::array<Eigen::DenseIndex, 3> prefix = {2, 3, 4};
+  Eigen::array<int64_t, 3> strides;
+  ASSERT_TRUE(scatter_nd_op::ComputeScatterNdBatchStrides<3>(prefix, &strides));
+  Eigen::array<int32_t, 3> coords = {1, 0, 2};
+  int64_t flat = -1;
+  ASSERT_TRUE(scatter_nd_op::ComputeScatterNdFlatIndex<int32_t, 3>(
+      prefix, strides, coords, /*num_slices=*/24, &flat));
+  EXPECT_EQ(flat, 14);
+}
+
+TEST(ScatterNdIndexTest, OutOfRangeCoordinateRejected) {
+  Eigen::array<Eigen::DenseIndex, 3> prefix = {2, 3, 4};
+  Eigen::array<int64_t, 3> strides;
+  ASSERT_TRUE(scatter_nd_op::ComputeScatterNdBatchStrides<3>(prefix, &strides));
+  Eigen::array<int32_t, 3> coords = {1, 0, 4};
+  int64_t flat = -1;
+  EXPECT_FALSE(scatter_nd_op::ComputeScatterNdFlatIndex<int32_t, 3>(
+      prefix, strides, coords, /*num_slices=*/24, &flat));
+}
+
+TEST(ScatterNdIndexTest, NegativeCoordinateRejected) {
+  Eigen::array<Eigen::DenseIndex, 3> prefix = {2, 3, 4};
+  Eigen::array<int64_t, 3> strides;
+  ASSERT_TRUE(scatter_nd_op::ComputeScatterNdBatchStrides<3>(prefix, &strides));
+  Eigen::array<int32_t, 3> coords = {-1, 0, 0};
+  int64_t flat = -1;
+  EXPECT_FALSE(scatter_nd_op::ComputeScatterNdFlatIndex<int32_t, 3>(
+      prefix, strides, coords, /*num_slices=*/24, &flat));
+}
+
+TEST(ScatterNdIndexTest, FlatIndexPastNumSlicesRejected) {
+  Eigen::array<Eigen::DenseIndex, 3> prefix = {2, 3, 4};
+  Eigen::array<int64_t, 3> strides;
+  ASSERT_TRUE(scatter_nd_op::ComputeScatterNdBatchStrides<3>(prefix, &strides));
+  Eigen::array<int32_t, 3> coords = {1, 0, 2};  // flat index 14
+  int64_t flat = -1;
+  EXPECT_FALSE(scatter_nd_op::ComputeScatterNdFlatIndex<int32_t, 3>(
+      prefix, strides, coords, /*num_slices=*/10, &flat));
+}
+
+TEST(ScatterNdIndexTest, StrideProductOverflowRejected) {
+  Eigen::array<Eigen::DenseIndex, 3> prefix = {2, 1LL << 40, 1LL << 40};
+  Eigen::array<int64_t, 3> strides;
+  EXPECT_FALSE(
+      scatter_nd_op::ComputeScatterNdBatchStrides<3>(prefix, &strides));
 }
 
 class ScatterNdUpdateBM : public ScatterNdUpdateOpTest {
