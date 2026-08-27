@@ -1112,6 +1112,7 @@ cc_library(
     hdrs = ["fusion_wrapper.h"],
     deps = [
         ":ir_emission_utils",
+        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/backends/cpu/codegen/elemental:concatenate_kernel_emitter",
