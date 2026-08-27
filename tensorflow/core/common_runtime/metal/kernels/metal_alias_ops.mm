@@ -345,6 +345,103 @@ void Bucketize_ComputeImpl(AliasOp* op, TF_OpKernelContext* ctx,
   RunGraph(stream, *cached, @[ in_data ], @[ o_data ], status);
 }
 
+/*** CONJ, POPULATION COUNT, CROSS ***/
+
+// Conj is the identity on real data, for the same reason ConjugateTranspose
+// is a plain transpose: this backend has no complex dtype.
+void Conj_ComputeImpl(AliasOp* op, TF_OpKernelContext* ctx,
+                      TF_Status* status) {
+  ScopedTensor input;
+  TF_GetInput(ctx, 0, input.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+  TF_SetOutput(ctx, 0, input.get(), status);
+}
+
+// Cross product over the last axis, which must have length 3.
+void Cross_ComputeImpl(AliasOp* op, TF_OpKernelContext* ctx,
+                       TF_Status* status) {
+  ScopedTensor a, b;
+  TF_GetInput(ctx, 0, a.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+  TF_GetInput(ctx, 1, b.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  const std::vector<int64_t> shape = ShapeOf(a.get());
+  if (shape.empty() || shape.back() != 3) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: Cross needs a trailing axis of size 3.");
+    return;
+  }
+  const int64_t count = ElementCount(shape);
+  ScopedTensor output;
+  output.reset(TF_AllocateOutput(
+      ctx, 0, op->dtype, shape.data(), static_cast<int>(shape.size()),
+      static_cast<size_t>(count) * TF_DataTypeSize(op->dtype), status));
+  if (TF_GetCode(status) != TF_OK) return;
+  if (count == 0) return;
+
+  SP_Stream stream = StreamForContext(ctx, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  id<MTLDevice> device = DeviceForStream(stream);
+  MPSDataType mps_dtype;
+  if (!MPSTypeFor(op->dtype, &mps_dtype, status)) return;
+
+  std::string key = "Cross";
+  AppendShapeToKey(shape, &key);
+  key.append("/t").append(std::to_string(static_cast<int>(op->dtype)));
+  const NSUInteger axis = static_cast<NSUInteger>(shape.size()) - 1;
+
+  const CachedGraph* cached = LookupOrBuildGraph(
+      key,
+      ^(CachedGraph* out) {
+        MPSGraph* g = out->graph;
+        MPSGraphTensor* x = [g placeholderWithShape:MPSShape(shape)
+                                           dataType:mps_dtype
+                                               name:nil];
+        MPSGraphTensor* y = [g placeholderWithShape:MPSShape(shape)
+                                           dataType:mps_dtype
+                                               name:nil];
+        MPSGraphTensor* comp[3][2];
+        for (int i = 0; i < 3; ++i) {
+          comp[i][0] = [g sliceTensor:x dimension:axis start:i length:1 name:nil];
+          comp[i][1] = [g sliceTensor:y dimension:axis start:i length:1 name:nil];
+        }
+        MPSGraphTensor* parts[3];
+        for (int i = 0; i < 3; ++i) {
+          const int j = (i + 1) % 3, k = (i + 2) % 3;
+          parts[i] = [g
+              subtractionWithPrimaryTensor:
+                  [g multiplicationWithPrimaryTensor:comp[j][0]
+                                     secondaryTensor:comp[k][1]
+                                                name:nil]
+                           secondaryTensor:
+                               [g multiplicationWithPrimaryTensor:comp[k][0]
+                                                  secondaryTensor:comp[j][1]
+                                                             name:nil]
+                                      name:nil];
+        }
+        [out->inputs addObject:x];
+        [out->inputs addObject:y];
+        [out->outputs addObject:[g concatTensors:@[ parts[0], parts[1],
+                                                    parts[2] ]
+                                       dimension:static_cast<NSInteger>(axis)
+                                            name:nil]];
+      },
+      status);
+  if (cached == nullptr) return;
+
+  MPSGraphTensorData* a_data =
+      TensorDataForTensor(a.get(), op->dtype, device, status);
+  if (a_data == nil) return;
+  MPSGraphTensorData* b_data =
+      TensorDataForTensor(b.get(), op->dtype, device, status);
+  if (b_data == nil) return;
+  MPSGraphTensorData* o_data =
+      TensorDataForTensor(output.get(), op->dtype, device, status);
+  if (o_data == nil) return;
+  RunGraph(stream, *cached, @[ a_data, b_data ], @[ o_data ], status);
+}
+
 /*** WRAPPERS AND REGISTRATION ***/
 
 #define METAL_COMPUTE(NAME, IMPL)                                             \
@@ -364,6 +461,8 @@ void Bucketize_ComputeImpl(AliasOp* op, TF_OpKernelContext* ctx,
 METAL_COMPUTE(BiasAddV1_Compute, BiasAddV1_ComputeImpl)
 METAL_COMPUTE(ConjugateTranspose_Compute, ConjugateTranspose_ComputeImpl)
 METAL_COMPUTE(Bucketize_Compute, Bucketize_ComputeImpl)
+METAL_COMPUTE(Conj_Compute, Conj_ComputeImpl)
+METAL_COMPUTE(Cross_Compute, Cross_ComputeImpl)
 
 #undef METAL_COMPUTE
 
@@ -400,6 +499,8 @@ void RegisterMetalAliasKernels() {
     const std::string s = kSuffixes[i];
     Register("BiasAddV1", &BiasAddV1_Compute, t, "MetalBiasAddV1" + s, {});
     Register("Bucketize", &Bucketize_Compute, t, "MetalBucketize" + s, {});
+    Register("Conj", &Conj_Compute, t, "MetalConj" + s, {});
+    Register("Cross", &Cross_Compute, t, "MetalCross" + s, {});
     for (int j = 0; j < 2; ++j) {
       Register("ConjugateTranspose", &ConjugateTranspose_Compute, t,
                "MetalConjugateTranspose" + s + kIndexSuffixes[j], {"perm"});

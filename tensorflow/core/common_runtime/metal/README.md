@@ -164,8 +164,10 @@ differently rather than fail.
 | `MatrixDiagV2`, `MatrixDiagV3`, `MatrixDiagPartV2`, `MatrixDiagPartV3` | float32, float16; main diagonal only |
 | `BatchMatrixBandPart`, `BatchMatrixDiag`, `BatchMatrixDiagPart`, `BatchMatrixSetDiag` | float32, float16 |
 | `BiasAddV1`, `ConjugateTranspose`, `Bucketize` | float32, float16 |
+| `Conj`, `Cross` | float32, float16 |
 | `SpaceToDepth`, `DepthToSpace`, `L2Loss` | float32, float16 |
 | `SpaceToBatchND`, `BatchToSpaceND` | float32, float16 |
+| `ReverseSequence` | float32, float16 |
 | `Diag`, `DiagPart`, `LinSpace` | float32, float16 |
 | `ResizeBilinear`, `ResizeNearestNeighbor` | float32, float16 |
 | `RGBToHSV`, `HSVToRGB`, `AdjustContrastv2` | float32 |

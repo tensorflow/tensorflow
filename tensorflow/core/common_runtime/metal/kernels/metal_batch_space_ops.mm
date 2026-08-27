@@ -365,6 +365,130 @@ void BatchToSpaceND_ComputeImpl(BatchSpaceOp* op, TF_OpKernelContext* ctx,
   RunGraph(stream, *cached, @[ in_data ], @[ o_data ], status);
 }
 
+/*** REVERSE SEQUENCE ***/
+
+// ReverseSequence reverses the first seq_lengths[i] entries of row i along
+// seq_dim, leaving the tail in place. Rows have different lengths, so this
+// cannot be one reverse: it is a full reverse combined with the original
+// under a per-position mask derived from the coordinate along seq_dim.
+void ReverseSequence_ComputeImpl(BatchSpaceOp* op, TF_OpKernelContext* ctx,
+                                 TF_Status* status) {
+  ScopedTensor input, lengths;
+  TF_GetInput(ctx, 0, input.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+  TF_GetInput(ctx, 1, lengths.address(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  const std::vector<int64_t> shape = ShapeOf(input.get());
+  const int rank = static_cast<int>(shape.size());
+  int64_t seq_dim = op->seq_dim;
+  int64_t batch_dim = op->batch_dim;
+  if (seq_dim < 0) seq_dim += rank;
+  if (batch_dim < 0) batch_dim += rank;
+  if (seq_dim < 0 || seq_dim >= rank || batch_dim < 0 || batch_dim >= rank ||
+      seq_dim == batch_dim) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: ReverseSequence seq_dim and batch_dim are invalid.");
+    return;
+  }
+
+  const int64_t count = ElementCount(shape);
+  ScopedTensor output;
+  output.reset(TF_AllocateOutput(
+      ctx, 0, op->dtype, shape.data(), rank,
+      static_cast<size_t>(count) * TF_DataTypeSize(op->dtype), status));
+  if (TF_GetCode(status) != TF_OK) return;
+  if (count == 0) return;
+
+  SP_Stream stream = StreamForContext(ctx, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  id<MTLDevice> device = DeviceForStream(stream);
+  MPSDataType mps_dtype;
+  if (!MPSTypeFor(op->dtype, &mps_dtype, status)) return;
+  MPSDataType len_dtype;
+  if (!MPSTypeFor(TF_TensorType(lengths.get()), &len_dtype, status)) return;
+
+  // The lengths vector is per batch entry; it broadcasts against the data once
+  // reshaped to sit on batch_dim.
+  std::vector<int64_t> len_shape(rank, 1);
+  len_shape[batch_dim] = shape[batch_dim];
+
+  std::string key = "ReverseSequence";
+  AppendShapeToKey(shape, &key);
+  key.append("/s").append(std::to_string(seq_dim));
+  key.append("/b").append(std::to_string(batch_dim));
+  key.append("/t").append(std::to_string(static_cast<int>(op->dtype)));
+  const NSInteger sd = static_cast<NSInteger>(seq_dim);
+  const int64_t seq_len = shape[seq_dim];
+
+  const CachedGraph* cached = LookupOrBuildGraph(
+      key,
+      ^(CachedGraph* out) {
+        MPSGraph* g = out->graph;
+        MPSGraphTensor* x = [g placeholderWithShape:MPSShape(shape)
+                                           dataType:mps_dtype
+                                               name:nil];
+        MPSGraphTensor* len = [g placeholderWithShape:MPSShape(len_shape)
+                                             dataType:len_dtype
+                                                 name:nil];
+        MPSGraphTensor* len_i = [g castTensor:len
+                                       toType:MPSDataTypeInt32
+                                         name:nil];
+        MPSGraphTensor* pos = [g coordinateAlongAxis:sd
+                                           withShape:MPSShape(shape)
+                                                name:nil];
+        MPSGraphTensor* pos_i = [g castTensor:pos
+                                       toType:MPSDataTypeInt32
+                                         name:nil];
+        // Reversing the whole axis puts entry p at seq_len-1-p; the entry that
+        // belongs at p within a row of length L is L-1-p, so the fully
+        // reversed tensor has to be rolled by seq_len-L. Building that with a
+        // gather would need per-row indices, which MPSGraph cannot express
+        // here, so the two extremes are combined instead: positions inside the
+        // sequence take the reversed value shifted by the row's own offset,
+        // which is exactly a gather along seq_dim.
+        MPSGraphTensor* limit =
+            [g lessThanWithPrimaryTensor:pos_i secondaryTensor:len_i name:nil];
+        MPSGraphTensor* one =
+            [g constantWithScalar:1.0 dataType:MPSDataTypeInt32];
+        MPSGraphTensor* source_index =
+            [g subtractionWithPrimaryTensor:
+                   [g subtractionWithPrimaryTensor:len_i
+                                   secondaryTensor:one
+                                              name:nil]
+                            secondaryTensor:pos_i
+                                       name:nil];
+        // Outside the sequence the position maps to itself.
+        MPSGraphTensor* index =
+            [g selectWithPredicateTensor:limit
+                     truePredicateTensor:source_index
+                    falsePredicateTensor:pos_i
+                                    name:nil];
+        [out->inputs addObject:x];
+        [out->inputs addObject:len];
+        [out->outputs addObject:[g gatherAlongAxis:sd
+                                 withUpdatesTensor:x
+                                     indicesTensor:index
+                                              name:nil]];
+      },
+      status);
+  if (cached == nullptr) return;
+
+  BufferSlice len_slice;
+  if (!SliceForTensor(lengths.get(), &len_slice, status)) return;
+  MPSGraphTensorData* x_data =
+      TensorDataForTensor(input.get(), op->dtype, device, status);
+  if (x_data == nil) return;
+  MPSGraphTensorData* l_data =
+      TensorDataFor(len_slice, len_shape, TF_TensorType(lengths.get()), device,
+                    status);
+  if (l_data == nil) return;
+  MPSGraphTensorData* o_data =
+      TensorDataForTensor(output.get(), op->dtype, device, status);
+  if (o_data == nil) return;
+  RunGraph(stream, *cached, @[ x_data, l_data ], @[ o_data ], status);
+}
+
 /*** WRAPPERS AND REGISTRATION ***/
 
 #define METAL_COMPUTE(NAME, IMPL)                                             \
@@ -383,6 +507,7 @@ void BatchToSpaceND_ComputeImpl(BatchSpaceOp* op, TF_OpKernelContext* ctx,
 
 METAL_COMPUTE(SpaceToBatchND_Compute, SpaceToBatchND_ComputeImpl)
 METAL_COMPUTE(BatchToSpaceND_Compute, BatchToSpaceND_ComputeImpl)
+METAL_COMPUTE(ReverseSequence_Compute, ReverseSequence_ComputeImpl)
 
 #undef METAL_COMPUTE
 
@@ -421,6 +546,10 @@ void RegisterMetalBatchSpaceKernels() {
              "MetalSpaceToBatchND" + s, {"block_shape", "paddings"});
     Register("BatchToSpaceND", &BatchToSpaceND_Compute, t,
              "MetalBatchToSpaceND" + s, {"block_shape", "crops"});
+    // The sequence lengths stay on the device; only seq_dim and batch_dim,
+    // which are attributes, are needed on the host.
+    Register("ReverseSequence", &ReverseSequence_Compute, t,
+             "MetalReverseSequence" + s, {});
   }
 }
 
