@@ -153,12 +153,18 @@ differently rather than fail.
 | `Slice`, `Pad`, `PadV2`, `MirrorPad` | float32, float16 |
 | `GatherV2`, `OneHot`, `TopKV2` | float32, float16 |
 | `Cumsum`, `Cumprod`, `ClipByValue` | float32, float16 |
+| `MatrixBandPart`, `MatrixDiag`, `MatrixDiagPart`, `MatrixSetDiag` | float32, float16 |
+| `MatrixDiagV2`, `MatrixDiagV3`, `MatrixDiagPartV2`, `MatrixDiagPartV3` | float32, float16; main diagonal only |
+| `SpaceToDepth`, `DepthToSpace`, `L2Loss` | float32, float16 |
+| `Diag`, `DiagPart`, `LinSpace` | float32, float16 |
 | `ReverseV2`, `Split`, `SplitV` | float32, float16 |
 | `Equal`, `NotEqual`, `Less`, `LessEqual`, `Greater`, `GreaterEqual` | float32, float16, int32, int64 |
+| `ApproximateEqual` | float32, float16 |
 | `LogicalAnd`, `LogicalOr`, `LogicalNot` | bool |
 | `Select`, `SelectV2` | float32, float16, int32, int64 |
 | `ArgMax`, `ArgMin` | float32, float16; int32 or int64 output |
 | `Sum`, `Mean`, `Max`, `Min`, `Prod` | float32, float16 |
+| `EuclideanNorm` | float32, float16 |
 | `Any`, `All` | bool |
 | `Fill`, `ZerosLike`, `OnesLike` | float32, float16 |
 | `RandomUniform`, `RandomStandardNormal`, `TruncatedNormal` | float32 |

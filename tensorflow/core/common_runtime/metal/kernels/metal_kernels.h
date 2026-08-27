@@ -77,6 +77,10 @@ void RegisterMetalSliceKernels();
 // GatherV2, OneHot, TopKV2, the cumulative scans and ClipByValue.
 void RegisterMetalIndexKernels();
 
+// MatrixBandPart, the diagonal family, L2Loss and the space/depth
+// rearrangements.
+void RegisterMetalMatrixKernels();
+
 // Identity, which aliases its input when it can and blits when it cannot.
 void RegisterMetalIdentityKernels();
 

@@ -102,6 +102,7 @@ objc_library(
         "metal_identity_op.mm",
         "metal_index_ops.mm",
         "metal_kernels.mm",
+        "metal_matrix_ops.mm",
         "metal_matmul_op.mm",
         "metal_nn_ops.mm",
         "metal_pooling_ops.mm",

@@ -71,7 +71,8 @@ bool BroadcastShape(const std::vector<int64_t>& lhs,
 /*** COMPARISONS ***/
 
 enum class CompareKind { kEqual, kNotEqual, kLess, kLessEqual, kGreater,
-                         kGreaterEqual, kLogicalAnd, kLogicalOr };
+                         kGreaterEqual, kLogicalAnd, kLogicalOr,
+                         kApproximateEqual };
 
 const char* NameOf(CompareKind k) {
   switch (k) {
@@ -83,12 +84,14 @@ const char* NameOf(CompareKind k) {
     case CompareKind::kGreaterEqual: return "GreaterEqual";
     case CompareKind::kLogicalAnd: return "LogicalAnd";
     case CompareKind::kLogicalOr: return "LogicalOr";
+    case CompareKind::kApproximateEqual: return "ApproximateEqual";
   }
   return "?";
 }
 
 MPSGraphTensor* ApplyCompare(MPSGraph* g, CompareKind k, MPSGraphTensor* a,
-                             MPSGraphTensor* b) {
+                             MPSGraphTensor* b, float tolerance,
+                             MPSDataType dtype) {
   switch (k) {
     case CompareKind::kEqual:
       return [g equalWithPrimaryTensor:a secondaryTensor:b name:nil];
@@ -108,12 +111,25 @@ MPSGraphTensor* ApplyCompare(MPSGraph* g, CompareKind k, MPSGraphTensor* a,
       return [g logicalANDWithPrimaryTensor:a secondaryTensor:b name:nil];
     case CompareKind::kLogicalOr:
       return [g logicalORWithPrimaryTensor:a secondaryTensor:b name:nil];
+    case CompareKind::kApproximateEqual: {
+      // |a - b| < tolerance, strictly, which is how TensorFlow defines it.
+      MPSGraphTensor* d = [g absoluteWithTensor:
+                                 [g subtractionWithPrimaryTensor:a
+                                                 secondaryTensor:b
+                                                            name:nil]
+                                           name:nil];
+      return [g lessThanWithPrimaryTensor:d
+                          secondaryTensor:[g constantWithScalar:tolerance
+                                                       dataType:dtype]
+                                     name:nil];
+    }
   }
   return nil;
 }
 
 struct DTypeOp {
   TF_DataType dtype = TF_FLOAT;
+  float tolerance = 1e-5f;  // ApproximateEqual's default
 };
 
 void* DTypeOp_Create(TF_OpKernelConstruction* ctx) {
@@ -126,6 +142,9 @@ void* DTypeOp_Create(TF_OpKernelConstruction* ctx) {
     delete op;
     return nullptr;
   }
+  TF_OpKernelConstruction_GetAttrFloat(ctx, "tolerance", &op->tolerance,
+                                       status);
+  if (TF_GetCode(status) != TF_OK) TF_SetStatus(status, TF_OK, "");
   TF_DeleteStatus(status);
   return op;
 }
@@ -166,6 +185,8 @@ void Compare_ComputeImpl(DTypeOp* op, TF_OpKernelContext* ctx,
   AppendShapeToKey(lhs_shape, &key);
   AppendShapeToKey(rhs_shape, &key);
   key.append("/t").append(std::to_string(static_cast<int>(op->dtype)));
+  key.append("/e").append(std::to_string(op->tolerance));
+  const float tolerance = op->tolerance;
 
   const CachedGraph* cached = LookupOrBuildGraph(
       key,
@@ -176,7 +197,8 @@ void Compare_ComputeImpl(DTypeOp* op, TF_OpKernelContext* ctx,
         MPSGraphTensor* b = [out->graph placeholderWithShape:MPSShape(rhs_shape)
                                                     dataType:mps_dtype
                                                         name:nil];
-        MPSGraphTensor* r = ApplyCompare(out->graph, kKind, a, b);
+        MPSGraphTensor* r =
+            ApplyCompare(out->graph, kKind, a, b, tolerance, mps_dtype);
         // MPSGraph comparisons yield the operand type, so the result is cast
         // to bool to match what TensorFlow declared the output to be.
         [out->inputs addObject:a];
@@ -474,6 +496,8 @@ METAL_COMPUTE(Greater_Compute, DTypeOp,
               Compare_ComputeImpl<CompareKind::kGreater>)
 METAL_COMPUTE(GreaterEqual_Compute, DTypeOp,
               Compare_ComputeImpl<CompareKind::kGreaterEqual>)
+METAL_COMPUTE(ApproxEqual_Compute, DTypeOp,
+              Compare_ComputeImpl<CompareKind::kApproximateEqual>)
 METAL_COMPUTE(LogicalAnd_Compute, DTypeOp,
               Compare_ComputeImpl<CompareKind::kLogicalAnd>)
 METAL_COMPUTE(LogicalOr_Compute, DTypeOp,
@@ -537,6 +561,15 @@ void RegisterMetalCompareKernels() {
              std::string("MetalSelect") + kSuffixes[i], kDTypes[i], true);
     Register("SelectV2", &DTypeOp_Create, &Select_Compute, &DTypeOp_Delete,
              std::string("MetalSelectV2") + kSuffixes[i], kDTypes[i], true);
+  }
+
+  // ApproximateEqual's op definition allows only floating point, so it is
+  // registered outside the loop above rather than over the index types too.
+  for (int i = 0; i < 2; ++i) {
+    Register("ApproximateEqual", &DTypeOp_Create, &ApproxEqual_Compute,
+             &DTypeOp_Delete,
+             std::string("MetalApproximateEqual") + kSuffixes[i], kDTypes[i],
+             true);
   }
 
   // The logical operators take bool on both sides, so T is not constrained.

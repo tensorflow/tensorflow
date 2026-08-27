@@ -44,7 +44,8 @@ namespace {
 // TensorFlow's DEVICE_DEFAULT registrations for these cover only int32 in host
 // memory, so a float reduction genuinely has to be provided here.
 
-enum class ReductionKind { kSum, kMean, kMax, kMin, kProd, kAny, kAll };
+enum class ReductionKind { kSum, kMean, kMax, kMin, kProd, kAny, kAll,
+                           kEuclideanNorm };
 
 const char* NameOf(ReductionKind k) {
   switch (k) {
@@ -55,6 +56,7 @@ const char* NameOf(ReductionKind k) {
     case ReductionKind::kProd: return "Prod";
     case ReductionKind::kAny: return "Any";
     case ReductionKind::kAll: return "All";
+    case ReductionKind::kEuclideanNorm: return "EuclideanNorm";
   }
   return "?";
 }
@@ -76,6 +78,14 @@ MPSGraphTensor* ApplyReduction(MPSGraph* g, ReductionKind k, MPSGraphTensor* x,
       return [g reductionOrWithTensor:x axes:axes name:nil];
     case ReductionKind::kAll:
       return [g reductionAndWithTensor:x axes:axes name:nil];
+    case ReductionKind::kEuclideanNorm: {
+      // sqrt(sum(x^2)), which is what TensorFlow's EuclideanNorm computes.
+      MPSGraphTensor* sq = [g squareWithTensor:x name:nil];
+      return [g squareRootWithTensor:[g reductionSumWithTensor:sq
+                                                          axes:axes
+                                                          name:nil]
+                                name:nil];
+    }
   }
   return nil;
 }
@@ -304,6 +314,8 @@ void RegisterMetalReductionKernels() {
       {"Max", &Reduction_Compute<ReductionKind::kMax>},
       {"Min", &Reduction_Compute<ReductionKind::kMin>},
       {"Prod", &Reduction_Compute<ReductionKind::kProd>},
+      {"EuclideanNorm",
+       &Reduction_Compute<ReductionKind::kEuclideanNorm>},
   };
 
   for (int i = 0; i < 2; ++i) {
