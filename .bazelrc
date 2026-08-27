@@ -251,6 +251,11 @@ common:macos_arm64 --platforms=@build_bazel_apple_support//platforms:darwin_arm6
 # Metal PluggableDevice backend for Apple Silicon GPUs. Implies macos_arm64.
 build:metal --config=macos_arm64
 build:metal --define=with_metal_support=true
+# Turns on the DEVICE_DEFAULT registrations TensorFlow already carries for
+# pluggable devices on macOS. They are guarded by this macro and nothing has
+# ever defined it, so they have been dead code; a Metal build is exactly the
+# situation they were written for.
+build:metal --copt=-DPLUGGABLE_DEVICE_SUPPORTED_MACOS
 
 # iOS configs for each architecture and the fat binary builds.
 common:ios --apple_platform_type=ios

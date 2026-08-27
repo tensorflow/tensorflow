@@ -550,6 +550,40 @@ TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
+// A pluggable device reaches the array through host memory. The kernel is
+// written against a device type, and its aggregation path runs that device's
+// arithmetic; in a build without CUDA the only device type available is the
+// host's. Pinning the data to host memory makes that correct rather than
+// approximately correct. The cost is a copy per access, which on a unified
+// memory device is a memcpy.
+
+#define REGISTER_PLUGGABLE_WRITE(type)                                          \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayWrite")                        \
+                              .Device(DEVICE_DEFAULT)          \
+                              .TypeConstraint<type>("T")       \
+                              .HostMemory("handle")          \
+                              .HostMemory("index")           \
+                              .HostMemory("value"),          \
+                          TensorArrayWriteOp<CPUDevice, type>);  \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayWriteV2")                      \
+                              .Device(DEVICE_DEFAULT)          \
+                              .TypeConstraint<type>("T")       \
+                              .HostMemory("handle")          \
+                              .HostMemory("index")           \
+                              .HostMemory("value"),          \
+                          TensorArrayWriteOp<CPUDevice, type>);  \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayWriteV3")                      \
+                              .Device(DEVICE_DEFAULT)          \
+                              .TypeConstraint<type>("T")       \
+                              .HostMemory("handle")          \
+                              .HostMemory("index")           \
+                              .HostMemory("value"),          \
+                          TensorArrayWriteOp<CPUDevice, type>);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_PLUGGABLE_WRITE);
+TF_CALL_COMPLEX_TYPES(REGISTER_PLUGGABLE_WRITE);
+#undef REGISTER_PLUGGABLE_WRITE
+#endif  // PLUGGABLE_DEVICE_SUPPORTED_MACOS
 // READ ***********************************************************************
 
 template <typename Device, typename T>
@@ -638,6 +672,41 @@ TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
+// A pluggable device reaches the array through host memory. The kernel is
+// written against a device type, and its aggregation path runs that device's
+// arithmetic; in a build without CUDA the only device type available is the
+// host's. Pinning the data to host memory makes that correct rather than
+// approximately correct. The cost is a copy per access, which on a unified
+// memory device is a memcpy.
+
+#define REGISTER_PLUGGABLE_READ(type)                                          \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayRead")                         \
+                              .Device(DEVICE_DEFAULT)          \
+                              .TypeConstraint<type>("dtype")   \
+                              .HostMemory("handle")          \
+                              .HostMemory("index")           \
+                              .HostMemory("value"),          \
+                          TensorArrayReadOp<CPUDevice, type>);  \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayReadV2")                       \
+                              .Device(DEVICE_DEFAULT)          \
+                              .TypeConstraint<type>("dtype")   \
+                              .HostMemory("handle")          \
+                              .HostMemory("index")           \
+                              .HostMemory("value"),          \
+                          TensorArrayReadOp<CPUDevice, type>);  \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayReadV3")                       \
+                              .Device(DEVICE_DEFAULT)          \
+                              .TypeConstraint<type>("dtype")   \
+                              .HostMemory("handle")          \
+                              .HostMemory("index")           \
+                              .HostMemory("value"),          \
+                          TensorArrayReadOp<CPUDevice, type>);
+TF_CALL_int64(REGISTER_PLUGGABLE_READ);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_PLUGGABLE_READ);
+TF_CALL_COMPLEX_TYPES(REGISTER_PLUGGABLE_READ);
+#undef REGISTER_PLUGGABLE_READ
+#endif  // PLUGGABLE_DEVICE_SUPPORTED_MACOS
 // PACK and GATHER ************************************************************
 
 // Concatenate the elements in a TensorArray.  All elements must be
@@ -861,6 +930,47 @@ REGISTER_KERNEL_BUILDER(
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
+// A pluggable device reaches the array through host memory. The kernel is
+// written against a device type, and its aggregation path runs that device's
+// arithmetic; in a build without CUDA the only device type available is the
+// host's. Pinning the data to host memory makes that correct rather than
+// approximately correct. The cost is a copy per access, which on a unified
+// memory device is a memcpy.
+
+#define REGISTER_PLUGGABLE_GATHER(type)                                          \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayPack")                         \
+                              .Device(DEVICE_DEFAULT)          \
+                              .TypeConstraint<type>("dtype")   \
+                              .HostMemory("handle")          \
+                              .HostMemory("indices")         \
+                              .HostMemory("value"),          \
+                          TensorArrayPackOrGatherOp<CPUDevice, type>);  \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayGather")                       \
+                              .Device(DEVICE_DEFAULT)          \
+                              .TypeConstraint<type>("dtype")   \
+                              .HostMemory("handle")          \
+                              .HostMemory("indices")         \
+                              .HostMemory("value"),          \
+                          TensorArrayPackOrGatherOp<CPUDevice, type>);  \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayGatherV2")                     \
+                              .Device(DEVICE_DEFAULT)          \
+                              .TypeConstraint<type>("dtype")   \
+                              .HostMemory("handle")          \
+                              .HostMemory("indices")         \
+                              .HostMemory("value"),          \
+                          TensorArrayPackOrGatherOp<CPUDevice, type>);  \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayGatherV3")                     \
+                              .Device(DEVICE_DEFAULT)          \
+                              .TypeConstraint<type>("dtype")   \
+                              .HostMemory("handle")          \
+                              .HostMemory("indices")         \
+                              .HostMemory("value"),          \
+                          TensorArrayPackOrGatherOp<CPUDevice, type>);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_PLUGGABLE_GATHER);
+TF_CALL_COMPLEX_TYPES(REGISTER_PLUGGABLE_GATHER);
+#undef REGISTER_PLUGGABLE_GATHER
+#endif  // PLUGGABLE_DEVICE_SUPPORTED_MACOS
 // CONCAT *********************************************************************
 
 // Concatenate the elements in a TensorArray.  All elements must be
@@ -1291,6 +1401,48 @@ TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
+// A pluggable device reaches the array through host memory. The kernel is
+// written against a device type, and its aggregation path runs that device's
+// arithmetic; in a build without CUDA the only device type available is the
+// host's. Pinning the data to host memory makes that correct rather than
+// approximately correct. The cost is a copy per access, which on a unified
+// memory device is a memcpy.
+
+#define REGISTER_PLUGGABLE_SCATTER(type)                                          \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayUnpack")                       \
+                              .Device(DEVICE_DEFAULT)          \
+                              .TypeConstraint<type>("T")       \
+                              .HostMemory("handle")          \
+                              .HostMemory("indices")         \
+                              .HostMemory("value"),          \
+                          TensorArrayUnpackOrScatterOp<CPUDevice, type>);  \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayScatter")                      \
+                              .Device(DEVICE_DEFAULT)          \
+                              .TypeConstraint<type>("T")       \
+                              .HostMemory("handle")          \
+                              .HostMemory("indices")         \
+                              .HostMemory("value"),          \
+                          TensorArrayUnpackOrScatterOp<CPUDevice, type>);  \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayScatterV2")                    \
+                              .Device(DEVICE_DEFAULT)          \
+                              .TypeConstraint<type>("T")       \
+                              .HostMemory("handle")          \
+                              .HostMemory("indices")         \
+                              .HostMemory("value"),          \
+                          TensorArrayUnpackOrScatterOp<CPUDevice, type>);  \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayScatterV3")                    \
+                              .Device(DEVICE_DEFAULT)          \
+                              .TypeConstraint<type>("T")       \
+                              .HostMemory("handle")          \
+                              .HostMemory("indices")         \
+                              .HostMemory("value"),          \
+                          TensorArrayUnpackOrScatterOp<CPUDevice, type>);
+TF_CALL_int64(REGISTER_PLUGGABLE_SCATTER);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_PLUGGABLE_SCATTER);
+TF_CALL_COMPLEX_TYPES(REGISTER_PLUGGABLE_SCATTER);
+#undef REGISTER_PLUGGABLE_SCATTER
+#endif  // PLUGGABLE_DEVICE_SUPPORTED_MACOS
 // SPLIT *********************************************************************
 
 template <typename Device, typename T>
@@ -1459,6 +1611,40 @@ TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
+// A pluggable device reaches the array through host memory. The kernel is
+// written against a device type, and its aggregation path runs that device's
+// arithmetic; in a build without CUDA the only device type available is the
+// host's. Pinning the data to host memory makes that correct rather than
+// approximately correct. The cost is a copy per access, which on a unified
+// memory device is a memcpy.
+
+#define REGISTER_PLUGGABLE_SPLIT(type)                                          \
+  REGISTER_KERNEL_BUILDER(Name("TensorArraySplit")                        \
+                              .Device(DEVICE_DEFAULT)          \
+                              .TypeConstraint<type>("T")       \
+                              .HostMemory("handle")          \
+                              .HostMemory("lengths")         \
+                              .HostMemory("value"),          \
+                          TensorArraySplitOp<CPUDevice, type>);  \
+  REGISTER_KERNEL_BUILDER(Name("TensorArraySplitV2")                      \
+                              .Device(DEVICE_DEFAULT)          \
+                              .TypeConstraint<type>("T")       \
+                              .HostMemory("handle")          \
+                              .HostMemory("lengths")         \
+                              .HostMemory("value"),          \
+                          TensorArraySplitOp<CPUDevice, type>);  \
+  REGISTER_KERNEL_BUILDER(Name("TensorArraySplitV3")                      \
+                              .Device(DEVICE_DEFAULT)          \
+                              .TypeConstraint<type>("T")       \
+                              .HostMemory("handle")          \
+                              .HostMemory("lengths")         \
+                              .HostMemory("value"),          \
+                          TensorArraySplitOp<CPUDevice, type>);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_PLUGGABLE_SPLIT);
+TF_CALL_COMPLEX_TYPES(REGISTER_PLUGGABLE_SPLIT);
+#undef REGISTER_PLUGGABLE_SPLIT
+#endif  // PLUGGABLE_DEVICE_SUPPORTED_MACOS
 // SIZE ***********************************************************************
 
 // Get the size of the TensorArray
