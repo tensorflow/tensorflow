@@ -181,6 +181,10 @@ void RegisterMetalRefVariableKernels();
 // The NCCL collectives, over one device.
 void RegisterMetalCollectiveKernels();
 
+// The CudnnRNN family: the recurrent networks, their parameter buffer and
+// its two canonical conversions.
+void RegisterMetalCudnnRnnKernels();
+
 // DebugNumericSummaryV2 and _TensorToHashBucketFast.
 void RegisterMetalDebugKernels();
 

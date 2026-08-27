@@ -36,6 +36,7 @@ void RegisterAllMetalKernels() {
   RegisterMetalSparseKernels();
   RegisterMetalDebugKernels();
   RegisterMetalCollectiveKernels();
+  RegisterMetalCudnnRnnKernels();
   RegisterMetalRefVariableKernels();
   RegisterMetalMisc2Kernels();
   RegisterMetalSparseManipKernels();

@@ -110,6 +110,7 @@ objc_library(
         "metal_dynamic_ops.mm",
         "metal_maxpool_argmax_ops.mm",
         "metal_collective_ops.mm",
+        "metal_cudnn_rnn_ops.mm",
         "metal_compare_ops.mm",
         "metal_reduction_ops.mm",
         "metal_elementwise_ops.mm",
