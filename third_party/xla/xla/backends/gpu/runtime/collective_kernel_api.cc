@@ -148,41 +148,5 @@ size_t GetMultiGpuBarrierSignalBufferSize() {
 
 size_t GetMultiGpuBarrierSignalValueSize() { return sizeof(uint32_t); }
 
-absl::StatusOr<std::vector<void*>> CollectParamToPeers(
-    const GpuCliqueKey& clique_key, RankId rank,
-    stream_executor::Stream* stream,
-    std::vector<stream_executor::DeviceAddressBase> parameters) {
-  std::vector<void*> param_to_peers_ptrs;
-
-  size_t num_parameters = parameters.size();
-  // Exchange device parameters with all ranks in the clique.
-  ABSL_ASSIGN_OR_RETURN(
-      auto device_parameters,
-      GpuCliqueRendezvous::Join(clique_key, rank, std::move(parameters)));
-
-  // Collect pointers to device buffers from all participating ranks.
-  param_to_peers_ptrs.reserve(num_parameters * clique_key.num_devices());
-
-  absl::flat_hash_map<int, std::vector<stream_executor::DeviceAddressBase>>
-      peer_to_parameters(clique_key.num_devices());
-
-  using DeviceParameters = std::vector<stream_executor::DeviceAddressBase>;
-
-  for (auto peer = RankId(0); peer < RankId(clique_key.num_devices()); ++peer) {
-    ABSL_ASSIGN_OR_RETURN(const DeviceParameters& peer_parameters,
-                     device_parameters->at<DeviceParameters>(peer));
-    peer_to_parameters[peer.value()] = std::move(peer_parameters);
-  }
-
-  for (int parameter = 0; parameter < num_parameters; ++parameter) {
-    for (int peer = 0; peer < clique_key.num_devices(); ++peer) {
-      param_to_peers_ptrs.push_back(
-          peer_to_parameters[peer][parameter].opaque());
-    }
-  }
-
-  return param_to_peers_ptrs;
-}
-
 }  // namespace gpu
 }  // namespace xla
