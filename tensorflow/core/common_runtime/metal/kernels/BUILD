@@ -138,6 +138,7 @@ objc_library(
         "metal_rnn_ops.mm",
         "metal_search_ops.mm",
         "metal_sparse_ops.mm",
+        "metal_sparse_manip_ops.mm",
         "metal_sparse_segment_ops.mm",
         "metal_slice_ops.mm",
         "metal_strided_ops.mm",

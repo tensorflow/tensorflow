@@ -169,6 +169,9 @@ void RegisterMetalFftKernels();
 // The fused convolution and matrix multiply the optimiser produces.
 void RegisterMetalFusedKernels();
 
+// The sparse tensor manipulations.
+void RegisterMetalSparseManipKernels();
+
 // SparseToDense and SparseTensorDenseMatMul.
 void RegisterMetalSparseKernels();
 
