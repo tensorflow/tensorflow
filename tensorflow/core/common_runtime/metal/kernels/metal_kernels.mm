@@ -31,6 +31,7 @@ void RegisterAllMetalKernels() {
   RegisterMetalDilationKernels();
   RegisterMetalBincountKernels();
   RegisterMetalCropResizeKernels();
+  RegisterMetalTransformKernels();
   RegisterMetalQuantizeDequantizeKernels();
   RegisterMetalMaxPoolArgmaxKernels();
   RegisterMetalImageKernels();

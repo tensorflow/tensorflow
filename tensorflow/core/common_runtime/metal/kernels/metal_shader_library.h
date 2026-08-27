@@ -141,6 +141,24 @@ struct CropResizeParams {
   uint32_t padding1;
 };
 
+// Parameters for the projective transform shader. Layout must match the Metal
+// struct. `fill_mode` is 0 for CONSTANT, 1 for REFLECT, 2 for WRAP and 3 for
+// NEAREST, matching TensorFlow's order.
+struct TransformParams {
+  uint32_t batch;
+  uint32_t in_h;
+  uint32_t in_w;
+  uint32_t depth;
+  uint32_t out_h;
+  uint32_t out_w;
+  uint32_t count;
+  uint32_t nearest;
+  uint32_t fill_mode;
+  uint32_t num_transforms;
+  float fill_value;
+  uint32_t padding0;
+};
+
 // Compute pipeline for one function in the backend's shader library.
 //
 // The Metal source is compiled from a string the first time any pipeline is

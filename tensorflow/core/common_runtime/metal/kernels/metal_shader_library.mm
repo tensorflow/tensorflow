@@ -777,6 +777,109 @@ kernel void tf_crop_and_resize_grad_boxes_float(
   atomic_fetch_add_explicit(&out[b * 4 + 2], dy2, memory_order_relaxed);
   atomic_fetch_add_explicit(&out[b * 4 + 3], dx2, memory_order_relaxed);
 }
+
+// ---- projective transform ----
+
+struct TransformParams {
+  uint batch;
+  uint in_h;
+  uint in_w;
+  uint depth;
+  uint out_h;
+  uint out_w;
+  uint count;
+  uint nearest;
+  uint fill_mode;
+  uint num_transforms;
+  float fill_value;
+  uint pad0;
+};
+
+// TensorFlow's MapCoordinate, one function per fill mode. The clamp at the end
+// of the reflect and wrap modes is not redundant: a coordinate of 3.5 in a
+// length of 4 is in range, but nearest interpolation would round it to 4.
+static inline float tf_map_coordinate(float coord, int len, uint mode) {
+  if (mode == 0u) return coord;                       // CONSTANT
+  if (mode == 3u) return clamp(coord, 0.0f, float(len - 1));  // NEAREST
+  if (len <= 1) return 0.0f;
+  if (mode == 1u) {                                   // REFLECT
+    if (coord < 0.0f) {
+      const int sz2 = 2 * len;
+      if (coord < float(sz2)) coord = float(sz2) * float(int(-coord / float(sz2))) + coord;
+      coord = (coord < float(-len)) ? coord + float(sz2) : -coord - 1.0f;
+    } else if (coord > float(len - 1)) {
+      const int sz2 = 2 * len;
+      coord -= float(sz2) * float(int(coord / float(sz2)));
+      if (coord >= float(len)) coord = float(sz2) - coord - 1.0f;
+    }
+    return clamp(coord, 0.0f, float(len - 1));
+  }
+  // WRAP
+  if (coord < 0.0f) {
+    const int sz = len - 1;
+    coord += float(len) * float(int(-coord / float(sz)) + 1);
+  } else if (coord > float(len - 1)) {
+    const int sz = len - 1;
+    coord -= float(len) * float(int(coord / float(sz)));
+  }
+  return clamp(coord, 0.0f, float(len - 1));
+}
+
+#define TF_METAL_TRANSFORM_READ(YI, XI)                                       \
+  ((YI) >= 0 && (YI) < int(params.in_h) && (XI) >= 0 &&                       \
+   (XI) < int(params.in_w))                                                   \
+      ? image[((b * params.in_h + uint(YI)) * params.in_w + uint(XI)) *       \
+                  params.depth + c]                                           \
+      : params.fill_value
+
+kernel void tf_image_projective_transform_float(
+    device const float* image [[buffer(0)]],
+    device const float* transforms [[buffer(1)]],
+    device float* out [[buffer(2)]],
+    constant TransformParams& params [[buffer(3)]],
+    uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count) return;
+  const uint c = gid % params.depth;
+  const uint ox = (gid / params.depth) % params.out_w;
+  const uint oy = (gid / (params.depth * params.out_w)) % params.out_h;
+  const uint b = gid / (params.depth * params.out_w * params.out_h);
+
+  // One transform for the whole batch, or one per image.
+  const uint t = params.num_transforms == 1u ? 0u : b;
+  device const float* m = transforms + t * 8u;
+
+  const float projection = m[6] * float(ox) + m[7] * float(oy) + 1.0f;
+  if (projection == 0.0f || !isfinite(projection)) {
+    out[gid] = params.fill_value;
+    return;
+  }
+  const float raw_x =
+      (m[0] * float(ox) + m[1] * float(oy) + m[2]) / projection;
+  const float raw_y =
+      (m[3] * float(ox) + m[4] * float(oy) + m[5]) / projection;
+  const float x = tf_map_coordinate(raw_x, int(params.in_w), params.fill_mode);
+  const float y = tf_map_coordinate(raw_y, int(params.in_h), params.fill_mode);
+
+  if (params.nearest != 0u) {
+    const int yi = int(round(y));
+    const int xi = int(round(x));
+    out[gid] = TF_METAL_TRANSFORM_READ(yi, xi);
+    return;
+  }
+  // The corners are floor and floor+1, not floor and ceil: on an exact
+  // integer the two coincide under ceil and the interpolation degenerates,
+  // where TensorFlow keeps a unit-wide cell whose upper weight is zero.
+  const float yf = floor(y);
+  const float xf = floor(x);
+  const int y0 = int(yf), x0 = int(xf), y1 = int(yf + 1.0f), x1 = int(xf + 1.0f);
+  const float v00 = TF_METAL_TRANSFORM_READ(y0, x0);
+  const float v01 = TF_METAL_TRANSFORM_READ(y0, x1);
+  const float v10 = TF_METAL_TRANSFORM_READ(y1, x0);
+  const float v11 = TF_METAL_TRANSFORM_READ(y1, x1);
+  const float top = (xf + 1.0f - x) * v00 + (x - xf) * v01;
+  const float bottom = (xf + 1.0f - x) * v10 + (x - xf) * v11;
+  out[gid] = (yf + 1.0f - y) * top + (y - yf) * bottom;
+}
 )METAL";
 
 class ShaderLibrary {
