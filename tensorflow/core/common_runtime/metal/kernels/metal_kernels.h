@@ -84,6 +84,10 @@ void RegisterMetalMatrixKernels();
 // StridedSlice and its gradient, TileGrad and Roll.
 void RegisterMetalStridedKernels();
 
+// Depthwise convolution with both gradients, and the average pooling
+// gradient.
+void RegisterMetalDepthwiseKernels();
+
 // Identity, which aliases its input when it can and blits when it cannot.
 void RegisterMetalIdentityKernels();
 

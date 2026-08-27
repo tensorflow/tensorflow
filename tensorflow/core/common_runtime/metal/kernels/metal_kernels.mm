@@ -24,6 +24,7 @@ void RegisterAllMetalKernels() {
   RegisterMetalBatchNormKernels();
   RegisterMetalCompareKernels();
   RegisterMetalConvKernels();
+  RegisterMetalDepthwiseKernels();
   RegisterMetalIndexKernels();
   RegisterMetalMatrixKernels();
   RegisterMetalSliceKernels();
