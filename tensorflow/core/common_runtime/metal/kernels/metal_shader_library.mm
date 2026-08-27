@@ -1907,6 +1907,79 @@ kernel void tf_fft_resize_float(device const float* input [[buffer(0)]],
     output[2u * gid + 1u] = inside ? input[2u * in_index + 1u] : 0.0f;
   }
 }
+
+// ---- sparse tensors ----
+
+struct SparseParams {
+  uint nnz;
+  uint rank;
+  uint count;
+  uint inner;
+  uint scalar_values;
+  uint adjoint_a;
+  uint adjoint_b;
+  uint pad0;
+  uint shape[8];
+};
+
+// Scatters the values of a sparse tensor into a dense one that has already
+// been filled with the default. An index outside the shape is dropped rather
+// than allowed to write somewhere it should not; the op validates ordering
+// and bounds on the host when asked to, and a shader must not trust either
+// way.
+#define TF_METAL_SPARSE_TO_DENSE(NAME, IDX)                                   \
+  kernel void NAME(device const IDX* indices [[buffer(0)]],                   \
+                   device const float* values [[buffer(1)]],                  \
+                   device float* out [[buffer(2)]],                           \
+                   constant SparseParams& params [[buffer(3)]],               \
+                   uint gid [[thread_position_in_grid]]) {                    \
+    if (gid >= params.nnz) return;                                            \
+    uint flat = 0u;                                                           \
+    uint stride = 1u;                                                         \
+    for (uint d = 0u; d < params.rank; ++d) {                                 \
+      const uint axis = params.rank - 1u - d;                                 \
+      const long coord = long(indices[gid * params.rank + axis]);             \
+      if (coord < 0 || coord >= long(params.shape[axis])) return;             \
+      flat += uint(coord) * stride;                                           \
+      stride *= params.shape[axis];                                           \
+    }                                                                         \
+    out[flat] = params.scalar_values != 0u ? values[0] : values[gid];         \
+  }
+
+TF_METAL_SPARSE_TO_DENSE(tf_sparse_to_dense_i32, int)
+TF_METAL_SPARSE_TO_DENSE(tf_sparse_to_dense_i64, long)
+
+// One sparse row times the dense matrix. Each non-zero contributes to a whole
+// row of the result, and several non-zeros share a row, so the accumulation is
+// atomic. `shape` holds the number of output rows and the contracted length,
+// already swapped by the host if the sparse operand is transposed, so the
+// bounds check reads the same way either way.
+#define TF_METAL_SPARSE_DENSE_MATMUL(NAME, IDX)                               \
+  kernel void NAME(device const IDX* indices [[buffer(0)]],                   \
+                   device const float* values [[buffer(1)]],                  \
+                   device const float* dense [[buffer(2)]],                   \
+                   device atomic_float* out [[buffer(3)]],                    \
+                   constant SparseParams& params [[buffer(4)]],               \
+                   uint gid [[thread_position_in_grid]]) {                    \
+    if (gid >= params.count) return;                                          \
+    const uint entry = gid / params.inner;                                    \
+    const uint column = gid % params.inner;                                   \
+    /* Transposing the sparse operand is just reading its two coordinates the \
+       other way round, which costs nothing and needs no copy. */             \
+    const long row = long(indices[entry * 2u + (params.adjoint_a != 0u ? 1u : 0u)]); \
+    const long inner = long(indices[entry * 2u + (params.adjoint_a != 0u ? 0u : 1u)]); \
+    if (row < 0 || row >= long(params.shape[0])) return;                      \
+    if (inner < 0 || inner >= long(params.shape[1])) return;                  \
+    const uint dense_index = params.adjoint_b != 0u                           \
+                                 ? column * params.shape[1] + uint(inner)     \
+                                 : uint(inner) * params.inner + column;       \
+    atomic_fetch_add_explicit(&out[uint(row) * params.inner + column],        \
+                              values[entry] * dense[dense_index],             \
+                              memory_order_relaxed);                          \
+  }
+
+TF_METAL_SPARSE_DENSE_MATMUL(tf_sparse_dense_matmul_i32, int)
+TF_METAL_SPARSE_DENSE_MATMUL(tf_sparse_dense_matmul_i64, long)
 )METAL";
 
 class ShaderLibrary {

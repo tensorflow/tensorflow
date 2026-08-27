@@ -326,6 +326,20 @@ struct ResizeParams {
   uint32_t out_shape[8];
 };
 
+// Parameters for the sparse tensor shaders. Layout must match the Metal
+// struct. `shape` carries the dense shape the indices address.
+struct SparseParams {
+  uint32_t nnz;
+  uint32_t rank;
+  uint32_t count;
+  uint32_t inner;
+  uint32_t scalar_values;
+  uint32_t adjoint_a;
+  uint32_t adjoint_b;
+  uint32_t padding0;
+  uint32_t shape[8];
+};
+
 // Compute pipeline for one function in the backend's shader library.
 //
 // The Metal source is compiled from a string the first time any pipeline is
