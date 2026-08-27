@@ -169,6 +169,12 @@ std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
   int highest_supported_ptx_version =
       ptx_version.major_version() * 10 + ptx_version.minor_version();
 
+  // Blackwell (sm_120) requires at least PTX 8.7. Force it to prevent LLVM fatal errors
+  // on environments with older CUDA toolkits (e.g. 12.6) which would otherwise clamp to 8.5.
+  if (compute_capability.IsAtLeast(12, 0) && highest_supported_ptx_version < 87) {
+    highest_supported_ptx_version = 87;
+  }
+
   VLOG(1) << "Targeting PTX version: " << highest_supported_ptx_version;
   std::string feature_str =
       absl::StrFormat("+ptx%d", highest_supported_ptx_version);
