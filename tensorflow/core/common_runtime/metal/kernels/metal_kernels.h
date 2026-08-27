@@ -124,6 +124,9 @@ void RegisterMetalResourceKernels();
 // Max pooling with indices, and the second-order pooling gradients.
 void RegisterMetalMaxPoolArgmaxKernels();
 
+// QuantizeAndDequantize and its V2, V3 and V4 forms.
+void RegisterMetalQuantizeDequantizeKernels();
+
 // Bincount and DenseBincount.
 void RegisterMetalBincountKernels();
 

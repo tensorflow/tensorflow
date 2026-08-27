@@ -170,6 +170,8 @@ differently rather than fail.
 | `FakeQuantWithMinMaxArgs`, `FakeQuantWithMinMaxArgsGradient` | float32 |
 | `FakeQuantWithMinMaxVars`, `FakeQuantWithMinMaxVarsGradient` | float32 |
 | `FakeQuantWithMinMaxVarsPerChannel`, `FakeQuantWithMinMaxVarsPerChannelGradient` | float32 |
+| `QuantizeAndDequantize`, `QuantizeAndDequantizeV2`, `QuantizeAndDequantizeV3` | float32 |
+| `QuantizeAndDequantizeV4`, `QuantizeAndDequantizeV4Grad` | float32 |
 | `MatrixBandPart`, `MatrixDiag`, `MatrixDiagPart`, `MatrixSetDiag` | float32, float16 |
 | `MatrixDiagV2`, `MatrixDiagV3`, `MatrixDiagPartV2`, `MatrixDiagPartV3` | float32, float16; main diagonal only |
 | `MatrixSetDiagV2`, `MatrixSetDiagV3` | float32, float16; main diagonal only |

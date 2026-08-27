@@ -120,6 +120,7 @@ objc_library(
         "metal_gather_scatter_ops.mm",
         "metal_misc_ops.mm",
         "metal_quant_ops.mm",
+        "metal_quantize_dequantize_ops.mm",
         "metal_random_ops.mm",
         "metal_search_ops.mm",
         "metal_slice_ops.mm",
