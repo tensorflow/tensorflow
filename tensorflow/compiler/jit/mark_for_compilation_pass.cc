@@ -2152,6 +2152,7 @@ absl::flat_hash_set<std::string> GetKnownXLAAllowlistOp() {
       "LowerBound",
       "MatMul",
       "MatrixBandPart",
+      "MatrixDeterminant",
       "MatrixDiag",
       "MatrixDiagPart",
       "MatrixDiagPartV2",
