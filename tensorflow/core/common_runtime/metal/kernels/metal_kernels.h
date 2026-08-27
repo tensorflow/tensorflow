@@ -74,6 +74,9 @@ void RegisterMetalActivationKernels();
 // Slice, Pad, MirrorPad, ReverseV2, Split and SplitV over float tensors.
 void RegisterMetalSliceKernels();
 
+// GatherV2, OneHot, TopKV2, the cumulative scans and ClipByValue.
+void RegisterMetalIndexKernels();
+
 // Identity, which aliases its input when it can and blits when it cannot.
 void RegisterMetalIdentityKernels();
 

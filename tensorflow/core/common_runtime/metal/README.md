@@ -151,6 +151,8 @@ differently rather than fail.
 | `TanhGrad`, `SigmoidGrad`, `SqrtGrad`, `RsqrtGrad` | float32, float16 |
 | `AddN`, `Transpose`, `Concat`, `ConcatV2`, `Tile` | float32, float16 |
 | `Slice`, `Pad`, `PadV2`, `MirrorPad` | float32, float16 |
+| `GatherV2`, `OneHot`, `TopKV2` | float32, float16 |
+| `Cumsum`, `Cumprod`, `ClipByValue` | float32, float16 |
 | `ReverseV2`, `Split`, `SplitV` | float32, float16 |
 | `Equal`, `NotEqual`, `Less`, `LessEqual`, `Greater`, `GreaterEqual` | float32, float16, int32, int64 |
 | `LogicalAnd`, `LogicalOr`, `LogicalNot` | bool |
