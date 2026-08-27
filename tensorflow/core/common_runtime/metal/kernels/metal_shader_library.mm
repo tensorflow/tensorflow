@@ -1186,6 +1186,51 @@ kernel void tf_random_gamma_float(device float* out [[buffer(0)]],
   }
   out[gid] = result;
 }
+
+// ---- row gather and scatter ----
+
+struct RowMoveParams {
+  uint count;
+  uint slice;
+  uint limit;
+  uint pad0;
+};
+
+// The two halves of every index-driven data movement: gather takes rows named
+// by an index vector, scatter puts rows where an index vector says.
+//
+// They copy 32-bit words rather than a typed element, so one pair covers every
+// dtype: the caller expresses a row's width in words and doubles it for the
+// eight-byte types. Copying bits also avoids a float round trip turning a
+// signalling NaN into a quiet one, which a copy has no business doing.
+kernel void tf_gather_rows_u32(device const uint* data [[buffer(0)]],
+                               device const int* indices [[buffer(1)]],
+                               device uint* out [[buffer(2)]],
+                               constant RowMoveParams& params [[buffer(3)]],
+                               uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count) return;
+  const uint row = gid / params.slice;
+  const uint word = gid % params.slice;
+  const int index = indices[row];
+  // An out-of-range index yields zero rather than reading out of bounds; the
+  // callers here never produce one, and a shader must not trust that.
+  out[gid] = (index < 0 || uint(index) >= params.limit)
+                 ? 0u
+                 : data[uint(index) * params.slice + word];
+}
+
+kernel void tf_scatter_rows_u32(device const uint* data [[buffer(0)]],
+                                device const int* indices [[buffer(1)]],
+                                device uint* out [[buffer(2)]],
+                                constant RowMoveParams& params [[buffer(3)]],
+                                uint gid [[thread_position_in_grid]]) {
+  if (gid >= params.count) return;
+  const uint row = gid / params.slice;
+  const uint word = gid % params.slice;
+  const int index = indices[row];
+  if (index < 0 || uint(index) >= params.limit) return;
+  out[uint(index) * params.slice + word] = data[gid];
+}
 )METAL";
 
 class ShaderLibrary {

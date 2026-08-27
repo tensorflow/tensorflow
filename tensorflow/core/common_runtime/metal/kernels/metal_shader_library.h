@@ -239,6 +239,16 @@ struct GammaParams {
   uint32_t padding2;
 };
 
+// Parameters for the row gather and scatter shaders. Layout must match the
+// Metal struct. `slice` is the row width in 32-bit words, so one pair of
+// shaders serves every element type by copying bits.
+struct RowMoveParams {
+  uint32_t count;
+  uint32_t slice;
+  uint32_t limit;
+  uint32_t padding0;
+};
+
 // Compute pipeline for one function in the backend's shader library.
 //
 // The Metal source is compiled from a string the first time any pipeline is

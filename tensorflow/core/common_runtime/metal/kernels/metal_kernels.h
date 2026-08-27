@@ -139,6 +139,9 @@ void RegisterMetalRandomDistKernels();
 // The single-step recurrent cells and their gradients.
 void RegisterMetalRnnKernels();
 
+// The ops whose output shape depends on their input values.
+void RegisterMetalDynamicKernels();
+
 // ExtractVolumePatches.
 void RegisterMetalVolumePatchKernels();
 

@@ -138,6 +138,8 @@ differently rather than fail.
 | `DepthwiseConv2dNative`, `DepthwiseConv2dNativeBackpropInput`, `DepthwiseConv2dNativeBackpropFilter` | float32, float16 |
 | `BatchNormWithGlobalNormalization`, `BatchNormWithGlobalNormalizationGrad` | float32 |
 | `Bincount`, `DenseBincount` | float32, int32 |
+| `Unique`, `UniqueWithCounts` | float32, int32, int64 |
+| `DynamicPartition`, `DynamicStitch`, `ParallelDynamicStitch` | float32, int32, int64 |
 | `CropAndResize`, `CropAndResizeGradImage`, `CropAndResizeGradBoxes` | float32 |
 | `ImageProjectiveTransformV2`, `ImageProjectiveTransformV3` | float32 |
 | `ExtractVolumePatches` | float32 |
