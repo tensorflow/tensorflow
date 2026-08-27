@@ -172,7 +172,10 @@ if [[ "$TFCI_WHL_NUMPY_VERSION" == 1 ]]; then
 fi
 
 
-if [[ "$TFCI_BAZEL_COMMON_ARGS" =~ gpu|cuda ]]; then
+if [[ "$TFCI_BAZEL_COMMON_ARGS" =~ cuda13 || "$TFCI" =~ cuda13 || "$TFCI_BUILD_PIP_PACKAGE_WHEEL_NAME_ARG" =~ cuda13 ]]; then
+  echo "Checking to make sure tensorflow[cuda13] is installable..."
+  "$python" -m pip install "$(echo *.whl)[cuda13]" $TFCI_PYTHON_VERIFY_PIP_INSTALL_ARGS
+elif [[ "$TFCI_BAZEL_COMMON_ARGS" =~ gpu|cuda ]]; then
   echo "Checking to make sure tensorflow[and-cuda] is installable..."
   "$python" -m pip install "$(echo *.whl)[and-cuda]" $TFCI_PYTHON_VERIFY_PIP_INSTALL_ARGS
 else
