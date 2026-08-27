@@ -162,6 +162,7 @@ differently rather than fail.
 | `MatrixBandPart`, `MatrixDiag`, `MatrixDiagPart`, `MatrixSetDiag` | float32, float16 |
 | `MatrixDiagV2`, `MatrixDiagV3`, `MatrixDiagPartV2`, `MatrixDiagPartV3` | float32, float16; main diagonal only |
 | `SpaceToDepth`, `DepthToSpace`, `L2Loss` | float32, float16 |
+| `SpaceToBatchND`, `BatchToSpaceND` | float32, float16 |
 | `Diag`, `DiagPart`, `LinSpace` | float32, float16 |
 | `ResizeBilinear`, `ResizeNearestNeighbor` | float32, float16 |
 | `ReverseV2`, `Split`, `SplitV` | float32, float16 |

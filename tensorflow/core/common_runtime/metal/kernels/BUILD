@@ -93,6 +93,7 @@ objc_library(
     srcs = [
         "metal_activation_ops.mm",
         "metal_array_ops.mm",
+        "metal_batch_space_ops.mm",
         "metal_batch_norm_ops.mm",
         "metal_conv3d_ops.mm",
         "metal_conv_ops.mm",

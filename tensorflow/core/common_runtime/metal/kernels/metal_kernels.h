@@ -97,6 +97,9 @@ void RegisterMetalPoolVariantKernels();
 // Conv3D and its two gradients.
 void RegisterMetalConv3DKernels();
 
+// SpaceToBatchND and BatchToSpaceND.
+void RegisterMetalBatchSpaceKernels();
+
 // Identity, which aliases its input when it can and blits when it cannot.
 void RegisterMetalIdentityKernels();
 
