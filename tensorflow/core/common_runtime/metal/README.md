@@ -5,14 +5,21 @@ installed as a separate plugin.
 
 ## Status
 
-Experimental. The device and memory foundation, plus enough kernels to train a
-convolutional model end to end on the GPU: convolutions and their gradients,
+Experimental, and complete in the sense that matters for portability: every op
+the CUDA build registers for a GPU is registered here too, apart from the
+TensorRT ops, which are gated behind `if_tensorrt` and are not part of a macOS
+build at all.
+
+Most of those ops run as Metal kernels. The rest are covered the way
+TensorFlow already covers them for any device without a kernel of its own,
+either by a `DEVICE_DEFAULT` registration or by an unguarded `DEVICE_GPU` one.
+A few are registered with their data pinned to host memory, which is correct
+but not fast; those are called out under [Limitations](#limitations).
+
+Registering an op is not the same as running it well. What has been measured
+end to end is a convolutional classifier: convolutions and their gradients,
 pooling, activations, softmax cross entropy, reductions, weight initialisation
 and the Adam and SGD updates.
-
-Coverage is still far from CUDA's. Anything not listed under
-[Supported ops](#supported-ops) falls back to the host, which is correct but
-slow. See [Limitations](#limitations).
 
 ## Building
 
@@ -257,6 +264,11 @@ differently rather than fail.
 | `ResourceApplyMomentum`, `ResourceApplyKerasMomentum`, `ResourceApplyRMSProp` | float32 |
 | `Cast` | float32, float16, bfloat16, int32, int64 pairs |
 | `Identity` | float32, float16, int32, int64, bool |
+| `CudnnRNN`, `CudnnRNNV2`, `CudnnRNNV3` | float32, float16 |
+| `CudnnRNNBackprop`, `CudnnRNNBackpropV2`, `CudnnRNNBackpropV3` | float32, float16 |
+| `CudnnRNNParamsSize` | float32, float16 |
+| `CudnnRNNParamsToCanonical`, `CudnnRNNParamsToCanonicalV2` | float32, float16 |
+| `CudnnRNNCanonicalToParams`, `CudnnRNNCanonicalToParamsV2` | float32, float16 |
 
 Resource variables (`VarHandleOp`, `ReadVariableOp`, `AssignVariableOp` and the
 rest), `Reshape`, `Const`, `Shape`, `StridedSlice` and `Pack` need no kernel
@@ -265,11 +277,19 @@ inherits when it has no kernel of its own.
 
 ## Limitations
 
-* **Op coverage is far short of CUDA's**, which has kernels for several
-  hundred ops. What is here covers a convolutional classifier and the
-  arithmetic around it; anything else falls back to the host, which is correct
-  but slow. Notably absent: recurrent layers, `Slice`, `Pad`, `Gather`,
-  `DepthwiseConv2d`, and the sparse optimiser variants.
+* **Registered is not the same as accelerated.** `TensorArray` and the CSR
+  sparse matrix ops are registered with their tensors pinned to host memory,
+  because their kernels run the host's arithmetic over a resource the kernel C
+  API cannot reach. On a unified memory device the pinning costs a memcpy
+  rather than a transfer, but the arithmetic itself is on the CPU.
+* **The recurrent ops implement a subset of what cuDNN accepts.** Dropout
+  between layers, a projection size other than zero, and the `skip_input`
+  mode are refused by name at construction rather than approximated. The four
+  cell types, both directions, any number of layers and per-sequence lengths
+  all work. The parameter buffer's layout is this backend's own, which is
+  allowed because the buffer is opaque and the canonical conversions are the
+  only defined way in and out of it; a checkpoint holding a buffer written by
+  cuDNN will not load, and one holding canonical weights will.
 * **`ParallelConcat` is registered but always fails**, which is what every
   device does, CUDA included: the graph rewrite replaces the op with an
   allocation and one update per stacked value, so reaching the kernel means
@@ -297,52 +317,36 @@ inherits when it has no kernel of its own.
 
 ## Ops the CUDA build registers and this one does not
 
-Every op CUDA registers that performs a computation on tensors is registered
-here. What remains falls into groups that cannot be reached through the
-PluggableDevice kernel C API at all, or that mean nothing on a single Metal
-device. They are listed so that "not registered" can be told apart from
-"overlooked".
+The list is the five TensorRT ops, `TRTEngineOp` and the four that manage its
+resource. They are gated behind `if_tensorrt`, TensorRT does not build on
+macOS, and the ops therefore do not exist in this build to be registered for.
 
-* **Input pipelines: iterators, datasets and optionals** (`Iterator`,
-  `IteratorGetNext`, `MakeIterator`, `MapDataset`, `PrefetchDataset`,
-  `OptionsDataset`, `AnonymousIterator*`, `Optional*`, and the rest of that
-  family). Their kernels create and consume resource and variant tensors, and
-  the CUDA registrations exist so that a handle can be placed alongside the
-  device rather than to compute anything on it. The kernel C API exposes
-  neither resource creation nor variants.
-* **`TensorArray` and its twenty-odd operations.** Each one reads or writes a
-  TensorArray resource, which the kernel C API does not expose. The resource
-  variable interface it does expose covers variables, not these.
-* **Collectives** (`CollectiveReduce`, `CollectiveGather`, `NcclAllReduce`,
-  `NcclBroadcast`, the `_Nccl*` pairs). They reduce across devices; there is
-  one Metal device in a process.
-* **The cuDNN recurrent family** (`CudnnRNN`, its four gradients, and the
-  parameter conversions). These ops exist to expose cuDNN's own recurrent
-  implementation and its opaque parameter buffer. Nothing corresponds to that
-  buffer in Metal. `BlockLSTM`, `GRUBlockCell` and their gradients cover the
-  same models, and are registered.
-* **The CSR sparse matrix ops** (`SparseMatrixAdd`, `SparseMatrixMatMul`,
-  `SparseMatrixZeros`, `SparseTensorToCSRSparseMatrix`, the two conversions
-  out of it). They pass a `CSRSparseMatrix` variant between one another, and
-  variant tensors are not reachable through the kernel C API. The dense-input
-  sparse ops, including `SparseTensorDenseMatMul`, are registered.
-* **Reference variables** (`Assign`, `AssignAdd`, `AssignSub`, `RefSelect`,
-  `DebugGradientRefIdentity`). These take reference-typed inputs, which the
-  kernel C API has no notion of. Their resource equivalents,
-  `AssignVariableOp` and the rest, work.
-* **Variant-typed conversions** (`DeserializeSparse`,
-  `RaggedTensorFromVariant`), for the same reason as the CSR ops.
-* **Batching** (`Batch`, `Unbatch`, `UnbatchGrad`). These schedule work rather
-  than perform it.
-* **Test-only ops** (`TestGpuInclusivePrefixSum`, `TestGpuRadixSort`,
-  `TestGpuSegmentedSum`, `TestGpuSelectFlagged`). They exist to exercise CUDA's
-  own primitives from a test.
-* **`_TensorToHashBucketFast`** hashes strings, and a string tensor's contents
-  are host pointers rather than device memory.
-* **`DebugNumericSummaryV2`** would have to drain the stream and reduce on
-  every call, which is a cost worth paying only when someone is debugging;
-  it is left on the host, where the graph will place it.
-* **`Abort` and `CheckPinned`** do nothing a device could do.
+Everything else CUDA registers for a GPU is registered here, by one of four
+routes, and it is worth knowing which because they are not equally fast:
+
+* **A Metal kernel**, for most of them. These are the ops in the table above.
+* **`DEVICE_DEFAULT`**, TensorFlow's own registration for a device with no
+  kernel of its own. `Reshape`, `Const`, `Shape`, the resource variable ops
+  and the input pipeline all arrive this way, with no code here.
+* **An unguarded `DEVICE_GPU` registration** in TensorFlow's own kernels. The
+  Metal platform's device type is `GPU`, so a registration that is not inside
+  a `GOOGLE_CUDA` guard already applies to it.
+* **`PLUGGABLE_DEVICE_SUPPORTED_MACOS`**, a macro TensorFlow's kernels already
+  carry for exactly this situation and that nothing had ever defined. A Metal
+  build defines it, which turns on the host-memory registrations for
+  `TensorArray` and the CSR sparse matrix ops. That is the pinned-memory case
+  under [Limitations](#limitations).
+
+Three groups are registered but do less than the CUDA kernel of the same name,
+and say so rather than pretending otherwise:
+
+* **The NCCL collectives** reduce across devices, and every Apple silicon Mac
+  reports one GPU. `NcclAllReduce`, `NcclBroadcast` and `NcclReduce` copy their
+  input to their output, which is what reducing over one device means, and
+  fail at construction when asked for more than one.
+* **`CheckNumerics`** forwards its input without checking it.
+* **`ParallelConcat`** fails with TensorFlow's own message, as it does on
+  every device including CUDA.
 
 ## Files
 
