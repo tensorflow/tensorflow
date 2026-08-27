@@ -1926,7 +1926,6 @@ xla_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/testlib:test_helpers",
         "//xla/service",
-        "//xla/service:computation_placer",
         "//xla/service:platform_util",
         "//xla/service:shaped_buffer",
         "//xla/service:transfer_manager",
