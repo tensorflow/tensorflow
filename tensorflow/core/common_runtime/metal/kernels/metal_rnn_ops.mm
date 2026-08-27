@@ -134,60 +134,62 @@ void RnnOp_Delete(void* kernel) { delete static_cast<RnnOp*>(kernel); }
 
 /*** LSTM BLOCK CELL ***/
 
-void LSTMCell_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
-                          TF_Status* status) {
-  ScopedTensor in[8];
-  for (int i = 0; i < 8; ++i) {
-    TF_GetInput(ctx, i, in[i].address(), status);
-    if (TF_GetCode(status) != TF_OK) return;
-  }
-  const std::vector<int64_t> x_shape = ShapeOf(in[0].get());
-  const std::vector<int64_t> cs_shape = ShapeOf(in[1].get());
-  if (x_shape.size() != 2 || cs_shape.size() != 2) {
-    TF_SetStatus(status, TF_INVALID_ARGUMENT,
-                 "Metal: LSTMBlockCell expects rank-2 inputs.");
-    return;
-  }
-  const int64_t batch = x_shape[0];
-  const int64_t input_size = x_shape[1];
-  const int64_t cell = cs_shape[1];
-  const std::vector<int64_t> cell_shape = {batch, cell};
-  const std::vector<int64_t> w_shape = {input_size + cell, 4 * cell};
-  const std::vector<int64_t> b_shape = {4 * cell};
-  const std::vector<int64_t> p_shape = {cell};
+// The gate layout differs between the original op and its V2: both pack four
+// gates into one matrix, but V2 swaps the cell and forget columns.
+struct GateLayout {
+  bool ifco = false;
+  int64_t i_offset(int64_t cell) const { return 0; }
+  int64_t c_offset(int64_t cell) const { return ifco ? 2 * cell : cell; }
+  int64_t f_offset(int64_t cell) const { return ifco ? cell : 2 * cell; }
+  int64_t o_offset(int64_t cell) const { return 3 * cell; }
+};
 
-  ScopedTensor outputs[7];
-  for (int i = 0; i < 7; ++i) {
-    outputs[i].reset(TF_AllocateOutput(
-        ctx, i, TF_FLOAT, cell_shape.data(), 2,
-        static_cast<size_t>(batch * cell) * sizeof(float), status));
-    if (TF_GetCode(status) != TF_OK) return;
-  }
-  if (batch * cell == 0) return;
+struct CellShapes {
+  int64_t batch = 0;
+  int64_t input_size = 0;
+  int64_t cell = 0;
 
-  SP_Stream stream = StreamForContext(ctx, status);
-  if (TF_GetCode(status) != TF_OK) return;
-  id<MTLDevice> device = DeviceForStream(stream);
+  std::vector<int64_t> x() const { return {batch, input_size}; }
+  std::vector<int64_t> state() const { return {batch, cell}; }
+  std::vector<int64_t> w() const { return {input_size + cell, 4 * cell}; }
+  std::vector<int64_t> b() const { return {4 * cell}; }
+  std::vector<int64_t> peep() const { return {cell}; }
+  std::vector<int64_t> gates() const { return {batch, 4 * cell}; }
+};
 
-  std::string key = "LSTMBlockCell";
+// One step of the cell. Inputs in order: x, cs_prev, h_prev, w, wci, wcf, wco,
+// b. Outputs in order: i, cs, f, o, ci, co, h, which is the order the ops
+// declare them in.
+const CachedGraph* ForwardCellGraph(const RnnOp& op, GateLayout layout,
+                                    const CellShapes& shapes,
+                                    TF_Status* status) {
+  const int64_t cell = shapes.cell;
+  const std::vector<int64_t> x_shape = shapes.x();
+  const std::vector<int64_t> state_shape = shapes.state();
+  const std::vector<int64_t> w_shape = shapes.w();
+  const std::vector<int64_t> b_shape = shapes.b();
+  const std::vector<int64_t> p_shape = shapes.peep();
+
+  std::string key = "LSTMCellForward";
   AppendShapeToKey(x_shape, &key);
-  AppendShapeToKey(cell_shape, &key);
-  key.append("/fb").append(std::to_string(op->forget_bias));
-  key.append("/cc").append(std::to_string(op->cell_clip));
-  key.append(op->use_peephole ? "/peep" : "/plain");
+  AppendShapeToKey(state_shape, &key);
+  key.append("/fb").append(std::to_string(op.forget_bias));
+  key.append("/cc").append(std::to_string(op.cell_clip));
+  key.append(op.use_peephole ? "/peep" : "/plain");
+  key.append(layout.ifco ? "/ifco" : "/icfo");
 
-  const RnnOp captured = *op;
-  const CachedGraph* cached = LookupOrBuildGraph(
+  const RnnOp captured = op;
+  return LookupOrBuildGraph(
       key,
       ^(CachedGraph* out) {
         MPSGraph* g = out->graph;
         MPSGraphTensor* x = [g placeholderWithShape:MPSShape(x_shape)
                                            dataType:MPSDataTypeFloat32
                                                name:nil];
-        MPSGraphTensor* cs_prev = [g placeholderWithShape:MPSShape(cell_shape)
+        MPSGraphTensor* cs_prev = [g placeholderWithShape:MPSShape(state_shape)
                                                  dataType:MPSDataTypeFloat32
                                                      name:nil];
-        MPSGraphTensor* h_prev = [g placeholderWithShape:MPSShape(cell_shape)
+        MPSGraphTensor* h_prev = [g placeholderWithShape:MPSShape(state_shape)
                                                 dataType:MPSDataTypeFloat32
                                                     name:nil];
         MPSGraphTensor* w = [g placeholderWithShape:MPSShape(w_shape)
@@ -214,15 +216,17 @@ void LSTMCell_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
         MPSGraphTensor* gates =
             Add(g, MatMul(g, xh, w), Broadcast(g, b, 4 * cell));
 
-        // ICFO: input, cell, forget, output.
-        MPSGraphTensor* i_gate = Columns(g, gates, 0, cell);
-        MPSGraphTensor* c_gate = Columns(g, gates, cell, cell);
-        MPSGraphTensor* f_gate = Columns(g, gates, 2 * cell, cell);
-        MPSGraphTensor* o_gate = Columns(g, gates, 3 * cell, cell);
+        MPSGraphTensor* i_gate =
+            Columns(g, gates, layout.i_offset(cell), cell);
+        MPSGraphTensor* c_gate =
+            Columns(g, gates, layout.c_offset(cell), cell);
+        MPSGraphTensor* f_gate =
+            Columns(g, gates, layout.f_offset(cell), cell);
+        MPSGraphTensor* o_gate =
+            Columns(g, gates, layout.o_offset(cell), cell);
 
         if (captured.use_peephole) {
-          i_gate = Add(g, i_gate,
-                       Mul(g, cs_prev, Broadcast(g, wci, cell)));
+          i_gate = Add(g, i_gate, Mul(g, cs_prev, Broadcast(g, wci, cell)));
         }
         MPSGraphTensor* i = [g sigmoidWithTensor:i_gate name:nil];
         MPSGraphTensor* ci = [g tanhWithTensor:c_gate name:nil];
@@ -248,7 +252,6 @@ void LSTMCell_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
           o_gate = Add(g, o_gate, Mul(g, cs, Broadcast(g, wco, cell)));
         }
         MPSGraphTensor* o = [g sigmoidWithTensor:o_gate name:nil];
-        MPSGraphTensor* h = Mul(g, o, co);
 
         [out->inputs addObject:x];
         [out->inputs addObject:cs_prev];
@@ -264,9 +267,47 @@ void LSTMCell_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
         [out->outputs addObject:o];
         [out->outputs addObject:ci];
         [out->outputs addObject:co];
-        [out->outputs addObject:h];
+        [out->outputs addObject:Mul(g, o, co)];
       },
       status);
+}
+
+void LSTMCell_ComputeImpl(RnnOp* op, TF_OpKernelContext* ctx,
+                          TF_Status* status) {
+  ScopedTensor in[8];
+  for (int i = 0; i < 8; ++i) {
+    TF_GetInput(ctx, i, in[i].address(), status);
+    if (TF_GetCode(status) != TF_OK) return;
+  }
+  const std::vector<int64_t> x_shape = ShapeOf(in[0].get());
+  const std::vector<int64_t> cs_shape = ShapeOf(in[1].get());
+  if (x_shape.size() != 2 || cs_shape.size() != 2) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Metal: LSTMBlockCell expects rank-2 inputs.");
+    return;
+  }
+  CellShapes shapes;
+  shapes.batch = x_shape[0];
+  shapes.input_size = x_shape[1];
+  shapes.cell = cs_shape[1];
+  const std::vector<int64_t> state_shape = shapes.state();
+
+  ScopedTensor outputs[7];
+  for (int i = 0; i < 7; ++i) {
+    outputs[i].reset(TF_AllocateOutput(
+        ctx, i, TF_FLOAT, state_shape.data(), 2,
+        static_cast<size_t>(shapes.batch * shapes.cell) * sizeof(float),
+        status));
+    if (TF_GetCode(status) != TF_OK) return;
+  }
+  if (shapes.batch * shapes.cell == 0) return;
+
+  SP_Stream stream = StreamForContext(ctx, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  id<MTLDevice> device = DeviceForStream(stream);
+
+  const CachedGraph* cached =
+      ForwardCellGraph(*op, GateLayout(), shapes, status);
   if (cached == nullptr) return;
 
   NSMutableArray<MPSGraphTensorData*>* feeds = [NSMutableArray array];
