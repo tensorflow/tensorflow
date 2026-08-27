@@ -355,7 +355,10 @@ MPSGraphTensor* ApplyUnary(MPSGraph* g, UnaryKind k, MPSGraphTensor* x,
     case UnaryKind::kReciprocal: return [g reciprocalWithTensor:x name:nil];
     case UnaryKind::kFloor: return [g floorWithTensor:x name:nil];
     case UnaryKind::kCeil: return [g ceilWithTensor:x name:nil];
-    case UnaryKind::kRound: return [g roundWithTensor:x name:nil];
+    // TensorFlow's Round rounds halves to even, which is rint, not round:
+    // MPSGraph's roundWithTensor rounds halves away from zero and would send
+    // 2.5 to 3 where TensorFlow sends it to 2.
+    case UnaryKind::kRound: return [g rintWithTensor:x name:nil];
     case UnaryKind::kRint: return [g rintWithTensor:x name:nil];
     case UnaryKind::kSign: return [g signWithTensor:x name:nil];
     case UnaryKind::kErf: return [g erfWithTensor:x name:nil];
